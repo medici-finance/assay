@@ -1,0 +1,6 @@
+[
+  {"class": "app-review", "mutationTested": true, "auditSourced": false, "fires": [
+    {"pr": 101, "blockedDefect": false},
+    {"pr": 102, "blockedDefect": true}
+  ]}
+]
