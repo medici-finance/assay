@@ -1,0 +1,318 @@
+{
+  "_comment": [
+    "ONE roster, fed through BOTH config readers — tools/desk/internal/deskkit and",
+    "statusgen — with identical expected verdicts. This file is the cross-tree",
+    "binding that replaced the textual KEEP-IN-SYNC grep when the trust roster",
+    "became configuration (assay-selfcontain/05, Task 2).",
+    "",
+    "deskkit reads it from ./testdata/roster_coupling.json;",
+    "statusgen reads it from ../tools/desk/internal/deskkit/testdata/roster_coupling.json.",
+    "The two modules deliberately share no code, so a shared VECTOR file is what",
+    "keeps their duplicated readers honest: a drift in either reader fails here.",
+    "",
+    "The identities are deliberately NOT this house's — the roster is adopter",
+    "configuration now, and a fixture that only works with one organisation's",
+    "logins would not prove that.",
+    "",
+    "EXTENDED at review (bf1244c9, correctness finding 3). The vector originally carried",
+    "only the three TRUST variables, so the repo-policy parse sat structurally outside the",
+    "binding that is supposed to keep the duplicated readers honest — and the two copies had",
+    "in fact diverged on it: deskkit validated the ci|no-ci / public|private tokens and",
+    "collapsed the whole configuration on a bad one, while statusgen stored the token",
+    "unvalidated and reported configured=true. One file, one typo, opposite verdicts.",
+    "",
+    "So the vector now carries the ALLOWED-REPO set and the ROLE bindings as well, and a",
+    "list of rosters BOTH readers must REFUSE. A refusal case is what actually binds the",
+    "validation halves: an acceptance case only proves the two agree on a good file."
+  ],
+  "roster": {
+    "ASSAY_BLESS_LOGIN": "ada:1001",
+    "ASSAY_TRUSTED_LOGINS": "ada:1001,shared-agent:2002,unpinned-human",
+    "ASSAY_TRUSTED_BOT_SLUGS": "reviewer=example-reviewer-app:3003,worker=example-worker-app:4004",
+    "ASSAY_ALLOWED_REPOS": "example-org/tracked:ci:private,example-org/untriggered:no-ci:private,example-org/open:ci:public,example-org/unstated",
+    "ASSAY_HUMAN_LOGIN_MAP": "ada-display:ada"
+  },
+  "cases": [
+    {
+      "why": "the blessing authority: trusted, id-verified, and the ONE identity that may bless",
+      "login": "ada",
+      "id": 1001,
+      "trustedAuthor": true,
+      "trustedContent": true,
+      "mayBless": true,
+      "trustedAuthorID": true
+    },
+    {
+      "why": "the blessing authority carrying a RECYCLED id: login matches, id does not (P4)",
+      "login": "ada",
+      "id": 999999,
+      "trustedAuthor": true,
+      "trustedContent": false,
+      "mayBless": false,
+      "trustedAuthorID": false
+    },
+    {
+      "why": "a second trusted human is a trusted AUTHOR but may NEVER bless",
+      "login": "shared-agent",
+      "id": 2002,
+      "trustedAuthor": true,
+      "trustedContent": true,
+      "mayBless": false,
+      "trustedAuthorID": true
+    },
+    {
+      "why": "a trusted human with the wrong id is untrusted CONTENT (recycled-login defence)",
+      "login": "shared-agent",
+      "id": 4242,
+      "trustedAuthor": true,
+      "trustedContent": false,
+      "mayBless": false,
+      "trustedAuthorID": false
+    },
+    {
+      "why": "a human with NO numeric id on a surface that has one: id 0 means the surface lacks it, and a human without one fails the strict content check",
+      "login": "shared-agent",
+      "id": 0,
+      "trustedAuthor": true,
+      "trustedContent": false,
+      "mayBless": false,
+      "trustedAuthorID": true,
+      "whyAuthorID": "the ONE delta from trustedContent: a human with no numeric id is login-only on the GENERAL-PURPOSE path, which exists for surfaces (gh CLI list JSON) that structurally carry no id. The strict content path fails closed on the same input"
+    },
+    {
+      "why": "a configured App in the REST rendering — trusted author and trusted content, never a blessing authority",
+      "login": "example-reviewer-app[bot]",
+      "id": 3003,
+      "trustedAuthor": true,
+      "trustedContent": true,
+      "mayBless": false,
+      "trustedAuthorID": true
+    },
+    {
+      "why": "the same App in the gh CLI rendering — both renderings are accepted",
+      "login": "app/example-reviewer-app",
+      "id": 3003,
+      "trustedAuthor": true,
+      "trustedContent": true,
+      "mayBless": false,
+      "trustedAuthorID": true
+    },
+    {
+      "why": "Apps are trusted by login alone even with no id (an App cannot be recycled)",
+      "login": "example-worker-app[bot]",
+      "id": 0,
+      "trustedAuthor": true,
+      "trustedContent": true,
+      "mayBless": false,
+      "trustedAuthorID": true
+    },
+    {
+      "why": "the BARE slug is never trusted: slugs and usernames are separate GitHub namespaces, so a plain user could squat one",
+      "login": "example-reviewer-app",
+      "id": 3003,
+      "trustedAuthor": false,
+      "trustedContent": false,
+      "mayBless": false,
+      "trustedAuthorID": false
+    },
+    {
+      "why": "case is insignificant — GitHub logins are case-insensitively unique, so a case variant is the same account",
+      "login": "ADA",
+      "id": 1001,
+      "trustedAuthor": true,
+      "trustedContent": true,
+      "mayBless": true,
+      "trustedAuthorID": true
+    },
+    {
+      "why": "an unrelated external author",
+      "login": "external-user",
+      "id": 5005,
+      "trustedAuthor": false,
+      "trustedContent": false,
+      "mayBless": false,
+      "trustedAuthorID": false
+    },
+    {
+      "why": "an empty login is untrusted, never a wildcard",
+      "login": "",
+      "id": 0,
+      "trustedAuthor": false,
+      "trustedContent": false,
+      "mayBless": false,
+      "trustedAuthorID": false
+    },
+    {
+      "why": "a near-miss on the blessing authority's login must not bless",
+      "login": "ada2",
+      "id": 1001,
+      "trustedAuthor": false,
+      "trustedContent": false,
+      "mayBless": false,
+      "trustedAuthorID": false
+    },
+    {
+      "why": "the blessing authority's login rendered as an App must not bless (or be trusted at all)",
+      "login": "ada[bot]",
+      "id": 1001,
+      "trustedAuthor": false,
+      "trustedContent": false,
+      "mayBless": false,
+      "trustedAuthorID": false
+    },
+    {
+      "why": "an UNPINNED configured human on a surface that HAS an id: trusted author, but untrusted content — nothing to check the id against, so pinning is what buys trust on an id-bearing surface (this case was missing, which is how the two readers diverged on it)",
+      "login": "unpinned-human",
+      "id": 7007,
+      "trustedAuthor": true,
+      "trustedContent": false,
+      "mayBless": false,
+      "trustedAuthorID": false,
+      "whyAuthorID": "MUTATION A. An UNPINNED configured human on an id-bearing surface: there is nothing to compare the id against, so pinning is what buys trust. The conversion briefly made this `want == 0 => trusted`, i.e. trusted carrying ANY id — the exact login-recycling exposure P4 closes, and a WIDENING against the pre-conversion `return ok && want == id`. This case is the one that reddens on it"
+    },
+    {
+      "why": "the same unpinned human on a surface with NO id: login-only, as before the conversion",
+      "login": "unpinned-human",
+      "id": 0,
+      "trustedAuthor": true,
+      "trustedContent": false,
+      "mayBless": false,
+      "trustedAuthorID": true,
+      "whyAuthorID": "the same unpinned human on a surface with NO id: login-only, as before the conversion — the general-purpose path must NOT be tightened here either, or gh-CLI-sourced surfaces stop trusting a configured identity"
+    }
+  ],
+  "repoCases": [
+    {
+      "why": "an explicitly configured repo: allowed, CI required, private",
+      "repo": "example-org/tracked",
+      "allowed": true,
+      "ciRequired": true,
+      "visibility": "private"
+    },
+    {
+      "why": "no-ci is honoured when stated",
+      "repo": "example-org/untriggered",
+      "allowed": true,
+      "ciRequired": false,
+      "visibility": "private"
+    },
+    {
+      "why": "public visibility is honoured when stated (it risk-classes unconditionally, at#382)",
+      "repo": "example-org/open",
+      "allowed": true,
+      "ciRequired": true,
+      "visibility": "public"
+    },
+    {
+      "why": "UNSTATED policy takes the fail-closed defaults: CI REQUIRED, visibility UNKNOWN. Mutations M11/M12 flipped exactly these two and survived the old suite",
+      "repo": "example-org/unstated",
+      "allowed": true,
+      "ciRequired": true,
+      "visibility": "unknown"
+    },
+    {
+      "why": "a repo outside the configured set is refused — the write boundary is a whitelist",
+      "repo": "example-org/not-listed",
+      "allowed": false,
+      "ciRequired": true,
+      "visibility": "unknown"
+    },
+    {
+      "why": "an attacker-owned lookalike of a configured name is refused",
+      "repo": "attacker/tracked",
+      "allowed": false,
+      "ciRequired": true,
+      "visibility": "unknown"
+    }
+  ],
+  "roleCases": [
+    {
+      "why": "a role bound by the role= prefix resolves to the App's REST rendering",
+      "role": "reviewer",
+      "bound": true,
+      "login": "example-reviewer-app[bot]"
+    },
+    {
+      "why": "a second bound role",
+      "role": "worker",
+      "bound": true,
+      "login": "example-worker-app[bot]"
+    },
+    {
+      "why": "a role NOT bound by any prefix must refuse, never answer an empty login a caller could compare against",
+      "role": "verifier",
+      "bound": false,
+      "login": ""
+    },
+    {
+      "why": "an unknown role name refuses",
+      "role": "nonesuch",
+      "bound": false,
+      "login": ""
+    }
+  ],
+  "rejectedRosters": [
+    {
+      "why": "a one-character typo in a repo POLICY token. deskkit refused the whole configuration; statusgen accepted it — the divergence this list exists to bind",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001",
+        "ASSAY_TRUSTED_BOT_SLUGS": "reviewer=example-reviewer-app:3003",
+        "ASSAY_ALLOWED_REPOS": "example-org/tracked:cii:private"
+      },
+      "problemContains": "unknown policy token"
+    },
+    {
+      "why": "a repo entry that is not an owner/name slug",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001",
+        "ASSAY_ALLOWED_REPOS": "not-a-slug"
+      },
+      "problemContains": "owner/name"
+    },
+    {
+      "why": "a typo'd key in the ASSAY_ namespace. The surface it meant to configure stays EMPTY while the configuration would otherwise report itself correct",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001",
+        "ASSAY_ALOWED_REPOS": "example-org/tracked:ci:private"
+      },
+      "problemContains": "unknown key in the ASSAY_ namespace"
+    },
+    {
+      "why": "the blessing authority carrying no numeric id — mandatory on this surface alone",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001"
+      },
+      "problemContains": "carries no numeric id"
+    },
+    {
+      "why": "the blessing authority given as a LIST — never the first entry, never every entry",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001,mallory:9",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001"
+      },
+      "problemContains": "SINGLE identity"
+    },
+    {
+      "why": "a schema version this build does not speak",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "ada:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001",
+        "ASSAY_ROSTER_SCHEMA": "99"
+      },
+      "problemContains": "schema version"
+    },
+    {
+      "why": "the blessing authority is ALSO a configured App. The looksLikeBot arm does NOT catch this slug — 'helios' carries no [bot]/app/ affix and no -app/-bot suffix — so the inBotSet arm is the only thing standing between an App and the authority that admits external text into the desks' own queues. Both readers carry that arm; a mutation disabling it in either survived the whole suite before this case existed.",
+      "roster": {
+        "ASSAY_BLESS_LOGIN": "helios:1001",
+        "ASSAY_TRUSTED_LOGINS": "ada:1001",
+        "ASSAY_TRUSTED_BOT_SLUGS": "reviewer=helios:1001"
+      },
+      "problemContains": "must never be the blessing authority"
+    }
+  ]
+}

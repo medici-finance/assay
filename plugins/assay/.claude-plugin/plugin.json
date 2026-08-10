@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "assay",
+  "displayName": "Assay",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "The Assay methodology as a Claude Code plugin: the loop skills plus the resident operating rules, delivered namespaced as assay:<name>.",
+  "author": {
+    "name": "the-org"
+  },
+  "homepage": "https://github.com/medici-finance/assay-toolkit",
+  "repository": "https://github.com/medici-finance/assay-toolkit",
+  "keywords": ["methodology", "streams", "briefs", "process-desk", "assay"]
+}
