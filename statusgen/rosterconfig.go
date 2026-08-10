@@ -1,0 +1,837 @@
+package main
+
+// Roster / authority configuration — statusgen's half (assay-selfcontain/05).
+//
+// KEEP IN SYNC with tools/desk/internal/deskkit/rosterconfig.go. statusgen and
+// desk-tools are separate Go modules that deliberately share no code (the
+// documented-duplicate pattern), so this is a cross-tree duplicate of deskkit's
+// loader. tools/desk/internal/deskkit/scancoupling_test.go
+// (TestScanIssuesTrustGateEnforced) binds the two READERS behaviourally, over a
+// shared vector file, so the duplication cannot drift. A change to either copy
+// must be made in both.
+//
+// The full rationale — why a repository/organization variable rather than a file
+// in the repo, why the write class must not consult the environment, why an
+// unset roster is CLOSED, and what the accepted residual is — lives in the
+// deskkit copy's package comment and is not restated here. The short form:
+//
+//   - P1 unset is CLOSED: an absent or empty roster trusts nobody and blesses
+//     nobody, loudly.
+//   - P2 the source of truth lies OUTSIDE every ref the tools evaluate.
+//   - P3 the effective value is echoed every run, in BOTH directions.
+//   - P4 numeric-id pinning survives: the format is `login:id`, and the id is
+//     MANDATORY for the blessing authority.
+//
+// statusgen's class is chosen per MODE (scanClassForMode). `--scan-issues` is the
+// acting mode: it creates durable desk work items (placeholder files) that reach
+// Next-up, where a worker acts on them, so it is WRITE CLASS and consults the
+// config-home file ONLY — an ASSAY_* variable exported in the local environment has
+// no effect on it, which is the 2026-08-04 split-by-action-class ruling, pinned by
+// TestWriteToolsRefuseEnvRoster.
+//
+// Every OTHER mode (lint / check / record / report) reads the CI transport when the
+// process is actually inside a GitHub Actions job. `statusgen --lint` runs in the
+// consumer's CI on every PR and there is no config home on a runner, so without
+// that route the human-login map was unreadable and the verifier floor failed on
+// briefs the PR never touched (correctness review at bf1244c9, finding 1).
+//
+// RESIDUAL — the ONE place the environment does widen, stated rather than taken
+// silently. An earlier draft of this comment claimed "an empty map is strictly
+// stricter, so the environment cannot widen a decision through them". The first
+// clause is true and the conclusion does not follow: an empty map is stricter, but
+// a NON-EMPTY one supplied through the environment is strictly wider than no map,
+// because ASSAY_HUMAN_LOGIN_MAP is consulted only to ACCEPT and its three gate-clearing
+// consumers do not consult Configured(). A steered agent running locally as the user
+// can export GITHUB_ACTIONS=true alongside ASSAY_HUMAN_LOGIN_MAP and clear:
+//
+//	verifierFloorFailure     (attribution.go) — a `human:<name>` runner token resolves
+//	                         and the verifier floor stops applying to that brief.
+//	authorizedByVerifiedHuman (registers.go)  — an `authorized-by: human:<name>` key
+//	                         whose name is unknown today becomes known.
+//	corroborateStamps        (corroborate.go) — a `human:<name>` stamp flips from
+//	                         MISSING-CORROBORATION to CORROBORATED, flipping
+//	                         `--corroborate`'s exit status (1 only when anyMissing).
+//
+// THREE, not two. An earlier draft of this note listed the first two and dismissed the
+// third as "not a widening one — a mapping only names a login whose APPROVED review
+// must then be found on the PR". The residual review measured that false: the actor
+// setting the map also chooses which login the name resolves to, so any account
+// already carrying an approval-shaped comment on the PR satisfies the barrier —
+// including a shared agent account, which is the identity `human:<name>` exists to
+// distinguish from a human. `--corroborate` is not `--scan-issues`, so
+// scanClassForMode(false) puts it on the same ClassCI transport as the other two.
+//
+// That is the whole of it, and the boundary is pinned across all three gates by
+// TestCIHumanLoginMapResidualBoundary: the map admits no repo, blesses nobody, makes
+// nobody a trusted author, and cannot reach any write/flip/dispatch surface, because
+// every tool holding those is write-class and refuses the environment unconditionally.
+//
+// Because those three gates exist to establish that a HUMAN acted, the LOGIN half of
+// each entry is validated the same way ASSAY_BLESS_LOGIN is: a value that renders as a
+// bot/App/shared-agent account (scanLooksLikeBot) collapses the whole configuration,
+// so `human:<name>` can never be pointed at the shared-agent identity the token exists
+// to exclude. This is a strict mirror of the bless rule, not a full identity check —
+// a real, non-bot-shaped account that is not a verified human still parses clean,
+// exactly as the bless authority does; that residual is inherent to naming an account
+// by login and is the reason the id-pinning and corroboration gates exist downstream.
+//
+// Closing the residual is NOT a matter of narrowing the check: requiring Configured()
+// here would re-break the CI case above wherever the adopter sets only this one
+// variable, which is the state assay-toolkit's own repository is in today. It is an
+// ops question (repo- vs org-level variables) tracked with Q1/Q3 on the PR, not a
+// code question this file can settle.
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+)
+
+const (
+	scanEnvBlessLogin            = "ASSAY_BLESS_LOGIN"
+	scanEnvTrustedLogins         = "ASSAY_TRUSTED_LOGINS"
+	scanEnvTrustedBotSlugs       = "ASSAY_TRUSTED_BOT_SLUGS"
+	scanEnvAllowedRepos          = "ASSAY_ALLOWED_REPOS"
+	scanEnvHumanLoginMap         = "ASSAY_HUMAN_LOGIN_MAP"
+	scanEnvRiskPathTriggersExtra = "ASSAY_RISK_PATH_TRIGGERS_EXTRA"
+	scanEnvRosterSchema          = "ASSAY_ROSTER_SCHEMA"
+
+	// scanEnvHomeRepo names the owner/repo whose issues get the bare
+	// `issue-<NN>.md` placeholder filename and whose slug the rendered
+	// --verify-issues bodies link into (verifyRepoSlug). A single owner/name
+	// slug. Statusgen-specific: the repo roster used to be compiled in
+	// (verifyRepoSlug / scanRepos), naming ONE organisation; publishing the
+	// tools means the home repo is adopter configuration, read at runtime like
+	// every other roster value. Unset is CLOSED for its consumers: --verify-issues
+	// renders no absolute blob link and --scan-issues gives no repo the bare
+	// filename (both harmless, and --scan-issues scans nothing without
+	// ASSAY_SCAN_REPOS anyway).
+	scanEnvHomeRepo = "ASSAY_HOME_REPO"
+	// scanEnvScanRepos names the owner/repo set --scan-issues reads OPEN issues
+	// from, comma/space-separated `owner/name`. It is DELIBERATELY a dedicated
+	// variable, not ASSAY_ALLOWED_REPOS: the scan SCOPE and the write-authorisation
+	// boundary are different sets on purpose — the intake scanner covers repos the
+	// desk is the front door for (e.g. site repos) that are not write targets, and
+	// deliberately HOLDS OUT a write-boundary repo whose PRs cannot yet be
+	// risk-classed (see the scanRepos comment). Reusing ASSAY_ALLOWED_REPOS would
+	// silently change the scan scope. Unset is CLOSED: an empty scan set scans
+	// nothing rather than falling back to the write boundary.
+	scanEnvScanRepos = "ASSAY_SCAN_REPOS"
+)
+
+// Medici-Loan DAR product deployment naming (darsync.go / darrelease.go).
+//
+// These are NOT part of the generic ASSAY_* methodology surface — they name ONE
+// product's Kubernetes deployment artifacts, so they live in a distinct
+// MEDICI_LOAN_* namespace and are REPO-LEVEL config, set only on the product
+// repo(s) (never org-level, never on the OSS tool). They are read through the
+// SAME env + roster.env transport as the ASSAY_* roster (P2/P3), but they carry
+// none of the roster's trust semantics: an unset or malformed value is a plain
+// no-op, never a refusal, and it can never collapse the trust configuration.
+//
+// Unset is a NO-OP, not CLOSED: statusgen running anywhere these are not set (the
+// OSS tool, any non-product repo) makes the DAR-drift check (issue #465, oit
+// #1333) a clean no-op rather than a false problem. The DAR check only runs when
+// BOTH are set, with the real product identities.
+const (
+	// scanEnvDarConfigMapPrefix names the DAR ConfigMap filename/metadata prefix —
+	// the leading segment shared by the product's k8s DAR ConfigMap parts
+	// (<prefix>1.yaml, <prefix>2.yaml, <prefix>3.yaml). Supplied at runtime.
+	scanEnvDarConfigMapPrefix = "MEDICI_LOAN_DAR_CONFIGMAP_PREFIX"
+	// scanEnvDarPackage names the DAML package whose zip entry names carry the DAR
+	// version (`<package>-v<N>-<version>-<hash>/`), matched inside the reassembled
+	// DAR bytes. The real house value is the product's DAML package name.
+	scanEnvDarPackage = "MEDICI_LOAN_DAR_PACKAGE"
+)
+
+// scanConfigHomeFile is the local source of truth — outside every ref.
+const scanConfigHomeFile = "~/.config/assay/roster.env"
+
+// scanRosterSchemaVersion is the format version this build speaks.
+// KEEP IN SYNC with deskkit.rosterSchemaVersion.
+const scanRosterSchemaVersion = "1"
+
+// scanToolClass mirrors deskkit.ToolClass. scanClassWrite is the ZERO VALUE, so a
+// caller that forgets to choose gets the restrictive class.
+type scanToolClass int
+
+const (
+	scanClassWrite scanToolClass = iota
+	scanClassCI
+	scanClassReadOnly
+)
+
+func (c scanToolClass) String() string {
+	switch c {
+	case scanClassCI:
+		return "ci"
+	case scanClassReadOnly:
+		return "read-only"
+	default:
+		return "write"
+	}
+}
+
+// scanIdentity is a login with its PERMANENT numeric GitHub id (0 = not pinned).
+type scanIdentity struct {
+	Login string
+	ID    int64
+}
+
+// scanConfig is one fully-parsed, validated configuration. A scanConfig with a
+// non-empty Problems slice carries NOTHING else: validation failure collapses the
+// whole configuration to unconfigured rather than admitting a half-parsed roster.
+type scanConfig struct {
+	Class  scanToolClass
+	Source string
+
+	Bless    scanIdentity
+	Humans   map[string]int64
+	Bots     map[string]int64
+	RoleBots map[string]string
+	Logins   map[string]bool
+
+	Repos       map[string]string
+	HumanLogins map[string]string
+	RiskExtra   []string
+
+	// HomeRepo and ScanRepos are statusgen-only roster values (the compiled-in
+	// owned-repo roster this externalises). deskkit RECOGNISES their keys — the
+	// two readers share one roster.env, so an unknown ASSAY_ key would collapse
+	// the OTHER reader's whole configuration — but does not consume them.
+	HomeRepo  string
+	ScanRepos []string
+
+	// DarConfigMapPrefix and DarPackage are the Medici-Loan DAR product
+	// deployment naming (MEDICI_LOAN_DAR_*). REPO-LEVEL product config, distinct
+	// from the ASSAY_* methodology surface above. Both empty is the fail-safe
+	// default: darSyncCheck no-ops unless BOTH are set. Not trust-bearing — a bad
+	// value here never collapses the roster (they are not ASSAY_ keys).
+	DarConfigMapPrefix string
+	DarPackage         string
+
+	// UnknownKeys are echoed, never applied. KEEP IN SYNC with deskkit.Config.
+	UnknownKeys []string
+
+	Problems []string
+}
+
+func (c scanConfig) Configured() bool {
+	return len(c.Problems) == 0 && c.Bless.Login != "" && len(c.Logins) > 0
+}
+
+// DarConfigured reports whether the Medici-Loan DAR product deployment naming is
+// fully supplied. The DAR-drift check (darSyncCheck, issue #465 / oit #1333) is a
+// clean no-op unless BOTH the ConfigMap prefix and the DAML package are set —
+// independent of the trust roster's Configured() state (this is product config,
+// not the trust roster).
+func (c scanConfig) DarConfigured() bool {
+	return c.DarConfigMapPrefix != "" && c.DarPackage != ""
+}
+
+// darCheckState renders the DAR-drift check's active/no-op state for the P3 echo.
+func darCheckState(configured bool) string {
+	if configured {
+		return "active"
+	}
+	return "no-op (MEDICI_LOAN_DAR_* unset)"
+}
+
+var (
+	scanCfgMu    sync.Mutex
+	scanCfgClass scanToolClass
+	scanCfgOnce  bool
+	scanCfgValue scanConfig
+)
+
+// scanReloadConfig discards the cached configuration so the next read re-parses.
+func scanReloadConfig() {
+	scanCfgMu.Lock()
+	defer scanCfgMu.Unlock()
+	scanCfgOnce = false
+}
+
+// scanInCI reports whether this process is running inside a GitHub Actions job.
+// KEEP IN SYNC with deskkit.InCI.
+func scanInCI() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("GITHUB_ACTIONS")), "true")
+}
+
+// scanClassForMode resolves the roster class from the MODE statusgen was invoked
+// in. KEEP IN SYNC with deskkit.ClassForTool.
+//
+// This is the statusgen half of correctness finding 1 at bf1244c9: there was no
+// setter at all on this side, so scanCfgClass was a package var nothing ever wrote
+// and every invocation loaded ClassWrite — file-only. `statusgen --lint` runs in
+// the consumer's CI on every PR (.github/workflows/statusgen.yml), where there is
+// no config home and never will be, so the human-login map was unreadable and the
+// verifier floor failed on briefs the PR never touched.
+//
+// The split is by what the MODE does, not by where it runs:
+//
+//	--scan-issues  WRITES placeholder briefs into the work queue from GitHub issue
+//	               text. It is the acting mode, it is run locally, and it stays
+//	               file-only ALWAYS — including under GITHUB_ACTIONS. This is the
+//	               tool whose steering the split-by-action-class ruling is about.
+//	everything else  lint / check / record / report. These classify and print; they
+//	               grant nothing DIRECTLY, admit nothing to a queue, and write no
+//	               authorisation. An EMPTY human-login map makes them stricter, not
+//	               looser — but a NON-EMPTY one arriving through the environment IS a
+//	               widening (it is consulted only to ACCEPT), clearing the three human
+//	               gates enumerated in the RESIDUAL note above. Reporting is not
+//	               decision-neutral; do not restate that as "the environment cannot
+//	               widen a decision".
+func scanClassForMode(scanIssuesMode bool) scanToolClass {
+	if scanIssuesMode || !scanInCI() {
+		return scanClassWrite
+	}
+	return scanClassCI
+}
+
+// scanSetToolClass declares the invocation's class. It must be called before any
+// roster read; the zero value is scanClassWrite, the restrictive default.
+func scanSetToolClass(c scanToolClass) {
+	scanCfgMu.Lock()
+	defer scanCfgMu.Unlock()
+	scanCfgClass = c
+	scanCfgOnce = false
+}
+
+// scanEffectiveConfig returns the process's configuration, loading on first use.
+func scanEffectiveConfig() scanConfig {
+	scanCfgMu.Lock()
+	defer scanCfgMu.Unlock()
+	if !scanCfgOnce {
+		scanCfgValue = scanLoadConfig(scanCfgClass)
+		scanCfgOnce = true
+	}
+	return scanCfgValue
+}
+
+// scanLoadConfig reads and validates the configuration for class. It never
+// returns an error: an unreadable, absent or invalid configuration is an
+// UNCONFIGURED one with Problems recorded, because every caller has to fail
+// closed on that state anyway and an error return invites a caller that logs and
+// continues.
+func scanLoadConfig(class scanToolClass) scanConfig {
+	vals, source, problems := scanReadRawConfig(class)
+	cfg := scanParseConfig(class, source, vals)
+	if len(problems) > 0 {
+		return scanConfig{Class: class, Source: source, Problems: append(problems, cfg.Problems...)}
+	}
+	return cfg
+}
+
+func scanReadRawConfig(class scanToolClass) (map[string]string, string, []string) {
+	keys := []string{
+		scanEnvBlessLogin, scanEnvTrustedLogins, scanEnvTrustedBotSlugs,
+		scanEnvAllowedRepos, scanEnvHumanLoginMap, scanEnvRiskPathTriggersExtra,
+		scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
+		scanEnvDarConfigMapPrefix, scanEnvDarPackage,
+	}
+	fromEnv := func() map[string]string {
+		m := map[string]string{}
+		for _, k := range keys {
+			if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+				m[k] = v
+			}
+		}
+		return m
+	}
+
+	switch class {
+	case scanClassCI:
+		return fromEnv(), "environment (repository/organization Actions variables)", nil
+
+	case scanClassReadOnly:
+		file, path, ferr := scanReadConfigFile()
+		m := fromEnv()
+		src := "environment"
+		if ferr == nil {
+			for k, v := range file {
+				if _, ok := m[k]; !ok {
+					m[k] = v
+				}
+			}
+			src = "environment, then " + path
+		} else if !os.IsNotExist(ferr) {
+			src = "environment (config file unusable: " + ferr.Error() + ")"
+		}
+		return m, src, nil
+
+	default: // scanClassWrite
+		// NO ENVIRONMENT READ — the whole point of the split.
+		file, path, ferr := scanReadConfigFile()
+		if ferr != nil {
+			if os.IsNotExist(ferr) {
+				return nil, "config file " + path + " (absent)", []string{fmt.Sprintf(
+					"no roster configured: %s does not exist. Write-class tools read the roster "+
+						"ONLY from this file — the environment is deliberately not consulted, so "+
+						"exporting %s has no effect. Create it with 0600 permissions.",
+					path, scanEnvTrustedLogins)}
+			}
+			return nil, "config file " + path + " (unusable)", []string{fmt.Sprintf(
+				"refusing to load the roster from %s: %v", path, ferr)}
+		}
+		return file, "config file " + path, nil
+	}
+}
+
+// scanConfigHomePath is the resolved path of the local config file.
+func scanConfigHomePath() string { return scanExpandHome(scanConfigHomeFile) }
+
+func scanExpandHome(p string) string {
+	if strings.HasPrefix(p, "~/") {
+		if h, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(h, p[2:])
+		}
+	}
+	return p
+}
+
+func scanReadConfigFile() (map[string]string, string, error) {
+	path := scanConfigHomePath()
+	if err := scanCheckOwnerPerms(filepath.Dir(path), true); err != nil {
+		return nil, path, err
+	}
+	if err := scanCheckOwnerPerms(path, false); err != nil {
+		return nil, path, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, path, err
+	}
+	return scanParseDotenv(string(data)), path, nil
+}
+
+// scanCheckOwnerPerms is the sshd rule: a configuration that decides who is
+// trusted must not be writable by anyone but its owner, and must be owned by the
+// user running the tool.
+func scanCheckOwnerPerms(path string, isDir bool) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if isDir && !fi.IsDir() {
+		return fmt.Errorf("%s is not a directory", path)
+	}
+	if mode := fi.Mode().Perm(); mode&0o022 != 0 {
+		kind := "file"
+		fix := "0600"
+		if isDir {
+			kind = "directory"
+			fix = "0700"
+		}
+		return fmt.Errorf("roster config %s %s is group- or world-writable (mode %04o): "+
+			"anything that can write it can name the accounts this tool trusts. "+
+			"Fix with `chmod %s %s`", kind, path, mode, fix, path)
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fmt.Errorf("cannot determine the owner of %s — refusing to read a roster "+
+			"whose ownership cannot be established", path)
+	}
+	if uid := os.Getuid(); int(st.Uid) != uid {
+		return fmt.Errorf("roster config %s is owned by uid %d, not by the invoking user (uid %d) — "+
+			"refusing to take the trusted-identity list from a file this user does not own",
+			path, st.Uid, uid)
+	}
+	return nil
+}
+
+func scanParseDotenv(s string) map[string]string {
+	m := map[string]string{}
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
+		eq := strings.IndexByte(line, '=')
+		if eq < 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:eq])
+		val := strings.Trim(strings.TrimSpace(line[eq+1:]), `"'`)
+		if v := strings.TrimSpace(val); v != "" {
+			m[key] = v
+		}
+	}
+	return m
+}
+
+func scanSplitList(raw string) []string {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
+	})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func scanSplitIdentity(entry string) (login string, id int64, ok bool) {
+	l, rest, found := strings.Cut(entry, ":")
+	l = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "@")))
+	if l == "" {
+		return "", 0, false
+	}
+	if !found || strings.TrimSpace(rest) == "" {
+		return l, 0, true
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(rest), 10, 64)
+	if err != nil || n <= 0 {
+		return "", 0, false
+	}
+	return l, n, true
+}
+
+// scanLooksLikeBot mirrors deskkit.looksLikeBot / damlbreakguard's isBotAccount.
+// The authorisation half of a two-factor mechanism has to be a human act, and a
+// blessing IS that authorisation half.
+func scanLooksLikeBot(login string) bool {
+	l := strings.ToLower(strings.TrimSpace(login))
+	return strings.HasSuffix(l, "[bot]") ||
+		strings.HasPrefix(l, "app/") ||
+		strings.HasSuffix(l, "-app") ||
+		strings.HasSuffix(l, "-bot")
+}
+
+func scanParseConfig(class scanToolClass, source string, vals map[string]string) scanConfig {
+	cfg := scanConfig{
+		Class:       class,
+		Source:      source,
+		Humans:      map[string]int64{},
+		Bots:        map[string]int64{},
+		RoleBots:    map[string]string{},
+		Logins:      map[string]bool{},
+		Repos:       map[string]string{},
+		HumanLogins: map[string]string{},
+	}
+	var problems []string
+	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
+
+	// Key recognition BEFORE any value is applied. A typo inside the ASSAY_
+	// namespace REFUSES (it would otherwise leave a control surface empty while the
+	// configuration reported itself correct); a key outside it is echoed.
+	// KEEP IN SYNC with deskkit's parseConfig.
+	known := map[string]bool{
+		scanEnvBlessLogin: true, scanEnvTrustedLogins: true, scanEnvTrustedBotSlugs: true,
+		scanEnvAllowedRepos: true, scanEnvHumanLoginMap: true, scanEnvRiskPathTriggersExtra: true,
+		scanEnvRosterSchema: true, scanEnvHomeRepo: true, scanEnvScanRepos: true,
+		scanEnvDarConfigMapPrefix: true, scanEnvDarPackage: true,
+	}
+	for k := range vals {
+		if known[k] {
+			continue
+		}
+		if strings.HasPrefix(k, "ASSAY_") {
+			bad("%s: unknown key in the ASSAY_ namespace. It is not applied, so whatever it was "+
+				"meant to configure is EMPTY — and an empty control surface that reports itself "+
+				"configured is the failure this refusal exists to prevent", k)
+			continue
+		}
+		cfg.UnknownKeys = append(cfg.UnknownKeys, k)
+	}
+	sort.Strings(cfg.UnknownKeys)
+
+	if v := strings.TrimSpace(vals[scanEnvRosterSchema]); v != "" && v != scanRosterSchemaVersion {
+		bad("%s=%q is not a schema version this build understands (it speaks %q). Refusing: a "+
+			"file written for a different format cannot be safely half-applied",
+			scanEnvRosterSchema, v, scanRosterSchemaVersion)
+	}
+
+	for _, entry := range scanSplitList(vals[scanEnvTrustedBotSlugs]) {
+		role := ""
+		if r, rest, found := strings.Cut(entry, "="); found {
+			role = strings.ToLower(strings.TrimSpace(r))
+			entry = rest
+		}
+		slug, id, ok := scanSplitIdentity(entry)
+		if !ok {
+			bad("%s: cannot parse entry %q — expected [role=]slug[:id] with a positive numeric id",
+				scanEnvTrustedBotSlugs, entry)
+			continue
+		}
+		cfg.Bots[slug] = id
+		// BOTH GitHub renderings; the BARE slug never (username-squatting fail-close).
+		cfg.Logins[slug+"[bot]"] = true
+		cfg.Logins["app/"+slug] = true
+		if role != "" {
+			cfg.RoleBots[role] = slug
+		}
+	}
+
+	for _, entry := range scanSplitList(vals[scanEnvTrustedLogins]) {
+		login, id, ok := scanSplitIdentity(entry)
+		if !ok {
+			bad("%s: cannot parse entry %q — expected login[:id] with a positive numeric id",
+				scanEnvTrustedLogins, entry)
+			continue
+		}
+		if scanLooksLikeBot(login) {
+			bad("%s lists %q, which renders as a bot/App account. App identities belong in %s",
+				scanEnvTrustedLogins, login, scanEnvTrustedBotSlugs)
+			continue
+		}
+		cfg.Humans[login] = id
+		cfg.Logins[login] = true
+	}
+
+	if raw := strings.TrimSpace(vals[scanEnvBlessLogin]); raw != "" {
+		if strings.ContainsAny(raw, ",; \t\n\r") {
+			bad("%s=%q contains a separator. It is a SINGLE identity, never a list: blessing the "+
+				"first entry (or every entry) of a list would silently grant the authority this "+
+				"variable exists to restrict. Refusing, exactly as if it were unset",
+				scanEnvBlessLogin, raw)
+		} else {
+			login, id, ok := scanSplitIdentity(raw)
+			_, inBotSet := cfg.Bots[login]
+			switch {
+			case !ok:
+				bad("%s=%q cannot be parsed — expected login:id with a positive numeric id",
+					scanEnvBlessLogin, raw)
+			case id == 0:
+				bad("%s=%q carries no numeric id. The id is MANDATORY for the blessing authority "+
+					"(unlike its siblings): a deleted login can be re-registered by an attacker, and "+
+					"the blessing authority is the highest-value target for that. Refusing, exactly "+
+					"as if it were unset", scanEnvBlessLogin, raw)
+			case scanLooksLikeBot(login):
+				bad("%s=%q names a bot/App/shared-agent account. The blessing is the authorisation "+
+					"half of the trust gate and has to be a HUMAN act — an App that could bless would "+
+					"admit external text into its own queue. Refusing", scanEnvBlessLogin, raw)
+			case inBotSet:
+				bad("%s=%q is also listed in %s. A trusted App is a trusted AUTHOR; it must never be "+
+					"the blessing authority", scanEnvBlessLogin, raw, scanEnvTrustedBotSlugs)
+			default:
+				cfg.Bless = scanIdentity{Login: login, ID: id}
+				cfg.Humans[login] = id
+				cfg.Logins[login] = true
+			}
+		}
+	}
+
+	// The policy tokens are VALIDATED here, exactly as deskkit validates them.
+	//
+	// They were not, and that was the sharpest finding of the correctness review at
+	// bf1244c9: one roster file with one typo (`…assay-toolkit:cii:private`) made
+	// every desk tool refuse everything — "unknown policy token" collapses the whole
+	// configuration on that side — while statusgen stored the token unparsed and
+	// reported configured=true. Two readers, one file, opposite verdicts. The
+	// PROPERTY the package comment claims ("validation failure collapses the WHOLE
+	// configuration") was simply false in this copy, and the coupling vector could
+	// not see it because it carried only the three trust variables.
+	//
+	// KEEP IN SYNC with deskkit's parseConfig.
+	for _, entry := range scanSplitList(vals[scanEnvAllowedRepos]) {
+		parts := strings.Split(entry, ":")
+		slug := strings.TrimSpace(parts[0])
+		if strings.Count(slug, "/") != 1 || strings.HasPrefix(slug, "/") || strings.HasSuffix(slug, "/") {
+			bad("%s: %q is not an owner/name repo slug", scanEnvAllowedRepos, entry)
+			continue
+		}
+		// Fail-closed defaults, identical to deskkit: CI required unless stated,
+		// visibility UNKNOWN unless stated (unknown risk-classes every PR).
+		ci, vis := "ci", "unknown"
+		malformed := false
+		for _, tok := range parts[1:] {
+			switch strings.ToLower(strings.TrimSpace(tok)) {
+			case "ci":
+				ci = "ci"
+			case "no-ci":
+				ci = "no-ci"
+			case "public":
+				vis = "public"
+			case "private":
+				vis = "private"
+			case "":
+			default:
+				bad("%s: %q carries unknown policy token %q — expected ci|no-ci and public|private",
+					scanEnvAllowedRepos, slug, tok)
+				malformed = true
+			}
+		}
+		if malformed {
+			continue
+		}
+		cfg.Repos[slug] = ci + ":" + vis
+	}
+
+	for _, entry := range scanSplitList(vals[scanEnvHumanLoginMap]) {
+		name, login, found := strings.Cut(entry, ":")
+		name = strings.ToLower(strings.TrimSpace(name))
+		login = strings.ToLower(strings.TrimSpace(login))
+		if !found || name == "" || login == "" {
+			bad("%s: cannot parse entry %q — expected name:login", scanEnvHumanLoginMap, entry)
+			continue
+		}
+		if scanLooksLikeBot(login) {
+			bad("%s: entry %q maps to a bot/App/shared-agent login %q. The human-login map "+
+				"exists to establish that a HUMAN acted — it clears the verifier floor, the "+
+				"register human-authorisation check and --corroborate — so a bot/App value would "+
+				"let `human:<name>` resolve to the shared-agent identity the token exists to "+
+				"exclude. Refusing", scanEnvHumanLoginMap, entry, login)
+			continue
+		}
+		cfg.HumanLogins[name] = login
+	}
+
+	// ADDITIVE-ONLY, and an unset value is neither an error nor a refusal.
+	cfg.RiskExtra = scanSplitList(vals[scanEnvRiskPathTriggersExtra])
+	sort.Strings(cfg.RiskExtra)
+
+	// The owned-repo roster (statusgen-only). A malformed slug REFUSES the whole
+	// configuration, exactly as a malformed ASSAY_ALLOWED_REPOS entry does: a
+	// half-parsed repo roster is the configured-but-wrong shape this design exists
+	// to prevent. An UNSET value is neither an error nor a refusal — its consumers
+	// fail safe on empty (verifyRepoSlug renders no absolute link, scanRepos scans
+	// nothing).
+	validSlug := func(s string) bool {
+		return strings.Count(s, "/") == 1 && !strings.HasPrefix(s, "/") && !strings.HasSuffix(s, "/")
+	}
+	if home := strings.TrimSpace(vals[scanEnvHomeRepo]); home != "" {
+		if !validSlug(home) {
+			bad("%s: %q is not an owner/name repo slug", scanEnvHomeRepo, home)
+		} else {
+			cfg.HomeRepo = home
+		}
+	}
+	for _, entry := range scanSplitList(vals[scanEnvScanRepos]) {
+		if !validSlug(entry) {
+			bad("%s: %q is not an owner/name repo slug", scanEnvScanRepos, entry)
+			continue
+		}
+		cfg.ScanRepos = append(cfg.ScanRepos, entry)
+	}
+
+	// Medici-Loan DAR product deployment naming (MEDICI_LOAN_DAR_*). Deliberately
+	// NOT run through bad(): these are product config, not trust config, so a
+	// missing or empty value must not collapse the roster — it just leaves the
+	// DAR-drift check a no-op. A non-empty value is taken as-is (any string is a
+	// valid ConfigMap prefix / package name); a value with surrounding whitespace
+	// is trimmed by the dotenv/env reader before it reaches here.
+	cfg.DarConfigMapPrefix = strings.TrimSpace(vals[scanEnvDarConfigMapPrefix])
+	cfg.DarPackage = strings.TrimSpace(vals[scanEnvDarPackage])
+
+	if len(problems) > 0 {
+		return scanConfig{Class: class, Source: source, Problems: problems}
+	}
+	return cfg
+}
+
+// ---- the effective-value echo (P3) -------------------------------------------
+
+func (c scanConfig) EffectiveConfigLines() []string {
+	ident := func(login string, id int64) string {
+		if id == 0 {
+			return login
+		}
+		return login + ":" + strconv.FormatInt(id, 10)
+	}
+	sortedIdents := func(m map[string]int64) string {
+		out := make([]string, 0, len(m))
+		for l, id := range m {
+			out = append(out, ident(l, id))
+		}
+		sort.Strings(out)
+		return strings.Join(out, ",")
+	}
+	blessStr := "(unset)"
+	if c.Bless.Login != "" {
+		blessStr = ident(c.Bless.Login, c.Bless.ID)
+	}
+	repos := make([]string, 0, len(c.Repos))
+	for r, pol := range c.Repos {
+		if pol == "" {
+			repos = append(repos, r)
+			continue
+		}
+		repos = append(repos, r+":"+pol)
+	}
+	sort.Strings(repos)
+	humanMap := make([]string, 0, len(c.HumanLogins))
+	for n, l := range c.HumanLogins {
+		humanMap = append(humanMap, n+"="+l)
+	}
+	sort.Strings(humanMap)
+
+	// Role bindings get their own line: the bot-slug line renders slug:id and says
+	// nothing about which role each slug is BOUND to, so a dropped `role=` prefix
+	// was invisible here as well as at load. KEEP IN SYNC with deskkit.
+	roles := make([]string, 0, len(c.RoleBots))
+	for r, slug := range c.RoleBots {
+		roles = append(roles, r+"="+slug)
+	}
+	sort.Strings(roles)
+	rolesStr := strings.Join(roles, ",")
+	if rolesStr == "" {
+		rolesStr = "(none bound — every role-gated identity check REFUSES)"
+	}
+
+	lines := []string{
+		fmt.Sprintf("assay-config: class=%s source=%s configured=%t", c.Class, c.Source, c.Configured()),
+		fmt.Sprintf("assay-config: %s=%s", scanEnvBlessLogin, blessStr),
+		fmt.Sprintf("assay-config: %s=%s", scanEnvTrustedLogins, sortedIdents(c.Humans)),
+		fmt.Sprintf("assay-config: %s=%s", scanEnvTrustedBotSlugs, sortedIdents(c.Bots)),
+		fmt.Sprintf("assay-config: role-bindings=%s", rolesStr),
+		fmt.Sprintf("assay-config: %s=%s", scanEnvAllowedRepos, strings.Join(repos, ",")),
+		fmt.Sprintf("assay-config: %s=%s", scanEnvHumanLoginMap, strings.Join(humanMap, ",")),
+		fmt.Sprintf("assay-config: %s=%s", scanEnvRiskPathTriggersExtra, strings.Join(c.RiskExtra, ",")),
+		fmt.Sprintf("assay-config: %s=%s", scanEnvHomeRepo, c.HomeRepo),
+		fmt.Sprintf("assay-config: %s=%s", scanEnvScanRepos, strings.Join(c.ScanRepos, ",")),
+		// Product config echoes under its OWN prefix, NOT assay-config: — these are
+		// Medici-Loan repo-level deployment naming, deliberately distinct from the
+		// ASSAY_* methodology surface (P3 still applies: the effective value shows
+		// on every run so a change is visible).
+		fmt.Sprintf("medici-loan-config: class=%s dar-check=%s", c.Class, darCheckState(c.DarConfigured())),
+		fmt.Sprintf("medici-loan-config: %s=%s", scanEnvDarConfigMapPrefix, c.DarConfigMapPrefix),
+		fmt.Sprintf("medici-loan-config: %s=%s", scanEnvDarPackage, c.DarPackage),
+	}
+	if len(c.UnknownKeys) > 0 {
+		lines = append(lines, fmt.Sprintf("assay-config: unrecognised-keys=%s (IGNORED)",
+			strings.Join(c.UnknownKeys, ",")))
+	}
+	for _, p := range c.Problems {
+		lines = append(lines, "assay-config: REFUSED — "+p)
+	}
+	return lines
+}
+
+func scanEchoEffectiveConfig(w io.Writer) {
+	for _, l := range scanEffectiveConfig().EffectiveConfigLines() {
+		fmt.Fprintln(w, l)
+	}
+}
+
+// scanRosterUnconfiguredError is the loud refusal --scan-issues emits when no
+// usable roster was loaded. It never returns nil for an unconfigured roster:
+// "nothing configured ⇒ nothing checked" is the one degradation this design
+// exists to prevent.
+func scanRosterUnconfiguredError() error {
+	c := scanEffectiveConfig()
+	if c.Configured() {
+		return nil
+	}
+	detail := strings.Join(c.Problems, "\n  - ")
+	if detail == "" {
+		detail = fmt.Sprintf("%s and %s are unset", scanEnvBlessLogin, scanEnvTrustedLogins)
+	}
+	return fmt.Errorf("the trust roster is NOT CONFIGURED, so nothing is trusted and nothing can be "+
+		"blessed (fail closed):\n  - %s\nSource consulted: %s (class %s).\n"+
+		"--scan-issues creates durable desk work items from GitHub issues, including issues on "+
+		"PUBLIC repos that arbitrary external users can author, so it refuses to run without a "+
+		"roster rather than scanning ungated.\n"+
+		"Write %s / %s / %s to %s, mode 0600. This tool is WRITE CLASS: it does NOT read the "+
+		"environment, so exporting those names has no effect.",
+		detail, c.Source, c.Class,
+		scanEnvBlessLogin, scanEnvTrustedLogins, scanEnvTrustedBotSlugs, scanConfigHomePath())
+}

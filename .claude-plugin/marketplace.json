@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
+  "name": "assay",
+  "description": "The Assay methodology toolkit — the loop skills, resident rules, and pinned tooling that let a project run the streams/briefs/registers operating model, distributed as versioned Claude Code plugins.",
+  "owner": {
+    "name": "the-org"
+  },
+  "plugins": [
+    {
+      "name": "assay",
+      "source": "./plugins/assay",
+      "description": "The Assay methodology as a Claude Code plugin: the five loop skills plus the resident operating rules (SessionStart hook). Skills surface namespaced as assay:<name>.",
+      "version": "0.1.0",
+      "license": "Apache-2.0",
+      "author": {
+        "name": "the-org"
+      },
+      "keywords": ["methodology", "streams", "briefs", "process-desk", "assay"]
+    }
+  ]
+}
