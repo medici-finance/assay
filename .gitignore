@@ -1,0 +1,27 @@
+# Go build artifacts
+/statusgen/statusgen
+/tools/pubmanifest/pubmanifest
+*.exe
+*.test
+*.out
+
+# Editors / OS
+.DS_Store
+*.swp
+# sed -i.bak / editor / hand-made backup scratch (e.g. a `cp ... leaksweep.bak`
+# of a workflow before an edit) must never pollute git status or be committed.
+*.bak
+
+# Built binaries land in tools/ via release, not committed as source
+/tools/statusgen
+
+# The multi-root fixture root's GENERATED boards (assay-selfcontain/01). Its
+# sources are committed; its output is not — a checked-in copy of a generated
+# board is a stale value waiting to be mistaken for the expected one.
+/statusgen/testdata/stubroot/STATUS.md
+/statusgen/testdata/stubroot/docs/streams/INTAKE.md
+/statusgen/testdata/stubroot/docs/streams/FINDINGS.md
+
+# go build ./... inside the module drops the binary next to its source.
+/tools/daily-harvest/daily-harvest
+/tools/plugindrift/plugindrift
