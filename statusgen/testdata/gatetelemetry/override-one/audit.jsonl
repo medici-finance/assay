@@ -1,0 +1,3 @@
+{"ts":"2026-08-01T00:10:00Z","tool":"deskpost","verb":"ready","argsDigest":"","repo":"medici-finance/assay","pr":101,"headSHA":null,"result":"ok","detail":"","sourceSHA":"unpinned","builtAt":"unpinned","sessionTag":"unknown"}
+{"ts":"2026-08-01T00:20:00Z","tool":"deskpost","verb":"ready-reversal","argsDigest":"","repo":"medici-finance/assay","pr":101,"headSHA":null,"result":"ok","detail":"human gate reversed the desk ready-flip","sourceSHA":"unpinned","builtAt":"unpinned","sessionTag":"unknown"}
+{"ts":"2026-08-01T00:30:00Z","tool":"deskpost","verb":"ready","argsDigest":"","repo":"medici-finance/assay","pr":102,"headSHA":null,"result":"ok","detail":"","sourceSHA":"unpinned","builtAt":"unpinned","sessionTag":"unknown"}

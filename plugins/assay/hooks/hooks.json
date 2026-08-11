@@ -1,0 +1,16 @@
+{
+  "description": "Inject resident operating rules at session start — the portable rules the desk skills rely on (evidence-not-claims, isolation, neutral-dispatch wording, out-of-repo protocol pointer). Keep it small: rules, not rationale.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/inject-resident-rules.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}
