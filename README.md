@@ -22,7 +22,7 @@ The board is derived from agent-authored artifacts, checked by the linter and re
 | Path | What it is |
 |------|-----------|
 | [docs/](docs/) | The methodology: the [adoption runbook](docs/adopting-assay.md), the brief schema ([rules](docs/brief-rules.md), [template](docs/brief-template.md)), the [lifecycle](docs/lifecycle.md), the [registers](docs/registers.md), and the [evidence bundle](docs/evidence-bundle.md). |
-| [statusgen/](statusgen/) | The generator and linter. Run `cd statusgen && go run . --root .. --lint`. |
+| [statusgen/](statusgen/) | The generator and linter. Run `cd statusgen && go run . --root ../examples/adopter-scaffold --lint`. |
 | [plugins/assay/](plugins/assay/) | The Assay plugin for Claude Code: methodology skills for adopting Assay and authoring briefs (`adopt`, `author-brief`). |
 | [examples/adopter-scaffold/](examples/adopter-scaffold/) | A populated streams and registers tree to copy from. |
 | [tools/freshness/](tools/freshness/) | Freshness checks for tracked artifacts. |
