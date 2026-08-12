@@ -1,0 +1,20 @@
+{
+  "description": "SessionStart hooks: (1) inject the resident operating rules the desk skills rely on (evidence-not-claims, isolation, neutral-dispatch wording, out-of-repo protocol pointer) — rules, not rationale; (2) surface the assay board's front-door state (untriaged intake count) so the flow comes to every session rather than requiring a dedicated window (issue #289). Both are local-only and fail-closed.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/inject-resident-rules.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/inject-board-state.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

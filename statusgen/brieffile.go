@@ -1,0 +1,922 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"unicode"
+
+	"gopkg.in/yaml.v3"
+)
+
+// BriefFile is the validated frontmatter of a `schema: brief-v1` brief file.
+// Validation is OPT-IN: only files whose frontmatter carries the `schema: brief-v1`
+// marker are parsed here. Legacy briefs (no frontmatter, or a different schema)
+// are exempt and produce no output — see parseBriefFile.
+type BriefFile struct {
+	Path          string
+	Brief         string // "<stream>/<NN>", e.g. "methodology/01"
+	Title         string
+	Wave          int
+	Depends       []string // typed IDs "<stream>/<NN>"
+	Unblocks      []string // typed IDs "<stream>/<NN>"
+	Effort        string   // S | M | L
+	Gate          string   // model | human
+	GateWhy       string   // optional prose: WHY this brief is risk-gated (gate-why-rationale)
+	Why           string   // optional prose: WHY this work exists at all — human-justifiable motivation (methodology/27)
+	Value         string   // optional worth signal: low | med | high; "" = absent (== med) — methodology-metrics/14
+	Risk          map[string]string
+	Issues        []int
+	DecisionIssue int // optional; issue-loop/06: the GitHub issue # for the open needs-decision issue
+	Schema        string
+	Authored      string
+	Sources       []string
+	// ExecTier is the optional brief-v1 `exec-tier:` field — "any" or "strong";
+	// "" when absent (treated as "any"). Signals a minimum execution-model tier
+	// to the dispatcher; a marker in Next-up, never a score input (methodology/29).
+	ExecTier string
+	// ExecTierWhy is the optional one-line rationale for exec-tier: strong —
+	// which derivation question(s) it answered yes and why (methodology/29).
+	// NOTICEd when exec-tier: strong but exec-tier-why is absent or empty.
+	ExecTierWhy string
+	// BlockedBy is the optional brief-v1 `blocked-by:` field — "env" when the
+	// brief is blocked on infrastructure/environment; "" when absent (methodology-
+	// metrics/34: marks the env-blocked segment in the segmented Awaiting board).
+	BlockedBy string
+	// Consumers is the optional brief-v1 `consumers:` list (brief-rule 9,
+	// methodology-metrics/21): the readers of a shared value this brief changes,
+	// each routed `<site>: fixed-here | follow-up <stream>/<NN> | out-of-scope
+	// (<why>)`. Every entry is an implementer-written CLAIM, corroborated by
+	// consumers.go — never treated as true because it is present.
+	Consumers []string
+	// ConsumersProse holds a `consumers:` written as a paragraph instead of a
+	// routed list. Kept rather than rejected so the lint can say what is wrong
+	// with it; a scalar here is NOT a parse error (several briefs on main use
+	// the prose form and a hard error would red-gate the whole board).
+	ConsumersProse string
+	Evidence       string // body of the `## Evidence` section (between it and the next `## `)
+	Verify         string // body of the `## Verify` section (prefix-matched; decorated headings allowed)
+	Body           string // full markdown body after the frontmatter (decision-reflection check, issue-loop/06)
+}
+
+var (
+	// brief-NN or brief-NNa, optionally followed by a -slug, then .md.
+	briefNameRe = regexp.MustCompile(`^brief-([0-9]+[a-z]?)(?:-.*)?\.md$`)
+
+	// HTML comment block (the Evidence contract comment); stripped before
+	// checking whether the section has any real content. An unterminated
+	// comment (`<!--` with no closing `-->`) is stripped to end-of-input — it
+	// consumes the rest of the section, so it cannot masquerade as content.
+	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?(?:-->|$)`)
+
+	// Required frontmatter keys. `schema` is intentionally absent: its presence
+	// (== brief-v1) is the opt-in gate in parseBriefFile, so it is always present
+	// by the time these are checked.
+	requiredBriefKeys = []string{
+		"brief", "title", "wave", "depends", "unblocks", "effort",
+		"gate", "risk", "issues", "authored", "sources",
+	}
+	canonicalRiskKeys = []string{"regulatory", "customer", "irreversible", "sensitive-data"}
+	canonicalRiskSet  = map[string]bool{"regulatory": true, "customer": true, "irreversible": true, "sensitive-data": true}
+	validEffort       = map[string]bool{"S": true, "M": true, "L": true}
+	validGate         = map[string]bool{"model": true, "human": true}
+	// validExecTier is the allowed set for the optional brief-v1 `exec-tier:` field
+	// (methodology/29). Absence ("") is always allowed (defaults to "any").
+	validExecTier = map[string]bool{"any": true, "strong": true}
+	// validValue is the allowed set for the optional brief-v1 `value:` field.
+	// Absence ("") is always allowed (defaults to med at scoring time); only a
+	// PRESENT-but-unrecognized value is a PROBLEM (methodology-metrics/14).
+	validValue = map[string]bool{"low": true, "med": true, "high": true}
+	// validBlockedBy is the allowed set for the optional brief-v1 `blocked-by:`
+	// field (methodology-metrics/34). Absence ("") is always allowed (defaults to
+	// "" = not blocked); only a PRESENT-but-unrecognized value is a PROBLEM.
+	validBlockedBy = map[string]bool{"env": true}
+)
+
+// minWhySubstanceLength is the floor on a present why:'s trimmed length
+// (issue #459): below this it reads as a placeholder ("." or "TODO"), not a
+// rationale. Chosen well under a genuine one-line justification (the shortest
+// real example on file runs well over 100 characters) so it only catches
+// content-free stand-ins, never a terse-but-real answer.
+const minWhySubstanceLength = 25
+
+// normalizeForDupCheck lowercases s and collapses every run of non-alphanumeric
+// characters to a single space, so punctuation/casing differences don't hide a
+// title restated as a why (or vice versa).
+func normalizeForDupCheck(s string) string {
+	var b strings.Builder
+	prevSpace := true // trims leading separators for free
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(unicode.ToLower(r))
+			prevSpace = false
+		} else if !prevSpace {
+			b.WriteRune(' ')
+			prevSpace = true
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// whySubstanceIssue reports why a PRESENT why: fails the substance floor
+// (issue #459), or "" if it clears it. Two failure modes, both content-free
+// inputs that a presence-only check cannot distinguish from real rationale:
+//   - too short to be a rationale (e.g. "." or "TODO").
+//   - a substring of, or near-identical to, the brief's own title — a restated
+//     title carries the "what" a reader already has, not the "why" the field
+//     exists for (methodology/27's entire point).
+//
+// This stays a floor, not a rewrite of the field's semantics: it rejects only
+// the cheapest content-free inputs, never a genuine short rationale that
+// merely shares wording with the title.
+func whySubstanceIssue(why, title string) string {
+	trimmed := strings.TrimSpace(why)
+	if len(trimmed) < minWhySubstanceLength {
+		return fmt.Sprintf("only %d characters (want at least %d) — reads like a placeholder, not a rationale", len(trimmed), minWhySubstanceLength)
+	}
+	normWhy := normalizeForDupCheck(why)
+	normTitle := normalizeForDupCheck(title)
+	if normWhy != "" && normTitle != "" && (normWhy == normTitle || strings.Contains(normTitle, normWhy) || strings.Contains(normWhy, normTitle)) {
+		return "restates the title instead of giving independent rationale"
+	}
+	return ""
+}
+
+// decisionIssueRefInBody reports whether the brief body text references a
+// specific GitHub issue number (e.g., "#42") with a digit-boundary check: the
+// reference must not be followed by another digit, so a brief's "#8" won't
+// falsely match an unrelated "#88" (#427 review, Finding 3 — substring
+// prefix-collision). Matches "#<num>" followed by a non-digit or end-of-text.
+func decisionIssueRefInBody(body string, issueNum int) bool {
+	// Compile per call: issue numbers are small and this runs at lint time, not
+	// in a hot loop.
+	re := regexp.MustCompile(fmt.Sprintf("#%d(?:[^0-9]|$)", issueNum))
+	return re.MatchString(body)
+}
+
+// briefFilePaths returns the sorted brief-*.md paths in a stream directory.
+// Glob only errors on a malformed pattern (impossible with our fixed pattern),
+// so a missing directory or no matches simply yields no paths.
+func briefFilePaths(s *Stream) []string {
+	matches, _ := filepath.Glob(filepath.Join(s.Dir, "brief-*.md"))
+	sort.Strings(matches)
+	return matches
+}
+
+// expectedBriefID derives the canonical brief ID (<dirname>/<NN>) from a file
+// path. ok is false when the basename is not a brief-<NN>[-slug].md file.
+func expectedBriefID(path string) (id, num string, ok bool) {
+	m := briefNameRe.FindStringSubmatch(filepath.Base(path))
+	if m == nil {
+		return "", "", false
+	}
+	num = m[1]
+	return filepath.Base(filepath.Dir(path)) + "/" + num, num, true
+}
+
+// parseBriefFile reads a brief file and returns its validated frontmatter.
+//
+// Return contract:
+//   - (nil, false, nil)  — exempt: no frontmatter, or no `schema: brief-v1` marker.
+//   - (nil, false, err)  — opted-in but malformed: unreadable, bad YAML, or a
+//     missing/ill-typed required field. err is already prefixed with the path.
+//   - (bf,  true,  nil)  — opted-in and structurally valid; semantic checks in
+//     checkBriefFiles still apply.
+//
+// Callers MUST test err before ok.
+func parseBriefFile(path string) (*BriefFile, bool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false, err
+	}
+	// Normalize CRLF so a Windows-authored brief is not silently exempted.
+	content := strings.ReplaceAll(string(raw), "\r\n", "\n")
+
+	// A brief opts in only via YAML frontmatter. No leading `---` → legacy, exempt.
+	first, _, _ := strings.Cut(content, "\n")
+	if strings.TrimSpace(first) != "---" {
+		return nil, false, nil // legacy (no frontmatter) → exempt
+	}
+	fmRaw, body, err := splitFrontmatter(content)
+	if err != nil {
+		// A leading `---` means the file intends frontmatter; a split failure
+		// (unterminated fence) is a real error, not an exemption.
+		return nil, false, fmt.Errorf("%s: %v", path, err)
+	}
+
+	var data map[string]any
+	if err := yaml.Unmarshal([]byte(fmRaw), &data); err != nil {
+		return nil, false, fmt.Errorf("%s: frontmatter: %w", path, err)
+	}
+	// Opt-in by the PARSED schema value — robust to quoting, trailing comments,
+	// and CRLF that a raw-text marker match would miss.
+	if s, _ := data["schema"].(string); s != "brief-v1" {
+		return nil, false, nil // not brief-v1 → exempt
+	}
+
+	var missing []string
+	for _, k := range requiredBriefKeys {
+		if _, ok := data[k]; !ok {
+			missing = append(missing, k)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, false, fmt.Errorf("%s: missing required field(s): %s", path, strings.Join(missing, ", "))
+	}
+
+	bf := &BriefFile{Path: path}
+	var bad []string
+	addBad := func(format string, a ...any) { bad = append(bad, fmt.Sprintf(format, a...)) }
+
+	if v, ok := data["brief"].(string); ok {
+		bf.Brief = v
+	} else {
+		addBad("brief must be a string")
+	}
+	if v, ok := data["title"].(string); ok {
+		bf.Title = v
+	} else {
+		addBad("title must be a string")
+	}
+	switch w := data["wave"].(type) {
+	case int:
+		bf.Wave = w
+	case int64:
+		bf.Wave = int(w)
+	default:
+		addBad("wave must be an integer")
+	}
+	if v, err := stringList(data["depends"]); err == nil {
+		bf.Depends = v
+	} else {
+		addBad("depends: %v", err)
+	}
+	if v, err := stringList(data["unblocks"]); err == nil {
+		bf.Unblocks = v
+	} else {
+		addBad("unblocks: %v", err)
+	}
+	if v, ok := data["effort"].(string); ok {
+		bf.Effort = v
+	} else {
+		addBad("effort must be a string")
+	}
+	if v, ok := data["gate"].(string); ok {
+		bf.Gate = v
+	} else {
+		addBad("gate must be a string")
+	}
+	if v, err := riskMap(data["risk"]); err == nil {
+		bf.Risk = v
+	} else {
+		addBad("risk: %v", err)
+	}
+	if v, err := intList(data["issues"]); err == nil {
+		bf.Issues = v
+	} else {
+		addBad("issues: %v", err)
+	}
+	if v, ok := data["schema"].(string); ok {
+		bf.Schema = v
+	} else {
+		addBad("schema must be a string")
+	}
+	if v, ok := data["authored"].(string); ok {
+		bf.Authored = v // a bare-date authored decodes to time.Time; presence alone is required
+	}
+	if v, err := stringList(data["sources"]); err == nil {
+		bf.Sources = v
+	} else {
+		addBad("sources: %v", err)
+	}
+	// gate-why is an OPTIONAL but KNOWN key: it records WHY a risk-gated brief
+	// trips the human gate. Parsing it here means a brief carrying it is a
+	// recognized field, not schema drift, which is what makes the later
+	// per-brief backfill safe. Absence is a hard PROBLEM on risk-flagged
+	// briefs (checkBriefFiles enforces it); only a wrong TYPE is a parse error.
+	if v, ok := data["gate-why"]; ok {
+		if s, ok := v.(string); ok {
+			bf.GateWhy = s
+		} else {
+			addBad("gate-why must be a string")
+		}
+	}
+	// exec-tier is an OPTIONAL but KNOWN key (methodology/29): the brief's
+	// minimum execution-model tier — "any" or "strong". Absence defaults to
+	// "any"; a wrong TYPE is a parse error, while a present-but-unrecognized
+	// string is flagged semantically in checkBriefFiles.
+	if v, ok := data["exec-tier"]; ok {
+		if s, ok := v.(string); ok {
+			bf.ExecTier = s
+		} else {
+			addBad("exec-tier must be a string")
+		}
+	}
+	// exec-tier-why is an OPTIONAL but KNOWN key (methodology/29): a one-line
+	// rationale for exec-tier: strong. NOTICEd when exec-tier: strong but
+	// exec-tier-why is absent or empty.
+	if v, ok := data["exec-tier-why"]; ok {
+		if s, ok := v.(string); ok {
+			bf.ExecTierWhy = s
+		} else {
+			addBad("exec-tier-why must be a string")
+		}
+	}
+	// blocked-by is an OPTIONAL but KNOWN key (methodology-metrics/34): "env"
+	// when the brief is blocked on infrastructure/environment. Absence defaults
+	// to "" (not blocked). A present-but-unrecognized value is flagged
+	// semantically in checkBriefFiles.
+	//
+	// PARSED INDEPENDENTLY of exec-tier-why on purpose. Nesting it inside the
+	// exec-tier-why block made the whole feature inert for ordinary briefs:
+	// exec-tier-why is only written on `exec-tier: strong` briefs, so a brief
+	// carrying `blocked-by: env` alone parsed to "" and fell open into the
+	// desk-actionable queue, and the invalid-value PROBLEM below was unreachable
+	// on the same condition. Pinned by TestBlockedByParsedWithoutExecTierWhy.
+	if v, ok := data["blocked-by"]; ok {
+		if s, ok := v.(string); ok {
+			bf.BlockedBy = s
+		} else {
+			addBad("blocked-by must be a string")
+		}
+	}
+
+	// value is an OPTIONAL but KNOWN key (methodology-metrics/14): the brief's
+	// explicit worth, a Next-up score input. Absence is fine (defaults to med at
+	// scoring time); a wrong TYPE here is a hard parse error, while a present-but-
+	// unrecognized string is flagged semantically in checkBriefFiles so the value
+	// is echoed in the message.
+	if v, ok := data["value"]; ok {
+		if s, ok := v.(string); ok {
+			bf.Value = s
+		} else {
+			addBad("value must be a string")
+		}
+	}
+	// why is an OPTIONAL but KNOWN key (methodology/27): the brief's VALUE
+	// rationale — one to three lines a non-engineer could read and justify
+	// the work from. Absence is a NOTICE in checkBriefFiles (non-fatal this
+	// phase, same pattern as gate-why); only a wrong TYPE is a parse error.
+	// PHASE 3 flips the NOTICE to a hard error once backfill lands — see
+	// the notice comment in checkBriefFiles for the plan.
+	if v, ok := data["why"]; ok {
+		if s, ok := v.(string); ok {
+			bf.Why = s
+		} else {
+			addBad("why must be a string")
+		}
+	}
+	// consumers is an OPTIONAL but KNOWN key (brief-rule 9,
+	// methodology-metrics/21): the routed reader list of a shared-value brief.
+	// A scalar (prose paragraph) is accepted into ConsumersProse and flagged
+	// semantically; only a list containing a non-string is a parse error.
+	if v, ok := data["consumers"]; ok {
+		if s, isStr := v.(string); isStr {
+			bf.ConsumersProse = s
+		} else if list, lerr := stringList(v); lerr == nil {
+			bf.Consumers = list
+		} else {
+			addBad("consumers: %v", lerr)
+		}
+	}
+	// decision-issue is an OPTIONAL but KNOWN key (issue-loop/06): the GitHub
+	// issue # for the open needs-decision issue tracking this brief. Absence is
+	// fine (most briefs do not need a human decision); a wrong TYPE is an error.
+	if v, ok := data["decision-issue"]; ok {
+		switch n := v.(type) {
+		case int:
+			bf.DecisionIssue = n
+		case int64:
+			bf.DecisionIssue = int(n)
+		default:
+			addBad("decision-issue must be an integer")
+		}
+	}
+	if len(bad) > 0 {
+		return nil, false, fmt.Errorf("%s: %s", path, strings.Join(bad, "; "))
+	}
+	bf.Evidence = extractEvidence(body)
+	// The `## Verify` heading is DECORATED in practice ("## Verify (executable
+	// — …)"), so match it by prefix — the same way verifyissues.go lifts it —
+	// rather than the exact-match extractEvidence uses.
+	bf.Verify = extractSectionByPrefix(body, "Verify")
+	bf.Body = body
+	return bf, true, nil
+}
+
+// extractEvidence returns the body of the `## Evidence` section — the lines
+// between that heading and the next `## ` heading (or EOF). Empty if absent.
+// The heading must match `## Evidence` exactly (the fixed brief-v1 contract);
+// a decorated heading like `## Evidence (notes)` yields no section.
+func extractEvidence(body string) string {
+	lines := strings.Split(body, "\n")
+	start := -1
+	for i, l := range lines {
+		if strings.TrimSpace(l) == "## Evidence" {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	var out []string
+	for _, l := range lines[start:] {
+		if strings.HasPrefix(strings.TrimSpace(l), "## ") {
+			break
+		}
+		out = append(out, l)
+	}
+	return strings.Join(out, "\n")
+}
+
+// evidenceHasContent reports whether an Evidence section has at least one
+// content row: a non-empty line outside HTML comments (the contract comment
+// alone does not count).
+func evidenceHasContent(section string) bool {
+	stripped := htmlCommentRe.ReplaceAllString(section, "")
+	for _, l := range strings.Split(stripped, "\n") {
+		if strings.TrimSpace(l) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// hasHumanReviewer reports whether a Reviewed-column value names a human — a
+// whitespace-separated token with the "human:" prefix (e.g. "human:alex"). A tag
+// that merely contains the substring (e.g. "superhuman:x") does NOT count.
+func hasHumanReviewer(reviewed string) bool {
+	for _, tok := range strings.Fields(reviewed) {
+		if strings.HasPrefix(tok, "human:") {
+			return true
+		}
+	}
+	return false
+}
+
+// verifyTableHasRow reports whether a `## Verify` section body contains at least
+// one table data row whose Command and Expect cells are both non-empty. It
+// locates the header row naming the "Command" and "Expect" columns, then scans
+// the data rows below it. This is a PRESENCE/STRUCTURE check only — it asserts
+// the Verify table exists and has a runnable row, never that the row is any
+// good (F-10: quality is the review gate's job, not this lint's).
+func verifyTableHasRow(section string) bool {
+	cmdIdx, expIdx := -1, -1
+	for _, raw := range strings.Split(section, "\n") {
+		line := strings.TrimSpace(raw)
+		if !strings.HasPrefix(line, "|") {
+			cmdIdx, expIdx = -1, -1 // left the table; the next one names its own columns
+			continue
+		}
+		if separatorRowRe.MatchString(strings.Trim(line, "|")) {
+			continue
+		}
+		cells := splitRow(line)
+		if cmdIdx < 0 || expIdx < 0 {
+			// Still looking for a header row that names Command and Expect.
+			for j, c := range cells {
+				switch strings.ToLower(strings.TrimSpace(c)) {
+				case "command":
+					cmdIdx = j
+				case "expect":
+					expIdx = j
+				}
+			}
+			continue // the header row itself is not a data row
+		}
+		if cmdIdx < len(cells) && expIdx < len(cells) {
+			cmd := normalizeMark(strings.TrimSpace(cells[cmdIdx]))
+			exp := normalizeMark(strings.TrimSpace(cells[expIdx]))
+			if cmd != "" && exp != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// verifySectionProblems is the methodology/19 Verify-table structure lint: every
+// opted-in brief-v1 file must carry a `## Verify` section with at least one
+// table row whose Command and Expect cells are non-empty. Scope is brief-v1
+// files only (the same schema opt-in as checkBriefFiles); legacy no-frontmatter
+// briefs are exempt. It is a SEPARATE check (like attributionProblems) so the
+// file-structural rule runs on every brief regardless of its README-row status.
+//
+// Presence/structure ONLY (F-10): the error text names the missing structure,
+// never quality — a Verify table that exists but is weak is the review gate's
+// concern, not this lint's.
+func verifySectionProblems(streams []*Stream) []string {
+	var problems []string
+	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
+
+	for _, s := range streams {
+		for _, path := range briefFilePaths(s) {
+			bf, ok, err := parseBriefFile(path)
+			if err != nil || !ok {
+				// Malformed files are reported by checkBriefFiles; legacy/
+				// opted-out files are exempt here as everywhere else.
+				continue
+			}
+			if !verifyTableHasRow(bf.Verify) {
+				add("%s: brief-v1 file needs a `## Verify` section with at least one table row (Command + Expect non-empty); this is a structure/presence check, not a judgement of the table's content — methodology/19", path)
+			}
+		}
+	}
+	sort.Strings(problems)
+	return problems
+}
+
+// stringList coerces a YAML value into []string. A null (absent list content)
+// is an empty list; anything that is not a list of strings is an error.
+func stringList(v any) ([]string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	items, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("must be a list")
+	}
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		s, ok := it.(string)
+		if !ok {
+			return nil, fmt.Errorf("must be a list of strings")
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+// intList coerces a YAML value into []int (yaml.v3 decodes bare integers as int,
+// or int64 when they overflow int).
+func intList(v any) ([]int, error) {
+	if v == nil {
+		return nil, nil
+	}
+	items, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("must be a list")
+	}
+	out := make([]int, 0, len(items))
+	for _, it := range items {
+		switch n := it.(type) {
+		case int:
+			out = append(out, n)
+		case int64:
+			out = append(out, int(n))
+		default:
+			return nil, fmt.Errorf("must be a list of integers")
+		}
+	}
+	return out, nil
+}
+
+// riskMap validates the risk block. yaml.v3 (YAML 1.2 Core Schema) decodes bare
+// `yes`/`no` as the strings "yes"/"no", so we require exactly those strings; a
+// bare boolean (true/false) or any other value is a hard error, keeping the
+// on-file convention identical to the author-brief template.
+func riskMap(v any) (map[string]string, error) {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("must be a mapping")
+	}
+	// The four canonical questions MUST all be answered — a missing question can
+	// never fire the human gate (methodology/02 amendment item b).
+	for _, k := range canonicalRiskKeys {
+		if _, ok := m[k]; !ok {
+			return nil, fmt.Errorf("missing canonical risk key %q (all four required: %s)", k, strings.Join(canonicalRiskKeys, ", "))
+		}
+	}
+	out := make(map[string]string, len(m))
+	for k, val := range m {
+		if !canonicalRiskSet[k] {
+			return nil, fmt.Errorf("unknown risk key %q (exactly the four canonical keys are allowed)", k)
+		}
+		s, ok := val.(string)
+		if !ok || (s != "yes" && s != "no") {
+			return nil, fmt.Errorf("%s must be yes or no", k)
+		}
+		out[k] = s
+	}
+	return out, nil
+}
+
+// checkBriefFiles validates every opted-in brief file across all streams and
+// returns hard PROBLEM messages (exit 1) — path-prefixed. It performs its own
+// file discovery and is wired into run() alongside linkProblems, keeping check()
+// I/O-free.
+func checkBriefFiles(streams []*Stream) (problems, notices []string) {
+	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
+	notice := func(format string, a ...any) { notices = append(notices, fmt.Sprintf(format, a...)) }
+
+	byName := map[string]*Stream{}
+	for _, s := range streams {
+		byName[s.Name] = s
+	}
+
+	for _, s := range streams {
+		for _, path := range briefFilePaths(s) {
+			bf, ok, err := parseBriefFile(path)
+			if err != nil {
+				add("%s", err.Error()) // already path-prefixed
+				continue
+			}
+			if !ok {
+				continue // legacy / opted-out → exempt
+			}
+
+			id, num, okName := expectedBriefID(path)
+			if !okName {
+				add("%s: filename must match brief-<NN>[-slug].md", path)
+				continue
+			}
+			if bf.Brief != id {
+				add("%s: brief %q does not match filename-derived id %q", path, bf.Brief, id)
+			}
+			if !validEffort[bf.Effort] {
+				add("%s: invalid effort %q (want S, M or L)", path, bf.Effort)
+			}
+			if !validGate[bf.Gate] {
+				add("%s: invalid gate %q (want model or human)", path, bf.Gate)
+			}
+			// value is optional; only a present-but-unrecognized value is a
+			// PROBLEM — absence defaults to med at scoring time and never
+			// requires the field (methodology-metrics/14).
+			if bf.Value != "" && !validValue[bf.Value] {
+				add("%s: invalid value %q (want low, med or high)", path, bf.Value)
+			}
+			// exec-tier is optional (methodology/29); only a present-but-
+			// unrecognized value is a PROBLEM — absence defaults to "any".
+			if bf.ExecTier != "" && !validExecTier[bf.ExecTier] {
+				add("%s: invalid exec-tier %q (want any or strong)", path, bf.ExecTier)
+			}
+			if bf.ExecTier == "strong" && strings.TrimSpace(bf.ExecTierWhy) == "" {
+				notice("%s: brief %s has exec-tier: strong but no exec-tier-why — add a one-line rationale naming which derivation question(s) it answered yes (methodology/29)", path, bf.Brief)
+			}
+			// blocked-by is optional (methodology-metrics/34); only a present-but-
+			// unrecognized value is a PROBLEM — absence defaults to "" (not blocked).
+			if bf.BlockedBy != "" && !validBlockedBy[bf.BlockedBy] {
+				add("%s: invalid blocked-by %q (want env)", path, bf.BlockedBy)
+			}
+			anyYes := false
+			for _, v := range bf.Risk {
+				if v == "yes" {
+					anyYes = true
+					break
+				}
+			}
+			if anyYes && bf.Gate != "human" {
+				add("%s: a risk answer is yes but gate is %q (must be human)", path, bf.Gate)
+			}
+			// gate-why (gate-why-rationale, PHASE 3): a risk-gated brief
+			// (gate: human OR any risk answer yes) MUST record WHY it is gated.
+			// This is now a hard PROBLEM (exit 1) — the backfill landed as
+			// methodology/24, so every risk-gated brief on main carries a
+			// gate-why, and a new one added without it fails --lint.
+			if (bf.Gate == "human" || anyYes) && strings.TrimSpace(bf.GateWhy) == "" {
+				add("%s: brief %s is risk-gated but has no gate-why — add a gate-why explaining what makes this brief risky", path, bf.Brief)
+			}
+			// why NOTICE (methodology/27, PHASE 1): every brief-v1 brief SHOULD
+			// carry a why: — one to three lines a non-engineer could read and
+			// justify the work from (not just the what). This is a NON-FATAL
+			// NOTICE this phase so the ~94 un-backfilled briefs do not red-CI
+			// on --lint. PHASE 3 flips this to a hard add(...) error once the
+			// per-brief backfill lands — same pattern as gate-why (methodology/25).
+			// Backfill strategy: active-stream briefs first; done/archived briefs
+			// exempt. Follow-up brief(s) mirror the methodology/24→25 sequence.
+			//
+			// Substance floor (issue #459, landed BEFORE the backfill on purpose):
+			// presence alone made a title-paste, ".", or "TODO" score as fully
+			// compliant — zero information, and a hard-error flip on top of that
+			// would lock the emptiness in permanently. A present why: must also
+			// clear a minimum length and not be a substring/near-duplicate of the
+			// title. Still a NOTICE, same severity as the presence check — the
+			// hard-error flip is a separate future step (see #459).
+			if trimmed := strings.TrimSpace(bf.Why); trimmed == "" {
+				notice("%s: brief %s has no why: — add a why: explaining what makes this work worth doing (one to three lines a non-engineer could justify the work from)", path, bf.Brief)
+			} else if reason := whySubstanceIssue(bf.Why, bf.Title); reason != "" {
+				notice("%s: brief %s has a why: that fails the substance floor (%s) — write independent rationale, not a restated title or placeholder", path, bf.Brief, reason)
+			}
+			if len(bf.Sources) == 0 {
+				add("%s: sources must be non-empty", path)
+			}
+
+			// Cross-check the stream README table: the row for this brief exists
+			// and its Wave matches the frontmatter.
+			var row *Brief
+			for i := range s.Briefs {
+				if s.Briefs[i].Num == num {
+					row = &s.Briefs[i]
+					break
+				}
+			}
+			if row == nil {
+				add("%s: no row %q in the %s README brief table", path, num, s.Name)
+			} else {
+				// Wire BriefFile data into the Brief row for eligibility
+				// gating (methodology-metrics/09): brief-v1 briefs are
+				// gated on their own typed depends list, not the whole-wave
+				// rule; legacy briefs keep Schema="" and Depends nil.
+				row.Schema = bf.Schema
+				row.Depends = bf.Depends
+				// value flows into the Next-up score (methodology-metrics/14);
+				// an invalid value is caught above and left off the row so the
+				// score falls back to med rather than trusting a bad token.
+				if validValue[bf.Value] {
+					row.Value = bf.Value
+				}
+				// exec-tier flows into the Brief row as a marker (methodology/29):
+				// "strong" renders [exec:strong] in Next-up and Awaiting; absent
+				// or "any" renders nothing. NEVER a score input (F-09 scope note).
+				// Invalid values are caught above and left off the row.
+				if validExecTier[bf.ExecTier] {
+					row.ExecTier = bf.ExecTier
+				}
+				// Gate worms from BriefFile into the Brief row for render-time
+				// Awaiting-board segmentation (methodology-metrics/34). Always
+				// wired — brief-v1 always carries a validated gate.
+				row.Gate = bf.Gate
+				// blocked-by worms into the Brief row for the env-blocked
+				// segment (methodology-metrics/34). Only wired when valid;
+				// invalid values are caught above and left off the row.
+				if validBlockedBy[bf.BlockedBy] {
+					row.BlockedBy = bf.BlockedBy
+				}
+				// Evidence worms into the Brief row for render-time
+				// VERIFY:PASS / VERIFY:FAIL classification (methodology-
+				// metrics/34).
+				row.Evidence = bf.Evidence
+
+				if row.Wave != bf.Wave {
+					add("%s: frontmatter wave %d != README table wave %d", path, bf.Wave, row.Wave)
+				}
+				// A verified/done brief must carry real Evidence — a content row
+				// beyond the contract comment (methodology/02).
+				if (row.Status == "verified" || row.Status == "done") && !evidenceHasContent(bf.Evidence) {
+					add("%s: status %q requires a filled ## Evidence section (a content row beyond the contract comment)", path, row.Status)
+				}
+				// A human-gated brief at done must name a human reviewer — a
+				// "human:<name>" token in the Reviewed column (methodology/03); a
+				// bare model sign-off does not close a risk-flagged brief.
+				if bf.Gate == "human" && row.Status == "done" && !hasHumanReviewer(row.Reviewed) {
+					add("%s: gate is human but the done Reviewed entry %q names no human — it needs a \"human:<name>\" token (e.g. 2026-07-15 human:alex)", path, row.Reviewed)
+				}
+				// An IRREVERSIBLE change — anything an author has flagged as unfixable
+				// once shipped (on-ledger money AND publication-class work like a
+				// released article or a committed-to name) — pulls the human gate one
+				// step earlier: it may not even be marked `verified` on a model-only
+				// sign-off. A model verifier can run the Verify table, but calling an
+				// irreversible brief verified/done requires a human in the Reviewed
+				// column; a model cannot pre-close a change that cannot be walked back.
+				// If you flag irreversible:yes, a human signs off before verified.
+				// (irreversible:yes implies gate:human via the anyYes check above, so
+				// this only tightens the `verified` state.)
+				if bf.Risk["irreversible"] == "yes" &&
+					(row.Status == "verified" || row.Status == "done") && !hasHumanReviewer(row.Reviewed) {
+					add("%s: risk.irreversible=yes but the %s Reviewed entry %q names no human — an irreversible brief needs a \"human:<name>\" review before it can be marked verified or done (a model verifier alone cannot close it)", path, row.Status, row.Reviewed)
+				}
+
+				// Risk-keyed verifier floor (methodology/19): a RISK-FLAGGED brief
+				// (gate:human OR any risk answer yes) marked verified/done must be
+				// verified by a human or by a runner ABOVE the floor — a model from
+				// the belowFloorModels family list may verify a fully risk-clear
+				// brief, but not a flagged one. The floor keys on CAPABILITY, not
+				// price: see belowFloorModels in attribution.go for why a cheap-to-
+				// run but strong model does not belong on the list. Irreversible
+				// briefs are #159's domain (the stricter human-at-verified rule just
+				// above governs them via the Reviewed cell); that rule wins, so they
+				// are EXEMPT here to avoid double-gating the same band.
+				if (bf.Gate == "human" || anyYes) && bf.Risk["irreversible"] != "yes" &&
+					(row.Status == "verified" || row.Status == "done") {
+					if reason, failed := verifierFloorFailure(row.Verified); failed {
+						add("%s: risk-flagged brief marked %s but the Verified cell %q does not clear the verifier floor — %s — risk-flagged briefs verify at a strong-tier runner or a human — methodology/19", path, row.Status, row.Verified, reason)
+					}
+				}
+
+				// Reviewed-cell attribution shape (methodology/19): at `done`, the
+				// Reviewed cell must be a dated runner ("YYYY-MM-DD <runner>") — the
+				// same shape attribution.go already requires of the Verified cell.
+				// This makes the README's "runner-attribution on the Reviewed cell"
+				// claim true. The gate:human human:<name> rule above is unchanged
+				// (and remains stricter for risk-flagged briefs).
+				if row.Status == "done" && !verifiedCellRe.MatchString(row.Reviewed) {
+					add("%s: status done needs a dated Reviewed entry (\"YYYY-MM-DD <runner>\"); got %q — methodology/19", path, row.Reviewed)
+				}
+
+				// Decision-issue linkage (issue-loop/06), part (a): a gate:human
+				// brief whose gate someone is actually WAITING on SHOULD carry a
+				// decision-issue that tracks the human sign-off — the NOTICE fires
+				// when the field is absent (invisible wait). "Waiting on" means
+				// dispatched (in-progress) or awaiting sign-off (implemented/
+				// verified). Backlog `todo` briefs are deliberately EXCLUDED here
+				// — noticing every gated todo floods the register with items
+				// nobody is waiting on (#427 review); the brief's "top-of-Next-up"
+				// case is covered by the Next-up-pick check in run() instead.
+				if bf.Gate == "human" && bf.DecisionIssue == 0 &&
+					(row.Status == "in-progress" || row.Status == "implemented" || row.Status == "verified") {
+					notice("%s: brief %s is gate:human at %s but has no decision-issue — file one via --decision-issues (issue-loop/06)", path, bf.Brief, row.Status)
+				}
+				// Decision-issue linkage, part (b): a done brief still carrying a
+				// decision-issue whose outcome is NOT recorded in the brief body
+				// — a decision was (presumably) made and closed without amending
+				// the brief. A body reference to "#<NN>" counts as recorded; the
+				// frontmatter linkage itself is the audit record and must STAY
+				// (#427 review — never advise deleting it). NOTICE only (not
+				// PROBLEM); the true check (issue closed on GitHub, decision text
+				// reflected) requires network access.
+				if bf.DecisionIssue != 0 && row.Status == "done" &&
+					!decisionIssueRefInBody(bf.Body, bf.DecisionIssue) {
+					notice("%s: brief %s is done but its body never records the outcome of decision-issue #%d — append the chosen option (referencing #%d) to the brief; keep the frontmatter linkage as the audit record (issue-loop/06 part (b))", path, bf.Brief, bf.DecisionIssue, bf.DecisionIssue)
+				}
+				// Security-review recorded at done (methodology/31): a
+				// risk-classed brief (gate:human OR any risk answer yes) at
+				// `done` must carry the literal substring "security-review" in
+				// its Reviewed cell (e.g. "2026-07-12 model:opus
+				// +security-review(pass)"), matching the methodology/30
+				// convention. NOTICE this phase — the current tree has
+				// risk-classed done rows with no such token; a follow-on brief
+				// flips this to a hard PROBLEM after backfill (mirroring the
+				// methodology/24→25 pattern).
+				//
+				// This is a FRONTMATTER-ONLY check: statusgen sees no diffs,
+				// so the path-trigger class (mislabeled brief touching daml/,
+				// auth/, etc.) is covered by methodology/30's desk-side path
+				// triggers, not here. Only the brief's own risk classification
+				// and its Reviewed cell are inspected.
+				if (bf.Gate == "human" || anyYes) && row.Status == "done" && !strings.Contains(row.Reviewed, "security-review") {
+					notice("%s: risk-classed brief %s is done but its Reviewed cell %q records no security-review — risk-classed briefs record a security review at done (methodology/31, issue #216)", path, bf.Brief, row.Reviewed)
+				}
+			}
+
+			for _, ref := range bf.Depends {
+				checkRef(add, path, "depends", ref, byName)
+			}
+			// Same-wave-dep lint (desk-hardening/07): a brief's depends: must point
+			// only to briefs in strictly-earlier waves. A same-wave dep breaks strict
+			// wave-layering and miscomputes the critical path.
+			// Safety: bf.Wave == 0 here always means wave was legitimately 0.
+			// An unparseable wave causes parseBriefFile to return an error, and
+			// checkBriefFiles skips the brief entirely via continue before reaching
+			// this check. The dep wave is from the README table (authoritative);
+			// frontmatter/README wave consistency for the dep is enforced at its
+			// own lint pass where frontmatter.Wave is compared to README.Wave.
+			for _, ref := range bf.Depends {
+				parts := strings.SplitN(ref, "/", 2)
+				if len(parts) != 2 {
+					continue // malformed refs are caught by checkRef above
+				}
+				depStream, ok := byName[parts[0]]
+				if !ok {
+					continue // unknown stream caught by checkRef
+				}
+				// Find the dep's brief row to get its wave.
+				depWave := -1
+				for i := range depStream.Briefs {
+					if depStream.Briefs[i].Num == parts[1] {
+						depWave = depStream.Briefs[i].Wave
+						break
+					}
+				}
+				if depWave < 0 {
+					continue // unknown brief caught by checkRef
+				}
+				if depWave >= bf.Wave {
+					notice("%s: depends on %s (wave %d) but this brief is wave %d — deps must point to strictly-earlier waves (depWave < briefWave, desk-hardening/07)",
+						path, ref, depWave, bf.Wave)
+				}
+			}
+			for _, ref := range bf.Unblocks {
+				checkRef(add, path, "unblocks", ref, byName)
+			}
+		}
+	}
+	sort.Strings(problems)
+	sort.Strings(notices)
+	return problems, notices
+}
+
+// checkRef validates that a typed ID "<stream>/<NN>" resolves to a real brief
+// row in a known stream. Brief numbers compare as strings to preserve leading
+// zeros and alphanumeric suffixes ("12a").
+func checkRef(add func(string, ...any), path, kind, ref string, byName map[string]*Stream) {
+	parts := strings.SplitN(ref, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		add("%s: %s %q is not a <stream>/<NN> id", path, kind, ref)
+		return
+	}
+	s, ok := byName[parts[0]]
+	if !ok {
+		add("%s: %s %q references unknown stream %q", path, kind, ref, parts[0])
+		return
+	}
+	for i := range s.Briefs {
+		if s.Briefs[i].Num == parts[1] {
+			return
+		}
+	}
+	add("%s: %s %q references unknown brief %q in stream %s", path, kind, ref, parts[1], parts[0])
+}
