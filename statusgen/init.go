@@ -162,8 +162,11 @@ Gate: model (from frontmatter).
 const initWorkflow = `# statusgen CI: lint every PR, regenerate the board on main.
 # statusgen is its own Go module, so it runs from INSIDE its directory
 # (` + "`cd statusgen`" + `) with ` + "`--root ..`" + ` pointing back at the repo root. Adjust the
-# ` + "`statusgen`" + ` directory below if you vendored it elsewhere (e.g. ` + "`tools/statusgen`" + `,
-# then use ` + "`--root ../..`" + `).
+# ` + "`statusgen`" + ` directory below only if you are running from a source tree at a
+# different depth. If you have no ` + "`statusgen/`" + ` source tree — the normal case —
+# install the sha256-pinned release binary named in ` + "`.assay-versions`" + ` and run
+# ` + "`statusgen --root .`" + ` instead of the ` + "`go run`" + ` steps below.
+# Vendoring the source is retired: a vendored copy is an unpinned fork.
 name: statusgen
 on:
   pull_request:
@@ -205,8 +208,9 @@ Scaffolded the streams structure. Next:
   1. Generate the board:   (cd statusgen && go run . --root ..)         writes STATUS.md at the repo root
   2. Lint the set:         (cd statusgen && go run . --root .. --lint)
   3. Replace docs/streams/example/ with your own stream, then delete it.
-  4. Commit .github/workflows/assay-statusgen.yml (adjust the statusgen dir inside
-     it if you vendored the tool somewhere other than ./statusgen).
+  4. Commit .github/workflows/assay-statusgen.yml. If you have no ./statusgen source
+     tree, swap its go-run steps for the pinned release binary (statusgen --root .)
+     named in .assay-versions -- vendoring the source is retired.
 
 statusgen is its own Go module — run it from inside its directory (cd statusgen) with
 --root pointing at the repo root. STATUS.md has a single writer (main's CI): regenerate

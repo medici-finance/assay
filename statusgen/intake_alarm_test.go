@@ -258,7 +258,7 @@ func TestIntakeAlarmE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := emit(streams, nil, nextUp(streams, nil, nil), nil, r, nil, "")
+	out := emit(streams, nil, nextUp(streams, ClaimView{}, nil), nil, nil, r, nil, "")
 	if !strings.Contains(out, "## Intake queue") {
 		t.Error("STATUS.md missing Intake queue heading")
 	}
@@ -267,7 +267,7 @@ func TestIntakeAlarmE2E(t *testing.T) {
 	}
 
 	// Zero-case board line.
-	empty := emit(streams, nil, nextUp(streams, nil, nil), nil, IntakeAlarmResult{}, nil, "")
+	empty := emit(streams, nil, nextUp(streams, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, "")
 	if !strings.Contains(empty, "0 untriaged entries — the front door is clear") {
 		t.Error("zero-case board line missing")
 	}

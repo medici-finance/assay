@@ -21,6 +21,27 @@ import (
 // but extra entries are harmless). Ages render coarse — "<1h", "Nh" (< 48h),
 // else "Nd" — so the generated board doesn't churn every regen minute.
 func awaitingAges(entries []HistoryEntry, current map[string]string, now time.Time) map[string]string {
+	enteredAt := awaitingEnteredAt(entries, current)
+	out := make(map[string]string, len(enteredAt))
+	for id, ts := range enteredAt {
+		out[id] = renderAge(now.Sub(ts))
+	}
+	return out
+}
+
+// awaitingEnteredAt maps "<stream>/<NN>" → the time the brief entered its
+// CURRENT status, per the historian: the last transition INTO that status.
+// Absent from the map = the historian has no such record (its history predates
+// the log, the log is missing, or the timestamp is malformed) — the age is
+// UNKNOWN, and callers must render "—" rather than substitute a zero time,
+// which would read as infinitely old.
+//
+// This is the raw, unrendered form of awaitingAges. It exists so callers that
+// need to ORDER by age (the human-gate sign-off digest and the per-stream
+// age-at-gate metric, methodology-metrics/38) sort real instants instead of
+// parsing display strings like "10d" back into durations — one derivation of
+// "when did this enter the queue", used by every consumer.
+func awaitingEnteredAt(entries []HistoryEntry, current map[string]string) map[string]time.Time {
 	// Last transition INTO the brief's current status wins (replay in order).
 	enteredAt := make(map[string]time.Time)
 	for _, e := range entries {
@@ -34,11 +55,7 @@ func awaitingAges(entries []HistoryEntry, current map[string]string, now time.Ti
 		}
 		enteredAt[e.Brief] = ts
 	}
-	out := make(map[string]string, len(enteredAt))
-	for id, ts := range enteredAt {
-		out[id] = renderAge(now.Sub(ts))
-	}
-	return out
+	return enteredAt
 }
 
 // renderAge renders a duration coarsely: "<1h", "Nh" under 48h, else "Nd".

@@ -54,7 +54,7 @@ tiering: implement=sonnet verify=fable
 		s := mkStream("frontend", "active", "P1")
 		s.Track = "product"
 		s.Tiering = strPtr("implement=sonnet verify=fable")
-		out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, nil, nil), nil, IntakeAlarmResult{}, nil, "")
+		out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, "")
 		if !strings.Contains(out, "implement=sonnet verify=fable") {
 			t.Errorf("tiering text missing from roll-up Notes:\n%s", out)
 		}
@@ -63,7 +63,7 @@ tiering: implement=sonnet verify=fable
 	t.Run("renders nothing when absent", func(t *testing.T) {
 		s := mkStream("frontend", "active", "P1")
 		s.Track = "product"
-		out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, nil, nil), nil, IntakeAlarmResult{}, nil, "")
+		out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, "")
 		// Assert on a would-be value token too, not just the field name — a
 		// real free-text value never contains the literal word "tiering".
 		if strings.Contains(out, "tiering") || strings.Contains(out, "implement=") {
@@ -86,7 +86,7 @@ tiering: implement=sonnet verify=fable
 			t.Errorf("whitespace-only tiering must be flagged like empty, got %v", problems)
 		}
 		s.External = "https://github.com/x/y"
-		out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, nil, nil), nil, IntakeAlarmResult{}, nil, "")
+		out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, "")
 		if strings.Contains(out, "https://github.com/x/y ·") {
 			t.Errorf("whitespace-only tiering must not render a · joiner after the external pointer:\n%s", out)
 		}
@@ -97,7 +97,7 @@ tiering: implement=sonnet verify=fable
 		s.Track = "product"
 		s.External = "https://github.com/x/y"
 		s.Tiering = strPtr("implement=sonnet")
-		out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, nil, nil), nil, IntakeAlarmResult{}, nil, "")
+		out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, "")
 		if !strings.Contains(out, "→ https://github.com/x/y · implement=sonnet") {
 			t.Errorf("expected external + tiering joined with · , got:\n%s", out)
 		}

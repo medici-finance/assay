@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -102,6 +103,15 @@ var listRemoteBranches = func(root string) (branches []string, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "-C", root, "ls-remote", "--heads", "origin")
+	// Run git in its own process group and kill the WHOLE GROUP on timeout.
+	// The default Cancel kills only `git ls-remote`; the remote-helper chain it
+	// spawned (git-remote-<scheme> and any transport under it) survives as an
+	// orphan holding the hung connection forever — hundreds of them piled up
+	// from repeated runs and drove the machine's load average into the hundreds.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
 	// WaitDelay is what makes the deadline real. exec kills `git` when ctx
 	// expires, but Wait still blocks on the stdout/stderr pipes — and git's
 	// remote helper (git-remote-<scheme>, a GRANDCHILD) inherits and holds them

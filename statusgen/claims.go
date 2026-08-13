@@ -30,6 +30,30 @@ type ClaimSource struct {
 	Reason string // why not, when !Known
 }
 
+// ClaimView is the claim signal the Next-up capping reasons about: the
+// "stream/NN" claim set AND the record of whether that set could actually be
+// read. The two travel together because the map alone cannot tell "the remote
+// was read and nothing is claimed" from "the remote could not be read" — both
+// are an empty map. For a stream that declared `max-concurrent`, those two must
+// produce OPPOSITE answers: the first leaves its full budget offerable, the
+// second cannot see what is in flight and so must offer nothing.
+//
+// The zero value is deliberately unknown-and-empty, mirroring ClaimSource: a
+// pick run nobody told about claims has not been claim-filtered, and inferring
+// "known" from a non-nil map is exactly the fail-open this type exists to
+// prevent.
+type ClaimView struct {
+	Claimed map[string]bool
+	Source  ClaimSource
+}
+
+// KnownClaims wraps a claim set that WAS successfully read from the remote.
+// Use it only where the read is known to have succeeded — everywhere else the
+// ClaimView zero value is the honest answer.
+func KnownClaims(claimed map[string]bool) ClaimView {
+	return ClaimView{Claimed: claimed, Source: ClaimSource{Known: true}}
+}
+
 // Notice renders the stderr NOTICE for a degraded run. Empty when claims are
 // known.
 func (c ClaimSource) Notice(eligible int) string {

@@ -86,6 +86,16 @@ type AlarmReport struct {
 	Flood         bool            // ActiveCount strictly over FloodThreshold
 	Standing      []StandingAlarm // unresolved findings, oldest first
 	PastThreshold int             // standing alarms strictly past the age threshold
+
+	// Undated carries the IDs of findings whose date could not be parsed. They are
+	// absent from EVERY count above — OpenedTotal, ActiveCount, Flood, Standing — so a
+	// report with a non-empty Undated is a FLOOR, not a total, and the renderers must
+	// say so. Silently dropping them made a date typo delete a finding from the flood
+	// and standing-age alarms with no output at all: a could-not-check rendered as a
+	// clean read (docs/three-state-instrument-rule.md, sub-rule 1). The sibling
+	// instrument over the intake register already reports this per entry
+	// (intake_alarm.go's BadDates); this brings the findings register into line.
+	Undated []string
 }
 
 // findingOpenDate parses a Finding.Date (`YYYY-MM-DD` from the heading) as a UTC
@@ -110,6 +120,13 @@ func computeAlarms(findings []Finding, cfg AlarmConfig, now time.Time) AlarmRepo
 	for _, f := range findings {
 		opened, ok := findingOpenDate(f)
 		if !ok {
+			// Could-not-check, not "no finding": record it so the renderers can
+			// declare the counts a floor rather than a total.
+			id := strings.TrimSpace(f.ID)
+			if id == "" {
+				id = "(unidentified finding)"
+			}
+			rep.Undated = append(rep.Undated, id)
 			continue
 		}
 		rep.OpenedTotal++
@@ -173,6 +190,12 @@ func standingAlarmNotices(findings []Finding, cfg AlarmConfig, now time.Time) []
 			"alarm flood: %d active findings (> %d threshold) — the register is drowning; clear before opening more (ISA-18.2)",
 			rep.ActiveCount, cfg.FloodThreshold))
 	}
+	if n := len(rep.Undated); n > 0 {
+		out = append(out, fmt.Sprintf(
+			"alarm COULD-NOT-CHECK: %d finding(s) have an unparseable date (%s) and are counted in NOTHING above — "+
+				"the active count %d and the standing-alarm list are a FLOOR, not a total; fix the date heading(s) to bring them under the alarms",
+			n, strings.Join(rep.Undated, ", "), rep.ActiveCount))
+	}
 	return out
 }
 
@@ -219,11 +242,28 @@ func renderAlarms(rep AlarmReport) string {
 		w("- %d active findings (threshold %d) — within span of control.",
 			rep.ActiveCount, rep.Config.FloodThreshold)
 	}
+	// Could-not-check, printed BEFORE the standing-alarm section so it is read before
+	// any count is trusted — including the early return on an empty Standing list,
+	// which would otherwise print "_None — no unresolved findings._" over findings the
+	// instrument merely failed to date.
+	if n := len(rep.Undated); n > 0 {
+		w("")
+		w("## Could-not-check")
+		w("")
+		w("- ⓘ **%d finding(s) have an unparseable date** (%s) and are counted in NOTHING above.",
+			n, strings.Join(rep.Undated, ", "))
+		w("  Every number in this report is a **floor, not a total**, until their date headings are fixed.")
+	}
 	w("")
 	w("## Standing alarms")
 	w("")
 	if len(rep.Standing) == 0 {
-		w("_None — no unresolved findings._")
+		if len(rep.Undated) > 0 {
+			w("_No DATED unresolved finding — but %d finding(s) could not be dated (above), so this is not a clean register._",
+				len(rep.Undated))
+		} else {
+			w("_None — no unresolved findings._")
+		}
 		return b.String()
 	}
 	w("| ID | Opened | Age (days) | Title |")

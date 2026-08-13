@@ -45,6 +45,11 @@ type BriefFile struct {
 	// BlockedBy is the optional brief-v1 `blocked-by:` field — "env" when the
 	// brief is blocked on infrastructure/environment; "" when absent (marks the env-blocked segment in the segmented Awaiting board).
 	BlockedBy string
+	// Measures is the optional brief-v1 `measures:` field — the name of the
+	// process queue this brief instruments. nil when absent (the neutral
+	// default: not an instrumentation brief), non-nil when present, including
+	// the empty string. Feeds the drain-before-instrument eligibility gate.
+	Measures *string
 	// Consumers is the optional brief-v1 `consumers:` list (brief-rule 9): the
 	// readers of a shared value this brief changes,
 	// each routed `<site>: fixed-here | follow-up <stream>/<NN> | out-of-scope
@@ -93,7 +98,28 @@ var (
 	// field. Absence ("") is always allowed (defaults to
 	// "" = not blocked); only a PRESENT-but-unrecognized value is a PROBLEM.
 	validBlockedBy = map[string]bool{"env": true}
+	// validMeasuresQueue is the set of process queues statusgen actually knows
+	// how to measure, for the optional brief-v1 `measures:` field
+	// (drain-before-instrument). Absence is always allowed (nil = not an
+	// instrumentation brief); a PRESENT-but-unrecognized name is a hard PROBLEM
+	// — typo protection, because the runtime gate treats an unreadable queue as
+	// could-not-check and holds the brief back, and a silent no-op there would
+	// be the worst of both worlds.
+	//
+	// ONE queue is wired today. Do not add names here speculatively: a name in
+	// this map is a promise that a depth and a threshold exist for it.
+	validMeasuresQueue = map[string]bool{"verification-debt": true}
 )
+
+// measuresQueueNames lists the wired queue names, sorted, for lint messages.
+func measuresQueueNames() []string {
+	names := make([]string, 0, len(validMeasuresQueue))
+	for k := range validMeasuresQueue {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
+}
 
 // minWhySubstanceLength is the floor on a present why:'s trimmed length —
 // below this it reads as a placeholder ("." or "TODO"), not a
@@ -343,6 +369,20 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 		}
 	}
 
+	// measures is an OPTIONAL but KNOWN key (drain-before-instrument): the
+	// process queue this brief instruments. Stored as a POINTER so absent and
+	// present-but-empty stay distinguishable — absent is the neutral default
+	// that leaves the brief untouched, while an empty value is a written-but-
+	// meaningless queue name and must be caught, not defaulted away. A wrong
+	// TYPE is a parse error; an unrecognized name is flagged semantically in
+	// checkBriefFiles so the bad name is echoed back.
+	if v, ok := data["measures"]; ok {
+		if s, ok := v.(string); ok {
+			bf.Measures = &s
+		} else {
+			addBad("measures must be a string")
+		}
+	}
 	// value is an OPTIONAL but KNOWN key: the brief's
 	// explicit worth, a Next-up score input. Absence is fine (defaults to med at
 	// scoring time); a wrong TYPE here is a hard parse error, while a present-but-
@@ -661,6 +701,15 @@ func checkBriefFiles(streams []*Stream) (problems, notices []string) {
 			if bf.BlockedBy != "" && !validBlockedBy[bf.BlockedBy] {
 				add("%s: invalid blocked-by %q (want env)", path, bf.BlockedBy)
 			}
+			// measures is optional; only a PRESENT-but-unrecognized queue name is
+			// a PROBLEM. Absence is the neutral default and is never flagged. A
+			// typo must be loud here: at board-build time an unreadable queue is
+			// could-not-check and the brief is held back, so a silently accepted
+			// bad name would take a brief off the board with nothing to fix.
+			if bf.Measures != nil && !validMeasuresQueue[strings.TrimSpace(*bf.Measures)] {
+				add("%s: unknown measures queue %q (want one of: %s) — the drain-before-instrument gate can only read a wired queue",
+					path, *bf.Measures, strings.Join(measuresQueueNames(), ", "))
+			}
 			anyYes := false
 			for _, v := range bf.Risk {
 				if v == "yes" {
@@ -745,6 +794,15 @@ func checkBriefFiles(streams []*Stream) (problems, notices []string) {
 				if validBlockedBy[bf.BlockedBy] {
 					row.BlockedBy = bf.BlockedBy
 				}
+				// measures worms into the Brief row for the drain-before-
+				// instrument eligibility gate. Wired UNCONDITIONALLY — unlike
+				// value/exec-tier/blocked-by, an invalid name is NOT dropped
+				// back to the neutral default. Dropping it would convert a typo
+				// into "no gate at all", which is precisely the fail-open the
+				// gate exists to prevent; carried through, an unreadable queue
+				// name becomes a named could-not-check on the board that points
+				// straight at the brief to fix.
+				row.Measures = bf.Measures
 				// Evidence worms into the Brief row for render-time
 				// VERIFY:PASS / VERIFY:FAIL classification.
 				row.Evidence = bf.Evidence

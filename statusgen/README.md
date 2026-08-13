@@ -63,6 +63,40 @@ go run . --root /path/to/target-repo --check
 go run . --root /path/to/target-repo --consumers --base origin/main
 ```
 
+### `verifyrun` — the execution witness
+
+`statusgen verifyrun` is a positional sub-command (like `init`), with its own flag
+namespace — the parent parser's `--check` and `--brief` mean something else.
+
+```bash
+# Run every Verify row of a brief and APPEND a witness row per row to its Evidence.
+statusgen verifyrun --brief docs/streams/<stream>/brief-NN-<slug>.md
+
+# Same, but print the table instead of writing it back.
+statusgen verifyrun --brief docs/streams/<stream>/brief-NN-<slug>.md --dry-run
+
+# Audit an existing witness table. Runs nothing.
+statusgen verifyrun --check docs/streams/<stream>/brief-NN-<slug>.md
+```
+
+Each row runs in a fresh subshell at the repo root, and the witness records the
+command, the exit code, a sha256 fingerprint of the combined output, the date, the
+executing identity, and the tree it ran against. The format and its rules live in
+[`../docs/brief-rules.md`](../docs/brief-rules.md) (rules 25–26).
+
+Three exit codes, and they must not be collapsed: **0** every row witnessed,
+matching and passing · **1** a row failed · **2** COULD-NOT-RUN — a row has no
+witness, produced no verdict, or carries a witness for a command the Verify row no
+longer has. 1 says the work is wrong; 2 says the instrument did not look.
+
+The **runner is derived from the executing identity** — `GITHUB_ACTOR` under
+GitHub Actions, otherwise the repo's git identity. There is no flag for it, and
+passing one is refused: a witness you can caption is a witness you can forge. With
+no derivable identity `verifyrun` writes nothing and exits 2.
+
+`--lint` never executes anything; it only NOTICEs a `verified`/`done` brief whose
+Evidence carries no witness, one line per stream.
+
 `--consumers` has three exit codes, and the third is the point of it:
 **0** nothing was disproved · **1** a routing claim is contradicted by the diff ·
 **2** COULD-NOT-CHECK — the diff could not be taken, or `--brief` named a brief this
@@ -226,7 +260,7 @@ first (as the example CI workflow does).
 ## Cutting a release
 
 Releases are built by `.github/workflows/release-statusgen.yml`, which has **two
-entry paths**. `release-desk.yml` and `release-daily-harvest.yml` have the same
+entry paths**. `release-desk.yml` and `release-example.yml` have the same
 two, with the same `version` and `dry_run` inputs.
 
 ### `workflow_dispatch` — name a version in the Actions UI

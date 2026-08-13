@@ -61,31 +61,21 @@ const scanStreamName = "issue-loop"
 // so a PUBLIC repo in the set is safe; see TestScanIssuesTrustGateEnforced).
 func scanRepos() []string { return scanEffectiveConfig().ScanRepos }
 
-// scanExcludedLabels are the system-STATE labels that disqualify an open issue
-// from becoming a placeholder (issue-loop stream README: "System-emitted labels
-// are excluded from scanning"). Each names a closeable state the desk machinery
-// emits, not a unit of work — a placeholder for one would be pure Next-up noise.
-// The list is a documented constant; a genuinely new system-state label is added
-// HERE with its rationale, never inferred at runtime.
-var scanExcludedLabels = map[string]bool{
-	// --verify-issues emits these: an issue that asks human:<name> to sign off a
-	// gate:human + verified brief (verified→done). Closing the ISSUE flips the
-	// brief done — it is a gate state the loop already owns, not backlog work.
-	"verify-gate": true,
-	// live-verification tracking issues: a checklist the desk closes once
-	// the live check passes. A closeable state, not a unit of work.
-	"live-verify": true,
-	// --decision-issues emits these: an issue that asks human:<name> to decide on a
-	// gate:human + implemented/verified brief. Closing the ISSUE records the
-	// decision — it is a closeable state the loop already owns, not backlog work.
-	"needs-decision": true,
-	// Dispatch-ticket class: the coordinator desk's queue sweep emits these —
-	// dispatch tickets for the pr-review-desk ("dispatch at CURRENT head, post
-	// verdict, close this issue"). Same class as verify-gate/needs-decision:
-	// inter-desk coordination consumed and closed by the review desk, not a
-	// unit of backlog work — a placeholder for one is pure Next-up noise.
-	"review-request": true,
-}
+// scanExcludedLabelSet returns the system-STATE labels that disqualify an open
+// issue from becoming a placeholder (issue-loop stream README: "System-emitted
+// labels are excluded from scanning"). Each names a closeable state the desk
+// machinery emits, not a unit of work — a placeholder for one would be pure
+// Next-up noise.
+//
+// The set is DECLARED ONCE, in `topology.yaml` (labels.system_state), where each
+// entry carries its rationale; this reads statusgen's derivation of that source
+// (topologyvalues.go). A genuinely new system-state label is added to the
+// DECLARED SOURCE — never inferred at run time, and never added here alone.
+// ground-truth/04 retired the hand table that used to sit at this spot precisely
+// because its twin in tools/desk/cmd/issueboard/board.go had already drifted
+// from it (#829: issueboard was missing `review-request`, so the board asked for
+// a placeholder on exactly the class of issue this scanner excludes).
+func scanExcludedLabelSet() map[string]bool { return labelSetOf(topologySystemStateLabels) }
 
 // ghIssue is the subset of `gh issue list --json …` output the scanner reads.
 // gh returns issues only (never PRs) and, with --state open, only open ones.
@@ -137,11 +127,12 @@ func labelNames(labels []ghLabel) []string {
 	return out
 }
 
-// hasExcludedLabel reports whether any label is in scanExcludedLabels
+// hasExcludedLabel reports whether any label is in the system-state set
 // (case-insensitive).
 func hasExcludedLabel(labels []string) bool {
+	set := scanExcludedLabelSet()
 	for _, l := range labels {
-		if scanExcludedLabels[strings.ToLower(strings.TrimSpace(l))] {
+		if set[strings.ToLower(strings.TrimSpace(l))] {
 			return true
 		}
 	}
@@ -296,7 +287,7 @@ func existingPlaceholderIssues(streams []*Stream) map[string]bool {
 // target status is skipped — the action is idempotent.
 //
 // an existing placeholder whose issue is still OPEN but has GAINED an
-// excluded label (scanExcludedLabels — e.g. review-request/needs-decision) is
+// excluded label (the system-state set — e.g. review-request/needs-decision) is
 // retired the same way, but with a distinct resolved: label-excluded marker
 // (status: done + resolved: label-excluded) so it reads apart from an
 // issue-close retire. When the label is later removed while the issue stays

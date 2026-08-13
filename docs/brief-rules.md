@@ -39,6 +39,10 @@ enforces the machine-checkable ones; the rest are review-gated.
 
 ## Verify
 
+These three rules say what a row must BE. Rules 25-29 ("Row-runner discipline",
+below) say what its command must not DO — the shapes that report a verdict
+nothing measured.
+
 7. **Verify rows must be runnable by someone who didn't do the work.** A row with no literal
    command and no expected exit/output is not a DoD item — it's a hope.
 8. **Prose deliverables get PRESENCE gates; quality is the human gate (the honesty rule).**
@@ -118,6 +122,162 @@ enforces the machine-checkable ones; the rest are review-gated.
    runs against briefs whose diff is long gone, and an instrument must not report an
    answer it cannot establish. A brief already merged is never rewritten to satisfy the
    gate: its entries are inherited, so editing it for any other reason cannot red-gate CI.
+
+## Evidence
+
+> Rule numbering in this file is **append-only**: rules are cited by number from other docs
+> and skills, so a rule added to an earlier topic takes the next free number rather than
+> renumbering everything after it. Hence 36–37 sitting under Verify.
+>
+> **These two were 25 and 26 until 2026-08-13, and the renumber is the repair of a
+> numbering-space collision, not a style change.** Two briefs allocated out of this space in
+> parallel; each diff was internally consistent, neither contained the other's number, and
+> git merged them cleanly — so `^25.` and `^26.` each appeared twice in the merged file and
+> "brief-rule 26" resolved to two different rules. The Row-runner block keeps 25–29 because
+> that is where the live citations land — rule 7's own preamble, and `desk-hardening/01`
+> citing "brief-rules 26/28" for the alternation and shredded-cell rules; the Evidence pair
+> moved to the next free numbers above the maximum. `statusgen mergecheck` now detects this
+> class before the merge and `statusgen --lint` NOTICEs it after (rule 40).
+
+36. **The `## Evidence` section is a LOG OF RUNS, and each entry is an EXECUTION WITNESS.**
+    `statusgen verifyrun --brief <path>` executes each Verify row's Command in a fresh
+    subshell at the repo root and appends one witness row per Verify row:
+
+    ```
+    | # | Command | Result | Output | Date | Runner |
+    |---|---------|--------|--------|------|--------|
+    | 1 | `go test ./... > /tmp/out 2>&1; echo rc=$?` | pass exit=0 | sha256:6f1a0b3c9d22 | 2026-08-13 | human:alex @ b988d1753038 |
+    ```
+
+    | Column | What it holds |
+    |---|---|
+    | `#` | the Verify row this witnesses, by its own `#` cell |
+    | `Command` | the command **as authored in the Verify table** — code-spanned, pipes still `\|`-escaped, so a later run can prove the row has not been edited since |
+    | `Result` | `<state> exit=<code>`, where state is `pass`, `fail` or `could-not-run`, and the code is `-` when nothing executed |
+    | `Output` | `sha256:` + the first 12 hex of the sha256 of the combined stdout+stderr — a fingerprint two people can compare, **not** a tamper-proof seal |
+    | `Date` | `YYYY-MM-DD` |
+    | `Runner` | `<identity> @ <12-char HEAD SHA>`, the SHA suffixed `+dirty` when the working tree was modified and `+unknown` when cleanliness could not be determined |
+
+    Rules that follow from it being a log:
+
+    - **Runs APPEND; they never overwrite.** An implementer's run, an independent verifier's
+      re-run, and a re-verify at a later SHA are three separate facts, and `statusgen` unions
+      every table in the section. Rewriting the section in place would let a green re-run
+      erase a red one — editing the recorded basis of a past sign-off, which is the
+      falsification the whole mechanism exists to catch.
+    - **The runner is DERIVED from the executing identity, never supplied.** `GITHUB_ACTOR`
+      under GitHub Actions, otherwise the repo's git identity — a bot recorded verbatim
+      (`assay-reviewer-app[bot]`), a person as `human:<name>`. There is deliberately no flag,
+      and passing one is refused with its own message: *a witness you can caption is a witness
+      you can forge.* When no identity can be derived, `verifyrun` writes nothing and exits 2
+      rather than emitting an unattributed row.
+    - **A witness is evidence, not an attestation.** Whoever controls the process controls the
+      environment it reads. What makes it worth something is that it lands in a PR diff, next
+      to the tree SHA it names, where a second person can re-run the command and compare
+      hashes. It does not replace rule 7's independence requirement — that a `verified` stamp
+      rests on rows re-run by someone who did not do the work — it makes it checkable.
+    - `statusgen --lint` NOTICEs a `verified`/`done` brief whose Evidence has no witness for
+      one or more Verify rows, rolled up one line per stream. **NOTICE, not a hard error**, for
+      this phase: every brief closed before the mechanism existed lacks witnesses by
+      construction, and hand-writing them in to green the gate would manufacture precisely the
+      evidence the witness replaces. It flips to a hard problem once the active streams are
+      backfilled — the same phased path `gate-why` took.
+
+37. **The witness result is THREE-STATE, and `could-not-run` is never `pass`.** This is the
+    three-state instrument invariant (§ *Three-state instrument invariant* below) applied at
+    the row level:
+
+    | State | Meaning |
+    |---|---|
+    | `pass` | the row ran and satisfied every constraint readable from its Expect cell |
+    | `fail` | the row ran and contradicted one |
+    | `could-not-run` | **no verdict was produced** — command not found or not executable, an unsubstituted `<placeholder>`, a timeout, or a row whose Expect declares a numeric floor the output carries no number to compare against |
+
+    `verifyrun --check <path>` re-reads the section and exits **0** (every row witnessed,
+    matching and passing), **1** (a witness records a failure), or **2** (a row has no witness,
+    its witness records `could-not-run`, or the witness records a command the Verify row no
+    longer carries). Three distinct codes, and 1 and 2 must not be collapsed by a consumer:
+    1 says *the work is wrong*, 2 says *the instrument did not look*, and they prescribe
+    different actions. Where both are present the run reports 2 — the weaker state of
+    knowledge wins, because the failure count means nothing until the check is repaired.
+
+    Two consequences worth stating outright:
+
+    - A witness whose Command no longer matches the Verify row is `could-not-run`, not `pass`.
+      Otherwise editing a row after running it would be the cheapest way to keep a green
+      witness.
+    - `could-not-run` contains the substring `not-run`, which is what the UNRUN derivation
+      already reads. That interlock is deliberate: writing a `could-not-run` witness for a row
+      **does not** clear that row's UNRUN state on the board. A row nobody could run cannot be
+      laundered into coverage by recording that nobody could run it.
+
+    What this does **not** establish: `could-not-run` is a LOWER BOUND on the class. A shell
+    reports only 126/127 distinctly, so a row whose fixture is missing and whose command
+    reports that as exit 1 is recorded `fail`. And a row whose Expect is pure prose is decided
+    on its exit status alone — the run says so on that row, and the output hash is what a
+    reviewer weighs for the rest. `verifyrun` narrows the unproven set; it does not close it.
+
+## Derived status cells
+
+Rules 36-37 say what the Evidence record IS. These two say what the stream README's
+Status cell may claim on top of it, and who repairs it when the two disagree.
+
+30. **A `verified`/`done` Status cell is DERIVED from the witness, not asserted by whoever
+    edited the table — and `verified` reverts to `implemented` when its witness goes red.**
+    `verified` says: this brief's Verify rows were run and they passed. Since rule 36 that
+    claim has a machine-readable form — `statusgen verifyrun --check <brief>` exits 0 — and
+    a claim with a machine-readable form must not stay hand-asserted, or the board can
+    disagree with its own evidence and nothing notices. Three states, three treatments:
+
+    | `verifyrun --check` | What the cell may say | Enforced by |
+    |---|---|---|
+    | exit 0 — every row witnessed, matching, passing | `verified` / `done` | — |
+    | exit 1 — a witness records a FAILURE | `implemented` (at most) | `statusgen --lint` PROBLEM on a closure the branch made; NOTICE when inherited |
+    | exit 2 — no witness, stale witness, or `could-not-run` | `implemented` (at most) | `statusgen --lint` NOTICE, rolled up per stream (rule 36) |
+
+    **Scoped to the transition, and phased on purpose.** A cell already `verified`/`done` at
+    the merge-base was closed by an earlier branch, so it is grandfathered to a NOTICE — an
+    unrelated PR must not inherit somebody else's red. And exit 2 is a NOTICE rather than a
+    PROBLEM in this phase because it describes the inherited corpus, not a live act: measured
+    2026-08-13, 319 of 320 brief files carried no witness for any row (the mechanism landed
+    that day) while **zero** rows anywhere recorded `fail`. Absence is the backlog;
+    contradiction is always something a run just wrote. Exit 2 promotes to a PROBLEM once the
+    active streams are backfilled — the same phased path `gate-why` and the unfailable-row
+    lint took.
+
+    **The override is the demotion, and it is not a bypass.** A brief whose witness is red is
+    never stranded: set the cell to `implemented` and the check releases in seconds, leaving
+    an audit row in the diff. What changed is that the repo stopped making a claim it could
+    not support. There is deliberately no flag, label, env var, or commit-message token that
+    suppresses the check — a suppression a worker can apply to their own branch would make
+    the cell asserted again, one level up.
+
+    **What this does not settle.** A green witness is not independence: rule 36 still requires
+    that a `verified` stamp rest on rows re-run by someone who did not do the work, and
+    `verifyrun` records who ran them precisely so a reviewer can check that. And the
+    `verified` → `done` step for a `gate: human` brief is a human sign-off, unchanged by this
+    rule; a derived demotion can take a cell back to `implemented`, it never advances one.
+
+31. **A PR that turns a neighbouring brief's witness red carries the re-baseline, or says in
+    its body that it does not.** The brief whose table goes stale is usually *not* the brief
+    the PR is about — a refactor moves a path some other brief's Verify command greps, and
+    that brief's row was designed as a tripwire (#634) with nothing listening. So the
+    obligation lands where the cause is: the PR that reddens a row either re-runs that brief
+    and commits the fresh witness (`statusgen verifyrun --brief <path>` — runs APPEND, the
+    red run stays on the log), or states in the PR body which brief it left red and why that
+    is out of scope. Reason: without this, a red row becomes a post-merge archaeology issue
+    weeks later, filed against whoever finds it rather than whoever caused it — which is the
+    verifier desk's largest issue source (29 filed in the week to 2026-08-13).
+
+    **The out-of-scope note is read by a reviewer, never by CI.** No workflow parses a PR body
+    for an exemption token, and none should: a CI-honoured escape hatch a worker can type
+    into their own PR is a self-service bypass of the gate, which is the shape rule 30's
+    override paragraph rejects. The note is an argument addressed to a person, and the person
+    can decline it.
+
+    **Drain, don't file.** The correction for a red row on main lands as a re-baseline PR, not
+    as an issue. A red witness is already a red check annotating the exact brief and row; a
+    second copy in the issue tracker adds a queue entry and no information.
 
 ## Provenance and gating
 
@@ -243,3 +403,226 @@ fanout tooling live with those skills; this section covers only rules that apply
     rule; CIGAR's selection manifests, which record rejected candidates and not just
     the selected ones, are the independent derivation.
 
+
+## Row-runner discipline
+
+Rules 7-9 say what a Verify row must BE. These say what it must not do — five
+command shapes that make a row report a verdict it did not measure. Each is
+decidable from the command text, so `statusgen --lint` flags it (NOTICE, tagged
+with the rule name in brackets); the 2026-08 corpus inventory is
+`docs/streams/ground-truth/row-audit-2026-08.md`.
+
+The shared shape is worth naming, because it is not carelessness: **in every
+case the harness silently substitutes its own answer for the one under test,
+and the row goes green either way.** None of these is discoverable from a
+passing run — which is why they are lint rules and not review vigilance.
+
+25. **Never assert a specific non-zero exit code through `go run`** (`gorun-exit`,
+    #493). `go run` does not propagate the program's status: it prints
+    `exit status 5` to stderr and itself exits **1**. Every non-zero code
+    flattens to 1, so a row cannot tell 3 (disabled) from 4 (rate-limited) from
+    5 (refused) from 6 (could-not-check) — the whole three-state contract. `go
+    run` also exits 1 when the package does not COMPILE, so such a row passes on
+    a tree whose code never built. Measured on PR #487: `go run` → 1, the built
+    binary on the same world → 5.
+    - Write: `go build -o /tmp/tool ./cmd/tool && /tmp/tool …; echo $?`
+    - A row expecting exit **0** is unaffected and needs no change.
+
+26. **A pipe in a grep pattern needs `-E`, and `-E` needs the pipe unescaped —
+    so use neither** (`bre-alternation` / `ere-literal-pipe`, #262, #509). Without
+    `-E` the pattern is a BASIC regex where `|` is an ordinary character, so
+    `grep -c "alpha|beta|gamma"` searches for one 17-character literal — and in a
+    brief the single line containing it is the Verify row itself, which returns 1
+    and passes a `≥1` bar having measured nothing (#257's table returned
+    1,1,1,1,1,1,1 against thresholds 3,3,1,3,2,3,3). With `-E`, `\|` is a literal
+    pipe and matches nothing. The markdown escape makes the two indistinguishable
+    on sight: GFM renders `\|` as `|`, so the source and the rendered page are
+    different commands.
+    - Write: `grep -cE -e alpha -e beta -e gamma f.md` — no pipe at all, so it
+      reads identically in both.
+    - For a genuinely literal pipe: `grep -F`, or a `[\|]` bracket class.
+
+27. **RE2 selectors get one token or a chain, never an alternation**
+    (`rE2-literal-pipe` / `shredded-cell`, #374). `go test -run` / `-bench`
+    compiles RE2, where `\|` is a literal pipe: `-run 'Forged\|Sub\|Onboard'`
+    matches zero tests, prints "no tests to run", and exits 0 — and the Evidence
+    row records the vacuous command as though the tests ran (two live briefs did
+    exactly this). Writing the pipe RAW does not fix it: a bare `|` is a
+    table-cell delimiter wherever it sits, so the command is cut at the pipe, the
+    Expect column becomes a fragment of the command, and every other row check
+    goes blind past the cut. There is no spelling of an RE2 alternation that
+    survives a table cell unambiguously.
+    - Write: `-run Forged`, or `go test -run A ./... && go test -run B ./...`,
+      or move the command to a fenced block outside the table.
+
+28. **A comparison base must be a pinned SHA or a computed merge-base, never a
+    branch** (`moving-ref`, #639). A row based on `origin/main` is a function of
+    another branch's tip, not of the tree under test. Measured: the identical
+    `statusgen --consumers --base origin/main` returned exit 1 and exit 2 on
+    consecutive runs because background commits advanced main between them. A
+    flappy gate is worse than a failing one — the green run and the red run are
+    equally unreproducible, so re-running settles no disagreement.
+    - Write: `--base $(git merge-base origin/main HEAD)`, an explicit SHA, or
+      the PR's own `base.sha`.
+    - `refs/remotes/origin/main` is the same moving ref by its long name.
+
+29. **Rows run on macOS too — no GNU-isms** (`gnu-only`, #650). A Verify row is
+    run by whoever verifies, on their own machine, and a row that only works on
+    ubuntu produces a different verdict per platform with the platform invisible
+    in the Evidence cell. The catalogued instance fails QUIETLY: under BSD `grep`
+    a `<(…)` process substitution's `/dev/fd/N` reads as EMPTY, so
+    desk-hardening/06 rows 1,4,5,6,7 returned count 0 with the content plainly
+    present — an empty read is indistinguishable from a genuine absence, so it
+    looks like a finding about the code rather than about the row.
+    - `<(cmd)` → a pipe: `sed … | grep -cE …`
+    - `grep -P` → `grep -E`
+    - `sed -i 's/…/'` → `sed -i '' 's/…/'` (BSD needs the suffix argument)
+    - `readlink -f`, `date -d`, `stat -c`, `xargs -r`, `sort -V`, `tac`,
+      `mapfile` — all GNU-only; the lint names a portable substitute for each.
+
+## Derived surfaces
+
+A fact that appears on more than one surface has exactly one declared source; every other
+occurrence is regenerated from it, or diffed against it by a check. A hand-maintained
+second copy is the defect whatever it contains — it drifts, and the discipline that was
+supposed to keep it current is the discipline that already failed (#592 → #627 → #685 is
+the same defect filed three times).
+
+32. **A worker's terminal verdict on a PR is a DISPOSITION RECORD, not a prose comment.**
+    A conclusion that only a human can read is one a sweep must re-derive. In one
+    2026-08-12 batch-fanout cycle, 8 of 10 completed orphan dispatches re-derived a
+    conclusion an earlier pass had already posted; `tracker#829` was re-derived four times
+    across three weeks, and one sweep cited a worker's own "this is dead" note as
+    evidence of activity. Write the record with `deskdisposition set`, which emits both
+    halves:
+
+    - the **label** `disposition:<verdict>` — the index a sweep filters on in the
+      `gh pr list --json number,labels` call it already makes; and
+    - the **marker comment** — the record, carrying the evidence link a reader needs:
+
+    ```
+    <!-- desk-disposition v1 -->
+    Disposition: SUPERSEDED
+    Evidence: https://github.com/<owner>/<repo>/pull/223
+    Recorded-By: <session or App>
+    Recorded-At: 2026-08-13
+    ```
+
+    The vocabulary is CLOSED — an open one is a prose comment with extra steps:
+
+    | Verdict | Meaning | Evidence | Still dispatchable? |
+    |---|---|---|---|
+    | `SUPERSEDED` | the work landed through a different branch/PR | required | no |
+    | `RESOLVED-ELSEWHERE` | the outcome was reached another way (issue already closed, row already advanced on main) | required | no |
+    | `NEEDS-REBASE` | live work, mechanically blocked | optional | yes |
+
+    Evidence is required for the terminal verdicts because "superseded" with no link to
+    what superseded it is the same unfalsifiable claim the prose comment was.
+
+    **The record does not close anything.** Writing it is the worker's; closing the PR is
+    a human-authorized event and belongs to `deskclose` (issue-flow/03), which consumes
+    these records as its queue. Stated-but-unexecuted close intent is its own failure
+    (`tracker#1439` sat that way from 2026-08-09) — the record is what makes the close
+    decidable without re-investigating.
+
+33. **A check that reads a derived surface is three-state.** checked-clean (it read, and
+    found nothing) / checked-failed (it read, and found something) / could-not-check (it
+    could not read). A PR whose disposition could not be read is **not** dispatch-eligible
+    — an instrument that could not look must never answer the question it was asked, and
+    a sweep that rate-limits reports could-not-check for the whole repo rather than an
+    empty queue.
+
+34. **Counts on an emitted artifact are derived from the artifact they describe.** The
+    issue-loop scan PR's created/retired counts come from
+    `git diff <merge-base>..HEAD -- docs/streams/issue-loop/` at push time
+    (`deskscanbody emit`), never from a body written once and pushed past. The
+    belt-and-suspenders half is `deskscanbody check`, which refuses a title/body whose
+    stated counts disagree with the diff — the class becomes a red gate instead of a
+    reviewer catch, which is what #592 and #627 both relied on and both lost.
+
+35. **A merged PR that names a brief must not leave that brief at `todo`.**
+    `statusgen --lint` emits a NOTICE when a merge whose branch or subject names
+    `<stream>/<NN>` sits against a README row still at `todo`/`in-progress`: the board is
+    then offering work that already landed (desk-hardening/01 was offered at score 3500
+    for days after PR #255 merged its deliverables). The cell stays hand-written — a
+    status transition is a judgement, and a PR can land only part of a brief — but it is
+    now DIFFED against the merge history instead of trusted. Severity is NOTICE until the
+    standing backlog of drifted rows is reconciled; promotion to PROBLEM is a later
+    ruling.
+
+## Merge-time re-check
+
+The review gate asks "is this correct against main?" and answers it against the main that
+existed at review time. The merge lands it in a different main. These three rules occupy that
+gap.
+
+38. **Cite by EXPRESSION, not by line number.** A citation names the thing it points at — a
+    function name, a rule's heading text, a section title, an identifier — optionally with a
+    line number as a convenience, never instead of the name. Reason: a `file:line` citation
+    is silently invalidated by any edit above it, and the failure is undetectable, because a
+    stale line number still resolves to *a* line. The observed shape is a citation that after
+    a rebase points into a code fence, reads as confirming something, and confirms nothing.
+    An expression citation either resolves or visibly does not.
+
+    This is also what makes a hand-maintained numbering space citable at all: rule 40's
+    detector reports both allocations by their heading text, so a reader can tell which rule a
+    "brief-rule 26" meant even while the number is ambiguous.
+
+39. **A materially-changed diff re-derives the PR body and the Verify table in the SAME
+    push.** Material means: a version bump, a changed part/artifact count, a reverted or
+    replaced design decision, a dropped or added deliverable — anything that makes a sentence
+    in the body no longer describe the diff. Mandatory on `gate: human` briefs, because there
+    the human signs the BODY: a stale body means the signature attests to fiction, and the
+    recorded instance is a PR body asserting a funds-protection property the code had already
+    reverted. The reviewer half is rule 32's discipline applied to every delta re-review —
+    read the body and the Verify table against the CURRENT diff, and treat any claim the diff
+    contradicts as a blocker, not a nit.
+
+    This is derive-or-diff with the body as the copy: the diff is the source, the body is a
+    hand-written second copy of what the diff does, and a copy that is not regenerated must be
+    checked against its source. It is deliberately a review rule and not a mechanised gate —
+    deciding whether prose still describes a diff is a judgement, and a checker that guessed
+    would either miss the interesting cases or block on rewording.
+
+40. **A merge-time re-check runs against the MERGED tree, and reports four states, not two.**
+    A semantic merge collision — two changes each valid alone, invalid together, textually
+    non-conflicting — is invisible to every check that reads one branch's tree, including this
+    repo's own lint. `statusgen mergecheck` computes the trial merge (writing no ref, checking
+    nothing out, merging nothing) and runs its probes over that tree. Four states, because
+    collapsing any pair of them sends someone to the wrong file:
+
+    | State | Meaning | What it asks of the worker |
+    |---|---|---|
+    | `MERGE-INTRODUCED` | the probe passes on the branch and fails on the combination | fix it here; nobody else can see it |
+    | `PRE-EXISTING` | it already fails on the branch alone | fix it here, but the merge is innocent |
+    | `STALE-BASE` | the base carries a CI-invoked path the branch's tree lacks | resync; a failure here is currency, not a defect |
+    | `could-not-check` | a probe did not run | repair the instrument — this is never a pass |
+
+    The last row is the three-state invariant at merge time and it is the load-bearing one: a
+    re-check that cannot reach its base and answers "current" certifies stale work with a
+    green tick.
+
+    Two things this rule deliberately does NOT do. It does not gate on merge-currency —
+    measured 2026-08-13, 52 of 52 open PRs in this repo were behind main, and a hard gate
+    there reds the whole queue on day one — so currency is reported and never fails. And it
+    does not judge approval staleness: a GitHub review's `commit_id` has been observed to
+    disagree with the head named in the review's own body, and **the direction and frequency
+    of that disagreement are unmeasured**, so it is not a sound staleness signal in either
+    direction. Approval currency is therefore reported as could-not-check.
+
+    State that one at its evidential strength, because this rule is cited from other briefs.
+    The disagreement is a SINGLE observation (`#881`); a 10-PR sweep taken afterwards (`#940`)
+    failed to establish any direction — 4 of 5 sampled reviews had `commit_id` equal to head
+    with no post-review push, consistent with the field being correct, and `#750`'s
+    `commit_id` correctly lagged head. No review body in that sweep names a SHA, so no
+    cross-check exists to measure a direction with. It is **not** established that the field
+    under-reports staleness and **not** established that it fails open. The reason not to
+    build on it is the unknown error direction itself: a signal that cannot be characterised
+    cannot be trusted either way, and a merge-time claim resting on it inherits an unmeasured
+    error. "We have not measured this" is the finding — do not upgrade it to a direction.
+
+    **A check ships with the list of shapes it cannot see.** `mergecheck` prints its blind
+    spots on every run, clean or red — compile-level collisions when nothing was compiled,
+    behavioural collisions, namespaces other than this file's rule numbers, collisions with
+    a still-open PR, and approval currency. A clean verdict that does not say what it did not
+    look at is read as "nothing is wrong".
