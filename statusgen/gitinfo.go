@@ -41,7 +41,7 @@ func gitCurrentSHA(root string) string {
 
 // gitCommitTime returns the commit timestamp of HEAD as UTC, or the zero time
 // when git is unavailable. Rendered timestamps in generated artifacts use this
-// so the output is byte-deterministic for a given tree (methodology-metrics/23).
+// so the output is byte-deterministic for a given tree.
 //
 // %ct is the committer date (matching gitLastTouch above); it equals the author
 // date for an ordinary commit and diverges only after a rebase or amend. Either
@@ -127,6 +127,24 @@ var listRemoteBranches = func(root string) (branches []string, err error) {
 		branches = append(branches, strings.TrimPrefix(fields[1], "refs/heads/"))
 	}
 	return branches, nil
+}
+
+// hasNoGitDir reports whether root has no .git entry at all — the case for a
+// `git archive` export: there is no history, no remotes, nothing
+// git can answer about this tree.
+//
+// This is deliberately distinct from "a real git checkout where origin/main
+// happens to be unresolvable" (shallow clone, offline, no remote configured).
+// Several checks (grandfatheredIDs/T9 among them) fail CLOSED in that second
+// case on purpose, as an anti-forgery measure for an adversarial CI checkout —
+// a hostile branch might otherwise manufacture "this ref can't be resolved" to
+// win a bypass. A `git archive` export is not a checkout anything is merging
+// into; there is no adversary to fail closed against, only an absence of data.
+// Callers that would otherwise mis-fire on that absence (rather than simply
+// having nothing to check) should test hasNoGitDir and skip outright.
+func hasNoGitDir(root string) bool {
+	_, err := os.Stat(filepath.Join(root, ".git"))
+	return os.IsNotExist(err)
 }
 
 // firstLine returns the first non-empty line of s, trimmed — git's stderr is

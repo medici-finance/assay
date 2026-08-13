@@ -1,6 +1,6 @@
 package main
 
-// Code-efficiency metrics emitter (`statusgen --code`, methodology-metrics/19).
+// Code-efficiency metrics emitter (`statusgen --code`).
 //
 // Emits five code-efficiency metrics from ledger artifacts (git + issue register):
 //   - SLOC delta/day: added / removed / net per day
@@ -14,7 +14,7 @@ package main
 // EXEMPTION. The header says so, so a consumer knows these are quotable where a
 // leverage estimate is not. No leverage/person-day/tier-mix figure is emitted.
 //
-// Composes with --series: --code --series buckets per ISO week (mm/16). Same
+// Composes with --series: --code --series buckets per ISO week. Same
 // Goodhart header as --dora (diagnostic, never a target); small-n honesty (a
 // window with <N commits prints "–" rather than a misleading ratio).
 // NOT wired into the offline --lint gate (diagnostic emitter; may read gh).

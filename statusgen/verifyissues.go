@@ -23,7 +23,7 @@ func verifyRepoSlug() string { return scanEffectiveConfig().HomeRepo }
 
 // verifyReviewer is the human sign-off token stamped into the Reviewed cell by
 // --close-verify. The date is appended at run time via time.Now().
-const verifyReviewer = "human:alex"
+const verifyReviewer = "human:reviewer"
 
 // verifyIssue is one emitted element of the --verify-issues JSON array — a
 // self-contained GitHub issue payload for a brief awaiting human:<name>'s human
@@ -185,8 +185,7 @@ const (
 // a brief that failed, was reworked and then passed carries both markers, and
 // the only honest reading of the record is the most recent verdict. A bare
 // `strings.Contains(evidence, "VERIFY: FAIL")` pins such a brief in rework
-// forever — live instance at the time of writing: issue-loop/09, status
-// `verified`, three 2026-07-16/17 FAIL records followed by the 2026-07-20 PASS
+// forever — live instance at the time of writing: three 2026-07-16/17 FAIL records followed by the 2026-07-20 PASS
 // that promoted it.
 //
 // Three contexts are stripped before the scan because a marker inside them is
@@ -341,7 +340,7 @@ func renderVerifyBody(root string, bf *BriefFile) string {
 		fmt.Fprintf(&b, "> **Why you're being asked to sign off:** %s\n\n", gw)
 	}
 
-	// why (methodology/27): the brief's VALUE rationale — surfaced above the
+	// why: the brief's VALUE rationale — surfaced above the
 	// mechanical gate-reason line so a human reads the real motivation first.
 	// Omitted (no error) when absent — pre-backfill briefs simply show no why.
 	if w := strings.TrimSpace(bf.Why); w != "" {
@@ -479,7 +478,7 @@ func renderIrreversibleGateBody(root string, bf *BriefFile) string {
 // gate: human, whose README-row status is exactly `verified`, and whose marker
 // is not already in the supplied existing-markers set. Also emits for irreversible
 // briefs at `implemented` whose Evidence records a model verify pass — the
-// chicken-and-egg fix (#231): irreversible briefs cannot reach `verified` without
+// chicken-and-egg fix: irreversible briefs cannot reach `verified` without
 // a human sign-off, so they must be surfaced at `implemented`. Output is sorted by
 // brief id for deterministic emission.
 func verifyIssues(root string, streams []*Stream, existing map[string]bool) []verifyIssue {
@@ -503,8 +502,8 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 			}
 			// Path A: standard verified → done gate (existing behavior).
 			if row.Status == "verified" {
-				// Two-touch model (human:<name>'s decision, reconciling with #159): the
-				// done-close is a DISTINCT acceptance sign-off, separate from #159's
+				// Two-touch model (human:<name>'s decision): the
+				// done-close is a DISTINCT acceptance sign-off, separate from the
 				// verified-stage human review. It therefore fires for EVERY
 				// gate:human + verified brief — including those already carrying a
 				// human:<name> at the verified stage. We do NOT filter on
@@ -523,7 +522,7 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 				})
 				continue
 			}
-			// Path B: irreversible brief stuck at implemented with model verify pass (#231).
+			// Path B: irreversible brief stuck at implemented with model verify pass.
 			// Irreversible briefs cannot reach `verified` without a human:<name> in Reviewed
 			// (brieffile.go irreversible lint), but the standard verifyIssues only fires at
 			// `verified` — a chicken-and-egg. Surface them here so the human sign-off can
@@ -623,7 +622,7 @@ func flipRowToDone(raw, num, reviewedStamp, verifiedStamp string) (string, error
 			}
 			if ri, ok := idx["reviewed"]; ok {
 				// Strictly ADDITIVE (two-touch model): never overwrite existing
-				// Reviewed content. If a prior sign-off is recorded (e.g. #159's
+				// Reviewed content. If a prior sign-off is recorded (e.g. the
 				// verified-stage human review), preserve it byte-for-byte and
 				// append a distinguishable acceptance touch; if the cell is empty
 				// / em-dash, set the acceptance sign-off directly.
@@ -636,7 +635,7 @@ func flipRowToDone(raw, num, reviewedStamp, verifiedStamp string) (string, error
 				// stays at the front and the acceptance touch trails it. But a
 				// prior sign-off can legitimately be UNDATED — a bare "human:alex"
 				// is a sanctioned Reviewed-cell value at the verified stage
-				// (methodology/03's hasHumanReviewer does not require a date) —
+				// (hasHumanReviewer does not require a date) —
 				// and appending after that leaves the cell starting with "human:"
 				// instead of a date, which is exactly what the undated-Reviewed-cell case broke
 				// (close-verify wrote a value its own --lint then rejected).
@@ -662,7 +661,7 @@ func flipRowToDone(raw, num, reviewedStamp, verifiedStamp string) (string, error
 
 // closeVerify flips a brief's README row verified → done and stamps the Reviewed
 // cell with a dated human sign-off. For irreversible briefs at `implemented`
-// whose Evidence records a model verify pass (the #231 chicken-and-egg fix), it
+// whose Evidence records a model verify pass (the chicken-and-egg fix), it
 // accepts `implemented` and advances in one step: Verified cell stamped from the
 // recorded model verifier + its date, Reviewed cell stamped `human:<closer>` + the
 // close date — satisfying the irreversible lint in the same write. It refuses
@@ -729,7 +728,7 @@ func closeVerify(root, briefID string, now time.Time) error {
 		return os.WriteFile(readme, []byte(updated), 0o644)
 
 	case "implemented":
-		// Irreversible chicken-and-egg path (#231): an irreversible brief cannot
+		// Irreversible chicken-and-egg path: an irreversible brief cannot
 		// reach `verified` without a human sign-off, but verifyIssues only fires
 		// at `verified`. Accept `implemented` when (and only when) irreversible
 		// AND a model verify pass is recorded in Evidence.

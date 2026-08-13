@@ -33,7 +33,7 @@ models the idiom the sweep prescribes, not merely the shapes the lint can see.
 | 4 | `! grep -qE "30:1" deck.md` | exit 0 (forbidden number absent) |
 | 5 | `grep -cE "30:1" deck.md \|\| true` | 0 (F-12) |
 | 6 | `ls docs/streams/intake/ \| grep -c 2026-07` | ≥1 (an intake entry landed) |
-| 7 | `dpm test` | exit 0 |
+| 7 | `go test` | exit 0 |
 | 8 | `test -f web/site/index.html && ! grep -Eiq -e "<script[^>]*src=" -e "<link[^>]*stylesheet" web/site/index.html` | exit 0 (self-contained) |
 | 9 | `go test ./tools/example/cmd/exampleboard/... -count=1` | exit 0 |
 | 10 | `test -d docs/reports/daily/$(date +%F)` | exit 0 (today's harvest landed) |

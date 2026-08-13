@@ -159,7 +159,7 @@ func TestCheckBudget(t *testing.T) {
 	}
 }
 
-// TestResolveBudgetSpecs covers issue #470: bare --lint must default to the
+// TestResolveBudgetSpecs covers the case where bare --lint must default to the
 // same budget spec CI enforces (--lint --budget CLAUDE.md:2850,
 // .github/workflows/statusgen.yml), while an explicit --budget stays a full
 // override — not additive, and not limited to lint mode.
@@ -223,7 +223,7 @@ func TestResolveBudgetSpecs(t *testing.T) {
 }
 
 // TestLintDefaultBudgetCatchesOverage is an end-to-end demonstration of the
-// issue #470 fix: a repo whose CLAUDE.md is over the CI budget must fail
+// fix: a repo whose CLAUDE.md is over the CI budget must fail
 // `run(root, "lint", resolveBudgetSpecs("lint", nil))` — i.e. bare --lint as
 // wired through main() — the same way CI's explicit
 // `--lint --budget CLAUDE.md:2850` does, with no --budget flag needed locally.
@@ -247,11 +247,11 @@ func TestLintDefaultBudgetCatchesOverage(t *testing.T) {
 	// What main() now actually wires up for bare `--lint`:
 	specs := resolveBudgetSpecs("lint", nil)
 	if code := run(root, "lint", specs, nil, ""); code != 1 {
-		t.Errorf("bare --lint on an over-budget CLAUDE.md exited %d, want 1 (issue #470)", code)
+		t.Errorf("bare --lint on an over-budget CLAUDE.md exited %d, want 1", code)
 	}
 }
 
-// TestBudgetFailureDoesNotSkipLaterPhases pins the issue #163 fix: a blown
+// TestBudgetFailureDoesNotSkipLaterPhases pins the fix: a blown
 // budget used to short-circuit every later phase, so the run reported `FAIL 1`
 // and the link/stream checks never ran. Anyone diffing lint output between two
 // trees — the dominant review use — read the drop in count as problems fixed.
@@ -277,7 +277,7 @@ func TestBudgetFailureDoesNotSkipLaterPhases(t *testing.T) {
 		t.Fatalf("lint exited %d, want 1", code)
 	}
 	if got := finalStdoutLine(t, stdout); got != "LINT: FAIL 2 problem(s)" {
-		t.Errorf("final stdout line = %q, want %q — a budget failure must not hide the phases after it (issue #163)", got, "LINT: FAIL 2 problem(s)")
+		t.Errorf("final stdout line = %q, want %q — a budget failure must not hide the phases after it", got, "LINT: FAIL 2 problem(s)")
 	}
 }
 

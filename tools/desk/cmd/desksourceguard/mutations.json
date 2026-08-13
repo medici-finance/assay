@@ -1,0 +1,59 @@
+{
+  "test": "go test ./cmd/desksourceguard/... -count=1",
+  "control": {
+    "name": "CONTROL — invert the HEAD-vs-pin comparison",
+    "file": "cmd/desksourceguard/verify.go",
+    "old": "if head != sourcePin.digest {",
+    "new": "if head == sourcePin.digest {"
+  },
+  "mutations": [
+    {
+      "name": "disarm the HEAD-vs-pin comparison (a repointed tag compiles)",
+      "file": "cmd/desksourceguard/verify.go",
+      "old": "if head != sourcePin.digest {",
+      "new": "if false && head != sourcePin.digest {"
+    },
+    {
+      "name": "disarm the binary<->source binding (pin any commit you like)",
+      "file": "cmd/desksourceguard/verify.go",
+      "old": "if !strings.HasPrefix(sourcePin.digest, stampedSHA) {",
+      "new": "if false && !strings.HasPrefix(sourcePin.digest, stampedSHA) {"
+    },
+    {
+      "name": "disarm the tag-agreement check (source and binaries may split)",
+      "file": "cmd/desksourceguard/verify.go",
+      "old": "if sourcePin.tag != binaryPin.tag {",
+      "new": "if false && sourcePin.tag != binaryPin.tag {"
+    },
+    {
+      "name": "accept an unstamped guard binary (nothing anchors the pin)",
+      "file": "cmd/desksourceguard/verify.go",
+      "old": "if stampedSHA == \"\" {",
+      "new": "if false && stampedSHA == \"\" {"
+    },
+    {
+      "name": "accept an abbreviated commit pin (re-resolvable anchor)",
+      "file": "cmd/desksourceguard/verify.go",
+      "old": "if !fullSHA.MatchString(sourcePin.digest) {",
+      "new": "if false && !fullSHA.MatchString(sourcePin.digest) {"
+    },
+    {
+      "name": "a missing source pin becomes a silent no-op",
+      "file": "cmd/desksourceguard/verify.go",
+      "old": "return pin{}, deskkit.Unverifiable(\"no \"+artifact+\" pin in \"+pinFile, nil)",
+      "new": "return pin{}, nil"
+    },
+    {
+      "name": "swallow an unresolvable HEAD instead of failing closed",
+      "file": "cmd/desksourceguard/verify.go",
+      "old": "head, err := headOf(opts.source)",
+      "new": "head, err := headOf(opts.source)\n\terr = nil"
+    },
+    {
+      "name": "drop the trailing-space pin selection (a longer name may stand in)",
+      "file": "cmd/desksourceguard/verify.go",
+      "old": "if !strings.HasPrefix(line, artifact+\" \") {",
+      "new": "if !strings.HasPrefix(line, artifact) {"
+    }
+  ]
+}

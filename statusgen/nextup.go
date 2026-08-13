@@ -20,12 +20,12 @@ const (
 	// than the binding constraint being an old human-scale 2.
 	perStreamCap = 4
 
-	// Next-up value + held-up-by terms (methodology-metrics/14, human:<name>'s R-01
+	// Next-up value + held-up-by terms (human:<name>'s R-01
 	// decision). These are TUNABLE HEURISTIC WEIGHTS, not truths — the whole
 	// score is an evolving heuristic (F-09 discipline: staleness still only
 	// rewards age, value is a coarse three-way knob, blockedCount has no effort
 	// term). When I-13 lands a better score these move; the gate-score
-	// (methodology-metrics/11) follows the same weights.
+	// follows the same weights.
 	//
 	// value: med is the neutral zero point so an absent/med field leaves the
 	// score identical to the pre-14 priority+staleness score; high nudges up,
@@ -37,7 +37,7 @@ const (
 
 	// unblocksWeight scores each not-done brief this one transitively holds up
 	// (blockedCount). Set so a brief blocking ~3 others can float above a
-	// higher-priority brief blocking none (the mm/11 rationale) — 500 × 3 = 1500
+	// higher-priority brief blocking none — 500 × 3 = 1500
 	// > one priority tier (1000) — giving the score a notion of what a brief
 	// unblocks, not just how long it has waited.
 	unblocksWeight = 500
@@ -49,7 +49,7 @@ const (
 	// doesn't apply, so the cap is set far more liberally. 20 keeps overflow a real
 	// signal (a genuinely huge eligible backlog still alarms) without throttling the
 	// fanout to a human-scale band. This overall cap sits on top of the per-stream
-	// cap. Configurable via the --span flag. (methodology-metrics/06)
+	// cap. Configurable via the --span flag.
 	defaultSpanOfControl = 20
 )
 
@@ -74,7 +74,7 @@ type Pick struct {
 }
 
 // NextUp is the computed Next-up view: the capped list of picks plus the counts
-// needed to render the span-of-control overflow indicator (methodology-metrics/06).
+// needed to render the span-of-control overflow indicator.
 type NextUp struct {
 	Picks     []Pick
 	Eligible  int // total eligible briefs before span/per-stream capping
@@ -108,7 +108,7 @@ func priorityWeight(p string) int {
 
 // valueWeight maps the optional brief `value:` field to its score term. An
 // absent field ("") and an explicit "med" are the same neutral zero point, so a
-// brief that does not opt in scores exactly as it did before methodology-metrics/14.
+// brief that does not opt in scores exactly as it did before.
 func valueWeight(v string) int {
 	switch v {
 	case "low":
@@ -123,7 +123,7 @@ func valueWeight(v string) int {
 // buildRevDeps builds the reverse typed-`depends:` graph and a status index over
 // every brief in the given streams. rev[X] lists the briefs that directly depend
 // on X (i.e. are gated on X reaching done); status[X] is X's lifecycle token.
-// This is the single shared machinery for blockedCount — methodology-metrics/11's
+// This is the single shared machinery for blockedCount — the
 // gate-score reuses it rather than re-deriving the graph.
 func buildRevDeps(streams []*Stream) (rev map[string][]string, status map[string]string) {
 	rev = map[string][]string{}
@@ -140,7 +140,7 @@ func buildRevDeps(streams []*Stream) (rev map[string][]string, status map[string
 	return rev, status
 }
 
-// blockedCount is the held-up-by term (methodology-metrics/14): the number of
+// blockedCount is the held-up-by term: the number of
 // distinct NOT-done briefs that transitively depend on `target` reaching done —
 // i.e. how many open items this brief unblocks. It reverse-walks the typed
 // depends graph built by buildRevDeps; a visited set makes it cycle-safe, and an
@@ -177,17 +177,17 @@ func eligible(streams []*Stream, s *Stream, b Brief, claimed map[string]bool) bo
 		return true
 	case "todo":
 		// placeholder-v1: an issue-loop placeholder is issue-driven — never
-		// wave/dep gated (issue-loop/01). Claim-awareness (checked above) still
+		// wave/dep gated. Claim-awareness (checked above) still
 		// excludes one whose issue has an open branch.
 		if b.Schema == "placeholder-v1" {
 			if b.Blocked != "" {
-				return false // issue-loop/03: blocked awaiting issue response
+				return false // blocked awaiting issue response
 			}
 			return true
 		}
 		// brief-v1: gate on the brief's own typed depends list.
 		// Non-brief-v1 (legacy): keep the existing whole-wave rule.
-		// mm/08 (claim-aware) filters in-flight on open branches/PRs;
+		// claim-aware filtering removes in-flight on open branches/PRs;
 		// this changes todo eligibility gating only — zero score-input
 		// changes (F-09/I-13 boundary).
 		if b.Schema == "brief-v1" {
@@ -231,8 +231,8 @@ func depIsSatisfied(streams []*Stream, dep string) bool {
 	return false // unresolved dep → not satisfied
 }
 
-// GateScore is a scored awaiting brief for gate-queue prioritization
-// (methodology-metrics/11). The formula mirrors Next-up: priorityWeight +
+// GateScore is a scored awaiting brief for gate-queue prioritization. The
+// formula mirrors Next-up: priorityWeight +
 // staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount.
 type GateScore struct {
 	Stream       *Stream
@@ -243,7 +243,7 @@ type GateScore struct {
 
 // gateScores computes and returns all awaiting (implemented/verified) briefs
 // sorted by gate-score descending. The formula is the same as Next-up — the
-// weights are an EVOLVING HEURISTIC (methodology-metrics/14, F-09 discipline).
+// weights are an EVOLVING HEURISTIC (F-09 discipline).
 // briefTouch holds per-brief last-transition times from the historian; nil means
 // fall back to stream LastTouch. Staleness is capped at stalenessCapDays.
 func gateScores(streams []*Stream, briefTouch map[string]time.Time) []GateScore {
@@ -313,13 +313,13 @@ func gateScores(streams []*Stream, briefTouch map[string]time.Time) []GateScore 
 // score, capped per-stream and by the overall span-of-control cap (spanOfControl).
 // It returns a NextUp carrying the capped picks plus the total eligible count, so
 // the caller can render the overflow indicator when the backlog exceeds what the
-// span shows (methodology-metrics/06 — overflow is an alarm, never a silent
+// span shows (overflow is an alarm, never a silent
 // truncation).
 //
 // score(brief) = priorityWeight(stream) + staleness×stalenessPerDay
 //   - valueWeight(brief.value) + unblocksWeight×blockedCount(brief)
 //
-// The weights are an EVOLVING HEURISTIC (methodology-metrics/14, F-09 discipline),
+// The weights are an EVOLVING HEURISTIC (F-09 discipline),
 // documented as tunables at their const declarations — not a claim of truth.
 //
 // Staleness clock (F-09 fix): a brief ages from its OWN last recorded status
@@ -332,15 +332,15 @@ func gateScores(streams []*Stream, briefTouch map[string]time.Time) []GateScore 
 //
 // claimed holds "stream/NN" keys (see claimedBriefs) for briefs that already
 // have an open remote branch or PR — those are excluded from the candidate set
-// so two sessions don't converge on the same pick (issue #156). Pass an
+// so two sessions don't converge on the same pick. Pass an
 // empty/nil map to disable claim filtering.
 //
-// Per-stream max-concurrent (methodology-metrics/13): a stream README may set
+// Per-stream max-concurrent: a stream README may set
 // `max-concurrent: N` (1 <= N <= perStreamCap) to restrict its draw below the
 // global perStreamCap. The effective per-stream limit for a stream s is
 // max(0, min(perStreamCap, s.MaxConcurrent) - inFlight(s)) where inFlight(s)
 // counts the number of claimed briefs for that stream. This enforces the F-20
-// serialization mandate (e.g. daml-hardening with max-concurrent: 1) at the
+// serialization mandate (e.g. a hardening stream with max-concurrent: 1) at the
 // board level — a stream with one claimed brief and max-concurrent: 1 offers
 // zero additional picks until the claim lifts. The cap is a zero-score-input
 // change (F-09 boundary): it gating only, never re-ranks.
@@ -409,7 +409,7 @@ func nextUp(streams []*Stream, claimed map[string]bool, briefTouch map[string]ti
 	// max-concurrent: N gets a tighter cap than perStreamCap (the knob restricts,
 	// never widens), and in-flight claimed briefs subtract from that budget so a
 	// serialized stream with one claimed brief offers zero additional picks
-	// (methodology-metrics/13, F-20).
+	// (F-20).
 	streamCaps := map[string]int{}
 	for _, s := range streams {
 		cap := perStreamCap

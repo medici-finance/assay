@@ -57,8 +57,11 @@ verified → done`, where `verified` is a distinct step a *non-implementer* runs
 and **`statusgen`**, a repo-agnostic Go tool that is the **single writer** of the generated
 `STATUS.md` board and computes a Next-up work queue. Around it sit the methodology's **loop roles** —
 brief authoring, fan-out dispatch, PR review, post-merge verification, and desk coordination. The
-public bundle ships the two portable, domain-neutral skills (`assay:adopt`, `assay:author-brief`); an
-adopting team runs the remaining loop roles as its own project-local skills (see `install-desk-plugin`). There
+public bundle ships two portable, domain-neutral skills (`assay:adopt`, `assay:author-brief`) plus a
+growing set of desk-role skills carrying the *current house* methodology for those loop roles
+(`assay:the-desk`, `assay:intake-desk`, `assay:batch-fanout`, `assay:pr-review-desk`,
+`assay:verify-desk` — see `install-desk-plugin`); an adopting team may run those as-is, fork them, or
+author its own project-local equivalents instead. There
 is also a **separate review identity** — a GitHub App whose bot login an author cannot post as
 (attribution, not authorization; `setup-reviewer-app` in §3). Read **§1a** before you describe that
 property to anyone; it is narrower than it sounds.
@@ -119,7 +122,7 @@ sentence above is the whole of the claim.
 | **statusgen CI** | Two-half workflow: PR-side `--lint`, main-side regenerate-and-commit | **not shipped** — house-specific CI you author yourself to the shape in §3 `add-statusgen-ci` | `.github/workflows/statusgen.yml` (you write it) |
 | **streams layout + templates** | `docs/streams/<stream>/README.md` (frontmatter + brief table) and brief-v1 files | `docs/brief-template.md`, `docs/brief-rules.md`, `examples/adopter-scaffold/` | `docs/streams/<stream>/` |
 | **registers** | Append-only FINDINGS / INTAKE / RETRO logs | `docs/registers.md`; scaffold's `FINDINGS.md` / `INTAKE.md` | `docs/streams/{FINDINGS,INTAKE,RETRO}.md` |
-| **methodology skills / plugin** | The two portable methodology skills (`assay:adopt`, `assay:author-brief`), namespaced `assay:<name>` | `.claude-plugin/marketplace.json`, `plugins/assay/` — see `install-desk-plugin` | installed via `/plugin`, cached under `~/.claude` |
+| **methodology skills / plugin** | The two portable methodology skills (`assay:adopt`, `assay:author-brief`) plus the desk-role skills for the five-desk pipeline (`assay:the-desk`, `assay:intake-desk`, `assay:batch-fanout`, `assay:pr-review-desk`, `assay:verify-desk`), namespaced `assay:<name>` | `.claude-plugin/marketplace.json`, `plugins/assay/` — see `install-desk-plugin` | installed via `/plugin`, cached under `~/.claude` |
 | **reviewer GitHub App** | The separate review identity (§1a) — attribution, not authorization; `pull_requests: write` with **no** `contents: write` is the *recommendation* (§3 `setup-reviewer-app`) | CORE `setup-reviewer-app` (runbook) | GitHub org/account settings — **not a repo file** |
 | **.githooks main-guard** | `pre-commit` refusing `main` commits without `ASSAY_MAIN_COMMIT_OK` (worktree-isolation backstop) | parent-project hardening (not shipped in the toolkit) | `.githooks/pre-commit` + `core.hooksPath` |
 | **trust roster** | The configured trust/authority surface the tools read: who is trusted, which repos are writable, which paths force a security review — held outside every ref, so a PR cannot widen its own gate. Governs repos the tools may **act** on, not the multi-repo board's own root-to-path map (separate, compiled-in — see `configure-roster`'s board caveat) | CORE `configure-roster` (mechanism) | **not a repo file** — org/repo Actions variables plus `~/.config/assay/roster.env` per operator (§3 `configure-roster`) |
@@ -207,24 +210,29 @@ regenerates and commits `STATUS.md`.
 Install the methodology plugin so the skills surface namespaced (`assay:<name>`):
 `/plugin marketplace add medici-finance/assay` then `/plugin install assay@assay`.
 
-> **What the public bundle ships — two skills.** `plugins/assay/skills/` ships the two portable,
-> domain-neutral methodology skills: **`adopt`** (this install runbook, as a skill) and
-> **`author-brief`** (the brief-authoring methodology). That is the authoritative set —
-> `plugins/assay/skills/README.md` names exactly those two, and `ls plugins/assay/skills/*/SKILL.md`
-> in a fresh checkout returns exactly them.
+> **What the public bundle ships — two portable skills plus the desk-role skills.**
+> `plugins/assay/skills/` ships the two portable, domain-neutral methodology skills — **`adopt`**
+> (this install runbook, as a skill) and **`author-brief`** (the brief-authoring methodology) — and
+> the five desk-role skills that carry the taught five-desk pipeline whole: **`the-desk`** (coordination),
+> **`intake-desk`** (the front door), **`batch-fanout`** (dispatch), **`pr-review-desk`** (review),
+> and **`verify-desk`** (post-merge verification). `plugins/assay/skills/README.md` names the current
+> set — check it rather than this paragraph, which will drift; `ls plugins/assay/skills/*/SKILL.md`
+> in a fresh checkout enumerates all seven.
 >
-> **The loop roles are not shipped skills.** Fan-out dispatch, PR review, post-merge verification,
-> and desk coordination are methodology *roles* the scenarios below describe — but an adopting team runs
-> them as its **own project-local skills** in the repo's `.claude/skills/`, not from this bundle.
-> Author them against the naming convention in `docs/skill-naming.md`; the method they follow is in
-> this guide and the two shipped skills, not a copied skill body. Do **not** expect an
-> `assay:pr-review-desk`, `assay:verify-desk`, `assay:batch-fanout`, or `assay:the-desk` to resolve
-> from the public bundle — they are deliberately not in it.
+> **The desk-role skills carry the current house methodology, not a domain-neutral rewrite of it.**
+> Unlike `adopt`/`author-brief`, only `intake-desk` has been scrubbed of house repo slugs, internal
+> issue numbers and names; `the-desk`, `batch-fanout`, `pr-review-desk` and
+> `verify-desk` remain a straight re-port that still carries that content, pending a deferred
+> parameterisation pass — read `plugins/assay/PARITY.md`'s "Known-behind"
+> section before relying on their exact wording in another project. An adopting team may run them
+> as-is, fork and rewrite them, or author its own project-local equivalents in the naming convention
+> at `docs/skill-naming.md` instead — the method is in this guide and the shipped skill bodies, not a
+> copied skill body you must use verbatim.
 
-**Verify:** `/plugin` lists `assay` installed; `ls plugins/assay/skills/` enumerates exactly
-`adopt` and `author-brief`; and `assay:adopt` / `assay:author-brief` each resolve in a fresh
-session. This primitive also installs a `SessionStart` hook whose blast radius is wider than the
-repo you are adopting into — read **§3a** before you install it globally.
+**Verify:** `/plugin` lists `assay` installed; `ls plugins/assay/skills/` enumerates the set
+`plugins/assay/skills/README.md` currently names; and `assay:adopt` / `assay:author-brief` each
+resolve in a fresh session. This primitive also installs a `SessionStart` hook whose blast radius is
+wider than the repo you are adopting into — read **§3a** before you install it globally.
 
 ### PRIMITIVE: configure-roster
 
@@ -237,7 +245,7 @@ echoes its effective configuration to **stderr** on every run, including `--vers
 deskboard --version 2>&1 | grep -q '^assay-config:' && echo "roster present" || echo "pre-roster pin — skip"
 ```
 
-At `desk-tools/v0.2.1` + `statusgen/v0.8.0` (the newest tags as this is written) it prints `skip`.
+At the toolkit versions current as this is written it prints `skip`.
 
 Who is trusted, which repos the tools may write to, and which paths force a security review are
 **adopter configuration**, deliberately held outside every ref the tools evaluate — so the pull
@@ -303,7 +311,7 @@ refusal. The gap only surfaces later, when a repo-scoped acting command runs aga
 than either the exit code or the board's contents.
 
 **The board's root set is separate configuration, not roster-derived.** `deskboard nextup`'s
-default roots (`defaultRoots`, same file) are compiled to the maintainer's own repos. Configuring the
+default roots (`defaultRoots`, same file) are compiled to a fixed default set of repos. Configuring the
 roster correctly for your own repo does not add it to that map — you also need a `DESK_ROOTS`
 entry for it (each entry's repo is validated against your `ASSAY_ALLOWED_REPOS`, but never
 populated from it — see below for why one entry is not enough). Skip this and `deskboard nextup`

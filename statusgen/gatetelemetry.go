@@ -36,9 +36,9 @@ package main
 //
 // Shape 3 was not hypothetical. An earlier audit reader expected an invented
 // {"event","gate","blockedDefect"} schema that NO producer has ever emitted;
-// fed a real desk audit log (the deskkit audit-entry schema, carrying genuine
-// deskpost refusals and ready-flips) it printed "gate-class deskpost-refusal:
-// fires=0 ... ceremonial-or-untested" and exited 0. The reader below reads the
+// fed a real desk audit log (the deskkit audit-entry schema) it printed
+// "gate-class deskpost-refusal: fires=0 ... ceremonial-or-untested" and exited
+// 0. The reader below reads the
 // producer's ACTUAL schema, and treats an unrecognized line shape as
 // could-not-check rather than as an absence of fires.
 //

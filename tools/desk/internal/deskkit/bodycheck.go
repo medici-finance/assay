@@ -1,0 +1,519 @@
+package deskkit
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+// bodycheck is the shared secret scan. It lives in deskkit because
+// deskpost, deskpr, and deskreply all run it over any text they would write to
+// GitHub. It is a seatbelt plus friction against ACCIDENTAL credential paste,
+// not a complete exfiltration defence — a deliberately encoding adversary can evade
+// pattern filters. There is NO override flag anywhere.
+
+var (
+	reGitHubToken = regexp.MustCompile(`(ghp_|github_pat_|ghs_|gho_)[A-Za-z0-9_]+`)
+	reAWSKeyID    = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
+	reJWT         = regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`)
+	reBase64ish   = regexp.MustCompile(`[A-Za-z0-9+/=]{32,}`)
+	reLowerHex    = regexp.MustCompile(`^[0-9a-f]+$`)
+
+	// reSopsEncVal is the unambiguous sops-ENCRYPTED-VALUE marker. Every value in a real
+	// sops document is wrapped as `ENC[AES256_GCM,data:…,iv:…,tag:…,type:…]`; that literal
+	// prefix does not occur in prose. We match the specific `ENC[AES256_GCM` form rather
+	// than a bare `ENC[` so that an unrelated `ENC[` (e.g. an enum reference, a log line)
+	// does not false-positive, while never regressing detection of a real encrypted value.
+	reSopsEncVal = regexp.MustCompile(`ENC\[AES256_GCM`)
+	// reSopsKey and reSopsField together form the sops-DOCUMENT signature. A real sops file
+	// carries a line-anchored `sops:` mapping key AND, nested under it, a sops-metadata
+	// field (mac / lastmodified / unencrypted_suffix / kms / gcp_kms / azure_kv / pgp /
+	// age). Prose that merely says the word "sops" — `.sops.yaml`, `sops-gpg`, "encrypted
+	// with sops" — has neither shape, so requiring BOTH drops the bare-word false positive
+	// while still refusing an actual pasted sops document.
+	reSopsKey   = regexp.MustCompile(`(?m)^\s*"?sops"?\s*:`)
+	reSopsField = regexp.MustCompile(`(?m)^\s*"?(mac|lastmodified|unencrypted_suffix|kms|gcp_kms|azure_kv|pgp|age)"?\s*:`)
+)
+
+const (
+	// runThreshold mirrors reBase64ish's {32,}: the length at which a base64ish run is
+	// long enough to hold a credential and is therefore scanned.
+	runThreshold = 32
+	// maxOpaqueInPath is how much NON-word-shaped material a path-like run may carry in
+	// total before the exemption is denied. It is deliberately equal to runThreshold: if
+	// the opaque segments of a run, concatenated, would themselves meet the run threshold,
+	// the run could be a secret wearing slashes and must be scanned.
+	maxOpaqueInPath = runThreshold
+	// maxDigitRun bounds a digit group inside a word-shaped segment. Digits carry ~3.3
+	// bits each, so short groups (ports, years, `python311`) are noise; a long unbroken
+	// digit run is not name material (it could be an account or card number).
+	maxDigitRun = 12
+	// minLowerWord is the shortest lowercase run that reads as a word rather than as
+	// base64 debris. `tools`, `api`, `src` qualify; the `b` of `bPxRfi…` does not.
+	minLowerWord = 3
+	// maxWordSegment caps how long a segment may be and still be treated as name
+	// material at all, however word-shaped it looks. Real segments are short —
+	// `Settlement` is 23, `PositionSummaryPanel` is 20 — so 48 is far
+	// above any legitimate name while keeping a degenerate run (a 200-character
+	// lowercase stretch, which is word-SHAPED but is not a word) on the opaque budget
+	// where the length gate can refuse it.
+	maxWordSegment = 48
+	// maxBareAssignKey bounds the variable-name half of a `key=value` shell assignment
+	// that is NOT itself word-shaped (see isAssignmentLike). Shell scratch variables in
+	// Verify/Evidence command text are one or two characters — `f=`, `d=`, `p=` — and a
+	// key this short can contribute at most two characters of opaque material, far under
+	// runThreshold. A longer key must earn its exemption by being word-shaped.
+	maxBareAssignKey = 2
+)
+
+// twoLetterWords are the two-letter units that count as WORDS in a CamelCase
+// decomposition even though they carry only one lowercase letter after the capital
+// (see wordDecomposition's capital branch, which otherwise requires two).
+//
+// The membership rule is deliberately a CLOSED LIST OF ENGLISH WORDS rather than the
+// broader "a capital followed by any single lowercase letter", and the difference is
+// measurable rather than stylistic. Both spellings clear the reported false positives
+// equally well, so the only thing that can choose between them is what each costs on real
+// token material: against 2,000,000 uniformly random 32-char base64 runs the blanket
+// relaxation exempts 35, while this list exempts 0 — the same as the stricter rule it
+// replaces. The list buys back the whole false-positive class without measurably loosening
+// the scanner's grip. TestTwoLetterWordsCostAlmostNothing pins that comparison against a
+// fixed seed, so a future widening to "any capital plus one lowercase" — or a list grown
+// long enough to amount to the same thing — cannot be waved through on intuition.
+//
+// The list is grounded in this repo's own identifiers, not guessed: the units that
+// actually block real long CamelCase names here are, in frequency order, Is (124),
+// No (48), On (41), At, By, In, To, As, An, Of, Up, Do, Or, It, So, Me, Be — every one an
+// English function word. The debris further down that same frequency table (Ym, Jl, Vh,
+// Zm, Qx, Px, Xo) comes from base64 test fixtures, and an English-word list leaves all of
+// it on the opaque budget where it belongs.
+//
+// `Id` and `Ok` are the only two non-words admitted: both are universal Go identifier
+// idioms (`UserIdIsStable`, `ReportsOkOnEmptyInput`) and both are English-lexicon enough
+// to be indistinguishable in cost from the rest of the list. Do NOT extend this to
+// general abbreviations (`Db`, `Ui`, `Io`, `Pr`, `Cd`, `Tx`) — each addition is another
+// face on the die that random base64 gets to roll, and the frequency table above shows
+// they buy back almost nothing: one or two identifiers each.
+var twoLetterWords = map[string]bool{
+	"Am": true, "An": true, "As": true, "At": true, "Be": true, "By": true,
+	"Do": true, "Go": true, "He": true, "If": true, "In": true, "Is": true,
+	"It": true, "Me": true, "My": true, "No": true, "Of": true, "On": true,
+	"Or": true, "So": true, "To": true, "Up": true, "Us": true, "Vs": true,
+	"We": true, "Id": true, "Ok": true,
+}
+
+// SurfaceBody is the default surface name — the PR/issue/comment body most callers scan.
+const SurfaceBody = "body"
+
+// BodyCheck REFUSES (Refused → exit 5) any body that looks like it carries a
+// credential, and returns nil for a clean body. It refuses on:
+//   - GitHub token prefixes ghp_ / github_pat_ / ghs_ / gho_
+//   - AWS access-key IDs (AKIA + 16 upper-alnum)
+//   - PEM headers ("-----BEGIN …")
+//   - eyJ-prefixed 3-segment JWT shapes
+//   - a sops-encrypted secret block: an ENC[AES256_GCM…] value, or a line-anchored
+//     "sops:" mapping key together with a sops-metadata field (mac, lastmodified,
+//     unencrypted_suffix, kms, gcp_kms, azure_kv, pgp, age). A bare prose mention of the
+//     word "sops" (.sops.yaml, sops-gpg) is NOT refused — it carries no secret.
+//   - any run of ≥32 base64ish chars, EXCEPT:
+//   - an exactly-40- or exactly-64-char lowercase-hex run (git SHAs — the
+//     methodology quotes them constantly; refusing them would brick every verdict).
+//   - a run shaped like a filesystem or module path, absolute OR repo-relative,
+//     built out of word-shaped segments (see isPathLike). This exempts
+//     `/Users/operator/work/example/slides` (#1052), the mandated `file:line`
+//     finding format `tools/desk/internal/deskkit/bodycheck.go:45`, and Go module
+//     paths (#209) while still refusing opaque token material carried
+//     between slashes — including an AWS secret access key, whose `/` characters
+//     defeat a purely length-based segment gate.
+//   - a run that is itself a single bare identifier built entirely out of words (see
+//     isIdentifierLike). This exempts long CamelCase Go identifiers — test names like
+//     `HonoredFilterLeavesTripwireSilent` routinely clear the 32-char run threshold
+//     with no `/` to trigger the path exemption above (#253) — while
+//     still refusing a bare random token. MIXED-case token material fails the
+//     word-decomposition almost immediately (a lone capital, an ALL-CAPS stretch, or
+//     1-2 char lowercase debris); LOWERCASE token material — hex or base36, whose
+//     digit groups split it into several letter-word units — is kept out by the
+//     requirement that at least one word unit be capital-led (#582
+//     review; see isIdentifierLike). A two-letter English word inside such an
+//     identifier (`…IsOn…`, `…VsScheduled…`) counts as a word rather than as debris —
+//     see twoLetterWords, which is what unblocked the #781 class.
+//   - a `key=<path>` shell assignment whose VALUE is itself exempt by one of the two
+//     rules above (see isAssignmentLike). This is the Verify/Evidence command idiom
+//     `f=docs/streams/…; test -f "$f" && …` (#775), which could not be
+//     reworded without desyncing a recorded audit trail from what was actually run.
+//   - a run composed ENTIRELY of `=` (see isAllEquals): a console-banner separator
+//     line (`echo "===================="`, #781) is base64 padding with no
+//     payload, so it cannot carry a credential. This does NOT exempt a `VAR=secret`
+//     shell assignment, whose run carries the secret's own base64 after the `=`.
+//
+// Test vectors for BOTH directions (SHAs and paths pass, every credential pattern —
+// including one wearing a path disguise — refuses) are exercised by this package's tests.
+func BodyCheck(body []byte) error { return ScanSurface(SurfaceBody, body) }
+
+// ScanSurface is BodyCheck with the SURFACE named in the refusal message.
+//
+// A tool that scans more than one surface before it writes — deskpr scans the PR title,
+// the branch name and the branch diff, not just the body — used to report every refusal
+// as a "body" problem whichever surface actually tripped. #328 is the cost:
+// the trigger was in the branch diff, two full diagnostic rounds went into finding that
+// out, and the first two attempts were spent rewriting a body that was never the problem.
+// A refusal that misidentifies its own surface converts a one-line fix into an
+// investigation, so surface is a required argument of the scan rather than a decoration
+// callers may add afterwards.
+//
+// surface is a short noun phrase used verbatim ("PR body", "PR title", "branch name",
+// "branch diff vs origin/main"). The DETECTION is identical on every surface; only the
+// message differs.
+func ScanSurface(surface string, content []byte) error {
+	if surface == "" {
+		surface = SurfaceBody
+	}
+	s := string(content)
+	switch {
+	case reGitHubToken.MatchString(s):
+		return Refused("refused: " + surface + " contains a GitHub token prefix (ghp_/github_pat_/ghs_/gho_)")
+	case reAWSKeyID.MatchString(s):
+		return Refused("refused: " + surface + " contains an AWS access-key ID (AKIA…)")
+	case strings.Contains(s, "-----BEGIN"):
+		return Refused("refused: " + surface + " contains a PEM header (-----BEGIN …)")
+	case reJWT.MatchString(s):
+		return Refused("refused: " + surface + " contains a JWT-shaped token (eyJ….….…)")
+	case reSopsEncVal.MatchString(s) || (reSopsKey.MatchString(s) && reSopsField.MatchString(s)):
+		return Refused("refused: " + surface + " contains a sops-encrypted secret block or ENC[ marker")
+	}
+	// Impersonated human-ruling guard (impersonation.go). This write
+	// path never posts as a human, so a body claiming a configured human's ruling BY
+	// NAME — "Decision (Alex, ...)", "Ruling: ... — Alex", "I (Alex) have decided" — is
+	// refused categorically, independent of whether the claim happens to be true.
+	if name, found := ImpersonatedRulingClaim(s); found {
+		return impersonationRefusal(surface, name)
+	}
+	for _, run := range reBase64ish.FindAllString(s, -1) {
+		if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) {
+			continue
+		}
+		return Refused(fmt.Sprintf(
+			"refused: %s contains a %d-char high-entropy run (possible secret); "+
+				"only git SHAs (40/64 lowercase hex), slash-separated paths built from "+
+				"word-shaped segments, bare word-shaped identifiers, key=<path> shell "+
+				"assignments, and all-'=' banner separators over those are exempt", surface, len(run)))
+	}
+	return nil
+}
+
+// isGitSHA reports whether run is an exactly-40 (sha1) or exactly-64 (sha256)
+// lowercase-hex string — the one exemption to the high-entropy-run rule.
+func isGitSHA(run string) bool {
+	return (len(run) == 40 || len(run) == 64) && reLowerHex.MatchString(run)
+}
+
+// isAllEquals reports whether run is composed ENTIRELY of '=' — the FOURTH exemption to
+// the high-entropy-run rule (#781). '=' is in reBase64ish's
+// charset (it is base64 padding), so a console-banner separator line —
+// `echo "=================================="`, a 34-char run of '=' — clears the 32-char
+// run threshold and, having no '/' and failing word-decomposition on its first character,
+// is exempted by nothing above and refuses on ordinary shell scripts. deskpr scans deleted
+// diff lines too, so a banner already on origin cannot be edited out of the
+// refusal — only the scanner can distinguish it.
+//
+// This is safe because a run of only '=' carries ZERO data bytes: base64 '=' is padding,
+// not payload, so an all-'=' run cannot encode a credential of any length. It is NOT the
+// `VAR=secret` shell-assignment laundering shape (the AWS-secret-key guard in the tests):
+// that run carries the secret's own base64 AFTER the '=', so it is never all-'='. The
+// discriminator here is "the run has no non-padding character at all", which no real
+// credential — and no assignment carrying one — can satisfy.
+func isAllEquals(run string) bool {
+	if run == "" {
+		return false
+	}
+	for i := 0; i < len(run); i++ {
+		if run[i] != '=' {
+			return false
+		}
+	}
+	return true
+}
+
+// isPathLike reports whether run is a path rather than a credential — the SECOND
+// exemption to the high-entropy-run rule. `/`, letters and digits are all valid base64
+// characters, so `/Users/operator/work/example/slides`,
+// `tools/desk/internal/deskkit/bodycheck` and a base64 blob are indistinguishable by
+// charset alone. A run is exempted when ALL of:
+//
+//  1. it contains at least one `/`. A credential is normally one unbroken token, so a
+//     40-char GitHub/hex/base64 secret with no slash is refused by this alone.
+//  2. it contains no `+` or `=` — the base64 special and padding characters, which a
+//     genuine path segment never carries.
+//  3. the slash-separated segments that are NOT word-shaped (see looksLikeWords), taken
+//     together, total fewer than maxOpaqueInPath characters. A git-SHA segment counts as
+//     non-opaque, since a bare SHA is already exempt above.
+//
+// (3) is the security-bearing rule and it is what makes this narrower than a length-only
+// segment gate. HISTORY, because both previous versions were wrong in opposite
+// directions and the next maintainer needs to see the shape of the trap:
+//
+//   - The ORIGINAL rule required the run to be anchored at `^/(Users|home|private|tmp|opt)/`
+//     and every segment to be <32 chars. The anchor refused every repo-relative
+//     `file:line` reference — which is the finding format desk review bodies are REQUIRED
+//     to use — and every Go module path. Review bodies dense with evidence could not
+//     post; the refusals then consumed the outward-write budget, starving the queue
+//     (#209, #1255). It also refused this repo's own `go test` output,
+//     which the methodology mandates as Evidence.
+//   - The FIRST fix (#1261) dropped the anchor and kept only "every segment <32
+//     chars". That is too wide: it no longer requires anything path-SHAPED, so a token
+//     whose slashes merely fall in convenient places is exempted. Its reviewer
+//     demonstrated five regressions against the anchored rule, the sharpest being an AWS
+//     **secret access key** — 40 base64 chars that routinely contain `/`, whose segments
+//     are all under 32. `AKIA…` (the access key ID) is caught by reAWSKeyID above; the
+//     secret access key is a different string and was NOT caught. That reviewer also
+//     showed the structural discriminators it had considered — case-transition density,
+//     mean segment length — genuinely cannot separate `src/Example/Settlement`
+//     from that key: both are 40 chars, 3 segments, mean segment 12.7, mixed case.
+//
+// Rule (3) separates them on a different axis, and that is the point: not "how random do
+// these characters look" (they look identical) but "are the segments built out of
+// WORDS". `src`, `Example` and `Settlement` decompose into word units;
+// `wJalrXUtnFEMI`, `K7MDENG` and `bPxRfiCYEXAMPLEKEY` do not, and their lengths sum past
+// the run threshold.
+//
+// Empty segments (`//` in a URL run, a trailing `/` on a directory reference) are skipped
+// rather than rejected: they carry no material, and rejecting them was an early draft of
+// the #1261 fix that re-created the bug on `//localhost/api/v2/state/activecontracts`
+// and on `services/app-service/internal/api/handlers/`. Both are pass cases below.
+//
+// KNOWN RESIDUAL GAP, documented rather than claimed closed: a token that both avoids
+// `+`/`=` AND whose non-word-shaped spans between slashes total under 32 characters is
+// still exempted. Closing that would require refusing real paths. This module's stated
+// posture is a seatbelt against ACCIDENTAL credential paste, not an exfiltration
+// defence against a deliberate encoder, and rule (3) shrinks the accidental-paste surface
+// from "any 31-char-segmented blob" to "a blob whose opaque material happens to fall
+// under 32 characters in total" — which no real credential format does.
+func isPathLike(run string) bool {
+	if !strings.Contains(run, "/") {
+		return false
+	}
+	if strings.ContainsAny(run, "+=") {
+		return false
+	}
+	opaque := 0
+	for _, seg := range strings.Split(run, "/") {
+		if seg == "" || isGitSHA(seg) || looksLikeWords(seg) {
+			continue
+		}
+		opaque += len(seg)
+		if opaque >= maxOpaqueInPath {
+			return false
+		}
+	}
+	return true
+}
+
+// isIdentifierLike reports whether run reads as a single bare identifier built entirely
+// out of words — the THIRD exemption to the high-entropy-run rule (#253).
+//
+// Go test names routinely clear the 32-char run threshold in CamelCase —
+// `HonoredFilterLeavesTripwireSilent` is 33 — with no `/` anywhere to trigger
+// isPathLike's exemption above; a review body naming the tests it exercises trips the
+// high-entropy refusal on ordinary prose. This reuses wordDecomposition — the same
+// word-decomposition that already separates a path segment like `Settlement`
+// from an AWS secret access key's `bPxRfiCYEXAMPLEKEY` does the identical job on a whole
+// run instead of a slash-delimited piece of one, for the same structural reason —
+// the scan rejects on the FIRST lone capital, ALL-CAPS stretch, or 1-2 char lowercase
+// debris (a capital plus ONE lowercase is debris too, unless the pair is one of the
+// two-letter English words in twoLetterWords), which is what uniformly random MIXED-case
+// base64 material produces almost immediately. (LOWERCASE random material does not
+// produce those shapes — that is the hole the capital-led requirement below closes.)
+// A genuine identifier decomposes cleanly into CamelCase word units.
+//
+// UNLIKE looksLikeWords (one word unit is enough for a path SEGMENT — `tools`,
+// `internal` — because a path supplies its own word boundaries via `/`), this requires
+// AT LEAST TWO word units. A bare run has no such external boundary, and without this a
+// single unbroken lowercase span of up to maxWordSegment characters — exactly the shape
+// of a lowercased hex/hash string, e.g. a 32-char run one character short of the git-SHA
+// exemption — decomposes as ONE long "word" and would be wrongly exempted. Requiring two
+// units is also true to the actual bug report: every real CamelCase Go test name is a
+// compound of several words, never one.
+//
+// It ALSO requires at least one word unit to be capital-led (a CamelCase word, not an
+// all-lowercase run). The two-word floor alone stops only an UNBROKEN lowercase span:
+// realistic lowercase token material — a hex hash, a base36 token — carries short digit
+// groups, and every digit group ends one letter-word unit and starts another, so a
+// 32-char lowercase md5-shaped value decomposes into FIVE word units and slipped the
+// floor (demonstrated end-to-end through BodyCheck in the #582 review:
+// both a bare lowercase hex value and a lowercase base36 token in prose were admitted).
+// The pre-existing refuse case "32-char lowercase hex is too short to be an exempt sha"
+// did not catch this because its fixture is one repeated letter pair — an unbroken span,
+// ONE word — while real hex always carries digits. The capital-led requirement keeps the
+// exemption on its actual bug class: every #253 repro identifier is CamelCase. No
+// legitimate name shape is lost: a genuine multi-word lowercase name carries `_`/`-`
+// separators, which are outside the base64 charset, so it never forms one 32+ char run
+// in the first place — a separator-free lowercase run of that length is token-shaped,
+// not name-shaped, and refusing it is the seatbelt doing its job.
+//
+// This does not widen the path exemption: a run containing `/`, `+` or `=` already fails
+// the decomposition in its default case, so isIdentifierLike never overlaps with — or
+// substitutes a weaker test for — isPathLike's slash-aware opaque-budget accounting.
+//
+// KNOWN RESIDUAL GAP, documented rather than claimed closed: an ALL-CAPS acronym inside an
+// otherwise ordinary identifier — `TestHandlesHTTPSProxy…UpstreamHealth`, elided here
+// because the unelided name trips the very gap this paragraph describes — is still refused
+// once the run clears 32 characters. looksLikeWords' comment calls that acceptable, and for
+// a path SEGMENT it is: failing there only spends opaque budget. Here it is a refusal, so
+// the cost is real. It is left open on purpose, because the shape that would have to be
+// admitted — a capital with no lowercase behind it — is the same shape that keeps a Slack
+// webhook token's `XXXXXXXX…` tail and an AWS key's `bPxRfiCYEXAMPLEKEY` opaque, and no
+// list of known acronyms separates the two the way twoLetterWords separates English words
+// from base64 debris. An acronym-bearing name over the threshold must be reworded or
+// broken across the line, which — unlike a recorded Evidence command (#775) or a
+// shipped test identifier (#663) — is always available to the author.
+func isIdentifierLike(run string) bool {
+	ok, words, camel := wordDecomposition(run)
+	return ok && words >= 2 && camel
+}
+
+// isAssignmentLike reports whether run is a `key=value` shell assignment whose VALUE is
+// itself already exempt — the FOURTH exemption to the high-entropy-run rule (#775).
+//
+// The Verify/Evidence rows this methodology mandates quote the exact command that was
+// run, and the recurring idiom is a scratch variable holding a path:
+//
+//	f=docs/streams/…/version-scheme.md; test -f "$f" && …
+//
+// The base64ish run there is `f=docs/streams/…/version` — 35 characters in full, over
+// the threshold. (Long spans are elided with `…` throughout this comment so the comment
+// itself does not trip the PRE-fix scanner on the diff that introduces the fix. It is the
+// same bootstrap the split fixtures in this package's tests work around, recorded at
+// scanSecret40 there.) isPathLike refuses it at its `+=` gate, because `=` is base64 padding
+// and a genuine path segment never carries one; isIdentifierLike refuses it in the
+// default case for the same character. So the row could not be posted at all, and it
+// could not be reworded either: rewriting a recorded Evidence command after the fact to
+// dodge the scanner desyncs the audit trail from what was actually run (#775).
+//
+// SECURITY SHAPE — this is a prefix STRIP, not a new exemption. The value half must
+// independently satisfy isGitSHA, isPathLike or isIdentifierLike — exactly the bar it
+// would have to clear standing alone, no weaker and no stronger; all this function adds
+// is permission to ignore a short or word-shaped `key=` in front of it. The git-SHA arm
+// is there for that "no stronger" half: a bare SHA is exempt, and the methodology quotes
+// SHAs constantly, so `base=<sha>` must not refuse what `<sha>` alone permits.
+// The concrete guard-strength case is an AWS secret
+// access key wearing the same idiom — `f=wJalrXUtnFEMI/…/bPxRfiCYEXAMPLEKEY`. The
+// key half is fine, but the value is the bare AWS key, which isPathLike already refuses
+// on opaque budget, so the run still refuses. That row is in the tests by name, because
+// #1261's table once asserted a shell-assigned AWS key was "still caught" when in truth
+// only the stray `=` was catching it.
+//
+// Three narrow conditions, each load-bearing:
+//
+//  1. The split is at the FIRST `=`, and the value may not contain another. This is what
+//     keeps base64 PADDING out: `data=ZGVhZGJlZWZkZWFkYmVlZg==` has `=` in its value and
+//     is refused, as is any `a=b=<secret>` nesting.
+//  2. The key is either at most maxBareAssignKey characters (`f`, `d`, `p` — real shell
+//     scratch variables, and at most two characters of opaque material) or word-shaped
+//     under looksLikeWords (`file`, `manifest` — name material, not credential material).
+//     `AWS_SECRET_ACCESS_KEY=<key>` reduces to a run keyed `KEY`, which is three
+//     characters of ALL-CAPS: too long to be bare, not word-shaped, so refused here too.
+//  3. The value carries no `+` either. isPathLike and isIdentifierLike both already
+//     refuse `+`; the check is restated here on purpose, so that a future loosening of
+//     either predicate cannot quietly open a padding-bearing route through this one.
+func isAssignmentLike(run string) bool {
+	eq := strings.IndexByte(run, '=')
+	if eq <= 0 || eq == len(run)-1 {
+		return false // no `=`, nothing before it, or nothing after it
+	}
+	key, val := run[:eq], run[eq+1:]
+	if len(key) > maxBareAssignKey && !looksLikeWords(key) {
+		return false
+	}
+	if strings.ContainsAny(val, "+=") {
+		return false
+	}
+	return isGitSHA(val) || isPathLike(val) || isIdentifierLike(val)
+}
+
+// looksLikeWords reports whether seg reads as human-written name material — what real
+// path, package and file-name segments are made of — rather than as opaque token
+// material. seg qualifies when it decomposes ENTIRELY into:
+//
+//   - lowercase runs of at least minLowerWord letters (`tools`, `internal`, `deskkit`);
+//   - CamelCase words: one uppercase letter followed by at least two lowercase
+//     (`Maturity`, `Price`, `Commitment`, the `Users` of `/Users/…`), or one of the
+//     two-letter English words in twoLetterWords (`Is`, `On`, `Vs`, `An`);
+//   - digit groups of at most maxDigitRun (`python311`, `v2` — note `v2` fails on the
+//     one-letter `v`, which is fine: it contributes 2 characters of opaque budget);
+//
+// …and contains at least one word unit (so a bare number is not "words") and is at most
+// maxWordSegment long (so a degenerate 200-character lowercase stretch is not either).
+//
+// Base64 material fails this almost immediately and for a reason that is structural
+// rather than tuned: uniformly random characters produce one- and two-letter lowercase
+// runs, lone capitals, and ALL-CAPS stretches constantly, and any ONE of those
+// disqualifies the segment. An acronym-heavy real name (`HTTPSProxy`) also fails — that
+// is acceptable, because failing only spends opaque budget; it does not refuse the body
+// unless the run carries 32+ characters of such material.
+//
+// A single word unit is enough HERE because a path segment inherits its boundary from the
+// `/` around it. isIdentifierLike, which has no such boundary, requires two — and that at
+// least one be capital-led. The capital-led requirement is deliberately NOT applied here:
+// a path segment like `tools` or `activecontracts` is legitimately all-lowercase and must
+// stay name material (it spends no opaque budget), while a bare lowercase run carrying
+// digit groups is exactly the token shape isIdentifierLike exists to refuse.
+func looksLikeWords(seg string) bool {
+	ok, words, _ := wordDecomposition(seg)
+	return ok && words > 0
+}
+
+// wordDecomposition is the scan looksLikeWords and isIdentifierLike are both built on: it
+// reports whether seg decomposes ENTIRELY into word/digit units (ok) and, if so, how many
+// word units (letter runs, not digit groups) it contains and whether any of them is
+// capital-led — a CamelCase word rather than an all-lowercase run (camel). Split out so
+// isIdentifierLike can require MORE than one word unit, at least one of them capital-led,
+// without hand-duplicating this loop — see its doc comment for why the two callers need
+// different thresholds, and looksLikeWords' for why the capital-led flag is ignored there.
+func wordDecomposition(seg string) (ok bool, words int, camel bool) {
+	if len(seg) > maxWordSegment {
+		return false, 0, false
+	}
+	for i := 0; i < len(seg); {
+		c := seg[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+			j := i
+			for j < len(seg) && seg[j] >= 'a' && seg[j] <= 'z' {
+				j++
+			}
+			if j-i < minLowerWord {
+				return false, 0, false // `b`, `zz` — base64 debris, not a word
+			}
+			i, words = j, words+1
+		case c >= 'A' && c <= 'Z':
+			j := i + 1
+			for j < len(seg) && seg[j] >= 'a' && seg[j] <= 'z' {
+				j++
+			}
+			// A capital normally needs two lowercase letters behind it to read as a
+			// CamelCase word. The ONE exception is a two-letter English word from
+			// twoLetterWords: `…IsOn…`, `…OnDemandVsScheduled…`, `…HandlesAnEmpty…`.
+			// Without it, a single `Is` anywhere in a 32+ char Go test name sent the
+			// whole identifier to the high-entropy refusal (#781); `Is` alone
+			// blocks 124 real identifiers in this repo. A capital with ZERO lowercase
+			// behind it — a lone capital or an ALL-CAPS stretch — is still refused
+			// outright, which is what keeps `K7MDENG` and `XXXXXXXX…` opaque.
+			if n := j - (i + 1); n < 2 && !(n == 1 && twoLetterWords[seg[i:j]]) {
+				return false, 0, false
+			}
+			i, words, camel = j, words+1, true
+		case c >= '0' && c <= '9':
+			j := i
+			for j < len(seg) && seg[j] >= '0' && seg[j] <= '9' {
+				j++
+			}
+			if j-i > maxDigitRun {
+				return false, 0, false
+			}
+			i = j
+		default:
+			return false, 0, false // '+', '=' and anything else non-alphanumeric
+		}
+	}
+	return true, words, camel
+}

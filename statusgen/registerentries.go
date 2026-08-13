@@ -27,7 +27,7 @@ type intakeEntry struct {
 	Disposition   string `yaml:"disposition"`
 	ScopedTo      string `yaml:"scoped-to,omitempty"`
 	Why           string `yaml:"why,omitempty"`
-	DecisionIssue string `yaml:"decision-issue,omitempty"` // issue-loop/08: GitHub issue # for the needs-decision issue
+	DecisionIssue string `yaml:"decision-issue,omitempty"` // GitHub issue # for the needs-decision issue
 	Body          string `yaml:"-"`                        // prose after the heading, before the Disposition line
 }
 

@@ -73,8 +73,8 @@ func resolveClaims(root string, streams []*Stream) (map[string]bool, ClaimSource
 		return map[string]bool{}, ClaimSource{Reason: err.Error()}
 	}
 	claimed := claimedBriefs(streams, branches)
-	// Placeholder claim-awareness (issue-loop/01): an open fix/issue-<NN>
-	// branch excludes that issue's placeholder from Next-up (mm/08).
+	// Placeholder claim-awareness: an open fix/issue-<NN>
+	// branch excludes that issue's placeholder from Next-up.
 	for k := range claimedPlaceholders(streams, branches) {
 		claimed[k] = true
 	}
@@ -82,12 +82,12 @@ func resolveClaims(root string, streams []*Stream) (map[string]bool, ClaimSource
 }
 
 // This repo's brief-branch conventions (CLAUDE.md "one brief = one branch = one PR"),
-// verified against `git branch -r` at authoring time (issue #156):
+// verified against `git branch -r` at authoring time:
 //
 //	fix|feature|feat/<stream>-<NN>[-slug]  e.g. fix/ledger-hardening-06-idempotency
 //	docs/<stream>-<NN>[-slug]              e.g. docs/frontend-14-auth-e2e-closeout
 //	chore/<stream>-<NN>[-slug]
-//	<stream>/brief-<NN>[-slug]             e.g. methodology/brief-05, methodology-metrics/brief-04
+//	<stream>/brief-<NN>[-slug]             e.g. ledger-hardening/brief-05, frontend/brief-04
 //
 // A branch matching neither shape returns ok=false and is ignored — it must never be
 // mistaken for a claim on some unrelated brief.

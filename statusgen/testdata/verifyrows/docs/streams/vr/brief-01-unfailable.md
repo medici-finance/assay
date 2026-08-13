@@ -21,7 +21,7 @@ sources: ["fixture: unfailable Verify rows"]
 | 1 | `grep -ciE "arm64\|amd64\|version" S1-report.md` | ≥1 (platform verdict recorded) |
 | 2 | `grep -c "medici-stuff" docs/brand/README.md` | 0 (stale bot name fixed) |
 | 3 | `ls ~/.claude/skills/ \| grep -cE "the-desk\|verify-desk"` | 0 (loose copies retired) |
-| 4 | `dpm test \| tee test.log` | exit 0 |
+| 4 | `go test \| tee test.log` | exit 0 |
 | 5 | `gh issue view <N> --json body` | the decision is recorded |
 | 6 | `DESKPUSHGUARD_OFF=1 ...merged-fixture...; echo $?` | 0 with a stderr override warning |
 

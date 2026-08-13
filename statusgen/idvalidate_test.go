@@ -117,17 +117,25 @@ func TestIDFormatProblemsDuplicateSlugInFixture(t *testing.T) {
 	}
 }
 
-// ----- new numeric ID fails (Verify 3) -----
+// ----- new numeric ID fails when git IS present but origin/main is
+// unresolvable — T9's fail-CLOSED default -----
 
 func TestIDFormatProblemsNewNumericInFixture(t *testing.T) {
 	root := t.TempDir()
+	gitRun(t, root, "init", "-q")
 	fdir := filepath.Join(root, "docs", "streams", "findings")
 	mustMkdirAll(t, fdir)
-	os.WriteFile(filepath.Join(fdir, "2026-07-15-new-numeric.md"),
-		[]byte("---\nid: F-33\ndate: \"2026-07-15\"\ntitle: New finding with numeric id\naffects: []\nresolved: true\n---\n\nBody."), 0o644)
+	writeTemp(t, fdir, "2026-07-15-new-numeric.md",
+		"---\nid: F-33\ndate: \"2026-07-15\"\ntitle: New finding with numeric id\naffects: []\nresolved: true\n---\n\nBody.")
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "add F-33")
 
-	// In a temp dir (no git), mergedRegisterFiles returns empty -> all entries
-	// are "new", so any numeric id should trigger the regression PROBLEM.
+	// A real git checkout with no origin/main ref fails CLOSED (T9): all ids
+	// are treated as new, so any numeric id should trigger the regression
+	// PROBLEM. This is deliberately unchanged — the fix there
+	// is scoped to trees with NO .git directory at all (see
+	// TestIDFormatProblemsLegacyNumericSkippedWithoutGit below), not to a real
+	// checkout whose origin/main happens to be unresolvable.
 	problems := idFormatProblems(root)
 	found := false
 	for _, p := range problems {
@@ -140,22 +148,45 @@ func TestIDFormatProblemsNewNumericInFixture(t *testing.T) {
 	}
 }
 
-// ----- legacy numeric set passes when grandfathered (Verify 4) -----
+// ----- a tree with NO .git directory at all (a `git archive`
+// export) must not misjudge a pre-existing legacy-numeric id as a freshly
+// minted regression -----
 
-func TestIDFormatProblemsLegacyNumericPassesInGit(t *testing.T) {
+func TestIDFormatProblemsLegacyNumericSkippedWithoutGit(t *testing.T) {
 	root := t.TempDir()
 	fdir := filepath.Join(root, "docs", "streams", "findings")
 	mustMkdirAll(t, fdir)
 	os.WriteFile(filepath.Join(fdir, "2026-07-08-legacy.md"),
 		[]byte("---\nid: F-01\ndate: \"2026-07-08\"\ntitle: Legacy finding\naffects: []\nresolved: true\n---\n\nBody."), 0o644)
 
-	// Without git, this flags as new-numeric regression.
+	// root has no .git directory at all — the git-archive export scenario.
+	// Without ANY history to consult, the numeric-regression
+	// rule cannot distinguish a pre-existing legacy id from one freshly
+	// minted on this branch, so it must be skipped outright rather than
+	// mis-fire against every legacy entry (87 of them, in the field
+	// report).
 	problems := idFormatProblems(root)
-	if len(problems) == 0 {
-		t.Error("in a tempdir without git, new numeric id should flag")
+	for _, p := range problems {
+		if strings.Contains(p, "F-01") {
+			t.Errorf("legacy numeric id F-01 must not fire a PROBLEM with no .git directory present; got %v", problems)
+		}
 	}
 	if !isValidRegisterID("F-01") {
 		t.Error("F-01 should be valid format (legacy numeric)")
+	}
+
+	// The degradation must still be visible, not silently indistinguishable
+	// from a clean run: grandfatheredBaseFallbackNotices names the missing
+	// .git directory as the cause.
+	notices := grandfatheredBaseFallbackNotices(root)
+	found := false
+	for _, n := range notices {
+		if strings.Contains(n, "no .git directory") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a NOTICE naming the missing .git directory as the cause; got %v", notices)
 	}
 }
 
@@ -206,14 +237,19 @@ func TestIDFormatProblemsValidSlugPasses(t *testing.T) {
 
 func TestIDFormatProblemsMixedFormats(t *testing.T) {
 	root := t.TempDir()
+	gitRun(t, root, "init", "-q")
 	fdir := filepath.Join(root, "docs", "streams", "findings")
 	mustMkdirAll(t, fdir)
 
-	os.WriteFile(filepath.Join(fdir, "2026-07-15-slug.md"),
-		[]byte("---\nid: F-oracle-topology\ndate: \"2026-07-15\"\ntitle: Oracle topology issue\naffects: []\nresolved: true\n---\n\nBody."), 0o644)
-	os.WriteFile(filepath.Join(fdir, "2026-07-15-new-numeric.md"),
-		[]byte("---\nid: F-50\ndate: \"2026-07-15\"\ntitle: Should not be numeric\naffects: []\nresolved: true\n---\n\nBody."), 0o644)
+	writeTemp(t, fdir, "2026-07-15-slug.md",
+		"---\nid: F-oracle-topology\ndate: \"2026-07-15\"\ntitle: Oracle topology issue\naffects: []\nresolved: true\n---\n\nBody.")
+	writeTemp(t, fdir, "2026-07-15-new-numeric.md",
+		"---\nid: F-50\ndate: \"2026-07-15\"\ntitle: Should not be numeric\naffects: []\nresolved: true\n---\n\nBody.")
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "add fixtures")
 
+	// A real git checkout with no origin/main ref (T9 fail-closed): the
+	// numeric id is treated as new and flagged; the slug id is unaffected.
 	problems := idFormatProblems(root)
 
 	foundNumeric := false
@@ -258,14 +294,18 @@ func TestIDFormatProblemsCompletelyInvalid(t *testing.T) {
 
 func TestIDFormatProblemsIntakeEntries(t *testing.T) {
 	root := t.TempDir()
+	gitRun(t, root, "init", "-q")
 	idir := filepath.Join(root, "docs", "streams", "intake")
 	mustMkdirAll(t, idir)
 
-	os.WriteFile(filepath.Join(idir, "2026-07-15-valid.md"),
-		[]byte("---\nid: I-model-mix-tiers\ndate: \"2026-07-15\"\ntitle: Model mix tiers\ndisposition: new\n---\n\nBody."), 0o644)
-	os.WriteFile(filepath.Join(idir, "2026-07-15-numeric.md"),
-		[]byte("---\nid: I-99\ndate: \"2026-07-15\"\ntitle: Should not be numeric\ndisposition: new\n---\n\nBody."), 0o644)
+	writeTemp(t, idir, "2026-07-15-valid.md",
+		"---\nid: I-model-mix-tiers\ndate: \"2026-07-15\"\ntitle: Model mix tiers\ndisposition: new\n---\n\nBody.")
+	writeTemp(t, idir, "2026-07-15-numeric.md",
+		"---\nid: I-99\ndate: \"2026-07-15\"\ntitle: Should not be numeric\ndisposition: new\n---\n\nBody.")
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "add fixtures")
 
+	// A real git checkout with no origin/main ref (T9 fail-closed).
 	problems := idFormatProblems(root)
 
 	foundNumeric := false

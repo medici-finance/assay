@@ -88,6 +88,46 @@ func TestApplyFindings(t *testing.T) {
 	}
 }
 
+// TestApplyFindingsStreamLevelNotBroadcast is the regression: a finding
+// whose affects: entry names a bare stream (no /NN) is a STREAM-level
+// annotation. Because StaleRef is a hard Next-up exclusion, stamping it on
+// every brief in the stream silently removed the whole stream from dispatch —
+// one note on issue-loop hid 594 todo placeholders. A bare-stream entry must
+// flag no brief; a brief-specific entry must still flag its own brief.
+func TestApplyFindingsStreamLevelNotBroadcast(t *testing.T) {
+	wide := mkStream("issue-loop", "active", "P1",
+		Brief{Num: "01", Wave: 0, Status: "todo", Schema: "placeholder-v1"},
+		Brief{Num: "02", Wave: 0, Status: "todo", Schema: "placeholder-v1"},
+	)
+	narrow := mkStream("methodology", "active", "P1",
+		Brief{Num: "01", Wave: 0, Status: "todo"},
+		Brief{Num: "02", Wave: 0, Status: "todo"},
+	)
+	applyFindings([]*Stream{wide, narrow}, []Finding{
+		// Bare stream + a brief-specific entry in one finding: the bare half
+		// flags nothing, the specific half still flags exactly one brief.
+		{ID: "F-guardrails-dup", Affects: []string{"issue-loop", "methodology/brief-02"}},
+	})
+	for _, b := range wide.Briefs {
+		if b.StaleRef != "" {
+			t.Errorf("bare-stream affects must not flag issue-loop/%s (got %q)", b.Num, b.StaleRef)
+		}
+	}
+	if narrow.Briefs[1].StaleRef != "F-guardrails-dup" {
+		t.Errorf("brief-specific affects must still flag methodology/02: %+v", narrow.Briefs[1])
+	}
+	if narrow.Briefs[0].StaleRef != "" {
+		t.Errorf("unnamed sibling methodology/01 must stay unflagged: %+v", narrow.Briefs[0])
+	}
+
+	// The short `<stream>/<NN>` form (no "brief-" prefix) keeps working too.
+	short := mkStream("ok", "active", "P1", Brief{Num: "07", Wave: 0, Status: "todo"})
+	applyFindings([]*Stream{short}, []Finding{{ID: "F-13", Affects: []string{"ok/07"}}})
+	if short.Briefs[0].StaleRef != "F-13" {
+		t.Errorf("short <stream>/<NN> affects form must still flag: %+v", short.Briefs[0])
+	}
+}
+
 func TestCheckMaxConcurrent(t *testing.T) {
 	zero := 0
 	one := 1

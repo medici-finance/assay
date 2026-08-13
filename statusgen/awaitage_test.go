@@ -72,7 +72,7 @@ func TestRenderAge(t *testing.T) {
 }
 
 // The Awaiting board renders the age column from the ages map, and "—" when
-// the id is missing (mm/17, #282).
+// the id is missing.
 func TestEmitAwaitingAgeColumn(t *testing.T) {
 	s := mkStream("frontend", "active", "P1",
 		Brief{Num: "01", Wave: 0, Status: "implemented"},

@@ -5,8 +5,21 @@
 //  1. last-reviewed date + max-age-days vs today (or --as-of).
 //  2. Any upstream git commit newer than last-reviewed.
 //
+// An artifact may also list individual claims: specific sentences within the
+// document (e.g. a verdict like "CUT — no such circuit exists") that were
+// only true as of a given upstream state. A whole-document review date says
+// nothing about whether ONE claim inside it silently went stale while the
+// rest of the document stayed accurate — that is precisely how a normative
+// document (an audit, a verdict list) can read as authoritative and current
+// while quietly instructing something the world has since falsified
+// (assay#50). Each claim is checked independently: its anchor text
+// must still be present in the file, and its own upstreams/last-reviewed are
+// checked exactly like a whole-document upstream check, but scoped to that
+// one claim so the report names the stale sentence, not just the file.
+//
 // By default every artifact in the manifest is checked and the exit code reflects
-// the whole manifest (exit 0 = all fresh; exit 1 = one or more stale). Pass --only
+// the whole manifest (exit 0 = all fresh; exit 1 = one or more stale — at the
+// whole-document level or at the level of any individual claim). Pass --only
 // (repeatable, or comma-separated) to scope the run — and its exit code — to a
 // subset of artifacts by path, so a caller that only cares about one artifact's
 // own freshness is not coupled to unrelated staleness elsewhere in the manifest.
@@ -33,6 +46,23 @@ type config struct {
 
 type artifact struct {
 	Path         string     `yaml:"path"`
+	LastReviewed string     `yaml:"last-reviewed"`
+	MaxAgeDays   int        `yaml:"max-age-days"`
+	Upstreams    []upstream `yaml:"upstreams"`
+	Claims       []claim    `yaml:"claims"`
+}
+
+// claim is one specific, checkable sentence inside an artifact — typically a
+// verdict ("CUT this line", "no such artifact exists") that was true only as
+// of some upstream state. Anchor is matched as a literal substring against
+// the artifact's current file contents: if it no longer appears, the claim's
+// wording moved or was removed and the manifest is itself stale (reported,
+// not silently skipped). MaxAgeDays is optional (0 = no age ceiling, only
+// upstream-triggered staleness applies) so a claim can be pinned purely to
+// "flag me the moment this upstream path moves" without an arbitrary review
+// cadence.
+type claim struct {
+	Anchor       string     `yaml:"anchor"`
 	LastReviewed string     `yaml:"last-reviewed"`
 	MaxAgeDays   int        `yaml:"max-age-days"`
 	Upstreams    []upstream `yaml:"upstreams"`
@@ -125,6 +155,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 			anyStale = true
 		}
 		fmt.Fprintf(stdout, "%s  %s  %s\n", status, a.Path, reason)
+
+		for _, c := range a.Claims {
+			cStale, cReason := checkClaim(a, c, today, absRoot)
+			cStatus := "FRESH"
+			if cStale {
+				cStatus = "STALE"
+				anyStale = true
+			}
+			fmt.Fprintf(stdout, "  %s  claim %q  %s\n", cStatus, c.Anchor, cReason)
+		}
 	}
 
 	if anyStale {
@@ -160,20 +200,47 @@ func selectOnly(artifacts []artifact, wantPaths []string) ([]artifact, error) {
 }
 
 func checkArtifact(a artifact, today time.Time, root string) (stale bool, reason string) {
-	lr, err := time.Parse("2006-01-02", a.LastReviewed)
+	return checkAgeAndUpstreams(a.LastReviewed, a.MaxAgeDays, a.Upstreams, today, root)
+}
+
+// checkClaim checks one claim within an already-located artifact. It first
+// verifies the claim's anchor text still appears verbatim in the artifact's
+// current contents — if the sentence was reworded or deleted, the manifest
+// entry no longer describes anything real in the file, which is itself a
+// findable drift and is reported rather than silently passed. Only if the
+// anchor is still present does it fall through to the same age/upstream
+// check as a whole-document artifact, scoped to the claim's own fields.
+func checkClaim(a artifact, c claim, today time.Time, root string) (stale bool, reason string) {
+	fullPath := filepath.Join(root, a.Path)
+	data, err := os.ReadFile(fullPath)
 	if err != nil {
-		return true, fmt.Sprintf("bad last-reviewed date %q: %v", a.LastReviewed, err)
+		return true, fmt.Sprintf("cannot read %s to locate claim: %v", a.Path, err)
+	}
+	if !strings.Contains(string(data), c.Anchor) {
+		return true, fmt.Sprintf("anchor not found in %s — claim wording changed or was removed; update freshness.yaml", a.Path)
 	}
 
-	if a.MaxAgeDays > 0 {
-		deadline := lr.AddDate(0, 0, a.MaxAgeDays)
+	return checkAgeAndUpstreams(c.LastReviewed, c.MaxAgeDays, c.Upstreams, today, root)
+}
+
+// checkAgeAndUpstreams is the shared staleness rule used by both whole-document
+// artifacts and individual claims: STALE if last-reviewed + max-age-days has
+// elapsed, or if any upstream glob match has a commit newer than last-reviewed.
+func checkAgeAndUpstreams(lastReviewed string, maxAgeDays int, upstreams []upstream, today time.Time, root string) (stale bool, reason string) {
+	lr, err := time.Parse("2006-01-02", lastReviewed)
+	if err != nil {
+		return true, fmt.Sprintf("bad last-reviewed date %q: %v", lastReviewed, err)
+	}
+
+	if maxAgeDays > 0 {
+		deadline := lr.AddDate(0, 0, maxAgeDays)
 		if today.After(deadline) {
 			return true, fmt.Sprintf("max-age %dd exceeded (reviewed %s, deadline %s, today %s)",
-				a.MaxAgeDays, a.LastReviewed, deadline.Format("2006-01-02"), today.Format("2006-01-02"))
+				maxAgeDays, lastReviewed, deadline.Format("2006-01-02"), today.Format("2006-01-02"))
 		}
 	}
 
-	for _, u := range a.Upstreams {
+	for _, u := range upstreams {
 		repoDir := filepath.Join(root, u.Repo)
 		for _, g := range u.Globs {
 			pattern := filepath.Join(repoDir, g)
@@ -187,13 +254,13 @@ func checkArtifact(a artifact, today time.Time, root string) (stale bool, reason
 					return true, fmt.Sprintf("upstream check error for %s in %s: %v", m, u.Repo, err)
 				}
 				if newer {
-					return true, fmt.Sprintf("upstream %s has commits newer than %s", m, a.LastReviewed)
+					return true, fmt.Sprintf("upstream %s has commits newer than %s", m, lastReviewed)
 				}
 			}
 		}
 	}
 
-	return false, fmt.Sprintf("reviewed %s, max-age %dd", a.LastReviewed, a.MaxAgeDays)
+	return false, fmt.Sprintf("reviewed %s, max-age %dd", lastReviewed, maxAgeDays)
 }
 
 func hasCommitNewerThan(repoDir, path string, since time.Time) (bool, error) {

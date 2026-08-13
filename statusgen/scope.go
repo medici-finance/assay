@@ -5,11 +5,11 @@ import (
 	"strings"
 )
 
-// scope.go — product-scoping for --lint (methodology-metrics/32).
+// scope.go — product-scoping for --lint.
 //
 // statusgen lints every stream across all products at once, so one product's
-// problem can red-gate another product's PR (the PR #788 class). The `serves:`
-// stream-frontmatter tag (example-app | example-service | assay | platform, mm/23)
+// problem can red-gate another product's PR (the PR class). The `serves:`
+// stream-frontmatter tag (example-app | example-service | assay | platform)
 // is the product axis; this file lets a lint run be restricted to a single
 // product so a doc PR in one product is not gated by another's streams.
 //
@@ -114,12 +114,12 @@ func deriveScope(streams []*Stream, changed []string) string {
 
 // servesCoverageNotices flags any stream missing a serves: tag — it can never
 // be product-scoped, so the taxonomy would silently degrade as streams are
-// added. Advisory (NOTICE), never a hard gate (mm/32).
+// added. Advisory (NOTICE), never a hard gate.
 func servesCoverageNotices(streams []*Stream) []string {
 	var out []string
 	for _, s := range streams {
 		if s.Serves == "" {
-			out = append(out, s.Name+": no serves: product tag — cannot be product-scoped (mm/32); tag it example-app|example-service|assay|platform")
+			out = append(out, s.Name+": no serves: product tag — cannot be product-scoped; tag it example-app|example-service|assay|platform")
 		}
 	}
 	return out

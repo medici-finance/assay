@@ -130,8 +130,8 @@ func TestRoadmapHealthRules(t *testing.T) {
 // --- Fixed ordering tests ---
 
 func TestRoadmapFixedOrder(t *testing.T) {
-	lending := mkStream("z-lending", "active", "P2")
-	lending.Serves = "example-app"
+	widgets := mkStream("z-widgets", "active", "P2")
+	widgets.Serves = "example-app"
 	svcStream := mkStream("a-example-service", "active", "P2")
 	svcStream.Serves = "example-service"
 	assay := mkStream("m-assay", "active", "P2")
@@ -141,7 +141,7 @@ func TestRoadmapFixedOrder(t *testing.T) {
 	untagged := mkStream("untagged", "active", "P2")
 	untagged.Serves = ""
 
-	streams := []*Stream{lending, svcStream, assay, platform, untagged}
+	streams := []*Stream{widgets, svcStream, assay, platform, untagged}
 	keys := make([]string, len(streams))
 	for i, s := range streams {
 		keys[i] = roadmapSortKey(s)
@@ -271,11 +271,11 @@ func containsDelta(deltas []string, substr string) bool {
 // --- Goal-mix tests ---
 
 func TestRoadmapGoalMix(t *testing.T) {
-	lending := mkStream("lending-stream", "active", "P1",
+	widgets := mkStream("widgets-stream", "active", "P1",
 		Brief{Num: "01", Wave: 0, Status: "in-progress", Schema: "brief-v1"},
 	)
-	lending.Serves = "example-app"
-	lending.LastTouch = day(0)
+	widgets.Serves = "example-app"
+	widgets.LastTouch = day(0)
 
 	assay := mkStream("assay-stream", "active", "P1",
 		Brief{Num: "01", Wave: 0, Status: "in-progress", Schema: "brief-v1"},
@@ -289,10 +289,10 @@ func TestRoadmapGoalMix(t *testing.T) {
 	)
 	untagged.LastTouch = day(0)
 
-	streams := []*Stream{lending, assay, untagged}
+	streams := []*Stream{widgets, assay, untagged}
 	nu := nextUp(streams, nil, nil)
 
-	// History: 3 assay done transitions in last 24h, 0 lending.
+	// History: 3 assay done transitions in last 24h, 0 widgets.
 	history := []HistoryEntry{
 		{Ts: "2026-07-09T12:00:00Z", Brief: "assay-stream/03", From: "implemented", To: "done"},
 		{Ts: "2026-07-09T13:00:00Z", Brief: "assay-stream/04", From: "implemented", To: "done"},
@@ -302,11 +302,11 @@ func TestRoadmapGoalMix(t *testing.T) {
 	goals, inverted, invertMsg := computeGoalMix(streams, nu, history)
 
 	// Count values.
-	var lendingG, assayG, untaggedG *goalMix
+	var widgetsG, assayG, untaggedG *goalMix
 	for i := range goals {
 		switch goals[i].Goal {
 		case "example-app":
-			lendingG = &goals[i]
+			widgetsG = &goals[i]
 		case "assay":
 			assayG = &goals[i]
 		case "untagged":
@@ -314,12 +314,12 @@ func TestRoadmapGoalMix(t *testing.T) {
 		}
 	}
 
-	if lendingG == nil || assayG == nil || untaggedG == nil {
+	if widgetsG == nil || assayG == nil || untaggedG == nil {
 		t.Fatal("missing expected goal mix entries")
 	}
 
-	if lendingG.Active != 1 {
-		t.Errorf("lending WIP: want 1, got %d", lendingG.Active)
+	if widgetsG.Active != 1 {
+		t.Errorf("widgets WIP: want 1, got %d", widgetsG.Active)
 	}
 	if assayG.Active != 2 {
 		t.Errorf("assay WIP: want 2, got %d", assayG.Active)
@@ -327,13 +327,13 @@ func TestRoadmapGoalMix(t *testing.T) {
 	if assayG.Merged24h != 3 {
 		t.Errorf("assay merged 24h: want 3, got %d", assayG.Merged24h)
 	}
-	if lendingG.Merged24h != 0 {
-		t.Errorf("lending merged 24h: want 0, got %d", lendingG.Merged24h)
+	if widgetsG.Merged24h != 0 {
+		t.Errorf("widgets merged 24h: want 0, got %d", widgetsG.Merged24h)
 	}
 
-	// With 3 assay merges and 0 lending merges, inversion should be detected.
+	// With 3 assay merges and 0 widgets merges, inversion should be detected.
 	if !inverted {
-		t.Errorf("goal mix should be inverted when non-lending dominates")
+		t.Errorf("goal mix should be inverted when non-widgets dominates")
 	}
 	if invertMsg == "" {
 		t.Error("inversion message should be non-empty")
@@ -412,7 +412,7 @@ func TestRoadmapRenderHasRequiredElements(t *testing.T) {
 	html := renderRoadmap(streams, rows, nil, nil, false, "", nu, nil, "abc1234", now)
 
 	required := []string{
-		"3366FF", // Medici blue
+		"3366FF", // brand accent blue
 		"Portfolio Roadmap",
 		"no exceptions", // all-green = no exceptions
 		"example-app",
@@ -495,7 +495,7 @@ func TestRoadmapServesLabel(t *testing.T) {
 	}
 }
 
-// --- Blocker hyperlink tests (methodology-metrics/23 port) ---
+// --- Blocker hyperlink tests ---
 
 // writeFindingFixture creates a findings register under root and returns root.
 func writeFindingFixture(t *testing.T, files map[string]string) string {

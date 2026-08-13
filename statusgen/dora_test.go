@@ -228,9 +228,9 @@ func stubDoraSources(t *testing.T) {
 	t.Cleanup(func() { doraGitCommits, doraMergedPRs, doraBugIssues = oc, om, ob })
 }
 
-// captureStdout defined in alarms_test.go (shared helper, added by mm/05).
+// captureStdout defined in alarms_test.go (shared helper).
 
-// --- DORA time series tests (methodology-metrics/16) -------------------------
+// --- DORA time series tests -------------------------
 
 // doraSeriesFixture returns a multi-week history spanning two ISO weeks:
 //
@@ -585,7 +585,7 @@ func stubDoraSeriesSources(t *testing.T) {
 	})
 }
 
-// --- DORA grouped tests (methodology-metrics/26) -----------------------------
+// --- DORA grouped tests -----------------------------
 
 func loadDoraGroupFixtureHistory(t *testing.T) []HistoryEntry {
 	t.Helper()
@@ -622,11 +622,11 @@ func TestDoraGroupedByStreamKeys(t *testing.T) {
 		t.Errorf("by = %q, want stream", rep.By)
 	}
 	if len(rep.Groups) != 3 {
-		t.Fatalf("got %d groups, want 3 (lending, platform, untagged)", len(rep.Groups))
+		t.Fatalf("got %d groups, want 3 (commerce, platform, untagged)", len(rep.Groups))
 	}
 	// Alphabetical order.
-	if rep.Groups[0].Key != "lending" || rep.Groups[1].Key != "platform" || rep.Groups[2].Key != "untagged" {
-		t.Errorf("group order: %v, want [lending platform untagged]", []string{
+	if rep.Groups[0].Key != "commerce" || rep.Groups[1].Key != "platform" || rep.Groups[2].Key != "untagged" {
+		t.Errorf("group order: %v, want [commerce platform untagged]", []string{
 			rep.Groups[0].Key, rep.Groups[1].Key, rep.Groups[2].Key,
 		})
 	}
@@ -695,7 +695,7 @@ func TestDoraGroupedSmallNAnnotation(t *testing.T) {
 	rep := computeDoraGrouped(in, streams, nil, "stream")
 
 	// untagged stream has 1 done brief (n=1) -> should be small-n.
-	// lending has 2 done briefs -> small-n.
+	// commerce has 2 done briefs -> small-n.
 	// platform has 2 done briefs -> small-n.
 	for _, g := range rep.Groups {
 		if g.N == 0 {
@@ -730,18 +730,18 @@ func TestDoraGroupedLeadTimeMedianP90(t *testing.T) {
 	in := doraInputs{Since: since, Until: until, Now: now, History: history}
 	rep := computeDoraGrouped(in, streams, nil, "stream")
 
-	// lending has 2 done briefs (lending/01: 4d, lending/02: 6d)
-	lending := rep.Groups[0]
-	if lending.Key != "lending" {
-		t.Fatalf("expected first group to be lending, got %s", lending.Key)
+	// commerce has 2 done briefs (commerce/01: 4d, commerce/02: 6d)
+	commerce := rep.Groups[0]
+	if commerce.Key != "commerce" {
+		t.Fatalf("expected first group to be commerce, got %s", commerce.Key)
 	}
-	lt := lending.Metrics[doraLeadTime]
+	lt := commerce.Metrics[doraLeadTime]
 	if !lt.Computed {
-		t.Error("lending lead time should be computed (2 done briefs)")
+		t.Error("commerce lead time should be computed (2 done briefs)")
 	}
 	// median of 4d,6d = 5.0d; p90 of 2 values (index floor(2*0.9)=1) = 6.0d.
 	if !strings.Contains(lt.Value, "/") {
-		t.Errorf("lending lead time = %q, want median/p90 slash form", lt.Value)
+		t.Errorf("commerce lead time = %q, want median/p90 slash form", lt.Value)
 	}
 }
 
@@ -868,11 +868,11 @@ func TestDoraGroupedDeployFreqProxy(t *testing.T) {
 	in := doraInputs{Since: since, Until: until, Now: now, History: history}
 	rep := computeDoraGrouped(in, streams, nil, "stream")
 
-	// lending: 2 done briefs in 20 days → 2/2.857 weeks = 0.7 briefs/week
-	lending := rep.Groups[0]
-	df := lending.Metrics[doraDeployFreq]
+	// commerce: 2 done briefs in 20 days → 2/2.857 weeks = 0.7 briefs/week
+	commerce := rep.Groups[0]
+	df := commerce.Metrics[doraDeployFreq]
 	if !df.Computed {
-		t.Error("lending deploy freq should be computed (2 done briefs)")
+		t.Error("commerce deploy freq should be computed (2 done briefs)")
 	}
 	if !strings.Contains(df.Value, "briefs/week") {
 		t.Errorf("deploy freq = %q, want briefs/week format", df.Value)
@@ -891,22 +891,22 @@ func TestDoraGroupedCFFindingsAndReverts(t *testing.T) {
 	streams := loadDoraGroupFixtureStreams(t)
 	history := loadDoraGroupFixtureHistory(t)
 
-	// Add a finding affecting the lending stream.
+	// Add a finding affecting the commerce stream.
 	findings := []Finding{
-		{ID: "F-test", Date: "2026-07-01", Title: "test finding", Affects: []string{"lending"}, Resolved: false},
+		{ID: "F-test", Date: "2026-07-01", Title: "test finding", Affects: []string{"commerce"}, Resolved: false},
 	}
 
 	in := doraInputs{Since: since, Until: until, Now: now, History: history}
 	rep := computeDoraGrouped(in, streams, findings, "stream")
 
-	lending := rep.Groups[0]
-	cf := lending.Metrics[doraChangeFail]
+	commerce := rep.Groups[0]
+	cf := commerce.Metrics[doraChangeFail]
 	if !cf.Computed {
-		t.Error("lending CF should be computed")
+		t.Error("commerce CF should be computed")
 	}
 	// 1 finding + 0 reverts / 2 done briefs = 50%
 	if !strings.Contains(cf.Value, "50%") {
-		t.Errorf("lending CF = %q, want 50%% (1 finding / 2 done)", cf.Value)
+		t.Errorf("commerce CF = %q, want 50%% (1 finding / 2 done)", cf.Value)
 	}
 }
 
@@ -914,7 +914,7 @@ func TestDoraGroupedCFFindingsAndReverts(t *testing.T) {
 func TestDoraGroupedCFRNoData(t *testing.T) {
 	// Empty history — no briefs reach done.
 	emptyHistory := []HistoryEntry{
-		{Ts: "2026-07-01T00:00:00Z", Brief: "lending/01", From: "", To: "implemented"},
+		{Ts: "2026-07-01T00:00:00Z", Brief: "commerce/01", From: "", To: "implemented"},
 	}
 
 	since, _ := time.Parse(time.RFC3339, "2026-06-25T00:00:00Z")
@@ -925,8 +925,8 @@ func TestDoraGroupedCFRNoData(t *testing.T) {
 	in := doraInputs{Since: since, Until: until, Now: now, History: emptyHistory}
 	rep := computeDoraGrouped(in, streams, nil, "stream")
 
-	lending := rep.Groups[0]
-	cf := lending.Metrics[doraChangeFail]
+	commerce := rep.Groups[0]
+	cf := commerce.Metrics[doraChangeFail]
 	if cf.Value != "unknown" {
 		t.Errorf("CF with no done briefs = %q, want unknown", cf.Value)
 	}
@@ -963,10 +963,10 @@ func TestDoraGroupedGlobalMTTRPresent(t *testing.T) {
 // TestDoraGroupedRevertCounting verifies reverts are counted as CF proxy signals.
 func TestDoraGroupedRevertCounting(t *testing.T) {
 	history := []HistoryEntry{
-		{Ts: "2026-07-01T00:00:00Z", Brief: "lending/01", From: "", To: "implemented"},
-		{Ts: "2026-07-03T00:00:00Z", Brief: "lending/01", From: "implemented", To: "done"},
+		{Ts: "2026-07-01T00:00:00Z", Brief: "commerce/01", From: "", To: "implemented"},
+		{Ts: "2026-07-03T00:00:00Z", Brief: "commerce/01", From: "implemented", To: "done"},
 		// A revert: implemented -> todo
-		{Ts: "2026-07-05T00:00:00Z", Brief: "lending/01", From: "done", To: "todo", SHA: "r1"},
+		{Ts: "2026-07-05T00:00:00Z", Brief: "commerce/01", From: "done", To: "todo", SHA: "r1"},
 	}
 
 	since, _ := time.Parse(time.RFC3339, "2026-06-25T00:00:00Z")
@@ -977,14 +977,14 @@ func TestDoraGroupedRevertCounting(t *testing.T) {
 	in := doraInputs{Since: since, Until: until, Now: now, History: history}
 	rep := computeDoraGrouped(in, streams, nil, "stream")
 
-	lending := rep.Groups[0]
-	cf := lending.Metrics[doraChangeFail]
+	commerce := rep.Groups[0]
+	cf := commerce.Metrics[doraChangeFail]
 	if !cf.Computed {
-		t.Error("lending CF should be computed (1 done + 1 revert)")
+		t.Error("commerce CF should be computed (1 done + 1 revert)")
 	}
 	// 1 revert / 1 done = 100%
 	if !strings.Contains(cf.Value, "100%") {
-		t.Errorf("lending CF = %q, want 100%% (1 revert / 1 done)", cf.Value)
+		t.Errorf("commerce CF = %q, want 100%% (1 revert / 1 done)", cf.Value)
 	}
 }
 

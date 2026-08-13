@@ -7,18 +7,18 @@ import (
 	"strings"
 )
 
-// rowIsBacked implements the I-08 "point quality" distinction for a
+// rowIsBacked implements the "point quality" distinction for a
 // verified/done brief row: `backed` means the row's status can be trusted
 // at face value — its `## Evidence` section has real, independently-attributed
 // content, and the Verified cell (plus, for `done`, the Reviewed cell) names a
 // dated/attributed runner in brief-16's convention. `unbacked` means the row
 // LOOKS the same as a backed one but isn't — exactly the false-confidence
-// signal I-08 exists to surface (a SCADA reading with no quality flag is a lie).
+// signal point quality exists to surface (a SCADA reading with no quality flag is a lie).
 //
 // It returns the per-row reasons a row is unbacked (empty when backed) so the
 // `--lint` NOTICE can name WHY, not just that, a row is flagged.
 //
-// This is a RENDERING check only (methodology-metrics brief-04): it never
+// This is a RENDERING check only: it never
 // blocks and never changes what counts as verified/done — those lifecycle
 // gates belong to brief-02/03/16. Two of those gates (checkBriefFiles,
 // attributionProblems) already enforce a hard version of this same idea, but
@@ -38,7 +38,7 @@ func rowIsBacked(s *Stream, br *Brief) (bool, []string) {
 		reasons = append(reasons, `Verified cell is not a dated runner ("YYYY-MM-DD <runner>")`)
 	}
 	// A `done` row must also name an attributed reviewer — a dated runner OR a
-	// "human:<name>" token (methodology/03). This mirrors checkBriefFiles'
+	// "human:<name>" token. This mirrors checkBriefFiles'
 	// human-gate acceptance (hasHumanReviewer) so point quality never
 	// contradicts it: a bare-but-human-attributed Reviewed cell that legitimately
 	// closes a done brief must not then render `done*`. A `verified` row does not
@@ -55,7 +55,7 @@ func rowIsBacked(s *Stream, br *Brief) (bool, []string) {
 
 // reviewedIsAttributed reports whether a Reviewed cell carries real
 // attribution: a leading date ("YYYY-MM-DD <runner>", the same shape as a
-// Verified cell) or a "human:<name>" token (methodology/03). A bare mark
+// Verified cell) or a "human:<name>" token. A bare mark
 // ("✓", "grandfathered") is neither. Accepting the human token keeps point
 // quality consistent with checkBriefFiles' human-gate acceptance
 // (hasHumanReviewer), which does not itself require a date.
@@ -104,8 +104,8 @@ func briefEvidenceBacked(s *Stream, br *Brief) bool {
 }
 
 // qualityToken renders a brief's Status with its point-quality suffixes:
-//   - `*` — I-08 unbacked: the row's Evidence/attribution cannot confirm it.
-//   - `‡` — methodology-metrics/37: closed over an UNRUN risk-bearing Verify
+//   - `*` — unbacked: the row's Evidence/attribution cannot confirm it.
+//   - `‡` — closed over an UNRUN risk-bearing Verify
 //     row (the live/mutating check never ran, derived from Verify-vs-Evidence
 //     coverage — see unrun.go).
 //
@@ -122,7 +122,7 @@ func qualityToken(s *Stream, br *Brief) string {
 
 // qualityNotices is the --lint NOTICE list (never a hard problem) of
 // unbacked verified/done rows across all streams — the false-confidence
-// points I-08 exists to make visible to the desk. Each notice names the
+// points point quality exists to make visible to the desk. Each notice names the
 // specific reason(s) the row is unbacked. Sorted for stable output.
 func qualityNotices(streams []*Stream) []string {
 	var notices []string
@@ -134,7 +134,7 @@ func qualityNotices(streams []*Stream) []string {
 			}
 			if backed, reasons := rowIsBacked(s, br); !backed {
 				notices = append(notices, fmt.Sprintf(
-					"%s/brief-%s: %s row is unbacked (%s) — I-08 point quality, renders as %s* in STATUS.md",
+					"%s/brief-%s: %s row is unbacked (%s) — point quality, renders as %s* in STATUS.md",
 					s.Name, br.Num, br.Status, strings.Join(reasons, "; "), br.Status))
 			}
 		}

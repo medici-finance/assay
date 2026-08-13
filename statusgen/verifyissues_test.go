@@ -38,7 +38,7 @@ func TestVerifyIssuesSelection(t *testing.T) {
 			// vg/01, vg/02, vg/07, vg/08, vg/11 are all gate:human + verified — emitted
 			// even when already human-reviewed (vg/07, vg/11), because the done-close is
 			// a distinct acceptance touch. vg/09 is gate:human + irreversible + implemented
-			// with VERIFY: PASS — emitted per the #231 chicken-and-egg fix.
+			// with VERIFY: PASS — emitted per the chicken-and-egg fix.
 			// vg/03 is model, vg/04 implemented (no pass), vg/05 done,
 			// vg/06 todo, vg/10 implemented no pass → excluded.
 			want: []string{"vg/01", "vg/02", "vg/07", "vg/08", "vg/09", "vg/11"},
@@ -79,7 +79,7 @@ func TestVerifyIssuesSelection(t *testing.T) {
 // TestVerifyIssuesEmitsAlreadyHumanReviewed pins the two-touch model: a
 // gate:human + verified brief whose Reviewed cell already names a human
 // (vg/07) IS still emitted — the done-close is a distinct acceptance touch,
-// separate from #159's verified-stage review.
+// separate from the verified-stage review.
 func TestVerifyIssuesEmitsAlreadyHumanReviewed(t *testing.T) {
 	root, streams := loadVGStreams(t)
 	found := false
@@ -177,7 +177,7 @@ func TestRenderVerifyGateWhy(t *testing.T) {
 	})
 }
 
-// TestRenderVerifyWhy covers methodology/27: renderVerifyBody emits the
+// TestRenderVerifyWhy covers the why blockquote: renderVerifyBody emits the
 // `> **Why this work exists:** …` blockquote (under the gate-why block,
 // above the mechanical Gate reason line) when the brief carries a why:, and
 // omits it entirely when absent.
@@ -275,7 +275,7 @@ func TestVerifyIssuesExistingMarkersFile(t *testing.T) {
 // TestVerifyIssueTitleTruncation proves the G6 guard: the verifyIssues emitter
 // routes its title through issueTitle() so that an over-long brief title cannot
 // 422 the issue-creation batch. This is the discriminating test requested by the
-// #427 re-review: reverting the issueTitle call to raw string concatenation must
+// re-review: reverting the issueTitle call to raw string concatenation must
 // produce a break that this test catches.
 func TestVerifyIssueTitleTruncation(t *testing.T) {
 	root, streams := loadVGStreams(t)
@@ -328,14 +328,14 @@ func TestCloseVerifyFlipsRow(t *testing.T) {
 		t.Errorf("status = %q, want done", row.Status)
 	}
 	// Date-first ordering, matching the repo convention.
-	if row.Reviewed != "2026-07-09 human:alex" {
-		t.Errorf("reviewed = %q, want %q", row.Reviewed, "2026-07-09 human:alex")
+	if row.Reviewed != "2026-07-09 human:reviewer" {
+		t.Errorf("reviewed = %q, want %q", row.Reviewed, "2026-07-09 human:reviewer")
 	}
 	// Other rows are untouched.
 	if r2 := findRow(s, "02"); r2.Status != "verified" {
 		t.Errorf("vg/02 status changed to %q, want verified", r2.Status)
 	}
-	if !strings.Contains(string(raw), "2026-07-09 human:alex") {
+	if !strings.Contains(string(raw), "2026-07-09 human:reviewer") {
 		t.Error("README missing the stamped Reviewed cell")
 	}
 }
@@ -366,7 +366,7 @@ func TestCloseVerifyAppendsToExistingHuman(t *testing.T) {
 		t.Errorf("status = %q, want done", row.Status)
 	}
 	// Original sign-off preserved verbatim; acceptance touch appended.
-	want := "2026-07-08 human:alex; accepted 2026-07-09 human:alex"
+	want := "2026-07-08 human:alex; accepted 2026-07-09 human:reviewer"
 	if row.Reviewed != want {
 		t.Errorf("reviewed = %q, want %q", row.Reviewed, want)
 	}
@@ -376,9 +376,9 @@ func TestCloseVerifyAppendsToExistingHuman(t *testing.T) {
 }
 
 // TestCloseVerifyAppends_UndatedExisting reproduces the
-// verify-gate-close CI failure on daml-hardening/14: a gate:human brief's
+// verify-gate-close CI failure on a hardening stream's gate:human brief: its
 // Reviewed cell at `verified` was a bare, UNDATED "human:alex" — a sanctioned
-// value (methodology/03's hasHumanReviewer does not require a date). Prior to
+// value (hasHumanReviewer does not require a date). Prior to
 // the fix, close-verify appended its acceptance stamp AFTER that undated
 // content ("human:alex; accepted 2026-07-09 human:alex"), producing a cell that
 // does not start with a date and so fails methodology/19's own --lint rule
@@ -407,7 +407,7 @@ func TestCloseVerifyAppends_UndatedExisting(t *testing.T) {
 	}
 	// The new dated stamp must lead (nothing to anchor on in the undated
 	// prior), with the original undated sign-off preserved as a trailing note.
-	want := "2026-07-09 human:alex; prior human:alex"
+	want := "2026-07-09 human:reviewer; prior human:alex"
 	if row.Reviewed != want {
 		t.Errorf("reviewed = %q, want %q", row.Reviewed, want)
 	}
@@ -479,7 +479,7 @@ func TestRunVerifyIssuesEmptyJSON(t *testing.T) {
 	}
 }
 
-// TestVerifyIssuesIrreversibleAtImplemented covers the chicken-and-egg fix (#231):
+// TestVerifyIssuesIrreversibleAtImplemented covers the chicken-and-egg fix:
 // an irreversible brief at implemented whose Evidence records a model verify pass
 // IS emitted; one without the marker is NOT emitted; a non-irreversible brief at
 // implemented is never emitted regardless of marker.
@@ -620,8 +620,8 @@ func TestCloseVerifyIrreversibleAdvance(t *testing.T) {
 	}
 
 	// Reviewed cell stamped with human sign-off.
-	if row.Reviewed != "2026-07-17 human:alex" {
-		t.Errorf("reviewed = %q, want %q", row.Reviewed, "2026-07-17 human:alex")
+	if row.Reviewed != "2026-07-17 human:reviewer" {
+		t.Errorf("reviewed = %q, want %q", row.Reviewed, "2026-07-17 human:reviewer")
 	}
 }
 

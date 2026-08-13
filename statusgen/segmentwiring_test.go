@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// Wiring tests for the Awaiting-board segmentation (methodology-metrics/34).
+// Wiring tests for the Awaiting-board segmentation.
 //
 // WHY THESE EXIST AS A SEPARATE LAYER. TestSegmentClassifier and
 // TestAwaitingSegmentedAssertions build Brief structs BY HAND, so they pin the
@@ -192,7 +192,7 @@ func TestSegmentWiringLiveMarkerForms(t *testing.T) {
 		evidence string
 	}{
 		{
-			name:     "assay-dogfood/01 form (bold span wraps a longer phrase)",
+			name:     "bold-span form: bold span wraps a longer phrase",
 			evidence: "**Non-implementer verifier run — VERIFY: PASS** · 2026-07-20 · `glm-5.2-verifier` · merged main `73d01752`",
 		},
 		{
@@ -209,7 +209,7 @@ func TestSegmentWiringLiveMarkerForms(t *testing.T) {
 	}
 }
 
-// TestSegmentWiringAccumulatedEvidence is the issue-loop/09 shape through the
+// TestSegmentWiringAccumulatedEvidence is the accumulated-evidence shape through the
 // production path: a `verified` brief whose Evidence holds superseded FAIL
 // records followed by the PASS that promoted it. Any-occurrence matching pinned
 // it in rework where the desk would never drain it and the headline would never

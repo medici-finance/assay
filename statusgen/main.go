@@ -21,20 +21,20 @@ import (
 //   - "lint":  run every source check AND build the view (a true superset of
 //     generation), but with NO STATUS.md read, write, or drift comparison. This
 //     is the PR-side gate — STATUS.md has a single writer (main's CI), so
-//     branches must never depend on or touch it (methodology/15). Callers
+//     branches must never depend on or touch it. Callers
 //     going through main() get the CLAUDE.md budget check by default in this
-//     mode (resolveBudgetSpecs, issue #470) — run() itself only checks
+//     mode (resolveBudgetSpecs) — run() itself only checks
 //     whatever budget specs it is handed.
 //   - "record": diff current brief status against docs/streams/.history.jsonl
 //     and append any transitions. Single-writer, same as STATUS.md itself —
-//     wired ONLY into main's status-regen CI, run AFTER STATUS.md regenerates
-//     (methodology-metrics/01). Never invoked by --lint.
+//     wired ONLY into main's status-regen CI, run AFTER STATUS.md regenerates.
+//     Never invoked by --lint.
 func run(root, mode string, budget []string, changed []string, scope string) int {
-	// Word-budget checks (methodology/37) run FIRST — a budget violation is a
+	// Word-budget checks run FIRST — a budget violation is a
 	// hard PROBLEM just like any other source-check failure. Malformed specs
 	// were already caught in main() before reaching run().
 	//
-	// A budget failure does NOT short-circuit the remaining phases (issue #163).
+	// A budget failure does NOT short-circuit the remaining phases.
 	// It used to: the run reported `FAIL 1` and the link check never ran, which
 	// read as "65 problems just got fixed" to anyone diffing lint output across
 	// two trees — the dominant way this output is used in review. The budget
@@ -65,10 +65,10 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	}
 	// Attach issue-loop placeholders (schema: placeholder-v1) as synthetic Briefs
 	// BEFORE any check or view build, so the whole pipeline — check, Next-up
-	// eligibility/scoring, emit — treats them as first-class rows (issue-loop/01).
+	// eligibility/scoring, emit — treats them as first-class rows.
 	// Malformed placeholder files are surfaced by checkPlaceholderFiles below.
 	attachPlaceholders(streams)
-	// Product-scoping (methodology-metrics/32): per-stream checks may be
+	// Product-scoping: per-stream checks may be
 	// restricted to a single product (serves:) so one product's PR is not
 	// red-gated by another product's stream. An explicit --scope wins; otherwise
 	// CI's --changed set auto-derives the scope (deriveScope). checkStreams feeds
@@ -85,9 +85,21 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// Per-stream/per-brief checks run against the scoped set; the findings
 	// affects: known-stream validation resolves against the FULL stream set so a
 	// single-product PR never falsely flags a finding referencing another
-	// product's stream as "unknown stream" (#834).
+	// product's stream as "unknown stream".
 	problems, notices := checkScoped(checkStreams, streams, findings)
-	// Budget findings lead the report (issue #163) — same ordering as before,
+	// A root that loaded cleanly but discovered zero streams.
+	// Checked against the FULL stream set, never checkStreams — an
+	// --scope-filtered subset being empty is normal (a single-product PR) and
+	// must not trip this; this is about the ROOT contributing nothing at all.
+	if len(streams) == 0 {
+		msg := emptyRootMessage(root)
+		if allowEmptyRoot {
+			notices = append(notices, msg)
+		} else {
+			problems = append(problems, msg)
+		}
+	}
+	// Budget findings lead the report — same ordering as before,
 	// now as part of the union rather than instead of it.
 	problems = append(budgetProblems, problems...)
 	// Problem classification. TWO classes. Both are reported
@@ -128,13 +140,27 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// and why the off-board class is kept to the single check that provably
 	// cannot indicate board wrongness.
 	var offBoardProblems []string
+	// No .git directory at all (a `git archive` export) means
+	// every git-history-dependent check below runs degraded or is skipped
+	// outright — register ID grandfathering, the tombstone-deletion and
+	// field-gutting guards, the human-stamp gate, claim filtering. Individual
+	// checks report their own degradation where it changes their verdict (see
+	// grandfatheredBaseFallbackNotices, registerBaseFallbackNotices,
+	// humanStampProblems); this NOTICE fires unconditionally and up front so
+	// the caveat is visible even when no individual check happens to have
+	// data to mis-fire on. Differential lint output — "is this red mine or
+	// pre-existing?" — is unsound across a run against this kind of tree: the
+	// fix is a real worktree (`git worktree add`), not `git archive`.
+	if hasNoGitDir(root) {
+		notices = append(notices, "git metadata unavailable: this tree has no .git directory (e.g. a `git archive` export) — checks that depend on git history run degraded or are skipped outright, so PROBLEM/NOTICE counts from this run are NOT comparable to a run against a real worktree. Use `git worktree add` to compare tree states, not `git archive`.")
+	}
 	// serves: coverage — a stream with no product tag can never be scoped;
-	// NOTICE it so the taxonomy stays complete as streams are added (mm/32).
+	// NOTICE it so the taxonomy stays complete as streams are added.
 	notices = append(notices, servesCoverageNotices(streams)...)
 	briefProblems, briefNotices := checkBriefFiles(checkStreams)
 	problems = append(problems, briefProblems...)
 	notices = append(notices, briefNotices...)
-	// consumers: routing claims (brief-rule 9, methodology-metrics/21). Offline
+	// consumers: routing claims (brief-rule 9). Offline
 	// half only: a follow-up naming a brief that does not exist is DISPROVED by
 	// the stream tables and is a hard problem; anything needing a diff to settle
 	// is a NOTICE here and the gate is `--consumers`, which judges it against the
@@ -145,6 +171,13 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	placeholderProblems, placeholderNotices := checkPlaceholderFiles(checkStreams)
 	problems = append(problems, placeholderProblems...)
 	notices = append(notices, placeholderNotices...)
+	// The per-stream done/ archive checks — a NOTICE for a
+	// retired placeholder still at the stream root (archive candidate) and a
+	// PROBLEM for any non-done brief/placeholder parked under done/. Additive,
+	// outside the tombstone guard (registers.go).
+	archiveProblems, archiveNotices := checkArchivedPlaceholders(checkStreams)
+	problems = append(problems, archiveProblems...)
+	notices = append(notices, archiveNotices...)
 	notices = append(notices, freshnessCheckNotices(checkStreams)...)
 	// `repo:` frontmatter validation: form + one-repo-per-
 	// root agreement. Runs on the FULL stream set, not the scoped subset — repo
@@ -161,7 +194,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// itself — a silent fail-open. Say so rather than run degraded in silence
 	// (review NOTE); advisory, never a hard problem.
 	notices = append(notices, registerBaseFallbackNotices(root)...)
-	// Human-stamp sole-writer gate (methodology-metrics/43): verify-gate-close.yml
+	// Human-stamp sole-writer gate: verify-gate-close.yml
 	// is the sole permitted writer of human:<name> sign-off stamps in stream-README
 	// Verified/Reviewed cells. This --lint rule flags any stamp gained on a PR
 	// branch relative to the merge-base with origin/main. Armed only on branches
@@ -188,7 +221,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	notices = append(notices, darNotices...)
 	problems = append(problems, attributionProblems(checkStreams)...)
 	problems = append(problems, verifySectionProblems(checkStreams)...)
-	// Unfailable Verify rows (#509): a row whose command is structurally
+	// Unfailable Verify rows: a row whose command is structurally
 	// incapable of failing manufactures evidence. NOTICE this phase — the rules
 	// fire on briefs already on main, many of them closed, and rewriting a closed
 	// brief's Verify table to green the gate is the very falsification the check
@@ -199,18 +232,18 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// file. It is also the only check that catches a README row whose brief file
 	// does not exist — see the classification comment above.
 	problems = append(problems, linkProblems(root, docFiles(root))...)
-	// Register-reference link lint (methodology/33): for every markdown link
+	// Register-reference link lint: for every markdown link
 	// whose text is F-NN/I-NN, verify target file exists and frontmatter id
 	// matches. Bare refs are never checked. BLOCKING for the same reason — it
 	// takes the same docFiles(root) superset.
 	rp, rn := registerRefProblems(root, docFiles(root))
 	problems = append(problems, rp...)
 	notices = append(notices, rn...)
-	// Point-quality (I-08, methodology-metrics/04): unbacked verified/done
+	// Point-quality (I-08): unbacked verified/done
 	// rows are a NOTICE, never a hard problem — this is a rendering/
 	// visibility gap-closer, not a new lifecycle gate.
 	notices = append(notices, qualityNotices(checkStreams)...)
-	// UNRUN board state (methodology-metrics/37, absorbing F-impl-claims-unproven):
+	// UNRUN board state (absorbing F-impl-claims-unproven):
 	// a verified/done brief closed over a risk-bearing Verify row that has no
 	// completed Evidence row behind it. BLOCKING class — it reads brief files,
 	// the same sources the board reads, and it can make a `done` row wrong.
@@ -220,17 +253,17 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	unrunProblems, unrunNotices := unrunGateChecks(root, checkStreams)
 	problems = append(problems, unrunProblems...)
 	notices = append(notices, unrunNotices...)
-	// Standing-alarm / flood NOTICEs (methodology-metrics/05, ISA-18.2): surface
+	// Standing-alarm / flood NOTICEs (ISA-18.2): surface
 	// findings past the age threshold (and register floods) so the desk/retro sees
 	// them without a manual FINDINGS.md scan. Advisory only — never hard problems.
 	notices = append(notices, standingAlarmNotices(findings, currentAlarmConfig(), nowFunc())...)
-	// Verification-debt alarm (methodology-metrics/10): the Awaiting queue
+	// Verification-debt alarm: the Awaiting queue
 	// is the throughput valve — fire a NOTICE when depth crosses threshold
 	// or exceeds the total done count.
 	if n := debtNotice(checkStreams); n != "" {
 		notices = append(notices, n)
 	}
-	// Intake untriaged-age alarm (issue-loop/07): surface untriaged intake
+	// Intake untriaged-age alarm: surface untriaged intake
 	// entries past the 3-day threshold. Offline/deterministic — keys on
 	// disposition: new only and uses the in-git date frontmatter.
 	intakeAlarmResult := IntakeAlarmResult{}
@@ -238,7 +271,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	if intakeErr != nil {
 		// Best-effort: a broken intake dir produces a diagnostic NOTICE
 		// but never a hard failure — the board must still build.
-		notices = append(notices, fmt.Sprintf("intake register unreadable: %v (issue-loop/07)", intakeErr))
+		notices = append(notices, fmt.Sprintf("intake register unreadable: %v", intakeErr))
 	} else {
 		intakeAlarmResult = intakeAlarm(intakeEntries, nowFunc())
 		if n := intakeDebtNotice(intakeAlarmResult); n != "" {
@@ -247,12 +280,12 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		// Surface per-entry bad-date NOTICEs (named ID + offending value) so a
 		// typo'd date field never silently exempts an entry from the age alarm.
 		notices = append(notices, intakeAlarmResult.BadDates...)
-		// Surface decision-needed entries without a decision-issue (issue-loop/08).
+		// Surface decision-needed entries without a decision-issue.
 		// Advisory only — the entry may have been flipped moments before the issue
 		// is filed, but it must not stay that way.
 		notices = append(notices, intakeDecisionIssueNotices(intakeEntries)...)
 		// Surface scoped→<stream> entries whose target stream was never authored
-		// and have aged past the threshold (#119): the intake-desk tier gate only
+		// and have aged past the threshold: the intake-desk tier gate only
 		// QUEUES stream/brief authoring by flipping the entry — nothing drains the
 		// queue, so a flip can dangle indefinitely with no alarm. Advisory only,
 		// keyed on the full known-stream set so a target that IS a real stream never
@@ -263,7 +296,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// BLOCKING problems short-circuit before the view is built — a broken source
 	// set can't produce a meaningful Next-up. Notices still surface. Off-board
 	// problems are reported here too, so a run that stops early still lists
-	// everything it found (issue #163's "which checks ran" property).
+	// everything it found (the "which checks ran" property).
 	if len(problems) > 0 {
 		emitNotices(notices)
 		for _, p := range problems {
@@ -289,7 +322,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// the run says so (NOTICE + in-board banner below) instead of quietly emitting
 	// the superset as if it had filtered.
 	claimed, claimSource := resolveClaims(root, streams)
-	// Per-brief staleness clock (methodology-metrics/14): read each brief's own
+	// Per-brief staleness clock: read each brief's own
 	// last recorded transition from the historian so aging measures from the
 	// brief's history, not the stream's git touch. A missing/unreadable log just
 	// yields an empty map — every brief then falls back to stream LastTouch.
@@ -297,8 +330,8 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	if entries, err := LoadHistory(filepath.Join(root, filepath.FromSlash(historyRelPath))); err == nil {
 		briefTouch = LastTransitionTime(entries)
 	}
-	// Stale-implemented alarm (F-impl-claims-unproven rec 3, wired through
-	// methodology-metrics/37's derivation): an `implemented` brief with none of
+	// Stale-implemented alarm (F-impl-claims-unproven rec 3): an `implemented`
+	// brief with none of
 	// its Verify rows corroborated, aged past the threshold. Lives HERE rather
 	// than in the check phase because it needs both the historian's per-brief
 	// transition times and the git LastTouch fallback, neither of which is
@@ -319,17 +352,17 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		}
 	}
 	// Span-of-control overflow is a WIP-pressure alarm, surfaced as a --lint
-	// NOTICE as well as an in-STATUS line (methodology-metrics/06).
+	// NOTICE as well as an in-STATUS line.
 	if nu.Overflow() {
 		notices = append(notices, fmt.Sprintf(
 			"Next-up overflow: %d of %d eligible shown, %d held back (span-of-control cap %d) — WIP pressure",
 			len(nu.Picks), nu.Eligible, nu.HeldBack(), nu.Span))
 	}
-	// Decision-surface check (issue-loop/06 task 3a, the "top-of-Next-up" leg):
+	// Decision-surface check (the "top-of-Next-up" leg):
 	// a gate:human brief PICKED for Next-up while still `todo` is about to be
 	// dispatched into its human gate — surface the missing decision issue NOW,
 	// before the wait turns invisible. Scoped to actual picks (not the whole
-	// todo backlog) so the register is not flooded (#427 review); dispatched/
+	// todo backlog) so the register is not flooded (review); dispatched/
 	// awaiting statuses are covered status-wide in checkBriefFiles.
 	notices = append(notices, nextUpDecisionNotices(nu)...)
 	emitNotices(notices)
@@ -353,7 +386,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 			len(offBoardProblems), tail)
 	}
 
-	// Awaiting-age (mm/17, #282): render how long each awaiting row has sat in
+	// Awaiting-age: render how long each awaiting row has sat in
 	// its current status, from the historian. Best-effort: a missing/unreadable
 	// log renders "—" everywhere, never an error — the board must still build.
 	var ages map[string]string
@@ -503,7 +536,7 @@ func runRoots(roots []string, mode string, budget []string, changed []string, sc
 }
 
 // runGateScores loads streams, computes the historian-backed gate scores for all
-// awaiting briefs, and emits them as a JSON array (methodology-metrics/11).
+// awaiting briefs, and emits them as a JSON array.
 // Each row: {brief, score, blockedCount, stream, status}. Sorted by score
 // descending. STATUS.md-free — never reads or writes the generated board.
 func runGateScores(root string) int {
@@ -562,8 +595,7 @@ func emitNotices(notices []string) {
 	}
 }
 
-// budgetFlags is a repeatable --budget flag that accumulates "path:maxwords" specs
-// (methodology/37).
+// budgetFlags is a repeatable --budget flag that accumulates "path:maxwords" specs.
 type budgetFlags []string
 
 func (b *budgetFlags) String() string { return strings.Join(*b, ", ") }
@@ -630,34 +662,35 @@ func main() {
 	// prints no default in usage output, and the default is unchanged.
 	flag.Var(&roots, "root", `repository root (default "."; repeatable — one STATUS.md per root)`)
 	checkMode := flag.Bool("check", false, "verify STATUS.md is current instead of writing it")
-	lintMode := flag.Bool("lint", false, "run all checks without reading or writing STATUS.md (defaults --budget to "+defaultBudgetSpec+" unless overridden; issue #470)")
+	lintMode := flag.Bool("lint", false, "run all checks without reading or writing STATUS.md (defaults --budget to "+defaultBudgetSpec+" unless overridden)")
+	allowEmptyRootFlag := flag.Bool("allow-empty-root", false, "allow a root whose docs/streams exists but resolves to 0 streams (default: hard PROBLEM, same class as a missing/unreadable docs/streams); with this flag it downgrades to a NOTICE, for a root that has genuinely adopted the methodology but has not authored a stream yet")
 	var budget budgetFlags
-	flag.Var(&budget, "budget", "word-budget check: relpath:maxwords (repeatable; methodology/37); overrides --lint's default of "+defaultBudgetSpec)
+	flag.Var(&budget, "budget", "word-budget check: relpath:maxwords (repeatable); overrides --lint's default of "+defaultBudgetSpec)
 	recordMode := flag.Bool("record", false, "append brief status transitions to docs/streams/.history.jsonl (main CI only)")
 	verifyIssuesMode := flag.Bool("verify-issues", false, "emit JSON for newly-eligible verify-gate (gate:human + verified) briefs")
 	existingMarkers := flag.String("existing-markers", "", "file of already-existing verify-gate issue markers (one per line, or raw issue bodies)")
-	// Decision issues (issue-loop/06) — self-contained sub-command that emits
+	// Decision issues — self-contained sub-command that emits
 	// JSON for gate:human briefs at implemented/verified that lack an open
 	// needs-decision issue. Same STATUS.md-free discipline as verify-issues.
 	decisionIssuesMode := flag.Bool("decision-issues", false, "emit JSON for newly-eligible needs-decision (gate:human + implemented/verified) briefs")
 	decisionMarkers := flag.String("decision-markers", "", "file of already-existing decision-issue markers (one per line, or raw issue bodies)")
-	// Issue scanner (issue-loop/02) — self-contained sub-command that reads OPEN
+	// Issue scanner — self-contained sub-command that reads OPEN
 	// issues across the fixed repo set (gh) and WRITES a placeholder brief per
 	// unhandled one. Never invoked by --lint (no network dependency on the offline
 	// gate); never pushes or mutates GitHub issues (read-only there).
 	scanIssuesMode := flag.Bool("scan-issues", false, "emit placeholder briefs for unhandled OPEN issues across the fixed repo set (reads gh; writes files, never STATUS.md)")
 	scanDryRun := flag.Bool("dry-run", false, "with --scan-issues: list what WOULD be created without writing")
-	closeVerifyID := flag.String("close-verify", "", "flip <stream>/<NN> verified→done with a human:alex sign-off (refuses if not verified/gate:human)")
-	registerLinksFlag := flag.Bool("register-links", false, "backfill: rewrite bare F-NN/I-NN tokens in brief files to linked form (methodology/33)")
+	closeVerifyID := flag.String("close-verify", "", "flip <stream>/<NN> verified→done with a human:<name> sign-off (refuses if not verified/gate:human)")
+	registerLinksFlag := flag.Bool("register-links", false, "backfill: rewrite bare F-NN/I-NN tokens in brief files to linked form")
 	span := flag.Int("span", defaultSpanOfControl, "Next-up span-of-control cap: max items shown (default 20 — agent-worked queue, not the human EEMUA-191 7±2)")
 	overflowT := flag.Int("overflow-threshold", -1, "eligible-brief count above which Next-up flags overflow; <0 = same as --span")
 	requireClaimsFlag := flag.Bool("require-claims", false, "fail (exit 1, nothing written) instead of emitting a degraded board when the origin claim read fails")
-	// FINDINGS alarm-KPI knobs (methodology-metrics/05, ISA-18.2). Standalone
+	// FINDINGS alarm-KPI knobs (ISA-18.2). Standalone
 	// block so sibling statusgen flag PRs merge trivially.
 	alarmsMode := flag.Bool("alarms", false, "print FINDINGS alarm KPIs (rate, standing-alarm age, flood) and exit")
 	standingAge := flag.Int("standing-age-days", defaultStandingAgeDays, "standing-alarm age threshold in days (default ~1 retro-cycle)")
 	flood := flag.Int("flood-threshold", defaultFloodThreshold, "active-unresolved finding count above which the register floods (ISA-18.2)")
-	// DORA metrics emitter (methodology-metrics/02) — self-contained sub-command.
+	// DORA metrics emitter — self-contained sub-command.
 	// DORA metrics are DIAGNOSTIC, per-project — never a target or scorecard.
 	// NOTE: --dora reuses the shared --since flag (declared below for --trend) —
 	// they are mutually-exclusive sub-commands, so one --since serves both;
@@ -665,16 +698,16 @@ func main() {
 	doraMode := flag.Bool("dora", false, "emit the 5 DORA metrics (throughput + instability) as a system; diagnostic, not a target")
 	doraJSON := flag.Bool("json", false, "machine-readable JSON output. Used with --dora or --code")
 	doraSeries := flag.Bool("series", false, "time series (per-period buckets) instead of a single aggregate. Used with --dora or --code")
-	doraBy := flag.String("by", "", "--dora grouping dimension: stream | goal (methodology-metrics/26)")
-	// --trend (methodology-metrics/03): SCADA historian view over the status log.
+	doraBy := flag.String("by", "", "--dora grouping dimension: stream | goal")
+	// --trend: SCADA historian view over the status log.
 	trendMode := flag.Bool("trend", false, "roll the status-transition log up into a time-series historian view (does not read/write STATUS.md)")
-	// --code (methodology-metrics/19): code-efficiency metrics from ledger artifacts (git + issue register).
+	// --code: code-efficiency metrics from ledger artifacts (git + issue register).
 	codeMode := flag.Bool("code", false, "emit code-efficiency metrics (SLOC delta, churn, defect density, change spread, review depth)")
 	since := flag.String("since", "", "--trend period start / --dora window start / --code window start (YYYY-MM-DD)")
 	weekly := flag.Bool("weekly", false, "--trend: bucket by ISO week (default)")
 	daily := flag.Bool("daily", false, "--trend: bucket by day")
 	historyPath := flag.String("history", "", "--trend: history log path (default docs/streams/.history.jsonl, relative to --root)")
-	// Corroboration check (methodology-metrics/15): self-contained sub-command,
+	// Corroboration check: self-contained sub-command,
 	// same STATUS.md-free discipline as the verify-gate modes. Network-dependent
 	// by nature — never wired into the offline lint gate.
 	consumersMode := flag.Bool("consumers", false, "corroborate the consumers: routing claims of the briefs this branch touches against its own diff (exit 1 = a claim is DISPROVED, 2 = the diff could not be taken)")
@@ -682,7 +715,7 @@ func main() {
 	consumersBrief := flag.String("brief", "", "--consumers: check only this brief (<stream>/<NN>); default = every brief file in the diff")
 	corroborateMode := flag.Bool("corroborate", false, "check human:<name> stamps against PR reviews/comments for corroboration (requires --pr)")
 	corroboratePRs := flag.String("pr", "", "comma-separated PR numbers (required with --corroborate)")
-	// Daily factory-floor bottleneck report (methodology-metrics/18): per-stage
+	// Daily factory-floor bottleneck report: per-stage
 	// WIP + dwell, constraint location, shift detection, prescribed ToC action.
 	// Self-contained diagnostic sub-command — never reads or writes STATUS.md.
 	bottleneckMode := flag.Bool("bottleneck", false, "emit the daily factory-floor bottleneck report (per-stage WIP + dwell, constraint, shift, action)")
@@ -694,20 +727,20 @@ func main() {
 	// Takes two positional args <from> <to> (YYYY-MM-DD) and requires -o <path>.
 	// -o is parsed from flag.Args() because positional args stop flag parsing.
 	exportEvidenceMode := flag.Bool("export-evidence", false, "export an evidence bundle tarball for the given date range (positional <from> <to>; -o <path>; optional -generated <RFC3339> for byte-reproducible output)")
-	// Gate-score emitter (methodology-metrics/11): JSON for deskboard consumption.
+	// Gate-score emitter: JSON for deskboard consumption.
 	gateScoresMode := flag.Bool("gate-scores", false, "emit awaiting-queue gate scores as JSON (brief, score, blockedCount, stream, status)")
 	// Gate-effectiveness telemetry: override rate, catch
 	// rate, ceremonial-gate detection. Self-contained diagnostic sub-command,
 	// same STATUS.md-free discipline as --dora/--trend/--bottleneck. --root
 	// points at ONE window's fixture/data directory (see gatetelemetry.go).
 	gateTelemetryMode := flag.Bool("gate-telemetry", false, "emit gate-effectiveness telemetry (override rate, catch rate, ceremonial-gate detection) for one window's --root")
-	// Product-scoping (methodology-metrics/31+32). --changed: a file of changed
+	// Product-scoping. --changed: a file of changed
 	// repo-relative paths (one per line, CI passes the PR diff) — path-scopes the
 	// DAR check (31) and auto-derives the product scope (32). --scope: an explicit
 	// product override (serves:), skipping auto-derivation. Both apply to --lint;
 	// absent = today's whole-house behavior (main regen never passes them).
-	changedFile := flag.String("changed", "", "file of changed repo-relative paths (one per line); path-scopes the DAR check and auto-derives --scope (mm/31+32)")
-	scopeFlag := flag.String("scope", "", "restrict per-stream lint to one product (serves:): example-app|example-service|assay|platform; overrides --changed derivation (mm/32)")
+	changedFile := flag.String("changed", "", "file of changed repo-relative paths (one per line); path-scopes the DAR check and auto-derives --scope")
+	scopeFlag := flag.String("scope", "", "restrict per-stream lint to one product (serves:): example-app|example-service|assay|platform; overrides --changed derivation")
 	flag.Parse()
 
 	// The roster class is chosen ONCE, from the invoked mode, BEFORE any check can
@@ -770,7 +803,7 @@ func main() {
 		}
 	}
 
-	// Wire the alarm-KPI thresholds (methodology-metrics/05) before any run — the
+	// Wire the alarm-KPI thresholds before any run — the
 	// --lint standing-alarm NOTICE and the --alarms view both read these.
 	if *standingAge >= 0 {
 		standingAgeDays = *standingAge
@@ -779,7 +812,7 @@ func main() {
 		floodThreshold = *flood
 	}
 
-	// Wire the Next-up span-of-control knobs (methodology-metrics/06) before any
+	// Wire the Next-up span-of-control knobs before any
 	// run. The overflow threshold defaults to the span cap: overflow == more
 	// eligible briefs than the span shows.
 	if *span > 0 {
@@ -794,8 +827,13 @@ func main() {
 	// the board must still render, wearing its degradation. A caller that
 	// dispatches from the board sets this and gets exit 1 instead.
 	requireClaims = *requireClaimsFlag
+	// Fail-closed opt-in for a zero-stream root. Default off: a
+	// root that resolves to 0 streams is a hard PROBLEM, matching the three
+	// adjacent cases (missing/unreadable docs/streams, nonexistent root) that
+	// already fail closed.
+	allowEmptyRoot = *allowEmptyRootFlag
 
-	// Budget flags (methodology/37): validate spec syntax early — malformed
+	// Budget flags: validate spec syntax early — malformed
 	// specs are a usage error and should exit before any checks run.
 	budgetSpecs := []string(budget)
 	for _, spec := range budgetSpecs {
@@ -811,13 +849,13 @@ func main() {
 		os.Exit(runVerifyIssues(*root, *existingMarkers))
 	}
 
-	// Decision issues (issue-loop/06): self-contained, same STATUS.md-free
+	// Decision issues: self-contained, same STATUS.md-free
 	// discipline as verify-issues. Emits JSON for gate:human briefs at
 	// implemented/verified lacking an open needs-decision issue.
 	if *decisionIssuesMode {
 		os.Exit(runDecisionIssues(*root, *decisionMarkers))
 	}
-	// Issue scanner (issue-loop/02): self-contained, same STATUS.md-free discipline
+	// Issue scanner: self-contained, same STATUS.md-free discipline
 	// as the verify-gate modes. READ-only against GitHub — it lists issues and
 	// writes local placeholder files; it never creates or mutates an issue.
 	if *scanIssuesMode {
@@ -829,7 +867,7 @@ func main() {
 	if *alarmsMode {
 		os.Exit(runAlarms(*root))
 	}
-	// DORA emitter (methodology-metrics/02) — self-contained sub-command, same
+	// DORA emitter — self-contained sub-command, same
 	// STATUS.md-free discipline as the verify-gate modes above.
 	if *doraMode {
 		by := strings.ToLower(strings.TrimSpace(*doraBy))
@@ -848,7 +886,7 @@ func main() {
 		}
 		os.Exit(runDora(*root, *since, *doraJSON))
 	}
-	// Code-efficiency emitter (methodology-metrics/19) — self-contained sub-command,
+	// Code-efficiency emitter — self-contained sub-command,
 	// same STATUS.md-free discipline as the DORA emitter above.
 	if *codeMode {
 		os.Exit(runCode(*root, *since, *doraJSON, *doraSeries))
@@ -866,13 +904,13 @@ func main() {
 	if *corroborateMode {
 		os.Exit(runCorroborate(*corroboratePRs))
 	}
-	// consumers corroboration (methodology-metrics/21) — self-contained
+	// consumers corroboration — self-contained
 	// sub-command; never reads or writes STATUS.md. Exits 1 when the branch diff
 	// DISPROVES a routing claim, 2 when the diff itself could not be taken.
 	if *consumersMode {
 		os.Exit(runConsumers(*root, *consumersBase, *consumersBrief))
 	}
-	// Bottleneck report (methodology-metrics/18): self-contained diagnostic
+	// Bottleneck report: self-contained diagnostic
 	// sub-command — per-stage WIP + dwell, constraint location, shift detection,
 	// prescribed ToC action. Same STATUS.md-free discipline as --dora/--trend.
 	if *bottleneckMode {
@@ -886,7 +924,7 @@ func main() {
 	if *launchMode {
 		os.Exit(runLaunch(*root, *launchTarget))
 	}
-	// Gate-score emitter (methodology-metrics/11): self-contained JSON output for
+	// Gate-score emitter: self-contained JSON output for
 	// deskboard consumption. Same STATUS.md-free discipline as --dora/--trend.
 	if *gateScoresMode {
 		os.Exit(runGateScores(*root))
@@ -956,11 +994,11 @@ func main() {
 		mode = "record"
 	}
 	// Budget specs are resolved PER ROOT inside runRoots (bare --lint defaults to
-	// the same spec CI enforces, issue #470, and drops itself on a root with no
+	// the same spec CI enforces, and drops itself on a root with no
 	// CLAUDE.md) — resolving here would apply the first root's answer to all of
 	// them.
 
-	// Product-scoping inputs (mm/31+32). --scope must name a known product; an
+	// Product-scoping inputs. --scope must name a known product; an
 	// unknown value is a usage error, not a silent no-op.
 	if *scopeFlag != "" && !validServes[*scopeFlag] {
 		fmt.Fprintf(os.Stderr, "statusgen: --scope %q is not a known product (example-app|example-service|assay|platform)\n", *scopeFlag)

@@ -272,7 +272,7 @@ func TestUnrunStaleImplementedSilentBeforeThreshold(t *testing.T) {
 }
 
 // TestUnrunStaleImplementedSkipsUnknownAge: no historian entry and no stream
-// git touch means the age is unknown — render nothing rather than guess (mm/17).
+// git touch means the age is unknown — render nothing rather than guess.
 func TestUnrunStaleImplementedSkipsUnknownAge(t *testing.T) {
 	streams := unrunStreams(t)
 	now := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)
@@ -387,10 +387,10 @@ func TestUnrunRoutingNeedsBothKeywordAndRef(t *testing.T) {
 		cell       string
 		wantRouted bool
 	}{
-		{"bare ref in output", "observed on #392/#409 (read-only)", false},
+		{"bare ref in output", "observed on #123/#124 (read-only)", false},
 		{"keyword, no ref", "deferred, follow-up to come", false},
-		{"keyword and ref", "UNRUN — routed to follow-up #392", true},
-		{"keyword and typed brief id", "UNRUN — tracked by methodology/12", true},
+		{"keyword and ref", "UNRUN — routed to follow-up #123", true},
+		{"keyword and typed brief id", "UNRUN — tracked by example-app/12", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -441,7 +441,7 @@ func TestUnrunMarkerIgnoresVerbatimCodeSpanContent(t *testing.T) {
 	}
 }
 
-// TestUnrunMarkerStillMatchesProseStatusDeclaration: the fix for #576 must not
+// TestUnrunMarkerStillMatchesProseStatusDeclaration: the fix must not
 // blind the marker to a REAL "I did not run this" declaration — the marker
 // still has to fire when a verifier writes it as plain, unquoted prose (the
 // convention every existing fixture uses), whether in the Exit cell or
@@ -475,7 +475,7 @@ func TestUnrunMarkerStillMatchesProseStatusDeclaration(t *testing.T) {
 
 // TestUnrunNoVerifyTableIsSilent: a brief with no Verify table claims nothing
 // this check can derive from. Its missing table is verifySectionProblems'
-// business (methodology/19), not this one's.
+// business, not this one's.
 func TestUnrunNoVerifyTableIsSilent(t *testing.T) {
 	if fs := unrunFindings(nil, "", "anything"); fs != nil {
 		t.Errorf("no Verify table must derive nothing; got %+v", fs)

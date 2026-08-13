@@ -248,8 +248,7 @@ func TestRecordFirstRunSeedsEveryBrief(t *testing.T) {
 	}
 
 	// --lint must never write the history log, even after a record run
-	// created it — confirm lint doesn't touch it (methodology-metrics/01
-	// Ground rules + Verify item 3).
+	// created it — confirm lint doesn't touch it.
 	statBefore, err := os.Stat(historyPath)
 	if err != nil {
 		t.Fatal(err)

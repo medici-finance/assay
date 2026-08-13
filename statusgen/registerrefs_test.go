@@ -234,7 +234,7 @@ func TestRegisterRefProblems_ExternalURLSkipped(t *testing.T) {
 	// An F-NN link whose target is an external URL is a prose citation, not a
 	// repo-relative register reference — it must not be flagged.
 	content := "The honest limit, per [F-08](https://github.com/example-org/tracker).\n"
-	docPath := writeTemp(t, docDir, "desk-console-design.md", content)
+	docPath := writeTemp(t, docDir, "console-design.md", content)
 
 	problems, notices := registerRefProblems(root, []string{docPath})
 	if len(problems) > 0 {

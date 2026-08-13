@@ -1,6 +1,6 @@
 package main
 
-// UNRUN as a first-class board state (methodology-metrics/37, absorbing
+// UNRUN as a first-class board state (absorbing
 // F-impl-claims-unproven).
 //
 // THE POINT — UNRUN IS DERIVED, NEVER DECLARED.
@@ -44,8 +44,8 @@ package main
 //     `done` TRANSITION carrying one with no routed follow-up is a hard
 //     PROBLEM.
 //
-// See docs/streams/methodology-metrics/brief-37-unrun-board-state.md
-// ("Scope decision") for why the two stages are one brief and not two.
+// The two stages are deliberately one unit of work, not two: the "can never
+// run" mirror defect is only meaningful alongside the "always passes" checks.
 //
 // WHY THE `done` GATE IS SCOPED TO THE TRANSITION.
 //
@@ -108,7 +108,7 @@ var (
 
 	// routingKeywordRe and routingRefRe together define a ROUTED unrun row: the
 	// row must both say it was routed and name where. Two independent
-	// conditions, because either alone misfires — a bare "#392" appears in
+	// conditions, because either alone misfires — a bare "#123" appears in
 	// output excerpts all the time, and a bare "follow-up" names nothing
 	// actionable. Both are things the author must ADD; the default (say
 	// nothing) is unrouted, which is the direction that keeps the gate honest.
@@ -118,7 +118,7 @@ var (
 
 // unrunLegend is the one-line STATUS.md legend for the `‡` board token. Kept
 // beside the derivation it describes so the two cannot drift.
-const unrunLegend = "_`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it (methodology-metrics/37). UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._"
+const unrunLegend = "_`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._"
 
 // verifyItem is one row of a brief's `## Verify` table.
 type verifyItem struct {
@@ -519,7 +519,7 @@ func unrunGateChecks(root string, streams []*Stream) (problems, notices []string
 			blocking := unrunBlocking(findings)
 			if len(blocking) == 0 {
 				notices = append(notices, fmt.Sprintf(
-					"%s: %s over UNRUN risk-bearing Verify row(s) %s — routed to a named follow-up, so the transition is allowed, but the live check is still unproven; renders %s‡ (methodology-metrics/37)",
+					"%s: %s over UNRUN risk-bearing Verify row(s) %s — routed to a named follow-up, so the transition is allowed, but the live check is still unproven; renders %s‡",
 					id, br.Status, rowIDList(risky), br.Status))
 				continue
 			}
@@ -528,17 +528,17 @@ func unrunGateChecks(root string, streams []*Stream) (problems, notices []string
 					degraded = true
 				}
 				notices = append(notices, fmt.Sprintf(
-					"%s: %s carries UNRUN risk-bearing Verify row(s) %s with no routed follow-up (%s) — pre-existing closure, grandfathered to a NOTICE; renders %s‡ (methodology-metrics/37)",
+					"%s: %s carries UNRUN risk-bearing Verify row(s) %s with no routed follow-up (%s) — pre-existing closure, grandfathered to a NOTICE; renders %s‡",
 					id, br.Status, rowIDList(blocking), blocking[0].Reason, br.Status))
 				continue
 			}
 			problems = append(problems, fmt.Sprintf(
-				"%s: cannot close as %s — Verify row(s) %s are risk-bearing (live/mutating) and UNRUN (%s), with no routed follow-up. Either run the row and record a dated Evidence row for it, or route it to a named follow-up brief/issue IN the Evidence row (brief-23 live-verify pattern, mandatory). UNRUN is derived from Verify-vs-Evidence coverage, not declared — methodology-metrics/37",
+				"%s: cannot close as %s — Verify row(s) %s are risk-bearing (live/mutating) and UNRUN (%s), with no routed follow-up. Either run the row and record a dated Evidence row for it, or route it to a named follow-up brief/issue IN the Evidence row (brief-23 live-verify pattern, mandatory). UNRUN is derived from Verify-vs-Evidence coverage, not declared",
 				id, br.Status, rowIDList(blocking), blocking[0].Reason))
 		}
 	}
 	if degraded {
-		notices = append(notices, "UNRUN `done`-gate is running degraded: origin/main could not be resolved, so no brief can be shown to have been closed on THIS branch and every offender is grandfathered to a NOTICE. If this is CI, fetch origin/main before the lint step (methodology-metrics/37)")
+		notices = append(notices, "UNRUN `done`-gate is running degraded: origin/main could not be resolved, so no brief can be shown to have been closed on THIS branch and every offender is grandfathered to a NOTICE. If this is CI, fetch origin/main before the lint step")
 	}
 	sort.Strings(problems)
 	sort.Strings(notices)
@@ -555,10 +555,10 @@ func unrunGateChecks(root string, streams []*Stream) (problems, notices []string
 // signal, and the age comes from the historian (or the stream's git touch),
 // never from anything the implementer writes.
 //
-// briefTouch maps "<stream>/<NN>" → last recorded transition time (mm/01); a
+// briefTouch maps "<stream>/<NN>" → last recorded transition time; a
 // brief absent from it falls back to the stream's git LastTouch, exactly as
 // nextup/roadmap do. A brief with neither is skipped: unknown age is not
-// rendered as a guess (mm/17 discipline).
+// rendered as a guess.
 func staleImplementedNotices(streams []*Stream, briefTouch map[string]time.Time, now time.Time) []string {
 	var notices []string
 	for _, s := range streams {
@@ -590,7 +590,7 @@ func staleImplementedNotices(streams []*Stream, briefTouch map[string]time.Time,
 				continue
 			}
 			notices = append(notices, fmt.Sprintf(
-				"%s/brief-%s: at `implemented` for %s with 0 of %d Verify row(s) corroborated — an implementer-asserted state nothing has yet checked (F-impl-claims-unproven). Prioritise it in the verify-desk drain (methodology-metrics/37)",
+				"%s/brief-%s: at `implemented` for %s with 0 of %d Verify row(s) corroborated — an implementer-asserted state nothing has yet checked (F-impl-claims-unproven). Prioritise it in the verify-desk drain",
 				s.Name, br.Num, renderAge(age), len(items)))
 		}
 	}

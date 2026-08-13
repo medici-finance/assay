@@ -3,7 +3,7 @@ package main
 // History (docs/streams/.history.jsonl) is an APPEND-ONLY, single-writer log
 // of brief status transitions, one JSON object per line (JSONL):
 //
-//	{"ts":"2026-07-09T18:04:05Z","brief":"methodology-metrics/01","from":"implemented","to":"verified","sha":"a1b2c3d4e5f6..."}
+//	{"ts":"2026-07-09T18:04:05Z","brief":"example-app/01","from":"implemented","to":"verified","sha":"a1b2c3d4e5f6..."}
 //
 // Fields:
 //   - ts:    RFC3339 UTC timestamp of the regen run that observed the change.
@@ -28,7 +28,7 @@ package main
 // re-running --record with no status changes leaves the file byte-identical.
 //
 // Format stability: this is the queryable substrate downstream statusgen
-// subcommands (methodology-metrics/02 --dora, /03 --trend, /05 alarm KPIs)
+// subcommands (--dora, --trend, alarm KPIs)
 // read via LoadHistory + LastRecordedStatus. Adding a field is safe (old
 // readers ignore unknown keys); do not rename or repurpose an existing key.
 
@@ -44,7 +44,7 @@ import (
 
 // historyRelPath is the log's location relative to repo root — kept beside
 // the stream sources it derives from (docs/streams/), git-tracked so it
-// survives (methodology-metrics/01).
+// survives.
 const historyRelPath = "docs/streams/.history.jsonl"
 
 // HistoryEntry is one recorded brief status transition.
@@ -107,9 +107,9 @@ func LastRecordedStatus(entries []HistoryEntry) map[string]string {
 
 // LastTransitionTime returns each brief's most-recent recorded transition
 // timestamp, parsed from the log's RFC3339 `ts` field. It is the per-brief
-// staleness clock the Next-up score reads (methodology-metrics/14): a brief
+// staleness clock the Next-up score reads: a brief
 // ages from its OWN last status change, so sibling activity elsewhere in the
-// stream no longer resets its aging (the F-09 clock defect). A brief absent
+// stream no longer resets its aging (the clock defect). A brief absent
 // from the returned map has no recorded history — Next-up falls back to the
 // stream's git LastTouch for it. Unparseable timestamps are skipped (the log
 // is machine-written, but a bad row must not crash the scorer); the latest
@@ -159,7 +159,7 @@ func diffHistory(streams []*Stream, last map[string]string, sha string, ts time.
 // appendHistory appends entries to the log, creating it (and its parent dir)
 // if absent. A nil/empty entries slice is a true no-op: the file is not
 // opened, touched, or its mtime bumped — re-running with no status changes
-// appends nothing (methodology-metrics/01 Task item 4).
+// appends nothing.
 func appendHistory(path string, entries []HistoryEntry) error {
 	if len(entries) == 0 {
 		return nil

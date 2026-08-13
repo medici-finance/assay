@@ -39,10 +39,8 @@ ASSAY_SCAN_REPOS=example-org/tracker,example-org/agents,example-org/examples,exa
 `
 
 // darFixtureExtra returns the product-config lines appended to the fixture roster
-// in TestMain. It is build-tagged: empty in the default (open-core) build
-// (rosterfixture_openstub_test.go), the house-private product config under the
-// houseprivate build. Kept behind a hook so this shipping fixture file carries no
-// product-namespaced (non-ASSAY_) configuration.
+// in TestMain. It is a no-op hook (rosterfixture_openstub_test.go) so this fixture
+// file carries no product-namespaced (non-ASSAY_) configuration.
 
 func installFixtureRoster() (cleanup func(), err error) {
 	home, err := os.MkdirTemp("", "assay-roster-home-")

@@ -7,8 +7,8 @@ import (
 )
 
 // intakeUntriagedThreshold is the age in days past which an untriaged intake entry
-// triggers a NOTICE (non-fatal alarm). Mirrors the verification-debt alarm pattern
-// from methodology-metrics/10. 3 days = one triage cycle.
+// triggers a NOTICE (non-fatal alarm). Mirrors the verification-debt alarm pattern.
+// 3 days = one triage cycle.
 const intakeUntriagedThreshold = 3
 
 // IntakeAlarmResult holds the computed untriaged-intake alarm state.
@@ -41,7 +41,7 @@ func intakeAlarm(entries []intakeEntry, now time.Time) IntakeAlarmResult {
 			// never silently exempts an entry from the age alarm. The entry can
 			// never contribute to OverThreshold or Oldest* — no credible age.
 			res.BadDates = append(res.BadDates,
-				fmt.Sprintf("intake entry %s: unparseable date %q — age not computed (issue-loop/07)", e.ID, e.Date))
+				fmt.Sprintf("intake entry %s: unparseable date %q — age not computed", e.ID, e.Date))
 			continue
 		}
 		days := int(now.Sub(parsed).Hours() / 24)
@@ -65,23 +65,23 @@ func intakeDebtNotice(r IntakeAlarmResult) string {
 		return ""
 	}
 	return fmt.Sprintf(
-		"intake debt: %d untriaged (%d over %d days, oldest %s at %dd) — triage the front door (issue-loop/07)",
+		"intake debt: %d untriaged (%d over %d days, oldest %s at %dd) — triage the front door",
 		r.Untriaged, r.OverThreshold, intakeUntriagedThreshold, r.OldestID, r.OldestDays,
 	)
 }
 
 // intakeScopedUnauthoredThreshold is the age in days past which a `scoped → <stream>`
 // intake entry whose target stream was never authored triggers a NOTICE (non-fatal
-// alarm). The scoped→authoring queue (issue-loop/08) is a heavier stage than triage,
+// alarm). The scoped→authoring queue is a heavier stage than triage,
 // so this mirrors the standing-alarm retro-cycle threshold (defaultStandingAgeDays,
 // 7 days) rather than the 3-day triage cycle. Advisory only — never affects the exit
-// code, never touches integrity logic (#119).
+// code, never touches integrity logic.
 const intakeScopedUnauthoredThreshold = 7
 
 // scopedToStream extracts the leading stream token from a free-text scoped-to
 // value. The register convention allows a trailing parenthetical marker
 // ("agent-flow-observability (new stream — …)"); only the leading whitespace-
-// delimited token names the stream, so matching keys on that alone (#119).
+// delimited token names the stream, so matching keys on that alone.
 func scopedToStream(scopedTo string) string {
 	fields := strings.Fields(scopedTo)
 	if len(fields) == 0 {
@@ -98,7 +98,7 @@ func scopedToStream(scopedTo string) string {
 // the intake-desk tier gate leaves open: triage only QUEUES stream/brief authoring by
 // flipping the entry `scoped → <stream>`, but nothing drains the queue, so a flip can
 // dangle indefinitely with no alarm (evidence: I-03 scoped → agent-flow-observability
-// dangled 14 days, #119).
+// dangled 14 days).
 //
 // Additive advisory NOTICE only — never a hard problem, never touches anti-falsification
 // / integrity-check logic. Deterministic and offline: keys on the in-git date
@@ -125,14 +125,14 @@ func intakeScopedUnauthoredNotices(entries []intakeEntry, streams []*Stream, now
 		parsed, err := time.Parse("2006-01-02", strings.TrimSpace(e.Date))
 		if err != nil {
 			out = append(out, fmt.Sprintf(
-				"intake entry %s: unparseable date %q — scoped→%s age not computed (issue-loop/08)",
+				"intake entry %s: unparseable date %q — scoped→%s age not computed",
 				e.ID, e.Date, target))
 			continue
 		}
 		days := int(now.Sub(parsed).Hours() / 24)
 		if days > intakeScopedUnauthoredThreshold {
 			out = append(out, fmt.Sprintf(
-				"scoped-but-unauthored: intake %s scoped → %s for %dd with no docs/streams/%s/README.md — author the stream/brief or re-triage (issue-loop/08)",
+				"scoped-but-unauthored: intake %s scoped → %s for %dd with no docs/streams/%s/README.md — author the stream/brief or re-triage",
 				e.ID, target, days, target))
 		}
 	}
@@ -151,6 +151,6 @@ func intakeBoardLine(r IntakeAlarmResult) string {
 	if r.OldestID != "" {
 		s += fmt.Sprintf(", oldest %s at %dd", r.OldestID, r.OldestDays)
 	}
-	s += ") — triage the front door (issue-loop/07)_"
+	s += ") — triage the front door_"
 	return s
 }

@@ -43,7 +43,7 @@ examining the guarded thing, is not a check — it is a green lamp. Every instru
 have a **positive control**: prove it goes RED when the guarded thing is broken, at the
 same revision.
 
-**Example:** `grep -c ENC\[ k8s/dev/app/*pager*` with a glob that matches nothing →
+**Example:** `grep -c ENC\[ config/secrets/*.env` with a glob that matches nothing →
 exit 1, which an `|| grep -rl sops` fallback catches → exit 0. The row passes because
 any SOPS file in the directory satisfies it, not because the target file is encrypted.
 That row is not a check.

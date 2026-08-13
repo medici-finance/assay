@@ -98,7 +98,7 @@ func TestGateWhyProblem(t *testing.T) {
 	}
 }
 
-// TestWhyNotice covers the methodology/27 PHASE 1 lint: every brief-v1 brief
+// TestWhyNotice covers the PHASE 1 lint: every brief-v1 brief
 // SHOULD carry a why: — a brief without one emits a NON-FATAL NOTICE (never a
 // hard problem this phase); a brief with one emits none.
 func TestWhyNotice(t *testing.T) {
@@ -127,7 +127,7 @@ func TestWhyNotice(t *testing.T) {
 	}
 }
 
-// TestWhySubstanceFloor covers the issue #459 substance floor on a PRESENT
+// TestWhySubstanceFloor covers the substance floor on a PRESENT
 // why: — presence alone let a title-paste, ".", or "TODO" score as fully
 // compliant (zero information); the floor requires a minimum length and
 // rejects a why that is a substring of, or near-duplicate of, the title.
@@ -166,8 +166,8 @@ func TestWhySubstanceFloor(t *testing.T) {
 	}
 }
 
-// TestBriefFileInvalidValue covers the optional brief-v1 `value:` field
-// (methodology-metrics/14): a present-but-unrecognized value is a hard PROBLEM
+// TestBriefFileInvalidValue covers the optional brief-v1 `value:` field:
+// a present-but-unrecognized value is a hard PROBLEM
 // naming the bad token; a valid `value: high` raises none; and an absent value
 // (brief-01-valid) is never flagged because the field is optional.
 func TestBriefFileInvalidValue(t *testing.T) {
@@ -405,7 +405,7 @@ func TestBriefFileBadFilename(t *testing.T) {
 	}
 }
 
-// --- methodology/02: Evidence enforcement at the verified gate ---
+// --- Evidence enforcement at the verified gate ---
 
 // A verified brief whose Evidence section holds only the contract comment fails.
 func TestEvidenceVerifiedEmptyFails(t *testing.T) {
@@ -440,7 +440,7 @@ func TestEvidenceLegacyDoneExempt(t *testing.T) {
 }
 
 // The check ORs verified/done; this exercises the `done` fail path explicitly
-// (review gap on PR #80: only `verified` had a failing fixture before).
+// (an earlier gap: only `verified` had a failing fixture before).
 func TestEvidenceDoneEmptyFails(t *testing.T) {
 	problems := briefSchemaProblems(t)
 	if !hasProblem(problems, "brief-23-done-empty.md", "Evidence") {
@@ -456,8 +456,7 @@ func TestEvidenceContentDetection(t *testing.T) {
 	if !evidenceHasContent("<!-- comment -->\n| 1 | cmd | 0 | ok |\n") {
 		t.Error("a table row is content")
 	}
-	// An unterminated comment consumes the rest of the section — not content
-	// (PR #80 review, minor 2).
+	// An unterminated comment consumes the rest of the section — not content.
 	if evidenceHasContent("<!-- unterminated, no closing marker\nnot really a row\n") {
 		t.Error("an unterminated comment (and everything after it) must not count as content")
 	}
@@ -466,7 +465,7 @@ func TestEvidenceContentDetection(t *testing.T) {
 	}
 }
 
-// TestBriefFileRiskKeys covers methodology/02 amendment item (b): the risk block
+// TestBriefFileRiskKeys covers amendment item (b): the risk block
 // must contain exactly the four canonical keys — a missing question can never
 // fire the human gate, and unknown keys are schema drift.
 func TestBriefFileRiskKeys(t *testing.T) {
@@ -481,7 +480,7 @@ func TestBriefFileRiskKeys(t *testing.T) {
 	}
 }
 
-// --- methodology/03: risk-gate enforcement at the done gate ---
+// --- risk-gate enforcement at the done gate ---
 //
 // (a) risk-yes + gate:model is a self-consistency error (already from brief-01);
 // (b) a human-gated brief at done must have a Reviewed column naming a human.
@@ -508,7 +507,7 @@ func TestRiskGate(t *testing.T) {
 			t.Errorf("got:\n%s", strings.Join(problems, "\n"))
 		}
 	})
-	// PR #93 review nit 1: a token that merely contains the "human:" substring
+	// A token that merely contains the "human:" substring
 	// (e.g. "superhuman:x") must NOT satisfy the human-reviewer rule.
 	t.Run("a superhuman: reviewer tag does not count as a human reviewer", func(t *testing.T) {
 		if !hasProblem(problems, "brief-33-human-done-superhuman.md", "names no human") {
@@ -530,7 +529,7 @@ func TestRiskGate(t *testing.T) {
 	})
 }
 
-// TestExecTier covers the optional exec-tier frontmatter field (methodology/29).
+// TestExecTier covers the optional exec-tier frontmatter field.
 func TestExecTier(t *testing.T) {
 	problems, notices := briefSchemaChecks(t)
 
@@ -586,7 +585,7 @@ func TestExecTier(t *testing.T) {
 	})
 }
 
-// TestExecTierMarker covers the [exec:strong] marker rendering in emit (methodology/29).
+// TestExecTierMarker covers the [exec:strong] marker rendering in emit.
 func TestExecTierMarker(t *testing.T) {
 	s := mkStream("alpha", "active", "P1")
 	s.Track = "product"
@@ -752,12 +751,12 @@ func TestStrictlyEarlierDepPasses(t *testing.T) {
 	}
 }
 
-// TestSecurityReviewAtDone covers methodology/31: a risk-classed brief (frontmatter
+// TestSecurityReviewAtDone covers the security-review-at-done rule: a risk-classed brief (frontmatter
 // only — gate:human OR any risk answer yes) at `done` whose Reviewed cell lacks the
 // literal substring "security-review" emits a NOTICE. Risk-clear briefs (all risk no,
 // gate model) are exempt. Severity is NOTICE this phase — the current tree has
 // risk-classed done rows with no such token, so a hard error cannot gate until
-// backfill lands (mirroring methodology/24→25).
+// backfill lands.
 func TestSecurityReviewAtDone(t *testing.T) {
 	_, notices := briefSchemaChecks(t)
 

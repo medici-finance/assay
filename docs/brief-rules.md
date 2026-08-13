@@ -221,3 +221,25 @@ fanout tooling live with those skills; this section covers only rules that apply
     sync's full working-set cost, ignoring the WASM boundary; the figure propagated
     across nine sites because it carried no primary-source citation a worker could check.
 
+22. **A dispatch names its authority envelope.** Every dispatch states what it grants —
+    repos, paths/write-surfaces, tools, and any budget — and the envelope must be a
+    subset of the dispatcher's own authority: a desk cannot delegate what it does not
+    hold. The subset relation must be checkable from the two artifacts alone (the
+    dispatcher's own grant and the dispatch it writes), not from memory or intent.
+    Source: CIGAR's handoff mechanism intersects a child's capabilities with the
+    issuer's own scope — a result never amplifies authority.
+
+23. **No amplification.** A worker that needs more than its envelope reports the
+    request; the dispatcher grants explicitly — a recorded, reviewable act — or
+    bounces. A result produced using authority outside the envelope is a finding
+    about the dispatch, not a deliverable to accept. Source: CIGAR records a
+    requested-but-ungranted capability rather than silently absorbing the request
+    or silently widening the grant.
+
+24. **Declared exclusions.** Dispatch context states what was deliberately excluded —
+    files, surfaces, or candidates considered and left out — so a scoped view is
+    never mistaken for the whole. This promotes the existing "never truncate dispatch
+    file lists" / "a scoped view is not evidence of absence" practice from lore to
+    rule; CIGAR's selection manifests, which record rejected candidates and not just
+    the selected ones, are the independent derivation.
+

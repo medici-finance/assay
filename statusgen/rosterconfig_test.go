@@ -92,7 +92,7 @@ func scanWithNoRoster(t *testing.T) string {
 	return home
 }
 
-func scanMediciRoster() map[string]string {
+func scanExampleRoster() map[string]string {
 	return map[string]string{
 		scanEnvBlessLogin:      "ada:100001",
 		scanEnvTrustedLogins:   "ada:100001,shared-agent:100002",
@@ -195,7 +195,7 @@ func TestCorroborationUnconfiguredIsMissing(t *testing.T) {
 	}
 
 	// Positive control: with the map configured, the same token clears.
-	scanWithRoster(t, scanMediciRoster())
+	scanWithRoster(t, scanExampleRoster())
 	if login, ok := HumanLogin("alex"); !ok || login != "ada" {
 		t.Errorf("HumanLogin(alex) = %q,%t with the map configured, want ada,true — the negative "+
 			"cases above would otherwise prove nothing", login, ok)
@@ -310,7 +310,7 @@ func TestWriteToolsRefuseEnvRoster(t *testing.T) {
 
 // TestConfigHomePermissionsEnforced is the sshd rule in this tree.
 func TestConfigHomePermissionsEnforced(t *testing.T) {
-	home := scanWithRoster(t, scanMediciRoster())
+	home := scanWithRoster(t, scanExampleRoster())
 	if !scanEffectiveConfig().Configured() {
 		t.Fatal("the fixture roster did not load at 0600/0700 — the positive control is broken")
 	}
@@ -358,7 +358,7 @@ func TestConfigHomePermissionsEnforced(t *testing.T) {
 // TestBlessLoginRejectsBotAccount are the three extra bless-login format rules,
 // bound in THIS tree as well: the twin must not accept a shape deskkit refuses.
 func TestBlessLoginRequiresID(t *testing.T) {
-	r := scanMediciRoster()
+	r := scanExampleRoster()
 	r[scanEnvBlessLogin] = "ada"
 	scanWithRoster(t, r)
 	cfg := scanEffectiveConfig()
@@ -383,7 +383,7 @@ func TestBlessLoginRejectsMultipleValues(t *testing.T) {
 		"ada:100001;attacker:999",
 		"ada:100001 attacker:999",
 	} {
-		r := scanMediciRoster()
+		r := scanExampleRoster()
 		r[scanEnvBlessLogin] = raw
 		scanWithRoster(t, r)
 		if scanEffectiveConfig().Configured() {
@@ -406,7 +406,7 @@ func TestBlessLoginRejectsBotAccount(t *testing.T) {
 		"some-bot:12345",
 		"assay-reviewer-app:300000004", // present in the configured bot-slug set
 	} {
-		r := scanMediciRoster()
+		r := scanExampleRoster()
 		r[scanEnvBlessLogin] = raw
 		scanWithRoster(t, r)
 		if scanEffectiveConfig().Configured() {
@@ -422,7 +422,7 @@ func TestBlessLoginRejectsBotAccount(t *testing.T) {
 // collapse the whole configuration exactly as ASSAY_BLESS_LOGIN does.
 func TestHumanLoginMapRejectsBotAccount(t *testing.T) {
 	// Anti-vacuity control: the golden roster's well-formed map is live.
-	scanWithRoster(t, scanMediciRoster())
+	scanWithRoster(t, scanExampleRoster())
 	if !scanEffectiveConfig().Configured() {
 		t.Fatal("control: the golden roster is not configured — the bot-shaped cases below prove nothing")
 	}
@@ -436,7 +436,7 @@ func TestHumanLoginMapRejectsBotAccount(t *testing.T) {
 		"alex:some-app",
 		"alex:some-bot",
 	} {
-		r := scanMediciRoster()
+		r := scanExampleRoster()
 		r[scanEnvHumanLoginMap] = raw
 		scanWithRoster(t, r)
 		if scanEffectiveConfig().Configured() {
@@ -455,13 +455,13 @@ func TestHumanLoginMapRejectsBotAccount(t *testing.T) {
 // (`return l, 0, true`) left BOTH suites green.
 func TestMalformedIDNeverDegradesToLoginOnlyTrust(t *testing.T) {
 	// Anti-vacuity control.
-	scanWithRoster(t, scanMediciRoster())
+	scanWithRoster(t, scanExampleRoster())
 	if !scanEffectiveConfig().Configured() || !trustedAuthor("ada") {
 		t.Fatal("control: the well-formed golden roster is not live — the malformed cases below prove nothing")
 	}
 
 	for _, bad := range []string{"1O0001", "100001.", "+100001x"} {
-		r := scanMediciRoster()
+		r := scanExampleRoster()
 		r[scanEnvTrustedLogins] = "ada:" + bad + ",shared-agent:100002"
 		scanWithRoster(t, r)
 
@@ -482,7 +482,7 @@ func TestMalformedIDNeverDegradesToLoginOnlyTrust(t *testing.T) {
 	}
 
 	// Bot slugs, both rendered forms.
-	r := scanMediciRoster()
+	r := scanExampleRoster()
 	r[scanEnvTrustedBotSlugs] = "worker=assay-worker-app:3O0000006"
 	scanWithRoster(t, r)
 	if scanEffectiveConfig().Configured() {
@@ -496,7 +496,7 @@ func TestMalformedIDNeverDegradesToLoginOnlyTrust(t *testing.T) {
 
 	// The blessing authority: pin the refusal that the PARSE rule owns, not the
 	// mandatory-id branch that catches it one step later by luck.
-	r = scanMediciRoster()
+	r = scanExampleRoster()
 	r[scanEnvBlessLogin] = "ada:1O0001"
 	scanWithRoster(t, r)
 	cfg := scanEffectiveConfig()
@@ -515,14 +515,14 @@ func TestMalformedIDNeverDegradesToLoginOnlyTrust(t *testing.T) {
 // path for the two owned-repo roster keys this PR adds (ASSAY_HOME_REPO and
 // ASSAY_SCAN_REPOS). The generic malformed-config machinery is exercised
 // elsewhere, but the new validSlug branch these two keys go through had no
-// dedicated control (review of #600). A half-parsed repo roster is the
+// dedicated control. A half-parsed repo roster is the
 // configured-but-wrong shape the design exists to prevent, so a bad slug on
 // either key must collapse the WHOLE configuration — not silently drop the key
 // and leave the trust roster live.
 func TestMalformedOwnedRepoSlugRefusesWholeConfig(t *testing.T) {
 	// Anti-vacuity control: the golden roster (no owned-repo keys set) is live,
 	// so the refusals below are proved against a config that otherwise loads.
-	scanWithRoster(t, scanMediciRoster())
+	scanWithRoster(t, scanExampleRoster())
 	if !scanEffectiveConfig().Configured() || !trustedAuthor("ada") {
 		t.Fatal("control: the well-formed golden roster is not live — the malformed cases below prove nothing")
 	}
@@ -542,7 +542,7 @@ func TestMalformedOwnedRepoSlugRefusesWholeConfig(t *testing.T) {
 		{scanEnvScanRepos, "owner/good,too/many/slashes"},
 	}
 	for _, tc := range cases {
-		r := scanMediciRoster()
+		r := scanExampleRoster()
 		r[tc.key] = tc.val
 		scanWithRoster(t, r)
 

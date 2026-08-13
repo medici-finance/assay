@@ -35,13 +35,14 @@ func TestDerivePlaceholderGate(t *testing.T) {
 		{"no labels, no title → model", nil, "", "model"},
 		{"security label → human", []string{"bug", "security"}, "x", "human"},
 		{"funds label → human", []string{"funds"}, "", "human"},
-		{"daml label → human", []string{"daml"}, "", "human"},
 		{"auth keyword in title → human", []string{"bug"}, "unauthenticated caller — no auth gate", "human"},
-		{"daml keyword in title → human", []string{"bug"}, "DAML settlement algebra drift", "human"},
 		{"funds keyword in title → human", []string{"bug"}, "funds leak on settlement", "human"},
 		{"security keyword in title → human", []string{"bug"}, "security-sensitive token path", "human"},
 		{"word-boundary: 'authored' is not 'auth' → model", []string{"bug"}, "authored by someone", "model"},
-		{"case-insensitive label → human", []string{"DAML"}, "", "human"},
+		{"case-insensitive label → human", []string{"SECURITY"}, "", "human"},
+		// A product-domain risk word is NOT in the neutral open-core vocabulary,
+		// so it does not gate by default until a deployment registers it.
+		{"unregistered product word → model", []string{"settlement"}, "settlement algebra drift", "model"},
 	}
 	for _, c := range cases {
 		if got := derivePlaceholderGate(c.labels, c.title); got != c.want {
@@ -50,9 +51,74 @@ func TestDerivePlaceholderGate(t *testing.T) {
 	}
 }
 
+// TestPlaceholderGateFromConfigRiskExtra proves a deployment's product-domain
+// human-gate is PRESERVED in the shipped tree by wiring it from the config the
+// deployment already sets (ASSAY_RISK_PATH_TRIGGERS_EXTRA) — not lost when the
+// domain was removed from the compiled-in default. The mechanism is
+// domain-agnostic, so this uses a NEUTRAL domain word ("settlement") rather than
+// naming any product's; the house's real config value is a product path this
+// open-core tree deliberately never spells out. With the trigger configured, a
+// matching placeholder derives gate: human; with the config unset, the neutral
+// default derives gate: model.
+func TestPlaceholderGateFromConfigRiskExtra(t *testing.T) {
+	const domain = "settlement" // stands in for a deployment's product risk path
+
+	// Restore the neutral derived matchers afterwards regardless of path, so this
+	// test never leaks a configured risk word into other cases.
+	t.Cleanup(func() {
+		placeholderRiskLabels = buildRiskLabelSet(riskGateLabels)
+		placeholderRiskKeywordRe = buildRiskKeywordRe(riskGateKeywords)
+	})
+
+	// Config carries a <domain>/ path trigger (the shape the house deployment sets).
+	roster := scanExampleRoster()
+	roster[scanEnvRiskPathTriggersExtra] = domain + "/,auth/"
+	scanWithRoster(t, roster)
+	if !scanEffectiveConfig().Configured() {
+		t.Fatalf("test roster did not load: %v", scanEffectiveConfig().Problems)
+	}
+	if got := derivePlaceholderGate([]string{domain}, ""); got != "human" {
+		t.Errorf("with %s/ configured, a %s label must derive gate:human, got %q", domain, domain, got)
+	}
+	if got := derivePlaceholderGate([]string{"bug"}, strings.ToUpper(domain)+" algebra drift"); got != "human" {
+		t.Errorf("with %s/ configured, a %s keyword in the title must derive gate:human, got %q", domain, domain, got)
+	}
+
+	// Config unset → the neutral default: the product domain is NOT a trigger.
+	scanWithNoRoster(t)
+	scanEffectiveConfig()
+	if got := derivePlaceholderGate([]string{domain}, ""); got != "model" {
+		t.Errorf("with no risk config, a %s label must fall back to the neutral default gate:model, got %q", domain, got)
+	}
+}
+
+// TestRiskGateVocabularyExtension proves the risk vocabulary is a configurable
+// set, not a compiled-in literal: a product-domain word is model by default and
+// gates human only after a deployment registers it. Globals are saved/restored
+// so the extension does not leak into other cases.
+func TestRiskGateVocabularyExtension(t *testing.T) {
+	const domain = "settlement"
+	if got := derivePlaceholderGate([]string{domain}, ""); got != "model" {
+		t.Fatalf("open-core default: %q must be model (no product risk baked in), got %q", domain, got)
+	}
+	labelsSave, keywordsSave := riskGateLabels, riskGateKeywords
+	setSave, reSave := placeholderRiskLabels, placeholderRiskKeywordRe
+	t.Cleanup(func() {
+		riskGateLabels, riskGateKeywords = labelsSave, keywordsSave
+		placeholderRiskLabels, placeholderRiskKeywordRe = setSave, reSave
+	})
+	registerRiskGateVocabulary([]string{domain}, []string{domain})
+	if got := derivePlaceholderGate([]string{domain}, ""); got != "human" {
+		t.Errorf("after extension: %q label must gate human, got %q", domain, got)
+	}
+	if got := derivePlaceholderGate([]string{"bug"}, "algebra drift in "+domain); got != "human" {
+		t.Errorf("after extension: %q keyword must gate human, got %q", domain, got)
+	}
+}
+
 func TestDerivePlaceholderEffort(t *testing.T) {
 	// Effort is always M (unknown-until-triaged) regardless of labels/title.
-	for _, labels := range [][]string{nil, {"bug"}, {"daml", "funds"}} {
+	for _, labels := range [][]string{nil, {"bug"}, {"security", "funds"}} {
 		if got := derivePlaceholderEffort(labels, "anything at all"); got != "M" {
 			t.Errorf("derivePlaceholderEffort(%v) = %q, want M", labels, got)
 		}
@@ -84,12 +150,12 @@ func TestParsePlaceholderFileValid(t *testing.T) {
 	}
 
 	// Explicit gate override wins over derivation.
-	ph3, ok, err := parsePlaceholderFile(writeTemp(t, dir, "issue-302.md", placeholderFile("issue-loop", 302, "daml", "gate: model", "effort: L")))
+	ph3, ok, err := parsePlaceholderFile(writeTemp(t, dir, "issue-302.md", placeholderFile("issue-loop", 302, "security", "gate: model", "effort: L")))
 	if err != nil || !ok {
 		t.Fatalf("override placeholder: ok=%v err=%v", ok, err)
 	}
 	if ph3.Gate != "model" {
-		t.Errorf("explicit gate:model must override the daml-derived human, got %q", ph3.Gate)
+		t.Errorf("explicit gate:model must override the risk-derived human, got %q", ph3.Gate)
 	}
 	if ph3.Effort != "L" {
 		t.Errorf("explicit effort:L must override the M default, got %q", ph3.Effort)
@@ -134,6 +200,53 @@ func placeholderRepo(t *testing.T, files map[string]string) ([]*Stream, string) 
 	}
 	attachPlaceholders(streams)
 	return streams, root
+}
+
+// --- close-candidate tests (D4) ---
+
+// TestCloseCandidateParsesAndRenders — a placeholder carrying a valid
+// close-candidate: verdict parses the field and renders a [close:...] marker on
+// its Next-up row.
+func TestCloseCandidateParsesAndRenders(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTemp(t, dir, "issue-820.md",
+		placeholderFile("alpha", 820, "bug", "close-candidate: WONTFIX"))
+	ph, ok, err := parsePlaceholderFile(path)
+	if err != nil || !ok {
+		t.Fatalf("valid close-candidate placeholder: ok=%v err=%v", ok, err)
+	}
+	if ph.CloseCandidate != "WONTFIX" {
+		t.Errorf("close-candidate = %q, want WONTFIX", ph.CloseCandidate)
+	}
+	if got := ph.toBrief().Title; !strings.Contains(got, "[close:WONTFIX]") {
+		t.Errorf("Next-up title = %q, want a [close:WONTFIX] marker", got)
+	}
+}
+
+// TestCloseCandidateLintRejectsUnknown — an unrecognised close-candidate: verdict
+// is a lint PROBLEM (the enum is closed).
+func TestCloseCandidateLintRejectsUnknown(t *testing.T) {
+	streams, _ := placeholderRepo(t, map[string]string{
+		"issue-821.md": placeholderFile("alpha", 821, "bug", "close-candidate: BOGUS"),
+	})
+	problems, _ := checkPlaceholderFiles(streams)
+	if !hasProblem(problems, "invalid close-candidate") {
+		t.Errorf("want a problem for an unknown close-candidate value, got: %v", problems)
+	}
+}
+
+// TestCloseCandidateValidAccepted — each of the four sanctioned verdicts parses
+// and lints clean.
+func TestCloseCandidateValidAccepted(t *testing.T) {
+	for _, v := range []string{"FIXED-NOT-CLOSED", "WONTFIX", "DUPLICATE", "STALE"} {
+		streams, _ := placeholderRepo(t, map[string]string{
+			"issue-822.md": placeholderFile("alpha", 822, "bug", "close-candidate: "+v),
+		})
+		problems, _ := checkPlaceholderFiles(streams)
+		if hasProblem(problems, "close-candidate") {
+			t.Errorf("verdict %q should lint clean, got: %v", v, problems)
+		}
+	}
 }
 
 // TestPlaceholderNextUpFirstClass — a placeholder attaches as a synthetic Brief,

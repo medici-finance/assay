@@ -38,8 +38,8 @@ func doneCount(s *Stream) int {
 	return n
 }
 
-// blockerSegment classifies an awaiting brief by who owns the blocker
-// (methodology-metrics/34). The desk-actionable segment is the residual —
+// blockerSegment classifies an awaiting brief by who owns the blocker.
+// The desk-actionable segment is the residual —
 // the queue the desk can actually drain.
 type blockerSegment int
 
@@ -102,7 +102,7 @@ func classifyAwaiting(s *Stream, br *Brief) blockerSegment {
 // Awaiting heading and the debt-alarm NOTICE. awaiting = implemented+verified;
 // deskActionable = the subset the desk can actually drain (excludes paused,
 // human-gated-with-VERIFY:PASS, rework, and env-blocked); done is the total
-// done briefs across all streams (methodology-metrics/34: segmentation of
+// done briefs across all streams (segmentation of
 // the Awaiting board by blocker owner).
 func debtCounts(streams []*Stream) (awaiting, deskActionable, implemented, verified, done int) {
 	for _, s := range streams {
@@ -139,18 +139,18 @@ func debtCounts(streams []*Stream) (awaiting, deskActionable, implemented, verif
 // debtNotice returns a non-empty NOTICE string when the desk-actionable
 // Awaiting queue exceeds the threshold or the total done count — the
 // queue the desk can actually move is the constraint and should be drained
-// before dispatching new implementation work (methodology-metrics/10 +
-// methodology-metrics/34: retargeted at the desk-actionable slice).
+// before dispatching new implementation work (retargeted at the
+// desk-actionable slice).
 func debtNotice(streams []*Stream) string {
 	_, desk, _, _, done := debtCounts(streams)
 	if desk > verificationDebtThreshold || desk > done {
-		return fmt.Sprintf("verification debt: %d desk-actionable awaiting vs %d done — the queue is the constraint; drain before dispatching new implementation work (methodology-metrics/10)", desk, done)
+		return fmt.Sprintf("verification debt: %d desk-actionable awaiting vs %d done — the queue is the constraint; drain before dispatching new implementation work", desk, done)
 	}
 	return ""
 }
 
 // segmentGroup is a sorted group of gate-score rows belonging to one blocker
-// segment (methodology-metrics/34).
+// segment.
 type segmentGroup struct {
 	heading string
 	gates   []GateScore
@@ -194,9 +194,9 @@ func buildSegments(gates []GateScore) []segmentGroup {
 	return groups[:n]
 }
 
-// emit renders STATUS.md. ages maps "<stream>/<NN>" → rendered awaiting age
-// (methodology-metrics/17); nil or missing ids render "—". intake carries the
-// untriaged-intake alarm counts for the intake-debt board line (issue-loop/07);
+// emit renders STATUS.md. ages maps "<stream>/<NN>" → rendered awaiting age;
+// nil or missing ids render "—". intake carries the
+// untriaged-intake alarm counts for the intake-debt board line;
 // a zero-value IntakeAlarmResult (no entries parsed) renders the zero state.
 // briefTouch holds per-brief last-transition times from the historian for
 // gate-score staleness; nil means fall back to stream LastTouch. repo is the
@@ -267,7 +267,7 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 	}
 	// Overflow is an alarm (SCADA / EEMUA-191): when the eligible backlog exceeds
 	// what the span-of-control cap shows, say so explicitly — never silently
-	// truncate (methodology-metrics/06).
+	// truncate.
 	if nu.Overflow() {
 		unfiltered := ""
 		if !nu.Claims.Known {
@@ -302,7 +302,7 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 	w("")
 	w("## Awaiting verification / review (%d desk-actionable of %d total — %d at implemented, %d verified awaiting review)", deskActionable, awaiting, implemented, verified)
 	w("")
-	w("_Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner (methodology-metrics/34): the desk-actionable headline counts only the queue the desk can actually drain._")
+	w("_Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._")
 	w("")
 	w("%s", unrunLegend)
 	w("")
@@ -325,7 +325,7 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 				if r == "" {
 					r = "—"
 				}
-				// Age in current awaiting status (mm/17, #282) — from the
+				// Age in current awaiting status — from the
 				// historian; "—" when unknown, never a guess. Render-only.
 				age := ages[s.Name+"/"+br.Num]
 				if age == "" {

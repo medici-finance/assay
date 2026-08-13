@@ -22,7 +22,7 @@ var ackRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \S`)
 // check returns hard problems (exit 1) and non-fatal notices (printed, exit 0).
 // Notices exist for exactly one case today: an unresolved finding targeting an
 // in-flight brief that the desk has not acked — visible, but never blocking
-// (the F-09 demotion-DoS mitigation, methodology/04).
+// (the F-09 demotion-DoS mitigation).
 //
 // This is the whole-house entry point: per-stream checks and the findings
 // affects: known-stream validation both run against the same `streams` set.
@@ -30,21 +30,21 @@ func check(streams []*Stream, findings []Finding) ([]string, []string) {
 	return checkScoped(streams, streams, findings)
 }
 
-// checkScoped runs the source checks with product-scoping (mm/31+32) applied.
+// checkScoped runs the source checks with product-scoping applied.
 // `streams` is the (possibly narrowed) scoped set that drives the per-stream and
 // per-brief checks; `allStreams` is the FULL stream universe used ONLY to
 // validate that a finding's affects: names a real stream. Findings legitimately
 // affect ANY product's stream regardless of which product a PR touches, so the
 // known-stream existence check must resolve against all streams, never the
 // scoped subset — otherwise a single-product PR falsely flags every finding
-// referencing another product's stream as "unknown stream" (#834). Per-brief
+// referencing another product's stream as "unknown stream". Per-brief
 // checks (demotion, unknown-brief) stay scoped: they only run for streams in the
 // scoped `streams` set, so one product's in-flight finding never gates another's PR.
 func checkScoped(streams, allStreams []*Stream, findings []Finding) ([]string, []string) {
 	var problems, notices []string
 	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
 	// allByName carries the full stream universe for the findings affects:
-	// known-stream existence check only (#834); it is never narrowed by scope.
+	// known-stream existence check only; it is never narrowed by scope.
 	allByName := map[string]*Stream{}
 	for _, s := range allStreams {
 		allByName[s.Name] = s
@@ -76,7 +76,7 @@ func checkScoped(streams, allStreams []*Stream, findings []Finding) ([]string, [
 		if s.MaxConcurrent != nil {
 			n := *s.MaxConcurrent
 			if n < 1 || n > perStreamCap {
-				add("%s: max-concurrent %d out of range — must be 1..%d (methodology-metrics/13)", s.Name, n, perStreamCap)
+				add("%s: max-concurrent %d out of range — must be 1..%d", s.Name, n, perStreamCap)
 			}
 		}
 		seen := map[string]bool{}
@@ -89,7 +89,7 @@ func checkScoped(streams, allStreams []*Stream, findings []Finding) ([]string, [
 				add("%s/brief-%s: invalid status %q", s.Name, b.Num, b.Status)
 			}
 			// Placeholder-v1 rows are exempt from the Verified/Reviewed gate —
-			// their lifecycle is issue-driven (issue-loop/04 close-out), not
+			// their lifecycle is issue-driven (close-out), not
 			// human-verified. A done placeholder carries `resolved: issue-close`
 			// instead.
 			if b.Schema != "placeholder-v1" {
@@ -115,7 +115,7 @@ func checkScoped(streams, allStreams []*Stream, findings []Finding) ([]string, [
 			if !ok {
 				// The stream is not in the scoped set. It may still be a real
 				// stream that is simply outside this PR's product scope — a
-				// finding legitimately affects any product's stream (#834), so
+				// finding legitimately affects any product's stream, so
 				// resolve existence against the FULL universe, not the scoped
 				// subset. Only a stream absent from allByName is truly unknown.
 				// A resolved finding's refs are historical: its stream may since
@@ -158,6 +158,18 @@ func checkScoped(streams, allStreams []*Stream, findings []Finding) ([]string, [
 	return problems, notices
 }
 
+// applyFindings stamps Brief.StaleRef with the ID of an unresolved finding that
+// names that brief. Only a brief-SPECIFIC affects entry (`<stream>/<NN>` or
+// `<stream>/brief-<NN>`) stamps anything: StaleRef is a hard Next-up exclusion
+// (nextup.go eligible()), so broadcasting it from a bare-stream entry
+// (`affects: <stream>`) silently removed every brief in that stream from
+// dispatch — one stream-level note on issue-loop hid 594 todo placeholders.
+// A bare-stream entry is a stream-level annotation and is surfaced as
+// one, independently of StaleRef: the Unresolved-findings table (emit.go), the
+// roadmap top-blocker cell and P0-finding health rule (roadmap.go), and the
+// DORA findings-per-group counts (dora.go) all read Affects directly. This
+// mirrors checkScoped above, whose per-brief validation is likewise gated on
+// len(parts) == 2.
 func applyFindings(streams []*Stream, findings []Finding) {
 	for _, f := range findings {
 		if f.Resolved {
@@ -165,12 +177,16 @@ func applyFindings(streams []*Stream, findings []Finding) {
 		}
 		for _, a := range f.Affects {
 			parts := strings.SplitN(a, "/", 2)
+			if len(parts) != 2 {
+				continue // stream-level annotation — never a per-brief flag
+			}
+			num := strings.TrimPrefix(parts[1], "brief-")
 			for _, s := range streams {
 				if s.Name != parts[0] {
 					continue
 				}
 				for i := range s.Briefs {
-					if len(parts) == 1 || s.Briefs[i].Num == strings.TrimPrefix(parts[1], "brief-") {
+					if s.Briefs[i].Num == num {
 						s.Briefs[i].StaleRef = f.ID
 					}
 				}
@@ -184,10 +200,9 @@ func applyFindings(streams []*Stream, findings []Finding) {
 // whose sources: lacks a `freshness-checked` token. This is an advisory reminder that
 // the authoring pre-flight rule in the author-brief skill applies — the skill rule is
 // the real enforcement, this NOTICE just surfaces the gap so the desk sees it.
-// methodology/26.
 func freshnessCheckNotices(streams []*Stream) []string {
 	// Cutoff: briefs authored on or after this date are expected to carry a
-	// freshness-checked token. Matches the date the methodology/26 rule merged.
+	// freshness-checked token. Matches the date the rule merged.
 	const cutoff = "2026-07-11"
 	cutoffDate, err := time.Parse("2006-01-02", cutoff)
 	if err != nil {
@@ -226,7 +241,7 @@ func freshnessCheckNotices(streams []*Stream) []string {
 			}
 			if !hasFresh {
 				notices = append(notices, fmt.Sprintf(
-					"%s: brief %s in hardening stream %s, authored %s, lacks a freshness-checked token in sources — add `freshness-checked YYYY-MM-DD @ <short-sha>` per the author-brief skill (methodology/26)",
+					"%s: brief %s in hardening stream %s, authored %s, lacks a freshness-checked token in sources — add `freshness-checked YYYY-MM-DD @ <short-sha>` per the author-brief skill",
 					path, bf.Brief, s.Name, authoredDate))
 			}
 		}

@@ -1,0 +1,96 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+)
+
+// TestMintTokenSuccess proves the JWT→installation-token exchange works against a fake
+// access_tokens endpoint (endpoints/env identical to mint-reviewer-token.go).
+func TestMintTokenSuccess(t *testing.T) {
+	setupFake(t)
+	tok, err := mintInstallationToken("example-org")
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+	if tok != "fake-installation-token" {
+		t.Fatalf("token = %q, want fake-installation-token", tok)
+	}
+}
+
+// TestMintTokenMissingPEM — a missing/unreadable App key is Unverifiable (exit 6) and the
+// message names the manual restore path. The token is NEVER a silent empty string.
+func TestMintTokenMissingPEM(t *testing.T) {
+	setupFake(t)
+	h, _ := os.UserHomeDir()
+	t.Setenv("REVIEWER_PEM", filepath.Join(h, "does-not-exist.pem"))
+
+	_, err := mintInstallationToken("example-org")
+	if err == nil {
+		t.Fatal("expected an error for a missing PEM")
+	}
+	if !deskkit.IsUnverifiable(err) {
+		t.Fatalf("missing PEM err code = %d, want 6 (unverifiable)", deskkit.ExitCodeOf(err))
+	}
+}
+
+// TestReadyMissingPEMExit6 — the missing PEM surfaces through a real verb as exit 6 with
+// no flip.
+func TestReadyMissingPEMExit6(t *testing.T) {
+	f, _ := setupFake(t)
+	h, _ := os.UserHomeDir()
+	t.Setenv("REVIEWER_PEM", filepath.Join(h, "nope.pem"))
+
+	code := run([]string{"ready", "example-org/tracker", "1"})
+	if code != deskkit.ExitUnverifiable {
+		t.Fatalf("exit = %d, want 6", code)
+	}
+	if f.flips != 0 {
+		t.Fatal("no flip on a token-mint failure")
+	}
+}
+
+// TestInstallForOwner keeps the per-owner installation mapping resolvable — but now from
+// per-deployment config, not a source-baked map (the ids are machine identities that must
+// not ship in source, a public-repo security review). The single REVIEWER_INSTALL_ID override is cleared
+// so the per-owner <ROLE>_INSTALL_ID_<OWNER> keys are what answer.
+func TestInstallForOwner(t *testing.T) {
+	t.Setenv("REVIEWER_INSTALL_ID", "")
+	t.Setenv("REVIEWER_INSTALL_ID_EXAMPLE_ORG", "100000002")
+	t.Setenv("REVIEWER_INSTALL_ID_MEDICI_FINANCE", "100000001")
+	if got, err := installForOwner("example-org"); err != nil || got != "100000002" {
+		t.Fatalf("example-org install = %q err=%v", got, err)
+	}
+	if got, err := installForOwner("medici-finance"); err != nil || got != "100000001" {
+		t.Fatalf("medici-finance install = %q err=%v", got, err)
+	}
+}
+
+// TestInstallForOwnerFailsClosed — with no override and no per-owner key, mint has no
+// installation to target and must refuse rather than guess (fail closed, a public-repo security review).
+func TestInstallForOwnerFailsClosed(t *testing.T) {
+	t.Setenv("REVIEWER_INSTALL_ID", "")
+	t.Setenv("REVIEWER_INSTALL_ID_EXAMPLE_ORG", "")
+	if _, err := installForOwner("example-org"); err == nil {
+		t.Fatal("expected an error when no install id is configured for the owner")
+	}
+}
+
+// TestMintTokenMissingAppID — with REVIEWER_APP_ID unset the mint fails loud (Unverifiable,
+// exit 6) rather than falling back to a source-baked App ID. Deployability guard: the App ID
+// must come from per-deployment config, never a hardcoded default.
+func TestMintTokenMissingAppID(t *testing.T) {
+	setupFake(t)
+	t.Setenv("REVIEWER_APP_ID", "")
+
+	_, err := mintInstallationToken("example-org")
+	if err == nil {
+		t.Fatal("expected an error when REVIEWER_APP_ID is unset")
+	}
+	if !deskkit.IsUnverifiable(err) {
+		t.Fatalf("missing app-id err code = %d, want 6 (unverifiable)", deskkit.ExitCodeOf(err))
+	}
+}

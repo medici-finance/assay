@@ -1,10 +1,10 @@
 package main
 
-// Awaiting-age (methodology-metrics/17, issue #282): the "Awaiting verification /
+// Awaiting-age: the "Awaiting verification /
 // review" board gains a merged→verified AGE per row — how long the brief has sat
 // in its CURRENT awaiting status (implemented or verified) according to the
-// status historian (methodology-metrics/01). Render-only: ages are never a
-// Next-up score input (F-09 boundary).
+// status historian. Render-only: ages are never a
+// Next-up score input.
 //
 // Source of truth: the last history entry whose "to" equals the brief's current
 // status. A brief with no such entry (historian predates it, or the log is

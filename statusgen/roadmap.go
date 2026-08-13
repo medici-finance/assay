@@ -199,8 +199,7 @@ type roadmapStreamRow struct {
 	TopBlocker   string         // formatted blocker text
 	// BlockerFindingLink is the finding entry filename (e.g.
 	// "2026-07-17-ready-flip-is-convention-only.md") when TopBlocker references
-	// a finding; "" otherwise. Used for hyperlinks in the roadmap deck
-	// (methodology-metrics/23).
+	// a finding; "" otherwise. Used for hyperlinks in the roadmap deck.
 	BlockerFindingLink string
 }
 
@@ -553,16 +552,18 @@ func computeGoalMix(streams []*Stream, nu NextUp, history []HistoryEntry) (mix [
 
 	// Inversion detection: if non-example-app goals dominate merges.
 	total := 0
-	lending := 0
+	primaryGoal := 0
+	primaryLabel := ""
 	for _, g := range goals {
 		total += g.Merged24h
 		if g.Goal == "example-app" {
-			lending = g.Merged24h
+			primaryGoal = g.Merged24h
+			primaryLabel = g.Label
 		}
 	}
 	if total > 0 {
-		lendingPct := float64(lending) / float64(total) * 100
-		if lendingPct < 30 {
+		primaryPct := float64(primaryGoal) / float64(total) * 100
+		if primaryPct < 30 {
 			// Find which goal dominates.
 			maxG := ""
 			maxC := 0
@@ -573,7 +574,7 @@ func computeGoalMix(streams []*Stream, nu NextUp, history []HistoryEntry) (mix [
 				}
 			}
 			inverted = true
-			invertMsg = fmt.Sprintf("merges today: %.0f%% %s, %.0f%% lending — inverted vs stated priorities", float64(maxC)/float64(total)*100, maxG, lendingPct)
+			invertMsg = fmt.Sprintf("merges today: %.0f%% %s, %.0f%% %s — inverted vs stated priorities", float64(maxC)/float64(total)*100, maxG, primaryPct, primaryLabel)
 		}
 	}
 
@@ -590,9 +591,23 @@ func htmlEscape(s string) string {
 	return s
 }
 
+// roadmapTitle is the heading stamped into the rendered roadmap's <title> and
+// <h1>. The owning org/deck label is derived from configured roster state (the
+// HomeRepo owner) rather than a compiled-in company name; unset degrades to a
+// bare "Portfolio Roadmap".
+func roadmapTitle() string {
+	const base = "Portfolio Roadmap"
+	home := scanEffectiveConfig().HomeRepo
+	if i := strings.Index(home, "/"); i > 0 {
+		return home[:i] + " — " + base
+	}
+	return base
+}
+
 func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []roadmapException, goals []goalMix, inverted bool, invertMsg string, nu NextUp, findings []Finding, sha string, now time.Time) string {
 	var b strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&b, format+"\n", a...) }
+	title := roadmapTitle()
 
 	// --- CSS ---
 	w("<!DOCTYPE html>")
@@ -600,7 +615,7 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 	w("<head>")
 	w("<meta charset=\"UTF-8\">")
 	w("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">")
-	w("<title>Medici — Portfolio Roadmap</title>")
+	w("<title>%s</title>", htmlEscape(title))
 	w("<style>")
 	w("  :root {")
 	w("    --bg: #1a1a2e; --surface: #16213e; --blue: #3366FF; --green: #00CC66;")
@@ -672,7 +687,7 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 	w("<body>")
 
 	// --- Header ---
-	w("<h1>Medici — Portfolio Roadmap</h1>")
+	w("<h1>%s</h1>", htmlEscape(title))
 	shortSHA := sha
 	if len(shortSHA) > 7 {
 		shortSHA = shortSHA[:7]
@@ -727,7 +742,7 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 		w("</div>")
 	}
 	w("</div>")
-	w("<div style=\"font-size:12px;color:var(--text2);margin-top:8px;\">DORA rollup: pending mm/26</div>")
+	w("<div style=\"font-size:12px;color:var(--text2);margin-top:8px;\">DORA rollup: pending</div>")
 	w("</div>")
 
 	// --- Next-up block ---

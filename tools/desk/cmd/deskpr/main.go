@@ -1,0 +1,91 @@
+// Command deskpr is the worker-side desk tool.
+// It encodes ONE workflow verb — "open the draft PR for the branch I'm on" — plus its
+// hot-path sibling "push a follow-up to that same open draft". It is draft-only BY
+// CONSTRUCTION: there is no code path that can omit --draft or emit a git --force, and
+// no verb for edit/close/merge/ready (ready lives in deskpost with its preconditions).
+//
+// Exit codes (deskkit contract): 0 success/noop, 3 disabled,
+// 4 rate-limited, 5 refused, 6 unverifiable. See deskkit/exitcodes.go.
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+)
+
+const usage = `deskpr — push a feature branch and open (or update) its DRAFT pull request.
+
+USAGE:
+  deskpr create --title T (--body-file F | --body-min B) [--base main] [--as-app=false]
+  deskpr update [--as-app=false]
+  deskpr --version
+
+deskpr is draft-only by construction: it can only open draft PRs on a non-default
+branch and push follow-ups to an EXISTING open draft. It has no ready/edit/close/merge
+verb and can never pass --force to git. Preconditions are re-verified in-tool;
+on any state it cannot positively verify it refuses.
+
+By default, --as-app is true: gh calls authenticate as
+the worker App via desktoken worker. Pass --as-app=false for the example-org
+fallback (transition period). The branch push (committed code) is the worker's git
+authorship; the PR is filed under the worker App identity.
+
+Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.`
+
+func main() {
+	// The roster class is an EXPLICIT declaration, never the zero value by accident
+	// (an earlier correctness review found SetToolClass had no caller anywhere,
+	// so "ClassWrite is the safe default" was true only by luck). This tool ACTS on
+	// the roster, so it is ciEligible=false: it reads the config-home file and never
+	// the environment, in CI as well as locally.
+	deskkit.SetToolClass(deskkit.ClassForTool(false))
+	// Echo the effective roster once per run. Every tool that reads a configured
+	// control surface echoes it — a value that lives in settings rather than in a diff
+	// is only visible at RUN time, and a NARROWING must be as visible as a widening.
+	deskkit.EchoEffectiveConfig(os.Stderr)
+	os.Exit(run(os.Args[1:]))
+}
+
+func run(args []string) int {
+	// --version / help are pure reads: no kill-switch gate, no audit line.
+	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
+		sha, built := deskkit.Version()
+		fmt.Printf("deskpr sourceSHA=%s builtAt=%s\n", sha, built)
+		return deskkit.ExitOK
+	}
+	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
+		fmt.Fprintln(os.Stderr, usage)
+		if len(args) == 0 {
+			return deskkit.ExitRefused
+		}
+		return deskkit.ExitOK
+	}
+
+	// The kill-switch check is the FIRST action of the tool (before flag parsing of
+	// the verb's payload). Guard writes its own result=disabled audit line.
+	if err := deskkit.Guard(); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		return deskkit.ExitCodeOf(err)
+	}
+
+	// Running from source (go run / unstamped) is a drift risk — say so loudly.
+	deskkit.WarnIfUnpinned(os.Stderr)
+
+	sub, rest := args[0], args[1:]
+	var err error
+	switch sub {
+	case "create":
+		err = cmdCreate(rest)
+	case "update":
+		err = cmdUpdate(rest)
+	default:
+		fmt.Fprintf(os.Stderr, "deskpr: unknown subcommand %q\n\n%s\n", sub, usage)
+		return deskkit.ExitRefused
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+	}
+	return deskkit.ExitCodeOf(err)
+}

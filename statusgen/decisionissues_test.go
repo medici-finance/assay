@@ -208,7 +208,7 @@ func TestDecisionIssuesExistingMarkersFile(t *testing.T) {
 	})
 }
 
-// TestDecisionIssueWhy covers methodology/27: renderDecisionBody emits the
+// TestDecisionIssueWhy covers the why field: renderDecisionBody emits the
 // `> **Why this work exists:** …` blockquote (under the gate-why block, above the
 // mechanical Gate reason line) when the brief carries a why:, and omits it when
 // absent. Constructed BriefFiles keep the test offline.
@@ -314,9 +314,9 @@ func noticeContaining(notices []string, subs ...string) bool {
 	return false
 }
 
-// Part (a) of the issue-loop/06 lint: the status-wide NOTICE fires only for
+// Part (a) of the lint: the status-wide NOTICE fires only for
 // gate:human briefs someone is waiting on (in-progress/implemented/verified),
-// NEVER for backlog todo briefs — the register-flood guard from the #427 review.
+// NEVER for backlog todo briefs — the register-flood guard from the review.
 func TestDecisionLintNoticeScope(t *testing.T) {
 	_, streams := loadDCStreams(t)
 	_, notices := checkBriefFiles(streams)
@@ -327,7 +327,7 @@ func TestDecisionLintNoticeScope(t *testing.T) {
 		}
 	}
 	if noticeContaining(notices, "brief dc/04 is gate:human", "has no decision-issue") {
-		t.Error("part (a) NOTICE fired for a backlog todo brief (dc/04) — the flood guard regressed (#427 review)")
+		t.Error("part (a) NOTICE fired for a backlog todo brief (dc/04) — the flood guard regressed")
 	}
 	if noticeContaining(notices, "brief dc/05", "decision-issue") {
 		t.Error("dc/05 is done with NO decision-issue linkage — neither lint leg should mention it")
@@ -336,8 +336,8 @@ func TestDecisionLintNoticeScope(t *testing.T) {
 
 // Part (b): a done brief still carrying decision-issue NOTICEs only when the
 // body never records the outcome; a body reference to #<NN> silences it, and
-// the message must tell the maintainer to KEEP the linkage (#427 review —
-// never advise deleting the audit trail).
+// the message must tell the maintainer to KEEP the linkage (never advise
+// deleting the audit trail).
 func TestDecisionLintStaleLinkage(t *testing.T) {
 	_, streams := loadDCStreams(t)
 	_, notices := checkBriefFiles(streams)
@@ -357,9 +357,9 @@ func TestDecisionLintStaleLinkage(t *testing.T) {
 
 // TestDecisionIssuesSkipsBackfilledBriefMidStream proves the G1 dedup guard:
 // a gate:human brief at implemented that already carries decision-issue: NN in
-// its frontmatter (manually backfilled — issue-loop/06 task 4) MUST NOT be
+// its frontmatter (manually backfilled) MUST NOT be
 // emitted by decisionIssues(). This is the discriminating test requested by the
-// #427 re-review: the guard's removal must be caught by a failing test.
+// re-review: the guard's removal must be caught by a failing test.
 func TestDecisionIssuesSkipsBackfilledBriefMidStream(t *testing.T) {
 	root, streams := loadDCStreams(t)
 	issues := decisionIssues(root, streams, map[string]bool{})
@@ -385,7 +385,7 @@ func TestDecisionIssuesSkipsBackfilledBriefMidStream(t *testing.T) {
 // TestDecisionIssueTitleTruncation proves the G6 guard: the decisionIssues
 // emitter routes its title through issueTitle() so that an over-long brief
 // title cannot 422 the issue-creation batch. This is the discriminating test
-// requested by the #427 re-review: reverting the issueTitle call to raw string
+// requested by the re-review: reverting the issueTitle call to raw string
 // concatenation must produce a break that this test catches.
 func TestDecisionIssueTitleTruncation(t *testing.T) {
 	root, streams := loadDCStreams(t)

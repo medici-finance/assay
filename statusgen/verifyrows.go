@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Unfailable-Verify-row lint (#509).
+// Unfailable-Verify-row lint.
 //
 // A Verify row exists to answer "does it actually work?". A row whose command is
 // STRUCTURALLY INCAPABLE OF FAILING is worse than no row at all: it manufactures
@@ -15,7 +15,7 @@ import (
 // real exit code, and a reader has every reason to believe something was checked.
 // Nothing was.
 //
-// Scope discipline vs F-10. verifySectionProblems is deliberately a
+// Scope discipline. verifySectionProblems is deliberately a
 // presence/structure check — "is the row any GOOD?" is the review gate's job, not
 // this lint's, and that boundary stands. These checks do NOT judge quality: they
 // flag rows that cannot discriminate between pass and fail for ANY input. That is
@@ -336,7 +336,7 @@ func grepCalls(toks []shellTok) []grepCall {
 
 // goTestRunPatterns extracts every `-run <pattern>` (or `-run=<pattern>` /
 // `--run=<pattern>`) argument from `go test` invocations in a tokenized
-// command (#580).
+// command.
 //
 // Unlike grepCalls this does not track pipeline position: a `-run` regexp
 // that matches no test name makes `go test` print "no tests to run" and exit
@@ -478,7 +478,7 @@ func forcesSuccess(toks []shellTok) bool {
 
 // exitSwallowingSinks are commands that virtually always exit 0, so a pipeline
 // ending in one reports THEIR status, not the real check's. `make test | tee log`
-// passes however hard the tests fail — the defect that nearly shipped in the DAML
+// passes however hard the tests fail — a defect this pipeline shape can hide in a
 // CI gate. Kept to `tee` alone: it is the real-world instance and it has no
 // meaningful failure mode short of an unwritable file. Filters whose exit status
 // can legitimately be the gate (grep, jq, test) are NOT listed.
@@ -521,7 +521,7 @@ func pipelineSwallowsExit(toks []shellTok) string {
 // Rule 4 — `\|` inside a `go test -run` pattern
 // ---------------------------------------------------------------------------
 //
-// Identical defect to rule 1, different command surface (#580). `go test
+// Identical defect to rule 1, different command surface. `go test
 // -run` compiles its argument as an RE2 regexp exactly like `grep -E` — `\|`
 // there is a LITERAL pipe too, not alternation, so a row like
 // `go test -run 'Dora\|Weekly\|Artifact'` matches no test name, `go test`
@@ -542,9 +542,9 @@ func pipelineSwallowsExit(toks []shellTok) string {
 // Rules 1-4 catch rows that always PASS. This one catches the mirror defect:
 // a row that can never RUN. Both are non-tests — a command that errors before
 // it reaches the thing under test discriminates no better than one that
-// matches nothing — and both were found by the same verify-desk drain
-// (F-impl-claims-unproven, case 3: desk-tools/10's smoke rows passed a bare
-// `url` placeholder the implementation rejected before the testing seam).
+// matches nothing — and both surfaced from the same class of unproven claim:
+// smoke rows that passed a bare `url` placeholder the implementation rejected
+// before the testing seam.
 //
 // An unrunnable row is not merely noise. It corrodes the record twice: it
 // reaches `implemented` with a Verify table nobody could have executed, and
@@ -563,10 +563,9 @@ func pipelineSwallowsExit(toks []shellTok) string {
 // Nothing in the command text distinguishes a stand-in named `url` from a
 // literal argument that happens to read like one — deciding it requires
 // knowing the callee's argument contract. That is the exact shape of the
-// desk-tools/10 case, so this rule does NOT subsume the finding that
-// motivated it; it narrows the gap and leaves a named remainder. See
-// methodology/44 § "Detection limits" — the lint output is a LOWER BOUND on
-// this class, never the complete set.
+// bare-word placeholder case, so this rule does NOT subsume the finding that
+// motivated it; it narrows the gap and leaves a named remainder. The lint
+// output is a LOWER BOUND on this class, never the complete set.
 //
 // Quoted text is exempt throughout. `grep -Eiq -e "<script[^>]*src="` is a
 // regex, not a placeholder, and the quoting is what tells them apart.
@@ -697,7 +696,7 @@ func verifyRowTable(section string, fn func(num, cmd, expect string)) {
 	}
 }
 
-// unfailableRowNotices flags Verify rows whose command cannot fail (#509).
+// unfailableRowNotices flags Verify rows whose command cannot fail.
 //
 // SEVERITY — NOTICE, not PROBLEM, deliberately. The two rules below fire on a
 // substantial number of briefs already on main, most of them verified/done with
@@ -706,7 +705,7 @@ func verifyRowTable(section string, fn func(num, cmd, expect string)) {
 // closed — retroactively editing the recorded basis of a past sign-off, which is
 // precisely the falsification this lint exists to prevent. So: NOTICE now, visible
 // on every run, backfill the ACTIVE streams, then flip to a hard add(...) once
-// main is clean — the same phased path gate-why took (methodology/24 → /25) and
+// main is clean — the same phased path gate-why took and
 // the one the `why:` NOTICE is on today.
 //
 // Correcting a CLOSED brief's row is not in scope for the backfill: the row is a
@@ -737,33 +736,33 @@ func unfailableRowNotices(streams []*Stream) []string {
 					if g.extended {
 						for _, p := range g.patterns {
 							if escapedPipeOutsideBracket(p) {
-								add("%s: %s uses `\\|` inside a `grep -E` pattern (%q) — in an extended regex `\\|` is a LITERAL pipe, not alternation, so the row matches almost nothing and passes whatever the file contains. The raw text is also ambiguous: GFM renders `\\|` in a table cell as `|`, so this command means one thing copied from the rendered page and another copied from the source. Write the alternatives as separate patterns (`grep -E -e alpha -e beta`), which reads identically in both. For a genuine literal pipe use a bracket class (`[\\|]`) — #509", path, where, p)
+								add("%s: %s uses `\\|` inside a `grep -E` pattern (%q) — in an extended regex `\\|` is a LITERAL pipe, not alternation, so the row matches almost nothing and passes whatever the file contains. The raw text is also ambiguous: GFM renders `\\|` in a table cell as `|`, so this command means one thing copied from the rendered page and another copied from the source. Write the alternatives as separate patterns (`grep -E -e alpha -e beta`), which reads identically in both. For a genuine literal pipe use a bracket class (`[\\|]`)", path, where, p)
 								break
 							}
 						}
 					}
 					// Rule 2: `grep -c` gated on an expected count of zero.
 					if g.count && g.last && expectsZeroCount(expect) && !forcesSuccess(toks) {
-						add("%s: %s expects a count of `0` from `grep -c`, but grep exits 1 when it matches nothing — on the success path the row FAILS, and it only passes when it finds what it was meant to prove absent. Gate on the exit status instead (`! grep -qE …`), or keep the count as output and neutralise the status (`grep -cE … || true`) — #509", path, where)
+						add("%s: %s expects a count of `0` from `grep -c`, but grep exits 1 when it matches nothing — on the success path the row FAILS, and it only passes when it finds what it was meant to prove absent. Gate on the exit status instead (`! grep -qE …`), or keep the count as output and neutralise the status (`grep -cE … || true`)", path, where)
 					}
 				}
 
 				// Rule 3: exit status swallowed by an always-zero sink.
 				if sink := pipelineSwallowsExit(toks); sink != "" {
-					add("%s: %s pipes into `%s`, so the row reports `%s`'s exit status, not the check's — the command before it can fail and the row still passes. Assert on the real command (write to a file, then check it), or set `set -o pipefail` — #509", path, where, sink, sink)
+					add("%s: %s pipes into `%s`, so the row reports `%s`'s exit status, not the check's — the command before it can fail and the row still passes. Assert on the real command (write to a file, then check it), or set `set -o pipefail`", path, where, sink, sink)
 				}
 
 				// Rule 4: `\|` in a `go test -run` pattern.
 				for _, p := range goTestRunPatterns(toks) {
 					if escapedPipeOutsideBracket(p) {
-						add("%s: %s uses `\\|` inside a `go test -run` pattern (%q) — `go test -run` compiles its argument as RE2, same as `grep -E`: `\\|` there is a LITERAL pipe, not alternation, so the pattern matches no test name, `go test` reports \"no tests to run\", and the row passes having run nothing. The raw text is also ambiguous: GFM renders `\\|` in a table cell as `|`, so this command means one thing copied from the rendered page and another copied from the source. Use a single unambiguous token (`-run Dora`) or write the alternation unescaped (`-run 'Dora|Weekly|Artifact'`) — #509, #580", path, where, p)
+						add("%s: %s uses `\\|` inside a `go test -run` pattern (%q) — `go test -run` compiles its argument as RE2, same as `grep -E`: `\\|` there is a LITERAL pipe, not alternation, so the pattern matches no test name, `go test` reports \"no tests to run\", and the row passes having run nothing. The raw text is also ambiguous: GFM renders `\\|` in a table cell as `|`, so this command means one thing copied from the rendered page and another copied from the source. Use a single unambiguous token (`-run Dora`) or write the alternation unescaped (`-run 'Dora|Weekly|Artifact'`)", path, where, p)
 						break
 					}
 				}
 
 				// Rule 5: an unsubstituted metavariable — the row cannot run.
 				if mv := unsubstitutedMetavars(cmd); len(mv) > 0 {
-					add("%s: %s carries the unsubstituted placeholder(s) %s — the command cannot run as literally written. A verifier either gets an error instead of a verdict, or silently substitutes a value, in which case the command recorded in the brief is not the command that produced the Evidence and the row is no longer reproducible. Substitute a concrete value, or derive it in the command (a `$(…)` lookup); if the row is genuinely manual, move the placeholder out of the code span. Only bracket and ellipsis placeholder shapes are decidable from the text — one spelled as a plain word is NOT — so this check is a LOWER BOUND on the class, never the complete set (methodology/44 § Detection limits) — #509", path, where, strings.Join(mv, ", "))
+					add("%s: %s carries the unsubstituted placeholder(s) %s — the command cannot run as literally written. A verifier either gets an error instead of a verdict, or silently substitutes a value, in which case the command recorded in the brief is not the command that produced the Evidence and the row is no longer reproducible. Substitute a concrete value, or derive it in the command (a `$(…)` lookup); if the row is genuinely manual, move the placeholder out of the code span. Only bracket and ellipsis placeholder shapes are decidable from the text — one spelled as a plain word is NOT — so this check is a LOWER BOUND on the class, never the complete set", path, where, strings.Join(mv, ", "))
 				}
 			})
 		}

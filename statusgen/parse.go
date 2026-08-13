@@ -19,9 +19,9 @@ type frontmatter struct {
 	Issues        []int   `yaml:"issues"`
 	External      string  `yaml:"external"`
 	Tiering       *string `yaml:"tiering"`        // optional; nil when absent, non-nil (incl. "") when present.
-	MaxConcurrent *int    `yaml:"max-concurrent"` // optional; nil when absent; 1..perStreamCap when present (methodology-metrics/13).
-	Serves        string  `yaml:"serves"`         // optional; example-app | example-service | assay | platform | "" (untagged, mm/23).
-	Owner         string  `yaml:"owner"`          // optional stream owner; "" when absent — renders "—" (mm/23).
+	MaxConcurrent *int    `yaml:"max-concurrent"` // optional; nil when absent; 1..perStreamCap when present.
+	Serves        string  `yaml:"serves"`         // optional; example-app | example-service | assay | platform | "" (untagged).
+	Owner         string  `yaml:"owner"`          // optional stream owner; "" when absent — renders "—".
 	Repo          string  `yaml:"repo"`           // optional owning repo, <owner>/<name>; "" when absent.
 }
 
@@ -33,7 +33,7 @@ type frontmatter struct {
 // up front so a Windows-authored (CRLF) file parses identically to a
 // LF file instead of silently missing the "---\n" byte-prefix and having its
 // entire content — fence lines included — swallowed as "frontmatter" with an
-// empty body (the exact register-entry data-loss bug #451 reported).
+// empty body (the exact register-entry data-loss bug).
 func splitFrontmatter(content string) (string, string, error) {
 	content = strings.ReplaceAll(content, "\r\n", "\n")
 	lines := strings.Split(content, "\n")

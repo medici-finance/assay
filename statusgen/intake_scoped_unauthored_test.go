@@ -65,7 +65,7 @@ func TestIntakeScopedUnauthoredNotices(t *testing.T) {
 		if len(got) != 1 {
 			t.Fatalf("got %d notices, want 1: %v", len(got), got)
 		}
-		want := "scoped-but-unauthored: intake I-03 scoped → agent-flow-observability for 16d with no docs/streams/agent-flow-observability/README.md — author the stream/brief or re-triage (issue-loop/08)"
+		want := "scoped-but-unauthored: intake I-03 scoped → agent-flow-observability for 16d with no docs/streams/agent-flow-observability/README.md — author the stream/brief or re-triage"
 		if got[0] != want {
 			t.Errorf("NOTICE mismatch:\ngot:  %s\nwant: %s", got[0], want)
 		}
@@ -154,9 +154,6 @@ func TestIntakeScopedUnauthoredNotices(t *testing.T) {
 		}
 		if !strings.Contains(got[0], "I-60") || !strings.Contains(got[0], "not-a-date") {
 			t.Errorf("bad-date NOTICE must name ID and offending value: %s", got[0])
-		}
-		if !strings.Contains(got[0], "(issue-loop/08)") {
-			t.Errorf("bad-date NOTICE missing brief reference: %s", got[0])
 		}
 	})
 
