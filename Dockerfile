@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # =============================================================================
-# assay desk-tools + statusgen — one combined, multi-arch Linux runtime image.
+# assay desk-tools + statusgen — one combined Linux runtime image (linux/amd64).
 #
 # WHAT'S INSIDE
 #   - The desk-tools suite: every binary under tools/desk/cmd/* (deskboard,
@@ -19,8 +19,9 @@
 # The stamps arrive as build-args, so an image tagged :vX self-reports vX and a
 # pin can be checked from inside the container.
 #
-# PLATFORMS: linux/amd64 + linux/arm64 only. A container is Linux; native
-# macOS / Windows binaries are a SEPARATE artifact and are NOT built here.
+# PLATFORM: linux/amd64. Built with plain `docker build` (single-arch); a
+# container is Linux, and native macOS / Windows binaries are a SEPARATE
+# artifact, NOT built here.
 #
 # This image is for RUNNING the desk loops in-container, so it bakes in git,
 # the gh CLI and ca-certificates alongside the compiled binaries. The Go
@@ -30,14 +31,13 @@
 
 # ---- Builder --------------------------------------------------------------
 # golang:1.25 matches the `go 1.25.0` line in both go.mod files (tools/desk and
-# statusgen). Alpine base, CGO off -> fully static binaries that run on any
-# linux/<arch>. Pinned to BUILDPLATFORM and cross-compiled per TARGET so a
-# multi-arch build stays fast (native toolchain, GOARCH swap).
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
+# statusgen). Alpine base, CGO off -> fully static Linux binaries.
+FROM golang:1.25-alpine AS builder
 
-# Set by buildx per target platform.
-ARG TARGETOS
-ARG TARGETARCH
+# Target GOOS/GOARCH. Defaulted so a plain `docker build` produces linux/amd64
+# without buildx; a buildx build would override these per platform.
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
 
 # Version stamps, threaded through from CI (.github/workflows/docker-publish.yml).
 # The defaults keep a plain `docker build` working: an unstamped desk binary

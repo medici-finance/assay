@@ -1,0 +1,58 @@
+name: ci
+# Regular (non-Docker) build + test for every Go module in the tree.
+#
+# WHERE THIS RUNS — the self-hosted runner labelled `medici-builder-public`,
+#   which has no Docker daemon. That is exactly right for `go build`/`go test`,
+#   which need no container runtime. The Docker IMAGE build is a separate
+#   workflow (docker-publish.yml) that runs release-only.
+#
+# GO TOOLCHAIN — installed by hand from go.dev/dl, NOT actions/setup-go: the
+#   runner does not reach GitHub's release-asset CDN and its base image ships no
+#   Go. go.dev/dl (→ dl.google.com) and the Go module proxy (proxy.golang.org)
+#   are plain public HTTPS, so `go build`/`go test` fetch deps normally.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  build-test:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: Build and test every module
+        run: |
+          set -euo pipefail
+          go version
+          # Discover each Go module (one go.mod per module) and build+test it
+          # from its own root, so a new module is covered without editing this file.
+          fail=0
+          while IFS= read -r gomod; do
+            dir="$(dirname "$gomod")"
+            echo "::group::${dir}"
+            if ( cd "$dir" && go build ./... && go test ./... ); then
+              echo "${dir}: OK"
+            else
+              echo "::error::${dir}: build/test failed"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done < <(git ls-files '*go.mod')
+          exit "$fail"
