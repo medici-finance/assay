@@ -43,7 +43,9 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # medici-builder-public: the org's self-hosted runner label for PUBLIC repos
+    # (canton-k8s uses the same). The private-repo label is `medici-builder`.
+    runs-on: medici-builder-public
     steps:
       - uses: actions/checkout@v4
 
