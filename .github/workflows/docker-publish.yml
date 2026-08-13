@@ -1,15 +1,20 @@
 name: docker-publish
-# Build ONE combined multi-arch Linux image (desk-tools suite + statusgen) and
-# publish it to GHCR. See ../../Dockerfile for what's inside.
+# Build ONE combined Linux image (desk-tools suite + statusgen) and publish it
+# to GHCR. See ../../Dockerfile for what's inside.
+#
+# WHERE THIS RUNS — release-only, on the self-hosted runner labelled
+#   `medici-builder-public-release`, which provides a Docker daemon (DOCKER_HOST
+#   is set), so it builds with plain `docker build` — no buildx, no Kaniko. That
+#   label is kept safe by SEGMENTATION: only this workflow names it, and this
+#   workflow fires ONLY on tag-push + manual dispatch — never on pull_request —
+#   so a fork PR can never land a job on the build runner. The regular per-PR
+#   build/test runs on ci.yml.
+#
+# ARCH — linux/amd64 only (single-arch; plain `docker build` on the runner arch).
 #
 # TWO WAYS IN
-#   push a tag        desk-tools/v* — the same tag scheme release-desk.yml uses
-#                     in the dev repo. The tag's version becomes the image tag.
-#   workflow_dispatch name a version in the Actions UI; set dry_run to build
-#                     both arches WITHOUT pushing (validation only).
-#
-# The image is Linux-only and multi-arch (linux/amd64 + linux/arm64). Native
-# macOS / Windows binaries are a separate artifact and are not built here.
+#   push a tag        desk-tools/v* — the tag's version becomes the image tag.
+#   workflow_dispatch name a version; set dry_run to build WITHOUT pushing.
 
 on:
   push:
@@ -21,12 +26,12 @@ on:
         required: true
         type: string
       dry_run:
-        description: "Build both arches but do NOT push to GHCR."
+        description: "Build the image but do NOT push to GHCR."
         required: false
         default: false
         type: boolean
 
-# Only what publishing needs: read the source, write packages (GHCR).
+# Least privilege: read the source, write packages (GHCR).
 permissions:
   contents: read
   packages: write
@@ -43,17 +48,14 @@ env:
 
 jobs:
   build:
-    # medici-builder-public: the org's self-hosted runner label for PUBLIC repos
-    # (canton-k8s uses the same). The private-repo label is `medici-builder`.
-    runs-on: medici-builder-public
+    runs-on: medici-builder-public-release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Resolve the version string once, from whichever trigger fired.
       #   tag push  -> strip the "desk-tools/" prefix off github.ref_name
       #   dispatch  -> the typed input, normalised to a leading "v"
-      # Also decide push vs build-only here: a dry-run dispatch, or any run that
-      # is not a desk-tools/v* tag push, builds but does not publish.
+      # Also decide push vs build-only: a dry-run dispatch builds without pushing.
       - name: Resolve version and publish mode
         id: cfg
         env:
@@ -76,52 +78,76 @@ jobs:
             echo "::error::could not resolve a vMAJOR.MINOR.PATCH version (got '$v')"
             exit 1
           fi
+          short_sha="${GITHUB_SHA::7}"
           {
             echo "version=$v"
             echo "push=$push"
             echo "built_at=$(date -u +%FT%TZ)"
+            echo "version_tag=${IMAGE}:${v}"
+            echo "latest_tag=${IMAGE}:latest"
+            echo "sha_tag=${IMAGE}:sha-${short_sha}"
           } >> "$GITHUB_OUTPUT"
           echo "version=$v push=$push (event=$EVENT)"
 
-      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
-
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-
-      # Log in only when we intend to push. A dry run / build-only never touches
-      # the registry, so it does not need — or get — a login.
+      # Log in only when we intend to push. A dry run never touches the registry.
       - name: Log in to GHCR
         if: steps.cfg.outputs.push == 'true'
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      # Tags: :<version>, :latest and :sha-<short-sha>. metadata-action keeps the
-      # tag/label set declarative.
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=raw,value=${{ steps.cfg.outputs.version }}
-            type=raw,value=latest
-            type=sha,prefix=sha-,format=short
+      # Plain `docker build` against the runner's Docker daemon (DOCKER_HOST is
+      # set). Single-arch (runner arch = linux/amd64). Version stamps go in via
+      # build-args so the image's --version matches the tag.
+      - name: Build
+        env:
+          VERSION_TAG: ${{ steps.cfg.outputs.version_tag }}
+          LATEST_TAG: ${{ steps.cfg.outputs.latest_tag }}
+          SHA_TAG: ${{ steps.cfg.outputs.sha_tag }}
+          VERSION: ${{ steps.cfg.outputs.version }}
+          BUILT_AT: ${{ steps.cfg.outputs.built_at }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg "VERSION=${VERSION}" \
+            --build-arg "SOURCE_SHA=${GITHUB_SHA}" \
+            --build-arg "BUILT_AT=${BUILT_AT}" \
+            -t "$VERSION_TAG" \
+            -t "$LATEST_TAG" \
+            -t "$SHA_TAG" \
+            -f ./Dockerfile \
+            .
 
-      - name: Build and push
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: ${{ steps.cfg.outputs.push == 'true' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # Version stamps into the image so its --version output matches the tag.
-          build-args: |
-            VERSION=${{ steps.cfg.outputs.version }}
-            SOURCE_SHA=${{ github.sha }}
-            BUILT_AT=${{ steps.cfg.outputs.built_at }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Push
+        if: steps.cfg.outputs.push == 'true'
+        env:
+          VERSION_TAG: ${{ steps.cfg.outputs.version_tag }}
+          LATEST_TAG: ${{ steps.cfg.outputs.latest_tag }}
+          SHA_TAG: ${{ steps.cfg.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+          docker push "$VERSION_TAG"
+          docker push "$LATEST_TAG"
+          docker push "$SHA_TAG"
+
+      # GHCR packages are created PRIVATE on first push. Best-effort flip to
+      # PUBLIC so the image pulls anonymously. The default GITHUB_TOKEN usually
+      # lacks org package-admin; a failure here is EXPECTED and non-fatal — an
+      # org owner then flips visibility once by hand in the package settings.
+      - name: Make package public (best-effort)
+        if: steps.cfg.outputs.push == 'true'
+        continue-on-error: true
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GHCR_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/orgs/medici-finance/packages/container/assay%2Fdesk-tools \
+            -d '{"visibility":"public"}')"
+          echo "visibility PATCH -> HTTP $code"
+          if [ "$code" != "204" ] && [ "$code" != "200" ]; then
+            echo "::warning::could not set desk-tools package visibility to public (HTTP $code); an org owner must flip it in GHCR package settings."
+          fi

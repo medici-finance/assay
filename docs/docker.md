@@ -51,8 +51,8 @@ docker run --rm -v "$PWD:/work" -w /work \
 
 ## Supported platforms
 
-Linux only, multi-arch: **`linux/amd64`** and **`linux/arm64`**. A container is
-Linux, so there is no macOS or Windows image here.
+Linux only: **`linux/amd64`**. A container is Linux, so there is no macOS or
+Windows image here.
 
 Native macOS and Windows binaries are a **separate artifact**, not part of this
 image.
@@ -63,6 +63,6 @@ image.
   builder compiles every binary `CGO_ENABLED=0` (static) with the same version
   stamps the release workflows use, and a small `alpine` final stage carries
   the binaries plus `git`, `gh`, and `ca-certificates` under a non-root user.
-- `.github/workflows/docker-publish.yml` builds both arches and pushes to GHCR.
+- `.github/workflows/docker-publish.yml` builds the image and pushes to GHCR.
   It runs on a `desk-tools/v*` tag push, or via `workflow_dispatch` (with a
   `dry_run` option that builds without publishing).
