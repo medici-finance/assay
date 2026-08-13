@@ -226,7 +226,7 @@ first (as the example CI workflow does).
 ## Cutting a release
 
 Releases are built by `.github/workflows/release-statusgen.yml`, which has **two
-entry paths**. `release-desk.yml` and `release-daily-harvest.yml` have the same
+entry paths**. `release-desk.yml` and `release-example.yml` have the same
 two, with the same `version` and `dry_run` inputs.
 
 ### `workflow_dispatch` — name a version in the Actions UI
