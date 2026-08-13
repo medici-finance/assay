@@ -99,7 +99,26 @@ const (
 	scanEnvAllowedRepos          = "ASSAY_ALLOWED_REPOS"
 	scanEnvHumanLoginMap         = "ASSAY_HUMAN_LOGIN_MAP"
 	scanEnvRiskPathTriggersExtra = "ASSAY_RISK_PATH_TRIGGERS_EXTRA"
-	scanEnvRosterSchema          = "ASSAY_ROSTER_SCHEMA"
+	// scanEnvRepoAliases is the boards' DISPLAY grouping override
+	// (ASSAY_REPO_ALIASES). It is a DESK-only roster value: statusgen does not
+	// group repos and never consumes it — but the desk tools and statusgen share
+	// one roster.env, and an unknown key in the ASSAY_ namespace REFUSES the whole
+	// configuration (parseConfig). So it must be RECOGNISED here, or a roster.env
+	// that configures the boards' grouping would collapse every statusgen trust
+	// decision. Recognised and otherwise ignored, exactly like the desk-only keys
+	// deskkit recognises for statusgen. KEEP IN SYNC with
+	// deskkit/rosterconfig.go's EnvRepoAliases.
+	scanEnvRepoAliases = "ASSAY_REPO_ALIASES"
+	// scanEnvReleaseRepo (ASSAY_RELEASE_REPO) and scanEnvWriteguardCallout
+	// (ASSAY_WRITEGUARD_CALLOUT) are the other two DESK-only roster values
+	// (deskrelease's release home, writeguard's dangerous-command callout).
+	// statusgen consumes neither, but must RECOGNISE both for the same reason as
+	// scanEnvRepoAliases: a shared roster.env carrying them must not collapse
+	// statusgen's configuration. KEEP IN SYNC with deskkit/rosterconfig.go's
+	// EnvReleaseRepo / EnvWriteguardCallout.
+	scanEnvReleaseRepo       = "ASSAY_RELEASE_REPO"
+	scanEnvWriteguardCallout = "ASSAY_WRITEGUARD_CALLOUT"
+	scanEnvRosterSchema      = "ASSAY_ROSTER_SCHEMA"
 
 	// scanEnvHomeRepo names the owner/repo whose issues get the bare
 	// `issue-<NN>.md` placeholder filename and whose slug the rendered
@@ -271,6 +290,14 @@ func scanEffectiveConfig() scanConfig {
 	defer scanCfgMu.Unlock()
 	if !scanCfgOnce {
 		scanCfgValue = scanLoadConfig(scanCfgClass)
+		// Wire the deployment's risk vocabulary into the placeholder gate from the
+		// config it already sets (ASSAY_RISK_PATH_TRIGGERS_EXTRA). The shipped
+		// open-core default names no product domain; this re-adds the deployment's
+		// own risk words so a risk-labelled/-titled placeholder still derives
+		// gate: human. Idempotent (rebuilds from the neutral base each load), so an
+		// unset config leaves the neutral default in place.
+		kw := riskKeywordsFromPathTriggers(scanCfgValue.RiskExtra)
+		registerRiskGateVocabulary(kw, kw)
 		scanCfgOnce = true
 	}
 	return scanCfgValue
@@ -294,7 +321,7 @@ func scanReadRawConfig(class scanToolClass) (map[string]string, string, []string
 	keys := []string{
 		scanEnvBlessLogin, scanEnvTrustedLogins, scanEnvTrustedBotSlugs,
 		scanEnvAllowedRepos, scanEnvHumanLoginMap, scanEnvRiskPathTriggersExtra,
-		scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
+		scanEnvRepoAliases, scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
 	}
 	keys = append(keys, scanProductConfigKeys()...)
 	fromEnv := func() map[string]string {
@@ -457,7 +484,7 @@ func scanSplitIdentity(entry string) (login string, id int64, ok bool) {
 	return l, n, true
 }
 
-// scanLooksLikeBot mirrors deskkit.looksLikeBot / damlbreakguard's isBotAccount.
+// scanLooksLikeBot mirrors deskkit.looksLikeBot.
 // The authorisation half of a two-factor mechanism has to be a human act, and a
 // blessing IS that authorisation half.
 func scanLooksLikeBot(login string) bool {
@@ -489,6 +516,7 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 	known := map[string]bool{
 		scanEnvBlessLogin: true, scanEnvTrustedLogins: true, scanEnvTrustedBotSlugs: true,
 		scanEnvAllowedRepos: true, scanEnvHumanLoginMap: true, scanEnvRiskPathTriggersExtra: true,
+		scanEnvRepoAliases: true, scanEnvReleaseRepo: true, scanEnvWriteguardCallout: true,
 		scanEnvRosterSchema: true, scanEnvHomeRepo: true, scanEnvScanRepos: true,
 	}
 	for _, k := range scanProductConfigKeys() {

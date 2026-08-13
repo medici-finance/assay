@@ -123,7 +123,7 @@ func TestRegisterRefProblemStillBlocks(t *testing.T) {
 	// isolating registerRefProblems — this is the kind-isolation the reviewer
 	// flagged. brief-02.md exists, so linkProblems is satisfied; the register-ref
 	// lint fires alone, because an F-NN link must point at its own per-entry file
-	// under findings/ or intake/ (methodology/33).
+	// under findings/ or intake/.
 	p := filepath.Join(root, "docs/streams/alpha/brief-01.md")
 	raw, err := os.ReadFile(p)
 	if err != nil {

@@ -1,8 +1,8 @@
 package main
 
-// --trend is the SCADA "historian" view (I-08, methodology-metrics/03): it
-// rolls the append-only status-transition log (methodology-metrics/01,
-// docs/streams/.history.jsonl) up into a time series so you can see the
+// --trend is the SCADA "historian" view (I-08): it
+// rolls the append-only status-transition log
+// (docs/streams/.history.jsonl) up into a time series so you can see the
 // methodology's state OVER TIME, not just now. Three signals per period:
 //
 //   - the status funnel (briefs per status at each period's end) — the
@@ -290,7 +290,7 @@ func runTrend(root, historyPath, since, period string) int {
 		return 1
 	}
 	if !ok {
-		fmt.Println("insufficient history — need at least two recorded transitions to form a trend (methodology-metrics/01 log)")
+		fmt.Println("insufficient history — need at least two recorded transitions to form a trend")
 		return 0
 	}
 	fmt.Print(renderTrend(buckets, period, sinceT, len(entries)))

@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "note": "Derived from example-k8s .github/workflows/validate.yml. Every check here is expressible as trusted-tool-over-untrusted-data AND passes on example-k8s main -- a check list that cannot pass on the base is not a gate, it is an outage. Two validate.yml steps are DELIBERATELY absent, and the omission is a stated boundary rather than an oversight: (1) the kustomize render (`kustomize build base/ledger examples/overlays/* deploy admin`) -- kustomize reads kustomization.yaml FROM the tree, which is untrusted content controlling execution and resource resolution, exactly what the trusted-tool-over-untrusted-data rule forbids; without the render, kubeconform over deploy/ is a category error (it holds pre-substitution ${VAR} templates, not manifests), so deploy/ manifests are NOT schema-validated here and deploy/ is covered only by the grep-shaped guards below. (2) shellcheck -- it takes an explicit file list from `git ls-files '*.sh'`, which this runner's fixed-argv model cannot express.",
+  "checks": [
+    {
+      "name": "ck-bash-default-expansion",
+      "note": "validate.yml step 'Forbid bash-default expansions in ConfigMap-shipped scripts'. Flux's envsubst evaluates ${VAR:-x}/${VAR:=x} in ConfigMap-shipped scripts, silently applying a default in-cluster (example-k8s docs/usage.md sharp edge 4). This is the fail-open class that motivated the whole tool.",
+      "tool": "grep",
+      "args": [
+        "-rnE",
+        "\\$\\{[A-Za-z_][A-Za-z_0-9]*:[-=]",
+        "deploy/scripts",
+        "admin/scripts"
+      ],
+      "invertExit": true,
+      "requireFiles": ["deploy/scripts", "admin/scripts"],
+      "minFiles": 2
+    },
+    {
+      "name": "ck-secret-denylist",
+      "note": "validate.yml step 'Secret / denylist scan', first pattern. No SOPS material and no private-deployment hostnames/namespaces/paths may land in this PUBLIC repo. The bracketed character classes keep the pattern from matching its own text.",
+      "tool": "grep",
+      "args": [
+        "-rInE",
+        "sops[:]|ENC\\[|example[.]test|example-(dev|prod)|operato[r]|example-or[g]",
+        "--exclude-dir=.git",
+        "."
+      ],
+      "invertExit": true,
+      "requireFiles": ["."],
+      "minFiles": 20
+    },
+    {
+      "name": "ck-credential-shaped",
+      "note": "validate.yml step 'Secret / denylist scan', second pattern: the generic article rather than the six enumerated strings -- a real JWT, a PEM private key, a GitHub token, an AWS access-key id. An advisory fix is exactly the kind of hurried change that carries one in.",
+      "tool": "grep",
+      "args": [
+        "-rInE",
+        "eyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\.|-----BEGIN [A-Z ]*PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}",
+        "--exclude-dir=.git",
+        "."
+      ],
+      "invertExit": true,
+      "requireFiles": ["."],
+      "minFiles": 20
+    },
+    {
+      "name": "kubeconform-base",
+      "note": "validate.yml's kubeconform step, restricted to the trees that validate WITHOUT the kustomize render. `Valid: [1-9]` is the positive-work assertion: kubeconform exits 0 over a directory holding no manifests, so a bare zero exit would certify an emptied base/.",
+      "tool": "kubeconform",
+      "args": ["-strict", "-summary", "-ignore-missing-schemas", "base/"],
+      "requireFiles": ["base/"],
+      "minFiles": 10,
+      "requireOutputMatch": "Valid: [1-9][0-9]*"
+    },
+    {
+      "name": "kubeconform-admin",
+      "note": "Same, over admin/. Measured on example-k8s main: 5 resources in 2 files, Valid: 4.",
+      "tool": "kubeconform",
+      "args": ["-strict", "-summary", "-ignore-missing-schemas", "admin/"],
+      "requireFiles": ["admin/"],
+      "minFiles": 2,
+      "requireOutputMatch": "Valid: [1-9][0-9]*"
+    }
+  ]
+}

@@ -248,7 +248,7 @@ func hasNegationPhrase(body string) bool {
 	if negationPhraseRe.MatchString(body) {
 		return true
 	}
-	// Neutralise the measured "if not, lgtm" idiom before scanning the #263
+	// Neutralise the measured "if not, lgtm" idiom before scanning the added
 	// vocabulary, so its `not lgtm` clause blocks refusals without rejecting the
 	// one real approval that shares the character sequence.
 	return negationPhraseLGTMRe.MatchString(lgtmConditionalApprovalRe.ReplaceAllString(body, " "))

@@ -17,8 +17,8 @@ func TestSplitRowEscaped(t *testing.T) {
 	}{
 		{
 			name: "plain row",
-			line: "| 1 | `dpm test` | 0 |",
-			want: []string{" 1 ", " `dpm test` ", " 0 "},
+			line: "| 1 | `go test` | 0 |",
+			want: []string{" 1 ", " `go test` ", " 0 "},
 		},
 		{
 			name: "escaped pipes stay inside their cell and keep their backslash",
@@ -58,7 +58,7 @@ func TestSplitRowEscapedPreservesBackslash(t *testing.T) {
 
 func TestCodeSpan(t *testing.T) {
 	tests := []struct{ name, cell, want string }{
-		{"bare code span", "`dpm test`", "dpm test"},
+		{"bare code span", "`go test`", "go test"},
 		{"code span with trailing prose", "`grep -c X f` (post apply)", "grep -c X f"},
 		{"prose only", "the documented run command", "the documented run command"},
 		{"double-tick fence", "``echo `x` ``", "echo `x`"},
@@ -221,7 +221,7 @@ func TestGrepCalls(t *testing.T) {
 // TestGrepCallsIgnoresNonGrep pins that a cell with no grep yields no calls — the
 // tokenizer must not invent one from a filename or an argument.
 func TestGrepCallsIgnoresNonGrep(t *testing.T) {
-	for _, cmd := range []string{`dpm test`, `go run ./tools/statusgen --lint`, `rg -c "a\|b" .`} {
+	for _, cmd := range []string{`go test`, `go run ./tools/statusgen --lint`, `rg -c "a\|b" .`} {
 		if got := grepCalls(tokenizeCommand(cmd)); len(got) != 0 {
 			t.Errorf("grepCalls(%q) = %v, want none", cmd, got)
 		}
@@ -230,7 +230,7 @@ func TestGrepCallsIgnoresNonGrep(t *testing.T) {
 
 // TestGoTestRunPatterns pins extraction of the `-run` argument from `go test`
 // invocations, across the `-run PAT`, `-run=PAT` and `--run=PAT` forms, and
-// confirms a non-`go test` command yields nothing (#580).
+// confirms a non-`go test` command yields nothing.
 func TestGoTestRunPatterns(t *testing.T) {
 	tests := []struct {
 		name string
@@ -243,7 +243,7 @@ func TestGoTestRunPatterns(t *testing.T) {
 		{"unambiguous single token", `go test ./tools/statusgen/ -run Dora`, []string{"Dora"}},
 		{"no -run flag at all", `go test ./tools/statusgen/`, nil},
 		{"not a go test invocation", `go build ./tools/...`, nil},
-		{"not go at all", `dpm test`, nil},
+		{"not go at all", `make test`, nil},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -347,10 +347,10 @@ func TestPipelineSwallowsExit(t *testing.T) {
 		cmd  string
 		want string
 	}{
-		{"tee swallows the real exit status", `dpm test \| tee out.log`, "tee"},
-		{"tee at the end of a longer pipeline", `dpm test \| grep -v x \| tee out.log`, "tee"},
-		{"no pipeline", `dpm test`, ""},
-		{"grep as the last stage is a legitimate gate", `dpm test \| grep -q PASS`, ""},
+		{"tee swallows the real exit status", `go test \| tee out.log`, "tee"},
+		{"tee at the end of a longer pipeline", `go test \| grep -v x \| tee out.log`, "tee"},
+		{"no pipeline", `go test`, ""},
+		{"grep as the last stage is a legitimate gate", `go test \| grep -q PASS`, ""},
 		{"awk as the last stage is not a known always-zero sink", `grep -c x f \| awk '{print}'`, ""},
 	}
 	for _, tc := range tests {
@@ -422,22 +422,22 @@ func TestUnfailableRowRules(t *testing.T) {
 	}{
 		// ---- true positives -------------------------------------------------
 		{
-			name: "rule 1: mis-escaped alternation in grep -E (example-poc/01 row 2)",
+			name: "rule 1: mis-escaped alternation in grep -E",
 			row:  "| 2 | `grep -ciE \"arm64\\|amd64\\|version\" S1.md` | ≥1 |",
 			want: []string{"rule1 row 2"},
 		},
 		{
-			name: "rule 1: fires through a shell pipe (example-poc/08 row 4)",
+			name: "rule 1: fires through a shell pipe",
 			row:  "| 4 | `sed '/x/d' S7.md \\| { ! grep -qE \"x86-only\\|counter-based\"; }` | exit 0 |",
 			want: []string{"rule1 row 4"},
 		},
 		{
-			name: "rule 2: grep -c gated on a count of zero (assay-dogfood/04 row 2 shape)",
+			name: "rule 2: grep -c gated on a count of zero",
 			row:  "| 2 | `grep -c \"medici-stuff\" docs/brand/README.md` | 0 (stale name fixed) |",
 			want: []string{"rule2 row 2"},
 		},
 		{
-			name: "rule 2: grep -c as the last stage of a pipeline (methodology/24 row 1)",
+			name: "rule 2: grep -c as the last stage of a pipeline",
 			row:  "| 1 | `go run ./tools/statusgen --lint 2>&1 \\| grep -c gate-why` | `0` — no brief trips the NOTICE |",
 			want: []string{"rule2 row 1"},
 		},
@@ -448,7 +448,7 @@ func TestUnfailableRowRules(t *testing.T) {
 		},
 		{
 			name: "rule 3: exit status swallowed by tee",
-			row:  "| 1 | `dpm test \\| tee test.log` | 0 |",
+			row:  "| 1 | `go test \\| tee test.log` | 0 |",
 			want: []string{"rule3 row 1"},
 		},
 		{
@@ -462,22 +462,22 @@ func TestUnfailableRowRules(t *testing.T) {
 			want: []string{"rule4 row 6"},
 		},
 		{
-			name: "rule 5: bare angle-bracket metavariable (desk-console-2/07 row 3)",
+			name: "rule 5: bare angle-bracket metavariable",
 			row:  "| 3 | `gh issue view <N> --json comments` | the App |",
 			want: []string{"rule5 row 3"},
 		},
 		{
-			name: "rule 5: a multi-word metavariable (methodology-metrics/25 row 3)",
+			name: "rule 5: a multi-word metavariable (example-app/25 row 3)",
 			row:  "| 3 | `yq eval '.on.schedule' <mm/22 workflow file>` | ≥ 3 cron entries |",
 			want: []string{"rule5 row 3"},
 		},
 		{
-			name: "rule 5: metavariable embedded in a path (methodology-metrics/22 row 5)",
+			name: "rule 5: metavariable embedded in a path (example-app/22 row 5)",
 			row:  "| 5 | `jq -e 'type==\"array\"' docs/reports/daily/<that-date>/prs.json` | exit 0 |",
 			want: []string{"rule5 row 5"},
 		},
 		{
-			name: "rule 5: an angle-bracket metavariable is also a shell redirect (desk-hardening/02 row 1)",
+			name: "rule 5: an angle-bracket metavariable is also a shell redirect",
 			row:  "| 1 | `grep -ci 'foreign commit' <batch-fanout SKILL.md>` | ≥ 1 |",
 			want: []string{"rule5 row 1"},
 		},
@@ -535,7 +535,7 @@ func TestUnfailableRowRules(t *testing.T) {
 		},
 		{
 			name: "a plain non-grep command",
-			row:  "| 1 | `dpm test` | 0 |",
+			row:  "| 1 | `go test` | 0 |",
 			want: nil,
 		},
 		{
@@ -595,7 +595,7 @@ func TestUnfailableRowRules(t *testing.T) {
 	}
 }
 
-// verifyRowStreams copies the #509 fixture tree into a temp root and loads it —
+// verifyRowStreams copies the fixture tree into a temp root and loads it —
 // its own controlled fixture set, the same isolation verifySectionProbs uses for
 // the presence lint.
 func verifyRowStreams(t *testing.T) []*Stream {
@@ -624,9 +624,6 @@ func TestUnfailableRowNoticesOnFixture(t *testing.T) {
 
 	var unfailable, sound, legacy int
 	for _, n := range notices {
-		if !strings.Contains(n, "#509") {
-			t.Errorf("every notice must cite #509 so a reader can find the rule; got %q", n)
-		}
 		switch {
 		case strings.Contains(n, "brief-01-unfailable.md"):
 			unfailable++

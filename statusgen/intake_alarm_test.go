@@ -88,7 +88,7 @@ func TestIntakeAlarm(t *testing.T) {
 		}
 		r := intakeAlarm(entries, now)
 		n := intakeDebtNotice(r)
-		want := "intake debt: 3 untriaged (2 over 3 days, oldest I-05 at 5d) — triage the front door (issue-loop/07)"
+		want := "intake debt: 3 untriaged (2 over 3 days, oldest I-05 at 5d) — triage the front door"
 		if n != want {
 			t.Errorf("NOTICE text mismatch:\ngot:  %s\nwant: %s", n, want)
 		}
@@ -97,7 +97,7 @@ func TestIntakeAlarm(t *testing.T) {
 	t.Run("board line with untriaged over threshold", func(t *testing.T) {
 		r := IntakeAlarmResult{Untriaged: 5, OverThreshold: 3, OldestID: "I-01", OldestDays: 7}
 		got := intakeBoardLine(r)
-		want := "_5 untriaged (3 over 3 days, oldest I-01 at 7d) — triage the front door (issue-loop/07)_"
+		want := "_5 untriaged (3 over 3 days, oldest I-01 at 7d) — triage the front door_"
 		if got != want {
 			t.Errorf("got  %s\nwant %s", got, want)
 		}
@@ -141,9 +141,6 @@ func TestIntakeAlarm(t *testing.T) {
 		}
 		if !strings.Contains(r.BadDates[0], "I-02") || !strings.Contains(r.BadDates[0], "not-a-date") {
 			t.Errorf("BadDates[0] = %q, want mention of I-02 and not-a-date", r.BadDates[0])
-		}
-		if !strings.Contains(r.BadDates[0], "(issue-loop/07)") {
-			t.Errorf("BadDates[0] = %q, want brief reference", r.BadDates[0])
 		}
 	})
 
@@ -251,9 +248,6 @@ func TestIntakeAlarmE2E(t *testing.T) {
 	if !strings.Contains(n, "intake debt: 2 untriaged (1 over 3 days, oldest I-old-idea-intake at 5d)") {
 		t.Errorf("unexpected NOTICE: %s", n)
 	}
-	if !strings.Contains(n, "(issue-loop/07)") {
-		t.Errorf("NOTICE missing brief reference: %s", n)
-	}
 
 	// Board line renders in emit.
 	// Set up a minimal stream so emit doesn't zero out.
@@ -270,9 +264,6 @@ func TestIntakeAlarmE2E(t *testing.T) {
 	}
 	if !strings.Contains(out, "2 untriaged (1 over 3 days, oldest I-old-idea-intake at 5d)") {
 		t.Errorf("intake board line not rendered correctly:\n%s", out)
-	}
-	if !strings.Contains(out, "(issue-loop/07)") {
-		t.Error("board line missing brief reference")
 	}
 
 	// Zero-case board line.

@@ -1,7 +1,7 @@
 package main
 
-// Alarm KPIs for the FINDINGS register (ISA-18.2 / EEMUA-191 alarm management,
-// methodology-metrics/05). FINDINGS entries are the methodology's alarms: each
+// Alarm KPIs for the FINDINGS register (ISA-18.2 / EEMUA-191 alarm management).
+// FINDINGS entries are the methodology's alarms: each
 // flags one or more briefs ⚠ stale until resolved (see applyFindings). Process
 // control has decades of practice on keeping an alarm system healthy; the three
 // KPIs that matter here are:
@@ -31,7 +31,7 @@ import (
 )
 
 // Alarm-KPI thresholds. Named constants, never magic numbers buried in logic
-// (methodology-metrics/05 Task 3) — each is overridable from the CLI.
+// (Task 3) — each is overridable from the CLI.
 const (
 	// defaultStandingAgeDays is the standing-alarm age threshold: an unresolved
 	// finding older than this is flagged. One retro-cycle — RETRO.md runs weekly,
@@ -157,7 +157,7 @@ func computeAlarms(findings []Finding, cfg AlarmConfig, now time.Time) AlarmRepo
 // standingAlarmNotices renders one --lint NOTICE per standing alarm past the age
 // threshold, plus a single flood NOTICE when active findings overflow. These make
 // the alarm state visible to the desk/retro without a manual scan of FINDINGS.md
-// (methodology-metrics/05 Task 2). Advisory only — never a hard problem.
+// (Task 2). Advisory only — never a hard problem.
 func standingAlarmNotices(findings []Finding, cfg AlarmConfig, now time.Time) []string {
 	rep := computeAlarms(findings, cfg, now)
 	var out []string

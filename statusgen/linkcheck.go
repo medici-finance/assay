@@ -9,9 +9,30 @@ import (
 	"strings"
 )
 
+// linkCheckExtensions is the neutral, open-core set of file extensions a
+// backticked deliverable path must carry to be treated as a real on-disk file
+// the link-checker verifies. It is a var, not a compiled-in literal, so a
+// deployment adds its own source extensions (e.g. a settlement language's) via
+// registerLinkCheckExtensions rather than baking product knowledge into the
+// open-core tree.
+var linkCheckExtensions = []string{"md", "yaml", "yml", "go", "ts", "sh"}
+
+// buildBacktickRe compiles the backticked-file-path matcher from an extension list.
+func buildBacktickRe(exts []string) *regexp.Regexp {
+	return regexp.MustCompile("`([A-Za-z0-9_./-]+\\.(?:" + strings.Join(exts, "|") + "))`")
+}
+
+// registerLinkCheckExtensions extends the neutral extension set and rebuilds the
+// matcher. A product build calls this so its own file kinds are link-checked
+// WITHOUT being named in the open-core tree.
+func registerLinkCheckExtensions(exts ...string) {
+	linkCheckExtensions = append(linkCheckExtensions, exts...)
+	backtickRe = buildBacktickRe(linkCheckExtensions)
+}
+
 var (
 	mdLinkRe   = regexp.MustCompile(`\[[^\]]*\]\(([^)]+)\)`)
-	backtickRe = regexp.MustCompile("`([A-Za-z0-9_./-]+\\.(?:md|yaml|yml|go|ts|sh|daml))`")
+	backtickRe = buildBacktickRe(linkCheckExtensions)
 	// plannedRe matches the escape suffix for deliverables that do not exist yet:
 	// `path` (planned) / `path` (new) / `path` (future ...). Checked immediately
 	// after the closing backtick.

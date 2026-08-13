@@ -1,8 +1,8 @@
-{"ts":"2026-07-01T00:00:00Z","brief":"lending/01","from":"","to":"implemented","sha":"a1"}
-{"ts":"2026-07-03T00:00:00Z","brief":"lending/01","from":"implemented","to":"verified","sha":"a2"}
-{"ts":"2026-07-05T00:00:00Z","brief":"lending/01","from":"verified","to":"done","sha":"a3"}
-{"ts":"2026-07-02T00:00:00Z","brief":"lending/02","from":"","to":"implemented","sha":"b1"}
-{"ts":"2026-07-08T00:00:00Z","brief":"lending/02","from":"implemented","to":"done","sha":"b2"}
+{"ts":"2026-07-01T00:00:00Z","brief":"commerce/01","from":"","to":"implemented","sha":"a1"}
+{"ts":"2026-07-03T00:00:00Z","brief":"commerce/01","from":"implemented","to":"verified","sha":"a2"}
+{"ts":"2026-07-05T00:00:00Z","brief":"commerce/01","from":"verified","to":"done","sha":"a3"}
+{"ts":"2026-07-02T00:00:00Z","brief":"commerce/02","from":"","to":"implemented","sha":"b1"}
+{"ts":"2026-07-08T00:00:00Z","brief":"commerce/02","from":"implemented","to":"done","sha":"b2"}
 {"ts":"2026-06-28T00:00:00Z","brief":"platform/01","from":"","to":"implemented","sha":"c1"}
 {"ts":"2026-07-01T00:00:00Z","brief":"platform/01","from":"implemented","to":"done","sha":"c2"}
 {"ts":"2026-07-02T00:00:00Z","brief":"platform/02","from":"","to":"implemented","sha":"d1"}

@@ -21,7 +21,7 @@ var entryLinkTargetRe = regexp.MustCompile(`(\]\()([^)\s]+)`)
 // docs/streams/. A link authored relative to the entry file (e.g. a bare sibling
 // filename [F-05](2026-07-08-….md), correct from findings/) resolves to a
 // non-existent path once copied verbatim into docs/streams/FINDINGS.md — the
-// dead-link and register-reference lints then fail on the generated view (#827).
+// dead-link and register-reference lints then fail on the generated view.
 //
 // This rewrites each relative target from "relative to docs/streams/<subdir>/"
 // to "relative to docs/streams/" by prefixing the entry's subdir and cleaning:

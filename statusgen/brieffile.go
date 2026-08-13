@@ -18,7 +18,7 @@ import (
 // are exempt and produce no output — see parseBriefFile.
 type BriefFile struct {
 	Path          string
-	Brief         string // "<stream>/<NN>", e.g. "methodology/01"
+	Brief         string // "<stream>/<NN>", e.g. "example-app/01"
 	Title         string
 	Wave          int
 	Depends       []string // typed IDs "<stream>/<NN>"
@@ -26,28 +26,27 @@ type BriefFile struct {
 	Effort        string   // S | M | L
 	Gate          string   // model | human
 	GateWhy       string   // optional prose: WHY this brief is risk-gated (gate-why-rationale)
-	Why           string   // optional prose: WHY this work exists at all — human-justifiable motivation (methodology/27)
-	Value         string   // optional worth signal: low | med | high; "" = absent (== med) — methodology-metrics/14
+	Why           string   // optional prose: WHY this work exists at all — human-justifiable motivation
+	Value         string   // optional worth signal: low | med | high; "" = absent (== med)
 	Risk          map[string]string
 	Issues        []int
-	DecisionIssue int // optional; issue-loop/06: the GitHub issue # for the open needs-decision issue
+	DecisionIssue int // optional; the GitHub issue # for the open needs-decision issue
 	Schema        string
 	Authored      string
 	Sources       []string
 	// ExecTier is the optional brief-v1 `exec-tier:` field — "any" or "strong";
 	// "" when absent (treated as "any"). Signals a minimum execution-model tier
-	// to the dispatcher; a marker in Next-up, never a score input (methodology/29).
+	// to the dispatcher; a marker in Next-up, never a score input.
 	ExecTier string
 	// ExecTierWhy is the optional one-line rationale for exec-tier: strong —
-	// which derivation question(s) it answered yes and why (methodology/29).
+	// which derivation question(s) it answered yes and why.
 	// NOTICEd when exec-tier: strong but exec-tier-why is absent or empty.
 	ExecTierWhy string
 	// BlockedBy is the optional brief-v1 `blocked-by:` field — "env" when the
-	// brief is blocked on infrastructure/environment; "" when absent (methodology-
-	// metrics/34: marks the env-blocked segment in the segmented Awaiting board).
+	// brief is blocked on infrastructure/environment; "" when absent (marks the env-blocked segment in the segmented Awaiting board).
 	BlockedBy string
-	// Consumers is the optional brief-v1 `consumers:` list (brief-rule 9,
-	// methodology-metrics/21): the readers of a shared value this brief changes,
+	// Consumers is the optional brief-v1 `consumers:` list (brief-rule 9): the
+	// readers of a shared value this brief changes,
 	// each routed `<site>: fixed-here | follow-up <stream>/<NN> | out-of-scope
 	// (<why>)`. Every entry is an implementer-written CLAIM, corroborated by
 	// consumers.go — never treated as true because it is present.
@@ -59,7 +58,7 @@ type BriefFile struct {
 	ConsumersProse string
 	Evidence       string // body of the `## Evidence` section (between it and the next `## `)
 	Verify         string // body of the `## Verify` section (prefix-matched; decorated headings allowed)
-	Body           string // full markdown body after the frontmatter (decision-reflection check, issue-loop/06)
+	Body           string // full markdown body after the frontmatter (decision-reflection check)
 }
 
 var (
@@ -83,21 +82,21 @@ var (
 	canonicalRiskSet  = map[string]bool{"regulatory": true, "customer": true, "irreversible": true, "sensitive-data": true}
 	validEffort       = map[string]bool{"S": true, "M": true, "L": true}
 	validGate         = map[string]bool{"model": true, "human": true}
-	// validExecTier is the allowed set for the optional brief-v1 `exec-tier:` field
-	// (methodology/29). Absence ("") is always allowed (defaults to "any").
+	// validExecTier is the allowed set for the optional brief-v1 `exec-tier:` field.
+	// Absence ("") is always allowed (defaults to "any").
 	validExecTier = map[string]bool{"any": true, "strong": true}
 	// validValue is the allowed set for the optional brief-v1 `value:` field.
 	// Absence ("") is always allowed (defaults to med at scoring time); only a
-	// PRESENT-but-unrecognized value is a PROBLEM (methodology-metrics/14).
+	// PRESENT-but-unrecognized value is a PROBLEM.
 	validValue = map[string]bool{"low": true, "med": true, "high": true}
 	// validBlockedBy is the allowed set for the optional brief-v1 `blocked-by:`
-	// field (methodology-metrics/34). Absence ("") is always allowed (defaults to
+	// field. Absence ("") is always allowed (defaults to
 	// "" = not blocked); only a PRESENT-but-unrecognized value is a PROBLEM.
 	validBlockedBy = map[string]bool{"env": true}
 )
 
-// minWhySubstanceLength is the floor on a present why:'s trimmed length
-// (issue #459): below this it reads as a placeholder ("." or "TODO"), not a
+// minWhySubstanceLength is the floor on a present why:'s trimmed length —
+// below this it reads as a placeholder ("." or "TODO"), not a
 // rationale. Chosen well under a genuine one-line justification (the shortest
 // real example on file runs well over 100 characters) so it only catches
 // content-free stand-ins, never a terse-but-real answer.
@@ -122,12 +121,12 @@ func normalizeForDupCheck(s string) string {
 }
 
 // whySubstanceIssue reports why a PRESENT why: fails the substance floor
-// (issue #459), or "" if it clears it. Two failure modes, both content-free
+// or "" if it clears it. Two failure modes, both content-free
 // inputs that a presence-only check cannot distinguish from real rationale:
 //   - too short to be a rationale (e.g. "." or "TODO").
 //   - a substring of, or near-identical to, the brief's own title — a restated
 //     title carries the "what" a reader already has, not the "why" the field
-//     exists for (methodology/27's entire point).
+//     exists for.
 //
 // This stays a floor, not a rewrite of the field's semantics: it rejects only
 // the cheapest content-free inputs, never a genuine short rationale that
@@ -148,7 +147,7 @@ func whySubstanceIssue(why, title string) string {
 // decisionIssueRefInBody reports whether the brief body text references a
 // specific GitHub issue number (e.g., "#42") with a digit-boundary check: the
 // reference must not be followed by another digit, so a brief's "#8" won't
-// falsely match an unrelated "#88" (#427 review, Finding 3 — substring
+// falsely match an unrelated "#88" (substring
 // prefix-collision). Matches "#<num>" followed by a non-digit or end-of-text.
 func decisionIssueRefInBody(body string, issueNum int) bool {
 	// Compile per call: issue numbers are small and this runs at lint time, not
@@ -304,7 +303,7 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 			addBad("gate-why must be a string")
 		}
 	}
-	// exec-tier is an OPTIONAL but KNOWN key (methodology/29): the brief's
+	// exec-tier is an OPTIONAL but KNOWN key: the brief's
 	// minimum execution-model tier — "any" or "strong". Absence defaults to
 	// "any"; a wrong TYPE is a parse error, while a present-but-unrecognized
 	// string is flagged semantically in checkBriefFiles.
@@ -315,7 +314,7 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 			addBad("exec-tier must be a string")
 		}
 	}
-	// exec-tier-why is an OPTIONAL but KNOWN key (methodology/29): a one-line
+	// exec-tier-why is an OPTIONAL but KNOWN key: a one-line
 	// rationale for exec-tier: strong. NOTICEd when exec-tier: strong but
 	// exec-tier-why is absent or empty.
 	if v, ok := data["exec-tier-why"]; ok {
@@ -325,7 +324,7 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 			addBad("exec-tier-why must be a string")
 		}
 	}
-	// blocked-by is an OPTIONAL but KNOWN key (methodology-metrics/34): "env"
+	// blocked-by is an OPTIONAL but KNOWN key: "env"
 	// when the brief is blocked on infrastructure/environment. Absence defaults
 	// to "" (not blocked). A present-but-unrecognized value is flagged
 	// semantically in checkBriefFiles.
@@ -344,7 +343,7 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 		}
 	}
 
-	// value is an OPTIONAL but KNOWN key (methodology-metrics/14): the brief's
+	// value is an OPTIONAL but KNOWN key: the brief's
 	// explicit worth, a Next-up score input. Absence is fine (defaults to med at
 	// scoring time); a wrong TYPE here is a hard parse error, while a present-but-
 	// unrecognized string is flagged semantically in checkBriefFiles so the value
@@ -356,7 +355,7 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 			addBad("value must be a string")
 		}
 	}
-	// why is an OPTIONAL but KNOWN key (methodology/27): the brief's VALUE
+	// why is an OPTIONAL but KNOWN key: the brief's VALUE
 	// rationale — one to three lines a non-engineer could read and justify
 	// the work from. Absence is a NOTICE in checkBriefFiles (non-fatal this
 	// phase, same pattern as gate-why); only a wrong TYPE is a parse error.
@@ -369,8 +368,8 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 			addBad("why must be a string")
 		}
 	}
-	// consumers is an OPTIONAL but KNOWN key (brief-rule 9,
-	// methodology-metrics/21): the routed reader list of a shared-value brief.
+	// consumers is an OPTIONAL but KNOWN key (brief-rule 9): the routed reader
+	// list of a shared-value brief.
 	// A scalar (prose paragraph) is accepted into ConsumersProse and flagged
 	// semantically; only a list containing a non-string is a parse error.
 	if v, ok := data["consumers"]; ok {
@@ -382,7 +381,7 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 			addBad("consumers: %v", lerr)
 		}
 	}
-	// decision-issue is an OPTIONAL but KNOWN key (issue-loop/06): the GitHub
+	// decision-issue is an OPTIONAL but KNOWN key: the GitHub
 	// issue # for the open needs-decision issue tracking this brief. Absence is
 	// fine (most briefs do not need a human decision); a wrong TYPE is an error.
 	if v, ok := data["decision-issue"]; ok {
@@ -463,7 +462,7 @@ func hasHumanReviewer(reviewed string) bool {
 // locates the header row naming the "Command" and "Expect" columns, then scans
 // the data rows below it. This is a PRESENCE/STRUCTURE check only — it asserts
 // the Verify table exists and has a runnable row, never that the row is any
-// good (F-10: quality is the review gate's job, not this lint's).
+// good (quality is the review gate's job, not this lint's).
 func verifyTableHasRow(section string) bool {
 	cmdIdx, expIdx := -1, -1
 	for _, raw := range strings.Split(section, "\n") {
@@ -506,7 +505,7 @@ func verifyTableHasRow(section string) bool {
 // briefs are exempt. It is a SEPARATE check (like attributionProblems) so the
 // file-structural rule runs on every brief regardless of its README-row status.
 //
-// Presence/structure ONLY (F-10): the error text names the missing structure,
+// Presence/structure ONLY: the error text names the missing structure,
 // never quality — a Verify table that exists but is weak is the review gate's
 // concern, not this lint's.
 func verifySectionProblems(streams []*Stream) []string {
@@ -585,7 +584,7 @@ func riskMap(v any) (map[string]string, error) {
 		return nil, fmt.Errorf("must be a mapping")
 	}
 	// The four canonical questions MUST all be answered — a missing question can
-	// never fire the human gate (methodology/02 amendment item b).
+	// never fire the human gate (amendment item b).
 	for _, k := range canonicalRiskKeys {
 		if _, ok := m[k]; !ok {
 			return nil, fmt.Errorf("missing canonical risk key %q (all four required: %s)", k, strings.Join(canonicalRiskKeys, ", "))
@@ -645,19 +644,19 @@ func checkBriefFiles(streams []*Stream) (problems, notices []string) {
 			}
 			// value is optional; only a present-but-unrecognized value is a
 			// PROBLEM — absence defaults to med at scoring time and never
-			// requires the field (methodology-metrics/14).
+			// requires the field.
 			if bf.Value != "" && !validValue[bf.Value] {
 				add("%s: invalid value %q (want low, med or high)", path, bf.Value)
 			}
-			// exec-tier is optional (methodology/29); only a present-but-
+			// exec-tier is optional; only a present-but-
 			// unrecognized value is a PROBLEM — absence defaults to "any".
 			if bf.ExecTier != "" && !validExecTier[bf.ExecTier] {
 				add("%s: invalid exec-tier %q (want any or strong)", path, bf.ExecTier)
 			}
 			if bf.ExecTier == "strong" && strings.TrimSpace(bf.ExecTierWhy) == "" {
-				notice("%s: brief %s has exec-tier: strong but no exec-tier-why — add a one-line rationale naming which derivation question(s) it answered yes (methodology/29)", path, bf.Brief)
+				notice("%s: brief %s has exec-tier: strong but no exec-tier-why — add a one-line rationale naming which derivation question(s) it answered yes", path, bf.Brief)
 			}
-			// blocked-by is optional (methodology-metrics/34); only a present-but-
+			// blocked-by is optional; only a present-but-
 			// unrecognized value is a PROBLEM — absence defaults to "" (not blocked).
 			if bf.BlockedBy != "" && !validBlockedBy[bf.BlockedBy] {
 				add("%s: invalid blocked-by %q (want env)", path, bf.BlockedBy)
@@ -674,28 +673,28 @@ func checkBriefFiles(streams []*Stream) (problems, notices []string) {
 			}
 			// gate-why (gate-why-rationale, PHASE 3): a risk-gated brief
 			// (gate: human OR any risk answer yes) MUST record WHY it is gated.
-			// This is now a hard PROBLEM (exit 1) — the backfill landed as
-			// methodology/24, so every risk-gated brief on main carries a
+			// This is now a hard PROBLEM (exit 1) — the backfill landed,
+			// so every risk-gated brief on main carries a
 			// gate-why, and a new one added without it fails --lint.
 			if (bf.Gate == "human" || anyYes) && strings.TrimSpace(bf.GateWhy) == "" {
 				add("%s: brief %s is risk-gated but has no gate-why — add a gate-why explaining what makes this brief risky", path, bf.Brief)
 			}
-			// why NOTICE (methodology/27, PHASE 1): every brief-v1 brief SHOULD
+			// why NOTICE (PHASE 1): every brief-v1 brief SHOULD
 			// carry a why: — one to three lines a non-engineer could read and
 			// justify the work from (not just the what). This is a NON-FATAL
 			// NOTICE this phase so the ~94 un-backfilled briefs do not red-CI
 			// on --lint. PHASE 3 flips this to a hard add(...) error once the
-			// per-brief backfill lands — same pattern as gate-why (methodology/25).
+			// per-brief backfill lands — same pattern as gate-why.
 			// Backfill strategy: active-stream briefs first; done/archived briefs
-			// exempt. Follow-up brief(s) mirror the methodology/24→25 sequence.
+			// exempt. Follow-up brief(s) mirror the same sequence.
 			//
-			// Substance floor (issue #459, landed BEFORE the backfill on purpose):
+			// Substance floor (landed BEFORE the backfill on purpose):
 			// presence alone made a title-paste, ".", or "TODO" score as fully
 			// compliant — zero information, and a hard-error flip on top of that
 			// would lock the emptiness in permanently. A present why: must also
 			// clear a minimum length and not be a substring/near-duplicate of the
 			// title. Still a NOTICE, same severity as the presence check — the
-			// hard-error flip is a separate future step (see #459).
+			// hard-error flip is a separate future step.
 			if trimmed := strings.TrimSpace(bf.Why); trimmed == "" {
 				notice("%s: brief %s has no why: — add a why: explaining what makes this work worth doing (one to three lines a non-engineer could justify the work from)", path, bf.Brief)
 			} else if reason := whySubstanceIssue(bf.Why, bf.Title); reason != "" {
@@ -718,49 +717,48 @@ func checkBriefFiles(streams []*Stream) (problems, notices []string) {
 				add("%s: no row %q in the %s README brief table", path, num, s.Name)
 			} else {
 				// Wire BriefFile data into the Brief row for eligibility
-				// gating (methodology-metrics/09): brief-v1 briefs are
+				// gating: brief-v1 briefs are
 				// gated on their own typed depends list, not the whole-wave
 				// rule; legacy briefs keep Schema="" and Depends nil.
 				row.Schema = bf.Schema
 				row.Depends = bf.Depends
-				// value flows into the Next-up score (methodology-metrics/14);
+				// value flows into the Next-up score;
 				// an invalid value is caught above and left off the row so the
 				// score falls back to med rather than trusting a bad token.
 				if validValue[bf.Value] {
 					row.Value = bf.Value
 				}
-				// exec-tier flows into the Brief row as a marker (methodology/29):
+				// exec-tier flows into the Brief row as a marker:
 				// "strong" renders [exec:strong] in Next-up and Awaiting; absent
-				// or "any" renders nothing. NEVER a score input (F-09 scope note).
+				// or "any" renders nothing. NEVER a score input.
 				// Invalid values are caught above and left off the row.
 				if validExecTier[bf.ExecTier] {
 					row.ExecTier = bf.ExecTier
 				}
 				// Gate worms from BriefFile into the Brief row for render-time
-				// Awaiting-board segmentation (methodology-metrics/34). Always
+				// Awaiting-board segmentation. Always
 				// wired — brief-v1 always carries a validated gate.
 				row.Gate = bf.Gate
 				// blocked-by worms into the Brief row for the env-blocked
-				// segment (methodology-metrics/34). Only wired when valid;
+				// segment. Only wired when valid;
 				// invalid values are caught above and left off the row.
 				if validBlockedBy[bf.BlockedBy] {
 					row.BlockedBy = bf.BlockedBy
 				}
 				// Evidence worms into the Brief row for render-time
-				// VERIFY:PASS / VERIFY:FAIL classification (methodology-
-				// metrics/34).
+				// VERIFY:PASS / VERIFY:FAIL classification.
 				row.Evidence = bf.Evidence
 
 				if row.Wave != bf.Wave {
 					add("%s: frontmatter wave %d != README table wave %d", path, bf.Wave, row.Wave)
 				}
 				// A verified/done brief must carry real Evidence — a content row
-				// beyond the contract comment (methodology/02).
+				// beyond the contract comment.
 				if (row.Status == "verified" || row.Status == "done") && !evidenceHasContent(bf.Evidence) {
 					add("%s: status %q requires a filled ## Evidence section (a content row beyond the contract comment)", path, row.Status)
 				}
 				// A human-gated brief at done must name a human reviewer — a
-				// "human:<name>" token in the Reviewed column (methodology/03); a
+				// "human:<name>" token in the Reviewed column; a
 				// bare model sign-off does not close a risk-flagged brief.
 				if bf.Gate == "human" && row.Status == "done" && !hasHumanReviewer(row.Reviewed) {
 					add("%s: gate is human but the done Reviewed entry %q names no human — it needs a \"human:<name>\" token (e.g. 2026-07-15 human:alex)", path, row.Reviewed)
@@ -787,8 +785,8 @@ func checkBriefFiles(streams []*Stream) (problems, notices []string) {
 				// brief, but not a flagged one. The floor keys on CAPABILITY, not
 				// price: see belowFloorModels in attribution.go for why a cheap-to-
 				// run but strong model does not belong on the list. Irreversible
-				// briefs are #159's domain (the stricter human-at-verified rule just
-				// above governs them via the Reviewed cell); that rule wins, so they
+				// briefs are governed by the stricter human-at-verified rule just
+				// above (via the Reviewed cell); that rule wins, so they
 				// are EXEMPT here to avoid double-gating the same band.
 				if (bf.Gate == "human" || anyYes) && bf.Risk["irreversible"] != "yes" &&
 					(row.Status == "verified" || row.Status == "done") {
@@ -807,55 +805,55 @@ func checkBriefFiles(streams []*Stream) (problems, notices []string) {
 					add("%s: status done needs a dated Reviewed entry (\"YYYY-MM-DD <runner>\"); got %q — methodology/19", path, row.Reviewed)
 				}
 
-				// Decision-issue linkage (issue-loop/06), part (a): a gate:human
+				// Decision-issue linkage, part (a): a gate:human
 				// brief whose gate someone is actually WAITING on SHOULD carry a
 				// decision-issue that tracks the human sign-off — the NOTICE fires
 				// when the field is absent (invisible wait). "Waiting on" means
 				// dispatched (in-progress) or awaiting sign-off (implemented/
 				// verified). Backlog `todo` briefs are deliberately EXCLUDED here
 				// — noticing every gated todo floods the register with items
-				// nobody is waiting on (#427 review); the brief's "top-of-Next-up"
+				// nobody is waiting on; the brief's "top-of-Next-up"
 				// case is covered by the Next-up-pick check in run() instead.
 				if bf.Gate == "human" && bf.DecisionIssue == 0 &&
 					(row.Status == "in-progress" || row.Status == "implemented" || row.Status == "verified") {
-					notice("%s: brief %s is gate:human at %s but has no decision-issue — file one via --decision-issues (issue-loop/06)", path, bf.Brief, row.Status)
+					notice("%s: brief %s is gate:human at %s but has no decision-issue — file one via --decision-issues", path, bf.Brief, row.Status)
 				}
 				// Decision-issue linkage, part (b): a done brief still carrying a
 				// decision-issue whose outcome is NOT recorded in the brief body
 				// — a decision was (presumably) made and closed without amending
 				// the brief. A body reference to "#<NN>" counts as recorded; the
 				// frontmatter linkage itself is the audit record and must STAY
-				// (#427 review — never advise deleting it). NOTICE only (not
+				// (never advise deleting it). NOTICE only (not
 				// PROBLEM); the true check (issue closed on GitHub, decision text
 				// reflected) requires network access.
 				if bf.DecisionIssue != 0 && row.Status == "done" &&
 					!decisionIssueRefInBody(bf.Body, bf.DecisionIssue) {
-					notice("%s: brief %s is done but its body never records the outcome of decision-issue #%d — append the chosen option (referencing #%d) to the brief; keep the frontmatter linkage as the audit record (issue-loop/06 part (b))", path, bf.Brief, bf.DecisionIssue, bf.DecisionIssue)
+					notice("%s: brief %s is done but its body never records the outcome of decision-issue #%d — append the chosen option (referencing #%d) to the brief; keep the frontmatter linkage as the audit record (part (b))", path, bf.Brief, bf.DecisionIssue, bf.DecisionIssue)
 				}
-				// Security-review recorded at done (methodology/31): a
+				// Security-review recorded at done: a
 				// risk-classed brief (gate:human OR any risk answer yes) at
 				// `done` must carry the literal substring "security-review" in
 				// its Reviewed cell (e.g. "2026-07-12 model:opus
-				// +security-review(pass)"), matching the methodology/30
-				// convention. NOTICE this phase — the current tree has
+				// +security-review(pass)"), matching the convention. NOTICE this
+				// phase — the current tree has
 				// risk-classed done rows with no such token; a follow-on brief
 				// flips this to a hard PROBLEM after backfill (mirroring the
-				// methodology/24→25 pattern).
+				// earlier backfill pattern).
 				//
 				// This is a FRONTMATTER-ONLY check: statusgen sees no diffs,
-				// so the path-trigger class (mislabeled brief touching daml/,
-				// auth/, etc.) is covered by methodology/30's desk-side path
-				// triggers, not here. Only the brief's own risk classification
+				// so the path-trigger class (a mislabeled brief touching a
+				// risk-classified path, e.g. auth/) is covered by the desk-side
+				// path triggers, not here. Only the brief's own risk classification
 				// and its Reviewed cell are inspected.
 				if (bf.Gate == "human" || anyYes) && row.Status == "done" && !strings.Contains(row.Reviewed, "security-review") {
-					notice("%s: risk-classed brief %s is done but its Reviewed cell %q records no security-review — risk-classed briefs record a security review at done (methodology/31, issue #216)", path, bf.Brief, row.Reviewed)
+					notice("%s: risk-classed brief %s is done but its Reviewed cell %q records no security-review — risk-classed briefs record a security review at done", path, bf.Brief, row.Reviewed)
 				}
 			}
 
 			for _, ref := range bf.Depends {
 				checkRef(add, path, "depends", ref, byName)
 			}
-			// Same-wave-dep lint (desk-hardening/07): a brief's depends: must point
+			// Same-wave-dep lint: a brief's depends: must point
 			// only to briefs in strictly-earlier waves. A same-wave dep breaks strict
 			// wave-layering and miscomputes the critical path.
 			// Safety: bf.Wave == 0 here always means wave was legitimately 0.
@@ -885,7 +883,7 @@ func checkBriefFiles(streams []*Stream) (problems, notices []string) {
 					continue // unknown brief caught by checkRef
 				}
 				if depWave >= bf.Wave {
-					notice("%s: depends on %s (wave %d) but this brief is wave %d — deps must point to strictly-earlier waves (depWave < briefWave, desk-hardening/07)",
+					notice("%s: depends on %s (wave %d) but this brief is wave %d — deps must point to strictly-earlier waves (depWave < briefWave)",
 						path, ref, depWave, bf.Wave)
 				}
 			}

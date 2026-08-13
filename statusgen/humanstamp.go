@@ -27,7 +27,7 @@ type stampKey struct {
 // token alone). humanStampRe requires a name character immediately after the
 // colon with no separating whitespace, so it does not see this at all — a
 // one-character edit on a PR branch previously satisfied the done-gate while
-// staying invisible to this control (assay-toolkit review, PR #324: "the gate
+// staying invisible to this control ("the gate
 // can be made to accept a stamp the human did not write"). It cannot collide
 // with a real captured name, since humanStampRe's capture group is
 // [0-9A-Za-z_]+ (non-empty, no NUL).

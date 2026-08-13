@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// TestTiering covers the optional per-stream `tiering:` frontmatter field
-// (methodology/05): free-text dispatcher guidance, never a gate, never a
-// Next-up score input (F-09 scope note).
+// TestTiering covers the optional per-stream `tiering:` frontmatter field:
+// free-text dispatcher guidance, never a gate, never a
+// Next-up score input.
 
 func strPtr(s string) *string { return &s }
 

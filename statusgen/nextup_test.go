@@ -62,6 +62,36 @@ func TestNextUpWaveGatingAndStale(t *testing.T) {
 	}
 }
 
+// TestNextUpStreamFindingNotDispatchGate is the regression at
+// the dispatch level: applyFindings + nextUp end to end. A stream-level finding
+// (bare `affects: <stream>`) used to stamp StaleRef on every brief, and
+// eligible() hard-excludes any StaleRef — so the whole issue-loop stream (its
+// many todo placeholders) fell out of Next-up. The stream must stay dispatchable,
+// while a brief-specific entry still removes exactly its own brief.
+func TestNextUpStreamFindingNotDispatchGate(t *testing.T) {
+	s := mkStream("issue-loop", "active", "P1",
+		Brief{Num: "01", Wave: 0, Status: "todo", Schema: "placeholder-v1"},
+		Brief{Num: "02", Wave: 0, Status: "todo", Schema: "placeholder-v1"},
+		Brief{Num: "03", Wave: 0, Status: "todo", Schema: "placeholder-v1"},
+	)
+	s.LastTouch = day(0)
+	findings := []Finding{
+		{ID: "F-guardrails-dup", Affects: []string{"issue-loop"}},     // stream-level: gates nothing
+		{ID: "F-bug-close", Affects: []string{"issue-loop/brief-03"}}, // brief-specific: gates 03
+	}
+	applyFindings([]*Stream{s}, findings)
+
+	nu := nextUp([]*Stream{s}, nil, nil)
+	if nu.Eligible != 2 {
+		t.Fatalf("want 2 eligible (01, 02 — only the brief-specific finding gates), got %d: %+v", nu.Eligible, nu.Picks)
+	}
+	for _, p := range nu.Picks {
+		if p.Brief.Num == "03" {
+			t.Errorf("brief-specific finding must still exclude brief 03: %+v", p)
+		}
+	}
+}
+
 func TestEligibilityDepPrecise(t *testing.T) {
 	// Fixture modelled on the ledger-hardening/01 case: a wave-1 brief-v1
 	// brief whose typed dep is verified, with an unrelated wave-0 todo in
@@ -175,7 +205,7 @@ func TestNextUpClaimAware(t *testing.T) {
 }
 
 // withSpan sets the span-of-control cap + overflow threshold for the duration of
-// a test and restores them afterward (methodology-metrics/06).
+// a test and restores them afterward.
 func withSpan(t *testing.T, cap, threshold int) {
 	t.Helper()
 	oldSpan, oldThresh := spanOfControl, overflowThreshold
@@ -292,7 +322,7 @@ func nextUpAllScores(streams []*Stream) map[string]int {
 
 // TestNextUpValueOrdering — at equal priority and staleness, the explicit value
 // field re-orders briefs: high > med > low, and an absent value scores exactly
-// as med (methodology-metrics/14, the neutral zero point).
+// as med (the neutral zero point).
 func TestNextUpValueOrdering(t *testing.T) {
 	s := mkStream("v", "active", "P1",
 		Brief{Num: "01", Wave: 0, Status: "todo", Value: "low"},
@@ -466,7 +496,7 @@ func blockedCountFor(streams []*Stream, target string) int {
 	return blockedCount(rev, status, target)
 }
 
-// --- Gate-score tests (methodology-metrics/11) ---
+// --- Gate-score tests ---
 
 // TestGateScoresChain verifies blockedCount walks a transitive dependency chain:
 // blocker/01 ← chained/02 ← chained/03 (all not-done). blocker/01 has blockedCount 2.
@@ -642,8 +672,8 @@ func TestGateScoresIgnoresNonAwaiting(t *testing.T) {
 	}
 }
 
-// TestNextUpMaxConcurrent tests the per-stream max-concurrent cap
-// (methodology-metrics/13). A stream with max-concurrent: 1 and two eligible todo
+// TestNextUpMaxConcurrent tests the per-stream max-concurrent cap. A stream
+// with max-concurrent: 1 and two eligible todo
 // briefs should offer at most one pick; when one is already claimed (in-flight),
 // the offer budget is zero.
 func TestNextUpMaxConcurrent(t *testing.T) {

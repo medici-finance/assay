@@ -1,6 +1,6 @@
 package main
 
-// --bottleneck is the daily factory-floor bottleneck report (methodology-metrics/18):
+// --bottleneck is the daily factory-floor bottleneck report:
 // it computes per-stage WIP, per-stage dwell (from the historian), locates the
 // constraint (highest WIP x median dwell), detects day-over-day shift from the
 // previous report, and prescribes a deterministic action keyed to which stage is
@@ -11,7 +11,7 @@ package main
 // (append-only history) AND a one-screen summary to stdout. Shift detection reads
 // the newest prior dated file; if none exists, it reports "first report — no prior to compare."
 //
-// Honest-limitation discipline (F-08/F-09): WIP x dwell is a heuristic locator,
+// Honest-limitation discipline: WIP x dwell is a heuristic locator,
 // not a proof. The report says "likely constraint" and shows the numbers behind it.
 // Dwell for briefs with no historian row falls back to "unknown", counted
 // separately, never silently zeroed. The Goodhart header from --dora applies
@@ -69,7 +69,7 @@ func bottleneckAction(stage string) string {
 	case "in-progress":
 		return "WIP-bound — stop starting, start finishing; current WIP exceeds delivery capacity."
 	case "implemented":
-		return "Verify-bound — add verify capacity (verifier workers, verify-desk throughput); CONWIP throttle per I-29."
+		return "Verify-bound — add verify capacity (verifier workers, verify-desk throughput); CONWIP throttle."
 	case "verified":
 		return "Review-bound — parallelize review recording; clear the review queue before starting new implementation."
 	case "blocked":

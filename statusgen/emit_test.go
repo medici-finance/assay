@@ -59,7 +59,7 @@ func TestAwaitingHeadingCounts(t *testing.T) {
 }
 
 func TestAwaitingSegmentedAssertions(t *testing.T) {
-	// Fixture spanning all five segment classes (methodology-metrics/34).
+	// Fixture spanning all five segment classes.
 	active := mkStream("active-s", "active", "P1",
 		Brief{Num: "01", Wave: 0, Status: "implemented"}, // desk-actionable (no gate, no evidence)
 		Brief{Num: "02", Wave: 0, Status: "implemented",
@@ -212,7 +212,7 @@ func TestSegmentClassifier(t *testing.T) {
 			// Marker forms live in this repo's Evidence today. The bold
 			// delimiters wrap a longer span, so an exact `**VERIFY: PASS**`
 			// literal never matches and the row misfiles as drainable.
-			name:   "human-gate, pass inside a longer bold span (assay-dogfood/01 form)",
+			name:   "human-gate, pass inside a longer bold span",
 			stream: active,
 			brief: Brief{Num: "12", Status: "implemented", Gate: "human",
 				Evidence: "**Non-implementer verifier run — VERIFY: PASS** · 2026-07-20 · `glm-5.2-verifier`",
@@ -395,7 +395,7 @@ func TestDebtNotice(t *testing.T) {
 		if notice == "" {
 			t.Error("expected NOTICE when desk-actionable > threshold")
 		}
-		want := "verification debt: 11 desk-actionable awaiting vs 1 done — the queue is the constraint; drain before dispatching new implementation work (methodology-metrics/10)"
+		want := "verification debt: 11 desk-actionable awaiting vs 1 done — the queue is the constraint; drain before dispatching new implementation work"
 		if notice != want {
 			t.Errorf("NOTICE text mismatch:\ngot:  %s\nwant: %s", notice, want)
 		}

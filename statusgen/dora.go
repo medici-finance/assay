@@ -1,6 +1,6 @@
 package main
 
-// DORA metrics emitter (`statusgen --dora`, methodology-metrics/02).
+// DORA metrics emitter (`statusgen --dora`).
 //
 // Emits the five DORA Core metrics as a SYSTEM — the two throughput metrics
 // (deployment frequency, change lead time) and the failed-deploy recovery time,
@@ -9,7 +9,7 @@ package main
 // how the metric gets gamed (DORA's own warning).
 //
 // Data sources, in order of automatability:
-//   - history log (docs/streams/.history.jsonl, methodology-metrics/01):
+//   - history log (docs/streams/.history.jsonl):
 //     implemented→done lead time — the outcome the 2026-07-09 velocity read
 //     exposed as invisible (35 merged, 5 done).
 //   - git log: commit / merge frequency in the window.
@@ -35,7 +35,7 @@ import (
 )
 
 // doraAntiGamingNote is printed in --dora's header (text) and carried in the
-// JSON `note` field. Stream-wide rule (methodology-metrics README): these
+// JSON `note` field. Stream-wide rule: these
 // metrics are diagnostic, per-project, for continuous improvement — never a
 // target, an individual scorecard, or a cross-team comparison.
 const doraAntiGamingNote = "DORA metrics are DIAGNOSTIC, per-project, for continuous improvement — " +
@@ -45,7 +45,7 @@ const doraAntiGamingNote = "DORA metrics are DIAGNOSTIC, per-project, for contin
 
 // Canonical metric keys — the JSON `metrics` object always carries exactly
 // these five (Verify item 3). Stable identifiers for downstream consumers
-// (methodology/18 retro, methodology-metrics/03 --trend).
+// (the retro and --trend).
 const (
 	doraDeployFreq = "deployment_frequency"
 	doraLeadTime   = "change_lead_time"
@@ -224,7 +224,7 @@ func computeDora(in doraInputs) DoraReport {
 		// Automatable, but no implemented→done transition fell in the window —
 		// honest "unknown" (no data), NOT a needs-input placeholder.
 		lt.Value = "unknown"
-		lt.Detail = "no implemented→done transitions recorded in window (historian: methodology-metrics/01)"
+		lt.Detail = "no implemented→done transitions recorded in window (historian)"
 	}
 	rep.Metrics[doraLeadTime] = lt
 
@@ -424,7 +424,7 @@ func runDora(root, since string, asJSON bool) int {
 	return 0
 }
 
-// --- DORA time series (--dora --series, methodology-metrics/16) -------------------
+// --- DORA time series (--dora --series) -------------------
 
 // doraSeriesPoint is one period bucket in the time series.
 type doraSeriesPoint struct {
@@ -735,10 +735,10 @@ func runDoraSeries(root, since, period string, asJSON bool) int {
 	return 0
 }
 
-// --- DORA grouped breakdowns (--dora --by stream|goal, methodology-metrics/26) ---
+// --- DORA grouped breakdowns (--dora --by stream|goal) ---
 
 // goalPriorityOrder is the fixed display order for per-goal DORA grouping
-// (methodology-metrics/23: example-app first, example-service second, assay supporting).
+// (example-app first, example-service second, assay supporting).
 // Any goal not listed here sorts after platform then alphabetically.
 var goalPriorityOrder = []string{"example-app", "example-service", "assay", "platform"}
 
@@ -900,7 +900,7 @@ type DoraGroup struct {
 	Metrics map[string]DoraMetric `json:"metrics"`
 }
 
-// DoraGroupedReport is the full grouped-DORA output (methodology-metrics/26).
+// DoraGroupedReport is the full grouped-DORA output.
 type DoraGroupedReport struct {
 	Since      string      `json:"since"`
 	Until      string      `json:"until"`
@@ -911,7 +911,7 @@ type DoraGroupedReport struct {
 	GlobalMTTR DoraMetric  `json:"global_mttr"`
 }
 
-// groupKeyForBrief maps a brief ID (e.g. "methodology-metrics/01") to a group
+// groupKeyForBrief maps a brief ID (e.g. "example-app/01") to a group
 // key. For "stream" mode this is the stream name; for "goal" mode this is the
 // goal name (from the stream->goal map). An unrecognized brief ID gets "unknown".
 func groupKeyForBrief(briefID string, by string, s2g map[string]string) string {
@@ -1091,7 +1091,7 @@ func computeDoraGrouped(in doraInputs, streams []*Stream, findings []Finding, by
 		}
 		group.Metrics[doraChangeFail] = cf
 
-		// 4. Rework rate -- NOT automatable (same as mm/02 aggregate).
+		// 4. Rework rate -- NOT automatable (same as the aggregate).
 		group.Metrics[doraRework] = DoraMetric{
 			Key: doraRework, Name: "Rework rate", Family: "instability",
 			Value: "unknown", Needs: "verify-desk|manual", Computed: false,

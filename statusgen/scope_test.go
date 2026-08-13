@@ -9,7 +9,7 @@ func streamsFixture() []*Stream {
 	return []*Stream{
 		{Name: "assay-launch", Serves: "assay"},
 		{Name: "methodology", Serves: "assay"},
-		{Name: "daml-hardening", Serves: "example-app"},
+		{Name: "app-hardening", Serves: "example-app"},
 		{Name: "example-service-spinout", Serves: "example-service"},
 		{Name: "infra-split", Serves: "platform"},
 		{Name: "untagged-stream", Serves: ""},
@@ -26,7 +26,7 @@ func TestDeriveScope(t *testing.T) {
 		{"empty changed-set → whole house", nil, ""},
 		{"single assay stream → assay", []string{"docs/streams/assay-launch/README.md"}, "assay"},
 		{"two streams, same product → that product", []string{"docs/streams/assay-launch/README.md", "docs/streams/methodology/brief-01.md"}, "assay"},
-		{"two products → unscoped", []string{"docs/streams/assay-launch/README.md", "docs/streams/daml-hardening/brief-02.md"}, ""},
+		{"two products → unscoped", []string{"docs/streams/assay-launch/README.md", "docs/streams/app-hardening/brief-02.md"}, ""},
 		{"platform-only change → unscoped (cross-cutting)", []string{"docs/streams/infra-split/README.md"}, ""},
 		{"product + platform → unscoped (platform broadens)", []string{"docs/streams/assay-launch/README.md", "docs/streams/infra-split/README.md"}, ""},
 		{"tooling change → unscoped", []string{"tools/statusgen/scope.go"}, ""},
@@ -56,14 +56,14 @@ func TestFilterStreamsByServes(t *testing.T) {
 			t.Errorf("expected %s in assay scope", want)
 		}
 	}
-	for _, notWant := range []string{"daml-hardening", "example-service-spinout"} {
+	for _, notWant := range []string{"app-hardening", "example-service-spinout"} {
 		if names[notWant] {
 			t.Errorf("did not expect %s in assay scope", notWant)
 		}
 	}
 }
 
-// TestCheckScopedFindingsAffectsFullUniverse is the #834 regression: a
+// TestCheckScopedFindingsAffectsFullUniverse is the regression: a
 // single-product PR scopes the per-stream checks to that product, but a
 // finding's affects: may legitimately reference any product's stream. The
 // known-stream existence check must resolve against the FULL universe, so no
@@ -71,10 +71,10 @@ func TestFilterStreamsByServes(t *testing.T) {
 func TestCheckScopedFindingsAffectsFullUniverse(t *testing.T) {
 	// Full universe: two products' streams, both real.
 	all := []*Stream{
-		{Name: "daml-hardening", Dir: "/repo/docs/streams/daml-hardening", Status: "active", Priority: "P1", Serves: "example-app"},
+		{Name: "app-hardening", Dir: "/repo/docs/streams/app-hardening", Status: "active", Priority: "P1", Serves: "example-app"},
 		{Name: "methodology", Dir: "/repo/docs/streams/methodology", Status: "active", Priority: "P1", Serves: "assay"},
 	}
-	// Scope to example-app: only daml-hardening drives per-stream checks.
+	// Scope to example-app: only app-hardening drives per-stream checks.
 	scoped := filterStreamsByServes(all, "example-app")
 	// A finding legitimately affecting the out-of-scope methodology stream, plus
 	// one referencing a genuinely nonexistent stream (must still flag).

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Desk push guard — git pre-push hook shim.
+# Committed into .githooks/pre-push (F-13 core.hooksPath); covers all worktrees.
+# `make desk-install` refreshes it on each install run.
+set -e
+exec /opt/desk-tools/bin/deskpushguard "$@"

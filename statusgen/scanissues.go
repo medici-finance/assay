@@ -14,10 +14,10 @@ import (
 
 // --scan-issues is a self-contained sub-command (like --verify-issues): it reads
 // OPEN GitHub issues across a fixed repo set, EMITS a placeholder-v1 file
-// (issue-loop/01 schema) for every unhandled one, and RETIRES placeholders whose
-// issue is now closed (issue-loop/04 close-out). It WRITES files but never pushes,
+// (schema) for every unhandled one, and RETIRES placeholders whose
+// issue is now closed (close-out). It WRITES files but never pushes,
 // never mutates any GitHub issue, and never touches STATUS.md — the desk reviews
-// the batch and commits (issue-loop/04). The offline --lint gate never calls this:
+// the batch and commits. The offline --lint gate never calls this:
 // it is dispatched before run() in main() and shells out to gh, so lint gains no
 // network dependency (registers-in-git principle).
 
@@ -31,8 +31,8 @@ import (
 // idempotency keys on repo#issue, not on the filename).
 func scanHomeRepo() string { return verifyRepoSlug() }
 
-// scanStreamName is the stream directory placeholders land in (issue-loop/01:
-// "placeholders land here"). New files are written to docs/streams/<scanStreamName>/.
+// scanStreamName is the stream directory placeholders land in
+// ("placeholders land here"). New files are written to docs/streams/<scanStreamName>/.
 const scanStreamName = "issue-loop"
 
 // scanRepos is the repo set --scan-issues reads OPEN issues from: the FULL
@@ -72,7 +72,7 @@ var scanExcludedLabels = map[string]bool{
 	// gate:human + verified brief (verified→done). Closing the ISSUE flips the
 	// brief done — it is a gate state the loop already owns, not backlog work.
 	"verify-gate": true,
-	// I-22 live-verification tracking issues: a checklist the desk closes once
+	// live-verification tracking issues: a checklist the desk closes once
 	// the live check passes. A closeable state, not a unit of work.
 	"live-verify": true,
 	// --decision-issues emits these: an issue that asks human:<name> to decide on a
@@ -107,7 +107,7 @@ type issueLister func(repo string) ([]ghIssue, error)
 
 // ghIssueLister is the default issueLister: `gh issue list` for one repo. A gh
 // failure is returned as an error so planScan can degrade it to a per-repo NOTICE
-// (issue-loop/02: "gh failure on one repo → skip that repo … don't abort").
+// ("gh failure on one repo → skip that repo … don't abort").
 func ghIssueLister(repo string) ([]ghIssue, error) {
 	out, err := exec.Command("gh", "issue", "list",
 		"--repo", repo, "--state", "open", "--limit", "1000",
@@ -189,8 +189,8 @@ func yamlFlowList(items []string) string {
 }
 
 // renderPlaceholder builds a placeholder-v1 file body for one issue. The gate is
-// written EXPLICITLY: derivePlaceholderGate needs the issue TITLE (methodology/31
-// daml/auth/funds trigger), which the offline parser cannot see — so the scanner,
+// written EXPLICITLY: derivePlaceholderGate needs the issue TITLE (the risk
+// keyword/label trigger), which the offline parser cannot see — so the scanner,
 // which has the title, computes the gate once and records it. A human may later
 // override the stored `gate:`. effort is left to derivation (always M today).
 func renderPlaceholder(repo string, issue int, gate string, labels []string) string {
@@ -224,7 +224,7 @@ type scanPlan struct {
 }
 
 // closeOutPlan is one placeholder the scan would retire or reactivate. It is
-// computed in the same sweep as creation (issue-loop/04): a closed issue retires
+// computed in the same sweep as creation: a closed issue retires
 // its placeholder (status: done + resolved: issue-close); a reopened issue
 // re-activates its placeholder (status: todo, resolved removed). An OPEN issue
 // that gains an excluded label retires the same way but with a
@@ -236,12 +236,41 @@ type closeOutPlan struct {
 	Issue  int
 	Path   string // absolute path of the existing placeholder file
 	Rel    string // path relative to root, for display
-	Action string // "retire", "retire-label", or "reactivate"
+	Action string // "retire", "retire-label", "sweep", or "reactivate"
+	// Dest is the absolute path the placeholder MOVES to when the action
+	// archives or reactivates it (D3): retire/retire-label/sweep
+	// move a root placeholder into `<stream>/done/`; a reactivate of an archived
+	// placeholder moves it back to the stream root. "" means write in place (no
+	// move) — e.g. reactivating a placeholder that is still at the stream root.
+	Dest string
+}
+
+// archiveDirName is the per-stream subfolder a retired placeholder is moved into
+// (D3). ROOT-only discovery globs mean `<stream>/done/` is out of
+// the active workset with zero exclusion code, while linkcheck's recursive walk
+// keeps it lint-valid.
+const archiveDirName = "done"
+
+// isArchivedPath reports whether p sits directly inside a per-stream `done/`
+// archive (its immediate parent directory is named `done`).
+func isArchivedPath(p string) bool {
+	return filepath.Base(filepath.Dir(p)) == archiveDirName
+}
+
+// archivedPath returns p relocated into its stream's `done/` archive.
+func archivedPath(p string) string {
+	return filepath.Join(filepath.Dir(p), archiveDirName, filepath.Base(p))
+}
+
+// unarchivedPath returns an archived p relocated back to the stream root (strips
+// the trailing `done/` path element).
+func unarchivedPath(p string) string {
+	return filepath.Join(filepath.Dir(filepath.Dir(p)), filepath.Base(p))
 }
 
 // existingPlaceholderIssues returns the set of `repo#issue` keys that already have
 // a placeholder ANYWHERE across the loaded streams (requires attachPlaceholders to
-// have run). The file's existence is the idempotency marker (issue-loop/02): a
+// have run). The file's existence is the idempotency marker: a
 // second scan creates nothing for an issue that already has one.
 func existingPlaceholderIssues(streams []*Stream) map[string]bool {
 	keys := map[string]bool{}
@@ -255,12 +284,12 @@ func existingPlaceholderIssues(streams []*Stream) map[string]bool {
 
 // planScan computes the placeholders to create AND the existing placeholders to
 // retire/reactivate for the fixed repo set. It never writes. A gh failure on one
-// repo becomes a NOTICE and the scan proceeds with the rest (issue-loop/02).
+// repo becomes a NOTICE and the scan proceeds with the rest.
 // Issues are skipped when they carry an excluded label, when a placeholder already
 // exists for the issue (parsed set), or when the target file is already on disk
 // (guards an unparseable/foreign file from being overwritten).
 //
-// Close-out (issue-loop/04) runs in the same sweep: an existing placeholder whose
+// Close-out runs in the same sweep: an existing placeholder whose
 // issue is now CLOSED (not in the open list) is retired (status: done + resolved:
 // issue-close); a retired placeholder whose issue reopened (back in the open list)
 // is reactivated (status: todo, resolved removed). A placeholder already at the
@@ -279,6 +308,18 @@ func existingPlaceholderIssues(streams []*Stream) map[string]bool {
 // Output is sorted (repo, then issue) for deterministic dry-run and write order.
 func planScan(root string, streams []*Stream, list issueLister, bless issueBlessChecker) (plans []scanPlan, closeOuts []closeOutPlan, notices []string) {
 	existing := existingPlaceholderIssues(streams)
+	// (D3): archived placeholders (already moved into
+	// `<stream>/done/`) count as EXISTING — a reopened issue reactivates its
+	// archived placeholder (below), it must never get a second one created at the
+	// stream root. ROOT-only discovery leaves them out of existingPlaceholderIssues,
+	// so seed them here explicitly.
+	for _, s := range streams {
+		for _, path := range archivedPlaceholderFilePaths(s) {
+			if ph, ok, err := parsePlaceholderFile(path); err == nil && ok {
+				existing[ph.Repo+"#"+strconv.Itoa(ph.Issue)] = true
+			}
+		}
+	}
 	dir := filepath.Join(root, "docs", "streams", scanStreamName)
 	for _, repo := range scanRepos() {
 		issues, err := list(repo)
@@ -349,9 +390,13 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 			})
 		}
 
-		// Close-out: check every existing placeholder for this repo against the
-		// open set. A placeholder whose issue is NOT open → retire (mark done).
-		// A retired placeholder whose issue IS open → reactivate (mark todo).
+		// Close-out: check every existing ROOT placeholder for this repo against
+		// the open set. A placeholder whose issue is NOT open → retire (mark done
+		// + archive to done/). A retired placeholder whose issue IS open →
+		// reactivate (mark todo). (D3): retire/retire-label/sweep
+		// additionally MOVE the file into `<stream>/done/`; and ANY status:done
+		// placeholder still sitting at the stream ROOT is swept into done/ in the
+		// same run (drains the ghost backlog; self-heals thereafter).
 		for _, s := range streams {
 			for _, ph := range s.Placeholders {
 				if ph.Repo != repo {
@@ -362,51 +407,82 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 					rel = ph.Path
 				}
 				rel = filepath.ToSlash(rel)
+				dest := archivedPath(ph.Path)
 				if !openSet[ph.Issue] {
-					// Issue is NOT open → closed. Retire the placeholder
-					// if it is not already done.
+					// Issue is NOT open → closed.
 					if ph.Status != "done" {
+						// Retire: flip to done + archive.
 						closeOuts = append(closeOuts, closeOutPlan{
-							Repo:   repo,
-							Issue:  ph.Issue,
-							Path:   ph.Path,
-							Rel:    rel,
-							Action: "retire",
+							Repo: repo, Issue: ph.Issue, Path: ph.Path, Rel: rel,
+							Action: "retire", Dest: dest,
+						})
+					} else {
+						// Already done but still at the ROOT → sweep the ghost
+						// into done/ (frontmatter unchanged).
+						closeOuts = append(closeOuts, closeOutPlan{
+							Repo: repo, Issue: ph.Issue, Path: ph.Path, Rel: rel,
+							Action: "sweep", Dest: dest,
 						})
 					}
 					continue
 				}
 				// Issue is still open.
 				if openExcluded[ph.Issue] {
-					// Open but has GAINED an excluded label —
-					// retire it the same way as a close-out, but with a
-					// distinct resolved marker (applyCloseOut writes
-					// resolved: label-excluded) so a later label removal can
-					// reactivate like a reopen does.
+					// Open but has GAINED an excluded label — retire it the same
+					// way as a close-out, but with a distinct resolved marker
+					// (applyCloseOut writes resolved: label-excluded) so a later
+					// label removal can reactivate like a reopen does.
 					if ph.Status != "done" {
 						closeOuts = append(closeOuts, closeOutPlan{
-							Repo:   repo,
-							Issue:  ph.Issue,
-							Path:   ph.Path,
-							Rel:    rel,
-							Action: "retire-label",
+							Repo: repo, Issue: ph.Issue, Path: ph.Path, Rel: rel,
+							Action: "retire-label", Dest: dest,
+						})
+					} else {
+						// Already done + still excluded, but sitting at the ROOT
+						// → sweep it into done/ too (frontmatter unchanged).
+						closeOuts = append(closeOuts, closeOutPlan{
+							Repo: repo, Issue: ph.Issue, Path: ph.Path, Rel: rel,
+							Action: "sweep", Dest: dest,
 						})
 					}
 					continue
 				}
-				// Open, and no (longer) excluded label — if the placeholder
-				// was retired (status: done, via either an issue-close or a
-				// label-exclusion retire), re-activate it. Reactivation
-				// doesn't care WHICH resolved marker put it at done.
+				// Open, and no (longer) excluded label — if the placeholder was
+				// retired (status: done, via either an issue-close or a
+				// label-exclusion retire) but is STILL at the root, re-activate it
+				// in place. Reactivation doesn't care WHICH resolved marker put it
+				// at done.
 				if ph.Status == "done" {
 					closeOuts = append(closeOuts, closeOutPlan{
-						Repo:   repo,
-						Issue:  ph.Issue,
-						Path:   ph.Path,
-						Rel:    rel,
-						Action: "reactivate",
+						Repo: repo, Issue: ph.Issue, Path: ph.Path, Rel: rel,
+						Action: "reactivate", // Dest "" — already at the root
 					})
 				}
+			}
+		}
+
+		// Reactivation from the archive (D3): a placeholder that
+		// was archived to `<stream>/done/` and whose issue has REOPENED (open and
+		// not excluded) is reactivated AND moved back to the stream root. Archived
+		// placeholders whose issue stays closed/excluded are left in place.
+		for _, s := range streams {
+			for _, path := range archivedPlaceholderFilePaths(s) {
+				ph, ok, err := parsePlaceholderFile(path)
+				if err != nil || !ok || ph.Repo != repo {
+					continue
+				}
+				if !openSet[ph.Issue] || openExcluded[ph.Issue] {
+					continue
+				}
+				rel, err := filepath.Rel(root, path)
+				if err != nil {
+					rel = path
+				}
+				closeOuts = append(closeOuts, closeOutPlan{
+					Repo: repo, Issue: ph.Issue, Path: path,
+					Rel: filepath.ToSlash(rel), Action: "reactivate",
+					Dest: unarchivedPath(path),
+				})
 			}
 		}
 	}
@@ -427,8 +503,8 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 
 // runScanIssues is the --scan-issues entrypoint. It loads streams (for
 // idempotency and existing placeholders), unblocks any blocked placeholders whose
-// issue received a human answer (issue-loop/03), plans new placeholder creation AND
-// close-out of resolved placeholders (issue-loop/04) in one sweep, and either lists
+// issue received a human answer, plans new placeholder creation AND
+// close-out of resolved placeholders in one sweep, and either lists
 // everything (--dry-run) or writes the files. It never pushes, never mutates
 // GitHub, and never touches STATUS.md. Returns a process exit code.
 func runScanIssues(root string, dryRun bool, list issueLister, comments commentLister, bless issueBlessChecker) int {
@@ -453,7 +529,7 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 	}
 	attachPlaceholders(streams)
 
-	// Un-block detection (issue-loop/03): for each blocked placeholder,
+	// Un-block detection: for each blocked placeholder,
 	// check if the newest non-bot comment on the issue is newer than
 	// blockedAt — if so, clear the block. A per-repo comment-fetch failure
 	// becomes a NOTICE; the unblock loop continues with the remaining repos.
@@ -533,6 +609,8 @@ func closeOutReason(action string) string {
 		return "issue closed"
 	case "retire-label":
 		return "gained excluded label"
+	case "sweep":
+		return "already retired — archived to done/"
 	case "reactivate":
 		return "issue open, no longer excluded"
 	default:
@@ -548,6 +626,8 @@ func closeOutPastTense(action string) string {
 		return "retired"
 	case "retire-label":
 		return "retired (label-excluded)"
+	case "sweep":
+		return "archived"
 	case "reactivate":
 		return "reactivated"
 	default:
@@ -570,6 +650,13 @@ func applyCloseOut(c closeOutPlan) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", c.Rel, err)
 	}
+
+	// "sweep" (D3) moves an already-retired ghost into done/
+	// WITHOUT touching frontmatter — the file is already status: done + resolved.
+	if c.Action == "sweep" {
+		return writeCloseOut(c, data)
+	}
+
 	content := strings.ReplaceAll(string(data), "\r\n", "\n")
 	lines := strings.Split(content, "\n")
 	var out []string
@@ -641,15 +728,41 @@ func applyCloseOut(c closeOutPlan) error {
 		out = result
 	}
 
-	return os.WriteFile(c.Path, []byte(strings.Join(out, "\n")), 0o644)
+	return writeCloseOut(c, []byte(strings.Join(out, "\n")))
 }
 
-// -- comment types and un-block machinery (issue-loop/03) --
+// writeCloseOut persists a closeOutPlan's transformed body. When c.Dest is set
+// and differs from c.Path the placeholder is MOVED there (D3):
+// the destination directory is created, the body written, and the source removed
+// — a delete+add `git add -A` records as a rename, preserving history. An empty
+// or identical Dest writes in place.
+func writeCloseOut(c closeOutPlan, body []byte) error {
+	dest := c.Dest
+	if dest == "" {
+		dest = c.Path
+	}
+	if dest != c.Path {
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return fmt.Errorf("%s: %w", c.Rel, err)
+		}
+	}
+	if err := os.WriteFile(dest, body, 0o644); err != nil {
+		return fmt.Errorf("%s: %w", c.Rel, err)
+	}
+	if dest != c.Path {
+		if err := os.Remove(c.Path); err != nil {
+			return fmt.Errorf("%s: %w", c.Rel, err)
+		}
+	}
+	return nil
+}
+
+// -- comment types and un-block machinery --
 
 // issueComment is the subset of `gh api repos/.../issues/.../comments` output the
 // un-block scanner reads. It needs the author login + type (User/Bot) for the
 // non-bot gate, createdAt for the temporal comparison against blockedAt, and body
-// for the desk-automation marker check (issue-loop/03; bot-vs-human gate Blocker 2).
+// for the desk-automation marker check (bot-vs-human gate Blocker 2).
 type issueComment struct {
 	User      issueCommentUser `json:"user"`
 	CreatedAt string           `json:"created_at"`
@@ -668,8 +781,8 @@ type commentLister func(repo string, issue int) ([]issueComment, error)
 // issueCommentLister is the default commentLister: `gh api` for one issue's comments.
 // A gh failure is returned as an error so the caller can degrade it to a NOTICE.
 // --paginate fetches all pages (GitHub defaults to 30/page ascending; the resume
-// signal is always on the last page, so page-1-only silently drops it — Blocker 1,
-// issue-loop/03 review). --paginate composes with --jq (applied per page), so the
+// signal is always on the last page, so page-1-only silently drops it — Blocker 1).
+// --paginate composes with --jq (applied per page), so the
 // existing line-per-object parse loop is unchanged.
 func issueCommentLister(repo string, issue int) ([]issueComment, error) {
 	endpoint := fmt.Sprintf("repos/%s/issues/%d/comments?per_page=100", repo, issue)
@@ -699,7 +812,7 @@ func issueCommentLister(repo string, issue int) ([]issueComment, error) {
 }
 
 // isBotComment reports whether a comment author is a bot, GitHub App actor, or
-// desk automation. The #237 identity principle: only a human answer un-blocks the
+// desk automation. The identity principle: only a human answer un-blocks the
 // placeholder; desk/bot comments never count.
 //
 // Three gates:
@@ -708,8 +821,7 @@ func issueCommentLister(repo string, issue int) ([]issueComment, error) {
 //  3. Body marker: comments that carry the <!-- desk-automation --> HTML comment
 //     are the loop's own automation (the desk, fanout workers, status comments)
 //     posting as a shared human/agent account (type:User) — the login alone
-//     can't distinguish them from a real human's answers (issue-loop/03 review
-//     Blocker 2).
+//     can't distinguish them from a real human's answers (Blocker 2).
 func isBotComment(user issueCommentUser, body string) bool {
 	if user.Type == "Bot" {
 		return true
@@ -809,7 +921,7 @@ func unblockPlaceholders(root string, streams []*Stream, list commentLister) []s
 // frontmatter block of a placeholder-v1 file, leaving all other fields (and the
 // body prose) intact. Scoped to the frontmatter block (between --- markers) so
 // body prose that happens to start with "blocked:" or "blockedAt:" is not
-// stripped (non-blocking nit, issue-loop/03 review).
+// stripped (non-blocking nit).
 func unblockPlaceholderFile(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {

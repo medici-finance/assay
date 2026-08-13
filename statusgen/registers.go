@@ -35,14 +35,13 @@ func registerIntegrityProblems(root string) []string {
 	}
 
 	// intake field-quality checks: unparseable dates and missing disposition key
-	// are a lint problem — they make the untriaged-age alarm partially blind
-	// (issue-loop/07).
+	// are a lint problem — they make the untriaged-age alarm partially blind.
 	intakeDir := filepath.Join(root, "docs", "streams", "intake")
 	for _, e := range intakeEntries {
 		// date parse check: a malformed date makes an entry permanently age-invisible
 		if _, err := time.Parse("2006-01-02", strings.TrimSpace(e.Date)); err != nil {
 			problems = append(problems, fmt.Sprintf(
-				"intake register: %s: unparseable date %q — age not computable; fix the date: field (issue-loop/07)",
+				"intake register: %s: unparseable date %q — age not computable; fix the date: field",
 				e.ID, e.Date))
 		}
 	}
@@ -81,7 +80,7 @@ func registerIntegrityProblems(root string) []string {
 					continue
 				}
 				problems = append(problems, fmt.Sprintf(
-					"intake register: %s: missing disposition key — add 'disposition: new' (or another valid disposition) to the frontmatter (issue-loop/07)",
+					"intake register: %s: missing disposition key — add 'disposition: new' (or another valid disposition) to the frontmatter",
 					entry.ID))
 			}
 		}
@@ -114,7 +113,7 @@ func registerIntegrityProblems(root string) []string {
 	// authorizes it.
 	problems = append(problems, guttedRegisterFields(root)...)
 
-	// ID format validation (methodology/35): every entry must use either the new
+	// ID format validation: every entry must use either the new
 	// slug form ([FI]-<slug>, 10-20 chars after prefix, [a-z0-9-]) or a
 	// grandfathered legacy numeric form ([FI]-NN(-a)?). New entries using the
 	// numeric form are a PROBLEM (regression to the counter).
@@ -171,7 +170,7 @@ func duplicateIDs(entries []keyedEntry) []string {
 //
 // "Landed" is measured on main's FIRST-PARENT line (--first-parent in the add
 // enumeration below), so post-merge strictness holds regardless of squash vs
-// merge (issue #527): a squash collapses a branch's transient add+delete into
+// merge: a squash collapses a branch's transient add+delete into
 // nothing; a non-squash merge keeps both in main's full history but nets them to
 // nothing along the merge commit's first-parent diff — so neither smuggles a
 // never-landed entry into the "landed" set. A file only counts as landed once it
@@ -179,10 +178,10 @@ func duplicateIDs(entries []keyedEntry) []string {
 // the merge-base additionally relaxes the check for a branch deleting its OWN
 // not-yet-landed add; it never weakens protection for anything landed on main.
 //
-// (Earlier this comment claimed strictness held "regardless of squash vs merge"
-// WITHOUT --first-parent — that was false: a non-squash merge of a transient
-// add+delete then fired a tombstone PROBLEM on main for branch-local churn that
-// never landed. #515 hit exactly that; #527 diagnosed it; this is the fix.)
+// (Earlier this check ran WITHOUT --first-parent, on the theory that strictness
+// held "regardless of squash vs merge" — that was false: a non-squash merge of a
+// transient add+delete then fired a tombstone PROBLEM on main for branch-local
+// churn that never landed. Scoping to the first-parent line is the fix.)
 func deletedRegisterFiles(root string) []string {
 	// Only meaningful in a git checkout.
 	if _, err := os.Stat(filepath.Join(root, ".git")); os.IsNotExist(err) {
@@ -200,13 +199,13 @@ func deletedRegisterFiles(root string) []string {
 	var deleted []string
 	for _, dir := range []string{"docs/streams/intake", "docs/streams/findings"} {
 		// Enumerate files ADDED on main's first-parent line up to the landed
-		// merge-base. --first-parent is load-bearing (issue #527): "landed"
-		// must mean "appeared in a main first-parent snapshot", not "added in
-		// any ancestor commit". Without it, a non-squash merge of a branch that
-		// ADDS a register file and then deletes/renames it before merging smuggles
-		// that transient add into main's full history; the file is absent from the
-		// tree, so the check fires on main for a branch-local churn that was never
-		// a landed entry (the escape #515 hit). Along the merge's first-parent
+		// merge-base. --first-parent is load-bearing: "landed" must mean
+		// "appeared in a main first-parent snapshot", not "added in any ancestor
+		// commit". Without it, a non-squash merge of a branch that ADDS a register
+		// file and then deletes/renames it before merging smuggles that transient
+		// add into main's full history; the file is absent from the tree, so the
+		// check fires on main for a branch-local churn that was never a landed
+		// entry (the escape this guards against). Along the merge's first-parent
 		// diff the add+delete net to nothing, so it is correctly not counted.
 		cmd := exec.Command("git", "-C", root, "log", "--diff-filter=A", "--first-parent",
 			"--name-only", "--format=", base, "--", dir+"/")
@@ -302,12 +301,24 @@ func registerLandedBase(root string) (base string, resolved bool) {
 // Advisory only — never a hard problem. A local clone or a fixture legitimately
 // has no origin/main, and the guard still catches WORKING-TREE gutting there; only
 // already-committed gutting escapes.
+//
+// A tree with NO .git directory at all (a `git archive` export) is
+// a third case, distinct from "origin/main unresolvable": guttedRegisterFields
+// skips outright rather than falling back to base=HEAD (it has no ref to fall
+// back to), so nothing is silently compared against itself — but the guard
+// still did not run, and that absence deserves the same NOTICE for the same
+// reason: a silent difference in which checks ran is what makes a differential
+// lint comparison across two trees unsound.
 func registerBaseFallbackNotices(root string) []string {
-	if _, err := os.Stat(filepath.Join(root, ".git")); os.IsNotExist(err) {
-		return nil
-	}
-	if _, resolved := registerLandedBase(root); resolved {
-		return nil
+	var cause string
+	switch {
+	case hasNoGitDir(root):
+		cause = "this tree has no .git directory at all (e.g. a `git archive` export), so the guard could not read a landed base at all and was skipped entirely"
+	default:
+		if _, resolved := registerLandedBase(root); resolved {
+			return nil
+		}
+		cause = "origin/main could not be resolved, so the landed base fell back to HEAD and finding entries are compared against themselves — already-COMMITTED gutting cannot be detected in this run (working-tree gutting still is)"
 	}
 	// Only worth saying when there is actually a findings register to guard.
 	files, err := os.ReadDir(filepath.Join(root, "docs", "streams", "findings"))
@@ -324,8 +335,8 @@ func registerBaseFallbackNotices(root string) []string {
 		return nil
 	}
 	return []string{fmt.Sprintf(
-		"register field-gutting guard is running degraded: origin/main could not be resolved, so the landed base fell back to HEAD and %d finding entr%s are compared against themselves — already-COMMITTED gutting cannot be detected in this run (working-tree gutting still is). If this is CI, fetch origin/main before the lint step.",
-		n, map[bool]string{true: "y is", false: "ies are"}[n == 1])}
+		"register field-gutting guard is running degraded: %s (%d finding entr%s affected). If this is CI, fetch origin/main before the lint step; if this is a git-archive export, lint a real worktree instead (`git worktree add`) for a result comparable to CI.",
+		cause, n, map[bool]string{true: "y is", false: "ies are"}[n == 1])}
 }
 
 // guttedRegisterFields flags any finding entry whose LOAD-BEARING fields were
@@ -615,7 +626,7 @@ func generateIntakeView(root string) (string, error) {
 	b.WriteString("docs/ directory. Deep strategic questions stay in `docs/v-next.md`.\n\n")
 	b.WriteString("Format: heading `## I-<slug> — YYYY-MM-DD — title`, one paragraph, then a\n")
 	b.WriteString("`Disposition: new | watching | scoped → <stream> | rejected — <why> | decision-needed → issue #NN` line.\n")
-	b.WriteString("**IDs:** letter-prefixed slugs (methodology/35) — `I-<slug>` where the slug is\n")
+	b.WriteString("**IDs:** letter-prefixed slugs — `I-<slug>` where the slug is\n")
 	b.WriteString("10–20 characters, `[a-z0-9-]`, derived from the title (example: `I-model-mix-tiers`).\n")
 	b.WriteString("Older entries use numeric IDs (`I-01`) — those are frozen legacy and remain valid.\n")
 	b.WriteString("New entries must use the slug form; a numeric ID on a new entry triggers a lint PROBLEM.\n")
@@ -628,12 +639,12 @@ func generateIntakeView(root string) (string, error) {
 	b.WriteString("main CI only — same discipline as `STATUS.md`). Do not edit it by hand.\n")
 	b.WriteString("Deleting an entry file is a tombstone-not-delete violation and trips `--lint`.\n\n")
 
-	// Decision queue section — pointer into issue-loop/06's needs-decision queue.
+	// Decision queue section — pointer into the needs-decision queue.
 	// Renders at the top because these are the humans-blocking list.
 	if len(decisionEntries) > 0 {
 		b.WriteString("## Decision queue — waiting on a human\n\n")
 		b.WriteString("Entries flagged `decision-needed` — decisions routed through the single\n")
-		b.WriteString("`needs-decision` GitHub issue queue (issue-loop/06). Each entry must link\n")
+		b.WriteString("`needs-decision` GitHub issue queue. Each entry must link\n")
 		b.WriteString("its decision issue below; this section is a pointer into that queue, not a\n")
 		b.WriteString("second decision queue.\n\n")
 		for _, e := range decisionEntries {
@@ -696,7 +707,7 @@ func generateFindingsView(root string) (string, error) {
 	b.WriteString("updating the affected brief/README to reflect it, then flipping the flag.\n\n")
 	b.WriteString("Format: each entry is a per-entry file under `docs/streams/findings/` with YAML\n")
 	b.WriteString("frontmatter (id, date, title, affects, ack, resolved) and a body paragraph.\n")
-	b.WriteString("**IDs:** letter-prefixed slugs (methodology/35) — `F-<slug>` where the slug is\n")
+	b.WriteString("**IDs:** letter-prefixed slugs — `F-<slug>` where the slug is\n")
 	b.WriteString("10–20 characters, `[a-z0-9-]`, derived from the title (example: `F-ws-token-expiry`).\n")
 	b.WriteString("Older entries use numeric IDs (`F-01`) — those are frozen legacy and remain valid.\n")
 	b.WriteString("New entries must use the slug form; a numeric ID on a new entry triggers a lint PROBLEM.\n")
@@ -735,7 +746,7 @@ func generateFindingsView(root string) (string, error) {
 // that lack a decision-issue field. Advisory only — exit code unchanged (the entry
 // may have been flipped moments before the issue is filed). The convention is that
 // every decision-needed entry links a needs-decision GitHub issue via decision-issue
-// in the frontmatter, routing into the SINGLE decision queue (issue-loop/06).
+// in the frontmatter, routing into the SINGLE decision queue.
 func intakeDecisionIssueNotices(entries []intakeEntry) []string {
 	var out []string
 	for _, e := range entries {
@@ -744,7 +755,7 @@ func intakeDecisionIssueNotices(entries []intakeEntry) []string {
 		}
 		if e.DecisionIssue == "" {
 			out = append(out, fmt.Sprintf(
-				"intake entry %s: disposition is decision-needed but has no decision-issue — file a needs-decision issue (issue-loop/06) and add 'decision-issue: <NN>' to the frontmatter (issue-loop/08)",
+				"intake entry %s: disposition is decision-needed but has no decision-issue — file a needs-decision issue and add 'decision-issue: <NN>' to the frontmatter",
 				e.ID))
 		}
 	}

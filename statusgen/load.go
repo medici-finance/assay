@@ -11,6 +11,33 @@ import (
 
 var findingHeadRe = regexp.MustCompile(`^## (F-\d+) — (\d{4}-\d{2}-\d{2}) — (.+)$`)
 
+// allowEmptyRoot is the fail-closed opt-in for a root whose docs/streams
+// exists and reads cleanly but resolves to ZERO streams. Wired
+// once in main() from --allow-empty-root, before any run().
+//
+// Default false: emptyRootMessage becomes a hard PROBLEM, the same
+// classification as the three adjacent cases it sits next to — a missing
+// docs/streams, an unreadable one, and a nonexistent root — which already
+// fail closed via the os.ReadDir error below. Without this, "the path is
+// wrong/typo'd/mid-restructure and nothing was actually checked" is silently
+// indistinguishable from "this root is fine", which is exactly the failure
+// mode multi-root exists to prevent (a repo's contribution to the board
+// vanishing without a trace).
+//
+// When true, a genuinely-empty root (adopted the methodology, has not
+// authored a stream yet) still contributes — but as a NOTICE, never silence,
+// so the state stays visible instead of reading as a clean pass.
+var allowEmptyRoot bool
+
+// emptyRootMessage is the diagnostic for a root whose docs/streams loaded
+// with no error but produced zero streams. Its severity (PROBLEM vs NOTICE)
+// is decided by the caller based on allowEmptyRoot.
+func emptyRootMessage(root string) string {
+	return fmt.Sprintf(
+		"%s: exists and is readable but resolves to 0 streams — a typo'd, renamed, or mid-restructure docs/streams is indistinguishable from a legitimately empty bootstrap root without this diagnostic; pass --allow-empty-root if this root genuinely has none authored yet",
+		filepath.Join(root, "docs", "streams"))
+}
+
 // reservedRegisterNames are directory names under docs/streams that are
 // registers (not streams) and must be skipped by stream discovery.
 var reservedRegisterNames = map[string]bool{

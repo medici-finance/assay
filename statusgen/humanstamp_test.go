@@ -317,7 +317,7 @@ func TestHumanStamp_ReDateSameNameDoesNotFire(t *testing.T) {
 }
 
 // TestHumanStamp_AmbiguousSpaceAfterColonFires pins the fix for the review
-// finding on PR #324: brieffile.go's hasHumanReviewer (strings.Fields +
+// finding: brieffile.go's hasHumanReviewer (strings.Fields +
 // HasPrefix(tok, "human:")) is satisfied by the bare "human:" token alone, so
 // "human: mallory" (a space after the colon) passed the done-gate while
 // humanStampRe — this gate's own detector — required a name character

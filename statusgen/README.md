@@ -2,16 +2,11 @@
 
 **Provenance**: a **history-free copy** — no upstream git history carried over.
 
-**This tree is canonical** (decided; recorded in the root README's "Pending
-decisions" per human:<name> on
-[#274](https://github.com/medici-finance/assay/issues/274), 2026-08-02).
 Consumers do not vendor it — they install the pinned release binary and verify
 its sha256 against their `.assay-versions` pin file.
 
-Module path: `github.com/medici-finance/assay/statusgen`. The repo name and org
-were decided 2026-07-09 (root README) and remain `medici-finance/assay`;
-the module path intentionally differs from the repo slug. The planned rename to
-the public `assay` path (#274 direction) has been carried out.
+Module path: `github.com/medici-finance/assay/statusgen`. The module path
+intentionally differs from the repo slug.
 
 ## What it does
 
@@ -81,6 +76,24 @@ To re-corroborate a merged brief, hand it the diff that made the claims —
 Omit `--root` to default to `.` (run from the target repo's root instead of
 passing the flag).
 
+**Comparing `--lint` output across two tree states (e.g. "is this failure
+pre-existing, or did my branch cause it?") — use a real worktree, not `git
+archive`.** `git archive HEAD | tar -x` is the natural-looking way to get "the
+tree at commit X", but the extraction has no `.git` directory at all, and every
+check that reads git history (register-ID grandfathering, the register
+tombstone/field-gutting guards, the human-stamp gate, claim filtering) then
+runs degraded or is skipped outright — visibly, via a `NOTICE: git metadata
+unavailable …` line and per-check NOTICEs, but the set of checks that ran is
+still not the same set CI runs, so the PROBLEM/NOTICE count is not comparable.
+Use a real worktree instead, which keeps `.git` and resolves
+`origin/main` normally:
+
+```bash
+git worktree add /tmp/at-<sha> <commit-or-branch>
+go run . --root /tmp/at-<sha> --lint
+git worktree remove /tmp/at-<sha>   # when done
+```
+
 `statusgen --version` prints the release tag the binary was built from
 (`statusgen/vX.Y.Z`), or `dev` for an unstamped local build. Consumers pin
 statusgen by tag + sha256; this is how they can CHECK the pin rather than assume
@@ -140,6 +153,15 @@ Rules, all of them load-bearing:
   non-zero. That is intended — root A's board is correct for root A — but it
   means a failed multi-root run can leave updated boards behind. Re-run after
   fixing; do not assume a non-zero exit means nothing was written.
+- **A root that resolves to zero streams is a hard PROBLEM, not a silent
+  pass.** A `docs/streams` that exists and reads cleanly but has
+  no stream subdirectories (or only `findings`/`intake` registers) looks
+  identical to a typo'd, renamed, or mid-restructure path — exactly the
+  "invisible by construction" failure mode above — so it fails closed the
+  same way a missing or unreadable `docs/streams` already does. Pass
+  `--allow-empty-root` for a root that has genuinely adopted the methodology
+  but not authored a stream yet; that downgrades the diagnostic to a NOTICE
+  so the state stays visible instead of reading as clean.
 
 `--version` is recognised only as the **sole** argument. `statusgen --version`
 prints the tag; `statusgen --root . --version` is a usage error (exit 2) — a

@@ -160,7 +160,7 @@ func TestEvidenceHasIndependentRow(t *testing.T) {
 		t.Error("a header-only table (no content rows) has no independent row")
 	}
 	// When a header names the Runner column, a trailing extra column must not
-	// shift what gets read (PR #106 review, finding 3).
+	// shift what gets read.
 	extraColumn := "| # | Command | Runner | Notes |\n|---|---|---|---|\n| 1 | x | implementer (Opus) | see log |\n"
 	if evidenceHasIndependentRow(extraColumn) {
 		t.Error("with a named Runner column, the implementer attribution must be read from it, not from a trailing Notes cell")
@@ -190,9 +190,9 @@ func TestEvidenceHasIndependentRow(t *testing.T) {
 	if !evidenceHasIndependentRow(escapedPipeWithIndependentRow) {
 		t.Error("a genuinely independent row after an escaped-pipe row must still be found")
 	}
-	// PR #553 security review: an UNESCAPED pipe in a Command cell is the more
+	// An UNESCAPED pipe in a Command cell is the more
 	// common author mistake (forgetting to escape) and is the sibling of the
-	// #443 bug — splitRowEscaped correctly treats it as a real delimiter, so
+	// escaped-pipe bug — splitRowEscaped correctly treats it as a real delimiter, so
 	// it still shifts every cell after it and would mis-locate the Runner
 	// column by index. Before the cell-count/row-alignment check, this row
 	// read cell 5 ("2026-07-08", the Date) as Runner — no "implementer"
@@ -215,7 +215,7 @@ func TestEvidenceHasIndependentRow(t *testing.T) {
 }
 
 // TestVerifierFloorFailure pins the verifier floor's membership test at the
-// unit level (methodology/19). Three properties matter:
+// unit level. Three properties matter:
 //
 //  1. Membership is CAPABILITY, not price. `glm-5.2` is inexpensive to run and
 //     strong; it must clear the floor. An older list held a bare `glm` and so
@@ -266,19 +266,19 @@ func TestVerifierFloorFailure(t *testing.T) {
 		//
 		// REJECT (the forgeries built from that same accept):
 		{"2026-07-09 sonnet-verifier human:alex", true,
-			"#280: appending a human token must NOT suppress the floor — the RUNNER is sonnet-verifier"},
+			"appending a human token must NOT suppress the floor — the RUNNER is sonnet-verifier"},
 		{"2026-07-09 haiku-verifier (reviewed by human:alex)", true,
-			"#280: a human named anywhere but the runner slot suppresses nothing"},
+			"a human named anywhere but the runner slot suppresses nothing"},
 		{"2026-07-09 glm-5.2-verifier human:alex", false,
-			"#280 must not over-correct: the runner is above the floor, so this still clears"},
+			"must not over-correct: the runner is above the floor, so this still clears"},
 		{"2026-07-09 human:bob", true,
-			"#280: an unresolvable human token fails LOUD — it would otherwise clear silently, since belowFloorRunner(\"human:bob\") is false"},
+			"an unresolvable human token fails LOUD — it would otherwise clear silently, since belowFloorRunner(\"human:bob\") is false"},
 		{"2026-07-09 human:іan", true,
-			"#280/#243: a homoglyph name (Cyrillic і) resolves to no known human and must not clear"},
+			"a homoglyph name (Cyrillic і) resolves to no known human and must not clear"},
 		{"2026-07-09 superhuman:alex", false,
-			"#243: superhuman: is not a human stamp, so it is judged as an ordinary runner token — and superhuman names no weak family"},
+			"superhuman: is not a human stamp, so it is judged as an ordinary runner token — and superhuman names no weak family"},
 		{"2026-07-09 superhuman:sonnet", true,
-			"#243: a non-stamp runner is still judged on its model family"},
+			"a non-stamp runner is still judged on its model family"},
 
 		// Shape cases the floor deliberately does not own.
 		{"no-date-here sonnet-verifier", false, "an undated cell is attributionProblems' to report, not the floor's"},
@@ -315,7 +315,7 @@ func TestVerifierFloorHumanTokenIsNotASuppressor(t *testing.T) {
 		for _, suffix := range []string{" human:alex", " (human:alex)", " human:alex human:alex", " — human:alex signed"} {
 			cell := bare + suffix
 			if _, failed := verifierFloorFailure(cell); !failed {
-				t.Errorf("verifierFloorFailure(%q) cleared the floor — a human token outside the runner slot must not suppress the check (#280)", cell)
+				t.Errorf("verifierFloorFailure(%q) cleared the floor — a human token outside the runner slot must not suppress the check", cell)
 			}
 		}
 	}

@@ -232,27 +232,23 @@ func TestApprovalPhraseRe(t *testing.T) {
 	}
 }
 
-// TestApprovalPhraseLGTM covers the LGTM widening. Every ACCEPT case below is a
-// VERBATIM comment authored by `ada` in example-org/tracker or
-// medici-finance/assay — harvested 2026-08-02 from
-// GET /repos/{repo}/issues/comments, 301 comments, 58 of which contain "lgtm"
-// (50 of those being the bare word). Every one of them was rejected by the
-// shipped pattern, which is why correctly-signed `gate: human` flips reported
-// MISSING-CORROBORATION and the human was asked to re-sign in different words.
+// TestApprovalPhraseLGTM covers the LGTM widening. Each ACCEPT case is an example
+// approval comment a human reviewer might leave; every one contains "lgtm" (some
+// as the bare word). Earlier patterns rejected comments like these, which is why
+// correctly-signed `gate: human` flips reported MISSING-CORROBORATION and the
+// human was asked to re-sign in different words.
 //
 // The REJECT cases are the other direction, and two of them are the reason this
 // widening is not just "add more words":
 //
-//   - "please go ahead with explicitly pruning" is a real ada comment and a
-//     real INSTRUCTION TO DO WORK. "go ahead" appears twice in the corpus and
-//     would be a plausible thing to add; it is not added, because it would accept
-//     a non-approval.
-//   - "don't we need to change a hostname or something? if not lgtm" is also a
-//     real ada comment, and it is an APPROVAL ("if not, lgtm"). It is the only
-//     occurrence of the sequence "not lgtm" in the corpus. It is carved out by
+//   - "please go ahead with explicitly pruning" is an INSTRUCTION TO DO WORK,
+//     not an approval. "go ahead" would be a plausible phrase to add; it is not
+//     added, because it would accept a non-approval.
+//   - "don't we need to change a hostname or something? if not lgtm" is an
+//     APPROVAL ("if not, lgtm") — the conditional carve-out. It is carved out by
 //     lgtmConditionalApprovalRe so that the `not lgtm` refusal clause added for
-//     an independent review (see TestApprovalPhraseLGTMNegations) can block
-//     a real refusal without manufacturing a false rejection here. This case MUST
+//     an independent review (see TestApprovalPhraseLGTMNegations) can block a
+//     real refusal without manufacturing a false rejection here. This case MUST
 //     keep passing.
 func TestApprovalPhraseLGTM(t *testing.T) {
 	accept := []string{
@@ -276,7 +272,7 @@ func TestApprovalPhraseLGTM(t *testing.T) {
 	}
 	for _, body := range accept {
 		if !hasApprovalPhrase(body) {
-			t.Errorf("hasApprovalPhrase(%q) = false, want true — this is a real approval and #263 is exactly this rejection", body)
+			t.Errorf("hasApprovalPhrase(%q) = false, want true — this is a real approval the LGTM widening must accept", body)
 		}
 	}
 
@@ -298,7 +294,7 @@ func TestApprovalPhraseLGTM(t *testing.T) {
 	}
 	for _, body := range reject {
 		if hasApprovalPhrase(body) {
-			t.Errorf("hasApprovalPhrase(%q) = true, want false — widening for #263 must not admit a non-approval", body)
+			t.Errorf("hasApprovalPhrase(%q) = true, want false — the LGTM widening must not admit a non-approval", body)
 		}
 	}
 }

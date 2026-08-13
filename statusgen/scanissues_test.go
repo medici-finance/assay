@@ -42,7 +42,7 @@ func buildComments(entries ...[3]string) []issueComment {
 
 // buildCommentsWithBody constructs a []issueComment fixture from
 // (login, type, createdAt, body) quads for tests that need body content,
-// e.g. the desk-automation marker detection (issue-loop/03 Blocker 2).
+// e.g. the desk-automation marker detection (Blocker 2).
 func buildCommentsWithBody(entries ...[4]string) []issueComment {
 	var out []issueComment
 	for _, e := range entries {
@@ -155,7 +155,7 @@ func TestScanIssuesPlan(t *testing.T) {
 		scanHomeRepo(): {
 			{Number: 300, Title: "already handled", Labels: lbl("bug")},            // skip: existing
 			{Number: 301, Title: "frontend keydown bubbles", Labels: lbl("bug")},   // emit: gate model
-			{Number: 302, Title: "DAML settlement drift", Labels: lbl("bug")},      // emit: gate human (title trigger)
+			{Number: 302, Title: "funds settlement drift", Labels: lbl("bug")},     // emit: gate human (title trigger)
 			{Number: 303, Title: "sign off brief", Labels: lbl("verify-gate")},     // skip: excluded label
 			{Number: 304, Title: "live check", Labels: lbl("live-verify")},         // skip: excluded label
 			{Number: 305, Title: "leak funds path", Labels: lbl("security")},       // emit: gate human (risk label)
@@ -191,12 +191,12 @@ func TestScanIssuesPlan(t *testing.T) {
 		t.Error("verify-gate / live-verify / review-request issues must be excluded")
 	}
 
-	// Derived gate: bug-only → model; daml/auth/funds title or risk label → human.
+	// Derived gate: bug-only → model; a risk keyword in the title or a risk label → human.
 	if p := findPlan(plans, scanHomeRepo(), 301); p == nil || p.Gate != "model" {
 		t.Errorf("issue 301 (plain bug) should derive gate:model, got %+v", p)
 	}
 	if p := findPlan(plans, scanHomeRepo(), 302); p == nil || p.Gate != "human" {
-		t.Errorf("issue 302 (DAML title) should derive gate:human, got %+v", p)
+		t.Errorf("issue 302 (risk keyword in title) should derive gate:human, got %+v", p)
 	}
 	if p := findPlan(plans, scanHomeRepo(), 305); p == nil || p.Gate != "human" {
 		t.Errorf("issue 305 (security label) should derive gate:human, got %+v", p)
@@ -321,7 +321,7 @@ func TestScanIssuesDryRunWritesNothing(t *testing.T) {
 // TestScanExcludedLabels documents the exclusion constant is complete for the
 // system-state labels (including the review-request dispatch label) and
 // matches case-insensitively.
-// TestScanReposCoversOwnedSet locks the widened repo set (#152). The scanner's
+// TestScanReposCoversOwnedSet locks the widened repo set. The scanner's
 // scope is meant to be auditable from source alone, and the intake-desk SKILL's
 // boot-step-1 list names this slice as its code authority — so the set is asserted
 // here rather than left to drift. It also guards the property the filename scheme
@@ -355,7 +355,7 @@ func TestScanReposCoversOwnedSet(t *testing.T) {
 	}
 	for _, w := range want {
 		if !have[w] {
-			t.Errorf("scanRepos() is missing owned repo %q — issues filed there go unmonitored (#784)", w)
+			t.Errorf("scanRepos() is missing owned repo %q — issues filed there go unmonitored", w)
 		}
 	}
 	if len(scanRepos()) != len(want) {
@@ -446,7 +446,7 @@ func TestBlockedPlaceholderParseAndCheck(t *testing.T) {
 }
 
 // TestBlockedPlaceholderNextUpExclusion — a blocked placeholder is excluded from
-// Next-up (issue-loop/03, Verify item 2).
+// Next-up (Verify item 2).
 func TestBlockedPlaceholderNextUpExclusion(t *testing.T) {
 	streams, _ := placeholderRepo(t, map[string]string{
 		"issue-77.md": placeholderFile("alpha", 77, "bug"),
@@ -574,7 +574,7 @@ func TestBlockedPlaceholderUnblockDetection(t *testing.T) {
 	if isBotComment(issueCommentUser{Login: "alex", Type: "User"}, "") {
 		t.Error("human User must not be treated as a bot")
 	}
-	// Body marker: desk-automation marker → treated as bot (issue-loop/03 Blocker 2)
+	// Body marker: desk-automation marker → treated as bot (Blocker 2)
 	if !isBotComment(issueCommentUser{Login: "shared-agent", Type: "User"}, "status update <!-- desk-automation -->") {
 		t.Error("comment with desk-automation marker must be treated as a bot even with type:User")
 	}
@@ -600,7 +600,7 @@ func TestBlockedPlaceholderLintGreen(t *testing.T) {
 
 // TestBlockedPlaceholderMarkerCommentDoesNotUnblock — a comment with the
 // desk-automation marker (shared-agent/type:User with <!-- desk-automation --> in the
-// body) after blockedAt must NOT un-block (issue-loop/03 review Blocker 2: the
+// body) after blockedAt must NOT un-block (Blocker 2: the
 // loop's own automation shares the shared-agent identity with human:<name>, so login alone
 // cannot distinguish the answer from the question).
 func TestBlockedPlaceholderMarkerCommentDoesNotUnblock(t *testing.T) {
@@ -702,7 +702,7 @@ func TestBlockedPlaceholderManyComments(t *testing.T) {
 }
 
 // TestBlockedPlaceholderLintRejectsBadBlockedAt — --lint rejects an unparseable
-// blockedAt timestamp (non-blocking finding, issue-loop/03 review).
+// blockedAt timestamp (non-blocking finding).
 func TestBlockedPlaceholderLintRejectsBadBlockedAt(t *testing.T) {
 	bad := "---\nschema: placeholder-v1\nbrief: issue-loop/issue-401\nissue: 401\nrepo: o/r\nblocked: awaiting-issue-response\nblockedAt: yesterday\n---\nbody\n"
 	streams, _ := placeholderRepo(t, map[string]string{"issue-401.md": bad})
@@ -712,7 +712,7 @@ func TestBlockedPlaceholderLintRejectsBadBlockedAt(t *testing.T) {
 	}
 }
 
-// --- close-out tests (issue-loop/04) ---
+// --- close-out tests ---
 
 // TestCloseOutRetire — an existing placeholder whose issue is NOT in the open list
 // (→ closed) is planned for retirement (action: retire).
@@ -782,7 +782,7 @@ func TestCloseOutReactivate(t *testing.T) {
 
 // TestCloseOutCreateAndRetireOneSweep — a single scan both creates a new
 // placeholder for an open issue AND retires an existing placeholder for a now-
-// closed issue (issue-loop/04: "one --scan-issues both adds new placeholders
+// closed issue ("one --scan-issues both adds new placeholders
 // and retires resolved ones").
 func TestCloseOutCreateAndRetireOneSweep(t *testing.T) {
 	// Existing todo placeholder for issue 602 (going to be closed).
@@ -818,10 +818,11 @@ func TestCloseOutCreateAndRetireOneSweep(t *testing.T) {
 	}
 }
 
-// TestCloseOutAlreadyDoneSkipsRetire — a placeholder already at status: done is
-// not re-retired (idempotent).
-func TestCloseOutAlreadyDoneSkipsRetire(t *testing.T) {
-	// Existing done placeholder (already retired) for issue 604.
+// TestCloseOutAlreadyDoneSweepsToArchive — a placeholder already at status: done
+// but still sitting at the stream ROOT is not re-retired (idempotent on the
+// frontmatter) but IS swept into done/ (D3: the ghost drain).
+func TestCloseOutAlreadyDoneSweepsToArchive(t *testing.T) {
+	// Existing done placeholder (already retired) for issue 604, at the root.
 	streams, root := scanFixtureRepo(t, map[string]string{
 		"issue-604.md": closedPlaceholderFile("alpha", 604, "bug"),
 	})
@@ -833,9 +834,13 @@ func TestCloseOutAlreadyDoneSkipsRetire(t *testing.T) {
 
 	_, closeOuts, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
 
-	// Already done → no close-out action.
-	if findCloseOut(closeOuts, scanHomeRepo(), 604) != nil {
-		t.Error("already-done placeholder must not be re-retired")
+	// Already done + at the root → sweep it into done/ (no frontmatter change).
+	c := findCloseOut(closeOuts, scanHomeRepo(), 604)
+	if c == nil || c.Action != "sweep" {
+		t.Fatalf("already-done root placeholder should be swept into done/, got %+v", c)
+	}
+	if filepath.Base(filepath.Dir(c.Dest)) != archiveDirName {
+		t.Errorf("sweep dest = %q, want a %s/ path", c.Dest, archiveDirName)
 	}
 }
 
@@ -915,7 +920,7 @@ func TestCloseOutFileModificationRetire(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeTemp(t, issueLoopDir, "README.md", scanStreamREADME)
-	phPath := filepath.Join(issueLoopDir, "issue-620.md")
+	rootPath := filepath.Join(issueLoopDir, "issue-620.md")
 	writeTemp(t, issueLoopDir, "issue-620.md", placeholderFile("issue-loop", 620, "bug"))
 
 	// Run scan with issue 620 NOT open → retire.
@@ -927,7 +932,14 @@ func TestCloseOutFileModificationRetire(t *testing.T) {
 		t.Fatalf("scan exited %d, want 0", code)
 	}
 
-	// File must now be status: done + resolved: issue-close.
+	// (D3): retire MOVES the placeholder into done/; the root copy
+	// is gone.
+	if _, err := os.Stat(rootPath); !os.IsNotExist(err) {
+		t.Errorf("retired placeholder must be moved out of the stream root (stat err=%v)", err)
+	}
+	phPath := filepath.Join(issueLoopDir, archiveDirName, "issue-620.md")
+
+	// File must now be status: done + resolved: issue-close, at its done/ path.
 	ph, ok, err := parsePlaceholderFile(phPath)
 	if err != nil || !ok {
 		t.Fatalf("retired file must parse: ok=%v err=%v", ok, err)
@@ -1006,6 +1018,97 @@ func TestCloseOutFileModificationReactivate(t *testing.T) {
 	}
 }
 
+// TestCloseOutSweepRootGhostToArchive — a status: done placeholder still at the
+// stream ROOT (a ghost) is swept into done/ by a scan, unchanged in content, with
+// the root copy removed and lint green (D3 — the backlog drain).
+func TestCloseOutSweepRootGhostToArchive(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
+		t.Fatal(err)
+	}
+	issueLoopDir := filepath.Join(root, "docs/streams/issue-loop")
+	if err := os.MkdirAll(issueLoopDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTemp(t, issueLoopDir, "README.md", scanStreamREADME)
+	rootPath := filepath.Join(issueLoopDir, "issue-650.md")
+	writeTemp(t, issueLoopDir, "issue-650.md", closedPlaceholderFile("issue-loop", 650, "bug"))
+
+	// Issue 650 is NOT open (already closed and already retired at the root).
+	data := map[string][]ghIssue{scanHomeRepo(): {}}
+	code := runScanIssues(root, false, fixtureLister(data, ""), nilCommentLister, blessAll)
+	if code != 0 {
+		t.Fatalf("scan exited %d, want 0", code)
+	}
+
+	if _, err := os.Stat(rootPath); !os.IsNotExist(err) {
+		t.Errorf("swept ghost must be moved out of the stream root (stat err=%v)", err)
+	}
+	archived := filepath.Join(issueLoopDir, archiveDirName, "issue-650.md")
+	raw, err := os.ReadFile(archived)
+	if err != nil {
+		t.Fatalf("swept ghost must live in done/: %v", err)
+	}
+	// Sweep does not touch frontmatter — still done + resolved: issue-close.
+	if !strings.Contains(string(raw), "status: done") || !strings.Contains(string(raw), "resolved: issue-close") {
+		t.Errorf("swept ghost frontmatter changed: %s", raw)
+	}
+	if code := run(root, "lint", nil, nil, ""); code != 0 {
+		t.Fatalf("lint after sweep exited %d, want 0", code)
+	}
+}
+
+// TestCloseOutReactivateFromArchive — a placeholder sitting in done/ whose issue
+// REOPENS is reactivated (status: todo) AND moved back to the stream root
+// (D3 — reactivation checks done/ and moves the file back).
+func TestCloseOutReactivateFromArchive(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
+		t.Fatal(err)
+	}
+	issueLoopDir := filepath.Join(root, "docs/streams/issue-loop")
+	doneDir := filepath.Join(issueLoopDir, archiveDirName)
+	if err := os.MkdirAll(doneDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTemp(t, issueLoopDir, "README.md", scanStreamREADME)
+	// The retired placeholder already lives in done/.
+	archivedPath := filepath.Join(doneDir, "issue-651.md")
+	writeTemp(t, doneDir, "issue-651.md", closedPlaceholderFile("issue-loop", 651, "bug"))
+
+	// Issue 651 is back open (reopened).
+	data := map[string][]ghIssue{
+		scanHomeRepo(): {
+			{Number: 651, Title: "reopened bug", Labels: lbl("bug")},
+		},
+	}
+	code := runScanIssues(root, false, fixtureLister(data, ""), nilCommentLister, blessAll)
+	if code != 0 {
+		t.Fatalf("scan exited %d, want 0", code)
+	}
+
+	// Moved back to the root, and the done/ copy is gone.
+	if _, err := os.Stat(archivedPath); !os.IsNotExist(err) {
+		t.Errorf("reactivated placeholder must be moved out of done/ (stat err=%v)", err)
+	}
+	rootPath := filepath.Join(issueLoopDir, "issue-651.md")
+	ph, ok, err := parsePlaceholderFile(rootPath)
+	if err != nil || !ok {
+		t.Fatalf("reactivated file must parse at the root: ok=%v err=%v", ok, err)
+	}
+	if ph.Status != "todo" {
+		t.Errorf("reactivated placeholder status = %q, want todo", ph.Status)
+	}
+	// A reopened issue must NOT also get a fresh placeholder created.
+	raw, _ := os.ReadFile(rootPath)
+	if strings.Contains(string(raw), "resolved:") {
+		t.Error("reactivated placeholder must NOT retain a resolved: marker")
+	}
+	if code := run(root, "lint", nil, nil, ""); code != 0 {
+		t.Fatalf("lint after reactivate-from-archive exited %d, want 0", code)
+	}
+}
+
 // TestCloseOutBlockedPlaceholderRetired — a blocked placeholder whose issue is
 // closed is still retired (the block is moot when the issue is closed).
 func TestCloseOutBlockedPlaceholderRetired(t *testing.T) {
@@ -1078,9 +1181,11 @@ func TestCloseOutRetireLabelGained(t *testing.T) {
 	}
 }
 
-// TestCloseOutRetireLabelGainedIdempotent — a placeholder already retired via
-// the label-exclusion path is not re-retired while the label is still present.
-func TestCloseOutRetireLabelGainedIdempotent(t *testing.T) {
+// TestCloseOutRetireLabelGainedIdempotentSweeps — a placeholder already retired
+// via the label-exclusion path (status: done) is not re-retired while the label
+// is still present, but a copy still at the stream ROOT is swept into done/
+// (D3: ANY done placeholder at the root is a ghost to archive).
+func TestCloseOutRetireLabelGainedIdempotentSweeps(t *testing.T) {
 	streams, root := scanFixtureRepo(t, map[string]string{
 		"issue-641.md": labelExcludedPlaceholderFile("alpha", 641, "bug, needs-decision"),
 	})
@@ -1093,8 +1198,12 @@ func TestCloseOutRetireLabelGainedIdempotent(t *testing.T) {
 
 	_, closeOuts, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
 
-	if findCloseOut(closeOuts, scanHomeRepo(), 641) != nil {
-		t.Error("already label-retired placeholder must not be re-retired while the label is still present")
+	c := findCloseOut(closeOuts, scanHomeRepo(), 641)
+	if c == nil || c.Action != "sweep" {
+		t.Fatalf("done label-excluded root placeholder should be swept into done/, got %+v", c)
+	}
+	if filepath.Base(filepath.Dir(c.Dest)) != archiveDirName {
+		t.Errorf("sweep dest = %q, want a %s/ path", c.Dest, archiveDirName)
 	}
 }
 
@@ -1142,7 +1251,7 @@ func TestCloseOutFileModificationRetireLabel(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeTemp(t, issueLoopDir, "README.md", scanStreamREADME)
-	phPath := filepath.Join(issueLoopDir, "issue-643.md")
+	rootPath := filepath.Join(issueLoopDir, "issue-643.md")
 	writeTemp(t, issueLoopDir, "issue-643.md", placeholderFile("issue-loop", 643, "bug"))
 
 	// Issue 643 is open but now carries review-request.
@@ -1155,6 +1264,12 @@ func TestCloseOutFileModificationRetireLabel(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("scan exited %d, want 0", code)
 	}
+
+	// (D3): retire-label MOVES the placeholder into done/ too.
+	if _, err := os.Stat(rootPath); !os.IsNotExist(err) {
+		t.Errorf("label-retired placeholder must be moved out of the stream root (stat err=%v)", err)
+	}
+	phPath := filepath.Join(issueLoopDir, archiveDirName, "issue-643.md")
 
 	ph, ok, err := parsePlaceholderFile(phPath)
 	if err != nil || !ok {

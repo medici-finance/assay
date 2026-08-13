@@ -57,7 +57,7 @@ func TestRebaseEntryBodyLinks(t *testing.T) {
 	}
 }
 
-// TestGeneratedFindingsViewLinksResolve is the #827 regression guard: a finding
+// TestGeneratedFindingsViewLinksResolve is the regression guard: a finding
 // entry whose body links a sibling entry by bare filename must produce a
 // FINDINGS.md view whose links resolve (relative to docs/streams/) and pass the
 // register-reference lint — i.e. no PROBLEMs when the generated view is linted.

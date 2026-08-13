@@ -3,7 +3,7 @@
   "name": "assay",
   "description": "The Assay methodology toolkit — the methodology skills, resident rules, and pinned tooling that let a project run the streams/briefs/registers operating model, distributed as versioned Claude Code plugins.",
   "owner": {
-    "name": "the-org"
+    "name": "medici-finance"
   },
   "plugins": [
     {
@@ -13,7 +13,7 @@
       "version": "0.1.0",
       "license": "Apache-2.0",
       "author": {
-        "name": "the-org"
+        "name": "medici-finance"
       },
       "keywords": ["methodology", "streams", "briefs", "process-desk", "assay"]
     }

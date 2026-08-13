@@ -14,14 +14,14 @@ func wordCount(content string) int {
 }
 
 // defaultBudgetSpec is the word-budget check CI enforces
-// (.github/workflows/statusgen.yml: `--lint --budget CLAUDE.md:2850`,
-// methodology/14, issue #280). Bare `--lint` used to skip it entirely, so a
+// (.github/workflows/statusgen.yml: `--lint --budget CLAUDE.md:2850`).
+// Bare `--lint` used to skip it entirely, so a
 // contributor could see local green on a PR that CI would fail red on
-// nothing but a word count (issue #470). --lint now defaults to this spec so
+// nothing but a word count. --lint now defaults to this spec so
 // local == CI; an explicit --budget still overrides it.
 const defaultBudgetSpec = "CLAUDE.md:2850"
 
-// resolveBudgetSpecs applies the --lint default budget spec (issue #470) when
+// resolveBudgetSpecs applies the --lint default budget spec when
 // the caller passed no explicit --budget. Only lint mode gets a default —
 // write/check/record are unaffected: they never ran the budget check before
 // this fix, and this issue is scoped to the local-vs-CI --lint divergence. An
@@ -72,8 +72,8 @@ func parseBudgetSpec(spec string) (relPath string, maxWords int, err error) {
 	return relPath, max, nil
 }
 
-// checkBudget enforces word-budget caps for the given file specs
-// (methodology/37). Each spec is "relpath:maxwords" (repeatable flag).
+// checkBudget enforces word-budget caps for the given file specs.
+// Each spec is "relpath:maxwords" (repeatable flag).
 // Problems are non-fatal hard-check lines surfaced alongside other PROBLEM
 // output; a non-nil error means the flag value itself is malformed (usage
 // error — the caller should exit before running any checks).
@@ -87,14 +87,14 @@ func checkBudget(root string, specs []string) (problems []string, err error) {
 		content, readErr := os.ReadFile(fullPath)
 		if readErr != nil {
 			problems = append(problems, fmt.Sprintf(
-				"%s: budgeted file is missing — %s not found (methodology/37, issue #280)",
+				"%s: budgeted file is missing — %s not found",
 				relPath, relPath))
 			continue
 		}
 		wc := wordCount(string(content))
 		if wc > maxWords {
 			problems = append(problems, fmt.Sprintf(
-				"%s: %d words exceeds budget of %d (methodology/14 cap — diet before merging; methodology/37, issue #280)",
+				"%s: %d words exceeds budget of %d (cap — diet before merging)",
 				relPath, wc, maxWords))
 		}
 	}

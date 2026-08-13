@@ -21,7 +21,7 @@ gate-why: "Irreversible on-ledger change; human must sign off before verified."
 
 | # | Command | Exit | Result | Date | Runner |
 |---|---------|------|--------|------|--------|
-| 1 | `dpm test` | 0 | ok | 2026-07-08 | human:alex |
+| 1 | `go test` | 0 | ok | 2026-07-08 | human:alex |
 
 ## Review
 Gate: human. Irreversible change, human-reviewed before being marked verified.

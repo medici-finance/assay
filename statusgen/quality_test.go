@@ -61,7 +61,7 @@ func TestPointQualityBareVerifiedCellIsUnbacked(t *testing.T) {
 }
 
 func TestPointQualityLegacyGrandfatheredIsUnbacked(t *testing.T) {
-	// This is the exact gap I-08 targets: a legacy no-frontmatter done row
+	// This is the exact gap point quality targets: a legacy no-frontmatter done row
 	// is exempt from the hard attribution/evidence checks (brief-16,
 	// brief-02) but must still be visibly flagged here.
 	s, br := findBrief(qualStreams(t), "04")
@@ -175,8 +175,8 @@ func TestReviewedIsAttributedAcceptsDatedOrHumanTag(t *testing.T) {
 }
 
 // TestPointQualityNoticeNamesSpecificReasons cross-checks the improvement
-// ported from PR #148 (an independent second implementation of this brief,
-// closed in favor of this one): a NOTICE must name WHICH criterion failed,
+// ported from an independent second implementation of this brief,
+// closed in favor of this one: a NOTICE must name WHICH criterion failed,
 // not just assert "unbacked" generically.
 func TestPointQualityNoticeNamesSpecificReasons(t *testing.T) {
 	notices := qualityNotices(qualStreams(t))
@@ -247,7 +247,7 @@ func TestPointQualityRendering(t *testing.T) {
 	if !strings.Contains(status, "## Done briefs") {
 		t.Error("STATUS.md missing the Done briefs section")
 	}
-	if !strings.Contains(status, "I-08 point quality") && !strings.Contains(status, "unbacked") {
+	if !strings.Contains(status, "point quality") && !strings.Contains(status, "unbacked") {
 		t.Error("STATUS.md missing the done/done* legend")
 	}
 	if !strings.Contains(status, "01 Backed done — done (wave 0)") {

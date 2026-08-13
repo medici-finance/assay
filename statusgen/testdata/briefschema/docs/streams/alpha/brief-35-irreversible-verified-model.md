@@ -20,7 +20,7 @@ sources: ["fixture: irreversible verified, model sign-off only"]
 
 | # | Command | Exit | Result | Date | Runner |
 |---|---------|------|--------|------|--------|
-| 1 | `dpm test` | 0 | ok | 2026-07-08 | glm-verifier |
+| 1 | `go test` | 0 | ok | 2026-07-08 | glm-verifier |
 
 ## Review
 Gate: human — but this irreversible brief was marked verified with no human in the Reviewed column.

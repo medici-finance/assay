@@ -137,7 +137,7 @@ func TestAlarmStandingSortedOldestFirst(t *testing.T) {
 }
 
 // TestRunAlarmsViewReportsStanding drives the full --alarms sub-command against a
-// temp docs/streams/findings/ per-entry fixture (the source of truth — #297)
+// temp docs/streams/findings/ per-entry fixture (the source of truth)
 // and asserts the rendered view flags the standing alarm.
 func TestRunAlarmsViewFixture(t *testing.T) {
 	root := t.TempDir()
@@ -163,7 +163,7 @@ func TestRunAlarmsViewFixture(t *testing.T) {
 	}
 }
 
-// TestRunAlarmsIgnoresLegacyFindingsFile proves the #297 fix: --alarms reads
+// TestRunAlarmsIgnoresLegacyFindingsFile proves the fix: --alarms reads
 // docs/streams/findings/ (per-entry, the source of truth on a branch — branches
 // never regenerate FINDINGS.md, that's main-CI-only) and no longer routes
 // through the legacy single-file FINDINGS.md reader. A finding added only under

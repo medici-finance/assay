@@ -26,7 +26,7 @@ func verifySectionProbs(t *testing.T) []string {
 // TestVerifySection covers methodology/19 item 1: a brief-v1 file must carry a
 // `## Verify` section with at least one table row whose Command and Expect
 // cells are non-empty. Presence/structure only — the lint never asserts quality
-// (F-10), and its error text must not imply it does.
+// and its error text must not imply it does.
 func TestVerifySection(t *testing.T) {
 	problems := verifySectionProbs(t)
 
@@ -64,8 +64,8 @@ func TestVerifySection(t *testing.T) {
 
 // TestVerifierFloor covers methodology/19 item 2: a risk-flagged brief
 // (gate: human OR any risk answer yes) marked verified/done must be verified by
-// a human or a runner ABOVE the floor. Irreversible briefs defer to #159
-// (human-at-verified via the Reviewed cell) and are exempt here.
+// a human or a runner ABOVE the floor. Irreversible briefs defer to the
+// human-at-verified rule (via the Reviewed cell) and are exempt here.
 //
 // The floor's membership test is CAPABILITY, not price (belowFloorModels in
 // attribution.go). These cases pin both directions of that: a genuinely weak
@@ -88,7 +88,7 @@ func TestVerifierFloor(t *testing.T) {
 			t.Errorf("an above-floor runner must clear the floor; got:\n%s", strings.Join(problems, "\n"))
 		}
 	})
-	t.Run("irreversible briefs are exempt (deferred to #159)", func(t *testing.T) {
+	t.Run("irreversible briefs are exempt (deferred to the stricter rule)", func(t *testing.T) {
 		if hasProblem(problems, "brief-43-floor-irreversible-exempt.md", "verifier floor") {
 			t.Errorf("an irreversible brief must be exempt from the floor; got:\n%s", strings.Join(problems, "\n"))
 		}
@@ -99,9 +99,9 @@ func TestVerifierFloor(t *testing.T) {
 		}
 	})
 	// glm-5.2 is cheap on PRICE and strong on CAPABILITY. The floor is a
-	// capability gate, so it must admit this runner — the old substring list
+	// capability gate, so it must admit this runner — an earlier substring list
 	// matched the bare string `glm` and produced false rejections of real
-	// verifications (the Verified-cell episode).
+	// verifications.
 	t.Run("a glm-5.2 runner clears the floor (cheap on price, not on capability)", func(t *testing.T) {
 		if hasProblem(problems, "brief-46-floor-glm-accept.md", "verifier floor") {
 			t.Errorf("a glm-5.2 verifier must clear the floor; got:\n%s", strings.Join(problems, "\n"))
@@ -125,13 +125,13 @@ func TestVerifierFloor(t *testing.T) {
 	// changes verdict, which is the thing this guards. The pair is deliberate:
 	// brief-41 above (a genuine `human:alex` runner) must still clear, or this fix
 	// would just be a new false rejection wearing a security argument.
-	t.Run("#280 a human token appended to a below-floor runner does not suppress the floor", func(t *testing.T) {
+	t.Run("a human token appended to a below-floor runner does not suppress the floor", func(t *testing.T) {
 		if !hasProblem(problems, "brief-78-floor-human-suffix-reject.md", "verifier floor") {
 			t.Errorf("Verified cell \"2026-07-09 sonnet-verifier human:alex\" must NOT clear the floor — "+
-				"appending a human token was the silent off-switch (#280); got:\n%s", strings.Join(problems, "\n"))
+				"appending a human token was the silent off-switch; got:\n%s", strings.Join(problems, "\n"))
 		}
 	})
-	t.Run("#280 an unresolvable human runner token fails loud", func(t *testing.T) {
+	t.Run("an unresolvable human runner token fails loud", func(t *testing.T) {
 		if !hasProblem(problems, "brief-79-floor-unknown-human-reject.md", "verifier floor") {
 			t.Errorf("Verified cell \"2026-07-09 human:bob\" names no known human and must not clear the floor "+
 				"— it would otherwise pass silently, since \"human:bob\" matches no model family; got:\n%s",

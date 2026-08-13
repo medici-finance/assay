@@ -1,0 +1,543 @@
+package main
+
+import (
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
+	"encoding/pem"
+	"flag"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+)
+
+// validRoles is the fixed set of desk roles. A role's config is parameterised
+// by the role name: ~/.config/assay/<role>-app.pem, <ROLE>_APP_ID, etc.
+var validRoles = map[string]bool{
+	"reviewer":    true,
+	"verifier":    true,
+	"worker":      true,
+	"desk":        true,
+	"issue-loop":  true,
+	"intake-loop": true,
+}
+
+const (
+	// cacheMaxAge is the threshold for reusing a cached installation token.
+	// GitHub App installation tokens live ~60 min; we reuse if < 50 min old.
+	cacheMaxAge = 50 * time.Minute
+	// tokenExpiry is the lifetime of the installation token we mint; the JWT
+	// that authenticates the mint is short-lived (9 min), but the token itself
+	// from GitHub lives ~60 min.
+	tokenExpiryMinutes = 60
+)
+
+// auditCtx accumulates fields for ONE audit line per invocation.
+// finalize is deferred so exactly one line is written.
+type auditCtx struct {
+	verb       string
+	role       string
+	installID  string
+	appID      string
+	detail     string
+	argsDigest string
+}
+
+func (a *auditCtx) log(result, detail string) {
+	_ = deskkit.Log(deskkit.Entry{
+		Tool:       "desktoken",
+		Verb:       a.verb,
+		ArgsDigest: a.argsDigest,
+		Repo:       "", // token minting is repo-independent
+		Result:     result,
+		Detail:     detail,
+	})
+}
+
+// finalize maps the terminal error (or success) to exactly one audit result.
+func (a *auditCtx) finalize(err error) {
+	if err == nil {
+		a.log(deskkit.ResultOK, a.detail)
+		return
+	}
+	var result string
+	switch deskkit.ExitCodeOf(err) {
+	case deskkit.ExitDisabled:
+		result = deskkit.ResultDisabled
+	case deskkit.ExitRefused:
+		result = deskkit.ResultRefused
+	case deskkit.ExitUnverifiable:
+		result = deskkit.ResultUnverifiable
+	default:
+		result = deskkit.ResultUnverifiable
+	}
+	a.log(result, err.Error())
+}
+
+// httpClient is a test hook — production code uses http.DefaultClient.
+var httpClient = http.DefaultClient
+
+// --- helpers --------------------------------------------------------------------
+
+// roleEnvPrefix converts a role name to its env-var prefix:
+// "issue-loop" → "ISSUE_LOOP", "reviewer" → "REVIEWER".
+func roleEnvPrefix(role string) string {
+	return strings.ToUpper(strings.ReplaceAll(role, "-", "_"))
+}
+
+// roleNames returns the valid roles as a sorted slice for error messages.
+func roleNames() []string {
+	out := make([]string, 0, len(validRoles))
+	for r := range validRoles {
+		out = append(out, r)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// home expands a leading "~/" to the user's home directory. No-op if not ~/.
+func home(p string) string {
+	if strings.HasPrefix(p, "~/") {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return p // will fail downstream with a clear path error
+		}
+		return filepath.Join(h, p[2:])
+	}
+	return p
+}
+
+// b64url returns the base64-url-encoded, no-padding form of b.
+func b64url(b []byte) string {
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// envOr returns the env var value for key, or def if unset/empty.
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// installationInfo is the relevant fields from GET /app/installations.
+type installationInfo struct {
+	ID      int64 `json:"id"`
+	Account struct {
+		Login string `json:"login"`
+	} `json:"account"`
+}
+
+// resolveInstallID queries the GitHub App installations endpoint with the
+// signed JWT and returns the installation ID whose account.login matches
+// owner. Returns an error if no match is found — fails closed on any
+// ambiguity.
+func resolveInstallID(jwt, owner string) (string, error) {
+	url := "https://api.github.com/app/installations"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("GET installations: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read installations response: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("installations HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var installs []installationInfo
+	if err := json.Unmarshal(body, &installs); err != nil {
+		return "", fmt.Errorf("parse installations response: %w", err)
+	}
+
+	for _, inst := range installs {
+		if strings.EqualFold(inst.Account.Login, owner) {
+			return fmt.Sprintf("%d", inst.ID), nil
+		}
+	}
+
+	return "", fmt.Errorf("no installation found for owner %q", owner)
+}
+
+// parseOwner extracts the owner from a repo slug (owner/name) or uses the raw
+// string as the owner if there's no slash.
+func parseOwner(repo string) string {
+	if i := strings.IndexByte(repo, '/'); i >= 0 {
+		return repo[:i]
+	}
+	return repo
+}
+
+// --- key parsing ----------------------------------------------------------------
+
+// parsePrivateKey tries PKCS1 then PKCS8 decoding of a PEM-encoded RSA key.
+func parsePrivateKey(pemData []byte) (*rsa.PrivateKey, error) {
+	block, _ := pem.Decode(pemData)
+	if block == nil {
+		return nil, fmt.Errorf("no PEM block found")
+	}
+	if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+		return k, nil
+	}
+	if k8, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+		key, ok := k8.(*rsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("PKCS8 key is not RSA")
+		}
+		return key, nil
+	}
+	return nil, fmt.Errorf("parse RSA private key (tried PKCS1 and PKCS8)")
+}
+
+// --- JWT signing ----------------------------------------------------------------
+
+// buildJWT constructs an RS256-signed App JWT valid for 9 minutes, with iat
+// skewed 60 s into the past for clock drift.
+func buildJWT(appID string, now time.Time, key *rsa.PrivateKey) (string, error) {
+	header := b64url([]byte(`{"alg":"RS256","typ":"JWT"}`))
+	claims := fmt.Sprintf(`{"iat":%d,"exp":%d,"iss":"%s"}`,
+		now.Add(-60*time.Second).Unix(),
+		now.Add(9*time.Minute).Unix(),
+		appID,
+	)
+	payload := b64url([]byte(claims))
+	signingInput := header + "." + payload
+	sum := sha256.Sum256([]byte(signingInput))
+	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, sum[:])
+	if err != nil {
+		return "", fmt.Errorf("sign JWT: %w", err)
+	}
+	return signingInput + "." + b64url(sig), nil
+}
+
+// --- GitHub API exchange --------------------------------------------------------
+
+// tokenResult is the relevant fields from the GitHub API response.
+type tokenResult struct {
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+// exchangeJWT POSTs the signed JWT to GitHub's installation access_tokens
+// endpoint and returns the result. The token value is the response's `token`
+// field; it is written to the cache file and never printed.
+func exchangeJWT(jwt, installID string) (*tokenResult, error) {
+	url := fmt.Sprintf("https://api.github.com/app/installations/%s/access_tokens", installID)
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("POST access_tokens: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode != 201 {
+		return nil, fmt.Errorf("access_tokens HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result tokenResult
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parse token response: %w", err)
+	}
+	if result.Token == "" {
+		return nil, fmt.Errorf("empty token in response")
+	}
+	return &result, nil
+}
+
+// --- TTL reporting --------------------------------------------------------------
+
+// printTTL reports the age of the cached token and returns an error if no
+// cache file exists.
+func printTTL(tokenPath string) error {
+	fi, err := os.Stat(tokenPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return deskkit.Unverifiable("no cached token at "+tokenPath, nil)
+		}
+		return deskkit.Unverifiable("cannot stat cached token", err)
+	}
+	age := time.Since(fi.ModTime())
+	remaining := tokenExpiryMinutes - int(age.Minutes())
+	if remaining < 0 {
+		remaining = 0
+	}
+	fmt.Printf("TTL=%dm age=%dm path=%s\n", remaining, int(age.Minutes()), tokenPath)
+	return nil
+}
+
+// --- flag parsing helper --------------------------------------------------------
+
+// parseInterspersed parses fs allowing flags before OR after positional args.
+// Copied from deskwt since it's unexported.
+func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
+	var positionals []string
+	rest := args
+	for {
+		if err := fs.Parse(rest); err != nil {
+			return nil, err
+		}
+		rest = fs.Args()
+		if len(rest) == 0 {
+			break
+		}
+		positionals = append(positionals, rest[0])
+		rest = rest[1:]
+	}
+	return positionals, nil
+}
+
+// --- main entry point -----------------------------------------------------------
+
+// run is the CLI entry point. It returns an exit code.
+func run(args []string) int {
+	// --version / help are pure reads: no kill-switch gate, no audit line.
+	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
+		sha, built := deskkit.Version()
+		fmt.Printf("desktoken sourceSHA=%s builtAt=%s\n", sha, built)
+		return deskkit.ExitOK
+	}
+	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
+		fmt.Fprintln(os.Stderr, usage)
+		if len(args) == 0 {
+			return deskkit.ExitRefused
+		}
+		return deskkit.ExitOK
+	}
+
+	// kill-switch check is the FIRST action of the tool. Guard writes its
+	// own result=disabled audit line and maps to exit 3.
+	if err := deskkit.Guard(); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		return deskkit.ExitCodeOf(err)
+	}
+
+	// Running from source (go run / unstamped) is a drift risk — say so loudly.
+	deskkit.WarnIfUnpinned(os.Stderr)
+
+	err := cmdToken(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+	}
+	return deskkit.ExitCodeOf(err)
+}
+
+// cmdToken implements the mint-or-reuse logic.
+func cmdToken(args []string) (err error) {
+	ac := &auditCtx{verb: "mint", argsDigest: deskkit.ArgsDigest(os.Args[1:])}
+	defer func() { ac.finalize(err) }()
+
+	fs := flag.NewFlagSet("desktoken", flag.ContinueOnError)
+	fs.SetOutput(new(strings.Builder))
+	repo := fs.String("repo", "", "repo slug (owner/name) for install auto-pick")
+	ttl := fs.Bool("ttl", false, "print remaining TTL of cached token (does not mint)")
+
+	positionals, perr := parseInterspersed(fs, args)
+	if perr != nil {
+		return deskkit.Refused("bad flags: " + perr.Error())
+	}
+	if len(positionals) != 1 {
+		return deskkit.Refused("exactly one <role> argument required, one of: " + strings.Join(roleNames(), ", "))
+	}
+	role := positionals[0]
+	if !validRoles[role] {
+		return deskkit.Refused("unknown role " + role + "; valid: " + strings.Join(roleNames(), ", "))
+	}
+	ac.role = role
+
+	prefix := roleEnvPrefix(role)
+
+	// Resolve PEM path: ~/.config/assay/<role>-app.pem by default.
+	pemPath := home(envOr(prefix+"_PEM", fmt.Sprintf("~/.config/assay/%s-app.pem", role)))
+
+	// Resolve App ID: env <ROLE>_APP_ID, else ~/.config/assay/apps.env (no source default —
+	// a fresh invocation works with no shell sourcing).
+	appID, err := deskkit.AppID(role)
+	if err != nil {
+		return deskkit.Unverifiable(err.Error(), nil)
+	}
+	ac.appID = appID
+
+	// Resolve install ID: env override takes priority; otherwise resolve at
+	// runtime by signing a JWT and querying GET /app/installations, matching
+	// account.login against the repo owner. When --repo is absent we default
+	// the owner to "example-org".
+	// This is attribution (which App name appears), not authorization (which
+	// session is permitted to act as the role) — the caller holds the key and
+	// controls the env, so every key is readable by any session of the same OS
+	// user. The tool provides audit trail, not access control.
+	var installID string
+	var prebuiltJWT string
+
+	if override := os.Getenv(prefix + "_INSTALL_ID"); override != "" {
+		installID = override
+	} else {
+		// Resolve install ID at runtime: build JWT, query GitHub
+		// /app/installations, match account.login against repo owner.
+		// Default owner to example-org when --repo is absent.
+		owner := "example-org"
+		if *repo != "" {
+			owner = parseOwner(*repo)
+		}
+
+		// Must read PEM, sign JWT before we know the install ID.
+		fi, perr := os.Stat(pemPath)
+		if perr != nil {
+			if os.IsNotExist(perr) {
+				return deskkit.Unverifiable("private key not found at "+pemPath, perr)
+			}
+			return deskkit.Unverifiable("cannot stat private key at "+pemPath, perr)
+		}
+		if fi.Mode().Perm() != 0o600 {
+			return deskkit.Unverifiable(
+				fmt.Sprintf("private key at %s has permissions %o; must be 0600", pemPath, fi.Mode().Perm()), nil)
+		}
+
+		keyPEM, rerr := os.ReadFile(pemPath)
+		if rerr != nil {
+			return deskkit.Unverifiable("cannot read private key at "+pemPath, rerr)
+		}
+		key, kerr := parsePrivateKey(keyPEM)
+		if kerr != nil {
+			return deskkit.Unverifiable("parse private key from "+pemPath, kerr)
+		}
+
+		now := time.Now()
+		jwt, jerr := buildJWT(appID, now, key)
+		if jerr != nil {
+			return deskkit.Unverifiable("sign JWT", jerr)
+		}
+		prebuiltJWT = jwt
+
+		resolvedID, rerr := resolveInstallID(jwt, owner)
+		if rerr != nil {
+			return deskkit.Unverifiable("resolve installation for owner "+owner, rerr)
+		}
+		installID = resolvedID
+	}
+	ac.installID = installID
+
+	// Per-install token cache path: always suffixed with the install ID so
+	// different Apps' installations on the same account do not share a file.
+	// The reviewer App's example-org install (100000002) also gets the suffix, and
+	// each App manages its own cache independently via the same
+	// shared conventions.
+	defaultToken := fmt.Sprintf("~/.config/assay/%s-token-%s", role, installID)
+	tokenPath := home(envOr(prefix+"_TOKEN", defaultToken))
+
+	// --ttl: report cached token age and exit (no mint).
+	if *ttl {
+		return printTTL(tokenPath)
+	}
+
+	// Reuse cached token if < 50 min old.
+	if fi, serr := os.Stat(tokenPath); serr == nil {
+		if fi.Mode().Perm() != 0o600 {
+			return deskkit.Unverifiable(
+				fmt.Sprintf("token cache at %s has permissions %o; must be 0600", tokenPath, fi.Mode().Perm()), nil)
+		}
+		age := time.Since(fi.ModTime())
+		if age < cacheMaxAge {
+			// Output only the token file path — never the token value.
+			fmt.Println(tokenPath)
+			ac.detail = fmt.Sprintf("reused cached %s token [install %s] (%dm old)", role, installID, int(age.Minutes()))
+			return nil
+		}
+	} else if !os.IsNotExist(serr) {
+		return deskkit.Unverifiable("cannot stat token cache: "+tokenPath, serr)
+	}
+
+	// --- Mint new token ---
+	var jwt string
+	if prebuiltJWT != "" {
+		jwt = prebuiltJWT
+	} else {
+		// Read the App private key. Check file permissions — must be 0600.
+		fi, perr := os.Stat(pemPath)
+		if perr != nil {
+			if os.IsNotExist(perr) {
+				return deskkit.Unverifiable("private key not found at "+pemPath, perr)
+			}
+			return deskkit.Unverifiable("cannot stat private key at "+pemPath, perr)
+		}
+		if fi.Mode().Perm() != 0o600 {
+			return deskkit.Unverifiable(
+				fmt.Sprintf("private key at %s has permissions %o; must be 0600", pemPath, fi.Mode().Perm()), nil)
+		}
+
+		keyPEM, rerr := os.ReadFile(pemPath)
+		if rerr != nil {
+			return deskkit.Unverifiable("cannot read private key at "+pemPath, rerr)
+		}
+
+		key, kerr := parsePrivateKey(keyPEM)
+		if kerr != nil {
+			return deskkit.Unverifiable("parse private key from "+pemPath, kerr)
+		}
+
+		// Build and sign the App JWT.
+		now := time.Now()
+		var jerr error
+		jwt, jerr = buildJWT(appID, now, key)
+		if jerr != nil {
+			return deskkit.Unverifiable("sign JWT", jerr)
+		}
+	}
+
+	// Exchange for an installation access token.
+	result, xerr := exchangeJWT(jwt, installID)
+	if xerr != nil {
+		return deskkit.Unverifiable("exchange JWT for installation token", xerr)
+	}
+
+	// Write the token to the cache file (0600).
+	if err := os.MkdirAll(filepath.Dir(tokenPath), 0o700); err != nil {
+		return deskkit.Unverifiable("mkdir token dir", err)
+	}
+	if err := os.Chmod(filepath.Dir(tokenPath), 0o700); err != nil {
+		return deskkit.Unverifiable("chmod token dir", err)
+	}
+	if err := os.WriteFile(tokenPath, []byte(result.Token), 0o600); err != nil {
+		return deskkit.Unverifiable("write token to "+tokenPath, err)
+	}
+	if err := os.Chmod(tokenPath, 0o600); err != nil {
+		return deskkit.Unverifiable("chmod token cache", err)
+	}
+
+	// Output only the token file path — never the token value.
+	fmt.Println(tokenPath)
+	ac.detail = fmt.Sprintf("minted new %s token [install %s] (expires %s)", role, installID, result.ExpiresAt)
+	return nil
+}

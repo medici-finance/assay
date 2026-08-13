@@ -465,12 +465,12 @@ func TestDeletedFileIntegrityRename(t *testing.T) {
 	}
 }
 
-// TestDeletedFileIntegrityNonSquashMergeTransient is the #527 regression guard.
+// TestDeletedFileIntegrityNonSquashMergeTransient is the regression guard.
 // A branch that ADDS a register file and then deletes/renames it before merging is
 // a branch-local correction (the documented exemption). A NON-SQUASH merge keeps
 // both the add and the delete in main's full history; without --first-parent the
 // transient add is enumerated as "landed" and, being absent from the tree, fires a
-// spurious tombstone PROBLEM on main (the escape #515 hit, diagnosed in #527). With
+// spurious tombstone PROBLEM on main. With
 // --first-parent the add+delete net to nothing along the merge's first-parent diff,
 // so the transient must NOT fire — while deleting a genuinely-landed file still must.
 func TestDeletedFileIntegrityNonSquashMergeTransient(t *testing.T) {
@@ -487,7 +487,7 @@ func TestDeletedFileIntegrityNonSquashMergeTransient(t *testing.T) {
 	gitRun(t, root, "commit", "-q", "-m", "base: add F-01")
 
 	// feature: add transient F-02, then remove it AND add a persistent entry F-03.
-	// This mirrors the real #515 rename: the branch added the new-path (a persistent
+	// This mirrors the real rename: the branch added the new-path (a persistent
 	// file) in the SAME directory as the transient old-path it deleted. That persistent
 	// add is load-bearing for the test — without it, once F-02 is removed the --no-ff
 	// merge is TREESAME to base for docs/streams/findings, so git's default history
@@ -516,7 +516,7 @@ func TestDeletedFileIntegrityNonSquashMergeTransient(t *testing.T) {
 
 	// On main (HEAD == origin/main): the transient add+delete must NOT fire.
 	if d := deletedRegisterFiles(root); len(d) != 0 {
-		t.Errorf("#527: a non-squash-merged branch-local add+delete must NOT fire on main; got %v", d)
+		t.Errorf("a non-squash-merged branch-local add+delete must NOT fire on main; got %v", d)
 	}
 
 	// Contrast: deleting the genuinely-landed F-01 MUST still fire.
@@ -525,11 +525,11 @@ func TestDeletedFileIntegrityNonSquashMergeTransient(t *testing.T) {
 	}
 	d := deletedRegisterFiles(root)
 	if len(d) == 0 || !strings.Contains(strings.Join(d, " "), "on-main") {
-		t.Errorf("deleting a landed file must still fire after the #527 fix; got %v", d)
+		t.Errorf("deleting a landed file must still fire after the fix; got %v", d)
 	}
 }
 
-// ----- decision-needed disposition + decision-issue (issue-loop/08) -----
+// ----- decision-needed disposition + decision-issue -----
 
 func TestDecisionNeededParse(t *testing.T) {
 	root := t.TempDir()
@@ -670,8 +670,8 @@ func TestDecisionNeededNotice(t *testing.T) {
 		if !strings.Contains(n[0], "decision-issue") {
 			t.Errorf("notice missing 'decision-issue': %s", n[0])
 		}
-		if !strings.Contains(n[0], "issue-loop/08") {
-			t.Errorf("notice missing brief reference (issue-loop/08): %s", n[0])
+		if !strings.Contains(n[0], "frontmatter") {
+			t.Errorf("notice missing frontmatter reference: %s", n[0])
 		}
 	})
 
@@ -1092,14 +1092,14 @@ func TestAuthorizedByVerifiedHumanScope(t *testing.T) {
 		// because `superhuman:alex` matched with name "alex", which resolves in
 		// HumanLoginMap. Each is paired above/below with the genuine token it
 		// imitates, which must keep working.
-		{"#243 superhuman prefix does not authorize", "---\nid: F-a\nauthorized-by: superhuman:alex\n---\n\nBody.\n", false},
-		{"#243 non-human prefix does not authorize", "---\nid: F-a\nauthorized-by: non-human:alex\n---\n\nBody.\n", false},
-		{"#243 inhuman prefix does not authorize", "---\nid: F-a\nauthorized-by: inhuman:alex\n---\n\nBody.\n", false},
-		{"#243 subhuman prefix does not authorize", "---\nid: F-a\nauthorized-by: sub-human:alex\n---\n\nBody.\n", false},
-		{"#243 confusable name does not authorize", "---\nid: F-a\nauthorized-by: human:іan\n---\n\nBody.\n", false},
+		{"superhuman prefix does not authorize", "---\nid: F-a\nauthorized-by: superhuman:alex\n---\n\nBody.\n", false},
+		{"non-human prefix does not authorize", "---\nid: F-a\nauthorized-by: non-human:alex\n---\n\nBody.\n", false},
+		{"inhuman prefix does not authorize", "---\nid: F-a\nauthorized-by: inhuman:alex\n---\n\nBody.\n", false},
+		{"subhuman prefix does not authorize", "---\nid: F-a\nauthorized-by: sub-human:alex\n---\n\nBody.\n", false},
+		{"confusable name does not authorize", "---\nid: F-a\nauthorized-by: human:іan\n---\n\nBody.\n", false},
 		// ...and the genuine token still does, in the surroundings people write.
-		{"#243 genuine token in parens still authorizes", "---\nid: F-a\nauthorized-by: (human:alex)\n---\n\nBody.\n", true},
-		{"#243 genuine token with a note still authorizes", "---\nid: F-a\nauthorized-by: human:alex on 2026-08-01\n---\n\nBody.\n", true},
+		{"genuine token in parens still authorizes", "---\nid: F-a\nauthorized-by: (human:alex)\n---\n\nBody.\n", true},
+		{"genuine token with a note still authorizes", "---\nid: F-a\nauthorized-by: human:alex on 2026-08-01\n---\n\nBody.\n", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1153,6 +1153,32 @@ func TestRegisterBaseFallbackNoticeSilentWithNoFindings(t *testing.T) {
 		t.Fatalf("no findings register => silent; got %v", n)
 	}
 	if n := registerBaseFallbackNotices(t.TempDir()); len(n) != 0 {
-		t.Fatalf("no .git => silent; got %v", n)
+		t.Fatalf("no .git, no findings => silent; got %v", n)
+	}
+}
+
+// TestRegisterBaseFallbackNoticeFiresWithNoGitAtAll: a tree with
+// NO .git directory at all — a `git archive` export — must ALSO get the
+// degraded NOTICE when there are findings to guard, not silence. Before this
+// fix, the notice function's own .git-absence early-return suppressed it
+// specifically in this case, even though guttedRegisterFields also skipped
+// the guard outright: the check silently did not run, and nothing said so.
+func TestRegisterBaseFallbackNoticeFiresWithNoGitAtAll(t *testing.T) {
+	root := t.TempDir()
+	fdir := filepath.Join(root, "docs", "streams", "findings")
+	mustMkdirAll(t, fdir)
+	if err := os.WriteFile(filepath.Join(fdir, "2026-07-17-f-gut.md"), []byte(landedOpenFinding), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// No git init at all — this directory is a plain extracted tree.
+
+	n := registerBaseFallbackNotices(root)
+	if !containsSubstr(n, "no .git directory") {
+		t.Fatalf("a tree with no .git directory and findings to guard must emit a NOTICE naming that cause; got %v", n)
+	}
+	// And the guard really did skip outright (distinct from the base=HEAD
+	// fail-open, which still compares — just against itself).
+	if p := guttedRegisterFields(root); len(p) != 0 {
+		t.Fatalf("guttedRegisterFields must skip outright with no .git directory; got %v", p)
 	}
 }

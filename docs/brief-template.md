@@ -43,6 +43,10 @@ facts: <the 3-5 project facts required to execute — key: value, no narrative>
 # field's meaning, a wire/JSON format, a default — anything another component reads),
 # fill the consumers: frontmatter field above — grep for every reader and route each one.
 # An unlisted consumer is a stranded assumption; an unrouted one is a claim nothing checks.
+# If this brief is itself dispatch-shaped (it dispatches work to another agent/worker),
+# state its authority envelope (repos/paths/tools/budget it grants, a subset of its own)
+# and its declared exclusions (what was deliberately left out of scope) — one line each
+# (brief-rules.md rules 22-24).
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task instructions.

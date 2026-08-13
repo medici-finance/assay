@@ -15,7 +15,7 @@ import (
 
 // Placeholder is the validated frontmatter of a `schema: placeholder-v1` file — a
 // REDUCED brief-v1 variant that stands in for an open GitHub issue on the Next-up
-// board (issue-loop/01). It duplicates NO spec: the GitHub issue body IS the spec.
+// board. It duplicates NO spec: the GitHub issue body IS the spec.
 // A placeholder carries only the scheduling metadata Next-up needs and points at
 // the issue (`issue:`, `repo:`). It is recognized by BOTH its filename
 // (`issue-<NN>.md`, or `<repo-slug>-issue-<NN>.md` for a foreign repo) AND the
@@ -24,7 +24,7 @@ import (
 // A placeholder is DELIBERATELY exempt from the brief-v1 Verify/Evidence/point-
 // quality lint: it has no Task/Verify by design (the issue holds acceptance), and
 // it is not a brief-*.md file, so every brief-v1 gate — which globs brief-*.md —
-// simply never sees it. Its lifecycle is issue-driven (issue-loop/04 close-out).
+// simply never sees it. Its lifecycle is issue-driven (close-out).
 type Placeholder struct {
 	Path      string
 	Brief     string   // "<stream>/<stem>", e.g. "issue-loop/issue-300"
@@ -35,9 +35,24 @@ type Placeholder struct {
 	Gate      string   // DERIVED from labels/title (model|human) unless overridden
 	Status    string   // lifecycle token; default "todo"
 	Labels    []string // issue labels — drives gate derivation + the bug-label boost
-	Value     string   // optional low|med|high scoring input (methodology-metrics/14)
-	Blocked   string   // issue-loop/03: "" or "awaiting-issue-response"; excludes from Next-up
+	Value     string   // optional low|med|high scoring input
+	Blocked   string   // "" or "awaiting-issue-response"; excludes from Next-up
 	BlockedAt string   // ISO 8601 timestamp when blocked was set; "" when not blocked
+	// CloseCandidate is the optional (D4) verdict marking a
+	// placeholder whose DELIVERABLE is a reviewed close-PR that no merge would
+	// produce (FIXED-NOT-CLOSED|WONTFIX|DUPLICATE|STALE). "" for the normal
+	// fix-then-close path. The desk WRITES this field (a brief edit, not a PR);
+	// a batch-fanout worker then authors the `bugs/<N>.md` close-PR off the row.
+	CloseCandidate string
+}
+
+// validCloseCandidate is the closed enum for a placeholder's close-candidate:
+// verdict (D4). Any other value is a lint PROBLEM.
+var validCloseCandidate = map[string]bool{
+	"FIXED-NOT-CLOSED": true,
+	"WONTFIX":          true,
+	"DUPLICATE":        true,
+	"STALE":            true,
 }
 
 var (
@@ -55,24 +70,92 @@ var (
 	// claims.go, this keys on the issue, not a <stream>-<NN> pair.
 	issueBranchRe = regexp.MustCompile(`^(?:fix|feature|feat|docs|chore)/issue-(\d+)(?:-.+)?$`)
 
-	// placeholderRiskLabels are the issue labels that force a placeholder to
-	// gate: human (issue-loop/01 derivation rule).
-	placeholderRiskLabels = map[string]bool{"security": true, "funds": true, "daml": true}
+	// riskGateKeywords is the neutral, domain-agnostic risk vocabulary: an issue
+	// whose title or label text matches one of these as a whole word (case-
+	// insensitive) forces the placeholder to gate: human. It is a var, not a
+	// compiled-in literal, so a deployment extends it with its own product risk
+	// vocabulary (a settlement language, a regulated-domain term) via
+	// registerRiskGateVocabulary rather than baking product knowledge into the
+	// open-core tree.
+	riskGateKeywords = []string{"auth", "funds", "security"}
 
-	// placeholderRiskKeywordRe matches the daml/auth/funds risk trigger in an
-	// issue's title or label text. methodology/31 notes that statusgen sees no
-	// diff, so — unlike the review-desk PATH trigger (methodology/30) — the
-	// placeholder derivation applies the daml/auth/funds trigger to the issue
-	// TEXT the scanner supplies. Case-insensitive, word-boundary.
-	placeholderRiskKeywordRe = regexp.MustCompile(`(?i)\b(daml|auth|funds|security)\b`)
+	// riskGateLabels is the risk vocabulary recognised as an exact issue LABEL,
+	// kept separate from the free-text keyword match to preserve the two-stage
+	// derivation (exact-label check first, then whole-word text match).
+	riskGateLabels = []string{"funds", "security"}
+
+	// placeholderRiskLabels / placeholderRiskKeywordRe are DERIVED from the risk
+	// vocabulary above (registerRiskGateVocabulary rebuilds them after an
+	// extension). A placeholder gates: human when an issue's label is in
+	// placeholderRiskLabels, or its title/label text trips placeholderRiskKeywordRe.
+	placeholderRiskLabels    = buildRiskLabelSet(riskGateLabels)
+	placeholderRiskKeywordRe = buildRiskKeywordRe(riskGateKeywords)
 )
 
+// buildRiskLabelSet turns a risk-label list into the exact-match set used by the
+// placeholder derivation.
+func buildRiskLabelSet(words []string) map[string]bool {
+	m := make(map[string]bool, len(words))
+	for _, w := range words {
+		m[strings.ToLower(w)] = true
+	}
+	return m
+}
+
+// buildRiskKeywordRe compiles the whole-word, case-insensitive risk-keyword
+// matcher from a keyword list.
+func buildRiskKeywordRe(words []string) *regexp.Regexp {
+	return regexp.MustCompile(`(?i)\b(` + strings.Join(words, "|") + `)\b`)
+}
+
+// registerRiskGateVocabulary rebuilds the placeholder risk matchers from the
+// neutral BASE vocabulary (riskGateLabels / riskGateKeywords) PLUS the supplied
+// deployment risk words. It REPLACES the derived matchers rather than
+// accumulating, so it is safe (idempotent) to call on every config (re)load: an
+// unset configuration reverts to the neutral default, a configured one re-adds
+// exactly its own risk words. The base slices are never mutated.
+//
+// This is what preserves a deployment's own risk gate (e.g. a settlement
+// language) WITHOUT compiling any product domain into the open-core tree — the
+// config-load path wires it from ASSAY_RISK_PATH_TRIGGERS_EXTRA (see
+// scanEffectiveConfig and riskKeywordsFromPathTriggers).
+func registerRiskGateVocabulary(extraLabels, extraKeywords []string) {
+	labels := append(append([]string(nil), riskGateLabels...), extraLabels...)
+	keywords := append(append([]string(nil), riskGateKeywords...), extraKeywords...)
+	placeholderRiskLabels = buildRiskLabelSet(labels)
+	placeholderRiskKeywordRe = buildRiskKeywordRe(keywords)
+}
+
+// riskKeywordsFromPathTriggers turns configured risk-PATH triggers
+// (ASSAY_RISK_PATH_TRIGGERS_EXTRA — a PR-diff gate, e.g. "<product-dir>/") into
+// issue-TEXT risk keywords (the leading path component, e.g. "<product-dir>").
+// Wiring the placeholder gate from the SAME config the path gate reads keeps the
+// two consistent: a deployment that risk-gates PRs touching a product directory
+// also auto-gates a placeholder whose label or title names that domain, with no
+// product domain named in the open-core default.
+func riskKeywordsFromPathTriggers(triggers []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, raw := range triggers {
+		t := strings.Trim(strings.TrimSpace(raw), "/")
+		if i := strings.IndexByte(t, '/'); i >= 0 {
+			t = t[:i]
+		}
+		t = strings.ToLower(t)
+		if t == "" || seen[t] {
+			continue
+		}
+		seen[t] = true
+		out = append(out, t)
+	}
+	return out
+}
+
 // derivePlaceholderGate returns the gate a placeholder inherits from its issue:
-// "human" when any risk label (security/funds/daml) is present OR the title/labels
-// trip the daml/auth/funds trigger, else "model" (issue-loop/01). The DERIVATION
-// is the canonical rule the scanner (issue-loop/02) applies when it writes a
-// placeholder; a human may override the stored result by writing an explicit
-// `gate:` in the file.
+// "human" when any risk label is present OR the title/labels trip the risk
+// keyword trigger, else "model". The DERIVATION is the canonical rule the
+// scanner applies when it writes a placeholder; a human may override the stored
+// result by writing an explicit `gate:` in the file.
 func derivePlaceholderGate(labels []string, title string) string {
 	for _, l := range labels {
 		if placeholderRiskLabels[strings.ToLower(strings.TrimSpace(l))] {
@@ -87,7 +170,7 @@ func derivePlaceholderGate(labels []string, title string) string {
 }
 
 // derivePlaceholderEffort returns the effort a placeholder inherits. It is always
-// "M": an untriaged issue's true size is unknown-until-triaged (issue-loop/01), so
+// "M": an untriaged issue's true size is unknown-until-triaged, so
 // M is the neutral default. The signature carries labels/title for a future
 // size-hinting heuristic; today they are intentionally unused.
 func derivePlaceholderEffort(labels []string, title string) string {
@@ -116,6 +199,31 @@ func placeholderFilePaths(s *Stream) []string {
 	return out
 }
 
+// archivedPlaceholderFilePaths returns the sorted, de-duplicated placeholder file
+// paths inside a stream's per-stream `done/` archive (D3). It
+// mirrors placeholderFilePaths but globs the `done/` subfolder, which the normal
+// ROOT-only discovery deliberately never sees — so archived placeholders stay out
+// of Next-up/the board while remaining reachable to the scanner's reactivation
+// sweep and the archive lint check.
+func archivedPlaceholderFilePaths(s *Stream) []string {
+	var matches []string
+	for _, pat := range []string{"issue-*.md", "*-issue-*.md"} {
+		m, _ := filepath.Glob(filepath.Join(s.Dir, archiveDirName, pat))
+		matches = append(matches, m...)
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, p := range matches {
+		if seen[p] || !placeholderNameRe.MatchString(filepath.Base(p)) {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // parsePlaceholderFile reads a placeholder file and returns its validated
 // frontmatter. Return contract mirrors parseBriefFile:
 //   - (nil, false, nil)  — exempt: no frontmatter, or no `schema: placeholder-v1`.
@@ -123,7 +231,7 @@ func placeholderFilePaths(s *Stream) []string {
 //     missing/ill-typed required field). err is already path-prefixed.
 //   - (ph,  true,  nil)  — opted-in and structurally valid.
 //
-// gate/effort are DERIVED from the labels (issue-loop/01) unless the file carries
+// gate/effort are DERIVED from the labels unless the file carries
 // an explicit value, which wins (human override). Callers MUST test err before ok.
 func parsePlaceholderFile(path string) (*Placeholder, bool, error) {
 	raw, err := os.ReadFile(path)
@@ -209,6 +317,13 @@ func parsePlaceholderFile(path string) (*Placeholder, bool, error) {
 			addBad("blocked must be a string")
 		}
 	}
+	if v, ok := data["close-candidate"]; ok {
+		if s, ok := v.(string); ok {
+			ph.CloseCandidate = strings.TrimSpace(s)
+		} else {
+			addBad("close-candidate must be a string")
+		}
+	}
 	if v, ok := data["blockedAt"]; ok {
 		// YAML v3 decodes a bare ISO 8601 timestamp as time.Time, not
 		// string. Accept both and normalise to the RFC 3339 form the
@@ -251,10 +366,16 @@ func placeholderNum(path string) string {
 
 // toBrief renders a placeholder as a synthetic Brief so the whole Next-up
 // pipeline — eligibility, scoring, claim-awareness, rendering — treats it as a
-// first-class row with no second code path (issue-loop/01). The derived gate is
+// first-class row with no second code path. The derived gate is
 // surfaced in the Title because the Next-up table has no gate column.
 func (p *Placeholder) toBrief() Brief {
 	title := fmt.Sprintf("%s#%d — see issue (gate:%s, effort:%s)", p.Repo, p.Issue, p.Gate, p.Effort)
+	if p.CloseCandidate != "" {
+		// (D4): the row stays on Next-up as work whose deliverable
+		// IS the reviewed close-PR; the [close] marker tells a picking worker the
+		// deliverable is a bugs/<N>.md close carrier, not a fix.
+		title = fmt.Sprintf("[close:%s] %s", p.CloseCandidate, title)
+	}
 	if p.Blocked != "" {
 		title = fmt.Sprintf("[blocked:%s] %s", p.Blocked, title)
 	}
@@ -292,8 +413,8 @@ func attachPlaceholders(streams []*Stream) {
 // checkPlaceholderFiles validates every placeholder file across all streams. It
 // mirrors checkBriefFiles' opt-in discipline (only schema: placeholder-v1 files
 // are checked) but asserts ONLY the reduced schema is well-formed — a placeholder
-// is exempt from the Verify/Evidence/point-quality gates by design (issue-loop/01;
-// acceptance lives in the GitHub issue, not the file). It performs its own file
+// is exempt from the Verify/Evidence/point-quality gates by design (acceptance
+// lives in the GitHub issue, not the file). It performs its own file
 // discovery, like checkBriefFiles, and is wired into run() alongside it.
 func checkPlaceholderFiles(streams []*Stream) (problems, notices []string) {
 	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
@@ -334,6 +455,9 @@ func checkPlaceholderFiles(streams []*Stream) (problems, notices []string) {
 			if ph.Blocked != "" && ph.Blocked != "awaiting-issue-response" {
 				add("%s: invalid blocked %q (want \"awaiting-issue-response\" or omit)", path, ph.Blocked)
 			}
+			if ph.CloseCandidate != "" && !validCloseCandidate[ph.CloseCandidate] {
+				add("%s: invalid close-candidate %q (want FIXED-NOT-CLOSED, WONTFIX, DUPLICATE or STALE)", path, ph.CloseCandidate)
+			}
 			if ph.Blocked != "" && ph.BlockedAt == "" {
 				add("%s: blocked is set but blockedAt is missing — blockedAt must be an ISO 8601 timestamp", path)
 			}
@@ -351,7 +475,7 @@ func checkPlaceholderFiles(streams []*Stream) (problems, notices []string) {
 
 // claimedPlaceholders maps open issue-branches to placeholder claim keys
 // ("<stream>/<stem>") so a placeholder is excluded from Next-up while its issue
-// has an open branch (methodology-metrics/08 claim-awareness, applied to the
+// has an open branch (claim-awareness, applied to the
 // issue). A branch names an issue NUMBER; the key resolves through the parsed
 // placeholders (requires attachPlaceholders to have run) so the excluded row is
 // exactly the placeholder for that issue — never a coincidental stream/brief. The

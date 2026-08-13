@@ -17,8 +17,7 @@ import (
 var followUpTargetRe = regexp.MustCompile(`follow-up\s+([a-z][a-z0-9]*(?:-[a-z0-9]+)*)/([0-9]+[a-z]?)\b`)
 
 // ---------------------------------------------------------------------------
-// consumers: — the routed consumer list of a shared-value brief (brief-rule 9,
-// methodology-metrics/21).
+// consumers: — the routed consumer list of a shared-value brief (brief-rule 9).
 //
 // DESIGN NOTE (F-impl-claims-unproven). A `consumers:` entry is an
 // IMPLEMENTER-WRITTEN CLAIM: "this reader of the shared value is fixed here /
@@ -64,8 +63,7 @@ var followUpTargetRe = regexp.MustCompile(`follow-up\s+([a-z][a-z0-9]*(?:-[a-z0-
 // reads the brief; if they parsed differently, whether a claim is checkable at
 // all would be back under the claimant's control at the cost of one keystroke —
 // F-impl-claims-unproven wearing a typo as a disguise. Case and the space run
-// after the colon are therefore normalized before matching (review of #371,
-// finding 3).
+// after the colon are therefore normalized before matching.
 const (
 	routingFixedHere  = "fixed-here"
 	routingFollowUp   = "follow-up"
@@ -131,7 +129,7 @@ func parseConsumerEntry(raw string) consumerEntry {
 
 // followUpTargets extracts every `follow-up <stream>/<NN>` target in the routing
 // text. Plural on purpose — a single consumer legitimately routes to two briefs
-// ("follow-up mm/41 (reads it), follow-up mm/42 (reads it)"), and dropping the
+// ("follow-up example-app/41 (reads it), follow-up example-app/42 (reads it)"), and dropping the
 // second would let an unbacked promise through.
 func followUpTargets(detail string) []string {
 	var out []string
@@ -355,7 +353,7 @@ func consumersCheck(root string, streams []*Stream) (problems, notices []string)
 				// never becomes a PROBLEM. Deliberately NARROW: it fires on
 				// phrases that name a cross-component surface outright, not on
 				// common English. Precision was measured against this repo's own
-				// corpus at authoring time (methodology-metrics/21 Verify row 6).
+				// corpus at authoring time (Verify row 6).
 				if phrase := sharedValueTrigger(bf.Body); open && phrase != "" {
 					notice("%s: brief %s reads as changing a shared surface (%q) but enumerates no consumers: — list each reader and route it, or say why the phrase does not apply (brief-rule 9; heuristic prompt, never a verdict)", path, bf.Brief, phrase)
 				}
@@ -366,7 +364,7 @@ func consumersCheck(root string, streams []*Stream) (problems, notices []string)
 			// residue no machine can settle is written for a human to weigh
 			// (F-impl-claims-unproven, recommendation 2).
 			if open && !strings.Contains(bf.Verify, "--consumers") {
-				notice("%s: brief %s carries consumers: but no Verify row runs `statusgen --consumers` — the routing claims are asserted in frontmatter with nothing corroborating them (methodology-metrics/21)", path, bf.Brief)
+				notice("%s: brief %s carries consumers: but no Verify row runs `statusgen --consumers` — the routing claims are asserted in frontmatter with nothing corroborating them", path, bf.Brief)
 			}
 			for _, raw := range bf.Consumers {
 				e := parseConsumerEntry(raw)
@@ -508,8 +506,8 @@ func runConsumers(root, base, briefFilter string) int {
 	// --brief lifts the diff SCOPING, not the need for a diff. Re-run after the
 	// merge — HEAD == base, empty diff — and every `fixed-here` in the named
 	// brief would be DISPROVED by the absence of the branch that made it true,
-	// handing the post-merge verifier a red table and a page of false verdicts
-	// (review of #371, finding 2). The instrument says COULD-NOT-CHECK instead,
+	// handing the post-merge verifier a red table and a page of false verdicts.
+	// The instrument says COULD-NOT-CHECK instead,
 	// and names the base that would work.
 	if briefFilter != "" {
 		for _, bf := range briefs {
@@ -563,7 +561,7 @@ func runConsumers(root, base, briefFilter string) int {
 	// A brief in the diff that claims NOTHING and a brief whose claims all
 	// corroborate used to print the same summary line and the same exit code —
 	// an UNRUN check indistinguishable from a clean one, in the subsystem built
-	// to tell those apart (review of #371, finding 6). They are now separate
+	// to tell those apart. They are now separate
 	// counts with a separate roster.
 	if len(claimless) > 0 {
 		sort.Strings(claimless)
@@ -580,7 +578,7 @@ func runConsumers(root, base, briefFilter string) int {
 	// Stated every run, because the limit is invisible in a green result: this
 	// gate judges the entries that were WRITTEN. It never establishes that the
 	// list is complete, so a consumer left off the list is not a finding here.
-	fmt.Printf("LIMIT: only the entries written above were judged — an OMITTED consumer is invisible to this gate (methodology-metrics/21).\n")
+	fmt.Printf("LIMIT: only the entries written above were judged — an OMITTED consumer is invisible to this gate.\n")
 	if nD > 0 {
 		fmt.Fprintf(os.Stderr, "statusgen: --consumers: %d routing claim(s) DISPROVED by the diff against %s\n", nD, base)
 		return 1
@@ -593,7 +591,7 @@ func runConsumers(root, base, briefFilter string) int {
 // keeps the run small — an untouched brief's `fixed-here` refers to ITS branch's
 // diff, not this one's.
 //
-// It is only HALF the protection, and the review of #371 measured the other
+// It is only HALF the protection, and the review measured the other
 // half's absence: a brief the branch touches is not the same as a claim the
 // branch makes, and an Evidence-only edit put six merged briefs on trial against
 // a diff that never mentioned them. consumerEntriesAtBase supplies the rest.
@@ -649,7 +647,7 @@ func corroborateBrief(root string, streams []*Stream, changed map[string]bool, i
 			// Decidable without any diff, and decided against the entry: the
 			// claimant wrote a routing nobody — no machine and no reviewer —
 			// can read. Leaving it UNCHECKED would make "write it unreadably"
-			// the cheapest way past the gate (review of #371, finding 3).
+			// the cheapest way past the gate.
 			add(stateDisproved, raw, "no routing token — end the entry with `: fixed-here`, `: follow-up <stream>/<NN>` or `: out-of-scope (<why>)`; an entry stating no routing claims nothing and can corroborate nothing")
 		case routingFixedHere:
 			st := classifySite(root, e.Site)
@@ -688,8 +686,7 @@ func corroborateBrief(root string, streams []*Stream, changed map[string]bool, i
 		case routingOutOfScope:
 			// Most out-of-scope judgements are genuinely unsettleable. This one
 			// sub-case is not: the branch that declares a consumer excluded and
-			// then edits it contradicts itself, and the diff says so outright
-			// (review of #371, finding 7).
+			// then edits it contradicts itself, and the diff says so outright.
 			if st := classifySite(root, e.Site); st.Kind == siteRepoPath {
 				if hit := exactlyChanged(changed, st.Matches); hit != "" {
 					add(stateDisproved, raw, fmt.Sprintf("claims out-of-scope but this diff changes %s — the branch contradicts its own exclusion", hit))
@@ -708,7 +705,7 @@ func corroborateBrief(root string, streams []*Stream, changed map[string]bool, i
 }
 
 // ---------------------------------------------------------------------------
-// Which branch made the claim (review of #371, findings 1 and 2)
+// Which branch made the claim
 // ---------------------------------------------------------------------------
 //
 // Diff-scoping to "briefs this branch touches" is NOT the same as "claims this
@@ -783,7 +780,7 @@ func consumerEntrySet(content string) map[string]bool {
 
 // touched reports whether one resolved path counts as changed by this branch.
 //
-// A DIRECTORY is touched when anything under it is (review of #371, finding 5):
+// A DIRECTORY is touched when anything under it is:
 // diffs name files and never directories, so `statusgen/: fixed-here` on the
 // branch that rewrites the package resolved to the directory entry, matched
 // nothing, and was DISPROVED — the gate calling a true claim false, which is
@@ -797,7 +794,7 @@ func touched(root string, changed map[string]bool, rel string) bool {
 // `rel` is a directory. Empty means untouched.
 //
 // The paths are returned, not just a boolean, because a corroborated DIRECTORY
-// site has to show its work (review of #371, finding C). A directory is touched
+// site has to show its work. A directory is touched
 // when ANY file under it is, so `docs/: fixed-here` and `docs/brief-rules.md:
 // fixed-here` can rest on the same single file — and while both are honest
 // claims, the wider one is the cheaper one to write. Printing a bare
@@ -865,8 +862,7 @@ const maxDirectoryEvidencePaths = 5
 // untouched returns the resolved paths of a site that this branch does NOT
 // change.
 //
-// EVERY resolved path must be touched, not merely one (review of #371, finding
-// 4). `anyChanged` made a wildcard a free corroboration: `*/*: fixed-here`
+// EVERY resolved path must be touched, not merely one. `anyChanged` made a wildcard a free corroboration: `*/*: fixed-here`
 // resolved to the whole tree and passed on a single match, so the cheapest way
 // to green a claim was to widen it. A site that names a set claims the set —
 // `docs/streams/*/README.md: fixed-here` says every stream README was updated —

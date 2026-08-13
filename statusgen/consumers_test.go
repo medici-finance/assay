@@ -28,14 +28,14 @@ func TestParseConsumerEntry(t *testing.T) {
 			"fixed-here with detail", "docs/brief-rules.md: fixed-here (rule 9 gains the field)",
 			"docs/brief-rules.md", routingFixedHere, nil,
 		},
-		{"follow-up with target", "web/: follow-up methodology-metrics/41", "web/", routingFollowUp, []string{"methodology-metrics/41"}},
+		{"follow-up with target", "web/: follow-up example-app/41", "web/", routingFollowUp, []string{"example-app/41"}},
 		{
 			// One consumer legitimately routes to two briefs; dropping the
 			// second would let an unbacked promise through.
 			"follow-up with two targets",
-			"docs/reports/daily/opmetrics.json: follow-up methodology-metrics/41 (reads it), follow-up methodology-metrics/42 (reads it)",
+			"docs/reports/daily/opmetrics.json: follow-up example-app/41 (reads it), follow-up example-app/42 (reads it)",
 			"docs/reports/daily/opmetrics.json", routingFollowUp,
-			[]string{"methodology-metrics/41", "methodology-metrics/42"},
+			[]string{"example-app/41", "example-app/42"},
 		},
 		{"follow-up with no target", "some component: follow-up (later)", "some component", routingFollowUp, nil},
 		{"out-of-scope", "tools/x: out-of-scope (frozen tree)", "tools/x", routingOutOfScope, nil},
@@ -446,7 +446,7 @@ func TestConsumersCouldNotCheckIsNotZero(t *testing.T) {
 }
 
 // TestConsumersBriefFilterWithoutDiffIsCouldNotCheck is the post-merge verifier
-// path (review of #371, finding 2). `--brief` lifts the diff SCOPING, not the
+// path. `--brief` lifts the diff SCOPING, not the
 // need for a diff: re-run on merged main, where HEAD == base and the diff is
 // empty, the branch that made the claims true is gone. Reporting exit 1 there
 // hands the verifier eight false DISPROVEDs on a brief that is fine; reporting 0
@@ -485,7 +485,7 @@ func withBaseEntries(t *testing.T, entries ...string) {
 }
 
 // TestInheritedClaimsAreNotJudgedByThisDiff is the false-positive class that
-// would have got the gate switched off (review of #371, finding 1). A
+// would have got the gate switched off. A
 // verify-desk Evidence commit, a status flip or a typo fix edits a merged
 // brief's FILE while changing none of its CLAIMS — and the file being in the
 // diff was enough to put every year-old `fixed-here` on trial against a diff
@@ -520,7 +520,7 @@ func TestInheritedClaimsAreNotJudgedByThisDiff(t *testing.T) {
 }
 
 // TestRoutingTokenIsNormalized: whether a claim is CHECKABLE must not be under
-// the claimant's control (review of #371, finding 3). A doubled space or a
+// the claimant's control. A doubled space or a
 // capital letter is invisible in review, and both used to demote a false claim
 // from DISPROVED to UNCHECKED at zero cost.
 func TestRoutingTokenIsNormalized(t *testing.T) {
@@ -565,7 +565,7 @@ func TestUnroutableEntryIsDisprovedByTheGate(t *testing.T) {
 	}
 }
 
-// TestWildcardSiteIsNotAFreeCorroboration (review of #371, finding 4). Passing
+// TestWildcardSiteIsNotAFreeCorroboration. Passing
 // on a single match made widening the site the cheapest way to green a claim:
 // `*/*: fixed-here` matched the whole tree and corroborated against any diff at
 // all. A site naming a set claims the set.
@@ -589,7 +589,7 @@ func TestWildcardSiteIsNotAFreeCorroboration(t *testing.T) {
 	}
 }
 
-// TestDirectorySiteMatchesItsContents (review of #371, finding 5). Diffs name
+// TestDirectorySiteMatchesItsContents. Diffs name
 // files, never directories, so a trailing-slash site — the form brief-rules.md's
 // own example uses — resolved to the directory entry, matched nothing and was
 // DISPROVED on the very branch that rewrote it. The gate calling a TRUE claim
@@ -609,7 +609,7 @@ func TestDirectorySiteMatchesItsContents(t *testing.T) {
 	}
 }
 
-// TestDirectorySiteShowsItsEvidence (re-review of #371, finding C). A directory
+// TestDirectorySiteShowsItsEvidence. A directory
 // site is corroborated when ANY path under it is in the diff — finding 5's fix,
 // and correct. But it used to print a bare CORROBORATED, so `web/: fixed-here`
 // resting on one file and `web/one.go: fixed-here` naming that same file were
@@ -621,7 +621,7 @@ func TestDirectorySiteMatchesItsContents(t *testing.T) {
 // must NOT appear for a plain file site (an unconditional reason would be noise
 // on every entry and would tell a reviewer nothing).
 //
-// Re-review of #371, finding 1. The original version of this test put exactly
+// The original version of this test put exactly
 // one of the fixture's two files in the diff, so "corroborated by 1 path(s)"
 // was the only value that fixture could ever produce — at n=1 a directory site
 // and a file site convey the same information, and the multi-path machinery in
@@ -707,7 +707,7 @@ func TestDirectorySiteShowsItsEvidence(t *testing.T) {
 	}
 }
 
-// TestOutOfScopeContradictedByTheDiff (review of #371, finding 7). Most
+// TestOutOfScopeContradictedByTheDiff. Most
 // out-of-scope judgements are unsettleable; this sub-case settles itself — the
 // branch declares a consumer excluded and then edits it.
 func TestOutOfScopeContradictedByTheDiff(t *testing.T) {
@@ -725,7 +725,7 @@ func TestOutOfScopeContradictedByTheDiff(t *testing.T) {
 	}
 }
 
-// TestBriefClaimingNothingIsReportedSeparately (review of #371, finding 6). "No
+// TestBriefClaimingNothingIsReportedSeparately. "No
 // consumers: field" and "consumers checked clean" printed the same summary line
 // and the same exit code — an UNRUN check indistinguishable from a clean one, in
 // the subsystem built to tell those apart. The gate still cannot tell whether a
@@ -751,7 +751,7 @@ func TestBriefClaimingNothingIsReportedSeparately(t *testing.T) {
 	}
 }
 
-// TestChangedPathsSinceReadsRealGit (review of #371, finding 8). Every gate test
+// TestChangedPathsSinceReadsRealGit. Every gate test
 // substitutes the diff, so the code that decides what the diff IS — three-dot
 // semantics, the porcelain `XY ` prefix, the `old -> new` rename split — was
 // exercised by nothing. That is the exact shape of the two prior defects this

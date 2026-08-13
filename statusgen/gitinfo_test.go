@@ -269,8 +269,8 @@ func TestRemoteBranchTimeoutEnv(t *testing.T) {
 		}
 	}
 	// The default must be long enough that ordinary slowness (a cold DNS cache,
-	// a busy runner) does not silently drop claim filtering — the #305 trigger.
+	// a busy runner) does not silently drop claim filtering — the original trigger.
 	if defaultRemoteBranchTimeout <= 3*time.Second {
-		t.Errorf("defaultRemoteBranchTimeout = %s; the 3s default is what tripped in #305", defaultRemoteBranchTimeout)
+		t.Errorf("defaultRemoteBranchTimeout = %s; the 3s default is what tripped the regression", defaultRemoteBranchTimeout)
 	}
 }

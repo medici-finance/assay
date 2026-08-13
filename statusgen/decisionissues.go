@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// decisionLabel is the GitHub label for human-decision issues (issue-loop/06).
+// decisionLabel is the GitHub label for human-decision issues.
 // Distinct from verify-gate (verify stage) — this is the DECISION stage: a brief
 // whose gate question must be answered before/while work proceeds.
 const decisionLabel = "needs-decision"
@@ -80,7 +80,7 @@ func renderDecisionBody(root string, bf *BriefFile, row *Brief) string {
 		fmt.Fprintf(&b, "> **Why this needs your decision:** %s\n\n", gw)
 	}
 
-	// why (methodology/27): the brief's VALUE rationale — surfaced above the
+	// why: the brief's VALUE rationale — surfaced above the
 	// mechanical gate-reason line so a human reads the real motivation first.
 	// Omitted (no error) when absent — pre-backfill briefs simply show no why.
 	if w := strings.TrimSpace(bf.Why); w != "" {
@@ -142,7 +142,7 @@ func renderDecisionBody(root string, bf *BriefFile, row *Brief) string {
 
 	// Decider instructions
 	fmt.Fprintf(&b, "\n### Decider\n\n")
-	fmt.Fprintf(&b, "Close this issue with a comment stating the chosen option (A or B). Only a verified human account is honored (#237).\n")
+	fmt.Fprintf(&b, "Close this issue with a comment stating the chosen option (A or B). Only a verified human account is honored.\n")
 
 	return b.String()
 }
@@ -164,7 +164,7 @@ func decisionIssues(root string, streams []*Stream, existing map[string]bool) []
 				continue
 			}
 			// Skip briefs that already carry a decision-issue in frontmatter
-			// — they were backfilled manually (issue-loop/06 task 4) and
+			// — they were backfilled manually and
 			// should never receive a second issue from --decision-issues.
 			if bf.DecisionIssue != 0 {
 				continue
@@ -197,13 +197,13 @@ func decisionIssues(root string, streams []*Stream, existing map[string]bool) []
 	return out
 }
 
-// nextUpDecisionNotices covers the "top-of-Next-up" leg of the issue-loop/06
+// nextUpDecisionNotices covers the "top-of-Next-up" leg of the
 // part (a) lint: a gate:human brief picked for Next-up while still `todo` has
 // no decision issue — the human gate is about to be hit with nothing filed.
 // Dispatched (in-progress) and awaiting (implemented/verified) briefs are
 // covered status-wide in checkBriefFiles; restricting the todo leg to actual
-// picks keeps every backlog gate:human todo from flooding the register
-// (#427 review). Placeholder picks have no brief file and are skipped.
+// picks keeps every backlog gate:human todo from flooding the register.
+// Placeholder picks have no brief file and are skipped.
 func nextUpDecisionNotices(nu NextUp) []string {
 	var out []string
 	for _, p := range nu.Picks {
@@ -217,7 +217,7 @@ func nextUpDecisionNotices(nu NextUp) []string {
 			}
 			if bf, ok, err := parseBriefFile(path); err == nil && ok &&
 				bf.Gate == "human" && bf.DecisionIssue == 0 {
-				out = append(out, fmt.Sprintf("%s: brief %s is gate:human and picked for Next-up at todo but has no decision-issue — file one via --decision-issues (issue-loop/06)", path, bf.Brief))
+				out = append(out, fmt.Sprintf("%s: brief %s is gate:human and picked for Next-up at todo but has no decision-issue — file one via --decision-issues", path, bf.Brief))
 			}
 			break
 		}
