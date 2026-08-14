@@ -3,9 +3,10 @@
 # THIS IS THE WORKED EXAMPLE. An adopter edits it in place: it ships at the root
 # of the public tree under the name the loader reads, so the loader has a real
 # source from the first checkout rather than a reader with nothing to read. Every
-# value below is ILLUSTRATIVE — `example-org/*` placeholders plus this toolkit's
-# own public repo — and every field the reader models is exercised at least once,
-# so the file doubles as the schema reference.
+# value below is ILLUSTRATIVE — `example-org/*` placeholders plus this repo
+# itself — and every field the reader models is exercised at least once, so the
+# file doubles as the schema reference. No value here names anything outside this
+# public tree.
 #
 # WHY THIS FILE EXISTS
 # --------------------
@@ -27,22 +28,20 @@
 # The desk tools and statusgen ship as standalone pinned binaries that run from
 # an arbitrary working directory, so they cannot read this file at run time and
 # must not try — a gate that needs the filesystem is a gate that fails open when
-# the filesystem is not the repo. Each module therefore carries a COMPILED
-# derivation of this file:
+# the filesystem is not the repo. A consuming module therefore carries a COMPILED
+# derivation of this file. In this tree that derivation is:
 #
-#   tools/desk/internal/topology/compiled.go   (package topology, dep-free)
 #   statusgen/topologyvalues.go                (package main)
 #
-# Compiled-in is legal; hand-synced copies were the defect. Each derivation is
+# Compiled-in is legal; hand-synced copies were the defect. The derivation is
 # diffed against THIS file by a test that reads it:
 #
-#   tools/desk/internal/topology  TestTopologyDriftRegistry     (dep-free reader)
 #   statusgen                     TestTopologyValuesMatchSource (yaml.v3)
 #
 # A derivation that disagrees with this file is a hard test failure naming the
 # site. A test that cannot READ this file reports could-not-check and fails —
 # it never reports green (three-state). So editing this file WITHOUT mirroring
-# the change into both derivations is a red build, not a silent divergence.
+# the change into the derivation is a red build, not a silent divergence.
 #
 # WHAT MUST NEVER GO IN HERE
 # --------------------------
@@ -62,8 +61,8 @@
 # tracked file puts an org chart into a tree that gets published.
 #
 # So the `repos:`/`apps:`/`humans:` sections below state ONLY topology that is
-# already public — the illustrative `example-org/*` repos and this toolkit's own
-# public repo — plus the App role NAMES the tools bind. An adopter who needs a
+# already public — the illustrative `example-org/*` repos and this repo itself —
+# plus the App role NAMES the tools bind. An adopter who needs a
 # private repo stated here should ask first whether the fact belongs in operator
 # config instead; a tracked file is the wrong home for anything that must not be
 # read by whoever can read the repo.
@@ -77,8 +76,8 @@
 # cell's roster change through a PR against one repo — restoring exactly the
 # coordination point cells exist to remove.
 #
-# As shipped, this file states the assay-toolkit cell's own topology, because it
-# IS that cell's published tree. YOUR CELL'S FIRST TWO EDITS:
+# As shipped, this file states the `assay` cell's own topology — the cell that
+# owns THIS repo, which is the tree you are reading. YOUR CELL'S FIRST TWO EDITS:
 #
 #   1. `cell:` — change it to YOUR cell's name.
 #   2. `medici-finance/assay` — change `relationship: owned` to `upstream`.
@@ -112,7 +111,7 @@ schema: topology-v1
 # repo while naming no cell is REFUSED: an ownership claim with no claimant
 # cannot be audited against the one-owner boundary.
 # ---------------------------------------------------------------------------
-cell: assay-toolkit
+cell: assay
 
 # ---------------------------------------------------------------------------
 # repos — one entry per repo whose topology this tree states.
@@ -172,7 +171,7 @@ repos:
   - slug: medici-finance/assay
     visibility: public
     ci: true
-    root: "../assay-toolkit"
+    root: "../assay"
     relationship: owned
     risk_path_triggers:
       - "tools/desk/internal/deskkit/"  # the gate itself
@@ -185,8 +184,9 @@ repos:
       The desk's OWN gate code, and the default release repo. A diff there can
       disable a security gate for every repo, so it should not reach a flip on
       a correctness review alone. Shipped `owned` because this file ships as
-      the assay-toolkit cell's instance — YOUR cell changes it to `upstream`
-      (edit 2 in the header). Exactly one cell owns the toolkit.
+      the `assay` cell's instance, inside the repo that cell owns — YOUR cell
+      changes it to `upstream` (edit 2 in the header). Exactly one cell owns
+      the toolkit.
 
 # release_repo — the repo `deskrelease` cuts from by default. Stated here rather
 # than as a second literal in tools/desk/cmd/deskrelease/cut.go.

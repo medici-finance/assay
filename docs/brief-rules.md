@@ -409,8 +409,9 @@ fanout tooling live with those skills; this section covers only rules that apply
 Rules 7-9 say what a Verify row must BE. These say what it must not do — five
 command shapes that make a row report a verdict it did not measure. Each is
 decidable from the command text, so `statusgen --lint` flags it (NOTICE, tagged
-with the rule name in brackets); the 2026-08 corpus inventory is
-`docs/streams/ground-truth/row-audit-2026-08.md`.
+with the rule name in brackets). The rules below were derived from a corpus
+inventory of an existing brief set; run `statusgen --lint` over your own tree to
+produce the equivalent inventory for it.
 
 The shared shape is worth naming, because it is not carelessness: **in every
 case the harness silently substitutes its own answer for the one under test,

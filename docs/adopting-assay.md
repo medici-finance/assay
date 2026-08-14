@@ -542,8 +542,8 @@ independent. It is read before Scenario 2, because the multi-repo mechanics belo
 statement about the repos *that cell* deals with. It is not a roster of every cell. A single
 central file would route every cell's roster change through a PR against one repo, restoring the
 exact coordination point cells exist to remove and making one repo's reviewers the gate on every
-other cell's org chart. An adopting cell **copies `topology.example.yaml` and edits it in place**;
-it does not send a PR to the toolkit.
+other cell's org chart. An adopting cell **copies the shipped `topology.yaml` worked example into
+its own tree and edits it in place**; it does not send a PR to the toolkit.
 
 **`relationship: owned | upstream`, stated per repo.** `owned` means this cell is the repo's owner.
 `upstream` means this cell reads it and may **file issues** into it, but never modifies it and never
@@ -583,10 +583,11 @@ needs checking, diff against **GitHub org membership**, never against a central 
 tracked identity file is an org chart in a tree that gets published, which is what
 `ASSAY_HUMAN_LOGIN_MAP` being operator configuration already prevents.
 
-**What holds this together mechanically.** The schema is additive and stays `topology-v1`; the
-compiled derivations (`tools/desk/internal/topology/compiled.go`, `statusgen/topologyvalues.go`) are
-CI-diffed against the source, and `topology.example.yaml` is CI-diffed against it for shape — so a
-schema change reddens until the public example demonstrates it too.
+**What holds this together mechanically.** The schema is additive and stays `topology-v1`, and each
+consuming module's compiled derivation is CI-diffed against the source. In this tree that derivation
+is `statusgen/topologyvalues.go`, bound to `topology.yaml` by `TestTopologyValuesMatchSource` — so a
+schema change reddens until the derivation demonstrates it too. A module that ships its own
+derivation adds its own drift test on the same source; a derivation with no such test is the defect.
 
 ### What config alone does NOT cover
 
@@ -595,38 +596,36 @@ and false of the **runtime**, and an adopting cell needs both halves before it s
 
 **True, and executed.** A second cell is expressible as a different instance of this file and
 nothing else: a different `cell:`, its own `owned` repos, `medici-finance/assay` flipped to
-`upstream`. `tools/desk/internal/topology/secondcell_test.go` parses exactly such an instance with
-the shipped reader and asserts the reader serves the second cell's facts and none of the toolkit
-cell's. No code path is added to make that work.
+`upstream`. The schema carries every field a second cell needs, and no code path is added to make
+that work — the shipped `topology.yaml` exercises each field at least once so a second instance has
+a complete worked reference to copy.
 
-**False for the shipped binaries, and this is the part prose kept quiet.** The desk tools ship as
-pinned standalone binaries that run from an arbitrary working directory, so they do not read
+**False for the shipped binaries, and this is the part prose kept quiet.** The tools ship as pinned
+standalone binaries that run from an arbitrary working directory, so they do not read
 `topology.yaml` at run time — deliberately, because a gate that needs the filesystem fails open
-when the filesystem is not the repo. They read the compiled derivation instead. `topology.LoadFile`
-has **zero non-test callers**. So editing your `topology.yaml` changes nothing any installed desk
-binary does until the derivation is edited and the binaries are rebuilt.
+when the filesystem is not the repo. They read a compiled derivation instead. So editing your
+`topology.yaml` changes nothing any installed binary does until the derivation is edited and the
+binaries are rebuilt.
 
-These are the facts frozen at build time — the complete list, kept true to the tree by
-`TestSecondCellRuntimeCapIsDeclaredAndNamed`, which reddens if a site is added, moved, or removed
-without this list moving with it:
+These are the surfaces frozen at build time — what your cell cannot change with config alone:
 
 | Frozen at build time in | What your cell cannot change with config alone |
 |---|---|
+| `statusgen/topologyvalues.go` | the system-state and decision-owed label sets, and the default release repo, that `statusgen` reasons about |
 | `tools/desk/cmd/issueboard/board.go` | the system-state and decision-owed label sets the board excludes and escalates on |
-| `tools/desk/cmd/deskroster/sets.go` | the cell name, per-repo relationship and App roles `deskroster repos` prints |
 | `tools/desk/cmd/deskrelease/cut.go` | the default repo `deskrelease` cuts a release from |
 | `tools/desk/internal/deskkit/riskpath.go` | per-repo visibility and risk-path triggers, which decide a diff's risk class |
 | `tools/desk/internal/deskkit/roots.go` | the repo → local checkout root map the multi-repo board walks |
 
-`statusgen` is capped the same way for the same reason: `statusgen/topologyvalues.go` is its
-compiled derivation, and it too runs against an arbitrary `--root`.
+Every one of those runs against an arbitrary working directory or `--root`, which is why none of
+them can read the file at run time.
 
 **So an adopting cell's topology change is four steps, not one.** Edit `topology.yaml`; mirror it
-into `tools/desk/internal/topology/compiled.go` and `statusgen/topologyvalues.go` (the drift tests
-name the field when you miss one); rebuild; re-pin your own binaries. Only the first is config. If
-that is more than you want to carry, the alternative is to accept the toolkit cell's compiled
-values for the five surfaces above and use `topology.yaml` as documentation — which is a legitimate
-choice, but make it knowingly rather than discovering it when an edit has no effect.
+into each consuming module's compiled derivation — in this tree, `statusgen/topologyvalues.go` (the
+drift test names the field when you miss one); rebuild; re-pin your own binaries. Only the first is
+config. If that is more than you want to carry, the alternative is to accept the toolkit cell's
+compiled values for the surfaces above and use `topology.yaml` as documentation — which is a
+legitimate choice, but make it knowingly rather than discovering it when an edit has no effect.
 
 **What is genuinely per-cell with no rebuild** is the operator configuration these tools read from
 the environment — `ASSAY_ALLOWED_REPOS`, `ASSAY_SCAN_REPOS`, `ASSAY_TRUSTED_LOGINS`,

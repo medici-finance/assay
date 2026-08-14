@@ -26,6 +26,14 @@ The board is derived from agent-authored artifacts, checked by the linter and re
 | [plugins/assay/](plugins/assay/) | The Assay plugin for Claude Code: methodology skills for adopting Assay and authoring briefs (`adopt`, `author-brief`). |
 | [examples/adopter-scaffold/](examples/adopter-scaffold/) | A populated streams and registers tree to copy from. |
 | [tools/freshness/](tools/freshness/) | Freshness checks for tracked artifacts. |
+| [Dockerfile](Dockerfile) | Builds one combined Linux image with the desk-tools suite + `statusgen` on PATH, published to GHCR. See [docs/docker.md](docs/docker.md). |
+
+## Container image
+
+The desk-tools suite and `statusgen` are published together as a combined
+Linux image at `ghcr.io/medici-finance/assay/desk-tools` (`linux/amd64`).
+Native macOS/Windows binaries are a separate artifact. See
+[docs/docker.md](docs/docker.md) for how to pull, run, and what's inside.
 
 ## Adopting Assay
 
