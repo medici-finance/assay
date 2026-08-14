@@ -290,7 +290,7 @@ func TestRoadmapGoalMix(t *testing.T) {
 	untagged.LastTouch = day(0)
 
 	streams := []*Stream{widgets, assay, untagged}
-	nu := nextUp(streams, nil, nil)
+	nu := nextUp(streams, ClaimView{}, nil)
 
 	// History: 3 assay done transitions in last 24h, 0 widgets.
 	history := []HistoryEntry{
@@ -351,7 +351,7 @@ func TestRoadmapDeterminism(t *testing.T) {
 	s.LastTouch = day(0)
 
 	streams := []*Stream{s}
-	nu := nextUp(streams, nil, nil)
+	nu := nextUp(streams, ClaimView{}, nil)
 	now := time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)
 
 	var rows []roadmapStreamRow
@@ -392,7 +392,7 @@ func TestRoadmapRenderHasRequiredElements(t *testing.T) {
 	s.LastTouch = day(0)
 
 	streams := []*Stream{s}
-	nu := nextUp(streams, nil, nil)
+	nu := nextUp(streams, ClaimView{}, nil)
 	now := time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)
 
 	var rows []roadmapStreamRow
@@ -609,7 +609,7 @@ func TestTopBlockerFindingLink(t *testing.T) {
 func renderOneRow(row roadmapStreamRow) string {
 	streams := []*Stream{row.Stream}
 	now := time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)
-	return renderRoadmap(streams, []roadmapStreamRow{row}, nil, nil, false, "", nextUp(streams, nil, nil), nil, "abc1234", now)
+	return renderRoadmap(streams, []roadmapStreamRow{row}, nil, nil, false, "", nextUp(streams, ClaimView{}, nil), nil, "abc1234", now)
 }
 
 // TestRoadmapBlockerCellHyperlink verifies the TopBlocker cell becomes an

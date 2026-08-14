@@ -23,7 +23,7 @@ func TestNextUpScoringAndCaps(t *testing.T) {
 	paused := mkStream("paused", "paused", "P0", Brief{Num: "01", Wave: 0, Status: "todo"})
 	paused.LastTouch = day(0)
 
-	picks := nextUp([]*Stream{hot, stale, paused}, nil, nil).Picks
+	picks := nextUp([]*Stream{hot, stale, paused}, ClaimView{}, nil).Picks
 	if len(picks) != perStreamCap+1 {
 		t.Fatalf("got %d picks, want %d (%d hot capped + 1 stale, paused excluded)", len(picks), perStreamCap+1, perStreamCap)
 	}
@@ -56,7 +56,7 @@ func TestNextUpWaveGatingAndStale(t *testing.T) {
 		Brief{Num: "03", Wave: 0, Status: "in-progress"},            // in-progress always eligible
 	)
 	s.LastTouch = day(0)
-	picks := nextUp([]*Stream{s}, nil, nil).Picks
+	picks := nextUp([]*Stream{s}, ClaimView{}, nil).Picks
 	if len(picks) != 1 || picks[0].Brief.Num != "03" {
 		t.Fatalf("want only brief 03, got %+v", picks)
 	}
@@ -81,7 +81,7 @@ func TestNextUpStreamFindingNotDispatchGate(t *testing.T) {
 	}
 	applyFindings([]*Stream{s}, findings)
 
-	nu := nextUp([]*Stream{s}, nil, nil)
+	nu := nextUp([]*Stream{s}, ClaimView{}, nil)
 	if nu.Eligible != 2 {
 		t.Fatalf("want 2 eligible (01, 02 — only the brief-specific finding gates), got %d: %+v", nu.Eligible, nu.Picks)
 	}
@@ -111,7 +111,7 @@ func TestEligibilityDepPrecise(t *testing.T) {
 	)
 	target.LastTouch = day(0)
 
-	picks := nextUp([]*Stream{target, depStream}, nil, nil).Picks
+	picks := nextUp([]*Stream{target, depStream}, ClaimView{}, nil).Picks
 	found02 := false
 	for _, p := range picks {
 		if p.Stream.Name == "target" && p.Brief.Num == "02" {
@@ -134,7 +134,7 @@ func TestEligibilityDepPrecise(t *testing.T) {
 	)
 	target2.LastTouch = day(0)
 
-	picks2 := nextUp([]*Stream{target2, depStream2}, nil, nil).Picks
+	picks2 := nextUp([]*Stream{target2, depStream2}, ClaimView{}, nil).Picks
 	for _, p := range picks2 {
 		if p.Stream.Name == "target" && p.Brief.Num == "02" {
 			t.Fatalf("brief-v1 02 with implemented dep should be INELIGIBLE, got %+v", picks2)
@@ -148,7 +148,7 @@ func TestEligibilityDepPrecise(t *testing.T) {
 	)
 	emptyDep.LastTouch = day(0)
 
-	picks3 := nextUp([]*Stream{emptyDep}, nil, nil).Picks
+	picks3 := nextUp([]*Stream{emptyDep}, ClaimView{}, nil).Picks
 	found02empty := false
 	for _, p := range picks3 {
 		if p.Stream.Name == "empty" && p.Brief.Num == "02" {
@@ -166,7 +166,7 @@ func TestEligibilityDepPrecise(t *testing.T) {
 	)
 	legacy.LastTouch = day(0)
 
-	picks4 := nextUp([]*Stream{legacy}, nil, nil).Picks
+	picks4 := nextUp([]*Stream{legacy}, ClaimView{}, nil).Picks
 	for _, p := range picks4 {
 		if p.Stream.Name == "legacy" && p.Brief.Num == "02" {
 			t.Fatalf("legacy 02 should be wave-gated by 01, got %+v", picks4)
@@ -192,13 +192,13 @@ func TestNextUpClaimAware(t *testing.T) {
 	s.LastTouch = day(0)
 
 	claimed := map[string]bool{"hot/06": true}
-	picks := nextUp([]*Stream{s}, claimed, nil).Picks
+	picks := nextUp([]*Stream{s}, KnownClaims(claimed), nil).Picks
 	if len(picks) != 1 || picks[0].Brief.Num != "07" {
 		t.Fatalf("want only brief 07 (06 claimed), got %+v", picks)
 	}
 
 	// Claim lifts (PR merged/closed) → the brief reappears.
-	picks = nextUp([]*Stream{s}, map[string]bool{}, nil).Picks
+	picks = nextUp([]*Stream{s}, KnownClaims(map[string]bool{}), nil).Picks
 	if len(picks) != 2 {
 		t.Fatalf("want both briefs once the claim lifts, got %+v", picks)
 	}
@@ -242,7 +242,7 @@ func eligibleStreams(n, perStream int) []*Stream {
 func TestNextUpSpanCapOverflow(t *testing.T) {
 	withSpan(t, 7, 7)
 	streams := eligibleStreams(23, 2) // 12 streams, per-stream cap keeps 7 spread-able
-	nu := nextUp(streams, nil, nil)
+	nu := nextUp(streams, ClaimView{}, nil)
 	if nu.Eligible != 23 {
 		t.Fatalf("eligible = %d, want 23", nu.Eligible)
 	}
@@ -255,7 +255,7 @@ func TestNextUpSpanCapOverflow(t *testing.T) {
 	if nu.HeldBack() != 16 {
 		t.Fatalf("held back = %d, want 16", nu.HeldBack())
 	}
-	out := emit(streams, nil, nu, nil, IntakeAlarmResult{}, nil, "")
+	out := emit(streams, nil, nu, nil, nil, IntakeAlarmResult{}, nil, "")
 	if !strings.Contains(out, "7 of 23 eligible") {
 		t.Errorf("STATUS Next-up missing explicit overflow line:\n%s", out)
 	}
@@ -269,7 +269,7 @@ func TestNextUpSpanCapOverflow(t *testing.T) {
 func TestNextUpNoOverflow(t *testing.T) {
 	withSpan(t, 7, 7)
 	streams := eligibleStreams(5, 1) // 5 streams × 1 brief → all 5 fit under the cap
-	nu := nextUp(streams, nil, nil)
+	nu := nextUp(streams, ClaimView{}, nil)
 	if nu.Eligible != 5 {
 		t.Fatalf("eligible = %d, want 5", nu.Eligible)
 	}
@@ -279,7 +279,7 @@ func TestNextUpNoOverflow(t *testing.T) {
 	if nu.Overflow() {
 		t.Fatal("want Overflow() = false when 5 eligible <= cap 7")
 	}
-	out := emit(streams, nil, nu, nil, IntakeAlarmResult{}, nil, "")
+	out := emit(streams, nil, nu, nil, nil, IntakeAlarmResult{}, nil, "")
 	if strings.Contains(out, "held back") || strings.Contains(out, "eligible —") {
 		t.Errorf("no overflow indicator expected with 5 ≤ cap 7:\n%s", out)
 	}
@@ -303,7 +303,7 @@ func nextUpAllScores(streams []*Stream) map[string]int {
 	out := map[string]int{}
 	for _, s := range streams {
 		for _, b := range s.Briefs {
-			if !eligible(streams, s, b, nil) {
+			if !eligible(streams, s, b, nil, wiredQueues(streams)) {
 				continue
 			}
 			days := int(now.Sub(s.LastTouch).Hours() / 24)
@@ -332,7 +332,7 @@ func TestNextUpValueOrdering(t *testing.T) {
 	s.LastTouch = day(0)
 
 	withSpan(t, 7, 7)
-	picks := nextUp([]*Stream{s}, nil, nil).Picks
+	picks := nextUp([]*Stream{s}, ClaimView{}, nil).Picks
 	if len(picks) != 3 {
 		t.Fatalf("all 3 fit under per-stream cap %d → 3 picks, got %d", perStreamCap, len(picks))
 	}
@@ -406,7 +406,7 @@ func TestNextUpStalenessFromBriefHistory(t *testing.T) {
 	}
 
 	withSpan(t, 7, 7)
-	picks := nextUp([]*Stream{s}, nil, briefTouch).Picks
+	picks := nextUp([]*Stream{s}, ClaimView{}, briefTouch).Picks
 	scores := map[string]int{}
 	for _, p := range picks {
 		scores[p.Brief.Num] = p.Score
@@ -434,7 +434,7 @@ func TestNextUpStalenessFallsBackToStreamTouch(t *testing.T) {
 	// briefTouch knows nothing about f/01 → falls back to stream LastTouch day(0),
 	// 10 days behind g's day(10): 2100 vs 2000.
 	scores := map[string]int{}
-	for _, p := range nextUp([]*Stream{s, fresh}, nil, map[string]time.Time{}).Picks {
+	for _, p := range nextUp([]*Stream{s, fresh}, ClaimView{}, map[string]time.Time{}).Picks {
 		scores[p.Stream.Name] = p.Score
 	}
 	if scores["f"] != 2100 {
@@ -468,7 +468,7 @@ func TestNextUpBlockedCountOutranksInRender(t *testing.T) {
 
 	withSpan(t, 7, 7)
 	streams := []*Stream{blocker, deps, free}
-	nu := nextUp(streams, nil, nil)
+	nu := nextUp(streams, ClaimView{}, nil)
 	if got := blockedCountFor(streams, "ablock/00"); got != 3 {
 		t.Fatalf("ablock/00 blockedCount = %d, want 3", got)
 	}
@@ -481,7 +481,7 @@ func TestNextUpBlockedCountOutranksInRender(t *testing.T) {
 	if len(order) < 2 || order[0] != "ablock/00" {
 		t.Fatalf("blocker (blockedCount 3) must rank first; order = %v", order)
 	}
-	out := emit(streams, nil, nu, nil, IntakeAlarmResult{}, nil, "")
+	out := emit(streams, nil, nu, nil, nil, IntakeAlarmResult{}, nil, "")
 	iBlock := strings.Index(out, "ablock | 00")
 	iFree := strings.Index(out, "zfree | 00")
 	if iBlock < 0 || iFree < 0 || iBlock > iFree {
@@ -688,22 +688,24 @@ func TestNextUpMaxConcurrent(t *testing.T) {
 	s.LastTouch = day(0)
 	s.MaxConcurrent = &one
 
-	picks := nextUp([]*Stream{s}, nil, nil).Picks
+	picks := nextUp([]*Stream{s}, KnownClaims(nil), nil).Picks
 	if len(picks) != 1 {
 		t.Fatalf("max-concurrent: 1 with 2 eligible: want 1 pick, got %d", len(picks))
 	}
 
 	// --- subtest: one claimed → zero picks (budget exhausted) ---
 	claimed := map[string]bool{"serial/01": true}
-	picks = nextUp([]*Stream{s}, claimed, nil).Picks
+	picks = nextUp([]*Stream{s}, KnownClaims(claimed), nil).Picks
 	if len(picks) != 0 {
 		t.Fatalf("max-concurrent: 1 with 1 claimed: want 0 picks, got %d", len(picks))
 	}
 
-	// --- subtest: claimed map nil (fail-open) → one pick ---
-	picks = nextUp([]*Stream{s}, nil, nil).Picks
+	// --- subtest: read the remote, found no claims → one pick ---
+	// The empty map here is a REAL answer, not a missing one, so the declared
+	// budget is offerable in full.
+	picks = nextUp([]*Stream{s}, KnownClaims(map[string]bool{}), nil).Picks
 	if len(picks) != 1 {
-		t.Fatalf("max-concurrent: 1 with nil claimed (fail-open): want 1 pick, got %d", len(picks))
+		t.Fatalf("max-concurrent: 1 with a known-empty claim set: want 1 pick, got %d", len(picks))
 	}
 
 	// --- subtest: streams without the knob unchanged ---
@@ -714,7 +716,7 @@ func TestNextUpMaxConcurrent(t *testing.T) {
 	)
 	hot.LastTouch = day(0)
 
-	picks = nextUp([]*Stream{hot}, nil, nil).Picks
+	picks = nextUp([]*Stream{hot}, ClaimView{}, nil).Picks
 	// Without max-concurrent, perStreamCap (4) controls; all 3 briefs should appear.
 	if len(picks) != 3 {
 		t.Fatalf("stream without max-concurrent: want 3 picks (under perStreamCap=4), got %d", len(picks))
@@ -737,7 +739,7 @@ func TestNextUpMaxConcurrent(t *testing.T) {
 	)
 	unconstrained.LastTouch = day(0)
 
-	nu := nextUp([]*Stream{mixedSerial, unconstrained}, nil, nil)
+	nu := nextUp([]*Stream{mixedSerial, unconstrained}, KnownClaims(nil), nil)
 	serialCount := 0
 	for _, p := range nu.Picks {
 		if p.Stream.Name == "serial" {
@@ -759,5 +761,122 @@ func TestNextUpMaxConcurrent(t *testing.T) {
 	}
 	if len(nu.Picks) < 4 {
 		t.Fatalf("mixed: total picks should be at least 4 (1 serial + 3+ free), got %d", len(nu.Picks))
+	}
+}
+
+// TestNextUpMaxConcurrentClaimsUnknown is the three-state leg: a stream that
+// DECLARED max-concurrent asked for its briefs to serialize, and honouring that
+// needs the in-flight signal. When claim filtering did not run, in-flight is
+// unknowable — so the stream is held back to zero and NAMED, rather than
+// offered its nominal budget as if nothing were in flight.
+//
+// This is the case the previous behaviour got wrong: it treated "could not
+// read the remote" as "nothing is claimed" and offered a pick, which is exactly
+// the parallel dispatch the declaration exists to forbid — on a stream that had
+// said, in writing, do not do this.
+func TestNextUpMaxConcurrentClaimsUnknown(t *testing.T) {
+	withSpan(t, 7, 7)
+	one := 1
+
+	serial := mkStream("serial", "active", "P0",
+		Brief{Num: "01", Wave: 0, Status: "todo"},
+		Brief{Num: "02", Wave: 0, Status: "todo"},
+	)
+	serial.LastTouch = day(0)
+	serial.MaxConcurrent = &one
+
+	// A stream that declared NOTHING, in the same run: the default must not
+	// move. Under unknown claims it keeps offering exactly what it offered
+	// before — up to perStreamCap.
+	plain := mkStream("plain", "active", "P0",
+		Brief{Num: "01", Wave: 0, Status: "todo"},
+		Brief{Num: "02", Wave: 0, Status: "todo"},
+		Brief{Num: "03", Wave: 0, Status: "todo"},
+	)
+	plain.LastTouch = day(0)
+
+	unknown := ClaimView{Claimed: map[string]bool{}, Source: ClaimSource{Reason: "ls-remote timed out"}}
+	nu := nextUp([]*Stream{serial, plain}, unknown, nil)
+
+	serialCount, plainCount := 0, 0
+	for _, p := range nu.Picks {
+		switch p.Stream.Name {
+		case "serial":
+			serialCount++
+		case "plain":
+			plainCount++
+		}
+	}
+	if serialCount != 0 {
+		t.Fatalf("claims unknown + max-concurrent declared: want 0 picks from the serialized stream, got %d", serialCount)
+	}
+	if plainCount != 3 {
+		t.Fatalf("claims unknown + no declaration: want 3 picks (unchanged default), got %d", plainCount)
+	}
+	if len(nu.SerializedUnknown) != 1 || nu.SerializedUnknown[0] != "serial" {
+		t.Fatalf("could-not-check must be REPORTED, not silent: SerializedUnknown = %v, want [serial]", nu.SerializedUnknown)
+	}
+	// The view must also carry the degradation through, so emit renders the
+	// banner without the caller re-assigning it.
+	if nu.Claims.Known {
+		t.Error("nextUp must carry the ClaimView's source into NextUp.Claims")
+	}
+
+	// And the same board with a successful (empty) claim read offers the
+	// declared budget and reports nothing — proving the zero-pick above is the
+	// could-not-check state, not a cap that binds unconditionally.
+	nuKnown := nextUp([]*Stream{serial, plain}, KnownClaims(map[string]bool{}), nil)
+	serialCount = 0
+	for _, p := range nuKnown.Picks {
+		if p.Stream.Name == "serial" {
+			serialCount++
+		}
+	}
+	if serialCount != 1 {
+		t.Fatalf("claims known-empty: want 1 pick from the serialized stream, got %d", serialCount)
+	}
+	if len(nuKnown.SerializedUnknown) != 0 {
+		t.Errorf("known claims must report no could-not-check, got %v", nuKnown.SerializedUnknown)
+	}
+}
+
+// TestNextUpHeldBackAttribution: the held-back count must name the cap that
+// actually fired. It used to blame the span-of-control cap for every held-back
+// brief, which is the wrong knob whenever a per-stream cap is what bound —
+// and with perStreamCap 4 against a span of 20, that is the common case.
+func TestNextUpHeldBackAttribution(t *testing.T) {
+	withSpan(t, 20, 20)
+
+	// 6 eligible in one stream, perStreamCap 4 → 2 held back, span never reached.
+	s := mkStream("wide", "active", "P0",
+		Brief{Num: "01", Wave: 0, Status: "todo"},
+		Brief{Num: "02", Wave: 0, Status: "todo"},
+		Brief{Num: "03", Wave: 0, Status: "todo"},
+		Brief{Num: "04", Wave: 0, Status: "todo"},
+		Brief{Num: "05", Wave: 0, Status: "todo"},
+		Brief{Num: "06", Wave: 0, Status: "todo"},
+	)
+	s.LastTouch = day(0)
+
+	nu := nextUp([]*Stream{s}, KnownClaims(nil), nil)
+	if len(nu.Picks) != perStreamCap {
+		t.Fatalf("want %d picks (perStreamCap), got %d", perStreamCap, len(nu.Picks))
+	}
+	if nu.HeldByStreamCap != 2 {
+		t.Fatalf("HeldByStreamCap = %d, want 2", nu.HeldByStreamCap)
+	}
+	if nu.HeldBySpan() != 0 {
+		t.Fatalf("HeldBySpan = %d, want 0 — the span cap (20) was never reached", nu.HeldBySpan())
+	}
+	if got := heldBackReason(nu); !strings.Contains(got, "per-stream") {
+		t.Errorf("held-back reason blames the wrong knob: %q", got)
+	}
+
+	// Nothing held back by a per-stream cap → the span cap is the honest answer.
+	plain := mkStream("plain", "active", "P0", Brief{Num: "01", Wave: 0, Status: "todo"})
+	plain.LastTouch = day(0)
+	nuSpan := nextUp([]*Stream{plain}, KnownClaims(nil), nil)
+	if got := heldBackReason(nuSpan); !strings.Contains(got, "span-of-control") || strings.Contains(got, "per-stream") {
+		t.Errorf("with no per-stream holdback the reason should be the span cap alone; got %q", got)
 	}
 }

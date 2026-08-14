@@ -267,7 +267,7 @@ func TestPlaceholderNextUpFirstClass(t *testing.T) {
 	}
 
 	// Appears in Next-up with the derived gate in its title.
-	picks := nextUp(streams, nil, nil).Picks
+	picks := nextUp(streams, ClaimView{}, nil).Picks
 	var found *Pick
 	for i := range picks {
 		if picks[i].Brief.Num == "issue-77" {
@@ -286,7 +286,7 @@ func TestPlaceholderNextUpFirstClass(t *testing.T) {
 	if !claimed["alpha/issue-77"] {
 		t.Fatalf("fix/issue-77 branch should claim alpha/issue-77, got %v", claimed)
 	}
-	for _, p := range nextUp(streams, claimed, nil).Picks {
+	for _, p := range nextUp(streams, KnownClaims(claimed), nil).Picks {
 		if p.Brief.Num == "issue-77" {
 			t.Fatal("a claimed placeholder must be excluded from Next-up")
 		}

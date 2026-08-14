@@ -14,7 +14,7 @@ func TestEmitSections(t *testing.T) {
 	s.Track = "product"
 	s.LastTouch = day(5)
 	findings := []Finding{{ID: "F-02", Date: "2026-07-08", Title: "Open thing", Affects: []string{"frontend/brief-03"}, Resolved: false}}
-	out := emit([]*Stream{s}, findings, nextUp([]*Stream{s}, nil, nil), nil, IntakeAlarmResult{}, nil, "")
+	out := emit([]*Stream{s}, findings, nextUp([]*Stream{s}, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, "")
 
 	for _, want := range []string{
 		"GENERATED FILE",
@@ -50,7 +50,7 @@ func TestAwaitingHeadingCounts(t *testing.T) {
 		Brief{Num: "04", Wave: 0, Status: "done", Verified: "grandfathered", Reviewed: "grandfathered"},
 		Brief{Num: "05", Wave: 0, Status: "done", Verified: "grandfathered", Reviewed: "grandfathered"},
 	)
-	out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, nil, nil), nil, IntakeAlarmResult{}, nil, "")
+	out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, "")
 
 	want := "## Awaiting verification / review (3 desk-actionable of 3 total — 2 at implemented, 1 verified awaiting review)"
 	if !strings.Contains(out, want) {
@@ -81,7 +81,7 @@ func TestAwaitingSegmentedAssertions(t *testing.T) {
 	active.LastTouch = day(5)
 	paused.LastTouch = day(5)
 
-	out := emit(streams, nil, nextUp(streams, nil, nil), nil, IntakeAlarmResult{}, nil, "")
+	out := emit(streams, nil, nextUp(streams, ClaimView{}, nil), nil, nil, IntakeAlarmResult{}, nil, "")
 
 	// Heading: desk-actionable = 1 (active-s/01), total = 5, implemented = 4, verified = 1
 	wantHeading := "## Awaiting verification / review (1 desk-actionable of 5 total — 4 at implemented, 1 verified awaiting review)"

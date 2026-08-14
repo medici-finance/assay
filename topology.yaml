@@ -1,0 +1,302 @@
+# topology.yaml — the ONE declared source for org/repo/App/product topology.
+#
+# THIS IS THE WORKED EXAMPLE. An adopter edits it in place: it ships at the root
+# of the public tree under the name the loader reads, so the loader has a real
+# source from the first checkout rather than a reader with nothing to read. Every
+# value below is ILLUSTRATIVE — `example-org/*` placeholders plus this repo
+# itself — and every field the reader models is exercised at least once, so the
+# file doubles as the schema reference. No value here names anything outside this
+# public tree.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# The same topology facts (which repos exist, what their visibility and CI
+# posture is, which local root they check out to, which paths risk-class a diff
+# on them, which system-state labels the desk machinery emits) get carried in
+# parallel hand-maintained Go tables with no generator and no cross-check. Copies
+# drift, and a drifted copy is silent: a board asks for a placeholder on exactly
+# the class of issue the scanner excludes, or a skill roster names repos the
+# tools refuse to act on while omitting one they do.
+#
+# The convention is DERIVE-OR-DIFF: every fact appearing on more than one surface
+# has exactly ONE declared source, and every other occurrence is regenerated from
+# it or diffed against it in CI. This file is that declared source. Hand-
+# maintained second copies are the defect, whatever they contain.
+#
+# HOW CONSUMERS READ IT
+# ---------------------
+# The desk tools and statusgen ship as standalone pinned binaries that run from
+# an arbitrary working directory, so they cannot read this file at run time and
+# must not try — a gate that needs the filesystem is a gate that fails open when
+# the filesystem is not the repo. A consuming module therefore carries a COMPILED
+# derivation of this file. In this tree that derivation is:
+#
+#   statusgen/topologyvalues.go                (package main)
+#
+# Compiled-in is legal; hand-synced copies were the defect. The derivation is
+# diffed against THIS file by a test that reads it:
+#
+#   statusgen                     TestTopologyValuesMatchSource (yaml.v3)
+#
+# A derivation that disagrees with this file is a hard test failure naming the
+# site. A test that cannot READ this file reports could-not-check and fails —
+# it never reports green (three-state). So editing this file WITHOUT mirroring
+# the change into the derivation is a red build, not a silent divergence.
+#
+# WHAT MUST NEVER GO IN HERE
+# --------------------------
+# No secrets. No tokens. No PEM paths, key material, private-key filenames, or
+# credential locations of any kind. Ids and roles only. This file is a topology
+# INVENTORY, not a credential store; the credential surfaces stay where they are
+# (the operator config directory, the App private keys, the Actions secrets).
+#
+# WHAT IS DELIBERATELY *NOT* IN HERE
+# ----------------------------------
+# The live roster — the real allowed-repo set, the real trusted logins, the real
+# App ids and the human->login map — stays in operator CONFIGURATION read from
+# outside every ref the tools evaluate (ASSAY_ALLOWED_REPOS, ASSAY_SCAN_REPOS,
+# ASSAY_TRUSTED_LOGINS, ASSAY_TRUSTED_BOT_SLUGS, ASSAY_HUMAN_LOGIN_MAP; see
+# tools/desk/internal/deskkit/rosterconfig.go). That externalisation is
+# deliberate and this file does not reverse it: moving a live roster into a
+# tracked file puts an org chart into a tree that gets published.
+#
+# So the `repos:`/`apps:`/`humans:` sections below state ONLY topology that is
+# already public — the illustrative `example-org/*` repos and this repo itself —
+# plus the App role NAMES the tools bind. An adopter who needs a
+# private repo stated here should ask first whether the fact belongs in operator
+# config instead; a tracked file is the wrong home for anything that must not be
+# read by whoever can read the repo.
+#
+# ONE FILE PER CELL — AND THE FIRST TWO EDITS YOU MAKE
+# ----------------------------------------------------
+# THIS FILE IS ONE CELL'S INSTANCE, never an enterprise registry. The adoption
+# model scales an enterprise as 10-15 INDEPENDENT cells (a lead plus its agent
+# fleet). A cell may FILE ISSUES into another cell's repos, but never modifies
+# them and never runs jobs against them. A single central file would put every
+# cell's roster change through a PR against one repo — restoring exactly the
+# coordination point cells exist to remove.
+#
+# As shipped, this file states the `assay` cell's own topology — the cell that
+# owns THIS repo, which is the tree you are reading. YOUR CELL'S FIRST TWO EDITS:
+#
+#   1. `cell:` — change it to YOUR cell's name.
+#   2. `medici-finance/assay` — change `relationship: owned` to `upstream`.
+#      Exactly ONE cell owns the toolkit; yours consumes it. You may file issues
+#      into it; you do not modify it and do not run jobs against it.
+#
+# Then replace the `example-org/*` placeholders with your own repos.
+#
+# A repo is `owned` by AT MOST ONE cell. IN-FILE that is a mechanism (a duplicate
+# slug is a loader error). ACROSS cells it is an AUDIT CONVENTION, read-only and
+# after the fact — nothing prevents two cells claiming one repo, and no global
+# cross-cell registry exists. That is a NON-GOAL, not a gap: cross-cell repo
+# references ride GitHub's already-global `owner/name`, so there is nothing for
+# a registry to add except a coordination point. See `docs/adopting-assay.md`
+# § "Multi-cell topology contract".
+#
+# RELATIONSHIP IS NOT WRITE AUTHORISATION. It gates nothing. The write boundary
+# is roster configuration (ASSAY_ALLOWED_REPOS), which is already per-cell-shaped
+# — each cell's deployment sets its own. `deskroster repos` prints the
+# write-boundary, intake-read-scope and stated-topology sets as three DISTINCT
+# sets; this annotation lands on the third only.
+
+schema: topology-v1
+
+# ---------------------------------------------------------------------------
+# cell — the name of the cell this file is the instance OF.
+#
+# Absent is accepted for a topology-v1 file written before the cell model (such a
+# file cannot state `owned` anywhere, so it carries no unattributable claim); a
+# key stated but left EMPTY is a parse error. A file that states `owned` on any
+# repo while naming no cell is REFUSED: an ownership claim with no claimant
+# cannot be audited against the one-owner boundary.
+# ---------------------------------------------------------------------------
+cell: assay
+
+# ---------------------------------------------------------------------------
+# repos — one entry per repo whose topology this tree states.
+#
+#   visibility:  public | private | unknown   (unknown is the FAIL-CLOSED zero
+#                value: "not stated" must never read as "private")
+#   ci:          true when the repo runs PR CI, so an EMPTY check rollup means
+#                "not reported yet" (unverifiable), not "green". Default true.
+#   root:        default local checkout path for the multi-repo board, using the
+#                sibling-checkout convention. Omitted => the repo is not a board
+#                root. Adding one puts that repo's briefs on the desk Next-up
+#                queue and makes its absence a hard error, so it is deliberate.
+#   risk_path_triggers: ADDITIONAL risk-classing path prefixes for this repo,
+#                layered on top of deskkit's universal base list. Never narrows.
+#   note:        prose rationale for the reviewer. Display only — no gate reads
+#                it, and the compiled derivations leave it zero on purpose.
+#   relationship: owned | upstream — THIS CELL's relationship to the repo.
+#                `owned` = this cell is the repo's owner. `upstream` = this cell
+#                files issues into it and reads it, but never modifies it and
+#                never runs jobs against it. ABSENT reads as `upstream` (least
+#                authority); an unrecognised value is a parse ERROR naming the
+#                line. Stated topology only — it authorises nothing.
+# ---------------------------------------------------------------------------
+repos:
+  - slug: example-org/tracker
+    visibility: unknown
+    ci: true
+    root: "."
+    risk_path_triggers: []
+    relationship: owned
+    note: >-
+      The illustrative PRIMARY/home repo of the sibling-checkout convention.
+      Visibility is deliberately unstated: an adopter states its own, and the
+      unknown default risk-classes every PR until they do. Stated `owned`
+      because the home repo is the shape a cell owns — the placeholder that
+      shows an adopting cell where its own repos go.
+
+  - slug: example-org/example-k8s
+    visibility: public
+    ci: true
+    relationship: upstream
+    risk_path_triggers:
+      - "base/"               # deployment manifests and config
+      - "deploy/"             # deploy overlays and scripts
+      - "admin/"              # admin / operator scripts
+      - "hack/"               # developer scripts that run against live clusters
+      - ".github/workflows/"  # the repo's own CI / secret-scanner workflows
+    note: >-
+      An illustrative PUBLIC infrastructure repo. Because it is public,
+      VisibilityRiskClassed already classes every PR on it — the per-repo
+      triggers are the classification that would survive the repo ever being
+      made private, and they show how a repo layers its own security surfaces
+      on top of the generic base. Stated `upstream`: the shape of a repo a
+      cell reads and files issues into but does not own — shared
+      infrastructure another cell is accountable for.
+
+  - slug: medici-finance/assay
+    visibility: public
+    ci: true
+    root: "../assay"
+    relationship: owned
+    risk_path_triggers:
+      - "tools/desk/internal/deskkit/"  # the gate itself
+      - "tools/desk/cmd/deskpost/"      # the flip authority
+      - "tools/desk/cmd/deskboard/"     # the board that reports the gate
+      - "tools/desk/cmd/desktoken/"     # App credential minting
+      - "tools/desk/cmd/deskpushguard/"
+      - "tools/desk/cmd/writeguard/"
+    note: >-
+      The desk's OWN gate code, and the default release repo. A diff there can
+      disable a security gate for every repo, so it should not reach a flip on
+      a correctness review alone. Shipped `owned` because this file ships as
+      the `assay` cell's instance, inside the repo that cell owns — YOUR cell
+      changes it to `upstream` (edit 2 in the header). Exactly one cell owns
+      the toolkit.
+
+# release_repo — the repo `deskrelease` cuts from by default. Stated here rather
+# than as a second literal in tools/desk/cmd/deskrelease/cut.go.
+release_repo: medici-finance/assay
+
+# ---------------------------------------------------------------------------
+# apps — the desk App ROLES the tools bind, by role name.
+#
+# `id:` is deliberately ABSENT from every entry. The live App ids and slugs are
+# operator configuration (ASSAY_TRUSTED_BOT_SLUGS, `role=<slug>` prefixes) read
+# from outside every ref the tools evaluate; putting them here would move an App
+# fleet inventory into a tracked file. The schema CARRIES the `id` field so a
+# deployment that has decided its ids are publishable can state them — the loader
+# accepts an absent id and reports the role as UNPINNED, never as id 0 (an empty
+# identity matches a deleted GitHub author; see deskkit.RoleAppLogin).
+#
+# A role listed here is a role the tools KNOW ABOUT. It is not a claim that the
+# role is BOUND — binding is `deskkit.RoleBound`, which reads the roster.
+# ---------------------------------------------------------------------------
+apps:
+  - role: desk
+    purpose: >-
+      The coordinator identity: files, comments, and posts on behalf of the
+      desk. Never the blessing authority (the roster loader refuses one).
+  - role: reviewer
+    purpose: >-
+      The identity whose APPROVED review satisfies a review gate. Compared by
+      identity in the flip gates, which is why an unbound role must refuse
+      rather than compare against an empty login.
+  - role: verifier
+    purpose: >-
+      The identity whose Evidence commits count as PROVEN attribution.
+  - role: worker
+    purpose: >-
+      The implementation identity used by fan-out worker sessions. Distinct
+      from `desk`: a worker is never the desk.
+
+# ---------------------------------------------------------------------------
+# humans — the human identities the tools reason about.
+#
+# SHIPS EMPTY, and that is the fail-closed direction. `human:<name>` stamps are
+# corroborated against a name->login map that is adopter configuration
+# (ASSAY_HUMAN_LOGIN_MAP); an UNCONFIGURED map keeps meaning
+# MISSING-CORROBORATION. Populating this list from source would make a tracked
+# file the identity authority AND would put an org's human roster into a tree
+# that gets published. The schema carries `name`/`login`/`id` so a deployment
+# that has ruled its roster publishable can state it; the default is empty.
+# ---------------------------------------------------------------------------
+humans: []
+
+# ---------------------------------------------------------------------------
+# products — what the repos above are FOR.
+# ---------------------------------------------------------------------------
+products:
+  - name: assay
+    summary: >-
+      The methodology toolkit: statusgen, the desk tools, the briefs/streams
+      model and the plugin bundle.
+    repos:
+      - medici-finance/assay
+
+# ---------------------------------------------------------------------------
+# labels — the system-emitted GitHub labels the desk machinery reasons about.
+#
+# This section is why the file exists in miniature: statusgen's excluded-label
+# set and issueboard's were two hand-synced copies of ONE set, and they had
+# already drifted — issueboard was missing `review-request`. Both now derive
+# from here.
+#
+#   system_state: labels that name a CLOSEABLE STATE the desk machinery emits,
+#                 not a unit of work. An open issue carrying one is disqualified
+#                 from becoming a placeholder — a placeholder for one is pure
+#                 Next-up noise. A genuinely new system-state label is added
+#                 HERE with its rationale, never inferred at run time.
+#   decision_owed: labels that mark an issue as decision-owed — the SLA
+#                 escalation scope. A decision-owed open issue is either AWAIT
+#                 (fresh) or ESCALATE (past the SLA).
+#
+# `why:` is MANDATORY on every label. The loader refuses an entry without one:
+# a label class nobody could justify in a sentence is a label class nobody
+# should be able to add.
+# ---------------------------------------------------------------------------
+labels:
+  system_state:
+    - name: verify-gate
+      why: >-
+        --verify-issues emits these: an issue asking human:<name> to sign off a
+        gate:human + verified brief (verified->done). Closing the ISSUE flips
+        the brief done — a gate state the loop already owns.
+    - name: live-verify
+      why: >-
+        Live-verification tracking issues: a checklist the desk closes once the
+        live check passes. A closeable state, not a unit of work.
+    - name: needs-decision
+      why: >-
+        --decision-issues emits these: an issue asking human:<name> to decide on
+        a gate:human + implemented/verified brief. Closing the ISSUE records the
+        decision.
+    - name: review-request
+      why: >-
+        Dispatch-ticket class: the coordinator desk's queue sweep emits these —
+        dispatch tickets for the review desk ("dispatch at CURRENT head, post
+        verdict, close this issue"). Inter-desk coordination consumed and closed
+        by the review desk, not a unit of backlog work. THIS is the entry
+        issueboard's hand copy was missing.
+
+  decision_owed:
+    - name: needs-decision
+      why: The decision-issue class itself.
+    - name: question
+      why: >-
+        The escalation label a human applies when an open item is blocked on an
+        answer. Silence past the SLA escalates.

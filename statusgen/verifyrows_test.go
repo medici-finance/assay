@@ -228,20 +228,26 @@ func TestGrepCallsIgnoresNonGrep(t *testing.T) {
 	}
 }
 
-// TestGoTestRunPatterns pins extraction of the `-run` argument from `go test`
-// invocations, across the `-run PAT`, `-run=PAT` and `--run=PAT` forms, and
-// confirms a non-`go test` command yields nothing.
+// TestGoTestRunPatterns pins extraction of the RE2 selector arguments from `go
+// test` invocations, across the `-run PAT`, `-run=PAT` and `--run=PAT` forms,
+// and confirms a non-`go test` command yields nothing. `-bench` is the half
+// #374 named and the original rule missed: a `-bench` pattern that matches
+// nothing prints "no benchmarks to run" and exits 0, exactly like `-run`.
 func TestGoTestRunPatterns(t *testing.T) {
 	tests := []struct {
 		name string
 		cmd  string
-		want []string
+		want []goTestPattern
 	}{
-		{"space form", `go test ./tools/statusgen/ -run 'Dora\|Weekly\|Artifact'`, []string{`Dora\|Weekly\|Artifact`}},
-		{"single-dash equals form", `go test ./tools/statusgen/ -run='A\|B'`, []string{`A\|B`}},
-		{"double-dash equals form", `go test ./tools/statusgen/ --run='A\|B'`, []string{`A\|B`}},
-		{"unambiguous single token", `go test ./tools/statusgen/ -run Dora`, []string{"Dora"}},
+		{"space form", `go test ./tools/statusgen/ -run 'Dora\|Weekly\|Artifact'`, []goTestPattern{{"-run", `Dora\|Weekly\|Artifact`}}},
+		{"single-dash equals form", `go test ./tools/statusgen/ -run='A\|B'`, []goTestPattern{{"-run", `A\|B`}}},
+		{"double-dash equals form", `go test ./tools/statusgen/ --run='A\|B'`, []goTestPattern{{"-run", `A\|B`}}},
+		{"unambiguous single token", `go test ./tools/statusgen/ -run Dora`, []goTestPattern{{"-run", "Dora"}}},
+		{"-bench is the same RE2 surface", `go test -bench 'A\|B' ./...`, []goTestPattern{{"-bench", `A\|B`}}},
+		{"-fuzz too", `go test -fuzz='A\|B' ./...`, []goTestPattern{{"-fuzz", `A\|B`}}},
+		{"-run and -bench together", `go test -run X -bench Y ./...`, []goTestPattern{{"-run", "X"}, {"-bench", "Y"}}},
 		{"no -run flag at all", `go test ./tools/statusgen/`, nil},
+		{"a lookalike flag is not -run", `go test -count=1 -race ./...`, nil},
 		{"not a go test invocation", `go build ./tools/...`, nil},
 		{"not go at all", `make test`, nil},
 	}
@@ -249,11 +255,200 @@ func TestGoTestRunPatterns(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := goTestRunPatterns(tokenizeCommand(tc.cmd))
 			if len(got) != len(tc.want) {
-				t.Fatalf("goTestRunPatterns(%q) = %q, want %q", tc.cmd, got, tc.want)
+				t.Fatalf("goTestRunPatterns(%q) = %+v, want %+v", tc.cmd, got, tc.want)
 			}
 			for i := range got {
 				if got[i] != tc.want[i] {
-					t.Errorf("pattern %d = %q, want %q", i, got[i], tc.want[i])
+					t.Errorf("pattern %d = %+v, want %+v", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestExpectedNonZeroExits pins the Expect-cell reader rule 6 (#493) stands
+// on: it must find the exit-code assertion in every spelling the corpus uses,
+// and must NOT read a count, a bare number, or exit 0 as one.
+func TestExpectedNonZeroExits(t *testing.T) {
+	tests := []struct {
+		name   string
+		expect string
+		want   []string
+	}{
+		{"rc= form", "rc=5", []string{"5"}},
+		{"rc with spaces", "`rc = 6` (could-not-check)", []string{"6"}},
+		{"exit N", "exit 3 (disabled)", []string{"3"}},
+		{"exit code N", "exit code 4", []string{"4"}},
+		{"exit status N", "exit status 5 — refused", []string{"5"}},
+		{"$? form", "$? = 6", []string{"6"}},
+		{"exits N", "exits 2", []string{"2"}},
+		{"exit 1 counts — go run also exits 1 on a COMPILE failure", "exit 1", []string{"1"}},
+		{"two codes in one cell", "exit 5 on refusal, rc=6 when unverifiable", []string{"5", "6"}},
+
+		{"exit 0 is not a failure code", "exit 0", nil},
+		// publication/05 row 6b — the BUILT-BINARY fix for #493. Its Expect
+		// cell asserts `0` and then explains the defect, naming 1, 5 and 6.
+		// Reading the commentary would fire the rule on its own remedy.
+		{"commentary after the assertion does not bind", "`0`. This row exists because `go run` exits `1` for every non-zero exit; rows 7,9,10 turn on telling `5` from `6`", nil},
+		{"an amendment note after an em dash does not bind", "exit 0 — measured: binary off PATH → rc=0, the capture-to-file form → rc=127", nil},
+		{"rc=0 is not a failure code", "`rc=0`", nil},
+		{"a bare count is not an exit code", "≥ 4", nil},
+		{"prose", "the board renders", nil},
+		{"non-zero without a specific code is not a specific code", "non-zero", nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := expectedNonZeroExits(tc.expect)
+			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("expectedNonZeroExits(%q) = %q, want %q", tc.expect, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestGoRunInvoked pins the `go run` detector: `run` must be the `go`
+// subcommand, not a directory called run or a quoted word.
+func TestGoRunInvoked(t *testing.T) {
+	tests := []struct {
+		name string
+		cmd  string
+		want bool
+	}{
+		{"plain go run", `go run ./cmd/tool --flag`, true},
+		{"go run after a &&", `cd statusgen && go run . --lint`, true},
+		{"go run in a pipeline stage", `go run ./cmd/t \| head -3`, true},
+		{"go build then run the binary — the fix", `go build -o /tmp/t ./cmd/t && /tmp/t; echo $?`, false},
+		{"a path segment named run is not the subcommand", `./scripts/run ./cmd/tool`, false},
+		{"go test is not go run", `go test ./...`, false},
+		{"quoted go run inside a grep pattern", `grep -c "go run" docs/brief-rules.md`, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := goRunInvoked(tokenizeCommand(tc.cmd)); got != tc.want {
+				t.Errorf("goRunInvoked(%q) = %v, want %v", tc.cmd, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPipeOutsideBracket pins rule 7's predicate (#262). It must fire on BOTH
+// spellings of the defect — the source `\|` and the rendered bare `|` — while
+// leaving the bracket-class escape hatch alone.
+func TestPipeOutsideBracket(t *testing.T) {
+	tests := []struct {
+		name string
+		pat  string
+		want bool
+	}{
+		{"bare pipe (the rendered form)", `alpha|beta|gamma`, true},
+		{"escaped pipe (the source form)", `alpha\|beta`, true},
+		{"pipe inside a group", `(a|b)c`, true},
+
+		{"no pipe at all", `arm64`, false},
+		{"literal pipe via a bracket class", `a[\|]b`, false},
+		{"bare pipe inside a bracket class", `a[|]b`, false},
+		{"escaped dot is not a pipe", `0\.28\.0`, false},
+		{"a `]` right after `[` is literal, not a close", `[]|]`, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := pipeOutsideBracket(tc.pat); got != tc.want {
+				t.Errorf("pipeOutsideBracket(%q) = %v, want %v", tc.pat, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestTruncatedCodeSpan pins rule 8's detector (#374): a Command cell cut by a
+// RAW pipe leaves its code span unterminated.
+func TestTruncatedCodeSpan(t *testing.T) {
+	tests := []struct {
+		name string
+		cell string
+		want bool
+	}{
+		{"a raw pipe cut the span", " `go test ./x -run 'Dora", true},
+		{"a complete code span", " `go test ./x -run Dora` ", false},
+		{"prose cell, no span", " observed by the reviewer ", false},
+		{"two spans in one cell", " `a` then `b` ", false},
+		{"a ``…`` fence", " ``echo `x` `` ", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := truncatedCodeSpan(tc.cell); got != tc.want {
+				t.Errorf("truncatedCodeSpan(%q) = %v, want %v", tc.cell, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestMovingRefBases pins rule 9 (#639): a base that moves independently of
+// the tree under test is flagged; a computed or pinned base is not.
+func TestMovingRefBases(t *testing.T) {
+	tests := []struct {
+		name string
+		cmd  string
+		want []string
+	}{
+		{"the measured instance", `statusgen --consumers --base origin/main`, []string{"origin/main"}},
+		{"equals form", `statusgen --consumers --base=origin/main`, []string{"origin/main"}},
+		{"the long ref name is the SAME moving ref", `statusgen --base refs/remotes/origin/main`, []string{"refs/remotes/origin/main"}},
+		{"a bare branch name", `statusgen --base main`, []string{"main"}},
+		{"a two-dot git range", `git log --oneline origin/main..HEAD`, []string{"origin/main"}},
+		{"a three-dot git range", `git diff --stat origin/master...HEAD`, []string{"origin/master"}},
+		{"--since on a moving ref", `deskboard --since origin/main`, []string{"origin/main"}},
+
+		{"a merge-base computation is the FIX, not the defect", `statusgen --consumers --base $(git merge-base origin/main HEAD)`, nil},
+		{"a bare merge-base call", `git merge-base origin/main HEAD`, nil},
+		{"a pinned SHA", `statusgen --consumers --base c7cd7ef`, nil},
+		{"a shell variable holding the base", `statusgen --base "$BASE_SHA"`, nil},
+		{"the PR event's own base sha", `statusgen --base ${{ github.event.pull_request.base.sha }}`, nil},
+		{"HEAD alone is the tree under test, not a moving end", `git diff --stat HEAD`, nil},
+		{"a feature branch is not a shared moving ref", `git log brief/ground-truth-03..HEAD`, nil},
+		{"no base at all", `go test ./...`, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := movingRefBases(tokenizeCommand(tc.cmd))
+			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("movingRefBases(%q) = %q, want %q", tc.cmd, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestGnuOnlyConstructs pins rule 10 (#650): the catalogued GNU-isms are
+// named, and their portable equivalents stay silent.
+func TestGnuOnlyConstructs(t *testing.T) {
+	tests := []struct {
+		name string
+		cmd  string
+		want []string
+	}{
+		{"process substitution — the measured instance", `grep -cE 'x' <(sed -n '/A/,/B/p' brief.md)`, []string{"`<(…)` process substitution"}},
+		{"grep -P", `grep -Pc '(?<=x)y' f.md`, []string{"`grep -P`"}},
+		{"GNU sed -i", `sed -i 's/a/b/' f.md`, []string{"`sed -i` with no backup suffix"}},
+		{"readlink -f", `readlink -f ./statusgen`, []string{"`readlink -f`"}},
+		{"date -d", `date -d '2026-08-13' +%s`, []string{"`date -d`"}},
+		{"stat -c", `stat -c %s f.md`, []string{"`stat -c`"}},
+		{"tac", `cat f.md \| tac`, []string{"`tac`"}},
+
+		{"the portable pipe form", `sed -n '/A/,/B/p' brief.md \| grep -cE 'x'`, nil},
+		{"grep -E is portable", `grep -cE 'a|b' f.md`, nil},
+		{"BSD-compatible sed -i", `sed -i '' 's/a/b/' f.md`, nil},
+		{"a quoted <( inside a pattern is not process substitution", `grep -c "<(" f.md`, nil},
+		{"plain commands", `go test ./... && wc -l < out.txt`, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			toks := tokenizeCommand(tc.cmd)
+			got := gnuOnlyConstructs(tc.cmd, toks, grepCalls(toks))
+			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("gnuOnlyConstructs(%q) = %q, want %q", tc.cmd, got, tc.want)
+			}
+			for _, g := range got {
+				if gnuOnlySubstitute[g] == "" {
+					t.Errorf("construct %q has no portable substitute recorded — a notice that names no fix is a nag, not a check", g)
 				}
 			}
 		})
@@ -370,42 +565,17 @@ func verifySection(rows ...string) string {
 	}, rows...), "\n")
 }
 
-// collect runs the row-level rules over a synthetic Verify section, returning the
-// notices. It mirrors unfailableRowNotices' per-row body without the file I/O, so
-// the table below can stay focused on command/expect pairs.
+// collect runs the row rules over a synthetic Verify section, returning
+// `<rule-tag> row <n>` strings. It drives rowFindings — the SAME function
+// unfailableRowNotices calls — rather than re-implementing the rule bodies:
+// the earlier duplicate meant a rule could be exercised here and silently
+// absent from the real entrypoint.
 func collect(t *testing.T, section string) []string {
 	t.Helper()
 	var out []string
 	verifyRowTable(section, func(num, cmdCell, expect string) {
-		cmd := codeSpan(cmdCell)
-		if cmd == "" {
-			return
-		}
-		toks := tokenizeCommand(cmd)
-		for _, g := range grepCalls(toks) {
-			if g.extended {
-				for _, p := range g.patterns {
-					if escapedPipeOutsideBracket(p) {
-						out = append(out, "rule1 row "+num)
-						break
-					}
-				}
-			}
-			if g.count && g.last && expectsZeroCount(expect) && !forcesSuccess(toks) {
-				out = append(out, "rule2 row "+num)
-			}
-		}
-		if sink := pipelineSwallowsExit(toks); sink != "" {
-			out = append(out, "rule3 row "+num)
-		}
-		for _, p := range goTestRunPatterns(toks) {
-			if escapedPipeOutsideBracket(p) {
-				out = append(out, "rule4 row "+num)
-				break
-			}
-		}
-		if mv := unsubstitutedMetavars(cmd); len(mv) > 0 {
-			out = append(out, "rule5 row "+num)
+		for _, f := range rowFindings(cmdCell, expect) {
+			out = append(out, f.rule+" row "+num)
 		}
 	})
 	return out
@@ -422,74 +592,140 @@ func TestUnfailableRowRules(t *testing.T) {
 	}{
 		// ---- true positives -------------------------------------------------
 		{
-			name: "rule 1: mis-escaped alternation in grep -E",
+			name: "ere-literal-pipe: mis-escaped alternation in grep -E",
 			row:  "| 2 | `grep -ciE \"arm64\\|amd64\\|version\" S1.md` | ≥1 |",
-			want: []string{"rule1 row 2"},
+			want: []string{"ere-literal-pipe row 2"},
 		},
 		{
-			name: "rule 1: fires through a shell pipe",
+			name: "ere-literal-pipe: fires through a shell pipe",
 			row:  "| 4 | `sed '/x/d' S7.md \\| { ! grep -qE \"x86-only\\|counter-based\"; }` | exit 0 |",
-			want: []string{"rule1 row 4"},
+			want: []string{"ere-literal-pipe row 4"},
 		},
 		{
-			name: "rule 2: grep -c gated on a count of zero",
+			name: "grep-zero-count: grep -c gated on a count of zero",
 			row:  "| 2 | `grep -c \"medici-stuff\" docs/brand/README.md` | 0 (stale name fixed) |",
-			want: []string{"rule2 row 2"},
+			want: []string{"grep-zero-count row 2"},
 		},
 		{
-			name: "rule 2: grep -c as the last stage of a pipeline",
+			name: "grep-zero-count: grep -c as the last stage of a pipeline",
 			row:  "| 1 | `go run ./tools/statusgen --lint 2>&1 \\| grep -c gate-why` | `0` — no brief trips the NOTICE |",
-			want: []string{"rule2 row 1"},
+			want: []string{"grep-zero-count row 1"},
 		},
 		{
-			name: "both rules on one row — the two errors partially cancel",
+			name: "both grep rules on one row — the two errors partially cancel",
 			row:  "| 2 | `ls ~/.claude/skills/ \\| grep -cE \"the-desk\\|verify-desk\"` | 0 (loose copies retired) |",
-			want: []string{"rule1 row 2", "rule2 row 2"},
+			want: []string{"ere-literal-pipe row 2", "grep-zero-count row 2"},
 		},
 		{
-			name: "rule 3: exit status swallowed by tee",
+			name: "pipeline-exit-sunk: exit status swallowed by tee",
 			row:  "| 1 | `go test \\| tee test.log` | 0 |",
-			want: []string{"rule3 row 1"},
+			want: []string{"pipeline-exit-sunk row 1"},
 		},
 		{
-			name: "rule 4: mis-escaped alternation in go test -run (row 5 shape)",
+			name: "rE2-literal-pipe: mis-escaped alternation in go test -run (row 5 shape)",
 			row:  "| 5 | `go test ./tools/statusgen/ -run 'Dora\\|Weekly\\|Artifact'` | PASS |",
-			want: []string{"rule4 row 5"},
+			want: []string{"rE2-literal-pipe row 5"},
 		},
 		{
-			name: "rule 4: fires on the `-run=` form too",
+			name: "rE2-literal-pipe: fires on the `-run=` form too",
 			row:  "| 6 | `go test ./tools/statusgen/ -run='A\\|B'` | PASS |",
-			want: []string{"rule4 row 6"},
+			want: []string{"rE2-literal-pipe row 6"},
 		},
 		{
-			name: "rule 5: bare angle-bracket metavariable",
+			// #374's other half: `-bench` compiles the same RE2 surface, and a
+			// pattern matching no benchmark prints "no benchmarks to run" and
+			// exits 0. The original rule looked only at `-run`.
+			name: "rE2-literal-pipe: -bench is the same RE2 surface (#374)",
+			row:  "| 7 | `go test -bench 'Board\\|Lint' ./... -benchtime=1x` | PASS |",
+			want: []string{"rE2-literal-pipe row 7"},
+		},
+		{
+			name: "unsubstituted-metavar: bare angle-bracket metavariable",
 			row:  "| 3 | `gh issue view <N> --json comments` | the App |",
-			want: []string{"rule5 row 3"},
+			want: []string{"unsubstituted-metavar row 3"},
 		},
 		{
-			name: "rule 5: a multi-word metavariable (example-app/25 row 3)",
+			name: "unsubstituted-metavar: a multi-word metavariable (example-app/25 row 3)",
 			row:  "| 3 | `yq eval '.on.schedule' <mm/22 workflow file>` | ≥ 3 cron entries |",
-			want: []string{"rule5 row 3"},
+			want: []string{"unsubstituted-metavar row 3"},
 		},
 		{
-			name: "rule 5: metavariable embedded in a path (example-app/22 row 5)",
+			name: "unsubstituted-metavar: embedded in a path (example-app/22 row 5)",
 			row:  "| 5 | `jq -e 'type==\"array\"' docs/reports/daily/<that-date>/prs.json` | exit 0 |",
-			want: []string{"rule5 row 5"},
+			want: []string{"unsubstituted-metavar row 5"},
 		},
 		{
-			name: "rule 5: an angle-bracket metavariable is also a shell redirect",
+			name: "unsubstituted-metavar: an angle-bracket metavariable is also a shell redirect",
 			row:  "| 1 | `grep -ci 'foreign commit' <batch-fanout SKILL.md>` | ≥ 1 |",
-			want: []string{"rule5 row 1"},
+			want: []string{"unsubstituted-metavar row 1"},
 		},
 		{
-			name: "rule 5: ellipsis elision (desk-tools/10 row 4 — the F-impl-claims-unproven case)",
+			name: "unsubstituted-metavar: ellipsis elision (desk-tools/10 row 4)",
 			row:  "| 4 | `DESKPUSHGUARD_OFF=1 ...merged-fixture...; echo $?` | 0 with a warning |",
-			want: []string{"rule5 row 4"},
+			want: []string{"unsubstituted-metavar row 4"},
 		},
 		{
-			name: "rule 5: a unicode ellipsis elides the arguments just as well",
+			name: "unsubstituted-metavar: a unicode ellipsis elides the arguments just as well",
 			row:  "| 2 | `deskpost … --repo medici-finance/assay` | posted |",
-			want: []string{"rule5 row 2"},
+			want: []string{"unsubstituted-metavar row 2"},
+		},
+
+		// ---- the four new shapes (#493, #262, #374, #639) + portability -----
+		{
+			// #493: `go run` prints `exit status 5` and itself exits 1, so the
+			// row cannot tell 5 (refused) from 6 (unverifiable) from a compile
+			// failure. Measured on PR #487 rows 7-10: go run → 1, binary → 5.
+			name: "gorun-exit: a specific non-zero exit asserted through go run (#493)",
+			row:  "| 7 | `go run ./tools/desk/cmd/repohardenguard --repo x; echo $?` | rc=5 (refused) |",
+			want: []string{"gorun-exit row 7"},
+		},
+		{
+			name: "gorun-exit: the `exit status N` spelling too",
+			row:  "| 8 | `go run ./cmd/deskpost ready --pr 1` | exit status 6 |",
+			want: []string{"gorun-exit row 8"},
+		},
+		{
+			// #262: BRE treats `|` as an ordinary character, so the pattern is
+			// one long literal and the only line containing it is the row.
+			name: "bre-alternation: alternation with no -E (#262)",
+			row:  "| 1 | `grep -c \"a\\|b\" f.md` | ≥1 |",
+			want: []string{"bre-alternation row 1"},
+		},
+		{
+			name: "bre-alternation: the self-matching #257 shape",
+			row:  "| 3 | `grep -c \"drain\\|refuse\\|watchdog\" docs/contract.md` | ≥3 |",
+			want: []string{"bre-alternation row 3"},
+		},
+		{
+			// #374's cell-splitter hazard: the raw pipe ends the cell, so the
+			// command is cut and the "Expect" column is another fragment of it.
+			name: "shredded-cell: a RAW pipe cut the Command cell (#374)",
+			row:  "| 5 | `go test ./statusgen/ -run 'Dora|Weekly|Artifact'` | PASS |",
+			want: []string{"shredded-cell row 5"},
+		},
+		{
+			// #639: the identical command returned exit 1 and exit 2 on
+			// consecutive runs because main advanced underneath it.
+			name: "moving-ref: --base on a moving ref (#639)",
+			row:  "| 4 | `statusgen --root . --consumers --base origin/main` | exit 0 |",
+			want: []string{"moving-ref row 4"},
+		},
+		{
+			name: "moving-ref: a git range endpoint moves too",
+			row:  "| 2 | `git log --oneline origin/main..HEAD \\| wc -l` | 3 |",
+			want: []string{"moving-ref row 2"},
+		},
+		{
+			// #650: BSD grep reads /dev/fd/N as EMPTY, so the row returns 0
+			// with the content plainly present — a false finding, not a miss.
+			name: "gnu-only: process substitution into grep (#650)",
+			row:  "| 1 | `grep -cE 'watchdog' <(sed -n '/3.2/,/3.3/p' contract.md)` | ≥ 18 |",
+			want: []string{"gnu-only row 1"},
+		},
+		{
+			name: "gnu-only: grep -P has no BSD equivalent",
+			row:  "| 2 | `grep -Pc '(?<=v)[0-9]+' versions.txt` | ≥ 1 |",
+			want: []string{"gnu-only row 2"},
 		},
 
 		// ---- false positives: these rows are SOUND and must stay silent ------
@@ -529,8 +765,8 @@ func TestUnfailableRowRules(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "basic grep (no -E) where \\| IS alternation",
-			row:  "| 1 | `grep -c \"a\\|b\" f.md` | ≥1 |",
+			name: "grep -F: a pipe is literal BY INTENT — the escape hatch",
+			row:  "| 1 | `grep -cF \"a\\|b\" f.md` | ≥1 |",
 			want: nil,
 		},
 		{
@@ -544,8 +780,8 @@ func TestUnfailableRowRules(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "go test -run with an unescaped alternation — the recommended fix",
-			row:  "| 5 | `go test ./tools/statusgen/ -run 'Dora|Weekly|Artifact'` | PASS |",
+			name: "go test with &&-chained single-pattern runs — the other recommended fix",
+			row:  "| 5 | `go test ./statusgen/ -run Dora && go test ./statusgen/ -run Weekly` | PASS |",
 			want: nil,
 		},
 		{
@@ -554,11 +790,31 @@ func TestUnfailableRowRules(t *testing.T) {
 			want: nil,
 		},
 		{
+			name: "go run expecting exit 0 is unaffected by the flattening",
+			row:  "| 6 | `go run . --root .. --consumers --brief gt/03` | exit 0 |",
+			want: nil,
+		},
+		{
+			name: "the #493 fix: build once, then assert the binary's real exit",
+			row:  "| 7 | `go build -o /tmp/rhg ./cmd/repohardenguard && /tmp/rhg --repo x; echo $?` | rc=5 |",
+			want: nil,
+		},
+		{
+			name: "the #639 fix: a computed merge-base is a pure function of the PR",
+			row:  "| 4 | `statusgen --consumers --base $(git merge-base origin/main HEAD)` | exit 0 |",
+			want: nil,
+		},
+		{
+			name: "the #650 fix: a pipe instead of a process substitution",
+			row:  "| 1 | `sed -n '/3.2/,/3.3/p' contract.md \\| grep -cE 'watchdog'` | ≥ 18 |",
+			want: nil,
+		},
+		{
 			name: "a prose row carries no command to analyse",
 			row:  "| 1 | the official example dapp compiled + deployed | observed |",
 			want: nil,
 		},
-		// rule 5 false positives — angle brackets and dots that are NOT placeholders
+		// metavariable false positives — angle brackets and dots that are NOT placeholders
 		{
 			name: "rule 5: an HTML tag inside a QUOTED grep pattern is a regex, not a placeholder",
 			row:  "| 5 | `! grep -Eiq -e \"<script[^>]*src=\" -e \"<link[^>]*stylesheet\" web/site/index.html` | exit 0 |",
@@ -580,9 +836,12 @@ func TestUnfailableRowRules(t *testing.T) {
 			want: nil,
 		},
 		{
+			// Process substitution is not a PLACEHOLDER — the metavariable rule
+			// must stay silent on it. It is, separately, a GNU-ism (#650), so
+			// the portability rule is the only thing that fires here.
 			name: "rule 5: process substitution is shell syntax, not a placeholder",
 			row:  "| 4 | `diff <(statusgen --root . --lint) expected.txt` | no output |",
-			want: nil,
+			want: []string{"gnu-only row 4"},
 		},
 	}
 	for _, tc := range tests {
@@ -644,6 +903,90 @@ func TestUnfailableRowNoticesOnFixture(t *testing.T) {
 	}
 	if legacy != 0 {
 		t.Errorf("legacy (non brief-v1) files are exempt; got %d notices", legacy)
+	}
+}
+
+// TestRuleFixturesGoRed is the stream convention "a check ships with proof it
+// can fail", made mechanical.
+//
+// Each new rule owns a fixture ROOT under testdata/verifyrows/<shape>/ holding
+// a RED brief (the positive control — every row carries the defect) and a GREEN
+// brief (the negative control — the same checks written correctly). The test
+// asserts both halves: the rule fires on every red row, and fires on NO green
+// row. Half of that is the usual test; the other half is the one that catches
+// a rule which cannot fail, which is the exact defect this whole lint exists
+// to kill (#488: eight unfailable checks in one day).
+//
+// It also asserts the OTHER rules stay off the green brief, so a fixture
+// written to exercise one shape cannot quietly accumulate a second.
+func TestRuleFixturesGoRed(t *testing.T) {
+	tests := []struct {
+		dir     string // fixture root under testdata/verifyrows/
+		rule    string // the tag its red rows must produce
+		redRows int    // how many red rows must fire — a LOWER bound would let
+		// the rule regress to firing once and still pass
+	}{
+		{"gorun-exit", ruleGoRunExit, 4},
+		{"bre-alternation", ruleBREAlternation, 4},
+		{"literal-pipe", ruleRE2LiteralPipe, 3},
+		{"moving-ref", ruleMovingRef, 4},
+		{"portability", rulePortability, 5},
+	}
+	for _, tc := range tests {
+		t.Run(tc.dir, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.CopyFS(root, os.DirFS("testdata/verifyrows/"+tc.dir)); err != nil {
+				t.Fatal(err)
+			}
+			streams, _, err := loadStreams(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(streams) == 0 {
+				t.Fatal("fixture loaded 0 streams — a check that could not look must never report clean")
+			}
+			notices := unfailableRowNotices(streams)
+
+			var red, green int
+			for _, n := range notices {
+				switch {
+				case strings.Contains(n, "brief-01-red.md"):
+					if strings.Contains(n, "["+tc.rule+"]") {
+						red++
+					}
+				case strings.Contains(n, "brief-02-green.md"):
+					green++
+				}
+			}
+			if red != tc.redRows {
+				t.Errorf("red fixture: %s fired on %d rows, want %d — a rule with no observed red run is the defect it hunts\n%s",
+					tc.rule, red, tc.redRows, strings.Join(notices, "\n"))
+			}
+			if green != 0 {
+				t.Errorf("green fixture must be SILENT; got %d notice(s):\n%s", green, strings.Join(notices, "\n"))
+			}
+		})
+	}
+}
+
+// TestRuleTagsAreUnique guards the interface the row-audit inventory and any CI
+// step select on: two rules sharing a tag would make their counts
+// uninterpretable.
+func TestRuleTagsAreUnique(t *testing.T) {
+	tags := []string{
+		ruleERELiteralPipe, ruleGrepZeroCount, ruleExitSwallowed, ruleRE2LiteralPipe,
+		ruleMetavar, ruleGoRunExit, ruleBREAlternation, ruleShreddedCell,
+		ruleMovingRef, rulePortability,
+	}
+	seen := map[string]bool{}
+	for _, tag := range tags {
+		if tag == "" {
+			t.Error("a rule tag is empty")
+		}
+		if seen[tag] {
+			t.Errorf("duplicate rule tag %q", tag)
+		}
+		seen[tag] = true
 	}
 }
 

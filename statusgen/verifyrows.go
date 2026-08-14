@@ -219,6 +219,8 @@ func tokenizeCommand(s string) []shellTok {
 // grepCall is one grep invocation lifted from a command cell.
 type grepCall struct {
 	extended bool     // -E / --extended-regexp / egrep
+	perl     bool     // -P / --perl-regexp (GNU-only; see the portability rule)
+	fixed    bool     // -F / --fixed-strings / fgrep — a pipe is then LITERAL BY INTENT
 	count    bool     // -c / --count
 	patterns []string // pattern arguments, in order
 	last     bool     // true when this grep is the last stage of its pipeline
@@ -263,13 +265,13 @@ func grepCalls(toks []shellTok) []grepCall {
 			continue
 		}
 		name := c[k].text
-		if name != "grep" && name != "egrep" && name != "ggrep" && name != "rg" {
+		if name != "grep" && name != "egrep" && name != "fgrep" && name != "ggrep" && name != "rg" {
 			continue
 		}
 		if name == "rg" {
 			continue // ripgrep: different flag surface, not in scope
 		}
-		g := grepCall{extended: name == "egrep", last: lastFlags[ci]}
+		g := grepCall{extended: name == "egrep", fixed: name == "fgrep", last: lastFlags[ci]}
 		var operands []string
 		for j := k + 1; j < len(c); j++ {
 			t := c[j]
@@ -279,6 +281,10 @@ func grepCalls(toks []shellTok) []grepCall {
 				switch flag {
 				case "extended-regexp":
 					g.extended = true
+				case "perl-regexp":
+					g.perl = true
+				case "fixed-strings":
+					g.fixed = true
 				case "count":
 					g.count = true
 				case "regexp":
@@ -300,6 +306,10 @@ func grepCalls(toks []shellTok) []grepCall {
 					switch ch {
 					case 'E':
 						g.extended = true
+					case 'P':
+						g.perl = true
+					case 'F':
+						g.fixed = true
 					case 'c':
 						g.count = true
 					}
@@ -334,16 +344,30 @@ func grepCalls(toks []shellTok) []grepCall {
 // go test -run invocations
 // ---------------------------------------------------------------------------
 
-// goTestRunPatterns extracts every `-run <pattern>` (or `-run=<pattern>` /
-// `--run=<pattern>`) argument from `go test` invocations in a tokenized
-// command.
+// goTestPattern is one RE2 selector argument lifted from a `go test`
+// invocation, with the flag it came from so the notice can name it.
+type goTestPattern struct {
+	flag string // "-run" or "-bench"
+	pat  string
+}
+
+// goTestRegexpFlags are the `go test` flags whose argument is compiled as an
+// RE2 regexp against test/benchmark names. Both share the defect: a pattern
+// that matches nothing exits 0 with "no tests to run" / "no benchmarks to
+// run" — a green row that ran nothing. `-bench` was the half #374 named and
+// the original rule missed.
+var goTestRegexpFlags = map[string]bool{"run": true, "bench": true, "fuzz": true}
+
+// goTestRunPatterns extracts every `-run` / `-bench` / `-fuzz` regexp argument
+// (in the `-run PAT`, `-run=PAT` and `--run=PAT` forms) from `go test`
+// invocations in a tokenized command.
 //
 // Unlike grepCalls this does not track pipeline position: a `-run` regexp
 // that matches no test name makes `go test` print "no tests to run" and exit
 // 0 wherever it sits — there is no "not the last stage, so it doesn't matter"
 // case to exclude.
-func goTestRunPatterns(toks []shellTok) []string {
-	var patterns []string
+func goTestRunPatterns(toks []shellTok) []goTestPattern {
+	var patterns []goTestPattern
 	var cmd []shellTok
 	var cmds [][]shellTok
 	flush := func() {
@@ -385,16 +409,22 @@ func goTestRunPatterns(toks []shellTok) []string {
 		}
 		for j := testAt + 1; j < len(c); j++ {
 			t := c[j]
+			// The quoting flag is NOT a filter here: `-run='A\|B'` tokenizes as
+			// a single token that is marked quoted because its VALUE was, and
+			// that is the exact form the rule must see.
+			if !strings.HasPrefix(t.text, "-") {
+				continue
+			}
+			name, val, hasVal := strings.Cut(strings.TrimLeft(t.text, "-"), "=")
+			if !goTestRegexpFlags[name] {
+				continue
+			}
 			switch {
-			case t.text == "-run" || t.text == "--run":
-				if j+1 < len(c) {
-					j++
-					patterns = append(patterns, c[j].text)
-				}
-			case strings.HasPrefix(t.text, "-run="):
-				patterns = append(patterns, strings.TrimPrefix(t.text, "-run="))
-			case strings.HasPrefix(t.text, "--run="):
-				patterns = append(patterns, strings.TrimPrefix(t.text, "--run="))
+			case hasVal:
+				patterns = append(patterns, goTestPattern{flag: "-" + name, pat: val})
+			case j+1 < len(c):
+				j++
+				patterns = append(patterns, goTestPattern{flag: "-" + name, pat: c[j].text})
 			}
 		}
 	}
@@ -651,6 +681,409 @@ func unsubstitutedMetavars(cmd string) []string {
 }
 
 // ---------------------------------------------------------------------------
+// Rule 6 — `go run` under an expectation of a SPECIFIC non-zero exit (#493)
+// ---------------------------------------------------------------------------
+//
+// `go run` does not propagate the program's exit status. When the program
+// exits non-zero, `go run` prints `exit status N` to stderr and itself exits
+// **1** — measured, not inferred: a `main` calling `os.Exit(5)` under `go run`
+// yields 1.
+//
+// So EVERY non-zero exit flattens to 1, and a row asserting a specific failure
+// code through `go run` asserts nothing of the kind: it cannot tell 3
+// (disabled) from 4 (rate-limited) from 5 (refused) from 6 (precondition
+// unverifiable) — the desk-tools scoping contract's whole point. The rows
+// meant to prove fail-closed behaviour are the exact rows this silently
+// disarms, and they go green either way, so the defect is not discoverable
+// from a passing run.
+//
+// A row expecting `1` is flagged too, and for a sharper reason than
+// bookkeeping: `go run` also exits 1 when the package DOES NOT COMPILE. Such a
+// row passes on a tree whose code never built — the strongest possible
+// instance of a check that cannot fail.
+//
+// A row expecting exit 0 is unaffected and stays silent.
+
+// exitExprRe matches an exit-code assertion in an Expect cell: `rc=3`,
+// `rc = 3`, `exit 5`, `exit code 6`, `exit status 4`, `exits 2`, `$? = 3`.
+// The code is capture group 1.
+var exitExprRe = regexp.MustCompile(`(?i)(?:\brc\b|\bexit(?:s|ed)?(?:[ \t-]*(?:code|status))?|\$\?)[ \t]*[:=]?[ \t]*(\d+)`)
+
+// expectClauseBreaks end the ASSERTION at the head of an Expect cell. What
+// follows is commentary, and commentary in this corpus routinely discusses
+// exit codes it does not assert — publication/05 row 6b is the built-binary
+// FIX for #493 and its Expect cell explains the defect, naming 1, 5 and 6.
+// Reading those as the row's expectation would make the rule fire on the very
+// row that demonstrates its remedy.
+var expectClauseBreaks = []string{". ", ".\n", " — ", " – ", " -- ", ";", "\n"}
+
+// expectClause returns the leading assertion of an Expect cell, with markdown
+// emphasis stripped. Same narrowness as expectsZeroCount, and for the same
+// reason: an Expect cell is an assertion followed by prose, and only the
+// assertion binds.
+func expectClause(expect string) string {
+	s := strings.NewReplacer("`", "", "*", "", "**", "").Replace(expect)
+	cut := len(s)
+	for _, brk := range expectClauseBreaks {
+		if i := strings.Index(s, brk); i >= 0 && i < cut {
+			cut = i
+		}
+	}
+	return strings.TrimSpace(s[:cut])
+}
+
+// expectedNonZeroExits reports the specific non-zero exit codes an Expect cell
+// asserts. Empty when the cell asserts none (prose, a count, or exit 0).
+func expectedNonZeroExits(expect string) []string {
+	s := expectClause(expect)
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range exitExprRe.FindAllStringSubmatch(s, -1) {
+		code := strings.TrimLeft(m[1], "0")
+		if code == "" || seen[m[1]] { // "0", "00" → zero, not a failure code
+			continue
+		}
+		seen[m[1]] = true
+		out = append(out, m[1])
+	}
+	return out
+}
+
+// goRunInvoked reports whether a command runs a Go program through `go run`.
+// `go run` anywhere in the command is enough: the row's status is the last
+// stage's, and every shape seen in the corpus puts the `go run` there.
+func goRunInvoked(toks []shellTok) bool {
+	prevGo := false
+	for _, t := range toks {
+		if t.op {
+			prevGo = false
+			continue
+		}
+		if prevGo && t.text == "run" {
+			return true
+		}
+		prevGo = t.text == "go" && !t.quoted
+	}
+	return false
+}
+
+// ---------------------------------------------------------------------------
+// Rule 7 — a pipe in a BASIC-regex grep pattern (#262)
+// ---------------------------------------------------------------------------
+//
+// Rule 1 catches `\|` carried INTO an ERE. This is the mirror: alternation
+// written for a grep that has no `-E`.
+//
+// In a POSIX basic regular expression `|` is an ordinary character, so
+// `grep -c "alpha|beta|gamma" doc.md` searches for the single 12-character
+// string `alpha|beta|gamma`. In a brief, the one line in the document
+// containing that string is THE VERIFY ROW ITSELF — the row returns 1, exits
+// 0, and against a `≥1` bar reports PASS having measured nothing. That is
+// #262's measured failure, not a hypothetical: #257's §6 table
+// returned 1,1,1,1,1,1,1 against thresholds 3,3,1,3,2,3,3, each match being
+// the row's own line.
+//
+// The markdown escape makes it worse rather than better. A GFM table cell can
+// only carry a pipe as `\|`, and GFM resolves the escape before inline
+// parsing — so the source says `grep -c "a\|b"` while the RENDERED page a
+// verifier copies from says `grep -c "a|b"`. Those are two different commands:
+// GNU-compatible greps read `\|` as alternation (a GNU extension, absent from
+// POSIX BRE), and every grep reads a bare `|` in a BRE as a literal. The row
+// therefore means one thing to whoever reads the source and another to whoever
+// runs the rendered text, and neither reading is stable across platforms.
+//
+// The fix is the same either way, and is unambiguous in both forms: add `-E`,
+// or write the alternatives as separate `-e` patterns. `-F`/`fgrep` and a
+// `[\|]` bracket class are the escape hatches for a genuinely literal pipe.
+
+// pipeOutsideBracket reports whether a pattern contains a pipe — escaped or
+// bare — outside a bracket expression. Bracket content is exempt for the same
+// reason as escapedPipeOutsideBracket: `[\|]` and `[|]` are the sanctioned way
+// to mean a literal pipe.
+func pipeOutsideBracket(pat string) bool {
+	if escapedPipeOutsideBracket(pat) {
+		return true
+	}
+	inBracket := false
+	for i := 0; i < len(pat); i++ {
+		c := pat[i]
+		switch {
+		case !inBracket && c == '[':
+			inBracket = true
+			j := i + 1
+			if j < len(pat) && pat[j] == '^' {
+				j++
+			}
+			if j < len(pat) && pat[j] == ']' {
+				i = j
+			}
+		case inBracket && c == ']':
+			inBracket = false
+		case !inBracket && c == '|':
+			return true
+		case c == '\\' && i+1 < len(pat):
+			i++
+		}
+	}
+	return false
+}
+
+// ---------------------------------------------------------------------------
+// Rule 8 — a Command cell shredded by a RAW pipe (#374)
+// ---------------------------------------------------------------------------
+//
+// A raw `|` inside a GFM table cell is a CELL DELIMITER, wherever it sits — a
+// code span does not protect it, because the escape is resolved before inline
+// parsing. So `go test -run 'A|B'` written raw in a Verify row does not
+// survive as a command at all: the cell ends at the first pipe, the rest
+// becomes extra columns, and the Expect column shifts.
+//
+// Three things break at once, which is why this is its own rule rather than a
+// rendering nit: the brief shows a command nobody can run; the row's Expect
+// cell is no longer the row's expectation; and every other rule here goes
+// BLIND past the cut, so a shredded row is silently exempt from the whole
+// lint. #374's "cell-splitter truncation hazard" is exactly this.
+//
+// Detection is structural: a Command cell whose backticks do not pair up has
+// had its code span cut by a delimiter.
+
+// truncatedCodeSpan reports whether a table cell's code span was cut by a cell
+// delimiter — an odd number of backticks means the span never closed.
+func truncatedCodeSpan(cell string) bool {
+	return strings.Count(cell, "`")%2 == 1
+}
+
+// ---------------------------------------------------------------------------
+// Rule 9 — a diff base pinned to a MOVING ref (#639)
+// ---------------------------------------------------------------------------
+//
+// A row whose base is a branch name is not a function of the tree under test.
+// Measured on methodology-metrics/21: the identical
+// `statusgen --consumers --base origin/main` returned exit 1 on one invocation
+// and exit 2 on the next, purely because background commits advanced
+// `origin/main` between them (7c4b752 → c51bb06) and the three-dot diff base
+// moved underneath it.
+//
+// That is a flappy gate — a check that passes or "could-not-check" depending
+// on WHEN it runs relative to another branch's motion, not on the content it
+// claims to judge — and it is worse than a check that simply fails, because
+// the green run and the red run are equally unreproducible. Re-running it
+// proves nothing, so a reviewer cannot settle a disagreement about it.
+//
+// `refs/remotes/origin/main` is NOT an exemption: it is the same ref by its
+// full name, and it moves on every fetch.
+//
+// The exemptions are the two forms that ARE pure functions of the PR: an
+// explicit merge-base computation (`$(git merge-base …)` — #639's own
+// suggested fix), and a pinned SHA or shell variable holding one.
+
+// movingRefRe matches a branch-shaped ref whose tip moves independently of the
+// tree under test. Bare `HEAD` is deliberately excluded — it names the commit
+// under test, which is the fixed end of the comparison, not the moving one.
+var movingRefRe = regexp.MustCompile(`^(?:refs/(?:remotes|heads)/)?(?:[A-Za-z0-9._-]+/)?(?:main|master|develop|trunk|HEAD)$`)
+
+// baseFlags are flags whose value names the other end of a comparison.
+var baseFlags = map[string]bool{"base": true, "since": true, "from": true, "against": true, "baseline": true}
+
+// movingRef reports whether a ref name moves independently of the commit under
+// test. A `$` (command substitution or variable) means the value is computed,
+// which is the sanctioned fix, and a hex string is a pin.
+func movingRef(s string) bool {
+	if s == "" || s == "HEAD" || strings.ContainsAny(s, "$`") {
+		return false
+	}
+	return movingRefRe.MatchString(s)
+}
+
+// movingRefBases reports every moving ref used as a comparison endpoint in a
+// command: as the value of a base-shaped flag, or as an endpoint of a git
+// `A..B` / `A...B` range.
+//
+// A command that computes a merge-base is exempt wholesale — `git merge-base
+// origin/main HEAD` READS the moving ref precisely to pin it, which is the fix
+// this rule asks for, not the defect.
+func movingRefBases(toks []shellTok) []string {
+	for _, t := range toks {
+		if !t.op && strings.Contains(t.text, "merge-base") {
+			return nil
+		}
+	}
+	var out []string
+	seen := map[string]bool{}
+	addOnce := func(s string) {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	for i, t := range toks {
+		if t.op || t.quoted {
+			continue
+		}
+		// `--base <ref>` / `--base=<ref>` and friends.
+		if strings.HasPrefix(t.text, "-") {
+			name, val, hasVal := strings.Cut(strings.TrimLeft(t.text, "-"), "=")
+			if !baseFlags[name] {
+				continue
+			}
+			if !hasVal && i+1 < len(toks) && !toks[i+1].op {
+				val = toks[i+1].text
+			}
+			if movingRef(val) {
+				addOnce(val)
+			}
+			continue
+		}
+		// `origin/main..HEAD` / `origin/main...HEAD` range endpoints.
+		if !strings.Contains(t.text, "..") {
+			continue
+		}
+		sep := "..."
+		if !strings.Contains(t.text, "...") {
+			sep = ".."
+		}
+		lhs, rhs, _ := strings.Cut(t.text, sep)
+		for _, end := range []string{lhs, rhs} {
+			if movingRef(end) {
+				addOnce(end)
+			}
+		}
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Rule 10 — GNU-only constructs in a row meant to run on macOS too (#650)
+// ---------------------------------------------------------------------------
+//
+// Verify rows are run by whoever verifies, on whatever machine they have —
+// macOS desks and ubuntu CI both. A row that only works on one of them is not
+// portable evidence: it produces a different verdict per platform, and the
+// platform is invisible in the Evidence cell.
+//
+// The catalogued instance is #650's, and it is the dangerous kind because it
+// fails QUIETLY: desk-hardening/06 rows 1,4,5,6,7 fed `<(sed …)` to grep, and
+// under BSD grep `/dev/fd/N` reads as EMPTY — so the rows returned count 0 /
+// rc 1 with the content plainly present (the `sed … | grep` pipe form returned
+// the real counts 18/13/4/7/10). An empty read is indistinguishable from a
+// genuine absence, so the failure looks like a finding about the code rather
+// than a finding about the row.
+//
+// Severity NOTICE, and deliberately advisory-first: unlike the rules above,
+// these rows are not vacuous — they are correct on one platform. The fix is
+// mechanical in every case (a pipe instead of a process substitution, `-E`
+// instead of `-P`, `sed -i ''`), so the notice names the substitute.
+
+// gnuOnlyCommandFlags maps a command name to the flags of it that are GNU-only.
+var gnuOnlyCommandFlags = map[string]map[string]string{
+	"date":     {"-d": "`date -d`", "--date": "`date --date`"},
+	"stat":     {"-c": "`stat -c`", "--format": "`stat --format`"},
+	"readlink": {"-f": "`readlink -f`"},
+	"xargs":    {"-r": "`xargs -r`", "--no-run-if-empty": "`xargs --no-run-if-empty`"},
+	"sort":     {"-V": "`sort -V`"},
+}
+
+// gnuOnlySubstitute names the portable replacement for each construct, so the
+// notice tells the author what to write instead of only what not to.
+var gnuOnlySubstitute = map[string]string{
+	"`<(…)` process substitution":    "pipe instead (`sed … | grep -cE …`) — BSD `grep` reads `/dev/fd/N` as EMPTY, so the row returns 0 matches with the content plainly present (#650, measured on desk-hardening/06 rows 1,4,5,6,7)",
+	"`grep -P`":                      "use `grep -E`; BSD `grep` has no `-P` and exits 2 with a usage error",
+	"`sed -i` with no backup suffix": "write `sed -i ''` (BSD requires the suffix argument; GNU accepts `-i ''` too), or `sed … > tmp && mv tmp file`",
+	"`date -d`":                      "use `date -j -f` or compute the date in the tool under test",
+	"`date --date`":                  "use `date -j -f` or compute the date in the tool under test",
+	"`stat -c`":                      "use `wc -c < file` for a size, or `stat -f` guarded by an OS check",
+	"`stat --format`":                "use `wc -c < file` for a size, or `stat -f` guarded by an OS check",
+	"`readlink -f`":                  "use `cd \"$(dirname x)\" && pwd -P`, or `python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))'`",
+	"`xargs -r`":                     "guard the pipeline instead (`[ -s list ] && xargs …`); BSD `xargs` skips an empty input already",
+	"`xargs --no-run-if-empty`":      "guard the pipeline instead (`[ -s list ] && xargs …`); BSD `xargs` skips an empty input already",
+	"`sort -V`":                      "sort the fields explicitly (`sort -t. -k1,1n -k2,2n -k3,3n`)",
+	"`tac`":                          "use `tail -r` guarded by an OS check, or reverse in the tool under test",
+	"`mapfile`/`readarray`":          "read the lines with a `while read` loop; these are bash 4+ builtins and macOS ships bash 3.2",
+}
+
+// gnuOnlyConstructs reports the GNU-only constructs a command uses.
+func gnuOnlyConstructs(cmd string, toks []shellTok, greps []grepCall) []string {
+	var out []string
+	seen := map[string]bool{}
+	addOnce := func(s string) {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	if strings.Contains(stripQuotedRegions(cmd), "<(") {
+		addOnce("`<(…)` process substitution")
+	}
+	for _, g := range greps {
+		if g.perl {
+			addOnce("`grep -P`")
+		}
+	}
+	// Per-simple-command flag scan.
+	var cmds [][]shellTok
+	var cur []shellTok
+	for _, t := range toks {
+		if t.op {
+			if len(cur) > 0 {
+				cmds = append(cmds, cur)
+				cur = nil
+			}
+			continue
+		}
+		cur = append(cur, t)
+	}
+	if len(cur) > 0 {
+		cmds = append(cmds, cur)
+	}
+	for _, c := range cmds {
+		k := 0
+		for k < len(c) && (c[k].text == "{" || c[k].text == "!" || c[k].text == "(") {
+			k++
+		}
+		if k >= len(c) || c[k].quoted {
+			continue
+		}
+		name := c[k].text
+		if i := strings.LastIndex(name, "/"); i >= 0 {
+			name = name[i+1:]
+		}
+		switch name {
+		case "tac":
+			addOnce("`tac`")
+		case "mapfile", "readarray":
+			addOnce("`mapfile`/`readarray`")
+		case "sed":
+			for j := k + 1; j < len(c); j++ {
+				if c[j].quoted || !strings.HasPrefix(c[j].text, "-i") {
+					continue
+				}
+				// GNU form: `-i` with no suffix, or `-i.bak` glued on.
+				// BSD needs the suffix as a SEPARATE argument, `-i ''`.
+				if c[j].text == "-i" && j+1 < len(c) && c[j+1].quoted && c[j+1].text == "" {
+					break // `sed -i ''` — the portable spelling
+				}
+				addOnce("`sed -i` with no backup suffix")
+				break
+			}
+		}
+		flags, ok := gnuOnlyCommandFlags[name]
+		if !ok {
+			continue
+		}
+		for j := k + 1; j < len(c); j++ {
+			if c[j].quoted {
+				continue
+			}
+			flag, _, _ := strings.Cut(c[j].text, "=")
+			if label, hit := flags[flag]; hit {
+				addOnce(label)
+			}
+		}
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
 // The lint
 // ---------------------------------------------------------------------------
 
@@ -712,7 +1145,6 @@ func verifyRowTable(section string, fn func(num, cmd, expect string)) {
 // historical record of what was actually run. Note the defect in Evidence instead.
 func unfailableRowNotices(streams []*Stream) []string {
 	var notices []string
-	add := func(format string, a ...any) { notices = append(notices, fmt.Sprintf(format, a...)) }
 
 	for _, s := range streams {
 		for _, path := range briefFilePaths(s) {
@@ -721,52 +1153,123 @@ func unfailableRowNotices(streams []*Stream) []string {
 				continue // malformed reported elsewhere; legacy/opted-out exempt
 			}
 			verifyRowTable(bf.Verify, func(num, cmdCell, expect string) {
-				cmd := codeSpan(cmdCell)
-				if cmd == "" {
-					return
-				}
-				toks := tokenizeCommand(cmd)
 				where := "a Verify row"
 				if num != "" {
 					where = "Verify row " + num
 				}
-
-				for _, g := range grepCalls(toks) {
-					// Rule 1: `\|` in an ERE pattern.
-					if g.extended {
-						for _, p := range g.patterns {
-							if escapedPipeOutsideBracket(p) {
-								add("%s: %s uses `\\|` inside a `grep -E` pattern (%q) — in an extended regex `\\|` is a LITERAL pipe, not alternation, so the row matches almost nothing and passes whatever the file contains. The raw text is also ambiguous: GFM renders `\\|` in a table cell as `|`, so this command means one thing copied from the rendered page and another copied from the source. Write the alternatives as separate patterns (`grep -E -e alpha -e beta`), which reads identically in both. For a genuine literal pipe use a bracket class (`[\\|]`)", path, where, p)
-								break
-							}
-						}
-					}
-					// Rule 2: `grep -c` gated on an expected count of zero.
-					if g.count && g.last && expectsZeroCount(expect) && !forcesSuccess(toks) {
-						add("%s: %s expects a count of `0` from `grep -c`, but grep exits 1 when it matches nothing — on the success path the row FAILS, and it only passes when it finds what it was meant to prove absent. Gate on the exit status instead (`! grep -qE …`), or keep the count as output and neutralise the status (`grep -cE … || true`)", path, where)
-					}
-				}
-
-				// Rule 3: exit status swallowed by an always-zero sink.
-				if sink := pipelineSwallowsExit(toks); sink != "" {
-					add("%s: %s pipes into `%s`, so the row reports `%s`'s exit status, not the check's — the command before it can fail and the row still passes. Assert on the real command (write to a file, then check it), or set `set -o pipefail`", path, where, sink, sink)
-				}
-
-				// Rule 4: `\|` in a `go test -run` pattern.
-				for _, p := range goTestRunPatterns(toks) {
-					if escapedPipeOutsideBracket(p) {
-						add("%s: %s uses `\\|` inside a `go test -run` pattern (%q) — `go test -run` compiles its argument as RE2, same as `grep -E`: `\\|` there is a LITERAL pipe, not alternation, so the pattern matches no test name, `go test` reports \"no tests to run\", and the row passes having run nothing. The raw text is also ambiguous: GFM renders `\\|` in a table cell as `|`, so this command means one thing copied from the rendered page and another copied from the source. Use a single unambiguous token (`-run Dora`) or write the alternation unescaped (`-run 'Dora|Weekly|Artifact'`)", path, where, p)
-						break
-					}
-				}
-
-				// Rule 5: an unsubstituted metavariable — the row cannot run.
-				if mv := unsubstitutedMetavars(cmd); len(mv) > 0 {
-					add("%s: %s carries the unsubstituted placeholder(s) %s — the command cannot run as literally written. A verifier either gets an error instead of a verdict, or silently substitutes a value, in which case the command recorded in the brief is not the command that produced the Evidence and the row is no longer reproducible. Substitute a concrete value, or derive it in the command (a `$(…)` lookup); if the row is genuinely manual, move the placeholder out of the code span. Only bracket and ellipsis placeholder shapes are decidable from the text — one spelled as a plain word is NOT — so this check is a LOWER BOUND on the class, never the complete set", path, where, strings.Join(mv, ", "))
+				for _, f := range rowFindings(cmdCell, expect) {
+					notices = append(notices, fmt.Sprintf("%s: %s [%s] %s", path, where, f.rule, f.msg))
 				}
 			})
 		}
 	}
 	sort.Strings(notices)
 	return notices
+}
+
+// rowFinding is one defect found in one Verify row. rule is a stable,
+// greppable tag — CI steps and the row-audit inventory select on it, so it is
+// part of the interface and does not change with the wording of msg.
+type rowFinding struct {
+	rule string
+	msg  string
+}
+
+// Rule tags. Stable identifiers, one per shape.
+const (
+	ruleERELiteralPipe = "ere-literal-pipe"      // #509 — `\|` inside grep -E
+	ruleGrepZeroCount  = "grep-zero-count"       // #509 — grep -c gated on 0
+	ruleExitSwallowed  = "pipeline-exit-sunk"    // #509 — pipeline sink eats the status
+	ruleRE2LiteralPipe = "rE2-literal-pipe"      // #374 — `\|` inside go test -run/-bench
+	ruleMetavar        = "unsubstituted-metavar" // #509 — the row cannot run
+	ruleGoRunExit      = "gorun-exit"            // #493 — go run flattens the exit code
+	ruleBREAlternation = "bre-alternation"       // #262 — a pipe in a BRE grep pattern
+	ruleShreddedCell   = "shredded-cell"         // #374 — raw `|` cut the Command cell
+	ruleMovingRef      = "moving-ref"            // #639 — diff base on a moving ref
+	rulePortability    = "gnu-only"              // #650 — GNU-only construct
+)
+
+// rowFindings applies every row rule to one Verify row's Command and Expect
+// cells. It is the single implementation: unfailableRowNotices formats its
+// output, and the tests drive it directly, so a rule cannot be exercised in
+// one and silently absent from the other.
+func rowFindings(cmdCell, expect string) []rowFinding {
+	var out []rowFinding
+	add := func(rule, format string, a ...any) {
+		out = append(out, rowFinding{rule: rule, msg: fmt.Sprintf(format, a...)})
+	}
+
+	// Rule 8 first: a shredded cell means every rule below reads a TRUNCATED
+	// command, so the finding has to say the row was cut before it reports
+	// anything about what survived.
+	if truncatedCodeSpan(cmdCell) {
+		add(ruleShreddedCell, "the Command cell's code span is unterminated — a RAW `|` in the command was read as a table-cell delimiter, cutting the command at the pipe and shifting every column after it (the Expect cell shown is another fragment of the command, not an expectation). The brief therefore prints a command nobody can run, and every other row check goes blind past the cut. Escape shell pipes and regex alternations as `\\|` inside the table cell")
+	}
+
+	cmd := codeSpan(cmdCell)
+	if cmd == "" {
+		return out
+	}
+	toks := tokenizeCommand(cmd)
+	greps := grepCalls(toks)
+
+	for _, g := range greps {
+		// Rule 1: `\|` in an ERE pattern.
+		if g.extended && !g.fixed {
+			for _, p := range g.patterns {
+				if escapedPipeOutsideBracket(p) {
+					add(ruleERELiteralPipe, "uses `\\|` inside a `grep -E` pattern (%q) — in an extended regex `\\|` is a LITERAL pipe, not alternation, so the row matches almost nothing and passes whatever the file contains. The raw text is also ambiguous: GFM renders `\\|` in a table cell as `|`, so this command means one thing copied from the rendered page and another copied from the source. Write the alternatives as separate patterns (`grep -E -e alpha -e beta`), which reads identically in both. For a genuine literal pipe use a bracket class (`[\\|]`)", p)
+					break
+				}
+			}
+		}
+		// Rule 7: a pipe in a BASIC-regex grep pattern.
+		if !g.extended && !g.perl && !g.fixed {
+			for _, p := range g.patterns {
+				if pipeOutsideBracket(p) {
+					add(ruleBREAlternation, "uses a pipe inside a grep pattern (%q) with no `-E`/`-P` — that grep compiles a BASIC regex, where `|` is an ORDINARY CHARACTER. The pattern therefore searches for one long literal string, and in a brief the single line containing that string is THE VERIFY ROW ITSELF: the row returns 1, exits 0, and passes a `≥1` bar having measured nothing (#257 returned 1,1,1,1,1,1,1 against thresholds 3,3,1,3,2,3,3 this way). The `\\|` spelling is no safer — GFM renders it as a bare `|`, so the source and the rendered page are different commands, and `\\|` alternation is a GNU extension absent from POSIX BRE. Write the alternatives as separate `-e` patterns (`grep -cE -e alpha -e beta`), which carries no pipe at all and so reads identically in the source and on the rendered page. Adding `-E` alone to a `\\|` pattern only trades this defect for the mirror one, where `\\|` becomes a literal pipe in the extended regex. For a genuinely literal pipe use `-F` or a `[\\|]` bracket class", p)
+					break
+				}
+			}
+		}
+		// Rule 2: `grep -c` gated on an expected count of zero.
+		if g.count && g.last && expectsZeroCount(expect) && !forcesSuccess(toks) {
+			add(ruleGrepZeroCount, "expects a count of `0` from `grep -c`, but grep exits 1 when it matches nothing — on the success path the row FAILS, and it only passes when it finds what it was meant to prove absent. Gate on the exit status instead (`! grep -qE …`), or keep the count as output and neutralise the status (`grep -cE … || true`)")
+		}
+	}
+
+	// Rule 3: exit status swallowed by an always-zero sink.
+	if sink := pipelineSwallowsExit(toks); sink != "" {
+		add(ruleExitSwallowed, "pipes into `%s`, so the row reports `%s`'s exit status, not the check's — the command before it can fail and the row still passes. Assert on the real command (write to a file, then check it), or set `set -o pipefail`", sink, sink)
+	}
+
+	// Rule 4: `\|` in a `go test -run` / `-bench` pattern.
+	for _, p := range goTestRunPatterns(toks) {
+		if escapedPipeOutsideBracket(p.pat) {
+			add(ruleRE2LiteralPipe, "uses `\\|` inside a `go test %s` pattern (%q) — `go test %s` compiles its argument as RE2, same as `grep -E`: `\\|` there is a LITERAL pipe, not alternation, so the pattern matches no name, `go test` reports \"no tests to run\", and the row passes having run nothing. The raw text is also ambiguous: GFM renders `\\|` in a table cell as `|`, so this command means one thing copied from the rendered page and another copied from the source. Inside a table cell there is no spelling of an RE2 alternation that is unambiguous — a raw `|` is a cell delimiter and shreds the row — so do not try to fix the pattern: use a single unambiguous token (`%s Dora`), or chain single-pattern runs (`go test %s A ./... && go test %s B ./...`), or move the command into a fenced block outside the table", p.flag, p.pat, p.flag, p.flag, p.flag, p.flag)
+			break
+		}
+	}
+
+	// Rule 5: an unsubstituted metavariable — the row cannot run.
+	if mv := unsubstitutedMetavars(cmd); len(mv) > 0 {
+		add(ruleMetavar, "carries the unsubstituted placeholder(s) %s — the command cannot run as literally written. A verifier either gets an error instead of a verdict, or silently substitutes a value, in which case the command recorded in the brief is not the command that produced the Evidence and the row is no longer reproducible. Substitute a concrete value, or derive it in the command (a `$(…)` lookup); if the row is genuinely manual, move the placeholder out of the code span. Only bracket and ellipsis placeholder shapes are decidable from the text — one spelled as a plain word is NOT — so this check is a LOWER BOUND on the class, never the complete set", strings.Join(mv, ", "))
+	}
+
+	// Rule 6: `go run` under an expectation of a specific non-zero exit code.
+	if codes := expectedNonZeroExits(expect); len(codes) > 0 && goRunInvoked(toks) {
+		add(ruleGoRunExit, "expects exit code %s from a `go run` invocation — but `go run` does NOT propagate the program's status: it prints `exit status N` to stderr and itself exits 1, so every non-zero code flattens to 1 and the row cannot tell 3 from 4 from 5 from 6. `go run` also exits 1 when the package fails to COMPILE, so the row passes on a tree whose code never built. Build once and assert on the binary: `go build -o /tmp/tool ./cmd/tool && /tmp/tool …; echo $?`", strings.Join(codes, "/"))
+	}
+
+	// Rule 9: a comparison base pinned to a moving ref.
+	if refs := movingRefBases(toks); len(refs) > 0 {
+		add(ruleMovingRef, "compares against the moving ref(s) %s — the row is then a function of another branch's tip, not of the tree under test, so the identical command returns different answers as that ref advances (measured: `--consumers --base origin/main` returned exit 1 and exit 2 on consecutive runs while background commits moved main). A green run and a red run are equally unreproducible, so re-running settles nothing. Pin the base: `--base $(git merge-base origin/main HEAD)`, an explicit SHA, or the PR's own `base.sha`. `refs/remotes/origin/main` is the same moving ref by its long name, not a fix", strings.Join(refs, ", "))
+	}
+
+	// Rule 10: GNU-only constructs — the row answers differently per platform.
+	for _, c := range gnuOnlyConstructs(cmd, toks, greps) {
+		add(rulePortability, "uses %s, which is GNU-only — the row is run by whoever verifies, on macOS desks as well as ubuntu CI, and it does not mean the same thing on both. Write it %s", c, gnuOnlySubstitute[c])
+	}
+
+	return out
 }

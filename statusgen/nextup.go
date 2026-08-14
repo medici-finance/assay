@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -85,6 +86,27 @@ type NextUp struct {
 	// claims is unfiltered, and emit renders it as degraded rather than
 	// letting it pass for a filtered board.
 	Claims ClaimSource
+	// HeldByStreamCap counts eligible briefs a PER-STREAM cap held back
+	// (perStreamCap, or a stream's declared max-concurrent, or a serialized
+	// stream zeroed because claims are unknown) — as distinct from the ones the
+	// span-of-control cap held back. The board used to attribute every held-back
+	// brief to the span cap, sending a reader chasing WIP pressure to the wrong
+	// knob.
+	HeldByStreamCap int
+	// SerializedUnknown names the streams that DECLARED max-concurrent but were
+	// held back to zero because claim filtering did not run — the could-not-check
+	// state. It is reported, never silently treated as "no claims, full budget".
+	SerializedUnknown []string
+	// MeasuresGated names the briefs ("<stream>/<NN>", sorted) that would have
+	// been eligible but declare `measures: <queue>` on a queue currently over its
+	// alarm threshold — drain-before-instrument. A brief here is held back, not
+	// retired: it returns to the board the moment the queue drains.
+	MeasuresGated []string
+	// MeasuresUnknown names the briefs held back because the queue their
+	// `measures:` field points at could not be read at all (unwired or misspelled
+	// name) — the could-not-check state. Held CLOSED and NAMED: see queueBlocks
+	// for why that direction, and emit for the banner that makes it visible.
+	MeasuresUnknown []string
 }
 
 // Overflow reports whether the eligible backlog exceeds the overflow threshold —
@@ -94,6 +116,29 @@ func (n NextUp) Overflow() bool { return n.Eligible > n.Threshold }
 
 // HeldBack is the number of eligible briefs not shown (Eligible − shown).
 func (n NextUp) HeldBack() int { return n.Eligible - len(n.Picks) }
+
+// HeldBySpan is the number of eligible briefs not shown because the
+// span-of-control cap filled: everything held back that a per-stream cap did
+// not already hold back.
+func (n NextUp) HeldBySpan() int { return n.HeldBack() - n.HeldByStreamCap }
+
+// heldBackReason names WHICH cap actually held briefs back, for the overflow
+// line and the --lint NOTICE. Both used to attribute every held-back brief to
+// the span-of-control cap, which is the wrong knob whenever a per-stream cap
+// (perStreamCap, a declared max-concurrent, or a serialized stream zeroed by
+// could-not-check) is what fired — and it is the wrong knob most of the time,
+// since perStreamCap is 4 and the span is 20.
+func heldBackReason(n NextUp) string {
+	switch {
+	case n.HeldByStreamCap == 0:
+		return fmt.Sprintf("span-of-control cap %d", n.Span)
+	case n.HeldBySpan() <= 0:
+		return fmt.Sprintf("per-stream caps; span-of-control cap %d not reached", n.Span)
+	default:
+		return fmt.Sprintf("%d by per-stream caps, %d by the span-of-control cap %d",
+			n.HeldByStreamCap, n.HeldBySpan(), n.Span)
+	}
+}
 
 func priorityWeight(p string) int {
 	switch p {
@@ -165,7 +210,102 @@ func blockedCount(rev map[string][]string, status map[string]string, target stri
 	return count
 }
 
-func eligible(streams []*Stream, s *Stream, b Brief, claimed map[string]bool) bool {
+// measuredQueue is the resolved state of one process queue that a brief's
+// `measures:` field may name.
+//
+// Known is deliberately separate from Breached: "the queue is fine" and "we
+// could not find out" are different answers and must not collapse into one
+// boolean. See queueBlocks for which way the could-not-check state falls.
+type measuredQueue struct {
+	Known    bool // the depth of this queue could actually be read
+	Breached bool // the depth is over this queue's OWN alarm threshold
+}
+
+// wiredQueues resolves every process queue statusgen can measure, for the
+// drain-before-instrument gate. Exactly ONE queue is wired: verification-debt,
+// whose depth and threshold already live in debtCounts/verificationDebtThreshold
+// (mm/10). Any other name a brief writes is unresolvable here and lands in the
+// could-not-check arm of queueBlocks.
+//
+// Deliberately NOT extensible-by-guess: adding a key is a promise that a real
+// depth and a real threshold exist behind the name.
+func wiredQueues(streams []*Stream) map[string]measuredQueue {
+	return map[string]measuredQueue{
+		"verification-debt": {Known: true, Breached: debtBreached(streams)},
+	}
+}
+
+// queueBlocks decides whether a brief's `measures:` field must hold it out of
+// Next-up. It returns (blocked, unknown):
+//
+//	measures absent          → (false, false) — the neutral default. An ordinary
+//	                           brief is untouched by this gate, full stop.
+//	queue known, over        → (true,  false) — drain before you instrument.
+//	queue known, under       → (false, false) — the field is inert.
+//	queue unreadable/unknown → (true,  true)  — COULD NOT CHECK.
+//
+// The could-not-check arm FAILS CLOSED, and this is the load-bearing choice, so
+// here is the reasoning rather than an assertion:
+//
+//   - Failing open re-permits, silently, exactly the dispatch this gate exists
+//     to stop — and it does so on the briefs whose authors opted IN to being
+//     gated. The gate would be strongest when least needed and absent when a
+//     name is fat-fingered.
+//   - Failing closed hides eligible work, which is the class of bug that hid 596
+//     briefs from a dispatcher (statusgen's StaleRef broadcast, fixed in v0.8.2).
+//     That bug was dangerous because it was SILENT. So closed-plus-silent is not
+//     on the menu here: every brief held by this arm is named in
+//     NextUp.MeasuresUnknown and rendered as a COULD NOT CHECK banner, and the
+//     same bad name is a hard `--lint` PROBLEM naming the file.
+//   - The blast radius is bounded and self-selected: only briefs that wrote a
+//     `measures:` field can be held. A board where nobody wrote one cannot lose
+//     a single brief to this arm.
+//
+// Bounded, loud, and self-selected beats unbounded, silent, and universal —
+// which is the same call desk-hardening/01 made for serialized streams whose
+// in-flight set could not be read (SerializedUnknown).
+func queueBlocks(queues map[string]measuredQueue, measures *string) (blocked, unknown bool) {
+	if measures == nil {
+		return false, false
+	}
+	q, ok := queues[strings.TrimSpace(*measures)]
+	if !ok || !q.Known {
+		return true, true
+	}
+	return q.Breached, false
+}
+
+// eligible reports whether a brief may be offered on the Next-up board.
+// queues carries the resolved measured-queue state for the drain-before-
+// instrument gate; a nil map makes every `measures:` field unresolvable, i.e.
+// could-not-check (fail closed) — pass wiredQueues(streams) to gate for real.
+func eligible(streams []*Stream, s *Stream, b Brief, claimed map[string]bool, queues map[string]measuredQueue) bool {
+	if !eligibleBase(streams, s, b, claimed) {
+		return false
+	}
+	// Drain-before-instrument: a TODO brief that instruments a queue is not
+	// dispatchable while that queue is over its own alarm threshold. An
+	// eligibility exclusion exactly like claim-awareness — ZERO score-input
+	// change (F-09 boundary): a brief that survives the gate scores what it
+	// always scored.
+	//
+	// TODO only, on purpose. Excluding an in-progress brief would evict work
+	// already in flight from the board rather than prevent it being started —
+	// hiding the thing someone is holding is not the same as not handing it out.
+	if b.Status == "todo" {
+		if blocked, _ := queueBlocks(queues, b.Measures); blocked {
+			return false
+		}
+	}
+	return true
+}
+
+// eligibleBase is the eligibility rule set that does NOT depend on measured
+// queue state: stream/stale/claim exclusions plus the status, dependency and
+// wave rules. Split out so the pick loop can ask "would this brief have been
+// eligible but for the drain-before-instrument gate?" and attribute the
+// held-back brief honestly, instead of guessing.
+func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool) bool {
 	if s.Status != "active" || b.StaleRef != "" {
 		return false
 	}
@@ -330,10 +470,11 @@ func gateScores(streams []*Stream, briefTouch map[string]time.Time) []GateScore 
 // pre-14 behaviour. Aging still accumulates without bound below the cap, so value
 // and blockedCount never starve an old brief: it eventually floats regardless.
 //
-// claimed holds "stream/NN" keys (see claimedBriefs) for briefs that already
-// have an open remote branch or PR — those are excluded from the candidate set
-// so two sessions don't converge on the same pick. Pass an
-// empty/nil map to disable claim filtering.
+// claims carries the "stream/NN" claim keys (see claimedBriefs) for briefs that
+// already have an open remote branch or PR — those are excluded from the
+// candidate set so two sessions don't converge on the same pick — TOGETHER with
+// whether that claim set could actually be read (ClaimView). The zero
+// ClaimView means claim filtering did not run.
 //
 // Per-stream max-concurrent: a stream README may set
 // `max-concurrent: N` (1 <= N <= perStreamCap) to restrict its draw below the
@@ -343,9 +484,19 @@ func gateScores(streams []*Stream, briefTouch map[string]time.Time) []GateScore 
 // serialization mandate (e.g. a hardening stream with max-concurrent: 1) at the
 // board level — a stream with one claimed brief and max-concurrent: 1 offers
 // zero additional picks until the claim lifts. The cap is a zero-score-input
-// change (F-09 boundary): it gating only, never re-ranks.
-func nextUp(streams []*Stream, claimed map[string]bool, briefTouch map[string]time.Time) NextUp {
-	nu := NextUp{Span: spanOfControl, Threshold: overflowThreshold}
+// change (F-09 boundary): it gates only, never re-ranks.
+//
+// Three-state, not two: when claim filtering did NOT run, in-flight is
+// UNKNOWABLE, and the declaration cannot be honoured. A stream that DECLARED
+// max-concurrent is then held back to zero and named in SerializedUnknown —
+// offering its declared budget anyway would re-permit exactly the parallel
+// dispatch the declaration forbids, silently, on the streams that asked
+// hardest not to have it. Streams that declared NOTHING are untouched by this:
+// their semantics are precisely what they were, and the board-wide degraded
+// banner already labels them.
+func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time) NextUp {
+	claimed := claims.Claimed
+	nu := NextUp{Span: spanOfControl, Threshold: overflowThreshold, Claims: claims.Source}
 	if len(streams) == 0 {
 		return nu
 	}
@@ -382,10 +533,27 @@ func nextUp(streams []*Stream, claimed map[string]bool, briefTouch map[string]ti
 		}
 		return days
 	}
+	// Resolve the measured-queue state ONCE for the whole board: the depth is a
+	// property of the board, not of a brief, and re-deriving it per brief would
+	// be quadratic over every Evidence body on the page.
+	queues := wiredQueues(streams)
 	var all []Pick
 	for _, s := range streams {
 		for _, b := range s.Briefs {
-			if !eligible(streams, s, b, claimed) {
+			if !eligible(streams, s, b, claimed, queues) {
+				// Attribute the drain-before-instrument exclusions so the board
+				// can name them. Only a brief that was OTHERWISE eligible counts:
+				// a paused-stream or claimed brief carrying `measures:` is held by
+				// something else and must not be reported as gate pressure.
+				if blocked, unknown := queueBlocks(queues, b.Measures); blocked &&
+					b.Status == "todo" && eligibleBase(streams, s, b, claimed) {
+					id := s.Name + "/" + b.Num
+					if unknown {
+						nu.MeasuresUnknown = append(nu.MeasuresUnknown, id)
+					} else {
+						nu.MeasuresGated = append(nu.MeasuresGated, id)
+					}
+				}
 				continue
 			}
 			score := priorityWeight(s.Priority) +
@@ -396,6 +564,8 @@ func nextUp(streams []*Stream, claimed map[string]bool, briefTouch map[string]ti
 		}
 	}
 	nu.Eligible = len(all)
+	sort.Strings(nu.MeasuresGated)
+	sort.Strings(nu.MeasuresUnknown)
 	sort.Slice(all, func(i, j int) bool {
 		if all[i].Score != all[j].Score {
 			return all[i].Score > all[j].Score
@@ -413,8 +583,20 @@ func nextUp(streams []*Stream, claimed map[string]bool, briefTouch map[string]ti
 	streamCaps := map[string]int{}
 	for _, s := range streams {
 		cap := perStreamCap
-		if s.MaxConcurrent != nil && *s.MaxConcurrent < cap {
+		declared := s.MaxConcurrent != nil
+		if declared && *s.MaxConcurrent < cap {
 			cap = *s.MaxConcurrent
+		}
+		// Could-not-check: a declared max-concurrent is a request to serialize,
+		// and honouring it requires knowing what is already in flight. With no
+		// claim read there is no in-flight signal, so the request cannot be
+		// honoured — hold the stream back to zero and report it, rather than
+		// fall back to its nominal budget and re-permit the parallel dispatch
+		// the declaration exists to forbid.
+		if declared && !claims.Source.Known {
+			streamCaps[s.Name] = 0
+			nu.SerializedUnknown = append(nu.SerializedUnknown, s.Name)
+			continue
 		}
 		if claimed != nil {
 			prefix := s.Name + "/"
@@ -429,6 +611,7 @@ func nextUp(streams []*Stream, claimed map[string]bool, briefTouch map[string]ti
 		}
 		streamCaps[s.Name] = cap
 	}
+	sort.Strings(nu.SerializedUnknown)
 	perStream := map[string]int{}
 	var picks []Pick
 	for _, p := range all {
@@ -437,6 +620,7 @@ func nextUp(streams []*Stream, claimed map[string]bool, briefTouch map[string]ti
 		}
 		cap := streamCaps[p.Stream.Name]
 		if cap == 0 || perStream[p.Stream.Name] >= cap {
+			nu.HeldByStreamCap++
 			continue
 		}
 		perStream[p.Stream.Name]++

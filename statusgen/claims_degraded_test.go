@@ -238,18 +238,51 @@ func TestDegradedBoardLabelsTheEligibleCount(t *testing.T) {
 		Brief{Num: "01", Title: "One", Status: "todo"},
 		Brief{Num: "02", Title: "Two", Status: "todo"},
 	)
-	nu := nextUp([]*Stream{s}, nil, nil)
+	nu := nextUp([]*Stream{s}, ClaimView{}, nil)
 	nu.Threshold = 1 // force the overflow line
 	nu.Claims = ClaimSource{Reason: "ls-remote timed out"}
-	out := emit([]*Stream{s}, nil, nu, nil, IntakeAlarmResult{}, nil, "")
+	out := emit([]*Stream{s}, nil, nu, nil, nil, IntakeAlarmResult{}, nil, "")
 	sec := nextUpSection(t, out)
 	if !strings.Contains(sec, "UNFILTERED") {
 		t.Errorf("overflow line does not qualify its eligible count under degradation; got:\n%s", sec)
 	}
 
 	nu.Claims = ClaimSource{Known: true}
-	sec = nextUpSection(t, emit([]*Stream{s}, nil, nu, nil, IntakeAlarmResult{}, nil, ""))
+	sec = nextUpSection(t, emit([]*Stream{s}, nil, nu, nil, nil, IntakeAlarmResult{}, nil, ""))
 	if strings.Contains(sec, "UNFILTERED") {
 		t.Errorf("overflow line qualified a filtered count; got:\n%s", sec)
+	}
+}
+
+// TestDegradedBoardWithholdsSerializedStreams: a stream that declared
+// `max-concurrent` cannot be honoured on a board whose claim read failed, and
+// the board must SAY so — naming the withheld streams. The board-wide degraded
+// banner is not enough on its own: it says "these numbers are a superset",
+// which reads as an invitation to dispatch carefully, when for a serialized
+// stream the correct answer is that nothing is dispatchable at all.
+func TestDegradedBoardWithholdsSerializedStreams(t *testing.T) {
+	one := 1
+	serial := mkStream("serial", "active", "P0",
+		Brief{Num: "01", Title: "One", Status: "todo"},
+		Brief{Num: "02", Title: "Two", Status: "todo"},
+	)
+	serial.MaxConcurrent = &one
+
+	degraded := ClaimView{Claimed: map[string]bool{}, Source: ClaimSource{Reason: "ls-remote timed out"}}
+	nu := nextUp([]*Stream{serial}, degraded, nil)
+	sec := nextUpSection(t, emit([]*Stream{serial}, nil, nu, nil, nil, IntakeAlarmResult{}, nil, ""))
+
+	if !strings.Contains(sec, "COULD NOT CHECK") {
+		t.Errorf("a withheld serialized stream must be reported, not silently absent; got:\n%s", sec)
+	}
+	if !strings.Contains(sec, "serial") {
+		t.Errorf("the could-not-check line must NAME the withheld stream; got:\n%s", sec)
+	}
+
+	// A successful claim read renders no such line.
+	clean := nextUp([]*Stream{serial}, KnownClaims(map[string]bool{}), nil)
+	cleanSec := nextUpSection(t, emit([]*Stream{serial}, nil, clean, nil, nil, IntakeAlarmResult{}, nil, ""))
+	if strings.Contains(cleanSec, "COULD NOT CHECK") {
+		t.Errorf("a filtered board must not claim it could not check; got:\n%s", cleanSec)
 	}
 }

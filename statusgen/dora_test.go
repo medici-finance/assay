@@ -143,7 +143,9 @@ func TestDoraNoNumberFabricatedWhenGHUnavailable(t *testing.T) {
 }
 
 // TestDoraTextGroupedAndAntiGaming: the text render presents both families and
-// carries the anti-gaming note; un-automatable metrics show a [needs: …] marker.
+// carries the anti-gaming note; un-automatable metrics still surface a
+// [needs: …] marker — since mm/33 via the not-yet-automated footnote rather than
+// a blank family row (this fixture has no gh, so change-failure is trimmed too).
 func TestDoraTextGroupedAndAntiGaming(t *testing.T) {
 	since, until := doraWindow(t)
 	rep := computeDora(doraInputs{Since: since, Until: until, Now: until, History: loadDoraFixtureHistory(t), GitOK: true, Commits: 1})
@@ -151,6 +153,105 @@ func TestDoraTextGroupedAndAntiGaming(t *testing.T) {
 	for _, want := range []string{"Throughput", "Instability", "DIAGNOSTIC", "[needs: verify-desk|manual]"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text output missing %q\n---\n%s", want, out)
+		}
+	}
+}
+
+// doraFullInputs mirrors stubDoraSources as pure inputs: git OK, gh merged-PRs
+// OK, gh bug issues OK — the case where deployment frequency, change lead time
+// and the partial change-failure slice are all computed and only the two
+// structurally un-automatable metrics carry a needs placeholder.
+func doraFullInputs(t *testing.T) doraInputs {
+	t.Helper()
+	since, until := doraWindow(t)
+	return doraInputs{
+		Since: since, Until: until, Now: until,
+		History: loadDoraFixtureHistory(t),
+		Commits: 28, Merges: 10, GitOK: true,
+		MergedPRs: []doraPR{
+			{Number: 1, CreatedAt: mustTime(t, "2026-07-02T00:00:00Z"), MergedAt: mustTime(t, "2026-07-03T00:00:00Z")},
+			{Number: 2, CreatedAt: mustTime(t, "2026-07-05T00:00:00Z"), MergedAt: mustTime(t, "2026-07-07T00:00:00Z")},
+		},
+		GHMergedOK: true,
+		BugIssues:  1, GHBugsOK: true,
+	}
+}
+
+// TestDoraTextTrimsUnknowns (mm/33): the retro-facing text render omits metrics
+// that are permanently un-automatable (!Computed && Needs != "") from the family
+// tables and names them once in a not-yet-automated footnote. The gap must stay
+// visible — trimmed is not the same as clean, and never the same as zero.
+func TestDoraTextTrimsUnknowns(t *testing.T) {
+	rep := computeDora(doraFullInputs(t))
+	out := renderDoraText(rep)
+
+	// (a) the two un-automatable metrics are ABSENT as family-table rows. Row
+	//     form is the capitalised Name plus its Detail; the footnote lowercases.
+	for _, gone := range []string{
+		"Failed-deploy recovery time",
+		"Rework rate",
+		"broken-main→green duration is not automated",
+		"post-merge-defect classification",
+	} {
+		if strings.Contains(out, gone) {
+			t.Errorf("text render still carries trimmed row content %q\n---\n%s", gone, out)
+		}
+	}
+
+	// (b) exactly ONE not-yet-automated footnote, naming both, with the needs.
+	var notes []string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "not yet automated") {
+			notes = append(notes, l)
+		}
+	}
+	if len(notes) != 1 {
+		t.Fatalf("want exactly 1 not-yet-automated footnote, got %d\n---\n%s", len(notes), out)
+	}
+	for _, want := range []string{"failed-deploy recovery time", "rework rate", "needs: verify-desk|manual", "not zero"} {
+		if !strings.Contains(notes[0], want) {
+			t.Errorf("footnote %q missing %q", notes[0], want)
+		}
+	}
+
+	// (c) the computed metrics — including the change-failure PARTIAL row — all
+	//     still render, under both family headings.
+	for _, want := range []string{
+		"Throughput", "Instability",
+		"Deployment frequency", "Change lead time",
+		"Change failure rate", "partial", "[needs: verify-desk]",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("text render missing %q\n---\n%s", want, out)
+		}
+	}
+}
+
+// TestDoraJSONKeepsUnknowns (mm/33): the trim is text-render-only. The JSON
+// export still carries the recovery/rework keys with their unknown value, needs
+// marker and detail — a consumer must still see the could-not-compute state.
+func TestDoraJSONKeepsUnknowns(t *testing.T) {
+	stubDoraSources(t)
+	fixedNow(t, "2026-07-15T00:00:00Z")
+
+	out := captureStdout(t, func() {
+		if code := runDora("testdata/dorarepo", "2026-07-01", true); code != 0 {
+			t.Fatalf("runDora exited %d, want 0", code)
+		}
+	})
+	for _, want := range []string{`"failed_deploy_recovery_time"`, `"rework_rate"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("JSON export missing key %s\n---\n%s", want, out)
+		}
+	}
+	var rep DoraReport
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, out)
+	}
+	for _, k := range []string{doraRecovery, doraRework} {
+		m := rep.Metrics[k]
+		if m.Computed || m.Value != "unknown" || m.Needs == "" || m.Detail == "" {
+			t.Errorf("JSON %s = %+v, want unknown + needs + detail, not computed", k, m)
 		}
 	}
 }

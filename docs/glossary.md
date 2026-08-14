@@ -39,7 +39,12 @@ that stream's public-safe rewrite ships.
 
 One accountable unit — a lead plus its agent fleet — scoped as its own repo (a
 "product cell") or its own directory tree, the two adoption shapes for growing the
-methodology past a single repo. See [`adopting-assay.md`](./adopting-assay.md).
+methodology past a single repo. Cells are **independent**: an enterprise runs 10–15 of
+them, each holding its **own** `topology.yaml` stating `cell:` and a per-repo
+`relationship: owned | upstream`. A cell may file issues into a repo it does not own,
+but never modifies it and never runs jobs against it. There is no global cross-cell
+registry (a non-goal). See
+[`adopting-assay.md` § "Multi-cell topology contract"](./adopting-assay.md#5-multi-cell-topology-contract--one-topologyyaml-per-cell).
 
 ## claim
 

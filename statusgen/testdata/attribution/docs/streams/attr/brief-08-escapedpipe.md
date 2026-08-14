@@ -15,7 +15,7 @@ sources: ["s"]
 
 # Brief 08
 
-Regression fixture for assay#443: an Evidence table whose every
+Regression fixture for example-repo#443: an Evidence table whose every
 Runner cell reads `implementer (k3)`, shaped after the real-world table that
 fired the gate open (example-repo#1748,
 oracle-retention/brief-03-bounded-page-read.md). Row 10's Command cell

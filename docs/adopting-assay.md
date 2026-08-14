@@ -167,7 +167,7 @@ corrupted digest **fails** (proves the hash check is live, not decorative).
 |---|---|---|
 | **A** | **Vendor the source** — `cp -R "$SRC/statusgen/." "$TARGET/statusgen/"` | **RETIRED as a recommendation.** A vendored copy is a fork and forks rot silently: a real vendored `statusgen` fork **frozen** at an old commit, with no pin, missing `--budget` / `--changed` / multi-root — still gates a downstream repo's PRs. Use only if you genuinely cannot reach the release (fully air-gapped), and then record the fork and its base tag explicitly. |
 | **B** | **Git submodule** — add `assay` as a submodule and build `statusgen` from it | **Never recommended, and not sanctioned.** Listed only so the A–E labels stay stable against the single-sourcing design that names the same four alternatives (submodule / published module / CI fetch-and-run / copy). It pins *source* like D, adds submodule-update failure modes to every clone and CI checkout, and still hash-checks nothing. |
-| **C** | **Published Go module** — `go run github.com/medici-finance/assay/statusgen@<ver> --root .` | Rebuilds from source per run, so it verifies nothing by hash. |
+| **C** | **Published Go module** — `go run github.com/medici-finance/assay/statusgen@<ver> --root .` | **Not sanctioned.** Rebuilds from source per run, so it verifies nothing by hash — a version resolves, but no artifact is ever checked, which is the same guarantee gap as B and D without D's excuse. |
 | **D** | **CI fetch-and-run at a pinned ref** — check out `assay` at a pinned ref and `go run ./statusgen` | Was the recommendation for suites. Superseded by **E**: a pinned ref pins *source*, not the artifact, so the thing that runs is rebuilt each time and never hash-checked. Keep only where a runner cannot download release assets. |
 
 Whichever you pick, **record it** — the per-repo invocation differs by where the tool is rooted,
@@ -531,6 +531,107 @@ installing the plugin locally, installing the `.githooks` guard, writing the ros
 `--lint` / local board gen. **Escalate** (see the quick-reference table above): reviewer App creation,
 **choosing the roster values** (blessing authority, trusted logins/Apps, allowed repos), repo
 permission model, merge/push/release/ready-flip, git history rewrite, private-repo CI auth.
+
+## 5. Multi-cell topology contract — one `topology.yaml` **per cell**
+
+Past one team, an enterprise running Assay is **10–15 independent cells**: a lead plus its agent
+fleet, each accountable for its own repos. This section is the contract that keeps them
+independent. It is read before Scenario 2, because the multi-repo mechanics below assume it.
+
+**One topology file per cell — never an enterprise registry.** `topology.yaml` is one cell's
+statement about the repos *that cell* deals with. It is not a roster of every cell. A single
+central file would route every cell's roster change through a PR against one repo, restoring the
+exact coordination point cells exist to remove and making one repo's reviewers the gate on every
+other cell's org chart. An adopting cell **copies the shipped `topology.yaml` worked example into
+its own tree and edits it in place**; it does not send a PR to the toolkit.
+
+**`relationship: owned | upstream`, stated per repo.** `owned` means this cell is the repo's owner.
+`upstream` means this cell reads it and may **file issues** into it, but never modifies it and never
+runs jobs against it. Absent reads as `upstream` — least authority, so a file that says nothing
+grants nothing. An unrecognised value is a **parse error naming the line**, never a default: there
+is no third legal value, so a present-but-unknown one is a typo, and a typo that quietly defaulted
+would be indistinguishable from a stated fact.
+
+The load-bearing case is the toolkit itself. Exactly **one** cell states `medici-finance/assay:
+owned`; every other cell states it `upstream`. That is why the first edit an adopting cell makes to
+the example is flipping that one line.
+
+**Relationship is stated topology. It is NOT write authorisation.** It gates nothing, and nothing
+should ever be built that reads it to decide whether a write is permitted — that would move the
+write boundary into a tracked file. Write authorisation stays roster configuration
+(`ASSAY_ALLOWED_REPOS`), which is already per-cell-shaped: each cell's deployment sets its own.
+`deskroster repos` prints the two as **distinct sets** (write-authorisation, intake-read-scope,
+stated-topology) precisely so nobody collapses them. A repo can be `owned` and outside the write
+boundary; a repo can be inside the write boundary and `upstream`.
+
+**One owner: a mechanism in-file, a convention across cells.** A repo is `owned` by at most one
+cell. *Within* a file that is enforced — a duplicate slug is a loader error, so a repo appears once
+and carries one relationship — and a file stating `owned` while naming no `cell:` is refused
+outright, because an ownership claim with no claimant cannot be audited. *Across* cells it is an
+**audit convention**: the toolkit cell reads other cells' files and reports a collision after the
+fact. It cannot prevent one, and it is not a gate. Do not design as if it were.
+
+**No global cross-cell registry — an explicit non-goal.** Cross-cell repo references ride GitHub's
+already-global `owner/name`, so a registry would add nothing but a coordination point and a second
+copy of facts each cell already states. Cross-org work is never fully clean; the contract is
+tolerance of that, not a scheme to eliminate it.
+
+**A human in N cells is N independent grants, not N copies of one fact.** Each cell decides its own
+membership, so the same person appearing in several cells is several decisions that happen to agree
+— derive-or-diff is not violated and there is nothing to single-source. If identity drift ever
+needs checking, diff against **GitHub org membership**, never against a central identity file: a
+tracked identity file is an org chart in a tree that gets published, which is what
+`ASSAY_HUMAN_LOGIN_MAP` being operator configuration already prevents.
+
+**What holds this together mechanically.** The schema is additive and stays `topology-v1`, and each
+consuming module's compiled derivation is CI-diffed against the source. In this tree that derivation
+is `statusgen/topologyvalues.go`, bound to `topology.yaml` by `TestTopologyValuesMatchSource` — so a
+schema change reddens until the derivation demonstrates it too. A module that ships its own
+derivation adds its own drift test on the same source; a derivation with no such test is the defect.
+
+### What config alone does NOT cover
+
+Everything above says a cell is *data*. Measured against the tree, that is true of the **schema**
+and false of the **runtime**, and an adopting cell needs both halves before it starts.
+
+**True, and executed.** A second cell is expressible as a different instance of this file and
+nothing else: a different `cell:`, its own `owned` repos, `medici-finance/assay` flipped to
+`upstream`. The schema carries every field a second cell needs, and no code path is added to make
+that work — the shipped `topology.yaml` exercises each field at least once so a second instance has
+a complete worked reference to copy.
+
+**False for the shipped binaries, and this is the part prose kept quiet.** The tools ship as pinned
+standalone binaries that run from an arbitrary working directory, so they do not read
+`topology.yaml` at run time — deliberately, because a gate that needs the filesystem fails open
+when the filesystem is not the repo. They read a compiled derivation instead. So editing your
+`topology.yaml` changes nothing any installed binary does until the derivation is edited and the
+binaries are rebuilt.
+
+These are the surfaces frozen at build time — what your cell cannot change with config alone:
+
+| Frozen at build time in | What your cell cannot change with config alone |
+|---|---|
+| `statusgen/topologyvalues.go` | the system-state and decision-owed label sets, and the default release repo, that `statusgen` reasons about |
+| `tools/desk/cmd/issueboard/board.go` | the system-state and decision-owed label sets the board excludes and escalates on |
+| `tools/desk/cmd/deskrelease/cut.go` | the default repo `deskrelease` cuts a release from |
+| `tools/desk/internal/deskkit/riskpath.go` | per-repo visibility and risk-path triggers, which decide a diff's risk class |
+| `tools/desk/internal/deskkit/roots.go` | the repo → local checkout root map the multi-repo board walks |
+
+Every one of those runs against an arbitrary working directory or `--root`, which is why none of
+them can read the file at run time.
+
+**So an adopting cell's topology change is four steps, not one.** Edit `topology.yaml`; mirror it
+into each consuming module's compiled derivation — in this tree, `statusgen/topologyvalues.go` (the
+drift test names the field when you miss one); rebuild; re-pin your own binaries. Only the first is
+config. If that is more than you want to carry, the alternative is to accept the toolkit cell's
+compiled values for the surfaces above and use `topology.yaml` as documentation — which is a
+legitimate choice, but make it knowingly rather than discovering it when an edit has no effect.
+
+**What is genuinely per-cell with no rebuild** is the operator configuration these tools read from
+the environment — `ASSAY_ALLOWED_REPOS`, `ASSAY_SCAN_REPOS`, `ASSAY_TRUSTED_LOGINS`,
+`ASSAY_TRUSTED_BOT_SLUGS`, `ASSAY_HUMAN_LOGIN_MAP` (`tools/desk/internal/deskkit/rosterconfig.go`).
+That is where the write boundary lives, and it was already per-cell-shaped. The split is worth
+stating plainly: **authorisation is config; stated topology is compiled.**
 
 ---
 

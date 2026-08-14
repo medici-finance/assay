@@ -90,6 +90,14 @@ type Brief struct {
 	// legacy (marks the env-blocked segment in the
 	// segmented Awaiting board).
 	BlockedBy string
+	// Measures is the optional brief-v1 `measures:` field — the name of the
+	// process queue this brief instruments (a metric, alarm or report ABOUT that
+	// queue). nil when the field is absent, which is the neutral default: an
+	// ordinary brief is not an instrumentation brief and this field never
+	// touches it. Present (incl. "") means the drain-before-instrument gate
+	// applies — see eligible()/queueBlocks in nextup.go. An eligibility
+	// exclusion only: NEVER a Next-up score input (F-09 scope note).
+	Measures *string
 	// Evidence is the body of the `## Evidence` section from the brief file;
 	// "" when absent or legacy. Wired from BriefFile into the README row by
 	// checkBriefFiles (read at render time to

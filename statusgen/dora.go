@@ -267,19 +267,75 @@ func computeDora(in doraInputs) DoraReport {
 	return rep
 }
 
+// doraNotAutomated reports whether a metric is a not-yet-automated placeholder:
+// no computed value AND an explicit needs marker naming the missing input. This
+// is NOT the same state as a computed zero, and NOT the same as the honest
+// "no data in this window" unknown (Computed:false with an EMPTY Needs, e.g.
+// change lead time with no implemented→done transitions) — that one still
+// renders as a row, because the input IS automated and simply had nothing to
+// say. Only the could-not-compute-at-all state is trimmed to the footnote.
+func doraNotAutomated(m DoraMetric) bool { return !m.Computed && m.Needs != "" }
+
 // renderDoraText renders the report grouped throughput-then-instability, with
 // the anti-gaming note in the header. Never renders a single family alone.
+//
+// The retro-facing text render TRIMS not-yet-automated metrics (see
+// doraNotAutomated) out of the family tables — a permanently blank row teaches a
+// retro reader nothing — and names them instead in a compact footnote carrying
+// the needs marker. The gap is never silently dropped: trimmed must not read as
+// clean, and must never read as zero. The JSON export (`--dora --json`) is
+// unchanged and still carries every metric, so consumers still see the unknown.
 func renderDoraText(rep DoraReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "DORA metrics — %s … %s\n", rep.Since, rep.Until)
 	fmt.Fprintf(&b, "%s\n\n", rep.Note)
-	b.WriteString("Throughput\n")
-	for _, k := range doraThroughputKeys {
-		b.WriteString(renderDoraLine(rep.Metrics[k]))
+
+	var trimmed []DoraMetric
+	family := func(heading string, keys []string) {
+		fmt.Fprintf(&b, "%s\n", heading)
+		rows := 0
+		for _, k := range keys {
+			m := rep.Metrics[k]
+			if doraNotAutomated(m) {
+				trimmed = append(trimmed, m)
+				continue
+			}
+			b.WriteString(renderDoraLine(m))
+			rows++
+		}
+		if rows == 0 {
+			b.WriteString("  (nothing computed in this window — see the not-yet-automated note below)\n")
+		}
 	}
-	b.WriteString("\nInstability\n")
-	for _, k := range doraInstabilityKeys {
-		b.WriteString(renderDoraLine(rep.Metrics[k]))
+	family("Throughput", doraThroughputKeys)
+	b.WriteString("\n")
+	family("Instability", doraInstabilityKeys)
+
+	b.WriteString(renderDoraNotAutomated(trimmed))
+	return b.String()
+}
+
+// renderDoraNotAutomated renders the footnote for the trimmed metrics: one line
+// per distinct needs marker, listing the metric names in canonical render order.
+// In the ordinary case (recovery + rework, both needing verify-desk|manual) that
+// is exactly one line. Returns "" when nothing was trimmed.
+func renderDoraNotAutomated(trimmed []DoraMetric) string {
+	if len(trimmed) == 0 {
+		return ""
+	}
+	var order []string
+	names := map[string][]string{}
+	for _, m := range trimmed {
+		if _, seen := names[m.Needs]; !seen {
+			order = append(order, m.Needs)
+		}
+		names[m.Needs] = append(names[m.Needs], strings.ToLower(m.Name))
+	}
+	var b strings.Builder
+	b.WriteString("\n")
+	for _, needs := range order {
+		fmt.Fprintf(&b, "not yet automated (no value computed — not zero): %s  [needs: %s]\n",
+			strings.Join(names[needs], ", "), needs)
 	}
 	return b.String()
 }

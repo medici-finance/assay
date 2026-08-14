@@ -940,7 +940,9 @@ func runRoadmap(root string) int {
 	}
 
 	// Compute Next-up (reuse nextUp from nextup.go without claim filtering).
-	nu := nextUp(streams, nil, briefTouch)
+	// The zero ClaimView says so honestly, which also means a stream that
+	// declared max-concurrent is withheld here rather than shown unserialized.
+	nu := nextUp(streams, ClaimView{}, briefTouch)
 
 	// Compute exceptions.
 	exceptions := computeRoadmapExceptions(rows)

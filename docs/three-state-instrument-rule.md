@@ -63,6 +63,42 @@ A green table that was never mutation-tested is the very defect this rule closes
 Any brief that adds a *check* MUST include a mutation-test Verify row
 (§ brief-rules.md rule 16; shared-code changes additionally need a neighbour row per rule 17).
 
+## Auditing a fleet against this rule
+
+The class is closed by **coverage, not by fixing everything at once**. Enumerate every
+instrument, record what each one does when it cannot see, and give each a disposition.
+An instrument with a recorded disposition is closed even where the fix is deferred; an
+instrument nobody looked at is the open risk.
+
+One row per instrument, four columns:
+
+| Column | What goes in it |
+|--------|-----------------|
+| **Instrument** | The program, script, query, or check — named precisely enough to run. |
+| **What it prints when it cannot see** | The *literal* output. Not a paraphrase: the exact string, and the exit code beside it. This is the column that does the work — writing the real string is usually the moment the two-state ones become obvious. |
+| **States** | 2 or 3. Three requires a distinct output for could-not-check; a NOTICE on stderr while the artifact still reads clean is **two**. |
+| **Disposition** | `fixed-here` · `fixed-upstream` · `follow-up: <ref>` · `out-of-scope <why>`. |
+
+Three findings recur often enough to look for them by name:
+
+1. **An absent data source becomes an empty result set.** A "not found, return nothing"
+   branch feeds a renderer written to describe emptiness affirmatively, and
+   *"I could not read my input"* prints as *"I read it and it was clean."*
+2. **The warning and the exit code disagree.** A tool writes a real problem to stderr and
+   exits 0. Every caller checking `$?` — which is every caller — reads checked-clean.
+   Suppressing the warning with a quiet flag hides it completely.
+3. **A cap is reached but not reported.** A page limit, node cap, or result limit is hit,
+   and the count printed is a floor presented as a total.
+
+An instrument that reports a floor must say so in the same breath as the number.
+
+### The disposition is a claim, and claims get checked
+
+`fixed-upstream` means *someone else's merged change closes this*. Verify that the change
+is merged, not merely open — an open pull request fixes nothing, and an audit row that
+records an intention as an outcome is itself an instrument reporting a pass without
+looking. Record which it is.
+
 ## Application to Verify tables
 
 The three-state invariant applies to every Verify row. A row that cannot run (missing

@@ -140,11 +140,11 @@ func TestSelectOnly_PreservesManifestOrderAndDedupes(t *testing.T) {
 	}
 }
 
-// --- Claims: assay#50 reproduction ---------------------------------
+// --- Claims: claim-staleness reproduction --------------------------
 //
-// #50: a normative audit document ("night-sky/audit-2026-07-14.md") issued a
-// CUT verdict — "no such circuit exists" — that was true when written. An
-// upstream repo (reconciler#16) then merged exactly the artifact the verdict
+// A normative audit document ("example-audit/audit-2026-07-14.md") issued a
+// CUT verdict — "no such artifact exists" — that was true when written. An
+// upstream repo (example-service#16) then merged exactly the artifact the verdict
 // said didn't exist. The whole audit document's OTHER content was still
 // accurate, so nothing about the document as a whole looked wrong, and the
 // stale verdict kept instructing its removal. Nothing in the pipeline
@@ -175,7 +175,7 @@ func runGit(t *testing.T, dir string, when time.Time, args ...string) {
 }
 
 // newUpstreamRepo creates a bare-ish local git repo (the stand-in for
-// example-org/reconciler) at <root>/<name>, seeded with an initial commit
+// example-org/example-service) at <root>/<name>, seeded with an initial commit
 // dated seedDate so the repo has SOME history before the artifact under test
 // is ever reviewed.
 func newUpstreamRepo(t *testing.T, root, name string, seedDate time.Time) string {
@@ -212,7 +212,7 @@ func commitFile(t *testing.T, dir, relPath, content string, when time.Time) {
 	runGit(t, dir, when, "commit", "-q", "-m", "add "+relPath)
 }
 
-const nightSkyAnchor = `THE MOST DANGEROUS CLAIM IN EITHER DECK. No such circuit exists.`
+const exampleAuditAnchor = `THE CENTRAL CLAIM. No such artifact exists.`
 
 func writeAuditDoc(t *testing.T, root, relPath string) {
 	t.Helper()
@@ -220,83 +220,83 @@ func writeAuditDoc(t *testing.T, root, relPath string) {
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	doc := "# Night Sky audit — slide 9\n\n" + nightSkyAnchor + "\n\n" +
-		"`grep -i 'conservation|P/N|invariant'` across S1-S4 returns zero hits. CUT the sentence.\n"
+	doc := "# Example audit — item 9\n\n" + exampleAuditAnchor + "\n\n" +
+		"`grep -ri 'balance invariant'` across the modules returns zero hits. CUT the sentence.\n"
 	if err := os.WriteFile(full, []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestCheckClaim_FreshBeforeUpstreamCircuitLands(t *testing.T) {
+func TestCheckClaim_FreshBeforeUpstreamArtifactLands(t *testing.T) {
 	root := t.TempDir()
 	reviewedAt := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
-	upstreamDir := newUpstreamRepo(t, root, "reconciler", reviewedAt.AddDate(0, 0, -30))
+	upstreamDir := newUpstreamRepo(t, root, "example-service", reviewedAt.AddDate(0, 0, -30))
 
-	auditPath := "night-sky/audit-2026-07-14.md"
+	auditPath := "example-audit/audit-2026-07-14.md"
 	writeAuditDoc(t, root, auditPath)
 
 	a := artifact{Path: auditPath}
 	c := claim{
-		Anchor:       nightSkyAnchor,
+		Anchor:       exampleAuditAnchor,
 		LastReviewed: "2026-07-14",
 		Upstreams: []upstream{
-			{Repo: "reconciler", Globs: []string{"spike/midnight/circuit/**"}},
+			{Repo: "example-service", Globs: []string{"spike/example/**"}},
 		},
 	}
 
 	today := reviewedAt.AddDate(0, 0, 1)
 	stale, reason := checkClaim(a, c, today, root)
 	if stale {
-		t.Fatalf("claim should still be FRESH before the upstream circuit lands, got STALE: %s (upstream dir %s)", reason, upstreamDir)
+		t.Fatalf("claim should still be FRESH before the upstream artifact lands, got STALE: %s (upstream dir %s)", reason, upstreamDir)
 	}
 }
 
-func TestCheckClaim_StaleAfterUpstreamCircuitLands(t *testing.T) {
+func TestCheckClaim_StaleAfterUpstreamArtifactLands(t *testing.T) {
 	root := t.TempDir()
 	reviewedAt := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
-	upstreamRepoDir := newUpstreamRepo(t, root, "reconciler", reviewedAt.AddDate(0, 0, -30))
+	upstreamRepoDir := newUpstreamRepo(t, root, "example-service", reviewedAt.AddDate(0, 0, -30))
 
-	auditPath := "night-sky/audit-2026-07-14.md"
+	auditPath := "example-audit/audit-2026-07-14.md"
 	writeAuditDoc(t, root, auditPath)
 
 	a := artifact{Path: auditPath}
 	c := claim{
-		Anchor:       nightSkyAnchor,
+		Anchor:       exampleAuditAnchor,
 		LastReviewed: "2026-07-14",
 		Upstreams: []upstream{
-			{Repo: "reconciler", Globs: []string{"spike/midnight/circuit/**"}},
+			{Repo: "example-service", Globs: []string{"spike/example/**"}},
 		},
 	}
 
-	// reconciler#16 merges the day after the audit was reviewed, landing
+	// example-service#16 merges the day after the audit was reviewed, landing
 	// exactly the artifact the CUT verdict said did not exist.
 	mergedAt := reviewedAt.AddDate(0, 0, 2)
-	commitFile(t, upstreamRepoDir, "spike/midnight/circuit/pn_conservation.compact", "// P/N conservation invariant\n", mergedAt)
+	commitFile(t, upstreamRepoDir, "spike/example/invariant_check.txt", "the balance invariant\n", mergedAt)
 
 	today := mergedAt.AddDate(0, 0, 1)
 	stale, reason := checkClaim(a, c, today, root)
 	if !stale {
-		t.Fatalf("claim should be STALE once the upstream circuit lands, got FRESH")
+		t.Fatalf("claim should be STALE once the upstream artifact lands, got FRESH")
 	}
-	if !strings.Contains(reason, "pn_conservation.compact") {
+	if !strings.Contains(reason, "invariant_check.txt") {
 		t.Errorf("reason should name the upstream file that invalidated the claim, got %q", reason)
 	}
 }
 
 func TestCheckClaim_MissingAnchorReportedNotSkipped(t *testing.T) {
 	root := t.TempDir()
-	auditPath := "night-sky/audit-2026-07-14.md"
+	auditPath := "example-audit/audit-2026-07-14.md"
 	// Doc has been edited and no longer contains the exact verdict sentence.
 	full := filepath.Join(root, auditPath)
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(full, []byte("# Night Sky audit — slide 9\n\nRewritten content.\n"), 0o644); err != nil {
+	if err := os.WriteFile(full, []byte("# Example audit — item 9\n\nRewritten content.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	a := artifact{Path: auditPath}
-	c := claim{Anchor: nightSkyAnchor, LastReviewed: "2026-07-14"}
+	c := claim{Anchor: exampleAuditAnchor, LastReviewed: "2026-07-14"}
 
 	stale, reason := checkClaim(a, c, time.Now(), root)
 	if !stale {
@@ -309,35 +309,35 @@ func TestCheckClaim_MissingAnchorReportedNotSkipped(t *testing.T) {
 
 // TestRun_EndToEnd_ClaimStaleness exercises the full run() path (manifest →
 // stdout → exit code) with a claims-bearing artifact, matching how a real
-// freshness.yaml entry for a normative document like the night-sky audit
+// freshness.yaml entry for a normative document like the example audit
 // would be checked in CI.
 func TestRun_EndToEnd_ClaimStaleness(t *testing.T) {
 	root := t.TempDir()
 	reviewedAt := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
-	newUpstreamRepo(t, root, "reconciler", reviewedAt.AddDate(0, 0, -30))
-	upstreamDir := filepath.Join(root, "reconciler")
+	newUpstreamRepo(t, root, "example-service", reviewedAt.AddDate(0, 0, -30))
+	upstreamDir := filepath.Join(root, "example-service")
 
-	auditPath := "night-sky/audit-2026-07-14.md"
+	auditPath := "example-audit/audit-2026-07-14.md"
 	writeAuditDoc(t, root, auditPath)
 
 	manifest := `artifacts:
-  - path: night-sky/audit-2026-07-14.md
+  - path: example-audit/audit-2026-07-14.md
     last-reviewed: "2026-07-14"
     max-age-days: 0
     upstreams: []
     claims:
-      - anchor: "THE MOST DANGEROUS CLAIM IN EITHER DECK. No such circuit exists."
+      - anchor: "THE CENTRAL CLAIM. No such artifact exists."
         last-reviewed: "2026-07-14"
         upstreams:
-          - repo: "reconciler"
+          - repo: "example-service"
             globs:
-              - "spike/midnight/circuit/**"
+              - "spike/example/**"
 `
 	if err := os.WriteFile(filepath.Join(root, "freshness.yaml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Before reconciler#16 merges: the manifest as a whole is FRESH.
+	// Before example-service#16 merges: the manifest as a whole is FRESH.
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"--root", root, "--as-of", "2026-07-15"}, &stdout, &stderr)
 	if code != 0 {
@@ -347,9 +347,9 @@ func TestRun_EndToEnd_ClaimStaleness(t *testing.T) {
 		t.Errorf("expected a FRESH claim line before the merge, got %q", stdout.String())
 	}
 
-	// reconciler#16 merges, landing the artifact the CUT verdict denied.
+	// example-service#16 merges, landing the artifact the CUT verdict denied.
 	mergedAt := reviewedAt.AddDate(0, 0, 2)
-	commitFile(t, upstreamDir, "spike/midnight/circuit/pn_conservation.compact", "// P/N conservation invariant\n", mergedAt)
+	commitFile(t, upstreamDir, "spike/example/invariant_check.txt", "the balance invariant\n", mergedAt)
 
 	stdout.Reset()
 	stderr.Reset()
@@ -360,7 +360,7 @@ func TestRun_EndToEnd_ClaimStaleness(t *testing.T) {
 	if !strings.Contains(stdout.String(), "STALE  claim") {
 		t.Errorf("expected a STALE claim line after the merge, got %q", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "pn_conservation.compact") {
+	if !strings.Contains(stdout.String(), "invariant_check.txt") {
 		t.Errorf("expected the stale claim line to name the invalidating upstream file, got %q", stdout.String())
 	}
 	// The whole-document line stays FRESH — this is exactly the failure mode

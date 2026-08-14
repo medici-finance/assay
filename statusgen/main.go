@@ -179,6 +179,27 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	problems = append(problems, archiveProblems...)
 	notices = append(notices, archiveNotices...)
 	notices = append(notices, freshnessCheckNotices(checkStreams)...)
+	// Numbering-space collisions in docs/brief-rules.md (desk-hardening/05, #54):
+	// two branches allocating the same rule number in parallel merge cleanly and
+	// leave a citation ("brief-rule 26") that resolves to two different rules. This
+	// is the BRANCH-LOCAL half and it says so in its own output: on a branch it can
+	// only read that branch's copy, so it sees the collision after main already
+	// carries both. `statusgen mergecheck` runs the same detector over the
+	// trial-merged tree, which is where it can see it first. NOTICE severity, per
+	// mergedstatus.go's precedent — the corpus carried 2 collisions when the check
+	// was written. Declared source: statusgen/numberspace.go.
+	notices = append(notices, briefRuleNumberNotices(root)...)
+	// Merged-PR / status reconciliation (#270): a merge that
+	// names <stream>/<NN> in its branch or subject, against a README row still at
+	// todo/in-progress, means Next-up is offering work that already landed. NOTICE
+	// only this phase — promotion to PROBLEM is a later ruling, after the standing
+	// backlog of drifted rows is reconciled. Skipped outright on a tree with no
+	// .git (the unconditional NOTICE above already states that caveat); otherwise
+	// three-state, with the git read's own error surfaced as could-not-check.
+	if !hasNoGitDir(root) {
+		mergedPRs, mergedErr := mergedPRsFromGit(root)
+		notices = append(notices, mergedPRStatusNotices(checkStreams, mergedPRs, mergedErr)...)
+	}
 	// `repo:` frontmatter validation: form + one-repo-per-
 	// root agreement. Runs on the FULL stream set, not the scoped subset — repo
 	// ownership is a property of the root, so a product-scoped PR must not be able
@@ -194,6 +215,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// itself — a silent fail-open. Say so rather than run degraded in silence
 	// (review NOTE); advisory, never a hard problem.
 	notices = append(notices, registerBaseFallbackNotices(root)...)
+	// Channel-conformance sweep (distribution/05): advisory NOTICE per
+	// adopter-facing surface still teaching a non-sanctioned acquisition
+	// channel, plus an explicit could-not-check line for anything the sweep
+	// could not read and an explicit line for every KNOWN-ACCEPTED deviation.
+	// Advisory by design — it never changes the exit code — but it always
+	// prints a summary, including on a clean run, so "passed" and "did not
+	// run" are distinguishable. Declared source: statusgen/channels.go.
+	notices = append(notices, channelConformanceNotices(root)...)
 	// Human-stamp sole-writer gate: verify-gate-close.yml
 	// is the sole permitted writer of human:<name> sign-off stamps in stream-README
 	// Verified/Reviewed cells. This --lint rule flags any stamp gained on a PR
@@ -227,6 +256,24 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// brief's Verify table to green the gate is the very falsification the check
 	// exists to catch. Flip to a hard problem once the active streams are clean.
 	notices = append(notices, unfailableRowNotices(checkStreams)...)
+	// Missing EXECUTION WITNESS (ground-truth/01, #284): a brief the README
+	// calls verified/done whose Evidence carries no record that a Verify row was
+	// actually executed. NOTICE this phase for the same reason the rule above is
+	// one — every brief closed before the witness existed lacks one by
+	// construction, and hand-writing witnesses into closed briefs to green the
+	// gate would manufacture exactly the evidence the witness exists to replace.
+	// Flip to a hard problem once the active streams are backfilled.
+	notices = append(notices, witnessNotices(checkStreams)...)
+	// CONTRADICTED status cell (ground-truth/02, #284): a brief the README
+	// calls verified/done whose own Evidence carries a witness recording a
+	// FAILURE. Distinct from the NOTICE above, and a harder severity on
+	// purpose — that one is about a MISSING record (the whole inherited
+	// corpus), this one is about a record that says the opposite of the
+	// cell. Transition-scoped like unrunGateChecks below: only a closure
+	// this branch made is a PROBLEM. See witnessgate.go.
+	wgProblems, wgNotices := witnessGateChecks(root, checkStreams)
+	problems = append(problems, wgProblems...)
+	notices = append(notices, wgNotices...)
 	// Dead-link lint. BLOCKING: docFiles(root) is CLAUDE.md plus every
 	// *.md under docs/**, so its inputs INCLUDE every stream README and brief
 	// file. It is also the only check that catches a README row whose brief file
@@ -337,8 +384,11 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// transition times and the git LastTouch fallback, neither of which is
 	// populated until this point.
 	notices = append(notices, staleImplementedNotices(checkStreams, briefTouch, nowFunc())...)
-	nu := nextUp(streams, claimed, briefTouch)
-	nu.Claims = claimSource
+	// The claim set travels WITH the record of whether it could be read: the
+	// per-stream max-concurrent capping needs the difference between "nothing
+	// is claimed" and "we could not look", and nu.Claims is set from the same
+	// value rather than by a separate assignment a caller can forget.
+	nu := nextUp(streams, ClaimView{Claimed: claimed, Source: claimSource}, briefTouch)
 	// A degraded claim read is announced on stderr AND carried into the emitted
 	// board by nu.Claims. --require-claims escalates it to a hard failure for
 	// callers that must never dispatch from an unfiltered board.
@@ -355,8 +405,18 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// NOTICE as well as an in-STATUS line.
 	if nu.Overflow() {
 		notices = append(notices, fmt.Sprintf(
-			"Next-up overflow: %d of %d eligible shown, %d held back (span-of-control cap %d) — WIP pressure",
-			len(nu.Picks), nu.Eligible, nu.HeldBack(), nu.Span))
+			"Next-up overflow: %d of %d eligible shown, %d held back (%s) — WIP pressure",
+			len(nu.Picks), nu.Eligible, nu.HeldBack(), heldBackReason(nu)))
+	}
+	// Could-not-check on a stream that asked to serialize: report it as its own
+	// NOTICE. It is NOT the same condition as the board-wide degraded claim
+	// read — that one says the board is a superset; this one says specific
+	// streams are being withheld BECAUSE of it.
+	if len(nu.SerializedUnknown) > 0 {
+		notices = append(notices, fmt.Sprintf(
+			"Next-up could-not-check: %d stream(s) declare max-concurrent (%s) but claim filtering did not run — "+
+				"in-flight is unknowable, so they are held back to zero rather than offered unserialized",
+			len(nu.SerializedUnknown), strings.Join(nu.SerializedUnknown, ", ")))
 	}
 	// Decision-surface check (the "top-of-Next-up" leg):
 	// a gate:human brief PICKED for Next-up while still `todo` is about to be
@@ -390,6 +450,11 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// its current status, from the historian. Best-effort: a missing/unreadable
 	// log renders "—" everywhere, never an error — the board must still build.
 	var ages map[string]string
+	// entered is the RAW per-brief "entered its current awaiting status" time —
+	// the same derivation the rendered ages come from, kept unrendered so the
+	// per-stream age-at-gate metric can ORDER by it rather than by a display
+	// string. A nil map (unreadable historian) is honest: ages render "—", never 0.
+	var entered map[string]time.Time
 	if hist, err := LoadHistory(filepath.Join(root, filepath.FromSlash(historyRelPath))); err == nil {
 		cur := make(map[string]string)
 		for _, s := range streams {
@@ -399,10 +464,16 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 				}
 			}
 		}
+		entered = awaitingEnteredAt(hist, cur)
 		ages = awaitingAges(hist, cur, nowFunc())
 	}
+	// Age at the human gate (methodology-metrics/38) — computed OUTSIDE the
+	// history guard on purpose: a stream with a brief at the human gate must
+	// still appear on the board when the historian could not be read, wearing a
+	// "—", rather than vanishing from the section as if nothing were waiting.
+	gateAges := oldestHumanGateAges(streams, entered, nowFunc())
 
-	out := emit(streams, findings, nu, ages, intakeAlarmResult, briefTouch, rootRepoName)
+	out := emit(streams, findings, nu, ages, gateAges, intakeAlarmResult, briefTouch, rootRepoName)
 	if mode == "lint" {
 		// The PR-side gate is UNCHANGED: off-board problems still fail --lint,
 		// with the same count and the same exit code as before this split. Lint
@@ -433,7 +504,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		drift := 0
 		existing, _ := os.ReadFile(statusPath)
 		if string(existing) != out {
-			fmt.Fprintln(os.Stderr, "STATUS.md is out of date — run: go run ./tools/statusgen")
+			fmt.Fprintln(os.Stderr, staleGeneratedFileMsg("STATUS.md", root))
 			drift++
 		}
 		if rp := checkRegisterViews(root); len(rp) > 0 {
@@ -632,6 +703,44 @@ func main() {
 		os.Exit(0)
 	}
 
+	// `statusgen verifyrun` — positional subcommand (like `init` below) that
+	// EXECUTES a brief's Verify rows and writes an execution witness into its
+	// Evidence section, or audits an existing one (`--check`).
+	//
+	// Intercepted before flag parsing for the same reason `init` is: it owns its
+	// own flag namespace. That matters more here than it does for `init` — the
+	// parent parser already has a `--check` and a `--brief`, and verifyrun's
+	// mean something else entirely. Sharing them would give one flag two
+	// definitions, which is how a caller ends up auditing a witness they meant
+	// to write.
+	//
+	// It is a WRITE-capable, subprocess-spawning sub-command, so it is never run
+	// as part of `--lint`: the lint is offline and side-effect-free, and a check
+	// that executes arbitrary commands lifted out of a markdown table has no
+	// business inside it. `--lint` only NOTICEs the ABSENCE of a witness (see
+	// witnessNotices); producing one is always an explicit invocation.
+	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
+		os.Exit(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
+	// `statusgen mergecheck` — the MERGE-TIME RE-CHECK (desk-hardening/05, #54).
+	// Re-asks "is this branch still correct?" against the TRIAL-MERGED tree rather
+	// than the branch's own, which is the only tree that can show a semantic merge
+	// collision (see mergecheck.go's header).
+	//
+	// Intercepted before flag parsing for the same reason `verifyrun` and `init`
+	// are: it owns its own flag namespace, and its `--base`/`--head`/`--exec` mean
+	// nothing to the parent parser.
+	//
+	// Never part of `--lint`. The lint is offline and side-effect-free; mergecheck
+	// shells out to git, can fetch, and with --exec runs a command over an
+	// extracted tree. `--lint` carries only the branch-local NOTICE half
+	// (briefRuleNumberNotices), which is explicitly labelled as unable to see a
+	// cross-branch collision.
+	if len(os.Args) > 1 && os.Args[1] == "mergecheck" {
+		os.Exit(runMergecheck(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen init` — positional subcommand (like `git init`) that scaffolds the
 	// streams structure into a repo. Intercepted before flag parsing so first-run
 	// users get the natural `statusgen init` UX; `--root DIR` targets DIR.
@@ -674,6 +783,12 @@ func main() {
 	// needs-decision issue. Same STATUS.md-free discipline as verify-issues.
 	decisionIssuesMode := flag.Bool("decision-issues", false, "emit JSON for newly-eligible needs-decision (gate:human + implemented/verified) briefs")
 	decisionMarkers := flag.String("decision-markers", "", "file of already-existing decision-issue markers (one per line, or raw issue bodies)")
+	// Sign-off digest (methodology-metrics/38) — the BATCH view over
+	// --verify-issues' per-brief cards: one body listing EVERY brief awaiting a
+	// human sign-off, oldest-first, each with its recorded Evidence link. Same
+	// STATUS.md-free, fully offline discipline as verify-issues. Surfacing only:
+	// it reports, and never closes, flips, or nudges anything.
+	signoffDigestMode := flag.Bool("signoff-digest", false, "print the human-gate sign-off digest: every brief awaiting a human sign-off, oldest-first, with Evidence links (exits non-zero with a could-not-check body when its inputs cannot be read — never an empty digest)")
 	// Issue scanner — self-contained sub-command that reads OPEN
 	// issues across the fixed repo set (gh) and WRITES a placeholder brief per
 	// unhandled one. Never invoked by --lint (no network dependency on the offline
@@ -778,6 +893,7 @@ func main() {
 		if name := singleRootOnlySubcommand(map[string]bool{
 			"--verify-issues":   *verifyIssuesMode,
 			"--decision-issues": *decisionIssuesMode,
+			"--signoff-digest":  *signoffDigestMode,
 			"--scan-issues":     *scanIssuesMode,
 			"--close-verify":    *closeVerifyID != "",
 			"--alarms":          *alarmsMode,
@@ -854,6 +970,12 @@ func main() {
 	// implemented/verified lacking an open needs-decision issue.
 	if *decisionIssuesMode {
 		os.Exit(runDecisionIssues(*root, *decisionMarkers))
+	}
+	// Sign-off digest: the roll-up over the per-brief cards. Self-contained,
+	// STATUS.md-free, offline. Non-zero exit means could-not-check — never an
+	// empty digest standing in for an all-clear.
+	if *signoffDigestMode {
+		os.Exit(runSignoffDigest(*root))
 	}
 	// Issue scanner: self-contained, same STATUS.md-free discipline
 	// as the verify-gate modes. READ-only against GitHub — it lists issues and

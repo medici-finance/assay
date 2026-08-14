@@ -593,8 +593,8 @@ func TestExecTierMarker(t *testing.T) {
 	s.Briefs = append(s.Briefs, b)
 
 	// Next-up rendering
-	nu := nextUp([]*Stream{s}, nil, nil)
-	out := emit([]*Stream{s}, nil, nu, nil, IntakeAlarmResult{}, nil, "")
+	nu := nextUp([]*Stream{s}, ClaimView{}, nil)
+	out := emit([]*Stream{s}, nil, nu, nil, nil, IntakeAlarmResult{}, nil, "")
 	if !strings.Contains(out, "[exec:strong]") {
 		t.Errorf("Next-up output missing [exec:strong] marker:\n%s", out)
 	}
@@ -609,8 +609,8 @@ func TestExecTierMarker(t *testing.T) {
 	s2 := mkStream("beta", "active", "P1")
 	s2.Track = "platform"
 	s2.Briefs = append(s2.Briefs, b2)
-	nu2 := nextUp([]*Stream{s2}, nil, nil)
-	out2 := emit([]*Stream{s2}, nil, nu2, nil, IntakeAlarmResult{}, nil, "")
+	nu2 := nextUp([]*Stream{s2}, ClaimView{}, nil)
+	out2 := emit([]*Stream{s2}, nil, nu2, nil, nil, IntakeAlarmResult{}, nil, "")
 	if strings.Contains(out2, "[exec:strong]") {
 		t.Errorf("exec-tier any must not render [exec:strong]:\n%s", out2)
 	}

@@ -457,7 +457,7 @@ func TestBlockedPlaceholderNextUpExclusion(t *testing.T) {
 	})
 
 	// Unblocked placeholder appears in Next-up.
-	picks := nextUp(streams, nil, nil).Picks
+	picks := nextUp(streams, ClaimView{}, nil).Picks
 	found77 := false
 	found88 := false
 	for _, p := range picks {

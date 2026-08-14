@@ -221,12 +221,19 @@ func TestListRemoteBranchesTimeoutIsNamed(t *testing.T) {
 
 	// A "remote helper" on PATH that hangs: git invokes git-remote-<scheme> for
 	// an unknown URL scheme, so `hang://x` blocks until the context deadline.
+	// It deliberately IGNORES stdin — the worst-case helper — so only the
+	// process-group kill in listRemoteBranches can end it; a helper that read
+	// stdin would exit on pipe EOF and mask a regression to killing just the
+	// direct child. The Cleanup pkill is the backstop that keeps a failing run
+	// from leaving loopers behind (hundreds of day-old orphans piled up before
+	// the group kill existed).
 	bin := t.TempDir()
 	helper := filepath.Join(bin, "git-remote-hang")
 	script := "#!/bin/sh\nwhile :; do sleep 1; done\n"
 	if err := os.WriteFile(helper, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { exec.Command("pkill", "-9", "-f", bin).Run() })
 	runGit(t, dir, "remote", "add", "origin", "hang://example.invalid/repo.git")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv(remoteTimeoutEnv, "300ms")
@@ -246,6 +253,21 @@ func TestListRemoteBranchesTimeoutIsNamed(t *testing.T) {
 	}
 	if elapsed > 10*time.Second {
 		t.Fatalf("timeout not honored: took %s", elapsed)
+	}
+
+	// The timeout must kill the whole helper chain, not just `git ls-remote`.
+	// Killing only the direct child orphans git-remote-hang and its shell — in
+	// production that is a leaked ssh/transport per timed-out poll. The helper's
+	// command line contains this test's unique temp dir, so any pgrep match is a
+	// survivor from THIS run. (A PID file would race the kill: the group SIGKILL
+	// can land before the script's first line runs.)
+	deadline := time.Now().Add(5 * time.Second)
+	for exec.Command("pgrep", "-f", bin).Run() == nil {
+		if time.Now().After(deadline) {
+			survivors, _ := exec.Command("pgrep", "-fl", bin).Output()
+			t.Fatalf("remote-helper chain survived the timeout:\n%s", survivors)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

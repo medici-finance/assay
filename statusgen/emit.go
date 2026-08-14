@@ -136,17 +136,29 @@ func debtCounts(streams []*Stream) (awaiting, deskActionable, implemented, verif
 	return
 }
 
+// debtBreached reports whether the verification-debt alarm condition holds:
+// the desk-actionable Awaiting queue exceeds the fixed threshold or the total
+// done count. Factored out of debtNotice so the drain-before-instrument
+// eligibility gate (nextup.go) and the mm/10 NOTICE read the SAME predicate and
+// can never disagree about what "over threshold" means — a board that held a
+// metric brief back while printing no debt NOTICE (or the reverse) would be
+// unexplainable to the reader looking at it.
+func debtBreached(streams []*Stream) bool {
+	_, desk, _, _, done := debtCounts(streams)
+	return desk > verificationDebtThreshold || desk > done
+}
+
 // debtNotice returns a non-empty NOTICE string when the desk-actionable
 // Awaiting queue exceeds the threshold or the total done count — the
 // queue the desk can actually move is the constraint and should be drained
 // before dispatching new implementation work (retargeted at the
 // desk-actionable slice).
 func debtNotice(streams []*Stream) string {
-	_, desk, _, _, done := debtCounts(streams)
-	if desk > verificationDebtThreshold || desk > done {
-		return fmt.Sprintf("verification debt: %d desk-actionable awaiting vs %d done — the queue is the constraint; drain before dispatching new implementation work", desk, done)
+	if !debtBreached(streams) {
+		return ""
 	}
-	return ""
+	_, desk, _, _, done := debtCounts(streams)
+	return fmt.Sprintf("verification debt: %d desk-actionable awaiting vs %d done — the queue is the constraint; drain before dispatching new implementation work", desk, done)
 }
 
 // segmentGroup is a sorted group of gate-score rows belonging to one blocker
@@ -195,7 +207,9 @@ func buildSegments(gates []GateScore) []segmentGroup {
 }
 
 // emit renders STATUS.md. ages maps "<stream>/<NN>" → rendered awaiting age;
-// nil or missing ids render "—". intake carries the
+// nil or missing ids render "—". gateAges is the per-stream
+// oldest-age-at-the-human-gate metric (methodology-metrics/38), already ordered
+// oldest-stream-first; nil renders the section's zero state. intake carries the
 // untriaged-intake alarm counts for the intake-debt board line;
 // a zero-value IntakeAlarmResult (no entries parsed) renders the zero state.
 // briefTouch holds per-brief last-transition times from the historian for
@@ -204,12 +218,17 @@ func buildSegments(gates []GateScore) []segmentGroup {
 // — rendered as a banner so a multi-repo reader can tell two boards apart at a
 // glance; "" (nobody declared one) renders nothing, keeping single-repo output
 // byte-identical to the pre-multi-root generator.
-func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]string, intake IntakeAlarmResult, briefTouch map[string]time.Time, repo string) string {
+func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]string, gateAges []streamGateAge, intake IntakeAlarmResult, briefTouch map[string]time.Time, repo string) string {
 	var b strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&b, format+"\n", a...) }
 
 	w("<!-- GENERATED FILE — do not edit. Source of truth: docs/streams/*/README.md.")
-	w("     Regenerate: go run ./tools/statusgen -->")
+	// The regenerate line is DERIVED from the declared channel set
+	// (statusgen/channels.go), not written here. It is the header-hint form,
+	// not the situation-aware one: this string is persisted into STATUS.md and
+	// byte-compared by --check, so a build-dependent value would report drift
+	// between an installed binary and a `go run` CI on a file neither touched.
+	w("     Regenerate: %s -->", regenerateHeaderHint)
 	w("")
 	w("# Project Status")
 	w("")
@@ -265,16 +284,51 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 		w("%s", b)
 		w("")
 	}
+	// Could-not-check on a serialized stream. Distinct from the banner above:
+	// that one says the whole board is a superset, this one names the streams
+	// being WITHHELD because of it. Reported, never silently downgraded to
+	// "offer the declared budget anyway".
+	if len(nu.SerializedUnknown) > 0 {
+		w("> **COULD NOT CHECK — serialized streams held back.** %s declare `max-concurrent`, "+
+			"but claim filtering did not run, so what is already in flight is unknowable and the declaration "+
+			"cannot be honoured. These streams offer **nothing** on this board rather than risk the parallel "+
+			"dispatch they exist to forbid. Regenerate with a reachable `origin` to restore them.",
+			strings.Join(nu.SerializedUnknown, ", "))
+		w("")
+	}
+	// Drain-before-instrument. A brief held here has not gone anywhere — it is
+	// waiting on a queue that a person can drain — so the board says which brief,
+	// which queue, and what clears it. Silence would make the brief look retired.
+	if len(nu.MeasuresGated) > 0 {
+		w("> **DRAIN BEFORE INSTRUMENT — %d brief(s) held back:** %s. Each declares `measures:` on a queue "+
+			"that is currently over its own alarm threshold. Instrumentation is not service: the fix for a "+
+			"breached queue is to drain it, not to build another metric about it. They return to this board "+
+			"by themselves once the queue is back under threshold — nothing needs re-authoring.",
+			len(nu.MeasuresGated), strings.Join(nu.MeasuresGated, ", "))
+		w("")
+	}
+	// Could-not-check on a measured queue. Distinct from the line above: that one
+	// says the queue IS breached, this one says nobody could find out. Held back
+	// (fail closed) and named — never silently dropped, and never quietly allowed.
+	if len(nu.MeasuresUnknown) > 0 {
+		w("> **COULD NOT CHECK — %d instrumentation brief(s) held back:** %s. Each declares `measures:` on a "+
+			"queue whose depth this board cannot read, so whether the drain-before-instrument gate should "+
+			"fire is unknowable. They offer **nothing** here rather than re-permit the dispatch the gate "+
+			"exists to stop. `--lint` names the file and the bad queue name; fix the name, or wire the queue.",
+			len(nu.MeasuresUnknown), strings.Join(nu.MeasuresUnknown, ", "))
+		w("")
+	}
 	// Overflow is an alarm (SCADA / EEMUA-191): when the eligible backlog exceeds
-	// what the span-of-control cap shows, say so explicitly — never silently
-	// truncate.
+	// what the caps show, say so explicitly — never silently truncate. The
+	// held-back count names WHICH cap fired: it used to blame the span-of-control
+	// cap unconditionally, even when the per-stream caps were the whole reason.
 	if nu.Overflow() {
 		unfiltered := ""
 		if !nu.Claims.Known {
 			unfiltered = ", UNFILTERED — see the degraded notice above"
 		}
-		w("_Next-up: %d of %d eligible%s — %d held back (span-of-control cap %d). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._",
-			len(nu.Picks), nu.Eligible, unfiltered, nu.HeldBack(), nu.Span)
+		w("_Next-up: %d of %d eligible%s — %d held back (%s). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._",
+			len(nu.Picks), nu.Eligible, unfiltered, nu.HeldBack(), heldBackReason(nu))
 		w("")
 	}
 	if len(nu.Picks) == 0 {
@@ -337,6 +391,35 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 				}
 				w("| %s | %s%s | %s | %d | %d | %s | %s | %s |", s.Name, br.Num, marker, qualityToken(s, br), g.Score, g.BlockedCount, age, v, r)
 			}
+		}
+	}
+
+	// Age at the human gate (methodology-metrics/38). The awaiting board above
+	// surfaces per-row ages; this rolls them up per STREAM so the human gate's
+	// queue is as visible as the model gates' — until now only COUNTS were
+	// surfaced at the human gate, never AGES, and a brief could age at the gate
+	// for a week without any board number moving.
+	w("")
+	w("## Age at the human gate")
+	w("")
+	w("_Per stream: how long the longest-waiting `gate: human` brief has sat in its CURRENT awaiting status (implemented/verified), from the historian (`.history.jsonl`). Oldest stream first. Render-only — never a Next-up or gate-score input. `—` means the historian has no recorded transition into that status (a brief older than the log, or a fresh checkout): the age is UNKNOWN, not zero._")
+	w("")
+	w("_Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` brief sitting at implemented/verified, whereas the digest lists only those the per-brief sign-off surface has judged actionable (a recorded model verify pass behind them). A stream appearing here with no digest row is a brief waiting on its VERIFIER, not on the human — a different queue, and worth seeing separately._")
+	w("")
+	if len(gateAges) == 0 {
+		w("_No brief is awaiting the human gate._")
+	} else {
+		w("| Stream | Oldest at gate | Brief |")
+		w("|---|---|---|")
+		for _, g := range gateAges {
+			// An empty Brief means the stream IS at the gate but no listed brief
+			// has a recorded arrival — render the em dash rather than a blank
+			// cell, which reads as a rendering bug instead of a stated unknown.
+			brief := g.Brief
+			if brief == "" {
+				brief = "—"
+			}
+			w("| %s | %s | %s |", g.Stream, g.Age, brief)
 		}
 	}
 

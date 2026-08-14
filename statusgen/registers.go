@@ -810,7 +810,7 @@ func checkRegisterViews(root string) []string {
 			return []string{fmt.Sprintf("register view check: cannot read INTAKE.md: %v", err)}
 		}
 		if string(existing) != intakeView {
-			problems = append(problems, "INTAKE.md is out of date — run: go run ./tools/statusgen")
+			problems = append(problems, staleGeneratedFileMsg("INTAKE.md", root))
 		}
 	}
 
@@ -824,7 +824,7 @@ func checkRegisterViews(root string) []string {
 			return append(problems, fmt.Sprintf("register view check: cannot read FINDINGS.md: %v", err))
 		}
 		if string(existing) != findingsView {
-			problems = append(problems, "FINDINGS.md is out of date — run: go run ./tools/statusgen")
+			problems = append(problems, staleGeneratedFileMsg("FINDINGS.md", root))
 		}
 	}
 

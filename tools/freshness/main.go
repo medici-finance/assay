@@ -6,13 +6,13 @@
 //  2. Any upstream git commit newer than last-reviewed.
 //
 // An artifact may also list individual claims: specific sentences within the
-// document (e.g. a verdict like "CUT — no such circuit exists") that were
+// document (e.g. a verdict like "CUT — no such artifact exists") that were
 // only true as of a given upstream state. A whole-document review date says
 // nothing about whether ONE claim inside it silently went stale while the
 // rest of the document stayed accurate — that is precisely how a normative
 // document (an audit, a verdict list) can read as authoritative and current
-// while quietly instructing something the world has since falsified
-// (assay#50). Each claim is checked independently: its anchor text
+// while quietly instructing something the world has since falsified.
+// Each claim is checked independently: its anchor text
 // must still be present in the file, and its own upstreams/last-reviewed are
 // checked exactly like a whole-document upstream check, but scoped to that
 // one claim so the report names the stale sentence, not just the file.

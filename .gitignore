@@ -1,6 +1,6 @@
 # Go build artifacts
 /statusgen/statusgen
-/tools/pubmanifest/pubmanifest
+/tools/freshness/freshness
 *.exe
 *.test
 *.out
@@ -21,8 +21,3 @@
 /statusgen/testdata/stubroot/STATUS.md
 /statusgen/testdata/stubroot/docs/streams/INTAKE.md
 /statusgen/testdata/stubroot/docs/streams/FINDINGS.md
-
-# go build ./... inside the module drops the binary next to its source.
-/tools/daily-harvest/daily-harvest
-/tools/plugindrift/plugindrift
-/tools/canarytrap/canarytrap

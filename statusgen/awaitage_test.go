@@ -79,7 +79,7 @@ func TestEmitAwaitingAgeColumn(t *testing.T) {
 		Brief{Num: "02", Wave: 0, Status: "implemented"},
 	)
 	s.LastTouch = day(5)
-	out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, nil, nil), map[string]string{"frontend/01": "3h"}, IntakeAlarmResult{}, nil, "")
+	out := emit([]*Stream{s}, nil, nextUp([]*Stream{s}, ClaimView{}, nil), map[string]string{"frontend/01": "3h"}, nil, IntakeAlarmResult{}, nil, "")
 	for _, want := range []string{
 		"| Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |",
 		"| frontend | 01 | implemented | 2000 | 0 | 3h | — | — |",
