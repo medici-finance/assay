@@ -18,6 +18,13 @@
 // These are local-state verbs on ~/.config/assay/claims: they take the full audit line
 // and the kill switch but not the outward-write rate limit.
 //
+// SCOPE NOTE (methodology/42, 2026-08-13): the `dispatch` kind no longer belongs here. A
+// worker-desk dispatch claim is now the GitHub ref `refs/dispatch/<id>` in the target repo
+// (tools/dispatch-claim.sh) — this directory is machine-local, so it served two dispatchers on
+// one machine and did nothing for two desks on different machines, which is the case that
+// double-dispatched. The other kinds (route/file/close/verify) gate a single session's own
+// actions rather than a cross-machine hand-off and are unchanged.
+//
 // Exit codes (deskkit contract): 0 ok/noop · 3 disabled · 4 rate-limited
 // (unused here) · 5 refused · 6 unverifiable. See deskkit/exitcodes.go.
 package main
@@ -64,7 +71,7 @@ func run(args []string) int {
 	// --version / help are pure reads: no kill-switch gate, no audit line.
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
-		fmt.Printf("deskclaim sourceSHA=%s builtAt=%s\n", sha, built)
+		fmt.Printf("deskclaim sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
 		return deskkit.ExitOK
 	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {

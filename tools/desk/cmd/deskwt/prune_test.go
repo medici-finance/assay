@@ -76,6 +76,63 @@ func TestPruneRemovesMergedCleanWorktree(t *testing.T) {
 	}
 }
 
+// --- prune: bare origin/main no longer resolves to a stray local decoy (#885) -----
+//
+// The follow-up half of #885 (the ambiguity variant of #22): prune's own gates —
+// headAtOriginMainTip (`rev-parse origin/main`) and mergedToOriginMain
+// (`merge-base --is-ancestor HEAD origin/main`) — used the BARE short name. In a checkout
+// carrying a stray local `refs/heads/origin/main`, that name silently resolves to the stale
+// decoy (git prefers refs/heads/ and only warns on stderr at exit 0). A merged, stale
+// worktree then looks "fresh at origin/main" against the decoy tip and is wrongly LEFT. After
+// the fix both gates spell `refs/remotes/origin/main`, which the decoy cannot shadow, so the
+// worktree is correctly recognised as merged-below-tip and removed.
+func TestPruneResolvesRealTipNotStrayDecoy(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	// Add the worktree at the CURRENT tip BEFORE planting the decoy — add's own ambiguity
+	// guard would refuse once the stray refs/heads/origin/main exists.
+	target := addWorktree(t, "decoy")
+
+	// Advance the real remote tip one commit and plant refs/heads/origin/main at the
+	// ORIGINAL (now stale) tip — which is exactly where the fresh worktree's HEAD sits.
+	stale := plantAmbiguousBase(t, work)
+
+	// POSITIVE CONTROL (docs/three-state-instrument-rule.md, "Positive-control requirement"):
+	// from INSIDE the worktree the bare short name really does resolve to the stale decoy at
+	// exit 0, while the fully-qualified ref resolves to the real tip. Without this a green
+	// test proves only that the gate's code runs, not that the defect it intercepts is live.
+	bare, err := runGit(target, "rev-parse", "origin/main")
+	if err != nil {
+		t.Fatalf("positive control void: bare origin/main no longer resolves (%v)", err)
+	}
+	qualified, err := runGit(target, "rev-parse", "refs/remotes/origin/main")
+	if err != nil {
+		t.Fatalf("cannot resolve refs/remotes/origin/main: %v", err)
+	}
+	if bare == qualified {
+		t.Fatalf("positive control void: bare and qualified origin/main both resolve to %s "+
+			"(the stray decoy is not shadowing — re-derive the fixture)", bare)
+	}
+	if bare != stale {
+		t.Fatalf("positive control void: bare origin/main = %s, want the stale decoy %s", bare, stale)
+	}
+
+	// THE FIX: prune resolves against the real remote tip, so the stale (merged) worktree is
+	// recognised as merged-below-tip and REMOVED — not mis-read as fresh-at-tip against the
+	// decoy. On the pre-fix bare spelling headAtOriginMainTip would see HEAD == decoy and skip.
+	rc, errout := runCapErr(t, []string{"prune"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	if _, serr := os.Stat(target); !os.IsNotExist(serr) {
+		t.Fatalf("worktree %s survived prune — a gate resolved origin/main to the stale decoy "+
+			"instead of refs/remotes/origin/main; stderr:\n%s", target, errout)
+	}
+	if !strings.Contains(errout, "removed 1 merged+clean") {
+		t.Fatalf("expected the stale worktree to be removed; got:\n%s", errout)
+	}
+}
+
 // --- prune: dirty tracked tree is skipped -----------------------------------------
 
 func TestPruneSkipsDirtyTracked(t *testing.T) {

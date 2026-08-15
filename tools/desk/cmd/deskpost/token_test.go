@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -92,5 +93,82 @@ func TestMintTokenMissingAppID(t *testing.T) {
 	}
 	if !deskkit.IsUnverifiable(err) {
 		t.Fatalf("missing app-id err code = %d, want 6 (unverifiable)", deskkit.ExitCodeOf(err))
+	}
+}
+
+// --- App-credential search path (#794) -------------------------------------------
+
+// TestMintTokenUsesConfigHomeSearchPath is the #794 regression for deskpost specifically.
+// desktoken honouring ASSAY_CONFIG_HOME is not enough: deskpost mints its OWN reviewer
+// token, and while it resolved the key at a hardcoded ~/.config/assay it kept failing in
+// a fresh shell on a deployment that provisions elsewhere — with the App ID resolving
+// fine off the search path, so the failure read as a broken key rather than a wrong
+// directory. No REVIEWER_PEM here on purpose: the point is the DEFAULT resolution.
+func TestMintTokenUsesConfigHomeSearchPath(t *testing.T) {
+	setupFake(t)
+	home, _ := os.UserHomeDir()
+	t.Setenv("REVIEWER_PEM", "")
+
+	provisioned := filepath.Join(home, "vault", "provisioned")
+	if err := os.MkdirAll(provisioned, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(provisioned, "reviewer-app.pem"), reviewerPEM(t), 0o600); err != nil {
+		t.Fatalf("write pem: %v", err)
+	}
+	t.Setenv(deskkit.EnvConfigHome, provisioned)
+
+	if got, _ := resolveReviewerPEM(); got != filepath.Join(provisioned, "reviewer-app.pem") {
+		t.Fatalf("resolveReviewerPEM = %q, want the key on the search path", got)
+	}
+	tok, err := mintInstallationToken("example-org")
+	if err != nil {
+		t.Fatalf("mint from the search path: %v", err)
+	}
+	if tok != "fake-installation-token" {
+		t.Fatalf("token = %q, want fake-installation-token", tok)
+	}
+}
+
+// TestMintTokenWrongPlacedKeyRefused is the POSITIVE CONTROL for the resolver: a key that
+// exists but sits in a directory NOT on the search path must be refused (exit 6), and the
+// refusal must name every directory searched plus both knobs. A resolver that cannot find
+// its source has to fail closed and say where it looked — "found nothing, carried on" is
+// the shape that made #794 surface an hour later as an authentication failure.
+func TestMintTokenWrongPlacedKeyRefused(t *testing.T) {
+	setupFake(t)
+	home, _ := os.UserHomeDir()
+	t.Setenv("REVIEWER_PEM", "")
+	t.Setenv(deskkit.EnvConfigHome, "")
+
+	// The key is real and readable — just in a directory nothing searches.
+	stray := filepath.Join(home, "elsewhere")
+	if err := os.MkdirAll(stray, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stray, "reviewer-app.pem"), reviewerPEM(t), 0o600); err != nil {
+		t.Fatalf("write pem: %v", err)
+	}
+
+	_, err := mintInstallationToken("example-org")
+	if err == nil {
+		t.Fatal("a key off the search path must NOT mint — the resolver has to fail closed")
+	}
+	if !deskkit.IsUnverifiable(err) {
+		t.Fatalf("off-path key err code = %d, want 6 (unverifiable)", deskkit.ExitCodeOf(err))
+	}
+	for _, want := range []string{
+		"cannot read reviewer App key",
+		filepath.Join(home, ".config", "assay"),
+		deskkit.EnvConfigHome,
+		"REVIEWER_PEM",
+		"#794",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal should name %q; got: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), stray) {
+		t.Errorf("refusal names a directory it never searched (%s): %v", stray, err)
 	}
 }

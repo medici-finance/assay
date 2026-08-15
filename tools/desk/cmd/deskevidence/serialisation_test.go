@@ -100,12 +100,12 @@ func TestAuditLockIsHeldAcrossTheRemoteCall(t *testing.T) {
 // observable defect #227 describes, which is that two invocations each read a budget
 // below the cap and both write.
 //
-// Setup: RateLimitPerPRPerHour-1 charged entries are seeded, so exactly ONE write remains.
+// Setup: (effective-cap − 1) charged entries are seeded, so exactly ONE write remains.
 // Invocation A is held inside its PUT (i.e. after its AllowWrite, before its audit
 // append) while invocation B runs to completion or blocks.
 //
 //	unserialised (pre-#227): B walks straight past AllowWrite — the ledger still shows
-//	                         RateLimitPerPRPerHour-1 charged entries, because A has not
+//	                         (effective-cap − 1) charged entries, because A has not
 //	                         appended yet — and commits. putCalls == 2, B exits 0.
 //	serialised   (fixed):    B blocks on the flock until A has appended, then reads a
 //	                         spent budget. putCalls == 1, B exits 4 (rate-limited).
@@ -122,7 +122,13 @@ func TestConcurrentInvocationsCannotBothSpendTheLastWrite(t *testing.T) {
 	stdout, stderr = sw, sw
 	t.Cleanup(func() { stdout, stderr = oldOut, oldErr })
 
-	seedCharged(t, deskkit.RateLimitPerPRPerHour-1)
+	// Seed to ONE below the tool's EFFECTIVE unnumbered cap, not the base
+	// RateLimitPerPRPerHour: deskevidence carries a per-tool override (30), so seeding to the
+	// base would leave the bucket wide open and neither invocation would be the "last write".
+	// UnnumberedCapFor is the same single source the gate consults, so this pin can never
+	// drift from the override.
+	effCap := deskkit.UnnumberedCapFor(toolName)
+	seedCharged(t, effCap-1)
 
 	putEntered := make(chan struct{})
 	releaseA := make(chan struct{})
@@ -185,7 +191,8 @@ func TestConcurrentInvocationsCannotBothSpendTheLastWrite(t *testing.T) {
 		t.Errorf("putCalls = %d, want 1 — two invocations both committed past a one-write budget (#227)", puts)
 	}
 
-	// And the ledger must agree: exactly RateLimitPerPRPerHour charged entries, never more.
+	// And the ledger must agree: exactly the effective cap's worth of charged entries, never
+	// more.
 	entries := auditEntries(t)
 	charged := 0
 	for _, e := range entries {
@@ -193,8 +200,8 @@ func TestConcurrentInvocationsCannotBothSpendTheLastWrite(t *testing.T) {
 			charged++
 		}
 	}
-	if charged > deskkit.RateLimitPerPRPerHour {
-		t.Errorf("audit shows %d charged writes, over the %d cap", charged, deskkit.RateLimitPerPRPerHour)
+	if charged > effCap {
+		t.Errorf("audit shows %d charged writes, over the %d cap", charged, effCap)
 	}
 }
 

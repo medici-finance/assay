@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/topology"
 )
 
 // ---------------------------------------------------------------------------
@@ -723,5 +724,57 @@ func TestEscalateSLADaysFlag(t *testing.T) {
 	}
 	if !strings.Contains(tightOut.String(), "ESCALATE") {
 		t.Errorf("a --sla-days 0 override must classify ESCALATE; got:\n%s", tightOut.String())
+	}
+}
+
+// TestIssueboardExclusionMatchesScannerSource is the #829 regression guard: the
+// board's CREATE-PLACEHOLDER exclusion must agree with the scanner's, and both
+// must read the ONE declared source (topology.yaml labels.system_state /
+// decision_owed via package topology) — never a private forked copy.
+//
+//   - The board's excludedLabelSet() must BE topology.Compiled().SystemStateLabelSet()
+//     verbatim (single source of truth — no second hand-maintained set to drift,
+//     which is exactly the divergence #829 was).
+//   - review-request (the label issueboard's old hand copy was missing) is in that
+//     set, so a review-request-labelled open issue is NOT counted CREATE-PLACEHOLDER.
+//   - needs-human (the private human-decision review queue) is held as a decision-queue AWAIT
+//     row, not dispatched as CREATE-PLACEHOLDER work.
+func TestIssueboardExclusionMatchesScannerSource(t *testing.T) {
+	// The board reads the shared declared source, not a fork.
+	board := excludedLabelSet()
+	source := topology.Compiled().SystemStateLabelSet()
+	if len(board) != len(source) {
+		t.Fatalf("board exclusion set (%v) must equal the declared topology source (%v)", board, source)
+	}
+	for k := range source {
+		if !board[k] {
+			t.Errorf("board exclusion set is missing %q from the declared topology source — it has forked", k)
+		}
+	}
+
+	// #829: review-request is in the shared exclusion set (the entry the old hand
+	// copy was missing), so it is excluded like every other system-state label.
+	if !hasExcludedLabel([]string{"review-request"}) {
+		t.Errorf("review-request must be excluded (the #829 regression) — board set: %v", board)
+	}
+	// A review-request-labelled open issue with no placeholder must NOT be
+	// CREATE-PLACEHOLDER — it is exactly the class the scanner deliberately skips.
+	if got := classifyIssue(issueClassifyInput{open: true, excludedLabel: true}); got == actCreatePlaceholder {
+		t.Errorf("a review-request-labelled open issue must not be CREATE-PLACEHOLDER; got %s", got)
+	}
+
+	// #829: needs-human (the private human-decision review queue) is held as a decision-queue item, not
+	// dispatched as work. It is decision-owed → AWAIT (or ESCALATE past the SLA),
+	// never CREATE-PLACEHOLDER.
+	if !hasDecisionLabel([]string{"needs-human"}) {
+		t.Errorf("needs-human must be decision-owed so the board holds it in the decision queue (#829)")
+	}
+	if got := classifyIssue(issueClassifyInput{open: true, decisionOwed: true}); got == actCreatePlaceholder {
+		t.Errorf("a needs-human decision-queue issue must not be CREATE-PLACEHOLDER; got %s", got)
+	}
+	// It is also in the exclusion set (mirroring needs-decision), so the scanner
+	// half of the board's own CREATE-PLACEHOLDER guard skips it too.
+	if !hasExcludedLabel([]string{"needs-human"}) {
+		t.Errorf("needs-human must be in the shared exclusion set (mirrors needs-decision) — board set: %v", board)
 	}
 }

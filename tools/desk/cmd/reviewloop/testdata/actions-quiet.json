@@ -1,0 +1,12 @@
+{
+  "asOf": "2026-08-13T12:00:00Z",
+  "stale": false,
+  "scope": {"repos": ["example-org/example-repo"], "count": 1, "source": "compiled-in fixed set (deskkit); no flag or env widens it"},
+  "prPopulation": {"complete": true, "cap": 100},
+  "rows": [
+    {"repo": "example-org/example-repo", "number": 46, "title": "e", "action": "MERGE-CURR", "score": 5, "note": "n"},
+    {"repo": "example-org/example-repo", "number": 47, "title": "f", "action": "READY", "score": 4, "note": "n"}
+  ],
+  "tombstones": [],
+  "external": []
+}

@@ -209,7 +209,7 @@ func TestCIRequiredMatchesAllowedRepoPolicy(t *testing.T) {
 		// — platform runs a pull_request-triggered lint workflow; the
 		// three slides repos have no workflows at all.
 		"example-org/platform":                  true,  // lint.yml, `on: [pull_request]`
-		"example-org/medici-slides":             false, // no .github/workflows — 404
+		"example-org/demo-slides":               false, // no .github/workflows — 404
 		"example-org/assay-slides":              false, // no .github/workflows — 404
 		"example-org/example-reconciler-slides": false, // no .github/workflows — 404
 		"example-org/console":                   true,  // lint.yml, `on: [pull_request]`

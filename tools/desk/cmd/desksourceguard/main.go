@@ -29,7 +29,7 @@ func main() {
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
-		fmt.Fprintf(stdout, "desksourceguard sourceSHA=%s builtAt=%s\n", sha, built)
+		fmt.Fprintf(stdout, "desksourceguard sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
 		return deskkit.ExitOK
 	}
 

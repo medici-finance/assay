@@ -10,10 +10,17 @@
 // unique failure shape (tracker#566 reused `id: F-39`): two branches, each individually cut
 // correctly from origin/main, can independently pick the same register id; the collision is
 // invisible on either branch alone (each adds exactly one new, locally-unique-looking entry)
-// and today only reds main's CI after the second one merges. A separate guard covers the
-// OTHER failure shape (a fake single-parent "merge" commit) but does not reach this one — it
-// checks commit ancestry, not cross-branch content collisions, and a branch pushed this
-// carries no foreign commit at all.
+// and today only reds main's CI after the second one merges. This check is independent of
+// the foreign-commit/merge-masquerade check below — it looks at cross-branch content
+// collisions, not commit ancestry, and a branch that trips it carries no foreign commit at
+// all.
+//
+// It ALSO refuses a push carrying a foreign commit (a commit dragged in from a sibling
+// branch/PR because the worktree was cut from the wrong base) or a single-parent commit
+// masquerading as a merge — see foreigncommit.go. This is the mechanical form of the
+// worker-desk skill's manual "Pre-PR self-check" (#22, #72): the 2026-07-30
+// recurrence on #22 showed a worker briefed against this in writing do it anyway, so the
+// check now runs on every push instead of depending on a worker remembering a manual step.
 //
 // It does NOT call deskkit.Guard() — the guard must run even when the desk-tools
 // kill-switch is armed, because a stopped desk still must not orphan commits.
@@ -57,7 +64,7 @@ func main() {
 func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	if len(args) > 0 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
-		fmt.Printf("deskpushguard sourceSHA=%s builtAt=%s\n", sha, built)
+		fmt.Printf("deskpushguard sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
 		return deskkit.ExitOK
 	}
 	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help") {
@@ -147,11 +154,70 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		}
 	}
 
-	if len(blocked) > 0 || len(collisions) > 0 {
+	// Foreign-commit / merge-masquerade check (#22, #72): mechanical form of
+	// the worker-desk skill's manual "Pre-PR self-check". Local-only (no gh/network call),
+	// so it runs regardless of whether the remote/repo above was derivable.
+	var laundered []foreignRefFinding
+	var masqueraded []masqueradeRefFinding
+	var strayBased []strayBaseRefFinding
+	var unchecked []uncheckedRef
+	for _, ref := range refs {
+		found, cerr := checkForeignCommits("", ref.branch, ref.localSHA)
+		if cerr != nil {
+			// checkForeignCommits currently never returns a non-nil error (it reports
+			// could-not-check inline); kept so a future stricter variant has somewhere to report.
+			fmt.Fprintf(stderr, "deskpushguard: cannot check %s for foreign commits: %v — allowing (fail-open)\n", ref.branch, cerr)
+			continue
+		}
+		for _, f := range found.foreign {
+			laundered = append(laundered, foreignRefFinding{branch: ref.branch, commit: f})
+		}
+		for _, m := range found.masquerades {
+			masqueraded = append(masqueraded, masqueradeRefFinding{branch: ref.branch, commit: m})
+		}
+		for _, s := range found.strayBases {
+			strayBased = append(strayBased, strayBaseRefFinding{branch: ref.branch, base: s})
+		}
+		for _, r := range found.indeterminate {
+			unchecked = append(unchecked, uncheckedRef{branch: ref.branch, reason: r})
+		}
+	}
+
+	// COULD-NOT-CHECK is announced BEFORE any verdict, and whether or not the push is refused.
+	// Silence used to mean two different things — "looked, found nothing" and "could not
+	// look" — and only one of them is safe. Per brief-10 a client-side hook does not wedge a
+	// push on indeterminacy, so this warns and audits rather than refusing; what it must never
+	// do is let an unverifiable base pass as a verified one.
+	if len(unchecked) > 0 {
+		for _, u := range unchecked {
+			fmt.Fprintf(stderr, "deskpushguard: COULD-NOT-CHECK the base of %s: %s. This is NOT "+
+				"a clean bill of health — the base was never verified. Allowing the push "+
+				"(fail-open, brief-10); re-check by hand with `git log refs/remotes/origin/main..HEAD`.\n",
+				u.branch, u.reason)
+		}
+		auditUnchecked(stderr, unchecked)
+	}
+
+	if len(blocked) > 0 || len(laundered) > 0 || len(masqueraded) > 0 || len(strayBased) > 0 || len(collisions) > 0 {
 		for _, b := range blocked {
 			msg := fmt.Sprintf("refusing: PR #%d for %s is %s — a merged/closed PR is DONE; open a NEW branch for follow-up.",
 				b.pr, b.branch, b.state)
 			fmt.Fprintln(stderr, msg)
+		}
+		for _, l := range laundered {
+			// The remediation is spelled refs/remotes/origin/main deliberately: the bare
+			// `origin/main` form this message used to suggest is exactly what produces the
+			// stray-base cut below when a refs/heads/origin/main exists.
+			fmt.Fprintf(stderr, "refusing: %s: commit %s (%q) is also reachable from %s — foreign commit dragged in from a sibling branch, not main. Re-cut with `git worktree add <path> refs/remotes/origin/main --detach` (#22).\n",
+				l.branch, shortSHA(l.commit.sha), l.commit.subject, l.commit.sourceBranch)
+		}
+		for _, s := range strayBased {
+			fmt.Fprintf(stderr, "refusing: %s: branch point %s is the tip of the STRAY LOCAL branch refs/heads/origin/main, not refs/remotes/origin/main (%s)%s — this ref was cut from a stale shadow of main. `git worktree add <path> origin/main --detach` picks refs/heads/ over refs/remotes/ and only warns. Re-cut with `git worktree add <path> refs/remotes/origin/main --detach` (#22).\n",
+				s.branch, shortSHA(s.base.strayTip), shortSHA(s.base.trueBase), behindPhrase(s.base.behind))
+		}
+		for _, m := range masqueraded {
+			fmt.Fprintf(stderr, "refusing: %s: commit %s (%q) claims to be a merge but has fewer than two parents — fake rebase masquerade (#72).\n",
+				m.branch, shortSHA(m.commit.sha), m.commit.subject)
 		}
 		for _, c := range collisions {
 			fmt.Fprintf(stderr, "refusing: %s: register entry %s claims id %q, already claimed by %s on %s — rename/re-derive the id before pushing.\n",
@@ -159,6 +225,9 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		}
 		if len(blocked) > 0 {
 			auditBlock(stderr, blocked)
+		}
+		if len(laundered) > 0 || len(masqueraded) > 0 || len(strayBased) > 0 {
+			auditForeign(stderr, laundered, masqueraded, strayBased)
 		}
 		if len(collisions) > 0 {
 			auditRegisterCollision(stderr, collisions)
@@ -178,6 +247,40 @@ type blockedRef struct {
 	branch string
 	pr     int
 	state  string
+}
+
+// foreignRefFinding pairs a laundered commit with the ref it was found on.
+type foreignRefFinding struct {
+	branch string
+	commit foreignCommit
+}
+
+// strayBaseRefFinding pairs a stray-base cut with the ref it was found on.
+type strayBaseRefFinding struct {
+	branch string
+	base   strayBase
+}
+
+// uncheckedRef pairs a could-not-check reason with the ref whose base could not be verified.
+type uncheckedRef struct {
+	branch string
+	reason string
+}
+
+// behindPhrase renders the commit-count clause of the stray-base diagnostic, omitting it when
+// the count could not be taken (behind < 0) rather than printing a misleading "0 commits".
+func behindPhrase(behind int) string {
+	if behind < 0 {
+		return ""
+	}
+	return fmt.Sprintf(", leaving it %d commit(s) behind main", behind)
+}
+
+// masqueradeRefFinding pairs a single-parent merge-masquerade commit with the ref it was
+// found on.
+type masqueradeRefFinding struct {
+	branch string
+	commit mergeMasquerade
 }
 
 func parseRef(line string) (refLine, bool) {
@@ -322,6 +425,57 @@ func auditBlock(stderr io.Writer, blocked []blockedRef) {
 		Tool:   "deskpushguard",
 		Verb:   "pre-push",
 		Result: deskkit.ResultRefused,
+		Detail: detail,
+	}); err != nil {
+		fmt.Fprintf(stderr, "deskpushguard: audit log error: %v\n", err)
+	}
+}
+
+// auditForeign logs an audit entry recording which branches were blocked for carrying a
+// foreign (laundered) commit, a single-parent merge masquerade, or a stray-base cut
+// (#22, #72).
+func auditForeign(stderr io.Writer, laundered []foreignRefFinding, masqueraded []masqueradeRefFinding, strayBased []strayBaseRefFinding) {
+	parts := make([]string, 0, len(laundered)+len(masqueraded)+len(strayBased))
+	for _, l := range laundered {
+		parts = append(parts, fmt.Sprintf("%s: foreign-commit %s from %s", l.branch, shortSHA(l.commit.sha), l.commit.sourceBranch))
+	}
+	for _, m := range masqueraded {
+		parts = append(parts, fmt.Sprintf("%s: merge-masquerade %s", m.branch, shortSHA(m.commit.sha)))
+	}
+	for _, s := range strayBased {
+		parts = append(parts, fmt.Sprintf("%s: stray-base cut from refs/heads/origin/main %s", s.branch, shortSHA(s.base.strayTip)))
+	}
+	detail := fmt.Sprintf("refused push carrying foreign/laundered commits: %s", strings.Join(parts, ", "))
+	if err := deskkit.Log(deskkit.Entry{
+		Tool:   "deskpushguard",
+		Verb:   "pre-push",
+		Result: deskkit.ResultRefused,
+		Detail: detail,
+	}); err != nil {
+		fmt.Fprintf(stderr, "deskpushguard: audit log error: %v\n", err)
+	}
+}
+
+// auditUnchecked records the refs whose base could NOT be verified.
+//
+// Result class is ResultUnwritten (#448), not ResultRefused and not ResultOK. ResultRefused is
+// a POSITIVE compiled-in determination ("this is disallowed") and nothing was determined here;
+// ResultOK would assert a clean bill of health the tool does not have. ResultUnwritten is
+// exactly this epistemic state — "a local determination came back short, and no outward write
+// was attempted by this tool" — and it is non-charging, which is right for a check that never
+// touches a remote. The push itself is still allowed (brief-10 fail-open, exit 0); what the
+// audit line guarantees is that reading the log back later distinguishes a push that went out
+// UNVERIFIED from one that was checked and found clean.
+func auditUnchecked(stderr io.Writer, unchecked []uncheckedRef) {
+	parts := make([]string, len(unchecked))
+	for i, u := range unchecked {
+		parts[i] = fmt.Sprintf("%s: %s", u.branch, u.reason)
+	}
+	detail := fmt.Sprintf("base NOT verified (could-not-check), push allowed fail-open: %s", strings.Join(parts, "; "))
+	if err := deskkit.Log(deskkit.Entry{
+		Tool:   "deskpushguard",
+		Verb:   "pre-push",
+		Result: deskkit.ResultUnwritten,
 		Detail: detail,
 	}); err != nil {
 		fmt.Fprintf(stderr, "deskpushguard: audit log error: %v\n", err)

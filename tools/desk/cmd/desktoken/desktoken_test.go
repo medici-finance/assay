@@ -111,12 +111,19 @@ func makeInstallTokenServer(t *testing.T, installs []installationInfo, token, ex
 
 // setupTest points HOME to a temp dir, disables the kill switch, sets env
 // vars for the deskkit runtime, and returns the home dir path.
+//
+// It also CLEARS ASSAY_CONFIG_HOME. The knob prepends a directory to the
+// App-credential search path, so a developer who exports it in their own shell
+// would otherwise have every test here probe their real config home — the run
+// would pass or fail on a directory the test never created, which is the same
+// class of "resolved somewhere unnamed" bug #794 is about.
 func setupTest(t *testing.T) string {
 	t.Helper()
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test-session")
+	t.Setenv(deskkit.EnvConfigHome, "")
 	return homeDir
 }
 
@@ -872,6 +879,248 @@ func TestMintPathWorkerDefaultOwner(t *testing.T) {
 	// Token value must not leak.
 	if strings.Contains(stdout, "ghs_worker_default") {
 		t.Fatalf("token value leaked to stdout: %s", stdout)
+	}
+}
+
+// --- App-credential search path (#794) -------------------------------------------
+
+// TestColdShellMintFromProvisionedConfigHome is the #794 regression, end to end and in
+// the exact shape that was reported: the App key and apps.env are provisioned outside
+// the shipped default, reached by putting that directory at the head of the search path
+// (ASSAY_CONFIG_HOME) — the mechanism a deployment whose provisioning writes App material
+// somewhere other than the default must use. ~/.config/assay holds only roster.env,
+// NOTHING is exported, and no cached token exists (a cold shell more than 50 minutes
+// into a session).
+//
+// Before the fix there was no search path at all: the tools always read
+// ~/.config/assay/worker-app.pem and returned exit 6 "private key not found" whenever
+// provisioning had written the key elsewhere. In a live session the failure did not even
+// surface immediately: the desk kept running on a still-warm cache and it appeared an
+// hour later as a push "Authentication failed" against an empty token file, which is why
+// this asserts the COLD path (no cache seeded at all) rather than the convenient one.
+func TestColdShellMintFromProvisionedConfigHome(t *testing.T) {
+	homeDir := setupTest(t)
+	// Nothing exported: the App ID must come off disk too, or the test proves only
+	// half the resolution.
+	t.Setenv("WORKER_APP_ID", "")
+	t.Setenv("WORKER_INSTALL_ID", "")
+	t.Setenv("WORKER_PEM", "")
+	t.Setenv("WORKER_TOKEN", "")
+
+	const installID = "666000111"
+	provisionedDir := filepath.Join(homeDir, "vault", "provisioned")
+	t.Setenv(deskkit.EnvConfigHome, provisionedDir)
+	writeFileMode(t, filepath.Join(provisionedDir, "worker-app.pem"), makePEM(t), 0o600)
+	writeFileMode(t, filepath.Join(provisionedDir, "apps.env"),
+		"# desk App family\nexport WORKER_APP_ID=555555\n", 0o600)
+	// ~/.config/assay exists with roster.env ONLY — the reported state, and a reminder
+	// that ASSAY_CONFIG_HOME deliberately does not move roster.env. The shipped default
+	// stays on the search path; it just has no App material to win with.
+	writeFileMode(t, filepath.Join(homeDir, ".config", "assay", "roster.env"),
+		"ASSAY_BLESS_LOGIN=someone:1\n", 0o600)
+
+	installs := []installationInfo{
+		{ID: 666000111, Account: struct {
+			Login string `json:"login"`
+		}{Login: "example-org"}},
+	}
+	srv, recordedPaths := makeInstallTokenServer(t, installs, "fake-token-cold-shell", "2124-01-01T00:00:00Z")
+	defer srv.Close()
+	oldClient := httpClient
+	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
+	defer func() { httpClient = oldClient }()
+
+	rc, stdout, stderr := runCap(t, []string{"worker", "--repo", "example-org/tracker"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("cold-shell mint rc = %d, want 0; stderr: %s", rc, stderr)
+	}
+	if len(*recordedPaths) == 0 {
+		t.Fatal("no access_tokens request — the mint never happened")
+	}
+
+	// The cache lands in the SAME directory the key was read from. A token written to
+	// ~/.config/assay while the key lives at the head of the search path is the split
+	// this fixes: it would "work" for 50 minutes and then fail exactly as #794 describes.
+	wantToken := filepath.Join(provisionedDir, "worker-token-"+installID)
+	if !strings.Contains(stdout, wantToken) {
+		t.Fatalf("stdout should name the token cache %s; got: %s", wantToken, stdout)
+	}
+	if _, err := os.Stat(wantToken); err != nil {
+		t.Fatalf("token cache not written to the config home: %v", err)
+	}
+	strayToken := filepath.Join(homeDir, ".config", "assay", "worker-token-"+installID)
+	if _, err := os.Stat(strayToken); err == nil {
+		t.Fatalf("token cached at %s — key dir and cache dir must be the SAME directory", strayToken)
+	}
+	if strings.Contains(stdout, "fake-token-cold-shell") {
+		t.Fatalf("token value leaked to stdout: %s", stdout)
+	}
+}
+
+// TestConfigHomeHeadWinsOverDefault — the knob PREPENDS, and the head of the search path
+// is what a provisioned directory wins with even when the shipped default is also fully
+// provisioned. This is the escape hatch that keeps the fix from being another hardcoded
+// guess; without the ordering assertion, a deployment could read its key from one
+// directory and still cache the token in the other.
+func TestConfigHomeHeadWinsOverDefault(t *testing.T) {
+	homeDir := setupTest(t)
+	t.Setenv("WORKER_APP_ID", "")
+	t.Setenv("WORKER_INSTALL_ID", "")
+	t.Setenv("WORKER_PEM", "")
+	t.Setenv("WORKER_TOKEN", "")
+
+	pinned := filepath.Join(homeDir, "vault", "app-keys")
+	t.Setenv(deskkit.EnvConfigHome, pinned)
+	writeFileMode(t, filepath.Join(pinned, "worker-app.pem"), makePEM(t), 0o600)
+	writeFileMode(t, filepath.Join(pinned, "apps.env"), "export WORKER_APP_ID=555555\n", 0o600)
+	// A fully provisioned shipped default that must LOSE to the head of the search path.
+	writeFileMode(t, filepath.Join(homeDir, ".config", "assay", "worker-app.pem"), makePEM(t), 0o600)
+	writeFileMode(t, filepath.Join(homeDir, ".config", "assay", "apps.env"),
+		"export WORKER_APP_ID=999999\n", 0o600)
+
+	const installID = "666000222"
+	installs := []installationInfo{
+		{ID: 666000222, Account: struct {
+			Login string `json:"login"`
+		}{Login: "example-org"}},
+	}
+	srv, _ := makeInstallTokenServer(t, installs, "fake-token-pinned", "2124-01-01T00:00:00Z")
+	defer srv.Close()
+	oldClient := httpClient
+	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
+	defer func() { httpClient = oldClient }()
+
+	rc, stdout, stderr := runCap(t, []string{"worker", "--repo", "example-org/tracker"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("head-of-search-path mint rc = %d, want 0; stderr: %s", rc, stderr)
+	}
+	wantToken := filepath.Join(pinned, "worker-token-"+installID)
+	if !strings.Contains(stdout, wantToken) {
+		t.Fatalf("stdout should name %s; got: %s", wantToken, stdout)
+	}
+	strayToken := filepath.Join(homeDir, ".config", "assay", "worker-token-"+installID)
+	if _, err := os.Stat(strayToken); err == nil {
+		t.Fatalf("token cached at %s — the default must not receive the write when the knob is set", strayToken)
+	}
+}
+
+// TestKeyMissingNamesTheKnobs — when the key really is nowhere, the message has to move
+// the reader toward the SEARCH LOCATIONS, not just repeat one path. The bare
+// "private key not found at <path>" that #794 produced sent a session hunting for a
+// missing file that was never missing. This is the positive control for the refusal: an
+// unprovisioned config home, proven to fail closed at exit 6 with every searched
+// directory and both knobs named.
+func TestKeyMissingNamesTheKnobs(t *testing.T) {
+	homeDir := setupTest(t)
+	t.Setenv("REVIEWER_APP_ID", "12345")
+	t.Setenv("REVIEWER_PEM", "")
+	// No PEM anywhere; the head of the search path exists but holds nothing.
+	empty := filepath.Join(homeDir, "vault", "empty")
+	if err := os.MkdirAll(empty, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv(deskkit.EnvConfigHome, empty)
+
+	rc, _, stderr := runCap(t, []string{"reviewer"})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("missing key rc = %d, want 6; stderr: %s", rc, stderr)
+	}
+	for _, want := range []string{
+		"private key not found", deskkit.EnvConfigHome, "REVIEWER_PEM",
+		empty, filepath.Join(homeDir, ".config", "assay"),
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr should mention %q; got: %s", want, stderr)
+		}
+	}
+}
+
+// --- --fresh flag (permission-change re-mint) -----------------------------------
+
+// TestFreshDeletesCacheAndPermsThenMints is the #571 remediation: after a GitHub-App
+// permission change the cached token still carries the OLD grant for the rest of the ~50-min
+// reuse window, and its .perms sidecar (which `deskroster preflight` reads for the app-scopes
+// check) is only rewritten on a FRESH mint. --fresh must therefore delete BOTH the cached
+// token and its sidecar before minting, so a fresh token — and a fresh grant record — is
+// produced even when the cache is well within the reuse window.
+func TestFreshDeletesCacheAndPermsThenMints(t *testing.T) {
+	homeDir := setupTest(t)
+	t.Setenv("REVIEWER_APP_ID", "12345")
+	t.Setenv("REVIEWER_INSTALL_ID", "100000004")
+	writeFileMode(t, filepath.Join(homeDir, ".config", "assay", "reviewer-app.pem"), makePEM(t), 0o600)
+
+	// A FRESH cache (5 min old) that a plain mint would reuse, plus a stale .perms sidecar
+	// carrying the OLD (pre-change) grant.
+	tokenPath := filepath.Join(homeDir, ".config", "assay", "reviewer-token-100000004")
+	writeTokenCache(t, tokenPath, "ghs_stale_cached_token")
+	permsPath := tokenPath + ".perms"
+	writeFileMode(t, permsPath, `{"contents":"read"}`, 0o600)
+	mtime := time.Now().Add(-5 * time.Minute)
+	_ = os.Chtimes(tokenPath, mtime, mtime)
+	_ = os.Chtimes(permsPath, mtime, mtime)
+
+	// The mint server returns a fresh token with the NEW grant (contents:write).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(201)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"token":       "ghs_fresh_after_perm_change",
+			"expires_at":  "2124-01-01T00:00:00Z",
+			"permissions": map[string]string{"contents": "write", "pull_requests": "write", "issues": "write"},
+		})
+	}))
+	defer srv.Close()
+	oldClient := httpClient
+	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
+	defer func() { httpClient = oldClient }()
+
+	rc, stdout, stderr := runCap(t, []string{"reviewer", "--fresh"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("--fresh rc = %d, want 0; stderr: %s", rc, stderr)
+	}
+	// The cache now holds the freshly minted token, not the stale one.
+	data, err := os.ReadFile(tokenPath)
+	if err != nil {
+		t.Fatalf("read token cache: %v", err)
+	}
+	if string(data) != "ghs_fresh_after_perm_change" {
+		t.Fatalf("cache = %q, want the freshly minted token — --fresh did not force a mint", string(data))
+	}
+	// The .perms sidecar was rewritten with the NEW grant (contents now write).
+	perms, err := os.ReadFile(permsPath)
+	if err != nil {
+		t.Fatalf("read perms sidecar: %v", err)
+	}
+	if !strings.Contains(string(perms), `"contents":"write"`) {
+		t.Fatalf("perms sidecar = %q, want the new grant (contents:write) — sidecar not refreshed", string(perms))
+	}
+	// The token value never leaks.
+	if strings.Contains(stdout, "ghs_fresh_after_perm_change") {
+		t.Fatalf("token value leaked to stdout: %s", stdout)
+	}
+}
+
+// TestFreshWithNoCacheStillMints — --fresh is idempotent: a missing cache/sidecar is not an
+// error, the mint proceeds normally.
+func TestFreshWithNoCacheStillMints(t *testing.T) {
+	homeDir := setupTest(t)
+	t.Setenv("REVIEWER_APP_ID", "12345")
+	t.Setenv("REVIEWER_INSTALL_ID", "100000004")
+	writeFileMode(t, filepath.Join(homeDir, ".config", "assay", "reviewer-app.pem"), makePEM(t), 0o600)
+
+	srv, _, _ := makeTokenServer(t, "ghs_minted_fresh_nocache", "2124-01-01T00:00:00Z")
+	defer srv.Close()
+	oldClient := httpClient
+	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
+	defer func() { httpClient = oldClient }()
+
+	rc, stdout, stderr := runCap(t, []string{"reviewer", "--fresh"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("--fresh with no cache rc = %d, want 0; stderr: %s", rc, stderr)
+	}
+	tokenPath := filepath.Join(homeDir, ".config", "assay", "reviewer-token-100000004")
+	if !strings.Contains(stdout, tokenPath) {
+		t.Fatalf("stdout should name the token path %s; got: %s", tokenPath, stdout)
 	}
 }
 

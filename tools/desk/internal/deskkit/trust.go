@@ -42,6 +42,54 @@ func TrustedAuthor(login string) bool {
 	return c.Logins[strings.ToLower(login)]
 }
 
+// TrustedPublicAuthor reports whether login may have a PR AUTO-REVIEWED on a
+// PUBLIC (risk-classed) repo. The bar is deliberately HIGHER than TrustedAuthor:
+// only the role Apps (ASSAY_TRUSTED_BOT_SLUGS, matched on their `<slug>[bot]` /
+// `app/<slug>` rendering) and the real, accountable humans in
+// ASSAY_HUMAN_LOGIN_MAP qualify. A shared machine account admitted to
+// ASSAY_TRUSTED_LOGINS as a human — an org push/token account, not an
+// accountable role — confers NO public-review trust, and a bare slug never does
+// (username-squatting fail-close, parity with expectedID). Public repos accept
+// fork PRs from ANY account, so auto-engaging an untrusted diff would spend the
+// reviewer App's identity on hostile input and blur the fork-PR trust boundary
+// (#943). Empty/unknown logins and an unconfigured roster are untrusted (fail
+// closed). Private-repo review is unaffected — that path keeps using
+// TrustedAuthor, which additionally honours ASSAY_TRUSTED_LOGINS.
+func TrustedPublicAuthor(login string) bool {
+	if login == "" {
+		return false
+	}
+	c := EffectiveConfig()
+	if !c.Configured() {
+		return false
+	}
+	l := strings.ToLower(strings.TrimSpace(login))
+	if l == "" {
+		return false
+	}
+	// A role App, matched on its rendered form against the configured bot slugs.
+	// Map MEMBERSHIP (not id != 0) so an unpinned bot slug still qualifies; the
+	// bare slug is never accepted.
+	switch {
+	case strings.HasSuffix(l, "[bot]"):
+		if _, ok := c.Bots[strings.TrimSuffix(l, "[bot]")]; ok {
+			return true
+		}
+	case strings.HasPrefix(l, "app/"):
+		if _, ok := c.Bots[strings.TrimPrefix(l, "app/")]; ok {
+			return true
+		}
+	}
+	// A mapped, accountable human (ASSAY_HUMAN_LOGIN_MAP `name:login`). The map is
+	// name→login; the login is the value. Case-insensitive, like every login match.
+	for _, mapped := range c.HumanLogins {
+		if strings.EqualFold(mapped, l) {
+			return true
+		}
+	}
+	return false
+}
+
 // expectedID resolves a trusted login (any accepted rendered form) to its pinned
 // numeric id. ok is false for logins outside the trusted set.
 func expectedID(login string) (id int64, ok bool) {
@@ -362,6 +410,31 @@ func RoleAppLoginOrEmpty(role string) string {
 		return "(unbound role " + strings.ToLower(role) + ")"
 	}
 	return login
+}
+
+// RoleBotCommitIdentity returns the git commit identity (name, email) a desk role's App must
+// author with — "<slug>[bot]" and "<botUserID>+<slug>[bot]@users.noreply.github.com" — with
+// BOTH the slug and the deployment-specific numeric bot USER id sourced from the roster
+// (ASSAY_TRUSTED_BOT_SLUGS), never a source literal. The bot USER id is a real, per-deployment
+// account id: baking it into a source constant leaks it into the publicly-staged tool, which is
+// what the tree sweep refuses. (#638 is the separate rule that the email PREFIX must be the bot
+// USER id, not the App id, so a commit links to an account; this keeps that id in config.) ok is
+// false when the role is unbound or its bot user id is unpinned (0), so the caller refuses
+// rather than stamping an account-unlinked or empty identity.
+func RoleBotCommitIdentity(role string) (name, email string, ok bool) {
+	c := EffectiveConfig()
+	if !c.Configured() {
+		return "", "", false
+	}
+	slug, bound := c.RoleBots[strings.ToLower(role)]
+	if !bound || strings.TrimSpace(slug) == "" {
+		return "", "", false
+	}
+	id, hasID := c.Bots[slug]
+	if !hasID || id <= 0 {
+		return "", "", false
+	}
+	return slug + "[bot]", fmt.Sprintf("%d+%s[bot]@users.noreply.github.com", id, slug), true
 }
 
 // RoleBound reports whether a desk role has an App bound to it. Tools that need a

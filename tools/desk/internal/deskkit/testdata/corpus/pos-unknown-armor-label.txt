@@ -1,0 +1,8 @@
+# corpus: a well-formed armor delimiter with an UNKNOWN label
+# expect: refused
+# refs:   #380
+# shape:  a five-dash BEGIN delimiter whose <LABEL> is outside the ciphertext/public allowlist
+# why:    the allowlist is CLOSED and fails closed — a novel or misspelled label must not be a way past the arm
+-----BE{{+}}GIN ACME VAULT UNSEAL SHARE-----
+c2hhcmUtb25lLXNlY3JldC1t{{+}}YXRlcmlhbC1oZXJlLXBhZGRp{{+}}bmc=
+-----END ACME VAULT UNSEAL SHARE-----

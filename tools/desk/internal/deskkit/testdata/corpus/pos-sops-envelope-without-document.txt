@@ -1,0 +1,7 @@
+# corpus: a complete sops envelope pasted into prose
+# expect: refused
+# refs:   #778
+# shape:  ENC[AES256{{+}}_GCM,...] with all four fields but NO sops: document signature around it
+# why:    an envelope on its own is a value someone pasted, not a manifest the house committed
+the value the operator pasted into the ticket was
+ENC[AES256{{+}}_GCM,data:Uk5wYldZa2hoYVZZY0hkc1pr{{+}}aFdibkJv,iv:YkdWaGNtNXBibWNnZEc4Z2Nt{{+}}VmhaQT09,tag:ZEdocGN5QnBjeUJoYmlCbGVH{{+}}RnRjR3hs,type:str]

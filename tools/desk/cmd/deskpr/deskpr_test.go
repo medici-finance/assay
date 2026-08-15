@@ -660,6 +660,45 @@ func TestCreateUnreadableOriginHeadUnverifiable(t *testing.T) {
 	assertNoPushNoCreate(t, *calls)
 }
 
+// TestCreateStrayLocalOriginMainBranchStillCreates reproduces #840: a stray LOCAL branch
+// literally named `origin/main` (planted by the `deskwt --branch origin/main` gotcha) makes
+// the short name `origin/main` ambiguous. The old preflight derived the base ref via
+// `symbolic-ref --short` + `"origin/" + name`, which under this ambiguity produced the
+// unresolvable `origin/remotes/origin/main` and aborted `git rev-list` at exit 128 (rc 6)
+// BEFORE any push. The decoy is planted at the feature tip so a wrongly-resolved base would
+// also miscount/misdiff; the fix resolves the fully-qualified `refs/remotes/origin/main` and
+// creates the PR normally.
+func TestCreateStrayLocalOriginMainBranchStillCreates(t *testing.T) {
+	work := newBaseFixture(t)
+	// Stray local ref refs/heads/origin/main at the feature tip — NOT the real main.
+	mustGit(t, work, "branch", "origin/main", "HEAD")
+	// Sanity: the short name really is ambiguous now (heads + remotes both match).
+	if got := mustGit(t, work, "rev-parse", "--symbolic-full-name", "refs/heads/origin/main"); got != "refs/heads/origin/main" {
+		t.Fatalf("decoy branch not planted: %q", got)
+	}
+	calls := withEnv(t, work)
+
+	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("create with stray local origin/main rc = %d, want 0 (regression #840)", rc)
+	}
+	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
+		t.Fatalf("expected a plain `git push -u origin feature/test-branch`; git calls: %v", gitCalls(*calls))
+	}
+	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
+		t.Fatalf("expected `gh pr create --draft`; gh calls: %v", ghCalls(*calls))
+	}
+	// The base ref used for rev-list/diff must be the fully-qualified remote ref, never the
+	// double-prefixed spelling that this bug produced.
+	for _, c := range gitCalls(*calls) {
+		for _, a := range c[1:] {
+			if strings.Contains(a, "origin/remotes/origin/") {
+				t.Fatalf("git argv carried the double-prefixed base ref %q: %v", a, c)
+			}
+		}
+	}
+}
+
 func TestCreateKillSwitchDisabled(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)

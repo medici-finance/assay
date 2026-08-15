@@ -176,10 +176,12 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 
 	// Outward-write rate limit. A deskevidence commit targets a BRANCH, not a
 	// PR, so there is no number to pass and the audit line it writes records none either.
-	// pr=0 is therefore the repo's unnumbered bucket, capped at RateLimitPerPRPerHour —
-	// the same hard 10/hr this path had under the retired single tier. It is NOT an
-	// exemption: passing 0 used to skip the per-PR tier outright and leave this
-	// Contents-API write path on the 100/hr per-repo cap (#439 review).
+	// pr=0 is therefore the repo's unnumbered bucket. deskevidence carries a per-tool
+	// override on that bucket (deskkit.UnnumberedCapFor("deskevidence"), currently 30 — see
+	// unnumberedBucketCap in ratelimit.go), which RAISES its effective ceiling above the base
+	// per-PR cap without dropping the per-PR tier: it is NOT an exemption — passing 0 used to
+	// skip the per-PR tier outright and leave this Contents-API write path on the 100/hr
+	// per-repo cap (#439 review). The breaker and the per-repo tier still apply on top.
 	if werr := deskkit.AllowWrite(toolName, repoSlug, 0); werr != nil {
 		return werr
 	}

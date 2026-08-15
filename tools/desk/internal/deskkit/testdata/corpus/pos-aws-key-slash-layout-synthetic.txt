@@ -1,0 +1,8 @@
+# corpus: synthetic 13/7/18 slash-layout runs — the #410 residual population
+# expect: refused
+# refs:   #410
+# shape:  40-char runs in the example key's layout whose MIDDLE segment reads word-shaped
+# why:    these are exactly the draws rule (3) alone admitted; each one is a lone lucky segment rescuing an opaque run
+Xq7bPmT2kVn9d/Rambler/Zk{{+}}4hQw8sLpXt3vNb2G
+Jd8vRk3pWm2xQ/Fandango/T{{+}}z9nBc4hLq7wXs1mVy
+Nc5tYb9gHx2kL/Melodic/Vq{{+}}3wZp8dRm6sJn4bXt

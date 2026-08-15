@@ -1,0 +1,18 @@
+# corpus: a review body dense with the mandated file:line finding format
+# expect: clean
+# refs:   #209, #1255, #1052
+# shape:  repo-relative paths, absolute paths, Go module paths and go test output
+# why:    refusing these starved the desk's outward-write budget; it is the expensive false-positive direction
+## Review
+
+- `tools/desk/internal/desk{{+}}kit/ratelimit.go:26` counts all attempts, not just charged ones
+- `tools/desk/internal/desk{{+}}kit/bodycheck.go:45` refuses the run before the exemptions are consulted
+- `frontend/src/components/{{+}}dashboard/PositionSummar{{+}}yPanel.tsx:88` cursor handling
+- the skill text quoted the absolute path `/Users/operator/work/exa{{+}}mple/slides`
+- report at `docs/reports/2026/07/30/factory-floor-summary.md:14`
+- read via `https://localhost/api/v2/state{{+}}/deployments` on the box
+
+    ok  github.com/medici-finance/assay/tools/desk{{+}}/internal/deskkit  2.531s
+    ok  github.com/medici-finance/assay/tools/desk{{+}}/cmd/deskpost/internal/b{{+}}odycheck  0.378s
+
+Verdict: approve

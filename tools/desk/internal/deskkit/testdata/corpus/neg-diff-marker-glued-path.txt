@@ -1,0 +1,13 @@
+# corpus: a bare repo path as it reaches the scan from a branch diff
+# expect: clean
+# refs:   #781 (9th instance, PR #733), #812
+# shape:  34-char absolute repo paths, one per .gitignore entry, as deskpr hands them to the scan
+# why:    the branch's FIRST commit carried these, so a refusal here refused every future push on that branch
+# note:   the unified-diff +/-/space MARKER is stripped by deskpr (#812) before the scan sees the
+# note:   line, because it is diff SYNTAX glued to content; this artifact is the post-strip surface, which is
+# note:   the only surface deskkit is responsible for. The strip itself is pinned by deskpr's own tests.
+@@ -1,4 +1,5 @@
+/tools/deskpushguard/des{{+}}kpushguard
+/tools/desksourceguard/d{{+}}esksourceguard
+/tools/approvalguard/app{{+}}rovalguard
+/tools/writeguard/writeguard

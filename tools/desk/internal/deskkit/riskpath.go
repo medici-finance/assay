@@ -3,6 +3,8 @@ package deskkit
 import (
 	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/topology"
 )
 
 // Risk-path classification: the shared computation behind the desk's ready gate (the
@@ -69,40 +71,28 @@ var baseRiskPathTriggers = []string{
 	"k8s/*/rbac.yaml",
 }
 
-// repoRiskPathTriggers are ADDITIONAL triggers for one repo, layered on top of
-// baseRiskPathTriggers. A repo absent from this map gets the base list only. An adopter
-// registers its own repos' triggers through ASSAY_RISK_PATH_TRIGGERS_EXTRA rather than
-// here; the entries below are one illustrative example of the per-repo mechanism plus
-// this toolkit's own gate code, which travels with the code it protects.
+// repoRiskPathTriggersFor returns the ADDITIONAL triggers for one repo, layered on top
+// of baseRiskPathTriggers. A repo the topology says nothing about gets the base list
+// only. An adopter registers its own repos' triggers through
+// ASSAY_RISK_PATH_TRIGGERS_EXTRA rather than in the topology file; what the topology
+// states is one illustrative example of the per-repo mechanism plus this toolkit's own
+// gate code, which travels with the code it protects.
 //
-// example-org/example-k8s: an illustrative PUBLIC infrastructure repo. Its deployment
-// manifests, overlays, operator scripts and CI live under base/ deploy/ admin/ hack/
-// and .github/workflows/. Because it is public, VisibilityRiskClassed already classes
-// every PR on it — but the per-repo triggers are the classification that would survive
-// the repo ever being made private, and they show how a repo layers its own security
-// surfaces on top of the generic base.
+// THE PER-REPO SET IS DECLARED ONCE, in `topology.yaml` (repos[].risk_path_triggers),
+// with the rationale for each repo's surfaces in that file's `note:`. ground-truth/04
+// retired the hand table that used to sit at this spot (#276); the values, their
+// rationale and this gate's reading of them can no longer disagree without
+// TestTopologyDriftRegistry going red and naming this site.
 //
-// medici-finance/assay: the desk's OWN gate code. deskkit is where this gate is
-// decided, deskpost is where a flip is authorised, deskboard is where the board reports
-// it, and desktoken/deskpushguard/writeguard are the credential and write-guard paths. A
-// diff there can disable a security gate for every repo, so it should not reach a flip
-// on a correctness review alone.
-var repoRiskPathTriggers = map[string][]string{
-	"example-org/example-k8s": {
-		"base/",              // deployment manifests and config
-		"deploy/",            // deploy overlays and scripts
-		"admin/",             // admin / operator scripts
-		"hack/",              // developer scripts that run against live clusters
-		".github/workflows/", // the repo's own CI / secret-scanner workflows
-	},
-	"medici-finance/assay": {
-		"tools/desk/internal/deskkit/", // the gate itself
-		"tools/desk/cmd/deskpost/",     // the flip authority
-		"tools/desk/cmd/deskboard/",    // the board that reports the gate
-		"tools/desk/cmd/desktoken/",    // App credential minting
-		"tools/desk/cmd/deskpushguard/",
-		"tools/desk/cmd/writeguard/",
-	},
+// Reading a per-repo VALUE is not the same as reading a per-repo POLICY: nothing here
+// can narrow the base list, and a repo absent from the topology loses no protection —
+// it simply gains none beyond the universal base.
+func repoRiskPathTriggersFor(repo string) []string {
+	r, ok := topology.Compiled().Repo(repo)
+	if !ok {
+		return nil
+	}
+	return r.RiskPathTriggers
 }
 
 // RiskPathTriggers returns the UNIVERSAL (base) risk path-trigger patterns — the
@@ -146,7 +136,7 @@ func unionSorted(lists ...[]string) []string {
 // set gets the base list — but note that such a repo is risk-classed outright by
 // RiskPathTriggered, so the list is informational there.
 func RiskPathTriggersFor(repo string) []string {
-	return unionSorted(baseRiskPathTriggers, repoRiskPathTriggers[repo], configuredExtraTriggers())
+	return unionSorted(baseRiskPathTriggers, repoRiskPathTriggersFor(repo), configuredExtraTriggers())
 }
 
 // RiskPathTriggered reports whether a PR on repo is risk-classed — i.e. whether it needs

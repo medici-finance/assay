@@ -1,0 +1,4 @@
+{"prs": [
+  {"repo": "example-org/example-repo", "number": 42, "headSHA": "aaaaaaaaaaaabbbbbbbbbbbbcccccccccccc"},
+  {"repo": "example-org/example-repo", "number": 43, "headSHA": "ddddddddddddeeeeeeeeeeeeffffffffffff"}
+]}

@@ -148,8 +148,9 @@ type ghSearchHit struct {
 // its issue in stopwords).
 var errNoScorableTokens = errors.New("title has no scorable tokens")
 
-// searchQuery builds the free-text query handed to `gh search issues` from the query
-// TOKENS, never from the raw title.
+// searchArgs builds the free-text query ARGV handed to `gh search issues` from the query
+// TOKENS, never from the raw title — one token per argv element, never joined into a
+// single string.
 //
 // The raw title is caller-supplied text going into GitHub's search QUERY LANGUAGE, where
 // `word:value` is a qualifier, not a word. Desk issue titles routinely contain colons
@@ -162,7 +163,20 @@ var errNoScorableTokens = errors.New("title has no scorable tokens")
 // so no token can be a qualifier or a negation. Losing phrase intent costs nothing here —
 // the local Jaccard scorer, not GitHub relevance, decides what counts as a duplicate, and a
 // broader candidate set is the fail-CLOSED direction.
-func searchQuery(queryTokens []string) string { return strings.Join(queryTokens, " ") }
+//
+// One token PER ARGV ELEMENT matters just as much as the character stripping above
+// (#156 verification finding): `gh search issues <joined string>` treats a
+// single multi-word positional argument as a QUOTED PHRASE (`q=( "tok1 tok2 tok3 ..." )
+// ...`) — an exact-substring match — not GitHub's normal AND-of-terms search. Real issue
+// titles almost never survive tokenization as a literal contiguous substring of themselves
+// (stopwords, punctuation and dashes are stripped and reorder nothing back together), so a
+// joined query silently returned ZERO hits for any title beyond ~6 tokens — proven live:
+// `deskfile check` against this repo's own issue #156 (11 scorable tokens) reported "no
+// duplicates" although #156 was open the entire time and a plain `gh api search/issues`
+// call with the identical free-text terms found it immediately. Passing each token as its
+// own argv element keeps `gh` from phrase-quoting the query, restoring AND-of-terms search
+// — the fail-CLOSED direction this function's docs already promise.
+func searchArgs(queryTokens []string) []string { return queryTokens }
 
 // dedupeSearch runs GitHub's issue search scoped to repo's OPEN issues and returns every
 // hit scored against title, sorted most-likely-first. A gh/API failure, an unparseable
@@ -173,8 +187,10 @@ func dedupeSearch(repo, title string) ([]candidate, error) {
 	if len(qtokens) == 0 {
 		return nil, errNoScorableTokens
 	}
-	out, err := gh("search", "issues", searchQuery(qtokens), "--repo", repo, "--state", "open",
+	args := append([]string{"search", "issues"}, searchArgs(qtokens)...)
+	args = append(args, "--repo", repo, "--state", "open",
 		"--json", "number,title,url,labels", "--limit", searchLimit)
+	out, err := gh(args...)
 	if err != nil {
 		return nil, err
 	}

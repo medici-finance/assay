@@ -58,14 +58,24 @@ func reviewerBotDisplay() string { return deskkit.RoleAppLoginOrEmpty("reviewer"
 
 // Token config env names follow the neutral per-role scheme (<ROLE>_*), so the tool is not coupled
 // to one org. The App ID has NO source default — it must come from per-deployment config
-// (~/.config/assay/apps.env exports REVIEWER_APP_ID); mint fails loudly if it is unset.
+// (the config home's apps.env exports REVIEWER_APP_ID); mint fails loudly if it is unset.
 const (
 	envAppID     = "REVIEWER_APP_ID"
 	envInstallID = "REVIEWER_INSTALL_ID"
 	envPEM       = "REVIEWER_PEM"
-
-	defaultPEMPath = "~/.config/assay/reviewer-app.pem"
 )
+
+// resolveReviewerPEM finds the reviewer key on the SAME App-credential search path
+// apps.env is read from (deskkit.FindConfigFile / confighome.go) rather than at a
+// hardcoded ~/.config/assay — the two drifting apart is #794, and desktoken alone
+// honouring the search path leaves this tool minting from the old fixed directory.
+//
+// It returns the path it would use plus every directory searched, so a not-found refusal
+// can name all of them instead of one.
+func resolveReviewerPEM() (path string, searched []string) {
+	p, dirs, _ := deskkit.FindConfigFile("reviewer-app.pem")
+	return p, dirs
+}
 
 func env(k, def string) string {
 	if v := os.Getenv(k); v != "" {
@@ -92,7 +102,7 @@ func b64url(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
 // per-deployment machine identities and MUST NOT live in source (a public-repo security review), so they
 // are resolved from config exactly like the App ID and PEM path: env <ROLE>_INSTALL_ID (a
 // single-installation override, what REVIEWER_INSTALL_ID has always been) or the per-owner
-// <ROLE>_INSTALL_ID_<OWNER> line in ~/.config/assay/apps.env. It FAILS CLOSED — a token
+// <ROLE>_INSTALL_ID_<OWNER> line in the config home's apps.env. It FAILS CLOSED — a token
 // cannot target an installation this process cannot name.
 func installForOwner(owner string) (string, error) {
 	return deskkit.InstallID("reviewer", owner)
@@ -107,7 +117,7 @@ func installForOwner(owner string) (string, error) {
 //
 // A missing/unreadable PEM is Unverifiable (exit 6) and names the manual path.
 func mintInstallationToken(owner string) (string, error) {
-	// Resolve the reviewer App ID: env REVIEWER_APP_ID, else ~/.config/assay/apps.env — never a
+	// Resolve the reviewer App ID: env REVIEWER_APP_ID, else the config home's apps.env — never a
 	// source default (a fresh invocation works with no shell sourcing; the ID stays out of source).
 	appID, err := deskkit.AppID("reviewer")
 	if err != nil {
@@ -119,14 +129,25 @@ func mintInstallationToken(owner string) (string, error) {
 		return "", deskkit.Unverifiable(ierr.Error()+
 			" — the App token cannot be minted without it", nil)
 	}
-	pemPath := home(env(envPEM, defaultPEMPath))
+	var searched []string
+	pemPath := strings.TrimSpace(os.Getenv(envPEM))
+	if pemPath == "" {
+		pemPath, searched = resolveReviewerPEM()
+	}
+	pemPath = home(pemPath)
 
 	keyPEM, err := os.ReadFile(pemPath)
 	if err != nil {
+		where := pemPath
+		if len(searched) > 0 {
+			where = fmt.Sprintf("%s (searched: %s)", pemPath, strings.Join(searched, ", "))
+		}
 		return "", deskkit.Unverifiable(fmt.Sprintf(
-			"cannot read reviewer App key at %s — restore it (see pr-review-desk skill / "+
-				"~/.config/assay/reviewer-app.pem) then retry; the App token cannot be minted without it",
-			pemPath), err)
+			"cannot read reviewer App key at %s — restore it there (see the pr-review-desk skill), "+
+				"or put the directory that has it at the head of the App-credential search path "+
+				"(%s=<dir>), or name the file outright (%s=<file>); "+
+				"the App token cannot be minted without it (#794)",
+			where, deskkit.EnvConfigHome, envPEM), err)
 	}
 	block, _ := pem.Decode(keyPEM)
 	if block == nil {
@@ -380,7 +401,7 @@ type checkRunsResp struct {
 
 // prFile is ONE entry of GET /pulls/{n}/files. PreviousFilename is set only when
 // Status is "renamed" — and decoding it is load-bearing, not cosmetic: without it a
-// `git mv services/app-service/internal/auth/token.go services/.../authz/token.go`
+// `git mv secrets/auth/token.go config/authz/token.go`
 // plus arbitrary edits reports ONLY the new path, and the risk-path gate never sees
 // the security path the change actually came from. One `git mv`, plausibly deniable as
 // a refactor, would de-risk-class the most security-relevant edit shape there is.

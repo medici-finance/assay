@@ -121,7 +121,11 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 	if !regIDShaRe.MatchString(localSHA) {
 		return nil, nil
 	}
-	originMain, err := regIDGitOut(dir, "rev-parse", "--verify", "--quiet", "origin/main")
+	// FULLY-QUALIFIED remote-tracking ref, not the bare short name `origin/main`
+	// (#885): a stray local `refs/heads/origin/main` decoy would otherwise shadow
+	// the real remote tip and drive the added-file diff off a stale base. The
+	// sibling foreigncommit.go in this same binary already spells it in full.
+	originMain, err := regIDGitOut(dir, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main")
 	if err != nil || originMain == "" {
 		return nil, nil // cannot resolve origin/main — nothing to compare against
 	}

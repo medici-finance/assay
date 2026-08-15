@@ -1,0 +1,15 @@
+# corpus: ordinary CamelCase Go test identifiers
+# expect: clean
+# refs:   #781 (shape 3, PR #392), #1576, #663
+# shape:  32+ char CamelCase names turning on a two-letter English word (Is/On/By/Vs/An/No/Of)
+# why:    #1576 was a PRE-EXISTING, already-reviewed identifier — no rename escape hatch existed
+## Review
+
+- `TestFinalizeNoneFallback{{+}}StrandedByArchivedQuote` covers the archived-quote branch
+- `TestRouterPrefersOnDeman{{+}}dVsScheduled` asserts the precedence
+- `TestParserHandlesAnEmpty{{+}}InputStream` covers the empty case
+- `TestHonoredFilterIsOnByD{{+}}efaultForEveryRoute` pins the default
+- `TestReportsNoFindingsOfT{{+}}heTripwireClass` stays silent
+- `TestAssayLintSingleWrite{{+}}rGuardFailsClosed` is the shipped identifier of PR #332
+
+Verdict: approve

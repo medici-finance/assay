@@ -129,9 +129,9 @@ func TestAssessRepoBranch_Red(t *testing.T) {
 		req := strings.Join(args, " ")
 		switch {
 		case strings.Contains(req, "/check-runs"):
-			return []byte(`{"total_count":1,"check_runs":[{"name":"validate","status":"completed","conclusion":"failure","head_sha":"d8f0e46f"}]}`), nil
+			return []byte(`{"total_count":1,"check_runs":[{"name":"validate","status":"completed","conclusion":"failure","head_sha":"deadbeef"}]}`), nil
 		default:
-			return []byte(`[{"sha":"d8f0e46f"}]`), nil
+			return []byte(`[{"sha":"deadbeef"}]`), nil
 		}
 	})
 	row := assessRepoBranch(ciRepo)
@@ -311,12 +311,12 @@ func TestBranchHealth_QuietWhenHealthy(t *testing.T) {
 // end-to-end through run(): the positive control and its wiring
 // ---------------------------------------------------------------------------
 
-// realLedgerRedPayload is the ACTUAL GitHub check-runs response for
+// realRedBranchPayload is the ACTUAL GitHub check-runs response for
 // example-org/example-k8s — a commit that reddened main and that the desk could merge
 // a PR on top of without a signal. Re-fetch with:
 //
 //	gh api repos/example-org/example-k8s/commits/<commit>/check-runs
-const realLedgerRedPayload = `{"total_count":1,"check_runs":[{"name":"validate","status":"completed","conclusion":"failure","head_sha":"d8f0e46f1732bc42101761ef333d8a8663c30cb7"}]}`
+const realRedBranchPayload = `{"total_count":1,"check_runs":[{"name":"validate","status":"completed","conclusion":"failure","head_sha":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}]}`
 
 // TestHealth_PositiveControl_RedDefaultBranch is the mutation test the three-state rule
 // requires: the instrument is shown going RED on a genuinely broken branch, through the
@@ -324,8 +324,8 @@ const realLedgerRedPayload = `{"total_count":1,"check_runs":[{"name":"validate",
 func TestHealth_PositiveControl_RedDefaultBranch(t *testing.T) {
 	installFakeGH(t)
 	t.Setenv("DESKBOARD_GH_CR_RED_REPO", "example-org/example-k8s")
-	t.Setenv("DESKBOARD_GH_CR_RED_JSON", realLedgerRedPayload)
-	t.Setenv("DESKBOARD_GH_COMMITS_JSON", `[{"sha":"d8f0e46f1732bc42101761ef333d8a8663c30cb7"}]`)
+	t.Setenv("DESKBOARD_GH_CR_RED_JSON", realRedBranchPayload)
+	t.Setenv("DESKBOARD_GH_COMMITS_JSON", `[{"sha":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}]`)
 
 	// JSON path (what the loops consume).
 	var out, errb bytes.Buffer
@@ -377,11 +377,16 @@ func TestActions_RedDefaultBranchAnnotatesRowsAndBanner(t *testing.T) {
 	repo := "example-org/example-k8s"
 	installFakeGH(t)
 	t.Setenv("DESKBOARD_GH_CR_RED_REPO", repo)
-	t.Setenv("DESKBOARD_GH_CR_RED_JSON", realLedgerRedPayload)
-	t.Setenv("DESKBOARD_GH_COMMITS_JSON", `[{"sha":"d8f0e46f1732bc42101761ef333d8a8663c30cb7"}]`)
+	t.Setenv("DESKBOARD_GH_CR_RED_JSON", realRedBranchPayload)
+	t.Setenv("DESKBOARD_GH_COMMITS_JSON", `[{"sha":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}]`)
 	t.Setenv("DESKBOARD_GH_PR_REPO", repo)
+	// Author is a role App: example-org/example-k8s is `:public`, and #943's
+	// public-repo author gate quarantines a shared trusted-login account (e.g.
+	// `shared-agent`) there. This test is about red-default-branch annotation,
+	// orthogonal to the author gate, so it uses a trusted-public author to keep
+	// the PR classified rather than quarantined.
 	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
-		`[{"number":9,"title":"a PR onto a red main","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"abc123","mergeStateStatus":"CLEAN","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"validate"}]}]`)
+		`[{"number":9,"title":"a PR onto a red main","isDraft":true,"author":{"login":"app/assay-desk-app"},"headRefOid":"abc123","mergeStateStatus":"CLEAN","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"validate"}]}]`)
 
 	var out, errb bytes.Buffer
 	if code := run([]string{"actions"}, &out, &errb); code != deskkit.ExitOK {

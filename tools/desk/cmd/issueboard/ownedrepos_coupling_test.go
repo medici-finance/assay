@@ -74,6 +74,26 @@ func TestOwnedReposEqualsStatusgenScanRepos(t *testing.T) {
 	}
 }
 
+// TestOwnedReposEmptyScanScope_IsFailClosed strengthens the coupling above for the
+// EMPTY-key case the package's TestMain fixture (which SETS ASSAY_SCAN_REPOS) never
+// exercises — the exact blind spot behind #777. The test above proves ownedRepos ==
+// ScanRepos when the key is set; this proves that when the key is UNSET, ownedRepos()
+// is empty AND the read surface fails CLOSED (deskkit.ScanScopeError fires) rather
+// than resolving to a silent, clean-and-empty board at exit 0. Without this, a fixture
+// that always sets the key would let the empty-key regression slip straight through
+// green (that is precisely how #777 shipped).
+func TestOwnedReposEmptyScanScope_IsFailClosed(t *testing.T) {
+	installScanlessRoster(t) // helper in scanscope_regression_test.go
+
+	if got := ownedRepos(); len(got) != 0 {
+		t.Fatalf("with %s unset ownedRepos() must be empty; got %v", deskkit.EnvScanRepos, got)
+	}
+	if err := deskkit.ScanScopeError(); err == nil {
+		t.Fatal("an empty scan scope must fail closed via deskkit.ScanScopeError() — otherwise the " +
+			"issue lane reports \"(no open issues across owned repos)\" at exit 0 (#777)")
+	}
+}
+
 // readStatusgenNonTestSource concatenates statusgen's non-test .go source so the
 // coupling can be asserted against the actual code, not a comment.
 func readStatusgenNonTestSource(t *testing.T) string {

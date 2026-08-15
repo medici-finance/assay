@@ -1,0 +1,155 @@
+{
+  "test": "go test ./cmd/deskmerge/... -count=1",
+  "control": {
+    "name": "CONTROL \u2014 invert the parent-COUNT check (a single-parent result is accepted as a merge)",
+    "file": "cmd/deskmerge/merge.go",
+    "old": "\tif len(f) != 3 {",
+    "new": "\tif len(f) == 3 {"
+  },
+  "mutations": [
+    {
+      "name": "disarm the parent-COUNT check (the #72 single-parent masquerade ships)",
+      "file": "cmd/deskmerge/merge.go",
+      "old": "\tif len(f) != 3 {",
+      "new": "\tif false && len(f) != 3 {"
+    },
+    {
+      "name": "disarm the parent-2 SHA check (a merge of ANY commit passes as merge-currency)",
+      "file": "cmd/deskmerge/merge.go",
+      "old": "\tif !strings.EqualFold(f[2], t.rep.BaseSHA) {",
+      "new": "\tif false && !strings.EqualFold(f[2], t.rep.BaseSHA) {"
+    },
+    {
+      "name": "disarm the parent-1 check (the PR's own history stops being load-bearing)",
+      "file": "cmd/deskmerge/merge.go",
+      "old": "\tif !strings.EqualFold(f[1], t.rep.HeadSHA) {",
+      "new": "\tif false && !strings.EqualFold(f[1], t.rep.HeadSHA) {"
+    },
+    {
+      "name": "let a MIXED conflict be resolved (the desk becomes the author of half a merge)",
+      "file": "cmd/deskmerge/merge.go",
+      "old": "\tif len(t.Unlisted) > 0 {\n\t\treturn deskkit.Refused(\n\t\t\t\"refused: resolveRegenerable called with unlisted conflicts present",
+      "new": "\tif false && len(t.Unlisted) > 0 {\n\t\treturn deskkit.Refused(\n\t\t\t\"refused: resolveRegenerable called with unlisted conflicts present"
+    },
+    {
+      "name": "drop the conflict-marker check (a no-op generator launders `<<<<<<< HEAD` into the head)",
+      "file": "cmd/deskmerge/merge.go",
+      "old": "\t\tif hasConflictMarkers(body) {",
+      "new": "\t\tif false && hasConflictMarkers(body) {"
+    },
+    {
+      "name": "swallow a failing generator (a partial resolution is committed as transport)",
+      "file": "cmd/deskmerge/merge.go",
+      "old": "\t\tif _, err := runCmdIn(t.wt.dir, r.Tool, r.Argv...); err != nil {",
+      "new": "\t\tif _, err := runCmdIn(t.wt.dir, r.Tool, r.Argv...); false && err != nil {"
+    },
+    {
+      "name": "drop the whole-tree residual-conflict check after regeneration",
+      "file": "cmd/deskmerge/merge.go",
+      "old": "\tif strings.TrimSpace(left) != \"\" {",
+      "new": "\tif false && strings.TrimSpace(left) != \"\" {"
+    },
+    {
+      "name": "let deskmerge push to a default branch (R-5's direction bound evaporates)",
+      "file": "cmd/deskmerge/merge.go",
+      "old": "\tif defaultBranchNames[strings.ToLower(name)] || strings.EqualFold(name, p.BaseRefName) {",
+      "new": "\tif false && (defaultBranchNames[strings.ToLower(name)] || strings.EqualFold(name, p.BaseRefName)) {"
+    },
+    {
+      "name": "disarm the flip bound (the desk supplies the commit its own at-head check reads)",
+      "file": "cmd/deskmerge/github.go",
+      "old": "\tif !p.IsDraft {",
+      "new": "\tif false && !p.IsDraft {"
+    },
+    {
+      "name": "let a MERGED or CLOSED PR be pushed to (the deskpushguard shape re-opens)",
+      "file": "cmd/deskmerge/github.go",
+      "old": "\tswitch kind := deskkit.ParsePRKind(p.State); kind {",
+      "new": "\tswitch kind := deskkit.PROpen; kind {"
+    },
+    {
+      "name": "accept a fetched head that disagrees with the API's (the verdict floats free of a head)",
+      "file": "cmd/deskmerge/currency.go",
+      "old": "\tif !strings.EqualFold(headSHA, p.HeadRefOid) {",
+      "new": "\tif false && !strings.EqualFold(headSHA, p.HeadRefOid) {"
+    },
+    {
+      "name": "answer from stale local refs when the fetch fails (could-not-check reported as clean)",
+      "file": "cmd/deskmerge/currency.go",
+      "old": "\t); ferr != nil {",
+      "new": "\t); false && ferr != nil {"
+    },
+    {
+      "name": "accept a checkout whose origin names another project",
+      "file": "cmd/deskmerge/currency.go",
+      "old": "\tif !originNames(url, repo) {",
+      "new": "\tif false && !originNames(url, repo) {"
+    },
+    {
+      "name": "collapse could-not-check into success in the roll-up (the three-state invariant dies)",
+      "file": "cmd/deskmerge/currency.go",
+      "old": "\tif r.Mergeability == mergeUnknown || r.BehindState == stateUnknown ||\n\t\tr.CIContractDriftState == stateUnknown || r.SemanticValidity == stateUnknown {",
+      "new": "\tif false && (r.Mergeability == mergeUnknown || r.BehindState == stateUnknown ||\n\t\tr.CIContractDriftState == stateUnknown || r.SemanticValidity == stateUnknown) {"
+    },
+    {
+      "name": "infer semantic validity from a clean TEXTUAL merge (the #912/#913 class re-opens silently)",
+      "file": "cmd/deskmerge/assess.go",
+      "old": "\t\tSemanticValidity:     stateNotAsked,",
+      "new": "\t\tSemanticValidity:     stateClean,"
+    },
+    {
+      "name": "report an unprobeable tree as clean instead of could-not-check",
+      "file": "cmd/deskmerge/assess.go",
+      "old": "\tif len(steps) == 0 {\n\t\trep.SemanticValidity = stateUnknown",
+      "new": "\tif len(steps) == 0 {\n\t\trep.SemanticValidity = stateClean"
+    },
+    {
+      "name": "fast-forward instead of forcing a merge commit (--no-ff dropped)",
+      "file": "cmd/deskmerge/assess.go",
+      "old": "\tif _, merr := runGit(wt.dir, \"merge\", \"--no-ff\", \"--no-commit\", baseSHA); merr != nil {",
+      "new": "\tif _, merr := runGit(wt.dir, \"merge\", \"--no-commit\", baseSHA); merr != nil {"
+    },
+    {
+      "name": "let an unsigned ruling authorize the write (the human gate stops gating)",
+      "file": "internal/deskkit/rulinggate.go",
+      "old": "\t\tif url == \"\" {",
+      "new": "\t\tif false && url == \"\" {"
+    },
+    {
+      "name": "read a neighbouring ruling's sign-off as this one's (one signature signs them all)",
+      "file": "internal/deskkit/rulinggate.go",
+      "old": "\t\t\tinSection = strings.HasPrefix(ln, \"## \"+rulingID+\" \")",
+      "new": "\t\t\tinSection = inSection || strings.HasPrefix(ln, \"## \"+rulingID+\" \")"
+    },
+    {
+      "name": "accept an App-authored acceptance as a human authorization",
+      "file": "cmd/deskmerge/authority.go",
+      "old": "\tif !strings.EqualFold(c.User.Type, \"User\") {",
+      "new": "\tif false && !strings.EqualFold(c.User.Type, \"User\") {"
+    },
+    {
+      "name": "accept ANY type=User account as the blessing authority (shared automation authorizes)",
+      "file": "cmd/deskmerge/authority.go",
+      "old": "\tif !deskkit.IsBlessAuthorityIDStrict(c.User.Login, c.User.ID) {",
+      "new": "\tif false && !deskkit.IsBlessAuthorityIDStrict(c.User.Login, c.User.ID) {"
+    },
+    {
+      "name": "accept an anchorless thread link as an authorization",
+      "file": "cmd/deskmerge/authority.go",
+      "old": "\tm := deskkit.CommentPermalinkRe.FindStringSubmatch(strings.TrimSpace(url))\n\tif m == nil {",
+      "new": "\tm := deskkit.CommentPermalinkRe.FindStringSubmatch(strings.TrimSpace(url))\n\tif false && m == nil {"
+    },
+    {
+      "name": "attribute a nested module's files to the ROOT module (the probe builds the wrong tree)",
+      "file": "cmd/deskmerge/regen.go",
+      "old": "\t\tif strings.HasPrefix(file, m+\"/\") && len(m) > len(best) {",
+      "new": "\t\tif strings.HasPrefix(file, m+\"/\") && best == \"\" {"
+    },
+    {
+      "name": "probe every module rather than the touched ones (a pre-existing break reads as this merge's)",
+      "file": "cmd/deskmerge/regen.go",
+      "old": "\t\tif hit[m] {",
+      "new": "\t\tif true || hit[m] {"
+    }
+  ]
+}

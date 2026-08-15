@@ -48,7 +48,7 @@ func (s sentinelClassifier) Classify(string, []string) (bool, string) {
 // repo, and one whose visibility is unstated.
 func seamRoster(t *testing.T) {
 	t.Helper()
-	r := mediciRoster()
+	r := goldenRoster()
 	r[EnvAllowedRepos] = strings.Join([]string{
 		"acme/private-widget:ci:private",
 		"acme/open-widget:ci:public",

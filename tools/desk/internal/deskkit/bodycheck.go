@@ -51,13 +51,30 @@ const (
 	// minLowerWord is the shortest lowercase run that reads as a word rather than as
 	// base64 debris. `tools`, `api`, `src` qualify; the `b` of `bPxRfi…` does not.
 	minLowerWord = 3
-	// maxWordSegment caps how long a segment may be and still be treated as name
+	// maxWordSegment caps how long a PATH SEGMENT may be and still be treated as name
 	// material at all, however word-shaped it looks. Real segments are short —
-	// `Settlement` is 23, `PositionSummaryPanel` is 20 — so 48 is far
+	// `Widget` is 6, `ConfigurationManager` is 20 — so 48 is far
 	// above any legitimate name while keeping a degenerate run (a 200-character
 	// lowercase stretch, which is word-SHAPED but is not a word) on the opaque budget
-	// where the length gate can refuse it.
+	// where the length gate can refuse it. It is enforced by looksLikeWords (the path-segment
+	// caller); wordDecomposition itself no longer caps length, so isIdentifierLike can apply
+	// its own, wider cap — see maxIdentifierRun.
 	maxWordSegment = 48
+	// maxIdentifierRun caps how long a BARE run may be and still be treated as a single
+	// identifier by isIdentifierLike. Real Go identifiers are long but bounded — the longest
+	// test names in this repo run into the 50s of characters
+	// (`TestLeadingZeroTagsDoNotCollideWithTheirCanonicalForm` is 53) — so 100 sits well above
+	// any legitimate name while still refusing a random base64 run that happens to decompose.
+	//
+	// Putting the cap HERE, on the bare-identifier caller, rather than in wordDecomposition
+	// (where it used to sit at maxWordSegment and refused those legitimate long test names,
+	// #781 class) is deliberate and SAFE: for a bare identifier the security bar is the
+	// decomposition itself (words>=2 && camel), and a LONGER cap is strictly HARDER for random
+	// base64 to clear, not easier — every extra character is another chance for a lone capital,
+	// an ALL-CAPS stretch, or short lowercase debris to disqualify the whole run. The tight
+	// maxWordSegment cap stays on looksLikeWords, where a path SEGMENT that overruns it should
+	// spend opaque budget rather than be admitted.
+	maxIdentifierRun = 100
 	// maxBareAssignKey bounds the variable-name half of a `key=value` shell assignment
 	// that is NOT itself word-shaped (see isAssignmentLike). Shell scratch variables in
 	// Verify/Evidence command text are one or two characters — `f=`, `d=`, `p=` — and a
@@ -168,7 +185,25 @@ func ScanSurface(surface string, content []byte) error {
 	if surface == "" {
 		surface = SurfaceBody
 	}
-	s := string(content)
+	// TWO VIEWS OF THE SAME SURFACE.
+	//
+	//   raw  every byte, exactly as the caller handed it over. The high-entropy-run loop at
+	//        the bottom reads this, minus whatever structuredExemptSpans accounts for.
+	//   s    the MARKER SURFACE: raw with every marker that structured recognition has
+	//        already accounted for neutralised. The literal-marker arms below read this.
+	//
+	// Normalising the SURFACE rather than editing the arms is deliberate, and it is what
+	// makes this file maintainable through the tools it guards. Both markers below are
+	// substrings of the detector's OWN SOURCE and of its own refusal messages, so any diff
+	// touching them carries them on an added AND a removed line — and, because the scan reads
+	// three lines of diff context, on lines the branch does not even change. That is
+	// #380: four PRs went around deskpr rather than through it, and #328's
+	// closing note is that a guard which fires on its own routine edit gets routed around
+	// rather than fixed. Every arm below is therefore byte-for-byte what it was; what
+	// changed is what they are handed. See markerSurface for what is neutralised and why
+	// each neutralisation is safe.
+	raw := string(content)
+	s := markerSurface(raw)
 	switch {
 	case reGitHubToken.MatchString(s):
 		return Refused("refused: " + surface + " contains a GitHub token prefix (ghp_/github_pat_/ghs_/gho_)")
@@ -181,6 +216,7 @@ func ScanSurface(surface string, content []byte) error {
 	case reSopsEncVal.MatchString(s) || (reSopsKey.MatchString(s) && reSopsField.MatchString(s)):
 		return Refused("refused: " + surface + " contains a sops-encrypted secret block or ENC[ marker")
 	}
+
 	// Impersonated human-ruling guard (impersonation.go). This write
 	// path never posts as a human, so a body claiming a configured human's ruling BY
 	// NAME — "Decision (Alex, ...)", "Ruling: ... — Alex", "I (Alex) have decided" — is
@@ -188,7 +224,15 @@ func ScanSurface(surface string, content []byte) error {
 	if name, found := ImpersonatedRulingClaim(s); found {
 		return impersonationRefusal(surface, name)
 	}
-	for _, run := range reBase64ish.FindAllString(s, -1) {
+	// Structured-format spans are computed ONCE over the whole surface, before the loop, so
+	// a recognised field is judged by its FORMAT rather than by the run's own shape. See
+	// structured.go for why every span is anchored on a field marker and length-exact.
+	exempt := structuredExemptSpans(raw)
+	for _, loc := range reBase64ish.FindAllStringIndex(raw, -1) {
+		run := raw[loc[0]:loc[1]]
+		if coveredBy(exempt, loc[0], loc[1]) {
+			continue
+		}
 		if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) {
 			continue
 		}
@@ -196,7 +240,9 @@ func ScanSurface(surface string, content []byte) error {
 			"refused: %s contains a %d-char high-entropy run (possible secret); "+
 				"only git SHAs (40/64 lowercase hex), slash-separated paths built from "+
 				"word-shaped segments, bare word-shaped identifiers, key=<path> shell "+
-				"assignments, and all-'=' banner separators over those are exempt", surface, len(run)))
+				"assignments, all-'=' banner separators, and the marker-anchored digest "+
+				"fields of a recognised structured format (go.sum h1:, SRI integrity, a "+
+				"complete sops envelope) are exempt", surface, len(run)))
 	}
 	return nil
 }
@@ -267,27 +313,52 @@ func isAllEquals(run string) bool {
 //     are all under 32. `AKIA…` (the access key ID) is caught by reAWSKeyID above; the
 //     secret access key is a different string and was NOT caught. That reviewer also
 //     showed the structural discriminators it had considered — case-transition density,
-//     mean segment length — genuinely cannot separate `src/Example/Settlement`
+//     mean segment length — genuinely cannot separate `Documentation/Backend/ConfigurationPanel`
 //     from that key: both are 40 chars, 3 segments, mean segment 12.7, mixed case.
 //
 // Rule (3) separates them on a different axis, and that is the point: not "how random do
 // these characters look" (they look identical) but "are the segments built out of
-// WORDS". `src`, `Example` and `Settlement` decompose into word units;
+// WORDS". `Documentation`, `Backend` and `ConfigurationPanel` decompose into word units;
 // `wJalrXUtnFEMI`, `K7MDENG` and `bPxRfiCYEXAMPLEKEY` do not, and their lengths sum past
 // the run threshold.
 //
 // Empty segments (`//` in a URL run, a trailing `/` on a directory reference) are skipped
 // rather than rejected: they carry no material, and rejecting them was an early draft of
-// the #1261 fix that re-created the bug on `//localhost/api/v2/state/activecontracts`
-// and on `services/app-service/internal/api/handlers/`. Both are pass cases below.
+// the #1261 fix that re-created the bug on `//localhost/api/v2/state/deployments`
+// and on `pkg/service/internal/api/handlers/`. Both are pass cases below.
 //
-// KNOWN RESIDUAL GAP, documented rather than claimed closed: a token that both avoids
-// `+`/`=` AND whose non-word-shaped spans between slashes total under 32 characters is
-// still exempted. Closing that would require refusing real paths. This module's stated
-// posture is a seatbelt against ACCIDENTAL credential paste, not an exfiltration
-// defence against a deliberate encoder, and rule (3) shrinks the accidental-paste surface
-// from "any 31-char-segmented blob" to "a blob whose opaque material happens to fall
-// under 32 characters in total" — which no real credential format does.
+// RESIDUAL GAP — MEASURED, NOT ASSERTED. This paragraph used to end "…which no real
+// credential format does". #410 measured that clause and it is false: under
+// rule (3) alone, 3.07% of runs in the published AWS example key's own slash layout were
+// admitted. Rule (4) below is the response. The residual that remains after it is stated
+// with its sample size by TestPathRuleDifferential, and is a number in this file's tests
+// rather than a sentence in its comments — precisely because a maintainer reasons from
+// what a comment like the old one asserts.
+//  4. once ANY opaque material is present, the word-shaped segments must OUTNUMBER the
+//     opaque ones. This is the #410 rule and it closes the residual the
+//     paragraph above used to call closed.
+//
+// RULE (4), and why the paragraph above was wrong. #410 measured the residual instead of
+// asserting it: over 2,000,000 runs forced into the published AWS example key's own 13/7/18
+// slash layout, rule (3) alone ADMITTED 3.07% — one in thirty-three — because a random
+// seven-character segment reads as word-shaped often enough to drop the opaque total to 31,
+// one under the budget. The claim "which no real credential format does" was false of the
+// single credential format this rule names.
+//
+// The mechanism is a LONE lucky segment rescuing a run that is otherwise wholly opaque, so
+// rule (4) is written against that mechanism rather than against the layout: a genuine path
+// is mostly words with the occasional `v2` or hash directory among them, while a credential
+// wearing slashes is mostly opaque with the occasional lucky draw among them. Counting
+// segments — not characters — separates the two without touching the character budget that
+// rule (3) already spends on real paths.
+//
+// It is deliberately the SEGMENT-COUNT axis and not a character RATIO. A ratio
+// (`opaque*2 < len(run)`) also closes the #410 class, but it newly refuses ordinary paths
+// that carry one long opaque component — a build-output directory named after a content
+// hash, a cache path — and the false-positive direction is the expensive one here (#209,
+// #1255: refusing `file:line` references starved the desk's write budget). The differential
+// behind both statements, in both directions with its sample sizes, is
+// TestPathRuleDifferential.
 func isPathLike(run string) bool {
 	if !strings.Contains(run, "/") {
 		return false
@@ -295,13 +366,46 @@ func isPathLike(run string) bool {
 	if strings.ContainsAny(run, "+=") {
 		return false
 	}
-	opaque := 0
+	opaque, wordSegs, opaqueSegs := 0, 0, 0
 	for _, seg := range strings.Split(run, "/") {
-		if seg == "" || isGitSHA(seg) || looksLikeWords(seg) {
+		if seg == "" || isGitSHA(seg) {
+			continue
+		}
+		if looksLikeWords(seg) {
+			wordSegs++
 			continue
 		}
 		opaque += len(seg)
 		if opaque >= maxOpaqueInPath {
+			return false
+		}
+		// A short all-DIGIT segment counts toward the character budget but not toward the
+		// segment COUNT. `docs/reports/2026/07/30/…` is three such segments in a row, and
+		// counting them as opaque made rule (4) refuse every dated report path in this
+		// repo's own docs tree — measured, in the false-positive half of
+		// TestPathRuleDifferential, which is why this carve-out exists at all. Digits are
+		// path STRUCTURE (dates, versions, ports, ids), they are bounded by maxDigitRun,
+		// and a credential's opaque spans are not all-digit: over the #410 population the
+		// chance a rescuing segment is pure digits is (10/62)^7, which is noise.
+		if !isShortDigitRun(seg) {
+			opaqueSegs++
+		}
+	}
+	if opaqueSegs > 0 && wordSegs <= opaqueSegs {
+		return false
+	}
+	return true
+}
+
+// isShortDigitRun reports whether seg is entirely digits and short enough to be path
+// structure rather than payload — see isPathLike's rule (4) for why the distinction is
+// counted rather than budgeted.
+func isShortDigitRun(seg string) bool {
+	if seg == "" || len(seg) > maxDigitRun {
+		return false
+	}
+	for i := 0; i < len(seg); i++ {
+		if seg[i] < '0' || seg[i] > '9' {
 			return false
 		}
 	}
@@ -315,7 +419,7 @@ func isPathLike(run string) bool {
 // `HonoredFilterLeavesTripwireSilent` is 33 — with no `/` anywhere to trigger
 // isPathLike's exemption above; a review body naming the tests it exercises trips the
 // high-entropy refusal on ordinary prose. This reuses wordDecomposition — the same
-// word-decomposition that already separates a path segment like `Settlement`
+// word-decomposition that already separates a path segment like `Widget`
 // from an AWS secret access key's `bPxRfiCYEXAMPLEKEY` does the identical job on a whole
 // run instead of a slash-delimited piece of one, for the same structural reason —
 // the scan rejects on the FIRST lone capital, ALL-CAPS stretch, or 1-2 char lowercase
@@ -367,6 +471,9 @@ func isPathLike(run string) bool {
 // broken across the line, which — unlike a recorded Evidence command (#775) or a
 // shipped test identifier (#663) — is always available to the author.
 func isIdentifierLike(run string) bool {
+	if len(run) > maxIdentifierRun {
+		return false
+	}
 	ok, words, camel := wordDecomposition(run)
 	return ok && words >= 2 && camel
 }
@@ -436,7 +543,7 @@ func isAssignmentLike(run string) bool {
 //
 //   - lowercase runs of at least minLowerWord letters (`tools`, `internal`, `deskkit`);
 //   - CamelCase words: one uppercase letter followed by at least two lowercase
-//     (`Maturity`, `Price`, `Commitment`, the `Users` of `/Users/…`), or one of the
+//     (`Registry`, `Cache`, `Container`, the `Users` of `/Users/…`), or one of the
 //     two-letter English words in twoLetterWords (`Is`, `On`, `Vs`, `An`);
 //   - digit groups of at most maxDigitRun (`python311`, `v2` — note `v2` fails on the
 //     one-letter `v`, which is fine: it contributes 2 characters of opaque budget);
@@ -454,10 +561,18 @@ func isAssignmentLike(run string) bool {
 // A single word unit is enough HERE because a path segment inherits its boundary from the
 // `/` around it. isIdentifierLike, which has no such boundary, requires two — and that at
 // least one be capital-led. The capital-led requirement is deliberately NOT applied here:
-// a path segment like `tools` or `activecontracts` is legitimately all-lowercase and must
+// a path segment like `tools` or `deployments` is legitimately all-lowercase and must
 // stay name material (it spends no opaque budget), while a bare lowercase run carrying
 // digit groups is exactly the token shape isIdentifierLike exists to refuse.
 func looksLikeWords(seg string) bool {
+	// The maxWordSegment cap lives HERE, on the path-segment caller, since
+	// wordDecomposition no longer applies it (isIdentifierLike wants the wider
+	// maxIdentifierRun cap instead). A path segment past this length is a degenerate
+	// run — a 200-char lowercase stretch is word-SHAPED but is not a word — and belongs
+	// on the opaque budget, where isPathLike's length gate can refuse it.
+	if len(seg) > maxWordSegment {
+		return false
+	}
 	ok, words, _ := wordDecomposition(seg)
 	return ok && words > 0
 }
@@ -469,10 +584,11 @@ func looksLikeWords(seg string) bool {
 // isIdentifierLike can require MORE than one word unit, at least one of them capital-led,
 // without hand-duplicating this loop — see its doc comment for why the two callers need
 // different thresholds, and looksLikeWords' for why the capital-led flag is ignored there.
+//
+// It applies NO length cap of its own: each caller caps length for its own security bar —
+// looksLikeWords at maxWordSegment (a path segment), isIdentifierLike at the wider
+// maxIdentifierRun (a bare identifier). See those two functions.
 func wordDecomposition(seg string) (ok bool, words int, camel bool) {
-	if len(seg) > maxWordSegment {
-		return false, 0, false
-	}
 	for i := 0; i < len(seg); {
 		c := seg[i]
 		switch {
@@ -491,17 +607,34 @@ func wordDecomposition(seg string) (ok bool, words int, camel bool) {
 				j++
 			}
 			// A capital normally needs two lowercase letters behind it to read as a
-			// CamelCase word. The ONE exception is a two-letter English word from
-			// twoLetterWords: `…IsOn…`, `…OnDemandVsScheduled…`, `…HandlesAnEmpty…`.
-			// Without it, a single `Is` anywhere in a 32+ char Go test name sent the
-			// whole identifier to the high-entropy refusal (#781); `Is` alone
-			// blocks 124 real identifiers in this repo. A capital with ZERO lowercase
-			// behind it — a lone capital or an ALL-CAPS stretch — is still refused
-			// outright, which is what keeps `K7MDENG` and `XXXXXXXX…` opaque.
-			if n := j - (i + 1); n < 2 && !(n == 1 && twoLetterWords[seg[i:j]]) {
+			// CamelCase word. Two exceptions, in decreasing looseness:
+			//
+			//   n == 1 and the pair is a two-letter English word from twoLetterWords
+			//   (`…IsOn…`, `…OnDemandVsScheduled…`, `…HandlesAnEmpty…`). Without it a single
+			//   `Is` anywhere in a 32+ char Go test name sent the whole identifier to the
+			//   high-entropy refusal (#781); `Is` alone blocks 124 real identifiers here.
+			//
+			//   n == 0 and the capital is the one-letter English word `A` or `I`, AND the
+			//   NEXT unit is itself a capital-led CamelCase word (see startsCapitalLedWord):
+			//   the `A` of `…WithoutAWrite`, the `I` of `…WhenIReturn`. It counts as a word
+			//   but does NOT set camel — a lone capital is not itself CamelCase; the word that
+			//   follows supplies that. The capital-led-FOLLOWER requirement is load-bearing:
+			//   it is what keeps `AAAA…`, ALL-CAPS stretches (`K7MDENG`) and `XXXX…` refusing,
+			//   because their lone capital is followed by another bare capital, never a word.
+			//
+			// A capital with ZERO lowercase behind it and no qualifying follower — a lone
+			// capital or an ALL-CAPS stretch — is still refused outright.
+			n := j - (i + 1)
+			switch {
+			case n >= 2:
+				i, words, camel = j, words+1, true
+			case n == 1 && twoLetterWords[seg[i:j]]:
+				i, words, camel = j, words+1, true
+			case n == 0 && (c == 'A' || c == 'I') && startsCapitalLedWord(seg, j):
+				i, words = j, words+1 // a one-letter word; camel comes from the follower
+			default:
 				return false, 0, false
 			}
-			i, words, camel = j, words+1, true
 		case c >= '0' && c <= '9':
 			j := i
 			for j < len(seg) && seg[j] >= '0' && seg[j] <= '9' {
@@ -516,4 +649,18 @@ func wordDecomposition(seg string) (ok bool, words int, camel bool) {
 		}
 	}
 	return true, words, camel
+}
+
+// startsCapitalLedWord reports whether the unit beginning at index k is a capital-led
+// CamelCase word — a capital followed by at least two lowercase letters. It is the lookahead
+// the lone-`A`/`I` one-letter-word rule uses in wordDecomposition's capital branch: `A`/`I`
+// count as an English word only when a real word follows them (`…WithoutAWrite`), never when
+// the next character is itself a lone capital (the ALL-CAPS / random-base64 shape that must
+// keep refusing). Two lowercase are required, not one, so the follower is a genuine word and
+// not a second piece of two-letter debris.
+func startsCapitalLedWord(seg string, k int) bool {
+	return k+2 < len(seg) &&
+		seg[k] >= 'A' && seg[k] <= 'Z' &&
+		seg[k+1] >= 'a' && seg[k+1] <= 'z' &&
+		seg[k+2] >= 'a' && seg[k+2] <= 'z'
 }

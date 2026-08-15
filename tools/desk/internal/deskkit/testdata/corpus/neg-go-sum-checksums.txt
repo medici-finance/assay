@@ -1,0 +1,13 @@
+# corpus: go.sum module checksum block
+# expect: clean
+# refs:   #781 (shape 4, desk-console/08)
+# shape:  machine-generated <module> <version> h1:<base64-sha256> lines
+# why:    every one of the 54 runs flagged in the desk-console/08 diff was one of these; 100% false positives
+github.com/google/go-cmp v0.6.0 h1:ypeBEsobvcr6wjGzmiPcTaeG{{+}}7/gUfE5yuYB3ha/uSLs=
+github.com/google/go-cmp v0.6.0/go.mod h1:PiPoFgA5WUoziU9lZOGxNIu9{{+}}egCI1CxKy3PurtWcAJ0=
+golang.org/x/mod v0.17.0 h1:Ln0sA6lQeuJl7PW1NWiFpTOT{{+}}ogKdJBOUmXJloaJa78Y=
+golang.org/x/mod v0.17.0/go.mod h1:GKw+c0PwFokMUQ6T+TUmEWnZ{{+}}4/VlQ2Qpgw+vCTT0+OQ=
+golang.org/x/sync v0.7.0 h1:P3m7e0NbBTIWUdrv03TNxoHc{{+}}BvqmXjdOODN7iMoEbeo=
+golang.org/x/sync v0.7.0/go.mod h1:JS8QyDYQ68oaBZwLroJV66L5{{+}}W+TR17z6idckioLZ8RE=
+golang.org/x/tools v0.21.0 h1:zQqphWFHtsW0/yt9/uXaIKo4{{+}}JTCZ7xtKZKztIzya/ik=
+golang.org/x/tools v0.21.0/go.mod h1:qqlAJmTxpB9A67xSyZk+tmrr{{+}}NmYClY/fqig7ceZNsSM=

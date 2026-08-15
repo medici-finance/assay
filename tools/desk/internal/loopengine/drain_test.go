@@ -14,7 +14,7 @@ import (
 // to empty, idle-poll, and stop-flag exit. Its Progress lines ("landed:" / "filed-and-
 // continued:") are what Verify item 3 greps for (>=4). Run with -v to see them.
 func TestDrain(t *testing.T) {
-	deskDir := setupDeskHome(t, "drilltest")
+	deskDir := setupDeskHome(t, testLoopName)
 
 	const poolN = 3
 	var inFlight int32

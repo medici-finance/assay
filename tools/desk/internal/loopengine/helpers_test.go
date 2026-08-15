@@ -52,7 +52,22 @@ type fakeLoop struct {
 	onIdleFn   func(*fakeLoop) error
 }
 
-func (l *fakeLoop) Name() string { return l.name }
+// testLoopName is the loop identity every engine fixture presents. It must be a name
+// deskkit's roster RECOGNISES (deskkit/loopnames.go): Run() exports it as DESK_LOOP, and
+// Guard now refuses — Unverifiable, exit 6 — for a loop name it cannot resolve to a
+// STOP.<name> file, because "no flag found for a name I do not know" is could-not-check,
+// not clean. Fixtures used to present ad-hoc labels ("drilltest", "refill", "idle", …);
+// those are exactly the unregistered names the Guard is now built to catch, so they would
+// make every engine test refuse before reaching its assertion.
+//
+// TestRun_UnregisteredLoopNameIsRefused (engine_test.go) covers the other side: it keeps
+// an ad-hoc name deliberately and proves the refusal fires.
+const testLoopName = "verify-desk"
+
+// Name reports the loop identity the engine scopes stop flags to. It is deliberately the
+// registered testLoopName rather than l.name — l.name stays a human-readable label for
+// the individual fixture and is not a loop identity.
+func (l *fakeLoop) Name() string { return testLoopName }
 
 func (l *fakeLoop) SelectQueue() ([]Item, error) {
 	if l.selectErr != nil {

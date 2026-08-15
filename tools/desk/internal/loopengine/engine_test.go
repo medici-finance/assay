@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // runUntil runs the engine in a goroutine and plants a STOP flag once stopWhen() holds,
@@ -42,7 +45,7 @@ func runUntil(t *testing.T, cfg Config, loop Loop, deskDir string, stopWhen func
 }
 
 func TestRun_PoolRefillAfterCompletion(t *testing.T) {
-	deskDir := setupDeskHome(t, "refill")
+	deskDir := setupDeskHome(t, testLoopName)
 	loop := &fakeLoop{name: "refill"}
 	for i := 0; i < 5; i++ {
 		loop.remaining = append(loop.remaining, Item{ID: fmt.Sprintf("brief-%d", i)})
@@ -62,7 +65,7 @@ func TestRun_PoolRefillAfterCompletion(t *testing.T) {
 }
 
 func TestRun_IsDoneCallsOnIdleNeverExits(t *testing.T) {
-	deskDir := setupDeskHome(t, "idle")
+	deskDir := setupDeskHome(t, testLoopName)
 	loop := &fakeLoop{name: "idle"} // empty queue from the start
 	cfg := Config{PoolSize: 3, IdlePoll: 3 * time.Millisecond, ClaimsDir: t.TempDir(), StaleClaim: time.Hour}
 
@@ -82,7 +85,7 @@ func TestRun_IsDoneCallsOnIdleNeverExits(t *testing.T) {
 }
 
 func TestRun_ClaimCollisionSkipsItem(t *testing.T) {
-	deskDir := setupDeskHome(t, "collide")
+	deskDir := setupDeskHome(t, testLoopName)
 	claims := t.TempDir()
 	// Pre-plant a LIVE claim for "b" as if another loop owns it.
 	if err := os.MkdirAll(claims, 0o700); err != nil {
@@ -109,7 +112,7 @@ func TestRun_ClaimCollisionSkipsItem(t *testing.T) {
 }
 
 func TestRun_AuthorEqualsRunnerRefused(t *testing.T) {
-	deskDir := setupDeskHome(t, "author")
+	deskDir := setupDeskHome(t, testLoopName)
 	loop := &fakeLoop{name: "author", remaining: []Item{
 		{ID: "own", Implementer: "session-me", BriefPath: "docs/streams/x/brief-own.md"},
 		{ID: "other", Implementer: "someone-else"},
@@ -129,7 +132,7 @@ func TestRun_AuthorEqualsRunnerRefused(t *testing.T) {
 }
 
 func TestRun_LandFailureFilesAndContinues(t *testing.T) {
-	deskDir := setupDeskHome(t, "landfail")
+	deskDir := setupDeskHome(t, testLoopName)
 	var mu sync.Mutex
 	landAttempts := map[string]int{}
 	loop := &fakeLoop{
@@ -172,7 +175,7 @@ func TestRun_LandFailureFilesAndContinues(t *testing.T) {
 }
 
 func TestRun_TierHumanRoutedNotDispatched(t *testing.T) {
-	deskDir := setupDeskHome(t, "human")
+	deskDir := setupDeskHome(t, testLoopName)
 	var routed []Result
 	var rmu sync.Mutex
 	loop := &fakeLoop{
@@ -215,8 +218,51 @@ func TestRun_TierHumanRoutedNotDispatched(t *testing.T) {
 	}
 }
 
+// TestRun_UnregisteredLoopNameIsRefused pins the blast radius of the loop-name roster
+// (deskkit/loopnames.go) at the engine boundary. A Go loop presenting a name deskkit does
+// not recognise CANNOT have a per-loop stop flag checked for it, so the engine must refuse
+// (Unverifiable, exit 6) rather than run with no per-loop stop protection while reporting
+// itself clean.
+//
+// The scoping this proves: the refusal is keyed on DESK_LOOP alone. Only the mis-named
+// loop is stopped — a registered loop in the same process/machine is unaffected (every
+// other test in this file runs green under the registered testLoopName). That is the
+// bound deliberately chosen after an unknown key in roster.env fail-closed the entire
+// trust roster fleet-wide (#819).
+func TestRun_UnregisteredLoopNameIsRefused(t *testing.T) {
+	setupDeskHome(t, "no-such-loop-name")
+	cfg := Config{PoolSize: 1, IdlePoll: 3 * time.Millisecond, ClaimsDir: t.TempDir(), StaleClaim: time.Hour}
+
+	// Run must REFUSE, which means it must RETURN. The failure being guarded against is a
+	// loop that sails past the Guard and idle-polls forever, so the wait is bounded and a
+	// non-return is reported as this test's own failure rather than left to panic the
+	// whole package on the suite timeout.
+	done := make(chan error, 1)
+	go func() { done <- Run(cfg, &fakeLoop{name: "unregistered"}) }()
+
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Run did not return for an unregistered DESK_LOOP — it entered the loop and is " +
+			"running with NO per-loop stop protection, which is exactly the silent failure " +
+			"this guards")
+	}
+	if err == nil {
+		t.Fatal("Run returned nil for an unregistered DESK_LOOP — the loop ran with NO per-loop " +
+			"stop protection while reporting success, which is the silent-failure this guards")
+	}
+	if !deskkit.IsUnverifiable(err) {
+		t.Fatalf("Run: err = %v (exit %d); want Unverifiable (exit %d) — an unknown loop name "+
+			"is could-not-check, not a clean run", err, deskkit.ExitCodeOf(err), deskkit.ExitUnverifiable)
+	}
+	if !strings.Contains(err.Error(), "no-such-loop-name") {
+		t.Fatalf("refusal must name the offending value so an operator can fix it, got %q", err.Error())
+	}
+}
+
 func TestRun_RejectsBadPoolSize(t *testing.T) {
-	setupDeskHome(t, "bad")
+	setupDeskHome(t, testLoopName)
 	if err := Run(Config{PoolSize: 0}, &fakeLoop{name: "bad"}); err == nil {
 		t.Fatal("PoolSize 0 should be rejected")
 	}

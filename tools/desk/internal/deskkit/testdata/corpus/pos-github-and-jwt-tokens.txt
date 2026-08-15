@@ -1,0 +1,11 @@
+# corpus: GitHub token prefixes, an AWS access-key ID and a JWT
+# expect: refused
+# refs:   #328
+# shape:  the literal-prefix credential families
+# why:    these arms must keep firing over EVERY surface, including inside an otherwise-sanctioned document
+classic:   ghp{{+}}_0123456789ABCDEFabcdef01{{+}}23456789ABCD
+finegrain: github{{+}}_pat_11ABCDE0123456789_abcDEF0123456789abcDEF
+server:    ghs{{+}}_abcdEFGH1234abcdEFGH1234{{+}}abcdEFGH1234
+oauth:     gho{{+}}_abcdEFGH1234abcdEFGH1234{{+}}abcdEFGH1234
+keyid:     AKIA{{+}}IOSFODNN7EXAMPLE
+jwt:       eyJ{{+}}hbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.SflKxwRJSMeKKF2QT4fwpMeJ{{+}}f36POk6yJ

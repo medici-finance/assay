@@ -165,7 +165,8 @@ func runOutward(args []string, plan func(entries []deskkit.Entry) writeResult) i
 	// skipped BOTH tiers and left release cuts bounded only by the breaker, which counts
 	// consecutive NON-progress and so never trips on a run of successful releases
 	// (#439 review). A release has no PR, so pr=0 puts it in the repo's
-	// unnumbered bucket at the per-PR cap — the hard 10/hr this tool has always had.
+	// unnumbered bucket at the per-PR cap — the same bound this tool has always had
+	// (current value and provenance: RateLimitPerPRPerHour in ratelimit.go).
 	if aerr := deskkit.AllowWrite(toolName, repoSlug, 0); aerr != nil {
 		return finishAudit(args, writeResult{verb: toolName, result: resultForErr(aerr), detail: aerr.Error(), err: aerr})
 	}
