@@ -225,7 +225,7 @@ func TestAnyRiskPathIsRepoAware(t *testing.T) {
 		{"example-org/tracker", map[string]bool{"k8s/dev/rbac.yaml": true}, true},
 		{"example-org/tracker", map[string]bool{"README.md": true}, false},
 		// the public-repo risk rule: the public infra repo is risk-classed; under the old copy it never was.
-		{"example-org/example-k8s", map[string]bool{"base/ledger/identity.yaml": true}, true},
+		{"example-org/example-k8s", map[string]bool{"base/app/config.yaml": true}, true},
 		{"example-org/example-k8s", map[string]bool{"README.md": true}, true},
 		// fail-closed inputs
 		{"example-org/example-k8s", nil, true},

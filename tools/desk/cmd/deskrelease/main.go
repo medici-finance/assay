@@ -136,7 +136,7 @@ func run(argv []string) int {
 	switch argv[0] {
 	case "version", "--version", "-v":
 		s, b := deskkit.Version()
-		fmt.Fprintf(stdout, "deskrelease sourceSHA=%s builtAt=%s\n", s, b)
+		fmt.Fprintf(stdout, "deskrelease sourceSHA=%s builtAt=%s releaseTag=%s\n", s, b, deskkit.ReleaseTagOrDev())
 		return 0
 	case "help", "-h", "--help":
 		usage()
@@ -188,7 +188,10 @@ usage:
   deskrelease cut <tag> [--dry-run]
   deskrelease version
 
-<tag> must match ^(desk-tools|statusgen)/v[0-9]+\.[0-9]+\.[0-9]+$ — e.g. desk-tools/v0.1.3.
+<tag> must match ^(assay|desk-tools|statusgen)/v[0-9]+\.[0-9]+\.[0-9]+$ — e.g. desk-tools/v0.1.3.
+The assay namespace is the UMBRELLA line (distribution/02, e.g. assay/v0.9.0); the other two
+are per-artifact lines. This list is the set this tool CUTS, not the set this repo releases:
+daily-harvest/vX.Y.Z tags exist and are cut by their own release path, not by deskrelease.
 The tag is created at the CURRENT remote origin/main HEAD, re-read at act time; there is
 no --sha and no --repo. An existing tag is REFUSED, never moved (fix forward with the
 next patch version). Any extra operand or unknown flag is REFUSED, never ignored.

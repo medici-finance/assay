@@ -1,0 +1,6 @@
+# corpus: digest-shaped runs with no structured-format anchor
+# expect: refused
+# refs:   #781, ground-truth/06
+# shape:  base64 of exactly a checksum's length, but with no h1:/integrity marker in front of it
+# why:    the structured exemptions are ANCHORED on a field marker; a bare digest is not a lockfile field
+bare 44-char run:      ypeBEsobvcr6wjGzmiPcTaeG{{+}}7/gUfE5yuYB3ha/uSLs=

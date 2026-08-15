@@ -1,0 +1,9 @@
+# corpus: key=path shell assignment in a recorded Evidence row
+# expect: clean
+# refs:   #775 (PR #640), #781 (shape 1)
+# shape:  f=<repo-relative path>; test -f "$f" && ...
+# why:    the text is a RECORDED audit trail — rewording it to dodge the scanner desyncs the row from what was run
+| 3 | `f=docs/streams/distribut{{+}}ion/version-scheme.md; test -f "$f" && echo present` | prints `present` |
+| 4 | `manifest=docs/publicatio{{+}}n/manifest/classificatio{{+}}n.yaml; grep -c releases "$manifest"` | >= 1 |
+| 5 | `t=TestHonoredFilterLeave{{+}}sTripwireSilent; go test -run "$t" ./...` | ok |
+| 6 | `base=5d529c27e3b1a04f9c2{{+}}d8e7b6a1f0c3d4e5f6a7b; git merge-base --is-ancestor "$base" HEAD` | exit 0 |

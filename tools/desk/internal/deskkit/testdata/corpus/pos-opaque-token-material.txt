@@ -1,0 +1,13 @@
+# corpus: opaque token material of credential length
+# expect: refused
+# refs:   #253, #582, #1261
+# shape:  bare blobs, blobs wearing path disguises, lowercase hex/base36 with digit groups
+# why:    every row here was demonstrated ADMITTED by some earlier spelling of the exemptions
+bare mixed-case 40:   Qx7pLk2wZt9mNc4bYf6RhVs8{{+}}Ju3XoAeG5idWn1Dz
+under a deep path:    /Users/operator/work/exa{{+}}mple/Qx7pLk2wZt9mNc4bYf6{{+}}RhVs8Ju3XoAeG5idWn1Dz
+repo-relative path:   tools/desk/Qx7pLk2wZt9mN{{+}}c4bYf6RhVs8Ju3XoAeG5idWn{{+}}1Dz
+slashes well placed:  Kj8mQ2vRt/Lz3wXy7Nb5cHj/{{+}}1Ae4Gf6Sd0Uk/Pq7Rm2Xn9Tv{{+}}/Bw3CyZl6Jh8Dr2
+md5-shaped lowercase: dcef1701acc78ada90fcefb6{{+}}38adeabf
+base36 token:         wdehl5mcgoou6fuo4ihkpokq{{+}}3skqeost
+padded base64 blob:   ZGVhZGJlZWZkZWFkYmVlZmRl{{+}}YWRiZWVmZGVhZGJlZWZkZWFk{{+}}YmVlZg==
+slack webhook token:  https://hooks.slack.com/services/T00000000/B{{+}}00000000/XXXXXXXXXXXXXXX{{+}}XXXXXXXXX

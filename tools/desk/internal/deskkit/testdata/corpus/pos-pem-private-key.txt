@@ -1,0 +1,11 @@
+# corpus: a PEM private-key block
+# expect: refused
+# refs:   #380
+# shape:  a WELL-FORMED private-key armor delimiter with a filler body
+# why:    narrowing the PEM arm to a label allowlist must not admit any label carrying PRIVATE KEY
+-----BE{{+}}GIN RSA PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0B{{+}}AQEFAASCBKcwggSjAgEAAoIB{{+}}AQ
+-----END RSA PRIVATE KEY-----
+-----BE{{+}}GIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAA{{+}}BG5vbmUAAAAEbm9uZQAAAAAA{{+}}AA
+-----END OPENSSH PRIVATE KEY-----

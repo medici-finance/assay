@@ -1,0 +1,102 @@
+# second-cell.topology.yaml — A SECOND CELL'S INSTANCE of topology.yaml.
+#
+# This file is the acceptance test for one claim: "adding a cell is CONFIG, not
+# CODE." It is a real, complete `topology-v1` file that states a DIFFERENT cell
+# from the one this tree ships (`cell: assay`), and it is parsed by the
+# SHIPPED reader with no new code path — see secondcell_test.go.
+#
+# It is a FIXTURE, not a second declared source. It states nothing about this
+# repo's topology and no derivation is taken from it, so it is not a copy of
+# `topology.yaml` in the derive-or-diff sense: the two files describe different
+# cells and disagreeing is the POINT. `TestTopologyDriftRegistry`'s tokens are
+# taken from the real source and this file deliberately shares none of its
+# cell-varying values.
+#
+# WHAT AN ADOPTING CELL'S FIRST TWO EDITS LOOK LIKE, EXECUTED. The public
+# example's header instructs an adopter to (1) rename `cell:` and (2) flip
+# `medici-finance/assay` from `owned` to `upstream`. Both edits are made below,
+# and the test asserts the reader actually SERVES them — because an instruction
+# in a header that no check executes is a claim, not a contract.
+#
+# NOTHING HOUSE-SPECIFIC. Placeholder `example-org/*` repos plus the toolkit's
+# own public repo, matching topology.example.yaml's publishability rules.
+
+schema: topology-v1
+
+# EDIT 1 — a different cell. Not `assay`.
+cell: example-lending
+
+repos:
+  - slug: example-org/loans
+    visibility: private
+    ci: true
+    root: "."
+    relationship: owned
+    note: >-
+      This cell's own home repo. `owned` here is the claim the one-owner
+      boundary attributes to `cell: example-lending` above — a claim the
+      assay cell's file cannot make and does not make.
+
+  - slug: example-org/loans-k8s
+    visibility: public
+    ci: true
+    relationship: upstream
+    risk_path_triggers:
+      - "deploy/"
+      - ".github/workflows/"
+    note: >-
+      Shared infrastructure another cell is accountable for. This cell reads it
+      and may file issues into it; it does not modify it and does not run jobs
+      against it.
+
+  - slug: medici-finance/assay
+    visibility: public
+    ci: true
+    root: "../assay"
+    # EDIT 2 — the toolkit is UPSTREAM to every cell but one.
+    relationship: upstream
+    note: >-
+      The methodology toolkit this cell consumes. Exactly one cell states this
+      repo `owned`; this is not that cell.
+
+  - slug: example-org/loans-docs
+    visibility: unknown
+    ci: false
+    # `relationship:` DELIBERATELY ABSENT — the default-reading arm of the
+    # claim. Absent must read as `upstream` (least authority), and the test
+    # asserts the reader distinguishes this entry from the STATED `upstream`
+    # above via RelationshipStated. A fixture in which every entry states the
+    # field could not tell the two apart.
+    note: >-
+      Exercises the absent-relationship default. A cell that says nothing about
+      a repo grants itself nothing.
+
+release_repo: example-org/loans
+
+apps:
+  - role: desk
+    purpose: >-
+      This cell's coordinator identity. The ROLE names are the toolkit's; the
+      identities behind them are this cell's own operator configuration.
+  - role: reviewer
+    purpose: This cell's review-gate identity.
+
+humans: []
+
+products:
+  - name: lending
+    summary: >-
+      The illustrative product this second cell is accountable for.
+    repos:
+      - example-org/loans
+      - example-org/loans-docs
+
+labels:
+  system_state:
+    - name: verify-gate
+      why: >-
+        The same system-emitted label class the toolkit defines. A second cell
+        states the label set it reasons about; it does not inherit one silently.
+  decision_owed:
+    - name: needs-decision
+      why: The decision-issue class itself.

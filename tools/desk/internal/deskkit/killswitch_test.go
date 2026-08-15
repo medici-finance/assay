@@ -266,8 +266,8 @@ func TestGuardStopFlags(t *testing.T) {
 
 	t.Run("audit line names the exact flag on stop", func(t *testing.T) {
 		dir := setup(t)
-		t.Setenv(loopEnv, "batch-fanout")
-		mkFlag(t, dir, "STOP.batch-fanout", "fanout paused")
+		t.Setenv(loopEnv, "worker-desk")
+		mkFlag(t, dir, "STOP.worker-desk", "fanout paused")
 		Guard() // ignore error, check audit
 		entries, lerr := LoadEntries()
 		if lerr != nil {
@@ -276,7 +276,7 @@ func TestGuardStopFlags(t *testing.T) {
 		if len(entries) == 0 {
 			t.Fatalf("expected audit line, got none")
 		}
-		if !strings.Contains(entries[0].Detail, "STOP.batch-fanout") {
+		if !strings.Contains(entries[0].Detail, "STOP.worker-desk") {
 			t.Fatalf("audit detail should name the exact flag, got %q", entries[0].Detail)
 		}
 	})

@@ -712,7 +712,10 @@ func TestStale_MeasuringStates_236(t *testing.T) {
 		// before this test that mutation passed the entire suite.
 		withStaleSeams(t, true, map[string]string{
 			"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef": "tree-installed",
-			"origin/main": "tree-origin",
+			// FULLY-QUALIFIED remote-tracking ref: staleState resolves
+			// refs/remotes/origin/main, not the bare short name a stray local
+			// `refs/heads/origin/main` decoy could shadow (#885).
+			"refs/remotes/origin/main": "tree-origin",
 		}, false)
 		state, stale, detail := staleState()
 		if state != staleStateDrift {

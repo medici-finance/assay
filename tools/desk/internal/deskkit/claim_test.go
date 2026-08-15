@@ -201,7 +201,7 @@ func TestTolerantReadOfLegacyShapes(t *testing.T) {
 	}
 	// Legacy loopengine dispatch claim.
 	writeRaw(t, filepath.Join(dir, "loop-engine_01.claim"),
-		`{"itemID":"loop-engine/01","runner":"batch-fanout","branch":"feat/x","claimed":"2026-08-01T00:00:00Z"}`)
+		`{"itemID":"loop-engine/01","runner":"worker-desk","branch":"feat/x","claimed":"2026-08-01T00:00:00Z"}`)
 	// Legacy roster / bash claim.
 	writeRaw(t, filepath.Join(dir, "legacy-roster-09.claim"),
 		`{"brief":"loop-engine/09","repo":"assay","session":"worker-a","ts":"2026-07-17T13:52:05Z"}`)
@@ -217,7 +217,7 @@ func TestTolerantReadOfLegacyShapes(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("List returned %d claims, want 2: %+v", len(got), claims)
 	}
-	if c := got["loop-engine/01"]; c.Owner != "batch-fanout" || c.Branch != "feat/x" || c.TS != "2026-08-01T00:00:00Z" {
+	if c := got["loop-engine/01"]; c.Owner != "worker-desk" || c.Branch != "feat/x" || c.TS != "2026-08-01T00:00:00Z" {
 		t.Fatalf("loopengine-shape mapped wrong: %+v", c)
 	}
 	if c := got["loop-engine/09"]; c.Owner != "worker-a" || c.TS != "2026-07-17T13:52:05Z" {

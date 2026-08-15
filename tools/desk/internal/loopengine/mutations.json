@@ -1,0 +1,47 @@
+{
+  "test": "go test ./internal/loopengine/ -count=1 -run 'TestClaim'",
+  "control": {
+    "name": "CONTROL — disarm the whole dedupe-at-start gate (Claim stops consulting evidence at all)",
+    "file": "internal/loopengine/claim.go",
+    "old": "\tif taken, err := checkWorkEvidence(cfg, it); err != nil || taken {",
+    "new": "\tif taken, err := checkWorkEvidence(cfg, it); false && (err != nil || taken) {"
+  },
+  "mutations": [
+    {
+      "name": "drop the taken-refusal — an item with an open PR is claimed anyway (the 2026-08-13 #722/#733 double-dispatch)",
+      "file": "internal/loopengine/claim.go",
+      "old": "\tif taken {\n\t\tif why == \"\" {",
+      "new": "\tif false && taken {\n\t\tif why == \"\" {"
+    },
+    {
+      "name": "fail OPEN on could-not-check — an unreachable evidence source becomes a confident acquire",
+      "file": "internal/loopengine/claim.go",
+      "old": "\ttaken, why, err := cfg.WorkEvidence(it)\n\tif err != nil {",
+      "new": "\ttaken, why, err := cfg.WorkEvidence(it)\n\tif false && err != nil {"
+    },
+    {
+      "name": "downgrade could-not-check to a silent skip — no error reaches the caller, so exit 6 is never raised",
+      "file": "internal/loopengine/claim.go",
+      "old": "\t\treturn false, deskkit.Unverifiable(\"loopengine: Claim could not check work evidence for \"+it.ID, err)",
+      "new": "\t\treturn false, nil"
+    },
+    {
+      "name": "silent cap — Claim stops announcing that it consulted only the claims dir",
+      "file": "internal/loopengine/claim.go",
+      "old": "\t\tcfg.logf(\"claim: BOUND %s — evidence consulted is the claims dir ONLY (no WorkEvidence probe configured); open/merged PRs and the board row were NOT checked\", it.ID)",
+      "new": "\t\tcfg.logf(\"claim: %s\", it.ID)"
+    },
+    {
+      "name": "silent refusal — the DEDUP line stops naming what it deduplicated against",
+      "file": "internal/loopengine/claim.go",
+      "old": "\t\tcfg.logf(\"DEDUP %s — %s\", it.ID, why)",
+      "new": "\t\tcfg.logf(\"skip %s\", it.ID)"
+    },
+    {
+      "name": "half-claimed refusal — the evidence gate runs AFTER the lock, so a refused item still takes a claim",
+      "file": "internal/loopengine/claim.go",
+      "old": "\tif taken, err := checkWorkEvidence(cfg, it); err != nil || taken {\n\t\treturn false, err\n\t}\n\tok, err := deskkit.Acquire(toClaimConfig(cfg), deskkit.Claim{",
+      "new": "\tok, err := deskkit.Acquire(toClaimConfig(cfg), deskkit.Claim{"
+    }
+  ]
+}

@@ -79,6 +79,7 @@ func TestValidateTag(t *testing.T) {
 		{name: "valid desk-tools", tag: "desk-tools/v0.1.3"},
 		{name: "valid statusgen", tag: "statusgen/v0.5.0"},
 		{name: "valid multi-digit", tag: "desk-tools/v12.30.400"},
+		{name: "valid assay umbrella (distribution/02)", tag: "assay/v0.9.0"},
 
 		// --- refspec metacharacters, refused BY NAME ---
 		{name: "second refspec after a space", tag: "desk-tools/v0.1.3 +HEAD:refs/heads/main", wantRefuse: "whitespace"},
@@ -100,6 +101,9 @@ func TestValidateTag(t *testing.T) {
 
 		// --- shape violations, refused by the anchored pattern ---
 		{name: "wrong namespace", tag: "tracker/v0.1.3", wantRefuse: "does not match"},
+		{name: "daily-harvest still refused — deliberately absent from the allow-list", tag: "daily-harvest/v0.1.0", wantRefuse: "does not match"},
+		{name: "assay bare version — leading v still required", tag: "assay/0.9.0", wantRefuse: "does not match"},
+		{name: "assay with a refspec destination smuggled in", tag: "assay/v0.9.0:refs/heads/main", wantRefuse: "refspec metacharacter"},
 		{name: "no namespace", tag: "v0.1.3", wantRefuse: "does not match"},
 		{name: "namespace prefix only", tag: "desk-toolsv0.1.3", wantRefuse: "does not match"},
 		{name: "extra namespace segment", tag: "evil/desk-tools/v0.1.3", wantRefuse: "does not match"},
@@ -136,6 +140,28 @@ func TestValidateTag(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestTagPatternAssayNamespace pins distribution/02's tagPattern widening: named
+// acceptance for the ruled first umbrella version, and named refusal for the two shapes
+// that must still fail — a namespace whose tags already exist but is deliberately still
+// absent from the allow-list, and the umbrella name without the required leading `v`.
+func TestTagPatternAssayNamespace(t *testing.T) {
+	t.Run("accepts the ruled first umbrella version assay/v0.9.0", func(t *testing.T) {
+		if !tagPattern.MatchString("assay/v0.9.0") {
+			t.Fatal("tagPattern refused assay/v0.9.0 — the umbrella namespace must be accepted (the human's ruling, PR #387)")
+		}
+	})
+	t.Run("still refuses daily-harvest despite its tags already existing", func(t *testing.T) {
+		if tagPattern.MatchString("daily-harvest/v0.1.0") {
+			t.Fatal("tagPattern accepted daily-harvest/v0.1.0 — daily-harvest is deliberately absent from the allow-list (see the comment on tagPattern)")
+		}
+	})
+	t.Run("still refuses a bare version under the assay name", func(t *testing.T) {
+		if tagPattern.MatchString("assay/0.9.0") {
+			t.Fatal("tagPattern accepted assay/0.9.0 — the leading v is still required")
+		}
+	})
 }
 
 // TestTagPatternIsAnchoredAtBothEnds pins the property the whole design rests on: the

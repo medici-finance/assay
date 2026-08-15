@@ -25,7 +25,7 @@ import (
 // publish at all: a fresh adopter must not have to configure a taxonomy, a release
 // home and a callout before anything runs.
 func TestGenericKnobsUnsetAreShippedDefaults(t *testing.T) {
-	withRoster(t, mediciRoster())
+	withRoster(t, goldenRoster())
 	c := EffectiveConfig()
 	if len(c.Problems) != 0 {
 		t.Fatalf("an unset taxonomy/release/callout refused the configuration: %v", c.Problems)
@@ -55,7 +55,7 @@ func TestGenericKnobsUnsetAreShippedDefaults(t *testing.T) {
 // ---- ASSAY_RELEASE_REPO ------------------------
 
 func TestReleaseRepoParse(t *testing.T) {
-	base := mediciRoster()
+	base := goldenRoster()
 	base[EnvReleaseRepo] = "fork-owner/fork-repo"
 	withRoster(t, base)
 	if got := ConfiguredReleaseRepo(); got != "fork-owner/fork-repo" {
@@ -77,7 +77,7 @@ func TestReleaseRepoMalformedRefused(t *testing.T) {
 		"too many parts": "one/two/three",
 	} {
 		t.Run(name, func(t *testing.T) {
-			base := mediciRoster()
+			base := goldenRoster()
 			base[EnvReleaseRepo] = value
 			withRoster(t, base)
 			c := EffectiveConfig()
@@ -95,7 +95,7 @@ func TestReleaseRepoMalformedRefused(t *testing.T) {
 
 func TestWriteguardCalloutParse(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "callout")
-	base := mediciRoster()
+	base := goldenRoster()
 	base[EnvWriteguardCallout] = p
 	withRoster(t, base)
 	if got := WriteguardCalloutPath(); got != p {
@@ -116,7 +116,7 @@ func TestWriteguardCalloutRequiresAbsolutePath(t *testing.T) {
 		"a list":       "/a/callout,/b/callout",
 	} {
 		t.Run(name, func(t *testing.T) {
-			base := mediciRoster()
+			base := goldenRoster()
 			base[EnvWriteguardCallout] = value
 			withRoster(t, base)
 			c := EffectiveConfig()
@@ -145,7 +145,7 @@ func TestGenericKnobsEchoBothDirections(t *testing.T) {
 		{"writeguardCallout", EnvWriteguardCallout, "/opt/adopter/writeguard-callout"},
 	} {
 		t.Run(s.name, func(t *testing.T) {
-			withRoster(t, mediciRoster())
+			withRoster(t, goldenRoster())
 			var unset bytes.Buffer
 			EchoEffectiveConfig(&unset)
 			if !strings.Contains(unset.String(), s.key+"=") {
@@ -153,7 +153,7 @@ func TestGenericKnobsEchoBothDirections(t *testing.T) {
 					"cannot see that the surface exists, let alone that it is empty", s.key)
 			}
 
-			base := mediciRoster()
+			base := goldenRoster()
 			base[s.key] = s.value
 			withRoster(t, base)
 			var set bytes.Buffer
@@ -166,7 +166,7 @@ func TestGenericKnobsEchoBothDirections(t *testing.T) {
 					"run output or CI history", s.key)
 			}
 
-			withRoster(t, mediciRoster())
+			withRoster(t, goldenRoster())
 			var again bytes.Buffer
 			EchoEffectiveConfig(&again)
 			if again.String() == set.String() {
@@ -181,7 +181,7 @@ func TestGenericKnobsEchoBothDirections(t *testing.T) {
 // state as a named default rather than as a blank. A blank line beside a GUARD is the
 // one place a reader must not have to guess whether the check is running.
 func TestUnsetKnobsEchoTheirMeaning(t *testing.T) {
-	withRoster(t, mediciRoster())
+	withRoster(t, goldenRoster())
 	var buf bytes.Buffer
 	EchoEffectiveConfig(&buf)
 	out := buf.String()
@@ -208,7 +208,7 @@ func TestUnsetKnobsEchoTheirMeaning(t *testing.T) {
 // know, so a roster carrying all three must NOT be refused. This is the check that
 // would have caught adding a variable to one reader's parser and not the other's.
 func TestNewKnobsAreRecognisedKeys(t *testing.T) {
-	base := mediciRoster()
+	base := goldenRoster()
 	base[EnvRepoAliases] = "one/alpha=al:prod"
 	base[EnvReleaseRepo] = "one/alpha"
 	base[EnvWriteguardCallout] = "/opt/adopter/callout"

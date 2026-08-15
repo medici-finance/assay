@@ -29,6 +29,54 @@ import (
 
 const maxBodyBytes = 16 * 1024 // body cap (16 KiB)
 
+// --- the raised-by provenance stamp (methodology-metrics/29) -----------------------
+//
+// deskfile is the ONE choke point every gated filing passes through, so it is where the
+// `raised-by:<role>` stamp belongs: a second stamping path would be a second place for the
+// convention to be forgotten. The vocabulary and the reader contract are declared once, in
+// deskkit/raisedby.go; nothing about the label is spelled out here.
+//
+// THE STAMP NEVER BLOCKS THE FILING. This is the deliberate half. `raised-by:` is a
+// METRIC annotation, not a safety gate, and the labels do not exist in any repo yet — 0 of
+// 421 issues on the home repo carry one at the time this shipped. A hard gate against an
+// already-drifted corpus reds everything on day one and teaches the fleet to route around
+// the verb; the fleet precedent is statusgen/mergedstatus.go, which shipped its
+// reconciliation at NOTICE severity for exactly this reason and recorded promotion as a
+// later ruling. So an unstampable filing is filed UNSTAMPED with a loud NOTICE, and the
+// issue reads as UNKNOWN provenance — which is a true statement about it.
+//
+// What IS refused (exit 5) is a role the roster does not bind. That is a caller error with
+// a fix in hand, not a state of the world, and stamping it would mint a metric category
+// nothing else will ever populate.
+//
+// FOUR OUTCOMES, all audited, none silent (see resolveRaisedByStamp):
+//
+//	stamped              the label exists in the repo and was applied.
+//	not-requested        no --raised-by was given. Provenance UNKNOWN by omission.
+//	label-missing        the role is valid but the repo has no such label, so
+//	                     `gh issue create --label` would have FAILED the whole filing.
+//	could-not-check      the label-existence probe could not be answered (API error,
+//	                     unparseable output). Three-state: not "absent", not "present".
+//
+// The last three all land the issue as UNKNOWN. They are kept DISTINCT in the audit line
+// because they need different remedies — create the label, pass the flag, or investigate
+// an outage — and collapsing them into one "unstamped" would hide which.
+const (
+	// raisedByFlag is the flag name, restated once so the NOTICE text and the usage
+	// string cannot drift from the flag registration.
+	raisedByFlag = "raised-by"
+	// labelListLimit bounds the label-existence probe. A repo with MORE labels than this
+	// can have its stamp label paged out of the answer — in which case the probe reports
+	// it missing and the filing lands UNSTAMPED with a NOTICE. That is the safe
+	// direction: the bound can cost a stamp, never invent one.
+	labelListLimit = "500"
+
+	stampOutcomeStamped   = "raised-by=%s"
+	stampOutcomeOmitted   = "raised-by=UNSTAMPED:not-requested"
+	stampOutcomeNoLabel   = "raised-by=UNSTAMPED:label-missing"
+	stampOutcomeUnchecked = "raised-by=UNSTAMPED:could-not-check"
+)
+
 // --- per-session new-issue budget (NEW accounting, NOT the deskkit limiter) --
 //
 // The deskkit outward-write limiter (RateLimitPerPRPerHour etc.) has NO session dimension
@@ -174,6 +222,16 @@ type auditCtx struct {
 	forceNewReason string // non-empty when --force-new bypassed the dedupe search
 	successResult  string // ResultOK unless a noop set it otherwise
 
+	// raisedBy records WHICH of the four stamp outcomes this filing took (see the
+	// raised-by block at the head of this file). It is APPENDED to the audit detail,
+	// never prepended: chargedNewEntry discriminates on createSentMarker being the
+	// PREFIX of Detail, so a note in front of it would silently un-charge the budget.
+	//
+	// It is on the audit line rather than only on stderr because "how many filings went
+	// out unstamped, and why" is the question the backfill decision turns on, and a
+	// NOTICE scrolls past.
+	raisedBy string
+
 	// createSent is set immediately BEFORE the `gh issue create` exec and stamps
 	// createSentMarker onto the audit detail. It is the discriminator the per-session
 	// budget reads to tell "the create was sent and we cannot confirm it" (charges) from
@@ -203,6 +261,9 @@ type auditCtx struct {
 func (a *auditCtx) log(result, detail string) {
 	if a.createSent {
 		detail = createSentMarker + detail
+	}
+	if a.raisedBy != "" {
+		detail = strings.TrimSpace(detail + " | " + a.raisedBy)
 	}
 	e := deskkit.Entry{
 		Tool:       "deskfile",
@@ -292,6 +353,8 @@ func cmdNew(args []string) (err error) {
 	bodyFile := fs.String("body-file", "", "path to a file containing the issue body (required)")
 	var labels stringSlice
 	fs.Var(&labels, "label", "label to apply (repeatable)")
+	raisedBy := fs.String(raisedByFlag, "", "desk role that RAISED this issue — stamps `raised-by:<role>` "+
+		"(vocabulary derived from the roster's role-bindings; omitting it files with UNKNOWN provenance)")
 	forceNew := fs.Bool("force-new", false, "bypass the dedupe search (escape hatch; requires --reason)")
 	reason := fs.String("reason", "", "stated reason for --force-new (required with --force-new)")
 	if perr := fs.Parse(args); perr != nil {
@@ -317,6 +380,21 @@ func cmdNew(args []string) (err error) {
 	}
 	ac.repo = *repo
 	ac.title = *title
+
+	// Validate the raised-by ROLE before anything is written. An unbound role is a
+	// caller error with a fix in hand (exit 5), and it is the one raised-by condition
+	// that refuses: everything else about the stamp degrades to UNKNOWN rather than
+	// blocking the filing. Resolution of whether the LABEL exists happens later, after
+	// the dedupe and budget gates, so a filing that was going to be refused anyway does
+	// not spend an API call proving it.
+	stampLabel := ""
+	if strings.TrimSpace(*raisedBy) != "" {
+		l, lerr := deskkit.RaisedByLabel(*raisedBy)
+		if lerr != nil {
+			return lerr
+		}
+		stampLabel = l
+	}
 
 	// Body: file only, 16 KiB cap, secret scan. No override flag exists.
 	body, berr := readBody(*bodyFile)
@@ -383,9 +461,21 @@ func cmdNew(args []string) (err error) {
 	}
 	defer cleanup()
 
+	// Resolve the provenance stamp. This NEVER returns an error: every way it can fail
+	// yields an unstamped filing plus a NOTICE, because the stamp is a metric annotation
+	// and a metric must not be able to stop a filing. See the raised-by block above.
+	stampApply, stampNote, stampNotice := resolveRaisedByStamp(*repo, stampLabel)
+	ac.raisedBy = stampNote
+	if stampNotice != "" {
+		fmt.Fprintln(os.Stderr, stampNotice)
+	}
+
 	ghArgs := []string{"issue", "create", "--repo", *repo, "--title", *title, "--body-file", bodyPath}
 	for _, l := range labels {
 		ghArgs = append(ghArgs, "--label", l)
+	}
+	if stampApply != "" {
+		ghArgs = append(ghArgs, "--label", stampApply)
 	}
 	// From here on the create HAS been sent, so every outcome charges session budget —
 	// including an unconfirmable one. Set before the call, not after: an error return must
@@ -543,6 +633,87 @@ func cmdCheck(args []string) (err error) {
 	fmt.Printf("no duplicates above threshold %.2f (scored %d candidate(s), max score %.2f)\n",
 		matchThreshold, len(cands), topScore(cands))
 	return nil
+}
+
+// --- the raised-by stamp resolver ---------------------------------------------------
+
+// resolveRaisedByStamp decides whether the provenance label can actually be applied, and
+// returns (label-to-apply, audit note, NOTICE for stderr). It NEVER returns an error:
+// see the raised-by block at the head of this file for why a metric annotation must not
+// be able to refuse a filing.
+//
+// stampLabel is "" when no --raised-by was given; it has already been validated against
+// the roster by the caller when it is not.
+//
+// The label-existence probe is not decoration. `gh issue create --label <x>` FAILS
+// outright when x does not exist on the repo, so applying an unverified stamp would
+// convert a missing metric label into a failed filing — the annotation taking down the
+// thing it annotates. And no repo has these labels yet: they must be created outside this
+// tool (deskfile's mutating vocabulary is `issue create` and `issue comment`, and widening
+// it to `label create` for a metric is not a trade this file makes). So the probe reads,
+// and a missing label produces a NOTICE naming the exact create command.
+//
+// THREE-STATE on the probe itself: present / absent / could-not-ask. An unanswered probe
+// is NOT treated as "absent" in the message even though both drop the stamp, because the
+// remedies differ and a caller told "create the label" during an API outage will create a
+// label that already exists and still not be stamped.
+func resolveRaisedByStamp(repo, stampLabel string) (apply, note, notice string) {
+	if stampLabel == "" {
+		return "", stampOutcomeOmitted, "NOTICE: no --" + raisedByFlag + " given — this issue is filed with " +
+			"UNKNOWN provenance and no by-desk metric can attribute it. Unknown is NOT 'human-raised'; " +
+			"it is the absence of an answer. Pass --" + raisedByFlag + " <role> to record which desk raised it."
+	}
+	present, perr := labelExists(repo, stampLabel)
+	switch {
+	case perr != nil:
+		return "", stampOutcomeUnchecked, "NOTICE: could not check whether label " + stampLabel +
+			" exists on " + repo + " (" + perr.Error() + ") — filing UNSTAMPED rather than risking a " +
+			"failed `gh issue create --label`. This issue reads as UNKNOWN provenance; it is could-not-check, " +
+			"not 'the label is absent'."
+	case !present:
+		return "", stampOutcomeNoLabel, "NOTICE: label " + stampLabel + " does not exist on " + repo +
+			" — filing UNSTAMPED (applying it would have failed the whole `gh issue create`). " +
+			"This issue reads as UNKNOWN provenance. Create the label once, then re-run:\n" +
+			"  gh label create " + stampLabel + " --repo " + repo +
+			" --description \"filed by the " + strings.TrimPrefix(stampLabel, deskkit.RaisedByPrefix) +
+			" desk\" --force"
+	default:
+		return stampLabel, fmt.Sprintf(stampOutcomeStamped, strings.TrimPrefix(stampLabel, deskkit.RaisedByPrefix)), ""
+	}
+}
+
+// labelExists reports whether label is defined on repo. An error return is the
+// could-not-check third state — the caller must not read it as "absent".
+//
+// Bounded by labelListLimit: a repo carrying more labels than that can page the stamp
+// label out of the answer, which reports absent and costs a stamp. It can never invent
+// one, which is the direction that matters for a provenance claim.
+func labelExists(repo, label string) (bool, error) {
+	out, err := gh("label", "list", "--repo", repo, "--limit", labelListLimit, "--json", "name")
+	if err != nil {
+		return false, err
+	}
+	out = strings.TrimSpace(out)
+	if out == "" {
+		// Exit 0 with no stdout is an UNANSWERED probe, not an empty label set. The same
+		// distinction dedupeSearch draws for its own empty output.
+		return false, fmt.Errorf("gh label list returned no data")
+	}
+	var got []struct {
+		Name string `json:"name"`
+	}
+	if perr := parseJSON(out, &got); perr != nil {
+		return false, perr
+	}
+	for _, g := range got {
+		// GitHub label names are case-insensitive for uniqueness, so an existing
+		// `Raised-By:reviewer` would collide with a create of `raised-by:reviewer`.
+		// Matching the same way is what keeps the probe agreeing with the API.
+		if strings.EqualFold(strings.TrimSpace(g.Name), label) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // --- helpers -----------------------------------------------------------------------

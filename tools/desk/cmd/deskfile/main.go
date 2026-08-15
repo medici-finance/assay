@@ -22,7 +22,8 @@ import (
 const usage = `deskfile — filing gate: mandatory dedupe, class-issue attach, per-pass budget.
 
 USAGE:
-  deskfile new    -R <owner/repo> --title <t> --body-file <f> [--label ...] [--force-new --reason <r>]
+  deskfile new    -R <owner/repo> --title <t> --body-file <f> [--label ...] [--raised-by <role>]
+                  [--force-new --reason <r>]
   deskfile attach -R <owner/repo> --to <N> --body-file <f>
   deskfile check  -R <owner/repo> --title <t>
   deskfile --version
@@ -34,6 +35,18 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
          escape hatch is --force-new --reason <r>, which bypasses the search and is
          audit-logged. A session may file at most 3 new issues per repo per rolling 24h
          (exit 4 over); attach comments are never budgeted.
+
+         --raised-by <role> stamps the provenance label raised-by:<role> so the by-desk
+         issue metric can attribute the filing. The role vocabulary is DERIVED from the
+         roster's role-bindings (the role= prefixes on ASSAY_TRUSTED_BOT_SLUGS) — an
+         unbound role is REFUSED (exit 5) with the bound set named. Everything else about
+         the stamp degrades rather than blocks: omit the flag, or have the label not exist
+         on the repo, or fail to check whether it exists, and the issue is still filed —
+         UNSTAMPED, with a NOTICE, and its provenance reads as UNKNOWN. Unknown is the
+         absence of an answer, never "human-raised". Each outcome is distinguished on the
+         audit line (raised-by=<role> | UNSTAMPED:not-requested | UNSTAMPED:label-missing |
+         UNSTAMPED:could-not-check). The raised-by:* labels are not GitHub defaults and
+         deskfile does not create them; the NOTICE prints the one-off gh label create.
 
 attach — post an observation as a comment on issue N (a class issue or duplicate target).
          Never budgeted. Refuses (exit 5) if N is CLOSED, with reopen-or-new guidance.
@@ -67,7 +80,7 @@ func run(args []string) int {
 	// --version / help are pure reads: no kill-switch gate, no audit line.
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
-		fmt.Printf("deskfile sourceSHA=%s builtAt=%s\n", sha, built)
+		fmt.Printf("deskfile sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
 		return deskkit.ExitOK
 	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {

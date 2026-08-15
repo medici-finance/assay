@@ -20,13 +20,24 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/topology"
 )
 
 // ---------------------------------------------------------------------------
-// owned repos + excluded labels (mirrors tools/statusgen/scanissues.go's
-// scanRepos / scanExcludedLabels — those constants are unexported in a separate
-// Go module, so this is a deliberate, documented duplicate. Keep in sync if the
-// issue-loop scanner's repo set or excluded-label set changes.)
+// owned repos + excluded labels.
+//
+// Both used to be hand-synced copies of statusgen's scanRepos /
+// scanExcludedLabels, kept equal by a comment asking you to. The comment did not
+// work: `excludedLabels` here was MISSING `review-request`, which statusgen's set
+// carries (#829) — so this board asked for a placeholder on exactly the class of
+// issue the scanner deliberately excludes, and the divergence became its own
+// issue, which is how every one of these copies ends.
+//
+// Neither is a copy now. The repo set reads the roster (deskkit.ScanRepos /
+// ASSAY_SCAN_REPOS — the identical key statusgen reads); the label sets read
+// `topology.yaml` through tools/desk/internal/topology, the same declared source
+// statusgen derives its copy from. One declared source per fact, with the
+// derivations diffed in CI by TestTopologyDriftRegistry (ground-truth/04, #276).
 // ---------------------------------------------------------------------------
 
 // ownedRepos is the intake SCAN scope: the owned-repo set the issue lane READS.
@@ -50,29 +61,25 @@ import (
 // yields an empty read surface (fail safe).
 func ownedRepos() []string { return deskkit.ScanRepos() }
 
-// excludedLabels are the system-emitted labels that disqualify an open issue from
-// needing a placeholder (mirrors tools/statusgen/scanissues.go's scanExcludedLabels):
-// each names a closeable state the desk machinery emits, not a unit of work.
-var excludedLabels = map[string]bool{
-	"verify-gate":    true,
-	"live-verify":    true,
-	"needs-decision": true,
-}
+// excludedLabelSet returns the system-STATE labels that disqualify an open issue
+// from needing a placeholder: each names a closeable state the desk machinery
+// emits, not a unit of work. Declared once in topology.yaml
+// (labels.system_state), with the rationale for each entry beside it.
+func excludedLabelSet() map[string]bool { return topology.Compiled().SystemStateLabelSet() }
 
-// decisionLabels mark an issue as decision-owed — the SLA-escalation scope (brief
-// loop-engine/13, #703 classifyIssue spec): the needs-decision-class label plus the
-// `question` escalation label. A decision-owed open issue is either AWAIT (fresh) or
-// ESCALATE (past the SLA) — see classifyIssue.
-var decisionLabels = map[string]bool{
-	"needs-decision": true,
-	"question":       true,
-}
+// decisionLabelSet returns the labels that mark an issue decision-owed — the
+// SLA-escalation scope (brief loop-engine/13, #703 classifyIssue spec): the
+// needs-decision-class label plus the `question` escalation label. A
+// decision-owed open issue is either AWAIT (fresh) or ESCALATE (past the SLA) —
+// see classifyIssue. Declared once in topology.yaml (labels.decision_owed).
+func decisionLabelSet() map[string]bool { return topology.Compiled().DecisionOwedLabelSet() }
 
 // hasDecisionLabel reports whether any label marks the issue decision-owed
 // (case-insensitive, mirrors hasExcludedLabel's matching style).
 func hasDecisionLabel(labels []string) bool {
+	set := decisionLabelSet()
 	for _, l := range labels {
-		if decisionLabels[strings.ToLower(strings.TrimSpace(l))] {
+		if set[strings.ToLower(strings.TrimSpace(l))] {
 			return true
 		}
 	}
@@ -275,10 +282,12 @@ func labelNames(labels []ghLabel) []string {
 	return out
 }
 
-// hasExcludedLabel reports whether any label is in excludedLabels (case-insensitive).
+// hasExcludedLabel reports whether any label is in the system-state set
+// (case-insensitive).
 func hasExcludedLabel(labels []string) bool {
+	set := excludedLabelSet()
 	for _, l := range labels {
-		if excludedLabels[strings.ToLower(strings.TrimSpace(l))] {
+		if set[strings.ToLower(strings.TrimSpace(l))] {
 			return true
 		}
 	}
@@ -570,6 +579,18 @@ type externalRow struct {
 // clock. slaDays is the silence threshold (escalateSLADays by default, overridable
 // per invocation).
 func computeIssueBoard(root string, now time.Time, slaDays int) ([]issueBoardRow, []externalRow, error) {
+	// Fail closed on an EMPTY scan scope BEFORE any read (#777). ownedRepos() is
+	// ScanRepos(): unset ASSAY_SCAN_REPOS yields zero repos, the loop below then runs
+	// zero iterations, makes no gh call, and the empty result renders as "(no open
+	// issues across owned repos)" at exit 0 — a clean-and-empty board over a front door
+	// that owns 200+ issues. An empty sweep is COULD-NOT-CHECK, never green-and-empty:
+	// this is the scan-scope twin of the #489 BoardScope() guard, which only ever
+	// covered the WRITE set. Both the `board` and `issues` paths route through here, so
+	// this is the one place every scan-dependent verb provably passes; the intake lane
+	// reads local files only and deliberately does NOT gate on the scan scope.
+	if err := deskkit.ScanScopeError(); err != nil {
+		return nil, nil, err
+	}
 	placeholders, err := loadPlaceholders(root)
 	if err != nil {
 		return nil, nil, err

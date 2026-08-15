@@ -1527,7 +1527,21 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	// Trust gate (deskkit/trust.go): untrusted author + no current blessing → quarantine.
 	// Quarantined PRs get NO ACTION row and stay out of the open= audit set (they are not
 	// on anyone's work list), but keep their id so a prior run's row tombstones cleanly.
-	if !deskkit.TrustedAuthor(p.Author.Login) {
+	//
+	// On a PUBLIC (risk-classed) repo the author bar is HIGHER (#943): only role Apps
+	// (ASSAY_TRUSTED_BOT_SLUGS) and mapped humans (ASSAY_HUMAN_LOGIN_MAP) qualify — NEVER
+	// a shared machine account that ASSAY_TRUSTED_LOGINS admits as a human, and never a
+	// fork author. Public repos accept fork PRs from any account, so
+	// auto-reviewing an untrusted diff would spend the reviewer App's identity on hostile
+	// input and blur the fork-PR trust boundary. VisibilityRiskClassed is fail-closed:
+	// only a KNOWN-private repo keeps the plain TrustedAuthor bar; public/internal/unknown
+	// all get the tighter gate. The blessing authority can still admit any single PR by
+	// commenting (the manual override, unchanged on either path).
+	authorTrusted := deskkit.TrustedAuthor(p.Author.Login)
+	if deskkit.VisibilityRiskClassed(repo) {
+		authorTrusted = deskkit.TrustedPublicAuthor(p.Author.Login)
+	}
+	if !authorTrusted {
 		blessed, berr := prBlessed(repo, p.Number)
 		if berr != nil {
 			return prOutcome{}, berr

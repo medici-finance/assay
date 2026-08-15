@@ -1,0 +1,48 @@
+{
+  "deskreply/detached-worktree-own-repo": {
+    "stage": "unverifiable",
+    "issue": "#517",
+    "note": "THE HEADLINE FAILURE. deskreply refuses at exit 6 ('detached HEAD — check out your PR's feature branch first') in the exact worktree shape the worker-desk and pr-shepherd skills MANDATE. Measured 5 of 5 workers in the 2026-08-13 dispatch cycle and 3 of 3 in the cycle before; every one fell back to raw `gh pr comment`, which routes around deskkit.BodyCheck entirely. Exit 6 is an authorised fallback trigger, so nothing in the artifact records that the secret scan did not run. When #517 lands this row becomes reached-remote and the test will say so."
+  },
+  "deskreply/detached-worktree-cross-repo": {
+    "stage": "unverifiable",
+    "issue": "#517",
+    "note": "#517's acceptance sentence in full — a detached worktree at origin/<branch>, in a repo DIFFERENT from the caller's own. Note what this row records beyond the one above: the detached-HEAD guard fires FIRST, so the separate cross-repo refusal ('not this worktree's origin') is never even reached. Two independent preconditions each block the mandated shape, and fixing only the one named in the message would leave this scenario refusing at exit 5 instead of 6."
+  },
+  "deskreply/branch-checked-out-own-repo": {
+    "stage": "reached-remote",
+    "note": "THE HARNESS'S OWN CONTROL for deskreply: the shape the verb was written for. Every local precondition passes and the run stops at the public-repo gate, the first step needing GitHub. If THIS row ever stops being reached-remote, the harness is broken and its verdict on the mandated shape means nothing — read a red here as could-not-check, not as a finding about deskreply."
+  },
+  "deskpr-create/detached-worktree": {
+    "stage": "unverifiable",
+    "issue": "#517",
+    "note": "deskpr create carries the same precondition shape as deskreply: preflight refuses a detached HEAD at exit 6. A worker in the mandated worktree cannot open its own draft PR through the tool, which is why the fallback row exists in every skill's tool-wiring table."
+  },
+  "deskpr-create/branch-checked-out": {
+    "stage": "reached-remote",
+    "note": "THE HARNESS'S OWN CONTROL for deskpr: local preconditions satisfied, body scanned clean, worker token minted, PR list read, rate limit passed, stopped at the public-repo gate."
+  },
+  "deskpr-update/detached-worktree": {
+    "stage": "unverifiable",
+    "issue": "#517",
+    "note": "The follow-up-push verb, in the mandated shape. This is the one a shepherd needs most — it is the fix-to-re-review hot path — and it is unreachable from the worktree the skills require."
+  },
+  "deskpr-update/ready-flipped-pr": {
+    "stage": "refused",
+    "issue": "#788",
+    "note": "An approved, ready-flipped PR that has gone stale against a moving main has NO sanctioned desk-tools push path: `deskpr update` refuses at exit 5 on !isDraft, and deskgit is fetch-only. Exit 5 is never a fallback trigger, so the correct behaviour for a worker here is to stop — which leaves the PR permanently stuck. Recorded rather than fixed: #788 is its own issue."
+  },
+  "deskpr-create/secret-body-no-override": {
+    "stage": "refused",
+    "note": "The secret scan refusing a real credential shape in a real binary, at exit 5. The scenario ALSO asserts the refusal message advertises --force-scan-override: #585's worker left the sanctioned transport because the refusal said 'no override flag by design', and a way through that nobody is told about is a way through nobody takes."
+  },
+  "deskpr-create/secret-body-logged-override": {
+    "stage": "reached-remote",
+    "note": "The audited bypass end to end (#585): the same refused body, plus --force-scan-override with a stated reason, proceeds past the scan AND lands exactly one scan_override audit row carrying the tool, the surface digest, the reason and the identity. The scenario asserts BOTH halves — an override that proceeds without logging is the unlogged bypass this brief exists to replace, not a fix for it."
+  },
+  "deskpr-create/desktoken-absent-from-path": {
+    "stage": "unverifiable",
+    "issue": "#794",
+    "note": "The cold-shell case: desktoken not resolvable on PATH, exit 6. It shares its exit code with the detached-HEAD refusal above, which is #517's second comment verbatim ('distinguish the two rc=6 causes so the telemetry is readable'). The harness cannot fix the conflation, but keeping them as separate named scenarios makes it visible in the record."
+  }
+}

@@ -18,11 +18,12 @@ package deskkit
 //     repo's work cannot silently stop appearing on it.
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/topology"
 )
 
 // RootsEnv names the environment variable that overrides root PATHS:
@@ -34,18 +35,20 @@ import (
 // allowed set.
 const RootsEnv = "DESK_ROOTS"
 
-// defaultRoots maps an allowed repo to its default local checkout path, using
+// defaultRootMap maps an allowed repo to its default local checkout path, using
 // the sibling-checkout convention (a repo's siblings sit next to it). Paths are
 // relative to the process's
 // working directory, which for the desk tools is the primary repo root.
 //
 // Only repos whose streams statusgen actually generates a board for belong here.
 // Adding one is a deliberate act: it puts that repo's briefs on the desk's
-// Next-up queue and makes its absence a hard error.
-var defaultRoots = map[string]string{
-	"example-org/tracker":  ".",
-	"medici-finance/assay": "../assay-toolkit",
-}
+// Next-up queue and makes its absence a hard error — which is exactly why the
+// set is DECLARED ONCE, in `topology.yaml` (repos[].root), and read here rather
+// than restated. ground-truth/04 retired the hand table that used to sit at this
+// spot (#276: the org topology carried in five parallel tables with no generator
+// and no cross-check); TestTopologyDriftRegistry fails NAMING THIS SITE if a
+// second copy comes back.
+func defaultRootMap() map[string]string { return topology.Compiled().Roots() }
 
 // RootConfig binds a repo (owner/name) to its local root directory.
 type RootConfig struct {
@@ -63,8 +66,9 @@ type RootConfig struct {
 func ConfiguredRoots() ([]RootConfig, error) {
 	raw := strings.TrimSpace(os.Getenv(RootsEnv))
 	if raw == "" {
-		out := make([]RootConfig, 0, len(defaultRoots))
-		for repo, path := range defaultRoots {
+		defaults := defaultRootMap()
+		out := make([]RootConfig, 0, len(defaults))
+		for repo, path := range defaults {
 			out = append(out, RootConfig{Repo: repo, Path: path})
 		}
 		sort.Slice(out, func(i, j int) bool { return out[i].Repo < out[j].Repo })
@@ -147,22 +151,11 @@ func ResolveRoot(r RootConfig) (string, error) {
 // `.assay-versions`. The pin file is the single record of which statusgen release
 // the desk runs; a consumer that cannot read it cannot claim to be pinned, so a
 // missing or malformed pin is Unverifiable (exit 6) rather than a default.
+//
+// It is now a THIN WRAPPER over the generic ArtifactPin (distribution/04): the
+// reader was generalised to any artifact line, and this preserves the exact
+// behaviour every existing caller depends on — including the trailing-space
+// prefix match, so it still never matches a `statusgen-<platform>` line.
 func StatusgenPin(root string) (tag, sha string, err error) {
-	path := filepath.Join(root, ".assay-versions")
-	raw, rerr := os.ReadFile(path)
-	if rerr != nil {
-		return "", "", Unverifiable("cannot read "+path+" (the statusgen pin)", rerr)
-	}
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "statusgen ") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			return "", "", Unverifiable(fmt.Sprintf("malformed statusgen pin in %s: %q", path, line), nil)
-		}
-		return fields[1], fields[2], nil
-	}
-	return "", "", Unverifiable("no statusgen pin in "+path, nil)
+	return ArtifactPin(root, "statusgen")
 }

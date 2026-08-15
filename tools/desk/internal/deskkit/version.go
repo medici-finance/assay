@@ -17,9 +17,23 @@ import (
 var (
 	SourceSHA = ""
 	BuiltAt   = ""
+	// ReleaseTag is the artifact-namespaced release tag (`desk-tools/vX.Y.Z`)
+	// stamped by .github/workflows/release-desk.yml via
+	//   -X …/internal/deskkit.ReleaseTag=$RELEASE_TAG
+	// mirroring release-statusgen.yml's `-X main.statusgenVersion`. It is what
+	// maps a RUNNING binary back to the release it was cut from: SourceSHA alone
+	// is a commit, not a version, so before this stamp nothing could say which
+	// `desk-tools/vX.Y.Z` a binary is. A `go run` / unstamped build leaves it
+	// empty, reported as "dev" (ReleaseTagOrDev) — never a fabricated release.
+	ReleaseTag = ""
 )
 
 const unpinned = "unpinned"
+
+// devRelease is what an unstamped build answers for its release tag. It mirrors
+// statusgen's `dev` default: a binary that was not cut from a release must say so
+// rather than claim a version, so a source build can never be mistaken for a pin.
+const devRelease = "dev"
 
 // Version returns (sourceSHA, builtAt), substituting "unpinned" for either value
 // that was not stamped in at build time. Both are echoed in every audit record and
@@ -35,8 +49,20 @@ func Version() (sourceSHA, builtAt string) {
 	return s, b
 }
 
+// ReleaseTagOrDev returns the stamped release tag, or "dev" for an unstamped
+// build. Callers print this on `--version` alongside SourceSHA/BuiltAt so a
+// running desk-tools binary can be mapped back to its `desk-tools/vX.Y.Z`.
+func ReleaseTagOrDev() string {
+	if ReleaseTag == "" {
+		return devRelease
+	}
+	return ReleaseTag
+}
+
 // IsPinned reports whether the binary was stamped (installed via `sudo make
-// desk-install`) rather than run from source.
+// desk-install`) rather than run from source. It keys on SourceSHA/BuiltAt
+// only — the ReleaseTag stamp is additive and does NOT change which builds are
+// pinned, so every build that reported IsPinned() before this stamp still does.
 func IsPinned() bool { return SourceSHA != "" && BuiltAt != "" }
 
 // WarnIfUnpinned writes a one-line WARNING to w when the binary is unpinned, so an

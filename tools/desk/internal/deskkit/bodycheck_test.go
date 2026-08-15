@@ -84,25 +84,25 @@ func TestBodyCheck(t *testing.T) {
 		// `tools/desk/internal/deskkit/bodycheck`; the `.go:45` tail is outside the
 		// base64 charset so it does not extend the run.
 		{"repo-relative file:line, the #209 repro", "the check lives at tools/desk/internal/deskkit/bodycheck.go:45", false},
-		{"repo-relative file:line, no backticks", "blocker at services/app-service/internal/api/handlers/reviewwrite.go:212", false},
-		{"deep frontend component path", "frontend/src/components/dashboard/PositionSummaryPanel.tsx:88", false},
-		// CamelCase template paths — the shape that makes case-transition and
+		{"repo-relative file:line, no backticks", "blocker at pkg/service/internal/api/handlers/reviewwrite.go:212", false},
+		{"deep frontend component path", "frontend/src/components/dashboard/ConfigurationManager.tsx:88", false},
+		// CamelCase package template paths — the shape that makes case-transition and
 		// mean-segment-length heuristics useless as discriminators (see isPathLike):
 		// this and an AWS secret access key are identical on both measures.
-		{"camelcase template path", "see src/Example/Settlement.go:120 for SettlementView", false},
+		{"camelcase package template path", "see pkg/Example/Widget.pkg:120 for WidgetPV2", false},
 		{"a review body dense with findings", "## Review\n\n- `tools/desk/internal/deskkit/ratelimit.go:26` counts all attempts\n- `tools/desk/internal/deskkit/bodycheck.go:59` refuses the run\n- `frontend/src/lib/updatesCursor.ts:41` cursor handling\n\nVerdict: request-changes", false},
 		// Go module paths. #209 records these as a SECOND false-positive class that a
 		// `file:line`-only narrowing would NOT have fixed: any review of Go code carries
 		// import paths, and `go test` output — which the methodology mandates pasting as
 		// Evidence — is nothing but module paths.
 		{"go module path, this repo", "ok github.com/medici-finance/assay/tools/desk/internal/deskkit 2.531s", false},
-		{"go module path, nested cmd package", "ok github.com/medici/desk/cmd/deskpost/internal/bodycheck 0.378s", false},
-		{"deep github blob url path run", "https://github.com/medici/desk/blob/main/tools/desk/internal/deskkit/bodycheck.go", false},
+		{"go module path, nested cmd package", "ok github.com/example/desk/cmd/deskpost/internal/bodycheck 0.378s", false},
+		{"deep github blob url path run", "https://github.com/example/desk/blob/main/tools/desk/internal/deskkit/bodycheck.go", false},
 		// Shapes with EMPTY slash-separated segments: a URL's `//` and a directory
 		// reference written with a trailing slash. A draft of the #1261 fix rejected
 		// empty segments and re-created the bug on both; they carry no material.
-		{"url run carrying a leading double slash", "read via https://localhost/api/v2/state/activecontracts on the box", false},
-		{"directory path with a trailing slash", "the directory services/app-service/internal/api/handlers/ holds it", false},
+		{"url run carrying a leading double slash", "read via https://localhost/api/v2/state/deployments on the box", false},
+		{"directory path with a trailing slash", "the directory pkg/service/internal/api/handlers/ holds it", false},
 		// Numeric path components: `2026`, `07`, `30` and the `v2` of an API path are not
 		// word-shaped, but they are far too short to matter and only spend opaque budget.
 		{"dated report path", "report at docs/reports/2026/07/30/factory-floor-summary.md:14", false},
@@ -112,7 +112,7 @@ func TestBodyCheck(t *testing.T) {
 		{"issue #253 repro: 39-char Go test identifier", "`ZeroContractTemplateDecodesZeroElements` now covers the empty-elements branch", false},
 		{"issue #253 repro: 33-char Go test identifier", "see HonoredFilterLeavesTripwireSilent for the tripwire assertion", false},
 		{"Test-prefixed identifier over the run threshold", "TestZeroContractTemplateDecodesZeroElements passed locally", false},
-		{"review body naming several long test idents", "## Review\n\n- TestReducesQuorumCommitmentUsingTripwireEvent covers the happy path\n- HonoredFilterLeavesTripwireSilent covers the silence case\n\nVerdict: approve", false},
+		{"review body naming several long test idents", "## Review\n\n- TestReducesQueueBacklogUsingTripwireEvent covers the happy path\n- HonoredFilterLeavesTripwireSilent covers the silence case\n\nVerdict: approve", false},
 		// #663 exact repro. A 41-char CamelCase Go test name — the PR's own
 		// shipped identifier, which could never be reworded to dodge the scan — blocked
 		// #332 outright. It decomposes into eight word units
@@ -188,7 +188,7 @@ func TestBodyCheck(t *testing.T) {
 		// segment-length-only rule by that PR's reviewer, and must refuse here.
 		{"40-char secret as a segment of a REPO-RELATIVE path", "tools/desk/" + "Qx7pLk2wZt9mNc4bYf6RhVs8Ju3XoAeG5idWn1Dz", true},
 		{"40-char secret as a bare relative two-segment path", "a/" + "Qx7pLk2wZt9mNc4bYf6RhVs8Ju3XoAeG5idWn1Dz", true},
-		{"unpadded 40-char secret under a k8s manifest path", "k8s/dev/ledger/" + "R2hpJ0kZ7vQx3TmLp9WdYc1BnEa6UfSg4XoIrKtZ", true},
+		{"unpadded 40-char secret under a k8s manifest path", "k8s/dev/config/" + "R2hpJ0kZ7vQx3TmLp9WdYc1BnEa6UfSg4XoIrKtZ", true},
 		{"relative path whose tail is padded base64", "config/secrets/ZGVhZGJlZWZkZWFkYmVlZmRlYWRiZWVm==", true},
 		{"relative path whose segments carry base64 + chars", "config/Zm9v+YmFy+YmF6+cXV4+1234567890abcdef", true},
 		{"64-char base64 with slashes placed to keep every span short", "Kj8mQ2vRt/Lz3wXy7Nb5cHj/1Ae4Gf6Sd0Uk/Pq7Rm2Xn9Tv/Bw3CyZl6Jh8Dr2", true},
@@ -294,9 +294,9 @@ func TestIsPathLikeIsNotWiderThanTheAnchoredRule(t *testing.T) {
 		// allowed. These are the #1052 / #209 pass set.
 		{"absolute mac-home path (the #1052 case)", "/Users/operator/work/example/slides", true},
 		{"repo-relative file path (the #209 case)", "tools/desk/internal/deskkit/bodycheck", true},
-		{"go module path run", "com/medici/desk/internal/loopengine", true},
-		{"camelcase template path", "src/Example/Settlement", true},
-		{"url run with an empty leading segment", "//localhost/api/v2/state/activecontracts", true},
+		{"go module path run", "com/example/desk/internal/loopengine", true},
+		{"camelcase package template path", "pkg/Example/Widget", true},
+		{"url run with an empty leading segment", "//localhost/api/v2/state/deployments", true},
 		{"directory run with a trailing slash", "services/internal/api/handlers/reviewwrite/", true},
 
 		// NOT exempt: opaque token material. Each of these satisfies "every segment is
@@ -313,7 +313,7 @@ func TestIsPathLikeIsNotWiderThanTheAnchoredRule(t *testing.T) {
 		// A git SHA inside a path stays exempt: a BARE SHA is already exempt above, so
 		// refusing it only when it wears a URL would refuse every commit link the
 		// methodology quotes.
-		{"commit url run carrying a 40-char sha", "com/medici/desk/commit/5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b", true},
+		{"commit url run carrying a 40-char sha", "com/example/desk/commit/5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -557,9 +557,9 @@ func TestTwoLetterWordsCostAlmostNothing(t *testing.T) {
 // layers of caller.
 func TestLooksLikeWordsSeparatesNamesFromTokens(t *testing.T) {
 	words := []string{
-		"tools", "internal", "deskkit", "bodycheck", "Users", "Payments",
-		"Example", "Settlement", "PositionSummaryPanel",
-		"python311", "activecontracts", "ledger", "handlers",
+		"tools", "internal", "deskkit", "bodycheck", "Users", "Reports",
+		"Example", "Widget", "ConfigurationManager",
+		"python311", "deployments", "records", "handlers",
 	}
 	tokens := []string{
 		"wJalrXUtnFEMI",                 // segment 1 of an AWS secret access key
@@ -668,5 +668,110 @@ func TestScanSurfaceSameVerdict(t *testing.T) {
 	if err := ScanSurface("", []byte(scanGHToken)); err == nil ||
 		!strings.Contains(err.Error(), SurfaceBody+" contains") {
 		t.Errorf("ScanSurface(\"\", …) should fall back to %q, got: %v", SurfaceBody, err)
+	}
+}
+
+// TestLongIdentifiersAndOneLetterWords pins the two moves that unblocked verify-desk's
+// Evidence writes:
+//
+//   - the length cap moved OFF wordDecomposition (was maxWordSegment=48) and onto the
+//     bare-identifier caller at the wider maxIdentifierRun=100, so a legitimately long Go
+//     test name no longer reads as a high-entropy run just for being over 48 chars; and
+//   - the one-letter English words `A` and `I`, when followed by a capital-led word, count
+//     as a word unit in the CamelCase decomposition, so a name like
+//     `TestDryRunResultIsOnlyReachableWithoutAWrite` decomposes instead of dying on `A`.
+//
+// Both directions are exercised: the real names that were refused now pass, and every
+// shape the relaxation must NOT admit (ALL-CAPS, bare token material, an over-length
+// CamelCase run) still refuses.
+func TestLongIdentifiersAndOneLetterWords(t *testing.T) {
+	// Real Go test names that the pre-fix scanner refused. Split across concatenation so no
+	// contiguous 32+ char run sits on an added diff line (deskpr scans the branch diff).
+	name53 := "TestLeadingZeroTagsDoNot" + "CollideWithTheirCanonicalForm" // 53 chars, was > the old 48 cap
+	nameA := "TestDryRunResultIsOnly" + "ReachableWithoutAWrite"           // one-letter word `A` before `Write`
+	nameI := "TestClientReconnects" + "WhenIRestartTheStream"              // one-letter word `I` before `Restart`
+
+	// The AWS example secret key with its slashes removed — a bare 38-char token that must
+	// keep refusing; it fails on its very first char run (`w`, a lone lowercase before a capital).
+	awsNoSlash := "wJalrXUtnFEMI" + "K7MDENG" + "bPxRfiCYEXAMPLEKEY"
+	// A 32-char lowercase md5-shaped hex with digit groups: decomposes into several
+	// lowercase word units but has NO capital-led word, so camel stays false and it refuses.
+	lowerHex := "dcef1701acc78ada" + "90fcefb638adeabf"
+	// A CamelCase run exactly at the cap passes; one character past it refuses on the cap
+	// ALONE (the decomposition itself is clean), which is what pins maxIdentifierRun.
+	camelAtCap := strings.Repeat("Abcde", 20) // 100 chars — 20 clean CamelCase words
+	camelOverCap := camelAtCap + "s"          // 101 chars
+
+	pass := []struct {
+		name string
+		run  string
+	}{
+		{"53-char test name over the old 48 cap", name53},
+		{"one-letter word A before a capital-led word", nameA},
+		{"one-letter word I before a capital-led word", nameI},
+		{"CamelCase run exactly at maxIdentifierRun", camelAtCap},
+	}
+	for _, c := range pass {
+		t.Run("pass/"+c.name, func(t *testing.T) {
+			if !isIdentifierLike(c.run) {
+				t.Fatalf("isIdentifierLike(%q) = false, want true — a legitimate identifier is refused", c.run)
+			}
+			// And end-to-end through the real write gate, embedded in prose.
+			if err := BodyCheck([]byte("see " + c.run + " for the assertion")); err != nil {
+				t.Fatalf("BodyCheck rejected a body naming %q: %v", c.run, err)
+			}
+		})
+	}
+
+	refuse := []struct {
+		name string
+		run  string
+	}{
+		{"AWS secret key with slashes stripped", awsNoSlash},
+		{"32-char lowercase hex with digit groups", lowerHex},
+		{"32 capital A's (no lowercase, no follower word)", strings.Repeat("A", 32)},
+		{"32 X's — an ALL-CAPS stretch", strings.Repeat("X", 32)},
+		{"CamelCase run one char past maxIdentifierRun", camelOverCap},
+	}
+	for _, c := range refuse {
+		t.Run("refuse/"+c.name, func(t *testing.T) {
+			if isIdentifierLike(c.run) {
+				t.Fatalf("isIdentifierLike(%q) = true, want false — token/over-length material admitted", c.run)
+			}
+			if err := BodyCheck([]byte(c.run)); !IsRefused(err) {
+				t.Fatalf("BodyCheck(%q) = %v, want Refused (exit 5)", c.run, err)
+			}
+		})
+	}
+}
+
+// TestIdentifierExemptionAdmitsNoRandomBase64At96Chars is the guard-strength stress test for
+// the relaxed bare-identifier exemption, in the TestTwoLetterWordsCostAlmostNothing style: over
+// two million uniformly random 96-char [A-Za-z0-9] runs, drawn from a FIXED seed, the number
+// isIdentifierLike admits MUST stay 0. The relaxation added acceptance paths (the wider length
+// cap and the lone-A/I word), and this pins that none of them opens a hole a random token run
+// can walk through — a 96-char run that decomposes ENTIRELY into words is astronomically
+// unlikely, and the test fails loudly if a future edit makes it merely unlikely.
+func TestIdentifierExemptionAdmitsNoRandomBase64At96Chars(t *testing.T) {
+	const (
+		trials   = 2000000
+		runLen   = 96
+		alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "abcdefghijklmnopqrstuvwxyz" + "0123456789"
+	)
+	rng := rand.New(rand.NewSource(20260815))
+	admitted := 0
+	b := make([]byte, runLen)
+	for i := 0; i < trials; i++ {
+		for j := range b {
+			b[j] = alphabet[rng.Intn(len(alphabet))]
+		}
+		if isIdentifierLike(string(b)) {
+			admitted++
+		}
+	}
+	if admitted != 0 {
+		t.Fatalf("isIdentifierLike admitted %d of %d random %d-char runs — the bare-identifier "+
+			"exemption has developed a hole a token run can walk through; it must admit ZERO",
+			admitted, trials, runLen)
 	}
 }

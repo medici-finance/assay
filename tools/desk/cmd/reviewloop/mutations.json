@@ -1,0 +1,119 @@
+{
+  "test": "go test ./cmd/reviewloop/ -count=1",
+  "control": {
+    "name": "CONTROL — disarm the idle gate's could-not-check arm entirely (every blind board becomes idle-or-busy)",
+    "file": "cmd/reviewloop/idlegate.go",
+    "old": "\tif len(v.BlindReasons) > 0 {\n\t\treturn v // could-not-check outranks any count read off an untrusted board\n\t}",
+    "new": "\tif false && len(v.BlindReasons) > 0 {\n\t\treturn v // could-not-check outranks any count read off an untrusted board\n\t}"
+  },
+  "mutations": [
+    {
+      "name": "fail OPEN on an empty sweep — a rate-limited 403's empty stdout becomes a readable board (the #79 false all-clear)",
+      "file": "cmd/reviewloop/board.go",
+      "old": "\tif len(strings.TrimSpace(string(actionsJSON))) == 0 {",
+      "new": "\tif false && len(strings.TrimSpace(string(actionsJSON))) == 0 {"
+    },
+    {
+      "name": "swallow an unknown ACTION — a board state the table does not know is skipped instead of failing closed",
+      "file": "cmd/reviewloop/board.go",
+      "old": "\t\tru, err := LookupAction(a.Action)\n\t\tif err != nil {\n\t\t\treturn nil, err // an unknown ACTION poisons the whole read: fail closed\n\t\t}",
+      "new": "\t\tru, err := LookupAction(a.Action)\n\t\tif err != nil {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "downgrade the unknown-ACTION refusal — the lookup succeeds with an empty rule instead of raising exit 6",
+      "file": "cmd/reviewloop/actiontable.go",
+      "old": "\tr, ok := actionTable[action]\n\tif !ok {",
+      "new": "\tr, ok := actionTable[action]\n\tif false && !ok {"
+    },
+    {
+      "name": "drop the empty-scope check — an unconfigured roster sweeping nothing reads as a quiet board",
+      "file": "cmd/reviewloop/idlegate.go",
+      "old": "\tcase b.Scope.Count == 0:",
+      "new": "\tcase false && b.Scope.Count == 0:"
+    },
+    {
+      "name": "drop the truncated-population check — counts that are a FLOOR are read as totals",
+      "file": "cmd/reviewloop/idlegate.go",
+      "old": "\tcase !b.Popn.Complete:",
+      "new": "\tcase false && !b.Popn.Complete:"
+    },
+    {
+      "name": "drop the freshness check — a board older than the cadence supports an idle claim",
+      "file": "cmd/reviewloop/idlegate.go",
+      "old": "\tif age := now.Sub(b.AsOf); age > MaxBoardAge {",
+      "new": "\tif age := now.Sub(b.AsOf); false && age > MaxBoardAge {"
+    },
+    {
+      "name": "drop deskboard's own STALE flag — the board saying it cannot vouch for itself is ignored",
+      "file": "cmd/reviewloop/idlegate.go",
+      "old": "\tif b.Stale {",
+      "new": "\tif false && b.Stale {"
+    },
+    {
+      "name": "the idle gate stops counting RE-REVIEW — the worker-waiting-on-the-desk half of #79 disappears",
+      "file": "cmd/reviewloop/idlegate.go",
+      "old": "\tv.ReReview = b.CountAction(\"RE-REVIEW\")",
+      "new": "\tv.ReReview = 0"
+    },
+    {
+      "name": "zero-value IdleVerdict becomes IDLE — a caller that forgets to set State gets a false all-clear",
+      "file": "cmd/reviewloop/idlegate.go",
+      "old": "\tIdleCouldNotCheck IdleState = iota",
+      "new": "\tIdleCouldNotCheck IdleState = iota + 7"
+    },
+    {
+      "name": "coalescing keys stop carrying the head — a PR that pushes a new head is never re-dispatched (the drain-ified failure)",
+      "file": "cmd/reviewloop/coalesce.go",
+      "old": "\t\t\tk := Key{Repo: r.Repo, PR: r.Number, Head: r.Head, Verb: r.Rule.Verb}",
+      "new": "\t\t\tk := Key{Repo: r.Repo, PR: r.Number, Head: \"\", Verb: r.Rule.Verb}"
+    },
+    {
+      "name": "coalescing stops collapsing repeat deltas — one PR at one head is dispatched once per sweep",
+      "file": "cmd/reviewloop/coalesce.go",
+      "old": "\t\t\tif pv, ok := byKey[k]; ok {\n\t\t\t\tpv.Observations++",
+      "new": "\t\t\tif pv, ok := byKey[k]; ok && false {\n\t\t\t\tpv.Observations++"
+    },
+    {
+      "name": "an unresolved head is emitted anyway — an outward verb whose idempotency cannot be checked is posted on the assumption it is fine",
+      "file": "cmd/reviewloop/coalesce.go",
+      "old": "\t\tcase k.Head == HeadUnresolved:",
+      "new": "\t\tcase false && k.Head == HeadUnresolved:"
+    },
+    {
+      "name": "the AlreadyDone idempotency gate stops suppressing — the desk posts the same verb twice at one head",
+      "file": "cmd/reviewloop/coalesce.go",
+      "old": "\t\tcase done != nil && done(k.Repo, k.PR, k.Head, k.Verb):",
+      "new": "\t\tcase false && done != nil && done(k.Repo, k.PR, k.Head, k.Verb):"
+    },
+    {
+      "name": "MERGE-NOW acquires an outward verb — the review desk starts acting on a merge signal that is the human's",
+      "file": "cmd/reviewloop/actiontable.go",
+      "old": "\t\"MERGE-NOW\":                {DispositionSurface, \"\", \"approved, green and mergeable",
+      "new": "\t\"MERGE-NOW\":                {DispositionSurface, \"merge\", \"approved, green and mergeable"
+    },
+    {
+      "name": "waiting rows stop rendering — a row with no verb vanishes from the reactor's output",
+      "file": "cmd/reviewloop/board.go",
+      "old": "\tfor _, r := range b.Rows {\n\t\tfmt.Fprintf(w, \"%-10s %-24s %-9s head=%-12s score=%-4d %s\\n\",",
+      "new": "\tfor _, r := range b.Rows {\n\t\tif r.Rule.Verb == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\tfmt.Fprintf(w, \"%-10s %-24s %-9s head=%-12s score=%-4d %s\\n\","
+    },
+    {
+      "name": "an unjoined row gets an EMPTY head rather than the UNRESOLVED sentinel — the missing key compares equal to nothing and looks answered",
+      "file": "cmd/reviewloop/board.go",
+      "old": "\t\thead := HeadUnresolved",
+      "new": "\t\thead := \"\""
+    },
+    {
+      "name": "the action table stops being exhaustive over deskboard — a board state is dropped with nothing saying so",
+      "file": "cmd/reviewloop/actiontable.go",
+      "old": "\t\"CI-NEVER-RAN\":  {DispositionSurface, \"\", \"a workflow that would fire on this diff never ran at head — the PR is UNVALIDATED\"},",
+      "new": ""
+    },
+    {
+      "name": "a plan run whose idle question is unanswerable exits 0 — a script reads rc=0 as all-clear",
+      "file": "cmd/reviewloop/plan.go",
+      "old": "\tif verdict.State == IdleCouldNotCheck {",
+      "new": "\tif false && verdict.State == IdleCouldNotCheck {"
+    }
+  ]
+}

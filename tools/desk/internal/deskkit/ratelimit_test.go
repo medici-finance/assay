@@ -616,7 +616,7 @@ func TestMetersStayScopedToTheirTool(t *testing.T) {
 
 // --- Per-PR and per-repo budget tiers ---
 
-// TestPRBudgetIsolatesPRs: 10 writes on PR #1 does not gate PR #2.
+// TestPRBudgetIsolatesPRs: a full per-PR budget of writes on PR #1 does not gate PR #2.
 func TestPRBudgetIsolatesPRs(t *testing.T) {
 	pr1 := 431
 	pr2 := 432
@@ -628,7 +628,7 @@ func TestPRBudgetIsolatesPRs(t *testing.T) {
 		t.Fatalf("PR #2 fired %s, want none — per-PR budget must isolate PRs", got)
 	}
 	if got := meterOf(AllowWrite("deskpost", testRepo, pr1)); got != "pr-budget" {
-		t.Fatalf("PR #1 fired %s, want pr-budget — 10 writes must exhaust its budget", got)
+		t.Fatalf("PR #1 fired %s, want pr-budget — a full per-PR budget of writes must exhaust it", got)
 	}
 }
 
@@ -685,11 +685,53 @@ func TestEmptyRepoUnderToolBudgetIsAllowed(t *testing.T) {
 // 100/hr instead of 10/hr with nothing announcing the 10× loosening.
 func TestZeroPRUsesUnnumberedBucketNotRepoTier(t *testing.T) {
 	dir := setup(t)
-	for i := 0; i < RateLimitPerPRPerHour; i++ {
+	// Seed to deskevidence's EFFECTIVE unnumbered cap (its override, 30) — still well below
+	// the per-repo 100, so a refusal here proves the per-PR/unnumbered tier bound, not the
+	// repo tier.
+	cap := unnumberedCapFor("deskevidence")
+	for i := 0; i < cap; i++ {
 		appendEntry(t, dir, Entry{Repo: testRepo, Tool: "deskevidence", Verb: "commit", Result: ResultOK})
 	}
 	if got := meterOf(AllowWrite("deskevidence", testRepo, 0)); got != "pr-budget" {
 		t.Fatalf("zero pr fired %s, want pr-budget — the unnumbered bucket must bind at the per-PR cap", got)
+	}
+}
+
+// TestUnnumberedBucketOverridePerTool pins the per-tool unnumbered-bucket override
+// (unnumberedBucketCap): deskevidence's pr=0 bucket binds at its higher cap (30), NOT the
+// base RateLimitPerPRPerHour (20), while a tool WITHOUT an override still binds at the base
+// cap on the same bucket. Both directions matter — the override must lift the ceiling for the
+// named tool AND leave every other tool untouched — and it must never fall through to the
+// per-repo tier (the #439 fail-open shape).
+func TestUnnumberedBucketOverridePerTool(t *testing.T) {
+	// deskevidence at the BASE cap is still under its override — no refusal yet.
+	dir := setup(t)
+	for i := 0; i < RateLimitPerPRPerHour; i++ {
+		appendEntry(t, dir, Entry{Repo: testRepo, Tool: "deskevidence", Verb: "commit", Result: ResultOK})
+	}
+	if got := meterOf(AllowWrite("deskevidence", testRepo, 0)); got != "none" {
+		t.Fatalf("deskevidence at the base cap fired %s, want none — its override (%d) is higher than %d",
+			got, unnumberedCapFor("deskevidence"), RateLimitPerPRPerHour)
+	}
+	// At its own override cap it refuses, on the per-PR (unnumbered) tier.
+	dir = setup(t)
+	for i := 0; i < deskevidenceUnnumberedCap; i++ {
+		appendEntry(t, dir, Entry{Repo: testRepo, Tool: "deskevidence", Verb: "commit", Result: ResultOK})
+	}
+	if got := meterOf(AllowWrite("deskevidence", testRepo, 0)); got != "pr-budget" {
+		t.Fatalf("deskevidence at its override cap fired %s, want pr-budget", got)
+	}
+	// A tool with NO override still binds at the base cap on the same unnumbered bucket.
+	if unnumberedCapFor("deskpost") != RateLimitPerPRPerHour {
+		t.Fatalf("deskpost should have no override; unnumberedCapFor = %d, want %d",
+			unnumberedCapFor("deskpost"), RateLimitPerPRPerHour)
+	}
+	dir = setup(t)
+	for i := 0; i < RateLimitPerPRPerHour; i++ {
+		appendEntry(t, dir, Entry{Repo: testRepo, Tool: "deskpost", Verb: "comment", Result: ResultOK})
+	}
+	if got := meterOf(AllowWrite("deskpost", testRepo, 0)); got != "pr-budget" {
+		t.Fatalf("deskpost (no override) at the base cap fired %s, want pr-budget", got)
 	}
 }
 
@@ -778,19 +820,22 @@ func TestDifferentRepoDoesNotCount(t *testing.T) {
 // TestCapValuesArePinned hard-codes the two cap numbers.
 //
 // This closes the ONE mutation that survived the suite (#439 review, finding
-// 5): raising RateLimitPerPRPerHour from 10 to 20 left every other assertion green,
-// because every test seeds by reading the same constant the code reads. That is the
+// 5): raising RateLimitPerPRPerHour left every other assertion green, because every
+// test seeds by reading the same constant the code reads. That is the
 // self-referential-constant class — an assertion comparing a value against the value it
 // was derived from is green for any value, so the suite measured the mechanism and never
 // the policy.
 //
-// These caps ARE the policy: 10 is the empirical per-PR number from #1255's ledger
-// extract (busiest hour on record), and 100 is the
-// per-repo default at 10× it. Widening either is a governance decision, not a refactor, so
-// it must fail here and be changed deliberately with the argument updated alongside.
+// These caps ARE the policy. The per-PR cap was raised from 10 to 20 on 2026-08-14 to
+// accelerate the verification-backlog drain (see the constant's doc comment: the drain is
+// bursty, saturating the old 10/hr bucket in seconds then idling, so 20 is a supervised
+// throughput loosening — 2× the busiest-hour figure of 10 measured in #1255's ledger
+// extract — not a re-measurement of peak demand). 100 is the per-repo default. Changing
+// either is a governance decision, not a refactor, so it must fail here and be changed
+// deliberately with the argument updated in the constant's doc comment alongside.
 func TestCapValuesArePinned(t *testing.T) {
-	if RateLimitPerPRPerHour != 10 {
-		t.Fatalf("RateLimitPerPRPerHour = %d, want 10 — this cap is policy (#1255); "+
+	if RateLimitPerPRPerHour != 20 {
+		t.Fatalf("RateLimitPerPRPerHour = %d, want 20 — this cap is policy (#1255, raised 2026-08-14); "+
 			"changing it needs a throughput argument in the constant's doc comment, not a silent bump",
 			RateLimitPerPRPerHour)
 	}
@@ -882,13 +927,17 @@ func TestGateReadsTheBucketItsWritesLandIn(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := setup(t)
 			tool := strings.SplitN(tc.name, "/", 2)[0]
-			for i := 0; i < RateLimitPerPRPerHour; i++ {
+			// Seed to the tool's EFFECTIVE cap so a tool with a raised unnumbered override
+			// (deskevidence, 30) is filled to ITS ceiling, not the base 20 — otherwise the
+			// gate legitimately admits another write and this test would false-fail.
+			cap := unnumberedCapFor(tool)
+			for i := 0; i < cap; i++ {
 				appendEntry(t, dir, Entry{Repo: testRepo, PR: tc.shape(i), Tool: tool, Verb: "w", Result: ResultOK})
 			}
 			if err := tc.gate(); err == nil {
 				t.Fatalf("%s: %d of this call site's OWN writes in the window and its gate still admits "+
 					"another — the gate is reading a bucket these writes do not land in",
-					tc.name, RateLimitPerPRPerHour)
+					tc.name, cap)
 			}
 		})
 	}

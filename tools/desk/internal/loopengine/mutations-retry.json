@@ -1,0 +1,89 @@
+{
+  "test": "go test ./internal/loopengine/ -count=1 -run 'TestRetry'",
+  "control": {
+    "name": "CONTROL — a NON-RETRYABLE refusal (exit 5) is classified retryable: the retryable base set is opened to ClassRefusal",
+    "file": "internal/loopengine/retry.go",
+    "old": "\tif c != ClassTransient && c != ClassRetryAfter {",
+    "new": "\tif c != ClassTransient && c != ClassRetryAfter && c != ClassRefusal {"
+  },
+  "mutations": [
+    {
+      "name": "exit 5 reclassified transient — a writeguard/bodycheck refusal is retried instead of reported (deskpr create rc=5, 2026-08-13)",
+      "file": "internal/loopengine/retry.go",
+      "old": "\t\tcase deskkit.ExitRefused:\n\t\t\treturn Classification{Class: ClassRefusal,",
+      "new": "\t\tcase deskkit.ExitRefused:\n\t\t\treturn Classification{Class: ClassTransient,"
+    },
+    {
+      "name": "exit 7 author==runner reclassified transient — a structural refusal is re-dispatched",
+      "file": "internal/loopengine/retry.go",
+      "old": "\t\treturn Classification{Class: ClassRefusal, Why: fmt.Sprintf(\"exit %d author==runner",
+      "new": "\t\treturn Classification{Class: ClassTransient, Why: fmt.Sprintf(\"exit %d author==runner"
+    },
+    {
+      "name": "the third state collapses to retryable — an unrecognised failure is retried forever (the infinite-loop half of a two-state guess)",
+      "file": "internal/loopengine/retry.go",
+      "old": "\treturn Classification{\n\t\tClass: ClassUnclassified,\n\t\tWhy:   \"no deskkit exit code",
+      "new": "\treturn Classification{\n\t\tClass: ClassTransient,\n\t\tWhy:   \"no deskkit exit code"
+    },
+    {
+      "name": "the third state collapses to a decision — could-not-check lands BLOCKED instead of NEEDS_CONTEXT (the silent-work-loss half)",
+      "file": "internal/loopengine/retry.go",
+      "old": "\tif o.Class == ClassUnclassified {\n\t\treturn VerdictNeedsContext\n\t}",
+      "new": "\tif false && o.Class == ClassUnclassified {\n\t\treturn VerdictNeedsContext\n\t}"
+    },
+    {
+      "name": "a bare exit 4 with no stated wait becomes a guessed retry — the #209 livelock re-entered",
+      "file": "internal/loopengine/retry.go",
+      "old": "\t\t\treturn Classification{Class: ClassUnclassified, Why: \"exit 4 rate-limited but carrying NO retry-after",
+      "new": "\t\t\treturn Classification{Class: ClassTransient, Why: \"exit 4 rate-limited but carrying NO retry-after"
+    },
+    {
+      "name": "the STATED retry-after is ignored and the shorter backoff used instead — re-charging the budget that refused us",
+      "file": "internal/loopengine/retry.go",
+      "old": "\t\tif c.Class == ClassRetryAfter {\n\t\t\t// The failure STATED its wait.",
+      "new": "\t\tif false && c.Class == ClassRetryAfter {\n\t\t\t// The failure STATED its wait."
+    },
+    {
+      "name": "the retry-after class loses its tighter attempt cap — 'sleep the full wait and attempt ONCE' becomes MaxAttempts",
+      "file": "internal/loopengine/retry.go",
+      "old": "\tif c == ClassRetryAfter && p.RetryAfterMaxAttempts > 0 {",
+      "new": "\tif false && c == ClassRetryAfter && p.RetryAfterMaxAttempts > 0 {"
+    },
+    {
+      "name": "the wall-clock cap is dropped — a 22h retry-after is slept while the item's claim is held",
+      "file": "internal/loopengine/retry.go",
+      "old": "\t\tif pol.MaxElapsed > 0 && slept+delay > pol.MaxElapsed {",
+      "new": "\t\tif false && pol.MaxElapsed > 0 && slept+delay > pol.MaxElapsed {"
+    },
+    {
+      "name": "the claim is released between attempts — reopening the double-dispatch window claim.go's flock closes",
+      "file": "internal/loopengine/retry.go",
+      "old": "\t\tcfg.sleep(delay)\n\t\tslept += delay",
+      "new": "\t\t_ = ReleaseClaim(cfg, it)\n\t\tcfg.sleep(delay)\n\t\tslept += delay"
+    },
+    {
+      "name": "the resume signal is dropped — every retry re-dispatches as a fresh attempt, discarding the work a 529-killed session left intact",
+      "file": "internal/loopengine/retry.go",
+      "old": "\t\tif attempt > 1 {\n\t\t\tdispatched = withAttempt(it, attempt, pol.MaxAttempts)\n\t\t}",
+      "new": "\t\tif false && attempt > 1 {\n\t\t\tdispatched = withAttempt(it, attempt, pol.MaxAttempts)\n\t\t}"
+    },
+    {
+      "name": "a policy whose waiting outlives its own claim is accepted — MaxElapsed >= StaleClaim lets a live claim be reclaimed mid-retry",
+      "file": "internal/loopengine/engine.go",
+      "old": "\tif cfg.StaleClaim > 0 && pol.MaxElapsed >= cfg.StaleClaim {",
+      "new": "\tif false && cfg.StaleClaim > 0 && pol.MaxElapsed >= cfg.StaleClaim {"
+    },
+    {
+      "name": "an exhausted/refused dispatch is DROPPED instead of landed — the item leaves the queue with no durable record",
+      "file": "internal/loopengine/engine.go",
+      "old": "\t\t\tlandOne(cfg, loop, out.Result(it, cfg.RunnerID))",
+      "new": "\t\t\t_ = out.Result(it, cfg.RunnerID)"
+    },
+    {
+      "name": "an incoherent policy is accepted instead of failing closed at Run — silent caps become reachable",
+      "file": "internal/loopengine/engine.go",
+      "old": "\tif err := pol.Validate(); err != nil {\n\t\treturn err\n\t}",
+      "new": "\tif err := pol.Validate(); false && err != nil {\n\t\treturn err\n\t}"
+    }
+  ]
+}

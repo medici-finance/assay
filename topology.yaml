@@ -292,6 +292,12 @@ labels:
         verdict, close this issue"). Inter-desk coordination consumed and closed
         by the review desk, not a unit of backlog work. THIS is the entry
         issueboard's hand copy was missing.
+    - name: needs-human
+      why: >-
+        Human-decision-queue class: an item the machinery hands to a human to
+        decide, not a unit of dispatchable work — a placeholder for one would be
+        pure Next-up noise. Also listed under decision_owed (like
+        needs-decision) so the board shows it AWAIT/ESCALATE rather than NONE.
 
   decision_owed:
     - name: needs-decision
@@ -300,3 +306,7 @@ labels:
       why: >-
         The escalation label a human applies when an open item is blocked on an
         answer. Silence past the SLA escalates.
+    - name: needs-human
+      why: >-
+        The human-decision-queue class is decision-owed: an open item carrying
+        it is either AWAIT (fresh) or ESCALATE (past the SLA), never NONE.

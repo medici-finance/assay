@@ -152,22 +152,34 @@ func resolveInstallID(jwt, owner, name string) (string, error) {
 // It takes the repo (owner AND name), not just the owner, because the installation is
 // resolved per-repo from the App's own JWT — see resolveInstallID.
 func mintVerifierToken(owner, name string) (string, error) {
-	// Resolve the verifier App ID: env VERIFIER_APP_ID, else ~/.config/assay/apps.env.
+	// Resolve the verifier App ID: env VERIFIER_APP_ID, else the config home's apps.env.
 	appID, err := deskkit.AppID("verifier")
 	if err != nil {
 		return "", deskkit.Unverifiable(err.Error()+" — the verifier App token cannot be minted without it", nil)
 	}
-	pemPath := os.Getenv("VERIFIER_PEM")
+	// The key comes off the SAME App-credential search path apps.env was read from
+	// (deskkit.FindConfigFile / confighome.go). Hardcoding ~/.config/assay here while a
+	// deployment's provisioning wrote App material to a different directory is #794 — and
+	// desktoken alone honouring the search path is only two thirds of the fix: this tool
+	// mints its own verifier token and would keep failing in a fresh shell.
+	var searched []string
+	pemPath := strings.TrimSpace(os.Getenv("VERIFIER_PEM"))
 	if pemPath == "" {
-		pemPath = "~/.config/assay/verifier-app.pem"
+		pemPath, searched, _ = deskkit.FindConfigFile("verifier-app.pem")
 	}
 	pemPath = expandHome(pemPath)
 
 	keyPEM, err := os.ReadFile(pemPath)
 	if err != nil {
+		where := pemPath
+		if len(searched) > 0 {
+			where = fmt.Sprintf("%s (searched: %s)", pemPath, strings.Join(searched, ", "))
+		}
 		return "", deskkit.Unverifiable(fmt.Sprintf(
-			"cannot read verifier App key at %s — restore it then retry; the verifier App token cannot be minted without it",
-			pemPath), err)
+			"cannot read verifier App key at %s — restore it there, or put the directory that has it "+
+				"at the head of the App-credential search path (%s=<dir>), or name the file outright "+
+				"(VERIFIER_PEM=<file>), then retry; the verifier App token cannot be minted without it (#794)",
+			where, deskkit.EnvConfigHome), err)
 	}
 	block, _ := pem.Decode(keyPEM)
 	if block == nil {

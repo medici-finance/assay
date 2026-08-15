@@ -111,6 +111,7 @@ func cmdReply(args []string) (err error) {
 	fs := flag.NewFlagSet("deskreply", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder)) // suppress flag's own output; we craft messages
 	bodyFile := fs.String("body-file", "", "path to a file containing the reply body (required)")
+	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, body digest, reason, identity)")
 	if perr := fs.Parse(args[2:]); perr != nil {
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
@@ -119,6 +120,11 @@ func cmdReply(args []string) (err error) {
 	}
 	if strings.TrimSpace(*bodyFile) == "" {
 		return deskkit.Refused("refused: --body-file is required (no stdin/inline body)")
+	}
+	if *scanOverride != "" {
+		if verr := deskkit.ValidateScanOverride(*scanOverride); verr != nil {
+			return verr
+		}
 	}
 
 	pr, prErr := strconv.Atoi(prArg)
@@ -132,12 +138,17 @@ func cmdReply(args []string) (err error) {
 	}
 	ac.repo = repo
 
-	// Body: file only, 16 KiB cap, secret scan. No override flag exists.
+	// Body: file only, 16 KiB cap, secret scan. The scan's verdict routes through
+	// deskkit.HandleScanRefusal, so a refusal advertises the audited override
+	// (#585) and an override taken here writes its row BEFORE the post.
 	body, berr := readBody(*bodyFile)
 	if berr != nil {
 		return berr
 	}
-	if serr := deskkit.BodyCheck(body); serr != nil {
+	if serr := deskkit.HandleScanRefusal(deskkit.ScanOverride{
+		Tool: "deskreply", Verb: "reply", Repo: repo, PR: &pr, Reason: *scanOverride,
+		Surface: deskkit.SurfaceBody, Content: body,
+	}, deskkit.BodyCheck(body)); serr != nil {
 		return serr
 	}
 	ac.bodyDigest = deskkit.Sha256Hex(body)

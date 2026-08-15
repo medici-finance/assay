@@ -121,7 +121,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// --version short-circuits before Guard (pure introspection, no side effects).
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
 		s, b := deskkit.Version()
-		fmt.Fprintf(stdout, "deskboard sourceSHA=%s builtAt=%s\n", s, b)
+		fmt.Fprintf(stdout, "deskboard sourceSHA=%s builtAt=%s releaseTag=%s\n", s, b, deskkit.ReleaseTagOrDev())
 		return deskkit.ExitOK
 	}
 
@@ -435,7 +435,10 @@ func staleState() (state string, stale bool, detail string) {
 	}
 	src, _ := deskkit.Version()
 	installedTree, err1 := gitTree(src)
-	originTree, err2 := gitTree("origin/main")
+	// FULLY-QUALIFIED remote-tracking ref, not the bare short name `origin/main`
+	// (#885): a stray local `refs/heads/origin/main` decoy would otherwise shadow
+	// the real remote tip and make the drift check compare against a stale tree.
+	originTree, err2 := gitTree("refs/remotes/origin/main")
 	if err1 != nil || err2 != nil || installedTree == "" || originTree == "" {
 		return staleStateUnknown, true,
 			"COULD-NOT-CHECK drift (git unavailable or refs missing) — reported as STALE because " +

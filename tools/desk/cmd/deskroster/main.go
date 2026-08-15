@@ -28,7 +28,23 @@ USAGE:
   deskroster drop  --repo R --pr N [--session NAME]
   deskroster list
   deskroster mine  [--session NAME]
+  deskroster repos [--scope write|scan|topology|all]
+  deskroster apps
+  deskroster preflight --role R [--root DIR] [--repo OWNER/NAME] [--remote NAME] [--branch NAME]
   deskroster --version
+
+"repos" and "apps" PRINT THE LIVE SETS the tools actually use, so a skill, a
+runbook or a session can READ them instead of carrying its own list. Carrying a
+list is the defect: the desk skills' repo rosters had drifted from the tools' set
+in BOTH directions (#258) — naming repos the tools refuse to act on (phantom
+coverage) while omitting one they do (a monitoring blind spot). A list you print
+cannot drift from the list you enforce.
+
+preflight is the OPERATING-ENVELOPE check, run BEFORE any work is claimed:
+five three-state checks (cold token mint, App scopes vs the role's duties, a
+read-only write-transport probe, commit identity, declared sibling checkouts),
+each with a named remediation. Red = could-not-run for the whole pass: one line,
+exit 6, nothing claimed. "deskroster preflight --help" exits 0.
 
 Session resolution: $DESK_SESSION → $CLAUDE_SESSION_ID → --session flag.
 Unresolvable → exit 6 (never guess a session identity).
@@ -55,7 +71,7 @@ func run(args []string) int {
 	// --version / help are pure reads: no kill-switch gate, no audit line.
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
-		fmt.Printf("deskroster sourceSHA=%s builtAt=%s\n", sha, built)
+		fmt.Printf("deskroster sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
 		return deskkit.ExitOK
 	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
@@ -86,6 +102,12 @@ func run(args []string) int {
 		err = cmdList()
 	case "mine":
 		err = cmdMine(rest)
+	case "repos":
+		err = cmdRepos(rest)
+	case "apps":
+		err = cmdApps(rest)
+	case "preflight":
+		err = cmdPreflight(rest)
 	default:
 		fmt.Fprintf(os.Stderr, "deskroster: unknown subcommand %q\n\n%s\n", sub, usage)
 		return deskkit.ExitRefused

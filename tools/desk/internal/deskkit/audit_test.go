@@ -130,10 +130,18 @@ func TestArgsDigestStable(t *testing.T) {
 }
 
 func TestSessionTag(t *testing.T) {
-	t.Setenv("CLAUDE_SESSION_ID", "sess-123")
-	if got := SessionTag(); got != "sess-123" {
-		t.Fatalf("SessionTag = %q, want sess-123", got)
+	// Primary: the variable the Claude Code harness actually exports wins.
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "code-sess")
+	t.Setenv("CLAUDE_SESSION_ID", "legacy-sess")
+	if got := SessionTag(); got != "code-sess" {
+		t.Fatalf("SessionTag = %q, want code-sess (CLAUDE_CODE_SESSION_ID takes precedence)", got)
 	}
+	// Legacy fallback: when the primary is unset, the old variable is still honoured.
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	if got := SessionTag(); got != "legacy-sess" {
+		t.Fatalf("SessionTag = %q, want legacy-sess (legacy fallback)", got)
+	}
+	// Neither set → "unknown".
 	t.Setenv("CLAUDE_SESSION_ID", "")
 	if got := SessionTag(); got != "unknown" {
 		t.Fatalf("SessionTag = %q, want unknown", got)

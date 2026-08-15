@@ -334,6 +334,10 @@ func setupFake(t *testing.T) (*fakeGH, *bytes.Buffer) {
 	t.Setenv("HOME", home)
 	plantFixtureRoster(t, home)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
+	// Neutralise the harness's real session var ($CLAUDE_CODE_SESSION_ID, present in every
+	// Claude Code session) so the legacy fixture value below deterministically drives
+	// SessionTag(); otherwise the ambient UUID wins precedence.
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("CLAUDE_SESSION_ID", "deskevidence-test")
 	// Most tests below commit to "main" because that is the verify-desk's real target.
 	// The main-branch guard refuses that by default, so the sanction is set here for the

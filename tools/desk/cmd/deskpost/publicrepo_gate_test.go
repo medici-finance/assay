@@ -24,7 +24,7 @@ const publicInfraRepo = "example-org/example-k8s"
 // about. Under the OLD behaviour this PR flipped with a correctness review alone.
 func TestReadyPublicRepoIdentityDiffNeedsSecurityReview(t *testing.T) {
 	f, _ := setupFake(t)
-	f.files = []string{"base/ledger/identity.yaml"}
+	f.files = []string{"base/app/config.yaml"}
 	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
 	f.status = greenStatus()
 
@@ -72,7 +72,7 @@ func TestReadyPublicRepoEveryDiffIsRiskClassed(t *testing.T) {
 // second verdict at head the flip goes through.
 func TestReadyPublicRepoFlipsWithSecurityPass(t *testing.T) {
 	f, _ := setupFake(t)
-	f.files = []string{"base/ledger/identity.yaml"}
+	f.files = []string{"base/app/config.yaml"}
 	f.reviews = []reviewInfo{
 		appReview("APPROVED", testHead, okReviewBody),
 		appReview("APPROVED", testHead, "## Security review\n\nNo secrets, no widened reader.\n\nSecurity-Review: pass\n"),

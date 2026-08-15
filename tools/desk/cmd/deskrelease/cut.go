@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/topology"
 )
 
 // defaultReleaseRepo is the SHIPPED release home: this project's own public
@@ -13,12 +14,19 @@ import (
 // there is nothing here to disclose, and an adopter who has configured nothing gets
 // the same target the compiled-in slug always gave.
 //
+// It is READ from the declared topology source (`topology.yaml`'s `release_repo`)
+// rather than restated here as a second literal. The same slug also names a board
+// root, a risk-path-trigger owner and a product's repo; four hand-synced copies of
+// one slug is #276 in miniature. ground-truth/04 retired the literal that used to
+// sit at this spot, and TestTopologyDriftRegistry names this site if it comes back.
+//
 // NOTE: the bare slug is a REPO IDENTIFIER, not a Go module path — it is data naming
 // a GitHub repo, so it deliberately does NOT carry the `github.com/` prefix. It is
 // repo-inventory data, tracked separately from the module-path rename. Do NOT
-// "finish" a sweep by adding `github.com/` here: that would rewrite a repo identifier
-// into a module path and retarget the repo gate at a path that resolves to nothing.
-const defaultReleaseRepo = "medici-finance/assay"
+// "finish" a sweep by adding `github.com/` in topology.yaml: that would rewrite a
+// repo identifier into a module path and retarget the repo gate at a path that
+// resolves to nothing.
+var defaultReleaseRepo = topology.Compiled().ReleaseRepo
 
 // repoSlug is the repo this tool may act on: defaultReleaseRepo unless the adopter
 // has configured ASSAY_RELEASE_REPO, which applyConfiguredReleaseRepo reads once per
@@ -60,13 +68,22 @@ func applyConfiguredReleaseRepo() {
 // means the wrong commit is never even tagged.
 const mainRef = "heads/main"
 
-// tagPattern is the ONLY accepted tag shape: the two release namespaces this repo's
-// workflows trigger on, followed by a strict three-part numeric version.
+// tagPattern is the ONLY accepted tag shape: the allow-listed namespaces this tool may
+// cut, followed by a strict three-part numeric version.
+//
+// Namespaces (distribution/02): `assay` is the umbrella — the human ruled the shape
+// (`assay/vX.Y.Z`, PR #387) and the first number (`assay/v0.9.0`) — added alongside the
+// two per-artifact lines this tool already cut. `daily-harvest` is DELIBERATELY ABSENT
+// even though `daily-harvest/vX.Y.Z` tags already exist (cut via `release-daily-harvest.yml`'s
+// own path, not this tool): widening the allow-list is this brief's job for exactly the
+// namespace it was asked to add, and a reader must not assume this list is the exhaustive
+// set of namespaces this repo releases — whether to add `daily-harvest` here belongs to
+// whoever owns that release path, not to distribution/02.
 //
 // In Go's regexp (RE2, no `m` flag) `^` is beginning-of-TEXT and `$` is end-of-TEXT
 // (\z semantics, not Perl's \Z), so this genuinely anchors both ends — it cannot be
 // satisfied by a prefix, and a trailing newline does not slip past it.
-var tagPattern = regexp.MustCompile(`^(desk-tools|statusgen)/v[0-9]+\.[0-9]+\.[0-9]+$`)
+var tagPattern = regexp.MustCompile(`^(assay|desk-tools|statusgen)/v[0-9]+\.[0-9]+\.[0-9]+$`)
 
 // refspecMetachars are the characters through which a git refspec expresses a
 // DESTINATION or a revision peel — the exact vocabulary of the escapes that defeated the
@@ -163,7 +180,7 @@ func validateTag(tag string) error {
 	if !tagPattern.MatchString(tag) {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: tag %q does not match %s — the only shapes this tool cuts are "+
-				"desk-tools/vX.Y.Z and statusgen/vX.Y.Z", tag, tagPattern.String()))
+				"assay/vX.Y.Z, desk-tools/vX.Y.Z and statusgen/vX.Y.Z", tag, tagPattern.String()))
 	}
 	return nil
 }

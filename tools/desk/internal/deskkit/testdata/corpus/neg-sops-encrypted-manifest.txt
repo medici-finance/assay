@@ -1,0 +1,31 @@
+# corpus: a SOPS-encrypted kubernetes Secret manifest
+# expect: clean
+# refs:   #778 (desk-console/04, #1843), #585
+# shape:  complete ENC[AES256{{+}}_GCM,...] envelopes plus a generated sops: metadata block
+# why:    encrypt -> commit -> push -> reconcile is the house's SANCTIONED Flux path; ciphertext is not usable key material
+apiVersion: v1
+kind: Secret
+metadata:
+    name: assay-loop-role-keys
+    namespace: assay-desk
+type: Opaque
+stringData:
+    reviewer.pem: ENC[AES256{{+}}_GCM,data:Uk5wYldZa2hoYVZZY0hkc1pr{{+}}aFdibkJv,iv:YkdWaGNtNXBibWNnZEc4Z2Nt{{+}}VmhaQT09,tag:ZEdocGN5QnBjeUJoYmlCbGVH{{+}}RnRjR3hs,type:str]
+    verifier.pem: ENC[AES256{{+}}_GCM,data:WVc1dmRHaGxjaUJyWlhrZ1pt{{+}}OXlJSFJs,iv:YzNScGJtY2djSFZndmNHOXpa{{+}}WE09Cg==,tag:YzI5dFpTQnRiM0psSUdKaGMy{{+}}VTJOQT09,type:str]
+sops{{+}}:
+    kms: []
+    gcp_kms: []
+    azure_kv: []
+    hc_vault: []
+    age:
+        - recipient: age1ql3z7hjy54pw3hyww5ay{{+}}yfg7zqgvc7w3j2elw8zmrj2k{{+}}g5sfn9aqmcac8p
+          enc: |
+            -----BE{{+}}GIN AGE ENCRYPTED FILE-----
+            WVdkbExXVnVZM0o1Y0hScGIy{{+}}NHViM0puTDNZeENpMCtJRmd5{{+}}TlRVeE
+            OVNCSGJHOXZjSGxOZDJoUFVG{{+}}aHRSMlpOTlZWVmVsSk1XVEpW{{+}}WjBGb1
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2026-08-13T09:14:02Z"
+    mac: ENC[AES256{{+}}_GCM,data:VFdGamRHRm5JR1p2Y2lCMGFH{{+}}VWdaRzlq,iv:ZFcxbGJuUWdZWE1nZDNKcGRI{{+}}UmxiZz09,tag:WW5rZ2MyOXdjeUJwZEhObGJH{{+}}WTJOQT09,type:str]
+    pgp: []
+    unencrypted_suffix: _unencrypted
+    version: 3.8.1

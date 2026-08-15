@@ -47,7 +47,7 @@ func TestShortRepoKnownLabels(t *testing.T) {
 		"example-org/proposals":                 "props",
 		"example-org/platform":                  "platform",
 		"example-org/org-slides":                "org-slides",
-		"example-org/medici-slides":             "medici-slides",
+		"example-org/demo-slides":               "demo-slides",
 		"example-org/assay-slides":              "assay-slides",
 		"example-org/example-reconciler-slides": "example-reconciler-slides",
 	}

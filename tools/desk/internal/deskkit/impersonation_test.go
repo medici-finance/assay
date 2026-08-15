@@ -15,7 +15,12 @@ func TestImpersonatedRulingClaim_Catches(t *testing.T) {
 		name string
 		text string
 	}{
-		{"literal decks#16 instance shape", `**An agent posted a comment headed "Decision (Alex, 2026-07-14)" on example-org/decks#16.**`},
+		// The genuine impersonating body — a ruling label issued at line start. (The
+		// META-description of such a comment, `**An agent posted a comment headed
+		// "Decision (Alex, …)" on example-org/decks#16**`, is now a DoesNotFire case: it is
+		// mid-line with a citation, i.e. a report ABOUT an impersonation, not one — see the
+		// verify-desk-ops-hardening narrowing.)
+		{"line-initial decision claim", "Decision (Alex): we are going with approach B."},
 		{"markdown heading form", "## Decision (Alex, 2026-07-14)\n\nWe are going with approach B."},
 		{"ruling dash attribution, the Verify checklist's own example", "Ruling: ship the fallback path as the default — Alex"},
 		{"ruling double-hyphen attribution", "Ruling: use the retry queue instead -- Alex"},
@@ -23,6 +28,9 @@ func TestImpersonatedRulingClaim_Catches(t *testing.T) {
 		{"first person parenthetical", "I (Alex) have decided we should roll this back."},
 		{"first person comma form", "I, Alex, ruled that this stays blocked."},
 		{"first person decided, no 'have'", "I (Alex) decided to merge anyway."},
+		// First person is NEVER a relay: a citation does NOT exempt it, because it is this
+		// account writing in the human's voice, not pointing at where they spoke.
+		{"first person WITH a citation still fires", "I (Alex) have decided, see #414."},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -53,6 +61,14 @@ func TestImpersonatedRulingClaim_DoesNotFire(t *testing.T) {
 		{"decision label with no name at all", "Decision: ship the fallback path as the default."},
 		{"name with no ruling/decision label nearby", "I checked with Alex and they agreed the approach looks right."},
 		{"past-tense narration, not a claim", "Alex's ruling on the custody split is still pending; see #44."},
+		// Narrowing (verify-desk-ops-hardening): a mid-line paren label that is not
+		// positioned as issuing a ruling is a mention/description, not a claim — a report
+		// ABOUT an impersonation (the old decks#16 instance-shape fixture), and a
+		// forward-looking diagram node in a stream-README.
+		{"meta-description of an impersonation (old decks#16 fixture)", `**An agent posted a comment headed "Decision (Alex, 2026-07-14)" on example-org/decks#16.**`},
+		{"forward-looking diagram node label, mid-line no colon", "03 ruling (Alex) ──► 04 neutral core"},
+		{"cited relay in paren tail (a link where they said it)", "by ruling (alex, 2026-08-03, PR #414): ship it"},
+		{"cited relay with a URL in the paren", "Decision (Alex, https://github.com/example-org/decks/issues/952): invert the gate"},
 		{"empty body", ""},
 	}
 	for _, tc := range cases {
@@ -94,6 +110,53 @@ func TestImpersonatedRulingClaim_NameDriven(t *testing.T) {
 	}
 	if _, found := ImpersonatedRulingClaim(`## Decision (Sam, 2026-08-12)`); found {
 		t.Fatal("ImpersonatedRulingClaim(Decision (Sam, ...)) = found true, but \"sam\" is not configured in this roster")
+	}
+}
+
+// TestImpersonatedRulingClaim_CitedRelayAndPositionNarrowing pins the two exemptions added
+// in verify-desk-ops-hardening, verbatim against the shapes that motivated them, driven by a
+// CONFIGURED human name (the neutral example roster's alex:ada — never a real login). A cited
+// paren/dash attribution is treated as a relay and skipped; a paren label is refused ONLY when
+// it is positioned as issuing a ruling (line start, or a colon after the close paren); first
+// person is refused regardless of citation.
+func TestImpersonatedRulingClaim_CitedRelayAndPositionNarrowing(t *testing.T) {
+	withRoster(t, map[string]string{
+		EnvBlessLogin:      "ada:2001",
+		EnvTrustedLogins:   "ada:2001",
+		EnvTrustedBotSlugs: "reviewer=assay-reviewer-app:300000004",
+		EnvAllowedRepos:    "medici-finance/assay:ci:private",
+		EnvHumanLoginMap:   "alex:ada",
+	})
+
+	nowPass := []struct{ name, text string }{
+		{"forward-looking diagram node label", "03 ruling (Alex) ──► 04 neutral core"},
+		{"cited relay, paren tail issue ref", "by ruling (alex, 2026-08-03, PR #414): x"},
+		{"cited relay, URL in paren", "Decision (Alex, https://github.com/example-org/decks/issues/952): invert"},
+	}
+	for _, c := range nowPass {
+		t.Run("pass/"+c.name, func(t *testing.T) {
+			if name, found := ImpersonatedRulingClaim(c.text); found {
+				t.Fatalf("ImpersonatedRulingClaim(%q) = found true (name %q), want false", c.text, name)
+			}
+		})
+	}
+
+	stillRefuse := []struct{ name, text string }{
+		{"line-initial paren claim with colon, uncited", "Decision (Alex): flip the gate"},
+		{"markdown heading paren claim", "## Ruling (Alex)"},
+		{"dash attribution, uncited", "Ruling: merge now — Alex"},
+		{"first person with a citation is never a relay", "I (Alex) have decided, see #414"},
+	}
+	for _, c := range stillRefuse {
+		t.Run("refuse/"+c.name, func(t *testing.T) {
+			name, found := ImpersonatedRulingClaim(c.text)
+			if !found {
+				t.Fatalf("ImpersonatedRulingClaim(%q) = found false, want true", c.text)
+			}
+			if name != "alex" {
+				t.Fatalf("ImpersonatedRulingClaim(%q) name = %q, want \"alex\"", c.text, name)
+			}
+		})
 	}
 }
 

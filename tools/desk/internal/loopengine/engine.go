@@ -22,6 +22,9 @@ type Item struct {
 	ExecTier    string            // "any" | "strong"
 	Implementer string            // for the author != runner typed guard (CheckAuthorRunner)
 	Payload     map[string]string // template variables for the dispatch prompt
+	// Retry optionally overrides Config.Retry for this item alone (loop-engine/08). nil
+	// means the engine default. It is Item DATA, not a Loop hook.
+	Retry *RetryPolicy
 }
 
 // RiskFlags is the parsed brief-v1 risk frontmatter (the four canonical keys).
@@ -126,7 +129,7 @@ type Config struct {
 	// RunnerID is the identity this engine instance dispatches AS (the session/operator
 	// identity). It is the left-hand side of the author != runner structural guard: the
 	// engine refuses to dispatch an item whose Implementer == RunnerID. Empty disables the
-	// guard (the adapter is then responsible, e.g. batch-fanout where authorship differs
+	// guard (the adapter is then responsible, e.g. worker-desk where authorship differs
 	// per worker). This is engine config, not a Loop hook — it does not erode the contract.
 	RunnerID string
 	// Branch is the git branch this engine instance runs on. It is recorded in every
@@ -148,6 +151,49 @@ type Config struct {
 	// live work; nil means a recorded branch cannot be proven live, so a claim is reclaimed
 	// only on age (StaleClaim) with no recorded branch. See Claim.
 	BranchActive func(branch string) bool
+	// WorkEvidence is the external-evidence probe Claim consults BEFORE it will return
+	// "acquired" — the answer to "is this item already taken by something outside the
+	// claims dir?" (an open PR naming it, a merged PR naming it, the board row). A claim
+	// file records only that a dispatcher is working on the item; acquiring one is not
+	// evidence the work is unclaimed, which is the gap loop-engine/10 names.
+	//
+	// nil means the check is NOT performed — permitted, and then Claim ANNOUNCES the
+	// narrowed bound on Progress for every item (no silent caps). A probe that errors is
+	// could-not-check and makes Claim fail closed (exit 6), never a soft acquire. This is
+	// engine config, not a Loop hook — it does not erode the frozen contract.
+	WorkEvidence WorkEvidence
+	// Retry is the DECLARED retry policy applied to the dispatch path (loop-engine/08).
+	// nil means DefaultRetryPolicy(); an Item may override it per item (Item.Retry). Retry
+	// is engine-internal data wrapped around Loop.Dispatch — it adds no Loop hook and does
+	// not erode the frozen contract. See retry.go for the taxonomy and every bound.
+	Retry *RetryPolicy
+	// Sleep is the back-off sleep seam. nil means time.Sleep; tests substitute a recorder
+	// so a backoff schedule is asserted rather than waited on.
+	Sleep func(time.Duration)
+}
+
+// retryPolicy resolves the policy for one item: the item's override, else the engine
+// default, else DefaultRetryPolicy.
+func (c Config) retryPolicy(it Item) RetryPolicy {
+	if it.Retry != nil {
+		return *it.Retry
+	}
+	if c.Retry != nil {
+		return *c.Retry
+	}
+	return DefaultRetryPolicy()
+}
+
+// sleep waits d through the configured seam.
+func (c Config) sleep(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	if c.Sleep != nil {
+		c.Sleep(d)
+		return
+	}
+	time.Sleep(d)
 }
 
 func (c Config) progress() io.Writer {
@@ -178,6 +224,21 @@ type completion struct{ result Result }
 func Run(cfg Config, loop Loop) error {
 	if cfg.PoolSize < 1 {
 		return fmt.Errorf("loopengine: PoolSize must be >= 1, got %d", cfg.PoolSize)
+	}
+	// The retry policy is configuration a human wrote. An incoherent one fails closed here
+	// rather than silently behaving like some other policy (loop-engine/08).
+	pol := cfg.retryPolicy(Item{})
+	if err := pol.Validate(); err != nil {
+		return err
+	}
+	// A retrying dispatcher HOLDS its claim while it waits, and a claim ages. If all the
+	// waiting one item may do could reach Config.StaleClaim, a second dispatcher could
+	// correctly judge the live claim abandoned and reclaim it out from under an attempt
+	// that is still coming — a double dispatch produced by the retry policy itself. Refuse
+	// the config instead of clamping it silently.
+	if cfg.StaleClaim > 0 && pol.MaxElapsed >= cfg.StaleClaim {
+		return fmt.Errorf("loopengine: RetryPolicy.MaxElapsed (%s) must stay under Config.StaleClaim (%s) — a retrying dispatcher holds its claim while it waits, and a claim that ages past StaleClaim can be reclaimed by another dispatcher mid-retry",
+			pol.MaxElapsed, cfg.StaleClaim)
 	}
 	// Honor per-loop stop flags (STOP.<name>) by scoping DESK_LOOP to this loop when the
 	// operator has not already set it (the skill boot does; be robust if it did not).
@@ -313,9 +374,16 @@ func fillPool(cfg Config, loop Loop, inflight map[string]Handle, parked map[stri
 			continue
 		}
 
-		h, err := loop.Dispatch(it, tier)
-		if err != nil {
-			cfg.logf("dispatch-error: %s: %v", it.ID, err)
+		// Dispatch under the DECLARED retry policy (loop-engine/08). Every attempt runs
+		// under the claim acquired just above: dispatchWithRetry never releases and never
+		// re-acquires, so a retry can neither double-acquire nor orphan the claim. On a
+		// terminal outcome the item is LANDED first (blocked-with-reason, or NEEDS_CONTEXT
+		// when the failure was could-not-check) and the claim released after, so no other
+		// dispatcher can pick the item up mid-landing.
+		h, out := dispatchWithRetry(cfg, loop, it, tier)
+		if out != nil {
+			cfg.logf("dispatch-error: %s: %s", it.ID, out.Summary(it.ID))
+			landOne(cfg, loop, out.Result(it, cfg.RunnerID))
 			_ = ReleaseClaim(cfg, it) // hand the slot back; a failed dispatch is not a claim
 			parked[it.ID] = true
 			continue

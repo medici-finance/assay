@@ -20,7 +20,7 @@ import (
 // TestRepoAliasGenericDefaultWhenUnset: with no ASSAY_REPO_ALIASES set, the resolver
 // derives short = last path segment and product = owner, and names no house bucket.
 func TestRepoAliasGenericDefaultWhenUnset(t *testing.T) {
-	withRoster(t, mediciRoster()) // roster present, but NO ASSAY_REPO_ALIASES
+	withRoster(t, goldenRoster()) // roster present, but NO ASSAY_REPO_ALIASES
 
 	cases := []struct {
 		repo, short, product string
@@ -44,11 +44,11 @@ func TestRepoAliasGenericDefaultWhenUnset(t *testing.T) {
 // EMPTY facet keeps the generic default for that facet, and a full owner/name key takes
 // precedence over a bare-basename key for the same repo.
 func TestRepoAliasConfiguredOverride(t *testing.T) {
-	r := mediciRoster()
+	r := goldenRoster()
 	r[EnvRepoAliases] = strings.Join([]string{
 		"example-k8s=ledger:ledger",            // both facets overridden, keyed by basename
 		"example-reconciler=recon:",            // short overridden, product stays generic (owner)
-		"proposals=:medici",                    // product overridden, short stays generic (basename)
+		"proposals=:demo",                      // product overridden, short stays generic (basename)
 		"example-org/console=cons:consoleprod", // full-slug key
 		"console=WRONG:WRONG",                  // basename key for the same name — full slug must win
 	}, ",")
@@ -72,7 +72,7 @@ func TestRepoAliasConfiguredOverride(t *testing.T) {
 	// short overridden, product empty → generic owner.
 	check("example-org/example-reconciler", "recon", "example-org")
 	// product overridden, short empty → generic basename.
-	check("example-org/proposals", "proposals", "medici")
+	check("example-org/proposals", "proposals", "demo")
 	// full-slug key beats the bare-basename key for the same repo.
 	check("example-org/console", "cons", "consoleprod")
 	// a repo whose basename matches the "console" key but under a DIFFERENT owner still
@@ -93,7 +93,7 @@ func TestRepoAliasMalformedRefuses(t *testing.T) {
 		{"duplicate repo", "k8s=a:b,k8s=c:d"},   // same repo aliased twice
 	} {
 		t.Run(bad.name, func(t *testing.T) {
-			r := mediciRoster()
+			r := goldenRoster()
 			r[EnvRepoAliases] = bad.value
 			withRoster(t, r)
 			cfg := EffectiveConfig()
@@ -112,8 +112,8 @@ func TestRepoAliasMalformedRefuses(t *testing.T) {
 // TestRepoAliasEchoed is P3 for the grouping surface (brief-05 Verify row 3): the
 // effective alias set appears in the run echo, so a settings-only regrouping is visible.
 func TestRepoAliasEchoed(t *testing.T) {
-	r := mediciRoster()
-	r[EnvRepoAliases] = "example-k8s=ledger:ledger,proposals=props:medici"
+	r := goldenRoster()
+	r[EnvRepoAliases] = "example-k8s=ledger:ledger,proposals=props:demo"
 	withRoster(t, r)
 
 	var b bytes.Buffer
@@ -122,7 +122,7 @@ func TestRepoAliasEchoed(t *testing.T) {
 	if !strings.Contains(out, "assay-config: "+EnvRepoAliases+"=") {
 		t.Fatalf("the run echo carries no %s line:\n%s", EnvRepoAliases, out)
 	}
-	for _, want := range []string{"example-k8s=ledger:ledger", "proposals=props:medici"} {
+	for _, want := range []string{"example-k8s=ledger:ledger", "proposals=props:demo"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the %s echo omits %q:\n%s", EnvRepoAliases, want, out)
 		}

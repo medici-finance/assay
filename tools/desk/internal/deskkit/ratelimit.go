@@ -9,18 +9,37 @@ import (
 
 const (
 	// RateLimitPerPRPerHour is the outward-write budget per tool per PR/issue
-	// per rolling hour.
+	// per rolling hour. It is also the cap on the repo's UNNUMBERED bucket
+	// (pr=0), where deskevidence's Evidence commits land — so this number is the
+	// verify-desk's Evidence-drain ceiling as well as the per-PR cap.
 	//
-	// 10 is carried forward from the original RateLimitPerHour (now retired).
-	// The old cap was 10 charged writes per tool per hour across all targets —
-	// one runaway agent on PR #431 could starve PR #424. Scoping the same number
-	// per-PR gives each PR its own budget while keeping the same blast-radius cap
-	// the original number was chosen for.
+	// 10 was the original value. It was the busiest-hour figure measured from the
+	// ledger (#1255's extract — the busiest rolling hour on record landed only a
+	// minority of its attempts as real posts), carried forward from the retired
+	// RateLimitPerHour as the blast-radius cap: one runaway agent's write ceiling
+	// on a single target.
 	//
-	// The empirical input behind 10 is unchanged: the busiest rolling hour on
-	// record (#1255's ledger extract) landed only a minority of its attempts as
-	// real posts; 10 leaves headroom over that without leaving room for a loop.
-	RateLimitPerPRPerHour = 10
+	// Raised to 20 on 2026-08-14 to accelerate the verification-backlog drain.
+	// Empirical basis, measured this date from ~/.config/assay/audit.jsonl: the
+	// deskevidence drain is BURSTY, not steady — it saturates the 10/hr bucket in
+	// seconds and then idles. 19 landed writes across a 3.7h span fell in only 6
+	// distinct minutes of actual writing; one observed burst hit exactly 10 and
+	// was then followed by 205 minutes of silence. Only ONE `ratelimited` refusal
+	// appears in 24h, and that undercounts true demand rather than bounding it:
+	// the skill PAUSES to avoid the cap instead of attempting into it, so the
+	// refusal it would otherwise record never happens.
+	//
+	// So 20 is a deliberate throughput LOOSENING for a supervised drain — 2× the
+	// measured peak — NOT a new measurement of busiest-hour demand. Stated as
+	// plainly as RateLimitPerRepoPerHour below states that it is "not measured":
+	// the busiest-hour figure on record remains 10; 20 buys drain headroom above
+	// it and nothing here re-measures the peak.
+	//
+	// Loop-safety is unaffected by this number. The circuit breaker (BreakerTrip
+	// consecutive non-progress attempts — an independent meter) still bounds a
+	// runaway loop regardless of the budget, and RateLimitPerRepoPerHour = 100 is
+	// unchanged, so the cross-PR aggregate ceiling is untouched.
+	RateLimitPerPRPerHour = 20
 
 	// RateLimitPerRepoPerHour is the outward-write budget per tool per repo
 	// per rolling hour. It caps aggregate writes across all PRs/issues in one
@@ -29,9 +48,10 @@ const (
 	//
 	// UNLIKE THE PER-PR CAP, THIS NUMBER IS NOT MEASURED — stating that plainly
 	// because the two constants sit side by side and read as equally grounded, and
-	// they are not. 10 above is an observed busiest-hour figure; 100 here is a
-	// derived ceiling: 10× the per-PR cap, i.e. "ten PRs simultaneously at their
-	// full individual budget", which is well above any fan-out the desk has run.
+	// they are not. The per-PR cap above is anchored on an observed busiest-hour
+	// figure (10); 100 here is a derived ceiling: 5× the current per-PR cap of 20,
+	// i.e. "five PRs simultaneously at their full individual budget", which is
+	// well above any fan-out the desk has run.
 	// It is deliberately loose. This tier exists to bound a tool-level runaway that
 	// spreads ACROSS PRs — the shape the per-PR tier cannot see — not to shape
 	// normal throughput, so an over-generous value still closes the hole while a
@@ -45,6 +65,10 @@ const (
 	RateLimitPerRepoPerHour = 100
 
 	rateWindow = time.Hour
+
+	// deskevidenceUnnumberedCap is the override cap below (kept as a named constant so the
+	// number and its justification sit together). See unnumberedBucketCap.
+	deskevidenceUnnumberedCap = 30
 
 	// BreakerTrip is how many CONSECUTIVE non-progress attempts (see nonProgress) open
 	// the circuit breaker. This is the "a refusal loop MUST trip the limit" rule, moved
@@ -77,6 +101,44 @@ const (
 	// weakens the last fleet-wide stop — neither direction is free.
 	BreakerBackstopTrip = 4 * BreakerTrip
 )
+
+// unnumberedBucketCap overrides RateLimitPerPRPerHour for a specific tool's UNNUMBERED
+// (pr=0) bucket — the repo bucket where writes carrying no PR number land (deskevidence's
+// Evidence/status commits, deskrelease's cuts). The default (RateLimitPerPRPerHour, 20) was
+// measured from deskpost COMMENT spam (#1255), a different verb class from an Evidence/status
+// commit: deskevidence charges TWO writes per flip (Evidence + README), so 20 paces the
+// whole verify-desk at ten flips an hour, which is the binding constraint on the verification
+// drain.
+//
+// 30 is a throughput-derived CEILING, not a re-measurement of peak demand (same honesty as
+// the per-repo constant above). It lifts deskevidence's pacing wall without EXEMPTING it —
+// the crucial #439 property: an unscoped exemption fails OPEN, so this stays a scoped, still-
+// bounded cap. The circuit breaker, the per-repo tier (100), and the fail-closed unnumbered-
+// bucket accounting all still apply, so a runaway deskevidence loop is stopped exactly as
+// before; only the steady-state throughput ceiling moved. Lowering it is the safe direction;
+// raising it needs the kind of argument the cap constants above require of themselves.
+var unnumberedBucketCap = map[string]int{
+	"deskevidence": deskevidenceUnnumberedCap,
+}
+
+// unnumberedCapFor returns the cap for tool's UNNUMBERED (pr=0) bucket: its override if it
+// has one, else RateLimitPerPRPerHour. It is the SINGLE reader of unnumberedBucketCap, so the
+// gate and any test cannot disagree about a tool's effective cap.
+func unnumberedCapFor(tool string) int {
+	if c, ok := unnumberedBucketCap[tool]; ok {
+		return c
+	}
+	return RateLimitPerPRPerHour
+}
+
+// UnnumberedCapFor is the exported reader of a tool's UNNUMBERED (pr=0) effective cap. It
+// exists so a cross-package pin — e.g. deskevidence's last-write serialisation test, which
+// must seed the ledger to the tool's EFFECTIVE cap, not the base RateLimitPerPRPerHour — can
+// derive that cap from the same single source the gate uses (unnumberedCapFor), and so can
+// never drift from an override the gate honours.
+func UnnumberedCapFor(tool string) int {
+	return unnumberedCapFor(tool)
+}
 
 // Verb classes and the rate limit. The rolling-hour budget below governs
 // OUTWARD-WRITE verbs only — those that hit GitHub or another remote (deskpr's push +
@@ -231,7 +293,7 @@ func breakerIgnores(result string) bool {
 // deskevidence and deskpr's create path pass pr=0 legitimately (a PR number does not
 // exist before the PR does), and the skip silently moved them from the base cap of 10/hr
 // to the per-repo 100/hr — a 10× loosening on live write paths, one of them the exact
-// verb behind the PR-flood incident. deskrelease passed an empty repo and so
+// verb behind the PR-flood risk. deskrelease passed an empty repo and so
 // skipped both tiers, leaving release writes bounded only by the breaker, which counts
 // CONSECUTIVE non-progress and therefore never trips on a run of successful releases:
 // unbounded.
@@ -273,12 +335,12 @@ func AllowWrite(tool, repo string, pr int) error {
 // every time — so there is no per-PR bucket that can accumulate creates and no unnumbered
 // bucket they land in either. Every scope AllowWrite can express is therefore empty for
 // this call site by construction, and the only bucket its writes reliably fall into is
-// "this tool, this repo". Counting that at the PER-PR cap keeps PR creation at the 10/hr
-// it had before the tiers existed, on the verb behind the PR-flood incident,
+// "this tool, this repo". Counting that at the PER-PR cap keeps PR creation bounded by
+// that cap, as it was before the tiers existed, on the verb behind the PR-flood risk,
 // and — unlike recording the PR as nil to force the buckets to line up — it leaves the
 // created number in the audit trail, which is the one field that makes a create traceable.
 //
-// It is deliberately STRICTER than the per-repo tier it subsumes (10 vs 100), so callers
+// It is deliberately STRICTER than the per-repo tier it subsumes (20 vs 100), so callers
 // cannot reach for it as a way to buy headroom.
 func AllowWriteRepoWide(tool, repo string) error {
 	return AllowWriteRepoWideAt(tool, repo, time.Now())
@@ -436,14 +498,22 @@ func budgetRefusal(tool, tier, target string, count, limit int, freeAt time.Time
 //
 // pr == 0 is the repo's UNNUMBERED bucket rather than a skip (see AllowWrite): it matches
 // this repo's entries that recorded no PR number, so deskevidence, deskpr's create path
-// and deskrelease are held to RateLimitPerPRPerHour instead of falling through to the 10×
+// and deskrelease are held to RateLimitPerPRPerHour instead of falling through to the 5×
 // wider per-repo tier. Entries are matched on `pr == nil || *pr == 0` because the two
 // encodings mean the same thing and different tools write different ones — deskevidence
 // and deskrelease omit the field (nil), deskpost always writes a number and so records 0.
 // Matching only one of them would leave the bucket half-blind, which is the same
 // fail-open shape one level down.
 func checkPRBudget(tool, repo string, pr int, now time.Time, mine []auditPoint) error {
-	count, over, freeAt, retryAfter := chargedInWindow(now, mine, RateLimitPerPRPerHour, func(e auditPoint) bool {
+	// The unnumbered (pr=0) bucket may carry a per-tool override (unnumberedBucketCap); a
+	// numbered PR always uses the base cap. Either way the tier stays the per-PR tier, well
+	// under the per-repo 100 — an override RAISES a specific tool's unnumbered ceiling, it
+	// never lets the write fall through to a wider tier (the #439 fail-open shape).
+	limit := RateLimitPerPRPerHour
+	if pr == 0 {
+		limit = unnumberedCapFor(tool)
+	}
+	count, over, freeAt, retryAfter := chargedInWindow(now, mine, limit, func(e auditPoint) bool {
 		if e.repo != repo {
 			return false
 		}
@@ -461,7 +531,7 @@ func checkPRBudget(tool, repo string, pr int, now time.Time, mine []auditPoint) 
 		target = repo + " (writes carrying no PR/issue number)"
 		shared = "Every write on this repo that carries no PR number shares this one bucket."
 	}
-	return budgetRefusal(tool, "per-PR", target, count, RateLimitPerPRPerHour, freeAt, retryAfter, shared)
+	return budgetRefusal(tool, "per-PR", target, count, limit, freeAt, retryAfter, shared)
 }
 
 // checkRepoBudget applies the rolling-hour per-repo write budget.

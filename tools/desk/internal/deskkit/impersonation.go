@@ -48,6 +48,34 @@ import (
 // rulingWord matches the label that opens a ruling/decision claim.
 const rulingWord = `(?:decision|ruling)`
 
+// The two exemptions that keep this guard off legitimate relays and diagram labels, added
+// after it refused a stream-README's forward-looking diagram node `03 ruling (Alex) ──► 04
+// neutral core` and could not tell a cited relay (`Decision (Alex, PR #414): …`) from an
+// invented one. They apply to the paren/dash arms ONLY; firstPersonRe stays unconditional,
+// because "I (Alex) have decided" is this account writing in the human's voice whether or not
+// a link is attached.
+var (
+	// citationRe marks an attribution as a RELAY rather than an invention: a GitHub
+	// issue/PR reference (#123) or a URL is the "link where they said it" the refusal
+	// message itself demands. Its presence anywhere on the attribution's line exempts the
+	// paren/dash match. The residual is deliberate and documented: a bot can fabricate
+	// `Decision (Alex, #1): …`, but that is now a falsifiable, chaseable claim — the scan's
+	// charter is "seatbelt plus friction" (bodycheck.go:9-13), not proof of provenance.
+	citationRe = regexp.MustCompile(`#[0-9]+|https?://`)
+
+	// rulingClaimPrefixRe matches the text allowed BEFORE a ruling label for the label to
+	// count as issued AT LINE START: leading whitespace, markdown block markers (#, >, *,
+	// -), a bold marker (**), and/or an ordered-list marker (`1.` / `1)`). A diagram node
+	// number like `03 ` is deliberately NOT a list marker (no `.`/`)` after the digits), so
+	// `03 ruling (Alex) ──►` is mid-line, not line-initial, and is skipped.
+	rulingClaimPrefixRe = regexp.MustCompile(`^[\s>#*\-]*(?:[0-9]+[.)]\s+)?\**\s*$`)
+
+	// parenClaimTailRe matches the tail right after a parenRe match when the closing paren
+	// is followed (within optional whitespace / bold markers) by a colon — the second shape
+	// that marks a paren attribution as ISSUING a ruling: `Decision (Alex): …`.
+	parenClaimTailRe = regexp.MustCompile(`^[^\n)]*\)\s*\**:`)
+)
+
 // humanRulingRes compiles the three attribution shapes this guard recognises for
 // a given configured human name. All three require the ruling/decision LABEL
 // AND the name to co-occur in one of the specific attribution shapes seen in the
@@ -102,11 +130,53 @@ func ImpersonatedRulingClaim(text string) (name string, found bool) {
 	sort.Strings(names)
 	for _, n := range names {
 		parenRe, dashRe, firstPersonRe := humanRulingRes(n)
-		if parenRe.MatchString(text) || dashRe.MatchString(text) || firstPersonRe.MatchString(text) {
+		// First person is NEVER a relay — "I (Alex) have decided" is this account writing in
+		// the human's voice, citation or not — so it refuses unconditionally.
+		if firstPersonRe.MatchString(text) {
+			return n, true
+		}
+		// The paren/dash arms are evaluated PER OCCURRENCE (FindAllStringIndex, not
+		// MatchString) so position and citation can be judged for each match: a cited relay
+		// is skipped on both arms, and a paren label that is not positioned as a ruling
+		// (mid-line, no colon) is skipped on the paren arm.
+		for _, loc := range parenRe.FindAllStringIndex(text, -1) {
+			if citedRelay(text, loc[0]) || !parenClaimPositioned(text, loc) {
+				continue
+			}
+			return n, true
+		}
+		for _, loc := range dashRe.FindAllStringIndex(text, -1) {
+			if citedRelay(text, loc[0]) {
+				continue
+			}
 			return n, true
 		}
 	}
 	return "", false
+}
+
+// citedRelay reports whether the attribution whose match begins at idx carries a citation
+// (#123 or a URL) on its line — the "link where they said it" that turns writing in a
+// human's voice into relaying their recorded direction. See citationRe.
+func citedRelay(text string, idx int) bool {
+	lineStart := strings.LastIndexByte(text[:idx], '\n') + 1
+	lineEnd := len(text)
+	if nl := strings.IndexByte(text[idx:], '\n'); nl >= 0 {
+		lineEnd = idx + nl
+	}
+	return citationRe.MatchString(text[lineStart:lineEnd])
+}
+
+// parenClaimPositioned reports whether a parenRe match at loc is POSITIONED as a ruling
+// being issued: either the ruling word sits at line start (allowing leading markdown), or
+// the closing paren is followed by a colon. A mid-line paren label with no colon is a
+// mention or a diagram node, not a claim, and is not refused.
+func parenClaimPositioned(text string, loc []int) bool {
+	lineStart := strings.LastIndexByte(text[:loc[0]], '\n') + 1
+	if rulingClaimPrefixRe.MatchString(text[lineStart:loc[0]]) {
+		return true
+	}
+	return parenClaimTailRe.MatchString(text[loc[1]:])
 }
 
 // displayName title-cases a configured (lowercased) human name for the refusal

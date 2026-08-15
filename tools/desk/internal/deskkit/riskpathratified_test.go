@@ -2,8 +2,9 @@ package deskkit
 
 // C8, the ratified condition.
 //
-// The C1–C12 disposition table was ratified by the repository owner on
-// 2026-08-07 (#507, comment 5221035546, which supersedes 5220923537). C8 was
+// The C1–C12 disposition table was ratified by the repository owner; the dated
+// ratification record (the issue and the review-comment IDs) lives in the private
+// project tracker. C8 was
 // ratified NOT as a bare "repo/org variable" but with a condition attached, and
 // the ratification says so in terms:
 //
@@ -34,7 +35,7 @@ package deskkit
 import "testing"
 
 // ratifiedCompiledFloor is every compiled trigger that applies to this repo:
-// the universal base list plus assay-toolkit's own additions. The union of the
+// the universal base list plus the assay cell's own additions. The union of the
 // two IS the floor the ratification puts under adopter configuration.
 // cleanControlPath is a path no compiled trigger covers AND that no widening
 // value in these tables can reach: it is three segments deep, so a bare "*"
@@ -45,7 +46,7 @@ const cleanControlPath = "docs/notes/scratch.md"
 
 func ratifiedCompiledFloor() []string {
 	out := append([]string{}, baseRiskPathTriggers...)
-	return append(out, repoRiskPathTriggers["medici-finance/assay"]...)
+	return append(out, repoRiskPathTriggersFor("medici-finance/assay")...)
 }
 
 // TestRatifiedNoRemovalSyntaxNarrowsTheSet is the "no knob may narrow the set"
@@ -98,7 +99,7 @@ func TestRatifiedNoRemovalSyntaxNarrowsTheSet(t *testing.T) {
 
 	for _, extra := range subtractionShapes {
 		t.Run(extra, func(t *testing.T) {
-			r := mediciRoster()
+			r := goldenRoster()
 			r[EnvAllowedRepos] = repo + ":ci:private"
 			r[EnvRiskPathTriggersExtra] = extra
 			withRoster(t, r)
@@ -202,7 +203,7 @@ func TestRatifiedPreconditionsStayNonConfigurable(t *testing.T) {
 	for _, h := range hostile {
 		t.Run(h.name, func(t *testing.T) {
 			roster := func(repos string) map[string]string {
-				r := mediciRoster()
+				r := goldenRoster()
 				if repos != "" {
 					r[EnvAllowedRepos] = repos
 				}

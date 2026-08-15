@@ -35,7 +35,7 @@ var riskCalloutCleanFile = []string{"README.md"}
 // unless calloutPath is "", a configured ASSAY_RISK_CALLOUT.
 func riskCalloutRoster(t *testing.T, calloutPath string) {
 	t.Helper()
-	r := mediciRoster()
+	r := goldenRoster()
 	r[EnvAllowedRepos] = riskCalloutRepo + ":ci:private"
 	if calloutPath != "" {
 		r[EnvRiskCallout] = calloutPath

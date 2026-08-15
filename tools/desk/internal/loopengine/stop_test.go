@@ -10,9 +10,9 @@ import (
 // TestStopFlagMidDrain proves the mid-drain stop contract (Verify item 4): when a stop flag
 // arms while an item is in flight, the STARTED land completes and NO new dispatch happens,
 // then the engine exits cleanly. It uses the per-loop STOP.<DESK_LOOP> flag (scoped to
-// "drilltest") to also exercise the DISABLED > STOP > STOP.<loop> precedence path.
+// testLoopName) to also exercise the DISABLED > STOP > STOP.<loop> precedence path.
 func TestStopFlagMidDrain(t *testing.T) {
-	deskDir := setupDeskHome(t, "drilltest")
+	deskDir := setupDeskHome(t, testLoopName)
 
 	dispatched := make(chan string, 8)
 	handles := map[string]*fakeHandle{}
@@ -51,7 +51,7 @@ func TestStopFlagMidDrain(t *testing.T) {
 	if err := os.MkdirAll(deskDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(deskDir, "STOP.drilltest"), []byte("mid-drain stop\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(deskDir, "STOP."+testLoopName), []byte("mid-drain stop\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

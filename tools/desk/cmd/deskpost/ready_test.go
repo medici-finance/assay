@@ -399,9 +399,13 @@ func TestReadyFlipPOSTFailureStillCharges(t *testing.T) {
 	}
 }
 
-// TestReadyIdempotentNoop — a prior successful flip at this head → noop, no second flip.
+// TestReadyIdempotentNoop is the POSITIVE control for the #805 reconciliation: a prior
+// successful flip at this head AND a live PR that GitHub agrees is no longer a draft
+// (prDraft=false) → genuine no-op, no second flip. The recorded flip really landed, so
+// re-issuing it would be pointless churn.
 func TestReadyIdempotentNoop(t *testing.T) {
 	f, _ := setupFake(t)
+	f.prDraft = false // GitHub agrees the earlier flip landed — the PR is no longer a draft
 	pr := 1
 	head := testHead
 	if err := deskkit.Log(deskkit.Entry{
@@ -421,5 +425,39 @@ func TestReadyIdempotentNoop(t *testing.T) {
 	}
 	if lastAudit(t).Result != deskkit.ResultNoop {
 		t.Fatal("repeat should audit result=noop")
+	}
+}
+
+// TestReadyReflipsLiveDraft is the #805 regression: the ledger carries a prior `ready` at
+// this exact head (the idempotency key would normally short-circuit to a no-op), but GitHub
+// still reports the PR as a LIVE DRAFT (prDraft=true) — the recorded flip never actually
+// landed. The old code no-op'd on the audit key alone and stranded the PR as a draft
+// forever. `ready` must instead reconcile against the live isDraft state, NOT no-op, and
+// RE-ISSUE the flip. Every input here is injected into the offline fake, so no network is
+// touched.
+func TestReadyReflipsLiveDraft(t *testing.T) {
+	f, _ := setupFake(t)
+	// prDraft defaults to true in setupFake — GitHub still shows the PR as a draft even
+	// though the audit below records a completed flip at this head.
+	pr := 1
+	head := testHead
+	if err := deskkit.Log(deskkit.Entry{
+		Tool: toolName, Verb: "ready", Repo: exampleRepo, PR: &pr, HeadSHA: &head, Result: deskkit.ResultOK,
+	}); err != nil {
+		t.Fatalf("seed audit: %v", err)
+	}
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+
+	code := run(readyArgs(exampleRepo))
+	if code != 0 {
+		t.Fatalf("audit-done-but-live-draft exit = %d, want 0 (re-issued flip)", code)
+	}
+	if f.flips != 1 {
+		t.Fatalf("flips = %d, want 1 — a stale audit no-op must NOT strand a live draft; "+
+			"ready must reconcile against isDraft and re-flip (#805)", f.flips)
+	}
+	if got := lastAudit(t).Result; got != deskkit.ResultOK {
+		t.Fatalf("re-flip audit result = %q, want %q (a real flip, not a noop)", got, deskkit.ResultOK)
 	}
 }

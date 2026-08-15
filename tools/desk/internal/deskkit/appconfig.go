@@ -8,11 +8,21 @@ import (
 	"strings"
 )
 
-// appConfigPath is the config file that carries the per-deployment GitHub App IDs.
+// appConfigFile is the config FILE NAME that carries the per-deployment GitHub App IDs.
 // The App IDs are org-specific and MUST NOT be baked into source (a hardcoded ID couples
 // the tool to one org and breaks when the toolkit ships to other adopters), so they live
 // here and are resolved at runtime — exactly like the App PEM path already does.
-const appConfigPath = "~/.config/assay/apps.env"
+//
+// The DIRECTORY is no longer hardcoded either: it is resolved across the
+// App-credential search path (confighome.go), because a fixed directory that the
+// provisioning walkthrough does not use is exactly #794.
+const appConfigFile = "apps.env"
+
+// AppConfigPath is the apps.env this machine will actually read, for diagnostics.
+func AppConfigPath() string {
+	p, _, _ := FindConfigFile(appConfigFile)
+	return p
+}
 
 // roleEnvName converts a desk role to its App-ID env-var name: "reviewer" → "REVIEWER_APP_ID",
 // "issue-loop" → "ISSUE_LOOP_APP_ID".
@@ -34,10 +44,10 @@ func expandHome(p string) string {
 // anything: a fresh tool invocation works with no shell sourcing. Resolution order:
 //
 //	(a) env <ROLE>_APP_ID if non-empty (e.g. REVIEWER_APP_ID, ISSUE_LOOP_APP_ID);
-//	(b) else the matching <ROLE>_APP_ID line in ~/.config/assay/apps.env
-//	    (leading "export " tolerated, first "=" splits key/value, quotes/space trimmed,
-//	     "#" comment lines skipped);
-//	(c) else an error naming both fixes.
+//	(b) else the matching <ROLE>_APP_ID line in the first apps.env on the
+//	    App-credential search path (leading "export " tolerated, first "=" splits
+//	    key/value, quotes/space trimmed, "#" comment lines skipped);
+//	(c) else an error naming both fixes AND every directory searched.
 //
 // The App ID VALUE never appears in source — only this resolution logic does.
 func AppID(role string) (string, error) {
@@ -46,13 +56,13 @@ func AppID(role string) (string, error) {
 		return v, nil
 	}
 
-	path := expandHome(appConfigPath)
+	path, searched, _ := FindConfigFile(appConfigFile)
 	if v, err := appIDFromFile(path, envName); err == nil && v != "" {
 		return v, nil
 	}
 
-	return "", fmt.Errorf("no App ID for role %q: set %s or add it to %s",
-		role, envName, appConfigPath)
+	return "", fmt.Errorf("no App ID for role %q: set %s, or add it to %s in one of: %s",
+		role, envName, appConfigFile, strings.Join(searched, ", "))
 }
 
 // roleInstallEnvName converts a desk role to its SINGLE-installation install-id env-var
@@ -67,13 +77,15 @@ func ownerInstallEnvName(role, owner string) string {
 	return roleInstallEnvName(role) + "_" + strings.ToUpper(strings.ReplaceAll(owner, "-", "_"))
 }
 
-// resolveAppConfigValue looks a key up env-first, then in ~/.config/assay/apps.env — the
-// same resolution AppID uses. Returns "" when neither supplies a non-empty value.
+// resolveAppConfigValue looks a key up env-first, then in the apps.env on the
+// App-credential search path — the same resolution AppID uses. Returns "" when
+// neither supplies a non-empty value.
 func resolveAppConfigValue(key string) string {
 	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
 		return v
 	}
-	if v, err := appIDFromFile(expandHome(appConfigPath), key); err == nil {
+	path, _, _ := FindConfigFile(appConfigFile)
+	if v, err := appIDFromFile(path, key); err == nil {
 		return strings.TrimSpace(v)
 	}
 	return ""
@@ -101,7 +113,7 @@ func InstallID(role, owner string) (string, error) {
 		return v, nil
 	}
 	return "", fmt.Errorf("no installation id for role %q owner %q: set %s (single installation) "+
-		"or %s (per-owner), in the environment or %s", role, owner, single, perOwner, appConfigPath)
+		"or %s (per-owner), in the environment or %s", role, owner, single, perOwner, AppConfigPath())
 }
 
 // appIDFromFile parses a dotenv-style file and returns the value for key. A missing file,

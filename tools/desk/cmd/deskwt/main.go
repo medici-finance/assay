@@ -33,7 +33,16 @@ USAGE:
   deskwt add <name> [--branch B] [--base origin/main]
   deskwt remove <path>
   deskwt prune [--repo <path>] [--interval <dur>]
+  deskwt role-init  --role <role> [--session <s>]
+  deskwt role-clean --role <role> [--session <s>]
   deskwt --version
+
+role-init provisions a DESK ROLE's own worktree in one idempotent call: a session-scoped
+path under /private/tmp/tracker-*, a uniquely-named branch tracking origin/main (so the
+preflight landing probe is green), a worktree lock, and the role's App commit identity set
+PER-WORKTREE (bot USER id, #638) so concurrent sessions cannot race each other's identity via
+shared config. An existing valid worktree is reused; a foreign-repo path is refused, never
+re-pointed. role-clean unlocks and removes it under the same safety guards as remove.
 
 deskwt is safe by construction: every verb acts ONLY on paths that RESOLVE under
 /private/tmp/tracker-* or <repo-root>/.claude/worktrees/, the shared checkout is refused by
@@ -66,7 +75,7 @@ func run(args []string) int {
 	// --version / help are pure reads: no kill-switch gate, no audit line.
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
-		fmt.Printf("deskwt sourceSHA=%s builtAt=%s\n", sha, built)
+		fmt.Printf("deskwt sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
 		return deskkit.ExitOK
 	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
@@ -96,6 +105,10 @@ func run(args []string) int {
 		err = cmdRemove(rest)
 	case "prune":
 		err = cmdPrune(rest)
+	case "role-init":
+		err = cmdRoleInit(rest)
+	case "role-clean":
+		err = cmdRoleClean(rest)
 	default:
 		fmt.Fprintf(os.Stderr, "deskwt: unknown subcommand %q\n\n%s\n", sub, usage)
 		return deskkit.ExitRefused
