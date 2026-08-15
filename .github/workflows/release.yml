@@ -62,7 +62,7 @@ on:
         required: true
         type: string
       dry_run:
-        description: "Validate only: resolve the version, prove the tag is free, run the tests. Builds nothing, tags nothing, publishes nothing."
+        description: "Validate only: resolve the version, prove the tag is free, run the tests, and BUILD the artifacts — then stop. Cuts no tag, publishes no release, uploads nothing."
         required: false
         default: false
         type: boolean
@@ -158,6 +158,18 @@ jobs:
     permissions:
       contents: read
     steps:
+      # A clean checkout of THIS repo before any git probe. The self-hosted
+      # runner is not wiped between jobs, so without this the dispatch probe
+      # below runs `git ls-remote origin` against whatever stale working tree the
+      # runner happens to hold — a leftover clone of another repo (or none) whose
+      # `origin` points elsewhere. That answers the "does this tag exist?"
+      # question against the WRONG remote and fails OPEN, letting a published tag
+      # be re-cut. checkout pins `origin` to this repo so the probe is
+      # authoritative. (The push-path step below queries the REST API by
+      # ${{ github.repository }} and needs no git state, but the checkout is
+      # harmless there.)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       # Dispatch only — on the tag-push path the tag necessarily already exists
       # (its push is what started the run), so this check must never run there.
       # origin is the only authority: a locally-cut tag is not fetched here.
@@ -270,11 +282,13 @@ jobs:
 
   release:
     needs: [resolve, guard, test]
-    # A dry run stops the pipeline here. resolve, guard and test have already
-    # done all the validation there is; skipping the whole job — rather than
-    # gating its steps one by one — is what makes "publishes nothing" structural:
-    # there is no step left that could tag, build or upload.
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+    # A dry run runs this job up to and including the BUILD, then stops. The
+    # whole point of a dry run is to prove the artifacts build (and the guard +
+    # tests pass) BEFORE a version number is burned — a dry run that built
+    # nothing would validate nothing. So the checkout / Go install / build /
+    # checksum steps run unconditionally; only the two mutating steps — cut the
+    # tag and publish the release — carry `!dry_run`. "Publishes nothing" is
+    # still structural: on a dry run there is no step left that tags or uploads.
     runs-on: medici-builder-public
     permissions:
       contents: write
@@ -322,9 +336,20 @@ jobs:
             statusgen-linux-amd64 > checksums.txt
           cat checksums.txt
 
-      # THE LAST POSSIBLE MOMENT. Dispatch only; the guard has passed and the
-      # artifacts are already built and checksummed, so the only things left that
-      # can fail are this push and the publish it immediately precedes.
+      # A dry run has now built + checksummed the artifacts (proving build, guard
+      # and tests all pass) and stops here: the two mutating steps below both
+      # carry `!dry_run`, so no tag is cut, no release is published, nothing is
+      # uploaded.
+      - name: Dry run — stop before tagging and publishing
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: |
+          echo "Dry run: artifacts built and checksummed; cutting no tag and publishing no release."
+          echo "::notice::Dry run complete — build + guard + tests passed. No tag cut, no release published."
+
+      # THE LAST POSSIBLE MOMENT. Dispatch only (and never on a dry run); the
+      # guard has passed and the artifacts are already built and checksummed, so
+      # the only things left that can fail are this push and the publish it
+      # immediately precedes.
       #
       # Ordering is the whole point. A tag that exists without a release burns
       # that version number. Pushing before the build meant any transient Go or
@@ -333,7 +358,7 @@ jobs:
       # `push: tags` trigger. A racing tag push is refused ("! [rejected] …
       # already exists"), non-zero, never force.
       - name: Create and push the dispatched tag
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
           TAG_MESSAGE: ${{ needs.resolve.outputs.message }}
@@ -352,6 +377,7 @@ jobs:
       # each asset delete any same-named asset already attached before uploading,
       # so a re-run refreshes the bytes rather than 422-ing on a duplicate name.
       - name: Create GitHub release and upload assets
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
