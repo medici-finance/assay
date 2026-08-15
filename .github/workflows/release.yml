@@ -1,0 +1,420 @@
+name: release
+# Build statusgen binaries for darwin-arm64, darwin-amd64 + linux-amd64 on an
+# umbrella `assay/vX.Y.Z` tag, produce checksums.txt, and create a GitHub
+# release. Consumers pin by tag + sha256 (per-artifact, see distribution/04's
+# `.assay-versions` contract), so every platform binary is checksummed and
+# uploaded under the name `statusgen-<platform>`.
+#
+# THE UMBRELLA VERSION SCHEME (distribution/02)
+# This repo (medici-finance/assay) is the canonical, releasing home for the
+# shared tools (statusgen first — #952). The release line is the UMBRELLA
+# `assay/vX.Y.Z`, never a per-tool `statusgen/vX`: one version number spans the
+# repo's shipped tools, and consumers pin the umbrella. This workflow ports
+# assay-toolkit's `release-statusgen.yml`, retargeted from `statusgen/v*` to
+# `assay/v*`.
+#
+# TWO WAYS IN
+#   push a tag        the original path: tag locally, push, this runs.
+#   workflow_dispatch the server-side path: name a version in the Actions UI and
+#                     the tag is cut here, in CI, under GitHub's own auth — no
+#                     local git credentials, and the run records who dispatched
+#                     it.
+#
+# ⚠️ WHY THE TAG IS CUT INSIDE THIS WORKFLOW AND NOT A SEPARATE ONE
+# A tag pushed by a workflow using the default GITHUB_TOKEN does NOT trigger
+# other workflows (GitHub's deliberate recursion guard). So the obvious design —
+# a small "cut a tag" workflow that expects THIS one to fire on the resulting tag
+# — fails SILENTLY: the tag appears, no release is built, and nothing errors.
+# Instead this workflow is itself dispatchable, so the same RUN that creates the
+# tag also builds and publishes. There is no cross-workflow trigger, so the
+# recursion guard never applies. (It still suppresses a second, duplicate run of
+# this workflow when the tag lands — which is exactly what we want.)
+#
+# WHERE THIS RUNS — the self-hosted runner labelled `medici-builder-public`, the
+# same label ci.yml uses. Go is installed BY HAND from go.dev/dl (NOT
+# actions/setup-go): that runner does not reach GitHub's release-asset CDN
+# (objects.githubusercontent.com), so setup-go — which downloads the Go
+# toolchain from a GitHub release — fails, while go.dev/dl (→ dl.google.com) and
+# the module proxy (proxy.golang.org) are plain public HTTPS and work. The
+# GitHub REST API (api.github.com / uploads.github.com) IS reachable — the
+# release is created and its assets uploaded via curl against it, the same idiom
+# docker-publish.yml uses (that runner ships no `gh` CLI, and installing one
+# would need the same blocked release-asset CDN). The label is kept safe by the
+# same segmentation docker-publish.yml relies on: this workflow fires ONLY on
+# tag-push + manual dispatch, never on pull_request, so a fork PR can never land
+# a job here.
+#
+# RELEASEGUARD — assay does NOT carry tools/releaseguard (assay-toolkit does).
+# The heavyweight release gate (tag on main, not-behind-main, tree-unchanged,
+# version-order) is therefore SCOPED OUT here and flagged as a follow-up in the
+# PR. What IS retained is the cheap, dependency-free half that matters most: the
+# `guard` job refuses to move a published tag (consumers pin by tag + sha256, so
+# a re-pointed tag is a silent substitution), and the `test` job is the
+# build/vet gate that must pass before anything is published.
+
+on:
+  push:
+    tags: ["assay/v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to cut, e.g. v0.9.0 — the assay/ prefix is added for you"
+        required: true
+        type: string
+      dry_run:
+        description: "Validate only: resolve the version, prove the tag is free, run the tests. Builds nothing, tags nothing, publishes nothing."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+# One release attempt per version at a time. Never cancel-in-progress: cancelling
+# a run mid-publish is exactly the half-finished state the ordering below exists
+# to avoid.
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # Matches ci.yml. Kept in sync with statusgen/go.mod's `go` directive.
+  GO_VERSION: "1.25.0"
+
+jobs:
+  # Work out WHICH tag this run is about, before anything is built or written.
+  #
+  # On the tag-push path that is just github.ref_name. On the dispatch path
+  # github.ref_name is the BRANCH the run was started from ("main") — publishing
+  # against it would create a release literally named "main", so every
+  # downstream step reads this job's output instead of github.ref_name.
+  resolve:
+    runs-on: medici-builder-public
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      message: ${{ steps.tag.outputs.message }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve the release tag
+        id: tag
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+
+          # THE ONLY WAY THIS JOB WRITES AN OUTPUT.
+          #
+          # $GITHUB_OUTPUT is a line-oriented file: a newline ANYWHERE in a value
+          # is an extra assignment of the writer's choosing. None of this job's
+          # outputs can legitimately span lines, so refuse rather than escape.
+          emit() {
+            local name="$1" value="$2"
+            if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+              echo "::error::refusing to write a multi-line value into \$GITHUB_OUTPUT ($name)"
+              exit 1
+            fi
+            printf '%s=%s\n' "$name" "$value" >> "$GITHUB_OUTPUT"
+          }
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            v="$INPUT_VERSION"
+            # Accept both "v0.9.0" and "0.9.0"; normalise to a leading v.
+            case "$v" in v*) ;; *) v="v$v" ;; esac
+            # Fail closed on a malformed version rather than cutting a junk tag.
+            # [[ =~ ]] anchors against the WHOLE string; `grep -qE` does not
+            # (it matches per-line, so an injected newline would slip through).
+            version_re='^v[0-9]+\.[0-9]+\.[0-9]+$'
+            if [[ ! "$v" =~ $version_re ]]; then
+              shown=${INPUT_VERSION%%$'\n'*}
+              [ "$shown" = "$INPUT_VERSION" ] || shown="$shown [+ further lines elided]"
+              echo "::error::version must be vMAJOR.MINOR.PATCH (got '$shown')"
+              exit 1
+            fi
+            tag="assay/$v"
+            emit message "assay $v (dispatched by $ACTOR)"
+          else
+            tag="$REF_NAME"
+            emit message ""
+          fi
+          emit tag "$tag"
+          echo "Resolved release tag: $tag"
+
+  # The tag-immutability guard. releaseguard is scoped out (assay has no
+  # tools/releaseguard — see the header); this is the dependency-free half that
+  # protects the pin contract: consumers pin by tag + sha256, so a moved or
+  # re-published tag is a silent substitution, and this refuses it.
+  #
+  # Its own job rather than a first step in `release`, so a refusal cannot be
+  # followed by an upload.
+  guard:
+    needs: resolve
+    runs-on: medici-builder-public
+    permissions:
+      contents: read
+    steps:
+      # Dispatch only — on the tag-push path the tag necessarily already exists
+      # (its push is what started the run), so this check must never run there.
+      # origin is the only authority: a locally-cut tag is not fetched here.
+      - name: Refuse to move an existing tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # --exit-code: 0 = found, 2 = genuinely absent, anything else = the
+          # question was not answered. Treating an unreachable origin as "absent"
+          # would fail OPEN, so a broken lookup refuses.
+          set +e
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1
+          rc=$?
+          set -e
+          case "$rc" in
+            0) exists=yes ;;
+            2) exists=no ;;
+            *) echo "::error::could not ask origin whether $TAG exists (git ls-remote exit $rc) — refusing rather than guessing"; exit 1 ;;
+          esac
+          if [ "$exists" = yes ]; then
+            echo "::error::$TAG already exists. Never move a published tag — cut the next patch version instead."
+            exit 1
+          fi
+          echo "$TAG is free."
+
+      # Tag-push path — the OTHER half of the same control. "Does this tag exist
+      # on origin?" is trivially YES here (the push started the run), so the
+      # answerable question is whether the tag was already PUBLISHED: a GitHub
+      # release for this tag means it carried artifacts BEFORE this push, so the
+      # push re-pointed a published tag. This is DETECTION, not prevention (the
+      # push has already landed); server-side tag immutability (rulesets) is what
+      # refuses it at the origin, and that is a repo-admin act.
+      - name: Refuse to re-publish an existing release tag
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          REPO: ${{ github.repository }}
+          ATTEMPT: ${{ github.run_attempt }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # curl, not gh: the self-hosted runner ships no gh CLI. A slash in the
+          # tag is passed through unencoded — the releases/tags API accepts it
+          # verbatim. -o/-w rather than -f: the STATUS CODE is the answer, so a
+          # 404 must be readable rather than a curl failure.
+          status=$(curl -sS --retry 3 --retry-connrefused \
+            -o "$RUNNER_TEMP/release-lookup.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${REPO}/releases/tags/${TAG}") || {
+              echo "::error::could not ask GitHub whether $TAG is already published — refusing rather than guessing"
+              exit 1
+            }
+          case "$status" in
+            404)
+              echo "$TAG has no published release — first publication of this tag."
+              ;;
+            200)
+              # A RE-RUN of this same run is the one legitimate way here: the
+              # release was created and a later step failed. github.run_attempt
+              # distinguishes it — a fresh push of a moved tag is always attempt 1.
+              if [ "${ATTEMPT:-1}" != "1" ]; then
+                echo "::warning::$TAG already has a published release; proceeding because this is run attempt ${ATTEMPT} (a re-run). Any asset re-uploaded here has a NEW sha256 — re-harvest .assay-versions from the republished release before pinning."
+              else
+                echo "::error::$TAG already has a published release, and this push is attempt 1 — so the tag was re-pointed at a new commit rather than newly created. Never move a published tag: consumers pin it by tag + sha256. Cut the next patch version instead."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::unexpected HTTP $status asking whether $TAG is already published — refusing rather than guessing"
+              exit 1
+              ;;
+          esac
+
+  # The publish path's own test gate. ci.yml build/vets every module at PR time,
+  # but a tag can be cut from any commit, so re-run the suite here. No `if:` on
+  # this job, on purpose: it runs on tag push, on dispatch, and on dry_run — a
+  # dry run that skipped the tests would report a release is safe without having
+  # checked. It blocks publication structurally: `release` needs it, and the
+  # dispatched tag is pushed inside `release`, so a red suite stops the run
+  # before a version number can be burned.
+  test:
+    runs-on: medici-builder-public
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Install Go by hand from go.dev/dl — NOT actions/setup-go. See header.
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      # statusgen is its own Go module at statusgen/. Same commands the PR-time
+      # ci.yml runs for it, from that module root.
+      - name: Test and vet statusgen
+        run: |
+          set -euo pipefail
+          go version
+          cd statusgen && go test ./... && go vet ./...
+
+  release:
+    needs: [resolve, guard, test]
+    # A dry run stops the pipeline here. resolve, guard and test have already
+    # done all the validation there is; skipping the whole job — rather than
+    # gating its steps one by one — is what makes "publishes nothing" structural:
+    # there is no step left that could tag, build or upload.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+    runs-on: medici-builder-public
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      # -X main.statusgenVersion stamps the release tag into the binary so
+      # `statusgen --version` can be compared against a consumer's
+      # `.assay-versions` pin. Without it every build answers "dev" and a stale
+      # install is indistinguishable from a current one.
+      #
+      # The tag rides in via env:, not a `${{ }}` splice inside run: — a tag name
+      # is attacker-shaped text and expression-splicing it into a shell line is
+      # the standard workflow-injection hole. On the dispatch path it is the
+      # RESOLVED tag, never github.ref_name (which there is the branch the run
+      # started from, and would stamp every binary "main").
+      - name: Build binaries
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          go version
+          cd statusgen
+          LDFLAGS="-X main.statusgenVersion=${RELEASE_TAG}"
+          GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-arm64 .
+          GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-amd64 .
+          GOOS=linux  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-linux-amd64  .
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          sha256sum \
+            statusgen-darwin-arm64 \
+            statusgen-darwin-amd64 \
+            statusgen-linux-amd64 > checksums.txt
+          cat checksums.txt
+
+      # THE LAST POSSIBLE MOMENT. Dispatch only; the guard has passed and the
+      # artifacts are already built and checksummed, so the only things left that
+      # can fail are this push and the publish it immediately precedes.
+      #
+      # Ordering is the whole point. A tag that exists without a release burns
+      # that version number. Pushing before the build meant any transient Go or
+      # cross-compile failure burned a version. Pushed with GITHUB_TOKEN, so it
+      # does not spawn a second, duplicate run of this workflow off its own
+      # `push: tags` trigger. A racing tag push is refused ("! [rejected] …
+      # already exists"), non-zero, never force.
+      - name: Create and push the dispatched tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          TAG_MESSAGE: ${{ needs.resolve.outputs.message }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG_MESSAGE"
+          git push origin "refs/tags/$TAG"
+          echo "Pushed $TAG at $(git rev-parse --short HEAD)."
+
+      # Publish via the GitHub REST API with curl — the runner ships no gh CLI,
+      # and api.github.com / uploads.github.com are reachable (docker-publish.yml
+      # PATCHes api.github.com the same way). Idempotent + clobbering: create the
+      # release if absent (422 tag_name-exists = it is already there), then for
+      # each asset delete any same-named asset already attached before uploading,
+      # so a re-run refreshes the bytes rather than 422-ing on a duplicate name.
+      - name: Create GitHub release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          api="https://api.github.com/repos/${REPO}"
+          uploads="https://uploads.github.com/repos/${REPO}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28")
+
+          # jq is not guaranteed on the runner; parse the id with a small python3
+          # helper (present on the base image — ci.yml assumes a standard Linux).
+          json_field() { python3 -c 'import sys,json; print(json.load(sys.stdin).get(sys.argv[1],""))' "$1"; }
+
+          # 1) Does a release already exist for this tag?
+          rel_json="$RUNNER_TEMP/release.json"
+          status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' "${auth[@]}" \
+            "${api}/releases/tags/${RELEASE_TAG}")
+          if [ "$status" = "200" ]; then
+            echo "Release ${RELEASE_TAG} already exists — refreshing assets."
+            release_id=$(json_field id < "$rel_json")
+          elif [ "$status" = "404" ]; then
+            echo "Creating release ${RELEASE_TAG}."
+            body=$(RELEASE_TAG="$RELEASE_TAG" python3 -c 'import os,json; print(json.dumps({"tag_name":os.environ["RELEASE_TAG"],"name":os.environ["RELEASE_TAG"],"body":"assay umbrella release "+os.environ["RELEASE_TAG"]+" — statusgen binaries. Pin per-platform statusgen-<platform> by sha256 in .assay-versions."}))')
+            status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' -X POST "${auth[@]}" \
+              -d "$body" "${api}/releases")
+            if [ "$status" != "201" ]; then
+              echo "::error::could not create release ${RELEASE_TAG} (HTTP $status)"; cat "$rel_json"; exit 1
+            fi
+            release_id=$(json_field id < "$rel_json")
+          else
+            echo "::error::unexpected HTTP $status looking up release ${RELEASE_TAG} — refusing rather than guessing"
+            cat "$rel_json"; exit 1
+          fi
+
+          if [ -z "$release_id" ]; then
+            echo "::error::could not resolve the release id for ${RELEASE_TAG}"; exit 1
+          fi
+          echo "release id = $release_id"
+
+          # 2) Upload each asset, clobbering any same-named asset first.
+          assets_json="$RUNNER_TEMP/assets.json"
+          curl -sS --retry 3 -o "$assets_json" "${auth[@]}" \
+            "${api}/releases/${release_id}/assets?per_page=100" || true
+
+          for f in statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 checksums.txt; do
+            # Delete a pre-existing asset of this name (re-run / clobber path).
+            existing_id=$(NAME="$f" ASSETS_JSON="$assets_json" python3 -c 'import os,json; d=json.load(open(os.environ["ASSETS_JSON"])) if os.path.exists(os.environ["ASSETS_JSON"]) else []; d=d if isinstance(d,list) else []; print(next((str(a.get("id","")) for a in d if a.get("name")==os.environ["NAME"]), ""))' 2>/dev/null || true)
+            if [ -n "${existing_id:-}" ]; then
+              echo "deleting existing asset $f (id $existing_id)"
+              curl -sS --retry 3 -X DELETE "${auth[@]}" \
+                "${api}/releases/assets/${existing_id}" >/dev/null || true
+            fi
+            echo "uploading $f"
+            status=$(curl -sS --retry 3 -o "$RUNNER_TEMP/upload.json" -w '%{http_code}' -X POST "${auth[@]}" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"$f" \
+              "${uploads}/releases/${release_id}/assets?name=${f}")
+            if [ "$status" != "201" ]; then
+              echo "::error::upload of $f failed (HTTP $status)"; cat "$RUNNER_TEMP/upload.json"; exit 1
+            fi
+          done
+          echo "Published ${RELEASE_TAG} with statusgen binaries + checksums.txt."
