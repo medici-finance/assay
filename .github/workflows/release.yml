@@ -10,7 +10,7 @@ name: release
 # shared tools (statusgen first — #952). The release IS the repo, so the tag is
 # a plain `vX.Y.Z` (v0.9.0, v0.9.1, …) — NOT a component-prefixed `assay/vX` or
 # a per-tool `statusgen/vX`. One repo version number covers the repo's shipped
-# tools, and consumers pin it. This workflow ports assay-toolkit's
+# tools, and consumers pin it. This workflow ports the upstream source repo's
 # `release-statusgen.yml`, retargeted from `statusgen/v*` to plain `v*`.
 #
 # TWO WAYS IN
@@ -44,7 +44,7 @@ name: release
 # tag-push + manual dispatch, never on pull_request, so a fork PR can never land
 # a job here.
 #
-# RELEASEGUARD — assay does NOT carry tools/releaseguard (assay-toolkit does).
+# RELEASEGUARD — assay does NOT carry tools/releaseguard (the source repo does).
 # The heavyweight release gate (tag on main, not-behind-main, tree-unchanged,
 # version-order) is therefore SCOPED OUT here and flagged as a follow-up in the
 # PR. What IS retained is the cheap, dependency-free half that matters most: the
