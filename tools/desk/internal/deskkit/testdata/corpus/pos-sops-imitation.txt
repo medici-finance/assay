@@ -1,0 +1,9 @@
+# corpus: sops-SHAPED content that is not a sanctioned encrypted document
+# expect: refused
+# refs:   #778, #585
+# shape:  an incomplete envelope, an envelope outside a sops document, a sops claim with no ciphertext
+# why:    the sops pass is earned by the FULL envelope grammar PLUS the document signature — neither alone
+claim with no ciphertext:
+sops{{+}}:
+    kms: []
+    version: 3.8.1

@@ -20,6 +20,10 @@ func setup(t *testing.T) string {
 	dirOverride = dir
 	t.Cleanup(func() { dirOverride = old })
 	t.Setenv("DESK_TOOLS_DISABLED", "") // "" is not "1" → not armed
+	// Neutralise the harness's real session var so the fixture value below is what
+	// SessionTag() returns — otherwise the ambient $CLAUDE_CODE_SESSION_ID (present in
+	// every Claude Code session) wins the precedence and the tag is non-deterministic.
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test-session")
 	return dir
 }
@@ -57,3 +61,22 @@ func appendEntry(t *testing.T, dir string, e Entry) {
 
 func iptr(i int) *int       { return &i }
 func sptr(s string) *string { return &s }
+
+// equalStrings lives HERE, in a file that ships, and not in citrigger_test.go
+// where it started: citrigger_test.go is withheld from the public tree
+// (docs/publication-manifest.yaml), and modprefix_test.go — which DOES ship —
+// calls this helper in executable code. A shared test helper defined on the
+// withheld side of the publication boundary is a build break the house tree
+// cannot see, because the house tree has both files. Keep helpers that shipping
+// tests call in shipping files.
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

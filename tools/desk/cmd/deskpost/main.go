@@ -60,7 +60,7 @@ func run(argv []string) int {
 	switch argv[0] {
 	case "version", "--version", "-v":
 		s, b := deskkit.Version()
-		fmt.Fprintf(stdout, "deskpost sourceSHA=%s builtAt=%s\n", s, b)
+		fmt.Fprintf(stdout, "deskpost sourceSHA=%s builtAt=%s releaseTag=%s\n", s, b, deskkit.ReleaseTagOrDev())
 		return 0
 	case "help", "-h", "--help":
 		usage()

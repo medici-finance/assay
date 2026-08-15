@@ -15,8 +15,8 @@ import (
 	"time"
 )
 
-// medici is the roster this tree used to compile in — the golden fixture.
-func mediciRoster() map[string]string {
+// goldenRoster is the golden roster fixture this package's tests compile against.
+func goldenRoster() map[string]string {
 	return map[string]string{
 		EnvBlessLogin:      "ada:2001",
 		EnvTrustedLogins:   "ada:2001,shared-agent:2002",
@@ -241,9 +241,9 @@ func TestWriteToolsRefuseEnvRoster(t *testing.T) {
 // the first ClassReadOnly tool will inherit this ordering without re-deciding it.
 func TestReadOnlyPrecedenceIsEnvFirstPerKey(t *testing.T) {
 	// A complete, valid roster on disk — INCLUDING a repo set, which is the key the
-	// environment overrides below. mediciRoster() carries only the three trust
+	// environment overrides below. goldenRoster() carries only the three trust
 	// variables, so it has to be stated here or the override has nothing to beat.
-	fileRoster := mediciRoster()
+	fileRoster := goldenRoster()
 	fileRoster[EnvAllowedRepos] = "file-org/file-repo:ci:private"
 	withRoster(t, fileRoster)
 	// ...and an environment that overrides exactly ONE key.
@@ -278,7 +278,7 @@ func TestReadOnlyPrecedenceIsEnvFirstPerKey(t *testing.T) {
 // directory) that is group- or world-writable is REFUSED, naming the problem; the
 // same file at 0600 loads.
 func TestConfigHomePermissionsEnforced(t *testing.T) {
-	home := withRoster(t, mediciRoster())
+	home := withRoster(t, goldenRoster())
 	if !EffectiveConfig().Configured() {
 		t.Fatal("the fixture roster did not load at 0600/0700 — the positive control is broken, " +
 			"so the negative cases below would prove nothing")
@@ -342,7 +342,7 @@ func TestConfigHomePermissionsEnforced(t *testing.T) {
 // logins, and it must CHANGE when an entry is REMOVED from a non-empty roster —
 // not only when the set goes from empty to non-empty.
 func TestEffectiveRosterIsEchoed(t *testing.T) {
-	withRoster(t, mediciRoster())
+	withRoster(t, goldenRoster())
 	var wide bytes.Buffer
 	EchoEffectiveConfig(&wide)
 	for _, want := range []string{"ada:2001", "shared-agent:2002", "assay-reviewer-app:300000004"} {
@@ -352,7 +352,7 @@ func TestEffectiveRosterIsEchoed(t *testing.T) {
 	}
 
 	// Remove ONE entry from the non-empty roster. The echoed line must differ.
-	narrowed := mediciRoster()
+	narrowed := goldenRoster()
 	narrowed[EnvTrustedLogins] = "ada:2001"
 	withRoster(t, narrowed)
 	var narrow bytes.Buffer
@@ -384,7 +384,7 @@ func TestEffectiveConfigIsEchoed(t *testing.T) {
 	}
 	for _, s := range surfaces {
 		t.Run(s.name, func(t *testing.T) {
-			base := mediciRoster()
+			base := goldenRoster()
 			base[s.key] = s.base
 			withRoster(t, base)
 			var narrow bytes.Buffer
@@ -393,7 +393,7 @@ func TestEffectiveConfigIsEchoed(t *testing.T) {
 				t.Fatalf("the run echo carries no %s line at all", s.key)
 			}
 
-			wide := mediciRoster()
+			wide := goldenRoster()
 			wide[s.key] = s.widened
 			withRoster(t, wide)
 			var widened bytes.Buffer
@@ -420,7 +420,7 @@ func TestEffectiveConfigIsEchoed(t *testing.T) {
 // id is untrusted: a deleted login can be re-registered by an attacker, and a
 // config format that carried only logins would silently discard that defence.
 func TestRecycledLoginRejected(t *testing.T) {
-	withRoster(t, mediciRoster())
+	withRoster(t, goldenRoster())
 
 	if !TrustedAuthorID("ada", 2001) {
 		t.Fatal("the positive control failed: the configured login+id pair is not trusted, so the negative cases below prove nothing")
@@ -450,7 +450,7 @@ func TestRecycledLoginRejected(t *testing.T) {
 // login-only trust — because the blessing authority is the single highest-value
 // target for login recycling.
 func TestBlessLoginRequiresID(t *testing.T) {
-	r := mediciRoster()
+	r := goldenRoster()
 	r[EnvBlessLogin] = "ada"
 	withRoster(t, r)
 
@@ -481,7 +481,7 @@ func TestBlessLoginRejectsMultipleValues(t *testing.T) {
 		"ada:2001;attacker:999",
 		"ada:2001 attacker:999",
 	} {
-		r := mediciRoster()
+		r := goldenRoster()
 		r[EnvBlessLogin] = raw
 		withRoster(t, r)
 		cfg := EffectiveConfig()
@@ -511,7 +511,7 @@ func TestBlessLoginRejectsBotAccount(t *testing.T) {
 		// rendering checks above do not catch.
 		"assay-reviewer-app:300000004",
 	} {
-		r := mediciRoster()
+		r := goldenRoster()
 		r[EnvBlessLogin] = raw
 		withRoster(t, r)
 		cfg := EffectiveConfig()
@@ -531,7 +531,7 @@ func TestBlessLoginRejectsBotAccount(t *testing.T) {
 // configuration, mirroring the ASSAY_BLESS_LOGIN rule.
 func TestHumanLoginMapRejectsBotAccount(t *testing.T) {
 	// Anti-vacuity control: the golden roster's well-formed map is live.
-	withRoster(t, mediciRoster())
+	withRoster(t, goldenRoster())
 	if !EffectiveConfig().Configured() {
 		t.Fatal("control: the golden roster is not configured — the bot-shaped cases below prove nothing")
 	}
@@ -542,7 +542,7 @@ func TestHumanLoginMapRejectsBotAccount(t *testing.T) {
 		"alex:some-app",
 		"alex:some-bot",
 	} {
-		r := mediciRoster()
+		r := goldenRoster()
 		r[EnvHumanLoginMap] = raw
 		withRoster(t, r)
 		cfg := EffectiveConfig()
@@ -574,7 +574,7 @@ func TestHumanLoginMapRejectsBotAccount(t *testing.T) {
 func TestMalformedIDNeverDegradesToLoginOnlyTrust(t *testing.T) {
 	// Anti-vacuity control: the same roster with a well-formed id must be live,
 	// so a green result below cannot come from a roster that is broken anyway.
-	withRoster(t, mediciRoster())
+	withRoster(t, goldenRoster())
 	if !EffectiveConfig().Configured() || !TrustedAuthor("ada") {
 		t.Fatal("control: the well-formed golden roster is not live — the malformed cases below prove nothing")
 	}
@@ -583,7 +583,7 @@ func TestMalformedIDNeverDegradesToLoginOnlyTrust(t *testing.T) {
 	// ParseInt rejects but a login-only degrade would silently accept.
 	for _, bad := range []string{"2O959", "2001.", "+2001x"} {
 		t.Run("trusted_login/"+bad, func(t *testing.T) {
-			r := mediciRoster()
+			r := goldenRoster()
 			r[EnvTrustedLogins] = "ada:" + bad + ",shared-agent:2002"
 			withRoster(t, r)
 
@@ -610,7 +610,7 @@ func TestMalformedIDNeverDegradesToLoginOnlyTrust(t *testing.T) {
 	// The same rule on the bot-slug reader, whose entries carry an extra `role=`
 	// prefix and whose logins are derived into two rendered forms.
 	t.Run("bot_slug", func(t *testing.T) {
-		r := mediciRoster()
+		r := goldenRoster()
 		r[EnvTrustedBotSlugs] = "worker=assay-worker-app:3O6480234"
 		withRoster(t, r)
 
@@ -630,7 +630,7 @@ func TestMalformedIDNeverDegradesToLoginOnlyTrust(t *testing.T) {
 	// but for the WRONG reason — the id arrives as 0 and the mandatory-id branch
 	// catches it. Pin the refusal that the parse rule owns.
 	t.Run("bless_login", func(t *testing.T) {
-		r := mediciRoster()
+		r := goldenRoster()
 		r[EnvBlessLogin] = "ada:2O959"
 		withRoster(t, r)
 
@@ -650,12 +650,12 @@ func TestMalformedIDNeverDegradesToLoginOnlyTrust(t *testing.T) {
 
 // ---- the golden roster --------------------------------------------
 
-// TestTrustGoldenMediciRoster proves BEHAVIOURAL NEUTRALITY: the golden fixture
+// TestTrustGoldenRoster proves BEHAVIOURAL NEUTRALITY: the golden fixture
 // roster, supplied as configuration, reproduces the verdicts the compiled-in
 // constants produced, for all eight identities and in both GitHub renderings.
 // A conversion that quietly changed who is trusted fails here.
-func TestTrustGoldenMediciRoster(t *testing.T) {
-	withRoster(t, mediciRoster())
+func TestTrustGoldenRoster(t *testing.T) {
+	withRoster(t, goldenRoster())
 
 	humans := map[string]int64{"ada": 2001, "shared-agent": 2002}
 	bots := map[string]int64{

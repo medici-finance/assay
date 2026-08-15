@@ -1,0 +1,74 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment'",
+  "control": {
+    "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
+    "file": "internal/deskkit/bodycheck.go",
+    "old": "\tcase reGitHubToken.MatchString(s):",
+    "new": "\tcase false && reGitHubToken.MatchString(s):"
+  },
+  "mutations": [
+    {
+      "name": "unanchor the go.sum digest exemption (any 32+ run behind h1: passes)",
+      "file": "internal/deskkit/structured.go",
+      "old": "h1:([A-Za-z0-9+/]{43}=)[ \\t]*$`)",
+      "new": "h1:([A-Za-z0-9+/]{32,})[ \\t]*$`)"
+    },
+    {
+      "name": "drop the SRI length check (any payload behind an integrity key passes)",
+      "file": "internal/deskkit/structured.go",
+      "old": "if want, ok := sriPayloadLen[alg]; ok && len(payload) == want {",
+      "new": "if _, ok := sriPayloadLen[alg]; ok {"
+    },
+    {
+      "name": "drop the sops DOCUMENT signature (a pasted envelope alone is sanctioned)",
+      "file": "internal/deskkit/structured.go",
+      "old": "\tif !sopsDocument(s) {",
+      "new": "\tif false && !sopsDocument(s) {"
+    },
+    {
+      "name": "open the armor-label allowlist (an unknown label stops being secret-bearing)",
+      "file": "internal/deskkit/structured.go",
+      "old": "return !armorCiphertextOrPublicLabels[strings.TrimSpace(m[1])]",
+      "new": "return false"
+    },
+    {
+      "name": "disarm isPathLike rule (4) — the #410 false-negative class reopens",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif opaqueSegs > 0 && wordSegs <= opaqueSegs {",
+      "new": "\tif false && opaqueSegs > 0 && wordSegs <= opaqueSegs {"
+    },
+    {
+      "name": "let a scan override proceed WITHOUT writing its audit row (an unlogged bypass)",
+      "file": "internal/deskkit/scanoverride.go",
+      "old": "\to.Refusal = scanErr.Error()\n\treturn LogScanOverride(o)",
+      "new": "\to.Refusal = scanErr.Error()\n\treturn nil"
+    },
+    {
+      "name": "drop the override reason floor (an empty-ish reason is accepted)",
+      "file": "internal/deskkit/scanoverride.go",
+      "old": "\tif len(r) < minOverrideReason {",
+      "new": "\tif false && len(r) < minOverrideReason {"
+    },
+    {
+      "name": "stop the refusal advertising the override (#585 re-opens)",
+      "file": "internal/deskkit/scanoverride.go",
+      "old": "\t\treturn Refused(scanErr.Error() + OverrideHint())",
+      "new": "\t\treturn Refused(scanErr.Error())"
+    },
+    {
+      "name": "make the impersonation guard overridable",
+      "file": "internal/deskkit/scanoverride.go",
+      "old": "\tif strings.Contains(scanErr.Error(), impersonationMarker) {",
+      "new": "\tif false && strings.Contains(scanErr.Error(), impersonationMarker) {"
+    },
+    {
+      "name": "drop the encrypted-CONTENT requirement (a bare sops footer becomes sanctioned)",
+      "file": "internal/deskkit/structured.go",
+      "old": "\t\tif !ok || m[0] < block.lo || m[1] > block.hi {",
+      "new": "\t\tif !ok || m[0] < block.hi {"
+    }
+  ],
+  "_not_mutated": {
+    "coveredBy full-containment": "Weakening coveredBy to accept PARTIAL overlap (lo >= sp.lo && lo < sp.hi) was tried and is NOT CATCHABLE by any test, so it is deliberately absent rather than left surviving in the report. The reason is structural: reBase64ish's charset excludes newline, and every structured span this file computes either ends at a line boundary (a go.sum digest, the sops metadata block) or is delimited by a character outside the charset (the comma after an ENC payload, the quote after an SRI payload). So no run can begin inside an exempt span and continue past its end, and the two spellings are equivalent on every input the scan can be handed. The strict form is kept because it is the correct statement of intent for a future format whose fields are not line-delimited; a mutation report claiming it is unguarded would be noise, and a surviving mutant nobody can act on trains readers to ignore the report."
+  }
+}

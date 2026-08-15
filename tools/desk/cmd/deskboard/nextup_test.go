@@ -522,7 +522,7 @@ func TestConfiguredRoots(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(roots) < 2 {
-			t.Fatalf("default roots = %+v, want at least tracker + assay-toolkit", roots)
+			t.Fatalf("default roots = %+v, want at least tracker + assay", roots)
 		}
 		for i, r := range roots {
 			if !deskkit.IsAllowedRepo(r.Repo) {
@@ -616,4 +616,56 @@ func TestStatusgenPin(t *testing.T) {
 			t.Fatal("a malformed statusgen pin returned no error")
 		}
 	})
+}
+
+// TestNextup_PinFlowFromConfiguredRoot is distribution/04's FLOW row: reading the
+// pin from a configured root, resolving the statusgen binary, and rendering the
+// board still work as one chain — against the REAL checked-in golden pin file
+// (the live consumer's `.assay-versions`), not a synthesised one-liner. It also
+// proves version skew is REPORTED: the golden pins `statusgen/v0.8.2` while the
+// fake binary answers `statusgen/v0.1.0`, and a skew the desk can see is the
+// cross-component behaviour this brief must not break.
+//
+// It is a NEW, named flow test on purpose. `TestStatusgenPin` (above) is a unit
+// test of the parser and passes today; a Verify row matching `-run Pin` would go
+// green without this end-to-end chain ever running.
+func TestNextup_PinFlowFromConfiguredRoot(t *testing.T) {
+	installFakeStatusgen(t)
+
+	// A tracker root whose `.assay-versions` IS the checked-in live golden.
+	tracker := makeRoot(t, "tracker", false)
+	golden, err := os.ReadFile(filepath.Join(
+		"..", "..", "internal", "deskkit", "testdata", "assay-versions-live.golden"))
+	if err != nil {
+		t.Fatalf("reading golden fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tracker, ".assay-versions"), golden, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	toolkit := makeRoot(t, "toolkit", false)
+	t.Setenv(deskkit.RootsEnv,
+		"example-org/tracker="+tracker+",medici-finance/assay="+toolkit)
+
+	var out, errb bytes.Buffer
+	if code := run([]string{"nextup"}, &out, &errb); code != deskkit.ExitOK {
+		t.Fatalf("nextup exited %d, stderr=%s", code, errb.String())
+	}
+	var rep nextupReport
+	if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+		t.Fatalf("nextup output is not JSON: %v\n%s", err, out.String())
+	}
+	if len(rep.Rows) < 1 {
+		t.Fatalf("board has no rows — the pin→binary→board chain did not complete: %+v", rep)
+	}
+	// Read straight from the golden, through the generalised reader.
+	if rep.StatusgenPinned != "statusgen/v0.8.2" {
+		t.Errorf("pinned = %q, want statusgen/v0.8.2 (read from the golden fixture)", rep.StatusgenPinned)
+	}
+	if !rep.StatusgenSkew {
+		t.Errorf("skew not reported though pinned %q != running %q",
+			rep.StatusgenPinned, rep.StatusgenVersion)
+	}
+	if rep.StatusgenPinRepo != "example-org/tracker" {
+		t.Errorf("pin repo = %q, want example-org/tracker (the root carrying .assay-versions)", rep.StatusgenPinRepo)
+	}
 }

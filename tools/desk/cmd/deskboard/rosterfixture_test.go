@@ -43,14 +43,14 @@ const fixtureRoster = `# Test-fixture roster. It reproduces the values this tree
 ASSAY_BLESS_LOGIN=ada:2001
 ASSAY_TRUSTED_LOGINS=ada:2001,shared-agent:2002
 ASSAY_TRUSTED_BOT_SLUGS=desk=assay-desk-app:300000001,intake-loop=assay-intake-loop-app:300000002,issue-loop=assay-issue-loop-app:300000003,reviewer=assay-reviewer-app:300000004,verifier=assay-verifier-app:300000005,worker=assay-worker-app:300000006
-ASSAY_ALLOWED_REPOS=example-org/tracker:ci:private,example-org/agents:ci:private,example-org/examples:no-ci:private,example-org/console:ci:private,medici-finance/assay:ci:private,example-org/example-k8s:ci:public,example-org/example-reconciler:ci:private,example-org/org-slides:no-ci:private,example-org/proposals:no-ci:public,example-org/platform:ci:private,example-org/medici-slides:no-ci:private,example-org/assay-slides:no-ci:private,example-org/example-reconciler-slides:no-ci:private
+ASSAY_ALLOWED_REPOS=example-org/tracker:ci:private,example-org/agents:ci:private,example-org/examples:no-ci:private,example-org/console:ci:private,medici-finance/assay:ci:private,example-org/example-k8s:ci:public,example-org/example-reconciler:ci:private,example-org/org-slides:no-ci:private,example-org/proposals:no-ci:public,example-org/platform:ci:private,example-org/demo-slides:no-ci:private,example-org/assay-slides:no-ci:private,example-org/example-reconciler-slides:no-ci:private
 ASSAY_HUMAN_LOGIN_MAP=alex:ada
 # Repo grouping overrides (ASSAY_REPO_ALIASES). These are the DISPLAY short names
 # and product buckets this tree used to compile into shortRepo()/product(); moving
 # them here keeps every board rendering + grouping assertion at the SAME verdict
 # while the shipped resolver carries only the generic default. Test files may carry
 # these house labels; non-test source may not (the resolver has no house literal).
-ASSAY_REPO_ALIASES=tracker=:tracker,agents=:tracker,examples=:medici,console=:assay,assay=:medici,example-k8s=ledger:ledger,example-reconciler=recon:example-reconciler,org-slides=:medici,proposals=props:medici,platform=:medici,medici-slides=:medici,assay-slides=:assay,example-reconciler-slides=:example-reconciler
+ASSAY_REPO_ALIASES=tracker=:tracker,agents=:tracker,examples=:demo,console=:assay,assay=:demo,example-k8s=ledger:ledger,example-reconciler=recon:example-reconciler,org-slides=:demo,proposals=props:demo,platform=:demo,demo-slides=:demo,assay-slides=:assay,example-reconciler-slides=:example-reconciler
 `
 
 // plantFixtureRoster writes the fixture roster under home. A test that relocates

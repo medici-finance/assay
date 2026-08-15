@@ -25,7 +25,10 @@ import (
 //   - `issue view` prints {state,url} from FAKEGH_ISSUE_STATE / FAKEGH_ISSUE_URL;
 //   - `issue create` prints a fake issue URL, or exits 1 when FAKEGH_CREATE_FAIL is set
 //     (the SENT-but-unconfirmable create, which must charge session budget);
-//   - `issue comment` prints a fake comment URL.
+//   - `issue comment` prints a fake comment URL;
+//   - `label list` prints a JSON array from FAKEGH_LABELS (default "[]"), prints NOTHING
+//     when FAKEGH_LABEL_EMPTY is set (the unanswered-probe shape), or exits 1 when
+//     FAKEGH_LABEL_FAIL is set (the could-not-check path of the raised-by stamp).
 //
 // FAKEGH_STDERR_PAYLOAD, when set, is written to stderr on every FAILING path, so a test
 // can drive attacker-shaped bytes through gh's own diagnostics into deskfile's error text.
@@ -81,6 +84,14 @@ func main() {
 		fmt.Println("https://github.com/medici-finance/assay/issues/100")
 	case len(args) >= 2 && args[0] == "issue" && args[1] == "comment":
 		fmt.Println("https://github.com/medici-finance/assay/issues/42#issuecomment-7")
+	case len(args) >= 2 && args[0] == "label" && args[1] == "list":
+		if os.Getenv("FAKEGH_LABEL_FAIL") != "" {
+			fail("label list: simulated API outage")
+		}
+		if os.Getenv("FAKEGH_LABEL_EMPTY") != "" {
+			os.Exit(0) // exit 0, no stdout at all - the unanswered-probe shape
+		}
+		fmt.Println(env("FAKEGH_LABELS", "[]"))
 	default:
 		fmt.Fprintf(os.Stderr, "fake gh: unknown args %v\n", args)
 		os.Exit(1)
@@ -139,6 +150,10 @@ func withEnv(t *testing.T) *[][]string {
 	t.Setenv("HOME", home)
 	plantFixtureRoster(t, home)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
+	// Neutralise the harness's real session var ($CLAUDE_CODE_SESSION_ID, present in every
+	// Claude Code session) so the legacy fixture value below deterministically drives
+	// SessionTag(); otherwise the ambient UUID wins precedence and the budget bucket shifts.
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test")
 	t.Setenv("PATH", fakeGHDir+string(os.PathListSeparator)+origPATH)
 	// Clear every fake-gh switch so an ambient value in the developer's environment
@@ -146,7 +161,7 @@ func withEnv(t *testing.T) *[][]string {
 	for _, k := range []string{
 		"FAKEGH_SEARCH_HITS", "FAKEGH_SEARCH_FAIL", "FAKEGH_SEARCH_EMPTY",
 		"FAKEGH_ISSUE_STATE", "FAKEGH_ISSUE_URL", "FAKEGH_CREATE_FAIL",
-		"FAKEGH_STDERR_PAYLOAD",
+		"FAKEGH_STDERR_PAYLOAD", "FAKEGH_LABELS", "FAKEGH_LABEL_FAIL", "FAKEGH_LABEL_EMPTY",
 	} {
 		t.Setenv(k, "")
 	}
@@ -1323,25 +1338,37 @@ func TestSearchQueryCarriesNoQualifiers(t *testing.T) {
 	title := `bugs-gc: prune closed-issue files repo:evil/elsewhere is:closed -label:"x" NOT foo`
 	runCapture([]string{"check", "-R", allowedRepo, "--title", title})
 
-	var query string
+	// One token per argv element (#156 verification finding): a JOINED
+	// multi-word string in a single positional makes `gh search issues` phrase-quote it
+	// (exact-substring match, not AND-of-terms), which silently returns zero hits for any
+	// realistic title — the fail-open direction this test exists to rule out. So the query
+	// tokens must land as SEPARATE positionals between "issues" and "--repo", never joined.
+	var queryArgs []string
 	for _, c := range ghCalls(*calls) {
 		if len(c) >= 3 && c[1] == "search" && c[2] == "issues" {
-			if len(c) < 4 {
-				t.Fatalf("search call has no query positional: %v", c)
+			for _, a := range c[3:] {
+				if a == "--repo" {
+					break
+				}
+				queryArgs = append(queryArgs, a)
 			}
-			query = c[3]
 		}
 	}
-	if query == "" {
+	if len(queryArgs) == 0 {
 		t.Fatalf("no `gh search issues` call recorded: %v", ghCalls(*calls))
 	}
+	if len(queryArgs) == 1 {
+		t.Fatalf("query tokens arrived as a single joined positional %q — gh will phrase-quote "+
+			"this and silently find zero hits for realistic titles (#156)", queryArgs[0])
+	}
+	joined := strings.Join(queryArgs, " ")
 	for _, bad := range []string{":", `"`, "-", "(", ")", "NOT"} {
-		if strings.Contains(query, bad) {
-			t.Fatalf("search query %q still carries %q — a raw title can rescope the candidate set", query, bad)
+		if strings.Contains(joined, bad) {
+			t.Fatalf("search query %v still carries %q — a raw title can rescope the candidate set", queryArgs, bad)
 		}
 	}
-	if !strings.Contains(query, "bugs") || !strings.Contains(query, "prune") {
-		t.Fatalf("search query %q dropped the substantive tokens", query)
+	if !strings.Contains(joined, "bugs") || !strings.Contains(joined, "prune") {
+		t.Fatalf("search query %v dropped the substantive tokens", queryArgs)
 	}
 }
 
@@ -1437,6 +1464,42 @@ func TestMatchScore(t *testing.T) {
 	// class boost alone never triggers a match from zero overlap
 	if s := matchScore(q, "totally unrelated other topic", true); s != 0 {
 		t.Errorf("class boost from zero overlap = %.2f, want 0", s)
+	}
+}
+
+// TestSearchArgsOneTokenPerArgv is the direct regression test for the #156
+// verification finding: `gh search issues <one joined multi-word string>` makes the gh CLI
+// phrase-quote the whole thing into an exact-substring match (confirmed live against
+// GH_DEBUG=api output: `q=( "tok1 tok2 tok3 ..." ) repo:... state:open type:issue`), so a
+// realistic issue title — which almost never survives stopword/punctuation stripping as a
+// literal contiguous substring of itself — silently matched ZERO candidates. Passing tokens
+// individually keeps gh from phrase-quoting and restores GitHub's normal AND-of-terms
+// search (verified live: `deskfile check` against this repo's own open issue #156, whose
+// title tokenizes to 11 terms, found nothing before this fix and found it after).
+//
+// This is a pure-function test on searchArgs itself (no fake-gh harness involved) because
+// the test double in this file answers every `search issues` call from FAKEGH_SEARCH_HITS
+// regardless of query content — it cannot distinguish a phrase-quoted argv from a
+// term-per-argv one. TestSearchQueryCarriesNoQualifiers covers the argv SHAPE end-to-end
+// through the CLI; this test pins the token-count invariant precisely.
+func TestSearchArgsOneTokenPerArgv(t *testing.T) {
+	// A realistic, longish issue title — the exact shape that silently broke: 7+ scorable
+	// tokens once stopwords ("for", "the", "same") are stripped.
+	title := "Parallel review lanes file duplicate issues for the same finding — two pairs in seven minutes"
+	tokens := tokenize(title)
+	if len(tokens) < 7 {
+		t.Fatalf("fixture title tokenizes to only %d tokens, want >= 7 to exercise the bug: %v", len(tokens), tokens)
+	}
+
+	args := searchArgs(tokens)
+	if len(args) != len(tokens) {
+		t.Fatalf("searchArgs(%v) returned %d argv element(s) %v, want %d (one per token) — "+
+			"a joined/collapsed result reintroduces the phrase-quoting bug", tokens, len(args), args, len(tokens))
+	}
+	for i, tok := range tokens {
+		if args[i] != tok {
+			t.Fatalf("searchArgs token %d = %q, want %q (order/identity must be preserved)", i, args[i], tok)
+		}
 	}
 }
 

@@ -1,0 +1,16 @@
+{
+  "asOf": "2026-08-13T12:00:00Z",
+  "stale": false,
+  "scope": {"repos": ["example-org/example-repo"], "count": 1, "source": "compiled-in fixed set (deskkit); no flag or env widens it"},
+  "prPopulation": {"complete": true, "cap": 100},
+  "rows": [
+    {"repo": "example-org/example-repo", "number": 42, "title": "a", "action": "NEEDS-REVIEW", "score": 9, "note": "n"},
+    {"repo": "example-org/example-repo", "number": 43, "title": "b", "action": "RE-REVIEW", "score": 8, "note": "n"},
+    {"repo": "example-org/example-repo", "number": 44, "title": "c", "action": "MERGE-NOW", "score": 7, "note": "n"},
+    {"repo": "example-org/example-repo", "number": 45, "title": "d", "action": "CI-NEVER-RAN", "score": 6, "note": "n"},
+    {"repo": "example-org/example-repo", "number": 46, "title": "e", "action": "MERGE-CURR", "score": 5, "note": "n"},
+    {"repo": "example-org/example-repo", "number": 47, "title": "f", "action": "WAIT-CI", "score": 4, "note": "n"}
+  ],
+  "tombstones": [],
+  "external": []
+}

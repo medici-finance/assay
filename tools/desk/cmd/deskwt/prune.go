@@ -281,12 +281,24 @@ func unmergedReason(rt string) string {
 	return "unmerged (branch " + branch + " not an ancestor of origin/main — active work)"
 }
 
-// mergedToOriginMain reports whether the worktree's HEAD is an ancestor of origin/main.
-// It shells `git merge-base --is-ancestor HEAD origin/main`: exit 0 = ancestor (merged →
-// safe), exit 1 = not an ancestor (unmerged → active work, LEFT), any other exit or a
-// resolution failure = Unverifiable so the caller fails CLOSED and leaves the worktree.
+// mergedToOriginMain reports whether the worktree's HEAD is an ancestor of the remote
+// mainline. It shells `git merge-base --is-ancestor HEAD refs/remotes/origin/main`: exit 0
+// = ancestor (merged → safe), exit 1 = not an ancestor (unmerged → active work, LEFT), any
+// other exit or a resolution failure = Unverifiable so the caller fails CLOSED and leaves
+// the worktree.
+//
+// The base is spelled FULLY QUALIFIED (`refs/remotes/origin/main`), not the bare short name
+// `origin/main`, and this is load-bearing (issue #885, the ambiguity variant of #22). A
+// checkout that has ever run `git branch origin/main` / `git worktree add ... -b origin/main`
+// carries a stray LOCAL branch literally named `refs/heads/origin/main`; the short name is
+// then ambiguous and `refs/heads/` wins gitrevisions disambiguation order, so bare `origin/main`
+// silently resolves to that stale decoy while git only warns on stderr at exit 0. Resolving
+// against a stale decoy would compute this gate against the wrong baseline. A fully-qualified
+// remote-tracking ref is unambiguous by construction and cannot be shadowed by the decoy; if
+// it does not resolve at all, that surfaces as Unverifiable (could-not-check) — never a
+// silent fall-through to the decoy.
 func mergedToOriginMain(rt string) (bool, error) {
-	cmd := execCommand("git", "merge-base", "--is-ancestor", "HEAD", "origin/main")
+	cmd := execCommand("git", "merge-base", "--is-ancestor", "HEAD", "refs/remotes/origin/main")
 	cmd.Dir = rt
 	err := cmd.Run()
 	if err == nil {
@@ -296,23 +308,29 @@ func mergedToOriginMain(rt string) (bool, error) {
 	if errors.As(err, &ee) && ee.ExitCode() == 1 {
 		return false, nil
 	}
-	return false, deskkit.Unverifiable("cannot determine merge status vs origin/main (does origin/main resolve?)", err)
+	return false, deskkit.Unverifiable("cannot determine merge status vs refs/remotes/origin/main (does it resolve?)", err)
 }
 
-// headAtOriginMainTip reports whether the worktree's HEAD is exactly at origin/main
-// (zero landed commits). Fresh worktrees at origin/main may hold untracked new work
+// headAtOriginMainTip reports whether the worktree's HEAD is exactly at the remote mainline
+// tip (zero landed commits). Fresh worktrees at the tip may hold untracked new work
 // — `dirtyTracked` intentionally ignores untracked files so build artifacts (node_modules,
 // build/, dist/) don't block, but in an automatic sweep this means a fresh worktree
 // with new source files would be wrongly removed. This guard is prune-only: remove is a
 // human-named single-path deletion where the caller affirms the path is safe.
+//
+// Like mergedToOriginMain, the tip is spelled FULLY QUALIFIED (`refs/remotes/origin/main`)
+// rather than the ambiguous short name `origin/main` (issue #885): a stray local branch
+// `refs/heads/origin/main` would otherwise shadow the real remote-tracking ref and this
+// guard would compare HEAD against a stale decoy tip. A resolution failure surfaces as
+// Unverifiable (could-not-check → the worktree is LEFT), never a silent decoy comparison.
 func headAtOriginMainTip(rt string) (bool, error) {
 	head, err := runGit(rt, "rev-parse", "HEAD")
 	if err != nil {
 		return false, deskkit.Unverifiable("cannot resolve HEAD", err)
 	}
-	originMain, err := runGit(rt, "rev-parse", "origin/main")
+	originMain, err := runGit(rt, "rev-parse", "refs/remotes/origin/main")
 	if err != nil {
-		return false, deskkit.Unverifiable("cannot resolve origin/main", err)
+		return false, deskkit.Unverifiable("cannot resolve refs/remotes/origin/main", err)
 	}
 	return head == originMain, nil
 }

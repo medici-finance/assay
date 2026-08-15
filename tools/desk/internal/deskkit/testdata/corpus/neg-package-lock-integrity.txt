@@ -1,0 +1,21 @@
+# corpus: npm package-lock.json integrity fields
+# expect: clean
+# refs:   #781 (shape 4, desk-console/03)
+# shape:  Subresource-Integrity digests behind the "integrity" key
+# why:    worked around at the time by DROPPING the lockfile from the PR rather than fixing the scanner
+{
+  "name": "console-app",
+  "lockfileVersion": 3,
+  "packages": {
+    "node_modules/lru-cache": {
+      "version": "10.2.0",
+      "resolved": "https://registry.npmjs.org/lru-cache/-/lru-cache-10.2.0.tgz",
+      "integrity": "sha512-pKvURIxJVi2CgRXROh/M6pJ/{{+}}UrTVRZKX+LQ+QtqJI4vBNibk{{+}}Pcs43bCCSIkn7JBPtCBXRDmD{{+}}6IWFF51QVRr+Yg=="
+    },
+    "node_modules/minipass": {
+      "version": "7.0.4",
+      "resolved": "https://registry.npmjs.org/minipass/-/minipass-7.0.4.tgz",
+      "integrity": "sha512-EhtHdKdZkkopKcSkEvtuMbmq{{+}}p0ZGaEDvzEp21pqUFJ4jZOOY{{+}}PWRv6vqhtRF4XlyekK7cMNpq{{+}}a+rVUg7MmcZiag=="
+    }
+  }
+}

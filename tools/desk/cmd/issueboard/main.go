@@ -51,20 +51,20 @@ question label ages against --sla-days, counted from the last HUMAN response (a 
 comment never resets the clock). Under the SLA it classifies AWAIT; past it, ESCALATE
 — sorted to the top of the issue lane, age rendered in the row.
 
-owned repos (fixed, compiled-in — the configured owner's repos plus selected
-placeholder repos). Some read surfaces are deliberately held out of the BOARD (a
-read surface) without changing where the desk POSTS: deskpost/deskpr/deskreply gate
-independently on deskkit.IsAllowedRepo, so a board holdout is not a write-boundary
-change. A repo the token cannot read fails the WHOLE board with exit 6
-(unverifiable), so the board is never silently partial — unlike statusgen
---scan-issues, which NOTICEs and skips):
-  example-org/tracker   example-org/site
-  example-org/agents               example-org/plumb
-  example-org/examples             example-org/proposals      (PUBLIC)
-  medici-finance/assay          example-org/example-reconciler-slides
-  example-org/example-reconciler             example-org/assay-slides
-  example-org/platform        example-org/product-slides
-  example-org/console          example-org/org-slides
+owned repos (the intake SCAN scope): the issue lane READS the owned-repo set
+resolved at runtime from the ASSAY_SCAN_REPOS roster key (deskkit.ScanRepos) — the
+desk-side half of the owned-repo roster, externalised out of source so it cannot
+drift from statusgen's --scan-issues scanner, which reads the IDENTICAL key. It is a
+DISTINCT set from the write boundary (ASSAY_ALLOWED_REPOS): the scan scope may cover
+repos the desk is the front door for that are not write targets, and the desk still
+POSTS only where deskpost/deskpr/deskreply gate independently on
+deskkit.IsAllowedRepo. The set is configured in CI (the repository/organization
+Actions variable) or the config-home roster file, never compiled in — run the tool
+to see the effective value echoed to stderr. An UNSET or EMPTY ASSAY_SCAN_REPOS is
+refused LOUDLY (exit 6, COULD-NOT-CHECK): an empty sweep is never reported as a
+clean, empty board (#777). And a repo the token cannot read fails the WHOLE board
+with exit 6 (unverifiable), so the board is never silently partial — unlike
+statusgen --scan-issues, which NOTICEs and skips.
 
 trust gate: issues authored outside the configured trusted set (humans + desk Apps)
 with no blessing comment are quarantined under EXTERNAL / UNBLESSED — visible,
@@ -92,7 +92,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// --version short-circuits before Guard (pure introspection, no side effects).
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
 		s, b := deskkit.Version()
-		fmt.Fprintf(stdout, "issueboard sourceSHA=%s builtAt=%s\n", s, b)
+		fmt.Fprintf(stdout, "issueboard sourceSHA=%s builtAt=%s releaseTag=%s\n", s, b, deskkit.ReleaseTagOrDev())
 		return deskkit.ExitOK
 	}
 

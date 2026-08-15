@@ -1,0 +1,47 @@
+[
+  {
+    "number": 1401,
+    "createdAt": "2026-07-22T07:00:00Z",
+    "readyAt": "2026-07-22T09:00:00Z",
+    "mergedAt": "2026-07-22T09:30:00Z",
+    "labels": []
+  },
+  {
+    "number": 1402,
+    "createdAt": "2026-07-22T06:30:00Z",
+    "readyAt": "2026-07-22T08:00:00Z",
+    "mergedAt": "2026-07-22T10:00:00Z",
+    "labels": []
+  },
+  {
+    "number": 1403,
+    "createdAt": "2026-07-21T18:00:00Z",
+    "decisionRequestedAt": "2026-07-22T06:00:00Z",
+    "mergedAt": "2026-07-22T12:00:00Z",
+    "labels": [{ "name": "needs-decision" }]
+  },
+  {
+    "number": 1404,
+    "createdAt": "2026-07-21T12:00:00Z",
+    "mergedAt": "2026-07-22T12:00:00Z",
+    "labels": []
+  },
+  {
+    "number": 1405,
+    "createdAt": "2026-07-22T13:00:00Z",
+    "mergedAt": "2026-07-22T14:00:00Z",
+    "labels": []
+  },
+  {
+    "number": 1399,
+    "createdAt": "2026-07-20T09:00:00Z",
+    "mergedAt": "2026-07-21T09:00:00Z",
+    "labels": []
+  },
+  {
+    "number": 1400,
+    "createdAt": "2026-07-22T09:00:00Z",
+    "mergedAt": "",
+    "labels": []
+  }
+]

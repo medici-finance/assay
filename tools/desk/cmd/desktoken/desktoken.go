@@ -238,6 +238,11 @@ func buildJWT(appID string, now time.Time, key *rsa.PrivateKey) (string, error) 
 type tokenResult struct {
 	Token     string `json:"token"`
 	ExpiresAt string `json:"expires_at"`
+	// Permissions is what GitHub actually GRANTED this installation token. It is
+	// the only place the grant is observable, and #571 was a scope gap discovered
+	// three quarters of the way through a pass — so it is recorded (writePerms)
+	// for `deskroster preflight` to check against the role's duties at boot.
+	Permissions map[string]string `json:"permissions"`
 }
 
 // exchangeJWT POSTs the signed JWT to GitHub's installation access_tokens
@@ -319,6 +324,90 @@ func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
 	return positionals, nil
 }
 
+// --- key-path resolution (#794) --------------------------------------------------
+
+// provisioningDoc names the walkthrough that records where THIS deployment
+// provisions its role pems and apps.env.
+//
+// It is a DOC REFERENCE, not the directory itself, and that is the settled
+// ruling — settled by the tooling, not by argument. #794 asks for the house
+// directory to be named; `leaksweep run --tree` refuses it: the literal path is
+// a registered house-local token and this file ships in the publication tree, so
+// a build carrying it fails the tree sweep. Both constraints are satisfiable at
+// once: the tool ships the search-path MECHANISM (deskkit.EnvConfigHome), the
+// deployment supplies the VALUE, and the refusal points at the withheld doc that
+// records it. The reader still closes the gap in one move; the public tree stays
+// clean.
+const provisioningDoc = "docs/github-apps-setup.md"
+
+// resolvePEMPath finds the role's App private key.
+//
+// Order: an explicit <ROLE>_PEM override wins verbatim; otherwise the first
+// existing <role>-app.pem across the App-credential search path
+// (ASSAY_CONFIG_HOME, then the shipped ~/.config/assay).
+//
+// It returns BOTH a path and a deferred not-found error. The error is deliberately
+// NOT raised here: it is raised at the point the key is actually READ, so the
+// order in which desktoken reports its preconditions is unchanged (a missing App
+// ID still reports as a missing App ID, not as a missing key). The path returned
+// alongside a not-found error is the head-of-search-path candidate, so every
+// downstream message still names a concrete file.
+//
+// The refusal names EVERY directory searched, the knob that adds one, and the
+// walkthrough that records where this deployment provisions keys. The #794
+// symptom was a bare "private key not found at <one path>" that named none of
+// the three, so a fresh-shell mint failure read as a broken tool.
+func resolvePEMPath(role, prefix string) (string, error) {
+	if override := strings.TrimSpace(os.Getenv(prefix + "_PEM")); override != "" {
+		return home(override), nil
+	}
+	name := role + "-app.pem"
+	path, searched, found := deskkit.FindConfigFile(name)
+	if found {
+		return path, nil
+	}
+	return path, deskkit.Unverifiable(fmt.Sprintf(
+		"private key not found: no %s on the App-credential search path. Searched: %s. If this "+
+			"deployment provisions role pems and apps.env elsewhere (its walkthrough records where: %s), "+
+			"set %s to that directory, or set %s_PEM to the key path. A fresh shell cannot mint any App "+
+			"token until this is closed (#794).",
+		name, strings.Join(searched, ", "), provisioningDoc,
+		deskkit.EnvConfigHome, prefix), nil)
+}
+
+// permsPath is the sidecar recording what GitHub GRANTED the installation the
+// token was minted for. The grant is visible ONLY in the access-token response,
+// so the minter is the only component that can observe it; recording it here is
+// what lets `deskroster preflight` check the App's scopes against the role's
+// duties (#571) without a second JWT-signing implementation.
+func permsPath(tokenPath string) string { return tokenPath + ".perms" }
+
+// writePerms records the granted permission map next to the token cache, 0600
+// (it names an App's capability surface — not a secret, but not world-readable
+// either). A failure to record is NOT fatal to the mint: the token is the
+// deliverable, and preflight reads a missing sidecar as could-not-check rather
+// than as a pass.
+func writePerms(tokenPath string, perms map[string]string) {
+	if len(perms) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(perms))
+	for k := range perms {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString("{")
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(&b, "%q:%q", k, perms[k])
+	}
+	b.WriteString("}")
+	_ = os.WriteFile(permsPath(tokenPath), []byte(b.String()), 0o600)
+}
+
 // --- main entry point -----------------------------------------------------------
 
 // run is the CLI entry point. It returns an exit code.
@@ -326,7 +415,7 @@ func run(args []string) int {
 	// --version / help are pure reads: no kill-switch gate, no audit line.
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
-		fmt.Printf("desktoken sourceSHA=%s builtAt=%s\n", sha, built)
+		fmt.Printf("desktoken sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
 		return deskkit.ExitOK
 	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
@@ -363,6 +452,7 @@ func cmdToken(args []string) (err error) {
 	fs.SetOutput(new(strings.Builder))
 	repo := fs.String("repo", "", "repo slug (owner/name) for install auto-pick")
 	ttl := fs.Bool("ttl", false, "print remaining TTL of cached token (does not mint)")
+	fresh := fs.Bool("fresh", false, "delete any cached token and its .perms sidecar before minting — forces a fresh mint after a GitHub-App permission change (the cached token otherwise carries the old grant for up to the ~50-min reuse window)")
 
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
@@ -379,8 +469,10 @@ func cmdToken(args []string) (err error) {
 
 	prefix := roleEnvPrefix(role)
 
-	// Resolve PEM path: ~/.config/assay/<role>-app.pem by default.
-	pemPath := home(envOr(prefix+"_PEM", fmt.Sprintf("~/.config/assay/%s-app.pem", role)))
+	// Resolve PEM path across the App-credential search path (#794). A not-found
+	// error is DEFERRED to the point the key is read (see resolvePEMPath), so the
+	// existing precondition-reporting order is unchanged.
+	pemPath, pemErr := resolvePEMPath(role, prefix)
 
 	// Resolve App ID: env <ROLE>_APP_ID, else ~/.config/assay/apps.env (no source default —
 	// a fresh invocation works with no shell sourcing).
@@ -413,6 +505,11 @@ func cmdToken(args []string) (err error) {
 		}
 
 		// Must read PEM, sign JWT before we know the install ID.
+		// The key is READ here, so a deferred not-found from resolvePEMPath is
+		// raised here — naming every directory searched (#794).
+		if pemErr != nil {
+			return pemErr
+		}
 		fi, perr := os.Stat(pemPath)
 		if perr != nil {
 			if os.IsNotExist(perr) {
@@ -454,12 +551,32 @@ func cmdToken(args []string) (err error) {
 	// The reviewer App's example-org install (100000002) also gets the suffix, and
 	// each App manages its own cache independently via the same
 	// shared conventions.
-	defaultToken := fmt.Sprintf("~/.config/assay/%s-token-%s", role, installID)
+	// The cache is WRITTEN to the head of the App-credential search path, so a
+	// deployment that points ASSAY_CONFIG_HOME at its provisioning directory
+	// reads its key and writes its cache in the SAME place. #794's closing line:
+	// "the key-lookup dir, the cache dir, the apps.env dir and the provisioning
+	// dir must be the same one."
+	defaultToken := deskkit.ConfigHomeWritePath(fmt.Sprintf("%s-token-%s", role, installID))
 	tokenPath := home(envOr(prefix+"_TOKEN", defaultToken))
 
 	// --ttl: report cached token age and exit (no mint).
 	if *ttl {
 		return printTTL(tokenPath)
+	}
+
+	// --fresh: drop any cached token AND its .perms sidecar before the reuse check, so a mint
+	// that follows a GitHub-App permission change cannot be short-circuited by the up-to-50-min
+	// cache-reuse window below, and so the grant sidecar (writePerms) is rewritten with the NEW
+	// scope. Without this, "re-mint" after a permission change is a NO-OP for the rest of the
+	// reuse window: the cached token is returned and its stale .perms is what `deskroster
+	// preflight` reads for the app-scopes check (#571). Idempotent — a missing file is fine.
+	if *fresh {
+		if rmErr := os.Remove(tokenPath); rmErr != nil && !os.IsNotExist(rmErr) {
+			return deskkit.Unverifiable("cannot remove cached token for --fresh: "+tokenPath, rmErr)
+		}
+		if rmErr := os.Remove(permsPath(tokenPath)); rmErr != nil && !os.IsNotExist(rmErr) {
+			return deskkit.Unverifiable("cannot remove token .perms sidecar for --fresh: "+permsPath(tokenPath), rmErr)
+		}
 	}
 
 	// Reuse cached token if < 50 min old.
@@ -485,6 +602,11 @@ func cmdToken(args []string) (err error) {
 		jwt = prebuiltJWT
 	} else {
 		// Read the App private key. Check file permissions — must be 0600.
+		// The key is READ here, so a deferred not-found from resolvePEMPath is
+		// raised here — naming every directory searched (#794).
+		if pemErr != nil {
+			return pemErr
+		}
 		fi, perr := os.Stat(pemPath)
 		if perr != nil {
 			if os.IsNotExist(perr) {
@@ -535,6 +657,7 @@ func cmdToken(args []string) (err error) {
 	if err := os.Chmod(tokenPath, 0o600); err != nil {
 		return deskkit.Unverifiable("chmod token cache", err)
 	}
+	writePerms(tokenPath, result.Permissions)
 
 	// Output only the token file path — never the token value.
 	fmt.Println(tokenPath)

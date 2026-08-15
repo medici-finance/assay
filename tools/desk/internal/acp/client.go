@@ -108,7 +108,7 @@ func Spawn(cmd []string, opts Opts) (*Client, error) {
 		opts.SupportedProtocolVersions = []int{1}
 	}
 	if opts.ClientName == "" {
-		opts.ClientName = "assay-toolkit-acp-client"
+		opts.ClientName = "assay-acp-client"
 	}
 	if opts.ClientVersion == "" {
 		opts.ClientVersion = "spike"

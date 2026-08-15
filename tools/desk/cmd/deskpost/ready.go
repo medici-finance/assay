@@ -48,8 +48,16 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		}
 		head := info.Head.SHA
 
-		// Idempotency: a prior successful flip at this exact head is a no-op.
-		if deskkit.AlreadyDoneIn(entries, repo, pr, head, "ready") {
+		// Idempotency is reconciled against LIVE GitHub state, not the ledger alone (#805).
+		// An audit entry records that a flip was ATTEMPTED at this head — it is NOT proof the
+		// GraphQL mutation landed. If the ledger says `ready` but GitHub still reports the PR
+		// as a draft (the flip was recorded but never took — e.g. an earlier attempt whose
+		// mutation silently failed), reporting a completed no-op strands the PR as a draft
+		// forever while the review desk and drain-before-pull believe it flipped. So a prior
+		// flip at this exact head is a no-op ONLY when the just-read live state (info.Draft,
+		// from getPR above) agrees the PR is no longer a draft; when GitHub still shows draft,
+		// fall through and RE-ISSUE the flip through every precondition below.
+		if deskkit.AlreadyDoneIn(entries, repo, pr, head, "ready") && !info.Draft {
 			return noop("ready", repo, pr, head, "already flipped ready at "+short(head)+" (idempotent no-op)")
 		}
 

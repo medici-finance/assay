@@ -113,7 +113,7 @@ func TestHouseTriggersRideConfigNotCompiledBase(t *testing.T) {
 		"k8s/dev/product.yaml",
 	}
 	rosterWith := func(extra string) map[string]string {
-		r := mediciRoster()
+		r := goldenRoster()
 		r[EnvAllowedRepos] = repo + ":ci:private"
 		if extra != "" {
 			r[EnvRiskPathTriggersExtra] = extra
@@ -310,7 +310,7 @@ func TestRiskClassReasonAgreesWithTheGate(t *testing.T) {
 // them safe is the very thing this arm reports. The C2 surface makes the state
 // reachable by omission, so the coupling has to be asserted in it.
 func TestRiskClassReasonAgreesOnUnstatedVisibility(t *testing.T) {
-	r := mediciRoster()
+	r := goldenRoster()
 	r[EnvAllowedRepos] = "acme/unstated,acme/ci-only:ci,acme/known:ci:private,acme/open:ci:public"
 	withRoster(t, r)
 

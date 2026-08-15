@@ -1,0 +1,8 @@
+# corpus: console-banner separator lines
+# expect: clean
+# refs:   #781 (7th instance, #1692)
+# shape:  echo "=====..." runs of base64 PADDING with no payload
+# why:    the offending lines were a DELETION already on origin; no in-scope change could suppress them
+echo "========================{{+}}========================{{+}}===="
+echo "== oracle retention sweep =========================="
+echo "========================{{+}}========================{{+}}===="

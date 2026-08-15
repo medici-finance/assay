@@ -1,0 +1,20 @@
+# corpus: the detector's own marker literals, as they appear in its source
+# expect: clean
+# refs:   #380, #328
+# shape:  Go source lines carrying the PEM/sops markers as quoted literals and regex patterns
+# why:    a guard that cannot be maintained through the tooling it guards gets EDITED AROUND, not fixed
+	switch {
+	case reGitHubToken.MatchString(s):
+		return Refused("refused: " + surface + " contains a GitHub token prefix (ghp{{+}}_/github{{+}}_pat_/ghs{{+}}_/gho{{+}}_)")
+	case reAWSKeyID.MatchString(s):
+		return Refused("refused: " + surface + " contains an AWS access-key ID (AKIA{{+}}…)")
+	case strings.Contains(s, "-----BE{{+}}GIN"):
+		return Refused("refused: " + surface + " contains a PEM header (-----BE{{+}}GIN …)")
+	case reJWT.MatchString(s):
+		return Refused("refused: " + surface + " contains a JWT-shaped token (eyJ….….…)")
+	}
+
+	reSopsEncMarker = regexp.MustCompile(`ENC\[AES256_GCM`)
+	reSopsKey       = regexp.MustCompile(`(?m)^\s*"?sops"?\s*:`)
+	reSopsField     = regexp.MustCompile(`(?m)^\s*"?(mac|lastmodified|unencrypted_suffix)"?\s*:`)
+	reBase64ish     = regexp.MustCompile(`[A-Za-z0-9+/=]{32,}`)

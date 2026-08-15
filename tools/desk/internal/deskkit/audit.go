@@ -91,10 +91,14 @@ func auditPath() (string, error) {
 	return filepath.Join(dir, "audit.jsonl"), nil
 }
 
-// SessionTag returns $CLAUDE_SESSION_ID if set, else "unknown".
+// SessionTag returns $CLAUDE_CODE_SESSION_ID if set (the variable the Claude Code
+// harness actually exports), else the legacy $CLAUDE_SESSION_ID, else "unknown".
 // It is self-reported: forensics, not enforcement.
 func SessionTag() string {
-	if s := os.Getenv("CLAUDE_SESSION_ID"); s != "" {
+	if s := os.Getenv("CLAUDE_CODE_SESSION_ID"); s != "" {
+		return s
+	}
+	if s := os.Getenv("CLAUDE_SESSION_ID"); s != "" { // legacy fallback
 		return s
 	}
 	return "unknown"

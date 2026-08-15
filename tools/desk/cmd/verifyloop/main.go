@@ -49,7 +49,7 @@ func main() {
 func run(args []string) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
-		fmt.Printf("verifyloop sourceSHA=%s builtAt=%s\n", sha, built)
+		fmt.Printf("verifyloop sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
 		return deskkit.ExitOK
 	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
@@ -69,6 +69,14 @@ func run(args []string) int {
 
 	switch args[0] {
 	case "plan":
+		// The OPERATING-ENVELOPE preflight runs at BOOT, before the queue is even
+		// read. A red envelope is could-not-run for the WHOLE pass: one summary
+		// line and exit — no queue read, no claim, no dispatch, and no issue filed
+		// about the desk's own envelope (ground-truth/07; #794 #571 #823 #638 #679).
+		if err := preflightBoot(args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			return deskkit.ExitCodeOf(err)
+		}
 		return loopengine.ExitCodeOf(cmdPlan(args[1:]))
 	default:
 		fmt.Fprintf(os.Stderr, "verifyloop: unknown subcommand %q\n\n%s", args[0], usage)

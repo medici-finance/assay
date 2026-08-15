@@ -135,17 +135,39 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-// Claim atomically claims an item, delegating to the flock-backed deskkit primitive
-// (Kind="dispatch"). The ENGINE owns the claims dir, so batch-fanout and issue-loop
-// structurally cannot double-dispatch the same item. Returns:
+// Claim is the SINGLE MANDATORY ENTRY POINT for dispatch, and the home of the
+// dedupe-at-start guarantee stated in doc.go: an item ID is dispatched at most once
+// concurrently across all consumers sharing the claims dir, for dispatchers that route
+// through here. A dispatcher that bypasses Claim is outside the guarantee.
 //
-//   - (true, nil)  claim acquired (fresh, or a STALE claim reclaimed);
-//   - (false, nil) live claim held by someone else (collision — do not dispatch);
-//   - (false, err) the lock could not be held or the claim could not be read/written
-//     (fail closed — NEVER "assume free", the #146 lesson).
+// It runs TWO checks, in this order, and reports which ones it actually ran:
+//
+//  1. cfg.WorkEvidence — the external-evidence probe (open/merged PRs naming the item,
+//     the board row). A claim file only records "this dispatcher is working on it"; it
+//     is not evidence that the work is untaken. When the probe is UNSET, Claim consults
+//     only the claims dir and announces that bound on cfg.Progress — no silent caps.
+//  2. deskkit.Acquire (Kind="dispatch") — the flock-backed atomic create-or-reclaim.
+//
+// Returns:
+//
+//   - (true, nil)  claim acquired (fresh, or a STALE claim reclaimed), bounded by
+//     whichever checks above actually ran;
+//   - (false, nil) do NOT dispatch — a live claim is held elsewhere, or WorkEvidence
+//     reported the item already taken (a "DEDUP <id> — <why>" line names which);
+//   - (false, err) COULD-NOT-CHECK: the lock could not be held, the claim could not be
+//     read/written, or WorkEvidence could not reach its source. Fail closed — an
+//     unreachable check is NEVER "assume free" (#146), and a caller must not read this
+//     as a soft acquired.
+//
+// The probe runs BEFORE the flock on purpose: a network call must not be made while a
+// directory-wide lock is held. The consequence is stated in doc.go — probe-then-lock is
+// not one atomic step.
 func Claim(cfg Config, it Item) (bool, error) {
 	if cfg.ClaimsDir == "" {
 		return false, fmt.Errorf("loopengine: Claim needs a ClaimsDir")
+	}
+	if taken, err := checkWorkEvidence(cfg, it); err != nil || taken {
+		return false, err
 	}
 	ok, err := deskkit.Acquire(toClaimConfig(cfg), deskkit.Claim{
 		Kind:   deskkit.KindDispatch,
@@ -157,6 +179,50 @@ func Claim(cfg Config, it Item) (bool, error) {
 		cfg.logf("claimed: %s", it.ID)
 	}
 	return ok, err
+}
+
+// WorkEvidence is the external-evidence probe Claim consults before it will return
+// "acquired". It answers ONE question — "is this item already taken by evidence outside
+// the claims dir?" — and answers it in three states, never two:
+//
+//	(true,  why, nil)  taken; why NAMES the evidence (e.g. "open PR #722 (2026-08-12)")
+//	(false, _,   nil)  checked, and nothing says the item is taken
+//	(_,     _,   err)  COULD-NOT-CHECK — the source was unreachable/unreadable
+//
+// The third state is the load-bearing one. A probe that cannot reach the GitHub API MUST
+// return an error, NOT (false, "", nil): reporting "nothing found" when nothing could be
+// looked at is the fail-open dedupe that this contract exists to prevent. Claim turns an
+// errored probe into deskkit.Unverifiable (exit 6) and refuses to acquire.
+//
+// The engine deliberately does NOT implement a probe: what counts as evidence is
+// per-consumer (worker-desk looks at open+merged PRs naming the brief and the board row;
+// verifyloop looks at the verify queue), and hard-coding GitHub into the engine would put
+// a network dependency inside the frozen contract. The engine states the shape and the
+// three-state obligation; the consumer supplies the source.
+type WorkEvidence func(it Item) (taken bool, why string, err error)
+
+// checkWorkEvidence runs cfg.WorkEvidence and maps it onto Claim's return. It reports
+// (taken, err); Claim refuses on either. With no probe configured it emits the BOUND on
+// cfg.Progress — the "no silent caps" rule: a check that narrowed what it consulted says
+// so in its own output rather than letting the caller infer a wider guarantee.
+func checkWorkEvidence(cfg Config, it Item) (bool, error) {
+	if cfg.WorkEvidence == nil {
+		cfg.logf("claim: BOUND %s — evidence consulted is the claims dir ONLY (no WorkEvidence probe configured); open/merged PRs and the board row were NOT checked", it.ID)
+		return false, nil
+	}
+	taken, why, err := cfg.WorkEvidence(it)
+	if err != nil {
+		cfg.logf("claim: COULD-NOT-CHECK %s — work-evidence probe failed: %v (fail closed; NOT acquired)", it.ID, err)
+		return false, deskkit.Unverifiable("loopengine: Claim could not check work evidence for "+it.ID, err)
+	}
+	if taken {
+		if why == "" {
+			why = "work-evidence probe reported the item taken but named no evidence"
+		}
+		cfg.logf("DEDUP %s — %s", it.ID, why)
+		return true, nil
+	}
+	return false, nil
 }
 
 // ReleaseClaim removes an item's claim (used when a dispatch fails after claiming, so the

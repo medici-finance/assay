@@ -198,8 +198,8 @@ func TestProductGrouping(t *testing.T) {
 	if total != len(repos) {
 		t.Fatalf("grouping dropped repos: %d grouped, %d input", total, len(repos))
 	}
-	if product("example-org/proposals") != "medici" {
-		t.Fatalf("unknown repo should fall into the medici catch-all, got %q", product("example-org/proposals"))
+	if product("example-org/proposals") != "demo" {
+		t.Fatalf("unknown repo should fall into the demo catch-all, got %q", product("example-org/proposals"))
 	}
 	if product("example-org/tracker") != "tracker" {
 		t.Fatalf("tracker grouping wrong: %q", product("example-org/tracker"))

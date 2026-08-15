@@ -34,14 +34,14 @@ const assayVersionsBefore = `# Pinned assay release artifacts -- tag + sha256 pe
 #
 # Format: <artifact> <tag> <sha256>
 #
-# Cross-org access to medici-finance/assay (private) is via a
-# runtime-generated GitHub App installation token (assay-reviewer-app,
-# App ID 300000004). The REVIEWER_APP_PRIVATE_KEY repo secret holds the
-# App private key; each CI workflow generates a short-lived installation
-# token before downloading the pinned binary.
+# Cross-org access to a private release repo (here medici-finance/assay) is via a
+# runtime-generated GitHub App installation token, minted per CI run rather than
+# stored. A repo secret holds the App private key; each workflow generates a
+# short-lived installation token before downloading the pinned binary, so no
+# long-lived cross-org credential sits in the tree or the environment.
 #
 # For local ` + "`sudo make desk-install`" + `, the invoking user's ` + "`gh`" + ` auth handles
-# credentials (developers have read access to medici-finance/assay).
+# credentials (a developer with read access to the release repo).
 
 statusgen statusgen/v0.6.0 a9145f3aa48deb0d85a2b42944381a02aea10a7d7b9154592d26b8337a74779b  # linux-amd64 (CI-built)
 

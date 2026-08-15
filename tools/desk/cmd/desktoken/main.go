@@ -3,17 +3,35 @@
 // A key-parameterized token minter: one tool, one audit
 // path, every desk role. Usage:
 //
-//	desktoken <role> [--repo <slug>] [--ttl]
+//	desktoken <role> [--repo <slug>] [--ttl] [--fresh]
 //
-// Where <role> ∈ {reviewer, verifier, worker, desk, issue-loop, intake-loop}. Reads
-// ~/.config/assay/<role>-app.pem (0600) for the App's RSA private key. App ID
-// comes from <ROLE>_APP_ID env (e.g. REVIEWER_APP_ID; set it from per-deployment config,
-// see ~/.config/assay/apps.env — App IDs are never baked into source). The installation is
+// Where <role> ∈ {reviewer, verifier, worker, desk, issue-loop, intake-loop}.
+//
+// # Where the credentials live (#794)
+//
+// The App private key, apps.env and the token cache are resolved across the
+// App-CREDENTIAL SEARCH PATH: $ASSAY_CONFIG_HOME first when set, then the
+// shipped default ~/.config/assay. The key is READ from the first directory that
+// has it and the cache is WRITTEN to the head of the path, so one setting puts
+// all four (key, apps.env, cache, provisioning) in the same directory. A
+// deployment whose walkthrough provisions elsewhere sets
+// ASSAY_CONFIG_HOME=~/.config/<its-dir> once; the not-found refusal names every
+// directory searched AND the directory this repo's walkthrough provisions into,
+// so a fresh-shell mint failure is self-diagnosing instead of a bare
+// "private key not found".
+//
+// The knob covers the App-credential plane ONLY — roster.env is deliberately not
+// moved by it (see deskkit/confighome.go).
+//
+// App ID comes from <ROLE>_APP_ID env (e.g. REVIEWER_APP_ID) else apps.env on the
+// same search path — App IDs are never baked into source. The installation is
 // resolved at runtime via GET /app/installations, matching the repo owner against
 // account.login (defaults to "example-org" when --repo is absent); <ROLE>_INSTALL_ID
-// overrides. The token is cached at ~/.config/assay/<role>-token-<installID>
-// (0600) and reused if < 50 min old. The token SECRET is never printed to stdout,
-// audit, or logs — only the cache file path.
+// overrides. The token is cached as <role>-token-<installID> (0600) and reused if
+// < 50 min old, alongside a <cache>.perms sidecar recording what the installation
+// was GRANTED (the grant is visible only in the mint response; `deskroster
+// preflight` checks it against the role's duties — #571). The token SECRET is
+// never printed to stdout, audit, or logs — only the cache file path.
 //
 // This tool provides attribution (which App name appears on GitHub) plus an audit
 // trail — it does NOT enforce authorization (which session may act as each role).
@@ -35,14 +53,22 @@ USAGE:
 
 <role> ∈ {reviewer, verifier, worker, desk, issue-loop, intake-loop}
 
-Reads ~/.config/assay/<role>-app.pem (0600) for the App's private key.
-App ID comes from <ROLE>_APP_ID env var (e.g. REVIEWER_APP_ID; see ~/.config/assay/apps.env).
+Reads <role>-app.pem (0600) for the App's private key, and apps.env for the
+App ID, from the App-credential SEARCH PATH: $ASSAY_CONFIG_HOME (when set),
+then ~/.config/assay. <ROLE>_APP_ID / <ROLE>_PEM override.
 Installation resolved at runtime via GET /app/installations, matching the
 repo owner against account.login (defaults to "example-org" when --repo is
 absent); <ROLE>_INSTALL_ID overrides.
-Caches the token at ~/.config/assay/<role>-token-<installID> (0600).
+Caches the token as <role>-token-<installID> (0600) at the HEAD of the search
+path, plus a <cache>.perms sidecar recording the installation's granted scopes.
 Reuses the cached token if < 50 min old; otherwise mints a fresh one.
+--fresh deletes the cached token and its .perms sidecar first, forcing a
+fresh mint — use it after a GitHub-App permission change, whose new grant the
+cached token would otherwise mask for the rest of the ~50-min reuse window (#571).
 The token SECRET is never printed to stdout/audit/logs — only the path.
+
+If the key is not found, the refusal names every directory searched and the
+directory this repo's App-provisioning walkthrough uses (#794).
 
 Exit: 0 ok/noop · 3 disabled · 5 refused · 6 unverifiable.`
 

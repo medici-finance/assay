@@ -30,7 +30,7 @@ const compiledTrigger = "secrets/prod/token.yaml"
 func TestRiskPathTriggersConfigIsAdditiveOnly(t *testing.T) {
 	repo := "one/private-repo"
 	rosterWith := func(extra string) map[string]string {
-		r := mediciRoster()
+		r := goldenRoster()
 		r[EnvAllowedRepos] = repo + ":ci:private"
 		if extra != "" {
 			r[EnvRiskPathTriggersExtra] = extra
@@ -98,7 +98,7 @@ func TestRiskPathTriggersConfigIsAdditiveOnly(t *testing.T) {
 // set is still narrowable, and a narrowing that leaves no trace in run output is
 // the reviewability this brief must not trade away.
 func TestRiskPathTriggersNarrowingIsVisible(t *testing.T) {
-	r := mediciRoster()
+	r := goldenRoster()
 	r[EnvRiskPathTriggersExtra] = "adopter/infra/,adopter/secrets/"
 	withRoster(t, r)
 	var wide bytes.Buffer
@@ -107,7 +107,7 @@ func TestRiskPathTriggersNarrowingIsVisible(t *testing.T) {
 		t.Fatalf("the run echo does not carry the configured trigger set:\n%s", wide.String())
 	}
 
-	r2 := mediciRoster()
+	r2 := goldenRoster()
 	r2[EnvRiskPathTriggersExtra] = "adopter/infra/"
 	withRoster(t, r2)
 	var narrow bytes.Buffer
@@ -123,7 +123,7 @@ func TestRiskPathTriggersNarrowingIsVisible(t *testing.T) {
 	// And the narrowing must be REAL, not merely echoed: the dropped path stops
 	// classifying. An echo that changes while behaviour does not would be theatre.
 	repo := "one/private-repo"
-	r3 := mediciRoster()
+	r3 := goldenRoster()
 	r3[EnvAllowedRepos] = repo + ":ci:private"
 	r3[EnvRiskPathTriggersExtra] = "adopter/infra/"
 	withRoster(t, r3)

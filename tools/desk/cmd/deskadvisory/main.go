@@ -31,7 +31,7 @@ func main() {
 func run(args []string) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
-		fmt.Printf("deskadvisory sourceSHA=%s builtAt=%s\n", sha, built)
+		fmt.Printf("deskadvisory sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
 		return deskkit.ExitOK
 	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {

@@ -31,7 +31,7 @@ type gitFacts struct {
 	dir           string
 	branch        string
 	defaultBranch string
-	defaultRef    string // remote-tracking ref, e.g. "origin/main"
+	defaultRef    string // fully-qualified remote-tracking ref, e.g. "refs/remotes/origin/main" (unambiguous by construction, #840)
 	repo          string // owner/name
 	head          string // HEAD sha
 }
@@ -112,11 +112,19 @@ func cmdCreate(args []string) (err error) {
 	bodyMin := fs.String("body-min", "", "one-line PR body (alternative to --body-file)")
 	base := fs.String("base", "main", "base branch")
 	asApp := fs.Bool("as-app", true, "authenticate as the worker App via desktoken worker (default on); --as-app=false for example-org fallback")
+	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	if perr := fs.Parse(args); perr != nil {
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
 	if fs.NArg() != 0 {
 		return deskkit.Refused("refused: create takes no positional arguments")
+	}
+	// Validate the override BEFORE anything else runs, so a malformed one refuses in
+	// milliseconds rather than after a token mint and a remote read.
+	if *scanOverride != "" {
+		if verr := deskkit.ValidateScanOverride(*scanOverride); verr != nil {
+			return verr
+		}
 	}
 	if strings.TrimSpace(*title) == "" {
 		return deskkit.Refused("refused: --title is required")
@@ -131,7 +139,10 @@ func cmdCreate(args []string) (err error) {
 	if berr != nil {
 		return berr
 	}
-	if serr := deskkit.ScanSurface("PR body", body); serr != nil {
+	if serr := deskkit.HandleScanRefusal(deskkit.ScanOverride{
+		Tool: "deskpr", Verb: "create", Reason: *scanOverride,
+		Surface: "PR body", Content: body,
+	}, deskkit.ScanSurface("PR body", body)); serr != nil {
 		return serr
 	}
 
@@ -146,7 +157,7 @@ func cmdCreate(args []string) (err error) {
 	ac.repo, ac.head = facts.repo, facts.head
 
 	// seatbelt: scan title, branch, and the diff-vs-default before any push.
-	if scanErr := scanWrite(facts, *title); scanErr != nil {
+	if scanErr := scanWrite(facts, *title, "create", *scanOverride); scanErr != nil {
 		return scanErr
 	}
 
@@ -245,11 +256,17 @@ func cmdUpdate(args []string) (err error) {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
 	asApp := fs.Bool("as-app", true, "authenticate as the worker App via desktoken worker (default on); --as-app=false for example-org fallback")
+	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	if perr := fs.Parse(args); perr != nil {
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
 	if fs.NArg() != 0 {
 		return deskkit.Refused("refused: update takes no arguments")
+	}
+	if *scanOverride != "" {
+		if verr := deskkit.ValidateScanOverride(*scanOverride); verr != nil {
+			return verr
+		}
 	}
 
 	dir, gerr := getwd()
@@ -262,7 +279,7 @@ func cmdUpdate(args []string) (err error) {
 	}
 	ac.repo, ac.head = facts.repo, facts.head
 
-	if scanErr := scanWrite(facts, ""); scanErr != nil {
+	if scanErr := scanWrite(facts, "", "update", *scanOverride); scanErr != nil {
 		return scanErr
 	}
 
@@ -334,19 +351,27 @@ func preflight(dir string) (*gitFacts, error) {
 	if isDefaultName(branch) {
 		return nil, deskkit.Refused("refused: on the default branch (" + branch + ") — deskpr only pushes feature branches")
 	}
-	defOut, derr := git(dir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+	// Resolve origin/HEAD to its FULLY-QUALIFIED target (no --short). A stray local branch
+	// literally named `origin/main` (the `deskwt --branch origin/main` gotcha) makes the
+	// short name `origin/main` ambiguous: `symbolic-ref --short` then disambiguates its
+	// output to `remotes/origin/main`, which `TrimPrefix(…, "origin/")` cannot strip, so the
+	// old `"origin/" + defaultBranch` produced the unresolvable `origin/remotes/origin/main`
+	// and every rev-list/diff below aborted exit 128 (#840). The un-shortened target
+	// `refs/remotes/origin/main` is unambiguous by construction, so derive the branch name
+	// AND the base ref from it and use that fully-qualified ref everywhere downstream.
+	defOut, derr := git(dir, "symbolic-ref", "refs/remotes/origin/HEAD")
 	if derr != nil {
 		return nil, deskkit.Unverifiable(
 			"cannot read origin/HEAD (default branch unverifiable) — run `git remote set-head origin --auto`", derr)
 	}
-	defaultBranch := strings.TrimPrefix(strings.TrimSpace(defOut), "origin/")
-	if defaultBranch == "" {
-		return nil, deskkit.Unverifiable("origin/HEAD resolved empty", nil)
+	defaultRef := strings.TrimSpace(defOut)
+	defaultBranch := strings.TrimPrefix(defaultRef, "refs/remotes/origin/")
+	if defaultBranch == "" || defaultBranch == defaultRef {
+		return nil, deskkit.Unverifiable("origin/HEAD resolved to an unexpected target: "+defaultRef, nil)
 	}
 	if branch == defaultBranch {
 		return nil, deskkit.Refused("refused: on the default branch (" + branch + ")")
 	}
-	defaultRef := "origin/" + defaultBranch
 
 	originURL, oerr := git(dir, "config", "--get", "remote.origin.url")
 	if oerr != nil {
@@ -395,13 +420,25 @@ func preflight(dir string) (*gitFacts, error) {
 // says which of the three fired (#328): all three used to report as "body",
 // and a refusal that misidentifies its own surface sends the operator to rewrite text
 // that was never the problem.
-func scanWrite(f *gitFacts, title string) error {
+//
+// override (#585): every surface here routes its verdict through
+// deskkit.HandleScanRefusal, so a refusal on ANY of the three advertises the audited
+// bypass and, when one is supplied, records exactly WHICH surface was waved through. The
+// branch diff is the surface that matters most in practice — it is the one carrying
+// go.sum blocks, lockfile digests and pre-existing content the branch cannot edit away.
+func scanWrite(f *gitFacts, title, verb, override string) error {
+	scan := func(surface string, content []byte) error {
+		return deskkit.HandleScanRefusal(deskkit.ScanOverride{
+			Tool: "deskpr", Verb: verb, Repo: f.repo, Reason: override,
+			Surface: surface, Content: content,
+		}, deskkit.ScanSurface(surface, content))
+	}
 	if title != "" {
-		if err := deskkit.ScanSurface("PR title", []byte(title)); err != nil {
+		if err := scan("PR title", []byte(title)); err != nil {
 			return err
 		}
 	}
-	if err := deskkit.ScanSurface("branch name", []byte(f.branch)); err != nil {
+	if err := scan("branch name", []byte(f.branch)); err != nil {
 		return err
 	}
 	diff, err := git(f.dir, "diff", f.defaultRef+"...HEAD")
@@ -419,8 +456,7 @@ func scanWrite(f *gitFacts, title string) error {
 	// diff-scanning callsite, not inside deskkit.BodyCheck — BodyCheck is generic (also
 	// used verbatim on PR bodies/comments/reviews) and must not grow diff-format
 	// awareness.
-	if err := deskkit.ScanSurface("branch diff vs "+f.defaultRef,
-		[]byte(stripDiffMetaLines(diff))); err != nil {
+	if err := scan("branch diff vs "+f.defaultRef, []byte(stripDiffMetaLines(diff))); err != nil {
 		return err
 	}
 	return nil

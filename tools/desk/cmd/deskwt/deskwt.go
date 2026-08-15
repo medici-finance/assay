@@ -255,6 +255,13 @@ func cmdAdd(args []string) (err error) {
 		return deskkit.Refused("refused: origin " + repo + " is not in the desk-tools repo set")
 	}
 
+	// --base must resolve to EXACTLY ONE ref. An ambiguous short name is could-not-check,
+	// not a coin flip: git resolves it at exit 0 with only a stderr warning, so this must
+	// be checked BEFORE rev-parse, whose --quiet swallows that warning entirely
+	// (see ambiguousbase.go; docs/three-state-instrument-rule.md sub-rule 1).
+	if aerr := checkBaseUnambiguous(dir, *base); aerr != nil {
+		return aerr
+	}
 	// --base must resolve to a commit, else exit 6.
 	if _, verr := runGit(dir, "rev-parse", "--verify", "--quiet", *base+"^{commit}"); verr != nil {
 		return deskkit.Unverifiable("refused: --base "+*base+" does not resolve to a commit", verr)

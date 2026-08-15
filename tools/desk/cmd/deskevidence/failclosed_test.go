@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // This file holds the source-level guards on the fail-closed properties. They exist
@@ -232,5 +234,86 @@ func TestNoParallelTestsInPackage(t *testing.T) {
 					"Make that state per-test before parallelising anything here.", name, i+1)
 			}
 		}
+	}
+}
+
+// --- App-credential search path (#794) -------------------------------------------
+
+// TestVerifierKeyOffSearchPathRefused is the POSITIVE CONTROL for deskevidence's key
+// resolution, and the deskevidence half of #794. desktoken honouring
+// ASSAY_CONFIG_HOME is not the whole fix: this tool mints its OWN verifier token, and
+// while it read the key from a hardcoded ~/.config/assay it kept failing in a fresh shell
+// on a deployment that provisions elsewhere.
+//
+// The control is a key that is real and readable but sits in a directory nothing
+// searches. It must be REFUSED (exit 6), and the refusal must name every directory
+// searched plus both knobs — a credential resolver that cannot find its source has to say
+// where it looked. It must NOT name the stray directory, which it never searched.
+func TestVerifierKeyOffSearchPathRefused(t *testing.T) {
+	setupFake(t)
+	home, _ := os.UserHomeDir()
+	t.Setenv("VERIFIER_PEM", "")
+	t.Setenv(deskkit.EnvConfigHome, "")
+	t.Setenv("VERIFIER_APP_ID", "999999")
+
+	stray := filepath.Join(home, "elsewhere")
+	if err := os.MkdirAll(stray, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stray, "verifier-app.pem"), verifierPEM(t), 0o600); err != nil {
+		t.Fatalf("write pem: %v", err)
+	}
+	// Remove the key setupFake planted on the default search path, so the ONLY key on
+	// this machine is the off-path one.
+	if err := os.Remove(filepath.Join(home, ".config", "assay", "verifier-app.pem")); err != nil {
+		t.Fatalf("remove default pem: %v", err)
+	}
+
+	_, err := mintVerifierToken("example-org", "tracker")
+	if err == nil {
+		t.Fatal("a key off the search path must NOT mint — the resolver has to fail closed")
+	}
+	if !deskkit.IsUnverifiable(err) {
+		t.Fatalf("off-path key err code = %d, want 6 (unverifiable)", deskkit.ExitCodeOf(err))
+	}
+	for _, want := range []string{
+		"cannot read verifier App key",
+		filepath.Join(home, ".config", "assay"),
+		deskkit.EnvConfigHome,
+		"VERIFIER_PEM",
+		"#794",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal should name %q; got: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), stray) {
+		t.Errorf("refusal names a directory it never searched (%s): %v", stray, err)
+	}
+}
+
+// TestVerifierKeyFoundOnSearchPathHead is the paired GREEN run: the same tool, the same
+// cleared VERIFIER_PEM, with the provisioning directory at the head of the search path.
+// Without this pair, the refusal above proves only that the tool can fail.
+func TestVerifierKeyFoundOnSearchPathHead(t *testing.T) {
+	setupFake(t)
+	home, _ := os.UserHomeDir()
+	t.Setenv("VERIFIER_PEM", "")
+	t.Setenv("VERIFIER_APP_ID", "999999")
+
+	provisioned := filepath.Join(home, "vault", "provisioned")
+	if err := os.MkdirAll(provisioned, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(provisioned, "verifier-app.pem"), verifierPEM(t), 0o600); err != nil {
+		t.Fatalf("write pem: %v", err)
+	}
+	t.Setenv(deskkit.EnvConfigHome, provisioned)
+	if err := os.Remove(filepath.Join(home, ".config", "assay", "verifier-app.pem")); err != nil {
+		t.Fatalf("remove default pem: %v", err)
+	}
+
+	if _, err := mintVerifierToken("example-org", "tracker"); err != nil {
+		t.Fatalf("mint from the head of the search path: %v", err)
 	}
 }

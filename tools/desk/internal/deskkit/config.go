@@ -388,3 +388,59 @@ func BoardScopeError() error {
 	}
 	return nil
 }
+
+// ScanScopeError is the loud refusal issueboard's issue lane emits when it cannot
+// name a single repo to SCAN (#777). It is the scan-scope twin of BoardScopeError:
+// BoardScopeError guards the WRITE-authorisation set (ASSAY_ALLOWED_REPOS) that the
+// deskboard/deskroster sweeps iterate; this guards the intake SCAN set
+// (ASSAY_SCAN_REPOS) that issueboard's ownedRepos() / ScanRepos() sweep.
+//
+// They are DISTINCT keys, and #777 is exactly the gap that distinctness opened.
+// BoardScopeError checks len(allowedRepos()) == 0 — the WRITE set, which was
+// populated — so it stayed silent while ASSAY_SCAN_REPOS was unset. issueboard never
+// referenced BoardScopeError anyway, so the scan scope had no loud-refusal twin at
+// all: the issue lane iterated ZERO repos, made no gh call, produced empty rows, and
+// reported "(no open issues across owned repos)" at exit 0 while 200+ open issues sat
+// unmonitored. The empty scan set had no fail-closed guard; this is it.
+//
+// Same two axes as BoardScopeError, same order and same reason:
+//
+//  1. RosterUnconfiguredError — nothing configured at all. Its message names the
+//     trust variables and the class, which the scope message below does not; when the
+//     whole roster is missing that is the more complete refusal.
+//
+//  2. An EMPTY scan set on an otherwise-usable roster. This is the state that
+//     actually reproduced #777: trust logins and ASSAY_ALLOWED_REPOS configured, but
+//     ASSAY_SCAN_REPOS unset — so RosterUnconfiguredError returns nil (it answers a
+//     question about TRUST, not about the scan SCOPE) and this second check is the
+//     load-bearing one.
+//
+// The exit code is 6 (unverifiable), not 5 (refused): the caller asked a question
+// this process could not answer, not one it is not allowed to answer. An empty sweep
+// is COULD-NOT-CHECK, never green-and-empty (#489 doctrine).
+//
+// It returns nil the moment one repo is in scope — it says nothing about whether that
+// repo can be REACHED, which stays each caller's obligation.
+func ScanScopeError() error {
+	if err := RosterUnconfiguredError(); err != nil {
+		return err
+	}
+	if len(ScanRepos()) == 0 {
+		c := EffectiveConfig()
+		return Unverifiable(fmt.Sprintf(
+			"COULD-NOT-CHECK: the intake SCAN scope is EMPTY, so the issue lane swept ZERO repos "+
+				"and knows nothing (#777, #489 doctrine).\n"+
+				"  An empty sweep is not an empty board: reporting it as \"(no open issues across owned "+
+				"repos)\" turns \"I read nothing\" into \"there is nothing\", so a front door owning 200+ "+
+				"open issues reads as clean-and-empty at exit 0.\n"+
+				"  The rest of the roster IS loaded (trust and %s are set), which is why nothing else "+
+				"complained — %s is a DISTINCT key from the write boundary, and only it feeds the issue "+
+				"lane's read surface (statusgen's --scan-issues reads the identical key).\n"+
+				"Source consulted: %s (class %s).\n"+
+				"CI: set the repository or organization Actions variable %s.\n"+
+				"Locally: add it to %s, mode 0600 — write-class tools do NOT read the environment.\n"+
+				"Format: comma-separated owner/name repo slugs.",
+			EnvAllowedRepos, EnvScanRepos, c.Source, c.Class, EnvScanRepos, ConfigHomePath()), nil)
+	}
+	return nil
+}

@@ -83,6 +83,15 @@ func killSwitchState() (armed bool, reason string, err error) {
 // stopFlagState checks the loop stop-flags: STOP (all loops), then STOP.<loop> (per-loop
 // when DESK_LOOP is set). Returns armed=true and the flag filename as the reason.
 // A flag file that exists but cannot be read is an error (fail closed).
+//
+// Precedence is preserved exactly as documented (DISABLED > STOP > STOP.<name>): STOP is
+// resolved BEFORE the loop name is even looked at, so an all-loops halt still wins over
+// an unrecognised loop name — a mis-spelled DESK_LOOP can never mask a STOP.
+//
+// An unrecognised DESK_LOOP is Unverifiable (exit 6), NOT "no flag held": the tool cannot
+// establish which flag file would speak for this loop, so it cannot report clean. See
+// loopnames.go for why exit 6 rather than exit 5, and for how the blast radius is bounded
+// to the mis-named session alone.
 func stopFlagState() (armed bool, reason string, err error) {
 	dir, derr := deskDir()
 	if derr != nil {
@@ -103,7 +112,28 @@ func stopFlagState() (armed bool, reason string, err error) {
 	if loopName == "" {
 		return false, "", nil
 	}
-	return flagFileState(dir, "STOP."+loopName)
+
+	flagNames, known := LoopFlagNames(loopName)
+	if !known {
+		return false, "", Unverifiable(fmt.Sprintf(
+			"per-loop stop flag unverifiable: %s=%q names no known loop, so no STOP.<name> "+
+				"file can be checked for it — this is could-not-check, NOT 'no stop flag held'. "+
+				"Known loop names: %s. Fix the spelling, or register the loop in "+
+				"tools/desk/internal/deskkit/loopnames.go",
+			loopEnv, loopName, strings.Join(KnownLoopNames(), ", ")), nil)
+	}
+
+	// Any flag in the loop's name class arms it, so a rename cannot orphan a held flag.
+	for _, name := range flagNames {
+		flagArmed, flagReason, ferr := flagFileState(dir, "STOP."+name)
+		if ferr != nil {
+			return false, "", ferr
+		}
+		if flagArmed {
+			return true, flagReason, nil
+		}
+	}
+	return false, "", nil
 }
 
 // heartbeatState checks the HEARTBEAT dead-man lease. If the file exists and its mtime
@@ -156,6 +186,12 @@ type ActiveStopFlag struct {
 	Name   string `json:"name"`
 	Reason string `json:"reason"`
 	Stale  bool   `json:"stale,omitempty"` // true only for stale HEARTBEAT
+	// Inert marks a STOP.<name> flag whose <name> matches no known loop (see
+	// loopnames.go). Such a flag halts NOTHING — it is a human believing they hold a
+	// stop that no loop will ever read. That belief is the human-side half of the same
+	// silent failure the Guard fix closes, so the board must say so rather than list
+	// the file alongside flags that really are armed.
+	Inert bool `json:"inert,omitempty"`
 }
 
 // ActiveStopFlags returns the list of currently active stop flags (STOP, STOP.<name>,
@@ -184,7 +220,12 @@ func ActiveStopFlags() []ActiveStopFlag {
 			n := e.Name()
 			if strings.HasPrefix(n, "STOP.") && n != "STOP" {
 				if r, ok := readFlagReason(dir, n); ok {
-					flags = append(flags, ActiveStopFlag{Name: n, Reason: r})
+					loop := strings.TrimPrefix(n, "STOP.")
+					inert := !IsKnownLoopName(loop)
+					if inert {
+						r = r + " — INERT: " + loop + " matches no known loop, so this flag halts nothing"
+					}
+					flags = append(flags, ActiveStopFlag{Name: n, Reason: r, Inert: inert})
 				}
 			}
 		}
@@ -249,6 +290,12 @@ func guard(tool string) error {
 	// 2. STOP (all-loops halt)
 	armed, reason, err = stopFlagState()
 	if err != nil {
+		// An already-typed refusal states its own cause precisely (e.g. an
+		// unrecognised DESK_LOOP); re-wrapping it would bury that under a
+		// "flag dir unreadable" that is not what happened.
+		if IsUnverifiable(err) {
+			return err
+		}
 		return Unverifiable("stop-flag state unverifiable (flag dir unreadable)", err)
 	}
 	if armed {

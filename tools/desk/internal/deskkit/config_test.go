@@ -23,7 +23,7 @@ func TestIsAllowedRepo(t *testing.T) {
 		{"example-org/platform", true}, // private, API-checked
 		// One slides repo per product. slides itself is RETAINED above pending an
 		// undecided call on whether it is redundant or focused on per-product material.
-		{"example-org/medici-slides", true},
+		{"example-org/demo-slides", true},
 		{"example-org/assay-slides", true},
 		{"example-org/example-reconciler-slides", true},
 		{"example-org/console", true},
@@ -44,7 +44,7 @@ func TestIsAllowedRepo(t *testing.T) {
 		// checked against the API and 404s; none may be reachable by typo-adjacency
 		// to a real entry.
 		{"other-org/platform", false},
-		{"other-org/medici-slides", false},
+		{"other-org/demo-slides", false},
 		{"other-org/assay-slides", false},
 		{"other-org/example-reconciler-slides", false},
 		{"other-org/slides", false},
@@ -75,11 +75,11 @@ func TestAllowedReposSortedAndComplete(t *testing.T) {
 		"example-org/agents",
 		"example-org/assay-slides",
 		"example-org/console",
+		"example-org/demo-slides",
 		"example-org/example-k8s",
 		"example-org/example-reconciler",
 		"example-org/example-reconciler-slides",
 		"example-org/examples",
-		"example-org/medici-slides",
 		"example-org/org-slides",
 		"example-org/platform",
 		"example-org/proposals",
@@ -107,7 +107,7 @@ func TestCIRequired(t *testing.T) {
 		// `gh api repos/<repo>/contents/.github/workflows`, not copied across the group:
 		// the platform repo runs PR CI, the three slides repos run none.
 		"example-org/platform":                  true,  // lint.yml, `on: [pull_request]`
-		"example-org/medici-slides":             false, // no .github/workflows — 404
+		"example-org/demo-slides":               false, // no .github/workflows — 404
 		"example-org/assay-slides":              false, // no .github/workflows — 404
 		"example-org/example-reconciler-slides": false, // no .github/workflows — 404
 		"example-org/console":                   true,  // lint.yml, `on: [pull_request]`
@@ -116,7 +116,7 @@ func TestCIRequired(t *testing.T) {
 		"example-org/random-repo":    true,
 		"":                           true,
 		"EXAMPLE-ORG/ORG-SLIDES":     true, // case-sensitive
-		"other-org/medici-slides":    true, // wrong org — the slides repos are example-org only
+		"other-org/demo-slides":      true, // wrong org — the slides repos are example-org only
 		"example-org/product-slides": true, // product name, not the repo name (example-reconciler-slides)
 		"attacker/platform":          true,
 		"other-org/platform":         true, // wrong org (404 on the API)
@@ -184,7 +184,7 @@ func TestRepoVisibility(t *testing.T) {
 		// risk-classed unconditionally (VisibilityRiskClassed) and this value must change
 		// with it — `deskboard policydrift` is what catches the lag.
 		"example-org/platform":                  VisibilityPrivate,
-		"example-org/medici-slides":             VisibilityPrivate,
+		"example-org/demo-slides":               VisibilityPrivate,
 		"example-org/assay-slides":              VisibilityPrivate,
 		"example-org/example-reconciler-slides": VisibilityPrivate,
 		"example-org/console":                   VisibilityPrivate, // `gh repo view ... --json visibility`
