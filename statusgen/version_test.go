@@ -38,7 +38,7 @@ func TestVersionFlag(t *testing.T) {
 	})
 
 	t.Run("stamped build reports the tag", func(t *testing.T) {
-		const tag = "statusgen/v9.9.9"
+		const tag = "v9.9.9"
 		build := exec.Command("go", "build", "-ldflags", "-X main.statusgenVersion="+tag, "-o", bin, ".")
 		if out, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("build: %v\n%s", err, out)

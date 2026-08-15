@@ -1,17 +1,17 @@
 name: release
-# Build statusgen binaries for darwin-arm64, darwin-amd64 + linux-amd64 on an
-# umbrella `assay/vX.Y.Z` tag, produce checksums.txt, and create a GitHub
-# release. Consumers pin by tag + sha256 (per-artifact, see distribution/04's
+# Build statusgen binaries for darwin-arm64, darwin-amd64 + linux-amd64 on a
+# plain `vX.Y.Z` repo tag, produce checksums.txt, and create a GitHub release.
+# Consumers pin by tag + sha256 (per-artifact, see distribution/04's
 # `.assay-versions` contract), so every platform binary is checksummed and
 # uploaded under the name `statusgen-<platform>`.
 #
-# THE UMBRELLA VERSION SCHEME (distribution/02)
+# THE VERSION SCHEME (distribution/02)
 # This repo (medici-finance/assay) is the canonical, releasing home for the
-# shared tools (statusgen first — #952). The release line is the UMBRELLA
-# `assay/vX.Y.Z`, never a per-tool `statusgen/vX`: one version number spans the
-# repo's shipped tools, and consumers pin the umbrella. This workflow ports
-# assay-toolkit's `release-statusgen.yml`, retargeted from `statusgen/v*` to
-# `assay/v*`.
+# shared tools (statusgen first — #952). The release IS the repo, so the tag is
+# a plain `vX.Y.Z` (v0.9.0, v0.9.1, …) — NOT a component-prefixed `assay/vX` or
+# a per-tool `statusgen/vX`. One repo version number covers the repo's shipped
+# tools, and consumers pin it. This workflow ports assay-toolkit's
+# `release-statusgen.yml`, retargeted from `statusgen/v*` to plain `v*`.
 #
 # TWO WAYS IN
 #   push a tag        the original path: tag locally, push, this runs.
@@ -51,14 +51,17 @@ name: release
 # `guard` job refuses to move a published tag (consumers pin by tag + sha256, so
 # a re-pointed tag is a silent substitution), and the `test` job is the
 # build/vet gate that must pass before anything is published.
+#
+# A later tree-resolving releaseguard needs no `--tree-path`: the plain `vX.Y.Z`
+# tag carries no component prefix, so the released tree is the repo root.
 
 on:
   push:
-    tags: ["assay/v*"]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to cut, e.g. v0.9.0 — the assay/ prefix is added for you"
+        description: "Version to cut, e.g. v0.9.0 (a plain v-prefixed semver; a leading v is added for you if omitted)"
         required: true
         type: string
       dry_run:
@@ -136,7 +139,7 @@ jobs:
               echo "::error::version must be vMAJOR.MINOR.PATCH (got '$shown')"
               exit 1
             fi
-            tag="assay/$v"
+            tag="$v"
             emit message "assay $v (dispatched by $ACTOR)"
           else
             tag="$REF_NAME"
@@ -404,7 +407,7 @@ jobs:
             release_id=$(json_field id < "$rel_json")
           elif [ "$status" = "404" ]; then
             echo "Creating release ${RELEASE_TAG}."
-            body=$(RELEASE_TAG="$RELEASE_TAG" python3 -c 'import os,json; print(json.dumps({"tag_name":os.environ["RELEASE_TAG"],"name":os.environ["RELEASE_TAG"],"body":"assay umbrella release "+os.environ["RELEASE_TAG"]+" — statusgen binaries. Pin per-platform statusgen-<platform> by sha256 in .assay-versions."}))')
+            body=$(RELEASE_TAG="$RELEASE_TAG" python3 -c 'import os,json; print(json.dumps({"tag_name":os.environ["RELEASE_TAG"],"name":os.environ["RELEASE_TAG"],"body":"assay release "+os.environ["RELEASE_TAG"]+" — statusgen binaries. Pin per-platform statusgen-<platform> by sha256 in .assay-versions."}))')
             status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' -X POST "${auth[@]}" \
               -d "$body" "${api}/releases")
             if [ "$status" != "201" ]; then
