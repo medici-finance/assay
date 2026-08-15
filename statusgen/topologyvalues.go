@@ -46,6 +46,7 @@ var topologySystemStateLabels = []string{
 	"live-verify",
 	"needs-decision",
 	"review-request",
+	"needs-human",
 }
 
 // topologyDecisionOwedLabels is `labels.decision_owed` from the declared source.
@@ -55,6 +56,7 @@ var topologySystemStateLabels = []string{
 var topologyDecisionOwedLabels = []string{
 	"needs-decision",
 	"question",
+	"needs-human",
 }
 
 // topologyReleaseRepo is `release_repo` from the declared source.
