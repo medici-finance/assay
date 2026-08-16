@@ -1,0 +1,111 @@
+name: leaksweep-pattern
+# The PUBLIC, pattern-matcher (discovery-style) half of the leak gate for
+# medici-finance/assay.
+#
+# TWO HALVES, ONE GATE. The strong, control-based token sweep needs the private
+# withheld-token map (a map to the withheld items — itself do-not-copy), so it
+# CANNOT run here. It runs privately, against this repo's PR heads, and posts its
+# verdict back as the `leak-sweep` commit status. THIS leg is the complementary
+# discovery matcher that carries NO
+# token list: gitleaks' ecosystem secret-pattern ruleset over the whole tree,
+# catching secret-SHAPED content (token prefixes, key material, cloud creds) by
+# pattern alone. Config + allowlist: .gitleaks.toml at the repo root.
+#
+# FAIL-CLOSED. gitleaks runs with `--exit-code 9`, so a finding exits 9 and a
+# scanner that could not run exits something else; either way the step's non-zero
+# exit (under `set -euo pipefail`) reddens the job. Only a completed, clean scan
+# (exit 0) is green. Requiring this check on `main` (a repo setting) then makes a
+# gate that never ran block the merge too.
+#
+# WHERE THIS RUNS — the self-hosted runner `medici-builder-public`, matching
+# ci.yml. That runner does NOT reach GitHub's release-asset CDN (which is why
+# ci.yml hand-installs Go from go.dev/dl instead of actions/setup-go), so the
+# pinned gitleaks release TARBALL used by the private repo's verified-install path
+# is not fetchable here. It DOES reach the Go module proxy + checksum DB (the same
+# reachability ci.yml relies on for `go build`), so gitleaks is installed with a
+# version-pinned `go install`, integrity-checked against sum.golang.org via go.sum.
+# gitleaks is MIT; only the CLI is built and run — never the license-gated Action.
+
+on:
+  pull_request:
+    paths:
+      - "**"
+  push:
+    branches: [main]
+    paths:
+      - "**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leaksweep-pattern-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25.0"
+  # Canonical module path for gitleaks v8 (the go.mod still declares zricethezav
+  # even though the repo now lives at github.com/gitleaks/gitleaks). Pinned by
+  # version; `go install` verifies the download against sum.golang.org.
+  GITLEAKS_VERSION: "v8.30.1"
+  GITLEAKS_MODULE: "github.com/zricethezav/gitleaks/v8"
+
+jobs:
+  pattern-sweep:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Go toolchain — hand-installed from go.dev/dl (→ dl.google.com), NOT
+      # actions/setup-go, for the same reason ci.yml documents: the runner does
+      # not reach GitHub's release-asset CDN.
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      # Build the pinned gitleaks CLI from the module proxy. GOBIN puts it on a
+      # known path; the version probe below fails the job if it is not the pin.
+      #
+      # gitleaks stamps its reported version through an ldflag at RELEASE-build
+      # time (`-X …/v8/version.Version=<tag>`); a plain `go install` leaves the
+      # source default ("version is set by build process"), so the probe below
+      # would reject a correctly-pinned binary. We reproduce that ldflag from the
+      # pin itself, so `gitleaks version` prints the pinned number and the probe
+      # asserts what it says it asserts. (The download is still integrity-pinned
+      # to v8.30.1 independently, via go.sum / sum.golang.org.)
+      - name: Install pinned gitleaks (MIT CLI, via the Go module proxy)
+        run: |
+          set -euo pipefail
+          go version
+          export GOBIN="${RUNNER_TEMP}/bin"
+          want="${GITLEAKS_VERSION#v}"
+          go install -ldflags "-X ${GITLEAKS_MODULE}/version.Version=${want}" \
+            "${GITLEAKS_MODULE}@${GITLEAKS_VERSION}"
+          echo "${GOBIN}" >> "${GITHUB_PATH}"
+          got="$("${GOBIN}/gitleaks" version)"
+          echo "gitleaks version: ${got} (want ${want})"
+          if [ "${got}" != "${want}" ]; then
+            echo "::error::gitleaks version ${got} does not match the pin ${want} — refusing to sweep with an unexpected scanner"
+            exit 1
+          fi
+
+      # The gate. `dir` scans the working tree (it skips .git by design); the
+      # committed .gitleaks.toml supplies the extend-default ruleset + the
+      # synthetic-fixture allowlist. `--exit-code 9` makes "leaks found" a
+      # distinct, non-zero exit that reddens the job; any other non-zero (a
+      # scanner that did not complete) reddens it too — fail-closed either way.
+      - name: gitleaks pattern sweep (fail-closed)
+        run: |
+          set -euo pipefail
+          gitleaks dir . \
+            --config .gitleaks.toml \
+            --no-banner \
+            --exit-code 9 \
+            --report-format json \
+            --report-path "${RUNNER_TEMP}/gitleaks-report.json"
