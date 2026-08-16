@@ -71,15 +71,24 @@ jobs:
 
       # Build the pinned gitleaks CLI from the module proxy. GOBIN puts it on a
       # known path; the version probe below fails the job if it is not the pin.
+      #
+      # gitleaks stamps its reported version through an ldflag at RELEASE-build
+      # time (`-X …/v8/version.Version=<tag>`); a plain `go install` leaves the
+      # source default ("version is set by build process"), so the probe below
+      # would reject a correctly-pinned binary. We reproduce that ldflag from the
+      # pin itself, so `gitleaks version` prints the pinned number and the probe
+      # asserts what it says it asserts. (The download is still integrity-pinned
+      # to v8.30.1 independently, via go.sum / sum.golang.org.)
       - name: Install pinned gitleaks (MIT CLI, via the Go module proxy)
         run: |
           set -euo pipefail
           go version
           export GOBIN="${RUNNER_TEMP}/bin"
-          go install "${GITLEAKS_MODULE}@${GITLEAKS_VERSION}"
+          want="${GITLEAKS_VERSION#v}"
+          go install -ldflags "-X ${GITLEAKS_MODULE}/version.Version=${want}" \
+            "${GITLEAKS_MODULE}@${GITLEAKS_VERSION}"
           echo "${GOBIN}" >> "${GITHUB_PATH}"
           got="$("${GOBIN}/gitleaks" version)"
-          want="${GITLEAKS_VERSION#v}"
           echo "gitleaks version: ${got} (want ${want})"
           if [ "${got}" != "${want}" ]; then
             echo "::error::gitleaks version ${got} does not match the pin ${want} — refusing to sweep with an unexpected scanner"

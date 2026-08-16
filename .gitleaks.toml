@@ -21,16 +21,61 @@ useDefault = true
 
 # The published desk tests carry SYNTHETIC fixture strings that are shaped like
 # API keys / a private-key body but are invented constants, not real secrets.
-# They are allowlisted by their exact fixture VALUES (regexTarget = secret, the
-# default), NOT by exempting whole files or paths: a real, different secret in the
-# very same test files still fires. If a fixture value changes, the leg goes red
-# until the new value is enrolled here — the fail-closed direction.
+# gitleaks flags all eight as `generic-api-key` (the fuzzy, keyword-triggered
+# rule) — the dedicated high-signal rules (github-pat, private-key, aws-*, …)
+# never match them.
+#
+# WHY THIS ALLOWLIST DOES NOT REPRODUCE THE FIXTURE VALUES.
+# The obvious way to suppress these is to allowlist the fixture SECRETS by value
+# (regexTarget defaults to the secret). But this config is PUBLIC, and the
+# fixture values (the base62 token body, the PEM private-key body line) are
+# exactly the token/key material the private leak-sweep gate treats as WITHHELD
+# content — a public file that re-embeds them is self-defeating and reddens
+# `leak-sweep`. So this allowlist carries NO secret material. Instead it anchors
+# on structure that is NOT secret-shaped:
+#
+#   * targetRules  — applies ONLY to `generic-api-key`, so a planted `ghp_…`,
+#     an `AKIA…`, or a real `-----BEGIN … PRIVATE KEY-----` still fires on its
+#     dedicated rule regardless of anything below.
+#   * condition = "AND" of `paths` + `regexes`(line) — a finding is ignored only
+#     when it is BOTH in one of the three known fixture test files AND on a line
+#     bearing the fixture's own scaffolding (the Go identifier that names the
+#     constant, the test-table label, or the exact fixture code shape). None of
+#     those anchors is secret material — they already live verbatim in the public
+#     test sources.
+#
+# This is NOT a whole-file/path exemption: a real, DIFFERENT secret elsewhere in
+# these same files (any line without the fixture scaffolding) still fires. If a
+# fixture is renamed or a new secret-shaped fixture is added, the leg goes red
+# until its scaffolding anchor is enrolled here — the fail-closed direction.
 [[allowlists]]
-description = "Synthetic secret-shaped fixtures in the published desk tests (not real secrets)"
+description = "Synthetic secret-shaped fixtures in the published desk tests (anchored on non-secret scaffolding, no withheld material)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+# Only the three test files that carry the synthetic fixtures. Unanchored at the
+# front so the match holds whether gitleaks reports repo-relative (CI: `dir .`)
+# or absolute paths.
+paths = [
+  '''tools/desk/cmd/deskpr/pinbump_test\.go$''',
+  '''tools/desk/cmd/deskpr/deskpr_test\.go$''',
+  '''tools/desk/internal/deskkit/bodycheck_test\.go$''',
+]
+# Tested against the whole matched LINE (not the secret). Every entry is fixture
+# scaffolding — a constant name, a test-case label, or a fixed code shape — that
+# a real leak would not carry, and that embeds no token/key bytes.
+regexTarget = "line"
 regexes = [
-  # deskpr/deskkit fixture token family (base62), e.g. fixtureSecret40,
-  # scanSecret40, assignOpaqueKey, and the deskpr_test token/secret literals.
-  '''Qx7pLk2wZt9mNc4bYf6Rh[A-Za-z0-9]*''',
-  # bodycheck_test private-key body-line fixture fragment.
-  '''MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQ''',
+  # Named fixture constants (pinbump_test.go, bodycheck_test.go).
+  '''\bfixtureSecret40\b''',
+  '''\bscanSecret40\b''',
+  '''\bassignOpaqueKey\b''',
+  # Test-table case labels for the two path-shape / body-line fixtures.
+  '''token is never path-like''',
+  '''pem private-key body line''',
+  # deskpr_test.go: the token written into the throwaway `leak.txt` fixture.
+  '''writeFile\(.*"leak\.txt".*"token: ''',
+  # deskpr_test.go: `const secret = "<40 base62 chars>"` — a structural shape,
+  # NOT the value. A real `ghp_…`/`AKIA…` token contains a non-[A-Za-z0-9]
+  # character (`_`) and so does not match this shape, and fires on its own rule.
+  '''\bconst secret = "[A-Za-z0-9]{40}"''',
 ]
