@@ -488,14 +488,20 @@ jobs:
 
       # Publish via the GitHub REST API with curl — the runner ships no gh CLI,
       # and api.github.com / uploads.github.com are reachable. Create the release
-      # if absent (200 = it already exists, e.g. from a prior attempt of THIS
-      # run), then upload each asset. Assets are IMMUTABLE (H3): a same-named
-      # asset already present is a HARD ERROR, never a delete-and-reupload
-      # clobber — the release token must never be able to swap the bytes a
-      # consumer has pinned by sha256. The recovery is to cut the next patch
-      # version, matching the tag guard's own rule. (Belt-and-suspenders: the
-      # maintainer is enabling the immutable-releases repo setting so the API
-      # refuses the mutation server-side too — tracked in the PR body.)
+      # as a DRAFT if absent (200 = it already exists, e.g. from a prior attempt
+      # of THIS run), upload each asset to the draft, THEN flip it to published.
+      #
+      # WHY DRAFT-THEN-PUBLISH (immutable-releases): with the immutable-releases
+      # repo setting enabled, a release is frozen the instant it is PUBLISHED —
+      # which blocks even the FIRST asset upload (the create-published-then-upload
+      # order returns HTTP 422 on every asset). A draft is mutable, so we attach
+      # every asset to the draft and publish only once they are all on; immutability
+      # then finalizes WITH the binaries already attached.
+      #
+      # Assets are IMMUTABLE (H3): a same-named asset already present is a HARD
+      # ERROR, never a delete-and-reupload clobber — the release token must never
+      # be able to swap the bytes a consumer has pinned by sha256. The recovery is
+      # to cut the next patch version, matching the tag guard's own rule.
       - name: Create GitHub release and upload assets
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
         env:
@@ -524,15 +530,21 @@ jobs:
           if [ "$status" = "200" ]; then
             echo "Release ${RELEASE_TAG} already exists — refreshing assets."
             release_id=$(json_field id < "$rel_json")
+            # A prior attempt of this run may have left an unpublished DRAFT;
+            # capture that so we know whether the publish flip is still owed.
+            was_draft=$(json_field draft < "$rel_json")
           elif [ "$status" = "404" ]; then
-            echo "Creating release ${RELEASE_TAG}."
-            body=$(RELEASE_TAG="$RELEASE_TAG" python3 -c 'import os,json; print(json.dumps({"tag_name":os.environ["RELEASE_TAG"],"name":os.environ["RELEASE_TAG"],"body":"assay release "+os.environ["RELEASE_TAG"]+" — statusgen binaries. Pin per-platform statusgen-<platform> by sha256 in .assay-versions."}))')
+            echo "Creating draft release ${RELEASE_TAG}."
+            # draft:true — see the WHY DRAFT-THEN-PUBLISH note above. The release
+            # is published (draft flipped false) only after every asset is on.
+            body=$(RELEASE_TAG="$RELEASE_TAG" python3 -c 'import os,json; print(json.dumps({"tag_name":os.environ["RELEASE_TAG"],"name":os.environ["RELEASE_TAG"],"draft":True,"body":"assay release "+os.environ["RELEASE_TAG"]+" — statusgen binaries. Pin per-platform statusgen-<platform> by sha256 in .assay-versions."}))')
             status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' -X POST "${auth[@]}" \
               -d "$body" "${api}/releases")
             if [ "$status" != "201" ]; then
               echo "::error::could not create release ${RELEASE_TAG} (HTTP $status)"; cat "$rel_json"; exit 1
             fi
             release_id=$(json_field id < "$rel_json")
+            was_draft="True"
           else
             echo "::error::unexpected HTTP $status looking up release ${RELEASE_TAG} — refusing rather than guessing"
             cat "$rel_json"; exit 1
@@ -571,4 +583,19 @@ jobs:
               echo "::error::upload of $f failed (HTTP $status)"; cat "$RUNNER_TEMP/upload.json"; exit 1
             fi
           done
+
+          # 3) Publish. Every asset is now attached. If the release is still a
+          #    draft (freshly created, or a prior attempt left a draft), flip it
+          #    to published — immutable-releases finalizes the release at THIS
+          #    moment, with the binaries already on it. An already-published
+          #    release (was_draft=False) is left as-is: it is public already, and
+          #    PATCHing an immutable published release would fail.
+          if [ "${was_draft:-}" = "True" ] || [ "${was_draft:-}" = "true" ]; then
+            echo "Publishing draft release ${RELEASE_TAG}."
+            pub_status=$(curl -sS --retry 3 -o "$RUNNER_TEMP/publish.json" -w '%{http_code}' -X PATCH "${auth[@]}" \
+              -d '{"draft":false}' "${api}/releases/${release_id}")
+            if [ "$pub_status" != "200" ]; then
+              echo "::error::could not publish release ${RELEASE_TAG} (HTTP $pub_status)"; cat "$RUNNER_TEMP/publish.json"; exit 1
+            fi
+          fi
           echo "Published ${RELEASE_TAG} with statusgen binaries + checksums.txt."
