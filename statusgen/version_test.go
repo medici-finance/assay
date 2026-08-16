@@ -38,7 +38,7 @@ func TestVersionFlag(t *testing.T) {
 	})
 
 	t.Run("stamped build reports the tag", func(t *testing.T) {
-		const tag = "statusgen/v9.9.9"
+		const tag = "v9.9.9"
 		build := exec.Command("go", "build", "-ldflags", "-X main.statusgenVersion="+tag, "-o", bin, ".")
 		if out, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("build: %v\n%s", err, out)
@@ -62,13 +62,16 @@ func TestVersionFlag(t *testing.T) {
 
 	t.Run("release workflow stamps the tag", func(t *testing.T) {
 		// The -X flag is the whole mechanism; a release built without it ships a
-		// binary that answers "dev" and silently defeats every pin check.
-		raw, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "release-statusgen.yml"))
+		// binary that answers "dev" and silently defeats every pin check. This
+		// repo's release workflow is release.yml; a missing/unreadable workflow
+		// is a hard failure, not a skip — a skipped guard passes silently, which
+		// is the very fail-open this test exists to prevent.
+		raw, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "release.yml"))
 		if err != nil {
-			t.Skipf("release workflow not readable: %v", err)
+			t.Fatalf("release workflow not readable: %v", err)
 		}
 		if !strings.Contains(string(raw), "-X main.statusgenVersion=") {
-			t.Error("release-statusgen.yml does not stamp main.statusgenVersion — released binaries would report \"dev\"")
+			t.Error("release.yml does not stamp main.statusgenVersion — released binaries would report \"dev\"")
 		}
 	})
 }
