@@ -493,9 +493,9 @@ jobs:
       # asset already present is a HARD ERROR, never a delete-and-reupload
       # clobber — the release token must never be able to swap the bytes a
       # consumer has pinned by sha256. The recovery is to cut the next patch
-      # version, matching the tag guard's own rule. (Belt-and-suspenders: Ian is
-      # enabling the immutable-releases repo setting so the API refuses the
-      # mutation server-side too — tracked in the PR body.)
+      # version, matching the tag guard's own rule. (Belt-and-suspenders: the
+      # maintainer is enabling the immutable-releases repo setting so the API
+      # refuses the mutation server-side too — tracked in the PR body.)
       - name: Create GitHub release and upload assets
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
         env:
