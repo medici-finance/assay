@@ -5,8 +5,8 @@ name: leaksweep-pattern
 # TWO HALVES, ONE GATE. The strong, control-based token sweep needs the private
 # withheld-token map (a map to the withheld items — itself do-not-copy), so it
 # CANNOT run here. It runs privately, against this repo's PR heads, and posts its
-# verdict back as the `leak-sweep` commit status (assay-toolkit#952, design
-# Option B). THIS leg is the complementary discovery matcher that carries NO
+# verdict back as the `leak-sweep` commit status. THIS leg is the complementary
+# discovery matcher that carries NO
 # token list: gitleaks' ecosystem secret-pattern ruleset over the whole tree,
 # catching secret-SHAPED content (token prefixes, key material, cloud creds) by
 # pattern alone. Config + allowlist: .gitleaks.toml at the repo root.
