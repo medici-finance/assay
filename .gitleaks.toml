@@ -1,0 +1,36 @@
+# Pattern-matcher (discovery) leaksweep config for public medici-finance/assay.
+#
+# This is the PUBLIC, discovery-style half of the leak gate. It carries NO
+# withheld-token list — a withheld-items index is a map to the withheld items and
+# is `do-not-copy`, so it can never live in this public repo. The strong,
+# control-based token sweep runs privately against this repo's PR heads and posts
+# its verdict back as the `leak-sweep` commit status. THIS config is the
+# complementary pattern leg that runs in assay's own CI (.github/workflows/
+# leaksweep-pattern.yml): gitleaks' ecosystem secret-pattern rules over the whole
+# tree, catching secret-SHAPED content (token prefixes, key material, cloud creds)
+# by pattern alone.
+#
+# Fail-closed: the workflow asks gitleaks to exit non-zero on any finding.
+
+title = "assay public pattern-matcher leaksweep (discovery leg)"
+
+# Use gitleaks' full embedded ruleset — the ecosystem pattern set is the entire
+# value of the discovery leg. This config only ADDS an allowlist on top.
+[extend]
+useDefault = true
+
+# The published desk tests carry SYNTHETIC fixture strings that are shaped like
+# API keys / a private-key body but are invented constants, not real secrets.
+# They are allowlisted by their exact fixture VALUES (regexTarget = secret, the
+# default), NOT by exempting whole files or paths: a real, different secret in the
+# very same test files still fires. If a fixture value changes, the leg goes red
+# until the new value is enrolled here — the fail-closed direction.
+[[allowlists]]
+description = "Synthetic secret-shaped fixtures in the published desk tests (not real secrets)"
+regexes = [
+  # deskpr/deskkit fixture token family (base62), e.g. fixtureSecret40,
+  # scanSecret40, assignOpaqueKey, and the deskpr_test token/secret literals.
+  '''Qx7pLk2wZt9mNc4bYf6Rh[A-Za-z0-9]*''',
+  # bodycheck_test private-key body-line fixture fragment.
+  '''MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQ''',
+]
