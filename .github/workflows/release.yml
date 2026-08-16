@@ -31,10 +31,10 @@ name: release
 # this workflow when the tag lands — which is exactly what we want.)
 #
 # WHERE THIS RUNS — a self-hosted runner labelled `medici-builder-release`, a
-# DEDICATED release-only label that is NOT the `medici-builder-public` label
-# ci.yml's `pull_request` jobs run on. EVERY job in this workflow runs on that
-# dedicated label, so no job here ever shares a runner pool with fork-reachable
-# pull_request builds. (PREREQUISITE — a repo-admin act tracked in the PR body:
+# DEDICATED release-only label, separate from the label the general CI pipeline
+# uses. EVERY job in this workflow runs on that dedicated label, so the release
+# pipeline has its own isolated runner pool and never shares runners with
+# general CI. (PREREQUISITE — a repo-admin act tracked in the PR body:
 # a runner registered with the `medici-builder-release` label must exist before
 # a release can run.) Go is installed BY HAND from go.dev/dl (NOT
 # actions/setup-go): that runner does not reach GitHub's release-asset CDN
@@ -47,17 +47,13 @@ name: release
 # (the runner ships no `gh` CLI, and installing one would need the same blocked
 # release-asset CDN).
 #
-# WHY A DEDICATED LABEL (H1) — the earlier draft reused `medici-builder-public`,
-# the label ci.yml's `pull_request` jobs also use, and claimed a
-# docker-publish-style label segmentation made that safe. That claim was FALSE
-# for a SHARED label: this workflow never firing on pull_request does not stop a
-# FORK PR's own workflow from executing code on that same non-ephemeral pool and
-# leaving state behind ($HOME, the PATH-prepended Go dir, ~/.gitconfig) for a
+# WHY A DEDICATED LABEL (H1) — an earlier draft reused a shared CI label and
+# leaned on job-level segmentation to keep releases safe. That is not enough on
+# a self-hosted, non-ephemeral pool: any other job that lands on a shared pool
+# can leave state behind ($HOME, the PATH-prepended Go dir, ~/.gitconfig) for a
 # later release run — which cuts the canonical vX.Y.Z consumers pin — to inherit.
-# A dedicated `medici-builder-release` label removes the shared pool entirely.
-# (The separate standing exposure that ci.yml ITSELF runs fork PRs on the shared
-# non-ephemeral pool is live on main independent of this workflow and is tracked
-# as its own work item, not fixed here.)
+# A dedicated `medici-builder-release` label gives the release pipeline its own
+# pool, so no unrelated job ever runs on a release runner.
 #
 # RELEASEGUARD — assay does NOT carry tools/releaseguard (the source repo does).
 # The heavyweight release gate (tag on main, not-behind-main, tree-unchanged,
@@ -364,12 +360,12 @@ jobs:
     # still structural: on a dry run there is no step left that tags or uploads.
     runs-on: medici-builder-release
     # M1 — the human gate. `release` is the only job that pushes a tag and
-    # publishes, so it (and only it) runs in the `release` environment. With
-    # kryton set as that environment's required reviewer, a canonical release
+    # publishes, so it (and only it) runs in the `release` environment. With the
+    # release environment's required human reviewer set, a canonical release
     # pauses here for a named human to approve — converting "any holder of the
     # shared token can cut a release" into "a person clicked approve".
     # PREREQUISITE (a repo-admin act tracked in the PR body): the `release`
-    # environment must be created with kryton as a required reviewer, or this
+    # environment must be created with a required human reviewer, or this
     # gate is a no-op.
     environment: release
     permissions:
@@ -381,6 +377,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # PREFLIGHT — the publish step parses the REST API's JSON with a small
+      # python3 helper, and that step runs AFTER the tag is pushed. A runner
+      # missing python3 would therefore fail the release with the version number
+      # already burned. Prove python3 is present up front, before anything is
+      # built or tagged, so a missing interpreter fails here — loudly and with
+      # nothing spent — instead of after the irreversible tag push.
+      - name: Preflight — required tooling
+        run: |
+          set -euo pipefail
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "::error::python3 is required to parse the release API responses but is not on this runner. Failing before any tag is cut."
+            exit 1
+          fi
+          echo "python3 present: $(python3 --version 2>&1)"
 
       - name: Install Go
         env:
@@ -501,7 +512,9 @@ jobs:
                 -H "X-GitHub-Api-Version: 2022-11-28")
 
           # jq is not guaranteed on the runner; parse the id with a small python3
-          # helper (present on the base image — ci.yml assumes a standard Linux).
+          # helper. python3's presence was proven by the Preflight step above,
+          # before the tag was pushed — so this never fails post-tag on a missing
+          # interpreter.
           json_field() { python3 -c 'import sys,json; print(json.load(sys.stdin).get(sys.argv[1],""))' "$1"; }
 
           # 1) Does a release already exist for this tag?
