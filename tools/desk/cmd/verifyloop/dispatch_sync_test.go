@@ -74,16 +74,14 @@ func repoRoot(t *testing.T) string {
 }
 
 // skipIfVerifyDeskSkillAbsent skips this coupling test when the verify-desk
-// SKILL.md is not in the checkout AT ALL. .claude/ is do-not-copy per the
-// publication manifest, so the de-housed public assay tree
-// legitimately carries no verify-desk skill and there is nothing to couple
-// dispatchRequirements to.
+// SKILL.md is not in the checkout AT ALL. This repository's published file set
+// does not always carry a .claude/skills tree, so there may be no verify-desk
+// skill and nothing to couple dispatchRequirements to.
 //
 // Fail-closed intent is preserved precisely: if a .claude/skills tree IS present
 // somewhere up the walk but the specific verify-desk SKILL.md is missing (a real
-// deletion in the source repo), this does NOT skip — it returns and lets
-// repoRoot's Fatal fire. It skips only when no .claude/skills exists at all,
-// which is the de-housed public copy and never the source repo.
+// deletion), this does NOT skip — it returns and lets repoRoot's Fatal fire. It
+// skips only when no .claude/skills tree exists at all.
 func skipIfVerifyDeskSkillAbsent(t *testing.T) {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -95,11 +93,11 @@ func skipIfVerifyDeskSkillAbsent(t *testing.T) {
 			return // skill present — run the test
 		}
 		if _, err := os.Stat(filepath.Join(dir, ".claude", "skills")); err == nil {
-			return // house skills tree present but this skill missing — let repoRoot fail closed
+			return // skills tree present but this skill missing — let repoRoot fail closed
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			t.Skipf("%s not present in this checkout — .claude/ is do-not-copy for the public assay repo", skillRel)
+			t.Skipf("%s not present in this checkout", skillRel)
 		}
 		dir = parent
 	}

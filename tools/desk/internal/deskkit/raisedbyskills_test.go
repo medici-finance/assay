@@ -43,9 +43,9 @@ const skillsDir = "../../../../.claude/skills"
 // TestSkillsRaisedByVocabularyMatchesTheRoster is the diff.
 func TestSkillsRaisedByVocabularyMatchesTheRoster(t *testing.T) {
 	// The desk SKILL.md files carrying `--raised-by <role>` live under
-	// .claude/skills (do-not-copy for the public assay repo).
-	skipIfDehoused(t, skillsDir,
-		".claude/ is do-not-copy for the public assay repo; no desk skills ship")
+	// .claude/skills, which is not part of this repository's published file set.
+	skipIfFixtureAbsent(t, skillsDir,
+		".claude/ is not part of this repository's published file set; no desk skills ship")
 
 	bound := map[string]bool{}
 	for _, r := range RaisedByRoles() {
@@ -119,9 +119,9 @@ func TestSkillsRaisedByVocabularyMatchesTheRoster(t *testing.T) {
 // covers, applied to the copies. A published label must be role-shaped: lowercase letters,
 // digits and dashes. A handle, a given name or an id cannot survive that shape.
 func TestSkillsRaisedByRolesCarryNoPersonalIdentifier(t *testing.T) {
-	// House desk-skills corpus is do-not-copy for the public assay repo.
-	skipIfDehoused(t, skillsDir,
-		".claude/ is do-not-copy for the public assay repo; no desk skills ship")
+	// The desk-skills corpus is not part of this repository's published file set.
+	skipIfFixtureAbsent(t, skillsDir,
+		".claude/ is not part of this repository's published file set; no desk skills ship")
 
 	entries, err := os.ReadDir(skillsDir)
 	if err != nil {

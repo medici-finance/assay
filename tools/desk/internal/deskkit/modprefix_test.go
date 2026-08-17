@@ -43,13 +43,11 @@ func TestGoModModulesUseAssayPrefix(t *testing.T) {
 	const repoRoot = "../../../.."
 
 	goWorkPath := filepath.Join(repoRoot, "go.work")
-	// go.work is do-not-copy for the public assay repo — it ships its own subset
-	// go.work (publication/06), absent from this de-housed copy. Skip when it is
-	// legitimately absent; the source repo always carries it, so the module-prefix
-	// invariant still runs there in full.
-	skipIfDehoused(t, goWorkPath,
-		"go.work is do-not-copy for the public assay repo (it ships its own subset at publication/06)")
-
+	// go.work is not part of every checkout of this repository — a published
+	// subset ships its own go.work. Skip when it is absent; where it is present
+	// the module-prefix invariant runs in full.
+	skipIfFixtureAbsent(t, goWorkPath,
+		"go.work is not part of this repository's published file set (the subset ships its own)")
 
 	raw, err := os.ReadFile(goWorkPath)
 	if err != nil {
