@@ -131,8 +131,8 @@ env:
   # immutable-tag) NAMED alongside this umbrella release. Literal, not
   # ${{ github.repository }}, so the pin doc + Verify grep resolve it unambiguously.
   DESK_IMAGE: ghcr.io/medici-finance/assay/desk-tools
-  # The assay-harness image (distribution/07, re-homed from medici-finance/
-  # assay-toolkit#1063): the headless-agent harness — toolkit binaries + the
+  # The assay-harness image (distribution/07, re-homed from the source
+  # repo): the headless-agent harness — toolkit binaries + the
   # `assay` plugin pre-seeded via CLAUDE_CODE_PLUGIN_SEED_DIR (images/assay-harness/
   # Dockerfile). UNLIKE DESK_IMAGE (built separately by docker-publish.yml), this
   # image is BUILT in this umbrella lane, behind the same `needs: test` gate as
@@ -766,7 +766,7 @@ jobs:
 
   # ───────────────────────────────────────────────────────────────────────────
   # CONTAINER CHANNEL — the assay-harness image (distribution/07, RE-HOMED from
-  # medici-finance/assay-toolkit#1063). ONE umbrella run emits both shapes: the
+  # the source repo). ONE umbrella run emits both shapes: the
   # `release` job above cuts the binaries + checksums.txt, and THIS job builds
   # the harness image tagged with the SAME umbrella vX.Y.Z, its immutable DIGEST
   # emitted alongside the tag (the rest of the stream pins by content hash).
@@ -775,8 +775,8 @@ jobs:
   # job inherits. An image lane that skipped the test gate would reopen the
   # untested-release hole on a second channel; do not weaken this dependency.
   #
-  # WHY docker build ON medici-builder-public-release, NOT Kaniko. assay-toolkit
-  # #1063 used Kaniko because ITS `medici-builder` runners are daemon-less. assay
+  # WHY docker build ON medici-builder-public-release, NOT Kaniko. The source
+  # repo used Kaniko because ITS build runners are daemon-less. assay
   # already has a daemon-ful image label — `medici-builder-public-release`, which
   # docker-publish.yml uses to build the combined desk-tools image with plain
   # `docker build` — so this job MATCHES ASSAY'S image convention (docker build on
