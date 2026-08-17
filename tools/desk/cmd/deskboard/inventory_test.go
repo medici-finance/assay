@@ -411,6 +411,7 @@ func expectedAction(rf rollupFixture, mv mergeVerdict, rs reviewState,
 // presented as complete, in the documentation of the section about subsets presented as
 // complete. `TestReadme_VerbParity` covers the tool-reference ROW, not this sentence.
 func TestReadme_SweepingVerbSentence_359(t *testing.T) {
+	skipIfReadmeAbsent(t)
 	b, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
 	if err != nil {
 		t.Fatalf("reading tools/desk/README.md: %v", err)
@@ -1004,6 +1005,7 @@ func keysOf(m map[string]any) []string {
 // verb added or renamed leaves the documented list quietly wrong, and the operator
 // reading it believes the board covers something it does not.
 func TestReadme_VerbParity(t *testing.T) {
+	skipIfReadmeAbsent(t)
 	b, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
 	if err != nil {
 		t.Fatalf("reading tools/desk/README.md: %v", err)

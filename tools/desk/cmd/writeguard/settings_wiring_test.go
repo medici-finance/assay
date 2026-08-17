@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,6 +59,14 @@ func TestSettingsJSONWiresWriteguard(t *testing.T) {
 		t.Fatalf("resolving repo root: %v", err)
 	}
 	settingsPath := filepath.Join(repoRoot, ".claude", "settings.json")
+	// .claude/ is do-not-copy for the public assay repo (house-local settings),
+	// so the de-housed public tree carries no settings.json to wire. Skip when it
+	// is legitimately absent; the source repo — this repo's own shared checkout,
+	// the one #20 is about — always carries it, so the wiring regression guard
+	// still runs there in full.
+	if _, err := os.Stat(settingsPath); errors.Is(err, os.ErrNotExist) {
+		t.Skipf("%s not present in this tree — .claude/ is do-not-copy for the public assay repo", settingsPath)
+	}
 	data, err := os.ReadFile(settingsPath)
 	if err != nil {
 		t.Fatalf("reading %s: %v (writeguard is compiled but not wired into any live "+

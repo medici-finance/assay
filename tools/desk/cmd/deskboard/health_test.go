@@ -661,6 +661,7 @@ func TestVerbInventory_Complete(t *testing.T) {
 // verbs do not probe is load-bearing documentation (a consumer reading it decides
 // whether an absent field is meaningful). Keep it in step with the guard above.
 func TestREADME_NamesEveryNonProbingVerb(t *testing.T) {
+	skipIfReadmeAbsent(t)
 	b, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
 	if err != nil {
 		t.Fatalf("reading tools/desk/README.md: %v", err)

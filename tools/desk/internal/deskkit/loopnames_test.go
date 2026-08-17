@@ -295,6 +295,12 @@ func scanDeclaredLoopNames(root string) (decls map[string][]string, scanned int,
 // protection. This test goes red on exactly that, which is what makes the roster a
 // derived check rather than a second, drifting copy of the loop list.
 func TestEveryDeclaredLoopIdentityIsKnown(t *testing.T) {
+	// The loop-declaring desk skills live under .claude/skills (do-not-copy;
+	// the shipped adopter skills under plugins/assay/skills declare no
+	// DESK_LOOP). In the de-housed public tree there is no house corpus to diff.
+	skipIfDehoused(t, loopSkillRoots[0],
+		".claude/ is do-not-copy for the public assay repo; no loop-declaring skills ship")
+
 	totalScanned, totalDecls := 0, 0
 
 	for _, root := range loopSkillRoots {
@@ -333,6 +339,15 @@ func TestEveryDeclaredLoopIdentityIsKnown(t *testing.T) {
 // drift apart in either direction without a red test.
 func TestReadmeLoopRegistryIsKnown(t *testing.T) {
 	const readme = "../../README.md"
+	// tools/desk/README.md is human-ratified to ship 100% (issue #1276) but that
+	// flip lands in the dist/12b manifest change; until then it is do-not-copy and
+	// absent from this de-housed public copy. Skip when legitimately absent — the
+	// source repo always carries it, so the roster↔registry diff still runs there
+	// in full. NOTE: this is a stopgap; the README SHOULD ship (see #1276), at
+	// which point this guard stops firing and the diff runs here too.
+	skipIfDehoused(t, readme,
+		"tools/desk/README.md ships via the ratified dist/12b flip (issue #1276); do-not-copy until then")
+
 	raw, err := os.ReadFile(readme)
 	if err != nil {
 		t.Fatalf("cannot read %s: %v", readme, err)
@@ -382,6 +397,10 @@ func TestReadmeLoopRegistryIsKnown(t *testing.T) {
 // an equality check — but a canonical name that no skill declares must be a deliberate,
 // reasoned forward-registration, not a stale entry nobody removed.
 func TestRosterCarriesNoUndeclaredCanonicalName(t *testing.T) {
+	// House desk-skills corpus is do-not-copy for the public assay repo.
+	skipIfDehoused(t, loopSkillRoots[0],
+		".claude/ is do-not-copy for the public assay repo; no loop-declaring skills ship")
+
 	declared := map[string]bool{}
 	scannedAny := 0
 	for _, root := range loopSkillRoots {
@@ -425,6 +444,10 @@ func TestRosterCarriesNoUndeclaredCanonicalName(t *testing.T) {
 // TestPreRegistrationsAreRetiredWhenDeclared keeps preRegisteredLoopNames from becoming
 // permanent: once a skill actually declares the name, the exemption must be deleted.
 func TestPreRegistrationsAreRetiredWhenDeclared(t *testing.T) {
+	// House desk-skills corpus is do-not-copy for the public assay repo.
+	skipIfDehoused(t, loopSkillRoots[0],
+		".claude/ is do-not-copy for the public assay repo; no loop-declaring skills ship")
+
 	declared := map[string]bool{}
 	for _, root := range loopSkillRoots {
 		decls, _, err := scanDeclaredLoopNames(root)

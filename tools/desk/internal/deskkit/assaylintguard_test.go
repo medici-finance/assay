@@ -39,6 +39,16 @@ import (
 // script by exact step NAME, so renaming the step in action.yml fails this test
 // loudly rather than silently testing nothing.
 func TestAssayLintSingleWriterGuardFailsClosed(t *testing.T) {
+	// The assay-lint composite action lives under .github/, which the
+	// publication manifest classifies do-not-copy (house CI; the public assay
+	// repo wires its own CI at publication/06). When the action is legitimately
+	// absent — the de-housed public tree — there is nothing to execute, so skip.
+	// This does NOT weaken the fail-closed intent below: in the source repo the
+	// action is always present, so this guard never fires there, and an action
+	// that exists but cannot be read still Fatals.
+	skipIfDehoused(t, assayLintActionPath,
+		".github/ is do-not-copy for the public assay repo (assay wires its own CI at publication/06)")
+
 	// A guard that SKIPS on the runner is a guard that does not run where it
 	// matters, and `go test` without -v prints nothing when it does. So the
 	// skip is allowed on a developer machine and is a hard FAILURE in CI —
@@ -176,6 +186,11 @@ func TestAssayLintSingleWriterGuardFailsClosed(t *testing.T) {
 // declares `shell: bash`, without which a composite step runs under the
 // runner's default shell and `set -euo pipefail` is not in force.
 func TestAssayLintGuardPullRequestScopedAndBashed(t *testing.T) {
+	// See the sibling single-writer guard test: the action is do-not-copy for
+	// the public assay repo, so skip when it is legitimately absent.
+	skipIfDehoused(t, assayLintActionPath,
+		".github/ is do-not-copy for the public assay repo (assay wires its own CI at publication/06)")
+
 	raw := assayLintActionYAML(t)
 
 	step := assayLintStepBlock(t, raw, "Enforce single-writer rule — STATUS.md must not be committed on branches")

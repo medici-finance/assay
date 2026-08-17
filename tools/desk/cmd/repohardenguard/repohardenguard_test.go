@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -524,6 +525,13 @@ func TestShippedChecklistParses(t *testing.T) {
 	// Relative to tools/desk/cmd/repohardenguard, the package directory `go test`
 	// uses as its working directory.
 	p := filepath.Join("..", "..", "..", "..", defaultChecklist)
+	// The shipped checklist (docs/repo-hardening-checklist.md) is do-not-copy for
+	// the public assay repo — self-classified "NOT FOR PUBLICATION". When it is
+	// legitimately absent there is nothing to parse; the source repo always
+	// carries it, so this parse-and-coverage check still runs there in full.
+	if _, err := os.Stat(p); errors.Is(err, os.ErrNotExist) {
+		t.Skipf("%s not present in this tree — do-not-copy for the public assay repo (NOT FOR PUBLICATION)", p)
+	}
 	cl, err := ParseChecklistFile(p)
 	if err != nil {
 		t.Fatalf("the shipped checklist does not parse: %v", err)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,13 @@ import (
 func TestLoadManifestReadsTheFormatFixture(t *testing.T) {
 	// Repo root is four levels up from this package (tools/desk/cmd/deskrelease/).
 	path := filepath.Join("..", "..", "..", "..", "releases", "example.yaml")
+	// releases/ is do-not-copy for the public assay repo (house umbrella-release
+	// composition manifests; assay versions itself with its own process). Skip
+	// when the format fixture is legitimately absent; the source repo always
+	// carries it, so this parser check still runs there in full.
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		t.Skipf("%s not present in this tree — releases/ is do-not-copy for the public assay repo", path)
+	}
 	m, err := loadManifest(path)
 	if err != nil {
 		t.Fatalf("loadManifest(%s): %v", path, err)

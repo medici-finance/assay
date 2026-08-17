@@ -145,6 +145,12 @@ func scanRetiredDeskNames(root string) (hits []retiredHit, scanned int, seen map
 
 // TestSkillBodiesCarryNoRetiredDeskName is the diff.
 func TestSkillBodiesCarryNoRetiredDeskName(t *testing.T) {
+	// The desk skill bodies scanned here live under .claude/skills (do-not-copy
+	// for the public assay repo); the shipped plugins/assay/skills carry none of
+	// the current desk names this diff pins against, so there is nothing to scan.
+	skipIfDehoused(t, skillRoots[0],
+		".claude/ is do-not-copy for the public assay repo; no desk skills ship")
+
 	totalScanned := 0
 	seenAll := map[string]bool{}
 
