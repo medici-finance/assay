@@ -99,6 +99,11 @@ on:
         required: false
         default: "v0.1.0"
         type: string
+      publish_image:
+        description: "Push the freshly built assay-harness image to GHCR. Default false — the registry push is gated on #245. Off = build + inspect only, push nothing. A tag-push is build-only too (the harness image job builds behind the test gate; publication is a dispatch-flag decision)."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -126,6 +131,14 @@ env:
   # immutable-tag) NAMED alongside this umbrella release. Literal, not
   # ${{ github.repository }}, so the pin doc + Verify grep resolve it unambiguously.
   DESK_IMAGE: ghcr.io/medici-finance/assay/desk-tools
+  # The assay-harness image (distribution/07, re-homed from medici-finance/
+  # assay-toolkit#1063): the headless-agent harness — toolkit binaries + the
+  # `assay` plugin pre-seeded via CLAUDE_CODE_PLUGIN_SEED_DIR (images/assay-harness/
+  # Dockerfile). UNLIKE DESK_IMAGE (built separately by docker-publish.yml), this
+  # image is BUILT in this umbrella lane, behind the same `needs: test` gate as
+  # the binaries; its registry PUSH is gated on #245 (the `image` job below).
+  # Literal, for the same reason DESK_IMAGE is.
+  HARNESS_IMAGE: ghcr.io/medici-finance/assay/assay-harness
 
 jobs:
   # Work out WHICH tag this run is about, before anything is built or written.
@@ -750,3 +763,168 @@ jobs:
             fi
           fi
           echo "Published ${RELEASE_TAG} with statusgen + desk-tools binaries + checksums.txt (desk-tools image: ${DESK_IMAGE}:${DESK_IMAGE_TAG})."
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # CONTAINER CHANNEL — the assay-harness image (distribution/07, RE-HOMED from
+  # medici-finance/assay-toolkit#1063). ONE umbrella run emits both shapes: the
+  # `release` job above cuts the binaries + checksums.txt, and THIS job builds
+  # the harness image tagged with the SAME umbrella vX.Y.Z, its immutable DIGEST
+  # emitted alongside the tag (the rest of the stream pins by content hash).
+  #
+  # BEHIND `needs: [resolve, guard, test]` — the SAME gate the binary `release`
+  # job inherits. An image lane that skipped the test gate would reopen the
+  # untested-release hole on a second channel; do not weaken this dependency.
+  #
+  # WHY docker build ON medici-builder-public-release, NOT Kaniko. assay-toolkit
+  # #1063 used Kaniko because ITS `medici-builder` runners are daemon-less. assay
+  # already has a daemon-ful image label — `medici-builder-public-release`, which
+  # docker-publish.yml uses to build the combined desk-tools image with plain
+  # `docker build` — so this job MATCHES ASSAY'S image convention (docker build on
+  # that label) rather than importing the Kaniko workaround that fit a different
+  # repo's runners. (Re-home note in the PR body; a reviewer may instead prefer
+  # this build live in docker-publish.yml alongside the desk-tools image.)
+  #
+  # WHY PUBLICATION IS A FLAG, NOT A REWRITE. "Public docker images" (#274) means
+  # a public registry, and WHETHER the image is pushed is #245's call. So the
+  # image is always BUILT (behind the test gate) and inspected; the registry PUSH
+  # is gated on the `publish_image` dispatch input (default false). With the flag
+  # off — and on every tag-push — the image is built and NOTHING is pushed.
+  image:
+    needs: [resolve, guard, test]
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+    runs-on: medici-builder-public-release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Resolve the image ref from the umbrella tag. In assay the umbrella tag is
+      # a plain vX.Y.Z (no `/`), but `tr '/' '-'` is kept so a prefixed tag could
+      # never produce an illegal registry tag. The repo is lowercased — GHCR
+      # requires it. RELEASE_TAG rides in via env:, never a `${{ }}` splice into
+      # run: — a tag name is attacker-shaped text.
+      - name: Compute the image ref
+        id: ref
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          image_tag=$(printf '%s' "${RELEASE_TAG}" | tr '/' '-')
+          repo=$(printf '%s' "${HARNESS_IMAGE}" | tr '[:upper:]' '[:lower:]')
+          echo "ref=${repo}:${image_tag}" >> "$GITHUB_OUTPUT"
+          echo "Image ref: ${repo}:${image_tag}"
+
+      # THE VISIBILITY GATE (#245): log in only when we intend to push — a
+      # dispatch with publish_image=true. A tag-push, or a dispatch with the flag
+      # off, never touches the registry.
+      - name: Log in to GHCR
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_image }}
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # ONE build, always (behind the test gate). Plain `docker build` against the
+      # runner's Docker daemon (DOCKER_HOST is set on medici-builder-public-release),
+      # single-arch linux/amd64 — the same mechanics docker-publish.yml uses. The
+      # binaries are STAMPED via build-args so the image self-reports the umbrella
+      # version (the Dockerfile FAILS CLOSED on an empty ASSAY_VERSION). `--iidfile`
+      # records the built image's config id even on the no-push path.
+      - name: Build the harness image
+        id: build
+        env:
+          IMAGE_REF: ${{ steps.ref.outputs.ref }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+          SOURCE_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          SHA_SHORT="${GITHUB_SHA::12}"
+          docker build \
+            --iidfile "${RUNNER_TEMP}/harness.iid" \
+            --build-arg "ASSAY_VERSION=${RELEASE_TAG}" \
+            --build-arg "STATUSGEN_TAG=${RELEASE_TAG}" \
+            --build-arg "DESK_SOURCE_SHA=${SHA_SHORT}" \
+            --build-arg "DESK_BUILT_AT=$(date -u +%FT%TZ)" \
+            --build-arg "SOURCE_URL=${SOURCE_URL}" \
+            --build-arg "SOURCE_REVISION=${SOURCE_REVISION}" \
+            -t "${IMAGE_REF}" \
+            -f images/assay-harness/Dockerfile \
+            .
+          echo "built ${IMAGE_REF} (config id $(cat "${RUNNER_TEMP}/harness.iid"))"
+
+      # THE PUSH — a single flag-gated step (#245). `docker push` publishes the
+      # umbrella-versioned tag; the registry MANIFEST digest is then read back
+      # with `docker inspect .RepoDigests` and is what the rest of the stream
+      # pins (a tag is mutable at a registry, a digest is not). Fail closed if a
+      # push produced no RepoDigest.
+      - name: Push the harness image and record its digest
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_image }}
+        env:
+          IMAGE_REF: ${{ steps.ref.outputs.ref }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker push "${IMAGE_REF}"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE_REF}" 2>/dev/null || true)
+          if [ -z "$digest" ]; then
+            echo "::error::the image was pushed but no RepoDigest is recorded — refusing to record a tag with no immutable digest"
+            exit 1
+          fi
+          {
+            echo "### assay-harness image"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| umbrella | \`${RELEASE_TAG}\` |"
+            echo "| tag | \`${IMAGE_REF}\` |"
+            echo "| pinnable ref | \`${digest}\` |"
+            echo "| pushed | true |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          echo "pushed ${digest}"
+
+      # BUILD-ONLY path (publish_image off, or any tag-push): the image is built
+      # and its config id computed, nothing is pushed. A registry MANIFEST digest
+      # exists only after a push, so record the config id and say so.
+      - name: Note build-only (no push)
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.publish_image) }}
+        env:
+          IMAGE_REF: ${{ steps.ref.outputs.ref }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          iid=""
+          if [ -s "${RUNNER_TEMP}/harness.iid" ]; then iid=$(cat "${RUNNER_TEMP}/harness.iid"); fi
+          {
+            echo "### assay-harness image (build-only)"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| umbrella | \`${RELEASE_TAG}\` |"
+            echo "| tag (unpushed) | \`${IMAGE_REF}\` |"
+            echo "| config id | \`${iid}\` |"
+            echo "| pushed | false |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          echo "::notice::publish_image off (or tag-push) — image built and inspected, NOTHING pushed (registry push is gated on #245). A registry manifest digest exists only after a push."
+
+      # GHCR packages are created PRIVATE on first push. Best-effort flip to
+      # PUBLIC so the image pulls anonymously (mirrors docker-publish.yml). The
+      # default GITHUB_TOKEN usually lacks org package-admin; a failure here is
+      # EXPECTED and non-fatal — an org owner then flips visibility once by hand.
+      - name: Make package public (best-effort)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_image }}
+        continue-on-error: true
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GHCR_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/orgs/medici-finance/packages/container/assay%2Fassay-harness \
+            -d '{"visibility":"public"}')"
+          echo "visibility PATCH -> HTTP $code"
+          if [ "$code" != "204" ] && [ "$code" != "200" ]; then
+            echo "::warning::could not set assay-harness package visibility to public (HTTP $code); an org owner must flip it in GHCR package settings."
+          fi
