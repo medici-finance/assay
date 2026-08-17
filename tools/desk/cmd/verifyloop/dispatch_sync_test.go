@@ -75,7 +75,7 @@ func repoRoot(t *testing.T) string {
 
 // skipIfVerifyDeskSkillAbsent skips this coupling test when the verify-desk
 // SKILL.md is not in the checkout AT ALL. .claude/ is do-not-copy per the
-// assay-toolkit publication manifest, so the de-housed public assay tree
+// publication manifest, so the de-housed public assay tree
 // legitimately carries no verify-desk skill and there is nothing to couple
 // dispatchRequirements to.
 //
