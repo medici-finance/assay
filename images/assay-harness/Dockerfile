@@ -1,11 +1,11 @@
 # assay-harness — the free-tier headless-agent harness image (distribution/07).
 #
-# RE-HOMED from medici-finance/assay-toolkit#1063 (brief distribution/07) into
+# RE-HOMED from the source repo (brief distribution/07) into
 # the release home, `medici-finance/assay`, per Ian's ruling 2026-08-17: the
 # container-channel work is OSS-release infrastructure and belongs where the
 # binaries and images are cut, not in the methodology repo. The methodology
 # docs (version-scheme.md § "Image inventory", docs/distribution.md) STAY in
-# assay-toolkit; this Dockerfile and its build wiring move here.
+# the source repo; this Dockerfile and its build wiring move here.
 #
 # WHY THIS IMAGE EXISTS, and how it differs from the combined desk-tools image.
 # assay already ships ONE combined image (../../Dockerfile + docker-publish.yml):
@@ -14,7 +14,7 @@
 # CLAUDE_CODE_PLUGIN_SEED_DIR, so a headless agent in a pod starts with the
 # methodology installed and NO runtime clone / no interactive `/plugin install`.
 # The methodology record for the image inventory (which artifacts ship as images
-# vs binaries) lives in assay-toolkit `docs/streams/distribution/version-scheme.md`
+# vs binaries) lives in the source repo `docs/streams/distribution/version-scheme.md`
 # § "Image inventory"; the per-image narrative is assay `docs/docker.md`.
 #
 # BUILD CONTEXT IS THE REPOSITORY ROOT, not this directory:
@@ -24,7 +24,7 @@
 # because the image builds `statusgen` (./statusgen) and the `desk-tools`
 # commands (./tools/desk/cmd/*) from this repo's sources and seeds the plugin
 # from `.claude-plugin/` + `plugins/`. NOTE: in assay the umbrella version is a
-# plain `vX.Y.Z` tag (not the `assay/vX.Y.Z` prefix assay-toolkit's staged lane
+# plain `vX.Y.Z` tag (not the `assay/vX.Y.Z` prefix the source repo's staged lane
 # used), so ASSAY_VERSION is `v0.9.1`, not `assay/v0.9.1`.
 #
 # THE BINARIES ARE STAMPED, NOT A SOURCE BUILD. `ASSAY_VERSION` is REQUIRED and
@@ -40,7 +40,7 @@
 # WHY EVERY BASE/TOOLCHAIN VERSION IS PINNED BY DIGEST: a base image that drifts
 # silently is a fleet-wide toolchain change nobody reviewed. Base images are
 # pinned by DIGEST (a tag is mutable at a registry). The two digests below came
-# from assay-toolkit's `images/loop-base/Dockerfile`, which does NOT exist in
+# from the source repo's `images/loop-base/Dockerfile`, which does NOT exist in
 # assay — assay's sibling `images/ci-tools/Dockerfile` pins by tag, not digest.
 # These are therefore STANDALONE digest pins with no sibling to keep them in
 # lockstep; bump them deliberately (they are the linux/amd64 golang:1.25.0-bookworm
@@ -128,7 +128,7 @@ COPY --from=gobuild /out/ /usr/local/bin/
 
 # The assay plugin, pre-seeded at BUILD time. CLAUDE_CODE_PLUGIN_SEED_DIR
 # pre-populates marketplaces+plugins read-only with no runtime clone — the
-# headless install path (assay-toolkit docs/research/plugin-bundling-open-core.md
+# headless install path (the source repo's docs/research/plugin-bundling-open-core.md
 # §2.3). Loose skill copies do not install in a container; the plugin is what does.
 COPY .claude-plugin/ /opt/assay/plugin-seed/assay/.claude-plugin/
 COPY plugins/        /opt/assay/plugin-seed/assay/plugins/
