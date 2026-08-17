@@ -65,6 +65,20 @@ name: release
 #
 # A later tree-resolving releaseguard needs no `--tree-path`: the plain `vX.Y.Z`
 # tag carries no component prefix, so the released tree is the repo root.
+#
+# DESK-TOOLS ON THE UMBRELLA RELEASE (distribution/12a)
+# This umbrella `vX.Y.Z` release also carries the desk-tools suite, INTEGRATED
+# here rather than run as a separate per-tool `desk-tools/vX` release — consumers
+# pin the umbrella, never a per-tool tag (distribution/02). Two artifact lines
+# are added:
+#   * binaries — per-platform `desk-tools-<platform>.tar.gz` + a shared
+#     checksums.txt, built and uploaded to the SAME immutable draft as the
+#     statusgen binaries, then published once. The `test` job carries the four
+#     release-blocking desk-tools gate-bar assertions (docs/desk-tools-gate-bar.md).
+#   * image — `ghcr.io/medici-finance/assay/desk-tools`, built SEPARATELY by
+#     docker-publish.yml (D2's daily-immutable-tag discipline) and NOT rebuilt
+#     here; this release only NAMES the image ref in its notes so consumers can
+#     pin it in `.assay-versions`.
 
 on:
   push:
@@ -80,6 +94,11 @@ on:
         required: false
         default: false
         type: boolean
+      desk_image_tag:
+        description: "desk-tools image tag to NAME in the release notes (the image is built separately by docker-publish.yml per D2's daily-immutable-tag; this release does not rebuild it). Default v0.1.0 — the currently published image."
+        required: false
+        default: "v0.1.0"
+        type: string
 
 permissions:
   contents: write
@@ -103,6 +122,10 @@ concurrency:
 env:
   # Matches ci.yml. Kept in sync with statusgen/go.mod's `go` directive.
   GO_VERSION: "1.25.0"
+  # The desk-tools image (built SEPARATELY by docker-publish.yml, D2's daily-
+  # immutable-tag) NAMED alongside this umbrella release. Literal, not
+  # ${{ github.repository }}, so the pin doc + Verify grep resolve it unambiguously.
+  DESK_IMAGE: ghcr.io/medici-finance/assay/desk-tools
 
 jobs:
   # Work out WHICH tag this run is about, before anything is built or written.
@@ -349,6 +372,70 @@ jobs:
           go version
           cd statusgen && go test ./... && go vet ./...
 
+      # desk-tools is its own Go module at tools/desk/. Same full-suite gate the
+      # upstream release-desk.yml ran, from that module root.
+      - name: Test and vet desk-tools
+        run: |
+          set -euo pipefail
+          cd tools/desk && go test ./... && go vet ./...
+
+      # THE GATE QUALITY BAR (docs/desk-tools-gate-bar.md). `go test ./...` above
+      # already runs these, so these steps add no coverage — they add LEGIBILITY
+      # (a named failure) and make DELETION of the measurement visible: `-run`
+      # naming the tests reddens this step if the named PASS line is missing, where
+      # a bulk `go test ./...` would stay green over a deleted corpus test.
+      - name: Gate bar — golden corpus, both directions
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          out=$(go test ./internal/deskkit/ -count=1 -v \
+            -run 'TestBodycheckCorpus$|TestBodycheckPositives$|TestBodycheckCorpusCoversEveryCataloguedShape$|TestBodycheckCorpusCanFail$')
+          echo "$out"
+          for want in TestBodycheckCorpus TestBodycheckPositives \
+                      TestBodycheckCorpusCoversEveryCataloguedShape TestBodycheckCorpusCanFail; do
+            if ! grep -qE "^--- PASS: $want " <<<"$out"; then
+              echo "::error::$want did not run — the golden corpus is release-blocking (docs/desk-tools-gate-bar.md)"
+              exit 1
+            fi
+          done
+
+      - name: Gate bar — the path-rule differential, both directions
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          out=$(go test ./internal/deskkit/ -count=1 -v -run 'TestPathRuleDifferential$')
+          echo "$out"
+          grep -qE '^--- PASS: TestPathRuleDifferential ' <<<"$out" || {
+            echo "::error::TestPathRuleDifferential did not run — a classifier rule change ships with its differential"
+            exit 1
+          }
+
+      - name: Gate bar — fleet-workflow acceptance
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          out=$(go test ./internal/fleetharness/ -count=1 -v -run 'TestFleetWorkflowAcceptance$')
+          echo "$out"
+          grep -qE '^--- PASS: TestFleetWorkflowAcceptance ' <<<"$out" || {
+            echo "::error::TestFleetWorkflowAcceptance did not run — no gated verb ships without an acceptance run in the MANDATED workflow shape"
+            exit 1
+          }
+
+      # PROOF THE CHECKS CAN FAIL. muhar exits 2 only when the HARNESS is broken;
+      # a SURVIVING mutation still exits 0 with the verdict on stdout, so the
+      # totals line is what this step gates on — without it, a deleted refusal
+      # would report green here.
+      - name: Gate bar — mutate every bodycheck refusal and require the suite to catch it
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          report=$(go run ./cmd/muhar -spec internal/deskkit/mutations.json)
+          echo "$report"
+          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
+            echo "::error::a bodycheck refusal survived its mutation, or could not be applied — the gate is not load-bearing as written (docs/desk-tools-gate-bar.md)"
+            exit 1
+          fi
+
   release:
     needs: [resolve, guard, test]
     # A dry run runs this job up to and including the BUILD, then stops. The
@@ -435,13 +522,69 @@ jobs:
           GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-amd64 .
           GOOS=linux  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-linux-amd64  .
 
+      # desk-tools ships this same umbrella release as per-platform tarballs (the
+      # suite is 25+ binaries, so one archive per platform is cleaner for
+      # consumers than 75 loose assets — mirrors the upstream release-desk.yml).
+      #
+      # The ldflags stamp maps a running desk-tools binary back to THIS umbrella
+      # release: SourceSHA + BuiltAt satisfy deskkit.IsPinned() (an unstamped
+      # build self-reports UNPINNED and warns on every invocation), and
+      # deskkit.ReleaseTag=$RELEASE_TAG records WHICH vX.Y.Z it was cut from —
+      # SourceSHA alone is a commit, not a version.
+      # TestVersionStampedFromReleaseWorkflow (tools/desk/internal/deskkit) reddens
+      # if this `deskkit.ReleaseTag=$RELEASE_TAG` stamp is dropped from release.yml.
+      #
+      # The tag rides in via env: (RELEASE_TAG), never a `${{ }}` splice inside
+      # run: — a tag name is attacker-shaped text. This is a pure Go cross-compile;
+      # it does NOT build the container image (docker-publish.yml owns that, D2).
+      - name: Build and package desk-tools binaries
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          go version
+          # desk-tools is a SEPARATE Go module (tools/desk/go.mod) and the repo
+          # root carries no go.mod/go.work, so the build must run from inside the
+          # module. Resolve the sha at the root first, then cd in; stage each
+          # platform's binaries under RUNNER_TEMP and tar into the repo root, where
+          # the checksum + upload steps below expect the assets.
+          SHA_SHORT=$(git rev-parse --short HEAD)
+          TIMESTAMP=$(date -u +%FT%TZ)
+          LDFLAGS="-X github.com/medici-finance/assay/tools/desk/internal/deskkit.SourceSHA=${SHA_SHORT} \
+                   -X github.com/medici-finance/assay/tools/desk/internal/deskkit.BuiltAt=${TIMESTAMP} \
+                   -X github.com/medici-finance/assay/tools/desk/internal/deskkit.ReleaseTag=${RELEASE_TAG}"
+          root="$PWD"
+          cd tools/desk
+          for platform in darwin-arm64 darwin-amd64 linux-amd64; do
+            os="${platform%-*}"
+            arch="${platform#*-}"
+            stage="${RUNNER_TEMP:-/tmp}/desk-$platform"
+            rm -rf "$stage"; mkdir -p "$stage"
+            for cmd in cmd/*/; do
+              name=$(basename "$cmd")
+              GOOS="$os" GOARCH="$arch" go build -ldflags "$LDFLAGS" \
+                -o "$stage/$name" "./$cmd"
+            done
+            # Include the pre-push hook so consumers can install the main-commit
+            # backstop alongside the binaries.
+            mkdir -p "$stage/hooks"
+            cp hooks/pre-push "$stage/hooks/pre-push"
+            tar -C "$stage" -czf "$root/desk-tools-$platform.tar.gz" .
+          done
+
+      # One checksums.txt covers every asset on the umbrella release — the three
+      # statusgen binaries and the three desk-tools per-platform tarballs.
+      # Consumers pin each line by sha256 in .assay-versions.
       - name: Generate checksums
         run: |
           set -euo pipefail
           sha256sum \
             statusgen-darwin-arm64 \
             statusgen-darwin-amd64 \
-            statusgen-linux-amd64 > checksums.txt
+            statusgen-linux-amd64 \
+            desk-tools-darwin-arm64.tar.gz \
+            desk-tools-darwin-amd64.tar.gz \
+            desk-tools-linux-amd64.tar.gz > checksums.txt
           cat checksums.txt
 
       # A dry run has now built + checksummed the artifacts (proving build, guard
@@ -508,6 +651,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          # DESK_IMAGE is the workflow-level literal; the tag defaults to the
+          # currently published image (v0.1.0) and is overridable on dispatch.
+          DESK_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.desk_image_tag || 'v0.1.0' }}
         run: |
           set -euo pipefail
 
@@ -537,7 +683,10 @@ jobs:
             echo "Creating draft release ${RELEASE_TAG}."
             # draft:true — see the WHY DRAFT-THEN-PUBLISH note above. The release
             # is published (draft flipped false) only after every asset is on.
-            body=$(RELEASE_TAG="$RELEASE_TAG" python3 -c 'import os,json; print(json.dumps({"tag_name":os.environ["RELEASE_TAG"],"name":os.environ["RELEASE_TAG"],"draft":True,"body":"assay release "+os.environ["RELEASE_TAG"]+" — statusgen binaries. Pin per-platform statusgen-<platform> by sha256 in .assay-versions."}))')
+            # The notes NAME the desk-tools image ref (built separately by
+            # docker-publish.yml) as an artifact line alongside the binaries.
+            desk_image_ref="${DESK_IMAGE}:${DESK_IMAGE_TAG}"
+            body=$(RELEASE_TAG="$RELEASE_TAG" DESK_IMAGE_REF="$desk_image_ref" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; img=os.environ["DESK_IMAGE_REF"]; notes="assay release "+tag+" - statusgen + desk-tools.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * desk-tools-<platform>.tar.gz\n\ndesk-tools image (built separately by docker-publish.yml, D2 daily-immutable-tag; pin the ref in .assay-versions):\n  * "+img+"\n\nSee checksums.txt for every asset sha256."; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
             status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' -X POST "${auth[@]}" \
               -d "$body" "${api}/releases")
             if [ "$status" != "201" ]; then
@@ -567,7 +716,9 @@ jobs:
             cat "$assets_json"; exit 1
           fi
 
-          for f in statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 checksums.txt; do
+          for f in statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 \
+                   desk-tools-darwin-arm64.tar.gz desk-tools-darwin-amd64.tar.gz desk-tools-linux-amd64.tar.gz \
+                   checksums.txt; do
             # Fail loudly if this name is already published — never swap the bytes.
             existing_id=$(NAME="$f" ASSETS_JSON="$assets_json" python3 -c 'import os,json; d=json.load(open(os.environ["ASSETS_JSON"])) if os.path.exists(os.environ["ASSETS_JSON"]) else []; d=d if isinstance(d,list) else []; print(next((str(a.get("id","")) for a in d if a.get("name")==os.environ["NAME"]), ""))' 2>/dev/null || true)
             if [ -n "${existing_id:-}" ]; then
@@ -598,4 +749,4 @@ jobs:
               echo "::error::could not publish release ${RELEASE_TAG} (HTTP $pub_status)"; cat "$RUNNER_TEMP/publish.json"; exit 1
             fi
           fi
-          echo "Published ${RELEASE_TAG} with statusgen binaries + checksums.txt."
+          echo "Published ${RELEASE_TAG} with statusgen + desk-tools binaries + checksums.txt (desk-tools image: ${DESK_IMAGE}:${DESK_IMAGE_TAG})."
