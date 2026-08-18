@@ -261,7 +261,7 @@ func TestAssessRepoBranch_EmptyRepo(t *testing.T) {
 
 // TestBranchHealth_AnnouncesItsScope — the durable half. A block that cannot state what
 // it covered can have "0 red" read as "nothing is red", which is exactly the confusion
-// #295 and #359 are both instances of.
+// this test guards against.
 func TestBranchHealth_AnnouncesScopeAndTally(t *testing.T) {
 	stubGHFunc(t, func(args ...string) ([]byte, error) {
 		req := strings.Join(args, " ")

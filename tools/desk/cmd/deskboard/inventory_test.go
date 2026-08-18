@@ -420,7 +420,7 @@ func TestReadme_SweepingVerbSentence_359(t *testing.T) {
 	i := strings.Index(string(b), claim)
 	if i < 0 {
 		t.Fatalf("README.md no longer carries the %q sentence — the coverage claim it documents "+
-			"is what #359 exists to make legible", claim)
+			"is what this test keeps legible", claim)
 	}
 	// The sentence runs to the end of its bullet (the next line starting "- **").
 	rest := string(b)[i:]
