@@ -79,8 +79,8 @@ var baseRiskPathTriggers = []string{
 // gate code, which travels with the code it protects.
 //
 // THE PER-REPO SET IS DECLARED ONCE, in `topology.yaml` (repos[].risk_path_triggers),
-// with the rationale for each repo's surfaces in that file's `note:`. ground-truth/04
-// retired the hand table that used to sit at this spot (#276); the values, their
+// with the rationale for each repo's surfaces in that file's `note:`. The topology-driven
+// registry retired the hand table that used to sit at this spot; the values, their
 // rationale and this gate's reading of them can no longer disagree without
 // TestTopologyDriftRegistry going red and naming this site.
 //

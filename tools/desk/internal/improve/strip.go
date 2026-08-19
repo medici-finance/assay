@@ -1,5 +1,5 @@
 // Package improve is the render layer behind the Improve pane
-// (desk-console-2/05, design doc §5.3 and §7.3): the four strips —
+// (design §5.3 and §7.3): the four strips —
 // Reports, Clusters, Retro queue, Did it work — expressed as types that
 // cannot render a lie, rather than as a convention a reviewer has to police.
 //
@@ -45,7 +45,7 @@
 //     sideeffect.go.
 //   - `statusgen --trend` prints `insufficient history` and exits 0 when the
 //     transition log is missing entirely, so a could-not-check is delivered
-//     with the exit code of a measured no-data result (filed as #959).
+//     with the exit code of a measured no-data result (filed separately).
 //     Classification here is therefore on CONTENT, never on exit code.
 //   - The DORA emitter marks a partial metric `"computed": true`. Measured
 //     2026-08-13: `change_failure_rate` reads

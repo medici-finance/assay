@@ -1,7 +1,7 @@
 # GOLDEN FIXTURE — a NEUTRALIZED copy of a consumer repo's `.assay-versions` file.
 #
 # This is the load-bearing backward-compat fixture for the pin reader/validator:
-# every backward-compat assertion in distribution/04 runs against THIS file. It is
+# every backward-compat assertion in the pin-file spec runs against THIS file. It is
 # shaped like a real, comment-heavy consumer pin file so the reader must never break
 # on the properties a live one carries:
 #   * comment-heavy, with blank lines and `#` header/section blocks;
@@ -91,7 +91,7 @@ desk-tools-darwin-amd64 desk-tools/v0.2.6 112dbb75e3e1f1342992f8c55886d42e80afb2
 # value before any of it reaches the workspace, and refuses if this tag differs from the
 # binaries' tag, so a half-moved bump is red rather than silently skewed. On the next
 # bump, move this line WITH the three binary pins above, in the same commit.
-desk-tools-source       desk-tools/v0.2.6 998e5f361062dd28caeb5db0ffe6a419d104a378  # tools/desk tree compiled by gate-pins
+desk-tools-source       desk-tools/v0.2.6 abad1deaabad1deaabad1deaabad1deaabad1dea  # tools/desk tree compiled by gate-pins
 
 # NOTE: this fixture carries NO umbrella line, so the umbrella reader's
 # absent-is-a-valid-third-state path is exercised against it. An umbrella line, when

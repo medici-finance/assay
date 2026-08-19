@@ -142,7 +142,7 @@ func cmdDuplicate(args []string, out io.Writer) error {
 	// --mined is mandatory and is checked BEFORE the lane refusal below, so the
 	// contract stays enforced against the day the lane unlocks. A duplicate close
 	// without a statement that the loser was mined for unique value first is the exact
-	// content loss the at#158 procedure exists to prevent.
+	// content loss the two-role duplicate procedure exists to prevent.
 	if strings.TrimSpace(*mined) == "" {
 		return deskkit.Refused(
 			"refused: duplicate requires --mined <summary> — a one-line statement of what unique value " +
@@ -157,7 +157,7 @@ func cmdDuplicate(args []string, out io.Writer) error {
 	if !g.DuplicateLaneGranted {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: the duplicate lane is NOT the desk's to run. %s leaves it with the "+
-				"two-role #158 procedure: a strong-tier worker reviews both items and folds "+
+				"two-role duplicate procedure: a strong-tier worker reviews both items and folds "+
 				"the loser's unique content into the FIRST-FILED survivor, and then a REVIEWER closes the "+
 				"duplicate — only after agreeing the content moved. Two roles, and neither is a batch tool.\n"+
 				"  Fold the content, then have the reviewer close %s#%d.\n"+
@@ -347,7 +347,7 @@ func verifyLane(r closeReq, it item) (string, dispositionRead, error) {
 
 	// A PULL REQUEST being closed must already carry a terminal disposition record.
 	// deskclose supplies the human authorization and the execution; the FINDING is the
-	// worker's, recorded by ground-truth/05.
+	// worker's, recorded by deskdisposition.
 	if it.isPR() {
 		d, err := requireTerminalDisposition(r.repo, r.number, target)
 		if err != nil {

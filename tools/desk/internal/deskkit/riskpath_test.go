@@ -38,7 +38,7 @@ func TestRiskPathTriggered(t *testing.T) {
 		{"tracker risk among clean", trackerRepo, []string{"README.md", "frontend/src/App.tsx", "secrets/db.pw"}, true},
 
 		// --- tracker: near-misses must NOT fire (the waiver still works where intended) ---
-		{"tracker docs only", trackerRepo, []string{"docs/streams/desk-tools/brief-03-deskpost.md"}, false},
+		{"tracker docs only", trackerRepo, []string{"docs/streams/example-stream/brief-03-deskpost.md"}, false},
 		{"tracker frontend only", trackerRepo, []string{"frontend/src/lib/client.ts"}, false},
 		{"tracker secrets prefix not segment", trackerRepo, []string{"secretsmanager/config.go"}, false},
 		{"tracker workflows sibling not segment", trackerRepo, []string{".github/workflowsx/y.yml"}, false},

@@ -2,7 +2,7 @@ package deskkit
 
 // claim.go — the canonical claimable-action LOCK primitive.
 //
-// Three disjoint on-disk claim schemas used to coexist (item 2):
+// Three disjoint on-disk claim schemas used to coexist:
 //
 //   - loopengine's dispatch claim:  {itemID, runner, branch, claimed}
 //   - deskroster's reader:          {brief, session, ts}
@@ -13,7 +13,7 @@ package deskkit
 // UnmarshalJSON maps every legacy field name onto Item/Owner/Branch/TS, so List and
 // the stale check read every existing on-disk claim during rollout.
 //
-// THE #146 LESSON (cited, load-bearing). The atomic-claim idiom used to live in a
+// THE DOUBLE-DISPATCH LESSON (load-bearing). The atomic-claim idiom used to live in a
 // shell `(set -C; … > "$f")`. The writeguard hook blocks the `>` redirect, so an
 // agent falls back to the Write tool — a BLIND overwrite with no O_EXCL — and every
 // racer "succeeds": double-dispatch. Moving atomicity into this binary is the fix.
@@ -52,7 +52,7 @@ const DefaultStaleClaim = 120 * time.Minute
 // It is a package var for ONE reason: so a test can shorten it and prove the deadline
 // exists. There is deliberately no flag and no env override — shortening it in
 // production would not make claiming faster, it would make it give up on a legitimately
-// busy lock, and giving up early is one step from "assume free" (the #146 failure).
+// busy lock, and giving up early is one step from "assume free" (the double-dispatch failure).
 var claimLockWait = 60 * time.Second
 
 // Claim is the canonical claim record. The WRITE shape is exactly {kind,item,owner,
@@ -65,7 +65,7 @@ type Claim struct {
 	TS     string `json:"ts"`
 }
 
-// UnmarshalJSON is the TOLERANT read that heals the #278-item-2 schema fork: it accepts
+// UnmarshalJSON is the TOLERANT read that heals the schema fork: it accepts
 // the canonical field names AND the two legacy shapes, mapping every alias onto the
 // canonical fields. Canonical names win when both are present.
 //
@@ -128,7 +128,7 @@ func (cfg ClaimConfig) withDefaults() ClaimConfig {
 }
 
 // claimPath returns the claim file path for an item in cfg.ClaimsDir. The item ID is
-// sanitized to a single path segment so "loop-engine/01" cannot escape the claims dir.
+// sanitized to a single path segment so "feature/01" cannot escape the claims dir.
 // This MUST stay byte-identical to loopengine.claimPath so a claim written through one
 // is found through the other during rollout.
 func claimPath(cfg ClaimConfig, item string) string {
@@ -145,14 +145,14 @@ type claimLock struct{ f *os.File }
 // sleep 50ms between attempts.
 //
 // Every non-success return is deskkit.Unverifiable (exit 6) — a lock this process cannot
-// hold is NEVER permission to proceed (#146). It NEVER returns (nil, nil).
+// hold is NEVER permission to proceed. It NEVER returns (nil, nil).
 func acquireClaimLock(dir string) (*claimLock, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, Unverifiable("claim: cannot create claims dir", err)
 	}
 	// The lock file is directory-scoped (".claims.lock") and does NOT end in .claim, so it
 	// is never itself listed as a claim. A directory-wide lock serialises fresh claimants
-	// AND reclaimers against one another, which is what closes the #146 double-dispatch:
+	// AND reclaimers against one another, which is what closes the double-dispatch:
 	// no O_EXCL create can race a stale reclaim's in-place rewrite.
 	f, err := os.OpenFile(filepath.Join(dir, ".claims.lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
@@ -188,7 +188,7 @@ func (l *claimLock) release() {
 //   - fresh item          → O_CREATE|O_EXCL create the claim → (true, nil);
 //   - existing + live      → (false, nil)  collision, do NOT dispatch;
 //   - existing + stale      → reclaim IN PLACE (O_WRONLY|O_TRUNC, never Remove) → (true, nil);
-//   - lock unheld / unreadable / unwritable → (false, Unverifiable)  fail closed (#146).
+//   - lock unheld / unreadable / unwritable → (false, Unverifiable)  fail closed.
 //
 // The reclaim rewrites the file in place — it is NEVER Remove-then-create. A Remove would
 // leave a window in which the claim file does not exist and an unrelated fresh O_EXCL
@@ -209,7 +209,7 @@ func Acquire(cfg ClaimConfig, c Claim) (acquired bool, err error) {
 
 	lock, lerr := acquireClaimLock(cfg.ClaimsDir)
 	if lerr != nil {
-		// #146: a lock we could not hold is NOT permission to write. Fail closed (exit 6),
+		// A lock we could not hold is NOT permission to write. Fail closed (exit 6),
 		// never "assume free".
 		return false, lerr
 	}
@@ -321,6 +321,58 @@ func Release(cfg ClaimConfig, item string) error {
 		return Unverifiable("claim: cannot remove claim", err)
 	}
 	return nil
+}
+
+// ReleaseMatching removes an item's claim ONLY IF the on-disk claim still matches the
+// expected owner/branch/ts — a compare-and-delete run under the same directory-wide flock
+// every reclaimer takes. It exists for crash recovery: recovery reads claims with List (no
+// lock), classifies them against the replayed journal, then deletes the ones it owns. In the
+// window between the List and the delete another consumer can legitimately reclaim the SAME
+// item IN PLACE — Acquire rewrites owner/branch/ts under the flock — and an unconditional
+// Release would then delete that fresh, live claim, reopening the very double-dispatch window
+// Acquire's in-place-never-Remove rule closes. Comparing the ts (which every reclaim rewrites)
+// under the lock closes it here too.
+//
+//   - (true, nil)  the claim still matched what was classified and was removed;
+//   - (false, nil) the claim no longer matches (reclaimed/rewritten underneath us) or is
+//     already gone — nothing removed, and neither is an error;
+//   - (false, err) the lock could not be held, or the file could not be read/removed — fail
+//     closed, never a silent success.
+func ReleaseMatching(cfg ClaimConfig, want Claim) (bool, error) {
+	if cfg.ClaimsDir == "" {
+		return false, Unverifiable("claim: ReleaseMatching needs a ClaimsDir", nil)
+	}
+	if want.Item == "" {
+		return false, Refused("claim: ReleaseMatching needs a non-empty Item")
+	}
+	cfg = cfg.withDefaults()
+
+	lock, lerr := acquireClaimLock(cfg.ClaimsDir)
+	if lerr != nil {
+		return false, lerr // a lock we could not hold is NEVER permission to delete
+	}
+	defer lock.release()
+
+	path := claimPath(cfg, want.Item)
+	b, rerr := os.ReadFile(path)
+	if rerr != nil {
+		if os.IsNotExist(rerr) {
+			return false, nil // already gone — nothing to remove, not an error
+		}
+		return false, Unverifiable("claim: ReleaseMatching cannot read existing claim", rerr)
+	}
+	var have Claim
+	if json.Unmarshal(b, &have) != nil {
+		// A claim we cannot parse is one we cannot prove is the one we classified — leave it.
+		return false, Unverifiable("claim: ReleaseMatching cannot parse existing claim", nil)
+	}
+	if have.Owner != want.Owner || have.Branch != want.Branch || have.TS != want.TS {
+		return false, nil // reclaimed/rewritten between the List and now — do NOT remove it
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return false, Unverifiable("claim: ReleaseMatching cannot remove claim", err)
+	}
+	return true, nil
 }
 
 // List reads every claim file in cfg.ClaimsDir through the tolerant reader, so a display

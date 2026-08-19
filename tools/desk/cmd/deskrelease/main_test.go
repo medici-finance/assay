@@ -257,7 +257,7 @@ func TestRefusalPaths(t *testing.T) {
 				}
 			}
 			// Every refusal is audited exactly once. That single line is what the
-			// non-progress circuit breaker counts (#209): it is NOT what
+			// non-progress circuit breaker counts: it is NOT what
 			// the outward-write budget counts, because a refusal never reached GitHub.
 			// Auditing zero lines would blind the breaker; auditing two would trip it
 			// at half the intended run length.
@@ -362,7 +362,7 @@ func TestDryRunValidatesButWritesNothing(t *testing.T) {
 	}
 }
 
-// TestRehearsingAReleaseCannotLockOutTheRealOne is #214's fourth item, end to end.
+// TestRehearsingAReleaseCannotLockOutTheRealOne proves the dry-run/breaker property end to end.
 //
 // A dry run used to be audited `noop`, which the non-progress circuit breaker counts, so
 // BreakerTrip consecutive rehearsals opened a 15-minute breaker and the real `cut` that
@@ -398,7 +398,7 @@ func TestRehearsingAReleaseCannotLockOutTheRealOne(t *testing.T) {
 	for i, e := range entries {
 		if e.Result != deskkit.ResultDryRun {
 			t.Fatalf("dry-run audit line %d has result %q, want %q — `noop` is counted by the "+
-				"breaker and is what locked the real cut out (#214)", i, e.Result, deskkit.ResultDryRun)
+				"breaker and is what locked the real cut out", i, e.Result, deskkit.ResultDryRun)
 		}
 	}
 
@@ -552,8 +552,8 @@ func TestKillSwitchRunsBeforeAnythingElse(t *testing.T) {
 
 // --- rate limit -----------------------------------------------------------------
 
-// TestRefusalLoopIsStopped pins that a looping caller must be cut off. Since
-// #209 the instrument that cuts it off is the non-progress CIRCUIT BREAKER,
+// TestRefusalLoopIsStopped pins that a looping caller must be cut off. The
+// instrument that cuts it off is the non-progress CIRCUIT BREAKER,
 // not the outward-write budget — a `refused` never reached the remote, so charging it to
 // a budget denominated in remote amplification starved every other writer of the same
 // tool for an hour (a full window of refusals, none of them writes).

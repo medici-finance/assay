@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// TestDrain is the brief-01 drain drill against a FIXTURE queue (no live briefs). It proves,
+// TestDrain is the drain drill against a FIXTURE queue (no live briefs). It proves,
 // in one run: sustain-at-N concurrency, land-as-returned, the file-and-continue path, drain
 // to empty, idle-poll, and stop-flag exit. Its Progress lines ("landed:" / "filed-and-
 // continued:") are what Verify item 3 greps for (>=4). Run with -v to see them.

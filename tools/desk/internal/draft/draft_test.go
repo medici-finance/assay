@@ -163,7 +163,7 @@ func TestComposeRefusesABareNumeral(t *testing.T) {
 		"There are 47 rows at todo.",
 		"Roughly 3x the usual load.",
 		"See the report from 2026-08-13.",
-		"Item #912 is the blocker.",
+		"Item #7 is the blocker.",
 	}
 	for _, body := range cases {
 		if _, err := Compose(KindAnswer, testTarget, "t", body); !errors.Is(err, ErrUncitedFigure) {
@@ -312,7 +312,7 @@ func TestTheZeroDraftRendersAsAbsentNotEmpty(t *testing.T) {
 }
 
 func TestPriorityKindComposes(t *testing.T) {
-	d, err := Compose(KindPriority, Target{Repo: "example-org/example-repo", Kind: "stream", Ref: "desk-console-2"},
+	d, err := Compose(KindPriority, Target{Repo: "example-org/example-repo", Kind: "stream", Ref: "example-stream"},
 		"proposed priority change: drain before starting",
 		"This stream holds {{figure:brief-status-count}} rows at todo; propose moving the drain ahead of new starts.",
 		computed("brief-status-count", 7))

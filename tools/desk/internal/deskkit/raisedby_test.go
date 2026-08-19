@@ -160,7 +160,7 @@ func TestRaisedByZeroValueIsUnknown(t *testing.T) {
 	}
 }
 
-// TestRaisedByOfThreeStates is the READER contract mm/30 computes against.
+// TestRaisedByOfThreeStates is the READER contract the downstream metric consumer computes against.
 func TestRaisedByOfThreeStates(t *testing.T) {
 	plantRoster(t, raisedByFixtureRoster)
 	cases := []struct {
@@ -216,7 +216,7 @@ func TestRaisedByOfNeverInventsHumanRaised(t *testing.T) {
 }
 
 // TestRaisedByPrefixPinned — the label prefix is a wire format shared with a consumer in
-// another module (mm/28, mm/30). Changing it silently orphans every stamp already applied.
+// another module. Changing it silently orphans every stamp already applied.
 func TestRaisedByPrefixPinned(t *testing.T) {
 	if RaisedByPrefix != "raised-by:" {
 		t.Fatalf("RaisedByPrefix = %q, want \"raised-by:\" — the prefix is the wire format the "+

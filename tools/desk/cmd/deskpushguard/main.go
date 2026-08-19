@@ -289,7 +289,17 @@ func parseRef(line string) (refLine, bool) {
 		return refLine{}, false
 	}
 	local := parts[0]
-	branch := filepath.Base(local)
+	var branch string
+	if strings.HasPrefix(local, "refs/heads/") {
+		// Keep the FULL slashed branch name (e.g. fix/issue-108). filepath.Base
+		// collapses it to the last segment (issue-108), so fetchPR looks up a
+		// branch that does not exist, finds no PR, and the guard fails OPEN on
+		// the house slash-branch convention — a silent no-op (#267).
+		branch = strings.TrimPrefix(local, "refs/heads/")
+	} else {
+		// Tags and other refs keep their leaf name (e.g. refs/tags/v1.0 -> v1.0).
+		branch = filepath.Base(local)
+	}
 	if branch == "." || branch == "/" || branch == "" {
 		return refLine{}, false
 	}

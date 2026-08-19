@@ -17,7 +17,7 @@ import (
 //
 // Their presence is an ABSOLUTE refusal, in every mode including a manifest row, and
 // it is checked before the lane's own preconditions. A decision item leaves the queue
-// through issue-flow/06's digest, where the human sees it — never through a dedupe or
+// through the decision digest, where the human sees it — never through a dedupe or
 // supersession sweep, which is a batch nobody reads item by item.
 //
 // `human-decided` is refused as firmly as `needs-decision`. It is tempting to read it
@@ -82,7 +82,7 @@ func refuseDecisionItem(repo string, it item) error {
 			if strings.EqualFold(strings.TrimSpace(have), want) {
 				return deskkit.Refused(fmt.Sprintf(
 					"refused: %s#%d carries the %q label. Decision items exit through the decision digest "+
-						"(issue-flow/06) where a human reads them one at a time — never through a dedupe or "+
+						"where a human reads them one at a time — never through a dedupe or "+
 						"supersession sweep. This refusal has no override in any mode, including a manifest row.",
 					repo, it.Number, want))
 			}

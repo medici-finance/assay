@@ -505,7 +505,7 @@ func TestPreflightMissingSiblingIsRed(t *testing.T) {
 	withRoster(t, goldenRoster())
 	p := okProbes()
 	p.QueuedSiblings = func(string) ([]SiblingReq, error) {
-		return []SiblingReq{{Brief: "docs/streams/methodology-metrics/brief-43-x.md", Rel: "../tracker"}}, nil
+		return []SiblingReq{{Brief: "docs/streams/example-stream/brief-43-x.md", Rel: "../tracker"}}, nil
 	}
 	p.DirExists = func(string) (bool, error) { return false, nil }
 	rep := runPF(t, p)

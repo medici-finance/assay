@@ -26,12 +26,13 @@ const rulingID = "R-1"
 
 // supersedeMarker is what R-1's sign-off must say to unlock the duplicate lane.
 //
-// R-1's own conflict disclosure sets this bar: the duplicate close is granted by
-// #158 to a strong-tier worker plus a reviewer, and the close-grant ruling (#297) states
-// explicitly that duplicates are NOT covered by the desk's close grant. R-1 therefore
-// says, in terms, that deskclose "must refuse duplicate closes", and that moving the
-// lane to the desk "is an EXPLICIT supersession of the at#158 ruling ... and should be
-// stated as such in the sign-off, not inferred from acceptance of this ruling".
+// R-1's own conflict disclosure sets this bar: the duplicate close is granted by the
+// two-role duplicate procedure to a strong-tier worker plus a reviewer, and the
+// close-grant ruling states explicitly that duplicates are NOT covered by the desk's
+// close grant. R-1 therefore says, in terms, that deskclose "must refuse duplicate
+// closes", and that moving the lane to the desk "is an EXPLICIT supersession of the
+// two-role ruling ... and should be stated as such in the sign-off, not inferred from
+// acceptance of this ruling".
 //
 // So the unlock is not "R-1 is signed". It is "R-1's sign-off comment says the words".
 // Accepting R-1 as written must never widen the desk's authority past what the human
@@ -48,7 +49,7 @@ type grant struct {
 	// AuthorLogin is the verified author of that artifact.
 	AuthorLogin string
 	// DuplicateLaneGranted is true only when the sign-off text explicitly supersedes
-	// the #158 two-role duplicate procedure.
+	// the two-role duplicate procedure.
 	DuplicateLaneGranted bool
 }
 

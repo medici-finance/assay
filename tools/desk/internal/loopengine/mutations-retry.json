@@ -32,7 +32,7 @@
       "new": "\tif false && o.Class == ClassUnclassified {\n\t\treturn VerdictNeedsContext\n\t}"
     },
     {
-      "name": "a bare exit 4 with no stated wait becomes a guessed retry — the #209 livelock re-entered",
+      "name": "a bare exit 4 with no stated wait becomes a guessed retry — the livelock re-entered",
       "file": "internal/loopengine/retry.go",
       "old": "\t\t\treturn Classification{Class: ClassUnclassified, Why: \"exit 4 rate-limited but carrying NO retry-after",
       "new": "\t\t\treturn Classification{Class: ClassTransient, Why: \"exit 4 rate-limited but carrying NO retry-after"

@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// drift_test.go — the enforcement half of ground-truth/04.
+// drift_test.go — the enforcement half of the topology single-sourcing.
 //
 // topology.yaml is the ONE declared source; compiled.go is this module's
 // derivation; statusgen/topologyvalues.go is statusgen's. Nothing stops a future
@@ -23,8 +23,7 @@ import (
 //
 // THREE-STATE. Every read here is checked. A source it cannot read, a tree it
 // cannot walk, a file it cannot open — each is a FAILURE naming what could not
-// be checked, never a pass. A checker that could not look never reports green
-// (docs/streams/ground-truth/README.md).
+// be checked, never a pass. A checker that could not look never reports green.
 //
 // PROOF IT CAN FAIL. Part 2 and part 3 both carry positive controls
 // (TestTopologyDriftRegistryPositiveControl) that feed the same detectors a
@@ -47,8 +46,6 @@ type retiredSite struct {
 	// replacement names where the fact lives now, so the failure message tells
 	// the reader what to do instead of only what is wrong.
 	replacement string
-	// issue is the issue the site's drift was filed as.
-	issue string
 }
 
 // retiredTableSites is the registry. Adding a row RETIRES a site; removing one
@@ -59,37 +56,31 @@ func retiredTableSites() []retiredSite {
 			file:        "statusgen/scanissues.go",
 			literal:     "var scanExcludedLabels = map[string]bool{",
 			replacement: "statusgen/topologyvalues.go's topologySystemStateLabels, derived from topology.yaml labels.system_state",
-			issue:       "#829",
 		},
 		{
 			file:        "tools/desk/cmd/issueboard/board.go",
 			literal:     "var excludedLabels = map[string]bool{",
 			replacement: "topology.Compiled().SystemStateLabelSet(), derived from topology.yaml labels.system_state",
-			issue:       "#829",
 		},
 		{
 			file:        "tools/desk/cmd/issueboard/board.go",
 			literal:     "var decisionLabels = map[string]bool{",
 			replacement: "topology.Compiled().DecisionOwedLabelSet(), derived from topology.yaml labels.decision_owed",
-			issue:       "#829",
 		},
 		{
 			file:        "tools/desk/internal/deskkit/roots.go",
 			literal:     "var defaultRoots = map[string]string{",
 			replacement: "topology.Compiled().Roots(), derived from topology.yaml repos[].root",
-			issue:       "#276",
 		},
 		{
 			file:        "tools/desk/internal/deskkit/riskpath.go",
 			literal:     "var repoRiskPathTriggers = map[string][]string{",
 			replacement: "topology.Compiled().RiskPathTriggersByRepo(), derived from topology.yaml repos[].risk_path_triggers",
-			issue:       "#276",
 		},
 		{
 			file:        "tools/desk/cmd/deskrelease/cut.go",
 			literal:     `const defaultReleaseRepo = "medici-finance/assay"`,
 			replacement: "topology.Compiled().ReleaseRepo, derived from topology.yaml release_repo",
-			issue:       "#276",
 		},
 	}
 }
@@ -109,18 +100,18 @@ func TestTopologyDriftRegistry(t *testing.T) {
 				// COULD-NOT-CHECK. A site file that vanished is either a rename
 				// this registry must follow or a deletion someone must confirm;
 				// neither is a pass.
-				t.Errorf("COULD-NOT-CHECK: %s (retired %s site, %s) is unreadable: %v\n"+
+				t.Errorf("COULD-NOT-CHECK: %s (retired site, %s) is unreadable: %v\n"+
 					"  If the file MOVED, re-point this registry row. If it was DELETED, delete the row deliberately.",
-					site.file, site.issue, site.literal, err)
+					site.file, site.literal, err)
 				continue
 			}
 			if strings.Contains(string(raw), site.literal) {
 				t.Errorf("SURVIVING HAND TABLE at %s: %s\n"+
-					"  This table was retired by ground-truth/04 (%s). The fact now lives in %s,\n"+
+					"  This table was retired to single-source it. The fact now lives in %s,\n"+
 					"  whose single declared source is %s. A second hand-maintained copy is the\n"+
 					"  defect whatever it contains — it will drift, and the drift becomes its own issue.\n"+
 					"  Delete the table and read the loader; do not weaken this check.",
-					site.file, site.literal, site.issue, site.replacement, SourceFile)
+					site.file, site.literal, site.replacement, SourceFile)
 			}
 		}
 	})

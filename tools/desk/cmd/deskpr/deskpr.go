@@ -5,13 +5,30 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+)
+
+// deskprStderr is the seam for warnIfConflicting's advisory output. Production writes to
+// os.Stderr; tests redirect it to a buffer to assert on the warning text without
+// capturing the real process stream.
+var deskprStderr io.Writer = os.Stderr
+
+// pollAttempts / pollSleep pace warnIfConflicting's wait for GitHub's asynchronous
+// `mergeable` computation to settle out of UNKNOWN (#1264). GitHub returns UNKNOWN for a
+// just-created/updated PR until a background job computes the test-merge, so a single read
+// can miss a real CONFLICTING as a transient UNKNOWN. They are package vars so tests can
+// shrink the sleep to a no-op and set a deterministic attempt count.
+var (
+	pollAttempts = 6
+	pollSleep    = func() { time.Sleep(700 * time.Millisecond) }
 )
 
 // getwd is the seam for the tool's working directory (the worktree it runs in).
@@ -238,17 +255,89 @@ func cmdCreate(args []string) (err error) {
 		return deskkit.Unverifiable("gh pr create failed", cErr)
 	}
 	url := lastURL(out)
+	detail := "created " + url
 	if n := prNumberFromURL(url); n > 0 {
 		ac.pr = &n
+		// Post-create mergeable check (#770): a PR GitHub reports CONFLICTING gets zero
+		// pull_request runs at its head — indistinguishable, on the audit line or any
+		// board, from "checks still pending" until something names the mergeable state
+		// specifically. Advisory only: this can never turn a create that already
+		// succeeded into a reported failure.
+		detail += warnIfConflicting(facts.dir, facts.repo, n)
 	}
-	ac.detail = "created " + url
+	ac.detail = detail
 	fmt.Println(url)
 	return nil
 }
 
+// warnIfConflicting reads a just-created PR's mergeable status via `gh pr view` and
+// prints a loud WARNING to deskprStderr when GitHub reports CONFLICTING, returning a
+// non-empty suffix for the audit detail line in that case (empty otherwise, including on
+// a read/parse failure — see below).
+//
+// Why this matters (#770): GitHub skips `pull_request` Actions runs on a PR whose merge
+// state is CONFLICTING, so a conflicted PR sits at zero check-runs indefinitely. That
+// zero reads identically to "checks haven't started yet" on the pr-review-desk and any
+// board, so a conflicted PR silently stalls — exactly what happened to #749/#750, which
+// were correct code stuck only on a rebase no one was told to do.
+//
+// GitHub computes `mergeable` asynchronously, so a freshly created/updated PR reports
+// UNKNOWN until a background test-merge settles (#1264). A single read taken too early
+// would miss a real CONFLICTING as a transient UNKNOWN, so this polls briefly
+// (pollAttempts reads, pollSleep between) for the field to leave UNKNOWN before deciding.
+//
+// Advisory only: a transient `gh pr view` failure, an unparseable payload, or a value
+// that never settles out of UNKNOWN must never turn an already-successful create/update
+// into a reported failure, so every non-CONFLICTING path here is a stderr note (or
+// silence), not a returned error — the PR already exists by the time this runs.
+func warnIfConflicting(dir, repo string, prNum int) string {
+	var v struct {
+		Mergeable        string `json:"mergeable"`
+		MergeStateStatus string `json:"mergeStateStatus"`
+	}
+	for attempt := 0; ; attempt++ {
+		out, err := gh(dir, "pr", "view", strconv.Itoa(prNum), "-R", repo,
+			"--json", "mergeable,mergeStateStatus")
+		if err != nil {
+			fmt.Fprintf(deskprStderr, "deskpr: WARNING could not read mergeable status for %s#%d — %v\n", repo, prNum, err)
+			return ""
+		}
+		v = struct {
+			Mergeable        string `json:"mergeable"`
+			MergeStateStatus string `json:"mergeStateStatus"`
+		}{}
+		if uerr := json.Unmarshal([]byte(out), &v); uerr != nil {
+			fmt.Fprintf(deskprStderr, "deskpr: WARNING unparseable mergeable status for %s#%d — %v\n", repo, prNum, uerr)
+			return ""
+		}
+		// Settled (MERGEABLE / CONFLICTING) or out of attempts: stop polling.
+		if v.Mergeable != "UNKNOWN" || attempt >= pollAttempts-1 {
+			break
+		}
+		pollSleep()
+	}
+	if v.Mergeable == "UNKNOWN" {
+		fmt.Fprintf(deskprStderr, "deskpr: WARNING mergeable status for %s#%d did not settle out of UNKNOWN after "+
+			"%d polls — GitHub had not finished computing it; re-check the PR's merge state before relying on CI (#1264)\n",
+			repo, prNum, pollAttempts)
+		return ""
+	}
+	if v.Mergeable != "CONFLICTING" {
+		return ""
+	}
+	fmt.Fprintf(deskprStderr, "deskpr: WARNING %s#%d is CONFLICTING (mergeStateStatus=%s) — GitHub will not run "+
+		"pull_request checks at this head; merge/rebase the base branch into this PR before expecting CI to fire "+
+		"(#770)\n", repo, prNum, v.MergeStateStatus)
+	return fmt.Sprintf(" — CONFLICTING (mergeStateStatus=%s), CI will not run until resolved", v.MergeStateStatus)
+}
+
 // cmdUpdate implements `deskpr update`: a follow-up push of the current branch to its
-// EXISTING open draft PR (the fix→re-review hot path). It refuses if no open PR exists
-// for the branch, or if that PR is not a draft. No PR is ever created here.
+// EXISTING open PR — draft OR ready-flipped (the fix→re-review hot path, and #788's
+// keep-an-approved-PR-current path). It refuses if no open PR exists for the branch;
+// that same refusal covers closed and merged PRs, because the listing is --state open.
+// The draft/ready distinction is intentionally NOT a gate: the author-owns-branch (head
+// match), bodycheck, rate-limit and public-repo guards apply identically either way. No
+// PR is ever created here.
 func cmdUpdate(args []string) (err error) {
 	ac := &auditCtx{verb: "update"}
 	defer func() { ac.finalize(err) }()
@@ -298,10 +387,13 @@ func cmdUpdate(args []string) (err error) {
 	if pr == nil {
 		return deskkit.Refused("refused: no open PR for " + facts.branch + " — run `deskpr create` first")
 	}
-	if !pr.IsDraft {
-		return deskkit.Refused(fmt.Sprintf(
-			"refused: PR #%d is not a draft — deskpr update only pushes to draft PRs", pr.Number))
-	}
+	// #788: a ready-flipped (non-draft) OPEN PR is accepted here too. The draft-only
+	// refusal that used to sit here was an artifact of update being written for the
+	// draft-PR workflow first; it left approved PRs that go stale against a moving main
+	// with no sanctioned push path. Every other guard (head-owns-branch above, bodycheck
+	// in scanWrite, AllowWrite rate limit, and the public-repo gate below) is unchanged,
+	// so lifting the draft distinction does not widen what update may push — only which
+	// open PR states it will push to.
 	ac.pr = &pr.Number
 
 	// idempotency: this exact head already pushed to this PR → noop.
@@ -327,7 +419,13 @@ func cmdUpdate(args []string) (err error) {
 	if _, pushErr := git(facts.dir, "push", "-u", "origin", facts.branch); pushErr != nil {
 		return deskkit.Unverifiable("git push failed", pushErr)
 	}
-	ac.detail = "pushed to " + pr.URL
+	// Post-update mergeable check (#1264): the push moved the head, so GitHub recomputes
+	// mergeability. A push that lands the PR in CONFLICTING gets zero pull_request runs at
+	// the new head — the same silent stall the create path guards against — so warn loudly
+	// here too. Advisory only: this can never turn an already-completed push into a failure.
+	detail := "pushed to " + pr.URL
+	detail += warnIfConflicting(facts.dir, facts.repo, pr.Number)
+	ac.detail = detail
 	fmt.Println(pr.URL)
 	return nil
 }

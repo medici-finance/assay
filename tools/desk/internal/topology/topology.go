@@ -2,8 +2,8 @@
 // org/repo/App/product topology: `topology.yaml` at the repo root.
 //
 // WHAT PROBLEM IT SOLVES. The same topology facts were carried in five-plus
-// parallel hand-maintained Go tables with no generator and no cross-check
-// (#276), and two of them had already drifted (#829: issueboard's excluded-label
+// parallel hand-maintained Go tables with no generator and no cross-check,
+// and two of them had already drifted (issueboard's excluded-label
 // set was missing `review-request`, which statusgen's carries). The stream
 // convention is derive-or-diff: every fact on more than one surface has exactly
 // ONE declared source, and every other occurrence is regenerated from it or
@@ -435,7 +435,7 @@ func Parse(data []byte) (Topology, error) {
 
 	labels := root.lookup("labels")
 	if labels == nil {
-		return Topology{}, fmt.Errorf("no `labels:` key — the system-state set is what #829 exists to single-source")
+		return Topology{}, fmt.Errorf("no `labels:` key — the system-state set is what this loader exists to single-source")
 	}
 	if t.SystemStateLabels, err = labelSeq(labels, "system_state"); err != nil {
 		return Topology{}, err

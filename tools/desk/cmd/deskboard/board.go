@@ -515,6 +515,12 @@ type reviewState struct {
 	lastSHA      string
 	securityPass bool
 	approvedAt   time.Time
+	// suspectNoOp (#37) is true when the effective verdict AT HEAD reads as
+	// blocking specifically because an APPROVED review was SUPPRESSED: it immediately
+	// followed a CHANGES_REQUESTED at the SAME commit, with no push in between. See the
+	// reduction loop below for the mechanism and deskpost/ready.go's latestAppVerdict for
+	// the KEEP IN SYNC twin that gates the actual mutating flip.
+	suspectNoOp bool
 }
 
 // sameHead reports whether a review's commit sha and the PR's head sha are the SAME
@@ -561,22 +567,72 @@ func reduceReviews(reviews []review, head string) reviewState {
 		return st
 	}
 	st.ever = true
-	last := decisive[len(decisive)-1] // API returns chronological; most recent last
-	st.lastSHA = last.CommitID
+
+	// #37 ("Reviewer-App gate is forgeable — approve→flip→merge in 14s"): reduce the
+	// decisive sequence the same way deskpost's latestAppVerdict does, rather than just
+	// taking the chronologically-last review. "Un-forgeable because a PR author cannot
+	// approve its own PR" (methodology/brief-17) only defends the AUTHOR account — GitHub's
+	// self-approval block has no opinion on a third-party App re-posting a verdict, and any
+	// session that can mint the reviewer App's token can post an APPROVED over a standing
+	// CHANGES_REQUESTED at an unchanged head. LIVE EVIDENCE: decks#17 and decks#11
+	// (2026-07-14) both flipped to APPROVED at an unchanged head, no intervening commit,
+	// while a blocking review stood — the board would have reported both as FLIP-eligible.
+	// "An approval at an unchanged head cannot be a re-verification." Once a commit carries
+	// a CHANGES_REQUESTED, only a NEW commit_id (a genuine push) produces a verdict this
+	// reduction accepts as APPROVED; a same-commit APPROVED — including a retried one —
+	// keeps reading as the standing CHANGES_REQUESTED, and is flagged suspectNoOp so the
+	// board can say so LOUDLY instead of folding it into an ordinary blocking row.
+	// KEEP IN SYNC with deskpost/ready.go's latestAppVerdict — with ONE DELIBERATE
+	// DIVERGENCE, stated here so the sync claim stays honest (review NOTICE on the #37 PR):
+	// latestAppVerdict filters its stream to the CORRECTNESS lane (classifyLane), whereas
+	// `decisive` above admits any reviewer-bot APPROVED/CHANGES_REQUESTED, security lane
+	// included. So a security pass posted at a head that already carries a standing
+	// correctness CHANGES_REQUESTED reads as SUSPECT-APPROVAL on the board while the
+	// mutating gate reads it as an ordinary blocked row. That divergence errs toward
+	// FLAGGING on an advisory surface a human reads, never toward granting a flip, so it is
+	// the safe direction — but it IS a divergence, not an exact mirror. Any change that
+	// makes the board's reduction the basis of a mutating decision must close it first.
+	var lastCommit string
+	var commitBlocked bool
+	var effState, effCommit, effSubmittedAt string
+	var suspect bool
+	for _, r := range decisive {
+		if r.CommitID != lastCommit {
+			lastCommit = r.CommitID
+			commitBlocked = false
+		}
+		switch r.State {
+		case "CHANGES_REQUESTED":
+			commitBlocked = true
+			effState, effCommit, effSubmittedAt, suspect = r.State, r.CommitID, r.SubmittedAt, false
+		case "APPROVED":
+			if commitBlocked {
+				// No push since the standing CHANGES_REQUESTED at this exact commit —
+				// suppress the approval; commitBlocked stays true so a retried forgery
+				// at the same commit is refused too.
+				effState, effCommit, suspect = "CHANGES_REQUESTED", r.CommitID, true
+				continue
+			}
+			effState, effCommit, effSubmittedAt, suspect = r.State, r.CommitID, r.SubmittedAt, false
+		}
+	}
+
+	st.lastSHA = effCommit
 	// #400 Q3: "at head" is a comparison of two shas, and it is only a statement about
-	// the world when BOTH were actually read. `last.CommitID == head` made two ABSENCES
-	// compare equal: an unread `headRefOid` plus a review carrying no `commit_id` used to
+	// the world when BOTH were actually read. A raw `==` made two ABSENCES compare
+	// equal: an unread `headRefOid` plus a review carrying no `commit_id` used to
 	// produce atHead=true, approved=true, and — with a green rollup — MERGE-NOW, the most
-	// consequential verdict this board emits, off two fields nobody could read. Same
-	// class as R2/R3, on the review axis: an unmeasured pair became a positive verdict.
-	// Either side empty is could-not-check, and could-not-check is NOT at head — the row
-	// falls back to RE-REVIEW/MERGE-CURR, which is the fail-closed direction.
-	st.atHead = sameHead(last.CommitID, head)
+	// consequential verdict this board emits, off two fields nobody could read. Either
+	// side empty is could-not-check, and could-not-check is NOT at head — the row falls
+	// back to RE-REVIEW/MERGE-CURR, which is the fail-closed direction. sameHead applies
+	// that guard on top of the #37 reduction's effCommit.
+	st.atHead = sameHead(effCommit, head)
 	if st.atHead {
-		st.blocking = last.State == "CHANGES_REQUESTED"
-		st.approved = last.State == "APPROVED"
+		st.blocking = effState == "CHANGES_REQUESTED"
+		st.approved = effState == "APPROVED"
+		st.suspectNoOp = suspect
 		if st.approved {
-			if t, err := time.Parse(time.RFC3339, last.SubmittedAt); err == nil {
+			if t, err := time.Parse(time.RFC3339, effSubmittedAt); err == nil {
 				st.approvedAt = t
 			}
 		}
@@ -659,8 +715,13 @@ const (
 	// for work whose merge is reserved to a human, and it is excluded from the
 	// MERGE-NOW count and decay banner.
 	actHumanGate = "HUMAN-GATE"
-	actBlocked   = "BLOCKED"
-	actSecReview = "SECURITY-REVIEW-REQUIRED"
+	// actSuspectApproval (#37) ranks above BLOCKED: a no-op APPROVED posted over a
+	// standing CHANGES_REQUESTED at an unchanged head (no intervening push) is a
+	// forgery-shaped verdict, not a routine "needs work" row — surface it LOUDLY rather
+	// than fold it into an ordinary BLOCKED read.
+	actSuspectApproval = "SUSPECT-APPROVAL"
+	actBlocked         = "BLOCKED"
+	actSecReview       = "SECURITY-REVIEW-REQUIRED"
 	// actCIUnknown (#268) is the CI three-state's fourth outcome: the rollup carried
 	// entries this board cannot interpret, so the CI verdict is not established. It
 	// blocks the approve+green path rather than defaulting either way.
@@ -806,6 +867,10 @@ type classifyInput struct {
 	humanGateReason string
 	// zeroCI (#1652): the probed state of a 0/0/0 rollup — see the type doc above.
 	zeroCI string
+	// suspectNoOp (#37): the effective blocking state is a suppressed no-op approval —
+	// an APPROVED posted over a standing CHANGES_REQUESTED at the same head, with no
+	// intervening push. See reduceReviews.
+	suspectNoOp bool
 }
 
 // classify reproduces deskboard v1's ACTION semantics exactly, with the single #216
@@ -820,6 +885,17 @@ func classify(in classifyInput) (action, note string) {
 			return actMergeCurr, "keep-current merge; PR's own files unchanged since last review — no re-review"
 		}
 		return actReReview, "head advanced past last review (PR's own files changed) — delta re-review"
+	// #37: an APPROVED that immediately follows the App's own CHANGES_REQUESTED at the
+	// SAME head, with no push in between, is not a re-verification — surface it as a
+	// suspected forgery/no-op-flip attempt, distinct from an ordinary blocking review, so
+	// a human reading the board sees the attempt rather than a routine BLOCKED row. Never
+	// FLIP-eligible either way, but which of the two it is matters for the response (chase
+	// down who minted the App token vs. wait on the worker).
+	case in.blocking && in.suspectNoOp:
+		return actSuspectApproval, reviewerBotDisplay() + " posted APPROVED at head immediately after its " +
+			"own CHANGES_REQUESTED at the SAME head, with no intervening push — that cannot be a " +
+			"re-verification (#37); treating as a suspected forged/no-op flip attempt, never FLIP-eligible, " +
+			"until a new commit lands"
 	case in.blocking:
 		return actBlocked, reviewerBotDisplay() + " requested changes at head — worker must act"
 	// A DEFINITE failure outranks an indefinite unknown. When the rollup carries both,
@@ -980,6 +1056,12 @@ func classify(in classifyInput) (action, note string) {
 // policy is exactly the "looks like an answer, is not one" shape this PR is about: a
 // reviewer read HUMAN-GATE's rank off it and reasoned about board ordering that no
 // longer exists. Deleted rather than re-tuned; the ordering lives in one place.
+//
+// SUSPECT-APPROVAL (#37) ranking above BLOCKED is NOT this table's job either — it is
+// enforced by classify()'s switch itself: `case in.blocking && in.suspectNoOp` is
+// checked before the plain `case in.blocking` (BLOCKED) arm, so the row reads
+// SUSPECT-APPROVAL, never an ordinary BLOCKED, regardless of what a sort does with the
+// resulting action string.
 
 // mergeStateDisplay renders a raw mergeStateStatus for a could-not-check note. An empty
 // field is named as ABSENT rather than printed as `""`, which reads like a value.
@@ -1049,6 +1131,7 @@ func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string
 		mergeBehind:       mv == mergeVerdictBehind,
 		mergeStateRaw:     p.MergeStateStatus,
 		zeroCI:            zeroCI,
+		suspectNoOp:       rs.suspectNoOp,
 	}
 }
 

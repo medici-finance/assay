@@ -123,6 +123,13 @@ func TestParseRef(t *testing.T) {
 	}{
 		{"refs/heads/feature-branch x refs/heads/feature-branch y", "feature-branch", true},
 		{"refs/heads/merged-fixture x refs/heads/merged-fixture y", "merged-fixture", true},
+		// Slashed house-convention branches must keep their FULL name so fetchPR
+		// can find the PR — filepath.Base would collapse these to the leaf and
+		// defeat the guard (#267).
+		{"refs/heads/fix/issue-108 x refs/heads/fix/issue-108 y", "fix/issue-108", true},
+		{"refs/heads/claude/session-42 x refs/heads/claude/session-42 y", "claude/session-42", true},
+		{"refs/heads/brief/desk-10 x refs/heads/brief/desk-10 y", "brief/desk-10", true},
+		{"refs/heads/docs/readme-fix x refs/heads/docs/readme-fix y", "docs/readme-fix", true},
 		{"refs/tags/v1.0 x refs/tags/v1.0 y", "v1.0", true},
 		{"", "", false},
 	}

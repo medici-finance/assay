@@ -1,11 +1,11 @@
 // Structural integration test: verifies verifyloop's dispatchRequirements stay
 // in sync with .claude/skills/verify-desk/SKILL.md's "Its prompt MUST carry:"
-// list (#1262).
+// list.
 //
 // The `consumer` build tag was DROPPED: verify-desk's
 // SKILL.md moved into THIS repo as its single home, so the skill file is now at
 // the assay checkout root and repoRoot's upward walk terminates here
-// (before, the path existed only in tracker, so this test hid
+// (before, the path existed only in a separate repo, so this test hid
 // behind the tag and — run with the tag from an assay checkout — walked
 // past the root to $HOME and read the ~/.claude thin pointer). This file now
 // runs in ordinary CI; the .claude/** path filter that triggers it and the
@@ -28,7 +28,7 @@ import (
 // manual desk follows (`.claude/skills/verify-desk/SKILL.md` loop step 2, "Its prompt MUST
 // carry:") and the fixed template in dispatch.go that the loop engine emits once verifyloop
 // becomes the driver. Nothing kept them in sync, so SKILL.md gained the name-and-derive
-// step and the Go template silently did not (#1267).
+// step and the Go template silently did not.
 //
 // These tests are that missing coupling: the skill file is parsed at test time and matched
 // against the dispatchRequirements registry in BOTH directions.
@@ -36,10 +36,10 @@ import (
 // Bound: enforcement is bullet-granular. A requirement ADDED, REMOVED or RENAMED in SKILL.md
 // goes red; wording drift strictly INSIDE one bullet does not.
 //
-// This IS a live CI gate as of #1374: scripts/go-check-workspace.sh runs `go test -count=1
+// This IS a live CI gate: scripts/go-check-workspace.sh runs `go test -count=1
 // ./...` over every workspace module, /tools/desk among them (REQUIRE_MODULES), from the
 // "Build, vet and unit-test every Go module in the workspace" step of the Checks workflow.
-// The earlier caveat here — that no CI job ran tools/desk tests (#1262) — was true when this
+// The earlier caveat here — that no CI job ran tools/desk tests — was true when this
 // file was written and is not true on the tree it merges into.
 
 const skillRel = ".claude/skills/verify-desk/SKILL.md"
@@ -68,36 +68,6 @@ func repoRoot(t *testing.T) string {
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			t.Fatalf("could not find %s walking up from the package dir — run these tests from inside the repo checkout", skillRel)
-		}
-		dir = parent
-	}
-}
-
-// skipIfVerifyDeskSkillAbsent skips this coupling test when the verify-desk
-// SKILL.md is not in the checkout AT ALL. This repository's published file set
-// does not always carry a .claude/skills tree, so there may be no verify-desk
-// skill and nothing to couple dispatchRequirements to.
-//
-// Fail-closed intent is preserved precisely: if a .claude/skills tree IS present
-// somewhere up the walk but the specific verify-desk SKILL.md is missing (a real
-// deletion), this does NOT skip — it returns and lets repoRoot's Fatal fire. It
-// skips only when no .claude/skills tree exists at all.
-func skipIfVerifyDeskSkillAbsent(t *testing.T) {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, skillRel)); err == nil {
-			return // skill present — run the test
-		}
-		if _, err := os.Stat(filepath.Join(dir, ".claude", "skills")); err == nil {
-			return // skills tree present but this skill missing — let repoRoot fail closed
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Skipf("%s not present in this checkout", skillRel)
 		}
 		dir = parent
 	}
@@ -181,10 +151,10 @@ func excerpt(b string) string {
 //
 // The binding is 1:1 IN BOTH DIRECTIONS, and that is load-bearing rather than tidy. An entry
 // allowed to match several bullets can absorb a bullet that has no entry of its own, which
-// silences the reverse-direction orphan check — the exact #1267 defect state (SKILL.md carries
+// silences the reverse-direction orphan check — the exact defect state (SKILL.md carries
 // a requirement, the registry does not) then goes GREEN. That is not hypothetical: with anchors
 // {"verify table", "sha"}, `brief-verify-table-and-target-sha` matched BOTH the brief-path
-// bullet and the name-and-derive bullet once #1272 rewrote the latter to contain the words
+// bullet and the name-and-derive bullet once the latter was rewritten to contain the words
 // "Verify table" and `git show <sha> --stat`, so deleting the name-and-derive entry outright
 // left this test passing.
 //
@@ -192,8 +162,6 @@ func excerpt(b string) string {
 // entry is red. Anchors are kept multi-token and specific for the same reason — a single common
 // token is one unrelated edit away from colliding.
 func TestDispatchRequirements_MatchSkillMD(t *testing.T) {
-	skipIfVerifyDeskSkillAbsent(t)
-
 	bullets := skillPromptBullets(t)
 
 	// claimants[i] = IDs of every registry entry matching bullet i.
@@ -223,7 +191,7 @@ func TestDispatchRequirements_MatchSkillMD(t *testing.T) {
 			}
 			t.Errorf("requirement %q (anchors %v) matches %d bullets of %s, want exactly 1:\n  - %s\n"+
 				"Over-matching is not harmless: a multi-bullet entry marks a bullet as covered that has no "+
-				"entry of its own, which silences the orphan check below and lets a genuine #1267 divergence "+
+				"entry of its own, which silences the orphan check below and lets a genuine divergence "+
 				"pass. Tighten the anchors so they identify ONE bullet.",
 				req.ID, req.Anchors, len(hits), skillRel, strings.Join(got, "\n  - "))
 		}
@@ -235,7 +203,7 @@ func TestDispatchRequirements_MatchSkillMD(t *testing.T) {
 			t.Errorf("%s carries a dispatch-prompt requirement with NO counterpart in dispatchRequirements:\n  %s\n"+
 				"Add a dispatchRequirement for it. If the prompt should carry it, carry it (carriedInPrompt + Probes); "+
 				"if the engine enforces it structurally, say where (carriedByEngine); if it is a tracked gap, "+
-				"record the issue (notYetCarried + Issue). This divergence is #1267.",
+				"record the issue (notYetCarried + Issue). This is the divergence class this gate exists to catch.",
 				skillRel, excerpt(b))
 		case len(claimants[i]) > 1:
 			t.Errorf("%s bullet is claimed by %d registry entries (%s), want exactly 1:\n  %s\n"+

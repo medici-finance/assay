@@ -1,4 +1,4 @@
-// Command reviewloop is pr-review-desk's BOARD-REACTOR driver (loop-engine/05).
+// Command reviewloop is pr-review-desk's BOARD-REACTOR driver.
 //
 // # It is not a drain, and it is deliberately not built like one
 //
@@ -18,7 +18,7 @@
 // SelectQueue / OnIdle / is_done here. The one thing it takes from the drain side is the
 // idea that scheduling facts belong in code rather than in the operator model's attention.
 //
-// It goes one step further than loop-engine/05's brief asked, and the deviation is stated
+// It goes one step further than its brief asked, and the deviation is stated
 // rather than left to be discovered: the brief permitted reusing loopengine's
 // Dispatch/Handle/Result types, and this package imports NOTHING from loopengine at all.
 // The reason is measured, not stylistic — loopengine.Item is brief-shaped (BriefPath,

@@ -37,7 +37,7 @@ import (
 // ASSAY_SCAN_REPOS — the identical key statusgen reads); the label sets read
 // `topology.yaml` through tools/desk/internal/topology, the same declared source
 // statusgen derives its copy from. One declared source per fact, with the
-// derivations diffed in CI by TestTopologyDriftRegistry (ground-truth/04, #276).
+// derivations diffed in CI by TestTopologyDriftRegistry (#276).
 // ---------------------------------------------------------------------------
 
 // ownedRepos is the intake SCAN scope: the owned-repo set the issue lane READS.
@@ -68,7 +68,7 @@ func ownedRepos() []string { return deskkit.ScanRepos() }
 func excludedLabelSet() map[string]bool { return topology.Compiled().SystemStateLabelSet() }
 
 // decisionLabelSet returns the labels that mark an issue decision-owed — the
-// SLA-escalation scope (brief loop-engine/13, #703 classifyIssue spec): the
+// SLA-escalation scope (#703 classifyIssue spec): the
 // needs-decision-class label plus the `question` escalation label. A
 // decision-owed open issue is either AWAIT (fresh) or ESCALATE (past the SLA) —
 // see classifyIssue. Declared once in topology.yaml (labels.decision_owed).
@@ -171,7 +171,7 @@ type ghIssue struct {
 	Title     string    `json:"title"`
 	Author    ghAuthor  `json:"author"`
 	Labels    []ghLabel `json:"labels"`
-	CreatedAt time.Time `json:"createdAt"` // escalation clock baseline (brief loop-engine/13)
+	CreatedAt time.Time `json:"createdAt"` // escalation clock baseline
 }
 
 // ---------------------------------------------------------------------------
@@ -232,7 +232,7 @@ func fetchIssueBlessed(repo string, num int) (bool, error) {
 }
 
 // fetchIssueTrustPayload is the shared GraphQL read behind fetchIssueBlessed (the
-// trust gate) and fetchIssueEvents (the escalation clock, brief loop-engine/13):
+// trust gate) and fetchIssueEvents (the escalation clock):
 // ONE bounded `gh api graphql` read (deskkit.IssueTrustQuery) per issue, parsed into
 // the item's body-edit time and its content events. A query, never a mutation — the
 // PATH-shim test allows graphql invocations only when no mutation appears.
@@ -255,7 +255,7 @@ func fetchIssueTrustPayload(repo string, num int) (bodyEdited time.Time, events 
 }
 
 // fetchIssueEvents reads a decision-owed issue's content-event history for the
-// escalation clock (brief loop-engine/13): last-human-response timestamp. Only
+// escalation clock: last-human-response timestamp. Only
 // decision-owed issues (needs-decision/question label) pay this extra read;
 // everything else costs nothing extra. An incomplete (overflowed) thread fails
 // closed (Unverifiable) rather than guessing the clock from a partial page — unlike
@@ -489,12 +489,11 @@ type issueClassifyInput struct {
 	placeholderDone bool // that placeholder's status is "done" (already retired)
 	excludedLabel   bool // the open issue carries a system-emitted label
 	blocked         bool // that placeholder carries blocked: awaiting-issue-response
-	decisionOwed    bool // brief loop-engine/13: carries a needs-decision/question label
-	agedPastSLA     bool // brief loop-engine/13: age since last human response > SLA
+	decisionOwed    bool // carries a needs-decision/question label
+	agedPastSLA     bool // age since last human response > SLA
 }
 
-// classifyIssue maps one repo+issue's state to its ACTION (issue #703 spec, extended
-// by brief loop-engine/13):
+// classifyIssue maps one repo+issue's state to its ACTION (issue #703 spec):
 //   - ESCALATE           — open, decision-owed, aged past the SLA. Checked first and
 //     unconditionally: an aged decision outranks whatever the placeholder machinery
 //     below would otherwise say (top of issueActionPrio too).
@@ -573,7 +572,7 @@ type externalRow struct {
 // issues (bounded API growth). RETIRE rows for closed issues are NOT gated: retiring
 // removes OUR local placeholder; it does not act on the issue's content.
 //
-// Escalation (brief loop-engine/13): decision-owed issues (needs-decision/question
+// Escalation: decision-owed issues (needs-decision/question
 // label) that reach this point — i.e. already in the owned/blessed lane, past the
 // trust gate above — pay ONE extra bounded events read to compute the escalation
 // clock. slaDays is the silence threshold (escalateSLADays by default, overridable
@@ -720,7 +719,7 @@ func renderIssueLane(w io.Writer, rows []issueBoardRow) {
 	for _, r := range rows {
 		t := title(r.Title, 70)
 		if r.Action == actEscalate {
-			t = fmt.Sprintf("%s [age %dd]", t, r.AgeDays) // brief loop-engine/13: render age in the row
+			t = fmt.Sprintf("%s [age %dd]", t, r.AgeDays) // render age in the row
 		}
 		fmt.Fprintf(w, "%-20s %-40s %s\n", r.Action, shortRepo(r.Repo)+"#"+strconv.Itoa(r.Number), t)
 	}

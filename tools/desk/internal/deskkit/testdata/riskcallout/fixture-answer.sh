@@ -8,7 +8,7 @@
 # the environment says otherwise, so a test that forgets to set the toggle fails
 # safe rather than silently exercising the wrong arm.
 #
-# Protocol (Q1, frozen in docs/streams/desk-risk-extension/brief-02-callout-classifier.md):
+# Protocol (Q1, frozen in docs/streams/example-stream/brief-02-callout-classifier.md):
 #   invoked as `<this> classify`; stdin carries {"repo":...,"changedFiles":[...]};
 #   stdout must be exactly one line of {"riskClassed":bool,"reason":"..."}.
 #

@@ -542,7 +542,7 @@ func checkAppScopes(p PreflightProbes, role, tokenPath string) Check {
 			"add the missing permission to the "+role+" App's INSTALLATION (both installs) and accept the "+
 				"permission-update prompt, THEN re-mint FRESH with `desktoken "+role+" --fresh` — after any "+
 				"installation permission change the cached token still carries the old grant, so a plain re-mint is "+
-				"a no-op; the roster's duty list is docs/streams/desk-apps/README.md", refs)
+				"a no-op; this check compares the granted scopes against the role's rostered duty set", refs)
 	}
 	return clean(CheckAppScopes, fmt.Sprintf("all %d rostered duties covered", len(requiredDuties))+grantSidecarAge(tokenPath), refs)
 }

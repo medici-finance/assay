@@ -23,8 +23,8 @@ import (
 //   - NOT RETRYABLE, a decision: `deskpr create` rc=5 REFUSED on a writeguard false
 //     positive; rc=5 on two bodycheck refusals; a guard-blocked `git push`. Retrying is the
 //     bug; reaching for another tool to make the same write is the worse sibling.
-//   - NOT RETRYABLE, deterministic: `deskpr create` rc=6 from `origin/remotes/origin/main`
-//     (#911), hit by every worktree here every time; `deskclaim release --kind` rc=5, a
+//   - NOT RETRYABLE, deterministic: `deskpr create` rc=6 from `origin/remotes/origin/main`,
+//     hit by every worktree here every time; `deskclaim release --kind` rc=5, a
 //     plain unknown-flag usage error.
 //   - RETRY-AFTER, its own class: `deskfile` rc=4, filing budget exhausted until a named
 //     wall-clock instant.
@@ -98,7 +98,7 @@ func TestRetryTransientIsRetriedWithBackoff(t *testing.T) {
 		return inner(l, it, tier)
 	}
 
-	h, out := dispatchWithRetry(cfg, loop, Item{ID: "loop-engine/08"}, TierLocal)
+	h, out := dispatchWithRetry(cfg, loop, Item{ID: "sample/08"}, TierLocal)
 	if out != nil {
 		t.Fatalf("a transient 529 was not retried to success: %+v", out)
 	}
@@ -139,7 +139,7 @@ func TestRetryRefusalIsNeverRetried(t *testing.T) {
 		{"exit 5 bodycheck refusal (heading read as a ruling)", deskkit.Refused("refused: bodycheck — heading reads as a ruling attributed to a named human")},
 		{"exit 3 kill switch", deskkit.Disabled("refused: DISABLED is armed")},
 		{"exit 6 unverifiable", deskkit.Unverifiable("could not verify head", errors.New("gh: 403"))},
-		{"exit 7 author==runner", &AuthorIsRunnerError{ItemID: "loop-engine/08", Runner: "dispatcher-a"}},
+		{"exit 7 author==runner", &AuthorIsRunnerError{ItemID: "sample/08", Runner: "dispatcher-a"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -155,7 +155,7 @@ func TestRetryRefusalIsNeverRetried(t *testing.T) {
 				return nil, tc.err
 			}
 
-			h, out := dispatchWithRetry(cfg, loop, Item{ID: "loop-engine/08"}, TierLocal)
+			h, out := dispatchWithRetry(cfg, loop, Item{ID: "sample/08"}, TierLocal)
 			if h != nil || out == nil {
 				t.Fatalf("a refusal produced a handle instead of a terminal outcome (h=%v out=%v)", h, out)
 			}
@@ -201,7 +201,7 @@ func TestRetryRefusalIsNeverRetried(t *testing.T) {
 
 // TestRetryAfterIsHonoredExactly pins the retry-after class: exit 4 that STATES its wait is
 // slept for exactly that long, once — not the backoff schedule, and not a guess. Guessing
-// short is the #209 livelock, and re-attempting early re-charges the budget that refused us.
+// short is the livelock, and re-attempting early re-charges the budget that refused us.
 func TestRetryAfterIsHonoredExactly(t *testing.T) {
 	rec := &sleepRecorder{}
 	pol := testPolicy()
@@ -211,7 +211,7 @@ func TestRetryAfterIsHonoredExactly(t *testing.T) {
 	loop := &fakeLoop{name: "retrytest"}
 	loop.dispatchFn = failNTimes(1, deskkit.RateLimitedAfter("refused: deskfile hit its filing budget", stated))
 
-	h, out := dispatchWithRetry(cfg, loop, Item{ID: "loop-engine/08"}, TierLocal)
+	h, out := dispatchWithRetry(cfg, loop, Item{ID: "sample/08"}, TierLocal)
 	if out != nil || h == nil {
 		t.Fatalf("a stated retry-after was not honored to success: out=%+v", out)
 	}
@@ -230,7 +230,7 @@ func TestRetryAfterIsHonoredExactly(t *testing.T) {
 		attempts++
 		return nil, deskkit.RateLimitedAfter("refused: still rate limited", stated)
 	}
-	_, out2 := dispatchWithRetry(cfg2, loop2, Item{ID: "loop-engine/08"}, TierLocal)
+	_, out2 := dispatchWithRetry(cfg2, loop2, Item{ID: "sample/08"}, TierLocal)
 	if out2 == nil {
 		t.Fatal("a persistently rate-limited dispatch succeeded")
 	}
@@ -240,7 +240,7 @@ func TestRetryAfterIsHonoredExactly(t *testing.T) {
 
 	// A BARE exit 4 with no stated wait is could-not-check, NOT a guessed backoff.
 	if c := Classify(deskkit.RateLimited("refused: rate limited")); c.Class != ClassUnclassified {
-		t.Fatalf("a bare exit 4 with no retry-after classified as %q; want %q — guessing the wait short is the #209 livelock", c.Class, ClassUnclassified)
+		t.Fatalf("a bare exit 4 with no retry-after classified as %q; want %q — guessing the wait short is the livelock", c.Class, ClassUnclassified)
 	}
 }
 
@@ -258,7 +258,7 @@ func TestRetryAfterBeyondWallClockCapIsNotSlept(t *testing.T) {
 		return nil, deskkit.RateLimitedAfter("refused: deskfile filing budget exhausted", 22*time.Hour)
 	}
 
-	h, out := dispatchWithRetry(cfg, loop, Item{ID: "loop-engine/08"}, TierLocal)
+	h, out := dispatchWithRetry(cfg, loop, Item{ID: "sample/08"}, TierLocal)
 	if h != nil || out == nil {
 		t.Fatal("a 22h retry-after produced a handle")
 	}
@@ -294,7 +294,7 @@ func TestRetryUnclassifiedLandsNeedsContextNotBlocked(t *testing.T) {
 		return nil, errors.New("dispatch target shows 0 check-runs; cause not established")
 	}
 
-	h, out := dispatchWithRetry(cfg, loop, Item{ID: "loop-engine/08"}, TierLocal)
+	h, out := dispatchWithRetry(cfg, loop, Item{ID: "sample/08"}, TierLocal)
 	if h != nil || out == nil {
 		t.Fatal("an unclassified failure produced a handle")
 	}
@@ -317,7 +317,7 @@ func TestRetryUnclassifiedLandsNeedsContextNotBlocked(t *testing.T) {
 		t.Fatalf("UnclassifiedShapes lists only %d shapes; the taxonomy must publish every failure shape it does not classify", len(shapes))
 	}
 	joined := strings.Join(shapes, "\n")
-	for _, must := range []string{"exit 4", "check-runs", "loop-engine/09"} {
+	for _, must := range []string{"exit 4", "check-runs", "liveness.go"} {
 		if !strings.Contains(joined, must) {
 			t.Fatalf("UnclassifiedShapes does not name %q", must)
 		}
@@ -329,7 +329,7 @@ func TestRetryUnclassifiedLandsNeedsContextNotBlocked(t *testing.T) {
 // failed item (file-and-continue) and the drain must keep going — never a wedge.
 func TestRetryExhaustionLandsBlockedAndDrainContinues(t *testing.T) {
 	// DESK_LOOP must name a loop deskkit's roster RECOGNISES, not an ad-hoc fixture label:
-	// once the loop-name roster lands (#977), Guard refuses an unresolvable DESK_LOOP as
+	// once the loop-name roster lands, Guard refuses an unresolvable DESK_LOOP as
 	// Unverifiable, because "no STOP file found for a name I do not know" is could-not-check,
 	// not clean. "retrydrain" below stays a human-readable fixture label, not a loop identity.
 	deskDir := setupDeskHome(t, "verify-desk")
@@ -408,7 +408,7 @@ func TestRetryHoldsOneClaimAcrossAttempts(t *testing.T) {
 	rec := &sleepRecorder{}
 	pol := testPolicy()
 
-	it := Item{ID: "loop-engine/08"}
+	it := Item{ID: "sample/08"}
 	loop := &fakeLoop{name: "retryclaim", remaining: []Item{it}}
 
 	var mu sync.Mutex
@@ -517,7 +517,7 @@ func TestRetryBoundsAreDeclaredNotSilent(t *testing.T) {
 	// Run refuses BOTH shapes of a bad policy before it dispatches anything: an incoherent
 	// one, and one whose waiting could outlive the claim it holds.
 	// Registered loop name deliberately: these assertions require Run to refuse for the
-	// POLICY-bounds reason. Under the loop-name roster (#977) an ad-hoc DESK_LOOP would make
+	// POLICY-bounds reason. Under the loop-name roster an ad-hoc DESK_LOOP would make
 	// Run refuse for an unrelated reason and these checks would pass without testing bounds.
 	deskDir := setupDeskHome(t, "verify-desk")
 
@@ -634,10 +634,10 @@ func TestRetryClassifyNeverGuesses(t *testing.T) {
 		{"exit 4 with NO stated wait", deskkit.RateLimited("budget exhausted"), ClassUnclassified},
 		{"exit 5 writeguard", deskkit.Refused("writeguard"), ClassRefusal},
 		{"exit 3 disabled", deskkit.Disabled("kill switch"), ClassRefusal},
-		{"exit 6 unverifiable (deskpr create rc=6, #911)", deskkit.Unverifiable("bad ref", errors.New("origin/remotes/origin/main")), ClassRefusal},
+		{"exit 6 unverifiable (deskpr create rc=6)", deskkit.Unverifiable("bad ref", errors.New("origin/remotes/origin/main")), ClassRefusal},
 		{"exit 7 author==runner", &AuthorIsRunnerError{ItemID: "x", Runner: "y"}, ClassRefusal},
 		{"typed deterministic (unknown flag)", Deterministic("deskclaim release: unknown flag --kind", nil), ClassDeterministic},
-		{"timeout — loop-engine/09's, not ours", errors.New("context deadline exceeded"), ClassUnclassified},
+		{"timeout — the liveness path's, not ours", errors.New("context deadline exceeded"), ClassUnclassified},
 		{"DNS failure", errors.New("dial tcp: lookup api.github.com: no such host"), ClassUnclassified},
 		{"a bare unknown error", errors.New("something went wrong"), ClassUnclassified},
 	}

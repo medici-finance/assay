@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -425,6 +426,90 @@ func TestReadyIdempotentNoop(t *testing.T) {
 	}
 	if lastAudit(t).Result != deskkit.ResultNoop {
 		t.Fatal("repeat should audit result=noop")
+	}
+}
+
+// --- #37: "Reviewer-App gate is forgeable — approve→flip→merge in 14s" ---
+//
+// "Un-forgeable because a PR author cannot approve its own PR" (methodology/brief-17) only
+// defends the AUTHOR account. GitHub's self-approval block has nothing to say about a
+// third-party App re-posting a verdict, and the reviewer App's private key is readable by
+// every session running as the same OS user — any of them can mint the App's token and post
+// whatever review it likes. LIVE EVIDENCE (2026-07-14, decks#17 and decks#11, 34 seconds
+// apart): both flipped to APPROVED at an UNCHANGED head, with no intervening commit, while a
+// blocking CHANGES_REQUESTED stood — on #17 that blocker was the repo owner's own direct instruction
+// given 20 minutes earlier. "An approval at an unchanged head cannot be a re-verification —
+// there is nothing new to verify."
+//
+// These tests reproduce the exact forge-and-flip sequence against runReady — the tool that
+// actually performs the mutating `ready` flip — and prove it is refused.
+
+// TestReadyNoOpApprovalSameHeadExit5 is the exact live-evidence shape: CHANGES_REQUESTED at
+// head, then a second review from the same App flips to APPROVED at the SAME head (no push,
+// no new commit_id in between). Before this fix, latestAppVerdict took "the chronologically
+// last decisive review" unconditionally, so this sequence satisfied gate (b) and flipped —
+// this test is what would have caught decks#17 / decks#11 before they were live.
+func TestReadyNoOpApprovalSameHeadExit5(t *testing.T) {
+	f, _ := setupFake(t)
+	f.reviews = []reviewInfo{
+		appReview("CHANGES_REQUESTED", testHead, "## Review\n\nblocker.\n\nVerdict: request-changes\n"),
+		appReview("APPROVED", testHead, okReviewBody), // no push between this and the line above
+	}
+	f.status = greenStatus()
+
+	code := run(readyArgs(exampleRepo))
+	if code != deskkit.ExitRefused {
+		t.Fatalf("no-op-approval exit = %d, want 5 (refused)", code)
+	}
+	if f.flips != 0 {
+		t.Fatal("a same-head APPROVED following a CHANGES_REQUESTED must never flip — no push occurred " +
+			"between the rejection and the approval, so this cannot be a re-verification (#37)")
+	}
+	if d := lastAudit(t).Detail; !strings.Contains(d, "#37") || !strings.Contains(d, "no intervening push") {
+		t.Fatalf("refusal must name the no-op-approval mechanism (#37), got: %s", d)
+	}
+}
+
+// TestReadyNoOpApprovalRetrySameHeadExit5 covers a forger retrying at the same commit after
+// the first forged APPROVED is refused: the standing block must not be a one-shot check that
+// a second APPROVED can slip past.
+func TestReadyNoOpApprovalRetrySameHeadExit5(t *testing.T) {
+	f, _ := setupFake(t)
+	f.reviews = []reviewInfo{
+		appReview("CHANGES_REQUESTED", testHead, "## Review\n\nblocker.\n\nVerdict: request-changes\n"),
+		appReview("APPROVED", testHead, okReviewBody),         // first forged/no-op approval
+		appReview("APPROVED", testHead, "Approving again.\n"), // retried forgery, same head
+	}
+	f.status = greenStatus()
+
+	code := run(readyArgs(exampleRepo))
+	if code != deskkit.ExitRefused {
+		t.Fatalf("retried no-op-approval exit = %d, want 5 (refused)", code)
+	}
+	if f.flips != 0 {
+		t.Fatal("a retried forged approval at the same unchanged head must still be refused")
+	}
+}
+
+// TestReadyGenuineReReviewAfterPushFlips is the control: the SAME CHANGES_REQUESTED ->
+// APPROVED transition, but with a genuine push (a new commit_id) between them — proving the
+// #37 fix targets the no-op-at-unchanged-head shape specifically and does not block an
+// honest re-review after the worker addresses findings.
+func TestReadyGenuineReReviewAfterPushFlips(t *testing.T) {
+	f, _ := setupFake(t)
+	f.reviews = []reviewInfo{
+		appReview("CHANGES_REQUESTED", testOldHead, "## Review\n\nblocker.\n\nVerdict: request-changes\n"),
+		appReview("APPROVED", testHead, okReviewBody), // testHead != testOldHead: a real push happened
+	}
+	f.status = greenStatus()
+
+	code := run(readyArgs(exampleRepo))
+	if code != 0 {
+		t.Fatalf("genuine re-review exit = %d, want 0 — a push between CHANGES_REQUESTED and APPROVED "+
+			"is a real re-verification and must still flip", code)
+	}
+	if f.flips != 1 {
+		t.Fatalf("flips = %d, want 1", f.flips)
 	}
 }
 

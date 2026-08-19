@@ -17,7 +17,7 @@ import (
 // half without losing the other.
 //
 // So [Draft.Encode] and [Decode] are pure string functions. The shell that
-// owns the store (desk-console/10, absent) holds the bytes.
+// owns the store (absent) holds the bytes.
 //
 // FAIL CLOSED ON A DAMAGED RESTORE
 // --------------------------------

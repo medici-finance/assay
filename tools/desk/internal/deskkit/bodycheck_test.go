@@ -37,13 +37,13 @@ var (
 	identAllCaps = "TestHandlesHTTPSPROXY" + "UpstreamHealthCheck"
 
 	// #775 — the Verify/Evidence `key=path` shell-assignment idiom.
-	assignRun      = "f=docs/streams/" + "distribution/version"
-	assignEvidence = "f=docs/streams/" + "distribution/version-scheme.md"
+	assignRun      = "f=docs/streams/" + "example-stream/version"
+	assignEvidence = "f=docs/streams/" + "example-stream/version-scheme.md"
 	assignTwoChar  = "fp=tools/desk/" + "internal/deskkit/bodycheck"
 	assignWordKey  = "manifest=docs/" + "publication/manifest/classification"
 	assignIdentVal = "t=TestHonoredFilter" + "LeavesTripwireSilent"
 	// Guard-strength: the key half is valid in each, so only the VALUE can be refusing.
-	assignNoKey     = "=docs/streams/" + "distribution/version"
+	assignNoKey     = "=docs/streams/" + "example-stream/version"
 	assignOpaqueKey = "Qx7pLk2wZt9mNc4bYf6Rh" + assignNoKey
 	assignPlusVal   = "f=config/Zm9v" + "+YmFy+YmF6+cXV4" + "+1234567890abcdef"
 	base64Unpadded  = "ZGVhZGJlZWZkZWFk" + "YmVlZmRlYWRiZWVm" + "ZGVhZGJlZWY"
@@ -152,6 +152,41 @@ func TestBodyCheck(t *testing.T) {
 		{"sops key-name reference", "sops-gpg", false},
 		{"platform-build runner brief phrase", "both sops-gpg (KMS)", false},
 		{"sops: prose line without a metadata field", "sops: encrypted at rest, see the runbook", false},
+		// #778 — ENCRYPTED material is not a plaintext secret. The scan catches
+		// UNENCRYPTED secrets; sops ciphertext committed at rest is the sanctioned flow,
+		// and the blanket "any ENC[ or sops document refuses" rule blocked it outright.
+		//
+		// This is the row #778 exists for, and it is the one that passes: a COMPLETE
+		// encrypted manifest — full envelope grammar, document signature, and encrypted
+		// content outside the metadata block. sanctionedSopsDocument recognises it and
+		// markerSurface neutralises its markers, so no arm fires on it.
+		{"#778: fully sops-encrypted k8s Secret", encryptedSecretFixture, false},
+		// The same sanctioned artifact in JSON. This is the CRY-WOLF guard for the widened
+		// `kind:`/`data:` anchors that let the rule see JSON at all: widening what a
+		// detector can see must not make it refuse the artifact the feature exists to
+		// permit. Measured passing.
+		{"#778: fully sops-encrypted k8s Secret, JSON form", sanctionedJSONSecretFixture, false},
+		// --- refuse ---
+		// The FRAGMENTS below were drafted as passes on this branch and are refusals on the
+		// landed rules, which is the correct verdict and is asserted from the other side by
+		// structured_test.go and the pos-sops-* corpus fixtures. The pass has to be earned
+		// by the whole shape, never by one marker: a lone envelope is a value somebody
+		// pasted, and a bare `sops:` footer is a fragment whose own justification
+		// ("the secrets in this file are ciphertext") says nothing about it. Neither
+		// carries a base64 run over the 32-char threshold, so the entropy loop cannot cover
+		// them — the sops arm is the only thing that does.
+		{"#778: sops metadata mapping alone", "sops:\n  kms: []", true},
+		{"#778: sops document footer (mac ciphertext)", "sops:\n    mac: " + encVal("Zm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFy") + "\n    version: 3.7.3", true},
+		{"#778: a single sops-encrypted value", "value: " + encVal("Zm9vZm9vZm9vZm9vZm9vZm9vZm9vZm9v"), true},
+		// An age recipient is a PUBLIC key and an armor body is ciphertext, so neither is a
+		// leak — but neither is exempt either, OUTSIDE a recognised sops document. This
+		// branch had added a standalone age-recipient exemption and an armor-body span;
+		// both were dropped as part of taking the landed, document-anchored rules, so both
+		// of these now refuse as high-entropy runs. Recorded as a known over-refusal rather
+		// than left as a surprise: see TestArmorBodyStillScansOutsideSopsDocuments, which
+		// asserts the armor half deliberately.
+		{"#778: age recipient is a PUBLIC key", "recipients:\n  - " + ageRecipientFixture, true},
+		{"#778: age armor block body", ageArmorFixture, true},
 		// --- refuse ---
 		{"github classic token", "token ghp" + "_0123456789ABCDEFabcdef0123456789ABCD", true},
 		{"github fine-grained pat", "github" + "_pat_11ABCDE0123456789_abcDEF0123456789abcDEF", true},
@@ -160,12 +195,45 @@ func TestBodyCheck(t *testing.T) {
 		{"aws access key id", "key AKIA" + "IOSFODNN7EXAMPLE here", true},
 		{"pem header", "-----BEGIN RSA " + "PRIVATE KEY-----\nMIIE...", true},
 		{"jwt shape", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJ", true},
-		{"sops marker", "sops:\n  kms: []", true},
-		// A realistic sops document footer: the `sops:` mapping key, a `mac:` metadata
-		// field, and an ENC[AES256_GCM,data:…] encrypted value. Refused both by the ENC
-		// marker and by the sops-document signature.
-		{"realistic sops footer", "sops:\n    mac: ENC[AES256_GCM,data:Zm9vYmFy,iv:abc,tag:def,type:str]\n    version: 3.7.3", true},
-		{"enc marker", "value: ENC[AES256_GCM,data:Zm9v,iv:bar,tag:baz,type:str]", true},
+		// #778 POSITIVE CONTROLS — the leak this rule exists to catch, and the two
+		// bypasses an earlier draft of it admitted. Each row is red against the draft
+		// that shipped without it; see TestEncryptedExemptionsAreContained for the
+		// reproduction of the two bypasses in isolation.
+		//
+		// (a) The headline case: a DECRYPTED Secret. `data:` is base64 ENCODING, and a
+		// short value never reaches the 32-char entropy rule, so nothing else catches it.
+		{"#778: DECRYPTED k8s Secret (short base64 data value)", decryptedSecretFixture, true},
+		{"#778: DECRYPTED k8s Secret (stringData, plaintext)", stringDataSecretFixture, true},
+		// (b) PARTIAL encryption must not license the plaintext field beside it. The
+		// whole-document "is there an ENC[ marker anywhere" guard passed this.
+		{"#778: partially-encrypted k8s Secret (one plaintext value)", partialSecretFixture, true},
+		// (c) A foreign blob merely SHARING A LINE with a sops bracket is not inside it.
+		// The line-scoped exemption passed this.
+		{"#778: secret co-located on a line with a sops ENC bracket", "note: " + encOpen + "data:x,type:str] leaked=" + scanSecret40, true},
+		// (d) A Secret whose data mapping cannot be read is a could-not-check, not clean.
+		{"#778: k8s Secret with an unreadable data mapping", "kind: Secret\ndata:\n  # values injected at runtime\n", true},
+		// (e) Encrypted-at-rest is not a licence for every armor label: a PKCS#8
+		// passphrase-encrypted key rests on a passphrase this scan cannot weigh.
+		{"#778: PKCS#8 ENCRYPTED PRIVATE KEY is still refused", pkcs8Fixture, true},
+		// (f) A real credential does not stop being one because a sops block is nearby.
+		{"#778: github token inside a sops document", "sops:\n  mac: " + encVal("Zm9v") + "\ntoken: " + scanGHToken, true},
+		{"#778: unencrypted RSA key beside a sops block", "sops:\n  kms: []\n" + scanPEM + "\nMIIE...", true},
+		// (g) `age1` as a bare prefix is not an age recipient. A 40-char run wearing it
+		// must still refuse — the exemption is length- and alphabet-locked.
+		{"#778: age1-prefixed run that is not a recipient", "key: age1" + scanSecret40, true},
+		// (h) SURFACE COVERAGE. The rule is only worth what the shapes it can SEE are
+		// worth, and the first spelling of these anchors — a bare unquoted `kind:` key
+		// ending at `\s*$` — could not see the two commonest accidental-paste shapes.
+		// Each row below carries the SAME plaintext value as (a) and was measured
+		// ADMITTED before the anchors were widened, while (a) itself refused.
+		{"#778: DECRYPTED Secret, kind line with a trailing comment",
+			"apiVersion: v1\nkind: Secret # app creds\ndata:\n  password: aHVudGVyMg==\n", true},
+		{"#778: DECRYPTED Secret, pretty-printed JSON (kubectl get -o json)",
+			"{\n  \"apiVersion\": \"v1\",\n  \"kind\": \"Secret\",\n  \"data\": {\n" +
+				"    \"password\": \"aHVudGVyMg==\"\n  }\n}\n", true},
+		// (b) again, on the JSON surface: partial encryption must not license the
+		// plaintext value beside it there either.
+		{"#778: partially-encrypted k8s Secret, JSON form", partialJSONSecretFixture, true},
 		{"64-char uppercase hex is not a git sha", strings.Repeat("AB", 32), true},
 		{"32-char lowercase hex is too short to be an exempt sha", strings.Repeat("ab", 16), true},
 		{"long base64 blob", "ZGVhZGJlZWZkZWFkYmVlZmRlYWRiZWVmZGVhZGJlZWZkZWFkYmVlZg==", true},
@@ -439,7 +507,7 @@ func TestAssignmentStripsOnlyTheKey(t *testing.T) {
 		{"opaque long key over a legitimate path", assignOpaqueKey, false},
 
 		// Structural rejects.
-		{"no equals sign at all", "docs/streams/distribution/version", false},
+		{"no equals sign at all", "docs/streams/example-stream/version", false},
 		{"nothing before the equals", assignNoKey, false},
 		{"nothing after the equals", "f=", false},
 		{"nested assignment leaves an equals in the value", "a=b=" + scanSecret40, false},
@@ -599,10 +667,74 @@ var (
 	scanAWSKeyID = "AKIA" + "IOSFODNN7EXAMPLE"
 	scanPEM      = "-----BEGIN RSA " + "PRIVATE KEY-----"
 	scanJWT      = "eyJ" + "hbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc"
-	scanENC      = "ENC" + "[AES256_GCM,data:x]"
 	// 53 of the 64 hex characters of a real pin — the length git's funcname truncation
 	// produces, which is neither 40 nor 64 and so falls outside the git-SHA exemption.
 	scanTruncSHA = "a9145f3aa48deb0d85a2b42944381a0" + "2aea10a7d7b9154592d26b"
+)
+
+// #778 fixtures. Like awsExampleSecretKey and the scan* vars above, the sops/armor
+// markers are assembled from SPLIT fragments: deskpr scans the branch diff before it
+// pushes, and the scanner in force while this PR is open still refuses a contiguous
+// `ENC[AES256_GCM` / `-----BEGIN` literal on an added line (#380).
+var (
+	encOpen  = "ENC" + "[AES256_GCM,"
+	pemOpen  = "-----" + "BEGIN "
+	pemClose = "-----" + "END "
+	dashes   = "-----"
+
+	// encVal returns a well-formed sops encrypted value bracket carrying `data` bytes.
+	encVal = func(data string) string {
+		return encOpen + "data:" + data + ",iv:aXZpdml2aXZpdml2,tag:dGFndGFndGFn,type:str]"
+	}
+
+	// A DECRYPTED Secret: the value is base64 ENCODING, not encryption, and at 12
+	// characters it is far under the 32-char high-entropy run threshold. Nothing but a
+	// positive `kind: Secret` rule catches this.
+	decryptedSecretFixture = "apiVersion: v1\nkind: Secret\nmetadata:\n  name: app-creds\ntype: Opaque\ndata:\n  password: aHVudGVyMg==\n"
+
+	// The same leak in stringData, where the value is not even base64.
+	stringDataSecretFixture = "apiVersion: v1\nkind: Secret\nmetadata:\n  name: app-creds\nstringData:\n  password: hunter2-plaintext\n"
+
+	// PARTIAL encryption — one encrypted field, one short plaintext field beside it (the
+	// sops `unencrypted_suffix` shape). A whole-document "any ENC[ marker present" guard
+	// switches the Secret rule off for the entire file and lets the plaintext through.
+	partialSecretFixture = "apiVersion: v1\nkind: Secret\nmetadata:\n  name: app-creds\ndata:\n  tls.key: " +
+		encVal("Zm9vYmFyZm9vYmFy") + "\n  password: aHVudGVyMg==\n"
+
+	// A fully sops-encrypted Secret — every data value is ciphertext. This is the
+	// sanctioned commit-at-rest shape #778 asked for, and it must pass.
+	encryptedSecretFixture = "apiVersion: v1\nkind: Secret\nmetadata:\n  name: app-creds\ndata:\n  password: " +
+		encVal("Zm9vYmFyZm9vYmFyZm9vYmFy") + "\n  tls.key: " + encVal("a2V5a2V5a2V5a2V5a2V5") +
+		"\nsops:\n  mac: " + encVal("bWFjbWFjbWFjbWFjbWFj") + "\n  version: 3.7.3\n"
+
+	// The JSON serialisations of the two shapes above. `kubectl get secret -o json` is
+	// how a Secret most often reaches a paste buffer, so the rule has to read it, and the
+	// PASS case has to keep passing there — a widening that made the sanctioned artifact
+	// refuse would just be a differently-shaped false positive.
+	sanctionedJSONSecretFixture = "{\n  \"apiVersion\": \"v1\",\n  \"kind\": \"Secret\",\n  \"data\": {\n" +
+		"    \"password\": \"" + encVal("Zm9vYmFyZm9vYmFyZm9vYmFy") + "\"\n  },\n" +
+		"  \"sops\": {\n    \"mac\": \"" + encVal("bWFjbWFjbWFjbWFjbWFj") + "\",\n" +
+		"    \"version\": \"3.7.3\"\n  }\n}\n"
+
+	partialJSONSecretFixture = "{\n  \"apiVersion\": \"v1\",\n  \"kind\": \"Secret\",\n  \"data\": {\n" +
+		"    \"tls.key\": \"" + encVal("Zm9vYmFyZm9vYmFy") + "\",\n" +
+		"    \"password\": \"aHVudGVyMg==\"\n  },\n" +
+		"  \"sops\": {\n    \"mac\": \"" + encVal("bWFjbWFjbWFjbWFjbWFj") + "\",\n" +
+		"    \"version\": \"3.7.3\"\n  }\n}\n"
+
+	// An age X25519 recipient: `age1` + 58 bech32 characters. A PUBLIC key.
+	ageRecipientFixture = "age1" + strings.Repeat("qpzry9x8gf2tvdw0s3jn54khce6mua7l", 2)[:58]
+
+	// An age armor block. Its base64 body is ciphertext bound to a key the repo does
+	// not hold.
+	ageArmorFixture = pemOpen + "AGE ENCRYPTED FILE" + dashes + "\n" +
+		"YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBhYmNkZWZnaGlqa2xtbm9w\n" +
+		"cXJzdHV2d3h5ejAxMjM0NTY3ODlhYmNkZWZnaGlqa2xtbm9wcXJzdA\n" +
+		pemClose + "AGE ENCRYPTED FILE" + dashes
+
+	// PKCS#8 passphrase-encrypted key — deliberately NOT in encryptedArmorLabels.
+	pkcs8Fixture = pemOpen + "ENCRYPTED PRIVATE KEY" + dashes + "\nMIIE...\n" +
+		pemClose + "ENCRYPTED PRIVATE KEY" + dashes
 )
 
 // TestScanSurfaceNamesIt covers the second half of #328: a tool that scans
@@ -622,7 +754,7 @@ func TestScanSurfaceNamesIt(t *testing.T) {
 		{"evidence file", scanPEM},
 		{"review body", scanAWSKeyID},
 		{"comment", scanJWT},
-		{"issue body", scanENC},
+		{"issue body", decryptedSecretFixture},
 	}
 	for _, c := range cases {
 		err := ScanSurface(c.surface, []byte(c.content))
@@ -651,7 +783,8 @@ func TestScanSurfaceSameVerdict(t *testing.T) {
 		scanAWSKeyID,
 		scanPEM,
 		scanJWT,
-		scanENC,
+		decryptedSecretFixture,
+		encryptedSecretFixture,
 		scanSecret40,
 		awsExampleSecretKey,
 	}
@@ -668,6 +801,187 @@ func TestScanSurfaceSameVerdict(t *testing.T) {
 	if err := ScanSurface("", []byte(scanGHToken)); err == nil ||
 		!strings.Contains(err.Error(), SurfaceBody+" contains") {
 		t.Errorf("ScanSurface(\"\", …) should fall back to %q, got: %v", SurfaceBody, err)
+	}
+}
+
+// TestEncryptedExemptionsAreContained is the fail-first proof for the two bypasses that
+// the first draft of the #778 rules admitted. Each subtest is written against the
+// PREVIOUS spelling of the rule and is red under it; the current spelling is what makes
+// them green. Keeping them here means a future simplification back to "is the marker
+// nearby" cannot land quietly.
+//
+//   - proximityExempt reproduces the LINE-SCOPED exemption: a base64 run was exempted
+//     whenever the literal `ENC[AES256_GCM` appeared anywhere on the run's physical
+//     line. A 40-char run that refuses on its own therefore passed simply by being
+//     printed beside a real sops value.
+//   - documentEncrypted reproduces the WHOLE-DOCUMENT k8s guard: the `kind: Secret`
+//     refusal was switched off for the entire file if any ENC[ marker existed anywhere
+//     in it, so a single encrypted field licensed every plaintext field beside it.
+func TestEncryptedExemptionsAreContained(t *testing.T) {
+	proximityExempt := func(s string, start int, run string) bool {
+		lineStart := strings.LastIndexByte(s[:start], '\n') + 1
+		lineEnd := start + len(run)
+		if nl := strings.IndexByte(s[lineEnd:], '\n'); nl >= 0 {
+			lineEnd += nl
+		} else {
+			lineEnd = len(s)
+		}
+		return strings.Contains(s[lineStart:lineEnd], encOpen[:len(encOpen)-1])
+	}
+	documentEncrypted := func(s string) bool {
+		return !strings.Contains(s, encOpen[:len(encOpen)-1])
+	}
+
+	t.Run("co-located blob is not inside the bracket", func(t *testing.T) {
+		body := "note: " + encOpen + "data:x,type:str] leaked=" + scanSecret40
+		start := strings.Index(body, scanSecret40)
+		if !proximityExempt(body, start, scanSecret40) {
+			t.Fatal("positive control is not positive: the superseded line-scoped rule " +
+				"must exempt this run, or it proves nothing")
+		}
+		if err := BodyCheck([]byte(body)); err == nil {
+			t.Error("BodyCheck admitted a 40-char secret co-located with a sops value")
+		}
+	})
+
+	// A bare envelope is NOT a pass. This subtest asserted the opposite while #806 carried
+	// its own bracket-interior exemption; the exemption is now structuredExemptSpans' alone
+	// and it requires the full envelope grammar PLUS the sops document signature. An
+	// envelope on its own is a value someone pasted, not a manifest the house committed —
+	// the same contract as the pos-sops-envelope-without-document corpus fixture.
+	t.Run("bracket interior alone does not earn the pass", func(t *testing.T) {
+		body := "password: " + encVal("Zm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFy")
+		if err := BodyCheck([]byte(body)); err == nil {
+			t.Error("a lone sops envelope outside any sops document must refuse")
+		}
+	})
+
+	t.Run("partial encryption does not license the plaintext beside it", func(t *testing.T) {
+		if documentEncrypted(partialSecretFixture) {
+			t.Fatal("positive control is not positive: the superseded whole-document guard " +
+				"must consider this fixture encrypted, or it proves nothing")
+		}
+		if !decryptedK8sSecret(partialSecretFixture) {
+			t.Error("per-value rule missed a plaintext value in a partially-encrypted Secret")
+		}
+		if err := BodyCheck([]byte(partialSecretFixture)); err == nil {
+			t.Error("BodyCheck admitted a partially-encrypted Secret carrying a plaintext value")
+		}
+	})
+
+	t.Run("fully encrypted Secret still passes", func(t *testing.T) {
+		if decryptedK8sSecret(encryptedSecretFixture) {
+			t.Error("a Secret whose every value is ciphertext must not be refused")
+		}
+		if err := BodyCheck([]byte(encryptedSecretFixture)); err != nil {
+			t.Errorf("sanctioned encrypted-at-rest Secret refused: %v", err)
+		}
+	})
+
+	t.Run("short plaintext value is caught where entropy cannot reach", func(t *testing.T) {
+		// The whole reason this is a POSITIVE detection: the value is 12 characters, so
+		// the 32-char high-entropy run rule never sees it. Strip `kind: Secret` and the
+		// same body passes — that is the measure of what the rule is carrying.
+		if err := BodyCheck([]byte(decryptedSecretFixture)); err == nil {
+			t.Error("decrypted Secret with a short base64 value was admitted")
+		}
+		notASecret := strings.Replace(decryptedSecretFixture, "kind: Secret", "kind: ConfigMap", 1)
+		if err := BodyCheck([]byte(notASecret)); err != nil {
+			t.Fatalf("control body should be clean without kind: Secret, got: %v", err)
+		}
+	})
+
+	t.Run("diff-marked Secret lines are still seen", func(t *testing.T) {
+		var diff strings.Builder
+		for _, l := range strings.Split(strings.TrimRight(decryptedSecretFixture, "\n"), "\n") {
+			diff.WriteString("+" + l + "\n")
+		}
+		if err := ScanSurface("branch diff vs origin/main", []byte(diff.String())); err == nil {
+			t.Error("a decrypted Secret added by a diff was admitted — the branch diff is " +
+				"the surface a committed Secret actually arrives on")
+		}
+	})
+}
+
+// TestEncryptedExemptionsDoNotWidenFalseNegatives is the measurement the house bar asks
+// for whenever a change NARROWS what a secret scanner flags. #778 narrows in one place:
+// material that is ENCRYPTED (a sops ENC[…] bracket interior, an age/pgp armor body) or
+// PUBLIC (an age recipient) is no longer refused. The question that has to be answered
+// with numbers rather than intuition is whether that narrowing gives a PLAINTEXT
+// credential a new way through — i.e. whether it widens the false-negative surface.
+//
+// The invariant measured is containment, and it is the strongest form available here:
+// for a run that BodyCheck refuses on its own, the presence of encrypted material
+// anywhere in the same body must not change that verdict. This is robust against the
+// scanner's pre-existing residual gaps (the isPathLike opaque-budget gap, #410) because
+// it compares each run against ITSELF rather than against an absolute admit rate — a run
+// already admitted in isolation is not something #778 made worse.
+//
+// Measured at the fixed seed below over 20,000 credential-shaped runs in each of five
+// contexts (100,000 scans): 0 runs changed verdict from refused to admitted.
+//
+// The exemption being measured is now structuredExemptSpans' alone — #806's own
+// isEncryptedMaterial/isAgeRecipient predicates were dropped when the branch merged the
+// stricter landed rules, so the direct per-predicate accept counts this test used to
+// assert went with them. The containment measurement below is the surviving and stronger
+// statement: it exercises the exemption THROUGH BodyCheck, which is the surface that
+// actually decides.
+func TestEncryptedExemptionsDoNotWidenFalseNegatives(t *testing.T) {
+	const trials = 20000
+	rng := rand.New(rand.NewSource(778))
+	randRun := func(n int) string {
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = base64Alphabet[rng.Intn(len(base64Alphabet))]
+		}
+		return string(b)
+	}
+
+	contexts := []struct {
+		name string
+		wrap func(string) string
+	}{
+		{"same line as a sops ENC bracket", func(r string) string {
+			return "mac: " + encVal("Zm9vYmFy") + " note=" + r
+		}},
+		{"document that also carries a sops metadata block", func(r string) string {
+			return "sops:\n  mac: " + encVal("Zm9vYmFy") + "\n  version: 3.7.3\nleak: " + r
+		}},
+		{"document that also carries an age armor block", func(r string) string {
+			return ageArmorFixture + "\nleak: " + r
+		}},
+		{"beside an age recipient", func(r string) string {
+			return "recipient: " + ageRecipientFixture + "\nleak: " + r
+		}},
+		{"appended to a fully sops-encrypted Secret", func(r string) string {
+			return encryptedSecretFixture + "leak: " + r
+		}},
+	}
+
+	widened := make([]int, len(contexts))
+	for i := 0; i < trials; i++ {
+		// Alternate the two shapes that matter: an AWS secret access key is 40 chars,
+		// and 44 is the length of a base64'd 32-byte key (the k8s/sops value shape).
+		run := randRun(40)
+		if i%2 == 1 {
+			run = randRun(44)
+		}
+		if BodyCheck([]byte("value: "+run)) == nil {
+			continue // admitted in isolation — a pre-existing gap, not one #778 opened
+		}
+		for c, ctx := range contexts {
+			if BodyCheck([]byte(ctx.wrap(run))) == nil {
+				widened[c]++
+			}
+		}
+	}
+
+	for c, ctx := range contexts {
+		if widened[c] != 0 {
+			t.Errorf("%s: %d/%d runs that refuse in isolation were admitted once encrypted "+
+				"material was present — the #778 exemptions widened the false-negative surface",
+				ctx.name, widened[c], trials)
+		}
 	}
 }
 

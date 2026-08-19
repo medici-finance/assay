@@ -21,7 +21,7 @@ import (
 // ---------------------------------------------------------------------------
 
 // TestHeldFlagSurvivesTheBatchFanoutRename is the POSITIVE CONTROL for the imminent
-// rename in methodology/46 (PR #963): `.claude/skills/batch-fanout/` becomes
+// rename: `.claude/skills/batch-fanout/` becomes
 // `.claude/skills/worker-desk/`, so the loop starts presenting DESK_LOOP=worker-desk
 // while a human may still be holding STOP.batch-fanout.
 //
@@ -66,7 +66,7 @@ func TestHeldFlagUnderNewNameHaltsOldNamedSession(t *testing.T) {
 	}
 }
 
-// TestIssueLoopRenameAliasHolds covers the other completed rename (issue-loop/13).
+// TestIssueLoopRenameAliasHolds covers the other completed rename.
 func TestIssueLoopRenameAliasHolds(t *testing.T) {
 	dir := setup(t)
 	mkFlag(t, dir, "STOP.issue-loop", "human halted intake")
@@ -109,8 +109,8 @@ func TestUnknownLoopNameIsUnverifiableNotClean(t *testing.T) {
 
 // TestUnknownLoopNameBlastRadiusIsOneSession bounds the fail-closed behaviour. The house
 // has been burned by a fail-closed check with an unbounded radius (an unknown key in
-// roster.env fail-closed the whole trust roster, taking write-verbs down fleet-wide,
-// #819). These are the two escape valves that keep that from recurring here.
+// roster.env fail-closed the whole trust roster, taking write-verbs down fleet-wide).
+// These are the two escape valves that keep that from recurring here.
 func TestUnknownLoopNameBlastRadiusIsOneSession(t *testing.T) {
 	t.Run("DESK_LOOP unset is untouched", func(t *testing.T) {
 		setup(t)
@@ -295,13 +295,6 @@ func scanDeclaredLoopNames(root string) (decls map[string][]string, scanned int,
 // protection. This test goes red on exactly that, which is what makes the roster a
 // derived check rather than a second, drifting copy of the loop list.
 func TestEveryDeclaredLoopIdentityIsKnown(t *testing.T) {
-	// The loop-declaring desk skills live under .claude/skills, which is not part
-	// of this repository's published file set (the shipped adopter skills under
-	// plugins/assay/skills declare no DESK_LOOP). When that tree is absent there
-	// is no corpus to diff.
-	skipIfFixtureAbsent(t, loopSkillRoots[0],
-		".claude/ is not part of this repository's published file set; no loop-declaring skills ship")
-
 	totalScanned, totalDecls := 0, 0
 
 	for _, root := range loopSkillRoots {
@@ -340,12 +333,6 @@ func TestEveryDeclaredLoopIdentityIsKnown(t *testing.T) {
 // drift apart in either direction without a red test.
 func TestReadmeLoopRegistryIsKnown(t *testing.T) {
 	const readme = "../../README.md"
-	// tools/desk/README.md is not part of every checkout of this repository. Skip
-	// when it is absent — where it is present the roster↔registry diff runs in
-	// full.
-	skipIfFixtureAbsent(t, readme,
-		"tools/desk/README.md is not part of this repository's published file set")
-
 	raw, err := os.ReadFile(readme)
 	if err != nil {
 		t.Fatalf("cannot read %s: %v", readme, err)
@@ -395,10 +382,6 @@ func TestReadmeLoopRegistryIsKnown(t *testing.T) {
 // an equality check — but a canonical name that no skill declares must be a deliberate,
 // reasoned forward-registration, not a stale entry nobody removed.
 func TestRosterCarriesNoUndeclaredCanonicalName(t *testing.T) {
-	// The desk-skills corpus is not part of this repository's published file set.
-	skipIfFixtureAbsent(t, loopSkillRoots[0],
-		".claude/ is not part of this repository's published file set; no loop-declaring skills ship")
-
 	declared := map[string]bool{}
 	scannedAny := 0
 	for _, root := range loopSkillRoots {
@@ -442,10 +425,6 @@ func TestRosterCarriesNoUndeclaredCanonicalName(t *testing.T) {
 // TestPreRegistrationsAreRetiredWhenDeclared keeps preRegisteredLoopNames from becoming
 // permanent: once a skill actually declares the name, the exemption must be deleted.
 func TestPreRegistrationsAreRetiredWhenDeclared(t *testing.T) {
-	// The desk-skills corpus is not part of this repository's published file set.
-	skipIfFixtureAbsent(t, loopSkillRoots[0],
-		".claude/ is not part of this repository's published file set; no loop-declaring skills ship")
-
 	declared := map[string]bool{}
 	for _, root := range loopSkillRoots {
 		decls, _, err := scanDeclaredLoopNames(root)

@@ -221,12 +221,12 @@ func (d StripDef) checkSubstrate(r SubstrateReport) error {
 }
 
 // The MCP read surface the Improve pane is specified to render. Neither verb
-// exists in any module of this tree — the brief that delivers them is named on
-// each strip below, and the strip cannot be derived until it is measured
-// landed.
+// exists in any module of this tree — the surface that would deliver them is
+// named on each strip below, and the strip cannot be derived until it is
+// measured landed.
 const (
 	toolImproveList = "desk__improve_list"
-	briefMCPSurface = "desk-console/09"
+	briefMCPSurface = "console-mcp-surface"
 	briefMCPWhy     = "the read surface `" + toolImproveList + "` — reports, clusters, open proposals and adopted retro actions with their before/after"
 )
 

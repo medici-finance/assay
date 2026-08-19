@@ -9,7 +9,7 @@
 //	recognise. A glob has no end anchor; a Go main() does.
 //
 // Two precisions on that sentence, because a PR arguing that absolute-sounding claims
-// about matchers are how #1538 happened must not make one:
+// about matchers are how this class of defect happened must not make one:
 //
 //   - the wildcard does NOT reach only this parser. The SHELL sees the command text
 //     first, and this binary can do nothing about that layer. What it does supply is
@@ -24,7 +24,7 @@
 //     `tools/desk/dist/deskrelease` built from any branch. That is the same argument
 //     deskTokenPath already makes one level down (github.go).
 //
-// Background (#1538). The push grant was found to be unbounded: Claude Code's Bash
+// Background. The push grant was found to be unbounded: Claude Code's Bash
 // wildcard "matches any sequence of characters INCLUDING spaces", so one `*` spans
 // arguments. `git push origin desk-tools/v0.1.1 +HEAD:refs/heads/main` matches the
 // allow rule (prefix matches; the `*` absorbs the rest) and matches no force-deny
@@ -40,8 +40,8 @@
 // three-line set blocked only a minority of the dangerous shapes, was quote-defeatable (`<tag> "+main"`
 // evades `* +*` because the character before `+` becomes `"`), and a rule ending `:*`
 // is parsed as a legacy PREFIX rule, so the obvious `Bash(git push *:*)` is inert and
-// never fires. String-matching defending string-matching is a defeated layer. #1555
-// records the systemic form: allow rules that end in unanchored wildcards.
+// never fires. String-matching defending string-matching is a defeated layer. The
+// systemic form: allow rules that end in unanchored wildcards.
 //
 // The push grant also never delivered the capability it was requested for:
 // `cut-release/SKILL.md` invokes `git -C <toolkit> push origin desk-tools/v<X.Y.Z>`,
@@ -189,7 +189,7 @@ usage:
   deskrelease version
 
 <tag> must match ^(assay|desk-tools|statusgen)/v[0-9]+\.[0-9]+\.[0-9]+$ — e.g. desk-tools/v0.1.3.
-The assay namespace is the UMBRELLA line (distribution/02, e.g. assay/v0.9.0); the other two
+The assay namespace is the UMBRELLA line (e.g. assay/v0.9.0); the other two
 are per-artifact lines. This list is the set this tool CUTS, not the set this repo releases:
 daily-harvest/vX.Y.Z tags exist and are cut by their own release path, not by deskrelease.
 The tag is created at the CURRENT remote origin/main HEAD, re-read at act time; there is

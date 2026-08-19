@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// cellmodel_test.go — ground-truth/08's half of the loader contract.
+// cellmodel_test.go — the cell-model half of the loader contract.
 //
 // WHAT THE CELL MODEL IS. The adoption model scales an enterprise as 10-15
 // INDEPENDENT cells (a lead plus its agent fleet). A cell may FILE ISSUES into
@@ -121,7 +121,7 @@ func TestTopologyCellModel(t *testing.T) {
 
 	t.Run("a pre-cell-model topology-v1 file still loads (additive, no version bump)", func(t *testing.T) {
 		// No `cell:`, no `relationship:` anywhere — the shape of every file
-		// written before ground-truth/08. It must load, or the additive-schema
+		// written before the cell model. It must load, or the additive-schema
 		// decision is wrong and topology-v2 was the honest choice.
 		got, err := Parse([]byte(cellFixture("", "")))
 		if err != nil {

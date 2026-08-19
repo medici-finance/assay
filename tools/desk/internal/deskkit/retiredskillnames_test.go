@@ -1,12 +1,11 @@
 package deskkit
 
-// retiredskillnames_test.go — the DIFF half of derive-or-diff for the DESK LOOP NAMES
-// (methodology/46).
+// retiredskillnames_test.go — the DIFF half of derive-or-diff for the DESK LOOP NAMES.
 //
 // Two desks were renamed to name their function rather than their mechanism:
 //
-//	issue-loop    -> intake-desk   (issue-loop/13)
-//	batch-fanout  -> worker-desk   (methodology/46)
+//	issue-loop    -> intake-desk
+//	batch-fanout  -> worker-desk
 //
 // A rename is only finished when the old name cannot come back. It comes back the same
 // way every time: a skill lives in TWO places in this repo — the canonical body under
@@ -21,15 +20,16 @@ package deskkit
 // text in several places, and a check that banned them everywhere would be wrong:
 //
 //   - `issue-loop/NN`, `issue-loop/issue-<NN>` — REGISTER IDs (a stream and its brief
-//     numbers), not skill paths. `docs/streams/issue-loop/` is not renamed; methodology/46
+//     numbers), not skill paths. `docs/streams/issue-loop/` is not renamed; the rename
 //     scopes the stream-directory rename out explicitly. Not banned.
 //   - `issue-loop--issue-<NN>` — a superseded CLAIM-KEY form the skills document in order
 //     to warn against it. Not banned.
 //   - `<config-dir>/issue-loop-token` — the intake App's token path, read from whatever
 //     config directory the operator keeps. That is an OPERATOR-CONFIG file path; renaming
 //     an operator's on-disk config is a human act, not a rename pass's. Not banned.
-//   - `issue-desk` — appears inside the real filename
-//     `docs/streams/findings/2026-07-20-issue-desk-emits-briefs-not-prs.md`. Not banned.
+//   - `issue-desk` — appears inside a findings filename such as
+//     `docs/streams/findings/2026-07-20-issue-desk-example.md`, which is NOT a
+//     `skills/issue-desk` path, so rule 2 must not fire on it. Not banned.
 //   - `batch-fanout` in `plugins/assay/PARITY.md`, `RELEASE-NOTES.md` and the `notes:` of
 //     `SOURCES.yaml` — PROVENANCE: what the path was called at a pinned commit. Rewriting
 //     those would make the provenance record false. Those files are outside the scanned
@@ -145,13 +145,6 @@ func scanRetiredDeskNames(root string) (hits []retiredHit, scanned int, seen map
 
 // TestSkillBodiesCarryNoRetiredDeskName is the diff.
 func TestSkillBodiesCarryNoRetiredDeskName(t *testing.T) {
-	// The desk skill bodies scanned here live under .claude/skills, which is not
-	// part of this repository's published file set; the shipped
-	// plugins/assay/skills carry none of the current desk names this diff pins
-	// against, so there is nothing to scan.
-	skipIfFixtureAbsent(t, skillRoots[0],
-		".claude/ is not part of this repository's published file set; no desk skills ship")
-
 	totalScanned := 0
 	seenAll := map[string]bool{}
 
@@ -214,9 +207,9 @@ func TestRetiredDeskNameScannerFailsOnAPositiveControl(t *testing.T) {
 	write("intake-desk", strings.Join([]string{
 		"dispatch of `issue-loop/issue-<NN>` placeholders belongs to worker-desk",
 		"GH_TOKEN=$(cat <config-dir>/issue-loop-token)",
-		"NOT the pre-#575 `issue-loop--issue-<NN>` form",
-		"see docs/streams/findings/2026-07-20-issue-desk-emits-briefs-not-prs.md",
-		"this is issue-loop/14, a register ID",
+		"NOT the superseded `issue-loop--issue-<NN>` form",
+		"see docs/streams/findings/2026-07-20-issue-desk-example.md",
+		"this is issue-loop/NN, a register ID",
 	}, "\n")+"\n")
 
 	hits, scanned, _, err := scanRetiredDeskNames(root)

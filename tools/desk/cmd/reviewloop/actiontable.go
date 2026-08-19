@@ -98,9 +98,17 @@ var actionTable = map[string]rule{
 	"CHECK":                    {DispositionSurface, "", "the board could not claim this row with any CI/merge arm — a deskboard defect signal, surfaced rather than swallowed"},
 	"CI-RED":                   {DispositionSurface, "", "a check failed at head — red is the worker's; the desk routes it"},
 	"CONFLICT":                 {DispositionSurface, "", "the PR does not merge cleanly — the worker's to resolve"},
-	"MERGE-NOW":                {DispositionSurface, "", "approved, green and mergeable — the MERGE is the human's (mm/20 standing duty: surface it, never merge it)"},
+	"MERGE-NOW":                {DispositionSurface, "", "approved, green and mergeable — the MERGE is the human's (standing duty: surface it, never merge it)"},
 	"HUMAN-GATE":               {DispositionSurface, "", "the PR carries a machine-readable human-gate declaration — terminal for the reactor"},
 	"SECURITY-REVIEW-REQUIRED": {DispositionSurface, "", "risk-classed PR without Security-Review:pass — routed to the desk's security lane, and never a FLIP signal"},
+	// SURFACE, emphatically not WAIT (#37). BLOCKED is a WAIT because it is routine: the
+	// reviewer asked for changes and the worker owes a push. SUSPECT-APPROVAL is the same
+	// row with an APPROVED sitting on top of the standing rejection at an UNCHANGED head —
+	// an approval that verified nothing, which is the observable signature of the forgery
+	// this action was added for. Filing it as WAIT would fold a suspected forged verdict
+	// back into the routine bucket it was ranked above precisely to escape, and the reactor
+	// would say nothing about it. A human must see this row.
+	"SUSPECT-APPROVAL": {DispositionSurface, "", "an APPROVED at an unchanged head over a standing CHANGES_REQUESTED — it cannot be a re-verification, so the board suppressed it (#37); surfaced for a human, never a FLIP and never folded into BLOCKED"},
 
 	// ---- the CI three-state's could-not-check arms: not green, not red ----
 	"CI-UNKNOWN":    {DispositionSurface, "", "the rollup carried entries the board could not interpret — the CI verdict is NOT established"},

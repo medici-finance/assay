@@ -22,7 +22,7 @@ import (
 // A taxonomy with only retryable/non-retryable has to GUESS on a failure it does not
 // recognise, and both guesses are defects:
 //
-//   - guess retryable  -> an unrecognised refusal is re-attempted forever (the #209
+//   - guess retryable  -> an unrecognised refusal is re-attempted forever (the
 //     self-sustaining starvation, arrived at from a different direction);
 //   - guess non-retryable -> a transient failure silently drops the item and the work is
 //     lost with no operator ever told.
@@ -54,12 +54,13 @@ import (
 //
 // # Boundaries — cited, not absorbed
 //
-//   - loop-engine/09 owns TIMEOUTS and heartbeat liveness. An HTTP transport timeout on the
-//     dispatch CALL is transport-class here; a dispatched WORKER that stops making progress
-//     is 09's, and "context deadline exceeded" is deliberately left unclassified below.
-//   - loop-engine/10 landed the three-state WorkEvidence probe on Claim. This file reuses
+//   - The liveness path owns TIMEOUTS and heartbeat liveness. An HTTP transport timeout on
+//     the dispatch CALL is transport-class here; a dispatched WORKER that stops making
+//     progress is the liveness path's, and "context deadline exceeded" is deliberately left
+//     unclassified below.
+//   - The three-state WorkEvidence probe on Claim landed earlier. This file reuses
 //     that shape rather than inventing a second one.
-//   - methodology/42 owns the GitHub-durable refs/dispatch/<id> claim. Retry interacts with
+//   - The GitHub-durable refs/dispatch/<id> claim is elsewhere. Retry interacts with
 //     claims by HOLDING one across attempts — see dispatchWithRetry.
 
 // FailureClass is the classification of a dispatch failure. It is a string so the declared
@@ -72,7 +73,7 @@ const (
 	ClassTransient FailureClass = "transient"
 	// ClassRetryAfter — retryable, but ONLY after a wall-clock instant the failure itself
 	// stated. Distinct from ClassTransient because retrying it EARLY re-charges the budget
-	// that refused it (#209): the wait is data, not a guess.
+	// that refused it: the wait is data, not a guess.
 	ClassRetryAfter FailureClass = "retry-after"
 	// ClassRefusal — a guard said no. A refusal is a correct answer, not a failure; retrying
 	// it is the bug.
@@ -117,7 +118,7 @@ func Transient(msg string, err error) *TransientError { return &TransientError{M
 // DeterministicError is the TYPED way an adapter says "this call is malformed and will fail
 // identically forever". The engine CANNOT infer this from an exit code — every instance in
 // the 2026-08-13 corpus (`deskpr create` rc=6 from the `origin/remotes/origin/main`
-// spelling, bug #911; `deskclaim release --kind` rc=5 unknown flag) arrived as a bare 5 or
+// spelling; `deskclaim release --kind` rc=5 unknown flag) arrived as a bare 5 or
 // 6 and is classified ClassRefusal by the exit-code rule. Same action, so the safety
 // property is identical; only the operator-facing remediation differs.
 type DeterministicError struct {
@@ -157,7 +158,7 @@ var transientSignatures = []transientSignature{
 	{"500 internal server error", "GitHub/gh 5xx transport failure"},
 	{"502 bad gateway", "GitHub/gh 5xx transport failure"},
 	{"503 service unavailable", "GitHub/gh 5xx transport failure"},
-	{"504 gateway timeout", "GitHub/gh 5xx transport failure on the dispatch CALL (a dispatched WORKER going quiet is loop-engine/09's heartbeat liveness, not this)"},
+	{"504 gateway timeout", "GitHub/gh 5xx transport failure on the dispatch CALL (a dispatched WORKER going quiet is the liveness path's heartbeat liveness, not this)"},
 	{"connection reset by peer", "TCP reset mid-call"},
 	{"tls handshake timeout", "TLS handshake did not complete"},
 }
@@ -167,8 +168,8 @@ var transientSignatures = []transientSignature{
 // does not publish its own blind spots is a silent cap.
 func UnclassifiedShapes() []string {
 	return []string{
-		"a bare exit 4 carrying NO retry-after — the wait is unknown, and guessing it short is exactly the #209 retry livelock; deskkit.RateLimited (no retry-after) produces this shape",
-		"`context deadline exceeded` and every other timeout — loop-engine/09 owns the timeout taxonomy and heartbeat liveness; classifying timeouts here would fork that decision across two homes",
+		"a bare exit 4 carrying NO retry-after — the wait is unknown, and guessing it short is exactly the retry livelock; deskkit.RateLimited (no retry-after) produces this shape",
+		"`context deadline exceeded` and every other timeout — the timeout taxonomy and heartbeat liveness live in liveness.go; classifying timeouts here would fork that decision across two homes",
 		"`no such host` / DNS resolution failure — indistinguishable from a permanently wrong hostname without a second observation the engine does not have",
 		"any error carrying no deskkit exit code and matching no declared transient signature — the default, and deliberately so",
 		"a PR showing ZERO CI check-runs — not a dispatch error at all: it surfaces inside a worker's Result, its cause is could-not-check (the App-authored anti-recursion attribution is measurably false), and 'wait' vs 'escalate' is not derivable from the symptom",
@@ -226,7 +227,7 @@ func Classify(err error) Classification {
 					RetryAfter: ra,
 				}
 			}
-			return Classification{Class: ClassUnclassified, Why: "exit 4 rate-limited but carrying NO retry-after — the wait is unknown, and a guessed-short wait is the #209 livelock"}
+			return Classification{Class: ClassUnclassified, Why: "exit 4 rate-limited but carrying NO retry-after — the wait is unknown, and a guessed-short wait is the livelock"}
 		}
 	}
 
@@ -502,7 +503,7 @@ func dispatchWithRetry(cfg Config, loop Loop, it Item, tier Tier) (Handle, *Retr
 		delay := pol.Backoff(attempt)
 		if c.Class == ClassRetryAfter {
 			// The failure STATED its wait. Honour it exactly — a shorter backoff re-charges
-			// the budget that refused us, which is the whole #209 lesson.
+			// the budget that refused us, which is the whole lesson.
 			delay = c.RetryAfter
 		}
 
@@ -534,7 +535,7 @@ func journalResult(c FailureClass) string {
 }
 
 // journal writes one retry decision to the engine's audit stream (attempt number, class and
-// delay all live in detail). This is the groundwork loop-engine/11's journal replay reads.
+// delay all live in detail). This is the groundwork the crash-recovery journal replay reads.
 func journal(result, detail string) {
 	_ = deskkit.Log(deskkit.Entry{Tool: "loopengine", Verb: "retry", Result: result, Detail: detail})
 }
@@ -569,7 +570,7 @@ func Taxonomy() []TaxonomyRow {
 			Action: "wait the STATED instant, then attempt once",
 			Bound:  "`RetryAfterMaxAttempts` (tighter than `MaxAttempts`); a stated wait longer than `MaxElapsed` is NOT slept — the item is landed blocked with the free-at instant",
 			Evidence: "deskkit exit 4 carrying `RetryAfterOf`; measured 2026-08-13, `deskfile` rc=4 with its filing budget exhausted until a named wall-clock time. " +
-				"Retrying early re-charges the budget that refused us (#209)",
+				"Retrying early re-charges the budget that refused us",
 		},
 		{
 			Class:  ClassRefusal,
@@ -583,7 +584,7 @@ func Taxonomy() []TaxonomyRow {
 			Class:  ClassDeterministic,
 			Action: "NEVER retry; land blocked",
 			Bound:  "exactly one attempt; reachable only via the typed `Deterministic()` wrapper — the engine CANNOT infer it from an exit code",
-			Evidence: "measured 2026-08-13: `deskpr create` rc=6 from the `origin/remotes/origin/main` spelling (bug #911, hit by every worktree in this repo, every time) " +
+			Evidence: "measured 2026-08-13: `deskpr create` rc=6 from the `origin/remotes/origin/main` spelling (a known ref-spelling bug, hit by every worktree in this repo, every time) " +
 				"and `deskclaim release --kind` rc=5, a plain unknown-flag usage error. Both arrive as a bare 5 or 6, so the classifier files them under refusal; " +
 				"same action, different remediation",
 		},

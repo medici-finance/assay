@@ -25,9 +25,11 @@
 //     exact owner/repo path for any HOST-BEARING URL, so a padded URL cannot present an
 //     allowed slug in its trailing components. Two routing bypasses of that rule — a
 //     `scheme://` URL whose PATH contains '@', and a scp-like URL with no `user@` — are
-//     closed as of the security review; see parseRepo, which also documents the two
-//     residuals that remain (host is NOT bound to github.com, and bare local paths — which
-//     an insteadOf rewrite can reach — are not subject to the exact-path rule at all).
+//     closed as of the security review; and a BARE LOCAL PATH (which an insteadOf rewrite
+//     can reach) is now gated too — its identity is a match against the configured
+//     local-roots allowlist, not its last two path components (#215). See
+//     parseRepo, which documents the one residual that remains (host is NOT bound to
+//     github.com).
 //
 // It is NOT a sandbox, and the boundary is wider than "a compromised repo" (security
 // review). cmdFetch binds to os.Getwd() and does not check the worktree against
@@ -49,9 +51,8 @@
 // on the desk machine.
 //
 // deskgit closes the proven upload-pack, env, fetch-refspec and submodule vectors, and the
-// insteadOf IDENTITY-SUBSTITUTION vector FOR HOST-BEARING URLs — but NOT for local paths,
-// which residual 2 above leaves open. It claims no more. (The unqualified "and insteadOf"
-// this list used to carry contradicted that residual four lines up; security review.)
+// insteadOf IDENTITY-SUBSTITUTION vector for BOTH host-bearing URLs and bare local paths
+// (the latter via the local-roots allowlist, #215). It claims no more.
 //
 // fetch is a local-read verb: it reaches the network read-only, makes no outward WRITE
 // (no GitHub mutation, no shared-state change) and holds no credentials, so like deskwt

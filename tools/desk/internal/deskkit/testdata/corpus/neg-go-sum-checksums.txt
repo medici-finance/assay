@@ -1,8 +1,8 @@
 # corpus: go.sum module checksum block
 # expect: clean
-# refs:   #781 (shape 4, desk-console/08)
+# refs:   go.sum h1 digest false-positive class (shape 4)
 # shape:  machine-generated <module> <version> h1:<base64-sha256> lines
-# why:    every one of the 54 runs flagged in the desk-console/08 diff was one of these; 100% false positives
+# why:    every one of the 54 runs flagged in the measured diff was one of these; 100% false positives
 github.com/google/go-cmp v0.6.0 h1:ypeBEsobvcr6wjGzmiPcTaeG{{+}}7/gUfE5yuYB3ha/uSLs=
 github.com/google/go-cmp v0.6.0/go.mod h1:PiPoFgA5WUoziU9lZOGxNIu9{{+}}egCI1CxKy3PurtWcAJ0=
 golang.org/x/mod v0.17.0 h1:Ln0sA6lQeuJl7PW1NWiFpTOT{{+}}ogKdJBOUmXJloaJa78Y=

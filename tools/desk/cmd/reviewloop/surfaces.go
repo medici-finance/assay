@@ -52,10 +52,10 @@ var unreadSurfaces = []UnreadSurface{
 			"no wider and no more complete than that sweep, and the freshness bound is enforced by the idle gate rather than assumed",
 	},
 	{
-		Name: "the loopengine claims dir and its WorkEvidence probe (loop-engine/10)",
+		Name: "the loopengine claims dir and its WorkEvidence probe",
 		Consequence: "deliberately NOT a consumer: Claim() dedupes brief-shaped drain items, and this reactor's items " +
-			"are long-lived PRs whose idempotency is the audit-ledger (repo,pr,head,verb) key. loop-engine/10 names its consumers " +
-			"as loop-engine/02 and /03; this driver is not a fourth one, and says so rather than leaving the omission to be read as an oversight",
+			"are long-lived PRs whose idempotency is the audit-ledger (repo,pr,head,verb) key. The claims mechanism names its consumers " +
+			"as two other loops; this driver is not a fourth one, and says so rather than leaving the omission to be read as an oversight",
 	},
 }
 

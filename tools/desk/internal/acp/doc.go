@@ -3,10 +3,8 @@
 // speaking the core flow initialize -> session/new -> session/prompt ->
 // session/update notifications -> turn completion, plus session/cancel.
 //
-// Built for brief loop-engine/14
-// (docs/streams/loop-engine/brief-14-acp-client-spike.md) to answer the two
-// facts docs/acp-dispatch-spec.md §7.1 needs before any wider rollout:
-// whether a thin Go client can drive the official adapter
+// Built to answer the two facts the dispatch spec §7.1 needs before any wider
+// rollout: whether a thin Go client can drive the official adapter
 // (`npx @agentclientprotocol/claude-agent-acp`) through a full session, and
 // which auth/billing mode that adapter actually uses. See README.md for the
 // findings -- both are answered there in detail, not restated here.
@@ -15,12 +13,11 @@
 //
 //   - This package owns protocol mechanics and the permission/fs policy gate
 //     ONLY. It must not import the drain-engine package -- the dependency
-//     points the other way (loop-engine/15's engine adapter imports this
-//     package, per docs/acp-dispatch-spec.md §4.1). The brief's Verify row 4
-//     enforces this mechanically with a reverse-import grep.
+//     points the other way (the engine adapter imports this package, per the
+//     dispatch spec §4.1). A reverse-import grep enforces this mechanically.
 //   - Spike-grade: the public surface (Spawn/Initialize/NewSession/Prompt/
 //     Cancel/Close, the update channel, PermissionPolicy/FileAccessPolicy) is
-//     expected to be revised by brief 15 once a real consumer exists.
+//     expected to be revised once a real consumer exists.
 //   - Terminal (`terminal/*`) and MCP (`mcp/*`) callbacks from the agent are
 //     refused (JSON-RPC "method not found"), not implemented. This client
 //     advertises `terminal: false` in its `clientCapabilities`, so a

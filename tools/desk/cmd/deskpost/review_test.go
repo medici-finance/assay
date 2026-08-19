@@ -6,7 +6,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-const okReviewBody = "## Review\n\nValues reconcile; settlement fetches PublishedPrice. No blockers.\n\nVerdict: approve\n"
+const okReviewBody = "## Review\n\nValues reconcile; export fetches CachedTotal. No blockers.\n\nVerdict: approve\n"
 
 // okSecurityBody is the security-review body. It posts with the SAME
 // --verdict approve as okReviewBody above — that identity is the whole of #220.

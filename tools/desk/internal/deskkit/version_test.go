@@ -71,19 +71,13 @@ func TestReleaseTagOrDev(t *testing.T) {
 	SourceSHA, BuiltAt = "", "" // leave cleared; TestVersion* set their own
 }
 
-// TestVersionStampedFromReleaseWorkflow is the workflow assertion that the
-// `-X …deskkit.ReleaseTag=$RELEASE_TAG` stamp is wired into the release workflow
-// (mirrors statusgen/version_test.go's "release workflow stamps the tag"
-// subtest). The stamp is the whole mechanism that maps a running desk-tools
-// binary back to the umbrella release it was cut from; a release built without
-// it ships binaries that answer "dev" and silently defeat every pin check.
-//
-// In medici-finance/assay desk-tools ships INTEGRATED into the umbrella
-// `vX.Y.Z` release (distribution/12a) — consumers pin the umbrella, never a
-// per-tool `desk-tools/vX` tag — so this repo's release workflow is release.yml,
-// not the upstream release-desk.yml. A missing/unreadable workflow is a hard
-// failure, not a skip: a skipped guard passes silently, the very fail-open this
-// test exists to prevent.
+// TestVersionStampedFromReleaseWorkflow is the NEW workflow assertion Task 5
+// requires (mirrors statusgen/version_test.go's "release workflow stamps the
+// tag" subtest). The `-X …deskkit.ReleaseTag=$RELEASE_TAG` stamp is the whole
+// mechanism that maps a running desk-tools binary back to its
+// `desk-tools/vX.Y.Z`; a release built without it ships binaries that answer
+// "dev" and silently defeat every pin check. This test goes RED if the stamp is
+// ever removed from release-desk.yml.
 //
 // It is DELIBERATELY a distinct, named test: internal/deskkit already carries
 // TestVersionUnpinned / TestVersionPinned, so a Verify row matching `-run
@@ -91,17 +85,17 @@ func TestReleaseTagOrDev(t *testing.T) {
 func TestVersionStampedFromReleaseWorkflow(t *testing.T) {
 	// internal/deskkit sits at tools/desk/internal/deskkit; the repo root is four
 	// levels up.
-	path := filepath.Join("..", "..", "..", "..", ".github", "workflows", "release.yml")
+	path := filepath.Join("..", "..", "..", "..", ".github", "workflows", "release-desk.yml")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("release workflow not readable at %s: %v", path, err)
 	}
 	wf := string(raw)
 	if !strings.Contains(wf, "deskkit.ReleaseTag=") {
-		t.Error("release.yml does not stamp deskkit.ReleaseTag — released binaries would report \"dev\" and defeat pin checks")
+		t.Error("release-desk.yml does not stamp deskkit.ReleaseTag — released binaries would report \"dev\" and defeat pin checks")
 	}
 	// The stamp must be fed from the resolved release tag, not a literal.
 	if !strings.Contains(wf, "RELEASE_TAG") {
-		t.Error("release.yml stamps ReleaseTag but not from $RELEASE_TAG — the tag would not be the resolved release tag")
+		t.Error("release-desk.yml stamps ReleaseTag but not from $RELEASE_TAG — the tag would not be the resolved release tag")
 	}
 }

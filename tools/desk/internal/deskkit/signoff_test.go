@@ -191,9 +191,9 @@ func TestSignOffDoesNotBorrowASiblingRulingsSignature(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// The steering-write control (desk-console-2/04).
+// The steering-write control.
 //
-// desk-console-2/04 asks for two writes that reorder and inject work. No ruling
+// The steering write asks for two writes that reorder and inject work. No ruling
 // in the register grants either one, so the brief ships no write. What it does
 // ship is the determination such a write would have to pass, with the proof
 // that the determination discriminates rather than always refusing.

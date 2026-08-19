@@ -249,7 +249,7 @@ func commitMerge(t *trial, g grant, p prInfo) (string, error) {
 	}
 	msg := fmt.Sprintf(`Merge %s into %s (merge-currency)
 
-Brought current with %s by deskmerge under issue-flow/01 %s. This commit introduces no
+Brought current with %s by deskmerge under %s. This commit introduces no
 reviewable content: %s.
 
 deskmerge-ruling: %s

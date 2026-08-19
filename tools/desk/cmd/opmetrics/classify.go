@@ -22,7 +22,7 @@ import (
 
 // ClassifierVersion is emitted in every day-file. Bump on ANY rule change here.
 //
-//	1 — first cut (methodology-metrics/40): cue families + near-duplicate detection,
+//	1 — first cut: cue families + near-duplicate detection,
 //	    measured against cmd/opmetrics/testdata/labelled. See README for the score.
 const ClassifierVersion = "opmetrics-relay/1"
 

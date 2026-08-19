@@ -39,14 +39,6 @@ import (
 // script by exact step NAME, so renaming the step in action.yml fails this test
 // loudly rather than silently testing nothing.
 func TestAssayLintSingleWriterGuardFailsClosed(t *testing.T) {
-	// The assay-lint composite action lives under .github/, which is not part of
-	// every checkout of this repository. When the action is absent there is
-	// nothing to execute, so skip. This does NOT weaken the fail-closed intent
-	// below: where the action is present this guard never fires, and an action
-	// that exists but cannot be read still Fatals.
-	skipIfFixtureAbsent(t, assayLintActionPath,
-		".github/ is not part of this repository's published file set")
-
 	// A guard that SKIPS on the runner is a guard that does not run where it
 	// matters, and `go test` without -v prints nothing when it does. So the
 	// skip is allowed on a developer machine and is a hard FAILURE in CI —
@@ -70,12 +62,14 @@ func TestAssayLintSingleWriterGuardFailsClosed(t *testing.T) {
 	// into a no-op that still reports ok.
 	t.Log("assay-lint single-writer guard: executing the shipped step against constructed repos")
 
-	script := assayLintStepScript(t, "Enforce single-writer rule — STATUS.md must not be committed on branches")
+	script := assayLintStepScript(t, "Enforce single-writer rule — STATUS.md and register views must not be committed on branches")
 
 	// Guard against the extraction silently returning something inert: if the
 	// script no longer contains the thing under test, every scenario below
-	// would "pass" for the wrong reason.
-	for _, must := range []string{"set -euo pipefail", "is-shallow-repository", "STATUS.md"} {
+	// would "pass" for the wrong reason. The register views (FINDINGS.md /
+	// INTAKE.md) are pinned alongside STATUS.md so a rewrite that drops the
+	// single-writer symmetry fails here rather than silently testing nothing.
+	for _, must := range []string{"set -euo pipefail", "is-shallow-repository", "STATUS.md", "FINDINGS", "INTAKE", "docs/streams/intake"} {
 		if !strings.Contains(script, must) {
 			t.Fatalf("extracted single-writer script does not contain %q — the step was rewritten and this "+
 				"test is no longer exercising the guard it claims to. Script:\n%s", must, script)
@@ -89,26 +83,38 @@ func TestAssayLintSingleWriterGuardFailsClosed(t *testing.T) {
 
 	cases := []struct {
 		name       string
-		violation  bool // does the branch commit STATUS.md?
+		violate    string // generated view the branch hand-edits ("" = clean, edits code.txt)
 		shallow    bool
 		unrelated  bool // branch shares NO ancestor with the base — `git diff a...b` errors
+		intakeDir  bool // seed a docs/streams/intake/ per-entry source dir (CI owns INTAKE.md)
 		baseRef    string
 		wantFail   bool
 		wantOutput string // substring the failure must name, so a red for the WRONG reason is caught
 	}{
 		{
 			name:       "clean branch, full history — green only when genuinely clean",
-			violation:  false,
+			violate:    "",
 			baseRef:    "main",
 			wantFail:   false,
 			wantOutput: "single-writer rule OK",
 		},
 		{
-			name:       "violation on full history — red on the violation",
-			violation:  true,
+			name:       "STATUS.md violation on full history — red on the violation",
+			violate:    "STATUS.md",
 			baseRef:    "main",
 			wantFail:   true,
-			wantOutput: "STATUS.md is generated — do not commit it on a branch",
+			wantOutput: "committed on a branch: STATUS.md",
+		},
+		{
+			// Symmetry with STATUS.md: the register views are generated
+			// single-writer artifacts too (statusgen writes them under
+			// docs/streams/ in the same pass), so a branch that hand-edits one
+			// must red exactly like a STATUS.md edit.
+			name:       "FINDINGS.md violation on full history — register view is single-writer too",
+			violate:    "docs/streams/FINDINGS.md",
+			baseRef:    "main",
+			wantFail:   true,
+			wantOutput: "committed on a branch: docs/streams/FINDINGS.md",
 		},
 		{
 			// Caught by the shallow PRE-CHECK, before any diff is attempted.
@@ -118,7 +124,7 @@ func TestAssayLintSingleWriterGuardFailsClosed(t *testing.T) {
 			// pre-check's own behaviour, not the errored-diff path — that is
 			// the next case's job.
 			name:       "violation on a shallow clone — red at the pre-check",
-			violation:  true,
+			violate:    "STATUS.md",
 			shallow:    true,
 			baseRef:    "main",
 			wantFail:   true,
@@ -133,7 +139,7 @@ func TestAssayLintSingleWriterGuardFailsClosed(t *testing.T) {
 			// reported a PASS with the violation sitting in the branch. The
 			// shipped shape must report a FAILURE instead.
 			name:       "violation on an unrelated history — errored diff is a FAILURE, not 'no violation'",
-			violation:  true,
+			violate:    "STATUS.md",
 			unrelated:  true,
 			baseRef:    "main",
 			wantFail:   true,
@@ -143,16 +149,62 @@ func TestAssayLintSingleWriterGuardFailsClosed(t *testing.T) {
 			// Fails closed, and says something an adopter can act on rather
 			// than a bare git error plus a shell exit code.
 			name:       "base ref does not exist — fails closed with a legible message",
-			violation:  true,
+			violate:    "STATUS.md",
 			baseRef:    "no-such-branch",
 			wantFail:   true,
 			wantOutput: "could not fetch the base branch",
+		},
+		{
+			// CARVE-OUT, PERMIT direction. With NO
+			// docs/streams/intake/ per-entry source dir, main's CI does not own
+			// INTAKE.md — statusgen's generateIntakeView regenerates the flat
+			// register solely from that dir and writes nothing when it is
+			// absent, so the guard's remediation ("main's CI regenerates the
+			// committed copy") is a no-op and blocking the branch would leave
+			// the flat register with no sanctioned append path. The guard must
+			// therefore let an in-place INTAKE.md amendment through here. This
+			// is the direction the amendment on THIS branch itself relies on.
+			name:       "INTAKE.md edit, no docs/streams/intake dir — carve-out PERMITS it (green)",
+			violate:    "docs/streams/INTAKE.md",
+			intakeDir:  false,
+			baseRef:    "main",
+			wantFail:   false,
+			wantOutput: "single-writer rule OK",
+		},
+		{
+			// CARVE-OUT, BLOCK direction. Where docs/streams/intake/ EXISTS the
+			// per-entry source is present and CI regenerates INTAKE.md from it,
+			// so a branch commit to the generated flat file must still be
+			// blocked exactly as STATUS.md is. This proves the relaxation did
+			// NOT widen to repos where CI owns the file — it is the tight half
+			// of the carve-out.
+			name:       "INTAKE.md edit, docs/streams/intake dir present — still BLOCKED (red)",
+			violate:    "docs/streams/INTAKE.md",
+			intakeDir:  true,
+			baseRef:    "main",
+			wantFail:   true,
+			wantOutput: "committed on a branch: docs/streams/INTAKE.md",
+		},
+		{
+			// The carve-out is INTAKE-only: STATUS.md and FINDINGS.md stay
+			// CI-owned single-writer views UNCONDITIONALLY. Prove FINDINGS.md is
+			// still blocked even in a repo that DOES have docs/streams/intake/
+			// (the branch of the guard that also permits INTAKE.md), so the
+			// relaxation cannot be read as loosening the other two views on
+			// either side of the dir test. The no-intake-dir STATUS.md and
+			// FINDINGS.md cases above cover the other branch.
+			name:       "FINDINGS.md edit, docs/streams/intake dir present — still BLOCKED unconditionally (red)",
+			violate:    "docs/streams/FINDINGS.md",
+			intakeDir:  true,
+			baseRef:    "main",
+			wantFail:   true,
+			wantOutput: "committed on a branch: docs/streams/FINDINGS.md",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			repo := assayLintFixtureRepo(t, tc.violation, tc.shallow, tc.unrelated)
+			repo := assayLintFixtureRepo(t, tc.violate, tc.shallow, tc.unrelated, tc.intakeDir)
 
 			cmd := exec.Command("bash", scriptPath)
 			cmd.Dir = repo
@@ -184,14 +236,9 @@ func TestAssayLintSingleWriterGuardFailsClosed(t *testing.T) {
 // declares `shell: bash`, without which a composite step runs under the
 // runner's default shell and `set -euo pipefail` is not in force.
 func TestAssayLintGuardPullRequestScopedAndBashed(t *testing.T) {
-	// See the sibling single-writer guard test: the action is not part of every
-	// checkout of this repository, so skip when it is absent.
-	skipIfFixtureAbsent(t, assayLintActionPath,
-		".github/ is not part of this repository's published file set")
-
 	raw := assayLintActionYAML(t)
 
-	step := assayLintStepBlock(t, raw, "Enforce single-writer rule — STATUS.md must not be committed on branches")
+	step := assayLintStepBlock(t, raw, "Enforce single-writer rule — STATUS.md and register views must not be committed on branches")
 	if !strings.Contains(step, "if: github.event_name == 'pull_request'") {
 		t.Fatalf("the single-writer step lost its `if: github.event_name == 'pull_request'` scope. Both " +
 			"docs/integrations/ci.md and the action README publish an Event scope column saying it runs on " +
@@ -330,16 +377,25 @@ func assayLintRunStepNames(t *testing.T, raw string) []string {
 	return names
 }
 
-// assayLintFixtureRepo builds an upstream repo with a committed STATUS.md and a
-// clone on a feature branch, and returns the clone. `shallow` produces a depth-1
-// clone; `unrelated` cuts the feature branch as an ORPHAN, so it shares no
-// ancestor with the base and `git diff base...HEAD` errors for want of a merge
-// base — the condition under which the guard used to report a false pass.
-func assayLintFixtureRepo(t *testing.T, violation, shallow, unrelated bool) string {
+// assayLintFixtureRepo builds an upstream repo with the committed generated views
+// (STATUS.md at the root and the register views docs/streams/FINDINGS.md /
+// docs/streams/INTAKE.md) and a clone on a feature branch, and returns the clone.
+// `violate` names the generated view the branch hand-edits (empty = a clean
+// branch that only edits code.txt). `shallow` produces a depth-1 clone;
+// `unrelated` cuts the feature branch as an ORPHAN, so it shares no ancestor with
+// the base and `git diff base...HEAD` errors for want of a merge base — the
+// condition under which the guard used to report a false pass. `intakeDir` seeds
+// a docs/streams/intake/ per-entry source dir (present in both base and branch,
+// so it is not itself part of the diff) — the condition under which CI owns
+// INTAKE.md and the single-writer carve-out for INTAKE.md does NOT apply.
+func assayLintFixtureRepo(t *testing.T, violate string, shallow, unrelated, intakeDir bool) string {
 	t.Helper()
 	base := t.TempDir()
 	up := filepath.Join(base, "up")
 	clone := filepath.Join(base, "clone")
+
+	// The generated views seeded in the upstream and removed for the orphan case.
+	views := []string{"STATUS.md", "docs/streams/FINDINGS.md", "docs/streams/INTAKE.md"}
 
 	git := func(dir string, args ...string) {
 		t.Helper()
@@ -356,7 +412,11 @@ func assayLintFixtureRepo(t *testing.T, violation, shallow, unrelated bool) stri
 	}
 	write := func(dir, name, content string) {
 		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		full := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -365,7 +425,16 @@ func assayLintFixtureRepo(t *testing.T, violation, shallow, unrelated bool) stri
 		t.Fatal(err)
 	}
 	git(up, "init", "-q", "--initial-branch=main")
-	write(up, "STATUS.md", "generated board\n")
+	for _, v := range views {
+		write(up, v, "generated view\n")
+	}
+	if intakeDir {
+		// A per-entry intake source file makes docs/streams/intake/ exist in
+		// both base and branch trees, so it is not part of the branch diff —
+		// its only effect is to put CI in the "owns INTAKE.md" state, where the
+		// carve-out must NOT permit an INTAKE.md branch commit.
+		write(up, "docs/streams/intake/I-example.md", "## I-example — 2026-01-01 — seed\n\nDisposition: new\n")
+	}
 	write(up, "code.txt", "base\n")
 	git(up, "add", "-A")
 	git(up, "commit", "-qm", "base")
@@ -390,15 +459,17 @@ func assayLintFixtureRepo(t *testing.T, violation, shallow, unrelated bool) stri
 		if err := os.Remove(filepath.Join(clone, "code.txt")); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Remove(filepath.Join(clone, "STATUS.md")); err != nil {
-			t.Fatal(err)
+		for _, v := range views {
+			if err := os.Remove(filepath.Join(clone, v)); err != nil {
+				t.Fatal(err)
+			}
 		}
 	} else {
 		git(clone, "checkout", "-qb", "feat")
 	}
 
-	if violation {
-		write(clone, "STATUS.md", "generated board\nhand-edited on a branch\n")
+	if violate != "" {
+		write(clone, violate, "generated view\nhand-edited on a branch\n")
 	} else {
 		write(clone, "code.txt", "feature work\n")
 	}

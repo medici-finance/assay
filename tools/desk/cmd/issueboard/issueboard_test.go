@@ -544,7 +544,7 @@ func TestTrustGate_InertTitles(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// SLA escalation for aged decisions (brief loop-engine/13)
+// SLA escalation for aged decisions
 // ---------------------------------------------------------------------------
 
 // TestEscalateUnderSLA_StaysAwait proves a decision-owed issue whose age is within

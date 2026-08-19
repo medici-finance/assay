@@ -169,6 +169,37 @@ func (g *pathGuard) worktreeRoots(dir string) ([]string, error) {
 	return roots, nil
 }
 
+// lockedWorktrees returns resolved-path → lock-reason for every LOCKED registered worktree
+// under the repo rooted at dir (empty reason = locked with no `--reason`). A locked worktree
+// is one git will REFUSE to remove or prune: `git worktree list --porcelain` emits a `locked`
+// line — bare, or `locked <reason>` — inside that worktree's block. prune MUST consult this
+// BEFORE the destructive step, otherwise it deletes the working directory and then cannot
+// deregister the now-dangling admin entry (git honours the lock), leaving the worktree
+// half-destroyed — directory gone, registration stranded (issue #264). Parsing is line-based
+// over the porcelain block stream: a `worktree ` line opens a block, a `locked` line inside it
+// marks the current path locked. Path resolution mirrors worktreeRoots (resolvePath) so keys
+// compare equal to the roots the caller iterates. A git error propagates so callers fail
+// CLOSED (treat unknown lock state as unsafe), never as "nothing is locked".
+func (g *pathGuard) lockedWorktrees(dir string) (map[string]string, error) {
+	out, err := runGit(dir, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, deskkit.Unverifiable("cannot read `git worktree list` for lock state", err)
+	}
+	locked := make(map[string]string)
+	var cur string
+	for _, line := range strings.Split(out, "\n") {
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			cur = resolvePath(strings.TrimSpace(strings.TrimPrefix(line, "worktree ")))
+		case line == "locked" || strings.HasPrefix(line, "locked "):
+			if cur != "" {
+				locked[cur] = strings.TrimSpace(strings.TrimPrefix(line, "locked"))
+			}
+		}
+	}
+	return locked, nil
+}
+
 // dirtyTracked returns the porcelain listing of a worktree's uncommitted TRACKED changes
 // (empty string = clean). Untracked build artifacts (node_modules, build/, dist/) are
 // deliberately excluded (--untracked-files=no) — a check that fired on every real worktree

@@ -9,7 +9,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// disposition.go — deskclose as the CONSUMER of ground-truth/05's disposition record.
+// disposition.go — deskclose as the CONSUMER of the deskdisposition record.
 //
 // That record (`disposition:<verdict>` label + `<!-- desk-disposition v1 -->` marker
 // comment carrying Evidence / Recorded-By / Recorded-At) is the one declared source for
@@ -21,7 +21,7 @@ import (
 // is two things to drift, and the drift would be silent: a marker deskclose failed to
 // recognise reads as "no record", which on the write side means "close it anyway".
 //
-// If ground-truth/05 has not landed in the caller's install, `deskdisposition` is
+// If deskdisposition has not landed in the caller's install, `deskdisposition` is
 // simply not on PATH — and that is COULD-NOT-CHECK, exit 6, not "no record found".
 
 // dispositionRead mirrors the JSON `deskdisposition read --json` emits. Only the
@@ -39,7 +39,7 @@ type dispositionRead struct {
 	DispatchEligible bool `json:"dispatchEligible"`
 }
 
-// The three instrument states, spelled exactly as ground-truth/05 spells them so a
+// The three instrument states, spelled exactly as deskdisposition spells them so a
 // deskclose log line greps alongside a deskdisposition one.
 const (
 	dispCheckedClean  = "checked-clean"
@@ -61,7 +61,7 @@ func readDisposition(repo string, n int) (dispositionRead, error) {
 		return dispositionRead{}, deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: cannot read the disposition record for %s#%d via `%s read` — "+
 				"an unreadable record is not an absent one, so the close is refused. "+
-				"(ground-truth/05 must be installed alongside deskclose.)", repo, n, dispositionBin), err)
+				"(deskdisposition must be installed alongside deskclose.)", repo, n, dispositionBin), err)
 	}
 	var d dispositionRead
 	if jerr := json.Unmarshal([]byte(raw), &d); jerr != nil {

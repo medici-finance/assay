@@ -148,7 +148,7 @@ func cmdSet(args []string, out io.Writer) error {
 
 	auditLine(*repo, *pr, "set", deskkit.ResultOK, string(rec.Verdict))
 	fmt.Fprintf(out, "recorded: %s on %s#%d (evidence %s)\n", rec.Verdict, *repo, *pr, rec.Evidence)
-	fmt.Fprintf(out, "queued for deskclose (issue-flow/03) — this tool does not close PRs\n")
+	fmt.Fprintf(out, "queued for deskclose — this tool does not close PRs\n")
 	return nil
 }
 

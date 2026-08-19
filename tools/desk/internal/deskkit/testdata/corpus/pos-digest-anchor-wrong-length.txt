@@ -1,6 +1,6 @@
 # corpus: a go.sum line whose digest is the wrong length for the algorithm
 # expect: refused
-# refs:   ground-truth/06
+# refs:   golden corpus
 # shape:  the ` h1:` field marker in front of a run one character short of base64-sha256
 # why:    the exemptions are LENGTH-EXACT; a marker with a run that is not the digest is not the field
 github.com/example/mod v1.0.0 h1:ypeBEsobvcr6wjGzmiPcTaeG{{+}}7/gUfE5yuYB3ha/uSL=

@@ -23,7 +23,7 @@ var (
 	pemBeginRSA  = "-----" + "BEGIN RSA PRIVATE KEY-----"
 	armorBegin   = "-----" + "BEGIN AGE ENCRYPTED FILE-----"
 	armorEnd     = "-----" + "END AGE ENCRYPTED FILE-----"
-	// The complete-envelope prefix, split for the same reason: the PRE-ground-truth/06
+	// The complete-envelope prefix, split for the same reason: the pre-recognition
 	// scanner refuses any surface carrying a contiguous ENC[AES256…GCM marker, and it scans
 	// the branch diff, so spelling it out here would refuse the PR that adds this test.
 	ageRecipient  = "age1ql3z7hjy54pw3" + "hyww5ayyfg7zqgvc7w" + "3j2elw8zmrj2kg5sfn9aqmcac8p"
@@ -41,7 +41,7 @@ func sopsEnvelope() string {
 //
 // The rows matter because a "recognise the lockfile" fix has an obvious wrong spelling —
 // exempt any 44-char base64 run — that clears the same false positives and opens a
-// laundering route wide enough to drive a credential through. #781 warned against
+// laundering route wide enough to drive a credential through. The false-positive catalogue warned against
 // piecemeal patching; this is the test that stops the generalisation from being one.
 func TestStructuredExemptionsAreAnchored(t *testing.T) {
 	cases := []struct {
@@ -76,7 +76,7 @@ func TestStructuredExemptionsAreAnchored(t *testing.T) {
 		// but the only envelope is the `mac:` INSIDE the metadata block — the integrity tag
 		// over the ciphertext, not ciphertext of anything the author wrote. It carries no
 		// encrypted content, so the justification for admitting sops content does not apply
-		// to it. This is the row that keeps the exemption on the artifact #778 could not
+		// to it. This is the row that keeps the exemption on the artifact the operator could not
 		// commit and off everything that merely looks like it.
 		{"sops footer whose only envelope is the mac inside the metadata block",
 			"sops" + ":\n    mac: " + sopsEnvelope() + "\n    version: 3.8.1", true},
@@ -111,8 +111,8 @@ func TestStructuredExemptionsAreAnchored(t *testing.T) {
 // TestArmorLabelPolicyFailsClosed pins the replacement of the blanket "any five-dash BEGIN
 // refuses" rule with a CLOSED allowlist of ciphertext/public labels.
 //
-// The change buys #380 — the detector's own quoted marker is not a well-formed
-// delimiter and never was — and #778's age/pgp recipient blocks. What it must
+// The change buys the detector's own quoted marker — which is not a well-formed
+// delimiter and never was — and age/pgp recipient blocks. What it must
 // not buy is a way past the arm by inventing a label, which is why an unknown label is
 // treated exactly like a private key.
 func TestArmorLabelPolicyFailsClosed(t *testing.T) {
@@ -157,33 +157,33 @@ func TestArmorBodyStillScansOutsideSopsDocuments(t *testing.T) {
 			"label allowlist stops the PEM arm, it does not exempt the payload: %q", body)
 	}
 	// The SAME blob inside a sanctioned sops document's recipient block is the artifact
-	// #778 could not commit, and it must pass.
+	// the operator could not commit, and it must pass.
 	inSops := "apiVersion: v1\nkind: Secret\nstringData:\n    k: " + sopsEnvelope() +
 		"\nsops" + ":\n    age:\n        - recipient: " + ageRecipient + "\n" +
 		"          enc: |\n            " + strings.ReplaceAll(body, "\n", "\n            ") +
 		"\n    mac: " + sopsEnvelope() + "\n    version: 3.8.1"
 	if err := BodyCheck([]byte(inSops)); err != nil {
 		t.Fatalf("the same armored blob inside a sanctioned sops recipient block was "+
-			"REFUSED — this is #778's artifact: %v", err)
+			"REFUSED — this is the sops recipient artifact: %v", err)
 	}
 }
 
-// TestPathRuleDifferential is the #410 measurement, in BOTH directions with
+// TestPathRuleDifferential is the path-rule measurement, in BOTH directions with
 // its sample sizes reported, and it is the test that decides isPathLike's rule (4).
 //
-// #410's own words: "Any change here MUST be validated by a differential over a large
+// The differential rule's own words: "Any change here MUST be validated by a differential over a large
 // corpus in BOTH directions (REFUSED→CLEAN and CLEAN→REFUSED) with the sample size
-// reported — the #397 review caught a 0.43% false-negative class that a 15-sample spot
+// reported — an earlier review caught a 0.43% false-negative class that a 15-sample spot
 // check missed." So this test draws from a fixed seed, prints the counts, and asserts:
 //
 //   - FALSE-NEGATIVE direction: the admitted fraction of the 13/7/18 slash-layout
-//     population — #410's measured 3.07% under the budget rule alone — collapses;
+//     population — the measured 3.07% under the budget rule alone — collapses;
 //   - FALSE-POSITIVE direction: the real-path population is UNCHANGED at 100% admitted.
 //
 // The second assertion is the one that chose rule (4)'s SEGMENT-COUNT spelling over the
-// character-ratio spelling. Both close the #410 class; the ratio rule also newly refuses
+// character-ratio spelling. Both close this class; the ratio rule also newly refuses
 // ordinary paths carrying one long opaque component (a content-hash build directory, a
-// cache path), and #209/#1255 record what refusing real paths costs. The ratio's cost
+// cache path), and the false-positive record shows what refusing real paths costs. The ratio's cost
 // is measured here too, so the choice is a number rather than a preference.
 func TestPathRuleDifferential(t *testing.T) {
 	const n = 200000
@@ -198,7 +198,7 @@ func TestPathRuleDifferential(t *testing.T) {
 		return string(b)
 	}
 
-	// (b) from #410: 40 characters forced into the published example key's 13/7/18 slash
+	// (b) 40 characters forced into the published example key's 13/7/18 slash
 	// layout, over [A-Za-z0-9] only. This is the population the 3.07% was measured on.
 	admittedByBudgetOnly, admittedNow := 0, 0
 	for i := 0; i < n; i++ {
@@ -216,12 +216,12 @@ func TestPathRuleDifferential(t *testing.T) {
 		"rule(3) alone admitted %d (%.5f%%); with rule(4) %d (%.5f%%)",
 		n, admittedByBudgetOnly, before, admittedNow, after)
 	if before < 1.0 {
-		t.Fatalf("the control is not reproducing #410: rule(3) alone admitted only %.5f%% "+
-			"of the 13/7/18 population, but #410 measured 3.07%% — the differential is "+
+		t.Fatalf("the control is not reproducing the measured class: rule(3) alone admitted only %.5f%% "+
+			"of the 13/7/18 population, but the differential measured 3.07%% — the differential is "+
 			"measuring the wrong thing, so its verdict on rule(4) means nothing", before)
 	}
 	if after >= before/10 {
-		t.Errorf("rule (4) did not close the #410 class: %.5f%% still admitted, want under "+
+		t.Errorf("rule (4) did not close the measured class: %.5f%% still admitted, want under "+
 			"a tenth of the %.5f%% baseline", after, before)
 	}
 
@@ -231,7 +231,7 @@ func TestPathRuleDifferential(t *testing.T) {
 	//
 	// Harvested rather than hand-written, because a hand-written path population is a
 	// population of paths the author already believed would pass — the exact circularity
-	// #410 caught in the comment it corrected. And harvested THROUGH reBase64ish, because
+	// this rule caught in the comment it corrected. And harvested THROUGH reBase64ish, because
 	// isPathLike never sees a path: it sees the base64ish RUN extracted from one, and `-`,
 	// `.` and `_` are outside that charset. A population of literal paths measures a
 	// function nothing calls.
@@ -264,11 +264,11 @@ func TestPathRuleDifferential(t *testing.T) {
 		"/home/user/documents/notes/reference",
 		"/opt/homebrew/opt/python311/bin/python3",
 		"/tmp/build/go/pkg/mod/cache/download/sumdb",
-		"frontend/src/components/dashboard/PositionSummaryPanel",
+		"frontend/src/components/dashboard/MetricsSummaryPanel",
 		"//localhost/api/v2/state/deployments",
 		"services/app/internal/api/handlers/reviewwrite/",
 		"docs/reports/2026/07/30/factory-floor-summary",
-		"src/Example/Settlement",
+		"src/Example/Report",
 		"com/example/desk/commit/5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b",
 		"docs/streams/groundtruth/brief06gategoldencorpus",
 		"tools/desk/internal/IsOnByDefault/router",
@@ -309,7 +309,7 @@ func harvestRepoPathRuns(t *testing.T) []string {
 	var out []string
 	// tools/desk/internal/deskkit -> tools/desk: this module's OWN root. Deliberately not
 	// the repository root: a walk that leaves the module would make this test a
-	// cross-module reader whose CI trigger cannot cover what it reads (#199), and the desk
+	// cross-module reader whose CI trigger cannot cover what it reads, and the desk
 	// module alone supplies a population well over the floor asserted by the caller.
 	root := filepath.Join("..", "..")
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
@@ -347,9 +347,9 @@ func harvestRepoPathRuns(t *testing.T) []string {
 	return out
 }
 
-// pathLikeBudgetOnly is isPathLike WITHOUT rule (4) — the pre-#410 rule, kept here as the
+// pathLikeBudgetOnly is isPathLike WITHOUT rule (4) — the prior rule, kept here as the
 // differential's control. A differential with no control cannot tell "the fix worked" from
-// "the corpus was never reproducing the bug", and #410's headline number exists precisely
+// "the corpus was never reproducing the bug", and the differential's headline number exists precisely
 // because a fixture-only lock could not see the population.
 func pathLikeBudgetOnly(run string) bool {
 	if !strings.Contains(run, "/") || strings.ContainsAny(run, "+=") {
@@ -371,7 +371,7 @@ func pathLikeBudgetOnly(run string) bool {
 // pathLikeRatioRule is the SPELLING OF RULE (4) THAT WAS REJECTED: cap the opaque material
 // as a fraction of the run's length rather than counting segments. It is kept so the
 // comparison in TestPathRuleDifferential is executable rather than asserted — the same
-// discipline #410 applied to the comment it corrected.
+// discipline the differential applied to the comment it corrected.
 func pathLikeRatioRule(run string) bool {
 	if !strings.Contains(run, "/") || strings.ContainsAny(run, "+=") {
 		return false
@@ -389,7 +389,7 @@ func pathLikeRatioRule(run string) bool {
 	return opaque*2 < len(run)
 }
 
-// TestScanOverrideIsLoggedOrRefused pins the #585 contract: exit 5 without the
+// TestScanOverrideIsLoggedOrRefused pins the scan-override contract: exit 5 without the
 // flag remains a stop AND advertises the flag; with the flag the write proceeds and an
 // audit row lands; and nothing here can take an UNLOGGED bypass.
 func TestScanOverrideIsLoggedOrRefused(t *testing.T) {
@@ -401,7 +401,7 @@ func TestScanOverrideIsLoggedOrRefused(t *testing.T) {
 	}
 
 	// No override: still refused, still exit 5, and the message now says a way through
-	// exists — #585's worker left the sanctioned transport because the refusal said the
+	// exists — a worker left the sanctioned transport because the refusal said the
 	// opposite ("no override flag by design").
 	err := HandleScanRefusal(ScanOverride{Tool: "deskpr", Verb: "create", Surface: "PR body", Content: body}, scan)
 	if ExitCodeOf(err) != ExitRefused {
@@ -469,7 +469,7 @@ func TestScanOverrideIsLoggedOrRefused(t *testing.T) {
 
 // TestOverrideHintNamesTheAuditedFields is a documentation lock: the hint has to tell a
 // reader what the override COSTS them, or it reads as a free pass rather than an audited
-// one. #585's fix direction was "a flag + logged justification", not "a flag".
+// one. The fix direction was "a flag + logged justification", not "a flag".
 func TestOverrideHintNamesTheAuditedFields(t *testing.T) {
 	h := OverrideHint()
 	for _, want := range []string{ScanOverrideFlag, "audit row", "digest", "identity", "STOP"} {

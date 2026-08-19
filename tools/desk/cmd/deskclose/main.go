@@ -3,7 +3,7 @@
 //
 // The problem it exists for: the reject/duplicate exit is unused (2-4% of closes)
 // because no agent may close an issue and the only sanctioned exit is a full fix-PR
-// cycle. issue-flow/01's R-1 grants a small number of narrow close lanes. This tool
+// cycle. A signed ruling (R-1) grants a small number of narrow close lanes. This tool
 // puts that grant in CODE, so a close outside the lanes is impossible rather than
 // merely forbidden.
 //
@@ -63,12 +63,12 @@ Every mode accepts --dry-run (validate + read the remote, write nothing) and
 verified either way, so this flag cannot manufacture authority).
 
 duplicate      — REFUSED today. R-1 withdraws the duplicate lane from the desk: the
-                 two-role #158 procedure governs (a strong-tier worker folds the
+                 two-role duplicate procedure governs (a strong-tier worker folds the
                  loser's unique content into the FIRST-FILED survivor and marks the
                  second; a REVIEWER closes it, and only after agreeing the content
                  moved). The verb exists, validates its inputs — --mined is
                  mandatory — and then exits 5 naming both roles. It unlocks only if
-                 R-1's sign-off EXPLICITLY supersedes the #158 ruling, which is what
+                 R-1's sign-off EXPLICITLY supersedes the two-role ruling, which is what
                  R-1's own conflict disclosure requires.
 
 superseded     — the issue's substance is fully captured by --by <ref>. A PR ref must
@@ -85,7 +85,7 @@ manifest       — a batch, authorized once by a human, applied ONE ROW AT A TIM
                  No row is ever skipped.
 
 DISPOSITION RECORDS. A pull-request target must already carry a machine-readable
-disposition record (ground-truth/05: the disposition:<verdict> label plus the
+disposition record (deskdisposition: the disposition:<verdict> label plus the
 <!-- desk-disposition v1 --> marker comment). deskclose READS that record through
 ` + "`deskdisposition read --json`" + ` — it does not re-derive the verdict and does not
 parse the marker itself. NEEDS-REBASE means live work and is refused; a record whose

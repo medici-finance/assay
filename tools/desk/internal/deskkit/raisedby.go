@@ -26,7 +26,7 @@ package deskkit
 // are hand-maintained prose. Deriving from the roster is what makes the vocabulary
 // checkable at all.
 //
-// THREE-STATE (desk-hardening/01), and it is the load-bearing part. A metric over this
+// THREE-STATE, and it is the load-bearing part. A metric over this
 // label has THREE answers per issue, never two:
 //
 //	RaisedByStamped        a `raised-by:<role>` label is present and names one role.
@@ -47,11 +47,11 @@ package deskkit
 // is not "pick the alphabetically smallest". It is a could-not-check: the issue asserts
 // two different origins and this package cannot adjudicate between them.
 //
-// CONSUMER BOUNDARY. `methodology-metrics/30` (the self-improvement metric) is the reader
-// this exists for, and it is NOT implemented here. What 30 needs from this file is: the
+// CONSUMER BOUNDARY. The self-improvement metric is the reader
+// this exists for, and it is NOT implemented here. What that reader needs from this file is: the
 // stamp, its vocabulary, and the two non-answer states as first-class values it can
 // report separately rather than fold into its denominator. Everything past that — the
-// self-healed/human-touched classification, the rate, the series — is 30's.
+// self-healed/human-touched classification, the rate, the series — is the reader's.
 //
 // READING A ROLE THE ROSTER NO LONGER BINDS. RaisedByOf does NOT validate the role
 // against the current roster. A stamp is a historical fact about a filing; re-validating

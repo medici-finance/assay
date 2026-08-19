@@ -16,7 +16,7 @@ import (
 )
 
 // skipEntry records a worktree that prune LEFT untouched, with why. The reason vocabulary
-// mirrors the safety gate: dirty / unpushed / unmerged / current / not-under-prefix / shared.
+// mirrors the safety gate: locked / dirty / unpushed / unmerged / current / not-under-prefix / shared.
 type skipEntry struct{ path, reason string }
 
 // pruneResult is the outcome of one sweep.
@@ -37,7 +37,9 @@ type pruneResult struct {
 //
 //	Step B (count reduction, safe gate): walk the registered worktrees under the sanctioned
 //	  prefixes and REMOVE (via the exact same safe-remove primitive as `remove`) ONLY the
-//	  ones proven safe — NOT the shared checkout (identity), NOT the current worktree (cwd),
+//	  ones proven safe — NOT a LOCKED worktree (git will refuse to deregister it, so deleting
+//	  its directory first would strand the registration — issue #264; the lock is checked
+//	  FIRST, ahead of every content heuristic), NOT the shared checkout (identity), NOT the current worktree (cwd),
 //	  tracked-clean, AND fully merged into origin/main (HEAD an ancestor of origin/main → every
 //	  commit reachable from HEAD is already on the remote mainline, so nothing is lost). The
 //	  merge check is the ACTIVE-WORKER guard: an unmerged branch (an open PR still in flight)
@@ -200,7 +202,24 @@ func pruneSweep(guard *pathGuard, dir, cwd string) (pruneResult, error) {
 		return res, lerr
 	}
 
+	// Lock state, read ONCE up front. A locked worktree is one git will refuse to
+	// deregister; deleting its directory first (before discovering the lock) destroys
+	// state AND strands the registration — the exact half-destroyed outcome of issue #264.
+	// So the lock is consulted FIRST, ahead of every content heuristic, and a locked
+	// worktree is LEFT untouched with a lock reason. Fail CLOSED if lock state is
+	// unreadable: an unknown lock state is treated as unsafe, never as "nothing is locked".
+	locked, lkErr := guard.lockedWorktrees(dir)
+	if lkErr != nil {
+		return res, lkErr
+	}
+
 	for _, rt := range roots {
+		// Lock gate FIRST: a locked worktree is never deleted, whatever its content state
+		// says (a live agent's worktree was spared here only by luck of a content heuristic).
+		if reason, isLocked := locked[rt]; isLocked {
+			res.skips = append(res.skips, skipEntry{rt, lockedReason(reason)})
+			continue
+		}
 		switch {
 		case rt == guard.sharedCheckout:
 			res.skips = append(res.skips, skipEntry{rt, "shared checkout (refused by identity — never removed)"})
@@ -263,6 +282,16 @@ func pruneSweep(guard *pathGuard, dir, cwd string) (pruneResult, error) {
 		res.removed++
 	}
 	return res, nil
+}
+
+// lockedReason renders the skip reason for a locked worktree, surfacing git's lock message
+// (e.g. `claude agent … pid 98225`) so the skip is visibly lock-based — the run makes a
+// lock decision instead of silently masking it behind a content heuristic (issue #264).
+func lockedReason(reason string) string {
+	if reason == "" {
+		return "locked"
+	}
+	return "locked (" + reason + ")"
 }
 
 // unmergedReason produces a human sub-diagnosis for a NOT-merged worktree, distinguishing

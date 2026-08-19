@@ -1,6 +1,6 @@
 # corpus: a SOPS-encrypted kubernetes Secret manifest
 # expect: clean
-# refs:   #778 (desk-console/04, #1843), #585
+# refs:   sanctioned sops manifest false-positive class
 # shape:  complete ENC[AES256{{+}}_GCM,...] envelopes plus a generated sops: metadata block
 # why:    encrypt -> commit -> push -> reconcile is the house's SANCTIONED Flux path; ciphertext is not usable key material
 apiVersion: v1

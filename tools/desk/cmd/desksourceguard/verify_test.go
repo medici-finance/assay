@@ -166,7 +166,7 @@ func newFixture(t *testing.T, pinFileBody, headSHA, stamp string) fixture {
 	return fixture{root: root, src: src, stamp: stamp}
 }
 
-const goodCommit = "135feb2a9926afe2a57156660af78f1f6eee2d63"
+const goodCommit = "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00"
 
 func pinBody(binTag, sourceTag, sourceDigest string) string {
 	return fmt.Sprintf("desk-tools-linux-amd64 %s %s\ndesk-tools-source %s %s\n",

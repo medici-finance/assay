@@ -239,6 +239,85 @@ func TestPruneSkipsCleanUnmergedBranch(t *testing.T) {
 	}
 }
 
+// --- prune: a LOCKED worktree is skipped BEFORE deletion (issue #264) --------------
+//
+// Regression for #264: prune deleted the directories of explicitly-locked worktrees, then
+// could not deregister them (git honours the lock), leaving them half-destroyed — directory
+// gone, admin entry stranded. The fixture here is deliberately the fully-REMOVABLE state
+// (tracked-clean AND merged-below-tip — byte-identical to TestPruneRemovesMergedCleanWorktree,
+// which removes it), so ONLY the lock gate can keep it. After the fix the lock is consulted
+// FIRST: the worktree survives on disk, stays registered, and is reported with a lock reason
+// that surfaces git's lock message — never a content heuristic and never a delete.
+func TestPruneSkipsLockedWorktree(t *testing.T) {
+	work := newRepo(t)
+	calls := withEnv(t, work)
+	target := addWorktree(t, "locked")
+
+	// Advance origin/main one commit so the worktree is merged-BELOW-tip: without the lock
+	// this is the removable state (the fresh-at-tip guard no longer applies).
+	writeFile(t, filepath.Join(work, "mainline.txt"), "marched forward\n")
+	mustGit(t, work, "add", "mainline.txt")
+	mustGit(t, work, "commit", "-m", "advance mainline")
+	newMain := mustGit(t, work, "rev-parse", "HEAD")
+	mustGit(t, work, "update-ref", "refs/remotes/origin/main", newMain)
+
+	// Lock it with a reason naming a live-looking process, exactly as role-init does.
+	lockReason := "claude agent agent-ac18d15bfc97f5bd8 (pid 98225 start Wed)"
+	mustGit(t, work, "worktree", "lock", "--reason", lockReason, target)
+
+	resetCalls(calls)
+	rc, errout := runCapErr(t, []string{"prune"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	// Directory MUST survive — never deleted before the lock is discovered.
+	assertExists(t, target)
+	// Registration MUST survive — no half-destroyed (gone-but-registered) state.
+	list := mustGit(t, work, "worktree", "list", "--porcelain")
+	if !strings.Contains(list, target) {
+		t.Fatalf("locked worktree no longer registered after prune (half-destroyed):\n%s", list)
+	}
+	// The skip MUST be lock-based and MUST surface git's lock message — not a content heuristic.
+	if !strings.Contains(errout, "locked ("+lockReason+")") {
+		t.Fatalf("expected a visible lock skip reason; got:\n%s", errout)
+	}
+	if strings.Contains(errout, "removed 1") {
+		t.Fatalf("prune removed a LOCKED worktree; stderr:\n%s", errout)
+	}
+	// The removable fixture must have been kept SOLELY by the lock gate, not unpushed/unmerged.
+	if strings.Contains(errout, "unpushed") || strings.Contains(errout, "unmerged") {
+		t.Fatalf("locked worktree masked behind a content heuristic (the #264 defect); got:\n%s", errout)
+	}
+}
+
+// TestPruneSkipsLockedWorktreeNoReason covers a worktree locked with no `--reason`: the
+// porcelain block carries a bare `locked` line, and the skip reads simply "locked".
+func TestPruneSkipsLockedWorktreeNoReason(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	target := addWorktree(t, "locked-bare")
+
+	writeFile(t, filepath.Join(work, "mainline.txt"), "marched forward\n")
+	mustGit(t, work, "add", "mainline.txt")
+	mustGit(t, work, "commit", "-m", "advance mainline")
+	newMain := mustGit(t, work, "rev-parse", "HEAD")
+	mustGit(t, work, "update-ref", "refs/remotes/origin/main", newMain)
+
+	mustGit(t, work, "worktree", "lock", target) // no --reason → bare `locked` line
+
+	rc, errout := runCapErr(t, []string{"prune"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	assertExists(t, target)
+	if !strings.Contains(errout, "— locked\n") {
+		t.Fatalf("expected a bare \"locked\" skip reason; got:\n%s", errout)
+	}
+	if strings.Contains(errout, "removed 1") {
+		t.Fatalf("prune removed a LOCKED (no-reason) worktree; stderr:\n%s", errout)
+	}
+}
+
 // --- prune: the current worktree is never removed ---------------------------------
 
 func TestPruneSkipsCurrentWorktree(t *testing.T) {

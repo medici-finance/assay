@@ -41,7 +41,7 @@ func noop(verb, sha, detail string) writeResult {
 }
 
 // dryNoop is the outcome of a `--dry-run`: exit 0, one audit line, and a result class
-// that feeds NEITHER rate-limit meter (#214).
+// that feeds NEITHER rate-limit meter.
 //
 // It is separate from noop because the two are different facts. A `noop` means the act
 // was attempted and found already done — non-progress, which is exactly what the circuit
@@ -143,7 +143,7 @@ func (l *auditLock) release() {
 // section. Every exit path writes exactly one audit line — including refusals,
 // which is what lets the gates see a loop at all.
 //
-// WHICH gate a refusal feeds changed in #209: a refusal is audited
+// WHICH gate a refusal feeds: a refusal is audited
 // `refused`, which does NOT charge the outward-write budget (no ref was created, so
 // there was no remote amplification to cap) and DOES count toward the non-progress
 // circuit breaker. "A refusal loop must be stopped" is therefore enforced by the
@@ -164,7 +164,7 @@ func runOutward(args []string, plan func(entries []deskkit.Entry) writeResult) i
 	// every line, so the meter reads back exactly what this tool writes. Passing "" here
 	// skipped BOTH tiers and left release cuts bounded only by the breaker, which counts
 	// consecutive NON-progress and so never trips on a run of successful releases
-	// (#439 review). A release has no PR, so pr=0 puts it in the repo's
+	// (surfaced in review). A release has no PR, so pr=0 puts it in the repo's
 	// unnumbered bucket at the per-PR cap — the same bound this tool has always had
 	// (current value and provenance: RateLimitPerPRPerHour in ratelimit.go).
 	if aerr := deskkit.AllowWrite(toolName, repoSlug, 0); aerr != nil {

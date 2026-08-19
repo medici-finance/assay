@@ -33,11 +33,11 @@ func claimFile(home, item string) string {
 func TestAcquireThenCollision(t *testing.T) {
 	home := deskHome(t)
 
-	if rc := run([]string{"acquire", "--kind", "dispatch", "--item", "loop-engine/01"}); rc != deskkit.ExitOK {
+	if rc := run([]string{"acquire", "--kind", "dispatch", "--item", "stream-a/01"}); rc != deskkit.ExitOK {
 		t.Fatalf("first acquire rc = %d, want 0", rc)
 	}
 	// The claim file exists at the sanitized path with the canonical shape.
-	raw, err := os.ReadFile(claimFile(home, "loop-engine/01"))
+	raw, err := os.ReadFile(claimFile(home, "stream-a/01"))
 	if err != nil {
 		t.Fatalf("claim file: %v", err)
 	}
@@ -45,12 +45,12 @@ func TestAcquireThenCollision(t *testing.T) {
 	if err := json.Unmarshal(raw, &c); err != nil {
 		t.Fatalf("parse claim: %v", err)
 	}
-	if c.Kind != "dispatch" || c.Item != "loop-engine/01" || c.Owner != "test-session" {
+	if c.Kind != "dispatch" || c.Item != "stream-a/01" || c.Owner != "test-session" {
 		t.Fatalf("claim shape wrong: %+v", c)
 	}
 
 	// A second acquire of the same LIVE item is refused (exit 5) — do not proceed.
-	if rc := run([]string{"acquire", "--kind", "dispatch", "--item", "loop-engine/01"}); rc != deskkit.ExitRefused {
+	if rc := run([]string{"acquire", "--kind", "dispatch", "--item", "stream-a/01"}); rc != deskkit.ExitRefused {
 		t.Fatalf("collision rc = %d, want %d (refused)", rc, deskkit.ExitRefused)
 	}
 }
@@ -98,8 +98,8 @@ func TestListReadsEveryWriterShape(t *testing.T) {
 	}
 	// Plant a legacy loopengine-shape claim and a legacy roster/bash-shape claim; list must
 	// read both through the tolerant reader.
-	if err := os.WriteFile(filepath.Join(dir, "loop-engine_07.claim"),
-		[]byte(`{"itemID":"loop-engine/07","runner":"batch","branch":"feat/y","claimed":"2026-08-01T00:00:00Z"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "stream-a_07.claim"),
+		[]byte(`{"itemID":"stream-a/07","runner":"batch","branch":"feat/y","claimed":"2026-08-01T00:00:00Z"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "desk-tools--09.claim"),

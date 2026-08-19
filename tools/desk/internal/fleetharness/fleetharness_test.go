@@ -52,14 +52,14 @@ type expectation struct {
 	Note  string `json:"note"`
 }
 
-// TestFleetWorkflowAcceptance is the acceptance criterion #517 asked for, in
+// TestFleetWorkflowAcceptance is the acceptance criterion the fleet audit asked for, in
 // its own words: "a detached worktree at origin/<branch>, in a repo different from the
 // caller's own, replying successfully. If that case does not pass, the tool remains
 // unusable for the roles it was built for."
 //
 // It is a DIFFERENTIAL, not a pass/fail assertion, and that is deliberate. The gated verbs
-// do not all pass today — #517 and #788 are open, and their fixes ride their own issues,
-// not this brief. A harness that simply asserted "all green" could only be landed by
+// do not all pass today — some of these gaps are open, and their fixes ride their own
+// issues, not this harness. A harness that simply asserted "all green" could only be landed by
 // deleting the scenarios that fail, which is how the class stayed invisible for fourteen
 // passes. Instead every scenario's observed stage is compared against a CHECKED-IN
 // expectation that names the issue when it is not a pass, so:
@@ -71,7 +71,7 @@ type expectation struct {
 //   - the expectations file is a standing, machine-readable statement of which gated verbs
 //     the fleet's own mandated workflow cannot currently use.
 //
-// Release-blocking for desk-tools (docs/desk-tools-gate-bar.md).
+// Release-blocking for the desk-tools ship bar.
 func TestFleetWorkflowAcceptance(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Fatalf("git is not on PATH: %v — this is could-not-check, not a pass", err)
@@ -101,7 +101,7 @@ func TestFleetWorkflowAcceptance(t *testing.T) {
 				"  If the verb IMPROVED, update %s and close the issue it names.\n"+
 				"  If it REGRESSED, a gated verb just became unusable from the workflow the\n"+
 				"  skills mandate — which means its guard stops running for every worker that\n"+
-				"  takes the authorised exit-3/6 fallback (#517).",
+				"  takes the authorised exit-3/6 fallback.",
 				sc.name, exp.Stage, issueSuffix(exp), stage, detail, exp.Note, expectationsFile)
 		})
 	}
@@ -176,7 +176,7 @@ func newFleetEnv(t *testing.T) *fleetEnv {
 		home:      filepath.Join(root, "home"),
 		ownRepo:   "example-org/tracker",
 		otherRepo: "example-org/agents",
-		branch:    "brief/gt06-acceptance",
+		branch:    "brief/fleet-acceptance",
 	}
 	mkdir(t, e.bin)
 	mkdir(t, filepath.Join(e.home, ".config", "assay"))
@@ -259,14 +259,14 @@ type scenario struct {
 func scenarios(e *fleetEnv) []scenario {
 	return []scenario{
 		{
-			// #517's own acceptance sentence, first half.
+			// The acceptance sentence, first half.
 			name: "deskreply/detached-worktree-own-repo",
 			run: func(t *testing.T, e *fleetEnv) (string, string) {
 				return e.invoke(t, e.detached, "deskreply", e.ownRepo, "1", "--body-file", e.bodyClean)
 			},
 		},
 		{
-			// #517's own acceptance sentence, second half: a repo different from the
+			// The acceptance sentence, second half: a repo different from the
 			// caller's own. Cross-repo dispatch is normal for this fleet.
 			name: "deskreply/detached-worktree-cross-repo",
 			run: func(t *testing.T, e *fleetEnv) (string, string) {
@@ -283,14 +283,14 @@ func scenarios(e *fleetEnv) []scenario {
 		{
 			name: "deskpr-create/detached-worktree",
 			run: func(t *testing.T, e *fleetEnv) (string, string) {
-				return e.invoke(t, e.detached, "deskpr", "create", "--title", "gt06 acceptance", "--body-file", e.bodyClean)
+				return e.invoke(t, e.detached, "deskpr", "create", "--title", "fleet acceptance", "--body-file", e.bodyClean)
 			},
 		},
 		{
 			// The harness's control for deskpr: local preconditions all satisfied.
 			name: "deskpr-create/branch-checked-out",
 			run: func(t *testing.T, e *fleetEnv) (string, string) {
-				return e.invoke(t, e.onBranch, "deskpr", "create", "--title", "gt06 acceptance", "--body-file", e.bodyClean)
+				return e.invoke(t, e.onBranch, "deskpr", "create", "--title", "fleet acceptance", "--body-file", e.bodyClean)
 			},
 		},
 		{
@@ -300,7 +300,7 @@ func scenarios(e *fleetEnv) []scenario {
 			},
 		},
 		{
-			// #788: an approved, ready-flipped PR gone stale has no
+			// An approved, ready-flipped PR gone stale has no
 			// sanctioned push path.
 			name: "deskpr-update/ready-flipped-pr",
 			run: func(t *testing.T, e *fleetEnv) (string, string) {
@@ -312,14 +312,14 @@ func scenarios(e *fleetEnv) []scenario {
 		},
 		{
 			// The scan refusal itself, through a real binary: exit 5, and the message
-			// must advertise the audited override (#585).
+			// must advertise the audited override.
 			name: "deskpr-create/secret-body-no-override",
 			run: func(t *testing.T, e *fleetEnv) (string, string) {
 				stage, detail := e.invoke(t, e.onBranch, "deskpr", "create",
-					"--title", "gt06 acceptance", "--body-file", e.bodySecret)
+					"--title", "fleet acceptance", "--body-file", e.bodySecret)
 				if !strings.Contains(detail, "force-scan-override") {
 					t.Errorf("the scan refusal does not advertise the audited override — "+
-						"#585's worker left the sanctioned transport precisely "+
+						"a worker left the sanctioned transport precisely "+
 						"because the refusal said none existed:\n%s", detail)
 				}
 				return stage, detail
@@ -332,7 +332,7 @@ func scenarios(e *fleetEnv) []scenario {
 			name: "deskpr-create/secret-body-logged-override",
 			run: func(t *testing.T, e *fleetEnv) (string, string) {
 				stage, detail := e.invoke(t, e.onBranch, "deskpr", "create",
-					"--title", "gt06 acceptance", "--body-file", e.bodySecret,
+					"--title", "fleet acceptance", "--body-file", e.bodySecret,
 					"--force-scan-override", "acceptance-harness exercise of the audited bypass")
 				if rows := e.overrideRows(t); rows == 0 {
 					t.Errorf("the override proceeded with NO scan_override audit row — that is "+
@@ -342,14 +342,14 @@ func scenarios(e *fleetEnv) []scenario {
 			},
 		},
 		{
-			// The cold-shell case (#794): desktoken not resolvable on PATH.
-			// It shares exit 6 with the detached-HEAD refusal, which is why #517's second
-			// comment asks for the two causes to be distinguishable — the harness records
+			// The cold-shell case: desktoken not resolvable on PATH.
+			// It shares exit 6 with the detached-HEAD refusal, which is why the two causes
+			// must be kept distinguishable — the harness records
 			// them as separate scenarios so a conflated exit code is at least visible.
 			name: "deskpr-create/desktoken-absent-from-path",
 			run: func(t *testing.T, e *fleetEnv) (string, string) {
 				return e.invokeWithoutShim(t, e.onBranch, "desktoken", "deskpr", "create",
-					"--title", "gt06 acceptance", "--body-file", e.bodyClean)
+					"--title", "fleet acceptance", "--body-file", e.bodyClean)
 			},
 		},
 	}
@@ -389,7 +389,7 @@ func (e *fleetEnv) exec(t *testing.T, dir, pathDir, verb string, args ...string)
 		"PATH="+pathDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"HOME="+e.home,
 		"XDG_CONFIG_HOME="+filepath.Join(e.home, ".config"),
-		"CLAUDE_SESSION_ID=gt06-fleet-harness",
+		"CLAUDE_SESSION_ID=fleet-harness",
 		"DESK_TOOLS_DISABLED=",
 		"GIT_CONFIG_GLOBAL="+filepath.Join(e.home, "gitconfig"),
 		// The network is deliberately unreachable, so the public-repo gate — the first
@@ -420,8 +420,8 @@ func (e *fleetEnv) exec(t *testing.T, dir, pathDir, verb string, args ...string)
 // classify maps an exit code plus the tool's own output onto the harness's states. The
 // message is consulted for exactly one distinction — remote-unreachable versus any other
 // unverifiable — because that is the boundary the harness measures and the exit code
-// alone conflates it (which is #517's second comment: "distinguish the two rc=6 causes so
-// the telemetry is readable").
+// alone conflates it: the two rc=6 causes must be distinguished so the telemetry is
+// readable.
 func classify(code int, out string) string {
 	switch code {
 	case 0:

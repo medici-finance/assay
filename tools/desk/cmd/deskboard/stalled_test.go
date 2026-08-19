@@ -81,7 +81,7 @@ func stalledSetup(t *testing.T) string {
 	t.Helper()
 	logPath := installFakeGH(t)
 	t.Setenv("DESKBOARD_GH_PR_REPO", stalledRepo)
-	t.Setenv("DESKBOARD_GH_PRLIST_JSON", stalledPRList("OPEN", true, "feat/issue-flow-04-x"))
+	t.Setenv("DESKBOARD_GH_PRLIST_JSON", stalledPRList("OPEN", true, "feat/stream-a-04-x"))
 	t.Setenv("DESKBOARD_GH_REVIEWS_JSON", stalledAppReviewJSON)
 	t.Setenv("DESKBOARD_GH_COMMIT_JSON", authorPush(time.Now().Add(-10*24*time.Hour)))
 	t.Setenv("DESKBOARD_GH_PRCOMMENTS_JSON", `[]`)
@@ -360,7 +360,7 @@ func TestStalled_NotBlockingAtHeadNotListed(t *testing.T) {
 // the desk's/human's move and has its own verbs.
 func TestStalled_NonDraftNotListed(t *testing.T) {
 	stalledSetup(t)
-	t.Setenv("DESKBOARD_GH_PRLIST_JSON", stalledPRList("OPEN", false, "feat/issue-flow-04-x"))
+	t.Setenv("DESKBOARD_GH_PRLIST_JSON", stalledPRList("OPEN", false, "feat/stream-a-04-x"))
 
 	rep := runStalled(t)
 	if len(rep.Stalled) != 0 {
@@ -376,7 +376,7 @@ func TestStalled_MergedNeverAppears(t *testing.T) {
 	for _, state := range []string{"MERGED", "CLOSED"} {
 		t.Run(state, func(t *testing.T) {
 			stalledSetup(t)
-			t.Setenv("DESKBOARD_GH_PRLIST_JSON", stalledPRList(state, true, "feat/issue-flow-04-x"))
+			t.Setenv("DESKBOARD_GH_PRLIST_JSON", stalledPRList(state, true, "feat/stream-a-04-x"))
 
 			rep := runStalled(t)
 			if len(rep.Stalled) != 0 {
@@ -636,9 +636,9 @@ func TestStalled_MalformedCompareIsNotAssessed(t *testing.T) {
 // claims a brief that statusgen reports as finished, so the draft is orphaned work.
 func TestStalled_CloseCandidateOnDoneBrief(t *testing.T) {
 	stalledSetup(t)
-	t.Setenv("DESKBOARD_GH_PRLIST_JSON", stalledPRList("OPEN", true, "feat/issue-flow-04-stalewatch"))
+	t.Setenv("DESKBOARD_GH_PRLIST_JSON", stalledPRList("OPEN", true, "feat/stream-a-04-stalewatch"))
 	t.Setenv("DESKBOARD_GATE_SCORES_JSON",
-		`[{"brief":"issue-flow/04","status":"done","repo":"`+stalledRepo+`"}]`)
+		`[{"brief":"stream-a/04","status":"done","repo":"`+stalledRepo+`"}]`)
 
 	rep := runStalled(t)
 	if len(rep.Stalled) != 1 {
@@ -653,9 +653,9 @@ func TestStalled_CloseCandidateOnDoneBrief(t *testing.T) {
 // brief finished in ANOTHER repo must not mark this repo's live draft closeable.
 func TestStalled_BriefStatusIsRepoScoped(t *testing.T) {
 	stalledSetup(t)
-	t.Setenv("DESKBOARD_GH_PRLIST_JSON", stalledPRList("OPEN", true, "feat/issue-flow-04-stalewatch"))
+	t.Setenv("DESKBOARD_GH_PRLIST_JSON", stalledPRList("OPEN", true, "feat/stream-a-04-stalewatch"))
 	t.Setenv("DESKBOARD_GATE_SCORES_JSON",
-		`[{"brief":"issue-flow/04","status":"done","repo":"medici-finance/assay"}]`)
+		`[{"brief":"stream-a/04","status":"done","repo":"medici-finance/assay"}]`)
 
 	rep := runStalled(t)
 	if len(rep.Stalled) != 1 {

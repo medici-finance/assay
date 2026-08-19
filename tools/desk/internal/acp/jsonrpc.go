@@ -67,15 +67,24 @@ type conn struct {
 
 	onRequest requestHandler
 	onNotify  notifyHandler
+	// onClose runs exactly once, on the read-loop goroutine, after the loop
+	// has returned (agent EOF / teardown). It is the hook the Client uses to
+	// close its updates channel so a consumer ranging over Updates() unblocks
+	// when the agent exits -- the spike never closed that channel because it
+	// had no ranging consumer. Because it runs on the read-loop goroutine
+	// after the loop is done, it cannot race the onNotify sends that feed the
+	// same channel (those all happen earlier, on this same goroutine).
+	onClose func()
 }
 
-func newConn(w io.Writer, r io.Reader, onRequest requestHandler, onNotify notifyHandler) *conn {
+func newConn(w io.Writer, r io.Reader, onRequest requestHandler, onNotify notifyHandler, onClose func()) *conn {
 	c := &conn{
 		w:         w,
 		pending:   make(map[int64]chan wireMessage),
 		closeCh:   make(chan struct{}),
 		onRequest: onRequest,
 		onNotify:  onNotify,
+		onClose:   onClose,
 	}
 	// bufio.Reader.ReadBytes has no line-length ceiling, unlike
 	// bufio.Scanner's default 64KiB token limit -- observed ACP lines
@@ -93,6 +102,9 @@ func (c *conn) readLoop(r *bufio.Reader) {
 		}
 		if err != nil {
 			c.fail(err)
+			if c.onClose != nil {
+				c.onClose()
+			}
 			return
 		}
 	}

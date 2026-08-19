@@ -72,7 +72,7 @@ func run(args []string) int {
 		// The OPERATING-ENVELOPE preflight runs at BOOT, before the queue is even
 		// read. A red envelope is could-not-run for the WHOLE pass: one summary
 		// line and exit — no queue read, no claim, no dispatch, and no issue filed
-		// about the desk's own envelope (ground-truth/07; #794 #571 #823 #638 #679).
+		// about the desk's own envelope.
 		if err := preflightBoot(args[1:]); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			return deskkit.ExitCodeOf(err)

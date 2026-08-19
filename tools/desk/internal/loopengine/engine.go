@@ -13,7 +13,7 @@ import (
 // variables the adapter interpolates into the dispatch prompt). Everything the engine
 // itself reasons about — risk, gate, effort, tier, implementer — is typed.
 type Item struct {
-	ID          string            // e.g. "loop-engine/01" or "issue-841" — stable, claim key
+	ID          string            // e.g. "team/01" or "issue-841" — stable, claim key
 	BriefPath   string            // repo-relative brief file, when brief-shaped
 	TargetSHA   string            // merged-main SHA the dispatched worker runs against
 	Risk        RiskFlags         // parsed frontmatter
@@ -22,7 +22,7 @@ type Item struct {
 	ExecTier    string            // "any" | "strong"
 	Implementer string            // for the author != runner typed guard (CheckAuthorRunner)
 	Payload     map[string]string // template variables for the dispatch prompt
-	// Retry optionally overrides Config.Retry for this item alone (loop-engine/08). nil
+	// Retry optionally overrides Config.Retry for this item alone. nil
 	// means the engine default. It is Item DATA, not a Loop hook.
 	Retry *RetryPolicy
 }
@@ -155,14 +155,14 @@ type Config struct {
 	// "acquired" — the answer to "is this item already taken by something outside the
 	// claims dir?" (an open PR naming it, a merged PR naming it, the board row). A claim
 	// file records only that a dispatcher is working on the item; acquiring one is not
-	// evidence the work is unclaimed, which is the gap loop-engine/10 names.
+	// evidence the work is unclaimed, which is the gap the WorkEvidence probe names.
 	//
 	// nil means the check is NOT performed — permitted, and then Claim ANNOUNCES the
 	// narrowed bound on Progress for every item (no silent caps). A probe that errors is
 	// could-not-check and makes Claim fail closed (exit 6), never a soft acquire. This is
 	// engine config, not a Loop hook — it does not erode the frozen contract.
 	WorkEvidence WorkEvidence
-	// Retry is the DECLARED retry policy applied to the dispatch path (loop-engine/08).
+	// Retry is the DECLARED retry policy applied to the dispatch path.
 	// nil means DefaultRetryPolicy(); an Item may override it per item (Item.Retry). Retry
 	// is engine-internal data wrapped around Loop.Dispatch — it adds no Loop hook and does
 	// not erode the frozen contract. See retry.go for the taxonomy and every bound.
@@ -170,6 +170,30 @@ type Config struct {
 	// Sleep is the back-off sleep seam. nil means time.Sleep; tests substitute a recorder
 	// so a backoff schedule is asserted rather than waited on.
 	Sleep func(time.Duration)
+	// Liveness is the decomposed timeout taxonomy that replaces the single
+	// coarse StaleClaim knob with schedule-to-start / per-tier start-to-close / heartbeat-gap
+	// timers. nil DISABLES liveness entirely — the engine then relies only on StaleClaim, exactly
+	// as before this field existed — so it is strictly additive engine data, not a Loop hook. See
+	// liveness.go for the taxonomy and every conservative-reclaim guard.
+	Liveness *LivenessPolicy
+	// Observe is the consumer-supplied set of READ-ONLY observable-event probes (audit scan,
+	// branch sha movement, PR activity) the engine polls each cycle to refresh a worker's
+	// heartbeat. The liveness taxonomy's fast reclaim REQUIRES observability: nil Observe (or a
+	// probe that could-not-check) means the engine cannot prove a worker absent, so NO reclaim
+	// fires — schedule-to-start and heartbeat are both gated on a clean "we looked and saw
+	// nothing" reading — and with no observation a worker never becomes "started", so
+	// start-to-close cannot fire either. With Observe nil, liveness is therefore inert and the
+	// StaleClaim backstop is the only clock, exactly as before this feature. The engine
+	// implements no probe itself — the sources are per-consumer, like WorkEvidence. See
+	// liveness.go.
+	Observe *ObservableProbes
+	// runID is the per-Run() lineage token for the scheduling journal (journal.go). It is
+	// ENGINE-SET, not caller-set — it is unexported precisely so a caller cannot supply one:
+	// Run() mints a fresh token per invocation and threads it here (Config passes by value),
+	// so fillPool / landOne / Recover all read the same run's identity. Its only job is to
+	// differ between two run instances, which is what lets crash recovery tell a prior run of
+	// this conductor from a live sibling. See journal.go's runid discussion.
+	runID string
 }
 
 // retryPolicy resolves the policy for one item: the item's override, else the engine
@@ -226,7 +250,7 @@ func Run(cfg Config, loop Loop) error {
 		return fmt.Errorf("loopengine: PoolSize must be >= 1, got %d", cfg.PoolSize)
 	}
 	// The retry policy is configuration a human wrote. An incoherent one fails closed here
-	// rather than silently behaving like some other policy (loop-engine/08).
+	// rather than silently behaving like some other policy.
 	pol := cfg.retryPolicy(Item{})
 	if err := pol.Validate(); err != nil {
 		return err
@@ -246,10 +270,49 @@ func Run(cfg Config, loop Loop) error {
 		_ = os.Setenv("DESK_LOOP", loop.Name())
 	}
 
+	// Mint this run's lineage token before anything is journalled, so every scheduling event
+	// this run emits — and every classification recovery makes — carries one identity.
+	cfg.runID = newRunID()
+
 	inflight := map[string]Handle{} // item ID -> in-flight handle
 	parked := map[string]bool{}     // item IDs routed-to-human / refused this session (do not re-select)
+	tracker := newLivenessTracker() // per-handle liveness clocks; sweep is a no-op when cfg.Liveness == nil
 	completions := make(chan completion)
 	stopping := false
+
+	// Consult the kill switch BEFORE recovery touches any claim file. Recover releases and
+	// reclaims claims (mutation on disk + audit lines); an operator who arms DISABLED/STOP and
+	// restarts the conductor to HALT it must not get claim mutation as a side effect of the
+	// boot. Guard here, before Recover, not only at the loop head. An unverifiable guard state
+	// fails closed (exit 6), exactly as inside the loop.
+	if err := deskkit.Guard(); err != nil {
+		if !deskkit.IsDisabled(err) {
+			return err
+		}
+		cfg.logf("stop: %s — recovery skipped (kill switch armed before boot)", err.Error())
+		stopping = true
+	}
+
+	// Crash recovery: replay this loop's journal and reclassify the claim files a prior,
+	// crashed run left on disk (release completed leftovers; free in-flight claims for
+	// immediate reclaim). Fail-closed on a corrupt journal — see recover.go. This runs
+	// BEFORE the first pool fill so a recovered in-flight item is re-selectable at once.
+	//
+	// Recover only when this process is the SOLE live conductor of its (RunnerID, Branch)
+	// lineage: the per-lineage flock (lineagelock.go) makes the "a prior-run claim under my
+	// lineage is a CRASHED run of me" premise TRUE rather than assumed. A live sibling holding
+	// the lock means that premise is false — its in-flight claims are live — so recovery is
+	// skipped and the drain proceeds without touching them. The lock is held for the whole
+	// Run() lifetime so a later boot still sees this conductor as live.
+	if !stopping {
+		if lock, sole := acquireLineageLock(cfg); sole {
+			defer lock.release()
+			Recover(cfg, loop)
+		} else {
+			cfg.logf("recover: skipped — not the sole live conductor of lineage %q@%q (a live sibling holds it, or the lineage cannot be locked); a prior-run claim may be a LIVE sibling's, not a crashed run's",
+				cfg.RunnerID, cfg.Branch)
+		}
+	}
 
 	for {
 		// Guard at EVERY iteration boundary (never mid-action). Precedence
@@ -270,7 +333,7 @@ func Run(cfg Config, loop Loop) error {
 
 		// Fill the pool to N (skip entirely while stopping — no new dispatch).
 		if !stopping {
-			if err := fillPool(cfg, loop, inflight, parked, completions); err != nil {
+			if err := fillPool(cfg, loop, inflight, parked, tracker, completions); err != nil {
 				// SelectQueue / TierPolicy read error: cannot fill this pass. It is not a
 				// per-item land failure, so do not wedge — surface it and fall through to
 				// idle so the next pass retries against a refreshed board.
@@ -296,7 +359,14 @@ func Run(cfg Config, loop Loop) error {
 		// loop back to refill the freed slot. While stopping we still land in-flight work.
 		if stopping {
 			c := <-completions
+			if _, live := inflight[c.result.Item.ID]; !live {
+				// Already disposed by a liveness sweep (reclaimed / blocked-timeout) — a late
+				// result from a worker we stopped tracking. Dropping it prevents a double-land.
+				cfg.logf("liveness: dropping late completion for %s (already disposed by liveness sweep)", c.result.Item.ID)
+				continue
+			}
 			delete(inflight, c.result.Item.ID)
+			tracker.unregister(c.result.Item.ID)
 			if failed := landOne(cfg, loop, c.result); failed {
 				parked[c.result.Item.ID] = true
 			}
@@ -304,7 +374,13 @@ func Run(cfg Config, loop Loop) error {
 		}
 		select {
 		case c := <-completions:
+			if _, live := inflight[c.result.Item.ID]; !live {
+				// Disposed by a liveness sweep already; drop the late result (no double-land).
+				cfg.logf("liveness: dropping late completion for %s (already disposed by liveness sweep)", c.result.Item.ID)
+				continue
+			}
 			delete(inflight, c.result.Item.ID)
+			tracker.unregister(c.result.Item.ID)
 			if failed := landOne(cfg, loop, c.result); failed {
 				// Bug filed (FILE don't ask); park it so the drain does not respin on a
 				// known-unlandable item and can proceed to empty.
@@ -312,8 +388,11 @@ func Run(cfg Config, loop Loop) error {
 			}
 			// refill happens on the next iteration's fillPool — immediate, not wave-batched.
 		case <-time.After(cfg.IdlePoll):
-			// Periodic wake so a stop flag set while the pool is busy is noticed at the
-			// next boundary even if no completion arrives.
+			// Periodic wake so a stop flag set while the pool is busy is noticed at the next
+			// boundary even if no completion arrives. This IS the liveness poll cycle: sweep the
+			// tracked workers, refresh each heartbeat from its read-only probes, and act on any
+			// whose timer expired (a no-op when cfg.Liveness == nil).
+			applyLivenessSweep(cfg, loop, tracker, inflight, parked)
 		}
 	}
 }
@@ -321,7 +400,7 @@ func Run(cfg Config, loop Loop) error {
 // fillPool claims + dispatches eligible items until the pool is at cfg.PoolSize. Items
 // already in flight or parked (routed-human / author-refused this session) are skipped;
 // a claim collision is skipped (owned elsewhere — structural no-double-dispatch).
-func fillPool(cfg Config, loop Loop, inflight map[string]Handle, parked map[string]bool, completions chan<- completion) error {
+func fillPool(cfg Config, loop Loop, inflight map[string]Handle, parked map[string]bool, tracker *livenessTracker, completions chan<- completion) error {
 	queue, err := loop.SelectQueue()
 	if err != nil {
 		return err
@@ -341,7 +420,7 @@ func fillPool(cfg Config, loop Loop, inflight map[string]Handle, parked map[stri
 		// dispatch an item to its own implementer; park it for a different runner.
 		if err := CheckAuthorRunner(it, cfg.RunnerID); err != nil {
 			cfg.logf("refused: author==runner %s (%s)", it.ID, cfg.RunnerID)
-			_ = deskkit.Log(deskkit.Entry{Tool: "loopengine", Verb: "dispatch", Result: deskkit.ResultRefused, Detail: err.Error()})
+			cfg.journalEvent(loop.Name(), journalRefuse, it, "", "", err.Error())
 			parked[it.ID] = true
 			continue
 		}
@@ -373,8 +452,11 @@ func fillPool(cfg Config, loop Loop, inflight map[string]Handle, parked map[stri
 		if !claimed {
 			continue
 		}
+		// Journal the claim decision (recovery groundwork): an item claimed but not yet
+		// followed by a terminal event is what boot replay reads as "in flight at crash".
+		cfg.journalEvent(loop.Name(), journalClaim, it, tier.String(), "", "")
 
-		// Dispatch under the DECLARED retry policy (loop-engine/08). Every attempt runs
+		// Dispatch under the DECLARED retry policy. Every attempt runs
 		// under the claim acquired just above: dispatchWithRetry never releases and never
 		// re-acquires, so a retry can neither double-acquire nor orphan the claim. On a
 		// terminal outcome the item is LANDED first (blocked-with-reason, or NEEDS_CONTEXT
@@ -385,10 +467,16 @@ func fillPool(cfg Config, loop Loop, inflight map[string]Handle, parked map[stri
 			cfg.logf("dispatch-error: %s: %s", it.ID, out.Summary(it.ID))
 			landOne(cfg, loop, out.Result(it, cfg.RunnerID))
 			_ = ReleaseClaim(cfg, it) // hand the slot back; a failed dispatch is not a claim
+			cfg.journalEvent(loop.Name(), journalRelease, it, tier.String(), "", "dispatch failed — claim released")
 			parked[it.ID] = true
 			continue
 		}
+		// Journal the dispatch: the item is now genuinely in flight under a live handle.
+		cfg.journalEvent(loop.Name(), journalDispatch, it, tier.String(), "", "")
 		inflight[it.ID] = h
+		// Start this handle's liveness clock at dispatch: schedule-to-start runs
+		// from here to the worker's first observable event.
+		tracker.register(it, tier, time.Now())
 		// Merge this handle's completion onto the shared channel so the orchestrator lands
 		// results one at a time in arrival order.
 		go func(h Handle) { completions <- completion{result: <-h.Done()} }(h)
@@ -403,9 +491,61 @@ func fillPool(cfg Config, loop Loop, inflight map[string]Handle, parked map[stri
 func landOne(cfg Config, loop Loop, r Result) (failed bool) {
 	if err := loop.Land(r); err != nil {
 		cfg.logf("filed-and-continued: %s (%v)", r.Item.ID, err)
-		_ = deskkit.Log(deskkit.Entry{Tool: "loopengine", Verb: "land", Result: deskkit.ResultRefused, Detail: fmt.Sprintf("land failed for %s: %v — filed and continued", r.Item.ID, err)})
+		// A land that failed is still a TERMINAL land for recovery: the dispatch completed,
+		// so the leftover claim is a leftover to release, not an in-flight item to reclaim.
+		// It rides the SINGLE journal write path (result=refused) as a well-formed record so
+		// replay parses it, rather than a raw prose Detail replay would skip. The board row is
+		// not flipped (land failed), so ordinary SelectQueue re-picks the item on a later drain.
+		cfg.journalEventResult(loop.Name(), journalLand, r.Item, "", r.Verdict, fmt.Sprintf("land failed: %v — filed and continued", err), deskkit.ResultRefused)
 		return true
 	}
 	cfg.logf("landed: %s (%s)", r.Item.ID, r.Verdict)
+	// Journal the land as a TERMINAL event carrying the outcome class. This is the marker
+	// boot replay reads as "completed" — a claim whose newest event is a land is a leftover
+	// to release, not an item to reclaim.
+	cfg.journalEvent(loop.Name(), journalLand, r.Item, "", r.Verdict, "")
 	return false
+}
+
+// applyLivenessSweep runs one liveness poll cycle and acts on every worker
+// whose timer expired. It is a no-op when cfg.Liveness == nil. Each disposition maps to a
+// distinct action, and all three drop the worker from inflight + the tracker:
+//
+//   - never-started / heartbeat expiry → RECLAIM: free the claim through the lock-guarded
+//     compare-and-delete so the item is re-dispatchable through the ordinary single-winner
+//     Acquire; journal a `reclaim`. NOT parked — the whole point is minutes-scale re-dispatch.
+//   - start-to-close expiry → BLOCKED-TIMEOUT: land the item blocked (file-and-continue) and
+//     journal the decision, then park it so the drain does not immediately re-dispatch a worker
+//     that would blow the same wall cap again.
+//
+// The completion goroutine for a reclaimed/blocked worker is left pending; if that worker was
+// merely slow and later feeds a result, Run's completion handler drops it (the item is no longer
+// in inflight), so a liveness disposition never races a late land into a double-land.
+func applyLivenessSweep(cfg Config, loop Loop, tracker *livenessTracker, inflight map[string]Handle, parked map[string]bool) {
+	for _, o := range cfg.sweepLiveness(tracker, time.Now()) {
+		switch o.disp {
+		case livenessReclaimNeverStarted, livenessReclaimHeartbeat:
+			reason := "heartbeat gap exceeded — no observable event; claim freed for re-dispatch"
+			if o.disp == livenessReclaimNeverStarted {
+				reason = "schedule-to-start exceeded — worker never emitted a sign of life; claim freed for re-dispatch"
+			}
+			if ok, err := reclaimForLiveness(cfg, o.item.ID); err != nil {
+				cfg.logf("liveness: could not free claim for %s (%s): %v", o.item.ID, o.disp, err)
+			} else if ok {
+				cfg.logf("liveness: reclaim-eligible %s — %s", o.item.ID, reason)
+			} else {
+				cfg.logf("liveness: %s claim changed/absent under sweep — left untouched", o.item.ID)
+			}
+			cfg.journalEvent(loop.Name(), journalReclaim, o.item, o.tier.String(), "", "liveness: "+reason)
+			delete(inflight, o.item.ID)
+			tracker.unregister(o.item.ID)
+		case livenessBlockedStartToClose:
+			cfg.logf("liveness: blocked-timeout %s — start-to-close wall cap for tier %s exceeded", o.item.ID, o.tier)
+			landOne(cfg, loop, Result{Item: o.item, Verdict: VerdictBlocked, RunnerID: cfg.RunnerID})
+			cfg.journalEvent(loop.Name(), journalLand, o.item, o.tier.String(), VerdictBlocked, "liveness: start-to-close wall cap exceeded — blocked-timeout, filed and continued")
+			delete(inflight, o.item.ID)
+			tracker.unregister(o.item.ID)
+			parked[o.item.ID] = true
+		}
+	}
 }

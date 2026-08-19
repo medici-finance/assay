@@ -13,7 +13,7 @@ import (
 func TestClaim_NoclobberCollision(t *testing.T) {
 	dir := t.TempDir()
 	cfg := Config{ClaimsDir: dir, StaleClaim: 120 * time.Minute, RunnerID: "runner-a"}
-	it := Item{ID: "loop-engine/01"}
+	it := Item{ID: "sample/01"}
 
 	ok, err := Claim(cfg, it)
 	if err != nil || !ok {
@@ -28,7 +28,7 @@ func TestClaim_NoclobberCollision(t *testing.T) {
 		t.Fatal("second claim of a LIVE claim returned ok=true — double-dispatch is possible")
 	}
 	// The item ID has a slash — it must resolve to a single segment inside the claims dir.
-	if _, err := os.Stat(filepath.Join(dir, "loop-engine_01.claim")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "sample_01.claim")); err != nil {
 		t.Fatalf("claim file not at sanitized path: %v", err)
 	}
 }
@@ -112,7 +112,7 @@ func TestClaim_UnreadableExistingFailsClosed(t *testing.T) {
 }
 
 func TestCheckAuthorRunner_RefusesSelf(t *testing.T) {
-	it := Item{ID: "hardening/07", BriefPath: "docs/streams/x/brief-07.md", Implementer: "glm-worker-3"}
+	it := Item{ID: "sample/07", BriefPath: "docs/streams/x/brief-07.md", Implementer: "glm-worker-3"}
 	err := CheckAuthorRunner(it, "glm-worker-3")
 	if err == nil {
 		t.Fatal("author==runner not refused")

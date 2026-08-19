@@ -85,11 +85,25 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		if err != nil {
 			return fromReadErr("ready", repo, pr, head, err)
 		}
-		state, vhead, found := latestAppVerdict(reviews)
+		state, vhead, found, noOpApproval := latestAppVerdict(reviews)
 		if !found {
 			return refused("ready", repo, pr, head,
 				"no APPROVED/CHANGES_REQUESTED CORRECTNESS verdict from "+reviewerBotDisplay()+
 					" — a security verdict alone does not satisfy the correctness gate")
+		}
+		// #37: an APPROVED that immediately follows a CHANGES_REQUESTED at the SAME commit
+		// (no push in between) is a no-op approval, not a re-verification — GitHub's
+		// self-approval block only keys on the PR AUTHOR account and has nothing to say
+		// about a third-party App re-posting a verdict at an unchanged head. Any session
+		// that can mint the reviewer App's token can flip CHANGES_REQUESTED -> APPROVED
+		// without a single new line of diff being read. Refuse loudly rather than let this
+		// silently satisfy gate (b) as an ordinary APPROVED.
+		if noOpApproval {
+			return refused("ready", repo, pr, head,
+				"latest App correctness verdict at "+short(vhead)+" is an APPROVED that immediately follows "+
+					"a CHANGES_REQUESTED at the SAME head, with no intervening push — that cannot be a "+
+					"re-verification (#37); refusing to flip until a new commit lands, or a human clears the "+
+					"standing rejection directly on GitHub")
 		}
 		if state != "APPROVED" {
 			return refused("ready", repo, pr, head, "latest App correctness verdict is "+state+" — blocked (not APPROVED)")
@@ -240,6 +254,29 @@ func ciReadErr(what, head string, err error) error {
 // submitted at. Reviews arrive in ascending submitted order, so the last matching one
 // wins. found is false when the App has posted no correctness verdict.
 //
+// noOpApproval (#37 — "Reviewer-App gate is forgeable — approve→flip→merge
+// in 14s") is true when the returned state is CHANGES_REQUESTED specifically because the
+// reduction SUPPRESSED an APPROVED that immediately followed a CHANGES_REQUESTED at the
+// SAME commit_id, with no intervening push. "Un-forgeable because a PR author cannot
+// approve its own PR" (methodology/brief-17) only defends against the AUTHOR account —
+// GitHub's self-approval block has no opinion on a third-party App re-posting a verdict.
+// Any session that can read the reviewer App's private key can mint its token and post an
+// APPROVED over a standing CHANGES_REQUESTED at an unchanged head — LIVE EVIDENCE on
+// decks#17 / decks#11 (2026-07-14, 34 seconds apart): both flipped APPROVED at an
+// unchanged head with a blocking review still standing, one of them over the repo owner's
+// own direct instruction. "An approval at an unchanged head cannot be a re-verification — there is
+// nothing new to verify." Once a commit carries a CHANGES_REQUESTED, only a NEW commit_id
+// (a genuine push) can produce a verdict this gate accepts as APPROVED; a same-commit
+// APPROVED — including a retried one — keeps reading as the standing CHANGES_REQUESTED.
+// KEEP IN SYNC with deskboard/board.go's reduceReviews, which mirrors this same reduction
+// for the advisory board (the board must never report FLIP/MERGE-NOW on a no-op approval
+// either — that is exactly what would have hidden the live-evidence forgeries from a human
+// reading the board instead of the raw review timeline by hand). NOT AN EXACT MIRROR: this
+// reduction is lane-filtered (correctness only, see classifyLane below) and the board's is
+// not, so the board can raise SUSPECT-APPROVAL on a cross-lane sequence this gate treats as
+// an ordinary block. The divergence flags on an advisory surface rather than granting on a
+// mutating one, so it is the safe direction; see the note at reduceReviews for the detail.
+//
 // IT MUST DISCRIMINATE THE VERDICT KIND (#238, direction 3). Both kinds are
 // submitted as the same GitHub event — a `Security-Review: pass` is `--verdict approve` →
 // APPROVED, a `Security-Review: fail` is CHANGES_REQUESTED. Filtering on login+state
@@ -265,7 +302,9 @@ func ciReadErr(what, head string, err error) error {
 // real flip; admitting them to the SECURITY lane would let an unreadable body satisfy a
 // security gate, which is the direction that must never be guessed. Fail-closed here means
 // "an unreadable verdict blocks a flip it should have blocked", not "it grants one".
-func latestAppVerdict(reviews []reviewInfo) (state, head string, found bool) {
+func latestAppVerdict(reviews []reviewInfo) (state, head string, found, noOpApproval bool) {
+	var lastCommit string
+	var commitBlocked bool // a CHANGES_REQUESTED stands at lastCommit with no push since
 	for _, r := range reviews {
 		if !isReviewerBot(r.User.Login) {
 			continue
@@ -283,9 +322,52 @@ func latestAppVerdict(reviews []reviewInfo) (state, head string, found bool) {
 				continue
 			}
 		}
-		state, head, found = r.State, r.CommitID, true
+
+		// #37: a NEW commit_id is a genuine push — it clears any standing block. Reviews
+		// arrive in ascending submitted order, so seeing a commit_id different from the
+		// one just tracked means the PR head moved since the last decisive review.
+		//
+		// HOW MUCH THIS ASKS OF commit_id, given what statusgen/mergecheck.go's header
+		// establishes about that field. mergecheck reports approval currency as
+		// could-not-check because commit_id was observed ONCE to disagree with the head
+		// a review body named, and the direction and frequency of that error are
+		// unmeasured. That correctly disqualifies it there, because there the question is
+		// ABSOLUTE — "is this approval at the current head?" — and an unmeasured error
+		// direction cannot be trusted either way.
+		//
+		// This reduction asks a strictly weaker, RELATIVE question: did commit_id CHANGE
+		// between two consecutive decisive reviews read from the same payload? And the one
+		// error direction anyone has observed — commit_id drifting TOWARD head — makes two
+		// genuinely-different commits read as the SAME one, which suppresses the approval
+		// and REFUSES the flip. That is the fail-closed direction. The error that would
+		// fail this gate OPEN is the opposite one (commit_id differing when no push
+		// happened), and no observation of it exists. So: not proof the field is sound —
+		// its error direction remains could-not-check — but the residual is a gate that
+		// over-refuses, never one that over-grants.
+		if r.CommitID != lastCommit {
+			lastCommit = r.CommitID
+			commitBlocked = false
+		}
+
+		if r.State == "CHANGES_REQUESTED" {
+			commitBlocked = true
+			state, head, found, noOpApproval = r.State, r.CommitID, true, false
+			continue
+		}
+
+		// r.State == "APPROVED" here.
+		if commitBlocked {
+			// No push since the standing CHANGES_REQUESTED at this exact commit — this
+			// APPROVED verifies nothing new. Keep reporting the standing rejection, and
+			// leave commitBlocked set so a retried forgery at the same commit is refused
+			// too (it does not matter how many APPROVED reviews pile up at this commit;
+			// none of them clear the block).
+			state, head, found, noOpApproval = "CHANGES_REQUESTED", r.CommitID, true, true
+			continue
+		}
+		state, head, found, noOpApproval = r.State, r.CommitID, true, false
 	}
-	return state, head, found
+	return state, head, found, noOpApproval
 }
 
 // lane is which of the two required artifacts a review body is.

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,21 +9,14 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// --- manifest reader, against the format fixture (Task 4) -----------------------
+// --- manifest reader, against the format fixture -------------------------------
 
 // TestLoadManifestReadsTheFormatFixture parses the shipped releases/example.yaml fixture
-// and pins the fields Task 4 fixes: `umbrella:` and `artifacts:[].tag`. It is the Go-side
-// companion to Verify row 5's `yq` check — the manifest is readable by more than one parser.
+// and pins the format fields: `umbrella:` and `artifacts:[].tag`. It is the Go-side
+// companion to the `yq` check — the manifest is readable by more than one parser.
 func TestLoadManifestReadsTheFormatFixture(t *testing.T) {
 	// Repo root is four levels up from this package (tools/desk/cmd/deskrelease/).
 	path := filepath.Join("..", "..", "..", "..", "releases", "example.yaml")
-	// releases/example.yaml is not part of every checkout of this repository. Skip
-	// when the format fixture is absent; where it is present this parser check
-	// runs in full. Only os.ErrNotExist skips — a fixture that exists but cannot
-	// be read still fails.
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		t.Skipf("%s not present in this tree", path)
-	}
 	m, err := loadManifest(path)
 	if err != nil {
 		t.Fatalf("loadManifest(%s): %v", path, err)
@@ -42,7 +34,7 @@ func TestLoadManifestReadsTheFormatFixture(t *testing.T) {
 	}
 }
 
-// --- negative test 1 (Task 5): umbrella regression is refused -------------------
+// --- negative test 1: umbrella regression is refused ----------------------------
 
 // TestCheckUmbrellaMonotonic_RefusesRegression pins the umbrella's own per-line
 // monotonicity (authority rule 4: "the umbrella is its own line"): a new manifest whose
@@ -83,10 +75,10 @@ func TestCheckUmbrellaMonotonic_AcceptsIncrease(t *testing.T) {
 	}
 }
 
-// --- negative test 2 (Task 5): per-artifact / umbrella independence -------------
+// --- negative test 2: per-artifact / umbrella independence ----------------------
 
-// TestPerArtifactCutIsUnaffectedByUmbrellaTagsAndViceVersa is the independence property
-// Task 5 asks for: cutting a per-artifact tag succeeds whether or not an umbrella tag
+// TestPerArtifactCutIsUnaffectedByUmbrellaTagsAndViceVersa is the independence property:
+// cutting a per-artifact tag succeeds whether or not an umbrella tag
 // already exists, and cutting the umbrella tag succeeds whether or not a per-artifact tag
 // already exists — the two namespaces do not read or gate each other anywhere in `cut.go`.
 // Exercised end-to-end through `run` and the fake GitHub harness, not just the regex, so it
@@ -155,7 +147,7 @@ func TestSplitArtifactTagRejectsLeadingZeros(t *testing.T) {
 
 // TestSplitArtifactTagAcceptsWellFormed is the no-cry-wolf half: the tightened pattern must
 // still accept every shape the scheme calls valid, including a multi-digit and a
-// hyphenated-component line (distribution/06 and /07 each add one).
+// hyphenated-component line (a future plugin and container-image line each add one).
 func TestSplitArtifactTagAcceptsWellFormed(t *testing.T) {
 	cases := map[string][3]int{
 		"assay/v0.9.0":          {0, 9, 0},

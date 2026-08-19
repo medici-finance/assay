@@ -1,8 +1,10 @@
 // Command deskpr is the worker-side desk tool.
 // It encodes ONE workflow verb — "open the draft PR for the branch I'm on" — plus its
-// hot-path sibling "push a follow-up to that same open draft". It is draft-only BY
-// CONSTRUCTION: there is no code path that can omit --draft or emit a git --force, and
-// no verb for edit/close/merge/ready (ready lives in deskpost with its preconditions).
+// hot-path sibling "push a follow-up to that same open PR". create is draft-only BY
+// CONSTRUCTION: no code path can omit --draft. update pushes to an EXISTING open PR on
+// the branch — draft or ready-flipped — but neither verb can emit a git --force, and
+// there is no verb for edit/close/merge/ready (ready lives in deskpost with its
+// preconditions).
 //
 // Exit codes (deskkit contract): 0 success/noop, 3 disabled,
 // 4 rate-limited, 5 refused, 6 unverifiable. See deskkit/exitcodes.go.
@@ -15,16 +17,17 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-const usage = `deskpr — push a feature branch and open (or update) its DRAFT pull request.
+const usage = `deskpr — push a feature branch and open (or update) its pull request.
 
 USAGE:
   deskpr create --title T (--body-file F | --body-min B) [--base main] [--as-app=false]
   deskpr update [--as-app=false]
   deskpr --version
 
-deskpr is draft-only by construction: it can only open draft PRs on a non-default
-branch and push follow-ups to an EXISTING open draft. It has no ready/edit/close/merge
-verb and can never pass --force to git. Preconditions are re-verified in-tool;
+deskpr create is draft-only by construction: it can only open a DRAFT PR on a
+non-default branch. deskpr update pushes a follow-up to an EXISTING open PR on the
+branch — draft or ready-flipped. There is no ready/edit/close/merge verb, and neither
+verb can pass --force to git. Preconditions are re-verified in-tool;
 on any state it cannot positively verify it refuses.
 
 By default, --as-app is true: gh calls authenticate as

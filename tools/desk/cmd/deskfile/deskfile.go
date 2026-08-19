@@ -29,7 +29,7 @@ import (
 
 const maxBodyBytes = 16 * 1024 // body cap (16 KiB)
 
-// --- the raised-by provenance stamp (methodology-metrics/29) -----------------------
+// --- the raised-by provenance stamp -------------------------------------------------
 //
 // deskfile is the ONE choke point every gated filing passes through, so it is where the
 // `raised-by:<role>` stamp belongs: a second stamping path would be a second place for the

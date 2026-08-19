@@ -8,8 +8,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// raisedby_test.go — the `raised-by:<role>` provenance stamp on `deskfile new`
-// (methodology-metrics/29).
+// raisedby_test.go — the `raised-by:<role>` provenance stamp on `deskfile new`.
 //
 // The property under test is NOT "the label gets applied". It is the shape of the four
 // outcomes: exactly one of them stamps, three of them file UNSTAMPED, all four are

@@ -228,7 +228,7 @@ func TestRun_TierHumanRoutedNotDispatched(t *testing.T) {
 // loop is stopped — a registered loop in the same process/machine is unaffected (every
 // other test in this file runs green under the registered testLoopName). That is the
 // bound deliberately chosen after an unknown key in roster.env fail-closed the entire
-// trust roster fleet-wide (#819).
+// trust roster fleet-wide.
 func TestRun_UnregisteredLoopNameIsRefused(t *testing.T) {
 	setupDeskHome(t, "no-such-loop-name")
 	cfg := Config{PoolSize: 1, IdlePoll: 3 * time.Millisecond, ClaimsDir: t.TempDir(), StaleClaim: time.Hour}

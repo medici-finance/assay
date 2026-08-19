@@ -293,7 +293,7 @@ func (h *harness) auditRaw(t *testing.T) string {
 
 func (h *harness) combined() string { return h.out.String() + h.errb.String() }
 
-// --- outward-write budget scoping (#439, third review, finding 3) ---------
+// --- outward-write budget scoping (surfaced in review) ---------
 
 // seedCutAudit appends n charged `deskrelease` entries in the shape a real cut writes:
 // Repo = repoSlug and NO PR number (writeflow.go's finishAudit sets `PR: nil`, "a release

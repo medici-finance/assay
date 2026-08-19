@@ -6,15 +6,13 @@ package topology
 // tools ship as pinned standalone binaries that run from an arbitrary working
 // directory: `deskpost` gating a flip has no repo root to read, and a gate that
 // needs the filesystem is a gate that fails open when the filesystem is not the
-// repo. Compiled-in is legal (brief ground-truth/04); FIVE HAND-SYNCED COPIES
-// were the defect.
+// repo. Compiled-in is legal; FIVE HAND-SYNCED COPIES were the defect.
 //
 // IT IS NOT HAND-MAINTAINED IN THE SENSE THAT MATTERS. `TestTopologyDriftRegistry`
 // (drift_test.go) reads `topology.yaml`, parses it with this package's own
 // reader, and fails NAMING THE SITE when this value disagrees. Editing this file
 // without editing the source — or the source without this file — is a red test,
-// not a silent divergence. That is the derive-or-diff convention
-// (docs/streams/ground-truth/README.md).
+// not a silent divergence. That is the derive-or-diff convention.
 //
 // PROSE IS NOT COMPILED. `note:`, `purpose:`, `summary:` and `why:` in the source
 // are rationale for the reviewer, not values any gate reads, so they are left
@@ -93,10 +91,10 @@ var compiled = Topology{
 		{Name: "verify-gate"},
 		{Name: "live-verify"},
 		{Name: "needs-decision"},
-		// review-request: the entry issueboard's hand copy was MISSING (#829).
+		// review-request: the entry issueboard's hand copy was MISSING.
 		{Name: "review-request"},
 		// needs-human: human-decision-queue class — a human-decision item,
-		// not dispatchable work (#829). Also in DecisionOwedLabels (like
+		// not dispatchable work. Also in DecisionOwedLabels (like
 		// needs-decision) so the board shows it AWAIT/ESCALATE, not NONE.
 		{Name: "needs-human"},
 	},

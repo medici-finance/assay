@@ -261,7 +261,7 @@ func TestAssessRepoBranch_EmptyRepo(t *testing.T) {
 
 // TestBranchHealth_AnnouncesItsScope — the durable half. A block that cannot state what
 // it covered can have "0 red" read as "nothing is red", which is exactly the confusion
-// this test guards against.
+// #295 and #359 are both instances of.
 func TestBranchHealth_AnnouncesScopeAndTally(t *testing.T) {
 	stubGHFunc(t, func(args ...string) ([]byte, error) {
 		req := strings.Join(args, " ")
@@ -661,7 +661,6 @@ func TestVerbInventory_Complete(t *testing.T) {
 // verbs do not probe is load-bearing documentation (a consumer reading it decides
 // whether an absent field is meaningful). Keep it in step with the guard above.
 func TestREADME_NamesEveryNonProbingVerb(t *testing.T) {
-	skipIfReadmeAbsent(t)
 	b, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
 	if err != nil {
 		t.Fatalf("reading tools/desk/README.md: %v", err)

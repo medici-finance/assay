@@ -24,20 +24,20 @@
 schema: topology-v1
 
 # EDIT 1 — a different cell. Not `assay`.
-cell: example-lending
+cell: example-widgets
 
 repos:
-  - slug: example-org/loans
+  - slug: example-org/widgets
     visibility: private
     ci: true
     root: "."
     relationship: owned
     note: >-
       This cell's own home repo. `owned` here is the claim the one-owner
-      boundary attributes to `cell: example-lending` above — a claim the
+      boundary attributes to `cell: example-widgets` above — a claim the
       assay cell's file cannot make and does not make.
 
-  - slug: example-org/loans-k8s
+  - slug: example-org/widgets-k8s
     visibility: public
     ci: true
     relationship: upstream
@@ -59,7 +59,7 @@ repos:
       The methodology toolkit this cell consumes. Exactly one cell states this
       repo `owned`; this is not that cell.
 
-  - slug: example-org/loans-docs
+  - slug: example-org/widgets-docs
     visibility: unknown
     ci: false
     # `relationship:` DELIBERATELY ABSENT — the default-reading arm of the
@@ -71,7 +71,7 @@ repos:
       Exercises the absent-relationship default. A cell that says nothing about
       a repo grants itself nothing.
 
-release_repo: example-org/loans
+release_repo: example-org/widgets
 
 apps:
   - role: desk
@@ -84,12 +84,12 @@ apps:
 humans: []
 
 products:
-  - name: lending
+  - name: widgets
     summary: >-
       The illustrative product this second cell is accountable for.
     repos:
-      - example-org/loans
-      - example-org/loans-docs
+      - example-org/widgets
+      - example-org/widgets-docs
 
 labels:
   system_state:
