@@ -73,6 +73,36 @@ func repoRoot(t *testing.T) string {
 	}
 }
 
+// skipIfVerifyDeskSkillAbsent skips this coupling test when the verify-desk
+// SKILL.md is not in the checkout AT ALL. This repository's published file set
+// does not always carry a .claude/skills tree, so there may be no verify-desk
+// skill and nothing to couple dispatchRequirements to.
+//
+// Fail-closed intent is preserved precisely: if a .claude/skills tree IS present
+// somewhere up the walk but the specific verify-desk SKILL.md is missing (a real
+// deletion), this does NOT skip — it returns and lets repoRoot's Fatal fire. It
+// skips only when no .claude/skills tree exists at all.
+func skipIfVerifyDeskSkillAbsent(t *testing.T) {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, skillRel)); err == nil {
+			return // skill present — run the test
+		}
+		if _, err := os.Stat(filepath.Join(dir, ".claude", "skills")); err == nil {
+			return // skills tree present but this skill missing — let repoRoot fail closed
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Skipf("%s not present in this checkout", skillRel)
+		}
+		dir = parent
+	}
+}
+
 // skillPromptBullets returns one entry per top-level bullet of SKILL.md loop step 2's
 // "Its prompt MUST carry:" list, continuation lines folded in.
 func skillPromptBullets(t *testing.T) []string {
@@ -162,6 +192,8 @@ func excerpt(b string) string {
 // entry is red. Anchors are kept multi-token and specific for the same reason — a single common
 // token is one unrelated edit away from colliding.
 func TestDispatchRequirements_MatchSkillMD(t *testing.T) {
+	skipIfVerifyDeskSkillAbsent(t)
+
 	bullets := skillPromptBullets(t)
 
 	// claimants[i] = IDs of every registry entry matching bullet i.
