@@ -70,28 +70,28 @@ func writePausedDepFixture(t *testing.T) string {
 	writeFixtureFile(t, filepath.Join(mcDir, "brief-10-base.md"), pausedDepBrief("multichain-ui/10", "Base", 0, nil))
 	// brief-11 depends on a same-product brief AND a paused cross-product brief.
 	writeFixtureFile(t, filepath.Join(mcDir, "brief-11-dust-fee-panel.md"),
-		pausedDepBrief("multichain-ui/11", "Dust fee panel", 1, []string{"multichain-ui/10", "midnight-poc/10"}))
+		pausedDepBrief("multichain-ui/11", "Dust fee panel", 1, []string{"multichain-ui/10", "example-poc/10"}))
 	// brief-12 depends on a stream that does not exist anywhere — a real typo.
 	writeFixtureFile(t, filepath.Join(mcDir, "brief-12-ghost-dep.md"),
 		pausedDepBrief("multichain-ui/12", "Ghost dep", 1, []string{"ghost-poc/10"}))
 
-	// midnight-poc: PAUSED, serves example-service (a different product — so
+	// example-poc: PAUSED, serves example-service (a different product — so
 	// scoping to example-app drops it from the checked subset).
-	mpDir := filepath.Join(root, "docs", "streams", "midnight-poc")
+	mpDir := filepath.Join(root, "docs", "streams", "example-poc")
 	if err := os.MkdirAll(mpDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	mpReadme := "---\n" +
-		"stream: midnight-poc\n" +
+		"stream: example-poc\n" +
 		"status: paused\n" +
 		"priority: P2\n" +
 		"serves: example-service\n" +
-		"---\n\n# Midnight PoC\n\n" +
+		"---\n\n# Example PoC\n\n" +
 		"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
 		"|---|-------|------|--------|--------|----------|----------|\n" +
 		"| 10 | [Funded preprod](./brief-10-funded-preprod.md) | 0 | M | todo | — | — |\n"
 	writeFixtureFile(t, filepath.Join(mpDir, "README.md"), mpReadme)
-	writeFixtureFile(t, filepath.Join(mpDir, "brief-10-funded-preprod.md"), pausedDepBrief("midnight-poc/10", "Funded preprod", 0, nil))
+	writeFixtureFile(t, filepath.Join(mpDir, "brief-10-funded-preprod.md"), pausedDepBrief("example-poc/10", "Funded preprod", 0, nil))
 
 	return root
 }
@@ -129,14 +129,14 @@ func TestChangedScopedDependsResolvesAgainstFullUniverse(t *testing.T) {
 	// confined to multichain-ui. This DROPS the paused example-service stream.
 	scoped := filterStreamsByServes(all, "example-app")
 	for _, s := range scoped {
-		if s.Name == "midnight-poc" {
+		if s.Name == "example-poc" {
 			t.Fatalf("fixture invalid: paused stream should be OUT of the example-app scope")
 		}
 	}
 
 	// THE FIX: resolve refs against the full universe (`all`).
 	fixed, _ := checkBriefFiles(scoped, all)
-	if hasUnknownStream(fixed, "midnight-poc") {
+	if hasUnknownStream(fixed, "example-poc") {
 		t.Errorf("valid depends on a paused/out-of-scope stream falsely flagged unknown: %v",
 			filterUnknown(fixed))
 	}
@@ -148,14 +148,14 @@ func TestChangedScopedDependsResolvesAgainstFullUniverse(t *testing.T) {
 	// OLD BEHAVIOUR (registry == scoped subset) reproduced the false positive:
 	// this is the false positive that the fix removes.
 	old, _ := checkBriefFiles(scoped, scoped)
-	if !hasUnknownStream(old, "midnight-poc") {
+	if !hasUnknownStream(old, "example-poc") {
 		t.Fatalf("pre-fix reproduction failed: scoped-registry lint should have flagged the paused dep unknown — the test no longer proves the regression: %v", old)
 	}
 
 	// Whole-house (unscoped) lint was always clean for the paused dep — the bug
 	// was scoping-only.
 	whole, _ := checkBriefFiles(all, all)
-	if hasUnknownStream(whole, "midnight-poc") {
+	if hasUnknownStream(whole, "example-poc") {
 		t.Errorf("whole-house lint should never flag the paused dep unknown: %v", filterUnknown(whole))
 	}
 }
