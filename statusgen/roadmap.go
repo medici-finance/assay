@@ -986,6 +986,13 @@ func runRoadmap(root string) int {
 	savedDriveSet := activeDriveSet
 	activeDriveSet = loadDrives(root, streams, nowFunc())
 	defer func() { activeDriveSet = savedDriveSet }()
+	// The critical tier's reviewer-finding arm (phase 3) reads the same findings the
+	// deck already loaded. Saved/restored like the drive set so the package var does
+	// not leak across the process (or across tests). Only takes effect on this deck
+	// when a drive is active.
+	savedFindings := activeFindings
+	activeFindings = findings
+	defer func() { activeFindings = savedFindings }()
 
 	// Compute Next-up (reuse nextUp from nextup.go without claim filtering).
 	// The zero ClaimView says so honestly, which also means a stream that
