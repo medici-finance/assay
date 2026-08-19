@@ -186,6 +186,20 @@ const (
 	// desk-only keys above are recognised. KEEP IN SYNC with
 	// deskkit/rosterconfig.go's EnvSweepWithheldStreams (sweepconfig.go).
 	scanEnvSweepWithheldStreams = "ASSAY_SWEEP_WITHHELD_STREAMS"
+
+	// scanEnvDeterministicGatePatterns (ASSAY_DETERMINISTIC_GATE_PATTERNS) carries
+	// additional house-specific deterministic-gate name substrings that the
+	// autonomy report MERGES on top of its generic built-in set (autonomy.go's
+	// EnvDeterministicGatePatterns / deterministicGatePatterns — a house's own
+	// build- or contract-specific gate name). statusgen CONSUMES it, but through autonomy.go's
+	// direct os.Getenv read (the reporting-tool env transport), NOT through this
+	// scanConfig struct — exactly as ASSAY_CHANNEL_DRIFT_TARGET is consumed. It
+	// must still be RECOGNISED here so a shared roster.env FILE carrying the key
+	// for the in-house gate classification does not collapse statusgen's whole
+	// trust configuration on the unknown-ASSAY_-key refusal — exactly as the
+	// desk-only keys above are recognised. KEEP IN SYNC with
+	// deskkit/rosterconfig.go's EnvDeterministicGatePatterns.
+	scanEnvDeterministicGatePatterns = "ASSAY_DETERMINISTIC_GATE_PATTERNS"
 )
 
 // Product-namespaced (non-ASSAY_) config keys are supplied by build-tagged
@@ -573,7 +587,7 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		scanEnvRepoAliases: true, scanEnvReleaseRepo: true, scanEnvWriteguardCallout: true,
 		scanEnvRosterSchema: true, scanEnvHomeRepo: true, scanEnvScanRepos: true,
 		scanEnvAuthorizedAuthors: true, scanEnvChannelDriftTarget: true,
-		scanEnvSweepWithheldStreams: true,
+		scanEnvSweepWithheldStreams: true, scanEnvDeterministicGatePatterns: true,
 	}
 	for _, k := range scanProductConfigKeys() {
 		known[k] = true
