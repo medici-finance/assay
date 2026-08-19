@@ -141,6 +141,51 @@ const (
 	// silently change the scan scope. Unset is CLOSED: an empty scan set scans
 	// nothing rather than falling back to the write boundary.
 	scanEnvScanRepos = "ASSAY_SCAN_REPOS"
+	// scanEnvAuthorizedAuthors names the rostered AUTHORIZED-AUTHOR set the
+	// scan-transcribe lane (transcribescan.go, issue-flow rulings R-7 clause 1)
+	// admits placeholder CREATEs from. It is a comma/space-separated set of
+	// login:id identities, the id MANDATORY (recycled-login defense — this set
+	// gates whether an issue reaches the dispatch board unattended). It is a
+	// DEDICATED value, deliberately NOT ASSAY_TRUSTED_LOGINS: the general trusted
+	// set carries shared-agent and other identities that must NOT by themselves
+	// board external work through the unattended lane, so R-7 boards over a
+	// NARROWER, id-pinned human set. Desk App identities are trusted for boarding
+	// too, but they come from ASSAY_TRUSTED_BOT_SLUGS (read the way deskroster
+	// does), never from this value.
+	//
+	// SEEDED, never crashing: the effective authorized set is this value UNIONED
+	// with the blessing authority (authorizedAuthorSet). An UNSET value therefore
+	// degrades to the seeded default — the bless identity alone — rather
+	// than to an empty set or a refusal. Widening is a roster EDIT, never an edit
+	// to R-7 or any prose list. A bot-shaped entry is refused: App identities
+	// belong in ASSAY_TRUSTED_BOT_SLUGS.
+	scanEnvAuthorizedAuthors = "ASSAY_AUTHORIZED_AUTHORS"
+
+	// scanEnvChannelDriftTarget (ASSAY_CHANNEL_DRIFT_TARGET) names the
+	// repo-relative path to the accepted-channel-drift register the --lint
+	// channel-conformance sweep consults (see channelconformance.go's
+	// EnvChannelDriftPath). It is a de-housed WITHHELD-stream path: compiling it
+	// in would disclose the withheld stream by name in a public copy of
+	// statusgen, so the house supplies it at runtime. statusgen CONSUMES it, but
+	// through channelconformance's direct os.Getenv read (the reporting-tool env
+	// transport), NOT through this scanConfig struct. It must still be RECOGNISED
+	// here so a shared roster.env FILE carrying the key for the in-house sweep
+	// does not collapse statusgen's whole trust configuration on the
+	// unknown-ASSAY_-key refusal — exactly as the desk-only keys above are
+	// recognised. KEEP IN SYNC with deskkit/rosterconfig.go's EnvChannelDriftTarget.
+	scanEnvChannelDriftTarget = "ASSAY_CHANNEL_DRIFT_TARGET"
+
+	// scanEnvSweepWithheldStreams (ASSAY_SWEEP_WITHHELD_STREAMS) is a DESK-only
+	// roster value: the repo-relative stream paths the desk's S2 disclosure
+	// sweep routes away from (deskkit/sweepconfig.go). statusgen never consumes
+	// it — but the two readers share one roster.env, and #1333's de-housing
+	// REQUIRES the house to set this key for the sweep to route, so it WILL be
+	// present in the shared roster.env. It must therefore be RECOGNISED here or a
+	// roster.env that arms the desk sweep would collapse statusgen's whole trust
+	// configuration on the unknown-ASSAY_-key refusal — exactly as the other
+	// desk-only keys above are recognised. KEEP IN SYNC with
+	// deskkit/rosterconfig.go's EnvSweepWithheldStreams (sweepconfig.go).
+	scanEnvSweepWithheldStreams = "ASSAY_SWEEP_WITHHELD_STREAMS"
 )
 
 // Product-namespaced (non-ASSAY_) config keys are supplied by build-tagged
@@ -206,6 +251,13 @@ type scanConfig struct {
 	// the OTHER reader's whole configuration — but does not consume them.
 	HomeRepo  string
 	ScanRepos []string
+
+	// AuthorizedAuthors is the rostered AUTHORIZED-AUTHOR set (ASSAY_AUTHORIZED_AUTHORS),
+	// the R-7 clause-1 boarding predicate's human half (login -> mandatory numeric
+	// id). Statusgen-only; deskkit RECOGNISES the key (shared roster.env) but does
+	// not consume it. Read through authorizedAuthorSet(), which SEEDS it with the
+	// bless identity so an unset value degrades to {the bless identity}, never to empty.
+	AuthorizedAuthors map[string]int64
 
 	// Product holds product-namespaced (non-ASSAY_) config values, populated by
 	// the build-tagged scanApplyProductConfig hook. Empty in the default
@@ -322,6 +374,7 @@ func scanReadRawConfig(class scanToolClass) (map[string]string, string, []string
 		scanEnvBlessLogin, scanEnvTrustedLogins, scanEnvTrustedBotSlugs,
 		scanEnvAllowedRepos, scanEnvHumanLoginMap, scanEnvRiskPathTriggersExtra,
 		scanEnvRepoAliases, scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
+		scanEnvAuthorizedAuthors,
 	}
 	keys = append(keys, scanProductConfigKeys()...)
 	fromEnv := func() map[string]string {
@@ -497,14 +550,15 @@ func scanLooksLikeBot(login string) bool {
 
 func scanParseConfig(class scanToolClass, source string, vals map[string]string) scanConfig {
 	cfg := scanConfig{
-		Class:       class,
-		Source:      source,
-		Humans:      map[string]int64{},
-		Bots:        map[string]int64{},
-		RoleBots:    map[string]string{},
-		Logins:      map[string]bool{},
-		Repos:       map[string]string{},
-		HumanLogins: map[string]string{},
+		Class:             class,
+		Source:            source,
+		Humans:            map[string]int64{},
+		Bots:              map[string]int64{},
+		RoleBots:          map[string]string{},
+		Logins:            map[string]bool{},
+		Repos:             map[string]string{},
+		HumanLogins:       map[string]string{},
+		AuthorizedAuthors: map[string]int64{},
 	}
 	var problems []string
 	bad := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
@@ -518,6 +572,8 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		scanEnvAllowedRepos: true, scanEnvHumanLoginMap: true, scanEnvRiskPathTriggersExtra: true,
 		scanEnvRepoAliases: true, scanEnvReleaseRepo: true, scanEnvWriteguardCallout: true,
 		scanEnvRosterSchema: true, scanEnvHomeRepo: true, scanEnvScanRepos: true,
+		scanEnvAuthorizedAuthors: true, scanEnvChannelDriftTarget: true,
+		scanEnvSweepWithheldStreams: true,
 	}
 	for _, k := range scanProductConfigKeys() {
 		known[k] = true
@@ -705,6 +761,38 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		cfg.ScanRepos = append(cfg.ScanRepos, entry)
 	}
 
+	// The rostered AUTHORIZED-AUTHOR set (R-7 cl.1 boarding predicate). login:id,
+	// the id MANDATORY: this set governs which authors reach the dispatch board via
+	// the unattended scan-transcribe lane, so an unpinned login (recycling-defensible
+	// only by its id) is refused, exactly as the blessing authority is. A bot-shaped
+	// entry is refused — App identities are trusted for boarding through
+	// ASSAY_TRUSTED_BOT_SLUGS, never here (a bot in the human boarding set would let
+	// an App both file and board its own work). An UNSET value is neither an error
+	// nor a refusal: authorizedAuthorSet() seeds the effective set with the bless
+	// identity, so the lane always boards at least the bless identity and never crashes on an
+	// empty roster value.
+	for _, entry := range scanSplitList(vals[scanEnvAuthorizedAuthors]) {
+		login, id, ok := scanSplitIdentity(entry)
+		if !ok {
+			bad("%s: cannot parse entry %q — expected login:id with a positive numeric id",
+				scanEnvAuthorizedAuthors, entry)
+			continue
+		}
+		if scanLooksLikeBot(login) {
+			bad("%s lists %q, which renders as a bot/App account. Desk App identities are trusted "+
+				"for boarding through %s, never through the human authorized-author set",
+				scanEnvAuthorizedAuthors, login, scanEnvTrustedBotSlugs)
+			continue
+		}
+		if id == 0 {
+			bad("%s=%q carries no numeric id. The id is MANDATORY for an authorized author: this "+
+				"set decides who reaches the dispatch board unattended, and a deleted login can be "+
+				"re-registered by an attacker. Refusing the entry", scanEnvAuthorizedAuthors, entry)
+			continue
+		}
+		cfg.AuthorizedAuthors[login] = id
+	}
+
 	// Product-namespaced (non-ASSAY_) config, applied by the build-tagged hook.
 	// Deliberately NOT run through bad(): product config, not trust config, so a
 	// missing or malformed value must not collapse the roster. No-op in the
@@ -777,6 +865,7 @@ func (c scanConfig) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: %s=%s", scanEnvRiskPathTriggersExtra, strings.Join(c.RiskExtra, ",")),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvHomeRepo, c.HomeRepo),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvScanRepos, strings.Join(c.ScanRepos, ",")),
+		fmt.Sprintf("assay-config: %s=%s", scanEnvAuthorizedAuthors, sortedIdents(c.AuthorizedAuthors)),
 	}
 	// Product config (non-ASSAY_) echoes under its own prefix via the build-tagged
 	// hook; empty in the default (open-core) build.

@@ -137,10 +137,11 @@ func TestRegisterRefProblemStillBlocks(t *testing.T) {
 	// Guard the isolation itself: exactly one problem, and it is the register-ref
 	// one. If a future change makes this fixture also trip the link lint, this
 	// fails loudly instead of quietly passing for the wrong reason.
-	if lp := linkProblems(root, docFiles(root)); len(lp) != 0 {
+	docs, _ := docFiles(root)
+	if lp := linkProblems(root, docs); len(lp) != 0 {
 		t.Fatalf("fixture no longer isolates registerRefProblems — linkProblems also fired: %v", lp)
 	}
-	rp, _ := registerRefProblems(root, docFiles(root))
+	rp, _ := registerRefProblems(root, docs)
 	if len(rp) != 1 {
 		t.Fatalf("want exactly 1 register-ref problem, got %d: %v", len(rp), rp)
 	}

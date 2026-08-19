@@ -102,7 +102,7 @@ why: >-
 	if len(streams) != 1 || len(streams[0].Briefs) != 1 {
 		t.Fatalf("fixture did not load one stream with one brief: %+v", streams)
 	}
-	problems, _ := checkBriefFiles(streams)
+	problems, _ := checkBriefFiles(streams, streams)
 	return streams[0], &streams[0].Briefs[0], problems
 }
 

@@ -1002,6 +1002,138 @@ func TestGuttedNoGitFixtureReturnsNil(t *testing.T) {
 	}
 }
 
+// ----- wiring-level guards (issue #229) -----
+//
+// Every test above calls a LEAF detector — guttedRegisterFields(root) or
+// deletedRegisterFiles(root) — directly, so it proves the detector RETURNS the
+// right findings but never that those findings become lint `problems` rather
+// than being discarded. Unwiring a clause in registerIntegrityProblems from
+//
+//	problems = append(problems, guttedRegisterFields(root)...)
+//
+// to `_ = guttedRegisterFields(root)` (mutation M6 on PR #223; M11 is the same
+// move on the deletion clause) downgrades a fail-closed gate to warn-only and
+// leaves the whole suite green. The two clause-level tests below close that gap:
+// they drive registerIntegrityProblems(root) — the function whose return feeds
+// `problems` — on the same fixtures the leaf tests use, so a severed clause
+// append turns them RED.
+//
+// But registerIntegrityProblems is itself one level BELOW the wiring the title
+// names. Its return only becomes a lint `problems` entry at the caller —
+//
+//	problems = append(problems, registerIntegrityProblems(root)...)   // main.go
+//
+// — and `_ = registerIntegrityProblems(root)` there (mutation "M-up") disarms
+// every register-integrity guard at once (duplicate-id, intake mismatch,
+// tombstone-not-delete, field-gutting, ID-format regression) with the suite
+// still green — a strictly larger fail-open than M6/M11, and the one these
+// tests are named for. The two caller-level tests further below pin that append
+// by driving the real entry point run(root, "lint", ...): they assert the exit
+// code goes to 1 AND the gutting/deletion PROBLEM reaches stderr, so severing
+// the caller append (or any clause below it) turns them RED. Together the four
+// tests make the title's "wiring" claim true end to end. (The fixture root also
+// emits an unrelated "resolves to 0 streams" problem, so the caller tests
+// assert on the message substring plus a non-zero exit, never on a count.)
+
+// TestRegisterIntegrityWiresGuttedFields pins the field-gutting clause (M6):
+// registerIntegrityProblems must surface a detected gutting, not just detect it.
+// Goes red if `guttedRegisterFields(root)` is ever unwired from `problems`.
+func TestRegisterIntegrityWiresGuttedFields(t *testing.T) {
+	root, path := gutFixture(t, landedOpenFinding)
+
+	// Clean baseline: the landed entry, untouched, produces no gutting problem —
+	// so a positive result below is the gutting, not an always-on message.
+	if p := registerIntegrityProblems(root); containsSubstr(p, "field-gutting (unauthorized)") {
+		t.Fatalf("clean landed fixture must not report gutting via the wiring entry point; got %v", p)
+	}
+
+	// Gut it (resolved no->yes, no human anchor) and re-check via the wiring path.
+	gutted := strings.Replace(landedOpenFinding, "resolved: false", "resolved: true", 1)
+	if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := registerIntegrityProblems(root)
+	if !containsSubstr(p, "field-gutting (unauthorized)") || !containsSubstr(p, "resolved flipped no->yes") {
+		t.Fatalf("registerIntegrityProblems must surface the field-gutting problem (guard unwired to warn-only?); got %v", p)
+	}
+}
+
+// TestRegisterIntegrityWiresDeletedFiles pins the deletion/tombstone clause
+// (M11): registerIntegrityProblems must surface a landed-file deletion. Goes red
+// if `deletedRegisterFiles(root)` is ever unwired from `problems`.
+func TestRegisterIntegrityWiresDeletedFiles(t *testing.T) {
+	root, path := gutFixture(t, landedOpenFinding)
+
+	// Clean baseline: nothing deleted, no tombstone problem via the wiring path.
+	if p := registerIntegrityProblems(root); containsSubstr(p, "tombstone-not-delete") {
+		t.Fatalf("clean landed fixture must not report a tombstone violation; got %v", p)
+	}
+
+	// Delete the landed entry file (no tombstone withdrawal) and re-check.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	p := registerIntegrityProblems(root)
+	if !containsSubstr(p, "tombstone-not-delete") {
+		t.Fatalf("registerIntegrityProblems must surface the landed-file deletion problem (guard unwired to warn-only?); got %v", p)
+	}
+}
+
+// TestRunLintWiresGuttedFields pins the CALLER append (mutation M-up):
+// `problems = append(problems, registerIntegrityProblems(root)...)` in main.go.
+// It drives the real entry point run(root, "lint", ...) — the same level the
+// package already tests at (humanstamp_test.go, intake_alarm_test.go,
+// budget_test.go) — and asserts that a gutted landed finding takes the exit code
+// to 1 AND the field-gutting PROBLEM reaches stderr. Goes red if the caller
+// append is severed to `_ = registerIntegrityProblems(root)` (or any clause
+// below it is unwired), which the clause-level tests above cannot catch.
+func TestRunLintWiresGuttedFields(t *testing.T) {
+	root, path := gutFixture(t, landedOpenFinding)
+
+	// Clean baseline: the untouched landed entry produces no gutting PROBLEM on
+	// stderr, so a positive result below is the gutting, not an always-on line.
+	// (The fixture root does emit an unrelated "resolves to 0 streams" problem,
+	// so we assert on the gutting substring, never on the exit code, here.)
+	if base := captureStderr(t, func() { run(root, "lint", nil, nil, "") }); strings.Contains(base, "field-gutting (unauthorized)") {
+		t.Fatalf("clean landed fixture must not surface gutting via run lint; stderr=%s", base)
+	}
+
+	// Gut it (resolved no->yes, no human anchor) and drive the real entry point.
+	gutted := strings.Replace(landedOpenFinding, "resolved: false", "resolved: true", 1)
+	if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var code int
+	out := captureStderr(t, func() { code = run(root, "lint", nil, nil, "") })
+	if code != 1 || !strings.Contains(out, "field-gutting (unauthorized)") {
+		t.Fatalf("run lint must surface gutting as a hard PROBLEM (caller append unwired?); code=%d stderr=%s", code, out)
+	}
+}
+
+// TestRunLintWiresDeletedFiles is the deletion twin of the caller-level pin:
+// deleting a landed register entry file with no tombstone withdrawal must take
+// run(root, "lint", ...) to exit 1 with the tombstone-not-delete PROBLEM on
+// stderr. Goes red if the caller append (main.go) or the deletion clause is
+// unwired to warn-only.
+func TestRunLintWiresDeletedFiles(t *testing.T) {
+	root, path := gutFixture(t, landedOpenFinding)
+
+	// Clean baseline: nothing deleted, no tombstone PROBLEM via the real entry.
+	if base := captureStderr(t, func() { run(root, "lint", nil, nil, "") }); strings.Contains(base, "tombstone-not-delete") {
+		t.Fatalf("clean landed fixture must not surface a tombstone violation via run lint; stderr=%s", base)
+	}
+
+	// Delete the landed entry file (no tombstone withdrawal) and drive run lint.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	var code int
+	out := captureStderr(t, func() { code = run(root, "lint", nil, nil, "") })
+	if code != 1 || !strings.Contains(out, "tombstone-not-delete") {
+		t.Fatalf("run lint must surface the landed-file deletion as a hard PROBLEM (caller append unwired?); code=%d stderr=%s", code, out)
+	}
+}
+
 // ----- BLOCKER 1: the authorization anchor is frontmatter-scoped -----
 
 // bodyHumanStampFinding reproduces the shape of the real upstream finding that made

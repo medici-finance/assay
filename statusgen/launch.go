@@ -138,15 +138,14 @@ func renderLaunchView(target string, deps []launchDep) string {
 // runLaunch is the --launch entrypoint. It never reads or writes STATUS.md —
 // a self-contained diagnostic sub-command, same discipline as --dora/--trend/--roadmap.
 func runLaunch(root, target string) int {
-	streams, _, err := loadStreams(root)
+	// loadHydratedStreams wires Depends from brief-v1 frontmatter (the check's
+	// hydration side effect) so the transitive walk works. Problems are ignored
+	// — this is a diagnostic view, not a validation gate.
+	streams, _, err := loadHydratedStreams(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen:", err)
 		return 1
 	}
-	attachPlaceholders(streams)
-	// Wire Depends from brief-v1 frontmatter so the transitive walk works.
-	// Problems are ignored — this is a diagnostic view, not a validation gate.
-	checkBriefFiles(streams)
 
 	deps, err := launchTransitiveClosure(streams, target)
 	if err != nil {

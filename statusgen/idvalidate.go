@@ -58,7 +58,7 @@ func grandfatheredIDs(root string) map[string]bool {
 	if hasNoGitDir(root) {
 		return out // not a git checkout — no legacy to freeze against
 	}
-	mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", "origin/main").Output()
+	mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output()
 	if err != nil || strings.TrimSpace(string(mb)) == "" {
 		// T9: fail-closed — origin/main unresolvable, treat all IDs as new.
 		// The old fallback to base=HEAD grandfathered the brand-new numeric ID
@@ -119,19 +119,22 @@ func grandfatheredBaseFallbackNotices(root string) []string {
 	case hasNoGitDir(root):
 		cause = "this tree has no .git directory at all (e.g. a `git archive` export), so no register-ID grandfathering could be determined and the numeric-regression rule was skipped entirely rather than mis-fire against every pre-existing legacy-numeric entry"
 	default:
-		mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", "origin/main").Output()
+		mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output()
 		if err == nil && strings.TrimSpace(string(mb)) != "" {
 			return nil // origin/main resolved — no fallback needed
 		}
 		cause = "origin/main could not be resolved, so the grandfathered set is empty and all register entries are treated as new — legitimately-landed legacy numeric entries will fire numeric-regression PROBLEMs whose messages do not name this as the cause"
 	}
 	// Only worth saying when there are actually register entries.
-	n := 0
-	for _, dir := range []string{"docs/streams/intake", "docs/streams/findings"} {
-		files, readErr := os.ReadDir(filepath.Join(root, dir))
-		if readErr != nil {
-			continue
-		}
+	//
+	// Intake is counted via listIntakeFiles (issue-loop/15) so a split-layout
+	// repo's entries under new/, decision-needed/, watching/, completed/, and
+	// rejected/ are not silently missed — a root-only os.ReadDir here would
+	// count 0 once a repo splits, suppressing this degraded-validation
+	// NOTICE exactly when entries exist. Findings stays flat (no split
+	// concept), so it keeps the direct os.ReadDir.
+	n := len(listIntakeFiles(root))
+	if files, readErr := os.ReadDir(filepath.Join(root, "docs/streams/findings")); readErr == nil {
 		for _, f := range files {
 			if !f.IsDir() && strings.HasSuffix(f.Name(), ".md") {
 				n++

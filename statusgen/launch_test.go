@@ -19,7 +19,7 @@ func launchFixtures(t *testing.T, target string) []launchDep {
 		t.Fatal(err)
 	}
 	attachPlaceholders(streams)
-	checkBriefFiles(streams)
+	checkBriefFiles(streams, streams)
 	deps, err := launchTransitiveClosure(streams, target)
 	if err != nil {
 		t.Fatal(err)

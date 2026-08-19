@@ -95,6 +95,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -109,7 +110,22 @@ const (
 	statePass        = "pass"
 	stateFail        = "fail"
 	stateCouldNotRun = "could-not-run"
+	// stateSkipped is a FOURTH disposition, and it is neither green nor a
+	// failure: an EXPLICITLY env-bound `check` row (verdict-lane/02) that this
+	// CI-context run deliberately did not execute, because its verdict rests on
+	// authorship+signature (R-6 c.1–3), not on re-execution. A skipped row is NOT
+	// written to the Evidence witness table (there is no run to record) and does
+	// not enter the exit-code fold — it is reported to the console alone, so a
+	// "not selected here" can never be mistaken for a pass.
+	stateSkipped = "skip"
 )
+
+// verifyEnvBoundNote is the fixed wording for a `check` row skipped in CI. It is
+// a compile-time constant, not caller text, so recording it forges nothing. It
+// deliberately avoids the UNRUN marker words (unrun/not-run/deferred/skipped as
+// a status) and reads as the same deliberate scoping the `-t`-filter convention
+// uses: the row IS run — by the runner, elsewhere — just not selected here.
+const verifyEnvBoundNote = "env-bound: runner-executed, not selected here"
 
 // verifyrunExit* are the THREE distinct exit codes. Consumers (ground-truth/02
 // wires this as a required PR check) branch on them, so 1 and 2 must never be
@@ -295,6 +311,16 @@ var (
 	expectMinRe = regexp.MustCompile("(?i)(?:≥|>=|at least)\\s*`?(\\d+)`?")
 	// trailing integer on a line — `12`, `path/to/file.go:12`.
 	trailingIntRe = regexp.MustCompile(`(\d+)\D*$`)
+	// a backtick-delimited code span. A backticked token in an Expect cell is a
+	// QUOTED LITERAL — an output token, a filename, a claim string — never the
+	// row's own required process exit, which the corpus always writes UNQUOTED
+	// (`exit 0`, `exit NON-zero`, `exit code 2`). It is stripped before the exit
+	// is read so that a backticked `exit=N` — the token a `(...) ; echo exit=$?`
+	// control row PRINTS to stdout as its evidence — is not misread as the
+	// compound's own exit status. The compound always exits 0 by construction, so
+	// reading that printed token as a required non-zero exit reddened every such
+	// row (#955).
+	expectCodeSpanRe = regexp.MustCompile("`[^`]*`")
 )
 
 // parseExpect reads an Expect cell into the constraints verifyrun can check.
@@ -308,7 +334,14 @@ func parseExpect(expect string) expectSpec {
 		spec.wantLine = strings.TrimSpace(m[1])
 		rest = expectOutputIsRe.ReplaceAllString(expect, " ")
 	}
-	if m := expectExitRe.FindStringSubmatch(rest); m != nil {
+	// The required PROCESS exit is read only from the UNQUOTED text: backticked
+	// tokens are quoted literals (see expectCodeSpanRe), and a `(...) ; echo
+	// exit=$?` control row writes the exit it is asserting as a backticked stdout
+	// token (`exit=1`) precisely because the compound itself always exits 0. The
+	// min-count convention legitimately quotes its floor (`≥ `1``), so it still
+	// reads the backticks-intact text — only the exit parse sees them stripped.
+	exitRest := expectCodeSpanRe.ReplaceAllString(rest, " ")
+	if m := expectExitRe.FindStringSubmatch(exitRest); m != nil {
 		if n, err := strconv.Atoi(m[1]); err == nil {
 			spec.exitCode, spec.exitFrom = n, true
 		}
@@ -418,6 +451,31 @@ type runResult struct {
 // what a person running the row in a terminal sees and what the Expect cells in
 // the corpus are written against (`2>&1` appears in them constantly).
 func runVerifyCommand(root, command string, timeout time.Duration) runResult {
+	return runVerifyCommandWith(root, command, timeout, nil)
+}
+
+// runHermetically executes a `check:ci` row with the network DISABLED.
+//
+// check:ci hermeticity is ENFORCED here, never merely declared (rulings.md R-6
+// c.6): the row is wrapped in a network namespace so a command that reaches for
+// the network is killed by the sandbox rather than trusted to be offline. When
+// no such facility is available on this host (not Linux, no `unshare`, or
+// unprivileged user namespaces disabled) the row is could-not-run — NOT pass:
+// a hermetic check that could not be run hermetically established nothing, and
+// the honest three-state answer is "I could not look", reported with the reason.
+func runHermetically(root, command string, timeout time.Duration) runResult {
+	wrapper, ok, why := networkOffWrapper()
+	if !ok {
+		return runResult{exit: -1, couldNotRun: true,
+			reason: "check:ci hermetic execution requires a network-off sandbox, unavailable on this host: " + why + ". check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net`"}
+	}
+	return runVerifyCommandWith(root, command, timeout, wrapper)
+}
+
+// runVerifyCommandWith executes one Verify command, optionally under a wrapper
+// argv prefix (the network-off sandbox for check:ci rows). A nil wrapper runs
+// the command directly, which is the env-bound `check`/legacy path.
+func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper []string) runResult {
 	if strings.TrimSpace(command) == "" {
 		return runResult{exit: -1, couldNotRun: true, reason: "the Verify row has no command"}
 	}
@@ -433,7 +491,11 @@ func runVerifyCommand(root, command string, timeout time.Duration) runResult {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", unescapePipes(command))
+	// The wrapper (e.g. `unshare --net --map-root-user`) prefixes the `sh -c`
+	// invocation, so the network namespace is entered before any of the row's
+	// own shell runs.
+	argv := append(append([]string{}, wrapper...), "sh", "-c", unescapePipes(command))
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	// A row must never be able to consume the parent's stdin: a command that
@@ -472,6 +534,38 @@ func runVerifyCommand(root, command string, timeout time.Duration) runResult {
 // a literal backslash.
 func unescapePipes(command string) string {
 	return strings.ReplaceAll(command, `\|`, `|`)
+}
+
+// networkOffWrapper returns the argv prefix that runs a command with the network
+// namespace isolated, and whether such a facility exists on this host.
+//
+// The facility is `unshare --net --map-root-user`: a new, empty network
+// namespace (only loopback, no route off-box) entered via an unprivileged user
+// namespace, which is the sandbox GitHub's Linux runner images provide and the
+// verdict runner (verdict-lane/04) will use. `--map-root-user` is what makes the
+// namespace creatable WITHOUT root; the process's real uid is unchanged outside
+// the namespace, so the Go build/module caches (owned by the invoking user)
+// remain readable.
+//
+// ok is false — with a human-legible reason — off Linux, when `unshare` is
+// absent, or when a live probe of unprivileged net-namespace creation fails
+// (user namespaces disabled). The caller renders that as could-not-run: a
+// hermetic row that cannot be run hermetically must never be recorded pass.
+func networkOffWrapper() (prefix []string, ok bool, why string) {
+	if runtime.GOOS != "linux" {
+		return nil, false, "the network sandbox uses `unshare --net`, a Linux facility, and this host is " + runtime.GOOS
+	}
+	path, err := exec.LookPath("unshare")
+	if err != nil {
+		return nil, false, "`unshare` is not on PATH"
+	}
+	// Probe: on a host with user namespaces disabled `unshare` exists but fails
+	// at run time. Detecting that here keeps a sandbox-setup failure from being
+	// mislabelled as the row's own failure.
+	if err := exec.Command(path, "--net", "--map-root-user", "true").Run(); err != nil {
+		return nil, false, "`unshare --net --map-root-user` failed on this host (" + err.Error() + ") — unprivileged user namespaces may be disabled"
+	}
+	return []string{path, "--net", "--map-root-user"}, true, ""
 }
 
 // hashOutput is the output fingerprint: the first 12 hex of sha256 over the
@@ -593,22 +687,29 @@ type verifyRow struct {
 	ID      string
 	Command string // as authored: `\|`-escaped, code span lifted
 	Expect  string
+	// Class is the resolved Verify row class (verdict-lane/02): check:ci, check,
+	// gate:model, gate:human. A legacy table with no Class column resolves every
+	// row to `check` (legacyRowClass). Classed records whether the table opted
+	// into the column — the bit that separates an explicitly env-bound `check`
+	// (skipped in CI) from a legacy-default `check` (CI still re-executes it).
+	Class   string
+	Classed bool
 }
 
 func briefVerifyRows(verifySection string) []verifyRow {
 	var rows []verifyRow
 	ordinal := 0
-	verifyRowTable(verifySection, func(num, cmdCell, expect string) {
-		cmd := codeSpan(cmdCell)
-		if strings.TrimSpace(cmd) == "" && strings.TrimSpace(expect) == "" {
+	verifyRowTable(verifySection, func(r verifyRowCells) {
+		cmd := codeSpan(r.Command)
+		if strings.TrimSpace(cmd) == "" && strings.TrimSpace(r.Expect) == "" {
 			return
 		}
 		ordinal++
 		id := strconv.Itoa(ordinal)
-		if v := normalizeRowID(num); v != "" {
+		if v := normalizeRowID(r.Num); v != "" {
 			id = v
 		}
-		rows = append(rows, verifyRow{ID: id, Command: cmd, Expect: expect})
+		rows = append(rows, verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed})
 	})
 	return rows
 }
@@ -630,10 +731,31 @@ func briefSections(path string) (verify, evidence string, err error) {
 }
 
 // runWitnesses executes every Verify row and returns its witness.
-func runWitnesses(root string, rows []verifyRow, runner, tree, date string, timeout time.Duration) []witness {
+//
+// Execution is CLASS-AWARE (verdict-lane/02):
+//   - check:ci — re-executed with the network DISABLED (runHermetically).
+//   - check    — when ci is set AND the row was EXPLICITLY classed, SKIPPED with
+//     the env-bound wording: it is runner-executed, and its verdict rests on
+//     authorship+signature, not on a CI re-run. A legacy-default check row
+//     (Classed=false) is the inherited corpus, which the scheduled main-rerun
+//     must still execute — so it does NOT skip.
+//   - everything else (legacy check off-CI, gate:*) — executed as before.
+func runWitnesses(root string, rows []verifyRow, runner, tree, date string, timeout time.Duration, ci bool) []witness {
 	out := make([]witness, 0, len(rows))
 	for _, r := range rows {
-		res := runVerifyCommand(root, r.Command, timeout)
+		if ci && r.Classed && r.Class == classCheck {
+			out = append(out, witness{
+				ID: r.ID, Command: r.Command, State: stateSkipped, Exit: -1,
+				Date: date, Runner: runner, Tree: tree, Note: verifyEnvBoundNote,
+			})
+			continue
+		}
+		var res runResult
+		if r.Class == classCheckCI {
+			res = runHermetically(root, r.Command, timeout)
+		} else {
+			res = runVerifyCommand(root, r.Command, timeout)
+		}
 		state, note := parseExpect(r.Expect).verdict(res)
 		out = append(out, witness{
 			ID:      r.ID,
@@ -651,10 +773,18 @@ func runWitnesses(root string, rows []verifyRow, runner, tree, date string, time
 }
 
 // witnessTable renders a full Evidence table for a run.
+//
+// SKIPPED rows are omitted: a skip is the deliberate ABSENCE of a run (an
+// env-bound check row not selected in CI), and writing it into the witness table
+// would record a run that did not happen — the exact forgery the witness exists
+// to prevent. The skip is reported to the console instead.
 func witnessTable(ws []witness) string {
 	var b strings.Builder
 	b.WriteString(witnessHeader)
 	for _, w := range ws {
+		if w.State == stateSkipped {
+			continue
+		}
 		b.WriteString("\n")
 		b.WriteString(w.row())
 	}
@@ -895,6 +1025,9 @@ Flags:
   --dry-run         run the rows and print the witness table, but do not write it back
   --timeout <dur>   per-row wall-clock limit (default 10m); a row that times out is could-not-run
   --root <dir>      repo root the commands run in (default: the git toplevel of the cwd)
+  --ci              CI context: EXPLICITLY-classed check (env-bound) rows are
+                    SKIPPED (runner-executed, not selected here); legacy rows and
+                    check:ci rows are unaffected. check:ci rows always run network-off.
 
 Result is three-state. could-not-run (command not found, unsubstituted
 placeholder, timeout, or a verdict that could not be derived) is NEVER pass: a
@@ -950,6 +1083,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	dryRun := fs.Bool("dry-run", false, "print the witness table without writing it back")
 	rootDir := fs.String("root", "", "repo root the commands run in")
 	timeout := fs.Duration("timeout", witnessTimeoutDefault, "per-row wall-clock limit")
+	ci := fs.Bool("ci", false, "CI context: skip explicitly-classed env-bound `check` rows")
 	// --help is handled by ContinueOnError returning flag.ErrHelp; print the
 	// usage and exit 0, because asking for help is not an error.
 	if err := fs.Parse(args); err != nil {
@@ -1000,11 +1134,17 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitCouldNot
 	}
 
-	ws := runWitnesses(root, rows, runner, treeSHA(root), nowFunc().Format("2006-01-02"), *timeout)
+	ws := runWitnesses(root, rows, runner, treeSHA(root), nowFunc().Format("2006-01-02"), *timeout, *ci)
 	table := witnessTable(ws)
 
 	worst := verifyrunExitPass
 	for _, w := range ws {
+		if w.State == stateSkipped {
+			// A skip is neither a run nor a verdict — report it, but it never
+			// enters the exit-code fold and it is not in the witness table.
+			fmt.Fprintf(stdout, "row %s: skip — %s\n", w.ID, w.Note)
+			continue
+		}
 		line := fmt.Sprintf("row %s: %s (exit=%s, sha256:%s)", w.ID, w.State, exitCell(w.Exit), w.OutHash)
 		if w.Note != "" {
 			line += " — " + w.Note

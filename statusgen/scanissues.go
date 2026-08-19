@@ -513,6 +513,16 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 		return 2
 	}
 
+	// Isolation guard (scanguard.go, 2026-08-13 incident): a PRIMARY checkout
+	// as the scan root is refused before ANY write happens — including the
+	// un-block edits below, which run in --dry-run mode too. The sanctioned
+	// root is an isolated linked worktree cut fresh from origin/main; the
+	// refusal message carries the recipe and the human override.
+	if reason := scanIsolationRefusal(root); reason != "" {
+		fmt.Fprintln(os.Stderr, "statusgen --scan-issues REFUSED:", reason)
+		return 2
+	}
+
 	streams, _, err := loadStreams(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen:", err)
@@ -520,11 +530,14 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 	}
 	attachPlaceholders(streams)
 
-	// Un-block detection: for each blocked placeholder,
-	// check if the newest non-bot comment on the issue is newer than
-	// blockedAt — if so, clear the block. A per-repo comment-fetch failure
-	// becomes a NOTICE; the unblock loop continues with the remaining repos.
-	unblockNotices := unblockPlaceholders(root, streams, comments)
+	// Un-block detection: for each blocked placeholder, check if the newest
+	// non-bot comment on the issue is newer than blockedAt — if so, the block has
+	// cleared. planUnblock only COMPUTES the set (mirrors planScan): the write —
+	// stripping the blocked:/blockedAt: lines — is deferred to applyUnblock in the
+	// write path below, so --dry-run performs ZERO filesystem writes (#852). A
+	// per-repo comment-fetch failure becomes a NOTICE; planning continues with the
+	// remaining repos.
+	unblockPlans, unblockNotices := planUnblock(streams, comments)
 	notices := append([]string(nil), unblockNotices...)
 
 	plans, closeOuts, scanNotices := planScan(root, streams, list, bless)
@@ -532,16 +545,32 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 	emitNotices(notices) // per-repo gh failures surface as NOTICE, exit stays 0
 
 	if dryRun {
+		for _, u := range unblockPlans {
+			fmt.Printf("would unblock %s  (%s#%d, newest non-bot comment %s > blockedAt %s)\n",
+				u.Path, u.Repo, u.Issue,
+				u.Newest.Format(time.RFC3339), u.BlockedAt.Format(time.RFC3339))
+		}
 		for _, p := range plans {
 			fmt.Printf("would create %s  (%s#%d, gate:%s)\n", p.Rel, p.Repo, p.Issue, p.Gate)
 		}
 		for _, c := range closeOuts {
 			fmt.Printf("would %s %s  (%s#%d, %s)\n", c.Action, c.Rel, c.Repo, c.Issue, closeOutReason(c.Action))
 		}
-		if len(plans) == 0 && len(closeOuts) == 0 {
+		if len(unblockPlans) == 0 && len(plans) == 0 && len(closeOuts) == 0 {
 			fmt.Println("scan-issues: no changes — nothing to create or retire")
 		}
 		return 0
+	}
+
+	// Write path (non-dry-run): apply the unblocks the dry-run branch only
+	// reported. A write failure degrades to a NOTICE; the loop continues.
+	for _, u := range unblockPlans {
+		if err := applyUnblock(u); err != nil {
+			emitNotices([]string{fmt.Sprintf("scan-issues: failed to unblock %s — %v", u.Path, err)})
+			continue
+		}
+		fmt.Printf("unblocked %s (newest non-bot comment %s > blockedAt %s)\n",
+			u.Path, u.Newest.Format(time.RFC3339), u.BlockedAt.Format(time.RFC3339))
 	}
 
 	// Execute close-outs BEFORE creation — a retired placeholder's target path
@@ -864,11 +893,25 @@ func newestNonBotCommentTime(comments []issueComment) (time.Time, bool) {
 	return newest, found
 }
 
-// unblockPlaceholders scans all blocked placeholders and clears the block when
-// the newest non-bot comment on the issue is newer than blockedAt. Returns
-// NOTICEs for fetch failures (one repo is degraded, not the whole scan).
-func unblockPlaceholders(root string, streams []*Stream, list commentLister) []string {
-	var notices []string
+// unblockPlan is one blocked placeholder whose block has CLEARED — the newest
+// non-bot comment on its issue is newer than blockedAt. planUnblock computes the
+// set WITHOUT writing (mirroring planScan/scanPlan); applyUnblock performs the
+// write. Separating the two lets --dry-run report the unblocks without mutating
+// disk (#852): the un-block lane used to write before the dry-run branch.
+type unblockPlan struct {
+	Repo      string
+	Issue     int
+	Path      string    // absolute path of the blocked placeholder file
+	Newest    time.Time // newest qualifying non-bot comment time (for the message)
+	BlockedAt time.Time // parsed blockedAt (for the message)
+}
+
+// planUnblock scans all blocked placeholders and COMPUTES which have cleared (the
+// newest non-bot comment on the issue is newer than blockedAt). It NEVER writes —
+// the write half lives in applyUnblock, so --dry-run can report the plan without
+// touching disk. Returns NOTICEs for unparseable blockedAt and per-repo comment
+// fetch failures (one repo is degraded, not the whole scan).
+func planUnblock(streams []*Stream, list commentLister) (plans []unblockPlan, notices []string) {
 	for _, s := range streams {
 		for _, ph := range s.Placeholders {
 			if ph.Blocked == "" {
@@ -895,15 +938,38 @@ func unblockPlaceholders(root string, streams []*Stream, list commentLister) []s
 			if !ok || !newest.After(blockedAt) {
 				continue // no unblocking comment yet
 			}
-			// A human answered — clear the block.
-			if err := unblockPlaceholderFile(ph.Path); err != nil {
-				notices = append(notices, fmt.Sprintf(
-					"scan-issues: failed to unblock %s — %v", ph.Path, err))
-				continue
-			}
-			fmt.Printf("unblocked %s (newest non-bot comment %s > blockedAt %s)\n",
-				ph.Path, newest.Format(time.RFC3339), blockedAt.Format(time.RFC3339))
+			plans = append(plans, unblockPlan{
+				Repo: ph.Repo, Issue: ph.Issue, Path: ph.Path,
+				Newest: newest, BlockedAt: blockedAt,
+			})
 		}
+	}
+	return plans, notices
+}
+
+// applyUnblock performs the write half of the un-block lane: it strips the
+// blocked:/blockedAt: lines from the placeholder file. Kept out of planUnblock so
+// --dry-run never reaches an os.WriteFile.
+func applyUnblock(p unblockPlan) error {
+	return unblockPlaceholderFile(p.Path)
+}
+
+// unblockPlaceholders scans all blocked placeholders, clears the block when the
+// newest non-bot comment on the issue is newer than blockedAt, and WRITES the
+// cleared file. It composes planUnblock (compute) + applyUnblock (write); the
+// scan entrypoint calls those two halves directly so it can skip the write under
+// --dry-run. Returns NOTICEs for fetch failures (one repo is degraded, not the
+// whole scan). root is unused (accepted for the historical signature).
+func unblockPlaceholders(root string, streams []*Stream, list commentLister) []string {
+	plans, notices := planUnblock(streams, list)
+	for _, p := range plans {
+		if err := applyUnblock(p); err != nil {
+			notices = append(notices, fmt.Sprintf(
+				"scan-issues: failed to unblock %s — %v", p.Path, err))
+			continue
+		}
+		fmt.Printf("unblocked %s (newest non-bot comment %s > blockedAt %s)\n",
+			p.Path, p.Newest.Format(time.RFC3339), p.BlockedAt.Format(time.RFC3339))
 	}
 	return notices
 }

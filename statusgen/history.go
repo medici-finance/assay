@@ -54,6 +54,15 @@ type HistoryEntry struct {
 	From  string `json:"from"`
 	To    string `json:"to"`
 	SHA   string `json:"sha"`
+	// Source distinguishes how a row was observed. It is absent (omitempty)
+	// on the live single-writer path (recordHistory), which is why live rows
+	// serialize byte-identically to before this field existed. The one-off
+	// backfill replayer (backfill.go) stamps it "backfill" on every row it
+	// reconstructs from git history, so a downstream reader can weight a
+	// commit-date-precision reconstructed dwell differently from a live,
+	// regen-observed transition. Unknown to old readers (they ignore the key)
+	// and never a score input — a provenance tag only.
+	Source string `json:"source,omitempty"`
 }
 
 // nowFunc is the historian's clock; overridden in tests for determinism.

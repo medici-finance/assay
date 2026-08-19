@@ -139,6 +139,32 @@ func TestVerifierFloor(t *testing.T) {
 		}
 	})
 
+	// ---- the Evidence read: the floor no longer stops at the Verified cell ----
+	//
+	// The gap this closes: a Verified cell naming an
+	// above-floor runner cleared the cell-only floor even when the Evidence
+	// section — the record of who actually ran the row — showed the row run at a
+	// below-floor tier with no strong-tier re-run curing it. brief-49's cell is
+	// `k3-verifier` (above floor, so the cell check passes), and its Evidence
+	// records the row run only by `haiku-verifier`. This is the previously-passing
+	// bad case; it must now FAIL.
+	t.Run("an above-floor cell does not clear the floor when Evidence records a below-floor run", func(t *testing.T) {
+		if !hasProblem(problems, "brief-49-floor-evidence-cheap-reject.md", "verifier floor") {
+			t.Errorf("Verified cell \"2026-07-09 k3-verifier\" clears the cell check, but ## Evidence records "+
+				"the row run only by \"haiku-verifier\" — reading Evidence, the floor must reject this; got:\n%s",
+				strings.Join(problems, "\n"))
+		}
+	})
+	// The converse must still pass: a row run cheap then genuinely re-run strong
+	// (two Evidence tables, unioned per row) is CURED. Keeping this a pass is what
+	// stops the Evidence read from becoming a new false rejection.
+	t.Run("a below-floor Evidence run cured by a strong-tier re-run clears the floor", func(t *testing.T) {
+		if hasProblem(problems, "brief-53-floor-evidence-cured-accept.md", "verifier floor") {
+			t.Errorf("row 1 was re-run at strong tier (opus-verifier) in a second Evidence table — the floor is "+
+				"cured per row and must not fire; got:\n%s", strings.Join(problems, "\n"))
+		}
+	})
+
 	t.Run("error text names the cell, the token, and the rule", func(t *testing.T) {
 		var got string
 		for _, p := range problems {

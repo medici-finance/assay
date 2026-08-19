@@ -19,7 +19,7 @@ func briefSchemaProblems(t *testing.T) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	problems, _ := checkBriefFiles(streams)
+	problems, _ := checkBriefFiles(streams, streams)
 	return problems
 }
 
@@ -35,7 +35,7 @@ func briefSchemaChecks(t *testing.T) (problems, notices []string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return checkBriefFiles(streams)
+	return checkBriefFiles(streams, streams)
 }
 
 // hasProblem reports whether some problem line contains every given substring.
@@ -254,9 +254,75 @@ func TestBriefFileParseExemptions(t *testing.T) {
 		t.Errorf("no-frontmatter file: want (nil,false,nil); got (%v,%v,%v)", bf, ok, err)
 	}
 
-	otherSchema := writeTemp(t, dir, "brief-02-other.md", "---\nschema: something-else\n---\n# Brief\n")
-	if bf, ok, err := parseBriefFile(otherSchema); bf != nil || ok || err != nil {
-		t.Errorf("non-brief-v1 schema: want (nil,false,nil); got (%v,%v,%v)", bf, ok, err)
+	// A frontmatter block that carries NO `schema:` key at all stays legacy/
+	// exempt — the fail-closed refusal (#271) fires only on a PRESENT but
+	// unrecognized schema value (see TestBriefFileUnknownSchemaFailsClosed),
+	// never on the absence of a marker.
+	noSchemaKey := writeTemp(t, dir, "brief-02-nokey.md", "---\ntitle: t\n---\n# Brief\n")
+	if bf, ok, err := parseBriefFile(noSchemaKey); bf != nil || ok || err != nil {
+		t.Errorf("frontmatter without a schema key: want (nil,false,nil); got (%v,%v,%v)", bf, ok, err)
+	}
+}
+
+// TestBriefFileUnknownSchemaFailsClosed proves BRIEF-schema evolution fails
+// CLOSED (#271 / adversarial SY-4, RD-7): a file that declares a brief-schema-
+// family value this binary does not recognize (e.g. a future `brief-v2`) must be
+// REFUSED with a path-prefixed error — NOT silently exempted the way a pre-schema
+// legacy file is. Without this, a not-yet-upgraded pinned consumer would lint a
+// v2 brief green-by-exemption, disabling all typed-dep / gate / attribution
+// checks. The known schema (brief-v1) must still validate normally, and a
+// DIFFERENT document kind (e.g. contract-v1) must stay exempt as before — the
+// refusal is scoped to the brief-v* family, not every non-brief-v1 value.
+func TestBriefFileUnknownSchemaFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+
+	// Unrecognized brief-schema-family version → hard refusal (fail closed).
+	for _, ver := range []string{"brief-v2", "brief-v3"} {
+		p := writeTemp(t, dir, "brief-01-"+ver+".md", "---\nschema: "+ver+"\n---\n# Brief\n")
+		bf, ok, err := parseBriefFile(p)
+		if bf != nil || ok {
+			t.Fatalf("%s: want (nil,false,err); got (%v,%v,%v)", ver, bf, ok, err)
+		}
+		if err == nil {
+			t.Fatalf("unknown brief schema %s must be REFUSED (fail closed), not silently exempted; got err=nil", ver)
+		}
+		if !strings.Contains(err.Error(), p) {
+			t.Errorf("%s: error should be path-prefixed with %q; got %v", ver, p, err)
+		}
+		if !strings.Contains(err.Error(), ver) || !strings.Contains(err.Error(), "brief-v1") {
+			t.Errorf("%s: error should name the rejected schema and the recognized one; got %v", ver, err)
+		}
+	}
+
+	// A DIFFERENT document kind (not the brief-v* family) stays EXEMPT — this is
+	// the regression guard for the tree's own contract-v1 / placeholder-v1 /
+	// publication-manifest-v1 docs, which live in brief-*.md files but are not
+	// briefs. Refusing these would red the whole board (the naive "!= brief-v1"
+	// reading of #271 does exactly that).
+	for _, other := range []string{"contract-v1", "placeholder-v1", "publication-manifest-v1"} {
+		p := writeTemp(t, dir, "brief-02-"+other+".md", "---\nschema: "+other+"\n---\n# Doc\n")
+		if bf, ok, err := parseBriefFile(p); bf != nil || ok || err != nil {
+			t.Errorf("non-brief document kind %q: want (nil,false,nil) exempt; got (%v,%v,%v)", other, bf, ok, err)
+		}
+	}
+
+	// A non-string schema is not a recognized brief marker → exempt (as before),
+	// not a false refusal.
+	badType := writeTemp(t, dir, "brief-04-badtype.md", "---\nschema: 2\n---\n# Brief\n")
+	if bf, ok, err := parseBriefFile(badType); bf != nil || ok || err != nil {
+		t.Errorf("non-string schema: want (nil,false,nil) exempt; got (%v,%v,%v)", bf, ok, err)
+	}
+
+	// Control: the KNOWN schema still opts in and validates normally. This
+	// brief-v1 file is missing required fields, so it reaches the parser's
+	// missing-field path (proof it was NOT exempted and NOT schema-refused).
+	known := writeTemp(t, dir, "brief-05-known.md", "---\nschema: brief-v1\nbrief: x/05\n---\n# Brief\n")
+	bfk, okk, errk := parseBriefFile(known)
+	if bfk != nil || okk {
+		t.Fatalf("known schema: want (nil,false,err); got (%v,%v,%v)", bfk, okk, errk)
+	}
+	if errk == nil || !strings.Contains(errk.Error(), "missing required field") {
+		t.Errorf("known brief-v1 should validate normally and report its missing fields, not a schema refusal; got %v", errk)
 	}
 }
 
@@ -677,7 +743,7 @@ func TestSameWaveDepLint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, notices := checkBriefFiles(streams)
+	_, notices := checkBriefFiles(streams, streams)
 	if !hasProblem(notices, "depends on samewave/01", "wave 1") {
 		t.Errorf("expected same-wave-dep notice, got notices=%v", notices)
 	}
@@ -745,7 +811,7 @@ func TestStrictlyEarlierDepPasses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	problems, _ := checkBriefFiles(streams)
+	problems, _ := checkBriefFiles(streams, streams)
 	if hasProblem(problems, "strictly-earlier") {
 		t.Errorf("strictly-earlier dep should NOT trigger lint; got problems=%v", problems)
 	}

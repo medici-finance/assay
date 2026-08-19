@@ -18,6 +18,7 @@ package main
 // verbatim: a constraint metric that becomes a target rots.
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -349,6 +350,73 @@ func renderBottleneckMarkdown(rep BottleneckReport, shiftedFrom string) string {
 	return renderBottleneckText(rep, shiftedFrom)
 }
 
+// bottleneckStageJSON is the machine-readable view of one stage's WIP + dwell.
+// It carries the same numbers the text table shows — nothing computed here that
+// renderBottleneckText does not already show — just shaped for a consumer
+// (the public metrics snapshot's `constraint` block, agentic-metrics/02).
+type bottleneckStageJSON struct {
+	Stage              string  `json:"stage"`
+	Label              string  `json:"label"`
+	WIP                int     `json:"wip"`
+	MedianDwell        string  `json:"median_dwell"` // human-readable; "" when no known dwell
+	MedianDwellSeconds float64 `json:"median_dwell_seconds"`
+	UnknownDwell       int     `json:"unknown_dwell"`
+	Score              float64 `json:"score"` // WIP x median dwell seconds (0 when dwell unknown)
+}
+
+// bottleneckJSON is the machine-readable view of the whole report — the same
+// content as renderBottleneckText, serialised for the publish pipeline. It adds
+// no metric of its own; it re-shapes the already-computed BottleneckReport.
+type bottleneckJSON struct {
+	Generated       string                `json:"generated"`
+	Date            string                `json:"date"`
+	Note            string                `json:"note"`
+	Stages          []bottleneckStageJSON `json:"stages"`
+	Constraint      string                `json:"constraint"`       // stage name; "" when unknown
+	ConstraintLabel string                `json:"constraint_label"` // "" when unknown
+	ShiftedFrom     string                `json:"shifted_from"`     // prior constraint; "" when none/first
+	Action          string                `json:"action"`
+	TotalBriefs     int                   `json:"total_briefs"`
+}
+
+// buildBottleneckJSON re-shapes a computed BottleneckReport into its JSON view.
+func buildBottleneckJSON(rep BottleneckReport, shiftedFrom string) bottleneckJSON {
+	stages := make([]bottleneckStageJSON, 0, len(rep.Stages))
+	for _, st := range rep.Stages {
+		var dwellStr string
+		var dwellSecs, score float64
+		if st.MedianDwell > 0 {
+			dwellStr = humanDur(st.MedianDwell)
+			dwellSecs = st.MedianDwell.Seconds()
+			score = float64(st.WIP) * dwellSecs
+		}
+		stages = append(stages, bottleneckStageJSON{
+			Stage:              st.Stage,
+			Label:              bottleneckStageLabel(st.Stage),
+			WIP:                st.WIP,
+			MedianDwell:        dwellStr,
+			MedianDwellSeconds: dwellSecs,
+			UnknownDwell:       st.UnknownDwell,
+			Score:              score,
+		})
+	}
+	constraintLabel := ""
+	if rep.Constraint != "" {
+		constraintLabel = bottleneckStageLabel(rep.Constraint)
+	}
+	return bottleneckJSON{
+		Generated:       rep.Generated.Format(time.RFC3339),
+		Date:            rep.Date,
+		Note:            bottleneckAntiGamingNote,
+		Stages:          stages,
+		Constraint:      rep.Constraint,
+		ConstraintLabel: constraintLabel,
+		ShiftedFrom:     shiftedFrom,
+		Action:          rep.Action,
+		TotalBriefs:     rep.TotalBriefs,
+	}
+}
+
 // writeBottleneckReport writes the report to docs/reports/factory-floor/<date>.md.
 // Creates the directory if it doesn't exist.
 func writeBottleneckReport(root string, rep BottleneckReport, shiftedFrom string) error {
@@ -364,7 +432,7 @@ func writeBottleneckReport(root string, rep BottleneckReport, shiftedFrom string
 // computes the bottleneck report, writes the dated file, and prints the stdout
 // summary. Self-contained diagnostic sub-command — never reads or writes
 // STATUS.md (same discipline as --dora / --trend).
-func runBottleneck(root string) int {
+func runBottleneck(root string, asJSON bool) int {
 	streams, _, err := loadStreams(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen: bottleneck:", err)
@@ -378,6 +446,20 @@ func runBottleneck(root string) int {
 	rep := computeBottleneck(streams, history, now)
 
 	shiftedFrom := detectShift(root, now)
+
+	// JSON mode (agentic-metrics/02): a pure, read-only emitter for the publish
+	// pipeline. It writes NO dated report file — that append-only side effect
+	// belongs to the daily text run, not to a snapshot query — matching the
+	// STATUS.md-free / side-effect-free discipline of --dora --json.
+	if asJSON {
+		enc, err := json.MarshalIndent(buildBottleneckJSON(rep, shiftedFrom), "", "  ")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "statusgen: bottleneck:", err)
+			return 1
+		}
+		fmt.Println(string(enc))
+		return 0
+	}
 
 	// Write the dated report file (append-only history).
 	if err := writeBottleneckReport(root, rep, shiftedFrom); err != nil {

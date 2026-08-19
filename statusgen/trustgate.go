@@ -104,6 +104,74 @@ func trustedAuthorID(login string, id int64) bool {
 	return want != 0 && id == want
 }
 
+// authorizedAuthorSet returns the effective AUTHORIZED-AUTHOR set for the
+// scan-transcribe lane (R-7 clause 1): the rostered ASSAY_AUTHORIZED_AUTHORS
+// humans, SEEDED with the blessing authority. Seeding is what makes an
+// UNSET roster value degrade to {the blessing authority} rather than to an empty set — the lane
+// always admits at least the blessing authority's own issues, and never crashes
+// on absence. With the roster unconfigured the set is empty (fail closed): there
+// is no bless identity to seed from and nothing to authorize.
+//
+// Returns login(lowercased) -> mandatory numeric id. An id of 0 never appears:
+// both sources (the parsed set and the bless identity) require a positive id at
+// load, so every member is recycled-login-defensible.
+func authorizedAuthorSet() map[string]int64 {
+	c := scanEffectiveConfig()
+	set := map[string]int64{}
+	if !c.Configured() {
+		return set
+	}
+	for l, id := range c.AuthorizedAuthors {
+		if id != 0 {
+			set[strings.ToLower(l)] = id
+		}
+	}
+	// Seed with the blessing authority. The bless id is mandatory at load, so this
+	// is always a pinned entry.
+	if c.Bless.Login != "" && c.Bless.ID != 0 {
+		set[strings.ToLower(c.Bless.Login)] = c.Bless.ID
+	}
+	return set
+}
+
+// authorizedByIdentity is the R-7 clause-1 direct-author predicate: is this
+// issue author authorized to BOARD work through the unattended scan-transcribe
+// lane? Two disjoint identity classes, each id-pinned to the extent GitHub
+// allows:
+//
+//   - a rostered desk App (type Bot, or a login that renders as one): trusted by
+//     login alone — GitHub Apps cannot be recycled — but ONLY when the login is in
+//     the rostered bot set (ASSAY_TRUSTED_BOT_SLUGS). The bare slug is never
+//     trusted (scanParseConfig only registers the `slug[bot]` and `app/slug`
+//     renderings), so a plain user squatting a slug stays untrusted.
+//   - a human authorized author: the login MUST be in authorizedAuthorSet AND the
+//     numeric id MUST match (recycled-login defense). A human carrying id 0 (the
+//     resolver could not read it) fails closed.
+//
+// With the roster unconfigured every identity is unauthorized (authorizedAuthorSet
+// empty, cfg.Logins empty).
+func authorizedByIdentity(login string, id int64, typ string) bool {
+	lower := strings.ToLower(strings.TrimSpace(login))
+	if lower == "" {
+		return false
+	}
+	c := scanEffectiveConfig()
+	if !c.Configured() {
+		return false
+	}
+	// Desk App identity: type Bot, or a login rendering as a bot/App. Trusted by
+	// login alone, but only if it is a REGISTERED bot rendering.
+	if typ == "Bot" || scanLooksLikeBot(lower) {
+		return c.Logins[lower]
+	}
+	// Human authorized author: login in the set AND id-pinned match.
+	want, ok := authorizedAuthorSet()[lower]
+	if !ok {
+		return false
+	}
+	return id != 0 && id == want
+}
+
 // isBlessAuthorityID is the id-aware blessing-authority check: the configured
 // bless login carrying any other id is NOT the authority (fail closed). With the
 // roster unconfigured there is no authority and this is false for every input.

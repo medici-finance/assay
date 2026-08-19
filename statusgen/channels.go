@@ -123,6 +123,49 @@ func regenerateHint(root string) string {
 	return "statusgen --root " + root + " (see " + pinSpecRef + " for how to obtain it)"
 }
 
+// boardProvenanceLine names WHICH binary produced a red board, so a reader can
+// tell a stale-oracle red from ground truth (#186). A board's PROBLEM set can be
+// produced by more than one statusgen: the sha256-pinned release binary named in
+// .assay-versions, or an unstamped local build (a `go run ./statusgen`, or a
+// stale installed copy) that predates a check the pin already fixed. The stale
+// build reds a board the pinned binary passes — the exact shape of #186, where a
+// pre-pin local build emitted DAR-version PROBLEMs that v0.5.0 exits 0 on.
+//
+// The stamp names the tag but is NOT self-certifying. statusgen cannot read the
+// consumer's pin from inside this process (the pin lives in the consumer repo's
+// .assay-versions, which the producer tree here does not even carry), so a
+// STAMPED binary can still be BEHIND the pin — a v0.5.0 build reporting a red on a
+// desk whose pin has moved to v0.8.1 is itself a stale oracle, the very case
+// #186 warns about. So BOTH branches point the reader back at the pin: the "dev"
+// branch because it is provably unstamped, the stamped branch because the tag it
+// names must be confirmed to match the consumer's pin before its red is trusted.
+// Neither branch asserts authority the process cannot establish.
+//
+// This line is stderr-only — never the persisted STATUS.md and never the stdout
+// verdict, both of which are byte-compared, so a build-dependent value there
+// would report false drift between an installed binary and a `go run` CI (cf.
+// emit.go's header note). It is emitted on the board-verdict red paths (blocking
+// board-source reds, off-board reds, and --check drift) and DELIBERATELY not on a
+// green board or on a fatal source-load error, neither of which is a board whose
+// PROBLEM content a differently-versioned binary would reproduce.
+// n is the number of PROBLEM lines just emitted above it.
+func boardProvenanceLine(n int) string {
+	if statusgenVersion == "dev" {
+		return fmt.Sprintf(
+			"statusgen: the %d PROBLEM(s) above were produced by an UNSTAMPED local build "+
+				"(version \"dev\") — a stale local statusgen can red a board the pinned binary "+
+				"passes (#186). Re-check against the sha256-pinned release named in .assay-versions "+
+				"(see %s) before treating this red as ground truth.",
+			n, pinSpecRef)
+	}
+	return fmt.Sprintf(
+		"statusgen: the %d PROBLEM(s) above were produced by statusgen %s. Confirm this tag "+
+			"matches the sha256-pinned release named in .assay-versions (see %s) before treating "+
+			"this red as ground truth — a STAMPED binary that is BEHIND the pin is itself a stale "+
+			"oracle (#186).",
+		n, statusgenVersion, pinSpecRef)
+}
+
 // staleGeneratedFileMsg is the SINGLE constructor for "this generated file is
 // out of date, here is how to regenerate it". main.go's --check verdict and
 // both register-view checks in registers.go call it, so the remediation string

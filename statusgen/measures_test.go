@@ -310,7 +310,7 @@ func measuresLintRoot(t *testing.T, measuresLine string) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	problems, _ := checkBriefFiles(streams)
+	problems, _ := checkBriefFiles(streams, streams)
 	// The wiring is checked here too: the parsed field must reach the Brief row,
 	// or the eligibility gate above is reading a field nothing ever populates.
 	if measuresLine != "" && len(streams) == 1 && len(streams[0].Briefs) == 1 {

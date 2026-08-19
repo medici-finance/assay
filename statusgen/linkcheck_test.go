@@ -77,7 +77,7 @@ func TestDocFiles(t *testing.T) {
 	writeTemp(t, root, "CLAUDE.md", "x")
 	writeTemp(t, sub, "README.md", "x")
 	writeTemp(t, sub, "notes.txt", "x") // not .md → excluded
-	files := docFiles(root)
+	files, _ := docFiles(root)
 	if len(files) != 2 {
 		t.Errorf("got %d files, want 2 (CLAUDE.md + README.md): %v", len(files), files)
 	}
@@ -103,7 +103,7 @@ func TestDocFilesCoversOutboundDirs(t *testing.T) {
 	writeTemp(t, filepath.Join(root, "docs", "integrations"), "b.md", "x")
 	writeTemp(t, filepath.Join(root, "docs", "design"), "c.md", "x")
 	writeTemp(t, filepath.Join(root, "docs", "streams", "x"), "README.md", "x")
-	files := docFiles(root)
+	files, _ := docFiles(root)
 	// CLAUDE.md + 4 markdown files under docs/**.
 	if len(files) != 5 {
 		t.Errorf("got %d files, want 5: %v", len(files), files)
@@ -324,6 +324,176 @@ func TestBacktickCheckUnaffectedByStripCode(t *testing.T) {
 	problems := linkProblems(root, []string{p})
 	if len(problems) != 1 || !strings.Contains(problems[0], "nope.md") {
 		t.Fatalf("want 1 backticked-path problem (nope.md), got: %v", problems)
+	}
+}
+
+// A generator must not grade its own generated artifacts against a
+// source-quality rule (#169). The intake boilerplate hardcodes a
+// backticked `docs/v-next.md` reference; the link check runs over docs/**,
+// including the generated docs/streams/INTAKE.md view. An adopter root with
+// intake entries but no docs/v-next.md would therefore fail its own --lint on a
+// path statusgen itself wrote. Prove: (1) the generated view is excluded from
+// the link-check file set, and (2) genuine adopter-authored breakage in the
+// per-entry SOURCE file is STILL caught.
+func TestGeneratedRegisterViewsExcludedFromLinkCheck(t *testing.T) {
+	root := t.TempDir()
+	intakeDir := filepath.Join(root, "docs", "streams", "intake")
+	if err := os.MkdirAll(intakeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A valid intake source entry — enough for generateIntakeView to emit a view.
+	entry := "---\nid: I-adopter-entry\ndate: 2026-08-15\ntitle: An adopter intake entry\ndisposition: watching\n---\n\n" +
+		"A synthetic intake entry so the generated view has content.\n"
+	if err := os.WriteFile(filepath.Join(intakeDir, "I-adopter-entry.md"), []byte(entry), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Render the real INTAKE view and write it where CI commits it. Deliberately
+	// do NOT create docs/v-next.md — the adopter never authored that path.
+	view, err := generateIntakeView(root)
+	if err != nil {
+		t.Fatalf("generateIntakeView: %v", err)
+	}
+	if !strings.Contains(view, "`docs/v-next.md`") {
+		t.Fatalf("precondition failed: generated intake boilerplate no longer hardcodes `docs/v-next.md`; update this test:\n%s", view)
+	}
+	viewPath := filepath.Join(root, "docs", "streams", "INTAKE.md")
+	if err := os.WriteFile(viewPath, []byte(view), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// (1) docFiles must NOT include the generated view.
+	files, walkProblems := docFiles(root)
+	if len(walkProblems) != 0 {
+		t.Fatalf("unexpected walk problems: %v", walkProblems)
+	}
+	for _, f := range files {
+		if filepath.Base(f) == "INTAKE.md" {
+			t.Fatalf("docFiles included the generated view %q — statusgen must not link-check its own output", f)
+		}
+	}
+	// The SOURCE entry file stays in the set (its author-authored links matter).
+	foundSource := false
+	for _, f := range files {
+		if strings.HasSuffix(filepath.ToSlash(f), "docs/streams/intake/I-adopter-entry.md") {
+			foundSource = true
+		}
+	}
+	if !foundSource {
+		t.Fatalf("docFiles dropped the per-entry SOURCE file — adopter-authored links would go unchecked: %v", files)
+	}
+
+	// (2) Running the link check over the real file set is clean: the tool no
+	// longer fails the adopter on the `docs/v-next.md` path it emitted itself.
+	if probs := linkProblems(root, files); len(probs) != 0 {
+		t.Fatalf("adopter with intake entries but no docs/v-next.md fails lint on statusgen's own output: %v", probs)
+	}
+
+	// (3) NEGATIVE: a genuinely broken backticked path authored in the SOURCE
+	// entry is still caught — the exclusion is scoped to generated views only.
+	broken := entry + "\nBroken deliverable: `docs/streams/intake/does-not-exist.md`.\n"
+	if err := os.WriteFile(filepath.Join(intakeDir, "I-adopter-entry.md"), []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files2, _ := docFiles(root)
+	probs2 := linkProblems(root, files2)
+	if len(probs2) != 1 || !strings.Contains(probs2[0], "does-not-exist.md") {
+		t.Fatalf("adopter-authored dead link in a SOURCE entry must still be caught, got: %v", probs2)
+	}
+}
+
+// isGeneratedRegisterView is BOTH location-scoped and generation-gated: only
+// docs/streams/INTAKE.md and docs/streams/FINDINGS.md are candidate views, AND
+// the matching generator must actually emit content for this root (per-entry
+// source files must exist). An identically-named file elsewhere in the tree is
+// an ordinary authored doc and stays link-checked. This root carries a per-entry
+// intake file and a per-entry findings file, so both generators emit.
+func TestIsGeneratedRegisterView(t *testing.T) {
+	root := t.TempDir()
+	intakeDir := filepath.Join(root, "docs", "streams", "intake")
+	findingsDir := filepath.Join(root, "docs", "streams", "findings")
+	for _, d := range []string{intakeDir, findingsDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(intakeDir, "I-x.md"),
+		[]byte("---\nid: I-generated-view-test\ndate: 2026-08-15\ntitle: X\ndisposition: watching\n---\n\nBody.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(findingsDir, "2026-08-15-x.md"),
+		[]byte("---\nid: F-generated-view-test\ndate: \"2026-08-15\"\ntitle: X\naffects: []\nresolved: true\n---\n\nBody.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		rel  string
+		want bool
+	}{
+		{"docs/streams/INTAKE.md", true},         // view statusgen emits here
+		{"docs/streams/FINDINGS.md", true},       // view statusgen emits here
+		{"docs/streams/STATUS.md", false},        // STATUS.md is not a docs/ register view
+		{"docs/streams/intake/INTAKE.md", false}, // an authored file, not the view
+		{"docs/articles/INTAKE.md", false},       // authored doc that happens to share a name
+		{"docs/streams/x/README.md", false},      // ordinary brief
+		{"INTAKE.md", false},                     // outside docs/streams/
+	}
+	for _, c := range cases {
+		got := isGeneratedRegisterView(root, filepath.Join(root, filepath.FromSlash(c.rel)))
+		if got != c.want {
+			t.Errorf("isGeneratedRegisterView(%q) = %v, want %v", c.rel, got, c.want)
+		}
+	}
+}
+
+// The exclusion is gated on the view ACTUALLY being generated (#169 Blocking 2):
+// a hand-authored or scaffolded docs/streams/INTAKE.md in a root with NO
+// per-entry intake files is not statusgen's output — the generator emits "" and
+// writes nothing there — so it must stay link-checked. This is the fails-to-fire
+// regression: keying the exclusion on path alone would silently stop checking a
+// real, editable register. `statusgen init` scaffolds exactly this shape (an
+// INTAKE.md to edit, no per-entry files), so every fresh adopter starts here.
+func TestHandAuthoredRegisterViewStaysChecked(t *testing.T) {
+	root := t.TempDir()
+	streams := filepath.Join(root, "docs", "streams")
+	if err := os.MkdirAll(streams, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A hand-authored INTAKE.md with a dead backticked path, and NO
+	// docs/streams/intake/ per-entry files — so generateIntakeView returns "".
+	authored := "# Intake\n\nSee `docs/streams/does-not-exist.md` for the queue.\n"
+	viewPath := filepath.Join(streams, "INTAKE.md")
+	if err := os.WriteFile(viewPath, []byte(authored), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Precondition: statusgen would NOT generate a view here.
+	if v, err := generateIntakeView(root); err != nil || v != "" {
+		t.Fatalf("precondition failed: generateIntakeView emitted content (err=%v, len=%d) — this root must have no per-entry intake files", err, len(v))
+	}
+
+	// The predicate must not exclude it.
+	if isGeneratedRegisterView(root, viewPath) {
+		t.Fatal("isGeneratedRegisterView excluded a hand-authored INTAKE.md with no per-entry source — a real authored document would go unchecked")
+	}
+
+	// End-to-end: docFiles keeps it, and its dead link is caught.
+	files, walkProblems := docFiles(root)
+	if len(walkProblems) != 0 {
+		t.Fatalf("unexpected walk problems: %v", walkProblems)
+	}
+	found := false
+	for _, f := range files {
+		if strings.HasSuffix(filepath.ToSlash(f), "docs/streams/INTAKE.md") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("docFiles dropped the hand-authored INTAKE.md — it would go unchecked: %v", files)
+	}
+	probs := linkProblems(root, files)
+	if len(probs) != 1 || !strings.Contains(probs[0], "does-not-exist.md") {
+		t.Fatalf("dead link in a hand-authored register must be caught, got: %v", probs)
 	}
 }
 

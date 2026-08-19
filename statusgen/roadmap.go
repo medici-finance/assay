@@ -751,15 +751,36 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 	if nu.Overflow() {
 		w("<div style=\"font-size:12px;color:var(--amber);margin-bottom:8px;\">%d of %d eligible — %d held back (span cap %d)</div>", len(nu.Picks), nu.Eligible, nu.HeldBack(), nu.Span)
 	}
+	// Drive banners on the DECK too (methodology-metrics/45). The deck iterates the
+	// picks in their drive-sorted order, so it must ALSO show WHY — otherwise a
+	// reader sees a steered order with unsteered numbers and nothing explaining it.
+	// The honesty rule (decomposed emit ALWAYS) applies to every surface, not just
+	// STATUS.md. Markdown markers are stripped for HTML.
+	driveMD := strings.NewReplacer("> ", "", "**", "", "`", "")
+	if nu.DriveNotApplied != "" {
+		w("<div style=\"font-size:12px;color:var(--amber);margin-bottom:8px;\">%s</div>", htmlEscape(driveMD.Replace(nu.DriveNotApplied)))
+	}
+	if nu.DriveBanner != "" {
+		w("<div style=\"font-size:12px;color:var(--blue);margin-bottom:8px;\">%s</div>", htmlEscape(driveMD.Replace(nu.DriveBanner)))
+	}
+	for _, n := range nu.DriveCoverageNotices {
+		w("<div style=\"font-size:12px;color:var(--amber);margin-bottom:8px;\">DRIVE COVERAGE — %s</div>", htmlEscape(n))
+	}
 	if len(nu.Picks) == 0 {
 		w("<div class=\"no-exceptions\">Nothing eligible.</div>")
 	} else {
 		w("<div class=\"nextup-rows\">")
 		for _, p := range nu.Picks {
 			briefPath := fmt.Sprintf("docs/streams/%s/brief-%s", p.Stream.Name, p.Brief.Num)
+			// Score is decomposed when a drive steer is present — `base + term
+			// (drive:slug)` — never a bare steered number, matching the STATUS board.
+			scoreCell := fmt.Sprintf("score %d", p.Score)
+			if p.DriveTerm > 0 {
+				scoreCell = fmt.Sprintf("score %d + %d (drive:%s)", p.Score, p.DriveTerm, p.DriveSlug)
+			}
 			// Check if the brief file exists; link to the file if so.
-			w("<div class=\"item\"><strong>%s</strong> &mdash; <a href=\"%s\">%s</a> (wave %d, score %d)</div>",
-				p.Stream.Name, briefPath+".md", htmlEscape(p.Brief.Title), p.Brief.Wave, p.Score)
+			w("<div class=\"item\"><strong>%s</strong> &mdash; <a href=\"%s\">%s</a> (wave %d, %s)</div>",
+				p.Stream.Name, briefPath+".md", htmlEscape(p.Brief.Title), p.Brief.Wave, scoreCell)
 		}
 		w("</div>")
 	}
@@ -829,7 +850,11 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 			servesDisplay = "untagged"
 		}
 		w("<tr>")
-		w("<td><a href=\"%s\">%s</a></td>", streamURL, s.Name)
+		// The stream name links to its per-stream deck page (mm/24), a sibling
+		// HTML file in this same directory; the page header links on to the
+		// README. The stream-page class is the row<->page link marker.
+		_ = streamURL
+		w("<td><a class=\"stream-page\" href=\"%s\">%s</a></td>", htmlEscape(streamPageFilename(s.Name)), s.Name)
 		w("<td><span class=\"serves-tag\" style=\"background:%s20;color:%s;border:1px solid %s40\">%s</span></td>", servesColor(serves), servesColor(serves), servesColor(serves), servesDisplay)
 		w("<td><div class=\"health-pill\"><span class=\"health-dot %s\"></span><span class=\"health-reason\">%s</span></div></td>", row.HealthColor, htmlEscape(healthLabel))
 		w("<td><div class=\"mini-bar\">")
@@ -872,12 +897,19 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 // --- Entry point ---
 
 func runRoadmap(root string) int {
-	streams, findings, err := loadStreams(root)
+	// loadHydratedStreams (not bare loadStreams + attachPlaceholders): the
+	// roadmap deck scores its Next-up panel with the same nextUp() the STATUS.md
+	// write path uses and gates its critical-path candidates on Brief.Depends,
+	// both of which are hydrated from brief-file frontmatter only as a side
+	// effect of checkBriefFiles. Skipping that step rendered a flat score wall
+	// disagreeing with STATUS.md for identical input — the same defect class as
+	// the --gate-scores bug of issue #266. findings are loadStreams' stream
+	// findings, still consumed by the health rules and topBlocker below.
+	streams, findings, err := loadHydratedStreams(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen:", err)
 		return 1
 	}
-	attachPlaceholders(streams)
 
 	// Load history.
 	var history []HistoryEntry
@@ -939,6 +971,22 @@ func runRoadmap(root string) int {
 		rows = append(rows, row)
 	}
 
+	// Drive campaign (methodology-metrics/45): the DECK must show the SAME steered
+	// queue the desks dispatch off the STATUS board. runRoadmap is a SEPARATE entry
+	// point from run() — `--roadmap` is an early os.Exit(runRoadmap(root)) that
+	// never reaches run() — so it must load the drive set into the nextUp package
+	// var ITSELF. Without this, activeDriveSet is the zero value here and every
+	// drive branch in renderRoadmap (banner, coverage notice, decomposed score) is
+	// unreachable, leaving the deck silently showing an UNsteered queue. Built from
+	// the full stream set (no --scope on this path). nowFunc() is the same
+	// wall-clock input run() uses; loadDrives NEVER errors (absent ⇒ inert, so the
+	// deck stays byte-inert with no manifest; malformed ⇒ fail-neutral, surfaced as
+	// the banner). Saved/restored so the package var does not leak across a process
+	// that also builds the STATUS board, or across tests.
+	savedDriveSet := activeDriveSet
+	activeDriveSet = loadDrives(root, streams, nowFunc())
+	defer func() { activeDriveSet = savedDriveSet }()
+
 	// Compute Next-up (reuse nextUp from nextup.go without claim filtering).
 	// The zero ClaimView says so honestly, which also means a stream that
 	// declared max-concurrent is withheld here rather than shown unserialized.
@@ -967,5 +1015,38 @@ func runRoadmap(root string) int {
 		return 1
 	}
 	fmt.Println("wrote", outPath)
+
+	// Per-stream pages (methodology-metrics/24). One page per grid row: the
+	// overview's stream set IS the page set. The per-stream DORA tile reuses the
+	// mm/26 grouped breakdown (--by stream), built here from the SAME historian
+	// used above — no git/gh calls, so it stays offline and deterministic (the
+	// grouped compute reads only History/Since/Until/Now).
+	doraIn := doraInputs{
+		Since:          now.AddDate(0, 0, -defaultDoraWindowDays),
+		Until:          now,
+		Now:            now,
+		History:        history,
+		HistoryPresent: len(history) > 0,
+	}
+	doraRep := computeDoraGrouped(doraIn, streams, findings, "stream")
+	doraGroups := map[string]DoraGroup{}
+	for _, g := range doraRep.Groups {
+		doraGroups[g.Key] = g
+	}
+
+	pages := renderAllStreamPages(rows, streams, history, findings, findingFiles, doraGroups, sha, now, headerNow)
+	pageNames := make([]string, 0, len(pages))
+	for name := range pages {
+		pageNames = append(pageNames, name)
+	}
+	sort.Strings(pageNames)
+	for _, name := range pageNames {
+		p := filepath.Join(outDir, name)
+		if err := os.WriteFile(p, []byte(pages[name]), 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, "statusgen:", err)
+			return 1
+		}
+	}
+	fmt.Printf("wrote %d stream pages to %s\n", len(pages), outDir)
 	return 0
 }

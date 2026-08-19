@@ -319,7 +319,7 @@ func noticeContaining(notices []string, subs ...string) bool {
 // NEVER for backlog todo briefs — the register-flood guard from the review.
 func TestDecisionLintNoticeScope(t *testing.T) {
 	_, streams := loadDCStreams(t)
-	_, notices := checkBriefFiles(streams)
+	_, notices := checkBriefFiles(streams, streams)
 
 	for _, id := range []string{"dc/01", "dc/02", "dc/06", "dc/07"} {
 		if !noticeContaining(notices, "brief "+id+" is gate:human at", "has no decision-issue") {
@@ -340,7 +340,7 @@ func TestDecisionLintNoticeScope(t *testing.T) {
 // deleting the audit trail).
 func TestDecisionLintStaleLinkage(t *testing.T) {
 	_, streams := loadDCStreams(t)
-	_, notices := checkBriefFiles(streams)
+	_, notices := checkBriefFiles(streams, streams)
 
 	if !noticeContaining(notices, "brief dc/09 is done", "decision-issue #99", "keep the frontmatter linkage") {
 		t.Error("expected the part (b) NOTICE for dc/09 (done, decision-issue: 99, outcome unrecorded)")

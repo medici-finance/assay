@@ -158,6 +158,91 @@ func verifierFloorFailure(verified string) (reason string, failed bool) {
 	return "", false
 }
 
+// runnerClearsFloor reports whether a SINGLE runner token satisfies the verifier
+// floor on its own — the same admissibility verifierFloorFailure applies to the
+// Verified cell's runner, factored out so the Evidence read below can reuse it.
+// A resolvable `human:<name>` clears; a below-floor model family does not; an
+// UNRESOLVABLE human token does not (it must not clear silently — the same
+// "cannot be validated is not gate-satisfied" stance verifierFloorFailure takes).
+// A plain, above-floor model (`opus-verifier`, `glm-5.2-verifier`) clears.
+func runnerClearsFloor(token string) bool {
+	if name, isHuman := humanRunnerName(token); isHuman {
+		_, known := HumanLogin(name)
+		return known
+	}
+	return !belowFloorRunner(token)
+}
+
+// evidenceFloorFailure reads the `## Evidence` section — the record of who
+// ACTUALLY ran each row — and reports a floor violation the Verified cell alone
+// conceals. This is the complete signal the risk-keyed floor is meant to read:
+// the Verified cell names one runner and an agent can edit it in a single line,
+// while Evidence records, per row, who ran the check the floor protects.
+//
+// The gap this closes: a risk-flagged brief whose
+// Verified cell names an above-floor runner PASSED the cell-only floor even when
+// its Evidence recorded rows genuinely run at a below-floor tier — "the floor is
+// satisfied by a runner who did not run the rows the floor is protecting". Once
+// Evidence is read, such a brief FAILS.
+//
+// A row is evaluated across EVERY Evidence table (parseEvidenceRows unions rows
+// by ID, so an implementer run plus an independent re-run both count). The floor
+// is satisfied PER ROW: a row run below the floor and then genuinely RE-RUN by an
+// above-floor (or human) runner is CURED and does not fail — this is exactly the
+// legitimate cheap-then-strong-re-run shape the issue calls out, and keeping it a
+// pass is what stops this from becoming a new false rejection. Only a row whose
+// completed Evidence runners are ALL below the floor (no curing re-run) poisons
+// the gate. Rows with no completed Evidence are the UNRUN derivation's concern
+// (unrun.go), not the floor's, so they are skipped here.
+//
+// Only a runner read from a DECLARED `Runner` column participates
+// (evidenceRow.RunnerFromColumn). parseEvidenceRows also derives a runner from
+// the last-two-cells fallback when a table names no columns; that value is a
+// free-text output cell, not an attribution, and reading it here would break the
+// floor both ways — a stray family word in an output cell false-rejects a strong
+// run, and a below-floor row is laundered clear by a later fallback cell. The
+// fallback stays available to the UNRUN derivation, where it is safe.
+func evidenceFloorFailure(evidence string) (reason string, failed bool) {
+	rows := parseEvidenceRows(evidence)
+	var poisoned []string
+	for id, ers := range rows {
+		cleared := false
+		belowRunner := ""
+		for _, er := range ers {
+			if !evidenceRowComplete(er) {
+				continue // an unrun / dateless / runnerless row proves nothing either way
+			}
+			if !er.RunnerFromColumn {
+				// The runner was read from parseEvidenceRows' last-two-cells
+				// fallback, not a declared `Runner` column — i.e. it is a
+				// free-text output cell, not an attribution. Letting it
+				// participate breaks the floor in BOTH directions: a stray
+				// family word in an output cell (`... sonnet ...`, `flash`)
+				// false-REJECTS a strong run, and a below-floor row is
+				// false-CLEARED ("laundered") by a later fallback cell that
+				// reads as an above-floor token. So a fallback-derived runner
+				// neither poisons nor cures the floor.
+				continue
+			}
+			if runnerClearsFloor(er.Runner) {
+				cleared = true
+				break
+			}
+			if belowFloorRunner(er.Runner) && belowRunner == "" {
+				belowRunner = er.Runner
+			}
+		}
+		if !cleared && belowRunner != "" {
+			poisoned = append(poisoned, fmt.Sprintf("row %s run only by %q", id, belowRunner))
+		}
+	}
+	if len(poisoned) == 0 {
+		return "", false
+	}
+	sort.Strings(poisoned)
+	return strings.Join(poisoned, ", "), true
+}
+
 // attributionProblems is the brief-16 runner-attribution check: a `verified`/
 // `done` brief-v1 brief's verification must be attributable to a runner
 // distinct from the implementer. Scope is brief-v1 files only (the same

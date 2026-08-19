@@ -301,7 +301,7 @@ func TestPlaceholderExemptFromBriefLint(t *testing.T) {
 		"issue-77.md": placeholderFile("alpha", 77, "bug, security"),
 	})
 
-	briefProblems, _ := checkBriefFiles(streams)
+	briefProblems, _ := checkBriefFiles(streams, streams)
 	if hasProblem(briefProblems, "issue-77") {
 		t.Errorf("placeholder tripped checkBriefFiles: %v", briefProblems)
 	}

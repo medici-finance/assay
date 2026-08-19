@@ -17,17 +17,25 @@ import (
 // marker are parsed here. Legacy briefs (no frontmatter, or a different schema)
 // are exempt and produce no output — see parseBriefFile.
 type BriefFile struct {
-	Path          string
-	Brief         string // "<stream>/<NN>", e.g. "example-app/01"
-	Title         string
-	Wave          int
-	Depends       []string // typed IDs "<stream>/<NN>"
-	Unblocks      []string // typed IDs "<stream>/<NN>"
-	Effort        string   // S | M | L
-	Gate          string   // model | human
-	GateWhy       string   // optional prose: WHY this brief is risk-gated (gate-why-rationale)
-	Why           string   // optional prose: WHY this work exists at all — human-justifiable motivation
-	Value         string   // optional worth signal: low | med | high; "" = absent (== med)
+	Path     string
+	Brief    string // "<stream>/<NN>", e.g. "example-app/01"
+	Title    string
+	Wave     int
+	Depends  []string // typed IDs "<stream>/<NN>"
+	Unblocks []string // typed IDs "<stream>/<NN>"
+	Effort   string   // S | M | L
+	Gate     string   // model | human
+	GateWhy  string   // optional prose: WHY this brief is risk-gated (gate-why-rationale)
+	Why      string   // optional prose: WHY this work exists at all — human-justifiable motivation
+	Value    string   // optional worth signal: low | med | high; "" = absent (== med)
+	// Domain is the optional brief-v1 `domain:` field — the Cynefin domain of
+	// the work: clear | complicated | complex | chaotic. "" when absent, which
+	// defaults to "complicated" (the safe Ordered default) for the ToC↔Cynefin
+	// switch (agentic-metrics/10); a wrong TYPE is a parse error, a present-but-
+	// unrecognized value is a lint PROBLEM. The --cynefin view surfaces an absent
+	// value as Disorder (untagged — the author should classify), so absence is
+	// operationally treated as complicated but reported as un-classified.
+	Domain        string
 	Risk          map[string]string
 	Issues        []int
 	DecisionIssue int // optional; the GitHub issue # for the open needs-decision issue
@@ -61,9 +69,17 @@ type BriefFile struct {
 	// with it; a scalar here is NOT a parse error (several briefs on main use
 	// the prose form and a hard error would red-gate the whole board).
 	ConsumersProse string
-	Evidence       string // body of the `## Evidence` section (between it and the next `## `)
-	Verify         string // body of the `## Verify` section (prefix-matched; decorated headings allowed)
-	Body           string // full markdown body after the frontmatter (decision-reflection check)
+	// ParallelStreams is the OPTIONAL brief-v1 `parallel-streams:` list
+	// (methodology/43): the declared shards of an intra-brief split, each a
+	// name plus the file globs that shard owns. nil when absent, which is the
+	// default and means one worker per brief — the behaviour every existing
+	// brief already has. Presence is the brief's explicit opt-in to a split; it
+	// is a REQUEST, never an approval, and `statusgen shardcheck` is what
+	// decides whether the split may actually be dispatched (shardcheck.go).
+	ParallelStreams []ParallelStream
+	Evidence        string // body of the `## Evidence` section (between it and the next `## `)
+	Verify          string // body of the `## Verify` section (prefix-matched; decorated headings allowed)
+	Body            string // full markdown body after the frontmatter (decision-reflection check)
 }
 
 var (
@@ -75,6 +91,14 @@ var (
 	// comment (`<!--` with no closing `-->`) is stripped to end-of-input — it
 	// consumes the rest of the section, so it cannot masquerade as content.
 	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?(?:-->|$)`)
+
+	// briefSchemaCurrent is the one brief schema version this binary validates;
+	// briefSchemaFamilyPrefix is the shared prefix of the brief-schema family
+	// (`brief-v1`, and any future `brief-v2`, …). A value with this prefix that
+	// is not briefSchemaCurrent fails CLOSED in parseBriefFile (#271), whereas a
+	// value outside the family (contract-v1, placeholder-v1, …) stays exempt.
+	briefSchemaCurrent      = "brief-v1"
+	briefSchemaFamilyPrefix = "brief-v"
 
 	// Required frontmatter keys. `schema` is intentionally absent: its presence
 	// (== brief-v1) is the opt-in gate in parseBriefFile, so it is always present
@@ -94,6 +118,11 @@ var (
 	// Absence ("") is always allowed (defaults to med at scoring time); only a
 	// PRESENT-but-unrecognized value is a PROBLEM.
 	validValue = map[string]bool{"low": true, "med": true, "high": true}
+	// validDomain is the allowed set for the optional brief-v1 `domain:` field
+	// (Cynefin classification, agentic-metrics/10). Absence ("") is always
+	// allowed and defaults to defaultDomain at read time; only a PRESENT-but-
+	// unrecognized value is a PROBLEM (echoed in the message).
+	validDomain = map[string]bool{"clear": true, "complicated": true, "complex": true, "chaotic": true}
 	// validBlockedBy is the allowed set for the optional brief-v1 `blocked-by:`
 	// field. Absence ("") is always allowed (defaults to
 	// "" = not blocked); only a PRESENT-but-unrecognized value is a PROBLEM.
@@ -183,10 +212,31 @@ func decisionIssueRefInBody(body string, issueNum int) bool {
 }
 
 // briefFilePaths returns the sorted brief-*.md paths in a stream directory.
-// Glob only errors on a malformed pattern (impossible with our fixed pattern),
-// so a missing directory or no matches simply yields no paths.
+//
+// It reads the directory with os.ReadDir rather than filepath.Glob. Glob
+// interprets the WHOLE joined path as a pattern, so a stream directory whose
+// name contains an unbalanced glob metacharacter (e.g. `foo[bar`) makes
+// filepath.Glob(filepath.Join(s.Dir, "brief-*.md")) return ErrBadPattern with
+// zero matches — and the discarded error meant that stream's briefs silently
+// vanished from every consumer (a could-not-check rendered as "no briefs here",
+// docs/three-state-instrument-rule.md, sub-rule 1). os.ReadDir treats the name
+// literally, so that blind spot cannot occur. s.Dir was already proven readable
+// at load time (loadStreams stat'd and parsed its README.md), so a read error
+// here is not expected; return nothing rather than a partial list.
 func briefFilePaths(s *Stream) []string {
-	matches, _ := filepath.Glob(filepath.Join(s.Dir, "brief-*.md"))
+	entries, err := os.ReadDir(s.Dir)
+	if err != nil {
+		return nil
+	}
+	var matches []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if name := e.Name(); strings.HasPrefix(name, "brief-") && strings.HasSuffix(name, ".md") {
+			matches = append(matches, filepath.Join(s.Dir, name))
+		}
+	}
 	sort.Strings(matches)
 	return matches
 }
@@ -205,9 +255,12 @@ func expectedBriefID(path string) (id, num string, ok bool) {
 // parseBriefFile reads a brief file and returns its validated frontmatter.
 //
 // Return contract:
-//   - (nil, false, nil)  — exempt: no frontmatter, or no `schema: brief-v1` marker.
-//   - (nil, false, err)  — opted-in but malformed: unreadable, bad YAML, or a
-//     missing/ill-typed required field. err is already prefixed with the path.
+//   - (nil, false, nil)  — exempt: no frontmatter, or a frontmatter block that
+//     carries no `schema:` key at all (legacy).
+//   - (nil, false, err)  — opted-in but malformed, OR a present `schema:` whose
+//     value this binary does not recognize (schema evolution fails CLOSED, #271):
+//     unreadable, bad YAML, a missing/ill-typed required field, or an unknown
+//     schema. err is already prefixed with the path.
 //   - (bf,  true,  nil)  — opted-in and structurally valid; semantic checks in
 //     checkBriefFiles still apply.
 //
@@ -238,8 +291,45 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 	}
 	// Opt-in by the PARSED schema value — robust to quoting, trailing comments,
 	// and CRLF that a raw-text marker match would miss.
-	if s, _ := data["schema"].(string); s != "brief-v1" {
-		return nil, false, nil // not brief-v1 → exempt
+	//
+	// Fail CLOSED on BRIEF-schema evolution (#271 / adversarial SY-4, RD-7): a
+	// file that declares a brief-schema-family value this binary does not
+	// recognize (a future `brief-v2`, `brief-v3`, …) is REFUSED, not silently
+	// exempted. Consumers run pinned release binaries bumped explicitly via
+	// `.assay-versions`; without this refusal, the day `schema: brief-v2` ships,
+	// every not-yet-bumped consumer would lint v2 briefs green-by-exemption —
+	// typed deps, gate derivation, attribution and demotion checks all silently
+	// off, indistinguishable from a validated pass. The safe path is a hard
+	// error telling the operator to upgrade statusgen.
+	//
+	// Scope note: only the BRIEF schema family (`brief-v*`) fails closed here.
+	// Two other kinds of `schema:` value stay EXEMPT, exactly as before, because
+	// this is the brief parser and they are out of its jurisdiction:
+	//   - no `schema:` key at all  → a legacy (pre-schema) brief.
+	//   - a different document kind → e.g. `contract-v1`, `placeholder-v1`,
+	//     `publication-manifest-v1`: a `brief-*.md` file that is deliberately a
+	//     non-brief document. statusgen has no brief-validation opinion on it.
+	schemaVal, hasSchema := data["schema"]
+	if !hasSchema {
+		return nil, false, nil // frontmatter without a schema marker → legacy, exempt
+	}
+	s, isStr := schemaVal.(string)
+	if !isStr {
+		// A non-string schema is not a recognized brief marker; treat it as a
+		// non-brief document (exempt) rather than guessing intent.
+		return nil, false, nil
+	}
+	switch {
+	case s == briefSchemaCurrent:
+		// Recognized brief schema → validate below.
+	case strings.HasPrefix(s, briefSchemaFamilyPrefix):
+		// A brief-schema-family version this binary does not understand → the
+		// #271 flag-day trap. Refuse it.
+		return nil, false, fmt.Errorf("%s: unrecognized brief schema %q — this statusgen validates only %q; upgrade statusgen to a build that understands this schema (schema evolution fails closed, #271)", path, s, briefSchemaCurrent)
+	default:
+		// A different document kind (contract-v1, placeholder-v1, …) → not a
+		// brief this parser validates. Exempt, as before.
+		return nil, false, nil
 	}
 
 	var missing []string
@@ -383,6 +473,24 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 			addBad("measures must be a string")
 		}
 	}
+	// parallel-streams is an OPTIONAL but KNOWN key (methodology/43): the shards
+	// of an intra-brief split. Absence is the default and is never flagged —
+	// every brief on file today omits it and dispatches to one worker, which is
+	// the point of making the field optional rather than adding it to
+	// requiredBriefKeys.
+	//
+	// Only the SHAPE is validated here (names, globs, types). Whether the split
+	// is safe to dispatch depends on the file tree, not the frontmatter, and is
+	// decided by `statusgen shardcheck` — a declaration that parses is a
+	// request, not a permission.
+	if v, ok := data["parallel-streams"]; ok {
+		ps, err := parallelStreamList(v)
+		if err != nil {
+			addBad("parallel-streams: %v", err)
+		} else {
+			bf.ParallelStreams = ps
+		}
+	}
 	// value is an OPTIONAL but KNOWN key: the brief's
 	// explicit worth, a Next-up score input. Absence is fine (defaults to med at
 	// scoring time); a wrong TYPE here is a hard parse error, while a present-but-
@@ -393,6 +501,18 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 			bf.Value = s
 		} else {
 			addBad("value must be a string")
+		}
+	}
+	// domain is an OPTIONAL but KNOWN key (agentic-metrics/10): the brief's
+	// Cynefin domain — clear|complicated|complex|chaotic. Absence defaults to
+	// "complicated" (the safe Ordered default) at read time; a wrong TYPE is a
+	// hard parse error, while a present-but-unrecognized string is flagged
+	// semantically in checkBriefFiles so the bad token is echoed in the message.
+	if v, ok := data["domain"]; ok {
+		if s, ok := v.(string); ok {
+			bf.Domain = s
+		} else {
+			addBad("domain must be a string")
 		}
 	}
 	// why is an OPTIONAL but KNOWN key: the brief's VALUE
@@ -590,6 +710,52 @@ func stringList(v any) ([]string, error) {
 	return out, nil
 }
 
+// parallelStreamList coerces a YAML value into []ParallelStream. The shape is
+// a list of mappings, each carrying a `name` and a `files` list of globs:
+//
+//	parallel-streams:
+//	  - {name: engine, files: ["statusgen/**"]}
+//	  - {name: docs,   files: ["docs/streams/example/**"]}
+//
+// A key other than name/files is REJECTED rather than ignored. A silently
+// dropped key here would be a shard scoped by a field nobody reads — the shard
+// would run wider than its author declared, which is the one failure mode a
+// scoping declaration exists to prevent.
+func parallelStreamList(v any) ([]ParallelStream, error) {
+	if v == nil {
+		return nil, nil
+	}
+	items, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("must be a list of {name, files} mappings")
+	}
+	out := make([]ParallelStream, 0, len(items))
+	for i, it := range items {
+		m, ok := it.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("entry %d must be a mapping with name: and files:", i+1)
+		}
+		var ps ParallelStream
+		for k := range m {
+			if k != "name" && k != "files" {
+				return nil, fmt.Errorf("entry %d has unknown key %q (only name and files are defined)", i+1, k)
+			}
+		}
+		if n, ok := m["name"].(string); ok {
+			ps.Name = n
+		} else {
+			return nil, fmt.Errorf("entry %d: name must be a string", i+1)
+		}
+		files, err := stringList(m["files"])
+		if err != nil {
+			return nil, fmt.Errorf("entry %d files: %v", i+1, err)
+		}
+		ps.Files = files
+		out = append(out, ps)
+	}
+	return out, nil
+}
+
 // intList coerces a YAML value into []int (yaml.v3 decodes bare integers as int,
 // or int64 when they overflow int).
 func intList(v any) ([]int, error) {
@@ -644,16 +810,27 @@ func riskMap(v any) (map[string]string, error) {
 	return out, nil
 }
 
-// checkBriefFiles validates every opted-in brief file across all streams and
-// returns hard PROBLEM messages (exit 1) — path-prefixed. It performs its own
-// file discovery and is wired into run() alongside linkProblems, keeping check()
-// I/O-free.
-func checkBriefFiles(streams []*Stream) (problems, notices []string) {
+// checkBriefFiles validates every opted-in brief file in `streams` (the
+// per-brief validation set — the product-scoped subset under --changed/--scope,
+// or the whole house otherwise) and returns hard PROBLEM messages (exit 1) —
+// path-prefixed. It performs its own file discovery and is wired into run()
+// alongside linkProblems, keeping check() I/O-free.
+//
+// `allStreams` is the FULL house stream set and is used ONLY to resolve
+// cross-stream `depends:`/`unblocks:` references. This mirrors
+// checkScoped(scoped, all, findings): a single-product PR narrows WHICH briefs
+// are validated, but a valid depends: may legitimately point at a stream that
+// scoping dropped (another product's stream, a paused stream). Resolving refs
+// against the scoped subset alone made such a valid dependency falsely report
+// "unknown stream". Resolving against allStreams fixes that while
+// still catching a genuinely-unknown/typo'd stream — it is absent from the full
+// set too. Whole-house callers pass the same slice for both.
+func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string) {
 	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
 	notice := func(format string, a ...any) { notices = append(notices, fmt.Sprintf(format, a...)) }
 
 	byName := map[string]*Stream{}
-	for _, s := range streams {
+	for _, s := range allStreams {
 		byName[s.Name] = s
 	}
 
@@ -688,6 +865,12 @@ func checkBriefFiles(streams []*Stream) (problems, notices []string) {
 			if bf.Value != "" && !validValue[bf.Value] {
 				add("%s: invalid value %q (want low, med or high)", path, bf.Value)
 			}
+			// domain is optional; only a present-but-unrecognized value is a
+			// PROBLEM — absence defaults to complicated at read time and never
+			// requires the field (additive schema change, agentic-metrics/10).
+			if bf.Domain != "" && !validDomain[bf.Domain] {
+				add("%s: invalid domain %q (want clear, complicated, complex or chaotic)", path, bf.Domain)
+			}
 			// exec-tier is optional; only a present-but-
 			// unrecognized value is a PROBLEM — absence defaults to "any".
 			if bf.ExecTier != "" && !validExecTier[bf.ExecTier] {
@@ -700,6 +883,20 @@ func checkBriefFiles(streams []*Stream) (problems, notices []string) {
 			// unrecognized value is a PROBLEM — absence defaults to "" (not blocked).
 			if bf.BlockedBy != "" && !validBlockedBy[bf.BlockedBy] {
 				add("%s: invalid blocked-by %q (want env)", path, bf.BlockedBy)
+			}
+			// parallel-streams is optional; absence is the one-worker default
+			// and is never flagged. What IS flagged is a declaration that
+			// cannot describe a split: fewer than two shards, a nameless or
+			// duplicated shard, or a shard with no globs. This is SHAPE only —
+			// the collision classes (path overlap, shared surfaces, symbol
+			// coupling) need the file tree and are decided by
+			// `statusgen shardcheck`, which the dispatcher runs. The lint must
+			// not imply a shape-valid split is a safe one.
+			for _, f := range checkParallelStreamShape(bf.ParallelStreams) {
+				add("%s: %s", path, f)
+			}
+			if len(bf.ParallelStreams) > 0 && bf.Effort == "S" {
+				notice("%s: brief %s declares a %d-shard split on an Effort: S brief — the split is gated to work big enough to pay for the coordination, and an S brief is not it", path, bf.Brief, len(bf.ParallelStreams))
 			}
 			// measures is optional; only a PRESENT-but-unrecognized queue name is
 			// a PROBLEM. Absence is the neutral default and is never flagged. A
@@ -850,6 +1047,11 @@ func checkBriefFiles(streams []*Stream) (problems, notices []string) {
 					(row.Status == "verified" || row.Status == "done") {
 					if reason, failed := verifierFloorFailure(row.Verified); failed {
 						add("%s: risk-flagged brief marked %s but the Verified cell %q does not clear the verifier floor — %s — risk-flagged briefs verify at a strong-tier runner or a human — methodology/19", path, row.Status, row.Verified, reason)
+					} else if reason, failed := evidenceFloorFailure(bf.Evidence); failed {
+						// The cell clears, but Evidence — the record of who actually
+						// ran each row — shows the floor is not truly met. The floor
+						// reads the complete signal, not just the one-line cell.
+						add("%s: risk-flagged brief marked %s but its ## Evidence records rows run below the verifier floor with no strong-tier re-run curing them (%s) — the Verified cell %q names a clearing runner but does not speak for those rows — risk-flagged briefs verify at a strong-tier runner or a human — methodology/19", path, row.Status, reason, row.Verified)
 					}
 				}
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -355,6 +356,110 @@ func TestGrandfatheredIDsFailClosed(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("T9: F-01 must trigger numeric-regression problem when origin/main is unresolvable (not grandfathered); got %v", problems)
+	}
+}
+
+// gitCapture runs git in root and returns trimmed stdout — the read-only
+// counterpart of gitRun, used by the #885 positive control to prove the decoy
+// actually shadows the bare short name at this git version.
+func gitCapture(t *testing.T, root string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
+		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// TestGrandfatheredIDsResolvesQualifiedRemoteRef is the #885 positive control
+// for statusgen's grandfathering: it must resolve refs/remotes/origin/main, not
+// the bare short name `origin/main`. A checkout carrying a stray LOCAL branch
+// literally named `refs/heads/origin/main` makes the short name ambiguous, and
+// refs/heads/ wins gitrevisions disambiguation — so bare `origin/main` silently
+// resolves to that decoy. Parked at a commit that PREDATES a legacy numeric
+// finding, the decoy would make the grandfathered set be computed against the
+// stale tree: the landed legacy ID is then treated as new and fires a spurious
+// numeric-regression PROBLEM — statusgen "false-disproving" against a base
+// nobody is on. Qualified, the merge-base is the real remote tip and the landed
+// ID is correctly grandfathered.
+func TestGrandfatheredIDsResolvesQualifiedRemoteRef(t *testing.T) {
+	root := t.TempDir()
+	gitRun(t, root, "init", "-q")
+	fdir := filepath.Join(root, "docs", "streams", "findings")
+	mustMkdirAll(t, fdir)
+
+	// C0: a stale commit that PREDATES the legacy finding.
+	writeTemp(t, root, "README.md", "seed\n")
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "seed")
+
+	// C1: land a legacy numeric finding F-01 on main. HEAD is now C1.
+	writeTemp(t, fdir, "2026-07-08-legacy.md",
+		"---\nid: F-01\ndate: \"2026-07-08\"\ntitle: Legacy finding\naffects: []\nresolved: true\n---\n\nBody.")
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "main: land legacy F-01")
+
+	// The REAL remote tip includes the landed F-01; the DECOY branch is parked
+	// one commit back (C0), before it landed.
+	gitRun(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+	gitRun(t, root, "update-ref", "refs/heads/origin/main", "HEAD~1")
+
+	// Positive control: prove the decoy actually shadows the bare name at this
+	// git version, so a green result below is meaningful and not a void test.
+	bare := gitCapture(t, root, "rev-parse", "origin/main")
+	remote := gitCapture(t, root, "rev-parse", "refs/remotes/origin/main")
+	stale := gitCapture(t, root, "rev-parse", "HEAD~1")
+	if bare != stale {
+		t.Fatalf("positive control void: bare origin/main = %s, want the decoy %s", bare, stale)
+	}
+	if remote == stale {
+		t.Fatal("positive control void: the remote tip did not advance past the decoy")
+	}
+
+	// With the qualified ref, the merge-base is the real tip (C1), so the landed
+	// F-01 IS grandfathered and fires NO numeric-regression problem.
+	if g := grandfatheredIDs(root); !g["F-01"] {
+		t.Errorf("F-01 landed on the real origin/main but was not grandfathered — "+
+			"the bare-name decoy shadowed the remote tip; got %v", g)
+	}
+	for _, p := range idFormatProblems(root) {
+		if strings.Contains(p, "F-01") && strings.Contains(p, "numeric") {
+			t.Errorf("landed legacy F-01 fired a spurious numeric-regression PROBLEM "+
+				"(grandfathering resolved the stale decoy): %q", p)
+		}
+	}
+}
+
+// TestGrandfatheredFallbackCountsSplitIntake guards the evidenceexport.go /
+// idvalidate.go gap the reviewer found on issue-loop/15: an intake entry that
+// lives ONLY under a split-layout subdir (new/, decision-needed/, watching/,
+// completed/, rejected/) — no root-level files at all — must still be
+// counted by grandfatheredBaseFallbackNotices. Before routing this count
+// through listIntakeFiles, a root-only os.ReadDir("docs/streams/intake")
+// would see zero entries here and silently suppress the degraded-validation
+// NOTICE even though a real entry exists.
+func TestGrandfatheredFallbackCountsSplitIntake(t *testing.T) {
+	root := t.TempDir()
+	gitRun(t, root, "init", "-q")
+
+	newDir := filepath.Join(root, "docs", "streams", "intake", "new")
+	mustMkdirAll(t, newDir)
+	writeTemp(t, newDir, "2026-07-16-x.md",
+		"---\nid: I-split\ndate: \"2026-07-16\"\ntitle: Split entry\ndisposition: new\n---\n\nBody.")
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "add split intake entry")
+
+	// No origin/main ref is ever created, so the fallback path is taken.
+	notices := grandfatheredBaseFallbackNotices(root)
+	if len(notices) == 0 {
+		t.Fatal("a split-layout-only intake entry must still be counted; degraded-validation NOTICE did not fire")
+	}
+	if !strings.Contains(notices[0], "1 register entry") {
+		t.Errorf("expected the notice to count exactly 1 register entry, got %q", notices[0])
 	}
 }
 

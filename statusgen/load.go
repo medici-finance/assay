@@ -79,6 +79,13 @@ func parseFindings(path string) ([]Finding, error) {
 
 // parseFindingsLegacy reads from the old single-file FINDINGS.md register.
 // Kept during the migration transition.
+//
+// Three-state read (docs/three-state-instrument-rule.md, sub-rule 1): an ABSENT
+// file (os.IsNotExist) is a legitimate empty and returns (nil, nil); an
+// UNREADABLE file (any other error) returns a non-nil error rather than an empty
+// result, so a permission/I/O failure surfaces as could-not-check instead of
+// being rendered as a clean "no findings" read. The two branches must stay
+// separate.
 func parseFindingsLegacy(path string) ([]Finding, error) {
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -160,6 +167,44 @@ func loadStreams(root string) ([]*Stream, []Finding, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	return streams, findings, nil
+}
+
+// loadHydratedStreams is the load path every score/consumer view MUST go
+// through. It loads the stream READMEs (loadStreams), attaches placeholder
+// briefs (attachPlaceholders), and — the load-bearing step — hydrates each
+// opted-in brief's frontmatter fields (Depends/Value/ExecTier/Gate/BlockedBy/
+// Measures/Evidence) from its brief file via checkBriefFiles.
+//
+// Those frontmatter fields are populated ONLY as a SIDE EFFECT of
+// checkBriefFiles (brieffile.go, "Wire BriefFile data into the Brief row"):
+// loadStreams alone leaves Depends nil and Value "" (scored as med). A
+// subcommand that hand-assembled loadStreams + attachPlaceholders and skipped
+// the check therefore walked empty Depends and default Value — the gate-scores
+// bug of issue #266, where --gate-scores dropped the value weight and the
+// dominant unblocks term relative to the STATUS.md write path for identical
+// input. Routing through one constructor closes that omission and the ~latent
+// next one.
+//
+// checkBriefFiles' problems/notices are intentionally discarded here: a
+// diagnostic/consumer view HYDRATES, it does not re-run the validation gate.
+// The STATUS.md build path in run() still calls checkBriefFiles directly and
+// surfaces those problems as the --lint verdict; this helper is for the paths
+// that need the hydrated rows but not the validation report.
+//
+// The []Finding returned is loadStreams' stream/README findings (NOT
+// checkBriefFiles' hydration problems, which are discarded) — a consumer view
+// that also renders those findings (e.g. --roadmap health rules) takes them
+// here; views that don't (--gate-scores, --launch) discard them with `_`. One
+// constructor thus serves both without forcing a caller to re-open loadStreams
+// and re-lose the hydration step.
+func loadHydratedStreams(root string) ([]*Stream, []Finding, error) {
+	streams, findings, err := loadStreams(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	attachPlaceholders(streams)
+	checkBriefFiles(streams, streams) // for its hydration side effect only
 	return streams, findings, nil
 }
 

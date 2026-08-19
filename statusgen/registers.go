@@ -55,34 +55,73 @@ func registerIntegrityProblems(root string) []string {
 	// via splitFrontmatter + yaml.Unmarshal removes that fragility outright —
 	// no text scan, no risk of matching a line that merely starts with
 	// "disposition:" inside a body/code-fence example.
-	intakeFiles, intakeDirErr := os.ReadDir(intakeDir)
-	if intakeDirErr == nil {
-		for _, f := range intakeFiles {
-			if f.IsDir() || !strings.HasSuffix(f.Name(), ".md") || f.Name() == "README.md" {
+	//
+	// issue-loop/15: walks root-level PLUS the five known disposition subdirs
+	// (listIntakeFiles), not just the flat root — a split-layout repo's
+	// entries live one level deeper and must not go unchecked.
+	for _, loc := range listIntakeFiles(root) {
+		raw, err := os.ReadFile(filepath.Join(loc.Dir, loc.Name))
+		if err != nil {
+			continue
+		}
+		fm, _, err := splitFrontmatter(string(raw))
+		if err != nil {
+			continue // malformed frontmatter is reported by the field-quality/parse checks elsewhere
+		}
+		var keys map[string]any
+		if err := yaml.Unmarshal([]byte(fm), &keys); err != nil {
+			continue
+		}
+		if _, ok := keys["disposition"]; !ok {
+			// Extract the ID from the frontmatter for the problem message
+			var entry intakeEntry
+			if err := yaml.Unmarshal([]byte(fm), &entry); err != nil || entry.ID == "" {
 				continue
 			}
-			raw, err := os.ReadFile(filepath.Join(intakeDir, f.Name()))
-			if err != nil {
+			problems = append(problems, fmt.Sprintf(
+				"intake register: %s: missing disposition key — add 'disposition: new' (or another valid disposition) to the frontmatter",
+				entry.ID))
+		}
+	}
+
+	// dir↔disposition mismatch check (issue-loop/15): a file living under a
+	// known subdir whose disposition maps to a DIFFERENT subdir is a
+	// PROBLEM — e.g. a `disposition: new` file sitting in completed/. Root-
+	// level files (flat-layout compat, Subdir == "") are not checked here;
+	// their placement carries no disposition claim. A disposition value with
+	// no defined subdir mapping (intakeSubdirForDisposition's ok == false) is
+	// a separate quality concern already covered elsewhere and is not
+	// double-reported here.
+	for _, e := range intakeEntries {
+		if e.Subdir == "" {
+			continue
+		}
+		expected, ok := intakeSubdirForDisposition(e.Disposition)
+		if !ok || expected == e.Subdir {
+			continue
+		}
+		problems = append(problems, fmt.Sprintf(
+			"intake register: %s: file under intake/%s/ but disposition %q maps to intake/%s/ — dir↔disposition mismatch (issue-loop/15)",
+			e.ID, e.Subdir, e.Disposition, expected))
+	}
+
+	// unknown-subdir check (issue-loop/15): any directory directly under
+	// intake/ whose name is not one of the five known disposition subdirs is
+	// a PROBLEM, not a silent skip — parseIntakeDir/listIntakeFiles never
+	// descend into it, so an entry filed there is otherwise invisible to
+	// every other check in this file.
+	if topLevel, err := os.ReadDir(intakeDir); err == nil {
+		known := make(map[string]bool, len(intakeKnownSubdirs))
+		for _, s := range intakeKnownSubdirs {
+			known[s] = true
+		}
+		for _, d := range topLevel {
+			if !d.IsDir() || known[d.Name()] {
 				continue
 			}
-			fm, _, err := splitFrontmatter(string(raw))
-			if err != nil {
-				continue // malformed frontmatter is reported by the field-quality/parse checks elsewhere
-			}
-			var keys map[string]any
-			if err := yaml.Unmarshal([]byte(fm), &keys); err != nil {
-				continue
-			}
-			if _, ok := keys["disposition"]; !ok {
-				// Extract the ID from the frontmatter for the problem message
-				var entry intakeEntry
-				if err := yaml.Unmarshal([]byte(fm), &entry); err != nil || entry.ID == "" {
-					continue
-				}
-				problems = append(problems, fmt.Sprintf(
-					"intake register: %s: missing disposition key — add 'disposition: new' (or another valid disposition) to the frontmatter",
-					entry.ID))
-			}
+			problems = append(problems, fmt.Sprintf(
+				"intake register: unknown subdir intake/%s/ — must be one of new, decision-needed, watching, completed, rejected (issue-loop/15)",
+				d.Name()))
 		}
 	}
 
@@ -192,7 +231,7 @@ func deletedRegisterFiles(root string) []string {
 	// shared point are landed; files added on either side after it are not
 	// violations. Fall back to HEAD when origin/main can't be resolved.
 	base := "HEAD"
-	if mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", "origin/main").Output(); err == nil && strings.TrimSpace(string(mb)) != "" {
+	if mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output(); err == nil && strings.TrimSpace(string(mb)) != "" {
 		base = strings.TrimSpace(string(mb))
 	}
 
@@ -223,20 +262,39 @@ func deletedRegisterFiles(root string) []string {
 		}
 		// T8: build a set of register IDs present in the current working tree,
 		// so a RENAMED file (same ID, new path) is not flagged as deleted.
+		// issue-loop/15: for the intake register this is id-IDENTITY, not
+		// path-identity — a git mv between docs/streams/intake/ and any of
+		// its five disposition subdirs (or between two subdirs) is a
+		// disposition TRANSITION, not a delete, so the scan walks the SAME
+		// set listIntakeFiles does (root + known subdirs), not just the flat
+		// root. The findings register is unaffected (no subdir split;
+		// Task 6, out of scope) and keeps the flat, single-level scan.
 		idInTree := map[string]bool{}
-		fsDir := filepath.Join(root, dir)
-		if treeFiles, readErr := os.ReadDir(fsDir); readErr == nil {
-			for _, f := range treeFiles {
-				if f.IsDir() || !strings.HasSuffix(f.Name(), ".md") {
-					continue
-				}
-				raw, readErr := os.ReadFile(filepath.Join(fsDir, f.Name()))
+		if dir == "docs/streams/intake" {
+			for _, loc := range listIntakeFiles(root) {
+				raw, readErr := os.ReadFile(filepath.Join(loc.Dir, loc.Name))
 				if readErr != nil {
 					continue
 				}
-				id := extractIDFromYAMLFrontmatter(raw)
-				if id != "" {
+				if id := extractIDFromYAMLFrontmatter(raw); id != "" {
 					idInTree[id] = true
+				}
+			}
+		} else {
+			fsDir := filepath.Join(root, dir)
+			if treeFiles, readErr := os.ReadDir(fsDir); readErr == nil {
+				for _, f := range treeFiles {
+					if f.IsDir() || !strings.HasSuffix(f.Name(), ".md") {
+						continue
+					}
+					raw, readErr := os.ReadFile(filepath.Join(fsDir, f.Name()))
+					if readErr != nil {
+						continue
+					}
+					id := extractIDFromYAMLFrontmatter(raw)
+					if id != "" {
+						idInTree[id] = true
+					}
 				}
 			}
 		}
@@ -273,7 +331,7 @@ func deletedRegisterFiles(root string) []string {
 // diffs to nothing, and passes silently. Callers that gate on the result must
 // surface that (see registerBaseFallbackNotices).
 func registerLandedBase(root string) (base string, resolved bool) {
-	if mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", "origin/main").Output(); err == nil && strings.TrimSpace(string(mb)) != "" {
+	if mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output(); err == nil && strings.TrimSpace(string(mb)) != "" {
 		return strings.TrimSpace(string(mb)), true
 	}
 	return "HEAD", false
@@ -365,19 +423,25 @@ func registerBaseFallbackNotices(root string) []string {
 // `authorized-by:` key (see authorizedByVerifiedHuman). An unknown name or a bare
 // agent-written justification does NOT authorize.
 //
-// That anchor is NOT verified online today, and the strength claim is stated here
-// rather than omitted because a reader needs the gate's real reach, not a tidier
-// absence. `statusgen --corroborate <pr>` — which checks a human:<name> token ADDED
-// in a PR diff against that account's on-PR action — is wired into NO workflow
-// yet, so in CI the anchor is one frontmatter line an agent can write for
-// itself. The ruling on I-corroborate-lint took the
-// STRICTER arm instead: the human-allowlist workflow becomes
-// the sole permitted writer of the human:alex stamp, and --lint rejects that stamp
-// added anywhere else. That arm is scoped to human:<name> stamps in the
-// Verified/Reviewed cells of stream README tables; it deliberately does NOT govern
-// this `authorized-by:` frontmatter key, whose design is precisely that a PR adds
-// it — a blanket rule would forbid the token this gate depends on. So the anchor
-// survives unchanged and --corroborate keeps a live consumer here.
+// That anchor is now verified online at PR time. `statusgen --corroborate <pr>` —
+// which checks a human:<name> token ADDED in a PR diff against that account's on-PR
+// action — is wired into the pull_request lint job of
+// .github/workflows/statusgen.yml: a PR that adds an
+// `authorized-by: human:<name>` frontmatter line lands that token on an ADDED diff
+// line, so --corroborate picks it up and fails CI unless the named human ACTED on
+// the PR (an APPROVED review or an approval comment from their own account). The
+// residual is stated here rather than omitted because a reader needs the gate's
+// real reach: corroboration proves the human acted on the PR, not that they
+// executed whatever deferred live check the sign-off MEANS, and — like --lint — it
+// runs against the adopter-configured ASSAY_HUMAN_LOGIN_MAP, so an unmapped name is
+// MISSING-CORROBORATION (fail-closed) rather than a pass. The ruling on
+// I-corroborate-lint ALSO took a STRICTER arm for a different surface: the
+// human-allowlist workflow is the sole permitted writer of the human:<name> stamp in
+// the Verified/Reviewed cells of stream README tables, and --lint rejects that
+// stamp added anywhere else. That arm deliberately does NOT govern this
+// `authorized-by:` frontmatter key, whose design is precisely that a PR adds it — a
+// blanket rule would forbid the token this gate depends on — which is exactly why
+// the --corroborate wiring above is what closes the online-verification gap for it.
 //
 // What remains enforced meanwhile is not nothing: the gutting itself is detected
 // against a merge-base the branch author cannot forge, which nothing did before, and
@@ -515,7 +579,7 @@ func guttedRegisterFields(root string) []string {
 			continue
 		}
 		problems = append(problems, fmt.Sprintf(
-			"register field-gutting (unauthorized): %s — %s vs the version landed at the merge-base with origin/main, with no verified-human authorization. In-place gutting of a finding's load-bearing fields silently unblocks the brief it demoted. This is a HUMAN gate: add an `authorized-by: human:<name>` key to the entry's YAML frontmatter whose name is mapped in the configured ASSAY_HUMAN_LOGIN_MAP; an agent-written justification is not sufficient. Know what this check does and does not do before you add that key: it does NOT verify the anchor online — `statusgen --corroborate <pr>` is not yet wired into a workflow, and the ruled direction (the human-allowlist workflow as sole writer of human:<name> stamps in README Verified/Reviewed cells) does not cover this frontmatter key either. So writing the key on your own authority passes this check silently, and is exactly the falsification it exists to prevent. Get the named human to authorize the change.",
+			"register field-gutting (unauthorized): %s — %s vs the version landed at the merge-base with origin/main, with no verified-human authorization. In-place gutting of a finding's load-bearing fields silently unblocks the brief it demoted. This is a HUMAN gate: add an `authorized-by: human:<name>` key to the entry's YAML frontmatter whose name is mapped in the configured ASSAY_HUMAN_LOGIN_MAP; an agent-written justification is not sufficient. Know what this check does and does not do before you add that key: this offline --lint check does NOT itself read the PR. The anchor gets corroborated online only where `statusgen --corroborate <pr>` is wired into a pull_request job — the toolkit's reference CI wires it into the lint job of .github/workflows/statusgen.yml, where the added `authorized-by: human:<name>` line lands on an ADDED diff line and fails that PR's CI unless the named human ACTED on the PR (an APPROVED review or an approval comment from their own account). If your own CI runs --corroborate on PRs, writing the key on your own authority will NOT quietly pass; if it does not, this gutting gate is all that stands here — either way, get the named human to authorize the change.",
 			rel, strings.Join(guts, "; ")))
 	}
 	sort.Strings(problems)
@@ -595,6 +659,20 @@ func authorizedByVerifiedHuman(raw []byte) bool {
 
 // ----- view generation (Task 5) -----
 
+// intakeViewRebaseDir returns the directory rebaseEntryBodyLinks must treat
+// an intake entry's body links as relative to, when hoisting the body into
+// INTAKE.md (issue-loop/15). A root-level entry (flat-layout compat) keeps
+// the pre-split depth "intake"; a split-layout entry is one directory
+// deeper — "intake/<subdir>" — since rebaseEntryBodyLinks's rebase is
+// depth-sensitive (viewlinks.go) and the generated view always lives at
+// docs/streams/, regardless of how deep the source entry file sits.
+func intakeViewRebaseDir(e intakeEntry) string {
+	if e.Subdir == "" {
+		return "intake"
+	}
+	return "intake/" + e.Subdir
+}
+
 // generateIntakeView renders docs/streams/INTAKE.md from the per-entry files.
 // Output is byte-deterministic (entries sorted by date, then id). Returns "" when there
 // are no entry files (empty register — don't write a header-only file).
@@ -651,7 +729,7 @@ func generateIntakeView(root string) (string, error) {
 			b.WriteString(fmt.Sprintf("### %s — %s — %s\n", e.ID, e.Date, e.Title))
 			if e.Body != "" {
 				b.WriteString("\n")
-				b.WriteString(rebaseEntryBodyLinks(e.Body, "intake"))
+				b.WriteString(rebaseEntryBodyLinks(e.Body, intakeViewRebaseDir(e)))
 				b.WriteString("\n")
 			}
 			b.WriteString("\n")
@@ -668,7 +746,7 @@ func generateIntakeView(root string) (string, error) {
 		b.WriteString(fmt.Sprintf("## %s — %s — %s\n", e.ID, e.Date, e.Title))
 		if e.Body != "" {
 			b.WriteString("\n")
-			b.WriteString(rebaseEntryBodyLinks(e.Body, "intake"))
+			b.WriteString(rebaseEntryBodyLinks(e.Body, intakeViewRebaseDir(e)))
 			b.WriteString("\n")
 		}
 		b.WriteString("\n")
@@ -740,6 +818,42 @@ func generateFindingsView(root string) (string, error) {
 		b.WriteString("\n")
 	}
 	return b.String(), nil
+}
+
+// intakeRootFileNotices returns advisory NOTICEs (issue-loop/15) for
+// root-level intake entry files (flat-layout compat, Subdir == "") that
+// coexist with an ALREADY-SPLIT layout — at least one of the five known
+// disposition subdirs exists on disk. A repo mid-migration, or one that has
+// simply never split, is not flagged (no subdir exists yet, so there is
+// nothing to be inconsistent with); the notice only fires once the split is
+// under way, naming each root file that has not yet moved. Advisory only —
+// a NOTICE, not a PROBLEM: an in-progress migration legitimately has both
+// for the length of exactly one commit's diff, and this repo's own register
+// (docs/streams/INTAKE.md is a flat append-only file, not this per-entry
+// layout) is a different mechanism entirely and never triggers it.
+func intakeRootFileNotices(root string, entries []intakeEntry) []string {
+	intakeDir := filepath.Join(root, "docs", "streams", "intake")
+	splitInUse := false
+	for _, s := range intakeKnownSubdirs {
+		if info, err := os.Stat(filepath.Join(intakeDir, s)); err == nil && info.IsDir() {
+			splitInUse = true
+			break
+		}
+	}
+	if !splitInUse {
+		return nil
+	}
+	var notices []string
+	for _, e := range entries {
+		if e.Subdir != "" {
+			continue
+		}
+		notices = append(notices, fmt.Sprintf(
+			"intake register: %s: file under intake/ root while the disposition-subdir layout is in use — move to intake/<state>/ (issue-loop/15)",
+			e.ID))
+	}
+	sort.Strings(notices)
+	return notices
 }
 
 // intakeDecisionIssueNotices returns NOTICEs for decision-needed intake entries

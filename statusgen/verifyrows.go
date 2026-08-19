@@ -1087,14 +1087,21 @@ func gnuOnlyConstructs(cmd string, toks []shellTok, greps []grepCall) []string {
 // The lint
 // ---------------------------------------------------------------------------
 
-// verifyRowTable locates the Command (and, when present, Expect) columns of a
-// Verify section's table and yields each data row's cells.
-func verifyRowTable(section string, fn func(num, cmd, expect string)) {
-	cmdIdx, expIdx, numIdx := -1, -1, -1
+// verifyRowTable locates the Command (and, when present, the Class and Expect)
+// columns of a Verify section's table and yields each data row's cells.
+//
+// The Class column is OPTIONAL (verdict-lane/02): a table whose header names it
+// (`| # | Class | Command | Expect |`) declares each row's class; a table
+// WITHOUT the column is legacy and every row is treated as `check` — see
+// verifyRowCells.Classed and resolveRowClass in rowclass.go. Columns are located
+// by header NAME, never position, so adding Class between # and Command does not
+// disturb any existing caller.
+func verifyRowTable(section string, fn func(verifyRowCells)) {
+	cmdIdx, expIdx, numIdx, classIdx := -1, -1, -1, -1
 	for _, raw := range strings.Split(section, "\n") {
 		line := strings.TrimSpace(raw)
 		if !strings.HasPrefix(line, "|") {
-			cmdIdx, expIdx, numIdx = -1, -1, -1 // left the table
+			cmdIdx, expIdx, numIdx, classIdx = -1, -1, -1, -1 // left the table
 			continue
 		}
 		if separatorRowRe.MatchString(strings.Trim(line, "|")) {
@@ -1110,6 +1117,8 @@ func verifyRowTable(section string, fn func(num, cmd, expect string)) {
 					expIdx = j
 				case "#":
 					numIdx = j
+				case "class":
+					classIdx = j
 				}
 			}
 			continue // the header row is not a data row
@@ -1125,7 +1134,11 @@ func verifyRowTable(section string, fn func(num, cmd, expect string)) {
 		if expIdx >= 0 && expIdx < len(cells) {
 			expect = strings.TrimSpace(cells[expIdx])
 		}
-		fn(num, cells[cmdIdx], expect)
+		class := ""
+		if classIdx >= 0 && classIdx < len(cells) {
+			class = strings.TrimSpace(cells[classIdx])
+		}
+		fn(verifyRowCells{Num: num, Class: class, Command: cells[cmdIdx], Expect: expect, Classed: classIdx >= 0})
 	}
 }
 
@@ -1152,12 +1165,12 @@ func unfailableRowNotices(streams []*Stream) []string {
 			if err != nil || !ok {
 				continue // malformed reported elsewhere; legacy/opted-out exempt
 			}
-			verifyRowTable(bf.Verify, func(num, cmdCell, expect string) {
+			verifyRowTable(bf.Verify, func(r verifyRowCells) {
 				where := "a Verify row"
-				if num != "" {
-					where = "Verify row " + num
+				if r.Num != "" {
+					where = "Verify row " + r.Num
 				}
-				for _, f := range rowFindings(cmdCell, expect) {
+				for _, f := range rowFindings(r.Command, r.Expect) {
 					notices = append(notices, fmt.Sprintf("%s: %s [%s] %s", path, where, f.rule, f.msg))
 				}
 			})
