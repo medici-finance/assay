@@ -55,22 +55,25 @@ func buildRegisterMap(root string) (findings, intake map[string]string) {
 		}
 	}
 
-	iDir := filepath.Join(root, "docs", "streams", "intake")
-	if entries, err := os.ReadDir(iDir); err == nil {
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-				continue
-			}
-			raw, err := os.ReadFile(filepath.Join(iDir, e.Name()))
-			if err != nil {
-				continue
-			}
-			ie, err := parseIntakeFile(raw)
-			if err != nil || ie.ID == "" {
-				continue
-			}
-			intake[ie.ID] = filepath.Join("docs", "streams", "intake", e.Name())
+	// issue-loop/15: walk root-level PLUS the five known disposition subdirs
+	// so a moved entry's id still resolves to its new path — a typed I-NN
+	// link whose target path vanished under a migration is otherwise a hard
+	// PROBLEM (registerRefProblems), and this map is what makes the new
+	// paths resolvable again.
+	for _, loc := range listIntakeFiles(root) {
+		raw, err := os.ReadFile(filepath.Join(loc.Dir, loc.Name))
+		if err != nil {
+			continue
 		}
+		ie, err := parseIntakeFile(raw)
+		if err != nil || ie.ID == "" {
+			continue
+		}
+		rel := loc.Name
+		if loc.Subdir != "" {
+			rel = filepath.Join(loc.Subdir, loc.Name)
+		}
+		intake[ie.ID] = filepath.Join("docs", "streams", "intake", rel)
 	}
 
 	return findings, intake

@@ -42,7 +42,7 @@ type Placeholder struct {
 	// placeholder whose DELIVERABLE is a reviewed close-PR that no merge would
 	// produce (FIXED-NOT-CLOSED|WONTFIX|DUPLICATE|STALE). "" for the normal
 	// fix-then-close path. The desk WRITES this field (a brief edit, not a PR);
-	// a batch-fanout worker then authors the `bugs/<N>.md` close-PR off the row.
+	// a worker-desk worker then authors the `bugs/<N>.md` close-PR off the row.
 	CloseCandidate string
 }
 

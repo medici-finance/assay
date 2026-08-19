@@ -13,7 +13,7 @@ import (
 var deadPath = "go run ./tools/" + "statusgen"
 
 // TestDeadPathNeverEmitted asserts over the EMITTED STRINGS, not over the repo
-// tree (distribution/05 Task 1).
+// tree.
 //
 // Scoping it to emitted strings is deliberate and load-bearing. A repo-wide
 // grep for the dead path cannot legitimately reach zero: verifyrows_test.go
@@ -205,8 +205,8 @@ func TestChannelConformanceRetiredMarkerIsNotAdvice(t *testing.T) {
 	}
 }
 
-// TestChannelConformanceCouldNotCheck is the three-state assertion
-// (desk-hardening/01): a surface the sweep could not read must report
+// TestChannelConformanceCouldNotCheck is the three-state assertion:
+// a surface the sweep could not read must report
 // could-not-check and must NOT be counted clean. This is the defect the
 // invariant exists to prevent — a sweep that cannot open part of its corpus
 // and prints a green line anyway.
@@ -259,12 +259,20 @@ func TestChannelConformanceSummaryDeclaresItsBound(t *testing.T) {
 	}
 }
 
+// testAcceptedDriftRel is a NEUTRAL, public-safe stand-in for the house's
+// accepted-drift register path (see EnvChannelDriftPath / de-housing). The real
+// house value lives in roster.env and names a withheld stream, which must never
+// appear compiled into source OR into a shipped test fixture; the tests set the
+// env to this generic path and write the fixture there.
+const testAcceptedDriftRel = "docs/accepted-channel-drift.yml"
+
 // TestAcceptedDriftUnparseableIsBlindNotEmpty: an unreadable allowlist must
 // never be read as an empty one.
 func TestAcceptedDriftUnparseableIsBlindNotEmpty(t *testing.T) {
+	t.Setenv(EnvChannelDriftPath, testAcceptedDriftRel)
 	root := writeRoot(t, map[string]string{
 		"README.md":          "clean\n",
-		acceptedDriftRelPath: "accepted: [ this is not: valid: yaml\n",
+		testAcceptedDriftRel: "accepted: [ this is not: valid: yaml\n",
 	})
 	got := channelConformanceNotices(root)
 	if countContaining(got, "COULD-NOT-CHECK") < 1 {
@@ -278,9 +286,10 @@ func TestAcceptedDriftUnparseableIsBlindNotEmpty(t *testing.T) {
 // TestAcceptedDriftIncompleteEntryIsBlind: an entry with no tracking reference
 // is not auditable, so it must not be counted as an accepted exception.
 func TestAcceptedDriftIncompleteEntryIsBlind(t *testing.T) {
+	t.Setenv(EnvChannelDriftPath, testAcceptedDriftRel)
 	root := writeRoot(t, map[string]string{
 		"README.md": "clean\n",
-		acceptedDriftRelPath: "accepted:\n" +
+		testAcceptedDriftRel: "accepted:\n" +
 			"  - id: complete\n    scope: cross-repo\n    where: somewhere\n    channel: A\n    why: because\n    tracking: some-issue\n" +
 			"  - id: incomplete\n    scope: cross-repo\n    where: somewhere\n    channel: A\n    why: because\n",
 	})
@@ -301,9 +310,57 @@ func TestAcceptedDriftIncompleteEntryIsBlind(t *testing.T) {
 // quiet state — not a could-not-check, which would make the published tree
 // permanently blind-looking.
 func TestAcceptedDriftAbsentIsNotAnError(t *testing.T) {
+	// House-configured (EnvChannelDriftPath set) but the register file is absent
+	// — a legitimate state — must be clean and quiet, not a could-not-check.
+	t.Setenv(EnvChannelDriftPath, testAcceptedDriftRel)
 	got := channelConformanceNotices(writeRoot(t, map[string]string{"README.md": "clean\n"}))
 	if countContaining(got, "COULD-NOT-CHECK") != 0 {
 		t.Errorf("absent accepted-drift register reported as could-not-check:\n%s", strings.Join(got, "\n"))
+	}
+}
+
+// TestAcceptedDriftUnsetSkipsCleanly is the de-housing assertion
+// (EnvChannelDriftPath): with the env UNSET, the accepted-drift register is not
+// read AT ALL — the shipped binary carries no withheld-stream path to stat. A
+// physically-present, valid register with entries is deliberately placed at the
+// neutral fixture path to prove the skip is driven by the unset env and not by
+// an absent file: no KNOWN-ACCEPTED entry surfaces and no could-not-check line
+// is emitted. This is the public/adopter posture — an empty exception layer,
+// scanned surfaces unaffected.
+func TestAcceptedDriftUnsetSkipsCleanly(t *testing.T) {
+	t.Setenv(EnvChannelDriftPath, "")
+	root := writeRoot(t, map[string]string{
+		"README.md": "clean\n",
+		testAcceptedDriftRel: "accepted:\n" +
+			"  - id: complete\n    scope: cross-repo\n    where: somewhere\n    channel: A\n    why: because\n    tracking: some-issue\n",
+	})
+	got := channelConformanceNotices(root)
+	if countContaining(got, "KNOWN-ACCEPTED") != 0 {
+		t.Errorf("register was read despite EnvChannelDriftPath unset — the withheld path must not be consulted:\n%s", strings.Join(got, "\n"))
+	}
+	if countContaining(got, "COULD-NOT-CHECK") != 0 {
+		t.Errorf("unset register produced a could-not-check line — unset must skip cleanly, not blind:\n%s", strings.Join(got, "\n"))
+	}
+	// The scan itself still runs and still prints its summary.
+	if countContaining(got, "channel-conformance summary:") != 1 {
+		t.Errorf("no summary line — the sweep did not run:\n%s", strings.Join(got, "\n"))
+	}
+}
+
+// TestAcceptedDriftConfiguredPathIsRead proves the house behaviour is preserved
+// when EnvChannelDriftPath IS set: the register at the configured repo-relative
+// path resolves and its complete entry is reported as KNOWN-ACCEPTED, exactly
+// as the compiled-in path did before de-housing.
+func TestAcceptedDriftConfiguredPathIsRead(t *testing.T) {
+	t.Setenv(EnvChannelDriftPath, testAcceptedDriftRel)
+	root := writeRoot(t, map[string]string{
+		"README.md": "clean\n",
+		testAcceptedDriftRel: "accepted:\n" +
+			"  - id: complete\n    scope: cross-repo\n    where: somewhere\n    channel: A\n    why: because\n    tracking: some-issue\n",
+	})
+	got := channelConformanceNotices(root)
+	if countContaining(got, "KNOWN-ACCEPTED [complete]") != 1 {
+		t.Errorf("configured register was not read — the house path must resolve as before:\n%s", strings.Join(got, "\n"))
 	}
 }
 
@@ -393,10 +450,22 @@ func TestChannelSetMatchesAdopterRunbook(t *testing.T) {
 // TestRepoAcceptedDriftRegisterIsValid runs the loader against the register
 // actually committed in this repo, so a typo in it is caught by `go test`
 // rather than discovered as a silently-empty exception list in a lint run.
+//
+// The register PATH is house configuration (EnvChannelDriftPath), never a
+// compiled-in constant (see channelconformance.go) — so this source file names
+// no withheld-stream path. The house go-test job supplies ASSAY_CHANNEL_DRIFT_TARGET
+// (the same roster.env value the lint uses); with it set, this validates the
+// committed register. Unset — a public tree, or a job that does not plumb the
+// var — skips, exactly as the register itself (a do-not-copy stream doc) is
+// absent from a public tree.
 func TestRepoAcceptedDriftRegisterIsValid(t *testing.T) {
+	rel := acceptedDriftTarget()
+	if rel == "" {
+		t.Skip("ASSAY_CHANNEL_DRIFT_TARGET unset — no house register configured to validate (public/adopter posture)")
+	}
 	root := ".."
-	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(acceptedDriftRelPath))); os.IsNotExist(err) {
-		t.Skip("register not present in this tree (do-not-copy path; absent is a valid state)")
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); os.IsNotExist(err) {
+		t.Skipf("register %q not present in this tree (do-not-copy path; absent is a valid state)", rel)
 	}
 	accepted, blind := loadAcceptedDrift(root)
 	if len(blind) > 0 {

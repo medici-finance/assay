@@ -114,13 +114,20 @@ import (
 	"strings"
 )
 
-// defaultMergecheckBase is spelled in FULL, `refs/remotes/origin/main`, and must stay
-// that way. A bare `origin/main` is not equivalent in this repo: a stale local branch
-// literally named `refs/heads/origin/main` exists, so `origin/main` resolves through
-// refs/heads first and lands dozens of commits behind the real remote tip. A merge-time
-// re-check computed against the wrong base is worse than no re-check — it certifies the
-// merge against a tree nobody is merging into.
-const defaultMergecheckBase = "refs/remotes/origin/main"
+// remoteMainRef is the FULLY-QUALIFIED remote-tracking ref for main, spelled out
+// rather than the bare short name `origin/main` (issue #885). A bare `origin/main`
+// is not equivalent in this repo: a stale local branch literally named
+// `refs/heads/origin/main` exists, so `origin/main` resolves through refs/heads
+// first and lands dozens of commits behind the real remote tip — silently, at exit
+// 0. Every statusgen git resolution of main's tip/merge-base spells this form so a
+// stray decoy cannot shadow it (grandfathering, tombstone/field-gutting bases, the
+// UNRUN done-gate, and the --consumers diff base all key on the real remote tip).
+const remoteMainRef = "refs/remotes/origin/main"
+
+// defaultMergecheckBase is spelled in FULL and must stay that way: a merge-time
+// re-check computed against the wrong base is worse than no re-check — it certifies
+// the merge against a tree nobody is merging into. See remoteMainRef (#885).
+const defaultMergecheckBase = remoteMainRef
 
 // ciInvokedPrefixes are the tree prefixes whose contents CI invokes by path. A file the
 // base has here and the head lacks is the exit-127 shape: the workflow calls a script

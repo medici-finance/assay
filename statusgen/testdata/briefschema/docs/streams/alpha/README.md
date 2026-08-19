@@ -40,6 +40,8 @@ track: platform
 | 46 | [Floor glm-5.2 accept](./brief-46-floor-glm-accept.md) | 0 | S | verified | 2026-07-09 glm-5.2-verifier | — |
 | 47 | [Floor deepseek reject](./brief-47-floor-deepseek-reject.md) | 0 | S | verified | 2026-07-09 deepseek-verifier | — |
 | 48 | [Floor sonnet reject](./brief-48-floor-sonnet-reject.md) | 0 | S | verified | 2026-07-09 sonnet-verifier | — |
+| 49 | [Floor Evidence-cheap reject](./brief-49-floor-evidence-cheap-reject.md) | 0 | S | verified | 2026-07-09 k3-verifier | — |
+| 53 | [Floor Evidence-cured accept](./brief-53-floor-evidence-cured-accept.md) | 0 | S | verified | 2026-07-09 k3-verifier | — |
 | 45 | [Reviewed undated at done](./brief-45-reviewed-undated.md) | 0 | S | done | 2026-07-09 sonnet-verifier | reviewed offline |
 | 50 | [Invalid value](./brief-50-bad-value.md) | 0 | S | todo | — | — |
 | 51 | [Valid value](./brief-51-good-value.md) | 0 | S | todo | — | — |

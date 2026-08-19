@@ -284,6 +284,23 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 		w("%s", b)
 		w("")
 	}
+	// Drive banners (methodology-metrics/45). The fail-neutral "DRIVE NOT APPLIED"
+	// banner leads (a rejected manifest changed nothing, and the reader must know
+	// the board is un-steered), then the ACTIVE DRIVE honesty banner, then any
+	// anti-Goodhart coverage NOTICE. All absent when no drive is active, keeping a
+	// no-manifest board byte-identical.
+	if nu.DriveNotApplied != "" {
+		w("%s", nu.DriveNotApplied)
+		w("")
+	}
+	if nu.DriveBanner != "" {
+		w("%s", nu.DriveBanner)
+		w("")
+	}
+	for _, n := range nu.DriveCoverageNotices {
+		w("> **DRIVE COVERAGE — %s**", n)
+		w("")
+	}
 	// Could-not-check on a serialized stream. Distinct from the banner above:
 	// that one says the whole board is a superset, this one names the streams
 	// being WITHHELD because of it. Reported, never silently downgraded to
@@ -341,7 +358,15 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			if p.Brief.ExecTier == "strong" {
 				marker = " [exec:strong]"
 			}
-			w("| %s | %s — %s%s | %d | %d |", p.Stream.Name, p.Brief.Num, p.Brief.Title, marker, p.Brief.Wave, p.Score)
+			// Score is rendered DECOMPOSED when a drive steer is present: `base +
+			// term (drive:<slug>)`, never a merged number (brief-44 honesty rule).
+			// With no drive term the format is the bare base score — byte-identical
+			// to the pre-drives column.
+			score := fmt.Sprintf("%d", p.Score)
+			if p.DriveTerm > 0 {
+				score = fmt.Sprintf("%d + %d (drive:%s)", p.Score, p.DriveTerm, p.DriveSlug)
+			}
+			w("| %s | %s — %s%s | %d | %s |", p.Stream.Name, p.Brief.Num, p.Brief.Title, marker, p.Brief.Wave, score)
 		}
 	}
 

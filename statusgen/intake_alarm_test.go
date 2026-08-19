@@ -1,12 +1,43 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+// TestBuildIntakeDebtJSON verifies the leak-safe aggregate view (agentic-metrics/02):
+// counts + threshold + oldest age only, three-state honest, no entry ids/dates.
+func TestBuildIntakeDebtJSON(t *testing.T) {
+	// A clean measured read.
+	got := buildIntakeDebtJSON(IntakeAlarmResult{Untriaged: 4, OverThreshold: 2, OldestDays: 9, OldestID: "intake-secret-id"})
+	if got.State != "measured" {
+		t.Errorf("state = %q, want measured", got.State)
+	}
+	if got.Untriaged != 4 || got.OverThreshold != 2 || got.OldestDays != 9 {
+		t.Errorf("counts not carried: %+v", got)
+	}
+	if got.ThresholdDays != intakeUntriagedThreshold {
+		t.Errorf("threshold = %d, want %d", got.ThresholdDays, intakeUntriagedThreshold)
+	}
+	// Leak-safety: the entry ID must not appear anywhere in the marshalled JSON.
+	enc, _ := json.Marshal(got)
+	if strings.Contains(string(enc), "intake-secret-id") {
+		t.Errorf("intake JSON leaked an entry id: %s", enc)
+	}
+
+	// An unreadable register is could-not-check, never a clean 0.
+	cnc := buildIntakeDebtJSON(IntakeAlarmResult{Unreadable: true, Reason: "boom"})
+	if cnc.State != "could-not-check" {
+		t.Errorf("unreadable state = %q, want could-not-check", cnc.State)
+	}
+	if cnc.Untriaged != 0 {
+		t.Errorf("could-not-check must not assert a count, got untriaged=%d", cnc.Untriaged)
+	}
+}
 
 func TestIntakeAlarm(t *testing.T) {
 	now := time.Date(2026, 7, 13, 0, 0, 0, 0, time.UTC)
@@ -151,6 +182,43 @@ func TestIntakeAlarm(t *testing.T) {
 		r := intakeAlarm(entries, now)
 		if r.Untriaged != 1 {
 			t.Errorf("disposition ' new ' should count as new after TrimSpace; got Untriaged=%d", r.Untriaged)
+		}
+	})
+
+	t.Run("new — proposed … counts as untriaged (issue #630)", func(t *testing.T) {
+		// Regression: proposed-but-unratified entries wear `new — proposed …`.
+		// Under the old bare-`new` predicate these escaped the debt count.
+		entries := []intakeEntry{
+			{ID: "I-01", Date: "2026-07-08", Title: "proposed", Disposition: "new — proposed scoped → brief"},  // 5d
+			{ID: "I-02", Date: "2026-07-12", Title: "recent proposed", Disposition: "new — proposed rejected"}, // 1d
+			{ID: "I-03", Date: "2026-07-08", Title: "no-space em-dash", Disposition: "new—proposed"},           // 5d
+			{ID: "I-04", Date: "2026-07-08", Title: "bona fide scoped", Disposition: "scoped"},                 // must not count
+		}
+		r := intakeAlarm(entries, now)
+		if r.Untriaged != 3 {
+			t.Errorf("Untriaged = %d, want 3 (three new-prefixed entries count; scoped does not)", r.Untriaged)
+		}
+		if r.OverThreshold != 2 {
+			t.Errorf("OverThreshold = %d, want 2 (I-01 and I-03 at 5d; I-02 at 1d is under)", r.OverThreshold)
+		}
+		if r.OldestDays != 5 {
+			t.Errorf("OldestDays = %d, want 5", r.OldestDays)
+		}
+		n := intakeDebtNotice(r)
+		if n == "" {
+			t.Error("NOTICE must fire — a proposed-but-unratified entry aged >3d is intake debt (issue #630)")
+		}
+	})
+
+	t.Run("word merely starting with 'new' does NOT count", func(t *testing.T) {
+		// Boundary: only a non-alphanumeric char after "new" qualifies, so a
+		// value like "newsflash" is a distinct (triaged) disposition, not new.
+		entries := []intakeEntry{
+			{ID: "I-01", Date: "2026-07-08", Title: "not new", Disposition: "newsflash"},
+		}
+		r := intakeAlarm(entries, now)
+		if r.Untriaged != 0 {
+			t.Errorf("Untriaged = %d, want 0 ('newsflash' is not an untriaged disposition)", r.Untriaged)
 		}
 	})
 

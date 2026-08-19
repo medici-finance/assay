@@ -70,6 +70,52 @@ type ghReview struct {
 	State       string   `json:"state"`
 	SubmittedAt string   `json:"submittedAt"`
 	Id          string   `json:"id"`
+	// CommitOID is the commit the review reports having been submitted AGAINST.
+	// `gh pr view --json reviews` does not return it; the REST reviews endpoint
+	// does, as `commit_id`, and that is the source the model-path auto-flip
+	// reads (see autoflip.go). It is therefore EMPTY on everything fetchPRData
+	// returns, which is why approvedReviewAt below compares it only when the
+	// caller asks for a SHA — a human-stamp corroboration must not start
+	// failing because this field is unpopulated on its transport.
+	//
+	// WHAT THIS FIELD IS NOT. It is not an established staleness signal. A
+	// review's `commit_id` has been observed once to disagree with the head
+	// named in the review's own body, and a follow-up sweep failed to establish
+	// any direction or frequency for that disagreement — see rule 40 in
+	// docs/brief-rules.md, which states it at that strength and forbids
+	// upgrading it to a direction. So a comparison against this field is a
+	// best-effort FILTER, not a proof of currency: an equal SHA does not
+	// establish that the approval is current, it only fails to contradict it.
+	// Every caller must therefore treat this field as load-bearing in the
+	// refusing direction only.
+	CommitOID string `json:"-"`
+}
+
+// approvedReviewAt returns the first APPROVED review authored by login. When
+// atSHA is non-empty the review must ALSO have been submitted against that
+// exact commit.
+//
+// This is the toolkit's ONE approval-checker, shared by both consumers on
+// purpose: corroborateStamps (human-stamp corroboration, mm/15) calls it with
+// an empty atSHA, and the model-path auto-flip (mm/39) calls it with the PR's
+// merged head. A second, parallel implementation of an authorization check is
+// how the two drift apart — one gets a fix the other does not, and the looser
+// one becomes the way in.
+//
+// atSHA is compared case-insensitively but NOT by prefix: an abbreviated SHA
+// must not satisfy a full one. "no review found" is the only false return, so
+// every caller has to treat it as a refusal rather than a maybe.
+func approvedReviewAt(reviews []ghReview, login, atSHA string) (ghReview, bool) {
+	for _, r := range reviews {
+		if !strings.EqualFold(r.Author.Login, login) || r.State != "APPROVED" {
+			continue
+		}
+		if atSHA != "" && !strings.EqualFold(r.CommitOID, atSHA) {
+			continue
+		}
+		return r, true
+	}
+	return ghReview{}, false
 }
 
 type ghComment struct {
@@ -163,9 +209,11 @@ var acceptedApprovalPhrases = []string{
 //
 // This is a HEURISTIC BLOCKLIST, not a decision procedure. It catches common
 // negated and conditional phrasings but will miss novel or indirect negations.
-// The blast radius is nil today (hasApprovalPhrase has one caller, --corroborate,
-// not yet wired into a workflow); when it gains a live consumer the
-// pattern should be tightened with a broader negation grammar.
+// hasApprovalPhrase has one caller, --corroborate, which is now a LIVE gate — wired
+// into the pull_request lint job of .github/workflows/statusgen.yml, where an
+// unmatched refusal that reads as approval would let a self-issued human stamp pass.
+// The pattern should keep being tightened toward a broader negation grammar as new
+// refusal phrasings are observed.
 //
 // The negation grammar for the vocabulary the widening ADDED (`lgtm`,
 // `ship it`) lives in negationPhraseLGTMRe below, not here — see the comment there
@@ -328,6 +376,43 @@ func confusableStampNames(s string) []string {
 	return out
 }
 
+// corroborateExcludedFixturePrefix is the ONE path prefix whose human:<name>
+// stamps the corroborate scan deliberately skips. It is the education/08 tutorial
+// corpus, which teaches the human:<name> notation itself and therefore uses the
+// REAL token for FICTIONAL personas (`human:<name>` for names like alex or sam)
+// that can never map to a GitHub login. Corroborating a teaching fixture is a
+// category error: it does not
+// drive any board or brief, so no forged done-flip can hide behind it.
+//
+// This exclusion is scoped behind a security-review:
+// "A, scoped to the exact tutorial-skeleton path, behind a security-review ... The
+// exclusion must be tight (exact path prefix, not 'any testdata') and reviewed,
+// since a loose exclusion is an evasion surface."
+//
+// It is a NAMED CONSTANT, not a magic string in a loop, so the whole exclusion set
+// is auditable in one place — this is the deliberately-chosen carve-out the review
+// inspects. TWO invariants make it an exclusion and not an evasion surface:
+//
+//   - It is a PATH check, never a NAME check. alex/sam are not special-cased; a
+//     forged `human:<name>` on any file OUTSIDE this prefix still requires corroboration.
+//   - The TRAILING SLASH is load-bearing. It is the path boundary: a lookalike
+//     sibling like ".../assay-tutorial-skeleton-evil/..." does NOT begin with this
+//     prefix (its next character after "skeleton" is "-", not "/"), so the carve-out
+//     cannot be widened by a confusable path. Do not drop the slash.
+//
+// The exclusion set is intentionally a SET OF ONE. No "any testdata", examples/**,
+// or statusgen/testdata/** carve-out belongs here — a second path, if ever needed,
+// is a fresh human ruling, not an edit to this constant.
+const corroborateExcludedFixturePrefix = "docs/streams/education/assay-tutorial-skeleton/"
+
+// isExcludedFixturePath reports whether path lies UNDER
+// corroborateExcludedFixturePrefix. Because the constant carries its trailing
+// slash, this is a proper path-boundary match: a plain HasPrefix here cannot leak
+// to a "...-skeleton-evil" sibling that merely shares the leading substring.
+func isExcludedFixturePath(path string) bool {
+	return strings.HasPrefix(path, corroborateExcludedFixturePrefix)
+}
+
 // stamp describes a single human:<name> occurrence found in a PR diff.
 type stamp struct {
 	Name string // the <name> portion (e.g. "alex")
@@ -359,6 +444,14 @@ func stampsInDiff(diff string) []stamp {
 		}
 		// Only added lines (not the "+++" header itself).
 		if !strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "+++") {
+			continue
+		}
+		// A stamp on a file under the tutorial-skeleton fixture prefix is
+		// deliberately NOT corroborated — the corpus teaches the human:<name>
+		// notation with fictional personas that can never map to a login. See
+		// corroborateExcludedFixturePrefix (Ian's #1232 ruling). This is a PATH
+		// check, so a forged human:<name> anywhere OUTSIDE the prefix is unaffected.
+		if isExcludedFixturePath(curFile) {
 			continue
 		}
 		// Strip the leading "+" for matching.
@@ -487,18 +580,18 @@ func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int) []co
 			continue
 		}
 
-		// Check APPROVED reviews by this login first (stronger signal).
+		// Check APPROVED reviews by this login first (stronger signal). No SHA
+		// is required here: this path corroborates that the named human ACTED,
+		// not that they signed a particular tree.
 		if data != nil {
-			for _, r := range data.Reviews {
-				if strings.EqualFold(r.Author.Login, login) && r.State == "APPROVED" {
-					results = append(results, corroborateResult{
-						Stamp:    s,
-						Verdict:  verdictCorroborated,
-						Login:    login,
-						Evidence: fmt.Sprintf("APPROVED review by %s: %s", login, reviewURL(repo, pr, r)),
-					})
-					goto nextStamp
-				}
+			if r, ok := approvedReviewAt(data.Reviews, login, ""); ok {
+				results = append(results, corroborateResult{
+					Stamp:    s,
+					Verdict:  verdictCorroborated,
+					Login:    login,
+					Evidence: fmt.Sprintf("APPROVED review by %s: %s", login, reviewURL(repo, pr, r)),
+				})
+				goto nextStamp
 			}
 
 			// Check comments by this login containing an explicit approval phrase.

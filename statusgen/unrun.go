@@ -132,6 +132,15 @@ type evidenceRow struct {
 	Text   string // the whole raw row
 	Date   string
 	Runner string
+	// RunnerFromColumn is true only when the row's table DECLARED a `Runner`
+	// header and the value was read from that column — not from the
+	// last-two-cells fallback below. The fallback is a permissive tolerance that
+	// is safe for the UNRUN derivation (a wrong read costs at most a missed
+	// UNRUN) but not for the risk-keyed floor, where a free-text output cell
+	// misread as a runner both launders below-floor rows and reddens boards. The
+	// floor consults this flag; the UNRUN consumer ignores it, keeping its
+	// tolerance untouched.
+	RunnerFromColumn bool
 }
 
 // unrunFinding is one Verify row with no completed Evidence row behind it.
@@ -245,6 +254,7 @@ func parseEvidenceRows(section string) map[string][]evidenceRow {
 		// evidenceVerifierInfo and evidenceHasIndependentRow already apply, so a
 		// table that names no columns still reads.
 		date, runner := "", ""
+		runnerFromColumn := false
 		if dateIdx >= 0 && dateIdx < len(cells) {
 			date = strings.TrimSpace(cells[dateIdx])
 		} else if len(cells) >= 2 {
@@ -252,14 +262,16 @@ func parseEvidenceRows(section string) map[string][]evidenceRow {
 		}
 		if runnerIdx >= 0 && runnerIdx < len(cells) {
 			runner = strings.TrimSpace(cells[runnerIdx])
+			runnerFromColumn = true
 		} else if len(cells) >= 1 {
 			runner = strings.TrimSpace(cells[len(cells)-1])
 		}
 		out[id] = append(out[id], evidenceRow{
-			ID:     id,
-			Text:   line,
-			Date:   normalizeMark(date),
-			Runner: normalizeMark(runner),
+			ID:               id,
+			Text:             line,
+			Date:             normalizeMark(date),
+			Runner:           normalizeMark(runner),
+			RunnerFromColumn: runnerFromColumn,
 		})
 	}
 	return out
@@ -454,7 +466,7 @@ var closedAtBase = func(root string, streams []*Stream) (set map[string]bool, ok
 	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
 		return nil, false
 	}
-	mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", "origin/main").Output()
+	mb, err := exec.Command("git", "-C", root, "merge-base", "HEAD", remoteMainRef).Output()
 	if err != nil || strings.TrimSpace(string(mb)) == "" {
 		return nil, false
 	}

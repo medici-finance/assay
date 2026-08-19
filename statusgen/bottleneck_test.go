@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -385,7 +386,7 @@ func TestBottleneckRunWritesReportFile(t *testing.T) {
 	fixedNow(t, time.Now().UTC().Format(time.RFC3339))
 
 	out := captureStdout(t, func() {
-		if code := runBottleneck(root); code != 0 {
+		if code := runBottleneck(root, false); code != 0 {
 			t.Fatalf("runBottleneck exited %d, want 0", code)
 		}
 	})
@@ -417,7 +418,7 @@ func TestBottleneckRunStdoutSummaryOneScreen(t *testing.T) {
 	fixedNow(t, time.Now().UTC().Format(time.RFC3339))
 
 	out := captureStdout(t, func() {
-		if code := runBottleneck(root); code != 0 {
+		if code := runBottleneck(root, false); code != 0 {
 			t.Fatalf("runBottleneck exited %d", code)
 		}
 	})
@@ -431,6 +432,42 @@ func TestBottleneckRunStdoutSummaryOneScreen(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("stdout missing section %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestBottleneckJsonNoDatedFile verifies the --json emitter
+// (agentic-metrics/02): it prints a parseable JSON view carrying the same
+// content as the text report, and — being a read-only snapshot query — writes NO
+// dated report file.
+func TestBottleneckJsonNoDatedFile(t *testing.T) {
+	root := bottleneckFixtureRepo(t)
+	fixedNow(t, time.Now().UTC().Format(time.RFC3339))
+
+	out := captureStdout(t, func() {
+		if code := runBottleneck(root, true); code != 0 {
+			t.Fatalf("runBottleneck(json) exited %d, want 0", code)
+		}
+	})
+
+	var got bottleneckJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("JSON output does not parse: %v\n%s", err, out)
+	}
+	if got.Note != bottleneckAntiGamingNote {
+		t.Errorf("JSON missing anti-gaming note, got %q", got.Note)
+	}
+	if len(got.Stages) == 0 {
+		t.Errorf("JSON carries no stages:\n%s", out)
+	}
+	if got.Date == "" {
+		t.Errorf("JSON missing date:\n%s", out)
+	}
+
+	// A --json run is a pure query: it must NOT write the dated report file.
+	date := time.Now().UTC().Format("2006-01-02")
+	reportPath := filepath.Join(root, "docs", "reports", "factory-floor", date+".md")
+	if _, err := os.Stat(reportPath); !os.IsNotExist(err) {
+		t.Errorf("--json wrote a dated report file at %s; it must be side-effect-free", reportPath)
 	}
 }
 

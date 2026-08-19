@@ -821,3 +821,184 @@ func TestConsumersUntouchedBriefsAreNotJudged(t *testing.T) {
 		t.Fatalf("an untouched brief must not be judged against this diff; got %d", code)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Deterministic base — the gate must be a pure function of the PR diff (#639)
+// ---------------------------------------------------------------------------
+
+// TestConsumersPinsMovingBaseBeforeAnyDiff is the regression guard for #639. The
+// gate is called with a live, MOVING ref (origin/main). Before the fix that raw
+// ref flowed straight into changedPathsSince and, per brief, into
+// consumerEntriesAtBase — each re-reading it in its own git subprocess. A
+// background commit advancing the ref BETWEEN those reads (or between two CI
+// runs of the identical command) shifted the three-dot base underneath them and
+// flipped the SAME command's exit code on ref motion alone. The fix resolves the
+// ref to one concrete merge-base commit ONCE, before any diff is taken, so every
+// downstream read sees the identical base. This test proves the substitution
+// happens: both git seams must receive the PINNED SHA, never the moving ref.
+func TestConsumersPinsMovingBaseBeforeAnyDiff(t *testing.T) {
+	const movingRef = "origin/main"
+	const pinnedSHA = "0123456789abcdef0123456789abcdef01234567"
+
+	root := consumersFixture(t, []string{"web/one.go: fixed-here"}, map[string]string{
+		"web/one.go": "package web",
+	})
+
+	origPin := pinConsumerBase
+	pinConsumerBase = func(_, base string) (string, error) {
+		if base != movingRef {
+			t.Fatalf("pinConsumerBase must receive the ref as written; got %q", base)
+		}
+		return pinnedSHA, nil
+	}
+	t.Cleanup(func() { pinConsumerBase = origPin })
+
+	var diffBase string
+	origDiff := changedPathsSince
+	changedPathsSince = func(_, base string) ([]string, error) {
+		diffBase = base
+		return []string{"docs/streams/alpha/brief-01-claims.md", "web/one.go"}, nil
+	}
+	t.Cleanup(func() { changedPathsSince = origDiff })
+
+	var entriesBase string
+	origEntries := consumerEntriesAtBase
+	consumerEntriesAtBase = func(_, base, _ string) map[string]bool {
+		entriesBase = base
+		return nil
+	}
+	t.Cleanup(func() { consumerEntriesAtBase = origEntries })
+
+	if code := runConsumers(root, movingRef, ""); code != 0 {
+		t.Fatalf("a corroborated fixed-here claim must exit 0; got %d", code)
+	}
+	if diffBase != pinnedSHA {
+		t.Errorf("the diff must be taken against the PINNED base, not the moving ref: got %q, want %q", diffBase, pinnedSHA)
+	}
+	if entriesBase != pinnedSHA {
+		t.Errorf("the per-brief base read must use the PINNED base, not the moving ref: got %q, want %q", entriesBase, pinnedSHA)
+	}
+}
+
+// TestConsumersFallsBackWhenBaseUnpinnable: pinning is a hardening, not a new
+// hard dependency on git. When the merge-base cannot be resolved (no git, a
+// shallow clone missing it) the run must proceed on the ref as written and keep
+// its prior behavior — never silently change what it checks, never hard-fail a
+// repo that used to work.
+func TestConsumersFallsBackWhenBaseUnpinnable(t *testing.T) {
+	const movingRef = "origin/main"
+
+	root := consumersFixture(t, []string{"web/one.go: fixed-here"}, map[string]string{
+		"web/one.go": "package web",
+	})
+
+	origPin := pinConsumerBase
+	pinConsumerBase = func(_, _ string) (string, error) {
+		return "", fmt.Errorf("no merge-base (shallow clone)")
+	}
+	t.Cleanup(func() { pinConsumerBase = origPin })
+
+	var diffBase string
+	origDiff := changedPathsSince
+	changedPathsSince = func(_, base string) ([]string, error) {
+		diffBase = base
+		return []string{"docs/streams/alpha/brief-01-claims.md", "web/one.go"}, nil
+	}
+	t.Cleanup(func() { changedPathsSince = origDiff })
+
+	if code := runConsumers(root, movingRef, ""); code != 0 {
+		t.Fatalf("an unpinnable base must fall back, not fail; got %d", code)
+	}
+	if diffBase != movingRef {
+		t.Errorf("on a failed pin the run must proceed on the ref as written: got %q, want %q", diffBase, movingRef)
+	}
+}
+
+// TestConsumersDeterministicAcrossMovingMain exercises the real pinConsumerBase
+// against a live git repo and proves the property #639 is about: the gate's
+// verdict is a pure function of the branch diff, unchanged by main advancing
+// after the branch point. The branch adds a brief whose fixed-here claim is
+// FALSE (it never touches the consumer), so the honest verdict is DISPROVED —
+// and it must stay DISPROVED when main moves on with a commit the branch never
+// made, because the merge-base (the fork point) is the same either way.
+func TestConsumersDeterministicAcrossMovingMain(t *testing.T) {
+	root := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	git("init", "-q", "-b", "main")
+
+	// Base: the stream and the consumer file exist, but the brief that will carry
+	// the claim does NOT yet — the branch adds it, so the branch makes every claim
+	// in it (consumerEntriesAtBase finds nothing at the base).
+	mustWrite(t, filepath.Join(root, "docs", "streams", "alpha", "README.md"), `---
+stream: alpha
+status: active
+priority: P1
+track: platform
+---
+
+# Alpha
+
+| # | Brief | Wave | Effort | Status | Verified | Reviewed |
+|---|-------|------|--------|--------|----------|----------|
+| 01 | [Consumer claims](./brief-01-claims.md) | 0 | M | in-progress | — | — |
+`)
+	mustWrite(t, filepath.Join(root, "web", "one.go"), "package web\n")
+	git("add", "-A")
+	git("commit", "-qm", "base")
+
+	git("checkout", "-qb", "feature")
+	mustWrite(t, filepath.Join(root, "docs", "streams", "alpha", "brief-01-claims.md"), `---
+brief: alpha/01
+title: A brief carrying a routed consumer claim
+wave: 0
+depends: []
+unblocks: []
+effort: M
+gate: model
+risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+issues: []
+schema: brief-v1
+authored: 2026-08-01 by fixture
+sources: ["fixture"]
+consumers:
+  - "web/one.go: fixed-here"
+---
+
+# Brief 01
+
+## Verify
+| # | Command | Expect |
+|---|---------|--------|
+| 1 | `+"`statusgen --consumers --brief alpha/01`"+` | 0 |
+`)
+	// The branch does NOT touch web/one.go, so the fixed-here claim is false.
+	git("add", "-A")
+	git("commit", "-qm", "add brief claiming a fix it never made")
+
+	code1 := runConsumers(root, "main", "")
+	if code1 != 1 {
+		t.Fatalf("a false fixed-here claim must be DISPROVED (exit 1); got %d", code1)
+	}
+
+	// main advances AFTER the branch diverged, with a commit the branch never
+	// made. A live-ref gate could see its three-dot base shift here; a pinned one
+	// cannot — the merge-base is the fork point either way.
+	git("checkout", "-q", "main")
+	mustWrite(t, filepath.Join(root, "unrelated.txt"), "main moved on\n")
+	git("add", "-A")
+	git("commit", "-qm", "main moves on")
+	git("checkout", "-q", "feature")
+
+	if code2 := runConsumers(root, "main", ""); code2 != code1 {
+		t.Fatalf("the verdict must not change because main advanced after the branch point: %d then %d", code1, code2)
+	}
+}

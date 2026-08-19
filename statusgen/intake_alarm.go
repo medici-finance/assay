@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // intakeUntriagedThreshold is the age in days past which an untriaged intake entry
@@ -13,24 +16,57 @@ const intakeUntriagedThreshold = 3
 
 // IntakeAlarmResult holds the computed untriaged-intake alarm state.
 type IntakeAlarmResult struct {
-	Untriaged     int      // total entries with disposition: new (or empty, which defaults to new)
+	// Unreadable is set when the intake register could not be read (a level
+	// errored for a reason other than absence). When true, the untriaged count
+	// below is NOT a clean zero — it is a could-not-check, and intakeBoardLine
+	// renders it as such instead of "the front door is clear"
+	// (docs/three-state-instrument-rule.md, sub-rule 1). The zero value is the
+	// honest default: a result nobody marked unreadable was read.
+	Unreadable    bool
+	Reason        string   // why, when Unreadable
+	Untriaged     int      // total entries with an untriaged disposition: new, empty (defaults to new), or new — proposed …
 	OverThreshold int      // entries past the age threshold
 	OldestID      string   // ID of the oldest untriaged entry with a parseable date ("" if none)
 	OldestDays    int      // age in days of the oldest entry
 	BadDates      []string // per-entry notices for unparseable date fields (empty if all parseable)
 }
 
+// isUntriagedDisposition reports whether an intake disposition value counts as
+// untriaged for the age alarm. Untriaged means bare `new`, an empty/missing
+// disposition (which defaults to new), OR any `new — proposed …` form: a
+// proposed-but-unratified triage that has been *thought about* but not
+// committed — no exit queued, no brief filed, no issue opened (issue #630). The
+// desk writes such entries as `disposition: new — proposed scoped → brief …`;
+// that ratify-me limbo is still untriaged debt and must not escape the count.
+// A "new"-prefixed value only qualifies when a non-alphanumeric boundary
+// (space, em-dash, hyphen) follows, so a hypothetical word merely starting with
+// the letters "new" is not mistaken for it. scoped/rejected/watching/decision-
+// needed (and any other value) are triaged and must NOT count.
+func isUntriagedDisposition(disposition string) bool {
+	d := strings.TrimSpace(disposition)
+	if d == "" || d == "new" {
+		return true
+	}
+	if rest, ok := strings.CutPrefix(d, "new"); ok {
+		r := []rune(rest)
+		if len(r) > 0 && !unicode.IsLetter(r[0]) && !unicode.IsDigit(r[0]) {
+			return true
+		}
+	}
+	return false
+}
+
 // intakeAlarm computes the untriaged-intake alarm state from parsed entries.
-// Only disposition: new counts as untriaged; scoped/rejected/watching
-// (and any unknown disposition) are triaged and must NOT count.
+// Only untriaged dispositions count (isUntriagedDisposition: bare `new`, empty,
+// or `new — proposed …`); scoped/rejected/watching (and any unknown
+// disposition) are triaged and must NOT count.
 // Age = now - entry.Date, computed from in-git file content + the clock:
 // deterministic, offline, no gh dependency (the issue-loop README's offline
 // discipline — --lint must keep working with no network).
 func intakeAlarm(entries []intakeEntry, now time.Time) IntakeAlarmResult {
 	var res IntakeAlarmResult
 	for _, e := range entries {
-		d := strings.TrimSpace(e.Disposition)
-		if d != "" && d != "new" {
+		if !isUntriagedDisposition(e.Disposition) {
 			continue
 		}
 		res.Untriaged++
@@ -139,10 +175,71 @@ func intakeScopedUnauthoredNotices(entries []intakeEntry, streams []*Stream, now
 	return out
 }
 
+// intakeDebtJSON is the LEAK-SAFE aggregate view of the intake front-door debt
+// for the public metrics snapshot (agentic-metrics/02). COUNTS and AGES only —
+// never an entry ID or its date, which are internal detail a byte-for-byte
+// public snapshot must not leak. `state` is the three-state honesty field: an
+// unreadable register is could-not-check, never a clean 0.
+type intakeDebtJSON struct {
+	State         string `json:"state"`          // measured | could-not-check
+	Untriaged     int    `json:"untriaged"`      // entries at disposition:new
+	OverThreshold int    `json:"over_threshold"` // subset past the age threshold
+	ThresholdDays int    `json:"threshold_days"` // the age threshold applied
+	OldestDays    int    `json:"oldest_days"`    // age of the oldest untriaged entry (0 if none/unknown)
+}
+
+func buildIntakeDebtJSON(r IntakeAlarmResult) intakeDebtJSON {
+	if r.Unreadable {
+		return intakeDebtJSON{State: "could-not-check", ThresholdDays: intakeUntriagedThreshold}
+	}
+	return intakeDebtJSON{
+		State:         "measured",
+		Untriaged:     r.Untriaged,
+		OverThreshold: r.OverThreshold,
+		ThresholdDays: intakeUntriagedThreshold,
+		OldestDays:    r.OldestDays,
+	}
+}
+
+// runIntakeDebt is the --intake-debt entrypoint: a self-contained, offline,
+// STATUS.md-free emitter of the intake front-door-debt aggregate (same
+// discipline as --dora / --bottleneck --json). With --json it emits the
+// leak-safe aggregate; otherwise the one-line board string.
+func runIntakeDebt(root string, asJSON bool) int {
+	entries, err := loadIntake(root)
+	res := IntakeAlarmResult{}
+	if err != nil {
+		res = IntakeAlarmResult{Unreadable: true, Reason: err.Error()}
+	} else {
+		res = intakeAlarm(entries, nowFunc())
+	}
+	if asJSON {
+		enc, err := json.MarshalIndent(buildIntakeDebtJSON(res), "", "  ")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "statusgen:", err)
+			return 1
+		}
+		fmt.Println(string(enc))
+		return 0
+	}
+	fmt.Println(intakeBoardLine(res))
+	return 0
+}
+
 // intakeBoardLine renders the intake-debt board line for STATUS.md (the (b)
 // surface from the brief). Rendered whether or not the threshold is breached
 // (depth is always visible; the NOTICE fires only on age breach).
 func intakeBoardLine(r IntakeAlarmResult) string {
+	if r.Unreadable {
+		reason := strings.TrimSpace(r.Reason)
+		if reason == "" {
+			reason = "the intake register could not be read"
+		}
+		// Could-not-check, NOT a clean zero: the register was not read, so the
+		// front-door-is-clear line would be a false clean read
+		// (docs/three-state-instrument-rule.md, sub-rule 1).
+		return fmt.Sprintf("_⚠ intake untriaged count COULD-NOT-CHECK — %s; this is not a clean read._", reason)
+	}
 	if r.Untriaged == 0 {
 		return "_0 untriaged entries — the front door is clear._"
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -365,10 +366,63 @@ func oldestHumanGateAges(streams []*Stream, entered map[string]time.Time, now ti
 // an all-clear nobody established. An unreadable HISTORIAN is a different,
 // lesser failure: the queue is still readable, so the digest still prints
 // (exit 0) with its oldest-first claim explicitly withdrawn.
-func runSignoffDigest(root string) int {
+// signoffDigestJSON is the LEAK-SAFE aggregate view of the decision queue for
+// the public metrics snapshot (agentic-metrics/02). It carries COUNTS and AGES
+// only — never brief ids, titles, stream slugs or Evidence links, which are
+// internal detail that a byte-for-byte public snapshot must not leak (the
+// publish-metrics leak gate rejects the full digest for exactly that reason).
+// It computes nothing new: the numbers are len()/max() over the already-built
+// signoffDigest.
+type signoffDigestJSON struct {
+	Date           string `json:"date"`
+	State          string `json:"state"`           // awaiting | clear | could-not-check
+	AwaitingCount  int    `json:"awaiting_count"`  // total briefs at the human gate
+	WIPImplemented int    `json:"wip_implemented"` // subset at status=implemented
+	WIPVerified    int    `json:"wip_verified"`    // subset at status=verified
+	OldestAge      string `json:"oldest_age"`      // rendered age of the longest-waiter; "" if unknown
+	AgesKnown      bool   `json:"ages_known"`      // false ⇒ ordering/age degraded (historian unread)
+}
+
+// buildSignoffDigestJSON re-shapes a signoffDigest into its leak-safe aggregate
+// view. No brief-identifying text crosses into it.
+func buildSignoffDigestJSON(d signoffDigest) signoffDigestJSON {
+	out := signoffDigestJSON{
+		Date:          d.Date,
+		State:         d.State,
+		AwaitingCount: len(d.Entries),
+		AgesKnown:     d.AgesKnown,
+	}
+	for _, e := range d.Entries {
+		switch e.Status {
+		case "implemented":
+			out.WIPImplemented++
+		case "verified":
+			out.WIPVerified++
+		}
+	}
+	// The entries are sorted oldest-first; the first with a known arrival is the
+	// longest-waiter. "" stays "" when no age is known — never a fabricated 0.
+	if d.AgesKnown {
+		for _, e := range d.Entries {
+			if !e.EnteredAt.IsZero() {
+				out.OldestAge = e.Age
+				break
+			}
+		}
+	}
+	return out
+}
+
+func runSignoffDigest(root string, asJSON bool) int {
 	now := nowFunc()
 	streams, _, err := loadStreams(root)
 	if err != nil {
+		if asJSON {
+			enc, _ := json.MarshalIndent(buildSignoffDigestJSON(couldNotCheckSignoffDigest(err.Error(), now)), "", "  ")
+			fmt.Println(string(enc))
+			fmt.Fprintln(os.Stderr, "statusgen:", err)
+			return 1
+		}
 		fmt.Print(renderSignoffDigest(couldNotCheckSignoffDigest(err.Error(), now)))
 		fmt.Fprintln(os.Stderr, "statusgen:", err)
 		return 1
@@ -399,6 +453,16 @@ func runSignoffDigest(root string) int {
 		}
 	}
 
-	fmt.Print(renderSignoffDigest(buildSignoffDigest(root, streams, entered, agesKnown, now)))
+	digest := buildSignoffDigest(root, streams, entered, agesKnown, now)
+	if asJSON {
+		enc, err := json.MarshalIndent(buildSignoffDigestJSON(digest), "", "  ")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "statusgen:", err)
+			return 1
+		}
+		fmt.Println(string(enc))
+		return 0
+	}
+	fmt.Print(renderSignoffDigest(digest))
 	return 0
 }

@@ -419,7 +419,7 @@ func TestCloseVerifyAppends_UndatedExisting(t *testing.T) {
 	if !verifiedCellRe.MatchString(row.Reviewed) {
 		t.Errorf("composed Reviewed cell %q does not start with a dated stamp — fails methodology/19's done-shape lint", row.Reviewed)
 	}
-	problems, _ := checkBriefFiles(streams)
+	problems, _ := checkBriefFiles(streams, streams)
 	for _, p := range problems {
 		if strings.Contains(p, "vg/11") || strings.Contains(p, "brief-11") {
 			t.Errorf("checkBriefFiles reported a PROBLEM against the brief close-verify just closed: %s", p)

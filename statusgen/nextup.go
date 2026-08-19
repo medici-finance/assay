@@ -68,11 +68,33 @@ var (
 	overflowThreshold = defaultSpanOfControl
 )
 
+// activeDriveSet is the operator-declared drive campaign(s) in effect for this
+// run (methodology-metrics/45). main() loads it from docs/roadmap/drives/ before
+// nextUp and wires it here; tests set it via withDrives. It follows the
+// spanOfControl package-var precedent so every existing nextUp caller stays
+// three-argument. The ZERO value (no active drive) is INERT: driveBoost returns 0
+// for every brief, no banner renders, and a board built with no manifest is
+// byte-identical to the pre-drives board (TestDriveAbsentIsInert).
+var activeDriveSet DriveSet
+
 type Pick struct {
 	Stream *Stream
 	Brief  Brief
-	Score  int
+	// Score is the BASE score (priority + staleness + value + unblocks) — the
+	// drive steer is kept separate in DriveTerm so the display can decompose it
+	// (base + named term) and never present a merged number.
+	Score int
+	// DriveTerm is the additive drive steer for this pick (methodology-metrics/45),
+	// 0 when no active drive covers it. DriveSlug names the drive that supplied the
+	// term (the max over overlapping drives). Total() is Score + DriveTerm.
+	DriveTerm int
+	DriveSlug string
 }
+
+// Total is the ranked score: the base score plus any drive steer. With no active
+// drive DriveTerm is 0 for every pick, so Total == Score and the ordering — and
+// the rendered board — is byte-identical to the pre-drives generator.
+func (p Pick) Total() int { return p.Score + p.DriveTerm }
 
 // NextUp is the computed Next-up view: the capped list of picks plus the counts
 // needed to render the span-of-control overflow indicator.
@@ -107,6 +129,22 @@ type NextUp struct {
 	// name) — the could-not-check state. Held CLOSED and NAMED: see queueBlocks
 	// for why that direction, and emit for the banner that makes it visible.
 	MeasuresUnknown []string
+	// --- Drive fields (methodology-metrics/45). All zero when no drive is active,
+	// keeping a no-manifest board byte-identical to the pre-drives generator. ---
+	//
+	// DriveBanner is the ACTIVE DRIVE honesty banner, set iff a SHOWN pick is
+	// boosted; emit renders it above the picks. DriveNotApplied is the fail-neutral
+	// "DRIVE NOT APPLIED" banner for a rejected manifest. DriveCoverageNotices carry
+	// the anti-Goodhart coverage>threshold NOTICEs (also surfaced on --lint).
+	DriveBanner          string
+	DriveNotApplied      string
+	DriveCoverageNotices []string
+	// HeldByDriveCap counts eligible briefs a DRIVE anti-starvation floor held back
+	// (mirrors HeldByStreamCap). Phase-1 WIRES the bucket; the ≤15/20 2-pass fill
+	// that populates it is methodology-metrics phase 3 (brief-44 Phase 3), so it is
+	// 0 today. The field exists now so consumers and the emit surface are stable
+	// across the phase boundary.
+	HeldByDriveCap int
 }
 
 // Overflow reports whether the eligible backlog exceeds the overflow threshold —
@@ -566,9 +604,29 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 	nu.Eligible = len(all)
 	sort.Strings(nu.MeasuresGated)
 	sort.Strings(nu.MeasuresUnknown)
+	// Drive steer (methodology-metrics/45). Applied HERE — AFTER eligibility and
+	// the base score are fixed — so it can only RE-RANK the eligible set, never
+	// change what is eligible (exactly like value/blockedCount). A malformed/
+	// expired/over-concurrent manifest sets DriveNotApplied and contributes zero
+	// term; the zero DriveSet contributes nothing at all, so this whole block is a
+	// no-op on a no-manifest board (byte-identical baseline).
+	if activeDriveSet.NotApplied {
+		nu.DriveNotApplied = driveNotAppliedText(activeDriveSet)
+	}
+	if activeDriveSet.applied() {
+		coverage, covNotices := activeDriveSet.driveCoverage(all)
+		nu.DriveCoverageNotices = covNotices
+		for i := range all {
+			term, slug := activeDriveSet.driveBoost(all[i].Stream.Name, all[i].Brief.Num, coverage)
+			all[i].DriveTerm = term
+			all[i].DriveSlug = slug
+		}
+	}
 	sort.Slice(all, func(i, j int) bool {
-		if all[i].Score != all[j].Score {
-			return all[i].Score > all[j].Score
+		// Rank by the TOTAL (base + drive term). With no drive every term is 0, so
+		// Total == Score and this is the exact pre-drives ordering.
+		if all[i].Total() != all[j].Total() {
+			return all[i].Total() > all[j].Total()
 		}
 		if all[i].Stream.Name != all[j].Stream.Name {
 			return all[i].Stream.Name < all[j].Stream.Name
@@ -627,5 +685,15 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 		picks = append(picks, p)
 	}
 	nu.Picks = picks
+	// Honesty (brief-44 Verify row 3): the ACTIVE DRIVE banner renders iff a SHOWN
+	// pick actually carries a drive term. A boosted pick reaching the board without
+	// this banner is a --lint PROBLEM (driveBannerProblems) — the steer is never
+	// presented as a merged, unattributed number.
+	for _, p := range picks {
+		if p.DriveTerm > 0 {
+			nu.DriveBanner = driveBannerText(activeDriveSet)
+			break
+		}
+	}
 	return nu
 }

@@ -563,6 +563,83 @@ serves: assay
 	}
 }
 
+// TestSplitLayoutIntakeEntriesBundled guards the finding from the issue-loop/15
+// review: the collector used to register docs/streams/intake and read it with
+// a single root-level os.ReadDir, silently skipping every entry under a
+// split-layout subdir (new/, decision-needed/, watching/, completed/,
+// rejected/) — and not even recording them in `omitted`, since it never saw
+// the subdir files at all. An in-range entry that exists ONLY under a subdir
+// must now be bundled just like a root-level one.
+func TestSplitLayoutIntakeEntriesBundled(t *testing.T) {
+	root := t.TempDir()
+	streamDir := filepath.Join(root, "docs", "streams", "s")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(streamDir, "README.md"), []byte(`---
+stream: s
+status: active
+priority: P1
+track: product
+serves: assay
+---
+# S
+
+## Briefs
+
+| # | Brief | Wave | Effort | Status | Verified | Reviewed |
+|---|-------|------|--------|--------|----------|----------|
+| 01 | [B](./brief-01-x.md) | 0 | S | todo | — | — |
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Two subdir-only entries (no root-level intake files at all): one
+	// in-range, one out-of-range, exactly mirroring the root-level
+	// in-range/out-of-range pair the flat-layout fixture already covers.
+	newDir := filepath.Join(root, "docs", "streams", "intake", "new")
+	completedDir := filepath.Join(root, "docs", "streams", "intake", "completed")
+	for _, d := range []string{newDir, completedDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inRange := "---\nid: I-split-in\ndate: 2026-07-16\ntitle: Split in-range\ndisposition: new\n---\n\nbody\n"
+	outOfRange := "---\nid: I-split-out\ndate: 2026-07-22\ntitle: Split out-of-range\ndisposition: scoped\n---\n\nbody\n"
+	if err := os.WriteFile(filepath.Join(newDir, "2026-07-16-in.md"), []byte(inRange), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(completedDir, "2026-07-22-out.md"), []byte(outOfRange), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	paths, bundle, omitted, err := collectBundledFiles(root, "2026-07-14", "2026-07-20")
+	if err != nil {
+		t.Fatalf("collectBundledFiles: %v", err)
+	}
+	for _, o := range omitted {
+		if strings.Contains(o.Path, "intake") {
+			t.Errorf("split-layout intake dir must not be reported as missing/omitted, got %+v", omitted)
+		}
+	}
+
+	var sawInRange, sawOutOfRange bool
+	for p := range bundle {
+		if strings.Contains(p, "2026-07-16-in.md") {
+			sawInRange = true
+		}
+		if strings.Contains(p, "2026-07-22-out.md") {
+			sawOutOfRange = true
+		}
+	}
+	if !sawInRange {
+		t.Errorf("the in-range split-layout intake entry must be bundled, got paths %v", paths)
+	}
+	if sawOutOfRange {
+		t.Error("the out-of-range split-layout intake entry must NOT be bundled")
+	}
+}
+
 // readManifest extracts and decodes manifest.json from a bundle.
 func readManifest(t *testing.T, path string) evidenceManifest {
 	t.Helper()

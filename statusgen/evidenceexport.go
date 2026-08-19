@@ -139,13 +139,33 @@ func collectBundledFiles(root, from, to string) ([]string, map[string][]byte, []
 	// Collect register entries whose date is in range by scanning the directory.
 	// Filenames are date-slug.md, not ID-based, so we scan and parse frontmatter.
 	registers := []struct {
-		dir   string
-		label string
-		parse func([]byte) (string, error)
+		dir       string
+		label     string
+		listFiles func() ([]string, error)
+		parse     func([]byte) (string, error)
 	}{
 		{
 			dir:   filepath.Join(root, "docs", "streams", "intake"),
 			label: "intake",
+			// listIntakeFiles walks root-level files (flat-layout compat)
+			// PLUS the five known disposition subdirs (issue-loop/15). A
+			// plain os.ReadDir here would only ever see root-level files, so
+			// a split-layout repo's entries would be silently dropped from
+			// the bundle — and not even recorded in `omitted`, since the
+			// collector would never see the subdir files to begin with. That
+			// is exactly the incomplete-bundle-that-looks-complete failure
+			// mode this module's contract (above) rules out.
+			listFiles: func() ([]string, error) {
+				base := filepath.Join(root, "docs", "streams", "intake")
+				if _, err := os.Stat(base); err != nil {
+					return nil, err
+				}
+				var out []string
+				for _, loc := range listIntakeFiles(root) {
+					out = append(out, filepath.Join(loc.Dir, loc.Name))
+				}
+				return out, nil
+			},
 			parse: func(raw []byte) (string, error) {
 				e, err := parseIntakeFile(raw)
 				if err != nil {
@@ -157,6 +177,22 @@ func collectBundledFiles(root, from, to string) ([]string, map[string][]byte, []
 		{
 			dir:   filepath.Join(root, "docs", "streams", "findings"),
 			label: "findings",
+			// findings has no split-layout concept — stays a flat scan.
+			listFiles: func() ([]string, error) {
+				dir := filepath.Join(root, "docs", "streams", "findings")
+				entries, err := os.ReadDir(dir)
+				if err != nil {
+					return nil, err
+				}
+				var out []string
+				for _, f := range entries {
+					if f.IsDir() || !strings.HasSuffix(f.Name(), ".md") {
+						continue
+					}
+					out = append(out, filepath.Join(dir, f.Name()))
+				}
+				return out, nil
+			},
 			parse: func(raw []byte) (string, error) {
 				e, err := parseFindingFile(raw)
 				if err != nil {
@@ -168,7 +204,7 @@ func collectBundledFiles(root, from, to string) ([]string, map[string][]byte, []
 	}
 
 	for _, reg := range registers {
-		entries, err := os.ReadDir(reg.dir)
+		files, err := reg.listFiles()
 		if err != nil {
 			rel, relErr := relPath(reg.dir)
 			if relErr != nil {
@@ -185,11 +221,7 @@ func collectBundledFiles(root, from, to string) ([]string, map[string][]byte, []
 			// mistaken for "this register is empty".
 			return nil, nil, nil, fmt.Errorf("read %s register dir %s: %w", reg.label, reg.dir, err)
 		}
-		for _, f := range entries {
-			if f.IsDir() || !strings.HasSuffix(f.Name(), ".md") {
-				continue
-			}
-			path := filepath.Join(reg.dir, f.Name())
+		for _, path := range files {
 			rel, err := relPath(path)
 			if err != nil {
 				return nil, nil, nil, err

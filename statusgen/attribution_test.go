@@ -300,6 +300,94 @@ func TestVerifierFloorFailure(t *testing.T) {
 	}
 }
 
+// TestEvidenceFloorFailure pins the Evidence read that completes the floor: the
+// Verified cell is one line an agent can edit, so the floor must ALSO read the
+// ## Evidence section — the per-row record of who actually ran the check. A row
+// whose completed Evidence runners are all below the floor poisons the gate; a
+// row cured by an above-floor (or human) re-run does not.
+func TestEvidenceFloorFailure(t *testing.T) {
+	cases := []struct {
+		name     string
+		evidence string
+		want     bool // true = FAILS the floor
+	}{
+		{
+			name: "a single row run only below the floor fails",
+			evidence: "| # | Date | Runner |\n|---|------|--------|\n" +
+				"| 1 | 2026-07-09 | haiku-verifier |",
+			want: true,
+		},
+		{
+			name: "an above-floor run clears",
+			evidence: "| # | Date | Runner |\n|---|------|--------|\n" +
+				"| 1 | 2026-07-09 | opus-verifier |",
+			want: false,
+		},
+		{
+			name: "a below-floor run cured by a strong re-run (second table) clears",
+			evidence: "| # | Date | Runner |\n|---|------|--------|\n" +
+				"| 1 | 2026-07-09 | haiku-verifier |\n\n" +
+				"| # | Date | Runner |\n|---|------|--------|\n" +
+				"| 1 | 2026-07-10 | opus-verifier |",
+			want: false,
+		},
+		{
+			name: "a resolvable human runner clears the row",
+			evidence: "| # | Date | Runner |\n|---|------|--------|\n" +
+				"| 1 | 2026-07-09 | human:alex |",
+			want: false,
+		},
+		{
+			name: "one uncured below-floor row among several cleared ones still fails",
+			evidence: "| # | Date | Runner |\n|---|------|--------|\n" +
+				"| 1 | 2026-07-09 | opus-verifier |\n" +
+				"| 2 | 2026-07-09 | sonnet-verifier |",
+			want: true,
+		},
+		{
+			name: "a below-floor row explicitly marked UNRUN is not a completed cheap run",
+			evidence: "| # | Date | Runner | Result |\n|---|------|--------|--------|\n" +
+				"| 1 | 2026-07-09 | haiku-verifier | UNRUN |",
+			want: false,
+		},
+		{
+			name:     "an empty Evidence section is not the floor's to fail on",
+			evidence: "",
+			want:     false,
+		},
+		{
+			// False-REJECT direction: a table with no `Runner` column makes the
+			// last cell (free-text output) the "runner"; a family word anywhere
+			// in it must NOT segment-match and fail an otherwise-strong run.
+			name: "a free-text output cell in a table with no Runner column does not poison the floor",
+			evidence: "| # | Command | Exit | Key output |\n|---|---------|------|------------|\n" +
+				"| 1 | `go test ./...` | 0 | all green; drafted by the sonnet worker earlier |",
+			want: false,
+		},
+		{
+			// False-ACCEPT (laundering) direction: a below-floor row in a
+			// column-named table must NOT be cured by a later table that has no
+			// `Runner` column, whose last cell happens to read as a strong token.
+			name: "a below-floor row is not laundered clear by a later table with no Runner column",
+			evidence: "| # | Date | Runner |\n|---|------|--------|\n" +
+				"| 1 | 2026-07-09 | haiku-verifier |\n\n" +
+				"| # | Command | Exit | Result |\n|---|---------|------|--------|\n" +
+				"| 1 | `go test` | 0 | opus-verifier |",
+			want: true,
+		},
+	}
+	for _, c := range cases {
+		reason, failed := evidenceFloorFailure(c.evidence)
+		if failed != c.want {
+			t.Errorf("%s: evidenceFloorFailure() = %v, want %v", c.name, failed, c.want)
+			continue
+		}
+		if failed && reason == "" {
+			t.Errorf("%s: failed the floor but returned no reason to name in the error", c.name)
+		}
+	}
+}
+
 // TestVerifierFloorHumanTokenIsNotASuppressor is the regression test for
 // The exemption is stated as the property rather than as a table row: for EVERY
 // below-floor runner, appending a human token to the cell must not change the

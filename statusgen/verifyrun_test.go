@@ -35,6 +35,19 @@ func TestParseExpectReadsTheCorpusConventions(t *testing.T) {
 		// "its own exit, not pass" has no digits after `exit`; a looser regex
 		// would have swallowed a number from elsewhere in the sentence.
 		{"exit word without a code", "exit code is its own, not pass", 0, "", 0, false},
+		// The `(...) ; echo exit=$?` control-row shape (#955). The compound always
+		// exits 0; the exit it is asserting is written as a BACKTICKED stdout
+		// token, which must NOT be read as the row's required process exit — or
+		// every such row reddens. The expected exit stays the default 0.
+		{"printed exit token in an output phrasing", "output contains `checked-clean` and `exit=0`", 0, "", 0, false},
+		{"printed non-zero exit token", "`exit=1`; output names the leaked marker", 0, "", 0, false},
+		{"printed exit token beside a NOT-clause", "`exit=0`; output contains a `note:` line, NOT the string `could-not-check`", 0, "", 0, false},
+		// An UNQUOTED exit is still the row's required process exit — the quoting
+		// is the whole signal, so the two forms must read differently.
+		{"unquoted exit stays a process-exit expectation", "exit 1 (the compound really exits non-zero)", 1, "", 0, false},
+		// Backticks are stripped only for the exit read; a quoted min-count floor
+		// beside a printed exit token still reads the floor.
+		{"printed exit token beside a quoted floor", "`exit=0`; output ≥ `2`", 0, "", 2, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -73,6 +86,13 @@ func TestVerdictThreeState(t *testing.T) {
 		// for, in its subtlest form: the command ran, but no verdict came out.
 		{"declared floor, unreadable output", "≥ `1`", runResult{output: []byte("no numbers here\n")}, stateCouldNotRun},
 		{"could-not-run beats a matching exit", "exit 127", runResult{exit: 127, couldNotRun: true, reason: "not found"}, stateCouldNotRun},
+		// #955: a `(...) ; echo exit=$?` control row. The compound exited 0 (the
+		// trailing echo succeeds); the exit it asserts is the backticked stdout
+		// token. Reading that token as a required non-zero process exit scored the
+		// row `fail (exit=0, expected 1)` — the exact regression this fixes. It
+		// must score pass on the compound's real exit 0.
+		{"printed non-zero exit token, compound exits 0", "`exit=1`; output names the leaked marker", runResult{exit: 0, output: []byte("exit=1\n")}, statePass},
+		{"printed exit token in output phrasing, compound exits 0", "output contains `checked-clean` and `exit=0`", runResult{exit: 0, output: []byte("checked-clean\nexit=0\n")}, statePass},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -348,7 +368,7 @@ func TestFixtureBriefPassRunsGreen(t *testing.T) {
 	if len(rows) != 4 {
 		t.Fatalf("fixture has %d Verify rows, want 4", len(rows))
 	}
-	ws := runWitnesses(root, rows, "test-runner", "0000", "2026-08-13", 60*time.Second)
+	ws := runWitnesses(root, rows, "test-runner", "0000", "2026-08-13", 60*time.Second, false)
 	for _, w := range ws {
 		if w.State != statePass {
 			t.Errorf("row %s: %s (%s) — the positive-control fixture must run green at the repo root", w.ID, w.State, w.Note)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -123,8 +124,16 @@ func backtickPathScope(root, f string) bool {
 	return strings.HasPrefix(filepath.ToSlash(rel), "docs/streams/")
 }
 
-func docFiles(root string) []string {
-	var files []string
+// docFiles returns the link-checkable file set (CLAUDE.md plus every *.md under
+// docs/**) AND a list of walk problems: docs subtrees that exist but could not
+// be read. A walk error was previously discarded (`_ = filepath.WalkDir(...)`
+// with an `err == nil` guard inside), so an unreadable docs/ tree enumerated
+// zero files, produced zero link problems, and the lint printed LINT: PASS —
+// a could-not-check rendered as a clean read (docs/three-state-instrument-rule.md,
+// sub-rule 1). The walk problems are returned so the caller can fail the lint
+// instead. An ABSENT subtree (os.IsNotExist) is a legitimate empty and is not a
+// problem; any OTHER read error is surfaced.
+func docFiles(root string) (files []string, walkProblems []string) {
 	if p := filepath.Join(root, "CLAUDE.md"); fileExists(p) {
 		files = append(files, p)
 	}
@@ -133,12 +142,84 @@ func docFiles(root string) []string {
 	// link-checked too, or broken doc links merge silently.
 	docsDir := filepath.Join(root, "docs")
 	_ = filepath.WalkDir(docsDir, func(p string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".md") {
-			files = append(files, p)
+		if err != nil {
+			// Could-not-check: a docs subtree we could not read. An absent one is
+			// a legitimate empty (skip); anything else is surfaced so the lint
+			// fails rather than silently enumerating fewer files. Keep walking so
+			// every unreadable subtree is reported in one pass.
+			if !os.IsNotExist(err) {
+				walkProblems = append(walkProblems, fmt.Sprintf("docs walk: %s: %v — could-not-check, the link lint's file set is a floor, not a total", p, err))
+			}
+			return nil
+		}
+		if !d.IsDir() && strings.HasSuffix(p, ".md") {
+			// A generator must not grade its own generated artifacts against a
+			// source-quality rule (#169). When statusgen actually emits a register
+			// view here (docs/streams/INTAKE.md / FINDINGS.md), that view's
+			// content is fixed by the generator's boilerplate templates and the
+			// per-entry source files, not authored in the view. Link-checking it
+			// would make an adopter fail its own --lint on a path statusgen itself
+			// hardcoded (e.g. the `docs/v-next.md` reference in the intake
+			// boilerplate) even though the adopter never wrote that path. The
+			// per-entry SOURCE files under docs/streams/{intake,findings}/ stay in
+			// this set, so genuine adopter-authored link breakage is still caught
+			// at its source. isGeneratedRegisterView excludes ONLY a view
+			// statusgen would itself write — a hand-authored or scaffolded file at
+			// that path, which the generator does not emit, stays checked.
+			if !isGeneratedRegisterView(root, p) {
+				files = append(files, p)
+			}
 		}
 		return nil
 	})
-	return files
+	return files, walkProblems
+}
+
+// isGeneratedRegisterView reports whether p is a register view that statusgen
+// ACTUALLY generates for this root: p sits directly under docs/streams/ with a
+// basename in registerViewNames (INTAKE.md / FINDINGS.md) AND the matching
+// generator emits non-empty content from the per-entry source files.
+//
+// The second condition is load-bearing. Location alone is not proof of
+// generation. A file at docs/streams/INTAKE.md is only statusgen's output when
+// there are per-entry intake files under docs/streams/intake/ to render from; a
+// hand-authored legacy register (the append-only single-file INTAKE.md some
+// repos still carry) or the INTAKE.md that `statusgen init` scaffolds for an
+// adopter to edit lives in a root with no per-entry files, so the generator
+// returns "" and writeRegisterViews writes nothing there. Such a file is
+// authored, not generated — it stays link-checked. Excluding it would silently
+// stop checking a real, editable document. Only a view statusgen would itself
+// write is exempt from the source-quality link check (#169).
+//
+// An identically-named file elsewhere in the tree (docs/articles/INTAKE.md, a
+// per-entry docs/streams/intake/INTAKE.md, a root-level INTAKE.md) is never a
+// generated view and stays checked.
+func isGeneratedRegisterView(root, p string) bool {
+	rel, err := filepath.Rel(root, p)
+	if err != nil {
+		return false
+	}
+	// rel is already slash-normalised, so path.Split is the exact idiom.
+	dir, base := path.Split(filepath.ToSlash(rel))
+	if dir != "docs/streams/" || !registerViewNames[base] {
+		return false
+	}
+	// Location and basename match a view name; confirm statusgen would actually
+	// emit it here. An empty result means no per-entry source files exist, so the
+	// on-disk file was authored rather than generated — keep checking it.
+	var view string
+	switch base {
+	case "INTAKE.md":
+		view, err = generateIntakeView(root)
+	case "FINDINGS.md":
+		view, err = generateFindingsView(root)
+	default:
+		return false
+	}
+	// A generator error is not a confirmation that the file is generated output;
+	// fail safe by keeping the file in the link-check set. The same parse error
+	// surfaces through the register lint / checkRegisterViews.
+	return err == nil && view != ""
 }
 
 func fileExists(p string) bool {

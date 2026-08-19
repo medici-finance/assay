@@ -1,6 +1,0 @@
-{"ts":"2026-07-02T00:00:00Z","brief":"s/01","from":"","to":"implemented","sha":"a1"}
-{"ts":"2026-07-04T00:00:00Z","brief":"s/01","from":"implemented","to":"verified","sha":"a2"}
-{"ts":"2026-07-05T00:00:00Z","brief":"s/01","from":"verified","to":"done","sha":"a3"}
-{"ts":"2026-07-03T00:00:00Z","brief":"s/02","from":"","to":"implemented","sha":"b1"}
-{"ts":"2026-07-09T00:00:00Z","brief":"s/02","from":"implemented","to":"done","sha":"b2"}
-{"ts":"2026-07-06T00:00:00Z","brief":"s/03","from":"","to":"implemented","sha":"c1"}

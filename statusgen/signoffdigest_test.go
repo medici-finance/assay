@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
@@ -339,12 +340,58 @@ func TestSignoffAgeAtGateOnBoard(t *testing.T) {
 	}
 }
 
+// TestBuildSignoffDigestJSON verifies the leak-safe aggregate view (agentic-metrics/02):
+// counts + oldest age + WIP-by-status only, never a brief id/title, three-state honest.
+func TestBuildSignoffDigestJSON(t *testing.T) {
+	d := signoffDigest{
+		Date:      "2026-07-20",
+		State:     signoffAwaiting,
+		AgesKnown: true,
+		Entries: []signoffEntry{
+			// Oldest-first order (as buildSignoffDigest sorts): known arrival first.
+			{Brief: "alpha/01", Title: "SECRET internal title", Status: "verified",
+				Age: "8d", EnteredAt: digestNow.Add(-192 * time.Hour)},
+			{Brief: "beta/02", Title: "another private title", Status: "implemented",
+				Age: "2d", EnteredAt: digestNow.Add(-48 * time.Hour)},
+		},
+	}
+	got := buildSignoffDigestJSON(d)
+	if got.State != signoffAwaiting {
+		t.Errorf("state = %q, want %q", got.State, signoffAwaiting)
+	}
+	if got.AwaitingCount != 2 {
+		t.Errorf("awaiting_count = %d, want 2", got.AwaitingCount)
+	}
+	if got.WIPVerified != 1 || got.WIPImplemented != 1 {
+		t.Errorf("WIP split wrong: verified=%d implemented=%d", got.WIPVerified, got.WIPImplemented)
+	}
+	if got.OldestAge != "8d" {
+		t.Errorf("oldest_age = %q, want 8d (longest-waiter)", got.OldestAge)
+	}
+	// Leak-safety: no brief id or title may cross into the aggregate JSON.
+	enc, _ := json.Marshal(got)
+	for _, banned := range []string{"alpha/01", "beta/02", "SECRET internal title", "another private title"} {
+		if strings.Contains(string(enc), banned) {
+			t.Errorf("decision JSON leaked internal detail %q: %s", banned, enc)
+		}
+	}
+
+	// could-not-check propagates and asserts no count.
+	cnc := buildSignoffDigestJSON(couldNotCheckSignoffDigest("historian unreadable", digestNow))
+	if cnc.State != signoffCouldNotCheck {
+		t.Errorf("state = %q, want %q", cnc.State, signoffCouldNotCheck)
+	}
+	if cnc.AwaitingCount != 0 || cnc.OldestAge != "" {
+		t.Errorf("could-not-check must not assert a count/age: %+v", cnc)
+	}
+}
+
 // TestRunSignoffDigestCouldNotCheckExits: an unreadable root must exit non-zero
 // with a could-not-check body, never exit 0 with an empty digest. A cron that
 // treats an unreadable repo as "nothing waiting" is worse than no cron.
 func TestRunSignoffDigestCouldNotCheckExits(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "does-not-exist")
-	if code := runSignoffDigest(root); code == 0 {
+	if code := runSignoffDigest(root, false); code == 0 {
 		t.Error("runSignoffDigest on an unreadable root exited 0 — could-not-check must fail loudly")
 	}
 }
@@ -352,7 +399,7 @@ func TestRunSignoffDigestCouldNotCheckExits(t *testing.T) {
 // TestRunSignoffDigestOnFixture is the end-to-end path the workflow runs.
 func TestRunSignoffDigestOnFixture(t *testing.T) {
 	root, _ := loadVGStreams(t)
-	if code := runSignoffDigest(root); code != 0 {
+	if code := runSignoffDigest(root, false); code != 0 {
 		t.Errorf("runSignoffDigest = %d, want 0", code)
 	}
 }

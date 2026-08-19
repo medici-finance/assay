@@ -483,6 +483,27 @@ func runConsumers(root, base, briefFilter string) int {
 		fmt.Fprintln(os.Stderr, "statusgen: --consumers:", err)
 		return 2
 	}
+	// Pin the base to a concrete commit ONCE, before any diff is taken, so the
+	// whole run is a pure function of (merge-base, HEAD, tree) — reproducible on
+	// re-run regardless of what the base ref does afterward.
+	//
+	// The gate is called with a live, MOVING ref (`origin/main`). Its two git
+	// consumers — changedPathsSince's three-dot diff and consumerEntriesAtBase's
+	// per-brief `merge-base`/`show` — each re-read that ref in a separate
+	// subprocess. When a background commit advances origin/main between those
+	// reads (or between two CI invocations of the identical command), the branch
+	// three-dot base shifts underneath them and the SAME command flips its exit
+	// code purely on ref motion — a flappy gate whose answer depends on WHEN it
+	// runs, not on the PR's content. Resolving the ref to its merge-base SHA here
+	// fixes it for every downstream read at once. This is a pure hardening: the
+	// three-dot diff and the per-brief merge-base already reduced to
+	// merge-base(base, HEAD), so pinning to that SHA changes no verdict — it only
+	// removes the drift. When the merge-base cannot be resolved (no git, a
+	// shallow clone missing it) we keep the ref as written; the diff step below
+	// then reports COULD-NOT-CHECK exactly as it did before.
+	if pinned, perr := pinConsumerBase(root, base); perr == nil {
+		base = pinned
+	}
 	changed, err := changedPathsSince(root, base)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "statusgen: --consumers: COULD-NOT-CHECK: %v (base %q) — no diff, so no routing claim was corroborated\n", err, base)
@@ -900,6 +921,30 @@ func exactlyChanged(changed map[string]bool, paths []string) string {
 // committed state either way, so this can only make the local loop honest, never
 // let an uncommitted claim through the gate.
 //
+// pinConsumerBase resolves a (possibly moving) base ref to the concrete
+// merge-base commit SHA it shares with HEAD, so runConsumers can fix the base
+// once and every git read below sees the identical commit. The merge-base is
+// the deterministic base: three-dot `base...HEAD` and the per-brief
+// `merge-base base HEAD` both reduce to it already, so substituting the SHA
+// keeps every verdict identical while removing the drift a live ref introduces.
+//
+// Fail direction: an error (no git, a shallow clone missing the merge-base, an
+// unresolvable ref) leaves runConsumers on the ref as written, so a repo where
+// the base cannot be pinned behaves exactly as before rather than silently
+// changing what the gate checks. A package-level var so tests can pin a base
+// without a git fixture.
+var pinConsumerBase = func(root, base string) (string, error) {
+	out, err := exec.Command("git", "-C", root, "merge-base", base, "HEAD").Output()
+	if err != nil {
+		return "", fmt.Errorf("git -C %s merge-base %s HEAD: %w", root, base, err)
+	}
+	sha := strings.TrimSpace(string(out))
+	if sha == "" {
+		return "", fmt.Errorf("git -C %s merge-base %s HEAD: empty result", root, base)
+	}
+	return sha, nil
+}
+
 // A package-level var so tests can substitute a diff without a git fixture.
 var changedPathsSince = func(root, base string) ([]string, error) {
 	out, err := exec.Command("git", "-C", root, "diff", "--name-only", base+"...HEAD").CombinedOutput()

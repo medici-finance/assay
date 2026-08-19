@@ -573,9 +573,9 @@ func verifySection(rows ...string) string {
 func collect(t *testing.T, section string) []string {
 	t.Helper()
 	var out []string
-	verifyRowTable(section, func(num, cmdCell, expect string) {
-		for _, f := range rowFindings(cmdCell, expect) {
-			out = append(out, f.rule+" row "+num)
+	verifyRowTable(section, func(r verifyRowCells) {
+		for _, f := range rowFindings(r.Command, r.Expect) {
+			out = append(out, f.rule+" row "+r.Num)
 		}
 	})
 	return out
@@ -656,7 +656,7 @@ func TestUnfailableRowRules(t *testing.T) {
 		},
 		{
 			name: "unsubstituted-metavar: an angle-bracket metavariable is also a shell redirect",
-			row:  "| 1 | `grep -ci 'foreign commit' <batch-fanout SKILL.md>` | ≥ 1 |",
+			row:  "| 1 | `grep -ci 'foreign commit' <worker-desk SKILL.md>` | ≥ 1 |",
 			want: []string{"unsubstituted-metavar row 1"},
 		},
 		{

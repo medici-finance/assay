@@ -11,12 +11,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Channel-conformance sweep (distribution/05, Task 4) — an ADVISORY `--lint`
+// Channel-conformance sweep — an ADVISORY `--lint`
 // NOTICE that flags any adopter-facing surface still teaching a non-sanctioned
 // acquisition channel. The sanctioned set it judges against is declared once,
 // in channels.go.
 //
-// THREE-STATE INSTRUMENT (desk-hardening/01). Every path in the declared scope
+// THREE-STATE INSTRUMENT. Every path in the declared scope
 // lands in exactly one of:
 //
 //	checked-clean    — read, matched nothing (or matched only a line that marks
@@ -51,11 +51,46 @@ var channelScanScope = []string{
 	"tools/desk/README.md",
 }
 
-// acceptedDriftRelPath is where the known-accepted register lives, relative to
-// the lint root. Absent is a legitimate state (it is a do-not-copy stream doc,
-// so it does not exist in the published tree) and is reported explicitly
-// rather than assumed empty.
-const acceptedDriftRelPath = "docs/streams/distribution/accepted-channel-drift.yml"
+// EnvChannelDriftPath names the environment variable carrying the repo-relative
+// path to the known-accepted channel-drift register:
+//
+//	ASSAY_CHANNEL_DRIFT_TARGET=docs/streams/<your-private-stream>/accepted-channel-drift.yml
+//
+// WHY A CONFIG POINTER AND NOT A HARD-CODED PATH. The register is a WITHHELD
+// stream doc — its content names the retired acquisition channels verbatim (as
+// the deviations it forgives), so its own stream is not published — and naming
+// its PATH in the SHIPPED source is itself the disclosure this de-housing
+// exists to prevent: a copy of statusgen published to a public repo would then
+// carry a map straight to the withheld stream by name. So the path is a
+// DEPLOYMENT VALUE the house supplies at run time, exactly as the desk's
+// routed-away streams work (ASSAY_SWEEP_WITHHELD_STREAMS) and the other generic
+// knobs (ASSAY_WRITEGUARD_CALLOUT, ASSAY_CONFIG_HOME): the shipped binary
+// carries the MECHANISM (read a house-configured register and keep the
+// exception layer honest), the deployment carries the POLICY (which of its own
+// private streams holds the register).
+//
+// UNSET IS COMPLETE, NOT DEGRADED. A tree with no house-configured register —
+// the public copy, where docs/streams is not published at all — has no accepted
+// exceptions to apply, so the register read is SKIPPED cleanly: no phantom path
+// is stat'd, no could-not-check line is emitted, and every in-scope surface is
+// still scanned. This is strictly safer than a compiled-in default path, which
+// in the public tree would either stat a phantom or map straight to the withheld
+// stream. The house supplies ASSAY_CHANNEL_DRIFT_TARGET at run time (roster.env)
+// so the in-house check keeps consulting its real register unchanged.
+//
+// NAMESPACE. This is a GENERIC methodology knob — the MECHANISM of reading a
+// house-supplied accepted-drift register — so it wears the ASSAY_ prefix. The
+// VALUE it carries is a deployment-specific withheld-stream path and is never
+// compiled in.
+const EnvChannelDriftPath = "ASSAY_CHANNEL_DRIFT_TARGET"
+
+// acceptedDriftTarget returns the house-configured repo-relative path to the
+// accepted-drift register from EnvChannelDriftPath, trimmed. Empty (the unset
+// case) is the complete public/adopter configuration: the register read is
+// skipped and the shipped binary carries no withheld-stream path.
+func acceptedDriftTarget() string {
+	return strings.TrimSpace(os.Getenv(EnvChannelDriftPath))
+}
 
 // channelFinding is one checked-failed result.
 type channelFinding struct {
@@ -185,17 +220,28 @@ func scanChannelDrift(rel string, r *os.File) ([]channelFinding, error) {
 // as an empty one, and must never quietly forgive a finding); parsed → the
 // entries, with incomplete ones downgraded to could-not-check.
 func loadAcceptedDrift(root string) ([]acceptedDrift, []channelBlind) {
-	path := filepath.Join(root, filepath.FromSlash(acceptedDriftRelPath))
+	rel := acceptedDriftTarget()
+	if rel == "" {
+		// No house-configured register (EnvChannelDriftPath unset). The register
+		// is a withheld-stream doc whose PATH must never be compiled into the
+		// shipped binary, so unset is the complete public/adopter configuration:
+		// skip the read cleanly — no phantom path to stat, an empty exception
+		// layer, and NOT a could-not-check. An empty exception layer is a real,
+		// clean state (exactly as an absent register was before de-housing), so
+		// the public tree does not read permanently blind.
+		return nil, nil
+	}
+	path := filepath.Join(root, filepath.FromSlash(rel))
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, []channelBlind{{acceptedDriftRelPath, fmt.Sprintf("accepted-drift register unreadable: %v — no entry was treated as accepted", err)}}
+		return nil, []channelBlind{{rel, fmt.Sprintf("accepted-drift register unreadable: %v — no entry was treated as accepted", err)}}
 	}
 	var file acceptedDriftFile
 	if err := yaml.Unmarshal(raw, &file); err != nil {
-		return nil, []channelBlind{{acceptedDriftRelPath, fmt.Sprintf("accepted-drift register does not parse: %v — no entry was treated as accepted", err)}}
+		return nil, []channelBlind{{rel, fmt.Sprintf("accepted-drift register does not parse: %v — no entry was treated as accepted", err)}}
 	}
 	var ok []acceptedDrift
 	var blind []channelBlind
@@ -219,7 +265,7 @@ func loadAcceptedDrift(root string) ([]acceptedDrift, []channelBlind) {
 				label = fmt.Sprintf("entry #%d", i+1)
 			}
 			blind = append(blind, channelBlind{
-				acceptedDriftRelPath,
+				rel,
 				fmt.Sprintf("accepted-drift entry %s is missing %s — recorded but not auditable, so it is NOT counted as an accepted exception", label, strings.Join(missing, "+")),
 			})
 			continue

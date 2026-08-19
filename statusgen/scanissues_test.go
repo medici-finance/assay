@@ -318,6 +318,99 @@ func TestScanIssuesDryRunWritesNothing(t *testing.T) {
 	}
 }
 
+// TestScanIssuesDryRunUnblockNoWrites is the #852 regression guard: the un-block
+// lane used to os.WriteFile (strip blocked:/blockedAt:) BEFORE the dry-run branch,
+// so a flag documented "without writing" still mutated placeholder frontmatter on
+// disk. Under --dry-run the scan must now perform ZERO filesystem writes on a
+// cleared-block placeholder — content AND mtime unchanged — while still REPORTING
+// the un-block ("would unblock …"). A non-dry-run run is the positive control: the
+// same fixture is actually written (block stripped).
+func TestScanIssuesDryRunUnblockNoWrites(t *testing.T) {
+	// A blocked placeholder whose issue (still open) received a human answer
+	// AFTER blockedAt — the classic un-block case.
+	blockedBody := placeholderFile("alpha", 500, "bug",
+		"blocked: awaiting-issue-response",
+		"blockedAt: 2026-07-10T12:00:00Z",
+	)
+	// "ada" (the configured blessing authority) answered after the block.
+	comments := fixtureCommentLister(map[string][]issueComment{
+		scanHomeRepo() + "#500": buildComments(
+			[3]string{"ada", "User", "2026-07-10T13:00:00Z"},
+		),
+	}, "")
+	// Issue 500 is OPEN (so it is neither created — a placeholder exists — nor
+	// retired), keeping the scan focused on the un-block lane.
+	issues := fixtureLister(map[string][]ghIssue{
+		scanHomeRepo(): {{Number: 500, Title: "bug", Labels: lbl("bug")}},
+	}, "")
+
+	newFixture := func() (root, phPath string) {
+		root = t.TempDir()
+		if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
+			t.Fatal(err)
+		}
+		phPath = filepath.Join(root, "docs/streams/alpha", "issue-500.md")
+		writeTemp(t, filepath.Dir(phPath), "issue-500.md", blockedBody)
+		return root, phPath
+	}
+
+	// --- dry-run: no write, but the un-block is reported ---
+	root, phPath := newFixture()
+	before, err := os.ReadFile(phPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeInfo, err := os.Stat(phPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var code int
+	out := captureStdout(t, func() {
+		code = runScanIssues(root, true, issues, comments, blessAll)
+	})
+	if code != 0 {
+		t.Fatalf("dry-run exited %d, want 0", code)
+	}
+
+	after, err := os.ReadFile(phPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("dry-run mutated placeholder content (#852):\n--- before ---\n%s\n--- after ---\n%s", before, after)
+	}
+	afterInfo, err := os.Stat(phPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !afterInfo.ModTime().Equal(beforeInfo.ModTime()) {
+		t.Errorf("dry-run rewrote the placeholder file (mtime changed %v → %v) — must be read-only (#852)",
+			beforeInfo.ModTime(), afterInfo.ModTime())
+	}
+	// The block state must be intact on disk after a dry-run.
+	if ph, ok, _ := parsePlaceholderFile(phPath); !ok || ph.Blocked == "" {
+		t.Error("dry-run must leave the placeholder blocked; blocked field was cleared")
+	}
+	// …yet the un-block is still reported.
+	if !strings.Contains(out, "would unblock") {
+		t.Errorf("dry-run must report the un-block (\"would unblock …\"); got:\n%s", out)
+	}
+
+	// --- positive control: non-dry-run DOES write (block stripped) ---
+	root2, phPath2 := newFixture()
+	if code := runScanIssues(root2, false, issues, comments, blessAll); code != 0 {
+		t.Fatalf("non-dry-run exited %d, want 0", code)
+	}
+	ph2, ok, err := parsePlaceholderFile(phPath2)
+	if err != nil || !ok {
+		t.Fatalf("unblocked file must still parse: ok=%v err=%v", ok, err)
+	}
+	if ph2.Blocked != "" || ph2.BlockedAt != "" {
+		t.Errorf("non-dry-run must clear the block; got blocked=%q blockedAt=%q", ph2.Blocked, ph2.BlockedAt)
+	}
+}
+
 // TestScanExcludedLabels documents the exclusion constant is complete for the
 // system-state labels (including the review-request dispatch label) and
 // matches case-insensitively.

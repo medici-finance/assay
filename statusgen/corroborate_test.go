@@ -100,6 +100,114 @@ index ghi..jkl 100644
 	}
 }
 
+// TestIsExcludedFixturePath pins the path-boundary semantics of the carve-out
+// directly: only paths genuinely UNDER the exact prefix are excluded, and a
+// lookalike sibling sharing the leading substring (the "-evil" case) is NOT.
+func TestIsExcludedFixturePath(t *testing.T) {
+	excluded := []string{
+		"docs/streams/education/assay-tutorial-skeleton/root/README.md",
+		"docs/streams/education/assay-tutorial-skeleton/root/scripts/grade/selftest.sh",
+	}
+	for _, p := range excluded {
+		if !isExcludedFixturePath(p) {
+			t.Errorf("isExcludedFixturePath(%q) = false, want true — it is under the tutorial-skeleton prefix", p)
+		}
+	}
+	notExcluded := []string{
+		"docs/streams/education/assay-tutorial-skeleton-evil/board.md", // lookalike sibling
+		"docs/streams/education/assay-tutorial-skeleton",               // the bare dir name, no trailing slash
+		"docs/streams/education/assay-tutorial-skeleton.md",            // a file that shares the stem
+		"docs/streams/methodology/README.md",                           // an ordinary board file
+		"statusgen/testdata/assay-tutorial-skeleton/x.md",              // NOT rehomed under testdata
+		"",
+	}
+	for _, p := range notExcluded {
+		if isExcludedFixturePath(p) {
+			t.Errorf("isExcludedFixturePath(%q) = true, want false — only the exact prefix (with its trailing slash) is excluded", p)
+		}
+	}
+}
+
+// TestStampsInDiffFixtureExclusion is the anti-evasion pin for the education/08
+// tutorial-skeleton carve-out (Ian's #1232 ruling: exclude the exact tutorial path,
+// behind a security-review, because a loose exclusion is an evasion surface). It
+// asserts BOTH directions in one diff:
+//
+//   - a `human:<name>` stamp on a file UNDER corroborateExcludedFixturePrefix is
+//     SKIPPED — the tutorial corpus teaches the notation with fictional personas, so
+//     it must not produce MISSING-CORROBORATION.
+//   - a `human:<name>` stamp on a normal brief/board file, AND on a look-alike sibling path
+//     (".../assay-tutorial-skeleton-evil/...") that merely shares the prefix
+//     substring, STILL yields a stamp that must be corroborated. The trailing slash
+//     in the constant is the path boundary; a bare HasPrefix without it would let the
+//     "-evil" sibling widen the carve-out, which is the whole point of the review.
+func TestStampsInDiffFixtureExclusion(t *testing.T) {
+	// The fixture below must contain REAL human:<name> stamps at runtime, but this
+	// test file is itself scanned by the `--corroborate` PR lint gate, which reads
+	// the tool's own diff. Writing the literal token in source would make this file's
+	// own fixtures report MISSING-CORROBORATION on every PR that touches it. So the
+	// prefix is spelled with the sentinel "HSTAMP" here and expanded to "human:" at
+	// runtime — the fixture is unchanged in behaviour, but the source carries no
+	// bare human:<name> literal for the self-scan to trip on.
+	diff := strings.ReplaceAll(`diff --git a/docs/streams/education/assay-tutorial-skeleton/root/README.md b/docs/streams/education/assay-tutorial-skeleton/root/README.md
+--- a/docs/streams/education/assay-tutorial-skeleton/root/README.md
++++ b/docs/streams/education/assay-tutorial-skeleton/root/README.md
++| 01 | Tutorial brief | 0 | S | done | 2026-07-10 opus | 2026-07-10 HSTAMPalex |
+diff --git a/docs/streams/education/assay-tutorial-skeleton-evil/board.md b/docs/streams/education/assay-tutorial-skeleton-evil/board.md
+--- a/docs/streams/education/assay-tutorial-skeleton-evil/board.md
++++ b/docs/streams/education/assay-tutorial-skeleton-evil/board.md
++| 02 | Lookalike | 0 | S | done | 2026-07-10 opus | 2026-07-10 HSTAMPsam |
+diff --git a/docs/streams/methodology/README.md b/docs/streams/methodology/README.md
+--- a/docs/streams/methodology/README.md
++++ b/docs/streams/methodology/README.md
++| 03 | Real board | 0 | S | done | 2026-07-10 opus | 2026-07-10 HSTAMPalex |
+`, "HSTAMP", "human:")
+	stamps := stampsInDiff(diff)
+
+	// The excluded fixture file must contribute NO stamp.
+	for _, s := range stamps {
+		if strings.HasPrefix(s.File, "docs/streams/education/assay-tutorial-skeleton/") {
+			t.Errorf("stamp %+v came from the excluded tutorial-skeleton prefix — it must be skipped", s)
+		}
+	}
+
+	// The lookalike sibling and the real board file must BOTH still be present:
+	// the carve-out is a path boundary, not a substring, so "-evil" is not excluded.
+	wantFiles := map[string]bool{
+		"docs/streams/education/assay-tutorial-skeleton-evil/board.md": false,
+		"docs/streams/methodology/README.md":                           false,
+	}
+	for _, s := range stamps {
+		if _, ok := wantFiles[s.File]; ok {
+			wantFiles[s.File] = true
+		}
+	}
+	for f, seen := range wantFiles {
+		if !seen {
+			t.Errorf("stamp on %q was dropped — a file outside the exact prefix must still require corroboration", f)
+		}
+	}
+
+	// And end-to-end: with no reviews/comments, the two non-excluded stamps must
+	// both report MISSING-CORROBORATION (the anti-evasion assertion), while the
+	// excluded one contributes nothing to corroborate at all.
+	results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1232)
+	missingByFile := map[string]bool{}
+	for _, r := range results {
+		if r.Verdict == verdictMissing {
+			missingByFile[r.Stamp.File] = true
+		}
+		if strings.HasPrefix(r.Stamp.File, "docs/streams/education/assay-tutorial-skeleton/") {
+			t.Errorf("excluded fixture stamp reached corroboration: %+v", r)
+		}
+	}
+	for f := range wantFiles {
+		if !missingByFile[f] {
+			t.Errorf("file %q did not report MISSING-CORROBORATION — a forged stamp outside the carve-out must still fail", f)
+		}
+	}
+}
+
 func TestStampsInDiffDeduplication(t *testing.T) {
 	// Two human:alex stamps in the same file should deduplicate to one.
 	diff := `diff --git a/docs/streams/x/README.md b/docs/streams/x/README.md
