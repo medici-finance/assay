@@ -48,7 +48,7 @@ func runCmd(name string, args ...string) (string, error) {
 var runGH = func(args ...string) (string, error) { return runCmd("gh", args...) }
 
 // runDisposition shells out to the SIBLING tool that owns the disposition schema
-// (ground-truth/05's deskdisposition). deskclose deliberately does not re-implement
+// (the deskdisposition tool). deskclose deliberately does not re-implement
 // the marker parser: the record has exactly one declared reader, and a second copy of
 // the parse is a second thing to drift. A missing binary is could-not-check, not
 // "no record" — see readDisposition.

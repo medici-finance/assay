@@ -1,5 +1,5 @@
-// Package draft is the composing half of the Ask Assay pane (desk-console-2/02,
-// design doc §7.5 phase 2). It turns computed claims into a DRAFT a human
+// Package draft is the composing half of the Ask Assay pane (design §7.5
+// phase 2). It turns computed claims into a DRAFT a human
 // reads, and it has no way at all to turn a draft into a post.
 //
 // THE INVARIANT

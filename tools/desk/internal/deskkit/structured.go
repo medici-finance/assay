@@ -5,12 +5,12 @@ import (
 	"strings"
 )
 
-// Structured-format awareness for the shared secret scan (ground-truth/06).
+// Structured-format awareness for the shared secret scan.
 //
 // WHY THIS FILE EXISTS AT ALL, AND WHY IT IS NOT A PILE OF EXEMPTION PATCHES.
 //
-// #781 catalogued four (later nine) structurally different false-positive
-// shapes in a single session and argued — correctly — that patching each shape as its own
+// A single-session catalogue found four (later nine) structurally different false-positive
+// shapes and argued — correctly — that patching each shape as its own
 // content pattern would miss the fifth and sixth. The shapes it lists are not arbitrary:
 // go.sum checksum lines, package-lock integrity fields and sops envelopes are all
 // MACHINE-GENERATED FIELDS OF A KNOWN FILE FORMAT, in which a high-entropy run is not
@@ -46,7 +46,7 @@ type span struct{ lo, hi int }
 // that no source line in this package ever carries the contiguous five-dash-BEGIN literal.
 // That is not style: the pre-fix scanner refuses any surface containing it, and it scans
 // REMOVED diff lines too, so a file that spells the marker out cannot be edited through
-// the tools it guards (#380). Composing it keeps this file maintainable by
+// the tools it guards. Composing it keeps this file maintainable by
 // deskpr.
 const armorDashes = "-----"
 
@@ -60,7 +60,7 @@ var (
 	// front of it, or a marker followed by 45 characters, is not a module checksum.
 	//
 	// A leading unified-diff marker is tolerated because the surface deskpr scans is a
-	// diff. deskpr strips the marker itself (#812) — this is belt and braces
+	// diff. deskpr strips the marker itself — this is belt and braces
 	// for any other caller that hands a raw diff to the scan.
 	reGoSumDigest = regexp.MustCompile(`(?m)^[+\- ]?[ \t]*[^ \t\n]+[ \t]+v[^ \t\n]+[ \t]+h1:([A-Za-z0-9+/]{43}=)[ \t]*$`)
 
@@ -76,7 +76,7 @@ var (
 	// three ciphertext payloads. sops writes every encrypted value as
 	// `ENC[AES256…,data:…,iv:…,tag:…,type:…]` — all four fields, in that order. A
 	// partial marker (`ENC[AES256…,data:x]`) is NOT this shape and is refused by
-	// ScanSurface's sops arm, which is what keeps #585's coincidental
+	// ScanSurface's sops arm, which is what keeps a coincidental
 	// substring and a hand-written imitation on the refusing side.
 	reSopsEnvelope = regexp.MustCompile(
 		`ENC\[AES256_GCM,data:([A-Za-z0-9+/=]*),iv:([A-Za-z0-9+/=]*),tag:([A-Za-z0-9+/=]*),type:([a-z]+)\]`)
@@ -89,7 +89,7 @@ var (
 	// reArmorLabel matches the LABEL half of a well-formed delimiter — a space, an
 	// upper-alnum label, and the closing five dashes. A `-{5}BEGIN` occurrence that does
 	// not match this is not a delimiter at all: it is the marker quoted in prose or in the
-	// detector's own source (#380).
+	// detector's own source.
 	reArmorLabel = regexp.MustCompile(`^ ([A-Z0-9][A-Z0-9 ]*)-{5}`)
 
 	// reArmorBlock matches a complete armor block — BEGIN delimiter, body, END delimiter —
@@ -109,9 +109,9 @@ const privateKeyLabel = "PRIVATE KEY"
 // The set is CLOSED and an unknown label REFUSES. That is the fail-closed half of
 // replacing the old `strings.Contains(s, <five-dash BEGIN>)` blanket: a novel or
 // misspelled label is still a refusal, so the change cannot be walked past by inventing a
-// label. What it buys is #380 (the detector's own quoted marker, which is not
-// a well-formed delimiter at all) and #778 (a sops age/pgp recipient block,
-// whose payload is the data key encrypted TO a recipient).
+// label. What it buys is recognition of the detector's own quoted marker (which is not
+// a well-formed delimiter at all) and of a sops age/pgp recipient block,
+// whose payload is the data key encrypted TO a recipient.
 var armorCiphertextOrPublicLabels = map[string]bool{
 	"AGE ENCRYPTED FILE":       true,
 	"PGP MESSAGE":              true,
@@ -140,12 +140,12 @@ var armorCiphertextOrPublicLabels = map[string]bool{
 //   - the label names private-key material           → secret-bearing (refuse)
 //   - the label is a well-formed CLOSED-LIST member  → not secret-bearing (ciphertext/public)
 //   - the label is well-formed but UNKNOWN           → secret-bearing (fail closed)
-//   - there is no well-formed label at all           → not a delimiter (#380)
+//   - there is no well-formed label at all           → not a delimiter
 //
 // The last state is the one that lets the detector's own source through. `bodycheck.go`
 // carries the marker as a quoted Go string and inside a refusal message that elides the
 // label; neither is followed by an upper-alnum label and closing dashes, so neither is a
-// PEM header — which is what #380 has been saying since it was filed, and why
+// PEM header — which is what the false-positive report has been saying since it was filed, and why
 // four PRs were pushed around the tool rather than through it.
 func armorBeginIsSecretBearing(rest string) bool {
 	if strings.Contains(rest, privateKeyLabel) {
@@ -240,15 +240,15 @@ func sopsDocument(s string) bool {
 //  1. the document signature — a line-anchored `sops:` mapping key AND a sops-metadata
 //     field under it. Prose that says "sops" has neither.
 //  2. at least one COMPLETE `ENC[AES256…,data:…,iv:…,tag:…,type:…]` envelope — all four
-//     fields, in order. A truncated paste, a hand-written imitation, or #585's
+//     fields, in order. A truncated paste, a hand-written imitation, or a
 //     coincidental substring has no such grammar.
 //  3. at least one of those envelopes OUTSIDE the `sops:` metadata block — i.e. the
 //     document actually has ENCRYPTED CONTENT, not merely a footer.
 //
-// This is the discriminator the sops policy turns on (#778). The house's
+// This is the discriminator the sops policy turns on. The
 // sanctioned Flux path is `sops encrypt → commit → push → reconcile`, so an encrypted
 // manifest is content that is SUPPOSED to be committed; refusing it unconditionally made
-// the sanctioned path unusable and pushed desk-console/04 into a human-executed manual
+// the sanctioned path unusable and pushed the operator into a human-executed manual
 // step the tooling was meant to handle.
 //
 // (3) is the narrow one and it is worth being explicit about, because the obvious spelling
@@ -259,7 +259,7 @@ func sopsDocument(s string) bool {
 // all. That is not an encrypted-at-rest manifest, it is a fragment, and the entire
 // justification for admitting sops content — "the secrets in this file are ciphertext" —
 // says nothing about it. Requiring an envelope outside the metadata block is what makes the
-// exemption apply to the artifact #778 could not commit and to nothing else.
+// exemption apply to the artifact the operator could not commit and to nothing else.
 func sanctionedSopsDocument(s string) bool {
 	if !sopsDocument(s) {
 		return false
@@ -306,7 +306,7 @@ func structuredExemptSpans(s string) []span {
 	}
 	// The generated `sops:` metadata block: age/pgp recipients, key fingerprints, the
 	// encrypted data keys and the MAC. This is machine-written key-management material,
-	// none of it plaintext, and it is the half of #778 an envelope-only
+	// none of it plaintext, and it is the half of the sops case an envelope-only
 	// exemption misses. Containment: the literal-pattern arms still scan this region, so a
 	// token or private key hidden under `sops:` is refused by those and not by this.
 	if b, ok := sopsMetadataBlock(s); ok {

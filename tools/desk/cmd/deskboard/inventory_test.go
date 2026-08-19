@@ -297,13 +297,19 @@ func TestReadMergeState_UnknownStatesAreNotMergeable(t *testing.T) {
 
 // reviewFixtures are the reviewState reductions a PR can present.
 var reviewFixtures = map[string]reviewState{
-	"none":                {},
-	"head-advanced":       {ever: true, atHead: false, lastSHA: "old"},
-	"blocking-at-head":    {ever: true, atHead: true, blocking: true},
-	"comment-only-head":   {ever: true, atHead: true},
-	"approved":            {ever: true, atHead: true, approved: true},
-	"approved-secpass":    {ever: true, atHead: true, approved: true, securityPass: true},
-	"approved-no-secpass": {ever: true, atHead: true, approved: true, securityPass: false},
+	"none":              {},
+	"head-advanced":     {ever: true, atHead: false, lastSHA: "old"},
+	"blocking-at-head":  {ever: true, atHead: true, blocking: true},
+	"comment-only-head": {ever: true, atHead: true},
+	// #37: a no-op APPROVED suppressed over a standing CHANGES_REQUESTED at the SAME
+	// head reduces to blocking=true with suspectNoOp=true — the shape reduceReviews
+	// produces for the live-evidence forgery. Distinct from "blocking-at-head" (an
+	// ordinary CHANGES_REQUESTED with no suppressed approval behind it): the classifier
+	// must read this one as SUSPECT-APPROVAL, never BLOCKED.
+	"suspect-noop-approval": {ever: true, atHead: true, blocking: true, suspectNoOp: true},
+	"approved":              {ever: true, atHead: true, approved: true},
+	"approved-secpass":      {ever: true, atHead: true, approved: true, securityPass: true},
+	"approved-no-secpass":   {ever: true, atHead: true, approved: true, securityPass: false},
 }
 
 // expectedAction is the per-fixture expected-action table (#400 Q4), written from the
@@ -346,6 +352,11 @@ func expectedAction(rf rollupFixture, mv mergeVerdict, rs reviewState,
 			return actMergeCurr
 		}
 		return actReReview
+	// #37: a suppressed no-op APPROVED over a standing CHANGES_REQUESTED at the same
+	// head must read SUSPECT-APPROVAL, never an ordinary BLOCKED — checked first since
+	// classify()'s own switch checks it before the plain blocking arm.
+	case rs.blocking && rs.suspectNoOp:
+		return actSuspectApproval
 	case rs.blocking:
 		return actBlocked
 	case fail > 0 && unknown > 0:
@@ -411,7 +422,6 @@ func expectedAction(rf rollupFixture, mv mergeVerdict, rs reviewState,
 // presented as complete, in the documentation of the section about subsets presented as
 // complete. `TestReadme_VerbParity` covers the tool-reference ROW, not this sentence.
 func TestReadme_SweepingVerbSentence_359(t *testing.T) {
-	skipIfReadmeAbsent(t)
 	b, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
 	if err != nil {
 		t.Fatalf("reading tools/desk/README.md: %v", err)
@@ -420,7 +430,7 @@ func TestReadme_SweepingVerbSentence_359(t *testing.T) {
 	i := strings.Index(string(b), claim)
 	if i < 0 {
 		t.Fatalf("README.md no longer carries the %q sentence — the coverage claim it documents "+
-			"is what this test keeps legible", claim)
+			"is what #359 exists to make legible", claim)
 	}
 	// The sentence runs to the end of its bullet (the next line starting "- **").
 	rest := string(b)[i:]
@@ -1005,7 +1015,6 @@ func keysOf(m map[string]any) []string {
 // verb added or renamed leaves the documented list quietly wrong, and the operator
 // reading it believes the board covers something it does not.
 func TestReadme_VerbParity(t *testing.T) {
-	skipIfReadmeAbsent(t)
 	b, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
 	if err != nil {
 		t.Fatalf("reading tools/desk/README.md: %v", err)

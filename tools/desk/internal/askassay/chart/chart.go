@@ -1,9 +1,9 @@
-// Package chart renders the Ask Assay charts (desk-console-2/03, design doc
-// §7.5 and §7.6) from [askassay.Answer] values and from NOTHING ELSE.
+// Package chart renders the Ask Assay charts (design §7.5 and §7.6) from
+// [askassay.Answer] values and from NOTHING ELSE.
 //
 // WHAT THIS PACKAGE IS FOR
 // ------------------------
-// desk-console-2/01 made the numbers rule structural for a single figure: an
+// The numbers rule was made structural for a single figure: an
 // answer holds its value in an unexported field, could-not-check cannot carry
 // one, and Render reads the state rather than the field. A chart is the same
 // figure repeated across a domain, and it is where that guarantee is most

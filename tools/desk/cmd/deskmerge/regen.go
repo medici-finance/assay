@@ -26,7 +26,7 @@ import (
 //   - docs/streams/*/README.md — the brief status tables. Hand-authored; a conflict
 //     there is two people disagreeing about a brief's state.
 //   - docs/brief-rules.md — the live proof of why. It carries DUPLICATE rule numbers 25
-//     and 26 right now, because ground-truth/01 and ground-truth/03 each authored into
+//     and 26 right now, because two briefs each authored into
 //     the same numbering space in parallel and neither diff showed the other's numbers.
 //     That collision produced NO conflict at all, so no auto-resolution would have been
 //     invoked; adding the file to this list would only have widened the blast radius of

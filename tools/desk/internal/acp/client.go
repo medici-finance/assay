@@ -24,7 +24,7 @@ type Opts struct {
 	Env []string
 	// Stderr receives the agent process's stderr. Defaults to os.Stderr --
 	// spike-grade: passed straight through unattributed. A real consumer
-	// (brief 15) should capture and attribute it instead.
+	// should capture and attribute it instead.
 	Stderr io.Writer
 
 	// ClientName/ClientVersion identify this client in `initialize`.
@@ -79,6 +79,36 @@ type SessionUpdate struct {
 	SessionID SessionID
 	Kind      string
 	Raw       json.RawMessage
+}
+
+// wireAgentMessageChunk is the "agent_message_chunk" update shape: the agent's
+// streamed message text arrives one content block at a time.
+type wireAgentMessageChunk struct {
+	Content struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"content"`
+}
+
+// Text returns the text of an "agent_message_chunk" update, and ok=false for
+// any other update kind (or a chunk that is not a text block). A real dispatch
+// consumer reconstructs the worker's final report by concatenating
+// Text() across the turn's chunks -- the spike had no consumer and so left the
+// Raw json.RawMessage for callers to decode themselves; this accessor is the
+// revision that consumer forces, so report reconstruction is not re-open-coded
+// against the wire shape in every caller.
+func (u SessionUpdate) Text() (string, bool) {
+	if u.Kind != "agent_message_chunk" {
+		return "", false
+	}
+	var w wireAgentMessageChunk
+	if err := json.Unmarshal(u.Raw, &w); err != nil {
+		return "", false
+	}
+	if w.Content.Type != "text" {
+		return "", false
+	}
+	return w.Content.Text, true
 }
 
 // Client drives one spawned agent process through the ACP core flow.
@@ -141,7 +171,13 @@ func Spawn(cmd []string, opts Opts) (*Client, error) {
 		opts:    opts,
 		updates: make(chan SessionUpdate, 256),
 	}
-	cl.conn = newConn(stdin, stdout, cl.serveRequest, cl.handleNotify)
+	// onClose closes the updates channel once, on the read-loop goroutine
+	// after it has stopped, so a consumer ranging over Updates() terminates
+	// when the agent process exits. sync.Once guards a defensive double call.
+	var updatesClosed sync.Once
+	cl.conn = newConn(stdin, stdout, cl.serveRequest, cl.handleNotify, func() {
+		updatesClosed.Do(func() { close(cl.updates) })
+	})
 	return cl, nil
 }
 

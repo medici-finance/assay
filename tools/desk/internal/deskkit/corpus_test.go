@@ -7,17 +7,17 @@ import (
 	"testing"
 )
 
-// The GOLDEN CORPUS tests (ground-truth/06, #781).
+// The GOLDEN CORPUS tests.
 //
 // bodycheck shipped on asserted, unmeasured accuracy. The first real measurement found
-// that 100% of one diff's flags were legitimate go.sum lines (#781) and that 3% of runs in
-// the one credential layout the path rule names were admitted (#410). Both numbers exist
+// that 100% of one diff's flags were legitimate go.sum lines and that 3% of runs in
+// the one credential layout the path rule names were admitted. Both numbers exist
 // because somebody finally ran the scanner over the house's own artifacts instead of
 // reasoning about it. These two tests are that measurement, checked in, in BOTH
 // directions, release-blocking for desk-tools (docs/desk-tools-gate-bar.md).
 //
 // The directions are not symmetric in cost and the corpus says so: a false positive
-// strands a correct PR (#775 sat blocked across two sessions and two
+// strands a correct PR (a fix sat blocked across two sessions and two
 // abandoned worktrees) while a false negative posts a credential. Neither is acceptable,
 // and a change that trades one for the other fails the bar rather than passing half of it.
 
@@ -119,8 +119,8 @@ func parseCorpusArtifact(t *testing.T, file, raw string) corpusArtifact {
 // the corpus must scan CLEAN. Each `neg-` file is a shape a real PR was blocked on.
 //
 // Release-blocking. A red run here means the scanner is refusing the house's own
-// artifacts, which is how #775's fix ended up sitting in two abandoned
-// worktrees, how desk-console/04 ended up pushing a manual human step onto the operator,
+// artifacts, which is how a fix ended up sitting in two abandoned
+// worktrees, how the operator ended up with a manual human step,
 // and how a lockfile ended up being DROPPED from a PR rather than the scanner fixed.
 func TestBodycheckCorpus(t *testing.T) {
 	for _, a := range loadCorpus(t) {
@@ -141,7 +141,7 @@ func TestBodycheckCorpus(t *testing.T) {
 // must still be REFUSED, at exit 5.
 //
 // Release-blocking, and it is the half that stops this brief from being a licence to
-// loosen. #410 is the standing proof both directions matter: a comment
+// loosen. The path-rule differential is the standing proof both directions matter: a comment
 // asserted a residual was impossible, a measurement found it at 3% under the published
 // example key's own layout, and the fixture-only lock could not see it because the
 // headline value was still refused. Every artifact here is synthetic or a published
@@ -172,19 +172,19 @@ func TestBodycheckPositives(t *testing.T) {
 // This is the shape of failure the stream's conventions call out by name: a check that
 // still runs but no longer looks at the thing it was built to look at reports green
 // forever. Dropping the go.sum artifact because it is inconvenient would leave both other
-// tests passing and the #781 class unmeasured.
+// tests passing and the go.sum class unmeasured.
 func TestBodycheckCorpusCoversEveryCataloguedShape(t *testing.T) {
 	required := map[string]string{
-		"neg-go-sum-checksums.txt":                 "#781 shape 4 — go.sum h1: digests",
-		"neg-package-lock-integrity.txt":           "#781 shape 4 — SRI integrity fields",
-		"neg-key-path-shell-assignment.txt":        "#775 — key=path Evidence idiom",
-		"neg-sops-encrypted-manifest.txt":          "#778 — sanctioned SOPS manifest",
-		"neg-camelcase-test-identifiers.txt":       "#781 shape 3 / #1576 — CamelCase identifiers",
-		"neg-bodycheck-own-marker-literals.txt":    "#380 — the detector's own source",
-		"pos-aws-secret-access-key.txt":            "#410 — the slash-layout AWS class",
-		"pos-aws-key-slash-layout-synthetic.txt":   "#410 — the measured residual population",
-		"pos-pem-private-key.txt":                  "#380 — private-key armor must stay refused",
-		"pos-secret-hidden-in-a-sops-document.txt": "#778 — the sops exemption must stay scoped",
+		"neg-go-sum-checksums.txt":                 "shape 4 — go.sum h1: digests",
+		"neg-package-lock-integrity.txt":           "shape 4 — SRI integrity fields",
+		"neg-key-path-shell-assignment.txt":        "key=path Evidence idiom",
+		"neg-sops-encrypted-manifest.txt":          "sanctioned SOPS manifest",
+		"neg-camelcase-test-identifiers.txt":       "shape 3 — CamelCase identifiers",
+		"neg-bodycheck-own-marker-literals.txt":    "the detector's own source",
+		"pos-aws-secret-access-key.txt":            "the slash-layout AWS class",
+		"pos-aws-key-slash-layout-synthetic.txt":   "the measured residual population",
+		"pos-pem-private-key.txt":                  "private-key armor must stay refused",
+		"pos-secret-hidden-in-a-sops-document.txt": "the sops exemption must stay scoped",
 	}
 	present := map[string]bool{}
 	for _, a := range loadCorpus(t) {
@@ -198,7 +198,7 @@ func TestBodycheckCorpusCoversEveryCataloguedShape(t *testing.T) {
 }
 
 // TestBodycheckCorpusCanFail is the PROOF THE CHECK CAN FAIL, which this stream requires
-// of every check it ships (the #488 lesson: eight unfailable checks landed in
+// of every check it ships (the unfailable-check lesson: eight unfailable checks landed in
 // one day, and that is an authoring-loop defect rather than carelessness).
 //
 // It runs the two scoring rules above against POSITIVE CONTROLS — an artifact declared

@@ -1,11 +1,9 @@
-# tools/desk/internal/acp — spike findings (loop-engine/14)
+# tools/desk/internal/acp — spike findings
 
-This is the input `docs/streams/loop-engine/brief-15-verifyloop-native-dispatch.md`
-reads first, per Task 6 of brief 14. It records what the live spike (Task 5) found,
-so 15's native-dispatch design starts from measured protocol facts rather than the
-spec's assumptions.
+This records what the live spike found, so the native-dispatch design starts from
+measured protocol facts rather than the spec's assumptions.
 
-## Answer to `docs/acp-dispatch-spec.md` §7.1 — auth/billing mode
+## Answer to the dispatch spec §7.1 — auth/billing mode
 
 **Subscription-login billing, not `ANTHROPIC_API_KEY` pay-per-token billing.**
 
@@ -25,12 +23,12 @@ A dollar `cost` figure is also reported per turn (`"cost":{"amount":0.219605,"cu
 but this reads as an *observability* figure attached to subscription usage, not an
 API-key line-item charge — there is no API key in the picture at all.
 
-**Billing implication for brief 16 (tier→runner config):** a dispatched worker running
+**Billing implication for tier→runner config:** a dispatched worker running
 under this adapter, with no `ANTHROPIC_API_KEY` configured, draws from the *same*
 5-hour subscription window as the operator model's own usage and everything else
 sharing that machine's `claude` login. Concurrent dispatches contend for one shared
-window, not N independent per-worker API budgets. If brief 16 wants isolated,
-per-worker billing it must set `ANTHROPIC_API_KEY` in each runner's `Opts.Env`
+window, not N independent per-worker API budgets. For isolated,
+per-worker billing, a runner must set `ANTHROPIC_API_KEY` in each runner's `Opts.Env`
 explicitly — the adapter will use it instead (it's one of the adapter's own
 credential-routing env vars) — and that path was not exercised live here.
 
@@ -47,13 +45,13 @@ step out of band before `session/new` — this package does not implement that f
 
 | What | Value |
 |---|---|
-| Adapter | `@agentclientprotocol/claude-agent-acp@0.66.0` (`npx -y`, no version pin recorded by this spike — brief 16 owns real pinning) |
+| Adapter | `@agentclientprotocol/claude-agent-acp@0.66.0` (`npx -y`, no version pin recorded by this spike — real pinning is left to the consumer) |
 | Adapter's ACP SDK dep | `@agentclientprotocol/sdk@1.3.0` |
 | Adapter's Claude Agent SDK dep | `@anthropic-ai/claude-agent-sdk@0.3.220` |
 | Negotiated protocol version | **1** (integer; the adapter's `initialize` handler returns `protocolVersion: 1` unconditionally — it does not actually negotiate against the client's requested value, per its own source) |
-| Node | v26.7.0 on the dev machine (the brief's freshness note recorded v22.22.3 present; the adapter ran fine on v26, engines floor not separately checked) |
+| Node | v26.7.0 on the dev machine (a freshness note recorded v22.22.3 present; the adapter ran fine on v26, engines floor not separately checked) |
 
-## Protocol surprises (for brief 15)
+## Protocol surprises
 
 1. **Framing is newline-delimited JSON-RPC 2.0, not LSP-style Content-Length
    framing.** One JSON object per line on stdin/stdout, confirmed against the
@@ -72,7 +70,7 @@ step out of band before `session/new` — this package does not implement that f
    `reject_once` option) correctly stopped the agent before the write and produced
    `stopReason: "refusal"` with no file written.
 
-   **This is the single most important finding for 15.** `docs/acp-dispatch-spec.md`
+   **This is the single most important finding.** The dispatch spec
    §4.2(4) says "Permission policy: default-deny" — but that policy is *inert*
    unless the native-dispatch adapter calls `SetMode` to `"default"` (or
    `"dontAsk"`) immediately after `NewSession`, before the first `Prompt`. Skipping
@@ -98,7 +96,7 @@ step out of band before `session/new` — this package does not implement that f
    slash-command/skill roster of the *host* Claude Code session the adapter's SDK
    is running inside of. That payload is environment-specific; a native-dispatch
    consumer must not assume its shape is stable or agent-neutral across runner
-   changes (relevant to brief 16's dual-track Claude/Codex/Gemini runner rows).
+   changes (relevant to dual-track Claude/Codex/Gemini runner rows).
 
 5. **Lines can be large** (tens of KB — `available_commands_update` was the
    largest observed). This package's reader uses `bufio.Reader.ReadBytes`, not a
@@ -122,5 +120,5 @@ step out of band before `session/new` — this package does not implement that f
   `Opts.SupportedProtocolVersions` (default `[]int{1}`, the only version observed).
 
 Public surface is spike-grade (`Spawn`, `Initialize`, `NewSession`, `SetMode`,
-`Prompt`, `Cancel`, `Close`, `Updates()`) and is expected to be revised once brief 15
-builds a real consumer on top of it.
+`Prompt`, `Cancel`, `Close`, `Updates()`) and is expected to be revised once a real
+consumer is built on top of it.

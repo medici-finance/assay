@@ -349,7 +349,7 @@ func TestAuthorityAutoPostAttemptIsRefused(t *testing.T) {
 
 // TestAuthorityPresenceNeverGrants proves the order of checks in HandOff. The
 // substrate for two transmitting destinations is absent today. If the refusal
-// depended on that absence, the invariant would expire the day desk-console/10
+// depended on that absence, the invariant would expire the day the console shell
 // lands. So: flip Present to true on a transmitting destination and confirm
 // the refusal is unchanged.
 func TestAuthorityPresenceNeverGrants(t *testing.T) {

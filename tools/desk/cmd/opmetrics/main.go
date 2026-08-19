@@ -1,4 +1,4 @@
-// Command opmetrics is the LOCAL operator-layer collector (methodology-metrics/40).
+// Command opmetrics is the LOCAL operator-layer collector.
 //
 // It measures the human at the top of the loop — how much of his message traffic is
 // plumbing rather than decision — and emits ONE aggregates-only day-file:
@@ -6,8 +6,8 @@
 //	<root>/docs/reports/daily/<date>/opmetrics.json
 //
 // WHERE IT RUNS. On the OPERATOR's machine, not in CI. Its inputs (session
-// transcripts, roster beacons, dispatch claims) exist only there; #766's "run by the
-// daily harvest" is wrong as written, and the brief says so. The day-file rides into
+// transcripts, roster beacons, dispatch claims) exist only there; the "run by the
+// daily harvest" reading is wrong as written. The day-file rides into
 // the repo alongside the harvest, not via it.
 //
 // PRIVACY, WHICH IS THE POINT OF THIS TOOL'S DESIGN. opmetrics reads a person's own

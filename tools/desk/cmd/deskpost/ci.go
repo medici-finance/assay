@@ -48,6 +48,29 @@ func evalCI(cs *combinedStatus, cr *checkRunsResp) ciVerdict {
 		}
 	}
 
+	// Concurrency-supersede (#1283). GitHub's own status-check ROLLUP reads, for each
+	// check NAME, the LATEST run's conclusion — an older run that a newer run of the same
+	// name superseded does not govern the head. The `closecheck` workflow emits a
+	// concurrency-supersede TWIN per push: a CANCELLED run and a SUCCESS run of the SAME
+	// name at the SAME head SHA (same displayTitle, created the same second). GitHub reads
+	// the SUCCESS and reports mergeStateStatus=CLEAN; the CANCELLED half is the superseded
+	// old run, NOT a failure. The check-runs REST endpoint, however, returns BOTH raw runs,
+	// so a per-RUN reduction that treats any CANCELLED as red refuses a head GitHub calls
+	// green — with no way to clear it, since the twin re-emits on every push.
+	//
+	// So compute, per check NAME, whether a completed NON-cancelled run exists at this
+	// head. A CANCELLED run of such a name is concurrency-superseded and must not be read
+	// as a failure. This does NOT weaken the gate for genuine failures: a CANCELLED run
+	// whose name has NO completed non-cancelled sibling is a real cancellation and still
+	// returns ciRed, and a FAILURE/TIMED_OUT/etc. of any name still returns ciRed
+	// regardless of a success sibling.
+	supersededOK := map[string]bool{}
+	for _, run := range cr.CheckRuns {
+		if run.Status == "completed" && run.Conclusion != "" && run.Conclusion != "cancelled" {
+			supersededOK[run.Name] = true
+		}
+	}
+
 	for _, run := range cr.CheckRuns {
 		if run.Status != "completed" {
 			pending = true
@@ -59,7 +82,14 @@ func evalCI(cs *combinedStatus, cr *checkRunsResp) ciVerdict {
 			relevant++
 		case "neutral", "skipped":
 			// Ignored.
-		case "failure", "cancelled", "timed_out", "action_required", "stale":
+		case "cancelled":
+			// Superseded twin → GitHub's rollup reads the non-cancelled sibling; not a
+			// failure (#1283). A CANCELLED with no such sibling is a genuine cancellation.
+			if supersededOK[run.Name] {
+				continue
+			}
+			return ciRed
+		case "failure", "timed_out", "action_required", "stale":
 			return ciRed
 		default:
 			// Unknown conclusion on a completed run → fail closed as unverifiable.

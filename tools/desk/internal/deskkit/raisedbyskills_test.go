@@ -1,7 +1,7 @@
 package deskkit
 
 // raisedbyskills_test.go — the DIFF half of derive-or-diff for the `raised-by:<role>`
-// vocabulary (methodology-metrics/29).
+// vocabulary.
 //
 // The roster's role-bindings are the ONE declared source (raisedby.go). The desk SKILL.md
 // files are copies: each one names its own role in prose, in a `--raised-by <role>`
@@ -42,11 +42,8 @@ const skillsDir = "../../../../.claude/skills"
 
 // TestSkillsRaisedByVocabularyMatchesTheRoster is the diff.
 func TestSkillsRaisedByVocabularyMatchesTheRoster(t *testing.T) {
-	// The desk SKILL.md files carrying `--raised-by <role>` live under
-	// .claude/skills, which is not part of this repository's published file set.
 	skipIfFixtureAbsent(t, skillsDir,
 		".claude/ is not part of this repository's published file set; no desk skills ship")
-
 	bound := map[string]bool{}
 	for _, r := range RaisedByRoles() {
 		bound[r] = true
@@ -119,10 +116,8 @@ func TestSkillsRaisedByVocabularyMatchesTheRoster(t *testing.T) {
 // covers, applied to the copies. A published label must be role-shaped: lowercase letters,
 // digits and dashes. A handle, a given name or an id cannot survive that shape.
 func TestSkillsRaisedByRolesCarryNoPersonalIdentifier(t *testing.T) {
-	// The desk-skills corpus is not part of this repository's published file set.
 	skipIfFixtureAbsent(t, skillsDir,
 		".claude/ is not part of this repository's published file set; no desk skills ship")
-
 	entries, err := os.ReadDir(skillsDir)
 	if err != nil {
 		t.Fatalf("cannot read %s: %v", skillsDir, err)

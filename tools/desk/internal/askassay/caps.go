@@ -102,6 +102,20 @@ var declaredListCaps = []ListCap{
 		Cap:         0,
 		Effect:      "two capped reads: a label existence probe fixed at 5, and an issue read whose cap comes from a caller flag. The caller-supplied one is the worse shape — the cap is chosen at the call site and the answer never says which value was used, so the same command produces different totals with no visible difference",
 	},
+	{
+		File:        "cmd/deskdigest/collect.go",
+		Needle:      `"--limit", "300"`,
+		Occurrences: 1,
+		Cap:         300,
+		Effect:      "the per-repo label-inventory probe truncates at 300 labels. deskdigest uses this probe to tell 'the human-only label has never been created' apart from 'no items carry it'; a label sitting past the 300th in a truncated read reads as absent, so beyond the cap a real label is misreported as never-created — the exact false negative this probe exists to prevent",
+	},
+	{
+		File:        "cmd/deskdigest/post.go",
+		Needle:      `"--limit", "50"`,
+		Occurrences: 1,
+		Cap:         50,
+		Effect:      "the search for this week's existing digest issue (state all) truncates at 50 hits. If more than 50 same-titled digest issues exist, the prior-week lookup can miss the open one past the cap and post a second digest for the week — the duplicate findWeekly's exact-title refusal is built to prevent",
+	},
 }
 
 // DeclaredListCaps returns the register.

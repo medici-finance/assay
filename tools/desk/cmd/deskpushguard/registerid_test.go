@@ -10,10 +10,12 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// NOTE on naming: as of this writing #746 (foreigncommit_test.go) is not yet merged to
-// main, so this file uses its own regID*-prefixed git-fixture helpers instead of sharing
-// names like runGitT/commitEmpty that #746 also introduces. Once #746 lands, a follow-up can
-// collapse the duplication; until then the two PRs stay mechanically non-conflicting.
+// NOTE on naming: #746 (foreigncommit_test.go) has landed. registerid.go's own source
+// helpers are now collapsed onto that file's shared shaRe/gitOut/branchIsAncestorOfMain
+// (#764 item 3). These regID*-prefixed TEST fixture helpers are retained deliberately: they
+// still coexist in one package with foreigncommit_test.go's own runGit*/write* fixtures, and
+// the prefix keeps the two test files free of redeclared symbols. Collapsing the test
+// fixtures too is a separate, purely-cosmetic follow-up and is intentionally out of scope here.
 
 // regIDRunGitT runs git in dir and fails the test on error, returning trimmed stdout.
 func regIDRunGitT(t *testing.T, dir string, args ...string) string {
@@ -95,7 +97,7 @@ func newRegisterIDCollisionFixture(t *testing.T, firstID, secondID string) (dir,
 	return workerB, "worker-b-branch", headSHA
 }
 
-func TestCheckRegisterIDCollisions_DetectsOit566StyleCollision(t *testing.T) {
+func TestCheckRegisterIDCollisions_DetectsCrossBranchStyleCollision(t *testing.T) {
 	dir, ownBranch, ownSHA := newRegisterIDCollisionFixture(t, "F-39", "F-39")
 
 	// First: confirm the ALREADY-COVERED failure shape (foreign/laundered commits) reports
@@ -228,5 +230,191 @@ func TestRun_RefusesPushCarryingRegisterIDCollision(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "worker-a-branch") {
 		t.Errorf("expected stderr to name the sibling source branch, got:\n%s", stderr.String())
+	}
+}
+
+// TestExtractRegisterID_MatchesStatusgenYAMLSemantics is the #764 item-1 alignment proof:
+// the guard now reads the `id:` the SAME way statusgen's authoritative duplicateIDs gate does
+// (splitFrontmatter + yaml.v3), not the looser unanchored line regex it used before. Each
+// case names a divergence the old regex got wrong.
+func TestExtractRegisterID_MatchesStatusgenYAMLSemantics(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name:    "bare id in frontmatter",
+			content: "---\nid: F-1\ndate: \"2026-08-01\"\n---\n\nBody.\n",
+			want:    "F-1",
+		},
+		{
+			name:    "quoted id in frontmatter",
+			content: "---\nid: \"F-2\"\n---\nBody.\n",
+			want:    "F-2",
+		},
+		{
+			// yaml.v3 accepts whitespace before the colon and reads the key as "id"; the old
+			// `^id:` line regex required the colon flush against "id" and so failed open here,
+			// missing a real id (and any collision it carried).
+			name:    "whitespace before colon (id :)",
+			content: "---\nid : F-3\ndate: \"2026-08-01\"\n---\nBody.\n",
+			want:    "F-3",
+		},
+		{
+			// statusgen only ever reads the frontmatter block, so an `id:` appearing only in
+			// the body (e.g. a fenced example) is NOT the entry's id. The old multiline regex
+			// scanned the whole file and would surface this phantom id.
+			name:    "id only in body, not frontmatter",
+			content: "---\ndate: \"2026-08-01\"\n---\n\nExample: `id: F-phantom` shown below.\n",
+			want:    "",
+		},
+		{
+			// yaml.v3 rejects duplicate mapping keys — statusgen reds authoritatively on the
+			// same file — so the guard fails open (skip) rather than silently taking the first,
+			// as the old regex did.
+			name:    "duplicate id keys",
+			content: "---\nid: F-a\nid: F-b\n---\nBody.\n",
+			want:    "",
+		},
+		{
+			name:    "no frontmatter fence at all",
+			content: "# heading, no fence\nid: F-nope\n",
+			want:    "",
+		},
+		{
+			name:    "frontmatter present but no id key",
+			content: "---\ndate: \"2026-08-01\"\ntitle: \"x\"\n---\nBody.\n",
+			want:    "",
+		},
+		{
+			// CRLF must be normalized (statusgen does this) or the whole file is swallowed as
+			// unterminated frontmatter and the id is lost.
+			name:    "CRLF line endings",
+			content: "---\r\nid: F-crlf\r\ndate: \"2026-08-01\"\r\n---\r\nBody.\r\n",
+			want:    "F-crlf",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := extractRegisterID(tc.content); got != tc.want {
+				t.Errorf("extractRegisterID() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestCheckRegisterIDCollisions_DetectsInPlaceModifiedID is the #764 item-2 (MODIFY) proof:
+// an id changed IN PLACE on an existing entry is a MODIFY, not an ADD. The old
+// `--diff-filter=A` scan let it past the advisory layer; `--diff-filter=AM` catches it.
+func TestCheckRegisterIDCollisions_DetectsInPlaceModifiedID(t *testing.T) {
+	remoteDir := t.TempDir()
+	regIDRunGitT(t, remoteDir, "init", "--bare", "-b", "main")
+
+	seed := t.TempDir()
+	regIDRunGitT(t, seed, "init", "-b", "main")
+	regIDRunGitT(t, seed, "config", "user.email", "seed@test")
+	regIDRunGitT(t, seed, "config", "user.name", "seed")
+	regIDRunGitT(t, seed, "remote", "add", "origin", remoteDir)
+	regIDWriteFile(t, seed, "README.md", "# repo\n")
+	// An existing findings entry already landed on main, id F-original.
+	regIDWriteFile(t, seed, "docs/streams/findings/2026-07-01-existing.md",
+		"---\nid: F-original\ndate: \"2026-07-01\"\ntitle: \"existing\"\n---\n\nBody.\n")
+	regIDRunGitT(t, seed, "add", ".")
+	regIDRunGitT(t, seed, "commit", "-m", "chore: initial commit on main")
+	regIDRunGitT(t, seed, "push", "origin", "main")
+
+	// Worker A: in-flight sibling ADDS a new entry claiming F-collide.
+	workerA := t.TempDir()
+	regIDRunGitT(t, workerA, "clone", remoteDir, ".")
+	regIDRunGitT(t, workerA, "config", "user.email", "a@test")
+	regIDRunGitT(t, workerA, "config", "user.name", "worker-a")
+	regIDRunGitT(t, workerA, "checkout", "-b", "worker-a-branch", "origin/main")
+	regIDWriteFile(t, workerA, "docs/streams/findings/2026-08-01-worker-a-finding.md",
+		"---\nid: F-collide\ndate: \"2026-08-01\"\ntitle: \"worker A\"\n---\n\nBody.\n")
+	regIDRunGitT(t, workerA, "add", ".")
+	regIDRunGitT(t, workerA, "commit", "-m", "docs(findings): worker A")
+	regIDRunGitT(t, workerA, "push", "origin", "worker-a-branch")
+
+	// Worker B: MODIFIES the existing entry in place, re-iding F-original -> F-collide.
+	workerB := t.TempDir()
+	regIDRunGitT(t, workerB, "clone", remoteDir, ".")
+	regIDRunGitT(t, workerB, "config", "user.email", "b@test")
+	regIDRunGitT(t, workerB, "config", "user.name", "worker-b")
+	regIDRunGitT(t, workerB, "checkout", "-b", "worker-b-branch", "origin/main")
+	regIDWriteFile(t, workerB, "docs/streams/findings/2026-07-01-existing.md",
+		"---\nid: F-collide\ndate: \"2026-07-01\"\ntitle: \"existing (re-ided in place)\"\n---\n\nBody.\n")
+	regIDRunGitT(t, workerB, "add", ".")
+	regIDRunGitT(t, workerB, "commit", "-m", "docs(findings): re-id existing entry in place")
+	headSHA := regIDRunGitT(t, workerB, "rev-parse", "HEAD")
+
+	collisions, err := checkRegisterIDCollisions(workerB, "worker-b-branch", headSHA)
+	if err != nil {
+		t.Fatalf("checkRegisterIDCollisions error: %v", err)
+	}
+	if len(collisions) != 1 {
+		t.Fatalf("expected exactly 1 collision from the in-place MODIFY, got %d: %+v", len(collisions), collisions)
+	}
+	c := collisions[0]
+	if c.id != "F-collide" {
+		t.Errorf("collision id = %q, want F-collide", c.id)
+	}
+	if !strings.Contains(c.ownPath, "2026-07-01-existing.md") {
+		t.Errorf("collision ownPath = %q, want the in-place-modified existing.md", c.ownPath)
+	}
+	if c.sourceBranch != "origin/worker-a-branch" {
+		t.Errorf("collision sourceBranch = %q, want origin/worker-a-branch", c.sourceBranch)
+	}
+}
+
+// TestCheckRegisterIDCollisions_DoesNotSkipBranchNamedLikeHEAD is the #764 item-2 (ref-skip)
+// proof: a sibling branch whose name merely ENDS in "HEAD" must still be scanned. The old
+// HasSuffix(b, "HEAD") skip silently excluded it; the exact-match origin/HEAD skip does not.
+func TestCheckRegisterIDCollisions_DoesNotSkipBranchNamedLikeHEAD(t *testing.T) {
+	remoteDir := t.TempDir()
+	regIDRunGitT(t, remoteDir, "init", "--bare", "-b", "main")
+
+	seed := t.TempDir()
+	regIDRunGitT(t, seed, "init", "-b", "main")
+	regIDRunGitT(t, seed, "config", "user.email", "seed@test")
+	regIDRunGitT(t, seed, "config", "user.name", "seed")
+	regIDRunGitT(t, seed, "remote", "add", "origin", remoteDir)
+	regIDWriteFile(t, seed, "README.md", "# repo\n")
+	regIDRunGitT(t, seed, "add", ".")
+	regIDRunGitT(t, seed, "commit", "-m", "chore: initial commit on main")
+	regIDRunGitT(t, seed, "push", "origin", "main")
+
+	// Worker A pushes an in-flight sibling branch whose name ends in "HEAD".
+	workerA := t.TempDir()
+	regIDRunGitT(t, workerA, "clone", remoteDir, ".")
+	regIDRunGitT(t, workerA, "config", "user.email", "a@test")
+	regIDRunGitT(t, workerA, "config", "user.name", "worker-a")
+	regIDRunGitT(t, workerA, "checkout", "-b", "detached-HEAD", "origin/main")
+	regIDWriteFile(t, workerA, "docs/streams/findings/2026-08-01-a.md",
+		"---\nid: F-99\ndate: \"2026-08-01\"\ntitle: \"a\"\n---\n\nBody.\n")
+	regIDRunGitT(t, workerA, "add", ".")
+	regIDRunGitT(t, workerA, "commit", "-m", "docs(findings): a")
+	regIDRunGitT(t, workerA, "push", "origin", "detached-HEAD")
+
+	workerB := t.TempDir()
+	regIDRunGitT(t, workerB, "clone", remoteDir, ".")
+	regIDRunGitT(t, workerB, "config", "user.email", "b@test")
+	regIDRunGitT(t, workerB, "config", "user.name", "worker-b")
+	regIDRunGitT(t, workerB, "checkout", "-b", "worker-b-branch", "origin/main")
+	regIDWriteFile(t, workerB, "docs/streams/findings/2026-08-01-b.md",
+		"---\nid: F-99\ndate: \"2026-08-01\"\ntitle: \"b\"\n---\n\nBody.\n")
+	regIDRunGitT(t, workerB, "add", ".")
+	regIDRunGitT(t, workerB, "commit", "-m", "docs(findings): b")
+	headSHA := regIDRunGitT(t, workerB, "rev-parse", "HEAD")
+
+	collisions, err := checkRegisterIDCollisions(workerB, "worker-b-branch", headSHA)
+	if err != nil {
+		t.Fatalf("checkRegisterIDCollisions error: %v", err)
+	}
+	if len(collisions) != 1 {
+		t.Fatalf("expected the branch ending in HEAD to still be scanned (1 collision), got %d: %+v", len(collisions), collisions)
+	}
+	if collisions[0].sourceBranch != "origin/detached-HEAD" {
+		t.Errorf("sourceBranch = %q, want origin/detached-HEAD", collisions[0].sourceBranch)
 	}
 }

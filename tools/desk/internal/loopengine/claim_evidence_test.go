@@ -13,8 +13,8 @@ import (
 
 // The corpus these tests encode (measured 2026-08-13, on this repo's stream boards):
 // a dispatcher acquired claims for two briefs whose board rows read "todo" and dispatched
-// workers; BOTH briefs already had open PRs (cigar-stream/01 -> #722, cigar-stream/04 ->
-// #733), and the claim call returned rc=0 for both, because a claim records only "this
+// workers; BOTH briefs already had open PRs (sample/01 and sample/04),
+// and the claim call returned rc=0 for both, because a claim records only "this
 // dispatcher is working on it". Across the same boards, 24 of 147 "todo" rows already had
 // a MERGED PR. Claim's contract therefore has to consult evidence outside the claims dir,
 // and has to say which evidence it consulted.
@@ -32,20 +32,20 @@ func TestClaimRefusesItemWithOpenPR(t *testing.T) {
 		RunnerID:   "dispatcher-a",
 		Progress:   &log,
 		WorkEvidence: func(it Item) (bool, string, error) {
-			if it.ID == "cigar-stream/01" {
-				return true, "open PR #722 (2026-08-12) already implements it", nil
+			if it.ID == "sample/01" {
+				return true, "an open PR (2026-08-12) already implements it", nil
 			}
 			return false, "", nil
 		},
 	}
-	it := Item{ID: "cigar-stream/01"}
+	it := Item{ID: "sample/01"}
 
 	ok, err := Claim(cfg, it)
 	if err != nil {
 		t.Fatalf("Claim errored: %v; want a clean refusal (false, nil)", err)
 	}
 	if ok {
-		t.Fatal("Claim ACQUIRED an item that already has an open PR — this is the 2026-08-13 double-dispatch (#722/#733) reopening")
+		t.Fatal("Claim ACQUIRED an item that already has an open PR — this is the 2026-08-13 double-dispatch reopening")
 	}
 	// The refusal must not have written a claim: a refused item is not half-claimed.
 	if _, serr := os.Stat(claimPath(cfg, it)); !os.IsNotExist(serr) {
@@ -53,13 +53,13 @@ func TestClaimRefusesItemWithOpenPR(t *testing.T) {
 	}
 	// The refusal must NAME what it deduplicated against — a silent no-op is the failure
 	// this replaced.
-	if got := log.String(); !strings.Contains(got, "DEDUP cigar-stream/01") || !strings.Contains(got, "#722") {
+	if got := log.String(); !strings.Contains(got, "DEDUP sample/01") || !strings.Contains(got, "open PR") {
 		t.Fatalf("refusal did not name its evidence; Progress=%q", got)
 	}
 
 	// Control: an item the SAME probe reports free still claims, so the test above is
 	// measuring the check and not a Claim that refuses everything.
-	if ok, err := Claim(cfg, Item{ID: "cigar-stream/09"}); err != nil || !ok {
+	if ok, err := Claim(cfg, Item{ID: "sample/09"}); err != nil || !ok {
 		t.Fatalf("an item with no work evidence failed to claim: ok=%v err=%v", ok, err)
 	}
 }
@@ -79,7 +79,7 @@ func TestClaimFailsClosedWhenEvidenceUnreachable(t *testing.T) {
 			return false, "", errors.New("gh: API unreachable")
 		},
 	}
-	it := Item{ID: "loop-engine/10"}
+	it := Item{ID: "sample/10"}
 
 	ok, err := Claim(cfg, it)
 	if ok {
@@ -108,11 +108,11 @@ func TestClaimAnnouncesItsBoundWhenNoProbe(t *testing.T) {
 	var log bytes.Buffer
 	cfg := Config{ClaimsDir: dir, RunnerID: "dispatcher-a", Progress: &log}
 
-	if ok, err := Claim(cfg, Item{ID: "loop-engine/10"}); err != nil || !ok {
+	if ok, err := Claim(cfg, Item{ID: "sample/10"}); err != nil || !ok {
 		t.Fatalf("claim with no probe: ok=%v err=%v; want ok=true (the bound is announced, not enforced)", ok, err)
 	}
 	got := log.String()
-	if !strings.Contains(got, "BOUND loop-engine/10") {
+	if !strings.Contains(got, "BOUND sample/10") {
 		t.Fatalf("Claim did not announce its narrowed evidence bound; Progress=%q", got)
 	}
 	if !strings.Contains(got, "claims dir ONLY") {
@@ -136,10 +136,10 @@ func TestClaimEvidenceRunsBeforeTheLock(t *testing.T) {
 			if entries, err := os.ReadDir(dir); err == nil && len(entries) != 0 {
 				t.Errorf("claims dir already has %d entries at probe time — the lock ran first", len(entries))
 			}
-			return true, "merged PR #882 already implements it", nil
+			return true, "a merged PR already implements it", nil
 		},
 	}
-	if ok, err := Claim(cfg, Item{ID: "methodology/42"}); ok || err != nil {
+	if ok, err := Claim(cfg, Item{ID: "sample/42"}); ok || err != nil {
 		t.Fatalf("Claim: ok=%v err=%v; want refusal", ok, err)
 	}
 	if len(order) != 1 || order[0] != "probe" {

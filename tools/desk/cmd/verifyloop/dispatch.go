@@ -38,7 +38,7 @@ type dispatchRequirement struct {
 
 // dispatchRequirements is the ONE in-code enumeration of the SKILL.md prompt requirements —
 // it replaces the prose list that used to live in renderDispatchPrompt's doc-comment and that
-// silently fell out of date (#1267: SKILL.md gained the name-and-derive step, the template and
+// silently fell out of date (SKILL.md gained the name-and-derive step, the template and
 // its doc-comment did not).
 //
 // TestDispatchRequirements_MatchSkillMD binds this table to the skill file in both directions:
@@ -58,7 +58,7 @@ type dispatchRequirement struct {
 var dispatchRequirements = []dispatchRequirement{
 	{
 		ID: "brief-verify-table-and-target-sha",
-		// "sha" alone collided with the name-and-derive bullet after #1272 gave it both
+		// "sha" alone collided with the name-and-derive bullet after that bullet gained both
 		// "Verify table" and `git show <sha> --stat`; "merged-main sha" is the phrase unique
 		// to THIS bullet. See the 1:1 rationale on TestDispatchRequirements_MatchSkillMD.
 		Anchors: []string{"brief path", "verify table", "merged-main sha"},
@@ -86,8 +86,8 @@ var dispatchRequirements = []dispatchRequirement{
 		Probes:  []string{"risk-bearing value"},
 		Issue:   1267,
 		Note: "Residual gap. Deliberately NOT copied yet: the canonical wording is being " +
-			"rewritten under #1268, and copying today's prose would re-create the drift this " +
-			"registry exists to catch. Land it with #1268's merged wording, then flip to " +
+			"rewritten upstream, and copying today's prose would re-create the drift this " +
+			"registry exists to catch. Land it with the merged wording, then flip to " +
 			"carriedInPrompt. Reaching it needs the item's risk class in the prompt path " +
 			"(Item.Risk is already typed).",
 	},
@@ -124,7 +124,7 @@ var dispatchRequirements = []dispatchRequirement{
 // item's typed payload. This template is the ONLY per-loop-authored prose (arch doc §4).
 //
 // What it MUST carry is NOT re-listed here — a second prose copy of the SKILL.md list is
-// exactly what went stale (#1267). The enumeration is dispatchRequirements above, checked
+// exactly what went stale. The enumeration is dispatchRequirements above, checked
 // against the skill file by TestDispatchRequirements_MatchSkillMD. Change the prompt below
 // and you change the registry with it, or the test says so.
 func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {

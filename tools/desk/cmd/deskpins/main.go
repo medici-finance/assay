@@ -7,8 +7,7 @@
 //	deskpins --check --root <dir>     # checks <dir>/.assay-versions
 //
 // Exit codes ARE the verdict, and there are four because a validator must keep
-// three failure kinds apart from success and from one another (distribution/04
-// Verify rows 3, 3a, 4):
+// three failure kinds apart from success and from one another:
 //
 //	0  checked-clean     every artifact line parses and satisfies the grammar
 //	1  checked-failed    a readable, parseable line VIOLATES a rule

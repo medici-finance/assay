@@ -114,7 +114,14 @@ func main() {
 			if os.Getenv("FAKEGH_LIST_DRAFT") == "0" {
 				draft = "false"
 			}
-			fmt.Printf("[{\"number\":42,\"url\":\"https://github.com/%s/pull/42\",\"isDraft\":%s,\"headRefName\":%q}]\n", repoOf(target), draft, val("--head"))
+			// The PR's headRefName echoes the --head the tool asked for, so matchHead
+			// matches by construction. FAKEGH_LIST_HEAD overrides it with a divergent
+			// branch name so the wrong-branch (head-owns-branch) guard can be exercised.
+			head := val("--head")
+			if o := os.Getenv("FAKEGH_LIST_HEAD"); o != "" {
+				head = o
+			}
+			fmt.Printf("[{\"number\":42,\"url\":\"https://github.com/%s/pull/42\",\"isDraft\":%s,\"headRefName\":%q}]\n", repoOf(target), draft, head)
 		} else {
 			fmt.Println("[]")
 		}
@@ -126,6 +133,35 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("https://github.com/%s/pull/101\n", repoOf(target))
+	case has("view"):
+		mergeable := os.Getenv("FAKEGH_MERGEABLE")
+		if mergeable == "" {
+			mergeable = "MERGEABLE"
+		}
+		mss := os.Getenv("FAKEGH_MERGESTATE")
+		if mss == "" {
+			mss = "CLEAN"
+		}
+		// Model GitHub's ASYNC mergeable computation (#1264): while a counter file sits
+		// at or below FAKEGH_UNKNOWN_UNTIL, report UNKNOWN (state UNKNOWN too) and bump
+		// the counter, so a polling reader sees the field settle only after that many
+		// views. FAKEGH_UNKNOWN_UNTIL with no bound (or huge) models a value that never
+		// settles.
+		if cf := os.Getenv("FAKEGH_VIEW_COUNT_FILE"); cf != "" {
+			until := 0
+			fmt.Sscanf(os.Getenv("FAKEGH_UNKNOWN_UNTIL"), "%d", &until)
+			n := 0
+			if b, rerr := os.ReadFile(cf); rerr == nil {
+				fmt.Sscanf(string(b), "%d", &n)
+			}
+			n++
+			os.WriteFile(cf, []byte(fmt.Sprintf("%d", n)), 0o600)
+			if n <= until {
+				mergeable = "UNKNOWN"
+				mss = "UNKNOWN"
+			}
+		}
+		fmt.Printf("{\"mergeable\":%q,\"mergeStateStatus\":%q}\n", mergeable, mss)
 	}
 }
 `
@@ -367,11 +403,23 @@ func anyCall(calls [][]string, want ...string) bool {
 	return false
 }
 
+// withStderrCapture swaps deskprStderr for a buffer for the duration of the test and
+// restores it on cleanup — the seam warnIfConflicting (#770) writes its WARNING through.
+func withStderrCapture(t *testing.T) *strings.Builder {
+	t.Helper()
+	var buf strings.Builder
+	old := deskprStderr
+	deskprStderr = &buf
+	t.Cleanup(func() { deskprStderr = old })
+	return &buf
+}
+
 // --- tests ----------------------------------------------------------------------
 
 func TestCreateSuccessAlwaysDraftNeverForce(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
+	stderr := withStderrCapture(t)
 
 	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing"})
 	if rc != deskkit.ExitOK {
@@ -387,6 +435,145 @@ func TestCreateSuccessAlwaysDraftNeverForce(t *testing.T) {
 	// gh pr create --draft is ALWAYS present (the always-draft argv assertion).
 	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
 		t.Fatalf("expected `gh pr create --draft`; gh calls: %v", ghCalls(*calls))
+	}
+	// The post-create mergeable probe (#770) ran ...
+	if !anyCall(ghCalls(*calls), "pr", "view", "101") {
+		t.Fatalf("expected a post-create `gh pr view 101 --json mergeable,...`; gh calls: %v", ghCalls(*calls))
+	}
+	// ... and a clean/MERGEABLE PR (the fake's default) never warns.
+	if got := stderr.String(); strings.Contains(got, "CONFLICTING") {
+		t.Fatalf("clean PR should not warn CONFLICTING; stderr: %q", got)
+	}
+}
+
+// TestCreateConflictingPRWarnsLoudly is the direct regression test for #770: a
+// newly-created PR that GitHub reports mergeable=CONFLICTING must print a loud WARNING
+// (not read identically to "checks pending") and the audit detail line must record it.
+func TestCreateConflictingPRWarnsLoudly(t *testing.T) {
+	work := newBaseFixture(t)
+	calls := withEnv(t, work)
+	stderr := withStderrCapture(t)
+	t.Setenv("FAKEGH_MERGEABLE", "CONFLICTING")
+	t.Setenv("FAKEGH_MERGESTATE", "DIRTY")
+
+	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("create rc = %d, want 0 — a CONFLICTING mergeable state is advisory, never a failure", rc)
+	}
+	if !anyCall(ghCalls(*calls), "pr", "view", "101") {
+		t.Fatalf("expected a post-create `gh pr view 101 --json mergeable,...`; gh calls: %v", ghCalls(*calls))
+	}
+	got := stderr.String()
+	if !strings.Contains(got, "WARNING") || !strings.Contains(got, "CONFLICTING") {
+		t.Fatalf("expected a loud CONFLICTING WARNING on stderr, got: %q", got)
+	}
+	if !strings.Contains(got, "DIRTY") {
+		t.Fatalf("expected the WARNING to name mergeStateStatus=DIRTY, got: %q", got)
+	}
+}
+
+// noPollSleep swaps pollSleep for a no-op for the duration of a test so the polling loop
+// (#1264) runs without real delay, and restores it on cleanup.
+func noPollSleep(t *testing.T) {
+	t.Helper()
+	old := pollSleep
+	pollSleep = func() {}
+	t.Cleanup(func() { pollSleep = old })
+}
+
+// countCalls returns how many recorded gh calls contain all of `want`.
+func countCalls(calls [][]string, want ...string) int {
+	n := 0
+	for _, c := range calls {
+		if callContainsAll(c, want...) {
+			n++
+		}
+	}
+	return n
+}
+
+// TestUpdateConflictingPRWarnsLoudly is the update-path twin of the create regression
+// (#1264): a push that lands the PR in mergeable=CONFLICTING must warn loudly too, since a
+// conflicted head gets zero pull_request runs exactly as a conflicted create does. The
+// fake reports the open PR as number 42.
+func TestUpdateConflictingPRWarnsLoudly(t *testing.T) {
+	work := newBaseFixture(t)
+	calls := withEnv(t, work)
+	stderr := withStderrCapture(t)
+	t.Setenv("FAKEGH_LIST_HAS_PR", "1") // open draft PR (number 42) on the branch
+	t.Setenv("FAKEGH_MERGEABLE", "CONFLICTING")
+	t.Setenv("FAKEGH_MERGESTATE", "DIRTY")
+
+	rc := run([]string{"update"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("update rc = %d, want 0 — a CONFLICTING mergeable state is advisory, never a failure", rc)
+	}
+	// The push happened AND the post-update mergeable probe ran on the listed PR (#42).
+	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
+		t.Fatalf("update did not push the branch: %v", gitCalls(*calls))
+	}
+	if !anyCall(ghCalls(*calls), "pr", "view", "42") {
+		t.Fatalf("expected a post-update `gh pr view 42 --json mergeable,...`; gh calls: %v", ghCalls(*calls))
+	}
+	got := stderr.String()
+	if !strings.Contains(got, "WARNING") || !strings.Contains(got, "CONFLICTING") {
+		t.Fatalf("expected a loud CONFLICTING WARNING on stderr after update, got: %q", got)
+	}
+}
+
+// TestWarnPollsUntilMergeableSettles pins the async-settle behaviour (#1264): GitHub
+// returns UNKNOWN for the first reads while it computes the test-merge, then reveals
+// CONFLICTING. warnIfConflicting must poll past the UNKNOWNs and still warn — a single
+// read would have swallowed the conflict as a transient UNKNOWN.
+func TestWarnPollsUntilMergeableSettles(t *testing.T) {
+	work := newBaseFixture(t)
+	calls := withEnv(t, work)
+	stderr := withStderrCapture(t)
+	noPollSleep(t)
+	countFile := filepath.Join(t.TempDir(), "views")
+	t.Setenv("FAKEGH_VIEW_COUNT_FILE", countFile)
+	t.Setenv("FAKEGH_UNKNOWN_UNTIL", "2") // first two views UNKNOWN, third settles
+	t.Setenv("FAKEGH_MERGEABLE", "CONFLICTING")
+	t.Setenv("FAKEGH_MERGESTATE", "DIRTY")
+
+	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("create rc = %d, want 0", rc)
+	}
+	if n := countCalls(ghCalls(*calls), "pr", "view", "101"); n < 3 {
+		t.Fatalf("expected the mergeable probe to poll past the UNKNOWNs (>=3 views), got %d: %v", n, ghCalls(*calls))
+	}
+	if got := stderr.String(); !strings.Contains(got, "WARNING") || !strings.Contains(got, "CONFLICTING") {
+		t.Fatalf("expected the settled CONFLICTING to warn after polling, got: %q", got)
+	}
+}
+
+// TestWarnUnknownNeverSettles pins the give-up path (#1264): a mergeable field that stays
+// UNKNOWN for the whole poll window must NOT be reported as CONFLICTING (no false alarm),
+// and must leave a soft advisory note naming UNKNOWN — never a returned failure.
+func TestWarnUnknownNeverSettles(t *testing.T) {
+	work := newBaseFixture(t)
+	calls := withEnv(t, work)
+	stderr := withStderrCapture(t)
+	noPollSleep(t)
+	countFile := filepath.Join(t.TempDir(), "views")
+	t.Setenv("FAKEGH_VIEW_COUNT_FILE", countFile)
+	t.Setenv("FAKEGH_UNKNOWN_UNTIL", "9999") // never settles within the poll window
+	t.Setenv("FAKEGH_MERGEABLE", "CONFLICTING")
+
+	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("create rc = %d, want 0 — an unsettled UNKNOWN is advisory, never a failure", rc)
+	}
+	if n := countCalls(ghCalls(*calls), "pr", "view", "101"); n != pollAttempts {
+		t.Fatalf("expected exactly pollAttempts (%d) polls before giving up, got %d", pollAttempts, n)
+	}
+	got := stderr.String()
+	if strings.Contains(got, "CONFLICTING") {
+		t.Fatalf("an unsettled UNKNOWN must not be reported as CONFLICTING; stderr: %q", got)
+	}
+	if !strings.Contains(got, "UNKNOWN") || !strings.Contains(got, "did not settle") {
+		t.Fatalf("expected a soft UNKNOWN-did-not-settle note, got: %q", got)
 	}
 }
 
@@ -722,8 +909,8 @@ func TestCreateSecretInBodyRefuses(t *testing.T) {
 	assertNoPushNoCreate(t, *calls)
 }
 
-// TestCreateDiffHeaderLongPathPasses is #1052's second vector: a real PR (medici's own
-// #1065) touching tools/desk/internal/deskkit/config.go produced a git-diff header
+// TestCreateDiffHeaderLongPathPasses is #1052's second vector: a real PR (#1065)
+// touching tools/desk/internal/deskkit/config.go produced a git-diff header
 // (`diff --git a/tools/desk/internal/deskkit/config.go b/…`) whose `a/tools/desk/
 // internal/deskkit/config` run is 36 chars of deskkit's [A-Za-z0-9+/=] charset — enough
 // to trip the high-entropy-run refusal on the diff header ALONE, with no secret anywhere
@@ -799,10 +986,18 @@ func TestCreateMissingBodyRefuses(t *testing.T) {
 	}
 }
 
+// TestUpdateNoOpenPRRefuses exercises the empty-listing refusal: with no PR on the branch,
+// gh returns [] and update refuses at exit 5 — the same refusal a CLOSED or MERGED PR
+// surfaces as, because listOpenPRs asks gh for `--state open` and those states are absent
+// from the listing. This test does NOT by itself prove the filter (the empty-list path is
+// reachable with or without it); the `--state open` argv is asserted in
+// TestUpdateReadyPRPushes, which reds if the filter drifts. Lifting the draft-only
+// restriction leaves this refusal untouched: update still only pushes to an OPEN PR.
 func TestUpdateNoOpenPRRefuses(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
-	// FAKEGH_LIST_HAS_PR unset → gh pr list returns [] → no open PR for the branch.
+	// FAKEGH_LIST_HAS_PR unset → gh pr list --state open returns [] → no open PR for the
+	// branch (a closed/merged PR would be filtered out by --state open the same way).
 	rc := run([]string{"update"})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("update with no open PR rc = %d, want 5", rc)
@@ -810,19 +1005,52 @@ func TestUpdateNoOpenPRRefuses(t *testing.T) {
 	assertNoPushNoCreate(t, *calls)
 }
 
-func TestUpdateNonDraftPRRefuses(t *testing.T) {
+// TestUpdateReadyPRPushes is #788's fix: a ready-flipped (non-draft) OPEN PR on the
+// branch is now a valid update target. Before the fix this refused at exit 5 ("PR is not
+// a draft"), stranding approved-but-stale PRs with no sanctioned push path. All other
+// guards stay in force — this exercises the draft distinction being lifted, nothing else.
+func TestUpdateReadyPRPushes(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	t.Setenv("FAKEGH_LIST_HAS_PR", "1")
-	t.Setenv("FAKEGH_LIST_DRAFT", "0") // PR exists but is NOT a draft
+	t.Setenv("FAKEGH_LIST_DRAFT", "0") // open PR on the branch, but ready (NOT a draft)
+
+	rc := run([]string{"update"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("update on a ready (non-draft) open PR rc = %d, want 0; git calls: %v", rc, gitCalls(*calls))
+	}
+	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
+		t.Fatalf("update did not push the branch to the ready PR: %v", gitCalls(*calls))
+	}
+	if anyGitForce(*calls) {
+		t.Fatalf("update emitted a git --force: %v", gitCalls(*calls))
+	}
+	// The merged/closed refusal now rests ENTIRELY on this listing filter: with the
+	// draft distinction lifted, --state open is the only barrier keeping update off a
+	// merged PR (a merged PR is never a draft, so !IsDraft used to catch it too). Assert
+	// the literal argv, in the same style as the create --draft assertions — if it ever
+	// drifts to --state all, gh returns the merged PR, matchHead matches it by branch,
+	// and the push lands on a branch whose PR is already merged.
+	if !anyCall(ghCalls(*calls), "pr", "list", "--state", "open") {
+		t.Fatalf("no `gh pr list --state open` — merged/closed PRs would be listed; gh calls: %v", ghCalls(*calls))
+	}
+}
+
+// TestUpdateWrongBranchRefuses proves the head-owns-branch guard (matchHead) survives the
+// #788 change: an open PR whose headRefName is a DIFFERENT branch than the caller's is not
+// this worktree's PR, so update must refuse and never push — draft/ready is irrelevant.
+func TestUpdateWrongBranchRefuses(t *testing.T) {
+	work := newBaseFixture(t)
+	calls := withEnv(t, work)
+	t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+	t.Setenv("FAKEGH_LIST_DRAFT", "0")                   // ready PR, to prove it's matchHead (not draft) refusing
+	t.Setenv("FAKEGH_LIST_HEAD", "someone-elses-branch") // PR's head != the caller's branch
 
 	rc := run([]string{"update"})
 	if rc != deskkit.ExitRefused {
-		t.Fatalf("update on non-draft PR rc = %d, want 5", rc)
+		t.Fatalf("update on a PR whose head is a different branch rc = %d, want 5", rc)
 	}
-	if anyCall(gitCalls(*calls), "push") {
-		t.Fatalf("update pushed to a non-draft PR: %v", gitCalls(*calls))
-	}
+	assertNoPushNoCreate(t, *calls)
 }
 
 func TestUpdateDraftPRPushes(t *testing.T) {

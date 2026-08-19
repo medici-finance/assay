@@ -3,7 +3,7 @@
 //
 // WHY IT EXISTS. A large share of the stalled draft fleet is stalled only on
 // merge-currency, and today bringing a PR current costs a full worker dispatch for a
-// deterministic git operation. issue-flow/01's R-5 would let the desk perform that one
+// deterministic git operation. A register rule (R-5) would let the desk perform that one
 // operation, on the theory that a clean two-parent merge of main introduces no
 // reviewable content. deskmerge puts that theory in CODE, so the zero-authorship
 // boundary is a compiled-in property rather than the desk's judgement.
@@ -36,8 +36,8 @@
 //	              temp worktree and reports the compiler's verdict. It catches exactly
 //	              what the compiled-in probe catches and nothing else — a semantic
 //	              collision in prose (docs/brief-rules.md currently carries DUPLICATE
-//	              rule numbers 25 and 26, authored in parallel by ground-truth/01 and
-//	              ground-truth/03, both merged green) is invisible to it.
+//	              rule numbers 25 and 26, authored in parallel by two briefs,
+//	              both merged green) is invisible to it.
 //
 // So `check` reports MERGE-CLEANLINESS. It never reports that the merged tree is
 // VALID, and it never prints a word that could be read that way.

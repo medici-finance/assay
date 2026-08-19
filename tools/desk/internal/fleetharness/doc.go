@@ -1,5 +1,4 @@
-// Package fleetharness is the FLEET-WORKFLOW ACCEPTANCE HARNESS for the gated desk verbs
-// (ground-truth/06, #517).
+// Package fleetharness is the FLEET-WORKFLOW ACCEPTANCE HARNESS for the gated desk verbs.
 //
 // It contains no production code. Its whole content is a test that boots the workflow the
 // desk skills MANDATE — a detached worktree created from `origin/<branch>`, in a repo that
@@ -7,8 +6,8 @@
 // through it end to end, recording how far each one gets.
 //
 // WHY A SEPARATE PACKAGE, AND WHY SUBPROCESSES. Every verb here already has a thorough
-// unit suite, and every one of those suites was green on the day #517 measured **zero
-// successes across fourteen shepherd passes**. They were green because they exercise the
+// unit suite, and every one of those suites was green on the day the fleet audit measured
+// **zero successes across fourteen shepherd passes**. They were green because they exercise the
 // verbs in the shape the verbs were WRITTEN for — a branch checked out, in the tool's own
 // clone, with the seams (`getwd`, `publicRepoGateFn`, `execCommand`) rebound in-process.
 // The defect was never in a function; it was in the relationship between a precondition

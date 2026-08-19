@@ -12,7 +12,7 @@
 // This makes the verdict machine-readable: `set` writes a label (the index a sweep filters
 // on) and a marker comment (the record, carrying the evidence link). `sweep` is the read
 // the orphan scan runs BEFORE dispatching. `read` is the full per-PR record, for
-// issue-flow/03 (deskclose).
+// deskclose.
 //
 // WHAT IT DOES NOT DO: close anything. Closing a PR is a human-authorized event; this tool
 // only records the finding that makes the close decidable. That boundary is the point —
@@ -52,7 +52,7 @@ VERDICTS (closed vocabulary):
 
 set    — writes the label AND the marker comment, in that order. Idempotent: an identical
          record already present is a no-op (exit 0), so re-running on every pass is free.
-         It never closes the PR — that is deskclose's (issue-flow/03) human-authorized act.
+         It never closes the PR — that is deskclose's human-authorized act.
 
 read   — the FULL record for one PR (label + marker comment), for deskclose.
 

@@ -18,7 +18,7 @@
 // These are local-state verbs on ~/.config/assay/claims: they take the full audit line
 // and the kill switch but not the outward-write rate limit.
 //
-// SCOPE NOTE (methodology/42, 2026-08-13): the `dispatch` kind no longer belongs here. A
+// SCOPE NOTE (2026-08-13): the `dispatch` kind no longer belongs here. A
 // worker-desk dispatch claim is now the GitHub ref `refs/dispatch/<id>` in the target repo
 // (tools/dispatch-claim.sh) — this directory is machine-local, so it served two dispatchers on
 // one machine and did nothing for two desks on different machines, which is the case that

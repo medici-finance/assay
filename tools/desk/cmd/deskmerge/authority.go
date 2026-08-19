@@ -125,9 +125,10 @@ func verifyHumanAuthor(c ghComment, what string) error {
 
 // authorize runs the R-5 gate: read the claim, fetch the artifact, verify the author.
 //
-// The register parse is deskkit.ReadRulingSignOff — the DECLARED SOURCE shared with
-// deskclose's R-1 gate — so the "is this ruling signed?" question has one implementation
-// and not one per tool.
+// The register parse is deskkit.ReadRulingSignOff, a (url, error) adapter over the ONE
+// reader deskclose's R-1 gate also delegates to (deskkit.ReadSignOff). So the "is this
+// ruling signed?" question has one implementation and not one per tool: an ambiguous or
+// multi-URL register reads the same way here as it does for deskclose.
 func authorize(rulingsPath string) (grant, error) {
 	url, err := deskkit.ReadRulingSignOff(rulingsPath, rulingID, toolName)
 	if err != nil {

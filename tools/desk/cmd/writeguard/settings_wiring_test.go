@@ -10,15 +10,15 @@ import (
 )
 
 // TestSettingsJSONWiresWriteguard is a regression guard for the
-// worktree-isolation backstop: prompt-carried absolute paths can override
-// worktree isolation, so prompt discipline alone is not enough — a mechanical
-// pre-write backstop is needed. guard.go and guard_test.go prove the DECISION
-// LOGIC is correct; this test proves the compiled binary is actually WIRED
-// into a live PreToolUse hook for sessions working in this repo's own shared
-// checkout. Absent a wired .claude/settings.json fixture, writeguard is
-// compiled and unit-tested here but not actually armed for a session homed in
-// this checkout; this test closes that gap whenever the fixture is present in
-// the published subset.
+// worktree-isolation backstop issue, #20 (F-34/F-35: prompt-carried absolute
+// paths override worktree isolation, "prompt discipline alone has now failed
+// once — consider a mechanical pre-write backstop"). guard.go and
+// guard_test.go prove the DECISION LOGIC is correct; this test proves the
+// compiled binary is actually WIRED into a live PreToolUse hook for sessions
+// working in THIS repo's own shared checkout — the gap #20 identified:
+// writeguard was built and unit-tested here but, before this test's fixture
+// (.claude/settings.json) existed, was armed only in a sibling product repo
+// that adopts tools/desk, never in this repo itself.
 //
 // SCOPE — WHAT THIS WIRING DOES NOT COVER. Stated explicitly so the hook is
 // not mistaken for blanket coverage. A PreToolUse hook is consulted only by a
@@ -69,7 +69,8 @@ func TestSettingsJSONWiresWriteguard(t *testing.T) {
 	data, err := os.ReadFile(settingsPath)
 	if err != nil {
 		t.Fatalf("reading %s: %v (writeguard is compiled but not wired into any live "+
-			"PreToolUse hook for sessions working in this repo's own shared checkout)", settingsPath, err)
+			"PreToolUse hook for sessions working in this repo's own shared checkout — "+
+			"see the worktree-isolation backstop issue, #20)", settingsPath, err)
 	}
 
 	var doc struct {

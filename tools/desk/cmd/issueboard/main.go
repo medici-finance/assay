@@ -3,7 +3,7 @@
 // needs to know across the owned repo set WITHOUT any mutating GitHub call: one
 // ACTION per open issue (ESCALATE / CREATE-PLACEHOLDER / RETIRE / AWAIT / NONE) plus
 // one row per untriaged intake entry, flagging those past the 3-day threshold.
-// ESCALATE (brief loop-engine/13) is a computed CLASS, not a posted comment: a
+// ESCALATE is a computed CLASS, not a posted comment: a
 // decision-owed issue (needs-decision/question label) whose last human response is
 // older than --sla-days sorts to the top of the lane with its age rendered — acting
 // on it (a re-ping, raising to the human) stays the desk's judgment, never this tool's.
@@ -46,7 +46,7 @@ flags:
   --sla-days <N>     decision-owed silence threshold before ESCALATE (default 6, the
                       market-scan "silent 6d" figure — desk-console-design.md §13.3)
 
-escalation (brief loop-engine/13): an open issue carrying a needs-decision or
+escalation: an open issue carrying a needs-decision or
 question label ages against --sla-days, counted from the last HUMAN response (a bot
 comment never resets the clock). Under the SLA it classifies AWAIT; past it, ESCALATE
 — sorted to the top of the issue lane, age rendered in the row.

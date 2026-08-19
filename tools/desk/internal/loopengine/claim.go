@@ -156,7 +156,7 @@ func firstNonEmpty(vals ...string) string {
 //     reported the item already taken (a "DEDUP <id> — <why>" line names which);
 //   - (false, err) COULD-NOT-CHECK: the lock could not be held, the claim could not be
 //     read/written, or WorkEvidence could not reach its source. Fail closed — an
-//     unreachable check is NEVER "assume free" (#146), and a caller must not read this
+//     unreachable check is NEVER "assume free", and a caller must not read this
 //     as a soft acquired.
 //
 // The probe runs BEFORE the flock on purpose: a network call must not be made while a
@@ -185,7 +185,7 @@ func Claim(cfg Config, it Item) (bool, error) {
 // "acquired". It answers ONE question — "is this item already taken by evidence outside
 // the claims dir?" — and answers it in three states, never two:
 //
-//	(true,  why, nil)  taken; why NAMES the evidence (e.g. "open PR #722 (2026-08-12)")
+//	(true,  why, nil)  taken; why NAMES the evidence (e.g. "open PR (2026-08-12) naming the item")
 //	(false, _,   nil)  checked, and nothing says the item is taken
 //	(_,     _,   err)  COULD-NOT-CHECK — the source was unreachable/unreadable
 //

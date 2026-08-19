@@ -14,7 +14,7 @@ import (
 //
 // At authoring time the answer layer's read-only allow-list PERMITTED it (the
 // mode was named in its read set), so this package's second-layer guard was the
-// only thing catching it. Since then #961 closed that hole upstream:
+// only thing catching it. Since then that hole was closed upstream:
 // `askassay.GuardReadOnly` now REFUSES `statusgen --bottleneck` by name. So the
 // test asserts both halves refuse it — the upstream guard AND this package's
 // guard. The second-layer guard is kept deliberately as defense-in-depth
@@ -23,9 +23,9 @@ import (
 func TestImprovePaneRefusesTheMeasuredWriteSideEffect(t *testing.T) {
 	argv := []string{"statusgen", "--root", ".", "--bottleneck"}
 
-	// Upstream (answer layer): #961 made GuardReadOnly refuse this mode by name.
+	// Upstream (answer layer): GuardReadOnly now refuses this mode by name.
 	if err := askassay.GuardReadOnly(argv); err == nil {
-		t.Fatalf("the upstream read-only guard PERMITTED %v — post-#961 it must refuse this measured write mode by name", argv)
+		t.Fatalf("the upstream read-only guard PERMITTED %v — the upstream guard must refuse this measured write mode by name", argv)
 	} else if !errors.Is(err, askassay.ErrRefused) {
 		t.Fatalf("the upstream refusal of %v is not classed as a read-only refusal: %v", argv, err)
 	}

@@ -45,11 +45,11 @@ index 5555555..6666666 100644
 @@ -30 +30 @@
 -| 800 | old | todo |
 +| 800 | old | done |
-diff --git a/docs/streams/ground-truth/brief-05-x.md b/docs/streams/ground-truth/brief-05-x.md
+diff --git a/docs/streams/example-stream/brief-05-x.md b/docs/streams/example-stream/brief-05-x.md
 new file mode 100644
 index 0000000..7777777
 --- /dev/null
-+++ b/docs/streams/ground-truth/brief-05-x.md
++++ b/docs/streams/example-stream/brief-05-x.md
 @@ -0,0 +1,2 @@
 +status: done
 `

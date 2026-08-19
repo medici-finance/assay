@@ -738,13 +738,13 @@ func TestIssue1035SharedHomedOptIn(t *testing.T) {
 	}{
 		// Without the token: shared-homed writes to the shared checkout block.
 		{"no token: Write shared file", "Write", shared + "/STATUS.md", false, true},
-		{"no token: Edit shared stream README", "Edit", shared + "/docs/streams/desk-tools/README.md", false, true},
+		{"no token: Edit shared stream README", "Edit", shared + "/docs/streams/example-stream/README.md", false, true},
 		{"no token: bash redirect into shared", "Bash", "echo hi > " + shared + "/STATUS.md", false, true},
 		{"no token: bash relative write, cwd in shared", "Bash", "touch STATUS.md", false, true},
 		{"no token: bash git commit in shared", "Bash", "git add -A && git commit -m x", false, true},
 		// With the token: identical calls keep the pre-#1035 exempt behavior.
 		{"token: Write shared file", "Write", shared + "/STATUS.md", true, false},
-		{"token: Edit shared stream README", "Edit", shared + "/docs/streams/desk-tools/README.md", true, false},
+		{"token: Edit shared stream README", "Edit", shared + "/docs/streams/example-stream/README.md", true, false},
 		{"token: bash redirect into shared", "Bash", "echo hi > " + shared + "/STATUS.md", true, false},
 		{"token: bash relative write, cwd in shared", "Bash", "touch STATUS.md", true, false},
 		{"token: bash git commit in shared", "Bash", "git add -A && git commit -m x", true, false},
@@ -1994,4 +1994,195 @@ func TestPathTokens(t *testing.T) {
 	if !found {
 		t.Fatalf("expected embedded path from --git-dir=, got %v", tokens)
 	}
+}
+
+// TestEncodedSharedRootSubstringInScratchpadIsAllowed pins the operator's
+// 2026-08-16 ruling (C): the isolation backstop must EXEMPT a git mutation whose real
+// target is a genuine non-shared-checkout location, even when the command
+// string incidentally contains the shared-checkout path as a SUBSTRING.
+//
+// The recurring real-world shape is a session scratchpad whose directory name
+// is the shared checkout's absolute path with the separators re-encoded as
+// dashes — e.g. shared root  /Users/x/y/tracker  becomes a component
+// /private/tmp/claude-501/-Users-x-y-tracker/<session>/scratchpad. A `git
+// clone <url> <that path>/foo`, a `git -C <that path> commit`, or a redirect
+// into it targets /private/tmp/..., which is NOT under the shared root — so it
+// must be ALLOWED. A crude `strings.Contains(cmd, sharedRoot)` heuristic (or
+// one matching the dash-encoded form) would wrongly refuse it, which cost
+// multiple worker cycles and pushed operators toward path-trick workarounds.
+//
+// The guard already decides by canonicalized path CONTAINMENT (underDir), not
+// substring, so these all pass today; this test is the regression fence that
+// keeps it that way. (The residual "too complex to verify it stays inside the
+// worktree / must target its own worktree" refusal that operators still hit
+// comes from the Claude Code HARNESS worktree-isolation feature for
+// isolation:worktree agents — NOT this hook, which is the only PreToolUse hook
+// this repo wires.)
+func TestEncodedSharedRootSubstringInScratchpadIsAllowed(t *testing.T) {
+	// dashEncoded is the shared root with every separator turned into a dash —
+	// the literal substring a naive matcher would key on. Building it from
+	// `shared` keeps the two in lockstep if the fixture ever changes.
+	dashEncoded := strings.ReplaceAll(strings.TrimPrefix(shared, "/"), "/", "-")
+	// A scratchpad path that CONTAINS that substring but lives entirely under
+	// /private/tmp — never inside the shared checkout.
+	scratch := "/private/tmp/claude-501/-" + dashEncoded + "/170f3fae/scratchpad"
+	dest := scratch + "/foo"
+
+	if strings.Contains(scratch, "/"+strings.TrimPrefix(shared, "/")) {
+		t.Fatalf("test bug: scratch must not contain the slash-form shared root: %s", scratch)
+	}
+	if !strings.Contains(scratch, dashEncoded) {
+		t.Fatalf("test bug: scratch must contain the dash-encoded shared root substring: %s", scratch)
+	}
+
+	// The false-positive is independent of where the session is homed, so pin
+	// it for both a worktree-homed worker and a (would-be) shared-homed session
+	// whose payload cwd is the shared root — the population most exposed to a
+	// substring heuristic.
+	homings := map[string]Config{
+		"worktree-homed worker":             {SharedRoot: shared, ProjectDir: worktree, Cwd: worktree},
+		"shared-homed session (cwd=shared)": {SharedRoot: shared, ProjectDir: shared, Cwd: shared},
+	}
+	allowed := []struct{ name, cmd string }{
+		{"clone into scratchpad", "git clone https://github.com/example/tracker " + dest},
+		{"git -C scratchpad commit", "git -C " + dest + " commit -am wip"},
+		{"git -C scratchpad add", "git -C " + scratch + " add ."},
+		{"redirect into scratchpad", "echo hi > " + dest + "/notes.md"},
+		{"mkdir scratchpad", "mkdir -p " + dest},
+		{"rm inside scratchpad", "rm -rf " + dest},
+	}
+	for hn, cfg := range homings {
+		for _, tc := range allowed {
+			t.Run(hn+"/"+tc.name, func(t *testing.T) {
+				if v := cfg.CheckBash(tc.cmd); v.Block {
+					t.Fatalf("substring-only match must NOT block a real non-shared target\ncmd:  %s\nreason: %s", tc.cmd, v.Reason)
+				}
+			})
+		}
+	}
+
+	// The exemption must NOT weaken the real block: a git mutation whose
+	// resolved target genuinely IS the shared checkout (or a subdir) still
+	// blocks, from a worktree-homed worker.
+	worker := Config{SharedRoot: shared, ProjectDir: worktree, Cwd: worktree}
+	blocked := []struct{ name, cmd string }{
+		{"git -C shared-root commit", "git -C " + shared + " commit -am x"},
+		{"git -C shared subdir add", "git -C " + shared + "/docs add ."},
+		{"redirect into shared root", "echo pwn > " + shared + "/STATUS.md"},
+		{"clone INTO the shared checkout", "git clone https://github.com/example/tracker " + shared + "/vendor/x && git -C " + shared + "/vendor/x reset --hard"},
+	}
+	for _, tc := range blocked {
+		t.Run("still-blocked/"+tc.name, func(t *testing.T) {
+			if v := worker.CheckBash(tc.cmd); !v.Block {
+				t.Fatalf("a real shared-checkout mutation must still block: %s", tc.cmd)
+			}
+		})
+	}
+}
+
+// TestIssue1193FindDeleteExec closes the substitution gap #1193 names: the
+// 2026-08-16 incident's worker answered a false-positive `rm` block by
+// substituting `find … -delete`, which matched no indicator at all. find is
+// now a target-aware file-mutation indicator that fires ONLY for the mutating
+// primaries (-delete, the -exec/-ok family) with a resolved ROOT inside the
+// shared checkout. Both directions matter: a bare read-only find must never
+// fire, and the absolute out-of-checkout forms — the sanctioned re-issue the
+// block message teaches — must be admitted.
+func TestIssue1193FindDeleteExec(t *testing.T) {
+	// A worker that owns `worktree` but whose Bash payload cwd is `shared`
+	// (the #1190 population — cwdInShared puts every command in scope).
+	resetCwd := func() Config {
+		cfg := workerCfg()
+		cfg.Cwd = shared
+		return cfg
+	}
+
+	allowed := []struct {
+		name, cmd string
+		cwd       string // "" = payload cwd reset to shared
+	}{
+		// The incident shape, correctly re-issued with an absolute target.
+		{"find -delete on an absolute tmp path", "find /tmp/x -delete", ""},
+		{"find -delete with filters on a tmp path", "find /tmp/x -name '*.tmp' -delete", ""},
+		{"find -exec rm + form on a tmp path", "find /tmp/x -exec rm {} +", ""},
+		{"find -exec rm escaped-semicolon form", `find /tmp/x -name '*.tmp' -exec rm {} \;`, ""},
+		{"find -execdir on a tmp path", `find /tmp/x -execdir chmod 600 {} \;`, ""},
+		{"find -L pre-path option before a tmp root", "find -L /tmp/x -delete", ""},
+		{"find -delete under the worker's own worktree", "find " + worktree + "/dist -delete", ""},
+		// Read-only finds never fire, whatever the cwd frame.
+		{"read-only find on a relative path from shared cwd", "find docs -name '*.md'", ""},
+		{"read-only bare find from shared cwd", "find . -type f", ""},
+		{"read-only find piped from shared cwd", "find tools -name '*.go' | wc -l", ""},
+		{"read-only find -print0 into xargs grep", "find docs -name '*.md' -print0 | xargs -0 grep -l foo", ""},
+	}
+	for _, tc := range allowed {
+		t.Run("allow/"+tc.name, func(t *testing.T) {
+			cfg := resetCwd()
+			if tc.cwd != "" {
+				cfg.Cwd = tc.cwd
+			}
+			if v := cfg.CheckBash(tc.cmd); v.Block {
+				t.Fatalf("command %q (cwd %s): unexpected block: %s", tc.cmd, cfg.Cwd, v.Reason)
+			}
+		})
+	}
+
+	blocked := []struct {
+		name, cmd string
+		cwd       string
+	}{
+		// The substitute the incident worker reached for, aimed at the
+		// checkout: a relative root from a shared cwd resolves inside it.
+		{"relative find -delete from shared cwd", "find docs -delete", ""},
+		{"relative find -delete with filters", "find docs -name '*.md' -delete", ""},
+		{"absolute find -delete on the shared checkout", "find " + shared + "/docs -delete", ""},
+		{"find -exec rm over a shared root", "find " + shared + "/tools -name '*.go' -exec rm {} +", ""},
+		{"find -execdir over a relative root from shared cwd", `find docs -execdir rm {} \;`, ""},
+		{"rootless find -delete defaults to the shared cwd", "find -delete", ""},
+		{"find -exec cp with a literal shared destination", `find /tmp/x -exec cp {} ` + shared + `/tools/x.go \;`, ""},
+	}
+	for _, tc := range blocked {
+		t.Run("block/"+tc.name, func(t *testing.T) {
+			cfg := resetCwd()
+			if tc.cwd != "" {
+				cfg.Cwd = tc.cwd
+			}
+			if v := cfg.CheckBash(tc.cmd); !v.Block {
+				t.Fatalf("command %q (cwd %s): expected block", tc.cmd, cfg.Cwd)
+			}
+		})
+	}
+}
+
+// TestIssue1193BlockMessageTeachesReissue: every block message must carry the
+// sanctioned exit (re-issue the SAME command with absolute targets or one
+// `cd <abs-dir> && …` chain) and the explicit no-substitution line, for both
+// the worktree-homed and the shared-homed (#1035) message branches.
+func TestIssue1193BlockMessageTeachesReissue(t *testing.T) {
+	assertGuidance := func(t *testing.T, reason string) {
+		t.Helper()
+		for _, want := range []string{
+			"re-issue the same command with absolute target paths",
+			"cd <abs-dir> && ",
+			"substitution is an escalation-worthy policy violation",
+		} {
+			if !strings.Contains(reason, want) {
+				t.Fatalf("block reason missing %q:\n%s", want, reason)
+			}
+		}
+	}
+
+	worktreeHomed := workerCfg()
+	v := worktreeHomed.CheckBash("rm -rf " + shared + "/docs")
+	if !v.Block {
+		t.Fatal("expected block for rm of a shared path")
+	}
+	assertGuidance(t, v.Reason)
+
+	sharedHomed := Config{SharedRoot: shared, ProjectDir: shared, Cwd: shared}
+	v = sharedHomed.CheckBash("touch STATUS.md")
+	if !v.Block {
+		t.Fatal("expected block for relative touch from a shared-homed session")
+	}
+	assertGuidance(t, v.Reason)
 }

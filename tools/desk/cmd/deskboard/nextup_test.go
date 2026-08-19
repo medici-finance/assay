@@ -618,7 +618,7 @@ func TestStatusgenPin(t *testing.T) {
 	})
 }
 
-// TestNextup_PinFlowFromConfiguredRoot is distribution/04's FLOW row: reading the
+// TestNextup_PinFlowFromConfiguredRoot is the pin-flow FLOW row: reading the
 // pin from a configured root, resolving the statusgen binary, and rendering the
 // board still work as one chain — against the REAL checked-in golden pin file
 // (the live consumer's `.assay-versions`), not a synthesised one-liner. It also

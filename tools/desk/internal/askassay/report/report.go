@@ -1,5 +1,5 @@
-// Package report builds the Ask Assay PDF reports (desk-console-2/03, design
-// doc §7.5): a weekly summary, a bottleneck report and a decision-latency
+// Package report builds the Ask Assay PDF reports (design §7.5): a weekly
+// summary, a bottleneck report and a decision-latency
 // report, each one a DETERMINISTIC function of the index at a stamp.
 //
 // THE §7.5 SPLIT, MADE STRUCTURAL

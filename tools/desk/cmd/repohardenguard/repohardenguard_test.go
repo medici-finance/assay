@@ -537,11 +537,12 @@ func TestShippedChecklistParses(t *testing.T) {
 		t.Fatalf("the shipped checklist does not parse: %v", err)
 	}
 	rows := cl.Rows
-	// The checklist must cover at least two repos, one of which must be the public
-	// medici-finance/assay. Any other repo is covered by declaration only and is
-	// deliberately not named as a literal here, so this shipped test carries no
-	// other repo slug; the "every declared repo has rows" loop below is what
-	// guards against a declared repo silently losing its coverage.
+	// The checklist must cover at least two repos — the public mirror and the
+	// private source it is copied from — and one of them must be the public
+	// medici-finance/assay. The private source repo is deliberately not named as
+	// a literal here so this shipped test carries no private-repo slug; the
+	// "every declared repo has rows" loop below is what guards against a declared
+	// repo silently losing its coverage.
 	if len(cl.Repos) < 2 {
 		t.Errorf("the shipped checklist must cover at least two repos, got %v", cl.Repos)
 	}

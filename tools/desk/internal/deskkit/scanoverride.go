@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// The LOGGED OVERRIDE for the shared secret scan (#585, ground-truth/06).
+// The LOGGED OVERRIDE for the shared secret scan.
 //
 // WHAT THIS IS NOT. It is not a softening of the refusal. Policy is unchanged and stated
 // in one line: EXIT 5 IS A STOP. A worker that hits a scan refusal still stops; the
@@ -17,10 +17,10 @@ import (
 // WHAT IT IS. Before this existed, a hard block with no override had exactly two outcomes
 // once the scan was wrong, and the house has now paid for both:
 //
-//   - the PR strands. #775's fix sat unpushed in TWO abandoned worktrees
+//   - the PR strands. A fix sat unpushed in TWO abandoned worktrees
 //     across two sessions and several days, because rewriting the flagged text would have
 //     desynced a recorded Evidence row from what was actually run.
-//   - or the worker leaves the sanctioned transport. #585's worker pushed
+//   - or the worker leaves the sanctioned transport. A worker pushed
 //     with raw `git push` + `gh pr create`, which discards not only the scan but every
 //     other guarantee the wrapper provides — and leaves NO record that a scan was skipped.
 //
@@ -31,7 +31,7 @@ import (
 // An unlogged bypass remains what it always was — outside the tools, unrecorded, and
 // against policy.
 //
-// THE REFUSAL MUST ADVERTISE IT. A path nobody knows about is a path nobody uses; #585's
+// THE REFUSAL MUST ADVERTISE IT. A path nobody knows about is a path nobody uses; a
 // worker did not route around the scan out of malice, but because the refusal said
 // "no override flag by design". OverrideHint is appended to the scan refusals so the
 // message itself carries the way out.
@@ -148,7 +148,7 @@ func OverrideIdentity() string {
 // The impersonation guard is NOT a secret scan and is NOT overridable here: it refuses a
 // claim made in a configured human's voice, and "the operator asserts it is fine" is
 // precisely the assertion it exists to disbelieve. A false positive there is a rewording
-// away — unlike a recorded Evidence command (#775) or a shipped lockfile (#781), the two
+// away — unlike a recorded Evidence command or a shipped lockfile, the two
 // cases that motivated the override at all.
 const impersonationMarker = "reads as a RULING/DECISION claim attributed to"
 
@@ -160,7 +160,7 @@ const impersonationMarker = "reads as a RULING/DECISION claim attributed to"
 //     audit row landed;
 //   - the refusal, ANNOTATED  no override was supplied. The message now carries
 //     OverrideHint, so the refusal advertises the audited way
-//     through instead of ending, as #585's did, at "no override
+//     through instead of ending, as an earlier refusal did, at "no override
 //     flag by design";
 //   - a different refusal     the override was supplied but is not usable here (bad
 //     reason, non-overridable guard, audit write failed).

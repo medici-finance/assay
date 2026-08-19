@@ -69,7 +69,7 @@ func TestUnboundReviewerRoleAdmitsNothing(t *testing.T) {
 		{State: "APPROVED", CommitID: head, Body: "## Security review\n\nSecurity-Review: pass\n"},
 	}
 
-	if _, _, found := latestAppVerdict(authorless); found {
+	if _, _, found, _ := latestAppVerdict(authorless); found {
 		t.Error("the CORRECTNESS lane accepted a review with no author under an unbound role")
 	}
 	if v := securityVerdictAtHead(authorless, head); v == secPass {

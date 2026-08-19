@@ -1,6 +1,6 @@
 // Package askassay is the read-only answer layer behind the Ask Assay pane:
-// the NUMBERS RULE (desk-console-2/01, design doc §7.5) expressed as code
-// rather than as a convention a reviewer has to police.
+// the NUMBERS RULE (design §7.5) expressed as code rather than as a convention
+// a reviewer has to police.
 //
 // THE RULE
 // --------
@@ -18,7 +18,7 @@
 //     rendered 142.
 //
 //  2. A number that cannot be computed renders COULD-NOT-CHECK, never zero.
-//     This is the three-state rule from desk-hardening/01 and the single most
+//     This is the three-state rule, and the single most
 //     important property here: a pane that answers "0" for a probe that failed
 //     is asserting a falsehood. [Unavailable] cannot carry a value at all —
 //     the type makes the mistake unrepresentable rather than discouraged.
@@ -61,7 +61,7 @@ import (
 	"time"
 )
 
-// State is the three-state result from desk-hardening/01. There is no fourth
+// State is the three-state result. There is no fourth
 // state, and in particular there is no state that means "zero because the
 // probe came back empty" — that is [CouldNotCheck] unless the question says
 // otherwise in writing (see [Question.EmptyMeansZero]).

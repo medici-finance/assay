@@ -69,7 +69,7 @@ func TestParseCutArgs(t *testing.T) {
 
 // TestValidateTag enumerates, BY NAME, every shape the glob allow-rule could not
 // exclude. The metacharacter cases are the four escapes proved against a sandbox bare
-// repo (#1538): peel-to-commit, bare `+` force, second refspec, and ref deletion.
+// repo: peel-to-commit, bare `+` force, second refspec, and ref deletion.
 func TestValidateTag(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -79,7 +79,7 @@ func TestValidateTag(t *testing.T) {
 		{name: "valid desk-tools", tag: "desk-tools/v0.1.3"},
 		{name: "valid statusgen", tag: "statusgen/v0.5.0"},
 		{name: "valid multi-digit", tag: "desk-tools/v12.30.400"},
-		{name: "valid assay umbrella (distribution/02)", tag: "assay/v0.9.0"},
+		{name: "valid assay umbrella", tag: "assay/v0.9.0"},
 
 		// --- refspec metacharacters, refused BY NAME ---
 		{name: "second refspec after a space", tag: "desk-tools/v0.1.3 +HEAD:refs/heads/main", wantRefuse: "whitespace"},
@@ -142,14 +142,14 @@ func TestValidateTag(t *testing.T) {
 	}
 }
 
-// TestTagPatternAssayNamespace pins distribution/02's tagPattern widening: named
+// TestTagPatternAssayNamespace pins the tagPattern widening: named
 // acceptance for the ruled first umbrella version, and named refusal for the two shapes
 // that must still fail — a namespace whose tags already exist but is deliberately still
 // absent from the allow-list, and the umbrella name without the required leading `v`.
 func TestTagPatternAssayNamespace(t *testing.T) {
 	t.Run("accepts the ruled first umbrella version assay/v0.9.0", func(t *testing.T) {
 		if !tagPattern.MatchString("assay/v0.9.0") {
-			t.Fatal("tagPattern refused assay/v0.9.0 — the umbrella namespace must be accepted (the human's ruling, PR #387)")
+			t.Fatal("tagPattern refused assay/v0.9.0 — the umbrella namespace must be accepted (the human's ruling)")
 		}
 	})
 	t.Run("still refuses daily-harvest despite its tags already existing", func(t *testing.T) {

@@ -1,6 +1,6 @@
 # corpus: npm package-lock.json integrity fields
 # expect: clean
-# refs:   #781 (shape 4, desk-console/03)
+# refs:   SRI integrity false-positive class (shape 4)
 # shape:  Subresource-Integrity digests behind the "integrity" key
 # why:    worked around at the time by DROPPING the lockfile from the PR rather than fixing the scanner
 {

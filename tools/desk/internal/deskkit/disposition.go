@@ -3,13 +3,13 @@ package deskkit
 // disposition.go is the CANONICAL schema for a PR DISPOSITION RECORD — a worker's
 // terminal verdict on a pull request that no longer needs code work.
 //
-// The defect it closes (#728, #827): a worker that investigates an orphaned PR and
+// The defect it closes: a worker that investigates an orphaned PR and
 // concludes "this is superseded, recommend close" writes that conclusion as a PROSE
 // COMMENT. The next orphan sweep reads PR-level signals only (reviewDecision, CI
 // conclusion, staleness) and cannot see the conclusion at all, so it re-dispatches the
 // same PR to a fresh worker who re-derives the same answer. In one 2026-08-12 cycle 8 of
 // 10 completed orphan dispatches were re-derivations of an already-posted conclusion;
-// tracker#829 was re-derived FOUR times across three weeks.
+// one PR was re-derived FOUR times across three weeks.
 //
 // The fix is derive-or-diff applied to a verdict: the conclusion gets exactly ONE
 // declared source — a structured record on the PR — and every consumer reads that record
@@ -27,7 +27,7 @@ package deskkit
 // picking a winner.
 //
 // WHO DOES WHAT. The worker WRITES the record. The record does not close anything —
-// closing a PR is a human-authorized event and belongs to issue-flow/03 (deskclose),
+// closing a PR is a human-authorized event and belongs to `deskclose`,
 // which consumes these records as its work queue. That split is why the schema is
 // designed for a SWEEP to read, not for a human to skim: deskclose must be able to pull
 // verdict + evidence off a PR without an LLM in the loop.
@@ -185,7 +185,7 @@ func (d Disposition) Marker() string {
 func dispositionFooter(v DispositionVerdict) string {
 	if v.SuppressesDispatch() {
 		return "This PR is not eligible for orphan re-dispatch. Closing it is a human-authorized " +
-			"event — it is queued for `deskclose` (issue-flow/03), not closed by this record.\n"
+			"event — it is queued for `deskclose`, not closed by this record.\n"
 	}
 	return "This PR is still live work: the orphan sweep may re-dispatch it.\n"
 }
@@ -251,7 +251,7 @@ func ParseDispositionMarker(body string) (Disposition, bool) {
 	return d, true
 }
 
-// The three states of a disposition read. These are the desk-hardening/01 instrument
+// The three states of a disposition read. These are the standard instrument
 // states, spelled the way every other three-state instrument in this tree spells them, so
 // a log line from this sweep is greppable alongside the rest.
 const (
@@ -263,7 +263,7 @@ const (
 	DispositionCheckedFailed = "checked-failed"
 	// DispositionCouldNotCheck — the read could not be performed. The PR is treated
 	// as NOT dispatch-eligible: re-dispatching on an unread record is exactly the
-	// #728 waste, and the cost of skipping one live PR for a cycle is one cycle.
+	// re-derivation waste this record closes, and the cost of skipping one live PR for a cycle is one cycle.
 	DispositionCouldNotCheck = "could-not-check"
 )
 

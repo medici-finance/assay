@@ -1,6 +1,6 @@
 # corpus: an SRI integrity field whose payload is the wrong length for sha512
 # expect: refused
-# refs:   ground-truth/06
+# refs:   golden corpus
 # shape:  the "integrity" key in front of a sha512- payload that is not 88 characters
 # why:    the exemptions are LENGTH-EXACT in both directions; a longer run behind the marker is not the digest
       "integrity": "sha512-pKvURIxJVi2CgRXROh/M6pJ/{{+}}UrTVRZKXAA+LQ+QtqJI4vBNi{{+}}bkPcs43bCCSIkn7JBPtCBXRD{{+}}mD6IWFF51QVRr+Yg=="

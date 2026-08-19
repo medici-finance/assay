@@ -93,7 +93,7 @@ func prNeedsAttention(r prRow) bool {
 // The SUMMARY always restates the standing counts of the decision-critical buckets
 // (NEEDS-REVIEW / RE-REVIEW / MERGE-NOW / FLIP) plus the UNREVIEWED and DECAY alarms —
 // every sweep, changed or not. That is deliberate: --delta silences an UNCHANGED row
-// after its first sighting, and MERGE-NOW/alarm visibility is a standing duty (mm/20),
+// after its first sighting, and MERGE-NOW/alarm visibility is a standing duty,
 // so the counts ride the quiet line itself rather than depending on a row re-surfacing.
 func actionsDeltaSet(v any) (deltaSet, bool) {
 	rep, ok := v.(actionsReport)

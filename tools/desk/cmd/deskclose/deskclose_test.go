@@ -972,7 +972,7 @@ func TestDisallowedRepoRefused(t *testing.T) {
 
 // ---------------------------------------------------------------- disposition record
 
-// TestDispositionRecordConsumed proves deskclose consumes ground-truth/05's record
+// TestDispositionRecordConsumed proves deskclose consumes the deskdisposition record
 // rather than re-deriving a verdict — and that every unhappy state of that read is a
 // refusal.
 func TestDispositionRecordConsumed(t *testing.T) {

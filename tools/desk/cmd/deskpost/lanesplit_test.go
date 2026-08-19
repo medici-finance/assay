@@ -270,11 +270,19 @@ func TestReadyTwoLanesTwoArtifactsStillFlips(t *testing.T) {
 // reviews; if the lane classifier ever stopped admitting them, nearly every real flip
 // would refuse. The direction that must never be guessed is the other one — an unreadable
 // body reaching the SECURITY lane — and that is asserted separately.
+//
+// The CHANGES_REQUESTED and the APPROVED are pinned to DIFFERENT commits (testOldHead,
+// then testHead) — a genuine push between them, standing in for the worker addressing the
+// findings. Pinning both to the SAME commit would collide with the #37 no-op-approval
+// guard (see the noOpApproval tests in ready_test.go): an APPROVED immediately following a
+// CHANGES_REQUESTED at an UNCHANGED head is exactly the forged/no-op flip that guard exists
+// to refuse, and this test's job is to prove the opposite case — a real, push-separated
+// re-review — still flips.
 func TestReadyProseCorrectnessReviewStillCountsInItsLane(t *testing.T) {
 	f, _ := setupFake(t)
 	f.files = []string{"README.md"}
 	f.reviews = []reviewInfo{
-		appReview("CHANGES_REQUESTED", testHead, "## Review\n\nThree findings, no verdict line.\n"),
+		appReview("CHANGES_REQUESTED", testOldHead, "## Review\n\nThree findings, no verdict line.\n"),
 		appReview("APPROVED", testHead, "## Review\n\nAll addressed. No verdict line here either.\n"),
 	}
 	f.status = greenStatus()

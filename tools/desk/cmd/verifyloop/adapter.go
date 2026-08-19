@@ -15,7 +15,7 @@ import (
 // heterogeneous hooks (SelectQueue / TierPolicy / Dispatch / Land) plus OnIdle.
 //
 // There is NO inline-verify path: the only way a brief leaves the Awaiting queue is through
-// the engine's Dispatch. The #541 failure mode (inline verification, zero durable artifacts)
+// the engine's Dispatch. The inline-verify failure mode (inline verification, zero durable artifacts)
 // is unrepresentable here, not merely discouraged.
 //
 // Honest bound (arch doc §1.1): this buys ATTRIBUTION, AUDIT, and STRUCTURAL SEPARATION — the
@@ -44,6 +44,37 @@ type VerifyLoop struct {
 	DurableSink Durable
 	// Now is injectable for deterministic Evidence dates in tests.
 	Now func() time.Time
+
+	// --- Native ACP dispatch --------------------------------
+	// Native selects the dispatch MODE. false (the zero value, the default) keeps
+	// today's interim emit-and-await behaviour BYTE-FOR-BYTE. true drives the
+	// dispatched verifier as a real ACP child process over internal/acp. Native
+	// dispatch is opt-in ONLY — nothing flips it on implicitly.
+	Native bool
+	// RunnerTable is the tier→runner map: each dispatchable Tier
+	// resolves to a pinned `{cmd, model, pin}` runner. When set it is THE runner
+	// surface — native dispatch resolves the runner for the item's tier from it, and
+	// Result.RunnerID is derived from the resolved entry (runnertable.go). nil keeps
+	// the legacy single-value path below (additive-and-inert-by-default).
+	RunnerTable *RunnerTable
+	// RunnerCmd is the legacy single runner value, kept as the
+	// fallback / test-injection path: a runner that silently reaches the network
+	// needs an explicit config value, so native mode with BOTH RunnerTable nil AND
+	// RunnerCmd empty refuses to dispatch. When RunnerTable is set it supersedes this
+	// (the table replaced the single value as the real runner selection).
+	RunnerCmd []string
+	// NativeEnv is appended to the spawned runner's environment (e.g. an
+	// ANTHROPIC_API_KEY for per-worker billing per the acp README note).
+	// Empty inherits the parent environment unchanged.
+	NativeEnv []string
+	// NativeTimeout caps one native dispatch (spawn→initialize→session→prompt→
+	// parse). Zero uses defaultNativeTimeout.
+	NativeTimeout time.Duration
+	// MakeWorktree creates the isolated worktree a native dispatch runs in, at
+	// Item.TargetSHA, returning its dir and a cleanup. nil uses the real
+	// `git worktree add --detach` implementation (gitDetachedWorktree). Injected
+	// in tests so the native path is exercised without a real clone.
+	MakeWorktree func(loopengine.Item) (dir string, cleanup func(), err error)
 }
 
 func (v *VerifyLoop) Name() string { return "verify-desk" }
@@ -55,12 +86,24 @@ func (v *VerifyLoop) SelectQueue() ([]loopengine.Item, error) {
 	return scanAwaiting(v.Root, v.TargetSHA)
 }
 
-// Dispatch renders the verifier prompt (Verify table + target SHA + isolation; no
+// Dispatch is the ONE method the native-primitive upgrade swaps (arch doc §9.1; loopengine
+// doc.go: "that swap touches only Dispatch"). Mode is config, not a code path anyone reaches
+// by accident: v.Native == false (the default) keeps interim emit-and-await; v.Native == true
+// drives a real ACP child process (dispatch_native.go). The rendered prompt is identical
+// either way — renderDispatchPrompt is the single source, unchanged.
+func (v *VerifyLoop) Dispatch(it loopengine.Item, tier loopengine.Tier) (loopengine.Handle, error) {
+	if v.Native {
+		return v.dispatchNative(it, tier)
+	}
+	return v.dispatchInterim(it, tier)
+}
+
+// dispatchInterim renders the verifier prompt (Verify table + target SHA + isolation; no
 // shared-checkout path), emits the exact instruction, and returns a Handle fed by Feeder.
 // This is interim mode (arch doc §9.1): a Go conductor cannot call the Agent tool, so the
 // engine EMITS the dispatch and the model executes it verbatim, then feeds the structured
-// Result back. The native-primitive upgrade swaps only this method.
-func (v *VerifyLoop) Dispatch(it loopengine.Item, tier loopengine.Tier) (loopengine.Handle, error) {
+// Result back.
+func (v *VerifyLoop) dispatchInterim(it loopengine.Item, tier loopengine.Tier) (loopengine.Handle, error) {
 	prompt := renderDispatchPrompt(it, tier)
 	if err := assertNoSharedCheckout(prompt); err != nil {
 		return nil, err

@@ -114,7 +114,7 @@ func GuardStripSource(argv []string) error {
 //   - `statusgen --trend` prints `insufficient history — need at least two
 //     recorded transitions to form a trend` and exits 0 when the transition
 //     log is ABSENT. A could-not-check is delivered wearing the exit code of a
-//     measured no-data result. Filed as #959.
+//     measured no-data result. Filed separately.
 //   - The flow-metric emitter marks a partial metric `"computed": true`.
 //     Measured 2026-08-13 on this repo: the change-failure rate emitted
 //     `"44% (partial: bug-issue signal only)"` with `computed: true`, while

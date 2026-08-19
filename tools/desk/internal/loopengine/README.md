@@ -1,12 +1,12 @@
-# loopengine — deterministic drain engine (loop-engine/01)
+# loopengine — deterministic drain engine
 
 The outer control loop of the desk's archetype-A drains — **read the queue → hold a pool of N
 in-flight workers → claim → dispatch → land each result as it returns → refill → idle-poll** —
 moved out of the operator model's attention and into code, on top of the deterministic
 instruments `tools/desk` already provides (`deskkit.Guard()`, audit, the shared claims dir).
 
-Design doc: [`docs/loop-engine-architecture.md`](../../../../docs/loop-engine-architecture.md)
-(§4 contract, §7 skeleton, §9 open questions). This package is the real thing built from §7.
+This package is the real thing built from the architecture design (§4 contract, §7 skeleton,
+§9 open questions).
 
 ## Dedupe-at-start is a STATED guarantee, and `Claim()` is its only entry point
 
@@ -28,16 +28,16 @@ and merged PRs naming the item, the board row), and reports which checks it ran:
 on every item (`BOUND <id> — evidence consulted is the claims dir ONLY`): no silent caps.
 Boundary conditions — sanitized-ID over-locking, single-winner stale reclaim, `ReleaseClaim` on
 dispatch failure, probe-then-lock not being one atomic step — are stated in
-[`doc.go`](./doc.go). Cross-machine claiming is **not** this package's job; that is
-methodology/42's GitHub-durable `refs/dispatch/<id>` claim. Full enforcement (every dispatcher
-routing through `Claim()`) arrives with the consumer migrations, briefs 02 and 03.
+[`doc.go`](./doc.go). Cross-machine claiming is **not** this package's job; that is the
+GitHub-durable `refs/dispatch/<id>` claim, out of scope here. Full enforcement (every dispatcher
+routing through `Claim()`) arrives with the consumer migrations.
 
-## Retry is DECLARED DATA, and the taxonomy has THREE outcomes (loop-engine/08)
+## Retry is DECLARED DATA, and the taxonomy has THREE outcomes
 
 **This section is the single home for the retry rules the desk skills currently carry as
 prose.** Five skills each state their own version ("rerun once for a known flake", "retry the
 push", "never retry `deskpost` exit 4"); those passages are noted, not edited, here — they are
-replaced at their next consumer migration (`loop-engine/02` and `/03`). Until then this table
+replaced at their next consumer migration. Until then this table
 is what the engine actually does, and the prose is what a human is asked to do.
 
 The table below is **generated from `Taxonomy()` in [`retry.go`](./retry.go)** and diffed by
@@ -48,9 +48,9 @@ regenerated copy, and drift between them is a red test rather than a stale parag
 | Class | Engine action | Bound | Decided by (measured evidence) |
 |-------|---------------|-------|-------------------------------|
 | `transient` | retry, exponential backoff + jitter | `MaxAttempts` total attempts; each wait clamped to `MaxInterval`; all waiting summed under `MaxElapsed` | measured 2026-08-13: `API Error: 529 Overloaded` killed two worker sessions minutes apart (both resumed and completed); GitHub secondary rate limit 403 at ~16 concurrent ops on one token with core budget remaining; gh/GitHub 5xx |
-| `retry-after` | wait the STATED instant, then attempt once | `RetryAfterMaxAttempts` (tighter than `MaxAttempts`); a stated wait longer than `MaxElapsed` is NOT slept — the item is landed blocked with the free-at instant | deskkit exit 4 carrying `RetryAfterOf`; measured 2026-08-13, `deskfile` rc=4 with its filing budget exhausted until a named wall-clock time. Retrying early re-charges the budget that refused us (#209) |
+| `retry-after` | wait the STATED instant, then attempt once | `RetryAfterMaxAttempts` (tighter than `MaxAttempts`); a stated wait longer than `MaxElapsed` is NOT slept — the item is landed blocked with the free-at instant | deskkit exit 4 carrying `RetryAfterOf`; measured 2026-08-13, `deskfile` rc=4 with its filing budget exhausted until a named wall-clock time. Retrying early re-charges the budget that refused us |
 | `refusal` | NEVER retry; land blocked | exactly one attempt — and `NonRetryable` can only narrow the retryable set, so `retry on 5` is not expressible in this package's config | deskkit exit 3 / 5 / 6 and loopengine exit 7. Measured 2026-08-13: `deskpr create` rc=5 on a writeguard false positive, rc=5 on two bodycheck refusals, a guard-blocked `git push`. A refusal is a decision, not a failure — the fix is upstream (reword, or fix the guard), and reaching for another tool to make the same write is the worse sibling of retrying |
-| `deterministic` | NEVER retry; land blocked | exactly one attempt; reachable only via the typed `Deterministic()` wrapper — the engine CANNOT infer it from an exit code | measured 2026-08-13: `deskpr create` rc=6 from the `origin/remotes/origin/main` spelling (bug #911, hit by every worktree in this repo, every time) and `deskclaim release --kind` rc=5, a plain unknown-flag usage error. Both arrive as a bare 5 or 6, so the classifier files them under refusal; same action, different remediation |
+| `deterministic` | NEVER retry; land blocked | exactly one attempt; reachable only via the typed `Deterministic()` wrapper — the engine CANNOT infer it from an exit code | measured 2026-08-13: `deskpr create` rc=6 from the `origin/remotes/origin/main` spelling (a known ref-spelling bug, hit by every worktree in this repo, every time) and `deskclaim release --kind` rc=5, a plain unknown-flag usage error. Both arrive as a bare 5 or 6, so the classifier files them under refusal; same action, different remediation |
 | `unclassified` | could-not-check: NOT retried, NOT silently dropped — landed `NEEDS_CONTEXT` | zero retries and zero waiting; every shape that lands here is published by `UnclassifiedShapes()` | the third state of the instrument invariant. Motivating measurement 2026-08-13: a PR with ZERO CI check-runs, attributed to an App-authored anti-recursion rule — an attribution that is measurably FALSE (an App-authored PR carries 19 check-runs; three PRs sharing PR author and commit author carry 21 / 8 / 0). `wait and retry` versus `escalate` is not derivable from that symptom, and a two-state taxonomy would have guessed |
 <!-- taxonomy:end -->
 
@@ -106,8 +106,8 @@ These shapes are published by `UnclassifiedShapes()` and land in `unclassified`.
 does not name its own blind spots is a silent cap.
 
 <!-- unclassified:begin -->
-- a bare exit 4 carrying NO retry-after — the wait is unknown, and guessing it short is exactly the #209 retry livelock; deskkit.RateLimited (no retry-after) produces this shape
-- `context deadline exceeded` and every other timeout — loop-engine/09 owns the timeout taxonomy and heartbeat liveness; classifying timeouts here would fork that decision across two homes
+- a bare exit 4 carrying NO retry-after — the wait is unknown, and guessing it short is exactly the retry livelock; deskkit.RateLimited (no retry-after) produces this shape
+- `context deadline exceeded` and every other timeout — the timeout taxonomy and heartbeat liveness live in liveness.go; classifying timeouts here would fork that decision across two homes
 - `no such host` / DNS resolution failure — indistinguishable from a permanently wrong hostname without a second observation the engine does not have
 - any error carrying no deskkit exit code and matching no declared transient signature — the default, and deliberately so
 - a PR showing ZERO CI check-runs — not a dispatch error at all: it surfaces inside a worker's Result, its cause is could-not-check (the App-authored anti-recursion attribution is measurably false), and 'wait' vs 'escalate' is not derivable from the symptom
@@ -128,7 +128,7 @@ A held claim also **ages**. That is why `MaxElapsed` exists and why `Run` refuse
 `MaxElapsed` could reach `Config.StaleClaim`: a dispatcher that waited past the stale threshold
 could have its own live claim reclaimed under it by a second dispatcher that correctly judged it
 abandoned — a double dispatch produced by the retry policy itself. Cross-machine claiming is
-still `methodology/42`'s GitHub-durable `refs/dispatch/<id>`, unchanged by this.
+still the GitHub-durable `refs/dispatch/<id>` claim, unchanged by this.
 
 ### Retry re-dispatches; whether the worker RESUMES is the adapter's business
 
@@ -142,13 +142,31 @@ honours it — that bound is stated, not enforced.
 
 ### Adjacent, cited but not absorbed
 
-- `loop-engine/09` owns **timeouts** and heartbeat liveness. An HTTP transport timeout on the
-  dispatch *call* is transport-class here; a dispatched *worker* going quiet is 09's, and
-  `context deadline exceeded` is deliberately left unclassified.
-- `loop-engine/10` landed the three-state `WorkEvidence` probe on `Claim()`; this reuses that
+- The liveness path owns **timeouts** and heartbeat liveness. An HTTP transport timeout on the
+  dispatch *call* is transport-class here; a dispatched *worker* going quiet is the liveness
+  path's, and `context deadline exceeded` is deliberately left unclassified.
+- The three-state `WorkEvidence` probe on `Claim()` landed earlier; this reuses that
   shape rather than inventing a second one.
-- `loop-engine/11` reads the retry decisions this journals (`Tool: loopengine`, `Verb: retry`,
-  attempt number / class / delay in `detail`) for crash-recovery replay.
+- **Crash recovery** is journal replay. Every scheduling decision — claim,
+  dispatch, retry, land, reclaim, release, refuse — is journalled to the audit stream
+  (`Tool: loopengine`), each line carrying a per-`Run()` `runID` lineage token. At boot
+  `Recover` (`recover.go`) replays the journal scoped to the loop name and classifies the
+  claim files a prior crashed run left on disk: a completed leftover is **released**; an
+  in-flight claim of a prior run of THIS conductor is freed for **immediate reclaim** (no
+  120m staleness wait); another consumer's claim is **untouched**. A corrupt/unreadable
+  journal fails closed to the existing conservative heuristics — never a guess from a partial
+  replay (including a torn final line, the crash mid-append this feature recovers from: that
+  makes recovery unavailable, not a partial replay). The reclaim itself still routes through
+  `claim.go`'s lock-guarded single winner. Four enforced guards bound the reclaim path so it
+  never re-executes an outward intent unsafely: recovery runs only while `Run()` holds the
+  **per-lineage boot flock** (`lineagelock.go` — a live sibling of the same lineage still
+  holds it, so its claims are never mistaken for a crashed run's); `deskkit.Guard()` is
+  consulted **before** `Recover`, so an armed kill switch stops boot-time claim mutation; an
+  in-flight claim is **not auto-reclaimed without a `WorkEvidence` probe** (re-dispatch would
+  consult only the claims dir); and an item already reclaimed `MaxRecoveryReclaims` times is
+  **not reclaimed again** (the only cross-boot bound on a crash-looping item). Removal is a
+  **compare-and-delete** under the claims-dir flock (`deskkit.ReleaseMatching`) — a claim
+  reclaimed in place underneath recovery is left alone, not deleted from its new live owner.
 
 ## The contract is frozen (arch doc §8 "contract erosion")
 
@@ -182,7 +200,7 @@ else.
 
 What the engine buys is **attribution, audit, and structural separation**, NOT cryptographic
 un-forgeability. No inline-verify path exists (the only way an item leaves the queue is
-`Dispatch` — the #541 class is unrepresentable), `author != runner` is a typed structural
+`Dispatch` — the inline-verify class is unrepresentable), `author != runner` is a typed structural
 guard (`CheckAuthorRunner`, distinct exit code 7), and Evidence is rendered from the dispatched
 runner's structured `Result` (command → exit → key output), not free text. But a session
 holding App signing material can still forge; the true close is `author != approver` between
@@ -190,5 +208,5 @@ distinct Apps + branch protection, which is out of scope here.
 
 ## Consumers
 
-- `tools/desk/cmd/verifyloop` — the verify-desk reference consumer (brief-01). Proves the
+- `tools/desk/cmd/verifyloop` — the verify-desk reference consumer. Proves the
   contract end-to-end; the autonomous cutover to the standing verify window is **gate: human**.

@@ -14,7 +14,7 @@ func TestStripControl(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"plain text untouched", "fix: settle at maturity", "fix: settle at maturity"},
+		{"plain text untouched", "fix: retry on timeout", "fix: retry on timeout"},
 		{"unicode untouched", "réconcilié — 日本語 ✓", "réconcilié — 日本語 ✓"},
 		{"tab and newline kept", "a\tb\nc", "a\tb\nc"},
 		{"colour SGR removed", "\x1b[31mred\x1b[0m", "red"},

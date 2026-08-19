@@ -145,16 +145,48 @@ func TestCheckPins_NotADuplicate(t *testing.T) {
 	}
 }
 
+// TestCheckPins_PlainTagRelease is the forward half of the backward-compat pair:
+// a consumer that has repinned onto the PUBLIC `assay` release (plain `vX.Y.Z`
+// repo tags — v0.9.1) validates checked-clean, and a file that
+// MIXES the plain form (statusgen, repinned) with a legacy component-prefixed line
+// (a not-yet-migrated tool) is clean too. The legacy golden proves the reverse:
+// an all-`<component>/vX.Y.Z` file still validates. Together they cover the whole
+// migration window.
+func TestCheckPins_PlainTagRelease(t *testing.T) {
+	// A realistic consumer pinned to the public assay v0.9.1 release: plain tags,
+	// bare + per-platform lines, an umbrella line, and a `-source` commit pin.
+	plain := "# consumer repinned onto the public assay v0.9.1 release\n" +
+		"assay v0.9.1\n" +
+		"statusgen v0.9.1 " + lowhex64 + "  # linux-amd64 (CI-built)\n" +
+		"statusgen-linux-amd64 v0.9.1 " + lowhex64 + "\n" +
+		"statusgen-darwin-arm64 v0.9.1 " + lowhex64 + "\n" +
+		"desk-tools-linux-amd64 v0.9.1 " + lowhex64 + "\n" +
+		"desk-tools-source v0.9.1 " + lowhex40 + "\n"
+	if res := CheckPins(writeRoot(t, plain)); res.State != PinCheckedClean {
+		t.Fatalf("plain-tag (public assay release) pin file is %s, want checked-clean: %v", res.State, res.Reasons)
+	}
+
+	// Mid-migration: statusgen repinned to the plain public tag, desk-tools still
+	// on the legacy per-tool source-repo tag. Both forms must validate together.
+	mixed := "statusgen v0.9.1 " + lowhex64 + "\n" +
+		"desk-tools-linux-amd64 desk-tools/v0.2.6 " + lowhex64 + "\n"
+	if res := CheckPins(writeRoot(t, mixed)); res.State != PinCheckedClean {
+		t.Fatalf("mixed plain+legacy pin file is %s, want checked-clean: %v", res.State, res.Reasons)
+	}
+}
+
 func TestCheckPins_States(t *testing.T) {
 	cases := []struct {
 		name string
 		body string // "" means "no file"
 		want PinCheckState
 	}{
-		{"clean", "statusgen statusgen/v0.8.2 " + lowhex64 + "\n", PinCheckedClean},
+		{"clean (legacy component tag)", "statusgen statusgen/v0.8.2 " + lowhex64 + "\n", PinCheckedClean},
+		{"clean (plain repo tag — public assay release)", "statusgen v0.9.1 " + lowhex64 + "\n", PinCheckedClean},
 		{"clean with trailing comment", "statusgen statusgen/v0.8.2 " + lowhex64 + "  # ci\n", PinCheckedClean},
 		{"missing sha (2 fields)", "statusgen statusgen/v0.8.2\n", PinMalformed},
-		{"bad tag (bare semver)", "statusgen v0.8.2 " + lowhex64 + "\n", PinCheckedFailed},
+		{"junk tag is still rejected", "statusgen not-a-tag " + lowhex64 + "\n", PinCheckedFailed},
+		{"leading-zero plain tag rejected", "statusgen v0.09.1 " + lowhex64 + "\n", PinCheckedFailed},
 		{"leading-zero tag", "statusgen statusgen/v0.08.2 " + lowhex64 + "\n", PinCheckedFailed},
 		{"short digest", "statusgen statusgen/v0.8.2 deadbeef\n", PinCheckedFailed},
 		{"source pin ok (40-hex)", "desk-tools-source desk-tools/v0.2.6 " + lowhex40 + "\n", PinCheckedClean},
@@ -194,18 +226,31 @@ func TestCheckPins_AbsentIsCouldNotCheck(t *testing.T) {
 }
 
 // TestPinTagGrammar keeps this reader's tag pattern honest against the shapes it
-// must accept and reject (distribution/02's namespace grammar).
+// must accept and reject. It accepts BOTH the plain `vX.Y.Z` repo tag (the public
+// `assay` release scheme — `v0.9.1`) and the legacy `<component>/vX.Y.Z` form
+// (still-live per-tool source-repo releases + the umbrella), while keeping the
+// character class strict semver ("add namespaces, keep the
+// character class").
 func TestPinTagGrammar(t *testing.T) {
-	ok := []string{"statusgen/v0.8.2", "desk-tools/v0.2.6", "daily-harvest/v0.1.0", "assay/v0.9.0", "assay-plugin/v1.0.0"}
-	bad := []string{"v0.9.0", "statusgen/0.8.2", "statusgen/v0.08.2", "statusgen/vX.Y.Z", "/v0.1.0", "statusgen/v1.2"}
+	ok := []string{
+		// Plain repo tags — the public assay release scheme (v0.9.0/v0.9.1).
+		"v0.9.0", "v0.9.1", "v1.0.0", "v0.0.0",
+		// Legacy component-prefixed tags — per-tool releases + the umbrella.
+		"statusgen/v0.8.2", "desk-tools/v0.2.6", "daily-harvest/v0.1.0", "assay/v0.9.0", "assay-plugin/v1.0.0",
+	}
+	bad := []string{
+		// Loose / malformed semver in either form — character class stays strict.
+		"statusgen/0.8.2", "statusgen/v0.08.2", "statusgen/vX.Y.Z", "/v0.1.0", "statusgen/v1.2",
+		"v0.08.2", "vX.Y.Z", "v1.2", "0.9.1", "V0.9.0", "v0.9.1-rc1", "v0.9", "statusgen v0.9.1",
+	}
 	for _, s := range ok {
 		if !artifactTagPattern.MatchString(s) {
-			t.Errorf("tag %q should match the namespace grammar", s)
+			t.Errorf("tag %q should match the tag grammar", s)
 		}
 	}
 	for _, s := range bad {
 		if artifactTagPattern.MatchString(s) {
-			t.Errorf("tag %q should NOT match the namespace grammar", s)
+			t.Errorf("tag %q should NOT match the tag grammar", s)
 		}
 	}
 }

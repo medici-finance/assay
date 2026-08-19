@@ -26,7 +26,7 @@ import (
 // TestActionsDeltaSetSummary pins the extractor's three claims: Actionable counts
 // exactly NEEDS-REVIEW + RE-REVIEW (the dispatch gate — never a bare len(rows)),
 // the label names that subset, and the summary restates the standing MERGE-NOW count
-// every sweep (the mm/20 duty --delta alone cannot satisfy: an unchanged row is
+// every sweep (the standing surface-duty --delta alone cannot satisfy: an unchanged row is
 // silent after its first sighting).
 func TestActionsDeltaSetSummary(t *testing.T) {
 	rep := actionsReport{Rows: []actionRow{

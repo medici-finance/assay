@@ -186,6 +186,153 @@ func TestEvalCIShortRollupIsPending(t *testing.T) {
 	}
 }
 
+// --- concurrency-supersede: a CANCELLED twin with a SUCCESS sibling is green (#1283) ---
+
+// checkRun is one (name, status, conclusion) triple for buildChecks.
+type checkRun struct{ name, status, conclusion string }
+
+// buildChecks assembles a checkRunsResp from explicit runs, with TotalCount = len(runs)
+// (a complete rollup, so the reconcile does not itself force pending). It models the raw
+// per-run shape the check-runs REST endpoint returns — including a name that appears on
+// MORE than one run, which is exactly the closecheck concurrency-supersede twin.
+func buildChecks(runs ...checkRun) checkRunsResp {
+	cr := checkRunsResp{TotalCount: len(runs)}
+	for _, r := range runs {
+		cr.CheckRuns = append(cr.CheckRuns, struct {
+			Name       string `json:"name"`
+			Status     string `json:"status"`
+			Conclusion string `json:"conclusion"`
+		}{Name: r.name, Status: r.status, Conclusion: r.conclusion})
+	}
+	return cr
+}
+
+// closecheckTwin is the real shape observed on #1263 (#1283): the closecheck
+// workflow emits, per push, a CANCELLED run AND a SUCCESS run of the SAME check name at
+// the SAME head — a concurrency-supersede. GitHub's rollup reads the SUCCESS.
+func closecheckTwin() []checkRun {
+	return []checkRun{
+		{name: "closecheck", status: "completed", conclusion: "cancelled"},
+		{name: "closecheck", status: "completed", conclusion: "success"},
+	}
+}
+
+// TestEvalCICancelledTwinSuperseded pins the fix and its bound: a CANCELLED run with a
+// SUCCESS sibling of the same name at head is superseded (green), but a CANCELLED with NO
+// non-cancelled sibling still blocks, and a genuine failure of another name still blocks
+// even when a superseded twin is present. The gate is relaxed for the supersede case ONLY.
+func TestEvalCICancelledTwinSuperseded(t *testing.T) {
+	cases := []struct {
+		name string
+		cs   combinedStatus
+		cr   checkRunsResp
+		want ciVerdict
+	}{
+		{
+			name: "closecheck cancelled+success twin → GREEN (the #1263 live case)",
+			cs:   combinedStatus{},
+			cr:   buildChecks(closecheckTwin()...),
+			want: ciGreen,
+		},
+		{
+			name: "twin alongside a real green status rollup → GREEN",
+			cs:   greenStatus(),
+			cr:   buildChecks(closecheckTwin()...),
+			want: ciGreen,
+		},
+		{
+			name: "twin + an unrelated genuine failure → RED (failure still blocks)",
+			cs:   combinedStatus{},
+			cr: buildChecks(append(closecheckTwin(),
+				checkRun{name: "build", status: "completed", conclusion: "failure"})...),
+			want: ciRed,
+		},
+		{
+			name: "CANCELLED with NO success sibling → RED (a real cancellation still blocks)",
+			cs:   combinedStatus{},
+			cr:   buildChecks(checkRun{name: "closecheck", status: "completed", conclusion: "cancelled"}),
+			want: ciRed,
+		},
+		{
+			name: "one name superseded, a DIFFERENT name cancelled-alone → RED",
+			cs:   combinedStatus{},
+			cr: buildChecks(append(closecheckTwin(),
+				checkRun{name: "lint", status: "completed", conclusion: "cancelled"})...),
+			want: ciRed,
+		},
+		{
+			name: "the SUCCESS sibling does not license a same-name FAILURE → RED",
+			cs:   combinedStatus{},
+			cr: buildChecks(
+				checkRun{name: "closecheck", status: "completed", conclusion: "cancelled"},
+				checkRun{name: "closecheck", status: "completed", conclusion: "success"},
+				checkRun{name: "closecheck", status: "completed", conclusion: "failure"}),
+			want: ciRed,
+		},
+		{
+			name: "twin + an unrelated real success → GREEN",
+			cs:   combinedStatus{},
+			cr: buildChecks(append(closecheckTwin(),
+				checkRun{name: "build", status: "completed", conclusion: "success"})...),
+			want: ciGreen,
+		},
+		{
+			name: "cancelled superseded only by a still-PENDING rerun → not superseded, RED",
+			cs:   combinedStatus{},
+			cr: buildChecks(
+				checkRun{name: "closecheck", status: "completed", conclusion: "cancelled"},
+				checkRun{name: "closecheck", status: "in_progress", conclusion: ""}),
+			want: ciRed,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := evalCI(&c.cs, &c.cr); got != c.want {
+				t.Fatalf("evalCI = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// TestReadyCancelledTwinFlips is the end-to-end repro of #1263 through runReady: an
+// open+draft PR, App APPROVED at head, and a CI rollup carrying the closecheck
+// cancelled+success twin. Before the fix the CANCELLED run refused the flip with "CI is
+// not green"; after it the head reads green (as GitHub itself does) and the PR flips.
+func TestReadyCancelledTwinFlips(t *testing.T) {
+	f, _ := setupFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+	f.checks = buildChecks(closecheckTwin()...)
+
+	code := run(readyArgs(exampleRepo))
+	if code != 0 {
+		t.Fatalf("cancelled+success twin: exit = %d, want 0 — GitHub reads the SUCCESS sibling "+
+			"and reports the head green (#1283)", code)
+	}
+	if f.flips != 1 {
+		t.Fatalf("flips = %d, want 1 — the superseded CANCELLED twin must not block the flip", f.flips)
+	}
+}
+
+// TestReadyCancelledNoSiblingRefuses is the negative control: a lone CANCELLED run with no
+// non-cancelled sibling of its name is a genuine cancellation and must still refuse (exit
+// 5), so the supersede fix does not blanket-weaken the gate.
+func TestReadyCancelledNoSiblingRefuses(t *testing.T) {
+	f, _ := setupFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+	f.checks = buildChecks(checkRun{name: "closecheck", status: "completed", conclusion: "cancelled"})
+
+	code := run(readyArgs(exampleRepo))
+	if code != deskkit.ExitRefused {
+		t.Fatalf("lone cancelled run: exit = %d, want %d (refused) — a cancellation with no "+
+			"success sibling is a genuine failure", code, deskkit.ExitRefused)
+	}
+	if f.flips != 0 {
+		t.Fatalf("flips = %d, want 0 — a genuinely cancelled check must still block the flip", f.flips)
+	}
+}
+
 // --- the drift anti-pattern: the CI-required set derives from the allowed-repo set, so they cannot drift ---
 
 // TestCIRequiredMatchesAllowedRepoPolicy — the CI policy is testable for

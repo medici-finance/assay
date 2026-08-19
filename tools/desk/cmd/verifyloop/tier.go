@@ -38,3 +38,17 @@ func (v *VerifyLoop) TierPolicy(it loopengine.Item) (loopengine.Tier, error) {
 	}
 	return loopengine.TierLocal, nil
 }
+
+// reachableTiers is the set of DISPATCHABLE tiers this loop's TierPolicy can actually emit —
+// the set the runner table is validated against at boot (an unconfigured
+// reachable tier is a startup error, not a dispatch-time surprise). It mirrors TierPolicy's
+// routing exactly: TierLocal is always reachable; TierSession is reachable ONLY when the
+// middle-rung flag is enabled. TierCheap is never emitted by verify-desk, and TierHuman is
+// non-dispatchable — both are excluded.
+func (v *VerifyLoop) reachableTiers() []loopengine.Tier {
+	tiers := []loopengine.Tier{loopengine.TierLocal}
+	if v.F16ReversibleRiskToSession {
+		tiers = append(tiers, loopengine.TierSession)
+	}
+	return tiers
+}

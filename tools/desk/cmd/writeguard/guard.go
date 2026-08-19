@@ -328,6 +328,14 @@ Dispatched/worker session? The claim is not yours to make — isolate instead: g
 	}
 }
 
+// blockEvasionGuidance is appended to every block message (#1193): it names
+// the ONE sanctioned exit for an out-of-checkout false positive (re-issue the
+// SAME command with targets the guard can resolve) and forbids substituting a
+// different command. The 2026-08-16 incident's worker answered a
+// false-positive `rm` block with `find … -delete` instead of re-issuing —
+// this line turns that confusion into a correct self-service re-issue.
+const blockEvasionGuidance = "If your write targets a path OUTSIDE the shared checkout, re-issue the same command with absolute target paths (or one `cd <abs-dir> && …` chain) — the guard admits those. Do NOT substitute a different command to achieve the write: a block is a stop signal, and substitution is an escalation-worthy policy violation."
+
 func (c Config) block(tool, target string) Verdict {
 	if c.sharedHomed() {
 		// Shared-homed session WITHOUT the opt-in token (#1035): with the
@@ -347,7 +355,8 @@ The shared-homed exemption must be CLAIMED explicitly (cf. ASSAY_MAIN_COMMIT_OK)
     The sentinel expires after %s; renewing and dropping it are human acts too — this guard refuses tool-surface writes to that path.
 Dispatched/worker session? The claim is not yours to make — isolate instead: create your own worktree (git worktree add ../tracker-<name> -b <branch> origin/main, absolute sibling path) and work there.`,
 				c.SharedRoot, tool, target,
-				filepath.Dir(sentinelPathForMessage()), c.SharedRoot, sentinelPathForMessage(), sentinelTTL()),
+				filepath.Dir(sentinelPathForMessage()), c.SharedRoot, sentinelPathForMessage(), sentinelTTL()) +
+				"\n" + blockEvasionGuidance,
 		}
 	}
 	home := c.home()
@@ -357,7 +366,8 @@ Dispatched/worker session? The claim is not yours to make — isolate instead: c
 This session is homed in %s, but this %s call targets the SHARED checkout (%s):
   %s
 Write ONLY inside your own worktree (%s). Never write to the shared checkout via absolute paths, and never cd into it — read it with git -C / absolute-path reads if you must. If this operation is genuinely meant for the shared checkout, it must run from a session homed there (the coordinator or a direct human session) with WRITEGUARD_SHARED_OK=1 exported.`,
-			home, tool, c.SharedRoot, target, home),
+			home, tool, c.SharedRoot, target, home) +
+			"\n" + blockEvasionGuidance,
 	}
 }
 
@@ -1588,13 +1598,65 @@ func targetDirFlag(segment string) string {
 	return ""
 }
 
+// findExecChild reports whether the shell word starting at verbStart is the
+// CHILD COMMAND of a find -exec/-execdir/-ok/-okdir primary — i.e. the token
+// immediately before it is one of those primaries (#1193). Such a verb
+// operates on find's matches, not on paths of its own.
+func findExecChild(cmd string, verbStart int) bool {
+	j := verbStart
+	for j > 0 && (cmd[j-1] == ' ' || cmd[j-1] == '\t') {
+		j--
+	}
+	if j == 0 {
+		return false
+	}
+	prev := strings.Trim(cmd[tokenStart(cmd, j-1):j], `"'`)
+	switch prev {
+	case "-exec", "-execdir", "-ok", "-okdir":
+		return true
+	}
+	return false
+}
+
+// dropFindExecPlaceholders removes find's -exec syntax tokens from a child
+// command's argument list: `{}` (and any token carrying it — find expands
+// those to matched paths under find's own roots), the `+` and `;` / `\;`
+// terminators, and a bare `\` left when a segment boundary split an escaped
+// terminator. What remains are the child command's own literal paths, which
+// still deserve judging (#1193).
+func dropFindExecPlaceholders(args []string) []string {
+	out := []string{}
+	for _, a := range args {
+		if a == "+" || a == ";" || a == `\;` || a == `\` || strings.Contains(a, "{}") {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
 // fileMutationTargets extracts the paths a file-mutation command writes: for
 // a copy-like command only the destination, for everything else every
 // argument.
 func fileMutationTargets(_ Config, cmd string, _, matchEnd int) []string {
 	segment := segmentAfter(cmd, matchEnd)
 	args := argTokens(segment)
-	verb := filepath.Base(strings.Trim(cmd[tokenStart(cmd, matchEnd-1):matchEnd], `"'`))
+	verbStart := tokenStart(cmd, matchEnd-1)
+	verb := filepath.Base(strings.Trim(cmd[verbStart:matchEnd], `"'`))
+	// A verb that is the child command of a find -exec primary operates on
+	// find's MATCHES: its `{}` / `+` / `\;` arguments are find's syntax, not
+	// paths, and resolving them against the cwd invents targets — from a
+	// shared cwd, `find /tmp/x -exec rm {} +` "resolved" to <shared>/{} and
+	// blocked a write that never touches the checkout (#1193). Drop the
+	// placeholders; the real write roots are find's, and the find indicator
+	// judges those. A residual literal path (`-exec cp {} <shared>/dst \;`)
+	// is still judged here.
+	if findExecChild(cmd, verbStart) {
+		args = dropFindExecPlaceholders(args)
+		if len(args) == 0 {
+			return []string{} // placeholders only — find's roots carry the write
+		}
+	}
 	if !copyLikeCommands[verb] || sourceMutatingCopyFlag(segment) {
 		return args
 	}
@@ -1605,6 +1667,58 @@ func fileMutationTargets(_ Config, cmd string, _, matchEnd int) []string {
 		return nil // no visible destination — fail safe
 	}
 	return args[len(args)-1:]
+}
+
+// findPrePathOption reports whether a token is one of find's pre-path global
+// options (-H/-L/-P, -D debugopts, -Olevel), which may precede the root paths
+// — stopping the root scan at these would miss the real roots of
+// `find -L /tmp/x -delete`.
+func findPrePathOption(t string) bool {
+	if t == "-H" || t == "-L" || t == "-P" {
+		return true
+	}
+	return strings.HasPrefix(t, "-D") || strings.HasPrefix(t, "-O")
+}
+
+// findMutationTargets extracts the write roots of a find command (#1193). find
+// only mutates through its -delete primary (removes what it matches) and its
+// -exec/-execdir/-ok/-okdir primaries (run an arbitrary command over the
+// matches), so the ROOT PATHS — everything between the verb and the first
+// expression token — are the write targets. A find carrying neither is a pure
+// read: return the empty (non-nil) set, "no write target, not a hit", the
+// same shape as statusgenTargets' read-only modes. No visible root means find
+// defaults to "." — cwdTargets, which resolves against the effective cwd and
+// fails safe when that is unknown. This closes the substitution gap the
+// 2026-08-16 incident exposed: a worker answered a blocked `rm` with
+// `find … -delete`, which matched no indicator at all.
+func findMutationTargets(c Config, cmd string, matchStart, matchEnd int) []string {
+	fields := strings.Fields(segmentAfter(cmd, matchEnd))
+	mutating := false
+	for _, f := range fields {
+		f = strings.Trim(f, `"'`)
+		if f == "-delete" || strings.HasPrefix(f, "-exec") || strings.HasPrefix(f, "-ok") {
+			mutating = true
+			break
+		}
+	}
+	if !mutating {
+		return []string{} // read-only find — no write target, not a hit
+	}
+	var roots []string
+	for _, f := range fields {
+		t := strings.Trim(f, `"'`)
+		if t == "" || findPrePathOption(t) {
+			continue
+		}
+		if strings.HasPrefix(t, "-") || t == "(" || t == `\(` || t == "!" || t == `\!` {
+			break // the expression begins — roots are exhausted
+		}
+		roots = append(roots, strings.TrimRight(t, "`"))
+	}
+	if len(roots) == 0 {
+		return c.cwdTargets(cmd, matchStart)
+	}
+	return roots
 }
 
 var indicatorSpecs = []indicatorSpec{
@@ -1652,6 +1766,18 @@ var indicatorSpecs = []indicatorSpec{
 		re:          regexp.MustCompile("(^|[\\s;&|('\"/`])(cp|mv|rm|rmdir|mkdir|touch|truncate|ln|rsync|dd|install)\\b"),
 		targetAware: true,
 		extract:     fileMutationTargets,
+	},
+	{
+		// find is a file-mutation command ONLY in its -delete / -exec family
+		// forms, and its write targets are its ROOT paths, so it gets its own
+		// extract instead of joining the alternation above (#1193 — the
+		// substitution a worker reached for when `rm` was blocked). Same
+		// basename-matching prefix class as the file-mutation indicator;
+		// target-awareness bounds the false-positive cost identically.
+		name:        "find -delete/-exec (file mutation)",
+		re:          regexp.MustCompile("(^|[\\s;&|('\"/`])find\\b"),
+		targetAware: true,
+		extract:     findMutationTargets,
 	},
 	{
 		name:        "sed -i",

@@ -32,20 +32,41 @@ import (
 const AssayVersionsFile = ".assay-versions"
 
 // UmbrellaArtifact is the artifact name of the OPTIONAL umbrella line. `assay`
-// is reserved to mean the suite (distribution/02), so it never collides with a
+// is reserved to mean the suite, so it never collides with a
 // per-tool artifact name. The umbrella line names a suite composition, not a
 // downloadable asset, so it is the one line that carries no sha256 — see
 // UmbrellaPin and the spec's "Umbrella line" subsection.
 const UmbrellaArtifact = "assay"
 
-// artifactTagPattern is the namespace grammar every pin tag must match:
-// `<component>/vMAJOR.MINOR.PATCH`, no leading zeros. It is a verbatim copy of
-// `deskrelease`'s manifest.go `artifactTagPattern` (distribution/02's grammar) —
-// deliberately generic over the component name rather than a fixed allow-list,
-// so a new artifact line (`assay-plugin/…`, a container-image line) a later
-// brief adds is not wrongly rejected. It is the same string as deskrelease's
-// (package-local) manifest.go pattern; TestPinTagGrammar asserts the shape.
-var artifactTagPattern = regexp.MustCompile(`^([a-z][a-z0-9-]*)/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+// artifactTagPattern is the grammar every pin tag must match. It accepts BOTH
+// tag shapes a `.assay-versions` line can legitimately carry:
+//
+//   - a plain `vMAJOR.MINOR.PATCH` repo tag — the shape the public `assay`
+//     release home actually cuts (`v0.9.0`, `v0.9.1`, …). A 2026-08-15 ruling
+//     established that `medici-finance/assay` publishes plain, repo-level
+//     `vX.Y.Z` tags, NOT a component-prefixed `assay/vX` or per-tool
+//     `statusgen/vX` — see that
+//     repo's `release.yml` (`tags: ["v*"]`, "plain repo-level semver tags") and
+//     the version-scheme spec. A consumer pinning against the real
+//     downloadable `assay` release therefore writes `statusgen v0.9.1 <sha>`, and
+//     the pin's artifact NAME (field 1) already carries the component — the tag
+//     does not need to repeat it.
+//   - a legacy `<component>/vMAJOR.MINOR.PATCH` tag — the per-tool release scheme
+//     the source repo still cuts (`statusgen/v0.8.2`, `desk-tools/v0.2.6`,
+//     `daily-harvest/v0.1.0`) and the umbrella `assay/vX.Y.Z` form. Kept accepted
+//     so existing consumers are not broken mid-migration; the component prefix is
+//     generic over the name (never a fixed allow-list) so a new artifact line
+//     a later brief adds is not wrongly rejected.
+//
+// The `<component>/` prefix is therefore OPTIONAL. The character class is NOT
+// loosened ("add namespaces, keep the character class"): both
+// forms are still STRICT semver — no leading zeros, exactly three dotted numbers.
+//
+// This deliberately DIVERGES from `deskrelease`'s manifest.go `artifactTagPattern`,
+// which stays `<component>/vX.Y.Z`-only: that pattern screens what tags `deskrelease`
+// may CUT from this repo (still the per-tool scheme), a different concern from what a
+// consumer PIN may reference. TestPinTagGrammar asserts the shape.
+var artifactTagPattern = regexp.MustCompile(`^([a-z][a-z0-9-]*/)?v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
 // sha256Pattern / commitShaPattern are the two content-address shapes field 3
 // can take: a 64-hex sha256 of a published release asset for a binary line, or
@@ -175,9 +196,10 @@ type PinCheckResult struct {
 }
 
 // CheckPins validates the pin file at root/.assay-versions against the published
-// grammar. It rejects, per Task 4 of distribution/04:
+// grammar. It rejects, per the pin-file spec:
 //   - a missing sha256 (a line short of three fields → PinMalformed);
-//   - a malformed / non-namespaced tag (PinCheckedFailed);
+//   - a malformed tag — neither a plain `vX.Y.Z` nor `<component>/vX.Y.Z`, or
+//     with a leading zero / loose semver (PinCheckedFailed);
 //   - a field-3 that is neither a 64-hex sha256 (binary line) nor, for a
 //     `-source` line, a 40-hex commit sha (PinCheckedFailed);
 //   - a DUPLICATE artifact name (PinCheckedFailed).
@@ -245,7 +267,7 @@ func CheckPins(root string) PinCheckResult {
 			}
 			if !artifactTagPattern.MatchString(fields[1]) {
 				semantic(fmt.Sprintf(
-					"line %d: umbrella tag %q is not <component>/vX.Y.Z", lineNo, fields[1]))
+					"line %d: umbrella tag %q is not vX.Y.Z (or <component>/vX.Y.Z)", lineNo, fields[1]))
 			}
 			continue
 		}
@@ -264,7 +286,7 @@ func CheckPins(root string) PinCheckResult {
 		tag, field3 := fields[1], fields[2]
 		if !artifactTagPattern.MatchString(tag) {
 			semantic(fmt.Sprintf(
-				"line %d: tag %q is not <component>/vX.Y.Z (no leading zeros)", lineNo, tag))
+				"line %d: tag %q is not vX.Y.Z or <component>/vX.Y.Z (no leading zeros)", lineNo, tag))
 		}
 		if strings.HasSuffix(name, "-source") {
 			if !commitPattern.MatchString(field3) {

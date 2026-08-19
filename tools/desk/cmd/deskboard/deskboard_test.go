@@ -427,6 +427,10 @@ func TestClassify(t *testing.T) {
 		{"approved green, merge state behind, draft", classifyInput{ever: true, atHead: true, draft: true, approvedAtHead: true, ciGreen: true, pass: 1, mergeBehind: true, mergeStateRaw: "BEHIND"}, actFlip},
 		{"approved green, merge state behind, non-draft", classifyInput{ever: true, atHead: true, draft: false, approvedAtHead: true, ciGreen: true, pass: 1, mergeBehind: true, mergeStateRaw: "BEHIND"}, actMergeBehind},
 		{"defensive check default", classifyInput{ever: true, atHead: true, draft: true, approvedAtHead: false}, actCheck},
+		// #37: a no-op approval (suppressed by reduceReviews into an effective
+		// CHANGES_REQUESTED, so blocking=true and approvedAtHead=false here) must classify
+		// SUSPECT-APPROVAL, never FLIP or MERGE-NOW, even though CI is green.
+		{"suspect no-op approval, ci green", classifyInput{ever: true, atHead: true, blocking: true, suspectNoOp: true, draft: true, ciGreen: true, pass: 1}, actSuspectApproval},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -572,6 +576,148 @@ func TestSecurityReviewRequired_216(t *testing.T) {
 		// approved at head + CI green + CLEAN → MERGE-NOW (was FLIP before the MERGE-NOW class).
 		if act != actMergeNow {
 			t.Errorf("action = %s, want %s", act, actMergeNow)
+		}
+	})
+}
+
+// TestNoOpApprovalSuspect_37 reproduces the LIVE EVIDENCE from #37 end-to-end
+// through `deskboard actions`: decks#17 / decks#11 (2026-07-14) both flipped to APPROVED at
+// an UNCHANGED head, no intervening commit, while a blocking CHANGES_REQUESTED stood. Before
+// this fix the board read "latest bot review state at head" and would have reported both as
+// FLIP-eligible (draft) / MERGE-NOW (non-draft) — this is the exact gap the live-evidence
+// comment flags: "the board reads latest bot review state at head and would have reported
+// both as FLIP-eligible... nothing in the system noticed." The row must classify
+// SUSPECT-APPROVAL, never FLIP or MERGE-NOW, regardless of CI/draft state.
+func TestNoOpApprovalSuspect_37(t *testing.T) {
+	repo := "example-org/tracker"
+	head := "deadbeefcafe"
+
+	reviewsJSON := `[` +
+		`{"user":{"login":"` + reviewerBotDisplay() + `"},"state":"CHANGES_REQUESTED","commit_id":"` + head + `",` +
+		`"body":"blocker, address before merge","submitted_at":"2026-07-14T18:03:22Z"},` +
+		`{"user":{"login":"` + reviewerBotDisplay() + `"},"state":"APPROVED","commit_id":"` + head + `",` +
+		`"body":"looks good now","submitted_at":"2026-07-14T18:24:55Z"}` + // no push between these two
+		`]`
+
+	runFor := func(t *testing.T, draft bool) actionsReport {
+		installFakeGH(t)
+		t.Setenv("DESKBOARD_GH_PR_REPO", repo)
+		draftStr := "false"
+		if draft {
+			draftStr = "true"
+		}
+		t.Setenv("DESKBOARD_GH_PRLIST_JSON",
+			`[{"number":17,"title":"grant deck","isDraft":`+draftStr+`,"author":{"login":"app/assay-worker-app"},`+
+				`"headRefOid":"`+head+`","mergeStateStatus":"CLEAN","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}]`)
+		t.Setenv("DESKBOARD_GH_REVIEWS_JSON", reviewsJSON)
+
+		var out, errb bytes.Buffer
+		if code := run([]string{"actions"}, &out, &errb); code != deskkit.ExitOK {
+			t.Fatalf("run(actions) = exit %d, stderr=%s", code, errb.String())
+		}
+		var rep actionsReport
+		if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+			t.Fatalf("parsing actions JSON: %v\n%s", err, out.String())
+		}
+		return rep
+	}
+
+	actionOf := func(rep actionsReport) string {
+		for _, r := range rep.Rows {
+			if r.Number == 17 {
+				return r.Action
+			}
+		}
+		return ""
+	}
+
+	t.Run("draft — never FLIP", func(t *testing.T) {
+		rep := runFor(t, true)
+		act := actionOf(rep)
+		if act != actSuspectApproval {
+			t.Errorf("action = %s, want %s (draft no-op approval must never read FLIP)", act, actSuspectApproval)
+		}
+		if act == actFlip {
+			t.Fatal("regression: the live-evidence no-op approval classified FLIP")
+		}
+	})
+
+	t.Run("non-draft — never MERGE-NOW", func(t *testing.T) {
+		rep := runFor(t, false)
+		act := actionOf(rep)
+		if act != actSuspectApproval {
+			t.Errorf("action = %s, want %s (non-draft no-op approval must never read MERGE-NOW)", act, actSuspectApproval)
+		}
+		if act == actMergeNow {
+			t.Fatal("regression: the live-evidence no-op approval classified MERGE-NOW")
+		}
+	})
+}
+
+// TestReduceReviews_NoOpApproval_37 unit-tests reduceReviews directly: a CHANGES_REQUESTED
+// followed by an APPROVED at the SAME commit (no push) must reduce to blocking=true,
+// approved=false, suspectNoOp=true — never approved=true. A genuine push (different
+// commit_id) between the two must reduce normally to approved=true, suspectNoOp=false.
+func TestReduceReviews_NoOpApproval_37(t *testing.T) {
+	bot := reviewerBotDisplay()
+	mk := func(state, commit string) review {
+		var r review
+		r.User.Login = bot
+		r.State = state
+		r.CommitID = commit
+		r.SubmittedAt = "2026-07-14T18:24:55Z"
+		return r
+	}
+
+	t.Run("same head — suspect, not approved", func(t *testing.T) {
+		head := "deadbeefcafe"
+		reviews := []review{
+			mk("CHANGES_REQUESTED", head),
+			mk("APPROVED", head), // no push between these two
+		}
+		st := reduceReviews(reviews, head)
+		if !st.atHead {
+			t.Fatal("expected atHead=true")
+		}
+		if st.approved {
+			t.Error("a no-op approval must never reduce to approved=true")
+		}
+		if !st.blocking {
+			t.Error("a no-op approval must still reduce to blocking=true")
+		}
+		if !st.suspectNoOp {
+			t.Error("expected suspectNoOp=true")
+		}
+	})
+
+	t.Run("retried same-head forgery still suspect", func(t *testing.T) {
+		head := "deadbeefcafe"
+		reviews := []review{
+			mk("CHANGES_REQUESTED", head),
+			mk("APPROVED", head),
+			mk("APPROVED", head), // retry
+		}
+		st := reduceReviews(reviews, head)
+		if st.approved {
+			t.Error("a retried no-op approval must never reduce to approved=true")
+		}
+		if !st.suspectNoOp {
+			t.Error("expected suspectNoOp=true on the retry too")
+		}
+	})
+
+	t.Run("different head — genuine re-review, approved and not suspect", func(t *testing.T) {
+		oldHead, newHead := "0f1e2d3c", "deadbeefcafe"
+		reviews := []review{
+			mk("CHANGES_REQUESTED", oldHead),
+			mk("APPROVED", newHead), // a real push happened
+		}
+		st := reduceReviews(reviews, newHead)
+		if !st.approved {
+			t.Error("a genuine re-review after a push must reduce to approved=true")
+		}
+		if st.suspectNoOp {
+			t.Error("a genuine re-review after a push must not be flagged suspectNoOp")
 		}
 	})
 }
@@ -832,7 +978,7 @@ func TestKillSwitch_Exit3(t *testing.T) {
 	}
 }
 
-// ---- desk-tools/11: gate-score ordering tests ----
+// ---- stream-a/11: gate-score ordering tests ----
 
 // TestGateScores_ScoreDescOrdering proves that owned PRs are ordered by gate score
 // descending (highest score first), and that an unowned PR sorts to the bottom with
@@ -841,14 +987,14 @@ func TestGateScores_ScoreDescOrdering(t *testing.T) {
 	repo := "example-org/tracker"
 	installFakeGH(t)
 
-	// Gate-scores fixture: desk-tools/11=3000, desk-tools/02=2000.
+	// Gate-scores fixture: stream-a/11=3000, stream-a/02=2000.
 	t.Setenv("DESKBOARD_GATE_SCORES_JSON",
-		`[{"brief":"desk-tools/11","score":3000,"blockedCount":2,"stream":"desk-tools","status":"implemented"},{"brief":"desk-tools/02","score":2000,"blockedCount":0,"stream":"desk-tools","status":"verified"}]`)
+		`[{"brief":"stream-a/11","score":3000,"blockedCount":2,"stream":"stream-a","status":"implemented"},{"brief":"stream-a/02","score":2000,"blockedCount":0,"stream":"stream-a","status":"verified"}]`)
 
 	// Three PRs: one owned (score 3000), one owned (score 2000), one unowned.
 	t.Setenv("DESKBOARD_GH_PR_REPO", repo)
 	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
-		`[{"number":20,"title":"low score","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"b","headRefName":"brief/desk-tools-02-bar","mergeStateStatus":"CLEAN","statusCheckRollup":[]},{"number":10,"title":"high score","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"a","headRefName":"feat/desk-tools-11-foo","mergeStateStatus":"CLEAN","statusCheckRollup":[]},{"number":30,"title":"unowned","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"c","headRefName":"fix/typo","mergeStateStatus":"CLEAN","statusCheckRollup":[]}]`)
+		`[{"number":20,"title":"low score","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"b","headRefName":"brief/stream-a-02-bar","mergeStateStatus":"CLEAN","statusCheckRollup":[]},{"number":10,"title":"high score","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"a","headRefName":"feat/stream-a-11-foo","mergeStateStatus":"CLEAN","statusCheckRollup":[]},{"number":30,"title":"unowned","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"c","headRefName":"fix/typo","mergeStateStatus":"CLEAN","statusCheckRollup":[]}]`)
 	t.Setenv("DESKBOARD_GH_REVIEWS_JSON", `[]`)
 	t.Setenv("DESKBOARD_GH_PRFILES_JSON", `[]`)
 
@@ -865,16 +1011,16 @@ func TestGateScores_ScoreDescOrdering(t *testing.T) {
 		t.Fatalf("expected 3 rows, got %d", len(rep.Rows))
 	}
 
-	// Row 0: highest score (3000, desk-tools/11, PR #10)
+	// Row 0: highest score (3000, stream-a/11, PR #10)
 	r0 := rep.Rows[0]
-	if r0.Score != 3000 || r0.OwningBrief != "desk-tools/11" || r0.Number != 10 {
-		t.Errorf("row[0]: want score=3000 brief=desk-tools/11 num=10; got score=%d brief=%q num=%d", r0.Score, r0.OwningBrief, r0.Number)
+	if r0.Score != 3000 || r0.OwningBrief != "stream-a/11" || r0.Number != 10 {
+		t.Errorf("row[0]: want score=3000 brief=stream-a/11 num=10; got score=%d brief=%q num=%d", r0.Score, r0.OwningBrief, r0.Number)
 	}
 
-	// Row 1: second highest score (2000, desk-tools/02, PR #20)
+	// Row 1: second highest score (2000, stream-a/02, PR #20)
 	r1 := rep.Rows[1]
-	if r1.Score != 2000 || r1.OwningBrief != "desk-tools/02" || r1.Number != 20 {
-		t.Errorf("row[1]: want score=2000 brief=desk-tools/02 num=20; got score=%d brief=%q num=%d", r1.Score, r1.OwningBrief, r1.Number)
+	if r1.Score != 2000 || r1.OwningBrief != "stream-a/02" || r1.Number != 20 {
+		t.Errorf("row[1]: want score=2000 brief=stream-a/02 num=20; got score=%d brief=%q num=%d", r1.Score, r1.OwningBrief, r1.Number)
 	}
 
 	// Row 2: unowned (default score 0, PR #30)
@@ -892,12 +1038,12 @@ func TestGateScores_OldestFirstTieBreak(t *testing.T) {
 
 	// One brief in gate-scores so both PRs get the same score.
 	t.Setenv("DESKBOARD_GATE_SCORES_JSON",
-		`[{"brief":"desk-tools/11","score":3000,"blockedCount":2,"stream":"desk-tools","status":"implemented"}]`)
+		`[{"brief":"stream-a/11","score":3000,"blockedCount":2,"stream":"stream-a","status":"implemented"}]`)
 
 	t.Setenv("DESKBOARD_GH_PR_REPO", repo)
 	// PR #25 was created BEFORE PR #50 (lower number = older).
 	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
-		`[{"number":50,"title":"newer","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"b","headRefName":"feat/desk-tools-11-newer","mergeStateStatus":"CLEAN","statusCheckRollup":[]},{"number":25,"title":"older","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"a","headRefName":"feat/desk-tools-11-older","mergeStateStatus":"CLEAN","statusCheckRollup":[]}]`)
+		`[{"number":50,"title":"newer","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"b","headRefName":"feat/stream-a-11-newer","mergeStateStatus":"CLEAN","statusCheckRollup":[]},{"number":25,"title":"older","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"a","headRefName":"feat/stream-a-11-older","mergeStateStatus":"CLEAN","statusCheckRollup":[]}]`)
 	t.Setenv("DESKBOARD_GH_REVIEWS_JSON", `[]`)
 	t.Setenv("DESKBOARD_GH_PRFILES_JSON", `[]`)
 
@@ -936,11 +1082,11 @@ func TestGateScores_UnownedDefault(t *testing.T) {
 
 	// One brief with a positive score.
 	t.Setenv("DESKBOARD_GATE_SCORES_JSON",
-		`[{"brief":"desk-tools/11","score":3000,"blockedCount":0,"stream":"desk-tools","status":"implemented"}]`)
+		`[{"brief":"stream-a/11","score":3000,"blockedCount":0,"stream":"stream-a","status":"implemented"}]`)
 
 	t.Setenv("DESKBOARD_GH_PR_REPO", repo)
 	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
-		`[{"number":5,"title":"unowned","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"a","headRefName":"fix/typo","mergeStateStatus":"CLEAN","statusCheckRollup":[]},{"number":10,"title":"owned","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"b","headRefName":"feat/desk-tools-11-foo","mergeStateStatus":"CLEAN","statusCheckRollup":[]}]`)
+		`[{"number":5,"title":"unowned","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"a","headRefName":"fix/typo","mergeStateStatus":"CLEAN","statusCheckRollup":[]},{"number":10,"title":"owned","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"b","headRefName":"feat/stream-a-11-foo","mergeStateStatus":"CLEAN","statusCheckRollup":[]}]`)
 	t.Setenv("DESKBOARD_GH_REVIEWS_JSON", `[]`)
 	t.Setenv("DESKBOARD_GH_PRFILES_JSON", `[]`)
 
@@ -959,7 +1105,7 @@ func TestGateScores_UnownedDefault(t *testing.T) {
 
 	// Owned PR should be first (score 3000 > 0).
 	r0 := rep.Rows[0]
-	if r0.OwningBrief != "desk-tools/11" || r0.Score != 3000 {
+	if r0.OwningBrief != "stream-a/11" || r0.Score != 3000 {
 		t.Errorf("row[0]: owned PR should be first; got brief=%q score=%d", r0.OwningBrief, r0.Score)
 	}
 	// Unowned PR should be second (score 0).

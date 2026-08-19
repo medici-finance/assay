@@ -41,7 +41,7 @@ type briefFrontmatter struct {
 // (verified free-closes and Evidence-present-but-unpromoted rows), oldest-first within class.
 //
 // This is the deterministic board read; there is NO code path that produces a verify verdict
-// without going through the engine's Dispatch — the #541 inline path is unrepresentable.
+// without going through the engine's Dispatch — the inline-verify path is unrepresentable.
 func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
 	streamsDir := filepath.Join(root, "docs", "streams")
 	entries, err := os.ReadDir(streamsDir)

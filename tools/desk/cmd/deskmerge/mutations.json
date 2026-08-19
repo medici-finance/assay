@@ -111,15 +111,15 @@
     },
     {
       "name": "let an unsigned ruling authorize the write (the human gate stops gating)",
-      "file": "internal/deskkit/rulinggate.go",
-      "old": "\t\tif url == \"\" {",
-      "new": "\t\tif false && url == \"\" {"
+      "file": "internal/deskkit/signoff.go",
+      "old": "\t\tout.State = SignOffUnsigned",
+      "new": "\t\tout.State = SignOffGranted"
     },
     {
       "name": "read a neighbouring ruling's sign-off as this one's (one signature signs them all)",
-      "file": "internal/deskkit/rulinggate.go",
-      "old": "\t\t\tinSection = strings.HasPrefix(ln, \"## \"+rulingID+\" \")",
-      "new": "\t\t\tinSection = inSection || strings.HasPrefix(ln, \"## \"+rulingID+\" \")"
+      "file": "internal/deskkit/signoff.go",
+      "old": "\t\t\tinSection = isRulingHeading(ln, id)",
+      "new": "\t\t\tinSection = inSection || isRulingHeading(ln, id)"
     },
     {
       "name": "accept an App-authored acceptance as a human authorization",

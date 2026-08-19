@@ -1,15 +1,14 @@
 package main
 
-// Composition-manifest reader for distribution/02's version scheme. See
-// docs/streams/distribution/version-scheme.md § "Composition manifest" for the format this
-// pins: one YAML file per umbrella version, a top-level `umbrella:` tag and an `artifacts:`
-// list whose entries each carry the full per-artifact `tag:`.
+// Composition-manifest reader for the umbrella version scheme (see version-scheme.md
+// § "Composition manifest" for the format this pins): one YAML file per umbrella
+// version, a top-level `umbrella:` tag and an `artifacts:` list whose entries each
+// carry the full per-artifact `tag:`.
 //
-// This package does not cut any tag from a manifest — Ground rules forbid this brief from
-// cutting a release — and it is not wired into `planCut`. It exists so the format is
-// machine-readable by a second party (the fixture in releases/example.yaml, and the future
-// consumers named in the brief's `consumers:` list: distribution/04, 06, 08) and so the two
-// negative properties Task 5 asks for have somewhere to live: the umbrella's own line never
+// This package does not cut any tag from a manifest — it does not cut releases — and it
+// is not wired into `planCut`. It exists so the format is machine-readable by a second
+// party (the fixture in releases/example.yaml, and future consumer lines) and so the two
+// negative properties required here have somewhere to live: the umbrella's own line never
 // regresses across releases, and a per-artifact tag is validated independently of whether
 // any umbrella tag exists.
 
@@ -24,10 +23,10 @@ import (
 
 // artifactTagPattern is the SHAPE check for one manifest entry's tag: a component name
 // (lowercase, digits, hyphens — never empty, never starting with a digit or hyphen) followed
-// by "/vX.Y.Z". It is deliberately component-agnostic, not a 3-way allow-list: Task 4 leaves
-// the artifact-line set open on purpose, since distribution/06 adds a plugin line and
-// distribution/07 adds a container-image line, and this check must accept any well-formed
-// line those briefs add, not just today's three.
+// by "/vX.Y.Z". It is deliberately component-agnostic, not a 3-way allow-list: the
+// artifact-line set is left open on purpose, since a future plugin line and a future
+// container-image line each add one, and this check must accept any well-formed line
+// they add, not just today's three.
 //
 // The numeric fields are `(0|[1-9][0-9]*)`, NOT `[0-9]+`, because version-scheme.md's "Tag
 // grammar" states the rule normatively — "three non-negative integers, no leading zeros" —
@@ -35,7 +34,7 @@ import (
 // field contradicted both. The concrete harm is not pedantry: `[0-9]+` accepted
 // `statusgen/v0.8.03` and mapped it to the SAME [0 8 3] tuple as `statusgen/v0.8.3`, so two
 // distinct git tags collapsed to one version, and checkUmbrellaMonotonic below — the one
-// ordering check this brief ships — would then read a real bump as "does not sort above" (or
+// ordering check this tool ships — would then read a real bump as "does not sort above" (or
 // a duplicate as a bump). Rejecting the shape at the door is what keeps the tuple a faithful
 // stand-in for the tag.
 //
@@ -79,7 +78,7 @@ func loadManifest(path string) (Manifest, error) {
 // splitArtifactTag splits one artifact-line tag into its component and numeric version,
 // e.g. "statusgen/v0.8.2" -> ("statusgen", [0,8,2], true). It reports ok=false for anything
 // that does not match the fixed "<component>/vX.Y.Z" shape version-scheme.md requires of
-// every manifest entry — the same shape Verify row 5 checks with a plain grep.
+// every manifest entry — the same shape a plain grep checks.
 func splitArtifactTag(tag string) (component string, ver [3]int, ok bool) {
 	m := artifactTagPattern.FindStringSubmatch(tag)
 	if m == nil {
@@ -108,9 +107,9 @@ func versionLess(a, b [3]int) bool {
 // checkUmbrellaMonotonic enforces authority rule 4 ("the umbrella is its own line") at the
 // manifest level: a NEXT manifest's own umbrella version must sort strictly above the
 // PREVIOUS manifest's umbrella version. This is a new check over the composition manifest
-// itself — it is deskrelease-side, not tools/releaseguard, because Context records that
-// releaseguard's existing per-component gatherExisting scoping is out of scope for this
-// brief (it already orders each per-ARTIFACT line correctly; nothing here duplicates that).
+// itself — it is deskrelease-side, not tools/releaseguard, because releaseguard's existing
+// per-component gatherExisting scoping is out of scope here (it already orders each
+// per-ARTIFACT line correctly; nothing here duplicates that).
 func checkUmbrellaMonotonic(prev, next Manifest) error {
 	_, prevVer, ok := splitArtifactTag(prev.Umbrella)
 	if !ok {

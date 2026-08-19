@@ -199,6 +199,26 @@ const (
 	EnvHomeRepo  = "ASSAY_HOME_REPO"
 	EnvScanRepos = "ASSAY_SCAN_REPOS"
 
+	// EnvAuthorizedAuthors is the STATUSGEN-only rostered authorized-author set
+	// (the scan-transcribe lane's R-7 clause-1 boarding predicate). deskkit does
+	// not consume it — but the two readers share one roster.env, and an unknown
+	// key in the ASSAY_ namespace REFUSES the whole configuration, so deskkit must
+	// RECOGNISE it or a roster.env that arms the scan lane would collapse every
+	// desk tool's configuration fleet-wide. Recognised here and otherwise ignored.
+	// KEEP IN SYNC with statusgen/rosterconfig.go's scanEnvAuthorizedAuthors.
+	EnvAuthorizedAuthors = "ASSAY_AUTHORIZED_AUTHORS"
+
+	// EnvChannelDriftTarget is a STATUSGEN-only roster value (the repo-relative
+	// path to statusgen's --lint accepted-channel-drift register — a de-housed
+	// withheld-stream path the house supplies at runtime). deskkit does not
+	// consume it — but the two readers share one roster.env, and an unknown key
+	// in the ASSAY_ namespace REFUSES the whole configuration, so deskkit must
+	// RECOGNISE it or a roster.env that arms statusgen's in-house channel sweep
+	// would collapse every desk tool's configuration fleet-wide. Recognised here
+	// and otherwise ignored. KEEP IN SYNC with statusgen/rosterconfig.go's
+	// scanEnvChannelDriftTarget.
+	EnvChannelDriftTarget = "ASSAY_CHANNEL_DRIFT_TARGET"
+
 	// EnvDeterministicGatePatterns is a STATUSGEN-only roster value: additional
 	// house-specific deterministic-gate name substrings the autonomy report merges
 	// on top of its generic built-in set (statusgen/autonomy.go's
@@ -700,7 +720,16 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		EnvRosterSchema: true,
 		// STATUSGEN-only keys: recognised so a shared roster.env that configures
 		// statusgen does not collapse deskkit's configuration; not consumed here.
-		EnvHomeRepo: true, EnvScanRepos: true, EnvDeterministicGatePatterns: true,
+		EnvHomeRepo: true, EnvScanRepos: true, EnvAuthorizedAuthors: true,
+		EnvChannelDriftTarget: true, EnvDeterministicGatePatterns: true,
+		// EnvSweepWithheldStreams (ASSAY_SWEEP_WITHHELD_STREAMS, sweepconfig.go) is
+		// consumed by the S2 sweep via a direct os.Getenv read, NOT through this
+		// scanConfig — but #1333's de-housing REQUIRES the house to set it in the
+		// shared roster.env for the sweep to route, so it must be RECOGNISED here or
+		// activating that de-housing collapses the whole roster on the
+		// unknown-ASSAY_-key refusal. KEEP IN SYNC with statusgen's
+		// scanEnvSweepWithheldStreams.
+		EnvSweepWithheldStreams: true,
 	}
 	for k := range vals {
 		if known[k] {

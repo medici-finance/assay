@@ -8,8 +8,8 @@ package deskkit
 // which is the worst available mode for a safety stop:
 //
 //  1. A RENAME ORPHANS A HELD FLAG. A human holding `STOP.batch-fanout` gets no
-//     protection the moment the loop starts calling itself `worker-desk`
-//     (methodology/46). Nothing errors. The flag simply never matches and the loop
+//     protection the moment the loop starts calling itself `worker-desk`.
+//     Nothing errors. The flag simply never matches and the loop
 //     runs on, while `deskboard` still shows the flag sitting there looking armed.
 //  2. A TYPO IS INDISTINGUISHABLE FROM "NO FLAG HELD". `DESK_LOOP=btach-fanout` reads a
 //     path that can never exist and reports, cleanly, "not stopped".
@@ -37,8 +37,8 @@ package deskkit
 //
 // BLAST RADIUS — DELIBERATELY SCOPED. The house has already been burned once by a
 // fail-closed check with an unbounded blast radius: an unknown key in `roster.env`
-// fail-closed the ENTIRE trust roster and took write-verbs down fleet-wide
-// (#819). Fail-closed on a safety stop is right; fail-closed in a way that
+// fail-closed the ENTIRE trust roster and took write-verbs down fleet-wide.
+// Fail-closed on a safety stop is right; fail-closed in a way that
 // bricks every loop at once is not. Three choices bound the radius here:
 //
 //   - The roster is COMPILED IN, never read from a runtime file. There is no
@@ -81,7 +81,7 @@ var canonicalLoopNames = map[string][]string{
 	"pr-review-desk": nil,
 	"verify-desk":    nil,
 
-	// worker-desk — REGISTERED AHEAD OF THE RENAME. methodology/46 (PR #963) renames
+	// worker-desk — REGISTERED AHEAD OF THE RENAME. A pending rename moves
 	// `.claude/skills/batch-fanout/` to `.claude/skills/worker-desk/`. Registering the
 	// successor name before that lands is what makes this file compatible with the
 	// rename instead of broken by it: on the day the skill starts exporting
@@ -89,7 +89,7 @@ var canonicalLoopNames = map[string][]string{
 	// human is holding still halts it.
 	"worker-desk": {"batch-fanout"},
 
-	// intake-desk — renamed from issue-loop by issue-loop/13.
+	// intake-desk — renamed from issue-loop.
 	"intake-desk": {"issue-loop"},
 }
 
@@ -101,9 +101,9 @@ var canonicalLoopNames = map[string][]string{
 // entry should be deleted.
 // `worker-desk` is deliberately NOT listed: the loop it names is already declared today,
 // under its retired name (`export DESK_LOOP=batch-fanout`), and resolves through the alias
-// above. That is what lets this roster be correct both before and after PR #963 lands.
+// above. That is what lets this roster be correct both before and after the rename lands.
 var preRegisteredLoopNames = map[string]string{
-	"intake-desk": "issue-loop/13 renamed issue-loop -> intake-desk; the skill exists " +
+	"intake-desk": "the issue-loop loop was renamed to intake-desk; the skill exists " +
 		"but does not yet carry an `export DESK_LOOP=` line of its own",
 }
 

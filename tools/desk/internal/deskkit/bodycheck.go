@@ -19,21 +19,75 @@ var (
 	reBase64ish   = regexp.MustCompile(`[A-Za-z0-9+/=]{32,}`)
 	reLowerHex    = regexp.MustCompile(`^[0-9a-f]+$`)
 
-	// reSopsEncVal is the unambiguous sops-ENCRYPTED-VALUE marker. Every value in a real
-	// sops document is wrapped as `ENC[AES256_GCM,data:…,iv:…,tag:…,type:…]`; that literal
-	// prefix does not occur in prose. We match the specific `ENC[AES256_GCM` form rather
-	// than a bare `ENC[` so that an unrelated `ENC[` (e.g. an enum reference, a log line)
-	// does not false-positive, while never regressing detection of a real encrypted value.
+	// rePEMBegin captures the LABEL of a PEM / ASCII-armor BEGIN line so the scanner can
+	// tell an UNENCRYPTED key block (which it must refuse) from an ENCRYPTED one (which is
+	// ciphertext, safe to commit at rest — see encryptedArmorLabels).
+	rePEMBegin = regexp.MustCompile(`-----BEGIN ([A-Z0-9 ]+?)-----`)
+
+	// reK8sSecretKind identifies a Kubernetes Secret manifest and reK8sSecretData the
+	// `data:`/`stringData:` mapping that carries its values. A Secret whose values are
+	// NOT sops ciphertext is a DECRYPTED Secret — k8s `data:` is base64 ENCODING, not
+	// encryption, so those values are plaintext — and committing one is exactly the leak
+	// the sanctioned sops-encrypt-then-commit flow exists to prevent (#778). A short
+	// base64'd password slips the 32-char high-entropy rule entirely, so this positive
+	// detection catches what entropy alone misses.
+	//
+	// The optional leading `[+-]` is load-bearing, not cosmetic. The surface that
+	// actually carries a committed Secret is deskpr's BRANCH DIFF, where every line is
+	// prefixed `+`/`-`; an anchor of `^\s*` alone would make this rule fire only on a
+	// manifest pasted into a body and never on the commit that #778 is about. It also
+	// covers the YAML sequence form (`- kind: Secret`).
+	//
+	// The optional quoting, trailing comma and trailing `#` comment are load-bearing for
+	// the same reason: they are what the manifest looks like on the surfaces it actually
+	// arrives on. A `kind: Secret # app creds` line and the PRETTY-PRINTED JSON that
+	// `kubectl get secret -o json` emits — `"kind": "Secret",` with `"data": {` below it —
+	// are the two commonest accidental-paste shapes, and an anchor of `\s*$` against a
+	// bare unquoted key silently missed BOTH. Measured before this tolerance was added:
+	// the trailing-comment form and both JSON forms carrying the same plaintext value
+	// were ADMITTED while the bare YAML form refused.
+	reK8sSecretKind = regexp.MustCompile(`(?m)^[+-]?\s*"?kind"?\s*:\s*["']?Secret["']?\s*,?\s*(#.*)?$`)
+	reK8sSecretData = regexp.MustCompile(`(?m)^[+-]?(\s*)"?(data|stringData)"?\s*:\s*\{?\s*$`)
+	// reK8sSecretEntry matches one `key: value` entry of such a mapping; group 1 is the
+	// indent (used to tell an entry from the dedented line that ends the mapping),
+	// group 2 the key, group 3 the scalar value (empty for a block scalar). The optional
+	// quotes on the key cover the JSON form of the same mapping.
+	reK8sSecretEntry = regexp.MustCompile(`^[+-]?(\s*)"?([A-Za-z0-9_.\-]+)"?\s*:[ \t]*(.*)$`)
+
+	// The sops-DOCUMENT signature. These no longer drive a refusal ARM of ScanSurface —
+	// #778 removed the blanket "contains a sops block" refusal, because ciphertext
+	// committed at rest is the sanctioned flow. They remain because structured.go still
+	// needs them to RECOGNISE a sanctioned document (sanctionedSopsDocument) and to
+	// neutralise its markers on the marker surface.
+	//
+	// reSopsKey and reSopsField together form that signature. A real sops file carries a
+	// line-anchored `sops:` mapping key AND, nested under it, a sops-metadata field (mac /
+	// lastmodified / unencrypted_suffix / kms / gcp_kms / azure_kv / pgp / age). Prose that
+	// merely says the word "sops" has neither shape, so requiring BOTH drops the bare-word
+	// false positive.
 	reSopsEncVal = regexp.MustCompile(`ENC\[AES256_GCM`)
-	// reSopsKey and reSopsField together form the sops-DOCUMENT signature. A real sops file
-	// carries a line-anchored `sops:` mapping key AND, nested under it, a sops-metadata
-	// field (mac / lastmodified / unencrypted_suffix / kms / gcp_kms / azure_kv / pgp /
-	// age). Prose that merely says the word "sops" — `.sops.yaml`, `sops-gpg`, "encrypted
-	// with sops" — has neither shape, so requiring BOTH drops the bare-word false positive
-	// while still refusing an actual pasted sops document.
-	reSopsKey   = regexp.MustCompile(`(?m)^\s*"?sops"?\s*:`)
-	reSopsField = regexp.MustCompile(`(?m)^\s*"?(mac|lastmodified|unencrypted_suffix|kms|gcp_kms|azure_kv|pgp|age)"?\s*:`)
+	reSopsKey    = regexp.MustCompile(`(?m)^\s*"?sops"?\s*:`)
+	reSopsField  = regexp.MustCompile(`(?m)^\s*"?(mac|lastmodified|unencrypted_suffix|kms|gcp_kms|azure_kv|pgp|age)"?\s*:`)
 )
+
+// encryptedArmorLabels are the ASCII-armor BEGIN labels whose body is CIPHERTEXT rather
+// than a plaintext secret. The scan exists to catch UNENCRYPTED secrets pasted in the
+// clear; encrypting a secret at rest and committing it is the sanctioned pattern, so
+// these blocks are not refused and their armored base64 body is exempt from the
+// high-entropy scan (#778).
+//
+// Every OTHER `-----BEGIN` block is still refused: RSA/EC/OPENSSH/DSA/bare PRIVATE KEY,
+// CERTIFICATE — and, deliberately, `ENCRYPTED PRIVATE KEY` as well. A PKCS#8
+// passphrase-encrypted key is NOT in this list even though it is technically ciphertext:
+// its confidentiality rests entirely on a passphrase that offline cracking attacks, the
+// scan cannot see how strong that passphrase is or whether it was committed alongside,
+// and #778's actual requirement is sops-encrypted Secrets (age/pgp/sops) — admitting
+// PKCS#8 buys that requirement nothing and widens what may be committed in exchange.
+// Keep this list to formats whose ciphertext is bound to a KEY the repo does not hold.
+var encryptedArmorLabels = map[string]bool{
+	"AGE ENCRYPTED FILE": true,
+	"PGP MESSAGE":        true,
+}
 
 const (
 	// runThreshold mirrors reBase64ish's {32,}: the length at which a base64ish run is
@@ -126,12 +180,18 @@ const SurfaceBody = "body"
 // credential, and returns nil for a clean body. It refuses on:
 //   - GitHub token prefixes ghp_ / github_pat_ / ghs_ / gho_
 //   - AWS access-key IDs (AKIA + 16 upper-alnum)
-//   - PEM headers ("-----BEGIN …")
+//   - an UNENCRYPTED PEM key block ("-----BEGIN … PRIVATE KEY-----", CERTIFICATE, …).
+//     An age/pgp ASCII-armor block is ciphertext, not a plaintext secret, and is NOT
+//     refused (see hasPlaintextPEM and encryptedArmorLabels, #778).
 //   - eyJ-prefixed 3-segment JWT shapes
-//   - a sops-encrypted secret block: an ENC[AES256_GCM…] value, or a line-anchored
-//     "sops:" mapping key together with a sops-metadata field (mac, lastmodified,
-//     unencrypted_suffix, kms, gcp_kms, azure_kv, pgp, age). A bare prose mention of the
-//     word "sops" (.sops.yaml, sops-gpg) is NOT refused — it carries no secret.
+//   - a DECRYPTED Kubernetes Secret (see decryptedK8sSecret, #778): a `kind: Secret`
+//     manifest with a data/stringData mapping in which ANY value is not sops
+//     ciphertext. k8s `data:` is base64 ENCODING, not encryption, so such a value is
+//     plaintext, and a short one clears no entropy threshold. A Secret every one of
+//     whose values is ENC[AES256_GCM…] is sops-encrypted and passes. The rule is
+//     PER-VALUE: one encrypted field elsewhere in the document does not license a
+//     plaintext field beside it. A bare `sops:` metadata mapping is not itself a
+//     secret and is no longer refused (#585).
 //   - any run of ≥32 base64ish chars, EXCEPT:
 //   - an exactly-40- or exactly-64-char lowercase-hex run (git SHAs — the
 //     methodology quotes them constantly; refusing them would brick every verdict).
@@ -162,6 +222,14 @@ const SurfaceBody = "body"
 //     line (`echo "===================="`, #781) is base64 padding with no
 //     payload, so it cannot carry a credential. This does NOT exempt a `VAR=secret`
 //     shell assignment, whose run carries the secret's own base64 after the `=`.
+//   - the marker-anchored digest fields of a RECOGNISED structured format (see
+//     structuredExemptSpans in structured.go, #778): go.sum `h1:` checksums, SRI
+//     integrity digests, and — inside a SANCTIONED sops document only — the ciphertext
+//     payloads of complete envelopes, the generated `sops:` metadata block, and armored
+//     ciphertext bodies. The sops pass is earned by the FULL envelope grammar PLUS the
+//     document signature, never by a bracket or a BEGIN line in isolation: a lone
+//     envelope pasted into prose, a bare `sops:` footer, and an armored blob outside any
+//     sops document all still refuse.
 //
 // Test vectors for BOTH directions (SHAs and paths pass, every credential pattern —
 // including one wearing a path disguise — refuses) are exercised by this package's tests.
@@ -209,13 +277,70 @@ func ScanSurface(surface string, content []byte) error {
 		return Refused("refused: " + surface + " contains a GitHub token prefix (ghp_/github_pat_/ghs_/gho_)")
 	case reAWSKeyID.MatchString(s):
 		return Refused("refused: " + surface + " contains an AWS access-key ID (AKIA…)")
-	case strings.Contains(s, "-----BEGIN"):
-		return Refused("refused: " + surface + " contains a PEM header (-----BEGIN …)")
+	case hasPlaintextPEM(s):
+		return Refused("refused: " + surface + " contains an unencrypted PEM key block (-----BEGIN …-----)")
 	case reJWT.MatchString(s):
 		return Refused("refused: " + surface + " contains a JWT-shaped token (eyJ….….…)")
+	// decryptedK8sSecret reads `raw`, NOT the marker surface `s`, and it is the one arm
+	// that must. Every other arm fires on a MARKER, so neutralising a marker that
+	// structured recognition has already accounted for is exactly right for them. This arm
+	// asks the opposite question — is this value ciphertext or is it plaintext? — and
+	// neutraliseSopsMarkers rewrites `ENC[AES256_GCM` to lowercase on `s` for any
+	// sanctioned document. Reading `s` therefore made a CORRECTLY sops-encrypted Secret
+	// look decrypted and refused it: a false positive on the exact artifact #778 exists to
+	// let through, caught by the corpus fixture neg-sops-encrypted-manifest.
+	case decryptedK8sSecret(raw):
+		return Refused("refused: " + surface + " contains a DECRYPTED Kubernetes Secret " +
+			"(kind: Secret with a data/stringData value that is not ENC[AES256_GCM…]) — " +
+			"sops-encrypt every value before committing")
+	// The sops arm STAYS, and #778 is still satisfied. An earlier draft of this branch
+	// deleted it outright on the reasoning that ciphertext at rest is sanctioned. Deleting
+	// it opens false negatives the entropy loop structurally cannot cover: a sops IMITATION
+	// and a bare `sops:` footer carry no base64 run over the 32-char threshold, so the loop
+	// never looks at them and the arm was the only thing refusing them.
+	//
+	// The narrowing #778 actually needs is already done, one layer down: markerSurface
+	// neutralises these markers on `s` for a document sanctionedSopsDocument has RECOGNISED
+	// (full envelope grammar plus the document signature plus encrypted content outside the
+	// metadata block). A genuine encrypted-at-rest manifest therefore never reaches this
+	// arm, and everything wearing the shape without earning it still does.
 	case reSopsEncVal.MatchString(s) || (reSopsKey.MatchString(s) && reSopsField.MatchString(s)):
 		return Refused("refused: " + surface + " contains a sops-encrypted secret block or ENC[ marker")
 	}
+	// A sops-ENCRYPTED value (ENC[AES256_GCM,…]) is no longer refused on sight (#778):
+	// this scan catches UNENCRYPTED secrets, and sops ciphertext committed at rest is
+	// the sanctioned flow. What replaces the blanket refusal is NARROWER, not absent —
+	// decryptedK8sSecret above refuses a Secret with any plaintext value, and the
+	// high-entropy loop below exempts a run only when it lies WHOLLY INSIDE a span some
+	// recogniser has anchored on a structural marker.
+	//
+	// WHAT THIS SCAN THEREFORE NO LONGER CATCHES, stated rather than capped silently:
+	//   - a plaintext secret parked in a sops `unencrypted_suffix` field OUTSIDE a
+	//     `kind: Secret` manifest has exactly the coverage any other plaintext has (the
+	//     token / AWS-key / unencrypted-PEM / bare-base64 checks, all still active) and no
+	//     more; a SHORT one, under the 32-char run threshold, is not caught. That is the
+	//     same blind spot every short plaintext has, recorded here rather than claimed
+	//     closed.
+	//   - ciphertext-shaped material inside a complete ENC[…] bracket, a complete
+	//     age/pgp armor block, or the marker-anchored digest fields of a recognised
+	//     structured format is not inspected further. A secret smuggled INTO one of those
+	//     exact grammars is out of scope by construction; each recogniser is anchored and
+	//     length-exact so that "a marker somewhere nearby" never suffices.
+	//   - decryptedK8sSecret is LINE-ORIENTED, so it sees a Secret only in the shapes a
+	//     line-anchored regex can reach: block YAML and pretty-printed JSON, with or
+	//     without diff markers, quoting, a trailing comma or a trailing comment. Two
+	//     shapes are measured ADMITTED and are NOT covered: a Secret serialised as
+	//     COMPACT single-line JSON (`{"kind":"Secret","data":{…}}`), and a YAML FLOW
+	//     mapping (`data: {password: …}`). Both put the whole mapping on one line, which
+	//     the entry/indent walk cannot decompose; covering them needs a real YAML/JSON
+	//     parse rather than a wider regex, which is its own change. A LONG value in
+	//     either shape still refuses on entropy; a SHORT one is admitted, which is the
+	//     same blind spot recorded above for short plaintext generally.
+	//   - The `kind:`/`data:` match is CASE-SENSITIVE, matching Kubernetes' own
+	//     case-sensitivity. `kind: secret` or `Data:` is therefore admitted by this rule —
+	//     measured — but such a manifest is not a Secret Kubernetes would accept either,
+	//     and any plaintext in it has exactly the coverage plaintext in any other
+	//     document has. This is a deliberate grammar match, not an oversight.
 
 	// Impersonated human-ruling guard (impersonation.go). This write
 	// path never posts as a human, so a body claiming a configured human's ruling BY
@@ -227,6 +352,14 @@ func ScanSurface(surface string, content []byte) error {
 	// Structured-format spans are computed ONCE over the whole surface, before the loop, so
 	// a recognised field is judged by its FORMAT rather than by the run's own shape. See
 	// structured.go for why every span is anchored on a field marker and length-exact.
+	//
+	// The ciphertext exemption is structuredExemptSpans' ALONE. An earlier draft of #778
+	// also exempted anything inside a complete `ENC[AES256_GCM,…]` bracket or a complete
+	// armor block (isEncryptedMaterial). That is too wide, and the corpus proves it: a
+	// lone envelope pasted into prose, a sops footer whose only envelope is its own `mac:`,
+	// and an armored blob outside any sops document were all ADMITTED. The pass has to be
+	// earned by the FULL envelope grammar PLUS the document signature — see
+	// sanctionedSopsDocument — never by a bracket or a BEGIN line in isolation.
 	exempt := structuredExemptSpans(raw)
 	for _, loc := range reBase64ish.FindAllStringIndex(raw, -1) {
 		run := raw[loc[0]:loc[1]]
@@ -278,6 +411,144 @@ func isAllEquals(run string) bool {
 		}
 	}
 	return true
+}
+
+// hasPlaintextPEM reports whether s carries an UNENCRYPTED PEM / armor block — the only
+// PEM material the scan refuses (#778). An age/pgp ASCII-armor block
+// (encryptedArmorLabels) is ciphertext, not a plaintext secret, so it is allowed; every
+// other WELL-FORMED `-----BEGIN …-----` naming private-key material — RSA/EC/OPENSSH/DSA/
+// bare PRIVATE KEY, and PKCS#8 ENCRYPTED PRIVATE KEY — is refused by THIS arm.
+//
+// Two limits of this arm are stated rather than assumed, because both were measured and
+// neither is what an earlier draft of this comment claimed:
+//
+//   - The truncated-header clause is WHOLE-SURFACE, not per-occurrence: it fires only
+//     when the surface carries a `-----BEGIN` AND no well-formed header anywhere on it.
+//     What that actually admits and refuses was measured rather than assumed, because an
+//     earlier draft of this comment claimed a flat "a truncated paste always refuses"
+//     that is not what the code does:
+//     `-----BEGIN` alone, no label            ADMITTED (neutralised as a benign
+//     delimiter by stripBenignArmorDelimiters,
+//     which is what keeps the detector's own
+//     prose and quoted markers from tripping
+//     it, #380)
+//     `-----BEGIN RSA PRIVATE KEY`, no
+//     closing dashes                          REFUSED
+//     `-----BEGIN …-----` (prose ellipsis)    ADMITTED
+//     The whole-surface shape was probed for the laundering it suggests — pairing a
+//     truncated key paste with a well-formed benign block to suppress the clause — and
+//     it does NOT launder: both orderings still refuse, because a non-allow-listed
+//     well-formed label refuses on clause (a) in its own right.
+//   - A public/ciphertext label (CERTIFICATE, PUBLIC KEY, and the rest of
+//     armorCiphertextOrPublicLabels) is likewise not refused HERE. A realistic one still
+//     refuses — measured — via the high-entropy loop on its payload, with an entropy
+//     message rather than a PEM one.
+func hasPlaintextPEM(s string) bool {
+	for _, m := range rePEMBegin.FindAllStringSubmatch(s, -1) {
+		if !encryptedArmorLabels[strings.TrimSpace(m[1])] {
+			return true
+		}
+	}
+	return strings.Contains(s, "-----BEGIN") && !rePEMBegin.MatchString(s)
+}
+
+// decryptedK8sSecret reports whether s carries a Kubernetes Secret manifest with at
+// least one data/stringData value that is NOT sops ciphertext — a DECRYPTED Secret,
+// which is the leak #778 is about. k8s `data:` is base64 ENCODING, not encryption, so
+// such a value is plaintext to anyone who can read the file, and a short one (a
+// base64'd password of a dozen characters) never reaches the 32-char high-entropy rule.
+// That is why this is a POSITIVE detection rather than something entropy could cover.
+//
+// The test is PER VALUE. The first version of this rule asked only whether the marker
+// `ENC[AES256_GCM` occurred anywhere in the whole document, which meant a single
+// encrypted field switched the rule off for every other field beside it: a `kind:
+// Secret` carrying one ENC[…] value and one SHORT plaintext value — precisely the
+// sops `unencrypted_suffix` shape — passed clean, with the short value under the
+// entropy threshold as well. Partial encryption now protects only the fields that are
+// actually encrypted.
+//
+// It errs toward refusal in both directions where it cannot be sure. A Secret whose
+// data mapping yields no readable entries (values elided, a comment, an unusual layout)
+// is refused rather than passed: an unreadable mapping is a could-not-check, and a
+// could-not-check must never report clean. Diff markers are tolerated on every line
+// because the surface that carries a committed Secret is deskpr's branch diff.
+func decryptedK8sSecret(s string) bool {
+	if !reK8sSecretKind.MatchString(s) {
+		return false
+	}
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		m := reK8sSecretData.FindStringSubmatch(strings.TrimRight(line, " \t\r"))
+		if m == nil {
+			continue
+		}
+		mapIndent, sawEntry := len(m[1]), false
+		for j := i + 1; j < len(lines); j++ {
+			body := strings.TrimRight(lines[j], " \t\r")
+			if strings.TrimSpace(strings.TrimLeft(body, "+- ")) == "" {
+				continue // a blank (or bare-marker) line does not end the mapping
+			}
+			e := reK8sSecretEntry.FindStringSubmatch(body)
+			if e == nil || len(e[1]) <= mapIndent {
+				break // not an entry, or dedented back out of the mapping
+			}
+			sawEntry = true
+			val := strings.TrimSpace(e[3])
+			if strings.Contains(val, "ENC[AES256_GCM") {
+				continue
+			}
+			if isBlockScalarIndicator(val) && blockScalarEncrypted(lines, j+1, len(e[1])) {
+				continue
+			}
+			return true
+		}
+		if !sawEntry {
+			return true // could-not-check: a Secret data mapping we could not read
+		}
+	}
+	return false
+}
+
+// isBlockScalarIndicator reports whether a YAML scalar value is empty or one of the
+// block-scalar introducers, i.e. the value lives on the following indented lines.
+func isBlockScalarIndicator(val string) bool {
+	switch val {
+	case "", "|", "|-", "|+", ">", ">-", ">+":
+		return true
+	}
+	return false
+}
+
+// blockScalarEncrypted reports whether the block-scalar body starting at lines[from],
+// indented deeper than keyIndent, is ciphertext — a sops ENC[…] value or an age/pgp
+// armor block. Anything else counts as plaintext and refuses.
+func blockScalarEncrypted(lines []string, from, keyIndent int) bool {
+	encrypted := false
+	for j := from; j < len(lines); j++ {
+		body := strings.TrimRight(lines[j], " \t\r")
+		if strings.TrimSpace(strings.TrimLeft(body, "+- ")) == "" {
+			continue
+		}
+		indent := len(body) - len(strings.TrimLeft(strings.TrimLeft(body, "+-"), " \t"))
+		if strings.HasPrefix(body, "+") || strings.HasPrefix(body, "-") {
+			indent--
+		}
+		if indent <= keyIndent {
+			break
+		}
+		if strings.Contains(body, "ENC[AES256_GCM") {
+			encrypted = true
+			continue
+		}
+		if m := rePEMBegin.FindStringSubmatch(body); m != nil && encryptedArmorLabels[strings.TrimSpace(m[1])] {
+			encrypted = true
+			continue
+		}
+		if !encrypted {
+			return false
+		}
+	}
+	return encrypted
 }
 
 // isPathLike reports whether run is a path rather than a credential — the SECOND

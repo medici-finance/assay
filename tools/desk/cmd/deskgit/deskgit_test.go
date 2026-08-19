@@ -55,6 +55,13 @@ func newRepo(t *testing.T, slug string) string {
 	mustGit(t, work, "add", "README.md")
 	mustGit(t, work, "commit", "-m", "init")
 	mustGit(t, work, "push", "-u", "origin", "main")
+
+	// The upstream is a BARE LOCAL PATH origin. Since #215 a bare local path is
+	// admitted only when it matches a configured local root, so register this test upstream
+	// as slug's trusted root — the same act a real operator performs via DESK_ROOTS to trust
+	// a local checkout. (For an out-of-set slug this entry is itself refused by
+	// ConfiguredRoots, which is exactly why such a fetch is still gated.)
+	t.Setenv(deskkit.RootsEnv, slug+"="+upstream)
 	return work
 }
 
@@ -590,24 +597,24 @@ func TestParseRepo_PathBoundaries(t *testing.T) {
 	})
 }
 
-// CHARACTERIZATION, NOT ENDORSEMENT (correctness review). Both shapes below currently
-// reach the gate with an allowed slug, and both are documented residuals in parseRepo's doc
-// comment, main.go and README.md. They are pinned so the three documents and the code cannot
-// drift apart silently: a future change that CLOSES either must delete the matching case here
-// and the matching residual paragraph in the same commit — and a change that accidentally
-// loosens either will fail loudly instead of quietly widening the gate.
+// CHARACTERIZATION, NOT ENDORSEMENT (correctness review). The shape below still reaches the
+// gate with an allowed slug, and it is a documented residual in parseRepo's doc comment,
+// main.go and README.md. It is pinned so the three documents and the code cannot drift apart
+// silently: a future change that CLOSES it must delete this case and the matching residual
+// paragraph in the same commit — and a change that accidentally loosens it will fail loudly
+// instead of quietly widening the gate.
 //
 //   - Residual 1: the host is not bound (ssh host ALIASES make a hard host requirement refuse
 //     the desk's real remotes), so an allowed slug on an unexpected host passes.
-//   - Residual 2: bare local paths take the lenient last-two-components branch, reachable in
-//     production via an insteadOf rewrite. Closing it needs a local-roots allowlist.
+//
+// (The former residual 2 — bare local paths took the lenient last-two-components branch — is
+// CLOSED as of #215; its cases moved to TestParseRepo_LocalPathGated, which
+// proves they are now refused.)
 func TestParseRepo_DocumentedResiduals(t *testing.T) {
 	const slug = "example-org/tracker"
 	for _, c := range []struct{ url, residual string }{
 		{"https://evil.example.com/example-org/tracker", "1: host is not bound"},
 		{"git@evil.example.com:example-org/tracker", "1: host is not bound (scp-like)"},
-		{"/srv/anywhere/example-org/tracker", "2: bare local paths are lenient"},
-		{"../../example-org/tracker", "2: bare local paths are lenient (relative)"},
 	} {
 		got, err := parseRepo(c.url)
 		if err != nil || got != slug {
@@ -615,6 +622,136 @@ func TestParseRepo_DocumentedResiduals(t *testing.T) {
 				"parseRepo, main.go and README.md in THIS commit, or revert", c.url, got, err, slug, c.residual)
 		}
 	}
+}
+
+// #215: a BARE LOCAL PATH is no longer read leniently off its last two
+// components — the exact defect that let a `url.<base>.insteadOf` rewrite point origin at any
+// directory NAMED to spell an allowed slug and land foreign content on the desk's tracking
+// refs. Its identity now comes from the configured local-roots allowlist (DESK_ROOTS /
+// deskkit.RepoForLocalPath): only a path that IS a trusted root is admitted — by equality,
+// not descendant containment — and the repo is the ROOT's, not the path's.
+//
+// This is the proof that the bare local path is now gated the SAME as a full path: the two
+// URLs whose last two components spell the allowed slug — one absolute, one relative, exactly
+// the pair that used to pass as the former residual 2 — are refused, a bare repo planted
+// UNDER a trusted root is refused (equality, not descendant — #215 blocker), while a real
+// trusted root parses to its configured repo (identity from the root, not the spelling).
+func TestParseRepo_LocalPathGated(t *testing.T) {
+	const slug = "example-org/tracker"
+
+	// The roster must name example-org/tracker as an allowed repo, or ConfiguredRoots refuses
+	// the DESK_ROOTS entry itself. ConfiguredRoots reads it from the config HOME, so plant it
+	// there and point HOME at that same dir.
+	rosterHome := t.TempDir()
+	plantFixtureRoster(t, rosterHome)
+	t.Setenv("HOME", rosterHome)
+
+	// A trusted local checkout the operator has declared. Point DESK_ROOTS at it; only paths
+	// that resolve into this root are admitted.
+	trusted := t.TempDir()
+	t.Setenv(deskkit.RootsEnv, slug+"="+trusted)
+
+	t.Run("a path that IS the trusted root parses to the root's repo", func(t *testing.T) {
+		got, err := parseRepo(trusted)
+		if err != nil || got != slug {
+			t.Errorf("parseRepo(%q) = %q, %v; want %q — a path resolving to a trusted root must parse to the root's repo",
+				trusted, got, err, slug)
+		}
+	})
+
+	t.Run("a path UNDER the trusted root is REFUSED (equality, not descendant — #215 blocker)", func(t *testing.T) {
+		// A bare repo a caller who controls .git/config can plant inside a trusted root
+		// (e.g. <root>/vendor/cache/x.git) must NOT inherit the root's identity: admitting
+		// descendants is exactly what turned the compiled "." home root (== the worktree
+		// deskgit fetches into) into a wildcard trust anchor. Only an EXACT root is admitted.
+		sub := filepath.Join(trusted, "nested", "checkout")
+		if err := os.MkdirAll(sub, 0o755); err != nil { // exists, so this is not merely a fail-closed non-existent path
+			t.Fatal(err)
+		}
+		if got, err := parseRepo(sub); err == nil {
+			t.Errorf("parseRepo(%q) = %q, nil; want error — a descendant of a trusted root must be refused, "+
+				"not admitted with the root's identity (#215 blocker)", sub, got)
+		}
+	})
+
+	t.Run("the former residual-2 smuggle paths are now REFUSED", func(t *testing.T) {
+		// Both spell the allowed slug in their last two components and both sit OUTSIDE every
+		// configured root — the exact insteadOf-reachable bypass #215 closes.
+		for _, u := range []string{
+			"/srv/anywhere/example-org/tracker",
+			"../../example-org/tracker",
+		} {
+			if got, err := parseRepo(u); err == nil {
+				t.Errorf("parseRepo(%q) = %q, nil; want error — a bare local path spelling an allowed slug "+
+					"but outside every trusted root must be refused (#215)", u, got)
+			}
+		}
+	})
+}
+
+// #215 blocker: under the SHIPPED DEFAULT configuration (DESK_ROOTS unset), the compiled
+// home root is "." — which canonicalises to the process working directory, i.e. the very
+// worktree deskgit binds its fetch to. The pre-fix code admitted any DESCENDANT of a
+// configured root, so the whole worktree subtree became a trust anchor: a bare repo planted
+// under it (reachable via an insteadOf rewrite) parsed to the "." root's allowed repo and
+// landed foreign content on the tracking refs the desk loops merge. Nothing covered the
+// default config because newRepo and TestParseRepo_LocalPathGated both set DESK_ROOTS.
+//
+// The fix skips a root that resolves to the process CWD AND requires equality, not
+// descendant containment — so a path under the CWD is refused with DESK_ROOTS unset.
+func TestParseRepo_DefaultRoots_RejectDescendantOfCWD(t *testing.T) {
+	// Force the shipped default: no DESK_ROOTS, so ConfiguredRoots returns the compiled
+	// topology roots (which include the "." home root that canonicalises to this CWD).
+	t.Setenv(deskkit.RootsEnv, "")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A directory planted under the worktree, named to spell an allowed slug — the exact
+	// insteadOf-reachable smuggle. It need not exist: canonicalPath falls back to the cleaned
+	// absolute form, so the verdict does not depend on the attacker having created it yet.
+	planted := filepath.Join(cwd, "vendor", "cache", "example-org", "tracker.git")
+	if got, err := parseRepo(planted); err == nil {
+		t.Errorf("parseRepo(%q) = %q, nil; want error — with DESK_ROOTS unset a path under the "+
+			"process working directory must NOT parse to the compiled '.' root's repo (#215 blocker)", planted, got)
+	}
+}
+
+// #215: file:// URLs name a purely LOCAL path git reads off the filesystem, so they must be
+// gated by the local-roots allowlist exactly like a bare local path — not by the lenient
+// host-bearing exact-path rule, which would admit file:///owner/repo on its trailing
+// components. An insteadOf rewrite can choose this spelling, so the gap was attacker-reachable.
+func TestParseRepo_FileURLGatedByLocalRoots(t *testing.T) {
+	const slug = "example-org/tracker"
+
+	rosterHome := t.TempDir()
+	plantFixtureRoster(t, rosterHome)
+	t.Setenv("HOME", rosterHome)
+
+	trusted := t.TempDir()
+	t.Setenv(deskkit.RootsEnv, slug+"="+trusted)
+
+	t.Run("file:// naming the trusted root parses to the root's repo", func(t *testing.T) {
+		got, err := parseRepo("file://" + trusted)
+		if err != nil || got != slug {
+			t.Errorf("parseRepo(file://%s) = %q, %v; want %q — a file:// URL at a trusted root is admitted",
+				trusted, got, err, slug)
+		}
+	})
+
+	t.Run("file:// spelling the slug but outside every root is REFUSED", func(t *testing.T) {
+		for _, u := range []string{
+			"file:///example-org/tracker",
+			"file://localhost/example-org/tracker",
+			"file:///example-org/tracker.git",
+		} {
+			if got, err := parseRepo(u); err == nil {
+				t.Errorf("parseRepo(%q) = %q, nil; want error — a file:// path spelling an allowed slug "+
+					"outside every trusted root must be refused (#215)", u, got)
+			}
+		}
+	})
 }
 
 // Security review: values that branchRe's character class admits but git's

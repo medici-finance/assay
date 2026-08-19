@@ -15,7 +15,7 @@ import (
 // Acquire on the SAME fresh item; exactly one may win. The directory-wide flock serialises
 // the create-or-reclaim decision so only the first O_EXCL create succeeds and every other
 // racer reads a live claim and backs off (false, nil). More than one winner is
-// double-dispatch (#146).
+// double-dispatch.
 func TestAcquireConcurrentExactlyOneWinner(t *testing.T) {
 	dir := t.TempDir()
 	cfg := ClaimConfig{ClaimsDir: dir, StaleClaim: time.Hour}
@@ -33,7 +33,7 @@ func TestAcquireConcurrentExactlyOneWinner(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			<-st
-			ok, err := Acquire(cfg, Claim{Kind: KindDispatch, Item: "loop-engine/01", Owner: id2owner(id)})
+			ok, err := Acquire(cfg, Claim{Kind: KindDispatch, Item: "feature/01", Owner: id2owner(id)})
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -55,13 +55,13 @@ func TestAcquireConcurrentExactlyOneWinner(t *testing.T) {
 		t.Fatalf("winners = %d, want exactly 1 — the item would be dispatched %d times", wins, wins)
 	}
 	// The slash in the item ID must resolve to a single segment inside the claims dir.
-	if _, err := os.Stat(filepath.Join(dir, "loop-engine_01.claim")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "feature_01.claim")); err != nil {
 		t.Fatalf("claim file not at sanitized path: %v", err)
 	}
 }
 
-// TestAcquireContendedLockIsUnverifiableNotFree pins the fail-closed half (the #146
-// lesson): when the claims flock is HELD from a second open file description, Acquire must
+// TestAcquireContendedLockIsUnverifiableNotFree pins the fail-closed half (the
+// double-dispatch lesson): when the claims flock is HELD from a second open file description, Acquire must
 // REFUSE (exit 6 unverifiable) — it must NEVER return (false, nil) "assume free".
 //
 // flock(2) locks attach to the open file DESCRIPTION, not the process, so a second open()
@@ -96,7 +96,7 @@ func TestAcquireContendedLockIsUnverifiableNotFree(t *testing.T) {
 		t.Fatal("Acquire returned acquired=true while the lock was held elsewhere")
 	}
 	if err == nil {
-		t.Fatal("Acquire returned (false, nil) on a lock it could not get — that is 'assume free', the #146 failure")
+		t.Fatal("Acquire returned (false, nil) on a lock it could not get — that is 'assume free', the double-dispatch failure")
 	}
 	if !IsUnverifiable(err) {
 		t.Fatalf("Acquire error = %v (exit %d), want Unverifiable (exit %d)", err, ExitCodeOf(err), ExitUnverifiable)
@@ -191,7 +191,7 @@ func TestAcquireLiveClaimNotStolen(t *testing.T) {
 	}
 }
 
-// TestTolerantReadOfLegacyShapes proves the #278-item-2 heal: List reads a legacy
+// TestTolerantReadOfLegacyShapes proves the schema-fork heal: List reads a legacy
 // loopengine-shape file AND a legacy roster-shape file, mapping their disjoint field names
 // onto the canonical Item/Owner/TS.
 func TestTolerantReadOfLegacyShapes(t *testing.T) {
@@ -200,11 +200,11 @@ func TestTolerantReadOfLegacyShapes(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Legacy loopengine dispatch claim.
-	writeRaw(t, filepath.Join(dir, "loop-engine_01.claim"),
-		`{"itemID":"loop-engine/01","runner":"worker-desk","branch":"feat/x","claimed":"2026-08-01T00:00:00Z"}`)
+	writeRaw(t, filepath.Join(dir, "feature_01.claim"),
+		`{"itemID":"feature/01","runner":"worker-desk","branch":"feat/x","claimed":"2026-08-01T00:00:00Z"}`)
 	// Legacy roster / bash claim.
 	writeRaw(t, filepath.Join(dir, "legacy-roster-09.claim"),
-		`{"brief":"loop-engine/09","repo":"assay","session":"worker-a","ts":"2026-07-17T13:52:05Z"}`)
+		`{"brief":"feature/09","repo":"assay","session":"worker-a","ts":"2026-07-17T13:52:05Z"}`)
 
 	claims, err := List(ClaimConfig{ClaimsDir: dir})
 	if err != nil {
@@ -217,10 +217,10 @@ func TestTolerantReadOfLegacyShapes(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("List returned %d claims, want 2: %+v", len(got), claims)
 	}
-	if c := got["loop-engine/01"]; c.Owner != "worker-desk" || c.Branch != "feat/x" || c.TS != "2026-08-01T00:00:00Z" {
+	if c := got["feature/01"]; c.Owner != "worker-desk" || c.Branch != "feat/x" || c.TS != "2026-08-01T00:00:00Z" {
 		t.Fatalf("loopengine-shape mapped wrong: %+v", c)
 	}
-	if c := got["loop-engine/09"]; c.Owner != "worker-a" || c.TS != "2026-07-17T13:52:05Z" {
+	if c := got["feature/09"]; c.Owner != "worker-a" || c.TS != "2026-07-17T13:52:05Z" {
 		t.Fatalf("roster-shape mapped wrong: %+v", c)
 	}
 }
@@ -292,6 +292,47 @@ func TestReleaseAndReacquire(t *testing.T) {
 	}
 }
 
+// TestReleaseMatchingCompareAndDelete pins the compare-and-delete contract crash recovery
+// relies on: ReleaseMatching removes a claim ONLY when the on-disk owner/branch/ts still match
+// the claim that was classified. A claim reclaimed IN PLACE underneath the caller (a different
+// ts, as Acquire's stale reclaim writes) is left untouched — otherwise recovery would delete a
+// live claim, reopening the double-dispatch window. A matching claim is removed; a missing one
+// is a no-op.
+func TestReleaseMatchingCompareAndDelete(t *testing.T) {
+	dir := t.TempDir()
+	cfg := ClaimConfig{ClaimsDir: dir, StaleClaim: time.Hour}
+
+	want := Claim{Kind: KindDispatch, Item: "feature/03", Owner: "worker-app", Branch: "brief/x-11", TS: "2026-08-16T00:00:00Z"}
+	if ok, err := Acquire(cfg, want); err != nil || !ok {
+		t.Fatalf("acquire: ok=%v err=%v", ok, err)
+	}
+
+	// A claim that no longer matches (someone reclaimed it in place → different owner+ts) must
+	// NOT be removed.
+	stale := want
+	stale.Owner = "other-app"
+	stale.TS = "2020-01-01T00:00:00Z"
+	if removed, err := ReleaseMatching(cfg, stale); err != nil || removed {
+		t.Fatalf("ReleaseMatching on a non-matching claim: removed=%v err=%v — must leave the live claim in place", removed, err)
+	}
+	if _, err := os.Stat(claimPath(cfg, "feature/03")); err != nil {
+		t.Fatalf("a non-matching ReleaseMatching deleted the claim file: %v", err)
+	}
+
+	// The exact claim that was classified IS removed.
+	if removed, err := ReleaseMatching(cfg, want); err != nil || !removed {
+		t.Fatalf("ReleaseMatching on the matching claim: removed=%v err=%v — must remove it", removed, err)
+	}
+	if _, err := os.Stat(claimPath(cfg, "feature/03")); !os.IsNotExist(err) {
+		t.Fatalf("matching ReleaseMatching did not remove the claim file (err=%v)", err)
+	}
+
+	// A missing claim is a no-op, never an error.
+	if removed, err := ReleaseMatching(cfg, want); err != nil || removed {
+		t.Fatalf("ReleaseMatching of a missing claim: removed=%v err=%v — want (false,nil)", removed, err)
+	}
+}
+
 // TestListMissingDirIsEmpty: a missing claims dir is empty history, not an error.
 func TestListMissingDirIsEmpty(t *testing.T) {
 	claims, err := List(ClaimConfig{ClaimsDir: filepath.Join(t.TempDir(), "nope")})
@@ -303,7 +344,7 @@ func TestListMissingDirIsEmpty(t *testing.T) {
 	}
 }
 
-// TestAcquireNeverAssumesFree_Source is the SOURCE GUARD for the #146 hard invariant: no
+// TestAcquireNeverAssumesFree_Source is the SOURCE GUARD for the fail-closed hard invariant: no
 // code path in claim.go may grant a claim before the flock is held, and the lock helper
 // must fail closed. This is a source guard rather than a behavioural test because "there
 // exists no future edit that grants before locking" is a property of the code, not of any
@@ -319,7 +360,7 @@ func TestAcquireNeverAssumesFree_Source(t *testing.T) {
 	// 1. A real flock must exist.
 	flockIdx := strings.Index(text, "syscall.Flock(")
 	if flockIdx < 0 {
-		t.Fatal("claim.go has no syscall.Flock — the claim is not lock-serialised (#146 fix is gone)")
+		t.Fatal("claim.go has no syscall.Flock — the claim is not lock-serialised (the lock-serialisation fix is gone)")
 	}
 
 	// 2. No claim may be GRANTED (`return true`) textually before the lock is taken. An
@@ -334,7 +375,7 @@ func TestAcquireNeverAssumesFree_Source(t *testing.T) {
 			// Skip occurrences inside comments/doc prose is not needed here: `return true`
 			// is code-only in this file. Any grant must sit below the flock call.
 			if abs < flockIdx {
-				t.Fatalf("`%s` appears at offset %d, BEFORE the flock at %d — a claim may not be granted before the lock is held (#146)", tok, abs, flockIdx)
+				t.Fatalf("`%s` appears at offset %d, BEFORE the flock at %d — a claim may not be granted before the lock is held", tok, abs, flockIdx)
 			}
 			idx = abs + len(tok)
 		}
@@ -348,10 +389,10 @@ func TestAcquireNeverAssumesFree_Source(t *testing.T) {
 		t.Fatal("acquireClaimLock not found — the fail-closed lock helper was renamed; update this guard")
 	}
 	if !strings.Contains(helper, "Unverifiable(") {
-		t.Fatal("acquireClaimLock does not return Unverifiable — a lock it cannot hold must fail closed (exit 6), not silently succeed (#146)")
+		t.Fatal("acquireClaimLock does not return Unverifiable — a lock it cannot hold must fail closed (exit 6), not silently succeed")
 	}
 	if strings.Contains(helper, "return nil, nil") {
-		t.Fatal("acquireClaimLock has a `return nil, nil` — a lock helper that reports success with no lock is 'assume free' (#146)")
+		t.Fatal("acquireClaimLock has a `return nil, nil` — a lock helper that reports success with no lock is 'assume free'")
 	}
 
 	// 4. Acquire must PROPAGATE the lock error (fail closed), never swallow it into a
@@ -361,7 +402,7 @@ func TestAcquireNeverAssumesFree_Source(t *testing.T) {
 		t.Fatal("Acquire not found — update this guard")
 	}
 	if !strings.Contains(acq, "return false, lerr") {
-		t.Fatal("Acquire does not propagate the lock error (`return false, lerr`) — a lock it could not hold must surface as Unverifiable, never be assumed free (#146)")
+		t.Fatal("Acquire does not propagate the lock error (`return false, lerr`) — a lock it could not hold must surface as Unverifiable, never be assumed free")
 	}
 }
 

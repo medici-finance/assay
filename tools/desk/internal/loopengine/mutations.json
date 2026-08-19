@@ -8,7 +8,7 @@
   },
   "mutations": [
     {
-      "name": "drop the taken-refusal — an item with an open PR is claimed anyway (the 2026-08-13 #722/#733 double-dispatch)",
+      "name": "drop the taken-refusal — an item with an open PR is claimed anyway (the 2026-08-13 double-dispatch)",
       "file": "internal/loopengine/claim.go",
       "old": "\tif taken {\n\t\tif why == \"\" {",
       "new": "\tif false && taken {\n\t\tif why == \"\" {"

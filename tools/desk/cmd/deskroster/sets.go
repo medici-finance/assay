@@ -43,8 +43,8 @@ import (
 //	          relationship to it (owned | upstream). It is not an authorisation
 //	          set and confers no access.
 //
-// THE ANNOTATION LANDS ON THE THIRD SET ONLY, and that placement is the point
-// (ground-truth/08). `relationship: owned` says this cell is the repo's owner;
+// THE ANNOTATION LANDS ON THE THIRD SET ONLY, and that placement is the point.
+// `relationship: owned` says this cell is the repo's owner;
 // it does NOT say a tool may write to it. Write authorisation is
 // ASSAY_ALLOWED_REPOS — the first set — which is already per-cell-shaped because
 // each cell's deployment sets its own roster. Printing the two sets side by side

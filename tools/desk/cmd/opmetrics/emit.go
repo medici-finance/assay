@@ -35,8 +35,8 @@ import (
 	"path/filepath"
 )
 
-// SchemaVersion identifies the day-file shape. Consumers (methodology-metrics/41 and
-// /42) select on it. Bump on any field REMOVAL or meaning change; additive fields do
+// SchemaVersion identifies the day-file shape. Downstream consumers select on it.
+// Bump on any field REMOVAL or meaning change; additive fields do
 // not require a bump.
 const SchemaVersion = "opmetrics/1"
 
@@ -74,7 +74,7 @@ var AllReasons = []Reason{
 }
 
 // Unmeasured codes. Stated, not silently omitted: a metric this collector deliberately
-// does not compute is a fact a reader needs, and #766 asked for prompt blockage.
+// does not compute is a fact a reader needs, and prompt blockage was asked for.
 const (
 	UnmeasuredPromptBlockage = "prompt-blockage"
 	UnmeasuredThinkTime      = "operator-think-time"

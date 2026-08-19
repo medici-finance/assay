@@ -132,6 +132,44 @@ func TestWaitingStatesAreVisibleNotDropped(t *testing.T) {
 	}
 }
 
+// TestSuspectApprovalSurfacesAndNeverFlips (#37) pins the one disposition in this table
+// that a plausible-looking edit would get WRONG in the dangerous direction.
+//
+// SUSPECT-APPROVAL is BLOCKED's near-twin — same standing CHANGES_REQUESTED, same unhappy
+// row — so the obvious filing is WAIT, next to BLOCKED. It must not be. BLOCKED is routine:
+// the reviewer asked for changes and the worker owes a push. SUSPECT-APPROVAL is that row
+// with an APPROVED laid on top at an UNCHANGED head, which is the observable signature of a
+// forged verdict (deskboard suppresses the approval and ranks this action ABOVE BLOCKED
+// precisely so it cannot hide inside it). Filing it as WAIT would undo that ranking one
+// layer down, in the reactor, and the forgery would go unremarked. Nor may it ever carry a
+// verb: the row means "an approval here cannot be trusted", so emitting the ready-flip off
+// it is the exact bug #37 closes.
+func TestSuspectApprovalSurfacesAndNeverFlips(t *testing.T) {
+	r, err := LookupAction("SUSPECT-APPROVAL")
+	if err != nil {
+		t.Fatalf("SUSPECT-APPROVAL unknown to the reactor: %v", err)
+	}
+	if r.Disposition != DispositionSurface {
+		t.Fatalf("SUSPECT-APPROVAL disposition = %s, want SURFACE — a suspected forged verdict "+
+			"must reach a human, not be filed as a routine wait alongside BLOCKED (#37)", r.Disposition)
+	}
+	if r.Verb != "" {
+		t.Fatalf("SUSPECT-APPROVAL carries verb %q — an approval this row exists to distrust "+
+			"must never drive an outward verb, least of all the ready-flip (#37)", r.Verb)
+	}
+	if r.Disposition.Actionable() {
+		t.Fatal("SUSPECT-APPROVAL must not consume a reviewer slot — it is a human's to read")
+	}
+
+	// And it must survive rendering: a row nobody sees is the same defect as no row.
+	b := healthyBoard(t, row(t, "SUSPECT-APPROVAL", 1))
+	var sb strings.Builder
+	b.RenderRows(&sb)
+	if !strings.Contains(sb.String(), "SUSPECT-APPROVAL") {
+		t.Fatal("SUSPECT-APPROVAL was dropped from the reactor's output — the one row that must not vanish")
+	}
+}
+
 // TestFlipIsTheOnlyOutwardVerbAndItIsNotAMerge — the desk does not merge, and MERGE-NOW
 // must never acquire a verb here.
 func TestFlipIsTheOnlyOutwardVerbAndItIsNotAMerge(t *testing.T) {

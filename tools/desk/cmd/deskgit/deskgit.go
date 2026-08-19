@@ -306,7 +306,15 @@ var schemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://`)
 // TestParseRepo_AuthorityParsing. The lesson is that the bypass was in the ROUTING, not in
 // the exact-path check itself.
 //
-// Two residuals, documented and NOT fixed — read these before assuming the gate binds
+// BARE LOCAL PATHS (no host) do not go through the exact-path rule — a real local repo
+// lives at an arbitrary absolute path, so no `owner/repo` shape can apply — but they are no
+// longer read leniently either (#215, formerly "residual 2"). Their identity
+// now comes from deskkit.RepoForLocalPath: the canonical absolute path must match a
+// configured local root, and the repo is the root's, not the path's last two components. A
+// directory named to spell an allowed slug — reachable via an `insteadOf` rewrite — is
+// therefore refused instead of landing foreign content on the desk's tracking refs.
+//
+// One residual remains, documented and NOT fixed — read it before assuming the gate binds
 // identity:
 //
 //  1. The host is NOT bound to `github.com`, because the desk machine's origins use ssh
@@ -314,18 +322,16 @@ var schemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://`)
 //     the real remote. A URL with an exact allowed `owner/repo` on an UNEXPECTED host still
 //     passes the gate and performs a READ-ONLY fetch (the upload-pack pin + env scrub
 //     ensure no code executes). Binding host via an explicit allowlist is a follow-up.
-//  2. BARE LOCAL PATHS are not subject to the exact-path rule at all — a real local repo
-//     lives at an arbitrary absolute path, so lenientRepoPath takes the last two
-//     components. This branch IS reachable in production: an `insteadOf` rewrite pointing
-//     at any local directory whose last two components spell an allowed slug passes the
-//     gate, and its content then lands on the tracking refs the desk loops consume. Closing
-//     it needs a different identity model for local paths (an allowlist of local roots),
-//     not a parser tweak — hence a residual rather than a fix here.
 func parseRepo(raw string) (string, error) {
 	u := strings.TrimSpace(raw)
 	if remoteHelperRe.MatchString(u) {
 		return "", fmt.Errorf("remote-helper transport form is not allowed: %q", raw)
 	}
+	// The path AS GIVEN, before `.git` stripping. A bare local remote's identity is its real
+	// filesystem location (matched below), and a bare repo legitimately lives at `<dir>.git`
+	// — stripping the suffix here would corrupt that path. `.git` stripping is only a
+	// URL-slug convenience for the host-bearing branches, so it applies to `u`, not to this.
+	localPath := u
 	u = strings.TrimSuffix(u, ".git")
 	// Scheme detection is ANCHORED (security review hygiene). `strings.Index(u, "://")`
 	// matched `://` ANYWHERE, so an scp-like URL carrying `://` inside its path was routed
@@ -335,6 +341,22 @@ func parseRepo(raw string) (string, error) {
 	// rejects the protocol name), and it becomes load-bearing the moment a host allowlist
 	// lands. Anchoring routes those URLs to the scp-like branch below, which is STRICTER.
 	if loc := schemeRe.FindStringIndex(u); loc != nil {
+		// file:// names a purely LOCAL path git reads off the filesystem — an insteadOf
+		// rewrite can spell it, and its trailing components can be NAMED to spell an allowed
+		// slug just like a bare local path. It must therefore take its identity from the
+		// trusted local roots (#215), not from the lenient host-bearing exact-path rule
+		// below (which would admit `file:///owner/repo`). Route the decoded filesystem path
+		// through the same local-roots gate. Use the pre-`.git`-strip form (localPath): a
+		// bare local repo legitimately lives at `<dir>.git`.
+		if strings.EqualFold(u[:loc[1]-len("://")], "file") {
+			if p, ok := fileURLPath(localPath); ok {
+				if repo, ok := deskkit.RepoForLocalPath(p); ok {
+					return repo, nil
+				}
+			}
+			return "", fmt.Errorf("file:// path %q is not a configured desk root "+
+				"(set DESK_ROOTS to your trusted local checkouts)", raw)
+		}
 		rest := u[loc[1]:]
 		// The authority ends at the first '/', '?' or '#', so userinfo can only occur
 		// BEFORE it. Scanning the whole remainder for '@' (the pre-fix behaviour) let a
@@ -373,11 +395,37 @@ func parseRepo(raw string) (string, error) {
 			return exactRepoPath(u[colon+1:])
 		}
 	}
-	// Bare local path (no host). Lenient last-two by necessity: a real local repo lives at
-	// an arbitrary absolute path, so no exact-path rule can apply. See the Residual note in
-	// parseRepo's doc comment — this branch is REACHABLE IN PRODUCTION via an insteadOf
-	// rewrite, and its identity check is weak by nature.
-	return lenientRepoPath(u)
+	// Bare local path (no host). Its identity comes from the configured local-roots
+	// allowlist, NOT from its spelling (#215). A real local repo lives at an
+	// arbitrary absolute path, so no exact `owner/repo` rule can apply — but neither can the
+	// last-two-components rule this branch used to use: any directory can be named to spell
+	// an allowed slug, and an `insteadOf` rewrite can point origin at one, which used to land
+	// foreign content on the tracking refs the desk loops merge. deskkit.RepoForLocalPath
+	// resolves the path to its canonical absolute form and returns the repo only when it is a
+	// root the desk was configured to trust; anything else is refused with no lenient
+	// fallback.
+	if repo, ok := deskkit.RepoForLocalPath(localPath); ok {
+		return repo, nil
+	}
+	return "", fmt.Errorf("bare local path %q is not a configured desk root "+
+		"(set DESK_ROOTS to your trusted local checkouts)", raw)
+}
+
+// fileURLPath extracts the filesystem path from a file:// URL, discarding an empty or
+// `localhost` authority — `file:///a/b` and `file://localhost/a/b` both yield `/a/b`. It is
+// deliberately string-level (not net/url) so it never fails on the hostile shapes it exists
+// to gate. ok=false when the URL carries no path component at all.
+func fileURLPath(raw string) (string, bool) {
+	i := strings.Index(raw, "://")
+	if i < 0 {
+		return "", false
+	}
+	rest := raw[i+len("://"):] // authority + path
+	slash := strings.IndexByte(rest, '/')
+	if slash < 0 {
+		return "", false
+	}
+	return rest[slash:], true
 }
 
 // authorityEnd returns the index at which the authority component of `host/path?q#f`
@@ -510,18 +558,4 @@ func exactRepoPath(p string) (string, error) {
 		return "", fmt.Errorf("expected exactly owner/repo, got %q", p)
 	}
 	return parts[0] + "/" + parts[1], nil
-}
-
-// lenientRepoPath takes the last two path components (bare local path only).
-func lenientRepoPath(p string) (string, error) {
-	p = strings.Trim(p, "/")
-	parts := strings.Split(p, "/")
-	if len(parts) < 2 {
-		return "", fmt.Errorf("cannot parse owner/repo from %q", p)
-	}
-	owner, repo := parts[len(parts)-2], parts[len(parts)-1]
-	if owner == "" || repo == "" {
-		return "", fmt.Errorf("empty owner/repo in %q", p)
-	}
-	return owner + "/" + repo, nil
 }

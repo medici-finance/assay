@@ -22,8 +22,8 @@ package main
 // behavioural assertion in this package asserts against the same roster the tool reads
 // in production, not a hand-picked stand-in.
 //
-// The allowed-repo set is the pre-conversion compiled set of NINE, plus the FOUR that
-// #456 added (platform and one slides repo per product) — THIRTEEN entries,
+// The allowed-repo set is the pre-conversion compiled set of NINE, plus the FOUR
+// added later (platform and one slides repo per product) — THIRTEEN entries,
 // set-equal to the consumer's documented ASSAY_ALLOWED_REPOS.
 
 import (

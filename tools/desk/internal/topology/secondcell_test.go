@@ -10,7 +10,7 @@ import (
 )
 
 // secondcell_test.go — the executed acceptance test for "adding a cell is
-// CONFIG, not CODE" (brief desk-console-2/06).
+// CONFIG, not CODE".
 //
 // THE CLAIM UNDER TEST. The multi-cell adoption model rests on one property: a
 // cell is DATA. Adding one should be a different instance of a config file and
@@ -48,7 +48,7 @@ import (
 //
 // WHAT THIS FILE DOES NOT CLAIM, stated rather than implied. It does not prove a
 // second cell WORKS end-to-end — no second cell is deployed, and no board, inbox
-// or portfolio render is exercised here. Those parts of desk-console-2/06's
+// or portfolio render is exercised here. Those parts of the
 // original Verify table are COULD-NOT-CHECK: they name `cells.yaml` and a
 // `deskcli` binary in the console repo, neither of which exists in any tree this
 // suite can reach. What it proves is narrower and executable: the config layer
@@ -91,8 +91,8 @@ func TestSecondCellIsExpressibleAsConfig(t *testing.T) {
 	}
 
 	t.Run("the shipped reader serves the second cell's identity", func(t *testing.T) {
-		if second.Cell != "example-lending" {
-			t.Errorf("cell = %q, want %q — the reader did not serve the fixture's own identity", second.Cell, "example-lending")
+		if second.Cell != "example-widgets" {
+			t.Errorf("cell = %q, want %q — the reader did not serve the fixture's own identity", second.Cell, "example-widgets")
 		}
 		if second.Cell == thisCell {
 			t.Errorf("cell = %q, which is THIS tree's cell — a second cell that reads back as the first "+
@@ -120,7 +120,7 @@ func TestSecondCellIsExpressibleAsConfig(t *testing.T) {
 	})
 
 	t.Run("absent relationship reads as upstream and is distinguishable from stated", func(t *testing.T) {
-		r, ok := second.Repo("example-org/loans-docs")
+		r, ok := second.Repo("example-org/widgets-docs")
 		if !ok {
 			t.Fatal("the fixture lost its absent-relationship entry — the default-reading arm of the claim is untested without it")
 		}
@@ -135,7 +135,7 @@ func TestSecondCellIsExpressibleAsConfig(t *testing.T) {
 
 	t.Run("the owned set is this cell's, not the toolkit cell's", func(t *testing.T) {
 		got := second.OwnedRepos()
-		want := []string{"example-org/loans"}
+		want := []string{"example-org/widgets"}
 		if !equalStringSlices(got, want) {
 			t.Errorf("OwnedRepos() = %v, want %v", got, want)
 		}
@@ -157,8 +157,8 @@ func TestSecondCellIsExpressibleAsConfig(t *testing.T) {
 			t.Errorf("release_repo = %q for both cells — the fixture is not exercising a DIFFERENT cell", second.ReleaseRepo)
 		}
 		roots := second.Roots()
-		if roots["example-org/loans"] != "." {
-			t.Errorf("Roots()[example-org/loans] = %q, want %q", roots["example-org/loans"], ".")
+		if roots["example-org/widgets"] != "." {
+			t.Errorf("Roots()[example-org/widgets] = %q, want %q", roots["example-org/widgets"], ".")
 		}
 		if len(second.SystemStateLabelNames()) == 0 {
 			t.Error("the second cell's system-state label set is empty — a cell states the labels it " +
