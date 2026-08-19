@@ -545,6 +545,8 @@ func TestS2SweepMissingTreeIsCouldNotCheck(t *testing.T) {
 // gone is dead weight that quietly widens the blind spot the next time a file lands under
 // that name — the same rot ciRegistryOptOut guards against for the CI-trigger registry.
 func TestS2SweepExclusionsAreLive(t *testing.T) {
+	skipIfFixtureAbsent(t, filepath.Join(s2RepoRoot, "docs", "leak-sweep-tokens.yaml"),
+		"docs/leak-sweep-tokens.yaml and the swept house tree are not part of this repository's published file set")
 	// The self path is not an exclusion, but it rots the same way: if this file is renamed
 	// and the constant is not, the control silently starts counting this file again and the
 	// row-9 mutation goes green against a broken instrument. That is the exact regression

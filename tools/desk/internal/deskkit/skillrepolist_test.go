@@ -143,6 +143,8 @@ func scanSkillRepoList(root string, requireMarker bool) (hits []skillRepoHit, sc
 
 // TestActingDeskSkillsCarryNoHardcodedRepoList is the diff.
 func TestActingDeskSkillsCarryNoHardcodedRepoList(t *testing.T) {
+	skipIfFixtureAbsent(t, canonicalSkillRoot,
+		".claude/ is not part of this repository's published file set; no desk skills ship")
 	canonicalScanned := 0
 
 	for _, root := range skillRepoListRoots {

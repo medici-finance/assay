@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -524,6 +525,13 @@ func TestShippedChecklistParses(t *testing.T) {
 	// Relative to tools/desk/cmd/repohardenguard, the package directory `go test`
 	// uses as its working directory.
 	p := filepath.Join("..", "..", "..", "..", defaultChecklist)
+	// The shipped checklist is not part of every checkout of this repository. When
+	// it is absent there is nothing to parse, so skip; where it is present this
+	// parse-and-coverage check runs in full. Only os.ErrNotExist skips — a
+	// checklist that exists but cannot be read still fails.
+	if _, err := os.Stat(p); errors.Is(err, os.ErrNotExist) {
+		t.Skipf("%s not present in this tree", p)
+	}
 	cl, err := ParseChecklistFile(p)
 	if err != nil {
 		t.Fatalf("the shipped checklist does not parse: %v", err)

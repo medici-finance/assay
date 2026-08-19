@@ -138,6 +138,9 @@ func TestCrossModuleTestsAreTriggeredByWhatTheyRead(t *testing.T) {
 	// repoRoot: this package is tools/desk/internal/deskkit.
 	const repoRoot = "../../../.."
 
+	skipIfFixtureAbsent(t, filepath.Join(repoRoot, ".github", "workflows", "tools.yml"),
+		".github/ and the sibling tool tree are not part of this repository's published file set")
+
 	registry := ciCrossModuleRegistry()
 
 	for _, e := range registry {
@@ -2062,6 +2065,9 @@ func ciHasParentSegment(src string) bool {
 // close it.
 func TestCrossModuleReaderRegistryIsNotSilentlyStale(t *testing.T) {
 	const repoRoot = "../../../.."
+
+	skipIfFixtureAbsent(t, filepath.Join(repoRoot, ".github", "workflows", "tools.yml"),
+		".github/ and the sibling tool tree are not part of this repository's published file set")
 
 	registered := map[string]bool{}
 	for _, e := range ciCrossModuleRegistry() {

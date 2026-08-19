@@ -43,6 +43,8 @@ func TestGoModModulesUseAssayPrefix(t *testing.T) {
 	const repoRoot = "../../../.."
 
 	goWorkPath := filepath.Join(repoRoot, "go.work")
+	skipIfFixtureAbsent(t, goWorkPath,
+		"go.work is not part of this repository's published file set (the subset ships its own)")
 	raw, err := os.ReadFile(goWorkPath)
 	if err != nil {
 		t.Fatalf("cannot read %s: %v", goWorkPath, err)

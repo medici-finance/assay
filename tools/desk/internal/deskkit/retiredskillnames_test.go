@@ -145,6 +145,8 @@ func scanRetiredDeskNames(root string) (hits []retiredHit, scanned int, seen map
 
 // TestSkillBodiesCarryNoRetiredDeskName is the diff.
 func TestSkillBodiesCarryNoRetiredDeskName(t *testing.T) {
+	skipIfFixtureAbsent(t, skillRoots[0],
+		".claude/ is not part of this repository's published file set; no desk skills ship")
 	totalScanned := 0
 	seenAll := map[string]bool{}
 

@@ -32,6 +32,9 @@ func TestTreeSweepPipeCarriesPipefail(t *testing.T) {
 	const repoRoot = "../../../.."
 	const wf = ".github/workflows/leaksweep.yml"
 
+	skipIfFixtureAbsent(t, filepath.Join(repoRoot, filepath.FromSlash(wf)),
+		".github/ is not part of this repository's published file set")
+
 	raw, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(wf)))
 	if err != nil {
 		t.Fatalf("cannot read %s: %v — the tree-sweep leak gate must exist", wf, err)

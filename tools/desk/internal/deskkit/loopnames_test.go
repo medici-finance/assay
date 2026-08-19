@@ -295,6 +295,8 @@ func scanDeclaredLoopNames(root string) (decls map[string][]string, scanned int,
 // protection. This test goes red on exactly that, which is what makes the roster a
 // derived check rather than a second, drifting copy of the loop list.
 func TestEveryDeclaredLoopIdentityIsKnown(t *testing.T) {
+	skipIfFixtureAbsent(t, loopSkillRoots[0],
+		".claude/ is not part of this repository's published file set; no loop-declaring skills ship")
 	totalScanned, totalDecls := 0, 0
 
 	for _, root := range loopSkillRoots {
@@ -382,6 +384,8 @@ func TestReadmeLoopRegistryIsKnown(t *testing.T) {
 // an equality check — but a canonical name that no skill declares must be a deliberate,
 // reasoned forward-registration, not a stale entry nobody removed.
 func TestRosterCarriesNoUndeclaredCanonicalName(t *testing.T) {
+	skipIfFixtureAbsent(t, loopSkillRoots[0],
+		".claude/ is not part of this repository's published file set; no loop-declaring skills ship")
 	declared := map[string]bool{}
 	scannedAny := 0
 	for _, root := range loopSkillRoots {
@@ -425,6 +429,8 @@ func TestRosterCarriesNoUndeclaredCanonicalName(t *testing.T) {
 // TestPreRegistrationsAreRetiredWhenDeclared keeps preRegisteredLoopNames from becoming
 // permanent: once a skill actually declares the name, the exemption must be deleted.
 func TestPreRegistrationsAreRetiredWhenDeclared(t *testing.T) {
+	skipIfFixtureAbsent(t, loopSkillRoots[0],
+		".claude/ is not part of this repository's published file set; no loop-declaring skills ship")
 	declared := map[string]bool{}
 	for _, root := range loopSkillRoots {
 		decls, _, err := scanDeclaredLoopNames(root)

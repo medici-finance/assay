@@ -86,6 +86,8 @@ func TestVersionStampedFromReleaseWorkflow(t *testing.T) {
 	// internal/deskkit sits at tools/desk/internal/deskkit; the repo root is four
 	// levels up.
 	path := filepath.Join("..", "..", "..", "..", ".github", "workflows", "release-desk.yml")
+	skipIfFixtureAbsent(t, path,
+		".github/ is not part of this repository's published file set")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("release workflow not readable at %s: %v", path, err)

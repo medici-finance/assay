@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,13 @@ import (
 func TestLoadManifestReadsTheFormatFixture(t *testing.T) {
 	// Repo root is four levels up from this package (tools/desk/cmd/deskrelease/).
 	path := filepath.Join("..", "..", "..", "..", "releases", "example.yaml")
+	// releases/example.yaml is not part of every checkout of this repository. Skip
+	// when the format fixture is absent; where it is present this parser check runs
+	// in full. Only os.ErrNotExist skips — a fixture that exists but cannot be read
+	// still fails.
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		t.Skipf("%s not present in this tree", path)
+	}
 	m, err := loadManifest(path)
 	if err != nil {
 		t.Fatalf("loadManifest(%s): %v", path, err)

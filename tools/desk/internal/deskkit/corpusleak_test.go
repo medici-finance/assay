@@ -341,6 +341,8 @@ func corpusScanWith(root string, exempt map[string]string, forbidden []string, s
 // TestCorpusHasNoWithheldStreamPaths is THE GATE. The tools/desk copy set, with the
 // do-not-touch exemptions applied, must reference no real withheld-stream path.
 func TestCorpusHasNoWithheldStreamPaths(t *testing.T) {
+	skipIfFixtureAbsent(t, filepath.Join(corpusRepoRoot, "docs", "streams"),
+		"docs/streams (the withheld-stream corpus) is not part of this repository's published file set")
 	hits, forbidden, scanned, err := corpusScan(corpusRepoRoot, corpusCopySetExempt)
 	if err != nil {
 		t.Fatalf("corpus scan could not walk the tree: %v — this is could-not-check, NOT clean", err)

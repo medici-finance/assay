@@ -39,6 +39,8 @@ import (
 // script by exact step NAME, so renaming the step in action.yml fails this test
 // loudly rather than silently testing nothing.
 func TestAssayLintSingleWriterGuardFailsClosed(t *testing.T) {
+	skipIfFixtureAbsent(t, assayLintActionPath,
+		".github/ is not part of this repository's published file set")
 	// A guard that SKIPS on the runner is a guard that does not run where it
 	// matters, and `go test` without -v prints nothing when it does. So the
 	// skip is allowed on a developer machine and is a hard FAILURE in CI —
@@ -236,6 +238,8 @@ func TestAssayLintSingleWriterGuardFailsClosed(t *testing.T) {
 // declares `shell: bash`, without which a composite step runs under the
 // runner's default shell and `set -euo pipefail` is not in force.
 func TestAssayLintGuardPullRequestScopedAndBashed(t *testing.T) {
+	skipIfFixtureAbsent(t, assayLintActionPath,
+		".github/ is not part of this repository's published file set")
 	raw := assayLintActionYAML(t)
 
 	step := assayLintStepBlock(t, raw, "Enforce single-writer rule — STATUS.md and register views must not be committed on branches")

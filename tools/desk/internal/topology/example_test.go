@@ -1,7 +1,9 @@
 package topology
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -89,6 +91,14 @@ const ExampleFile = "topology.example.yaml"
 var publishableRepoPrefixes = []string{"example-org/", "medici-finance/assay"}
 
 func TestPublicExampleTracksTheSourceShape(t *testing.T) {
+	// The separate example file exists only in the source repository; the stager
+	// relocates it in-tree to the root topology.yaml, so a published/consumer tree
+	// carries topology.yaml but no topology.example.yaml. Skip when the example is
+	// absent; where it is present this source-vs-example drift check runs in full.
+	// Only os.ErrNotExist skips — an example that exists but cannot be read fails.
+	if _, err := os.Stat(filepath.Join(repoRoot, ExampleFile)); errors.Is(err, os.ErrNotExist) {
+		t.Skipf("%s not present in this tree", ExampleFile)
+	}
 	src := loadSourceOrFail(t)
 	ex := loadExampleOrFail(t)
 
