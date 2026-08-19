@@ -449,7 +449,7 @@ func stampsInDiff(diff string) []stamp {
 		// A stamp on a file under the tutorial-skeleton fixture prefix is
 		// deliberately NOT corroborated — the corpus teaches the human:<name>
 		// notation with fictional personas that can never map to a login. See
-		// corroborateExcludedFixturePrefix (Ian's #1232 ruling). This is a PATH
+		// corroborateExcludedFixturePrefix (per Ian's ruling). This is a PATH
 		// check, so a forged human:<name> anywhere OUTSIDE the prefix is unaffected.
 		if isExcludedFixturePath(curFile) {
 			continue
@@ -516,15 +516,52 @@ func (v verdict) String() string {
 
 // ---- PR data retrieval -----------------------------------------------------------
 
-// fetchPRDiff runs `gh pr diff <N>` for the given repo and PR and returns the
-// unified diff output.
+// ghPRFile is one entry of the GitHub "List pull request files" REST API
+// (GET /repos/{owner}/{repo}/pulls/{pull_number}/files). Only the two fields
+// the corroborate scan needs are decoded: the path and its unified-diff hunks.
+type ghPRFile struct {
+	Filename string `json:"filename"`
+	Patch    string `json:"patch"`
+}
+
+// prFilesToDiff reconstructs a unified-diff string (parseable by stampsInDiff)
+// from the PR "files" API entries: each file contributes a "+++ b/<name>"
+// header followed by its patch hunks. Files with no patch (binary/oversize)
+// contribute only the header — no added lines, nothing to corroborate.
+func prFilesToDiff(files []ghPRFile) string {
+	var b strings.Builder
+	for _, f := range files {
+		fmt.Fprintf(&b, "+++ b/%s\n", f.Filename)
+		if f.Patch != "" {
+			b.WriteString(f.Patch)
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
+// fetchPRDiff returns a unified diff of the given repo's PR, reconstructed from
+// the paginated "List pull request files" REST API.
 func fetchPRDiff(repo string, pr int) (string, error) {
-	cmd := exec.Command("gh", "pr", "diff", fmt.Sprintf("%d", pr), "--repo", repo)
+	// gh pr diff caps at 300 files (HTTP 406 on larger PRs). The paginated
+	// "List PR files" API has no such cap; reconstruct a unified diff from the
+	// per-file patch fields.
+	cmd := exec.Command("gh", "api", "--paginate", "--slurp",
+		fmt.Sprintf("repos/%s/pulls/%d/files", repo, pr))
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("gh pr diff %d: %w", pr, err)
+		return "", fmt.Errorf("gh api pulls/%d/files: %w", pr, err)
 	}
-	return string(out), nil
+	// --slurp + --paginate yields an array of per-page arrays: [[...],[...]].
+	var pages [][]ghPRFile
+	if err := json.Unmarshal(out, &pages); err != nil {
+		return "", fmt.Errorf("unmarshal PR %d files: %w", pr, err)
+	}
+	var files []ghPRFile
+	for _, p := range pages {
+		files = append(files, p...)
+	}
+	return prFilesToDiff(files), nil
 }
 
 // ghPRData holds the subset of `gh pr view --json reviews,comments` that this check
