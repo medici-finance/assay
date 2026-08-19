@@ -218,6 +218,19 @@ const (
 	// and otherwise ignored. KEEP IN SYNC with statusgen/rosterconfig.go's
 	// scanEnvChannelDriftTarget.
 	EnvChannelDriftTarget = "ASSAY_CHANNEL_DRIFT_TARGET"
+
+	// EnvDeterministicGatePatterns is a STATUSGEN-only roster value: additional
+	// house-specific deterministic-gate name substrings the autonomy report merges
+	// on top of its generic built-in set (statusgen/autonomy.go's
+	// EnvDeterministicGatePatterns — a house's own build- or contract-specific
+	// gate name).
+	// deskkit does not consume it — but the two readers share one roster.env, and
+	// an unknown key in the ASSAY_ namespace REFUSES the whole configuration
+	// (parseConfig). So deskkit must RECOGNISE it, or a roster.env that configures
+	// statusgen's gate classification would collapse every desk tool's
+	// configuration. It is recognised here and otherwise ignored. KEEP IN SYNC with
+	// statusgen/rosterconfig.go's scanEnvDeterministicGatePatterns.
+	EnvDeterministicGatePatterns = "ASSAY_DETERMINISTIC_GATE_PATTERNS"
 )
 
 // rosterSchemaVersion is the format version this build speaks.
@@ -708,7 +721,7 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		// STATUSGEN-only keys: recognised so a shared roster.env that configures
 		// statusgen does not collapse deskkit's configuration; not consumed here.
 		EnvHomeRepo: true, EnvScanRepos: true, EnvAuthorizedAuthors: true,
-		EnvChannelDriftTarget: true,
+		EnvChannelDriftTarget: true, EnvDeterministicGatePatterns: true,
 		// EnvSweepWithheldStreams (ASSAY_SWEEP_WITHHELD_STREAMS, sweepconfig.go) is
 		// consumed by the S2 sweep via a direct os.Getenv read, NOT through this
 		// scanConfig — but #1333's de-housing REQUIRES the house to set it in the
