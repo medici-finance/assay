@@ -198,6 +198,18 @@ const (
 	// with statusgen/rosterconfig.go's scanEnvHomeRepo / scanEnvScanRepos.
 	EnvHomeRepo  = "ASSAY_HOME_REPO"
 	EnvScanRepos = "ASSAY_SCAN_REPOS"
+
+	// EnvDeterministicGatePatterns is a STATUSGEN-only roster value: additional
+	// house-specific deterministic-gate name substrings the autonomy report merges
+	// on top of its generic built-in set (statusgen/autonomy.go's
+	// EnvDeterministicGatePatterns — e.g. the Medici house's `daml-ci` gate).
+	// deskkit does not consume it — but the two readers share one roster.env, and
+	// an unknown key in the ASSAY_ namespace REFUSES the whole configuration
+	// (parseConfig). So deskkit must RECOGNISE it, or a roster.env that configures
+	// statusgen's gate classification would collapse every desk tool's
+	// configuration. It is recognised here and otherwise ignored. KEEP IN SYNC with
+	// statusgen/rosterconfig.go's scanEnvDeterministicGatePatterns.
+	EnvDeterministicGatePatterns = "ASSAY_DETERMINISTIC_GATE_PATTERNS"
 )
 
 // rosterSchemaVersion is the format version this build speaks.
@@ -687,7 +699,7 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		EnvRosterSchema: true,
 		// STATUSGEN-only keys: recognised so a shared roster.env that configures
 		// statusgen does not collapse deskkit's configuration; not consumed here.
-		EnvHomeRepo: true, EnvScanRepos: true,
+		EnvHomeRepo: true, EnvScanRepos: true, EnvDeterministicGatePatterns: true,
 	}
 	for k := range vals {
 		if known[k] {

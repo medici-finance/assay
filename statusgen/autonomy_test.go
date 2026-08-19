@@ -115,6 +115,49 @@ func TestAutonomyGateShareSplit(t *testing.T) {
 	}
 }
 
+// TestDeterministicGateCallout: the generic built-in set ships with no house
+// gate name, and a house sets ASSAY_DETERMINISTIC_GATE_PATTERNS to MERGE its own
+// gate name(s) on top. Unset = generic-only; set = generic + house patterns.
+func TestDeterministicGateCallout(t *testing.T) {
+	// Unset (the shipped/public posture): a house-specific gate name is NOT
+	// classified deterministic, while a generic gate name still is.
+	os.Unsetenv(EnvDeterministicGatePatterns)
+	if hasDeterministicGate([]string{"daml-ci"}) {
+		t.Errorf("unset: daml-ci must not be a deterministic gate (generic-only default)")
+	}
+	if !hasDeterministicGate([]string{"go-test"}) {
+		t.Errorf("unset: generic go-test must still be a deterministic gate")
+	}
+	if got := additionalDeterministicGatePatterns(); got != nil {
+		t.Errorf("unset: additional patterns = %v, want nil", got)
+	}
+
+	// Set: the house value is honored (merged), generic patterns still apply.
+	t.Setenv(EnvDeterministicGatePatterns, "daml-ci")
+	if !hasDeterministicGate([]string{"daml-ci"}) {
+		t.Errorf("set: house daml-ci must be classified deterministic")
+	}
+	if !hasDeterministicGate([]string{"go-test"}) {
+		t.Errorf("set: generic go-test must still be a deterministic gate")
+	}
+	if hasDeterministicGate([]string{"assay-reviewer-app"}) {
+		t.Errorf("set: an unrelated model-judgment check must stay non-deterministic")
+	}
+
+	// Parsing tolerates comma/whitespace separation and lower-cases entries.
+	t.Setenv(EnvDeterministicGatePatterns, " Daml-CI, house-gate ")
+	got := additionalDeterministicGatePatterns()
+	want := map[string]bool{"daml-ci": true, "house-gate": true}
+	if len(got) != len(want) {
+		t.Fatalf("parsed = %v, want keys %v", got, want)
+	}
+	for _, g := range got {
+		if !want[g] {
+			t.Errorf("unexpected parsed pattern %q", g)
+		}
+	}
+}
+
 // TestAutonomyTokenEffMeasuredFromDayFile: when the day-file carries a token
 // block, token efficiency is computed (tokens/merged PR + no-op rate).
 func TestAutonomyTokenEffMeasuredFromDayFile(t *testing.T) {

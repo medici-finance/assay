@@ -162,11 +162,66 @@ var autonomyHumanLogins = map[string]bool{}
 // deterministicGatePatterns are the lower-cased substrings that mark a status
 // check as a CODE gate (ran deterministically at head) rather than a
 // model-judgment gate. Reviewer-App verdicts are REVIEWS, not status checks, so
-// they never appear in a rollup and need no exclusion here. Documented default;
-// overridable for a repo with different gate names.
+// they never appear in a rollup and need no exclusion here. This is the GENERIC
+// built-in default set; a deployment MERGES additional house-specific gate
+// names on top of it through EnvDeterministicGatePatterns (see below), so the
+// shipped binary carries no house gate name.
 var deterministicGatePatterns = []string{
 	"lint", "gate", "test", "vet", "build", "upgrade-check",
 	"leak-sweep", "leaksweep", "check-", "-check", "consumers", "go-test",
+}
+
+// EnvDeterministicGatePatterns names the environment variable carrying
+// ADDITIONAL deterministic-gate name substrings, MERGED on top of the built-in
+// generic default set (deterministicGatePatterns). Comma- or whitespace-
+// separated; each entry is lower-cased and trimmed:
+//
+//	ASSAY_DETERMINISTIC_GATE_PATTERNS=daml-ci
+//
+// WHY A CONFIG CALLOUT AND NOT A HARD-CODED PATTERN. A house may run a
+// deterministic CI gate whose NAME is house-specific — e.g. the Medici house's
+// `daml-ci` gate. Compiling that name into the SHIPPED binary would disclose a
+// house-internal gate name in a public copy of statusgen, so the extra
+// pattern(s) are a DEPLOYMENT VALUE the house supplies at run time, exactly as
+// the accepted-drift register path works (ASSAY_CHANNEL_DRIFT_TARGET) and the
+// other generic knobs (ASSAY_SWEEP_WITHHELD_STREAMS, ASSAY_WRITEGUARD_CALLOUT):
+// the shipped binary carries the MECHANISM (merge house-supplied gate patterns
+// into the generic set) plus the generic default set; the deployment carries
+// the POLICY (which extra gate names count as deterministic).
+//
+// UNSET IS COMPLETE, NOT DEGRADED. Unset means the generic default set ALONE —
+// the correct public/adopter posture, carrying no house gate name. The house
+// sets ASSAY_DETERMINISTIC_GATE_PATTERNS=daml-ci (roster.env or CI env) to
+// preserve its `daml-ci` deterministic-gate classification.
+//
+// FOLLOW-UP: the `daml-ci` VALUE is expected to migrate to oit ownership
+// (tracked separately); this callout is the interim home for the MECHANISM.
+//
+// NAMESPACE. Generic methodology knob (the MECHANISM of merging house gate
+// patterns) so it wears the ASSAY_ prefix; the VALUE (house gate names) is
+// deployment-specific and never compiled in.
+const EnvDeterministicGatePatterns = "ASSAY_DETERMINISTIC_GATE_PATTERNS"
+
+// additionalDeterministicGatePatterns returns the house-configured extra
+// deterministic-gate substrings from EnvDeterministicGatePatterns, each
+// lower-cased and trimmed. Empty (the unset case) is the complete
+// public/adopter configuration: only the generic built-in set applies and the
+// shipped binary carries no house gate name.
+func additionalDeterministicGatePatterns() []string {
+	raw := os.Getenv(EnvDeterministicGatePatterns)
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
+	})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if f = strings.ToLower(strings.TrimSpace(f)); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // isAssayApp reports whether a (bot) login is an assay App identity — the
@@ -214,9 +269,13 @@ func bucketAuthors(authors []autonomyAuthor, humanLogins map[string]bool) autono
 // hasDeterministicGate reports whether any of a PR's status-check names matches a
 // deterministic-gate pattern.
 func hasDeterministicGate(names []string) bool {
+	patterns := deterministicGatePatterns
+	if extra := additionalDeterministicGatePatterns(); len(extra) > 0 {
+		patterns = append(append([]string(nil), deterministicGatePatterns...), extra...)
+	}
 	for _, n := range names {
 		ln := strings.ToLower(n)
-		for _, p := range deterministicGatePatterns {
+		for _, p := range patterns {
 			if strings.Contains(ln, p) {
 				return true
 			}
