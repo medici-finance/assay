@@ -67,7 +67,30 @@ const (
 	// self-tax, see scaleForCoverage) and emits a NOTICE — tagging the whole board
 	// buys progressively less, so a drive cannot win by covering everything.
 	driveCoverageThreshold = 0.40
+
+	// driveSlotCap and driveWorkerCap are the ANTI-STARVATION FLOORS (F-09 TUNABLE
+	// HEURISTICS, phase 3 — not truths, cf. the weight block above). Because
+	// staleness caps at +300 (stalenessCapDays×stalenessPerDay), a buried same-tier
+	// brief can never out-age a drive, so starvation is permanent-by-arithmetic
+	// WITHOUT reserved capacity.
+	//
+	//   - driveSlotCap floors the board: drive-boosted picks take at most 15 of the
+	//     20 spanOfControl slots via a 2-pass fill (nextup.go), reserving ≥5
+	//     non-drive-consumable slots; a drive pick held back past the cap attributes
+	//     to the HeldByDriveCap bucket (mirrors HeldByStreamCap). A stream's declared
+	//     max-concurrent (mm/13) still ALWAYS wins via effectiveCap = min(cap,
+	//     driveStreamCap) in the streamCaps build loop.
+	//   - driveWorkerCap is the PAIRED worker-pool floor (≤6 of 8) the worker-desk
+	//     skill mirrors. It is declared HERE as the single numeric source of truth;
+	//     statusgen does not dispatch workers, so this binary does not read the const
+	//     — the skill does. Kept beside driveSlotCap so the two floors move together.
+	driveSlotCap   = 15
+	driveWorkerCap = 6
 )
+
+// Reference driveWorkerCap so its role as the worker-desk skill's numeric source of
+// truth is explicit — statusgen does not dispatch workers, so nothing else reads it.
+var _ = driveWorkerCap
 
 // THE ONE SANCTIONED WALL-CLOCK INPUT (brief-44 ratified decision #1, human:ian
 // 2026-08-15). statusgen is otherwise byte-stable with NO wall-clock input — the
@@ -111,6 +134,13 @@ type DriveItem struct {
 	// from the drive's own `starts` (operatorActSince). Only operator-act rows carry
 	// it; the loader validates the format fail-neutral.
 	Since string
+	// StreamCap is the optional per-stream `drive-stream-cap:` on a STREAM item
+	// (phase 3): the most drive-boosted picks this drive may offer from that stream.
+	// 0 when absent. effectiveCap = min(perStreamCap-or-MaxConcurrent, StreamCap) in
+	// nextup.go — a stream's declared MaxConcurrent (mm/13) ALWAYS wins; this can
+	// only restrict a stream's drive draw further, never widen it. Fail-neutral: a
+	// negative value rejects the whole drive (mirrors the `since:` validation).
+	StreamCap int
 }
 
 // Drive is one parsed, ACTIVE, in-window drive campaign.
@@ -125,6 +155,7 @@ type Drive struct {
 	Items      []DriveItem
 	streamSet  map[string]bool // streams named directly (boosts every brief in them)
 	briefSet   map[string]bool // "stream/NN" named directly (boosts exactly that brief)
+	streamCaps map[string]int  // per-stream drive-stream-cap (phase 3); absent stream ⇒ no cap
 }
 
 // covers reports whether this drive names streamName (whole-stream membership) or
@@ -160,13 +191,14 @@ type driveManifest struct {
 }
 
 type driveItemYAML struct {
-	Stream   string `yaml:"stream"`
-	Brief    string `yaml:"brief"`
-	Issue    string `yaml:"issue"`
-	Owner    string `yaml:"owner"`
-	Unblocks string `yaml:"unblocks"`
-	Needs    string `yaml:"needs"`
-	Since    string `yaml:"since"` // operator-act only: aging-clock start (YYYY-MM-DD)
+	Stream         string `yaml:"stream"`
+	Brief          string `yaml:"brief"`
+	Issue          string `yaml:"issue"`
+	Owner          string `yaml:"owner"`
+	Unblocks       string `yaml:"unblocks"`
+	Needs          string `yaml:"needs"`
+	Since          string `yaml:"since"`            // operator-act only: aging-clock start (YYYY-MM-DD)
+	DriveStreamCap int    `yaml:"drive-stream-cap"` // stream item only: per-stream drive draw cap (phase 3)
 }
 
 // driveIntensityWeight maps an intensity enum to its additive weight. The second
@@ -409,7 +441,7 @@ func parseDrive(root, path, slug string, now time.Time, knownStreams, knownBrief
 	d := &Drive{
 		Slug: slug, DeclaredBy: m.DeclaredBy, Starts: m.Starts, Expires: m.Expires,
 		Intensity: m.Intensity, Why: m.Why, State: m.State,
-		streamSet: map[string]bool{}, briefSet: map[string]bool{},
+		streamSet: map[string]bool{}, briefSet: map[string]bool{}, streamCaps: map[string]int{},
 	}
 	for i, it := range m.Items {
 		item, ierr := classifyDriveItem(it)
@@ -425,6 +457,12 @@ func parseDrive(root, path, slug string, now time.Time, knownStreams, knownBrief
 				return warnf("item %d: stream %q resolves to no known stream (a mistyped stream name is unresolvable) — check docs/streams/", i+1, item.Ref)
 			}
 			d.streamSet[item.Ref] = true
+			if item.StreamCap > 0 {
+				// Most-restrictive wins if the same stream is named more than once.
+				if prev, ok := d.streamCaps[item.Ref]; !ok || item.StreamCap < prev {
+					d.streamCaps[item.Ref] = item.StreamCap
+				}
+			}
 		case "brief":
 			if !knownBriefs[item.Ref] {
 				return warnf("item %d: brief %q resolves to no known brief (a nonexistent or un-zero-padded ref — e.g. `education/7` vs `education/07` — is unresolvable)", i+1, item.Ref)
@@ -442,7 +480,14 @@ func parseDrive(root, path, slug string, now time.Time, knownStreams, knownBrief
 func classifyDriveItem(it driveItemYAML) (DriveItem, string) {
 	switch {
 	case strings.TrimSpace(it.Stream) != "":
-		return DriveItem{Kind: "stream", Ref: strings.TrimSpace(it.Stream)}, ""
+		// drive-stream-cap is OPTIONAL (0 = absent). A PRESENT value must be a
+		// positive integer — a negative cap is nonsense and would silently widen or
+		// zero a stream's draw, so it is fail-neutral (rejects the whole drive),
+		// mirroring the `since:` validation above.
+		if it.DriveStreamCap < 0 {
+			return DriveItem{}, fmt.Sprintf("stream item `drive-stream-cap:` %d is negative — it must be a positive per-stream cap", it.DriveStreamCap)
+		}
+		return DriveItem{Kind: "stream", Ref: strings.TrimSpace(it.Stream), StreamCap: it.DriveStreamCap}, ""
 	case strings.TrimSpace(it.Brief) != "":
 		ref := strings.TrimSpace(it.Brief)
 		if !briefRefRe.MatchString(ref) {
@@ -511,6 +556,27 @@ func (ds DriveSet) driveBoost(streamName, briefNum string, coverage map[string]f
 		}
 	}
 	return best, slug
+}
+
+// streamDriveCap returns the tightest per-stream drive-stream-cap declared for
+// streamName across the active drives, and whether any was declared. nextup.go
+// folds it into effectiveCap = min(perStreamCap-or-MaxConcurrent, cap): it can only
+// RESTRICT a stream's drive draw, never widen it, and a stream's declared
+// MaxConcurrent still always wins. Absent (no active drive caps this stream) ⇒
+// (0, false) and the stream keeps its ordinary cap — so a no-manifest board is
+// unaffected (byte-identical baseline).
+func (ds DriveSet) streamDriveCap(streamName string) (int, bool) {
+	best, ok := 0, false
+	for _, d := range ds.Active {
+		c, has := d.streamCaps[streamName]
+		if !has {
+			continue
+		}
+		if !ok || c < best {
+			best, ok = c, true
+		}
+	}
+	return best, ok
 }
 
 // driveCoverage computes each active drive's coverage fraction over the eligible

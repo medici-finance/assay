@@ -236,6 +236,169 @@ func eligibleStreams(n, perStream int) []*Stream {
 	return streams
 }
 
+// --- Verify row 6 (phase 3): the anti-starvation floor ------------------------
+
+// TestDriveAntiStarvationFloor (brief-44 Verify row 6): drive work is capped at 15
+// of 20 board slots via a 2-pass fill (held-back to HeldByDriveCap), and
+// effectiveCap = min(driveStreamCap, maxConcurrent); spanOfControl 20 and
+// perStreamCap 4 are unchanged.
+func TestDriveAntiStarvationFloor(t *testing.T) {
+	// The floors are numeric invariants: pin them so a silent retune reddens.
+	if spanOfControl != 20 {
+		t.Fatalf("spanOfControl must remain 20, got %d", spanOfControl)
+	}
+	if perStreamCap != 4 {
+		t.Fatalf("perStreamCap must remain 4, got %d", perStreamCap)
+	}
+	if driveSlotCap != 15 {
+		t.Fatalf("driveSlotCap must be 15, got %d", driveSlotCap)
+	}
+
+	t.Run("15-of-20-via-2-pass-fill", func(t *testing.T) {
+		// 5 driven streams × 4 briefs = 20 drive-eligible picks; 2 free streams × 4 = 8
+		// non-drive picks. A surge drive covers the 5 driven streams. Pass 1 places 15
+		// drive picks (the floor), reserving ≥5 slots that the higher-ranked drive picks
+		// cannot consume; those 5 slots go to non-drive work in pass 1. Pass 2 finds the
+		// span full → the 5 held-back drive picks attribute to HeldByDriveCap.
+		var streams []*Stream
+		var items string
+		for i := 0; i < 5; i++ {
+			name := fmt.Sprintf("drv%d", i)
+			s := driveBriefStream(name, 4)
+			streams = append(streams, s)
+			items += "  - stream: " + name + "\n"
+		}
+		for i := 0; i < 2; i++ {
+			streams = append(streams, driveBriefStream(fmt.Sprintf("free%d", i), 4))
+		}
+
+		root := t.TempDir()
+		makeStreamsDir(t, root)
+		writeDrive(t, root, "surge-wide", "declared-by: ian\n"+liveWindow+"intensity: surge\nstate: active\nitems:\n"+items)
+		ds := loadDrives(root, streams, driveTestNow)
+		if !ds.applied() {
+			t.Fatalf("the surge drive must apply: %+v", ds)
+		}
+		withDrives(t, ds)
+		withFindings(t, nil)
+
+		nu := nextUp(streams, KnownClaims(map[string]bool{}), nil)
+		if len(nu.Picks) != spanOfControl {
+			t.Fatalf("board must fill the span (%d), got %d picks", spanOfControl, len(nu.Picks))
+		}
+		driveShown, nonDrive := 0, 0
+		for _, p := range nu.Picks {
+			if p.DriveTerm > 0 {
+				driveShown++
+			} else {
+				nonDrive++
+			}
+		}
+		if driveShown != driveSlotCap {
+			t.Fatalf("drive-boosted picks must be floored at %d of %d, got %d shown", driveSlotCap, spanOfControl, driveShown)
+		}
+		if nonDrive != spanOfControl-driveSlotCap {
+			t.Fatalf("the reserved %d non-drive slots must be filled by non-drive work, got %d", spanOfControl-driveSlotCap, nonDrive)
+		}
+		// The 5 drive picks past the floor are held OFF the board and attributed.
+		if nu.HeldByDriveCap != 20-driveSlotCap {
+			t.Fatalf("held-back drive picks must attribute to HeldByDriveCap: got %d, want %d", nu.HeldByDriveCap, 20-driveSlotCap)
+		}
+	})
+
+	t.Run("backfill-when-no-non-drive-work", func(t *testing.T) {
+		// With NO non-drive work, the board must NOT be left short: pass 2 backfills the
+		// held-back drive picks up to the span. The floor reserves slots for non-drive
+		// work WHEN IT EXISTS; it never idles the board.
+		var streams []*Stream
+		var items string
+		for i := 0; i < 6; i++ { // 6 × 4 = 24 drive picks, span 20
+			name := fmt.Sprintf("only%d", i)
+			streams = append(streams, driveBriefStream(name, 4))
+			items += "  - stream: " + name + "\n"
+		}
+		root := t.TempDir()
+		makeStreamsDir(t, root)
+		writeDrive(t, root, "surge-all", "declared-by: ian\n"+liveWindow+"intensity: surge\nstate: active\nitems:\n"+items)
+		ds := loadDrives(root, streams, driveTestNow)
+		withDrives(t, ds)
+		withFindings(t, nil)
+
+		nu := nextUp(streams, KnownClaims(map[string]bool{}), nil)
+		if len(nu.Picks) != spanOfControl {
+			t.Fatalf("with only drive work the board must still fill the span (%d), got %d", spanOfControl, len(nu.Picks))
+		}
+		driveShown := 0
+		for _, p := range nu.Picks {
+			if p.DriveTerm > 0 {
+				driveShown++
+			}
+		}
+		if driveShown != spanOfControl {
+			t.Fatalf("with no non-drive work pass 2 must backfill the full span with drive picks, got %d", driveShown)
+		}
+	})
+
+	t.Run("effectiveCap-min-driveStreamCap-maxConcurrent", func(t *testing.T) {
+		// A driven stream declaring max-concurrent 2, with the drive setting
+		// drive-stream-cap 1: effectiveCap = min(2,1) = 1 → at most one pick from it.
+		capped := driveBriefStream("capped", 4)
+		mc := 2
+		capped.MaxConcurrent = &mc
+		filler := driveBriefStream("filler", 4)
+		streams := []*Stream{capped, filler}
+
+		root := t.TempDir()
+		makeStreamsDir(t, root)
+		writeDrive(t, root, "surge-capped", "declared-by: ian\n"+liveWindow+"intensity: surge\nstate: active\nitems:\n  - stream: capped\n    drive-stream-cap: 1\n")
+		ds := loadDrives(root, streams, driveTestNow)
+		if !ds.applied() {
+			t.Fatalf("drive must apply: %+v", ds)
+		}
+		withDrives(t, ds)
+		withFindings(t, nil)
+
+		nu := nextUp(streams, KnownClaims(map[string]bool{}), nil)
+		cappedCount := 0
+		for _, p := range nu.Picks {
+			if p.Stream.Name == "capped" {
+				cappedCount++
+			}
+		}
+		if cappedCount != 1 {
+			t.Fatalf("effectiveCap = min(driveStreamCap 1, maxConcurrent 2) = 1 → exactly one capped pick, got %d", cappedCount)
+		}
+	})
+
+	t.Run("maxConcurrent-always-wins", func(t *testing.T) {
+		// max-concurrent 1, drive-stream-cap 3: the stream's declaration wins →
+		// effectiveCap = min(1,3) = 1. A drive can never widen a stream above its
+		// declared serialization.
+		capped := driveBriefStream("serial", 4)
+		mc := 1
+		capped.MaxConcurrent = &mc
+		streams := []*Stream{capped, driveBriefStream("filler", 4)}
+
+		root := t.TempDir()
+		makeStreamsDir(t, root)
+		writeDrive(t, root, "surge-serial", "declared-by: ian\n"+liveWindow+"intensity: surge\nstate: active\nitems:\n  - stream: serial\n    drive-stream-cap: 3\n")
+		ds := loadDrives(root, streams, driveTestNow)
+		withDrives(t, ds)
+		withFindings(t, nil)
+
+		nu := nextUp(streams, KnownClaims(map[string]bool{}), nil)
+		serialCount := 0
+		for _, p := range nu.Picks {
+			if p.Stream.Name == "serial" {
+				serialCount++
+			}
+		}
+		if serialCount != 1 {
+			t.Fatalf("a stream's declared max-concurrent (1) must ALWAYS win over drive-stream-cap (3), got %d picks", serialCount)
+		}
+	})
+}
+
 // TestNextUpSpanCapOverflow — 23 eligible briefs, span cap 7: exactly 7 shown,
 // overflow flagged, 16 held back, and the STATUS view renders the "7 of 23
 // eligible" overflow line (Verify item 2).

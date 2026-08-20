@@ -834,6 +834,10 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 		byName[s.Name] = s
 	}
 
+	// Typed dependency-edge index for the reciprocity gate (phase 3), accumulated as
+	// the brief files are parsed and validated by the reciprocity pass after the loop.
+	recip := newDepEdgeIndex()
+
 	for _, s := range streams {
 		for _, path := range briefFilePaths(s) {
 			bf, ok, err := parseBriefFile(path)
@@ -1111,8 +1115,14 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 			}
 
 			for _, ref := range bf.Depends {
-				checkRef(add, path, "depends", ref, byName)
+				checkRef(add, path, "depends", ref, bf.Brief, byName)
 			}
+			// Accumulate the typed edge index for the reciprocity gate (below): the
+			// declared depends/unblocks lists per brief-v1 id. Built here — where every
+			// brief file is already parsed — so the reciprocity pass needs no second walk.
+			recip.dependsOf[bf.Brief] = bf.Depends
+			recip.unblocksOf[bf.Brief] = bf.Unblocks
+			recip.knownV1[bf.Brief] = true
 			// Same-wave-dep lint: a brief's depends: must point
 			// only to briefs in strictly-earlier waves. A same-wave dep breaks strict
 			// wave-layering and miscomputes the critical path.
@@ -1148,19 +1158,89 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				}
 			}
 			for _, ref := range bf.Unblocks {
-				checkRef(add, path, "unblocks", ref, byName)
+				checkRef(add, path, "unblocks", ref, bf.Brief, byName)
 			}
 		}
 	}
+	// Dependency-edge reciprocity gate (phase 3, anti-gaming): every depends edge
+	// feeding blockedCount must be reciprocated by the target's unblocks, so a brief
+	// cannot inflate its blockedCount into the critical tier by manufacturing spurious
+	// one-sided inbound edges. Runs once over the accumulated index.
+	problems = append(problems, recip.reciprocityProblems()...)
 	sort.Strings(problems)
 	sort.Strings(notices)
 	return problems, notices
 }
 
+// depEdgeIndex is the typed dependency-edge index the reciprocity gate validates.
+type depEdgeIndex struct {
+	dependsOf  map[string][]string // brief id → declared depends ids
+	unblocksOf map[string][]string // brief id → declared unblocks ids
+	knownV1    map[string]bool     // brief-v1 ids present in the corpus
+}
+
+func newDepEdgeIndex() *depEdgeIndex {
+	return &depEdgeIndex{
+		dependsOf:  map[string][]string{},
+		unblocksOf: map[string][]string{},
+		knownV1:    map[string]bool{},
+	}
+}
+
+// reciprocityProblems is the anti-gaming reciprocity lint (phase 3). blockedCount is
+// the reverse typed-`depends:` walk (buildRevDeps), so a brief could climb into the
+// high-unblocks arm of the critical tier by manufacturing spurious INBOUND depends
+// edges. This rejects any depends edge A→B that B does not reciprocate with an
+// `unblocks: A` — a genuine dependency is two-sided (the author-brief methodology
+// requires both Depends-on and Unblocks), so an unreciprocated inbound edge is
+// spurious and is a hard PROBLEM. blockedCount then reflects only genuine, both-sided
+// dependencies and cannot be gamed into the tier.
+//
+// SCOPE (fail-safe against false positives): the check fires only when BOTH endpoints
+// are brief-v1 (in knownV1). A dangling edge (target absent) is left to checkRef; a
+// self-loop is left to checkRef; a legacy (non-brief-v1) target — which declares no
+// unblocks — is exempt so mixed corpora are not reddened for the pre-typed-edge
+// convention.
+func (idx *depEdgeIndex) reciprocityProblems() []string {
+	var problems []string
+	var ids []string
+	for id := range idx.dependsOf {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, a := range ids {
+		for _, b := range idx.dependsOf[a] {
+			if b == a || !idx.knownV1[b] {
+				continue // self-loop (checkRef) / dangling (checkRef) / legacy target (exempt)
+			}
+			reciprocated := false
+			for _, u := range idx.unblocksOf[b] {
+				if u == a {
+					reciprocated = true
+					break
+				}
+			}
+			if !reciprocated {
+				problems = append(problems, fmt.Sprintf(
+					"%s: depends edge to %s is one-sided — %s declares `depends: %s` but %s does not list %s in its `unblocks:`. A genuine dependency is reciprocal (the target unblocks the dependent); an unreciprocated inbound edge is rejected so blockedCount cannot be inflated into the critical tier (anti-gaming).",
+					a, b, a, b, b, a))
+			}
+		}
+	}
+	return problems
+}
+
 // checkRef validates that a typed ID "<stream>/<NN>" resolves to a real brief
 // row in a known stream. Brief numbers compare as strings to preserve leading
-// zeros and alphanumeric suffixes ("12a").
-func checkRef(add func(string, ...any), path, kind, ref string, byName map[string]*Stream) {
+// zeros and alphanumeric suffixes ("12a"). selfID is the id of the brief that
+// DECLARED the ref: a ref equal to it is self-referential (`a depends on a`) and a
+// hard PROBLEM — part of the dependency-edge reciprocity gate (phase 3) that keeps
+// blockedCount un-gameable. Pass "" to skip the self-ref check.
+func checkRef(add func(string, ...any), path, kind, ref, selfID string, byName map[string]*Stream) {
+	if selfID != "" && ref == selfID {
+		add("%s: %s %q is self-referential (a brief may not %s itself) — a self-loop is a spurious dependency edge that would inflate blockedCount", path, kind, ref, kind)
+		return
+	}
 	parts := strings.SplitN(ref, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		add("%s: %s %q is not a <stream>/<NN> id", path, kind, ref)
