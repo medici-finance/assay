@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -15,17 +16,53 @@ func TestInitScaffoldsLintCleanTree(t *testing.T) {
 		t.Fatalf("runInit exit = %d, want 0", code)
 	}
 
-	// The files it promises must exist.
+	// The files it promises must exist — the three append-only registers
+	// (FINDINGS/INTAKE/RETRO), the streams tree + example stream, the channel-E
+	// pin file, and the CI workflow.
 	for _, rel := range []string{
 		"docs/streams/README.md",
 		"docs/streams/FINDINGS.md",
 		"docs/streams/INTAKE.md",
+		"docs/streams/RETRO.md",
 		"docs/streams/example/README.md",
 		"docs/streams/example/brief-01-first-brief.md",
+		".assay-versions",
 		".github/workflows/assay-statusgen.yml",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(rel))); err != nil {
 			t.Errorf("expected %s to exist: %v", rel, err)
+		}
+	}
+
+	// The scaffolded CI workflow must be BOOTSTRAP-SAFE by construction: the regen
+	// guard uses `git status --porcelain -- STATUS.md` (not `git diff`, which can't
+	// see an untracked first STATUS.md), carries the [skip-status-regen] marker, and
+	// documents that STATUS.md is generated. These are the exact greps
+	// docs/adopting-assay.md § add-statusgen-ci verifies on.
+	wf, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(".github/workflows/assay-statusgen.yml")))
+	if err != nil {
+		t.Fatalf("read workflow: %v", err)
+	}
+	for _, want := range []string{
+		"git status --porcelain -- STATUS.md",
+		"skip-status-regen",
+		"STATUS.md is generated",
+	} {
+		if !strings.Contains(string(wf), want) {
+			t.Errorf("scaffolded workflow missing bootstrap-safe marker %q", want)
+		}
+	}
+
+	// The pin file must be in the channel-E shape and NOT ship a live/guessed
+	// digest — a placeholder line the adopter fills, so a fresh repo can't silently
+	// install an unpinned binary.
+	pin, err := os.ReadFile(filepath.Join(dir, ".assay-versions"))
+	if err != nil {
+		t.Fatalf("read .assay-versions: %v", err)
+	}
+	for _, want := range []string{"statusgen-linux-amd64", "REPLACE_WITH_SHA256"} {
+		if !strings.Contains(string(pin), want) {
+			t.Errorf(".assay-versions missing %q; got:\n%s", want, pin)
 		}
 	}
 
