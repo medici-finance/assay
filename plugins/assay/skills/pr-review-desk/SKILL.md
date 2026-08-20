@@ -711,7 +711,7 @@ Standing rule (mirrors the intake-desk copy so the whole pipeline enforces one t
 
 The project's board tool is a **read-only instrument over `gh`** — run as `<board-tool> actions`. It
 reads the reviewer bot's review STATE (APPROVED/CHANGES_REQUESTED) at head — the desk's flip signal
-(a distinct, auditable actor; advisory, not un-forgeable) — not a text marker. Run it at boot and
+(a distinct, auditable actor; advisory, not an authoritative gate) — not a text marker. Run it at boot and
 whenever you want the state instead of hand-polling `gh pr checks` / `pr view`. Its MERGE-CURR
 classifier (own-files ∩ changed-since-review, minus shared register files) is what frees you from
 hand-diffing keep-current merges. Keep it in sync if the repo set or review conventions change.
@@ -755,7 +755,7 @@ CONFLICTING PR is not flippable). The manual check guards the flip path, not the
 - No attribution lines anywhere.
 - **Model-tier awareness:** if downgraded mid-session, stop synthesis/judgment, fall back to
   transcription-grade work; the review verdict is the bot's GitHub APPROVED state (a distinct,
-  auditable actor — advisory, not un-forgeable) — the merge gate is the human's. Probe vs assertion:
+  auditable actor — advisory, not an authoritative gate) — the merge gate is the human's. Probe vs assertion:
   the driver ASKING what model you are is a probe — answer with the env model line verbatim + ask for
   confirmation, keep mechanical work (monitors, board reads, posting already-formed verdicts) moving;
   only their ASSERTION of a downgrade (or confirmation) hard-gates judgment work and holds flips.
