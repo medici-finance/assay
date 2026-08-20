@@ -77,6 +77,15 @@ var (
 // byte-identical to the pre-drives board (TestDriveAbsentIsInert).
 var activeDriveSet DriveSet
 
+// activeFindings carries the unresolved-finding set for the current run, feeding the
+// critical tier's reviewer-finding arm (drivecritical.go). It follows the
+// activeDriveSet package-var precedent so every existing nextUp caller stays
+// three-argument. main()/runRoadmap wire it (from the same findings applyFindings
+// consumes) before nextUp; tests set it via withFindings. The ZERO value (nil) is
+// INERT: no brief qualifies via the reviewer-finding arm, and — because the critical
+// tier is only applied when a drive is active — it has no effect on a no-drive board.
+var activeFindings []Finding
+
 type Pick struct {
 	Stream *Stream
 	Brief  Brief
@@ -89,6 +98,16 @@ type Pick struct {
 	// term (the max over overlapping drives). Total() is Score + DriveTerm.
 	DriveTerm int
 	DriveSlug string
+	// CriticalTier marks a pick in the HARD, never-buried critical tier (phase 3).
+	// The board sorts lexicographically by (CriticalTier, Total()): a critical member
+	// ranks ABOVE every score, so no intensity — surge included — can bury a live
+	// fire. Membership is machine-derived / stamped, never self-declared
+	// (drivecritical.go), and is set ONLY when a drive is active, so a no-drive board
+	// is byte-identical to the pre-drives baseline. CriticalArm names the qualifying
+	// arm (main-red[deferred] / security / high-unblocks / reviewer-finding), "" when
+	// not critical.
+	CriticalTier bool
+	CriticalArm  string
 }
 
 // Total is the ranked score: the base score plus any drive steer. With no active
@@ -139,11 +158,11 @@ type NextUp struct {
 	DriveBanner          string
 	DriveNotApplied      string
 	DriveCoverageNotices []string
-	// HeldByDriveCap counts eligible briefs a DRIVE anti-starvation floor held back
-	// (mirrors HeldByStreamCap). Phase-1 WIRES the bucket; the ≤15/20 2-pass fill
-	// that populates it is methodology-metrics phase 3 (brief-44 Phase 3), so it is
-	// 0 today. The field exists now so consumers and the emit surface are stable
-	// across the phase boundary.
+	// HeldByDriveCap counts drive-boosted briefs the anti-starvation floor held OFF
+	// the board (mirrors HeldByStreamCap): drive picks past driveSlotCap that pass 2
+	// could not backfill because the span filled with non-drive work. Populated by
+	// the ≤15/20 2-pass fill (phase 3). 0 whenever no drive is active, so a no-drive
+	// board is byte-identical to the pre-drives baseline.
 	HeldByDriveCap int
 }
 
@@ -156,9 +175,10 @@ func (n NextUp) Overflow() bool { return n.Eligible > n.Threshold }
 func (n NextUp) HeldBack() int { return n.Eligible - len(n.Picks) }
 
 // HeldBySpan is the number of eligible briefs not shown because the
-// span-of-control cap filled: everything held back that a per-stream cap did
-// not already hold back.
-func (n NextUp) HeldBySpan() int { return n.HeldBack() - n.HeldByStreamCap }
+// span-of-control cap filled: everything held back that a per-stream cap or the
+// drive anti-starvation floor did not already hold back. With no active drive
+// HeldByDriveCap is 0, so this is unchanged from the pre-phase-3 accounting.
+func (n NextUp) HeldBySpan() int { return n.HeldBack() - n.HeldByStreamCap - n.HeldByDriveCap }
 
 // heldBackReason names WHICH cap actually held briefs back, for the overflow
 // line and the --lint NOTICE. Both used to attribute every held-back brief to
@@ -594,11 +614,26 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 				}
 				continue
 			}
+			bc := blockedCount(rev, status, s.Name+"/"+b.Num)
 			score := priorityWeight(s.Priority) +
 				ageDays(s, b)*stalenessPerDay +
 				valueWeight(b.Value) +
-				unblocksWeight*blockedCount(rev, status, s.Name+"/"+b.Num)
-			all = append(all, Pick{Stream: s, Brief: b, Score: score})
+				unblocksWeight*bc
+			p := Pick{Stream: s, Brief: b, Score: score}
+			// Hard critical tier (phase 3): mark machine-derived / stamped critical
+			// briefs so the sort ranks them ABOVE every score. GATED on a drive being
+			// active — with no drive there is nothing to bury and the ordinary score
+			// already orders the board, so a no-drive board stays byte-identical to
+			// the baseline (a high-unblocks brief would otherwise reorder it). The
+			// derivation is pure/deterministic over board-graph facts + stamped labels
+			// only (drivecritical.go).
+			if activeDriveSet.applied() {
+				if arm := criticalTierArm(b, s.Name, bc, activeFindings); arm != "" {
+					p.CriticalTier = true
+					p.CriticalArm = arm
+				}
+			}
+			all = append(all, p)
 		}
 	}
 	nu.Eligible = len(all)
@@ -623,6 +658,14 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 		}
 	}
 	sort.Slice(all, func(i, j int) bool {
+		// Lexicographic (CriticalTier, Total()): the HARD critical tier ranks ABOVE
+		// every score, so no intensity — surge included — can bury a live fire. The
+		// drive term re-ranks only WITHIN a tier. CriticalTier is set only when a
+		// drive is active, so with no drive every pick is non-critical here and this
+		// clause never fires — the ordering is then the exact pre-drives ordering.
+		if all[i].CriticalTier != all[j].CriticalTier {
+			return all[i].CriticalTier // critical members sort first
+		}
 		// Rank by the TOTAL (base + drive term). With no drive every term is 0, so
 		// Total == Score and this is the exact pre-drives ordering.
 		if all[i].Total() != all[j].Total() {
@@ -644,6 +687,15 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 		declared := s.MaxConcurrent != nil
 		if declared && *s.MaxConcurrent < cap {
 			cap = *s.MaxConcurrent
+		}
+		// effectiveCap = min(perStreamCap-or-MaxConcurrent, driveStreamCap): an active
+		// drive may declare a per-stream `drive-stream-cap:` that RESTRICTS a stream's
+		// draw further (phase 3). It is a min, so a stream's declared MaxConcurrent
+		// (mm/13) ALWAYS wins — the drive cap can never widen a stream above it. With
+		// no active drive, streamDriveCap reports (0,false) for every stream, so this
+		// is a no-op and the baseline is unchanged.
+		if dc, ok := activeDriveSet.streamDriveCap(s.Name); ok && dc < cap {
+			cap = dc
 		}
 		// Could-not-check: a declared max-concurrent is a request to serialize,
 		// and honouring it requires knowing what is already in flight. With no
@@ -670,11 +722,52 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 		streamCaps[s.Name] = cap
 	}
 	sort.Strings(nu.SerializedUnknown)
+	// Anti-starvation 2-PASS fill (phase 3). Because staleness caps at +300, a buried
+	// same-tier brief can never out-age a drive, so drive work must be FLOORED or it
+	// starves the rest of the board permanently-by-arithmetic. Pass 1 offers non-drive
+	// picks and drive-boosted picks up to driveSlotCap (15) of the 20 spanOfControl
+	// slots, reserving ≥5 non-drive-consumable slots; a drive pick past the cap is
+	// held back. Pass 2 backfills any span the non-drive picks left empty with the
+	// held-back drive picks — so the reserved slots go to non-drive work when it
+	// exists, and the board is never left short when it does not. A held-back drive
+	// pick that stays off the board attributes to HeldByDriveCap (mirrors
+	// HeldByStreamCap). With no active drive no pick is drive-boosted, so pass 1 is the
+	// exact pre-phase-3 single loop and pass 2 is a no-op (byte-identical baseline).
 	perStream := map[string]int{}
 	var picks []Pick
+	var heldDrive []Pick // drive picks the driveSlotCap floor held back from pass 1
+	driveShown := 0
+	// Pass 1.
 	for _, p := range all {
-		if len(picks) == spanOfControl {
+		if len(picks) >= spanOfControl {
 			break
+		}
+		cap := streamCaps[p.Stream.Name]
+		if cap == 0 || perStream[p.Stream.Name] >= cap {
+			nu.HeldByStreamCap++
+			continue
+		}
+		if p.DriveTerm > 0 && driveShown >= driveSlotCap {
+			// Floored: hold this drive pick back so a non-drive brief can take the
+			// reserved slot. It does NOT consume the stream's cap here — pass 2
+			// re-checks the cap if it backfills.
+			heldDrive = append(heldDrive, p)
+			continue
+		}
+		perStream[p.Stream.Name]++
+		if p.DriveTerm > 0 {
+			driveShown++
+		}
+		picks = append(picks, p)
+	}
+	// Pass 2: backfill remaining span with the held-back drive picks (rank order),
+	// still honoring per-stream caps. A backfilled pick is SHOWN (not held); one that
+	// stays off the board is attributed — by the drive floor (span full) or by a
+	// per-stream cap.
+	for _, p := range heldDrive {
+		if len(picks) >= spanOfControl {
+			nu.HeldByDriveCap++
+			continue
 		}
 		cap := streamCaps[p.Stream.Name]
 		if cap == 0 || perStream[p.Stream.Name] >= cap {

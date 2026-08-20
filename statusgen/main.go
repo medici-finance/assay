@@ -426,6 +426,10 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// emit, so --lint is a true superset of generation minus the STATUS.md byte
 	// compare: a PR that would crash main's post-merge regen fails here instead.
 	applyFindings(streams, findings)
+	// The critical tier's reviewer-finding arm reads the same findings (phase 3).
+	// Set explicitly every run so a prior invocation's value can never leak in; nil
+	// is the inert default. It only takes effect when a drive is active (nextUp).
+	activeFindings = findings
 	for _, s := range streams {
 		rel, _ := filepath.Rel(root, s.Dir)
 		s.LastTouch = gitLastTouch(root, rel)
