@@ -27,15 +27,12 @@ the repo's own `.claude/skills/`.
 |-------|---------------|------|
 | the-desk | `assay:the-desk` | Coordinator desk — cadence, register discipline, cross-desk state |
 | intake-desk | `assay:intake-desk` | Front door — converts inbound issues/ideas into one of five tracked exits |
-| batch-fanout | `assay:batch-fanout` | Dispatches workers against the Next-up batch |
+| worker-desk | `assay:worker-desk` | Dispatches workers against the Next-up batch |
 | pr-review-desk | `assay:pr-review-desk` | Reviews PRs leaving the system and flips them ready |
 | verify-desk | `assay:verify-desk` | Drains `implemented → verified` with independent re-verification |
 
 These five carry the current house methodology for running the five-desk pipeline
-(`intake-desk → batch-fanout → pr-review-desk → verify-desk`, coordinated by `the-desk`) — see
-[`../PARITY.md`](../PARITY.md) and [`../SOURCES.yaml`](../SOURCES.yaml) for provenance. Unlike the
-two methodology skills above, they are **not yet parameterised**: `intake-desk` (education/04) is
-scrubbed of house repo slugs, issue numbers and names, but the other four are still a straight
-re-port that carries house-specific prose (tracked as the deferred `assay-selfcontain/09`
-parameterisation pass — read `../PARITY.md`'s "Known-behind" section before relying on their exact
-wording in another project).
+(`intake-desk → worker-desk → pr-review-desk → verify-desk`, coordinated by `the-desk`). All five
+are present and scrubbed for the public plugin — house repo slugs, issue numbers and names removed.
+Unlike the two portable methodology skills above they still carry house-specific operating prose, so
+read a skill's own `SKILL.md` before relying on its exact wording in another project.
