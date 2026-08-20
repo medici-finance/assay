@@ -1,0 +1,90 @@
+name: leaksweep-control
+# The CONTROL-BASED half of the leak gate for medici-finance/assay — the
+# complement to leaksweep-pattern.yml's pattern matcher.
+#
+# WHAT THIS RUNS. Two source-level disclosure controls now live in this repo
+# under tools/desk/internal/deskkit/:
+#
+#   - THE S2 DISCLOSURE SWEEP (s2sweep_test.go, TestS2*). Walks the WHOLE
+#     repository — Go source, tests, adopter docs, the App setup guide — for a
+#     private review-channel disclosure token, with a three-state control
+#     (checked-clean / checked-failed / could-not-check) so a broken instrument
+#     can never read as clean.
+#   - THE CORPUS WITHHELD-PATH GUARD (corpusleak_test.go, TestCorpus*). Greps the
+#     tools/desk copy set against the live docs/streams + docs/archive listing so
+#     a withheld-stream path can never re-enter a shipping file.
+#
+# WHY A DEDICATED JOB. These are structural detection CONTROLS, and their SOURCE
+# relocated into tools/desk when the desk tooling was homed here. ci.yml
+# deliberately runs `go build` + `go vet` only and skips `go test`, so these
+# controls — proven by `go test` — currently execute NOWHERE. This repo is now
+# the home of that source, not a consumer of it, so the controls must run HERE
+# or the detection runs nowhere at all. This job runs exactly the go-test
+# invocation the controls are designed for, and nothing else.
+#
+# The controls are written to be self-contained in this tree: the whole-repo S2
+# sweep and every red-team mutation proof run and pass here; the two liveness
+# tests that assert on the private house tree (docs/streams,
+# docs/leak-sweep-tokens.yaml) SKIP by design when that tree is not published,
+# via their own skipIfFixtureAbsent guard. -count=1 is load-bearing: a cached
+# `--- PASS:` would replay at exit 0 against a tree the sweep never re-read,
+# which is the same class of false green the sweep exists to prevent.
+#
+# SCOPE — the whole tree. The controls read (a projection of) the whole
+# repository, so the trigger is "**": a docs-only or test-only change that
+# reintroduces a disclosure is exactly the diff a narrower filter would let
+# through in silence, and a control whose trigger excludes what it reads is
+# advisory, not enforced.
+#
+# WHERE THIS RUNS — the self-hosted runner `medici-builder-public`, matching
+# ci.yml and leaksweep-pattern.yml. That runner does NOT reach GitHub's
+# release-asset CDN, so the Go toolchain is hand-installed from go.dev/dl
+# (→ dl.google.com) rather than via actions/setup-go; the runner DOES reach the
+# Go module proxy, so the build fetches deps normally.
+
+on:
+  pull_request:
+    paths:
+      - "**"
+  push:
+    branches: [main]
+    paths:
+      - "**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leaksweep-control-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  control-sweep:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Go toolchain — hand-installed from go.dev/dl (→ dl.google.com), NOT
+      # actions/setup-go, for the same reason ci.yml documents: the runner does
+      # not reach GitHub's release-asset CDN.
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      # The gate. Runs the S2 disclosure sweep and the corpus withheld-path guard
+      # from their home module. Any detection hit (checked-failed) or broken
+      # instrument (could-not-check) fails the test and reddens the job.
+      - name: S2 disclosure sweep + corpus withheld-path guard
+        run: |
+          set -euo pipefail
+          go version
+          cd tools/desk && go test ./internal/deskkit/ -run 'TestS2|TestCorpus' -count=1 -v
