@@ -485,6 +485,28 @@ jobs:
             exit 1
           fi
 
+      # loopengine's retry classifier is a THREE-way taxonomy: a failed dispatch is
+      # sorted into retryable (transient / retry-after), non-retryable (a refusal
+      # that must be reported, never re-dispatched), or could-not-check (an
+      # unrecognised failure the third state must hold, never collapse into either
+      # decision). A green suite proves the classifier behaves as written; it does
+      # NOT prove any arm of the split is load-bearing — a refusal reclassified
+      # retryable would re-run a rejected write forever, and a could-not-check
+      # collapsed to a decision would silently drop work. So each arm is disarmed in
+      # turn and the suite is required to catch it. Same muhar contract: exit 2 means
+      # the HARNESS is broken; a SURVIVING mutation still exits 0 with its verdict on
+      # stdout, so the totals line is what this gates on.
+      - name: Gate bar — mutate loopengine's retry taxonomy and require the suite to catch it
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          report=$(go run ./cmd/muhar -spec internal/loopengine/mutations-retry.json)
+          echo "$report"
+          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
+            echo "::error::an arm of loopengine's retry taxonomy survived its mutation, or could not be applied — the retryable / non-retryable / could-not-check split is not load-bearing as written (tools/desk/internal/loopengine/retry.go)"
+            exit 1
+          fi
+
       # deskmerge is the only desk tool that can rewrite the head of somebody
       # else's PR, and the property that makes that safe is entirely negative: it
       # merges main INTO a branch and never the reverse, the result is verified to
