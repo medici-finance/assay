@@ -204,6 +204,16 @@ regenerates and commits `STATUS.md`.
 > Make sure the workflow you author uses the `git status --porcelain` form here, **not**
 > `git diff --quiet -- STATUS.md`.
 
+> **BOOTSTRAP-SAFE GUARD (the `--lint` half) — required on day one.** A fresh adopter's
+> `docs/streams/` is legitimately empty until the first stream is authored, and a bare
+> `statusgen --lint` treats that empty root as a PROBLEM (*"docs/streams: exists and is
+> readable but resolves to 0 streams — pass --allow-empty-root…"*), so the PR half reddens
+> your very first PR's CI. While no streams exist yet, run the PR half as
+> **`statusgen --lint --allow-empty-root`** so day-one CI is green. **Drop the flag the moment
+> your first real stream lands** — that same empty-root diagnostic is what later catches a typo
+> or rename that accidentally WIPES `docs/streams/`, so keeping the flag permanently would
+> silence that guard.
+
 **Verify:** `grep -q 'skip-status-regen' …/statusgen.yml && grep -q 'STATUS.md is generated' …/statusgen.yml`; and `grep -F 'git status --porcelain -- STATUS.md' …/statusgen.yml` matches (bootstrap-safe). After first push to main, `STATUS.md` appears in one `[skip-status-regen]` commit; a PR editing `STATUS.md` fails lint.
 
 ### PRIMITIVE: install-desk-plugin
@@ -214,20 +224,19 @@ Install the methodology plugin so the skills surface namespaced (`assay:<name>`)
 > `plugins/assay/skills/` ships the two portable, domain-neutral methodology skills — **`adopt`**
 > (this install runbook, as a skill) and **`author-brief`** (the brief-authoring methodology) — and
 > the five desk-role skills that carry the taught five-desk pipeline whole: **`the-desk`** (coordination),
-> **`intake-desk`** (the front door), **`batch-fanout`** (dispatch), **`pr-review-desk`** (review),
+> **`intake-desk`** (the front door), **`worker-desk`** (dispatch), **`pr-review-desk`** (review),
 > and **`verify-desk`** (post-merge verification). `plugins/assay/skills/README.md` names the current
 > set — check it rather than this paragraph, which will drift; `ls plugins/assay/skills/*/SKILL.md`
 > in a fresh checkout enumerates all seven.
 >
-> **The desk-role skills carry the current house methodology, not a domain-neutral rewrite of it.**
-> Unlike `adopt`/`author-brief`, only `intake-desk` has been scrubbed of house repo slugs, internal
-> issue numbers and names; `the-desk`, `batch-fanout`, `pr-review-desk` and
-> `verify-desk` remain a straight re-port that still carries that content, pending a deferred
-> parameterisation pass — read `plugins/assay/PARITY.md`'s "Known-behind"
-> section before relying on their exact wording in another project. An adopting team may run them
-> as-is, fork and rewrite them, or author its own project-local equivalents in the naming convention
-> at `docs/skill-naming.md` instead — the method is in this guide and the shipped skill bodies, not a
-> copied skill body you must use verbatim.
+> **The desk-role skills carry the current house methodology, published self-contained.**
+> All five desk-role skills — `the-desk`, `intake-desk`, `worker-desk`, `pr-review-desk` and
+> `verify-desk` — ship scrubbed of internal repo slugs, issue numbers and names, the same as
+> `adopt`/`author-brief`, and each reads as a self-contained account of its role that you can
+> follow in another project. An adopting team may run them as-is, fork and rewrite them, or author
+> its own project-local equivalents in the naming convention at `docs/skill-naming.md` instead —
+> the method is in this guide and the shipped skill bodies, not a copied skill body you must use
+> verbatim.
 
 **Verify:** `/plugin` lists `assay` installed; `ls plugins/assay/skills/` enumerates the set
 `plugins/assay/skills/README.md` currently names; and `assay:adopt` / `assay:author-brief` each
