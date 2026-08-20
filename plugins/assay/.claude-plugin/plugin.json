@@ -2,9 +2,9 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "assay",
   "displayName": "Assay",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "Apache-2.0",
-  "description": "The Assay methodology as a Claude Code plugin: the two portable methodology skills (adopt, author-brief), the first desk-role skill (intake-desk), plus the resident operating rules, delivered namespaced as assay:<name>.",
+  "description": "The Assay methodology as a Claude Code plugin: the two portable methodology skills (adopt, author-brief), the five desk-role skills (intake-desk, the-desk, verify-desk, pr-review-desk, worker-desk), plus the resident operating rules, delivered namespaced as assay:<name>.",
   "author": {
     "name": "medici-finance"
   },
