@@ -37,8 +37,11 @@ on:
       - "statusgen/**"
       - ".github/workflows/assay-statusgen.yml"
 
+# Least-privilege default: the PR lint job needs only read. The push-to-main
+# regen job is the sole thing that commits, so it alone gets contents: write
+# (job-scoped below).
 permissions:
-  contents: write
+  contents: read
 
 env:
   GO_VERSION: "1.25.0"
@@ -64,13 +67,17 @@ jobs:
           go version
           ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
       - name: statusgen --lint
-        run: "${RUNNER_TEMP}/statusgen" --root . --lint
+        run: |
+          "${RUNNER_TEMP}/statusgen" --root . --lint
 
   regen:
     # STATUS.md is generated on main only, never on a branch (single writer).
     # loop guard 2: skip our own [skip-status-regen] regen commit.
     if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-status-regen]') }}
     runs-on: medici-builder-public
+    # Sole writer of STATUS.md — the only job that needs commit access.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Go
@@ -88,7 +95,8 @@ jobs:
           go version
           ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
       - name: Regenerate STATUS.md
-        run: "${RUNNER_TEMP}/statusgen" --root .
+        run: |
+          "${RUNNER_TEMP}/statusgen" --root .
       - name: Commit STATUS.md if it changed
         run: |
           set -euo pipefail
