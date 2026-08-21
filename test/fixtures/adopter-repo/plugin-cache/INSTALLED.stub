@@ -1,0 +1,11 @@
+# Plugin install-cache stub — FIXTURE.
+#
+# On a real adopter the platform install cache lives at ~/.claude/plugins/** and is
+# a READ-ONLY input to upgrade-assay (the skill re-resolves the marketplace; it
+# never hand-edits the cache). The marker (deskversion) does not read the cache at
+# all — it assembles its answer from .assay-versions cross-checked against the
+# composition manifests under releases/. This stub stands in for "the adopter has
+# the umbrella installed" so the fixture is a complete adopter skeleton; nothing
+# reads its contents.
+installed-umbrella: v0.12.0
+marketplace: medici-finance/assay

@@ -1,0 +1,15 @@
+# adopter-repo fixture — a CONSISTENT adopter marker at umbrella v0.12.0.
+#
+# This is the checked-in adopter skeleton the upgrade-assay Verify table copies
+# into a throwaway repo (rows 3-8). It is NOT a real adopter and the sha256 digests
+# below are fixture placeholders, not real release digests.
+#
+# The umbrella line and every per-artifact line use the SHIPPED bare `vX.Y.Z` tag
+# shape (the public release home cuts a bare repo tag, never `assay/vX.Y.Z`). The
+# artifact tags match, line-for-line, the composition manifest in
+# releases/v0.12.0.yaml, so `deskversion` resolves this root to a single KNOWN
+# umbrella version (exit 0). `upgrade-assay` moves it up to a higher published
+# umbrella (releases/v0.13.0.yaml).
+assay v0.12.0
+statusgen v0.12.0 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+desk-tools v0.12.0 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

@@ -972,3 +972,37 @@ branch → draft-PR → review → verify loop (structure: scaffold-seam → mov
 **Verify:** each move brief has an executable Verify table (tests green behind the seam, parity byte-identical, CI green at the landed SHA); the deletion brief `depends:` on the release brief; `--lint` = 0 on both repos.
 
 **The two things that go wrong:** a boundary that stranded an un-enumerated consumer (§2), and a squash that discarded history (§3a.2). Both are cheap to prevent up front and expensive to discover after deletion.
+
+## 8. Upgrading after install — the `assay:upgrade-assay` skill
+
+Install and upgrade are **one story with one mechanism**: install writes the `.assay-versions` pin
+(the umbrella line plus the per-artifact tags), and upgrade moves it. The single supported upgrade
+path is the **`assay:upgrade-assay`** skill (surfaced once the plugin is installed). Do **not**
+hand-edit pins against a release page — that is precisely the drift the pin/umbrella model removes.
+The distribution model this section implements is [`distribution.md`](distribution.md).
+
+**What it does.** `assay:upgrade-assay` moves an adopter to the **latest stable** umbrella (the
+highest published bare `vX.Y.Z` release) or to a **named** umbrella version, dry-run-first:
+
+1. **Preview** — it asks the version marker (`deskversion`) what umbrella you are on, resolves the
+   target, computes the artifact-version delta, selects the migrations that would run, and shows the
+   **release notes** for the span — writing nothing.
+2. **Apply on your confirmation** — it re-pins `.assay-versions` to the target umbrella and its
+   artifact tags, and runs the migrations idempotently.
+3. **Re-resolve** — it prints the `/plugin marketplace add …@<version>` + `/plugin update` commands
+   for you to run; it never re-points the marketplace or edits the install cache itself.
+
+**What it refuses** (each a distinct exit): an **undetermined** current version (exit 6 — it never
+assumes latest), **inconsistent** records (exit 5 — it names the disagreeing pair), a
+**per-artifact tag** where an umbrella version was required (exit 7 — the verb moves the whole
+umbrella, e.g. `--to v0.13.0`, never `statusgen/v0.13.0`), and a target that names **no published
+release** (exit 8 — never a nearest-match guess).
+
+**There is no rollback.** The platform has no downgrade verb — `/plugin` updates but cannot
+downgrade, and cached prior versions are pruned after about 14 days. Moving to an older named
+version re-points and re-resolves; it is **not a rollback**, and an artifact older than roughly two
+weeks may be unavailable. With no rollback to fall back on, `assay:upgrade-assay` refuses cleanly
+rather than pretending otherwise.
+
+**Verify:** after an upgrade, `deskversion --root <repo>` reports **known** at the new umbrella and
+`deskpins --check` still passes.
