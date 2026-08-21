@@ -55,7 +55,9 @@ alone — the installer's bias is to refuse and report, never to clobber and hop
 Identify the repo the adopter is standing Assay up in (the current repo root unless the human names
 another). **Confirm with the human before writing anything** — name the absolute target path and the
 detected platform (`os-arch`, e.g. `darwin-arm64`) back to them. Do not scaffold a repo you only
-inferred.
+inferred. Also confirm the adopter has a **separate human GitHub account** distinct from the
+automation account before proceeding — the two-identity floor every human gate rests on (`adopt`'s
+*Prerequisite: two GitHub accounts*); do not proceed under one shared identity.
 
 ### 2. Scaffold — use `statusgen init`, never reinvent it
 Run **`statusgen init --root <target>`** (the umbrella `statusgen` subcommand). It already emits a

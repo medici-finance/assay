@@ -44,6 +44,19 @@ Three adoption scenarios, each composing the same install PRIMITIVEs defined in 
    linting and independent re-verification*, not *measured from ground truth*. Claim the weaker
    true thing.
 
+## Prerequisite: two GitHub accounts — the bot's, and yours
+
+Before any step below, make sure **two distinct GitHub identities** exist and that you can act as the second:
+
+1. **The automation account** — the identity the fleet *runs as*: it authors PRs, pushes branches, runs CI, mints the reviewer-App token, and posts App reviews. In a solo setup this is one machine account plus the reviewer GitHub App it owns; in a larger setup, the set of role Apps. Everything an agent does, it does as this identity.
+2. **Your human account** — a *separate* personal GitHub account that is **you**, and whose credentials the automation never holds. It does the things only a human may: it is the `ASSAY_BLESS_LOGIN` (the authorization half of the trust gate — `configure-roster`), it posts the sign-off on a `gate:human` brief, it adds the 👍 reaction that clears a public-repo write, and it clicks **merge**.
+
+**Why this is not optional.** Assay's gates separate *proposing* work (the agents) from *authorizing* it (a human). That separation is only real if the two are different GitHub principals. If the fleet runs as the same account that blesses, approves, and merges, the automation can bless, approve, and merge its *own* work — every human gate becomes self-satisfiable and the model is theater. Under one shared identity, bot-vs-human is undecidable: a verdict, a 👍, or a merge attributed to that account attributes to *both* (§1a). The human account is precisely what the automation must be unable to act as — that is what makes "a human approved this" a claim the fleet cannot forge.
+
+**What it does *not* buy you** (the honest weaker claim, §1a): two accounts give you *attribution*, not enforcement — on a free/private plan the merge gate stays advisory until branch protection is on (public repos unlock it). Two accounts are the necessary floor, not the whole control.
+
+> The reviewer **GitHub App** (`setup-reviewer-app`) is part of identity (1), the automation side — it makes a *review* attributable. It is **not** your human account and does not replace it: an App reviews, a human authorizes. Keep both.
+
 ## Human-gate quick reference (never autonomous)
 
 | Act | Why it's human-gated | Where |
