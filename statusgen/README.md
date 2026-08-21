@@ -166,7 +166,7 @@ Rules, all of them load-bearing:
   to the rest.
 - **Single-root is unchanged.** A 1-arg (or no-arg) run takes the original code
   path and produces byte-identical output; the multi-root driver only wraps it.
-- **Sub-commands refuse multi-root.** `--dora`, `--autonomy`, `--trend`, `--cynefin`, `--code`,
+- **Sub-commands refuse multi-root.** `--dora`, `--autonomy`, `--ladder`, `--trend`, `--cynefin`, `--code`,
   `--alarms`, `--bottleneck`, `--roadmap`, `--launch`, `--gate-scores`,
   `--verify-issues`, `--decision-issues`, `--scan-issues`, `--close-verify`,
   `--auto-flip-model`,
