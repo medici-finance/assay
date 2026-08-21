@@ -1,0 +1,108 @@
+name: statusgen-board
+# This repo's OWN statusgen board CI — the two-half single-writer shape.
+#
+#   - pull_request: run `statusgen --root . --lint` only. STATUS.md is a
+#     GENERATED artifact with exactly ONE writer (the push-to-main regen job
+#     below); a branch must never modify it, so this half never reads or writes
+#     STATUS.md.
+#   - push to main: regenerate STATUS.md and commit it if it changed. This job
+#     is STATUS.md's single writer.
+#
+# statusgen is built FROM THIS REPO'S OWN SOURCE (statusgen/), not downloaded as a
+# pinned release binary: this IS the repo statusgen lives in, so a released binary
+# would lag the very source the PR is changing. Adopter repos consume the pinned
+# release binary instead (see statusgen init's scaffolded workflow); a source repo
+# builds and lints with its in-tree tool.
+#
+# Runner + Go install mirror ci.yml: the self-hosted `medici-builder-public`
+# runner has no Docker and no reach to GitHub's release-asset CDN, so Go is
+# fetched by hand from go.dev/dl rather than actions/setup-go.
+on:
+  pull_request:
+    # Fire on anything --lint reads: the stream docs, STATUS.md itself, the
+    # statusgen source (the lint binary is built from it), and this workflow.
+    paths:
+      - "docs/**"
+      - "STATUS.md"
+      - "statusgen/**"
+      - ".github/workflows/assay-statusgen.yml"
+  push:
+    branches: [main]
+    # STATUS.md is deliberately NOT listed and lives at the repo root (outside
+    # docs/**), so the regen job's own commit — which touches only STATUS.md —
+    # cannot retrigger this workflow (loop guard 1). The regen job's `if:` also
+    # skips any [skip-status-regen] commit (loop guard 2, belt and suspenders).
+    paths:
+      - "docs/**"
+      - "statusgen/**"
+      - ".github/workflows/assay-statusgen.yml"
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  lint:
+    if: github.event_name == 'pull_request'
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: Build statusgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+      - name: statusgen --lint
+        run: "${RUNNER_TEMP}/statusgen" --root . --lint
+
+  regen:
+    # STATUS.md is generated on main only, never on a branch (single writer).
+    # loop guard 2: skip our own [skip-status-regen] regen commit.
+    if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-status-regen]') }}
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: Build statusgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+      - name: Regenerate STATUS.md
+        run: "${RUNNER_TEMP}/statusgen" --root .
+      - name: Commit STATUS.md if it changed
+        run: |
+          set -euo pipefail
+          git config user.name  'statusgen'
+          git config user.email 'statusgen@users.noreply.github.com'
+          git add STATUS.md
+          # BOOTSTRAP-SAFE GUARD: guard on `git status --porcelain -- STATUS.md`,
+          # NOT `git diff --quiet -- STATUS.md`. git diff sees only TRACKED files,
+          # so on a repo with no STATUS.md yet the diff guard mis-fires ("nothing
+          # to commit") and the first board is NEVER created; porcelain reports
+          # the new/staged file.
+          if [ -n "$(git status --porcelain -- STATUS.md)" ]; then
+            git commit -m 'chore(status): regenerate [skip-status-regen]'
+            git push
+          else
+            echo "STATUS.md already current — nothing to commit"
+          fi
