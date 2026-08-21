@@ -1,13 +1,12 @@
 package deskkit
 
-// migrate.go — the migration format and runner (distribution/08). A migration
-// carries an adopter's repository across one version step: from-version to
-// to-version. The format is specified in
-// `docs/streams/distribution/migrations.md`; this file is its executable half.
+// migrate.go — the migration format and runner. A migration carries an adopter's
+// repository across one version step: from-version to to-version. This file defines
+// the format and is its executable half.
 //
-// A migration file is HUMAN + AGENT readable — one file, two audiences (a
-// distribution/08 requirement so distribution/09's `upgrade-assay` can surface a
-// human "release notes" view of the very migration it is about to apply):
+// A migration file is HUMAN + AGENT readable — one file, two audiences (so the
+// `upgrade-assay` verb an adopter runs can surface a human "release notes" view of
+// the very migration it is about to apply):
 //
 //   - YAML FRONTMATTER (agent-readable): the ordered identity `id`, the `from`/`to`
 //     version range, and an ordered list of idempotent `apply:` steps.
@@ -250,11 +249,13 @@ func RunMigrations(root string, selected []Migration, dryRun bool) ([]StepAction
 	for _, m := range selected {
 		for _, s := range m.Apply {
 			el := s.EnsureLine
-			target := filepath.Join(root, filepath.Clean(el.File))
 			// Refuse a path escaping root — a migration mutates the adopter repo,
-			// never anything above it.
-			rel, err := filepath.Rel(root, target)
-			if err != nil || strings.HasPrefix(rel, "..") {
+			// never anything above it. The check is both LEXICAL (a `..` component)
+			// and SYMLINK-RESOLVED (an in-repo symlink that redirects the write
+			// outside root), so a symlink with a clean textual path cannot smuggle a
+			// write out of the tree.
+			target, err := resolveEnsureTarget(root, el.File)
+			if err != nil {
 				return actions, Refused("migration "+m.ID+" ensure-line file escapes root: "+el.File)
 			}
 			present, err := fileHasLine(target, el.Text)
@@ -278,6 +279,78 @@ func RunMigrations(root string, selected []Migration, dryRun bool) ([]StepAction
 		}
 	}
 	return actions, nil
+}
+
+// resolveEnsureTarget resolves the on-disk target for an ensure-line step and
+// confirms it stays within root — both LEXICALLY (a `..` path component) and after
+// SYMLINK RESOLUTION. The lexical check alone is not enough: a symlink whose textual
+// path is clean can still point outside root, so we resolve root itself (it may sit
+// under a symlinked path) and the nearest existing ancestor of the target (the
+// target file may not exist yet — ensure-line creates it), then re-check the
+// resolved path. Both checks must pass (defence in depth). It returns the absolute
+// target path to write.
+func resolveEnsureTarget(root, file string) (string, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	target := filepath.Join(absRoot, filepath.Clean(file))
+
+	// Lexical check first — cheap, and catches `..` before any filesystem access.
+	if escapes(absRoot, target) {
+		return "", fmt.Errorf("path escapes root")
+	}
+
+	// Symlink-resolved check. Resolve root (fail closed if it cannot be resolved —
+	// there is nothing safe to migrate into), then resolve the nearest existing
+	// ancestor of the target and re-check the result.
+	realRoot, err := filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve migration root: %w", err)
+	}
+	resolved, err := resolveNearest(target)
+	if err != nil {
+		return "", err
+	}
+	if escapes(realRoot, resolved) {
+		return "", fmt.Errorf("path escapes root after symlink resolution")
+	}
+	return target, nil
+}
+
+// escapes reports whether child lies outside base, lexically. It refuses `..` and
+// any `../…` prefix, but not a sibling directory whose name merely starts with "..".
+func escapes(base, child string) bool {
+	rel, err := filepath.Rel(base, child)
+	if err != nil {
+		return true
+	}
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// resolveNearest resolves symlinks on the longest existing ancestor of path, then
+// re-appends the not-yet-existent tail. This lets us symlink-check a file that
+// ensure-line has not created yet without EvalSymlinks failing on the missing leaf —
+// so a symlinked ancestor directory is still followed and checked.
+func resolveNearest(path string) (string, error) {
+	tail := ""
+	cur := path
+	for {
+		resolved, err := filepath.EvalSymlinks(cur)
+		if err == nil {
+			return filepath.Join(resolved, tail), nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			// Reached the filesystem root without any existing ancestor.
+			return filepath.Join(cur, tail), nil
+		}
+		tail = filepath.Join(filepath.Base(cur), tail)
+		cur = parent
+	}
 }
 
 // fileHasLine reports whether path contains a line exactly equal to text. A file

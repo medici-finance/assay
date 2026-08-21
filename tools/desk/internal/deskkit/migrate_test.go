@@ -157,6 +157,45 @@ func TestParseMigration_FailsClosed(t *testing.T) {
 	}
 }
 
+// TestRunMigrations_SymlinkRedirectRefused — an in-repo symlink whose textual path
+// is clean must not let an ensure-line write outside root. The lexical `..` check
+// cannot catch this (the path contains no `..`); only symlink resolution does, and
+// the write must be refused with nothing written outside root.
+func TestRunMigrations_SymlinkRedirectRefused(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	// A symlink INSIDE root pointing OUTSIDE it.
+	if err := os.Symlink(outside, filepath.Join(root, "evil")); err != nil {
+		t.Skipf("symlinks unavailable on this platform: %v", err)
+	}
+	mig := Migration{
+		ID: "0001", From: "v0.1.0", To: "v0.2.0",
+		Apply: []Step{{EnsureLine: &EnsureLine{File: "evil/escaped.txt", Text: "pwned"}}},
+	}
+	if _, err := RunMigrations(root, []Migration{mig}, false); !IsRefused(err) {
+		t.Fatalf("a symlink-redirected write must be refused, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "escaped.txt")); !os.IsNotExist(err) {
+		t.Errorf("the write escaped root through the symlink (stat err=%v) — it must be blocked", err)
+	}
+}
+
+// TestRunMigrations_LexicalEscapeRefused — a `..` path component is still refused
+// (defence in depth; the lexical check remains alongside symlink resolution).
+func TestRunMigrations_LexicalEscapeRefused(t *testing.T) {
+	root := t.TempDir()
+	mig := Migration{
+		ID: "0001", From: "v0.1.0", To: "v0.2.0",
+		Apply: []Step{{EnsureLine: &EnsureLine{File: "../escaped.txt", Text: "pwned"}}},
+	}
+	if _, err := RunMigrations(root, []Migration{mig}, false); !IsRefused(err) {
+		t.Fatalf("a `..` path must be refused, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(root), "escaped.txt")); !os.IsNotExist(err) {
+		t.Errorf("the write escaped root via `..` (stat err=%v) — it must be blocked", err)
+	}
+}
+
 // TestLoadMigrations_EmptyDirIsNoError — the common case (no migrations) is cheap
 // and silent, not an error.
 func TestLoadMigrations_EmptyDirIsNoError(t *testing.T) {

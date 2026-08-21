@@ -1,12 +1,11 @@
 package deskkit
 
-// versionmarker.go — the adopter version marker (distribution/08). It answers the
-// one question `upgrade-assay` (distribution/09) must ask before it can move an
-// adopter anywhere: "what umbrella version is this adopter on, and which artifact
-// versions is that made of." The answer is ASSEMBLED from records that already
-// exist — the `.assay-versions` pin file (umbrella line + per-artifact lines, from
-// distribution/04) cross-checked against the umbrella's composition manifest
-// (distribution/02) — never invented as a fourth source of truth.
+// versionmarker.go — the adopter version marker. It answers the one question
+// `upgrade-assay` must ask before it can move an adopter anywhere: "what umbrella
+// version is this adopter on, and which artifact versions is that made of." The
+// answer is ASSEMBLED from records that already exist — the `.assay-versions` pin
+// file (umbrella line + per-artifact lines) cross-checked against the umbrella's
+// composition manifest — never invented as a fourth source of truth.
 //
 // THREE STATES, NEVER TWO (docs/three-state-instrument-rule.md). The marker maps
 // each to a DISTINCT exit code so a caller can branch on the process result alone:
@@ -28,8 +27,8 @@ package deskkit
 //                                        that is exactly how a migration runs against
 //                                        the wrong baseline.
 //
-// The plain `vX.Y.Z` tag shape is the shipped reality (Ian's 2026-08-15 ruling;
-// docs/distribution.md § The umbrella line). The marker reads it through
+// The plain `vX.Y.Z` tag shape is the shipped reality: the public release home cuts
+// a plain `vX.Y.Z` umbrella tag, never `assay/vX.Y.Z`. The marker reads it through
 // pins.go / composition.go, both of which accept it.
 
 import (

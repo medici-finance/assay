@@ -1,13 +1,10 @@
-// Command deskmigrate is the migration runner (distribution/08): given a
-// from-version and a to-version, it selects the ordered applicable migrations from
-// <root>/migrations and applies them idempotently, or previews them under
-// --dry-run. It ships with FIXTURE migrations only — no real migration exists yet,
-// and this tool has no live caller; distribution/09's `upgrade-assay` is the verb
-// an adopter actually runs.
+// Command deskmigrate is the migration runner: given a from-version and a
+// to-version, it selects the ordered applicable migrations from <root>/migrations
+// and applies them idempotently, or previews them under --dry-run. It ships with
+// FIXTURE migrations only — no real migration exists yet, and this tool has no live
+// caller; the `upgrade-assay` verb an adopter actually runs wraps it.
 //
-// The migration format is specified in
-// `docs/streams/distribution/migrations.md`; the executable half is
-// deskkit/migrate.go.
+// The migration format is defined by deskkit/migrate.go, its executable half.
 //
 // USAGE:
 //
@@ -31,7 +28,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-const usage = `deskmigrate — the version migration runner (distribution/08).
+const usage = `deskmigrate — the version migration runner.
 
 USAGE:
   deskmigrate --from vX.Y.Z --to vX.Y.Z --root <dir> [--dry-run] [--notes]

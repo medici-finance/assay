@@ -1,4 +1,4 @@
-// Command deskversion is the adopter version marker (distribution/08): it reports
+// Command deskversion is the adopter version marker: it reports
 // which umbrella version a consumer repo is on, and which per-artifact versions
 // that is made of, by assembling the answer from the `.assay-versions` pin file
 // and the umbrella's composition manifest — records that already exist, never a
@@ -36,7 +36,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-const usage = `deskversion — the adopter version marker (distribution/08).
+const usage = `deskversion — the adopter version marker.
 
 USAGE:
   deskversion --root <consumer-repo> [--releases <dir>]

@@ -2,15 +2,13 @@ package deskkit
 
 // composition.go — a shared reader for the umbrella composition manifest
 // (`releases/<umbrella>.yaml`), the file that answers "which per-artifact tags
-// make up umbrella version X". Its format is defined in
-// `docs/streams/distribution/version-scheme.md § "Composition manifest"`.
+// make up umbrella version X".
 //
 // This is a SECOND, deliberately more permissive reader than
 // `deskrelease/manifest.go`. That one screens what tags `deskrelease` may CUT and
 // stays `<component>/vX.Y.Z`-only; this one is read by the adopter marker
 // (`deskversion`) over the tags a release ACTUALLY shipped, and the public
-// release home cuts a plain `vX.Y.Z` umbrella tag (Ian's 2026-08-15 ruling — see
-// `docs/distribution.md § The umbrella line`), never `assay/vX.Y.Z`. So it
+// release home cuts a plain `vX.Y.Z` umbrella tag, never `assay/vX.Y.Z`. So it
 // accepts both tag shapes, exactly as `pins.go`'s `artifactTagPattern` does, for
 // the same reason: what a consumer may READ is a superset of what this repo may
 // CUT. This mirrors, and does not replace, the deskrelease reader.
@@ -35,11 +33,9 @@ const ReleasesDir = "releases"
 //   - Tag is the per-artifact tag the umbrella release names — a plain `vX.Y.Z`
 //     (the shipped shape) or a legacy `<component>/vX.Y.Z`. Both parse.
 //   - Artifact is the component name. Under a plain `vX.Y.Z` tag the tag no longer
-//     carries the component, so the name is stated explicitly. It is the
-//     additional per-entry field version-scheme.md's Composition-manifest format
-//     leaves "open for the brief that first needs one" — this is that brief. When
-//     Artifact is empty and Tag is namespaced, ArtifactName() recovers the
-//     component from the tag so an older, namespaced-only manifest still reads.
+//     carries the component, so the name is stated explicitly. When Artifact is
+//     empty and Tag is namespaced, ArtifactName() recovers the component from the
+//     tag so an older, namespaced-only manifest still reads.
 type CompositionArtifact struct {
 	Artifact string `yaml:"artifact"`
 	Tag      string `yaml:"tag"`
