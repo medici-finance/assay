@@ -11,12 +11,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-21 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-21 |  |
 
 ## Next up
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| desktools-go-git | 01 — inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate | 1 | 4500 |
 | statusgen | 02 — issue metrics (`--issues`) | 1 | 1500 |
 | statusgen | 01 — 30-day lint-firing audit — retire cold rules | 1 | 1000 |
 | statusgen | 04 — ladder-position indicator (`--ladder`) | 1 | 1000 |
@@ -48,6 +50,17 @@ _None._
 
 ## Incomplete briefs
 
+### desktools-go-git (8 open)
+
+- 01 inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate — todo (wave 1)
+- 02 `gitcore` transport + in-process auth (BasicAuth) + go-git pin — todo (wave 2)
+- 03 migrate read/plumbing verbs (read-heavy tools) — todo (wave 3)
+- 04 migrate `deskpushguard` detection reads (parity + mutation test) — todo (wave 3)
+- 05 migrate fetch + retire bespoke hardening (`deskgit` / `deskadvisory`) — todo (wave 4)
+- 06 migrate push + retire ambient-credential machinery + preflight probe — todo (wave 4)
+- 07 `deskmerge` exception — fence the trial merge, migrate the rest — todo (wave 3)
+- 08 flip the drop-the-binary CI gate + CVE floor + file the follow-on — todo (wave 5)
+
 ### statusgen (6 open)
 
 - 01 30-day lint-firing audit — retire cold rules — todo (wave 1)
@@ -65,4 +78,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**1** streams (**1** active, **0** paused) · **0/6** briefs done · completed initiatives: see `docs/archive/`
+**2** streams (**2** active, **0** paused) · **0/14** briefs done · completed initiatives: see `docs/archive/`
