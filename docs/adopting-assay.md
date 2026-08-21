@@ -119,6 +119,48 @@ Before any step below, make sure **two distinct GitHub identities** exist and th
 | git history rewrite (`filter-repo`) for a carve-out | Destructive + irreversible; a squash loses the audit trail | Scenario 3 §3a |
 | Private-repo CI auth (`GOPRIVATE`, cross-repo checkout token) | Credential provisioning | Scenario 2 §3 |
 
+## Human post-install checklist — what you must do after `assay:install`
+
+The skill does the autonomous parts — it scaffolds streams + registers, acquires the pinned
+statusgen binary, wires CI, installs the plugin, and opens **draft** PRs — but it **STOPS at every
+act that mints an identity, grants a permission, or authorizes a merge**. Those are yours, and the
+skill cannot fake them without defeating the mechanism it installs. Here is the ordered list, so a
+finished `assay:install` run hands you a checklist rather than the impression that nothing is left:
+
+1. **Provision the two GitHub accounts.** The automation account the fleet runs as, and your own
+   **separate human account** — the two are the trust boundary the whole model rests on. See the
+   **two-accounts prerequisite** (§2 `automation identity`); this checklist does not re-explain it.
+2. **Create + install the GitHub Apps** (creation, key-gen, and install are repo-admin-only):
+   the **reviewer App** (`pull_requests: write`, `contents: read-only` — it must not be able to
+   commit); the **board-writer App** *only if you turn on branch protection* (`contents: write`
+   only, added to the ruleset bypass — §3 `add-statusgen-ci`); and the **automation identity** the
+   fleet runs as. For **each** App: generate the private key (PEM), store it at the config-home
+   (`~/.config/assay/`, mode `0600`) — **never in the repo tree or a committed env file** — install
+   the App, and record its App ID + install IDs where the token minter reads them. See the §2 App
+   inventory rows and `setup-reviewer-app` for the per-App detail.
+3. **Choose the roster VALUES** — naming who the tools obey is a human act, never autonomous: the
+   **bless login** (must be your human account), the trusted logins, the allowed repos, and the
+   risk-path triggers. Write them to the config-home roster file **and** set the org/repo Actions
+   variables for the CI reporting half. The desk binaries read the config-home file **only**, never
+   the environment (§3 `configure-roster`, failure mode 1).
+4. **Set the repo/org variables + secrets.** Actions **variables** = the roster values for the
+   reporting half; Actions **secrets** = the App private key(s) the workflows mint tokens from, plus
+   any private-repo CI auth. **Never put a PEM or a token in the repo tree** — a committed key is a
+   published key.
+5. **Branch protection (recommended-but-optional) + board-writer bypass.** If you enable protection
+   on `main`, add the board-writer App to the protect-`main` ruleset bypass **and** — separately —
+   to any required-check ruleset (e.g. a leak-sweep); bypassing one ruleset does not bypass another.
+   Then **confirm the ruleset actually lists the App** — a workflow can pass YAML review yet be
+   rejected at runtime by a ruleset that never got the bypass (§3 `add-statusgen-ci`).
+6. **The ongoing human gates — not one-time.** The ready-flip is the desk's, but the **merge**, the
+   **push to `main`**, the **release tag**, any **history rewrite**, and the **👍 that clears a
+   public write** are yours *every time*, not just at install. The quick-reference table above is
+   the standing list.
+7. **Optionally acquire the desk-tools.** If you run the automated desk pipeline, install the pinned
+   desk-tools binaries — see the **desk-tools acquisition** (`install-desk-tools` in §3). Without
+   them the desk skills fall back to raw `gh`/`git`; with them you get the guards, write-budgets,
+   and roster/trust gates.
+
 ---
 
 # CORE
