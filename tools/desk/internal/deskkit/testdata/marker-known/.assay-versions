@@ -1,0 +1,10 @@
+# marker-known — a CONSISTENT adopter marker fixture.
+#
+# The umbrella line and every per-artifact line use the SHIPPED plain `vX.Y.Z`
+# tag shape — the public release home cuts a plain repo tag, never `assay/vX.Y.Z`.
+# The artifact tags here match, line-for-line, the composition manifest in
+# releases/v0.11.0.yaml, so `deskversion` resolves this root to a single KNOWN
+# umbrella version (exit 0).
+assay v0.11.0
+statusgen v0.11.0 99cfba2b1ace744f409af20f394bdc5ae927c0953659279623af811f71d9707e
+desk-tools v0.11.0 025c1f328828e820871d99d185588d519258f1e6e3d24cc993a5cfa0e6350852
