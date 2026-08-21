@@ -167,7 +167,7 @@ func cmdCreate(args []string) (err error) {
 	if gerr != nil {
 		return deskkit.Unverifiable("cannot resolve working directory", gerr)
 	}
-	facts, perr := preflight(dir)
+	facts, perr := preflight(dir, *base)
 	if perr != nil {
 		return perr
 	}
@@ -362,7 +362,10 @@ func cmdUpdate(args []string) (err error) {
 	if gerr != nil {
 		return deskkit.Unverifiable("cannot resolve working directory", gerr)
 	}
-	facts, perr := preflight(dir)
+	// update has no --base flag: it refreshes an EXISTING PR's body, so the ahead-count
+	// stays pinned to the repo default (origin/HEAD) exactly as before — an empty base
+	// selects that default inside preflight.
+	facts, perr := preflight(dir, "")
 	if perr != nil {
 		return perr
 	}
@@ -434,7 +437,7 @@ func cmdUpdate(args []string) (err error) {
 // facts. Ordering matters: the default-branch refusal fires on branch name alone
 // (exit 5) BEFORE origin/HEAD is consulted, so a missing origin/HEAD can never mask a
 // push to main; a detached HEAD or unreadable origin/HEAD is unverifiable (exit 6).
-func preflight(dir string) (*gitFacts, error) {
+func preflight(dir, base string) (*gitFacts, error) {
 	if out, err := git(dir, "rev-parse", "--is-inside-work-tree"); err != nil || out != "true" {
 		return nil, deskkit.Unverifiable("not inside a git worktree", err)
 	}
@@ -492,12 +495,32 @@ func preflight(dir string) (*gitFacts, error) {
 		return nil, deskkit.Unverifiable("cannot check staged changes", serr)
 	}
 
-	cnt, cerr := git(dir, "rev-list", "--count", defaultRef+"..HEAD")
+	// Count "commits ahead" against the base the PR will ACTUALLY open against — the
+	// caller's --base (`gh pr create --base <base>`), resolved to its fully-qualified
+	// remote-tracking ref. Counting against origin/HEAD instead (the repo default) is a
+	// bug for any --base other than the default branch: a branch legitimately ahead of
+	// its intended base — e.g. a stacked PR whose base is another feature branch — but
+	// NOT ahead of the default branch was false-refused as "no commits ahead", forcing
+	// the caller onto the ambient-identity `gh pr create` fallback that mis-attributes
+	// the PR author (#55). An empty base (the `update` verb, which has no --base and must
+	// stay pinned to origin/HEAD as before) keeps the repo default.
+	baseRef := defaultRef
+	if base != "" {
+		baseRef = "refs/remotes/origin/" + base
+	}
+	// The base must have a resolvable remote-tracking ref. Without this, a missing/
+	// unfetched base ref aborts `git rev-list` at exit 128 and reads as unverifiable — but
+	// we surface it with a precise, actionable message rather than a bare count failure.
+	if _, verr := git(dir, "rev-parse", "--verify", "--quiet", baseRef+"^{commit}"); verr != nil {
+		return nil, deskkit.Unverifiable(
+			"base ref "+baseRef+" does not resolve — fetch the base branch (`git fetch origin`) first", verr)
+	}
+	cnt, cerr := git(dir, "rev-list", "--count", baseRef+"..HEAD")
 	if cerr != nil {
-		return nil, deskkit.Unverifiable("cannot count commits ahead of "+defaultRef, cerr)
+		return nil, deskkit.Unverifiable("cannot count commits ahead of "+baseRef, cerr)
 	}
 	if cnt == "0" {
-		return nil, deskkit.Refused("refused: branch has no commits ahead of " + defaultRef)
+		return nil, deskkit.Refused("refused: branch has no commits ahead of " + baseRef)
 	}
 
 	head, herr := git(dir, "rev-parse", "HEAD")
