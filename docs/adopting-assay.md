@@ -1,25 +1,76 @@
 # Adopting Assay — install runbook for an LLM agent
 
+There are two ways to install Assay, easiest first:
+
+1. **The turnkey `assay:install` skill (recommended — right below).** Add the plugin, invoke one
+   skill, and it self-installs the whole setup, stopping only at the human-gated steps. Most
+   adopters should start here.
+2. **The manual runbook (further down).** The full step-by-step PRIMITIVEs and three adoption
+   scenarios that same skill wraps. Reach for it directly for a carve-out, a multi-repo suite, or
+   any non-standard boot — and it is the ground truth the turnkey path delegates to.
+
+## Fastest path — the turnkey `assay:install` skill
+
+For a straight install (most adopters), the fastest coherent boot is three steps: add the plugin
+from the marketplace, install it, then invoke the installer skill.
+
+```text
+/plugin marketplace add medici-finance/assay
+/plugin install assay@assay
+```
+
+Then invoke **`assay:install`** (the `install` skill, surfaced namespaced once the plugin is
+installed). It self-installs the whole setup, driving each step itself and stopping only at the
+never-autonomous escalation points below.
+
+**Prerequisites.**
+
+- **Claude Code**, with the plugin installed (the two `/plugin` commands above).
+- An **authenticated `gh`** — the skill downloads the pinned statusgen release with
+  `gh release download`.
+- **macOS or Linux.** The statusgen binary acquisition is Unix-first; **Windows** is a named
+  fast-follow, not yet in scope — on a Windows host the skill stops at that step rather than
+  guessing.
+
+**What the skill does** — it DELEGATES every PRIMITIVE and every human-gate to the manual runbook
+below; the two are **one story with one mechanism**, not two implementations:
+
+- **Detects + confirms the target repo** — names the absolute target path and detected `os-arch`
+  back to you, and writes nothing until you confirm.
+- **Scaffolds** via `statusgen init` — emits a lint-clean `docs/streams/` tree, the registers, and
+  a bootstrap-safe CI workflow.
+- **Acquires a version-PINNED, sha256-verified statusgen binary** — the tag resolved from the
+  plugin↔statusgen pairing in `plugins/assay/paired-versions.yaml`, **never** `latest`; a hash
+  mismatch is a hard **REFUSE**, not a warning, so no unverified bytes are ever installed.
+- **Wires CI + the main-guard** — confirms the two-half single-writer workflow and the client-side
+  commit guard rather than re-authoring them.
+- **PROVES the install** — `statusgen --root <target> --lint` exits **0** and `statusgen --version`
+  prints the **pinned tag**; if either check fails it reports the install **not proven** and stops,
+  never a fabricated success.
+- It is **idempotent**, REFUSES-not-clobbers an already-adopted repo, and opens **draft** PRs only.
+
+**Three human-escalation points the skill stops at** — it hands you the exact values and waits,
+never fabricating the outcome:
+
+- **Private-repo CI auth** — the release-download token / module-privacy env a private repo's CI
+  needs.
+- **The reviewer GitHub App** — creation + installation of the separate review identity a worker
+  session cannot post as (attribution, not authorization — see **§1a** below).
+- **Any write to `main`** — merge, `git push origin main`, the release tag, and the first
+  ready-flip are the human's; the skill only opens draft PRs.
+
+**When to skip the turnkey path** and walk the manual runbook below instead: a carve-out, a
+multi-repo suite, or any non-standard boot. `assay:install` is the turnkey wrapper over the
+runbook, not a replacement for it — the runbook is the ground truth it delegates to.
+
+---
+
+# The manual runbook
+
 **Audience: an AI coding agent (Opus-class) that will EXECUTE these steps.** Human-readable
 second. The guide is a runbook, not an essay: numbered imperative steps, exact paths and
 commands, a **Verify:** check under each step, and explicit **ESCALATE** callouts where a step
 crosses into human-gated territory (App creation, repo permissions, merge/push, history rewrite).
-
-> **Preferred cold-boot path — the turnkey `assay:install` skill.** For a straight install (most
-> adopters), the fastest coherent boot is: add the plugin from the marketplace
-> (`/plugin marketplace add medici-finance/assay` → `/plugin install`) → invoke **`assay:install`**.
-> That skill self-installs the whole setup — it detects + confirms the target repo, runs
-> `statusgen init` for the scaffold, acquires a version-PINNED sha256-verified statusgen binary
-> (resolved from the plugin↔statusgen pairing in `plugins/assay/paired-versions.yaml`, never
-> `latest`), wires CI + the main-guard, and PROVES the install (`--lint` == 0, `--version` prints
-> the pinned tag). `install` and this runbook are **one story with one mechanism**: `install`
-> DELEGATES every PRIMITIVE and every human-gate below to `adopt` + this guide rather than forking
-> them. It is idempotent, REFUSES-not-clobbers an already-adopted repo, opens **draft** PRs only,
-> and escalates every never-autonomous step to a human — exactly the discipline this guide defines.
-> It is **Unix-first (mac/linux)**; Windows binary acquisition is a named fast-follow. Reach for
-> the scenario sections below directly when you need the full manual walk (a carve-out, a
-> multi-repo suite, or any non-standard boot); `install` is the turnkey wrapper over them, not a
-> replacement for them.
 
 Three adoption scenarios, each composing the same install PRIMITIVEs defined in **CORE**:
 
