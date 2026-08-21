@@ -175,6 +175,17 @@ linting and independent re-verification — it is **not measured from ground tru
 re-verified rather than trusted. Report the weaker, true thing. Do not describe the install as
 tamper-proof, atomic, or a stronger guarantee than the mechanism delivers.
 
+**Then hand the human their half — the install is not "done" until they know what is left.** The
+skill did the autonomous parts; it **stopped at every act that mints an identity, grants a
+permission, or authorizes a merge**, and those are the human's. Do not close the run on "here is what
+I installed" alone — end with **"Install done. Here is what YOU must do now:"** and point at the
+**Human post-install checklist** section of `docs/adopting-assay.md` (provision the two accounts,
+create + install the Apps and store their PEMs at the config-home, choose the roster values, set the
+variables + secrets, branch protection + board-writer bypass, the standing human gates, and
+optionally the desk-tools). Surface that remaining setup explicitly in the final report — a run that
+lists only what the skill did, and leaves the human to discover the identity/permission/merge steps
+on their own, has under-reported.
+
 ## The plugin↔statusgen pairing
 
 An adopter on plugin **vX** must get the statusgen **vY** that plugin was built and tested against —
