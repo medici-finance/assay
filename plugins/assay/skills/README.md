@@ -14,7 +14,8 @@ domain-neutral, project skills carry a domain token; descriptions are triggers o
 
 | Skill | Namespaced as | Role |
 |-------|---------------|------|
-| adopt | `assay:adopt` | Install/adopt the Assay methodology into a project |
+| install | `assay:install` | Turnkey installer — invoke → self-installs the whole project setup (Unix-first) |
+| adopt | `assay:adopt` | Install/adopt runbook — scenario routing + PRIMITIVEs the turnkey installer wraps |
 | author-brief | `assay:author-brief` | Brief authoring methodology (portable core) |
 
 These are the portable, domain-neutral methodology skills every Assay bundle ships. A project

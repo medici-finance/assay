@@ -1,0 +1,40 @@
+# plugin↔statusgen version-compat manifest
+#
+# The `assay:install` skill resolves the statusgen binary it installs FROM this file, so an
+# adopter on a given plugin version always gets the statusgen release that plugin was built and
+# tested against — never a mismatched or floating tool.
+#
+# Resolution: plugin version (plugins/assay/.claude-plugin/plugin.json) -> paired statusgen tag
+# (below) -> pinned, sha256-verified `gh release download` of that tag from the release home.
+#
+# NEVER a floating/rolling tag. The tag is a plain repo-level semver tag; the per-platform
+# sha256 is harvested from that PUBLISHED release's checksums.txt (a local build lacks the release
+# -ldflags stamp and hashes differently), so it must never be hand-invented.
+#
+# On a plugin bump, re-pin (bump `statusgen.tag` and refresh every `sha256`) rather than editing a
+# hash in place, so the upgrade shows in a diff. Keep `plugin` in step with plugin.json's version.
+
+schema: paired-versions-v1
+
+# LEFT side of the pairing: the plugin version this manifest is paired for.
+# Must match plugins/assay/.claude-plugin/plugin.json `version`.
+plugin: "0.3.0"
+
+# RIGHT side: the statusgen release the plugin above is paired with.
+statusgen:
+  # Release home the umbrella statusgen binaries are published from (public).
+  release_home: medici-finance/assay
+  # Concrete, pinned repo-level semver tag. Never a floating/rolling ref.
+  tag: v0.13.0
+  # Per-platform channel-E pins: `<artifact> <tag> <sha256>`, the exact shape the adopter's
+  # `.assay-versions` carries. sha256 values harvested from the v0.13.0 release checksums.txt.
+  platforms:
+    darwin-arm64: statusgen-darwin-arm64 v0.13.0 272aedd04f9777eb1b7c7970182b9cdbce64ee0ea771678a6f425f3698c13160
+    darwin-amd64: statusgen-darwin-amd64 v0.13.0 785ae37bb02e775e9dcd9c1a78f4c1ac899729c4ceba23bc8634cc18a30afa8c
+    linux-amd64:  statusgen-linux-amd64  v0.13.0 be3a6f1412724adad104c606079901dfcaa477b3dc3a5a4eb5fc740670ecbef3
+    # linux-arm64: no published statusgen-linux-arm64 asset in the v0.13.0 release yet.
+    #   Left out deliberately rather than pinned to an invented hash; the install skill REFUSES
+    #   (never guesses) when the pin line for a detected platform is absent.
+    # windows-amd64: DEFERRED FAST-FOLLOW — Windows binary acquisition is a named, not-yet-authored
+    #   follow-up. No `statusgen-windows-amd64.exe` asset is pinned here yet; the install skill's
+    #   step-3 platform detection is structured so this arm slots in without reshaping the flow.
