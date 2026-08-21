@@ -349,6 +349,22 @@ and is **not** shipped in the toolkit, so write your own to the shape described 
 runs `--lint` only and blocks any PR whose diff touches `STATUS.md`; the **push-to-main half**
 regenerates and commits `STATUS.md`.
 
+**The workflow set — statusgen is not the only one, be honest about which apply to you.** "Wire CI"
+is more than one workflow, and conflating them leaves an adopter either missing the security gate or
+copying release plumbing they have no use for. Enumerated:
+
+- **`assay-statusgen`** (**required**) — the lint + regen halves above; this is the one this
+  primitive installs.
+- **`leaksweep-control` + `leaksweep-pattern`** (**recommended, especially for a public repo**) —
+  the automated layered-defense gate that scans a diff for secrets before it can land. On a
+  branch-protected repo this is a **required check**, which means it is one the **board-writer App
+  must bypass** (see the board-writer note above) — the App's push-to-main board regen has to clear
+  it, so the App needs the bypass on **that** ruleset too, not only the protect-`main` one.
+- **`ci` / `release` / `docker-publish`** — these belong to the repo that **builds and releases the
+  tools** (the release home), **not** to a consuming adopter. An adopter pins sha-verified binaries;
+  it does not cut releases. Add these **only** if you host your own tool releases; a plain adopter
+  does not, and copying them in is release plumbing with nothing to release.
+
 **Branch protection changes how the regen half lands (recommended-but-optional).** Branch
 protection on `main` is *recommended* — it turns the advisory merge gate into a server-enforced
 one — but it is **optional**. Enabling it has a consequence the regen half must account for: the

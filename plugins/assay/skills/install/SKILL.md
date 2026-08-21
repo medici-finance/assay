@@ -127,6 +127,15 @@ load-bearing properties to confirm:
   `.assay-versions`, exactly as the workflow's own header comment instructs. Confirm the running
   channel matches; do not leave a `go run` workflow on a repo with no `statusgen/` source.
 
+**The workflow set is more than statusgen — say which apply here.** `assay-statusgen` (the two
+halves above) is the **required** one this step installs. `leaksweep-control` + `leaksweep-pattern`
+are **recommended, especially for a public repo** — the automated secret-scan gate; on a
+branch-protected repo they are a **required check the board-writer App must also bypass** (step 4's
+board-writer note). `ci` / `release` / `docker-publish` belong to the repo that **builds + releases
+the tools**, NOT a consuming adopter — an adopter pins binaries and does not cut releases, so add
+those only if the adopter hosts its own tool releases. Do not copy release plumbing into a plain
+adopter.
+
 While `docs/streams/` is still legitimately empty (e.g. the scaffolded `example` stream has been
 removed and no real stream authored yet), the PR/lint half needs `--lint --allow-empty-root` so
 day-one CI is green; drop that flag the moment the first real stream lands.
