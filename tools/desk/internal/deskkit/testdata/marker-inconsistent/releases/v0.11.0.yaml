@@ -1,0 +1,10 @@
+# Composition manifest for umbrella v0.11.0 — format fixture, NOT a real release.
+# The umbrella v0.11.0 release built statusgen and desk-tools at v0.11.0. The
+# adopter's pin file disagrees (statusgen pinned to v0.12.0), which is the
+# known-inconsistent case this fixture exercises.
+umbrella: v0.11.0
+artifacts:
+  - artifact: statusgen
+    tag: v0.11.0
+  - artifact: desk-tools
+    tag: v0.11.0

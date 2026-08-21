@@ -1,0 +1,14 @@
+# Composition manifest for umbrella v0.11.0 — format fixture, NOT a real release.
+#
+# One file per umbrella version, named by the umbrella tag (a plain `vX.Y.Z` has
+# no `/` to mangle). `umbrella:` is the plain shipped tag; each `artifacts:` entry
+# names one component and the tag the umbrella release built it at. Under the
+# plain-tag scheme the tag no longer carries the component name, so `artifact:` is
+# stated explicitly (the "additional per-entry field" version-scheme.md's format
+# leaves open).
+umbrella: v0.11.0
+artifacts:
+  - artifact: statusgen
+    tag: v0.11.0
+  - artifact: desk-tools
+    tag: v0.11.0
