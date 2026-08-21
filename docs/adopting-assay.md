@@ -191,8 +191,10 @@ adjectives, and those are the items to schedule rather than assert: make the sha
 account **read-only** so it cannot merge or push; add **CODEOWNERS** so review by
 the owning identity is required by the server rather than by convention; and note that going
 public is itself what *unlocks* branch protection on a free plan, turning
-the advisory merge gate into an enforced one. None of these is done. Until they are, the honest
-sentence above is the whole of the claim.
+the advisory merge gate into an enforced one. Branch protection is **recommended but optional**;
+if you turn it on, the push-to-main board regen can no longer commit `STATUS.md` directly and
+needs a dedicated **board-writer App** to push past protection — see §3 `add-statusgen-ci`. None
+of these is done. Until they are, the honest sentence above is the whole of the claim.
 
 ## 2. Component inventory
 
@@ -204,6 +206,8 @@ sentence above is the whole of the claim.
 | **registers** | Append-only FINDINGS / INTAKE / RETRO logs | `docs/registers.md`; scaffold's `FINDINGS.md` / `INTAKE.md` | `docs/streams/{FINDINGS,INTAKE,RETRO}.md` |
 | **methodology skills / plugin** | The two portable methodology skills (`assay:adopt`, `assay:author-brief`) plus the desk-role skills for the five-desk pipeline (`assay:the-desk`, `assay:intake-desk`, `assay:batch-fanout`, `assay:pr-review-desk`, `assay:verify-desk`), namespaced `assay:<name>` | `.claude-plugin/marketplace.json`, `plugins/assay/` — see `install-desk-plugin` | installed via `/plugin`, cached under `~/.claude` |
 | **reviewer GitHub App** | The separate review identity (§1a) — attribution, not authorization; `pull_requests: write` with **no** `contents: write` is the *recommendation* (§3 `setup-reviewer-app`) | CORE `setup-reviewer-app` (runbook) | GitHub org/account settings — **not a repo file** |
+| **automation identity** | The account (and/or role Apps) the fleet **runs as** — authors PRs, pushes branches, runs CI, mints tokens. Distinct from the human account (the two-accounts prerequisite). Minimum = one machine account plus the reviewer App it owns; larger fleets *optionally* split it into role Apps (worker / verifier / desk / loop) — a decomposition, **not** a requirement | operator-provisioned (GitHub org/account) | GitHub org/account settings — **not a repo file** |
+| **board-writer GitHub App** | Needed **only** if `main` is branch-protected (§3 `add-statusgen-ci`): a dedicated App with **`contents: write` only**, added to the branch's ruleset bypass so the push-to-main statusgen regen can commit `STATUS.md` past protection. Not needed when protection is off | CORE `add-statusgen-ci` (when protection is on) | GitHub org/account settings + the branch's ruleset bypass — **not a repo file** |
 | **.githooks main-guard** | `pre-commit` refusing `main` commits without `ASSAY_MAIN_COMMIT_OK` (worktree-isolation backstop) | parent-project hardening (not shipped in the toolkit) | `.githooks/pre-commit` + `core.hooksPath` |
 | **trust roster** | The configured trust/authority surface the tools read: who is trusted, which repos are writable, which paths force a security review — held outside every ref, so a PR cannot widen its own gate. Governs repos the tools may **act** on, not the multi-repo board's own root-to-path map (separate, compiled-in — see `configure-roster`'s board caveat) | CORE `configure-roster` (mechanism) | **not a repo file** — org/repo Actions variables plus `~/.config/assay/roster.env` per operator (§3 `configure-roster`) |
 | **adopter-scaffold example** | Minimal worked example: `STATUS.md` + two streams + registers | `examples/adopter-scaffold/` | reference only — copy the shape, don't vendor |
@@ -277,6 +281,27 @@ and is **not** shipped in the toolkit, so write your own to the shape described 
 `paths:` if `docs/streams/` isn't at the root). Two halves enforce single-writer: the **PR half**
 runs `--lint` only and blocks any PR whose diff touches `STATUS.md`; the **push-to-main half**
 regenerates and commits `STATUS.md`.
+
+**Branch protection changes how the regen half lands (recommended-but-optional).** Branch
+protection on `main` is *recommended* — it turns the advisory merge gate into a server-enforced
+one — but it is **optional**. Enabling it has a consequence the regen half must account for: the
+push-to-main half commits the regenerated `STATUS.md` **directly** to `main`, and a protected
+branch (a PR-required ruleset, required status checks, or classic protection) **rejects that
+push**. So if you enable branch protection you also need a **board-writer GitHub App**:
+
+- a dedicated App with **`contents: write` only** — least-privilege, NOT `github-actions[bot]`
+  (whose broad Actions identity would let any workflow push to `main`);
+- added to the branch's **ruleset bypass list** (identity-based, "Always") so its push is admitted
+  while every other actor still goes through PRs. If a **required check** also guards the branch
+  (e.g. a leak-sweep), the App needs the bypass on **that** ruleset too — bypassing one ruleset
+  does not bypass another;
+- the regen job mints the App's token and pushes as it. Validate two things *separately*: that the
+  workflow YAML parses, AND that the target branch's ruleset actually lists the App — a job can
+  pass YAML review yet be rejected at runtime by a ruleset that never got the bypass.
+
+Without branch protection the regen half pushes as the automation account directly and no
+board-writer App is needed. This is the one place the recommended hardening adds a *required
+identity* — plan for it before you turn protection on, not after the board silently stops updating.
 
 > **BOOTSTRAP-SAFE GUARD — required.** The regen step must guard on `git status --porcelain -- STATUS.md`,
 > **not** `git diff --quiet -- STATUS.md`. `git diff` only sees *tracked* files, so on a repo with no
