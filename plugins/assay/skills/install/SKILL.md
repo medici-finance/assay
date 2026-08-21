@@ -95,6 +95,21 @@ installer wraps it:
 
 If the pin line for the fully detected platform is **absent**, REFUSE rather than guess a platform.
 
+### 3b. (Optional) Acquire the desk-tools — same mechanism
+**Only if the adopter runs the automated desk pipeline.** The desk-role binaries (`deskboard`,
+`deskpr`, `deskevidence`, `deskfile`, `deskpost`, …) are the desk skills' primary path — they carry
+the guards, write-budgets, and roster + trust gates; without them the desk skills fall back to raw
+`gh`/`git` (works, loses the guards). This is a **skippable** step, not part of the minimal install.
+
+Acquisition is **channel-E, identical to step 3** — resolve the tag + per-platform sha256 from the
+`desk-tools:` section of `paired-versions.yaml` (same tag as statusgen — cut from the same release),
+`gh release download "$tag" --pattern "desk-tools-<platform>.tar.gz"`, `shasum -a 256` → compare →
+**REFUSE on mismatch**, extract, install the binaries to `PATH`. The only shape difference is the
+artifact is a `.tar.gz` of binaries, not a single file. Config is at the config-home
+(`~/.config/assay/`) only, never the environment. See `install-desk-tools` in the `adopt` runbook.
+
+**Verify:** `deskboard --version` prints and its `assay-config:` echo shows the roster present.
+
 ### 4. Wire CI — confirm, don't re-author
 `statusgen init` already emitted the CI workflow (a `lint`-on-PR half and a regenerate-on-main
 half). The installer **confirms it is present and correct** rather than writing a second copy. Two
@@ -111,6 +126,15 @@ load-bearing properties to confirm:
   case, step 3) swaps those `go run` steps for `statusgen --root .` against the binary named in
   `.assay-versions`, exactly as the workflow's own header comment instructs. Confirm the running
   channel matches; do not leave a `go run` workflow on a repo with no `statusgen/` source.
+
+**The workflow set is more than statusgen — say which apply here.** `assay-statusgen` (the two
+halves above) is the **required** one this step installs. `leaksweep-control` + `leaksweep-pattern`
+are **recommended, especially for a public repo** — the automated secret-scan gate; on a
+branch-protected repo they are a **required check the board-writer App must also bypass** (step 4's
+board-writer note). `ci` / `release` / `docker-publish` belong to the repo that **builds + releases
+the tools**, NOT a consuming adopter — an adopter pins binaries and does not cut releases, so add
+those only if the adopter hosts its own tool releases. Do not copy release plumbing into a plain
+adopter.
 
 While `docs/streams/` is still legitimately empty (e.g. the scaffolded `example` stream has been
 removed and no real stream authored yet), the PR/lint half needs `--lint --allow-empty-root` so
@@ -150,6 +174,17 @@ success. Carry the honest framing: the board is **derived** from agent-authored 
 linting and independent re-verification — it is **not measured from ground truth**, and it is
 re-verified rather than trusted. Report the weaker, true thing. Do not describe the install as
 tamper-proof, atomic, or a stronger guarantee than the mechanism delivers.
+
+**Then hand the human their half — the install is not "done" until they know what is left.** The
+skill did the autonomous parts; it **stopped at every act that mints an identity, grants a
+permission, or authorizes a merge**, and those are the human's. Do not close the run on "here is what
+I installed" alone — end with **"Install done. Here is what YOU must do now:"** and point at the
+**Human post-install checklist** section of `docs/adopting-assay.md` (provision the two accounts,
+create + install the Apps and store their PEMs at the config-home, choose the roster values, set the
+variables + secrets, branch protection + board-writer bypass, the standing human gates, and
+optionally the desk-tools). Surface that remaining setup explicitly in the final report — a run that
+lists only what the skill did, and leaves the human to discover the identity/permission/merge steps
+on their own, has under-reported.
 
 ## The plugin↔statusgen pairing
 

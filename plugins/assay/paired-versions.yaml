@@ -38,3 +38,25 @@ statusgen:
     # windows-amd64: DEFERRED FAST-FOLLOW — Windows binary acquisition is a named, not-yet-authored
     #   follow-up. No `statusgen-windows-amd64.exe` asset is pinned here yet; the install skill's
     #   step-3 platform detection is structured so this arm slots in without reshaping the flow.
+
+# The optional desk-role binaries (deskboard, deskpr, deskevidence, deskfile, deskpost, …), shipped
+# from the SAME release as statusgen and acquired by the SAME channel-E, sha256-verified mechanism.
+# Only needed if the adopter runs the automated desk pipeline; the `install-desk-tools` PRIMITIVE
+# (docs/adopting-assay.md §3) resolves the tag + hash from here exactly as statusgen does.
+desk-tools:
+  # Same public release home the statusgen binaries are published from.
+  release_home: medici-finance/assay
+  # Pinned to the SAME tag as statusgen above — the desk binaries and statusgen are cut together.
+  tag: v0.13.0
+  # Per-platform channel-E pins: `<artifact> <tag> <sha256>`. The artifact is a `.tar.gz` (the
+  # desk-tools ship as a tarball of binaries, not a single file). sha256 values harvested from the
+  # v0.13.0 release checksums.txt — never hand-invented.
+  platforms:
+    darwin-arm64: desk-tools-darwin-arm64.tar.gz v0.13.0 c0554547afaee42dcc885b62f421f9f80effebf636b5433419e52628b6ac646b
+    darwin-amd64: desk-tools-darwin-amd64.tar.gz v0.13.0 67e6b1505bf785e90bb59aba99c36eda8f78fb82a14750812c6880b518174ee5
+    linux-amd64:  desk-tools-linux-amd64.tar.gz  v0.13.0 0feea8d6816e560f252555d5da454ed299ccc788f0fd2ce64ee9486eac47f7f4
+    # linux-arm64: no published desk-tools-linux-arm64 asset in the v0.13.0 release yet.
+    #   Left out deliberately rather than pinned to an invented hash; the acquisition REFUSES
+    #   (never guesses) when the pin line for a detected platform is absent — same as statusgen.
+    # windows-amd64: DEFERRED FAST-FOLLOW — no desk-tools-windows asset pinned yet, mirroring the
+    #   statusgen Windows arm above.
