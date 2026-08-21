@@ -75,11 +75,28 @@ jobs:
     # loop guard 2: skip our own [skip-status-regen] regen commit.
     if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-status-regen]') }}
     runs-on: medici-builder-public
-    # Sole writer of STATUS.md — the only job that needs commit access.
+    # Sole writer of STATUS.md. The push authenticates as the assay-board-writer
+    # App (minted below), NOT the default GITHUB_TOKEN — so the default token
+    # needs only read; the App token carries the write.
     permissions:
-      contents: write
+      contents: read
     steps:
+      # Mint a token for the assay-board-writer App. This App is the sole actor
+      # on the protect-main + leak-sweep ruleset bypass lists, so its push to
+      # main is admitted where the default GITHUB_TOKEN's is rejected (GH013:
+      # PR-required + leak-sweep-required). App perms: contents:write on THIS
+      # repo only; key held as repo Actions secrets (BOARD_APP_*).
+      - name: Mint assay-board-writer App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOARD_APP_ID }}
+          private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Persist the App token as the push credential (checkout default), so
+          # the STATUS.md `git push` below authenticates as assay-board-writer[bot].
+          token: ${{ steps.app-token.outputs.token }}
       - name: Install Go
         run: |
           set -euo pipefail
@@ -100,8 +117,8 @@ jobs:
       - name: Commit STATUS.md if it changed
         run: |
           set -euo pipefail
-          git config user.name  'statusgen'
-          git config user.email 'statusgen@users.noreply.github.com'
+          git config user.name  'assay-board-writer[bot]'
+          git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
           git add STATUS.md
           # BOOTSTRAP-SAFE GUARD: guard on `git status --porcelain -- STATUS.md`,
           # NOT `git diff --quiet -- STATUS.md`. git diff sees only TRACKED files,
