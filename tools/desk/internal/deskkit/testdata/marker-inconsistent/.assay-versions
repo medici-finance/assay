@@ -1,0 +1,10 @@
+# marker-inconsistent — a DISAGREEING adopter marker fixture.
+#
+# The umbrella line records v0.11.0, but the `statusgen` line is pinned to
+# v0.12.0 — a version the umbrella v0.11.0 composition (releases/v0.11.0.yaml)
+# does NOT name. `deskversion` must resolve this to KNOWN-INCONSISTENT (exit 5)
+# and NAME both disagreeing records (statusgen pin vs umbrella composition), never
+# collapse it to a bare "inconsistent".
+assay v0.11.0
+statusgen v0.12.0 81acfcb5c7ad19c7278d35c02688453c65f3d5ebbb1b26308235416b879fc9d8
+desk-tools v0.11.0 1ee2c855110726f4144cb47a3e875de2e0679b87995f6b8ddae816bc18a2c93c
