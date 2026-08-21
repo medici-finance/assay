@@ -95,6 +95,21 @@ installer wraps it:
 
 If the pin line for the fully detected platform is **absent**, REFUSE rather than guess a platform.
 
+### 3b. (Optional) Acquire the desk-tools — same mechanism
+**Only if the adopter runs the automated desk pipeline.** The desk-role binaries (`deskboard`,
+`deskpr`, `deskevidence`, `deskfile`, `deskpost`, …) are the desk skills' primary path — they carry
+the guards, write-budgets, and roster + trust gates; without them the desk skills fall back to raw
+`gh`/`git` (works, loses the guards). This is a **skippable** step, not part of the minimal install.
+
+Acquisition is **channel-E, identical to step 3** — resolve the tag + per-platform sha256 from the
+`desk-tools:` section of `paired-versions.yaml` (same tag as statusgen — cut from the same release),
+`gh release download "$tag" --pattern "desk-tools-<platform>.tar.gz"`, `shasum -a 256` → compare →
+**REFUSE on mismatch**, extract, install the binaries to `PATH`. The only shape difference is the
+artifact is a `.tar.gz` of binaries, not a single file. Config is at the config-home
+(`~/.config/assay/`) only, never the environment. See `install-desk-tools` in the `adopt` runbook.
+
+**Verify:** `deskboard --version` prints and its `assay-config:` echo shows the roster present.
+
 ### 4. Wire CI — confirm, don't re-author
 `statusgen init` already emitted the CI workflow (a `lint`-on-PR half and a regenerate-on-main
 half). The installer **confirms it is present and correct** rather than writing a second copy. Two
@@ -112,9 +127,30 @@ load-bearing properties to confirm:
   `.assay-versions`, exactly as the workflow's own header comment instructs. Confirm the running
   channel matches; do not leave a `go run` workflow on a repo with no `statusgen/` source.
 
+**The workflow set is more than statusgen — say which apply here.** `assay-statusgen` (the two
+halves above) is the **required** one this step installs. `leaksweep-control` + `leaksweep-pattern`
+are **recommended, especially for a public repo** — the automated secret-scan gate; on a
+branch-protected repo they are a **required check the board-writer App must also bypass** (step 4's
+board-writer note). `ci` / `release` / `docker-publish` belong to the repo that **builds + releases
+the tools**, NOT a consuming adopter — an adopter pins binaries and does not cut releases, so add
+those only if the adopter hosts its own tool releases. Do not copy release plumbing into a plain
+adopter.
+
 While `docs/streams/` is still legitimately empty (e.g. the scaffolded `example` stream has been
 removed and no real stream authored yet), the PR/lint half needs `--lint --allow-empty-root` so
 day-one CI is green; drop that flag the moment the first real stream lands.
+
+**If `main` is branch-protected, the regen half needs a board-writer App (recommended-but-optional).**
+Branch protection on `main` is *recommended but optional*; when it is on, the push-to-main half can
+no longer commit `STATUS.md` directly — a protected branch rejects that push. Confirm the regen job
+mints and pushes as a dedicated **board-writer App** (`contents: write` only, NOT
+`github-actions[bot]`) that is on the branch's **ruleset bypass list**; if a required check (e.g. a
+leak-sweep) also guards the branch, the App needs the bypass on that ruleset too — bypassing one
+ruleset does not bypass another. Validate the workflow YAML **and** that the branch's ruleset
+actually lists the App — a job can pass YAML review yet be rejected at runtime by a ruleset that
+never got the bypass. With protection off, the regen pushes as the automation account and no
+board-writer App is needed. App creation + the ruleset-bypass edit are **human-gated** (see the
+NEVER-autonomous list below).
 
 ### 5. Install the desk plugin + main-guard (scenario-appropriate)
 Apply `install-desk-plugin` and `install-main-guard` per the `adopt` runbook, as the scenario calls
@@ -139,6 +175,17 @@ linting and independent re-verification — it is **not measured from ground tru
 re-verified rather than trusted. Report the weaker, true thing. Do not describe the install as
 tamper-proof, atomic, or a stronger guarantee than the mechanism delivers.
 
+**Then hand the human their half — the install is not "done" until they know what is left.** The
+skill did the autonomous parts; it **stopped at every act that mints an identity, grants a
+permission, or authorizes a merge**, and those are the human's. Do not close the run on "here is what
+I installed" alone — end with **"Install done. Here is what YOU must do now:"** and point at the
+**Human post-install checklist** section of `docs/adopting-assay.md` (provision the two accounts,
+create + install the Apps and store their PEMs at the config-home, choose the roster values, set the
+variables + secrets, branch protection + board-writer bypass, the standing human gates, and
+optionally the desk-tools). Surface that remaining setup explicitly in the final report — a run that
+lists only what the skill did, and leaves the human to discover the identity/permission/merge steps
+on their own, has under-reported.
+
 ## The plugin↔statusgen pairing
 
 An adopter on plugin **vX** must get the statusgen **vY** that plugin was built and tested against —
@@ -161,6 +208,11 @@ hands the human the exact values and waits:
 - **Reviewer GitHub App** creation / installation — the identity that posts approvals, which a plain
   worker session cannot post as. A placeholder or self-minted stand-in defeats the whole mechanism.
   Claim only attribution-plus-audit-trail, **not** tamper-evidence.
+- **Board-writer GitHub App** creation + the **ruleset-bypass edit** that admits it — needed only
+  when `main` is branch-protected (step 4). A dedicated `contents: write`-only App, added to the
+  branch's ruleset bypass so the push-to-main board regen can commit `STATUS.md` past protection.
+  App creation and editing a ruleset's bypass list are repo-admin acts — hand the human the App name
+  + the single `contents: write` permission + the branch/ruleset to add it to, and wait.
 - **Repo creation** + admin / permission grants.
 - **Merge to main / pushing to the main branch / release tag / the first ready-flip.**
 - **git history rewrite** (for a carve-out).

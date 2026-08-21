@@ -119,6 +119,48 @@ Before any step below, make sure **two distinct GitHub identities** exist and th
 | git history rewrite (`filter-repo`) for a carve-out | Destructive + irreversible; a squash loses the audit trail | Scenario 3 §3a |
 | Private-repo CI auth (`GOPRIVATE`, cross-repo checkout token) | Credential provisioning | Scenario 2 §3 |
 
+## Human post-install checklist — what you must do after `assay:install`
+
+The skill does the autonomous parts — it scaffolds streams + registers, acquires the pinned
+statusgen binary, wires CI, installs the plugin, and opens **draft** PRs — but it **STOPS at every
+act that mints an identity, grants a permission, or authorizes a merge**. Those are yours, and the
+skill cannot fake them without defeating the mechanism it installs. Here is the ordered list, so a
+finished `assay:install` run hands you a checklist rather than the impression that nothing is left:
+
+1. **Provision the two GitHub accounts.** The automation account the fleet runs as, and your own
+   **separate human account** — the two are the trust boundary the whole model rests on. See the
+   **two-accounts prerequisite** (§2 `automation identity`); this checklist does not re-explain it.
+2. **Create + install the GitHub Apps** (creation, key-gen, and install are repo-admin-only):
+   the **reviewer App** (`pull_requests: write`, `contents: read-only` — it must not be able to
+   commit); the **board-writer App** *only if you turn on branch protection* (`contents: write`
+   only, added to the ruleset bypass — §3 `add-statusgen-ci`); and the **automation identity** the
+   fleet runs as. For **each** App: generate the private key (PEM), store it at the config-home
+   (`~/.config/assay/`, mode `0600`) — **never in the repo tree or a committed env file** — install
+   the App, and record its App ID + install IDs where the token minter reads them. See the §2 App
+   inventory rows and `setup-reviewer-app` for the per-App detail.
+3. **Choose the roster VALUES** — naming who the tools obey is a human act, never autonomous: the
+   **bless login** (must be your human account), the trusted logins, the allowed repos, and the
+   risk-path triggers. Write them to the config-home roster file **and** set the org/repo Actions
+   variables for the CI reporting half. The desk binaries read the config-home file **only**, never
+   the environment (§3 `configure-roster`, failure mode 1).
+4. **Set the repo/org variables + secrets.** Actions **variables** = the roster values for the
+   reporting half; Actions **secrets** = the App private key(s) the workflows mint tokens from, plus
+   any private-repo CI auth. **Never put a PEM or a token in the repo tree** — a committed key is a
+   published key.
+5. **Branch protection (recommended-but-optional) + board-writer bypass.** If you enable protection
+   on `main`, add the board-writer App to the protect-`main` ruleset bypass **and** — separately —
+   to any required-check ruleset (e.g. a leak-sweep); bypassing one ruleset does not bypass another.
+   Then **confirm the ruleset actually lists the App** — a workflow can pass YAML review yet be
+   rejected at runtime by a ruleset that never got the bypass (§3 `add-statusgen-ci`).
+6. **The ongoing human gates — not one-time.** The ready-flip is the desk's, but the **merge**, the
+   **push to `main`**, the **release tag**, any **history rewrite**, and the **👍 that clears a
+   public write** are yours *every time*, not just at install. The quick-reference table above is
+   the standing list.
+7. **Optionally acquire the desk-tools.** If you run the automated desk pipeline, install the pinned
+   desk-tools binaries — see the **desk-tools acquisition** (`install-desk-tools` in §3). Without
+   them the desk skills fall back to raw `gh`/`git`; with them you get the guards, write-budgets,
+   and roster/trust gates.
+
 ---
 
 # CORE
@@ -191,8 +233,10 @@ adjectives, and those are the items to schedule rather than assert: make the sha
 account **read-only** so it cannot merge or push; add **CODEOWNERS** so review by
 the owning identity is required by the server rather than by convention; and note that going
 public is itself what *unlocks* branch protection on a free plan, turning
-the advisory merge gate into an enforced one. None of these is done. Until they are, the honest
-sentence above is the whole of the claim.
+the advisory merge gate into an enforced one. Branch protection is **recommended but optional**;
+if you turn it on, the push-to-main board regen can no longer commit `STATUS.md` directly and
+needs a dedicated **board-writer App** to push past protection — see §3 `add-statusgen-ci`. None
+of these is done. Until they are, the honest sentence above is the whole of the claim.
 
 ## 2. Component inventory
 
@@ -203,7 +247,10 @@ sentence above is the whole of the claim.
 | **streams layout + templates** | `docs/streams/<stream>/README.md` (frontmatter + brief table) and brief-v1 files | `docs/brief-template.md`, `docs/brief-rules.md`, `examples/adopter-scaffold/` | `docs/streams/<stream>/` |
 | **registers** | Append-only FINDINGS / INTAKE / RETRO logs | `docs/registers.md`; scaffold's `FINDINGS.md` / `INTAKE.md` | `docs/streams/{FINDINGS,INTAKE,RETRO}.md` |
 | **methodology skills / plugin** | The two portable methodology skills (`assay:adopt`, `assay:author-brief`) plus the desk-role skills for the five-desk pipeline (`assay:the-desk`, `assay:intake-desk`, `assay:batch-fanout`, `assay:pr-review-desk`, `assay:verify-desk`), namespaced `assay:<name>` | `.claude-plugin/marketplace.json`, `plugins/assay/` — see `install-desk-plugin` | installed via `/plugin`, cached under `~/.claude` |
+| **desk-tools** | The desk-role **binaries** (`deskboard`, `deskpr`, `deskevidence`, `deskfile`, `deskpost`, …) the five desk-role skills drive as their **primary** path — they carry the guards, write-budgets, and roster + trust gates. **Optional-but-recommended**: without them the desk skills fall back to raw `gh`/`git` (works, but loses the guards). Acquired as a pinned, sha256-verified tarball — the **same mechanism as statusgen** | a **release tarball** (`desk-tools-<platform>.tar.gz`) from the same release as statusgen — see `install-desk-tools` | **no source in your repo** — a `.assay-versions` pin plus the installed binaries on `PATH`; config at the config-home (`~/.config/assay/`) |
 | **reviewer GitHub App** | The separate review identity (§1a) — attribution, not authorization; `pull_requests: write` with **no** `contents: write` is the *recommendation* (§3 `setup-reviewer-app`) | CORE `setup-reviewer-app` (runbook) | GitHub org/account settings — **not a repo file** |
+| **automation identity** | The account (and/or role Apps) the fleet **runs as** — authors PRs, pushes branches, runs CI, mints tokens. Distinct from the human account (the two-accounts prerequisite). Minimum = one machine account plus the reviewer App it owns; larger fleets *optionally* split it into role Apps (worker / verifier / desk / loop) — a decomposition, **not** a requirement | operator-provisioned (GitHub org/account) | GitHub org/account settings — **not a repo file** |
+| **board-writer GitHub App** | Needed **only** if `main` is branch-protected (§3 `add-statusgen-ci`): a dedicated App with **`contents: write` only**, added to the branch's ruleset bypass so the push-to-main statusgen regen can commit `STATUS.md` past protection. Not needed when protection is off | CORE `add-statusgen-ci` (when protection is on) | GitHub org/account settings + the branch's ruleset bypass — **not a repo file** |
 | **.githooks main-guard** | `pre-commit` refusing `main` commits without `ASSAY_MAIN_COMMIT_OK` (worktree-isolation backstop) | parent-project hardening (not shipped in the toolkit) | `.githooks/pre-commit` + `core.hooksPath` |
 | **trust roster** | The configured trust/authority surface the tools read: who is trusted, which repos are writable, which paths force a security review — held outside every ref, so a PR cannot widen its own gate. Governs repos the tools may **act** on, not the multi-repo board's own root-to-path map (separate, compiled-in — see `configure-roster`'s board caveat) | CORE `configure-roster` (mechanism) | **not a repo file** — org/repo Actions variables plus `~/.config/assay/roster.env` per operator (§3 `configure-roster`) |
 | **adopter-scaffold example** | Minimal worked example: `STATUS.md` + two streams + registers | `examples/adopter-scaffold/` | reference only — copy the shape, don't vendor |
@@ -253,6 +300,30 @@ corrupted digest **fails** (proves the hash check is live, not decorative).
 Whichever you pick, **record it** — the per-repo invocation differs by where the tool is rooted,
 and a suite that mixes channels is the inversion this doc exists to stop.
 
+### PRIMITIVE: install-desk-tools — OPTIONAL
+Acquire the desk-role **binaries** — the tools the five desk-role skills drive as their primary path
+(they carry the guards, write-budgets, and roster + trust gates). **Optional**: install this only if
+you run the automated desk pipeline; the desk skills otherwise fall back to raw `gh`/`git`, which
+works but loses the guards. The mechanism is **channel-E, identical to `install-statusgen`** — a
+`.assay-versions` pin plus a sha256-verified download — differing only in that the artifact is a
+`.tar.gz` of binaries, not a single file:
+
+- resolve the paired tag + per-platform sha256 from `plugins/assay/paired-versions.yaml`'s
+  `desk-tools:` section (the desk-tools and statusgen are cut from the **same release**, so they pin
+  the same tag) — **refuse if the pin line for the detected platform is absent**, never guess;
+- `gh release download "$tag" --repo medici-finance/assay --pattern "desk-tools-$platform.tar.gz"`;
+- `shasum -a 256` the tarball → compare to the pinned digest → **refuse on mismatch**;
+- extract and install the binaries to a `bindir` on `PATH`.
+
+Configuration is at the **config-home only** (`~/.config/assay/`) — the same roster file the acting
+tools read everywhere (§3 `configure-roster`, failure mode 1); the environment is never a transport
+for a desk binary.
+
+**Verify:** the desk-tools pin line for the **fully detected platform** exists in `.assay-versions`;
+`deskboard --version` prints (the binaries are on `PATH`) and its `assay-config:` echo shows the
+roster present; a deliberately corrupted digest makes the install **fail** (proves the hash check is
+live).
+
 ### PRIMITIVE: scaffold-streams
 Create the streams tree and one stream README with the required frontmatter + brief table (copy the
 shape from `examples/adopter-scaffold/docs/streams/example-service/README.md`). Author the first
@@ -277,6 +348,43 @@ and is **not** shipped in the toolkit, so write your own to the shape described 
 `paths:` if `docs/streams/` isn't at the root). Two halves enforce single-writer: the **PR half**
 runs `--lint` only and blocks any PR whose diff touches `STATUS.md`; the **push-to-main half**
 regenerates and commits `STATUS.md`.
+
+**The workflow set — statusgen is not the only one, be honest about which apply to you.** "Wire CI"
+is more than one workflow, and conflating them leaves an adopter either missing the security gate or
+copying release plumbing they have no use for. Enumerated:
+
+- **`assay-statusgen`** (**required**) — the lint + regen halves above; this is the one this
+  primitive installs.
+- **`leaksweep-control` + `leaksweep-pattern`** (**recommended, especially for a public repo**) —
+  the automated layered-defense gate that scans a diff for secrets before it can land. On a
+  branch-protected repo this is a **required check**, which means it is one the **board-writer App
+  must bypass** (see the board-writer note above) — the App's push-to-main board regen has to clear
+  it, so the App needs the bypass on **that** ruleset too, not only the protect-`main` one.
+- **`ci` / `release` / `docker-publish`** — these belong to the repo that **builds and releases the
+  tools** (the release home), **not** to a consuming adopter. An adopter pins sha-verified binaries;
+  it does not cut releases. Add these **only** if you host your own tool releases; a plain adopter
+  does not, and copying them in is release plumbing with nothing to release.
+
+**Branch protection changes how the regen half lands (recommended-but-optional).** Branch
+protection on `main` is *recommended* — it turns the advisory merge gate into a server-enforced
+one — but it is **optional**. Enabling it has a consequence the regen half must account for: the
+push-to-main half commits the regenerated `STATUS.md` **directly** to `main`, and a protected
+branch (a PR-required ruleset, required status checks, or classic protection) **rejects that
+push**. So if you enable branch protection you also need a **board-writer GitHub App**:
+
+- a dedicated App with **`contents: write` only** — least-privilege, NOT `github-actions[bot]`
+  (whose broad Actions identity would let any workflow push to `main`);
+- added to the branch's **ruleset bypass list** (identity-based, "Always") so its push is admitted
+  while every other actor still goes through PRs. If a **required check** also guards the branch
+  (e.g. a leak-sweep), the App needs the bypass on **that** ruleset too — bypassing one ruleset
+  does not bypass another;
+- the regen job mints the App's token and pushes as it. Validate two things *separately*: that the
+  workflow YAML parses, AND that the target branch's ruleset actually lists the App — a job can
+  pass YAML review yet be rejected at runtime by a ruleset that never got the bypass.
+
+Without branch protection the regen half pushes as the automation account directly and no
+board-writer App is needed. This is the one place the recommended hardening adds a *required
+identity* — plan for it before you turn protection on, not after the board silently stops updating.
 
 > **BOOTSTRAP-SAFE GUARD — required.** The regen step must guard on `git status --porcelain -- STATUS.md`,
 > **not** `git diff --quiet -- STATUS.md`. `git diff` only sees *tracked* files, so on a repo with no
