@@ -5,6 +5,22 @@ second. The guide is a runbook, not an essay: numbered imperative steps, exact p
 commands, a **Verify:** check under each step, and explicit **ESCALATE** callouts where a step
 crosses into human-gated territory (App creation, repo permissions, merge/push, history rewrite).
 
+> **Preferred cold-boot path — the turnkey `assay:install` skill.** For a straight install (most
+> adopters), the fastest coherent boot is: add the plugin from the marketplace
+> (`/plugin marketplace add medici-finance/assay` → `/plugin install`) → invoke **`assay:install`**.
+> That skill self-installs the whole setup — it detects + confirms the target repo, runs
+> `statusgen init` for the scaffold, acquires a version-PINNED sha256-verified statusgen binary
+> (resolved from the plugin↔statusgen pairing in `plugins/assay/paired-versions.yaml`, never
+> `latest`), wires CI + the main-guard, and PROVES the install (`--lint` == 0, `--version` prints
+> the pinned tag). `install` and this runbook are **one story with one mechanism**: `install`
+> DELEGATES every PRIMITIVE and every human-gate below to `adopt` + this guide rather than forking
+> them. It is idempotent, REFUSES-not-clobbers an already-adopted repo, opens **draft** PRs only,
+> and escalates every never-autonomous step to a human — exactly the discipline this guide defines.
+> It is **Unix-first (mac/linux)**; Windows binary acquisition is a named fast-follow. Reach for
+> the scenario sections below directly when you need the full manual walk (a carve-out, a
+> multi-repo suite, or any non-standard boot); `install` is the turnkey wrapper over them, not a
+> replacement for them.
+
 Three adoption scenarios, each composing the same install PRIMITIVEs defined in **CORE**:
 
 1. **Green-field** — a brand-new repo (or small set of new repos) with no history to preserve.
