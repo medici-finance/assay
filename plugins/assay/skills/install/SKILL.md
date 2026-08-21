@@ -116,6 +116,18 @@ While `docs/streams/` is still legitimately empty (e.g. the scaffolded `example`
 removed and no real stream authored yet), the PR/lint half needs `--lint --allow-empty-root` so
 day-one CI is green; drop that flag the moment the first real stream lands.
 
+**If `main` is branch-protected, the regen half needs a board-writer App (recommended-but-optional).**
+Branch protection on `main` is *recommended but optional*; when it is on, the push-to-main half can
+no longer commit `STATUS.md` directly — a protected branch rejects that push. Confirm the regen job
+mints and pushes as a dedicated **board-writer App** (`contents: write` only, NOT
+`github-actions[bot]`) that is on the branch's **ruleset bypass list**; if a required check (e.g. a
+leak-sweep) also guards the branch, the App needs the bypass on that ruleset too — bypassing one
+ruleset does not bypass another. Validate the workflow YAML **and** that the branch's ruleset
+actually lists the App — a job can pass YAML review yet be rejected at runtime by a ruleset that
+never got the bypass. With protection off, the regen pushes as the automation account and no
+board-writer App is needed. App creation + the ruleset-bypass edit are **human-gated** (see the
+NEVER-autonomous list below).
+
 ### 5. Install the desk plugin + main-guard (scenario-appropriate)
 Apply `install-desk-plugin` and `install-main-guard` per the `adopt` runbook, as the scenario calls
 for. The plugin surfaces the skills namespaced (`assay:<name>`); the main-guard is optional-but-
@@ -161,6 +173,11 @@ hands the human the exact values and waits:
 - **Reviewer GitHub App** creation / installation — the identity that posts approvals, which a plain
   worker session cannot post as. A placeholder or self-minted stand-in defeats the whole mechanism.
   Claim only attribution-plus-audit-trail, **not** tamper-evidence.
+- **Board-writer GitHub App** creation + the **ruleset-bypass edit** that admits it — needed only
+  when `main` is branch-protected (step 4). A dedicated `contents: write`-only App, added to the
+  branch's ruleset bypass so the push-to-main board regen can commit `STATUS.md` past protection.
+  App creation and editing a ruleset's bypass list are repo-admin acts — hand the human the App name
+  + the single `contents: write` permission + the branch/ruleset to add it to, and wait.
 - **Repo creation** + admin / permission grants.
 - **Merge to main / pushing to the main branch / release tag / the first ready-flip.**
 - **git history rewrite** (for a carve-out).
