@@ -886,6 +886,61 @@ func TestCreateStrayLocalOriginMainBranchStillCreates(t *testing.T) {
 	}
 }
 
+// TestCreateNonDefaultBaseCountsAgainstThatBase pins the #55 fix: the "commits ahead"
+// precondition must count HEAD against the base the PR ACTUALLY opens against (--base),
+// not against origin/HEAD (the repo default). A branch that is legitimately one commit
+// ahead of its intended base — here a stacked base whose tip is BEHIND the default branch
+// — but zero ahead of the default branch used to be false-refused with "no commits ahead
+// of refs/remotes/origin/main", forcing the caller onto the ambient-identity `gh pr
+// create` fallback that mis-attributes the PR author. It must now create normally, and the
+// ahead-count must be taken against refs/remotes/origin/<base>.
+func TestCreateNonDefaultBaseCountsAgainstThatBase(t *testing.T) {
+	work := newBaseFixture(t)
+	// feature/test-branch = init + "feature work". Simulate that commit having landed on
+	// origin/main, so HEAD is ZERO commits ahead of the default branch...
+	head := mustGit(t, work, "rev-parse", "HEAD")
+	mustGit(t, work, "update-ref", "refs/remotes/origin/main", head)
+	// ...while the intended stacked base sits at the original main (one commit behind HEAD).
+	initSHA := mustGit(t, work, "rev-parse", "HEAD~1")
+	mustGit(t, work, "update-ref", "refs/remotes/origin/stacked-base", initSHA)
+	// Sanity: 0 ahead of the default branch, 1 ahead of the intended base.
+	if got := mustGit(t, work, "rev-list", "--count", "refs/remotes/origin/main..HEAD"); got != "0" {
+		t.Fatalf("precondition setup: ahead of origin/main = %q, want 0", got)
+	}
+	if got := mustGit(t, work, "rev-list", "--count", "refs/remotes/origin/stacked-base..HEAD"); got != "1" {
+		t.Fatalf("precondition setup: ahead of origin/stacked-base = %q, want 1", got)
+	}
+	calls := withEnv(t, work)
+
+	rc := run([]string{"create", "--title", "stacked feature", "--body-min", "does the thing", "--base", "stacked-base"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("create --base stacked-base rc = %d, want 0 (#55: must not false-refuse a branch ahead of its --base)", rc)
+	}
+	if !anyCall(gitCalls(*calls), "push", "-u", "origin", "feature/test-branch") {
+		t.Fatalf("expected a plain `git push -u origin feature/test-branch`; git calls: %v", gitCalls(*calls))
+	}
+	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
+		t.Fatalf("expected `gh pr create --draft`; gh calls: %v", ghCalls(*calls))
+	}
+	// The ahead-count must have been taken against the --base's remote ref, never origin/main.
+	countedAgainstBase := false
+	for _, c := range gitCalls(*calls) {
+		if len(c) >= 2 && c[1] == "rev-list" {
+			for _, a := range c[2:] {
+				if a == "refs/remotes/origin/stacked-base..HEAD" {
+					countedAgainstBase = true
+				}
+				if a == "refs/remotes/origin/main..HEAD" {
+					t.Fatalf("ahead-count was taken against origin/main, not the --base: %v", c)
+				}
+			}
+		}
+	}
+	if !countedAgainstBase {
+		t.Fatalf("no `git rev-list --count refs/remotes/origin/stacked-base..HEAD` was issued; git calls: %v", gitCalls(*calls))
+	}
+}
+
 func TestCreateKillSwitchDisabled(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
