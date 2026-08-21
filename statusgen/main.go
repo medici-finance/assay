@@ -290,6 +290,24 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	notices = append(notices, darNotices...)
 	problems = append(problems, attributionProblems(checkStreams)...)
 	problems = append(problems, verifySectionProblems(checkStreams)...)
+	// Reverse-orphan (distribution/13 Task E-a): a README brief ROW whose brief
+	// FILE is absent is a phantom brief. checkBriefFiles guards the forward
+	// direction (a file with no row); this guards the reverse (a row with no
+	// file), which every file-iterating check above is blind to. Three-state: a
+	// phantom row is a hard PROBLEM, an unreadable stream dir is a could-not-check
+	// NOTICE.
+	reverseOrphanP, reverseOrphanN := reverseOrphanProblems(checkStreams)
+	problems = append(problems, reverseOrphanP...)
+	notices = append(notices, reverseOrphanN...)
+	// *-private → do-not-copy publication assertion (distribution/13 Task E-b):
+	// a stream directory whose basename matches *-private MUST resolve to a
+	// do-not-copy disposition in docs/publication-manifest.yaml, making the
+	// naming convention a machine-checked invariant so a private stream can never
+	// silently ship to a public tree. Inert where no manifest and no *-private
+	// stream exist (e.g. a public repo); three-state otherwise.
+	privDoNotCopyP, privDoNotCopyN := privateStreamDoNotCopyProblems(root, checkStreams)
+	problems = append(problems, privDoNotCopyP...)
+	notices = append(notices, privDoNotCopyN...)
 	// Verify row CLASSES (verdict-lane/02): an unknown class is a hard PROBLEM
 	// (a row that routes nowhere is exempt from every gate), and a check:ci/check
 	// SCRIPTED row on a non-todo brief whose verify.d script is missing or not
@@ -998,13 +1016,14 @@ func main() {
 	// (--since/--json/--series/--weekly/--daily/--history) are declared once here.
 	verifBacklogMode := flag.Bool("verif-backlog", false, "roll the status-transition log up into the awaiting-verification backlog curve (impl+verif standing count over time; does not read/write STATUS.md)")
 	autonomyMode := flag.Bool("autonomy", false, "emit the step-3 adoption-ladder gauges (autonomy ratio ×2 variants, token efficiency, deterministic-gate share) as a system; reuses --since / --json; diagnostic, never a target or per-person scorecard")
+	ladderMode := flag.Bool("ladder", false, "emit the adoption-ladder POSITION indicator (mm/42): one computed step 0–4 from behavioral axes (autonomy ratio, gate share, dispatch autonomy, token efficiency) + the binding-constraint axis; degrades to an explicit 'unmeasured range' (never a silent zero) when the private mm/40 opmetrics day-file is absent, so it ships publicly; reuses --since / --json; diagnostic, never a target or per-person scorecard")
 	issuesMode := flag.Bool("issues", false, "emit issue metrics (counts, age/sitting-time, internal-vs-external, by-raising-desk) as a system; diagnostic, not a target")
 	staleIssueDays := flag.Int("stale-issue-days", defaultStaleIssueDays, "--issues/--lint: age in days past which an open issue trips the stale-issue alarm (default 7)")
 	teamLogins := flag.String("team-logins", "", "--issues: extra comma-separated team/internal logins beyond the roster trusted logins + bots")
 	cynefinMode := flag.Bool("cynefin", false, "classify active work by Cynefin domain (clear/complicated/complex/chaotic): distribution, drift, and a Disorder list of untagged briefs; reuses --json / --weekly / --daily (does not read/write STATUS.md)")
-	doraJSON := flag.Bool("json", false, "machine-readable JSON output. Used with --issues / --autonomy / --cynefin / --bottleneck / --intake-debt")
+	doraJSON := flag.Bool("json", false, "machine-readable JSON output. Used with --issues / --autonomy / --ladder / --cynefin / --bottleneck / --intake-debt")
 	doraSeries := flag.Bool("series", false, "time series (per-period buckets) instead of a single aggregate. Used with --issues")
-	since := flag.String("since", "", "period start (YYYY-MM-DD) for --verif-backlog / --autonomy / --issues")
+	since := flag.String("since", "", "period start (YYYY-MM-DD) for --verif-backlog / --autonomy / --ladder / --issues")
 	weekly := flag.Bool("weekly", false, "bucket by ISO week (default) for --verif-backlog / --cynefin")
 	daily := flag.Bool("daily", false, "bucket by day for --verif-backlog / --cynefin")
 	historyPath := flag.String("history", "", "history log path (default docs/streams/.history.jsonl, relative to --root) for --verif-backlog")
@@ -1092,6 +1111,7 @@ func main() {
 			"--alarms":          *alarmsMode,
 			"--verif-backlog":   *verifBacklogMode,
 			"--autonomy":        *autonomyMode,
+			"--ladder":          *ladderMode,
 			"--issues":          *issuesMode,
 			"--cynefin":         *cynefinMode,
 			"--intake-debt":     *intakeDebtMode,
@@ -1232,6 +1252,13 @@ func main() {
 	// diagnostic sub-command. Reuses the shared --since window and --json flag.
 	if *autonomyMode {
 		os.Exit(runAutonomy(*root, *since, *doraJSON))
+	}
+	// Adoption-ladder POSITION indicator (mm/42) — self-contained diagnostic
+	// sub-command built on the same behavioral axes as --autonomy. Ships
+	// publicly: a missing private opmetrics day-file degrades to an explicit
+	// 'unmeasured range', never an error and never a silent zero.
+	if *ladderMode {
+		os.Exit(runLadder(*root, *since, *doraJSON))
 	}
 	// Issue metrics emitter — self-contained sub-command, same
 	// STATUS.md-free discipline as the modes above.
