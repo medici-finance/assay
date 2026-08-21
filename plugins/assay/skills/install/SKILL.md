@@ -95,6 +95,21 @@ installer wraps it:
 
 If the pin line for the fully detected platform is **absent**, REFUSE rather than guess a platform.
 
+### 3b. (Optional) Acquire the desk-tools — same mechanism
+**Only if the adopter runs the automated desk pipeline.** The desk-role binaries (`deskboard`,
+`deskpr`, `deskevidence`, `deskfile`, `deskpost`, …) are the desk skills' primary path — they carry
+the guards, write-budgets, and roster + trust gates; without them the desk skills fall back to raw
+`gh`/`git` (works, loses the guards). This is a **skippable** step, not part of the minimal install.
+
+Acquisition is **channel-E, identical to step 3** — resolve the tag + per-platform sha256 from the
+`desk-tools:` section of `paired-versions.yaml` (same tag as statusgen — cut from the same release),
+`gh release download "$tag" --pattern "desk-tools-<platform>.tar.gz"`, `shasum -a 256` → compare →
+**REFUSE on mismatch**, extract, install the binaries to `PATH`. The only shape difference is the
+artifact is a `.tar.gz` of binaries, not a single file. Config is at the config-home
+(`~/.config/assay/`) only, never the environment. See `install-desk-tools` in the `adopt` runbook.
+
+**Verify:** `deskboard --version` prints and its `assay-config:` echo shows the roster present.
+
 ### 4. Wire CI — confirm, don't re-author
 `statusgen init` already emitted the CI workflow (a `lint`-on-PR half and a regenerate-on-main
 half). The installer **confirms it is present and correct** rather than writing a second copy. Two

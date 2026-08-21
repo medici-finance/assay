@@ -247,6 +247,7 @@ of these is done. Until they are, the honest sentence above is the whole of the 
 | **streams layout + templates** | `docs/streams/<stream>/README.md` (frontmatter + brief table) and brief-v1 files | `docs/brief-template.md`, `docs/brief-rules.md`, `examples/adopter-scaffold/` | `docs/streams/<stream>/` |
 | **registers** | Append-only FINDINGS / INTAKE / RETRO logs | `docs/registers.md`; scaffold's `FINDINGS.md` / `INTAKE.md` | `docs/streams/{FINDINGS,INTAKE,RETRO}.md` |
 | **methodology skills / plugin** | The two portable methodology skills (`assay:adopt`, `assay:author-brief`) plus the desk-role skills for the five-desk pipeline (`assay:the-desk`, `assay:intake-desk`, `assay:batch-fanout`, `assay:pr-review-desk`, `assay:verify-desk`), namespaced `assay:<name>` | `.claude-plugin/marketplace.json`, `plugins/assay/` — see `install-desk-plugin` | installed via `/plugin`, cached under `~/.claude` |
+| **desk-tools** | The desk-role **binaries** (`deskboard`, `deskpr`, `deskevidence`, `deskfile`, `deskpost`, …) the five desk-role skills drive as their **primary** path — they carry the guards, write-budgets, and roster + trust gates. **Optional-but-recommended**: without them the desk skills fall back to raw `gh`/`git` (works, but loses the guards). Acquired as a pinned, sha256-verified tarball — the **same mechanism as statusgen** | a **release tarball** (`desk-tools-<platform>.tar.gz`) from the same release as statusgen — see `install-desk-tools` | **no source in your repo** — a `.assay-versions` pin plus the installed binaries on `PATH`; config at the config-home (`~/.config/assay/`) |
 | **reviewer GitHub App** | The separate review identity (§1a) — attribution, not authorization; `pull_requests: write` with **no** `contents: write` is the *recommendation* (§3 `setup-reviewer-app`) | CORE `setup-reviewer-app` (runbook) | GitHub org/account settings — **not a repo file** |
 | **automation identity** | The account (and/or role Apps) the fleet **runs as** — authors PRs, pushes branches, runs CI, mints tokens. Distinct from the human account (the two-accounts prerequisite). Minimum = one machine account plus the reviewer App it owns; larger fleets *optionally* split it into role Apps (worker / verifier / desk / loop) — a decomposition, **not** a requirement | operator-provisioned (GitHub org/account) | GitHub org/account settings — **not a repo file** |
 | **board-writer GitHub App** | Needed **only** if `main` is branch-protected (§3 `add-statusgen-ci`): a dedicated App with **`contents: write` only**, added to the branch's ruleset bypass so the push-to-main statusgen regen can commit `STATUS.md` past protection. Not needed when protection is off | CORE `add-statusgen-ci` (when protection is on) | GitHub org/account settings + the branch's ruleset bypass — **not a repo file** |
@@ -298,6 +299,30 @@ corrupted digest **fails** (proves the hash check is live, not decorative).
 
 Whichever you pick, **record it** — the per-repo invocation differs by where the tool is rooted,
 and a suite that mixes channels is the inversion this doc exists to stop.
+
+### PRIMITIVE: install-desk-tools — OPTIONAL
+Acquire the desk-role **binaries** — the tools the five desk-role skills drive as their primary path
+(they carry the guards, write-budgets, and roster + trust gates). **Optional**: install this only if
+you run the automated desk pipeline; the desk skills otherwise fall back to raw `gh`/`git`, which
+works but loses the guards. The mechanism is **channel-E, identical to `install-statusgen`** — a
+`.assay-versions` pin plus a sha256-verified download — differing only in that the artifact is a
+`.tar.gz` of binaries, not a single file:
+
+- resolve the paired tag + per-platform sha256 from `plugins/assay/paired-versions.yaml`'s
+  `desk-tools:` section (the desk-tools and statusgen are cut from the **same release**, so they pin
+  the same tag) — **refuse if the pin line for the detected platform is absent**, never guess;
+- `gh release download "$tag" --repo medici-finance/assay --pattern "desk-tools-$platform.tar.gz"`;
+- `shasum -a 256` the tarball → compare to the pinned digest → **refuse on mismatch**;
+- extract and install the binaries to a `bindir` on `PATH`.
+
+Configuration is at the **config-home only** (`~/.config/assay/`) — the same roster file the acting
+tools read everywhere (§3 `configure-roster`, failure mode 1); the environment is never a transport
+for a desk binary.
+
+**Verify:** the desk-tools pin line for the **fully detected platform** exists in `.assay-versions`;
+`deskboard --version` prints (the binaries are on `PATH`) and its `assay-config:` echo shows the
+roster present; a deliberately corrupted digest makes the install **fail** (proves the hash check is
+live).
 
 ### PRIMITIVE: scaffold-streams
 Create the streams tree and one stream README with the required frontmatter + brief table (copy the
