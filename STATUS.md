@@ -21,6 +21,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 |---|---|---|---|
 | desktools-go-git | 01 — inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate | 1 | 4500 |
 | desk-containers | 01 — base image — toolchains, desk-tools, skills, volume | 1 | 3500 |
+| desk-containers | 02 — runtime credential contract + layer-secret scan | 1 | 3500 |
 | statusgen | 02 — issue metrics (`--issues`) | 1 | 1500 |
 | statusgen | 01 — 30-day lint-firing audit — retire cold rules | 1 | 1000 |
 | statusgen | 04 — ladder-position indicator (`--ladder`) | 1 | 1000 |
