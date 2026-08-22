@@ -33,7 +33,7 @@ linked-worktree replacement) is a named follow-on stream, out of scope here. See
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate](brief-01-inventory-and-seam-contract.md) | 1 | L | todo | — | — |
+| 01 | [inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate](brief-01-inventory-and-seam-contract.md) | 1 | L | in-progress | — | — |
 | 02 | [`gitcore` transport + in-process auth (BasicAuth) + go-git pin](brief-02-gitcore-transport-auth.md) | 2 | L | todo | — | — |
 | 03 | [migrate read/plumbing verbs (read-heavy tools)](brief-03-migrate-read-plumbing.md) | 3 | L | todo | — | — |
 | 04 | [migrate `deskpushguard` detection reads (parity + mutation test)](brief-04-migrate-deskpushguard-reads.md) | 3 | M | todo | — | — |
