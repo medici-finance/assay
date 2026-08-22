@@ -43,7 +43,8 @@ files:
   keys `gates:` / `feathers:` documented as OPTIONAL-but-KNOWN with the ref grammar; a
   note that there is deliberately no `status:` key.
 - `docs/streams/graph-repos.yaml` (planned) — schema `graph-repos-v1`, `cell: assay`, the
-  alias registry (`at`, `oit`, `rec`, `ac`, `mp`) per the graph design §3.3.
+  alias registry — one short alias per stream-bearing repo in the cell, the public repo
+  included (e.g. `assay`, `at`, `rec`) — per the graph design §3.3.
 - `docs/dependency-graph-design.md` (planned) — overlay re-stage of the private dependency-graph
   design note, scrubbed for public self-containment, so the reserved keys have a public
   definition to point at.
