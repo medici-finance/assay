@@ -27,6 +27,7 @@ name: leaksweep-pattern
 # gitleaks is MIT; only the CLI is built and run — never the license-gated Action.
 
 on:
+  merge_group:
   pull_request:
     paths:
       - "**"

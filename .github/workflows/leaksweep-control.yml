@@ -43,6 +43,7 @@ name: leaksweep-control
 # Go module proxy, so the build fetches deps normally.
 
 on:
+  merge_group:
   pull_request:
     paths:
       - "**"
