@@ -44,8 +44,11 @@ files:
   args: [brief-v1-to-v2]}`: runs the PINNED statusgen (resolved from `.assay-versions`,
   never `$PATH`) with `--root`; dry-run prints the statusgen dry-run; idempotent.
 - `statusgen/migrate.go` (new) — verb `migrate brief-v1-to-v2 [--dry-run]`: rewrite
-  `schema: brief-v1` → `brief-v2` on every brief; mint `id:` (uuid v4) on every brief that
-  lacks one (spec §8 — minted at migration, once); wrap each stream README's Briefs table in
+  `schema: brief-v1` → `brief-v2` on every brief; rewrite `brief: <stream>/<NN>` →
+  `brief: <cell>:<repo>:<stream>:<NN>` using the tree's `graph-repos.yaml` (refuse, exit 5, if
+  absent — the adopter writes the registry first; the release note says so); add `version: 1`
+  where absent; mint `id:` (uuid v4) on every brief that lacks one (spec §8 — minted at
+  migration, once); wrap each stream README's Briefs table in
   the markers and add `board: generated`; refuse (exit 5) if any README has no
   recognisable table. Prints a per-file plan under `--dry-run`.
 - `migrations/0001-v0.13.0-to-v1.0.0-derived-board.md` (planned) — the first REAL migration — `apply:` =
@@ -90,7 +93,8 @@ facts:
 | 1 | `cd statusgen && go test . -run Migrate -count=1` | `ok` |
 | 2 | `cd tools/desk && go test ./internal/deskkit/ -run 'StatusgenRegen' -count=1 && go test ./internal/deskkit/ -run 'Migrat' -count=1` | `ok` |
 | 3 | `cd tools/desk && go run ./cmd/deskmigrate --from v0.13.0 --to v1.0.0 --root ../../examples/adopter-scaffold --dry-run; echo rc=$?` | `rc=0`; output lists `0001-v0.13.0-to-v1.0.0`; `git status --porcelain examples/ \| wc -l` → `0` (dry-run wrote nothing) |
-| 4 | `rm -rf "$TMPDIR/adopt" && cp -r examples/adopter-scaffold "$TMPDIR/adopt" && cd tools/desk && go run ./cmd/deskmigrate --from v0.13.0 --to v1.0.0 --root "$TMPDIR/adopt" && go run ./cmd/deskmigrate --from v0.13.0 --to v1.0.0 --root "$TMPDIR/adopt"; echo rc=$?; grep -c 'schema: brief-v2' "$TMPDIR"/adopt/docs/streams/example-service/*.md` | `rc=0` twice (idempotent); every brief `1` |
+| 4 | `rm -rf "$TMPDIR/adopt" && cp -r examples/adopter-scaffold "$TMPDIR/adopt" && cd tools/desk && go run ./cmd/deskmigrate --from v0.13.0 --to v1.0.0 --root "$TMPDIR/adopt" && go run ./cmd/deskmigrate --from v0.13.0 --to v1.0.0 --root "$TMPDIR/adopt"; echo rc=$?; grep -c 'schema: brief-v2' "$TMPDIR"/adopt/docs/streams/example-service/*.md; grep -c -E '^brief: [a-z0-9-]+:[a-z0-9-]+:example-service:0[12]$' "$TMPDIR"/adopt/docs/streams/example-service/*.md; grep -c '^version: 1' "$TMPDIR"/adopt/docs/streams/example-service/*.md` | `rc=0` twice (idempotent); every brief `1` on all three greps |
+| 4b | `rm -rf "$TMPDIR/adopt2" && cp -r examples/adopter-scaffold "$TMPDIR/adopt2" && rm "$TMPDIR/adopt2/docs/streams/graph-repos.yaml" && cd tools/desk && go run ./cmd/deskmigrate --from v0.13.0 --to v1.0.0 --root "$TMPDIR/adopt2"; echo rc=$?` | `rc=5`; stderr names `graph-repos.yaml` (registry required before ids can be rewritten) |
 | 5 | `printf 'statusgen v1.0.0 aaaa\ndesk-tools-linux-amd64 v0.13.0 bbbb\n' > "$TMPDIR/adopt/.assay-versions" && statusgen --root "$TMPDIR/adopt" --lint; echo rc=$?` | `rc=1`; output contains `artifact tags differ` |
 | 6 | `cd tools/desk && go build -ldflags '-X main.version=v0.13.0' -o "$TMPDIR/deskboard-old" ./cmd/deskboard && "$TMPDIR/deskboard-old" --root "$TMPDIR/adopt"; echo rc=$?` | `rc=6`; stderr contains `tree is brief-v2` |
 | 7 | `python3 -c "import json,yaml;p=json.load(open('plugins/assay/.claude-plugin/plugin.json'))['version'];y=yaml.safe_load(open('plugins/assay/paired-versions.yaml'));assert p==y['plugin']=='1.0.0' and y['statusgen']['tag']=='v1.0.0';print('ok')"` | `ok` |

@@ -41,7 +41,10 @@ files:
 - `docs/desk-tools/deskpr.md` (planned) — document the trailer and the refusal.
 
 facts:
-- Trailer grammar: a line `Brief: <stream>/<NN>` (one brief per PR; shards of a
+- Trailer grammar: a line `Brief: <cell>:<repo>:<stream>:<NN>` — full form preferred; the
+  elided forms `<repo>:<stream>:<NN>` and `<stream>:<NN>` resolve against the repo's
+  `graph-repos.yaml` (planned, brief 01); the brief-v1 `<stream>/<NN>` form is accepted on
+  read during the migration window (one brief per PR; shards of a
   `parallel-streams:` brief all name the parent) or `Issue: #<N>` (issue-only work).
   Anywhere in the body; first match wins; a second `Brief:` line is a refusal.
 - `Closes #N` / `Refs #N` keep their GitHub meaning and are NOT the link — a PR may close

@@ -53,8 +53,11 @@ facts:
 - The private copies are the newer text; the public tree is the release home. Re-stage is
   an overlay, never a mirror, and public content must be self-contained (no private issue
   numbers, internal slugs, withheld paths) — scrub while overlaying.
-- brief-v2 frontmatter = brief-v1 + `schema: brief-v2` + the reserved keys. No field is
-  removed. `status:` is explicitly NOT a field (spec §3).
+- brief-v2 frontmatter = brief-v1 + `schema: brief-v2` + hierarchical `brief:`
+  (`<cell>:<repo>:<stream>:<NN>`) + `version: <int>` + the reserved keys. No field is
+  removed. `status:` is explicitly NOT a field (spec §3). The registry
+  `docs/streams/graph-repos.yaml` (planned) is required in a v2 tree because it supplies
+  the cell and repo-alias segments.
 - The lifecycle vocabulary is exactly: `todo`, `in-progress`, `implemented`, `verified`,
   `done`, `blocked`, `unknown`. `unknown` carries a reason in parentheses on the board.
 - Rule 30's three-state table stays; this brief adds the rows for `in-progress` /
@@ -75,7 +78,9 @@ facts:
 2. Amend `brief-rules.md`: generalize rule 30 (table per spec §2, including `unknown`);
    add the trailer rule and the generated-table single-writer rule as numbered rules in
    §"Derived status cells"; add the stream README table to §"Derived surfaces".
-3. Amend `brief-template.md`: `schema: brief-v2`; document `gates:` / `feathers:` and the
+3. Amend `brief-template.md`: `schema: brief-v2`; `brief: <cell>:<repo>:<stream>:<NN>` with
+   the elision grammar for references; `version: 1` with the bump rule and the
+   witness-records-version rule (spec §5); document `gates:` / `feathers:` and the
    ref grammar verbatim from the graph design §3.3–3.4 (reserved: parsed and validated,
    not yet gating); document the Loom-reserved identity keys — `id:` (uuid), `supersedes: []`,
    Verify-row `id`/`target` — per spec §5; add the "no `status:` key" note with the one-line
@@ -89,7 +94,8 @@ facts:
 | 1 | `grep -c '^schema: brief-v2' docs/brief-template.md` | `1` |
 | 2 | `grep -c -E -e '^[\|] `todo`' -e '^[\|] `in-progress`' -e '^[\|] `implemented`' -e '^[\|] `verified`' -e '^[\|] `done`' -e '^[\|] `blocked`' -e '^[\|] `unknown`' docs/brief-rules.md` | `7` (one derivation row per lifecycle cell) |
 | 3 | `grep -n -E 'Brief: <stream>/<NN>' docs/brief-rules.md` | at least one match inside §"Derived status cells" |
-| 4 | `grep -c -E -e '^gates:' -e '^feathers:' -e '^id:' -e '^supersedes:' docs/brief-template.md` | `4` (all reserved keys documented in the template block) |
+| 4 | `grep -c -E -e '^gates:' -e '^feathers:' -e '^id:' -e '^supersedes:' -e '^version:' docs/brief-template.md` | `5` (all new/reserved keys documented in the template block) |
+| 4b | `grep -c -E '^brief: <cell>:<repo>:<stream>:<NN>' docs/brief-template.md` | `1` |
 | 5 | `grep -c 'status:' docs/brief-template.md` | matches only the "no `status:` key" note (inspect: exactly 1 line, and it is the note) |
 | 6 | `python3 -c "import yaml,sys;d=yaml.safe_load(open('docs/streams/graph-repos.yaml'));assert d['schema']=='graph-repos-v1' and d['cell'] and d['repos'];print('ok')"` | `ok` |
 | 7 | `diff <(sed -n '1,20p' docs/brief-rules.md) <(git show origin/main:docs/brief-rules.md \| sed -n '1,20p'); wc -l docs/brief-rules.md` | line count ≥ 768 (re-stage brought the private text across) |

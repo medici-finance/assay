@@ -69,7 +69,25 @@ those keys now**: parsed, type-checked, and lint-validated, gating behaviour def
 the graph stream. Reserving them costs one parser stanza; adding them later costs a
 brief-v3 and a second migration. Concretely, brief-v2 =
 
-- brief-v1 frontmatter, unchanged;
+- **`brief:` becomes hierarchical — `<cell>:<repo>:<stream>:<NN>`** (ruling 2026-08-22; the
+  field keeps its name). Example: `assay:assay:derived-board:01` for this brief — cell
+  `assay`, repo alias `assay` (the public repo), stream, number. The cell and repo alias come
+  from `docs/streams/graph-repos.yaml` (planned), which becomes REQUIRED in a v2 tree; `--lint`
+  PROBLEMs a `brief:` whose cell/repo do not match the registry or whose stream/NN do not
+  match the file path. References elsewhere (`depends`, `unblocks`, `gates.on`, the `Brief:`
+  PR trailer) accept the full form and the elided forms (`<stream>:<NN>`, `<repo>:<stream>:<NN>`
+  — each omitted prefix means "same as the declaring brief"); the file's own `brief:` is
+  always the full form, so a brief is self-identifying when read outside its repo. The `/`
+  separator of brief-v1 (`<stream>/<NN>`) is accepted on READ for the migration window and
+  rewritten by the migration; v2 lint PROBLEMs it in a v2 file.
+- **`version: <int>`** (ruling 2026-08-22) — the brief's own revision, `1` at authoring, bumped
+  by every edit to Task or Verify after first dispatch (re-baselines bump it). Evidence and
+  witness rows record the `version` they were run against, so a witness for version 2 of a
+  brief whose Verify table is now version 3 renders as `unknown (witness for v2, brief is v3)`
+  instead of `verified` — the stale-Verify-artifact class becomes visible on the board instead
+  of in a verifier's could-not-check note. `--lint` PROBLEMs a Task/Verify diff on a branch
+  whose `version` did not change.
+- the rest of brief-v1's frontmatter, unchanged;
 - `schema: brief-v2` required on every brief in a v2 tree (`--lint` PROBLEM otherwise —
   the fail-closed property the graph design wanted from a version bump: an old pinned
   statusgen REFUSES a v2 tree instead of silently ignoring it);
@@ -119,4 +137,5 @@ drives the first; the rollout brief drives the second, repo by repo.
 | Schedule cadence for the reconcile PR and its noise floor | 04 |
 | Which desk tools are "brief-reading" and need the refusal | 06 |
 | Whether the cross-repo feathering table is generated in this stream or the graph stream | deferred to the graph stream; brief-v2 only reserves the key |
+| Whether cross-repo refs in `depends:` (now expressible) are GATING in v2 or reserved like `gates:` | 03 (proposed: reserved — parsed, validated, reported; gating stays with the graph stream) |
 | Whether `id:` is minted for the 400+ existing briefs at migration time or lazily | 06 (proposed: minted by the migration op — a uuid added later is a uuid with no history) |

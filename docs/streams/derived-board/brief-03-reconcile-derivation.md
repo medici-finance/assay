@@ -34,7 +34,12 @@ consumers:
 
 ## Context
 files:
-- `statusgen/brieffile.go` — accept `schema: brief-v2`; parse `gates:` / `feathers:` into
+- `statusgen/brieffile.go` — accept `schema: brief-v2`; parse the hierarchical `brief:`
+  (`<cell>:<repo>:<stream>:<NN>`) and validate cell/repo against `graph-repos.yaml` and
+  stream/NN against the path; resolve elided refs; parse `version:` (int ≥ 1) and PROBLEM a
+  Task/Verify diff without a bump (needs the merge-base — same plumbing the existing
+  Status-transition lint uses); witness rows carry `version`, and the lifecycle fold demotes
+  a witness whose version ≠ the brief's to `unknown (witness for vN, brief is vM)`; parse `gates:` / `feathers:` into
   typed structs; parse `id:` (uuid v4 shape, PROBLEM on duplicate ids across the tree),
   `supersedes:` (refs, validated), Verify-row `id`/`target`; validate refs against the §3.3 grammar and `docs/streams/graph-repos.yaml` (planned) — created by brief 01;
   PROBLEM on unknown edge `type`; gating behaviour NOT implemented (reserved).
