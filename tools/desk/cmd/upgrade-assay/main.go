@@ -61,6 +61,17 @@
 //	            could-not — never a nearest-match guess)
 //	9  refused: the target resolves but its artifacts are unavailable (an older
 //	            release pruned from the cache and no longer fetchable)
+//	10 refused: a local write to .assay-versions failed (a filesystem refusal in
+//	            the adopter's own repo — not an artifacts-availability problem)
+//
+// APPLY ORDER — migrations first, re-pin last. apply() runs the in-span migrations
+// BEFORE advancing the version marker in .assay-versions, and re-pins only once they
+// all succeed. This keeps a mid-migration failure recoverable: the marker stays at
+// `from`, so a re-run re-selects and retries the outstanding migrations (they are
+// idempotent) rather than reading a marker already advanced to `target` and taking
+// the "already at" no-op — which would strand the half-done work permanently. That
+// stranding is exactly the "corrupts state rather than failing" outcome this command
+// exists to avoid.
 package main
 
 import (
@@ -90,6 +101,7 @@ const (
 	exitWrongVersionKind = 7                        // 7  not a bare umbrella version
 	exitUnknownTarget    = 8                        // 8  no such published umbrella
 	exitArtifactsGone    = 9                        // 9  target resolves, artifacts unavailable
+	exitLocalWriteFailed = 10                       // 10 a local write to .assay-versions failed
 )
 
 const usage = `upgrade-assay — move an adopter to latest-stable or a named umbrella version.
@@ -106,7 +118,8 @@ verbs:
   whole umbrella, never one artifact. Bare umbrella versions only.
 
 exit: 0 ok/dry-run/already-at · 5 inconsistent · 6 undetermined ·
-      7 not-a-bare-umbrella · 8 no-such-release · 9 artifacts-unavailable
+      7 not-a-bare-umbrella · 8 no-such-release · 9 artifacts-unavailable ·
+      10 local-write-failed
 
 There is no rollback: the platform has no downgrade verb and prunes cached prior
 versions after ~14 days. Moving to an older named version re-points and
@@ -287,9 +300,18 @@ func dryRunReport(stdout io.Writer, root, from, target string, forward bool, del
 	return exitOK
 }
 
-// apply performs the move for real against the adopter repo: re-pin .assay-versions,
-// run the migrations, then print the marketplace re-resolve command the adopter runs
-// (this tool never executes it).
+// apply performs the move for real against the adopter repo: run the migrations,
+// then — only once they all succeed — re-pin .assay-versions, and finally print the
+// marketplace re-resolve command the adopter runs (this tool never executes it).
+//
+// ORDER MATTERS: migrations run BEFORE the version marker is advanced. If a migration
+// fails part-way (an I/O error mid-append, or a later step of a multi-step span), we
+// return non-zero with the marker still at `from`, so a re-run re-selects and retries
+// the outstanding work — the ensure-line steps are idempotent, so the completed ones
+// no-op. Re-pinning first would advance the marker past `from`; a re-run would then
+// read `from == target` and take the "already at … nothing to do" no-op, stranding
+// the half-done migration permanently. That is the "corrupts state rather than
+// failing" outcome this command exists to avoid.
 func apply(stdout, stderr io.Writer, root, relDir, from, target string, forward bool, deltas []delta, selected []deskkit.Migration, toComp deskkit.Composition) int {
 	fmt.Fprintf(stdout, "upgrade-assay: moving umbrella %s -> %s.\n", from, target)
 	if !forward {
@@ -297,18 +319,15 @@ func apply(stdout, stderr io.Writer, root, relDir, from, target string, forward 
 	}
 	printDeltas(stdout, deltas)
 
-	if err := repin(root, relDir, target, toComp); err != nil {
-		fmt.Fprintf(stderr, "upgrade-assay: refusing — could not re-pin .assay-versions: %v\n", err)
-		return exitArtifactsGone
-	}
-	fmt.Fprintf(stdout, "re-pinned %s to umbrella %s and its artifact tags.\n", deskkit.AssayVersionsFile, target)
-
+	// ── Migrations FIRST — the marker stays at `from` until every migration commits,
+	// so a mid-migration failure is recoverable by a re-run rather than stranded.
 	if len(selected) == 0 {
 		fmt.Fprintln(stdout, "migrations: none for this span (a clean no-op).")
 	} else {
 		actions, err := deskkit.RunMigrations(root, selected, false)
 		if err != nil {
 			fmt.Fprintln(stderr, err.Error())
+			fmt.Fprintf(stderr, "upgrade-assay: refusing — a migration failed before the version marker was advanced; %s still reads %s, so re-running retries the outstanding migrations (nothing was re-pinned).\n", deskkit.AssayVersionsFile, from)
 			return deskkit.ExitCodeOf(err)
 		}
 		fmt.Fprintf(stdout, "migrations applied (%d):\n", len(selected))
@@ -316,6 +335,14 @@ func apply(stdout, stderr io.Writer, root, relDir, from, target string, forward 
 			fmt.Fprintf(stdout, "  [%s] %s\n", a.Migration, a.Desc)
 		}
 	}
+
+	// ── Re-pin LAST — advance the version marker only now that the migrations have
+	// all committed.
+	if err := repin(root, relDir, target, toComp); err != nil {
+		fmt.Fprintf(stderr, "upgrade-assay: refusing — the migrations applied but the local write to %s failed: %v\n", deskkit.AssayVersionsFile, err)
+		return exitLocalWriteFailed
+	}
+	fmt.Fprintf(stdout, "re-pinned %s to umbrella %s and its artifact tags.\n", deskkit.AssayVersionsFile, target)
 
 	printReleaseNotes(stdout, from, target, selected)
 	printReresolve(stdout, target)

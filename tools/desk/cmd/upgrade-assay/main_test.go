@@ -156,6 +156,75 @@ func TestApplyThenIdempotent(t *testing.T) {
 	}
 }
 
+// TestApplyMigrationFailureDoesNotStrand is the regression guard for the apply
+// ordering: migrations run BEFORE the version marker is advanced, so a migration that
+// fails part-way leaves the marker at `from` and a re-run retries the outstanding
+// work — it never strands a half-done migration behind an "already at" no-op.
+//
+// It drives a two-step migration whose first ensure-line succeeds and whose second
+// escapes root (a refusal RunMigrations surfaces mid-span). The apply must exit
+// non-zero AND leave .assay-versions still at v0.12.0 (NOT advanced to the target).
+// Under the pre-fix order (re-pin first) the marker would already read v0.13.0 here,
+// and a re-run would take the no-op and strand the migration — so this asserts the
+// marker was not advanced past a half-done migration. Correcting the migration and
+// re-running then completes the move, proving the run was recoverable, not stranded.
+func TestApplyMigrationFailureDoesNotStrand(t *testing.T) {
+	root := writeFixture(t)
+	migPath := filepath.Join(root, "migrations/0001-v0.12.0-to-v0.13.0.md")
+
+	// A migration whose first step is a valid in-root ensure-line and whose second
+	// step escapes root — RunMigrations does step one, then refuses step two.
+	failing := "---\nid: \"0001\"\nfrom: v0.12.0\nto: v0.13.0\n" +
+		"apply:\n" +
+		"  - ensure-line:\n      file: docs/step1.txt\n      text: \"v0.13.0: step one done\"\n" +
+		"  - ensure-line:\n      file: ../escape.txt\n      text: \"must never be written\"\n" +
+		"---\n\n# What changed\n\nMid-apply-failure fixture.\n"
+	if err := os.WriteFile(migPath, []byte(failing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out := run2(t, "--root", root, "--to", "v0.13.0")
+	if code == exitOK {
+		t.Fatalf("apply with a mid-span migration failure must not exit 0; got out=%q", out)
+	}
+
+	// The marker must NOT have advanced: a re-run has to be able to retry.
+	pin, _ := os.ReadFile(filepath.Join(root, ".assay-versions"))
+	if !strings.Contains(string(pin), "assay v0.12.0") {
+		t.Fatalf("marker must stay at v0.12.0 after a mid-apply failure (else a re-run strands the migration); got %q", string(pin))
+	}
+	if strings.Contains(string(pin), "assay v0.13.0") {
+		t.Fatalf("marker must NOT be advanced to the target after a mid-apply failure; got %q", string(pin))
+	}
+	// The escaping step must not have written outside root.
+	if _, err := os.Stat(filepath.Join(root, "..", "escape.txt")); err == nil {
+		t.Fatalf("escaping ensure-line must not write outside root")
+	}
+
+	// Recovery: correct the migration (drop the escaping step) and re-run. Because the
+	// marker was preserved at v0.12.0, the span is re-selected and completes; the
+	// already-applied step one is idempotent, so it no-ops.
+	fixed := "---\nid: \"0001\"\nfrom: v0.12.0\nto: v0.13.0\n" +
+		"apply:\n" +
+		"  - ensure-line:\n      file: docs/step1.txt\n      text: \"v0.13.0: step one done\"\n" +
+		"---\n\n# What changed\n\nCorrected fixture.\n"
+	if err := os.WriteFile(migPath, []byte(fixed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out = run2(t, "--root", root, "--to", "v0.13.0")
+	if code != exitOK {
+		t.Fatalf("re-run after correcting the migration must complete; got exit %d, out=%q", code, out)
+	}
+	pin, _ = os.ReadFile(filepath.Join(root, ".assay-versions"))
+	if !strings.Contains(string(pin), "assay v0.13.0") {
+		t.Fatalf("re-run must advance the marker to the target once migrations succeed; got %q", string(pin))
+	}
+	step1, _ := os.ReadFile(filepath.Join(root, "docs/step1.txt"))
+	if !strings.Contains(string(step1), "v0.13.0: step one done") {
+		t.Fatalf("outstanding migration work must be present after recovery; got %q", string(step1))
+	}
+}
+
 // snapshot returns a stable string of every file path+content under root, for
 // before/after equality checks.
 func snapshot(t *testing.T, root string) string {
