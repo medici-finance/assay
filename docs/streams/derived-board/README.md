@@ -81,7 +81,7 @@ Path: `01 → 03 → 04 → 06 → 07`, with `02 → 03` joining at wave 1 and `
 ## Shared conventions
 
 - Every brief here is a toolkit brief: code under `statusgen/` and `tools/desk/`, docs under
-  `docs/`, skills under `plugins/assay/skills/`. The private assay-toolkit copies of the skills
+  `docs/`, skills under `plugins/assay/skills/`. The private toolkit's copies of the skills
   and spec docs are consumers (`consumers:` lists them; re-stage is overlay, never mirror).
 - Three-state instrument invariant (brief-rules §"Three-state instrument invariant") binds
   every derived cell: a cell is `todo`/`in-progress`/`implemented`/`verified`/`done` **only

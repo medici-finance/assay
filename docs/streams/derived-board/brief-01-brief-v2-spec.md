@@ -19,14 +19,14 @@ authored: 2026-08-22 by derived-board scoping session
 sources:
   - "docs/streams/derived-board/spec.md §2, §3, §5 — the derivation table, what stays hand-written, brief-v2 contents"
   - "docs/brief-rules.md rule 30 (Derived status cells) — the principle this brief generalizes"
-  - "Loom substrate design §4.1, §4.4 (private platform repo) — the object header (id, supersedes) and the Verify-row id/target fields reserved here so the substrate needs no brief-v3"
+  - "an internal substrate design note (private upstream repo) §4.1, §4.4 — the object header (id, supersedes) and the Verify-row id/target fields reserved here so that design needs no brief-v3"
   - "private dependency-graph design note §3.3, §3.4, §3.6 — the keys and ref grammar reserved under brief-v2, and the open v1-keys-vs-v2 question this resolves (re-staged publicly by this brief)"
   - "freshness-checked 2026-08-22 @ f78ea24 — public docs/brief-rules.md is 629 lines vs 768 private; docs/brief-template.md 98 vs 138"
 exec-tier: strong
 exec-tier-why: spec text that every downstream implementer and lint derives from; rule wording must be exact and must not contradict rules 30/31/36
 consumers:
-  - "assay-toolkit docs/brief-rules.md: follow-up derived-board/07 (private re-stage lands with the rollout)"
-  - "assay-toolkit docs/brief-template.md: follow-up derived-board/07"
+  - "private toolkit docs/brief-rules.md: follow-up derived-board/07 (private re-stage lands with the rollout)"
+  - "private toolkit docs/brief-template.md: follow-up derived-board/07"
   - "plugins/assay/skills/author-brief/SKILL.md (template block): follow-up derived-board/05"
 ---
 
@@ -82,7 +82,7 @@ facts:
    the elision grammar for references; `version: 1` with the bump rule and the
    witness-records-version rule (spec §5); document `gates:` / `feathers:` and the
    ref grammar verbatim from the graph design §3.3–3.4 (reserved: parsed and validated,
-   not yet gating); document the Loom-reserved identity keys — `id:` (uuid), `supersedes: []`,
+   not yet gating); document the substrate-reserved identity keys — `id:` (uuid), `supersedes: []`,
    Verify-row `id`/`target` — per spec §5; add the "no `status:` key" note with the one-line
    reason.
 4. Add the alias registry `docs/streams/graph-repos.yaml` (planned).
@@ -100,7 +100,7 @@ facts:
 | 6 | `python3 -c "import yaml,sys;d=yaml.safe_load(open('docs/streams/graph-repos.yaml'));assert d['schema']=='graph-repos-v1' and d['cell'] and d['repos'];print('ok')"` | `ok` |
 | 7 | `diff <(sed -n '1,20p' docs/brief-rules.md) <(git show origin/main:docs/brief-rules.md \| sed -n '1,20p'); wc -l docs/brief-rules.md` | line count ≥ 768 (re-stage brought the private text across) |
 | 8 | `statusgen --root . --lint` | exit 0 — docs-only change, no brief flipped to v2 yet |
-| 9 | `! grep -rn -E -e 'assay-toolkit#[0-9]+' -e 'jojig-dao/' docs/brief-rules.md docs/brief-template.md docs/dependency-graph-design.md` | exit 0 (no private issue refs leaked by the overlay) |
+| 9 | `! grep -rn -E -e '[a-z0-9-]+/[a-z0-9-]+#[0-9]+' -e '[a-z0-9-]+#[0-9]{3,}' -e 'github\.com/[a-z0-9-]+/[a-z0-9-]+/issues/' -e 'github\.com/[a-z0-9-]+/[a-z0-9-]+/pull/' docs/brief-rules.md docs/brief-template.md docs/dependency-graph-design.md` | exit 0 (no repo-qualified issue/PR refs of any org leaked by the overlay — the shape is checked, not a literal list) |
 
 ## Evidence
 <!-- appended at implementation time -->

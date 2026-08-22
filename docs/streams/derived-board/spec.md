@@ -72,7 +72,8 @@ brief-v3 and a second migration. Concretely, brief-v2 =
 - **`brief:` becomes hierarchical — `<cell>:<repo>:<stream>:<NN>`** (ruling 2026-08-22; the
   field keeps its name). Example: `assay:assay:derived-board:01` for this brief — cell
   `assay`, repo alias `assay` (the public repo), stream, number. The cell and repo alias come
-  from `docs/streams/graph-repos.yaml` (planned), which becomes REQUIRED in a v2 tree; `--lint`
+  from `docs/streams/graph-repos.yaml` (planned), which becomes REQUIRED in a v2 tree (RULED
+  2026-08-22: the repo segment is the registry ALIAS, never `owner/name`); `--lint`
   PROBLEMs a `brief:` whose cell/repo do not match the registry or whose stream/NN do not
   match the file path. References elsewhere (`depends`, `unblocks`, `gates.on`, the `Brief:`
   PR trailer) accept the full form and the elided forms (`<stream>:<NN>`, `<repo>:<stream>:<NN>`
@@ -96,7 +97,7 @@ brief-v3 and a second migration. Concretely, brief-v2 =
   and `docs/streams/graph-repos.yaml` (planned) (`schema: graph-repos-v1`) as the alias registry;
 - the stream README's Briefs table is generated between markers; the README frontmatter
   gains `board: generated`;
-- **reserved from the Loom substrate design** (its §4.4 reaches the same conclusion —
+- **reserved from an internal substrate design** (its §4.4 reaches the same conclusion —
   status is a fold over facts, not a field — and names the identity fields a lifecycle
   store needs): `id:` (a uuid minted once at authoring, never reused; the stable key a
   fact log or an executor can reference across renames and re-homes), `supersedes: []`
@@ -137,5 +138,5 @@ drives the first; the rollout brief drives the second, repo by repo.
 | Schedule cadence for the reconcile PR and its noise floor | 04 |
 | Which desk tools are "brief-reading" and need the refusal | 06 |
 | Whether the cross-repo feathering table is generated in this stream or the graph stream | deferred to the graph stream; brief-v2 only reserves the key |
-| Whether cross-repo refs in `depends:` (now expressible) are GATING in v2 or reserved like `gates:` | 03 (proposed: reserved — parsed, validated, reported; gating stays with the graph stream) |
+| Whether cross-repo refs in `depends:` (now expressible) are GATING in v2 or reserved like `gates:` | RULED 2026-08-22: reserved — parsed, validated, reported; gating stays with the graph stream (03) |
 | Whether `id:` is minted for the 400+ existing briefs at migration time or lazily | 06 (proposed: minted by the migration op — a uuid added later is a uuid with no history) |
