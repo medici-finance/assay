@@ -1,0 +1,11 @@
+{
+  "refs": {
+    "refs/heads/main": "e5921aa5f6509229af1a9d240db9443eb6db5c4e"
+  },
+  "files": {
+    "second.txt": "second",
+    "seed.txt": "seed"
+  },
+  "val": "e5921aa5f6509229af1a9d240db9443eb6db5c4e",
+  "err": "none"
+}
