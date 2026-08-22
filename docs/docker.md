@@ -66,3 +66,41 @@ image.
 - `.github/workflows/docker-publish.yml` builds the image and pushes to GHCR.
   It runs on a `desk-tools/v*` tag push, or via `workflow_dispatch` (with a
   `dry_run` option that builds without publishing).
+
+# Desk images
+
+The `desk-tools` image above carries the *binaries*. Running a whole **desk**
+interactively (a session that boots into a desk's skill, with the toolchains and
+the assay plugin on hand) uses a separate family of images under
+[`containers/`](../containers/), all built from one shared **base image**.
+
+## The base image
+
+`containers/base/Dockerfile` is the shared base every per-desk image builds
+`FROM`. It carries:
+
+- the **Go toolchain** (pinned to `tools/desk/go.mod`) and **Python 3 + pip**;
+- **git**, the **`gh` CLI**, and **CA certificates**;
+- the **desk-tools suite + `statusgen`**, reused via
+  `COPY --from=ghcr.io/medici-finance/assay/desk-tools` (not recompiled);
+- the **assay plugin** (skills, commands, hooks) baked from `plugins/assay/` to
+  `/opt/assay/plugin`;
+- a first-run installer for the **interactive agent CLI** (installed into the
+  persistent volume rather than baked — see `containers/README.md`);
+- a **non-root `desk` user** and a declared **`VOLUME /work`** for persistent
+  working state.
+
+It is a **glibc** base (`debian:bookworm-slim`), not Alpine, because the agent
+CLI and Python wheels need glibc; the reused desk-tools binaries are static and
+run on it unchanged. **No credential of any kind is ever baked into the image** —
+credentials arrive at runtime only.
+
+Build it locally (from the repo root — the context is the repo root because the
+image bakes `plugins/assay/`):
+
+```sh
+docker build -f containers/base/Dockerfile -t assay-desk-base:dev .
+```
+
+See [`containers/README.md`](../containers/README.md) for the full layout, the
+distro and agent-CLI decisions, the `/work` layout, and the no-secrets rule.
