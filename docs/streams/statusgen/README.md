@@ -43,4 +43,4 @@ other brief is independent and self-contained.
 ## Conventions
 - `statusgen --lint-audit` reports 30-day per-rule firing counts; COLD (0-firing,
   un-tested) rules are retirement candidates — retirement stays a human call. Implemented
-  by statusgen/01, PR <link>.
+  by statusgen/01, PR #78.
