@@ -78,8 +78,9 @@ brief-v3 and a second migration. Concretely, brief-v2 =
 - **`brief:` becomes hierarchical — `<cell>:<repo>:<stream>:<NN>`** (authoring proposal, 2026-08-22,
   pending ratification by the human's merge of this stream; the field keeps its name). Example: `assay:assay:derived-board:01` for this brief — cell
   `assay`, repo alias `assay` (the public repo), stream, number. The cell and repo alias come
-  from `docs/streams/graph-repos.yaml` (planned), which becomes REQUIRED in a v2 tree (proposal: the
-  repo segment is the registry ALIAS, never `owner/name` — pending the same ratification); `--lint`
+  from `docs/streams/graph-repos.yaml` (planned), which becomes REQUIRED in a v2 tree (the repo
+  segment is the registry ALIAS, never `owner/name` — ruled by the human, 2026-08-22:
+  https://github.com/medici-finance/assay/pull/71#issuecomment-5381058997); `--lint`
   PROBLEMs a `brief:` whose cell/repo do not match the registry or whose stream/NN do not
   match the file path. References elsewhere (`depends`, `unblocks`, `gates.on`, the `Brief:`
   PR trailer) accept the full form and the elided forms (`<stream>:<NN>`, `<repo>:<stream>:<NN>`
@@ -144,5 +145,5 @@ drives the first; the rollout brief drives the second, repo by repo.
 | Schedule cadence for the reconcile PR and its noise floor | 04 |
 | Which desk tools are "brief-reading" and need the refusal | 06 |
 | Whether the cross-repo feathering table is generated in this stream or the graph stream | deferred to the graph stream; brief-v2 only reserves the key |
-| Whether cross-repo refs in `depends:` (now expressible) are GATING in v2 or reserved like `gates:` | 03 (proposal: reserved — parsed, validated, reported; gating stays with the graph stream — pending ratification) |
+| Whether cross-repo refs in `depends:` (now expressible) are GATING in v2 or reserved like `gates:` | 03 — ruled by the human, 2026-08-22 (https://github.com/medici-finance/assay/pull/71#issuecomment-5381058997): reserved — parsed, validated, reported; gating stays with the graph stream |
 | Whether `id:` is minted for the 400+ existing briefs at migration time or lazily | 06 (proposed: minted by the migration op — a uuid added later is a uuid with no history) |
