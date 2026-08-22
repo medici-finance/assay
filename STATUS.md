@@ -11,8 +11,8 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-21 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-21 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-22 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-22 |  |
 
 ## Next up
 
