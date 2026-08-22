@@ -23,7 +23,7 @@ findings-register state machine.
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [30-day lint-firing audit — retire cold rules](brief-01-lint-firing-audit.md) | 1 | S | todo | — | — |
+| 01 | [30-day lint-firing audit — retire cold rules](brief-01-lint-firing-audit.md) | 1 | S | in-progress | — | — |
 | 02 | [issue metrics (`--issues`)](brief-02-issue-metrics.md) | 1 | L | todo | — | — |
 | 03 | [self-improvement metric (self-healed vs human-touched)](brief-03-self-improvement-metric.md) | 2 | M | todo | — | — |
 | 04 | [ladder-position indicator (`--ladder`)](brief-04-ladder-position-indicator.md) | 1 | S | todo | — | — |
