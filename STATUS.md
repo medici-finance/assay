@@ -11,6 +11,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-22 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-22 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-22 |  |
 
@@ -19,6 +20,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | desktools-go-git | 01 — inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate | 1 | 4500 |
+| desk-containers | 01 — base image — toolchains, desk-tools, skills, volume | 1 | 3500 |
 | statusgen | 02 — issue metrics (`--issues`) | 1 | 1500 |
 | statusgen | 01 — 30-day lint-firing audit — retire cold rules | 1 | 1000 |
 | statusgen | 04 — ladder-position indicator (`--ladder`) | 1 | 1000 |
@@ -50,6 +52,16 @@ _None._
 
 ## Incomplete briefs
 
+### desk-containers (7 open)
+
+- 01 base image — toolchains, desk-tools, skills, volume — todo (wave 1)
+- 02 runtime credential contract + layer-secret scan — todo (wave 1)
+- 03 per-desk images + build matrix + publish wiring — todo (wave 2)
+- 04 interactive launch script `desk-run.sh` — todo (wave 3)
+- 05 docker-compose definition — todo (wave 3)
+- 06 Kubernetes manifests — todo (wave 3)
+- 07 multi-desk control layer — tmux/equivalents, macOS + win32 — todo (wave 4)
+
 ### desktools-go-git (8 open)
 
 - 01 inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate — todo (wave 1)
@@ -78,4 +90,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**2** streams (**2** active, **0** paused) · **0/14** briefs done · completed initiatives: see `docs/archive/`
+**3** streams (**3** active, **0** paused) · **0/21** briefs done · completed initiatives: see `docs/archive/`
