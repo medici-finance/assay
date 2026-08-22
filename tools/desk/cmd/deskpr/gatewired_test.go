@@ -24,7 +24,7 @@ func TestPublicRepoGateWired(t *testing.T) {
 			return deskkit.Refused("public-repo gate: " + owner + "/" + repo + " is public with no +1")
 		}
 
-		rc := run([]string{"create", "--title", "Test PR", "--body-min", "body"})
+		rc := run([]string{"create", "--title", "Test PR", "--body-min", "Brief: fixture/01\nbody"})
 		if rc != deskkit.ExitUnverifiable {
 			t.Fatalf("create on public repo rc = %d, want 6 (unverifiable)", rc)
 		}
@@ -108,7 +108,7 @@ func TestPublicRepoGateWired(t *testing.T) {
 			return deskkit.Unverifiable("public-repo gate: no issue/PR number", nil)
 		}
 
-		if rc := run([]string{"create", "--title", "Test PR", "--body-min", "body"}); rc != deskkit.ExitUnverifiable {
+		if rc := run([]string{"create", "--title", "Test PR", "--body-min", "Brief: fixture/01\nbody"}); rc != deskkit.ExitUnverifiable {
 			t.Fatalf("create rc = %d, want 6 (unverifiable)", rc)
 		}
 		if gotIssue != 0 {

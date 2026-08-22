@@ -17,7 +17,15 @@
   },
   "deskpr-create/branch-checked-out": {
     "stage": "reached-remote",
-    "note": "THE HARNESS'S OWN CONTROL for deskpr: local preconditions satisfied, body scanned clean, worker token minted, PR list read, rate limit passed, stopped at the public-repo gate."
+    "note": "THE HARNESS'S OWN CONTROL for deskpr: local preconditions satisfied, body scanned clean, link trailer checked (example-stream/02) and resolved under --root, worker token minted, PR list read, rate limit passed, stopped at the public-repo gate."
+  },
+  "deskpr-create/no-trailer": {
+    "stage": "refused",
+    "note": "example-stream/02: the link gate is the FIRST local precondition. A body without exactly one `Brief: <stream>/<NN>` (resolving under --root) or `Issue: #<N>` refuses at exit 5 before getwd/preflight and before any network call — the PR→brief edge is data, not convention, and there is deliberately no bypass flag."
+  },
+  "deskpr-update/no-trailer-body": {
+    "stage": "refused",
+    "note": "example-stream/02, update path: update reads the PR's existing body from GitHub; a body without the trailer refuses at exit 5 naming the line to add (the migration-window behavior for pre-trailer PRs — the worker edits the body and re-runs)."
   },
   "deskpr-update/detached-worktree": {
     "stage": "unverifiable",
