@@ -1,0 +1,16 @@
+# Composition manifest for umbrella v0.12.0 — FIXTURE, not a real release.
+#
+# One file per umbrella version, named by the bare umbrella tag. `umbrella:` is the
+# bare shipped tag; each `artifacts:` entry names one component, the tag the umbrella
+# built it at, and the published sha256 of that artifact's release asset. The sha256
+# field is what `upgrade-assay` re-pins into `.assay-versions`; `deskversion` (the
+# marker) ignores it and cross-checks only the tag. Digests here are fixture
+# placeholders, not real digests.
+umbrella: v0.12.0
+artifacts:
+  - artifact: statusgen
+    tag: v0.12.0
+    sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  - artifact: desk-tools
+    tag: v0.12.0
+    sha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
