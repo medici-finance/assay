@@ -370,6 +370,16 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 		}
 	}
 
+	// Drive dashboard (methodology-metrics phase 4, brief-48). Rendered ONLY when
+	// a drive is active (absent ⇒ inert — a no-manifest board stays byte-identical
+	// to the pre-drives baseline). The operator slice leads, per brief-44's
+	// Dashboard order. activeDriveStatuses/activeDriveHeartbeat are set by run()
+	// right before emit — the section is a pure render of phase 2's
+	// frontier/state, plus the git-derived last-regen heartbeat.
+	if len(activeDriveStatuses) > 0 {
+		w("%s", driveSections(activeDriveStatuses, activeDriveHeartbeat))
+	}
+
 	awaiting, deskActionable, implemented, verified, _ := debtCounts(streams)
 	gates := gateScores(streams, briefTouch)
 	segments := buildSegments(gates)
