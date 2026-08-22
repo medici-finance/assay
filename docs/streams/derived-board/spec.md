@@ -77,7 +77,17 @@ brief-v3 and a second migration. Concretely, brief-v2 =
   §3.3 ref grammar (`<stream>/<NN>`, `<alias>:<stream>/<NN>`, `<alias>#<NNN>`, `#<NNN>`)
   and `docs/streams/graph-repos.yaml` (planned) (`schema: graph-repos-v1`) as the alias registry;
 - the stream README's Briefs table is generated between markers; the README frontmatter
-  gains `board: generated`.
+  gains `board: generated`;
+- **reserved from the Loom substrate design** (its §4.4 reaches the same conclusion —
+  status is a fold over facts, not a field — and names the identity fields a lifecycle
+  store needs): `id:` (a uuid minted once at authoring, never reused; the stable key a
+  fact log or an executor can reference across renames and re-homes), `supersedes: []`
+  (object lineage: split briefs, re-baselined briefs), and on each Verify row an optional
+  `id` (`v1`, `v2`, …) and `target:` (the verify substrate, e.g. a sibling repo or a live
+  cluster — the console-stream could-not-check-by-design class becomes a field instead of
+  a NOTICE). All OPTIONAL under brief-v2; `--lint` validates shape only. `id:` is the one
+  the author-brief skill starts minting immediately, because a uuid added later is a
+  uuid with no history.
 
 ## 6. Versioning and the tooling bundle
 
@@ -109,3 +119,4 @@ drives the first; the rollout brief drives the second, repo by repo.
 | Schedule cadence for the reconcile PR and its noise floor | 04 |
 | Which desk tools are "brief-reading" and need the refusal | 06 |
 | Whether the cross-repo feathering table is generated in this stream or the graph stream | deferred to the graph stream; brief-v2 only reserves the key |
+| Whether `id:` is minted for the 400+ existing briefs at migration time or lazily | 06 (proposed: minted by the migration op — a uuid added later is a uuid with no history) |

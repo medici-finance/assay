@@ -44,7 +44,8 @@ files:
   args: [brief-v1-to-v2]}`: runs the PINNED statusgen (resolved from `.assay-versions`,
   never `$PATH`) with `--root`; dry-run prints the statusgen dry-run; idempotent.
 - `statusgen/migrate.go` (new) — verb `migrate brief-v1-to-v2 [--dry-run]`: rewrite
-  `schema: brief-v1` → `brief-v2` on every brief; wrap each stream README's Briefs table in
+  `schema: brief-v1` → `brief-v2` on every brief; mint `id:` (uuid v4) on every brief that
+  lacks one (spec §8 — minted at migration, once); wrap each stream README's Briefs table in
   the markers and add `board: generated`; refuse (exit 5) if any README has no
   recognisable table. Prints a per-file plan under `--dry-run`.
 - `migrations/0001-v0.13.0-to-v1.0.0-derived-board.md` (planned) — the first REAL migration — `apply:` =

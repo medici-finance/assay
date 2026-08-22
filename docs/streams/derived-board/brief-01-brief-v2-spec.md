@@ -19,6 +19,7 @@ authored: 2026-08-22 by derived-board scoping session
 sources:
   - "docs/streams/derived-board/spec.md §2, §3, §5 — the derivation table, what stays hand-written, brief-v2 contents"
   - "docs/brief-rules.md rule 30 (Derived status cells) — the principle this brief generalizes"
+  - "Loom substrate design §4.1, §4.4 (private platform repo) — the object header (id, supersedes) and the Verify-row id/target fields reserved here so the substrate needs no brief-v3"
   - "private dependency-graph design note §3.3, §3.4, §3.6 — the keys and ref grammar reserved under brief-v2, and the open v1-keys-vs-v2 question this resolves (re-staged publicly by this brief)"
   - "freshness-checked 2026-08-22 @ f78ea24 — public docs/brief-rules.md is 629 lines vs 768 private; docs/brief-template.md 98 vs 138"
 exec-tier: strong
@@ -76,7 +77,9 @@ facts:
    §"Derived status cells"; add the stream README table to §"Derived surfaces".
 3. Amend `brief-template.md`: `schema: brief-v2`; document `gates:` / `feathers:` and the
    ref grammar verbatim from the graph design §3.3–3.4 (reserved: parsed and validated,
-   not yet gating); add the "no `status:` key" note with the one-line reason.
+   not yet gating); document the Loom-reserved identity keys — `id:` (uuid), `supersedes: []`,
+   Verify-row `id`/`target` — per spec §5; add the "no `status:` key" note with the one-line
+   reason.
 4. Add the alias registry `docs/streams/graph-repos.yaml` (planned).
 5. Record in spec §8 that Q5 (feathering table) is deferred to the graph stream.
 
@@ -86,7 +89,7 @@ facts:
 | 1 | `grep -c '^schema: brief-v2' docs/brief-template.md` | `1` |
 | 2 | `grep -c -E -e '^[\|] `todo`' -e '^[\|] `in-progress`' -e '^[\|] `implemented`' -e '^[\|] `verified`' -e '^[\|] `done`' -e '^[\|] `blocked`' -e '^[\|] `unknown`' docs/brief-rules.md` | `7` (one derivation row per lifecycle cell) |
 | 3 | `grep -n -E 'Brief: <stream>/<NN>' docs/brief-rules.md` | at least one match inside §"Derived status cells" |
-| 4 | `grep -n -E '^(gates|feathers):' docs/brief-template.md` | both keys present |
+| 4 | `grep -c -E -e '^gates:' -e '^feathers:' -e '^id:' -e '^supersedes:' docs/brief-template.md` | `4` (all reserved keys documented in the template block) |
 | 5 | `grep -c 'status:' docs/brief-template.md` | matches only the "no `status:` key" note (inspect: exactly 1 line, and it is the note) |
 | 6 | `python3 -c "import yaml,sys;d=yaml.safe_load(open('docs/streams/graph-repos.yaml'));assert d['schema']=='graph-repos-v1' and d['cell'] and d['repos'];print('ok')"` | `ok` |
 | 7 | `diff <(sed -n '1,20p' docs/brief-rules.md) <(git show origin/main:docs/brief-rules.md \| sed -n '1,20p'); wc -l docs/brief-rules.md` | line count ≥ 768 (re-stage brought the private text across) |

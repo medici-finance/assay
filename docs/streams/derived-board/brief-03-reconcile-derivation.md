@@ -35,7 +35,8 @@ consumers:
 ## Context
 files:
 - `statusgen/brieffile.go` — accept `schema: brief-v2`; parse `gates:` / `feathers:` into
-  typed structs; validate refs against the §3.3 grammar and `docs/streams/graph-repos.yaml` (planned) — created by brief 01;
+  typed structs; parse `id:` (uuid v4 shape, PROBLEM on duplicate ids across the tree),
+  `supersedes:` (refs, validated), Verify-row `id`/`target`; validate refs against the §3.3 grammar and `docs/streams/graph-repos.yaml` (planned) — created by brief 01;
   PROBLEM on unknown edge `type`; gating behaviour NOT implemented (reserved).
 - `statusgen/lifecycle.go` (new) — the pure derivation: inputs `{briefs, prRecords,
   witnesses, approvals, rulings, issueLabels, lookedAt}` → per-brief `{cell, reason,
