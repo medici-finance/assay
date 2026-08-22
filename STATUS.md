@@ -11,6 +11,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-22 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-22 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-22 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-22 |  |
@@ -19,6 +20,8 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| derived-board | 01 — brief-v2 spec: derived lifecycle, generated table, public re-stage of brief-rules/template [exec:strong] | 0 | 4500 |
+| derived-board | 02 — `Brief:` trailer — the PR→brief link, required by `deskpr`, linted on main | 0 | 4500 |
 | desktools-go-git | 01 — inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate | 1 | 4500 |
 | desk-containers | 01 — base image — toolchains, desk-tools, skills, volume | 1 | 3500 |
 | desk-containers | 02 — runtime credential contract + layer-secret scan | 1 | 3500 |
@@ -52,6 +55,16 @@ _No brief is awaiting the human gate._
 _None._
 
 ## Incomplete briefs
+
+### derived-board (7 open)
+
+- 01 brief-v2 spec: derived lifecycle, generated table, public re-stage of brief-rules/template — todo (wave 0)
+- 02 `Brief:` trailer — the PR→brief link, required by `deskpr`, linted on main — todo (wave 0)
+- 03 `statusgen reconcile` — derive lifecycle state from PRs + witnesses + approvals — todo (wave 1)
+- 04 generated Briefs table + single-writer lint — todo (wave 2)
+- 05 desk skills: reference the brief, never flip the cell (both copies) — todo (wave 1)
+- 06 v1.0.0 cut: migration op + file, paired-versions, same-tag pin lint — todo (wave 3)
+- 07 per-repo rollout + historical backfill as a drift-report PR — todo (wave 4)
 
 ### desk-containers (7 open)
 
@@ -91,4 +104,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**3** streams (**3** active, **0** paused) · **0/21** briefs done · completed initiatives: see `docs/archive/`
+**4** streams (**4** active, **0** paused) · **0/28** briefs done · completed initiatives: see `docs/archive/`
