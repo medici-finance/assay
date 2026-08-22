@@ -61,6 +61,12 @@ be a cache of GitHub state committed to git; a cache is what the phantom rows we
 
 ## 5. brief-v2 — one flag-day, not two
 
+**Provenance note.** Every design choice in this section is the authoring session's
+proposal. None is a ruling until the human ratifies it — by merging this stream (the
+merge is the ratification record for the spec as a whole) or by a `human:<login>`
+Evidence row / linked decision issue for any item they want ruled separately. A bot
+commit cannot stamp a ruling; this document does not try to.
+
 The dependency-graph design note (private; re-staged by brief 01 as `docs/dependency-graph-design.md` (planned)) §3.6 left open whether its new keys (`gates:`,
 `feathers:`, the ref grammar, `docs/streams/graph-repos.yaml` (planned)) land as optional brief-v1
 keys or as brief-v2, because a v2 bump is a fleet-wide flag-day. This stream is that
@@ -69,11 +75,11 @@ those keys now**: parsed, type-checked, and lint-validated, gating behaviour def
 the graph stream. Reserving them costs one parser stanza; adding them later costs a
 brief-v3 and a second migration. Concretely, brief-v2 =
 
-- **`brief:` becomes hierarchical — `<cell>:<repo>:<stream>:<NN>`** (ruling 2026-08-22; the
-  field keeps its name). Example: `assay:assay:derived-board:01` for this brief — cell
+- **`brief:` becomes hierarchical — `<cell>:<repo>:<stream>:<NN>`** (authoring proposal, 2026-08-22,
+  pending ratification by the human's merge of this stream; the field keeps its name). Example: `assay:assay:derived-board:01` for this brief — cell
   `assay`, repo alias `assay` (the public repo), stream, number. The cell and repo alias come
-  from `docs/streams/graph-repos.yaml` (planned), which becomes REQUIRED in a v2 tree (RULED
-  2026-08-22: the repo segment is the registry ALIAS, never `owner/name`); `--lint`
+  from `docs/streams/graph-repos.yaml` (planned), which becomes REQUIRED in a v2 tree (proposal: the
+  repo segment is the registry ALIAS, never `owner/name` — pending the same ratification); `--lint`
   PROBLEMs a `brief:` whose cell/repo do not match the registry or whose stream/NN do not
   match the file path. References elsewhere (`depends`, `unblocks`, `gates.on`, the `Brief:`
   PR trailer) accept the full form and the elided forms (`<stream>:<NN>`, `<repo>:<stream>:<NN>`
@@ -81,7 +87,7 @@ brief-v3 and a second migration. Concretely, brief-v2 =
   always the full form, so a brief is self-identifying when read outside its repo. The `/`
   separator of brief-v1 (`<stream>/<NN>`) is accepted on READ for the migration window and
   rewritten by the migration; v2 lint PROBLEMs it in a v2 file.
-- **`version: <int>`** (ruling 2026-08-22) — the brief's own revision, `1` at authoring, bumped
+- **`version: <int>`** (authoring proposal, 2026-08-22, pending the same ratification) — the brief's own revision, `1` at authoring, bumped
   by every edit to Task or Verify after first dispatch (re-baselines bump it). Evidence and
   witness rows record the `version` they were run against, so a witness for version 2 of a
   brief whose Verify table is now version 3 renders as `unknown (witness for v2, brief is v3)`
@@ -138,5 +144,5 @@ drives the first; the rollout brief drives the second, repo by repo.
 | Schedule cadence for the reconcile PR and its noise floor | 04 |
 | Which desk tools are "brief-reading" and need the refusal | 06 |
 | Whether the cross-repo feathering table is generated in this stream or the graph stream | deferred to the graph stream; brief-v2 only reserves the key |
-| Whether cross-repo refs in `depends:` (now expressible) are GATING in v2 or reserved like `gates:` | RULED 2026-08-22: reserved — parsed, validated, reported; gating stays with the graph stream (03) |
+| Whether cross-repo refs in `depends:` (now expressible) are GATING in v2 or reserved like `gates:` | 03 (proposal: reserved — parsed, validated, reported; gating stays with the graph stream — pending ratification) |
 | Whether `id:` is minted for the 400+ existing briefs at migration time or lazily | 06 (proposed: minted by the migration op — a uuid added later is a uuid with no history) |
