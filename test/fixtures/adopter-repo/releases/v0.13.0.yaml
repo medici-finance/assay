@@ -1,0 +1,14 @@
+# Composition manifest for umbrella v0.13.0 — FIXTURE, not a real release.
+#
+# The upgrade TARGET the Verify table moves the fixture TO. Both artifacts step
+# from v0.12.0 to v0.13.0, so `upgrade-assay` re-pins them and the marker then
+# resolves the fixture to a single KNOWN umbrella v0.13.0. Digests are fixture
+# placeholders.
+umbrella: v0.13.0
+artifacts:
+  - artifact: statusgen
+    tag: v0.13.0
+    sha256: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+  - artifact: desk-tools
+    tag: v0.13.0
+    sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
