@@ -28,7 +28,7 @@ component list, build/run topology, and open questions.
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [base image — toolchains, desk-tools, skills, volume](brief-01-base-image.md) | 1 | M | todo | — | — |
+| 01 | [base image — toolchains, desk-tools, skills, volume](brief-01-base-image.md) | 1 | M | in-progress | — | — |
 | 02 | [runtime credential contract + layer-secret scan](brief-02-secret-injection-contract.md) | 1 | M | todo | — | — |
 | 03 | [per-desk images + build matrix + publish wiring](brief-03-desk-images-build-matrix.md) | 2 | M | todo | — | — |
 | 04 | [interactive launch script `desk-run.sh`](brief-04-launch-script.md) | 3 | M | todo | — | — |
