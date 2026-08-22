@@ -722,9 +722,11 @@ Two deltas apply to a **drive in flight**:
    session immediately — dispatch at most ONE such brief at a time across ALL streams; the Context
    declaration is the claim, so check in-flight PRs/briefs for overlapping declarations first.
 
-   The human-legible **board claim** (flipping each brief's row to `in-progress` in its stream README
-   and pushing to main) is the coordinator's (`the-desk`) responsibility at delegation time; the
-   `refs/dispatch/<id>` claim above is the one that arbitrates the dispatch race.
+   The human-legible **board claim** — the brief's row in its stream README — is the WORKER's, on its
+   own branch: the first commit flips the row `todo` → `in-progress`; the last commit flips it to
+   `implemented` with the PR link (§Board row below). It lands with the PR — nobody pushes board
+   rows to main directly. The `refs/dispatch/<id>` claim above is the one that arbitrates the
+   dispatch race; the row is what a human reads the stream's state from.
 
 3. **Dispatch one worker per brief**, concurrently (single message, multiple `Agent` calls).
    **Exception, opt-in only:** a brief declaring `parallel-streams:` whose `statusgen shardcheck`
@@ -772,6 +774,15 @@ Two deltas apply to a **drive in flight**:
      `git push -u origin <branch>` + `gh pr create --draft`); **stop at `implemented`** (never set
      verified/done, never flip ready — that's the review desk + the human). One brief = one branch =
      one PR.
+   - **Board row — part of the deliverable, not a state name.** `implemented` is an EDIT the worker
+     makes, not a status it reaches: the PR's last commit flips the brief's row in
+     `docs/streams/<stream>/README.md` from `in-progress` to `implemented` (Status cell → `implemented`,
+     Reviewed/Verified untouched) and links the PR. A PR whose diff has no `docs/streams/<stream>/README.md`
+     change is INCOMPLETE — the review desk bounces it, and the verify desk's `statusgen` board will
+     keep reporting the brief as open after merge (the phantom-merged class: deliverable on main,
+     row still `todo`). Workers on a GitHub issue with no brief have no row to flip and skip this.
+     The first commit on the branch made the `in-progress` flip (§Board claim); if it didn't,
+     make both flips now.
    - **Self-register on the roster** the instant the draft PR is open: `deskroster set --repo
      <short-repo> --pr <N> --what "<brief description>"` — so `deskroster list` answers "open work →
      session" without a manual round-trip.
