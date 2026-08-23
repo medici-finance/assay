@@ -121,13 +121,12 @@ span:
 > **human admin act**; this verb cannot perform it.
 
 Tie such a note to the **version bump** so it surfaces exactly when the adopter crosses that step:
-the durable home is the **human "what changed" body of the migration file** for that `from→to` span
-(the migration-format doc, `docs/streams/distribution/migrations.md` in the source repo, makes that
-body the release-notes surface this verb prints). **No live `migrations/` directory ships yet** —
-the migration format is fixture-only today (`distribution/08`), so until a real migration exists for
-this step, this skill is the discoverable home for the note. When migrations go live, move the grant
-instruction into the relevant migration's body so `deskmigrate --dry-run` / this verb surfaces it
-automatically, and reduce this section to a pointer.
+the durable home is the **human "what changed" body of the migration file** for that `from→to` span,
+which `deskmigrate` prints as the release note (see `docs/distribution.md` for how the migration
+runner and its release-note body work). Until a migration covers this step, this skill is the
+discoverable home for the note; once one does, move the grant instruction into that migration's body
+so `deskmigrate --dry-run` / this verb surfaces it automatically, and reduce this section to a
+pointer.
 
 ## Ground rules
 
