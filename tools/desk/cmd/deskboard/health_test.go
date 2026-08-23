@@ -487,6 +487,24 @@ func nonProbingVerbs() []nonProbingVerb {
 			installFakeStatusgen(t)
 			twoRoots(t)
 		}},
+		// #321: the dispatch queue and its aliases sweep the configured roots via
+		// statusgen --next-up, exactly like awaiting/nextup, and probe no branch health.
+		{verb: "dispatch", args: []string{"dispatch"}, setup: func(t *testing.T) {
+			installFakeStatusgen(t)
+			twoRoots(t)
+		}},
+		{verb: "todo", args: []string{"todo"}, setup: func(t *testing.T) {
+			installFakeStatusgen(t)
+			twoRoots(t)
+		}},
+		{verb: "next", args: []string{"next"}, setup: func(t *testing.T) {
+			installFakeStatusgen(t)
+			twoRoots(t)
+		}},
+		{verb: "next-up", args: []string{"next-up"}, setup: func(t *testing.T) {
+			installFakeStatusgen(t)
+			twoRoots(t)
+		}},
 		{verb: "scope", args: []string{"scope"}, setup: func(t *testing.T) {
 			t.Setenv("DESKBOARD_GH_PUBLIC_REPOS", strings.Join(publicRepos(), " "))
 		}},

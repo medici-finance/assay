@@ -41,13 +41,24 @@ usage:
   deskboard health                  default-branch ("is main red?") health per watched
                                     repo — three states: green / RED / COULD-NOT-CHECK
                                     (#295; also rides in the actions header + banner)
+  deskboard dispatch                cross-repo DISPATCH queue — the work to START: briefs at
+                                    todo/in-progress that are eligible and UNCLAIMED (no open
+                                    origin-branch claim), merged from every configured root via
+                                    the PINNED statusgen's --next-up (the SAME claim-filtered,
+                                    capped Next-up selection STATUS.md shows). Honest about
+                                    caps: reports the held-back decomposition (N by per-stream
+                                    caps, M by span) and per-root claim-degradation, so an empty
+                                    queue is distinguishable from a throttled one (#321).
+                                    Aliases: todo, next, next-up.
   deskboard awaiting                cross-repo AWAITING-VERIFICATION queue — briefs at
                                     implemented/verified, merged from every configured root
                                     via the PINNED statusgen.
                                     NOT the dispatch queue: it contains no todo brief, and
-                                    dispatching from it sends workers at finished work (#321)
+                                    dispatching from it sends workers at finished work — use
+                                    ` + "`dispatch`" + ` to find work to start (#321)
   deskboard nextup                  deprecated alias for ` + "`awaiting`" + ` — the name says
                                     dispatch queue, the rows are the verification backlog
+                                    (the real dispatch queue is ` + "`deskboard dispatch`" + `)
   deskboard scope                   reconcile the watched repo set against the owners' repos
                                     with open PRs — names every repo the board does NOT read
   deskboard policydrift             compiled-in repo VISIBILITY vs the GitHub API
@@ -332,17 +343,13 @@ func dispatch(sub string, rest []string, hdr Header, mergeNowThreshold, unreview
 	case "scope":
 		return cmdScope(hdr)
 	case "dispatch", "todo", "next", "next-up":
-		// #321: the dispatch queue (todo + unclaimed) is a DIFFERENT population from
-		// anything deskboard can produce. The pinned statusgen emits `--gate-scores`
-		// (implemented/verified only) and no dispatch-queue view, so there is nothing
-		// here to serve this verb with. Refusing and saying why is the whole point:
-		// an empty dispatch board would be indistinguishable from "nothing to pick up".
-		return nil, deskkit.Refused("refused: deskboard has no dispatch queue. Its brief data comes " +
-			"from `statusgen --gate-scores`, which emits ONLY awaiting-verification briefs " +
-			"(implemented/verified) — no todo brief is in it, so a dispatch board built from it " +
-			"would be empty for the wrong reason. Read Next-up from statusgen " +
-			"itself (STATUS.md / `statusgen` in the target root). `deskboard awaiting` is the " +
-			"verification backlog and must not be used as a dispatch source.")
+		// #321: the DISPATCH queue (todo/in-progress + unclaimed) is a different
+		// population from `awaiting` (implemented/verified). It is served by the
+		// pinned statusgen's `--next-up` emitter — the SAME claim-filtered, capped
+		// Next-up selection the STATUS.md board shows — merged cross-root here. The
+		// verb is deliberately distinct from `awaiting`: dispatching from `awaiting`
+		// sends workers at finished work.
+		return cmdDispatch(hdr, sub)
 	case "policydrift":
 		return cmdPolicyDrift(hdr)
 	case "stalled":
