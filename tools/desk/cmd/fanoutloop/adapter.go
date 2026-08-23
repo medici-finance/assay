@@ -77,9 +77,12 @@ func (f *FanoutLoop) Name() string { return "worker-desk" }
 
 // SelectQueue is the deterministic board read. It returns ORPHAN RESUMES FIRST (resume-priority
 // over fresh dispatch) then the Next-up rows in board order, each already
-// priority/staleness/cap/dep-filtered by statusgen. It drops the `issue-*` placeholder rows
-// (a different loop's consumer) and anything already handed off. It adds NO scoring pass of its own — the
-// order it returns is the order the boards agreed on.
+// priority/staleness/cap/dep-filtered by statusgen — so every row it sees is already `todo` and
+// unclaimed. It INCLUDES `issue-<NN>` placeholder rows: those ARE this loop's work (worker-desk
+// dispatch spec, Procedure 2 — "INCLUDE issue-placeholders — `issue-<NN>` rows ARE yours to
+// dispatch"). It drops only a DIFFERENT loop's dispatch token (a `review-request` token belongs to
+// the review loop, not here) and anything already handed off. It adds NO scoring pass of its own —
+// the order it returns is the order the boards agreed on.
 func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	var items []loopengine.Item
 
@@ -101,8 +104,11 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 		return nil, err
 	}
 	for _, r := range rows {
-		if isIssuePlaceholder(r) {
-			continue // a different loop's consumer; skipped so the two consumers never double-dispatch
+		if isForeignDispatchToken(r) {
+			// A DIFFERENT loop's consumer (e.g. a `review-request` token owned by the review loop);
+			// skipped so the two consumers never double-dispatch. NOTE: `issue-<NN>` placeholders are
+			// NOT dropped here — they ARE this loop's work (Procedure 2) and flow through below.
+			continue
 		}
 		if f.isHandled(r.ID()) {
 			continue

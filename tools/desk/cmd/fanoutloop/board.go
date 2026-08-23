@@ -60,12 +60,33 @@ func (r BoardRow) toItem(targetSHA string) loopengine.Item {
 	}
 }
 
-// isIssuePlaceholder reports whether a row is an `issue-*` placeholder. Those rows are
-// a different loop's consumer, NOT this loop's — the batch adapter skips them so the two
-// consumers of the drain-engine contract never double-dispatch one item. The check is on the
-// brief NUMBER shape (`issue-<NN>`), so it holds regardless of which stream carries a placeholder.
+// isIssuePlaceholder reports whether a row is an `issue-<NN>` placeholder filed by the intake
+// scanner. These ARE this loop's work: per the worker-desk dispatch spec (Procedure 2 — "INCLUDE
+// issue-placeholders — `issue-<NN>` rows ARE yours to dispatch"), a placeholder flows through the
+// normal Next-up → worker-desk → draft-PR → review pipeline like any other brief; the intake-desk
+// only FILES the placeholder, dispatch belongs here. The check is on the brief NUMBER shape
+// (`issue-<NN>`), so it holds regardless of which stream carries a placeholder. It is used to
+// recognise this loop's well-known number shape (e.g. for the `<repo>--issue-<NN>` claim key) — it
+// is NOT, on its own, a reason to skip a row. The one class SelectQueue drops is a DIFFERENT loop's
+// dispatch token; see isForeignDispatchToken.
 func isIssuePlaceholder(r BoardRow) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Num)), "issue-")
+}
+
+// isForeignDispatchToken reports whether a row is a dispatch token owned by a DIFFERENT loop's
+// consumer, and therefore must NOT be dispatched by worker-desk. The concrete case is a
+// `review-request` issue: the process desk files it as a token for the pr-review-desk (review)
+// loop, and the issue-loop work-scanner deliberately EXCLUDES it by its `review-request` label
+// (the-desk SKILL: the label "distinguishes dispatch tokens from work issues"). A review-request
+// token carries the canonical `review-request: <target> — <type>` title shape, which a genuine
+// `issue-<NN>` work placeholder never does — so the title prefix is the discriminator here (the
+// board reader carries no label column). This is the ONLY class SelectQueue drops as another loop's
+// consumer; `issue-<NN>` work placeholders are this loop's own and are dispatched normally.
+func isForeignDispatchToken(r BoardRow) bool {
+	t := strings.ToLower(strings.TrimSpace(r.Title))
+	return t == "review-request" ||
+		strings.HasPrefix(t, "review-request:") ||
+		strings.HasPrefix(t, "review-request ")
 }
 
 // OrphanPR is one open PR owing a worker action (>4h, no live claim) — the resume source that

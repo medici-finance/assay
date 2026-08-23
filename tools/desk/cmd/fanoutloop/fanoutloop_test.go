@@ -186,8 +186,9 @@ func indexOf(ss []string, s string) int {
 // --- Verify row 2: standing pool + refill + orphan-resume priority ----------------------------
 
 // TestPool exercises the whole standing-pool contract batch-fanout needs from the engine: fills to
-// the standing N, REFILLS on completion, ORPHAN-RESUME PRIORITY preempts fresh dispatch, and
-// intake/issue-* placeholders are skipped. Subtest names carry the words `refill` and
+// the standing N, REFILLS on completion, ORPHAN-RESUME PRIORITY preempts fresh dispatch,
+// intake/`issue-<NN>` placeholders ARE dispatched (this loop's own work, Procedure 2), and a
+// different loop's `review-request` dispatch token is excluded. Subtest names carry the words `refill` and
 // `resume-priority` so the brief's Verify row 2 grep (`-run 'Pool' … grep -cE refill resume-priority`)
 // observes both were exercised.
 func TestPool(t *testing.T) {
@@ -280,7 +281,11 @@ func TestPool(t *testing.T) {
 		t.Logf("resume-priority: the orphan resume preempted the fresh brief (order=%v)", order)
 	})
 
-	t.Run("intake-placeholder-skipped", func(t *testing.T) {
+	t.Run("intake-placeholder-dispatched", func(t *testing.T) {
+		// Per the worker-desk dispatch spec (Procedure 2 — "INCLUDE issue-placeholders —
+		// `issue-<NN>` rows ARE yours to dispatch"), an unclaimed `todo` issue placeholder on the
+		// board IS this loop's work and MUST be dispatched. issue-loop is the single largest work
+		// class; dropping it silently ships the loop pre-blinded to it at cutover.
 		deskDir := setupDeskHome(t)
 		dr := &dispatchRec{gates: map[string]chan struct{}{}}
 		rows := []BoardRow{
@@ -290,12 +295,34 @@ func TestPool(t *testing.T) {
 		loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Feeder: dr.feeder, Emit: io.Discard}
 		cfg := newLoopCfg(loop, 4, t.TempDir())
 
-		err := runUntil(t, cfg, loop, deskDir, func() bool { return dr.has("real/01") })
+		err := runUntil(t, cfg, loop, deskDir, func() bool { return dr.has("intake/issue-42") && dr.has("real/01") })
 		if err != nil {
 			t.Fatalf("Run: %v", err)
 		}
-		if dr.has("intake/issue-42") {
-			t.Fatal("an intake/issue-* placeholder was dispatched — those are a different loop's consumer, not this loop's")
+		if !dr.has("intake/issue-42") {
+			t.Fatal("an intake/issue-* placeholder was NOT dispatched — per worker-desk Procedure 2, `issue-<NN>` rows ARE this loop's to dispatch")
+		}
+	})
+
+	t.Run("review-request-token-excluded", func(t *testing.T) {
+		// A `review-request` issue is a dispatch token for the review loop (pr-review-desk), NOT
+		// worker-desk's work — the issue-loop work-scanner excludes it by its `review-request`
+		// label. It must NOT be dispatched here even though it is issue-shaped by number.
+		deskDir := setupDeskHome(t)
+		dr := &dispatchRec{gates: map[string]chan struct{}{}}
+		rows := []BoardRow{
+			{Stream: "intake", Num: "issue-77", Title: "review-request: PR #123 — code + security", BriefPath: "docs/streams/intake/rr.md"},
+			briefRow("real", "02", "M", "", "model", false),
+		}
+		loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Feeder: dr.feeder, Emit: io.Discard}
+		cfg := newLoopCfg(loop, 4, t.TempDir())
+
+		err := runUntil(t, cfg, loop, deskDir, func() bool { return dr.has("real/02") })
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if dr.has("intake/issue-77") {
+			t.Fatal("a review-request dispatch token was dispatched — those belong to the review loop, not worker-desk")
 		}
 	})
 }
@@ -626,9 +653,62 @@ func TestReadNextUp_ParsesRowsAndDetectsOutOfRepo(t *testing.T) {
 		t.Fatalf("brief path not resolved relative to root: %q", le.BriefPath)
 	}
 	if il == nil || !isIssuePlaceholder(*il) {
-		t.Fatalf("intake/issue-42 must be recognised as a placeholder to skip: %+v", il)
+		t.Fatalf("intake/issue-42 must be recognised as an issue placeholder (this loop's own work): %+v", il)
 	}
 	if isIssuePlaceholder(*le) {
 		t.Fatal("a real brief row was misclassified as an intake placeholder")
+	}
+}
+
+// TestSelectQueue_IncludesPlaceholdersExcludesForeignTokens is the direct, engine-free proof of the
+// dispatch-selection fix: an unclaimed `todo` `issue-<NN>` work placeholder SURVIVES SelectQueue (it
+// is this loop's work — worker-desk dispatch spec, Procedure 2), a normal brief row survives, and a
+// `review-request` dispatch token — which belongs to the review loop, not worker-desk — is dropped.
+func TestSelectQueue_IncludesPlaceholdersExcludesForeignTokens(t *testing.T) {
+	rows := []BoardRow{
+		briefRow("real", "01", "M", "", "model", false),
+		{Stream: "intake", Num: "issue-42", Title: "some real work item", BriefPath: "docs/streams/intake/x.md"},
+		{Stream: "intake", Num: "issue-77", Title: "review-request: PR #123 — code + security", BriefPath: "docs/streams/intake/rr.md"},
+	}
+	loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, TargetSHA: "sha"}
+
+	items, err := loop.SelectQueue()
+	if err != nil {
+		t.Fatalf("SelectQueue: %v", err)
+	}
+	var ids []string
+	for _, it := range items {
+		ids = append(ids, it.ID)
+	}
+	if !contains(ids, "intake/issue-42") {
+		t.Errorf("issue-<NN> placeholder was dropped from the queue; per Procedure 2 it IS dispatchable: %v", ids)
+	}
+	if !contains(ids, "real/01") {
+		t.Errorf("real brief row missing from the queue: %v", ids)
+	}
+	if contains(ids, "intake/issue-77") {
+		t.Errorf("review-request dispatch token was included; it belongs to the review loop: %v", ids)
+	}
+}
+
+// TestDispatchTokenDiscriminators pins the two independent predicates the fix separates: an
+// `issue-<NN>` placeholder is recognised as this loop's work and NOT as a foreign token, while a
+// `review-request` token (issue-shaped by number but the review loop's) is a foreign token.
+func TestDispatchTokenDiscriminators(t *testing.T) {
+	placeholder := BoardRow{Stream: "intake", Num: "issue-42", Title: "some real work item"}
+	reviewToken := BoardRow{Stream: "intake", Num: "issue-77", Title: "review-request: PR #123 — code + security"}
+	realBrief := briefRow("real", "01", "M", "", "model", false)
+
+	if !isIssuePlaceholder(placeholder) {
+		t.Error("issue-42 not recognised as an issue placeholder")
+	}
+	if isForeignDispatchToken(placeholder) {
+		t.Error("a plain issue placeholder was misclassified as a foreign dispatch token — it IS this loop's work")
+	}
+	if !isForeignDispatchToken(reviewToken) {
+		t.Error("a review-request token was not recognised as a foreign dispatch token")
+	}
+	if isForeignDispatchToken(realBrief) {
+		t.Error("a real brief row was misclassified as a foreign dispatch token")
 	}
 }
