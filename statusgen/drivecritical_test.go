@@ -209,7 +209,7 @@ func pickIndex(nu NextUp, stream string) (int, *Pick) {
 // (so blockedCount cannot be gamed into the high-unblocks arm), and passes a
 // genuine reciprocated edge.
 //
-// TIER split (Ian's ruling, assay#92): the malformed edges — self-referential and
+// TIER split (Ian's ruling): the malformed edges — self-referential and
 // dangling — stay hard PROBLEMs in checkRef (a self-loop / missing target is not a
 // data-quality debt but a broken ref). The RECIPROCITY leg (a valid A→B that B
 // does not reciprocate) ships at NOTICE, since ~104 legitimate older edges predate
@@ -251,7 +251,7 @@ func TestDriveDepEdgeReciprocity(t *testing.T) {
 
 	t.Run("one-sided-depends-is-a-notice-not-a-problem", func(t *testing.T) {
 		// A→B declared, but B does not reciprocate with unblocks: A. Spurious inbound
-		// edge — flagged so blockedCount cannot be inflated, at NOTICE tier (assay#92).
+		// edge — flagged so blockedCount cannot be inflated, at NOTICE tier.
 		idx := newDepEdgeIndex()
 		idx.dependsOf["a/01"] = []string{"b/01"}
 		idx.unblocksOf["a/01"] = nil

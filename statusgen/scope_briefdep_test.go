@@ -171,7 +171,7 @@ func filterUnknown(problems []string) []string {
 }
 
 // TestOneSidedDependsIsNoticeNotProblem pins the TIER of the dependency-edge
-// reciprocity rule end-to-end (Ian's ruling, assay#92): a one-sided depends edge
+// reciprocity rule end-to-end (Ian's ruling): a one-sided depends edge
 // between two brief-v1 briefs must surface through checkBriefFiles as a NOTICE
 // (non-fatal, exit 0), NOT a hard PROBLEM. This is the board-level guarantee that
 // the rule can be tightened in HEAD without reddening consumers' statusgen-lint on
@@ -211,7 +211,7 @@ func TestOneSidedDependsIsNoticeNotProblem(t *testing.T) {
 	// tier change prevents on the next release + repin).
 	for _, p := range problems {
 		if strings.Contains(p, "one-sided") {
-			t.Fatalf("a one-sided depends edge must NOT be a PROBLEM (assay#92 lowered it to NOTICE); got problem: %s", p)
+			t.Fatalf("a one-sided depends edge must NOT be a PROBLEM (lowered to NOTICE); got problem: %s", p)
 		}
 	}
 	// It must still be FLAGGED — as a NOTICE naming the offending edge, so the

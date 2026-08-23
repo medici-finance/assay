@@ -224,11 +224,11 @@ func TestUnrunUnresolvableBaseGrandfathersWithNotice(t *testing.T) {
 // fixture git repo whose merge-base carries a `done` brief, so the default
 // implementation is not left untested behind the fake in withBase.
 //
-// Re-baselined for the post-dehouse topology (assay#92): the old form pointed at
+// Re-baselined for the post-dehouse topology: the old form pointed at
 // the live repo ROOT (`..`) and asserted its merge-base carried `done` briefs —
-// true only when statusgen lived in assay-toolkit alongside a rich docs/streams/.
+// true only when statusgen lived in the source repo alongside a rich docs/streams/.
 // Now statusgen is dehoused into `assay`, whose root carries no `done`-stage
-// briefs at the merge-base (they relocated to assay-toolkit), so that assertion
+// briefs at the merge-base (they relocated to the source repo), so that assertion
 // is false against reality and the test red-failed. Building the fixture keeps
 // the check MEANINGFUL — it still proves closedAtBase resolves a real
 // merge-base and grandfathers the briefs `done`/`verified` there — while

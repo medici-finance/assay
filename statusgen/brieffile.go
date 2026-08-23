@@ -1167,14 +1167,14 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 	// cannot inflate its blockedCount into the critical tier by manufacturing spurious
 	// one-sided inbound edges. Runs once over the accumulated index.
 	//
-	// NOTICE tier (Ian's ruling, assay#92): this is a data-quality lint, not a
+	// NOTICE tier (Ian's ruling): this is a data-quality lint, not a
 	// security control. statusgen HEAD tightened it from a phase-1 blockedCount
 	// heuristic into a hard reciprocity requirement, and ~104 legitimate older
-	// one-sided edges across assay-toolkit's streams predate the two-sided
+	// one-sided edges across the source repo's streams predate the two-sided
 	// convention — so shipping it at PROBLEM would redden statusgen-lint
 	// board-wide on the next release + repin. It ships at NOTICE (non-fatal, exit
 	// 0) until those edges are reconciled two-sided, then returns to PROBLEM.
-	// Follow-up reconciliation tracked as medici-finance/assay-toolkit#1489 (below).
+	// Follow-up reconciliation is tracked as a separate backlog item (below).
 	notices = append(notices, recip.reciprocityNotices()...)
 	sort.Strings(problems)
 	sort.Strings(notices)
@@ -1205,12 +1205,12 @@ func newDepEdgeIndex() *depEdgeIndex {
 // spurious. Reconciling every edge two-sided makes blockedCount reflect only
 // genuine, both-sided dependencies and un-gameable into the tier.
 //
-// TIER — NOTICE, not PROBLEM (Ian's ruling, assay#92). This is a data-quality
+// TIER — NOTICE, not PROBLEM (Ian's ruling). This is a data-quality
 // lint. The rule is stricter than the pinned release's, and ~104 legitimate
-// older one-sided edges across assay-toolkit's streams predate the two-sided
+// older one-sided edges across the source repo's streams predate the two-sided
 // convention; emitting PROBLEM would red statusgen-lint board-wide on the next
 // release + repin. It emits NOTICE (non-fatal) until those edges are reconciled,
-// then flips back to PROBLEM — tracked as medici-finance/assay-toolkit#1489. The
+// then flips back to PROBLEM — tracked as a separate backlog item. The
 // caller (checkBriefFiles) routes this into the `notices` channel accordingly.
 //
 // SCOPE (fail-safe against false positives): the check fires only when BOTH endpoints
@@ -1239,7 +1239,7 @@ func (idx *depEdgeIndex) reciprocityNotices() []string {
 			}
 			if !reciprocated {
 				notices = append(notices, fmt.Sprintf(
-					"%s: depends edge to %s is one-sided — %s declares `depends: %s` but %s does not list %s in its `unblocks:`. A genuine dependency is reciprocal (the target unblocks the dependent); reconcile the edge two-sided so blockedCount cannot be inflated into the critical tier (anti-gaming). Data-quality NOTICE (assay#92); flips back to PROBLEM once the backlog is reconciled.",
+					"%s: depends edge to %s is one-sided — %s declares `depends: %s` but %s does not list %s in its `unblocks:`. A genuine dependency is reciprocal (the target unblocks the dependent); reconcile the edge two-sided so blockedCount cannot be inflated into the critical tier (anti-gaming). Data-quality NOTICE; flips back to PROBLEM once the backlog is reconciled.",
 					a, b, a, b, b, a))
 			}
 		}
