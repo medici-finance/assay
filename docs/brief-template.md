@@ -121,7 +121,7 @@ keep it to scope + intent, not a keystroke script.>
 # `id` (`v1`, `v2`, …) names the row so a witness points at THE row it ran; `target` names
 # the verify substrate when it is not this repo's tree (a sibling repo, a live cluster) —
 # the could-not-check-by-design class becomes a field instead of a NOTICE.
-# OPTIONAL `Class` column (verdict-lane/02; the row-classes spec lives with that stream's
+# OPTIONAL `Class` column (`<stream>/NN`; the row-classes spec lives with that stream's
 # design docs in the authoring repo and is staged separately).
 # A table may declare each row's CLASS so the verdict lane can route it — add a `Class`
 # column right after `#`:  | # | Class | Command | Expect |
@@ -153,8 +153,8 @@ keep it to scope + intent, not a keystroke script.>
 # or competitive analysis, a spec — anything asserting "X is true" a reader could act on), at
 # least ONE Verify row MUST dereference something, not just count it. Triggering evidence: a
 # Verify table built entirely of grep-presence rows passed 8/8 on a guide that was factually
-# wrong in 4 places, one load-bearing (#19, desk-apps/02); the sibling failure mode is a
-# citation link left unresolved (#17, assay-product/02). Skip this only for genuinely
+# wrong in 4 places, one load-bearing (`<stream>/NN`); the sibling failure mode is a
+# citation link left unresolved (`<stream>/NN`). Skip this only for genuinely
 # presence-only content with no factual claim to dereference (a docs reformat, a template
 # scaffold). This is a different axis from the row-runner rules (brief-rules.md 25-29): those
 # read the command text and are linted; this one is a judgement call and is not.

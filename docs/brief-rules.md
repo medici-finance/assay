@@ -781,7 +781,7 @@ and needs neither.
     a wrong one, so the honest disclosure in rule 8 doesn't quietly become the whole floor.
 
     **This rule is a different axis from the row-runner rules (25-29) and from the
-    unfailable-row lint** (`statusgen`'s `verifyrows.go`, #509), and it is worth being precise
+    unfailable-row lint** (`statusgen`'s `verifyrows.go`), and it is worth being precise
     about the difference, because the three are easy to mistake for one another:
     - Rules 25-29 catch commands whose TEXT betrays that the harness substituted its own
       answer for the one under test — a `go run` exit-code assertion, a BRE `\|` alternation,
