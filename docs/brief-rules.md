@@ -37,7 +37,7 @@ enforces the machine-checkable ones; the rest are review-gated.
    none exists, per the desk-hardening/13 pattern) or a desk feathering row (cross-repo);
    the prose then survives as a caption on a real edge. `statusgen --lint` flags gate-shaped
    prose with no matching edge as an `ordering-gate` NOTICE (design: `docs/dependency-graph-design.md`
-   §6); a per-line `<!-- graph: not-a-gate -->` waiver silences a false positive.
+   §3.4); a per-line `<!-- graph: not-a-gate -->` waiver silences a false positive.
 5. **Data-first, roughly equal-sized pieces.** Split anything too big (a brief doing two
    distinct roles becomes two). Reason: uneven briefs stall a wave and hide the real
    critical path. Rough test: if the Task needs more than ~5 steps or touches >2 subsystems,
