@@ -305,7 +305,9 @@ slots, refillable slots, and a fresh sweep proving `actionable: 0 NEEDS-REVIEW, 
 ## The loop (per PR, driven off the board / monitor events)
 
 1. **NEEDS-REVIEW / RE-REVIEW** → fill a reviewer slot (§Reviewer slots) at the appropriate tier for
-   that PR at its current head — on the first sweep that shows the row, at any PR age. **Reviewer
+   that PR at its current head — on the first sweep that shows the row, at any PR age. In the same
+   turn, apply the **`authorization-needed`** PR-state label (§PR-state labels) — the PR is now
+   visibly waiting on a REVIEWER, not the human. **Reviewer
    tiering is risk-keyed, not a blanket rule:** a risk-clear brief (all risk answers `no`, gate
    `model`) may be reviewed at any tier; a risk-flagged brief (`gate: human` OR any risk answer `yes`)
    should get a strong-tier or human reviewer. The dispatcher checks the brief's risk frontmatter — do
@@ -353,17 +355,51 @@ slots, refillable slots, and a fresh sweep proving `actionable: 0 NEEDS-REVIEW, 
    <slug> --json mergeable,mergeStateStatus` is not `CONFLICTING` / `DIRTY` before `gh pr ready`** —
    a conflicting PR is not flippable, and the bundled board may not gate the flip routine on merge
    state even when it gates the board. Then flip, with a wrap-up comment listing any filed follow-up
-   issues as `<repo>#<N>` pointers (out-of-scope discoveries are filed, not flagged — see below).
+   issues as `<repo>#<N>` pointers (out-of-scope discoveries are filed, not flagged — see below),
+   and in the same turn **swap the PR-state labels** — `gh pr edit <N> -R <slug> --remove-label
+   authorization-needed --add-label approval-needed` (§PR-state labels): the review lane has
+   approved everything, so the PR now visibly waits on the HUMAN's merge approval.
    **Risk-classed PRs: flip requires BOTH artifacts at head** — the code-review APPROVED AND a
    security-review artifact present at the current head (a clean `## <security-review>` comment OR a
    `Security-Review: pass` review — see loop step 1). **A `gate: human` auth/identity/funds PR is NOT
    flippable while its security-review artifact is absent** — and a missing one is the desk's own work
    to produce (loop step 1), not a reason to leave the PR parked; only the driver's explicit waiver
    substitutes for the artifact. A re-push invalidates both. **Merge stays the human's.**
-7. **READY** → already flipped; awaiting the human. Nothing to do.
+7. **READY** → already flipped; awaiting the human. Nothing to do — the PR carries
+   `approval-needed` until the human merges; when a sweep shows it merged, clear the label
+   (§PR-state labels).
 
 **A merged/closed PR is DONE — its worker stops; residual work is a NEW PR.** If a worker pushed to a
 merged branch, that commit is orphaned off main — rescue it as a fresh PR.
+
+### PR-state labels — who is the PR waiting on (queue legibility)
+
+The loop keeps exactly **one** of two sequential, mutually exclusive labels on every PR it is
+driving, so anyone scanning the queue sees at a glance which PRs wait on a REVIEWER and which wait
+on the HUMAN:
+
+- **`authorization-needed`** — the PR is not yet cleared by the review lane: no approving reviewer
+  verdict at the current head, or open findings. Applied when the desk picks the PR up (loop step
+  1 — NEEDS-REVIEW/RE-REVIEW) and kept through BLOCKED / CHECK / WAIT-CI; a re-push that
+  invalidates the verdict at head puts the PR back in this state (re-apply on the RE-REVIEW
+  dispatch). Removed only by the swap at the flip.
+- **`approval-needed`** — the review lane has approved EVERYTHING (reviewer APPROVED at head + all
+  findings met + required checks green) and the desk flipped the PR ready-for-human; it still
+  needs a HUMAN to approve the code change before it is mergeable (merge is always the human's).
+  Applied at the ready-flip (loop step 6), in the same turn as `gh pr ready`, swapping out
+  `authorization-needed`. Removed when the PR merges — the sweep that observes a READY row gone
+  because the PR merged clears it.
+
+Transition: `authorization-needed` (awaiting the reviewer) → reviewer approves at head + green →
+swap to `approval-needed` at the flip (awaiting the human's merge approval) → human merges → label
+cleared. Mechanics: `gh pr edit <N> -R <slug> --add-label/--remove-label` as the App; both verbs
+are idempotent, so re-applying on a later sweep is harmless. The labels are provisioned per repo
+at adoption by the `create-labels` primitive (`docs/adopting-assay.md`) — a missing label makes
+`gh pr edit` fail, which is a provisioning gap to file, never a reason to skip or delay the flip
+itself. Wiring note: the board-reactor planner (`reviewloop`) stays read-only — its FLIP row is
+where the swap rides along with the `ready` verb the desk executes, and its READY-row
+disappearance (merged) is the clear signal; the tool itself never writes, so the label calls live
+here in the loop, not in the tool.
 
 ## Merge-time re-check — review against MERGED main, not the tree you were handed
 

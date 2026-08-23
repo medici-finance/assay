@@ -152,6 +152,16 @@ func registerIntegrityProblems(root string) []string {
 	// authorizes it.
 	problems = append(problems, guttedRegisterFields(root)...)
 
+	// bounded-park schema check (statusgen/06): a park (any parked-* field set)
+	// must carry all three fields — parked-until (a parseable bounded expiry),
+	// parked-by (human:<name> authority), parked-reason — or it silences the
+	// standing alarm without a bounded, attributed, reasoned decision. Read error
+	// here is already surfaced above as could-not-check, so a failed re-parse just
+	// skips this check rather than double-reporting.
+	if findings, ferr := parseFindings(root); ferr == nil {
+		problems = append(problems, parkFieldProblems(findings)...)
+	}
+
 	// ID format validation: every entry must use either the new
 	// slug form ([FI]-<slug>, 10-20 chars after prefix, [a-z0-9-]) or a
 	// grandfathered legacy numeric form ([FI]-NN(-a)?). New entries using the
@@ -560,6 +570,7 @@ func guttedRegisterFields(root string) []string {
 			continue
 		}
 
+		// Non-park guts — authorized by `authorized-by: human:<name>` only.
 		var guts []string
 		if !baseE.Resolved && curE.Resolved {
 			guts = append(guts, "resolved flipped no->yes")
@@ -570,17 +581,49 @@ func guttedRegisterFields(root string) []string {
 		if strings.TrimSpace(baseE.Ack) != "" && strings.TrimSpace(curE.Ack) == "" {
 			guts = append(guts, "ack removed (downgrades the hard re-gate problem to a notice)")
 		}
-		if len(guts) == 0 {
+
+		// Park guts (statusgen/06) — ADDING a parked-until where the landed finding
+		// had none, or EXTENDING it to a LATER date, mutes the standing alarm and
+		// is the exact self-serving move a self-park enables (parked-until: 2099,
+		// uncorroborated, muted for decades). Guarded like the deletion/gutting
+		// siblings. NARROWING a park (an earlier date) re-exposes the alarm sooner,
+		// so it is not an attack and is not guarded. YYYY-MM-DD sorts lexically ==
+		// chronologically, so a string compare is the date compare.
+		var parkGuts []string
+		baseUntil := strings.TrimSpace(baseE.ParkedUntil)
+		curUntil := strings.TrimSpace(curE.ParkedUntil)
+		if baseUntil == "" && curUntil != "" {
+			parkGuts = append(parkGuts, fmt.Sprintf("parked-until added [%s] (mutes the standing alarm until then)", curUntil))
+		} else if baseUntil != "" && curUntil != "" && curUntil > baseUntil {
+			parkGuts = append(parkGuts, fmt.Sprintf("parked-until extended [%s -> %s] (mutes the standing alarm longer)", baseUntil, curUntil))
+		}
+
+		if len(guts) == 0 && len(parkGuts) == 0 {
 			continue
 		}
 
-		// Gutting present — HARD unless a verified-human anchor authorizes it.
-		if authorizedByVerifiedHuman(curRaw) {
+		// Authorization is field-specific: a resolve/affects/ack gut needs an
+		// `authorized-by: human:<name>` anchor; a park add/extend is authorized by
+		// its own `parked-by: human:<name>` (the authorizing party of the park) OR
+		// an `authorized-by:` anchor. Both keys require a name mapped in
+		// ASSAY_HUMAN_LOGIN_MAP. Each category is judged against its own authority,
+		// so an `authorized-by` anchor for a resolve does not silently also
+		// authorize an unattributed park in the same edit, and vice versa.
+		var unauthorized []string
+		if len(guts) > 0 && !authorizedByVerifiedHuman(curRaw) {
+			unauthorized = append(unauthorized, guts...)
+		}
+		if len(parkGuts) > 0 &&
+			!authorizedByVerifiedHuman(curRaw) &&
+			!parkAuthorizedByVerifiedHuman(curRaw) {
+			unauthorized = append(unauthorized, parkGuts...)
+		}
+		if len(unauthorized) == 0 {
 			continue
 		}
 		problems = append(problems, fmt.Sprintf(
-			"register field-gutting (unauthorized): %s — %s vs the version landed at the merge-base with origin/main, with no verified-human authorization. In-place gutting of a finding's load-bearing fields silently unblocks the brief it demoted. This is a HUMAN gate: add an `authorized-by: human:<name>` key to the entry's YAML frontmatter whose name is mapped in the configured ASSAY_HUMAN_LOGIN_MAP; an agent-written justification is not sufficient. Know what this check does and does not do before you add that key: this offline --lint check does NOT itself read the PR. The anchor gets corroborated online only where `statusgen --corroborate <pr>` is wired into a pull_request job — the toolkit's reference CI wires it into the lint job of .github/workflows/statusgen.yml, where the added `authorized-by: human:<name>` line lands on an ADDED diff line and fails that PR's CI unless the named human ACTED on the PR (an APPROVED review or an approval comment from their own account). If your own CI runs --corroborate on PRs, writing the key on your own authority will NOT quietly pass; if it does not, this gutting gate is all that stands here — either way, get the named human to authorize the change.",
-			rel, strings.Join(guts, "; ")))
+			"register field-gutting (unauthorized): %s — %s vs the version landed at the merge-base with origin/main, with no verified-human authorization. In-place gutting of a finding's load-bearing fields silently unblocks the brief it demoted, and adding/extending a park silently mutes its standing alarm. This is a HUMAN gate: add an `authorized-by: human:<name>` key (or, for a park, a `parked-by: human:<name>` key) to the entry's YAML frontmatter whose name is mapped in the configured ASSAY_HUMAN_LOGIN_MAP; an agent-written justification is not sufficient. Know what this check does and does not do before you add that key: this offline --lint check does NOT itself read the PR. The anchor gets corroborated online only where `statusgen --corroborate <pr>` is wired into a pull_request job — the toolkit's reference CI wires it into the lint job of .github/workflows/assay-statusgen.yml, where the added `human:<name>` line lands on an ADDED diff line and fails that PR's CI unless the named human ACTED on the PR (an APPROVED review or an approval comment from their own account). If your own CI runs --corroborate on PRs, writing the key on your own authority will NOT quietly pass; if it does not, this gutting gate is all that stands here — either way, get the named human to authorize the change.",
+			rel, strings.Join(unauthorized, "; ")))
 	}
 	sort.Strings(problems)
 	return problems
@@ -642,6 +685,42 @@ func authorizedByVerifiedHuman(raw []byte) bool {
 		return false
 	}
 	v, ok := keys["authorized-by"]
+	if !ok {
+		return false
+	}
+	s, ok := v.(string)
+	if !ok {
+		return false
+	}
+	for _, m := range humanStampRe.FindAllStringSubmatch(s, -1) {
+		if _, ok := HumanLogin(m[1]); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// parkAuthorizedByVerifiedHuman reports whether raw's `parked-by:` frontmatter key
+// carries a verified-human anchor — a human:<name> token whose name resolves to a
+// real GitHub login in the configured ASSAY_HUMAN_LOGIN_MAP. `parked-by` IS the
+// authorizing party of a bounded park (statusgen/06), so it authorizes a park
+// ADD/EXTEND exactly as `authorized-by` authorizes a resolve/affects gut. Same
+// fail-closed discipline as authorizedByVerifiedHuman: unparseable frontmatter, a
+// missing key, a non-scalar value, or a bare/unmapped name all return false. The
+// ONLINE half (statusgen --corroborate, wired into CI) reads the ADDED
+// `parked-by: human:<name>` diff line and requires that human to have ACTED on the
+// PR — so writing the key on one's own authority does not silently pass where the
+// gate runs. An agent cannot self-park.
+func parkAuthorizedByVerifiedHuman(raw []byte) bool {
+	fm, _, err := splitFrontmatter(string(raw))
+	if err != nil {
+		return false
+	}
+	var keys map[string]any
+	if err := yaml.Unmarshal([]byte(fm), &keys); err != nil {
+		return false
+	}
+	v, ok := keys["parked-by"]
 	if !ok {
 		return false
 	}
@@ -785,6 +864,10 @@ func generateFindingsView(root string) (string, error) {
 	b.WriteString("updating the affected brief/README to reflect it, then flipping the flag.\n\n")
 	b.WriteString("Format: each entry is a per-entry file under `docs/streams/findings/` with YAML\n")
 	b.WriteString("frontmatter (id, date, title, affects, ack, resolved) and a body paragraph.\n")
+	b.WriteString("An accepted-deferred finding may be **parked** (bounded shelving, ISA-18.2): add\n")
+	b.WriteString("`parked-until` (a bounded YYYY-MM-DD expiry), `parked-by` (`human:<name>` authority),\n")
+	b.WriteString("and `parked-reason` together — all three required. A park is a snooze, not a mute:\n")
+	b.WriteString("it suppresses the standing alarm only until `parked-until`, then re-annunciates louder.\n")
 	b.WriteString("**IDs:** letter-prefixed slugs — `F-<slug>` where the slug is\n")
 	b.WriteString("10–20 characters, `[a-z0-9-]`, derived from the title (example: `F-ws-token-expiry`).\n")
 	b.WriteString("Older entries use numeric IDs (`F-01`) — those are frozen legacy and remain valid.\n")
@@ -814,6 +897,13 @@ func generateFindingsView(root string) (string, error) {
 			b.WriteString("Resolved: yes\n")
 		} else {
 			b.WriteString("Resolved: no\n")
+		}
+		// Bounded shelving (statusgen/06): surface a park in the human view so an
+		// accepted-deferred finding is visibly distinct from a neglected one.
+		if strings.TrimSpace(e.ParkedUntil) != "" || strings.TrimSpace(e.ParkedBy) != "" || strings.TrimSpace(e.ParkedReason) != "" {
+			b.WriteString(fmt.Sprintf("Parked-until: %s\n", strings.TrimSpace(e.ParkedUntil)))
+			b.WriteString(fmt.Sprintf("Parked-by: %s\n", strings.TrimSpace(e.ParkedBy)))
+			b.WriteString(fmt.Sprintf("Parked-reason: %s\n", strings.TrimSpace(e.ParkedReason)))
 		}
 		b.WriteString("\n")
 	}
