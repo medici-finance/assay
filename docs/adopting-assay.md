@@ -82,7 +82,7 @@ Three adoption scenarios, each composing the same install PRIMITIVEs defined in 
 
 1. Read **CORE** fully — it defines what Assay is, the component inventory, and the named
    PRIMITIVEs (`install-statusgen`, `scaffold-streams`, `scaffold-registers`, `add-statusgen-ci`,
-   `install-desk-plugin`, `configure-roster`, `install-main-guard`, `first-board`,
+   `install-desk-plugin`, `configure-roster`, `create-labels`, `install-main-guard`, `first-board`,
    `setup-reviewer-app`) that the scenarios reference rather than re-explain.
 
    > **Renamed** (`vendor-statusgen` → `install-statusgen`). The old name encoded
@@ -606,6 +606,68 @@ your own checkout instead hits a *different* refusal the moment `ASSAY_ALLOWED_R
 `exit=5`, `... is outside the fixed set` — because every `DESK_ROOTS` entry re-validates against
 `ASSAY_ALLOWED_REPOS` (the caveat above). Neither outcome reproduces this failure mode, and neither
 is a substitute for reading the `assay-config:` echo.)
+
+### PRIMITIVE: create-labels
+
+The desk tools and the operating skills apply a small set of GitHub **labels** the repo does not
+have by default. A label that is absent when a tool reaches for it is not an error the tool
+raises — it degrades silently, and the information the label carried is lost (a provenance stamp
+is dropped; a `gh pr edit --add-label` fails). So the labels are a **one-off `gh label create` per
+repo**, run once at adoption (this primitive is the single home for that list; the operating
+skills point here rather than re-listing it). Idempotent: `gh label create` on an existing label
+is a harmless "already exists" error you can ignore, or pass `--force` to reconcile the
+color/description.
+
+**Three label families:**
+
+- **`review-request`** — the review-dispatch token. The coordinator desk files a `review-request`
+  issue when a review is needed and stops; a review session picks it up (the intake work-scanner
+  *excludes* `review-request` issues, so they are dispatch tokens, not work items). If the label
+  is missing when the desk files, the dispatch token is indistinguishable from a work item.
+- **`raised-by:<role>`** — the provenance stamp. `deskfile new --raised-by <role>` records **which
+  loop noticed** an issue, feeding the by-desk issue metric. `deskfile` **probes for the label
+  first and, if it is absent, files the issue anyway UNSTAMPED with a NOTICE** — the provenance is
+  silently dropped, so the metric goes blind unless the labels are pre-created. The roles are the
+  roster's role-bindings (`role=` prefixes on `ASSAY_TRUSTED_BOT_SLUGS`), and `deskfile`
+  **refuses** any role the roster does not bind, so the label set and the vocabulary are the same:
+  `desk`, `worker`, `reviewer`, `verifier`, `issue-loop`, `intake-loop`. An omitted `--raised-by`,
+  a missing label, or an unanswered probe all leave the issue **UNKNOWN** — never read UNKNOWN as
+  "a human raised it".
+- **PR-state pair (`authorization-needed` / `approval-needed`)** — the review-loop's
+  who-is-the-PR-waiting-on marker (`pr-review-desk` skill, §PR-state labels). Exactly ONE of the
+  two sits on a PR under review, sequentially: `authorization-needed` while the review lane has
+  not yet approved at the current head (open findings or no approving verdict); swapped to
+  `approval-needed` at the ready-flip (reviewer approved at head + findings met + checks green —
+  now waiting on the HUMAN's merge approval); cleared when the PR merges. If the pair is missing,
+  `gh pr edit --add-label` fails and the queue is readable only by opening every PR.
+
+```bash
+# Review-dispatch token
+gh label create review-request --repo <owner/repo> --color d4c5f9 \
+  --description "dispatch token: a review session picks this up, runs the skill, posts the verdict"
+
+# Provenance stamps — one per roster role-binding (deskfile new --raised-by <role> applies them)
+gh label create raised-by:desk        --repo <owner/repo> --color BFDADC --description "filed by the process desk (the-desk)"
+gh label create raised-by:worker      --repo <owner/repo> --color BFDADC --description "filed by a worker (worker-desk)"
+gh label create raised-by:reviewer    --repo <owner/repo> --color BFDADC --description "filed by the reviewer desk (pr-review-desk)"
+gh label create raised-by:verifier    --repo <owner/repo> --color BFDADC --description "filed by the verify desk (verify-desk)"
+gh label create raised-by:issue-loop  --repo <owner/repo> --color BFDADC --description "filed by the intake/issue loop (intake-desk)"
+gh label create raised-by:intake-loop --repo <owner/repo> --color BFDADC --description "filed by the intake loop (roster-bound; no skill stamps it yet)"
+
+# PR-state pair — the review-loop keeps exactly ONE of these on each PR it is driving
+gh label create authorization-needed --repo <owner/repo> --color FBCA04 \
+  --description "review lane has not approved at head — waiting on a reviewer verdict / open findings"
+gh label create approval-needed --repo <owner/repo> --color 5319E7 \
+  --description "review lane fully approved; flipped ready — waiting on the human's merge approval"
+```
+
+> The `raised-by:*` labels track the roster, not this list: if `configure-roster` binds a role
+> beyond those above, add the matching `raised-by:<role>` label here for that suite.
+
+**Verify:** `gh label list --repo <owner/repo> --json name --jq '.[].name' | sort` includes
+`review-request`, all six `raised-by:*` labels, and the PR-state pair `authorization-needed` +
+`approval-needed`; `deskfile new … --raised-by worker` on a test filing reports
+`raised-by=raised-by:worker` (stamped), **not** `UNSTAMPED:label-missing`.
 
 ### PRIMITIVE: install-main-guard
 `cp <parent>/.githooks/pre-commit "$TARGET/.githooks/pre-commit" && chmod +x … && git -C "$TARGET"
