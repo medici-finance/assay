@@ -53,19 +53,19 @@ body and must only decrease.
 
 | Tool | Seam | Shape |
 |---|---|---|
-| deskgit | `cmd/deskgit/exec.go` | `runGit` + env allowlist (issue #1555) |
-| deskmerge | `cmd/deskmerge/exec.go` | `execCommand` seam |
-| deskwt | `cmd/deskwt/exec.go` | `execCommand` seam |
-| deskscanbody | `cmd/deskscanbody/exec.go` | `gitOut` |
-| deskpr | `cmd/deskpr/exec.go` | `execCommand` seam |
-| deskreply | `cmd/deskreply/exec.go` | `runCmd`/`git` wrapper — READ-ONLY by design (no push path exists) |
-| deskadvisory | `cmd/deskadvisory/advisory.go` | direct `exec.Command("git"` + fork-fetch hardening |
-| deskpushguard | `cmd/deskpushguard/foreigncommit.go` | direct spawns |
-| deskboard | `cmd/deskboard/board.go`, `main.go` | direct one-off spawns |
-| writeguard | `cmd/writeguard/main.go` | direct one-off spawns |
-| desksourceguard | `cmd/desksourceguard/verify.go` | direct one-off spawns |
-| verifyloop | `cmd/verifyloop/durable.go`, `dispatch_native.go` | direct spawns |
-| deskkit | `internal/deskkit/preflight.go` | preflight transport probe |
+| deskgit | `tools/desk/cmd/deskgit/exec.go` | `runGit` + env allowlist (issue #1555) |
+| deskmerge | `tools/desk/cmd/deskmerge/exec.go` | `execCommand` seam |
+| deskwt | `tools/desk/cmd/deskwt/exec.go` | `execCommand` seam |
+| deskscanbody | `tools/desk/cmd/deskscanbody/exec.go` | `gitOut` |
+| deskpr | `tools/desk/cmd/deskpr/exec.go` | `execCommand` seam |
+| deskreply | `tools/desk/cmd/deskreply/exec.go` | `runCmd`/`git` wrapper — READ-ONLY by design (no push path exists) |
+| deskadvisory | `tools/desk/cmd/deskadvisory/advisory.go` | direct `exec.Command("git"` + fork-fetch hardening |
+| deskpushguard | `tools/desk/cmd/deskpushguard/foreigncommit.go` | direct spawns |
+| deskboard | `tools/desk/cmd/deskboard/board.go`, `main.go` | direct one-off spawns |
+| writeguard | `tools/desk/cmd/writeguard/main.go` | direct one-off spawns |
+| desksourceguard | `tools/desk/cmd/desksourceguard/verify.go` | direct one-off spawns |
+| verifyloop | `tools/desk/cmd/verifyloop/durable.go`, `dispatch_native.go` | direct spawns |
+| deskkit | `tools/desk/internal/deskkit/preflight.go` | preflight transport probe |
 
 ## Baseline counter
 

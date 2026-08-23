@@ -1,4 +1,4 @@
-// Package gitexec is the single audited git-binary fallback seam (desktools-go-git/01).
+// Package gitexec is the single audited git-binary fallback seam (example-stream/01).
 //
 // Every desk tool that still needs the `git` binary will route through this package
 // instead of its own per-tool seam. The package owns the two properties every caller
@@ -10,8 +10,8 @@
 //   - a per-verb + tool allowlist consulted BEFORE anything runs, so a caller cannot
 //     smuggle a verb this seam has not been audited for.
 //
-// The allowlist is seeded with today's full verb set (see
-// docs/streams/desktools-go-git/inventory.md for the frozen inventory) and is counted
+// The allowlist is seeded with today's full verb set (see the stream's frozen
+// inventory doc, e.g. docs/streams/example-stream/inventory.md) and is counted
 // DOWNWARD over the course of the stream: later briefs empty it toward a single
 // sanctioned entry — deskmerge's trial merge (a three-way merge go-git cannot express;
 // human-gated, run only on the desk machine, never by agents). That single entry is the
