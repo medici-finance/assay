@@ -72,6 +72,11 @@ type StandingAlarm struct {
 	Title   string
 	AgeDays int
 	Over    bool // age strictly past the standing-age threshold
+
+	// ParkedUntil carries the finding's bounded-park expiry (statusgen/06) when
+	// this StandingAlarm describes a parked finding (in AlarmReport.Parked or
+	// AlarmReport.ExpiredParks); "" for an ordinary standing alarm.
+	ParkedUntil string
 }
 
 // AlarmReport is the computed alarm state over the FINDINGS register.
@@ -86,6 +91,27 @@ type AlarmReport struct {
 	Flood         bool            // ActiveCount strictly over FloodThreshold
 	Standing      []StandingAlarm // unresolved findings, oldest first
 	PastThreshold int             // standing alarms strictly past the age threshold
+
+	// Bounded shelving (statusgen/06 — ISA-18.2 / EEMUA-191). A park is a snooze,
+	// not a mute.
+	//
+	//   - Parked holds findings under a LIVE, well-formed park (now < parked-until):
+	//     their standing NOTICE is SUPPRESSED and they are EXCLUDED from ActiveCount
+	//     (so a consciously-shelved finding does not inflate the flood count). They
+	//     never appear in Standing.
+	//   - ExpiredParks holds findings whose park window has CLOSED (now >=
+	//     parked-until): they RE-ANNUNCIATE with a distinct, louder NOTICE
+	//     ("park expired — re-decide") and COUNT AGAIN toward ActiveCount/flood. A
+	//     park buys a bounded window, then forces a fresh decision — it never
+	//     silently becomes permanent. They are reported via ExpiredParks rather
+	//     than Standing so the desk/retro cannot mistake an expired park for a
+	//     fresh standing alarm.
+	//
+	// A park that is not well-formed (a required field missing, or an unparseable
+	// parked-until date) does NOT shelve: the finding is counted and alarmed as an
+	// ordinary open finding, and parkFieldProblems raises a hard --lint PROBLEM.
+	Parked       []StandingAlarm
+	ExpiredParks []StandingAlarm
 
 	// Undated carries the IDs of findings whose date could not be parsed. They are
 	// absent from EVERY count above — OpenedTotal, ActiveCount, Flood, Standing — so a
@@ -108,6 +134,56 @@ func findingOpenDate(f Finding) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return t, true
+}
+
+// parkClass is a finding's bounded-shelving state for alarm accounting
+// (statusgen/06).
+type parkClass int
+
+const (
+	parkNone      parkClass = iota // no parked-* fields → an ordinary open finding
+	parkActive                     // well-formed park, now < parked-until → shelved (standing NOTICE suppressed, excluded from flood)
+	parkExpired                    // parked-until has passed → re-annunciate louder, count again
+	parkMalformed                  // some parked-* field set but the park is not well-formed and not expired → NOT shelved (parkFieldProblems raises the PROBLEM)
+)
+
+// parkIsAuthorizedVocab reports whether a parked-by value is written in the
+// `human:<name>` authority vocabulary (same token shape as lifecycle stamps).
+// This is the SYNTACTIC check the advisory alarm layer uses; whether that named
+// human is real and actually authorized is enforced HARD elsewhere —
+// guttedRegisterFields requires the name to resolve in the configured
+// ASSAY_HUMAN_LOGIN_MAP before a park may be ADDED to a landed finding, and CI's
+// `--corroborate` requires that human to have acted on the PR. A park that clears
+// this vocabulary check but names an unmapped human still fails those hard gates,
+// so a syntactic check here cannot silence an unauthorized park in practice.
+func parkIsAuthorizedVocab(parkedBy string) bool {
+	return humanStampRe.MatchString(parkedBy)
+}
+
+// classifyPark determines a finding's bounded-shelving state against an injected
+// clock. A finding is "parked" the moment ANY parked-* field is set; the all-empty
+// case is the common open/resolved finding (parkNone). An EXPIRED park always
+// re-annunciates (parkExpired) — an out-of-window park must never stay quiet, even
+// if it is otherwise malformed — so the expiry test precedes the well-formedness
+// test. Shelving (parkActive) requires a park that is BOTH well-formed (all three
+// fields present, a parseable parked-until, an authorized-vocabulary parked-by) AND
+// still inside its window (now < parked-until).
+func classifyPark(f Finding, now time.Time) parkClass {
+	pu := strings.TrimSpace(f.ParkedUntil)
+	pb := strings.TrimSpace(f.ParkedBy)
+	pr := strings.TrimSpace(f.ParkedReason)
+	if pu == "" && pb == "" && pr == "" {
+		return parkNone
+	}
+	until, err := time.Parse("2006-01-02", pu)
+	if err == nil && !now.Before(until) {
+		return parkExpired
+	}
+	wellFormed := pu != "" && pb != "" && pr != "" && err == nil && parkIsAuthorizedVocab(pb)
+	if wellFormed {
+		return parkActive
+	}
+	return parkMalformed
 }
 
 // computeAlarms derives the alarm KPIs from the parsed register and an injected
@@ -137,10 +213,34 @@ func computeAlarms(findings []Finding, cfg AlarmConfig, now time.Time) AlarmRepo
 			rep.RecentOpened++
 		}
 		if f.Resolved {
+			// A resolved finding is resolved regardless of any stale park fields;
+			// the park machinery never overrides a resolve.
 			continue
 		}
-		rep.ActiveCount++
 		ageDays := int(now.Sub(opened).Hours() / 24)
+
+		// Bounded shelving (statusgen/06). A LIVE well-formed park is shelved: it
+		// is excluded from the active/flood count and never produces a standing
+		// NOTICE. An EXPIRED park re-annunciates louder and counts again. A
+		// malformed park is treated as an ordinary open finding here (and raises a
+		// hard --lint PROBLEM via parkFieldProblems).
+		switch classifyPark(f, now) {
+		case parkActive:
+			rep.Parked = append(rep.Parked, StandingAlarm{
+				ID: f.ID, Date: f.Date, Title: f.Title, AgeDays: ageDays,
+				ParkedUntil: strings.TrimSpace(f.ParkedUntil),
+			})
+			continue
+		case parkExpired:
+			rep.ActiveCount++
+			rep.ExpiredParks = append(rep.ExpiredParks, StandingAlarm{
+				ID: f.ID, Date: f.Date, Title: f.Title, AgeDays: ageDays, Over: true,
+				ParkedUntil: strings.TrimSpace(f.ParkedUntil),
+			})
+			continue
+		}
+
+		rep.ActiveCount++
 		over := ageDays > cfg.StandingAgeDays
 		if over {
 			rep.PastThreshold++
@@ -168,6 +268,18 @@ func computeAlarms(findings []Finding, cfg AlarmConfig, now time.Time) AlarmRepo
 	sort.SliceStable(rep.Standing, func(i, j int) bool {
 		return rep.Standing[i].AgeDays > rep.Standing[j].AgeDays
 	})
+	// Deterministic ordering for the park lists too: expired parks oldest-window
+	// first (earliest parked-until leads — most overdue for a re-decision), live
+	// parks by ID for a stable view.
+	sort.SliceStable(rep.ExpiredParks, func(i, j int) bool {
+		if rep.ExpiredParks[i].ParkedUntil != rep.ExpiredParks[j].ParkedUntil {
+			return rep.ExpiredParks[i].ParkedUntil < rep.ExpiredParks[j].ParkedUntil
+		}
+		return rep.ExpiredParks[i].ID < rep.ExpiredParks[j].ID
+	})
+	sort.SliceStable(rep.Parked, func(i, j int) bool {
+		return rep.Parked[i].ID < rep.Parked[j].ID
+	})
 	return rep
 }
 
@@ -178,6 +290,17 @@ func computeAlarms(findings []Finding, cfg AlarmConfig, now time.Time) AlarmRepo
 func standingAlarmNotices(findings []Finding, cfg AlarmConfig, now time.Time) []string {
 	rep := computeAlarms(findings, cfg, now)
 	var out []string
+	// Expired parks re-annunciate FIRST and LOUDER than a plain standing alarm:
+	// the park bought a bounded window, that window has closed, and the desk/retro
+	// must make a FRESH decision (extend, resolve, or act) rather than let the
+	// snooze silently become permanent. The distinct "park EXPIRED" wording is
+	// deliberately un-mistakable for a fresh standing alarm (design §A).
+	for _, a := range rep.ExpiredParks {
+		out = append(out, fmt.Sprintf(
+			"park EXPIRED — re-decide: %s was parked until %s, which has passed — extend the park, resolve it, or act on it now. "+
+				"A park is a bounded snooze, not a mute (ISA-18.2): %s",
+			a.ID, a.ParkedUntil, a.Title))
+	}
 	for _, a := range rep.Standing {
 		if a.Over {
 			out = append(out, fmt.Sprintf(
@@ -197,6 +320,64 @@ func standingAlarmNotices(findings []Finding, cfg AlarmConfig, now time.Time) []
 			n, strings.Join(rep.Undated, ", "), rep.ActiveCount))
 	}
 	return out
+}
+
+// parkFieldProblems raises one hard --lint PROBLEM per finding whose bounded-park
+// (statusgen/06) is not well-formed. A park is a snooze, not a mute, and MUST be
+// bounded and attributed: the moment ANY parked-* field is set, all three are
+// required and parked-until must be a real future-or-past date. The checks:
+//
+//   - parked-until MISSING → PROBLEM. An open-ended park is a disguised resolve;
+//     bounded shelving requires an explicit expiry.
+//   - parked-until present but UNPARSEABLE (not YYYY-MM-DD) → PROBLEM. An
+//     unparseable expiry can never fire the re-annunciation, so it would mute
+//     forever.
+//   - parked-by MISSING, or not in the `human:<name>` authority vocabulary →
+//     PROBLEM. A park must name its authorizing party; an agent cannot self-park.
+//   - parked-reason MISSING → PROBLEM. A park must record why it is accepted-deferred.
+//
+// This is the SCHEMA-completeness gate (map-independent). It is distinct from the
+// AUTHORIZATION gate (guttedRegisterFields), which additionally requires the
+// parked-by name to resolve in ASSAY_HUMAN_LOGIN_MAP before a park may be ADDED to
+// a finding that was already landed at the merge-base — and from CI's
+// `--corroborate`, which requires that human to have acted on the PR. All three
+// must agree for a park to both stand and go quiet.
+func parkFieldProblems(findings []Finding) []string {
+	var problems []string
+	for _, f := range findings {
+		pu := strings.TrimSpace(f.ParkedUntil)
+		pb := strings.TrimSpace(f.ParkedBy)
+		pr := strings.TrimSpace(f.ParkedReason)
+		if pu == "" && pb == "" && pr == "" {
+			continue // not a park
+		}
+		var missing []string
+		if pu == "" {
+			missing = append(missing, "parked-until (a bounded YYYY-MM-DD expiry — no open-ended parks)")
+		} else if _, err := time.Parse("2006-01-02", pu); err != nil {
+			missing = append(missing, fmt.Sprintf("a parseable parked-until date (got %q, want YYYY-MM-DD)", pu))
+		}
+		if pb == "" {
+			missing = append(missing, "parked-by (the authorizing party in human:<name> form)")
+		} else if !parkIsAuthorizedVocab(pb) {
+			missing = append(missing, fmt.Sprintf("a parked-by in human:<name> form (got %q)", pb))
+		}
+		if pr == "" {
+			missing = append(missing, "parked-reason (why the finding is accepted-deferred)")
+		}
+		if len(missing) == 0 {
+			continue
+		}
+		id := strings.TrimSpace(f.ID)
+		if id == "" {
+			id = "(unidentified finding)"
+		}
+		problems = append(problems, fmt.Sprintf(
+			"findings register: %s: malformed park — missing/invalid: %s. A bounded park (ISA-18.2 shelving) is a snooze, not a mute: it REQUIRES parked-until, parked-by, and parked-reason together, or it silences the standing alarm without a bounded, attributed, reasoned decision.",
+			id, strings.Join(missing, "; ")))
+	}
+	sort.Strings(problems)
+	return problems
 }
 
 // runAlarms is the self-contained `--alarms` sub-command: load the register,
@@ -241,6 +422,32 @@ func renderAlarms(rep AlarmReport) string {
 	} else {
 		w("- %d active findings (threshold %d) — within span of control.",
 			rep.ActiveCount, rep.Config.FloodThreshold)
+	}
+	// Bounded shelving (statusgen/06). Expired parks are LOUD — they re-annunciate
+	// and demand a fresh decision — so they print before live parks and before the
+	// standing list. Live parks are consciously shelved and excluded from the
+	// flood count; they are shown for visibility, not as alarms.
+	if len(rep.ExpiredParks) > 0 {
+		w("")
+		w("## Parks EXPIRED — re-decide")
+		w("")
+		w("| ID | Parked until | Title |")
+		w("|---|---|---|")
+		for _, a := range rep.ExpiredParks {
+			w("| %s ⚠ | %s | %s |", a.ID, a.ParkedUntil, a.Title)
+		}
+		w("")
+		w("_A park is a bounded snooze, not a mute: each above has passed its `parked-until` and now counts toward the active/flood total again. Extend, resolve, or act._")
+	}
+	if len(rep.Parked) > 0 {
+		w("")
+		w("## Parked (shelved, excluded from flood)")
+		w("")
+		w("| ID | Parked until | Title |")
+		w("|---|---|---|")
+		for _, a := range rep.Parked {
+			w("| %s | %s | %s |", a.ID, a.ParkedUntil, a.Title)
+		}
 	}
 	// Could-not-check, printed BEFORE the standing-alarm section so it is read before
 	// any count is trusted — including the early return on an empty Standing list,
