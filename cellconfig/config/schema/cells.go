@@ -1,10 +1,6 @@
 // Package schema defines and validates the cells.yaml config format: the
-// single answer every desk-console pods/deskd brief reads for "what is a
-// cell, which loops run it, on what schedule, with which model ladder."
-//
-// Source of truth: docs/desk-console-design.md §5.1 (cells.yaml sketch),
-// §9.2 (loop roles + model ladders) and §13.8/open-question-3 (the §13.3
-// notification triad ruling). See docs/streams/desk-console/brief-02-cell-config-schema.md.
+// single answer to "what is a cell, which loops run it, on what schedule,
+// with which model ladder."
 package schema
 
 import (
@@ -17,10 +13,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// LoopRole is a per-cell CronJob loop role. §9.2 lists review, verify,
-// dispatch and metrics as the loop roles this stream builds (briefs 05-07);
-// "inbound" is reserved for a later stream and deliberately not accepted
-// here yet — widen this set only when a brief actually consumes it.
+// LoopRole is a per-cell CronJob loop role. The recognised roles are
+// review, verify, dispatch and metrics; "inbound" is reserved for later and
+// deliberately not accepted here yet — widen this set only when a caller
+// actually consumes it.
 type LoopRole string
 
 const (
@@ -37,7 +33,7 @@ var validRoles = map[LoopRole]bool{
 	RoleMetrics:  true,
 }
 
-// NotificationTier is one leg of the §13.3 ambient-agents triad
+// NotificationTier is one leg of the ambient-agents triad
 // (notify / question / review) that decision-model escalations map onto.
 type NotificationTier string
 
@@ -48,7 +44,7 @@ const (
 )
 
 // PushBehavior is what a notification tier resolves to on the menubar/Slack
-// push path (brief-11).
+// push path.
 type PushBehavior string
 
 const (
@@ -63,26 +59,26 @@ var validPushBehaviors = map[PushBehavior]bool{
 	PushNone:   true,
 }
 
-// Loop is one CronJob-per-role-per-cell entry (§9.2).
+// Loop is one CronJob-per-role-per-cell entry.
 type Loop struct {
 	// Role selects which loop this is; see LoopRole.
 	Role LoopRole `yaml:"role"`
 	// Schedule is a standard 5-field cron expression.
 	Schedule string `yaml:"schedule"`
-	// Models is the worker-initiated escalation ladder (§13.8 ruling):
-	// cheapest-first, e.g. [deepseek-chat, glm-5.2]. May be empty for a
-	// zero-AI, deterministic loop (metrics — brief-05's "zero-AI first
-	// mover"); every other role requires at least one model.
+	// Models is the worker-initiated escalation ladder: cheapest-first,
+	// e.g. [deepseek-chat, glm-5.2]. May be empty for a zero-AI,
+	// deterministic loop (metrics); every other role requires at least
+	// one model.
 	Models []string `yaml:"models"`
 	// App is the GitHub App identity name (bot slug, no [bot] suffix)
-	// this loop authenticates as — brief-04 names the Secret per role
-	// from this field.
+	// this loop authenticates as; the per-role Secret is named from this
+	// field.
 	App string `yaml:"app"`
 }
 
-// Cell is one entry in cells.yaml — a repo set plus a stream set (design
-// doc §3.2: "cell config is data, not code ... a second cell is a config
-// entry rather than a fork").
+// Cell is one entry in cells.yaml — a repo set plus a stream set. Cell
+// config is data, not code: a second cell is a config entry rather than a
+// fork.
 type Cell struct {
 	Name              string                            `yaml:"name"`
 	Repos             []string                          `yaml:"repos"`
@@ -98,8 +94,8 @@ type File struct {
 }
 
 // Load reads and strictly validates a cells.yaml file at path: unknown
-// fields anywhere in the document are errors (brief-02 task 2), and every
-// structural/semantic rule below must hold.
+// fields anywhere in the document are errors, and every structural/semantic
+// rule below must hold.
 func Load(path string) (*File, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -194,8 +190,8 @@ func (l *Loop) validate() error {
 	if err := validateCronFields(l.Schedule); err != nil {
 		return fmt.Errorf("schedule: %w", err)
 	}
-	// Zero-AI loops (metrics — brief-05) may ship an empty ladder;
-	// every other role needs at least one model to escalate from.
+	// Zero-AI loops (metrics) may ship an empty ladder; every other role
+	// needs at least one model to escalate from.
 	if l.Role != RoleMetrics && len(l.Models) == 0 {
 		return fmt.Errorf("models: at least one model is required for role %q", l.Role)
 	}
@@ -205,9 +201,9 @@ func (l *Loop) validate() error {
 	return nil
 }
 
-// validateNotificationTiers enforces the §13.3 triad exactly: all three
-// keys (review, question, notify) present, no extras, values from the
-// known push-behavior set.
+// validateNotificationTiers enforces the triad exactly: all three keys
+// (review, question, notify) present, no extras, values from the known
+// push-behavior set.
 func validateNotificationTiers(m map[NotificationTier]PushBehavior) error {
 	if m == nil {
 		return fmt.Errorf("notification_tiers is required")
@@ -229,8 +225,7 @@ func validateNotificationTiers(m map[NotificationTier]PushBehavior) error {
 }
 
 // validateCronFields does a light structural check (5 whitespace-separated
-// fields) — not a full cron-expression parse, which is out of scope for
-// this brief.
+// fields) — not a full cron-expression parse, which is out of scope here.
 func validateCronFields(schedule string) error {
 	fields := strings.Fields(schedule)
 	if len(fields) != 5 {

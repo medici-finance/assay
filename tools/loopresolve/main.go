@@ -5,14 +5,11 @@
 // It prints shell-sourceable KEY=VALUE lines so `images/loop-base/entrypoint.sh`
 // can `eval` the answer without carrying a YAML parser (or a `yq` pin) into the
 // image. Parsing and validation are the config/schema package's — the same code
-// `cellsvalidate` runs — so the image cannot drift from the schema brief-02
-// landed.
+// `cellsvalidate` runs — so the image cannot drift from the schema.
 //
 // It is a PURE READ: it opens one file, prints to stdout, and exits. It makes no
 // network call, mints no credential and writes nothing, which is what lets
 // `entrypoint.sh --smoke` be inert while still genuinely parsing config.
-//
-// See docs/streams/desk-console/brief-03-loop-worker-image.md.
 package main
 
 import (
@@ -104,7 +101,7 @@ func Resolve(f *schema.File, cellName, roleName, prefix string) (string, error) 
 	emit("ROLE", string(l.Role))
 	emit("SCHEDULE", l.Schedule)
 	// Space-separated, cheapest-first: the ladder's ORDER is its meaning
-	// (§13.8 — run the cheap default, escalate when the item is judged hard),
+	// (run the cheap default, escalate when the item is judged hard),
 	// so it is passed through as a list rather than collapsed to one name.
 	emit("MODELS", strings.Join(l.Models, " "))
 	emit("MODEL", first(l.Models))

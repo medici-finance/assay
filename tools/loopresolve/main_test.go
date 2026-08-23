@@ -58,7 +58,7 @@ func TestResolveEmitsTheLadderInOrder(t *testing.T) {
 	}
 }
 
-// The zero-AI loop (metrics, brief-05) is the one role allowed an empty ladder.
+// The zero-AI loop (metrics) is the one role allowed an empty ladder.
 // The entrypoint branches on ASSAY_MODEL being empty to decide "deterministic
 // tick, no model call", so an empty ladder must render as an empty value rather
 // than being omitted — an omitted line leaves a STALE value in the shell.
