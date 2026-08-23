@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -111,6 +112,12 @@ func newPinBumpFixture(t *testing.T) (work, bare string) {
 	writeFile(t, filepath.Join(work, ".assay-versions"), assayVersionsAfter)
 	mustGit(t, work, "add", ".assay-versions")
 	mustGit(t, work, "commit", "-m", "chore(pins): bump statusgen darwin-arm64 to v0.7.0")
+	// example-stream/02: the fixture brief so a `Brief: fixture/01` trailer resolves.
+	if merr := os.MkdirAll(filepath.Join(work, "docs", "streams", "fixture"), 0o755); merr != nil {
+		t.Fatalf("mkdir fixture streams: %v", merr)
+	}
+	writeFile(t, filepath.Join(work, "docs", "streams", "fixture", "brief-01-test.md"),
+		"---\nschema: brief-v1\nbrief: fixture/01\ntitle: fixture brief\n---\n\nFixture brief for deskpr tests.\n")
 	return work, bare
 }
 
@@ -161,7 +168,7 @@ func TestCreatePinBumpIsNotRefused(t *testing.T) {
 	calls := withEnv(t, work)
 
 	rc := run([]string{"create", "--title", "chore(pins): bump statusgen to v0.7.0",
-		"--body-min", "Re-pins statusgen to the newly cut release."})
+		"--body-min", "Re-pins statusgen to the newly cut release.\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("pin-bump create rc = %d, want 0 — deskpr is still refusing "+
 			"the most routine edit made to .assay-versions (#328)", rc)
@@ -213,7 +220,7 @@ func TestRefusalNamesItsSurface(t *testing.T) {
 		mustGit(t, work, "add", "leak.txt")
 		mustGit(t, work, "commit", "-m", "leak")
 
-		err := cmdCreate([]string{"--title", "t", "--body-min", "clean body"})
+		err := cmdCreate([]string{"--title", "t", "--body-min", "clean body\nBrief: fixture/01"})
 		if err == nil {
 			t.Fatal("want a refusal")
 		}
@@ -228,7 +235,7 @@ func TestRefusalNamesItsSurface(t *testing.T) {
 	t.Run("title", func(t *testing.T) {
 		work := newBaseFixture(t)
 		withEnv(t, work)
-		err := cmdCreate([]string{"--title", "t " + fixtureSecret40, "--body-min", "clean body"})
+		err := cmdCreate([]string{"--title", "t " + fixtureSecret40, "--body-min", "clean body\nBrief: fixture/01"})
 		if err == nil {
 			t.Fatal("want a refusal")
 		}

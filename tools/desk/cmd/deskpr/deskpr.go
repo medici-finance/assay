@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -128,6 +129,7 @@ func cmdCreate(args []string) (err error) {
 	bodyFile := fs.String("body-file", "", "path to a file containing the PR body")
 	bodyMin := fs.String("body-min", "", "one-line PR body (alternative to --body-file)")
 	base := fs.String("base", "main", "base branch")
+	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	asApp := fs.Bool("as-app", true, "authenticate as the worker App via desktoken worker (default on); --as-app=false for example-org fallback")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	if perr := fs.Parse(args); perr != nil {
@@ -166,6 +168,13 @@ func cmdCreate(args []string) (err error) {
 	dir, gerr := getwd()
 	if gerr != nil {
 		return deskkit.Unverifiable("cannot resolve working directory", gerr)
+	}
+
+	// example-stream/02: the PR→brief link is a data edge, not a convention. Refuse a
+	// body without exactly one trailer — BEFORE any network call (getwd/preflight are
+	// local; token mint and PR listing come after) — and resolve the brief under --root.
+	if terr := requireTrailer(body, *root, dir); terr != nil {
+		return terr
 	}
 	facts, perr := preflight(dir, *base)
 	if perr != nil {
@@ -346,6 +355,7 @@ func cmdUpdate(args []string) (err error) {
 	fs.SetOutput(new(strings.Builder))
 	asApp := fs.Bool("as-app", true, "authenticate as the worker App via desktoken worker (default on); --as-app=false for example-org fallback")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
+	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	if perr := fs.Parse(args); perr != nil {
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
@@ -398,6 +408,24 @@ func cmdUpdate(args []string) (err error) {
 	// so lifting the draft distinction does not widen what update may push — only which
 	// open PR states it will push to.
 	ac.pr = &pr.Number
+
+	// example-stream/02: an update pushes to a PR whose BODY lives on GitHub, so the
+	// trailer check reads it from the PR. A PR whose body lacks the link line refuses
+	// here (exit 5, message names the line to add) — the worker edits the body, then
+	// re-runs update. This is the migration-window behavior for pre-trailer PRs.
+	var prView struct {
+		Body string `json:"body"`
+	}
+	bOut, berr := gh(facts.dir, "pr", "view", strconv.Itoa(pr.Number), "-R", facts.repo, "--json", "body")
+	if berr != nil {
+		return deskkit.Unverifiable("cannot read PR body for trailer check", berr)
+	}
+	if uerr := json.Unmarshal([]byte(bOut), &prView); uerr != nil {
+		return deskkit.Unverifiable("cannot parse PR body for trailer check", uerr)
+	}
+	if terr := requireTrailer([]byte(prView.Body), *root, dir); terr != nil {
+		return terr
+	}
 
 	// idempotency: this exact head already pushed to this PR → noop.
 	if deskkit.AlreadyDone(facts.repo, pr.Number, facts.head, "update") {
@@ -725,6 +753,73 @@ func normRepoPath(p string) (string, error) {
 		return "", fmt.Errorf("empty owner/repo in %q", p)
 	}
 	return owner + "/" + repo, nil
+}
+
+// requireTrailer enforces the example-stream/02 link grammar on a PR body: exactly one
+// `Brief: <stream>/<NN>` that resolves to a brief file under --root, or `Issue: #<N>` for
+// issue-only work. Absence, duplicates, both-kinds and non-resolving briefs are all
+// constraint refusals (exit 5). There is deliberately no bypass flag — a worker-typeable
+// bypass makes the edge asserted again.
+func requireTrailer(body []byte, root, dir string) error {
+	trs, err := deskkit.ParseTrailers(body)
+	if err != nil {
+		return deskkit.Refused("refused: " + err.Error())
+	}
+	if len(trs) == 0 {
+		return deskkit.Refused("refused: PR body carries no trailer — add exactly one line " +
+			"`Brief: <stream>/<NN>` naming the brief this PR delivers (e.g. `Brief: example-stream/02`), " +
+			"or `Issue: #<N>` for issue-only work")
+	}
+	if trs[0].Kind == deskkit.TrailerIssue {
+		return nil
+	}
+	stream, nn, ok := splitBriefTrailer(trs[0].Value)
+	if !ok {
+		return deskkit.Refused(fmt.Sprintf("refused: trailer %q does not name a brief as <stream>/<NN> or <stream>:<NN>", trs[0].Value))
+	}
+	// A relative --root resolves against the WORK DIR (the getwd seam), never the
+	// process cwd — tests call cmdCreate directly with a bound getwd, and a glob
+	// against the real process cwd would silently miss the fixture.
+	if !filepath.IsAbs(root) {
+		root = filepath.Join(dir, root)
+	}
+	matches, _ := filepath.Glob(filepath.Join(root, "docs", "streams", stream, "brief-"+nn+"-*.md"))
+	if len(matches) == 0 {
+		return deskkit.Refused(fmt.Sprintf("refused: `Brief: %s` does not resolve to a brief under --root: no %s found",
+			trs[0].Value, filepath.Join(root, "docs", "streams", stream, "brief-"+nn+"-*.md")))
+	}
+	return nil
+}
+
+// splitBriefTrailer reduces the accepted trailer value forms to (stream, NN):
+// <stream>/<NN> (brief-v1), <stream>:<NN>, <repo>:<stream>:<NN>, and the full
+// <cell>:<repo>:<stream>:<NN>. For the colon forms the LAST two parts are stream and NN;
+// the repo/cell prefixes resolve against graph-repos.yaml elsewhere (example-stream/01)
+// and are not needed for the file resolution here. NN must be numeric.
+func splitBriefTrailer(v string) (stream, nn string, ok bool) {
+	var parts []string
+	if strings.Contains(v, ":") {
+		parts = strings.Split(v, ":")
+		if len(parts) < 2 {
+			return "", "", false
+		}
+		stream, nn = parts[len(parts)-2], parts[len(parts)-1]
+	} else {
+		parts = strings.Split(v, "/")
+		if len(parts) != 2 {
+			return "", "", false
+		}
+		stream, nn = parts[0], parts[1]
+	}
+	if stream == "" || nn == "" {
+		return "", "", false
+	}
+	for _, c := range nn {
+		if c < '0' || c > '9' {
+			return "", "", false
+		}
+	}
+	return stream, nn, true
 }
 
 func readBody(bodyFile, bodyMin string) ([]byte, error) {
