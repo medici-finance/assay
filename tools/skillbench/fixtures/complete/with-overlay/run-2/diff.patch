@@ -1,0 +1,16 @@
+diff --git a/pkg/bar.go b/pkg/bar.go
+--- a/pkg/bar.go
++++ b/pkg/bar.go
+@@ -1,4 +1,10 @@
+ package bar
++// added a
++// added b
++// added c
++// added d
++// added e
++// added f
++// added g
++// added h
+-// removed a
+-// removed b
+ func B() {}
