@@ -46,7 +46,7 @@ Each grouping's snapshot is uploaded as a CI artifact named
 - **Committed output**: the daily roll-up ONLY — one small `rollup.json` per grouping plus a
   top-level `rollup.json` and its human-readable `rollup.md`.
 - **Schema**: `prsOpenByState`, `issuesOpenByLabel`, `issuesOpenUnlabeled`.
-  `prsOpenByReviewDecision` is emitted **`null`** until the collector half (#1002) lands —
+  `prsOpenByReviewDecision` is emitted **`null`** until the collector half (landing separately) lands —
   never zero.
 
 ```
@@ -127,7 +127,7 @@ one repo be counted twice while another was never read at all, with no gap repor
 
 ## The gap model — a could-not-check never renders as a measured value
 
-An earlier cut of this reducer (issue #1001) had eight defects, all of one family: an
+An earlier cut of this reducer had eight defects, all of one family: an
 unreadable input published `0` at exit 0; an empty-config grouping and an all-unreadable
 grouping rendered byte-identically; a duplicate config entry inflated five figures and
 reported clean. Each fix carries a named regression test in `aggregate_test.go`, demonstrated
@@ -142,21 +142,21 @@ be** — not only in a gaps section further down, which is where the old output 
 | `withheld (m/n sources)` | some sources failed, were missing, or were truncated. A count is **not** published from a partial source set: a smaller number is indistinguishable from a real fall |
 | `could-not-check (0/n sources)` | sources are configured and **none** could be read. Not a zero |
 | `not-configured` | no repos configured for that grouping at all. Also not a zero |
-| trailing `~` | the source declared nothing about whether its listing hit the API `--limit` cap, so the count may be a floor — the reducer could not check (collector half: #1002 lane) |
+| trailing `~` | the source declared nothing about whether its listing hit the API `--limit` cap, so the count may be a floor — the reducer could not check (collector half, landing separately) |
 
 Four rules produce those states:
 
 1. **Per-figure, not per-repo, accounting.** Each figure carries its own
    `coverage.{configured,measured,failed,missing,truncated,truncationUndeclared}` set. One repo
-   can be excluded from one figure and included in three, and the row says so (#1001 defect 3).
-2. **Four states, visible at the number** (#1001 defects 1, 2).
+   can be excluded from one figure and included in three, and the row says so (defect 3).
+2. **Four states, visible at the number** (defects 1, 2).
 3. **A gapped or truncated source refuses to publish a count** rather than publishing a smaller
-   one (#1001 defects 1, 3, 8). The partial sum survives in JSON as `measuredSubtotal`,
+   one (defects 1, 3, 8). The partial sum survives in JSON as `measuredSubtotal`,
    explicitly not the figure, and never appears in the markdown.
 4. **Comparisons require comparable coverage.** A day-over-day delta is computed only when both
-   days measured that figure over the **same** source set (#1001 defect 4); a prior roll-up
+   days measured that figure over the **same** source set (defect 4); a prior roll-up
    that exists and fails to parse is reported as a parse failure, never as "no prior day"
-   (#1001 defect 5).
+   (defect 5).
 
 ### Per-grouping `rollup.json` shape
 
@@ -180,8 +180,8 @@ Four rules produce those states:
     "ready": { "…": "…" },
     "total": { "…": "…" }
   },
-  "prsOpenByReviewDecision": null,      // until #1002 lands — null, never zero
-  "prsOpenByReviewDecisionNote": "No source declares prsOpenByReviewDecision yet (#1002) …",
+  "prsOpenByReviewDecision": null,      // until the collector lands — null, never zero
+  "prsOpenByReviewDecisionNote": "No source declares prsOpenByReviewDecision yet (collector half, landing separately) …",
   "issuesOpenByLabel": {
     "labels": { "bug": 12, "P1": 4 },   // null unless measured; an OCCURRENCE count, never an issue count
     "state": "measured",

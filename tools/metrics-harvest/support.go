@@ -139,14 +139,14 @@ func loadConfig(path string) (domainsConfig, error) {
 
 // validateConfig REFUSES a config the reducer cannot honestly reduce, rather
 // than reducing it and publishing a wrong number as checked-clean. Three
-// refusals, each from a measured defect in the prior reducer (issue #1001):
+// refusals, each from a measured defect in the prior reducer:
 //
 //   - a malformed spec (not "owner/repo"): there is no key to match a
 //     snapshot entry on, so the repo would silently never be read;
-//   - a DUPLICATE spec (#1001 defect 6): listing one repo twice inflated
+//   - a DUPLICATE spec (defect 6): listing one repo twice inflated
 //     every figure — five of them, including a re-weighted lead time — and
 //     reported `reposWithGaps: []`, i.e. checked-clean;
-//   - a BASE-NAME COLLISION within a grouping (#1001 defect 7):
+//   - a BASE-NAME COLLISION within a grouping (defect 7):
 //     `example-org/alpha` + `example-net/alpha` are two different repos that
 //     the old base-name keying collapsed into one, double-counting the first
 //     and never reading the second, again reporting checked-clean. This
@@ -175,11 +175,11 @@ func validateConfig(cfg domainsConfig, order []string) error {
 				if first == g {
 					problems = append(problems, fmt.Sprintf(
 						"grouping %q: %q is listed twice — a duplicate inflates every figure "+
-							"it contributes to and leaves no gap signal (#1001 defect 6)", g, s))
+							"it contributes to and leaves no gap signal (defect 6)", g, s))
 				} else {
 					problems = append(problems, fmt.Sprintf(
 						"%q appears in both grouping %q and grouping %q — it would be counted "+
-							"twice in the all-products total (#1001 defect 6)", s, first, g))
+							"twice in the all-products total (defect 6)", s, first, g))
 				}
 				continue
 			}
@@ -189,7 +189,7 @@ func validateConfig(cfg domainsConfig, order []string) error {
 			if other, clash := seenBase[base]; clash {
 				problems = append(problems, fmt.Sprintf(
 					"grouping %q: %q and %q share the base name %q — an ambiguous label for two "+
-						"different repos (#1001 defect 7)", g, other, s, base))
+						"different repos (defect 7)", g, other, s, base))
 				continue
 			}
 			seenBase[base] = s
@@ -230,7 +230,7 @@ func previousDate(dateLabel string) (string, error) {
 
 // repoBaseName returns the repo segment of an "owner/repo" spec. It is used
 // ONLY for human-readable labels and for the collision refusal above — never
-// as a lookup key. Keying on it is #1001 defect 7.
+// as a lookup key. Keying on it is defect 7.
 func repoBaseName(spec string) string {
 	parts := strings.Split(spec, "/")
 	return parts[len(parts)-1]

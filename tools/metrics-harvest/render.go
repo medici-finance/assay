@@ -1,6 +1,6 @@
 // render.go — rollup.md, the human-readable companion to rollup.json.
 //
-// This file is where #1001 defects 1 and 2 actually bit: the numbers were
+// This file is where defects 1 and 2 actually bit: the numbers were
 // right, and the TABLE was the lie. An unreadable tree rendered
 // `| assay | 0 (0/0) | 0 | 0 | 0 |`; an empty-config grouping and an
 // all-unreadable grouping rendered byte-identically; the only trace was a
@@ -18,7 +18,7 @@ import (
 )
 
 // truncationMark is appended to a measured figure whose sources declared
-// nothing about upstream truncation (#1001 defect 8). It is not decoration:
+// nothing about upstream truncation (defect 8). It is not decoration:
 // it is the difference between "12" and "at least 12, and nobody checked".
 const truncationMark = " ~"
 
@@ -89,7 +89,7 @@ func renderRollupMarkdown(top *topRollup) string {
 		"nothing was measured. Also not a zero.\n")
 	fmt.Fprintf(&b, "- `%s` — the source did not declare whether its upstream listing hit the "+
 		"API `--limit` cap, so the count may be a floor. The reducer could not check "+
-		"(collector half: #1002 lane).\n", strings.TrimSpace(truncationMark))
+		"(collector half, landing separately).\n", strings.TrimSpace(truncationMark))
 
 	// --- review decision --------------------------------------------------
 	b.WriteString("\n## Open PRs by review decision\n\n")
@@ -176,14 +176,14 @@ func renderTrend(b *strings.Builder, top *topRollup) {
 		fmt.Fprintf(b, "\n## Trend (vs %s)\n\n**The prior day's roll-up could not be read.** %s\n\n"+
 			"This is stated as a read failure, not as an absence: claiming \"no prior day\" "+
 			"about a file that is on disk and failed to parse would launder a checked-failed "+
-			"into a could-not-check (#1001 defect 5).\n", t.PreviousDate, t.Note)
+			"into a could-not-check (defect 5).\n", t.PreviousDate, t.Note)
 		return
 	}
 
 	fmt.Fprintf(b, "\n## Trend (vs %s)\n\n", t.PreviousDate)
 	b.WriteString("A delta is computed only when **both days measured that figure over the " +
 		"same source set**. Otherwise it is `withheld`: a difference across changing coverage " +
-		"is movement in the instrument, not in the world (#1001 defect 4).\n\n")
+		"is movement in the instrument, not in the world (defect 4).\n\n")
 	b.WriteString("| Section | Δ open PRs | Δ draft | Δ ready | Δ unlabelled issues |\n")
 	b.WriteString("|---|---|---|---|---|\n")
 	drow := func(label string, d *deltaSet) {
@@ -205,7 +205,7 @@ func renderTrend(b *strings.Builder, top *topRollup) {
 func renderCoverage(b *strings.Builder, top *topRollup) {
 	b.WriteString("\n## Coverage\n\n")
 	b.WriteString("Per figure — not per repo. One repo can be excluded from one figure and " +
-		"included in three, and a single per-repo gap flag could not say so (#1001 defect 3).\n")
+		"included in three, and a single per-repo gap flag could not say so (defect 3).\n")
 
 	scopes := []struct {
 		name string

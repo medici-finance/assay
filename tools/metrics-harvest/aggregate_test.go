@@ -1,7 +1,7 @@
 // aggregate_test.go — the regression suite for the cross-domain reducer.
 //
 // The eight TestDefectN_* tests below are one-per-defect against the prior
-// reducer (issue #1001), which measured them by RUNNING that reducer rather
+// reducer, which measured them by RUNNING that reducer rather
 // than reading it. Each asserts the DISTINCTION the fix creates, so that
 // removing the fix reddens the named test — a test that cannot fail is the
 // defect to avoid. Each was demonstrated fail-first: the fix was broken, the
@@ -246,7 +246,7 @@ func TestControl_HealthyRunSumsCorrectly(t *testing.T) {
 
 // --- defect 1 -------------------------------------------------------------
 
-// #1001 defect 1: "An unreadable input tree publishes 0, exit 0." The
+// defect 1: "An unreadable input tree publishes 0, exit 0." The
 // headline table rendered `| product-a | 0 (0/0) | 0 | 0 | 0 |` for a day on
 // which nothing at all was measured.
 func TestDefect1_UnreadableInputIsNotZero(t *testing.T) {
@@ -279,7 +279,7 @@ func TestDefect1_UnreadableInputIsNotZero(t *testing.T) {
 
 // --- defect 2 -------------------------------------------------------------
 
-// #1001 defect 2: "Not-configured, could-not-check, and genuine-zero are
+// defect 2: "Not-configured, could-not-check, and genuine-zero are
 // byte-identical in the table", and the empty-config grouping never appeared
 // in the gaps section at all — so a typo dropping a repo list read as a clean
 // measured zero with no trace anywhere in the output.
@@ -344,7 +344,7 @@ groupings:
 
 // --- defect 3 -------------------------------------------------------------
 
-// #1001 defect 3: "A partial gap silently undercounts, and one flat gap label
+// defect 3: "A partial gap silently undercounts, and one flat gap label
 // covers four different facts." One shared per-repo boolean could not express
 // "excluded from one figure, included in three", so a 43% PR undercount rode
 // alongside three complete figures in the same row with one gap label.
@@ -385,7 +385,7 @@ func TestDefect3_GapsArePerFigure(t *testing.T) {
 	if sameSources(prCov.Measured, issCov.Measured) {
 		t.Fatalf("the PR figure and the issue figure report the SAME source set (%v) on a day "+
 			"they were measured over different ones — that is the single-boolean gap model "+
-			"#1001 defect 3 measured", prCov.Measured)
+			"defect 3 measured", prCov.Measured)
 	}
 	// And the two states are visible where the numbers are read.
 	row := headlineRow(t, h.markdown(t, testDate), "product-a")
@@ -396,7 +396,7 @@ func TestDefect3_GapsArePerFigure(t *testing.T) {
 
 // --- defect 4 -------------------------------------------------------------
 
-// #1001 defect 4: "Day-over-day trend deltas are computed across differing
+// defect 4: "Day-over-day trend deltas are computed across differing
 // gap sets, fabricating movement." Nothing changed upstream; one repo's
 // capture failed; the trend rendered -3 / -2 / -5 / -2 as clean change.
 func TestDefect4_TrendNeedsMatchedCoverage(t *testing.T) {
@@ -458,7 +458,7 @@ func TestDefect4_TrendNeedsMatchedCoverage(t *testing.T) {
 	}
 }
 
-// The load-bearing half of #1001 defect 4: BOTH days are fully measured, and
+// The load-bearing half of defect 4: BOTH days are fully measured, and
 // they still are not comparable, because the source set itself changed (a
 // repo left the grouping). Withholding only when a figure is unmeasured is
 // not enough — the previous reducer subtracted field-by-field without ever
@@ -520,7 +520,7 @@ groupings:
 	if d.PRsOpenTotal.State != deltaWithheld {
 		t.Fatalf("both days measured, but over different source sets ([alpha] vs [alpha beta]) — "+
 			"want delta %q, got %q with value %v. Subtracting these two published counts yields "+
-			"-3, which is beta leaving the config, not three PRs closing (#1001 defect 4).",
+			"-3, which is beta leaving the config, not three PRs closing (defect 4).",
 			deltaWithheld, d.PRsOpenTotal.State, d.PRsOpenTotal.Value)
 	}
 	if !strings.Contains(d.PRsOpenTotal.Note, "different source sets") {
@@ -530,7 +530,7 @@ groupings:
 
 // --- defect 5 -------------------------------------------------------------
 
-// #1001 defect 5: "Checked-failed is laundered into could-not-check, then
+// defect 5: "Checked-failed is laundered into could-not-check, then
 // asserted as fact." A corrupt 18-byte prior rollup.json produced the
 // sentence "No prior day's roll-up found" — a positive claim of absence about
 // a file sitting on disk.
@@ -572,7 +572,7 @@ func TestDefect5_ParseFailureIsNotAbsence(t *testing.T) {
 
 // --- defect 6 -------------------------------------------------------------
 
-// #1001 defect 6: "A duplicate config entry inflates every figure and reports
+// defect 6: "A duplicate config entry inflates every figure and reports
 // clean." Listing one repo twice corrupted FIVE figures and published
 // reposWithGaps: [].
 func TestDefect6_DuplicateConfigRefused(t *testing.T) {
@@ -631,7 +631,7 @@ groupings:
 
 // --- defect 7 -------------------------------------------------------------
 
-// #1001 defect 7: "A repo that is never read reports as checked-clean."
+// defect 7: "A repo that is never read reports as checked-clean."
 // repoBaseName collapsed owner/name to name, so example-org/alpha and
 // example-net/alpha resolved to one source: the first was counted twice and the
 // second was never read, with reposWithGaps: [].
@@ -694,7 +694,7 @@ groupings:
 
 // --- defect 8 -------------------------------------------------------------
 
-// #1001 defect 8: "A source at the upstream truncation cap publishes as
+// defect 8: "A source at the upstream truncation cap publishes as
 // checked-clean." `grep -n truncat aggregate.go` returned nothing: the
 // reducer had no concept of a truncated source and summed a capped count as a
 // complete one.
@@ -746,8 +746,8 @@ func TestDefect8_TruncationWithheldOrMarked(t *testing.T) {
 
 // --- re-scope: schema shape -----------------------------------------------
 
-// The ruling: prsOpenByReviewDecision is emitted null/absent until #1002
-// lands — NEVER zero.
+// The ruling: prsOpenByReviewDecision is emitted null/absent until the
+// collector lands — NEVER zero.
 func TestReviewDecisionIsNullNeverZero(t *testing.T) {
 	h := newHarness(t, fullConfig)
 	h.healthy(t, testDate)
@@ -767,9 +767,9 @@ func TestReviewDecisionIsNullNeverZero(t *testing.T) {
 		t.Fatalf("prsOpenByReviewDecision key missing entirely")
 	}
 	if v != nil {
-		t.Fatalf("prsOpenByReviewDecision must be null until #1002, got %#v", v)
+		t.Fatalf("prsOpenByReviewDecision must be null until the collector lands, got %#v", v)
 	}
-	if note, _ := all["prsOpenByReviewDecisionNote"].(string); !strings.Contains(note, "#1002") {
+	if note, _ := all["prsOpenByReviewDecisionNote"].(string); !strings.Contains(note, "collector") {
 		t.Errorf("the null section carries no explanation: %q", note)
 	}
 	if !strings.Contains(h.markdown(t, testDate), "**Not collected.**") {

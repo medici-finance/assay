@@ -7,7 +7,7 @@
 // rollup.json for each grouping, plus a top-level rollup.json and rollup.md.
 //
 // SCHEMA: prsOpenByState, issuesOpenByLabel, issuesOpenUnlabeled.
-// prsOpenByReviewDecision is emitted null until the collector half (#1002)
+// prsOpenByReviewDecision is emitted null until the collector half (landing separately)
 // lands — NEVER zero. Commits-to-main and throughput/lead-time are out of
 // scope: they were re-derivable from the API at any later time, so
 // snapshotting them into a nightly commit was storage of queryable data.
@@ -16,7 +16,7 @@
 // THE GAP MODEL — the whole point of this file
 // ---------------------------------------------------------------------------
 //
-// #1001 measured eight defects in the previous reducer, all of one family: a
+// An earlier reducer had eight measured defects, all of one family: a
 // COULD-NOT-CHECK RENDERED AS A MEASURED VALUE. An unreadable input published
 // `0` at exit 0; an empty-config grouping and an all-unreadable grouping came
 // out byte-identical; a duplicate config entry inflated five figures and
@@ -27,25 +27,25 @@
 // Four rules, applied uniformly:
 //
 //  1. PER-FIGURE, NOT PER-REPO, ACCOUNTING. Each published figure carries its
-//     OWN source sets (#1001 defect 3: one per-repo boolean could not express
+//     OWN source sets (defect 3: one per-repo boolean could not express
 //     "excluded from one figure, included in three", so a 43% undercount and
 //     three complete figures shared one row and one gap label).
 //
 //  2. FOUR STATES, VISIBLE AT THE NUMBER — measured / withheld /
 //     could-not-check / not-configured — in the headline table where the
-//     figure is read, not only in a section below it (#1001 defects 1, 2).
+//     figure is read, not only in a section below it (defects 1, 2).
 //
 //  3. A GAPPED OR TRUNCATED SOURCE REFUSES TO PUBLISH A COUNT rather than
-//     publishing a smaller one (#1001 defects 1, 3, 8). The measured subtotal
+//     publishing a smaller one (defects 1, 3, 8). The measured subtotal
 //     survives in JSON as `measuredSubtotal`, explicitly not the figure, and
 //     never appears in the markdown.
 //
 //  4. COMPARISONS REQUIRE COMPARABLE COVERAGE. A day-over-day delta is
 //     computed only when both days measured that figure over the SAME source
-//     set (#1001 defect 4); a prior roll-up that exists and fails to parse is
-//     reported as a parse failure, never as "no prior day" (#1001 defect 5).
+//     set (defect 4); a prior roll-up that exists and fails to parse is
+//     reported as a parse failure, never as "no prior day" (defect 5).
 //
-// Config-level refusals (duplicate spec, base-name collision — #1001 defects
+// Config-level refusals (duplicate spec, base-name collision — defects
 // 6, 7) live in support.go's validateConfig and abort before anything is
 // written.
 package main
@@ -97,7 +97,7 @@ type coverage struct {
 	// cap, so their count is a floor, not a count.
 	Truncated []string `json:"truncated"`
 	// TruncationUndeclared — sources that said nothing either way about
-	// truncation (#1001 defect 8: the collector's cap warning goes to stderr
+	// truncation (defect 8: the collector's cap warning goes to stderr
 	// only and does not cross the artifact boundary). The reducer could not
 	// check, and marks the number rather than implying completeness.
 	TruncationUndeclared []string `json:"truncationUndeclared"`
@@ -155,7 +155,7 @@ type measure struct {
 
 	// MeasuredSubtotal is the sum over the measured subset when the figure is
 	// withheld. It is a DIAGNOSTIC, not the figure — it is the very number
-	// #1001 defect 3 measured being published as if it were the total, so it
+	// defect 3 measured being published as if it were the total, so it
 	// is JSON-only and never rendered in the markdown.
 	MeasuredSubtotal *int `json:"measuredSubtotal,omitempty"`
 }
@@ -177,7 +177,7 @@ type labelMeasure struct {
 type figures struct {
 	PRsOpenByState prsStateMeasures `json:"prsOpenByState"`
 
-	// PRsOpenByReviewDecision is null until the collector emits it (#1002).
+	// PRsOpenByReviewDecision is null until the collector emits it (landing separately).
 	// Null, never zero — a section absent because nothing collects it must
 	// not read as "no PRs are awaiting review".
 	PRsOpenByReviewDecision     *labelMeasure `json:"prsOpenByReviewDecision"`
@@ -270,7 +270,7 @@ func (a *figureAcc) truncationUndeclared(repo string) {
 
 const truncationUndeclaredNote = "truncation status was not declared by %d of %d measured " +
 	"source(s) — the reducer could not check whether the upstream listing hit its `--limit` " +
-	"cap, so this count may be a floor (collector half: #1002 lane, #1001 defect 8)"
+	"cap, so this count may be a floor (collector half, landing separately, defect 8)"
 
 func (a *figureAcc) measure() measure {
 	cov := a.cov.sortAll()
@@ -339,7 +339,7 @@ func aggregateGrouping(grouping string, configured []string, gs *groupingSnapsho
 		if entry == nil {
 			// Either the whole grouping's artifact is absent/unreadable, or
 			// this repo simply is not in it. Both are could-not-check for
-			// every figure — never a zero (#1001 defects 1, 7).
+			// every figure — never a zero (defects 1, 7).
 			for _, a := range []*figureAcc{draft, ready, total, labels, unlabeled, decision} {
 				a.missing(spec)
 			}
@@ -427,7 +427,7 @@ func aggregateGrouping(grouping string, configured []string, gs *groupingSnapsho
 	} else {
 		gr.PRsOpenByReviewDecision = nil
 		gr.PRsOpenByReviewDecisionNote = "No source declares prsOpenByReviewDecision yet " +
-			"(#1002) — the section is null, never zero: an absent collector must not read as " +
+			"(collector half, landing separately) — the section is null, never zero: an absent collector must not read as " +
 			"\"no PR is awaiting review\"."
 	}
 	return gr
@@ -437,7 +437,7 @@ func aggregateGrouping(grouping string, configured []string, gs *groupingSnapsho
 // affected figure and reports whether the value may be used. A DECLARED
 // truncation withholds the figure (rule 3); an UNDECLARED one is recorded and
 // marked at the number, because withholding every figure until the collector
-// half of #1001 defect 8 lands would publish nothing at all.
+// half of defect 8 lands would publish nothing at all.
 func applyTruncation(entry *snapshotRepo, field, spec string, accs ...*figureAcc) bool {
 	declared, truncated := entry.truncationOf(field)
 	switch {
@@ -526,7 +526,7 @@ func combineFigures(scopeNames []string, parts []*groupingRollup) figures {
 		f.PRsOpenByReviewDecision = &lm
 	} else {
 		f.PRsOpenByReviewDecisionNote = "No source declares prsOpenByReviewDecision yet " +
-			"(#1002) — the section is null, never zero."
+			"(collector half, landing separately) — the section is null, never zero."
 	}
 	return f
 }
@@ -534,7 +534,7 @@ func combineFigures(scopeNames []string, parts []*groupingRollup) figures {
 // --- trend ----------------------------------------------------------------
 
 // deltaMeasure is one day-over-day delta. Withheld unless BOTH days measured
-// the figure over the same source set (#1001 defect 4: deltas computed across
+// the figure over the same source set (defect 4: deltas computed across
 // differing gap sets fabricated movement that read as clean change).
 type deltaMeasure struct {
 	Value *int   `json:"value"`
@@ -593,7 +593,7 @@ func deltaOf(cur, prev measure) deltaMeasure {
 	if !sameSources(cur.Cov.Measured, prev.Cov.Measured) {
 		return deltaMeasure{State: deltaWithheld, Note: fmt.Sprintf(
 			"withheld: the two days measured different source sets (today %v, prior %v) — the "+
-				"difference would be an artifact of the change in coverage (#1001 defect 4)",
+				"difference would be an artifact of the change in coverage (defect 4)",
 			cur.Cov.Measured, prev.Cov.Measured)}
 	}
 	v := *cur.Value - *prev.Value
@@ -609,7 +609,7 @@ func deltaSetOf(cur, prev *figures) *deltaSet {
 	}
 }
 
-// priorState is the three-state read of the prior day's roll-up. #1001 defect
+// priorState is the three-state read of the prior day's roll-up. defect
 // 5: the previous reducer collapsed "absent" and "present but unparseable"
 // into one bool and then ASSERTED the absent one in prose, about a file that
 // was sitting on disk.
@@ -808,7 +808,7 @@ func loudProblems(top *topRollup) []string {
 		for _, fg := range s.f.all() {
 			// An UNDECLARED truncation status is marked at the number (see
 			// render.go) but is deliberately not loud here: no collector
-			// emits the declaration yet (#1002 lane), so making it red would
+			// emits the declaration yet (collector lane), so making it red would
 			// paint every run red for a condition no run can currently
 			// clear, which is how a signal stops being read.
 			if fg.M.State != stateMeasured {

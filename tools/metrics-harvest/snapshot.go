@@ -38,8 +38,8 @@ const (
 )
 
 // fieldState is the three-state read of ONE field of ONE repo's snapshot
-// entry. It is deliberately not a bool: collapsing these is #1001 defect 5,
-// and rendering `absent` as a value is #1001 defect 1.
+// entry. It is deliberately not a bool: collapsing these is defect 5,
+// and rendering `absent` as a value is defect 1.
 type fieldState int
 
 const (
@@ -74,12 +74,12 @@ type snapshotRepo struct {
 	issuesOpenByLabel   map[string]int
 	issuesOpenUnlabeled *int
 
-	// reviewDecision stays nil until the collector emits it (#1002). Until
+	// reviewDecision stays nil until the collector emits it (landing separately). Until
 	// then the published section is null — never zero.
 	reviewDecision map[string]int
 
 	// truncated is the source's own declaration, per field, of whether its
-	// upstream listing hit the API cap (`--limit 1000`). #1001 defect 8: the
+	// upstream listing hit the API cap (`--limit 1000`). defect 8: the
 	// collector today warns about truncation on stderr only, so the fact does
 	// not survive the artifact boundary and this map is normally nil. The
 	// reducer therefore tracks a third possibility — "truncation status was
@@ -177,7 +177,7 @@ func (r *snapshotRepo) stateOf(field string) fieldState {
 }
 
 // truncationOf reports what the source declared about a field's upstream
-// truncation: (declared, truncated). declared==false is the #1001 defect 8
+// truncation: (declared, truncated). declared==false is the defect 8
 // state — the reducer could not check, and says so at the number.
 func (r *snapshotRepo) truncationOf(field string) (declared, truncated bool) {
 	if r.truncated == nil {
@@ -206,7 +206,7 @@ const (
 	sourceSnapshot groupingSource = "snapshot-artifact"
 	// sourceUnreadable — a file for this grouping was there and did NOT
 	// parse. Checked-failed: distinct from absent, and never reported as
-	// "no snapshot" (#1001 defect 5's class, one level up).
+	// "no snapshot" (defect 5's class, one level up).
 	sourceUnreadable groupingSource = "snapshot-unreadable"
 	// sourceAbsent — no artifact for this grouping in this run's download.
 	sourceAbsent groupingSource = "snapshot-absent"
@@ -222,7 +222,7 @@ type groupingSnapshot struct {
 	Note   string
 	File   *snapshotFile
 	// byRepo indexes File.Repos on the FULL "owner/repo" spec. Full-spec
-	// keying is #1001 defect 7's fix: base-name keying collapsed two distinct
+	// keying is defect 7's fix: base-name keying collapsed two distinct
 	// repos into one directory, double-counting one and never reading the
 	// other while reporting no gap at all.
 	byRepo map[string]*snapshotRepo
@@ -250,7 +250,7 @@ func loadSnapshots(dir, dateLabel string) (map[string]*groupingSnapshot, error) 
 			// Not a refusal: a run in which every harvest leg failed to
 			// upload produces no download directory at all, and that day's
 			// roll-up must still publish four could-not-checks rather than
-			// four zeroes (#1001 defect 1).
+			// four zeroes (defect 1).
 			for _, g := range groupingOrder {
 				out[g].Note = fmt.Sprintf("snapshot directory %s does not exist", dir)
 			}
