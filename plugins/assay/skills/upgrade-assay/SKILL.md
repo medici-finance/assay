@@ -99,6 +99,36 @@ unknown-target paths — those words are how a guess sneaks in.
   files; the verb previews them and applies them idempotently, but it does not claim a transaction
   it cannot deliver.
 
+## Platform-side upgrade actions this verb surfaces but cannot apply
+
+Some version steps require a change **off the adopter's disk** — most importantly a **GitHub App
+permission grant**. This verb re-pins files and runs on-disk migrations; it does **not** touch the
+platform (it never edits App permissions, installs, or org settings — see the ground rules below).
+So when a version's release notes call for a permission grant, your job is to **surface it plainly
+and tell the adopter to do it by hand** — a tool or model cannot self-grant an App permission, and
+must not imply it did.
+
+**Current instance — the CI-read grant (from the version that adds desk/reviewer/worker CI-run-log
+reading).** Read this out to any adopter running the review/desk pipeline when it applies to their
+span:
+
+> **This version requires a new App permission.** Grant **`checks: read`** (plus **`statuses: read`**
+> and **`actions: read`**, for CI run-log access) to your **desk, reviewer, and worker** Apps in
+> **GitHub → the App → Permissions & events**, then **re-consent** each installation. Without it the
+> App 403s on the CI check-runs / status-rollup reads that flip-gating, shepherding, and main-red
+> detection depend on, and silently falls back to a shared ambient token. **Do not** grant it to the
+> verifier or the inbound issue-loop / intake-loop Apps — those roles do not read CI. The grant is a
+> **human admin act**; this verb cannot perform it.
+
+Tie such a note to the **version bump** so it surfaces exactly when the adopter crosses that step:
+the durable home is the **human "what changed" body of the migration file** for that `from→to` span
+(the migration-format doc, `docs/streams/distribution/migrations.md` in the source repo, makes that
+body the release-notes surface this verb prints). **No live `migrations/` directory ships yet** —
+the migration format is fixture-only today (`distribution/08`), so until a real migration exists for
+this step, this skill is the discoverable home for the note. When migrations go live, move the grant
+instruction into the relevant migration's body so `deskmigrate --dry-run` / this verb surfaces it
+automatically, and reduce this section to a pointer.
+
 ## Ground rules
 
 - NEVER `git push`, trigger a workflow, cut a tag, or run mutating infra. Re-pointing the
