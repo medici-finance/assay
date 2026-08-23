@@ -23,7 +23,7 @@ findings-register state machine.
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [30-day lint-firing audit — retire cold rules](brief-01-lint-firing-audit.md) | 1 | S | todo | — | — |
+| 01 | [30-day lint-firing audit — retire cold rules](brief-01-lint-firing-audit.md) | 1 | S | implemented | — | — |
 | 02 | [issue metrics (`--issues`)](brief-02-issue-metrics.md) | 1 | L | todo | — | — |
 | 03 | [self-improvement metric (self-healed vs human-touched)](brief-03-self-improvement-metric.md) | 2 | M | todo | — | — |
 | 04 | [ladder-position indicator (`--ladder`)](brief-04-ladder-position-indicator.md) | 1 | S | todo | — | — |
@@ -39,3 +39,8 @@ other brief is independent and self-contained.
 - **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06
   (all independent; parallelizable).
 - **Wave 2** — statusgen/03 (depends on statusgen/02).
+
+## Conventions
+- `statusgen --lint-audit` reports 30-day per-rule firing counts; COLD (0-firing,
+  un-tested) rules are retirement candidates — retirement stays a human call. Implemented
+  by statusgen/01, PR #78.

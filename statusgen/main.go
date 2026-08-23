@@ -955,6 +955,7 @@ func main() {
 	flag.Var(&roots, "root", `repository root (default "."; repeatable — one STATUS.md per root)`)
 	checkMode := flag.Bool("check", false, "verify STATUS.md is current instead of writing it")
 	lintMode := flag.Bool("lint", false, "run all checks without reading or writing STATUS.md (defaults --budget to "+defaultBudgetSpec+" unless overridden)")
+	lintAuditMode := flag.Bool("lint-audit", false, "30-day check-firing audit (statusgen/01): sample daily commits, tally per-rule PROBLEM/NOTICE firings, flag COLD (0-firing, un-tested) rules as retirement candidates — read-only, advisory, never retires a rule")
 	allowEmptyRootFlag := flag.Bool("allow-empty-root", false, "allow a root whose docs/streams exists but resolves to 0 streams (default: hard PROBLEM, same class as a missing/unreadable docs/streams); with this flag it downgrades to a NOTICE, for a root that has genuinely adopted the methodology but has not authored a stream yet")
 	var budget budgetFlags
 	flag.Var(&budget, "budget", "word-budget check: relpath:maxwords (repeatable); overrides --lint's default of "+defaultBudgetSpec)
@@ -1367,6 +1368,12 @@ func main() {
 		}
 		fmt.Printf("register-links: %d bare references linked across brief files\n", n)
 		return
+	}
+	// Lint-audit (statusgen/01) — read-only advisory sub-command: sample daily commits
+	// over 30 days, tally per-rule firing counts, flag COLD rules. Never retires a
+	// rule itself and never gates CI.
+	if *lintAuditMode {
+		os.Exit(runLintAudit(*root))
 	}
 
 	mode := "write"
