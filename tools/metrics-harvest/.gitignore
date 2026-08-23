@@ -1,0 +1,7 @@
+# The real per-grouping roster is a PRIVATE runtime config, provisioned to this
+# path in the operating cell — it must never be committed to this public tree.
+# The tool reads it by default; see domains.example.yaml for the schema.
+/domains.yaml
+
+# Local build output — `go build .` writes an executable named after the dir.
+/metrics-harvest

@@ -132,7 +132,9 @@ finished `assay:install` run hands you a checklist rather than the impression th
    **two-accounts prerequisite** (§2 `automation identity`); this checklist does not re-explain it.
 2. **Create + install the GitHub Apps** (creation, key-gen, and install are repo-admin-only):
    the **reviewer App** (`pull_requests: write`, `contents: read-only` — it must not be able to
-   commit); the **board-writer App** *only if you turn on branch protection* (`contents: write`
+   commit — plus `checks`/`statuses`/`actions: read` so it can read CI to gate on it; if you run the
+   full desk pipeline, grant those same three read scopes to the worker + desk Apps, never to a
+   verifier / inbound-lane App); the **board-writer App** *only if you turn on branch protection* (`contents: write`
    only, added to the ruleset bypass — §3 `add-statusgen-ci`); and the **automation identity** the
    fleet runs as. For **each** App: generate the private key (PEM), store it at the config-home
    (`~/.config/assay/`, mode `0600`) — **never in the repo tree or a committed env file** — install
@@ -248,7 +250,7 @@ of these is done. Until they are, the honest sentence above is the whole of the 
 | **registers** | Append-only FINDINGS / INTAKE / RETRO logs | `docs/registers.md`; scaffold's `FINDINGS.md` / `INTAKE.md` | `docs/streams/{FINDINGS,INTAKE,RETRO}.md` |
 | **methodology skills / plugin** | The two portable methodology skills (`assay:adopt`, `assay:author-brief`) plus the desk-role skills for the five-desk pipeline (`assay:the-desk`, `assay:intake-desk`, `assay:batch-fanout`, `assay:pr-review-desk`, `assay:verify-desk`), namespaced `assay:<name>` | `.claude-plugin/marketplace.json`, `plugins/assay/` — see `install-desk-plugin` | installed via `/plugin`, cached under `~/.claude` |
 | **desk-tools** | The desk-role **binaries** (`deskboard`, `deskpr`, `deskevidence`, `deskfile`, `deskpost`, …) the five desk-role skills drive as their **primary** path — they carry the guards, write-budgets, and roster + trust gates. **Optional-but-recommended**: without them the desk skills fall back to raw `gh`/`git` (works, but loses the guards). Acquired as a pinned, sha256-verified tarball — the **same mechanism as statusgen** | a **release tarball** (`desk-tools-<platform>.tar.gz`) from the same release as statusgen — see `install-desk-tools` | **no source in your repo** — a `.assay-versions` pin plus the installed binaries on `PATH`; config at the config-home (`~/.config/assay/`) |
-| **reviewer GitHub App** | The separate review identity (§1a) — attribution, not authorization; `pull_requests: write` with **no** `contents: write` is the *recommendation* (§3 `setup-reviewer-app`) | CORE `setup-reviewer-app` (runbook) | GitHub org/account settings — **not a repo file** |
+| **reviewer GitHub App** | The separate review identity (§1a) — attribution, not authorization; `pull_requests: write` with **no** `contents: write`, plus **`checks`/`statuses`/`actions: read`** so it can read CI to gate on it, is the *recommendation* (§3 `setup-reviewer-app`) | CORE `setup-reviewer-app` (runbook) | GitHub org/account settings — **not a repo file** |
 | **automation identity** | The account (and/or role Apps) the fleet **runs as** — authors PRs, pushes branches, runs CI, mints tokens. Distinct from the human account (the two-accounts prerequisite). Minimum = one machine account plus the reviewer App it owns; larger fleets *optionally* split it into role Apps (worker / verifier / desk / loop) — a decomposition, **not** a requirement | operator-provisioned (GitHub org/account) | GitHub org/account settings — **not a repo file** |
 | **board-writer GitHub App** | Needed **only** if `main` is branch-protected (§3 `add-statusgen-ci`): a dedicated App with **`contents: write` only**, added to the branch's ruleset bypass so the push-to-main statusgen regen can commit `STATUS.md` past protection. Not needed when protection is off | CORE `add-statusgen-ci` (when protection is on) | GitHub org/account settings + the branch's ruleset bypass — **not a repo file** |
 | **.githooks main-guard** | `pre-commit` refusing `main` commits without `ASSAY_MAIN_COMMIT_OK` (worktree-isolation backstop) | parent-project hardening (not shipped in the toolkit) | `.githooks/pre-commit` + `core.hooksPath` |
@@ -687,7 +689,8 @@ roll-up, Next-up, awaiting-verification, unresolved-findings should reflect your
 
 ### PRIMITIVE: setup-reviewer-app — HUMAN-GATED
 Prepare the exact App name + permission toggles (`pull_requests: write`, `contents: read-only` — the
-reviewer must not be able to commit), then **escalate**: App creation,
+reviewer must not be able to commit — plus **`checks: read`, `statuses: read`, `actions: read`** so
+the reviewer can read CI to gate on it), then **escalate**: App creation,
 key generation, and installation are the GitHub-admin's. The App's bot login is what makes a verdict
 **attributable to an identity the PR author cannot post as** — a placeholder or self-minted stand-in
 defeats the entire point. Wait for the recorded App ID / install IDs before wiring anything that
@@ -707,6 +710,19 @@ read-only reviewer is what keeps *author ≠ approver* mechanically true. A depl
 carries `contents: write` (so it can flip its own draft PRs) makes
 that boundary discipline-held rather than mechanical. Take the read-only default unless you have a reason, and record
 the trade if you don't.
+
+**CI-read scopes are separate from `contents` — grant them even on a read-only reviewer.** The
+reviewer reads CI check status to gate on it (it never approves or flips a PR over red CI), which
+means the App needs **`checks: read`, `statuses: read`, and `actions: read`** — `checks`/`statuses`
+for the `commits/<sha>/check-runs` + `statusCheckRollup` reads, `actions` for the failing run's
+logs. These are **read-only** and orthogonal to the `contents: read-only` recommendation: a reviewer
+that cannot commit still must read CI. Missing any of them surfaces not as a clean error but as an
+opaque **HTTP 403** on the CI-rollup read, after which the gate silently degrades. **If you run the
+full desk pipeline** (a separate **worker** and/or **desk** App, via `install-desk-tools`), grant the
+same three read scopes to those Apps too — they read CI to shepherd red PRs and to detect main-red.
+Do **not** grant them to a verifier / inbound-lane App: those roles do not read CI. Like App
+creation, the grant is the **GitHub-admin's** act — set the toggles in the App's *Permissions &
+events* and re-consent the install; a tool cannot self-grant.
 
 **Verify:** the App appears in the repo's installed-Apps list; a probe PR receives a review authored
 by the reviewer-App **bot**, not a user account; and — **for an install that took the `contents:
