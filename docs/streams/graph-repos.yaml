@@ -1,0 +1,22 @@
+# graph-repos.yaml — the alias registry for the fleet dependency graph
+# (docs/dependency-graph-design.md §3.3; schema graph-repos-v1).
+#
+# One short alias per stream-bearing repo in the cell. The repo segment of a brief-v2
+# `brief:` id is an alias from this file, never <owner>/<name> — aliases are resolved
+# here, so emitted output can always use the fully qualified form while briefs and
+# refs stay short and rename-safe.
+#
+# Entries whose repo is not publicly named carry `repo: null` and `unpublished: true`:
+# this tree is public, and a private sibling's <owner>/<name> is deliberately withheld.
+# The alias still reserves the namespace — a `rec:`/`at:`/`oit:`/`ac:` ref parses and
+# lint-validates against the registry — but resolving such a ref past the alias is a
+# could-not-check from this tree, never a silent answer. The full mapping lives in the
+# private copy of this registry; drift between the two is a lint check once both exist.
+schema: graph-repos-v1
+cell: assay
+repos:
+  assay: {cell: assay, repo: medici-finance/assay}
+  at:    {cell: assay, repo: null, unpublished: true}
+  oit:   {cell: assay, repo: null, unpublished: true}
+  rec:   {cell: assay, repo: null, unpublished: true}
+  ac:    {cell: assay, repo: null, unpublished: true}

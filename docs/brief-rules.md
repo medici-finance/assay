@@ -26,6 +26,18 @@ enforces the machine-checkable ones; the rest are review-gated.
    the critical path; `statusgen --lint` reports violations as NOTICEs (advisory; will promote to PROBLEM once adopter repos are migrated). Reason: the wave layout is a
    projection of the dependency graph; keeping them consistent lets the board schedule work
    and compose waves as true parallelism boundaries.
+44. **Every ordering/behavioural gate is a typed EDGE, never README prose alone.**
+   A prerequisite that says "no X before Y," "blocked on," "must land before," or a
+   behavioural "no CronJob brief starts before the loop skills file-and-exit" is a
+   dependency the same as any `depends:`. If it lives only in prose, statusgen's Next-up
+   (computed purely from the `depends:` graph) cannot see it and the standing worker pool
+   dispatches straight past it — a silent premature-dispatch, the most dangerous blocker
+   class because it is invisible to every Next-up consumer (issue #1250). Encode it as
+   `depends:`/`unblocks:` (in-repo — authoring an OWNING brief for a behavioural gate where
+   none exists, per the desk-hardening/13 pattern) or a desk feathering row (cross-repo);
+   the prose then survives as a caption on a real edge. `statusgen --lint` flags gate-shaped
+   prose with no matching edge as an `ordering-gate` NOTICE (design: `docs/dependency-graph-design.md`
+   §6); a per-line `<!-- graph: not-a-gate -->` waiver silences a false positive.
 5. **Data-first, roughly equal-sized pieces.** Split anything too big (a brief doing two
    distinct roles becomes two). Reason: uneven briefs stall a wave and hide the real
    critical path. Rough test: if the Task needs more than ~5 steps or touches >2 subsystems,
@@ -219,15 +231,44 @@ nothing measured.
 
 ## Derived status cells
 
-Rules 36-37 say what the Evidence record IS. These two say what the stream README's
-Status cell may claim on top of it, and who repairs it when the two disagree.
+Rules 36-37 say what the Evidence record IS. The rules here say what every lifecycle
+cell on a stream board may claim on top of the witnesses that already exist, and who
+repairs the board when a cell and its witness disagree. The lifecycle vocabulary is
+exactly `todo`, `in-progress`, `implemented`, `verified`, `done`, `blocked`, and
+`unknown`; an `unknown` cell carries its reason in parentheses on the board.
 
-30. **A `verified`/`done` Status cell is DERIVED from the witness, not asserted by whoever
-    edited the table — and `verified` reverts to `implemented` when its witness goes red.**
-    `verified` says: this brief's Verify rows were run and they passed. Since rule 36 that
-    claim has a machine-readable form — `statusgen verifyrun --check <brief>` exits 0 — and
-    a claim with a machine-readable form must not stay hand-asserted, or the board can
-    disagree with its own evidence and nothing notices. Three states, three treatments:
+The derivation contract, one row per cell — rule 30 is the principle it generalizes,
+rules 46-47 the edges it rests on:
+
+| Cell | Derived from | Witness the instrument must have looked at |
+|---|---|---|
+| `todo` | nothing else applies, **and the instrument looked** | PR search ran; no open/merged PR carries this brief's trailer; no witness |
+| `in-progress` | an OPEN PR carries `Brief: <stream>/<NN>` (rule 46) | the PR (number, head SHA, draft/ready) |
+| `implemented` | a MERGED PR carries the trailer | the merge commit SHA on the default branch |
+| `verified` | `statusgen verifyrun --check` exit 0, the rows re-run by a non-implementer (rule 30) | the witness log |
+| `done` | `verified` + (`gate: model` → App approval at head; `gate: human` → a `human:<login>` Evidence row) | the review id / the Evidence row |
+| `blocked` | the linked issue carries `question` / `needs-decision` / `help wanted`, or the brief carries `blocked-by: env` | the issue + label |
+| `unknown` | the instrument **could not look** (no network, API error, rate-limited, no trailer convention yet) | — the board prints WHY, per cell |
+
+**`unknown` is a first-class cell.** A derived negative (`todo`) is legal only when the
+search ran and returned nothing. An offline `statusgen --lint` on a branch renders every
+PR-derived cell `unknown (offline)` — it never renders `todo`. This is the three-state
+instrument invariant (§ *Three-state instrument invariant*) applied to the board itself.
+**Demotion is automatic, promotion is witnessed.** A PR re-opened after a revert, a red
+witness, a dismissed approval: the cell falls back to the highest state still witnessed;
+nothing advances a cell but the witness its row names.
+
+30. **Every lifecycle Status cell is DERIVED from its witness, not asserted by whoever
+    edited the table — and a cell whose witness goes red falls back to the highest state
+    still witnessed** (the derivation table above; the `verified`/`done` mechanics in
+    detail here). A board cell is a claim about the world, and every such claim already
+    has a durable witness somewhere: an open or merged PR carrying the brief's `Brief:`
+    trailer, a `verifyrun` log, an App approval at head, a human ruling in an Evidence
+    row, a labelled blocking issue. A claim with a machine-readable witness must not
+    stay hand-asserted, or the board can disagree with its own evidence and nothing
+    notices. The `verified`/`done` rows have had their machine-readable form since rule
+    36 — `statusgen verifyrun --check <brief>` exits 0 — and `verified` reverts to
+    `implemented` when its witness goes red. Three states, three treatments:
 
     | `verifyrun --check` | What the cell may say | Enforced by |
     |---|---|---|
@@ -278,6 +319,27 @@ Status cell may claim on top of it, and who repairs it when the two disagree.
     **Drain, don't file.** The correction for a red row on main lands as a re-baseline PR, not
     as an issue. A red witness is already a red check annotating the exact brief and row; a
     second copy in the issue tracker adds a queue entry and no information.
+
+46. **The `Brief:` trailer is the only PR→brief edge.** A PR is linked to the brief it
+    delivers by exactly one trailer line in its body — `Brief: <stream>/<NN>` (the
+    hierarchical forms of brief-v2 are accepted on read: `<stream>:<NN>`,
+    `<repo>:<stream>:<NN>`, `<cell>:<repo>:<stream>:<NN>`; issue-only work with no brief
+    carries `Issue: #<N>` instead). No title parsing, no branch-name heuristics: a
+    derivation that cannot find the trailer finds nothing, and a merged PR with no
+    trailer is a lint finding (NOTICE during backfill, PROBLEM after), never a guess. A
+    trailer inside a fenced code block is documentation, not a link. There is
+    deliberately no bypass flag, env var, or commit-message token — an override a worker
+    can type into their own PR makes the edge asserted again, one level up, which is the
+    shape rule 30's override paragraph rejects.
+
+47. **A generated board table has exactly ONE WRITER; a hand edit to it is a PROBLEM.**
+    When a stream README's Briefs table is wrapped in generated markers (the README
+    frontmatter gains `board: generated`), every lifecycle cell in it is written by the
+    regen loop from the witnesses rule 30 names, and hand-editing the table is the same
+    defect as hand-editing `STATUS.md` — `statusgen --lint` PROBLEMs a marker-wrapped
+    table whose content differs from the derivation. Until a stream's table is wrapped,
+    its cells stay hand-written and rule 35's diff-against-merge-history NOTICE is the
+    check that applies; the wrapping is a per-stream migration, not a flag-day edit.
 
 ## Provenance and gating
 
@@ -481,6 +543,38 @@ passing run — which is why they are lint rules and not review vigilance.
     - `readlink -f`, `date -d`, `stat -c`, `xargs -r`, `sort -V`, `tac`,
       `mapfile` — all GNU-only; the lint names a portable substitute for each.
 
+45. **A Verify table MAY declare each row's CLASS, and a scripted row must exist
+    and be executable** (`verdict-lane/02`; the row-classes spec lives with that
+    stream's design docs in the authoring repo and is staged separately). Add an
+    optional `Class` column
+    right after `#` — `| # | Class | Command | Expect |` — so the verdict lane can
+    route each row instead of re-interpreting prose+shell at run time:
+    - `check:ci` — HERMETIC (tree-only). CI re-executes it **network-off** and
+      refuses the verdict on mismatch; hermeticity is enforced at execution
+      (`statusgen verifyrun` disables the network), never merely declared.
+    - `check` — deterministic but ENV-BOUND (a live PEM, a real queue, a tool on
+      PATH). A runner executes it; CI skips an explicitly-classed one (its verdict
+      rests on the verifier's authorship+signature, not on a CI re-run).
+    - `gate:model` / `gate:human` — JUDGMENT rows. `gate:human` stays on the
+      verify-gate issue pair, outside the transcription lane.
+
+    A table with **no** `Class` column is legacy: every row is treated as `check`,
+    and the whole inherited corpus keeps its exact prior behaviour — the column is
+    additive. A `check:ci`/`check` row may be a **reviewed script** instead of an
+    inline command — `docs/streams/<stream>/verify.d/brief-NN/row-K.sh`
+    (executable, exit 0 = PASS) — and then the row's Command cell IS that script
+    path; the reviewer who approves the brief approves the script (the reviewer is
+    the trust anchor, no freeze rule). `statusgen --lint` hard-errors (PROBLEM) on
+    an **unknown class**, and on a `check:ci`/`check` scripted row whose script is
+    **missing or not executable** on a brief the board has moved past `todo`; and
+    it raises a conspicuous NOTICE naming every `verify.d/**` script a PR's diff
+    touches, so a change to runner-executed code is reviewed as code.
+
+    *(Numbering note: the authoring repo's copy of this file allocated this rule and
+    the typed-edge rule in the Dependencies section the same number in parallel —
+    the collision class rule 40's detector exists for. This file allocates cleanly:
+    44 is the typed-edge rule, 45 is this one.)*
+
 ## Derived surfaces
 
 A fact that appears on more than one surface has exactly one declared source; every other
@@ -489,10 +583,16 @@ second copy is the defect whatever it contains — it drifts, and the discipline
 supposed to keep it current is the discipline that already failed (#592 → #627 → #685 is
 the same defect filed three times).
 
+The surfaces under this section so far: `STATUS.md` (regenerated from the stream
+boards); the issue-loop scan PR's body counts (rule 34); and each stream README's
+Briefs table, whose lifecycle cells derive from the witnesses rule 30 names — the table
+becomes a generated surface with exactly one writer (rule 47) as each stream is wrapped
+in markers, and is diffed against merge history until then (rule 35).
+
 32. **A worker's terminal verdict on a PR is a DISPOSITION RECORD, not a prose comment.**
     A conclusion that only a human can read is one a sweep must re-derive. In one
     2026-08-12 batch-fanout cycle, 8 of 10 completed orphan dispatches re-derived a
-    conclusion an earlier pass had already posted; `tracker#829` was re-derived four times
+    conclusion an earlier pass had already posted; one orphan was re-derived four times
     across three weeks, and one sweep cited a worker's own "this is dead" note as
     evidence of activity. Write the record with `deskdisposition set`, which emits both
     halves:
@@ -523,7 +623,7 @@ the same defect filed three times).
     **The record does not close anything.** Writing it is the worker's; closing the PR is
     a human-authorized event and belongs to `deskclose` (issue-flow/03), which consumes
     these records as its queue. Stated-but-unexecuted close intent is its own failure
-    (`tracker#1439` sat that way from 2026-08-09) — the record is what makes the close
+    (one tracker item sat that way from 2026-08-09) — the record is what makes the close
     decidable without re-investigating.
 
 33. **A check that reads a derived surface is three-state.** checked-clean (it read, and
@@ -627,3 +727,105 @@ gap.
     behavioural collisions, namespaces other than this file's rule numbers, collisions with
     a still-open PR, and approval currency. A clean verdict that does not say what it did not
     look at is read as "nothing is wrong".
+
+## Parallel work on one brief
+
+A brief may declare that its work decomposes into concurrent shards
+(`parallel-streams:`). These two rules bound that. Absence of the field is the default
+and needs neither.
+
+41. **A file partition is a precondition, not a safety argument.** Disjoint paths prevent
+    exactly one collision class — two workers writing the same bytes — and that only when
+    a check proves the disjointness against the real tree rather than reading an author's
+    assertion. Three classes survive a path partition untouched, and all three have
+    reddened this repo's main: a **semantic** collision (one shard changes a declaration
+    another shard calls; no textual conflict, both shards green in isolation), a **shared
+    space** (rule numbers, board rows, a generated artifact, a module graph, a pin set —
+    where the contended resource is not the byte, which is how this very file came to
+    carry rules 25 and 26 twice before that was reconciled, and why rule 40's detector
+    exists), and a collision with a **different branch** entirely.
+    A split therefore ships with a checker that names which classes it covers and reports
+    every pair it could not reason about; the covered/uncovered boundary is stated, never
+    implied by a green run. Reason: the failure this rule prevents is not a bad split, it
+    is a split believed safe on the strength of a check that never looked at the thing
+    that broke.
+
+42. **A shard's verdict is not the brief's verdict, and an unread sibling is
+    could-not-check.** Applying rule 33 to a split: a shard reporting success while any
+    sibling shard's state could not be read reports **could-not-check**, and the brief
+    stays in-progress with the missing shards named. The brief-level Verify table runs
+    against the RECOMBINED tree, because N per-shard greens are evidence about N trees
+    and none of them is the tree that merges. A partial split is reported as partial;
+    it is never a silently half-applied brief.
+
+## Verify row semantics: dereferencing vs. presence
+
+43. **A brief whose deliverable makes checkable factual claims must include at least one
+    DEREFERENCING Verify row — not only presence/formatting checks.** Two Verify rows can
+    both go green without proving the same thing, and the format should make authors notice
+    which one they are writing:
+    - **Dereferencing checks** resolve something: fetch a link and inspect what it actually
+      serves, run a documented command and compare its real output/exit code against the
+      specific claim the deliverable makes, check a documented ID or property against the
+      live system it describes. These CAN fail on a document that is factually wrong but
+      well-formed.
+    - **Presence/formatting checks** (`grep -c`, `wc -w`, "section X exists") prove the
+      deliverable is well-formed — a required section is there, at the required length, with
+      the required tokens. They CANNOT fail on a wrong-but-well-formed document: a confidently
+      worded falsehood sitting in the right section, at the right word count, passes exactly
+      like the truth would.
+
+    This sharpens rule 8, it doesn't relax it: rule 8 says a presence-only table must be
+    *disclosed* as gating presence, not quality; this rule says that when the deliverable
+    carries checkable facts, the table must also carry at least one row *capable* of catching
+    a wrong one, so the honest disclosure in rule 8 doesn't quietly become the whole floor.
+
+    **This rule is a different axis from the row-runner rules (25-29) and from the
+    unfailable-row lint** (`statusgen`'s `verifyrows.go`, #509), and it is worth being precise
+    about the difference, because the three are easy to mistake for one another:
+    - Rules 25-29 catch commands whose TEXT betrays that the harness substituted its own
+      answer for the one under test — a `go run` exit-code assertion, a BRE `\|` alternation,
+      an escaped pipe under `-E`, an unpinned comparison base, a GNU-only flag. They are
+      decidable from the command string, so `statusgen --lint` flags them.
+    - The unfailable-row lint catches rows structurally incapable of failing for *any* input
+      (a `grep -c` gated on an expected count of zero, an always-zero pipeline sink).
+    - This rule catches a row that is well-formed, portable, and genuinely failable, and still
+      measures nothing about the claim. `grep -c "Section 3" doc.md` returns 0 on a malformed
+      doc, so it is failable and passes both of the above — and it fails only on a *missing*
+      section, never on a wrong claim inside a present one.
+
+    A brief can therefore clear every mechanical row check in this file and still ship a Verify
+    table that cannot catch a false statement. That gap is what this rule closes, and it closes
+    it at authoring time, by judgement, not by lint.
+
+    Reason (the triggering evidence, #19): brief `desk-apps/02` (a GitHub App setup guide)
+    shipped a Verify table with 8 rows, every one a grep-presence count ("section X appears ≥N
+    times", wordcount ≥800, lint exit 0) — all 8 passed, and the guide was factually wrong in
+    four places, one load-bearing: it asserted a GitHub enforcement property that GitHub does
+    not actually provide. The same session had already hit the sibling shape once:
+    `assay-product/02` (a market analysis, #17) passed its model review gate with citation
+    links present but never resolved, carrying an invented competitor name and a URL that
+    serves a different vendor's docs. Neither defect was catchable by a table built entirely of
+    presence counts — the row that would have caught either one had to fetch the URL or check
+    the named claim against a live system, not count characters near it.
+
+    Applies when the deliverable asserts something checkable about the world — a setup/config
+    guide, a market or competitive analysis, a spec, anything carrying "X is true" claims a
+    reader could act on. Does **not** apply to genuinely presence-only deliverables (a docs-only
+    reformat, a template scaffold, a brief whose content makes no factual claim to dereference)
+    — manufacturing a dereferencing row there checks something arbitrary just to satisfy the
+    rule, which is its own kind of checkmark-DoD. Whether a deliverable "makes checkable factual
+    claims" is a judgement call the author states, not a mechanical trigger — **no lint enforces
+    this rule**, and that is a declared limitation, not an omission: deciding whether a row
+    dereferences requires knowing what the deliverable claims, which is not in the command text.
+
+    **Relation to issue #17.** #17 proposes a mechanical lint that resolves every link in a
+    report-repo doc and flags a 404 or wrong host. If/when that lands, it is a partial,
+    mechanical instance of *this* rule — link-resolution is one specific kind of dereferencing
+    check, not the whole class (running a documented command and checking its real output, or
+    checking a documented ID against a live API, dereference just as much and involve no link
+    at all). Don't treat a passing link-resolution lint as satisfying this rule on its own if
+    the brief's factual claims aren't primarily link-shaped; and don't skip authoring a
+    dereferencing row on the assumption that a future lint will supply one — this rule is the
+    authoring-time requirement, #17's lint (if built) is a narrower automated assist layered
+    on top.
