@@ -92,6 +92,11 @@ facts:
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
+- 2026-08-22 (board-row worker, post-46a684f): implementation was already on main via
+  commit `46a684f` (containers/base/Dockerfile, containers/README.md, docs/docker.md §Desk
+  images) with the board row left `todo` — phantom-row class. This PR records the row flip
+  `todo → implemented`. Verify rows 1–7 were not re-run in this pass; the review lane should
+  confirm them against the built image per the DoD.
 
 ## Review
 Gate: model (all four risk answers no — the image bakes only public repo content and
