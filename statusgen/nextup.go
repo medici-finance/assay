@@ -134,6 +134,14 @@ type NextUp struct {
 	// brief to the span cap, sending a reader chasing WIP pressure to the wrong
 	// knob.
 	HeldByStreamCap int
+	// HeldByStreamDetail decomposes HeldByStreamCap per stream ("<stream>" →
+	// count held back by THAT stream's per-stream cap), so the board can name
+	// WHICH streams are at their dispatch cap and which one holds the most back
+	// — an aggregate "N held back" reads as a drained/empty board when in fact a
+	// single capped stream (e.g. a busy issue-loop) is sitting on the whole
+	// backlog. Populated alongside every HeldByStreamCap increment; the map sum
+	// equals HeldByStreamCap.
+	HeldByStreamDetail map[string]int
 	// SerializedUnknown names the streams that DECLARED max-concurrent but were
 	// held back to zero because claim filtering did not run — the could-not-check
 	// state. It is reported, never silently treated as "no claims, full budget".
@@ -196,6 +204,44 @@ func heldBackReason(n NextUp) string {
 		return fmt.Sprintf("%d by per-stream caps, %d by the span-of-control cap %d",
 			n.HeldByStreamCap, n.HeldBySpan(), n.Span)
 	}
+}
+
+// heldByStreamTop ranks HeldByStreamDetail by count (descending, then name for a
+// deterministic board) and renders the top `max` as "<stream> (<n>)" fragments.
+// It also returns the single top holder's name and the total held across all
+// streams. This is what lets the overflow section say "N held by per-stream caps
+// (top: issue-loop)" instead of a bare count that reads like an empty board: a
+// stream sitting at its dispatch cap is holding work back, not out of work. A
+// non-positive `max` renders every stream.
+func heldByStreamTop(detail map[string]int, max int) (frags []string, top string, total int) {
+	type kv struct {
+		name string
+		n    int
+	}
+	xs := make([]kv, 0, len(detail))
+	for name, n := range detail {
+		if n <= 0 {
+			continue
+		}
+		xs = append(xs, kv{name, n})
+		total += n
+	}
+	sort.Slice(xs, func(i, j int) bool {
+		if xs[i].n != xs[j].n {
+			return xs[i].n > xs[j].n
+		}
+		return xs[i].name < xs[j].name
+	})
+	if len(xs) > 0 {
+		top = xs[0].name
+	}
+	for i, x := range xs {
+		if max > 0 && i >= max {
+			break
+		}
+		frags = append(frags, fmt.Sprintf("%s (%d)", x.name, x.n))
+	}
+	return frags, top, total
 }
 
 func priorityWeight(p string) int {
@@ -554,7 +600,7 @@ func gateScores(streams []*Stream, briefTouch map[string]time.Time) []GateScore 
 // banner already labels them.
 func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time) NextUp {
 	claimed := claims.Claimed
-	nu := NextUp{Span: spanOfControl, Threshold: overflowThreshold, Claims: claims.Source}
+	nu := NextUp{Span: spanOfControl, Threshold: overflowThreshold, Claims: claims.Source, HeldByStreamDetail: map[string]int{}}
 	if len(streams) == 0 {
 		return nu
 	}
@@ -745,6 +791,7 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 		cap := streamCaps[p.Stream.Name]
 		if cap == 0 || perStream[p.Stream.Name] >= cap {
 			nu.HeldByStreamCap++
+			nu.HeldByStreamDetail[p.Stream.Name]++
 			continue
 		}
 		if p.DriveTerm > 0 && driveShown >= driveSlotCap {
@@ -772,6 +819,7 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 		cap := streamCaps[p.Stream.Name]
 		if cap == 0 || perStream[p.Stream.Name] >= cap {
 			nu.HeldByStreamCap++
+			nu.HeldByStreamDetail[p.Stream.Name]++
 			continue
 		}
 		perStream[p.Stream.Name]++

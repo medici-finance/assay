@@ -348,6 +348,24 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			len(nu.Picks), nu.Eligible, unfiltered, nu.HeldBack(), heldBackReason(nu))
 		w("")
 	}
+	// Per-stream held-back decomposition. A bare "N held back" reads as a drained
+	// board; naming WHICH streams are at their dispatch cap — and the top holder —
+	// tells an operator (or a drain loop) that the backlog is capped, not empty, so
+	// they clear a claiming branch/PR on the right stream rather than concluding
+	// there is nothing to do. Rendered whenever a per-stream cap actually held work
+	// back, independent of the span-overflow line above.
+	if nu.HeldByStreamCap > 0 && len(nu.HeldByStreamDetail) > 0 {
+		frags, top, total := heldByStreamTop(nu.HeldByStreamDetail, 5)
+		more := ""
+		if n := len(nu.HeldByStreamDetail) - len(frags); n > 0 {
+			more = fmt.Sprintf(", +%d more stream(s)", n)
+		}
+		w("_Held by per-stream caps: %d brief(s) across %d stream(s) — top: %s. By stream: %s%s. "+
+			"A stream at its dispatch cap (perStreamCap %d, a declared max-concurrent, or in-flight claims) offers "+
+			"nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._",
+			total, len(nu.HeldByStreamDetail), top, strings.Join(frags, ", "), more, perStreamCap)
+		w("")
+	}
 	if len(nu.Picks) == 0 {
 		w("_Nothing eligible — all active streams are blocked, stale-flagged, or done._")
 	} else {
