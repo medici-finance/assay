@@ -11,10 +11,10 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-22 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-22 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-22 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-22 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-23 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-23 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-23 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-23 |  |
 
 ## Next up
 
@@ -28,19 +28,24 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | statusgen | 02 — issue metrics (`--issues`) | 1 | 1500 |
 | statusgen | 01 — 30-day lint-firing audit — retire cold rules | 1 | 1000 |
 | statusgen | 04 — ladder-position indicator (`--ladder`) | 1 | 1000 |
-| statusgen | 05 — drives phase 3 — anti-starvation floors + critical tier [exec:strong] | 1 | 1000 |
+| statusgen | 06 — findings register — corroborated state machine [exec:strong] | 1 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (0 desk-actionable of 0 total — 0 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (1 desk-actionable of 1 total — 1 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
-_None._
+
+### Desk-actionable (1)
+
+| Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
+|---|---|---|---|---|---|---|---|
+| statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ## Age at the human gate
 
@@ -48,7 +53,9 @@ _Per stream: how long the longest-waiting `gate: human` brief has sat in its CUR
 
 _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` brief sitting at implemented/verified, whereas the digest lists only those the per-brief sign-off surface has judged actionable (a recorded model verify pass behind them). A stream appearing here with no digest row is a brief waiting on its VERIFIER, not on the human — a different queue, and worth seeing separately._
 
-_No brief is awaiting the human gate._
+| Stream | Oldest at gate | Brief |
+|---|---|---|
+| statusgen | — | — |
 
 ## Unresolved findings
 
@@ -93,7 +100,7 @@ _None._
 - 02 issue metrics (`--issues`) — todo (wave 1)
 - 03 self-improvement metric (self-healed vs human-touched) — todo (wave 2)
 - 04 ladder-position indicator (`--ladder`) — todo (wave 1)
-- 05 drives phase 3 — anti-starvation floors + critical tier — todo (wave 1)
+- 05 drives phase 3 — anti-starvation floors + critical tier — implemented (wave 1)
 - 06 findings register — corroborated state machine — todo (wave 1)
 
 ## Done briefs
