@@ -18,25 +18,24 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 ## Next up
 
-| Stream | Brief | Wave | Score |
-|---|---|---|---|
-| derived-board | 01 — brief-v2 spec: derived lifecycle, generated table, public re-stage of brief-rules/template [exec:strong] | 0 | 4500 |
+_Nothing eligible — all active streams are blocked, stale-flagged, or done._
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (9 desk-actionable of 9 total — 9 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (10 desk-actionable of 10 total — 10 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (9)
+### Desk-actionable (10)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
+| derived-board | 01 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | derived-board | 02 | implemented | 4500 | 5 | — | — | — |
 | desktools-go-git | 01 | implemented | 4500 | 7 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
@@ -66,7 +65,7 @@ _None._
 
 ### derived-board (7 open)
 
-- 01 brief-v2 spec: derived lifecycle, generated table, public re-stage of brief-rules/template — todo (wave 0)
+- 01 brief-v2 spec: derived lifecycle, generated table, public re-stage of brief-rules/template — implemented (wave 0)
 - 02 `Brief:` trailer — the PR→brief link, required by `deskpr`, linted on main — implemented (wave 0)
 - 03 `statusgen reconcile` — derive lifecycle state from PRs + witnesses + approvals — todo (wave 1)
 - 04 generated Briefs table + single-writer lint — todo (wave 2)
