@@ -66,12 +66,15 @@ func parseFindings(path string) ([]Finding, error) {
 	findings := make([]Finding, len(entries))
 	for i, e := range entries {
 		findings[i] = Finding{
-			ID:       e.ID,
-			Date:     e.Date,
-			Title:    e.Title,
-			Affects:  e.Affects,
-			Ack:      e.Ack,
-			Resolved: e.Resolved,
+			ID:           e.ID,
+			Date:         e.Date,
+			Title:        e.Title,
+			Affects:      e.Affects,
+			Ack:          e.Ack,
+			Resolved:     e.Resolved,
+			ParkedUntil:  e.ParkedUntil,
+			ParkedBy:     e.ParkedBy,
+			ParkedReason: e.ParkedReason,
 		}
 	}
 	return findings, nil

@@ -28,7 +28,7 @@ findings-register state machine.
 | 03 | [self-improvement metric (self-healed vs human-touched)](brief-03-self-improvement-metric.md) | 2 | M | todo | — | — |
 | 04 | [ladder-position indicator (`--ladder`)](brief-04-ladder-position-indicator.md) | 1 | S | implemented | — | — |
 | 05 | [drives phase 3 — anti-starvation floors + critical tier](brief-05-drives-phase3-floors-critical-tier.md) | 1 | L | implemented | — | — |
-| 06 | [findings register — corroborated state machine](brief-06-findings-register-state-machine.md) | 1 | L | todo | — | — |
+| 06 | [findings register — corroborated state machine](brief-06-findings-register-state-machine.md) | 1 | L | implemented | — | — |
 
 ## Critical path
 statusgen/02 (issue metrics) → statusgen/03 (self-improvement metric). The
