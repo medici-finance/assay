@@ -104,7 +104,21 @@ facts:
 | 9 | `! grep -rn -E -e '[a-z0-9-]+/[a-z0-9-]+#[0-9]+' -e '[a-z0-9-]+#[0-9]{3,}' -e 'github\.com/[a-z0-9-]+/[a-z0-9-]+/issues/' -e 'github\.com/[a-z0-9-]+/[a-z0-9-]+/pull/' docs/brief-rules.md docs/brief-template.md docs/dependency-graph-design.md` | exit 0 (no repo-qualified issue/PR refs of any org leaked by the overlay — the shape is checked, not a literal list) |
 
 ## Evidence
-<!-- appended at implementation time -->
+
+Run 2026-08-23 by assay-worker-app[bot] on the feature branch (offline; docs + registry only, no brief flipped to `schema: brief-v2`).
+
+| # | Command | Exit | Output |
+|---|---------|------|--------|
+| 1 | `grep -c '^schema: brief-v2' docs/brief-template.md` | 0 | `1` |
+| 2 | one `grep -c -E` over `docs/brief-rules.md` counting the derivation rows for `todo`, `in-progress`, `implemented`, `verified`, `done`, `blocked`, `unknown` | 0 | `7` (one derivation row per lifecycle cell) |
+| 3 | `grep -n -E 'Brief: <stream>/<NN>' docs/brief-rules.md` | 0 | matches inside §"Derived status cells" (the `in-progress` derivation row) |
+| 4 | `grep -c -E -e '^gates:' -e '^feathers:' -e '^id:' -e '^supersedes:' -e '^version:' docs/brief-template.md` | 0 | `5` |
+| 4b | `grep -c -E '^brief: <cell>:<repo>:<stream>:<NN>' docs/brief-template.md` | 0 | `1` |
+| 5 | `grep -n 'status:' docs/brief-template.md` | 0 | one line — the "Deliberately NO `status:` key" note |
+| 6 | `python3 -c "import yaml;…assert d['schema']=='graph-repos-v1' and d['cell'] and d['repos']"` | 0 | `ok` |
+| 7 | `wc -l docs/brief-rules.md` | 0 | `831` (≥ 768: the private text was brought across) |
+| 8 | `statusgen --root . --lint` | 0 | `LINT: PASS` (docs + registry only; pre-existing NOTICEs unrelated) |
+| 9 | `! grep -rn -E <repo-qualified issue/PR shapes> docs/brief-rules.md docs/brief-template.md docs/dependency-graph-design.md` | 0 | no matches — no repo-qualified issue/PR references of any org leaked by the overlay |
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
