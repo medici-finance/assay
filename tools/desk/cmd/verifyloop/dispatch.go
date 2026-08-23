@@ -24,7 +24,7 @@ const (
 	notYetCarried
 )
 
-// dispatchRequirement maps ONE bullet of `.claude/skills/verify-desk/SKILL.md` loop step 2
+// dispatchRequirement maps ONE bullet of `plugins/assay/skills/verify-desk/SKILL.md` loop step 2
 // ("Its prompt MUST carry:") onto this template. Anchors are the substrings that identify the
 // SKILL.md bullet; Probes are substrings of the rendered prompt.
 type dispatchRequirement struct {
@@ -67,8 +67,11 @@ var dispatchRequirements = []dispatchRequirement{
 		Note:    "verify table supplied by the board read via Payload[\"verify_table\"]",
 	},
 	{
-		ID:      "isolation-own-private-tmp-worktree",
-		Anchors: []string{"isolation", "worktree", "/private/tmp"},
+		ID: "isolation-own-private-tmp-worktree",
+		// The skill bullet says "its own temp worktree off `origin/main` (NEVER the shared
+		// checkout)" — it no longer names /private/tmp; that stays a Probe only (the rendered
+		// prompt is stricter than the prose, which is fine).
+		Anchors: []string{"isolation", "temp worktree", "shared checkout"},
 		How:     carriedInPrompt,
 		Probes:  []string{"Isolation (MANDATORY)", "/private/tmp"},
 		Note:    "assertNoSharedCheckout refuses to emit a prompt naming a shared checkout",
@@ -106,8 +109,11 @@ var dispatchRequirements = []dispatchRequirement{
 		Note:    "free text never reaches the board: Land consumes only the typed Result",
 	},
 	{
-		ID:      "tier-local-session-model-never-opus",
-		Anchors: []string{"local session model", "never opus"},
+		ID: "tier-local-session-model-never-opus",
+		// The skill bullet reads "dispatch on the LOCAL SESSION MODEL. Never a paid/external
+		// or larger tier." — "never opus" left the prose; the rendered prompt still says it,
+		// so the Probe keeps it.
+		Anchors: []string{"local session model", "never a paid/external"},
 		How:     carriedInPrompt,
 		Probes:  []string{"local session model — never opus/external"},
 	},

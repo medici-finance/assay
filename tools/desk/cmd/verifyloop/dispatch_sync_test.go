@@ -1,15 +1,18 @@
 // Structural integration test: verifies verifyloop's dispatchRequirements stay
-// in sync with .claude/skills/verify-desk/SKILL.md's "Its prompt MUST carry:"
+// in sync with plugins/assay/skills/verify-desk/SKILL.md's "prompt MUST carry:"
 // list.
 //
 // The `consumer` build tag was DROPPED: verify-desk's
-// SKILL.md moved into THIS repo as its single home, so the skill file is now at
-// the assay checkout root and repoRoot's upward walk terminates here
+// SKILL.md moved into THIS repo as its single home, so the skill file is now
+// inside the assay checkout and repoRoot's upward walk terminates here
 // (before, the path existed only in a separate repo, so this test hid
 // behind the tag and — run with the tag from an assay checkout — walked
-// past the root to $HOME and read the ~/.claude thin pointer). This file now
-// runs in ordinary CI; the .claude/** path filter that triggers it and the
-// cross-module reader registry row that pins it live in
+// past the root to $HOME and read a user-level file). The skill's home in this
+// repo is the public plugin layout, plugins/assay/skills/ — NOT .claude/skills/
+// (this test briefly pinned the latter, which never existed here: on developer
+// machines the walk escaped to $HOME again, and on bare checkouts the test
+// silently skipped). This file now runs in ordinary CI; the path filter that
+// triggers it and the cross-module reader registry row that pins it live in
 // tools/desk/internal/deskkit/citrigger_test.go (and .github/workflows/tools.yml).
 
 package main
@@ -25,8 +28,8 @@ import (
 )
 
 // The dispatched-verifier prompt has TWO consumers of ONE requirement list: the prose the
-// manual desk follows (`.claude/skills/verify-desk/SKILL.md` loop step 2, "Its prompt MUST
-// carry:") and the fixed template in dispatch.go that the loop engine emits once verifyloop
+// manual desk follows (`plugins/assay/skills/verify-desk/SKILL.md` loop step 2, "Its prompt
+// MUST carry:") and the fixed template in dispatch.go that the loop engine emits once verifyloop
 // becomes the driver. Nothing kept them in sync, so SKILL.md gained the name-and-derive
 // step and the Go template silently did not.
 //
@@ -42,7 +45,12 @@ import (
 // The earlier caveat here — that no CI job ran tools/desk tests — was true when this
 // file was written and is not true on the tree it merges into.
 
-const skillRel = ".claude/skills/verify-desk/SKILL.md"
+const skillRel = "plugins/assay/skills/verify-desk/SKILL.md"
+
+// skillListAnchor locates the "Its prompt MUST carry:" list. The sentence wraps in the
+// skill file ("Its" ends the previous line), so the anchor is the fragment that survives
+// re-wrapping on ONE line. It occurs exactly once in the skill.
+const skillListAnchor = "prompt MUST carry:"
 
 // skillBulletMarker matches a top-level bullet of the "Its prompt MUST carry:" list. The list
 // sits inside numbered loop step 2, so its bullets are indented; continuation lines are
@@ -75,13 +83,13 @@ func repoRoot(t *testing.T) string {
 
 // skipIfVerifyDeskSkillAbsent skips this coupling test when the verify-desk
 // SKILL.md is not in the checkout AT ALL. This repository's published file set
-// does not always carry a .claude/skills tree, so there may be no verify-desk
-// skill and nothing to couple dispatchRequirements to.
+// does not always carry a plugins/assay/skills tree, so there may be no
+// verify-desk skill and nothing to couple dispatchRequirements to.
 //
-// Fail-closed intent is preserved precisely: if a .claude/skills tree IS present
-// somewhere up the walk but the specific verify-desk SKILL.md is missing (a real
-// deletion), this does NOT skip — it returns and lets repoRoot's Fatal fire. It
-// skips only when no .claude/skills tree exists at all.
+// Fail-closed intent is preserved precisely: if a plugins/assay/skills tree IS
+// present somewhere up the walk but the specific verify-desk SKILL.md is missing
+// (a real deletion), this does NOT skip — it returns and lets repoRoot's Fatal
+// fire. It skips only when no plugins/assay/skills tree exists at all.
 func skipIfVerifyDeskSkillAbsent(t *testing.T) {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -92,7 +100,7 @@ func skipIfVerifyDeskSkillAbsent(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, skillRel)); err == nil {
 			return // skill present — run the test
 		}
-		if _, err := os.Stat(filepath.Join(dir, ".claude", "skills")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "plugins", "assay", "skills")); err == nil {
 			return // skills tree present but this skill missing — let repoRoot fail closed
 		}
 		parent := filepath.Dir(dir)
@@ -116,14 +124,15 @@ func skillPromptBullets(t *testing.T) []string {
 
 	start := -1
 	for i, ln := range lines {
-		if strings.Contains(ln, "Its prompt MUST carry:") {
+		if strings.Contains(ln, skillListAnchor) {
 			start = i + 1
 			break
 		}
 	}
 	if start == -1 {
-		t.Fatalf("%s: could not find the 'Its prompt MUST carry:' list — the skill was restructured; "+
-			"re-point this test (and reconcile dispatchRequirements) rather than deleting it", skillRel)
+		t.Fatalf("%s: could not find the %q list — the skill was restructured; "+
+			"re-point this test (and reconcile dispatchRequirements) rather than deleting it",
+			skillRel, skillListAnchor)
 	}
 
 	var bullets []string
