@@ -18,11 +18,6 @@
 #     a first-class citizen on PATH alongside the desk binaries.
 #   - bugs-gc: prunes bugs/<N>.md carriers whose GitHub issue has closed
 #     (its own stdlib-only Go module; generic over --root).
-#   - leaksweep: the public-tree secret sweep (its own Go module). Its SOURCE
-#     is de-housed by a SEPARATE, sibling PR; until that merges tools/leaksweep/
-#     is absent and this image's leaksweep build stage fails. That is expected —
-#     docker-publish runs release-only (on a version tag, never on a PR), so no
-#     PR build is affected; the image goes green once the leaksweep PR lands.
 #
 # All binaries land in /usr/local/bin (on PATH) and are VERSION-STAMPED so a
 # running container can report exactly what it is:
@@ -102,17 +97,9 @@ RUN set -eux; \
     cd tools/bugs-gc; \
     go build -trimpath -o /out/bugs-gc .
 
-# leaksweep: the public-tree secret sweep, its own module (deps: yaml.v3). Its
-# SOURCE arrives via a SEPARATE sibling de-housing PR — until that merges,
-# tools/leaksweep/ does not exist and the COPY below fails the build. This is
-# intentional and documented in the PR body: docker-publish is release-only
-# (tag push), never triggered by a PR, so no PR build breaks; this image goes
-# green the moment the leaksweep source lands on the branch it is built from.
-COPY tools/leaksweep/ ./tools/leaksweep/
-RUN set -eux; \
-    cd tools/leaksweep; \
-    go mod download; \
-    go build -trimpath -o /out/leaksweep .
+# The internal-only public-tree secret-sweep tool is NOT packaged in this image
+# (assay-toolkit do-not-copy ruling 2026-08-23): its source is never de-housed
+# into public assay, so no build stage references it here.
 
 # ---- Final ----------------------------------------------------------------
 # Small runtime: Alpine + git + gh CLI + ca-certificates. github-cli lives in
@@ -124,7 +111,7 @@ RUN apk add --no-cache git github-cli ca-certificates \
     && addgroup -S desk \
     && adduser -S -G desk -h /home/desk desk
 
-# Binaries onto PATH (desk-tools suite + statusgen + bugs-gc + leaksweep).
+# Binaries onto PATH (desk-tools suite + statusgen + bugs-gc).
 COPY --from=builder /out/ /usr/local/bin/
 
 # Re-declare in this stage so the OCI labels can read the build-args (ARG values
@@ -133,7 +120,7 @@ ARG VERSION=dev
 ARG SOURCE_SHA=unknown
 ARG BUILT_AT=unknown
 LABEL org.opencontainers.image.title="assay desk-tools" \
-      org.opencontainers.image.description="house CI-runner tools: desk-tools suite + statusgen + bugs-gc + leaksweep, static Linux binaries on PATH" \
+      org.opencontainers.image.description="house CI-runner tools: desk-tools suite + statusgen + bugs-gc, static Linux binaries on PATH" \
       org.opencontainers.image.source="https://github.com/medici-finance/assay" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${SOURCE_SHA}" \
@@ -147,4 +134,4 @@ WORKDIR /home/desk
 # directly, e.g. `docker run --rm <image> statusgen --version` or
 # `docker run --rm <image> deskboard --version`. A bare `docker run <image>`
 # falls through to this CMD, which prints what's inside and how to run it.
-CMD ["/bin/sh", "-c", "echo 'assay house CI-runner tools (desk-tools + statusgen + bugs-gc + leaksweep)'; echo; echo 'Tools on PATH (/usr/local/bin):'; ls /usr/local/bin; echo; echo 'Run one directly, e.g.: docker run --rm <image> statusgen --version'"]
+CMD ["/bin/sh", "-c", "echo 'assay house CI-runner tools (desk-tools + statusgen + bugs-gc)'; echo; echo 'Tools on PATH (/usr/local/bin):'; ls /usr/local/bin; echo; echo 'Run one directly, e.g.: docker run --rm <image> statusgen --version'"]
