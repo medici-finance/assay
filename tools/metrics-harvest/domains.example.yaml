@@ -1,0 +1,58 @@
+# domains.example.yaml — SCHEMA + synthetic example for the metrics-harvest
+# reducer's domains config.
+#
+# This is a fabricated, non-sensitive example. Copy it to `domains.yaml` (which
+# this tool reads by default, and which is git-ignored so a real roster is never
+# committed here) or point `--config` at your own file, and replace the
+# groupings below with your repositories.
+#
+# ── Schema ────────────────────────────────────────────────────────────────
+#
+#   products:   an ORDERED list of product grouping names. Each product is
+#               summed into the "all products" total, in the order listed.
+#               Required, and must be non-empty.
+#
+#   org:        the name of a single, optional org-wide grouping. It is reported
+#               as its own section and is NEVER summed into the product total —
+#               use it for repositories that belong to no single product.
+#               Omit the key (or leave it empty) if you have no such grouping.
+#
+#   groupings:  a map from every grouping name declared above (each product,
+#               plus org when set) to its roster: a list of "owner/repo" specs.
+#               The key must be present for each declared grouping; an empty
+#               list is allowed and renders as `not-configured` (never a zero).
+#
+# Grouping names must match [a-z0-9][a-z0-9-]* — they are used verbatim in the
+# snapshot artifact filenames (metrics-snapshot-<grouping>-<run-id>.json) and as
+# the per-grouping output directory names.
+#
+# Refusals (the reducer will not aggregate a config it cannot honor):
+#   - a spec that is not exactly "owner/repo";
+#   - the same "owner/repo" listed twice (in one grouping or across two) — it
+#     would inflate every figure it touches;
+#   - two repos in one grouping that share a base name (e.g. example-org/alpha
+#     and example-net/alpha) — an ambiguous label for two different repos.
+
+products:
+  - product-a
+  - product-b
+  - product-c
+
+org: org-wide
+
+groupings:
+  product-a:
+    - example-org/alpha
+    - example-org/beta
+
+  product-b:
+    - example-net/gamma
+
+  # A grouping may span more than one owner — provision one token per owner at
+  # runtime and select it per-repo in your harvest workflow.
+  product-c:
+    - example-org/delta
+    - example-net/epsilon
+
+  org-wide:
+    - example-org/orgrepo
