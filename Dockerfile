@@ -97,9 +97,8 @@ RUN set -eux; \
     cd tools/bugs-gc; \
     go build -trimpath -o /out/bugs-gc .
 
-# The internal-only public-tree secret-sweep tool is NOT packaged in this image
-# (do-not-copy ruling 2026-08-23): its source stays in the private methodology
-# repo and is never de-housed into public assay, so no build stage references it here.
+# A maintainer-internal tool is intentionally not included in this image, so no
+# build stage below references it. Everything this image ships is built above.
 
 # ---- Final ----------------------------------------------------------------
 # Small runtime: Alpine + git + gh CLI + ca-certificates. github-cli lives in
