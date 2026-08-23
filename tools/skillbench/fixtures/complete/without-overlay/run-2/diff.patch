@@ -1,0 +1,36 @@
+diff --git a/pkg/foo.go b/pkg/foo.go
+--- a/pkg/foo.go
++++ b/pkg/foo.go
+@@ -1,4 +1,11 @@
+ package foo
++// added a
++// added b
++// added c
++// added d
++// added e
++// added f
++// added g
++// added h
++// added i
+-// removed a
+-// removed b
+-// removed c
+ func F() {}
+diff --git a/pkg/baz.go b/pkg/baz.go
+--- a/pkg/baz.go
++++ b/pkg/baz.go
+@@ -1,4 +1,11 @@
+ package baz
++// added a
++// added b
++// added c
++// added d
++// added e
++// added f
++// added g
++// added h
++// added i
+-// removed a
+-// removed b
+-// removed c
+ func Z() {}
