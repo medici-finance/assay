@@ -21,7 +21,6 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | derived-board | 01 — brief-v2 spec: derived lifecycle, generated table, public re-stage of brief-rules/template [exec:strong] | 0 | 4500 |
-| desktools-go-git | 01 — inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate | 1 | 4500 |
 | desk-containers | 01 — base image — toolchains, desk-tools, skills, volume | 1 | 3500 |
 | statusgen | 02 — issue metrics (`--issues`) | 1 | 1500 |
 | statusgen | 06 — findings register — corroborated state machine [exec:strong] | 1 | 1000 |
@@ -30,18 +29,19 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (5 desk-actionable of 5 total — 5 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (6 desk-actionable of 6 total — 6 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (5)
+### Desk-actionable (6)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | derived-board | 02 | implemented | 4500 | 5 | — | — | — |
+| desktools-go-git | 01 | implemented | 4500 | 7 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
 | statusgen | 01 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 04 | implemented | 1000 | 0 | — | — | — |
@@ -86,7 +86,7 @@ _None._
 
 ### desktools-go-git (8 open)
 
-- 01 inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate — todo (wave 1)
+- 01 inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate — implemented (wave 1)
 - 02 `gitcore` transport + in-process auth (BasicAuth) + go-git pin — todo (wave 2)
 - 03 migrate read/plumbing verbs (read-heavy tools) — todo (wave 3)
 - 04 migrate `deskpushguard` detection reads (parity + mutation test) — todo (wave 3)
