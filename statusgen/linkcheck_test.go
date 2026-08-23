@@ -497,6 +497,97 @@ func TestHandAuthoredRegisterViewStaysChecked(t *testing.T) {
 	}
 }
 
+// A markdown file that lives under a NESTED assay root (a skeleton carrying its
+// OWN .assay-versions/STATUS.md — e.g. a tutorial skeleton the learner extracts
+// and runs as their repo root) authors its backticked deliverable paths relative
+// to THAT nested root, not the outer repo root. The path-existence check must
+// resolve against the nested root too, or a path that really exists inside the
+// skeleton is falsely reported missing. A genuinely-broken path inside the same
+// skeleton must STILL fire — the fix removes the false positive without weakening
+// real coverage.
+func TestNestedRootBacktickResolution(t *testing.T) {
+	root := t.TempDir()
+	// The outer repo root markers.
+	writeTemp(t, root, ".assay-versions", "statusgen-linux-amd64 v0.0.0 sha256:x\n")
+	// A nested assay root two levels below docs/streams/<stream>/, carrying its
+	// own root markers — the extracted-repo root the end user runs.
+	nested := filepath.Join(root, "docs", "streams", "tutorial", "skeleton", "root")
+	answers := filepath.Join(nested, "lessons", "answers")
+	if err := os.MkdirAll(answers, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTemp(t, nested, ".assay-versions", "statusgen-linux-amd64 v0.0.0 sha256:x\n")
+	writeTemp(t, nested, "STATUS.md", "# nested board\n")
+	writeTemp(t, answers, "1.md", "answer 1")
+	// A lesson under the nested root: one backticked path that EXISTS relative to
+	// the nested root, and one that is genuinely absent.
+	lesson := "The answer lives at `lessons/answers/1.md` in your extracted repo.\n" +
+		"Genuinely broken: `lessons/answers/999.md`.\n"
+	lp := writeTemp(t, filepath.Join(nested, "lessons"), "lesson-01.md", lesson)
+
+	problems := linkProblems(root, []string{lp})
+	// The nested-root-relative path that exists must NOT be flagged.
+	for _, pr := range problems {
+		if strings.Contains(pr, "lessons/answers/1.md") {
+			t.Errorf("nested-root path that exists was falsely flagged: %v", problems)
+		}
+	}
+	// The genuinely-missing path must STILL be flagged (coverage not weakened).
+	if len(problems) != 1 || !strings.Contains(problems[0], "999.md") {
+		t.Fatalf("want exactly 1 problem (the real missing path 999.md), got: %v", problems)
+	}
+}
+
+// nestedRootBase returns the nearest ancestor that is itself an assay root
+// nested strictly below root, and "" when none applies (so an ordinary brief's
+// resolution is untouched). It must never return the outer root and never escape
+// above it.
+func TestNestedRootBase(t *testing.T) {
+	root := t.TempDir()
+	writeTemp(t, root, ".assay-versions", "x")
+	nested := filepath.Join(root, "docs", "streams", "tutorial", "skeleton", "root")
+	deep := filepath.Join(nested, "lessons", "answers")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTemp(t, nested, "STATUS.md", "x")
+
+	// A file deep under the nested root resolves to the nested root.
+	f := filepath.Join(deep, "note.md")
+	if got := nestedRootBase(root, f); got != filepath.Clean(nested) {
+		t.Errorf("nestedRootBase for a deep file = %q, want %q", got, nested)
+	}
+	// An ordinary brief with no nested root above it returns "" (outer root is
+	// never returned as a nested base — it is already a resolution base).
+	plain := filepath.Join(root, "docs", "streams", "ordinary")
+	if err := os.MkdirAll(plain, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := nestedRootBase(root, filepath.Join(plain, "brief.md")); got != "" {
+		t.Errorf("nestedRootBase for an ordinary brief = %q, want \"\"", got)
+	}
+}
+
+// An ordinary brief (no nested root anywhere above it) must resolve EXACTLY as
+// before: against the outer root and the containing directory only. This pins
+// that the nested-root awareness is additive and does not silently pass a path
+// that resolves against neither base.
+func TestNestedRootDoesNotAffectOrdinaryBriefs(t *testing.T) {
+	root := t.TempDir()
+	writeTemp(t, root, ".assay-versions", "x")
+	streams := filepath.Join(root, "docs", "streams", "s")
+	if err := os.MkdirAll(streams, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A dead backticked path in an ordinary brief is still caught.
+	content := "Dead: `docs/streams/s/missing.md`.\n"
+	p := writeTemp(t, streams, "brief.md", content)
+	problems := linkProblems(root, []string{p})
+	if len(problems) != 1 || !strings.Contains(problems[0], "missing.md") {
+		t.Fatalf("ordinary-brief resolution changed: want 1 problem (missing.md), got: %v", problems)
+	}
+}
+
 // `../`-relative markdown links that resolve INSIDE the repo must be verified
 // (they were previously skipped wholesale), while a link that escapes the repo
 // root — the sibling-repo `../<repo>/…` convention — stays unchecked.
