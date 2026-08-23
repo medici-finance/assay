@@ -175,7 +175,7 @@ func ageLabel(days int) string {
 // state banner + heartbeat + the `act · unblocks · age · issue` WAITING-ON-YOU
 // table — so the push channel and the STATUS.md dashboard show ONE truth. Same
 // issue, same `drive:<slug>` label, same idempotency marker, no second issue;
-// the phase-2 @kryton ping timing is UNCHANGED (this phase changes the body,
+// the phase-2 @operator ping timing is UNCHANGED (this phase changes the body,
 // never when the ping fires).
 func trackingIssue(st DriveStatus, existing map[string]bool, heartbeat string) driveIssue {
 	d := st.Drive

@@ -25,7 +25,7 @@ func sampleDriveStatus() DriveStatus {
 		{Kind: "brief", Ref: "education/11", State: fsReady},
 		{Kind: "operator-act", State: fsBlockedOperator, Unblocks: "grant the token", Since: "2026-08-22", AgeDays: 0},
 		{Kind: "brief", Ref: "methodology/48", State: fsDone},
-		{Kind: "issue", Ref: "medici-finance/reconciler#27", State: fsTracked},
+		{Kind: "issue", Ref: "example-org/reconciler#27", State: fsTracked},
 		{Kind: "plan-gap", State: fsNeedsBrief},
 	}
 	return DriveStatus{Drive: d, Frontier: fr, State: driveState(fr)}
