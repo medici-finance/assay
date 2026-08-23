@@ -169,3 +169,61 @@ func filterUnknown(problems []string) []string {
 	}
 	return out
 }
+
+// TestOneSidedDependsIsNoticeNotProblem pins the TIER of the dependency-edge
+// reciprocity rule end-to-end (Ian's ruling, assay#92): a one-sided depends edge
+// between two brief-v1 briefs must surface through checkBriefFiles as a NOTICE
+// (non-fatal, exit 0), NOT a hard PROBLEM. This is the board-level guarantee that
+// the rule can be tightened in HEAD without reddening consumers' statusgen-lint on
+// their next repin — the reason the tier was lowered rather than the ~104 older
+// one-sided edges reconciled up front.
+func TestOneSidedDependsIsNoticeNotProblem(t *testing.T) {
+	root := t.TempDir()
+	sdir := filepath.Join(root, "docs", "streams", "recip")
+	if err := os.MkdirAll(sdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	readme := "---\n" +
+		"stream: recip\n" +
+		"status: active\n" +
+		"priority: P1\n" +
+		"---\n\n# Recip\n\n" +
+		"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
+		"|---|-------|------|--------|--------|----------|----------|\n" +
+		"| 01 | [Base](./brief-01-base.md) | 0 | M | todo | — | — |\n" +
+		"| 02 | [Dependent](./brief-02-dependent.md) | 1 | M | todo | — | — |\n"
+	writeFixtureFile(t, filepath.Join(sdir, "README.md"), readme)
+	// brief-01 is the target and declares NO unblocks (pausedDepBrief always emits
+	// `unblocks: []`), so brief-02's `depends: recip/01` is an unreciprocated,
+	// one-sided edge — exactly the shape the reciprocity rule flags.
+	writeFixtureFile(t, filepath.Join(sdir, "brief-01-base.md"),
+		pausedDepBrief("recip/01", "Base", 0, nil))
+	writeFixtureFile(t, filepath.Join(sdir, "brief-02-dependent.md"),
+		pausedDepBrief("recip/02", "Dependent", 1, []string{"recip/01"}))
+
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	problems, notices := checkBriefFiles(streams, streams)
+
+	// The one-sided edge must NOT be a hard PROBLEM (that is the regression the
+	// tier change prevents on the next release + repin).
+	for _, p := range problems {
+		if strings.Contains(p, "one-sided") {
+			t.Fatalf("a one-sided depends edge must NOT be a PROBLEM (assay#92 lowered it to NOTICE); got problem: %s", p)
+		}
+	}
+	// It must still be FLAGGED — as a NOTICE naming the offending edge, so the
+	// data-quality debt stays visible and the rule remains meaningful.
+	found := false
+	for _, n := range notices {
+		if strings.Contains(n, "one-sided") && strings.Contains(n, "recip/02") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("a one-sided depends edge must still surface as a NOTICE naming it; notices: %v", notices)
+	}
+}

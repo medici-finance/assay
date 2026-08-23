@@ -205,9 +205,16 @@ func pickIndex(nu NextUp, stream string) (int, *Pick) {
 }
 
 // TestDriveDepEdgeReciprocity (brief-44 Verify row R): the dependency-edge
-// reciprocity lint rejects a dangling / self-referential / one-sided depends edge
-// (so blockedCount cannot be gamed into the high-unblocks arm) as a --lint PROBLEM,
-// and passes a genuine reciprocated edge.
+// reciprocity lint flags a dangling / self-referential / one-sided depends edge
+// (so blockedCount cannot be gamed into the high-unblocks arm), and passes a
+// genuine reciprocated edge.
+//
+// TIER split (Ian's ruling, assay#92): the malformed edges — self-referential and
+// dangling — stay hard PROBLEMs in checkRef (a self-loop / missing target is not a
+// data-quality debt but a broken ref). The RECIPROCITY leg (a valid A→B that B
+// does not reciprocate) ships at NOTICE, since ~104 legitimate older edges predate
+// the two-sided convention; reciprocityNotices() therefore returns NOTICE-tier
+// lines that checkBriefFiles routes into its `notices` channel (non-fatal, exit 0).
 func TestDriveDepEdgeReciprocity(t *testing.T) {
 	t.Run("self-referential-depends-is-a-problem", func(t *testing.T) {
 		var problems []string
@@ -242,9 +249,9 @@ func TestDriveDepEdgeReciprocity(t *testing.T) {
 		}
 	})
 
-	t.Run("one-sided-depends-is-a-problem", func(t *testing.T) {
+	t.Run("one-sided-depends-is-a-notice-not-a-problem", func(t *testing.T) {
 		// A→B declared, but B does not reciprocate with unblocks: A. Spurious inbound
-		// edge — rejected so blockedCount cannot be inflated.
+		// edge — flagged so blockedCount cannot be inflated, at NOTICE tier (assay#92).
 		idx := newDepEdgeIndex()
 		idx.dependsOf["a/01"] = []string{"b/01"}
 		idx.unblocksOf["a/01"] = nil
@@ -252,14 +259,14 @@ func TestDriveDepEdgeReciprocity(t *testing.T) {
 		idx.unblocksOf["b/01"] = nil // B does NOT unblock A → one-sided
 		idx.knownV1["a/01"] = true
 		idx.knownV1["b/01"] = true
-		problems := idx.reciprocityProblems()
-		if len(problems) != 1 || !strings.Contains(problems[0], "one-sided") {
-			t.Fatalf("a one-sided depends edge must be a PROBLEM naming it: %v", problems)
+		notices := idx.reciprocityNotices()
+		if len(notices) != 1 || !strings.Contains(notices[0], "one-sided") {
+			t.Fatalf("a one-sided depends edge must be a NOTICE naming it: %v", notices)
 		}
 	})
 
 	t.Run("genuine-reciprocated-edge-passes", func(t *testing.T) {
-		// A→B depends, B→A unblocks: a genuine two-sided dependency. No PROBLEM.
+		// A→B depends, B→A unblocks: a genuine two-sided dependency. No NOTICE.
 		idx := newDepEdgeIndex()
 		idx.dependsOf["a/01"] = []string{"b/01"}
 		idx.unblocksOf["a/01"] = nil
@@ -267,8 +274,8 @@ func TestDriveDepEdgeReciprocity(t *testing.T) {
 		idx.unblocksOf["b/01"] = []string{"a/01"} // B reciprocates
 		idx.knownV1["a/01"] = true
 		idx.knownV1["b/01"] = true
-		if problems := idx.reciprocityProblems(); len(problems) != 0 {
-			t.Fatalf("a genuine reciprocated edge must pass clean: %v", problems)
+		if notices := idx.reciprocityNotices(); len(notices) != 0 {
+			t.Fatalf("a genuine reciprocated edge must pass clean: %v", notices)
 		}
 	})
 
@@ -279,8 +286,8 @@ func TestDriveDepEdgeReciprocity(t *testing.T) {
 		idx.dependsOf["a/01"] = []string{"legacy/01"}
 		idx.knownV1["a/01"] = true
 		// legacy/01 is NOT in knownV1.
-		if problems := idx.reciprocityProblems(); len(problems) != 0 {
-			t.Fatalf("a depends edge to a legacy (non-brief-v1) target must be exempt: %v", problems)
+		if notices := idx.reciprocityNotices(); len(notices) != 0 {
+			t.Fatalf("a depends edge to a legacy (non-brief-v1) target must be exempt: %v", notices)
 		}
 	})
 }
