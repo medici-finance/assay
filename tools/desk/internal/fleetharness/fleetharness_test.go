@@ -154,8 +154,9 @@ type fleetEnv struct {
 	detached   string // worktree created with --detach from refs/remotes/origin/<branch>
 	onBranch   string // worktree with the feature branch checked out (the non-mandated shape)
 	branch     string
-	bodyClean  string // a body file that scans clean
-	bodySecret string // a body file carrying a synthetic credential
+	bodyClean  string // a body file that scans clean (and carries the link trailer)
+	bodyNoTrailer string // a clean body WITHOUT the link trailer (example-stream/02 rows)
+	bodySecret string // a body file carrying a synthetic credential (plus the trailer)
 }
 
 // fixtureRoster mirrors cmd/deskpr's own test roster: the tools read their allowed-repo
@@ -214,11 +215,15 @@ func newFleetEnv(t *testing.T) *fleetEnv {
 	run(t, clone, "git", "worktree", "add", e.onBranch, "-b", e.branch+"-local", "refs/remotes/origin/"+e.branch)
 
 	e.bodyClean = filepath.Join(root, "body-clean.md")
-	write(t, e.bodyClean, "## Summary\n\nA clean body citing tools/desk/internal/deskkit/bodycheck.go:45.\n")
+	write(t, e.bodyClean, "## Summary\n\nA clean body citing tools/desk/internal/deskkit/bodycheck.go:45.\n\nBrief: fixture/01\n")
+	// example-stream/02: a clean body WITHOUT the trailer, for the new link-gate rows.
+	e.bodyNoTrailer = filepath.Join(root, "body-no-trailer.md")
+	write(t, e.bodyNoTrailer, "## Summary\n\nA clean body with no link trailer.\n")
 	// A synthetic credential, split so this SOURCE file does not carry a contiguous one
-	// (the scan reads added diff lines; see deskkit's scanSecret40).
+	// (the scan reads added diff lines; see deskkit's scanSecret40). Carries the trailer
+	// too, so the logged-override scenario passes the link gate after passing the scan.
 	e.bodySecret = filepath.Join(root, "body-secret.md")
-	write(t, e.bodySecret, "## Summary\n\ntoken ghp"+"_0123456789ABCDEF"+"abcdef0123456789ABCD\n")
+	write(t, e.bodySecret, "## Summary\n\ntoken ghp"+"_0123456789ABCDEF"+"abcdef0123456789ABCD\n\nBrief: fixture/01\n")
 	return e
 }
 
@@ -235,6 +240,11 @@ func seedOrigin(t *testing.T, path, branch string) string {
 	run(t, seed, "git", "config", "user.email", "harness@example.invalid")
 	run(t, seed, "git", "config", "user.name", "fleet harness")
 	write(t, filepath.Join(seed, "README.md"), "seed\n")
+	// example-stream/02: a real brief so `Brief: fixture/01` trailers in the harness
+	// bodies resolve under --root in every fixture worktree.
+	mkdir(t, filepath.Join(seed, "docs", "streams", "fixture"))
+	write(t, filepath.Join(seed, "docs", "streams", "fixture", "brief-01-test.md"),
+		"---\nschema: brief-v1\nbrief: fixture/01\ntitle: fixture brief\n---\n\nFixture brief.\n")
 	run(t, seed, "git", "add", "-A")
 	run(t, seed, "git", "commit", "-m", "seed")
 	run(t, seed, "git", "checkout", "-b", branch)
@@ -284,6 +294,27 @@ func scenarios(e *fleetEnv) []scenario {
 			name: "deskpr-create/detached-worktree",
 			run: func(t *testing.T, e *fleetEnv) (string, string) {
 				return e.invoke(t, e.detached, "deskpr", "create", "--title", "fleet acceptance", "--body-file", e.bodyClean)
+			},
+		},
+		{
+			// example-stream/02: the link gate is the FIRST local precondition — a
+			// trailer-less body refuses at exit 5 before getwd/preflight and before any
+			// network call, in every worktree shape.
+			name: "deskpr-create/no-trailer",
+			run: func(t *testing.T, e *fleetEnv) (string, string) {
+				return e.invoke(t, e.onBranch, "deskpr", "create", "--title", "fleet acceptance", "--body-file", e.bodyNoTrailer)
+			},
+		},
+		{
+			// example-stream/02: update reads the PR's body from GitHub; a body without
+			// the trailer refuses at exit 5 with the line to add (the migration-window
+			// path for pre-trailer PRs).
+			name: "deskpr-update/no-trailer-body",
+			run: func(t *testing.T, e *fleetEnv) (string, string) {
+				t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+				t.Setenv("FAKEGH_HEAD_REF", e.branch+"-local")
+				t.Setenv("FAKEGH_PR_BODY", "no trailer here\n")
+				return e.invoke(t, e.onBranch, "deskpr", "update")
 			},
 		},
 		{
@@ -502,6 +533,14 @@ func main() {
 		}
 		head := os.Getenv("FAKEGH_HEAD_REF")
 		fmt.Printf("[{\"number\":7,\"url\":\"https://example.invalid/pull/7\",\"isDraft\":%s,\"headRefName\":%q}]\n", draft, head)
+	case strings.HasPrefix(joined, "pr view") && strings.Contains(joined, "body"):
+		// example-stream/02: deskpr update reads the PR body for the trailer check.
+		// FAKEGH_PR_BODY overrides; the default carries a resolving trailer.
+		b := os.Getenv("FAKEGH_PR_BODY")
+		if b == "" {
+			b = "Brief: fixture/01\n"
+		}
+		fmt.Printf("{\"body\":%q}\n", b)
 	default:
 		fmt.Fprintf(os.Stderr, "fleet-harness gh shim: unmodelled call %q — the verb got further than the harness models\n", joined)
 		os.Exit(1)

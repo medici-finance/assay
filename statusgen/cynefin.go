@@ -83,6 +83,14 @@ type cynefinReport struct {
 	Disorder     []string             `json:"disorder"`         // active brief IDs with no domain (sorted)
 	Drift        []cynefinDriftBucket `json:"drift"`            // per-period transition mix by domain
 	Period       string               `json:"period"`           // drift bucketing: weekly | daily
+	// Mismatch is the money diagnostic (cynefinmismatch.go): complex-tagged
+	// active briefs managed with ordered tools — the domain-approach mismatch
+	// that makes Complex work thrash.
+	Mismatch []cynefinMismatch `json:"mismatch"`
+	// ComplexMeasures is the measure set the Complex domain runs on; each
+	// measure is three-state, reporting could-not-check when its source is not
+	// wired rather than a fabricated zero.
+	ComplexMeasures cynefinComplexMeasures `json:"complex-measures"`
 }
 
 // effectiveDomain maps a raw `domain:` value to the domain that governs the
@@ -158,11 +166,13 @@ func computeCynefin(streams []*Stream, history []HistoryEntry, period string) cy
 	drift := computeCynefinDrift(history, domainByID, period)
 
 	rep := cynefinReport{
-		Total:        total,
-		Distribution: dist,
-		Disorder:     disorder,
-		Drift:        drift,
-		Period:       period,
+		Total:           total,
+		Distribution:    dist,
+		Disorder:        disorder,
+		Drift:           drift,
+		Period:          period,
+		Mismatch:        computeCynefinMismatch(streams),
+		ComplexMeasures: computeCynefinComplexMeasures(streams),
 	}
 	switch {
 	case total == 0:
@@ -255,6 +265,15 @@ func renderCynefinText(rep cynefinReport) string {
 		}
 	}
 
+	// Mismatch — the money diagnostic: Complex work managed with ordered tools.
+	if len(rep.Mismatch) > 0 {
+		fmt.Fprintf(&b, "\nmismatch — %d complex brief(s) managed with ordered tools (single-answer Verify, no probe/experiment marker):\n", len(rep.Mismatch))
+		for _, m := range rep.Mismatch {
+			fmt.Fprintf(&b, "  - %s  [%s]\n", m.ID, strings.Join(m.Signals, "; "))
+		}
+		b.WriteString("  (probe-sense-respond, not plan-verify: add a probe/experiment marker or reclassify the domain.)\n")
+	}
+
 	// Drift.
 	if len(rep.Drift) > 0 {
 		b.WriteString("\ndrift — domain mix of recorded transitions per period:\n")
@@ -274,6 +293,13 @@ func renderCynefinText(rep cynefinReport) string {
 		}
 		fmt.Fprintf(&b, "\ntransitions per period: %s  (%s)\n", sparkline(totals), seriesRange(totals))
 	}
+
+	// Complex-domain measures (three-state each; could-not-check names an absent
+	// source, never a zero).
+	b.WriteString("\ncomplex measures:\n")
+	renderMeasure(&b, "learning-velocity", rep.ComplexMeasures.LearningVelocity)
+	renderMeasure(&b, "probe-rate", rep.ComplexMeasures.ProbeRate)
+	renderMeasure(&b, "surprise", rep.ComplexMeasures.Surprise)
 
 	// State marker line (three-state).
 	fmt.Fprintf(&b, "\nstate: %s", rep.State)
