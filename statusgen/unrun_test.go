@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -218,20 +219,59 @@ func TestUnrunUnresolvableBaseGrandfathersWithNotice(t *testing.T) {
 	}
 }
 
-// TestUnrunRealMergeBaseResolves exercises the REAL closedAtBase against this
-// checkout (which has .git and an origin/main), so the default implementation is
-// not left untested behind the fake.
+// TestUnrunRealMergeBaseResolves exercises the REAL closedAtBase (the git
+// merge-base → git show README.md → parseBriefTable path) against a purpose-built
+// fixture git repo whose merge-base carries a `done` brief, so the default
+// implementation is not left untested behind the fake in withBase.
+//
+// Re-baselined for the post-dehouse topology: the old form pointed at
+// the live repo ROOT (`..`) and asserted its merge-base carried `done` briefs —
+// true only when statusgen lived in the source repo alongside a rich docs/streams/.
+// Now statusgen is dehoused into `assay`, whose root carries no `done`-stage
+// briefs at the merge-base (they relocated to the source repo), so that assertion
+// is false against reality and the test red-failed. Building the fixture keeps
+// the check MEANINGFUL — it still proves closedAtBase resolves a real
+// merge-base and grandfathers the briefs `done`/`verified` there — while
+// matching the current reality that the statusgen repo root has no such briefs.
 func TestUnrunRealMergeBaseResolves(t *testing.T) {
-	streams, _, err := loadStreams("..")
+	root := t.TempDir()
+	gitRun(t, root, "init", "-q")
+
+	sdir := filepath.Join(root, "docs", "streams", "grandfathered")
+	mustMkdirAll(t, sdir)
+	readme := "---\n" +
+		"stream: grandfathered\n" +
+		"status: active\n" +
+		"priority: P1\n" +
+		"---\n\n# Grandfathered\n\n" +
+		"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
+		"|---|-------|------|--------|--------|----------|----------|\n" +
+		"| 01 | [Closed at base](./brief-01-closed-at-base.md) | 0 | M | done | 2026-08-01 | human:x |\n" +
+		"| 02 | [Still open](./brief-02-still-open.md) | 1 | M | todo | — | — |\n"
+	writeTemp(t, sdir, "README.md", readme)
+	gitRun(t, root, "add", "-A")
+	gitRun(t, root, "commit", "-q", "-m", "grandfathered: brief-01 done at base")
+	// The merge-base of HEAD and origin/main is this commit — closedAtBase reads
+	// the README table there and grandfathers its done/verified rows.
+	gitRun(t, root, "update-ref", remoteMainRef, "HEAD")
+
+	streams, _, err := loadStreams(root)
 	if err != nil {
-		t.Skipf("repo root not loadable: %v", err)
+		t.Fatalf("fixture root not loadable: %v", err)
 	}
-	set, ok := closedAtBase("..", streams)
+
+	set, ok := closedAtBase(root, streams)
 	if !ok {
-		t.Skip("no resolvable origin/main in this checkout")
+		t.Fatal("closedAtBase must resolve a base in a fixture with refs/remotes/origin/main")
 	}
 	if len(set) == 0 {
-		t.Error("a repo with done briefs on main must yield a non-empty grandfathered set")
+		t.Fatal("a repo with a done brief at the merge-base must yield a non-empty grandfathered set")
+	}
+	if !set["grandfathered/01"] {
+		t.Errorf("the `done` brief at the base must be grandfathered; got set %v", set)
+	}
+	if set["grandfathered/02"] {
+		t.Errorf("a `todo` brief must NOT be grandfathered (only done/verified are); got set %v", set)
 	}
 }
 

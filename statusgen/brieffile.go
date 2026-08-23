@@ -1162,11 +1162,20 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 			}
 		}
 	}
-	// Dependency-edge reciprocity gate (phase 3, anti-gaming): every depends edge
-	// feeding blockedCount must be reciprocated by the target's unblocks, so a brief
+	// Dependency-edge reciprocity lint (phase 3, anti-gaming): every depends edge
+	// feeding blockedCount should be reciprocated by the target's unblocks, so a brief
 	// cannot inflate its blockedCount into the critical tier by manufacturing spurious
 	// one-sided inbound edges. Runs once over the accumulated index.
-	problems = append(problems, recip.reciprocityProblems()...)
+	//
+	// NOTICE tier (Ian's ruling): this is a data-quality lint, not a
+	// security control. statusgen HEAD tightened it from a phase-1 blockedCount
+	// heuristic into a hard reciprocity requirement, and ~104 legitimate older
+	// one-sided edges across the source repo's streams predate the two-sided
+	// convention — so shipping it at PROBLEM would redden statusgen-lint
+	// board-wide on the next release + repin. It ships at NOTICE (non-fatal, exit
+	// 0) until those edges are reconciled two-sided, then returns to PROBLEM.
+	// Follow-up reconciliation is tracked as a separate backlog item (below).
+	notices = append(notices, recip.reciprocityNotices()...)
 	sort.Strings(problems)
 	sort.Strings(notices)
 	return problems, notices
@@ -1187,22 +1196,30 @@ func newDepEdgeIndex() *depEdgeIndex {
 	}
 }
 
-// reciprocityProblems is the anti-gaming reciprocity lint (phase 3). blockedCount is
+// reciprocityNotices is the anti-gaming reciprocity lint (phase 3). blockedCount is
 // the reverse typed-`depends:` walk (buildRevDeps), so a brief could climb into the
 // high-unblocks arm of the critical tier by manufacturing spurious INBOUND depends
-// edges. This rejects any depends edge A→B that B does not reciprocate with an
+// edges. This flags any depends edge A→B that B does not reciprocate with an
 // `unblocks: A` — a genuine dependency is two-sided (the author-brief methodology
 // requires both Depends-on and Unblocks), so an unreciprocated inbound edge is
-// spurious and is a hard PROBLEM. blockedCount then reflects only genuine, both-sided
-// dependencies and cannot be gamed into the tier.
+// spurious. Reconciling every edge two-sided makes blockedCount reflect only
+// genuine, both-sided dependencies and un-gameable into the tier.
+//
+// TIER — NOTICE, not PROBLEM (Ian's ruling). This is a data-quality
+// lint. The rule is stricter than the pinned release's, and ~104 legitimate
+// older one-sided edges across the source repo's streams predate the two-sided
+// convention; emitting PROBLEM would red statusgen-lint board-wide on the next
+// release + repin. It emits NOTICE (non-fatal) until those edges are reconciled,
+// then flips back to PROBLEM — tracked as a separate backlog item. The
+// caller (checkBriefFiles) routes this into the `notices` channel accordingly.
 //
 // SCOPE (fail-safe against false positives): the check fires only when BOTH endpoints
 // are brief-v1 (in knownV1). A dangling edge (target absent) is left to checkRef; a
 // self-loop is left to checkRef; a legacy (non-brief-v1) target — which declares no
 // unblocks — is exempt so mixed corpora are not reddened for the pre-typed-edge
 // convention.
-func (idx *depEdgeIndex) reciprocityProblems() []string {
-	var problems []string
+func (idx *depEdgeIndex) reciprocityNotices() []string {
+	var notices []string
 	var ids []string
 	for id := range idx.dependsOf {
 		ids = append(ids, id)
@@ -1221,13 +1238,13 @@ func (idx *depEdgeIndex) reciprocityProblems() []string {
 				}
 			}
 			if !reciprocated {
-				problems = append(problems, fmt.Sprintf(
-					"%s: depends edge to %s is one-sided — %s declares `depends: %s` but %s does not list %s in its `unblocks:`. A genuine dependency is reciprocal (the target unblocks the dependent); an unreciprocated inbound edge is rejected so blockedCount cannot be inflated into the critical tier (anti-gaming).",
+				notices = append(notices, fmt.Sprintf(
+					"%s: depends edge to %s is one-sided — %s declares `depends: %s` but %s does not list %s in its `unblocks:`. A genuine dependency is reciprocal (the target unblocks the dependent); reconcile the edge two-sided so blockedCount cannot be inflated into the critical tier (anti-gaming). Data-quality NOTICE; flips back to PROBLEM once the backlog is reconciled.",
 					a, b, a, b, b, a))
 			}
 		}
 	}
-	return problems
+	return notices
 }
 
 // checkRef validates that a typed ID "<stream>/<NN>" resolves to a real brief
