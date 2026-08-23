@@ -227,6 +227,57 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
+// assayRootMarkers name the files whose presence marks a directory as an assay
+// root: a self-contained tree with its own board (STATUS.md) and its own pinned
+// toolchain (.assay-versions), both of which statusgen writes/reads at the TOP of
+// a root (never at docs/streams/). A NESTED root occurs when a stream ships an
+// end-user-extractable skeleton whose OWN repo root is a subdirectory of this
+// repo — e.g. a tutorial skeleton the learner extracts and then treats as their
+// repo root. Prose inside that skeleton is authored relative to THAT nested root
+// (correct for the extracted-and-run end user), not the outer repo root.
+var assayRootMarkers = []string{".assay-versions", "STATUS.md"}
+
+// isAssayRootDir reports whether dir carries an assay-root marker.
+func isAssayRootDir(dir string) bool {
+	for _, m := range assayRootMarkers {
+		if fileExists(filepath.Join(dir, m)) {
+			return true
+		}
+	}
+	return false
+}
+
+// nestedRootBase returns the nearest ancestor of file f that is itself an assay
+// root nested strictly BELOW root — a directory carrying its own
+// .assay-versions/STATUS.md. Backticked deliverable paths in markdown under such
+// a directory resolve against THAT nested root (the extracted-repo root the
+// end user runs), so the path-existence check adds it as a resolution base. ""
+// means no nested root applies and resolution stays against the outer root and
+// the containing directory, exactly as before — so a normal brief's resolution
+// is byte-for-byte unchanged. The outer root itself is never returned (it is
+// already a resolution base); the walk stops at root and never escapes above it.
+func nestedRootBase(root, f string) string {
+	root = filepath.Clean(root)
+	dir := filepath.Clean(filepath.Dir(f))
+	for {
+		if dir == root {
+			return "" // reached the outer root — already a resolution base
+		}
+		rel, err := filepath.Rel(root, dir)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return "" // walked outside/above root — stop, never escape the repo
+		}
+		if isAssayRootDir(dir) {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "" // filesystem root reached (defensive; root-clamp handles it)
+		}
+		dir = parent
+	}
+}
+
 func linkProblems(root string, files []string) []string {
 	var problems []string
 	for _, f := range files {
@@ -291,7 +342,19 @@ func linkProblems(root string, files []string) []string {
 				continue
 			}
 
-			if !fileExists(filepath.Join(root, target)) && !fileExists(filepath.Join(filepath.Dir(f), target)) {
+			// Resolution bases: the outer repo root and the file's own directory,
+			// plus — when the file lives under a NESTED assay root (a skeleton with
+			// its own .assay-versions/STATUS.md) — that nested root, against which
+			// the skeleton's prose paths are authored. A genuinely-broken path still
+			// resolves against none of the bases and is still reported, so nested-root
+			// awareness removes the false positive WITHOUT weakening real coverage.
+			exists := fileExists(filepath.Join(root, target)) || fileExists(filepath.Join(filepath.Dir(f), target))
+			if !exists {
+				if nb := nestedRootBase(root, f); nb != "" {
+					exists = fileExists(filepath.Join(nb, target))
+				}
+			}
+			if !exists {
 				problems = append(problems, fmt.Sprintf("%s: backticked path %q does not exist — for a deliverable this brief will create, mark it `%s` (planned); for a sibling-repo file, prefix it ../<repo>/", rel, target, target))
 			}
 		}

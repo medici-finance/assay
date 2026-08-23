@@ -160,6 +160,51 @@ func TestChangedScopedDependsResolvesAgainstFullUniverse(t *testing.T) {
 	}
 }
 
+// TestChangedDerivedScopeResolvesDependsAgainstFullTree pins the END-TO-END
+// --changed path that the unit test above stops short of: it DERIVES the scope
+// from a changed-set (deriveScope), exactly as `statusgen --changed <file>` does
+// in CI, rather than hard-coding the product. When the changed set is confined to
+// one product's stream, deriveScope narrows WHICH briefs are checked — but the
+// dependency-resolution registry must stay the whole tree, so a legitimate
+// cross-stream depends: on a stream NOT in the changed set is not falsely
+// "unknown". A genuinely-unknown stream must still fire. This is the guard that a
+// future change limiting the registry to the changed set would trip.
+func TestChangedDerivedScopeResolvesDependsAgainstFullTree(t *testing.T) {
+	root := writePausedDepFixture(t)
+	all, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The CI-supplied changed set touches ONLY multichain-ui (serves example-app);
+	// example-poc (the cross-product depends target) is NOT in the changed set.
+	changed := []string{
+		"docs/streams/multichain-ui/brief-11-dust-fee-panel.md",
+		"docs/streams/multichain-ui/brief-12-ghost-dep.md",
+	}
+	effScope := deriveScope(all, changed)
+	if effScope != "example-app" {
+		t.Fatalf("deriveScope from a multichain-ui-only changed set = %q, want example-app", effScope)
+	}
+	checkStreams := filterStreamsByServes(all, effScope)
+	for _, s := range checkStreams {
+		if s.Name == "example-poc" {
+			t.Fatalf("fixture invalid: the cross-product depends target must be OUT of the derived scope")
+		}
+	}
+
+	// The run() wiring: checkBriefFiles(checkStreams, all) — scoped briefs,
+	// full-tree registry.
+	problems, _ := checkBriefFiles(checkStreams, all)
+	if hasUnknownStream(problems, "example-poc") {
+		t.Errorf("a valid cross-stream depends on a stream absent from the --changed set was falsely flagged unknown: %v", filterUnknown(problems))
+	}
+	// Narrowness: a genuinely-unknown stream is still caught.
+	if !hasUnknownStream(problems, "ghost-poc") {
+		t.Errorf("a genuinely-unknown stream must still be flagged under --changed: %v", problems)
+	}
+}
+
 func filterUnknown(problems []string) []string {
 	var out []string
 	for _, p := range problems {
