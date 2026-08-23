@@ -1073,6 +1073,12 @@ func main() {
 	exportEvidenceMode := flag.Bool("export-evidence", false, "export an evidence bundle tarball for the given date range (positional <from> <to>; -o <path>; optional -generated <RFC3339> for byte-reproducible output)")
 	// Gate-score emitter: JSON for deskboard consumption.
 	gateScoresMode := flag.Bool("gate-scores", false, "emit awaiting-queue gate scores as JSON (brief, score, blockedCount, stream, status)")
+	// Next-up (DISPATCH queue) emitter: JSON for deskboard consumption. Distinct
+	// population from --gate-scores — the same claim-filtered, capped nextUp()
+	// selection the STATUS.md board shows (todo/in-progress, unclaimed, eligible),
+	// plus the held-back decomposition. Reuses --span / --overflow-threshold /
+	// --require-claims.
+	nextUpMode := flag.Bool("next-up", false, "emit the DISPATCH queue as JSON: the claim-filtered, capped Next-up selection (todo/in-progress, unclaimed, eligible) plus the held-back decomposition (eligible/shown/heldByStreamCap/heldBySpan/claimsKnown). NOT --gate-scores, which is the awaiting-verification backlog")
 	// Gate-effectiveness telemetry: override rate, catch
 	// rate, ceremonial-gate detection. Self-contained diagnostic sub-command,
 	// same STATUS.md-free discipline as --dora/--trend/--bottleneck. --root
@@ -1140,6 +1146,7 @@ func main() {
 			"--launch":          *launchMode,
 			"--export-evidence": *exportEvidenceMode,
 			"--gate-scores":     *gateScoresMode,
+			"--next-up":         *nextUpMode,
 			"--register-links":  *registerLinksFlag,
 			"--gate-telemetry":  *gateTelemetryMode,
 			// --consumers takes ONE git diff, against one root's HEAD. Narrowing
@@ -1342,6 +1349,12 @@ func main() {
 	// deskboard consumption. Same STATUS.md-free discipline as --dora/--trend.
 	if *gateScoresMode {
 		os.Exit(runGateScores(*root))
+	}
+	// Next-up (DISPATCH queue) emitter: self-contained JSON output for deskboard
+	// consumption. Same STATUS.md-free discipline as --gate-scores; the span/overflow
+	// and require-claims knobs are already wired above.
+	if *nextUpMode {
+		os.Exit(runNextUp(*root))
 	}
 	// Gate-effectiveness telemetry: self-contained,
 	// STATUS.md-free, same discipline as --dora/--trend/--bottleneck above.

@@ -638,19 +638,38 @@ func TestAwaiting_PopulationIsStated_321(t *testing.T) {
 		}
 	})
 
-	t.Run("asking for the dispatch queue is refused, with the reason", func(t *testing.T) {
-		installFakeGH(t)
-		for _, verb := range []string{"dispatch", "todo", "next"} {
+	t.Run("the dispatch queue is a SERVED verb, distinct population from awaiting", func(t *testing.T) {
+		// #321: dispatch (and its aliases) is no longer refused — it is served by
+		// statusgen --next-up (todo/in-progress, unclaimed), a different population
+		// from awaiting (implemented/verified). It states that population in-band.
+		for _, verb := range []string{"dispatch", "todo", "next", "next-up"} {
+			installFakeStatusgen(t)
+			twoRoots(t)
 			var out, errb bytes.Buffer
 			code := run([]string{verb}, &out, &errb)
-			if code != deskkit.ExitRefused {
-				t.Fatalf("%s = exit %d, want %d (an empty dispatch board is the wrong answer)", verb, code, deskkit.ExitRefused)
+			if code != deskkit.ExitOK {
+				t.Fatalf("%s = exit %d, want %d (dispatch is now served): %s", verb, code, deskkit.ExitOK, errb.String())
 			}
-			if !strings.Contains(errb.String(), "no dispatch queue") || !strings.Contains(errb.String(), "empty for the wrong reason") {
-				t.Errorf("%s: the refusal must explain itself; got %q", verb, errb.String())
+			var rep dispatchReport
+			if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+				t.Fatalf("%s: not JSON: %v\n%s", verb, err, out.String())
 			}
-			if out.Len() != 0 {
-				t.Errorf("%s: a refusal must emit no board; got %s", verb, out.String())
+			if rep.Population != populationDispatch {
+				t.Errorf("%s: population = %q, want %q", verb, rep.Population, populationDispatch)
+			}
+			// The dispatch population must be todo/in-progress — NEVER the
+			// awaiting-verification statuses, or the two verbs would collapse.
+			for _, st := range rep.PopulationStatuses {
+				if st == "implemented" || st == "verified" {
+					t.Errorf("%s: dispatch population includes awaiting status %q: %v", verb, st, rep.PopulationStatuses)
+				}
+			}
+			// The fake --next-up emits one todo row per root — proof it is the
+			// dispatch population, not the implemented rows --gate-scores emits.
+			for _, r := range rep.Rows {
+				if r.Status != "todo" && r.Status != "in-progress" {
+					t.Errorf("%s: dispatch row %s has non-dispatch status %q", verb, r.Brief, r.Status)
+				}
 			}
 		}
 	})

@@ -810,10 +810,13 @@ var verbScopeClass = map[string]scopeClass{
 	"reviews":     nonSweeping,
 	"diff":        nonSweeping,
 	"files":       nonSweeping,
-	"dispatch":    refusedVerb,
-	"todo":        refusedVerb,
-	"next":        refusedVerb,
-	"next-up":     refusedVerb,
+	// #321: the dispatch queue is now SERVED — it iterates the configured ROOTS
+	// (statusgen --next-up per root), exactly like awaiting/nextup, and states its
+	// coverage as `roots`. It is no longer a refusedVerb.
+	"dispatch": sweepsRoots,
+	"todo":     sweepsRoots,
+	"next":     sweepsRoots,
+	"next-up":  sweepsRoots,
 }
 
 // dispatchVerbs reads every case label of main.go's dispatch switch. Parsed, never
@@ -977,7 +980,10 @@ func TestDispatch_VerbInventory(t *testing.T) {
 		})
 	}
 
-	for _, c := range []scopeClass{sweepsRepos, sweepsRoots, nonSweeping, refusedVerb} {
+	// refusedVerb is intentionally omitted: since #321 no classified verb refuses
+	// (the dispatch queue is now served), so there is no refused member to exercise.
+	// The class + its handling above are kept for a future verb that cannot be served.
+	for _, c := range []scopeClass{sweepsRepos, sweepsRoots, nonSweeping} {
 		if seen[c] == 0 {
 			t.Errorf("no verb of class %d was exercised — the inventory passed vacuously for it", c)
 		}

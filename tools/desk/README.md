@@ -27,7 +27,7 @@ it on day one.
 
 | Tool | Verb(s) | Class | Write budget + breaker |
 |------|---------|-------|------------------------|
-| `deskboard` | `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
+| `deskboard` | `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `reviewloop` | `plan` — pr-review-desk's BOARD REACTOR: classifies a `deskboard` sweep against an action table derived from deskboard's own ACTION constants, coalesces outward verbs on `(repo, pr, head, verb)`, and answers the #79 idle question in THREE states. Not a drain: it does not link `internal/loopengine` | read-only (spawns nothing, writes nothing, makes no GitHub call) | no |
@@ -486,7 +486,8 @@ The same probe rides on `deskboard actions`: its header carries `mainHealth`, th
 `MAIN-RED` / `MAIN-UNKNOWN` lines print **above** every row (a red `main` outranks a
 merge onto it), and each row on an affected repo is flagged `baseBranchRed` with a note.
 An **absent** `mainHealth` field means the verb did not probe — never that it found
-nothing wrong. `prs`, `queue`, `awaiting`, `nextup`, `scope`, `policydrift`, `stalled`,
+nothing wrong. `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
+`next-up`, `scope`, `policydrift`, `stalled`,
 `reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
 the absence for every verb on it (JSON **and** `--table`), `TestVerbInventory_Complete`
 fails if a verb is added without being classified, and `TestREADME_NamesEveryNonProbingVerb`

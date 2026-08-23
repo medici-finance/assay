@@ -22,10 +22,13 @@ if [ "$1" = "--version" ]; then
   echo "${FAKE_SG_VERSION:-statusgen/v0.1.0}"
   exit 0
 fi
-# --gate-scores --root <abs>
+# --gate-scores --root <abs>  |  --next-up --root <abs>
 root=""
+mode="gate-scores"
 while [ $# -gt 0 ]; do
   [ "$1" = "--root" ] && { shift; root="$1"; }
+  [ "$1" = "--next-up" ] && mode="next-up"
+  [ "$1" = "--gate-scores" ] && mode="gate-scores"
   shift
 done
 if [ -n "$FAKE_SG_FAIL_MATCH" ] && case "$root" in *"$FAKE_SG_FAIL_MATCH"*) true;; *) false;; esac; then
@@ -37,6 +40,16 @@ if [ -n "$FAKE_SG_GARBAGE_MATCH" ] && case "$root" in *"$FAKE_SG_GARBAGE_MATCH"*
   exit 0
 fi
 name=$(basename "$root")
+if [ "$mode" = "next-up" ]; then
+  # The DISPATCH queue: an OBJECT (not an array) — one todo row plus the held-back
+  # decomposition (dispatchView). Mirrors --gate-scores' FAKE_SG_REPO stamping.
+  if [ -n "$FAKE_SG_REPO" ]; then
+    printf '{"repo":"%s","rows":[{"brief":"%s-stream/02","stream":"%s-stream","status":"todo","score":100,"blockedCount":0,"repo":"%s"}],"eligible":1,"shown":1,"span":20,"heldByStreamCap":0,"heldBySpan":0,"heldByDriveCap":0,"claimsKnown":true}\n' "$FAKE_SG_REPO" "$name" "$name" "$FAKE_SG_REPO"
+    exit 0
+  fi
+  printf '{"rows":[{"brief":"%s-stream/02","stream":"%s-stream","status":"todo","score":100,"blockedCount":0}],"eligible":1,"shown":1,"span":20,"heldByStreamCap":0,"heldBySpan":0,"heldByDriveCap":0,"claimsKnown":true}\n' "$name" "$name"
+  exit 0
+fi
 if [ -n "$FAKE_SG_REPO" ]; then
   # multi-root statusgen stamps each row with the repo the ROOT declares
   # (stream repo: frontmatter), which may disagree with the configured key.
