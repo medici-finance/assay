@@ -10,7 +10,8 @@
 //
 //	fanoutloop plan --root <repo> [--sha <targetSHA>]
 //	    Deterministic scheduler OUTPUT: read the Next-up board (orphan resumes first, then rows in
-//	    board order, issue-* placeholders skipped), compute each item's tier, and print the
+//	    board order — issue-<NN> placeholders INCLUDED, only a different loop's `review-request`
+//	    dispatch tokens skipped), compute each item's tier, and print the
 //	    EXACT dispatch instruction the operator would execute as an Agent call. No agents are spawned,
 //	    nothing is written, and no network is touched — this is the "the Go engine owns all scheduler
 //	    state and emits exact dispatches" surface (§9.1).
@@ -108,7 +109,8 @@ USAGE:
   fanoutloop --version
 
 'plan' prints the deterministic scheduler output: the dispatch queue (orphan resumes first, then the
-Next-up board in board order, issue-* placeholders skipped), each item's tier, and the
+Next-up board in board order — issue-<NN> placeholders INCLUDED, only a different loop's
+review-request dispatch tokens skipped), each item's tier, and the
 exact dispatch instruction. It spawns nothing, writes nothing, and touches no network. The autonomous
 drive / live-window cutover is gate:human — BLOCKED-ON-IAN.
 
