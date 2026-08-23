@@ -32,9 +32,9 @@ enforces the machine-checkable ones; the rest are review-gated.
    dependency the same as any `depends:`. If it lives only in prose, statusgen's Next-up
    (computed purely from the `depends:` graph) cannot see it and the standing worker pool
    dispatches straight past it — a silent premature-dispatch, the most dangerous blocker
-   class because it is invisible to every Next-up consumer (issue #1250). Encode it as
+   class because it is invisible to every Next-up consumer (a prior issue). Encode it as
    `depends:`/`unblocks:` (in-repo — authoring an OWNING brief for a behavioural gate where
-   none exists, per the desk-hardening/13 pattern) or a desk feathering row (cross-repo);
+   none exists, per the `<stream>/NN` owning-brief pattern) or a desk feathering row (cross-repo);
    the prose then survives as a caption on a real edge. `statusgen --lint` flags gate-shaped
    prose with no matching edge as an `ordering-gate` NOTICE (design: `docs/dependency-graph-design.md`
    §3.4); a per-line `<!-- graph: not-a-gate -->` waiver silences a false positive.
@@ -544,7 +544,7 @@ passing run — which is why they are lint rules and not review vigilance.
       `mapfile` — all GNU-only; the lint names a portable substitute for each.
 
 45. **A Verify table MAY declare each row's CLASS, and a scripted row must exist
-    and be executable** (`verdict-lane/02`; the row-classes spec lives with that
+    and be executable** (`<stream>/NN`; the row-classes spec lives with that
     stream's design docs in the authoring repo and is staged separately). Add an
     optional `Class` column
     right after `#` — `| # | Class | Command | Expect |` — so the verdict lane can
@@ -798,12 +798,12 @@ and needs neither.
     table that cannot catch a false statement. That gap is what this rule closes, and it closes
     it at authoring time, by judgement, not by lint.
 
-    Reason (the triggering evidence, #19): brief `desk-apps/02` (a GitHub App setup guide)
+    Reason (the triggering evidence): a brief `<stream>/NN` (a GitHub App setup guide)
     shipped a Verify table with 8 rows, every one a grep-presence count ("section X appears ≥N
     times", wordcount ≥800, lint exit 0) — all 8 passed, and the guide was factually wrong in
     four places, one load-bearing: it asserted a GitHub enforcement property that GitHub does
     not actually provide. The same session had already hit the sibling shape once:
-    `assay-product/02` (a market analysis, #17) passed its model review gate with citation
+    another brief `<stream>/NN` (a market analysis) passed its model review gate with citation
     links present but never resolved, carrying an invented competitor name and a URL that
     serves a different vendor's docs. Neither defect was catchable by a table built entirely of
     presence counts — the row that would have caught either one had to fetch the URL or check
@@ -819,13 +819,13 @@ and needs neither.
     this rule**, and that is a declared limitation, not an omission: deciding whether a row
     dereferences requires knowing what the deliverable claims, which is not in the command text.
 
-    **Relation to issue #17.** #17 proposes a mechanical lint that resolves every link in a
-    report-repo doc and flags a 404 or wrong host. If/when that lands, it is a partial,
+    **Relation to a proposed link-resolution lint.** A proposed report-repo lint would resolve
+    every link in a report-repo doc and flag a 404 or wrong host. If/when that lands, it is a partial,
     mechanical instance of *this* rule — link-resolution is one specific kind of dereferencing
     check, not the whole class (running a documented command and checking its real output, or
     checking a documented ID against a live API, dereference just as much and involve no link
     at all). Don't treat a passing link-resolution lint as satisfying this rule on its own if
     the brief's factual claims aren't primarily link-shaped; and don't skip authoring a
     dereferencing row on the assumption that a future lint will supply one — this rule is the
-    authoring-time requirement, #17's lint (if built) is a narrower automated assist layered
+    authoring-time requirement, that proposed lint (if built) is a narrower automated assist layered
     on top.
