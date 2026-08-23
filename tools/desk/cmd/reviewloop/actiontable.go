@@ -84,6 +84,11 @@ var actionTable = map[string]rule{
 	"RE-REVIEW":    {DispositionDispatch, "review", "head advanced past the last review and the PR's own files changed — delta re-review; resume the original reviewer where its session survives"},
 
 	// ---- the outward-write state ----
+	// PR-state labels (pr-review-desk skill, §PR-state labels): the desk executing this
+	// verb also swaps `authorization-needed` → `approval-needed` in the same turn — the
+	// review lane has approved everything, so the PR now visibly waits on the HUMAN's
+	// merge approval. The swap rides the executed verb; this planner stays read-only and
+	// never applies labels itself.
 	"FLIP": {DispositionFlip, "ready", "approved at head and green — the desk's ready-flip verb, under deskpost's existing App-identity and dual-verdict-at-head gates"},
 
 	// ---- benign head advance ----
@@ -92,7 +97,10 @@ var actionTable = map[string]rule{
 	// ---- waiting on someone else, visible, never dropped ----
 	"BLOCKED": {DispositionWait, "", "the reviewer bot requested changes at head — the worker must act"},
 	"WAIT-CI": {DispositionWait, "", "CI is still running at head — waiting, not idle"},
-	"READY":   {DispositionWait, "", "already flipped ready; waiting on the human's merge — the desk does not merge"},
+	// PR-state labels: a READY row carries `approval-needed` until the human merges; the
+	// sweep that observes the row gone because the PR merged clears the label (skill-side —
+	// see pr-review-desk §PR-state labels; this planner never writes).
+	"READY": {DispositionWait, "", "already flipped ready; waiting on the human's merge — the desk does not merge"},
 
 	// ---- work items with no automatic verb ----
 	"CHECK":                    {DispositionSurface, "", "the board could not claim this row with any CI/merge arm — a deskboard defect signal, surfaced rather than swallowed"},
