@@ -96,6 +96,11 @@ func resolveClaims(root string, streams []*Stream) (map[string]bool, ClaimSource
 	if err != nil {
 		return map[string]bool{}, ClaimSource{Reason: err.Error()}
 	}
+	// Decay dead claims: a branch whose PR has already merged or closed is not an
+	// in-flight claim — drop it before it consumes its stream's dispatch cap. A
+	// failed PR-state read leaves the full open-branch set (see decayDeadClaims),
+	// so this only ever shrinks the claim set, never drops a live claim.
+	branches = decayDeadClaims(root, branches)
 	claimed := claimedBriefs(streams, branches)
 	// Placeholder claim-awareness: an open fix/issue-<NN>
 	// branch excludes that issue's placeholder from Next-up.
