@@ -112,4 +112,16 @@ type Finding struct {
 	Affects  []string // "stream" or "stream/brief-01"
 	Ack      string   // "" = unacked; else "YYYY-MM-DD <who>" (desk acknowledgement, F-09)
 	Resolved bool
+
+	// Bounded shelving (statusgen/06 — ISA-18.2 / EEMUA-191 alarm
+	// rationalization). A park is a snooze, not a mute: it suppresses the
+	// standing alarm for a BOUNDED window and then re-annunciates, louder. The
+	// three fields are REQUIRED together when a finding is parked; a park missing
+	// any one is a --lint PROBLEM (parkFieldProblems). All three empty = the
+	// finding is not parked (its state is open, or resolved via Resolved). A park
+	// never overrides Resolved: a resolved finding is resolved regardless of any
+	// stale park fields.
+	ParkedUntil  string // "YYYY-MM-DD" — REQUIRED bounded expiry; no open-ended parks (an unbounded park is a disguised resolve).
+	ParkedBy     string // REQUIRED authorizing party, "human:<name>" vocabulary (same as lifecycle stamps); an agent cannot self-park.
+	ParkedReason string // REQUIRED prose — why the finding is accepted-deferred.
 }

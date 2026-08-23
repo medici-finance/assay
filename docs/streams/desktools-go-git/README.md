@@ -33,7 +33,7 @@ linked-worktree replacement) is a named follow-on stream, out of scope here. See
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate](brief-01-inventory-and-seam-contract.md) | 1 | L | todo | — | — |
+| 01 | [inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate](brief-01-inventory-and-seam-contract.md) | 1 | L | implemented | — | — |
 | 02 | [`gitcore` transport + in-process auth (BasicAuth) + go-git pin](brief-02-gitcore-transport-auth.md) | 2 | L | todo | — | — |
 | 03 | [migrate read/plumbing verbs (read-heavy tools)](brief-03-migrate-read-plumbing.md) | 3 | L | todo | — | — |
 | 04 | [migrate `deskpushguard` detection reads (parity + mutation test)](brief-04-migrate-deskpushguard-reads.md) | 3 | M | todo | — | — |
@@ -41,6 +41,8 @@ linked-worktree replacement) is a named follow-on stream, out of scope here. See
 | 06 | [migrate push + retire ambient-credential machinery + preflight probe](brief-06-migrate-push-retire-ambient.md) | 4 | M | todo | — | — |
 | 07 | [`deskmerge` exception — fence the trial merge, migrate the rest](brief-07-deskmerge-exception-fence.md) | 3 | M | todo | — | — |
 | 08 | [flip the drop-the-binary CI gate + CVE floor + file the follow-on](brief-08-flip-gate-and-cve-floor.md) | 5 | M | todo | — | — |
+
+Brief 01 implemented via PR [#79](https://github.com/medici-finance/assay/pull/79) (counter baseline: 117 git-exec sites).
 
 ## Critical path
 
@@ -58,7 +60,8 @@ layers). Those two human gates — not the mechanical seam swaps — are the pac
 ## Dependency waves
 
 - **Wave 1** — `desktools-go-git/01` (no dependencies; the inventory freeze, the single
-  `gitexec` fallback seam, the golden harness, and the initially-advisory CI grep).
+  `gitexec` fallback seam, the golden harness, and the git-exec counter script — advisory
+  and not yet wired into a CI workflow; brief 08 wires it in and flips it to failing).
 - **Wave 2** — `desktools-go-git/02` (depends on 01; the human-gated `gitcore` +
   transport/auth layer that every migration builds on).
 - **Wave 3** — `desktools-go-git/03`, `desktools-go-git/04`, `desktools-go-git/07`

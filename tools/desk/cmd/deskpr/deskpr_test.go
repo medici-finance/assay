@@ -134,6 +134,16 @@ func main() {
 		}
 		fmt.Printf("https://github.com/%s/pull/101\n", repoOf(target))
 	case has("view"):
+		// example-stream/02: gh pr view --json body serves the PR body for the update
+		// trailer check. FAKEGH_PR_BODY overrides; the default carries a resolving trailer.
+		if has("--json") && has("body") {
+			b := os.Getenv("FAKEGH_PR_BODY")
+			if b == "" {
+				b = "Brief: fixture/01\n"
+			}
+			fmt.Printf("{\"body\":%q}\n", b)
+			return
+		}
 		mergeable := os.Getenv("FAKEGH_MERGEABLE")
 		if mergeable == "" {
 			mergeable = "MERGEABLE"
@@ -261,6 +271,18 @@ func newBaseFixture(t *testing.T) string {
 	writeFile(t, filepath.Join(work, "README.md"), "seed\n")
 	mustGit(t, work, "add", "README.md")
 	mustGit(t, work, "commit", "-m", "init")
+
+	// example-stream/02: the fixture carries a real brief so `Brief: fixture/01`
+	// trailers in test bodies resolve under --root (docs/streams). Committed BEFORE the
+	// origin/main refs are set, so the fixture brief is part of origin/main itself and
+	// the zero-commits-ahead precondition still measures zero.
+	if merr := os.MkdirAll(filepath.Join(work, "docs", "streams", "fixture"), 0o755); merr != nil {
+		t.Fatalf("mkdir fixture streams: %v", merr)
+	}
+	writeFile(t, filepath.Join(work, "docs", "streams", "fixture", "brief-01-test.md"),
+		"---\nschema: brief-v1\nbrief: fixture/01\ntitle: fixture brief\n---\n\nFixture brief for deskpr tests.\n")
+	mustGit(t, work, "add", "docs")
+	mustGit(t, work, "commit", "-m", "fixture brief")
 	mainSHA := mustGit(t, work, "rev-parse", "HEAD")
 
 	mustGit(t, work, "update-ref", "refs/remotes/origin/main", mainSHA)
@@ -300,6 +322,18 @@ func newMediciFixture(t *testing.T) string {
 	writeFile(t, filepath.Join(work, "README.md"), "seed\n")
 	mustGit(t, work, "add", "README.md")
 	mustGit(t, work, "commit", "-m", "init")
+
+	// example-stream/02: the fixture carries a real brief so `Brief: fixture/01`
+	// trailers in test bodies resolve under --root (docs/streams). Committed BEFORE the
+	// origin/main refs are set, so the fixture brief is part of origin/main itself and
+	// the zero-commits-ahead precondition still measures zero.
+	if merr := os.MkdirAll(filepath.Join(work, "docs", "streams", "fixture"), 0o755); merr != nil {
+		t.Fatalf("mkdir fixture streams: %v", merr)
+	}
+	writeFile(t, filepath.Join(work, "docs", "streams", "fixture", "brief-01-test.md"),
+		"---\nschema: brief-v1\nbrief: fixture/01\ntitle: fixture brief\n---\n\nFixture brief for deskpr tests.\n")
+	mustGit(t, work, "add", "docs")
+	mustGit(t, work, "commit", "-m", "fixture brief")
 	mainSHA := mustGit(t, work, "rev-parse", "HEAD")
 
 	mustGit(t, work, "update-ref", "refs/remotes/origin/main", mainSHA)
@@ -421,7 +455,7 @@ func TestCreateSuccessAlwaysDraftNeverForce(t *testing.T) {
 	calls := withEnv(t, work)
 	stderr := withStderrCapture(t)
 
-	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing"})
+	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create rc = %d, want 0", rc)
 	}
@@ -456,7 +490,7 @@ func TestCreateConflictingPRWarnsLoudly(t *testing.T) {
 	t.Setenv("FAKEGH_MERGEABLE", "CONFLICTING")
 	t.Setenv("FAKEGH_MERGESTATE", "DIRTY")
 
-	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing"})
+	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create rc = %d, want 0 — a CONFLICTING mergeable state is advisory, never a failure", rc)
 	}
@@ -536,7 +570,7 @@ func TestWarnPollsUntilMergeableSettles(t *testing.T) {
 	t.Setenv("FAKEGH_MERGEABLE", "CONFLICTING")
 	t.Setenv("FAKEGH_MERGESTATE", "DIRTY")
 
-	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing"})
+	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create rc = %d, want 0", rc)
 	}
@@ -561,7 +595,7 @@ func TestWarnUnknownNeverSettles(t *testing.T) {
 	t.Setenv("FAKEGH_UNKNOWN_UNTIL", "9999") // never settles within the poll window
 	t.Setenv("FAKEGH_MERGEABLE", "CONFLICTING")
 
-	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing"})
+	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create rc = %d, want 0 — an unsettled UNKNOWN is advisory, never a failure", rc)
 	}
@@ -581,7 +615,7 @@ func TestCreateAsAppMintsWorkerToken(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--as-app", "--title", "worker app PR", "--body-min", "posted as worker app"})
+	rc := run([]string{"create", "--as-app", "--title", "worker app PR", "--body-min", "posted as worker app\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create --as-app rc = %d, want 0", rc)
 	}
@@ -611,7 +645,7 @@ func TestCreateMintsWorkerTokenScopedToOwnRepo(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--as-app", "--title", "scoped mint", "--body-min", "desktoken must be told which repo it's minting for"})
+	rc := run([]string{"create", "--as-app", "--title", "scoped mint", "--body-min", "desktoken must be told which repo it's minting for\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create rc = %d, want 0", rc)
 	}
@@ -646,7 +680,7 @@ func TestCreateMediciFinanceRepoSucceeds(t *testing.T) {
 	work := newMediciFixture(t)
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--as-app", "--title", "medici finance PR", "--body-min", "creating on a repo under an org other than example-org"})
+	rc := run([]string{"create", "--as-app", "--title", "medici finance PR", "--body-min", "creating on a repo under an org other than example-org\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create on a medici-finance-origin worktree rc = %d, want 0 (#565 regression: "+
 			"desktoken must resolve the medici-finance installation, not silently default to example-org)", rc)
@@ -664,7 +698,7 @@ func TestCreateDefaultMintsWorkerToken(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--title", "default is as-app", "--body-min", "posted as worker app by default"})
+	rc := run([]string{"create", "--title", "default is as-app", "--body-min", "posted as worker app by default\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create (no --as-app) rc = %d, want 0", rc)
 	}
@@ -709,7 +743,7 @@ func TestCreateNoAsAppUsesAmbientIdentity(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--as-app=false", "--title", "ambient test", "--body-min", "posted as example-org"})
+	rc := run([]string{"create", "--as-app=false", "--title", "ambient test", "--body-min", "posted as example-org\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create --as-app=false rc = %d, want 0", rc)
 	}
@@ -767,12 +801,55 @@ func TestUpdateNoAsAppUsesAmbientIdentity(t *testing.T) {
 	}
 }
 
+// TestCreateRefusesNoTrailer is the example-stream/02 regression test: create refuses
+// (exit 5) a body without a Brief:/Issue: trailer BEFORE any network call — neither the
+// fake gh nor the fake desktoken binary is reached. In-process call so the refusal
+// error is asserted directly (the subprocess path prints to the real stderr).
+func TestCreateRefusesNoTrailer(t *testing.T) {
+	work := newBaseFixture(t)
+	calls := withEnv(t, work)
+
+	err := cmdCreate([]string{"--title", "add feature", "--body-min", "does the thing"})
+	if !deskkit.IsRefused(err) {
+		t.Fatalf("trailer-less create err = %v, want exit-5 refusal", err)
+	}
+	if !strings.Contains(err.Error(), "Brief: <stream>/<NN>") {
+		t.Fatalf("refusal must name the missing line; got: %v", err)
+	}
+	for _, c := range *calls {
+		if len(c) > 0 && (c[0] == "gh" || c[0] == "desktoken") {
+			t.Fatalf("trailer refusal must precede any network call; calls: %v", *calls)
+		}
+	}
+}
+
+// TestUpdateRefusesNoTrailer — update refuses (exit 5) when the EXISTING PR's body
+// carries no trailer, naming the line to add (the migration-window behavior for
+// pre-trailer PRs). No push happens.
+func TestUpdateRefusesNoTrailer(t *testing.T) {
+	work := newBaseFixture(t)
+	calls := withEnv(t, work)
+	t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+	t.Setenv("FAKEGH_PR_BODY", "no trailer here\n")
+
+	err := cmdUpdate(nil)
+	if !deskkit.IsRefused(err) {
+		t.Fatalf("trailer-less update err = %v, want exit-5 refusal", err)
+	}
+	if !strings.Contains(err.Error(), "Brief: <stream>/<NN>") {
+		t.Fatalf("refusal must name the missing line; got: %v", err)
+	}
+	if anyCall(gitCalls(*calls), "push") {
+		t.Fatalf("no push on trailer refusal: %v", gitCalls(*calls))
+	}
+}
+
 func TestCreateIdempotentNoopWhenPRExists(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	t.Setenv("FAKEGH_LIST_HAS_PR", "1") // fake gh reports an existing open PR on the branch
 
-	rc := run([]string{"create", "--title", "add feature", "--body-min", "x"})
+	rc := run([]string{"create", "--title", "add feature", "--body-min", "x\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("idempotent create rc = %d, want 0 (noop)", rc)
 	}
@@ -790,7 +867,7 @@ func TestCreateOnDefaultBranchRefuses(t *testing.T) {
 	mustGit(t, work, "checkout", "main")
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--title", "x", "--body-min", "y"})
+	rc := run([]string{"create", "--title", "x", "--body-min", "y\nBrief: fixture/01"})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("on default branch rc = %d, want 5", rc)
 	}
@@ -803,7 +880,7 @@ func TestCreateZeroCommitsAheadRefuses(t *testing.T) {
 	mustGit(t, work, "checkout", "-b", "feature/empty") // no commits ahead of origin/main
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--title", "x", "--body-min", "y"})
+	rc := run([]string{"create", "--title", "x", "--body-min", "y\nBrief: fixture/01"})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("zero commits ahead rc = %d, want 5", rc)
 	}
@@ -816,7 +893,7 @@ func TestCreateStagedUncommittedRefuses(t *testing.T) {
 	mustGit(t, work, "add", "staged.txt") // staged, not committed
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--title", "x", "--body-min", "y"})
+	rc := run([]string{"create", "--title", "x", "--body-min", "y\nBrief: fixture/01"})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("staged-uncommitted rc = %d, want 5", rc)
 	}
@@ -828,7 +905,7 @@ func TestCreateOriginOutsideRepoSetRefuses(t *testing.T) {
 	mustGit(t, work, "remote", "set-url", "origin", "https://github.com/otheruser/otherrepo.git")
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--title", "x", "--body-min", "y"})
+	rc := run([]string{"create", "--title", "x", "--body-min", "y\nBrief: fixture/01"})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("origin outside repo set rc = %d, want 5", rc)
 	}
@@ -840,7 +917,7 @@ func TestCreateUnreadableOriginHeadUnverifiable(t *testing.T) {
 	mustGit(t, work, "symbolic-ref", "--delete", "refs/remotes/origin/HEAD")
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--title", "x", "--body-min", "y"})
+	rc := run([]string{"create", "--title", "x", "--body-min", "y\nBrief: fixture/01"})
 	if rc != deskkit.ExitUnverifiable {
 		t.Fatalf("unreadable origin/HEAD rc = %d, want 6", rc)
 	}
@@ -865,7 +942,7 @@ func TestCreateStrayLocalOriginMainBranchStillCreates(t *testing.T) {
 	}
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing"})
+	rc := run([]string{"create", "--title", "add feature", "--body-min", "does the thing\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create with stray local origin/main rc = %d, want 0 (regression #840)", rc)
 	}
@@ -912,7 +989,7 @@ func TestCreateNonDefaultBaseCountsAgainstThatBase(t *testing.T) {
 	}
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--title", "stacked feature", "--body-min", "does the thing", "--base", "stacked-base"})
+	rc := run([]string{"create", "--title", "stacked feature", "--body-min", "does the thing\nBrief: fixture/01", "--base", "stacked-base"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create --base stacked-base rc = %d, want 0 (#55: must not false-refuse a branch ahead of its --base)", rc)
 	}
@@ -946,7 +1023,7 @@ func TestCreateKillSwitchDisabled(t *testing.T) {
 	calls := withEnv(t, work)
 	t.Setenv("DESK_TOOLS_DISABLED", "1")
 
-	rc := run([]string{"create", "--title", "x", "--body-min", "y"})
+	rc := run([]string{"create", "--title", "x", "--body-min", "y\nBrief: fixture/01"})
 	if rc != deskkit.ExitDisabled {
 		t.Fatalf("kill switch rc = %d, want 3", rc)
 	}
@@ -982,7 +1059,7 @@ func TestCreateDiffHeaderLongPathPasses(t *testing.T) {
 	mustGit(t, work, "add", "tools/desk/internal/deskkit/config.go")
 	mustGit(t, work, "commit", "-m", "add config")
 
-	rc := run([]string{"create", "--title", "add config", "--body-min", "adds a config file"})
+	rc := run([]string{"create", "--title", "add config", "--body-min", "adds a config file\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create rc = %d, want 0 (diff header path must not trip the secret scan); git calls: %v", rc, gitCalls(*calls))
 	}
@@ -1001,7 +1078,7 @@ func TestCreateDiffContentSecretStillRefuses(t *testing.T) {
 	mustGit(t, work, "add", "leak.txt")
 	mustGit(t, work, "commit", "-m", "add leak")
 
-	rc := run([]string{"create", "--title", "x", "--body-min", "adds a file"})
+	rc := run([]string{"create", "--title", "x", "--body-min", "adds a file\nBrief: fixture/01"})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("added-content secret rc = %d, want 5 (refused)", rc)
 	}
@@ -1024,7 +1101,7 @@ func TestCreateDiffAddedPathLinePasses(t *testing.T) {
 	mustGit(t, work, "add", ".gitignore")
 	mustGit(t, work, "commit", "-m", "ignore approvalguard binary")
 
-	rc := run([]string{"create", "--title", "add gitignore", "--body-min", "ignores the built binary"})
+	rc := run([]string{"create", "--title", "add gitignore", "--body-min", "ignores the built binary\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create rc = %d, want 0 (a +-glued word-shaped path line must not trip the scan); git calls: %v", rc, gitCalls(*calls))
 	}
@@ -1250,7 +1327,7 @@ func TestCreateDiffHunkContentPlusSecretRefuses(t *testing.T) {
 	mustGit(t, work, "add", "leak.txt")
 	mustGit(t, work, "commit", "-m", "add file with ++ secret")
 
-	rc := run([]string{"create", "--title", "x", "--body-min", "adds a file"})
+	rc := run([]string{"create", "--title", "x", "--body-min", "adds a file\nBrief: fixture/01"})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("++ content line secret rc = %d, want 5 (refused)", rc)
 	}
@@ -1330,7 +1407,7 @@ func TestCreateGateCountsItsOwnSuccessfulWrites(t *testing.T) {
 	calls := withEnv(t, work)
 	seedDeskprAudit(t, deskkit.RateLimitPerPRPerHour, createAuditShape)
 
-	rc := run([]string{"create", "--title", "one too many", "--body-min", "does the thing"})
+	rc := run([]string{"create", "--title", "one too many", "--body-min", "does the thing\nBrief: fixture/01"})
 	if rc != deskkit.ExitRateLimited {
 		t.Fatalf("create rc = %d, want %d — %d successful creates in the window must exhaust the budget; "+
 			"the gate is reading a bucket creates do not fill",
@@ -1351,7 +1428,7 @@ func TestCreateUnderBudgetStillCreates(t *testing.T) {
 	calls := withEnv(t, work)
 	seedDeskprAudit(t, deskkit.RateLimitPerPRPerHour-1, createAuditShape)
 
-	rc := run([]string{"create", "--title", "still under", "--body-min", "does the thing"})
+	rc := run([]string{"create", "--title", "still under", "--body-min", "does the thing\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create rc = %d, want 0 at cap-1", rc)
 	}
@@ -1373,7 +1450,7 @@ func TestCreateGateIsNotInverted(t *testing.T) {
 		return deskkit.Entry{Repo: fixtureRepo, Verb: "create", Result: deskkit.ResultUnverifiable}
 	})
 
-	rc := run([]string{"create", "--title", "after failures", "--body-min", "does the thing"})
+	rc := run([]string{"create", "--title", "after failures", "--body-min", "does the thing\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create rc = %d, want 0 — %d failed creates must not lock the tool out below the cap",
 			rc, deskkit.RateLimitPerPRPerHour-1)

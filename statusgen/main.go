@@ -30,6 +30,11 @@ import (
 //     wired ONLY into main's status-regen CI, run AFTER STATUS.md regenerates.
 //     Never invoked by --lint.
 func run(root, mode string, budget []string, changed []string, scope string) int {
+	// Reset the phase-4 drive-dashboard render inputs each run (one run() call
+	// per root under --root repeats; a leftover from a previous root must never
+	// leak its drive section into the next board).
+	activeDriveStatuses = nil
+	activeDriveHeartbeat = ""
 	// Word-budget checks run FIRST — a budget violation is a
 	// hard PROBLEM just like any other source-check failure. Malformed specs
 	// were already caught in main() before reaching run().
@@ -590,6 +595,13 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// "—", rather than vanishing from the section as if nothing were waiting.
 	gateAges := oldestHumanGateAges(streams, entered, nowFunc())
 
+	// Drive dashboard render inputs (methodology-metrics phase 4): the active
+	// drives' frontier/state plus the git-derived last-regen heartbeat. The
+	// heartbeat is deterministic per committed tree (the committed STATUS.md
+	// blob's provenance) — no fresh wall-clock read into the board bytes.
+	activeDriveStatuses = driveStatuses(activeDriveSet, streams, claimed, nowFunc())
+	activeDriveHeartbeat = driveHeartbeatLine(root)
+
 	out := emit(streams, findings, nu, ages, gateAges, intakeAlarmResult, briefTouch, rootRepoName)
 	if mode == "lint" {
 		// The PR-side gate is UNCHANGED: off-board problems still fail --lint,
@@ -955,6 +967,7 @@ func main() {
 	flag.Var(&roots, "root", `repository root (default "."; repeatable — one STATUS.md per root)`)
 	checkMode := flag.Bool("check", false, "verify STATUS.md is current instead of writing it")
 	lintMode := flag.Bool("lint", false, "run all checks without reading or writing STATUS.md (defaults --budget to "+defaultBudgetSpec+" unless overridden)")
+	lintAuditMode := flag.Bool("lint-audit", false, "30-day check-firing audit (statusgen/01): sample daily commits, tally per-rule PROBLEM/NOTICE firings, flag COLD (0-firing, un-tested) rules as retirement candidates — read-only, advisory, never retires a rule")
 	allowEmptyRootFlag := flag.Bool("allow-empty-root", false, "allow a root whose docs/streams exists but resolves to 0 streams (default: hard PROBLEM, same class as a missing/unreadable docs/streams); with this flag it downgrades to a NOTICE, for a root that has genuinely adopted the methodology but has not authored a stream yet")
 	var budget budgetFlags
 	flag.Var(&budget, "budget", "word-budget check: relpath:maxwords (repeatable); overrides --lint's default of "+defaultBudgetSpec)
@@ -970,6 +983,13 @@ func main() {
 	// STATUS.md-free, offline. Emits the drive tracking issue + aged operator-act
 	// issues + the @operator ping decision as JSON, same discipline as decision-issues.
 	driveIssuesMode := flag.Bool("drive-issues", false, "emit JSON for active-drive tracking + aging operator-act issues (methodology-metrics drives phase 2)")
+	// Board-freeze watchdog (methodology-metrics phase 4): the INDEPENDENT
+	// out-of-band meta-alarm. Reads ONLY the heartbeat's freshness (STATUS.md
+	// commit-time / mtime, NEVER content) and fails LOUD past 2× the regen
+	// cadence: rc 1 + a BOARD FROZEN alarm + one board-freeze issue payload as
+	// JSON. rc 0 = fresh (silent); rc 2 = could-not-check. Does NO board build,
+	// so a board-build PROBLEM can neither abort nor silence it.
+	watchdogMode := flag.Bool("watchdog", false, "board-freeze watchdog: alarm (rc 1 + JSON issue payload) when STATUS.md freshness exceeds 2× the regen cadence; does NO board build")
 	driveMarkers := flag.String("drive-markers", "", "file of already-existing drive-issue markers (tracking/act/ping; one per line, or raw issue bodies/comments)")
 	// Sign-off digest (methodology-metrics/38) — the BATCH view over
 	// --verify-issues' per-brief cards: one body listing EVERY brief awaiting a
@@ -1199,6 +1219,15 @@ func main() {
 	if *driveIssuesMode {
 		os.Exit(runDriveIssues(*root, *driveMarkers))
 	}
+	// Board-freeze watchdog (methodology-metrics phase 4): self-contained,
+	// STATUS.md-free, offline. It performs NO board build — the whole point is
+	// that the alarm must not share the failure mode it detects. Its fail-loud
+	// polarity (rc 1 + alarm + issue) is deliberate and out-of-band: it alarms
+	// without aborting any board write, so it can never itself become the freeze
+	// it detects.
+	if *watchdogMode {
+		os.Exit(runWatchdog(*root))
+	}
 	// Sign-off digest: the roll-up over the per-brief cards. Self-contained,
 	// STATUS.md-free, offline. Non-zero exit means could-not-check — never an
 	// empty digest standing in for an all-clear.
@@ -1367,6 +1396,12 @@ func main() {
 		}
 		fmt.Printf("register-links: %d bare references linked across brief files\n", n)
 		return
+	}
+	// Lint-audit (statusgen/01) — read-only advisory sub-command: sample daily commits
+	// over 30 days, tally per-rule firing counts, flag COLD rules. Never retires a
+	// rule itself and never gates CI.
+	if *lintAuditMode {
+		os.Exit(runLintAudit(*root))
 	}
 
 	mode := "write"

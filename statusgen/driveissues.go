@@ -170,7 +170,14 @@ func ageLabel(days int) string {
 // decision. The title gains the [WAITING ON YOU] tag iff the drive is
 // WAITING-ON-OPERATOR (brief-44), and in that state the ping comment @-mentions
 // @operator.
-func trackingIssue(st DriveStatus, existing map[string]bool) driveIssue {
+//
+// Phase 4 (brief-48): the body MIRRORS the dashboard's operator slice — the
+// state banner + heartbeat + the `act · unblocks · age · issue` WAITING-ON-YOU
+// table — so the push channel and the STATUS.md dashboard show ONE truth. Same
+// issue, same `drive:<slug>` label, same idempotency marker, no second issue;
+// the phase-2 @operator ping timing is UNCHANGED (this phase changes the body,
+// never when the ping fires).
+func trackingIssue(st DriveStatus, existing map[string]bool, heartbeat string) driveIssue {
 	d := st.Drive
 	prefix := "drive: "
 	if st.State == driveStateWaitingOp {
@@ -191,12 +198,9 @@ func trackingIssue(st DriveStatus, existing map[string]bool) driveIssue {
 	if total > 0 {
 		fmt.Fprintf(&b, "**Progress:** %d/%d brief items done.\n\n", done, total)
 	}
-	fmt.Fprintf(&b, "**State:** `%s` — %s\n\n", st.State, driveStateExplain(st.State))
-	if len(acts) > 0 {
-		fmt.Fprintf(&b, "## ⏳ Waiting on you\n\n%s\n", waitingOnYouTable(acts))
-		if st.State == driveStateWaitingOp {
-			fmt.Fprintf(&b, "%s — the operator acts above are the only thing standing between the fleet and progress on this drive.\n\n", operatorHandle)
-		}
+	b.WriteString(driveOperatorSlice(st, heartbeat))
+	if len(acts) > 0 && st.State == driveStateWaitingOp {
+		fmt.Fprintf(&b, "%s — the operator acts above are the only thing standing between the fleet and progress on this drive.\n\n", operatorHandle)
 	}
 	fmt.Fprintf(&b, "## Frontier\n\n%s\n", frontierSummary(st.Frontier))
 	fmt.Fprintf(&b, "\n---\n_This issue is auto-maintained by statusgen (methodology-metrics drives). "+
@@ -310,11 +314,12 @@ func driveStateExplain(state string) string {
 
 // driveIssues computes the drive-lifecycle issue payloads for every active drive:
 // its tracking issue (+ ping decision) and any aged operator-act issues. Sorted
-// for deterministic emission.
-func driveIssues(streams []*Stream, ds DriveSet, claimed map[string]bool, now time.Time, existing map[string]bool) []driveIssue {
+// for deterministic emission. heartbeat is the git-derived last-regen line the
+// tracking body mirrors from the dashboard (phase 4, brief-48).
+func driveIssues(streams []*Stream, ds DriveSet, claimed map[string]bool, now time.Time, existing map[string]bool, heartbeat string) []driveIssue {
 	out := []driveIssue{}
 	for _, st := range driveStatuses(ds, streams, claimed, now) {
-		out = append(out, trackingIssue(st, existing))
+		out = append(out, trackingIssue(st, existing, heartbeat))
 		out = append(out, agingActIssues(st, existing)...)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -357,7 +362,7 @@ func runDriveIssues(root, markersPath string) int {
 		fmt.Fprintln(os.Stderr, "statusgen: reading drive markers:", err)
 		return 1
 	}
-	issues := driveIssues(streams, ds, claimed, nowFunc(), existing)
+	issues := driveIssues(streams, ds, claimed, nowFunc(), existing, driveHeartbeatLine(root))
 	enc, err := json.MarshalIndent(issues, "", "  ")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen:", err)
