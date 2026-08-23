@@ -371,8 +371,8 @@ func TestRoadmapDeterminism(t *testing.T) {
 	exceptions := computeRoadmapExceptions(rows)
 	goals, inverted, invertMsg := computeGoalMix(streams, nu, nil)
 
-	html1 := renderRoadmap(streams, rows, exceptions, goals, inverted, invertMsg, nu, nil, "sha1", now)
-	html2 := renderRoadmap(streams, rows, exceptions, goals, inverted, invertMsg, nu, nil, "sha1", now)
+	html1 := renderRoadmap(streams, rows, exceptions, goals, inverted, invertMsg, nu, LadderReport{}, nil, "sha1", now)
+	html2 := renderRoadmap(streams, rows, exceptions, goals, inverted, invertMsg, nu, LadderReport{}, nil, "sha1", now)
 
 	if html1 != html2 {
 		t.Fatal("renderRoadmap is not deterministic: two calls with identical inputs produced different output")
@@ -409,7 +409,7 @@ func TestRoadmapRenderHasRequiredElements(t *testing.T) {
 		})
 	}
 
-	html := renderRoadmap(streams, rows, nil, nil, false, "", nu, nil, "abc1234", now)
+	html := renderRoadmap(streams, rows, nil, nil, false, "", nu, LadderReport{}, nil, "abc1234", now)
 
 	required := []string{
 		"3366FF", // brand accent blue
@@ -609,7 +609,7 @@ func TestTopBlockerFindingLink(t *testing.T) {
 func renderOneRow(row roadmapStreamRow) string {
 	streams := []*Stream{row.Stream}
 	now := time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)
-	return renderRoadmap(streams, []roadmapStreamRow{row}, nil, nil, false, "", nextUp(streams, ClaimView{}, nil), nil, "abc1234", now)
+	return renderRoadmap(streams, []roadmapStreamRow{row}, nil, nil, false, "", nextUp(streams, ClaimView{}, nil), LadderReport{}, nil, "abc1234", now)
 }
 
 // TestRoadmapBlockerCellHyperlink verifies the TopBlocker cell becomes an
@@ -696,5 +696,63 @@ func TestRoadmapBlockerHrefResolves(t *testing.T) {
 	}
 	if want := filepath.Join(root, "docs", "streams", "findings", name); filepath.Clean(target) != want {
 		t.Errorf("resolved to %s, want %s", filepath.Clean(target), want)
+	}
+}
+
+// TestRoadmapLadderPanel (statusgen/04) — the overview page carries the
+// adoption-ladder panel line: a computed report renders step + binding
+// constraint; an unmeasured range names the unmeasured axes; a zero report
+// renders the honest "no ladder computed" line, never a fabricated step.
+func TestRoadmapLadderPanel(t *testing.T) {
+	now := time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)
+
+	measured := LadderReport{
+		StepLow:    2,
+		StepHigh:   2,
+		Exact:      true,
+		Constraint: "held at 2 by: deterministic-gate share",
+		Generated:  "2026-07-16T00:00:00Z",
+		Since:      "2026-06-18",
+		Until:      "2026-07-16",
+		Note:       "diagnostic",
+	}
+	html := renderRoadmap(nil, nil, nil, nil, false, "", NextUp{}, measured, nil, "abc1234", now)
+	for _, want := range []string{
+		"Adoption Ladder",
+		"step: 2",
+		"held at 2 by: deterministic-gate share",
+		"diagnostic",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("measured panel missing %q", want)
+		}
+	}
+
+	unmeasured := LadderReport{
+		StepLow:    2,
+		StepHigh:   3,
+		Exact:      false,
+		Constraint: "held at 2–3 by: dispatch autonomy (mm/40 day-file), token efficiency (mm/40 day-file) unmeasured today",
+		Generated:  "2026-07-16T00:00:00Z",
+		Since:      "2026-06-18",
+		Until:      "2026-07-16",
+	}
+	html = renderRoadmap(nil, nil, nil, nil, false, "", NextUp{}, unmeasured, nil, "abc1234", now)
+	for _, want := range []string{
+		"step: 2–3",
+		"unmeasured today",
+		"position is a range, not a fabricated point value",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("range panel missing %q", want)
+		}
+	}
+
+	zero := renderRoadmap(nil, nil, nil, nil, false, "", NextUp{}, LadderReport{}, nil, "abc1234", now)
+	if !strings.Contains(zero, "no ladder computed this run") {
+		t.Errorf("zero report must render the unmeasured line")
+	}
+	if strings.Contains(zero, "step: 0") {
+		t.Errorf("zero report must not fabricate a step")
 	}
 }

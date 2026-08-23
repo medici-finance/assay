@@ -604,7 +604,7 @@ func roadmapTitle() string {
 	return base
 }
 
-func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []roadmapException, goals []goalMix, inverted bool, invertMsg string, nu NextUp, findings []Finding, sha string, now time.Time) string {
+func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []roadmapException, goals []goalMix, inverted bool, invertMsg string, nu NextUp, ladder LadderReport, findings []Finding, sha string, now time.Time) string {
 	var b strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&b, format+"\n", a...) }
 	title := roadmapTitle()
@@ -643,6 +643,9 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 	w("  .goal-card .label { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }")
 	w("  .goal-card .counts { font-size: 18px; font-weight: 700; }")
 	w("  .goal-card .counts span { font-size: 12px; font-weight: 400; color: var(--text2); }")
+	w("  .ladder-panel { background: var(--surface); border-radius: 8px; padding: 12px 16px; }")
+	w("  .ladder-line { font-size: 15px; font-weight: 600; }")
+	w("  .ladder-note { font-size: 12px; color: var(--amber); margin-top: 4px; }")
 	w("  .inversion { background: var(--surface); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; padding: 10px 16px; font-size: 13px; color: var(--amber); margin-bottom: 12px; }")
 	w("  .nextup-rows { font-size: 13px; }")
 	w("  .nextup-rows .item { padding: 4px 0; }")
@@ -743,6 +746,26 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 	}
 	w("</div>")
 	w("<div style=\"font-size:12px;color:var(--text2);margin-top:8px;\">DORA rollup: pending</div>")
+	w("</div>")
+
+	// --- Adoption-ladder panel (statusgen/04) ---
+	// One computed step (or range) + the binding-constraint axis, in the
+	// one-line-verdict style. A zero report (Generated unset) renders an honest
+	// "unmeasured" line rather than a fabricated step — same fail-neutral
+	// discipline as the --ladder sub-command's missing-day-file degrade.
+	w("<div class=\"section\">")
+	w("<h2>Adoption Ladder</h2>")
+	w("<div class=\"ladder-panel\">")
+	if ladder.Generated == "" {
+		w("<div class=\"ladder-line\">step: unmeasured — no ladder computed this run</div>")
+	} else {
+		w("<div class=\"ladder-line\">step: %s — %s</div>", htmlEscape(ladder.stepLabel()), htmlEscape(ladder.Constraint))
+		if !ladder.Exact {
+			w("<div class=\"ladder-note\">operator axes unmeasured today — position is a range, not a fabricated point value</div>")
+		}
+		w("<div style=\"font-size:12px;color:var(--text2);margin-top:4px;\">%s … %s &middot; %s</div>", htmlEscape(ladder.Since), htmlEscape(ladder.Until), htmlEscape(ladder.Note))
+	}
+	w("</div>")
 	w("</div>")
 
 	// --- Next-up block ---
@@ -1005,10 +1028,22 @@ func runRoadmap(root string) int {
 	// Compute goal mix.
 	goals, inverted, invertMsg := computeGoalMix(streams, nu, history)
 
+	// Adoption-ladder panel (statusgen/04): the overview page carries the SAME
+	// computed step the --ladder sub-command emits, over the same default window.
+	// gatherAutonomyInputs degrades per-axis (gh unreadable / no opmetrics
+	// day-file → unmeasured rungs → a range), so the deck never hard-fails on the
+	// panel and never fabricates a point value — the mm/42 public/degrade contract.
+	ladderNow := nowFunc().UTC()
+	ladderIn := gatherAutonomyInputs(root, ladderNow.AddDate(0, 0, -defaultAutonomyWindowDays), ladderNow, ladderNow)
+	ladder := computeLadder(ladderRungsFromAutonomy(ladderIn))
+	ladder.Since = ladderNow.AddDate(0, 0, -defaultAutonomyWindowDays).Format("2006-01-02")
+	ladder.Until = ladderNow.Format("2006-01-02")
+	ladder.Generated = ladderNow.Format(time.RFC3339)
+
 	// Render.
 	sha := gitCurrentSHA(root)
 	headerNow := nowFunc().UTC()
-	html := renderRoadmap(streams, rows, exceptions, goals, inverted, invertMsg, nu, findings, sha, headerNow)
+	html := renderRoadmap(streams, rows, exceptions, goals, inverted, invertMsg, nu, ladder, findings, sha, headerNow)
 
 	// Write output.
 	outDir := filepath.Join(root, "docs", "reports", "roadmap")
