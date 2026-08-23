@@ -21,31 +21,31 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | derived-board | 01 — brief-v2 spec: derived lifecycle, generated table, public re-stage of brief-rules/template [exec:strong] | 0 | 4500 |
-| desk-containers | 01 — base image — toolchains, desk-tools, skills, volume | 1 | 3500 |
-| statusgen | 02 — issue metrics (`--issues`) | 1 | 1500 |
-| statusgen | 06 — findings register — corroborated state machine [exec:strong] | 1 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (6 desk-actionable of 6 total — 6 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (9 desk-actionable of 9 total — 9 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (6)
+### Desk-actionable (9)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | derived-board | 02 | implemented | 4500 | 5 | — | — | — |
 | desktools-go-git | 01 | implemented | 4500 | 7 | — | — | — |
+| desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
+| statusgen | 02 | implemented | 1500 | 1 | — | — | — |
 | statusgen | 01 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 04 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ## Age at the human gate
 
@@ -76,7 +76,7 @@ _None._
 
 ### desk-containers (7 open)
 
-- 01 base image — toolchains, desk-tools, skills, volume — todo (wave 1)
+- 01 base image — toolchains, desk-tools, skills, volume — implemented (wave 1)
 - 02 runtime credential contract + layer-secret scan — implemented (wave 1)
 - 03 per-desk images + build matrix + publish wiring — todo (wave 2)
 - 04 interactive launch script `desk-run.sh` — todo (wave 3)
@@ -98,11 +98,11 @@ _None._
 ### statusgen (6 open)
 
 - 01 30-day lint-firing audit — retire cold rules — implemented (wave 1)
-- 02 issue metrics (`--issues`) — todo (wave 1)
+- 02 issue metrics (`--issues`) — implemented (wave 1)
 - 03 self-improvement metric (self-healed vs human-touched) — todo (wave 2)
 - 04 ladder-position indicator (`--ladder`) — implemented (wave 1)
 - 05 drives phase 3 — anti-starvation floors + critical tier — implemented (wave 1)
-- 06 findings register — corroborated state machine — todo (wave 1)
+- 06 findings register — corroborated state machine — implemented (wave 1)
 
 ## Done briefs
 

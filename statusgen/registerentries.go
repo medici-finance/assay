@@ -144,7 +144,14 @@ type findingEntry struct {
 	Affects  []string `yaml:"affects"`
 	Ack      string   `yaml:"ack,omitempty"`
 	Resolved bool     `yaml:"resolved"`
-	Body     string   `yaml:"-"` // prose after the heading, before the metadata lines
+	// Bounded shelving (statusgen/06). All three are REQUIRED together when the
+	// finding is parked; the all-absent case is the common one (an open or
+	// resolved finding) and stays valid. omitempty so an unparked entry
+	// round-trips through the generated view unchanged.
+	ParkedUntil  string `yaml:"parked-until,omitempty"`
+	ParkedBy     string `yaml:"parked-by,omitempty"`
+	ParkedReason string `yaml:"parked-reason,omitempty"`
+	Body         string `yaml:"-"` // prose after the heading, before the metadata lines
 }
 
 // slugFromTitle produces a short, deterministic slug from a title — lowercase,
