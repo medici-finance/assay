@@ -1,0 +1,52 @@
+LEAKSWEEP ENGINE CANARY — FAKE CREDENTIALS, NOT REAL SECRETS, NEVER ISSUED.
+
+READ THIS BEFORE "FIXING" THE FILE.
+
+Every string below is invented. None was ever minted, none grants access to
+anything, and none may be removed, redacted, rotated, or "cleaned up". They are
+here to be FOUND. On every single run, `leaksweep` plants this file into the tree
+it is about to scan and requires both scanner engines to report it using their
+OWN built-in rule sets — not our house rules. A run that reports nothing here has
+not proved a clean tree; it has proved a dead scanner, and the sweep exits
+non-zero and says so.
+
+That distinction is the reason this file exists. This repository ran a P0
+leak-on-main alerter that was silently dead for roughly 180 commits: it reported
+nothing, and nothing is what a passing gate looks like. A gate with no canary
+cannot tell "found no secrets" apart from "ran no rules".
+
+The shapes below are chosen to trip stock detectors in both engines, so the proof
+covers the maintained ecosystem rule sets we adopted these tools for, rather than
+only the house config we wrote ourselves.
+
+    aws_access_key_id     = __CANARY_AWS_ID__
+    aws_secret_access_key = __CANARY_AWS_SECRET__
+    slack_bot_token       = __CANARY_SLACK__
+
+WHY THE PLACEHOLDERS, AND WHY THIS FILE IS NOT WEAKER FOR THEM
+------------------------
+The three fields above are filled in at RUN TIME by canary.go; the complete
+credential shapes exist only in the temporary tree handed to the scanners, and
+never as a literal in any tracked file.
+
+This is not squeamishness, it is the resolution of a real tension. A canary has
+to be realistic enough to trip a maintained scanner's stock rules — that is its
+entire job — and anything that realistic also trips every OTHER secret guard it
+passes on the way to review. This repository's own pre-write guard refused the
+push twice while this fixture was being written, once on a GitHub token shape and
+once on a cloud access-key ID. Both refusals were correct.
+
+The wrong fixes were available and are worth naming, because both leave a gate
+that reports success: override the guard (and teach everyone that this class of
+refusal is noise), or water the canary down until no scanner reliably detects it.
+A canary nobody detects is indistinguishable from a dead one.
+
+So the shapes are assembled from fragments instead. The scanners see complete,
+valid-looking credentials; the repository stores none. The assembly is one small
+function with a test asserting each field is fully substituted, so a placeholder
+that silently survives into the planted file is caught rather than shipped as a
+canary that cannot fire.
+
+If a scanner upgrade stops matching these shapes, the sweep will start failing
+loudly with a dead-alerter message. That is the canary working. The fix is to add
+a shape the new version does detect — never to relax the assertion.
