@@ -187,32 +187,32 @@ func TestCorroborationUnconfiguredIsMissing(t *testing.T) {
 	if _, ok := HumanLogin("anybody"); ok {
 		t.Error("HumanLogin resolved an arbitrary name with NO map configured")
 	}
-	// The verifier floor is DELIBERATELY NOT map-gated since the leaver-principle
-	// change: it clears on human-login SHAPE, so an unconfigured map neither loosens
-	// nor tightens it. A well-formed `human:alex` still clears (a historical stamp is
-	// not invalidated by an absent/changed roster), while a MALFORMED human token that
-	// names no login still fails regardless of the map — that is the floor's own
-	// forgery boundary. The map's stricter-when-unset invariant (P1 for C7) lives in
-	// HumanLogin/corroboration above, NOT in the floor.
-	if reason, failed := verifierFloorFailure("2026-08-04 human:alex"); failed {
-		t.Errorf("the verifier floor rejected a well-formed human runner token with no map configured "+
-			"(reason %q) — the floor is a capability gate cleared by login SHAPE, not a map-membership "+
-			"check; the map's residual lives in corroboration, not here", reason)
+	// The verifier floor IS map-gated (the tightening back toward main that #104's
+	// shape-only form had dropped): it clears a `human:<name>` token only for a name
+	// confirmed NOW (ASSAY_HUMAN_LOGIN_MAP) or HISTORICALLY (ASSAY_FORMER_HUMAN_LOGIN_MAP),
+	// and rejects a never-confirmed name. With NO map configured, no name is confirmed,
+	// so a well-formed `human:alex` FAILS — fail closed, exactly as HumanLogin/
+	// corroboration is stricter-when-unset. A MALFORMED human token (no login) fails
+	// too, with a distinct reason.
+	if _, failed := verifierFloorFailure("2026-08-04 human:alex"); !failed {
+		t.Error("the verifier floor cleared a human runner token with NO map configured — with no roster " +
+			"no name is confirmed, so it must FAIL closed (never-confirmed), same as corroboration")
 	}
 	if _, failed := verifierFloorFailure("2026-08-04 human:"); !failed {
 		t.Error("the verifier floor accepted a MALFORMED human token (no login) — that is the floor's " +
 			"forgery boundary and must fail regardless of the map")
 	}
 
-	// Positive control: with the map configured, HumanLogin resolves — this is the
-	// surface the corroboration/register gates read, and the actual P1 residual.
+	// Positive control: with the map configured, HumanLogin resolves and the floor
+	// clears the mapped human — this is the map ACCEPT-widening the floor now shares
+	// with the corroboration/register gates.
 	scanWithRoster(t, scanExampleRoster())
 	if login, ok := HumanLogin("alex"); !ok || login != "ada" {
 		t.Errorf("HumanLogin(alex) = %q,%t with the map configured, want ada,true — the negative "+
 			"cases above would otherwise prove nothing", login, ok)
 	}
 	if _, failed := verifierFloorFailure("2026-08-04 human:alex"); failed {
-		t.Error("the verifier floor rejected a CONFIGURED human runner token")
+		t.Error("the verifier floor rejected a CONFIGURED (currently-mapped) human runner token")
 	}
 }
 
@@ -455,6 +455,47 @@ func TestHumanLoginMapRejectsBotAccount(t *testing.T) {
 		}
 		if _, ok := HumanLogin("alex"); ok {
 			t.Errorf("ASSAY_HUMAN_LOGIN_MAP=%q produced a live human mapping for alex", raw)
+		}
+	}
+}
+
+// TestFormerHumanLoginMap covers the FORMER-humans roster surface: a well-formed
+// name:login entry resolves through FormerHumanLogin (the floor's "confirmed
+// historically" half) but does NOT leak into the CURRENT map HumanLogin reads, and a
+// bot/App value collapses the configuration exactly as it does on the current map.
+func TestFormerHumanLoginMap(t *testing.T) {
+	// A well-formed former entry resolves through FormerHumanLogin only.
+	r := scanExampleRoster()
+	r[scanEnvFormerHumanLoginMap] = "bob:bob-gh"
+	scanWithRoster(t, r)
+	if !scanEffectiveConfig().Configured() {
+		t.Fatal("a well-formed former-humans map collapsed the configuration")
+	}
+	if login, ok := FormerHumanLogin("bob"); !ok || login != "bob-gh" {
+		t.Errorf("FormerHumanLogin(bob) = %q,%t — want bob-gh,true", login, ok)
+	}
+	if _, ok := HumanLogin("bob"); ok {
+		t.Error("a FORMER human leaked into the CURRENT map (HumanLogin) — the two surfaces must stay separate")
+	}
+	if _, ok := FormerHumanLogin("alex"); ok {
+		t.Error("a CURRENT human resolved through FormerHumanLogin — the former map must not carry current entries")
+	}
+
+	// A bot/App value refuses, the same fail-closed the current map takes.
+	for _, raw := range []string{
+		"bob:assay-desk-app[bot]",
+		"bob:app/assay-desk-app",
+		"bob:some-app",
+		"bob:some-bot",
+	} {
+		rr := scanExampleRoster()
+		rr[scanEnvFormerHumanLoginMap] = raw
+		scanWithRoster(t, rr)
+		if scanEffectiveConfig().Configured() {
+			t.Errorf("statusgen accepted ASSAY_FORMER_HUMAN_LOGIN_MAP=%q — a bot/App value must not resolve a human token", raw)
+		}
+		if _, ok := FormerHumanLogin("bob"); ok {
+			t.Errorf("ASSAY_FORMER_HUMAN_LOGIN_MAP=%q produced a live former-human mapping for bob", raw)
 		}
 	}
 }

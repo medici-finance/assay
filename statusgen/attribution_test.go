@@ -275,20 +275,30 @@ func TestVerifierFloorFailure(t *testing.T) {
 		{"2026-07-09 glm-5.2-verifier human:alex", false,
 			"must not over-correct: the runner is above the floor, so this still clears"},
 		//
-		// THE LEAVER PRINCIPLE — a well-formed human login clears the floor whether or
-		// not it is in TODAY's map. `bob` is NOT in the fixture map (only `alex` is), yet
-		// this must CLEAR: a Verified cell records who signed off THEN, and dropping a
-		// human from the roster later must not retroactively red every board they ran.
-		// The floor is a model-capability gate; live-identity enforcement is
-		// --corroborate's and the register's job, both of which still consult the map.
+		// THE LEAVER PRINCIPLE — a human confirmed HISTORICALLY clears the floor even
+		// when no longer in TODAY's map. `bob` and `former_lead` are NOT in the current
+		// map (only `alex` is) but ARE in the fixture's ASSAY_FORMER_HUMAN_LOGIN_MAP, so
+		// they CLEAR: a Verified cell records who signed off THEN, and dropping a human
+		// from the current roster must not retroactively red every board they ran. The
+		// floor is a model-capability gate; live-identity enforcement is --corroborate's
+		// and the register's job, both of which consult the CURRENT map only.
 		{"2026-07-09 human:bob", false,
-			"a well-formed human login NOT in today's map still clears — the leaver principle: a historical stamp is not invalidated by a later roster change"},
+			"a human in the FORMER-humans map (departed) still clears — the leaver principle: a historical stamp is not invalidated by a later roster change"},
 		{"2026-07-09 human:former_lead", false,
-			"another unmapped-but-well-formed login clears for the same reason"},
+			"another departed human recorded in the former-humans map clears for the same reason"},
 		//
-		// FORGERY STILL CAUGHT — a human token that names NO real login fails loud. These
-		// are the only human-token shapes the floor still rejects, and they are exactly
-		// the fabrications the exemption must not launder.
+		// NEVER-CONFIRMED NOW FAILS — a well-formed login SHAPE that was NEVER a confirmed
+		// human (in neither the current nor the former map) must FAIL. This is the
+		// forgery rejection #104's shape-only form dropped and this rework restores:
+		// "any plausible login shape" is not proof a human acted.
+		{"2026-07-09 human:carol", true,
+			"a well-formed login that was never a confirmed human (not in the current map, not in the former-humans map) must FAIL — shape alone is not confirmation"},
+		{"2026-07-09 human:nobody", true,
+			"another plausible-but-never-confirmed login fails for the same reason"},
+		//
+		// FORGERY STILL CAUGHT — a human token that names NO real login fails loud, with a
+		// distinct malformed-token reason. These plus the never-confirmed names above are
+		// the human-token shapes the floor rejects.
 		{"2026-07-09 human:іan", true,
 			"a homoglyph name (Cyrillic і) yields an EMPTY login and must not clear"},
 		{"2026-07-09 human:", true,

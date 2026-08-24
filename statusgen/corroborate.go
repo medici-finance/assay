@@ -36,13 +36,15 @@ import (
 //	                                      on `--corroborate` (runCorroborate returns 1
 //	                                      only when anyMissing).
 //
-// A THIRD consumer, verifierFloorFailure (attribution.go), USED to clear the floor
-// only on a map hit. It no longer resolves through the map: the leaver-principle
-// change made it clear on human-login SHAPE (a well-formed `human:<login>`, mapped or
-// not), because a Verified cell records who signed off THEN and dropping a human from
-// the roster later must not retroactively red every board they ran. So the floor is
-// no longer a map-widened gate; it consults this function only as the strong "is this
-// a currently-known human" signal, not as a requirement.
+// A THIRD consumer, verifierFloorFailure (attribution.go), also resolves through this
+// CURRENT map — a hit is the "confirmed NOW" half of its human-token exemption. The
+// floor additionally consults FormerHumanLogin (the former-humans map) for the
+// "confirmed HISTORICALLY" half: it clears for current ∪ former and rejects a name
+// confirmed by neither. So the floor IS map-widened again (a mapped name clears where
+// an unmapped, never-confirmed one fails), which is the tightening back toward main
+// that #104's shape-based form had dropped. This function supplies only the current
+// half; the former half lives in FormerHumanLogin and is NOT consulted by the two
+// identity gates below — a departed human cannot approve today.
 //
 // An earlier draft called the third "not widening on its own", on the ground that the
 // mapped login's APPROVED review or approval comment must still be found on the PR.
@@ -62,6 +64,33 @@ import (
 // gates by TestCIHumanLoginMapResidualBoundary.
 func HumanLogin(name string) (string, bool) {
 	login, ok := scanEffectiveConfig().HumanLogins[strings.ToLower(strings.TrimSpace(name))]
+	return login, ok
+}
+
+// FormerHumanLogin maps the human-name portion of a human:<name> token (lowercase) to
+// the GitHub login of a DEPARTED human — one who was a confirmed human at some past
+// point but is no longer in the current ASSAY_HUMAN_LOGIN_MAP. It reads the dedicated
+// ASSAY_FORMER_HUMAN_LOGIN_MAP roster surface, parsed and bot-shape-validated exactly
+// like the current map (see rosterconfig.go).
+//
+// It exists for ONE consumer: the verifier floor's human-token exemption
+// (verifierFloorFailure / runnerClearsFloor, attribution.go), as the "confirmed
+// HISTORICALLY" half of confirmedHumanEver. A Verified cell records who signed off
+// THEN; when a human leaves and is dropped from the current map, their historical
+// stamps must still clear the model-capability floor — but a name that was NEVER a
+// confirmed human must NOT. So the floor clears for current ∪ former and rejects
+// everything else, and this function supplies the former half.
+//
+// It is DELIBERATELY NOT consulted by the identity gates. --corroborate
+// (corroborateStamps) and the register human-authorisation key
+// (authorizedByVerifiedHuman) resolve names through HumanLogin — the CURRENT map —
+// ONLY, and still require an APPROVED review / approval comment. "Only confirmed
+// humans can approve" is those gates, and a departed human cannot approve today; the
+// former map widens the capability floor's leaver carve-out, never the approval
+// authority. Like the current map, an UNSET former map is the stricter direction (no
+// former human is recognised, so only the current map can clear the floor).
+func FormerHumanLogin(name string) (string, bool) {
+	login, ok := scanEffectiveConfig().FormerHumanLogins[strings.ToLower(strings.TrimSpace(name))]
 	return login, ok
 }
 

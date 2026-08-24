@@ -15,11 +15,13 @@ sources: ["fixture: risk-flagged, verified, historical human verifier"]
 
 # Brief 80 — historical human runner not in today's map (#280)
 
-The Verified cell names `human:bob`. `bob` is a well-formed human login but is NOT
-in the current ASSAY_HUMAN_LOGIN_MAP (only `alex` is). By the leaver principle a
-Verified cell records who signed off THEN, so dropping `bob` from the roster later
-must NOT retroactively fail this board — the floor must CLEAR. Live-identity
-enforcement (that `bob` actually acted) is `--corroborate`'s job, not the floor's.
+The Verified cell names `human:bob`. `bob` is NOT in the current ASSAY_HUMAN_LOGIN_MAP
+(only `alex` is) but IS recorded in ASSAY_FORMER_HUMAN_LOGIN_MAP as a departed human
+who was confirmed at some past point. By the leaver principle a Verified cell records
+who signed off THEN, so dropping `bob` from the current roster must NOT retroactively
+fail this board — the floor must CLEAR for a human confirmed now OR historically.
+Live-identity enforcement (that `bob` actually acted) is `--corroborate`'s job, and it
+consults the CURRENT map only, not the former one.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |

@@ -105,14 +105,29 @@ func humanRunnerName(token string) (name string, ok bool) {
 // whole job is to separate a well-formed login from the empty / absurd-length
 // residue. GitHub caps a login at 39 characters; a longer run is not a login.
 //
-// This is deliberately a SHAPE test, NOT a live-map-membership test — see the
-// leaver-principle note in verifierFloorFailure. It is the forgery floor for the
-// human-token exemption: a token that names no real login at all ("human:",
-// "human:@@@", a homoglyph) still fails, while any plausibly-real login — a human
-// present when the stamp was made, whether or not they are in TODAY's map —
-// clears.
+// It is NOT the human-token exemption predicate — that is confirmedHumanEver
+// (current-or-historical roster membership). Shape ALONE never clears the floor: a
+// well-formed but never-confirmed login is a REJECT, not an accept. This predicate
+// only sorts the two REJECT reasons apart, so verifierFloorFailure can tell an
+// operator whether they wrote a name that was never a confirmed human (well-formed
+// shape) or a token that names no login at all (empty/homoglyph name).
 func looksLikeHumanLogin(name string) bool {
 	return name != "" && len(name) <= 39
+}
+
+// confirmedHumanEver reports whether name was EVER a confirmed human: present in the
+// CURRENT human-login map (ASSAY_HUMAN_LOGIN_MAP, HumanLogin) or recorded in the
+// FORMER-humans map (ASSAY_FORMER_HUMAN_LOGIN_MAP, FormerHumanLogin) as a departed
+// one. This is the verifier floor's human-exemption predicate: the floor clears for a
+// human confirmed now OR historically, and rejects a name confirmed by neither. It is
+// DELIBERATELY not used by the corroboration/register identity gates, which resolve
+// through the current map ONLY — a departed human cannot approve today.
+func confirmedHumanEver(name string) bool {
+	if _, known := HumanLogin(name); known {
+		return true
+	}
+	_, former := FormerHumanLogin(name)
+	return former
 }
 
 // verifierFloorFailure reports whether a Verified cell FAILS the verifier floor
@@ -141,41 +156,46 @@ func looksLikeHumanLogin(name string) bool {
 // forgery (`sonnet-verifier human:alex`) is caught, because the human token is no
 // longer standing where the runner goes.
 //
-// THE LEAVER PRINCIPLE — the human-token exemption is a SHAPE + attribution check,
-// NOT a live-roster-membership check. An earlier form of this code cleared the
-// floor only when the human name resolved in the CURRENT ASSAY_HUMAN_LOGIN_MAP and
-// FAILED LOUD otherwise. That retroactively invalidated history: humans leave and
-// are replaced, and a Verified cell like `2026-07-18 human:ian` is a record of who
-// signed off THEN. Dropping `ian` from the map when he leaves must not turn every
-// board he ever verified red — but that is exactly what a live-membership check
-// does, fleet-wide, the day the roster changes. So the floor now clears for ANY
-// well-formed human LOGIN (looksLikeHumanLogin): a current map key, its resolved
-// login, or any plausibly-real login recorded on an older board. A map hit is
-// still recognised first (it is the strongest signal and keeps the accept text
-// honest), but it is no longer REQUIRED.
+// THE LEAVER PRINCIPLE — confirmed NOW or confirmed HISTORICALLY, never merely
+// login-SHAPED. A Verified cell like `2026-07-18 human:ian` records who signed off
+// THEN, so a later roster change must not retroactively red every board that person
+// ran: dropping `ian` from the current map when he leaves cannot be allowed to fail
+// his historical stamps. But the answer is NOT "clear for any well-formed login" —
+// that would let `human:<any-plausible-name>` clear the floor whether or not a human
+// was ever behind it, which is the forgery this gate must reject. So the exemption
+// clears for a CONFIRMED human and only a confirmed one: a name present in the CURRENT
+// roster (ASSAY_HUMAN_LOGIN_MAP, via HumanLogin) OR recorded in the FORMER-humans
+// roster (ASSAY_FORMER_HUMAN_LOGIN_MAP, via FormerHumanLogin) as a departed human who
+// WAS confirmed at some past point. A name in NEITHER — one that was never a confirmed
+// human — FAILS, exactly as it did on main before the shape-based widening.
+// confirmedHumanEver is that current-∪-former predicate. This is a tightening back
+// toward main's map-membership check, carving out only the leaver case main got wrong
+// (main red-lined departed humans by consulting the current map alone).
 //
-// WHAT STILL STOPS FABRICATION. The floor is a MODEL-CAPABILITY gate: it exists to
-// stop a model too weak to re-run a Verify table from rubber-stamping a risk-
-// flagged brief. A `human:<login>` token — real or fabricated — is by definition
-// not a weak-model rubber-stamp, so admitting it on shape does not weaken what the
-// floor is FOR (a below-floor model in the runner slot, `human:` suffix or not, is
-// still caught). Establishing that THIS named human actually ACTED is a different
-// job, and it is not this check's: it belongs to `--corroborate` (corroborateStamps)
-// and the register human-authorisation key (authorizedByVerifiedHuman), BOTH of
-// which still resolve the name through the map and check the PR's review record — a
-// fabricated `human:whoever` gains nothing there (no mapping → MISSING-CORROBORATION,
-// no authorisation). The residual this consciously accepts: the floor alone no longer
-// distinguishes a real leaver from a fabricated login of the same shape. That
-// distinction was never the floor's to draw — the map-and-PR gates draw it — and
-// drawing it here is precisely what red-lined the fleet. Loosening a forgery-adjacent
-// control is security-relevant; this is the narrowest loosening that unblocks the
-// leaver case, and it is called out for review rather than taken silently.
+// WHAT STILL STOPS FABRICATION, and what this consciously accepts. The floor is a
+// MODEL-CAPABILITY gate: it exists to stop a model too weak to re-run a Verify table
+// from rubber-stamping a risk-flagged brief. A CONFIRMED `human:<login>` — current or
+// historical — is by definition not a weak-model rubber-stamp, so admitting it does
+// not weaken what the floor is FOR (a below-floor model in the runner slot, `human:`
+// suffix or not, is still caught). Establishing that THIS named human actually ACTED
+// on THIS PR is a different job and not this check's: it belongs to `--corroborate`
+// (corroborateStamps) and the register human-authorisation key
+// (authorizedByVerifiedHuman), BOTH of which resolve the name through the CURRENT map
+// ONLY and require an APPROVED review / approval comment — a departed human cannot
+// approve today, and a fabricated `human:whoever` resolves to nothing there. Those
+// gates are UNCHANGED: "only confirmed humans can approve" is theirs, and the former
+// map deliberately does NOT widen them. The residual this accepts is the same one the
+// current map already carries (see rosterconfig.go): a name written into either map by
+// whoever supplies the roster is trusted to have been a human; the id-pinning and
+// corroboration gates, not the floor, are where identity is established downstream.
 //
-// A MALFORMED human token still fails LOUD: `human:` with no name, `human:@@@`, or a
-// homoglyph name all yield an empty name from humanRunnerName and are not a login at
-// all. Note such a token would otherwise pass by accident — belowFloorRunner("human:")
-// is false — so it must be rejected explicitly. A token that names no human is not
-// "gate satisfied".
+// A name that was NEVER a confirmed human FAILS LOUD — the correctness the shape-based
+// form dropped and this restores. So does a MALFORMED human token: `human:` with no
+// name, `human:@@@`, or a homoglyph name all yield an empty name from humanRunnerName
+// and are not a login at all. The two are reported with DIFFERENT reasons
+// (looksLikeHumanLogin sorts them), but both red-line: a token that names no confirmed
+// human is not "gate satisfied". Note a malformed token would otherwise pass by
+// accident — belowFloorRunner("human:") is false — so it must be rejected explicitly.
 //
 // The Verified/Reviewed split is deliberately NOT enforced here. The convention
 // is that Verified names who ran the table and Reviewed carries the human sign-off,
@@ -191,15 +211,26 @@ func verifierFloorFailure(verified string) (reason string, failed bool) {
 
 	if name, isHuman := humanRunnerName(runner); isHuman {
 		if _, known := HumanLogin(name); known {
-			return "", false // a currently-mapped human ran it — the floor does not apply
+			return "", false // a currently-confirmed human ran it — the floor does not apply
+		}
+		if _, former := FormerHumanLogin(name); former {
+			// A human confirmed HISTORICALLY (in the roster at some past point, now
+			// recorded in ASSAY_FORMER_HUMAN_LOGIN_MAP) but no longer current. The
+			// leaver case: a stamp records who signed off THEN, and dropping a
+			// departed human from the current map must not retroactively red the
+			// boards they ran. Still a confirmed human, so the floor does not apply.
+			return "", false
 		}
 		if looksLikeHumanLogin(name) {
-			// A well-formed human login that is NOT in today's map. By the leaver
-			// principle (see the doc comment), a stamp records who signed off THEN;
-			// a later roster change must not retroactively red this board. The
-			// floor is a model-capability gate and a recorded human clears it;
-			// live-identity enforcement is --corroborate's and the register's job.
-			return "", false
+			// A well-formed login SHAPE that was NEVER a confirmed human — in neither
+			// the current nor the former map. Shape is not proof a human acted;
+			// admitting it would launder exactly the forgery this floor must reject.
+			return fmt.Sprintf("the runner token %q claims a human, but %q was never a confirmed human "+
+				"(not in "+scanEnvHumanLoginMap+" now, nor recorded in "+scanEnvFormerHumanLoginMap+" as a "+
+				"departed human) — only a currently- or historically-confirmed human clears the floor; name "+
+				"the runner that actually ran the table, or add the human to the appropriate map (itself a "+
+				"reviewed change)",
+				runner, name), true
 		}
 		return fmt.Sprintf("the runner token %q claims a human, but %q is not a well-formed human login "+
 			"(an empty or confusable name) — a human token that names no real login does not satisfy the floor; "+
@@ -216,18 +247,17 @@ func verifierFloorFailure(verified string) (reason string, failed bool) {
 // runnerClearsFloor reports whether a SINGLE runner token satisfies the verifier
 // floor on its own — the same admissibility verifierFloorFailure applies to the
 // Verified cell's runner, factored out so the Evidence read below can reuse it.
-// A well-formed `human:<login>` clears — whether or not the login is in today's
-// map (the leaver principle verifierFloorFailure documents) — a below-floor model
-// family does not, and a MALFORMED human token (empty/confusable name) does not
-// (it names no login, so it must not clear silently — the same "a token that names
-// no human is not gate-satisfied" stance verifierFloorFailure takes). A plain,
-// above-floor model (`opus-verifier`, `glm-5.2-verifier`) clears.
+// A `human:<login>` clears ONLY when the login was EVER a confirmed human — present
+// in the current roster (ASSAY_HUMAN_LOGIN_MAP) or recorded in the former-humans
+// roster (ASSAY_FORMER_HUMAN_LOGIN_MAP), the current-∪-former predicate
+// confirmedHumanEver. A never-confirmed name (a well-formed login shape in neither
+// map) does NOT clear, and neither does a MALFORMED human token (empty/confusable
+// name) — the same "a token that names no confirmed human is not gate-satisfied"
+// stance verifierFloorFailure takes. A plain, above-floor model (`opus-verifier`,
+// `glm-5.2-verifier`) clears.
 func runnerClearsFloor(token string) bool {
 	if name, isHuman := humanRunnerName(token); isHuman {
-		if _, known := HumanLogin(name); known {
-			return true
-		}
-		return looksLikeHumanLogin(name)
+		return confirmedHumanEver(name)
 	}
 	return !belowFloorRunner(token)
 }

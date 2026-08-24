@@ -58,16 +58,20 @@ package main
 // distinguish from a human. `--corroborate` is not `--scan-issues`, so
 // scanClassForMode(false) puts it on the same ClassCI transport as the register gate.
 //
-// The verifierFloorFailure gate (attribution.go) is DELIBERATELY NOT on this list any
-// more. It once cleared only when a `human:<name>` resolved in the map and failed loud
-// otherwise; the leaver-principle change made it clear on human-login SHAPE instead —
-// a well-formed `human:<login>` clears whether or not the login is in TODAY's map,
-// because a Verified cell records who signed off THEN and a later roster change must
-// not retroactively red every board that person ran. The floor is a model-capability
-// gate; establishing that THIS human actually acted is the job of the two map-widened
-// gates above, which is where the map's ACCEPT-widening residual now lives in full.
+// The verifierFloorFailure gate (attribution.go) is a THIRD map-widened gate. It
+// clears a `human:<name>` token only when the name was EVER a confirmed human — in the
+// CURRENT map here (via HumanLogin) OR in the FORMER-humans map (ASSAY_FORMER_HUMAN_LOGIN_MAP,
+// via FormerHumanLogin) — and rejects a name confirmed by neither. So a mapped name
+// clears the floor where an unmapped, never-confirmed one fails: the current map
+// ACCEPT-widens the floor, exactly as it does the two gates above. (An earlier form,
+// #104, cleared the floor on login SHAPE alone and so was NOT map-widened; that
+// dropped the forgery rejection — a plausible but never-confirmed name cleared — and
+// Ian ruled it too permissive. The floor now consults the map again, tightening back
+// toward main, carving out only the leaver case via the former map.) The former map is
+// consulted ONLY by the floor: the two identity gates above resolve through the
+// current map alone, because a departed human cannot approve today.
 //
-// That is the whole of it, and the boundary is pinned across both gates by
+// That is the whole of it, and the boundary is pinned across all three gates by
 // TestCIHumanLoginMapResidualBoundary: the map admits no repo, blesses nobody, makes
 // nobody a trusted author, and cannot reach any write/flip/dispatch surface, because
 // every tool holding those is write-class and refuses the environment unconditionally.
@@ -105,6 +109,21 @@ const (
 	scanEnvTrustedBotSlugs       = "ASSAY_TRUSTED_BOT_SLUGS"
 	scanEnvAllowedRepos          = "ASSAY_ALLOWED_REPOS"
 	scanEnvHumanLoginMap         = "ASSAY_HUMAN_LOGIN_MAP"
+	// scanEnvFormerHumanLoginMap carries the FORMER-humans map: name:login entries
+	// for humans who WERE confirmed at some past point but have since left the
+	// roster. Same format and bot-shape validation as ASSAY_HUMAN_LOGIN_MAP. It is
+	// consulted ONLY by the verifier floor (FormerHumanLogin / confirmedHumanEver,
+	// attribution.go): the floor clears a `human:<name>` token for a human confirmed
+	// NOW (ASSAY_HUMAN_LOGIN_MAP) OR HISTORICALLY (this map), and rejects a name
+	// confirmed by neither — the leaver carve-out that lets a departed human's
+	// historical Verified stamps keep clearing the model-capability floor without
+	// admitting a never-confirmed name. It is DELIBERATELY not consulted by the
+	// identity gates (--corroborate, the register human-authorisation key): "only
+	// confirmed humans can approve" resolves through the CURRENT map alone, because a
+	// departed human cannot approve today. UNSET is the stricter direction (no former
+	// human recognised). A consumer that drops a human from ASSAY_HUMAN_LOGIN_MAP
+	// moves that entry here to preserve the boards that human historically verified.
+	scanEnvFormerHumanLoginMap   = "ASSAY_FORMER_HUMAN_LOGIN_MAP"
 	scanEnvRiskPathTriggersExtra = "ASSAY_RISK_PATH_TRIGGERS_EXTRA"
 	// scanEnvRepoAliases is the boards' DISPLAY grouping override
 	// (ASSAY_REPO_ALIASES). It is a DESK-only roster value: statusgen does not
@@ -264,7 +283,12 @@ type scanConfig struct {
 
 	Repos       map[string]string
 	HumanLogins map[string]string
-	RiskExtra   []string
+	// FormerHumanLogins is the FORMER-humans map (ASSAY_FORMER_HUMAN_LOGIN_MAP):
+	// name -> login for departed humans who were confirmed at some past point. It is
+	// consulted ONLY by the verifier floor (FormerHumanLogin), never by the identity
+	// gates — see the scanEnvFormerHumanLoginMap doc.
+	FormerHumanLogins map[string]string
+	RiskExtra         []string
 
 	// HomeRepo and ScanRepos are statusgen-only roster values (the compiled-in
 	// owned-repo roster this externalises). deskkit RECOGNISES their keys — the
@@ -393,7 +417,8 @@ func scanLoadConfig(class scanToolClass) scanConfig {
 func scanReadRawConfig(class scanToolClass) (map[string]string, string, []string) {
 	keys := []string{
 		scanEnvBlessLogin, scanEnvTrustedLogins, scanEnvTrustedBotSlugs,
-		scanEnvAllowedRepos, scanEnvHumanLoginMap, scanEnvRiskPathTriggersExtra,
+		scanEnvAllowedRepos, scanEnvHumanLoginMap, scanEnvFormerHumanLoginMap,
+		scanEnvRiskPathTriggersExtra,
 		scanEnvRepoAliases, scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
 		scanEnvAuthorizedAuthors,
 	}
@@ -579,6 +604,7 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		Logins:            map[string]bool{},
 		Repos:             map[string]string{},
 		HumanLogins:       map[string]string{},
+		FormerHumanLogins: map[string]string{},
 		AuthorizedAuthors: map[string]int64{},
 	}
 	var problems []string
@@ -590,7 +616,8 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 	// KEEP IN SYNC with deskkit's parseConfig.
 	known := map[string]bool{
 		scanEnvBlessLogin: true, scanEnvTrustedLogins: true, scanEnvTrustedBotSlugs: true,
-		scanEnvAllowedRepos: true, scanEnvHumanLoginMap: true, scanEnvRiskPathTriggersExtra: true,
+		scanEnvAllowedRepos: true, scanEnvHumanLoginMap: true, scanEnvFormerHumanLoginMap: true,
+		scanEnvRiskPathTriggersExtra: true,
 		scanEnvRepoAliases: true, scanEnvReleaseRepo: true, scanEnvWriteguardCallout: true,
 		scanEnvRosterSchema: true, scanEnvHomeRepo: true, scanEnvScanRepos: true,
 		scanEnvAuthorizedAuthors: true, scanEnvChannelDriftTarget: true,
@@ -754,6 +781,31 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		cfg.HumanLogins[name] = login
 	}
 
+	// The FORMER-humans map, parsed and validated EXACTLY like the current map above
+	// (name:login, bot-shape rejected). It is consulted only by the verifier floor
+	// (FormerHumanLogin) as the "confirmed historically" half of the human-token
+	// exemption — never by the identity gates. The bot-shape refusal matters for the
+	// same reason it does on the current map: a `human:<name>` must never resolve to a
+	// shared-agent identity, even for a departed human. An unset value is neither an
+	// error nor a refusal.
+	for _, entry := range scanSplitList(vals[scanEnvFormerHumanLoginMap]) {
+		name, login, found := strings.Cut(entry, ":")
+		name = strings.ToLower(strings.TrimSpace(name))
+		login = strings.ToLower(strings.TrimSpace(login))
+		if !found || name == "" || login == "" {
+			bad("%s: cannot parse entry %q — expected name:login", scanEnvFormerHumanLoginMap, entry)
+			continue
+		}
+		if scanLooksLikeBot(login) {
+			bad("%s: entry %q maps to a bot/App/shared-agent login %q. The former-humans map "+
+				"clears the verifier floor for a departed human, so a bot/App value would let "+
+				"`human:<name>` resolve to the shared-agent identity the token exists to exclude. "+
+				"Refusing", scanEnvFormerHumanLoginMap, entry, login)
+			continue
+		}
+		cfg.FormerHumanLogins[name] = login
+	}
+
 	// ADDITIVE-ONLY, and an unset value is neither an error nor a refusal.
 	cfg.RiskExtra = scanSplitList(vals[scanEnvRiskPathTriggersExtra])
 	sort.Strings(cfg.RiskExtra)
@@ -861,6 +913,11 @@ func (c scanConfig) EffectiveConfigLines() []string {
 		humanMap = append(humanMap, n+"="+l)
 	}
 	sort.Strings(humanMap)
+	formerHumanMap := make([]string, 0, len(c.FormerHumanLogins))
+	for n, l := range c.FormerHumanLogins {
+		formerHumanMap = append(formerHumanMap, n+"="+l)
+	}
+	sort.Strings(formerHumanMap)
 
 	// Role bindings get their own line: the bot-slug line renders slug:id and says
 	// nothing about which role each slug is BOUND to, so a dropped `role=` prefix
@@ -883,6 +940,7 @@ func (c scanConfig) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: role-bindings=%s", rolesStr),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvAllowedRepos, strings.Join(repos, ",")),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvHumanLoginMap, strings.Join(humanMap, ",")),
+		fmt.Sprintf("assay-config: %s=%s", scanEnvFormerHumanLoginMap, strings.Join(formerHumanMap, ",")),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvRiskPathTriggersExtra, strings.Join(c.RiskExtra, ",")),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvHomeRepo, c.HomeRepo),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvScanRepos, strings.Join(c.ScanRepos, ",")),

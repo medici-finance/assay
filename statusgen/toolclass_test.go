@@ -157,22 +157,21 @@ func TestCIHumanLoginMapResidualBoundary(t *testing.T) {
 	}
 
 	// ---- POSITIVE half: the residual is real ------------------------------
-	// NOTE ON THE VERIFIER FLOOR: it is deliberately NO LONGER one of the map-widened
-	// gates. Since the leaver-principle change (attribution.go), the floor clears for
-	// ANY well-formed human login — mapped or not — because a recorded human is not a
-	// weak-model rubber-stamp, and a later roster change must not retroactively red an
-	// old board. So `human:alex` (mapped) and `human:nobody` (unmapped) BOTH clear the
-	// floor, and the map neither narrows nor widens that decision. The floor's own
-	// forgery boundary (a malformed human token naming no login still fails) is pinned
-	// in attribution_test.go, not here. The map's ACCEPT-widening residual now lives in
-	// the TWO gates below, which still resolve the name through the map.
+	// NOTE ON THE VERIFIER FLOOR: it IS a map-widened gate. The floor clears a
+	// `human:<name>` token only when the name was EVER a confirmed human — in the
+	// CURRENT map (here, delivered over the CI transport) or the FORMER-humans map
+	// (not set in this test) — and REJECTS a never-confirmed name. So a mapped
+	// `human:alex` clears where an unmapped `human:nobody` FAILS: the env-delivered map
+	// widens the floor decision, exactly as it widens the two gates below. (This is the
+	// tightening back toward main that #104's shape-only form had dropped; the floor's
+	// malformed-token boundary is pinned in attribution_test.go.)
 	if _, failed := verifierFloorFailure("2026-07-18 human:alex"); failed {
-		t.Error("a well-formed human login must clear the verifier floor regardless of the map " +
-			"(leaver principle) — if the floor is failing a shaped human token, attribution.go regressed")
+		t.Error("a CURRENTLY-mapped human must clear the verifier floor — the env-delivered map is the " +
+			"ACCEPT-widening; if this fails, the floor is not consulting the map at all")
 	}
-	if _, failed := verifierFloorFailure("2026-07-18 human:nobody"); failed {
-		t.Error("an UNMAPPED but well-formed human login must ALSO clear the floor (leaver principle) — " +
-			"the floor is a capability gate, not a live-map-membership check")
+	if _, failed := verifierFloorFailure("2026-07-18 human:nobody"); !failed {
+		t.Error("an UNMAPPED, never-confirmed human login must FAIL the floor — it is in neither the " +
+			"current nor the former map, so the map is what widens `human:alex` clear here, not shape")
 	}
 	// Gate 1: the register human-authorisation key.
 	if !authorizedByVerifiedHuman([]byte("---\nauthorized-by: human:alex\n---\n")) {
