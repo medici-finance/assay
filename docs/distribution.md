@@ -11,6 +11,10 @@ The step-by-step install runbook lives in [`adopting-assay.md`](adopting-assay.m
 distribution model those steps implement. The two are one story with one mechanism, not two
 implementations.
 
+Installing changes nothing about what leaves your machine: `statusgen` collects **no telemetry by
+default** — an anonymized, counts-only ping exists but stays off unless you opt in twice
+(`--telemetry` plus `ASSAY_TELEMETRY=1`); see [`telemetry.md`](telemetry.md).
+
 ## The umbrella version
 
 The release home `medici-finance/assay` cuts a **bare `vX.Y.Z`** umbrella tag (e.g. `v0.13.0`) —
