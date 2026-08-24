@@ -384,6 +384,13 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// findings past the age threshold (and register floods) so the desk/retro sees
 	// them without a manual FINDINGS.md scan. Advisory only — never hard problems.
 	notices = append(notices, standingAlarmNotices(findings, currentAlarmConfig(), nowFunc())...)
+	// Finding→control closure NOTICEs (coder-skills-review/03): surface every
+	// recurring-class finding whose bug class has not yet landed a permanent
+	// control. Advisory-first — a NOTICE, never a hard PROBLEM, because a hard gate
+	// over an unclassified backlog only manufactures false-positives. Resolves a
+	// control's `<stream>/<NN>` brief reference against the FULL stream set (not
+	// the product-scoped checkStreams) so the control lands regardless of scope.
+	notices = append(notices, findingControlNotices(findings, streams, nowFunc())...)
 	// Verification-debt alarm: the Awaiting queue
 	// is the throughput valve — fire a NOTICE when depth crosses threshold
 	// or exceeds the total done count.
