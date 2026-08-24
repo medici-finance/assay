@@ -1,0 +1,291 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"time"
+
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/storer"
+)
+
+// runMine is the `mine` mode: walk the target repo with go-git and extract its
+// history into the append-only artifact tables under the tracking root.
+//
+// Full history by default; a repeat run reads the prior mine.json and extracts
+// ONLY the commits that postdate the recorded tip, appending — never rewriting —
+// and advancing the tip/horizon (extend-never-replace, spec §3.1). Every mode is
+// READ-ONLY against the target repo; the only writes land under --out.
+func runMine(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("mine", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	repo := fs.String("repo", ".", "path to the git repository to mine (read-only)")
+	out := fs.String("out", "", "tracking root for artifacts (required unless --in-repo)")
+	inRepo := fs.Bool("in-repo", false, "opt in to writing artifacts into the mined repo itself")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	trackingRoot := *out
+	if trackingRoot == "" {
+		if *inRepo {
+			// Explicit opt-in: default the tracking root to the mined repo.
+			trackingRoot = *repo
+		} else {
+			fmt.Fprintln(stderr, "qualgen mine: --out <dir> is required (or pass --in-repo to write into the mined repo)")
+			return 2
+		}
+	}
+
+	if err := mine(*repo, trackingRoot, stdout); err != nil {
+		fmt.Fprintln(stderr, "qualgen mine:", err)
+		return 1
+	}
+	return 0
+}
+
+// mine performs the extraction. Separated from flag handling so tests drive it
+// directly.
+func mine(repoPath, trackingRoot string, stdout io.Writer) error {
+	r, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return fmt.Errorf("open repository: %w", err)
+	}
+	head, err := r.Head()
+	if err != nil {
+		return fmt.Errorf("resolve HEAD: %w", err)
+	}
+	tip := head.Hash().String()
+
+	store := NewStore(trackingRoot)
+	prior, err := store.ReadHeader()
+	if err != nil {
+		return fmt.Errorf("read prior header: %w", err)
+	}
+
+	priorTip := ""
+	if prior != nil {
+		priorTip = prior.TipSHA
+	}
+
+	// Walk newest-first from HEAD, stopping at the previously-mined tip so an
+	// incremental run collects only the commits that postdate it.
+	iter, err := r.Log(&git.LogOptions{From: head.Hash()})
+	if err != nil {
+		return fmt.Errorf("walk log: %w", err)
+	}
+	var collected []*object.Commit
+	err = iter.ForEach(func(c *object.Commit) error {
+		if priorTip != "" && c.Hash.String() == priorTip {
+			return storer.ErrStop // reached the mined frontier — exclude it and everything older
+		}
+		collected = append(collected, c)
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("iterate commits: %w", err)
+	}
+
+	// Append oldest-first so the table reads chronologically; append-only means
+	// an incremental run adds these lines after the ones already present without
+	// touching them.
+	reverse(collected)
+
+	// Coverage and counts accumulate on top of what the prior mine recorded, so
+	// the header always describes the WHOLE table, not just this run's delta.
+	cov := Coverage{}
+	commitCount, diffCount := 0, 0
+	if prior != nil {
+		cov = prior.Coverage
+		commitCount = prior.CommitCount
+		diffCount = prior.DiffCount
+	}
+
+	for _, c := range collected {
+		com := commitRecord(c)
+		fileDiffs, err := extractFileDiffs(c)
+		if err != nil {
+			return fmt.Errorf("diff commit %s: %w", c.Hash.String(), err)
+		}
+		for _, fd := range fileDiffs {
+			com.FileDiffKeys = append(com.FileDiffKeys, fd.Key())
+			if err := store.Append(KindDiff, fd); err != nil {
+				return fmt.Errorf("append diff: %w", err)
+			}
+			diffCount++
+			switch fd.Lines.State {
+			case StateMeasured:
+				cov.Measured++
+			case StateMeasuredZero:
+				cov.MeasuredZero++
+			case StateCouldNotMeasure:
+				cov.CouldNotMeasure++
+			}
+		}
+		if err := store.Append(KindCommit, com); err != nil {
+			return fmt.Errorf("append commit: %w", err)
+		}
+		commitCount++
+	}
+
+	// Horizon is the earliest reachable commit ever seen. A full mine sets it to
+	// the oldest commit reached now; an incremental run keeps the original floor.
+	horizon := ""
+	if prior != nil && prior.Horizon != "" {
+		horizon = prior.Horizon
+	} else if len(collected) > 0 {
+		horizon = collected[0].Hash.String() // oldest, after the reverse above
+	}
+
+	header := MineHeader{
+		MinedAt:         time.Now().UTC(),
+		TipSHA:          tip,
+		Horizon:         horizon,
+		Discontinuities: detectDiscontinuities(repoPath, prior),
+		Coverage:        cov,
+		CommitCount:     commitCount,
+		DiffCount:       diffCount,
+	}
+	if err := store.WriteHeader(header); err != nil {
+		return fmt.Errorf("write header: %w", err)
+	}
+
+	fmt.Fprintf(stdout, "qualgen mine: %d new commit(s) extracted; tip %s; %d commit(s) in table\n",
+		len(collected), shortSHA(tip), commitCount)
+	return nil
+}
+
+// commitRecord builds the internal Commit record from a go-git commit. Author
+// identity is recorded raw; classification is a later brief's job.
+func commitRecord(c *object.Commit) Commit {
+	com := Commit{
+		SHA:            c.Hash.String(),
+		AuthorRaw:      fmt.Sprintf("%s <%s>", c.Author.Name, c.Author.Email),
+		AuthorName:     c.Author.Name,
+		AuthorEmail:    c.Author.Email,
+		AuthorWhen:     c.Author.When.UTC(),
+		CommitterRaw:   fmt.Sprintf("%s <%s>", c.Committer.Name, c.Committer.Email),
+		CommitterName:  c.Committer.Name,
+		CommitterEmail: c.Committer.Email,
+		CommitterWhen:  c.Committer.When.UTC(),
+		Message:        c.Message,
+	}
+	for _, p := range c.ParentHashes {
+		com.ParentSHAs = append(com.ParentSHAs, p.String())
+	}
+	return com
+}
+
+// extractFileDiffs computes the per-file diffs for a commit against its first
+// parent (or the empty tree for a root commit). Each file flows through the
+// three-state rule via fileDiffFromChange.
+func extractFileDiffs(c *object.Commit) ([]FileDiff, error) {
+	tree, err := c.Tree()
+	if err != nil {
+		return nil, err
+	}
+	var parentTree *object.Tree
+	if c.NumParents() > 0 {
+		// First-parent diff: the mainline change this commit introduced. Merge
+		// commits against other parents are a later-brief refinement.
+		p, err := c.Parent(0)
+		if err != nil {
+			return nil, err
+		}
+		parentTree, err = p.Tree()
+		if err != nil {
+			return nil, err
+		}
+	}
+	changes, err := object.DiffTree(parentTree, tree)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]FileDiff, 0, len(changes))
+	for _, ch := range changes {
+		out = append(out, fileDiffFromChange(c.Hash.String(), ch))
+	}
+	return out, nil
+}
+
+// fileDiffFromChange turns one go-git change into a FileDiff, applying the
+// three-state rule resiliently: a patch that cannot be computed (unreadable
+// blob) is could-not-measure with a reason, a change with no content patch
+// (mode-only) is measured-zero, and everything else goes through
+// fileDiffFromPatch.
+func fileDiffFromChange(sha string, ch *object.Change) FileDiff {
+	patch, err := ch.Patch()
+	if err != nil {
+		fd := baseFileDiff(sha, ch)
+		fd.Lines = CouldNotMeasure[[]Hunk]("patch could not be computed for this blob")
+		return fd
+	}
+	fps := patch.FilePatches()
+	if len(fps) == 0 {
+		fd := baseFileDiff(sha, ch)
+		fd.Lines = MeasuredZero[[]Hunk]()
+		return fd
+	}
+	return fileDiffFromPatch(sha, fps[0])
+}
+
+// baseFileDiff builds the path/kind skeleton of a FileDiff from a change,
+// without line data — used on the could-not-measure and empty-patch paths.
+func baseFileDiff(sha string, ch *object.Change) FileDiff {
+	fd := FileDiff{CommitSHA: sha, OldPath: ch.From.Name, NewPath: ch.To.Name}
+	switch {
+	case ch.From.Name == "" && ch.To.Name != "":
+		fd.Kind = ChangeAdded
+	case ch.From.Name != "" && ch.To.Name == "":
+		fd.Kind = ChangeDeleted
+	default:
+		fd.Kind = ChangeModified
+	}
+	return fd
+}
+
+// detectDiscontinuities records gaps that floor what the mine could see. It
+// carries forward any the prior header recorded and adds a shallow-clone floor
+// if the repository is shallow.
+func detectDiscontinuities(repoPath string, prior *MineHeader) []Discontinuity {
+	seen := map[string]bool{}
+	var out []Discontinuity
+	add := func(d Discontinuity) {
+		if seen[d.Kind] {
+			return
+		}
+		seen[d.Kind] = true
+		out = append(out, d)
+	}
+	if prior != nil {
+		for _, d := range prior.Discontinuities {
+			add(d)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(repoPath, ".git", "shallow")); err == nil {
+		add(Discontinuity{
+			Kind:   "shallow-clone-floor",
+			Detail: "repository is a shallow clone; history before the shallow floor is unreachable",
+		})
+	}
+	return out
+}
+
+// reverse flips a commit slice in place (newest-first → oldest-first).
+func reverse(cs []*object.Commit) {
+	for i, j := 0, len(cs)-1; i < j; i, j = i+1, j-1 {
+		cs[i], cs[j] = cs[j], cs[i]
+	}
+}
+
+// shortSHA abbreviates a SHA for log output.
+func shortSHA(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
+}
