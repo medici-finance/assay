@@ -30,7 +30,7 @@ component list, build/run topology, and open questions.
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [base image — toolchains, desk-tools, skills, volume](brief-01-base-image.md) | 1 | M | implemented | — | — |
 | 02 | [runtime credential contract + layer-secret scan](brief-02-secret-injection-contract.md) | 1 | M | implemented | — | — |
-| 03 | [per-desk images + build matrix + publish wiring](brief-03-desk-images-build-matrix.md) | 2 | M | todo | — | — |
+| 03 | [per-desk images + build matrix + publish wiring](brief-03-desk-images-build-matrix.md) | 2 | M | in-progress | — | — |
 | 04 | [interactive launch script `desk-run.sh`](brief-04-launch-script.md) | 3 | M | todo | — | — |
 | 05 | [docker-compose definition](brief-05-docker-compose.md) | 3 | S | todo | — | — |
 | 06 | [Kubernetes manifests](brief-06-k8s-manifests.md) | 3 | M | todo | — | — |
