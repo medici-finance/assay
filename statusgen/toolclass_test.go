@@ -112,19 +112,23 @@ func TestScanIssuesRefusesAHostileEnvUnderCI(t *testing.T) {
 // The package comment on rosterconfig.go used to claim that the ci-eligible modes
 // "grant nothing and an empty map is strictly stricter, so the environment cannot
 // widen a decision through them". The premise is true and the conclusion is false:
-// ASSAY_HUMAN_LOGIN_MAP is consulted only to ACCEPT, and its THREE gate-clearing
-// consumers never consult Configured(), so a NON-EMPTY map arriving over the CI
-// transport is strictly wider than no map. Measured on this repo's own board, a
-// plain local `GITHUB_ACTIONS=true ASSAY_HUMAN_LOGIN_MAP=alex:attacker` turned
-// `statusgen --lint` from exit 1 (verifier-floor PROBLEM on brief-38) into exit 0,
-// on a roster reporting configured=false.
+// ASSAY_HUMAN_LOGIN_MAP is consulted only to ACCEPT, and its gate-clearing consumers
+// never consult Configured(), so a NON-EMPTY map arriving over the CI transport is
+// strictly wider than no map.
+//
+// The map-widened consumers are now TWO: authorizedByVerifiedHuman (the register
+// human-authorisation key) and corroborateStamps (--corroborate). The verifier floor
+// USED to be a third, but the leaver-principle change made it clear on human-login
+// SHAPE rather than live-map membership (a historical stamp must not be red-lined when
+// a human leaves the roster), so the map no longer widens it — that is asserted below
+// as a property, not a widening.
 //
 // This test exists so that residual is WRITTEN DOWN AND EXECUTABLE rather than
 // merely absent from a comment. It asserts both halves:
 //
-//	POSITIVE  the residual is real and deliberate — all three accept-only gates do
-//	          clear. If a future change closes the residual, this half goes red and
-//	          the comment must be updated with it. Closing it is not a free win: it
+//	POSITIVE  the residual is real and deliberate — both map-widened gates do clear.
+//	          If a future change closes the residual, this half goes red and the
+//	          comment must be updated with it. Closing it is not a free win: it
 //	          re-breaks CI lint wherever an adopter sets only this one variable.
 //	NEGATIVE  the residual is BOUNDED — the map admits no repo, blesses nobody, and
 //	          makes nobody a trusted author. If a future change lets the environment
@@ -153,19 +157,24 @@ func TestCIHumanLoginMapResidualBoundary(t *testing.T) {
 	}
 
 	// ---- POSITIVE half: the residual is real ------------------------------
-	// Gate 1: the verifier floor. "alex" resolves, so the floor stops applying.
-	if reason, failed := verifierFloorFailure("2026-07-18 human:alex"); failed {
-		t.Errorf("the residual is documented as CLEARING the verifier floor for a mapped name, "+
-			"but it failed: %s\n\nIf this was closed deliberately, update the RESIDUAL note at the "+
-			"head of rosterconfig.go and corroborate.go's HumanLogin comment in the same commit", reason)
+	// NOTE ON THE VERIFIER FLOOR: it is deliberately NO LONGER one of the map-widened
+	// gates. Since the leaver-principle change (attribution.go), the floor clears for
+	// ANY well-formed human login — mapped or not — because a recorded human is not a
+	// weak-model rubber-stamp, and a later roster change must not retroactively red an
+	// old board. So `human:alex` (mapped) and `human:nobody` (unmapped) BOTH clear the
+	// floor, and the map neither narrows nor widens that decision. The floor's own
+	// forgery boundary (a malformed human token naming no login still fails) is pinned
+	// in attribution_test.go, not here. The map's ACCEPT-widening residual now lives in
+	// the TWO gates below, which still resolve the name through the map.
+	if _, failed := verifierFloorFailure("2026-07-18 human:alex"); failed {
+		t.Error("a well-formed human login must clear the verifier floor regardless of the map " +
+			"(leaver principle) — if the floor is failing a shaped human token, attribution.go regressed")
 	}
-	// And the unmapped name still fails — the clearing is specific to the map,
-	// not a blanket pass, which is what makes it a widening.
-	if _, failed := verifierFloorFailure("2026-07-18 human:nobody"); !failed {
-		t.Error("an UNMAPPED human runner token cleared the floor — then the map is not what is " +
-			"widening the decision and this test is measuring the wrong thing")
+	if _, failed := verifierFloorFailure("2026-07-18 human:nobody"); failed {
+		t.Error("an UNMAPPED but well-formed human login must ALSO clear the floor (leaver principle) — " +
+			"the floor is a capability gate, not a live-map-membership check")
 	}
-	// Gate 2: the register human-authorisation key.
+	// Gate 1: the register human-authorisation key.
 	if !authorizedByVerifiedHuman([]byte("---\nauthorized-by: human:alex\n---\n")) {
 		t.Error("the residual is documented as GRANTING authorizedByVerifiedHuman for a mapped " +
 			"name, but it refused — update the RESIDUAL note if this was closed deliberately")
@@ -174,7 +183,7 @@ func TestCIHumanLoginMapResidualBoundary(t *testing.T) {
 		t.Error("an UNMAPPED name satisfied authorizedByVerifiedHuman — the gate is not consulting " +
 			"the map at all")
 	}
-	// Gate 3: `--corroborate`. This row exists because the residual note originally
+	// Gate 2: `--corroborate`. This row exists because the residual note originally
 	// enumerated only the two gates above and dismissed this one as "not widening on
 	// its own — a mapping only names a login whose APPROVED review must then be found
 	// on the PR". The barrier is real but it does not bind: whoever sets the map also

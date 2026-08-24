@@ -34,33 +34,40 @@ package main
 // that route the human-login map was unreadable and the verifier floor failed on
 // briefs the PR never touched (correctness review, finding 1).
 //
-// RESIDUAL — the ONE place the environment does widen, stated rather than taken
+// RESIDUAL — the place the environment does widen, stated rather than taken
 // silently. An earlier draft of this comment claimed "an empty map is strictly
 // stricter, so the environment cannot widen a decision through them". The first
 // clause is true and the conclusion does not follow: an empty map is stricter, but
 // a NON-EMPTY one supplied through the environment is strictly wider than no map,
-// because ASSAY_HUMAN_LOGIN_MAP is consulted only to ACCEPT and its three gate-clearing
+// because ASSAY_HUMAN_LOGIN_MAP is consulted only to ACCEPT and its gate-clearing
 // consumers do not consult Configured(). A steered agent running locally as the user
 // can export GITHUB_ACTIONS=true alongside ASSAY_HUMAN_LOGIN_MAP and clear:
 //
-//	verifierFloorFailure     (attribution.go) — a `human:<name>` runner token resolves
-//	                         and the verifier floor stops applying to that brief.
 //	authorizedByVerifiedHuman (registers.go)  — an `authorized-by: human:<name>` key
 //	                         whose name is unknown today becomes known.
 //	corroborateStamps        (corroborate.go) — a `human:<name>` stamp flips from
 //	                         MISSING-CORROBORATION to CORROBORATED, flipping
 //	                         `--corroborate`'s exit status (1 only when anyMissing).
 //
-// THREE, not two. An earlier draft of this note listed the first two and dismissed the
-// third as "not a widening one — a mapping only names a login whose APPROVED review
-// must then be found on the PR". The residual review measured that false: the actor
-// setting the map also chooses which login the name resolves to, so any account
+// TWO gates, both map-widened. `--corroborate` is one of them despite an earlier note
+// dismissing it as "not a widening one — a mapping only names a login whose APPROVED
+// review must then be found on the PR". The residual review measured that false: the
+// actor setting the map also chooses which login the name resolves to, so any account
 // already carrying an approval-shaped comment on the PR satisfies the barrier —
 // including a shared agent account, which is the identity `human:<name>` exists to
 // distinguish from a human. `--corroborate` is not `--scan-issues`, so
-// scanClassForMode(false) puts it on the same ClassCI transport as the other two.
+// scanClassForMode(false) puts it on the same ClassCI transport as the register gate.
 //
-// That is the whole of it, and the boundary is pinned across all three gates by
+// The verifierFloorFailure gate (attribution.go) is DELIBERATELY NOT on this list any
+// more. It once cleared only when a `human:<name>` resolved in the map and failed loud
+// otherwise; the leaver-principle change made it clear on human-login SHAPE instead —
+// a well-formed `human:<login>` clears whether or not the login is in TODAY's map,
+// because a Verified cell records who signed off THEN and a later roster change must
+// not retroactively red every board that person ran. The floor is a model-capability
+// gate; establishing that THIS human actually acted is the job of the two map-widened
+// gates above, which is where the map's ACCEPT-widening residual now lives in full.
+//
+// That is the whole of it, and the boundary is pinned across both gates by
 // TestCIHumanLoginMapResidualBoundary: the map admits no repo, blesses nobody, makes
 // nobody a trusted author, and cannot reach any write/flip/dispatch surface, because
 // every tool holding those is write-class and refuses the environment unconditionally.

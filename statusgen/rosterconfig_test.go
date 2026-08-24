@@ -187,14 +187,25 @@ func TestCorroborationUnconfiguredIsMissing(t *testing.T) {
 	if _, ok := HumanLogin("anybody"); ok {
 		t.Error("HumanLogin resolved an arbitrary name with NO map configured")
 	}
-	// The verifier floor is the surface where a resolvable name WAIVES a check, so
-	// an unconfigured map must make it stricter, never looser.
-	if reason, failed := verifierFloorFailure("2026-08-04 human:alex"); !failed {
-		t.Errorf("the verifier floor accepted a human runner token with NO map configured (reason %q) — "+
-			"an unverifiable human token does not satisfy the floor", reason)
+	// The verifier floor is DELIBERATELY NOT map-gated since the leaver-principle
+	// change: it clears on human-login SHAPE, so an unconfigured map neither loosens
+	// nor tightens it. A well-formed `human:alex` still clears (a historical stamp is
+	// not invalidated by an absent/changed roster), while a MALFORMED human token that
+	// names no login still fails regardless of the map — that is the floor's own
+	// forgery boundary. The map's stricter-when-unset invariant (P1 for C7) lives in
+	// HumanLogin/corroboration above, NOT in the floor.
+	if reason, failed := verifierFloorFailure("2026-08-04 human:alex"); failed {
+		t.Errorf("the verifier floor rejected a well-formed human runner token with no map configured "+
+			"(reason %q) — the floor is a capability gate cleared by login SHAPE, not a map-membership "+
+			"check; the map's residual lives in corroboration, not here", reason)
+	}
+	if _, failed := verifierFloorFailure("2026-08-04 human:"); !failed {
+		t.Error("the verifier floor accepted a MALFORMED human token (no login) — that is the floor's " +
+			"forgery boundary and must fail regardless of the map")
 	}
 
-	// Positive control: with the map configured, the same token clears.
+	// Positive control: with the map configured, HumanLogin resolves — this is the
+	// surface the corroboration/register gates read, and the actual P1 residual.
 	scanWithRoster(t, scanExampleRoster())
 	if login, ok := HumanLogin("alex"); !ok || login != "ada" {
 		t.Errorf("HumanLogin(alex) = %q,%t with the map configured, want ada,true — the negative "+

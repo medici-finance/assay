@@ -131,10 +131,23 @@ func TestVerifierFloor(t *testing.T) {
 				"appending a human token was the silent off-switch; got:\n%s", strings.Join(problems, "\n"))
 		}
 	})
-	t.Run("an unresolvable human runner token fails loud", func(t *testing.T) {
+	t.Run("a malformed human runner token (names no login) fails loud", func(t *testing.T) {
 		if !hasProblem(problems, "brief-79-floor-unknown-human-reject.md", "verifier floor") {
-			t.Errorf("Verified cell \"2026-07-09 human:bob\" names no known human and must not clear the floor "+
-				"— it would otherwise pass silently, since \"human:bob\" matches no model family; got:\n%s",
+			t.Errorf("Verified cell \"2026-07-09 human:\" names no login at all and must not clear the floor "+
+				"— it would otherwise pass silently, since \"human:\" matches no model family; got:\n%s",
+				strings.Join(problems, "\n"))
+		}
+	})
+	// The leaver principle, END TO END: a well-formed human login that is NOT in
+	// today's map must still CLEAR the floor. brief-80's Verified cell is
+	// `2026-07-09 human:bob`; `bob` is not in the fixture map (only `alex` is), yet
+	// a historical stamp must not be red-lined by a later roster change. This is the
+	// headline case the fix exists for; if it regressed to a PROBLEM the fleet-wide
+	// red is back.
+	t.Run("a historical human runner not in today's map still clears the floor", func(t *testing.T) {
+		if hasProblem(problems, "brief-80-floor-historical-human-accept.md", "verifier floor") {
+			t.Errorf("Verified cell \"2026-07-09 human:bob\" names a well-formed human login not in the current "+
+				"map — by the leaver principle it must CLEAR the floor, not red-line a historical board; got:\n%s",
 				strings.Join(problems, "\n"))
 		}
 	})

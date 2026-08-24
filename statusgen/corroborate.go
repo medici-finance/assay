@@ -27,15 +27,22 @@ import (
 // an unknown name has no GitHub login to check, so nothing corroborates. It must
 // never start PASSING corroboration checks when unset.
 //
-// There are THREE consumers, and ALL THREE are gate-affecting. They differ in what a
+// There are TWO map-gated consumers, both gate-affecting. They differ in what a
 // hit buys, not in whether it buys anything:
 //
-//	verifierFloorFailure (attribution.go) a hit CLEARS the floor outright.
 //	authorizedByVerifiedHuman (registers.go) a hit GRANTS the human authorisation.
 //	corroborateStamps    (here)           a hit turns MISSING-CORROBORATION into
 //	                                      CORROBORATED, which is an exit-status flip
 //	                                      on `--corroborate` (runCorroborate returns 1
 //	                                      only when anyMissing).
+//
+// A THIRD consumer, verifierFloorFailure (attribution.go), USED to clear the floor
+// only on a map hit. It no longer resolves through the map: the leaver-principle
+// change made it clear on human-login SHAPE (a well-formed `human:<login>`, mapped or
+// not), because a Verified cell records who signed off THEN and dropping a human from
+// the roster later must not retroactively red every board they ran. So the floor is
+// no longer a map-widened gate; it consults this function only as the strong "is this
+// a currently-known human" signal, not as a requirement.
 //
 // An earlier draft called the third "not widening on its own", on the ground that the
 // mapped login's APPROVED review or approval comment must still be found on the PR.

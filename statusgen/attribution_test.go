@@ -224,11 +224,14 @@ func TestEvidenceHasIndependentRow(t *testing.T) {
 //     Substring matching silently swallows unrelated names — `gemini-*` on
 //     `mini`, `elite-*` on `lite` — which is the same defect class that made
 //     `glm` unsafe.
-//  3. A `human:` token only clears the floor when it is the RUNNER token and
-//     names a known human. The cases carrying that property
-//     are grouped at the bottom and each is paired with its opposite direction:
-//     the legitimate human stamp that must still clear, next to the forgery
-//     built from it that must now be caught.
+//  3. A `human:` token clears the floor only when it is the RUNNER token and
+//     names a WELL-FORMED human login — by the leaver principle, whether or not
+//     that login is in today's map (a historical stamp is not invalidated by a
+//     later roster change; live-identity enforcement is --corroborate's job). The
+//     cases carrying that property are grouped at the bottom and each is paired
+//     with its opposite direction: the human stamp that must still clear (mapped
+//     OR an unmapped leaver), next to the forgery — a below-floor model wearing a
+//     human suffix, or a human token that names no real login — that must be caught.
 func TestVerifierFloorFailure(t *testing.T) {
 	cases := []struct {
 		verified string
@@ -271,10 +274,27 @@ func TestVerifierFloorFailure(t *testing.T) {
 			"a human named anywhere but the runner slot suppresses nothing"},
 		{"2026-07-09 glm-5.2-verifier human:alex", false,
 			"must not over-correct: the runner is above the floor, so this still clears"},
-		{"2026-07-09 human:bob", true,
-			"an unresolvable human token fails LOUD — it would otherwise clear silently, since belowFloorRunner(\"human:bob\") is false"},
+		//
+		// THE LEAVER PRINCIPLE — a well-formed human login clears the floor whether or
+		// not it is in TODAY's map. `bob` is NOT in the fixture map (only `alex` is), yet
+		// this must CLEAR: a Verified cell records who signed off THEN, and dropping a
+		// human from the roster later must not retroactively red every board they ran.
+		// The floor is a model-capability gate; live-identity enforcement is
+		// --corroborate's and the register's job, both of which still consult the map.
+		{"2026-07-09 human:bob", false,
+			"a well-formed human login NOT in today's map still clears — the leaver principle: a historical stamp is not invalidated by a later roster change"},
+		{"2026-07-09 human:former_lead", false,
+			"another unmapped-but-well-formed login clears for the same reason"},
+		//
+		// FORGERY STILL CAUGHT — a human token that names NO real login fails loud. These
+		// are the only human-token shapes the floor still rejects, and they are exactly
+		// the fabrications the exemption must not launder.
 		{"2026-07-09 human:іan", true,
-			"a homoglyph name (Cyrillic і) resolves to no known human and must not clear"},
+			"a homoglyph name (Cyrillic і) yields an EMPTY login and must not clear"},
+		{"2026-07-09 human:", true,
+			"a human token with no name at all names no login and must not clear"},
+		{"2026-07-09 human:@@@", true,
+			"a human token whose name is all punctuation yields an EMPTY login and must not clear"},
 		{"2026-07-09 superhuman:alex", false,
 			"superhuman: is not a human stamp, so it is judged as an ordinary runner token — and superhuman names no weak family"},
 		{"2026-07-09 superhuman:sonnet", true,

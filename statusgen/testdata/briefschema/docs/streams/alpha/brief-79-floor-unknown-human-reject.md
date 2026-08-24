@@ -13,7 +13,7 @@ authored: 2026-07-09 by fixture
 sources: ["fixture: risk-flagged, verified, human verifier"]
 ---
 
-# Brief 79 — unresolvable human runner (#280)
+# Brief 79 — malformed human runner (names no login) (#280)
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
@@ -28,4 +28,6 @@ sources: ["fixture: risk-flagged, verified, human verifier"]
 | 1 | `go test` | 0 | ok | 2026-07-09 | human:alex |
 
 ## Review
-Gate: human (customer). A human verified it — the floor is cleared.
+Gate: human (customer). The Verified cell reads `human:` — a human token that
+names no login at all. It must FAIL the floor loud: a token naming no human is not
+gate-satisfied (this is the forgery boundary the leaver-principle leniency keeps).

@@ -1034,6 +1034,10 @@ func main() {
 	// the roadmap consumes lives in roadmapdora.go. --autonomy/--issues/--cynefin
 	// are newer methodology modes and are retained. Shared knobs
 	// (--since/--json/--series/--weekly/--daily/--history) are declared once here.
+	// BACK-COMPAT NOTE: --dora and --trend were later re-added below as aliases
+	// (--trend == --verif-backlog; --dora re-emits the retained grouped-DORA core)
+	// because the pinned daily-harvest/v0.1.0 collector still calls them; --dora-series
+	// and --code stay removed (no caller). See the alias block after --history.
 	verifBacklogMode := flag.Bool("verif-backlog", false, "roll the status-transition log up into the awaiting-verification backlog curve (impl+verif standing count over time; does not read/write STATUS.md)")
 	autonomyMode := flag.Bool("autonomy", false, "emit the step-3 adoption-ladder gauges (autonomy ratio ×2 variants, token efficiency, deterministic-gate share) as a system; reuses --since / --json; diagnostic, never a target or per-person scorecard")
 	ladderMode := flag.Bool("ladder", false, "emit the adoption-ladder POSITION indicator (mm/42): one computed step 0–4 from behavioral axes (autonomy ratio, gate share, dispatch autonomy, token efficiency) + the binding-constraint axis; degrades to an explicit 'unmeasured range' (never a silent zero) when the private mm/40 opmetrics day-file is absent, so it ships publicly; reuses --since / --json; diagnostic, never a target or per-person scorecard")
@@ -1047,6 +1051,21 @@ func main() {
 	weekly := flag.Bool("weekly", false, "bucket by ISO week (default) for --verif-backlog / --cynefin")
 	daily := flag.Bool("daily", false, "bucket by day for --verif-backlog / --cynefin")
 	historyPath := flag.String("history", "", "history log path (default docs/streams/.history.jsonl, relative to --root) for --verif-backlog")
+	// BACK-COMPAT ALIASES (v0.14.0 regression fix). The pinned daily-harvest/v0.1.0
+	// collector still shells out to `statusgen -dora` and `statusgen -trend`, which
+	// v0.14.0 removed — so daily-harvest dies on "flag provided but not defined" for
+	// every consumer. Re-add both so old callers work unchanged; the new flags stay
+	// primary.
+	//   --trend  == --verif-backlog: the historian roll-up runTrend was renamed
+	//               runVerifBacklog (same signature, same awaiting-verification
+	//               backlog curve). A pure alias.
+	//   --dora   emits the grouped-DORA core (roadmapdora.go/computeDoraGrouped) that
+	//               survived the DevLake split (Ian #1213). The standalone DORA CLI
+	//               was removed; --dora is re-exposed over the retained computation
+	//               (see doracli.go), reusing --since / --json.
+	doraMode := flag.Bool("dora", false, "back-compat alias (daily-harvest/v0.1.0): emit grouped-DORA metrics (per-stream throughput+instability) from the historian; the standalone DORA CLI moved to DevLake (Ian #1213). Reuses --since / --json / --by")
+	doraBy := flag.String("by", "stream", "--dora grouping dimension: stream | goal")
+	trendMode := flag.Bool("trend", false, "back-compat alias for --verif-backlog (daily-harvest/v0.1.0): roll the status-transition log up into the awaiting-verification backlog curve. Reuses --since / --daily / --weekly / --history")
 	// --roadmap: the internal roadmap-deck overview + per-stream pages. RETAINED
 	// (Ian ruling #1213): DevLake feeds INTO these pages; the grouped-DORA tile
 	// they render is computed in roadmapdora.go.
@@ -1136,6 +1155,8 @@ func main() {
 			"--auto-flip-model": *autoFlipModelMode,
 			"--alarms":          *alarmsMode,
 			"--verif-backlog":   *verifBacklogMode,
+			"--trend":           *trendMode, // back-compat alias of --verif-backlog
+			"--dora":            *doraMode,
 			"--autonomy":        *autonomyMode,
 			"--ladder":          *ladderMode,
 			"--issues":          *issuesMode,
@@ -1274,7 +1295,9 @@ func main() {
 	// commodity DORA/velocity/code-efficiency CLI surface that used to sit beside
 	// it is now DevLake's; the grouped-DORA core the roadmap consumes stays in
 	// roadmapdora.go (Ian ruling #1213 — DevLake feeds INTO the retained roadmap).
-	if *verifBacklogMode {
+	// --trend is the v0.14.0 back-compat alias of --verif-backlog (daily-harvest/
+	// v0.1.0 still calls `statusgen -trend`); it runs the identical handler.
+	if *verifBacklogMode || *trendMode {
 		period := "weekly"
 		if *daily {
 			period = "daily"
@@ -1283,6 +1306,12 @@ func main() {
 			period = "weekly"
 		}
 		os.Exit(runVerifBacklog(*root, *historyPath, *since, period))
+	}
+	// --dora is the v0.14.0 back-compat alias (daily-harvest/v0.1.0 still calls
+	// `statusgen -dora`): it emits the grouped-DORA core retained in roadmapdora.go.
+	// Self-contained diagnostic sub-command — never reads or writes STATUS.md.
+	if *doraMode {
+		os.Exit(runDora(*root, *since, strings.ToLower(strings.TrimSpace(*doraBy)), *doraJSON))
 	}
 	// Autonomy / token / gate-share emitter (mm/41) — self-contained
 	// diagnostic sub-command. Reuses the shared --since window and --json flag.
