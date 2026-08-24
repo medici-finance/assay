@@ -75,6 +75,8 @@ func parseFindings(path string) ([]Finding, error) {
 			ParkedUntil:  e.ParkedUntil,
 			ParkedBy:     e.ParkedBy,
 			ParkedReason: e.ParkedReason,
+			Class:        e.Class,
+			Control:      e.Control,
 		}
 	}
 	return findings, nil

@@ -98,8 +98,8 @@ func failCheckCI(string, string) checkCIResult {
 }
 func noHealthHold() (bool, string, error) { return false, "", nil }
 
-const r6Empty = "**Sign-off:** _(empty — kryton fills with an acceptance URL)_"
-const r6Armed = "**Sign-off:** https://github.com/example-org/tracker/pull/999#issuecomment-5319580160 — kryton"
+const r6Empty = "**Sign-off:** _(empty — maintainer fills with an acceptance URL)_"
+const r6Armed = "**Sign-off:** https://github.com/example-org/tracker/pull/999#issuecomment-5319580160 — maintainer"
 
 // writeVerdictRulings drops an issue-flow stream (README + rulings.md) carrying the
 // given R-6 sign-off line. Scoped so a filled R-7 line below cannot arm the lane.
@@ -116,7 +116,7 @@ func writeVerdictRulings(t *testing.T, root, r6Signoff string) {
 		t.Fatal(err)
 	}
 	body := "# Rulings\n\n## R-6 Verify verdict-transcription lane\n\nStuff.\n\n" + r6Signoff + "\n\n" +
-		"## R-7 Scan-transcription lane\n\n**Sign-off:** https://github.com/o/r/pull/1#issuecomment-1 — kryton\n"
+		"## R-7 Scan-transcription lane\n\n**Sign-off:** https://github.com/o/r/pull/1#issuecomment-1 — maintainer\n"
 	if err := os.WriteFile(filepath.Join(dir, "rulings.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +292,7 @@ func TestVerdictEnactmentGateNonBlessRefused(t *testing.T) {
 
 func TestFindR6SignoffLineScopedToR6(t *testing.T) {
 	md := "## R-6 x\n**Sign-off:** _(empty)_\n" +
-		"## R-7 y\n**Sign-off:** https://github.com/o/r/pull/1#issuecomment-1 — kryton\n"
+		"## R-7 y\n**Sign-off:** https://github.com/o/r/pull/1#issuecomment-1 — maintainer\n"
 	line, ok := findR6SignoffLine(md)
 	if !ok {
 		t.Fatal("expected to find the R-6 sign-off line")

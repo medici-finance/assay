@@ -346,6 +346,31 @@ func AllowWriteRepoWide(tool, repo string) error {
 	return AllowWriteRepoWideAt(tool, repo, time.Now())
 }
 
+// VerdictIssueTool is the audit `tool` name a verdict-issue filing records under — and so
+// the NAME OF ITS RATE BUCKET. The verdict-by-issue lane (R-6) flushes one signed batch
+// issue every ~5 minutes; that CADENCE is the throttle, so the old self-imposed daily cap —
+// deskfile's 3 `new` issues per repo per rolling 24h (deskfile.go) — deliberately does NOT
+// bind this lane. It also structurally cannot: that budget keys on tool=="deskfile", and a
+// verdict filing is a DISTINCT tool, so filing under this name is exactly what keeps the
+// lane off the daily cap while still recording every filing on the audit line. What remains
+// is that audit line plus the rolling-hour meters below as a runaway backstop; GitHub's own
+// hard limits are the final backstop.
+const VerdictIssueTool = "verifyloop-verdict"
+
+// AllowVerdictIssueWrite gates one verdict-issue filing on `repo`. Each filing creates a
+// FRESH issue whose number the filer cannot know in advance — the same shape as `deskpr
+// create` — so it is metered REPO-WIDE (see AllowWriteRepoWide): every charged verdict write
+// on the repo in the rolling hour counts against RateLimitPerPRPerHour, which bounds a
+// runaway filer. There is deliberately NO 24h/daily window here — see VerdictIssueTool.
+func AllowVerdictIssueWrite(repo string) error {
+	return AllowWriteRepoWideAt(VerdictIssueTool, repo, time.Now())
+}
+
+// AllowVerdictIssueWriteAt is AllowVerdictIssueWrite with an injectable clock (test seam).
+func AllowVerdictIssueWriteAt(repo string, now time.Time) error {
+	return AllowWriteRepoWideAt(VerdictIssueTool, repo, now)
+}
+
 // AllowWriteRepoWideAt is AllowWriteRepoWide with an injectable clock.
 func AllowWriteRepoWideAt(tool, repo string, now time.Time) error {
 	mine, err := pointsFor(tool)
