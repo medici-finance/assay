@@ -1103,6 +1103,13 @@ func main() {
 	// same STATUS.md-free discipline as --dora/--trend/--bottleneck. --root
 	// points at ONE window's fixture/data directory (see gatetelemetry.go).
 	gateTelemetryMode := flag.Bool("gate-telemetry", false, "emit gate-effectiveness telemetry (override rate, catch rate, ceremonial-gate detection) for one window's --root")
+	// Opt-in fleet-drift telemetry (gtm/08): anonymized, counts-only, OFF BY
+	// DEFAULT. Armed ONLY when --telemetry is passed AND ASSAY_TELEMETRY=1 is in
+	// the environment (double opt-in — no CI vendor default can flip it). When
+	// armed, an ordinary --lint/write run prints and would send the payload;
+	// --telemetry-dry-run prints it and never sends. See telemetry.go / docs/telemetry.md.
+	telemetryMode := flag.Bool("telemetry", false, "opt in to anonymized, counts-only statusgen telemetry (also requires ASSAY_TELEMETRY=1 in the environment); OFF by default")
+	telemetryDryRun := flag.Bool("telemetry-dry-run", false, "with --telemetry and ASSAY_TELEMETRY=1, print the telemetry payload and never send it")
 	// Product-scoping. --changed: a file of changed
 	// repo-relative paths (one per line, CI passes the PR diff) — path-scopes the
 	// DAR check (31) and auto-derives the product scope (32). --scope: an explicit
@@ -1145,31 +1152,32 @@ func main() {
 	root := &resolvedRoots[0]
 	if len(resolvedRoots) > 1 {
 		if name := singleRootOnlySubcommand(map[string]bool{
-			"--verify-issues":   *verifyIssuesMode,
-			"--decision-issues": *decisionIssuesMode,
-			"--drive-issues":    *driveIssuesMode,
-			"--signoff-digest":  *signoffDigestMode,
-			"--scan-issues":     *scanIssuesMode,
-			"--transcribe-scan": *transcribeScanMode,
-			"--close-verify":    *closeVerifyID != "",
-			"--auto-flip-model": *autoFlipModelMode,
-			"--alarms":          *alarmsMode,
-			"--verif-backlog":   *verifBacklogMode,
-			"--trend":           *trendMode, // back-compat alias of --verif-backlog
-			"--dora":            *doraMode,
-			"--autonomy":        *autonomyMode,
-			"--ladder":          *ladderMode,
-			"--issues":          *issuesMode,
-			"--cynefin":         *cynefinMode,
-			"--intake-debt":     *intakeDebtMode,
-			"--roadmap":         *roadmapMode,
-			"--bottleneck":      *bottleneckMode,
-			"--launch":          *launchMode,
-			"--export-evidence": *exportEvidenceMode,
-			"--gate-scores":     *gateScoresMode,
-			"--next-up":         *nextUpMode,
-			"--register-links":  *registerLinksFlag,
-			"--gate-telemetry":  *gateTelemetryMode,
+			"--verify-issues":     *verifyIssuesMode,
+			"--decision-issues":   *decisionIssuesMode,
+			"--drive-issues":      *driveIssuesMode,
+			"--signoff-digest":    *signoffDigestMode,
+			"--scan-issues":       *scanIssuesMode,
+			"--transcribe-scan":   *transcribeScanMode,
+			"--close-verify":      *closeVerifyID != "",
+			"--auto-flip-model":   *autoFlipModelMode,
+			"--alarms":            *alarmsMode,
+			"--verif-backlog":     *verifBacklogMode,
+			"--trend":             *trendMode, // back-compat alias of --verif-backlog
+			"--dora":              *doraMode,
+			"--autonomy":          *autonomyMode,
+			"--ladder":            *ladderMode,
+			"--issues":            *issuesMode,
+			"--cynefin":           *cynefinMode,
+			"--intake-debt":       *intakeDebtMode,
+			"--roadmap":           *roadmapMode,
+			"--bottleneck":        *bottleneckMode,
+			"--launch":            *launchMode,
+			"--export-evidence":   *exportEvidenceMode,
+			"--gate-scores":       *gateScoresMode,
+			"--next-up":           *nextUpMode,
+			"--register-links":    *registerLinksFlag,
+			"--gate-telemetry":    *gateTelemetryMode,
+			"--telemetry-dry-run": *telemetryDryRun,
 			// --consumers takes ONE git diff, against one root's HEAD. Narrowing
 			// to the first root corroborates one repo's claims and reports
 			// the others clean, unread.
@@ -1390,6 +1398,20 @@ func main() {
 	if *gateTelemetryMode {
 		os.Exit(runGateTelemetry(*root))
 	}
+	// Opt-in telemetry dry-run (gtm/08): self-contained, STATUS.md-free preview
+	// of the anonymized payload. Requires the full double opt-in even to PREVIEW,
+	// so the arming rule is uniform and there is a single, testable "off" state.
+	// Never sends.
+	if *telemetryDryRun {
+		if !telemetryArmed(*telemetryMode) {
+			fmt.Fprintf(os.Stderr,
+				"telemetry: not armed — pass --telemetry AND set %s=1 to preview the payload. Nothing collected.\n",
+				telemetryEnvVar)
+			os.Exit(0)
+		}
+		runTelemetry(*root, true)
+		os.Exit(0)
+	}
 	// Evidence-bundle export (gtm/05): self-contained sub-command, same
 	// STATUS.md-free discipline as --dora/--trend. Single-root only.
 	// -o is parsed from flag.Args() because the Go flag package stops
@@ -1479,7 +1501,24 @@ func main() {
 			}
 		}
 	}
-	os.Exit(runRoots(resolvedRoots, mode, budgetSpecs, changedPaths, *scopeFlag))
+	code := runRoots(resolvedRoots, mode, budgetSpecs, changedPaths, *scopeFlag)
+	// Opt-in telemetry (gtm/08): only after an ordinary lint/write run, and only
+	// when armed by the double opt-in. Each root emits its own anonymized,
+	// counts-only payload; telemetry never changes the run's exit code (a
+	// collection/send failure is reported and swallowed inside runTelemetry).
+	if telemetryArmed(*telemetryMode) {
+		for i := range resolvedRoots {
+			runTelemetry(resolvedRoots[i], false)
+		}
+	} else if *telemetryMode {
+		// --telemetry given but ASSAY_TELEMETRY!=1: telemetry stays OFF. Say so
+		// once, so the second, deliberate switch is discoverable rather than a
+		// silent no-op.
+		fmt.Fprintf(os.Stderr,
+			"telemetry: --telemetry given but %s is not \"1\" — telemetry stays OFF (both are required).\n",
+			telemetryEnvVar)
+	}
+	os.Exit(code)
 }
 
 // singleRootOnlySubcommand returns the flag name of the first ENABLED sub-command
