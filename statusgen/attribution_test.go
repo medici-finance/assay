@@ -224,11 +224,14 @@ func TestEvidenceHasIndependentRow(t *testing.T) {
 //     Substring matching silently swallows unrelated names — `gemini-*` on
 //     `mini`, `elite-*` on `lite` — which is the same defect class that made
 //     `glm` unsafe.
-//  3. A `human:` token only clears the floor when it is the RUNNER token and
-//     names a known human. The cases carrying that property
-//     are grouped at the bottom and each is paired with its opposite direction:
-//     the legitimate human stamp that must still clear, next to the forgery
-//     built from it that must now be caught.
+//  3. A `human:` token clears the floor only when it is the RUNNER token and
+//     names a WELL-FORMED human login — by the leaver principle, whether or not
+//     that login is in today's map (a historical stamp is not invalidated by a
+//     later roster change; live-identity enforcement is --corroborate's job). The
+//     cases carrying that property are grouped at the bottom and each is paired
+//     with its opposite direction: the human stamp that must still clear (mapped
+//     OR an unmapped leaver), next to the forgery — a below-floor model wearing a
+//     human suffix, or a human token that names no real login — that must be caught.
 func TestVerifierFloorFailure(t *testing.T) {
 	cases := []struct {
 		verified string
@@ -271,10 +274,37 @@ func TestVerifierFloorFailure(t *testing.T) {
 			"a human named anywhere but the runner slot suppresses nothing"},
 		{"2026-07-09 glm-5.2-verifier human:alex", false,
 			"must not over-correct: the runner is above the floor, so this still clears"},
-		{"2026-07-09 human:bob", true,
-			"an unresolvable human token fails LOUD — it would otherwise clear silently, since belowFloorRunner(\"human:bob\") is false"},
+		//
+		// THE LEAVER PRINCIPLE — a human confirmed HISTORICALLY clears the floor even
+		// when no longer in TODAY's map. `bob` and `former_lead` are NOT in the current
+		// map (only `alex` is) but ARE in the fixture's ASSAY_FORMER_HUMAN_LOGIN_MAP, so
+		// they CLEAR: a Verified cell records who signed off THEN, and dropping a human
+		// from the current roster must not retroactively red every board they ran. The
+		// floor is a model-capability gate; live-identity enforcement is --corroborate's
+		// and the register's job, both of which consult the CURRENT map only.
+		{"2026-07-09 human:bob", false,
+			"a human in the FORMER-humans map (departed) still clears — the leaver principle: a historical stamp is not invalidated by a later roster change"},
+		{"2026-07-09 human:former_lead", false,
+			"another departed human recorded in the former-humans map clears for the same reason"},
+		//
+		// NEVER-CONFIRMED NOW FAILS — a well-formed login SHAPE that was NEVER a confirmed
+		// human (in neither the current nor the former map) must FAIL. This is the
+		// forgery rejection #104's shape-only form dropped and this rework restores:
+		// "any plausible login shape" is not proof a human acted.
+		{"2026-07-09 human:carol", true,
+			"a well-formed login that was never a confirmed human (not in the current map, not in the former-humans map) must FAIL — shape alone is not confirmation"},
+		{"2026-07-09 human:nobody", true,
+			"another plausible-but-never-confirmed login fails for the same reason"},
+		//
+		// FORGERY STILL CAUGHT — a human token that names NO real login fails loud, with a
+		// distinct malformed-token reason. These plus the never-confirmed names above are
+		// the human-token shapes the floor rejects.
 		{"2026-07-09 human:іan", true,
-			"a homoglyph name (Cyrillic і) resolves to no known human and must not clear"},
+			"a homoglyph name (Cyrillic і) yields an EMPTY login and must not clear"},
+		{"2026-07-09 human:", true,
+			"a human token with no name at all names no login and must not clear"},
+		{"2026-07-09 human:@@@", true,
+			"a human token whose name is all punctuation yields an EMPTY login and must not clear"},
 		{"2026-07-09 superhuman:alex", false,
 			"superhuman: is not a human stamp, so it is judged as an ordinary runner token — and superhuman names no weak family"},
 		{"2026-07-09 superhuman:sonnet", true,

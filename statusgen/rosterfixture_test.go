@@ -34,6 +34,7 @@ ASSAY_TRUSTED_LOGINS=ada:100001,shared-agent:100002
 ASSAY_TRUSTED_BOT_SLUGS=desk=assay-desk-app:300000001,intake-loop=assay-intake-loop-app:300000002,issue-loop=assay-issue-loop-app:300000003,reviewer=assay-reviewer-app:300000004,verifier=assay-verifier-app:300000005,worker=assay-worker-app:300000006
 ASSAY_ALLOWED_REPOS=example-org/tracker:ci:private,example-org/agents:ci:private,example-org/examples:no-ci:private,example-org/console:ci:private,example-org/toolkit:ci:private,example-org/ledger-k8s:ci:public,example-org/example-service:ci:private,example-org/org-slides:no-ci:private,example-org/proposals:no-ci:public,example-org/platform:ci:private,example-org/docs-slides:no-ci:private,example-org/team-slides:no-ci:private,example-org/example-service-slides:no-ci:private
 ASSAY_HUMAN_LOGIN_MAP=alex:ada
+ASSAY_FORMER_HUMAN_LOGIN_MAP=bob:bob-gh,former_lead:former-lead-gh
 ASSAY_HOME_REPO=example-org/tracker
 ASSAY_SCAN_REPOS=example-org/tracker,example-org/agents,example-org/examples,example-org/toolkit,example-org/example-service,example-org/platform,example-org/console,example-org/website,example-org/site,example-org/proposals,example-org/example-service-slides,example-org/team-slides,example-org/docs-slides,example-org/org-slides
 `

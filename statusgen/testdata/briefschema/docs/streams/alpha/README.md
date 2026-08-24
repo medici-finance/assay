@@ -60,4 +60,6 @@ track: platform
 | 76 | [Clear done no review](./brief-76-clear-done-no-review.md) | 0 | S | done | 2026-07-16 v | 2026-07-16 model:sonnet |
 | 77 | [Human-only done no review](./brief-77-human-only-done-no-review.md) | 0 | S | done | 2026-07-16 v | 2026-07-16 human:alex |
 | 78 | [Floor human-suffix reject](./brief-78-floor-human-suffix-reject.md) | 0 | S | verified | 2026-07-09 sonnet-verifier human:alex | — |
-| 79 | [Floor unknown-human reject](./brief-79-floor-unknown-human-reject.md) | 0 | S | verified | 2026-07-09 human:bob | — |
+| 79 | [Floor unknown-human reject](./brief-79-floor-unknown-human-reject.md) | 0 | S | verified | 2026-07-09 human: | — |
+| 80 | [Floor historical-human accept](./brief-80-floor-historical-human-accept.md) | 0 | S | verified | 2026-07-09 human:bob | — |
+| 81 | [Floor never-confirmed-human reject](./brief-81-floor-neverconfirmed-human-reject.md) | 0 | S | verified | 2026-07-09 human:carol | — |
