@@ -1012,6 +1012,17 @@ func main() {
 	// branch), exactly like every mode except --scan-issues. --dry-run is its
 	// no-write "--check" surface.
 	transcribeScanMode := flag.Bool("transcribe-scan", false, "same-repo scan transcriber (R-7): re-derive the issue-loop placeholder delta on the candidate tree behind the clause-1 trust predicate + enactment gate; INERT until R-7 is signed. --dry-run = --check")
+	// --transcribe-verdict is the VERIFY VERDICT transcriber (verdict-lane/03, R-6):
+	// it sweeps open verifier-authored verdict issues and lands the byte-bounded R-6
+	// delta (Evidence appends + model-tier status flips) on the candidate tree behind
+	// the full clause battery — authorship (cl.1), RS256 signature + body-edit
+	// timeline (cl.2), byte-bounds + irreversible/human-stamp refusal (cl.4–5),
+	// check:ci network-off re-execution (cl.6), the cl.9 flood tripwire and the cl.10
+	// main-health hold — and the R-6 enactment gate. It ships INERT: it evaluates no
+	// clause until R-6's sign-off resolves. Like --transcribe-scan it is a server-side
+	// lane (not forced file-only) and --dry-run is its no-write "--check" surface.
+	transcribeVerdictMode := flag.Bool("transcribe-verdict", false, "verify verdict transcriber (R-6): land the Evidence-append + model-tier-flip delta from signed verifier verdict issues on the candidate tree behind authorship + RS256 signature + check:ci re-execution + the enactment gate; INERT until R-6 is signed. --dry-run = --check")
+	verdictPubkey := flag.String("pubkey", "", "--transcribe-verdict: verifier public-key PEM path; falls back to the ASSAY_VERIFIER_PUBKEY variable (PEM or base64-of-PEM)")
 	closeVerifyID := flag.String("close-verify", "", "flip <stream>/<NN> verified→done with a human:<name> sign-off (refuses if not verified/gate:human)")
 	// Model-path auto-flip (methodology-metrics/39). The gate:human counterpart
 	// is --close-verify above, and the two never meet: this mode's candidate
@@ -1145,31 +1156,32 @@ func main() {
 	root := &resolvedRoots[0]
 	if len(resolvedRoots) > 1 {
 		if name := singleRootOnlySubcommand(map[string]bool{
-			"--verify-issues":   *verifyIssuesMode,
-			"--decision-issues": *decisionIssuesMode,
-			"--drive-issues":    *driveIssuesMode,
-			"--signoff-digest":  *signoffDigestMode,
-			"--scan-issues":     *scanIssuesMode,
-			"--transcribe-scan": *transcribeScanMode,
-			"--close-verify":    *closeVerifyID != "",
-			"--auto-flip-model": *autoFlipModelMode,
-			"--alarms":          *alarmsMode,
-			"--verif-backlog":   *verifBacklogMode,
-			"--trend":           *trendMode, // back-compat alias of --verif-backlog
-			"--dora":            *doraMode,
-			"--autonomy":        *autonomyMode,
-			"--ladder":          *ladderMode,
-			"--issues":          *issuesMode,
-			"--cynefin":         *cynefinMode,
-			"--intake-debt":     *intakeDebtMode,
-			"--roadmap":         *roadmapMode,
-			"--bottleneck":      *bottleneckMode,
-			"--launch":          *launchMode,
-			"--export-evidence": *exportEvidenceMode,
-			"--gate-scores":     *gateScoresMode,
-			"--next-up":         *nextUpMode,
-			"--register-links":  *registerLinksFlag,
-			"--gate-telemetry":  *gateTelemetryMode,
+			"--verify-issues":      *verifyIssuesMode,
+			"--decision-issues":    *decisionIssuesMode,
+			"--drive-issues":       *driveIssuesMode,
+			"--signoff-digest":     *signoffDigestMode,
+			"--scan-issues":        *scanIssuesMode,
+			"--transcribe-scan":    *transcribeScanMode,
+			"--transcribe-verdict": *transcribeVerdictMode,
+			"--close-verify":       *closeVerifyID != "",
+			"--auto-flip-model":    *autoFlipModelMode,
+			"--alarms":             *alarmsMode,
+			"--verif-backlog":      *verifBacklogMode,
+			"--trend":              *trendMode, // back-compat alias of --verif-backlog
+			"--dora":               *doraMode,
+			"--autonomy":           *autonomyMode,
+			"--ladder":             *ladderMode,
+			"--issues":             *issuesMode,
+			"--cynefin":            *cynefinMode,
+			"--intake-debt":        *intakeDebtMode,
+			"--roadmap":            *roadmapMode,
+			"--bottleneck":         *bottleneckMode,
+			"--launch":             *launchMode,
+			"--export-evidence":    *exportEvidenceMode,
+			"--gate-scores":        *gateScoresMode,
+			"--next-up":            *nextUpMode,
+			"--register-links":     *registerLinksFlag,
+			"--gate-telemetry":     *gateTelemetryMode,
 			// --consumers takes ONE git diff, against one root's HEAD. Narrowing
 			// to the first root corroborates one repo's claims and reports
 			// the others clean, unread.
@@ -1274,6 +1286,14 @@ func main() {
 	if *transcribeScanMode {
 		os.Exit(runTranscribeScan(*root, *scanDryRun,
 			ghIssueLister, issueCommentLister, ghAuthorResolver, ghIssueBlessChecker, ghCommentResolver))
+	}
+	// Verify verdict transcriber (verdict-lane/03, R-6): self-contained,
+	// STATUS.md-free. The workflow's "run" step. INERT until the R-6 sign-off
+	// resolves; --dry-run is the no-write "--check" surface.
+	if *transcribeVerdictMode {
+		os.Exit(runTranscribeVerdict(*root, *scanDryRun, *verdictPubkey,
+			ghIssueLister, ghVerdictIssueResolver, hermeticCheckCIRunner,
+			ghVerdictMainHealth(*root), ghCommentResolver))
 	}
 	if *closeVerifyID != "" {
 		os.Exit(runCloseVerify(*root, *closeVerifyID))
