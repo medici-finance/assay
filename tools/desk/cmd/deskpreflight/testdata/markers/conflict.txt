@@ -1,0 +1,8 @@
+A seeded merge-conflict fixture. deskpreflight's conflict-markers check must
+name this file and refuse.
+
+<<<<<<< HEAD
+our version of the line
+=======
+their version of the line
+>>>>>>> feature-branch
