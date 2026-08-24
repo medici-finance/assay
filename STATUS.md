@@ -11,10 +11,10 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-23 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-23 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-23 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-23 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-24 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-24 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-24 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-24 |  |
 
 ## Next up
 
