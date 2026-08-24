@@ -38,8 +38,8 @@ not the irreversible one (a repo split with rewritten history).
 ## 3. NEVER autonomous — STOP and escalate to a human
 - **Reviewer GitHub App** creation/install — the identity that posts approvals, which a plain worker
   session cannot post as; a placeholder or self-minted stand-in defeats the entire mechanism.
-  Claim only that (**not** "tamper-evident"): guide **§1a** has the three recorded reasons the
-  stronger claim is false; "tamper-evident" and kin are retired as overclaims.
+  Claim only that (**not** "tamper-evident" — a retired overclaim): guide **§1a** has the three
+  recorded reasons the stronger claim is false; "tamper-evident" and kin are retired as overclaims.
 - **Repo creation** + admin/permission grants.
 - **Merge to main / `git push origin main` / release tag / the first ready-flip.**
 - **git history rewrite** (`filter-repo`) for a carve-out.
