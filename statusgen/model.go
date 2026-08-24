@@ -124,4 +124,17 @@ type Finding struct {
 	ParkedUntil  string // "YYYY-MM-DD" — REQUIRED bounded expiry; no open-ended parks (an unbounded park is a disguised resolve).
 	ParkedBy     string // REQUIRED authorizing party, "human:<name>" vocabulary (same as lifecycle stamps); an agent cannot self-park.
 	ParkedReason string // REQUIRED prose — why the finding is accepted-deferred.
+
+	// Finding→control closure (coder-skills-review/03). Two OPTIONAL fields that
+	// adapt procoder's blocking lessons-loop: a recurring bug class must land a
+	// permanent adaptation before it counts closed.
+	Class string // "recurring" | "one-off"; "" (absent) reads as one-off. Only a recurring-class finding is expected to name a control.
+	// Control is a typed reference to the LANDED adaptation that closes the class —
+	// a brief ID ("<stream>/<NN>"), a lint/check name, or a pinned-test path. ""
+	// (absent) = no control named. A control naming a brief keeps the advisory
+	// finding-without-control NOTICE listing the finding until that brief is done
+	// (the brief is the tracked closure vehicle, read from the same board data); a
+	// control naming a check/test/rubric is trusted as already landed. Advisory
+	// only this phase — see findingcontrol.go and spec/registers-v1.md § FINDINGS.
+	Control string
 }

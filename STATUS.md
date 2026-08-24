@@ -14,11 +14,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-24 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-24 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-24 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-24 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-24 |  |
 
 ## Next up
 
-_Nothing eligible — all active streams are blocked, stale-flagged, or done._
+| Stream | Brief | Wave | Score |
+|---|---|---|---|
+| quality | 01 — miner skeleton — go-git extraction, incremental runs, three-state plumbing [exec:strong] | 0 | 8000 |
 
 ## Intake queue
 
@@ -94,6 +97,24 @@ _None._
 - 07 `deskmerge` exception — fence the trial merge, migrate the rest — todo (wave 3)
 - 08 flip the drop-the-binary CI gate + CVE floor + file the follow-on — todo (wave 5)
 
+### quality (15 open)
+
+- 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — todo (wave 0)
+- 02 M1 line-operation taxonomy + churn/rework rate — todo (wave 1)
+- 03 M1 hotspots + knowledge distribution (SPOF) + change coupling — todo (wave 1)
+- 04 M1 instruction-layer brittleness (reference-validity + doc↔code drift) — todo (wave 1)
+- 05 `QUALITY.md` single-writer trend view + metrics artifacts — todo (wave 2)
+- 06 M2 fix identification — pluggable linkage adapter + evidence tiers — todo (wave 1)
+- 07 M2 B-SZZ inducing trace + derived defect metrics — todo (wave 2)
+- 08 `pr <n>` mode — per-file risk features (generic riskscore feed) — todo (wave 3)
+- 09 `check <files>` mode — brittleness screen for a named file set — todo (wave 2)
+- 10 M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter — todo (wave 3)
+- 11 DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source — todo (wave 3)
+- 12 M4 gate-yield accounting + ritual-effectiveness joins — todo (wave 4)
+- 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — todo (wave 3)
+- 14 auto-filed refactor work + quality error-budgets + RETRO output feed — todo (wave 5)
+- 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
+
 ### statusgen (6 open)
 
 - 01 30-day lint-firing audit — retire cold rules — implemented (wave 1)
@@ -111,4 +132,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**4** streams (**4** active, **0** paused) · **0/28** briefs done · completed initiatives: see `docs/archive/`
+**5** streams (**5** active, **0** paused) · **0/43** briefs done · completed initiatives: see `docs/archive/`
