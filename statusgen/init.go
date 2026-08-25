@@ -7,7 +7,9 @@ import (
 )
 
 // runInit scaffolds the streams structure a repo needs to adopt the methodology:
-// the registers, a streams README, one example stream + brief, and a CI workflow.
+// the registers, a streams README, one example stream + brief, a CI workflow, and
+// the day-one agent-instruction files (CLAUDE.md + AGENTS.md) carrying the ten
+// universal invariants and the adopter CI recipe.
 // It NEVER overwrites an existing file — each target is created only if absent, so
 // running it in a partially-set-up repo fills the gaps without clobbering work.
 // After scaffolding it prints next steps. `statusgen init --root DIR` targets DIR.
@@ -21,6 +23,8 @@ func runInit(root string) int {
 		{"docs/streams/example/brief-01-first-brief.md", initExampleBrief},
 		{".assay-versions", initAssayVersions},
 		{".github/workflows/assay-statusgen.yml", initWorkflow},
+		{"CLAUDE.md", initClaudeMd},
+		{"AGENTS.md", initAgentsMd},
 	}
 	var created, skipped []string
 	for _, f := range files {
@@ -294,6 +298,103 @@ jobs:
           fi
 `
 
+// initClaudeMd is the day-one agent-instruction file. It carries exactly two
+// things a session cannot infer and every adopter needs on day one: the ten
+// methodology INVARIANTS (universal — true of every repo running the method) and
+// the adopter CI recipe (matching docs/adopting-assay.md § install-statusgen and
+// § add-statusgen-ci). Everything below that is a CHECKLIST of the repo-local
+// bindings the adopter fills in — the categories, not the values, exactly as the
+// adopting guide's "your own instruction file" section names them.
+//
+// Deliberately NOT here: any organisation-specific machinery (identities, tools,
+// rosters, paths). Those are bindings, and bindings are per-repo. The file is the
+// adopter's the moment it lands — init never overwrites it on a re-run, so an
+// edited copy always survives.
+//
+// The content is link-check-safe by construction: statusgen link-checks CLAUDE.md
+// (linkcheck.go: docFiles + backtickPathScope), so this template carries no
+// backticked slash-path with a checked extension and no markdown link to a file
+// the scaffold does not create. Adding one that does not exist would make a
+// freshly-init'd repo fail its own --lint.
+const initClaudeMd = `# CLAUDE.md
+
+Scaffolded by ` + "`statusgen init`" + ` — this file is yours to edit: keep the invariants,
+replace everything else with your own repo's bindings.
+
+## The ten invariants
+
+These hold in every repo running the methodology, whatever the language, harness
+or team. They are the floor, not the whole manual.
+
+1. Evidence or it didn't happen — a claim of done/verified without a recorded command + exit code + real output is an unverified claim, never a fact.
+2. Non-implementer verify — whoever verifies a piece of work is not who implemented it; a second person or a second session.
+3. Derived, not declared — board/register state is computed from evidence; silence reads as unverified, never as success; never edit generated state by hand.
+4. Draft-PR-first; the human merges — all work lands on a branch behind a draft PR; direct pushes to main and self-merges are out.
+5. One logical change = one branch = one PR — merged or closed = done; follow-up work is a new branch.
+6. Merge, never rebase, never force-push a branch anyone else may have.
+7. A red check is a work item, never a wait state — reproduce, fix, push; "flake" needs evidence posted on the PR.
+8. A blocked action is a stop signal — never route around a guard, gate, or refusal; escalate to the human instead.
+9. Removing a security control is a human decision, always — leave the gate red, escalate with evidence.
+10. No attribution lines in commits, PRs, or comments.
+
+## CI recipe
+
+1. Install the pinned statusgen release binary: detect the platform, read its line
+   from ` + "`.assay-versions`" + ` (` + "`statusgen-<platform>  <tag>  <sha256>`" + `), download that
+   release asset, and check its sha256 against the pinned digest. An absent pin
+   line or a digest mismatch is a REFUSAL, never a guess — nothing unverified is
+   ever installed. Re-pin (never edit in place) on an upgrade, so the bump shows
+   in a diff.
+2. Run ` + "`statusgen --lint`" + ` on every pull request. A red lint is a work item, not
+   a wait state.
+3. Regenerate the board on main only: the push-to-main half runs
+   ` + "`statusgen --root .`" + ` and commits STATUS.md. STATUS.md has a SINGLE writer —
+   never commit it on a branch.
+
+The scaffolded workflow already does all three. If you rewrite it, keep those
+three properties; they are what make the board derived rather than declared.
+
+## This repo's bindings — fill these in
+
+The invariants are universal; this section is not. Write down what a session
+cannot infer about THIS repo, and nothing else. Answer each line or record it as
+not applicable — an unanswered line is a guess waiting to happen.
+
+- Streams — which streams exist, what each owns, and where the streams tree is
+  rooted if not at the repo root.
+- Pinned tools — which tools are pinned, in which pin file, and the install and
+  upgrade commands for this repo.
+- The human gate — who, by account name, and which acts require them here: merge,
+  the ready-flip, release tags.
+- Risk paths — the concrete file and directory globs in this repo that force a
+  human gate when a diff touches them.
+- Generated / single-writer artifacts — what must never be hand-edited or
+  committed on a branch, and which job is the single writer of each.
+- Isolation mechanics — whether the checkout is shared, where worktrees go, and
+  the branch-naming convention.
+- The review identity — the reviewing account as it appears in this repo, so a
+  worker can tell a genuine verdict from a relayed or forged one.
+`
+
+// initAgentsMd is a POINTER, not a second copy. Harnesses read one of several
+// instruction-file names; two files with the same rules in them is drift with a
+// start date, and the overlap is itself the bug. So AGENTS.md names CLAUDE.md as
+// the single home and tells an AGENTS.md-only harness to MOVE the content rather
+// than duplicate it.
+const initAgentsMd = `# AGENTS.md
+
+Scaffolded by ` + "`statusgen init`" + ` — this file is yours to edit.
+
+This repo keeps its agent instructions in CLAUDE.md at the repo root: the ten
+methodology invariants, the CI recipe, and this repo's own local bindings. Read
+that file first.
+
+CLAUDE.md is the SINGLE home for those rules. Do not copy them here — two files
+carrying the same rules is drift with a start date, and the overlap is itself the
+bug. If your harness reads only AGENTS.md, MOVE the content across and delete
+CLAUDE.md, so there is still exactly one instruction file.
+`
+
 const initNextSteps = `
 Scaffolded the streams structure. Next:
 
@@ -306,6 +407,9 @@ Scaffolded the streams structure. Next:
   4. Replace docs/streams/example/ with your own stream, then delete it.
   5. Commit .github/workflows/assay-statusgen.yml — the two-half single-writer CI
      is already bootstrap-safe (porcelain STATUS.md guard, [skip-status-regen] marker).
+  6. Fill in the "This repo's bindings" section of the scaffolded CLAUDE.md. The
+     ten invariants above it are universal and stay as they are; the bindings are
+     the half nothing can write for you. AGENTS.md points at that one file.
 
 STATUS.md has a SINGLE writer (main's CI): regenerate it locally freely to preview,
 but never commit it on a branch. The scaffolded example stream keeps docs/streams/

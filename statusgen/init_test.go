@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +29,8 @@ func TestInitScaffoldsLintCleanTree(t *testing.T) {
 		"docs/streams/example/brief-01-first-brief.md",
 		".assay-versions",
 		".github/workflows/assay-statusgen.yml",
+		"CLAUDE.md",
+		"AGENTS.md",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(rel))); err != nil {
 			t.Errorf("expected %s to exist: %v", rel, err)
@@ -72,14 +75,133 @@ func TestInitScaffoldsLintCleanTree(t *testing.T) {
 	}
 
 	// End-to-end adopter flow: bare `statusgen --lint` (as wired through main())
-	// must be green in the fresh repo — the auto-applied default budget must NOT
-	// red-gate it just because there is no CLAUDE.md.
+	// must be green in the fresh repo. init now scaffolds a CLAUDE.md, so the
+	// auto-applied default word budget DOES apply from day one — the scaffolded
+	// file has to fit under its own tool's cap, or every fresh adopter's first CI
+	// run is red on a file statusgen itself wrote.
 	specs := effectiveBudgetSpecs("lint", nil, dir)
-	if len(specs) != 0 {
-		t.Errorf("effectiveBudgetSpecs on a CLAUDE.md-less repo = %v, want none", specs)
+	if len(specs) != 1 || specs[0] != defaultBudgetSpec {
+		t.Errorf("effectiveBudgetSpecs on a freshly-init'd repo = %v, want [%s] (init scaffolds CLAUDE.md)", specs, defaultBudgetSpec)
 	}
 	if code := run(dir, "lint", specs, nil, ""); code != 0 {
 		t.Errorf("bare --lint on a freshly-init'd repo exit = %d, want 0", code)
+	}
+}
+
+// TestInitEmitsDayOneRulesFiles verifies the scaffolded agent-instruction files
+// carry the universal working rules a fresh repo needs on day one: the ten
+// invariants VERBATIM, and the adopter CI recipe (pinned + sha256-verified
+// install, --lint per PR, regen on main only).
+func TestInitEmitsDayOneRulesFiles(t *testing.T) {
+	dir := t.TempDir()
+	if code := runInit(dir); code != 0 {
+		t.Fatalf("runInit exit = %d, want 0", code)
+	}
+
+	claudeRaw, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("read CLAUDE.md: %v", err)
+	}
+	claude := string(claudeRaw)
+
+	// Headings — the file's three sections.
+	for _, want := range []string{
+		"# CLAUDE.md",
+		"## The ten invariants",
+		"## CI recipe",
+		"## This repo's bindings",
+	} {
+		if !strings.Contains(claude, want) {
+			t.Errorf("scaffolded CLAUDE.md missing heading %q", want)
+		}
+	}
+	// Scaffolded-by header: the file announces its origin and that it is the
+	// adopter's to edit (init never overwrites it — see the clobber test).
+	if !strings.Contains(claude, "statusgen init") || !strings.Contains(claude, "yours to edit") {
+		t.Errorf("scaffolded CLAUDE.md missing the scaffolded-by / yours-to-edit header; got:\n%s", claude)
+	}
+
+	// The ten invariants, VERBATIM. Prose is the payload here: a paraphrase in
+	// one adopter repo and the original in another is exactly the drift the
+	// scaffold exists to prevent, so each is matched in full, not by keyword.
+	for _, want := range []string{
+		"Evidence or it didn't happen — a claim of done/verified without a recorded command + exit code + real output is an unverified claim, never a fact.",
+		"Non-implementer verify — whoever verifies a piece of work is not who implemented it; a second person or a second session.",
+		"Derived, not declared — board/register state is computed from evidence; silence reads as unverified, never as success; never edit generated state by hand.",
+		"Draft-PR-first; the human merges — all work lands on a branch behind a draft PR; direct pushes to main and self-merges are out.",
+		"One logical change = one branch = one PR — merged or closed = done; follow-up work is a new branch.",
+		"Merge, never rebase, never force-push a branch anyone else may have.",
+		"A red check is a work item, never a wait state — reproduce, fix, push; \"flake\" needs evidence posted on the PR.",
+		"A blocked action is a stop signal — never route around a guard, gate, or refusal; escalate to the human instead.",
+		"Removing a security control is a human decision, always — leave the gate red, escalate with evidence.",
+		"No attribution lines in commits, PRs, or comments.",
+	} {
+		if !strings.Contains(claude, want) {
+			t.Errorf("scaffolded CLAUDE.md missing invariant verbatim:\n  %s", want)
+		}
+	}
+	// All ten are numbered 1..10 in order.
+	for i := 1; i <= 10; i++ {
+		if !strings.Contains(claude, fmt.Sprintf("\n%d. ", i)) {
+			t.Errorf("scaffolded CLAUDE.md missing numbered invariant %d", i)
+		}
+	}
+
+	// The CI recipe — the three load-bearing properties, in the wording the
+	// adopting guide uses (pin file + sha256 + refuse; --lint per PR; regen on
+	// main only with a single writer).
+	for _, want := range []string{
+		".assay-versions",
+		"sha256",
+		"statusgen --lint",
+		"statusgen --root .",
+		"SINGLE writer",
+	} {
+		if !strings.Contains(claude, want) {
+			t.Errorf("scaffolded CLAUDE.md CI recipe missing %q", want)
+		}
+	}
+
+	// AGENTS.md is a POINTER, never a second copy of the rules: naming CLAUDE.md
+	// as the single home is the whole point, and repeating an invariant here
+	// would be the drift the pointer exists to avoid.
+	agentsRaw, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	agents := string(agentsRaw)
+	if !strings.Contains(agents, "# AGENTS.md") || !strings.Contains(agents, "CLAUDE.md") {
+		t.Errorf("scaffolded AGENTS.md must point at CLAUDE.md; got:\n%s", agents)
+	}
+	if strings.Contains(agents, "Evidence or it didn't happen") {
+		t.Errorf("scaffolded AGENTS.md duplicates the invariants instead of pointing at CLAUDE.md")
+	}
+}
+
+// TestInitPreservesExistingRulesFiles covers the never-clobber promise for the
+// two instruction files specifically: an adopter who already has a CLAUDE.md
+// keeps it byte-for-byte, and the missing sibling is still filled in.
+func TestInitPreservesExistingRulesFiles(t *testing.T) {
+	dir := t.TempDir()
+	existing := []byte("# CLAUDE.md\n\nMy own rules. Must survive init.\n")
+	if err := os.WriteFile(filepath.Join(dir, "CLAUDE.md"), existing, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := runInit(dir); code != 0 {
+		t.Fatalf("runInit exit = %d, want 0", code)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(existing) {
+		t.Errorf("init overwrote an existing CLAUDE.md; got %q, want %q", got, existing)
+	}
+	// The gap is still filled: AGENTS.md was absent, so init creates it.
+	if _, err := os.Stat(filepath.Join(dir, "AGENTS.md")); err != nil {
+		t.Errorf("init should still create the absent AGENTS.md: %v", err)
 	}
 }
 

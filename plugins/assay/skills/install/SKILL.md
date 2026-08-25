@@ -61,7 +61,10 @@ automation account before proceeding — the two-identity floor every human gate
 
 ### 2. Scaffold — use `statusgen init`, never reinvent it
 Run **`statusgen init --root <target>`** (the umbrella `statusgen` subcommand). It already emits a
-**lint-clean tree** — `docs/streams/` plus the registers — AND a bootstrap-safe CI workflow. The
+**lint-clean tree** — `docs/streams/` plus the registers — a bootstrap-safe CI workflow, AND the
+day-one agent-instruction files at the target root (`CLAUDE.md` with the ten invariants + the CI
+recipe + an unanswered bindings checklist, and an `AGENTS.md` pointing at it). Every target is
+skipped if it already exists, so an adopter's own `CLAUDE.md` is never clobbered. The
 installer USES this; it does not hand-author a second copy of the scaffold. If `statusgen init` is
 not yet available (an older pinned binary predates the subcommand), fall back to the `adopt`
 runbook's `scaffold-streams` / `scaffold-registers` PRIMITIVEs and say you did so — do not fake the
