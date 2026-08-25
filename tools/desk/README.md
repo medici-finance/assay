@@ -52,7 +52,7 @@ it on day one.
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
 | `deskroster` | `set`, `drop`, `list`, `mine`, `preflight` | local-only, out-of-git (`preflight` mints a token and runs one read-only transport probe) | no |
-| `muhar` | `-spec <file>` mutation harness, `-j <n>` mutations in flight (isolated tree per worker) | local diagnostic (no `Guard`) | no |
+| `muhar` | `-spec <file>` mutation harness, `-j <n>` mutations in flight (isolated tree per worker), `-shard i/n` this invocation's slice of the spec (shards partition it; baseline + control run per shard) | local diagnostic (no `Guard`) | no |
 | `writeguard` | PreToolUse hook (F-34 isolation backstop) | hook | n/a |
 | `deskpushguard` | pre-push hook — refuses a push to a MERGED/CLOSED branch, one carrying a foreign/laundered commit, a single-parent merge masquerade, or a branch point sitting on a stray local `origin/main`, or one introducing a register-entry `id:` collision with an in-flight sibling branch (#22, #72). Cannot determine the base → prints `COULD-NOT-CHECK` and allows (fail-open, brief-10); that line means UNVERIFIED, not clean | git hook | n/a |
 | `desksourceguard` | CI gate — refuses a materialised desk-tools source tree that is not the pinned commit | CI | n/a |
@@ -2637,8 +2637,9 @@ the PR as untested). `muhar` makes that impossible by construction:
    baseline makes every "caught" meaningless).
 
 ```bash
-muhar -spec mutations.json        # exit 0 = healthy run (see stdout); exit 2 = HARNESS BROKEN, discard
-muhar -spec mutations.json -j 0   # same verdicts, one worker per CPU
+muhar -spec mutations.json               # exit 0 = healthy run (see stdout); exit 2 = HARNESS BROKEN, discard
+muhar -spec mutations.json -j 0          # same verdicts, one worker per CPU
+muhar -spec mutations.json -shard 1/3    # this invocation's third of the spec (0-based i of n)
 ```
 
 The spec is JSON: `{root, test, control, mutations[]}` where `test` is the suite command
@@ -2659,6 +2660,19 @@ the report does not depend on which worker finished first; and a workspace that 
 provisioned is a `HARNESS BROKEN` run, never a quiet fallback to a shared tree. `-j` moves
 the wall time and nothing else — the per-guard verdicts, their order, and the totals line
 CI gates on are unchanged.
+
+**`-shard i/n`, and why a sharded sweep still covers the spec.** `-j` parallelises within
+one machine; `-shard` splits one spec across **n separate invocations** (CI matrix legs on
+separate runners). Shard `i` (0-based, `0 <= i < n`) runs only the mutations at spec index
+≡ i (mod n) — round-robin, so for a fixed `n` the shards are **pairwise disjoint and their
+union is exactly the spec**: across all n invocations every mutation runs exactly once
+(`TestShardSelectPartitions` proves disjointness + completeness + order for a range of
+sizes and shard counts). The baseline and the positive control are **not** sharded — every
+shard re-runs both in full, so each invocation is independently trustworthy and a broken
+harness reddens every leg. The selection is echoed to stderr (`shard i/n — running k of M
+mutations`) so a shard's partial report is never mistaken for a complete sweep; the caller
+owns running all n shards. A malformed `-shard` (index out of range, zero shards,
+non-integers) is a refusal, never a silent fall-back to the full or empty set.
 
 `muhar` does **not** call `deskkit.Guard()`: it is a local diagnostic that makes no
 outward writes (no GitHub, no shared-state mutation — it edits a source file and restores
