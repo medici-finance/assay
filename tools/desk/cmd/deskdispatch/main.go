@@ -48,8 +48,8 @@ const usage = `deskdispatch — the per-item dispatch ceremony (engine seam: DIS
 
 USAGE:
   deskdispatch <item-key> [--tier strong|any] [--kit worker|review|verifier]
-               [--repo OWNER/NAME] [--root DIR] [--model SLUG] [--branch NAME]
-               [--brief PATH] [--gate-human] [--pr N]
+               [--repo OWNER/NAME] [--root DIR] [--claim-root DIR] [--model SLUG]
+               [--branch NAME] [--brief PATH] [--gate-human] [--pr N]
                [--prompt-file FILE] [--quiet] [--dry-run]
   deskdispatch --kits
   deskdispatch --version
@@ -60,9 +60,11 @@ one another desk holds, and a claim that does not collide is not a claim.
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 
-  1 claim-acquire     runs the target repo's tools/dispatch-claim.sh acquire <key>.
-                      Exit 5 there = a LIVE holder owns it: this verb prints the holder
-                      and exits 5. It never steals.
+  1 claim-acquire     runs tools/dispatch-claim.sh acquire <key>, resolved under
+                      --claim-root when given, else --root. The claim itself is a ref in
+                      the TARGET repo (--repo) either way — the flag names where the TOOL
+                      lives, never where the claim lands. Exit 5 there = a LIVE holder
+                      owns it: this verb prints the holder and exits 5. It never steals.
   2 worktree-create   ` + "`deskwt add`" + ` in the item's OWN repo root, off
                       refs/remotes/origin/main. Cross-repo is the default case, not the
                       exception: an item belongs to a repo, and a worker handed the wrong
@@ -79,6 +81,13 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       when --pr is known. The stamp attests what the DISPATCHER launched;
                       a self-applied stamp is worthless by design.
   6 prompt-emit       writes the assembled agent prompt to stdout, or to --prompt-file.
+
+--claim-root separates "where the consumer scripts live" from "which repo the worker's
+worktree branches from". The scripts (tools/dispatch-claim.sh, tools/decision-issue.sh)
+were centralized out of the consumer repos, so a cross-repo dispatch points --claim-root
+at the checkout that carries them while --root stays the ITEM's own repo — the worktree
+is always cut from --root. An explicit --claim-root is authoritative: there is no silent
+fall-back to --root.
 
 --kits lists the prompt kits this binary carries and exits 0.
 --dry-run runs no step: it prints the plan and the prompt that WOULD be emitted.
