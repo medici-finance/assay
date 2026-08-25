@@ -29,6 +29,11 @@ type BoardRow struct {
 	Implementer string
 	OutOfRepo   bool // brief Context declares `out-of-repo files:` (out-of-repo serialization)
 	BriefPath   string
+	// Labels is the issue's authoritative GitHub label set, when the board source can supply it (an
+	// issue-sourced / live board). It is the AUTHORITATIVE discriminator for a foreign dispatch token
+	// (the `review-request` label) — see isForeignDispatchToken. The default STATUS.md reader carries
+	// no label column, so rows it produces leave this nil and fall back to the title convention.
+	Labels []string
 }
 
 // ID is the claim key / stable item ID for a board row. In the multi-repo live wiring it is
@@ -73,16 +78,41 @@ func isIssuePlaceholder(r BoardRow) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Num)), "issue-")
 }
 
+// reviewRequestLabel is the authoritative GitHub label the process desk stamps on a review-loop
+// dispatch token; the issue-loop work-scanner (issueboard) already excludes it via the same label
+// name (topology labels.system_state). Kept as a local constant because the fanoutloop package is
+// stdlib + loopengine only and does not import the topology label set.
+const reviewRequestLabel = "review-request"
+
+// hasReviewRequestLabel reports whether the row carries the authoritative `review-request` label
+// (case-insensitive), i.e. the board source resolved the issue's real GitHub labels.
+func hasReviewRequestLabel(r BoardRow) bool {
+	for _, l := range r.Labels {
+		if strings.EqualFold(strings.TrimSpace(l), reviewRequestLabel) {
+			return true
+		}
+	}
+	return false
+}
+
 // isForeignDispatchToken reports whether a row is a dispatch token owned by a DIFFERENT loop's
 // consumer, and therefore must NOT be dispatched by worker-desk. The concrete case is a
 // `review-request` issue: the process desk files it as a token for the pr-review-desk (review)
 // loop, and the issue-loop work-scanner deliberately EXCLUDES it by its `review-request` label
-// (the-desk SKILL: the label "distinguishes dispatch tokens from work issues"). A review-request
-// token carries the canonical `review-request: <target> — <type>` title shape, which a genuine
-// `issue-<NN>` work placeholder never does — so the title prefix is the discriminator here (the
-// board reader carries no label column). This is the ONLY class SelectQueue drops as another loop's
-// consumer; `issue-<NN>` work placeholders are this loop's own and are dispatched normally.
+// (the-desk SKILL: the label "distinguishes dispatch tokens from work issues").
+//
+// The AUTHORITATIVE discriminator is that GitHub `review-request` LABEL (BoardRow.Labels): a
+// label-bearing board source (issue-sourced / live) is trusted first, so a review-request token
+// whose title deviated from the spec-canonical prefix is still caught (#101 hardening). The
+// canonical `review-request: <target> — <type>` title shape — which a genuine `issue-<NN>` work
+// placeholder never carries — remains a FALLBACK for label-less board sources (the default STATUS.md
+// reader has no label column). The two are OR'd, so adding the label check never lets a token
+// through that the title check previously caught. This is the ONLY class SelectQueue drops as
+// another loop's consumer; `issue-<NN>` work placeholders are this loop's own and dispatch normally.
 func isForeignDispatchToken(r BoardRow) bool {
+	if hasReviewRequestLabel(r) {
+		return true
+	}
 	t := strings.ToLower(strings.TrimSpace(r.Title))
 	return t == "review-request" ||
 		strings.HasPrefix(t, "review-request:") ||
