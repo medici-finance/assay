@@ -15,6 +15,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-25 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-25 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/6 | 2026-08-25 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-25 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-25 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-25 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-25 |  |
@@ -25,6 +26,8 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 |---|---|---|---|
 | forge-gitlab | 01 — `Forge` interface extraction in deskkit — `github` impl pinned by goldens [exec:strong] | 1 | 3500 |
 | mistake-proofing | 01 — Cross-read a brief's declared paths against the risk classifier (B3) [exec:strong] | 0 | 3000 |
+| iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
+| iso-9001 | 02 — Align three shipped disclosures with the code they describe (B9) [exec:strong] | 0 | 2000 |
 | mistake-proofing | 02 — Dereference named identifiers, not just backticked paths (B4) | 0 | 1500 |
 
 ## Intake queue
@@ -112,6 +115,15 @@ _None._
 - 05 Live pilot — one brief round-tripped on a real GitLab group; parity table walked — todo (wave 4)
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — todo (wave 5)
 
+### iso-9001 (6 open)
+
+- 01 Emit the tool-validation evidence pack as a release asset (7.1.5) — todo (wave 0)
+- 02 Align three shipped disclosures with the code they describe (B9) — todo (wave 0)
+- 03 A finding closes on a fired control — the effectiveness record (10.2) — todo (wave 1)
+- 04 Record the authorizing human in the release itself (8.6) — todo (wave 1)
+- 05 Records control and retention, stated once (7.5.3) — todo (wave 1)
+- 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
+
 ### mistake-proofing (6 open)
 
 - 01 Cross-read a brief's declared paths against the risk classifier (B3) — todo (wave 0)
@@ -156,4 +168,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**7** streams (**7** active, **0** paused) · **0/55** briefs done · completed initiatives: see `docs/archive/`
+**8** streams (**8** active, **0** paused) · **0/61** briefs done · completed initiatives: see `docs/archive/`
