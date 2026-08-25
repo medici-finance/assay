@@ -33,6 +33,7 @@ func passLoop(t *testing.T, poll string) *ScanLoop {
 	}
 	return &ScanLoop{
 		Root:         root,
+		ScanTarget:   "medici-finance/assay",
 		WorktreeBase: filepath.Join(base, "worktrees"),
 		Scope:        deskkit.ScanRepos(),
 		Policy:       CoalescePolicy{},
@@ -188,9 +189,11 @@ func TestDrainPass_ClaimHeldElsewhereIsNotDispatchedAndIsNotALeak(t *testing.T) 
 	if err := os.MkdirAll(cfg.ClaimsDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	// A live claim held by someone else, taken through the same entry point this pass uses.
+	// A live claim held by someone else, taken through the same entry point this pass uses. The key
+	// is the SCAN's, not the issue's: what must not run twice at once is a whole-scope scan against
+	// one target, and that is exactly what the batch dispatch claims.
 	acquired, err := deskkit.Acquire(deskkit.ClaimConfig{ClaimsDir: cfg.ClaimsDir},
-		deskkit.Claim{Kind: deskkit.KindRoute, Item: "medici-finance/assay#80", Owner: "another-session"})
+		deskkit.Claim{Kind: deskkit.KindRoute, Item: "scan:medici-finance/assay", Owner: "another-session"})
 	if err != nil || !acquired {
 		t.Fatalf("could not plant the competing claim: %v %v", acquired, err)
 	}
@@ -242,23 +245,36 @@ func TestDrainPass_StopFlagHaltsBeforeTheNextItem(t *testing.T) {
 	}
 }
 
-// TestDrainPass_LandFailureDoesNotStrandTheRestOfTheQueue — one item's failure must not wedge the
-// drain behind it, and the pass's exit code must still carry the failure.
-func TestDrainPass_LandFailureDoesNotStrandTheRestOfTheQueue(t *testing.T) {
+// TestDrainPass_OneFailingDispatchDoesNotStrandTheRestOfTheQueue — one dispatch failing must not
+// wedge the drain behind it, and the pass's exit code must still carry the failure.
+//
+// The two dispatches here are deliberately of DIFFERENT kinds: the mechanical scan batch (made to
+// fail at its first git step) and a judgment item routed by a feeder. A pass that abandoned the
+// queue on the first failure would land nothing at all.
+func TestDrainPass_OneFailingDispatchDoesNotStrandTheRestOfTheQueue(t *testing.T) {
 	loop := passLoop(t,
 		"INBOUND: medici-finance/assay#90 2026-08-24T11:50:00Z\n"+
 			"INBOUND: medici-finance/assay#91 2026-08-24T11:51:00Z\n")
-	// Fail the FIRST item's lane; the second must still drain.
-	first := true
+	// #91 already has local state, so it classifies as a JUDGMENT item; #90 is the scan batch.
+	dir := filepath.Join(loop.Root, deskkit.ScanDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "issue-91.md"), []byte("---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	loop.Exec = func(_, name string, args ...string) (string, error) {
-		if first && name == "git" && len(args) > 0 && args[0] == "fetch" {
-			first = false
+		if name == "git" && len(args) > 0 && args[0] == "fetch" {
 			return "", os.ErrPermission
 		}
 		return "", nil
 	}
 	loop.DryRun = false
 	loop.Write = func(string, string) error { return nil }
+	loop.Feeder = func(it loopengine.Item, _ loopengine.Tier, _ LaneOutcome) (loopengine.Result, error) {
+		it.Payload["exit"] = string(ExitNeedsDecision)
+		return loopengine.Result{Item: it, Verdict: loopengine.VerdictPass}, nil
+	}
 
 	var sb strings.Builder
 	err := drainPass(passConfig(t), loop, &sb)
@@ -266,9 +282,10 @@ func TestDrainPass_LandFailureDoesNotStrandTheRestOfTheQueue(t *testing.T) {
 		t.Fatal("a failed lane produced a clean pass")
 	}
 	if !strings.Contains(sb.String(), "dispatch-error") {
-		t.Fatalf("the pass did not name the failing item:\n%s", sb.String())
+		t.Fatalf("the pass did not name the failing dispatch:\n%s", sb.String())
 	}
-	if len(loop.Ledger().Records()) != 1 {
-		t.Fatalf("the second item did not drain: %v", loop.Ledger().Records())
+	recs := loop.Ledger().Records()
+	if len(recs) != 1 || recs[0].ItemID != "medici-finance/assay#91" {
+		t.Fatalf("the judgment item did not drain behind the failing scan: %v", recs)
 	}
 }

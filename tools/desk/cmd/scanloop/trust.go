@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -118,6 +119,20 @@ func blessAuthority() string {
 		return l
 	}
 	return "the configured blessing authority"
+}
+
+// couldNotCheck names the items the gate could not evaluate, sorted. It is what lifts trust
+// blindness into the drain's exit code: an unread gate is not a clean one, and a pass that reports
+// success on unread items is telling its caller the surface was checked when it was not.
+func couldNotCheck(as []Admission) []string {
+	var out []string
+	for _, a := range as {
+		if a.State == AdmissionCouldNotCheck {
+			out = append(out, a.Item.ID())
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // AdmissionCounts summarises a gate pass for the one-line report.

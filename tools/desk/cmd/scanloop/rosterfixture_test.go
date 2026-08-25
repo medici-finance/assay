@@ -13,19 +13,11 @@ package main
 // it always did. That equivalence is deliberate evidence, not convenience: if the
 // conversion changed a verdict, these suites go red.
 //
-// The allowed-repo set is the pre-conversion compiled set of NINE, plus the FOUR that
-// #456 added (platform and one slides repo per product). It is written that way
-// on purpose, and the correctness review is why: the fixture previously
-// carried a THIRD set — neither what the tree compiled in nor what the consumer would
-// set — because it had picked up platform while the consumer's documented value
-// had dropped a since-retired repo. A fixture that is not the production value proves the
-// conversion preserved behaviour that nothing will ever run.
-//
-// #456 MERGED and reached this branch through the merge of
-// origin/main, so those four are a landed fact rather than the forward bet an earlier
-// revision of this comment described. The map it added is the one this PR deletes, and
-// the same THIRTEEN entries are carried here AND in the consumer's documented
-// ASSAY_ALLOWED_REPOS (set-equal at 13, verified by extracting both and diffing).
+// The allowed-repo set is the value the consumer actually sets, entry for entry. It is
+// written that way on purpose: a fixture that is not the production value proves a
+// behaviour nothing will ever run. The values below are copied from the sibling
+// command packages' identical fixture, so every suite in this module asserts its
+// verdicts against ONE roster rather than a per-package variant.
 
 import (
 	"os"

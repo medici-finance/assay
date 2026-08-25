@@ -67,9 +67,9 @@ func run(args []string) int {
 const usage = `scanloop — the intake desk's drain consumer of the deterministic drain engine.
 
 USAGE:
-  scanloop plan --root <repo> [--inbound <file|->] [--state-dir <dir>] [--monitor <path>]
-                [--coalesce-window 20m] [--scan-pr <N> --scan-branch <b> --scan-pr-created <ts>]
-                [--now <RFC3339>]
+  scanloop plan --root <repo> [--scan-target <owner/name>] [--inbound <file|->] [--state-dir <dir>]
+                [--monitor <path>] [--coalesce-window 20m]
+                [--scan-pr <N> --scan-branch <b> --scan-pr-created <ts>] [--now <RFC3339>]
   scanloop run  --root <repo> [--worktree-base <abs dir>] [--offline --inbound <file|->]
                 [--dry-run] [everything 'plan' takes]
   scanloop --version
@@ -98,6 +98,16 @@ item. --dry-run prints every lane step without running it; --offline takes the p
                            branch's own diff — on EVERY push, never carried over, never hand-edited.
   the judgment half        Which exit an item takes, and the ownership routing test, are EMITTED for
                            a model tier. This drain never computes them.
+  one scan per pass        The scan is WHOLE-SCOPE: one run derives the delta for every issue in the
+                           scan scope. Every mechanical item a pass admits therefore shares ONE scan
+                           dispatch against one branch and one PR — and each inbound item still
+                           leaves by its own tracked exit.
+  the scan target          The ONE repo the delta is committed to and the PR opened against, resolved
+                           from --scan-target or the --root checkout's origin. An issue on a repo in
+                           the READ scope but outside the write boundary is ordinary work: its
+                           placeholder lands here under a repo-stemmed name.
+  blind never exits 0      A degraded repo, a suppressed burst, an unarmed poller, or a trust read
+                           that could not be taken all make the pass unverifiable.
 
 Stop flags are honoured on every cycle boundary, precedence DISABLED > STOP > STOP.` + LoopName + `.
 

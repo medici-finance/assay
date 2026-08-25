@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -33,6 +34,7 @@ type planOptions struct {
 	worktrees  string
 	window     time.Duration
 	nowStr     string
+	scanTarget string
 	offline    bool
 	dryRun     bool
 	scanPR     int
@@ -46,6 +48,7 @@ func (o *planOptions) bind(fs *flag.FlagSet, withRun bool) {
 	fs.StringVar(&o.monitor, "monitor", "", "explicit path to the inbound monitor script (default: search the plugin trees)")
 	fs.StringVar(&o.inbound, "inbound", "", "file of captured monitor output (or - for stdin) supplying this pass's events")
 	fs.StringVar(&o.nowStr, "now", "", "RFC3339 instant to age the queue against (default: wall clock)")
+	fs.StringVar(&o.scanTarget, "scan-target", "", "repo the placeholder delta is committed to and the scan PR opened against (default: the --root checkout's origin)")
 	fs.DurationVar(&o.window, "coalesce-window", DefaultCoalesceWindow, "max age of an open scan PR that may still absorb this batch")
 	fs.IntVar(&o.scanPR, "scan-pr", 0, "this session's open scan PR number, if one is open")
 	fs.StringVar(&o.scanBranch, "scan-branch", "", "the open scan PR's branch")
@@ -80,6 +83,65 @@ func (o *planOptions) resolvedStateDir() string {
 		tmp = "/tmp"
 	}
 	return filepath.Join(tmp, "assay-inbound-monitor")
+}
+
+// repoSlugRe is GitHub's own owner/name alphabet, anchored. Anything else is not a repo slug and is
+// refused rather than shipped into a git or gh argument.
+var repoSlugRe = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`)
+
+// resolveScanTarget answers "which repo does the placeholder delta land in?" — the destination the
+// mechanical lane writes to, and the repo the write boundary is checked against.
+//
+// It is resolved ONCE, before the queue is classified, because a classification that does not know
+// the write destination cannot tell a mechanical item from one that must be routed. Resolution
+// order is the flag, then the --root checkout's own `origin`. It FAILS CLOSED: a scan whose
+// destination could not be established is could-not-check, never a guess — guessing here writes a
+// placeholder delta to the wrong repository.
+func (o *planOptions) resolveScanTarget(run Exec) (string, error) {
+	if v := strings.TrimSpace(o.scanTarget); v != "" {
+		if !repoSlugRe.MatchString(v) {
+			return "", deskkit.Refused("scanloop: --scan-target " + v + " is not an owner/name repo slug")
+		}
+		return v, nil
+	}
+	if run == nil {
+		run = RealExec
+	}
+	out, err := run(o.root, "git", "remote", "get-url", "origin")
+	if err != nil {
+		return "", deskkit.Unverifiable("scanloop: cannot resolve the scan target — "+
+			o.root+" has no readable `origin` remote, and a scan with no known destination is "+
+			"COULD-NOT-CHECK. Pass --scan-target <owner/name>.", err)
+	}
+	slug, ok := parseRepoSlug(out)
+	if !ok {
+		return "", deskkit.Unverifiable("scanloop: cannot resolve the scan target — the `origin` of "+
+			o.root+" does not parse as an owner/name repo. Pass --scan-target <owner/name>.", nil)
+	}
+	return slug, nil
+}
+
+// parseRepoSlug reduces a git remote URL to owner/name. It accepts the two forms a checkout
+// actually carries (ssh and https) and rejects everything else rather than half-parsing it.
+func parseRepoSlug(remote string) (string, bool) {
+	s := strings.TrimSpace(remote)
+	s = strings.TrimSuffix(s, ".git")
+	switch {
+	case strings.Contains(s, "://"):
+		if i := strings.Index(s, "://"); i >= 0 {
+			s = s[i+3:]
+		}
+		if i := strings.Index(s, "/"); i >= 0 {
+			s = s[i+1:] // drop host (and any user@host)
+		}
+	case strings.Contains(s, ":"):
+		s = s[strings.LastIndex(s, ":")+1:] // scp-like git@host:owner/name
+	}
+	s = strings.Trim(s, "/")
+	if !repoSlugRe.MatchString(s) {
+		return "", false
+	}
+	return s, true
 }
 
 func (o *planOptions) openScanPR() *OpenScanPR {
@@ -162,12 +224,17 @@ func cmdPlan(args []string, stdout io.Writer) error {
 	// The trust probe is deliberately UNWIRED: plan opens no network read of its own, so every
 	// item reports COULD-NOT-CHECK rather than a guess. The counts still print, because a gate
 	// that was not evaluated must be visible as not-evaluated.
+	target, terr := o.resolveScanTarget(nil)
+	if terr != nil {
+		return terr
+	}
 	loop := &ScanLoop{
-		Root:    o.root,
-		Scope:   scope,
-		Policy:  CoalescePolicy{Window: o.window},
-		Now:     func() time.Time { return now },
-		Monitor: func() (*MonitorReport, error) { return report, nil },
+		Root:       o.root,
+		ScanTarget: target,
+		Scope:      scope,
+		Policy:     CoalescePolicy{Window: o.window},
+		Now:        func() time.Time { return now },
+		Monitor:    func() (*MonitorReport, error) { return report, nil },
 	}
 	if _, qerr := loop.SelectQueue(); qerr != nil {
 		return qerr
@@ -185,16 +252,31 @@ func cmdPlan(args []string, stdout io.Writer) error {
 	if len(report.Inbound) == 0 {
 		fmt.Fprintf(stdout, "  (no events in hand — that is NOT the same as an empty inbound surface)\n")
 	}
+	batched := 0
 	for _, a := range adm {
-		it := loop.toItem(a)
-		tier, terr := loop.TierPolicy(it)
+		lane, kind := loop.classify(a)
+		probe := loopengine.Item{Payload: map[string]string{"lane": string(lane)}}
 		tierName := "?"
-		if terr == nil {
+		if tier, terr := loop.TierPolicy(probe); terr == nil {
 			tierName = tier.String()
 		}
+		// The claim a mechanical item will actually be dispatched under is the BATCH's, not its
+		// own: the scan is whole-scope and runs once per pass. Showing the item's own key would be
+		// showing an inspector a lock that is never taken.
+		claimKey := a.Item.ID()
+		if lane == LaneScanCarrierPR {
+			claimKey = "scan:" + loop.ScanTarget
+			batched++
+		}
 		fmt.Fprintf(stdout, "  %-28s %-8s %-16s %-10s %s\n",
-			a.Item.ID(), renderAge(a.Item.Age(now)), it.Payload["lane"], tierName, claimState(claims, it.ID))
-		fmt.Fprintf(stdout, "      surface=issue trust=%s — %s\n", a.State, a.Why)
+			a.Item.ID(), renderAge(a.Item.Age(now)), lane, tierName, claimState(claims, claimKey))
+		fmt.Fprintf(stdout, "      surface=issue kind=%s trust=%s — %s\n", kind, a.State, a.Why)
+	}
+	if batched > 0 {
+		fmt.Fprintf(stdout, "\n  BATCHED: %d mechanical item(s) share ONE whole-scope scan dispatch (claim scan:%s).\n"+
+			"  The scan derives the delta for every issue in the scan scope at once, so dispatching it per item\n"+
+			"  would run it N times against one branch and one PR. Each inbound item still gets its OWN exit.\n",
+			batched, loop.ScanTarget)
 	}
 
 	// --- the coalesce decision ------------------------------------------------------

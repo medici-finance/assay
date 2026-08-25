@@ -24,12 +24,34 @@
 //     (isolated worktree, the scan write, a derived title/body, a draft PR through the sanctioned
 //     PR verb) or the issue-filing lane (the sanctioned filing verb).
 //
-//   - Land — exactly ONE tracked exit per item (placeholder / bug / finding / needs-decision /
-//     rejected-watching). Zero exits and two exits are both refusals: an inbound item that left no
-//     exit is the front door leaking, and that is the one property the desk exists to hold.
+//     The scan-carrier lane is dispatched ONCE PER PASS, not once per item. The scan is
+//     whole-scope — one run derives the delta for every issue in the scan scope — so a per-item
+//     dispatch would run it N times against one branch and one PR, and each collision would surface
+//     as a dispatch error and then as a false "front door leaked" line. Every mechanical item a
+//     pass admits is folded into one scan dispatch, claimed under the SCAN's key (what must not
+//     happen twice at once is a whole-scope scan against one target), while the ledger keeps one
+//     exit per INBOUND item.
+//
+//   - Land — exactly ONE tracked exit per INBOUND item (placeholder / bug / finding /
+//     needs-decision / rejected-watching). Zero exits and two exits are both refusals: an inbound
+//     item that left no exit is the front door leaking, and that is the one property the desk
+//     exists to hold. A batched scan dispatch lands one exit for each item it covered.
 //
 //   - OnIdle — the next monitor poll. Stop flags (DISABLED > STOP > STOP.<loop>) are the only exit,
 //     honoured through deskkit.Guard on every cycle boundary, not just at boot.
+//
+// # The write destination is ONE repo, and it is known before anything is classified
+//
+// The scan target is the repo the placeholder delta is committed to and the scan PR is opened
+// against — not the inbound item's repo. An issue on a repo that is in the intake READ scope but
+// outside the write boundary is ordinary work: its placeholder lands in the scan target under a
+// repo-stemmed name. Conflating the two made the write boundary look like a property of the inbound
+// repo, so such an item refused inside the lane, counted as a dispatch error and flagged as a leak
+// — on every pass, forever, for a condition retrying can never change.
+//
+// Which is the general rule this consumer holds: EVERY reason a mechanical lane must not run is
+// decided at CLASSIFICATION time. A lane the classifier never selects costs nothing; a lane that
+// refuses costs an error, a false leak flag, and a repeat next pass.
 //
 // # The two configuration rules that are code here rather than prose
 //

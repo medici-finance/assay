@@ -112,9 +112,9 @@ func TestTierPolicy_NeverRoutesToAHumanTier(t *testing.T) {
 	}
 }
 
-// TestToItem_UnreadableLocalStateRoutesToJudgment — the bounded direction. A mechanical lane must
+// TestClassify_UnreadableLocalStateRoutesToJudgment — the bounded direction. A mechanical lane must
 // never act on state it could not read.
-func TestToItem_UnreadableLocalStateRoutesToJudgment(t *testing.T) {
+func TestClassify_UnreadableLocalStateRoutesToJudgment(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, deskkit.ScanDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -125,11 +125,57 @@ func TestToItem_UnreadableLocalStateRoutesToJudgment(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
-	s := &ScanLoop{Root: root}
-	it := s.toItem(Admission{Item: inbound("example-org/tracker", 1), State: AdmissionAdmitted})
-	if it.Payload["lane"] != string(LaneRouting) {
-		t.Fatalf("lane = %s, want the judgment lane when local state is unreadable", it.Payload["lane"])
+	s := &ScanLoop{Root: root, ScanTarget: "medici-finance/assay"}
+	lane, kind := s.classify(Admission{Item: inbound("example-org/tracker", 1), State: AdmissionAdmitted})
+	if lane != LaneRouting || kind != "unreadable-placeholder-state" {
+		t.Fatalf("lane = %s (%s), want the judgment lane when local state is unreadable", lane, kind)
 	}
+}
+
+// TestClassify_ReadScopeOnlyRepoJoinsTheBatch — an issue on a repo that is in the intake READ scope
+// but OUTSIDE the write boundary is ordinary work, not a dead end: the scan is whole-scope and its
+// placeholder lands in the SCAN TARGET under a repo-stemmed name. Treating the inbound repo as the
+// write destination is what made such an item refuse inside the lane on every pass forever.
+func TestClassify_ReadScopeOnlyRepoJoinsTheBatch(t *testing.T) {
+	readOnly := readScopeOnlyRepo(t)
+	s := &ScanLoop{Root: t.TempDir(), ScanTarget: "medici-finance/assay"}
+	lane, kind := s.classify(Admission{Item: inbound(readOnly, 4), State: AdmissionAdmitted})
+	if lane != LaneScanCarrierPR || kind != "new-issue" {
+		t.Fatalf("lane = %s (%s) for a read-scope-only repo, want the mechanical batch — its placeholder "+
+			"lands in the writable scan target", lane, kind)
+	}
+}
+
+// TestClassify_UnwritableScanTargetRoutesToJudgmentAtClassificationTime — the residual case, and it
+// is decided at CLASSIFICATION time. Deciding it inside the lane makes every pass produce a dispatch
+// error and a false leak flag for a condition retrying can never change.
+func TestClassify_UnwritableScanTargetRoutesToJudgmentAtClassificationTime(t *testing.T) {
+	unwritable := readScopeOnlyRepo(t)
+	s := &ScanLoop{Root: t.TempDir(), ScanTarget: unwritable}
+	lane, kind := s.classify(Admission{Item: inbound("medici-finance/assay", 5), State: AdmissionAdmitted})
+	if lane != LaneRouting || kind != "scan-target-outside-write-boundary" {
+		t.Fatalf("lane = %s (%s), want the judgment lane when the scan target cannot be written", lane, kind)
+	}
+	// And with no target resolved at all, likewise — never a mechanical lane pointed at nowhere.
+	s = &ScanLoop{Root: t.TempDir()}
+	if lane, kind := s.classify(Admission{Item: inbound("medici-finance/assay", 6), State: AdmissionAdmitted}); lane != LaneRouting || kind != "no-scan-target" {
+		t.Fatalf("lane = %s (%s) with no scan target", lane, kind)
+	}
+}
+
+// readScopeOnlyRepo finds a repo the fixture roster puts in the intake SCAN scope but NOT in the
+// write boundary — the exact shape the two tests above are about. It is derived from the roster
+// rather than hard-coded so a roster edit cannot leave the tests asserting a shape that no longer
+// exists.
+func readScopeOnlyRepo(t *testing.T) string {
+	t.Helper()
+	for _, r := range deskkit.ScanRepos() {
+		if !deskkit.IsAllowedRepo(r) {
+			return r
+		}
+	}
+	t.Skip("the fixture roster has no repo in the scan scope that is outside the write boundary")
+	return ""
 }
 
 func TestHasPlaceholder_BareAndRepoStemmedForms(t *testing.T) {
@@ -287,6 +333,7 @@ func TestPlan_PrintsTheQueueAndItsBounds(t *testing.T) {
 	var sb strings.Builder
 	err := cmdPlan([]string{
 		"--root", t.TempDir(),
+		"--scan-target", "medici-finance/assay",
 		"--state-dir", armedStateDir(t),
 		"--inbound", writeTemp(t, "poll.txt", planPoll),
 		"--now", "2026-08-24T12:00:00Z",
@@ -316,6 +363,7 @@ func TestPlan_PrintsTheQueueAndItsBounds(t *testing.T) {
 func TestPlan_UnarmedMonitorIsUnverifiable(t *testing.T) {
 	err := cmdPlan([]string{
 		"--root", t.TempDir(),
+		"--scan-target", "medici-finance/assay",
 		"--state-dir", filepath.Join(t.TempDir(), "never-armed"),
 		"--now", "2026-08-24T12:00:00Z",
 	}, &strings.Builder{})
@@ -329,6 +377,7 @@ func TestPlan_UnarmedMonitorIsUnverifiable(t *testing.T) {
 func TestPlan_BlindPassIsUnverifiable(t *testing.T) {
 	err := cmdPlan([]string{
 		"--root", t.TempDir(),
+		"--scan-target", "medici-finance/assay",
 		"--state-dir", armedStateDir(t),
 		"--inbound", writeTemp(t, "poll.txt", busyPoll),
 		"--now", "2026-08-24T12:00:00Z",
@@ -363,6 +412,7 @@ func TestPlan_DoesNotRunThePoller(t *testing.T) {
 	}
 	_ = cmdPlan([]string{
 		"--root", t.TempDir(),
+		"--scan-target", "medici-finance/assay",
 		"--state-dir", dir,
 		"--inbound", writeTemp(t, "poll.txt", planPoll),
 		"--now", "2026-08-24T12:00:00Z",
@@ -387,6 +437,7 @@ func TestPlan_DoesNotRunThePoller(t *testing.T) {
 func TestRun_OfflineWithNoCapturedPollRefuses(t *testing.T) {
 	err := cmdRun([]string{
 		"--root", t.TempDir(),
+		"--scan-target", "medici-finance/assay",
 		"--worktree-base", t.TempDir(),
 		"--state-dir", armedStateDir(t),
 		"--offline",
@@ -401,6 +452,7 @@ func TestRun_OfflineWithNoCapturedPollRefuses(t *testing.T) {
 func TestRun_RelativeWorktreeBaseRefuses(t *testing.T) {
 	err := cmdRun([]string{
 		"--root", t.TempDir(),
+		"--scan-target", "medici-finance/assay",
 		"--worktree-base", "scan-worktrees",
 		"--offline",
 		"--inbound", writeTemp(t, "poll.txt", planPoll),
@@ -427,13 +479,72 @@ func TestWorktreeFor_IsOutsideTheTargetCheckout(t *testing.T) {
 	}
 }
 
-// TestBranchFor_IsTimeSuffixed — the bounded window means a session can cut more than one scan
-// branch in a day, so a day-granular name would collide with the sealed PR's branch.
-func TestBranchFor_IsTimeSuffixed(t *testing.T) {
+// TestBranchFor_IsPerPassAndSecondGranular — the collision this pins is the one that made a second
+// item in a pass fail `worktree add -b` and then read as a leak. The branch is now computed ONCE per
+// pass, is second-granular, and carries a random suffix, so neither two items in a pass nor two
+// passes in a second can produce the same name.
+func TestBranchFor_IsPerPassAndSecondGranular(t *testing.T) {
 	s := &ScanLoop{Now: func() time.Time { return coalesceNow }}
-	got := s.branchFor(loopengine.Item{ID: "a#1"})
-	if !strings.HasSuffix(got, "2026-08-24-1200") {
-		t.Fatalf("branch = %q, want a minute-granular suffix", got)
+	first := s.branchFor(loopengine.Item{ID: "a#1"})
+	second := s.branchFor(loopengine.Item{ID: "a#2"})
+	if first != second {
+		t.Fatalf("two items in ONE pass produced two branches (%q, %q) — the pass has one scan branch", first, second)
+	}
+	if !strings.Contains(first, "2026-08-24-120000") {
+		t.Fatalf("branch = %q, want a second-granular stamp", first)
+	}
+	// A DIFFERENT pass on the same frozen clock must still not collide.
+	other := (&ScanLoop{Now: func() time.Time { return coalesceNow }}).branchFor(loopengine.Item{ID: "a#1"})
+	if other == first {
+		t.Fatalf("two passes at the same instant produced the SAME branch %q — `worktree remove` does not "+
+			"delete a branch, so the second pass would fail `worktree add -b`", first)
+	}
+	// The worktree path is derived from the same pass name, so it cannot disagree with the branch.
+	if !strings.Contains(s.worktreeFor(loopengine.Item{ID: "a#1"}), strings.TrimPrefix(first, "chore/intake-scan-")) {
+		t.Fatalf("the scan worktree path is not derived from the pass name: %q vs %q", s.worktreeFor(loopengine.Item{ID: "a#1"}), first)
+	}
+}
+
+func TestParseRepoSlug(t *testing.T) {
+	cases := map[string]string{
+		"git@github.com:medici-finance/assay.git\n":    "medici-finance/assay",
+		"https://github.com/medici-finance/assay":      "medici-finance/assay",
+		"https://github.com/medici-finance/assay.git ": "medici-finance/assay",
+		"ssh://git@github.com/medici-finance/assay":    "medici-finance/assay",
+	}
+	for in, want := range cases {
+		got, ok := parseRepoSlug(in)
+		if !ok || got != want {
+			t.Fatalf("parseRepoSlug(%q) = %q %v, want %q", in, got, ok, want)
+		}
+	}
+	for _, bad := range []string{"", "not a url", "https://github.com/", "/leading"} {
+		if got, ok := parseRepoSlug(bad); ok {
+			t.Fatalf("parseRepoSlug(%q) = %q, want a refusal — a half-parsed remote writes the delta to the wrong repo", bad, got)
+		}
+	}
+}
+
+// TestResolveScanTarget_FailsClosed — a scan whose destination could not be established is
+// could-not-check. Guessing it writes a placeholder delta to the wrong repository.
+func TestResolveScanTarget_FailsClosed(t *testing.T) {
+	o := &planOptions{root: t.TempDir()}
+	_, err := o.resolveScanTarget(func(string, string, ...string) (string, error) {
+		return "", os.ErrNotExist
+	})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
+		t.Fatalf("err = %v, want unverifiable", err)
+	}
+	o = &planOptions{root: t.TempDir(), scanTarget: "not-a-slug"}
+	if _, err := o.resolveScanTarget(nil); deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+		t.Fatalf("err = %v, want a refusal for a malformed --scan-target", err)
+	}
+	o = &planOptions{root: t.TempDir()}
+	got, err := o.resolveScanTarget(func(string, string, ...string) (string, error) {
+		return "git@github.com:medici-finance/assay.git\n", nil
+	})
+	if err != nil || got != "medici-finance/assay" {
+		t.Fatalf("resolveScanTarget = %q, %v", got, err)
 	}
 }
 

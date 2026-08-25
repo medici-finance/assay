@@ -108,9 +108,21 @@ func cmdRun(args []string, stdout io.Writer) error {
 		return deskkit.Refused("scanloop run: --worktree-base must be an ABSOLUTE path (" + worktreeBase + ")")
 	}
 
+	// The write DESTINATION, resolved before the queue is classified: a classifier that does not
+	// know where the delta lands cannot tell a mechanical item from one that must be routed.
+	target, terr := o.resolveScanTarget(nil)
+	if terr != nil {
+		return terr
+	}
+	fmt.Fprintf(stdout, "scan target: %s (the repo the placeholder delta lands in)\n", target)
+
+	// The open scan PR is read ONCE per pass and handed to the single scan dispatch. It used to be
+	// a static closure consulted per item, which was harmless only because there is one scan
+	// dispatch — and was a live hazard the moment there was more than one.
 	openPR := o.openScanPR()
 	loop := &ScanLoop{
 		Root:         o.root,
+		ScanTarget:   target,
 		WorktreeBase: worktreeBase,
 		Policy:       CoalescePolicy{Window: o.window},
 		Scope:        scope,
@@ -147,6 +159,15 @@ func cmdRun(args []string, stdout io.Writer) error {
 	if leaked := loop.Ledger().Unexited(loop.exited()); len(leaked) > 0 {
 		return deskkit.Unverifiable("scanloop run: "+fmt.Sprint(len(leaked))+
 			" dispatched item(s) landed with no tracked exit — the front door leaked: "+strings.Join(leaked, ", "), nil)
+	}
+	// TRUST BLINDNESS REACHES THE EXIT CODE. An item whose trust could not be READ is neither
+	// admitted nor quarantined — the gate did not run for it. Returning 0 on such a pass would tell
+	// anything scripting this drain that the inbound surface was clean, when in fact it was not
+	// evaluated. Same direction as the monitor-blindness check below: blind is not idle.
+	if blind := couldNotCheck(loop.Admissions()); len(blind) > 0 {
+		return deskkit.Unverifiable("scanloop run: the trust gate could not be evaluated for "+
+			fmt.Sprint(len(blind))+" inbound item(s) — they were neither admitted nor quarantined, so this "+
+			"pass did not see the whole surface: "+strings.Join(blind, ", "), nil)
 	}
 	if rep := loop.Report(); rep != nil && rep.Blind() {
 		return deskkit.Unverifiable("scanloop run: the inbound surface was not fully readable this pass "+
