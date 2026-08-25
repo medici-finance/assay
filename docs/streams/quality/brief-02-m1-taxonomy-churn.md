@@ -20,7 +20,7 @@ authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §4 — M1 aggregation grains (per commit / file / package / PR / stream / author-identity / window) and the honest-claims discipline"
   - "docs/streams/quality/spec.md §4.1 — line-operation taxonomy (added/deleted/updated/moved/copied/churned), block-level move-vs-copy at N>=4, copy/paste ratio + duplicate-block rate"
-  - "docs/streams/quality/spec.md §4.2 — churn / rework rate (14-day window, per stream + author-identity class)"
+  - "docs/streams/quality/spec.md §4.2 — churn / rework rate (14-day window, per stream + author-identity class; second published anchor: Faros rework-rate, 14–30-day window — report against both)"
 exec-tier: strong
 exec-tier-why: >-
   (c) taxonomy correctness is a class of subtle implementation error that survives naive
