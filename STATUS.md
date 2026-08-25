@@ -15,6 +15,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-25 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-25 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/6 | 2026-08-25 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-25 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-25 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-25 |  |
 
@@ -23,6 +24,8 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | forge-gitlab | 01 — `Forge` interface extraction in deskkit — `github` impl pinned by goldens [exec:strong] | 1 | 3500 |
+| mistake-proofing | 01 — Cross-read a brief's declared paths against the risk classifier (B3) [exec:strong] | 0 | 3000 |
+| mistake-proofing | 02 — Dereference named identifiers, not just backticked paths (B4) | 0 | 1500 |
 
 ## Intake queue
 
@@ -109,6 +112,15 @@ _None._
 - 05 Live pilot — one brief round-tripped on a real GitLab group; parity table walked — todo (wave 4)
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — todo (wave 5)
 
+### mistake-proofing (6 open)
+
+- 01 Cross-read a brief's declared paths against the risk classifier (B3) — todo (wave 0)
+- 02 Dereference named identifiers, not just backticked paths (B4) — todo (wave 0)
+- 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — todo (wave 1)
+- 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — todo (wave 1)
+- 05 `newbrief` — the scaffolder as the authoring front door (B1) — todo (wave 2)
+- 06 D1 promoted to a lint obligation — a new check must carry its mutation row — todo (wave 2)
+
 ### quality (15 open)
 
 - 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — implemented (wave 0)
@@ -144,4 +156,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**6** streams (**6** active, **0** paused) · **0/49** briefs done · completed initiatives: see `docs/archive/`
+**7** streams (**7** active, **0** paused) · **0/55** briefs done · completed initiatives: see `docs/archive/`
