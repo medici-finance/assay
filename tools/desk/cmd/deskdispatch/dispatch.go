@@ -54,6 +54,13 @@ var itemKeyRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$`)
 // worktreeNameRe bounds the worktree name derived from the item key.
 var worktreeNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
+// branchNameRe MIRRORS the worktree verb's own --branch constraint. That verb remains the
+// authority; this copy exists only so a branch name it would reject is refused BEFORE the
+// durable claim is taken rather than after. It is deliberately no LOOSER than the original
+// — a pre-check that accepted more than the real one would hand the rejection back to the
+// expensive path it exists to protect.
+var branchNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
+
 type dispatchOpts struct {
 	item       string
 	tier       string
@@ -111,46 +118,14 @@ func cmdDispatch(args []string) error {
 }
 
 func dispatch(o dispatchOpts) error {
-	if !itemKeyRe.MatchString(o.item) {
-		return deskkit.Refused(fmt.Sprintf(
-			"step %s: %q is not a usable claim key (letters, digits, dot, dash, underscore, slash; no "+
-				"leading dash). The key is passed through unchanged to the repo's claim tool, so a key this "+
-				"verb would have to reshape is one that would not collide with the key another desk holds — "+
-				"and a claim that does not collide is not a claim.",
-			stepClaimAcquire, o.item))
-	}
-	// The tier vocabulary is CLOSED and is not a second list: it is derived from the
-	// dispatch-tier set the stamp reader validates against.
-	if !validTier(o.tier) {
-		return deskkit.Refused(fmt.Sprintf(
-			"step %s: --tier %q is outside the tier vocabulary (%s). The tier is an attestation of what was "+
-				"launched, so an unrecognised value must not be recorded as though it meant something.",
-			stepModelStamp, o.tier, strings.Join(deskkit.DispatchTiers(), "|")))
-	}
-	if _, err := kitText(o.kit); err != nil {
-		return err
-	}
-
-	repo, err := o.resolveRepo()
+	// EVERY caller-controlled precondition is checked HERE, before the claim. See
+	// validateCallerPreconditions for why that placement is a correctness property and not
+	// a tidiness preference.
+	plan, err := validateCallerPreconditions(o)
 	if err != nil {
 		return err
 	}
-	if !deskkit.IsAllowedRepo(repo) {
-		return deskkit.Refused(fmt.Sprintf(
-			"step %s: %s is not in the desk repo set — this verb dispatches work only into repos the desk "+
-				"is rostered to act on.", stepClaimAcquire, repo))
-	}
-
-	branch := o.branch
-	if branch == "" {
-		branch = "feat/" + sanitizeSegment(o.item)
-	}
-	wtName := sanitizeSegment(o.item)
-	if !worktreeNameRe.MatchString(wtName) {
-		return deskkit.Refused(fmt.Sprintf(
-			"step %s: the item key %q does not reduce to a usable worktree name — pass --branch and a key "+
-				"that does.", stepWorktreeCreate, o.item))
-	}
+	repo, branch, wtName := plan.repo, plan.branch, plan.wtName
 
 	if o.dryRun {
 		fmt.Printf("deskdispatch: PLAN (dry run — nothing touched) item=%s repo=%s tier=%s kit=%s branch=%s\n",
@@ -217,6 +192,152 @@ func dispatch(o dispatchOpts) error {
 
 	// 6 — the prompt.
 	return emitPrompt(o, prompt)
+}
+
+// dispatchPlan is what validateCallerPreconditions derives once, so no later step
+// re-derives a value the validation was performed against. Re-deriving is how a check and
+// the thing it checked drift apart.
+type dispatchPlan struct {
+	repo   string
+	branch string
+	wtName string
+}
+
+// validateCallerPreconditions checks EVERY caller-controlled precondition, and it runs
+// BEFORE the claim is acquired.
+//
+// WHY THE PLACEMENT IS THE WHOLE POINT. The claim is a DURABLE, cross-machine lock and the
+// worktree is real state on disk. A refusal raised after either exists does not merely
+// fail — it WEDGES the item: the claim stays held by a dispatcher that never dispatched, so
+// every later attempt (including the operator's corrected re-run one second later) is told
+// "already claimed by a LIVE holder", and the worktree is leaked with nothing recording
+// that it should be reclaimed. The cost of a bad flag value must be a refusal, not an item
+// nobody can pick up until a human hand-deletes a ref.
+//
+// So the rule this function exists to enforce is: **anything the CALLER controls, and that
+// is therefore knowable without touching any durable state, is decided here.** After this
+// returns, the only remaining failures are ones that could not have been known earlier — a
+// claim someone else holds, a tree that would not yield a worktree, a forge that would not
+// answer. Those are genuinely unverifiable, and they say so.
+//
+// A validation that migrates back down into a step is a regression this file's tests are
+// written to catch: TestNoCallerPreconditionIsCheckedAfterTheClaim drives the whole table
+// of bad inputs and asserts NOTHING was executed.
+func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
+	var plan dispatchPlan
+
+	if !itemKeyRe.MatchString(o.item) {
+		return plan, deskkit.Refused(fmt.Sprintf(
+			"step %s: %q is not a usable claim key (letters, digits, dot, dash, underscore, slash; no "+
+				"leading dash). The key is passed through unchanged to the repo's claim tool, so a key this "+
+				"verb would have to reshape is one that would not collide with the key another desk holds — "+
+				"and a claim that does not collide is not a claim.",
+			stepClaimAcquire, o.item))
+	}
+
+	// The tier vocabulary is CLOSED and is not a second list: it is derived from the
+	// dispatch-tier set the stamp reader validates against.
+	if !validTier(o.tier) {
+		return plan, deskkit.Refused(fmt.Sprintf(
+			"step %s: --tier %q is outside the tier vocabulary (%s). The tier is an attestation of what was "+
+				"launched, so an unrecognised value must not be recorded as though it meant something.",
+			stepModelStamp, o.tier, strings.Join(deskkit.DispatchTiers(), "|")))
+	}
+
+	// BOTH kits must be readable now. The common kit is checked here and not only at
+	// assembly time because a binary built without it would otherwise take the claim and
+	// then discover it cannot produce a prompt.
+	if _, err := kitText(o.kit); err != nil {
+		return plan, err
+	}
+	if _, err := commonKitText(); err != nil {
+		return plan, err
+	}
+
+	// The model stamp is validated HERE, not in its own step. The stamp is applied last,
+	// but its INPUT is a caller flag: discovering a malformed slug at step 5 would mean
+	// discovering it with the claim held and the worktree built.
+	if strings.TrimSpace(o.model) != "" {
+		if _, err := deskkit.ModelStampLabels(o.model, o.tier); err != nil {
+			return plan, deskkit.Refused(fmt.Sprintf("step %s: %v", stepModelStamp, err))
+		}
+	}
+
+	repo, err := o.resolveRepo()
+	if err != nil {
+		return plan, err
+	}
+	if !deskkit.IsAllowedRepo(repo) {
+		return plan, deskkit.Refused(fmt.Sprintf(
+			"step %s: %s is not in the desk repo set — this verb dispatches work only into repos the desk "+
+				"is rostered to act on.", stepClaimAcquire, repo))
+	}
+	plan.repo = repo
+
+	plan.branch = o.branch
+	if plan.branch == "" {
+		plan.branch = "feat/" + sanitizeSegment(o.item)
+	}
+	// The worktree verb is the AUTHORITY on what branch and worktree names it accepts; this
+	// is a pre-check, deliberately no looser than its constraint, whose only job is to keep
+	// a name it would reject from costing a held claim. It does not replace that check.
+	if !branchNameRe.MatchString(plan.branch) || strings.Contains(plan.branch, "..") {
+		return plan, deskkit.Refused(fmt.Sprintf(
+			"step %s: --branch %q is not a plain branch name (letters, digits, dot, dash, underscore, "+
+				"slash; no leading dash, no '..'), so the worktree verb would refuse it.",
+			stepWorktreeCreate, plan.branch))
+	}
+	plan.wtName = sanitizeSegment(o.item)
+	if !worktreeNameRe.MatchString(plan.wtName) {
+		return plan, deskkit.Refused(fmt.Sprintf(
+			"step %s: the item key %q does not reduce to a usable worktree name — pass --branch and a key "+
+				"that does.", stepWorktreeCreate, o.item))
+	}
+
+	// The human-decision gate's own preconditions: the flag pairing AND the script's
+	// presence. Both are knowable now, and both used to be discovered at step 4.
+	if o.gateHuman {
+		if strings.TrimSpace(o.brief) == "" {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --gate-human needs --brief <path> — the decision issue's content is DERIVED from "+
+					"the item's own specification, never invented by the dispatcher.", stepDecisionGate))
+		}
+		if _, err := os.Stat(filepath.Join(o.root, filepath.FromSlash(decisionScriptRel))); err != nil {
+			return plan, deskkit.Unverifiable(fmt.Sprintf(
+				"step %s: %s is not present in %s, so the human-decision gate cannot be ensured. Dispatching "+
+					"a human-gated item with nothing in front of the human is the failure this gate exists to "+
+					"close.", stepDecisionGate, decisionScriptRel, o.root), err)
+		}
+	}
+
+	// The claim script's presence is knowable now too. stepClaim keeps its own check —
+	// it is the step that must not proceed without one — but finding it missing here costs
+	// nothing and keeps the "no durable state before this returns" invariant total.
+	if _, err := os.Stat(filepath.Join(o.root, filepath.FromSlash(claimScriptRel))); err != nil {
+		return plan, deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: %s is not present in %s, so no durable claim can be taken. A claim this verb cannot "+
+				"place is NOT permission to proceed.", stepClaimAcquire, claimScriptRel, o.root), err)
+	}
+
+	// --prompt-file's directory. The prompt is written LAST, so an unwritable destination
+	// would otherwise be discovered with the claim held, the worktree built, and the
+	// decision issue filed — the most expensive possible moment to learn it.
+	if p := strings.TrimSpace(o.promptFile); p != "" {
+		dir := filepath.Dir(p)
+		fi, err := os.Stat(dir)
+		if err != nil {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --prompt-file %q names a directory that does not exist (%s).",
+				stepPromptEmit, p, dir))
+		}
+		if !fi.IsDir() {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --prompt-file %q sits under %s, which is not a directory.",
+				stepPromptEmit, p, dir))
+		}
+	}
+
+	return plan, nil
 }
 
 // stepClaim acquires the durable claim by invoking the CONSUMER repo's own claim script.
@@ -289,22 +410,14 @@ func stepRoster(o dispatchOpts, repo string) string {
 // asked to make: the item sat there with the human-decision surface empty. Filing at first
 // dispatch is what puts a concrete thing in the queue. The consumer script owns the
 // content rules and the dedupe; this verb only ensures it runs at the right moment.
+// Its caller-controlled preconditions — the --gate-human/--brief pairing and the script's
+// presence — are validated in validateCallerPreconditions, before the claim exists. What
+// remains here is only what running the script can tell us.
 func stepDecision(o dispatchOpts, repo string) (string, error) {
 	if !o.gateHuman {
 		return "SKIPPED: item is not human-gated", nil
 	}
-	if strings.TrimSpace(o.brief) == "" {
-		return "", deskkit.Refused(fmt.Sprintf(
-			"step %s: --gate-human needs --brief <path> — the decision issue's content is DERIVED from the "+
-				"item's own specification, never invented by the dispatcher.", stepDecisionGate))
-	}
 	script := filepath.Join(o.root, filepath.FromSlash(decisionScriptRel))
-	if _, err := os.Stat(script); err != nil {
-		return "", deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: %s is not present in %s, so the human-decision gate cannot be ensured. Dispatching a "+
-				"human-gated item with nothing in front of the human is the failure this gate exists to "+
-				"close.", stepDecisionGate, decisionScriptRel, o.root), err)
-	}
 	r := runCmd(o.root, script, "ensure", o.brief, "--repo", repo, "--at", "start")
 	if r.err != nil {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
@@ -331,9 +444,15 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 		return "SKIPPED: no --model given — this dispatch contributes NO model-keyed signal " +
 			"(unknown is never a default model)", nil
 	}
+	// The slug and tier were already validated in validateCallerPreconditions, before the
+	// claim existed; this re-derives the labels from the same inputs. An error here would
+	// mean the two calls disagreed, which is a defect rather than a caller mistake — so it
+	// is UNVERIFIABLE, not a refusal, and it names the contradiction.
 	labels, err := deskkit.ModelStampLabels(o.model, o.tier)
 	if err != nil {
-		return "", deskkit.Refused(fmt.Sprintf("step %s: %v", stepModelStamp, err))
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: the model stamp validated before the claim was taken but will not build now (%v) — "+
+				"the two reads of the same inputs disagree", stepModelStamp, err), err)
 	}
 	if o.pr <= 0 {
 		return "PENDING: apply " + strings.Join(labels, " + ") +

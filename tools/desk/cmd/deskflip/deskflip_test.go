@@ -25,9 +25,15 @@ type stub struct {
 	calls   [][]string
 	pr      prInfo
 	reviews []reviewInfo
-	head2   string // what the TOCTOU re-read returns; "" means "unchanged"
-	failPR  bool
-	failGH  string // any argv containing this fragment exits non-zero
+	// reviewsAfterFirstRead, when non-nil, is what EVERY read of the reviews endpoint
+	// after the first returns. It models the race the pre-mutation re-read exists to
+	// close: a verdict posted at the SAME head while the checks were running, which no
+	// amount of head re-reading can see because the head never moves for it.
+	reviewsAfterFirstRead []reviewInfo
+	reviewReads           int
+	head2                 string // what the TOCTOU re-read returns; "" means "unchanged"
+	failPR                bool
+	failGH                string // any argv containing this fragment exits non-zero
 }
 
 func (s *stub) install(t *testing.T) string {
@@ -60,6 +66,10 @@ func (s *stub) install(t *testing.T) string {
 			}
 			return echo(mustJSON(t, s.pr))
 		case strings.Contains(joined, "pulls/") && strings.Contains(joined, "/reviews"):
+			s.reviewReads++
+			if s.reviewReads > 1 && s.reviewsAfterFirstRead != nil {
+				return echo(mustJSON(t, s.reviewsAfterFirstRead))
+			}
 			return echo(mustJSON(t, s.reviews))
 		}
 		return exec.Command("/bin/sh", "-c", "exit 0")
@@ -433,20 +443,133 @@ func TestHeadMovedDuringChecksRefuses(t *testing.T) {
 
 // An ALREADY-ready PR is the idempotent no-op: a loop re-running its Land step must not
 // turn a completed flip into a failure. The label swap is still reconciled.
-func TestAlreadyReadyIsIdempotent(t *testing.T) {
+// An already-ready PR whose label is ALREADY correct is a pure no-op: exit 0 and not a
+// single write. This is the common re-run case — a loop re-running its Land step over a
+// landed item — and it must stay cheap and non-failing.
+func TestAlreadyReadyWithCorrectLabelIsAPureNoOp(t *testing.T) {
 	pr := greenPR()
 	pr.IsDraft = false
+	pr.Labels = []labelInfo{{Name: labelAfterFlip}}
 	s := &stub{pr: pr}
 	s.install(t)
 
 	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
-		t.Fatalf("already-ready rc = %d, want 0 (idempotent)", rc)
+		t.Fatalf("already-ready, label correct: rc = %d, want 0 (idempotent no-op)", rc)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a no-op re-run wrote: %v", m)
+	}
+}
+
+// An already-ready PR whose label is STALE needs a WRITE, and the write asserts that the
+// review lane is done — so it runs the same gate. When the conditions hold, the label is
+// reconciled and the ready mutation is NOT re-issued.
+func TestAlreadyReadyWithStaleLabelRelabelsAfterAFullReGate(t *testing.T) {
+	pr := greenPR()
+	pr.IsDraft = false // labels still carry the pre-flip label, from greenPR()
+	s := &stub{pr: pr}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("already-ready, stale label, conditions hold: rc = %d, want 0", rc)
 	}
 	if s.ran("pr ready") {
 		t.Error("the ready mutation was re-issued on a PR that is not a draft")
 	}
 	if !s.ran("--add-label " + labelAfterFlip) {
-		t.Error("the queue label was not reconciled on an already-ready PR")
+		t.Error("the queue label was not reconciled")
+	}
+	// The re-gate really ran: the reviews were read.
+	if !s.ran("/reviews") {
+		t.Error("the label was written without re-reading the verdicts — that is the ungated relabel")
+	}
+}
+
+// THE FINDING. An already-ready PR whose label is stale and whose conditions DO NOT hold
+// must not be relabelled. Writing `approval-needed` there tells every human reading the
+// queue that the review lane is finished when it is not — and nobody re-checks a PR that
+// claims to be done. The refusal names the condition and leaves the labels alone.
+func TestAlreadyReadyWithStaleLabelRefusesWhenTheGateFails(t *testing.T) {
+	pr := greenPR()
+	pr.IsDraft = false
+	s := &stub{pr: pr}
+	s.install(t)
+	s.reviews = nil // no approval at head: the gate must fail
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("already-ready, stale label, gate fails: rc = %d, want %d (refused)", rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("the label was written over a failed gate: %v — a queue that misreports who is blocked "+
+			"is worse than one that says nothing", m)
+	}
+}
+
+// A STABLE HEAD IS NOT A STABLE VERDICT.
+//
+// A `Security-Review: fail` is a retraction posted at the SAME head — no commit, so the
+// head does not move. A head-only re-read therefore reports "still current" and the flip
+// proceeds over a live withdrawal. This drives exactly that race: the first reviews read
+// is clean, and a retraction lands before the mutation.
+func TestSecurityRetractionPostedDuringTheChecksIsCaught(t *testing.T) {
+	s := &stub{pr: greenPR()}
+	s.install(t)
+	bot := reviewerBot(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	// After the FIRST reviews read, a retraction at the same head appears.
+	fail := reviewInfo{State: "COMMENTED", CommitID: headSHA, Body: "Security-Review: fail",
+		SubmittedAt: "2026-01-01T00:05:00Z"}
+	fail.User.Login = bot
+	s.reviewsAfterFirstRead = append(append([]reviewInfo{}, s.reviews...), fail)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("retraction during the checks: rc = %d, want %d (refused)", rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("the PR was flipped over a retraction posted at the same head: %v — the head never moved, "+
+			"so only a verdict re-read can see this", m)
+	}
+	// The re-read really happened: the reviews endpoint was hit more than once.
+	reads := 0
+	for _, c := range s.calls {
+		if strings.Contains(strings.Join(c, " "), "/reviews") {
+			reads++
+		}
+	}
+	if reads < 2 {
+		t.Errorf("the reviews were read %d time(s) — the pre-mutation re-read is what closes this race", reads)
+	}
+}
+
+// NEGATIVE CONTROL on the identity filter: an APPROVED at the current head from a login
+// that is NOT the reviewer App must not satisfy the correctness gate. Human reviews do not
+// govern this loop, and neither does any other bot: if the filter regressed to "somebody
+// approved", every gate below it would be reachable by anyone who can press the button.
+func TestNonReviewerApprovalAtHeadDoesNotSatisfyTheGate(t *testing.T) {
+	s := &stub{pr: greenPR()}
+	s.install(t)
+	for _, login := range []string{
+		"a-human",                // a person
+		"some-other-app[bot]",    // a different App
+		"app/some-other-app",     // the same other App in the CLI rendering
+		"",                       // a review whose author the forge did not state
+		reviewerBot(t) + "-typo", // a near-miss on the reviewer's own name
+	} {
+		r := reviewInfo{State: "APPROVED", CommitID: headSHA, Body: "looks fine",
+			SubmittedAt: "2026-01-01T00:00:00Z"}
+		r.User.Login = login
+		s.calls = nil
+		s.reviews = []reviewInfo{r}
+
+		if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+			t.Errorf("an APPROVED from %q gave rc = %d, want %d — only the reviewer App's verdict counts",
+				login, rc, deskkit.ExitRefused)
+		}
+		if m := s.mutated(); len(m) != 0 {
+			t.Errorf("an APPROVED from %q produced mutations: %v", login, m)
+		}
 	}
 }
 

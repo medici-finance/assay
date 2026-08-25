@@ -131,11 +131,38 @@ func flip(o flipOpts) error {
 			"condition %s: PR #%d in %s is %s, not open — there is nothing to flip.",
 			condPROpenDraft, o.pr, repo, strings.ToLower(pr.State)))
 	}
+	// relabelOnly is the already-ready path: the flip itself is done, but the queue labels
+	// may still need reconciling.
+	//
+	// WHY THE LABEL WRITE IS GATED TOO (the fix, and the reasoning behind choosing it).
+	// Writing `approval-needed` is not bookkeeping — it is an ASSERTION to every human
+	// reading the queue that the review lane is finished with this PR and only a merge is
+	// outstanding. On a PR that is no longer a draft that assertion can be false: a human
+	// may have flipped it by hand, or it may have been pushed to since the flip and now
+	// carry a standing CHANGES_REQUESTED at its new head. Relabelling without re-gating
+	// would then tell the queue the PR is waiting on the human when it is really waiting on
+	// the reviewer — and a queue that misreports who is blocked is worse than one that says
+	// nothing, because nobody re-checks a PR that claims to be done.
+	//
+	// So the two cases are separated by whether a WRITE is actually required:
+	//
+	//   labels already correct  → pure no-op, exit 0, nothing read further, nothing written.
+	//                             This is the common re-run case, and it must stay cheap and
+	//                             non-failing: a loop re-running its Land step over a landed
+	//                             item must not report a failure.
+	//   labels need changing    → a write, so it runs the SAME gate as the flip path and
+	//                             skips only the ready mutation. On a failed condition it
+	//                             refuses by name and leaves the labels untouched.
+	relabelOnly := false
 	if !pr.IsDraft {
-		// Already flipped: the desired end state holds. Idempotent no-op, not a refusal —
-		// a loop that re-runs its Land step must not turn a completed flip into a failure.
-		o.say("%s: PR #%d is already ready-for-human (idempotent no-op)", condPROpenDraft, o.pr)
-		return ensureLabelSwap(o, repo, pr)
+		if hasLabel(pr.Labels, labelAfterFlip) && !hasLabel(pr.Labels, labelBeforeFlip) {
+			o.say("%s: PR #%d is already ready-for-human and its queue label is correct — nothing to do",
+				condPROpenDraft, o.pr)
+			return nil
+		}
+		relabelOnly = true
+		o.say("%s: PR #%d is already ready-for-human but its queue label is stale; re-gating before the "+
+			"label write", condPROpenDraft, o.pr)
 	}
 	head := strings.TrimSpace(pr.HeadRefOid)
 	if head == "" {
@@ -144,7 +171,11 @@ func flip(o flipOpts) error {
 				"vacuous at once — exactly when there is least reason to believe any of them.",
 			condPROpenDraft, o.pr), nil)
 	}
-	o.say("%s OK: open + draft at %s", condPROpenDraft, short(head))
+	if relabelOnly {
+		o.say("%s OK: open, already flipped, at %s", condPROpenDraft, short(head))
+	} else {
+		o.say("%s OK: open + draft at %s", condPROpenDraft, short(head))
+	}
 
 	// --- reviewer-approved -------------------------------------------------------
 	reviews, err := readReviews(o, repo)
@@ -214,11 +245,44 @@ func flip(o flipOpts) error {
 				"against code that is no longer current. No flip; re-run against the new head.",
 			condHeadStable, short(head), short(head2)))
 	}
-	o.say("%s OK: still %s", condHeadStable, short(head))
+	// A STABLE HEAD IS NOT A STABLE VERDICT. Re-reading only the head catches a push, and a
+	// push is not the only thing that can invalidate the decision: a reviewer can post a
+	// `Security-Review: fail` — a deliberate retraction — at the SAME head, between the
+	// reviews read above and the mutation below. The head does not move for that, so a
+	// head-only re-read reports "still current" and the flip proceeds over a live
+	// retraction. The verdicts are therefore re-read too, and both gates re-run against the
+	// fresh list.
+	//
+	// The window is small, but it is exactly the window a reviewer uses: they are looking at
+	// the PR at the moment the desk is deciding about it. Cost is one extra read; the thing
+	// it prevents is flipping a PR whose security verdict was withdrawn seconds earlier.
+	reviews2, err := readReviews(o, repo)
+	if err != nil {
+		return err
+	}
+	if err := checkReviewerApproved(reviewerLogin, reviews2, head, o.pr); err != nil {
+		return err
+	}
+	if err := checkSecurityVerdict(o, repo, pr, reviews2, reviewerLogin, head); err != nil {
+		return err
+	}
+	o.say("%s OK: still %s, and the verdicts at that head are unchanged", condHeadStable, short(head))
 
 	if o.dryRun {
 		fmt.Printf("deskflip: DRY RUN — every condition holds for %s#%d at %s (%d/%d); stopped before the "+
-			"ready mutation.\n", repo, o.pr, short(head), len(flipConditions), len(flipConditions))
+			"mutation.\n", repo, o.pr, short(head), len(flipConditions), len(flipConditions))
+		return nil
+	}
+
+	// relabelOnly: the PR is already out of draft, so there is no ready mutation to make —
+	// only the queue label to reconcile, and the gate above is what earns the right to
+	// write it.
+	if relabelOnly {
+		if err := ensureLabelSwap(o, repo, pr); err != nil {
+			return err
+		}
+		fmt.Printf("deskflip: RELABELLED %s#%d — already ready-for-human at %s, queue label reconciled "+
+			"after a full re-gate.\n", repo, o.pr, short(head))
 		return nil
 	}
 

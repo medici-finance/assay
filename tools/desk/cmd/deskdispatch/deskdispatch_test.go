@@ -89,6 +89,10 @@ func plantScripts(t *testing.T, root string) {
 	}
 }
 
+// allowedRepo is a repo the fixture roster admits. Tests that must keep the executed-process
+// count at exactly zero pass it explicitly, so the repo is never resolved by shelling out.
+const allowedRepo = "medici-finance/assay"
+
 func happyReplies(worktree string) []reply {
 	return []reply{
 		{match: "remote get-url origin", stdout: "git@github.com:medici-finance/assay.git"},
@@ -262,8 +266,15 @@ func TestHumanGatedItemWithoutASpecIsRefused(t *testing.T) {
 	plantScripts(t, root)
 	s.replies = happyReplies("/private/tmp/worker-home")
 
-	if rc := run([]string{"item-1", "--root", root, "--gate-human"}); rc != deskkit.ExitRefused {
+	if rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--gate-human"}); rc != deskkit.ExitRefused {
 		t.Fatalf("gate-human without --brief rc = %d, want %d", rc, deskkit.ExitRefused)
+	}
+	// The exit code alone is NOT the property. Asserting only on it is what let this
+	// refusal sit downstream of the claim: it exited 5 with the item wedged behind a claim
+	// nobody would release and a worktree leaked, and still read as a pass.
+	if len(s.calls) != 0 {
+		t.Fatalf("the refusal came AFTER %d child process(es) ran: %v — a caller-flag mistake must cost "+
+			"nothing durable", len(s.calls), s.calls)
 	}
 }
 
@@ -275,10 +286,100 @@ func TestMalformedModelSlugIsRefusedBeforeAnythingIsClaimed(t *testing.T) {
 	plantScripts(t, root)
 	s.replies = happyReplies("/private/tmp/worker-home")
 
-	rc := run([]string{"item-1", "--root", root, "--model", "Not A Slug",
+	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--model", "Not A Slug",
 		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("malformed model slug rc = %d, want %d", rc, deskkit.ExitRefused)
+	}
+	// The name of this test claims "before anything is claimed", so that is what it must
+	// assert. Checking only the exit code let the stamp validation live at step 5, where a
+	// refusal already had a held claim and a built worktree behind it.
+	if len(s.calls) != 0 {
+		t.Fatalf("the refusal came AFTER %d child process(es) ran: %v — nothing may be claimed or created "+
+			"before the caller's own flags are known good", len(s.calls), s.calls)
+	}
+}
+
+// TestNoCallerPreconditionIsCheckedAfterTheClaim is the CLASS-CLOSER for the wedged-item
+// defect, and it is deliberately a table rather than one more single case.
+//
+// THE DEFECT IT CLOSES. Two caller-flag validations — the model slug and the
+// --gate-human/--brief pairing — lived inside the steps that consumed them, at positions 5
+// and 4. Both refused with exit 5, which looked correct, but by then step 1 had taken the
+// DURABLE cross-machine claim and step 2 had created a worktree, and neither was released.
+// The item was then permanently wedged: every retry, including the operator's corrected
+// re-run, was told "already claimed by a LIVE holder" until a human hand-deleted the ref.
+// A mistyped flag cost an item nobody could pick up.
+//
+// WHY A TABLE. The two found instances were not special; they were whatever happened to be
+// checked late. The property that actually matters is universal — no caller-controlled
+// precondition may be decided after durable state exists — so the test enumerates every
+// such input and asserts the same thing about each: the process count is ZERO. A new flag
+// validated in the wrong place fails here on the day it is added, rather than on the day it
+// wedges an item.
+//
+// Each case passes --repo so the repo is not resolved by shelling out to git: that read is
+// harmless, but keeping the expected count at exactly zero makes the assertion exact
+// instead of "zero except the ones we decided were fine".
+func TestNoCallerPreconditionIsCheckedAfterTheClaim(t *testing.T) {
+	cases := []struct {
+		why  string
+		args []string
+	}{
+		{"an item key that would be read as a flag", []string{"--force"}},
+		{"an item key with a parent-directory segment", []string{"../escape"}},
+		{"a tier outside the closed vocabulary", []string{"item-1", "--tier", "medium"}},
+		{"a kit this binary does not carry", []string{"item-1", "--kit", "nonesuch"}},
+		{"a malformed model slug", []string{"item-1", "--model", "Not A Slug"}},
+		{"a model slug that is empty after trimming", []string{"item-1", "--model", "   x  y  "}},
+		{"--gate-human with no specification", []string{"item-1", "--gate-human"}},
+		{"a branch name the worktree verb would refuse", []string{"item-1", "--branch", "-dash-leading"}},
+		{"a branch name containing a parent-directory segment", []string{"item-1", "--branch", "feat/../x"}},
+		{"--prompt-file under a directory that does not exist", []string{"item-1", "--prompt-file", "/nonexistent-dir-for-test/p.md"}},
+	}
+	for _, c := range cases {
+		t.Run(c.why, func(t *testing.T) {
+			s := &stub{}
+			_, root := s.install(t)
+			plantScripts(t, root)
+			s.replies = happyReplies("/private/tmp/worker-home")
+
+			args := append([]string{}, c.args...)
+			args = append(args, "--root", root, "--repo", allowedRepo)
+			rc := run(args)
+			if rc == deskkit.ExitOK {
+				t.Fatalf("%s was ACCEPTED (rc=0) — it must be refused", c.why)
+			}
+			if len(s.calls) != 0 {
+				t.Fatalf("%s was rejected only AFTER %d child process(es) ran: %v — by then the claim is "+
+					"held and the worktree exists, so the item is wedged and the tree leaked",
+					c.why, len(s.calls), s.calls)
+			}
+		})
+	}
+}
+
+// A human-gated item whose decision script is missing must also refuse before the claim:
+// the gate's precondition is knowable from disk, so paying for it with a wedged item is
+// the same defect wearing different clothes.
+func TestMissingDecisionScriptRefusesBeforeTheClaim(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	// Plant ONLY the claim script, so the decision script is the single thing missing.
+	if err := os.MkdirAll(filepath.Join(root, "tools"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(claimScriptRel)), []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s.replies = happyReplies("/private/tmp/worker-home")
+
+	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--gate-human", "--brief", "spec.md"})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("missing decision script rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+	if len(s.calls) != 0 {
+		t.Fatalf("the refusal came after %d child process(es): %v", len(s.calls), s.calls)
 	}
 }
 

@@ -2957,6 +2957,31 @@ completed. Every other exit names what stopped it: `deskboot` names the step, `d
 names the condition. There is no partial success, no override flag on any of the three, and
 no path that degrades a could-not-check into a pass.
 
+**Nothing durable is created before the caller's own flags are known good.**
+`deskdispatch` validates every caller-controlled precondition — item key, tier, kit, repo,
+branch, model slug, the `--gate-human`/`--brief` pairing, the wrapped scripts' presence, the
+`--prompt-file` destination — in one place, `validateCallerPreconditions`, which runs BEFORE
+the claim. The placement is a correctness property, not tidiness: a refusal raised after the
+claim exists does not merely fail, it WEDGES the item, because the durable claim stays held
+by a dispatcher that never dispatched and every later attempt is told the item is already
+claimed. A mistyped flag must cost a refusal, not an item nobody can pick up until a human
+deletes a ref by hand. `TestNoCallerPreconditionIsCheckedAfterTheClaim` drives the whole
+table of bad inputs and asserts that *zero* processes ran.
+
+**`deskflip` re-reads the verdicts, not just the head, before it mutates.** A head re-read
+catches a push. It does not catch a `Security-Review: fail`, because a retraction is a
+review event posted at the *same* head — so a head-only re-read reports "still current" and
+flips over a live withdrawal. Both gates re-run against a freshly read review list
+immediately before the mutation.
+
+**An already-ready PR gets a pure no-op, or a full re-gate — never an ungated relabel.**
+Writing `approval-needed` is not bookkeeping: it asserts to everyone reading the queue that
+the review lane is finished and only a merge is outstanding. On a PR that is no longer a
+draft that can be false (a human flipped it by hand; it was pushed to since and now carries
+a standing `CHANGES_REQUESTED`). So when the label is already correct nothing is read
+further and nothing is written; when the label needs changing, that write runs the same gate
+as a flip and is refused by name if any condition fails.
+
 **`deskflip` and the App-identity write path.** `deskpost ready` remains the way a flip is
 recorded under the reviewer App's own identity, and it re-verifies the same preconditions
 in-tool with its own credentials. `deskflip` is the **role-gated** LAND adapter for a loop

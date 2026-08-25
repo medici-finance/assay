@@ -23,9 +23,16 @@
 // bureaucracy: a flip issued by a session that did not watch the review is a flip whose
 // preconditions nobody was tracking as they changed.
 //
-// TOCTOU. GitHub's ready mutation has no compare-and-swap, so the head is re-read
-// immediately before the flip. A head that moved during the checks means the verified
-// state is stale, and a stale verification is refused rather than acted on.
+// TOCTOU. The ready mutation has no compare-and-swap, so the state is re-read immediately
+// before the flip — the head AND the reviewer verdicts. A head that moved means the
+// verified state is stale. An unchanged head is NOT sufficient on its own: a
+// `Security-Review: fail` is a retraction posted at the SAME head, so a head-only re-read
+// would report "still current" and flip over a live withdrawal.
+//
+// ALREADY-READY PRs. The flip is idempotent, but the LABEL write is not bookkeeping — it
+// asserts to everyone reading the queue that the review lane is done with this PR. So a PR
+// already out of draft gets a pure no-op when its label is already correct, and a FULL
+// re-gate before the label is written when it is not.
 //
 // RELATIONSHIP TO THE APP-IDENTITY WRITE PATH. This verb performs the mutation with the
 // ambient forge CLI, as the operator running the loop. Where a flip must be recorded under
@@ -67,8 +74,10 @@ nothing is mutated:
   security-verdict  on a RISK-CLASSED PR (a public repo is always one), an App review at
                     the CURRENT head carries the literal Security-Review: pass line. An
                     explicit fail at head blocks the flip whether risk-classed or not.
-  head-stable       the head is re-read immediately before the mutation; if it moved
-                    during the checks, the verified state is stale — refuse.
+  head-stable       the head AND the reviewer verdicts are re-read immediately before the
+                    mutation. A moved head means the verified state is stale; an unchanged
+                    head is not enough on its own, because a security verdict can be
+                    RETRACTED at the same head while the checks above were running.
 
 ON PASS it performs the ready mutation and swaps the queue-legibility labels: the PR stops
 reading as waiting on the review lane and starts reading as waiting on the human.
