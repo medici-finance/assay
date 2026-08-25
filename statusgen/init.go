@@ -4,23 +4,82 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
+// initStreamPlaceholder is the token every scaffold template uses where the
+// starter stream's identity belongs. runInit substitutes it once, so the
+// identity is chosen in ONE place and cannot drift between the stream
+// directory, its frontmatter, the brief id and the register examples.
+const initStreamPlaceholder = "{{stream}}"
+
+// initFallbackStream is the identity used only when the target directory's name
+// sanitises to nothing (e.g. a root named "/" or "---"). It is deliberately the
+// historical literal: a name we cannot derive is better than one we invent.
+const initFallbackStream = "example"
+
+// initStreamName derives the starter stream's identity from the TARGET REPO's
+// directory name, sanitised to the lowercase [a-z0-9-] identity shape statusgen
+// accepts (the stream name must equal its directory name, and brief ids are
+// `<stream>/NN`).
+//
+// Why derive rather than hardcode: scaffolding every repo with the same literal
+// identity makes any two freshly-init'd repos COLLIDE by construction, and a
+// duplicate stream identity across roots is a hard error in a multi-root run —
+// so the out-of-the-box scaffold would break the very feature it is scaffolding
+// for. Deriving from the directory name is not a uniqueness proof (two repos can
+// share a basename), but it removes the guaranteed collision, and the multi-root
+// pre-pass still catches the residue.
+//
+// The reserved register names are avoided because a stream directory called
+// `findings`/`intake` is skipped by stream discovery — the scaffold would then
+// resolve to zero streams and fail lint.
+func initStreamName(root string) string {
+	base := root
+	if abs, err := filepath.Abs(root); err == nil {
+		base = abs
+	}
+	var b strings.Builder
+	for _, r := range strings.ToLower(filepath.Base(base)) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			continue
+		}
+		// Collapse any run of unacceptable runes into a single separator.
+		if s := b.String(); s != "" && !strings.HasSuffix(s, "-") {
+			b.WriteByte('-')
+		}
+	}
+	name := strings.Trim(b.String(), "-")
+	if name == "" {
+		return initFallbackStream
+	}
+	if reservedRegisterNames[name] {
+		return name + "-stream"
+	}
+	return name
+}
+
 // runInit scaffolds the streams structure a repo needs to adopt the methodology:
-// the registers, a streams README, one example stream + brief, a CI workflow, and
+// the registers, a streams README, one starter stream + brief, a CI workflow, and
 // the day-one agent-instruction files (CLAUDE.md + AGENTS.md) carrying the ten
 // universal invariants and the adopter CI recipe.
 // It NEVER overwrites an existing file — each target is created only if absent, so
 // running it in a partially-set-up repo fills the gaps without clobbering work.
 // After scaffolding it prints next steps. `statusgen init --root DIR` targets DIR.
+//
+// The starter stream is named after the target directory (see initStreamName), so
+// two freshly-init'd repos do not collide when a later run boards them together.
 func runInit(root string) int {
+	stream := initStreamName(root)
+	streamDir := "docs/streams/" + stream
 	files := []struct{ path, body string }{
 		{"docs/streams/README.md", initStreamsReadme},
 		{"docs/streams/FINDINGS.md", initFindings},
 		{"docs/streams/INTAKE.md", initIntake},
 		{"docs/streams/RETRO.md", initRetro},
-		{"docs/streams/example/README.md", initExampleStream},
-		{"docs/streams/example/brief-01-first-brief.md", initExampleBrief},
+		{streamDir + "/README.md", initExampleStream},
+		{streamDir + "/brief-01-first-brief.md", initExampleBrief},
 		{".assay-versions", initAssayVersions},
 		{".github/workflows/assay-statusgen.yml", initWorkflow},
 		{"CLAUDE.md", initClaudeMd},
@@ -40,7 +99,8 @@ func runInit(root string) int {
 			fmt.Fprintln(os.Stderr, "statusgen init:", err)
 			return 1
 		}
-		if err := os.WriteFile(abs, []byte(f.body), 0o644); err != nil {
+		body := strings.ReplaceAll(f.body, initStreamPlaceholder, stream)
+		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
 			fmt.Fprintln(os.Stderr, "statusgen init:", err)
 			return 1
 		}
@@ -57,7 +117,7 @@ func runInit(root string) int {
 		fmt.Println("\nNothing to create — the streams structure is already in place.")
 		return 0
 	}
-	fmt.Print(initNextSteps)
+	fmt.Print(strings.ReplaceAll(initNextSteps, initStreamPlaceholder, stream))
 	return 0
 }
 
@@ -69,7 +129,7 @@ Append-only registers live alongside: ` + "`FINDINGS.md`" + ` (knowledge that in
 brief) and ` + "`INTAKE.md`" + ` (raw ideas).
 
 ` + "`statusgen`" + ` reads these to generate the ` + "`STATUS.md`" + ` board and to lint the set in CI.
-See the ` + "`example/`" + ` stream for the shape; delete it once you have your own.
+See the ` + "`{{stream}}/`" + ` stream for the shape; delete it once you have your own.
 `
 
 const initFindings = `# Findings
@@ -81,7 +141,7 @@ contiguity is enforced by statusgen; withdrawal is a tombstone entry, never dele
 
 Delete this example. A real finding records what was learned and which briefs it affects.
 
-Affects: example/brief-01
+Affects: {{stream}}/brief-01
 Resolved: yes
 `
 
@@ -93,7 +153,7 @@ Front door for raw ideas. Same append-only + sequence rules as FINDINGS.
 
 Delete this example. A real entry captures an idea and its disposition.
 
-Disposition: scoped → example
+Disposition: scoped → {{stream}}
 `
 
 const initRetro = `# Retro — cadence retrospective
@@ -117,13 +177,13 @@ the one process change (or "none"), with links.
 `
 
 const initExampleStream = `---
-stream: example
+stream: {{stream}}
 status: active
 priority: P2
 track: platform
 ---
 
-# Example Stream
+# {{stream}}
 
 A starter stream so the board renders and lint passes. Replace it with your own work,
 then delete this directory.
@@ -142,7 +202,7 @@ Brief 01 is standalone.
 `
 
 const initExampleBrief = `---
-brief: example/01
+brief: {{stream}}/01
 title: Your first brief
 why: A worked example so the board renders and lint passes. Replace it with a real brief
   whose motivation a non-engineer could justify in one to three lines.
@@ -155,7 +215,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v1
 authored: 2026-01-01 by statusgen init
-sources: ["example"]
+sources: ["{{stream}}"]
 ---
 
 # Brief 01 — Your first brief
@@ -404,7 +464,7 @@ Scaffolded the streams structure. Next:
      refuses on a placeholder line, so this is the one required bootstrap step.
   2. Lint the set:         statusgen --root . --lint
   3. Generate the board:   statusgen --root .          writes STATUS.md at the repo root
-  4. Replace docs/streams/example/ with your own stream, then delete it.
+  4. Replace docs/streams/{{stream}}/ with your own stream, then delete it.
   5. Commit .github/workflows/assay-statusgen.yml — the two-half single-writer CI
      is already bootstrap-safe (porcelain STATUS.md guard, [skip-status-regen] marker).
   6. Fill in the "This repo's bindings" section of the scaffolded CLAUDE.md. The

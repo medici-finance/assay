@@ -124,13 +124,27 @@ func rootRepo(streams []*Stream) (string, []string) {
 // owns a stream and every downstream number is then attributed to the wrong
 // repo.
 //
+// It returns the problems AND the set of roots each problem implicates. Both
+// halves are load-bearing:
+//
+//   - Every message names the colliding identity and BOTH root paths. "stream X
+//     is duplicated" without the paths leaves the reader grepping two repos for
+//     which pair actually clashes.
+//   - The implicated set lets the driver quarantine exactly the colliding roots
+//     and still board the innocent ones. Failing every root over a collision
+//     between two of them is the wrong blast radius: an uninvolved root's board
+//     silently stops being regenerated while still looking current on disk,
+//     which is the same invisible-staleness failure the ownership rule exists to
+//     prevent.
+//
 // Roots that fail to LOAD are skipped here on purpose: the per-root pipeline
 // reports load errors with full context, and reporting them twice would make an
 // unreadable root look like two separate faults.
-func crossRootProblems(roots []string) []string {
-	var problems []string
+func crossRootProblems(roots []string) (problems []string, implicated map[string]bool) {
+	implicated = map[string]bool{}
 	ownerOfStream := map[string]string{} // stream name → first root that defined it
 	ownerOfRepo := map[string]string{}   // declared repo → first root that declared it
+	clash := func(a, b string) { implicated[a], implicated[b] = true, true }
 	for _, root := range roots {
 		streams, _, err := loadStreams(root)
 		if err != nil {
@@ -141,6 +155,7 @@ func crossRootProblems(roots []string) []string {
 				problems = append(problems, fmt.Sprintf(
 					"stream %q is defined under two roots (%s and %s) — a stream lives in exactly one repo; move or rename one, never let both boards claim it",
 					s.Name, prev, root))
+				clash(prev, root)
 				continue
 			}
 			ownerOfStream[s.Name] = root
@@ -153,10 +168,21 @@ func crossRootProblems(roots []string) []string {
 			problems = append(problems, fmt.Sprintf(
 				"repo %q is declared by two roots (%s and %s) — each root is a distinct repo; fix the repo: frontmatter",
 				repo, prev, root))
+			clash(prev, root)
 			continue
 		}
 		ownerOfRepo[repo] = root
 	}
 	sort.Strings(problems)
-	return problems
+	return problems, implicated
+}
+
+// quarantinedRootMsg is the line printed in place of a root the pre-pass
+// quarantined. It says the thing a bare PROBLEM above it does not: this root's
+// STATUS.md was NOT regenerated, so whatever is on disk is now stale while
+// looking exactly as current as any other board.
+func quarantinedRootMsg(root string) string {
+	return fmt.Sprintf(
+		"statusgen: root %s is quarantined by a cross-root ownership problem above — its STATUS.md was NOT regenerated and is now STALE (an untouched board looks current); fix the collision and re-run",
+		root)
 }

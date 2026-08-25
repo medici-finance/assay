@@ -158,7 +158,11 @@ Rules, all of them load-bearing:
 - **A stream lives in exactly one repo.** The same stream name under two roots
   is an authoring error and a **hard error** — never a silent merge. A silent
   merge would let one repo's rows overwrite another's, and a stream quietly
-  vanishing from Next-up is invisible by construction.
+  vanishing from Next-up is invisible by construction. The message names the
+  colliding stream **and both root paths**; only the colliding roots fail (see
+  the transactionality rule below). `statusgen init` names its starter stream
+  after the target repo's directory, so two freshly scaffolded repos do not
+  collide before their owners have authored anything.
 - **Everything derived is per-root.** Findings, intake alarms, awaiting ages,
   per-brief staleness, Next-up counts, register integrity, the word-budget
   check and the link/register-ref lint all read *that root's* registers,
@@ -181,13 +185,19 @@ Rules, all of them load-bearing:
   enumerate configured roots, not successful ones — this line is how a
   partially-failed run is legible at a glance. It counts roots that exited 0, and
   does not distinguish "could not load" from "read fine, found problems".
-- **Multi-root writes are not transactional.** Ownership problems (a duplicate
-  stream name across roots) are caught in a pre-pass and write *nothing*. Any
-  other failure is per-root: with a good first root and a failing second, the
-  first root's `STATUS.md` has already been rewritten when the run exits
-  non-zero. That is intended — root A's board is correct for root A — but it
-  means a failed multi-root run can leave updated boards behind. Re-run after
-  fixing; do not assume a non-zero exit means nothing was written.
+- **Multi-root writes are not transactional, and failure is per-root.**
+  Ownership problems (a duplicate stream name or a duplicate `repo:` across
+  roots) are caught in a pre-pass, which **quarantines only the colliding
+  roots**: their boards are deliberately left untouched, every uninvolved root
+  is boarded normally, and the run still exits non-zero. Each quarantined root
+  gets its own stderr line saying its `STATUS.md` was **not** regenerated and is
+  now stale — an untouched board looks exactly as current as a fresh one, so the
+  staleness has to be stated rather than inferred. Any other failure is per-root
+  too: with a good first root and a failing second, the first root's `STATUS.md`
+  has already been rewritten when the run exits non-zero. That is intended —
+  root A's board is correct for root A — but it means a failed multi-root run
+  can leave updated boards behind. Re-run after fixing; do not assume a non-zero
+  exit means nothing was written.
 - **A root that resolves to zero streams is a hard PROBLEM, not a silent
   pass.** A `docs/streams` that exists and reads cleanly but has
   no stream subdirectories (or only `findings`/`intake` registers) looks
