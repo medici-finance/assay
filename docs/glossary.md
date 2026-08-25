@@ -120,8 +120,7 @@ claim read is unavailable the batch is an unfiltered superset and says so. See
 
 A `.assay-versions` line naming the exact released tag (and sha256) of a tool a repo
 depends on, so a reviewer can see a tool-source change in the diff instead of it
-happening silently underneath a workflow. See `distribution.md` (internal, pending a
-public-safe rewrite).
+happening silently underneath a workflow. See [`distribution.md`](./distribution.md).
 
 ## positive control
 
