@@ -31,6 +31,9 @@ it on day one.
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `reviewloop` | `plan` — pr-review-desk's BOARD REACTOR: classifies a `deskboard` sweep against an action table derived from deskboard's own ACTION constants, coalesces outward verbs on `(repo, pr, head, verb)`, and answers the #79 idle question in THREE states. Not a drain: it does not link `internal/loopengine` | read-only (spawns nothing, writes nothing, makes no GitHub call) | no |
+| `deskboot` | `<role>` — the adapter verb for a loop's BOOT seam: loop identity, worktree prune + lock, roster register, envelope preflight, token-mint proof, board summary. Fails closed with the step NAMED | local-only (delegates every step to the verb that owns it) | no |
+| `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
+| `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
 | `deskpost` | `review`, `comment`, `ready` — as the reviewer App | outward write | yes |
 | `deskpr` | `create` (draft-only), `update` (follow-up push) | outward write | yes |
 | `deskreply` | PR reply comment under the **worker** identity | outward write | yes |
@@ -2912,6 +2915,71 @@ field name onto the canonical fields, so `deskclaim list` and `deskroster list` 
 claim regardless of which writer wrote it. `loopengine.Claim/ReleaseClaim` are thin delegates
 over `deskkit.Acquire/Release` (Kind=`dispatch`), so the verifyloop/worker-desk dispatch
 paths keep their exact behaviour on the shared primitive.
+
+## The adapter layer — `deskboot`, `deskdispatch`, `deskflip`
+
+Three verbs sit between a desk loop and the tools it drives. Each corresponds to one seam
+in the drain engine's contract — the pre-loop **boot**, the per-item **Dispatch**, the
+per-result **Land** — and each replaces a block of operating prose that used to be carried,
+and re-interpreted, once per desk role.
+
+```bash
+deskboot <role>        [--root DIR] [--repo OWNER/NAME] [--quiet] [--dry-run]
+deskdispatch <item>    [--tier strong|any] [--kit worker|review|verifier] [--prompt-file F] …
+deskflip <N>           [--repo OWNER/NAME] [--quiet] [--dry-run]
+```
+
+**Why verbs and not prose.** The boot ceremony ran to 40–90 lines in each of five role
+skills; the per-item dispatch ceremony to about 150; the flip conditions were narrated
+rather than checked. Five copies of one procedure drift, and a condition that is narrated
+is a condition someone re-derives by hand under time pressure. The repeatability aim is
+that **two sessions running the same desk behave identically because the machinery is
+computed, not re-interpreted** — after which the prose holds only judgment calls and
+rulings.
+
+**They are ADAPTERS, not engine hooks.** A loop's `Dispatch`/`Land` implementation calls
+them; they do not extend the engine's contract, and they never import its Go API. Desk
+skills and desk sessions bind to this **CLI surface**. That is the dependency direction that
+ends prose-vs-binary drift — prose → CLI → engine — and it is what lets the engine's
+internals (and even its module home) change without a rewrite anywhere else.
+
+**They WRAP, they do not re-implement.** `deskboot` delegates every step to the verb that
+owns it (`deskwt prune`, `deskroster set`/`preflight`, `desktoken`) and adds only the
+ordering, the fail-closed contract, and the named-step report. `deskdispatch` delegates the
+worktree to `deskwt add` and invokes the CONSUMER repo's own `tools/dispatch-claim.sh` and
+`tools/decision-issue.sh` — it carries no copy of either, because a second implementation of
+a claim protocol is two claim protocols, and two claim protocols dispatch the same item
+twice. Both scripts already speak the deskkit exit-code contract, so their verdicts pass
+straight through.
+
+**Fail closed, with the step or condition NAMED.** Exit 0 means the whole ceremony
+completed. Every other exit names what stopped it: `deskboot` names the step, `deskflip`
+names the condition. There is no partial success, no override flag on any of the three, and
+no path that degrades a could-not-check into a pass.
+
+**`deskflip` and the App-identity write path.** `deskpost ready` remains the way a flip is
+recorded under the reviewer App's own identity, and it re-verifies the same preconditions
+in-tool with its own credentials. `deskflip` is the **role-gated** LAND adapter for a loop
+running under an operator identity. Its reduction is deliberately **narrower-granting** than
+the write path's and never wider: a body carrying a security marker is excluded from the
+correctness lane, any `CHANGES_REQUESTED` standing at the current head blocks whatever
+followed it, and STALE and NONE are reported as different refusals because they call for
+different actions.
+
+**The prompt kits.** `cmd/deskdispatch/references/` carries `common-clauses.md` — the
+clauses EVERY dispatched agent receives, emitted ahead of the class kit on every dispatch —
+plus one kit per agent class: `worker-prompt.md`, `review-prompt.md`, `verifier-prompt.md`.
+Between them they hold the clauses each agent must receive verbatim: the home-worktree
+isolation floor, the no-evasion rule, the offline envelope and the three-state instrument
+rule in the common kit; the security-gate refusal, the per-invocation body-file rule, the
+fail-first review discipline and the Evidence format in the class kits. Splitting the shared
+half out is the point — three copies of one clause in three kits is three clauses that
+drift. They are **embedded**
+in the binary, so `deskdispatch --version` and the clause text move together and a fleet on
+one pinned release is a fleet on one set of clauses. Every clause is written GENERIC — no
+private repository name, issue reference, internal document path, item identifier, or named
+incident — and `kittext_test.go` enforces that mechanically, with a positive control so a
+matcher that stopped matching fails rather than reporting the kits clean forever.
 
 ## `deskroster preflight` — the operating-envelope check
 
