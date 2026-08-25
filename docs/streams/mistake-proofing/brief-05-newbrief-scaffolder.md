@@ -1,0 +1,161 @@
+---
+brief: mistake-proofing/05
+title: newbrief — the scaffolder as the authoring front door, so derived fields stop being typed
+why: >-
+  Every rule the earlier briefs in this stream turn into a check is a rule that still lets an author
+  make the mistake and then catches it. A generator removes the chance instead: a required key cannot
+  be forgotten if the tool emits it, a gate cannot be mis-derived if the tool asks the risk questions
+  and computes it, a wave cannot disagree with its dependencies if the tool derives it, a dependency
+  edge cannot point one way if the tool writes both ends in the same commit, and a freshness stamp
+  cannot be invented if the tool performs the fetch. That is the difference between checking work and
+  making the error impossible — and the front door is where it is cheapest to do.
+wave: 2
+depends: ["mistake-proofing/01", "mistake-proofing/02", "mistake-proofing/03"]
+unblocks: []
+effort: M
+gate: model
+risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+exec-tier: strong
+exec-tier-why: >-
+  Questions (a) and (b). The facts do not pre-specify the hardest design call: this tool is run by
+  model agents far more often than by people, so an interactive prompt is not the primary interface
+  and a defaulted answer to a risk question is exactly the silent divergence the spec says model
+  executors produce under ambiguity. Getting the non-interactive contract wrong turns the device
+  from a control into a machine for emitting confidently wrong gates. It also has to agree with
+  three other briefs' rule sets at once.
+issues: []
+schema: brief-v1
+authored: 2026-08-25 (authored for the mistake-proofing board)
+sources:
+  - "`docs/mistake-proofing.md` §4 B1: 'The brief front door SHOULD be a generator, not a blank file: every required key emitted (empty values still carry their keys), gate derived by prompting the risk questions rather than accepting a hand-written answer, wave derived from depends, the inverse unblocks: edge written into the named briefs in the same change (making graph consistency structural rather than checked), and any freshness stamp produced by a fetch the tool itself performs. Every field a generator derives is an authoring mistake that stops existing.'"
+  - "Same spec §1 — 'The executor will not ask.' Ambiguity in a specification is resolved silently and divergently by model executors, not surfaced as a question. This is the argument for the non-interactive contract in Task step 3 refusing rather than defaulting."
+  - "Same spec §5 — the adoption ladder puts B1 at step 5, last, because it is a larger build that removes whole error classes rather than checking them. This brief sits at the end of the stream for that reason, not because it matters least."
+  - "`docs/brief-rules.md` — the required frontmatter keys, the wave-from-depends rule, and the inverse-edge requirement the generator writes rather than checks."
+  - "The device inventory behind this stream (2026-08-25), cost M — names the exact seam: the existing scaffolder subcommand, and the fact that fixing it is owed work regardless of this brief. Also: 'write the inverse edge rather than check it — a scaffolder that appends the inverse into the named briefs in the same commit makes inversion structural, and there is nothing left to check.'"
+  - "The existing scaffolder is a disclosed divergence: it scaffolds a retired register dialect. This brief adds a sibling subcommand and does not inherit that defect; it also does not fix it."
+  - "freshness-checked 2026-08-25 @ 657cab1 (origin/main) — no such subcommand exists; the dispatcher's known-subcommand list names the existing subcommands and no brief generator among them."
+---
+
+# Brief 05 — The brief scaffolder as the authoring front door
+
+## Context
+
+single-point-of-failure: a generator is a **source-level** device — it prevents the malformed
+document from existing — but it has exactly one bypass, and it is the obvious one: hand-author the
+file instead. That bypass is deliberate and must stay (an author fixing a typo should not have to
+re-run a tool), which is why this brief does not remove any of the lint checks the earlier briefs
+add. The lint is the independent second layer: it fails for a different reason (reading a finished
+file) in a different component (the pull-request gate) than the generator does. Do not let a
+reviewer read this brief as licence to retire a check.
+
+files:
+- `statusgen/` (implementation home) — a new subcommand source file, its registration in the command
+  dispatcher, and tests. The existing scaffolder subcommand's source is read for its conventions
+  (never overwrite an existing file; substitute the identity in one place) but is **not** modified.
+- `plugins/assay/skills/author-brief/SKILL.md` — the authoring guidance gains a "start here"
+  pointer to the generator. Keep the addition small; the enforcement-status half of that document is
+  generated by mistake-proofing/04.
+
+facts:
+- The dispatcher already treats an unknown positional subcommand as a hard error with no writes,
+  after a measured incident where a mistyped subcommand fell through to the default **write** mode
+  and reported success. A new subcommand joins that list; it must not be reachable by fallthrough.
+- The existing scaffolder establishes two conventions worth inheriting: it **never overwrites an
+  existing file**, creating each target only if absent, and it substitutes the identity in exactly
+  one place so the name cannot drift between the directory, the frontmatter and the identifiers.
+- The existing scaffolder is also a **disclosed divergence** — it scaffolds a retired register
+  dialect. This brief adds a sibling subcommand for briefs and deliberately does not inherit or fix
+  that defect. Say so in the pull-request body so nobody reads the new subcommand as evidence the
+  old one is now correct.
+- **The gate is derived, never chosen**: any risk answer "yes" forces the human gate, and only all
+  four "no" permits the model gate. The generator must ask the four questions and compute the gate;
+  it must never accept a supplied gate value. A risk-gated brief additionally owes a written
+  rationale, and a human-gated one owes a self-contained decision section — the generator emits both
+  as required, empty-but-present keys rather than omitting them.
+- **The wave is derived from the dependencies**: no dependencies means wave zero; otherwise one more
+  than the highest wave among the named dependencies. The lint already fails a brief whose declared
+  wave disagrees with its dependencies, so the generator computing it removes a checkable mistake
+  rather than adding a new rule.
+- **The inverse edge is written, not checked.** When a new brief declares a dependency, the named
+  brief's own unblocks list must gain this brief's identifier in the SAME commit. That is what makes
+  graph consistency structural: a one-way edge stops being possible instead of becoming another
+  lint. Writing into other files is the one genuinely destructive thing this tool does, so it must
+  be atomic across all targets — either every edit lands or none does — and it must refuse when a
+  named dependency does not exist rather than creating a dangling edge.
+- **The freshness stamp is produced by a fetch the tool performs.** A stamp the author types is a
+  claim about a check that may never have happened. The tool fetches, resolves the commit, and
+  stamps what it actually saw. If the fetch fails, it stamps nothing and says so — an absent stamp
+  is honest; an invented one is the defect.
+- The generator must emit a document that the CURRENT rule set accepts, which is why this brief
+  depends on the three that change the rule set: the risk cross-read (which determines what a
+  correctly-derived gate now means), the identifier dereference (which determines what the emitted
+  skeleton may name), and the row obligation classes (which determine the shape of the emitted
+  Verify table).
+
+## Ground rules
+- NEVER git push / trigger workflows. Feature branch + draft PR only.
+- Stop at `implemented` — you do not set verified/done.
+- NEVER commit `STATUS.md` on this branch (generated, single-writer = main CI).
+- If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
+
+## Task
+
+1. **Add the subcommand**, registered in the dispatcher alongside the existing positional
+   subcommands so an unknown or mistyped name still hard-errors with no writes. It takes the stream,
+   the brief number (or derives the next free one), and a title.
+2. **Emit every required key, with empty values still carrying their key.** A missing key and an
+   empty key are different states and only one of them is visible to an author reviewing the file.
+   Emit the required body sections too, in order, with the section headings present.
+3. **Derive the gate by asking the four risk questions, and refuse rather than default.** Two modes:
+   interactive, prompting each question; and non-interactive, one flag per question. **In
+   non-interactive mode an unanswered question is a refusal, not a default.** This is the most
+   important line in this brief: the tool will mostly be run by model agents, and a defaulted "no" is
+   precisely the silent divergence that produces the wrong gate. Do not accept a supplied gate value
+   under any flag.
+4. **Derive the wave from the declared dependencies**, and refuse to emit when a named dependency
+   does not exist.
+5. **Write the inverse edge into each named dependency's file in the same commit**, atomically
+   across all targets: stage every edit, verify each target parses after the edit, and write all or
+   none. Never partially update the graph.
+6. **Stamp freshness from a fetch the tool performs.** Perform the fetch, resolve the commit,
+   record what was actually observed. On fetch failure, emit no stamp and print a could-not-check —
+   never a stamp with an unverified value.
+7. **Refuse to emit an unusable Verify row.** A row whose command carries no code span, or whose code
+   span does not tokenize, or which contains an unsubstituted placeholder, is not a Verify row.
+   Reuse the tokenizer the lint already carries rather than writing a second one. The emitted
+   skeleton includes a commented reminder of the obligation classes the change's shape may owe.
+8. **Positive control, at the level the tool operates.** A test that runs the generator and asserts
+   the emitted file passes the lint clean — and, more importantly, a set of tests asserting the tool
+   REFUSES each thing it is supposed to make impossible: a supplied gate value, an unanswered risk
+   question in non-interactive mode, a dependency that does not exist, a failed fetch producing a
+   stamp, an untokenizable Verify command. A generator that emits a valid document is table stakes;
+   the refusals are the device.
+9. **Point the authoring guidance at the front door** with a short "start here" line. Do not restate
+   the field list there — that is the second-copy error class this stream is already closing.
+
+## Verify (executable — no prose-only DoD items)
+| # | Command | Expect |
+|---|---------|--------|
+| 1 | `git grep -c 'newbrief' -- statusgen/` | exit 1, no output — **DEREFERENCE, true at authoring (2026-08-25 @ `657cab1`)**: no brief generator exists. Inverts at implementation |
+| 2 | `git grep -n 'known subcommands' -- statusgen/main.go` | exit 0; the printed list names the existing subcommands and **no brief generator** — **DEREFERENCE**: the dispatcher seam is real and the new name genuinely has to be added to it |
+| 3 | `git grep -n -e 'never overwrites an existing file' -e 'only if absent' -- statusgen/init.go` | exit 0 — **DEREFERENCE**: the never-overwrite convention this brief inherits is real, not assumed |
+| 4 | `git grep -n 'tokenizeCommand' -- statusgen/verifyrows.go` | exit 0 — **DEREFERENCE**: the tokenizer to reuse ships today, so task step 7 writes no second one |
+| 5 | `go test ./statusgen/ -run 'NewBrief' -count=1` | exit 0 — the generator's tests pass |
+| 6 | `go test ./statusgen/ -run 'NewBriefRefuses' -count=1` | exit 0 — **positive control on the refusals**: a supplied gate value, an unanswered risk question in non-interactive mode, a nonexistent dependency, a failed fetch, and an untokenizable command each produce a refusal, not output |
+| 7 | `go test ./statusgen/ -run 'NewBriefInverseEdgeAtomic' -count=1` | exit 0 — the inverse edge is written into every named dependency, and a mid-write failure leaves no partial graph |
+| 8 | `go test ./statusgen/ -run 'NewBriefOutputLintsClean' -count=1` | exit 0 — a generated brief passes the lint, including the checks added by the three briefs this one depends on |
+| 9 | `git grep -c 'newbrief' -- plugins/assay/skills/author-brief/SKILL.md` | exit 0 at implementation; a small count — the guidance points at the front door without restating the field list. Zero hits today (2026-08-25 @ `657cab1`) |
+
+## Evidence
+<!-- appended at implementation time: one row per Verify item —
+     (command, exit code, output line(s) or hash, date, runner).
+     "verified" status in the stream README requires this section filled
+     by someone who did NOT implement. -->
+
+## Review
+Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the
+stream README table. Reviewer questions specific to this brief: (1) does non-interactive mode REFUSE
+an unanswered risk question rather than defaulting it, with a test proving it? (2) is there any flag
+or path by which a gate value can be supplied rather than derived? (3) is the inverse-edge write
+atomic across all targets, and does it refuse a nonexistent dependency? (4) does a failed fetch
+produce no stamp rather than an unverified one?
