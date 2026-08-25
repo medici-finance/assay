@@ -224,6 +224,89 @@ func TestUnreadableClaimIsUnverifiableNotFree(t *testing.T) {
 	}
 }
 
+// THE CONFLATION DEFECT. --root used to drive BOTH where the claim script was looked up
+// AND which checkout the worker's worktree branches from. Once the consumer scripts were
+// centralized out of the consumer repos, those two answers diverged: pointing --root at
+// the target repo failed claim-acquire (no script there, exit 6), and pointing --root at
+// the checkout that carries the script branched the worker's worktree from the WRONG
+// repo. --claim-root separates them; this test is the claim-root ≠ worktree-root case
+// that would have caught the conflation.
+func TestClaimRootDecouplesTheClaimToolFromTheWorktreeSource(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)  // the ITEM's own repo checkout: carries NO consumer scripts
+	claimRoot := t.TempDir() // the central checkout that DOES carry them
+	plantScripts(t, claimRoot)
+	s.replies = happyReplies("/private/tmp/worker-home")
+
+	promptFile := filepath.Join(t.TempDir(), "p.md")
+	rc := run([]string{"cross--stream--01", "--root", root, "--repo", allowedRepo,
+		"--claim-root", claimRoot, "--prompt-file", promptFile})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("cross-repo dispatch rc = %d, want 0 — the exact shape the conflation broke", rc)
+	}
+
+	// The claim tool that ran is the CENTRAL one, and the key/repo still reach it intact.
+	wantScript := filepath.Join(claimRoot, filepath.FromSlash(claimScriptRel))
+	claimed := false
+	for _, c := range s.calls {
+		if c[0] == wantScript && len(c) > 2 && c[1] == "acquire" {
+			claimed = true
+			if c[2] != "cross--stream--01" {
+				t.Errorf("claim key %q reached the central tool reshaped", c[2])
+			}
+		}
+		if strings.Contains(strings.Join(c, " "), filepath.Join(root, "tools")) {
+			t.Errorf("a consumer script was invoked from --root %v — the item's repo does not carry it", c)
+		}
+	}
+	if !claimed {
+		t.Fatalf("the central claim script %s was never invoked; calls: %v", wantScript, s.calls)
+	}
+	if !s.ran("deskwt add") {
+		t.Fatal("no worktree was created for the agent")
+	}
+
+	body, err := os.ReadFile(promptFile)
+	if err != nil {
+		t.Fatalf("prompt file: %v", err)
+	}
+	prompt := string(body)
+	// The worktree source the agent is told about is the ITEM's repo, never the checkout
+	// that merely carries the claim tool — an agent branched from the tool checkout
+	// recreates the work in a repo that never asked for it.
+	if !strings.Contains(prompt, "**Checkout base:** `"+root+"`") {
+		t.Errorf("the prompt's checkout base is not the item's own repo root %s", root)
+	}
+	if strings.Contains(prompt, "**Checkout base:** `"+claimRoot+"`") {
+		t.Error("the prompt names the claim-tool checkout as the base — the exact wrong-repo dispatch " +
+			"the decoupling exists to prevent")
+	}
+	// The release instruction must name the claim tool where it actually is: the agent's
+	// worktree does not carry it.
+	if !strings.Contains(prompt, wantScript+" release") {
+		t.Errorf("the prompt's release command does not name the central claim script %s", wantScript)
+	}
+}
+
+// An explicit --claim-root is AUTHORITATIVE: scripts present in --root do not rescue a
+// claim-root that lacks them. A silent fall-back would turn a mispointed flag into a
+// dispatch that only looked configured.
+func TestClaimRootWithoutTheScriptFailsClosedEvenWhenRootHasIt(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	empty := t.TempDir()
+	s.replies = happyReplies("/private/tmp/worker-home")
+
+	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--claim-root", empty})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("scriptless --claim-root rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+	if len(s.calls) != 0 {
+		t.Fatalf("the refusal came after %d child process(es): %v", len(s.calls), s.calls)
+	}
+}
+
 // No claim script means no durable claim can be taken. A machine-local lock would
 // serialise two dispatchers on ONE machine and nothing at all across two — which is the
 // case that double-dispatches — so this fails closed rather than degrading.
@@ -336,6 +419,7 @@ func TestNoCallerPreconditionIsCheckedAfterTheClaim(t *testing.T) {
 		{"a branch name the worktree verb would refuse", []string{"item-1", "--branch", "-dash-leading"}},
 		{"a branch name containing a parent-directory segment", []string{"item-1", "--branch", "feat/../x"}},
 		{"--prompt-file under a directory that does not exist", []string{"item-1", "--prompt-file", "/nonexistent-dir-for-test/p.md"}},
+		{"--claim-root naming a directory that does not exist", []string{"item-1", "--claim-root", "/nonexistent-claim-root-for-test"}},
 	}
 	for _, c := range cases {
 		t.Run(c.why, func(t *testing.T) {

@@ -37,9 +37,17 @@ var dispatchSteps = []string{
 	stepPromptEmit,
 }
 
-// claimScriptRel / decisionScriptRel are the CONSUMER-repo scripts this verb wraps. They
-// are named by path and invoked; their content is never carried here. See main.go's
+// claimScriptRel / decisionScriptRel are the consumer scripts this verb wraps. They are
+// named by path and invoked; their content is never carried here. See main.go's
 // "WRAP, NEVER RE-IMPLEMENT".
+//
+// WHERE THEY RESOLVE. Both are resolved under --claim-root when it is given, else under
+// --root. The scripts were centralized out of the consumer repos when tools/desk was
+// relocated, so the checkout that carries the TOOLS is no longer always the checkout the
+// item belongs to. The claim itself does not move with the script: it is a ref in the
+// TARGET repo (--repo), created via the forge API by the script from wherever the script
+// sits — so decoupling the script's location from the worktree source changes which FILE
+// runs and nothing about where the claim durably lands.
 const (
 	claimScriptRel    = "tools/dispatch-claim.sh"
 	decisionScriptRel = "tools/decision-issue.sh"
@@ -67,6 +75,7 @@ type dispatchOpts struct {
 	kit        string
 	repo       string
 	root       string
+	claimRoot  string
 	model      string
 	branch     string
 	brief      string
@@ -84,6 +93,9 @@ func cmdDispatch(args []string) error {
 	kit := fs.String("kit", "worker", "prompt kit for the dispatched agent class: "+joinKits())
 	repo := fs.String("repo", "", "owner/name the item belongs to (default: derived from --root's origin)")
 	root := fs.String("root", ".", "the ITEM's own repo root — the checkout the worktree is cut from")
+	claimRoot := fs.String("claim-root", "", "the checkout carrying the consumer claim/decision scripts, when the "+
+		"item's own repo does not (default: --root). The claim still lands in --repo's own ref namespace — this "+
+		"names only where the TOOL lives, never where the worktree is cut from")
 	model := fs.String("model", "", "lowercase slug of the model being launched, for the dispatcher's attestation stamp")
 	branch := fs.String("branch", "", "branch name for the agent's worktree (default: derived from the item key)")
 	brief := fs.String("brief", "", "path to the item's specification file, for the decision-issue gate and the prompt")
@@ -108,8 +120,8 @@ func cmdDispatch(args []string) error {
 	}
 
 	o := dispatchOpts{
-		item: item, tier: *tier, kit: *kit, repo: *repo, root: *root, model: *model,
-		branch: *branch, brief: *brief, gateHuman: *gateHuman, pr: *pr,
+		item: item, tier: *tier, kit: *kit, repo: *repo, root: *root, claimRoot: *claimRoot,
+		model: *model, branch: *branch, brief: *brief, gateHuman: *gateHuman, pr: *pr,
 		promptFile: *promptFile, quiet: *quiet, dryRun: *dryRun,
 	}
 	err := dispatch(o)
@@ -133,7 +145,7 @@ func dispatch(o dispatchOpts) error {
 		for i, s := range dispatchSteps {
 			fmt.Printf("  %d %s\n", i+1, s)
 		}
-		prompt, perr := assemblePrompt(o, repo, branch, "")
+		prompt, perr := assemblePrompt(o, plan, "")
 		if perr != nil {
 			return perr
 		}
@@ -142,7 +154,7 @@ func dispatch(o dispatchOpts) error {
 
 	// 1 — the durable claim, FIRST. Everything after this is work a second dispatcher
 	// must not also be doing.
-	if err := stepClaim(o, repo); err != nil {
+	if err := stepClaim(o, repo, plan.claimScript); err != nil {
 		return err
 	}
 	o.say("%s OK: %s claimed in %s", stepClaimAcquire, o.item, repo)
@@ -168,7 +180,7 @@ func dispatch(o dispatchOpts) error {
 	}
 	o.say("%s OK: %s on %s", stepWorktreeCreate, home, branch)
 
-	prompt, perr := assemblePrompt(o, repo, branch, home)
+	prompt, perr := assemblePrompt(o, plan, home)
 	if perr != nil {
 		return perr
 	}
@@ -177,7 +189,7 @@ func dispatch(o dispatchOpts) error {
 	o.say("%s %s", stepRosterRegister, stepRoster(o, repo))
 
 	// 4 — the human-decision gate.
-	gate, gerr := stepDecision(o, repo)
+	gate, gerr := stepDecision(o, repo, plan.decisionScript)
 	if gerr != nil {
 		return gerr
 	}
@@ -201,6 +213,11 @@ type dispatchPlan struct {
 	repo   string
 	branch string
 	wtName string
+	// claimScript / decisionScript are the RESOLVED consumer-script paths (under
+	// --claim-root when given, else --root), derived once here so the presence check and
+	// the invocation cannot drift onto two different files.
+	claimScript    string
+	decisionScript string
 }
 
 // validateCallerPreconditions checks EVERY caller-controlled precondition, and it runs
@@ -294,6 +311,29 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 				"that does.", stepWorktreeCreate, o.item))
 	}
 
+	// The consumer scripts' HOME. --root is the ITEM's repo and stays the worktree source;
+	// --claim-root exists because the scripts were centralized out of the consumer repos,
+	// so a cross-repo dispatch needs "where the claim tool lives" and "which checkout the
+	// worker branches from" to be two different answers. An explicit --claim-root is
+	// AUTHORITATIVE — there is no silent fall-back to --root, because a fall-back would
+	// turn a mispointed flag into a dispatch that only looked configured.
+	scriptsRoot := o.root
+	if s := strings.TrimSpace(o.claimRoot); s != "" {
+		abs := s
+		if a, err := filepath.Abs(s); err == nil {
+			abs = a
+		}
+		fi, err := os.Stat(abs)
+		if err != nil || !fi.IsDir() {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --claim-root %q is not a directory this verb can read — it must name the checkout "+
+					"that carries %s.", stepClaimAcquire, s, claimScriptRel))
+		}
+		scriptsRoot = abs
+	}
+	plan.claimScript = filepath.Join(scriptsRoot, filepath.FromSlash(claimScriptRel))
+	plan.decisionScript = filepath.Join(scriptsRoot, filepath.FromSlash(decisionScriptRel))
+
 	// The human-decision gate's own preconditions: the flag pairing AND the script's
 	// presence. Both are knowable now, and both used to be discovered at step 4.
 	if o.gateHuman {
@@ -302,21 +342,22 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 				"step %s: --gate-human needs --brief <path> — the decision issue's content is DERIVED from "+
 					"the item's own specification, never invented by the dispatcher.", stepDecisionGate))
 		}
-		if _, err := os.Stat(filepath.Join(o.root, filepath.FromSlash(decisionScriptRel))); err != nil {
+		if _, err := os.Stat(plan.decisionScript); err != nil {
 			return plan, deskkit.Unverifiable(fmt.Sprintf(
 				"step %s: %s is not present in %s, so the human-decision gate cannot be ensured. Dispatching "+
 					"a human-gated item with nothing in front of the human is the failure this gate exists to "+
-					"close.", stepDecisionGate, decisionScriptRel, o.root), err)
+					"close.", stepDecisionGate, decisionScriptRel, scriptsRoot), err)
 		}
 	}
 
 	// The claim script's presence is knowable now too. stepClaim keeps its own check —
 	// it is the step that must not proceed without one — but finding it missing here costs
 	// nothing and keeps the "no durable state before this returns" invariant total.
-	if _, err := os.Stat(filepath.Join(o.root, filepath.FromSlash(claimScriptRel))); err != nil {
+	if _, err := os.Stat(plan.claimScript); err != nil {
 		return plan, deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: %s is not present in %s, so no durable claim can be taken. A claim this verb cannot "+
-				"place is NOT permission to proceed.", stepClaimAcquire, claimScriptRel, o.root), err)
+				"place is NOT permission to proceed%s.", stepClaimAcquire, claimScriptRel, scriptsRoot,
+			claimRootHint(o)), err)
 	}
 
 	// --prompt-file's directory. The prompt is written LAST, so an unwritable destination
@@ -347,14 +388,17 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 // contention this asks the script who holds it and prints the answer: a dispatcher that
 // only says "refused" sends a human to go and find out by hand, and a dispatcher that
 // STEALS turns a coordination failure into two agents on one branch.
-func stepClaim(o dispatchOpts, repo string) error {
-	script := filepath.Join(o.root, filepath.FromSlash(claimScriptRel))
+// The script runs with the ITEM's checkout as its working directory even when the script
+// FILE resolves under --claim-root: the target repo is always passed explicitly via
+// --repo, and any cwd-derived fallback inside the script should resolve to the item's
+// repo, never to the checkout that merely happens to carry the tool.
+func stepClaim(o dispatchOpts, repo, script string) error {
 	if _, err := os.Stat(script); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: %s is not present in %s, so no durable claim can be taken. A claim this verb cannot "+
+			"step %s: %s is not present, so no durable claim can be taken. A claim this verb cannot "+
 				"place is NOT permission to proceed — a machine-local lock would serialise two dispatchers "+
 				"on one machine and nothing at all across two, which is the case that double-dispatches.",
-			stepClaimAcquire, claimScriptRel, o.root), err)
+			stepClaimAcquire, script), err)
 	}
 	args := []string{"acquire", o.item, "--repo", repo}
 	if o.branch != "" {
@@ -413,11 +457,10 @@ func stepRoster(o dispatchOpts, repo string) string {
 // Its caller-controlled preconditions — the --gate-human/--brief pairing and the script's
 // presence — are validated in validateCallerPreconditions, before the claim exists. What
 // remains here is only what running the script can tell us.
-func stepDecision(o dispatchOpts, repo string) (string, error) {
+func stepDecision(o dispatchOpts, repo, script string) (string, error) {
 	if !o.gateHuman {
 		return "SKIPPED: item is not human-gated", nil
 	}
-	script := filepath.Join(o.root, filepath.FromSlash(decisionScriptRel))
 	r := runCmd(o.root, script, "ensure", o.brief, "--repo", repo, "--at", "start")
 	if r.err != nil {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
@@ -482,6 +525,17 @@ func validTier(t string) bool {
 		}
 	}
 	return false
+}
+
+// claimRootHint names the way out of a missing-claim-script failure when no --claim-root
+// was given: the scripts were centralized, so the target repo lacking them is the
+// EXPECTED cross-repo shape, not a broken checkout.
+func claimRootHint(o dispatchOpts) string {
+	if strings.TrimSpace(o.claimRoot) != "" {
+		return ""
+	}
+	return " — if the item's repo does not carry the consumer scripts (they are centralized), " +
+		"point --claim-root at the checkout that does; --root stays the item's own repo"
 }
 
 // sanitizeSegment reduces an item key to one filesystem/branch-safe segment.

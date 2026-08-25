@@ -2941,7 +2941,7 @@ and re-interpreted, once per desk role.
 
 ```bash
 deskboot <role>        [--root DIR] [--repo OWNER/NAME] [--quiet] [--dry-run]
-deskdispatch <item>    [--tier strong|any] [--kit worker|review|verifier] [--prompt-file F] …
+deskdispatch <item>    [--tier strong|any] [--kit worker|review|verifier] [--claim-root DIR] [--prompt-file F] …
 deskflip <N>           [--repo OWNER/NAME] [--quiet] [--dry-run]
 ```
 
@@ -2962,11 +2962,15 @@ internals (and even its module home) change without a rewrite anywhere else.
 **They WRAP, they do not re-implement.** `deskboot` delegates every step to the verb that
 owns it (`deskwt prune`, `deskroster set`/`preflight`, `desktoken`) and adds only the
 ordering, the fail-closed contract, and the named-step report. `deskdispatch` delegates the
-worktree to `deskwt add` and invokes the CONSUMER repo's own `tools/dispatch-claim.sh` and
+worktree to `deskwt add` and invokes the consumer scripts `tools/dispatch-claim.sh` and
 `tools/decision-issue.sh` — it carries no copy of either, because a second implementation of
 a claim protocol is two claim protocols, and two claim protocols dispatch the same item
 twice. Both scripts already speak the deskkit exit-code contract, so their verdicts pass
-straight through.
+straight through. The scripts are resolved under `--claim-root` when given, else under
+`--root`: the scripts were centralized out of the consumer repos, so on a cross-repo
+dispatch `--claim-root` names the checkout that carries the tools while `--root` stays the
+item's own repo — the worktree is always cut from `--root`, and the claim itself is a ref
+in the target repo (`--repo`) regardless of where the script file sits.
 
 **Fail closed, with the step or condition NAMED.** Exit 0 means the whole ceremony
 completed. Every other exit names what stopped it: `deskboot` names the step, `deskflip`

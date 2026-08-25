@@ -20,9 +20,13 @@ package main
 // a worktree of another will helpfully recreate the work in the wrong place, and the
 // result reads as real work on a repo that never asked for it.
 //
-// NO SHARED-CHECKOUT PATH EVER APPEARS HERE. A path carried in a prompt overrides every
-// isolation layer beneath it, because the agent simply uses the path it was given. The
-// only absolute path this prompt states is the agent's OWN worktree.
+// NO SHARED-CHECKOUT PATH EVER APPEARS HERE AS A PLACE TO WORK. A path carried in a
+// prompt overrides every isolation layer beneath it, because the agent simply uses the
+// path it was given. The only absolute path this prompt states as somewhere to BE is the
+// agent's OWN worktree. One narrow exception is a TOOL path: with --claim-root the claim
+// script does not exist in the agent's worktree at all, so the release command must name
+// the script where it actually is — invoked, never worked in — or the instruction is one
+// the agent cannot follow.
 
 import (
 	"fmt"
@@ -47,8 +51,11 @@ const tierClause = "If you are a fast/cheap-tier model, STOP — this item requi
 const homeUnknown = "<not created: --dry-run; the real dispatch names the path `deskwt add` printed>"
 
 // assemblePrompt builds the full prompt: assignment, then the kit's clauses verbatim.
-// home is the agent's worktree path as REPORTED by deskwt, or "" on a dry run.
-func assemblePrompt(o dispatchOpts, repo, branch, home string) (string, error) {
+// home is the agent's worktree path as REPORTED by deskwt, or "" on a dry run. The plan
+// carries the values validation derived — the repo, the branch, and the resolved claim
+// script — so the prompt states what was checked, never a re-derivation of it.
+func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, error) {
+	repo, branch := plan.repo, plan.branch
 	common, err := commonKitText()
 	if err != nil {
 		return "", err
@@ -96,7 +103,15 @@ func assemblePrompt(o dispatchOpts, repo, branch, home string) (string, error) {
 	fmt.Fprintf(&b, "```\nDESK_SESSION=<your-session> deskroster set --repo %s --pr <N> --what %q\n```\n\n",
 		shortRepo(repo), o.item)
 	b.WriteString("Release the dispatch claim once your branch is pushed — branch-as-claim takes over:\n\n")
-	fmt.Fprintf(&b, "```\n%s release %q --repo %s\n```\n", claimScriptRel, o.item, repo)
+	// With no --claim-root the script sits in the agent's own worktree, so the stable
+	// repo-relative spelling is kept (it is also machine-independent, which keeps two
+	// dispatchers' prompts byte-identical). With --claim-root the worktree does NOT carry
+	// the script, so the resolved path is stated — a tool to invoke, not a place to work.
+	releaseTool := claimScriptRel
+	if strings.TrimSpace(o.claimRoot) != "" {
+		releaseTool = plan.claimScript
+	}
+	fmt.Fprintf(&b, "```\n%s release %q --repo %s\n```\n", releaseTool, o.item, repo)
 
 	if strings.EqualFold(o.tier, "strong") {
 		fmt.Fprintf(&b, "\n%s\n", tierClause)
