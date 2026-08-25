@@ -333,6 +333,11 @@ brief by copying `docs/brief-template.md` into `docs/streams/<stream>/brief-01-<
 **every** frontmatter field — empty `sources:` or a missing `risk:` answer is a gap, not a shortcut.
 `gate` is *derived* (any `risk: yes` ⇒ `human`), never chosen.
 
+`statusgen init` also writes the day-one agent-instruction files at the target root — a `CLAUDE.md`
+carrying the ten invariants + the CI recipe + an unanswered bindings checklist, and an `AGENTS.md`
+pointing at it (see *Your own instruction file* below). Both are skipped if already present: `init`
+never overwrites, so an adopter that already has one keeps it byte-for-byte.
+
 **Verify:** `statusgen --root "$TARGET" --lint` → exit 0.
 
 ### PRIMITIVE: scaffold-registers
@@ -764,6 +769,14 @@ That half goes in your repo's own agent instruction file (`AGENTS.md`, `CLAUDE.m
 your harness reads) — a file that is **repo-local**: it documents how to work in *that* repo, and
 adopters never clone this one.
 
+**You start with a stub, not a blank page.** `scaffold-streams` (`statusgen init`) writes a
+starting `CLAUDE.md` plus an `AGENTS.md` that points at it. The stub carries the **ten invariants**
+and the **CI recipe** — the universal floor, true of every adopter, and the part that must not be
+paraphrased repo by repo — and then the bindings **checklist below, unanswered**. It is yours from
+the moment it lands: `init` never overwrites an existing file, so an edited copy always survives a
+re-run, and a repo that already has an instruction file keeps it untouched. The checklist is the
+work; filling it in is step 6 of the post-`init` next-steps.
+
 **Precedence, so drift doesn't decide it**: *the bundled skill is
 authoritative on the METHOD; your repo file on THAT REPO's mechanics. An overlap is itself the
 bug — resolve it by deleting one side, not by ranking them.*
@@ -793,10 +806,13 @@ rule the hook already injects, that is the overlap — delete it and point at th
 **Verify:** every bullet above is either answered in your instruction file or explicitly recorded
 as not-applicable; and a grep of that file for the hook's own rule text returns nothing.
 
-> *This guide gives the shape rather than a copyable template on purpose. A shipped template would
-> be a method-owned product artifact carrying concrete rule text into every adopter repo — which
-> is the duplication the precedence rule forbids, plus a second thing to keep in sync. The
-> checklist names the categories; you supply the values.*
+> *The scaffolded stub is deliberately thin, and the line is drawn where the precedence rule draws
+> it. What it ships is the part that is **identical in every adopter** — the ten invariants and the
+> CI recipe — so it cannot drift by being re-worded repo by repo. What it does **not** ship is a
+> single binding VALUE: the checklist names the categories, you supply the values, and a guide that
+> guessed them would be inventing your repo's mechanics. If you run the plugin's `SessionStart`
+> hook, its resident rules stay the single home for everything beyond that floor; the stub exists so
+> a repo or harness WITHOUT the plugin is not left with a blank page on day one.*
 
 ## 4. Decision points: escalate vs. autonomous
 

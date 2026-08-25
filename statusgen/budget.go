@@ -38,8 +38,11 @@ func resolveBudgetSpecs(mode string, explicit []string) []string {
 // effectiveBudgetSpecs resolves the budget specs for a run and then drops the
 // AUTO-APPLIED default (bare --lint, no --budget) when its file does not exist.
 // The default budget is a project-specific convenience (CLAUDE.md); a repo that
-// does not have one — e.g. a fresh adopter scaffolded by `statusgen init` — must
-// not be red-gated by it on its first CI run. An EXPLICIT --budget is always
+// does not have one must not be red-gated by it on its first CI run. (A repo
+// scaffolded by `statusgen init` DOES get a CLAUDE.md, so the default applies
+// there from day one — the scaffolded file is deliberately far under the cap.
+// This carve-out still covers a repo that never had one, or deleted it in favour
+// of an AGENTS.md-only harness.) An EXPLICIT --budget is always
 // honored and still hard-fails on a missing file (asking for a check on a file
 // that is not there is a real error).
 func effectiveBudgetSpecs(mode string, explicit []string, root string) []string {
