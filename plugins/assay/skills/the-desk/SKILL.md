@@ -266,15 +266,17 @@ about the board and needs the same fresh sweep behind it.
   verify-desk is the standing post-merge first responder, but every desk shares the reflex.
 
 **Permissions & git**
-- **Git push policy:**
-  - **NEVER push to `main` or merge** without the human driver's explicit go (merge is always theirs).
-  - **Branch push + draft PR is standing-authorized** — the worker loop (`git push -u origin <branch>`
-    + `gh pr create --draft`). Workers pushing their own feature branch + opening a draft PR is the
-    sanctioned flow.
-  - The verify desk commits Evidence per the project's post-merge flow; the coordinator (this window)
-    follows the same desk-doc-commit flow for small doc edits.
-  - NEVER trigger workflows or run mutating cluster ops (`kubectl`, etc.) without the human's go.
-  - Committing local work is fine; non-branch pushes are gated.
+- **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
+  workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
+  standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
+  `gh pr create --draft`). **The verify desk lands its own work**: its Evidence + status flips commit
+  straight to `main` as the project directs — no push-go is needed there and none should be waited
+  for. Any `main` push not covered by a standing authorization is gated on the driver's explicit go;
+  committing local work is always fine. A guard/hook-BLOCKED push is a STOP signal — never route the
+  same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
+  or land) stay in its skill, directly below this block.
+  - Desk-specific: the coordinator (this window) follows the project's post-merge desk-doc-commit flow
+    for small doc edits (see "Git commits as the desk identity" below).
 - **Post as the desk identity, always (attribution, not authorization).** EVERY desk-remit GitHub
   write — governance/`bug` issue create+comment, `review-request` filing, PR comments (blocker relays,
   recorded decisions, ready-flip wrap-ups), ops-PR bodies, small main doc/brief-row commits — goes out
@@ -332,17 +334,17 @@ about the board and needs the same fresh sweep behind it.
   to read Next-up; discard it before merging.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
   or comments.
-- **Insight-routing:** a systemic/process insight produced in passing (a wrap-up, an aside, a "this
-  keeps recurring" note) MUST also be filed as an issue in the project's own toolkit/methodology repo
-  — commentary is not a register. Include the triggering evidence and affected loops. Repo-specific
-  defects still go to that repo's own tracker (label `bug`).
+- **Insight-routing:** a systemic/process insight produced in passing (a wrap-up, a dispatch or drain
+  note, an Evidence aside, a "this keeps recurring" observation) MUST also be filed as an issue in the
+  project's own toolkit/methodology repo — commentary is not a register. Include the triggering
+  evidence and affected loops. Repo-specific defects still go to that repo's own tracker (label `bug`).
 - **Escalation labels:** any desk/loop may label a PR or issue `question` (needs an answer from the
-  human or a stronger-tier model to proceed — the item PARKS) or `help wanted` (the desk hit its
+  driver or a stronger-tier model to proceed — the item PARKS) or `help wanted` (the desk hit its
   capability/authority edge). Both are GitHub default labels — they exist in every repo, no setup.
-  Discipline: a bare label is unanswerable — the labeler MUST comment what it needs and from whom;
-  whoever answers removes the label with their response. A `question` that matures into a formal
-  decision fork promotes to `needs-decision` with the pros/cons template. Labeled items are
-  WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker-desk sweep.
+  Discipline: a bare label is unanswerable — the labeler MUST comment what it needs and from whom when
+  labeling; whoever answers removes the label with their response. A `question` that matures into a
+  formal decision fork promotes to `needs-decision` with the pros/cons template. Labeled items are
+  WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
 
 **Model-tier awareness (this session's live hazard)**
 - The desk can be **silently downgraded** mid-task. The human driver is the out-of-band drift

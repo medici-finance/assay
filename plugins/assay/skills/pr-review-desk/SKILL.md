@@ -770,8 +770,17 @@ CONFLICTING PR is not flippable). The manual check guards the flip path, not the
 
 ## Git push policy
 
-- **NEVER push to `main`, merge, or trigger workflows / mutating cluster commands without the driver's
-  go.**
+- **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
+  workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
+  standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
+  `gh pr create --draft`). **The verify desk lands its own work**: its Evidence + status flips commit
+  straight to `main` as the project directs — no push-go is needed there and none should be waited
+  for. Any `main` push not covered by a standing authorization is gated on the driver's explicit go;
+  committing local work is always fine. A guard/hook-BLOCKED push is a STOP signal — never route the
+  same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
+  or land) stay in its skill, directly below this block.
+  - Desk-specific: this desk flips PRs ready (merge stays the human's) and does NOT commit Evidence
+    (that is verify-desk / post-merge).
 - **Post as the App, always.** EVERY PR comment the desk posts — blocker relays, recorded decisions
   from the driver, halt notices, ready-flip wrap-ups, `gh pr comment`, `gh pr review` — goes out under
   the reviewer App, NOT a shared human account. A shared account the driver also drives from a CLI
@@ -783,12 +792,9 @@ CONFLICTING PR is not flippable). The manual check guards the flip path, not the
   file governance issues and flip its own draft PRs as the App. With `contents:write` the
   "author ≠ approver" separation is discipline-enforced, not GitHub-enforced, for the reviewer (the
   main-push ruleset still bars the App from `main`).
-- **Branch push + draft PR is standing-authorized** — the worker loop every worker runs (`git push -u
-  origin <branch>` + `gh pr create --draft`). This desk flips PRs ready; merging is always the
-  human's.
-- **The verify desk commits Evidence** post-merge; this desk does NOT commit Evidence.
 - Never `git restore` / `clean` a shared checkout; the reviewers isolate in their own temp worktrees.
-- No attribution lines anywhere.
+- No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
+  or comments.
 - **Model-tier awareness:** if downgraded mid-session, stop synthesis/judgment, fall back to
   transcription-grade work; the review verdict is the bot's GitHub APPROVED state (a distinct,
   auditable actor — advisory, not an authoritative gate) — the merge gate is the human's. Probe vs assertion:
