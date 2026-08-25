@@ -237,7 +237,10 @@ func cmdCreate(args []string) (err error) {
 	// The rule: when there is no associated issue/PR (a repo-level action
 	// with no reactions surface), PublicRepoGate MUST REFUSE with exit 6.
 	// This means deskpr cannot operate on a public repo until a human creates
-	// the issue and adds the +1 first.
+	// the issue and adds the +1 first — UNLESS the repo carries a standing
+	// per-repo authorization (deskkit publicbless.go: a human-maintained
+	// sentinel file naming exact repos), in which case the gate itself passes
+	// with a stderr NOTICE and create proceeds.
 	owner, name := splitOwnerRepo(facts.repo)
 	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
 	if gerr := publicRepoGateFn(fetcher, owner, name, 0); gerr != nil {

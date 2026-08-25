@@ -1680,6 +1680,17 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
   blessing authority (`ASSAY_BLESS_LOGIN`) on the associated issue/PR (the public-repo trust
   gate, `PublicRepoGate` / `IsBlessAuthorityIDStrict`); commands with no issue/PR number
   refuse outright there.
+- **Standing per-repo authorization** (`~/.config/assay/public-app-ok`, or
+  `$XDG_CONFIG_HOME/assay/public-app-ok`): a human-maintained sentinel file, one exact
+  `owner/name` per line, opts the NAMED public repos out of the per-write `+1` — including
+  the no-issue-number refusal, so `deskpr create` works there. The tools never write this
+  file; a human creates it out-of-band. Missing, empty, unreadable, group/world-writable,
+  or malformed ⇒ zero repos authorized (fail closed; a corrupt file can only under-bless).
+  No wildcards, no global switch. Every skip is announced on stderr as a NOTICE naming the
+  repo and the sentinel. Because `PublicRepoGate` is the single choke point, the
+  authorization covers every desk write verb on that repo (create / review / ready /
+  reply / evidence / release) — list a repo only when that full scope is intended.
+  Revoke by deleting the line.
 
 **The desk writes where it does not watch.** The write gates use `IsAllowedRepo`, which a
 pattern widens; every *scan* — `deskboard prs/board/queue/policydrift`, `deskroster`,
