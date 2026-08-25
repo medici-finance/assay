@@ -20,6 +20,17 @@ var execCommand = exec.Command
 // and never a raw caller flag ("constructed argv only, no caller flag passthrough").
 // A `--force` can therefore never reach git through this path.
 func runGit(dir string, args ...string) (string, error) {
+	stdout, _, err := runGitStreams(dir, args...)
+	return stdout, err
+}
+
+// runGitStreams is runGit with the STDERR text handed back on success too. Some git verbs
+// report the work they did on stderr rather than stdout — `git worktree prune --verbose` is
+// one of them — so a caller that reads only stdout sees an empty report and counts zero no
+// matter how much was pruned. Callers that need to COUNT what git did use this; everything
+// else keeps the simpler runGit. Same single-seam argv discipline: the argv is still an
+// explicit slice of literal verbs and validated values.
+func runGitStreams(dir string, args ...string) (stdout, stderr string, err error) {
 	cmd := execCommand("git", args...)
 	if dir != "" {
 		cmd.Dir = dir
@@ -27,11 +38,11 @@ func runGit(dir string, args ...string) (string, error) {
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
-	err := cmd.Run()
-	stdout := strings.TrimSpace(out.String())
-	if err != nil {
-		return stdout, fmt.Errorf("git %s: %w (%s)", strings.Join(args, " "),
-			err, strings.TrimSpace(errb.String()))
+	runErr := cmd.Run()
+	stdout = strings.TrimSpace(out.String())
+	stderr = strings.TrimSpace(errb.String())
+	if runErr != nil {
+		return stdout, stderr, fmt.Errorf("git %s: %w (%s)", strings.Join(args, " "), runErr, stderr)
 	}
-	return stdout, nil
+	return stdout, stderr, nil
 }

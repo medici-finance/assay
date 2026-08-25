@@ -32,7 +32,7 @@ const usage = `deskwt — add, remove, or prune git worktrees, only under sancti
 USAGE:
   deskwt add <name> [--branch B] [--base origin/main]
   deskwt remove <path>
-  deskwt prune [--repo <path>] [--interval <dur>]
+  deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks [--lock-ttl <dur>]]
   deskwt role-init  --role <role> [--session <s>]
   deskwt role-clean --role <role> [--session <s>]
   deskwt --version
@@ -54,6 +54,16 @@ ONLY worktrees it can prove safe: tracked-clean AND fully merged into origin/mai
 UNMERGED branch (an open PR in flight) is LEFT untouched — that is the active-worker guard.
 With --interval (e.g. 30m) it loops forever, sweeping every interval (for a k8s desk pod's
 prune loop); it honors the kill switch / STOP flags between ticks and exits 0 on SIGTERM.
+Every sweep reports four counts: pruned (bookkeeping), removed, held (and locked-held), and
+locks-reclaimed.
+
+A LOCKED worktree is always held — and nothing else ever unlocks one, so a lock taken by a
+session that has since died is permanent and the locked population only grows.
+--reclaim-stale-locks (default OFF) gives the lock a lifecycle: it UNLOCKS the locks it can
+prove stale — the ` + "`session=<id>`" + ` in the lock reason has no live roster beacon, or (with
+--lock-ttl 24h) the lock is older than the TTL — and then the ORDINARY rules decide, unchanged.
+It never removes anything itself: a reclaimed worktree that is dirty, unpushed or unmerged is
+still LEFT. Every unlock prints the worktree, the lock reason, and why it was judged stale.
 
 Exit: 0 ok/noop · 3 disabled · 5 refused · 6 unverifiable.`
 

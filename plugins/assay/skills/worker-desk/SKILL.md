@@ -37,9 +37,12 @@ register/evidence discipline of `the-desk` applies (read it if not already boote
 
 **Boot isolation.** Resolve this skill from the shared checkout READ-ONLY, then **immediately
 isolate** — `git -C <shared> worktree add <path> refs/remotes/origin/main` (or `EnterWorktree`) —
-**before any other command**, then LOCK it: `git worktree lock --reason "worker-desk live session"
-<path>` (the cooperative half of the prune liveness guard — prune never touches locked trees;
-unlock is automatic when the worktree is removed at session end). The window itself must NEVER
+**before any other command**, then LOCK it: `git worktree lock --reason "worker-desk live session
+session=$CLAUDE_SESSION_ID" <path>` (the cooperative half of the prune liveness guard — prune never
+touches locked trees). Keep the `session=` stamp: a lock is released when the worktree is removed at
+session end, but a session that ends without removing it leaves the lock behind forever, and the
+stamp is the only thing that lets `deskwt prune --reclaim-stale-locks` tell a dead session's lock
+from a live one's. The window itself must NEVER
 remain homed in the shared checkout: every stray write there lands in the shared tree, and a
 shared-homed session is where a dispatcher's prompts pick up shared-checkout paths and propagate
 them into workers. If a project's write-guard has a shared-homed exemption, a fanout window must

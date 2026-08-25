@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -21,12 +22,26 @@ type skipEntry struct{ path, reason string }
 
 // pruneResult is the outcome of one sweep.
 type pruneResult struct {
-	bookkept int // admin entries dropped by `git worktree prune` (dirs already gone)
-	removed  int // merged+clean worktrees removed
-	skips    []skipEntry
+	bookkept   int // admin entries dropped by `git worktree prune` (dirs already gone)
+	removed    int // merged+clean worktrees removed
+	lockedHeld int // the subset of skips held by the lock gate
+	skips      []skipEntry
+	reclaimed  []reclaimEntry // locks retired this sweep (only with --reclaim-stale-locks)
+	warns      []string       // things the sweep could not do, said out loud
 }
 
-// cmdPrune implements `deskwt prune [--repo <path>] [--interval <dur>]`: bounded
+// pruneOpts carries the sweep's opt-in behaviour. The zero value is the historical sweep:
+// bookkeeping prune + safe removals, every lock left exactly where it is.
+type pruneOpts struct {
+	// reclaimStaleLocks turns on the lock-lifecycle pass (lockreclaim.go): unlock locks
+	// proven stale so the ORDINARY eligibility rules can then apply to those worktrees.
+	reclaimStaleLocks bool
+	// lockTTL is the age fallback for locks that name no session. 0 disables it.
+	lockTTL time.Duration
+}
+
+// cmdPrune implements `deskwt prune [--repo <path>] [--interval <dur>]
+// [--reclaim-stale-locks [--lock-ttl <dur>]]`: bounded
 // worktree-count reduction so stale worktrees can never accumulate into the E2BIG sandbox
 // failure or the #742 writeguard false-positives (both driven by worktree sprawl).
 //
@@ -34,6 +49,15 @@ type pruneResult struct {
 //
 //	Step A (always, safe bookkeeping): `git worktree prune --verbose` drops admin entries
 //	  whose working directories are already gone. This changes no on-disk working tree.
+//
+//	Step A2 (OPT-IN, --reclaim-stale-locks): give worktree locks a LIFECYCLE. Nothing else
+//	  ever unlocks a worktree, so a lock taken by a session that has since died is permanent
+//	  and the locked population grows without bound — and a lock even blocks Step A from
+//	  dropping the admin entry of a worktree whose directory is already gone. This pass
+//	  UNLOCKS (never removes) the locks it can prove stale — the locking session is gone per
+//	  the roster beacons, or the lock is older than --lock-ttl — and then re-runs Step A so
+//	  newly-unlockable dangling entries are dropped too. Every unlock prints the worktree,
+//	  the lock reason, and the evidence. See lockreclaim.go.
 //
 //	Step B (count reduction, safe gate): walk the registered worktrees under the sanctioned
 //	  prefixes and REMOVE (via the exact same safe-remove primitive as `remove`) ONLY the
@@ -70,12 +94,39 @@ func cmdPrune(args []string) (err error) {
 	// --interval turns the one-shot sweep into a self-contained ticking loop (Go
 	// time.ParseDuration, e.g. 30m). Empty/zero → one-shot.
 	intervalStr := fs.String("interval", "", "if set (e.g. 30m), loop: sweep every interval instead of once")
+	// --reclaim-stale-locks is the lock LIFECYCLE opt-in. Default OFF: a sweep that was not
+	// asked to reclaim behaves exactly as it always has. It only ever UNLOCKS — every removal
+	// gate below still runs, unchanged, on the unlocked worktree.
+	reclaim := fs.Bool("reclaim-stale-locks", false,
+		"unlock worktree locks PROVEN stale (locking session gone, or older than --lock-ttl) so the normal prune rules can apply; default off")
+	// --lock-ttl is the age fallback for locks that name no session. Default 0 = disabled,
+	// because "old" is not by itself evidence that a session is gone.
+	lockTTLStr := fs.String("lock-ttl", "0",
+		"with --reclaim-stale-locks: also treat any lock older than this (e.g. 24h) as stale; 0 disables the age test")
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
-		return deskkit.Refused("refused: prune takes no flags but --repo/--interval (there is no --force): " + perr.Error())
+		return deskkit.Refused("refused: prune takes no flags but --repo, --interval, " +
+			"--reclaim-stale-locks and --lock-ttl (there is no --force): " + perr.Error())
 	}
 	if len(positionals) != 0 {
 		return deskkit.Refused("refused: prune takes no positional arguments")
+	}
+
+	opts := pruneOpts{reclaimStaleLocks: *reclaim}
+	if s := strings.TrimSpace(*lockTTLStr); s != "" && s != "0" {
+		d, derr := time.ParseDuration(s)
+		if derr != nil {
+			return deskkit.Refused("refused: --lock-ttl is not a valid duration (e.g. 24h): " + *lockTTLStr)
+		}
+		if d < 0 {
+			return deskkit.Refused("refused: --lock-ttl must not be negative: " + *lockTTLStr)
+		}
+		opts.lockTTL = d
+	}
+	// A TTL without the opt-in would be silently inert — the exact shape of failure this
+	// tool refuses everywhere else. Say so instead of accepting a knob that does nothing.
+	if opts.lockTTL > 0 && !opts.reclaimStaleLocks {
+		return deskkit.Refused("refused: --lock-ttl has no effect without --reclaim-stale-locks")
 	}
 
 	var interval time.Duration
@@ -114,19 +165,19 @@ func cmdPrune(args []string) (err error) {
 	}
 	cwd := resolvePath(mustAbsOrRaw(dir))
 
-	// One-shot mode: single sweep, detailed per-skip summary to stderr.
+	// One-shot mode: single sweep, detailed per-worktree summary to stderr.
 	if interval == 0 {
-		res, serr := pruneSweep(guard, dir, cwd)
+		res, serr := pruneSweep(guard, dir, cwd, opts)
 		if serr != nil {
 			return serr
 		}
-		fmt.Fprintf(os.Stderr, "deskwt prune: pruned %d bookkeeping entr%s, removed %d merged+clean worktree%s, skipped %d\n",
-			res.bookkept, plural(res.bookkept, "y", "ies"), res.removed, plural(res.removed, "", "s"), len(res.skips))
+		fmt.Fprintln(os.Stderr, pruneSummaryLine(res))
+		renderSweepDetail(os.Stderr, res)
 		for _, s := range res.skips {
 			fmt.Fprintf(os.Stderr, "  skipped %s — %s\n", s.path, s.reason)
 		}
-		ac.detail = fmt.Sprintf("pruned %d bookkeeping, removed %d, skipped %d", res.bookkept, res.removed, len(res.skips))
-		if res.bookkept == 0 && res.removed == 0 {
+		ac.detail = pruneAuditDetail(res)
+		if res.bookkept == 0 && res.removed == 0 && len(res.reclaimed) == 0 {
 			ac.successResult = deskkit.ResultNoop
 		}
 		return nil
@@ -138,7 +189,38 @@ func cmdPrune(args []string) (err error) {
 	defer signal.Stop(sigCh)
 	stop := make(chan struct{})
 	go func() { <-sigCh; close(stop) }()
-	return runPruneLoop(guard, dir, cwd, interval, stop, ac)
+	return runPruneLoop(guard, dir, cwd, interval, opts, stop, ac)
+}
+
+// pruneSummaryLine is the ONE line a sweep always emits. It reports the four counts a
+// caller needs to tell a drained repo from a stuck one: what bookkeeping was dropped, what
+// was removed, what was HELD (and how much of that hold is the lock gate specifically — the
+// number that used to grow without bound), and how many locks were retired.
+func pruneSummaryLine(res pruneResult) string {
+	return fmt.Sprintf(
+		"deskwt prune: pruned %d bookkeeping entr%s, removed %d merged+clean worktree%s, held %d (locked-held %d), locks-reclaimed %d",
+		res.bookkept, plural(res.bookkept, "y", "ies"),
+		res.removed, plural(res.removed, "", "s"),
+		len(res.skips), res.lockedHeld, len(res.reclaimed))
+}
+
+// pruneAuditDetail is the same four counts in the audit line's detail field.
+func pruneAuditDetail(res pruneResult) string {
+	return fmt.Sprintf("pruned %d bookkeeping, removed %d, held %d (locked-held %d), locks-reclaimed %d",
+		res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed))
+}
+
+// renderSweepDetail writes the lines that must never be reduced to a count: every lock this
+// sweep retired (worktree, lock reason, and the evidence that judged it stale) and everything
+// the sweep could not do. Both are rare and both change on-disk state or explain why it did
+// not change, so both print in one-shot AND in interval mode.
+func renderSweepDetail(w io.Writer, res pruneResult) {
+	for _, r := range res.reclaimed {
+		fmt.Fprintf(w, "  reclaimed lock on %s — reason %s — stale: %s\n", r.path, lockReasonText(r.reason), r.why)
+	}
+	for _, warn := range res.warns {
+		fmt.Fprintf(w, "  warning: %s\n", warn)
+	}
 }
 
 // runPruneLoop is the ticking body factored out for testability: it sweeps immediately,
@@ -146,35 +228,41 @@ func cmdPrune(args []string) (err error) {
 // switch / STOP flag fires between ticks (Guard's Disabled error → exit 3). It never
 // sleeps a partial tick past a stop — the select blocks on both channels. Each tick emits
 // one stdout summary line; a sweep error aborts the loop (fail closed).
-func runPruneLoop(guard *pathGuard, dir, cwd string, interval time.Duration, stop <-chan struct{}, ac *auditCtx) error {
+func runPruneLoop(guard *pathGuard, dir, cwd string, interval time.Duration, opts pruneOpts, stop <-chan struct{}, ac *auditCtx) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	ticks := 0
 	totalRemoved := 0
+	totalReclaimed := 0
 	for {
 		// Re-check the kill switch / STOP flags at every iteration boundary:
 		// a STOP/DISABLED armed mid-loop halts on the next tick with a clean exit-3 audit.
 		if gErr := deskkit.Guard(); gErr != nil {
 			fmt.Fprintf(os.Stdout, "%s deskwt prune: halting loop — %s\n", nowStamp(), gErr.Error())
-			ac.detail = fmt.Sprintf("interval=%s: %d tick(s), %d removed, halted (%s)", interval, ticks, totalRemoved, gErr.Error())
+			ac.detail = fmt.Sprintf("interval=%s: %d tick(s), %d removed, %d locks reclaimed, halted (%s)",
+				interval, ticks, totalRemoved, totalReclaimed, gErr.Error())
 			return gErr
 		}
 
-		res, err := pruneSweep(guard, dir, cwd)
+		res, err := pruneSweep(guard, dir, cwd, opts)
 		if err != nil {
-			ac.detail = fmt.Sprintf("interval=%s: %d tick(s), %d removed, aborted on sweep error", interval, ticks, totalRemoved)
+			ac.detail = fmt.Sprintf("interval=%s: %d tick(s), %d removed, %d locks reclaimed, aborted on sweep error",
+				interval, ticks, totalRemoved, totalReclaimed)
 			return err
 		}
 		ticks++
 		totalRemoved += res.removed
-		fmt.Fprintf(os.Stdout, "%s deskwt prune tick %d: bookkept=%d removed=%d skipped=%d\n",
-			nowStamp(), ticks, res.bookkept, res.removed, len(res.skips))
+		totalReclaimed += len(res.reclaimed)
+		fmt.Fprintf(os.Stdout, "%s deskwt prune tick %d: bookkept=%d removed=%d held=%d locked_held=%d locks_reclaimed=%d\n",
+			nowStamp(), ticks, res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed))
+		renderSweepDetail(os.Stdout, res)
 
 		select {
 		case <-stop:
 			fmt.Fprintf(os.Stdout, "%s deskwt prune: shutdown signal — exiting after %d tick(s)\n", nowStamp(), ticks)
-			ac.detail = fmt.Sprintf("interval=%s: %d tick(s), %d removed, stopped by signal", interval, ticks, totalRemoved)
+			ac.detail = fmt.Sprintf("interval=%s: %d tick(s), %d removed, %d locks reclaimed, stopped by signal",
+				interval, ticks, totalRemoved, totalReclaimed)
 			return nil
 		case <-ticker.C:
 			continue
@@ -182,19 +270,41 @@ func runPruneLoop(guard *pathGuard, dir, cwd string, interval time.Duration, sto
 	}
 }
 
-// pruneSweep performs ONE prune sweep against the repo rooted at dir (Step A bookkeeping +
-// Step B safe removals) and returns the counts. It prints nothing — the caller renders the
-// one-shot or per-tick summary. cwd is the resolved current directory (never removed).
-func pruneSweep(guard *pathGuard, dir, cwd string) (pruneResult, error) {
+// pruneSweep performs ONE prune sweep against the repo rooted at dir (Step A bookkeeping,
+// the opt-in Step A2 lock reclaim, then Step B safe removals) and returns the counts. It
+// prints nothing — the caller renders the one-shot or per-tick summary. cwd is the resolved
+// current directory (never removed).
+func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult, error) {
 	var res pruneResult
 
 	// Step A — bookkeeping prune (always safe: only drops entries for dirs already gone).
 	// --verbose prints one line per dropped entry so we can report the count.
-	pruneOut, aErr := runGit(dir, "worktree", "prune", "--verbose")
+	dropped, aErr := bookkeepingPrune(dir)
 	if aErr != nil {
 		return res, deskkit.Unverifiable("git worktree prune (bookkeeping) failed", aErr)
 	}
-	res.bookkept = countNonEmptyLines(pruneOut)
+	res.bookkept = dropped
+
+	// Step A2 — OPT-IN lock reclaim. It only UNLOCKS; nothing below this point is relaxed,
+	// so a reclaimed worktree still has to pass every removal gate on its own merits. A
+	// second bookkeeping prune follows any reclaim because Step A cannot drop the dangling
+	// admin entry of a LOCKED worktree — those entries are exactly the ones a permanent lock
+	// makes immortal, and they only become droppable once the lock is gone.
+	if opts.reclaimStaleLocks {
+		reclaimed, warns, rerr := reclaimStaleLocks(guard, dir, cwd, opts.lockTTL)
+		res.reclaimed = reclaimed
+		res.warns = warns
+		if rerr != nil {
+			return res, rerr
+		}
+		if len(reclaimed) > 0 {
+			second, sErr := bookkeepingPrune(dir)
+			if sErr != nil {
+				return res, deskkit.Unverifiable("git worktree prune (bookkeeping, after lock reclaim) failed", sErr)
+			}
+			res.bookkept += second
+		}
+	}
 
 	// Enumerate AFTER the bookkeeping prune so already-gone entries are not iterated.
 	roots, lerr := guard.worktreeRoots(dir)
@@ -218,6 +328,7 @@ func pruneSweep(guard *pathGuard, dir, cwd string) (pruneResult, error) {
 		// says (a live agent's worktree was spared here only by luck of a content heuristic).
 		if reason, isLocked := locked[rt]; isLocked {
 			res.skips = append(res.skips, skipEntry{rt, lockedReason(reason)})
+			res.lockedHeld++
 			continue
 		}
 		switch {
@@ -372,6 +483,23 @@ func mustAbsOrRaw(p string) string {
 		return abs
 	}
 	return p
+}
+
+// bookkeepingPrune runs the always-safe Step A — `git worktree prune --verbose`, which drops
+// admin entries whose working directories are already gone and touches no working tree — and
+// returns how many entries it dropped.
+//
+// The count is read from git's stderr as well as its stdout, and that is the whole point of
+// the helper: `git worktree prune --verbose` prints its per-entry report on STDERR, so a
+// caller reading stdout alone counts zero however many entries it just dropped. The summary
+// line is what tells an operator whether a sweep is draining the repo or spinning, so a
+// structurally-always-zero count is worse than no count at all.
+func bookkeepingPrune(dir string) (int, error) {
+	stdout, stderr, err := runGitStreams(dir, "worktree", "prune", "--verbose")
+	if err != nil {
+		return 0, err
+	}
+	return countNonEmptyLines(stdout) + countNonEmptyLines(stderr), nil
 }
 
 func countNonEmptyLines(s string) int {

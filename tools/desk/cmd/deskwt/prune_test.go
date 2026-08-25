@@ -411,7 +411,7 @@ func TestPruneIntervalSingleTickThenStop(t *testing.T) {
 
 	var loopErr error
 	out := runCapOut(t, func() {
-		loopErr = runPruneLoop(guard, work, cwd, time.Hour, stop, &auditCtx{verb: "prune"})
+		loopErr = runPruneLoop(guard, work, cwd, time.Hour, pruneOpts{}, stop, &auditCtx{verb: "prune"})
 	})
 	if loopErr != nil {
 		t.Fatalf("runPruneLoop returned %v, want nil (clean stop)", loopErr)
@@ -453,7 +453,7 @@ func TestPruneIntervalHaltsOnStopFlag(t *testing.T) {
 
 	var loopErr error
 	_ = runCapOut(t, func() {
-		loopErr = runPruneLoop(guard, work, cwd, time.Hour, stop, &auditCtx{verb: "prune"})
+		loopErr = runPruneLoop(guard, work, cwd, time.Hour, pruneOpts{}, stop, &auditCtx{verb: "prune"})
 	})
 	if deskkit.ExitCodeOf(loopErr) != deskkit.ExitDisabled {
 		t.Fatalf("runPruneLoop under STOP returned exit %d, want 3 (disabled)", deskkit.ExitCodeOf(loopErr))
