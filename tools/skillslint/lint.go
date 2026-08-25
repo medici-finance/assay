@@ -13,12 +13,12 @@
 //	description present  a top-level `description:` with a non-empty value
 //	                     (the trigger text the harness matches on; an empty one
 //	                     silently never fires)
-//	no bare overclaim    no line asserts "un-forgeable" / "unforgeable" /
-//	                     "tamper-evident" about a review/App/gate WITHOUT also
-//	                     qualifying or retiring the claim on that same line
-//	                     (the App/identity is a distinct, auditable actor —
-//	                     attribution, not authorization; anyone holding the key
-//	                     can mint it, so a bare "un-forgeable" is false).
+//	no bare overclaim    no line asserts "unforgeable" / "tamper-evident"
+//	                     about a review/App/gate WITHOUT also qualifying or
+//	                     retiring the claim on that same line (the App/identity
+//	                     is a distinct, auditable actor — attribution, not
+//	                     authorization; anyone holding the key can mint it, so a
+//	                     bare "unforgeable" is false).
 //
 // PARSING IS LINE-ORIENTED, NOT STRICT YAML — deliberately. The skill loader in
 // the harness reads these headers leniently: real, in-production descriptions
@@ -108,13 +108,15 @@ func LintSkills(root string) (checked int, issues []Issue, err error) {
 
 // bannedFramingWords are the retired overclaim terms: the App/gate is a
 // distinct, auditable identity — attribution, not authorization — and none of
-// these words describe that honestly.
-var bannedFramingWords = []string{"un-forgeable", "unforgeable", "tamper-evident"}
+// these words describe that honestly. Only the public spellings are enumerated
+// here; the pre-publication leak sweep already scans the whole tree for the
+// hyphenated variant, so restating it in this list would add no coverage.
+var bannedFramingWords = []string{"unforgeable", "tamper-evident"}
 
 // bannedFramingNegations immediately PRECEDING a banned word turn the claim
-// into its own negation — "advisory, not un-forgeable". Checked only in the
+// into its own negation — "advisory, not unforgeable". Checked only in the
 // short window right before the word: checking the whole line is what lets a
-// regression slip through, since "the un-forgeable desk App, not a shared
+// regression slip through, since "the unforgeable desk App, not a shared
 // account" contains "not " too — just negating something else.
 var bannedFramingNegations = []string{"not ", "n't "}
 

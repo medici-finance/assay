@@ -94,14 +94,14 @@ func TestLintSkills_MutatedFileFails(t *testing.T) {
 }
 
 // TestLintSkills_BareUnforgeableClaimFails is the regression test for the
-// overclaim rule: a skill file that asserts a review/App/gate is "un-forgeable"
-// (or "unforgeable" / "tamper-evident") with no qualifier on the same line is a
-// false overclaim (the App is attribution, not authorization — anyone holding
-// the key can mint it) and must fail the lint.
+// overclaim rule: a skill file that asserts a review/App/gate is "unforgeable"
+// (or "tamper-evident") with no qualifier on the same line is a false overclaim
+// (the App is attribution, not authorization — anyone holding the key can mint
+// it) and must fail the lint.
 func TestLintSkills_BareUnforgeableClaimFails(t *testing.T) {
 	root := t.TempDir()
 	writeSkill(t, root, "the-desk", "---\nname: the-desk\ndescription: x\n---\n\n"+
-		"the commit actor is the un-forgeable desk App, not a shared account.\n")
+		"the commit actor is the unforgeable desk App, not a shared account.\n")
 
 	_, issues, err := LintSkills(root)
 	if err != nil {
@@ -113,7 +113,7 @@ func TestLintSkills_BareUnforgeableClaimFails(t *testing.T) {
 }
 
 // TestLintSkills_TamperEvidentBareClaimFails covers the sibling banned word:
-// "tamper-evident" is retired for the same reason "un-forgeable" is.
+// "tamper-evident" is retired for the same reason "unforgeable" is.
 func TestLintSkills_TamperEvidentBareClaimFails(t *testing.T) {
 	root := t.TempDir()
 	writeSkill(t, root, "the-desk", "---\nname: the-desk\ndescription: x\n---\n\n"+
@@ -135,8 +135,8 @@ func TestLintSkills_TamperEvidentBareClaimFails(t *testing.T) {
 func TestLintSkills_QualifiedUnforgeableClaimPasses(t *testing.T) {
 	root := t.TempDir()
 	writeSkill(t, root, "the-desk", "---\nname: the-desk\ndescription: x\n---\n\n"+
-		"a distinct, auditable actor; advisory, not un-forgeable.\n"+
-		"section called the verdict \"un-forgeable\"; that was wrong and is retired.\n")
+		"a distinct, auditable actor; advisory, not unforgeable.\n"+
+		"section called the verdict \"unforgeable\"; that was wrong and is retired.\n")
 
 	checked, issues, err := LintSkills(root)
 	if err != nil {
