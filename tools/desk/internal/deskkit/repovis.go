@@ -61,6 +61,10 @@ func FetchRepoVisibility(fetcher RepoInfoFetcher, owner, repo string) (string, e
 //  2. Allowlist, not a denylist: ONLY "private" (case-insensitively, trimmed) returns
 //     nil (gate does not apply). "public" and "internal" both require the +1 below;
 //     anything else — empty, unrecognised, a future value — exit 6 (fail closed).
+//     2b. If the repo carries a standing per-repo bless (publicbless.go — a human-only
+//     sentinel file naming exact owner/name repos), return nil with a stderr NOTICE:
+//     the named repo is opted out of both the no-issue-number fail and the +1
+//     requirement. Any sentinel anomaly means "not blessed" and the gate continues.
 //  3. If the repo is public/internal AND issueNumber <= 0, exit 6 (no reactions surface
 //     — commands without an issue/PR number cannot act on such repos).
 //  4. If the repo is public/internal AND issueNumber > 0, fetches reactions and requires
@@ -92,6 +96,22 @@ func PublicRepoGate(fetcher RepoInfoFetcher, owner, repo string, issueNumber int
 		// fall through to the +1 requirement below
 	default:
 		return Unverifiable(fmt.Sprintf("public-repo gate: repo %s/%s returned unrecognised visibility %q — refusing rather than treating it as private", owner, repo, visibility), nil)
+	}
+
+	// Standing per-repo bless (publicbless.go): a human-maintained sentinel file
+	// can opt NAMED public/internal repos out of the per-write +1. Consulted
+	// AFTER the visibility read (so a private repo never depends on it and an
+	// unrecognised visibility still fails closed above) and BEFORE the
+	// issue-number and reactions checks, so a blessed repo passes both the
+	// create path (issueNumber 0, no reactions surface yet) and the review
+	// path without a fresh reaction. The skip is announced on stderr — never
+	// silent — and any sentinel read anomaly answers "not blessed", falling
+	// through to the gate below.
+	if blessed, sentinel := publicRepoBlessed(owner, repo); blessed {
+		fmt.Fprintf(publicBlessNoticeW,
+			"NOTICE: public-repo gate: %s/%s carries a standing authorization (%s) — skipping the per-write +1 requirement; the bless covers every desk write verb on this repo\n",
+			owner, repo, sentinel)
+		return nil
 	}
 
 	// Public repo: must have an issue/PR number to consult the reactions surface.
