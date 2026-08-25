@@ -62,7 +62,7 @@ func TestMultiRootDuplicateStreamNameIsHardError(t *testing.T) {
 	a := copyFixture(t, "testdata/goodrepo")
 	b := copyFixture(t, "testdata/goodrepo") // same stream name "alpha" in both
 
-	problems := crossRootProblems([]string{a, b})
+	problems, implicated := crossRootProblems([]string{a, b})
 	if len(problems) == 0 {
 		t.Fatal("duplicate stream name across roots produced no problem — a stream must live in exactly one repo")
 	}
@@ -70,10 +70,98 @@ func TestMultiRootDuplicateStreamNameIsHardError(t *testing.T) {
 	if !strings.Contains(joined, `stream "alpha" is defined under two roots`) {
 		t.Errorf("problem does not name the duplicated stream: %q", joined)
 	}
+	// The message must be actionable on its own: naming the stream but not the
+	// two roots leaves the reader grepping every configured repo for the pair.
+	for _, root := range []string{a, b} {
+		if !strings.Contains(joined, root) {
+			t.Errorf("problem does not name colliding root %q: %q", root, joined)
+		}
+		if !implicated[root] {
+			t.Errorf("root %q is not reported as implicated in the collision", root)
+		}
+	}
 
 	// And it must be fatal end to end, not merely reported.
 	if code := runRoots([]string{a, b}, "lint", nil, nil, ""); code != 1 {
 		t.Errorf("multi-root lint with a duplicate stream exited %d, want 1", code)
+	}
+}
+
+// TestMultiRootCollisionQuarantinesOnlyTheCollidingRoots pins the blast radius.
+//
+// A collision between two roots says nothing about a third: its streams are
+// unambiguously its own and every derived datum is already per-root. Failing the
+// whole run over someone else's clash silently stops regenerating a well-defined
+// board — and a board that was not regenerated looks exactly as current as one
+// that was, which is the invisible-staleness failure the ownership rule exists to
+// prevent. So: the colliding roots are quarantined (announced, board untouched),
+// the uninvolved root is written, and the run still exits non-zero.
+func TestMultiRootCollisionQuarantinesOnlyTheCollidingRoots(t *testing.T) {
+	a := copyFixture(t, "testdata/goodrepo")
+	b := copyFixture(t, "testdata/goodrepo") // collides with a on stream "alpha"
+	c := copyFixture(t, "testdata/goodrepo")
+	renameStream(t, c, "alpha", "gamma") // uninvolved
+
+	var code int
+	stderr := captureStderr(t, func() {
+		code = runRoots([]string{a, b, c}, "write", nil, nil, "")
+	})
+	if code != 1 {
+		t.Fatalf("a collision run exited %d, want 1 — a quarantine is a failure, not a warning\n%s", code, stderr)
+	}
+
+	// The diagnostic must name the stream AND both colliding roots.
+	if !strings.Contains(stderr, `stream "alpha" is defined under two roots`) {
+		t.Errorf("stderr does not name the colliding stream:\n%s", stderr)
+	}
+	for _, root := range []string{a, b} {
+		if !strings.Contains(stderr, root) {
+			t.Errorf("stderr does not name colliding root %q:\n%s", root, stderr)
+		}
+		if _, err := os.Stat(filepath.Join(root, "STATUS.md")); err == nil {
+			t.Errorf("quarantined root %q had its board written — a collision makes its rows unattributable", root)
+		}
+	}
+	// And it must say the quarantined boards are now STALE, not merely absent
+	// from this run: that is the trap the loud failure exists to close.
+	if !strings.Contains(stderr, "STALE") {
+		t.Errorf("the quarantine notice does not warn that the untouched board is stale:\n%s", stderr)
+	}
+
+	// The uninvolved root is boarded normally.
+	boardC, err := os.ReadFile(filepath.Join(c, "STATUS.md"))
+	if err != nil {
+		t.Fatalf("uninvolved root's board was not written — a collision between two OTHER roots blocked it: %v", err)
+	}
+	if !strings.Contains(string(boardC), "gamma") {
+		t.Errorf("uninvolved root's board is missing its own stream gamma:\n%s", boardC)
+	}
+	if !strings.Contains(stderr, "1/3 root(s) completed without error") {
+		t.Errorf("coverage line does not report 1 of 3 roots completed:\n%s", stderr)
+	}
+}
+
+// TestMultiRootCollisionCountsInTheOneVerdict pins the collision into the single
+// verdict line. Reported on stderr but left out of the count, a collision is
+// invisible to the documented way of consuming a gate run (read the last stdout
+// line) whenever the surviving roots are clean.
+func TestMultiRootCollisionCountsInTheOneVerdict(t *testing.T) {
+	a := copyFixture(t, "testdata/goodrepo")
+	b := copyFixture(t, "testdata/goodrepo") // collides on "alpha"
+	c := copyFixture(t, "testdata/goodrepo")
+	renameStream(t, c, "alpha", "gamma")
+
+	var code int
+	stdout := captureStdout(t, func() {
+		code = runRoots([]string{a, b, c}, "lint", nil, nil, "")
+	})
+	if code != 1 {
+		t.Fatalf("collision lint exited %d, want 1\n%s", code, stdout)
+	}
+	line := finalStdoutLine(t, stdout) // still exactly one verdict line
+	if !strings.HasPrefix(line, "LINT: FAIL") {
+		t.Errorf("final verdict = %q, want a LINT: FAIL — clean surviving roots must not mask the collision\n%s",
+			line, stdout)
 	}
 }
 
@@ -85,8 +173,8 @@ func TestMultiRootDistinctStreamsPass(t *testing.T) {
 	b := copyFixture(t, "testdata/goodrepo")
 	renameStream(t, b, "alpha", "beta")
 
-	if problems := crossRootProblems([]string{a, b}); len(problems) != 0 {
-		t.Fatalf("distinct stream names across roots reported problems: %v", problems)
+	if problems, implicated := crossRootProblems([]string{a, b}); len(problems) != 0 || len(implicated) != 0 {
+		t.Fatalf("distinct stream names across roots reported problems: %v (implicated %v)", problems, implicated)
 	}
 	if code := runRoots([]string{a, b}, "lint", nil, nil, ""); code != 0 {
 		t.Errorf("multi-root lint over distinct roots exited %d, want 0", code)
@@ -524,12 +612,21 @@ func TestCrossRootDuplicateRepoDeclaration(t *testing.T) {
 	setFrontmatter(t, a, "alpha", "repo: owner/same")
 	setFrontmatter(t, b, "beta", "repo: owner/same")
 
-	problems := crossRootProblems([]string{a, b})
+	problems, implicated := crossRootProblems([]string{a, b})
 	if len(problems) == 0 {
 		t.Fatal("two roots declaring the same repo produced no problem")
 	}
-	if !strings.Contains(strings.Join(problems, "\n"), `repo "owner/same" is declared by two roots`) {
+	joined := strings.Join(problems, "\n")
+	if !strings.Contains(joined, `repo "owner/same" is declared by two roots`) {
 		t.Errorf("problem does not name the duplicated repo: %v", problems)
+	}
+	for _, root := range []string{a, b} {
+		if !strings.Contains(joined, root) {
+			t.Errorf("problem does not name colliding root %q: %q", root, joined)
+		}
+		if !implicated[root] {
+			t.Errorf("root %q is not reported as implicated in the repo collision", root)
+		}
 	}
 }
 

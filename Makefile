@@ -30,7 +30,9 @@ LDFLAGS  := -X $(DESK_PKG).SourceSHA=$(SHA) -X $(DESK_PKG).BuiltAt=$(BUILT_AT)
 
 DESK_CMDS := $(wildcard $(DESK_DIR)/cmd/*)
 
-.PHONY: desk-build desk-install desk-manifest desk-hook-install desk-test
+.PHONY: desk-build desk-install desk-manifest desk-hook-install desk-test skillslint guardrail-sync
+
+SKILLSLINT_DIR := tools/skillslint
 
 ## desk-build: local unprivileged build into tools/desk/dist/
 desk-build:
@@ -115,3 +117,16 @@ desk-hook-install:
 ## desk-test: run the deskkit test suite (incl. negative-path refusal tests)
 desk-test:
 	@cd $(DESK_DIR) && go test ./... -count=1
+
+## skillslint: validate the desk-role skill homes under plugins/assay/skills/ AND
+## byte-diff every shared-guardrail copy against its one declared source,
+## .claude/guardrails/GUARDRAILS.md. Three-state: could-not-check is a failure,
+## never a quiet pass. Offline; safe for agents/CI.
+skillslint:
+	@cd $(SKILLSLINT_DIR) && go run . --root ../..
+
+## guardrail-sync: REGENERATE every shared-guardrail copy from its one declared
+## source, .claude/guardrails/GUARDRAILS.md. Edit a shared rule THERE, run this,
+## commit the regenerated skills — never hand-edit a copy in a SKILL.md.
+guardrail-sync:
+	@cd $(SKILLSLINT_DIR) && go run . --root ../.. --sync

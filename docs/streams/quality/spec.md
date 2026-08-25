@@ -148,7 +148,10 @@ duplicate-block granularity). Headline comparisons: **copy/paste ratio**
 window; configurable, 14d the comparable default). Reported as churned-lines/new-lines,
 per window, stream, and author-identity class (human / agent / automation). This is the
 "premature or low-quality commit" signal — the industry number that rose from ~3.3%
-(pre-AI) to ~7.1% (2025).
+(pre-AI) to ~7.1% (2025). A second published anchor: Faros AI's "rework rate" (their
+fifth DORA metric, 14–30-day window) and their 2026 telemetry study (22,000 developers:
+churn +861% under high AI adoption) — report the house number against both anchors'
+windows.
 
 ### 4.3 Hotspots (churn × complexity)
 
@@ -275,6 +278,19 @@ controlled experiments; confounders (harder code gets stronger tiers *and* more 
 are acknowledged in every readout, and brittleness-band stratification is the minimum
 control.
 
+Two further metric families, published under the industry's own names for
+comparability (Faros AI's proposed agent-metrics ladder — which they describe as
+requiring session-to-PR linkage infrastructure; here the provenance chain already
+provides it):
+
+- **Agent-PR survival rate and first-pass approval rate** — the share of
+  agent-authored PRs surviving N days without revert/rework, and the share approved
+  on the first review pass.
+- **Review-discipline guardrails** — the % of PRs merged without review and the
+  time-in-review trend: the published finding is that AI throughput quietly erodes
+  review discipline, and a gated process should PROVE it is holding, as an alarmed
+  budget (§9's error-budget posture), not a dashboard line.
+
 ### 7.3 Session forensics (harness telemetry × outcome)
 
 The join no code-only miner can make: per-session harness telemetry (retries, context
@@ -370,6 +386,10 @@ each consumes an M1–M3 corpus that must exist and season first.
 - Tornhill, *Your Code as a Crime Scene* / code-maat / CodeScene — §4.3–4.5 hotspot,
   coupling, and knowledge-map analyses.
 - Apache DevLake — domain-schema naming for §8; not a dependency.
+- Faros AI: *AI Engineering Report 2026* (telemetry, 22,000 developers) and their
+  "harness engineering" agent-metrics ladder — the §4.2 second churn anchor and the
+  §7.2 agent metrics; their platform (closed, spend-governance-focused) is
+  positioning contrast, not a dependency.
 
 ## 13. Open questions (for the review)
 

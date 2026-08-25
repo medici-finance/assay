@@ -910,17 +910,17 @@ Two deltas apply to a **drive in flight**:
 
 ## Guardrails
 
-- **Insight-routing:** a systemic/process insight produced in passing (dispatch wrap-ups, collision
-  observations, "this keeps happening" notes) MUST also be filed as an issue in the project's own
-  toolkit/methodology repo — commentary is not a register. Include the triggering evidence and
-  affected loops. Repo-specific defects still go to the repo's own tracker.
+- **Insight-routing:** a systemic/process insight produced in passing (a wrap-up, a dispatch or drain
+  note, an Evidence aside, a "this keeps recurring" observation) MUST also be filed as an issue in the
+  project's own toolkit/methodology repo — commentary is not a register. Include the triggering
+  evidence and affected loops. Repo-specific defects still go to that repo's own tracker (label `bug`).
 - **Escalation labels:** any desk/loop may label a PR or issue `question` (needs an answer from the
   driver or a stronger-tier model to proceed — the item PARKS) or `help wanted` (the desk hit its
-  capability/authority edge). Both are GitHub default labels — they exist in every repo, no setup. A
-  bare label is unanswerable — the labeler MUST comment what it needs and from whom when labeling;
-  whoever answers removes the label with their response. A `question` that matures into a formal
-  decision fork promotes to `needs-decision`. Labeled items are WAITING-ON-INPUT — they join the
-  human/escalation queue and are NOT orphans for the worker-desk sweep.
+  capability/authority edge). Both are GitHub default labels — they exist in every repo, no setup.
+  Discipline: a bare label is unanswerable — the labeler MUST comment what it needs and from whom when
+  labeling; whoever answers removes the label with their response. A `question` that matures into a
+  formal decision fork promotes to `needs-decision` with the pros/cons template. Labeled items are
+  WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
 - **One brief = one branch = one PR.** A worker that discovers its brief is too big STOPS and splits
   per author-brief rules; it keeps only the piece it was mid-implementing, the rest returns to the
   board as `todo`.
@@ -959,10 +959,18 @@ Two deltas apply to a **drive in flight**:
   Workers stage those edits as diffs in the PR and apply to the live files only as the LAST step
   before `implemented`.
 - **A merged/closed PR is DONE** — the worker stops; follow-up is a new PR.
-- **Git push policy:** workers pushing their own FEATURE branch + opening a draft PR is
-  standing-authorized. Pushing to `main` and merging remain human-gated. Triggering workflows /
-  running mutating cluster commands is denied. **Any cluster or live-infrastructure contact is
-  outside a worker's envelope — read-only included: a read-only probe against a live control plane is
-  a policy violation, not a safe shortcut, and "it only read" is not a defense.** A worker that needs
-  live state reports could-not-check + BLOCKED-ON-HUMAN, never a probe.
-- No attribution lines anywhere.
+- **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
+  workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
+  standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
+  `gh pr create --draft`). **The verify desk lands its own work**: its Evidence + status flips commit
+  straight to `main` as the project directs — no push-go is needed there and none should be waited
+  for. Any `main` push not covered by a standing authorization is gated on the driver's explicit go;
+  committing local work is always fine. A guard/hook-BLOCKED push is a STOP signal — never route the
+  same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
+  or land) stay in its skill, directly below this block.
+  - Desk-specific: **any cluster or live-infrastructure contact is outside a worker's envelope —
+    read-only included: a read-only probe against a live control plane is a policy violation, not a
+    safe shortcut, and "it only read" is not a defense.** A worker that needs live state reports
+    could-not-check + BLOCKED-ON-HUMAN, never a probe.
+- No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
+  or comments.

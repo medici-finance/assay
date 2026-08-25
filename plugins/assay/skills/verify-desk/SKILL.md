@@ -533,17 +533,17 @@ desk's own identity, not a shared human/agent login.
 
 ## Rules (inherited)
 
-- **Insight-routing:** a systemic/process insight produced in passing (drain notes, Evidence asides,
-  "recurring enough to be worth a structural fix" observations) MUST also be filed as an issue in the
-  project's own toolkit/methodology repo — commentary is not a register. Include the triggering evidence
-  and affected loops. Repo-specific defects still go to that repo's own tracker (label `bug`).
-- **Escalation labels:** any desk/loop may label a PR or issue `question` (needs an answer from the human
-  or a stronger-tier model to proceed — the item PARKS) or `help wanted` (the desk hit its
+- **Insight-routing:** a systemic/process insight produced in passing (a wrap-up, a dispatch or drain
+  note, an Evidence aside, a "this keeps recurring" observation) MUST also be filed as an issue in the
+  project's own toolkit/methodology repo — commentary is not a register. Include the triggering
+  evidence and affected loops. Repo-specific defects still go to that repo's own tracker (label `bug`).
+- **Escalation labels:** any desk/loop may label a PR or issue `question` (needs an answer from the
+  driver or a stronger-tier model to proceed — the item PARKS) or `help wanted` (the desk hit its
   capability/authority edge). Both are GitHub default labels — they exist in every repo, no setup.
   Discipline: a bare label is unanswerable — the labeler MUST comment what it needs and from whom when
-  labeling; whoever answers removes the label with their response. A `question` that matures into a formal
-  decision fork promotes to `needs-decision` with the pros/cons template. Labeled items are
-  WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for a worker sweep.
+  labeling; whoever answers removes the label with their response. A `question` that matures into a
+  formal decision fork promotes to `needs-decision` with the pros/cons template. Labeled items are
+  WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
   **Labeling is not a substitute for landing** — see the write-first rule: land what you have, *then*
   label what you need.
 - **Evidence-not-claims, applied hardest here** — the verifier's report is itself a claim; the value is
@@ -551,17 +551,24 @@ desk's own identity, not a shared human/agent login.
   self-verifies its own implementation is void.
 - **Non-implementer isolation:** own temp worktree; never mutate the shared checkout; never `git
   restore`/`clean` a shared checkout.
-- **No status document on a branch** (single-writer is main's CI). **No attribution lines** in
-  commits/PRs/issues.
-- **Git push policy — THE DESK LANDS ITS OWN WORK. No push-go is needed and none should be waited for.**
-  Concretely:
-  - Evidence + status flips are committed **straight to main**, as they arrive, by this desk — **authored
-    + pushed as the verify identity** (see "Post as the verify write identity" above), never plain `gh` /
-    the shared account.
+- **No status document on a branch** (single-writer is main's CI).
+- No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
+  or comments.
+- **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
+  workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
+  standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
+  `gh pr create --draft`). **The verify desk lands its own work**: its Evidence + status flips commit
+  straight to `main` as the project directs — no push-go is needed there and none should be waited
+  for. Any `main` push not covered by a standing authorization is gated on the driver's explicit go;
+  committing local work is always fine. A guard/hook-BLOCKED push is a STOP signal — never route the
+  same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
+  or land) stay in its skill, directly below this block.
+  - Desk-specific: Evidence + status flips are committed **straight to main**, as they arrive, by this
+    desk — **authored + pushed as the verify identity** (see "Post as the verify write identity" above),
+    never plain `gh` / the shared account.
   - The operating pattern is the **push-race loop**: `commit → pull --rebase → push`, retry on race.
-  - Never commit the status document on a branch (single-writer = main's CI). Never trigger workflows or
-    run mutating cluster commands. **Merge is never yours**; branch push is not used here (this desk works
-    on main).
+  - Branch push is not used here (this desk works on main); never commit the status document on a branch
+    (single-writer = main's CI).
   - The only landing this desk does NOT do itself is an `irreversible: yes` status flip — that waits on the
     verify-gate issue the human closes; the verify-gate-close workflow is the sole `human:<name>` writer
     (see §Irreversible briefs). **Everything else, the desk lands.** `gate: model, irreversible: no` means

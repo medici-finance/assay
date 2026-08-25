@@ -816,6 +816,23 @@ func planTranscribeVerdict(root string, streams []*Stream, homeRepo string,
 				verdictOK = false
 				break
 			}
+			// cl.4: byte-bounded append class. A verdict carrying a multi-kilobyte
+			// Evidence string is out of the docs-only class the lane is authorized
+			// for — the brief's gate-why (c) requires the write scope cannot exceed
+			// the cl.4 byte-bounds.
+			if len(e.Evidence) > verdictMaxEvidenceBytes {
+				refuse("clause-4 (scope)", fmt.Sprintf("the Evidence for %s row %d is %d bytes, over the %d-byte per-entry bound — out of the byte-bounded docs-only append class", rel, e.Row, len(e.Evidence), verdictMaxEvidenceBytes))
+				verdictOK = false
+				break
+			}
+			// cl.4: the append class is Evidence ROWS, never new sections. Evidence
+			// carrying a Markdown heading would inject a section — a `## Verify` table
+			// included, the F-verify-self-attest surface cl.4 keeps off this lane.
+			if verdictEvidenceInjectsHeading(e.Evidence) {
+				refuse("clause-4 (scope)", fmt.Sprintf("the Evidence for %s row %d contains a Markdown section heading — the lane appends Evidence rows, never new sections (a Verify-table edit riding the unattended lane is what cl.4 forbids)", rel, e.Row))
+				verdictOK = false
+				break
+			}
 			// cl.6: re-execute a check:ci row network-off; refuse the whole verdict
 			// on mismatch. `check` (env-bound) rows rest on clauses 1–3 (no re-exec).
 			row, hasRow := rowsByRel[rel][e.Row]
@@ -1053,6 +1070,14 @@ func applyVerdictDelta(d verdictDelta) (int, error) {
 			}
 			raw = updated
 			i++
+		}
+		// cl.4 backstop: the frontmatter block and the `## Verify` section must be
+		// byte-identical before and after — a verify landing appends Evidence and
+		// flips a cell; it never edits a Verify table (which verifyrun later
+		// executes from merged main) or the frontmatter. Independent of the
+		// eval-time byte-bound/heading checks; a violation writes nothing.
+		if err := assertVerdictWriteScope(string(b), raw); err != nil {
+			return touched, fmt.Errorf("%s: cl.4 write-scope invariant: %w", path, err)
 		}
 		if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
 			return touched, err
