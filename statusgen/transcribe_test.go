@@ -577,3 +577,247 @@ func mustFrontmatter(t *testing.T, s string) string {
 	}
 	return fm
 }
+
+// signedVerdictBodyFull signs an ARBITRARY payload (not just one entry), so the
+// cl.3 tests can flip schema/repo/entries while keeping a VALID signature over
+// whatever they built — proving cl.3 refuses on its own, downstream of cl.2.
+func signedVerdictBodyFull(t *testing.T, key *rsa.PrivateKey, pl verdictPayload) string {
+	t.Helper()
+	raw, err := json.Marshal(pl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := vvCanonicalize(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := vvSignCanonical(canonical, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return vvAssembleBody(canonical, sig)
+}
+
+// basePayload is the valid single-entry payload the cl.3 variants mutate.
+func basePayload() verdictPayload {
+	return verdictPayload{
+		Schema:  "verdict-v1",
+		Repo:    testHomeRepo,
+		TS:      "2026-08-17T20:30:00Z",
+		Head:    "3f500360abc1234567890def",
+		Entries: []verdictEntry{validEntry()},
+	}
+}
+
+// addIrreversibleBrief adds a `risk.irreversible: yes` brief-02 (with a README
+// row) to the example stream and returns its repo-relative path. cl.5 refuses a
+// verdict targeting it — irreversible flips stay on the human close lane.
+func addIrreversibleBrief(t *testing.T, root string) string {
+	t.Helper()
+	exDir := filepath.Join(root, "docs", "streams", "example")
+	readmePath := filepath.Join(exDir, "README.md")
+	writeFileT(t, readmePath, readFile(t, readmePath)+"| 02 | Irre | 0 | implemented |  |  |\n")
+	writeFileT(t, filepath.Join(exDir, "brief-02-irre.md"),
+		"---\n"+
+			"brief: example/02\n"+
+			"title: \"Irre\"\n"+
+			"wave: 0\n"+
+			"depends: []\n"+
+			"unblocks: []\n"+
+			"effort: M\n"+
+			"gate: human\n"+
+			"risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}\n"+
+			"issues: []\n"+
+			"schema: brief-v1\n"+
+			"authored: 2026-08-17 by test\n"+
+			"sources: []\n"+
+			"---\n\n"+
+			"# Brief 02\n\n## Verify\n\n"+
+			"| # | Class | Command | Expect |\n"+
+			"|---|-------|---------|--------|\n"+
+			"| 1 | check | echo ok | ok |\n\n"+
+			"## Evidence\n\n<!-- appended at implementation time -->\n")
+	return "docs/streams/example/brief-02-irre.md"
+}
+
+// ---------------------------------------------------------------------------
+// Additional fail-first coverage: six guard layers that had production guards
+// but no independent test. Each fixture passes EVERY UPPER LAYER so the named
+// layer refuses on its own — the same discipline as TestRow2NegativeBattery.
+// ---------------------------------------------------------------------------
+
+// (1) cl.5 human-stamp: a PASS entry whose Evidence carries a `human:` token is
+// refused at cl.5 (the sole human: writer is the human close lane), even though
+// author, signature, body-unedited and the cl.4 byte/heading checks all pass.
+func TestClause5HumanStampRefused(t *testing.T) {
+	scanWithRoster(t, verifyRoster())
+	root := t.TempDir()
+	writeVerifyTree(t, root, r6Armed)
+	streams, _, _ := loadStreams(root)
+	attachPlaceholders(streams)
+
+	key := genKey(t)
+	e := validEntry()
+	e.Evidence = "| 1 | check:ci | `row-1.sh` | exit 0 | 2026-08-17 | human:alex |"
+	body := signedVerdictBody(t, key, e)
+	iss := verdictIssue{Number: 42, Body: body, CreatedAt: "2026-08-17T20:30:05Z"}
+
+	applies, skip := evaluateVerdict(root, iss, streams, testHomeRepo,
+		verifierAuthorResolver(42), notEditedResolver, realSigVerifier(&key.PublicKey), passRowExec)
+	if applies != nil || skip == nil || !strings.Contains(skip.Clause, "cl.5 (human-stamp)") {
+		t.Fatalf("a human: token in the append must refuse at cl.5 (human-stamp); got applies=%v skip=%+v", applies, skip)
+	}
+}
+
+// (2) cl.5 irreversible: a verdict targeting a risk.irreversible:yes brief is
+// refused — irreversible flips remain the human close lane's alone. Author,
+// signature, body-unedited, cl.3 and cl.4 all pass; cl.5 is the fail-first.
+func TestClause5IrreversibleRefused(t *testing.T) {
+	scanWithRoster(t, verifyRoster())
+	root := t.TempDir()
+	writeVerifyTree(t, root, r6Armed)
+	briefRel := addIrreversibleBrief(t, root)
+	streams, _, _ := loadStreams(root)
+	attachPlaceholders(streams)
+
+	key := genKey(t)
+	e := verdictEntry{Brief: briefRel, Row: 1, Class: "check", Result: "PASS",
+		Evidence: "| 1 | check | `echo ok` | ok | 2026-08-17 | assay-verifier-app[bot] |"}
+	body := signedVerdictBody(t, key, e)
+	iss := verdictIssue{Number: 42, Body: body, CreatedAt: "2026-08-17T20:30:05Z"}
+
+	applies, skip := evaluateVerdict(root, iss, streams, testHomeRepo,
+		verifierAuthorResolver(42), notEditedResolver, realSigVerifier(&key.PublicKey), passRowExec)
+	if applies != nil || skip == nil || !strings.Contains(skip.Clause, "cl.5 (irreversible)") {
+		t.Fatalf("an irreversible-brief verdict must refuse at cl.5 (irreversible); got applies=%v skip=%+v", applies, skip)
+	}
+}
+
+// (3) cl.8 FAIL-verdict: a FAIL-type entry transcribes nothing and the skip log
+// names the clause. Author, signature and body-unedited all pass first.
+func TestClause8FailVerdictTranscribesNothing(t *testing.T) {
+	scanWithRoster(t, verifyRoster())
+	root := t.TempDir()
+	writeVerifyTree(t, root, r6Armed)
+	streams, _, _ := loadStreams(root)
+	attachPlaceholders(streams)
+
+	key := genKey(t)
+	e := validEntry()
+	e.Result = "FAIL"
+	body := signedVerdictBody(t, key, e)
+	iss := verdictIssue{Number: 42, Body: body, CreatedAt: "2026-08-17T20:30:05Z"}
+
+	applies, skip := evaluateVerdict(root, iss, streams, testHomeRepo,
+		verifierAuthorResolver(42), notEditedResolver, realSigVerifier(&key.PublicKey), passRowExec)
+	if applies != nil || skip == nil || !strings.Contains(skip.Clause, "cl.8 (fail-verdict)") {
+		t.Fatalf("a FAIL verdict must transcribe nothing and name cl.8; got applies=%v skip=%+v", applies, skip)
+	}
+}
+
+// (4) cl.3 payload variants: wrong schema, wrong repo, and zero entries — each a
+// VALID signature (cl.1/2 pass) over a payload cl.3 refuses on its own.
+func TestClause3PayloadVariantsRefused(t *testing.T) {
+	scanWithRoster(t, verifyRoster())
+	root := t.TempDir()
+	writeVerifyTree(t, root, r6Armed)
+	streams, _, _ := loadStreams(root)
+	attachPlaceholders(streams)
+	key := genKey(t)
+
+	wrongSchema := basePayload()
+	wrongSchema.Schema = "verdict-v2"
+	wrongRepo := basePayload()
+	wrongRepo.Repo = "other-org/other-repo"
+	zeroEntries := basePayload()
+	zeroEntries.Entries = nil
+
+	cases := []struct {
+		name string
+		pl   verdictPayload
+	}{
+		{"wrong-schema", wrongSchema},
+		{"wrong-repo", wrongRepo},
+		{"zero-entries", zeroEntries},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := signedVerdictBodyFull(t, key, tc.pl)
+			iss := verdictIssue{Number: 42, Body: body, CreatedAt: "2026-08-17T20:30:05Z"}
+			applies, skip := evaluateVerdict(root, iss, streams, testHomeRepo,
+				verifierAuthorResolver(42), notEditedResolver, realSigVerifier(&key.PublicKey), passRowExec)
+			if applies != nil || skip == nil || !strings.Contains(skip.Clause, "cl.3") {
+				t.Fatalf("%s: must refuse at cl.3; got applies=%v skip=%+v", tc.name, applies, skip)
+			}
+		})
+	}
+}
+
+// (5) cl.4 byte-bound: an Evidence append over the per-entry byte limit is
+// refused at cl.4, independently of the heading/human: sub-checks (the payload
+// is heading-free and human:-free). This is the first exercise of the 2048-byte
+// bound, which otherwise appears only as a constant.
+func TestClause4EvidenceByteBoundRefused(t *testing.T) {
+	scanWithRoster(t, verifyRoster())
+	root := t.TempDir()
+	writeVerifyTree(t, root, r6Armed)
+	streams, _, _ := loadStreams(root)
+	attachPlaceholders(streams)
+
+	key := genKey(t)
+	e := validEntry()
+	e.Evidence = "| 1 | check:ci | `x` | " + strings.Repeat("a", transcribeMaxEvidenceBytes+1) + " |"
+	if len(e.Evidence) <= transcribeMaxEvidenceBytes {
+		t.Fatalf("fixture is not over the byte bound (%d)", len(e.Evidence))
+	}
+	if evidenceInjectsHeading(e.Evidence) {
+		t.Fatal("fixture must pass the heading sub-check so the BYTE bound is what refuses")
+	}
+	body := signedVerdictBody(t, key, e)
+	iss := verdictIssue{Number: 42, Body: body, CreatedAt: "2026-08-17T20:30:05Z"}
+
+	applies, skip := evaluateVerdict(root, iss, streams, testHomeRepo,
+		verifierAuthorResolver(42), notEditedResolver, realSigVerifier(&key.PublicKey), passRowExec)
+	if applies != nil || skip == nil || !strings.Contains(skip.Clause, "cl.4 (write-scope)") {
+		t.Fatalf("an over-bound Evidence append must refuse at cl.4 (write-scope); got applies=%v skip=%+v", applies, skip)
+	}
+}
+
+// (6) cl.4 post-apply byte-invariant: the eval-time heading guard passes a
+// heading-free Evidence row, so the POST-APPLY invariant is the independent
+// backstop that keeps a mutated frontmatter or `## Verify` off the lane. This
+// exercises assertFrontmatterAndVerifyUnchanged as a fail-first — the invariant
+// the happy path only ever satisfies — for both a Verify mutation and a
+// frontmatter mutation, and confirms a benign Evidence-only append passes.
+func TestClause4PostApplyInvariantCatchesMutation(t *testing.T) {
+	const before = "---\nbrief: example/01\ngate: model\n---\n\n" +
+		"# B\n\n## Verify\n\n| # | Class | Command | Expect |\n| 1 | check:ci | x | exit 0 |\n\n" +
+		"## Evidence\n\n<!-- c -->\n"
+
+	benignRow := "| 1 | check:ci | `x` | exit 0 | 2026-08-17 | assay-verifier-app[bot] |"
+	if evidenceInjectsHeading(benignRow) {
+		t.Fatal("the benign Evidence row must pass the eval-time heading guard")
+	}
+	// A real Evidence-only append (what applyEvidenceAppend produces) preserves
+	// the invariant — the happy path.
+	afterBenign, err := applyEvidenceAppend(before, benignRow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := assertFrontmatterAndVerifyUnchanged(before, afterBenign); err != nil {
+		t.Fatalf("a benign Evidence append must satisfy the invariant, got: %v", err)
+	}
+
+	// A mutation of the `## Verify` table — the F-verify-self-attest surface this
+	// clause exists to keep off the lane — must be caught by the invariant.
+	afterVerifyMutated := strings.Replace(before, "| 1 | check:ci | x | exit 0 |", "| 1 | check:ci | rm -rf / | exit 0 |", 1)
+	if err := assertFrontmatterAndVerifyUnchanged(before, afterVerifyMutated); err == nil || !strings.Contains(err.Error(), "Verify") {
+		t.Fatalf("a mutated Verify section must be caught naming Verify, got: %v", err)
+	}
+
+	// A mutation of the frontmatter block must be caught too.
+	afterFmMutated := strings.Replace(before, "gate: model", "gate: human", 1)
+	if err := assertFrontmatterAndVerifyUnchanged(before, afterFmMutated); err == nil || !strings.Contains(err.Error(), "frontmatter") {
+		t.Fatalf("a mutated frontmatter block must be caught naming frontmatter, got: %v", err)
+	}
+}
