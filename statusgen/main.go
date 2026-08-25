@@ -683,9 +683,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 // own tree; nothing is ever computed from roots[0] and applied to the rest.
 //
 // Ordering: the cross-root pre-pass (duplicate stream names, duplicate repo:
-// declarations) runs FIRST and short-circuits. Ambiguous ownership makes every
-// downstream number attributable to the wrong repo, so there is nothing worth
-// emitting until it is resolved.
+// declarations) runs FIRST, and its blast radius is the COLLIDING roots only.
+// Ambiguous ownership makes every downstream number attributable to the wrong
+// repo — but only for the roots that actually clash, so those are quarantined
+// (announced, and their boards deliberately left untouched) while every
+// uninvolved root is boarded normally. Failing all N roots over a clash between
+// two of them silently stops regenerating boards that are perfectly well-defined,
+// and an un-regenerated board looks exactly as current as a fresh one. The run
+// still exits non-zero: a quarantine is a failure, not a warning.
 //
 // Budget specs resolve PER ROOT: effectiveBudgetSpecs drops the auto-applied
 // default when that root has no CLAUDE.md, so a second root without one is not
@@ -703,16 +708,18 @@ func runRoots(roots []string, mode string, budget []string, changed []string, sc
 		return run(roots[0], mode, effectiveBudgetSpecs(mode, budget, roots[0]), changed, scope)
 	}
 
-	if problems := crossRootProblems(roots); len(problems) > 0 {
-		for _, p := range problems {
-			fmt.Fprintln(os.Stderr, "PROBLEM:", p)
-		}
-		fmt.Fprintln(os.Stderr, boardProvenanceLine(len(problems)))
-		finalVerdict(mode, len(problems))
-		return 1
+	crossProblems, quarantined := crossRootProblems(roots)
+	for _, p := range crossProblems {
+		fmt.Fprintln(os.Stderr, "PROBLEM:", p)
+	}
+	if len(crossProblems) > 0 {
+		fmt.Fprintln(os.Stderr, boardProvenanceLine(len(crossProblems)))
 	}
 
-	total := 0
+	// The cross-root problems are part of the ONE verdict line, exactly as the
+	// per-root ones are — seeded into the accumulator before the loop so a
+	// collision can never be masked by clean roots that follow it.
+	total := len(crossProblems)
 	verdictAccum = &total
 	// Restored on EVERY exit from here, panic included. A panic mid-loop would
 	// otherwise leave the accumulator dangling non-nil for the rest of the
@@ -720,6 +727,9 @@ func runRoots(roots []string, mode string, budget []string, changed []string, sc
 	// of printing it.
 	defer func() { verdictAccum = nil }()
 	exit := 0
+	if len(crossProblems) > 0 {
+		exit = 1
+	}
 	covered := 0
 	for _, root := range roots {
 		// PROBLEM/NOTICE lines carry no root prefix (they are produced deep in
@@ -728,6 +738,13 @@ func runRoots(roots []string, mode string, budget []string, changed []string, sc
 		// Printed BEFORE the root is attempted, so it enumerates configured roots
 		// rather than successful ones — hence the coverage line after the loop.
 		fmt.Fprintf(os.Stderr, "statusgen: === root %s ===\n", root)
+		if quarantined[root] {
+			// Named explicitly rather than skipped in silence: the whole point of
+			// quarantining is that this root's board is now stale, and a stale
+			// board is indistinguishable from a current one by inspection.
+			fmt.Fprintln(os.Stderr, quarantinedRootMsg(root))
+			continue
+		}
 		if code := run(root, mode, effectiveBudgetSpecs(mode, budget, root), changed, scope); code != 0 {
 			exit = 1
 			continue
