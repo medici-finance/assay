@@ -588,6 +588,187 @@ func TestNestedRootDoesNotAffectOrdinaryBriefs(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// identifier dereference (mistake-proofing/02)
+// ---------------------------------------------------------------------------
+
+// idDerefLines returns every line the identifier check emits, regardless of
+// which severity bucket it lands in — so a test asserts on FIRING, independent of
+// the identifierDereferenceFatal phase.
+func idDerefLines(root string, files []string) []string {
+	p, n := identifierDereferenceCheck(root, files)
+	return append(append([]string{}, p...), n...)
+}
+
+// buildIdentifierRe matches exactly the three shapes — a bare `<name>_test.go`
+// basename (no directory separator), a `Test<Name>` identifier, and a
+// `func <Name>` reference — and nothing else. Angle-bracket placeholders, a
+// path-shaped `_test.go` (which the path matcher owns), and an identifier buried
+// inside a command span all fall out.
+func TestBuildIdentifierRe(t *testing.T) {
+	re := buildIdentifierRe()
+	matches := func(span string) bool { return re.MatchString(span) }
+	for _, yes := range []string{
+		"`helper_test.go`", "`linkcheck_test.go`",
+		"`TestLinkProblems`", "`TestFoo`",
+		"`func buildBacktickRe`", "`func linkProblems`",
+	} {
+		if !matches(yes) {
+			t.Errorf("buildIdentifierRe did not match %q, want match", yes)
+		}
+	}
+	for _, no := range []string{
+		"`<Something>_test.go`",              // angle-bracket placeholder
+		"`Test<Name>`", "`func <Name>`",      // angle-bracket placeholders
+		"`statusgen/linkcheck_test.go`",      // path-shaped: the PATH matcher owns it
+		"`git grep 'func buildBacktickRe'`",  // identifier buried in a command span
+		"`Test`", "`func `",                  // no name after the keyword/prefix
+		"`../sibling/foo_test.go`",           // sibling-repo path, has a separator
+	} {
+		if matches(no) {
+			t.Errorf("buildIdentifierRe matched %q, want no match", no)
+		}
+	}
+}
+
+// Positive control (Verify item 6): an injected brief naming a nonexistent test
+// fires the check; the SAME brief naming a real test does not. Plus the incident
+// shape — a bare `_test.go` basename with no directory separator — proving the
+// reopened case is genuinely covered.
+func TestIdentifierDereferenceFiresOnMissingTestName(t *testing.T) {
+	root := t.TempDir()
+	streams := filepath.Join(root, "docs", "streams", "s")
+	if err := os.MkdirAll(streams, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A real Go source file: declares TestRealOne + a real func, and its own
+	// basename exists in the tree.
+	writeTemp(t, root, "existing_test.go",
+		"package x\n\nimport \"testing\"\n\nfunc TestRealOne(t *testing.T) {}\n\nfunc realHelper() {}\n")
+
+	// A brief that names a test which is in NO file.
+	missing := "Verify `TestPhantomName` fires. Also `func phantomFunc` is nowhere.\n"
+	mp := writeTemp(t, streams, "missing.md", missing)
+	got := idDerefLines(root, []string{mp})
+	if len(got) != 2 {
+		t.Fatalf("want 2 firings (TestPhantomName + func phantomFunc), got %d: %v", len(got), got)
+	}
+	for _, want := range []string{"TestPhantomName", "phantomFunc"} {
+		if !anyContains(got, want) {
+			t.Errorf("no firing mentioning %q: %v", want, got)
+		}
+	}
+	// The failure message must state the name-only resolution boundary and teach
+	// the (planned) escape.
+	if !anyContains(got, "resolves the NAME only") || !anyContains(got, "(planned)") {
+		t.Errorf("firing message must state the boundary and the escape: %v", got)
+	}
+
+	// The SAME shapes naming REAL declarations do not fire.
+	real := "Verify `TestRealOne` and `func realHelper` and the file `existing_test.go`.\n"
+	rp := writeTemp(t, streams, "real.md", real)
+	if got := idDerefLines(root, []string{rp}); len(got) != 0 {
+		t.Fatalf("real test/func/file names must not fire, got: %v", got)
+	}
+
+	// Incident shape: a bare `<name>_test.go` basename with no directory separator.
+	// The token that is in NO file fires; the one whose file exists does not — the
+	// exact case the no-directory-separator PATH rule lets sail through today.
+	incident := "The incident's token `helper_test.go` was in no file. But `existing_test.go` is real.\n"
+	ip := writeTemp(t, streams, "incident.md", incident)
+	got = idDerefLines(root, []string{ip})
+	if len(got) != 1 || !anyContains(got, "helper_test.go") {
+		t.Fatalf("want exactly the bare missing basename (helper_test.go) to fire, got: %v", got)
+	}
+	if anyContains(got, "existing_test.go") {
+		t.Errorf("a bare basename whose file EXISTS must not fire: %v", got)
+	}
+}
+
+// Every existing escape survives, and the ONE addition (the `(planned)` family
+// now also excuses an illustrative IDENTIFIER) works. The narrow scope is
+// unchanged — an outbound article naming a nonexistent test is NOT this check's
+// business.
+func TestIdentifierDereferenceEscapesAndScope(t *testing.T) {
+	root := t.TempDir()
+	streams := filepath.Join(root, "docs", "streams", "s")
+	articles := filepath.Join(root, "docs", "articles")
+	for _, d := range []string{streams, articles} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// (planned) escape on an identifier a brief is about to create.
+	planned := "This brief will add `TestSoonToExist` (planned) and `func alsoComing` (new).\n" +
+		"But an unmarked missing one still fires: `TestStillMissing`.\n"
+	pp := writeTemp(t, streams, "planned.md", planned)
+	got := idDerefLines(root, []string{pp})
+	if len(got) != 1 || !anyContains(got, "TestStillMissing") {
+		t.Fatalf("planned-marked identifiers must be excused, only the unmarked one fires, got: %v", got)
+	}
+
+	// Narrow scope: the same missing test in an OUTBOUND article does not fire.
+	article := "Our test suite has a `TestNotInThisRepo` case.\n"
+	ap := writeTemp(t, articles, "piece.md", article)
+	if got := idDerefLines(root, []string{ap}); len(got) != 0 {
+		t.Fatalf("outbound article must be exempt from the identifier check, got: %v", got)
+	}
+}
+
+// Could-not-check (Verify item 7): an unindexable tree reports could-not-check
+// and the whole check DECLINES rather than reading clean.
+func TestIdentifierDereferenceCouldNotCheck(t *testing.T) {
+	// A root that cannot be walked: a path that does not exist.
+	missingRoot := filepath.Join(t.TempDir(), "does-not-exist")
+	got := idDerefLines(missingRoot, []string{filepath.Join(missingRoot, "docs", "streams", "s", "brief.md")})
+	if len(got) != 1 || !anyContains(got, "COULD-NOT-CHECK") {
+		t.Fatalf("an unindexable tree must report exactly one could-not-check line, got: %v", got)
+	}
+	if !anyContains(got, "declines") {
+		t.Errorf("the could-not-check line must say the check declines: %v", got)
+	}
+}
+
+// buildSourceIndex is ONE walk yielding both file basenames and Go func/method
+// declaration names; a receiver method and a plain function both index by bare
+// name.
+func TestBuildSourceIndex(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "pkg")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTemp(t, sub, "a_test.go",
+		"package pkg\n\nfunc TestAlpha(t *testing.T) {}\n\nfunc (r *Rec) Method() {}\n\nfunc plain() {}\n")
+	idx, err := buildSourceIndex(root)
+	if err != nil {
+		t.Fatalf("buildSourceIndex: %v", err)
+	}
+	if !idx.fileBasenames["a_test.go"] {
+		t.Errorf("index missing file basename a_test.go")
+	}
+	for _, name := range []string{"TestAlpha", "Method", "plain"} {
+		if !idx.funcNames[name] {
+			t.Errorf("index missing func/method name %q", name)
+		}
+	}
+	if idx.resolves("func absentFunc") || idx.resolves("TestAbsent") || idx.resolves("absent_test.go") {
+		t.Errorf("resolves() true for an absent identifier")
+	}
+	if !idx.resolves("TestAlpha") || !idx.resolves("func Method") || !idx.resolves("a_test.go") {
+		t.Errorf("resolves() false for a present identifier")
+	}
+}
+
+func anyContains(lines []string, want string) bool {
+	for _, l := range lines {
+		if strings.Contains(l, want) {
+			return true
+		}
+	}
+	return false
+}
+
 // `../`-relative markdown links that resolve INSIDE the repo must be verified
 // (they were previously skipped wholesale), while a link that escapes the repo
 // root — the sibling-repo `../<repo>/…` convention — stays unchecked.
