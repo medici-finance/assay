@@ -713,7 +713,7 @@ func TestDispatchTokenDiscriminators(t *testing.T) {
 	}
 }
 
-// TestForeignDispatchTokenDiscriminatesOnLabel pins the assay#101 hardening: the authoritative
+// TestForeignDispatchTokenDiscriminatesOnLabel pins the #101 hardening: the authoritative
 // discriminator is the `review-request` LABEL, so a token whose TITLE deviated from the canonical
 // prefix is still caught when the board source resolved the issue's real labels, while the title
 // convention remains a fallback for label-less rows (the default STATUS.md reader has no labels).
@@ -725,7 +725,7 @@ func TestForeignDispatchTokenDiscriminatesOnLabel(t *testing.T) {
 		Labels: []string{"review-request"},
 	}
 	if !isForeignDispatchToken(labelledDeviantTitle) {
-		t.Error("a review-request-LABELLED token with a non-canonical title slipped the filter — the label is authoritative (assay#101)")
+		t.Error("a review-request-LABELLED token with a non-canonical title slipped the filter — the label is authoritative (#101)")
 	}
 
 	// Case-insensitive label match.

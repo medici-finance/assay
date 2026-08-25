@@ -103,7 +103,7 @@ func hasReviewRequestLabel(r BoardRow) bool {
 //
 // The AUTHORITATIVE discriminator is that GitHub `review-request` LABEL (BoardRow.Labels): a
 // label-bearing board source (issue-sourced / live) is trusted first, so a review-request token
-// whose title deviated from the spec-canonical prefix is still caught (assay#101 hardening). The
+// whose title deviated from the spec-canonical prefix is still caught (#101 hardening). The
 // canonical `review-request: <target> — <type>` title shape — which a genuine `issue-<NN>` work
 // placeholder never carries — remains a FALLBACK for label-less board sources (the default STATUS.md
 // reader has no label column). The two are OR'd, so adding the label check never lets a token
