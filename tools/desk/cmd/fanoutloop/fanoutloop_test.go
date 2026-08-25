@@ -712,3 +712,40 @@ func TestDispatchTokenDiscriminators(t *testing.T) {
 		t.Error("a real brief row was misclassified as a foreign dispatch token")
 	}
 }
+
+// TestForeignDispatchTokenDiscriminatesOnLabel pins the assay#101 hardening: the authoritative
+// discriminator is the `review-request` LABEL, so a token whose TITLE deviated from the canonical
+// prefix is still caught when the board source resolved the issue's real labels, while the title
+// convention remains a fallback for label-less rows (the default STATUS.md reader has no labels).
+func TestForeignDispatchTokenDiscriminatesOnLabel(t *testing.T) {
+	// Authoritative catch: canonical title missing, but the review-request label is present.
+	labelledDeviantTitle := BoardRow{
+		Stream: "intake", Num: "issue-88",
+		Title:  "please review PR #200", // NOT the canonical prefix
+		Labels: []string{"review-request"},
+	}
+	if !isForeignDispatchToken(labelledDeviantTitle) {
+		t.Error("a review-request-LABELLED token with a non-canonical title slipped the filter — the label is authoritative (assay#101)")
+	}
+
+	// Case-insensitive label match.
+	if !isForeignDispatchToken(BoardRow{Num: "issue-89", Labels: []string{"Review-Request"}}) {
+		t.Error("label match must be case-insensitive")
+	}
+
+	// Title fallback still catches a label-less token (STATUS.md source has no label column).
+	labelless := BoardRow{Stream: "intake", Num: "issue-90", Title: "review-request: PR #300 — code"}
+	if !isForeignDispatchToken(labelless) {
+		t.Error("title-convention fallback must still catch a label-less review-request token")
+	}
+
+	// A work placeholder that carries only ordinary labels is NOT a foreign token.
+	workWithLabels := BoardRow{
+		Stream: "intake", Num: "issue-91",
+		Title:  "some real work item",
+		Labels: []string{"enhancement", "priority-2"},
+	}
+	if isForeignDispatchToken(workWithLabels) {
+		t.Error("a work placeholder with ordinary labels was misclassified as a foreign dispatch token")
+	}
+}
