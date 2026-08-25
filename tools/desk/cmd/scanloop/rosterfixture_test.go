@@ -1,0 +1,99 @@
+package main
+
+// Test-fixture roster installer.
+//
+// The trust roster and the allowed-repo set are no longer compiled in — they are
+// adopter configuration read from a file under the config home (see
+// deskkit/rosterconfig.go). A test binary therefore has to INSTALL a roster before
+// any trust or write-authorisation decision, or every one of them correctly answers
+// "unconfigured, refuse".
+//
+// This installs, into a private HOME, THE VALUES THAT WILL ACTUALLY BE SET — so every
+// pre-existing behavioural assertion in this package keeps asserting the same verdict
+// it always did. That equivalence is deliberate evidence, not convenience: if the
+// conversion changed a verdict, these suites go red.
+//
+// The allowed-repo set is the value the consumer actually sets, entry for entry. It is
+// written that way on purpose: a fixture that is not the production value proves a
+// behaviour nothing will ever run. The values below are copied from the sibling
+// command packages' identical fixture, so every suite in this module asserts its
+// verdicts against ONE roster rather than a per-package variant.
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+)
+
+const fixtureRoster = `# Test-fixture roster. It reproduces the values this tree used to compile in, so
+# every pre-existing behavioural test asserts the SAME verdicts it always did —
+# that equivalence is the point (the golden property).
+# Test files may carry these literals; non-test source may not.
+ASSAY_BLESS_LOGIN=ada:2001
+ASSAY_TRUSTED_LOGINS=ada:2001,shared-agent:2002
+ASSAY_TRUSTED_BOT_SLUGS=desk=assay-desk-app:300000001,intake-loop=assay-intake-loop-app:300000002,issue-loop=assay-issue-loop-app:300000003,reviewer=assay-reviewer-app:300000004,verifier=assay-verifier-app:300000005,worker=assay-worker-app:300000006
+ASSAY_ALLOWED_REPOS=example-org/tracker:ci:private,example-org/agents:ci:private,example-org/examples:no-ci:private,example-org/console:ci:private,medici-finance/assay:ci:private,example-org/example-k8s:ci:public,example-org/example-reconciler:ci:private,example-org/org-slides:no-ci:private,example-org/proposals:no-ci:public,example-org/platform:ci:private,example-org/demo-slides:no-ci:private,example-org/assay-slides:no-ci:private,example-org/example-reconciler-slides:no-ci:private
+ASSAY_HUMAN_LOGIN_MAP=alex:ada
+ASSAY_SCAN_REPOS=example-org/tracker,example-org/agents,example-org/examples,medici-finance/assay,example-org/example-reconciler,example-org/platform,example-org/console,example-org/site,example-org/plumb,example-org/proposals,example-org/example-reconciler-slides,example-org/assay-slides,example-org/demo-slides,example-org/org-slides
+# Repo grouping overrides (ASSAY_REPO_ALIASES). The SAME shared resolver deskboard
+# uses; issueboard now renders labels through it rather than its own switch. These
+# house labels reproduce the boards' pre-conversion display; test files may carry
+# them, non-test source may not.
+ASSAY_REPO_ALIASES=tracker=:tracker,agents=:tracker,examples=:demo,console=:assay,assay=:demo,example-k8s=ledger:ledger,example-reconciler=recon:example-reconciler,org-slides=:demo,proposals=props:demo,platform=:demo,demo-slides=:demo,assay-slides=:assay,example-reconciler-slides=:example-reconciler
+`
+
+// plantFixtureRoster writes the fixture roster under home. A test that relocates
+// HOME for its own reasons relocates the CONFIG HOME with it, so it must call this
+// or every trust decision in that test correctly answers "unconfigured".
+func plantFixtureRoster(t *testing.T, home string) {
+	t.Helper()
+	dir := filepath.Join(home, ".config", "assay")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("planting the fixture roster: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "roster.env"), []byte(fixtureRoster), 0o600); err != nil {
+		t.Fatalf("planting the fixture roster: %v", err)
+	}
+	deskkit.ReloadConfig()
+	t.Cleanup(deskkit.ReloadConfig)
+}
+
+func installFixtureRoster() (cleanup func(), err error) {
+	home, err := os.MkdirTemp("", "assay-roster-home-")
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(home, ".config", "assay")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "roster.env"), []byte(fixtureRoster), 0o600); err != nil {
+		return nil, err
+	}
+	prev, had := os.LookupEnv("HOME")
+	if err := os.Setenv("HOME", home); err != nil {
+		return nil, err
+	}
+	deskkit.ReloadConfig()
+	return func() {
+		if had {
+			_ = os.Setenv("HOME", prev)
+		} else {
+			_ = os.Unsetenv("HOME")
+		}
+		os.RemoveAll(home)
+		deskkit.ReloadConfig()
+	}, nil
+}
+
+func TestMain(m *testing.M) {
+	cleanup, err := installFixtureRoster()
+	if err != nil {
+		panic("cannot install the test-fixture roster: " + err.Error())
+	}
+	code := m.Run()
+	cleanup()
+	os.Exit(code)
+}
