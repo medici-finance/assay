@@ -81,7 +81,8 @@ why: <prose>                        # REQUIRED for every NEW brief — one to th
 wave: <int>
 depends: []                        # typed IDs only: ["<stream>/<NN>", ...] — NEVER prose arrows
 unblocks: []                       # typed IDs
-effort: S | M | L
+effort: S | M | L                   # closed scale — L is the CEILING (rule 11); XL is not a size,
+                                    # it is the signal to split into multiple briefs, each ≤ L.
 gate: model | human                # from the four risk questions below
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []                         # GH issue numbers this brief closes
@@ -233,10 +234,120 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
    PROBLEMs an unrecognized value, NOTICEs a missing `exec-tier-why`. **Honest limitation:**
    statusgen never verifies which model actually ran — pickup-side compliance is honor-system
    self-report; the enforced surface is desk dispatch + the review gate.
+10. **Defense in depth is the DEFAULT design posture.** When a brief's Task has design
+    alternatives, prefer the LAYERED one: no single control standing between a fault and the
+    damage. **Mandatory for core-system briefs** — each project layer defines what "core system"
+    means for its own repo (typically: anything touching money, auth/identity, or an irreversible
+    external write); recommended everywhere else. Three authoring obligations:
+    - (a) **Single-point-of-failure note in `## Context`** — one or two lines answering "what is the
+      ONE control this design depends on?". If the honest answer is a single thing, the design needs
+      another layer BEFORE the brief is authored, not after a reviewer bounces it.
+    - (b) **At least two INDEPENDENT layers in the Task**, where feasible. **The independence test:
+      two layers are independent only if they fail for DIFFERENT reasons in DIFFERENT components.**
+      The same check pasted into N call sites is one layer — it fails once and everywhere. A typical
+      independent set: an enforcement point at the trust boundary (the system itself rejects the
+      operation) + validation in the service that calls it + an out-of-band monitor/reconciler that
+      notices when both were bypassed.
+    - (c) **Verify rows exercising each layer INDEPENDENTLY, including at least one NEGATIVE-PATH
+      row** — break or bypass the upper layer and prove the lower one still catches the fault. A
+      Verify table that only walks the happy path through every layer at once has verified exactly
+      one layer: the outermost.
+    **Boundary — this is NOT "add more assertions".** Layers are DESIGNED controls at DISTINCT trust
+    boundaries, not one check duplicated for reassurance. Where a project's constraints say invariant
+    checks are closed-form math rather than runtime assertions, that constraint stands; the
+    independence test in (b) is what distinguishes a real layer from assert-spam. Adding a "layer"
+    that fails for the same reason as the layer it backs up costs review time and buys nothing.
+11. **Sizing limits — L is the hard ceiling; prefer M for strong-tier / risk-gated work.** The
+    `effort:` scale is closed at S | M | L, and the top of it is a rule, not a convention: **no
+    brief may be larger than L. A unit of work that would be XL (or bigger) MUST be split into
+    multiple briefs, each ≤ L**, sequenced with `depends:`/`unblocks:`. XL is only ever a
+    signal-to-split, never an emitted size — `statusgen --lint` already PROBLEMs any effort
+    outside S/M/L.
+
+    **Preference, explicitly NOT a rule:** when a brief is `exec-tier: strong` OR risk-gated
+    (`gate: human` / any risk answer `yes`), **prefer M as the ceiling** — lean toward splitting
+    an L into Ms. An L remains permitted for strong/high-risk work when there is a real reason to
+    keep the unit whole; the default lean is M-or-smaller. Rationale: strong-tier work
+    (cross-artifact correctness) and high-risk work are exactly where a large brief most degrades
+    review quality, so smaller, more-reviewable units are preferred there — the review gate is
+    the control the risk answers lean on, and it only bites on a diff a reviewer can actually
+    hold.
 
 Keep a brief self-contained: if executing it requires knowledge from another brief, either link it
 under "Read first" / `facts:` or state the dependency in `depends:` — never assume the reader has the
 whole plan in context.
+
+## Before dispatch — mistake-proofing the brief itself
+
+The rules above shape the brief. The three steps below **test** it, at the one pause point the flow
+already has: *the brief is authored and the Verify table is written; nothing is dispatched yet.* All
+three are zero-tooling — no lint reads any of them, which is exactly why they are procedure and not
+schema. The doctrine, the evidence, and the WHY live in **`docs/mistake-proofing.md`** (the public
+tool home) §§B5–B8; that document is the one home for them. What follows is only the procedure.
+
+### Pre-mortem → detection map (B5)
+
+Spend **one** prompt on prospective hindsight, about the brief you just wrote (not about the product):
+
+> *"This work shipped and was wrong — what went wrong?"*
+
+Then map every failure mode it names to the Verify row that would catch it:
+
+| Failure mode of the work | Caught by |
+|---|---|
+| Worker edits the source but never regenerates, so the committed output is stale | row 3 — `<regen> --check`, exit non-zero on drift |
+| The new lint rule ships but never fires; no input in the suite trips it | row 4 — deliberate bad input, expect exit 1 |
+| The version pin in the guide is written from memory and is already wrong | **no row** |
+
+**A failure mode with no row IS the finding.** Either add the row (here: dereference the pin against
+the live release), or record in one line why it is review-only — adequacy, taste, and materiality
+stay with review by design, and saying so is an answer. What you must not do is leave the third
+column blank and dispatch. The rows are the deliverable; the map is the generator that produced them,
+and may be kept in the brief beside the table or discarded once the rows land.
+
+### The dispatch checklist (B7)
+
+Run it at the pause point, **do-confirm** style — the work is already done, you are confirming the
+killer items — in under a minute. It covers ONLY what `statusgen --lint` cannot read. It stays this
+short: a checklist that grows becomes a document, and a document is the weakest device there is.
+
+```
+DISPATCH CHECKLIST — brief authored, before dispatch
+
+[ ] 1. Rows DISCRIMINATE. Picture a wrong-but-plausible deliverable — right shape, right
+       sections, a confident falsehood inside. Does at least one row go red on it?  (B6)
+[ ] 2. Facts dated and checkable. Every `facts:` entry is dated, or carries the command that
+       re-establishes it. Nothing written from memory.
+[ ] 3. Self-contained. Executable without reading another brief and without exploring the repo.
+[ ] 4. Risk answers match `files:`. Read the four answers against the declared paths — do those
+       paths trip a risk every answer says no to?
+[ ] 5. `gate-why` is substantive — names what about THIS brief trips the wire.
+[ ] 6. Effort and exec-tier honest. Not an L wearing an M; not `any` on work that needs `strong`.
+[ ] 7. Shared value → a FLOW row, not only a site row, and `consumers:` enumerated (rule 6).
+[ ] 8. Pre-mortem run; every failure mode has a row or a recorded review-only reason.
+```
+
+Item 1 is the negative control: a Verify table that cannot fail is a green lamp wired to nothing.
+Expect the list to be wrong at first — revise it against misses you actually observe, and keep it at
+single digits by dropping the item that stopped earning its place, not by appending.
+
+### Comprehension probe (B8)
+
+**Optional** — reach for it when a brief's self-containedness is genuinely in doubt (dense subject,
+unfamiliar surface, a draft you compressed hard).
+
+1. Write **3–5 questions** a competent executor must be able to answer to do the work — pointed, not
+   trivia: *"which file does the second Task step edit, and what does it currently contain?"*,
+   *"which Verify row fails if the generator is not rebuilt first?"*
+2. Hand a **fresh, cheap-tier** agent the brief text ALONE — no repo, no plan, no sibling brief — and
+   have it answer. (The model-tier gate at the top of this skill bars a cheap tier from *authoring*;
+   answering a probe is not authoring. A cheap answerer is the point: it tests whether the brief
+   carries the work rather than whether the reader is strong.)
+3. A wrong or hedged answer is a defect **in the brief**. Fix the brief. Never fix it by enriching the
+   worker's dispatch prompt — the brief is what the next reader gets.
+
+A failed probe is a defect caught before it crossed the boundary, and it costs less than one failed
+worker run.
 
 ## Phase README structure
 
