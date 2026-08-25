@@ -111,7 +111,10 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	if strings.TrimSpace(o.claimRoot) != "" {
 		releaseTool = plan.claimScript
 	}
-	fmt.Fprintf(&b, "```\n%s release %q --repo %s\n```\n", releaseTool, o.item, repo)
+	// The release names the CLAIM key — the one the acquire was taken under (translated
+	// from the plan item key when they differ) — or the agent would release a key nobody
+	// holds and the real claim would sit until its TTL.
+	fmt.Fprintf(&b, "```\n%s release %q --repo %s\n```\n", releaseTool, plan.claimKey, repo)
 
 	if strings.EqualFold(o.tier, "strong") {
 		fmt.Fprintf(&b, "\n%s\n", tierClause)

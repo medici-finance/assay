@@ -598,8 +598,10 @@ func TestForeignRepoRefused(t *testing.T) {
 	}
 }
 
-// The key is passed through UNCHANGED: a key this verb reshaped would not collide with the
-// one another desk holds, and a claim that does not collide is not a claim.
+// A key already in claim-key form (carrying `--`) is passed through UNCHANGED: a key this
+// verb reshaped would not collide with the one another desk holds, and a claim that does
+// not collide is not a claim. (A plan-form `<stream>/<NN>` key is translated instead —
+// see TestVerifierPlanItemKeyIsTranslatedForTheClaimTool.)
 func TestItemKeyReachesTheClaimToolUnchanged(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
@@ -617,6 +619,180 @@ func TestItemKeyReachesTheClaimToolUnchanged(t *testing.T) {
 		}
 	}
 	t.Fatal("the claim tool was never invoked")
+}
+
+// THE VERIFIER-DISPATCH DEFECT. verifyloop plan names items `<stream>/<NN>`, and the
+// documented verifier dispatch passes that key straight to this verb — but the claim
+// tool's grammar is `<repo>--<stream>--<NN>` and it REFUSES the slash form. Passed
+// through raw, every verifier dispatch died at claim-acquire; passed pre-translated by
+// hand, the worktree/branch/brief derivations were corrupted instead. So the CLAIM calls
+// get the translated key and everything human-facing keeps the original.
+func TestVerifierPlanItemKeyIsTranslatedForTheClaimTool(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	s.replies = happyReplies("/private/tmp/verifier-home")
+
+	promptFile := filepath.Join(t.TempDir(), "p.md")
+	rc := run([]string{"verdict-lane/05", "--root", root, "--kit", "verifier",
+		"--prompt-file", promptFile})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("verifier dispatch rc = %d, want 0", rc)
+	}
+
+	// The fixture roster configures no repo alias, so the short label is the repo
+	// basename: medici-finance/assay -> "assay". The claim-key fixture is not a secret;
+	// the scanner trips on a string assigned to a *Key-named constant.
+	const wantKey = "assay--verdict-lane--05" // gitleaks:allow
+	acquired := false
+	for _, c := range s.calls {
+		if strings.Contains(strings.Join(c, " "), "dispatch-claim.sh acquire") {
+			acquired = true
+			if c[2] != wantKey {
+				t.Fatalf("acquire used key %q, want the translated claim key %q — the slash form is "+
+					"refused by the claim tool's grammar", c[2], wantKey)
+			}
+		}
+	}
+	if !acquired {
+		t.Fatal("the claim tool was never invoked")
+	}
+
+	// The worktree and branch stay on the ORIGINAL item key.
+	if !s.ran("deskwt add verdict-lane-05 --branch feat/verdict-lane-05") {
+		t.Error("the worktree/branch were not derived from the ORIGINAL item key")
+	}
+
+	body, err := os.ReadFile(promptFile)
+	if err != nil {
+		t.Fatalf("prompt file: %v", err)
+	}
+	prompt := string(body)
+	if !strings.Contains(prompt, "**Item key:** `verdict-lane/05`") {
+		t.Error("the prompt's item key is no longer the original plan form")
+	}
+	if !strings.Contains(prompt, `release "`+wantKey+`"`) {
+		t.Error("the release hint does not carry the translated claim key — the agent would release " +
+			"a key nobody holds and the real claim would sit until its TTL")
+	}
+}
+
+// THE TRANSLATION IS KIT-INDEPENDENT. The claim step runs once per dispatch, before any
+// kit-specific behaviour; --kit selects prompt text and nothing about the claim. The
+// field repro for the worker path was exactly the verifier one wearing a different kit: a
+// board row keyed `<stream>/<NN>`, claim FREE under the translated key, and the raw
+// dispatch dying as a phantom "already claimed". The worker case also carries
+// --claim-root, matching the centralized-scripts shape it was reproduced under.
+func TestPlanItemKeyTranslationIsKitIndependent(t *testing.T) {
+	cases := []struct {
+		kit       string // "" = the worker default
+		item      string
+		repo      string
+		claimRoot bool
+		wantKey   string
+	}{
+		// The fixture roster configures no repo alias, so the short label is the repo
+		// basename: example-org/tracker -> "tracker".
+		{"", "education/10", "example-org/tracker", true, "tracker--education--10"},
+		{"review", "education/10", "example-org/tracker", false, "tracker--education--10"},
+	}
+	for _, c := range cases {
+		name := c.kit
+		if name == "" {
+			name = "worker-default"
+		}
+		t.Run(name, func(t *testing.T) {
+			s := &stub{}
+			_, root := s.install(t)
+			args := []string{c.item, "--root", root, "--repo", c.repo,
+				"--prompt-file", filepath.Join(t.TempDir(), "p.md")}
+			if c.kit != "" {
+				args = append(args, "--kit", c.kit)
+			}
+			if c.claimRoot {
+				claimRoot := t.TempDir()
+				plantScripts(t, claimRoot)
+				args = append(args, "--claim-root", claimRoot)
+			} else {
+				plantScripts(t, root)
+			}
+			s.replies = happyReplies("/private/tmp/agent-home")
+
+			if rc := run(args); rc != deskkit.ExitOK {
+				t.Fatalf("rc = %d, want 0", rc)
+			}
+			acquired := false
+			for _, call := range s.calls {
+				if strings.Contains(strings.Join(call, " "), "dispatch-claim.sh acquire") {
+					acquired = true
+					if call[2] != c.wantKey {
+						t.Fatalf("acquire used key %q, want %q — the claim translation must not "+
+							"depend on the kit", call[2], c.wantKey)
+					}
+				}
+			}
+			if !acquired {
+				t.Fatal("the claim tool was never invoked")
+			}
+			if !s.ran("deskwt add education-10 --branch feat/education-10") {
+				t.Error("the worktree/branch were not derived from the ORIGINAL item key")
+			}
+		})
+	}
+}
+
+// A refused acquire with NO readable holder is the claim tool rejecting the invocation
+// (e.g. a malformed key) — the OPPOSITE of a live-holder collision. It must surface as
+// the real claim-acquire error, never as "already claimed by a LIVE holder — Existing
+// claim: (no output)", which sent operators hunting for a holder that never existed.
+// This too is kit-independent: the worker subtest is the board-row shape the defect was
+// reproduced under, the verifier subtests the verifyloop shape.
+func TestClaimRefusalWithNoHolderIsNotReportedAsACollision(t *testing.T) {
+	cases := []struct {
+		why  string
+		args []string
+		show reply
+	}{
+		{"verifier: show reports the key FREE",
+			[]string{"verdict-lane/05", "--kit", "verifier"},
+			reply{match: "dispatch-claim.sh show",
+				stdout: "dispatch-claim: FREE assay--verdict-lane--05 (no refs/dispatch/... in the repo)"}},
+		{"verifier: show itself is refused (same malformed key)",
+			[]string{"verdict-lane/05", "--kit", "verifier"},
+			reply{match: "dispatch-claim.sh show", code: deskkit.ExitRefused}},
+		{"worker: show reads nothing at all (an unreadable or orphaned ref is never a live holder)",
+			[]string{"education/10"},
+			reply{match: "dispatch-claim.sh show", stdout: ""}},
+	}
+	for _, c := range cases {
+		t.Run(c.why, func(t *testing.T) {
+			s := &stub{}
+			_, root := s.install(t)
+			plantScripts(t, root)
+			s.replies = []reply{
+				{match: "remote get-url origin", stdout: "git@github.com:medici-finance/assay.git"},
+				{match: "dispatch-claim.sh acquire", code: deskkit.ExitRefused},
+				c.show,
+			}
+
+			err := cmdDispatch(append(c.args, "--root", root))
+			if err == nil {
+				t.Fatal("a refused acquire returned nil")
+			}
+			if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+				t.Fatalf("rc = %d, want %d", deskkit.ExitCodeOf(err), deskkit.ExitRefused)
+			}
+			if strings.Contains(err.Error(), "already claimed") {
+				t.Fatalf("a no-holder refusal was reported as a live-holder collision: %s", err.Error())
+			}
+			if !strings.Contains(err.Error(), "refused to acquire") {
+				t.Fatalf("the claim tool's refusal was not surfaced as a claim-acquire error: %s", err.Error())
+			}
+			if s.ran("deskwt add") {
+				t.Error("work proceeded past a refused claim")
+			}
+		})
+	}
 }
 
 // A key that would be read as a flag, or that carries a parent-directory segment, is
@@ -675,6 +851,59 @@ func TestDryRunTouchesNothingButStillEmitsThePrompt(t *testing.T) {
 	// into a real dispatch: deskwt owns where a worktree lands.
 	if !strings.Contains(string(body), homeUnknown) {
 		t.Error("the dry-run prompt did not say the worktree path is not yet known")
+	}
+}
+
+// THE TIER NEVER GATES PROMPT EMISSION. --tier changes model selection (the attestation
+// labels, the strong-tier pickup STOP clause) and nothing else; whether a dry-run emits
+// its prompt must be identical for every tier in the vocabulary. Pinned after a field
+// report that `--tier strong --dry-run` emitted no prompt — which did not reproduce at
+// this source, so this is the regression fence that keeps it that way: the strong prompt
+// is the any-tier prompt shape plus the tier STOP clause, never an absent one.
+func TestDryRunEmitsThePromptForEveryTier(t *testing.T) {
+	// ONE root and ONE install for every tier, so the emitted prompts differ only where
+	// the tier itself makes them differ.
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+
+	prompts := map[string]string{}
+	for _, tier := range deskkit.DispatchTiers() {
+		s.calls = nil
+		promptFile := filepath.Join(t.TempDir(), "p.md")
+		rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo,
+			"--tier", tier, "--dry-run", "--prompt-file", promptFile})
+		if rc != deskkit.ExitOK {
+			t.Fatalf("--tier %s --dry-run rc = %d, want 0", tier, rc)
+		}
+		if len(s.calls) != 0 {
+			t.Fatalf("--tier %s --dry-run ran %d child processes: %v", tier, len(s.calls), s.calls)
+		}
+		body, err := os.ReadFile(promptFile)
+		if err != nil {
+			t.Fatalf("--tier %s --dry-run emitted no prompt: %v", tier, err)
+		}
+		prompts[tier] = string(body)
+	}
+	for tier, p := range prompts {
+		// The same assignment + clause shape for every tier…
+		for _, want := range []string{"# Assignment — item-1", "every file operation stays under it", homeUnknown} {
+			if !strings.Contains(p, want) {
+				t.Errorf("the --tier %s dry-run prompt is missing %q", tier, want)
+			}
+		}
+		// …and the STOP clause is the ONLY tier-dependent difference.
+		if got, want := strings.Contains(p, tierClause), strings.EqualFold(tier, "strong"); got != want {
+			t.Errorf("--tier %s dry-run prompt: tier STOP clause present=%v, want %v", tier, got, want)
+		}
+	}
+	// Same shape check: strip the two sanctioned tier-dependent differences — the STOP
+	// clause and the stated tier value — and the prompts must be byte-identical.
+	stripped := strings.ReplaceAll(prompts["strong"], "\n"+tierClause+"\n", "")
+	stripped = strings.ReplaceAll(stripped, "**Execution tier:** `strong`", "**Execution tier:** `any`")
+	if stripped != prompts["any"] {
+		t.Error("the strong-tier dry-run prompt is not the any-tier prompt plus the STOP clause — " +
+			"the tier changed more than model selection")
 	}
 }
 
