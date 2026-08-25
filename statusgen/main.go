@@ -889,7 +889,7 @@ func main() {
 	}
 
 	// `statusgen transcribe` — the R-6 verify verdict-transcription lane
-	// (verdict-lane/03, transcribe.go). It reads verifier-authored SIGNED verdict
+	// (transcribe.go). It reads verifier-authored SIGNED verdict
 	// issues, evaluates the R-6 clause battery (each an independent fail-closed
 	// layer), and applies the byte-bounded Evidence-append + model-tier cell-flip
 	// class to the candidate tree; `--check` evaluates without writing (the

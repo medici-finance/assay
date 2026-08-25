@@ -15,7 +15,7 @@ import (
 func nowRFC3339() string { return time.Now().UTC().Format(time.RFC3339) }
 
 // ---------------------------------------------------------------------------
-// Fixtures shared by the three Verify rows (verdict-lane/03).
+// Fixtures shared by the three Verify rows.
 //
 // The tree: an `issue-flow` stream carrying rulings.md (the R-6 sign-off line),
 // and an `example` stream with one model-gate brief (brief-01) at `implemented`,

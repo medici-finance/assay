@@ -1,10 +1,10 @@
 package main
 
 // verdictverify.go — the VERIFY-side verdict-payload trust primitives for the
-// R-6 verify-transcription lane (verdict-lane/03).
+// R-6 verify-transcription lane.
 //
 // This is a DOCUMENTED DUPLICATE of the verify half of
-// `../tools/desk/internal/deskkit/verdict.go`, following the same
+// `tools/desk/internal/deskkit/verdict.go`, following the same
 // documented-duplicate pattern this tree already uses for the trust roster
 // (rosterconfig.go duplicates deskkit's roster loader; trustgate.go duplicates
 // its blessing rule). statusgen is its own Go module and deliberately does NOT

@@ -1,22 +1,22 @@
 package main
 
-// transcribe — the R-6 verify verdict-transcription lane's brain (issue-flow
-// rulings R-6; verdict-lane/03). It is the sole logic behind `verify-transcribe.yml`,
-// which is thin glue: enactment gate, checkout main, `statusgen transcribe`, lint,
-// commit, push. This file holds the trust predicate (per-clause, each an
-// independent fail-closed layer), the verdict → tree delta derivation, and the
-// application; the workflow holds only the transport.
+// transcribe — the R-6 verify verdict-transcription lane's brain (per the R-6
+// ruling in docs/streams/issue-flow/rulings.md). It is the sole logic behind
+// `verify-transcribe.yml`, which is thin glue: enactment gate, checkout main,
+// `statusgen transcribe`, lint, commit, push. This file holds the trust predicate
+// (per-clause, each an independent fail-closed layer), the verdict → tree delta
+// derivation, and the application; the workflow holds only the transport.
 //
 // SHIPPED INERT. The lane evaluates NOTHING until R-6's Sign-off line in
 // docs/streams/issue-flow/rulings.md resolves, via the API, to a comment by the
 // blessing authority (ASSAY_BLESS_LOGIN, login:id, both halves from one response,
-// non-User refused — the eb7ca08a fix, carried forward) whose body names R-6.
+// non-User refused — a prior enactment fix, carried forward) whose body names R-6.
 // Until then transcribeVerifyEnactmentGate reports INERT and no clause is
 // evaluated. This is what makes it ship inert and arm nothing: arming stays
 // gate:human, and this PR arms nothing. The workflow independently re-resolves the
 // same line before the tool ever runs (defense in depth).
 //
-// RELATION TO THE SCAN LANE (transcribescan.go, R-7). That lane transcribes issue
+// RELATION TO THE SCAN LANE (transcribescan.go). That lane transcribes issue
 // PLACEHOLDERS; this one transcribes verify VERDICTS. They share the API-read
 // author triple, the comment/sign-off resolvers, the enactment-gate shape and the
 // skip-log discipline (all in transcribescan.go / scanissues.go), and differ in
@@ -25,7 +25,7 @@ package main
 //
 // SECURITY. Issue bodies are attacker-authorable DATA and are NEVER executed. The
 // only executed shell is a `check:ci` row's script already committed on the
-// candidate tree, re-run network-off via runHermetically (verdict-lane/02). No
+// candidate tree, re-run network-off via runHermetically. No
 // content lifted from an issue body reaches a shell. Trust keys on API-read author
 // identity (cl.1) and the RS256 signature over the verifier's key (cl.2), never on
 // any text an issue author controls.
@@ -70,7 +70,7 @@ const transcribeRowTimeout = 2 * time.Minute
 
 // ---------------------------------------------------------------------------
 // Payload shape (verdict-v1) — the parsed content of a signed verdict body.
-// Mirrors docs/streams/verdict-lane/payload.md. The signature (cl.2) is verified
+// Mirrors the verdict payload schema. The signature (cl.2) is verified
 // separately over the canonical bytes; this is the CONTENT the lane acts on.
 // ---------------------------------------------------------------------------
 
@@ -121,8 +121,8 @@ type bodyEditResolver func(repo string, issue int) (edited bool, err error)
 type verdictSigVerifier func(body string) (vvVerifyState, string)
 
 // rowExecutor re-executes a `check:ci` Verify row against the candidate tree for
-// the cl.6 re-verification. Production wraps runHermetically (network-off,
-// verdict-lane/02); tests inject a deterministic result. A couldNotRun result is
+// the cl.6 re-verification. Production wraps runHermetically (network-off);
+// tests inject a deterministic result. A couldNotRun result is
 // fail-closed by the caller — a hermetic check that could not be run hermetically
 // established nothing.
 type rowExecutor func(root, command string) runResult
