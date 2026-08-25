@@ -63,6 +63,10 @@ A green table that was never mutation-tested is the very defect this rule closes
 Any brief that adds a *check* MUST include a mutation-test Verify row
 (§ brief-rules.md rule 16; shared-code changes additionally need a neighbour row per rule 17).
 
+`mistake-proofing.md` promotes this positive-control clause from single instruments to
+every device in the system (its **D1**), and adds the classification — timing × mode ×
+bypass — that says where a device sits and how strong it actually is.
+
 ## Auditing a fleet against this rule
 
 The class is closed by **coverage, not by fixing everything at once**. Enumerate every

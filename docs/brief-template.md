@@ -203,3 +203,7 @@ README table. Human gate is MANDATORY when any risk answer is yes.
   or no one can tell why the work exists or whether it is still needed.
 - **Verify rows must be runnable by someone who did not do the work** — a row with no
   literal command and no expected exit/output is a hope, not a check.
+- **The authoring act has its own rules**: `mistake-proofing.md`'s B1-B10 bind
+  alongside `brief-rules.md`. Two to run before dispatch — the pre-mortem mapped to Verify
+  rows (**B5**) and the negative control that confirms this table goes red on a
+  wrong-but-plausible deliverable (**B6**).
