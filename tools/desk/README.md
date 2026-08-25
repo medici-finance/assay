@@ -52,7 +52,7 @@ it on day one.
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
 | `deskroster` | `set`, `drop`, `list`, `mine`, `preflight` | local-only, out-of-git (`preflight` mints a token and runs one read-only transport probe) | no |
-| `muhar` | `-spec <file>` mutation harness | local diagnostic (no `Guard`) | no |
+| `muhar` | `-spec <file>` mutation harness, `-j <n>` mutations in flight (isolated tree per worker) | local diagnostic (no `Guard`) | no |
 | `writeguard` | PreToolUse hook (F-34 isolation backstop) | hook | n/a |
 | `deskpushguard` | pre-push hook — refuses a push to a MERGED/CLOSED branch, one carrying a foreign/laundered commit, a single-parent merge masquerade, or a branch point sitting on a stray local `origin/main`, or one introducing a register-entry `id:` collision with an in-flight sibling branch (#22, #72). Cannot determine the base → prints `COULD-NOT-CHECK` and allows (fail-open, brief-10); that line means UNVERIFIED, not clean | git hook | n/a |
 | `desksourceguard` | CI gate — refuses a materialised desk-tools source tree that is not the pinned commit | CI | n/a |
@@ -2637,13 +2637,28 @@ the PR as untested). `muhar` makes that impossible by construction:
    baseline makes every "caught" meaningless).
 
 ```bash
-muhar -spec mutations.json   # exit 0 = healthy run (see stdout); exit 2 = HARNESS BROKEN, discard
+muhar -spec mutations.json        # exit 0 = healthy run (see stdout); exit 2 = HARNESS BROKEN, discard
+muhar -spec mutations.json -j 0   # same verdicts, one worker per CPU
 ```
 
 The spec is JSON: `{root, test, control, mutations[]}` where `test` is the suite command
 (non-zero exit == mutation caught) and `control` is the always-caught mutation. A broken
 run prints only `HARNESS BROKEN` and its reason — never per-guard verdicts, because those
 are the very thing that cannot be trusted.
+
+**`-j`, and why a parallel sweep does not lie.** A sweep is one full suite run per
+mutation, run end to end, so a 24-mutation gate costs 26 suite runs of wall time (baseline
++ control + 24) for work that is entirely independent. `-j N` puts N mutations in flight at
+once; `-j 0` sizes the pool to the machine's CPU count; the default `1` is the historical
+sequential, in-place sweep. The one thing that would make a parallel sweep untrustworthy is
+two workers editing the same file, so **each worker owns an isolated copy of the spec's
+root** and mutates only that. Three properties keep the verdicts identical to a sequential
+run: the baseline and the positive control still run first, in a workspace, and still gate
+the whole run before any mutation is dealt out; results are indexed by **spec position**, so
+the report does not depend on which worker finished first; and a workspace that cannot be
+provisioned is a `HARNESS BROKEN` run, never a quiet fallback to a shared tree. `-j` moves
+the wall time and nothing else — the per-guard verdicts, their order, and the totals line
+CI gates on are unchanged.
 
 `muhar` does **not** call `deskkit.Guard()`: it is a local diagnostic that makes no
 outward writes (no GitHub, no shared-state mutation — it edits a source file and restores

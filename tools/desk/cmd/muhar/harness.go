@@ -30,13 +30,23 @@
 //  4. A BASELINE run on pristine source must be green. If the suite is already
 //     red before any mutation, every subsequent "caught" is meaningless, so the
 //     run is discarded as broken.
+//
+// Parallelism. A sweep is N independent suite runs, and the suite is the whole
+// cost. With Jobs > 1 the mutations are dealt out to a pool of workers, each
+// owning an ISOLATED COPY of the tree (Workspace), so no two workers ever share
+// a file being mutated — the one thing that would make a parallel sweep lie.
+// Nothing about the verdicts changes: the baseline and the positive control
+// still run first and still gate the whole run, and Results stay in spec order
+// regardless of which worker got which mutation or in what order they finished.
 package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // Result is the outcome of planting one mutation and running the suite.
@@ -112,13 +122,25 @@ func applyEdit(content string, m Mutation) (string, error) {
 
 // Harness runs a set of mutations against real files, restoring each file after
 // each run. Test reports whether the suite FAILED with the current on-disk
-// state (true == red == the mutation was caught); it is a func so the core
-// logic is exercisable without spawning a real process.
+// state of the tree rooted at the root it is handed (true == red == the
+// mutation was caught); it is a func so the core logic is exercisable without
+// spawning a real process.
 type Harness struct {
-	Root      string      // directory relative File paths resolve against
-	Test      func() bool // true == suite FAILED (mutation caught) against current disk state
-	Control   Mutation    // a mutation the suite MUST catch; guards against a broken harness
-	Mutations []Mutation  // the guards under test
+	Root      string                 // directory relative File paths resolve against
+	Test      func(root string) bool // true == suite FAILED (mutation caught) against the tree at root
+	Control   Mutation               // a mutation the suite MUST catch; guards against a broken harness
+	Mutations []Mutation             // the guards under test
+
+	// Jobs is how many mutations to have in flight at once. <= 1 runs the
+	// sweep sequentially, in place, against Root — the original behaviour.
+	// > 1 requires Workspace: each worker mutates its OWN copy of the tree,
+	// because two workers editing one file would invalidate every verdict.
+	Jobs int
+
+	// Workspace provisions an isolated copy of the tree for worker id and
+	// returns its root plus a cleanup. It is only consulted when Jobs > 1;
+	// when it is nil the sweep falls back to running in place.
+	Workspace func(id int) (root string, cleanup func(), err error)
 }
 
 // Report is the outcome of a whole run.
@@ -143,19 +165,22 @@ type MutationResult struct {
 	Err      error
 }
 
-func (h *Harness) resolve(path string) string {
-	if filepath.IsAbs(path) || h.Root == "" {
+// resolve locates m.File inside the tree rooted at root. An absolute path is
+// taken as-is; an empty root leaves the path relative to the process cwd (the
+// in-place sequential default).
+func resolve(root, path string) string {
+	if filepath.IsAbs(path) || root == "" {
 		return path
 	}
-	return filepath.Join(h.Root, path)
+	return filepath.Join(root, path)
 }
 
-// runOne plants a single mutation, PROVES it landed on disk, runs the suite,
-// then restores the file. A mutation that cannot be proven on disk returns
-// CouldNotMutate with an explanatory error — it never runs the suite, so it can
-// never be mistaken for NotCaught.
-func (h *Harness) runOne(m Mutation) (Result, error) {
-	path := h.resolve(m.File)
+// runOne plants a single mutation in the tree at root, PROVES it landed on
+// disk, runs the suite there, then restores the file. A mutation that cannot be
+// proven on disk returns CouldNotMutate with an explanatory error — it never
+// runs the suite, so it can never be mistaken for NotCaught.
+func (h *Harness) runOne(root string, m Mutation) (Result, error) {
+	path := resolve(root, m.File)
 	orig, err := os.ReadFile(path)
 	if err != nil {
 		return CouldNotMutate, fmt.Errorf("mutation %q: read %s: %w", m.Name, path, err)
@@ -191,22 +216,22 @@ func (h *Harness) runOne(m Mutation) (Result, error) {
 		return CouldNotMutate, fmt.Errorf("mutation %q: post-write verify failed — file is byte-identical to the original", m.Name)
 	}
 
-	if h.Test() {
+	if h.Test(root) {
 		return Caught, nil
 	}
 	return NotCaught, nil
 }
 
-// Run executes the baseline check, the positive control, then every mutation.
-// It short-circuits to a Broken report the moment the run becomes untrustworthy
-// (red baseline or an uncaught control), because past that point NO per-mutation
-// verdict can be believed.
-func (h *Harness) Run() Report {
+// preflight runs the baseline check and then the positive control against the
+// tree at root. The returned report is either Broken — in which case NO
+// per-mutation verdict may be believed and the caller must stop — or a healthy
+// header the caller fills the per-mutation results into.
+func (h *Harness) preflight(root string) Report {
 	var rep Report
 
 	// (4) Baseline: pristine source must be green. A suite that is already red
 	// makes every later "caught" meaningless.
-	if h.Test() {
+	if h.Test(root) {
 		rep.Broken = true
 		rep.BrokenReason = "baseline suite is RED on pristine source — cannot distinguish a caught mutation from a pre-existing failure; discard the run"
 		return rep
@@ -216,7 +241,7 @@ func (h *Harness) Run() Report {
 	// (3) Positive control: a mutation the suite MUST catch. If it is not
 	// caught, the harness is not mutating (or the suite cannot see the source)
 	// and the whole run is worthless — exactly the #34 failure, made loud.
-	cres, cerr := h.runOne(h.Control)
+	cres, cerr := h.runOne(root, h.Control)
 	rep.ControlResult = cres
 	if cres != Caught {
 		rep.Broken = true
@@ -228,13 +253,153 @@ func (h *Harness) Run() Report {
 		}
 		return rep
 	}
-
-	// The instrument is proven. Now every NotCaught is a real finding.
-	for _, m := range h.Mutations {
-		res, err := h.runOne(m)
-		rep.Results = append(rep.Results, MutationResult{Mutation: m, Result: res, Err: err})
-	}
 	return rep
+}
+
+// Run executes the baseline check, the positive control, then every mutation.
+// It short-circuits to a Broken report the moment the run becomes untrustworthy
+// (red baseline or an uncaught control), because past that point NO per-mutation
+// verdict can be believed.
+//
+// With Jobs > 1 and a Workspace provisioner, the per-mutation phase is dealt out
+// to a worker pool over isolated copies of the tree. The verdicts are identical
+// either way: the same baseline gate, the same control gate, and Results indexed
+// by spec position so the report does not depend on completion order.
+func (h *Harness) Run() Report {
+	jobs := h.Jobs
+	// Never provision more workspaces than there is work for them.
+	if jobs > len(h.Mutations) {
+		jobs = len(h.Mutations)
+	}
+	// No provisioner means no isolation, and an un-isolated pool would have
+	// workers editing each other's source — fall back to the in-place sweep.
+	if jobs < 1 || h.Workspace == nil {
+		jobs = 1
+	}
+	if jobs == 1 {
+		rep := h.preflight(h.Root)
+		if rep.Broken {
+			return rep
+		}
+		// The instrument is proven. Now every NotCaught is a real finding.
+		for _, m := range h.Mutations {
+			res, err := h.runOne(h.Root, m)
+			rep.Results = append(rep.Results, MutationResult{Mutation: m, Result: res, Err: err})
+		}
+		return rep
+	}
+	return h.runParallel(jobs)
+}
+
+// runParallel provisions `jobs` isolated workspaces, preflights in the first one
+// — so the baseline and the control are checked against a copy, proving the copy
+// itself is sound before any verdict rests on it — then deals the mutations out
+// to one worker per workspace.
+func (h *Harness) runParallel(jobs int) Report {
+	roots := make([]string, 0, jobs)
+	var cleanups []func()
+	defer func() {
+		for _, c := range cleanups {
+			c()
+		}
+	}()
+	for i := 0; i < jobs; i++ {
+		root, cleanup, err := h.Workspace(i)
+		if err != nil {
+			return Report{
+				Broken:       true,
+				BrokenReason: fmt.Sprintf("could not provision isolated workspace %d (%v) — a parallel sweep cannot share a tree; discard the run", i, err),
+			}
+		}
+		if cleanup != nil {
+			cleanups = append(cleanups, cleanup)
+		}
+		roots = append(roots, root)
+	}
+
+	rep := h.preflight(roots[0])
+	if rep.Broken {
+		return rep
+	}
+
+	// Results are indexed by spec position, never appended, so the report is
+	// byte-identical to a sequential run whatever order the workers finish in.
+	rep.Results = make([]MutationResult, len(h.Mutations))
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < jobs; w++ {
+		wg.Add(1)
+		go func(root string) {
+			defer wg.Done()
+			for i := range next {
+				m := h.Mutations[i]
+				res, err := h.runOne(root, m)
+				rep.Results[i] = MutationResult{Mutation: m, Result: res, Err: err}
+			}
+		}(roots[w])
+	}
+	for i := range h.Mutations {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+	return rep
+}
+
+// copyTree makes a deep copy of src at dst: regular files (mode preserved),
+// directories, and symlinks recreated as symlinks. Anything else (sockets,
+// devices) is skipped — a source tree is not expected to contain them, and
+// silently copying one is worse than not having it.
+func copyTree(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		switch {
+		case d.IsDir():
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			return os.MkdirAll(target, info.Mode().Perm()|0o700)
+		case d.Type()&os.ModeSymlink != 0:
+			link, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(link, target)
+		case d.Type().IsRegular():
+			return copyFile(path, target, d)
+		default:
+			return nil
+		}
+	})
+}
+
+func copyFile(path, target string, d os.DirEntry) error {
+	info, err := d.Info()
+	if err != nil {
+		return err
+	}
+	in, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // Summary renders a human/agent-readable report. A Broken run is reported ONLY
