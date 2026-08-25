@@ -2,7 +2,14 @@
 //
 // Usage:
 //
-//	muhar -spec mutations.json
+//	muhar -spec mutations.json [-j N]
+//
+// -j is how many mutations to have in flight at once. The default, 1, runs the
+// sweep sequentially in place — the historical behaviour. -j 0 sizes the pool to
+// the machine's CPU count. With -j > 1 each worker gets its own COPY of the
+// spec's root, because a sweep whose workers shared a tree would be editing each
+// other's source and every verdict would be a coin flip. The verdicts, their
+// order, and the report text are unchanged by -j; only the wall time is.
 //
 // The spec is JSON:
 //
@@ -34,6 +41,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 )
 
 type spec struct {
@@ -50,6 +58,7 @@ type spec struct {
 // writeguard; halting local mutation testing serves no safety purpose.
 func main() {
 	specPath := flag.String("spec", "", "path to the mutation spec JSON")
+	jobs := flag.Int("j", 1, "mutations in flight at once (1 = sequential, in place; 0 = one per CPU)")
 	flag.Parse()
 
 	if *specPath == "" {
@@ -76,11 +85,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	n := *jobs
+	if n == 0 {
+		n = runtime.NumCPU()
+	}
+	if n < 1 {
+		fmt.Fprintln(os.Stderr, "muhar: -j must be >= 0")
+		os.Exit(1)
+	}
+
 	h := &Harness{
 		Root:      s.Root,
 		Control:   s.Control,
 		Mutations: s.Mutations,
-		Test: func() bool {
+		Jobs:      n,
+		Test: func(root string) bool {
 			// s.Test is an operator-authored suite command from the spec file
 			// (e.g. "go test ./... && ./verify.sh") — it legitimately needs a
 			// shell for pipes/&&, and the spec author already controls the box
@@ -88,14 +107,41 @@ func main() {
 			// is the intended execution path, not an injection surface.
 			cmd := exec.Command("sh", "-c", s.Test) //nolint:gosec // operator-supplied suite command, by design
 
-			if s.Root != "" {
-				cmd.Dir = s.Root
+			if root != "" {
+				cmd.Dir = root
 			}
 			cmd.Stdout = os.Stderr // suite chatter goes to stderr; report to stdout
 			cmd.Stderr = os.Stderr
 			// Non-zero exit == suite failed == mutation caught.
 			return cmd.Run() != nil
 		},
+	}
+	if n > 1 {
+		// The tree to clone is the one the mutations and the suite command
+		// already resolve against: the spec's root, or the process cwd when the
+		// spec leaves it empty.
+		srcRoot := s.Root
+		if srcRoot == "" {
+			wd, err := os.Getwd()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "muhar: cwd: %v\n", err)
+				os.Exit(1)
+			}
+			srcRoot = wd
+		}
+		h.Workspace = func(id int) (string, func(), error) {
+			dir, err := os.MkdirTemp("", fmt.Sprintf("muhar-%d-", id))
+			if err != nil {
+				return "", nil, err
+			}
+			cleanup := func() { _ = os.RemoveAll(dir) }
+			if err := copyTree(srcRoot, dir); err != nil {
+				cleanup()
+				return "", nil, err
+			}
+			return dir, cleanup, nil
+		}
+		fmt.Fprintf(os.Stderr, "muhar: %d mutations in flight, one isolated copy of %s per worker\n", n, srcRoot)
 	}
 
 	rep := h.Run()

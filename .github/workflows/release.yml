@@ -436,11 +436,20 @@ jobs:
       # a SURVIVING mutation still exits 0 with the verdict on stdout, so the
       # totals line is what this step gates on — without it, a deleted refusal
       # would report green here.
+      #
+      # `-j 0` on every sweep below: a sweep is one suite run per mutation, and
+      # the suite is the whole cost, so the mutations are dealt out to one worker
+      # per runner CPU instead of run end to end. Each worker mutates its OWN
+      # copy of the module — muhar refuses to parallelise over a shared tree, and
+      # a workspace it cannot provision is a BROKEN run, never a quiet fallback
+      # to a shared one. The gate is unchanged by this: same baseline check, same
+      # positive control, same per-mutation verdicts in the same order, same
+      # totals line. Only the wall time moves.
       - name: Gate bar — mutate every bodycheck refusal and require the suite to catch it
         run: |
           set -euo pipefail
           cd tools/desk
-          report=$(go run ./cmd/muhar -spec internal/deskkit/mutations.json)
+          report=$(go run ./cmd/muhar -j 0 -spec internal/deskkit/mutations.json)
           echo "$report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::a bodycheck refusal survived its mutation, or could not be applied — the gate is not load-bearing as written (docs/desk-tools-gate-bar.md)"
@@ -459,7 +468,7 @@ jobs:
         run: |
           set -euo pipefail
           cd tools/desk
-          report=$(go run ./cmd/muhar -spec cmd/desksourceguard/mutations.json)
+          report=$(go run ./cmd/muhar -j 0 -spec cmd/desksourceguard/mutations.json)
           echo "$report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::a desksourceguard refusal survived its mutation, or could not be applied — the guard is not load-bearing as written"
@@ -478,7 +487,7 @@ jobs:
         run: |
           set -euo pipefail
           cd tools/desk
-          report=$(go run ./cmd/muhar -spec internal/loopengine/mutations.json)
+          report=$(go run ./cmd/muhar -j 0 -spec internal/loopengine/mutations.json)
           echo "$report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::a half of loopengine's dedupe-at-start gate survived its mutation, or could not be applied — Claim's stated guarantee is not load-bearing as written (tools/desk/internal/loopengine/doc.go)"
@@ -500,7 +509,7 @@ jobs:
         run: |
           set -euo pipefail
           cd tools/desk
-          report=$(go run ./cmd/muhar -spec internal/loopengine/mutations-retry.json)
+          report=$(go run ./cmd/muhar -j 0 -spec internal/loopengine/mutations-retry.json)
           echo "$report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::an arm of loopengine's retry taxonomy survived its mutation, or could not be applied — the retryable / non-retryable / could-not-check split is not load-bearing as written (tools/desk/internal/loopengine/retry.go)"
@@ -520,7 +529,7 @@ jobs:
         run: |
           set -euo pipefail
           cd tools/desk
-          report=$(go run ./cmd/muhar -spec cmd/deskmerge/mutations.json)
+          report=$(go run ./cmd/muhar -j 0 -spec cmd/deskmerge/mutations.json)
           echo "$report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::a deskmerge refusal survived its mutation, or could not be applied — the zero-authorship boundary is not load-bearing as written"
@@ -541,7 +550,7 @@ jobs:
         run: |
           set -euo pipefail
           cd tools/desk
-          report=$(go run ./cmd/muhar -spec cmd/reviewloop/mutations.json)
+          report=$(go run ./cmd/muhar -j 0 -spec cmd/reviewloop/mutations.json)
           echo "$report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::an arm of reviewloop's idle gate or coalescing survived its mutation, or could not be applied — the board reactor's could-not-check state is not load-bearing as written (tools/desk/cmd/reviewloop/doc.go)"
