@@ -888,21 +888,6 @@ func main() {
 		os.Exit(runMergecheck(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
-	// `statusgen transcribe` — the R-6 verify verdict-transcription lane
-	// (transcribe.go). It reads verifier-authored SIGNED verdict
-	// issues, evaluates the R-6 clause battery (each an independent fail-closed
-	// layer), and applies the byte-bounded Evidence-append + model-tier cell-flip
-	// class to the candidate tree; `--check` evaluates without writing (the
-	// CI-testable surface). It SHIPS INERT — it evaluates no clause until R-6's
-	// Sign-off line resolves to the blessing authority; arming stays gate:human.
-	//
-	// Intercepted before flag parsing for verifyrun's reason: it owns --root and
-	// --check with its own meanings, it is WRITE-capable and shells out (a check:ci
-	// row re-executes network-off), so it has no business inside the offline --lint.
-	if len(os.Args) > 1 && os.Args[1] == "transcribe" {
-		os.Exit(runTranscribe(os.Args[2:], os.Stdout, os.Stderr))
-	}
-
 	// `statusgen shardcheck` — positional subcommand (like `verifyrun` above)
 	// that decides whether a brief's declared `parallel-streams:` split may be
 	// dispatched to concurrent workers (methodology/43, shardcheck.go).
