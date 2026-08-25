@@ -11,33 +11,35 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-24 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-24 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-24 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-24 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-24 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-25 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-25 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-25 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/6 | 2026-08-25 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-25 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-25 |  |
 
 ## Next up
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| quality | 01 — miner skeleton — go-git extraction, incremental runs, three-state plumbing [exec:strong] | 0 | 8000 |
+| forge-gitlab | 01 — `Forge` interface extraction in deskkit — `github` impl pinned by goldens [exec:strong] | 1 | 3500 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (10 desk-actionable of 10 total — 10 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (11 desk-actionable of 11 total — 11 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (10)
+### Desk-actionable (11)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
+| quality | 01 [exec:strong] | implemented | 8000 | 14 | — | — | — |
 | derived-board | 01 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | derived-board | 02 | implemented | 4500 | 5 | — | — | — |
 | desktools-go-git | 01 | implemented | 4500 | 7 | — | — | — |
@@ -97,9 +99,18 @@ _None._
 - 07 `deskmerge` exception — fence the trial merge, migrate the rest — todo (wave 3)
 - 08 flip the drop-the-binary CI gate + CVE floor + file the follow-on — todo (wave 5)
 
+### forge-gitlab (6 open)
+
+- 01 `Forge` interface extraction in deskkit — `github` impl pinned by goldens — todo (wave 1)
+- 02 `gitlab` forge implementation (MRs, notes, approvals, statuses) — todo (wave 2)
+- 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — todo (wave 2)
+- 04 Fleet provisioning + adopter doc + ci-config-project runbook — todo (wave 3)
+- 05 Live pilot — one brief round-tripped on a real GitLab group; parity table walked — todo (wave 4)
+- 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — todo (wave 5)
+
 ### quality (15 open)
 
-- 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — todo (wave 0)
+- 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — implemented (wave 0)
 - 02 M1 line-operation taxonomy + churn/rework rate — todo (wave 1)
 - 03 M1 hotspots + knowledge distribution (SPOF) + change coupling — todo (wave 1)
 - 04 M1 instruction-layer brittleness (reference-validity + doc↔code drift) — todo (wave 1)
@@ -132,4 +143,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**5** streams (**5** active, **0** paused) · **0/43** briefs done · completed initiatives: see `docs/archive/`
+**6** streams (**6** active, **0** paused) · **0/49** briefs done · completed initiatives: see `docs/archive/`

@@ -38,7 +38,7 @@ decision, not code in this stream.
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [miner skeleton — go-git extraction, incremental runs, three-state plumbing](brief-01-miner-skeleton.md) | 0 | L | todo | — | — |
+| 01 | [miner skeleton — go-git extraction, incremental runs, three-state plumbing](brief-01-miner-skeleton.md) | 0 | L | implemented | — | — |
 | 02 | [M1 line-operation taxonomy + churn/rework rate](brief-02-m1-taxonomy-churn.md) | 1 | M | todo | — | — |
 | 03 | [M1 hotspots + knowledge distribution (SPOF) + change coupling](brief-03-m1-hotspots-coupling.md) | 1 | M | todo | — | — |
 | 04 | [M1 instruction-layer brittleness (reference-validity + doc↔code drift)](brief-04-m1-instruction-brittleness.md) | 1 | M | todo | — | — |
@@ -53,6 +53,8 @@ decision, not code in this stream.
 | 13 | [M4 session forensics — pluggable telemetry-source interface + reference adapters](brief-13-m4-session-forensics.md) | 3 | M | todo | — | — |
 | 14 | [auto-filed refactor work + quality error-budgets + RETRO output feed](brief-14-autofile-budgets-retro.md) | 5 | M | todo | — | — |
 | 15 | [learned riskscore graduation — JIT defect-prediction model](brief-15-learned-riskscore.md) | 3 | M | todo | — | — |
+
+Brief 01 implemented on branch `brief/quality-01-miner-skeleton` (new `qualgen/` module: go-git extraction, incremental extend-never-replace mine, three-state `Measure[T]` plumbing, append-only artifact store; `mine` mode live, `report`/`pr`/`check` scaffolded). Draft-PR link to be attached when the PR is opened.
 
 ## Critical path
 
