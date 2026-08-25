@@ -78,9 +78,11 @@ Those are design-tier calls; errors here ship straight to `main`.
    natural longer-lived form (launchd / k8s pod / cron).
 
 0c. **Lock your session worktree** (if this session booted into one via a session-boot flow):
-   `git worktree lock --reason "pr-review-desk live session" <worktree-path>` — the cooperative half
-   of the prune liveness guard: prune never touches locked trees; unlock is automatic when the
-   worktree is removed at session end.
+   `git worktree lock --reason "pr-review-desk live session session=$CLAUDE_SESSION_ID" <worktree-path>`
+   — the cooperative half of the prune liveness guard: prune never touches locked trees. Keep the
+   `session=` stamp: a lock is released when the worktree is removed at session end, but a session
+   that ends without removing it leaves the lock behind forever, and the stamp is the only thing
+   that lets `deskwt prune --reclaim-stale-locks` tell a dead session's lock from a live one's.
 
 0c-ii. **Never run `git config user.email` in a linked worktree.** This desk's own writes go out
    server-side via the verdict-posting tool (the review-identity token stamps the identity), so it

@@ -82,6 +82,7 @@ func (a *auditCtx) finalize(err error) {
 // computed once from the shared git-common-dir.
 type pathGuard struct {
 	sharedCheckout string // resolved main-checkout root (git-common-dir's parent) — identity refusal
+	commonDir      string // resolved git-common-dir itself — where the per-worktree admin dirs live
 	tmpDir         string // resolved tmpBaseDir (parent of the tracker-* prefix)
 	worktreesDir   string // resolved <repo-root>/.claude/worktrees
 }
@@ -97,6 +98,7 @@ func newPathGuard(dir string) (*pathGuard, error) {
 	root := filepath.Dir(commonDir)
 	return &pathGuard{
 		sharedCheckout: resolvePath(root),
+		commonDir:      resolvePath(commonDir),
 		tmpDir:         resolvePath(tmpBaseDir),
 		worktreesDir:   resolvePath(filepath.Join(root, ".claude", "worktrees")),
 	}, nil

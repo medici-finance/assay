@@ -180,7 +180,7 @@ func cmdRoleInit(args []string) (err error) {
 		if ierr := assertSameRepo(rt, repo); ierr != nil {
 			return ierr
 		}
-		if lErr := ensureLock(dir, p.target, p.cfg); lErr != nil {
+		if lErr := ensureLock(dir, p.target, p.session, p.cfg); lErr != nil {
 			return lErr
 		}
 		if serr := setCommitIdentity(p.target, botName, botEmail); serr != nil {
@@ -221,7 +221,7 @@ func cmdRoleInit(args []string) (err error) {
 	if !set[resolvePath(p.target)] {
 		return deskkit.Unverifiable("git worktree add reported success but "+p.target+" is not in `git worktree list`", nil)
 	}
-	if lErr := ensureLock(dir, p.target, p.cfg); lErr != nil {
+	if lErr := ensureLock(dir, p.target, p.session, p.cfg); lErr != nil {
 		return lErr
 	}
 	if serr := setCommitIdentity(p.target, botName, botEmail); serr != nil {
@@ -341,8 +341,15 @@ func assertSameRepo(rt, bootRepo string) error {
 
 // ensureLock locks the worktree with a role-scoped reason. Locking an already-locked worktree
 // is git-noisy but harmless; the "already locked" case is tolerated so the verb is idempotent.
-func ensureLock(dir, target string, cfg roleWTConfig) error {
-	reason := cfg.branchPrefix + " live session (deskwt role-init)"
+//
+// The reason carries a `session=<id>` STAMP, and that stamp is load-bearing rather than
+// decorative: it is the only thing that lets a later sweep attribute the lock to a session
+// and so ever RETIRE it. Without it a lock outlives its session with no way to tell a live
+// session's lock from a dead one's, which is precisely how the locked population grows
+// without bound (see lockreclaim.go, and `deskwt prune --reclaim-stale-locks`). The session
+// id is already validated as a single safe segment, so the stamp is one whitespace-free token.
+func ensureLock(dir, target, session string, cfg roleWTConfig) error {
+	reason := cfg.branchPrefix + " live session (deskwt role-init session=" + session + ")"
 	out, err := runGit(dir, "worktree", "lock", "--reason", reason, target)
 	if err != nil && !strings.Contains(strings.ToLower(out+err.Error()), "already locked") {
 		return deskkit.Unverifiable("git worktree lock failed for "+target, err)

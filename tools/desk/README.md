@@ -1313,6 +1313,7 @@ takes the C-5 audit line and the C-6 kill switch but NOT the outward-write rate 
 deskwt add <name> [--branch B] [--base origin/main]   # create tracker-<name> on a tracking branch
 deskwt remove <path>                                   # remove ONE proven-safe worktree
 deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale worktrees, safely
+deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
 ```
 
 - **`remove`** refuses a dirty TRACKED tree, unpushed commits, a no-upstream branch, an
@@ -1325,8 +1326,10 @@ deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale workt
   **E2BIG** (one deny-path per registered worktree) and the #742 writeguard mis-classifies
   top-level worktrees as the shared checkout. It runs two steps:
   1. **Step A (always safe):** `git worktree prune` — drops admin entries whose directories
-     are already gone (pure bookkeeping, no working tree touched).
-  2. **Step B (safe gate):** walk the registered worktrees under the sanctioned prefixes and
+     are already gone (pure bookkeeping, no working tree touched). Unconditional: no flag
+     turns it on or off.
+  2. **Step A2 (opt-in, `--reclaim-stale-locks`):** the lock lifecycle — see below.
+  3. **Step B (safe gate):** walk the registered worktrees under the sanctioned prefixes and
      remove — via the exact same safe primitive as `remove` — ONLY those it can prove safe:
      **not** the shared checkout, **not** the current worktree, **tracked-clean**, AND
      **fully merged into `origin/main`** (`git merge-base --is-ancestor HEAD origin/main`; a
@@ -1336,6 +1339,45 @@ deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale workt
      current worktree / out-of-prefix are all LEFT and reported as skipped with a reason. No
      `--force`. `--repo <path>` targets a repo without a session cwd (used by the multi-repo
      sweep script). Exit `0` ok/noop · `3` disabled · `5` refused · `6` unverifiable.
+
+Every sweep prints one summary line with four counts — **pruned** (bookkeeping entries
+dropped), **removed**, **held** (with **locked-held** broken out), and **locks-reclaimed** —
+so an operator can tell a repo that is draining from one that is stuck, and on which gate.
+
+### `--reclaim-stale-locks` — giving the lock a lifecycle
+
+A locked worktree is always held: git refuses to deregister it, so deleting its directory
+first would strand the registration (#264). But nothing ever *unlocks* one. A session locks
+its worktree at boot (`role-init`, and the loop skills' cooperative
+`git worktree lock --reason "<role> live session session=$CLAUDE_SESSION_ID"`) and then
+simply ends — so a dead session's lock is **permanent**, the locked population grows
+monotonically, and a lock on a worktree whose directory is already *gone* even keeps Step A
+from dropping the dangling admin entry. Measured on a busy checkout: hundreds of registered
+worktrees, dozens of them locked and prune-immune, some pointing at paths that no longer
+exist.
+
+`--reclaim-stale-locks` (default **OFF**) retires the locks it can prove stale. It is
+deliberately weak:
+
+- It only **unlocks**. It removes nothing. Every gate in Step B then runs on the unlocked
+  worktree unchanged — dirty / unpushed / unmerged / fresh-at-tip are still LEFT — so a
+  reclaim can never lose work.
+- It acts only on worktrees under the sanctioned prefixes; never the shared checkout, never
+  the current worktree.
+- It acts on **evidence**, in this order:
+  1. **Session death (preferred).** The lock reason carries a `session=<id>` stamp; that id
+     is looked up in the roster beacons the desk already keeps
+     (`<StateDir()>/roster/<session>.json`, re-stamped with `updated` while the session
+     lives). No beacon, or a beacon that stopped being re-stamped for an hour, is positive
+     evidence the session is gone. A beacon inside the window is positive evidence it is
+     **alive**, and a live session's lock is held even past its TTL.
+  2. **Age (`--lock-ttl`, default `0` = disabled).** Git keeps exactly one timestamp for a
+     lock — the mtime of the `locked` file in the worktree's admin directory. Older than the
+     TTL ⇒ stale. This is the fallback for locks that name no session. `--lock-ttl` without
+     `--reclaim-stale-locks` is **refused** rather than silently inert.
+- Anything else is held: an unreadable roster, an unparseable beacon timestamp, a missing
+  admin file. None of them are evidence of death, so none of them reclaim a lock.
+- Every unlock prints the worktree, the lock reason it carried, and why it was judged stale.
 
 ### The prune loop — one command, two supervisors
 
