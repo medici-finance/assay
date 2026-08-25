@@ -4,6 +4,10 @@ The rules a `brief-v1` file must satisfy, each stated with its reason. The templ
 `brief-template.md`; this is why it looks the way it does. A validator (`statusgen --lint`)
 enforces the machine-checkable ones; the rest are review-gated.
 
+The brief-authoring device rules **B1-B10** in `docs/mistake-proofing.md` bind alongside
+these. They govern the authoring *act* rather than the file's contents — how the brief gets
+written, and what proves the Verify table can fail — and are stated once there, not here.
+
 ## Structure
 
 1. **Load-bearing facts live in islands, not prose.** Frontmatter, tables, and Verify rows
