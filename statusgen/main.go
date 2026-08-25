@@ -384,6 +384,13 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// findings past the age threshold (and register floods) so the desk/retro sees
 	// them without a manual FINDINGS.md scan. Advisory only — never hard problems.
 	notices = append(notices, standingAlarmNotices(findings, currentAlarmConfig(), nowFunc())...)
+	// Finding→control closure NOTICEs (coder-skills-review/03): surface every
+	// recurring-class finding whose bug class has not yet landed a permanent
+	// control. Advisory-first — a NOTICE, never a hard PROBLEM, because a hard gate
+	// over an unclassified backlog only manufactures false-positives. Resolves a
+	// control's `<stream>/<NN>` brief reference against the FULL stream set (not
+	// the product-scoped checkStreams) so the control lands regardless of scope.
+	notices = append(notices, findingControlNotices(findings, streams, nowFunc())...)
 	// Verification-debt alarm: the Awaiting queue
 	// is the throughput valve — fire a NOTICE when depth crosses threshold
 	// or exceeds the total done count.
@@ -1034,6 +1041,10 @@ func main() {
 	// the roadmap consumes lives in roadmapdora.go. --autonomy/--issues/--cynefin
 	// are newer methodology modes and are retained. Shared knobs
 	// (--since/--json/--series/--weekly/--daily/--history) are declared once here.
+	// BACK-COMPAT NOTE: --dora and --trend were later re-added below as aliases
+	// (--trend == --verif-backlog; --dora re-emits the retained grouped-DORA core)
+	// because the pinned daily-harvest/v0.1.0 collector still calls them; --dora-series
+	// and --code stay removed (no caller). See the alias block after --history.
 	verifBacklogMode := flag.Bool("verif-backlog", false, "roll the status-transition log up into the awaiting-verification backlog curve (impl+verif standing count over time; does not read/write STATUS.md)")
 	autonomyMode := flag.Bool("autonomy", false, "emit the step-3 adoption-ladder gauges (autonomy ratio ×2 variants, token efficiency, deterministic-gate share) as a system; reuses --since / --json; diagnostic, never a target or per-person scorecard")
 	ladderMode := flag.Bool("ladder", false, "emit the adoption-ladder POSITION indicator (mm/42): one computed step 0–4 from behavioral axes (autonomy ratio, gate share, dispatch autonomy, token efficiency) + the binding-constraint axis; degrades to an explicit 'unmeasured range' (never a silent zero) when the private mm/40 opmetrics day-file is absent, so it ships publicly; reuses --since / --json; diagnostic, never a target or per-person scorecard")
@@ -1047,6 +1058,21 @@ func main() {
 	weekly := flag.Bool("weekly", false, "bucket by ISO week (default) for --verif-backlog / --cynefin")
 	daily := flag.Bool("daily", false, "bucket by day for --verif-backlog / --cynefin")
 	historyPath := flag.String("history", "", "history log path (default docs/streams/.history.jsonl, relative to --root) for --verif-backlog")
+	// BACK-COMPAT ALIASES (v0.14.0 regression fix). The pinned daily-harvest/v0.1.0
+	// collector still shells out to `statusgen -dora` and `statusgen -trend`, which
+	// v0.14.0 removed — so daily-harvest dies on "flag provided but not defined" for
+	// every consumer. Re-add both so old callers work unchanged; the new flags stay
+	// primary.
+	//   --trend  == --verif-backlog: the historian roll-up runTrend was renamed
+	//               runVerifBacklog (same signature, same awaiting-verification
+	//               backlog curve). A pure alias.
+	//   --dora   emits the grouped-DORA core (roadmapdora.go/computeDoraGrouped) that
+	//               survived the DevLake split (Ian #1213). The standalone DORA CLI
+	//               was removed; --dora is re-exposed over the retained computation
+	//               (see doracli.go), reusing --since / --json.
+	doraMode := flag.Bool("dora", false, "back-compat alias (daily-harvest/v0.1.0): emit grouped-DORA metrics (per-stream throughput+instability) from the historian; the standalone DORA CLI moved to DevLake (Ian #1213). Reuses --since / --json / --by")
+	doraBy := flag.String("by", "stream", "--dora grouping dimension: stream | goal")
+	trendMode := flag.Bool("trend", false, "back-compat alias for --verif-backlog (daily-harvest/v0.1.0): roll the status-transition log up into the awaiting-verification backlog curve. Reuses --since / --daily / --weekly / --history")
 	// --roadmap: the internal roadmap-deck overview + per-stream pages. RETAINED
 	// (Ian ruling #1213): DevLake feeds INTO these pages; the grouped-DORA tile
 	// they render is computed in roadmapdora.go.
@@ -1084,6 +1110,13 @@ func main() {
 	// same STATUS.md-free discipline as --dora/--trend/--bottleneck. --root
 	// points at ONE window's fixture/data directory (see gatetelemetry.go).
 	gateTelemetryMode := flag.Bool("gate-telemetry", false, "emit gate-effectiveness telemetry (override rate, catch rate, ceremonial-gate detection) for one window's --root")
+	// Opt-in fleet-drift telemetry (gtm/08): anonymized, counts-only, OFF BY
+	// DEFAULT. Armed ONLY when --telemetry is passed AND ASSAY_TELEMETRY=1 is in
+	// the environment (double opt-in — no CI vendor default can flip it). When
+	// armed, an ordinary --lint/write run prints and would send the payload;
+	// --telemetry-dry-run prints it and never sends. See telemetry.go / docs/telemetry.md.
+	telemetryMode := flag.Bool("telemetry", false, "opt in to anonymized, counts-only statusgen telemetry (also requires ASSAY_TELEMETRY=1 in the environment); OFF by default")
+	telemetryDryRun := flag.Bool("telemetry-dry-run", false, "with --telemetry and ASSAY_TELEMETRY=1, print the telemetry payload and never send it")
 	// Product-scoping. --changed: a file of changed
 	// repo-relative paths (one per line, CI passes the PR diff) — path-scopes the
 	// DAR check (31) and auto-derives the product scope (32). --scope: an explicit
@@ -1126,29 +1159,32 @@ func main() {
 	root := &resolvedRoots[0]
 	if len(resolvedRoots) > 1 {
 		if name := singleRootOnlySubcommand(map[string]bool{
-			"--verify-issues":   *verifyIssuesMode,
-			"--decision-issues": *decisionIssuesMode,
-			"--drive-issues":    *driveIssuesMode,
-			"--signoff-digest":  *signoffDigestMode,
-			"--scan-issues":     *scanIssuesMode,
-			"--transcribe-scan": *transcribeScanMode,
-			"--close-verify":    *closeVerifyID != "",
-			"--auto-flip-model": *autoFlipModelMode,
-			"--alarms":          *alarmsMode,
-			"--verif-backlog":   *verifBacklogMode,
-			"--autonomy":        *autonomyMode,
-			"--ladder":          *ladderMode,
-			"--issues":          *issuesMode,
-			"--cynefin":         *cynefinMode,
-			"--intake-debt":     *intakeDebtMode,
-			"--roadmap":         *roadmapMode,
-			"--bottleneck":      *bottleneckMode,
-			"--launch":          *launchMode,
-			"--export-evidence": *exportEvidenceMode,
-			"--gate-scores":     *gateScoresMode,
-			"--next-up":         *nextUpMode,
-			"--register-links":  *registerLinksFlag,
-			"--gate-telemetry":  *gateTelemetryMode,
+			"--verify-issues":     *verifyIssuesMode,
+			"--decision-issues":   *decisionIssuesMode,
+			"--drive-issues":      *driveIssuesMode,
+			"--signoff-digest":    *signoffDigestMode,
+			"--scan-issues":       *scanIssuesMode,
+			"--transcribe-scan":   *transcribeScanMode,
+			"--close-verify":      *closeVerifyID != "",
+			"--auto-flip-model":   *autoFlipModelMode,
+			"--alarms":            *alarmsMode,
+			"--verif-backlog":     *verifBacklogMode,
+			"--trend":             *trendMode, // back-compat alias of --verif-backlog
+			"--dora":              *doraMode,
+			"--autonomy":          *autonomyMode,
+			"--ladder":            *ladderMode,
+			"--issues":            *issuesMode,
+			"--cynefin":           *cynefinMode,
+			"--intake-debt":       *intakeDebtMode,
+			"--roadmap":           *roadmapMode,
+			"--bottleneck":        *bottleneckMode,
+			"--launch":            *launchMode,
+			"--export-evidence":   *exportEvidenceMode,
+			"--gate-scores":       *gateScoresMode,
+			"--next-up":           *nextUpMode,
+			"--register-links":    *registerLinksFlag,
+			"--gate-telemetry":    *gateTelemetryMode,
+			"--telemetry-dry-run": *telemetryDryRun,
 			// --consumers takes ONE git diff, against one root's HEAD. Narrowing
 			// to the first root corroborates one repo's claims and reports
 			// the others clean, unread.
@@ -1274,7 +1310,9 @@ func main() {
 	// commodity DORA/velocity/code-efficiency CLI surface that used to sit beside
 	// it is now DevLake's; the grouped-DORA core the roadmap consumes stays in
 	// roadmapdora.go (Ian ruling #1213 — DevLake feeds INTO the retained roadmap).
-	if *verifBacklogMode {
+	// --trend is the v0.14.0 back-compat alias of --verif-backlog (daily-harvest/
+	// v0.1.0 still calls `statusgen -trend`); it runs the identical handler.
+	if *verifBacklogMode || *trendMode {
 		period := "weekly"
 		if *daily {
 			period = "daily"
@@ -1283,6 +1321,12 @@ func main() {
 			period = "weekly"
 		}
 		os.Exit(runVerifBacklog(*root, *historyPath, *since, period))
+	}
+	// --dora is the v0.14.0 back-compat alias (daily-harvest/v0.1.0 still calls
+	// `statusgen -dora`): it emits the grouped-DORA core retained in roadmapdora.go.
+	// Self-contained diagnostic sub-command — never reads or writes STATUS.md.
+	if *doraMode {
+		os.Exit(runDora(*root, *since, strings.ToLower(strings.TrimSpace(*doraBy)), *doraJSON))
 	}
 	// Autonomy / token / gate-share emitter (mm/41) — self-contained
 	// diagnostic sub-command. Reuses the shared --since window and --json flag.
@@ -1360,6 +1404,20 @@ func main() {
 	// STATUS.md-free, same discipline as --dora/--trend/--bottleneck above.
 	if *gateTelemetryMode {
 		os.Exit(runGateTelemetry(*root))
+	}
+	// Opt-in telemetry dry-run (gtm/08): self-contained, STATUS.md-free preview
+	// of the anonymized payload. Requires the full double opt-in even to PREVIEW,
+	// so the arming rule is uniform and there is a single, testable "off" state.
+	// Never sends.
+	if *telemetryDryRun {
+		if !telemetryArmed(*telemetryMode) {
+			fmt.Fprintf(os.Stderr,
+				"telemetry: not armed — pass --telemetry AND set %s=1 to preview the payload. Nothing collected.\n",
+				telemetryEnvVar)
+			os.Exit(0)
+		}
+		runTelemetry(*root, true)
+		os.Exit(0)
 	}
 	// Evidence-bundle export (gtm/05): self-contained sub-command, same
 	// STATUS.md-free discipline as --dora/--trend. Single-root only.
@@ -1450,7 +1508,24 @@ func main() {
 			}
 		}
 	}
-	os.Exit(runRoots(resolvedRoots, mode, budgetSpecs, changedPaths, *scopeFlag))
+	code := runRoots(resolvedRoots, mode, budgetSpecs, changedPaths, *scopeFlag)
+	// Opt-in telemetry (gtm/08): only after an ordinary lint/write run, and only
+	// when armed by the double opt-in. Each root emits its own anonymized,
+	// counts-only payload; telemetry never changes the run's exit code (a
+	// collection/send failure is reported and swallowed inside runTelemetry).
+	if telemetryArmed(*telemetryMode) {
+		for i := range resolvedRoots {
+			runTelemetry(resolvedRoots[i], false)
+		}
+	} else if *telemetryMode {
+		// --telemetry given but ASSAY_TELEMETRY!=1: telemetry stays OFF. Say so
+		// once, so the second, deliberate switch is discoverable rather than a
+		// silent no-op.
+		fmt.Fprintf(os.Stderr,
+			"telemetry: --telemetry given but %s is not \"1\" — telemetry stays OFF (both are required).\n",
+			telemetryEnvVar)
+	}
+	os.Exit(code)
 }
 
 // singleRootOnlySubcommand returns the flag name of the first ENABLED sub-command

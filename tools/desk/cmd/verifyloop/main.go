@@ -67,7 +67,17 @@ func run(args []string) int {
 	}
 	deskkit.WarnIfUnpinned(os.Stderr)
 
+	// `verifyloop --dry-run [--root .]` is shorthand for `verifyloop verdict --dry-run …`:
+	// the deterministic runner's CI-testable surface (compose + sign + print, no filing).
+	if args[0] == "--dry-run" || args[0] == "-dry-run" {
+		return cmdVerdict(args)
+	}
+
 	switch args[0] {
+	case "verdict":
+		// The deterministic runner: run check/check:ci rows, batch ~5 min, sign, print the
+		// would-be verify-verdict issue body. Filing is BLOCKED-ON-HUMAN (autonomous cutover).
+		return cmdVerdict(args[1:])
 	case "plan":
 		// The OPERATING-ENVELOPE preflight runs at BOOT, before the queue is even
 		// read. A red envelope is could-not-run for the WHOLE pass: one summary
@@ -126,12 +136,19 @@ func cmdPlan(args []string) error {
 const usage = `verifyloop — verify-desk reference consumer of the drain engine.
 
 USAGE:
-  verifyloop plan --root <repo> [--sha <targetSHA>] [--runner <id>]
+  verifyloop plan    --root <repo> [--sha <targetSHA>] [--runner <id>]
+  verifyloop verdict --root <repo> [--dry-run] [--window 5m] [--runner <id>] [--pem <path>]
+  verifyloop --dry-run [--root <repo>]        # shorthand for 'verdict --dry-run'
   verifyloop --version
 
 'plan' prints the deterministic scheduler output: the Awaiting queue, each item's tier, and
 the exact dispatch instruction (or the human-route note). It spawns nothing and writes nothing.
-The autonomous drive / live-window cutover is gate: human — BLOCKED-ON-HUMAN.
+
+'verdict' is the DETERMINISTIC runner: it runs each brief's check/check:ci Verify rows locally
+(exit code = verdict), batches results over the flush window into ONE signed verdict-v1
+payload, and prints the would-be verifier-App issue body. --dry-run composes + signs + prints
+without filing (the CI-testable surface). A missing verifier PEM is a loud envelope error and
+nothing is signed. Filing the issue is the autonomous cutover — gate: human, BLOCKED-ON-HUMAN.
 
 Exit: 0 ok · 3 disabled · 5 refused · 6 unverifiable · 7 author==runner.
 `

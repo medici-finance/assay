@@ -208,6 +208,17 @@ const (
 	// KEEP IN SYNC with statusgen/rosterconfig.go's scanEnvAuthorizedAuthors.
 	EnvAuthorizedAuthors = "ASSAY_AUTHORIZED_AUTHORS"
 
+	// EnvFormerHumanLoginMap is a STATUSGEN-only roster value: the FORMER-humans map
+	// (name:login for departed humans who were confirmed at some past point), which
+	// statusgen's verifier floor consults as the "confirmed historically" half of its
+	// human-token exemption. deskkit does not consume it — but the two readers share
+	// one roster.env, and an unknown key in the ASSAY_ namespace REFUSES the whole
+	// configuration (parseConfig), so deskkit must RECOGNISE it or a roster.env that
+	// records departed humans for statusgen would collapse every desk tool's
+	// configuration fleet-wide. Recognised here and otherwise ignored. KEEP IN SYNC
+	// with statusgen/rosterconfig.go's scanEnvFormerHumanLoginMap.
+	EnvFormerHumanLoginMap = "ASSAY_FORMER_HUMAN_LOGIN_MAP"
+
 	// EnvChannelDriftTarget is a STATUSGEN-only roster value (the repo-relative
 	// path to statusgen's --lint accepted-channel-drift register — a de-housed
 	// withheld-stream path the house supplies at runtime). deskkit does not
@@ -721,7 +732,8 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		// STATUSGEN-only keys: recognised so a shared roster.env that configures
 		// statusgen does not collapse deskkit's configuration; not consumed here.
 		EnvHomeRepo: true, EnvScanRepos: true, EnvAuthorizedAuthors: true,
-		EnvChannelDriftTarget: true, EnvDeterministicGatePatterns: true,
+		EnvFormerHumanLoginMap: true,
+		EnvChannelDriftTarget:  true, EnvDeterministicGatePatterns: true,
 		// EnvSweepWithheldStreams (ASSAY_SWEEP_WITHHELD_STREAMS, sweepconfig.go) is
 		// consumed by the S2 sweep via a direct os.Getenv read, NOT through this
 		// scanConfig — but #1333's de-housing REQUIRES the house to set it in the

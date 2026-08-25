@@ -151,7 +151,11 @@ type findingEntry struct {
 	ParkedUntil  string `yaml:"parked-until,omitempty"`
 	ParkedBy     string `yaml:"parked-by,omitempty"`
 	ParkedReason string `yaml:"parked-reason,omitempty"`
-	Body         string `yaml:"-"` // prose after the heading, before the metadata lines
+	// Finding→control closure (coder-skills-review/03). Both OPTIONAL; omitempty so
+	// an unclassified legacy entry round-trips through the generated view unchanged.
+	Class   string `yaml:"class,omitempty"`   // "recurring" | "one-off"; absent reads as one-off.
+	Control string `yaml:"control,omitempty"` // typed reference to the landed adaptation (brief ID / check name / pinned-test path).
+	Body    string `yaml:"-"`                 // prose after the heading, before the metadata lines
 }
 
 // slugFromTitle produces a short, deterministic slug from a title — lowercase,

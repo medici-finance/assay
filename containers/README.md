@@ -12,12 +12,19 @@ land, the per-desk images and launch surfaces.
 | Path | What it is |
 |------|------------|
 | `base/Dockerfile` | The shared base image every per-desk image builds `FROM`. |
+| `intake-desk/Dockerfile` | Thin per-desk image: `FROM desk-base` + `ASSAY_DESK=intake-desk` + the shared entrypoint. |
+| `worker-desk/Dockerfile` | Thin per-desk image for `worker-desk`. |
+| `pr-review-desk/Dockerfile` | Thin per-desk image for `pr-review-desk`. |
+| `verify-desk/Dockerfile` | Thin per-desk image for `verify-desk`. |
+| `the-desk/Dockerfile` | Thin per-desk image for the coordinator `the-desk`. |
+| `entrypoint.sh` | Shared interactive boot baked into all five desk images: fail-closed credential preflight, then desk identity + skill pointer, then the interactive session. |
+| `scripts/layer-secret-scan.sh` | Fails a built image that carries key-shaped material in any layer/config/history. |
+| `secrets.md` | Runtime credential-injection contract (normative). |
 | `README.md` | This map. |
-| `secrets.md` | Runtime credential-injection contract + layer scan (planned). |
 
-Per-desk Dockerfiles (`<desk-name>/Dockerfile`), an interactive launch script,
-a compose file, Kubernetes manifests, and a multi-desk control layer land in
-later work and are added to this table as they arrive.
+An interactive launch script, a compose file, Kubernetes manifests, and a
+multi-desk control layer land in later work and are added to this table as they
+arrive.
 
 ## The base image
 
@@ -55,7 +62,58 @@ docker build -f containers/base/Dockerfile \
   -t assay-desk-base:dev .
 ```
 
+## The per-desk images
+
+Each desk is its own image, so "run the pr-review-desk" is a single image
+reference. The five images are **thin**: over the shared base they add only
+
+- `ENV ASSAY_DESK=<desk-name>` — the desk's public name, and
+- the shared **`entrypoint.sh`**, installed as `/usr/local/bin/desk-entrypoint`.
+
+Nothing else differs between them. The entrypoint reads `ASSAY_DESK`, runs the
+fail-closed credential preflight (see [`secrets.md`](secrets.md) §5), prints the
+desk's identity and a by-name pointer to its skill under
+`/opt/assay/plugin/skills/<desk-name>`, and then execs into the interactive
+session (an interactive shell by default) from which the operator invokes
+`/<desk-name>`.
+
+### Build them locally
+
+The build context is the **repository root** (as for the base image), because
+the shared entrypoint lives at `containers/entrypoint.sh`, one level above each
+desk directory. Build the base first under the tag the desk `BASE_IMAGE`
+build-arg defaults to, then each desk against it:
+
+```sh
+# 1. the base, tagged for local desk builds:
+docker build -f containers/base/Dockerfile -t desk-base:dev .
+
+# 2. each desk (BASE_IMAGE defaults to desk-base:dev):
+for d in intake-desk worker-desk pr-review-desk verify-desk the-desk; do
+  docker build -f "containers/$d/Dockerfile" -t "assay/$d:dev" .
+done
+```
+
+`BASE_IMAGE` is a build-arg so CI can version-lock each desk to the exact base
+tag it just built (`--build-arg BASE_IMAGE=ghcr.io/medici-finance/assay/desk-base:vX.Y.Z`);
+a desk image is **never** built against a floating `latest` base.
+
 ## Decisions and their reasons
+
+### Image names: `ghcr.io/medici-finance/assay/<desk-name>`, base `…/desk-base`
+
+The five desk images are published as `ghcr.io/medici-finance/assay/<desk-name>`
+— `…/intake-desk`, `…/worker-desk`, `…/pr-review-desk`, `…/verify-desk`,
+`…/the-desk` — and the base as `ghcr.io/medici-finance/assay/desk-base`.
+
+Decision on the `desk-` prefix (spec open question 4): **no extra prefix on the
+five desk images.** Their names already read as desk names — four of the five
+literally end in `-desk`, and `the-desk` is the coordinator's own name — so a
+`desk-` prefix would produce awkward, redundant names (`desk-the-desk`,
+`desk-worker-desk`). The base keeps the descriptive `desk-base` name it was
+given in brief 01. The result is that a desk's image reference is exactly its
+public desk name, which is the whole point of the request (#63): "call each one
+by their desk name."
 
 ### Base distro: Debian (`bookworm-slim`), not Alpine
 
@@ -109,8 +167,12 @@ build-arg, or set as an image `ENV` default. An image layer is distributable;
 credentials are not. All credentials arrive at **runtime** via mounted secrets
 and runtime environment variables.
 
-The runtime credential-injection contract, and an automated image-layer scan
+The runtime credential-injection contract, and the automated image-layer scan
 that fails the build if key-shaped material appears in any layer, are defined in
-[`secrets.md`](secrets.md) (planned). Until that scan lands, the base
-`Dockerfile` is checkable by hand: no `COPY`/`ADD` line names key material, and
-`docker history --no-trunc` on a built image carries no key-shaped strings.
+[`secrets.md`](secrets.md) and implemented by
+[`scripts/layer-secret-scan.sh`](scripts/layer-secret-scan.sh). The publish
+workflow runs that scan against the base **and all five desk images** and fails
+the publish on any hit, so the rule is enforced mechanically on every build —
+not just by review. The per-desk layers add no `COPY`/`ADD` of key material and
+no credential `ENV` default; the credential preflight in `entrypoint.sh` reads
+the runtime mount/env only.
