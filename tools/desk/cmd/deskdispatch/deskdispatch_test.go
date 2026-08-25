@@ -641,8 +641,9 @@ func TestVerifierPlanItemKeyIsTranslatedForTheClaimTool(t *testing.T) {
 	}
 
 	// The fixture roster configures no repo alias, so the short label is the repo
-	// basename: medici-finance/assay -> "assay".
-	const wantKey = "assay--verdict-lane--05"
+	// basename: medici-finance/assay -> "assay". The claim-key fixture is not a secret;
+	// the scanner trips on a string assigned to a *Key-named constant.
+	const wantKey = "assay--verdict-lane--05" // gitleaks:allow
 	acquired := false
 	for _, c := range s.calls {
 		if strings.Contains(strings.Join(c, " "), "dispatch-claim.sh acquire") {
