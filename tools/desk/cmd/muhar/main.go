@@ -2,7 +2,7 @@
 //
 // Usage:
 //
-//	muhar -spec mutations.json [-j N]
+//	muhar -spec mutations.json [-j N] [-shard i/n]
 //
 // -j is how many mutations to have in flight at once. The default, 1, runs the
 // sweep sequentially in place — the historical behaviour. -j 0 sizes the pool to
@@ -10,6 +10,18 @@
 // spec's root, because a sweep whose workers shared a tree would be editing each
 // other's source and every verdict would be a coin flip. The verdicts, their
 // order, and the report text are unchanged by -j; only the wall time is.
+//
+// -shard i/n splits ONE spec across n independent invocations (for CI legs on
+// separate machines): shard i runs only the mutations at spec index ≡ i (mod n),
+// 0-based, 0 <= i < n. Round-robin by index, so for a fixed n the n shards are
+// DISJOINT and their union is EXACTLY the spec — every mutation runs once across
+// the set, none twice (TestShardSelectPartitions proves it). The baseline check
+// and the positive control still run IN FULL in every shard, so each shard is
+// independently trustworthy: its Totals line covers its own mutations and only
+// those, and a broken harness reddens every shard, not just one. A shard's
+// report is a PARTIAL sweep by design — the caller owns running all n shards
+// (the selection is echoed to stderr so a partial report is never mistaken for
+// a complete one).
 //
 // The spec is JSON:
 //
@@ -42,6 +54,8 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 )
 
 type spec struct {
@@ -49,6 +63,49 @@ type spec struct {
 	Test      string     `json:"test"`
 	Control   Mutation   `json:"control"`
 	Mutations []Mutation `json:"mutations"`
+}
+
+// parseShard parses a -shard value of the form "i/n": n total shards, this
+// invocation is 0-based shard i. Anything else — including i >= n, a negative
+// i, or n < 1 — is a usage error: a malformed shard must refuse loudly, never
+// degrade into "run everything" or "run nothing".
+func parseShard(s string) (i, n int, err error) {
+	parts := strings.Split(s, "/")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf(`-shard must be "i/n" (0-based shard i of n), got %q`, s)
+	}
+	i, err = strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf(`-shard %q: shard index %q is not an integer`, s, parts[0])
+	}
+	n, err = strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf(`-shard %q: shard count %q is not an integer`, s, parts[1])
+	}
+	if n < 1 {
+		return 0, 0, fmt.Errorf(`-shard %q: shard count must be >= 1`, s)
+	}
+	if i < 0 || i >= n {
+		return 0, 0, fmt.Errorf(`-shard %q: shard index must satisfy 0 <= i < n`, s)
+	}
+	return i, n, nil
+}
+
+// shardSelect returns the mutations whose spec index ≡ i (mod n), in spec
+// order. Round-robin rather than contiguous chunks, so the spec's file-level
+// grouping (neighbouring mutations tend to hit the same file and cost alike)
+// spreads evenly across shards. For a fixed n the n selections PARTITION the
+// input — pairwise disjoint, union the whole slice — which is what lets a CI
+// caller run the n shards on n machines and still claim every mutation ran
+// exactly once (TestShardSelectPartitions holds this).
+func shardSelect(ms []Mutation, i, n int) []Mutation {
+	var out []Mutation
+	for idx, m := range ms {
+		if idx%n == i {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // muhar does NOT call deskkit.Guard(): it is a local diagnostic that makes no
@@ -59,6 +116,7 @@ type spec struct {
 func main() {
 	specPath := flag.String("spec", "", "path to the mutation spec JSON")
 	jobs := flag.Int("j", 1, "mutations in flight at once (1 = sequential, in place; 0 = one per CPU)")
+	shard := flag.String("shard", "", `run only this invocation's share of the spec: "i/n" (0-based shard i of n; the n shards partition the spec's mutations). Baseline + control still run in full per shard.`)
 	flag.Parse()
 
 	if *specPath == "" {
@@ -83,6 +141,23 @@ func main() {
 	if s.Control.Name == "" || s.Control.Old == "" {
 		fmt.Fprintln(os.Stderr, "muhar: spec.control is required (a mutation the suite MUST catch) — a harness with no failing control is a green light with no bulb (#34)")
 		os.Exit(1)
+	}
+
+	// Sharding narrows the mutation list — and ONLY the mutation list. The
+	// baseline and the positive control are untouched, so every shard still
+	// proves the instrument before reporting a single verdict. Echo the
+	// selection to stderr: a shard's report is a partial sweep by design, and
+	// the echo is what keeps it from being read as a complete one.
+	if *shard != "" {
+		i, n, err := parseShard(*shard)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "muhar: %v\n", err)
+			os.Exit(1)
+		}
+		total := len(s.Mutations)
+		s.Mutations = shardSelect(s.Mutations, i, n)
+		fmt.Fprintf(os.Stderr, "muhar: shard %d/%d — running %d of %d mutations (indices ≡ %d mod %d); the other shards own the rest\n",
+			i, n, len(s.Mutations), total, i, n)
 	}
 
 	n := *jobs
