@@ -70,7 +70,9 @@ facts:
 
 ## Task
 
-1. **Add an identifier matcher beside the existing path matcher**, applied to the same backtick-
+1. **Add an identifier matcher beside the existing path matcher** (constructor named
+   `buildIdentifierRe`, parallel to `buildBacktickRe` — the Verify table anchors on this
+   name), applied to the same backtick-
    delimited spans and the same narrow scope. Three shapes, and no more in this brief: a test-file
    basename ending `_test.go` with no directory separator; a `Test<Name>` identifier; and a
    `func <Name>` reference. Anything not matching one of the three is not this check's business —
@@ -103,7 +105,7 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `git grep -c 'Test\[A-Z\]' -- statusgen/` | exit 1, no output — **DEREFERENCE, true at authoring (2026-08-25 @ `657cab1`)**: no identifier-shaped matcher exists in the lint tree. Inverts at implementation |
+| 1 | `git grep -c 'buildIdentifierRe' -- statusgen/` | exit 1, no output — **DEREFERENCE, true at authoring (2026-08-25 @ `657cab1`)**: the named matcher constructor this brief creates does not exist in the lint tree. Inverts deterministically at implementation |
 | 2 | `git grep -n 'func buildBacktickRe' -- statusgen/linkcheck.go` | exit 0; output contains `func buildBacktickRe` — **DEREFERENCE**: the matcher-construction seam this brief extends really exists |
 | 3 | `git grep -n 'plannedRe' -- statusgen/linkcheck.go` | exit 0 — **DEREFERENCE**: the `(planned)` escape this brief must preserve and reuse ships today |
 | 4 | `git grep -n 'too ambiguous to resolve' -- statusgen/linkcheck.go` | exit 0 — **DEREFERENCE**: the bare-filename skip is real, which is exactly why the incident's token passes today |
