@@ -100,6 +100,14 @@ func sessionFromLockReason(reason string) string {
 			continue
 		}
 		if s := strings.Trim(strings.TrimPrefix(f, lockSessionKey), punct); s != "" {
+			// The id becomes a path segment under the roster dir, so it must pass the
+			// same shape gate every other worktree/session name in this package passes
+			// (nameRe + no ".."): a reason like `session=../../x` must never traverse.
+			// An id that fails the gate attributes nothing — the lock is then judged by
+			// the age test alone, exactly like a reason with no session stamp.
+			if !nameRe.MatchString(s) || strings.Contains(s, "..") {
+				return ""
+			}
 			return s
 		}
 	}
@@ -188,6 +196,11 @@ func judgeLock(reason string, lockMtime time.Time, haveMtime bool, ttl time.Dura
 			return lockVerdict{true, fmt.Sprintf("session %s is gone: roster beacon last updated %s ago, past the %s freshness window",
 				sess, roundAge(now.Sub(upd)), beaconFreshWindow)}
 		case beaconAbsent:
+			// This branch trusts an invariant written elsewhere: a LIVE session keeps its
+			// roster beacon present and fresh (deskroster's heartbeat). A live session that
+			// never wrote a beacon is judged dead here; its safety net is the unchanged
+			// removal gates (dirty / fresh-at-tip / unmerged), which the reclaim only ever
+			// hands an UNLOCKED worktree to — never a removal decision.
 			return lockVerdict{true, fmt.Sprintf("session %s is gone: no roster beacon for it", sess)}
 		}
 		// beaconUnreadable — the roster proves nothing; fall through to the age test.

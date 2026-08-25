@@ -213,6 +213,43 @@ func TestStaleLockReclaimedOnOptIn(t *testing.T) {
 	}
 }
 
+// --- the backstop for the sharpest edge: at-tip + untracked ------------------
+//
+// A lock whose session left no beacon is judged dead immediately (no time cushion), so the
+// safety net for a live-but-beaconless session is the UNCHANGED Step B gates. The sharpest
+// residual case is untracked new work: dirtyTracked ignores it, and only the fresh-at-tip
+// guard catches it. This pins that net: the reclaim may unlock, but the at-tip worktree —
+// which may hold untracked files — must survive the sweep.
+func TestReclaimedAtTipWithUntrackedHeldByFreshGuard(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	target := addWorktree(t, "attip") // origin/main NOT advanced: worktree HEAD == tip
+	if err := os.WriteFile(filepath.Join(target, "untracked-new-work.txt"), []byte("wip\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, work, "worktree", "lock", "--reason",
+		"worker-desk live session (deskwt role-init session=no-beacon-1)", target)
+	// The roster is READABLE but holds no beacon for this session — beaconAbsent, so the
+	// lock IS reclaimed. (An unreadable roster would prove nothing and hold it.)
+	plantBeacon(t, "someone-else", time.Now())
+
+	rc, errout := runCapErr(t, []string{"prune", "--reclaim-stale-locks"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	if !strings.Contains(errout, "locks-reclaimed 1") {
+		t.Fatalf("expected the beaconless lock to be reclaimed; got:\n%s", errout)
+	}
+	assertExists(t, target)
+	assertLocked(t, work, target, false)
+	if _, err := os.Stat(filepath.Join(target, "untracked-new-work.txt")); err != nil {
+		t.Fatalf("untracked work did not survive the sweep: %v", err)
+	}
+	if !strings.Contains(errout, "fresh worktree at origin/main") {
+		t.Fatalf("expected the fresh-at-tip guard to be the recorded hold; got:\n%s", errout)
+	}
+}
+
 // --- a LIVE session's lock is held, always ------------------
 //
 // The failure that would make this whole verb unusable is unlocking a worktree somebody is
@@ -389,6 +426,12 @@ func TestSessionFromLockReason(t *testing.T) {
 		{"intake-desk live session session=s1 (pid 4242)", "s1"},
 		{"session=", ""},
 		{"a-session=notthekey", ""}, // the key is a whole token, not a substring
+		// The id becomes a path segment under the roster dir, so anything that fails the
+		// package's name gate attributes nothing — in particular a traversal payload.
+		{"session=../../etc/passwd", ""},
+		{"session=..", ""},
+		{"session=a/b", ""},
+		{"session=.hidden", ""}, // nameRe forbids a leading dot
 	}
 	for _, c := range cases {
 		if got := sessionFromLockReason(c.reason); got != c.want {
