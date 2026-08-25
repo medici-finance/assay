@@ -154,10 +154,10 @@ func dispatch(o dispatchOpts) error {
 
 	// 1 — the durable claim, FIRST. Everything after this is work a second dispatcher
 	// must not also be doing.
-	if err := stepClaim(o, repo, plan.claimScript); err != nil {
+	if err := stepClaim(o, repo, plan.claimScript, plan.claimKey); err != nil {
 		return err
 	}
-	o.say("%s OK: %s claimed in %s", stepClaimAcquire, o.item, repo)
+	o.say("%s OK: %s claimed in %s (claim key %s)", stepClaimAcquire, o.item, repo, plan.claimKey)
 
 	// 2 — the agent's worktree, in the ITEM's repo. deskwt owns the safety here (a
 	// sanctioned path prefix, an unambiguous base, no clobber of an existing target), so
@@ -213,6 +213,10 @@ type dispatchPlan struct {
 	repo   string
 	branch string
 	wtName string
+	// claimKey is the key the durable claim is taken (and later released) under —
+	// derived once from the item key by claimKeyFor, so the acquire call and the release
+	// hint in the prompt cannot drift onto two different keys.
+	claimKey string
 	// claimScript / decisionScript are the RESOLVED consumer-script paths (under
 	// --claim-root when given, else --root), derived once here so the presence check and
 	// the invocation cannot drift onto two different files.
@@ -245,10 +249,10 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 
 	if !itemKeyRe.MatchString(o.item) {
 		return plan, deskkit.Refused(fmt.Sprintf(
-			"step %s: %q is not a usable claim key (letters, digits, dot, dash, underscore, slash; no "+
-				"leading dash). The key is passed through unchanged to the repo's claim tool, so a key this "+
-				"verb would have to reshape is one that would not collide with the key another desk holds — "+
-				"and a claim that does not collide is not a claim.",
+			"step %s: %q is not a usable item key (letters, digits, dot, dash, underscore, slash; no "+
+				"leading dash). The claim key is derived from it by a fixed rule every desk shares, so a key "+
+				"outside this alphabet is one another desk would not derive the same claim from — and a claim "+
+				"that does not collide is not a claim.",
 			stepClaimAcquire, o.item))
 	}
 
@@ -290,6 +294,7 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 				"is rostered to act on.", stepClaimAcquire, repo))
 	}
 	plan.repo = repo
+	plan.claimKey = claimKeyFor(o.item, repo)
 
 	plan.branch = o.branch
 	if plan.branch == "" {
@@ -383,16 +388,21 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 
 // stepClaim acquires the durable claim by invoking the CONSUMER repo's own claim script.
 //
-// The script's exit codes ARE the deskkit contract (0 acquired · 5 a live holder owns it ·
-// 6 could not be established), so they pass straight through with no re-interpretation. On
-// contention this asks the script who holds it and prints the answer: a dispatcher that
-// only says "refused" sends a human to go and find out by hand, and a dispatcher that
-// STEALS turns a coordination failure into two agents on one branch.
+// The script's exit codes ARE the deskkit contract (0 acquired · 5 refused · 6 could not
+// be established), so they pass straight through with no re-interpretation. But exit 5
+// covers two OPPOSITE conditions and only the script's other verbs can tell them apart: a
+// LIVE holder owns the key (a collision — do not proceed, never steal), or the script
+// refused the INVOCATION itself (a malformed key, a bad flag) and no claim was ever read.
+// Reporting the second as the first turned every claim-tool refusal into a phantom
+// "already claimed by a LIVE holder — (no output)" that no release or steal could clear,
+// because there was nothing to clear. So on exit 5 this asks `show` for the holder and
+// reports a collision ONLY when a holder was actually read; otherwise it surfaces the
+// script's own refusal text as the error it is.
 // The script runs with the ITEM's checkout as its working directory even when the script
 // FILE resolves under --claim-root: the target repo is always passed explicitly via
 // --repo, and any cwd-derived fallback inside the script should resolve to the item's
 // repo, never to the checkout that merely happens to carry the tool.
-func stepClaim(o dispatchOpts, repo, script string) error {
+func stepClaim(o dispatchOpts, repo, script, claimKey string) error {
 	if _, err := os.Stat(script); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: %s is not present, so no durable claim can be taken. A claim this verb cannot "+
@@ -400,7 +410,7 @@ func stepClaim(o dispatchOpts, repo, script string) error {
 				"on one machine and nothing at all across two, which is the case that double-dispatches.",
 			stepClaimAcquire, script), err)
 	}
-	args := []string{"acquire", o.item, "--repo", repo}
+	args := []string{"acquire", claimKey, "--repo", repo}
 	if o.branch != "" {
 		args = append(args, "--branch", o.branch)
 	}
@@ -410,17 +420,36 @@ func stepClaim(o dispatchOpts, repo, script string) error {
 	}
 	switch exitCodeOf(r.err) {
 	case deskkit.ExitRefused:
-		holder := firstLine(runCmd(o.root, script, "show", o.item, "--repo", repo).stdout)
+		show := runCmd(o.root, script, "show", claimKey, "--repo", repo)
+		holder := firstLine(show.stdout)
+		// A holder was READ: the show verb succeeded, said something, and did not say the
+		// key is FREE. Only this is a collision.
+		if show.err == nil && strings.TrimSpace(show.stdout) != "" &&
+			!strings.Contains(show.stdout, "FREE "+claimKey) {
+			return deskkit.Refused(fmt.Sprintf(
+				"step %s: %s is already claimed by a LIVE holder — do not proceed. Existing claim: %s. "+
+					"This verb never steals: breaking a live claim is a deliberate, auditable act with a stated "+
+					"reason, and it belongs to a human or to the claim tool's own steal verb.",
+				stepClaimAcquire, claimKey, holder))
+		}
 		return deskkit.Refused(fmt.Sprintf(
-			"step %s: %s is already claimed by a LIVE holder — do not proceed. Existing claim: %s. "+
-				"This verb never steals: breaking a live claim is a deliberate, auditable act with a stated "+
-				"reason, and it belongs to a human or to the claim tool's own steal verb.",
-			stepClaimAcquire, o.item, holder))
+			"step %s: the claim tool refused to acquire %s (%s). No live holder was read (show: %s), so "+
+				"this is a claim-acquire error, NOT a collision — fix the key or the invocation and re-run.",
+			stepClaimAcquire, claimKey, firstLine(refusalDetail(r)), holder))
 	default:
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: the claim on %s could not be established (%s) — fail closed, NEVER 'assume free'.",
-			stepClaimAcquire, o.item, firstLine(r.stderr)), r.err)
+			stepClaimAcquire, claimKey, firstLine(r.stderr)), r.err)
 	}
+}
+
+// refusalDetail picks the claim tool's refusal text: its errors go to stderr, its DEDUP
+// log lines to stdout, so stderr is preferred and stdout is the fallback.
+func refusalDetail(r runResult) string {
+	if strings.TrimSpace(r.stderr) != "" {
+		return r.stderr
+	}
+	return r.stdout
 }
 
 // stepRoster registers the work entry when a PR is already known.
@@ -536,6 +565,41 @@ func claimRootHint(o dispatchOpts) string {
 	}
 	return " — if the item's repo does not carry the consumer scripts (they are centralized), " +
 		"point --claim-root at the checkout that does; --root stays the item's own repo"
+}
+
+// claimKeyFor derives the durable claim key the repo's claim tool requires from a plan
+// item key.
+//
+// dispatch-claim.sh's key grammar is `<repo>--<stream>--<NN>` (or `<repo>--issue-<NN>`):
+// the `<repo>` prefix is MANDATORY (two repos can own a stream of the same name), and any
+// key with no `--` in it is refused outright. The drain planners, though, name items in
+// board form — verifyloop plan emits `<stream>/<NN>` — and passing that form through
+// unchanged made every verifier dispatch die at claim-acquire on a malformed-key refusal.
+//
+// The rule is deterministic, which is the property a claim key must have — two desks
+// dispatching the same item MUST derive the same key or their claims do not collide:
+//
+//   - a key already carrying `--` IS a claim key (the worker/reviewer paths pass
+//     `<repo>--<stream>--<NN>` directly) and passes through byte-for-byte;
+//   - anything else is a plan item key: the repo's short label — the ONE shared resolver,
+//     deskkit.RepoShortLabel: the configured repo-alias short name, else the repo
+//     basename — is prefixed, and every `/` becomes `--`, so `verdict-lane/05` in
+//     owner/name becomes `<short>--verdict-lane--05`.
+//
+// Because the alias short name participates in the key, desks that co-dispatch a repo
+// must share their alias configuration on this path — the alias is part of the
+// coordination contract here, not display.
+//
+// Only the CLAIM calls (acquire, the show on contention, the release hint in the prompt)
+// use the derived key. The human-facing derivations — worktree name, branch, brief path,
+// the prompt's item key — stay on the ORIGINAL item key: reshaping those is exactly what
+// made passing the translated key by hand corrupt the dispatch instead of working around
+// it.
+func claimKeyFor(item, repo string) string {
+	if strings.Contains(item, "--") {
+		return item
+	}
+	return deskkit.RepoShortLabel(repo) + "--" + strings.ReplaceAll(strings.Trim(item, "/"), "/", "--")
 }
 
 // sanitizeSegment reduces an item key to one filesystem/branch-safe segment.

@@ -54,17 +54,24 @@ USAGE:
   deskdispatch --kits
   deskdispatch --version
 
-<item-key> is the claim key, passed through UNCHANGED to the repo's claim tool. This verb
-never invents, rewrites, or normalises a key: a key it reshaped would not collide with the
-one another desk holds, and a claim that does not collide is not a claim.
+<item-key> names the item in the drain planner's own form. A key already carrying "--" is
+a claim key (<repo>--<stream>--<NN>, <repo>--issue-<NN>) and reaches the repo's claim tool
+byte-for-byte. A plan item key (verifyloop plan's <stream>/<NN>) is TRANSLATED for the
+claim calls only — the repo's short label (configured alias, else the repo basename) is
+prefixed and "/" becomes "--" — by a fixed rule, so every desk derives the SAME claim key
+for the same item and the claims collide. The worktree name, branch, brief path, and the
+prompt's item key stay on the ORIGINAL key.
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 
-  1 claim-acquire     runs tools/dispatch-claim.sh acquire <key>, resolved under
+  1 claim-acquire     runs tools/dispatch-claim.sh acquire <claim-key>, resolved under
                       --claim-root when given, else --root. The claim itself is a ref in
                       the TARGET repo (--repo) either way — the flag names where the TOOL
-                      lives, never where the claim lands. Exit 5 there = a LIVE holder
-                      owns it: this verb prints the holder and exits 5. It never steals.
+                      lives, never where the claim lands. Exit 5 there with a READABLE
+                      holder = a LIVE holder owns it: this verb prints the holder and
+                      exits 5; it never steals. Exit 5 with no readable holder is the
+                      claim tool refusing the invocation itself and is reported as that
+                      error, never as a collision.
   2 worktree-create   ` + "`deskwt add`" + ` in the item's OWN repo root, off
                       refs/remotes/origin/main. Cross-repo is the default case, not the
                       exception: an item belongs to a repo, and a worker handed the wrong
