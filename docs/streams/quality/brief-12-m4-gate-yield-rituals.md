@@ -21,7 +21,7 @@ schema: brief-v1
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §7.1 — gate-yield accounting: catch-rate, escape-rate, latency per review lane, using M3's review-escape overlay"
-  - "docs/streams/quality/spec.md §7.2 — ritual effectiveness (natural experiments): cost per durable KLOC by model tier x brittleness band, Verify-depth vs escape rate, confounders acknowledged, brittleness-band stratification the minimum control"
+  - "docs/streams/quality/spec.md §7.2 — ritual effectiveness (natural experiments): cost per durable KLOC by model tier x brittleness band, Verify-depth vs escape rate, agent-PR survival + first-pass approval rates, review-discipline guardrails; confounders acknowledged, brittleness-band stratification the minimum control"
   - "docs/streams/quality/spec.md §10 — honest-claims discipline (never a bare observational number; state confounders and stratification)"
 ---
 
@@ -36,7 +36,11 @@ files:
 - NEW `qualgen/reflex/ritual.go` (planned) — the natural-experiment joins: authoring
   attributes (model tier, Verify-depth, lane coverage) joined to downstream M1/M2
   outcomes. Headline joins: **cost per durable KLOC by model tier x brittleness band** and
-  **Verify-depth vs escape rate**. NO new mining — a JOIN of existing outputs only.
+  **Verify-depth vs escape rate**; plus the industry-named agent metrics (spec §7.2):
+  **agent-PR survival rate**, **first-pass approval rate**, and the
+  **review-discipline guardrails** (% PRs merged without review, time-in-review trend —
+  emitted as alarmed budgets, not dashboard lines). NO new mining — a JOIN of existing
+  outputs only.
 - NEW `qualgen/reflex/stratify.go` (planned) — the OBSERVATIONAL-VALIDITY guard:
   brittleness-band stratification as the MINIMUM control, and a confounders block attached
   to every readout. This module REFUSES to emit a ritual-effectiveness number that is not
