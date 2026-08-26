@@ -383,6 +383,12 @@ var handTableOptOut = map[string]string{
 		"--root, so it cannot read the source at run time and must carry a derivation",
 	"topologyDecisionOwedLabels": "statusgen's derivation — same binding as " +
 		"topologySystemStateLabels (TestTopologyValuesMatchSource)",
+	"topologyRiskPathTriggersByRepo": "statusgen's derivation of repos[].risk_path_triggers — " +
+		"bound by statusgen's TestTopologyValuesMatchSource (which diffs it field-for-field against " +
+		"topology.yaml) and its TestTopologyRiskTriggerDiffCanFail positive control. statusgen's lint " +
+		"reads it to cross-read a brief's declared paths against the risk classifier; like the label " +
+		"derivations above, statusgen ships as a pinned binary run against an arbitrary --root and " +
+		"cannot read the source at run time",
 }
 
 // scanForHandTables finds composite literals that restate two or more distinct
