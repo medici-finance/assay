@@ -26,10 +26,21 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| quality | 06 — M2 fix identification — pluggable linkage adapter + evidence tiers | 1 | 5000 |
+| desktools-go-git | 02 — `gitcore` transport + in-process auth (BasicAuth) + go-git pin | 2 | 4000 |
+| derived-board | 03 — `statusgen reconcile` — derive lifecycle state from PRs + witnesses + approvals [exec:strong] | 1 | 3500 |
+| quality | 02 — M1 line-operation taxonomy + churn/rework rate [exec:strong] | 1 | 3500 |
+| forge-gitlab | 02 — `gitlab` forge implementation (MRs, notes, approvals, statuses) [exec:strong] | 2 | 3000 |
+| quality | 03 — M1 hotspots + knowledge distribution (SPOF) + change coupling | 1 | 3000 |
+| derived-board | 05 — desk skills: reference the brief, never flip the cell (both copies) | 1 | 2500 |
+| forge-gitlab | 03 — GitLab token custody — rotate-on-mint + expiry backstop in desktoken [exec:strong] | 2 | 2500 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
+| quality | 04 — M1 instruction-layer brittleness (reference-validity + doc↔code drift) | 1 | 2500 |
 | iso-9001 | 02 — Align three shipped disclosures with the code they describe (B9) [exec:strong] | 0 | 2000 |
+| forge-gitlab | 07 — GitHub forge backend on `go-gh` — retire the exec-`gh` shell path [exec:strong] | 2 | 1500 |
 | statusgen | 07 — new brief-flow metrics | 1 | 1500 |
 | desk-tools | 04 — Deterministic runner — execute rows, batch, sign, file verdict issues [exec:strong] | 1 | 1000 |
+| statusgen | 03 — self-improvement metric (self-healed vs human-touched) | 2 | 1000 |
 | statusgen | 09 — opt-in telemetry — anonymized fleet-drift corpus (off by default) | 1 | 1000 |
 | statusgen | 10 — graph export (`--graph` DOT + JSONL) [exec:strong] | 1 | 1000 |
 
@@ -37,7 +48,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (29 desk-actionable of 30 total — 30 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (29 desk-actionable of 30 total — 20 at implemented, 10 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -48,11 +59,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| quality | 01 [exec:strong] | implemented | 8000 | 14 | — | — | — |
-| derived-board | 01 [exec:strong] | implemented | 4500 | 5 | — | — | — |
-| derived-board | 02 | implemented | 4500 | 5 | — | — | — |
-| desktools-go-git | 01 | implemented | 4500 | 7 | — | — | — |
-| forge-gitlab | 01 [exec:strong] | implemented | 4500 | 7 | — | — | — |
+| quality | 01 [exec:strong] | verified | 8000 | 14 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
+| derived-board | 01 [exec:strong] | verified | 4500 | 5 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
+| derived-board | 02 | verified | 4500 | 5 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
+| desktools-go-git | 01 | verified | 4500 | 7 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
+| forge-gitlab | 01 [exec:strong] | verified | 4500 | 7 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | harness-portability | 01 [exec:strong] | implemented | 4500 | 7 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
@@ -62,18 +73,18 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | mistake-proofing | 01 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2000 | 2 | — | — | — |
-| mistake-proofing | 02 | implemented | 1500 | 1 | — | — | — |
-| statusgen | 02 | implemented | 1500 | 1 | — | — | — |
+| mistake-proofing | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
+| statusgen | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desk-tools | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 05 [exec:strong] | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| statusgen | 01 | implemented | 1000 | 0 | — | — | — |
-| statusgen | 04 | implemented | 1000 | 0 | — | — | — |
+| statusgen | 01 | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
+| statusgen | 04 | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -105,8 +116,8 @@ _None._
 
 ### derived-board (7 open)
 
-- 01 brief-v2 spec: derived lifecycle, generated table, public re-stage of brief-rules/template — implemented (wave 0)
-- 02 `Brief:` trailer — the PR→brief link, required by `deskpr`, linted on main — implemented (wave 0)
+- 01 brief-v2 spec: derived lifecycle, generated table, public re-stage of brief-rules/template — verified (wave 0)
+- 02 `Brief:` trailer — the PR→brief link, required by `deskpr`, linted on main — verified (wave 0)
 - 03 `statusgen reconcile` — derive lifecycle state from PRs + witnesses + approvals — todo (wave 1)
 - 04 generated Briefs table + single-writer lint — todo (wave 2)
 - 05 desk skills: reference the brief, never flip the cell (both copies) — todo (wave 1)
@@ -129,11 +140,11 @@ _None._
 - 02 Generalize — batch-fanout as the second drain-engine consumer — implemented (wave 1)
 - 03 Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN — implemented (wave 1)
 - 04 Deterministic runner — execute rows, batch, sign, file verdict issues — todo (wave 1)
-- 05 Escape-valve `Decide()` primitive in deskkit — implemented (wave 1)
+- 05 Escape-valve `Decide()` primitive in deskkit — verified (wave 1)
 
 ### desktools-go-git (8 open)
 
-- 01 inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate — implemented (wave 1)
+- 01 inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate — verified (wave 1)
 - 02 `gitcore` transport + in-process auth (BasicAuth) + go-git pin — todo (wave 2)
 - 03 migrate read/plumbing verbs (read-heavy tools) — todo (wave 3)
 - 04 migrate `deskpushguard` detection reads (parity + mutation test) — todo (wave 3)
@@ -144,7 +155,7 @@ _None._
 
 ### forge-gitlab (8 open)
 
-- 01 `Forge` interface extraction in deskkit — `github` impl pinned by goldens — implemented (wave 1)
+- 01 `Forge` interface extraction in deskkit — `github` impl pinned by goldens — verified (wave 1)
 - 02 `gitlab` forge implementation (MRs, notes, approvals, statuses) — todo (wave 2)
 - 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — todo (wave 2)
 - 04 Fleet provisioning + adopter doc + ci-config-project runbook — todo (wave 3)
@@ -179,7 +190,7 @@ _None._
 ### mistake-proofing (6 open)
 
 - 01 Cross-read a brief's declared paths against the risk classifier (B3) — implemented (wave 0)
-- 02 Dereference named identifiers, not just backticked paths (B4) — implemented (wave 0)
+- 02 Dereference named identifiers, not just backticked paths (B4) — verified (wave 0)
 - 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — todo (wave 1)
 - 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — todo (wave 1)
 - 05 `newbrief` — the scaffolder as the authoring front door (B1) — todo (wave 2)
@@ -187,7 +198,7 @@ _None._
 
 ### quality (15 open)
 
-- 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — implemented (wave 0)
+- 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — verified (wave 0)
 - 02 M1 line-operation taxonomy + churn/rework rate — todo (wave 1)
 - 03 M1 hotspots + knowledge distribution (SPOF) + change coupling — todo (wave 1)
 - 04 M1 instruction-layer brittleness (reference-validity + doc↔code drift) — todo (wave 1)
@@ -205,10 +216,10 @@ _None._
 
 ### statusgen (11 open)
 
-- 01 30-day lint-firing audit — retire cold rules — implemented (wave 1)
-- 02 issue metrics (`--issues`) — implemented (wave 1)
+- 01 30-day lint-firing audit — retire cold rules — verified (wave 1)
+- 02 issue metrics (`--issues`) — verified (wave 1)
 - 03 self-improvement metric (self-healed vs human-touched) — todo (wave 2)
-- 04 ladder-position indicator (`--ladder`) — implemented (wave 1)
+- 04 ladder-position indicator (`--ladder`) — verified (wave 1)
 - 05 drives phase 3 — anti-starvation floors + critical tier — implemented (wave 1)
 - 06 findings register — corroborated state machine — implemented (wave 1)
 - 07 new brief-flow metrics — todo (wave 1)
