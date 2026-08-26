@@ -1,6 +1,6 @@
-// Command demo drains a handful of fake items with the stand-in adapters, so you can watch a
-// constant-N pool claim, dispatch, land, refill, and idle with nothing from any real stack
-// attached. Run it with:
+// Command demo drains a handful of fake items with the stand-in adapters, so you can watch the
+// engine claim, dispatch, await, land, release, and idle — one item in flight at a time — with
+// nothing from any real stack attached. Run it with:
 //
 //	go run ./cmd/demo
 //
@@ -40,7 +40,7 @@ func main() {
 	err = drainloop.Run(drainloop.Config{
 		Loop:         queue,
 		Claimer:      claimer,
-		PoolSize:     2, // constant N: at most two items in flight per pass
+		PoolSize:     2, // pool ceiling; the engine awaits each dispatch, so one item is in flight at a time
 		StopWhenIdle: true,
 		Log:          func(line string) { fmt.Println(line) },
 	})

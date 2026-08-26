@@ -147,8 +147,8 @@ this article is not a description; it is a working, framework-agnostic harness y
 and run, in [`drainloop/`](./drainloop/).
 
 It implements the same six-method contract against stand-in adapters — an in-memory queue, a
-file-based claim, an echoing dispatcher — so you can watch a constant-N pool drain a set of
-fake items, claim before dispatch, land each result as it returns, refill, and idle, with
+file-based claim, an echoing dispatcher — so you can watch the engine drain a set of fake items
+one at a time, claim before dispatch, land each result as it returns, and idle, with
 nothing from our infrastructure attached. Swap the adapters for your queue, your claim store,
 and your real dispatch, and you have a non-stalling drain in your own stack. The engine loop
 in the middle — the part that used to live in a model's attention — you get to keep as is. The

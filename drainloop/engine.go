@@ -55,8 +55,11 @@ type Config struct {
 	Loop Loop
 	// Claimer is the dedupe store. Required.
 	Claimer Claimer
-	// PoolSize is the maximum number of workers in flight at once (the constant N). It must
-	// be >= 1.
+	// PoolSize is the in-flight ceiling the pool guard is configured with; it must be >= 1. In
+	// the current emit-one-instruction form the engine dispatches an item and awaits its result
+	// before considering the next, so exactly one item is in flight at a time regardless of
+	// PoolSize — the ceiling becomes load-bearing only once Dispatch returns before the work it
+	// dispatched has completed.
 	PoolSize int
 	// Log, if set, receives one line per scheduling decision. Attribution is a property of
 	// the engine, not of the model: every claim, dispatch, land, and release is recorded.
@@ -114,9 +117,10 @@ func (c Config) sleepIdle() {
 	}
 }
 
-// Run drives the drain: guard the pool at N, dispatch what is claimable, land each result,
-// release the claim, refill, and poll (or stop) on idle. It returns when a batch drain goes
-// idle (Config.StopWhenIdle), or on the first hard error the loop cannot land around.
+// Run drives the drain: for each claimable item in turn, dispatch it, await its result, land it,
+// and release the claim, then poll (or stop) on idle. One item is in flight at a time in the
+// current form. It returns when a batch drain goes idle (Config.StopWhenIdle), or on the first
+// hard error the loop cannot land around.
 //
 // The disciplines the contract enforces rather than requests:
 //   - a dispatch that FAILS does not abort the drain — it is landed as VerdictError and its

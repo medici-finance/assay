@@ -1,7 +1,7 @@
-// Package drainloop is a framework-agnostic drain engine: read a queue, hold a pool of
-// N in-flight workers, claim before dispatch, land each result as it returns, refill, and
-// idle. The scheduler lives here, in deterministic code, so it never has to live in an
-// operator model's attention.
+// Package drainloop is a framework-agnostic drain engine: read a queue, claim an item, dispatch
+// it and await its result, land it, release the claim, and move to the next — one item in flight
+// at a time — idling when the queue empties. The scheduler lives here, in deterministic code, so
+// it never has to live in an operator model's attention.
 //
 // It is importable and cloneable. The adapters shipped alongside it (an in-memory queue, a
 // file-based claim, an echoing dispatcher) are stand-ins so the harness runs with nothing

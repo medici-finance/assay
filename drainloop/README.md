@@ -1,9 +1,11 @@
 # drainloop — a framework-agnostic drain harness
 
-A small, self-contained drain engine you can `go get` or clone and run: **read a queue → hold
-a pool of N in-flight workers → claim before dispatch → land each result as it returns →
-refill → idle**. The scheduler is deterministic code, so it never has to live in an operator
-model's attention. This module is the generic, importable takeaway of a companion article on
+A small, self-contained drain engine you can `go get` or clone and run: **read a queue → claim
+an item → dispatch it and await its result → land it → release the claim → move to the next →
+idle**. Items are drained one at a time — at most one is in flight — matching the current
+emit-one-instruction form, where the engine names exactly which dispatch to make and the result
+is fed back before the next item is considered. The scheduler is deterministic code, so it never
+has to live in an operator model's attention. This module is the generic, importable takeaway of a companion article on
 why agent loops stall and how moving the scheduler out of the model fixes it; the article is
 one directory up at [`../drain-engine.md`](../drain-engine.md).
 
@@ -31,8 +33,8 @@ go test ./...        # run the engine and its negative tests
 go run ./cmd/demo    # drain five fake items with the stand-in adapters
 ```
 
-The demo holds a pool of two, claims each item before dispatching it, lands each echoed
-result, refills the slot, and stops when the queue is empty. You will see the scheduling
+The demo drains five items one at a time: it claims each item before dispatching it, awaits and
+lands each echoed result, releases the claim, and stops when the queue is empty. You will see the scheduling
 decisions (`CLAIM` / `DISPATCH` / `LAND` / `RELEASE` / `IDLE`) printed as they happen.
 
 > This module lives inside the larger `medici-finance/assay` tree, which is a collection of
@@ -68,8 +70,8 @@ instruction today, spawn a process later" swaps one method and touches nothing e
 ## Why the contract stays small
 
 Everything that varies between roles is pushed into `TierPolicy` and `Land`. Everything else —
-the constant-N pool, the claim/refill dance, the drain-continues-on-failure discipline — is
-the engine's, written once and identical for every consumer. The moment the contract grows a
+the claim-before-dispatch chokepoint, the land-and-release cycle, the drain-continues-on-failure
+discipline — is the engine's, written once and identical for every consumer. The moment the contract grows a
 seventh method to accommodate one role, that method propagates to every consumer and the
 engine stops being a scheduler and becomes a drawer of per-role policy. Keeping it at six is
 the property that lets a second and third role adopt the engine without the first role's
