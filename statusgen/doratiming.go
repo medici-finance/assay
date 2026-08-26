@@ -470,6 +470,9 @@ func recordDoraTiming(root string, src doraTimingSource, now time.Time) int {
 		workflow = "*" // portable default: aggregate per-commit required-check state
 	}
 
+	// no-default-probe §7: announce the resolved network target before first contact.
+	fmt.Printf("dora-timing: recording for %s (workflow=%s)\n", repo, workflow)
+
 	path := filepath.Join(root, filepath.FromSlash(doraTimingRelPath))
 	existing, err := loadDoraTimingRecords(path)
 	if err != nil {
