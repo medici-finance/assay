@@ -220,10 +220,23 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// backlog of drifted rows is reconciled. Skipped outright on a tree with no
 	// .git (the unconditional NOTICE above already states that caveat); otherwise
 	// three-state, with the git read's own error surfaced as could-not-check.
-	if !hasNoGitDir(root) {
-		mergedPRs, mergedErr := mergedPRsFromGit(root)
+	var mergedPRs []mergedPR
+	var mergedErr error
+	if hasNoGitDir(root) {
+		mergedErr = errNoGitForMerge
+	} else {
+		mergedPRs, mergedErr = mergedPRsFromGit(root)
 		notices = append(notices, mergedPRStatusNotices(checkStreams, mergedPRs, mergedErr)...)
 	}
+	// Board-honesty phantom-row detector: classify every todo row and surface the
+	// ones that pass the freshness gate but are not dispatchable from here
+	// (already-merged-unflipped, out-of-repo/dehoused/re-homed deliverables,
+	// statusgen-source-elsewhere, deferred-by-gate), so the todo count stops
+	// overstating the real dispatchable backlog. NOTICE severity, per the
+	// mergedstatus.go precedent one block above — a phantom row is surfaced, not
+	// hard-gated, and the git-derived class 1 reuses the same merge read.
+	// Declared source: statusgen/boardhonesty.go.
+	notices = append(notices, boardHonestyNotices(checkStreams, mergedPRs, mergedErr)...)
 	// Evidence-actor (desk-apps/07, F-verify-self-attest): a `verified`/`done`
 	// row is backed only when an ACCEPTED actor — the roster-bound verifier App or
 	// a roster-known human — committed at least one line of its `## Evidence`
