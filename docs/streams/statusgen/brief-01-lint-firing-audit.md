@@ -99,7 +99,5 @@ Runner ≠ implementer. Own isolated worktree off `origin/main`, OFFLINE (`KUBEC
 **RISK-VALUE: DERIVED** — the audit window `--since=30.days` @ statusgen/lintaudit.go:192 (right per the brief spec, "30-day statusgen check-firing audit") and the COLD retirement-candidate condition `firings==0 && !gates` @ statusgen/lintaudit.go:160 (right per the spec, "0 firings AND no referencing test assertion is COLD"). Both reversible knobs of a read-only reporter that retires nothing; a wrong value only mis-reports, fixed by edit+rerun. Remaining literals (daily sampling, a 48-char bucket-key cap, a 160-char path-strip bound, the rc=6 could-not-check exit) are reversible operational/cosmetic knobs, out of derivation scope.
 
 ## Review
-
-## Review
 Gate: model (all four risk answers no — repo-internal Go tooling; a read-only advisory audit,
 no rule is retired by this brief). Reviewer records verdict + date in the stream README table.
