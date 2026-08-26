@@ -83,6 +83,23 @@ facts:
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-08-26 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `ea7fea5`
+
+Runner ≠ implementer. Own isolated worktree off `origin/main`, OFFLINE (`KUBECONFIG=/dev/null`). `gate: model`, `risk {regulatory: no, customer: no, irreversible: no, sensitive-data: no}`. Module root is `statusgen/` (holds go.mod, no repo-root module); the `./statusgen/` package paths ran as their equivalent from inside the module dir, and `statusgen` ran as a locally-built binary (not on PATH).
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | `go test ./ -run LintAudit -v` (in statusgen/) | 0 | PASS TestLintAuditTalliesPerRuleAndFlagsCold, PASS TestLintAuditEmptyWindowReportsNoSamples; ok statusgen 0.363s | 2026-08-26 | opus-4.8[1m]-verifier |
+| 2 | `go test ./ && go vet ./` (in statusgen/) | 0 | go test ok (24.09s); go vet clean | 2026-08-26 | opus-4.8[1m]-verifier |
+| 3 | `statusgen --root . --lint-audit` | 0 | header "lint-audit: 11 sampled commits over 30 days"; 90 rows ascending; 0-firing rows flagged "COLD — retirement candidate" first; gates-a-test column populated | 2026-08-26 | opus-4.8[1m]-verifier |
+| 4 | `statusgen --root . --lint; echo $?` | 0 | ordinary lint runs, "LINT: PASS"; the audit subcommand does not perturb ordinary lint | 2026-08-26 | opus-4.8[1m]-verifier |
+
+**VERIFY: PASS** — all 4 rows pass; nothing could-not-check (no cluster row; the lint-audit is a read-only advisory reporter).
+
+**RISK-VALUE: DERIVED** — the audit window `--since=30.days` @ statusgen/lintaudit.go:192 (right per the brief spec, "30-day statusgen check-firing audit") and the COLD retirement-candidate condition `firings==0 && !gates` @ statusgen/lintaudit.go:160 (right per the spec, "0 firings AND no referencing test assertion is COLD"). Both reversible knobs of a read-only reporter that retires nothing; a wrong value only mis-reports, fixed by edit+rerun. Remaining literals (daily sampling, a 48-char bucket-key cap, a 160-char path-strip bound, the rc=6 could-not-check exit) are reversible operational/cosmetic knobs, out of derivation scope.
+
+## Review
+
 ## Review
 Gate: model (all four risk answers no — repo-internal Go tooling; a read-only advisory audit,
 no rule is retired by this brief). Reviewer records verdict + date in the stream README table.
