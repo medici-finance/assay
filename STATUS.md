@@ -13,12 +13,13 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 |---|---|---|---|---|---|
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-26 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-26 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/5 | 2026-08-26 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-26 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-26 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/11 | 2026-08-26 |  |
 
 ## Next up
 
@@ -27,19 +28,23 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | mistake-proofing | 01 — Cross-read a brief's declared paths against the risk classifier (B3) [exec:strong] | 0 | 3000 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
 | iso-9001 | 02 — Align three shipped disclosures with the code they describe (B9) [exec:strong] | 0 | 2000 |
+| statusgen | 07 — new brief-flow metrics | 1 | 1500 |
+| desk-tools | 04 — Deterministic runner — execute rows, batch, sign, file verdict issues [exec:strong] | 1 | 1000 |
+| statusgen | 09 — opt-in telemetry — anonymized fleet-drift corpus (off by default) | 1 | 1000 |
+| statusgen | 10 — graph export (`--graph` DOT + JSONL) [exec:strong] | 1 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (14 desk-actionable of 14 total — 14 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (19 desk-actionable of 19 total — 19 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (14)
+### Desk-actionable (19)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -53,10 +58,15 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | mistake-proofing | 02 | implemented | 1500 | 1 | — | — | — |
 | statusgen | 02 | implemented | 1500 | 1 | — | — | — |
+| desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 01 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 04 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| statusgen | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ## Age at the human gate
 
@@ -67,6 +77,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | Stream | Oldest at gate | Brief |
 |---|---|---|
 | desk-containers | — | — |
+| desk-tools | — | — |
 | statusgen | — | — |
 
 ## Unresolved findings
@@ -94,6 +105,14 @@ _None._
 - 05 docker-compose definition — todo (wave 3)
 - 06 Kubernetes manifests — todo (wave 3)
 - 07 multi-desk control layer — tmux/equivalents, macOS + win32 — todo (wave 4)
+
+### desk-tools (5 open)
+
+- 01 Binary channel — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
+- 02 Generalize — batch-fanout as the second drain-engine consumer — implemented (wave 1)
+- 03 Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN — implemented (wave 1)
+- 04 Deterministic runner — execute rows, batch, sign, file verdict issues — todo (wave 1)
+- 05 Escape-valve `Decide()` primitive in deskkit — implemented (wave 1)
 
 ### desktools-go-git (8 open)
 
@@ -151,7 +170,7 @@ _None._
 - 14 auto-filed refactor work + quality error-budgets + RETRO output feed — todo (wave 5)
 - 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
 
-### statusgen (6 open)
+### statusgen (11 open)
 
 - 01 30-day lint-firing audit — retire cold rules — implemented (wave 1)
 - 02 issue metrics (`--issues`) — implemented (wave 1)
@@ -159,6 +178,11 @@ _None._
 - 04 ladder-position indicator (`--ladder`) — implemented (wave 1)
 - 05 drives phase 3 — anti-starvation floors + critical tier — implemented (wave 1)
 - 06 findings register — corroborated state machine — implemented (wave 1)
+- 07 new brief-flow metrics — todo (wave 1)
+- 08 composite AssayScore computation — todo (wave 2)
+- 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — todo (wave 1)
+- 10 graph export (`--graph` DOT + JSONL) — todo (wave 1)
+- 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
 
 ## Done briefs
 
@@ -168,4 +192,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**8** streams (**8** active, **0** paused) · **0/61** briefs done · completed initiatives: see `docs/archive/`
+**9** streams (**9** active, **0** paused) · **0/71** briefs done · completed initiatives: see `docs/archive/`
