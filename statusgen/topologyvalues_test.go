@@ -40,6 +40,10 @@ type topologySource struct {
 			Why  string `yaml:"why"`
 		} `yaml:"decision_owed"`
 	} `yaml:"labels"`
+	Repos []struct {
+		Slug             string   `yaml:"slug"`
+		RiskPathTriggers []string `yaml:"risk_path_triggers"`
+	} `yaml:"repos"`
 }
 
 func loadTopologySource(t *testing.T) topologySource {
@@ -104,6 +108,44 @@ func TestTopologyValuesMatchSource(t *testing.T) {
 		t.Errorf("DERIVATION DRIFT — labels.decision_owed\n  %s says %v\n  statusgen/topologyvalues.go says %v",
 			topologySourceFile, sortedCopy(wantDecision), sortedCopy(topologyDecisionOwedLabels))
 	}
+
+	// repos[].risk_path_triggers — the per-repo additions the mistake-proofing/01
+	// cross-read reads from the statusgen derivation (riskpathtriggers.go). Only
+	// repos that state at least one trigger are compared; a repo with none must be
+	// ABSENT from the derivation map (the fail-closed reading: unstated == base
+	// list only, never an empty slice that reads as "checked and none").
+	wantTriggers := map[string][]string{}
+	sawRepo := false
+	for _, r := range src.Repos {
+		sawRepo = true
+		if len(r.RiskPathTriggers) > 0 {
+			wantTriggers[r.Slug] = append([]string(nil), r.RiskPathTriggers...)
+		}
+	}
+	if !sawRepo {
+		t.Fatalf("COULD-NOT-CHECK: %s declares no repos — an empty read is not an empty set, and "+
+			"comparing against it would pass any derivation", topologySourceFile)
+	}
+	if len(wantTriggers) == 0 {
+		t.Fatalf("COULD-NOT-CHECK: %s declares repos but none carries a risk_path_triggers entry — the "+
+			"cross-read's per-repo binding cannot be verified against a source that states no trigger",
+			topologySourceFile)
+	}
+	if len(wantTriggers) != len(topologyRiskPathTriggersByRepo) {
+		t.Errorf("DERIVATION DRIFT — repos[].risk_path_triggers: source names %d triggering repo(s), "+
+			"statusgen/topologyvalues.go names %d — a repo gained or lost triggers in one but not the other",
+			len(wantTriggers), len(topologyRiskPathTriggersByRepo))
+	}
+	for slug, want := range wantTriggers {
+		got := topologyRiskPathTriggersByRepo[slug]
+		if !reflect.DeepEqual(sortedCopy(want), sortedCopy(got)) {
+			t.Errorf("DERIVATION DRIFT — repos[%s].risk_path_triggers\n"+
+				"  %s says %v\n"+
+				"  statusgen/topologyvalues.go says %v\n"+
+				"  Edit the SOURCE first, then mirror it into the derivation. The source wins.",
+				slug, topologySourceFile, sortedCopy(want), sortedCopy(got))
+		}
+	}
 }
 
 // TestTopologyValuesDiffCanFail is the positive control: it proves the comparison
@@ -120,6 +162,49 @@ func TestTopologyValuesDiffCanFail(t *testing.T) {
 	if reflect.DeepEqual(sortedCopy(fromSource), bent) {
 		t.Fatal("POSITIVE CONTROL FAILED: dropping a label from the derivation still compared EQUAL " +
 			"to the declared source. The drift comparison is vacuous.")
+	}
+}
+
+// TestTopologyRiskTriggerDiffCanFail is the positive control for the per-repo
+// risk_path_triggers comparison: it proves that comparison discriminates. Without
+// it, a green run is consistent with a comparison that always passes.
+func TestTopologyRiskTriggerDiffCanFail(t *testing.T) {
+	src := loadTopologySource(t)
+	want := map[string][]string{}
+	for _, r := range src.Repos {
+		if len(r.RiskPathTriggers) > 0 {
+			want[r.Slug] = append([]string(nil), r.RiskPathTriggers...)
+		}
+	}
+	if len(want) == 0 {
+		t.Fatal("COULD-NOT-CHECK: the source states no risk_path_triggers, so the control cannot bend one")
+	}
+	// A derivation that dropped one trigger from some repo must compare UNEQUAL.
+	bent := map[string][]string{}
+	dropped := false
+	for slug, trigs := range topologyRiskPathTriggersByRepo {
+		cp := append([]string(nil), trigs...)
+		if !dropped && len(cp) > 0 {
+			cp = cp[:len(cp)-1]
+			dropped = true
+		}
+		bent[slug] = cp
+	}
+	if !dropped {
+		t.Fatal("COULD-NOT-CHECK: the derivation carries no trigger to drop, so the control is vacuous")
+	}
+	equal := len(want) == len(bent)
+	if equal {
+		for slug, w := range want {
+			if !reflect.DeepEqual(sortedCopy(w), sortedCopy(bent[slug])) {
+				equal = false
+				break
+			}
+		}
+	}
+	if equal {
+		t.Fatal("POSITIVE CONTROL FAILED: dropping a trigger from the derivation still compared EQUAL " +
+			"to the declared source. The risk_path_triggers drift comparison is vacuous.")
 	}
 }
 
