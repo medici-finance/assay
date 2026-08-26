@@ -130,16 +130,16 @@ depends on which coding-agent harness you're driving — this document names non
 in the prose above so nothing here goes stale when a harness changes its tool names.
 For readers who want the concrete mapping today:
 
-| Capability | Claude Code | Codex |
-|---|---|---|
-| `dispatch-worker` | a backgrounded subagent | a spawned agent process |
-| `message-agent` | a message sent to that subagent | a message sent to that process |
-| `isolate-workspace` | its own git worktree, never the shared checkout | its own sandboxed workspace |
-| `invoke-skill` | a `SKILL.md` loaded by description match | an equivalent on-demand instruction file |
-| `session-notifications` | a completion notification when the subagent finishes | an equivalent completion signal |
+| Capability | Claude Code | Codex | Cursor |
+|---|---|---|---|
+| `dispatch-worker` | a backgrounded subagent | a spawned agent process | a background agent in its own git worktree |
+| `message-agent` | a message sent to that subagent | a message sent to that process | a follow-up sent to that agent |
+| `isolate-workspace` | its own git worktree, never the shared checkout | its own sandboxed workspace | its own git worktree, never the shared checkout |
+| `invoke-skill` | a `SKILL.md` loaded by description match | an equivalent on-demand instruction file | a `SKILL.md` loaded by description match (same open standard) |
+| `session-notifications` | a completion notification when the subagent finishes | an equivalent completion signal | a structured completion signal when the agent finishes |
 
-Neither column is the method; the capability row is. If you drive a third harness, the
-loop above still describes what happens — only this table's row changes.
+No column is the method; the capability row is. The table started with one column and
+now has three — each new harness is a new column, and the loop above is unchanged.
 
 ## Where to next
 
