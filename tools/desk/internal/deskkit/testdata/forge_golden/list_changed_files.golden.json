@@ -1,0 +1,21 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/pulls/7/files",
+      "query": "per_page=100\u0026page=1"
+    }
+  ],
+  "result": [
+    {
+      "Filename": "config/authz/token.go",
+      "PreviousFilename": "secrets/auth/token.go",
+      "Status": "renamed"
+    },
+    {
+      "Filename": "docs/desk-tools.md",
+      "PreviousFilename": "",
+      "Status": "modified"
+    }
+  ]
+}

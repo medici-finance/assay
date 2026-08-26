@@ -1,0 +1,13 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/pulls/7/reviews",
+      "body": {
+        "body": "ok",
+        "commit_id": "abc123",
+        "event": "APPROVE"
+      }
+    }
+  ]
+}

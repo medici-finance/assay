@@ -1,0 +1,20 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/pulls",
+      "body": {
+        "base": "main",
+        "body": "b",
+        "draft": true,
+        "head": "feat/x",
+        "title": "t"
+      }
+    }
+  ],
+  "result": {
+    "Number": 21,
+    "NodeID": "PR_new",
+    "URL": "https://example/pull/21"
+  }
+}

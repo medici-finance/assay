@@ -166,8 +166,10 @@ func runGit(dir string, env []string, args ...string) (string, error) {
 // --- GitHub API helpers ---
 
 // githubAPIBase is the base URL for GitHub API calls. It is a var (not const) so
-// tests can point it at an httptest server.
-var githubAPIBase = "https://api.github.com/"
+// tests can point it at an httptest server. The host literal is sourced from
+// deskkit.GitHubAPIBase (the forge module) so it is never constructed in a cmd package
+// (the forge-abstraction seam).
+var githubAPIBase = deskkit.GitHubAPIBase + "/"
 
 // ghToken resolves the operator's ambient GitHub credential: GH_TOKEN,
 // GITHUB_TOKEN, then `gh auth token`. It must NOT persist the token on disk.
@@ -185,7 +187,7 @@ func ghToken() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// ghAPI performs an authenticated GET to api.github.com/<path> and returns the body.
+// ghAPI performs an authenticated GET to the GitHub API base + <path> and returns the body.
 func ghAPI(path string) ([]byte, error) {
 	token, err := ghToken()
 	if err != nil {

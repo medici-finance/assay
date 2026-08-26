@@ -1,0 +1,32 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/commits/abc123/status",
+      "query": "per_page=100\u0026page=1"
+    },
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/commits/abc123/check-runs",
+      "query": "per_page=100\u0026page=1"
+    }
+  ],
+  "result": {
+    "CombinedState": "success",
+    "StatusTotalCount": 1,
+    "Statuses": [
+      {
+        "State": "success",
+        "Context": "ci/legacy"
+      }
+    ],
+    "CheckRunsTotalCount": 1,
+    "CheckRuns": [
+      {
+        "Name": "go-test",
+        "Status": "completed",
+        "Conclusion": "success"
+      }
+    ]
+  }
+}

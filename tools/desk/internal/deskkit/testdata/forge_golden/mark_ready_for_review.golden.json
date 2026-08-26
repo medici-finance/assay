@@ -1,0 +1,14 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/graphql",
+      "body": {
+        "query": "mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft}}}",
+        "variables": {
+          "id": "PR_node"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/issues",
+      "body": {
+        "body": "detail",
+        "title": "bug"
+      }
+    }
+  ],
+  "result": {
+    "Number": 33,
+    "URL": "https://example/issues/33"
+  }
+}

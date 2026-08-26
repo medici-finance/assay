@@ -24,7 +24,9 @@ import (
 
 // apiBaseURL is the GitHub API base. It is overridable ONLY from in-package
 // tests (a fake httptest server); there is deliberately NO env var or flag override.
-var apiBaseURL = "https://api.github.com"
+// The host literal is sourced from deskkit.GitHubAPIBase (the forge module) so it is never
+// constructed in a cmd package (the forge-abstraction seam).
+var apiBaseURL = deskkit.GitHubAPIBase
 
 // httpClient is a test hook. It is deliberately NOT http.DefaultClient: DefaultClient has
 // no Timeout, and every request this tool makes runs INSIDE the audit flock (writeflow.go).

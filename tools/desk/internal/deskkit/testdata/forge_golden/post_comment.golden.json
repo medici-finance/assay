@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/issues/7/comments",
+      "body": {
+        "body": "hello"
+      }
+    }
+  ]
+}

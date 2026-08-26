@@ -18,8 +18,9 @@ import (
 // apiBaseURL is the GitHub API base. It is overridable ONLY from in-package tests (a
 // fake httptest server); there is deliberately NO env var or flag override — a
 // production override could redirect the tag create at an attacker-controlled host.
-// Same test-hook shape deskpost uses.
-var apiBaseURL = "https://api.github.com"
+// Same test-hook shape deskpost uses. The host literal is sourced from deskkit.GitHubAPIBase
+// (the forge module) so it is never constructed in a cmd package (the forge-abstraction seam).
+var apiBaseURL = deskkit.GitHubAPIBase
 
 // execCommand is the single seam through which the ONLY external program this tool ever
 // runs — `desktoken` — is invoked. Tests bind it to a recorder so the "no git, no gh,
