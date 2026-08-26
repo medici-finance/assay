@@ -11,14 +11,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-25 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-25 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-25 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/6 | 2026-08-25 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-25 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-25 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-25 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-25 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-26 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-26 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-26 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-26 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
 
 ## Next up
 
@@ -28,20 +28,19 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | mistake-proofing | 01 — Cross-read a brief's declared paths against the risk classifier (B3) [exec:strong] | 0 | 3000 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
 | iso-9001 | 02 — Align three shipped disclosures with the code they describe (B9) [exec:strong] | 0 | 2000 |
-| mistake-proofing | 02 — Dereference named identifiers, not just backticked paths (B4) | 0 | 1500 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (12 desk-actionable of 12 total — 12 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (13 desk-actionable of 13 total — 13 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (12)
+### Desk-actionable (13)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -52,6 +51,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
+| mistake-proofing | 02 | implemented | 1500 | 1 | — | — | — |
 | statusgen | 02 | implemented | 1500 | 1 | — | — | — |
 | statusgen | 01 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 04 | implemented | 1000 | 0 | — | — | — |
@@ -127,7 +127,7 @@ _None._
 ### mistake-proofing (6 open)
 
 - 01 Cross-read a brief's declared paths against the risk classifier (B3) — todo (wave 0)
-- 02 Dereference named identifiers, not just backticked paths (B4) — todo (wave 0)
+- 02 Dereference named identifiers, not just backticked paths (B4) — implemented (wave 0)
 - 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — todo (wave 1)
 - 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — todo (wave 1)
 - 05 `newbrief` — the scaffolder as the authoring front door (B1) — todo (wave 2)
