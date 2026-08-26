@@ -484,7 +484,7 @@ func TestSingleRootOnlySubcommandIsWiredToExit2(t *testing.T) {
 	// phase 2) plus the refusal block that follows it. It only needs to be large
 	// enough to reach the os.Exit(2); the assertion's intent is that the refusal
 	// exists and exits 2, not that it sits within any exact byte count.
-	window := src[idx:min(idx+1800, len(src))]
+	window := src[idx:min(idx+2000, len(src))]
 	if !strings.Contains(window, "os.Exit(2)") && !strings.Contains(window, "return 2") {
 		t.Errorf("the singleRootOnlySubcommand refusal does not exit 2:\n%s", window)
 	}

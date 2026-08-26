@@ -319,6 +319,12 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// executable is a hard PROBLEM (a runner cannot re-execute an absent file).
 	// A todo brief listing its planned scripts is exempt — see rowclass.go.
 	problems = append(problems, verifyRowClassProblems(checkStreams)...)
+	// Cluster Verify rows (verdict-lane/07): a `check:cluster` row is run by a
+	// pod-side probe. A row that names no probe, or names one no documented probe
+	// provides (docs/streams/.pod-probes), routes nowhere and can never be
+	// executed — a hard PROBLEM. Inert where no cluster rows exist (e.g. a board
+	// with no pod/online verify lane).
+	problems = append(problems, clusterRowProblems(checkStreams)...)
 	// Reviewer-conspicuity (verdict-lane/02): when THIS PR's diff touches any
 	// docs/streams/*/verify.d/** script, raise a conspicuous NOTICE naming each
 	// one so the reviewer — the trust anchor for verify scripts, with no freeze
@@ -829,6 +835,30 @@ func runGateScores(root string) int {
 	return 0
 }
 
+// runClusterPendingQueue loads streams and emits the pod verify runner's
+// worklist — the code-verified / cluster-pending briefs (verdict-lane/07) — as a
+// JSON array. Read-only and STATUS.md-free, the same discipline as
+// runGateScores. Each row carries the brief id, stream, status, repo and the
+// cluster probes still pending. An empty queue prints `[]` and exits 0.
+func runClusterPendingQueue(root string) int {
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "statusgen:", err)
+		return 1
+	}
+	queue := clusterPendingQueue(streams)
+	if queue == nil {
+		queue = []clusterPendingEntry{}
+	}
+	out, err := json.Marshal(queue)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "statusgen:", err)
+		return 1
+	}
+	fmt.Println(string(out))
+	return 0
+}
+
 // emitNotices prints deduplicated, sorted NOTICE lines to stderr. Notices are
 // advisory (exit 0); they never affect the return code.
 func emitNotices(notices []string) {
@@ -1141,6 +1171,7 @@ func main() {
 	// plus the held-back decomposition. Reuses --span / --overflow-threshold /
 	// --require-claims.
 	nextUpMode := flag.Bool("next-up", false, "emit the DISPATCH queue as JSON: the claim-filtered, capped Next-up selection (todo/in-progress, unclaimed, eligible) plus the held-back decomposition (eligible/shown/heldByStreamCap/heldBySpan/claimsKnown). NOT --gate-scores, which is the awaiting-verification backlog")
+	clusterPendingQueueMode := flag.Bool("cluster-pending-queue", false, "emit the pod verify runner's worklist as JSON (verdict-lane/07): the briefs code-verified but cluster-pending — status implemented, every declared `check:cluster` probe parked by the offline lane (a could-not-check marker in Evidence), no VERIFY:FAIL. Read-only, STATUS.md-free")
 	// Gate-effectiveness telemetry: override rate, catch
 	// rate, ceremonial-gate detection. Self-contained diagnostic sub-command,
 	// same STATUS.md-free discipline as --dora/--trend/--bottleneck. --root
@@ -1195,33 +1226,34 @@ func main() {
 	root := &resolvedRoots[0]
 	if len(resolvedRoots) > 1 {
 		if name := singleRootOnlySubcommand(map[string]bool{
-			"--verify-issues":      *verifyIssuesMode,
-			"--decision-issues":    *decisionIssuesMode,
-			"--drive-issues":       *driveIssuesMode,
-			"--signoff-digest":     *signoffDigestMode,
-			"--scan-issues":        *scanIssuesMode,
-			"--transcribe-scan":    *transcribeScanMode,
-			"--transcribe-verdict": *transcribeVerdictMode,
-			"--close-verify":       *closeVerifyID != "",
-			"--auto-flip-model":    *autoFlipModelMode,
-			"--alarms":             *alarmsMode,
-			"--verif-backlog":      *verifBacklogMode,
-			"--trend":              *trendMode, // back-compat alias of --verif-backlog
-			"--dora":               *doraMode,
-			"--autonomy":           *autonomyMode,
-			"--ladder":             *ladderMode,
-			"--issues":             *issuesMode,
-			"--cynefin":            *cynefinMode,
-			"--intake-debt":        *intakeDebtMode,
-			"--roadmap":            *roadmapMode,
-			"--bottleneck":         *bottleneckMode,
-			"--launch":             *launchMode,
-			"--export-evidence":    *exportEvidenceMode,
-			"--gate-scores":        *gateScoresMode,
-			"--next-up":            *nextUpMode,
-			"--register-links":     *registerLinksFlag,
-			"--gate-telemetry":     *gateTelemetryMode,
-			"--telemetry-dry-run":  *telemetryDryRun,
+			"--verify-issues":         *verifyIssuesMode,
+			"--decision-issues":       *decisionIssuesMode,
+			"--drive-issues":          *driveIssuesMode,
+			"--signoff-digest":        *signoffDigestMode,
+			"--scan-issues":           *scanIssuesMode,
+			"--transcribe-scan":       *transcribeScanMode,
+			"--transcribe-verdict":    *transcribeVerdictMode,
+			"--close-verify":          *closeVerifyID != "",
+			"--auto-flip-model":       *autoFlipModelMode,
+			"--alarms":                *alarmsMode,
+			"--verif-backlog":         *verifBacklogMode,
+			"--trend":                 *trendMode, // back-compat alias of --verif-backlog
+			"--dora":                  *doraMode,
+			"--autonomy":              *autonomyMode,
+			"--ladder":                *ladderMode,
+			"--issues":                *issuesMode,
+			"--cynefin":               *cynefinMode,
+			"--intake-debt":           *intakeDebtMode,
+			"--roadmap":               *roadmapMode,
+			"--bottleneck":            *bottleneckMode,
+			"--launch":                *launchMode,
+			"--export-evidence":       *exportEvidenceMode,
+			"--gate-scores":           *gateScoresMode,
+			"--next-up":               *nextUpMode,
+			"--cluster-pending-queue": *clusterPendingQueueMode,
+			"--register-links":        *registerLinksFlag,
+			"--gate-telemetry":        *gateTelemetryMode,
+			"--telemetry-dry-run":     *telemetryDryRun,
 			// --consumers takes ONE git diff, against one root's HEAD. Narrowing
 			// to the first root corroborates one repo's claims and reports
 			// the others clean, unread.
@@ -1444,6 +1476,12 @@ func main() {
 	// and require-claims knobs are already wired above.
 	if *nextUpMode {
 		os.Exit(runNextUp(*root))
+	}
+	// Cluster-pending queue (verdict-lane/07): self-contained JSON worklist for
+	// the pod verify runner — the briefs code-verified but cluster-pending. Same
+	// STATUS.md-free, read-only discipline as --gate-scores / --next-up.
+	if *clusterPendingQueueMode {
+		os.Exit(runClusterPendingQueue(*root))
 	}
 	// Gate-effectiveness telemetry: self-contained,
 	// STATUS.md-free, same discipline as --dora/--trend/--bottleneck above.

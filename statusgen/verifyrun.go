@@ -183,8 +183,20 @@ type witness struct {
 // text by string equality, and so a pipeline in a command does not shred the
 // table it is recorded in.
 func (w witness) row() string {
-	return fmt.Sprintf("| %s | `%s` | %s exit=%s | sha256:%s | %s | %s @ %s |",
-		w.ID, w.Command, w.State, exitCell(w.Exit), w.OutHash, w.Date, w.Runner, w.Tree)
+	result := fmt.Sprintf("%s exit=%s", w.State, exitCell(w.Exit))
+	// A could-not-run row's REASON belongs in Evidence, not only the console: a
+	// reader (or a tool) looking at the recorded table must be able to tell WHY a
+	// row produced no verdict. For a cluster row that reason IS the stable,
+	// greppable cluster-pending marker (verdict-lane/07) — the offline lane's
+	// could-not-check hand-off, which the --cluster-pending-queue derivation reads
+	// back off Evidence. Scoped to could-not-run so no pass/fail row's format
+	// changes; witnessStateRe still lifts the leading state and witnessResultRe
+	// still finds `exit=`, both ahead of the appended note.
+	if w.State == stateCouldNotRun && w.Note != "" {
+		result += " — " + w.Note
+	}
+	return fmt.Sprintf("| %s | `%s` | %s | sha256:%s | %s | %s @ %s |",
+		w.ID, w.Command, result, w.OutHash, w.Date, w.Runner, w.Tree)
 }
 
 // exitCell renders the exit code, or `-` when nothing ran. `exit=-1` would read
@@ -743,6 +755,21 @@ func briefSections(path string) (verify, evidence string, err error) {
 func runWitnesses(root string, rows []verifyRow, runner, tree, date string, timeout time.Duration, ci bool) []witness {
 	out := make([]witness, 0, len(rows))
 	for _, r := range rows {
+		// A cluster row (verdict-lane/07) is env-bound to a live cluster, whose
+		// runner is the privileged pod runner. This is the OFFLINE lane — it holds
+		// no cluster access and can NEVER run one — so it records could-not-run
+		// with the stable, greppable clusterPendingMarker naming the probe, in
+		// EVERY environment (not conditioned on ci). could-not-run, not skip: a
+		// skip is omitted from the witness table, but the whole point of the marker
+		// is that it lands in Evidence for the queue derivation and a human to grep.
+		if r.Class == classCheckCluster {
+			out = append(out, witness{
+				ID: r.ID, Command: r.Command, State: stateCouldNotRun, Exit: -1,
+				Date: date, Runner: runner, Tree: tree,
+				Note: clusterPendingMarker(clusterProbe(r.Command)),
+			})
+			continue
+		}
 		if ci && r.Classed && r.Class == classCheck {
 			out = append(out, witness{
 				ID: r.ID, Command: r.Command, State: stateSkipped, Exit: -1,

@@ -1,0 +1,35 @@
+{
+  "test": "go test . -run 'RowClass|Cluster' -count=1",
+  "control": {
+    "name": "CONTROL — probe resolver takes the FIRST *.sh token, not the last",
+    "file": "clusterrow.go",
+    "old": "return filepath.Base(ms[len(ms)-1])",
+    "new": "return filepath.Base(ms[0])"
+  },
+  "mutations": [
+    {
+      "name": "lint short-circuited to nil (add() drops the problem instead of recording it)",
+      "file": "clusterrow.go",
+      "old": "add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }",
+      "new": "add := func(format string, a ...any) { _ = fmt.Sprintf(format, a...) }"
+    },
+    {
+      "name": "offline-lane cluster branch disabled in runWitnesses (cluster row falls through, no could-not-run marker)",
+      "file": "verifyrun.go",
+      "old": "if r.Class == classCheckCluster {",
+      "new": "if false && r.Class == classCheckCluster {"
+    },
+    {
+      "name": "queue drops the VERIFY:FAIL exclusion (a non-cluster FAIL brief would wrongly queue as pod work)",
+      "file": "clusterrow.go",
+      "old": "if lastVerifyVerdict(bf.Evidence) == verdictFail {",
+      "new": "if false && lastVerifyVerdict(bf.Evidence) == verdictFail {"
+    },
+    {
+      "name": "queue drops the all-probes-parked gate (an unparked cluster row would wrongly derive as pending)",
+      "file": "clusterrow.go",
+      "old": "if !parked[p] {",
+      "new": "if false && !parked[p] {"
+    }
+  ]
+}
