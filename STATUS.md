@@ -15,7 +15,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-26 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/5 | 2026-08-26 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-26 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-08-26 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-26 |  |
@@ -52,9 +52,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 01 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | derived-board | 02 | implemented | 4500 | 5 | — | — | — |
 | desktools-go-git | 01 | implemented | 4500 | 7 | — | — | — |
+| forge-gitlab | 01 [exec:strong] | implemented | 4500 | 7 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
-| forge-gitlab | 01 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | mistake-proofing | 02 | implemented | 1500 | 1 | — | — | — |
 | statusgen | 02 | implemented | 1500 | 1 | — | — | — |
@@ -125,7 +125,7 @@ _None._
 - 07 `deskmerge` exception — fence the trial merge, migrate the rest — todo (wave 3)
 - 08 flip the drop-the-binary CI gate + CVE floor + file the follow-on — todo (wave 5)
 
-### forge-gitlab (6 open)
+### forge-gitlab (8 open)
 
 - 01 `Forge` interface extraction in deskkit — `github` impl pinned by goldens — implemented (wave 1)
 - 02 `gitlab` forge implementation (MRs, notes, approvals, statuses) — todo (wave 2)
@@ -133,6 +133,8 @@ _None._
 - 04 Fleet provisioning + adopter doc + ci-config-project runbook — todo (wave 3)
 - 05 Live pilot — one brief round-tripped on a real GitLab group; parity table walked — todo (wave 4)
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — todo (wave 5)
+- 07 GitHub forge backend on `go-gh` — retire the exec-`gh` shell path — todo (wave 2)
+- 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — todo (wave 3)
 
 ### iso-9001 (6 open)
 
@@ -192,4 +194,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**9** streams (**9** active, **0** paused) · **0/71** briefs done · completed initiatives: see `docs/archive/`
+**9** streams (**9** active, **0** paused) · **0/73** briefs done · completed initiatives: see `docs/archive/`
