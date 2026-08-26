@@ -373,6 +373,15 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	idProblems, idNotices := identifierDereferenceCheck(root, docs)
 	problems = append(problems, idProblems...)
 	notices = append(notices, idNotices...)
+	// Risk×files cross-read (mistake-proofing/01): a brief that declares a path
+	// matching the risk-path classifier while answering all four risk questions
+	// "no" has a gate DERIVED correctly from wrong INPUTS. Lands ADVISORY (NOTICE)
+	// — riskFilesCrossReadFatal gates the flip to a hard PROBLEM. Uses checkStreams
+	// (the validated brief set), same scoping as checkBriefFiles. See
+	// riskfilescrossread.go.
+	crProblems, crNotices := riskFilesCrossRead(checkStreams)
+	problems = append(problems, crProblems...)
+	notices = append(notices, crNotices...)
 	// Register-reference link lint: for every markdown link
 	// whose text is F-NN/I-NN, verify target file exists and frontmatter id
 	// matches. Bare refs are never checked. BLOCKING for the same reason — it

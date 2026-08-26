@@ -62,6 +62,35 @@ var topologyDecisionOwedLabels = []string{
 // topologyReleaseRepo is `release_repo` from the declared source.
 var topologyReleaseRepo = "medici-finance/assay"
 
+// topologyRiskPathTriggersByRepo is `repos[].risk_path_triggers` from the
+// declared source — the ADDITIONAL risk-classing path prefixes each repo layers
+// on top of the universal base list, keyed by owner/name slug. Only repos that
+// state at least one trigger appear (a repo the topology says nothing about gets
+// the base list only). It is the statusgen half of the mistake-proofing/01
+// cross-read: the lint duplicates the desk classifier's POLICY half
+// (riskpathtriggers.go) and reads the per-repo additions from HERE. Bound to the
+// source field-for-field by TestTopologyValuesMatchSource, exactly as the desk
+// module's compiled.go is bound by TestTopologyDriftRegistry — edit topology.yaml
+// FIRST, then mirror it here, then run
+// `cd statusgen && go test -run TestTopologyValuesMatchSource ./...`.
+var topologyRiskPathTriggersByRepo = map[string][]string{
+	"example-org/example-k8s": {
+		"base/",
+		"deploy/",
+		"admin/",
+		"hack/",
+		".github/workflows/",
+	},
+	"medici-finance/assay": {
+		"tools/desk/internal/deskkit/",
+		"tools/desk/cmd/deskpost/",
+		"tools/desk/cmd/deskboard/",
+		"tools/desk/cmd/desktoken/",
+		"tools/desk/cmd/deskpushguard/",
+		"tools/desk/cmd/writeguard/",
+	},
+}
+
 // labelSetOf renders a label list as the lowercase lookup map the matchers use.
 func labelSetOf(names []string) map[string]bool {
 	out := make(map[string]bool, len(names))

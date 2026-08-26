@@ -386,6 +386,33 @@ func ciCrossModuleRegistry() []ciEntry {
 				"so an unrun tripwire means arbitrary external issue text can create them",
 		},
 		{
+			// The risk×files cross-read trigger coupling.
+			// risktrigger_coupling_test.go reads the shared vector out of statusgen's
+			// tree and runs it through THIS module's policy-half classifier
+			// (RiskPathTriggersFor + matchTrigger); statusgen's twin runs the same
+			// file through its duplicate (riskpathtriggers.go). A statusgen-only diff
+			// to the vector — or to the duplicated reader the vector guards — must run
+			// this job or the two duplicated classifiers can drift with both suites
+			// green. tools.yml's statusgen/** glob covers the read; this row makes the
+			// cross-tree binding explicit and keeps the staleness scanner honest.
+			test:     "tools/desk/internal/deskkit/risktrigger_coupling_test.go",
+			module:   "tools/desk",
+			workflow: ".github/workflows/tools.yml",
+			prJob:    toolsDeskJob,
+			pushJob:  toolsDeskJob,
+			reads: []string{
+				// The SHARED cross-tree trigger vectors. They live in statusgen's tree
+				// so statusgen reads them in-module; this module's read is the
+				// cross-module one, and it is what must stay triggered.
+				"statusgen/testdata/risk_trigger_coupling.json",
+			},
+			why: "the risk-path classifier's POLICY half is DUPLICATED into the statusgen lint so a " +
+				"brief's declared paths can be cross-read against it; the two " +
+				"copies are bound only by this shared vector, so a statusgen-only diff that drifts the " +
+				"base list, the glob rule or the per-repo topology reading must run this job or the " +
+				"gate a PR is classed by and the gate a brief is checked against silently disagree",
+		},
+		{
 			test:     "tools/desk/internal/deskkit/citrigger_test.go",
 			module:   "tools/desk",
 			workflow: ".github/workflows/tools.yml",
