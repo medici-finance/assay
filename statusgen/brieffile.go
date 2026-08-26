@@ -80,6 +80,17 @@ type BriefFile struct {
 	Evidence        string // body of the `## Evidence` section (between it and the next `## `)
 	Verify          string // body of the `## Verify` section (prefix-matched; decorated headings allowed)
 	Body            string // full markdown body after the frontmatter (decision-reflection check)
+	// DeclaredPaths are the repo-relative paths a brief names on the `files:` line
+	// of its `## Context` section — the paths it declares it will touch. Parsed by
+	// extractContextDeclaredPaths; the mistake-proofing/01 cross-read compares them
+	// against the risk-path classifier (riskfilescrossread.go), and briefs 03/05
+	// build on the same parse. nil when the line is absent/empty/unparseable, which
+	// DeclaredPathsFound distinguishes from a genuinely empty declaration.
+	DeclaredPaths []string
+	// DeclaredPathsFound is true only when a `files:` line was present AND yielded
+	// at least one path. false is a COULD-NOT-CHECK for any consumer — never round
+	// it up to "no risky paths" (docs/three-state-instrument-rule.md).
+	DeclaredPathsFound bool
 }
 
 var (
@@ -563,7 +574,124 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 	// rather than the exact-match extractEvidence uses.
 	bf.Verify = extractSectionByPrefix(body, "Verify")
 	bf.Body = body
+	bf.DeclaredPaths, bf.DeclaredPathsFound = extractContextDeclaredPaths(body)
 	return bf, true, nil
+}
+
+var (
+	// contextFilesLabelRe matches the `files:` declared-paths label line inside a
+	// brief's `## Context` section. Leading whitespace is tolerated; the capture is
+	// the optional inline value that follows the colon on the same line.
+	contextFilesLabelRe = regexp.MustCompile(`^\s*files:\s*(.*)$`)
+	// backtickSpanRe captures the content of a backtick-delimited span.
+	backtickSpanRe = regexp.MustCompile("`([^`]+)`")
+	// mdLinkRe matches a markdown [text](url) link so the text can be recovered.
+	mdLinkTextRe = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+)
+
+// extractContextDeclaredPaths reads the `files:` declared-paths line from a
+// brief's `## Context` section and returns the paths it names. This is the first
+// half of mistake-proofing/01: the declared-paths line is parsed by nothing else
+// in the lint, and making it readable is what the cross-read (and briefs 03/05)
+// build on.
+//
+// Two authored forms are accepted, matching the corpus:
+//   - INLINE — `files: a/b, c/d` on the label line itself, comma/space separated.
+//   - BULLETED — a bare `files:` label followed by markdown bullets on the next
+//     lines, each naming one or more backticked paths, with optional trailing
+//     prose after an em dash and indented continuation lines.
+//
+// Markdown decoration is stripped (backticks, `[text](url)` link syntax, and
+// trailing prose after an em dash — which sits outside the backticks and so is
+// dropped for free) so a path is compared as a path. A candidate is kept only if
+// it is path-shaped — it contains a '/' or a '.' — so a backticked identifier in a
+// bullet (a function or symbol name) is not mistaken for a declared path.
+//
+// found is false when the line is absent, empty, or yields no path. That is a
+// COULD-NOT-CHECK for the cross-read, never a pass: the caller must not treat "no
+// declared paths" as "no risky paths" (docs/three-state-instrument-rule.md).
+func extractContextDeclaredPaths(body string) (paths []string, found bool) {
+	ctx := extractSectionByPrefix(body, "Context")
+	if strings.TrimSpace(ctx) == "" {
+		return nil, false
+	}
+	lines := strings.Split(ctx, "\n")
+	labelIdx := -1
+	var inline string
+	for i, l := range lines {
+		if m := contextFilesLabelRe.FindStringSubmatch(l); m != nil {
+			labelIdx = i
+			inline = strings.TrimSpace(m[1])
+			break
+		}
+	}
+	if labelIdx < 0 {
+		return nil, false
+	}
+
+	seen := map[string]bool{}
+	add := func(tok string) {
+		tok = cleanDeclaredPath(tok)
+		// Keep only path-shaped tokens: a bare word (no '/' and no '.') is a
+		// symbol or prose fragment, not a declared path, and matches no trigger.
+		if tok == "" || seen[tok] || !strings.ContainsAny(tok, "/.") {
+			return
+		}
+		seen[tok] = true
+		paths = append(paths, tok)
+	}
+
+	if inline != "" {
+		// INLINE form: recover link text, then split on comma/space/backtick.
+		inline = mdLinkTextRe.ReplaceAllString(inline, "$1")
+		for _, tok := range strings.FieldsFunc(inline, func(r rune) bool {
+			return r == ',' || r == ' ' || r == '\t' || r == '`'
+		}) {
+			add(tok)
+		}
+		return paths, len(paths) > 0
+	}
+
+	// BULLETED form: collect the block of bullet + indented-continuation lines that
+	// follow the label (stopping at a blank line or a new flush-left label such as
+	// `facts:`), then pull every backticked span out of it.
+	var block []string
+	for _, l := range lines[labelIdx+1:] {
+		t := strings.TrimSpace(l)
+		if t == "" {
+			break
+		}
+		isBullet := strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* ")
+		isIndentedCont := l != t // a leading-whitespace continuation of a bullet
+		if !isBullet && !isIndentedCont {
+			break // a new flush-left label ends the files: block
+		}
+		block = append(block, l)
+	}
+	blob := strings.Join(block, "\n")
+	if spans := backtickSpanRe.FindAllStringSubmatch(blob, -1); len(spans) > 0 {
+		for _, m := range spans {
+			add(m[1])
+		}
+	} else {
+		// No backticks: take the leading token of each bullet.
+		for _, l := range block {
+			t := mdLinkTextRe.ReplaceAllString(strings.TrimSpace(l), "$1")
+			t = strings.TrimPrefix(strings.TrimPrefix(t, "- "), "* ")
+			if f := strings.Fields(t); len(f) > 0 {
+				add(f[0])
+			}
+		}
+	}
+	return paths, len(paths) > 0
+}
+
+// cleanDeclaredPath strips residual decoration from a candidate path token.
+func cleanDeclaredPath(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, "`")
+	s = strings.TrimRight(s, ",;")
+	return strings.TrimSpace(s)
 }
 
 // extractEvidence returns the body of the `## Evidence` section — the lines

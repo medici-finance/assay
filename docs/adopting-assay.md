@@ -770,6 +770,30 @@ That half goes in your repo's own agent instruction file (`AGENTS.md`, `CLAUDE.m
 your harness reads) — a file that is **repo-local**: it documents how to work in *that* repo, and
 adopters never clone this one.
 
+#### Running Assay on Cursor — a second first-class harness
+
+Assay is the method, not the harness: the CLI tooling, the `SKILL.md` skills, and the `AGENTS.md`
+instructions run on any agent that reads them — the capability table in
+[how-assay-works.md](./how-assay-works.md) gives the concrete mapping per harness. **Cursor** is a
+supported end-user harness, targeted **headless-first**: the headless `cursor-agent` CLI is the
+primary surface (it runs the CLI tooling and desk automation the way any terminal does), the
+in-editor agent the secondary one. Because Cursor reads `AGENTS.md` natively and reads the same
+`SKILL.md` open standard the skills are written in, most of Assay arrives with no per-harness
+translation:
+
+- **Skills** — place the skills tree where Cursor discovers it (`.cursor/skills/` or
+  `.agents/skills/`); the same tree Claude Code and Codex use, no per-harness copy.
+- **Resident rules + repo bindings** — Cursor reads `AGENTS.md` natively, so the invariants and
+  your repo's bindings arrive through the same `AGENTS.md` this section already describes; a
+  `.cursor/rules/*.mdc` always-apply rule is the equivalent Cursor-native channel if you prefer it.
+- **Isolation** — Cursor's background agents run in isolated git worktrees, so parallel workers
+  isolate natively there; on the headless CLI, worker isolation follows the same `git worktree`
+  discipline every harness uses, and where the sandbox cannot create a worktree the worker
+  **refuses** rather than working in a shared checkout — the isolation floor never degrades.
+
+The one acceptance step is a live smoke run on a Cursor install, the same posture every harness
+target holds until it has been exercised end-to-end.
+
 **You start with a stub, not a blank page.** `scaffold-streams` (`statusgen init`) writes a
 starting `CLAUDE.md` plus an `AGENTS.md` that points at it. The stub carries the **ten invariants**
 and the **CI recipe** — the universal floor, true of every adopter, and the part that must not be
