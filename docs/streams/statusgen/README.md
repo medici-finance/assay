@@ -29,16 +29,22 @@ findings-register state machine.
 | 04 | [ladder-position indicator (`--ladder`)](brief-04-ladder-position-indicator.md) | 1 | S | implemented | — | — |
 | 05 | [drives phase 3 — anti-starvation floors + critical tier](brief-05-drives-phase3-floors-critical-tier.md) | 1 | L | implemented | — | — |
 | 06 | [findings register — corroborated state machine](brief-06-findings-register-state-machine.md) | 1 | L | implemented | — | — |
+| 07 | [new brief-flow metrics](brief-07-brief-flow-metrics.md) | 1 | L | todo | — | — |
+| 08 | [composite AssayScore computation](brief-08-assayscore-computation.md) | 2 | M | todo | — | — |
+| 09 | [opt-in telemetry — anonymized fleet-drift corpus (off by default)](brief-09-optin-telemetry.md) | 1 | M | todo | — | — |
+| 10 | [graph export (`--graph` DOT + JSONL)](brief-10-graph-export.md) | 1 | M | todo | — | — |
+| 11 | [DORA/insights hybrid — DevLake commodity split](brief-11-devlake-hybrid-metrics-split.md) | 1 | L | implemented | — | — |
 
 ## Critical path
 statusgen/02 (issue metrics) → statusgen/03 (self-improvement metric). The
-self-improvement classifier extends the `--issues` infrastructure, so 02 leads 03. Every
-other brief is independent and self-contained.
+self-improvement classifier extends the `--issues` infrastructure, so 02 leads 03.
+statusgen/07 (brief-flow metrics) → statusgen/08 (composite AssayScore): the score rolls up
+the brief-flow metrics, so 07 leads 08. Every other brief is independent and self-contained.
 
 ## Dependency waves
-- **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06
-  (all independent; parallelizable).
-- **Wave 2** — statusgen/03 (depends on statusgen/02).
+- **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06,
+  statusgen/07, statusgen/09, statusgen/10, statusgen/11 (all independent; parallelizable).
+- **Wave 2** — statusgen/03 (depends on statusgen/02), statusgen/08 (depends on statusgen/07).
 
 ## Conventions
 - `statusgen --lint-audit` reports 30-day per-rule firing counts; COLD (0-firing,
