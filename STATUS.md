@@ -24,7 +24,6 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| forge-gitlab | 01 — `Forge` interface extraction in deskkit — `github` impl pinned by goldens [exec:strong] | 1 | 3500 |
 | mistake-proofing | 01 — Cross-read a brief's declared paths against the risk classifier (B3) [exec:strong] | 0 | 3000 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
 | iso-9001 | 02 — Align three shipped disclosures with the code they describe (B9) [exec:strong] | 0 | 2000 |
@@ -33,14 +32,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (13 desk-actionable of 13 total — 13 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (14 desk-actionable of 14 total — 14 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (13)
+### Desk-actionable (14)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -50,6 +49,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-go-git | 01 | implemented | 4500 | 7 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
+| forge-gitlab | 01 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | mistake-proofing | 02 | implemented | 1500 | 1 | — | — | — |
 | statusgen | 02 | implemented | 1500 | 1 | — | — | — |
@@ -108,7 +108,7 @@ _None._
 
 ### forge-gitlab (6 open)
 
-- 01 `Forge` interface extraction in deskkit — `github` impl pinned by goldens — todo (wave 1)
+- 01 `Forge` interface extraction in deskkit — `github` impl pinned by goldens — implemented (wave 1)
 - 02 `gitlab` forge implementation (MRs, notes, approvals, statuses) — todo (wave 2)
 - 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — todo (wave 2)
 - 04 Fleet provisioning + adopter doc + ci-config-project runbook — todo (wave 3)
