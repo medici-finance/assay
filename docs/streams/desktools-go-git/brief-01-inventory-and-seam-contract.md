@@ -98,6 +98,19 @@ facts:
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-08-26 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `b734dab`
+Runner != implementer. Own isolated worktree off `origin/main`, OFFLINE (`KUBECONFIG=/dev/null`). gate: model, all risk no. Deliverables present: tools/desk/internal/gitexec/, .../gittest/, tools/desk/scripts/count-git-exec.sh, docs/streams/desktools-go-git/inventory.md. `tools/desk` is its own module.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./internal/gitexec/ ./internal/gittest/` | exit 0 | rc=0 — clean build + vet | 2026-08-26 | opus-4.8[1m]-verifier |
+| 2 | `cd tools/desk && go test ./internal/gitexec/ ./internal/gittest/` | exit 0; harness + allowlist tests pass | rc=0 — ok gitexec 0.27s, ok gittest 0.70s | 2026-08-26 | opus-4.8[1m]-verifier |
+| 3 | `test -f inventory.md && grep -cE -e fetch -e push -e merge-base inventory.md` | exit 0; count >= 3 | rc=0 — count 14 | 2026-08-26 | opus-4.8[1m]-verifier |
+| 4 | `sh tools/desk/scripts/count-git-exec.sh; echo rc=$?` | prints 'git-exec sites: <N>'; rc=0 | git-exec sites: 122 (10 direct spawns, 112 seam call sites); rc=0 — the advisory baseline this brief freezes | 2026-08-26 | opus-4.8[1m]-verifier |
+| 5 | `grep -cE -e deskmerge -e 'single sanctioned' -e allowlist tools/desk/internal/gitexec/gitexec.go` | exit 0; count >= 1 | rc=0 — 29 | 2026-08-26 | opus-4.8[1m]-verifier |
+
+**RISK-VALUE: DERIVED** — the process-env allowlist (deny-by-default; admits only vars with no execution surface, drops every git env-injection vector, injects GIT_TERMINAL_PROMPT=0) @ tools/desk/internal/gitexec/gitexec.go:117,140, and the sanctioned (tool,verb) allowlist seeded as the union of today's per-tool seam verbs with the deskmerge trial-merge terminal exception @ :47 — both correct by construction and outcome-neutral (no seam swapped in this brief; scaffolding only). No numeric threshold/timeout; no irreversible literal.
+
 ## Review
 Gate: model (all four risk answers no — repo-internal Go scaffolding + docs; no
 dependency added, no seam swapped, the CI grep is advisory-only). Reviewer records
