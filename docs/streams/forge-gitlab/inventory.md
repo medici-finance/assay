@@ -45,22 +45,22 @@ GitLab (spec §6) is recorded per row for brief 02.
 
 | Tool | File | Operation(s) | Now → after brief 01 |
 |------|------|--------------|----------------------|
-| `deskpost` | `cmd/deskpost/github.go` | getPR, getIssue, listReviews, listFiles, combinedStatusAt, checkRunsAt, postReview, postComment, markReadyForReview, RepoVisibility, IssueReactions, trust GraphQL | host literal → `deskkit.GitHubAPIBase`; behavior extracted verbatim into `forge_github.go` (goldens) |
-| `deskevidence` | `cmd/deskevidence/github.go` | fetchRemoteFile, commitFile (Contents API) | host literal → `deskkit.GitHubAPIBase`. Contents-API commit is Evidence-landing, NOT a frozen forge op (see delta D3) |
-| `deskrelease` | `cmd/deskrelease/github.go` | getRef, createTagRef (git-data refs) | host literal → `deskkit.GitHubAPIBase`. Tag/ref ops are release-integrity, NOT a frozen forge op (delta D3) |
-| `desktoken` | `cmd/desktoken/desktoken.go` | list installations, exchange JWT | host literal → `deskkit.GitHubAPIBase`. Token mint is the identity layer, OUT of the interface (delta D2) |
-| `deskadvisory` | `cmd/deskadvisory/advisory.go` | ghAPI GET (security advisories) | host literal → `deskkit.GitHubAPIBase`. Advisory read is not a frozen forge op (delta D3) |
-| `deskkit` | `internal/deskkit/repovis.go` | HTTPRepoInfoFetcher: RepoVisibility, IssueReactions | already deskkit-level; default base aligned to `deskkit.GitHubAPIBase` |
+| `deskpost` | `tools/desk/cmd/deskpost/github.go` | getPR, getIssue, listReviews, listFiles, combinedStatusAt, checkRunsAt, postReview, postComment, markReadyForReview, RepoVisibility, IssueReactions, trust GraphQL | host literal → `deskkit.GitHubAPIBase`; behavior extracted verbatim into `forge_github.go` (goldens) |
+| `deskevidence` | `tools/desk/cmd/deskevidence/github.go` | fetchRemoteFile, commitFile (Contents API) | host literal → `deskkit.GitHubAPIBase`. Contents-API commit is Evidence-landing, NOT a frozen forge op (see delta D3) |
+| `deskrelease` | `tools/desk/cmd/deskrelease/github.go` | getRef, createTagRef (git-data refs) | host literal → `deskkit.GitHubAPIBase`. Tag/ref ops are release-integrity, NOT a frozen forge op (delta D3) |
+| `desktoken` | `tools/desk/cmd/desktoken/desktoken.go` | list installations, exchange JWT | host literal → `deskkit.GitHubAPIBase`. Token mint is the identity layer, OUT of the interface (delta D2) |
+| `deskadvisory` | `tools/desk/cmd/deskadvisory/advisory.go` | ghAPI GET (security advisories) | host literal → `deskkit.GitHubAPIBase`. Advisory read is not a frozen forge op (delta D3) |
+| `deskkit` | `tools/desk/internal/deskkit/repovis.go` | HTTPRepoInfoFetcher: RepoVisibility, IssueReactions | already deskkit-level; default base aligned to `deskkit.GitHubAPIBase` |
 
 ### `gh`-CLI tools (reach the forge without a host literal)
 
 | Tool | File | Operation(s) | Interface method |
 |------|------|--------------|------------------|
-| `deskpr` | `cmd/deskpr/deskpr.go` | `gh pr create --draft`, `gh pr view/list` | `CreateDraftChange` (+ reads via `GetPullRequest`) |
-| `deskfile` | `cmd/deskfile/deskfile.go` | `gh issue create`, `gh issue comment`, `gh issue view` | `FileIssue`, `PostComment`, `CloseIssue` |
-| `deskclose` | `cmd/deskclose/{exec,github}.go` | `gh issue/pr view`, `gh issue/pr comment/close` | `GetIssue`, `PostComment`, `CloseIssue` |
-| `deskreply` | `cmd/deskreply/deskreply.go` | `gh pr/issue comment` | `PostComment` |
-| `deskflip` | `cmd/deskflip/flip.go` | `gh pr ready` | `MarkReadyForReview` |
+| `deskpr` | `tools/desk/cmd/deskpr/deskpr.go` | `gh pr create --draft`, `gh pr view/list` | `CreateDraftChange` (+ reads via `GetPullRequest`) |
+| `deskfile` | `tools/desk/cmd/deskfile/deskfile.go` | `gh issue create`, `gh issue comment`, `gh issue view` | `FileIssue`, `PostComment`, `CloseIssue` |
+| `deskclose` | `tools/desk/cmd/deskclose/exec.go` | `gh issue/pr view`, `gh issue/pr comment/close` | `GetIssue`, `PostComment`, `CloseIssue` |
+| `deskreply` | `tools/desk/cmd/deskreply/deskreply.go` | `gh pr/issue comment` | `PostComment` |
+| `deskflip` | `tools/desk/cmd/deskflip/flip.go` | `gh pr ready` | `MarkReadyForReview` |
 
 These are NOT rewired in brief 01 — see delta D1.
 
