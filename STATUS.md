@@ -16,6 +16,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/5 | 2026-08-26 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-26 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-08-26 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-08-26 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-26 |  |
@@ -37,14 +38,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (19 desk-actionable of 19 total — 19 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (28 desk-actionable of 29 total — 29 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (19)
+### Desk-actionable (28)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -53,20 +54,35 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 02 | implemented | 4500 | 5 | — | — | — |
 | desktools-go-git | 01 | implemented | 4500 | 7 | — | — | — |
 | forge-gitlab | 01 [exec:strong] | implemented | 4500 | 7 | — | — | — |
+| harness-portability | 01 [exec:strong] | implemented | 4500 | 7 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
+| harness-portability | 02 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
+| harness-portability | 04 [exec:strong] | implemented | 3000 | 4 | — | — | — |
+| harness-portability | 05 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| harness-portability | 06 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | mistake-proofing | 02 | implemented | 1500 | 1 | — | — | — |
 | statusgen | 02 | implemented | 1500 | 1 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
+| harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| harness-portability | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 01 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 04 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+
+### Awaiting human gate (1)
+
+| Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
+|---|---|---|---|---|---|---|---|
+| harness-portability | 03 | implemented | 4000 | 6 | — | — | — |
 
 ## Age at the human gate
 
@@ -78,6 +94,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 |---|---|---|
 | desk-containers | — | — |
 | desk-tools | — | — |
+| harness-portability | — | — |
 | statusgen | — | — |
 
 ## Unresolved findings
@@ -135,6 +152,20 @@ _None._
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — todo (wave 5)
 - 07 GitHub forge backend on `go-gh` — retire the exec-`gh` shell path — todo (wave 2)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — todo (wave 3)
+
+### harness-portability (11 open)
+
+- 01 Codex capability ground-truth — measured matrix, not inherited prior art — implemented (wave 0)
+- 02 Kill the drift debt — re-sync the bundle, flip the canonical home — implemented (wave 0)
+- 03 Ruling: target harnesses, delivery channel, degradation matrix — implemented (wave 1)
+- 04 Neutral-core skill bodies + per-harness binding files + neutrality lint — implemented (wave 2)
+- 05 Resident rules: one source, per-harness delivery generated — implemented (wave 2)
+- 06 Codex packaging — generated manifest, coverage rule, install path — implemented (wave 3)
+- 07 Adoption docs, freshness registration, live Codex smoke protocol + first run — implemented (wave 4)
+- 09 jcode desk-harness spike — measured parity + fleet-density for driving desks — implemented (wave 0)
+- 10 SpecMem portable-memory spike — one stream's registers across two harnesses — implemented (wave 0)
+- 11 Durable-monitor capability + residual harness-token prose-audit — todo (wave 3)
+- 12 Cursor — the third harness column (ground-truth + binding + generator verb + public column) — implemented (wave 5)
 
 ### iso-9001 (6 open)
 
@@ -194,4 +225,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**9** streams (**9** active, **0** paused) · **0/73** briefs done · completed initiatives: see `docs/archive/`
+**10** streams (**10** active, **0** paused) · **0/84** briefs done · completed initiatives: see `docs/archive/`
