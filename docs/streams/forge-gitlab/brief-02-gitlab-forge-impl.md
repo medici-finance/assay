@@ -9,7 +9,7 @@ why: >-
   "portable in principle" and a fleet that runs.
 wave: 2
 depends: ["forge-gitlab/01"]
-unblocks: ["forge-gitlab/04"]
+unblocks: ["forge-gitlab/04", "forge-gitlab/08"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
