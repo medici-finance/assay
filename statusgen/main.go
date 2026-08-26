@@ -663,6 +663,12 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		if code := recordHistory(root, streams); code != 0 {
 			return code
 		}
+		// The DORA-timing historian rides the SAME single-writer record pass
+		// (docs/streams/.dora-timing.jsonl, sibling to .history.jsonl). It is
+		// best-effort and fail-open: a repo it cannot resolve or any gh read
+		// that fails records nothing and never fails the record job — so a
+		// could-not-check here must not change the exit code below.
+		recordDoraTiming(root, ghDoraTimingSource{}, nowFunc())
 		if len(offBoardProblems) > 0 {
 			return 1
 		}
@@ -1160,6 +1166,8 @@ func main() {
 	//               (see doracli.go), reusing --since / --json.
 	doraMode := flag.Bool("dora", false, "back-compat alias (daily-harvest/v0.1.0): emit grouped-DORA metrics (per-stream throughput+instability) from the historian; the standalone DORA CLI moved to DevLake (Ian #1213). Reuses --since / --json / --by")
 	doraBy := flag.String("by", "stream", "--dora grouping dimension: stream | goal")
+	doraTimingMode := flag.Bool("dora-timing", false, "emit the recorded DORA-timing aggregate (change_lead_time + time_to_restore, p50/p90 in hours) from docs/streams/.dora-timing.jsonl; an honest could-not-check (never a fabricated 0) for an empty window. Reuses --since / --until / --json")
+	doraTimingUntil := flag.String("until", "", "period end (YYYY-MM-DD, exclusive) for --dora-timing; default now")
 	trendMode := flag.Bool("trend", false, "back-compat alias for --verif-backlog (daily-harvest/v0.1.0): roll the status-transition log up into the awaiting-verification backlog curve. Reuses --since / --daily / --weekly / --history")
 	// --roadmap: the internal roadmap-deck overview + per-stream pages. RETAINED
 	// (Ian ruling #1213): DevLake feeds INTO these pages; the grouped-DORA tile
@@ -1261,6 +1269,7 @@ func main() {
 			"--verif-backlog":         *verifBacklogMode,
 			"--trend":                 *trendMode, // back-compat alias of --verif-backlog
 			"--dora":                  *doraMode,
+			"--dora-timing":           *doraTimingMode,
 			"--autonomy":              *autonomyMode,
 			"--ladder":                *ladderMode,
 			"--issues":                *issuesMode,
@@ -1426,6 +1435,12 @@ func main() {
 	// Self-contained diagnostic sub-command — never reads or writes STATUS.md.
 	if *doraMode {
 		os.Exit(runDora(*root, *since, strings.ToLower(strings.TrimSpace(*doraBy)), *doraJSON))
+	}
+	// DORA-timing query: the read side of the .dora-timing.jsonl substrate the
+	// recorder writes under --record. Self-contained, offline, STATUS.md-free —
+	// same discipline as --dora/--trend.
+	if *doraTimingMode {
+		os.Exit(runDoraTiming(*root, *since, *doraTimingUntil, *doraJSON))
 	}
 	// Autonomy / token / gate-share emitter (mm/41) — self-contained
 	// diagnostic sub-command. Reuses the shared --since window and --json flag.

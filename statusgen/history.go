@@ -19,9 +19,10 @@ package main
 //
 // Single-writer discipline (mirrors STATUS.md exactly, see main.go's run()):
 // only mode == "record" appends, and that mode is wired into ONLY main's
-// status-regen CI (.github/workflows/status-regen.yml), never the PR-side
-// `--lint` gate. A branch/PR cannot forge a transition — the log only grows
-// from commits main's CI has itself regenerated against.
+// regen CI — the consumer repo's own regen workflow (the workflow path is the
+// consumer's, not fixed in this shared source), never the PR-side `--lint`
+// gate. A branch/PR cannot forge a transition — the log only grows from
+// commits main's CI has itself regenerated against.
 //
 // Idempotent: if current state matches the last recorded state for every
 // brief, diffHistory returns no entries and appendHistory is a true no-op —
