@@ -26,7 +26,6 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| mistake-proofing | 01 — Cross-read a brief's declared paths against the risk classifier (B3) [exec:strong] | 0 | 3000 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
 | iso-9001 | 02 — Align three shipped disclosures with the code they describe (B9) [exec:strong] | 0 | 2000 |
 | statusgen | 07 — new brief-flow metrics | 1 | 1500 |
@@ -38,14 +37,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (28 desk-actionable of 29 total — 29 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (29 desk-actionable of 30 total — 30 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (28)
+### Desk-actionable (29)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -60,6 +59,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 02 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 3000 | 4 | — | — | — |
+| mistake-proofing | 01 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | mistake-proofing | 02 | implemented | 1500 | 1 | — | — | — |
@@ -178,7 +178,7 @@ _None._
 
 ### mistake-proofing (6 open)
 
-- 01 Cross-read a brief's declared paths against the risk classifier (B3) — todo (wave 0)
+- 01 Cross-read a brief's declared paths against the risk classifier (B3) — implemented (wave 0)
 - 02 Dereference named identifiers, not just backticked paths (B4) — implemented (wave 0)
 - 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — todo (wave 1)
 - 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — todo (wave 1)
