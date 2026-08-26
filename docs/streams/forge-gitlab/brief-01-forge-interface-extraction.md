@@ -79,6 +79,18 @@ facts:
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-08-26 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `ea7fea5`
+Runner != implementer. Own isolated worktree off `origin/main`, OFFLINE (`KUBECONFIG=/dev/null`). gate: model, all risk no. `tools/desk` is its own module; `./tools/...` rows ran from inside `tools/desk/`.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | `go build ./... && go test ./...` (from tools/desk/) | exit 0 | exit 0 — all packages ok incl. internal/deskkit + every cmd/* | 2026-08-26 | opus-4.8[1m]-verifier |
+| 2 | `grep -rn api.github.com tools/desk/cmd --include=*.go | grep -v _test.go | wc -l` | 0 | 0 — canary-confirmed: the host string lives once in the deskkit forge impl layer, 0 under cmd/ (not a shim false-clean) | 2026-08-26 | opus-4.8[1m]-verifier |
+| 3 | `go test ./internal/deskkit/ -run TestForgeGithubGolden -v` | exit 0; >=10 golden ops | exit 0 — PASS; 17 golden-pinned operations | 2026-08-26 | opus-4.8[1m]-verifier |
+| 4 | `go doc ./internal/deskkit Forge` | method set matches inventory | 14 methods matching the inventory rows 1-14 exactly | 2026-08-26 | opus-4.8[1m]-verifier |
+
+**RISK-VALUE: DERIVED** — forgeReviewPerPage/forgeFilePerPage/forgeCIPerPage = 100 @ tools/desk/internal/deskkit/forge_github.go — 100 is the GitHub REST per_page maximum; the API default of 30 silently truncates longer review/file/check rollups (the hazard the file comment calls out), and every walk still reconciles page count against the head total (defense in depth). Reversible; correct. Also DERIVED: the canonical GitHub API host constant, extracted verbatim in a zero-behavior-change refactor. No irreversible literal.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README
 table. Reviewer answers the defense-in-depth questions: the golden corpus is the upper

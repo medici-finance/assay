@@ -79,6 +79,18 @@ facts:
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-08-26 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `ea7fea5`
+Runner != implementer. Own isolated worktree off `origin/main`, OFFLINE (`KUBECONFIG=/dev/null`). gate: model, all risk no. `statusgen/` module; test rows ran from inside the module dir; binary built locally.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | `go test ./statusgen/ -run Ladder -v` | exit 0; step map, missing-axis range, constraint naming | exit 0 — StepMappingExact (all-fail/topped-out/gap-ignored), RangeWhenAxisUnmeasured, MeasuredFailCapsRange, DegradesWithoutDayFile PASS | 2026-08-26 | opus-4.8[1m]-verifier |
+| 2 | `go test ./statusgen/ && go vet ./statusgen/` | exit 0 | exit 0 — ok 33.9s; vet clean | 2026-08-26 | opus-4.8[1m]-verifier |
+| 3 | `statusgen --root . --ladder` | exit 0; step + named constraint or unmeasured | exit 0 — emitted a step RANGE named by constraint axes; unmeasured rungs widen to a range, never a fabricated point | 2026-08-26 | opus-4.8[1m]-verifier |
+| 4 | `statusgen --root . --lint; echo $?` | 0 | exit 0 — LINT: PASS | 2026-08-26 | opus-4.8[1m]-verifier |
+
+**RISK-VALUE: NAMED (citation-authority), reversible** — the four rung thresholds ladderLoopShareStep1=25.0, ladderGateShareStep2=50.0, ladderDispatchShareStep3=60.0, ladderNoopRateStep4Max=20.0 @ statusgen/ladder.go — reversible DIAGNOSTIC-display thresholds (per-project, never a target/gate); semantic authority is the methodology-metrics/42 citation the source consts carry, which the brief's Review clause has a reviewer confirm rather than re-derive. Rank last by the reversibility rule; no derivation owed.
+
 ## Review
 Gate: model (all four risk answers no). Reviewer confirms thresholds are named consts with
 citations and the missing-axis path renders a range, not a fabricated point value. Verdict +

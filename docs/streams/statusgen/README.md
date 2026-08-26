@@ -24,9 +24,9 @@ findings-register state machine.
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [30-day lint-firing audit — retire cold rules](brief-01-lint-firing-audit.md) | 1 | S | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
-| 02 | [issue metrics (`--issues`)](brief-02-issue-metrics.md) | 1 | L | implemented | — | — |
+| 02 | [issue metrics (`--issues`)](brief-02-issue-metrics.md) | 1 | L | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
 | 03 | [self-improvement metric (self-healed vs human-touched)](brief-03-self-improvement-metric.md) | 2 | M | todo | — | — |
-| 04 | [ladder-position indicator (`--ladder`)](brief-04-ladder-position-indicator.md) | 1 | S | implemented | — | — |
+| 04 | [ladder-position indicator (`--ladder`)](brief-04-ladder-position-indicator.md) | 1 | S | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
 | 05 | [drives phase 3 — anti-starvation floors + critical tier](brief-05-drives-phase3-floors-critical-tier.md) | 1 | L | implemented | — | — |
 | 06 | [findings register — corroborated state machine](brief-06-findings-register-state-machine.md) | 1 | L | implemented | — | — |
 | 07 | [new brief-flow metrics](brief-07-brief-flow-metrics.md) | 1 | L | todo | — | — |

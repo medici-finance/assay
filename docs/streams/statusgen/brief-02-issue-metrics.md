@@ -112,5 +112,20 @@ across the repo set — the same repos `--dora` covers):
 ## Evidence
 <!-- filled by a non-implementer at verify time -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-08-26 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `ea7fea5`
+Runner != implementer. Own isolated worktree off `origin/main`, OFFLINE (`KUBECONFIG=/dev/null`). gate: model, all risk no. `statusgen/` module; go-test row ran from inside the module dir.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | `statusgen --root . --issues` | open/closed, age buckets, internal/external, by-desk | exit 0 — open/closed + close-rate + time-to-close median/p90; age buckets; internal-vs-external + agent-vs-human; by-raising-desk all render | 2026-08-26 | opus-4.8[1m]-verifier |
+| 2 | `statusgen --root . --issues | grep -i DIAGNOSTIC` | >=1 | exit 0 — the DIAGNOSTIC/Goodhart banner line | 2026-08-26 | opus-4.8[1m]-verifier |
+| 3 | `statusgen --root . --issues | grep -iE -e unattributed -e raised-by` | >=1 | exit 0 — multiple raised-by:* lines + the unattributed bucket | 2026-08-26 | opus-4.8[1m]-verifier |
+| 4 | `--issues --json | jq -e '.open,.byDesk,.internal,.external,.ageBuckets,.byType,.defects.critical'` | exit 0 | exit 0 — all seven JSON paths present and non-null | 2026-08-26 | opus-4.8[1m]-verifier |
+| 5 | `--issues | grep -iE -e verify-gate -e critical -e defect` | >=1 | exit 0 — process-states (verify-gate/live-verify/needs-decision) held distinct from bug/defect totals | 2026-08-26 | opus-4.8[1m]-verifier |
+| 6 | `go test -run Issue -count=1` (module dir) | exit 0 | exit 0 — TimeToClose, AgeBucketing, AuthorClassification, ByDeskGrouping, BotDetection, EmptyCorpusDegrades PASS | 2026-08-26 | opus-4.8[1m]-verifier |
+| 7 | `statusgen --root . --lint` | exit 0 | exit 0 — LINT: PASS (stale-issue alarm a non-fatal NOTICE) | 2026-08-26 | opus-4.8[1m]-verifier |
+
+**RISK-VALUE: DERIVED** — `defaultStaleIssueDays = 7` @ statusgen/issues.go:53 — reversible alarm threshold, flag-overridable via `--stale-issue-days`, matching the brief default and the existing intake untriaged-age cadence; a wrong value only shifts when a NOTICE fires. Age-bucket boundaries (1/3/7d), oldest-N=5, and the p90 percentile are reversible display knobs, rank last. No irreversible constant in scope.
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
