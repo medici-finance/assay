@@ -1,0 +1,15 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/pulls/7/reviews",
+      "query": "per_page=100\u0026page=1"
+    },
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/pulls/7/reviews",
+      "query": "per_page=100\u0026page=2"
+    }
+  ],
+  "result": 101
+}

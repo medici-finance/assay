@@ -26,7 +26,10 @@ import (
 // tests (a fake httptest server); there is deliberately NO env var or flag override — a
 // production override could redirect the App-token mint or a review-post to an attacker.
 // This is the same test-hook shape deskkit uses for its desk-tools directory.
-var apiBaseURL = "https://api.github.com"
+// The host literal is sourced from deskkit.GitHubAPIBase (the forge module) so it is never
+// constructed in a cmd package (the forge-abstraction seam); the var is kept so in-package tests can
+// still point it at a fake server.
+var apiBaseURL = deskkit.GitHubAPIBase
 
 // reviewerBotLogin() is the reviewer App's bot identity — the unforgeable distinct actor.
 // deskpost posts every review/comment/flip AS this App by minting the

@@ -32,7 +32,7 @@ same tool.
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [`Forge` interface extraction in deskkit — `github` impl pinned by goldens](brief-01-forge-interface-extraction.md) | 1 | L | todo | — | — |
+| 01 | [`Forge` interface extraction in deskkit — `github` impl pinned by goldens](brief-01-forge-interface-extraction.md) | 1 | L | implemented | — | — |
 | 02 | [`gitlab` forge implementation (MRs, notes, approvals, statuses)](brief-02-gitlab-forge-impl.md) | 2 | M | todo | — | — |
 | 03 | [GitLab token custody — rotate-on-mint + expiry backstop in desktoken](brief-03-gitlab-token-custody.md) | 2 | M | todo | — | — |
 | 04 | [Fleet provisioning + adopter doc + ci-config-project runbook](brief-04-provisioning-and-adopter-doc.md) | 3 | M | todo | — | — |

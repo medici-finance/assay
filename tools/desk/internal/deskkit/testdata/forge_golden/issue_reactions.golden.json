@@ -1,0 +1,19 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/issues/7/reactions",
+      "query": "per_page=100"
+    }
+  ],
+  "result": [
+    {
+      "user": {
+        "login": "ian",
+        "type": "User",
+        "id": 1
+      },
+      "content": "+1"
+    }
+  ]
+}

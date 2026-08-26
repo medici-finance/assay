@@ -1,0 +1,20 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/pulls/7"
+    }
+  ],
+  "result": {
+    "Number": 7,
+    "State": "open",
+    "Draft": true,
+    "NodeID": "PR_node",
+    "ChangedFiles": 3,
+    "Author": {
+      "Login": "worker[bot]",
+      "ID": 99
+    },
+    "HeadSHA": "abc123"
+  }
+}

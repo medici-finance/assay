@@ -1,0 +1,17 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/issues/8"
+    }
+  ],
+  "result": {
+    "Number": 8,
+    "State": "open",
+    "Author": {
+      "Login": "worker[bot]",
+      "ID": 99
+    },
+    "IsPullRequest": true
+  }
+}

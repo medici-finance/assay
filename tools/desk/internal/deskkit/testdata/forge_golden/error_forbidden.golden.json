@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/pulls/7"
+    }
+  ],
+  "result": null,
+  "err": "forge API GET /repos/medici-finance/assay/pulls/7 returned HTTP 403",
+  "not_found": false
+}

@@ -1,0 +1,22 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/pulls/7/reviews",
+      "query": "per_page=100\u0026page=1"
+    }
+  ],
+  "result": [
+    {
+      "ID": 1,
+      "Author": {
+        "Login": "reviewer[bot]",
+        "ID": 42
+      },
+      "State": "APPROVED",
+      "CommitID": "abc123",
+      "Body": "lgtm",
+      "SubmittedAt": "2026-08-24T00:00:00Z"
+    }
+  ]
+}

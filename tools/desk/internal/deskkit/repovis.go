@@ -156,7 +156,7 @@ func humanList() string {
 // API using a bearer token. It is the production implementation used by desk commands.
 type HTTPRepoInfoFetcher struct {
 	Token   string
-	BaseURL string // defaults to "https://api.github.com" when empty
+	BaseURL string // defaults to GitHubAPIBase when empty
 	Client  *http.Client
 }
 
@@ -164,7 +164,7 @@ func (f *HTTPRepoInfoFetcher) baseURL() string {
 	if f.BaseURL != "" {
 		return f.BaseURL
 	}
-	return "https://api.github.com"
+	return GitHubAPIBase
 }
 
 func (f *HTTPRepoInfoFetcher) client() *http.Client {

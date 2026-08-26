@@ -1,0 +1,9 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay"
+    }
+  ],
+  "result": "public"
+}

@@ -144,7 +144,7 @@ type installationInfo struct {
 // owner. Returns an error if no match is found — fails closed on any
 // ambiguity.
 func resolveInstallID(jwt, owner string) (string, error) {
-	url := "https://api.github.com/app/installations"
+	url := deskkit.GitHubAPIBase + "/app/installations"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
@@ -249,7 +249,7 @@ type tokenResult struct {
 // endpoint and returns the result. The token value is the response's `token`
 // field; it is written to the cache file and never printed.
 func exchangeJWT(jwt, installID string) (*tokenResult, error) {
-	url := fmt.Sprintf("https://api.github.com/app/installations/%s/access_tokens", installID)
+	url := fmt.Sprintf("%s/app/installations/%s/access_tokens", deskkit.GitHubAPIBase, installID)
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
