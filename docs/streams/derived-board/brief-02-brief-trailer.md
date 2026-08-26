@@ -82,6 +82,21 @@ facts:
 ## Evidence
 <!-- appended at implementation time -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-08-26 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `b734dab`
+Runner != implementer. Own isolated worktree off `origin/main`, OFFLINE (`KUBECONFIG=/dev/null`). gate: model, all risk no. Deliverables present: tools/desk trailer wiring + statusgen/prlink.go + docs. `tools/desk` and `statusgen` are their own modules.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | `cd tools/desk && go test ./internal/deskkit/ -run Trailer -count=1` | ok | rc=0 — ok | 2026-08-26 | opus-4.8[1m]-verifier |
+| 2 | `cd tools/desk && go test ./cmd/deskpr/ -count=1` | ok, incl. Refuses*NoTrailer | rc=0 — ok; TestCreateRefusesNoTrailer + TestUpdateRefusesNoTrailer PASS | 2026-08-26 | opus-4.8[1m]-verifier |
+| 3 | `cd statusgen && go test . -run PRLink -count=1` | ok | rc=0 — ok | 2026-08-26 | opus-4.8[1m]-verifier |
+| 4 | body-with-no-trailer `deskpr create` | refusal exit 5 naming the Brief: trailer | deskpr exits 5, stderr "refused: PR body carries no trailer — add exactly one line Brief: <stream>/<NN>" (go run collapses child exit-5 to its own rc=1 while printing `exit status 5`; refusal class is 5) | 2026-08-26 | opus-4.8[1m]-verifier |
+| 5 | duplicate-`Brief:` `deskpr create` | refusal exit 5, duplicate | exits 5, stderr "refused: duplicate brief: trailer ... exactly one link per PR body" | 2026-08-26 | opus-4.8[1m]-verifier |
+| 6 | `grep -rnE -e '--no-brief' -e 'SKIP_TRAILER' -e 'skip-trailer' tools/desk/ | wc -l` | 0 | 0 — no bypass surface | 2026-08-26 | opus-4.8[1m]-verifier |
+| 7 | `grep -n 'Brief:' docs/desk-tools/deskpr.md` | documented | 3 matches documenting the trailer + duplicate refusal | 2026-08-26 | opus-4.8[1m]-verifier |
+
+**RISK-VALUE: DERIVED** — the multiplicity bound = 1 ("exactly one Brief: per PR body") @ statusgen/prlink.go:59 and deskkit/trailer.go:83 — derived from spec §2 (the trailer is the only PR->brief edge) and the brief fact (one brief per PR; shards name the parent). One-to-one is the point of a data edge; >1 reintroduces the guessing the brief removes. Verifier confirmed the trailer check precedes any network/token call (deskpr.go:176, before preflight/mint/gh). All other literals are reversible grammar/flag-defaults.
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
 Reviewer question: is there any path through `deskpr` that reaches the network before the

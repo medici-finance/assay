@@ -159,6 +159,23 @@ Store — each aggregate value a `Measure[...]`.
      (command, exit code, output line(s) or hash, date, runner). "verified" in the stream
      README requires this section filled by someone who did NOT implement. -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-08-26 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `ea7fea5`
+Runner != implementer. Own isolated worktree off `origin/main`, OFFLINE (`KUBECONFIG=/dev/null`). gate: model, all risk no. `qualgen/` module.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | `cd qualgen && go build ./... && go vet ./...` | exit 0 | exit 0 — clean build + vet | 2026-08-26 | opus-4.8[1m]-verifier |
+| 2 | `go test ./... -run TestMeasureThreeStateRoundTrip` | 3 states distinct; could-not-measure needs reason | exit 0 — 7 subtests PASS (measured/measured-zero/could-not-measure distinct; empty-reason rejected) | 2026-08-26 | opus-4.8[1m]-verifier |
+| 3 | `go test ./... -run TestMineExtractsAllCommits` | count == git rev-list | exit 0 — PASS | 2026-08-26 | opus-4.8[1m]-verifier |
+| 4 | `go test ./... -run TestMineIncrementalExtends` | extend-never-replace | exit 0 — PASS | 2026-08-26 | opus-4.8[1m]-verifier |
+| 5 | `go test ./... -run TestDiffThreeStateDistinguishesZeroFromUnmeasured` | exit 0 | exit 0 — PASS | 2026-08-26 | opus-4.8[1m]-verifier |
+| 6 | `go run . mine --repo .. --out $TMP` (tip_sha==HEAD; commits.jsonl) | exit 0 | exit 1 IN THE LINKED WORKTREE only (go-git PlainOpen cannot resolve a linked worktree per-worktree HEAD); substance reproduced vs a normal repo of the shape CI checks out: exit 0, tip_sha==HEAD, commits.jsonl written — environment artifact, not a regression | 2026-08-26 | opus-4.8[1m]-verifier |
+| 7 | `go run . report/pr/check --out /tmp/x` | each recognized; 'not yet implemented' NOTICE; exit 0 | exit 0 — all three emit the mode-scaffolding NOTICE | 2026-08-26 | opus-4.8[1m]-verifier |
+
+**RISK-VALUE: N/A-equivalent** — enumeration over the qualgen diff found only reversible operational literals (dir/file perms 0o755/0o644, JSONL buffer sizes, short-SHA length 12) and structural identifiers (schema tag, three-state enum strings); no irreversible/authority/financial constant. The only write is to an operator-chosen `--out` root, read-only against the mined target.
+
+Routed edge (not a Verify FAIL): `qualgen mine` cannot mine a target that is itself a linked git worktree (go-git PlainOpen limitation) — harmless to CI (normal checkouts) but a real operator edge; a later brief may want DetectDotGit handling.
+
 ## Review
 Gate: model (all four risk answers no — a read-only, repo-agnostic history miner writing
 only to an operator-chosen tracking root; no funds/auth/ledger surface, no in-repo writes to

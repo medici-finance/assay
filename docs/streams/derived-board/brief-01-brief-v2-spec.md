@@ -120,6 +120,24 @@ Run 2026-08-23 by assay-worker-app[bot] on the feature branch (offline; docs + r
 | 8 | `statusgen --root . --lint` | 0 | `LINT: PASS` (docs + registry only; pre-existing NOTICEs unrelated) |
 | 9 | `! grep -rn -E <repo-qualified issue/PR shapes> docs/brief-rules.md docs/brief-template.md docs/dependency-graph-design.md` | 0 | no matches — no repo-qualified issue/PR references of any org leaked by the overlay |
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-08-26 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `b734dab`
+Runner != implementer. Own isolated worktree off `origin/main`, OFFLINE (`KUBECONFIG=/dev/null`). gate: model, all risk no. Deliverables present: docs/brief-rules.md (835 lines), docs/brief-template.md, docs/streams/graph-repos.yaml, docs/dependency-graph-design.md.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | `grep -c '^schema: brief-v2' docs/brief-template.md` | 1 | exit 0 — 1 | 2026-08-26 | opus-4.8[1m]-verifier |
+| 2 | `grep -cE <7 lifecycle-cell derivation rows> docs/brief-rules.md` | 7 | exit 0 — 7 | 2026-08-26 | opus-4.8[1m]-verifier |
+| 3 | `grep -nE 'Brief: <stream>/<NN>' docs/brief-rules.md` | >=1 | exit 0 — the in-progress derivation row + the trailer rule | 2026-08-26 | opus-4.8[1m]-verifier |
+| 4 | `grep -cE '^gates:|^feathers:|^id:|^supersedes:|^version:' docs/brief-template.md` | 5 | exit 0 — 5 | 2026-08-26 | opus-4.8[1m]-verifier |
+| 4b | `grep -cE '^brief: <cell>:<repo>:<stream>:<NN>' docs/brief-template.md` | 1 | exit 0 — 1 | 2026-08-26 | opus-4.8[1m]-verifier |
+| 5 | `grep -n 'status:' docs/brief-template.md` | exactly 1 line (the note) | exit 0 — one line, the "Deliberately NO status: key" note @ :88 | 2026-08-26 | opus-4.8[1m]-verifier |
+| 6 | `python3 -c` yaml-load graph-repos.yaml asserting schema==graph-repos-v1 and cell and repos | ok | exit 0 — ok | 2026-08-26 | opus-4.8[1m]-verifier |
+| 7 | `diff <(head-20) <(origin/main head-20); wc -l docs/brief-rules.md` | >=768 | diff clean (heads identical); wc -l = 835 | 2026-08-26 | opus-4.8[1m]-verifier |
+| 8 | `statusgen --root . --lint` | exit 0 | exit 0 — LINT: PASS (NOTICE-only; no brief flipped to v2) | 2026-08-26 | opus-4.8[1m]-verifier |
+| 9 | `! grep -rnE <repo-qualified issue/PR shapes> brief-rules.md brief-template.md dependency-graph-design.md` | exit 0 (no leaked refs) | exit 0 — no matches (self-containment clean) | 2026-08-26 | opus-4.8[1m]-verifier |
+
+**RISK-VALUE: N/A** — enumeration over the four spec/registry deliverables found no risk-bearing literal (no threshold/bound/tolerance/authority binding); the only literals are definitional (the 7-token lifecycle vocabulary, schema-name strings, a documented reversible template `version: 1`). statusgen still accepts only schema brief-v1 and no tree brief was flipped to v2 — no gate changed.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
 Reviewer question: does the generalized rule 30 contradict rule 31 (re-baseline obligation) or

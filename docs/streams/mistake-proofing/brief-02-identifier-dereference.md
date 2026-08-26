@@ -120,6 +120,22 @@ facts:
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-08-26 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `ea7fea5`
+Runner != implementer. Own isolated worktree off `origin/main`, OFFLINE (`KUBECONFIG=/dev/null`). gate: model, all risk no. `statusgen/` is its own module; `./statusgen/` test rows ran from inside the module dir.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | `git grep -c buildIdentifierRe -- statusgen/` | inverts to present at impl | exit 0 — count 4 (linkcheck + test); dereference anchor inverted as designed | 2026-08-26 | opus-4.8[1m]-verifier |
+| 2 | `git grep -n 'func buildBacktickRe' -- statusgen/linkcheck.go` | present | exit 0 — linkcheck.go:22 | 2026-08-26 | opus-4.8[1m]-verifier |
+| 3 | `git grep -n plannedRe -- statusgen/linkcheck.go` | present | exit 0 — 4 hits incl. linkcheck.go:110 (planned/new/future escape) | 2026-08-26 | opus-4.8[1m]-verifier |
+| 4 | `git grep -n 'too ambiguous to resolve' -- statusgen/linkcheck.go` | present | exit 0 — linkcheck.go:414 (bare-filename skip) | 2026-08-26 | opus-4.8[1m]-verifier |
+| 5 | `go test . -run IdentifierDereference -count=1` | exit 0 | exit 0 — FiresOnMissingTestName, EscapesAndScope, CouldNotCheck PASS | 2026-08-26 | opus-4.8[1m]-verifier |
+| 6 | `go test . -run IdentifierDereferenceFiresOnMissingTestName` | exit 0 (positive control) | exit 0 — PASS | 2026-08-26 | opus-4.8[1m]-verifier |
+| 7 | `go test . -run IdentifierDereferenceCouldNotCheck` | exit 0 | exit 0 — PASS (decline case) | 2026-08-26 | opus-4.8[1m]-verifier |
+| 8 | `go test . -run LinkCheck` | exit 0 (inherited unchanged) | exit 0 — PASS | 2026-08-26 | opus-4.8[1m]-verifier |
+
+**RISK-VALUE: DERIVED** — `identifierDereferenceFatal = false` @ statusgen/linkcheck.go:76 — the sanctioned advisory-first landing value (brief task 5: land as NOTICE first, NOTICE->PROBLEM flip named on a date/condition; permanent NOTICE disallowed). Reversible severity flag; no numeric risk-bearing constant in the diff.
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the
 stream README table. Reviewer questions specific to this brief: (1) do all three existing escapes

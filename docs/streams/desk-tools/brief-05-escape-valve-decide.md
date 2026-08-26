@@ -83,5 +83,19 @@ Rows 2–3 are the negative-path rows (fail-closed + deny-list, independently).
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner). -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-08-26 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `b734dab`
+Runner != implementer. Own isolated worktree off `origin/main`, OFFLINE (`KUBECONFIG=/dev/null`). gate: model, all risk no. Deliverables present: tools/desk/internal/deskkit/decide.go + decide_test.go + the contract doc. `tools/desk` and `statusgen` are their own modules.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | `cd tools/desk && go test -run TestDecide ./internal/deskkit/` | exit 0 | exit 0 — ok deskkit 0.257s | 2026-08-26 | opus-4.8[1m]-verifier |
+| 2 | `go test -run TestDecideInvalidAnswer && TestDecideTimeout && TestDecideBudgetSpent` | exit 0; each resolves to DEFAULT, journaled | exit 0 all three — InvalidAnswer/Timeout/BudgetSpent present + green | 2026-08-26 | opus-4.8[1m]-verifier |
+| 3 | `go test -run TestDecideReservedVerbs ./internal/deskkit/` | exit 0; a vocabulary containing a human-gate verb (e.g. merge) refused at construction | exit 0 — subtests PASS incl. merge, cased-Merge, approve, flip, ready, sign, close-gate, ready-flip | 2026-08-26 | opus-4.8[1m]-verifier |
+| 4 | `cd statusgen && go run . --root .. --lint; echo $?` | 0 | exit 0 — LINT: PASS (NOTICE-only; none for this item) | 2026-08-26 | opus-4.8[1m]-verifier |
+
+**RISK-VALUE: DERIVED** — the reserved-verb deny-list + reserved-phrases @ tools/desk/internal/deskkit/decide.go:70,86 — the set equals the human-gate action roots the house forbids a model from taking (approve/flip/merge/ready/sign/close-gate per CLAUDE.md), enforced at construction; TestDecideReservedVerbs proves merge/cased-Merge are refused at registration. The 30s default timeout and per-hour budget window are reversible operational knobs, rank last.
+
+Note (not a Verify FAIL, for the reviewer): the contract doc landed at tools/desk/internal/deskkit/decide.md (co-located with the code), not the brief's stated docs/streams/desk-tools/decide.md — a location discrepancy, content present, lint clean.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
