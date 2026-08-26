@@ -19,6 +19,11 @@ package main
 //	check        DETERMINISTIC but ENV-BOUND — needs a live PEM, a real queue, a
 //	             tool on PATH. A runner executes it; CI does not. It rests on the
 //	             verdict's authorship+signature (R-6 c.1–3), not on re-execution.
+//	check:cluster A SUBCLASS of `check` (verdict-lane/07): env-bound to a LIVE
+//	             cluster, whose runner must be the privileged pod runner. The
+//	             OFFLINE lane cannot execute it — it records could-not-check with a
+//	             stable, greppable marker naming the probe, and the brief is
+//	             code-verified/cluster-pending until the pod lane completes it.
 //	gate:model   JUDGMENT — a model reads the row and decides.
 //	gate:human   JUDGMENT — a human reads the row and decides; stays on the
 //	             verify-gate issue pair, outside the transcription lane.
@@ -47,14 +52,32 @@ import (
 	"strings"
 )
 
-// The four row classes. Stable identifiers — the lint, verifyrun and the
+// The row classes. Stable identifiers — the lint, verifyrun and the
 // verdict lane all select on these exact strings.
 const (
-	classCheckCI   = "check:ci"   // hermetic, tree-only, CI re-executes network-off
-	classCheck     = "check"      // deterministic but env-bound — runner-executed
-	classGateModel = "gate:model" // judgment: a model decides
-	classGateHuman = "gate:human" // judgment: a human decides (verify-gate)
+	classCheckCI      = "check:ci"      // hermetic, tree-only, CI re-executes network-off
+	classCheck        = "check"         // deterministic but env-bound — runner-executed
+	classCheckCluster = "check:cluster" // env-bound to a live cluster — the pod runner only (verdict-lane/07)
+	classGateModel    = "gate:model"    // judgment: a model decides
+	classGateHuman    = "gate:human"    // judgment: a human decides (verify-gate)
 )
+
+// classCheckCluster is a fifth class, a strict SUBCLASS of `check` (verdict-lane/07,
+// the pod/online verify lane). A cluster row is deterministic but env-bound to a
+// LIVE cluster — a probe run against a real participant/validator — whose runner
+// MUST be the privileged pod runner; the OFFLINE verify lane holds no cluster
+// access and can never execute it. Two facts flow from that:
+//
+//   - the offline lane records a cluster row could-not-check with a stable,
+//     greppable marker (clusterPendingMarker) naming the probe, distinct from an
+//     ordinary env-bound `check` skip — so "parked awaiting the pod" is
+//     distinguishable from "skipped, will run later in CI"; and
+//   - a brief whose only unrun Verify rows are cluster rows is code-verified but
+//     cluster-pending — the pod runner's worklist, derived by --cluster-pending-queue.
+//
+// The probe a cluster row names is validated against the documented-probe
+// registry (docs/streams/.pod-probes): an unknown probe routes the row at a
+// script no pod runner provides, so it is a lint PROBLEM, never a silent pass.
 
 // legacyRowClass is what a row resolves to when the table declares no `Class`
 // column (and what an explicit-but-empty cell falls back to): `check`,
@@ -65,10 +88,11 @@ const legacyRowClass = classCheck
 // knownRowClasses is the closed set the lint validates against. A class outside
 // it is a PROBLEM (a typo, or a class nobody has defined), never a silent pass.
 var knownRowClasses = map[string]bool{
-	classCheckCI:   true,
-	classCheck:     true,
-	classGateModel: true,
-	classGateHuman: true,
+	classCheckCI:      true,
+	classCheck:        true,
+	classCheckCluster: true,
+	classGateModel:    true,
+	classGateHuman:    true,
 }
 
 // verifyRowCells is one Verify-table data row, as located by verifyRowTable.
