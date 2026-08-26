@@ -215,8 +215,13 @@ func markerSurface(raw string) string {
 // mapping key on the MARKER SURFACE only, so the sops arm of ScanSurface does not fire on a
 // document that has already been recognised as a sanctioned manifest. It is a rename, not a
 // deletion: the bytes stay, their length stays, and the run loop still reads `raw`.
+//
+// reSopsEncVal is anchored on the `data:` field (bodycheck.go), so the replacement carries
+// that field verbatim and only the leading `E` is lowercased — enough that the arm's
+// uppercase-anchored match no longer fires, while the surface stays byte-for-byte the same
+// length (the invariant the run loop's offsets rely on).
 func neutraliseSopsMarkers(s string) string {
-	s = reSopsEncVal.ReplaceAllString(s, "enc[AES256_GCM")
+	s = reSopsEncVal.ReplaceAllString(s, "enc[AES256_GCM,data:")
 	return reSopsKey.ReplaceAllStringFunc(s, func(m string) string {
 		return strings.Replace(m, "sops", "sops-recognised", 1)
 	})
