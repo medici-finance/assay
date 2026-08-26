@@ -9,7 +9,7 @@ why: >-
   itself as a seam even if no second forge ever ships.
 wave: 1
 depends: []
-unblocks: ["forge-gitlab/02", "forge-gitlab/03"]
+unblocks: ["forge-gitlab/02", "forge-gitlab/03", "forge-gitlab/07"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

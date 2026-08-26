@@ -38,6 +38,8 @@ same tool.
 | 04 | [Fleet provisioning + adopter doc + ci-config-project runbook](brief-04-provisioning-and-adopter-doc.md) | 3 | M | todo | — | — |
 | 05 | [Live pilot — one brief round-tripped on a real GitLab group; parity table walked](brief-05-live-pilot-parity-walk.md) | 4 | M | todo | — | — |
 | 06 | [Ultimate refinements — custom reviewer role + external-status-check verdict lane](brief-06-ultimate-refinements.md) | 5 | M | todo | — | — |
+| 07 | [GitHub forge backend on `go-gh` — retire the exec-`gh` shell path](brief-07-github-forge-go-gh.md) | 2 | M | todo | — | — |
+| 08 | [Close the forge surface — enumerated operations, no passthrough, shell-exec ban](brief-08-close-the-forge-surface.md) | 3 | M | todo | — | — |
 
 ## Critical path
 
@@ -54,6 +56,17 @@ first step is writing the GitLab REST code first (02 before 01): without the
 extracted interface and goldens, the GitHub behavior has no pinned contract to
 stay equal to, and every later refactor re-litigates it.
 
+Parallel to the pilot chain runs a **surface-hardening sub-track** off the same
+seam: `forge-gitlab/07` (re-seat the GitHub backend on the official `go-gh`
+library, retiring the exec-`gh` forge path) then `forge-gitlab/08` (close the
+surface — enumerated operations only, no arbitrary-endpoint passthrough on
+either backend, and a checked ban on `gh`/`glab` shelling across `tools/desk`).
+It depends only on the interface (01) and the two backends (02 for the symmetric
+`glab` side, 07 for the GitHub side); it does not gate — and is not gated by —
+the live pilot (05). It is where the spec's "constrained typed surface is
+*stronger* than an ambient full-CLI surface" (§3) becomes shipped, enforced
+configuration rather than a design intention.
+
 ## Dependency waves
 
 - **Wave 1** — `forge-gitlab/01` (no dependencies; the seam + goldens everything
@@ -67,3 +80,11 @@ stay equal to, and every later refactor re-litigates it.
   pilot).
 - **Wave 5** — `forge-gitlab/06` (depends on 05; Ultimate-tier refinements,
   scoped by what the pilot surfaces).
+
+Surface-hardening sub-track (parallel, off the interface — not on the pilot
+critical path):
+
+- **Wave 2** — `forge-gitlab/07` (depends on 01; GitHub backend re-seated on
+  `go-gh`, exec-`gh` forge path retired — parallelizable with 02/03).
+- **Wave 3** — `forge-gitlab/08` (depends on 07 + 02; enumerated surface, no
+  passthrough on either backend, checked `gh`/`glab` shell-exec ban).
