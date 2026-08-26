@@ -1,0 +1,43 @@
+name: drainloop
+# Isolated CI for the drainloop module (drainloop/) — the homed, importable drain engine.
+on:
+  pull_request:
+    paths:
+      - "drainloop/**"
+      - "drain-engine.md"
+      - ".github/workflows/assay-drainloop.yml"
+  push:
+    branches: [main]
+    paths:
+      - "drainloop/**"
+      - ".github/workflows/assay-drainloop.yml"
+permissions:
+  contents: read
+env:
+  GO_VERSION: "1.25.0"
+jobs:
+  test:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: vet + test drainloop in isolation
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          go version
+          cd drainloop
+          grep -qE '^module github\.com/medici-finance/assay/drainloop$' go.mod || {
+            echo "::error::drainloop/go.mod must declare the real importable module path"
+            exit 1
+          }
+          go vet ./...
+          go test ./...
