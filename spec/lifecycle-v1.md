@@ -234,7 +234,7 @@ implementer from writing its own gate cells) narrows the gap but does not close
 it while a single identity can author both the work and its record.
 
 A conforming implementation MUST claim the weaker, true statement. It MUST NOT
-claim the strong form ("measured ground truth", "un-forgeable", "cannot lie").
+claim the strong form ("measured ground truth", "tamper-proof", "cannot lie").
 
 ## 7. Conformance
 
