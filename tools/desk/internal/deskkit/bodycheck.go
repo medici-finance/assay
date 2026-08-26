@@ -65,7 +65,20 @@ var (
 	// lastmodified / unencrypted_suffix / kms / gcp_kms / azure_kv / pgp / age). Prose that
 	// merely says the word "sops" has neither shape, so requiring BOTH drops the bare-word
 	// false positive.
-	reSopsEncVal = regexp.MustCompile(`ENC\[AES256_GCM`)
+	//
+	// reSopsEncVal matches the STRUCTURAL start of a sops encrypted VALUE — the AES256-GCM
+	// marker followed by the envelope's mandatory first field, `data:` — NOT the bare marker
+	// substring. sops writes every encrypted value as `ENC[…,data:…,iv:…,tag:…,type:…]`, so a
+	// real lone value pasted outside a sanctioned document (still refused by design) always
+	// carries `data:` right after the marker, while PROSE that merely NAMES the marker while
+	// describing the scanner — "keys on an ENC[…] marker" — has no `data:` after it. Anchoring
+	// on that field is what drops the fifth #781 false positive: the refusal arm below keys on
+	// this marker, so it now refuses structural ciphertext rather than the substring — exactly
+	// the lone-value shape it refused before, and no longer a description of it. The same
+	// anchored marker drives neutraliseSopsMarkers (structured.go), a length-preserving rename
+	// over an already-recognised sanctioned document; its replacement carries the `data:` tail
+	// so the rename keeps the surface byte-for-byte the same length.
+	reSopsEncVal = regexp.MustCompile(`ENC\[AES256_GCM,data:`)
 	reSopsKey    = regexp.MustCompile(`(?m)^\s*"?sops"?\s*:`)
 	reSopsField  = regexp.MustCompile(`(?m)^\s*"?(mac|lastmodified|unencrypted_suffix|kms|gcp_kms|azure_kv|pgp|age)"?\s*:`)
 )
