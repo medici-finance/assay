@@ -359,6 +359,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// (docs/three-state-instrument-rule.md).
 	problems = append(problems, docWalkProblems...)
 	problems = append(problems, linkProblems(root, docs)...)
+	// Identifier dereference (mistake-proofing/02): a backticked TEST or FUNCTION
+	// name cited in CLAUDE.md or a brief must resolve against the tree, exactly as
+	// a backticked FILE path already must. Lands ADVISORY (NOTICE) —
+	// identifierDereferenceFatal gates the flip to a hard PROBLEM once the
+	// inherited corpus census is fixed/waived. See linkcheck.go.
+	idProblems, idNotices := identifierDereferenceCheck(root, docs)
+	problems = append(problems, idProblems...)
+	notices = append(notices, idNotices...)
 	// Register-reference link lint: for every markdown link
 	// whose text is F-NN/I-NN, verify target file exists and frontmatter id
 	// matches. Bare refs are never checked. BLOCKING for the same reason — it

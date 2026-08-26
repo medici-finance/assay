@@ -23,6 +23,76 @@ func buildBacktickRe(exts []string) *regexp.Regexp {
 	return regexp.MustCompile("`([A-Za-z0-9_./-]+\\.(?:" + strings.Join(exts, "|") + "))`")
 }
 
+// ---------------------------------------------------------------------------
+// identifier dereference (mistake-proofing/02) — a named TEST or FUNCTION cited
+// in a brief must resolve against the tree it describes, exactly as a backticked
+// FILE path already must. The measured incident: three briefs reached
+// `implemented` in one pass citing three test names that were in no file, and
+// every presence-check row passed on a factually wrong deliverable. A presence
+// check on a claim is judgment inspection; making the claim RESOLVE against the
+// tree is source inspection on the claim itself (docs/mistake-proofing.md §4 B4).
+//
+// This check asks whether the NAME RESOLVES, not whether a name is present, and
+// not whether the test passes or the function behaves as the brief says — the
+// same posture the consumers-routing check took ("never asks 'is the field
+// there?'"). Resolution is by name only; that boundary is stated in every
+// failure message.
+//
+// COVERAGE BOUNDARY (disclosed divergence, spec §3 D6 — recorded here beside the
+// check, not in a document nobody reads):
+//   - Three shapes are matched, and no more: a bare `<name>_test.go` basename
+//     with NO directory separator; a `Test<Name>` identifier; and a `func <Name>`
+//     reference. Anything else — a struct name, a const, a variable, a method
+//     cited without the `func` keyword — is deliberately NOT this check's
+//     business; an over-eager matcher on prose earns a permanent exemption file.
+//   - A shape must be the ENTIRE backtick span (parallel to buildBacktickRe,
+//     whose no-space char-class has the same effect). A `Test<Name>` /
+//     `func <Name>` / `<x>_test.go` placeholder carrying angle brackets, or an
+//     identifier embedded mid-span inside a shell command, is therefore not
+//     matched — the angle-bracket/`<>` placeholder convention and command spans
+//     fall out for free.
+//   - INHERITED from the backticked-path matcher and NOT fixed here: a
+//     directory-shaped or extensionless target is unchecked, and a `_test.go`
+//     token WITH a directory separator (e.g. `statusgen/foo_test.go`) is handled
+//     as a PATH by buildBacktickRe, not as an identifier here. The bare-basename
+//     case this brief reopens is precisely the token the no-directory-separator
+//     path rule lets sail through.
+//
+// Escapes carried over unchanged from the path matcher: the `(planned)`/`(new)`/
+// `(future …)` suffix family (the ONE addition this brief makes is that the same
+// suffix now also excuses an IDENTIFIER a brief is about to create — no second
+// escape syntax); the narrow scope (CLAUDE.md + docs/streams/** only, so
+// outbound narrative prose is never subject to it); and the sibling-repo `../`
+// prefix (vacuous for identifiers — an angle-bracket-free `_test.go` basename
+// cannot carry a `/`).
+//
+// SEVERITY PHASING (brief task 5): identifierDereferenceFatal gates the class.
+// It lands FALSE — every hit, and every could-not-check, is an advisory NOTICE —
+// so the inherited corpus census recorded in the landing PR body can be fixed or
+// waived with the `(planned)` escape before the check bites. Flipping the const
+// to true (a follow-up once the census is zero) makes an unresolved identifier a
+// fatal PROBLEM and an unsearchable tree a declining failure. A permanent NOTICE
+// is not an acceptable resting state for this check.
+const identifierDereferenceFatal = false
+
+// buildIdentifierRe compiles the named-identifier matcher — the parallel to
+// buildBacktickRe. It matches a backtick span whose ENTIRE content is one of the
+// three shapes; the leading/trailing backticks anchor it, so a placeholder with
+// angle brackets or an identifier buried inside a longer command span does not
+// match (see the COVERAGE BOUNDARY note above).
+func buildIdentifierRe() *regexp.Regexp {
+	return regexp.MustCompile("`(" +
+		// a bare test-file basename, ending _test.go, with NO directory separator
+		// (the char-class excludes `/`); this is the incident's exact shape.
+		`[A-Za-z0-9_.-]+_test\.go` + "|" +
+		// a Test<Name> identifier (requires at least one identifier char after
+		// `Test`, so a bare `Test<Name>` placeholder does not match).
+		`Test[A-Za-z0-9_]+` + "|" +
+		// a `func <Name>` reference.
+		`func [A-Za-z0-9_]+` +
+		")`")
+}
+
 // registerLinkCheckExtensions extends the neutral extension set and rebuilds the
 // matcher. A product build calls this so its own file kinds are link-checked
 // WITHOUT being named in the open-core tree.
@@ -44,6 +114,14 @@ var (
 	// inlineCodeRe matches an inline code span. `[^`\n]*` cannot cross a
 	// backtick or a newline, so runs pair up left-to-right on a single line.
 	inlineCodeRe = regexp.MustCompile("`+[^`\n]*`+")
+	// identifierRe matches a backticked named identifier (test-file basename /
+	// Test<Name> / func <Name>) — the parallel to backtickRe. See buildIdentifierRe.
+	identifierRe = buildIdentifierRe()
+	// funcDeclRe captures the NAME of a Go function or method declaration, so the
+	// source index knows which Test<Name>/func <Name> identifiers resolve. It
+	// spans an optional receiver — `func (r *T) Method(` and `func Fn(` and the
+	// generic `func Fn[` all yield the bare name.
+	funcDeclRe = regexp.MustCompile(`(?m)^func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)`)
 )
 
 func skippable(target string) bool {
@@ -360,4 +438,122 @@ func linkProblems(root string, files []string) []string {
 		}
 	}
 	return problems
+}
+
+// sourceIndex is the one-pass index of the source tree the identifier check
+// resolves against: every file BASENAME (so a bare `<name>_test.go` resolves if
+// such a file exists anywhere), and every declared Go function/method NAME (so a
+// `Test<Name>` or `func <Name>` resolves if a declaration of that name exists).
+// Built once per lint, not a process spawn per token.
+type sourceIndex struct {
+	fileBasenames map[string]bool
+	funcNames     map[string]bool
+}
+
+// buildSourceIndex walks the tree ONCE, recording file basenames and Go
+// function/method declaration names. A walk error is returned, never swallowed:
+// an unsearchable tree is could-not-check, not a clean read
+// (docs/three-state-instrument-rule.md). The .git directory is skipped — it
+// holds no source declarations and is large.
+func buildSourceIndex(root string) (*sourceIndex, error) {
+	idx := &sourceIndex{fileBasenames: map[string]bool{}, funcNames: map[string]bool{}}
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// Propagate: the caller turns this into a could-not-check that declines
+			// the whole check rather than passing on a truncated index.
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		idx.fileBasenames[d.Name()] = true
+		if strings.HasSuffix(p, ".go") {
+			b, e := os.ReadFile(p)
+			if e != nil {
+				return e
+			}
+			for _, m := range funcDeclRe.FindAllStringSubmatch(string(b), -1) {
+				idx.funcNames[m[1]] = true
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return idx, nil
+}
+
+// resolves reports whether a matched identifier token names something in the
+// tree. A `_test.go` basename resolves against file basenames; a `Test<Name>` or
+// `func <Name>` token resolves against declared function/method names. Resolution
+// is BY NAME ONLY — it does not verify the test passes or the function does what
+// the brief claims.
+func (idx *sourceIndex) resolves(token string) bool {
+	switch {
+	case strings.HasPrefix(token, "func "):
+		return idx.funcNames[strings.TrimSpace(strings.TrimPrefix(token, "func "))]
+	case strings.HasSuffix(token, "_test.go"):
+		return idx.fileBasenames[token]
+	default: // Test<Name>
+		return idx.funcNames[token]
+	}
+}
+
+// identifierDereferenceCheck resolves every backticked named identifier in the
+// convention-bound surfaces against the source tree. See the design note at the
+// top of this file for the shapes, escapes, coverage boundary, and the
+// identifierDereferenceFatal severity phasing. Returns (problems, notices); which
+// one a hit lands in is gated by identifierDereferenceFatal.
+func identifierDereferenceCheck(root string, files []string) (problems, notices []string) {
+	const tag = "[id-dereference]"
+	emit := func(msg string) {
+		if identifierDereferenceFatal {
+			problems = append(problems, tag+" "+msg)
+		} else {
+			notices = append(notices, tag+" "+msg)
+		}
+	}
+
+	idx, err := buildSourceIndex(root)
+	if err != nil {
+		// Could-not-check: an unsearchable tree declines the whole check — it is
+		// printed as could-not-check, never rounded up to a clean read.
+		emit(fmt.Sprintf("identifier dereference COULD-NOT-CHECK: the source tree could not be indexed (%v) — the check declines rather than passing; absence of evidence is not evidence of absence (docs/three-state-instrument-rule.md)", err))
+		return problems, notices
+	}
+
+	for _, f := range files {
+		if !backtickPathScope(root, f) {
+			continue // narrow scope: CLAUDE.md + docs/streams/** only, unchanged.
+		}
+		raw, e := os.ReadFile(f)
+		if e != nil {
+			emit(fmt.Sprintf("%v: identifier dereference COULD-NOT-CHECK: %v", f, e))
+			continue
+		}
+		rel, _ := filepath.Rel(root, f)
+		content := string(raw)
+		for _, match := range identifierRe.FindAllStringSubmatchIndex(content, -1) {
+			// match[1] = end of full match (the closing backtick); match[2:4] = the
+			// captured identifier token.
+			fullMatchEnd := match[1]
+			token := content[match[2]:match[3]]
+			// The `(planned)`/`(new)`/`(future …)` escape carries over from the path
+			// matcher, and is the ONE addition this brief makes for identifiers: a
+			// brief describing a name it is about to create marks it illustrative
+			// with the same suffix, and is not blocked.
+			if plannedRe.MatchString(content[fullMatchEnd:]) {
+				continue
+			}
+			if idx.resolves(token) {
+				continue
+			}
+			emit(fmt.Sprintf("%s: named identifier `%s` resolves against no file or declaration in the tree — this check resolves the NAME only (not that the test passes or the function behaves as described). If this is a name the brief is about to create, mark it `%s` (planned)", rel, token, token))
+		}
+	}
+	return problems, notices
 }
