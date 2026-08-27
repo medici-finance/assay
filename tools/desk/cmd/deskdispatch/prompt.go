@@ -87,7 +87,7 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	if strings.TrimSpace(o.brief) != "" {
 		fmt.Fprintf(&b, "- **Specification:** `%s` — implement to its contract; do not expand scope.\n", o.brief)
 	}
-	if o.gateHuman {
+	if plan.gateHuman {
 		b.WriteString("- **Human-gated item:** a decision issue is open for it. Do not pre-empt the decision; " +
 			"implement what is already settled and stop where the decision begins.\n")
 	}
