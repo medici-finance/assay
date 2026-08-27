@@ -2,8 +2,8 @@ package main
 
 import "github.com/medici-finance/assay/tools/desk/internal/loopengine"
 
-// inflight.go — the in-flight-claim source for the advisory write-scope overlap warning
-// (spec/brief-v1.md §4.1.1). The overlap universe is the set of items already claimed for the
+// inflight.go — the in-flight-claim source for the advisory write-scope overlap warning.
+// The overlap universe is the set of items already claimed for the
 // same root — the SAME universe the dispatch-claim system tracks — carried as their derived
 // write-scopes so `plan` can warn a candidate whose scopes overlap an in-flight one.
 //

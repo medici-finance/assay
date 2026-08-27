@@ -29,7 +29,7 @@ type BoardRow struct {
 	Implementer string
 	OutOfRepo   bool // brief Context declares `out-of-repo files:` (out-of-repo serialization)
 	BriefPath   string
-	// WriteScopes is the row's ADVISORY write-scope set (spec §4.1.1), derived from the
+	// WriteScopes is the row's ADVISORY write-scope set, derived from the
 	// brief's Context `files:` list. Carried onto the Item so `plan` can warn on overlap with
 	// in-flight claims. Advisory only — never gates dispatch. The zero value is could-not-derive.
 	WriteScopes loopengine.WriteScopeSet

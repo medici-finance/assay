@@ -11,7 +11,7 @@ import (
 
 // TestDeriveWriteScopes_FromContextFiles covers the default derivation from a Context `files:`
 // list: repo-relative prefixes, a sibling `../<repo>/…` entry, and glob trimming — the
-// normalization the spec §4.1.1 requires.
+// normalization the advisory write-scope derivation requires.
 func TestDeriveWriteScopes_FromContextFiles(t *testing.T) {
 	brief := "---\nbrief: x/01\ngate: model\n---\n\n## Context\n\nfiles:\n" +
 		"- `../assay/tools/desk/` (home) — the surface\n" +
@@ -42,7 +42,7 @@ func TestDeriveWriteScopes_InlineFilesForm(t *testing.T) {
 }
 
 // TestDeriveWriteScopes_OverrideReplaces covers the `write-scopes:` frontmatter override
-// REPLACING the derived set (spec §3.2 / §4.1.1), in both block and inline flow forms.
+// REPLACING the derived set, in both block and inline flow forms.
 func TestDeriveWriteScopes_OverrideReplaces(t *testing.T) {
 	block := "---\nbrief: x/01\nwrite-scopes:\n  - tools/desk/internal/\n  - ../assay/cmd/\n---\n\n## Context\nfiles: something/else/\n\n## Task\ndo\n"
 	got := DeriveWriteScopes(block)

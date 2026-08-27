@@ -96,7 +96,7 @@ at the checkout that carries them while --root stays the ITEM's own repo — the
 is always cut from --root. An explicit --claim-root is authoritative: there is no silent
 fall-back to --root.
 
-Before the claim, deskdispatch echoes any ADVISORY write-scope overlap (spec/brief-v1.md §4.1.1)
+Before the claim, deskdispatch echoes any ADVISORY write-scope overlap
 between the item's write scopes (derived from --brief's Context 'files:' list) and any item
 holding an in-flight dispatch claim for the same root, as 'WRITE-OVERLAP: <item> ~ <in-flight> on
 <prefix>' lines on stderr. These are COORDINATION HINTS, NOT LOCKS: the dispatch always proceeds,

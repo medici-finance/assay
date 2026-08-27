@@ -1,6 +1,6 @@
 package loopengine
 
-// writescope.go — advisory write-scopes (spec/brief-v1.md §4.1.1) and the dispatch-time
+// writescope.go — advisory write-scopes and the dispatch-time
 // overlap warning.
 //
 // A brief's write-scope set is the path prefixes it expects to write, derived by default
@@ -58,14 +58,14 @@ var (
 )
 
 // DeriveWriteScopes computes a brief's advisory write-scope set from its full file content
-// per spec §4.1.1: an explicit `write-scopes:` frontmatter array REPLACES the derived set;
+// derivation rule: an explicit `write-scopes:` frontmatter array REPLACES the derived set;
 // otherwise the set is derived from the Context `files:` list. A brief with neither a usable
 // override nor a parseable `files:` entry is could-not-derive (Derivable == false) — never an
 // empty-but-clear set.
 func DeriveWriteScopes(content string) WriteScopeSet {
 	fm := frontmatterOf(content)
 
-	// 1. Explicit override wins (spec §3.2 / §4.1.1).
+	// 1. Explicit override wins.
 	if raws, ok := frontmatterList(fm, "write-scopes"); ok {
 		set := WriteScopeSet{}
 		for _, r := range raws {
@@ -216,7 +216,7 @@ func (s WriteScopeSet) Overlap(other WriteScopeSet) []string {
 	return out
 }
 
-// WriteOverlapWarnings builds the advisory dispatch-time warning lines (spec §4.1.1): one
+// WriteOverlapWarnings builds the advisory dispatch-time warning lines: one
 // `WRITE-OVERLAP: <candidate> ~ <inflight> on <prefix>` line per shared prefix between a
 // candidate item's scopes and an in-flight item's scopes, plus one
 // `<candidate>: scopes: could-not-derive` line for each candidate whose scopes could not be

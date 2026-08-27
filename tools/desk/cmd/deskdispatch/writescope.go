@@ -8,7 +8,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
-// writescope.go — the ADVISORY write-scope overlap echo (spec/brief-v1.md §4.1.1).
+// writescope.go — the ADVISORY write-scope overlap echo.
 //
 // Before the durable claim is taken, deskdispatch echoes any WRITE-OVERLAP between the item
 // about to be dispatched and the items already holding an in-flight dispatch claim for the

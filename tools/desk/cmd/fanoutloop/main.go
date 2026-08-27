@@ -118,7 +118,7 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 		fmt.Fprintf(out, "\n=== DISPATCH %s (tier=%s) ===\n%s\n", it.ID, tier, prompt)
 	}
 
-	// ADVISORY write-scope overlap warnings (spec/brief-v1.md §4.1.1), AFTER the queue rows.
+	// ADVISORY write-scope overlap warnings, AFTER the queue rows.
 	// These are coordination HINTS, not locks: nothing above was gated, delayed, or skipped on
 	// account of an overlap — every eligible item was planned exactly as before. Disjoint
 	// scopes print nothing; a candidate whose scopes cannot be derived is named
@@ -149,7 +149,7 @@ review-request dispatch tokens skipped), each item's tier, and the
 exact dispatch instruction. It spawns nothing, writes nothing, and touches no network. The autonomous
 drive / live-window cutover is gate:human — BLOCKED-ON-IAN.
 
-After the queue rows, 'plan' prints ADVISORY write-scope overlap warnings (spec/brief-v1.md §4.1.1):
+After the queue rows, 'plan' prints ADVISORY write-scope overlap warnings:
 a 'WRITE-OVERLAP: <candidate> ~ <in-flight> on <prefix>' line whenever a candidate brief's write
 scopes (derived from its Context 'files:' list) share a path prefix with an item already holding an
 in-flight dispatch claim for the same root. These are COORDINATION HINTS, NOT LOCKS — nothing is

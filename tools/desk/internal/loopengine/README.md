@@ -180,7 +180,7 @@ an economy-tier hook added here propagates to every consumer.
 
 Parallel workers isolated in worktrees still collide at **merge time** on a shared file. A
 brief's **write-scope set** (the path prefixes it expects to touch) makes that foreseeable
-collision visible at dispatch, before the work starts. Per `spec/brief-v1.md` §4.1.1 the set is
+collision visible at dispatch, before the work starts. The set is
 **derived** by default from the brief's Context `files:` list — each entry normalized to a
 repo-relative path prefix, a `../<repo>/…` entry to that sibling repo plus prefix, a glob
 trimmed back to its directory prefix — and **replaced** by an optional `write-scopes:`
