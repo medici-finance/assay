@@ -579,18 +579,18 @@ func preflight(dir, base string) (*gitFacts, error) {
 // branch diff is the surface that matters most in practice — it is the one carrying
 // go.sum blocks, lockfile digests and pre-existing content the branch cannot edit away.
 func scanWrite(f *gitFacts, title, verb, override string) error {
-	scan := func(surface string, content []byte) error {
+	scanWith := func(surface string, scanner func(string, []byte) error, content []byte) error {
 		return deskkit.HandleScanRefusal(deskkit.ScanOverride{
 			Tool: "deskpr", Verb: verb, Repo: f.repo, Reason: override,
 			Surface: surface, Content: content,
-		}, deskkit.ScanSurface(surface, content))
+		}, scanner(surface, content))
 	}
 	if title != "" {
-		if err := scan("PR title", []byte(title)); err != nil {
+		if err := scanWith("PR title", deskkit.ScanSurface, []byte(title)); err != nil {
 			return err
 		}
 	}
-	if err := scan("branch name", []byte(f.branch)); err != nil {
+	if err := scanWith("branch name", deskkit.ScanSurface, []byte(f.branch)); err != nil {
 		return err
 	}
 	diff, err := git(f.dir, "diff", f.defaultRef+"...HEAD")
@@ -603,12 +603,33 @@ func scanWrite(f *gitFacts, title, verb, override string) error {
 	// of deskkit's [A-Za-z0-9+/=] base64ish charset (e.g. `a/tools/desk/internal/deskkit/
 	// config.go`), so BodyCheck's high-entropy-run check refused diffs touching those
 	// files. Strip ONLY the strictly-matched meta lines before scanning; every content
-	// line (context, `+` added, `-` removed) still goes through BodyCheck in full, so
-	// detection strength on author-written content is unchanged. Gated here at the
+	// line (context, `+` added, `-` removed) still goes through the secret arms in full,
+	// so detection strength on author-written content is unchanged. Gated here at the
 	// diff-scanning callsite, not inside deskkit.BodyCheck — BodyCheck is generic (also
 	// used verbatim on PR bodies/comments/reviews) and must not grow diff-format
 	// awareness.
-	if err := scan("branch diff vs "+f.defaultRef, []byte(stripDiffMetaLines(diff))); err != nil {
+	//
+	// The diff surface is scanned in TWO passes because its two checks need DIFFERENT
+	// line directions (see deskkit.ScanSurfaceSecrets):
+	//
+	//   - the SECRET arms read the whole stripped diff — added, removed and context
+	//     lines alike. A credential on a removed line is still in the repository's
+	//     history, and a banner or Secret manifest already on origin arrives on exactly
+	//     this surface; that breadth is long-standing and deliberate.
+	//   - the impersonated-human-ruling guard reads the ADDED lines only. A deletion
+	//     cannot introduce a forged ruling — only added text can claim a human's voice —
+	//     and scanning removed lines false-positived on retirement branches whose whole
+	//     point was to DELETE old attribution lines ("Ruling: … — <name>" and kin).
+	//     Because that guard is non-overridable by design, the false positive was a
+	//     hard stop with no audited way through. Narrowing it to the added direction
+	//     removes that class while catching an added forged attribution exactly as
+	//     before.
+	if err := scanWith("branch diff vs "+f.defaultRef, deskkit.ScanSurfaceSecrets,
+		[]byte(stripDiffMetaLines(diff))); err != nil {
+		return err
+	}
+	if err := scanWith("added lines of branch diff vs "+f.defaultRef, deskkit.ScanSurfaceRulingClaim,
+		[]byte(addedDiffLines(diff))); err != nil {
 		return err
 	}
 	return nil
@@ -693,6 +714,55 @@ func stripDiffMetaLines(diff string) string {
 			}
 		}
 		kept = append(kept, ln)
+	}
+	return strings.Join(kept, "\n")
+}
+
+// addedDiffLines extracts the ADDED content lines of a unified diff — the lines this
+// branch INTRODUCES — with their leading `+` markers stripped, one per line. It is the
+// input to the impersonated-human-ruling guard's pass over the diff surface (see
+// scanWrite): only added text can claim a human's voice, so removed and context lines
+// are excluded by construction rather than by asking the guard to understand diffs.
+//
+// It mirrors stripDiffMetaLines' two-state scanner so the two views cannot disagree
+// about what is a header:
+//
+//   - header mode (entered at `^diff --git `, exited at the first `^@@ `) drops
+//     git-generated header lines, which is what keeps a `+++ b/<path>` file header from
+//     ever being read as an added content line;
+//   - inside a hunk, a line is kept exactly when it begins `+` (an added line), with
+//     that one marker removed — so line-start positioning and per-line citation
+//     handling inside the guard see the line as it exists in the file. A content line
+//     that itself begins `+` (rendered `++…` in the diff) keeps its remaining
+//     characters, which can only widen what is scanned, never narrow it;
+//   - hunk headers (`@@ … @@`) are pure line arithmetic and carry no author voice, so
+//     they are dropped;
+//   - text that never presents a `diff --git ` line is not git-diff output at all; it
+//     is returned WHOLE, so a malformed or unfamiliar input can only ever cause MORE
+//     scanning, never less — the same fail-open-toward-scanning posture as
+//     reHunkHeader's strictness.
+func addedDiffLines(diff string) string {
+	lines := strings.Split(diff, "\n")
+	kept := make([]string, 0, len(lines))
+	inHeader, isGitOutput := false, false
+	for _, ln := range lines {
+		if strings.HasPrefix(ln, "diff --git ") {
+			inHeader, isGitOutput = true, true
+			continue
+		}
+		if inHeader && strings.HasPrefix(ln, "@@ ") {
+			inHeader = false
+		}
+		if inHeader {
+			continue
+		}
+		if !isGitOutput {
+			kept = append(kept, ln)
+			continue
+		}
+		if strings.HasPrefix(ln, "+") {
+			kept = append(kept, ln[1:])
+		}
 	}
 	return strings.Join(kept, "\n")
 }

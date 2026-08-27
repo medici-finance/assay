@@ -263,6 +263,58 @@ func BodyCheck(body []byte) error { return ScanSurface(SurfaceBody, body) }
 // "branch diff vs origin/main"). The DETECTION is identical on every surface; only the
 // message differs.
 func ScanSurface(surface string, content []byte) error {
+	return scanSurface(surface, content, true)
+}
+
+// ScanSurfaceSecrets is ScanSurface WITHOUT the impersonated-human-ruling guard: every
+// credential arm and the high-entropy loop run exactly as in ScanSurface, in the same
+// order, with the same refusal messages; only the ruling-claim check is skipped.
+//
+// It exists for one caller shape: a DIFF surface, where the two checks need DIFFERENT
+// line directions. The secret arms deliberately read every line of a diff — added,
+// removed and context — because a credential on a removed or context line is still
+// sitting in the repository's history and working tree, and #778's committed-Secret
+// class arrives on exactly that surface. The ruling-claim guard must NOT read removed
+// lines: a deletion cannot introduce a forged ruling (only ADDED text can claim a
+// human's voice), so scanning the removal direction false-positives on every
+// retirement/cleanup branch that deletes an old attribution line — and, because the
+// impersonation guard is non-overridable BY DESIGN (see scanoverride.go), that false
+// positive is a hard stop with no audited way through, on a branch whose whole point
+// is to REMOVE the attributions. A diff-scanning caller therefore runs this over the
+// full diff and ScanSurfaceRulingClaim over the added lines only.
+//
+// Do not reach for this on a NON-diff surface: a body, title or branch name has no
+// removal direction, and ScanSurface (which includes the ruling-claim guard) is the
+// correct scan there.
+func ScanSurfaceSecrets(surface string, content []byte) error {
+	return scanSurface(surface, content, false)
+}
+
+// ScanSurfaceRulingClaim runs ONLY the impersonated-human-ruling guard
+// (impersonation.go) over content — the other half of the diff-surface split described
+// on ScanSurfaceSecrets. It reads the same marker surface ScanSurface hands the guard,
+// so a claim's verdict is identical whichever entry point evaluates it.
+//
+// The caller owns the direction narrowing: hand this the ADDED lines of a diff (never
+// the removed ones), with the leading `+` markers stripped so line-start positioning
+// (rulingClaimPrefixRe) and per-line citation checks (citedRelay) see the lines as they
+// exist in the file.
+func ScanSurfaceRulingClaim(surface string, content []byte) error {
+	if surface == "" {
+		surface = SurfaceBody
+	}
+	if name, found := ImpersonatedRulingClaim(markerSurface(string(content))); found {
+		return impersonationRefusal(surface, name)
+	}
+	return nil
+}
+
+// scanSurface is the shared engine behind ScanSurface and ScanSurfaceSecrets.
+// rulingClaim selects whether the impersonated-human-ruling guard runs; its position
+// in the arm order — after the literal-marker arms, before the high-entropy loop — is
+// unchanged from when it was inlined, so refusal precedence on a surface tripping more
+// than one arm is exactly what it was.
+func scanSurface(surface string, content []byte, rulingClaim bool) error {
 	if surface == "" {
 		surface = SurfaceBody
 	}
@@ -359,8 +411,13 @@ func ScanSurface(surface string, content []byte) error {
 	// path never posts as a human, so a body claiming a configured human's ruling BY
 	// NAME — "Decision (Alex, ...)", "Ruling: ... — Alex", "I (Alex) have decided" — is
 	// refused categorically, independent of whether the claim happens to be true.
-	if name, found := ImpersonatedRulingClaim(s); found {
-		return impersonationRefusal(surface, name)
+	// Skipped when the caller scans a surface whose removal direction must not be read
+	// (rulingClaim false — see ScanSurfaceSecrets); such a caller runs
+	// ScanSurfaceRulingClaim over the added lines instead.
+	if rulingClaim {
+		if name, found := ImpersonatedRulingClaim(s); found {
+			return impersonationRefusal(surface, name)
+		}
 	}
 	// Structured-format spans are computed ONCE over the whole surface, before the loop, so
 	// a recognised field is judged by its FORMAT rather than by the run's own shape. See
