@@ -36,6 +36,21 @@ var (
 	nonWordPairs = "QxPxXoZtNcYf" + "RhVsJuAeWnDz" + "KtEvFiYf"
 	identAllCaps = "TestHandlesHTTPSPROXY" + "UpstreamHealthCheck"
 
+	// Word-shaped Go test names that CLOSE on a short (2-4 char) ALL-CAPS acronym. Each is
+	// over the 32-char run threshold and — pre-fix — was refused as a high-entropy run
+	// regardless of maxIdentifierRun, because the trailing acronym's leading capital hit
+	// wordDecomposition's "capital with no lowercase" branch and sank the whole identifier.
+	// The trailing-acronym relaxation admits them. Split across concatenation for the same
+	// deskpr-diff-scan reason as scanSecret40 below (each fragment is under the threshold).
+	identTrailOK   = "TestHandlesSilenceAnd" + "ReturnsNotFoundOK"    // 38 chars, trailing 2-char OK
+	identTrailHTTP = "TestRequestParserSpeaks" + "OnlyPlainHTTP"      // 36 chars, trailing 4-char HTTP
+	// Guard fixtures the relaxation must STILL refuse:
+	identTrailHTTPS = "TestRequestParserSpeaks" + "OnlyPlainHTTPS"    // 37 chars, trailing acronym is 5 chars — too long
+	// A high-entropy token that merely ENDS in two capitals — the relaxation must not launder
+	// it: its body is base64 debris (the `Qx` pair is capital-plus-one-lowercase, not a word),
+	// so it refuses at that pair long before the tail, exactly as it did before.
+	tokenTrailCaps = "Qx7pLk2wZt9mNc4bYf6Rh" + "Vs8Ju3XoAeAB"
+
 	// #775 — the Verify/Evidence `key=path` shell-assignment idiom.
 	assignRun      = "f=docs/streams/" + "example-stream/version"
 	assignEvidence = "f=docs/streams/" + "example-stream/version-scheme.md"
@@ -458,11 +473,71 @@ func TestIsIdentifierLike(t *testing.T) {
 		// capital and an ALL-CAPS stretch are still refused outright, which is what keeps
 		// a webhook token tail and an AWS key's ALL-CAPS tail opaque.
 		{"ALL-CAPS stretch is still not a word", identAllCaps, false},
+		// A short (2-4 char) ALL-CAPS acronym CLOSING an otherwise word-shaped identifier is
+		// admitted — the trailing acronym rides on the word-shaped body and maxIdentifierRun
+		// governs length. Only the closing position and 2-4 letters are relaxed.
+		{"trailing 2-char acronym OK closes a word-shaped identifier", identTrailOK, true},
+		{"trailing 4-char acronym HTTP closes a word-shaped identifier", identTrailHTTP, true},
+		// Guard: a 5+ char trailing acronym is NOT admitted; a mid-run acronym is not either
+		// (identAllCaps above); and a token that merely ends in two capitals is not laundered.
+		{"trailing acronym over 4 chars (HTTPS) still refuses", identTrailHTTPS, false},
+		{"token that merely ends in two capitals is not laundered", tokenTrailCaps, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if got := isIdentifierLike(c.run); got != c.want {
 				t.Fatalf("isIdentifierLike(%q) = %v, want %v", c.run, got, c.want)
+			}
+		})
+	}
+}
+
+// TestTrailingAcronymIdentifiers pins the trailing-short-acronym relaxation end-to-end
+// through the real BodyCheck write gate. It is the security gate for the change: the fix is
+// worthless if it weakens secret detection, so the refuse table asserts that a genuine
+// high-entropy run, a 5+ char trailing acronym, and a mid-run ALL-CAPS stretch all still hit
+// the exit-5 refusal — the relaxation buys ONLY a short acronym that closes a word-shaped run.
+func TestTrailingAcronymIdentifiers(t *testing.T) {
+	// PASS: a word-shaped identifier ending in a 2-4 char acronym, at 33-100 chars, that the
+	// PRE-fix scanner refused as a high-entropy run regardless of the maxIdentifierRun cap.
+	pass := []struct {
+		name string
+		run  string
+	}{
+		{"trailing 2-char acronym (OK), 38 chars", identTrailOK},
+		{"trailing 4-char acronym (HTTP), 36 chars", identTrailHTTP},
+	}
+	for _, c := range pass {
+		t.Run("pass/"+c.name, func(t *testing.T) {
+			if !isIdentifierLike(c.run) {
+				t.Fatalf("isIdentifierLike(%q) = false, want true — a legitimate identifier is refused", c.run)
+			}
+			if err := BodyCheck([]byte("see " + c.run + " for the assertion")); err != nil {
+				t.Fatalf("BodyCheck rejected a body naming %q: %v", c.run, err)
+			}
+		})
+	}
+
+	// REFUSE: the relaxation must NOT widen high-entropy detection. Every row here is 33+
+	// chars, so BodyCheck scans it, and every one must still refuse with exit 5.
+	refuse := []struct {
+		name string
+		run  string
+	}{
+		{"genuine 40-char base64 secret still refuses (the entropy guard)", scanSecret40},
+		{"AWS example secret key, slashes stripped, still refuses", "wJalrXUtnFEMI" + "K7MDENG" + "bPxRfiCYEXAMPLEKEY"},
+		{"trailing acronym over 4 chars (HTTPS) still refuses", identTrailHTTPS},
+		{"mid-run ALL-CAPS stretch still refuses", identAllCaps},
+		{"token ending in two capitals is not laundered", tokenTrailCaps},
+		{"32 capital A's — a trailing run of only capitals is one word, needs two", strings.Repeat("A", 40)},
+	}
+	for _, c := range refuse {
+		t.Run("refuse/"+c.name, func(t *testing.T) {
+			if isIdentifierLike(c.run) {
+				t.Fatalf("isIdentifierLike(%q) = true, want false — token/over-length material admitted", c.run)
+			}
+			if err := BodyCheck([]byte(c.run)); !IsRefused(err) {
+				t.Fatalf("BodyCheck(%q) = %v, want Refused (exit 5)", c.run, err)
 			}
 		})
 	}
