@@ -1,0 +1,131 @@
+---
+brief: statusgen/12
+title: 'Cadenced roadmap artifacts — `--cadence weekly|monthly` window computation reusing the roadmap renderer, a `theme:` render rule, config-driven priority order and brand'
+wave: 1
+depends: []
+unblocks: []
+effort: M
+gate: model
+risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+issues: []
+schema: brief-v1
+authored: 2026-08-27 (authored clean for the statusgen board)
+why: >-
+  The `--roadmap` renderer answers one clock — "what is the portfolio's state right now."
+  Reviewers on a weekly or monthly cadence ask a different question: "how did the closed
+  week trend" and "what shipped over the month, and is every objective still covered."
+  Stretching one point-in-time page to answer all three bloats it; the durable fix is a
+  cadence flag that computes a closed time window (prior ISO week, prior calendar month)
+  and re-renders the SAME roadmap skeleton over that window. The scheduling of these runs,
+  the priority order they rank against, and the brand they wear are all adopter CONFIG —
+  the tool bakes in none of them, so any repo that consumes statusgen gets cadenced
+  artifacts by configuring, not forking.
+sources:
+  - "statusgen/roadmap.go + statusgen/roadmapdora.go — the `--roadmap` deck-overview renderer and its ONE Go health-rule table (`roadmapHealthRules`); this brief reuses that renderer and rule table over a computed window, it does not add a second renderer"
+  - "statusgen/main.go — the `-roadmap` flag registration (~L1107) and the `--roadmap` output path `docs/reports/roadmap/index.html`; the cadence flag is added beside it and switches the output directory to `docs/reports/<cadence>/<window>/`"
+  - "statusgen/main.go `-scope` — the existing product-tag (`serves:`) vocabulary the priority order is expressed in; the ordered list is read from config, never hard-coded in source"
+  - "the roadmap renderer's stream frontmatter reader — where the optional `theme:` key is parsed and the unmapped-renders-visibly rule lives"
+---
+
+# Brief 12 — Cadenced roadmap artifacts (`--cadence weekly|monthly`)
+
+An **implementation brief** on statusgen's own source. It generalizes the existing
+point-in-time `--roadmap` renderer to two additional cadences by computing a closed time
+window and re-rendering the same skeleton over it. Everything that differs between adopters —
+the priority order the monthly ranks against, the brand the deck wears, which sections a
+cadence emits — is CONFIG the tool reads, never a value in source. This brief adds no new
+renderer and no new health rules; it reuses `roadmap.go`'s renderer and its one health-rule
+table.
+
+## Context
+
+files: statusgen/main.go, statusgen/roadmap.go, statusgen/cadence.go (planned),
+statusgen/cadence_test.go (planned), the stream-frontmatter reader in the roadmap renderer.
+
+files (created/extended):
+- `statusgen/main.go` — register a `-cadence` string flag (`weekly` | `monthly`; empty =
+  today's point-in-time `--roadmap`, unchanged). When set with `-roadmap`, it selects the
+  window computation below and switches the output directory from
+  `docs/reports/roadmap/` to `docs/reports/<cadence>/<window>/`.
+- `statusgen/cadence.go` (planned) — pure window computation: given `now` and a cadence, return
+  the closed window `[start, end)`. `weekly` = the prior complete ISO week (Mon 00:00 UTC →
+  next Mon 00:00 UTC), labelled `%G-W%V`. `monthly` = the prior complete calendar month,
+  labelled `%Y-%m`. No I/O — a pure function so the boundary math is unit-testable.
+- `statusgen/roadmap.go` — thread the computed window into the existing renderer so
+  transition/exception accounting is scoped to `[start, end)` instead of point-in-time.
+  Exceptions that BOTH opened and closed inside the window count (a within-window churn
+  signal), not only those still open at `end`. Renderer and health-rule table are otherwise
+  unchanged.
+- the stream-frontmatter reader — parse an optional `theme:` key per stream README and apply
+  the unmapped-renders-visibly rule (below).
+
+facts:
+- **The renderer already exists.** `--roadmap` renders the deck-overview page from
+  `roadmap.go` + its `roadmapHealthRules` table to `docs/reports/roadmap/index.html`. This
+  brief does NOT rebuild it — `--cadence` reuses it verbatim over a computed window.
+- **Priority order is config, not source.** The monthly's effort-mix section ranks work by an
+  ORDERED list of product (`serves:`) tags read from adopter config — the same `serves:`
+  vocabulary `-scope` already validates. The tool ships with NO baked-in order; a repo that
+  sets none gets the sections rendered in an unranked/declaration order. No product name and
+  no ranking is compiled into statusgen.
+- **Brand is config, not source.** The deck's visual surface (palette, wordmark, dark/light)
+  is read from the running repo's brand config (a `docs/brand/` convention) when present, and
+  falls back to a neutral built-in default otherwise. statusgen hard-codes no brand.
+- **The revenue/supporting callout is a generic reporting concept, kept.** The monthly emits
+  an explicit line when supporting-tier work outweighed revenue-tier work for the window,
+  where "revenue tier" vs "supporting tier" is derived from the position of each `serves:` tag
+  in the configured priority order — no project identity attached, purely the ordered tiers
+  the adopter configured.
+- **`theme:` is optional and fails visibly, not silently.** A stream README may carry an
+  optional `theme:` frontmatter key. A `theme:` value with no mapped render style renders as a
+  VISIBLE "unmapped theme: <value>" marker on the deck rather than being dropped — an unmapped
+  theme is itself the signal, the same philosophy as the roadmap's untagged-renders-visibly
+  handling. Absent `theme:` is fine (no marker).
+- **Graceful degradation.** A cadence section whose upstream data is unavailable emits a
+  "pending" placeholder for that section rather than failing the whole run.
+- Output discipline: each cadence writes its own `docs/reports/<cadence>/<window>/` tree and
+  is STATUS.md-free, matching the existing `--roadmap`/`--dora`/`--trend` discipline (no
+  STATUS.md regen as a side effect).
+
+## Ground rules
+- Stop at `implemented` — you do not set verified/done.
+- No product names, no repo-specific priority order, and no brand values in source, tests, or
+  fixtures — the priority order and brand are read from config at runtime and are provided by
+  the adopter. Test fixtures use neutral placeholder tags only (e.g. `example-app`,
+  `example-service`), matching the `-scope` vocabulary already in `main.go`.
+- If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
+
+## Task
+
+1. Add the `-cadence weekly|monthly` flag (empty = unchanged point-in-time `--roadmap`) and
+   the pure window computation in `statusgen/cadence.go` (planned) (ISO-week and
+   calendar-month boundaries).
+   Thread the computed window into `roadmap.go`'s existing renderer; switch the output to
+   `docs/reports/<cadence>/<window>/`. Weekly WBR deck and monthly exec-summary content are
+   the same skeleton scoped to the window; exception accounting counts opened-AND-closed
+   within the window.
+2. Read the priority order (an ordered list of `serves:` tags) and the brand from adopter
+   config; ship NO baked-in order or brand. The monthly's effort-mix section and the generic
+   revenue-vs-supporting-tier callout derive their tiers from the configured order. Deck brand
+   reads from the repo's `docs/brand/` convention, neutral built-in fallback when absent.
+3. Add the optional `theme:` stream-frontmatter key and the unmapped-renders-visibly rule.
+4. Tests (`statusgen/cadence_test.go` (planned), plus renderer-level cases): cadence window computation
+   (ISO-week boundary incl. year-boundary weeks, and month boundary incl. December→January
+   and leap-February); opened-AND-closed exception accounting; unmapped-`theme:` renders a
+   visible marker; brand/priority fallbacks when config is absent (default order, default
+   brand, no panic).
+
+## Verify (executable — no prose-only DoD items)
+| # | Command | Expect |
+|---|---------|--------|
+| 1 | `statusgen --root . --roadmap --cadence weekly && command ls docs/reports/weekly/` | a week-labelled (`%G-W%V`) directory exists (literal window label per implementer's naming, recorded in Evidence) |
+| 2 | `statusgen --root . --roadmap --cadence monthly && command ls docs/reports/monthly/` | a month-labelled (`%Y-%m`) artifact directory exists |
+| 3 | `statusgen --root . --roadmap` (no `-cadence`) still writes `docs/reports/roadmap/index.html` | exit 0 — point-in-time mode unchanged |
+| 4 | `go test ./statusgen/ -count=1 -run Cadence -v > /tmp/cad.log 2>&1 && grep -q -- '--- PASS' /tmp/cad.log && go test ./statusgen/ -count=1 -run Theme -v > /tmp/thm.log 2>&1 && grep -q -- '--- PASS' /tmp/thm.log` | exit 0 — both the cadence-window and unmapped-theme test groups EXIST (a `--- PASS` line) and pass. No raw pipe: redirect to a file + `grep FILE`, chained with `&&`, so a group that runs nothing (no `--- PASS`) goes red |
+| 5 | `statusgen --root . --lint` | exit 0 |
+
+## Evidence
+<!-- appended at implementation time -->
+
+## Review
+Gate: model. Reviewer records verdict + date in the stream README table.
