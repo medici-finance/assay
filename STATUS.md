@@ -11,16 +11,16 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-26 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-26 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/5 | 2026-08-26 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-26 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-08-26 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-08-26 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-26 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-26 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/11 | 2026-08-26 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-27 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-27 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/5 | 2026-08-27 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-27 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-08-27 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-08-27 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-27 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-27 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-27 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/11 | 2026-08-27 |  |
 
 ## Next up
 
