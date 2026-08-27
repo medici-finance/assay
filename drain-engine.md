@@ -93,25 +93,25 @@ silently drop a transient one. The engine instead lands an unrecognised failure 
 needs-context and routes it to a human, which is the same three-state honesty the rest of our
 tooling uses: checked-clean, checked-failed, could-not-check.
 
-## Case study: draining a Canton delivery pipeline
+## Case study: draining a deployment-convergence pipeline
 
-The loops this engine drives are not abstract. One family of them runs our Canton pipeline —
-the path a Daml model takes from a merged change to a converged, verified ledger. A change
-lands, a model compiles to a DAR, the DAR ships, the ledger has to accept it, and a GitOps
-reconciler has to converge the cluster onto the new state. Each of those is an item in a
-queue, and each item's judgment — did the ledger actually accept this package, did the
-reconciler actually reach the declared state, or is it reporting progress it has not made —
-is real work an agent does per item.
+The loops this engine drives are not abstract. One family of them runs a deployment-
+convergence pipeline — the path a merged change takes to a converged, verified environment. A
+change lands, it is built into an artifact, the artifact ships, a target system has to accept
+it, and a reconciler has to converge the environment onto the new declared state. Each of
+those is an item in a queue, and each item's judgment — did the target system actually accept
+this package, did the reconciler actually reach the declared state, or is it reporting
+progress it has not made — is real work an agent does per item.
 
-Here the separation earns itself twice over. Verifying a Canton deployment is exactly the
+Here the separation earns itself twice over. Verifying a deployment is exactly the
 kind of task where the tempting shortcut is to trust the report: the pipeline says converged,
 so mark it converged. The scheduler-in-code arrangement makes that shortcut unrepresentable
 for the drain, because the only way an item leaves the queue is through dispatch to a verifier
-that queries the ledger and the cluster directly. There is no inline "the queue-runner
+that queries the target system and the environment directly. There is no inline "the queue-runner
 verified it in passing" path, because the queue-runner is code that cannot verify anything —
-it can only dispatch. A Canton convergence check that would have been a plausible thing for a
+it can only dispatch. A convergence check that would have been a plausible thing for a
 distracted orchestrator to wave through is now a dispatched item with a recorded command, an
-exit code, and the ledger response it was derived from. The Canton work is a minority of what
+exit code, and the system response it was derived from. This convergence work is a minority of what
 the fleet does — most items are ordinary software briefs — but it is the part where "the
 scheduler cannot cut corners because the scheduler cannot judge" pays the largest dividend.
 
