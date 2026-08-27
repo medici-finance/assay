@@ -123,6 +123,7 @@ An adopter's green lint is silent about all of them.
 | `brief-v1.md` §9.2.7 (literal commands) | Only that a Verify table exists with one row whose Command and Expect cells are non-empty. | A prose-only row (`the tests should all pass` / `it works`) lints clean. | — |
 | `brief-v1.md` §9.2.10 (diagnostic shape) | No diagnostic carries a line number; the rule reference appears on some only. | A diagnostic is not machine-locatable within its file. | — |
 | `brief-v1.md` §5.4 (`unblocks` inversion) | Each `unblocks` entry is resolved to a real brief, but mutual inversion with the target's `depends` is never verified. | A one-way dependency edge lints clean, and the wave graph derived from it is wrong in one direction. | — |
+| `brief-v1.md` §3.2 / §4.1.1 (`write-scopes`) | The `write-scopes` field is not parsed or validated, and no write-scope set is derived from the Context `files:` line. | The advisory dispatch-time overlap warning has no data from this tool; a dispatch consumer must derive scopes itself, and a malformed `write-scopes` value lints clean. | — |
 | `registers-v1.md` §7.2.6 (scoped-but-`new`) | Not implemented; the tool has the *inverse* alarm (it ages entries still marked `new`). | An entry scoped into a stream but left `new` is not flagged. | — |
 | `registers-v1.md` §7.2.8 (entry format) for FINDINGS | An entry with an empty `affects:` lints clean, though §4.3 requires one or more brief IDs. Holds for INTAKE (date + disposition key). | A finding that affects nothing passes, and excludes nothing. | — |
 

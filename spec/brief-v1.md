@@ -54,9 +54,9 @@ MUST accept a brief that omits them, and MUST NOT treat their presence as an err
 
 ### 3.2 Optional fields
 
-These fields are OPTIONAL. Each is parsed by the reference implementation, so a brief
-that omits the whole group is conforming, and a brief that carries one MUST have it
-validated against the value set given.
+These fields are OPTIONAL: a brief that omits the whole group is conforming, and a
+brief that carries one MUST have it validated against the value set given. Except
+where a row discloses otherwise, each is parsed by the reference implementation.
 
 | Field | Type | Requirement | Description |
 |-------|------|-------------|-------------|
@@ -64,6 +64,7 @@ validated against the value set given.
 | `exec-tier` | string | OPTIONAL | One of `any` or `strong`. `strong` asserts the brief MUST NOT be dispatched to a cheap-tier implementer regardless of `effort` (section 6). An out-of-set value MUST be flagged. |
 | `exec-tier-why` | string | CONDITIONAL | One-line rationale. REQUIRED when `exec-tier` is `strong`; a `strong` brief without it MUST be flagged. |
 | `decision-issue` | integer | OPTIONAL | Tracker issue that carries the human sign-off for a `gate: human` brief. A conforming linter SHOULD emit a non-fatal notice when a `gate: human` brief is in flight (`in-progress`, `implemented`, or `verified`) without one, and MUST NOT hard-error on its absence. |
+| `write-scopes` | array[string] | OPTIONAL | Explicit write-scope set: normalized repo-relative path prefixes that REPLACE the set derived from the Context `files:` line (section 4.1.1) when derivation is wrong or too coarse. Advisory coordination hints, never locks or filesystem authorization. A non-list value or a non-string entry MUST be flagged. **Not parsed by the reference implementation** (`statusgen/v0.8.0`); see `spec/README.md` § "Known divergences from the reference implementation". |
 
 ### 3.3 Frontmatter linter requirements
 
@@ -86,6 +87,31 @@ configuration key, field meaning, wire/JSON format, or default — anything anot
 component reads), the Context section MUST include a `consumers:` line that greps
 every reader and lists each with a disposition: `fixed-here`, `follow-up <stream>/NN`,
 or `out-of-scope <reason>`.
+
+#### 4.1.1 Write scopes (advisory, derived)
+
+Every brief has a **write-scope set**: the path prefixes it expects to write. By
+default the set is DERIVED from the Context `files:` line — each entry normalizes to
+a repo-relative path prefix, and an entry addressed to a sibling repository
+(`../<repo>/<path>`) normalizes to that repository plus prefix. The OPTIONAL
+`write-scopes` frontmatter field (section 3.2) replaces the derived set when
+derivation is wrong or too coarse.
+
+Write scopes are **advisory coordination hints, not locks**:
+
+- A dispatch-time consumer SHOULD warn when a candidate brief's write scopes overlap
+  those of a brief already in flight, so a foreseeable merge-time collision on a
+  shared file is surfaced before work starts rather than at merge.
+- A consumer MUST NOT block a dispatch, refuse a claim, or serialize execution on the
+  basis of write scopes alone, and MUST NOT treat a write scope as granting or
+  denying filesystem access.
+- A brief whose write-scope set cannot be derived MUST be reported as
+  `could-not-derive` per the three-state invariant (section 8) — never as having no
+  overlaps.
+
+Overlap between briefs is not an authoring error: deliberate overlap (for example, an
+agreed merge-serialization within a stream) is conforming, and a linter MUST NOT flag
+scope overlap between briefs.
 
 ### 4.2 Ground rules
 
