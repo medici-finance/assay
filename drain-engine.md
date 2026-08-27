@@ -98,9 +98,9 @@ tooling uses: checked-clean, checked-failed, could-not-check.
 The loops this engine drives are not abstract. One family of them runs a deployment-
 convergence pipeline — the path a merged change takes to a converged, verified environment. A
 change lands, it is built into an artifact, the artifact ships, a target system has to accept
-it, and a reconciler has to converge the environment onto the new declared state. Each of
+it, and a convergence controller has to converge the environment onto the new declared state. Each of
 those is an item in a queue, and each item's judgment — did the target system actually accept
-this package, did the reconciler actually reach the declared state, or is it reporting
+this package, did the convergence controller actually reach the declared state, or is it reporting
 progress it has not made — is real work an agent does per item.
 
 Here the separation earns itself twice over. Verifying a deployment is exactly the
