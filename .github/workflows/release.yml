@@ -376,6 +376,7 @@ jobs:
         include:
           - leg: statusgen
           - leg: desk-tools
+          - leg: drainloop
           - leg: muhar-light
           - leg: deskmerge
             shard: 0/3
@@ -431,6 +432,15 @@ jobs:
         run: |
           set -euo pipefail
           cd tools/desk && go test ./... && go vet ./...
+
+      - name: Test and vet drainloop (source component, isolated)
+        if: matrix.leg == 'drainloop'
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          go version
+          cd drainloop && go vet ./... && go test ./...
 
       # THE GATE QUALITY BAR (docs/desk-tools-gate-bar.md). The desk-tools
       # `go test ./...` (on its own leg of this matrix) already runs these, so
@@ -870,7 +880,7 @@ jobs:
             # The notes NAME the desk-tools image ref (built separately by
             # docker-publish.yml) as an artifact line alongside the binaries.
             desk_image_ref="${DESK_IMAGE}:${DESK_IMAGE_TAG}"
-            body=$(RELEASE_TAG="$RELEASE_TAG" DESK_IMAGE_REF="$desk_image_ref" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; img=os.environ["DESK_IMAGE_REF"]; notes="assay release "+tag+" - statusgen + desk-tools.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * desk-tools-<platform>.tar.gz\n\ndesk-tools image (built separately by docker-publish.yml, daily-immutable-tag; pin the ref in .assay-versions):\n  * "+img+"\n\nSee checksums.txt for every asset sha256."; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
+            body=$(RELEASE_TAG="$RELEASE_TAG" DESK_IMAGE_REF="$desk_image_ref" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; img=os.environ["DESK_IMAGE_REF"]; notes="assay release "+tag+" - statusgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * desk-tools-<platform>.tar.gz\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\ndesk-tools image (built separately by docker-publish.yml, daily-immutable-tag; pin the ref in .assay-versions):\n  * "+img+"\n\nSee checksums.txt for every asset sha256."; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
             status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' -X POST "${auth[@]}" \
               -d "$body" "${api}/releases")
             if [ "$status" != "201" ]; then
