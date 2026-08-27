@@ -288,19 +288,40 @@ func parseRef(line string) (refLine, bool) {
 	if len(parts) < 2 {
 		return refLine{}, false
 	}
-	local := parts[0]
+	// The pre-push hook feeds one line per ref as
+	//   <local-ref> <local-sha> <remote-ref> <remote-sha>
+	// The branch being UPDATED is named by the REMOTE ref (parts[2]), not the local
+	// ref (parts[0]). On an ordinary by-name push the two spell the same branch, but a
+	// detached-HEAD update push — `git push origin HEAD:refs/heads/<branch>`, the standard
+	// shape when a resume/shepherd worker updates an existing PR branch from an isolated
+	// worktree — has a LOCAL ref of `HEAD`. Deriving the branch from the local side then
+	// yields the literal name "HEAD", which has two downstream failures: fetchPR looks up a
+	// PR for a branch that does not exist (a silent fail-open no-op), and — worse — the
+	// foreign-commit self-exclusion compares against `origin/HEAD`, which never matches the
+	// real branch, so the PR's OWN already-published commits are reported as foreign commits
+	// "dragged in from a sibling branch" and the push is refused. Prefer the remote ref so the
+	// branch name is always the one actually being written; fall back to the local ref only
+	// when the remote side is absent (e.g. a short test line with fewer than three fields).
+	refName := parts[0]
+	if len(parts) >= 3 && parts[2] != "" {
+		refName = parts[2]
+	}
 	var branch string
-	if strings.HasPrefix(local, "refs/heads/") {
+	if strings.HasPrefix(refName, "refs/heads/") {
 		// Keep the FULL slashed branch name (e.g. fix/issue-108). filepath.Base
 		// collapses it to the last segment (issue-108), so fetchPR looks up a
 		// branch that does not exist, finds no PR, and the guard fails OPEN on
 		// the house slash-branch convention — a silent no-op (#267).
-		branch = strings.TrimPrefix(local, "refs/heads/")
+		branch = strings.TrimPrefix(refName, "refs/heads/")
 	} else {
 		// Tags and other refs keep their leaf name (e.g. refs/tags/v1.0 -> v1.0).
-		branch = filepath.Base(local)
+		branch = filepath.Base(refName)
 	}
-	if branch == "." || branch == "/" || branch == "" {
+	// "HEAD" is never a real branch to look up or self-exclude against — it only appears
+	// when neither side of the refspec named a branch (a bare-HEAD line, or the local-side
+	// fallback above on a detached push whose remote ref was somehow missing). Refuse to
+	// derive a branch from it rather than resurrect the origin/HEAD mismatch this fix removes.
+	if branch == "." || branch == "/" || branch == "" || branch == "HEAD" {
 		return refLine{}, false
 	}
 	localSHA := ""
