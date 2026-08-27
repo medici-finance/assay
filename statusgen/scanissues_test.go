@@ -27,13 +27,23 @@ func fixtureCommentLister(data map[string][]issueComment, failKey string) commen
 	}
 }
 
+// fixtureCommentID resolves the numeric database id a login legitimately carries
+// under the active test roster (bless authority + authorized authors), mirroring
+// what GitHub returns on a real comment's .user.id. It lets buildComments fixtures
+// pin the bless authority's id automatically so the id-aware unblock gate
+// (isBlessAuthorityID) accepts them; unrostered logins resolve to 0 (as GitHub
+// would still return a real id, but the unblock gate rejects them on login anyway).
+func fixtureCommentID(login string) int64 {
+	return authorizedAuthorSet()[strings.ToLower(login)]
+}
+
 // buildComments constructs a []issueComment fixture from (login, type, createdAt) triples.
 // Use buildCommentsWithBody for tests that need comment bodies (e.g. marker detection).
 func buildComments(entries ...[3]string) []issueComment {
 	var out []issueComment
 	for _, e := range entries {
 		out = append(out, issueComment{
-			User:      issueCommentUser{Login: e[0], Type: e[1]},
+			User:      issueCommentUser{Login: e[0], ID: fixtureCommentID(e[0]), Type: e[1]},
 			CreatedAt: e[2],
 		})
 	}
@@ -47,7 +57,7 @@ func buildCommentsWithBody(entries ...[4]string) []issueComment {
 	var out []issueComment
 	for _, e := range entries {
 		out = append(out, issueComment{
-			User:      issueCommentUser{Login: e[0], Type: e[1]},
+			User:      issueCommentUser{Login: e[0], ID: fixtureCommentID(e[0]), Type: e[1]},
 			CreatedAt: e[2],
 			Body:      e[3],
 		})
@@ -1687,12 +1697,53 @@ func TestUnblockRequiresTrustedHuman(t *testing.T) {
 		t.Error("an external commenter must not produce an un-blocking answer")
 	}
 	ada := append(external, issueComment{
-		User:      issueCommentUser{Login: "ada", Type: "User"},
+		User:      issueCommentUser{Login: "ada", ID: 100001, Type: "User"},
 		CreatedAt: "2026-07-23T10:00:00Z",
 		Body:      "answered.",
 	})
 	ts, found := newestNonBotCommentTime(ada)
 	if !found || ts.Format("2006-01-02") != "2026-07-23" {
 		t.Errorf("ada's answer must count: found=%v ts=%v", found, ts)
+	}
+}
+
+// TestUnblockRequiresBlessID mirrors TestBlessLoginRequiresID for the un-block
+// path: the blessing authority's login alone is NOT sufficient to un-block a
+// parked placeholder — the comment author's numeric id must ALSO match the pinned
+// bless id (isBlessAuthorityID). GitHub logins are recyclable, so a comment
+// carrying the bless LOGIN but a different id (a renamed/re-registered account)
+// must fail closed, exactly as trustgate does on every other seam. Neutral
+// fixture ids only.
+func TestUnblockRequiresBlessID(t *testing.T) {
+	base := "2026-07-23T10:00:00Z"
+
+	// The configured bless authority (login + pinned id) un-blocks.
+	pinned := []issueComment{{
+		User:      issueCommentUser{Login: "ada", ID: 100001, Type: "User"},
+		CreatedAt: base,
+		Body:      "answered.",
+	}}
+	if _, found := newestNonBotCommentTime(pinned); !found {
+		t.Error("the bless authority carrying its pinned id must un-block")
+	}
+
+	// Same login, WRONG id (recycled/renamed login) → must NOT un-block.
+	recycled := []issueComment{{
+		User:      issueCommentUser{Login: "ada", ID: 31337, Type: "User"},
+		CreatedAt: base,
+		Body:      "answered.",
+	}}
+	if _, found := newestNonBotCommentTime(recycled); found {
+		t.Error("the bless login carrying a DIFFERENT id (recycled login) must NOT un-block")
+	}
+
+	// Same login, id 0 (resolver could not read it) → fail closed.
+	noID := []issueComment{{
+		User:      issueCommentUser{Login: "ada", ID: 0, Type: "User"},
+		CreatedAt: base,
+		Body:      "answered.",
+	}}
+	if _, found := newestNonBotCommentTime(noID); found {
+		t.Error("the bless login carrying id 0 must NOT un-block (fail closed without numeric id)")
 	}
 }
