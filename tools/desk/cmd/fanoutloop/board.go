@@ -29,6 +29,10 @@ type BoardRow struct {
 	Implementer string
 	OutOfRepo   bool // brief Context declares `out-of-repo files:` (out-of-repo serialization)
 	BriefPath   string
+	// WriteScopes is the row's ADVISORY write-scope set (spec §4.1.1), derived from the
+	// brief's Context `files:` list. Carried onto the Item so `plan` can warn on overlap with
+	// in-flight claims. Advisory only — never gates dispatch. The zero value is could-not-derive.
+	WriteScopes loopengine.WriteScopeSet
 	// Labels is the issue's authoritative GitHub label set, when the board source can supply it (an
 	// issue-sourced / live board). It is the AUTHORITATIVE discriminator for a foreign dispatch token
 	// (the `review-request` label) — see isForeignDispatchToken. The default STATUS.md reader carries
@@ -56,6 +60,7 @@ func (r BoardRow) toItem(targetSHA string) loopengine.Item {
 		Effort:      r.Effort,
 		ExecTier:    r.ExecTier,
 		Implementer: r.Implementer,
+		WriteScopes: r.WriteScopes,
 		Payload: map[string]string{
 			"repo":        r.Repo,
 			"kind":        kindBrief,
@@ -185,7 +190,7 @@ func readNextUp(root, targetSHA string) ([]BoardRow, error) {
 		num := strings.TrimSpace(m[1])
 		title := strings.TrimSpace(m[2])
 		br := BoardRow{Stream: stream, Num: num, Title: title}
-		br.BriefPath, br.Effort, br.ExecTier, br.Gate, br.Risk, br.Implementer, br.OutOfRepo = resolveBrief(root, stream, num)
+		br.BriefPath, br.Effort, br.ExecTier, br.Gate, br.Risk, br.Implementer, br.OutOfRepo, br.WriteScopes = resolveBrief(root, stream, num)
 		rows = append(rows, br)
 	}
 	return rows, nil
@@ -241,21 +246,22 @@ func splitPipes(line string) []string {
 // resolveBrief finds a Next-up row's brief file and parses the frontmatter subset + the
 // out-of-repo Context declaration. A row with no resolvable brief file returns zero frontmatter
 // (it still dispatches at the economy default) rather than being silently dropped.
-func resolveBrief(root, stream, num string) (path, effort, execTier, gate string, risk loopengine.RiskFlags, implementer string, outOfRepo bool) {
+func resolveBrief(root, stream, num string) (path, effort, execTier, gate string, risk loopengine.RiskFlags, implementer string, outOfRepo bool, scopes loopengine.WriteScopeSet) {
 	matches, _ := filepath.Glob(filepath.Join(root, "docs", "streams", stream, "brief-"+num+"-*.md"))
 	if len(matches) == 0 {
-		return "", "", "", "", loopengine.RiskFlags{}, "", false
+		// No resolvable brief file: scopes are UNKNOWN (could-not-derive), never silently clear.
+		return "", "", "", "", loopengine.RiskFlags{}, "", false, loopengine.WriteScopeSet{}
 	}
 	raw, err := os.ReadFile(matches[0])
 	if err != nil {
-		return "", "", "", "", loopengine.RiskFlags{}, "", false
+		return "", "", "", "", loopengine.RiskFlags{}, "", false, loopengine.WriteScopeSet{}
 	}
 	rel, rerr := filepath.Rel(root, matches[0])
 	if rerr != nil || rel == "" {
 		rel = matches[0]
 	}
 	fm := parseFrontmatter(string(raw))
-	return rel, fm.Effort, fm.ExecTier, fm.Gate, fm.Risk, fm.Implementer, declaresOutOfRepo(string(raw))
+	return rel, fm.Effort, fm.ExecTier, fm.Gate, fm.Risk, fm.Implementer, declaresOutOfRepo(string(raw)), loopengine.DeriveWriteScopes(string(raw))
 }
 
 // declaresOutOfRepo reports whether a brief's Context declares `out-of-repo files:` (paths outside

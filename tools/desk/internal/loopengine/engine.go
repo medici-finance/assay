@@ -25,6 +25,14 @@ type Item struct {
 	// Retry optionally overrides Config.Retry for this item alone. nil
 	// means the engine default. It is Item DATA, not a Loop hook.
 	Retry *RetryPolicy
+	// WriteScopes is the item's ADVISORY write-scope set (spec/brief-v1.md §4.1.1): the
+	// normalized path prefixes the brief expects to touch, derived from its Context `files:`
+	// list (or an explicit `write-scopes:` frontmatter override). It is a coordination HINT,
+	// never a lock: the engine reasons about nothing with it and nothing is gated on it. A
+	// dispatch-time consumer may WARN when two in-flight items' scopes overlap; see
+	// writescope.go. The zero value is an underivable (could-not-derive) set — honest by
+	// default, never silently "no overlaps".
+	WriteScopes WriteScopeSet
 }
 
 // RiskFlags is the parsed brief-v1 risk frontmatter (the four canonical keys).

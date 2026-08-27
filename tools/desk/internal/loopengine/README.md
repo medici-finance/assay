@@ -176,6 +176,27 @@ fit those two hooks does NOT go in the engine**: a proposed new hook is a design
 a contract-erosion issue), not a patch. Four downstream briefs (02–05) consume this contract;
 an economy-tier hook added here propagates to every consumer.
 
+## Advisory write-scopes — a coordination hint, never a lock
+
+Parallel workers isolated in worktrees still collide at **merge time** on a shared file. A
+brief's **write-scope set** (the path prefixes it expects to touch) makes that foreseeable
+collision visible at dispatch, before the work starts. Per `spec/brief-v1.md` §4.1.1 the set is
+**derived** by default from the brief's Context `files:` list — each entry normalized to a
+repo-relative path prefix, a `../<repo>/…` entry to that sibling repo plus prefix, a glob
+trimmed back to its directory prefix — and **replaced** by an optional `write-scopes:`
+frontmatter override. `writescope.go` carries the pure derivation + overlap logic;
+`writescope_io.go` the offline readers; `Item.WriteScopes` carries the set as **data**.
+
+It is a **coordination HINT, not a lock** (verbatim from the donor mechanism: "coordination
+hints, not locks"). Nothing here blocks a dispatch, gates a claim, serializes execution, or
+authorizes/denies a filesystem write — the sole product is a warning line a human reads
+(`WRITE-OVERLAP: <candidate> ~ <in-flight> on <prefix>`), emitted by the plan/dispatch surfaces
+**after** every eligible item is already scheduled. Proceeding over a warning is correct when
+the overlap is intended (an agreed merge-serialization). This adds **no new `Loop` hook** — it
+is plan-output data plus a dispatch-time read, riding `Item` data, so the frozen contract is
+untouched. Three-state honest: a brief whose scope set cannot be derived is reported
+`could-not-derive`, never rounded down to "no overlaps".
+
 ## Dispatch mode — interim now, native primitive later (Open Question 9.1, resolved)
 
 A Go conductor **cannot call the harness `Agent` tool** — there is no Go binding to it. So

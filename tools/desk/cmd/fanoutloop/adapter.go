@@ -48,6 +48,11 @@ type FanoutLoop struct {
 	// means NONE: the OFFLINE reference build issues no `gh` sweep, so the live orphan lane is wired
 	// only at cutover. Tests inject fixtures here.
 	Orphans func() ([]OrphanPR, error)
+	// InFlight is the in-flight-claim source for the ADVISORY write-scope overlap warning
+	// (spec §4.1.1): the items already claimed for this root, carried as their derived
+	// write-scopes. nil reads the root repo's local `refs/dispatch/*` claims (offline). Tests
+	// inject fixtures here. It is ADVISORY only — nothing dispatches or blocks on it.
+	InFlight func() ([]loopengine.Item, error)
 
 	// Emit is where interim-mode dispatch instructions are printed. nil = stdout.
 	Emit io.Writer

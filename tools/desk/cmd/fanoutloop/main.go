@@ -27,6 +27,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -74,6 +75,15 @@ func run(args []string) int {
 }
 
 func cmdPlan(args []string) error {
+	// `plan --help` prints the command usage (which documents the advisory WRITE-OVERLAP
+	// output) rather than the bare flag defaults, so the surface is discoverable from the
+	// subcommand itself, not only the top-level help.
+	for _, a := range args {
+		if a == "-h" || a == "--help" || a == "help" {
+			fmt.Fprint(os.Stdout, usage)
+			return nil
+		}
+	}
 	fs := flag.NewFlagSet("plan", flag.ContinueOnError)
 	root := fs.String("root", ".", "repo root to scan for the Next-up queue")
 	sha := fs.String("sha", "", "merged-main target SHA workers branch from")
@@ -82,22 +92,47 @@ func cmdPlan(args []string) error {
 	}
 
 	f := &FanoutLoop{Root: *root, TargetSHA: *sha}
+	return renderPlan(f, os.Stdout)
+}
+
+// renderPlan writes the deterministic plan output (queue rows + the advisory WRITE-OVERLAP
+// warnings) to out. Split from cmdPlan so a test can drive it with injected Board / InFlight
+// sources and capture the output. The advisory-warning contract is asserted here: the queue is
+// rendered in full FIRST and no overlap ever gates, reorders, or drops a row.
+func renderPlan(f *FanoutLoop, out io.Writer) error {
 	items, err := f.SelectQueue()
 	if err != nil {
 		return deskkit.Unverifiable("cannot read the Next-up queue", err)
 	}
-	fmt.Printf("worker-desk plan: %d item(s) to dispatch (orphan resumes first, then Next-up in board order)\n", len(items))
+	fmt.Fprintf(out, "worker-desk plan: %d item(s) to dispatch (orphan resumes first, then Next-up in board order)\n", len(items))
 	for _, it := range items {
 		tier, terr := f.TierPolicy(it)
 		if terr != nil {
-			fmt.Printf("\n-- %s: tier error: %v\n", it.ID, terr)
+			fmt.Fprintf(out, "\n-- %s: tier error: %v\n", it.ID, terr)
 			continue
 		}
 		prompt := renderDispatchPrompt(it, tier)
 		if err := assertNoSharedCheckout(prompt); err != nil {
 			return deskkit.Refused(err.Error())
 		}
-		fmt.Printf("\n=== DISPATCH %s (tier=%s) ===\n%s\n", it.ID, tier, prompt)
+		fmt.Fprintf(out, "\n=== DISPATCH %s (tier=%s) ===\n%s\n", it.ID, tier, prompt)
+	}
+
+	// ADVISORY write-scope overlap warnings (spec/brief-v1.md §4.1.1), AFTER the queue rows.
+	// These are coordination HINTS, not locks: nothing above was gated, delayed, or skipped on
+	// account of an overlap — every eligible item was planned exactly as before. Disjoint
+	// scopes print nothing; a candidate whose scopes cannot be derived is named
+	// `could-not-derive` (three-state honest), never silently treated as clear.
+	inflight, ierr := f.inFlightSource()
+	if ierr != nil {
+		// Advisory: an unreadable claim universe never fails the plan. Note it on stderr and
+		// fall through with no in-flight items — the candidates' own could-not-derive lines
+		// still print (they do not depend on the in-flight read), honoring three-state honesty.
+		fmt.Fprintf(os.Stderr, "fanoutloop: WARNING: could not read in-flight dispatch claims for the write-scope overlap check (%v) — overlap warnings omitted\n", ierr)
+		inflight = nil
+	}
+	for _, w := range loopengine.WriteOverlapWarnings(items, inflight) {
+		fmt.Fprintln(out, w)
 	}
 	return nil
 }
@@ -113,6 +148,13 @@ Next-up board in board order — issue-<NN> placeholders INCLUDED, only a differ
 review-request dispatch tokens skipped), each item's tier, and the
 exact dispatch instruction. It spawns nothing, writes nothing, and touches no network. The autonomous
 drive / live-window cutover is gate:human — BLOCKED-ON-IAN.
+
+After the queue rows, 'plan' prints ADVISORY write-scope overlap warnings (spec/brief-v1.md §4.1.1):
+a 'WRITE-OVERLAP: <candidate> ~ <in-flight> on <prefix>' line whenever a candidate brief's write
+scopes (derived from its Context 'files:' list) share a path prefix with an item already holding an
+in-flight dispatch claim for the same root. These are COORDINATION HINTS, NOT LOCKS — nothing is
+blocked, delayed, or skipped on account of an overlap. A brief whose scopes cannot be derived is
+named 'could-not-derive' (never silently treated as clear); disjoint scopes print nothing.
 
 Exit: 0 ok · 3 disabled · 5 refused · 6 unverifiable · 7 author==runner.
 `
