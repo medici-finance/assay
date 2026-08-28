@@ -153,9 +153,9 @@ func extractSectionByPrefix(body, prefix string) string {
 // indicating a model verifier has run and passed the brief's Verify table.
 //
 // DELIBERATELY STRICT, and deliberately NOT the same test as
-// lastVerifyVerdict below. This one is a GATE: it decides whether an
-// irreversible brief may advance to a human sign-off (see signOff) and whether
-// a verify issue is emitted. A gate must fail CLOSED — an Evidence body whose
+// lastVerifyVerdict below. This one is a GATE: it decides whether a gate:human
+// brief at `implemented` may advance to a human sign-off and whether a verify
+// issue is emitted. A gate must fail CLOSED — an Evidence body whose
 // pass is written in some looser form is refused, and the fix is to write the
 // canonical marker, not to loosen the gate. The two live side by side so the
 // asymmetry is visible rather than discovered.
@@ -289,7 +289,7 @@ func evidenceVerifierInfo(evidence string) (date, runner string) {
 
 // unrunRowsText returns the UNRUN rows from an Evidence section as a single string
 // (one row per line), or "" when no row contains UNRUN. Used for the prominent
-// rendering on irreversible-gate cards.
+// rendering on the implemented-at-gate cards.
 func unrunRowsText(evidence string) string {
 	if !strings.Contains(strings.ToUpper(evidence), "UNRUN") {
 		return ""
@@ -377,15 +377,24 @@ func renderVerifyBody(root string, bf *BriefFile) string {
 	return b.String()
 }
 
-// renderIrreversibleGateBody builds the self-contained markdown issue body for an
-// irreversible brief that is stuck at `implemented` with a recorded model verify
+// renderImplementedGateBody builds the self-contained markdown issue body for a
+// gate:human brief that is stuck at `implemented` with a recorded model verify
 // pass. It is DISTINGUISHED from the ordinary verified→done card: closing advances
 // implemented→verified→done in one step; UNRUN/deferred rows are surfaced prominently;
 // trade-offs and prior-state remediation are explicitly prompted.
-func renderIrreversibleGateBody(root string, bf *BriefFile) string {
+//
+// The irreversible flag only changes the heading wording. Both classes reach this
+// card by the same route (implemented + recorded **VERIFY: PASS**) and close the
+// same way — the Verified cell is stamped from the recorded model run, the Reviewed
+// cell from the human closer — so the body is otherwise identical.
+func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", verifyMarker(bf.Brief))
-	fmt.Fprintf(&b, "## Human sign-off required (irreversible) — %s\n\n", bf.Brief)
+	if irreversible {
+		fmt.Fprintf(&b, "## Human sign-off required (irreversible) — %s\n\n", bf.Brief)
+	} else {
+		fmt.Fprintf(&b, "## Human sign-off required (verified-by-model at implemented) — %s\n\n", bf.Brief)
+	}
 	fmt.Fprintf(&b, "**%s**\n\n", bf.Title)
 
 	// Explain the one-step advance: closing moves implemented→verified→done.
@@ -476,11 +485,14 @@ func renderIrreversibleGateBody(root string, bf *BriefFile) string {
 
 // verifyIssues computes the newly-eligible verify-gate issues: briefs that are
 // gate: human, whose README-row status is exactly `verified`, and whose marker
-// is not already in the supplied existing-markers set. Also emits for irreversible
-// briefs at `implemented` whose Evidence records a model verify pass — the
-// chicken-and-egg fix: irreversible briefs cannot reach `verified` without
-// a human sign-off, so they must be surfaced at `implemented`. Output is sorted by
-// brief id for deterministic emission.
+// is not already in the supplied existing-markers set. Also emits for ANY gate:human
+// brief at `implemented` whose Evidence records the strict model verify pass marker
+// — so the guarantee "a recorded PASS ⇒ a verify-gate issue exists" holds without
+// waiting on a manual implemented→verified README flip. (This generalizes the
+// original irreversible-only chicken-and-egg path: irreversible briefs cannot reach
+// `verified` without a human sign-off, but the same one-step surfacing is correct for
+// every human-gated brief carrying a recorded pass.) Output is sorted by brief id for
+// deterministic emission.
 func verifyIssues(root string, streams []*Stream, existing map[string]bool) []verifyIssue {
 	out := []verifyIssue{}
 	for _, s := range streams {
@@ -522,12 +534,14 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 				})
 				continue
 			}
-			// Path B: irreversible brief stuck at implemented with model verify pass.
-			// Irreversible briefs cannot reach `verified` without a human:<name> in Reviewed
-			// (brieffile.go irreversible lint), but the standard verifyIssues only fires at
-			// `verified` — a chicken-and-egg. Surface them here so the human sign-off can
-			// advance implemented→verified→done in one step.
-			if row.Status == "implemented" && bf.Risk["irreversible"] == "yes" && hasVerifyPass(bf.Evidence) {
+			// Path B: any gate:human brief stuck at implemented with a recorded model
+			// verify pass. The implemented→verified README flip is a manual verify-desk
+			// action that does not happen reliably, so a human-gated brief with a
+			// recorded pass would otherwise never surface. Emit it here so the human
+			// sign-off can advance implemented→verified→done in one step. The strict
+			// hasVerifyPass marker is the fail-closed gate — WHICH briefs are eligible
+			// is loosened here; WHAT evidence is required is not.
+			if row.Status == "implemented" && hasVerifyPass(bf.Evidence) {
 				marker := verifyMarker(bf.Brief)
 				if existing[marker] {
 					continue
@@ -537,7 +551,7 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 					Title:  issueTitle("verify-gate: ", bf.Brief, bf.Title),
 					Labels: []string{"verify-gate"},
 					Marker: marker,
-					Body:   renderIrreversibleGateBody(root, bf),
+					Body:   renderImplementedGateBody(root, bf, bf.Risk["irreversible"] == "yes"),
 				})
 			}
 		}
@@ -579,7 +593,7 @@ func setCell(cell, newVal string) string {
 
 // flipRowToDone rewrites the briefs-table row for brief number num: status →
 // done and the Reviewed cell → reviewedStamp. When verifiedStamp is non-empty,
-// it also sets the Verified cell (used by the irreversible one-step advance
+// it also sets the Verified cell (used by the implemented one-step advance
 // that stamps both cells in a single write). Every other cell's exact text is
 // preserved. Returns an error if the table or row is not found.
 func flipRowToDone(raw, num, reviewedStamp, verifiedStamp string) (string, error) {
@@ -614,7 +628,7 @@ func flipRowToDone(raw, num, reviewedStamp, verifiedStamp string) (string, error
 				continue
 			}
 			cells[idx["status"]] = setCell(cells[idx["status"]], "done")
-			// Set the Verified cell when provided (irreversible one-step path).
+			// Set the Verified cell when provided (implemented one-step path).
 			if verifiedStamp != "" {
 				if vi, ok := idx["verified"]; ok {
 					cells[vi] = setCell(cells[vi], verifiedStamp)
@@ -660,13 +674,15 @@ func flipRowToDone(raw, num, reviewedStamp, verifiedStamp string) (string, error
 }
 
 // closeVerify flips a brief's README row verified → done and stamps the Reviewed
-// cell with a dated human sign-off. For irreversible briefs at `implemented`
-// whose Evidence records a model verify pass (the chicken-and-egg fix), it
-// accepts `implemented` and advances in one step: Verified cell stamped from the
-// recorded model verifier + its date, Reviewed cell stamped `human:<closer>` + the
-// close date — satisfying the irreversible lint in the same write. It refuses
-// (error, NO write) for any other state. It never touches STATUS.md (single-writer
-// rule) — status-regen regenerates it on the resulting push.
+// cell with a dated human sign-off. For ANY gate:human brief at `implemented`
+// whose Evidence records a model verify pass, it accepts `implemented` and advances
+// in one step: Verified cell stamped from the recorded model verifier + its date,
+// Reviewed cell stamped `human:<closer>` + the close date — the recorded independent
+// run, not the close time, is what the Verified cell attests. It refuses (error, NO
+// write) for any other state, and for an implemented brief lacking either the strict
+// **VERIFY: PASS** marker or a Date/Runner Evidence row (fail-closed). It never
+// touches STATUS.md (single-writer rule) — status-regen regenerates it on the
+// resulting push.
 func closeVerify(root, briefID string, now time.Time) error {
 	streams, _, err := loadStreams(root)
 	if err != nil {
@@ -728,15 +744,15 @@ func closeVerify(root, briefID string, now time.Time) error {
 		return os.WriteFile(readme, []byte(updated), 0o644)
 
 	case "implemented":
-		// Irreversible chicken-and-egg path: an irreversible brief cannot
-		// reach `verified` without a human sign-off, but verifyIssues only fires
-		// at `verified`. Accept `implemented` when (and only when) irreversible
-		// AND a model verify pass is recorded in Evidence.
-		if bf.Risk["irreversible"] != "yes" {
-			return fmt.Errorf("refusing: brief %s status is %q (not verified) and risk.irreversible is not yes — the one-step advance only applies to irreversible briefs with a recorded model verify pass", briefID, row.Status)
-		}
+		// One-step path: the implemented→verified README flip is a manual action
+		// that does not happen reliably, so verifyIssues surfaces any gate:human
+		// brief at `implemented` with a recorded model verify pass. Accept
+		// `implemented` here on the same condition — a recorded pass in Evidence —
+		// and advance in one write. The strict marker plus the Date/Runner row are
+		// the fail-closed gate; loosening WHICH briefs qualify never loosens WHAT
+		// evidence is required.
 		if !hasVerifyPass(bf.Evidence) {
-			return fmt.Errorf("refusing: brief %s status is %q (not verified) and Evidence has no **VERIFY: PASS** marker — an irreversible brief needs a recorded model verify pass before the human sign-off can advance it", briefID, row.Status)
+			return fmt.Errorf("refusing: brief %s status is %q (not verified) and Evidence has no **VERIFY: PASS** marker — a human-gated brief needs a recorded model verify pass before the human sign-off can advance it", briefID, row.Status)
 		}
 		date, runner := evidenceVerifierInfo(bf.Evidence)
 		if date == "" || runner == "" {
@@ -750,7 +766,7 @@ func closeVerify(root, briefID string, now time.Time) error {
 		return os.WriteFile(readme, []byte(updated), 0o644)
 
 	default:
-		return fmt.Errorf("refusing: brief %s status is %q, not verified (or implemented+irreversible with VERIFY: PASS) — nothing to sign off", briefID, row.Status)
+		return fmt.Errorf("refusing: brief %s status is %q, not verified (or implemented with a recorded **VERIFY: PASS**) — nothing to sign off", briefID, row.Status)
 	}
 }
 
