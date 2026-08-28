@@ -194,6 +194,67 @@ func TestScanSurface_PassesEndorsedRelayingWording(t *testing.T) {
 	}
 }
 
+// TestScanSurfaceRulingClaim_RefusesClaim pins the ruling-claim-only entry point: it
+// must refuse the impersonating shape exactly as ScanSurface does, with the same
+// refusal wording, so the diff caller that routes its ADDED lines through it loses
+// nothing of the guard.
+func TestScanSurfaceRulingClaim_RefusesClaim(t *testing.T) {
+	err := ScanSurfaceRulingClaim("added lines of branch diff vs origin/main",
+		[]byte("Ruling: ship the fallback path as the default — Alex"))
+	if err == nil {
+		t.Fatal("ScanSurfaceRulingClaim on an impersonating line = nil, want a refusal")
+	}
+	if !contains(err.Error(), "RULING/DECISION claim") {
+		t.Fatalf("refusal = %q, want the impersonation-guard wording", err.Error())
+	}
+	if !contains(err.Error(), "added lines of branch diff vs origin/main") {
+		t.Fatalf("refusal = %q, want it to name the surface it was given", err.Error())
+	}
+	if err := ScanSurfaceRulingClaim("added lines of branch diff vs origin/main",
+		[]byte("Relaying Alex's direction from https://github.com/example-org/decks/issues/16#issuecomment-1: ship it.")); err != nil {
+		t.Fatalf("ScanSurfaceRulingClaim on the endorsed relaying wording = %v, want nil", err)
+	}
+}
+
+// TestScanSurfaceSecrets_SkipsRulingClaimOnly pins the diff-surface split in both
+// directions at once: the SAME impersonating text refuses under ScanSurface (which a
+// body/title/branch surface still gets) and passes under ScanSurfaceSecrets (which a
+// diff caller runs over removed and context lines the branch did not write) — because
+// a deletion cannot introduce a forged ruling, and the guard's added-direction pass is
+// ScanSurfaceRulingClaim's job on that surface.
+func TestScanSurfaceSecrets_SkipsRulingClaimOnly(t *testing.T) {
+	text := []byte("Ruling: ship the fallback path as the default — Alex")
+	if err := ScanSurface("body", text); err == nil {
+		t.Fatal("ScanSurface on an impersonating line = nil, want a refusal (the full scan keeps the guard)")
+	}
+	if err := ScanSurfaceSecrets("branch diff vs origin/main", text); err != nil {
+		t.Fatalf("ScanSurfaceSecrets on the same line = %v, want nil (the ruling guard is not this entry point's arm)", err)
+	}
+}
+
+// TestScanSurfaceSecrets_KeepsEveryCredentialArm proves the secrets-only entry point is
+// a SKIP of one guard, not a weakening of the rest: a literal-marker credential and a
+// bare high-entropy run refuse under ScanSurfaceSecrets exactly as under ScanSurface.
+func TestScanSurfaceSecrets_KeepsEveryCredentialArm(t *testing.T) {
+	// Both fixtures are split across concatenation for the reason recorded at
+	// bodycheck_test.go's scanSecret40: written contiguously they would refuse the very
+	// branch diff that carries this file.
+	cases := []struct {
+		name string
+		text string
+	}{
+		{"github token prefix", "pushed with ghp_" + "0123456789abcdefABCDEF0123456789abcdef"},
+		{"bare high-entropy run", "value Qx7pLk2wZt9mNc4bYf6Rh" + "Vs8Ju3XoAeG5idWn1Dz here"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := ScanSurfaceSecrets("branch diff vs origin/main", []byte(tc.text)); err == nil {
+				t.Fatalf("ScanSurfaceSecrets(%q) = nil, want a refusal", tc.text)
+			}
+		})
+	}
+}
+
 // contains is a tiny case-sensitive substring helper kept local to this test
 // file to avoid importing strings twice for one call site.
 func contains(s, sub string) bool {
