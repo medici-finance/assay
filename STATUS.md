@@ -11,18 +11,20 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-27 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-27 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/5 | 2026-08-27 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-27 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-08-27 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-08-27 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-27 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-27 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-27 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/11 | 2026-08-27 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-28 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-28 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/5 | 2026-08-28 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-28 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-08-28 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-08-28 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-28 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-28 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-28 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/12 | 2026-08-28 |  |
 
 ## Next up
+
+_Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: statusgen. By stream: statusgen (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
@@ -214,7 +216,7 @@ _None._
 - 14 auto-filed refactor work + quality error-budgets + RETRO output feed — todo (wave 5)
 - 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
 
-### statusgen (11 open)
+### statusgen (12 open)
 
 - 01 30-day lint-firing audit — retire cold rules — verified (wave 1)
 - 02 issue metrics (`--issues`) — verified (wave 1)
@@ -227,6 +229,7 @@ _None._
 - 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — todo (wave 1)
 - 10 graph export (`--graph` DOT + JSONL) — todo (wave 1)
 - 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
+- 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — todo (wave 1)
 
 ## Done briefs
 
@@ -236,4 +239,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**10** streams (**10** active, **0** paused) · **0/84** briefs done · completed initiatives: see `docs/archive/`
+**10** streams (**10** active, **0** paused) · **0/85** briefs done · completed initiatives: see `docs/archive/`
