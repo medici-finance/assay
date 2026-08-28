@@ -35,17 +35,20 @@ findings-register state machine.
 | 10 | [graph export (`--graph` DOT + JSONL)](brief-10-graph-export.md) | 1 | M | todo | — | — |
 | 11 | [DORA/insights hybrid — DevLake commodity split](brief-11-devlake-hybrid-metrics-split.md) | 1 | L | implemented | — | — |
 | 12 | [`homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo](brief-12-homed-in-field.md) | 1 | M | todo | — | — |
+| 13 | [cadenced roadmap artifacts (`--cadence weekly/monthly`)](brief-13-cadenced-roadmap-artifacts.md) | 1 | M | todo | — | — |
 
 ## Critical path
 statusgen/02 (issue metrics) → statusgen/03 (self-improvement metric). The
 self-improvement classifier extends the `--issues` infrastructure, so 02 leads 03.
 statusgen/07 (brief-flow metrics) → statusgen/08 (composite AssayScore): the score rolls up
-the brief-flow metrics, so 07 leads 08. Every other brief is independent and self-contained.
+the brief-flow metrics, so 07 leads 08. statusgen/13 (cadenced roadmap artifacts) reuses the
+landed `--roadmap` renderer over a computed window — independent, no new critical-path edge.
+Every other brief is independent and self-contained.
 
 ## Dependency waves
 - **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06,
-  statusgen/07, statusgen/09, statusgen/10, statusgen/11, statusgen/12 (all independent;
-  parallelizable).
+  statusgen/07, statusgen/09, statusgen/10, statusgen/11, statusgen/12, statusgen/13 (all
+  independent; parallelizable).
 - **Wave 2** — statusgen/03 (depends on statusgen/02), statusgen/08 (depends on statusgen/07).
 
 ## Conventions
