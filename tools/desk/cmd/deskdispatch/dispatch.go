@@ -152,6 +152,12 @@ func dispatch(o dispatchOpts) error {
 		return emitPrompt(o, prompt)
 	}
 
+	// Advisory write-scope overlap echo, BEFORE the claim — a coordination hint
+	// the operator sees, then the dispatch PROCEEDS. It never blocks, never gates the claim,
+	// and carries no exit code: a foreseeable merge collision on a shared file is surfaced now
+	// rather than at merge, and proceeding over it is correct when the overlap is intended.
+	echoWriteOverlap(os.Stderr, o)
+
 	// 1 — the durable claim, FIRST. Everything after this is work a second dispatcher
 	// must not also be doing.
 	if err := stepClaim(o, repo, plan.claimScript, plan.claimKey); err != nil {
