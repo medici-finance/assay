@@ -33,20 +33,22 @@ func TestVerifyIssuesSelection(t *testing.T) {
 		want     []string // brief ids expected, in emitted order
 	}{
 		{
-			name:     "no existing markers → all gate:human + verified briefs + irreversible-at-implemented",
+			name:     "no existing markers → all gate:human + verified briefs + gate:human-at-implemented-with-pass",
 			existing: map[string]bool{},
 			// vg/01, vg/02, vg/07, vg/08, vg/11 are all gate:human + verified — emitted
 			// even when already human-reviewed (vg/07, vg/11), because the done-close is
 			// a distinct acceptance touch. vg/09 is gate:human + irreversible + implemented
-			// with VERIFY: PASS — emitted per the chicken-and-egg fix.
-			// vg/03 is model, vg/04 implemented (no pass), vg/05 done,
-			// vg/06 todo, vg/10 implemented no pass → excluded.
-			want: []string{"vg/01", "vg/02", "vg/07", "vg/08", "vg/09", "vg/11"},
+			// with VERIFY: PASS — the original one-step path. vg/12 (irreversible:no) and
+			// vg/14 (irreversible:no, marker but no Date/Runner table) are the generalized
+			// non-irreversible one-step path — both emit on the strict marker alone.
+			// vg/03 is model, vg/04 implemented (no pass), vg/05 done, vg/06 todo,
+			// vg/10 implemented no pass, vg/13 implemented FAIL, vg/15 model+pass → excluded.
+			want: []string{"vg/01", "vg/02", "vg/07", "vg/08", "vg/09", "vg/11", "vg/12", "vg/14"},
 		},
 		{
 			name:     "an existing marker suppresses its brief",
 			existing: map[string]bool{verifyMarker("vg/02"): true},
-			want:     []string{"vg/01", "vg/07", "vg/08", "vg/09", "vg/11"},
+			want:     []string{"vg/01", "vg/07", "vg/08", "vg/09", "vg/11", "vg/12", "vg/14"},
 		},
 		{
 			name: "all markers present → nothing new",
@@ -57,6 +59,8 @@ func TestVerifyIssuesSelection(t *testing.T) {
 				verifyMarker("vg/08"): true,
 				verifyMarker("vg/09"): true,
 				verifyMarker("vg/11"): true,
+				verifyMarker("vg/12"): true,
+				verifyMarker("vg/14"): true,
 			},
 			want: []string{},
 		},
@@ -473,6 +477,8 @@ func TestRunVerifyIssuesEmptyJSON(t *testing.T) {
 		verifyMarker("vg/08"): true,
 		verifyMarker("vg/09"): true,
 		verifyMarker("vg/11"): true,
+		verifyMarker("vg/12"): true,
+		verifyMarker("vg/14"): true,
 	}
 	if got := verifyIssues(root, streams, existing); len(got) != 0 {
 		t.Fatalf("expected no eligible issues, got %d", len(got))
@@ -657,6 +663,161 @@ func TestCloseVerifyIrreversibleRefuses(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.err) {
 				t.Errorf("refusal message should mention %q; got: %v", tc.err, err)
+			}
+		})
+	}
+}
+
+// TestVerifyIssuesNonIrreversibleAtImplemented is the mm/49 generalization: a
+// gate:human brief at `implemented` with the strict **VERIFY: PASS** marker is
+// emitted EVEN WHEN irreversible:no. It also pins the fail-closed exclusions —
+// no recorded pass (vg/13) and gate:model (vg/15) never emit.
+func TestVerifyIssuesNonIrreversibleAtImplemented(t *testing.T) {
+	root, streams := loadVGStreams(t)
+	all := verifyIssues(root, streams, map[string]bool{})
+	emitted := map[string]bool{}
+	for _, iss := range all {
+		emitted[iss.Brief] = true
+	}
+
+	// (a) vg/12: gate:human, irreversible:no, implemented, VERIFY: PASS +
+	// Date/Runner row → EMITTED (the class the brief exists to surface).
+	if !emitted["vg/12"] {
+		t.Error("vg/12 (gate:human, irreversible:no, implemented, VERIFY: PASS) must be emitted")
+	}
+	// (c) vg/14: gate:human, irreversible:no, implemented, VERIFY: PASS present but
+	// NO Date/Runner table → EMITTED. Design call: emission depends only on the
+	// strict marker (byte-identical to the irreversible path); the missing table is
+	// caught at close time (closeVerify refuses — see TestCloseVerifyNonIrreversibleRefuses).
+	if !emitted["vg/14"] {
+		t.Error("vg/14 (gate:human, implemented, VERIFY: PASS, no Date/Runner table) must be emitted; the table is a close-time gate, not an emission gate")
+	}
+	// (b) vg/13: gate:human, irreversible:no, implemented, VERIFY: FAIL (no strict
+	// pass marker) → NOT emitted (fail-closed on hasVerifyPass).
+	if emitted["vg/13"] {
+		t.Error("vg/13 (gate:human, implemented, recorded FAIL, no **VERIFY: PASS**) must NOT be emitted")
+	}
+	// (d) vg/15: gate:model, implemented, VERIFY: PASS → never reaches the human gate.
+	if emitted["vg/15"] {
+		t.Error("vg/15 (gate:model, implemented, VERIFY: PASS) must NOT be emitted — the human gate is gate:human only")
+	}
+}
+
+// TestImplementedGateBodyNonIrreversible pins the body of a non-irreversible
+// one-step card: the heading does NOT claim irreversibility, it states the
+// one-step advance and names the recorded runner, and it keeps the UNRUN/Trade-offs
+// prominence shared with the irreversible card.
+func TestImplementedGateBodyNonIrreversible(t *testing.T) {
+	root, streams := loadVGStreams(t)
+	all := verifyIssues(root, streams, map[string]bool{})
+	var vg12 *verifyIssue
+	for i := range all {
+		if all[i].Brief == "vg/12" {
+			vg12 = &all[i]
+		}
+	}
+	if vg12 == nil {
+		t.Fatal("vg/12 not emitted")
+	}
+	body := vg12.Body
+
+	if !strings.HasPrefix(body, "<!-- verify-gate: vg/12 -->") {
+		t.Errorf("body must start with the marker; got:\n%s", body)
+	}
+	// Distinguished heading for the non-irreversible class.
+	if !strings.Contains(body, "Human sign-off required (verified-by-model at implemented)") {
+		t.Errorf("body must carry the non-irreversible heading; got:\n%s", body)
+	}
+	// It must NOT claim irreversibility for a non-irreversible brief.
+	if strings.Contains(body, "(irreversible)") {
+		t.Errorf("non-irreversible body must not claim irreversibility in its heading; got:\n%s", body)
+	}
+	// One-step advance language + the recorded runner named.
+	if !strings.Contains(body, "implemented → verified → done") {
+		t.Error("body must state the one-step advance (implemented→verified→done)")
+	}
+	if !strings.Contains(body, "2026-07-18 glm-verifier") {
+		t.Errorf("body must name the recorded model run (date + runner); got:\n%s", body)
+	}
+}
+
+// TestCloseVerifyNonIrreversibleAdvance confirms close-verify advances a
+// non-irreversible gate:human brief at implemented with VERIFY: PASS in one step —
+// Verified stamped from the recorded Evidence date+runner, Reviewed from the human
+// close — the mm/49 close-side generalization.
+func TestCloseVerifyNonIrreversibleAdvance(t *testing.T) {
+	root, _ := loadVGStreams(t)
+	now := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)
+
+	if err := closeVerify(root, "vg/12", now); err != nil {
+		t.Fatalf("close-verify vg/12 (gate:human, irreversible:no, implemented, VERIFY: PASS): %v", err)
+	}
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s *Stream
+	for _, st := range streams {
+		if st.Name == "vg" {
+			s = st
+		}
+	}
+	row := findRow(s, "12")
+	if row.Status != "done" {
+		t.Errorf("status = %q, want done", row.Status)
+	}
+	// Verified cell stamped from the RECORDED run, not the close time.
+	if row.Verified != "2026-07-18 glm-verifier" {
+		t.Errorf("verified = %q, want %q (stamped from the recorded Evidence run)", row.Verified, "2026-07-18 glm-verifier")
+	}
+	if row.Reviewed != "2026-07-20 human:reviewer" {
+		t.Errorf("reviewed = %q, want %q", row.Reviewed, "2026-07-20 human:reviewer")
+	}
+}
+
+// TestCloseVerifyNonIrreversibleRefuses pins the fail-closed close-side gates for
+// the generalized path: no recorded pass (vg/13) is refused, and a recorded pass
+// with NO Date/Runner Evidence row (vg/14) is STILL refused — the marker alone
+// does not license the one-step advance, the recorded runner must exist to stamp
+// the Verified cell.
+func TestCloseVerifyNonIrreversibleRefuses(t *testing.T) {
+	now := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name  string
+		brief string
+		err   string
+	}{
+		{
+			name:  "non-irreversible implemented without VERIFY: PASS",
+			brief: "vg/13",
+			err:   "VERIFY: PASS",
+		},
+		{
+			name:  "non-irreversible implemented with pass but no Date/Runner table",
+			brief: "vg/14",
+			err:   "date/runner",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root, _ := loadVGStreams(t)
+			before, err := os.ReadFile(filepath.Join(root, "docs/streams/vg/README.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = closeVerify(root, tc.brief, now)
+			if err == nil {
+				t.Fatalf("close-verify %s should have refused", tc.brief)
+			}
+			if !strings.Contains(err.Error(), tc.err) {
+				t.Errorf("refusal message should mention %q; got: %v", tc.err, err)
+			}
+			after, err := os.ReadFile(filepath.Join(root, "docs/streams/vg/README.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(before) != string(after) {
+				t.Errorf("refused close-verify %s must not write the README", tc.brief)
 			}
 		})
 	}

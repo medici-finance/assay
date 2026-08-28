@@ -791,6 +791,7 @@ type issueComment struct {
 
 type issueCommentUser struct {
 	Login string `json:"login"`
+	ID    int64  `json:"id"`   // numeric database id — recycled-login defense on the unblock gate
 	Type  string `json:"type"` // "User" or "Bot"
 }
 
@@ -807,7 +808,7 @@ type commentLister func(repo string, issue int) ([]issueComment, error)
 func issueCommentLister(repo string, issue int) ([]issueComment, error) {
 	endpoint := fmt.Sprintf("repos/%s/issues/%d/comments?per_page=100", repo, issue)
 	out, err := exec.Command("gh", "api", "--paginate", endpoint,
-		"--jq", ".[] | {user: {login: .user.login, type: .user.type}, created_at: .created_at, body: .body}").Output()
+		"--jq", ".[] | {user: {login: .user.login, id: .user.id, type: .user.type}, created_at: .created_at, body: .body}").Output()
 	if err != nil {
 		detail := ""
 		if ee, ok := err.(*exec.ExitError); ok {
@@ -876,9 +877,13 @@ func newestNonBotCommentTime(comments []issueComment) (time.Time, bool) {
 		// T1: only the configured blessing authority (login + numeric-id-pinned
 		// human) can un-block. A shared agent account, and any other non-bot
 		// login, must NOT — an agent or external commenter's answer must not push
-		// a parked item back onto the worklist.
-		if bless := scanEffectiveConfig(); !bless.Configured() ||
-			!strings.EqualFold(c.User.Login, bless.Bless.Login) {
+		// a parked item back onto the worklist. Login alone is insufficient:
+		// GitHub logins are recyclable, so a renamed/re-registered login must NOT
+		// unblock — the comment author's numeric id must ALSO match the pinned
+		// bless id. isBlessAuthorityID enforces login + id together (matching the
+		// discipline every other trust seam uses, e.g. authorizedByIdentity), and
+		// fails closed when the roster is unconfigured or the id is absent/wrong.
+		if !isBlessAuthorityID(c.User.Login, c.User.ID) {
 			continue
 		}
 		t, err := time.Parse(time.RFC3339, c.CreatedAt)

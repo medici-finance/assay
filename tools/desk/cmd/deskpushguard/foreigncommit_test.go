@@ -676,6 +676,191 @@ func TestRun_RefusesPushCarryingForeignCommits(t *testing.T) {
 	}
 }
 
+// --- Self-exclusion of a branch's OWN commits on a detached-HEAD push (#22) ----------------
+//
+// A resume/shepherd worker updates an existing open PR branch from an isolated worktree, which
+// git spells as a detached-HEAD push: `git push origin HEAD:refs/heads/<branch>`. The branch's
+// OWN already-published content commits are, by definition, reachable from origin/<branch> and
+// are NOT yet on origin/main — so unless the self-exclusion recognises the real branch, they
+// read exactly like an in-flight sibling's commits and the push is refused. The bug was that
+// the branch name came from the LOCAL side of the refspec (`HEAD`), so the self-exclusion
+// compared against origin/HEAD and never matched.
+
+// newExistingPRBranchFixture builds an existing open PR branch (`mine`) whose own content
+// commits are already published to origin, plus a SEPARATE clone standing in for the
+// resume/shepherd worker that updates it. Returns that clone's path, the branch name, and the
+// branch tip sha (present in the clone as a fetched remote object).
+func newExistingPRBranchFixture(t *testing.T) (victimDir, branch, headSHA string) {
+	t.Helper()
+	remoteDir := t.TempDir()
+	runGitT(t, remoteDir, "init", "--bare", "-b", "main")
+
+	seed := t.TempDir()
+	runGitT(t, seed, "init", "-b", "main")
+	runGitT(t, seed, "config", "user.email", "seed@test")
+	runGitT(t, seed, "config", "user.name", "seed")
+	runGitT(t, seed, "remote", "add", "origin", remoteDir)
+	commitEmpty(t, seed, "chore: initial commit on main")
+	runGitT(t, seed, "push", "origin", "main")
+
+	// An existing open PR branch with its own content commits, already published to origin.
+	runGitT(t, seed, "checkout", "-b", "mine")
+	commitEmpty(t, seed, "feat: my own content commit B")
+	headSHA = commitEmpty(t, seed, "feat: my own content commit C")
+	runGitT(t, seed, "push", "origin", "mine")
+
+	// A separate clone that updates the existing PR branch (the resume-worker case). After
+	// clone, origin/mine and origin/main are present as remote-tracking refs and headSHA is
+	// a fetched object.
+	victimDir = t.TempDir()
+	runGitT(t, victimDir, "clone", remoteDir, ".")
+	runGitT(t, victimDir, "config", "user.email", "victim@test")
+	runGitT(t, victimDir, "config", "user.name", "victim")
+	return victimDir, "mine", headSHA
+}
+
+// TestCheckForeignCommits_OwnAlreadyPublishedCommitsNotFlagged pins the self-exclusion at the
+// detector boundary: given the CORRECT branch name, a branch's own commits — reachable from
+// origin/<branch> and not yet on origin/main — must NOT be reported foreign. This is the
+// invariant the parseRef fix exists to feed (it ensures the correct name reaches here on a
+// detached-HEAD push).
+func TestCheckForeignCommits_OwnAlreadyPublishedCommitsNotFlagged(t *testing.T) {
+	victimDir, branch, headSHA := newExistingPRBranchFixture(t)
+
+	found, err := checkForeignCommits(victimDir, branch, headSHA)
+	if err != nil {
+		t.Fatalf("checkForeignCommits error: %v", err)
+	}
+	if len(found.indeterminate) != 0 {
+		t.Fatalf("base was determinable here; unexpected could-not-check: %v", found.indeterminate)
+	}
+	if len(found.foreign) != 0 {
+		t.Errorf("a branch's OWN commits (reachable from origin/%s) must be self-excluded, not "+
+			"reported foreign; got %+v", branch, found.foreign)
+	}
+	if len(found.masquerades) != 0 {
+		t.Errorf("expected no masquerades, got %+v", found.masquerades)
+	}
+}
+
+// TestRun_DetachedHeadPushToExistingPRBranchAllowed is the core self-exclusion case at the process
+// boundary: a detached-HEAD update push (`HEAD:refs/heads/<branch>`) of a branch's OWN
+// already-published commits must be ALLOWED. Before the fix, parseRef derived ownBranch="HEAD",
+// the self-exclusion compared against origin/HEAD, and commits B and C were refused as foreign.
+//
+// FAIL-FIRST: revert parseRef to derive the branch from the LOCAL side (parts[0]) AND drop its
+// branch=="HEAD" guard, and this goes red — ownBranch resolves to "HEAD", so origin/mine is not
+// self-excluded and B/C are refused as foreign. (TestParseRef pins the derivation on its own.)
+func TestRun_DetachedHeadPushToExistingPRBranchAllowed(t *testing.T) {
+	withFakeGH(t)
+	t.Setenv("FAKEGH_STATE", "OPEN") // an open PR exists for this branch
+	victimDir, branch, headSHA := newExistingPRBranchFixture(t)
+
+	oldWD := chdir(t, victimDir)
+	defer oldWD()
+
+	stdin := stdinString("HEAD " + headSHA + " refs/heads/" + branch + " 0000000000000000000000000000000000000000\n")
+	var stderr strings.Builder
+	rc := run([]string{"origin", "https://github.com/example-org/example-repo.git"}, stdin, &stderr)
+	if rc != deskkit.ExitOK {
+		t.Fatalf("rc = %d, want %d (ExitOK) — a detached-HEAD update push of a branch's OWN "+
+			"commits must be allowed. stderr:\n%s", rc, deskkit.ExitOK, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "foreign commit") {
+		t.Errorf("the branch's own already-published commits were misreported as foreign:\n%s", stderr.String())
+	}
+}
+
+// TestRun_OnBranchResyncMergePushAllowed is the resync-merge shape: a branch that resyncs by
+// merging origin/main and pushes the result via the detached-HEAD spelling. The own content
+// commits (reachable from origin/<branch>) plus the new two-parent merge head must all pass.
+func TestRun_OnBranchResyncMergePushAllowed(t *testing.T) {
+	withFakeGH(t)
+	t.Setenv("FAKEGH_STATE", "OPEN")
+
+	remoteDir := t.TempDir()
+	runGitT(t, remoteDir, "init", "--bare", "-b", "main")
+	seed := t.TempDir()
+	runGitT(t, seed, "init", "-b", "main")
+	runGitT(t, seed, "config", "user.email", "seed@test")
+	runGitT(t, seed, "config", "user.name", "seed")
+	runGitT(t, seed, "remote", "add", "origin", remoteDir)
+	commitEmpty(t, seed, "chore: initial commit on main")
+	runGitT(t, seed, "push", "origin", "main")
+
+	// The PR branch with its own content, published to origin.
+	runGitT(t, seed, "checkout", "-b", "mine")
+	commitEmpty(t, seed, "feat: my own content commit B")
+	commitEmpty(t, seed, "feat: my own content commit C")
+	runGitT(t, seed, "push", "origin", "mine")
+
+	// main advances after the PR was cut.
+	runGitT(t, seed, "checkout", "main")
+	commitEmpty(t, seed, "feat: main moves on D")
+	runGitT(t, seed, "push", "origin", "main")
+
+	// The resume/shepherd clone: on the PR branch, resync by merging origin/main.
+	dir := t.TempDir()
+	runGitT(t, dir, "clone", remoteDir, ".")
+	runGitT(t, dir, "config", "user.email", "w@test")
+	runGitT(t, dir, "config", "user.name", "w")
+	runGitT(t, dir, "checkout", "mine")
+	runGitT(t, dir, "merge", "origin/main", "-m",
+		"Merge remote-tracking branch 'origin/main' into mine")
+	head := runGitT(t, dir, "rev-parse", "HEAD")
+
+	oldWD := chdir(t, dir)
+	defer oldWD()
+
+	stdin := stdinString("HEAD " + head + " refs/heads/mine 0000000000000000000000000000000000000000\n")
+	var stderr strings.Builder
+	rc := run([]string{"origin", "https://github.com/example-org/example-repo.git"}, stdin, &stderr)
+	if rc != deskkit.ExitOK {
+		t.Fatalf("rc = %d, want %d (ExitOK) — an on-branch resync-merge push of a branch's own "+
+			"content plus a real merge head must be allowed. stderr:\n%s", rc, deskkit.ExitOK, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "foreign commit") {
+		t.Errorf("the branch's own commits or its real merge head were misreported as foreign:\n%s", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "masquerade") {
+		t.Errorf("the real two-parent resync merge was misreported as a single-parent masquerade:\n%s", stderr.String())
+	}
+}
+
+// TestRun_DetachedHeadPushStillRefusesForeignSiblingCommit is the SECURITY FLOOR for the fix:
+// even with the branch name now correctly derived from the remote side of a detached-HEAD
+// refspec, a commit reachable ONLY from a DIFFERENT sibling branch (not main, not this branch's
+// own origin ref) must STILL be refused. The fix narrows the self-exclusion to origin/<own
+// branch>; it must not blanket-exclude everything on a detached push.
+//
+// FAIL-FIRST: broaden the self-exclusion to skip the foreign-commit check whenever the local
+// ref is HEAD and this goes green (wrongly), letting a laundered sibling commit through.
+func TestRun_DetachedHeadPushStillRefusesForeignSiblingCommit(t *testing.T) {
+	withFakeGH(t)
+	t.Setenv("FAKEGH_STATE", "NONE") // no PR yet — isolate the foreign-commit arm
+	victimDir, ownBranch, ownSHA := newForeignCommitFixture(t)
+
+	oldWD := chdir(t, victimDir)
+	defer oldWD()
+
+	// Same detached-HEAD spelling as the allowed cases above — but here the pushed range
+	// carries the sibling's laundered commits, reachable from origin/sibling (≠ origin/mine,
+	// and not an ancestor of main).
+	stdin := stdinString("HEAD " + ownSHA + " refs/heads/" + ownBranch + " 0000000000000000000000000000000000000000\n")
+	var stderr strings.Builder
+	rc := run([]string{"origin", "https://github.com/example-org/example-repo.git"}, stdin, &stderr)
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("rc = %d, want %d (ExitRefused) — a genuinely foreign sibling commit must still "+
+			"be refused on a detached-HEAD push. stderr:\n%s", rc, deskkit.ExitRefused, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "foreign commit dragged in from a sibling branch") {
+		t.Errorf("expected the foreign-commit diagnostic, got:\n%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "origin/sibling") {
+		t.Errorf("expected origin/sibling named as the source, got:\n%s", stderr.String())
+	}
+}
+
 // TestRun_RefusesStrayBaseCut drives run() end-to-end on a worktree cut from the stray local
 // `origin/main` and asserts the process-level refusal, not just the detector's return value.
 func TestRun_RefusesStrayBaseCut(t *testing.T) {
