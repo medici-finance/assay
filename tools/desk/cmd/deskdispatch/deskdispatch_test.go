@@ -207,6 +207,100 @@ func TestClaimContentionNamesTheHolderAndNeverSteals(t *testing.T) {
 	}
 }
 
+// THE STALE-CLAIM DEFECT. A collision is not the same as a LIVE holder. The two-phase claim
+// TTL makes a claim past its TTL (state=claimed→20m, state=dispatched→120m) DEAD and
+// reclaimable. deskdispatch used to read ANY non-FREE `show` output as a live holder,
+// regardless of age, and report "already claimed by a LIVE holder — do not proceed" — the
+// message that sent an operator to hand-clear a ref (a dispatched claim was observed stuck
+// ~4954m, well over three days) the claim tool would reclaim on its next acquire. This table pins the
+// classification: a claim past its state's TTL is named STALE/reclaimable, one within it stays
+// LIVE, and neither is ever stolen inline.
+func TestStaleClaimIsNotReportedAsLive(t *testing.T) {
+	held := func(state string, age int) string {
+		return "dispatch-claim: HELD assay--item-1 — dispatch-claim assay--item-1 owner=other-session " +
+			"state=" + state + " branch=- at=2026-08-24T00:00:00Z age=" + itoa(age) + "m"
+	}
+	cases := []struct {
+		why       string
+		show      string
+		wantStale bool
+	}{
+		{"dispatched past the 120m TTL (the field 4954m case)", held("dispatched", 4954), true},
+		{"dispatched exactly at the 120m TTL", held("dispatched", 120), true},
+		{"dispatched within the 120m TTL is a genuine live holder", held("dispatched", 42), false},
+		{"claimed past the shorter 20m TTL (never reached progress)", held("claimed", 25), true},
+		{"claimed within the 20m TTL is still setting up — live", held("claimed", 5), false},
+	}
+	for _, c := range cases {
+		t.Run(c.why, func(t *testing.T) {
+			s := &stub{}
+			_, root := s.install(t)
+			plantScripts(t, root)
+			s.replies = []reply{
+				{match: "remote get-url origin", stdout: "git@github.com:medici-finance/assay.git"},
+				{match: "dispatch-claim.sh acquire", code: deskkit.ExitRefused},
+				{match: "dispatch-claim.sh show", stdout: c.show},
+			}
+			err := cmdDispatch([]string{"item-1", "--root", root})
+			if err == nil {
+				t.Fatal("a refused acquire returned nil")
+			}
+			if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+				t.Fatalf("rc = %d, want %d (refused)", deskkit.ExitCodeOf(err), deskkit.ExitRefused)
+			}
+			isStale := strings.Contains(err.Error(), "STALE")
+			isLive := strings.Contains(err.Error(), "already claimed by a LIVE holder")
+			if c.wantStale {
+				if !isStale {
+					t.Errorf("a claim past its TTL was not named STALE/reclaimable: %s", err.Error())
+				}
+				if isLive {
+					t.Errorf("a claim past its TTL was reported as a LIVE holder: %s", err.Error())
+				}
+			} else {
+				if !isLive {
+					t.Errorf("a claim within its TTL was not reported as a live holder: %s", err.Error())
+				}
+				if isStale {
+					t.Errorf("a claim within its TTL was mislabelled STALE: %s", err.Error())
+				}
+			}
+			// NEVER inline, whichever way it classified: breaking a claim is a human/tool act.
+			if s.ran("steal") {
+				t.Error("deskdispatch invoked a steal inline")
+			}
+			if s.ran("deskwt add") {
+				t.Error("work proceeded past a refused claim")
+			}
+		})
+	}
+}
+
+// holderIsStale is the parse/TTL predicate under the reporting fix. Pin its edges directly:
+// an unparseable or unknown holder is conservatively NOT stale (never steal what you cannot
+// prove dead), matching deskkit.isStale's fail-closed direction.
+func TestHolderIsStalePredicate(t *testing.T) {
+	cases := []struct {
+		show      string
+		wantStale bool
+	}{
+		{"state=dispatched age=4954m", true},
+		{"state=dispatched age=120m", true},
+		{"state=dispatched age=119m", false},
+		{"state=claimed age=20m", true},
+		{"state=claimed age=19m", false},
+		{"state=dispatched branch=feat/x", false}, // no age → cannot prove dead
+		{"owner=x age=500m", false},               // no state → cannot prove dead
+		{"state=weird age=99999m", false},         // unknown state → cannot prove dead
+		{"", false},
+	}
+	for _, c := range cases {
+		if got, _, _ := holderIsStale(c.show); got != c.wantStale {
+			t.Errorf("holderIsStale(%q) = %v, want %v", c.show, got, c.wantStale)
+		}
+	}
+}
+
 // An UNREADABLE claim is exit 6, never "assume free". This is the fail-closed direction.
 func TestUnreadableClaimIsUnverifiableNotFree(t *testing.T) {
 	s := &stub{}
@@ -338,6 +432,100 @@ func TestHumanGatedItemEnsuresTheDecisionIssue(t *testing.T) {
 	}
 	if !s.ran("decision-issue.sh ensure spec.md") {
 		t.Error("the human-decision gate was not ensured for a human-gated item")
+	}
+}
+
+// THE METADATA GATE. A --brief whose OWN frontmatter gates on a human (`gate: human`) must
+// fire the decision gate even with NO explicit --gate-human — that is half the contract the
+// skills state ("--gate-human OR a --brief whose own metadata gates"). The gate used to key on
+// --gate-human alone, so a `gate: human` brief (with `irreversible: no`) passed by --brief
+// dispatched a worker with an EMPTY decision surface: it printed "not human-gated" and filed
+// nothing. This is the exact field shape the old detection missed: gate:human, irreversible:no.
+func TestBriefMetadataGateHumanFiresTheDecisionGate(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	brief := "---\n" +
+		"gate: human\n" +
+		"risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}\n" +
+		"exec-tier: strong\n" +
+		"---\n\n# Brief\n"
+	if err := os.WriteFile(filepath.Join(root, "brief.md"), []byte(brief), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.replies = append(happyReplies("/private/tmp/worker-home"),
+		reply{match: "decision-issue.sh ensure", stdout: "created: decision issue #7"})
+
+	promptFile := filepath.Join(t.TempDir(), "p.md")
+	rc := run([]string{"item-1", "--root", root, "--brief", "brief.md", "--prompt-file", promptFile})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("rc = %d, want 0", rc)
+	}
+	if !s.ran("decision-issue.sh ensure brief.md") {
+		t.Error("a gate:human brief passed via --brief did NOT fire the decision gate — the empty " +
+			"decision surface (irreversible:no defeated the old irreversible-keyed detection)")
+	}
+	body, _ := os.ReadFile(promptFile)
+	if !strings.Contains(string(body), "Human-gated item") {
+		t.Error("the prompt for a gate:human brief omits the human-gated clause")
+	}
+}
+
+// The metadata detection must key on `gate: human` ALONE, not gate every brief: a brief whose
+// frontmatter gates on the model (or carries no human gate) still SKIPS the decision gate.
+func TestBriefMetadataNonHumanGateStillSkips(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	brief := "---\n" +
+		"gate: model\n" +
+		"risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n" +
+		"---\n\n# Brief\n"
+	if err := os.WriteFile(filepath.Join(root, "brief.md"), []byte(brief), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.replies = happyReplies("/private/tmp/worker-home")
+
+	promptFile := filepath.Join(t.TempDir(), "p.md")
+	rc := run([]string{"item-1", "--root", root, "--brief", "brief.md", "--prompt-file", promptFile})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("rc = %d, want 0", rc)
+	}
+	if s.ran("decision-issue.sh ensure") {
+		t.Error("a non-human-gated brief fired the decision gate — detection must key on `gate: human` alone")
+	}
+	body, _ := os.ReadFile(promptFile)
+	if strings.Contains(string(body), "Human-gated item") {
+		t.Error("the prompt for a non-human-gated brief carries the human-gated clause")
+	}
+}
+
+// A gate:human brief detected via --brief whose decision script is MISSING must refuse BEFORE
+// the claim — the same fail-closed placement the explicit --gate-human path already had.
+// Silently skipping the gate is the empty-decision-surface defect; taking the claim and
+// discovering the missing script at step 4 is the wedged-item defect. Neither is acceptable.
+func TestBriefMetadataGateHumanWithMissingDecisionScriptRefusesBeforeTheClaim(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	// Plant ONLY the claim script; the decision script is the single thing missing.
+	if err := os.MkdirAll(filepath.Join(root, "tools"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(claimScriptRel)), []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "brief.md"), []byte("---\ngate: human\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.replies = happyReplies("/private/tmp/worker-home")
+
+	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--brief", "brief.md"})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("metadata-gated brief w/ missing decision script rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+	if len(s.calls) != 0 {
+		t.Fatalf("the refusal came after %d child process(es): %v — the metadata gate's precondition "+
+			"must be paid for before the claim, not after", len(s.calls), s.calls)
 	}
 }
 
