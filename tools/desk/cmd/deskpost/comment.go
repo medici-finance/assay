@@ -92,8 +92,18 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 		// The loosening is scoped to the author-trust/bless dimension ONLY. Every OTHER
 		// comment-path protection still runs on a PR comment: the size cap + body
 		// secret/impersonation scan (bodycheck.Comment, above) and the public-repo +1 gate
-		// (PublicRepoGate, below). A PR comment therefore still cannot carry a
-		// Verdict:/Security-Review: line — bodycheck keeps those verdict-class.
+		// (PublicRepoGate, below).
+		//
+		// Note the verdict-safety here does NOT come from bodycheck: bodycheck.Comment is
+		// size cap + secret scan only, and does not reject a Verdict:/Security-Review:
+		// line (that schema is REQUIRED by bodycheck.Review, never FORBIDDEN on the comment
+		// path — a comment body containing such a line passes bodycheck.Comment and posts).
+		// The reason a comment carries no verdict authority is structural: a comment and a
+		// review are distinct GitHub objects (this verb posts an issue comment via
+		// POST /issues/{n}/comments; the flip/verdict gates read the REVIEWS API, filtered
+		// by reviewer-bot login + review state). No consumer scans comment BODIES for
+		// verdict lines, so a comment's text is never interpreted as a verdict no matter
+		// what it contains.
 		if tgt.kind == kindIssue {
 			if terr := trustGate(client, tgt.kind, num, tgt.authorLogin, tgt.authorID); terr != nil {
 				return withDigest(fromReadErr(verb, repo, num, tgt.head, terr), dig)
