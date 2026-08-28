@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -152,6 +154,12 @@ func dispatch(o dispatchOpts) error {
 		return emitPrompt(o, prompt)
 	}
 
+	// Advisory write-scope overlap echo, BEFORE the claim — a coordination hint
+	// the operator sees, then the dispatch PROCEEDS. It never blocks, never gates the claim,
+	// and carries no exit code: a foreseeable merge collision on a shared file is surfaced now
+	// rather than at merge, and proceeding over it is correct when the overlap is intended.
+	echoWriteOverlap(os.Stderr, o)
+
 	// 1 — the durable claim, FIRST. Everything after this is work a second dispatcher
 	// must not also be doing.
 	if err := stepClaim(o, repo, plan.claimScript, plan.claimKey); err != nil {
@@ -188,8 +196,9 @@ func dispatch(o dispatchOpts) error {
 	// 3 — roster registration.
 	o.say("%s %s", stepRosterRegister, stepRoster(o, repo))
 
-	// 4 — the human-decision gate.
-	gate, gerr := stepDecision(o, repo, plan.decisionScript)
+	// 4 — the human-decision gate. The effective gate (flag OR brief metadata) was decided
+	// pre-claim and is carried on the plan.
+	gate, gerr := stepDecision(o, plan.gateHuman, repo, plan.decisionScript)
 	if gerr != nil {
 		return gerr
 	}
@@ -213,6 +222,12 @@ type dispatchPlan struct {
 	repo   string
 	branch string
 	wtName string
+	// gateHuman is the EFFECTIVE human-decision gate: the explicit --gate-human flag OR a
+	// --brief whose own frontmatter gates on a human (`gate: human`). Derived once here so
+	// the decision-gate step, its pre-claim precondition (the decision script must exist),
+	// and the prompt's human-gated line all read the SAME answer — keying the gate on
+	// --gate-human alone silently dropped the metadata half of the contract.
+	gateHuman bool
 	// claimKey is the key the durable claim is taken (and later released) under —
 	// derived once from the item key by claimKeyFor, so the acquire call and the release
 	// hint in the prompt cannot drift onto two different keys.
@@ -341,12 +356,24 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 
 	// The human-decision gate's own preconditions: the flag pairing AND the script's
 	// presence. Both are knowable now, and both used to be discovered at step 4.
-	if o.gateHuman {
-		if strings.TrimSpace(o.brief) == "" {
-			return plan, deskkit.Refused(fmt.Sprintf(
-				"step %s: --gate-human needs --brief <path> — the decision issue's content is DERIVED from "+
-					"the item's own specification, never invented by the dispatcher.", stepDecisionGate))
-		}
+	//
+	// An item is human-gated when the caller says so (--gate-human) OR when the brief's own
+	// frontmatter gates on a human (`gate: human`). The metadata half is not a nicety — it is
+	// half the contract the skills state, and keying the gate on --gate-human alone silently
+	// defeated it: a `gate: human` brief passed by --brief alone printed "not human-gated" and
+	// dispatched a worker against an EMPTY decision surface. The explicit flag stays the
+	// guaranteed path; brief-detection is additive and best-effort (an unreadable brief falls
+	// back to the flag — briefGatesHuman never yields a false positive).
+	if o.gateHuman && strings.TrimSpace(o.brief) == "" {
+		return plan, deskkit.Refused(fmt.Sprintf(
+			"step %s: --gate-human needs --brief <path> — the decision issue's content is DERIVED from "+
+				"the item's own specification, never invented by the dispatcher.", stepDecisionGate))
+	}
+	plan.gateHuman = o.gateHuman
+	if !plan.gateHuman && strings.TrimSpace(o.brief) != "" && briefGatesHuman(o.root, o.brief) {
+		plan.gateHuman = true
+	}
+	if plan.gateHuman {
 		if _, err := os.Stat(plan.decisionScript); err != nil {
 			return plan, deskkit.Unverifiable(fmt.Sprintf(
 				"step %s: %s is not present in %s, so the human-decision gate cannot be ensured. Dispatching "+
@@ -423,9 +450,23 @@ func stepClaim(o dispatchOpts, repo, script, claimKey string) error {
 		show := runCmd(o.root, script, "show", claimKey, "--repo", repo)
 		holder := firstLine(show.stdout)
 		// A holder was READ: the show verb succeeded, said something, and did not say the
-		// key is FREE. Only this is a collision.
+		// key is FREE. Only this is a collision — but a collision is not the same as a LIVE
+		// holder. The two-phase claim TTL (dispatch-claim.sh: state=claimed→20m,
+		// state=dispatched→120m) makes a claim past its TTL DEAD and reclaimable, not live.
+		// Reporting any non-FREE holder as "a LIVE holder — do not proceed" is what wedged an
+		// item behind a dead dispatcher's claim for days: the operator was sent to hand-clear
+		// a ref the claim tool would reclaim on its very next acquire.
 		if show.err == nil && strings.TrimSpace(show.stdout) != "" &&
 			!strings.Contains(show.stdout, "FREE "+claimKey) {
+			if stale, state, ageMin := holderIsStale(show.stdout); stale {
+				return deskkit.Refused(fmt.Sprintf(
+					"step %s: %s is held by a STALE claim (state=%s age=%dm, past its TTL) — a dead "+
+						"dispatcher's claim, NOT a live holder. It is reclaimable: the claim tool reclaims a "+
+						"stale claim on its next `acquire`, so re-run; if it persists (its branch is still in "+
+						"flight, a branch-as-claim the tool keeps) reclaim deliberately with `%s steal %s "+
+						"--repo %s --reason <why>`. This verb still does not steal inline. Existing claim: %s.",
+					stepClaimAcquire, claimKey, state, ageMin, script, claimKey, repo, holder))
+			}
 			return deskkit.Refused(fmt.Sprintf(
 				"step %s: %s is already claimed by a LIVE holder — do not proceed. Existing claim: %s. "+
 					"This verb never steals: breaking a live claim is a deliberate, auditable act with a stated "+
@@ -450,6 +491,59 @@ func refusalDetail(r runResult) string {
 		return r.stderr
 	}
 	return r.stdout
+}
+
+// claimedClaimTTL is the age past which a `state=claimed` dispatch claim — acquired but never
+// advanced to `dispatched` — is DEAD (its dispatcher never reached the `progress` verb). It
+// mirrors the two-phase dispatch-claim contract's CLAIMED_TTL_MIN. The `dispatched` half of
+// that contract IS deskkit.DefaultStaleClaim (the one named "120m, no live branch" constant,
+// reused so the two do not drift); the `claimed` half has no deskkit constant to borrow, so it
+// is named here against the same contract rather than as a bare literal.
+const claimedClaimTTL = 20 * time.Minute
+
+// claimStateFieldRe / claimAgeFieldRe pull the `state=` and `age=<N>m` fields out of the claim
+// tool's `show` output (dispatch-claim.sh cmd_show prints
+// `HELD <id> — ... state=<state> ... age=<N>m`).
+var (
+	claimStateFieldRe = regexp.MustCompile(`state=([A-Za-z]+)`)
+	claimAgeFieldRe   = regexp.MustCompile(`age=(\d+)m`)
+)
+
+// holderIsStale reports whether a claim `show` output describes a holder past its state's TTL —
+// a DEAD claim the two-phase dispatch-claim contract makes reclaimable, not a live holder.
+//
+// The TTLs are that contract: state=dispatched → deskkit.DefaultStaleClaim (120m),
+// state=claimed → claimedClaimTTL (20m). A missing or unparseable state/age, or an
+// unrecognised state, yields FALSE — a claim this verb cannot PROVE dead is treated as live
+// and never reported as reclaimable, the same fail-closed direction deskkit's own isStale
+// takes (never steal a claim you cannot prove is dead). state and ageMin are returned for the
+// message even when stale is false, so the caller can name what it read.
+func holderIsStale(showOut string) (stale bool, state string, ageMin int) {
+	ageMin = -1
+	sm := claimStateFieldRe.FindStringSubmatch(showOut)
+	am := claimAgeFieldRe.FindStringSubmatch(showOut)
+	if sm != nil {
+		state = strings.ToLower(sm[1])
+	}
+	if am == nil {
+		return false, state, ageMin
+	}
+	n, err := strconv.Atoi(am[1])
+	if err != nil {
+		return false, state, ageMin
+	}
+	ageMin = n
+
+	var ttlMin int
+	switch state {
+	case "dispatched":
+		ttlMin = int(deskkit.DefaultStaleClaim.Minutes())
+	case "claimed":
+		ttlMin = int(claimedClaimTTL.Minutes())
+	default:
+		return false, state, ageMin // unknown/absent state — cannot prove dead
+	}
+	return ageMin >= ttlMin, state, ageMin
 }
 
 // stepRoster registers the work entry when a PR is already known.
@@ -486,8 +580,8 @@ func stepRoster(o dispatchOpts, repo string) string {
 // Its caller-controlled preconditions — the --gate-human/--brief pairing and the script's
 // presence — are validated in validateCallerPreconditions, before the claim exists. What
 // remains here is only what running the script can tell us.
-func stepDecision(o dispatchOpts, repo, script string) (string, error) {
-	if !o.gateHuman {
+func stepDecision(o dispatchOpts, gateHuman bool, repo, script string) (string, error) {
+	if !gateHuman {
 		return "SKIPPED: item is not human-gated", nil
 	}
 	r := runCmd(o.root, script, "ensure", o.brief, "--repo", repo, "--at", "start")

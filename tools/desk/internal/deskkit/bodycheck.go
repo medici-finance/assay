@@ -263,6 +263,58 @@ func BodyCheck(body []byte) error { return ScanSurface(SurfaceBody, body) }
 // "branch diff vs origin/main"). The DETECTION is identical on every surface; only the
 // message differs.
 func ScanSurface(surface string, content []byte) error {
+	return scanSurface(surface, content, true)
+}
+
+// ScanSurfaceSecrets is ScanSurface WITHOUT the impersonated-human-ruling guard: every
+// credential arm and the high-entropy loop run exactly as in ScanSurface, in the same
+// order, with the same refusal messages; only the ruling-claim check is skipped.
+//
+// It exists for one caller shape: a DIFF surface, where the two checks need DIFFERENT
+// line directions. The secret arms deliberately read every line of a diff — added,
+// removed and context — because a credential on a removed or context line is still
+// sitting in the repository's history and working tree, and #778's committed-Secret
+// class arrives on exactly that surface. The ruling-claim guard must NOT read removed
+// lines: a deletion cannot introduce a forged ruling (only ADDED text can claim a
+// human's voice), so scanning the removal direction false-positives on every
+// retirement/cleanup branch that deletes an old attribution line — and, because the
+// impersonation guard is non-overridable BY DESIGN (see scanoverride.go), that false
+// positive is a hard stop with no audited way through, on a branch whose whole point
+// is to REMOVE the attributions. A diff-scanning caller therefore runs this over the
+// full diff and ScanSurfaceRulingClaim over the added lines only.
+//
+// Do not reach for this on a NON-diff surface: a body, title or branch name has no
+// removal direction, and ScanSurface (which includes the ruling-claim guard) is the
+// correct scan there.
+func ScanSurfaceSecrets(surface string, content []byte) error {
+	return scanSurface(surface, content, false)
+}
+
+// ScanSurfaceRulingClaim runs ONLY the impersonated-human-ruling guard
+// (impersonation.go) over content — the other half of the diff-surface split described
+// on ScanSurfaceSecrets. It reads the same marker surface ScanSurface hands the guard,
+// so a claim's verdict is identical whichever entry point evaluates it.
+//
+// The caller owns the direction narrowing: hand this the ADDED lines of a diff (never
+// the removed ones), with the leading `+` markers stripped so line-start positioning
+// (rulingClaimPrefixRe) and per-line citation checks (citedRelay) see the lines as they
+// exist in the file.
+func ScanSurfaceRulingClaim(surface string, content []byte) error {
+	if surface == "" {
+		surface = SurfaceBody
+	}
+	if name, found := ImpersonatedRulingClaim(markerSurface(string(content))); found {
+		return impersonationRefusal(surface, name)
+	}
+	return nil
+}
+
+// scanSurface is the shared engine behind ScanSurface and ScanSurfaceSecrets.
+// rulingClaim selects whether the impersonated-human-ruling guard runs; its position
+// in the arm order — after the literal-marker arms, before the high-entropy loop — is
+// unchanged from when it was inlined, so refusal precedence on a surface tripping more
+// than one arm is exactly what it was.
+func scanSurface(surface string, content []byte, rulingClaim bool) error {
 	if surface == "" {
 		surface = SurfaceBody
 	}
@@ -359,8 +411,13 @@ func ScanSurface(surface string, content []byte) error {
 	// path never posts as a human, so a body claiming a configured human's ruling BY
 	// NAME — "Decision (Alex, ...)", "Ruling: ... — Alex", "I (Alex) have decided" — is
 	// refused categorically, independent of whether the claim happens to be true.
-	if name, found := ImpersonatedRulingClaim(s); found {
-		return impersonationRefusal(surface, name)
+	// Skipped when the caller scans a surface whose removal direction must not be read
+	// (rulingClaim false — see ScanSurfaceSecrets); such a caller runs
+	// ScanSurfaceRulingClaim over the added lines instead.
+	if rulingClaim {
+		if name, found := ImpersonatedRulingClaim(s); found {
+			return impersonationRefusal(surface, name)
+		}
 	}
 	// Structured-format spans are computed ONCE over the whole surface, before the loop, so
 	// a recognised field is judged by its FORMAT rather than by the run's own shape. See
@@ -742,23 +799,32 @@ func isShortDigitRun(seg string) bool {
 // the decomposition in its default case, so isIdentifierLike never overlaps with — or
 // substitutes a weaker test for — isPathLike's slash-aware opaque-budget accounting.
 //
-// KNOWN RESIDUAL GAP, documented rather than claimed closed: an ALL-CAPS acronym inside an
-// otherwise ordinary identifier — `TestHandlesHTTPSProxy…UpstreamHealth`, elided here
-// because the unelided name trips the very gap this paragraph describes — is still refused
-// once the run clears 32 characters. looksLikeWords' comment calls that acceptable, and for
-// a path SEGMENT it is: failing there only spends opaque budget. Here it is a refusal, so
-// the cost is real. It is left open on purpose, because the shape that would have to be
-// admitted — a capital with no lowercase behind it — is the same shape that keeps a Slack
-// webhook token's `XXXXXXXX…` tail and an AWS key's `bPxRfiCYEXAMPLEKEY` opaque, and no
-// list of known acronyms separates the two the way twoLetterWords separates English words
-// from base64 debris. An acronym-bearing name over the threshold must be reworded or
-// broken across the line, which — unlike a recorded Evidence command (#775) or a
-// shipped test identifier (#663) — is always available to the author.
+// A short ALL-CAPS acronym that CLOSES the identifier — the `OK` of `…SilenceAsNotOK`, the
+// `HTTP` of `…RequestSpeaksHTTP` — is admitted: wordDecomposition's capital branch takes a
+// trailing run of 2-4 uppercase letters as one word unit (see endsInShortAcronym), so the
+// run rides on the strength of its word-shaped body and the maxIdentifierRun cap governs its
+// length. Only the CLOSING position is relaxed and only for 2-4 letters, because that is the
+// bound that keeps the relaxation off real token material: everything before the tail must
+// still decompose into word units under the normal rules, and a lone trailing capital, a
+// 5+ letter ALL-CAPS tail, or an acronym anywhere but the end stays refused.
+//
+// KNOWN RESIDUAL GAP, documented rather than claimed closed: an ALL-CAPS acronym in the
+// MIDDLE of an identifier — `TestHandlesHTTPSProxy…UpstreamHealth`, elided here because the
+// unelided name trips the very gap this paragraph describes — is still refused once the run
+// clears 32 characters, and so is a trailing acronym of 5+ letters. looksLikeWords' comment
+// calls that acceptable, and for a path SEGMENT it is: failing there only spends opaque
+// budget. Here it is a refusal, so the cost is real. It is left open on purpose, because a
+// mid-run capital with no lowercase behind it is the same shape that keeps a Slack webhook
+// token's `XXXXXXXX…` tail and an AWS key's `bPxRfiCYEXAMPLEKEY` opaque, and — away from the
+// closing position that bounds it — no list of known acronyms separates the two the way
+// twoLetterWords separates English words from base64 debris. Such a name over the threshold
+// must be reworded or broken across the line, which — unlike a recorded Evidence command
+// (#775) or a shipped test identifier (#663) — is always available to the author.
 func isIdentifierLike(run string) bool {
 	if len(run) > maxIdentifierRun {
 		return false
 	}
-	ok, words, camel := wordDecomposition(run)
+	ok, words, camel := wordDecomposition(run, true /* allowTrailingAcronym */)
 	return ok && words >= 2 && camel
 }
 
@@ -857,7 +923,12 @@ func looksLikeWords(seg string) bool {
 	if len(seg) > maxWordSegment {
 		return false
 	}
-	ok, words, _ := wordDecomposition(seg)
+	// allowTrailingAcronym is left OFF here: the trailing-acronym relaxation exists to keep a
+	// bare IDENTIFIER (words>=2 && camel) from the high-entropy refusal, and admitting it for a
+	// path SEGMENT would loosen the opaque-budget accounting isPathLike/isAssignmentLike rest
+	// on. A path segment that ends in an acronym still fails here and spends opaque budget,
+	// exactly as before — this predicate's verdict is unchanged by the relaxation.
+	ok, words, _ := wordDecomposition(seg, false /* allowTrailingAcronym */)
 	return ok && words > 0
 }
 
@@ -872,7 +943,14 @@ func looksLikeWords(seg string) bool {
 // It applies NO length cap of its own: each caller caps length for its own security bar —
 // looksLikeWords at maxWordSegment (a path segment), isIdentifierLike at the wider
 // maxIdentifierRun (a bare identifier). See those two functions.
-func wordDecomposition(seg string) (ok bool, words int, camel bool) {
+//
+// allowTrailingAcronym lets the FINAL word unit be a short (2-4 letter) ALL-CAPS acronym
+// closing the segment (see endsInShortAcronym). isIdentifierLike passes true so a real
+// identifier ending in an acronym (`…SilenceAsNotOK`) is admitted rather than refused as a
+// high-entropy run; looksLikeWords passes false so the path-segment opaque-budget accounting
+// it feeds is left exactly as it was. The relaxation touches only the CLOSING position and
+// only 2-4 letters, so the run is still admitted on the strength of its word-shaped body.
+func wordDecomposition(seg string, allowTrailingAcronym bool) (ok bool, words int, camel bool) {
 	for i := 0; i < len(seg); {
 		c := seg[i]
 		switch {
@@ -891,7 +969,7 @@ func wordDecomposition(seg string) (ok bool, words int, camel bool) {
 				j++
 			}
 			// A capital normally needs two lowercase letters behind it to read as a
-			// CamelCase word. Two exceptions, in decreasing looseness:
+			// CamelCase word. Three exceptions, in decreasing looseness:
 			//
 			//   n == 1 and the pair is a two-letter English word from twoLetterWords
 			//   (`…IsOn…`, `…OnDemandVsScheduled…`, `…HandlesAnEmpty…`). Without it a single
@@ -906,8 +984,17 @@ func wordDecomposition(seg string) (ok bool, words int, camel bool) {
 			//   it is what keeps `AAAA…`, ALL-CAPS stretches (`K7MDENG`) and `XXXX…` refusing,
 			//   because their lone capital is followed by another bare capital, never a word.
 			//
-			// A capital with ZERO lowercase behind it and no qualifying follower — a lone
-			// capital or an ALL-CAPS stretch — is still refused outright.
+			//   n == 0, allowTrailingAcronym is set, and this capital opens a TRAILING run of
+			//   2-4 uppercase letters closing the segment (see endsInShortAcronym): the `OK`
+			//   of `…SilenceAsNotOK`, the `HTTP` of `…RequestSpeaksHTTP`. It counts as a
+			//   capital-led word (camel), consuming the rest of the segment. This is the ONLY
+			//   place a capital with no lowercase behind it is admitted for its own sake, and
+			//   it is bounded to the closing position and to 2-4 letters precisely so it does
+			//   NOT admit a mid-run ALL-CAPS stretch (`…HTTPSProxy…`, an AWS key's EXAMPLEKEY
+			//   sitting inside a longer run) or a 5+ letter tail — those still refuse below.
+			//
+			// A capital with ZERO lowercase behind it and no qualifying follower or trailing
+			// acronym — a lone capital or an ALL-CAPS stretch — is still refused outright.
 			n := j - (i + 1)
 			switch {
 			case n >= 2:
@@ -916,6 +1003,8 @@ func wordDecomposition(seg string) (ok bool, words int, camel bool) {
 				i, words, camel = j, words+1, true
 			case n == 0 && (c == 'A' || c == 'I') && startsCapitalLedWord(seg, j):
 				i, words = j, words+1 // a one-letter word; camel comes from the follower
+			case n == 0 && allowTrailingAcronym && endsInShortAcronym(seg, i):
+				i, words, camel = len(seg), words+1, true // a short trailing acronym closes the run
 			default:
 				return false, 0, false
 			}
@@ -947,4 +1036,43 @@ func startsCapitalLedWord(seg string, k int) bool {
 		seg[k] >= 'A' && seg[k] <= 'Z' &&
 		seg[k+1] >= 'a' && seg[k+1] <= 'z' &&
 		seg[k+2] >= 'a' && seg[k+2] <= 'z'
+}
+
+// endsInShortAcronym reports whether seg[i:] is a TRAILING all-caps acronym — 2 to 4
+// uppercase letters running to the end of seg with nothing after them. It is the lookahead
+// wordDecomposition's capital branch uses (only when its caller opts in via
+// allowTrailingAcronym) to admit a short acronym that closes an otherwise word-shaped
+// identifier — the `OK` of `…SilenceAsNotOK`, the `HTTP` of `…RequestSpeaksHTTP` — so
+// isIdentifierLike accepts the whole run and the maxIdentifierRun length cap governs it,
+// rather than the run being refused as a high-entropy secret once it clears 32 characters.
+//
+// SECURITY SHAPE — three bounds keep this from opening a route for real token material, and
+// each is load-bearing:
+//
+//   - TRAILING only: the acronym must reach the end of seg. Everything BEFORE it must still
+//     decompose into word units under the normal rules, so the run is admitted on the
+//     strength of its word-shaped body, not this tail. A mid-run ALL-CAPS stretch
+//     (`…HTTPSProxy…`, an AWS key's `…EXAMPLEKEY…` inside a longer run) does not reach the
+//     end and still refuses at the capital branch's default case.
+//   - SHORT: 2 to 4 letters. A lone trailing capital stays debris — a 1-char tail carries no
+//     acronym meaning and is the shape a truncated token ends on — and a 5+ letter ALL-CAPS
+//     tail (a Slack webhook's `XXXX…`, an AWS key's 10-char `EXAMPLEKEY`) still refuses.
+//   - ALL-CAPS: every byte A-Z. A lowercase letter or digit in the tail means it is not an
+//     acronym, and the normal rules apply.
+//
+// The bar the RUN still has to clear is unchanged: isIdentifierLike requires words>=2 and a
+// capital-led word, so a bare `OK` (one word, whole run) is still refused, and the random-
+// base64 guard stays at zero admits because a 2-4 caps tail cannot help a 90+ char body that
+// must still decompose.
+func endsInShortAcronym(seg string, i int) bool {
+	tail := len(seg) - i
+	if tail < 2 || tail > 4 {
+		return false
+	}
+	for k := i; k < len(seg); k++ {
+		if seg[k] < 'A' || seg[k] > 'Z' {
+			return false
+		}
+	}
+	return true
 }

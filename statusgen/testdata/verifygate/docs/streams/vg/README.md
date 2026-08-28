@@ -20,3 +20,7 @@ track: platform
 | 09 | [Irreversible implemented with pass](./brief-09-irreversible-implemented-with-pass.md) | 0 | M | implemented | — | — |
 | 10 | [Irreversible implemented no pass](./brief-10-irreversible-implemented-no-pass.md) | 0 | M | implemented | — | — |
 | 11 | [Human verified — undated reviewer](./brief-11-human-verified-undated-reviewer.md) | 0 | M | verified | 2026-07-08 rev | human:alex |
+| 12 | [Non-irreversible implemented with pass](./brief-12-nonirrev-implemented-with-pass.md) | 0 | M | implemented | — | — |
+| 13 | [Non-irreversible implemented, fail](./brief-13-nonirrev-implemented-fail.md) | 0 | M | implemented | — | — |
+| 14 | [Non-irreversible implemented, pass no table](./brief-14-nonirrev-implemented-pass-notable.md) | 0 | M | implemented | — | — |
+| 15 | [Model implemented with pass](./brief-15-model-implemented-with-pass.md) | 0 | S | implemented | — | — |

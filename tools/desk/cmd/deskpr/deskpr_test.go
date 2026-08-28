@@ -1334,6 +1334,152 @@ func TestCreateDiffHunkContentPlusSecretRefuses(t *testing.T) {
 	assertNoPushNoCreate(t, *calls)
 }
 
+// TestAddedDiffLines exercises addedDiffLines at line granularity, mirroring
+// TestStripDiffMetaLines: only ADDED content lines survive, with their `+` marker
+// stripped; removed lines, context lines, hunk headers and every git-generated header
+// line are dropped; and non-git text (no `diff --git ` line) is returned whole so a
+// malformed input can only cause MORE scanning, never less.
+func TestAddedDiffLines(t *testing.T) {
+	in := strings.Join([]string{
+		"diff --git a/docs/notes.md b/docs/notes.md",
+		"index e69de29..4b825dc 100644",
+		"--- a/docs/notes.md",
+		"+++ b/docs/notes.md",
+		"@@ -1,3 +1,3 @@",
+		" context line unchanged",
+		"-removed line",
+		"+added line",
+	}, "\n")
+
+	out := addedDiffLines(in)
+
+	if !strings.Contains(out, "added line") {
+		t.Errorf("addedDiffLines dropped the added content line; out:\n%s", out)
+	}
+	if strings.Contains(out, "+added line") {
+		t.Errorf("addedDiffLines left the + marker glued to the added line; out:\n%s", out)
+	}
+	for _, mustNotHave := range []string{
+		"removed line",
+		"context line unchanged",
+		"@@ -1,3 +1,3 @@",
+		"diff --git a/docs/notes.md",
+		"index e69de29..4b825dc 100644",
+		"--- a/docs/notes.md",
+		"++ b/docs/notes.md", // the `+++ b/…` header, in any residue
+	} {
+		if strings.Contains(out, mustNotHave) {
+			t.Errorf("addedDiffLines kept a line it must drop: %q\nout:\n%s", mustNotHave, out)
+		}
+	}
+
+	// Not git-diff output: returned whole (fail open toward scanning).
+	doc := "The diff looked like:\n--- a/foo\n+++ b/foo\n-old\n+new"
+	if got := addedDiffLines(doc); got != doc {
+		t.Errorf("addedDiffLines rewrote non-git text; got:\n%s\nwant it unchanged", got)
+	}
+}
+
+// advanceMainWithFile advances the fixture's origin/main by one commit carrying an
+// extra file, then rebuilds feature/test-branch (with its usual one feature commit) on
+// top of the new main — so a test can commit a change that DELETES or REWRITES content
+// that exists at the merge base, which newBaseFixture alone cannot express.
+func advanceMainWithFile(t *testing.T, work, relpath, content string) {
+	t.Helper()
+	mustGit(t, work, "checkout", "main")
+	if dir := filepath.Dir(relpath); dir != "." {
+		if err := os.MkdirAll(filepath.Join(work, dir), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	writeFile(t, filepath.Join(work, relpath), content)
+	mustGit(t, work, "add", relpath)
+	mustGit(t, work, "commit", "-m", "seed "+relpath+" on main")
+	mainSHA := mustGit(t, work, "rev-parse", "HEAD")
+	mustGit(t, work, "update-ref", "refs/remotes/origin/main", mainSHA)
+	mustGit(t, work, "checkout", "-B", "feature/test-branch", "main")
+	writeFile(t, filepath.Join(work, "feature.txt"), "work\n")
+	mustGit(t, work, "add", "feature.txt")
+	mustGit(t, work, "commit", "-m", "feature work")
+}
+
+// The three direction tests below pin the ruling-claim guard's diff narrowing (see
+// scanWrite): an ADDED attribution still refuses exactly as before; the SAME text on a
+// DELETED line no longer does (a deletion cannot introduce a forged ruling); and the
+// retirement shape — delete the attribution, add only the endorsed relay wording —
+// passes end to end. All three run against the fixture roster's configured human
+// (alex:ada, rosterfixture_test.go), never a real name.
+const fixtureAttributionLine = "Ruling: keep the legacy adapter as the default — Alex\n"
+
+// TestCreateAddedRulingAttributionStillRefuses is the guard-strength half: a branch
+// whose diff ADDS a human-attributed ruling line refuses at create, before any push.
+// (That the refusal is the impersonation guard's, naming the added-lines surface, is
+// pinned at scan granularity by deskkit's TestScanSurfaceRulingClaim_RefusesClaim —
+// refusal text goes to os.Stderr, which these end-to-end tests do not capture.)
+func TestCreateAddedRulingAttributionStillRefuses(t *testing.T) {
+	work := newBaseFixture(t)
+	calls := withEnv(t, work)
+
+	writeFile(t, filepath.Join(work, "notes.md"), fixtureAttributionLine)
+	mustGit(t, work, "add", "notes.md")
+	mustGit(t, work, "commit", "-m", "add notes")
+
+	rc := run([]string{"create", "--title", "x", "--body-min", "adds notes\nBrief: fixture/01"})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("added attribution line rc = %d, want 5 (refused)", rc)
+	}
+	assertNoPushNoCreate(t, *calls)
+}
+
+// TestCreateDeletedRulingAttributionPasses is the false-positive half: the SAME
+// attribution text, present at the merge base and DELETED by the branch, must not
+// refuse — the diff's only ruling-shaped content is on `-` lines, which cannot
+// introduce a forged ruling. Pre-narrowing, this exact shape was a hard stop with no
+// audited override (the impersonation guard is non-overridable by design), on the
+// class of branch whose whole point is to remove old attribution lines.
+func TestCreateDeletedRulingAttributionPasses(t *testing.T) {
+	work := newBaseFixture(t)
+	advanceMainWithFile(t, work, "docs/legacy-note.md", "# Legacy\n\n"+fixtureAttributionLine)
+	calls := withEnv(t, work)
+	stderr := withStderrCapture(t)
+
+	mustGit(t, work, "rm", "docs/legacy-note.md")
+	mustGit(t, work, "commit", "-m", "retire the legacy note")
+
+	rc := run([]string{"create", "--title", "retire the legacy note", "--body-min", "removes the retired note\nBrief: fixture/01"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("deletion-only attribution diff rc = %d, want 0; stderr: %q", rc, stderr.String())
+	}
+	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
+		t.Fatalf("expected the create to proceed to `gh pr create --draft`; gh calls: %v", ghCalls(*calls))
+	}
+}
+
+// TestCreateRetirementMixedDiffPasses is the retirement shape end to end: the branch
+// deletes the attributed ruling line and adds ONLY the dispatch template's endorsed
+// relay wording (name + link, never the human's voice). The deleted attribution is
+// excluded by direction, the added relay is exempt as a cited relay, so the create
+// proceeds.
+func TestCreateRetirementMixedDiffPasses(t *testing.T) {
+	work := newBaseFixture(t)
+	advanceMainWithFile(t, work, "docs/decisions.md", "# Decisions\n\n"+fixtureAttributionLine)
+	calls := withEnv(t, work)
+	stderr := withStderrCapture(t)
+
+	writeFile(t, filepath.Join(work, "docs", "decisions.md"),
+		"# Decisions\n\nRelaying Alex's direction from https://github.com/example-org/decks/issues/16#issuecomment-1: keep the legacy adapter as the default.\n")
+	mustGit(t, work, "add", "docs/decisions.md")
+	mustGit(t, work, "commit", "-m", "re-word the decision note as a relay")
+
+	rc := run([]string{"create", "--title", "re-word the decision note", "--body-min", "re-words the note\nBrief: fixture/01"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("mixed retirement diff rc = %d, want 0; stderr: %q", rc, stderr.String())
+	}
+	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
+		t.Fatalf("expected the create to proceed to `gh pr create --draft`; gh calls: %v", ghCalls(*calls))
+	}
+}
+
 func TestParseRepo(t *testing.T) {
 	cases := map[string]string{
 		"https://github.com/example-org/tracker.git":              "example-org/tracker",

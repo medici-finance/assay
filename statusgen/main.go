@@ -1193,6 +1193,10 @@ func main() {
 	// Takes two positional args <from> <to> (YYYY-MM-DD) and requires -o <path>.
 	// -o is parsed from flag.Args() because positional args stop flag parsing.
 	exportEvidenceMode := flag.Bool("export-evidence", false, "export an evidence bundle tarball for the given date range (positional <from> <to>; -o <path>; optional -generated <RFC3339> for byte-reproducible output)")
+	// Derived graph export (landscape-followups/06): read-only DOT/JSONL of the
+	// typed brief/finding/intake/issue graph, emitted from the existing parse
+	// tree. No new store; never reads or writes STATUS.md or any register view.
+	graphMode := flag.String("graph", "", "export the derived brief/finding/intake/issue graph in \"dot\" (Graphviz) or \"jsonl\" (one node/edge object per line) form; read-only, deterministic, never touches STATUS.md")
 	// Gate-score emitter: JSON for deskboard consumption.
 	gateScoresMode := flag.Bool("gate-scores", false, "emit awaiting-queue gate scores as JSON (brief, score, blockedCount, stream, status)")
 	// Next-up (DISPATCH queue) emitter: JSON for deskboard consumption. Distinct
@@ -1279,6 +1283,7 @@ func main() {
 			"--bottleneck":            *bottleneckMode,
 			"--launch":                *launchMode,
 			"--export-evidence":       *exportEvidenceMode,
+			"--graph":                 *graphMode != "",
 			"--gate-scores":           *gateScoresMode,
 			"--next-up":               *nextUpMode,
 			"--cluster-pending-queue": *clusterPendingQueueMode,
@@ -1502,6 +1507,13 @@ func main() {
 	// same STATUS.md-free discipline as --dora/--trend/--roadmap.
 	if *launchMode {
 		os.Exit(runLaunch(*root, *launchTarget))
+	}
+	// Derived graph export (landscape-followups/06): self-contained, read-only,
+	// STATUS.md-free — same discipline as --gate-scores / --next-up. Emits the
+	// typed graph the tool already parses, in DOT or JSONL; never reads or
+	// writes STATUS.md or a generated register view.
+	if *graphMode != "" {
+		os.Exit(runGraph(*root, *graphMode))
 	}
 	// Gate-score emitter: self-contained JSON output for
 	// deskboard consumption. Same STATUS.md-free discipline as --dora/--trend.
