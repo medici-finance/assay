@@ -71,6 +71,27 @@ func TestSignoffDigestSetIsVerifyIssuesSet(t *testing.T) {
 	}
 }
 
+// TestSignoffDigestListsNonIrreversibleClass is the mm/49 neighbour-row coverage:
+// the digest derives its membership from verifyIssues(), so the newly-eligible
+// non-irreversible gate:human class (vg/12) appears in the roll-up with zero digest
+// code change. This is coverage of the inherited behavior, not a second predicate.
+func TestSignoffDigestListsNonIrreversibleClass(t *testing.T) {
+	root, streams := loadVGStreams(t)
+	d := buildSignoffDigest(root, streams, vgEntered(), true, digestNow)
+	found := false
+	for _, e := range d.Entries {
+		if e.Brief == "vg/12" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("vg/12 (gate:human, irreversible:no, implemented, VERIFY: PASS) must appear in the sign-off digest — it is verifyIssues-eligible after mm/49")
+	}
+	if !strings.Contains(renderSignoffDigest(d), "vg/12") {
+		t.Error("rendered digest must name vg/12")
+	}
+}
+
 // TestSignoffDigestExcludesSignedOff pins the exclusion the human cares about:
 // vg/05 is gate:human and irreversible, but a human has already closed it
 // (status done, Reviewed `2026-07-08 human:alex`). A digest that keeps listing
@@ -98,7 +119,9 @@ func TestSignoffDigestOldestFirst(t *testing.T) {
 	root, streams := loadVGStreams(t)
 	d := buildSignoffDigest(root, streams, vgEntered(), true, digestNow)
 
-	want := []string{"vg/08", "vg/02", "vg/09", "vg/01", "vg/07", "vg/11"}
+	// vg/12 and vg/14 (the mm/49 non-irreversible class) are eligible but have no
+	// historian record, so they sort LAST in brief-id order, after vg/11.
+	want := []string{"vg/08", "vg/02", "vg/09", "vg/01", "vg/07", "vg/11", "vg/12", "vg/14"}
 	if got := digestBriefIDs(d); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("digest order = %v, want oldest-first %v", got, want)
 	}
@@ -110,6 +133,8 @@ func TestSignoffDigestOldestFirst(t *testing.T) {
 		"vg/01": "2d",
 		"vg/07": "4h",
 		"vg/11": "—",
+		"vg/12": "—",
+		"vg/14": "—",
 	}
 	for _, e := range d.Entries {
 		if e.Age != wantAge[e.Brief] {
