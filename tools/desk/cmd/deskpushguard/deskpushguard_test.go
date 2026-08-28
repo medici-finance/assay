@@ -131,6 +131,16 @@ func TestParseRef(t *testing.T) {
 		{"refs/heads/brief/desk-10 x refs/heads/brief/desk-10 y", "brief/desk-10", true},
 		{"refs/heads/docs/readme-fix x refs/heads/docs/readme-fix y", "docs/readme-fix", true},
 		{"refs/tags/v1.0 x refs/tags/v1.0 y", "v1.0", true},
+		// Detached-HEAD update push: `git push origin HEAD:refs/heads/<branch>`, the shape a
+		// resume/shepherd worker uses to update an existing PR branch from an isolated
+		// worktree. The LOCAL ref is `HEAD`; the branch must be derived from the REMOTE ref so
+		// the foreign-commit self-exclusion compares against origin/<realbranch> (matching the
+		// branch's own already-published commits) instead of a nonexistent origin/HEAD, which
+		// misreported the PR's own head as a foreign commit (#22).
+		{"HEAD deadbeef refs/heads/brief/example-04 0000000000000000000000000000000000000000", "brief/example-04", true},
+		{"HEAD deadbeef refs/heads/mine 0000000000000000000000000000000000000000", "mine", true},
+		// Neither side names a real branch (a bare-HEAD line): nothing to guard.
+		{"HEAD deadbeef HEAD 0000000000000000000000000000000000000000", "", false},
 		{"", "", false},
 	}
 	for _, tt := range tests {
