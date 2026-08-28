@@ -20,11 +20,11 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-28 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-28 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-28 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/12 | 2026-08-28 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/13 | 2026-08-28 |  |
 
 ## Next up
 
-_Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: statusgen. By stream: statusgen (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: statusgen. By stream: statusgen (2). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
@@ -216,7 +216,7 @@ _None._
 - 14 auto-filed refactor work + quality error-budgets + RETRO output feed — todo (wave 5)
 - 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
 
-### statusgen (12 open)
+### statusgen (13 open)
 
 - 01 30-day lint-firing audit — retire cold rules — verified (wave 1)
 - 02 issue metrics (`--issues`) — verified (wave 1)
@@ -230,6 +230,7 @@ _None._
 - 10 graph export (`--graph` DOT + JSONL) — todo (wave 1)
 - 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
 - 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — todo (wave 1)
+- 13 cadenced roadmap artifacts (`--cadence weekly/monthly`) — todo (wave 1)
 
 ## Done briefs
 
@@ -239,4 +240,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**10** streams (**10** active, **0** paused) · **0/85** briefs done · completed initiatives: see `docs/archive/`
+**10** streams (**10** active, **0** paused) · **0/86** briefs done · completed initiatives: see `docs/archive/`
