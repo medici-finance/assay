@@ -1,5 +1,5 @@
 ---
-brief: statusgen/12
+brief: statusgen/13
 title: 'Cadenced roadmap artifacts — `--cadence weekly|monthly` window computation reusing the roadmap renderer, a `theme:` render rule, config-driven priority order and brand'
 wave: 1
 depends: []
@@ -27,7 +27,7 @@ sources:
   - "the roadmap renderer's stream frontmatter reader — where the optional `theme:` key is parsed and the unmapped-renders-visibly rule lives"
 ---
 
-# Brief 12 — Cadenced roadmap artifacts (`--cadence weekly|monthly`)
+# Brief 13 — Cadenced roadmap artifacts (`--cadence weekly|monthly`)
 
 An **implementation brief** on statusgen's own source. It generalizes the existing
 point-in-time `--roadmap` renderer to two additional cadences by computing a closed time
