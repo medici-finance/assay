@@ -18,7 +18,7 @@ schema: paired-versions-v1
 
 # LEFT side of the pairing: the plugin version this manifest is paired for.
 # Must match plugins/assay/.claude-plugin/plugin.json `version`.
-plugin: "0.3.0"
+plugin: "0.4.0"
 
 # RIGHT side: the statusgen release the plugin above is paired with.
 statusgen:
