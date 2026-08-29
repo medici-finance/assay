@@ -195,7 +195,7 @@ func fakeDiffLintExecErr(root string) diffLintConfig {
 }
 
 // TestRunDiffLintRoots_ExecFailureNeverPrintsPass is the regression for the
-// assay#172 reviewer finding: when a root's head lint cannot execute, the loop
+// #172 reviewer finding: when a root's head lint cannot execute, the loop
 // sets exit=1 but never touches `total`; gating the summary on `total==0` alone
 // printed `LINT: PASS` on a run that returns 1. stdout and the exit code must
 // agree.

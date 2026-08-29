@@ -112,7 +112,7 @@ func runDiffLintRootsWith(roots []string, cfgFor func(root string) diffLintConfi
 	// The stdout summary must never contradict the process exit code. A root
 	// whose head lint could not execute sets exit=1 without contributing to
 	// `total`, so gating PASS on `total == 0` alone would print `LINT: PASS` on a
-	// run that returns 1 (reviewer finding on assay#172). Fold
+	// run that returns 1 (reviewer finding on #172). Fold
 	// execution failures into the summary so stdout and the exit code agree.
 	switch {
 	case total > 0:
