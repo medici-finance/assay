@@ -115,6 +115,32 @@ func TestPublicRepoGateWired(t *testing.T) {
 			t.Fatalf("gate asked about issue/PR #%d on create, want 0", gotIssue)
 		}
 	})
+
+	// #1707: a create carrying an `Issue: #<N>` trailer routes that number to the gate,
+	// so a non-blessed public repo gains the per-issue-+1 path (a +1 on that tracking
+	// issue admits the create) instead of the structural no-number hard-fail. A `Brief:`
+	// trailer keeps 0 (covered by create_asks_the_gate_with_no_number above) — a brief
+	// resolves to a file, not a reactions surface.
+	t.Run("create_issue_trailer_asks_the_gate_with_the_issue_number", func(t *testing.T) {
+		work := newBaseFixture(t)
+		withEnv(t, work)
+
+		gotIssue := -1
+		publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, _, _ string, issueNumber int) error {
+			gotIssue = issueNumber
+			// Refuse so the create stops at the gate (no push/create) regardless of
+			// number — this test pins the ARGUMENT, not the admission outcome.
+			return deskkit.Refused("public-repo gate: stub refusal")
+		}
+
+		if rc := run([]string{"create", "--title", "Test PR", "--body-min", "body\nIssue: #77"}); rc != deskkit.ExitRefused {
+			t.Fatalf("create rc = %d, want 5 (refused)", rc)
+		}
+		if gotIssue != 77 {
+			t.Fatalf("gate asked about issue/PR #%d on an `Issue: #77` create, want 77 — the "+
+				"trailer's tracking issue is the reactions surface the +1 lands on", gotIssue)
+		}
+	})
 }
 
 // TestGateSeamIsRealInProduction — the seam these tests replace must, in a fresh
