@@ -53,6 +53,15 @@ type BriefFile struct {
 	// BlockedBy is the optional brief-v1 `blocked-by:` field — "env" when the
 	// brief is blocked on infrastructure/environment; "" when absent (marks the env-blocked segment in the segmented Awaiting board).
 	BlockedBy string
+	// HomedIn is the optional brief-v1 `homed-in:` field — "<owner>/<repo>" when
+	// the brief's deliverable lives in ANOTHER repo than the board that renders
+	// it (a de-housing); "" when absent, the default (a normal in-repo brief). A
+	// present value excludes the brief from THIS board's Next-up eligibility and
+	// carries the target repo on the tracking row, so a cross-repo dispatcher
+	// reads the right target instead of burning a slot to discover the mis-route.
+	// A wrong TYPE is a parse error; a present-but-malformed shape is a hard
+	// PROBLEM in checkBriefFiles. NEVER a Next-up score input (F-09 scope note).
+	HomedIn string
 	// Measures is the optional brief-v1 `measures:` field — the name of the
 	// process queue this brief instruments. nil when absent (the neutral
 	// default: not an instrumentation brief), non-nil when present, including
@@ -150,6 +159,23 @@ var (
 	// this map is a promise that a depth and a threshold exist for it.
 	validMeasuresQueue = map[string]bool{"verification-debt": true}
 )
+
+// validHomedInShape reports whether v is a well-formed `<owner>/<repo>` value
+// for the optional brief-v1 `homed-in:` field: exactly one "/", both sides
+// non-empty, and no whitespace anywhere. It deliberately does NOT check the
+// value against a repo allowlist — statusgen has no such list and must not
+// couple to one; the shape is all that can be validated locally.
+func validHomedInShape(v string) bool {
+	if strings.ContainsAny(v, " \t\n\r") {
+		return false
+	}
+	owner, repo, found := strings.Cut(v, "/")
+	if !found || owner == "" || repo == "" {
+		return false
+	}
+	// A second "/" leaves it in `repo`, e.g. "a/b/c" → owner "a", repo "b/c".
+	return !strings.Contains(repo, "/")
+}
 
 // measuresQueueNames lists the wired queue names, sorted, for lint messages.
 func measuresQueueNames() []string {
@@ -482,6 +508,19 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 			bf.Measures = &s
 		} else {
 			addBad("measures must be a string")
+		}
+	}
+	// homed-in is an OPTIONAL but KNOWN key (statusgen/12): the "<owner>/<repo>"
+	// the brief's deliverable was re-homed to. Absence defaults to "" (a normal
+	// in-repo brief) and is never flagged. A wrong TYPE is a parse error; a
+	// present-but-malformed shape is flagged semantically in checkBriefFiles so
+	// the bad value is echoed back. Parsed independently of every other optional
+	// key.
+	if v, ok := data["homed-in"]; ok {
+		if s, ok := v.(string); ok {
+			bf.HomedIn = s
+		} else {
+			addBad("homed-in must be a string")
 		}
 	}
 	// parallel-streams is an OPTIONAL but KNOWN key (methodology/43): the shards
@@ -1039,6 +1078,14 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				add("%s: unknown measures queue %q (want one of: %s) — the drain-before-instrument gate can only read a wired queue",
 					path, *bf.Measures, strings.Join(measuresQueueNames(), ", "))
 			}
+			// homed-in is optional; only a PRESENT-but-malformed shape is a hard
+			// PROBLEM echoing the bad value. Absence defaults to "" (in-repo) and
+			// is never flagged. A malformed value is left OFF the row below (like
+			// value/exec-tier) so a typo cannot silently exclude a brief from
+			// Next-up — it reddens lint instead.
+			if bf.HomedIn != "" && !validHomedInShape(bf.HomedIn) {
+				add("%s: invalid homed-in %q (want <owner>/<repo>)", path, bf.HomedIn)
+			}
 			anyYes := false
 			for _, v := range bf.Risk {
 				if v == "yes" {
@@ -1122,6 +1169,15 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// invalid values are caught above and left off the row.
 				if validBlockedBy[bf.BlockedBy] {
 					row.BlockedBy = bf.BlockedBy
+				}
+				// homed-in worms into the Brief row for the Next-up eligibility
+				// exclusion, the [homed→<owner/repo>] marker and the board-honesty
+				// integration. Only wired when the shape is VALID; a malformed
+				// value is caught above and left off the row (like value/exec-tier)
+				// so a typo reddens lint rather than silently taking the brief off
+				// the board. NEVER a Next-up score input (F-09 scope note).
+				if validHomedInShape(bf.HomedIn) {
+					row.HomedIn = bf.HomedIn
 				}
 				// measures worms into the Brief row for the drain-before-
 				// instrument eligibility gate. Wired UNCONDITIONALLY — unlike

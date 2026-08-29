@@ -335,6 +335,29 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			len(nu.MeasuresUnknown), strings.Join(nu.MeasuresUnknown, ", "))
 		w("")
 	}
+	// Homed in another repo (statusgen/12). A brief here is NOT held pending
+	// anything on this board — its deliverable simply lives in another repo, so it
+	// is not a dispatch candidate here. The board NAMES each one with its target
+	// so a cross-repo dispatcher reads the right repo instead of burning a slot to
+	// discover the mis-route; silence would let the tracking row keep reading as a
+	// fresh local todo.
+	if len(nu.HomedElsewhere) > 0 {
+		ids := make([]string, 0, len(nu.HomedElsewhere))
+		for id := range nu.HomedElsewhere {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		frags := make([]string, 0, len(ids))
+		for _, id := range ids {
+			frags = append(frags, fmt.Sprintf("%s → %s", id, nu.HomedElsewhere[id]))
+		}
+		w("> **HOMED IN ANOTHER REPO — %d brief(s) not dispatchable here:** %s. Each declares `homed-in:` — "+
+			"its deliverable lives in the named repo, not this one. The tracking row stays so the work is not "+
+			"lost, but it is held out of Next-up so no slot is spent re-discovering the move. Dispatch it "+
+			"against the repo named after the arrow.",
+			len(nu.HomedElsewhere), strings.Join(frags, ", "))
+		w("")
+	}
 	// Overflow is an alarm (SCADA / EEMUA-191): when the eligible backlog exceeds
 	// what the caps show, say so explicitly — never silently truncate. The
 	// held-back count names WHICH cap fired: it used to blame the span-of-control
@@ -375,6 +398,9 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			marker := ""
 			if p.Brief.ExecTier == "strong" {
 				marker = " [exec:strong]"
+			}
+			if p.Brief.HomedIn != "" {
+				marker += " [homed→" + p.Brief.HomedIn + "]"
 			}
 			// Score is rendered DECOMPOSED when a drive steer is present: `base +
 			// term (drive:<slug>)`, never a merged number (brief-44 honesty rule).
@@ -441,6 +467,9 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 				marker := ""
 				if br.ExecTier == "strong" {
 					marker = " [exec:strong]"
+				}
+				if br.HomedIn != "" {
+					marker += " [homed→" + br.HomedIn + "]"
 				}
 				w("| %s | %s%s | %s | %d | %d | %s | %s | %s |", s.Name, br.Num, marker, qualityToken(s, br), g.Score, g.BlockedCount, age, v, r)
 			}

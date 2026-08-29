@@ -11,20 +11,20 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-28 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-28 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/5 | 2026-08-28 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-28 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-08-28 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-08-28 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-28 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-28 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-28 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/13 | 2026-08-28 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-29 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-29 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/5 | 2026-08-29 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-29 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-08-29 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-08-29 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-29 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-29 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-29 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/13 | 2026-08-29 |  |
 
 ## Next up
 
-_Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: statusgen. By stream: statusgen (2). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: statusgen. By stream: statusgen (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
@@ -50,14 +50,14 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: statusgen. By s
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (29 desk-actionable of 30 total — 20 at implemented, 10 verified awaiting review)
+## Awaiting verification / review (30 desk-actionable of 31 total — 21 at implemented, 10 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (29)
+### Desk-actionable (30)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -90,6 +90,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| statusgen | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ### Awaiting human gate (1)
 
@@ -229,7 +230,7 @@ _None._
 - 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — todo (wave 1)
 - 10 graph export (`--graph` DOT + JSONL) — todo (wave 1)
 - 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
-- 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — todo (wave 1)
+- 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — implemented (wave 1)
 - 13 cadenced roadmap artifacts (`--cadence weekly/monthly`) — todo (wave 1)
 
 ## Done briefs
