@@ -64,7 +64,7 @@ func TestDiffLint_DiffIntroducedFires(t *testing.T) {
 	// A problem present ONLY at head is diff-introduced => fires.
 	cfg := fakeDiffLint("basesha", "headsha", map[string][]string{
 		"base": {},
-		"head": {"PROBLEM: reconciler-spinout/brief-9: verified row with empty ## Evidence"},
+		"head": {"PROBLEM: example-stream/brief-1: verified row with empty ## Evidence"},
 	}, nil)
 	res, err := runDiffLintOne(cfg)
 	if err != nil {

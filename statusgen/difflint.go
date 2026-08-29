@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// Differential register lint (#191).
+// Differential register lint.
 //
 // `--lint` is the PR-side gate, but the register lint walks the whole product
 // scope regardless of the diff: any register defect already sitting on main
@@ -112,7 +112,7 @@ func runDiffLintRootsWith(roots []string, cfgFor func(root string) diffLintConfi
 	// The stdout summary must never contradict the process exit code. A root
 	// whose head lint could not execute sets exit=1 without contributing to
 	// `total`, so gating PASS on `total == 0` alone would print `LINT: PASS` on a
-	// run that returns 1 (#191 follow-up: reviewer finding on assay#172). Fold
+	// run that returns 1 (reviewer finding on assay#172). Fold
 	// execution failures into the summary so stdout and the exit code agree.
 	switch {
 	case total > 0:
@@ -213,7 +213,7 @@ func emitDiffLintResult(res diffLintResult) int {
 		fmt.Fprintln(os.Stderr, "PROBLEM:", stripProblemPrefix(p))
 	}
 	// The summary line — always printed, so a reviewer or desk routes base-side
-	// vs diff-side in one read (#191, option 2, included even when option 1 fires).
+	// vs diff-side in one read (option 2, included even when option 1 fires).
 	if res.couldNotCheck != "" {
 		fmt.Fprintf(os.Stderr, "diff-lint: base-vs-diff comparison UNAVAILABLE — %d problem(s) reported at full strength, 0 demoted\n", len(res.introduced))
 	} else {
