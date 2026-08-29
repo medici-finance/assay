@@ -147,3 +147,50 @@ reliably caught an inverted or false desk claim.
 - Release the dispatch claim once the branch is pushed — branch-as-claim takes over from
   there. A worker that cannot reach the claim helper does not skip this step; the forge-API
   form is the contract.
+
+## 9. Fail-first evidence — show the check failing before you claim it passes
+
+> For each new or changed test that asserts BEHAVIOUR or pins a GUARD/INVARIANT, the author
+> must show it failing on the unfixed code — a red run quoted in the PR body or commit trail,
+> or a committed mutation script the reviewer can re-run.
+
+That sentence is the reviewer's rule (`references/review-prompt.md` §3), quoted here
+verbatim so both kits bind the same obligation. At review, a test whose red state was never
+observed is a finding, not evidence: the PR comes back with a request for the red run, and a
+correct fix spends a full review round-trip on evidence the worker had at hand before the
+PR was opened. Three PRs bounced on exactly this in one review window with the fix and the
+test both sound.
+
+Produce it BEFORE `deskpr create`, in one of two forms:
+
+1. **A red run.** Run the new or changed test against the code as it was before the fix —
+   check out the pre-fix commit, or stash the fix — and capture the failing assertion:
+
+   ```
+   git stash && go test ./<pkg>/... -run '<TestName>' -count=1; git stash pop
+   ```
+
+   (or the repository's equivalent for its language). Paste the failing line and the commit
+   it ran against into the PR body under a `## Fail-first` heading.
+2. **A committed mutation entry.** Where the repository keeps a mutation map
+   (`internal/deskkit/mutations.json`, `testdata/mutate.sh`, or its named equivalent), add
+   the entry that breaks the guarded behaviour and name it in the PR body; the reviewer
+   re-runs it.
+
+Fail-first is part of the DELIVERABLE the same way the board row is: a PR whose body makes
+a test-based claim ("this test passes", "the guard is pinned") with no red run and no
+mutation entry is INCOMPLETE.
+
+**A red you cannot produce is a finding, never a licence.** If a test legitimately cannot
+be made to fail — the guarded path is unreachable from the test harness, the pre-fix state
+cannot be reconstructed, the only mutation that reddens it is one the fix forbids — report
+that in the PR body under the same heading: which test, what was tried, why the red could
+not be observed. Do not weaken the assertion, loosen the fixture, or drop the test to make
+the red easier to show; the rule asks for evidence of the check's strength, and a check
+made weaker to satisfy it has failed the rule twice.
+
+**Scope — do not over-apply.** Identical to the reviewer's: the rule binds tests asserting
+behaviour or pinning a guard. It does NOT bind docs, formatting, status-row flips,
+comment-only diffs, or changes that carry no test-based claim. A one-line docs PR never
+needs a mutation harness. A Verify row IS a check for this purpose — "docs" above means
+prose, not a Verify row.
