@@ -41,12 +41,21 @@ import (
 const usage = `deskevidence — commit Evidence rows as the verifier App (the verifier App).
 
 USAGE:
-  deskevidence <owner/repo> <branch> --evidence-file <repo-path> [--brief-path <repo-path>]
+  deskevidence <owner/repo> <branch> --evidence-file <repo-path> [--root <dir>]
+               [--brief-path <repo-path>] [--append-only] [--allow-shrink]
   deskevidence --version
 
 Commits the content of the local file at --evidence-file (a repo-relative path)
 to the same path on <branch> via the GitHub Contents API, using the verifier App
 installation token. Author = the verifier App.
+
+--root <dir> resolves a repo-relative --evidence-file against <dir> (e.g. the verifier
+worktree) instead of the current working directory, so a stale cwd cannot read the wrong
+checkout's copy (#1709). The path committed to the branch stays the repo-relative one.
+
+--append-only refuses a commit that would leave FEWER rows than the remote already holds
+(a shrink is almost always a stale-base/wrong-file mistake). It is auto-enabled for .jsonl
+sidecars; --allow-shrink overrides it when a row reduction is genuinely intended.
 
 When --brief-path is given, the evidence content (from --evidence-file) is appended
 to the brief file at --brief-path in the Evidence section, and THAT file is committed.
