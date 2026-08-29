@@ -156,6 +156,15 @@ type NextUp struct {
 	// name) — the could-not-check state. Held CLOSED and NAMED: see queueBlocks
 	// for why that direction, and emit for the banner that makes it visible.
 	MeasuresUnknown []string
+	// HomedElsewhere maps the id ("<stream>/<NN>") of every brief held OUT of
+	// Next-up by a valid `homed-in:` field to its "<owner>/<repo>" target
+	// (statusgen/12). A homed-in brief's deliverable lives in another repo, so it
+	// is not a dispatch candidate on THIS board — but it is NAMED here (not
+	// silently dropped, the StaleRef ~596-brief lesson) so a cross-repo dispatcher
+	// reads the target without opening the brief. Empty on a board where no brief
+	// carries the field, keeping such a board byte-identical to the pre-field
+	// baseline.
+	HomedElsewhere map[string]string
 	// --- Drive fields (methodology-metrics/45). All zero when no drive is active,
 	// keeping a no-manifest board byte-identical to the pre-drives generator. ---
 	//
@@ -413,6 +422,16 @@ func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool
 	if s.Status != "active" || b.StaleRef != "" {
 		return false
 	}
+	// homed-in (statusgen/12): a brief whose deliverable was re-homed to another
+	// repo is never a dispatch candidate on THIS board, at any status. The
+	// exclusion is opt-IN and self-selected — only a brief that WROTE a valid
+	// homed-in can be held — and every held brief is NAMED (HomedElsewhere) so a
+	// wrongly-excluded brief is visible, not silent. NEVER a score input: this is
+	// eligibility only (F-09 boundary). Placed here so it composes with the rest
+	// and the all-pick loop can attribute the held brief.
+	if b.HomedIn != "" {
+		return false
+	}
 	if claimed[s.Name+"/"+b.Num] {
 		return false
 	}
@@ -657,6 +676,20 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 					} else {
 						nu.MeasuresGated = append(nu.MeasuresGated, id)
 					}
+				}
+				// Attribute the homed-in exclusion (statusgen/12) so a held brief
+				// is NAMED with its target repo, never silently dropped. Only a
+				// would-be dispatch candidate counts — an active stream, a
+				// dispatchable status (todo/in-progress) — so a done/paused homed-in
+				// row is not reported as if it were being held out of dispatch.
+				// b.HomedIn is only ever set when the shape validated, so every id
+				// here carries a well-formed target.
+				if b.HomedIn != "" && s.Status == "active" &&
+					(b.Status == "todo" || b.Status == "in-progress") {
+					if nu.HomedElsewhere == nil {
+						nu.HomedElsewhere = map[string]string{}
+					}
+					nu.HomedElsewhere[s.Name+"/"+b.Num] = b.HomedIn
 				}
 				continue
 			}

@@ -90,6 +90,14 @@ type Brief struct {
 	// legacy (marks the env-blocked segment in the
 	// segmented Awaiting board).
 	BlockedBy string
+	// HomedIn is the optional brief-v1 `homed-in:` field — "<owner>/<repo>" when
+	// the brief's deliverable was re-homed to another repo than this board;
+	// "" = local (the default) or legacy. Wired from the brief file's frontmatter
+	// into the README row by checkBriefFiles, same pattern as Value/ExecTier, and
+	// only when the shape is valid. A non-empty value is an eligibility exclusion
+	// (held out of THIS board's Next-up) + a display marker carrying the target
+	// repo — NEVER a Next-up score input (F-09 scope note).
+	HomedIn string
 	// Measures is the optional brief-v1 `measures:` field — the name of the
 	// process queue this brief instruments (a metric, alarm or report ABOUT that
 	// queue). nil when the field is absent, which is the neutral default: an
