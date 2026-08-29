@@ -49,11 +49,13 @@ import (
 // Bound: enforcement is clause-granular. A requirement ADDED, REMOVED or RENAMED in the kit
 // goes red; wording drift strictly INSIDE one clause does not.
 //
-// This IS a live CI gate: scripts/go-check-workspace.sh runs `go test -count=1
-// ./...` over every workspace module, /tools/desk among them (REQUIRE_MODULES), from the
-// "Build, vet and unit-test every Go module in the workspace" step of the Checks workflow.
-// The earlier caveat here — that no CI job ran tools/desk tests — was true when this
-// file was written and is not true on the tree it merges into.
+// This IS a live CI gate in this tree, and it is on the RELEASE path:
+// .github/workflows/release.yml runs `cd tools/desk && go test ./... && go vet ./...` as one
+// leg of its test matrix, so a divergence here blocks a release rather than merely annoying a
+// developer — which is exactly what happened when the requirement list moved and this test
+// fataled on its own re-point instruction. .github/workflows/ci.yml additionally builds and
+// vets every module on every push; `go vet` compiles test files, so it catches compile
+// breakage here even though it does not run the test.
 
 const kitRel = "tools/desk/cmd/deskdispatch/references/verifier-prompt.md"
 
