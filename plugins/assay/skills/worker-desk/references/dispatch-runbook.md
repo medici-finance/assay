@@ -47,7 +47,7 @@ Two shapes run every tick: the **board-wide instruments**, once for the whole sc
 
 ```bash
 # board-wide, once per tick — each is fail-closed and three-state
-deskboard dispatch                          # the work to START + the HELD-BACK decomposition (#321)
+deskboard dispatch                          # the work to START + the HELD-BACK decomposition
 deskboard stalled --min-age-hours 48        # stalled drafts + shepherd list (--json for the machine shape)
 deskboard health                            # is main red? green / RED / COULD-NOT-CHECK
 issueboard issues                           # un-briefed trusted issues; EXTERNAL/UNBLESSED quarantined
@@ -68,10 +68,10 @@ deskdisposition sweep -R <r> --limit 100     # number  state  verdict  dispatch-
 ```
 
 `labels` is not optional — an ad-hoc query without it re-dispatched a `question`-labelled PR the desk
-had already routed to a human (#827). `--limit` is mandatory: bare `gh pr list` silently caps at 30.
+had already routed to a human. `--limit` is mandatory: bare `gh pr list` silently caps at 30.
 At 100 results treat the sweep as possibly truncated and widen rather than claiming zero.
 
-**Read the dispositions before any staleness arithmetic** (#728, #827). `SUPERSEDED` /
+**Read the dispositions before any staleness arithmetic**. `SUPERSEDED` /
 `RESOLVED-ELSEWHERE` is a deskclose item, never an orphan; `NEEDS-REBASE` is live work; a tool exit 6
 or a failed list read is could-not-check — report the repo BLIND for the cycle.
 

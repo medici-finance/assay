@@ -52,7 +52,7 @@ or base64 blobs.
 
 ## If a raw `gh pr review` is ever unavoidable
 
-Run it **BARE and read `gh`'s OWN exit — never `gh pr review … | grep …` (#73)**: the
+Run it **BARE and read `gh`'s OWN exit — never `gh pr review … | grep …`**: the
 pipe's last stage owns `$?`, so a SUCCESSFUL post reads as failed and gets re-posted, and a
 submitted review cannot be retracted, so the retry is permanent duplicate noise. If a pipe is
 unavoidable, use `set -o pipefail` + `${PIPESTATUS[0]}` / `$pipestatus[1]`. Before any manual

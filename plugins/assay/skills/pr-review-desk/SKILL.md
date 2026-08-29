@@ -236,7 +236,7 @@ as the planner and acts on its rows.
   `risk:` yes; fallback — the diff touches the repo's risk-classed paths per its own resident
   rules (e.g. `auth/`, `billing/`, `deploy/`).
   **The desk runs it ITSELF — a missing `/security-review` is the desk's own work item, never a
-  standing blocker or a hand-off (#84):** a `gate: human` auth/identity/ledger/funds PR
+  standing blocker or a hand-off:** a `gate: human` auth/identity/ledger/funds PR
   whose only gap is the missing artifact must NOT sit flagged waiting for someone to produce it.
   Ledger/Identity auth changes → the `ledger-auth-reviewer` agent; ledger/funds changes → a
   security-focused reviewer. Post AS THE APP at the reviewed head: no blocker → a
@@ -303,8 +303,8 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   (columns `| # | Brief | Wave | Effort | Status | Verified | Reviewed |`), Status must be a bare
   token — `todo`/`in-progress`/`implemented`/`verified`/`done`, or the hold token `blocked` — with
   no PR/commit ref, date or sign-off dressed onto it. A dressing inside Status
-  (`implemented (#1234)`) trips an `invalid status` PROBLEM; a prepended leading cell
-  (`| implemented (#76) ||`) shifts every column right into a cascade of PROBLEMs. Both abort the
+  (`implemented (#<pr>)`) trips an `invalid status` PROBLEM; a prepended leading cell
+  (`| implemented (#<pr>) ||`) shifts every column right into a cascade of PROBLEMs. Both abort the
   board regen → `--request-changes` naming the bare-token fix; refs/dates/sign-offs belong in the
   **Verified/Reviewed** columns. Do NOT flag a legitimate `blocked` cell. Run the board linter and
   treat these PROBLEMs as blockers even when the flip is substantively correct.

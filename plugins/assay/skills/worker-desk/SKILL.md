@@ -63,7 +63,7 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | # | Source | The instrument that reads it |
 |---|---|---|
 | 1 | Board rows the board SHOWS, per root (the span-capped Next-up selection) | `git -C <root> fetch origin && fanoutloop plan --root <root>` |
-| 2 | Rows **held back** by the 4-per-stream cap or the span cap | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one (#321) |
+| 2 | Rows **held back** by the 4-per-stream cap or the span cap | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one |
 | 3 | Orphan PRs owing a worker action, `CONFLICTING` PRs, red checks | the per-slug PR + disposition reads in [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §The tick sweep, with the disposition read FIRST |
 | 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate) |
 | 5 | `Awaiting implementer rework` board rows | the board's own section, read per root from `refs/remotes/origin/main:STATUS.md` — `plan` contains none of them |
@@ -88,7 +88,7 @@ approvals and the stale-approval resync class belong to **pr-review-desk's** fre
 neither works nor counts them; where one of them surfaces as a plain implementable issue it arrives
 through row 6 like any other, on row 6's four rules.
 
-## HARD GATE — never claim "pool empty / nothing to dispatch" without a fresh sweep (#79)
+## HARD GATE — never claim "pool empty / nothing to dispatch" without a fresh sweep
 
 **An idle claim is a claim about the work queue, and the only evidence is a fresh sweep.** Before this
 desk EVER reports "pool empty", "nothing to dispatch", "caught up" or "idle", it is a HARD
@@ -109,7 +109,7 @@ settles it).
 **Two sets, one definition point.** This is the ONLY place this skill RESOLVES a repo set; the board
 read, the orphan sweep and the issue sweep all take their repos from here. A second *operative* list
 is a bug wherever it appears — a hand-maintained list drifts in both directions at once, and neither
-direction is visible from inside the file (#258).
+direction is visible from inside the file.
 
 | set | what it is | derived from |
 |---|---|---|
@@ -145,13 +145,13 @@ unreadable root in as an empty one.
 - **Regenerate only YOUR OWN root**, in your own worktree, and discard the churn. Read every other
   root from `refs/remotes/origin/main:STATUS.md` after fetching it — never regenerate in a sibling
   (`--root ../X` **writes**, and `../X` is the shared clone other sessions use). Spell the ref in full
-  (bare `origin/main` resolves to a stray local branch of that name where one exists, #885), chain
+  (bare `origin/main` resolves to a stray local branch of that name where one exists), chain
   `git fetch origin && …` so a failed fetch short-circuits instead of printing a stale board at rc=0,
   and fetch **every** root.
 - **Row count is not eligible count** — the 4-per-stream cap holds rows back without tripping the
   overflow line, and no verb surfaces the held rows themselves. `deskboard dispatch` is the reading
   that separates an EMPTY queue from a THROTTLED one: it prints the held-back decomposition and the
-  per-root claim degradation (#321). `--overflow-threshold 1` gets true counts when regenerating your
+  per-root claim degradation. `--overflow-threshold 1` gets true counts when regenerating your
   OWN root. Where the board's overflow line fires, treat it as the alarm it says it is — clear WIP
   before pulling more (§WIP-capped — re-check, never stop), never as a licence to refill harder.
 - **Qualify every brief ID with its repo** (`tracker:` / `at:` / `repob:`) in claim keys, prompts,
@@ -164,7 +164,7 @@ unreadable root in as an empty one.
   stream of the same name the collision is **quarantined per root**: the colliding roots are skipped
   with loud STALE/PROBLEM lines while every non-colliding root still generates. The earlier "the
   combined two-root form exits 1 and writes NOTHING" line mis-transcribed the collision case onto the
-  two-root form and is **withdrawn** (audit §8 correction 2; #1580 re-scoped). `statusgen init`
+  two-root form and is **withdrawn** (audit §8 correction 2). `statusgen init`
   scaffolds every repo with the same `stream: example` identity, so init'd roots collide by
   construction — that, not root count, is what to check when a board goes missing.
 
@@ -200,7 +200,7 @@ four must hold:**
 **Priority is LOWEST of the dispatch sources** (WIP-draining work → board rows → un-briefed issues),
 but the ordering is a tie-break, not a hold: an empty slot with a qualifying issue and nothing above
 it dispatches NOW. Claim under the SAME issue-shaped key the placeholder lane uses, `<repo>--issue-<NN>`
-(#575) — deliberately shared, so the two lanes contend on one lock and can never double-dispatch. A
+— deliberately shared, so the two lanes contend on one lock and can never double-dispatch. A
 sweep that repeatedly surfaces issues failing rule 4 is an intake-coverage signal: file it, never
 widen this lane.
 
@@ -215,7 +215,7 @@ could-not-check, never "no repos".
   pre-resume guards are [`references/dispatch-runbook.md`](references/dispatch-runbook.md)
   §The tick sweep. `--limit` is mandatory on every raw list (bare `gh pr list` silently caps at 30) and
   at-cap is **could-not-check — blind, not idle**.
-- **Read the DISPOSITIONS first, before any staleness arithmetic** (#728, #827): `SUPERSEDED` /
+- **Read the DISPOSITIONS first, before any staleness arithmetic**: `SUPERSEDED` /
   `RESOLVED-ELSEWHERE` is a deskclose item, never an orphan; `NEEDS-REBASE` is live work; exit 6 or a
   failed read means that repo is BLIND this tick, not empty.
 - A PR is **ORPHANED** when its disposition reads checked-clean AND the worker owes it action
@@ -333,7 +333,7 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Tier**: `--tier` follows the brief's `exec-tier` (absent = `any`); `strong` goes only to
   session-tier and the kit carries the pickup-STOP text. Effort S may run at your session tier, M/L go
   to a cheap tier behind the review/verify gates.
-- **Serialize out-of-repo items (#221)** — no worktree isolation, no branch-as-claim: at most ONE in
+- **Serialize out-of-repo items** — no worktree isolation, no branch-as-claim: at most ONE in
   flight across all streams, the declaration is the claim, so check in-flight PRs for overlaps first.
 - **Placeholders stay dispatchable** (ruling 2, 2026-08-24) — and the shipped `fanoutloop plan`
   includes them, so skill and binary now agree.
@@ -353,7 +353,7 @@ never hand-file around it; **6** = could-not-check, do not file, retry next cycl
 the dispatch and the PR body's BLOCKED-ON-HUMAN line; where the Task has an explicit human co-execution
 step the prompt says prepare everything, STOP at the documented stop-point, report BLOCKED-ON-HUMAN.
 
-**Security-gate removal is gate:human BEFORE the commit, not only at approval** (#1199): such a diff
+**Security-gate removal is gate:human BEFORE the commit, not only at approval**: such a diff
 erases the red-check signal that makes the decision visible downstream, so "a worker behind a draft PR
 is inert" fails for it. Never write that removal into a brief or a prompt — briefing it launders a
 gate:human decision into a mechanical task. File the `needs-decision` fork; dispatch only after a
@@ -505,7 +505,7 @@ worker-desk's own.
 - **The wake is `capability:durable-monitor`** — armed at boot, before the first sweep, and kept armed
   for the life of the window. Check what is already armed before arming a second; never arm two. It is
   best-effort by construction and never the sole wake signal: the fixed-cadence sweep below is what
-  makes a dead wake loud instead of a silent all-clear (#79).
+  makes a dead wake loud instead of a silent all-clear.
 - **The full re-check tick is 30 minutes.** That is the WIP-capped re-check cadence and the standing
   full-sweep cadence, inside the contract's 30–60 minute heartbeat band. Completion signals
   (`capability:session-notifications`) still refill a freed slot the instant a worker finishes — the

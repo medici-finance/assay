@@ -46,7 +46,7 @@ self-report.
 coordinator never autonomously responds to inbound ISSUE or COMMENT events** — monitor-fired response
 is `intake-desk`'s alone (the origin test is stated ONCE, in `skills/intake-desk/SKILL.md` § "The
 loop — issue lane"). That scopes issue/comment inbound only: this desk still watches the open-PR
-queue and files `review-request` issues, and #70 fires off its own board sweep.
+queue and files `review-request` issues, and the autonomous-drive rule fires off its own board sweep.
 
 ## Boot
 
@@ -80,12 +80,12 @@ verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name
   there, remove it. Register WRITES are per-entry files under `docs/streams/findings/` landing via
   PR, never a hand-append to the generated view
   (`docs/streams/findings/2026-08-25-the-desk-rewrite-read-only-board-sweep.md`).
-- **HARD GATE — no state-of-play claim without a fresh sweep (#79).** Before this desk EVER reports
+- **HARD GATE — no state-of-play claim without a fresh sweep.** Before this desk EVER reports
   state-of-play ("N mid-flight", "nothing awaiting", "current", "idle", "caught up") it is a HARD
   PRECONDITION that it has *just* run that sweep and confirmed `awaiting == 0` with no actionable
   Next-up row. "I skimmed it at boot" is not fresh; "my agents finished" is not evidence. A sweep
   that failed or errored is **could-not-check — blind, not idle**.
-- **Autonomous drive — advance every actionable item before yielding (#70).** Post-boot, after ANY
+- **Autonomous drive — advance every actionable item before yielding.** Post-boot, after ANY
   event (worker completion, human message, new intake), sweep and advance everything actionable
   before yielding. **"Advance" here means author, file, route, relay, arbitrate** — it does NOT
   authorize a fanout batch, `gh pr ready`, a main push, a merge, or an issue close. `question` /
@@ -95,7 +95,7 @@ verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name
 - **Console noise floor.** Three output classes: **actionable** (a needs-decision item, a register
   defect, an error, a question) always printed in full; the **full board** only when it changed or on
   request; otherwise ONE **quiet** line — timestamp, boards swept, delta count, actionable count,
-  next wake. It never weakens #79: a quiet line is still a claim about the board.
+  next wake. It never weakens the fresh-sweep gate: a quiet line is still a claim about the board.
 
 ## Operating rules
 
@@ -129,9 +129,9 @@ verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name
 - **File-and-exit, never block — the pod-loop contract (desk-hardening/13).** File (or confirm
   already-filed) the escalation, then **exit the run**; never hold it open for the answer, resumption
   is event-driven. A blocked state must be an at-rest filed issue anyone can inspect, never a hung
-  process. **File at discovery (#71)**, then *notify* ("filed as `<repo>#<N>`") — never ask
+  process. **File at discovery**, then *notify* ("filed as `<repo>#<N>`") — never ask
   permission; reserve "ask first" for PII/secrets/exploit detail and genuine decision forks.
-- **Main-red is a discovery, not a stall (#71b).** A red `main`/post-merge gate gets a filed `bug`
+- **Main-red is a discovery, not a stall.** A red `main`/post-merge gate gets a filed `bug`
   (run URL, failing sha, the error, whether it blocks other PRs) plus a fixing **draft PR** when the
   fix is mechanical; the merge stays human:<name>'s. Check for an existing claim first — a PR already
   referencing the failure means relay the pointer, don't re-file. A judgment fork is a
@@ -157,7 +157,7 @@ verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name
 - **Dedupe against the open-issue register BEFORE any fanout:** "is this already filed?" precedes
   "who can investigate this?". On a board PROBLEM: confirm the red is not a stale-oracle artifact
   (check the board tool's provenance line against the pinned release), THEN dedupe, THEN dispatch.
-- **Fanout-first (#11): the desk runs on the top tier — spend that tier ONLY on judgment, synthesis,
+- **Fanout-first: the desk runs on the top tier — spend that tier ONLY on judgment, synthesis,
   arbitration, verifying agent output, and talking to human:<name>.** Everything else fans out by
   default (mechanical evidence-gathering → cheap tier; research/drafting/authoring →
   `capability:dispatch-worker`), including any answer needing more than ~2 minutes of tool work, so

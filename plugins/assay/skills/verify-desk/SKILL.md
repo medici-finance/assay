@@ -27,20 +27,20 @@ things this desk cannot close (`irreversible` / `gate: human`) are async — lan
 wait, take the next brief. An escalation is a filed artifact you keep moving past, and it goes to
 **human:<name>**, never to a bigger model.
 
-## HARD GATE — never claim "idle / caught up" without a fresh sweep (#79)
+## HARD GATE — never claim "idle / caught up" without a fresh sweep
 
 An idle claim is a claim about the Awaiting queue, and the only evidence about that queue is a fresh
 sweep: before reporting "idle", "caught up", or "nothing awaiting", it is a HARD PRECONDITION that
 `verifyloop plan` has *just* run and printed an empty queue. **"My dispatched verifiers finished" is
 NOT evidence** — a verifier completing speaks only to the brief you already dispatched, never to briefs
-merged since; that conflation is #79, a silent outage reported as an all-clear. **A `plan` run stopped
+merged since; that conflation is a silent outage reported as an all-clear. **A `plan` run stopped
 by a red preflight (exit 6) is `could-not-check` — blind, NEVER an empty queue**, as is any errored
 run: fix the check it names, re-run, then claim. An open verify-gate wait is a wait state, not idle.
 
 ## Boot
 
 1. `WT=$(deskwt role-init --role verifier)` — session-scoped locked worktree on a branch tracking
-   `origin/main`, with the worktree-scoped verifier-App bot USER identity (#638). Idempotent: reuses
+   `origin/main`, with the worktree-scoped verifier-App bot USER identity. Idempotent: reuses
    your own valid tree instead of registering another. Never hand-roll `git worktree add`; `deskwt`
    missing is a preflight-class failure.
 2. `deskboot verify-desk`, from `$WT` — loop identity, prune, lock, roster registration, the five-check
@@ -64,20 +64,20 @@ run: fix the check it names, re-run, then claim. An open verify-gate wait is a w
 2. **Dispatch what it prints**, one verifier per item, via `deskdispatch <item-key> --kit verifier`
    (claim → worktree → roster → decision gate → model stamp → prompt). Tier 1 (`implemented`, empty
    Evidence) before Tier 2 (`verified → done` closes), oldest-first within a tier; Tier 2 is never
-   hidden — a filtered-out free close becomes permanent debt (#541).
+   hidden — a filtered-out free close becomes permanent debt.
 3. **Land each verdict as it returns** via `deskevidence` (below) — never a wave buffered to the end.
 4. Repeat as a CONTINUOUS drain, reporting incrementally. `verifyloop verdict` is the
    deterministic-runner half; filing its signed payload is the autonomous cutover, `gate: human`.
 
 **Sibling repos are in scope** (human:<name>, 2026-07-10, F-23): a brief whose deliverables land
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a
-hardcoded list (#258); an uncloned repo is **could-not-check** for that row, never a fail. Resync the
+hardcoded list; an uncloned repo is **could-not-check** for that row, never a fail. Resync the
 sibling, run its rows there, record sibling repo + SHA in Evidence beside the in-repo row.
 
 ## The verifier dispatch — the moat
 
 - **ALWAYS dispatch; NEVER verify inline; never the implementer.** An inline verdict lives in session
-  context and dies with it (#541: an afternoon of correct verification, `capability:dispatch-worker`
+  context and dies with it (an afternoon of correct verification, `capability:dispatch-worker`
   calls **0**, zero artifacts). A dispatched verifier returns a **written** verdict that outlives your
   context even if you never act on it. "It's only a one-liner, I'll just run it" is the failure mode,
   not an exception to it. Verifier ≠ author — a fresh agent, always (brief-16 attribution).
@@ -140,7 +140,7 @@ row with `"outcome":"verified"`, so the denominator is complete.
 **The whole fleet is branch + draft PR; push-to-main and merge are human-gated. The one exception, and it
 is this desk's alone: `deskevidence` Evidence-row landings and the status flips that accompany them
 commit straight to `main` as the verifier App — human:<name>'s authorization of 2026-07-09, restated
-2026-08-24 (audit PR #1579, ruling 3).** Nothing else, nobody else: not another verb, not another file
+2026-08-24 (audit ruling 3).** Nothing else, nobody else: not another verb, not another file
 class, not another desk, not a wider branch grant.
 
 Interface: `deskevidence --help` — positional `<owner/repo> <branch>`, `--evidence-file` required (plus
@@ -150,7 +150,7 @@ only misleads). Set `VERIFIER_MAIN_OK=1`.
 
 **A sanctioned channel is not a way around a blocked write.** `deskevidence` is where the real guards
 live and fire — `VERIFIER_MAIN_OK`, the repo allowlist, the BodyCheck secret/impersonation scan, the
-outward-write rate limit, the post-commit attribution check (author = the App's bot USER id, #638), the
+outward-write rate limit, the post-commit attribution check (author = the App's bot USER id), the
 audit line — so use it *because* it enforces those. A guard- or classifier-BLOCKED `git push` is a
 STOP-and-escalate; never route the same write through another tool to get past a block.
 
@@ -191,7 +191,7 @@ fail `--lint` and redden main CI directly. So the model path STOPS short of the 
 
 ## `gate: model` verified→done — CI owns the flip; this desk WATCHES
 
-**The desk never flips a `gate: model` row** (audit PR #1579, ruling 4). Main CI does: the auto-flip job
+**The desk never flips a `gate: model` row** (audit ruling 4). Main CI does: the auto-flip job
 on every push to main runs `statusgen --root . --auto-flip-model`, reads the reviewer App's APPROVED
 review object on the PR that merged the work, requires it at that PR's **merged head SHA**, then stamps
 Reviewed (date + App + PR# + SHA) and flips the row to `done` in one write.
@@ -211,7 +211,7 @@ runs OFFLINE by contract (the offline envelope, common-clauses kit, `KUBECONFIG=
 never run a cluster row itself**. Left as-is, a brief whose local rows all PASS but which carries one
 cluster row rots at `implemented` — one live confirmation from `verified`, unreachable by any offline
 verifier. A cluster row is therefore a **hand-off to the online/pod verify lane** (`docs/streams/verdict-lane/`,
-brief `verdict-lane/07`, human:<name> #1630 Option A), **not a permanent park.**
+brief `verdict-lane/07`, human:<name>'s Option A ruling), **not a permanent park.**
 
 On a `gate: model` brief whose non-cluster Verify rows all PASS and whose only unrun rows are cluster rows
 (the cluster row class, `verdict-lane/08`), the offline desk:
@@ -237,10 +237,10 @@ session (the triggering case: a live Anthropic ACP session — adapter negotiati
 params). Unlike a cluster row it has **no online hand-off lane**: no second non-implementer runner holds the
 credential or can be charged the spend. Left under the plain Verify contract (a non-implementer re-runs
 every row) such a brief rots at `implemented` forever and needs a bespoke human ruling — the class that
-stranded loop-engine/14 at `implemented` (#1319) and recurs across desk-console-saas/04-05, desk-console-2/01,
+stranded loop-engine/14 at `implemented` and recurs across desk-console-saas/04-05, desk-console-2/01,
 desk-apps/04.
 
-human:<name> ruled (2026-08-27, spun out of #1319 into #1698) that this class is handled by **Option 2**:
+human:<name> ruled (2026-08-27) that this class is handled by **Option 2**:
 the probe is a **Phase-0 implementer obligation**, recorded as Evidence **at implementation time** (adapter
 version, exit code, metered cost, negotiated params) — it is **NOT** a non-implementer Verify-table gate.
 The offline verify contract is unchanged for every OTHER row (the offline surface — build/test/grep + the
@@ -265,7 +265,7 @@ derived risk-bearing values — is re-run as always). For the probe row the non-
 authoring time, and for statusgen/lint to distinguish a Phase-0-implementer row from a non-implementer
 Verify row (a marker so lint does not demand non-implementer Evidence for it — cf. the `‡`/UNRUN
 derivation), the brief-authoring contract (`assay/spec/brief-v1.md`) and `statusgen` — both de-housed to
-public `medici-finance/assay` — carry the companion change; #1698 tracks that half. This section is the
+public `medici-finance/assay` — carry the companion change; that half is tracked separately. This section is the
 verify-side contract only. Until the marker lands, record the Phase-0-record confirmation as the row's
 Evidence per step 2 and surface any brief that cannot advance without it — never a re-run, never a bespoke
 human ruling re-derived from scratch each time.
@@ -288,7 +288,7 @@ human ruling re-derived from scratch each time.
   pod; its blocked state must be an at-rest filed issue anyone can inspect.
 - **WRITE FIRST — a question is a filed artifact, not a halt.** With a verdict in hand, land it before
   asking: a question over unwritten work means that if the answer never comes the work is **gone**, not
-  delayed (#541: 4 parked questions, write/commit calls **0**). Unsure between two actions? Do the
+  delayed (4 parked questions, write/commit calls **0**). Unsure between two actions? Do the
   reversible one and say so. Unable to land at all? Then the artifact IS the question.
 - **Evidence-not-claims, applied hardest here** — the verifier's report is itself a claim; the value is
   the recorded output, and the runner must be attributable and ≠ author. A self-verify is void. Own temp

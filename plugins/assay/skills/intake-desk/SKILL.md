@@ -83,7 +83,7 @@ issue that owns it). Two intake-specific residues after boot:
 - **The scan scope comes from the tool; this skill carries no repo list.** `deskroster repos
   --scope scan` prints the front door this desk owns — the same roster value the scanner and
   `issueboard` read, so one scan covers exactly what it prints. Widen coverage by editing the
-  roster, never by editing prose (#258: the hand-maintained pair drifted in BOTH
+  roster, never by editing prose (the hand-maintained pair drifted in BOTH
   directions — phantom coverage of repos the tools refuse, and a silent blind spot on one they
   cover). `deskroster` exiting 6 is COULD-NOT-CHECK, not an empty world.
 - **Labels are per-repo and not GitHub defaults.** `needs-decision` and `raised-by:issue-loop` must
@@ -200,7 +200,7 @@ issues landed three days later. That is why the two rules sit together.
 4. **needs-decision.** An issue or brief that hits a human gate. File (or confirm) a
    `needs-decision` issue per the **brief-06 template**: self-contained (Situation / Options 2–4
    with pros-cons at the mm/12 trade-off bar / What-happens-on-each-answer / Links). The decider is
-   the human, and only a verified human account is honored (#237). This is the SINGLE decision queue
+   the human, and only a verified human account is honored. This is the SINGLE decision queue
    — the intake lane routes into it too, never a second one.
 5. **DUPLICATE — merge the evidence first, and this desk never closes it** (human:<name>, 2026-08-02).
    Spotting a duplicate is not authority to close one: it is a unilateral judgement that two reports
@@ -212,8 +212,8 @@ issues landed three days later. That is why the two rules sit together.
      loser into the survivor *before* anything is marked duplicate. This is the step that incident
      reports.
    - **Pick the survivor on MERIT; first-filed breaks a genuine tie only.** Verify the competing
-     claims — a claim that does not reproduce is not evidence. On this procedure's first run
-     (`#246`/`#248`) mechanical first-filed picked the **less** accurate issue and only the mandatory
+     claims — a claim that does not reproduce is not evidence. On this procedure's first run,
+     mechanical first-filed picked the **less** accurate issue and only the mandatory
      fold rescued the record; the pair were also lossy compressions of one parent record filed 2m28s
      apart by the same bot, so check provenance before reading agreement as corroboration.
    - **The dispatcher names the candidates and the tiebreak RULE — never which one survives.** Naming
@@ -302,7 +302,7 @@ Stated once for every desk; this skill adds only what is its own above.
 - **Main-red → file-first (pointer only).** A `main` / post-merge CI gate going RED is a discovery
   this desk FILES (a `bug` + a draft fixing PR when mechanical), not a stop-and-ask — escalate only
   for a genuine fork, and even then file the issue with a recommended default. Check for an existing
-  claiming PR/branch first. The full rule and its CI-native half live in `assay:the-desk` (`#71b`).
+  claiming PR/branch first. The full rule and its CI-native half live in `assay:the-desk`.
 - **Refresh, don't remember.** Every decision binds to state fetched *this cycle*: an issue you
   "remember triaging" is not proof of its current label, state or comment thread. The sanctioned
   memory channel is a rolling cycle summary; it tells you *where to look*, the fresh read tells you
