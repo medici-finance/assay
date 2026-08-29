@@ -110,10 +110,12 @@ type ciEntry struct {
 //	grep -rn 'filepath.Join("\.\.\|"\.\./' --include='*_test.go' .
 //	grep -rn 'os\.ReadFile\|os\.ReadDir\|parser\.ParseFile' --include='*_test.go' .
 //
-// tools/desk/cmd/verifyloop USED to be in that set. A prior change moved
-// .claude/skills/verify-desk/SKILL.md into THIS repo, so dispatch_sync_test.go
-// dropped its `consumer` tag and is now a registered cross-module reader below,
-// triggered by tools.yml's .claude/** filter — no longer the consumer's to own.
+// tools/desk/cmd/verifyloop USED to be in that set. A prior change moved the
+// verify-desk skill into THIS repo, so dispatch_sync_test.go dropped its
+// `consumer` tag and became a registered reader below — no longer the
+// consumer's to own. Its read has since been re-pointed again, at the verifier
+// dispatch kit under tools/desk/cmd/deskdispatch/references/, which is what the
+// skill now declares as the prompt's source; the row moved with it.
 //
 // LIMITS — what this guard does NOT prove, stated rather than implied. It reads
 // YAML with a hand-rolled parser (tools/desk is dependency-free), so it models
@@ -1057,24 +1059,30 @@ func ciCrossModuleRegistry() []ciEntry {
 				"drift — or lose its publication scrub — with the guardrail job never running",
 		},
 		{
-			// Registered when verify-desk's SKILL.md moved
-			// into this repo and this test dropped its `consumer` build tag. It parses
-			// .claude/skills/verify-desk/SKILL.md's "Its prompt MUST carry:" list and
-			// couples it to verifyloop's dispatchRequirements (#1262/#1267). The skill
-			// is the thing edited; scoped to tools/** alone, an edit to it would not
-			// run the coupling test that guards it — the #199 hole.
+			// Registered when verify-desk's SKILL.md moved into this repo and this
+			// test dropped its `consumer` build tag, when the requirement list it
+			// parses was skill prose. That list is gone: the skill now says the
+			// prompt is a KIT and names the kit as its source, so the test reads the
+			// kit instead. The row is RE-POINTED rather than deleted — the coupling
+			// is the point, only its far end moved.
+			//
+			// The read now sits under tools/**, so the trigger is the module's own
+			// filter and the #199 hole (a source outside tools/** editable without
+			// running the guard that reads it) closes by construction. Registered
+			// anyway: the row is what makes the read visible when the kit or the
+			// filter next moves.
 			test:     "tools/desk/cmd/verifyloop/dispatch_sync_test.go",
 			module:   "tools/desk",
 			workflow: ".github/workflows/tools.yml",
 			prJob:    toolsDeskJob,
 			pushJob:  toolsDeskJob,
 			reads: []string{
-				".claude/skills/verify-desk/SKILL.md",
+				"tools/desk/cmd/deskdispatch/references/verifier-prompt.md",
 			},
-			why: "dispatch_sync_test.go pins verifyloop's emitted verifier prompt against the SKILL.md " +
-				"'Its prompt MUST carry:' list; the two already diverged once (SKILL.md gained the " +
-				"name-and-derive step, the Go template did not, #1267). An edit to the skill that does not " +
-				"run tools/desk lets that recur silently",
+			why: "dispatch_sync_test.go pins verifyloop's emitted verifier prompt against the verifier " +
+				"dispatch kit's clauses; the two already diverged once (the canonical text gained the " +
+				"name-and-derive step, the Go template did not). An edit to the kit that does not run " +
+				"tools/desk lets that recur silently",
 		},
 		{
 			// #20 (F-34/F-35): writeguard was built and unit-tested in this
