@@ -111,6 +111,23 @@ var (
 	reDeferredByGate = regexp.MustCompile(`(?i)status:[^\n]*deferred|do not dispatch ahead of|do not dispatch until`)
 )
 
+// homedInSupersedes is the set of phantom classes that a valid `homed-in:` field
+// (statusgen/12) makes redundant: each is a HEURISTIC guess that a brief's
+// deliverable moved to another repo, and `homed-in` is the explicit,
+// author-declared successor that turns that guess into a fact — one that actually
+// excludes the brief from Next-up and carries the target repo. When a row carries
+// a valid `homed-in`, the guess must not ALSO fire: the explicit field is now
+// doing precisely what the heuristic was estimating, so leaving both would
+// double-report the same row. The git-derived already-merged-unflipped class and
+// the sequencing-gate class are NOT here — they describe different facts (a landed
+// row, an unmet gate) that `homed-in` does not speak to.
+var homedInSupersedes = map[string]bool{
+	phantomOutOfRepo:       true,
+	phantomDehoused:        true,
+	phantomReHomed:         true,
+	phantomStatusgenSource: true,
+}
+
 // phantomRemediation maps a class to the one-line "what clears it" the surfaced
 // board line carries, so a reader is told the resolution, not just the diagnosis.
 var phantomRemediation = map[string]string{
@@ -197,10 +214,17 @@ func boardHonestyNotices(streams []*Stream, merged []mergedPR, mergedErr error) 
 
 	for _, s := range streams {
 		// Which brief numbers are todo — the only rows this detector judges.
+		// homedIn records which todo rows carry a valid `homed-in:` (wired onto
+		// the Brief row by checkBriefFiles, which runs before this detector), so
+		// the explicit field can suppress the heuristic classes it supersedes.
 		todo := map[string]bool{}
+		homedIn := map[string]bool{}
 		for _, b := range s.Briefs {
 			if b.Status == "todo" {
 				todo[b.Num] = true
+				if b.HomedIn != "" {
+					homedIn[b.Num] = true
+				}
 			}
 		}
 		if len(todo) == 0 {
@@ -247,6 +271,14 @@ func boardHonestyNotices(streams []*Stream, merged []mergedPR, mergedErr error) 
 			}
 			class, reason, ok := classifyPhantom(id, body, readme, mergedIDs)
 			if !ok {
+				continue
+			}
+			// A valid `homed-in:` is the explicit successor to the heuristic
+			// work-moved classes (statusgen/12): when it is present, do not ALSO
+			// fire the guess it replaces — the field already excludes the brief
+			// and names the target. Classes it does not speak to (already-merged,
+			// deferred-by-gate) still surface.
+			if homedIn[num] && homedInSupersedes[class] {
 				continue
 			}
 			add("NON-DISPATCHABLE (%s): %s — %s. This todo row passes the freshness gate but is not "+

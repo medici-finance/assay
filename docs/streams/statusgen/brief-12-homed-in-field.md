@@ -138,8 +138,19 @@ byte-identical to today's (the additive-inert invariant every optional key holds
 | 6 | `git diff --name-only $(git merge-base HEAD origin/main) HEAD -- STATUS.md` | empty — STATUS.md is not committed on the branch (single-writer = main CI) |
 
 ## Evidence
-<!-- appended at implementation time: one row per Verify item (command, exit code, output line(s)
-     or hash, date, runner). "verified" requires this filled by someone who did NOT implement. -->
+
+Implemented 2026-08-29 (worker). Runner: local `go` toolchain, statusgen module.
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `go test ./...` (statusgen module) | 0 | `ok github.com/medici-finance/assay/statusgen`. New tests present: `TestHomedInShape`, `TestHomedInParse` (valid parse / absent-default / non-string parse error), `TestHomedInSchemaChecks` (valid clean / malformed PROBLEM), `TestHomedInEligibility` (present excludes from Next-up, keeps tracking row, target on view), `TestHomedInInert` (absent field populates nothing new), `TestHomedInMarkerAndBanner` (marker + board line + no-op on a plain board), `TestHomedInSupersedesPhantom` (board-honesty integration). |
+| 2 | `statusgen --lint --root .` on a fixture tree with one `homed-in: acme/widgets` brief | 0 | `LINT: PASS`. Rendered board: the homed brief is NOT a Next-up pick (`demo/01 — Local work` is the only pick), the tracking listing still shows `02 Elsewhere deliverable — todo`, and the board carries `HOMED IN ANOTHER REPO — 1 brief(s) … demo/02 → acme/widgets`. |
+| 3 | `statusgen --lint --root .` on the same fixture with `homed-in: not-a-repo` | 1 | `PROBLEM: docs/streams/demo/brief-02-elsewhere.md: invalid homed-in "not-a-repo" (want <owner>/<repo>)` — echoes the bad value and the file path. |
+| 4 | additive-inert invariant (absent field ⇒ byte-identical board) | 0 | The full pre-existing golden-render test suite passes unchanged (a board built from briefs that none carry `homed-in` renders exactly as before); `TestHomedInInert` additionally asserts `NextUp.HomedElsewhere` is empty and both plain briefs stay eligible when no brief carries the field. `homed-in` is wired only when the shape validates, so an absent/`""` value never reaches a row. |
+| 5 | inspect the rendered board / `NextUp` for a `homed-in: acme/widgets` fixture | 0 | The excluded brief's id (`demo/02`) and its target (`acme/widgets`) are both rendered on the `HOMED IN ANOTHER REPO` board line and reachable on `NextUp.HomedElsewhere["demo/02"] == "acme/widgets"` — a cross-repo dispatcher reads the target without opening the brief. |
+| 6 | `git diff --name-only $(git merge-base HEAD origin/main) HEAD -- STATUS.md` | 0 | empty — STATUS.md is not committed on the branch (single-writer = main CI). |
+
+Board-honesty integration verified: a `todo` row whose body trips the out-of-repo / re-homed / dehoused / statusgen-source-elsewhere heuristic is NO LONGER double-reported when it carries a valid `homed-in` (the explicit field supersedes the guess), while the git-derived already-merged-unflipped class and the sequencing-gate class still surface — pinned by `TestHomedInSupersedesPhantom` and observed live on the fixture tree.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the statusgen README table.

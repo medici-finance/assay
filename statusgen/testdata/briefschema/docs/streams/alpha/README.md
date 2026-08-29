@@ -63,3 +63,5 @@ track: platform
 | 79 | [Floor unknown-human reject](./brief-79-floor-unknown-human-reject.md) | 0 | S | verified | 2026-07-09 human: | — |
 | 80 | [Floor historical-human accept](./brief-80-floor-historical-human-accept.md) | 0 | S | verified | 2026-07-09 human:bob | — |
 | 81 | [Floor never-confirmed-human reject](./brief-81-floor-neverconfirmed-human-reject.md) | 0 | S | verified | 2026-07-09 human:carol | — |
+| 90 | [Valid homed-in](./brief-90-valid-homed-in.md) | 0 | S | todo | — | — |
+| 91 | [Invalid homed-in](./brief-91-bad-homed-in.md) | 0 | S | todo | — | — |
