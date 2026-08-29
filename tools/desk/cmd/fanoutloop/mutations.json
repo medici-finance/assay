@@ -1,0 +1,17 @@
+{
+  "test": "go test ./cmd/fanoutloop/ -count=1",
+  "control": {
+    "name": "CONTROL / #1674 regression proof — revert readNextUp to the pre-fix behaviour so it always reads the working-tree STATUS.md instead of origin/main; the sibling-staleness phantom returns and TestReadNextUp_ReadsBoardFromOriginMainNotStaleWorkingTree must go red",
+    "file": "cmd/fanoutloop/board.go",
+    "old": "\traw, fromRef := statusFromOriginMain(root)\n\tif !fromRef {",
+    "new": "\traw, fromRef := statusFromOriginMain(root)\n\tif true || !fromRef {"
+  },
+  "mutations": [
+    {
+      "name": "treat an unreadable origin/main ref as an authoritative EMPTY board — drop the honest working-tree fallback so a root that was never fetched (or is not a git repo) silently plans zero rows instead of degrading to the working tree with a could-not-check note (#1674); TestReadNextUp_FallsBackToWorkingTreeWhenNoOriginMain must catch it",
+      "file": "cmd/fanoutloop/board.go",
+      "old": "\tout, err := cmd.Output()\n\tif err != nil {\n\t\treturn \"\", false\n\t}",
+      "new": "\tout, err := cmd.Output()\n\tif err != nil {\n\t\treturn \"\", true\n\t}"
+    }
+  ]
+}

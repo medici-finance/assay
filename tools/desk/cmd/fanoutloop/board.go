@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -167,17 +169,37 @@ func isOutOfRepo(it loopengine.Item) bool { return it.Payload["out_of_repo"] == 
 
 var nextUpBriefRe = regexp.MustCompile(`^\s*(\S+)\s*(?:—|-)\s*(.*)$`)
 
-// readNextUp parses the `## Next up` section of <root>/STATUS.md — statusgen's own output, with
-// priority / staleness / caps / dep-incomplete already applied — into ordered BoardRows, resolving
-// each row to its brief file + frontmatter. It is the default Board source; the live cutover
-// substitutes a source that regenerates the board off a fresh origin/main fetch each cycle.
+// readNextUp parses the `## Next up` section of the root repo's STATUS.md — statusgen's own output,
+// with priority / staleness / caps / dep-incomplete already applied — into ordered BoardRows,
+// resolving each row to its brief file + frontmatter. It is the default Board source; the live
+// cutover substitutes a source that regenerates the board off a fresh origin/main fetch each cycle.
+//
+// The board is read from the already-fetched `refs/remotes/origin/main` ref, NOT the working tree
+// (#1674). `git fetch` updates `origin/*` but not a checkout's working tree, so a SIBLING root (any
+// board root other than the desk's own worktree, which is freshly branched off origin/main) is
+// parked on whatever stale commit it last synced; its working-tree STATUS.md then over-reports every
+// row that has since gone done/verified/merged on origin/main, manufacturing phantom dispatches.
+// Reading the board from the ref plans every root against origin/main, exactly as the desk's own
+// worktree already did. Brief frontmatter is still resolved from the working tree (resolveBrief) —
+// a row's dispatchability is decided by the origin/main board; the brief only supplies advisory
+// tiering, and a working-tree brief that is missing or stale degrades to the economy default rather
+// than dropping the row.
 func readNextUp(root, targetSHA string) ([]BoardRow, error) {
-	raw, err := os.ReadFile(filepath.Join(root, "STATUS.md"))
-	if err != nil {
-		return nil, err
+	raw, fromRef := statusFromOriginMain(root)
+	if !fromRef {
+		// could-not-check the ref (root is not a git repo, or origin was never fetched, or STATUS.md
+		// is absent on origin/main): fall back to the working-tree STATUS.md and SAY SO — a sibling's
+		// working tree can be stale (#1674), so this path is reported on stderr, never silently
+		// presented as an origin/main read.
+		b, err := os.ReadFile(filepath.Join(root, "STATUS.md"))
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(os.Stderr, "fanoutloop: NOTE: could not read STATUS.md from refs/remotes/origin/main under %s — falling back to the working-tree STATUS.md, which may be stale (#1674)\n", root)
+		raw = string(b)
 	}
 	var rows []BoardRow
-	for _, cells := range nextUpTableRows(string(raw)) {
+	for _, cells := range nextUpTableRows(raw) {
 		stream := strings.TrimSpace(cells["stream"])
 		briefCell := strings.TrimSpace(cells["brief"])
 		if stream == "" || briefCell == "" {
@@ -194,6 +216,28 @@ func readNextUp(root, targetSHA string) ([]BoardRow, error) {
 		rows = append(rows, br)
 	}
 	return rows, nil
+}
+
+// statusFromOriginMain reads STATUS.md from the root repo's already-fetched
+// `refs/remotes/origin/main` ref — the board source that fixes the sibling-staleness phantom (#1674).
+//
+// OFFLINE ENVELOPE. The only git this runs is `git -C <root> show refs/remotes/origin/main:STATUS.md`
+// against the LOCAL ref — never `git fetch`, never `git ls-remote`, no network is contacted
+// (GIT_TERMINAL_PROMPT=0, matching writescope_io.go's offline reader). The worker-desk boot fetches
+// origin BEFORE it plans, so the local ref is already current; `plan` itself stays no-network.
+//
+// Returns (bytes, true) on success. Any failure — root is not a git repo, the ref is absent because
+// origin was never fetched, or STATUS.md does not exist on origin/main — returns ("", false) so the
+// caller can fall back to the working-tree read and report the could-not-check, never rounding a
+// value it did not read up to a confident answer.
+func statusFromOriginMain(root string) (string, bool) {
+	cmd := exec.Command("git", "-C", root, "show", "refs/remotes/origin/main:STATUS.md")
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", false
+	}
+	return string(out), true
 }
 
 // nextUpTableRows extracts the rows of the `## Next up` pipe table as column-name maps. It reads
