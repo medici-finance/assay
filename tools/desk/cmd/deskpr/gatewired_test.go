@@ -121,6 +121,14 @@ func TestPublicRepoGateWired(t *testing.T) {
 	// issue admits the create) instead of the structural no-number hard-fail. A `Brief:`
 	// trailer keeps 0 (covered by create_asks_the_gate_with_no_number above) — a brief
 	// resolves to a file, not a reactions surface.
+	//
+	// FAIL-FIRST: revert the create-path gate call in deskpr.go from
+	// `publicRepoGateFn(fetcher, owner, name, trailerIssue)` back to the pre-fix hardcoded
+	// `...name, 0)` (neutralize the now-unused `trailerIssue` capture, e.g. `_ = trailerIssue`,
+	// or restore requireTrailer's error-only signature) and this subtest alone goes red:
+	//   gate asked about issue/PR #0 on an `Issue: #77` create, want 77
+	// while create_asks_the_gate_with_no_number stays green — the two spellings differ only
+	// for a create carrying an `Issue:` trailer, which is exactly what this pins.
 	t.Run("create_issue_trailer_asks_the_gate_with_the_issue_number", func(t *testing.T) {
 		work := newBaseFixture(t)
 		withEnv(t, work)
