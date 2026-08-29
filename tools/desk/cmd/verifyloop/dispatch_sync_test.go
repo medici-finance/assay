@@ -1,18 +1,28 @@
 // Structural integration test: verifies verifyloop's dispatchRequirements stay
-// in sync with plugins/assay/skills/verify-desk/SKILL.md's "prompt MUST carry:"
-// list.
+// in sync with the verifier dispatch KIT,
+// tools/desk/cmd/deskdispatch/references/verifier-prompt.md.
 //
-// The `consumer` build tag was DROPPED: verify-desk's
-// SKILL.md moved into THIS repo as its single home, so the skill file is now
-// inside the assay checkout and repoRoot's upward walk terminates here
-// (before, the path existed only in a separate repo, so this test hid
-// behind the tag and — run with the tag from an assay checkout — walked
-// past the root to $HOME and read a user-level file). The skill's home in this
-// repo is the public plugin layout, plugins/assay/skills/ — NOT .claude/skills/
-// (this test briefly pinned the latter, which never existed here: on developer
-// machines the walk escaped to $HOME again, and on bare checkouts the test
-// silently skipped). This file now runs in ordinary CI; the path filter that
-// triggers it and the cross-module reader registry row that pins it live in
+// WHERE THE REQUIREMENT LIST LIVES, AND WHY IT MOVED. This test used to parse
+// plugins/assay/skills/verify-desk/SKILL.md's "Its prompt MUST carry:" list. That list is
+// gone: the skill was restructured so the dispatch prompt is no longer prose written in the
+// skill at all. The skill now says so in as many words — "The prompt is a KIT, not prose
+// written here" — and names its declared source: `deskdispatch --kit verifier` emits the
+// common-clauses kit plus the verifier kit VERBATIM, from
+// tools/desk/cmd/deskdispatch/references/. So the single statement of what a dispatched
+// verifier must be told is the kit, and this test is re-pointed at it rather than deleted:
+// the coupling is the point, only its far end moved.
+//
+// Two consequences worth stating. (1) The source now lives in THIS module, not in a
+// documentation tree, so the upward walk terminates inside the checkout that is being
+// tested and the "skill missing → silently skip" hole closes — the kit is embedded into the
+// deskdispatch binary by //go:embed, so a tree that builds deskdispatch necessarily carries
+// it. (2) The clause set the kit states is WIDER than the old bullet list, so the registry
+// below is wider too: every clause of the kit is enumerated, and each one records how (or
+// whether) verifyloop's own template carries it. Narrowing the source back to a single
+// section would silently drop requirements from the gate.
+//
+// The `consumer` build tag stays DROPPED and this file runs in ordinary CI. The path filter
+// that triggers it and the cross-module reader registry row that pins it live in
 // tools/desk/internal/deskkit/citrigger_test.go (and .github/workflows/tools.yml).
 
 package main
@@ -27,41 +37,49 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
-// The dispatched-verifier prompt has TWO consumers of ONE requirement list: the prose the
-// manual desk follows (`plugins/assay/skills/verify-desk/SKILL.md` loop step 2, "Its prompt
-// MUST carry:") and the fixed template in dispatch.go that the loop engine emits once verifyloop
-// becomes the driver. Nothing kept them in sync, so SKILL.md gained the name-and-derive
-// step and the Go template silently did not.
+// The dispatched-verifier prompt has TWO producers of ONE clause set: the verifier kit that
+// `deskdispatch --kit verifier` emits verbatim (the manual desk's path, and the wording the
+// house treats as canonical) and the fixed template in dispatch.go that the loop engine emits
+// once verifyloop becomes the driver. Nothing kept them in sync, so the canonical text gained
+// the name-and-derive step and the Go template silently did not.
 //
-// These tests are that missing coupling: the skill file is parsed at test time and matched
-// against the dispatchRequirements registry in BOTH directions.
+// These tests are that missing coupling: the kit is parsed at test time and matched against
+// the dispatchRequirements registry in BOTH directions.
 //
-// Bound: enforcement is bullet-granular. A requirement ADDED, REMOVED or RENAMED in SKILL.md
-// goes red; wording drift strictly INSIDE one bullet does not.
+// Bound: enforcement is clause-granular. A requirement ADDED, REMOVED or RENAMED in the kit
+// goes red; wording drift strictly INSIDE one clause does not.
 //
-// This IS a live CI gate: scripts/go-check-workspace.sh runs `go test -count=1
-// ./...` over every workspace module, /tools/desk among them (REQUIRE_MODULES), from the
-// "Build, vet and unit-test every Go module in the workspace" step of the Checks workflow.
-// The earlier caveat here — that no CI job ran tools/desk tests — was true when this
-// file was written and is not true on the tree it merges into.
+// This IS a live CI gate in this tree, and it is on the RELEASE path:
+// .github/workflows/release.yml runs `cd tools/desk && go test ./... && go vet ./...` as one
+// leg of its test matrix, so a divergence here blocks a release rather than merely annoying a
+// developer — which is exactly what happened when the requirement list moved and this test
+// fataled on its own re-point instruction. .github/workflows/ci.yml additionally builds and
+// vets every module on every push; `go vet` compiles test files, so it catches compile
+// breakage here even though it does not run the test.
 
-const skillRel = "plugins/assay/skills/verify-desk/SKILL.md"
+const kitRel = "tools/desk/cmd/deskdispatch/references/verifier-prompt.md"
 
-// skillListAnchor locates the "Its prompt MUST carry:" list. The sentence wraps in the
-// skill file ("Its" ends the previous line), so the anchor is the fragment that survives
-// re-wrapping on ONE line. It occurs exactly once in the skill.
-const skillListAnchor = "prompt MUST carry:"
+// kitDirRel is the kit's home. It exists iff the dispatch tool ships in this tree, and it is
+// what separates "this checkout does not carry deskdispatch" (skip) from "the kit was
+// deleted" (fail closed).
+const kitDirRel = "tools/desk/cmd/deskdispatch"
 
-// skillBulletMarker matches a top-level bullet of the "Its prompt MUST carry:" list. The list
-// sits inside numbered loop step 2, so its bullets are indented; continuation lines are
-// indented further and are appended to the bullet they belong to.
+// kitClauseAnchor is the kit's own statement of what it is. Everything below it is clause
+// text. It occurs exactly once, on ONE line, and it names the thing the registry couples to —
+// a re-word that loses it is exactly the restructuring this test must notice.
+const kitClauseAnchor = "load-bearing clauses every dispatched VERIFIER agent receives"
+
+// The kit is markdown with `## ` clause sections. A section that carries top-level bullets
+// states one requirement per bullet; a section that carries none (a verbatim quoted block, a
+// rule written as prose) states ONE requirement, the section itself. Fenced blocks are inert.
 var (
-	skillBulletMarker = regexp.MustCompile(`^ {1,4}- `)
-	numberedStep      = regexp.MustCompile(`^\d+\. `)
+	kitBulletMarker  = regexp.MustCompile("^ {0,3}- ")
+	kitSectionHeader = regexp.MustCompile("^## ")
+	kitFenceMarker   = regexp.MustCompile("^\\s*```")
 )
 
 // repoRoot walks up from the package directory to the checkout root (the directory holding
-// the verify-desk skill). Not finding it is a failure, not a skip: a silent skip is how a
+// the verifier dispatch kit). Not finding it is a failure, not a skip: a silent skip is how a
 // coupling test stops coupling anything.
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -70,101 +88,136 @@ func repoRoot(t *testing.T) string {
 		t.Fatalf("getwd: %v", err)
 	}
 	for {
-		if _, err := os.Stat(filepath.Join(dir, skillRel)); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, kitRel)); err == nil {
 			return dir
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			t.Fatalf("could not find %s walking up from the package dir — run these tests from inside the repo checkout", skillRel)
+			t.Fatalf("could not find %s walking up from the package dir — run these tests from inside the repo checkout", kitRel)
 		}
 		dir = parent
 	}
 }
 
-// skipIfVerifyDeskSkillAbsent skips this coupling test when the verify-desk
-// SKILL.md is not in the checkout AT ALL. This repository's published file set
-// does not always carry a plugins/assay/skills tree, so there may be no
-// verify-desk skill and nothing to couple dispatchRequirements to.
+// skipIfDispatchKitAbsent skips this coupling test when the dispatch tool is not in the
+// checkout AT ALL — a sliced file set that ships verifyloop without deskdispatch has no kit
+// and nothing to couple dispatchRequirements to.
 //
-// Fail-closed intent is preserved precisely: if a plugins/assay/skills tree IS
-// present somewhere up the walk but the specific verify-desk SKILL.md is missing
-// (a real deletion), this does NOT skip — it returns and lets repoRoot's Fatal
-// fire. It skips only when no plugins/assay/skills tree exists at all.
-func skipIfVerifyDeskSkillAbsent(t *testing.T) {
+// Fail-closed intent is preserved precisely: if the deskdispatch package IS present somewhere
+// up the walk but the verifier kit is missing (a real deletion), this does NOT skip — it
+// returns and lets repoRoot's Fatal fire. In practice the skip is unreachable in any tree that
+// compiles deskdispatch, because kits.go embeds references/*.md into the binary.
+func skipIfDispatchKitAbsent(t *testing.T) {
 	t.Helper()
 	dir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd: %v", err)
 	}
 	for {
-		if _, err := os.Stat(filepath.Join(dir, skillRel)); err == nil {
-			return // skill present — run the test
+		if _, err := os.Stat(filepath.Join(dir, kitRel)); err == nil {
+			return // kit present — run the test
 		}
-		if _, err := os.Stat(filepath.Join(dir, "plugins", "assay", "skills")); err == nil {
-			return // skills tree present but this skill missing — let repoRoot fail closed
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(kitDirRel))); err == nil {
+			return // dispatch tool present but its kit missing — let repoRoot fail closed
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			t.Skipf("%s not present in this checkout", skillRel)
+			t.Skipf("%s not present in this checkout", kitRel)
 		}
 		dir = parent
 	}
 }
 
-// skillPromptBullets returns one entry per top-level bullet of SKILL.md loop step 2's
-// "Its prompt MUST carry:" list, continuation lines folded in.
-func skillPromptBullets(t *testing.T) []string {
+// kitPromptClauses returns one entry per clause of the verifier kit: one per top-level bullet
+// in a section that has bullets, and one for the whole section where it has none. Wrapped
+// lines are folded and whitespace normalised, so a re-wrap is not a change.
+func kitPromptClauses(t *testing.T) []string {
 	t.Helper()
 	root := repoRoot(t)
-	raw, err := os.ReadFile(filepath.Join(root, skillRel))
+	raw, err := os.ReadFile(filepath.Join(root, kitRel))
 	if err != nil {
-		t.Fatalf("read %s: %v", skillRel, err)
+		t.Fatalf("read %s: %v", kitRel, err)
 	}
 	lines := strings.Split(string(raw), "\n")
 
 	start := -1
 	for i, ln := range lines {
-		if strings.Contains(ln, skillListAnchor) {
+		if strings.Contains(ln, kitClauseAnchor) {
 			start = i + 1
 			break
 		}
 	}
 	if start == -1 {
-		t.Fatalf("%s: could not find the %q list — the skill was restructured; "+
+		t.Fatalf("%s: could not find the %q line — the kit was restructured; "+
 			"re-point this test (and reconcile dispatchRequirements) rather than deleting it",
-			skillRel, skillListAnchor)
+			kitRel, kitClauseAnchor)
 	}
 
-	var bullets []string
-	var cur strings.Builder
-	flush := func() {
-		if strings.TrimSpace(cur.String()) != "" {
-			bullets = append(bullets, strings.TrimSpace(cur.String()))
+	var (
+		clauses          []string
+		bullet           strings.Builder // the bullet currently being folded
+		section          strings.Builder // the whole section, used only if it has no bullets
+		inSection        bool
+		sectionHasBullet bool
+		bulletOpen       bool
+		inFence          bool
+	)
+	fold := func(b *strings.Builder) string { return strings.Join(strings.Fields(b.String()), " ") }
+	flushBullet := func() {
+		if s := fold(&bullet); s != "" {
+			clauses = append(clauses, s)
 		}
-		cur.Reset()
+		bullet.Reset()
+		bulletOpen = false
 	}
+	flushSection := func() {
+		flushBullet()
+		if inSection && !sectionHasBullet {
+			if s := fold(&section); s != "" {
+				clauses = append(clauses, s)
+			}
+		}
+		section.Reset()
+		sectionHasBullet = false
+	}
+
 	for _, ln := range lines[start:] {
-		if numberedStep.MatchString(ln) { // next numbered loop step: list is over
-			break
+		if kitFenceMarker.MatchString(ln) {
+			inFence = !inFence
+			section.WriteString(" ")
+			section.WriteString(ln)
+			continue
 		}
 		switch {
-		case skillBulletMarker.MatchString(ln):
-			flush()
-			cur.WriteString(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(ln), "- ")))
-		case strings.TrimSpace(ln) == "":
-			// blank line inside the list: keep folding, the list has no blank separators today
+		case !inFence && kitSectionHeader.MatchString(ln):
+			flushSection()
+			inSection = true
+			section.WriteString(strings.TrimPrefix(strings.TrimSpace(ln), "## "))
+		case !inSection:
+			// kit preamble above the first clause section — not a clause
+		case !inFence && kitBulletMarker.MatchString(ln):
+			flushBullet()
+			sectionHasBullet = true
+			bulletOpen = true
+			bullet.WriteString(strings.TrimPrefix(strings.TrimSpace(ln), "- "))
+			section.WriteString(" ")
+			section.WriteString(ln)
 		default:
-			cur.WriteString(" ")
-			cur.WriteString(strings.TrimSpace(ln))
+			if bulletOpen && !inFence && strings.TrimSpace(ln) != "" {
+				bullet.WriteString(" ")
+				bullet.WriteString(strings.TrimSpace(ln))
+			}
+			section.WriteString(" ")
+			section.WriteString(ln)
 		}
 	}
-	flush()
+	flushSection()
 
-	if len(bullets) < 4 {
-		t.Fatalf("%s: parsed only %d prompt-requirement bullets — the parser lost the list; fix the parser, "+
-			"do not lower this bar", skillRel, len(bullets))
+	if len(clauses) < 4 {
+		t.Fatalf("%s: parsed only %d prompt-requirement clauses — the parser lost the kit; fix the parser, "+
+			"do not lower this bar", kitRel, len(clauses))
 	}
-	return bullets
+	return clauses
 }
 
 func matchesAnchors(bullet string, anchors []string) bool {
@@ -185,31 +238,35 @@ func excerpt(b string) string {
 	return b
 }
 
-// TestDispatchRequirements_MatchSkillMD is the divergence gate: every SKILL.md prompt
-// requirement has a registry entry, and every registry entry still matches a SKILL.md bullet.
+// TestDispatchRequirements_MatchSkillMD is the divergence gate: every kit prompt
+// requirement has a registry entry, and every registry entry still matches a kit clause.
+//
+// (The name is kept as-is: it is the check whose failure the release gate and the tracking
+// issue name. What it reads moved from the skill to the kit the skill declares as the prompt's
+// source; the gate it enforces did not move.)
 //
 // The binding is 1:1 IN BOTH DIRECTIONS, and that is load-bearing rather than tidy. An entry
-// allowed to match several bullets can absorb a bullet that has no entry of its own, which
-// silences the reverse-direction orphan check — the exact defect state (SKILL.md carries
+// allowed to match several clauses can absorb a clause that has no entry of its own, which
+// silences the reverse-direction orphan check — the exact defect state (the kit carries
 // a requirement, the registry does not) then goes GREEN. That is not hypothetical: with anchors
 // {"verify table", "sha"}, `brief-verify-table-and-target-sha` matched BOTH the brief-path
-// bullet and the name-and-derive bullet once the latter was rewritten to contain the words
+// clause and the name-and-derive clause once the latter was rewritten to contain the words
 // "Verify table" and `git show <sha> --stat`, so deleting the name-and-derive entry outright
 // left this test passing.
 //
-// So: 0 matches is red (as before), >1 matches is red, and a bullet claimed by more than one
+// So: 0 matches is red (as before), >1 matches is red, and a clause claimed by more than one
 // entry is red. Anchors are kept multi-token and specific for the same reason — a single common
 // token is one unrelated edit away from colliding.
 func TestDispatchRequirements_MatchSkillMD(t *testing.T) {
-	skipIfVerifyDeskSkillAbsent(t)
+	skipIfDispatchKitAbsent(t)
 
-	bullets := skillPromptBullets(t)
+	bullets := kitPromptClauses(t)
 
-	// claimants[i] = IDs of every registry entry matching bullet i.
+	// claimants[i] = IDs of every registry entry matching clause i.
 	claimants := make([][]string, len(bullets))
 	for _, req := range dispatchRequirements {
 		if len(req.Anchors) == 0 {
-			t.Errorf("requirement %q declares no Anchors — it cannot be matched against SKILL.md", req.ID)
+			t.Errorf("requirement %q declares no Anchors — it cannot be matched against the kit", req.ID)
 			continue
 		}
 		var hits []int
@@ -221,20 +278,20 @@ func TestDispatchRequirements_MatchSkillMD(t *testing.T) {
 		}
 		switch {
 		case len(hits) == 0:
-			t.Errorf("requirement %q (anchors %v) matches NO bullet of %s 'Its prompt MUST carry:'.\n"+
-				"Either the skill dropped the requirement (delete the entry) or reworded it past its anchors "+
+			t.Errorf("requirement %q (anchors %v) matches NO clause of the verifier kit %s.\n"+
+				"Either the kit dropped the requirement (delete the entry) or reworded it past its anchors "+
 				"(re-anchor the entry AND check the prompt still says the same thing).",
-				req.ID, req.Anchors, skillRel)
+				req.ID, req.Anchors, kitRel)
 		case len(hits) > 1:
 			var got []string
 			for _, i := range hits {
 				got = append(got, excerpt(bullets[i]))
 			}
-			t.Errorf("requirement %q (anchors %v) matches %d bullets of %s, want exactly 1:\n  - %s\n"+
-				"Over-matching is not harmless: a multi-bullet entry marks a bullet as covered that has no "+
+			t.Errorf("requirement %q (anchors %v) matches %d clauses of %s, want exactly 1:\n  - %s\n"+
+				"Over-matching is not harmless: a multi-clause entry marks a clause as covered that has no "+
 				"entry of its own, which silences the orphan check below and lets a genuine divergence "+
-				"pass. Tighten the anchors so they identify ONE bullet.",
-				req.ID, req.Anchors, len(hits), skillRel, strings.Join(got, "\n  - "))
+				"pass. Tighten the anchors so they identify ONE clause.",
+				req.ID, req.Anchors, len(hits), kitRel, strings.Join(got, "\n  - "))
 		}
 	}
 
@@ -245,11 +302,11 @@ func TestDispatchRequirements_MatchSkillMD(t *testing.T) {
 				"Add a dispatchRequirement for it. If the prompt should carry it, carry it (carriedInPrompt + Probes); "+
 				"if the engine enforces it structurally, say where (carriedByEngine); if it is a tracked gap, "+
 				"record the issue (notYetCarried + Issue). This is the divergence class this gate exists to catch.",
-				skillRel, excerpt(b))
+				kitRel, excerpt(b))
 		case len(claimants[i]) > 1:
-			t.Errorf("%s bullet is claimed by %d registry entries (%s), want exactly 1:\n  %s\n"+
-				"Two entries cannot both own one requirement — re-anchor them so each identifies its own bullet.",
-				skillRel, len(claimants[i]), strings.Join(claimants[i], ", "), excerpt(b))
+			t.Errorf("%s clause is claimed by %d registry entries (%s), want exactly 1:\n  %s\n"+
+				"Two entries cannot both own one requirement — re-anchor them so each identifies its own clause.",
+				kitRel, len(claimants[i]), strings.Join(claimants[i], ", "), excerpt(b))
 		}
 	}
 }
@@ -300,6 +357,28 @@ func TestDispatchRequirements_CarriageHoldsInRenderedPrompt(t *testing.T) {
 			}
 		default:
 			t.Errorf("requirement %q has an unknown carriage %d", req.ID, req.How)
+		}
+	}
+}
+
+// TestDispatchPrompt_TierIsTheLocalSessionModel pins the ONE dispatch requirement that has no
+// counterpart clause in the verifier kit.
+//
+// The tier rule — dispatch on the local session model, never a paid/external or larger tier —
+// is a ROUTING decision this loop makes (TierPolicy, tier.go), not something the kit tells a
+// dispatched verifier, so it cannot be an entry in a registry that is 1:1 with kit clauses.
+// It used to ride along as the `tier-local-session-model-never-opus` registry entry. Losing
+// that entry when the registry was re-pointed at the kit would have quietly removed the only
+// check that the rendered prompt still states the tier, so the probe moves here rather than
+// being dropped: the coupling changed shape, the control did not.
+func TestDispatchPrompt_TierIsTheLocalSessionModel(t *testing.T) {
+	it := loopengine.Item{ID: "fixture/03", BriefPath: "docs/streams/fixture/brief-03-x.md", TargetSHA: "f00d"}
+	const probe = "local session model — never opus/external"
+	for _, tier := range []loopengine.Tier{loopengine.TierLocal, loopengine.TierSession} {
+		if got := renderDispatchPrompt(it, tier); !strings.Contains(got, probe) {
+			t.Errorf("rendered prompt at tier %s does not state %q.\n"+
+				"The engine dispatches the local session model only (TierPolicy, tier.go) and the prompt "+
+				"has to say so; a bigger tier is not this loop's to reach for.", tier, probe)
 		}
 	}
 }
