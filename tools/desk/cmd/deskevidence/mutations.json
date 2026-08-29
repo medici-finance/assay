@@ -1,0 +1,29 @@
+{
+  "test": "go test ./cmd/deskevidence/... -count=1",
+  "control": {
+    "name": "CONTROL — remove the append-only shrink guard entirely (a whole-file PUT that reverts rows ships as success)",
+    "file": "cmd/deskevidence/deskevidence.go",
+    "old": "\tif appendOnly && !*allowShrink {",
+    "new": "\tif false && appendOnly && !*allowShrink {"
+  },
+  "mutations": [
+    {
+      "name": "the --root join becomes a no-op (a repo-relative --evidence-file is read from the process cwd, not the --root checkout — #1709 defeated)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\t\tlocalReadPath = filepath.Join(*root, evidenceRepoPath)",
+      "new": "\t\tlocalReadPath = evidenceRepoPath"
+    },
+    {
+      "name": "drop the absolute-path-with---root refusal (an absolute --evidence-file silently ignores --root instead of being refused)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\t\tif filepath.IsAbs(evidenceRepoPath) {",
+      "new": "\t\tif false && filepath.IsAbs(evidenceRepoPath) {"
+    },
+    {
+      "name": "disarm the shrink comparison (a commit with FEWER rows than the remote is no longer refused — unattributable row deletion ships)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\t\tif newRows < remoteRows {",
+      "new": "\t\tif false && newRows < remoteRows {"
+    }
+  ]
+}
