@@ -114,19 +114,68 @@ func TestReviewUntrustedAuthorExit5(t *testing.T) {
 	}
 }
 
-func TestCommentUntrustedAuthorExit5(t *testing.T) {
-	f, _ := setupFake(t)
-	f.prAuthor = "external-user"
-	f.prAuthorID = 424242
-	bf := writeBody(t, "c.md", "a comment")
+// TestUntrustedAuthorPRGateSplitByVerb pins the by-verb split of the trust gate on a
+// PR authored OUTSIDE the trusted desk identities and carrying NO blessing (empty
+// trustJSON): a plain `comment` POSTS, while `review` (a verdict) and `ready` (a flip)
+// STILL REFUSE with exit 5 and make zero mutating calls. A comment carries no approval
+// authority and changes no state; the verdict and the flip are what the quarantine (#943)
+// exists to protect, so they stay gated on the unchanged prTrustGate predicate.
+func TestUntrustedAuthorPRGateSplitByVerb(t *testing.T) {
+	t.Run("comment_posts", func(t *testing.T) {
+		f, _ := setupFake(t)
+		f.prAuthor = "external-user"
+		f.prAuthorID = 424242
+		// default trustJSON empty (unblessed); default repoVisibility private (public-repo
+		// +1 gate not in play) — so the ONLY gate that could refuse is the author-trust gate.
+		bf := writeBody(t, "c.md", "reviewed: clean single-dep patch bump.")
 
-	code := run(commentArgs(exampleRepo, "1", bf))
-	if code != deskkit.ExitRefused {
-		t.Fatalf("comment on untrusted-author PR = exit %d, want 5", code)
-	}
-	if f.postedCmt != 0 {
-		t.Fatal("no comment may be posted on an untrusted, unblessed PR")
-	}
+		code := run(commentArgs(exampleRepo, "1", bf))
+		if code != deskkit.ExitOK {
+			t.Fatalf("comment on untrusted-author PR = exit %d, want 0 (posts)", code)
+		}
+		if f.postedCmt != 1 {
+			t.Fatalf("postedCmt = %d, want 1 — the comment must post on an unblessed-author PR", f.postedCmt)
+		}
+		if f.postedReview != 0 || f.flips != 0 {
+			t.Fatal("a comment must post no review and flip nothing")
+		}
+		if e := lastAudit(t); e.Result != deskkit.ResultOK {
+			t.Fatalf("audit result = %q, want ok", e.Result)
+		}
+	})
+
+	t.Run("review_refuses", func(t *testing.T) {
+		f, _ := setupFake(t)
+		f.prAuthor = "external-user"
+		f.prAuthorID = 424242
+		bf := writeBody(t, "rev.md", okReviewBody)
+
+		code := run(reviewArgs(exampleRepo, "1", "approve", testHead, bf))
+		if code != deskkit.ExitRefused {
+			t.Fatalf("review on untrusted-author PR = exit %d, want 5 (refused)", code)
+		}
+		if f.postedReview != 0 {
+			t.Fatal("no verdict may be posted on an untrusted, unblessed PR")
+		}
+	})
+
+	t.Run("ready_refuses", func(t *testing.T) {
+		f, _ := setupFake(t)
+		f.prAuthor = "external-user"
+		f.prAuthorID = 424242
+		// Give it an APPROVED review at head + green status, so the ONLY thing left to refuse
+		// the flip is the trust gate — proving the gate, not a missing approval, holds.
+		f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+		f.status = greenStatus()
+
+		code := run(readyArgs(exampleRepo))
+		if code != deskkit.ExitRefused {
+			t.Fatalf("ready on untrusted-author PR = exit %d, want 5 (refused)", code)
+		}
+		if f.flips != 0 {
+			t.Fatal("no flip may happen on an untrusted, unblessed PR")
+		}
+	})
 }
 
 func TestCommentAdaBlessedPosts(t *testing.T) {
