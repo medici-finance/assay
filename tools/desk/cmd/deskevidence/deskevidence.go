@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -81,6 +82,22 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	fs.SetOutput(new(strings.Builder))
 	evidenceFile := fs.String("evidence-file", "", "repo-relative path to the evidence/brief file (required)")
 	briefPath := fs.String("brief-path", "", "if set, merge evidence into this brief file instead of committing evidence-file directly")
+	// --root binds the LOCAL read of a repo-relative --evidence-file to an explicit
+	// checkout, instead of the current working directory. #1709: a writeguard can reset a
+	// session's cwd to a SHARED checkout between shell calls, so a deskevidence run that did
+	// not first `cd` into its worktree read the shared checkout's STALE copy of the file and
+	// committed it — silently reverting the file while reporting success. Passing
+	// --root <worktree> makes a repo-relative --evidence-file resolve against that worktree
+	// wherever the process happens to be. It rebases only the LOCAL read; the path committed
+	// to the remote branch stays the repo-relative one.
+	root := fs.String("root", "", "resolve a repo-relative --evidence-file against this directory (e.g. the verifier worktree) instead of the current working directory")
+	// --append-only guards a line-oriented sidecar against a net row DELETION. #1709: the
+	// whole-file Contents-API commit model has no protection against an append-only file
+	// shrinking, so a stale-base/wrong-file mistake reverted a sidecar (25→17 rows) as a
+	// "success". It is auto-enabled for .jsonl targets (the sidecar convention) and can be
+	// forced for any file; --allow-shrink is the intentional-edit override.
+	appendOnlyFlag := fs.Bool("append-only", false, "refuse the commit if it would reduce the target's row count below the current remote (auto-enabled for .jsonl sidecars)")
+	allowShrink := fs.Bool("allow-shrink", false, "override the append-only shrink guard when a row reduction is genuinely intended")
 	if perr := fs.Parse(flagArgs); perr != nil {
 		return deskkit.Refused("bad flags: " + perr.Error())
 	}
@@ -105,10 +122,26 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	evidenceRepoPath := *evidenceFile
 	ac.file = evidenceRepoPath
 
+	// Resolve the LOCAL read path. With --root set, a repo-relative --evidence-file is read
+	// from that checkout (#1709) rather than the process cwd; the target repo path committed
+	// to the branch stays evidenceRepoPath either way. An absolute --evidence-file with
+	// --root is contradictory (the join would be meaningless), so it is refused rather than
+	// silently ignoring one of them.
+	localReadPath := evidenceRepoPath
+	if *root != "" {
+		if filepath.IsAbs(evidenceRepoPath) {
+			return deskkit.Refused("refused: --evidence-file must be a repo-relative path when --root is set, got absolute " + evidenceRepoPath)
+		}
+		if info, serr := os.Stat(*root); serr != nil || !info.IsDir() {
+			return deskkit.Unverifiable("--root "+*root+" is not a readable directory", serr)
+		}
+		localReadPath = filepath.Join(*root, evidenceRepoPath)
+	}
+
 	// Read the local evidence file.
-	localContent, rerr := os.ReadFile(evidenceRepoPath)
+	localContent, rerr := os.ReadFile(localReadPath)
 	if rerr != nil {
-		return deskkit.Unverifiable("cannot read --evidence-file "+evidenceRepoPath, rerr)
+		return deskkit.Unverifiable("cannot read --evidence-file "+localReadPath, rerr)
 	}
 	if len(localContent) > maxBytes {
 		return deskkit.Refused(fmt.Sprintf("refused: evidence file exceeds %d bytes (%d)", maxBytes, len(localContent)))
@@ -132,6 +165,12 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		commitContent = localContent
 	}
 	ac.file = targetRepoPath
+
+	// Append-only sidecars (the .jsonl streams under docs/streams/) grow row-by-row and
+	// never shrink in normal use; a net row DROP is the #1709 signature. Auto-enable the
+	// shrink guard for that class, and honour an explicit --append-only for any other file.
+	// The actual comparison happens once the remote row count is known.
+	appendOnly := *appendOnlyFlag || strings.HasSuffix(targetRepoPath, ".jsonl")
 
 	// Secret-scan the content that will be committed.
 	if berr := deskkit.BodyCheck(commitContent); berr != nil {
@@ -174,6 +213,26 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return nil
 	}
 
+	// Append-only shrink guard (#1709). For a line-oriented sidecar, a commit that leaves
+	// FEWER rows than the remote already holds is almost always a stale-cwd or wrong-file
+	// mistake — the whole-file Contents-API PUT would otherwise revert the file and report
+	// success, deleting rows unattributably. Refuse before spending a write budget; the
+	// operator either re-points --root at the right checkout or passes --allow-shrink when
+	// the reduction is genuinely intended. Placed after the noop check so an idempotent
+	// re-commit is never mistaken for a shrink.
+	if appendOnly && !*allowShrink {
+		remoteRows := rowCount(remoteContent)
+		newRows := rowCount(commitContent)
+		if newRows < remoteRows {
+			return deskkit.Refused(fmt.Sprintf(
+				"refused: %s is append-only and this commit would SHRINK it from %d to %d rows (%d fewer) — "+
+					"almost always a stale-cwd or wrong-file mistake, not an intended edit; "+
+					"pass --root <checkout> so --evidence-file resolves against the right worktree, "+
+					"or --allow-shrink to override when the reduction is intended",
+				targetRepoPath, remoteRows, newRows, remoteRows-newRows))
+		}
+	}
+
 	// Outward-write rate limit. A deskevidence commit targets a BRANCH, not a
 	// PR, so there is no number to pass and the audit line it writes records none either.
 	// pr=0 is therefore the repo's unnumbered bucket. deskevidence carries a per-tool
@@ -197,14 +256,61 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// the token is what we *intended*, the author is what actually happened
 	// (#228).
 	attr, aerr := checkAttribution(author)
-	base := fmt.Sprintf("committed %s to %s on %s (sha %s)", targetRepoPath, repoSlug, branch, shortSHA(newSHA))
+	// Name the net row delta so the success message can no longer hide a replace or a
+	// deletion behind a "committed … success" (#1709). +A names rows the commit adds,
+	// -R names rows it drops, both computed against the remote content at the target path.
+	added, removed := rowDelta(remoteContent, commitContent)
+	delta := fmt.Sprintf("+%d/-%d rows", added, removed)
+	base := fmt.Sprintf("committed %s to %s on %s (sha %s, %s)", targetRepoPath, repoSlug, branch, shortSHA(newSHA), delta)
 	ac.detail = base + " — " + attr
 	if aerr != nil {
 		return aerr
 	}
-	fmt.Fprintf(stdout, "committed %s to %s on %s (new tree sha %s) — %s\n",
-		targetRepoPath, repoSlug, branch, shortSHA(newSHA), attr)
+	fmt.Fprintf(stdout, "committed %s to %s on %s (new tree sha %s, %s) — %s\n",
+		targetRepoPath, repoSlug, branch, shortSHA(newSHA), delta, attr)
 	return nil
+}
+
+// rowCount returns the number of non-empty (row-bearing) lines in b. Trailing newlines and
+// blank lines do not count, so a sidecar with or without a final newline reports the same
+// row count.
+func rowCount(b []byte) int {
+	n := 0
+	for _, ln := range strings.Split(string(b), "\n") {
+		if strings.TrimSpace(ln) != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// rowDelta reports how many non-empty rows newer adds and removes relative to older,
+// comparing the two as MULTISETS of trimmed line text. For an append-only sidecar (one
+// JSON object per line) this is exact row accounting that is insensitive to reordering; for
+// any other file it is a serviceable line-level delta. A pure append yields (added>0,
+// removed=0); the #1709 clobber (25→17) yields removed=8.
+func rowDelta(older, newer []byte) (added, removed int) {
+	count := func(b []byte) map[string]int {
+		m := map[string]int{}
+		for _, ln := range strings.Split(string(b), "\n") {
+			if t := strings.TrimSpace(ln); t != "" {
+				m[t]++
+			}
+		}
+		return m
+	}
+	o, n := count(older), count(newer)
+	for row, nc := range n {
+		if extra := nc - o[row]; extra > 0 {
+			added += extra
+		}
+	}
+	for row, oc := range o {
+		if gone := oc - n[row]; gone > 0 {
+			removed += gone
+		}
+	}
+	return added, removed
 }
 
 // auditCtx accumulates fields for the ONE audit line per invocation.

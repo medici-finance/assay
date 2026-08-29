@@ -173,7 +173,8 @@ func cmdCreate(args []string) (err error) {
 	// example-stream/02: the PR→brief link is a data edge, not a convention. Refuse a
 	// body without exactly one trailer — BEFORE any network call (getwd/preflight are
 	// local; token mint and PR listing come after) — and resolve the brief under --root.
-	if terr := requireTrailer(body, *root, dir); terr != nil {
+	trailerIssue, terr := requireTrailer(body, *root, dir)
+	if terr != nil {
 		return terr
 	}
 	facts, perr := preflight(dir, *base)
@@ -232,18 +233,21 @@ func cmdCreate(args []string) (err error) {
 
 	// Public-repo gate: refuse to write to a public repo
 	// without a qualifying +1 from an authorized human.
-	// Deskpr creates a PR, which has no issue number yet — the gate call uses 0
-	// as a sentinel for "no associated issue/PR" and must refuse with exit 6.
-	// The rule: when there is no associated issue/PR (a repo-level action
-	// with no reactions surface), PublicRepoGate MUST REFUSE with exit 6.
-	// This means deskpr cannot operate on a public repo until a human creates
-	// the issue and adds the +1 first — UNLESS the repo carries a standing
-	// per-repo authorization (deskkit publicbless.go: a human-maintained
-	// sentinel file naming exact repos), in which case the gate itself passes
-	// with a stderr NOTICE and create proceeds.
+	// A create has no PR number yet, so the gate is asked about the trailer's
+	// tracking issue instead: `trailerIssue` is the `Issue: #<N>` number, or 0
+	// for a `Brief:` trailer (a brief resolves to a file, not a reactions
+	// surface). On a non-blessed public repo this gives the `Issue:` path the
+	// per-issue-+1 admission — a +1 from the blessing authority on that issue
+	// admits the create — while a `Brief:` create still fails closed (issue 0,
+	// no reactions surface) with exit 6 (#1707). This does not touch the
+	// blessed-repo path: a repo carrying a standing per-repo authorization
+	// (deskkit publicbless.go: a human-maintained sentinel file naming exact
+	// repos) passes the gate regardless of the number, with a stderr NOTICE,
+	// and create proceeds. The change never relaxes the gate — it only routes
+	// the issue number the create already required to the surface that checks it.
 	owner, name := splitOwnerRepo(facts.repo)
 	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
-	if gerr := publicRepoGateFn(fetcher, owner, name, 0); gerr != nil {
+	if gerr := publicRepoGateFn(fetcher, owner, name, trailerIssue); gerr != nil {
 		return gerr
 	}
 
@@ -426,7 +430,9 @@ func cmdUpdate(args []string) (err error) {
 	if uerr := json.Unmarshal([]byte(bOut), &prView); uerr != nil {
 		return deskkit.Unverifiable("cannot parse PR body for trailer check", uerr)
 	}
-	if terr := requireTrailer([]byte(prView.Body), *root, dir); terr != nil {
+	// update ignores the trailer's issue number: the gate below is asked about the
+	// PR being updated (pr.Number), which is the reactions surface for an update.
+	if _, terr := requireTrailer([]byte(prView.Body), *root, dir); terr != nil {
 		return terr
 	}
 
@@ -835,32 +841,50 @@ func normRepoPath(p string) (string, error) {
 // bypass makes the edge asserted again.
 //
 // The one exempt body is the machine-derived issue-loop scan carrier, recognised by the
-// deskkit.ScanBodyMarker that `deskscanbody emit` writes at its head (assay-toolkit#1604).
-// That body is regenerated from the branch diff on every push and reconciles a whole-scope
-// scan spanning many issues, so it structurally cannot carry one per-issue trailer: no
+// deskkit.ScanBodyMarker that `deskscanbody emit` writes at its head. That body is
+// regenerated from the branch diff on every push and reconciles a whole-scope scan
+// spanning many issues, so it structurally cannot carry one per-issue trailer: no
 // `Issue: #N` can be both correct and stable across a re-push. The trailer gate exists to
 // force HUMAN-authored PRs to name their work item, which does not apply to this one
 // machine-owned body — so it is exempt, and only it (the marker is emitter-written, not a
 // worker-typeable bypass flag). Every human-authored body still faces the full gate below.
-func requireTrailer(body []byte, root, dir string) error {
-	if strings.Contains(string(body), deskkit.ScanBodyMarker) {
-		return nil
+//
+// On success it also returns the trailer's issue number: the parsed `#<N>` for an
+// `Issue:` trailer, or 0 for a `Brief:` trailer (a brief resolves to a file, not an
+// issue, so it has no reactions surface) — and 0 for the exempt scan carrier likewise.
+// The create path feeds this to the public-repo gate so a non-blessed public repo gains
+// the per-issue-+1 path (a +1 on the named tracking issue admits the create) instead of
+// the structural no-number hard-fail (#1707).
+func requireTrailer(body []byte, root, dir string) (int, error) {
+	// Head-anchored, not a whole-body substring: the emitter writes ScanBodyMarker as
+	// the FIRST line (deskkit.ScanPRBody), so the exemption matches it only at the body
+	// head. A body that merely quotes the marker somewhere in its prose is NOT exempt —
+	// this keeps the carve-out keyed to genuinely emitter-produced carrier bodies.
+	if strings.HasPrefix(strings.TrimLeft(string(body), " \t\r\n"), deskkit.ScanBodyMarker) {
+		return 0, nil
 	}
 	trs, err := deskkit.ParseTrailers(body)
 	if err != nil {
-		return deskkit.Refused("refused: " + err.Error())
+		return 0, deskkit.Refused("refused: " + err.Error())
 	}
 	if len(trs) == 0 {
-		return deskkit.Refused("refused: PR body carries no trailer — add exactly one line " +
+		return 0, deskkit.Refused("refused: PR body carries no trailer — add exactly one line " +
 			"`Brief: <stream>/<NN>` naming the brief this PR delivers (e.g. `Brief: example-stream/02`), " +
 			"or `Issue: #<N>` for issue-only work")
 	}
 	if trs[0].Kind == deskkit.TrailerIssue {
-		return nil
+		// Value is the bare digits (trailer.go guarantees `[0-9]+`); Atoi cannot fail,
+		// but treat any parse anomaly as "no number" (0) rather than admitting a
+		// negative that would read as a sentinel to the gate.
+		n, perr := strconv.Atoi(trs[0].Value)
+		if perr != nil || n <= 0 {
+			return 0, nil
+		}
+		return n, nil
 	}
 	stream, nn, ok := splitBriefTrailer(trs[0].Value)
 	if !ok {
-		return deskkit.Refused(fmt.Sprintf("refused: trailer %q does not name a brief as <stream>/<NN> or <stream>:<NN>", trs[0].Value))
+		return 0, deskkit.Refused(fmt.Sprintf("refused: trailer %q does not name a brief as <stream>/<NN> or <stream>:<NN>", trs[0].Value))
 	}
 	// A relative --root resolves against the WORK DIR (the getwd seam), never the
 	// process cwd — tests call cmdCreate directly with a bound getwd, and a glob
@@ -870,10 +894,10 @@ func requireTrailer(body []byte, root, dir string) error {
 	}
 	matches, _ := filepath.Glob(filepath.Join(root, "docs", "streams", stream, "brief-"+nn+"-*.md"))
 	if len(matches) == 0 {
-		return deskkit.Refused(fmt.Sprintf("refused: `Brief: %s` does not resolve to a brief under --root: no %s found",
+		return 0, deskkit.Refused(fmt.Sprintf("refused: `Brief: %s` does not resolve to a brief under --root: no %s found",
 			trs[0].Value, filepath.Join(root, "docs", "streams", stream, "brief-"+nn+"-*.md")))
 	}
-	return nil
+	return 0, nil
 }
 
 // splitBriefTrailer reduces the accepted trailer value forms to (stream, NN):

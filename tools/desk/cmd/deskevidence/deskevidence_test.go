@@ -1442,3 +1442,162 @@ func TestPublicRepoGatePassesPrivateRepo(t *testing.T) {
 		t.Fatalf("PUT calls = %d, want 1", f.putCalls)
 	}
 }
+
+// --- #1709: --root binding, append-only shrink guard, and net-delta reporting ---
+
+// jsonlRows builds n distinct newline-terminated JSONL rows, so row counts and
+// multiset deltas in the tests below are unambiguous.
+func jsonlRows(t *testing.T, n int) string {
+	t.Helper()
+	var b strings.Builder
+	for i := 1; i <= n; i++ {
+		fmt.Fprintf(&b, "{\"row\":%d}\n", i)
+	}
+	return b.String()
+}
+
+// stdoutString returns what the tool printed to the captured stdout buffer.
+func stdoutString(t *testing.T) string {
+	t.Helper()
+	buf, ok := stdout.(*bytes.Buffer)
+	if !ok {
+		t.Fatal("stdout is not a *bytes.Buffer — setupFake not in effect")
+	}
+	return buf.String()
+}
+
+// TestRootResolvesEvidenceFileAgainstCheckout proves --root binds a repo-relative
+// --evidence-file to the named checkout rather than the process cwd (#1709). The file is
+// written UNDER a --root dir; the tool must read it from root and commit it to the
+// repo-relative target path.
+func TestRootResolvesEvidenceFileAgainstCheckout(t *testing.T) {
+	f, _ := setupFake(t)
+
+	root := t.TempDir()
+	rel := "docs/streams/outcomes.jsonl"
+	abs := filepath.Join(root, rel)
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	local := jsonlRows(t, 2) // an append over the 1-row remote
+	if err := os.WriteFile(abs, []byte(local), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	// Remote is keyed by the REPO-RELATIVE target path, not the local absolute path.
+	f.setFile(rel, jsonlRows(t, 1), "sha-root-1")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", rel, "--root", root})
+	if code != deskkit.ExitOK {
+		t.Fatalf("--root commit exit = %d, want 0", code)
+	}
+	if f.putCalls != 1 {
+		t.Fatalf("expected 1 PUT, got %d", f.putCalls)
+	}
+	if f.putPath != "/repos/example-org/tracker/contents/"+rel {
+		t.Fatalf("PUT path = %q, want repo-relative target %q", f.putPath, rel)
+	}
+	if f.putContent != local {
+		t.Fatalf("committed content did not come from the --root checkout: got %q", f.putContent)
+	}
+}
+
+// TestRootWithAbsoluteEvidenceFileRefused: --root plus an absolute --evidence-file is
+// contradictory and refused before any network call.
+func TestRootWithAbsoluteEvidenceFileRefused(t *testing.T) {
+	f, _ := setupFake(t)
+	code := run([]string{"example-org/tracker", "main",
+		"--evidence-file", "/abs/docs/streams/x.jsonl", "--root", t.TempDir()})
+	if code != deskkit.ExitRefused {
+		t.Fatalf("absolute --evidence-file with --root exit = %d, want %d", code, deskkit.ExitRefused)
+	}
+	if len(f.hits) != 0 {
+		t.Fatalf("expected NO network hits on a pre-network refusal, got %v", f.hits)
+	}
+}
+
+// TestAppendOnlyShrinkRefused is the #1709 regression: a .jsonl target auto-enables the
+// append-only guard, so a commit that would drop rows (25→17) is refused with NO PUT.
+func TestAppendOnlyShrinkRefused(t *testing.T) {
+	f, _ := setupFake(t)
+
+	evidencePath := writeRepoFile(t, "docs/streams/outcomes.jsonl", jsonlRows(t, 17))
+	f.setFile(evidencePath, jsonlRows(t, 25), "sha-shrink-1")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	if code != deskkit.ExitRefused {
+		t.Fatalf("append-only shrink exit = %d, want %d", code, deskkit.ExitRefused)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("putCalls = %d, want 0 — a shrinking append-only commit must not land", f.putCalls)
+	}
+}
+
+// TestAppendOnlyShrinkOverride: --allow-shrink is the intentional-edit escape hatch, so the
+// same shrink commits when the operator sanctions it.
+func TestAppendOnlyShrinkOverride(t *testing.T) {
+	f, _ := setupFake(t)
+
+	evidencePath := writeRepoFile(t, "docs/streams/outcomes.jsonl", jsonlRows(t, 17))
+	f.setFile(evidencePath, jsonlRows(t, 25), "sha-shrink-2")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--allow-shrink"})
+	if code != deskkit.ExitOK {
+		t.Fatalf("--allow-shrink exit = %d, want 0", code)
+	}
+	if f.putCalls != 1 {
+		t.Fatalf("putCalls = %d, want 1 — --allow-shrink should permit the reduction", f.putCalls)
+	}
+}
+
+// TestAppendOnlyGrowthAllowed: a normal append (the common case) is never blocked, and the
+// success line names the net delta.
+func TestAppendOnlyGrowthAllowed(t *testing.T) {
+	f, _ := setupFake(t)
+
+	evidencePath := writeRepoFile(t, "docs/streams/outcomes.jsonl", jsonlRows(t, 25))
+	f.setFile(evidencePath, jsonlRows(t, 17), "sha-grow-1")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	if code != deskkit.ExitOK {
+		t.Fatalf("append growth exit = %d, want 0", code)
+	}
+	if f.putCalls != 1 {
+		t.Fatalf("putCalls = %d, want 1", f.putCalls)
+	}
+	if out := stdoutString(t); !strings.Contains(out, "+8/-0 rows") {
+		t.Fatalf("success line missing net-delta; got %q", out)
+	}
+}
+
+// TestNonJSONLShrinkNotBlockedWithoutFlag: the auto-guard is scoped to .jsonl sidecars; a
+// non-sidecar file is not blocked unless --append-only is explicitly requested.
+func TestNonJSONLShrinkNotBlockedWithoutFlag(t *testing.T) {
+	f, _ := setupFake(t)
+
+	evidencePath := writeRepoFile(t, "docs/notes.md", "one\n")
+	f.setFile(evidencePath, "one\ntwo\nthree\n", "sha-md-1")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	if code != deskkit.ExitOK {
+		t.Fatalf("non-jsonl shrink (no flag) exit = %d, want 0", code)
+	}
+	if f.putCalls != 1 {
+		t.Fatalf("putCalls = %d, want 1", f.putCalls)
+	}
+}
+
+// TestAppendOnlyFlagBlocksNonJSONLShrink: --append-only opts a non-.jsonl file into the guard.
+func TestAppendOnlyFlagBlocksNonJSONLShrink(t *testing.T) {
+	f, _ := setupFake(t)
+
+	evidencePath := writeRepoFile(t, "docs/notes.md", "one\n")
+	f.setFile(evidencePath, "one\ntwo\nthree\n", "sha-md-2")
+
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--append-only"})
+	if code != deskkit.ExitRefused {
+		t.Fatalf("--append-only shrink exit = %d, want %d", code, deskkit.ExitRefused)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("putCalls = %d, want 0", f.putCalls)
+	}
+}
