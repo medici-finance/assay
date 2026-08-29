@@ -840,12 +840,29 @@ func normRepoPath(p string) (string, error) {
 // constraint refusals (exit 5). There is deliberately no bypass flag — a worker-typeable
 // bypass makes the edge asserted again.
 //
+// The one exempt body is the machine-derived issue-loop scan carrier, recognised by the
+// deskkit.ScanBodyMarker that `deskscanbody emit` writes at its head. That body is
+// regenerated from the branch diff on every push and reconciles a whole-scope scan
+// spanning many issues, so it structurally cannot carry one per-issue trailer: no
+// `Issue: #N` can be both correct and stable across a re-push. The trailer gate exists to
+// force HUMAN-authored PRs to name their work item, which does not apply to this one
+// machine-owned body — so it is exempt, and only it (the marker is emitter-written, not a
+// worker-typeable bypass flag). Every human-authored body still faces the full gate below.
+//
 // On success it also returns the trailer's issue number: the parsed `#<N>` for an
 // `Issue:` trailer, or 0 for a `Brief:` trailer (a brief resolves to a file, not an
-// issue, so it has no reactions surface). The create path feeds this to the public-repo
-// gate so a non-blessed public repo gains the per-issue-+1 path (a +1 on the named
-// tracking issue admits the create) instead of the structural no-number hard-fail (#1707).
+// issue, so it has no reactions surface) — and 0 for the exempt scan carrier likewise.
+// The create path feeds this to the public-repo gate so a non-blessed public repo gains
+// the per-issue-+1 path (a +1 on the named tracking issue admits the create) instead of
+// the structural no-number hard-fail (#1707).
 func requireTrailer(body []byte, root, dir string) (int, error) {
+	// Head-anchored, not a whole-body substring: the emitter writes ScanBodyMarker as
+	// the FIRST line (deskkit.ScanPRBody), so the exemption matches it only at the body
+	// head. A body that merely quotes the marker somewhere in its prose is NOT exempt —
+	// this keeps the carve-out keyed to genuinely emitter-produced carrier bodies.
+	if strings.HasPrefix(strings.TrimLeft(string(body), " \t\r\n"), deskkit.ScanBodyMarker) {
+		return 0, nil
+	}
 	trs, err := deskkit.ParseTrailers(body)
 	if err != nil {
 		return 0, deskkit.Refused("refused: " + err.Error())
