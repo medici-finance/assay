@@ -74,22 +74,33 @@ type diffLintResult struct {
 // treats them) and returns a process exit code: 1 if any root has a
 // diff-introduced problem OR could not be linted at all, 0 otherwise.
 func runDiffLintRoots(roots []string, baseRef string, budget []string, changed, scope string) int {
+	return runDiffLintRootsWith(roots, func(root string) diffLintConfig {
+		return diffLintProductionConfig(root, baseRef, budget, changed, scope)
+	})
+}
+
+// runDiffLintRootsWith is the testable core of runDiffLintRoots: cfgFor builds
+// the per-root differential config, so tests can drive the aggregation loop
+// (the exit-code contract and the PASS/FAIL summary) through in-memory seams
+// rather than a real git tree.
+func runDiffLintRootsWith(roots []string, cfgFor func(root string) diffLintConfig) int {
 	if len(roots) == 0 {
 		roots = []string{"."}
 	}
 	exit := 0
 	total := 0
+	failedRoots := 0
 	for _, root := range roots {
 		if len(roots) > 1 {
 			fmt.Fprintf(os.Stderr, "statusgen: === root %s ===\n", root)
 		}
-		cfg := diffLintProductionConfig(root, baseRef, budget, changed, scope)
-		res, err := runDiffLintOne(cfg)
+		res, err := runDiffLintOne(cfgFor(root))
 		if err != nil {
 			// A head lint that would not even execute is a genuine failure, not a
 			// demotable problem: report it and fail the root.
 			fmt.Fprintln(os.Stderr, "statusgen: --diff-base:", err)
 			exit = 1
+			failedRoots++
 			continue
 		}
 		n := emitDiffLintResult(res)
@@ -98,10 +109,18 @@ func runDiffLintRoots(roots []string, baseRef string, budget []string, changed, 
 			exit = 1
 		}
 	}
-	if total == 0 {
-		fmt.Println("LINT: PASS")
-	} else {
+	// The stdout summary must never contradict the process exit code. A root
+	// whose head lint could not execute sets exit=1 without contributing to
+	// `total`, so gating PASS on `total == 0` alone would print `LINT: PASS` on a
+	// run that returns 1 (#191 follow-up: reviewer finding on assay#172). Fold
+	// execution failures into the summary so stdout and the exit code agree.
+	switch {
+	case total > 0:
 		fmt.Printf("LINT: FAIL %d problem(s)\n", total)
+	case failedRoots > 0:
+		fmt.Printf("LINT: FAIL %d root(s) could not be linted\n", failedRoots)
+	default:
+		fmt.Println("LINT: PASS")
 	}
 	return exit
 }

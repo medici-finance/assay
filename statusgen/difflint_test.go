@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -166,6 +168,101 @@ func TestDiffLint_UnresolvableBaseFailsSafe(t *testing.T) {
 	}
 	if emitDiffLintResult(res) != 1 {
 		t.Fatal("full-teeth count must include the un-demoted head problem")
+	}
+}
+
+// cfgForMap turns a per-root config map into the cfgFor closure
+// runDiffLintRootsWith expects.
+func cfgForMap(m map[string]diffLintConfig) func(string) diffLintConfig {
+	return func(root string) diffLintConfig { return m[root] }
+}
+
+// fakeDiffLintExecErr builds a config whose head lint cannot execute — the sole
+// genuine-error return path of runDiffLintOne, mirroring production's
+// "os.Executable() failed and statusgen isn't on PATH" case. This is the root
+// state the aggregation loop must fail (exit 1) WITHOUT counting a problem.
+func fakeDiffLintExecErr(root string) diffLintConfig {
+	return diffLintConfig{
+		root:        root,
+		baseRef:     "refs/remotes/origin/main",
+		resolveBase: func(root, baseRef string) (string, string, error) { return "b", "h", nil },
+		relFromTop:  func(root string) (string, error) { return ".", nil },
+		worktreeFn:  func(root, sha string) (string, func(), error) { return "/tmp/base", func() {}, nil },
+		lintRunner: func(treeRoot string, budget []string, changed, scope string) ([]string, []string, error) {
+			return nil, nil, errors.New("head lint: exec statusgen: not found")
+		},
+	}
+}
+
+// TestRunDiffLintRoots_ExecFailureNeverPrintsPass is the regression for the
+// assay#172 reviewer finding: when a root's head lint cannot execute, the loop
+// sets exit=1 but never touches `total`; gating the summary on `total==0` alone
+// printed `LINT: PASS` on a run that returns 1. stdout and the exit code must
+// agree.
+func TestRunDiffLintRoots_ExecFailureNeverPrintsPass(t *testing.T) {
+	m := map[string]diffLintConfig{
+		"clean": fakeDiffLint("basesha", "headsha", map[string][]string{
+			"head": {"PROBLEM: brief-3: pre-existing row"},
+			"base": {"PROBLEM: brief-3: pre-existing row"}, // demoted, not introduced
+		}, nil),
+		"broken": fakeDiffLintExecErr("broken"),
+	}
+	var exit int
+	out := captureStdout(t, func() {
+		exit = runDiffLintRootsWith([]string{"clean", "broken"}, cfgForMap(m))
+	})
+	if exit != 1 {
+		t.Fatalf("a root whose head lint cannot execute must fail the run; got exit=%d", exit)
+	}
+	if strings.Contains(out, "LINT: PASS") {
+		t.Fatalf("stdout must not claim PASS on a run that returns exit 1; got %q", out)
+	}
+	if !strings.Contains(out, "LINT: FAIL") {
+		t.Fatalf("stdout must carry a FAIL summary when a root could not be linted; got %q", out)
+	}
+}
+
+// TestRunDiffLintRoots_AllCleanPrintsPass fixes the other side of the contract:
+// when every root lints and no diff-introduced problem fires, exit is 0 and
+// stdout says PASS exactly once.
+func TestRunDiffLintRoots_AllCleanPrintsPass(t *testing.T) {
+	m := map[string]diffLintConfig{
+		"a": fakeDiffLint("basesha", "headsha", map[string][]string{
+			"head": {"PROBLEM: brief-3: pre-existing row"},
+			"base": {"PROBLEM: brief-3: pre-existing row"}, // demoted
+		}, nil),
+		"b": fakeDiffLint("basesha", "headsha", map[string][]string{}, nil),
+	}
+	var exit int
+	out := captureStdout(t, func() {
+		exit = runDiffLintRootsWith([]string{"a", "b"}, cfgForMap(m))
+	})
+	if exit != 0 {
+		t.Fatalf("all-clean run must exit 0; got %d", exit)
+	}
+	if strings.TrimSpace(out) != "LINT: PASS" {
+		t.Fatalf("all-clean run must print exactly LINT: PASS; got %q", out)
+	}
+}
+
+// TestRunDiffLintRoots_DiffIntroducedFails covers the counted-problem branch:
+// a diff-introduced problem fires, exit is 1, and the summary reports the count.
+func TestRunDiffLintRoots_DiffIntroducedFails(t *testing.T) {
+	m := map[string]diffLintConfig{
+		"a": fakeDiffLint("basesha", "headsha", map[string][]string{
+			"head": {"PROBLEM: brief-9: newly unbacked row"}, // not on base => introduced
+			"base": {},
+		}, nil),
+	}
+	var exit int
+	out := captureStdout(t, func() {
+		exit = runDiffLintRootsWith([]string{"a"}, cfgForMap(m))
+	})
+	if exit != 1 {
+		t.Fatalf("a diff-introduced problem must fail the run; got exit=%d", exit)
+	}
+	if !strings.Contains(out, "LINT: FAIL 1 problem(s)") {
+		t.Fatalf("summary must report the introduced-problem count; got %q", out)
 	}
 }
 
