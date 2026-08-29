@@ -77,10 +77,37 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 			return withDigest(noop(verb, repo, num, tgt.head,
 				fmt.Sprintf("identical comment already posted on %s (idempotent no-op)", describe(tgt))), dig)
 		}
-		// Trust gate: no comment on unvetted third-party work, on either kind (exit 5,
-		// audited).
-		if terr := trustGate(client, tgt.kind, num, tgt.authorLogin, tgt.authorID); terr != nil {
-			return withDigest(fromReadErr(verb, repo, num, tgt.head, terr), dig)
+		// Trust gate — ISSUE comments only (exit 5, audited). The gate quarantines desk
+		// writes on unvetted third-party TEXT until the blessing authority admits it, and an
+		// issue in a PUBLIC repo is exactly that surface: any external user can open one and
+		// fill its body with arbitrary prose the desk must not engage until it is blessed.
+		//
+		// A PR comment is deliberately EXEMPT from the author-trust/bless gate. A plain
+		// comment carries no verdict and flips no state — unlike `deskpost review`
+		// (approve/request-changes) and `deskpost ready`, which STAY gated on the very same
+		// predicate via prTrustGate (review.go, ready.go) — so refusing informational review
+		// feedback on an untrusted-author PR (a Dependabot bump, say) until a human blesses it
+		// is friction with no security value (#943 protects the verdict/flip, not a comment).
+		//
+		// The loosening is scoped to the author-trust/bless dimension ONLY. Every OTHER
+		// comment-path protection still runs on a PR comment: the size cap + body
+		// secret/impersonation scan (bodycheck.Comment, above) and the public-repo +1 gate
+		// (PublicRepoGate, below).
+		//
+		// Note the verdict-safety here does NOT come from bodycheck: bodycheck.Comment is
+		// size cap + secret scan only, and does not reject a Verdict:/Security-Review:
+		// line (that schema is REQUIRED by bodycheck.Review, never FORBIDDEN on the comment
+		// path — a comment body containing such a line passes bodycheck.Comment and posts).
+		// The reason a comment carries no verdict authority is structural: a comment and a
+		// review are distinct GitHub objects (this verb posts an issue comment via
+		// POST /issues/{n}/comments; the flip/verdict gates read the REVIEWS API, filtered
+		// by reviewer-bot login + review state). No consumer scans comment BODIES for
+		// verdict lines, so a comment's text is never interpreted as a verdict no matter
+		// what it contains.
+		if tgt.kind == kindIssue {
+			if terr := trustGate(client, tgt.kind, num, tgt.authorLogin, tgt.authorID); terr != nil {
+				return withDigest(fromReadErr(verb, repo, num, tgt.head, terr), dig)
+			}
 		}
 		// Public-repo gate: refuse to write to a public repo
 		// without a qualifying +1 from an authorized human.
@@ -90,7 +117,8 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 		if opts.dryRun {
 			return withDigest(dryRun(verb, repo, num, tgt.head,
 				"DRY RUN: comment body passed the size cap and secret scan, repo is in the desk set, "+
-					"trust gate passed, public-repo gate passed, no identical comment on "+describe(tgt)+" — stopped before POST"), dig)
+					"author-trust gate cleared (enforced on issue comments only), public-repo gate passed, "+
+					"no identical comment on "+describe(tgt)+" — stopped before POST"), dig)
 		}
 		if err := client.postComment(num, string(body)); err != nil {
 			return withDigest(fromErr(verb, repo, num, tgt.head, err), dig)

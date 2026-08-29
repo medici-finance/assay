@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -657,6 +658,87 @@ func TestReadNextUp_ParsesRowsAndDetectsOutOfRepo(t *testing.T) {
 	}
 	if isIssuePlaceholder(*le) {
 		t.Fatal("a real brief row was misclassified as an intake placeholder")
+	}
+}
+
+// TestReadNextUp_ReadsBoardFromOriginMainNotStaleWorkingTree is the regression proof for #1674: a
+// SIBLING checkout parked behind origin/main has a STALE working-tree STATUS.md that still lists a
+// row which is already done/verified/merged on origin/main. readNextUp must plan against
+// refs/remotes/origin/main (the already-fetched ref), NOT the working tree, so the stale phantom row
+// never enters the queue while the genuine origin/main row does.
+func TestReadNextUp_ReadsBoardFromOriginMainNotStaleWorkingTree(t *testing.T) {
+	root := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = append(os.Environ(),
+			"GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat",
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	writeStatus := func(body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, "STATUS.md"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	git("init", "-q")
+	// origin/main board: only the genuine, still-dispatchable row.
+	writeStatus("# STATUS\n\n## Next up\n\n" +
+		"| Stream | Brief | Wave | Score |\n" +
+		"|---|---|---|---|\n" +
+		"| live | 01 — genuine todo row | 1 | 2000 |\n")
+	git("add", "STATUS.md")
+	git("commit", "-qm", "board")
+	// Publish that commit as the already-fetched origin/main ref (no network — a local ref update,
+	// exactly what `git fetch origin` would have left behind).
+	git("update-ref", "refs/remotes/origin/main", "HEAD")
+
+	// Now dirty the WORKING TREE to look like a stale sibling: the board here still carries a row
+	// (stale/01) that has already advanced past todo on origin/main. A working-tree read would
+	// over-report it as dispatchable — the #1674 phantom.
+	writeStatus("# STATUS\n\n## Next up\n\n" +
+		"| Stream | Brief | Wave | Score |\n" +
+		"|---|---|---|---|\n" +
+		"| live | 01 — genuine todo row | 1 | 2000 |\n" +
+		"| stale | 01 — already merged, phantom | 1 | 1900 |\n")
+
+	rows, err := readNextUp(root, "sha")
+	if err != nil {
+		t.Fatalf("readNextUp: %v", err)
+	}
+	var streams []string
+	for _, r := range rows {
+		streams = append(streams, r.Stream)
+	}
+	if !contains(streams, "live") {
+		t.Errorf("genuine origin/main row (live/01) missing — board was not read from the ref: %v", streams)
+	}
+	if contains(streams, "stale") {
+		t.Errorf("stale working-tree row (stale/01) leaked into the queue — readNextUp read the working tree, not origin/main (#1674): %v", streams)
+	}
+}
+
+// TestReadNextUp_FallsBackToWorkingTreeWhenNoOriginMain proves the honest degrade path: when the root
+// has no refs/remotes/origin/main (not a git repo, or origin was never fetched), readNextUp falls
+// back to the working-tree STATUS.md rather than failing — the existing non-git-repo tests exercise
+// this same path, and here we assert the fallback actually parses the working-tree board.
+func TestReadNextUp_FallsBackToWorkingTreeWhenNoOriginMain(t *testing.T) {
+	root := t.TempDir() // NOT a git repo → no origin/main ref → fallback
+	if err := os.WriteFile(filepath.Join(root, "STATUS.md"), []byte(
+		"# STATUS\n\n## Next up\n\n| Stream | Brief | Wave | Score |\n|---|---|---|---|\n| wt | 01 — working tree row | 1 | 1000 |\n"),
+		0o644); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := readNextUp(root, "sha")
+	if err != nil {
+		t.Fatalf("readNextUp: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Stream != "wt" {
+		t.Fatalf("fallback did not parse the working-tree board: %+v", rows)
 	}
 }
 
