@@ -24,3 +24,10 @@ Rules (derived-board/02):
   with the unresolved pattern.
 - There is **no** bypass flag (`--no-brief`, env var, commit token). A worker-typeable
   bypass makes the edge asserted again.
+- **One exempt body: the derived issue-loop scan carrier.** A body whose head carries the
+  machine-written marker `<!-- desk-scanbody v1 -->` (from `deskscanbody emit`) is exempt
+  from the trailer requirement. That body is regenerated from the
+  branch diff on every push and reconciles a whole-scope scan spanning many issues, so no
+  single `Issue: #N` can be both correct and stable across a re-push. The exemption keys off
+  the emitter-written marker, not a worker-typeable flag, so it does not reopen the bypass
+  the rule above closes — every human-authored body still faces the full gate.
