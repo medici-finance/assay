@@ -226,8 +226,12 @@
 // relationship the loops already have with deskboard ("the board computes ACTION, the
 // model executes it"), extended to the whole loop.
 //
-// The eventual NATIVE-PRIMITIVE upgrade — a future Go->Agent binding, or running Run as
-// a Workflow so dispatched workers are real child processes — is a drop-in swap of the
-// Loop.Dispatch implementation: the engine loop, the contract, and every consumer are
-// unchanged. Run is written so that swap touches only Dispatch. See README.md.
+// The NATIVE-PRIMITIVE upgrade has since landed. cmd/verifyloop/dispatch_native.go spawns
+// each dispatched worker as a real ACP child process and drives it through the core flow,
+// and adapter.go's Dispatch selects it (v.Native == true) in place of the interim
+// emit-and-await. It was a drop-in swap of the Loop.Dispatch implementation exactly as this
+// seam was designed to permit: the engine loop, the contract, and every consumer were
+// unchanged — the swap touched only Dispatch. Run is written so that it could. Interim mode
+// above is still the default, so it remains current behaviour, not history. See README.md
+// and cmd/verifyloop/dispatch_native.go.
 package loopengine
