@@ -1,0 +1,71 @@
+# driver-allowlist.txt — the capitalised tokens that may legitimately stand in a
+# DRIVER POSITION in the plugin tree's prose.
+#
+# The unresolved-house-value check (housevalue.go) is NEUTRAL BY CONSTRUCTION: it
+# carries no list of real people. It detects the SHAPE — a proper-name-shaped
+# token sitting where the neutral `human:<name>` token belongs — and this file is
+# the exception list of tokens that are shaped like a proper name but are not one:
+# products, tools, vendors, platforms, the project's own nouns, and the English
+# contractions that a possessive regex cannot tell from a possessive.
+#
+# RULES FOR EDITING
+#   - A real person's name NEVER belongs here. The fix for a person's name in the
+#     driver position is `human:<name>`, not an allowlist entry. An entry that
+#     names a human defeats the whole check and is a review finding.
+#   - One entry per line. Entries are matched case-sensitively against the whole
+#     capitalised phrase and against its last word, so `Claude Code` covers both
+#     "Claude Code's" and (via `Code`) nothing else — add the phrase you mean.
+#   - `#` starts a comment; blank lines are ignored.
+#   - All-caps acronyms (PR, CI, README, HP/12) are skipped by shape and do not
+#     need an entry.
+
+# Harnesses, tools, vendors, platforms
+Claude
+Claude Code
+Codex
+Cursor
+GitHub
+GitLab
+Git
+Go
+Linux
+macOS
+Windows
+Docker
+Kubernetes
+Slack
+Make
+Markdown
+YAML
+
+# The project's own nouns
+Assay
+App
+Apps
+Desk
+Skill
+Skills
+Brief
+Briefs
+Evidence
+Verify
+Wave
+
+# English words a possessive regex cannot distinguish from a proper name
+It
+Its
+That
+This
+There
+Here
+What
+Who
+One
+Everyone
+Someone
+Anyone
+Nobody
+The
+Today
+Tomorrow
+Yesterday
