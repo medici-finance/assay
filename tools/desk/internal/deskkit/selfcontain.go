@@ -306,7 +306,7 @@ func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, noti
 	for short := range privShort {
 		// A short name under minShortNameNotice characters is not noticed at all. This is
 		// not squeamishness about false positives — it is the console noise floor. A
-		// deployment is free to alias a repo `at` or `oit`, and a notice keyed on a token
+		// deployment is free to alias a repo `at` or `it`, and a notice keyed on a token
 		// that short fires on ordinary English in nearly every body; measured on this
 		// change's own PR body, a two-letter alias produced a notice about the word "at".
 		// A channel that warns on everything is a channel nobody reads, and the FULL
