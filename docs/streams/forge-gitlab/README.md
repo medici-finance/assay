@@ -18,10 +18,9 @@ delivers the identity/permission/CI layer (service accounts, protected-branch
 gates, a locked ci-config project) and the tooling seam (a `Forge` interface in
 deskkit with `github` extracted as-is and `gitlab` implemented against REST v4,
 plus rotate-on-mint token custody). See [spec.md](spec.md) for the accepted
-design, the per-control security-parity table, and the tier floor it recorded in
-August 2026 (Premium; Ultimate for public/risk-classed work; Free/CE
-non-conforming) — a floor the edition matrix below now puts back in front of a
-human.
+design, the per-control security-parity table, and the tier ruling of 2026-08-30
+in its §1: Community Edition is conforming for the core lane with two named,
+disclosed degradations, Premium is the hardening, Ultimate is refinement.
 
 Coordination note: [desktools-go-git](../desktools-go-git/README.md) refactors
 the same tools' **git-binary** seam while this stream refactors their **forge-API**
@@ -32,14 +31,19 @@ same tool.
 
 ## Edition — CE-first
 
-**Recorded preference: Community Edition first.** Premium and Ultimate features are opt-in
-refinements, never prerequisites for the core lane (01-05, 07, 08).
-[edition-matrix.md](edition-matrix.md) states, per operation and with a GitLab docs citation
-per row, which tier each thing needs. Its finding: every operation the `Forge` interface
-performs is Free-tier, so the tooling and the pilot run on CE; what is tier-gated is a
-handful of *guarantees* — identity-granular protected-branch allowlists and merge-request
-approval rules (Premium), external status checks, custom roles and the instance token-lifetime
-policy (Ultimate) — each with a named CE fallback the desk tools own.
+**Ruled 2026-08-30: Community Edition is conforming for the core lane** (01-05, 07, 08), with
+two named, disclosed degradations — identity-granular protected branches (on CE the Maintainer
+role set is the allowlist) and enforced approval rules (on CE approvals are advisory, so
+verdict-before-merge is human-merge-only plus the desk's refusal to flip without an at-head
+verdict). Premium is the hardening that makes both server-enforced; Ultimate is refinement
+(brief 06). Neither is a prerequisite for the core lane. The binding wording is
+[spec.md](spec.md) §1, which §3 scopes to those two degradations and no others.
+[edition-matrix.md](edition-matrix.md) is the evidence: per operation and per control, with a
+GitLab docs citation per row, which tier each thing needs. Its finding is that every operation
+the `Forge` interface performs is Free-tier, so the tooling and the pilot run on CE; what is
+tier-gated is a handful of *guarantees* — the two above (Premium), plus external status checks,
+custom roles and the instance token-lifetime policy (Ultimate) — each with a named CE fallback
+the desk tools own.
 
 Minimum tier per brief (the `tier:` line in each brief's front-matter, with the detail in its
 `## Edition` section):
@@ -48,10 +52,10 @@ Minimum tier per brief (the `tier:` line in each brief's front-matter, with the 
 |---|---|---|---|---|---|---|---|---|
 | Minimum tier | free | free | free | free | free | ultimate | free | free |
 
-Open point: spec.md section 1 declares Free/CE non-conforming, which the matrix's per-feature
-citations do not support as written. Reconciling the two is a human ruling
-(medici-finance/assay#219), not a model's; until it lands, spec.md keeps its wording and the
-matrix records the evidence.
+The open point that stood here — spec.md section 1 declaring Free/CE non-conforming, which the
+matrix's per-feature citations did not support as written — was ruled on 2026-08-30
+(medici-finance/assay#219) as stated above. Spec.md section 1 carries the ruling; the matrix
+carries its evidence; brief 04's Verify row 3 was re-baselined onto the amended sentence.
 
 ## Briefs
 

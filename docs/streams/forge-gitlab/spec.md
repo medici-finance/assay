@@ -1,29 +1,52 @@
 # forge-gitlab — the Assay fleet on GitLab Enterprise (stream spec)
 
-**Status:** design accepted 2026-08-24 (v0.1); this stream implements it.
+**Status:** design accepted 2026-08-24 (v0.1); tier floor re-ruled 2026-08-30 (§1);
+this stream implements it.
 **Governing requirement:** the GitLab profile MUST be **at least as secure as the
 existing GitHub controls**, even where the mechanism is completely different
-(project ruling, 2026-08-24). "Weaker but disclosed" is non-conforming.
+(project ruling, 2026-08-24). "Weaker but disclosed" is non-conforming — except for
+the two degradations §1 names and §3 scopes, and nothing else (ruled 2026-08-30).
 
 ## 1. Scope
 
 Assay's briefs, registers, lifecycle, board, and statusgen are forge-agnostic
 (git + markdown) and unchanged. What is GitHub-shaped today is the identity /
 permission / CI layer and the desk tools that speak the forge API. This stream
-delivers the GitLab profile: self-managed EE or gitlab.com, **Premium floor,
-Ultimate required for public/risk-classed work**. GitLab Free/CE cannot meet the
-parity requirement and is declared non-conforming for this profile.
+delivers the GitLab profile: self-managed CE or EE, or gitlab.com. **GitLab
+Community Edition is conforming for the core lane** — briefs 01–05, 07 and 08 —
+**with two named, disclosed degradations**; **Premium is the hardening** that makes
+both of them server-enforced; **Ultimate is refinement** (brief 06), not a
+prerequisite for the core lane. Where a specific control is raised by an Ultimate
+mechanism, §3's table says so per row, and that remains the recommendation for
+public/risk-classed work.
 
-> **2026-08-30 — this tier floor is under review, not yet re-ruled.** The
-> edition matrix (edition-matrix.md, medici-finance/assay#219) reads the tier
-> badge off the GitLab docs page for every operation and control this profile
-> uses. Its finding: the whole tooling lane is Free-tier, and the CE gap is two
-> controls wide — identity-granular protected-branch allowlists and
-> merge-request approval rules, both Premium — not wholesale. That does not
-> overturn the paragraph above, because §3's governing ruling is that "weaker
-> but disclosed" is non-conforming and the two gaps are exactly that. Whether
-> CE with the two disclosed degradations is acceptable for the core lane is a
-> human decision; this paragraph stands until it is made.
+> **Ruled 2026-08-30 (medici-finance/assay#219).** This supersedes v0.1's "Premium
+> floor, Ultimate required for public/risk-classed work; Free/CE non-conforming"
+> wording. The evidence is edition-matrix.md, which reads the tier badge off the
+> GitLab docs page for every operation and control this profile uses: every
+> `Forge` operation is Free-tier, and the CE gap is two controls wide, not
+> wholesale.
+
+The two degradations, named exactly as the matrix names them:
+
+1. **Identity-granular protected branches** (matrix row B2). `allowed_to_push` and
+   `allowed_to_merge` accept a `user_id` or `group_id` only on Premium, so on CE
+   the single-board-writer allowlist is not expressible per identity: **the
+   Maintainer role set is the allowlist**. CE posture: `Allowed to push and merge`
+   = No one, and every write to `main` — board regeneration included — lands as a
+   merge request.
+2. **Enforced approval rules** (matrix rows B3 and B4). Required approvals, and
+   prevent-approval-by-author / by-committer, are both Premium, so **on CE
+   approvals are advisory** and verdict-before-merge becomes **human-merge-only
+   plus the desk's own refusal to flip a change ready without an at-head verdict**.
+   The bot half of no-self-approval stays structural — a worker service account
+   holds no reviewer credential and cannot mint a reviewer approval — while the
+   human-who-holds-both-roles case is discipline plus that tool refusal.
+
+Both are DISCLOSED degradations, not equivalences: an adopter running CE is
+conforming and is told exactly what the server is not enforcing on its behalf. An
+adopter who wants either control server-enforced buys Premium; that is the whole of
+what Premium adds to this profile.
 
 Out of scope: migration tooling between forges; other forges (Bitbucket, Gitea)
 — the forge interface (brief 01) is their door, not their delivery.
@@ -53,14 +76,24 @@ diligence).
 ## 3. Security parity — the per-control table
 
 Parity is assessed control-by-control and **verified per deployment** (the pilot
-walks this table against live group settings and records it as Evidence):
+walks this table against live group settings and records it as Evidence).
+
+**Scope of the "weaker but disclosed" carve-out (ruled 2026-08-30).** The governing
+requirement's blanket rule is relaxed for EXACTLY the two degradations §1 names —
+identity-granular protected branches and enforced approval rules, on Community
+Edition, with the CE posture §1 records — and nowhere else. Every other control in
+the table below must reach parity by its own mechanism. Anything else weaker than
+the GitHub control it matches remains **non-conforming however well it is
+disclosed**: disclosure is a condition on those two rows, never a route to
+conformance for a third. Naming a further degradation is a human ruling recorded
+against this spec, not a spec edit.
 
 | GitHub control | GitLab mechanism | Verdict |
 |---|---|---|
 | Per-resource App permissions | Premium: role + token-scope narrowing + protected branches; Ultimate: custom roles | parity at Ultimate; Premium parity on protected lines only → risk-classed work REQUIRES Ultimate |
-| Ruleset bypass = single board-writer | Protected-branch allowed-to-push list = exactly board-writer | parity |
-| No self-approval | Approval rules: prevent-author + prevent-committers | parity |
-| Required CI checks before merge | "Pipelines must succeed" + required approvals; Ultimate: external status checks | parity |
+| Ruleset bypass = single board-writer | Protected-branch allowed-to-push list = exactly board-writer | parity at Premium; on CE the first disclosed degradation — §1(1) |
+| No self-approval | Approval rules: prevent-author + prevent-committers | parity at Premium; on CE the second disclosed degradation — §1(2) |
+| Required CI checks before merge | "Pipelines must succeed" (all tiers) + required approvals (Premium); Ultimate: external status checks | parity; the required-approvals half degrades on CE per §1(2), the pipeline half does not |
 | `workflows` permission guarding CI | Locked **ci-config project** + external CI config path; Ultimate: pipeline execution policy pins it | **stronger** — CI definition lives outside the writable repo |
 | Human-gated workflow promotion | Human-merged MR into the ci-config project | parity, fewer moving parts |
 | Short-lived minted tokens | **Rotate-on-mint** + short expiry policy (§5) | parity; single-valid-credential property is stronger, TTL shape differs |
