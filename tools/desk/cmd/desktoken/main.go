@@ -45,13 +45,33 @@ package main
 
 import "os"
 
-const usage = `desktoken — mint or reuse a per-role GitHub App installation token.
+const usage = `desktoken — mint or reuse a per-role forge credential.
 
 USAGE:
-  desktoken <role> [--repo <slug>] [--ttl]
+  desktoken <role> [--repo <slug>] [--ttl]           # GitHub: mint/reuse App token
+  desktoken --forge gitlab <role>                     # GitLab: rotate PAT in place
   desktoken --version
 
 <role> ∈ {reviewer, verifier, worker, desk, issue-loop, intake-loop}
+
+--forge selects the backend: empty or github (default) mints a GitHub App
+installation token as below; gitlab rotates the role's PAT in place.
+
+GitLab (--forge gitlab) — rotate-on-mint token custody:
+  Reads the role's current PAT from gitlab-<role>.token (0600) on the
+  App-credential search path, calls the GitLab self-rotation endpoint (which
+  returns a NEW token and atomically INVALIDATES the current one), write-verifies
+  the new value 0600 back to the same file, and prints the PATH only — never the
+  token value. At most one credential per role is ever valid; a captured token
+  dies at the next mint. The new token's expiry is set by the GROUP
+  token-lifetime policy (7 days RECOMMENDED, configured on the group, not here) —
+  the expiry backstop that retires an idle fleet's credential on its own.
+  Roles are single-window: a second concurrent rotation for the same role
+  invalidates the first's token BY DESIGN — give parallel actors per-actor
+  service accounts, never a shared token. A missing file, a non-regular-file
+  custody, or a wrong file mode each refuses with a named remedy. GITLAB_API_BASE
+  sets the REST v4 base for a self-hosted GitLab (e.g.
+  https://gitlab.example.com/api/v4).
 
 Reads <role>-app.pem (0600) for the App's private key, and apps.env for the
 App ID, from the App-credential SEARCH PATH: $ASSAY_CONFIG_HOME (when set),
