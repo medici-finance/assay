@@ -13,6 +13,10 @@ unwatched Awaiting queue is how briefs rot at `implemented`; this loop is the **
 and the **Change Failure Rate** sensor (`verify-outcomes.jsonl` is its input). It does not run the PR
 monitor — that is pr-review-desk's.
 
+**The stream board is a derived, generated surface** (`docs/streams/derived-board/spec.md`) — this
+desk's deliverable is the witness (the Evidence row, the verifyrun log, the App approval); it never
+hand-edits a board cell, and the board follows the witness.
+
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
 

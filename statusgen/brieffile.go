@@ -100,6 +100,40 @@ type BriefFile struct {
 	// at least one path. false is a COULD-NOT-CHECK for any consumer — never round
 	// it up to "no risky paths" (docs/three-state-instrument-rule.md).
 	DeclaredPathsFound bool
+
+	// ---- brief-v2 reserved keys (derived-board/03) ----
+	// These are populated ONLY for `schema: brief-v2` files. All are OPTIONAL under
+	// v2 except `version` (defaults to 1 when absent). They are PARSED, type-checked
+	// and lint-validated here; their GATING behaviour is deferred to the graph
+	// stream — reserved, not gating (docs/dependency-graph-design.md §3.6).
+
+	// Version is the brief-v2 `version:` field — the brief's own revision, 1 at
+	// authoring, bumped by every edit to Task or Verify after first dispatch.
+	// 0 for a brief-v1 file (the field does not exist there). A witness recorded
+	// against a version that no longer matches the brief's demotes to unknown in
+	// the lifecycle fold (lifecycle.go).
+	Version int
+	// Gates are the brief-v2 `gates:` reserved edges — must-precede edges that are
+	// not build-deps. Every entry carries a required type and reason. nil when
+	// absent. Reserved: parsed and validated, never gating in this binary.
+	Gates []GraphEdge
+	// Feathers are the brief-v2 `feathers:` reserved edges — cross-repo / cross-
+	// stream edges. A scalar entry defaults to type build-dep with no reason. nil
+	// when absent. Reserved: parsed and validated, never gating in this binary.
+	Feathers []GraphEdge
+	// ID is the brief-v2 `id:` field — a uuid v4 minted once at authoring, the
+	// stable key a fact log or executor references across renames and re-homes.
+	// "" when absent (OPTIONAL under v2). A duplicate id across the tree is a
+	// PROBLEM (checkBriefFiles).
+	ID string
+	// Supersedes are the brief-v2 `supersedes:` refs — object lineage (split or
+	// re-baselined briefs). nil when absent. Each ref is validated against the
+	// §3.3 grammar.
+	Supersedes []string
+	// VerifyRows are the brief-v2 optional per-Verify-row identity records
+	// (`verify:` frontmatter list of {id, target}) — the verify substrate a row
+	// runs against. nil when absent. Shape-only validation under v2.
+	VerifyRows []VerifyRowMeta
 }
 
 var (
@@ -112,12 +146,16 @@ var (
 	// consumes the rest of the section, so it cannot masquerade as content.
 	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?(?:-->|$)`)
 
-	// briefSchemaCurrent is the one brief schema version this binary validates;
-	// briefSchemaFamilyPrefix is the shared prefix of the brief-schema family
-	// (`brief-v1`, and any future `brief-v2`, …). A value with this prefix that
-	// is not briefSchemaCurrent fails CLOSED in parseBriefFile (#271), whereas a
-	// value outside the family (contract-v1, placeholder-v1, …) stays exempt.
+	// briefSchemaCurrent is the base brief schema version; recognizedBriefSchemas
+	// is the full set THIS binary validates (brief-v1 and, from derived-board/03,
+	// brief-v2). briefSchemaFamilyPrefix is the shared prefix of the brief-schema
+	// family (`brief-v1`, `brief-v2`, and any future `brief-v3`, …). A value with
+	// this prefix that is NOT in recognizedBriefSchemas fails CLOSED in
+	// parseBriefFile (#271) — a tree on a schema this statusgen predates is
+	// refused, not misread — whereas a value outside the family (contract-v1,
+	// placeholder-v1, …) stays exempt.
 	briefSchemaCurrent      = "brief-v1"
+	briefSchemaV2           = "brief-v2"
 	briefSchemaFamilyPrefix = "brief-v"
 
 	// Required frontmatter keys. `schema` is intentionally absent: its presence
@@ -158,7 +196,27 @@ var (
 	// ONE queue is wired today. Do not add names here speculatively: a name in
 	// this map is a promise that a depth and a threshold exist for it.
 	validMeasuresQueue = map[string]bool{"verification-debt": true}
+
+	// recognizedBriefSchemas is the set of brief-schema-family versions this
+	// binary parses and validates. Anything with the brief-v* prefix outside this
+	// set fails CLOSED (#271). Kept sorted for stable lint messages via
+	// recognizedBriefSchemaList.
+	recognizedBriefSchemas = map[string]bool{
+		briefSchemaCurrent: true, // brief-v1
+		briefSchemaV2:      true, // brief-v2 (derived-board)
+	}
 )
+
+// recognizedBriefSchemaList returns the recognized brief-schema-family versions,
+// sorted, for a stable "validates only …" lint message.
+func recognizedBriefSchemaList() string {
+	names := make([]string, 0, len(recognizedBriefSchemas))
+	for k := range recognizedBriefSchemas {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
 
 // validHomedInShape reports whether v is a well-formed `<owner>/<repo>` value
 // for the optional brief-v1 `homed-in:` field: exactly one "/", both sides
@@ -357,12 +415,14 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 		return nil, false, nil
 	}
 	switch {
-	case s == briefSchemaCurrent:
-		// Recognized brief schema → validate below.
+	case recognizedBriefSchemas[s]:
+		// Recognized brief schema (brief-v1 or brief-v2) → validate below.
 	case strings.HasPrefix(s, briefSchemaFamilyPrefix):
 		// A brief-schema-family version this binary does not understand → the
-		// #271 flag-day trap. Refuse it.
-		return nil, false, fmt.Errorf("%s: unrecognized brief schema %q — this statusgen validates only %q; upgrade statusgen to a build that understands this schema (schema evolution fails closed, #271)", path, s, briefSchemaCurrent)
+		// #271 flag-day trap. Refuse it: the tree is on a brief schema this
+		// statusgen predates, and misreading it green-by-exemption would disable
+		// every typed-dep / gate / attribution / demotion check silently.
+		return nil, false, fmt.Errorf("%s: unrecognized brief schema %q — the tree is %s but this statusgen predates it; it validates only %s. Upgrade statusgen to a build that understands this schema (schema evolution fails closed, #271)", path, s, s, recognizedBriefSchemaList())
 	default:
 		// A different document kind (contract-v1, placeholder-v1, …) → not a
 		// brief this parser validates. Exempt, as before.
@@ -603,6 +663,12 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 		default:
 			addBad("decision-issue must be an integer")
 		}
+	}
+	// brief-v2 reserved keys (derived-board/03). Parsed only for a v2 file; a v1
+	// file that carries one of these keys is untouched here (an unknown key is not
+	// schema drift under v1 — the same tolerance every other optional key gets).
+	if bf.Schema == briefSchemaV2 {
+		parseBriefV2Keys(data, bf, addBad)
 	}
 	if len(bad) > 0 {
 		return nil, false, fmt.Errorf("%s: %s", path, strings.Join(bad, "; "))
@@ -1005,6 +1071,26 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 	// the brief files are parsed and validated by the reciprocity pass after the loop.
 	recip := newDepEdgeIndex()
 
+	// brief-v2 (derived-board/03): the alias registry is loaded once per root and
+	// cached; a v2 brief's id and reserved refs resolve against it. loadGraphRepos
+	// error surfaces as a PROBLEM the first time it is hit. graphReposByID collects
+	// every v2 brief's `id:` across the whole scan so a duplicate uuid is caught.
+	graphRegCache := map[string]*graphRepos{}
+	graphRegLoaded := map[string]bool{}
+	graphReposFor := func(root string) *graphRepos {
+		if graphRegLoaded[root] {
+			return graphRegCache[root]
+		}
+		graphRegLoaded[root] = true
+		reg, _, err := loadGraphRepos(root)
+		if err != nil {
+			add("%s", err.Error()) // already path-prefixed
+		}
+		graphRegCache[root] = reg
+		return reg
+	}
+	v2IDOwner := map[string]string{} // uuid -> first brief path that used it
+
 	for _, s := range streams {
 		for _, path := range briefFilePaths(s) {
 			bf, ok, err := parseBriefFile(path)
@@ -1021,7 +1107,20 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				add("%s: filename must match brief-<NN>[-slug].md", path)
 				continue
 			}
-			if bf.Brief != id {
+			if bf.Schema == briefSchemaV2 {
+				// brief-v2: the id is the hierarchical <cell>:<repo>:<stream>:<NN>
+				// form, validated against the registry and the path by the v2
+				// semantic pass — not the v1 exact filename-match.
+				reg := graphReposFor(s.Root)
+				checkBriefV2Semantics(add, notice, path, bf, reg, s.Name, num)
+				if bf.ID != "" {
+					if prev, dup := v2IDOwner[bf.ID]; dup {
+						add("%s: id %q is already used by %s — a brief id (uuid) is minted once and never reused", path, bf.ID, prev)
+					} else {
+						v2IDOwner[bf.ID] = path
+					}
+				}
+			} else if bf.Brief != id {
 				add("%s: brief %q does not match filename-derived id %q", path, bf.Brief, id)
 			}
 			if !validEffort[bf.Effort] {
