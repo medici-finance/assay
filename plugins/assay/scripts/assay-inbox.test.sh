@@ -580,6 +580,407 @@ check "$(grep -qF 'Nothing is waiting' "$HTML" && echo 0 || echo 1)" \
 check "$(grep -qF '<article' "$HTML" 2>/dev/null && echo 1 || echo 0)" \
   "the empty page renders no cards" "a card was rendered"
 
+# ============================================================================
+# The FLOW model and its two renderings — `--flow` and `--flow --html` (issue #224
+# follow-up).
+#
+# Hermetic by the same rule as everything above: `statusgen` and `deskboard` are stubbed on
+# PATH, so no board, no historian, no gh token and no network are involved. The stubs' JSON
+# IS the fixture — it is the seam this code actually consumes. assay-inbox.sh never parses a
+# STATUS.md or a roster file; it arranges what those readers emit. A fixture board on disk
+# would be testing statusgen, which has its own suite for that, and would leave the one
+# behaviour that IS this script's (what happens when a reader fails) untested, because a
+# fixture board cannot make a reader refuse.
+#
+# Every case here is red against the pre-flow script, which had no --flow and rejected it as
+# an unknown option (exit 1) — see the PR's Fail-first section.
+# ============================================================================
+
+# make_flow_tools <dir> — stub `statusgen` and `deskboard` (and a `gh` the script's
+# precondition check needs) into <dir>. Fixtures are files the stubs read:
+#
+#   <dir>/bn-<key>.json   statusgen --root <path> --bottleneck --json
+#   <dir>/id-<key>.json   statusgen --root <path> --intake-debt --json
+#   <dir>/nf-<key>.json   statusgen --root <path> --net-flow --json
+#   <dir>/tp.json         deskboard throughput
+#
+# where <key> is the basename of the --root path. An ABSENT fixture makes the stub exit
+# non-zero with a diagnostic — which is exactly how the real binaries behave when the
+# installed build predates the flag, and is how the could-not-check cases are set up.
+make_flow_tools() {
+  local dir="$1"
+  mkdir -p "$dir"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'root="."; mode=""\n'
+    printf 'while [ $# -gt 0 ]; do case "$1" in\n'
+    printf '  --root) root="$2"; shift 2 ;;\n'
+    printf '  --bottleneck) mode=bn; shift ;;\n'
+    printf '  --intake-debt) mode=id; shift ;;\n'
+    printf '  --net-flow) mode=nf; shift ;;\n'
+    printf '  *) shift ;;\n'
+    printf 'esac; done\n'
+    printf 'f=%s/$mode-$(basename "$root").json\n' "$(printf '%q' "$dir")"
+    printf 'if [ ! -f "$f" ]; then echo "flag provided but not defined: -$mode" >&2; exit 2; fi\n'
+    printf 'cat "$f"\n'
+  } > "$dir/statusgen"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'f=%s/tp.json\n' "$(printf '%q' "$dir")"
+    printf 'if [ ! -f "$f" ]; then echo %s >&2; exit 5; fi\n' \
+      "$(printf '%q' 'refused: unknown subcommand "throughput" (see --help)')"
+    printf 'cat "$f"\n'
+  } > "$dir/deskboard"
+  chmod +x "$dir/statusgen" "$dir/deskboard"
+  make_gh "$dir" 0 '[]' ""
+}
+
+# board_fixture <dir> <key> <todo> <inprog> <impl> <verified> <done> [constraint]
+board_fixture() {
+  jq -nc --arg c "${8:-implemented}" \
+    --argjson t "$3" --argjson p "$4" --argjson i "$5" --argjson v "$6" --argjson d "$7" '
+    {generated:"2026-08-30T00:00:00Z", date:"2026-08-30", note:"diagnostic",
+     stages:[{stage:"todo",label:"todo→in-progress",wip:$t,median_dwell:"2d",median_dwell_seconds:172800,unknown_dwell:0,score:1},
+             {stage:"in-progress",label:"in-progress→implemented",wip:$p,median_dwell:"1d",median_dwell_seconds:86400,unknown_dwell:0,score:1},
+             {stage:"implemented",label:"implemented→verified",wip:$i,median_dwell:"5d",median_dwell_seconds:432000,unknown_dwell:0,score:9},
+             {stage:"verified",label:"verified→done",wip:$v,median_dwell:"1d",median_dwell_seconds:86400,unknown_dwell:0,score:1},
+             {stage:"done",label:"done (exited)",wip:$d,median_dwell:"",median_dwell_seconds:0,unknown_dwell:0,score:0},
+             {stage:"blocked",label:"blocked",wip:0,median_dwell:"",median_dwell_seconds:0,unknown_dwell:0,score:0}],
+     constraint:$c, constraint_label:"implemented→verified", shifted_from:"", action:"Verify-bound.",
+     total_briefs:($t+$p+$i+$v+$d)}' > "$1/bn-$2.json"
+}
+
+# throughput_fixture <dir> <bottleneck> [advice]
+throughput_fixture() {
+  jq -nc --arg b "$2" --arg adv "${3:-review is the bottleneck (9 waiting / 3 slots = 3.00).}" '
+    {asOf:"2026-08-30T00:00:00Z", stale:false, auditReset:false,
+     mergeNowCount:0, mergeNowDecay:false, mergeNowThreshold:"20m0s",
+     stages:[
+       {stage:"dispatch", loop:"worker-desk", depth:5, slots:8, slotsSource:"shipped default",
+        ratio:0.625, maxSlots:12, boundBy:"ceiling", depthNote:"eligible, unclaimed Next-up briefs"},
+       {stage:"review", loop:"pr-review-desk", depth:9, slots:3, slotsSource:"shipped default",
+        ratio:3, maxSlots:8, boundBy:"ceiling", depthNote:"open PRs with no verdict at head"},
+       {stage:"verify", loop:"verify-desk", depth:11, slots:4, slotsSource:"shipped default",
+        ratio:2.75, maxSlots:6, boundBy:"ceiling", depthNote:"briefs at implemented awaiting a verifier"},
+       {stage:"intake", loop:"intake-desk", depth:null, slots:1, slotsSource:"shipped default",
+        ratio:null, maxSlots:1, boundBy:"ceiling",
+        blind:"depth: not read — `issueboard intake` owns this population",
+        depthNote:"the raw-intake queue"}],
+     bottleneck:$b, stagesRead:3, stagesTotal:4,
+     roots:[{repo:"example-org/app", path:"."}], advice:$adv}' > "$1/tp.json"
+}
+
+# flow_cell_fixtures <dir> <key> — the intake + net-flow readers for one cell.
+flow_cell_fixtures() {
+  jq -nc '{state:"measured", untriaged:4, over_threshold:1, threshold_days:3, oldest_days:9}' \
+    > "$1/id-$2.json"
+  jq -nc '{generated:"2026-08-30T00:00:00Z", window:{since:"2026-08-23", until:"2026-08-30"},
+           state:"ok",
+           streams:[{stream:"alpha", arrivals:6, completions:5, net_flow:1, backlog:7, stalled:false},
+                    {stream:"beta",  arrivals:2, completions:1, net_flow:1, backlog:3, stalled:false}]}' \
+    > "$1/nf-$2.json"
+}
+
+# flow_row <output> <stage> — the rendered table row for one stage, whitespace-squeezed.
+flow_row() {
+  printf '%s\n' "$1" | grep -E "^  $2( \*)? " | head -1 | tr -s ' '
+}
+
+# ---------------------------------------------------------------- FL1 -------
+echo "FL1 — --flow renders every stage with the count, queue, slots and ratio its reader gave"
+
+w="$TMPROOT/fl1"
+make_flow_tools "$w"
+mkdir -p "$w/alpha"
+board_fixture "$w" alpha 7 3 11 2 40
+flow_cell_fixtures "$w" alpha
+throughput_fixture "$w" review
+run_case "$w" --flow --root "$w/alpha"
+check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "--flow with every reader healthy exits 0" "got $RC (stderr: ${ERR:-<empty>})"
+
+# The seven stages, in pipeline order, exactly once each.
+order=$(printf '%s\n' "$OUT" | grep -Eo '^  (intake|todo|in-progress|review|implemented|verified|done)( \*)? ' \
+        | sed 's/ \*//; s/^ *//; s/ *$//' | tr '\n' ' ')
+check "$([[ "$order" == "intake todo in-progress review implemented verified done " ]] && echo 0 || echo 1)" \
+  "the seven stages render in pipeline order" "got: $order"
+
+check "$([[ "$(flow_row "$OUT" todo)" == " todo 7 5 8 0.63 2d "* ]] && echo 0 || echo 1)" \
+  "todo: board WIP 7, loop queue 5, 8 slots, ratio 0.63" "row: $(flow_row "$OUT" todo)"
+check "$([[ "$(flow_row "$OUT" implemented)" == " implemented 11 11 4 2.75 5d "* ]] && echo 0 || echo 1)" \
+  "implemented: WIP 11 against the verify loop's 11/4" "row: $(flow_row "$OUT" implemented)"
+check "$([[ "$(flow_row "$OUT" intake)" == " intake 4 "* ]] && echo 0 || echo 1)" \
+  "intake count comes from --intake-debt (.untriaged = 4)" "row: $(flow_row "$OUT" intake)"
+check "$([[ "$(flow_row "$OUT" review)" == " review * 9 9 3 3 "* ]] && echo 0 || echo 1)" \
+  "review count is the throughput depth (9), not a board status" "row: $(flow_row "$OUT" review)"
+# in-progress/verified/done have no loop: absent capacity is stated, never faked.
+check "$(contains "$(flow_row "$OUT" in-progress)" "no loop owns this stage" && echo 0 || echo 1)" \
+  "a stage with no pool says so instead of showing a slot count" "row: $(flow_row "$OUT" in-progress)"
+
+check "$(contains "$OUT" "arrivals 8 -> ... -> completions 6" && echo 0 || echo 1)" \
+  "window flow sums the net-flow streams (6+2 in, 5+1 out)" "stdout: $OUT"
+check "$(contains "$OUT" "dwell-weighted constraint (ToC): implemented" && echo 0 || echo 1)" \
+  "the ToC constraint is reported beside the ratio bottleneck, not instead of it" "stdout: $OUT"
+
+# ---------------------------------------------------------------- FL2 -------
+echo "FL2 — the bottleneck is throughput's stage, translated into the flow vocabulary"
+
+check "$(contains "$OUT" "bottleneck (largest queue/slots ratio): review *" && echo 0 || echo 1)" \
+  "throughput's 'review' marks the review stage" "stdout: $OUT"
+marks=$(printf '%s\n' "$OUT" | grep -Ec '^  [a-z-]+ \* ' || true)
+check "$([[ "$marks" -eq 1 ]] && echo 0 || echo 1)" \
+  "exactly one stage is marked as the bottleneck" "marked rows: $marks"
+
+# `verify` is throughput's name for the stage this model calls `implemented`. Translating it
+# is the whole reason the mapping exists — an untranslated verdict would mark no stage at all
+# and silently drop the signal.
+w="$TMPROOT/fl2"
+make_flow_tools "$w"
+mkdir -p "$w/alpha"
+board_fixture "$w" alpha 7 3 11 2 40
+flow_cell_fixtures "$w" alpha
+throughput_fixture "$w" verify "verify is the bottleneck (11 waiting / 4 slots = 2.75)."
+run_case "$w" --flow --root "$w/alpha"
+check "$(contains "$(flow_row "$OUT" implemented)" " implemented * " && echo 0 || echo 1)" \
+  "throughput's 'verify' marks the flow model's 'implemented'" "row: $(flow_row "$OUT" implemented)"
+check "$(contains "$OUT" "bottleneck (largest queue/slots ratio): implemented *" && echo 0 || echo 1)" \
+  "the headline names the translated stage" "stdout: $OUT"
+
+# ---------------------------------------------------------------- FL3 -------
+echo "FL3 — a reader that did not run leaves could-not-check, never 0"
+
+w="$TMPROOT/fl3"
+make_flow_tools "$w"
+mkdir -p "$w/alpha"
+# No bn-alpha.json and no tp.json: the board reader and the throughput reader both refuse,
+# exactly as a pinned binary predating the flag does.
+flow_cell_fixtures "$w" alpha
+run_case "$w" --flow --root "$w/alpha"
+check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" \
+  "a failed flow reader exits 2 (the render is INCOMPLETE)" "got $RC"
+for stage in todo in-progress implemented verified "done"; do
+  row=$(flow_row "$OUT" "$stage")
+  check "$(contains "$row" "could-not-check" && echo 0 || echo 1)" \
+    "$stage renders could-not-check when its reader refused" "row: ${row:-<none>}"
+  # The whole point: an unread stage must not be presented as a drained one.
+  check "$([[ "$row" == " $stage 0 "* ]] && echo 1 || echo 0)" \
+    "$stage is NOT rendered as 0" "row: $row"
+done
+check "$(contains "$OUT" "flag provided but not defined" && echo 0 || echo 1)" \
+  "the reader's own diagnostic is carried onto the render" "stdout: $OUT"
+check "$(contains "$ERR" "FLOW READER FAILED" && echo 0 || echo 1)" \
+  "the failure is named on stderr too" "stderr: ${ERR:-<empty>}"
+check "$(contains "$OUT" "bottleneck (largest queue/slots ratio): none named" && echo 0 || echo 1)" \
+  "no bottleneck is named when throughput could not be read" "stdout: $OUT"
+check "$(contains "$OUT" "Blind is not idle" && echo 0 || echo 1)" \
+  "the advice line says blind is not idle instead of reporting a drained pipeline" "stdout: $OUT"
+# The readable stage still renders — one dead reader must not take the others down.
+check "$(contains "$(flow_row "$OUT" intake)" " intake 4 " && echo 0 || echo 1)" \
+  "a healthy reader still reports beside a failed one" "row: $(flow_row "$OUT" intake)"
+
+# ---------------------------------------------------------------- FL4 -------
+echo "FL4 — --flow --html is a self-contained page with an inline SVG diagram"
+
+w="$TMPROOT/fl4"
+make_flow_tools "$w"
+mkdir -p "$w/alpha"
+board_fixture "$w" alpha 7 3 11 2 40
+flow_cell_fixtures "$w" alpha
+# Hostile text arriving through a reader's own output must be escaped like any other.
+throughput_fixture "$w" review '<script>alert(1)</script> & widen review'
+HTML="$w/flow.html"
+run_case "$w" --flow --html "$HTML" --root "$w/alpha"
+check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "--flow --html exits 0 on healthy readers" "got $RC (stderr: ${ERR:-<empty>})"
+check "$([[ -s "$HTML" ]] && echo 0 || echo 1)" "--flow --html writes a non-empty file" "no file at $HTML"
+
+svgs=$(grep -c '<svg class="flow"' "$HTML" || true)
+check "$([[ "$svgs" -eq 1 ]] && echo 0 || echo 1)" "the page carries exactly one inline SVG" "count: $svgs"
+boxes=$(grep -c '<rect class="box' "$HTML" || true)
+check "$([[ "$boxes" -eq 7 ]] && echo 0 || echo 1)" "one box per stage (got $boxes, want 7)" "boxes: $boxes"
+bn=$(grep -c '<rect class="box bneck"' "$HTML" || true)
+check "$([[ "$bn" -eq 1 ]] && echo 0 || echo 1)" "exactly one box is highlighted as the bottleneck" "count: $bn"
+arrows=$(grep -c '<line class="arr' "$HTML" || true)
+check "$([[ "$arrows" -eq 6 ]] && echo 0 || echo 1)" "six arrows join the seven stages" "arrows: $arrows"
+# The measured arrows are solid and weighted; the steps no reader measures are dashed.
+check "$(grep -q '<line class="arr" [^>]*stroke-width="[2-9]' "$HTML" && echo 0 || echo 1)" \
+  "a measured arrow is weighted by its flow" "no weighted arrow in $HTML"
+check "$(grep -q '<line class="arr dash"' "$HTML" && echo 0 || echo 1)" \
+  "an unmeasured step is drawn dashed" "no dashed arrow in $HTML"
+
+# Cards belong to the decision queue; the flow-only page carries none.
+check "$(grep -qF '<article' "$HTML" && echo 1 || echo 0)" \
+  "--flow --html renders the flow section ALONE (no decision cards)" "a card was rendered"
+
+# The SVG is never the only carrier: the same numbers follow as a table.
+check "$(grep -q '<caption>Stage counts' "$HTML" && echo 0 || echo 1)" \
+  "an equivalent data table accompanies the diagram" "no table caption in $HTML"
+check "$(grep -q 'role="img"' "$HTML" && echo 0 || echo 1)" \
+  "the SVG is labelled for assistive technology" "no role=img in $HTML"
+check "$(grep -q '<desc id="flowd">' "$HTML" && echo 0 || echo 1)" \
+  "the SVG carries a description, not just a title" "no <desc> in $HTML"
+
+for forbidden in "<script" " src=" "@import" "url(" "<iframe" "<link "; do
+  check "$(grep -qF -- "$forbidden" "$HTML" && echo 1 || echo 0)" \
+    "the flow page contains no '$forbidden'" "found '$forbidden' in $HTML"
+done
+hrefs=$(grep -c 'href=' "$HTML" || true)
+check "$([[ "$hrefs" -eq 0 ]] && echo 0 || echo 1)" \
+  "the flow page fetches nothing — it carries no links at all" "hrefs: $hrefs"
+check "$(contains "$(cat "$HTML")" "prefers-color-scheme" && echo 0 || echo 1)" \
+  "light/dark is handled with prefers-color-scheme" "no media query in $HTML"
+
+check "$([[ "$(head -1 "$HTML")" == "<!doctype html>" ]] && echo 0 || echo 1)" \
+  "the flow page opens with a doctype" "first line: $(head -1 "$HTML")"
+check "$([[ "$(tail -1 "$HTML")" == "</html>" ]] && echo 0 || echo 1)" \
+  "the flow page closes </html>" "last line: $(tail -1 "$HTML")"
+for tag in section svg table thead tbody tr td th ul li p h2 h3 g text; do
+  o=$(grep -o "<${tag}[ >]" "$HTML" | wc -l | tr -d ' ')
+  c=$(grep -o "</${tag}>" "$HTML" | wc -l | tr -d ' ')
+  check "$([[ "$o" -eq "$c" ]] && echo 0 || echo 1)" \
+    "<$tag> tags balance ($o open / $c close)" "unbalanced <$tag>"
+done
+
+check "$(grep -qF '&lt;script&gt;alert(1)&lt;/script&gt;' "$HTML" && echo 0 || echo 1)" \
+  "reader text is HTML-escaped on the page" "no escaped script tag found in $HTML"
+
+# The honesty line is part of the deliverable, not decoration: the page must say it renders
+# authored status rather than implying it measured anything.
+check "$(grep -qF 'RENDERS AUTHORED STATUS' "$HTML" && echo 0 || echo 1)" \
+  "the page states that it renders authored status, not a measurement" "no honesty line in $HTML"
+check "$(grep -q 'Where these numbers come from' "$HTML" && echo 0 || echo 1)" \
+  "the page names its sources" "no sources section in $HTML"
+
+# ---------------------------------------------------------------- FL5 -------
+echo "FL5 — could-not-check reaches the PAGE, not only the terminal"
+
+w="$TMPROOT/fl5"
+make_flow_tools "$w"
+mkdir -p "$w/alpha"
+flow_cell_fixtures "$w" alpha          # no board fixture, no throughput fixture
+HTML="$w/blind.html"
+run_case "$w" --flow --html "$HTML" --root "$w/alpha"
+check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" "a blind flow page still exits 2" "got $RC"
+check "$([[ -s "$HTML" ]] && echo 0 || echo 1)" "a blind run still writes a page" "no file at $HTML"
+# Six, not five: the five board stages whose --bottleneck reader refused, PLUS `review`,
+# whose count comes from the throughput reader that also refused. `intake` still reports,
+# because its reader answered.
+blindboxes=$(grep -c '<rect class="box blind"' "$HTML" || true)
+check "$([[ "$blindboxes" -eq 6 ]] && echo 0 || echo 1)" \
+  "each unread stage is drawn as a dashed could-not-check box (got $blindboxes, want 6)" \
+  "blind boxes: $blindboxes"
+check "$(grep -q '<h3>Could not check</h3>' "$HTML" && echo 0 || echo 1)" \
+  "the page lists what it could not check" "no could-not-check section in $HTML"
+check "$(grep -qF '>0<' "$HTML" && echo 1 || echo 0)" \
+  "no stage is drawn as a bare 0 when nothing was read" "a zero count was rendered"
+nobn=$(grep -c '<rect class="box bneck"' "$HTML" || true)
+check "$([[ "$nobn" -eq 0 ]] && echo 0 || echo 1)" \
+  "no bottleneck is highlighted when throughput was unreadable" "highlighted boxes: $nobn"
+
+# ---------------------------------------------------------------- FL6 -------
+echo "FL6 — more than one cell: a fleet total plus a row block per cell"
+
+w="$TMPROOT/fl6"
+make_flow_tools "$w"
+mkdir -p "$w/alpha" "$w/beta"
+board_fixture "$w" alpha 7 3 11 2 40
+board_fixture "$w" beta  4 1  6 3 20
+flow_cell_fixtures "$w" alpha
+flow_cell_fixtures "$w" beta
+throughput_fixture "$w" review
+run_case "$w" --flow --root "$w/alpha" --root "$w/beta"
+check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "a two-cell --flow exits 0" "got $RC (stderr: ${ERR:-<empty>})"
+check "$([[ "$(flow_row "$OUT" todo)" == " todo 11 "* ]] && echo 0 || echo 1)" \
+  "the fleet row sums the cells (7 + 4 = 11)" "row: $(flow_row "$OUT" todo)"
+check "$(contains "$OUT" "== cell alpha" && contains "$OUT" "== cell beta" && echo 0 || echo 1)" \
+  "each cell gets its own row block" "stdout: $OUT"
+blocks=$(printf '%s\n' "$OUT" | grep -c '^== ' || true)
+check "$([[ "$blocks" -eq 3 ]] && echo 0 || echo 1)" \
+  "one fleet block plus one block per cell (got $blocks, want 3)" "blocks: $blocks"
+# A single cell needs no per-cell repetition of the fleet row.
+run_case "$TMPROOT/fl1" --flow --root "$TMPROOT/fl1/alpha"
+blocks=$(printf '%s\n' "$OUT" | grep -c '^== ' || true)
+check "$([[ "$blocks" -eq 1 ]] && echo 0 || echo 1)" \
+  "a single cell renders the fleet row only, not the same numbers twice" "blocks: $blocks"
+
+# A sum over cells that were not all read is a LOWER BOUND and must say so.
+w="$TMPROOT/fl6-partial"
+make_flow_tools "$w"
+mkdir -p "$w/alpha" "$w/beta"
+board_fixture "$w" alpha 7 3 11 2 40
+flow_cell_fixtures "$w" alpha
+flow_cell_fixtures "$w" beta            # beta has no board fixture
+throughput_fixture "$w" review
+run_case "$w" --flow --root "$w/alpha" --root "$w/beta"
+check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" "one unread cell reddens the run" "got $RC"
+check "$(contains "$(flow_row "$OUT" todo)" "AT LEAST" && echo 0 || echo 1)" \
+  "a partial sum is flagged AT LEAST, never printed as a total" "row: $(flow_row "$OUT" todo)"
+
+# ---------------------------------------------------------------- FL8 -------
+echo "FL8 — not-applicable is not could-not-check"
+
+# A per-cell `review` row has no figure because throughput resolves none per cell — nothing
+# failed. Calling that could-not-check would cry wolf on every cell block and teach the reader
+# to skip the word that matters when a reader really has died.
+w="$TMPROOT/fl8"
+make_flow_tools "$w"
+mkdir -p "$w/alpha" "$w/beta"
+board_fixture "$w" alpha 7 3 11 2 40
+board_fixture "$w" beta  4 1  6 3 20
+flow_cell_fixtures "$w" alpha
+flow_cell_fixtures "$w" beta
+throughput_fixture "$w" review
+run_case "$w" --flow --root "$w/alpha" --root "$w/beta"
+cellblock=$(printf '%s\n' "$OUT" | sed -n '/^== cell alpha/,/^== cell beta/p')
+reviewrow=$(printf '%s\n' "$cellblock" | grep -E '^  review( \*)? ' | head -1)
+check "$(contains "$reviewrow" "n/a — read fleet-wide" && echo 0 || echo 1)" \
+  "a per-cell review row reads n/a, not could-not-check" "row: ${reviewrow:-<none>}"
+check "$(contains "$reviewrow" "could-not-check" && echo 1 || echo 0)" \
+  "a legitimate absence is never labelled could-not-check" "row: $reviewrow"
+# The fleet-wide-capacity fact is stated once per block, not on all seven rows.
+notes=$(printf '%s\n' "$cellblock" | grep -c 'pool width is resolved fleet-wide' || true)
+check "$([[ "$notes" -eq 1 ]] && echo 0 || echo 1)" \
+  "the fleet-wide-capacity note appears once per cell block, not per row (got $notes)" "notes: $notes"
+
+# ...and the same distinction survives into the page.
+HTML="$w/two.html"
+run_case "$w" --flow --html "$HTML" --root "$w/alpha" --root "$w/beta"
+check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "a two-cell page exits 0" "got $RC"
+naboxes=$(grep -c '<rect class="box na"' "$HTML" || true)
+check "$([[ "$naboxes" -eq 2 ]] && echo 0 || echo 1)" \
+  "each cell row draws its review stage as not-applicable (got $naboxes, want 2)" "na boxes: $naboxes"
+blindboxes=$(grep -c '<rect class="box blind"' "$HTML" || true)
+check "$([[ "$blindboxes" -eq 0 ]] && echo 0 || echo 1)" \
+  "nothing is drawn as could-not-check when every reader answered" "blind boxes: $blindboxes"
+rows=$(grep -c '<text class="cell"' "$HTML" || true)
+check "$([[ "$rows" -eq 3 ]] && echo 0 || echo 1)" \
+  "the diagram carries a fleet row plus one row per cell (got $rows, want 3)" "rows: $rows"
+
+# ---------------------------------------------------------------- FL7 -------
+echo "FL7 — the decision page carries the Flow section; the modes refuse sensibly"
+
+w="$TMPROOT/fl7"
+make_flow_tools "$w"
+board_fixture "$w" "$(basename "$TMPROOT/fl7")" 7 3 11 2 40
+throughput_fixture "$w" review
+HTML="$w/both.html"
+(cd "$w" && PATH="$w:$PATH" bash "$SCRIPT" --html "$HTML" o/r >"$w/o" 2>"$w/e")
+RC=$?
+check "$([[ "$RC" -eq 0 || "$RC" -eq 2 ]] && echo 0 || echo 1)" \
+  "--html runs with the flow section attached" "got $RC: $(cat "$w/e")"
+check "$(grep -q '<section class="flow-sec">' "$HTML" && echo 0 || echo 1)" \
+  "the decision page carries a Flow section" "no flow section in $HTML"
+check "$(grep -q '<h1>Decisions waiting on the driver</h1>' "$HTML" && echo 0 || echo 1)" \
+  "the decision page keeps its own heading" "heading missing from $HTML"
+
+run_case "$TMPROOT/fl1" --walk --flow o/r
+check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" \
+  "--walk with --flow is refused, not silently resolved" "got $RC"
+run_case "$TMPROOT/fl1" --flow --since notadate --root "$TMPROOT/fl1/alpha"
+check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "a malformed --since exits 1" "got $RC"
+check "$(contains "$ERR" "YYYY-MM-DD" && echo 0 || echo 1)" \
+  "stderr says what --since should look like" "stderr: ${ERR:-<empty>}"
+run_case "$TMPROOT/fl1" --root
+check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "--root with no path exits 1" "got $RC"
+
 # ------------------------------------------------------------------ done ----
 echo
 printf '%s passed, %s failed\n' "$pass" "$fail"

@@ -48,6 +48,11 @@ Read the queue with the inbox, which already sorts it:
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --walk --item 1 owner/repo [owner/repo ...]
 ```
 
+**Before asking, read where the system is stuck:**
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --flow` prints the pipeline stage by
+stage with the bottleneck named, so an item's Context can say what it is actually holding up —
+and so a question about a stage three steps downstream of the constraint can wait.
+
 **Ordering rule: the item whose ruling unblocks the most in-flight work goes first; ties break
 by age, oldest first.** The script's mechanical order is urgency-then-age, which is the
 computable approximation of that rule — it can see labels and dates, it cannot see what is
