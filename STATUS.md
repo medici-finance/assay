@@ -34,14 +34,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (42 desk-actionable of 43 total — 33 at implemented, 10 verified awaiting review)
+## Awaiting verification / review (44 desk-actionable of 45 total — 35 at implemented, 10 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (42)
+### Desk-actionable (44)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -62,6 +62,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 04 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | mistake-proofing | 01 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | quality | 03 | implemented | 3000 | 4 | — | — | — |
+| forge-gitlab | 03 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | quality | 04 | implemented | 2500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2000 | 2 | — | — | — |
@@ -74,6 +75,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 05 [exec:strong] | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
+| forge-gitlab | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -156,12 +158,12 @@ _None._
 
 - 01 `Forge` interface extraction in deskkit — `github` impl pinned by goldens — verified (wave 1)
 - 02 `gitlab` forge implementation (MRs, notes, approvals, statuses) — implemented (wave 2)
-- 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — todo (wave 2)
+- 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — implemented (wave 2)
 - 04 Fleet provisioning + adopter doc + ci-config-project runbook — todo (wave 3)
 - 05 Live pilot — one brief round-tripped on a real GitLab group; parity table walked — todo (wave 4)
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — todo (wave 5)
 - 07 GitHub forge backend on `go-gh` — retire the exec-`gh` shell path — implemented (wave 2)
-- 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — todo (wave 3)
+- 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
 
 ### harness-portability (11 open)
 
