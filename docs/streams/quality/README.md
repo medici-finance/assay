@@ -41,7 +41,7 @@ decision, not code in this stream.
 | 01 | [miner skeleton — go-git extraction, incremental runs, three-state plumbing](brief-01-miner-skeleton.md) | 0 | L | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
 | 02 | [M1 line-operation taxonomy + churn/rework rate](brief-02-m1-taxonomy-churn.md) | 1 | M | todo | — | — |
 | 03 | [M1 hotspots + knowledge distribution (SPOF) + change coupling](brief-03-m1-hotspots-coupling.md) | 1 | M | todo | — | — |
-| 04 | [M1 instruction-layer brittleness (reference-validity + doc↔code drift)](brief-04-m1-instruction-brittleness.md) | 1 | M | todo | — | — |
+| 04 | [M1 instruction-layer brittleness (reference-validity + doc↔code drift)](brief-04-m1-instruction-brittleness.md) | 1 | M | implemented | — | — |
 | 05 | [`QUALITY.md` single-writer trend view + metrics artifacts](brief-05-quality-view-artifacts.md) | 2 | M | todo | — | — |
 | 06 | [M2 fix identification — pluggable linkage adapter + evidence tiers](brief-06-m2-fix-identification.md) | 1 | M | implemented | — | — |
 | 07 | [M2 B-SZZ inducing trace + derived defect metrics](brief-07-m2-szz-trace-metrics.md) | 2 | L | todo | — | — |
@@ -55,6 +55,8 @@ decision, not code in this stream.
 | 15 | [learned riskscore graduation — JIT defect-prediction model](brief-15-learned-riskscore.md) | 3 | M | todo | — | — |
 
 Brief 01 implemented on branch `brief/quality-01-miner-skeleton` (new `qualgen/` module: go-git extraction, incremental extend-never-replace mine, three-state `Measure[T]` plumbing, append-only artifact store; `mine` mode live, `report`/`pr`/`check` scaffolded). Draft-PR link to be attached when the PR is opened.
+
+Brief 04 implemented on branch `feat/quality-04` (new `qualgen/driftdetect.go`: a generic source↔render drift-detection capability shared with later passes; new `qualgen/instructionbrittle.go`: trended reference-validity — dead file-path/symbol/typed-ID detection over a configured instruction-doc glob set — plus doc↔code co-change staleness applying the §4.5 coupling analysis in the doc→code direction; planted-fixture tests under `qualgen/testdata/instrbrittle/`). Draft-PR link to be attached when the PR is opened.
 
 ## Critical path
 
