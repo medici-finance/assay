@@ -616,9 +616,18 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 	w("<meta charset=\"UTF-8\">")
 	w("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">")
 	w("<title>%s</title>", htmlEscape(title))
+	// Palette: the point-in-time deck and any unconfigured cadence deck keep the
+	// built-in dark palette. A cadence render whose repo configures docs/brand
+	// threads its bg/surface/accent into the three palette variables the deck's
+	// grounds and primary accent draw from; neutralBrand() reproduces these exact
+	// defaults, so an absent or empty brand config renders byte-identically.
+	pbg, psurface, paccent := "#1a1a2e", "#16213e", "#3366FF"
+	if activeCadence != nil {
+		pbg, psurface, paccent = activeCadence.Brand.Bg, activeCadence.Brand.Surface, activeCadence.Brand.Accent
+	}
 	w("<style>")
 	w("  :root {")
-	w("    --bg: #1a1a2e; --surface: #16213e; --blue: #3366FF; --green: #00CC66;")
+	w("    --bg: %s; --surface: %s; --blue: %s; --green: #00CC66;", pbg, psurface, paccent)
 	w("    --amber: #F59E0B; --red: #EF4444; --text: #E2E8F0; --text2: #94A3B8;")
 	w("    --border: #1E293B;")
 	w("  }")

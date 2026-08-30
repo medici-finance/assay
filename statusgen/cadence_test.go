@@ -211,6 +211,31 @@ func TestCadenceEffortMixDeclarationOrderWhenUnconfigured(t *testing.T) {
 	}
 }
 
+// Two (or more) streams sharing one serves: tag with ZERO in-progress work must
+// appear in the mix exactly once — the "first-encountered" guard has to seed the
+// aggregation key on encounter, not only when there is in-progress work, else the
+// tag is appended once per stream and renders a duplicate goal-card. Covers both
+// the unconfigured (keys = seen) and configured (unranked-after-ranked) branches.
+func TestCadenceEffortMixDedupsSharedServesWithZeroInProgress(t *testing.T) {
+	streams := []*Stream{
+		cadStream("s1", "example-app", 0), // shared tag, no in-progress
+		cadStream("s2", "example-app", 0), // shared tag, no in-progress
+	}
+	// Unconfigured: keys come from `seen`.
+	mix := computeEffortMix(streams, nil)
+	if len(mix) != 1 {
+		t.Fatalf("unconfigured: mix len = %d, want 1 (shared serves must dedup); entries=%+v", len(mix), mix)
+	}
+	if mix[0].Serves != "example-app" || mix[0].Active != 0 {
+		t.Errorf("unconfigured entry = {Serves:%q Active:%d}, want {example-app 0}", mix[0].Serves, mix[0].Active)
+	}
+	// Configured: unranked serves dedup against `seen` in the after-ranked loop.
+	mixOrdered := computeEffortMix(streams, []string{"platform"}) // example-app is unranked
+	if len(mixOrdered) != 1 {
+		t.Fatalf("configured: mix len = %d, want 1 (shared unranked serves must dedup); entries=%+v", len(mixOrdered), mixOrdered)
+	}
+}
+
 func TestCadenceEffortMixTiersFromConfiguredOrder(t *testing.T) {
 	streams := []*Stream{
 		cadStream("s1", "example-service", 3), // supporting

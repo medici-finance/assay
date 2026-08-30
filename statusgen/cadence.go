@@ -210,6 +210,7 @@ func computeEffortMix(streams []*Stream, order []string) []effortMixEntry {
 	for _, s := range streams {
 		g := s.Serves
 		if _, ok := active[g]; !ok {
+			active[g] = 0 // seed at first encounter so a serves tag with zero in-progress work is still registered exactly once
 			seen = append(seen, g)
 		}
 		for _, b := range s.Briefs {
