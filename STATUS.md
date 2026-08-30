@@ -34,14 +34,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (40 desk-actionable of 41 total — 31 at implemented, 10 verified awaiting review)
+## Awaiting verification / review (42 desk-actionable of 43 total — 33 at implemented, 10 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (40)
+### Desk-actionable (42)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -69,6 +69,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | mistake-proofing | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
+| statusgen | 07 | implemented | 1500 | 1 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -78,6 +79,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 01 | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
+| statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 04 | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -215,11 +217,11 @@ _None._
 
 - 01 30-day lint-firing audit — retire cold rules — verified (wave 1)
 - 02 issue metrics (`--issues`) — verified (wave 1)
-- 03 self-improvement metric (self-healed vs human-touched) — todo (wave 2)
+- 03 self-improvement metric (self-healed vs human-touched) — implemented (wave 2)
 - 04 ladder-position indicator (`--ladder`) — verified (wave 1)
 - 05 drives phase 3 — anti-starvation floors + critical tier — implemented (wave 1)
 - 06 findings register — corroborated state machine — implemented (wave 1)
-- 07 new brief-flow metrics — todo (wave 1)
+- 07 new brief-flow metrics — implemented (wave 1)
 - 08 composite AssayScore computation — todo (wave 2)
 - 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — todo (wave 1)
 - 10 graph export (`--graph` DOT + JSONL) — implemented (wave 1)
