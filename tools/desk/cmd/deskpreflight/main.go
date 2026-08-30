@@ -18,7 +18,8 @@
 //     formats, fixes, stages, writes, or mutates anything — not the tree it
 //     scans, not the index, not a config. The worker reads the findings and
 //     acts. Every check below shells an existing tool or a stock command in a
-//     read-only mode; none of them has a write path.
+//     read-only mode, or asks the filesystem for metadata (os.Lstat); none of
+//     them has a write path.
 //
 // It is NOT a merge gate and NOT CI. It is the local step a worker runs before
 // `deskpr create`; the repo's CI gates are unchanged and remain the enforcement
@@ -26,11 +27,21 @@
 //
 // The bundled checks (v1):
 //
-//	conflict-markers   grep for VCS conflict markers in the tree under --root
-//	junk-oversize      find junk-named or oversize files in the tree under --root
+//	conflict-markers   grep for VCS conflict markers in the git work tree under --root
+//	junk-oversize      junk-named or oversize files in the git work tree under --root
 //	go-fmt-vet         gofmt -l + go vet, scoped to the touched Go files under --root
 //	statusgen-lint     statusgen --root <abs> --lint, from a neutral cwd
 //	leak-sweep         the installed leak-sweep, WHERE PRESENT (see runLeakSweep)
+//
+// SCOPE. The tree the first two checks look at is the WORKING TREE AS GIT SEES
+// IT — `git ls-files --cached --others --exclude-standard` — never a filesystem
+// walk (see gitWorkTreeFiles). A gate for "what is about to ride into a PR"
+// must see exactly what `git add` could stage: walking the filesystem instead
+// made both checks report git's own 43 MB packfiles under `.git/`, dangling
+// blobs under `.git/lost-found/`, ignored build output, and this tool's own
+// committed conflict-marker fixture, so `deskpreflight` could not reach exit 0
+// in any real repository. Where git cannot answer, both checks are
+// could-not-check — never an empty pass.
 //
 // USAGE:
 //
@@ -99,9 +110,9 @@ type check struct {
 	detail string
 }
 
-// tools is the injectable edge of every check: process launching, isolated
-// behind two functions so the test suite is hermetic (no real grep/find/git/
-// gofmt/go/statusgen/leak-sweep, no filesystem tools at all).
+// tools is the injectable edge of every check: process launching and the one
+// filesystem read, isolated behind three functions so the test suite is
+// hermetic (no real grep/git/gofmt/go/statusgen/leak-sweep, and no real tree).
 type tools struct {
 	// lookPath reports whether a tool is on PATH (exec.LookPath).
 	lookPath func(name string) (string, error)
@@ -111,10 +122,17 @@ type tools struct {
 	// A ran=true with a nonzero code is a process that ran and failed — a
 	// different thing from could-not-run, and the checks treat them differently.
 	output func(dir, name string, args ...string) (out []byte, code int, ran bool)
+	// stat returns metadata for one path. It is os.Lstat: a pure read, and one
+	// that describes a symlink rather than following it, so no check ever reads
+	// through a link out of the tree it was pointed at. It is the size and
+	// file-type oracle for junk-oversize, and the existence filter that keeps a
+	// tracked-but-deleted path from turning an ordinary mid-refactor working
+	// tree into a could-not-check.
+	stat func(path string) (os.FileInfo, error)
 }
 
 func realTools() tools {
-	return tools{lookPath: exec.LookPath, output: realOutput}
+	return tools{lookPath: exec.LookPath, output: realOutput, stat: os.Lstat}
 }
 
 // realOutput runs a command read-only with a bounded timeout. It distinguishes
@@ -237,38 +255,200 @@ func couldNotCheck(name, detail string) check {
 	return check{name: name, state: deskkit.CouldNotCheck, detail: detail}
 }
 
+// --- the scan input: the working tree as git sees it ------------------------
+
+// gitWorkTreeFiles enumerates the WORKING TREE AS GIT SEES IT under absRoot:
+// tracked files, plus untracked files that .gitignore does not exclude, and
+// nothing else. That set — what `git add` could stage right now — is the only
+// tree a pre-PR gate has any business looking at.
+//
+// `git ls-files --cached --others --exclude-standard -z`, run with the working
+// directory at absRoot, is the whole definition, and it gets three exclusions
+// right at once. Each was a live false positive while the checks walked the
+// filesystem instead:
+//
+//   - `.git/` is excluded BY CONSTRUCTION — git never lists its own object
+//     store — so a 43 MB packfile is no longer reported as an oversize file the
+//     worker is about to push, and a dangling blob under `.git/lost-found/` is
+//     no longer reported as a conflict marker.
+//   - `.gitignore` is HONOURED, so build output no `git add` would ever pick up
+//     (a sibling agent worktree's `dist/`, a coverage dump) stops counting.
+//   - the listing is bounded to absRoot, so nothing outside the root leaks in.
+//
+// Paths come back RELATIVE to absRoot, sorted — which is also how the checks
+// report them, so a gate's output reads like the paths the worker would type.
+//
+// If git cannot answer — not on PATH, absRoot is not a work tree, ls-files
+// errors — the file set is UNKNOWABLE and every check built on it is
+// could-not-check. An enumeration that returned nothing because it could not
+// look has cleared nothing.
+func gitWorkTreeFiles(absRoot string, tl tools) (paths []string, why string, ok bool) {
+	if _, err := tl.lookPath("git"); err != nil {
+		return nil, "git is not on PATH, so the working-tree file set is unknowable: " + err.Error(), false
+	}
+	out, code, ran := tl.output(absRoot, "git", "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+	if !ran {
+		return nil, "could not run git ls-files under " + absRoot, false
+	}
+	if code != 0 {
+		return nil, fmt.Sprintf("git ls-files exited %d under %s (not a git work tree?): %s",
+			code, absRoot, firstLine(out)), false
+	}
+	for _, p := range strings.Split(string(out), "\x00") {
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	sort.Strings(paths)
+	return paths, "", true
+}
+
+// treeFile is one enumerated working-tree file: its path relative to the scan
+// root, and the size os.Lstat reported for it.
+type treeFile struct {
+	rel  string
+	size int64
+}
+
+// regularFiles narrows an ls-files listing to the paths that are regular files
+// on disk right now, carrying each one's size.
+//
+// The narrowing is not cosmetic. `--cached` lists a path that has been deleted
+// in the working tree but not yet staged, and a gitlink (submodule) is listed as
+// what stats as a directory. Handing either to grep makes it exit 2, which is
+// could-not-check — turning a worker's ordinary mid-refactor state into a
+// blocked gate. Skipping them scans strictly less, never more.
+func regularFiles(absRoot string, paths []string, tl tools) []treeFile {
+	out := make([]treeFile, 0, len(paths))
+	for _, rel := range paths {
+		fi, err := tl.stat(filepath.Join(absRoot, rel))
+		if err != nil || !fi.Mode().IsRegular() {
+			continue
+		}
+		out = append(out, treeFile{rel: rel, size: fi.Size()})
+	}
+	return out
+}
+
 // --- check 1: conflict markers ----------------------------------------------
 
-// runConflictMarkers shells grep to find VCS conflict markers left in the tree.
-// A marker line is a run of exactly seven <, =, or > characters at line start,
-// bounded by a space or end-of-line — the shape `git` writes and the shape that
-// slips into a PR when a merge is resolved by hand and one hunk is missed.
+// conflictMarkerExclusion is the ONE path shape this check declines to scan,
+// carried as a NAMED CONSTANT rather than a flag: an exclusion nobody can add at
+// the command line is an exclusion a reviewer audits in exactly one place, and a
+// gate whose blind spots are configurable is not a gate.
 //
-// grep's exit codes carry the three states directly: 1 = no match = clean,
-// 0 = match = failed (and grep -n names the files), >=2 or "could not start" =
-// could-not-check. grep is only READ.
+// It exists because this tool's own committed fixture,
+// tools/desk/cmd/deskpreflight/testdata/markers/conflict.txt, carries real
+// conflict markers BY DESIGN — it is what the marker regex is tested against.
+// Without the exclusion the gate failed on a spotless checkout of the repo that
+// ships it, and the only way to green it was to damage the fixture: a check
+// whose whole job is to refuse, pushing the worker to weaken it.
+//
+// The check PRINTS this constant on both its clean and its failed line, so its
+// output always ships with the shape it cannot see.
+const conflictMarkerExclusion = "**/testdata/**"
+
+// grepArgBudget bounds the bytes of path arguments handed to ONE grep
+// invocation. macOS caps a process's argv+env near 1 MiB and Linux is larger but
+// still finite, so a large repository's file list is split across invocations.
+// It is a batching constant, not a scan limit: every path is scanned, across as
+// many invocations as it takes.
+const grepArgBudget = 96 * 1024
+
+// runConflictMarkers shells grep to find VCS conflict markers left in the work
+// tree. A marker line is a run of exactly seven <, =, or > characters at line
+// start, bounded by a space or end-of-line — the shape `git` writes and the
+// shape that slips into a PR when a merge is resolved by hand and one hunk is
+// missed.
+//
+// grep is handed the explicit file list from gitWorkTreeFiles (minus
+// conflictMarkerExclusion) rather than being turned loose on the tree with -R,
+// so it can only read what git would stage. Its exit codes carry the three
+// states directly: 1 = no match, 0 = match (and grep -H -n names the files),
+// >=2 or "could not start" = could-not-check. grep is only READ.
 func runConflictMarkers(absRoot string, tl tools) check {
+	declined := " (declined: " + conflictMarkerExclusion + ")"
+	listed, why, ok := gitWorkTreeFiles(absRoot, tl)
+	if !ok {
+		return couldNotCheck(nameConflictMarkers, why)
+	}
+	var scan []string
+	for _, f := range regularFiles(absRoot, listed, tl) {
+		if underDeclinedPath(f.rel) {
+			continue
+		}
+		scan = append(scan, f.rel)
+	}
+	if len(scan) == 0 {
+		return clean(nameConflictMarkers, "no conflict markers under "+absRoot+declined)
+	}
 	if _, err := tl.lookPath("grep"); err != nil {
 		return couldNotCheck(nameConflictMarkers, "grep is not on PATH: "+err.Error())
 	}
-	// -R recurse, -I skip binary files, -n show line numbers (so matches name
-	// the file), -E extended regex. Anchored, exactly-seven, boundaried.
-	out, code, ran := tl.output("", "grep", "-R", "-I", "-n", "-E",
-		`^(<{7}|={7}|>{7})( |$)`, absRoot)
-	if !ran {
-		return couldNotCheck(nameConflictMarkers, "could not run grep over "+absRoot)
+	var files []string
+	for _, batch := range batchPaths(scan, grepArgBudget) {
+		// -I skip binary files, -n show line numbers, -H always prefix the
+		// filename (grep omits it for a single-file argument, which would leave
+		// the match unparseable), -E extended regex, -- so a path beginning with
+		// '-' is read as a path. Anchored, exactly-seven, boundaried.
+		args := append([]string{"-I", "-n", "-H", "-E", `^(<{7}|={7}|>{7})( |$)`, "--"}, batch...)
+		out, code, ran := tl.output(absRoot, "grep", args...)
+		if !ran {
+			return couldNotCheck(nameConflictMarkers, "could not run grep over "+absRoot)
+		}
+		switch code {
+		case 1: // no match in this batch
+		case 0:
+			files = append(files, uniqueLeadingFields(out)...)
+		default:
+			return couldNotCheck(nameConflictMarkers,
+				fmt.Sprintf("grep exited %d over %s: %s", code, absRoot, firstLine(out)))
+		}
 	}
-	switch code {
-	case 1:
-		return clean(nameConflictMarkers, "no conflict markers under "+absRoot)
-	case 0:
-		files := uniqueLeadingFields(out)
-		return failedCheck(nameConflictMarkers,
-			"conflict marker(s) found in: "+strings.Join(files, ", "))
-	default:
-		return couldNotCheck(nameConflictMarkers,
-			fmt.Sprintf("grep exited %d over %s: %s", code, absRoot, firstLine(out)))
+	if len(files) == 0 {
+		return clean(nameConflictMarkers, "no conflict markers under "+absRoot+declined)
 	}
+	sort.Strings(files)
+	return failedCheck(nameConflictMarkers,
+		"conflict marker(s) found in: "+strings.Join(files, ", ")+declined)
+}
+
+// underDeclinedPath reports whether rel matches conflictMarkerExclusion, i.e.
+// lies inside a directory named `testdata`. Only a DIRECTORY component counts —
+// that is what the trailing `/**` means — so a file named `testdata` is still
+// scanned. The match is on the path RELATIVE to the scan root: pointing --root
+// straight at a fixture directory scans it, which is how the tool's own
+// real-fixture test still proves the check refuses.
+func underDeclinedPath(rel string) bool {
+	segs := strings.Split(filepath.ToSlash(rel), "/")
+	for i := 0; i < len(segs)-1; i++ {
+		if segs[i] == "testdata" {
+			return true
+		}
+	}
+	return false
+}
+
+// batchPaths splits paths into consecutive groups whose joined byte length stays
+// within budget, so no single argv exceeds the platform limit. A single path
+// longer than the budget still gets its own batch — dropping it would silently
+// shrink the scan.
+func batchPaths(paths []string, budget int) [][]string {
+	var out [][]string
+	var cur []string
+	n := 0
+	for _, p := range paths {
+		if len(cur) > 0 && n+len(p)+1 > budget {
+			out = append(out, cur)
+			cur, n = nil, 0
+		}
+		cur = append(cur, p)
+		n += len(p) + 1
+	}
+	if len(cur) > 0 {
+		out = append(out, cur)
+	}
+	return out
 }
 
 // uniqueLeadingFields pulls the "path" out of grep -n lines ("path:lineno:...")
@@ -303,36 +483,51 @@ func uniqueLeadingFields(out []byte) []string {
 // as an accident (a stray binary, a captured log, a vendored blob). 5 MiB.
 const oversizeBytes = 5 * 1024 * 1024
 
-// runJunkOversize shells find to flag files that should not ride into a PR:
-// editor/merge droppings by name, and anything over the size threshold. find is
-// only READ: it enumerates, it never deletes (no -delete/-exec).
+// junkNames are the editor/merge droppings flagged by name — the same list the
+// check has always carried, matched against each file's base name.
+var junkNames = []string{"*.orig", "*.rej", "*.swp", "*~", ".DS_Store", "Thumbs.db"}
+
+// runJunkOversize flags files that should not ride into a PR: editor/merge
+// droppings by name, and anything over the size threshold.
+//
+// The candidates are the working tree as git sees it (gitWorkTreeFiles), never a
+// filesystem walk — a walk descended into `.git/objects/pack/` and reported
+// git's own multi-megabyte packfiles, which the worker is not "about to commit"
+// under any reading, and which no `--root` a desk passes could have avoided.
+//
+// The name and size tests are done here with os.Lstat rather than by shelling
+// `find` over the list: `find` would need every path on one argv (the same limit
+// grep is batched around), and the two predicates are a base-name match and an
+// integer compare. Lstat is a pure read and does not follow symlinks, so the
+// check still cannot reach outside the tree it was pointed at.
 func runJunkOversize(absRoot string, tl tools) check {
-	if _, err := tl.lookPath("find"); err != nil {
-		return couldNotCheck(nameJunkOversize, "find is not on PATH: "+err.Error())
+	listed, why, ok := gitWorkTreeFiles(absRoot, tl)
+	if !ok {
+		return couldNotCheck(nameJunkOversize, why)
 	}
-	out, code, ran := tl.output("", "find", absRoot, "-type", "f", "(",
-		"-name", "*.orig", "-o",
-		"-name", "*.rej", "-o",
-		"-name", "*.swp", "-o",
-		"-name", "*~", "-o",
-		"-name", ".DS_Store", "-o",
-		"-name", "Thumbs.db", "-o",
-		"-size", fmt.Sprintf("+%dc", oversizeBytes),
-		")")
-	if !ran {
-		return couldNotCheck(nameJunkOversize, "could not run find over "+absRoot)
+	var hits []string
+	for _, f := range regularFiles(absRoot, listed, tl) {
+		if isJunkName(filepath.Base(f.rel)) || f.size > oversizeBytes {
+			hits = append(hits, f.rel)
+		}
 	}
-	if code != 0 {
-		return couldNotCheck(nameJunkOversize,
-			fmt.Sprintf("find exited %d over %s: %s", code, absRoot, firstLine(out)))
-	}
-	hits := nonEmptyLines(out)
 	if len(hits) == 0 {
-		return clean(nameJunkOversize, "no junk or oversize files under "+absRoot)
+		return clean(nameJunkOversize, fmt.Sprintf(
+			"no junk or oversize files among the %d work-tree file(s) under %s", len(listed), absRoot))
 	}
 	sort.Strings(hits)
 	return failedCheck(nameJunkOversize,
 		"junk/oversize file(s): "+strings.Join(hits, ", "))
+}
+
+// isJunkName reports whether a file's base name matches the junk list.
+func isJunkName(base string) bool {
+	for _, pat := range junkNames {
+		if ok, err := filepath.Match(pat, base); err == nil && ok {
+			return true
+		}
+	}
+	return false
 }
 
 // --- check 3: gofmt + go vet on the touched Go files ------------------------
