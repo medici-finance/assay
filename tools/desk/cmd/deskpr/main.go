@@ -52,7 +52,8 @@ than restating them.
   NOTICE on stderr, never a refusal — the check could not decide:
     * a bare #N above a number known to exist here (probably another repo's)
     * a bare #N with no reference number available: not checked at all
-    * a word that is a PRIVATE repo's short name (indistinguishable from prose)
+    * a word that is a PRIVATE repo's short name, 4+ characters (a shorter alias is
+      ordinary English and is not noticed at all; its full slug still REFUSES)
     * ASSAY_WITHHELD_IDENTIFIERS unset: that category was not checked
 
 A refusal takes the same audited --force-scan-override as any other scan refusal —
