@@ -1,0 +1,25 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/commits/abc123"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/commits/abc123/statuses",
+      "query": "page=1\u0026per_page=100"
+    }
+  ],
+  "result": {
+    "CombinedState": "success",
+    "StatusTotalCount": 1,
+    "Statuses": [
+      {
+        "State": "success",
+        "Context": "leak-sweep"
+      }
+    ],
+    "CheckRunsTotalCount": 0,
+    "CheckRuns": null
+  }
+}

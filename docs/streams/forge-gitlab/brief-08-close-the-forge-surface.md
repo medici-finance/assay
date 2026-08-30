@@ -28,6 +28,7 @@ sources:
 exec-tier: strong
 exec-tier-why: "a security-control brief where the deliverable IS the control: a gap in the ban's detection (a missed callsite form, a passthrough method left reachable) ships a false-clean, which is exactly the failure the parity requirement forbids (question c)."
 domain: complicated
+tier: free
 consumers:
   - "tools/desk/internal/deskkit: fixed-here (the ban lint/test + any newly-enumerated ops)"
   - "tools/desk/cmd/*: fixed-here (residual gh call sites route through the interface or are removed)"
@@ -82,6 +83,18 @@ facts:
   go-gh) and brief 02 (GitLab backend) so every residual op has a typed home, and rebase
   across any in-flight desktools-go-git migration of a shared tool rather than running
   concurrently.
+
+## Edition
+Minimum GitLab tier: **free** (Community Edition). The typed ops this brief adds land on
+Free-tier endpoints — `DeleteRef` on the Branches API (`Tier: Free, Premium, Ultimate`,
+https://docs.gitlab.com/api/branches/), and every other residual forge callsite on the table-A
+operations already established as Free. Nothing degrades on CE.
+
+Worth stating because it inverts the usual direction: this brief's control — a closed,
+enumerated surface with no arbitrary-endpoint escape hatch — is the profile's one *stronger*
+-than-GitHub claim, and it is enforced by the fleet's own tests rather than by a licensed
+GitLab feature. It costs nothing at any tier, which makes it the cheapest parity gain in the
+stream (edition-matrix.md, tables A and C6).
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task

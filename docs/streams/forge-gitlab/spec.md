@@ -14,6 +14,17 @@ delivers the GitLab profile: self-managed EE or gitlab.com, **Premium floor,
 Ultimate required for public/risk-classed work**. GitLab Free/CE cannot meet the
 parity requirement and is declared non-conforming for this profile.
 
+> **2026-08-30 — this tier floor is under review, not yet re-ruled.** The
+> edition matrix (edition-matrix.md, medici-finance/assay#219) reads the tier
+> badge off the GitLab docs page for every operation and control this profile
+> uses. Its finding: the whole tooling lane is Free-tier, and the CE gap is two
+> controls wide — identity-granular protected-branch allowlists and
+> merge-request approval rules, both Premium — not wholesale. That does not
+> overturn the paragraph above, because §3's governing ruling is that "weaker
+> but disclosed" is non-conforming and the two gaps are exactly that. Whether
+> CE with the two disclosed degradations is acceptable for the core lane is a
+> human decision; this paragraph stands until it is made.
+
 Out of scope: migration tooling between forges; other forges (Bitbucket, Gitea)
 — the forge interface (brief 01) is their door, not their delivery.
 

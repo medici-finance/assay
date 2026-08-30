@@ -1,0 +1,21 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/8"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/8"
+    }
+  ],
+  "result": {
+    "Number": 8,
+    "State": "open",
+    "Author": {
+      "Login": "worker-bot",
+      "ID": 99
+    },
+    "IsPullRequest": true
+  }
+}

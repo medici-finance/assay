@@ -28,6 +28,7 @@ sources:
 exec-tier: strong
 exec-tier-why: "swaps the transport under a security-relevant, golden-pinned backend: a subtle divergence (pagination, error mapping, auth source, draft semantics) survives happy-path tests but breaks parity with the goldens (question b and c)."
 domain: complicated
+tier: free
 consumers:
   - "tools/desk/internal/deskkit: fixed-here (the github backend + its tests)"
   - "tools/desk/cmd/deskpr, deskfile, deskclose: fixed-here (forge-op call sites move off shelled gh onto the go-gh-backed backend)"
@@ -78,6 +79,14 @@ facts:
   seam; this brief touches only the forge-API seam of the named tools. Do not run
   concurrently with an in-flight desktools-go-git migration brief of the same tool; rebase
   across whichever lands first.
+
+## Edition
+Minimum GitLab tier: **free** (Community Edition), vacuously — this brief re-seats the GitHub
+backend's transport and touches no GitLab feature, so no GitLab licence gates it and nothing
+degrades on CE. It matters to the edition question only indirectly: it removes the ambient
+`gh` CLI surface, which is the GitHub half of the "constrained typed surface" the profile
+claims as *stronger* than the controls it must match — a claim that costs nothing at any tier
+(edition-matrix.md, table A).
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task
