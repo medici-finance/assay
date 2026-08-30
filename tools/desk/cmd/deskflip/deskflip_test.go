@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -34,6 +35,17 @@ type stub struct {
 	head2                 string // what the TOCTOU re-read returns; "" means "unchanged"
 	failPR                bool
 	failGH                string // any argv containing this fragment exits non-zero
+
+	// files is the COMPLETE changed-file list the fake forge will SERVE, independent of
+	// what pr.ChangedFiles ASSERTS. Keeping the two independent is the point: the pair
+	// (assert 163, serve 100) is a truncating forge, and the pair (assert 163, serve 163
+	// across two pages) is the case the verb has to walk. nil means "the one-file diff
+	// greenPR describes"; an explicitly empty slice serves nothing.
+	files []string
+	// filesPerPage is the fake forge's page size. Zero means the size the verb asks for,
+	// so a 163-entry list lands as 100 + 63 without any test having to say so.
+	filesPerPage int
+	fileReads    int
 }
 
 func (s *stub) install(t *testing.T) string {
@@ -46,6 +58,10 @@ func (s *stub) install(t *testing.T) string {
 	t.Setenv("DESK_SESSION", "deskflip-test")
 	t.Setenv("CLAUDE_SESSION_ID", "deskflip-test")
 	t.Setenv("DESK_LOOP", flipRole)
+
+	if s.files == nil {
+		s.files = greenFiles()
+	}
 
 	old := execCommand
 	execCommand = func(name string, args ...string) *exec.Cmd {
@@ -65,6 +81,9 @@ func (s *stub) install(t *testing.T) string {
 				return exec.Command("/bin/sh", "-c", "echo no such PR 1>&2; exit 1")
 			}
 			return echo(mustJSON(t, s.pr))
+		case strings.Contains(joined, "pulls/") && strings.Contains(joined, "/files"):
+			s.fileReads++
+			return echo(s.servedFilePages(t))
 		case strings.Contains(joined, "pulls/") && strings.Contains(joined, "/reviews"):
 			s.reviewReads++
 			if s.reviewReads > 1 && s.reviewsAfterFirstRead != nil {
@@ -76,6 +95,40 @@ func (s *stub) install(t *testing.T) string {
 	}
 	t.Cleanup(func() { execCommand = old })
 	return root
+}
+
+// servedFilePages renders s.files the way `gh api --paginate` renders the changed-files
+// endpoint: one top-level JSON array PER PAGE, concatenated. Reproducing the
+// concatenation rather than one flat array is deliberate — a stub that returned a single
+// array would let a reader that never joins pages pass, which is the very defect these
+// tests exist to pin.
+func (s *stub) servedFilePages(t *testing.T) string {
+	t.Helper()
+	size := s.filesPerPage
+	if size == 0 {
+		size = changedFilePerPage
+	}
+	var b strings.Builder
+	for i := 0; i < len(s.files); i += size {
+		end := i + size
+		if end > len(s.files) {
+			end = len(s.files)
+		}
+		page := make([]struct {
+			Filename string `json:"filename"`
+		}, 0, end-i)
+		for _, f := range s.files[i:end] {
+			page = append(page, struct {
+				Filename string `json:"filename"`
+			}{Filename: f})
+		}
+		b.WriteString(mustJSON(t, page))
+		b.WriteString("\n")
+	}
+	if b.Len() == 0 {
+		return "[]"
+	}
+	return b.String()
 }
 
 func echo(s string) *exec.Cmd {
@@ -118,15 +171,34 @@ func (s *stub) mutated() []string {
 const headSHA = "aaaaaaaabbbbbbbbccccccccdddddddd11111111"
 
 // greenPR is a PR that satisfies every condition: open, draft, mergeable, one successful
-// check, and no risky paths.
+// check, and no risky paths. Its ChangedFiles pairs with greenFiles — the envelope's
+// asserted total and the list the forge serves are set in two places because the verb
+// reads them from two endpoints, and their agreement is what a green run depends on.
 func greenPR() prInfo {
 	return prInfo{
 		Number: 7, State: "OPEN", IsDraft: true, Mergeable: "MERGEABLE",
 		HeadRefOid: headSHA, ChangedFiles: 1,
-		Files:             []fileInfo{{Path: "README.md"}},
 		StatusCheckRollup: []rollupEntry{{Name: "test", Status: "COMPLETED", Conclusion: "SUCCESS"}},
 		Labels:            []labelInfo{{Name: labelBeforeFlip}},
 	}
+}
+
+// greenFiles is the changed-file list greenPR's ChangedFiles asserts.
+func greenFiles() []string { return []string{"README.md"} }
+
+// riskyPath is a path in the compiled BASE trigger set, so it risk-classes a PR in any
+// repo. It is read through the shared classifier in the tests below rather than asserted
+// as a literal fact about the trigger list.
+const riskyPath = ".github/workflows/ci.yml"
+
+// paddingFiles builds n quiet paths — the docs-only bulk that a register PR is made of,
+// and the reason such a PR crosses a page boundary at all.
+func paddingFiles(n int) []string {
+	out := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, "docs/streams/example/"+strconv.Itoa(i)+".md")
+	}
+	return out
 }
 
 func approvalAtHead(t *testing.T, head string) []reviewInfo {
@@ -416,13 +488,142 @@ func TestLaterFailRetractsAnEarlierPassAtTheSameHead(t *testing.T) {
 func TestShortFilesReadIsUnverifiable(t *testing.T) {
 	pr := greenPR()
 	pr.ChangedFiles = 300
-	pr.Files = []fileInfo{{Path: "README.md"}}
-	s := &stub{pr: pr}
+	s := &stub{pr: pr, files: greenFiles()}
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)
 
 	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
 		t.Fatalf("short files read rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+}
+
+// The regression this file exists for. A 163-file PR is served across two pages, and the
+// gate has to reach its risk-class determination on all 163 — not refuse at the page
+// boundary. Before the paginated read the changed-file list came from `gh pr view --json
+// files`, one unpaginated page, so this flip refused as could-not-verify on a diff the
+// forge was perfectly willing to serve.
+func TestWalksEveryPageOfTheDiff(t *testing.T) {
+	const total = 163
+	pr := greenPR()
+	pr.ChangedFiles = total
+	s := &stub{pr: pr, files: paddingFiles(total)}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("163-file risk-clear PR rc = %d, want 0 — the walk did not read past page one", rc)
+	}
+	if !s.ran("pr ready 7") {
+		t.Error("the ready mutation never ran")
+	}
+	// The list really did span pages: one page of changedFilePerPage cannot hold 163.
+	if total <= changedFilePerPage {
+		t.Fatalf("fixture no longer crosses a page boundary (%d <= %d)", total, changedFilePerPage)
+	}
+}
+
+// The other half, and the one that matters more: a risky path sitting PAST the page
+// boundary must still risk-class the PR. A reader that stops at page one sees only quiet
+// docs paths — so with the reconcile removed it would have called this diff clean and
+// flipped a workflow change on a correctness review alone.
+func TestRiskPathPastPageOneIsSeen(t *testing.T) {
+	const total = 163
+	files := append(paddingFiles(total-1), riskyPath)
+	if !deskkit.RiskPathTriggered(privateCIRepo, []string{riskyPath}) {
+		t.Fatalf("%s is no longer a risk-classed path — this test's premise is gone", riskyPath)
+	}
+	if len(files) <= changedFilePerPage {
+		t.Fatalf("the risky path is not past the page boundary (%d <= %d)", len(files), changedFilePerPage)
+	}
+	pr := greenPR()
+	pr.ChangedFiles = total
+	s := &stub{pr: pr, files: files}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("risk path on page two rc = %d, want %d (refused for want of a security pass)",
+			rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) > 0 {
+		t.Errorf("a refused flip still mutated: %v", m)
+	}
+}
+
+// Walking the pages does NOT relax the fail-closed branch. A forge that asserts 163 and
+// serves 100 with no second page is a diff nobody read in full, and the refusal keeps its
+// existing shape: read N but the forge reports M.
+func TestForgeServesLessThanItAsserts(t *testing.T) {
+	pr := greenPR()
+	pr.ChangedFiles = 163
+	s := &stub{pr: pr, files: paddingFiles(100)}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("truncating forge rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) > 0 {
+		t.Errorf("an unverifiable flip still mutated: %v", m)
+	}
+}
+
+// The changed-file list comes from the PAGINATED endpoint, not from a `gh pr view` field.
+// This pins the read itself: `pr view --json ... files` was the truncating source, so
+// asking for it again would silently reintroduce the defect even with the walk in place.
+func TestChangedFilesReadPaginates(t *testing.T) {
+	s := &stub{pr: greenPR()}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("flip rc = %d, want 0", rc)
+	}
+	if s.fileReads == 0 {
+		t.Fatal("the changed-files endpoint was never read")
+	}
+	// `--paginate` must be on the CHANGED-FILES call. Asserting it appears somewhere in
+	// the call log would be satisfied by the reviews read, which also paginates — the
+	// assertion has to name the call it is about.
+	var fileCalls int
+	for _, c := range s.calls {
+		j := strings.Join(c, " ")
+		if strings.Contains(j, "pr view") && strings.Contains(j, "files") {
+			t.Errorf("the truncating `pr view --json files` read is back: %s", j)
+		}
+		if !strings.Contains(j, "/files") {
+			continue
+		}
+		fileCalls++
+		if !strings.Contains(j, "--paginate") {
+			t.Errorf("the changed-files read does not paginate: %s", j)
+		}
+	}
+	if fileCalls == 0 {
+		t.Error("no call to the changed-files endpoint was logged")
+	}
+}
+
+// An unreadable changed-file list is could-not-check, never a clean classification, and
+// the read is what must say so. Asserting only the exit code would not pin this: an empty
+// list reaches the same fail-closed exit through the reconcile below, so a read that
+// swallowed the error and returned nothing would look identical from outside.
+func TestUnreadableChangedFilesRefuses(t *testing.T) {
+	s := &stub{pr: greenPR(), failGH: "/files"}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if _, err := readChangedFiles(flipOpts{pr: 7}, privateCIRepo); err == nil {
+		t.Fatal("a failed changed-files read returned no error — could-not-check was rounded to an empty diff")
+	} else if !strings.Contains(err.Error(), "changed files") {
+		t.Errorf("the refusal does not name the read that failed: %v", err)
+	}
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("unreadable changed files rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) > 0 {
+		t.Errorf("an unverifiable flip still mutated: %v", m)
 	}
 }
 

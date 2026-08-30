@@ -89,6 +89,13 @@ This is the load-bearing column, and it exists because the rest of this repo was
 corrected for exactly the failure it prevents -- describing a convention in language that
 implies a platform control (the enforced-vs-advisory distinction the rest of this doc draws).
 
+These enforcement statements are, for now, **hand-maintained**, and that is itself a known
+gap: the standing rule (B9, `docs/mistake-proofing.md`) is that any statement about what is
+and is not enforced should be *generated from the enforcement source* rather than written
+by hand, so it cannot drift from the code. That derivation is not implemented; this column,
+and the rows it describes, are a manual reading of the source kept honest by review, not a
+machine-checked one.
+
 - **Enforced** -- a CI check fails and the artifact cannot pass lint. Machine-checked.
 - **Advisory** -- a convention the adopting team honours and which the bundle *records*, but
   which nothing prevents a participant from bypassing. An advisory row is evidence that
@@ -98,8 +105,8 @@ implies a platform control (the enforced-vs-advisory distinction the rest of thi
 |---|---|---|---|
 | **Authorization** | Every brief carries a required `gate:` field (`model` or `human`), and a brief with any `risk:` answer `yes` must be `gate: human`. Both are lint-enforced (`brieffile.go` `requiredBriefKeys`; the `anyYes && gate != human` check). A `gate-why:` rationale is required **only** for risk-gated briefs (`gate: human` or any `risk: yes`) -- an unremarkable `gate: model` brief carries none, and that is compliant. | **Enforced** (presence + risk/gate consistency) | Brief frontmatter |
 | **Design & specification** | The brief's `## Task` / `## Context` sections capture what was designed and why, with `sources:` frontmatter linking to the design input. Lint requires the keys to be present; it cannot assess whether the content is adequate. | **Enforced** (presence only) | Brief body |
-| **Testing** | The `## Verify` section is a table of command + expected output, and the stream README's Verified cell names a dated runner. | **Advisory.** Nothing witnesses execution: no command is run, no exit code or output hash is recorded, so a Verify table is a **self-reported** claim that the commands were run and passed. An execution witness is an open, unbuilt proposal. | Brief body + stream README row |
-| **Segregation of duties** | `verified` requires an independent (non-implementer) Evidence row and a Verified runner that does not look like self-verification -- both are real lint checks (`attribution.go`). | **Enforced as a string check, advisory as a control.** Lint compares *authored names* in self-written text; it does not corroborate them against commit authorship or a signed identity. A single participant writing both cells satisfies it. | Stream README table + brief Evidence section |
+| **Testing** | The `## Verify` section is a table of command + expected output. `statusgen verifyrun` runs each row in a fresh subshell at the repo root and writes an **execution witness** back to the brief's Evidence: the command, the exit code, a **sha256** of the combined output, the date, the runner identity, and the tree SHA. Runner identity is **derived** from the executing process (`GITHUB_ACTOR`, else the repo's git identity) and can never be supplied — there is no `--runner` flag and passing one is a usage error. | **Enforced (contradiction) · advisory (absence).** `witnessgate`, a `--lint` check, refuses to let a brief read `verified`/`done` when its own Evidence carries a witness that recorded a *failure* — the cell is derived from the witness, not asserted over it. Witness *absence* is a lower severity: an unwitnessed `verified` still lands (a NOTICE, not a block), because the entire pre-witness corpus lacks witnesses by construction. Two limits stand in the same breath: the witness is evidence for a reviewer reading a diff, **not an unforgeable attestation** — whoever controls the process controls the derived identity; and because `verifyrun` executes author-written markdown as shell, it is a deliberate sub-command and is **never invoked from `--lint`**. | Brief body + stream README row |
+| **Segregation of duties** | `verified` requires an independent (non-implementer) Evidence row and a Verified runner that does not look like self-verification -- both are real lint checks (`attribution.go`). | **Machine-disprovable for a human stamp; self-written for a model.** `--lint` alone compares *authored names* in self-written text. But a `human:<name>` stamp is separately **cross-checkable against the pull request's actual reviews and comments** with `statusgen --corroborate --pr`, which resolves the name to a GitHub login and exits 1 when that human's own account shows no APPROVED review or approval comment (`corroborate.go`) — so a false human stamp is disproved against the forge, not merely string-matched. A **model** runner token has no such anchor: it remains self-written text, and a single participant can still author both cells for a model-gated brief. | Stream README table + brief Evidence section |
 | **Monitoring** | Register entries (findings and intake) are an append-only log of knowledge-invalidations and inbound requests. `statusgen --lint` enforces **duplicate-id detection** and a **tombstone check** -- a register entry that has ever existed on main but is absent from the working tree is a lint failure, so entries cannot be quietly deleted (`registers.go`, `registerIntegrityProblems`). | **Enforced** (duplicate-id + deletion/tombstone) | Register directories in the bundle |
 | **Approval & implementation** | The lifecycle column tracks each brief through `todo` -> `in-progress` -> `implemented` -> `verified` -> `done`; the Evidence section records what shipped. | **Advisory.** The Status cell is hand-maintained prose in a table. Lint constrains its *vocabulary* (a bare lifecycle token), not its *truthfulness* -- nothing ties `verified` to a merged PR or a passing check. | Stream README table |
 
@@ -112,12 +119,17 @@ happened; it cannot show that merging was impossible without one.
 
 **What the bundle does not claim:**
 
-- It does not prove that the command in a Verify row was actually executed -- only
-  that a runner recorded its expected output.
-- It does not prove the runner identity is genuinely separate from the implementer --
-  the date+runner convention is an authored claim; corroboration against commit
-  authorship (the reviewer-App check in CI) is a separate step that the bundle does
-  not perform.
+- It does not itself execute anything -- it bundles what was written. Where a Verify
+  row carries an execution witness (`statusgen verifyrun`), that witness records a run
+  that happened -- command, exit code, output hash, date, runner, tree SHA -- but it is
+  evidence for a reviewer, not an unforgeable attestation; and a row may carry no
+  witness at all, in which case its Evidence is a self-reported claim and a `verified`
+  brief can still stand (witness absence is a NOTICE, not a block).
+- It does not itself corroborate the runner identity. A `human:<name>` stamp is
+  cross-checkable against the pull request's actual reviews with
+  `statusgen --corroborate --pr`, which exits 1 on disproof; a model runner token stays
+  self-written text with nothing to check it against. Running that corroboration is a
+  separate step the bundle does not perform.
 - It does not assess whether the test coverage was adequate, or whether the evidence
   claims match reality -- it only bundles what was written.
 - It does not claim to be complete on its own say-so. Check `manifest.json`'s `omitted`
