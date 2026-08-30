@@ -22,6 +22,7 @@ sources:
 exec-tier: strong
 exec-tier-why: "cross-component refactor of security-relevant plumbing where a subtle behavior change survives per-tool tests (question b and c)."
 domain: complicated
+tier: free
 consumers:
   - "tools/desk/cmd/*: fixed-here"
   - "tools/desk/internal/deskkit: fixed-here"
@@ -52,6 +53,12 @@ facts:
   across whichever lands first.
 - Zero behavior change is the deliverable. Goldens capture request/response shapes per
   operation for the github impl before any call site moves.
+
+## Edition
+Minimum GitLab tier: **free** (Community Edition). This brief is forge-agnostic — it extracts
+a seam over the existing GitHub behavior and touches no GitLab feature — so no GitLab tier
+gates it, and the interface it freezes is the set of operations that turn out to be Free-tier
+on GitLab as well (edition-matrix.md table A, rows 1-14). Nothing degrades on CE.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per

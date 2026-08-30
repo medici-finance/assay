@@ -22,6 +22,7 @@ sources:
 exec-tier: strong
 exec-tier-why: "credential machinery where a subtle error (stale token left valid, value leaked to argv/logs) survives the happy path (question c)."
 domain: complicated
+tier: free
 ---
 
 # Brief 03 — GitLab token custody
@@ -48,6 +49,23 @@ facts:
   covered by forge-gitlab/04's runbook and verified in forge-gitlab/05.
 - Concurrency: roles are single-window; a second concurrent mint invalidates the
   first's token BY DESIGN — say so in help text rather than adding locking.
+
+## Edition
+Minimum GitLab tier: **free** (Community Edition). `POST /personal_access_tokens/self/rotate`
+is on a `Tier: Free, Premium, Ultimate` page and its rotation section carries no separate
+badge (https://docs.gitlab.com/api/personal_access_tokens/), so the rotate-on-mint property —
+the load-bearing half of this brief — is CE-native.
+
+What degrades on CE: the **expiry backstop**. Setting an instance or group maximum
+access-token lifetime is `Tier: Ultimate`
+(https://docs.gitlab.com/administration/settings/account_and_limit_settings/), so on CE no
+policy bounds an unrotated token. Fallback, and it is a good one: rotation itself takes
+`expires_at` — "If the token requires an expiration date, defaults to 1 week" — so desktoken
+sets the expiry on every rotation and the backstop becomes tool-supplied rather than
+instance-supplied, at the same 7 days spec section 5 recommends. Note the layering
+consequence the Review question asks about: on CE both layers now originate in the same
+component, so the help text must state that the instance policy is the independent layer and
+is Ultimate-only. See edition-matrix.md row C3.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per
