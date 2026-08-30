@@ -31,6 +31,14 @@ const (
 	commitsTable = "commits.jsonl"
 	diffsTable   = "diffs.jsonl"
 	metricsTable = "metrics.jsonl"
+	// defectsTable is the M2 defect-lineage table (spec §9.4): quality/06
+	// appends DefectFix records here; quality/07's B-SZZ trace reads them.
+	// quality/05, when it lands, is expected to fold this path into its
+	// formalized artifacts.go schema module — this brief pioneers the table
+	// under the Store's existing append-only convention rather than block on
+	// a schema module that does not yet exist (dependency-wave ordering puts
+	// quality/06 in wave 1, ahead of quality/05's wave 2).
+	defectsTable = "defects.jsonl"
 )
 
 // Kind selects which append-only table Append writes to.
@@ -46,6 +54,7 @@ const (
 	// dedicated schema module (artifacts.go); until then, families append
 	// here through the same generic Store.Append seam quality/01 shipped.
 	KindMetric Kind = "metrics"
+	KindDefect Kind = "defects"
 )
 
 // schemaVersion pins the artifact schema so a later reader can detect a stale
@@ -69,6 +78,8 @@ func (s *Store) tablePath(k Kind) (string, error) {
 		return filepath.Join(s.dir(), diffsTable), nil
 	case KindMetric:
 		return filepath.Join(s.dir(), metricsTable), nil
+	case KindDefect:
+		return filepath.Join(s.dir(), defectsTable), nil
 	default:
 		return "", fmt.Errorf("qualgen: unknown table kind %q", k)
 	}
@@ -117,6 +128,23 @@ func (s *Store) StreamCommits(fn func(Commit) error) error {
 func (s *Store) StreamDiffs(fn func(FileDiff) error) error {
 	path, _ := s.tablePath(KindDiff)
 	return streamJSONL(path, fn)
+}
+
+// StreamDefects streams the defects table (quality/06's DefectFix records)
+// back as typed records.
+func (s *Store) StreamDefects(fn func(DefectFix) error) error {
+	path, _ := s.tablePath(KindDefect)
+	return streamJSONL(path, fn)
+}
+
+// ReadDefects collects the whole defects table.
+func (s *Store) ReadDefects() ([]DefectFix, error) {
+	var out []DefectFix
+	err := s.StreamDefects(func(d DefectFix) error {
+		out = append(out, d)
+		return nil
+	})
+	return out, err
 }
 
 // ReadCommits collects the whole commit table. Convenience over StreamCommits
