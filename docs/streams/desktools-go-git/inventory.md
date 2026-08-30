@@ -74,7 +74,7 @@ caller — per the migration checklist contract above, a row is only **ticked/em
 once every seam site on it routes through `internal/gitcore` (briefs 03-07). This note
 records, separately from that contract, which op families now have a working
 `gitcore` implementation for those later briefs to swap callers onto, golden-verified
-against the brief-01 harness (`internal/gitcore/gitcore_test.go`):
+against the brief-01 harness (`tools/desk/internal/gitcore/gitcore_test.go`):
 
 - **#6** `rev-parse` (path + sha plumbing) — `Repo.Resolve` (`ResolveRevision`).
 - **#8** `for-each-ref` — `Repo.Refs`.
@@ -82,7 +82,9 @@ against the brief-01 harness (`internal/gitcore/gitcore_test.go`):
 - **#10** `log` — `Repo.Log`.
 - **#11** `show` / **#12** `cat-file` — `Repo.FileAt` (object/blob reads).
 - **#13** `ls-tree` — `Repo.Files`.
-- **#14** `diff` — `Repo.DiffNames` (name-only, with rename detection).
+- **#14** `diff` — `Repo.DiffNames` (name-only, with rename detection at git's own
+  50% similarity threshold, so a detected rename yields only the new path exactly as
+  `git diff --name-only` does; go-git's plain `tree.Diff` would report both endpoints).
 - **#15** `merge-base` / `is-ancestor` — `Repo.MergeBase` / `Repo.IsAncestor`.
 - **#19** `fetch` — `Repo.Fetch` (explicit `URL` + per-call `Auth`).
 - **#20** `push` — `Repo.Push` (explicit `URL` + per-call `Auth`; `Force` is
