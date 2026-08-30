@@ -22,6 +22,7 @@ sources:
   - "docs/streams/forge-gitlab/brief-05-live-pilot-parity-walk.md — pilot findings scope this brief"
 exec-tier: any
 domain: complicated
+tier: ultimate
 ---
 
 # Brief 06 — Ultimate refinements
@@ -46,6 +47,32 @@ facts:
   against the MR head SHA; merge requires the check per project settings.
 - Scope is bounded by pilot findings: anything brief-05's report marked
   failed-at-tier with an Ultimate remediation is in; new capabilities are not.
+- **2026-08-30 — paid-tier hardening consolidated here (medici-finance/assay#219).** The
+  edition matrix (edition-matrix.md) established, per docs citation, that every core-lane
+  operation is Free-tier and that only *guarantees* are tier-gated. The tier-gated guarantees
+  the core lane was implicitly assuming now live in this brief's territory, so 01-05, 07 and
+  08 stay CE-clean with the named fallbacks rather than carrying a licence prerequisite:
+  identity-granular protected-branch allowlists (Premium — matrix row B2; core-lane fallback:
+  `Allowed to push and merge` = No one, all writes via MR), required approvals and
+  prevent-approval-by-author (Premium — rows B3/B4; fallback: humans-only merge plus the
+  desk's at-head verdict refusal), group and project audit events (Premium — row C4;
+  fallback: sign-in events plus the desk's own records), push rules and secret push protection
+  (Premium/Ultimate — row C5; fallback: the house leak sweep in CI), and pipeline execution
+  policy (Ultimate — row C7; fallback: the locked ci-config project, itself Free). The two
+  refinements this brief was authored around — external status checks (row B8) and custom
+  roles (row B9) — are unchanged and remain Ultimate. The Task and Verify tables are as
+  authored; the Premium rows above are recorded scope, and whether they are *required* for the
+  parity claim or optional hardening is the human ruling that #219 leaves open.
+
+## Edition
+Minimum GitLab tier: **ultimate**. This is the paid-tier brief by construction — external
+status checks are `Tier: Ultimate`
+(https://docs.gitlab.com/user/project/merge_requests/status_checks/) and custom roles are
+`Tier: Ultimate` (https://docs.gitlab.com/user/custom_roles/), and the note above adds the
+Premium hardening rows. Nothing here is a prerequisite for the core lane: on CE every item
+degrades to the fallback named in its matrix row, and the tier detection this brief already
+makes its single point of failure is what keeps the degradation honest — a 403 on an Ultimate
+endpoint surfaces as could-not-check, never as a silent downgrade.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per
