@@ -14,7 +14,10 @@
 //   - This package owns protocol mechanics and the permission/fs policy gate
 //     ONLY. It must not import the drain-engine package -- the dependency
 //     points the other way (the engine adapter imports this package, per the
-//     dispatch spec §4.1). A reverse-import grep enforces this mechanically.
+//     dispatch spec §4.1). TestNoLoopengineImport in this package enforces this
+//     mechanically: it parses every non-test source's import block and fails on
+//     any import of the drain-engine package, so a future edit that adds one is
+//     caught by go test rather than only by a reader trusting this comment.
 //   - Spike-grade: the public surface (Spawn/Initialize/NewSession/Prompt/
 //     Cancel/Close, the update channel, PermissionPolicy/FileAccessPolicy) is
 //     expected to be revised once a real consumer exists.
