@@ -29,7 +29,7 @@ findings-register state machine.
 | 04 | [ladder-position indicator (`--ladder`)](brief-04-ladder-position-indicator.md) | 1 | S | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
 | 05 | [drives phase 3 — anti-starvation floors + critical tier](brief-05-drives-phase3-floors-critical-tier.md) | 1 | L | implemented | — | — |
 | 06 | [findings register — corroborated state machine](brief-06-findings-register-state-machine.md) | 1 | L | implemented | — | — |
-| 07 | [new brief-flow metrics](brief-07-brief-flow-metrics.md) | 1 | L | todo | — | — |
+| 07 | [new brief-flow metrics](brief-07-brief-flow-metrics.md) | 1 | L | implemented | — | — |
 | 08 | [composite AssayScore computation](brief-08-assayscore-computation.md) | 2 | M | todo | — | — |
 | 09 | [opt-in telemetry — anonymized fleet-drift corpus (off by default)](brief-09-optin-telemetry.md) | 1 | M | todo | — | — |
 | 10 | [graph export (`--graph` DOT + JSONL)](brief-10-graph-export.md) | 1 | M | implemented | — | — |
