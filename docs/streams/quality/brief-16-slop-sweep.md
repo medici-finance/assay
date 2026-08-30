@@ -19,7 +19,6 @@ issues: []
 schema: brief-v1
 authored: 2026-08-30 by assay-worker session
 sources:
-  - "assay-toolkit#1398 (ruling comment 2026-08-30) — approved; the public-derivable substance is the next entry"
   - "Brokk, 'SlopCop: Forensics for your codebase' — https://blog.brokk.ai/slopcop-forensics-for-your-codebase/ — static analysis finds leads across defect categories (dead code, duplication, swallowed errors, complexity hotspots); agents verify each lead against the surrounding code; synthesis emits an evidenced report; humans decide what is worth fixing"
   - "docs/streams/quality/spec.md §3 — architecture (repo-agnostic binary; committed-artifact model; modes read-only against the target repo, writes only under the tracking root)"
   - "docs/streams/quality/spec.md §3.1 — Profile-B: no in-repo writes; artifacts land in the operator-chosen tracking root"
