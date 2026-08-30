@@ -285,3 +285,77 @@ A conforming linter MUST:
    `blocked`.
 7. Flag any `risk.irreversible: yes` brief marked `verified` or `done` without a
    human-named review entry (section 2.5).
+
+## 8. Spec and scoping-doc lifecycle
+
+Sections 2 through 7 govern the brief. This section governs the artifact *upstream* of
+the brief: the specification or scoping document from which briefs are authored. An idea
+becomes work only by becoming a stream — a scoping document plus authored briefs — and
+until this section, that edge lived only in prose and human memory. An approved document
+carried no machine-readable state, so nothing could watch it, and a document approved as
+the plan of record could sit indefinitely with no brief ever authored against it.
+
+A conforming implementation MUST give spec-shaped and scoping documents a
+machine-readable three-state header, defined below, so that the approved-but-unrouted
+condition is detectable rather than remembered.
+
+### 8.1 The `Status:` header grammar
+
+A spec-shaped document opts in to this lifecycle by carrying, in its header block, a line
+of the form `**Status:** <state>`, where `<state>` is exactly one of `draft`, `approved`,
+or `routed`, OPTIONALLY followed
+by ` — <free prose>` (a space, an em dash, a space, then any explanatory text). The state
+token MUST be the first token after the label; explanatory prose MUST move behind the
+` — ` delimiter, so the line stays machine-parseable while preserving its human meaning.
+
+A `**Status:**` line whose first token is not one of the three states leaves the document
+**unclassified** (legacy). A conforming detector MUST ignore an unclassified document and
+MAY warn that it carries an unparseable state.
+
+### 8.2 State meanings
+
+- **`draft`** — not yet ruled. The document is a working proposal; it is the plan of
+  record for nothing, and no downstream control watches it.
+- **`approved`** — ruled and merged as the plan of record. Brief-authoring against this
+  document is **owed**: the edge from approval to authored briefs is open.
+- **`routed`** — at least one brief now exists whose `sources:` frontmatter dereferences
+  this document's path. The authoring edge is closed.
+
+### 8.3 `Routes-to:`
+
+A document in state `approved` or `routed` MUST also carry, in its header block, a line of
+the form `**Routes-to:** <destination>`, naming the stream directory the work routes into,
+as a repo-relative path (for example, a
+`docs/streams/<stream>/` directory). A document in state `draft` MUST NOT be required to
+carry `Routes-to:`. A conforming linter MUST flag an `approved` or `routed` document that
+lacks a `Routes-to:` line.
+
+### 8.4 Flip rules
+
+The two forward flips ride the pull request that makes each true, never a standalone edit:
+
+- **`draft → approved`** rides the PR that lands the ruling. Approval is stamped at merge:
+  the same merge that records the decision sets the state.
+- **`approved → routed`** rides the PR that lands the citing briefs. The state follows the
+  provenance — once a brief's `sources:` dereferences the document, the document is routed.
+
+### 8.5 The citation rule
+
+A specification is **cited** when at least one brief's `sources:` frontmatter contains the
+specification's repo-relative path. This is a dereference against authored provenance, not
+an assertion: a prose mention of the document's title does NOT count, and neither does a
+citation that names the title without its path.
+
+From the citation rule follows the owed condition a conforming detector MUST compute:
+
+> An `approved` document that no brief cites has brief-authoring **owed**.
+
+A conforming detector MUST treat only `approved` documents as candidates for the owed
+condition — a `draft` watches nothing, and a `routed` document is by definition already
+cited.
+
+### 8.6 Safe default
+
+When a legacy document's correct state cannot be determined, a conforming backfill MUST
+default it to `draft`. A wrongly-`draft` document is silent status quo; a wrongly-`approved`
+document makes owed-detection emit noise. The failure that costs least MUST be preferred.
