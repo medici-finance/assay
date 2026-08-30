@@ -2,7 +2,7 @@ package main
 
 import "testing"
 
-func TestComputeDecision_LatencyWindowsOnClosedAt(t *testing.T) {
+func TestComputeDecision_LatencyWindowsOn_ClosedAt(t *testing.T) {
 	now := mustTime(t, "2026-08-26T00:00:00Z")
 	since := mustTime(t, "2026-08-01T00:00:00Z")
 	until := mustTime(t, "2026-08-20T00:00:00Z")
@@ -40,7 +40,7 @@ func TestComputeDecision_LatencyWindowsOnClosedAt(t *testing.T) {
 // while WIP/oldest render honest zeros — this function itself carries no top
 // -level state; runDecisionLatency sets that from whether the gh reads
 // succeeded, independent of the counts (see briefdecision.go).
-func TestComputeDecisionLatencyEmpty_QueueIsHonestZeroNotFabricated(t *testing.T) {
+func TestComputeDecision_LatencyEmptyQueueIs_HonestZeroNot_Fabricated(t *testing.T) {
 	now := mustTime(t, "2026-08-26T00:00:00Z")
 	since := mustTime(t, "2026-08-01T00:00:00Z")
 	until := mustTime(t, "2026-08-20T00:00:00Z")
@@ -56,7 +56,7 @@ func TestComputeDecisionLatencyEmpty_QueueIsHonestZeroNotFabricated(t *testing.T
 	}
 }
 
-func TestComputeDecisionLatency_SkipsUnparseableTimestamps(t *testing.T) {
+func TestComputeDecision_LatencySkips_Unparseable_Timestamps(t *testing.T) {
 	now := mustTime(t, "2026-08-26T00:00:00Z")
 	since := mustTime(t, "2026-08-01T00:00:00Z")
 	until := mustTime(t, "2026-08-20T00:00:00Z")
@@ -79,7 +79,7 @@ func TestComputeDecisionLatency_SkipsUnparseableTimestamps(t *testing.T) {
 // could-not-check (unreadable repo) or an "ok" (a resolvable repo whose fake
 // source returns nothing) report both exit 0, never a crash or a non-zero
 // usage error.
-func TestRunDecisionLatencyNo_RepoDoesNotPanicOrError(t *testing.T) {
+func TestRunDecision_LatencyNoRepoDoesNot_PanicOrError(t *testing.T) {
 	dir := t.TempDir() // no .git
 	src := &countingDecisionSource{}
 	rc := runDecisionLatency(dir, "2026-08-01", "2026-08-20", true, src)

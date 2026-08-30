@@ -8,7 +8,7 @@ import (
 
 // --- resolveBFWindow ---------------------------------------------------------
 
-func TestResolveBFWindowDefaults(t *testing.T) {
+func TestResolveBFWindow_Defaults(t *testing.T) {
 	now := mustTime(t, "2026-08-26T00:00:00Z")
 	since, until, err := resolveBFWindow("", "", now)
 	if err != nil {
@@ -23,7 +23,7 @@ func TestResolveBFWindowDefaults(t *testing.T) {
 	}
 }
 
-func TestResolveBFWindowExplicit(t *testing.T) {
+func TestResolveBFWindow_Explicit(t *testing.T) {
 	now := mustTime(t, "2026-08-26T00:00:00Z")
 	since, until, err := resolveBFWindow("2026-08-01", "2026-08-20", now)
 	if err != nil {
@@ -34,14 +34,14 @@ func TestResolveBFWindowExplicit(t *testing.T) {
 	}
 }
 
-func TestResolveBFWindow_SinceAfterUntilErrors(t *testing.T) {
+func TestResolveBFWindow_SinceAfterUntil_Errors(t *testing.T) {
 	now := mustTime(t, "2026-08-26T00:00:00Z")
 	if _, _, err := resolveBFWindow("2026-08-20", "2026-08-01", now); err == nil {
 		t.Fatal("expected an error when --since is after --until")
 	}
 }
 
-func TestResolveBFWindowBadDateErrors(t *testing.T) {
+func TestResolveBFWindow_BadDateErrors(t *testing.T) {
 	now := mustTime(t, "2026-08-26T00:00:00Z")
 	if _, _, err := resolveBFWindow("not-a-date", "", now); err == nil {
 		t.Fatal("expected an error for a malformed --since")
@@ -57,7 +57,7 @@ func bfStream(name, status string, briefs ...Brief) *Stream {
 	return &Stream{Name: name, Status: status, Briefs: briefs}
 }
 
-func TestComputeThroughput_WeightsAndSegments(t *testing.T) {
+func TestCompute_ThroughputWeightsAnd_Segments(t *testing.T) {
 	streams := []*Stream{
 		bfStream("s", "active",
 			Brief{Num: "01", Effort: "S", Status: "done"},
@@ -102,7 +102,7 @@ func TestComputeThroughput_WeightsAndSegments(t *testing.T) {
 	}
 }
 
-func TestComputeThroughputUnknown_EffortNeverFabricatesAZero(t *testing.T) {
+func TestCompute_ThroughputUnknown_EffortNever_FabricatesAZero(t *testing.T) {
 	// Brief "s/09" completed but no longer exists on the board (removed after
 	// archival) — its effort cannot be resolved. It must be counted as
 	// unknown, NOT silently scored as 0 points.
@@ -122,7 +122,7 @@ func TestComputeThroughputUnknown_EffortNeverFabricatesAZero(t *testing.T) {
 
 // A window with no `to:"done"` events at all must render could-not-check, not
 // a fabricated zero — the three-state discipline brief-07's facts require.
-func TestComputeThroughput_EmptyWindowIsCouldNotCheck(t *testing.T) {
+func TestCompute_ThroughputEmpty_WindowIsCouldNot_Check(t *testing.T) {
 	streams := []*Stream{bfStream("s", "active", Brief{Num: "01", Effort: "S", Status: "todo"})}
 	rep := computeThroughput(streams, nil, mustTime(t, "2026-08-01T00:00:00Z"), mustTime(t, "2026-08-20T00:00:00Z"))
 	if rep.State != "could-not-check" {
@@ -132,7 +132,7 @@ func TestComputeThroughput_EmptyWindowIsCouldNotCheck(t *testing.T) {
 
 // --- metric 2: lead time by size --------------------------------------------
 
-func TestParseAuthoredDate(t *testing.T) {
+func TestParseAuthored_Date(t *testing.T) {
 	cases := []struct {
 		raw  string
 		want string
@@ -155,7 +155,7 @@ func TestParseAuthoredDate(t *testing.T) {
 	}
 }
 
-func TestPctlDaysNearestRank(t *testing.T) {
+func TestPctlDaysNearest_Rank(t *testing.T) {
 	vals := []float64{1, 2, 3, 4, 5}
 	// 0.85 * 5 = 4.25 -> truncated index 4 -> value 5 (nearest-rank convention,
 	// same indexing doratiming.go's pctlHours uses).
@@ -168,7 +168,7 @@ func TestPctlDaysNearestRank(t *testing.T) {
 // count) — deliberately NOT pctlDays(0.5)'s nearest-rank index. bottleneck.go
 // made the identical distinction after a real bug (its own comment: "the old
 // buggy upper-median... masking this").
-func TestMedianDaysTrueMedianEvenCount(t *testing.T) {
+func TestMedianDaysTrue_MedianEvenCount(t *testing.T) {
 	if got := medianDays([]float64{5, 10}); got != 7.5 {
 		t.Errorf("median of [5,10] = %v, want 7.5 (average of the two central values)", got)
 	}
@@ -250,7 +250,7 @@ func TestComputeLeadTime_BySizeMedianAndN(t *testing.T) {
 	}
 }
 
-func TestComputeLeadTimeBySize_NoDoneEventsIsCouldNotCheck(t *testing.T) {
+func TestComputeLeadTime_BySizeNoDoneEventsIs_CouldNotCheck(t *testing.T) {
 	root := authoredFixtureRepo(t)
 	streams, _, err := loadHydratedStreams(root)
 	if err != nil {
@@ -269,7 +269,7 @@ func TestComputeLeadTimeBySize_NoDoneEventsIsCouldNotCheck(t *testing.T) {
 
 // --- metric 7: per-stream net flow + stall ----------------------------------
 
-func TestComputeNetFlowArrivals_CompletionsAndStall(t *testing.T) {
+func TestComputeNetFlow_ArrivalsCompletions_AndStall(t *testing.T) {
 	now := mustTime(t, "2026-08-26T00:00:00Z")
 	streams := []*Stream{
 		bfStream("active-stalled", "active",
@@ -312,7 +312,7 @@ func TestComputeNetFlowArrivals_CompletionsAndStall(t *testing.T) {
 	}
 }
 
-func TestComputeNetFlowNo_StreamsIsCouldNotCheck(t *testing.T) {
+func TestComputeNetFlowNo_StreamsIsCouldNot_Check(t *testing.T) {
 	rep := computeNetFlow(nil, nil, mustTime(t, "2026-08-01T00:00:00Z"), mustTime(t, "2026-08-20T00:00:00Z"), mustTime(t, "2026-08-20T00:00:00Z"))
 	if rep.State != "could-not-check" {
 		t.Errorf("state = %q, want could-not-check", rep.State)

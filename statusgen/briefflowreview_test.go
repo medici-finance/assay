@@ -4,7 +4,7 @@ import "testing"
 
 // --- extractBriefTrailer -----------------------------------------------------
 
-func TestExtractBriefTrailerBasic(t *testing.T) {
+func TestExtractBrief_TrailerBasic(t *testing.T) {
 	body := "Implements the thing.\n\nBrief: example-stream/02\n\nMore prose."
 	id, ok := extractBriefTrailer(body)
 	if !ok || id != "example-stream/02" {
@@ -12,7 +12,7 @@ func TestExtractBriefTrailerBasic(t *testing.T) {
 	}
 }
 
-func TestExtractBriefTrailer_IgnoresFencedExample(t *testing.T) {
+func TestExtractBrief_TrailerIgnoresFenced_Example(t *testing.T) {
 	body := "Docs example:\n\n```\nBrief: not-a-real-link/01\n```\n\nBrief: example-stream/03\n"
 	id, ok := extractBriefTrailer(body)
 	if !ok || id != "example-stream/03" {
@@ -20,13 +20,13 @@ func TestExtractBriefTrailer_IgnoresFencedExample(t *testing.T) {
 	}
 }
 
-func TestExtractBriefTrailerNoneFound(t *testing.T) {
+func TestExtractBrief_TrailerNoneFound(t *testing.T) {
 	if _, ok := extractBriefTrailer("just some PR body with no trailer"); ok {
 		t.Error("expected ok=false for a body with no Brief: trailer")
 	}
 }
 
-func TestExtractBriefTrailer_TrimsTrailingPunctuation(t *testing.T) {
+func TestExtractBrief_TrailerTrimsTrailing_Punctuation(t *testing.T) {
 	id, ok := extractBriefTrailer("Brief: example-stream/02.")
 	if !ok || id != "example-stream/02" {
 		t.Errorf("got id=%q ok=%v, want example-stream/02 with trailing '.' stripped", id, ok)
@@ -35,7 +35,7 @@ func TestExtractBriefTrailer_TrimsTrailingPunctuation(t *testing.T) {
 
 // --- resolvePRsByBrief --------------------------------------------------------
 
-func TestResolvePRsByBriefLatestWins(t *testing.T) {
+func TestResolvePRsBy_BriefLatestWins(t *testing.T) {
 	prs := []bfPRRecord{
 		{Number: 10, Body: "Brief: s/01", MergedAt: "2026-08-01T00:00:00Z"},
 		{Number: 20, Body: "Brief: s/01", MergedAt: "2026-08-10T00:00:00Z"}, // later merge — should win
@@ -53,7 +53,7 @@ func TestResolvePRsByBriefLatestWins(t *testing.T) {
 
 // --- countChangesRequested ----------------------------------------------------
 
-func TestCountChangesRequested(t *testing.T) {
+func TestCountChanges_Requested(t *testing.T) {
 	reviews := []ghReview{
 		{State: "CHANGES_REQUESTED"},
 		{State: "COMMENTED"},
@@ -97,7 +97,7 @@ func TestComputeReview_ReworkDistribution(t *testing.T) {
 	}
 }
 
-func TestComputeReviewReworkNo_LinkedPRsIsCouldNotCheck(t *testing.T) {
+func TestComputeReview_ReworkNoLinkedPRsIs_CouldNotCheck(t *testing.T) {
 	rep := computeReviewRework(map[string]bfPRRecord{}, 7, func(pr int) ([]ghReview, error) { return nil, nil })
 	if rep.State != "could-not-check" {
 		t.Errorf("state = %q, want could-not-check", rep.State)
@@ -107,7 +107,7 @@ func TestComputeReviewReworkNo_LinkedPRsIsCouldNotCheck(t *testing.T) {
 	}
 }
 
-func TestComputeReviewReworkOne_UnreadablePRExcludedNotFatal(t *testing.T) {
+func TestComputeReview_ReworkOneUnreadableP_RExcludedNotFatal(t *testing.T) {
 	byBrief := map[string]bfPRRecord{
 		"s/01": {Number: 1},
 		"s/02": {Number: 2}, // this one's reviews read fails
@@ -166,7 +166,7 @@ func TestComputeFirstPass_YieldAllThreeLegs(t *testing.T) {
 	}
 }
 
-func TestComputeFirstPassYield_FindingNamedExcludesIt(t *testing.T) {
+func TestComputeFirstPass_YieldFindingNamed_ExcludesIt(t *testing.T) {
 	doneIDs := []string{"s/01"}
 	byBrief := map[string]bfPRRecord{"s/01": {Number: 1}}
 	reviewsByPR := map[int][]ghReview{1: {{State: "APPROVED"}}} // clean reviews, no verify-fail
@@ -182,7 +182,7 @@ func TestComputeFirstPassYield_FindingNamedExcludesIt(t *testing.T) {
 	}
 }
 
-func TestComputeFirstPassYieldNo_LinkedDoneBriefsIsCouldNotCheck(t *testing.T) {
+func TestComputeFirstPass_YieldNoLinkedDone_BriefsIsCouldNot_Check(t *testing.T) {
 	rep := computeFirstPassYield([]string{"s/01"}, map[string]bfPRRecord{}, 0,
 		func(pr int) ([]ghReview, error) { return nil, nil }, map[string]string{}, nil)
 	if rep.State != "could-not-check" {

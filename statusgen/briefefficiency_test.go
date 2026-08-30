@@ -2,7 +2,7 @@ package main
 
 import "testing"
 
-func TestCompletedTransition_EdgesOnlyClosedIntervals(t *testing.T) {
+func TestCompleted_TransitionEdgesOnly_ClosedIntervals(t *testing.T) {
 	history := []HistoryEntry{
 		{Brief: "s/01", From: "", To: "todo", Ts: "2026-08-01T00:00:00Z"},
 		{Brief: "s/01", From: "todo", To: "in-progress", Ts: "2026-08-03T00:00:00Z"},        // closes a 2d todo dwell
@@ -37,7 +37,7 @@ func TestCompletedTransition_EdgesOnlyClosedIntervals(t *testing.T) {
 // todo/implemented/verified dwell. This is what would silently break if the
 // stage classification were wrong (e.g. counting "implemented" as touch would
 // make every brief look far more efficient than it is).
-func TestComputeFlowEfficiency_TouchVsWaitSplit(t *testing.T) {
+func TestComputeFlow_EfficiencyTouchVs_WaitSplit(t *testing.T) {
 	history := []HistoryEntry{}
 	// Build gtSmallN+1 completed brief lifecycles so the result clears the
 	// thin-data threshold: each contributes a 1h todo (wait) + 3h in-progress
@@ -73,7 +73,7 @@ func TestComputeFlowEfficiency_TouchVsWaitSplit(t *testing.T) {
 
 // Thin data (fewer than gtSmallN completed intervals in the window) must
 // render could-not-check, never a headline ratio computed from 1-2 samples.
-func TestComputeFlowEfficiency_ThinDataIsCouldNotCheck(t *testing.T) {
+func TestComputeFlow_EfficiencyThinDataIs_CouldNotCheck(t *testing.T) {
 	history := []HistoryEntry{
 		{Brief: "s/01", From: "", To: "todo", Ts: "2026-08-10T00:00:00Z"},
 		{Brief: "s/01", From: "todo", To: "in-progress", Ts: "2026-08-10T01:00:00Z"},
@@ -87,7 +87,7 @@ func TestComputeFlowEfficiency_ThinDataIsCouldNotCheck(t *testing.T) {
 // A completed dwell whose terminal instant falls OUTSIDE the window must be
 // excluded, mirroring computeDoraTiming's windowing-on-terminal-instant
 // convention (doratiming.go).
-func TestComputeFlowEfficiency_WindowsOnTerminalInstant(t *testing.T) {
+func TestComputeFlow_EfficiencyWindowsOn_TerminalInstant(t *testing.T) {
 	history := []HistoryEntry{
 		{Brief: "s/01", From: "", To: "todo", Ts: "2025-01-01T00:00:00Z"},
 		{Brief: "s/01", From: "todo", To: "in-progress", Ts: "2025-01-02T00:00:00Z"}, // ends in 2025 — outside the 2026 window
