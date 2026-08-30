@@ -451,6 +451,7 @@ func cmdToken(args []string) (err error) {
 	fs := flag.NewFlagSet("desktoken", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
 	repo := fs.String("repo", "", "repo slug (owner/name) for install auto-pick")
+	forge := fs.String("forge", "", "forge backend: empty/github (default) mints a GitHub App installation token; gitlab rotates the role's PAT in place (rotate-on-mint custody)")
 	ttl := fs.Bool("ttl", false, "print remaining TTL of cached token (does not mint)")
 	fresh := fs.Bool("fresh", false, "delete any cached token and its .perms sidecar before minting — forces a fresh mint after a GitHub-App permission change (the cached token otherwise carries the old grant for up to the ~50-min reuse window)")
 
@@ -466,6 +467,19 @@ func cmdToken(args []string) (err error) {
 		return deskkit.Refused("unknown role " + role + "; valid: " + strings.Join(roleNames(), ", "))
 	}
 	ac.role = role
+
+	// Forge dispatch. The default (empty/github) mints a GitHub App installation token
+	// below. gitlab takes an entirely different custody path — rotate-on-mint against an
+	// existing PAT file — and needs no App PEM or App ID, so it dispatches BEFORE any
+	// GitHub-credential resolution.
+	switch strings.ToLower(strings.TrimSpace(*forge)) {
+	case "", "github":
+		// fall through to the GitHub App-token mint path.
+	case "gitlab":
+		return cmdGitLabRotate(role, ac)
+	default:
+		return deskkit.Refused("unknown --forge " + *forge + "; valid: github (default), gitlab")
+	}
 
 	prefix := roleEnvPrefix(role)
 

@@ -1,0 +1,41 @@
+{
+  "test": "go test ./cmd/desktoken/... -count=1",
+  "control": {
+    "name": "CONTROL — invert the 0600 custody-mode check (a world-readable token file becomes the only acceptable one)",
+    "file": "cmd/desktoken/gitlab.go",
+    "old": "\tif fi.Mode().Perm() != 0o600 {",
+    "new": "\tif fi.Mode().Perm() == 0o600 {"
+  },
+  "mutations": [
+    {
+      "name": "print the rotated token beside the path on the success route (the leak assertion must fire, with --forge still wired)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tfmt.Println(path)\n\texp := result.ExpiresAt",
+      "new": "\tfmt.Println(path, result.Token)\n\texp := result.ExpiresAt"
+    },
+    {
+      "name": "leak the new token as a recovery hint on the LOCKOUT route (persistence failed, so the operator is 'helpfully' handed the value)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\tif werr := writeVerifyGitLabToken(path, result.Token); werr != nil {",
+      "new": "\tif werr := writeVerifyGitLabToken(path, result.Token); werr != nil {\n\t\tfmt.Fprintln(os.Stderr, \"recovery hint:\", result.Token)"
+    },
+    {
+      "name": "drop the LOCKOUT message's not-printed assurance (the branch that promises no token reaches output)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\t\t\t\t\"is NOT printed.\", path, werr, path), nil)",
+      "new": "\t\t\t\t\"is withheld.\", path, werr, path), nil)"
+    },
+    {
+      "name": "put the caller's live token in the rotate HTTP error (an error string stops being safe to print)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\t\treturn nil, fmt.Errorf(\"rotate HTTP %d: %s\", resp.StatusCode, strings.TrimSpace(string(body)))",
+      "new": "\t\treturn nil, fmt.Errorf(\"rotate HTTP %d (sent %s): %s\", resp.StatusCode, current, strings.TrimSpace(string(body)))"
+    },
+    {
+      "name": "restore a default API base (an unset GITLAB_API_BASE resumes probing a guessed host with the live PAT)",
+      "file": "cmd/desktoken/gitlab.go",
+      "old": "\treturn v, v != \"\"",
+      "new": "\tif v == \"\" {\n\t\treturn \"https://gitlab.example.invalid/api/v4\", true\n\t}\n\treturn v, v != \"\""
+    }
+  ]
+}
