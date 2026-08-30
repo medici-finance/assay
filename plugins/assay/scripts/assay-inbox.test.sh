@@ -914,6 +914,46 @@ check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" "one unread cell reddens the ru
 check "$(contains "$(flow_row "$OUT" todo)" "AT LEAST" && echo 0 || echo 1)" \
   "a partial sum is flagged AT LEAST, never printed as a total" "row: $(flow_row "$OUT" todo)"
 
+# ---------------------------------------------------------------- FL8 -------
+echo "FL8 — not-applicable is not could-not-check"
+
+# A per-cell `review` row has no figure because throughput resolves none per cell — nothing
+# failed. Calling that could-not-check would cry wolf on every cell block and teach the reader
+# to skip the word that matters when a reader really has died.
+w="$TMPROOT/fl8"
+make_flow_tools "$w"
+mkdir -p "$w/alpha" "$w/beta"
+board_fixture "$w" alpha 7 3 11 2 40
+board_fixture "$w" beta  4 1  6 3 20
+flow_cell_fixtures "$w" alpha
+flow_cell_fixtures "$w" beta
+throughput_fixture "$w" review
+run_case "$w" --flow --root "$w/alpha" --root "$w/beta"
+cellblock=$(printf '%s\n' "$OUT" | sed -n '/^== cell alpha/,/^== cell beta/p')
+reviewrow=$(printf '%s\n' "$cellblock" | grep -E '^  review( \*)? ' | head -1)
+check "$(contains "$reviewrow" "n/a — read fleet-wide" && echo 0 || echo 1)" \
+  "a per-cell review row reads n/a, not could-not-check" "row: ${reviewrow:-<none>}"
+check "$(contains "$reviewrow" "could-not-check" && echo 1 || echo 0)" \
+  "a legitimate absence is never labelled could-not-check" "row: $reviewrow"
+# The fleet-wide-capacity fact is stated once per block, not on all seven rows.
+notes=$(printf '%s\n' "$cellblock" | grep -c 'pool width is resolved fleet-wide' || true)
+check "$([[ "$notes" -eq 1 ]] && echo 0 || echo 1)" \
+  "the fleet-wide-capacity note appears once per cell block, not per row (got $notes)" "notes: $notes"
+
+# ...and the same distinction survives into the page.
+HTML="$w/two.html"
+run_case "$w" --flow --html "$HTML" --root "$w/alpha" --root "$w/beta"
+check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "a two-cell page exits 0" "got $RC"
+naboxes=$(grep -c '<rect class="box na"' "$HTML" || true)
+check "$([[ "$naboxes" -eq 2 ]] && echo 0 || echo 1)" \
+  "each cell row draws its review stage as not-applicable (got $naboxes, want 2)" "na boxes: $naboxes"
+blindboxes=$(grep -c '<rect class="box blind"' "$HTML" || true)
+check "$([[ "$blindboxes" -eq 0 ]] && echo 0 || echo 1)" \
+  "nothing is drawn as could-not-check when every reader answered" "blind boxes: $blindboxes"
+rows=$(grep -c '<text class="cell"' "$HTML" || true)
+check "$([[ "$rows" -eq 3 ]] && echo 0 || echo 1)" \
+  "the diagram carries a fleet row plus one row per cell (got $rows, want 3)" "rows: $rows"
+
 # ---------------------------------------------------------------- FL7 -------
 echo "FL7 — the decision page carries the Flow section; the modes refuse sensibly"
 

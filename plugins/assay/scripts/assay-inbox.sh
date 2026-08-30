@@ -622,11 +622,16 @@ def stroke($w):
 
 def stagebox($s; $k; $top):
   (GUTTER + ($k * PITCH)) as $x
-  | (if $s.isBottleneck then "box bneck" elif $s.count == null then "box blind" else "box" end) as $cls
+  | (if $s.isBottleneck then "box bneck"
+     elif $s.count == null and ($s.na // "") != "" then "box na"
+     elif $s.count == null then "box blind"
+     else "box" end) as $cls
   | [ "<g>",
       "<rect class=\"" + $cls + "\" x=\"\($x)\" y=\"\($top)\" width=\"\(BOXW)\" height=\"\(BOXH)\" rx=\"7\"/>",
       "<text class=\"st\" x=\"\($x + BOXW / 2)\" y=\"\($top + 17)\">" + ($s.stage | esc) + "</text>",
-      (if $s.count == null
+      (if $s.count == null and ($s.na // "") != "" then
+         "<text class=\"nat\" x=\"\($x + BOXW / 2)\" y=\"\($top + 41)\">n/a here</text>"
+       elif $s.count == null
        then "<text class=\"cnc\" x=\"\($x + BOXW / 2)\" y=\"\($top + 41)\">could-not-check</text>"
        else "<text class=\"ct\" x=\"\($x + BOXW / 2)\" y=\"\($top + 44)\">"
             + ($s.count | esc) + (if $s.countPartial then "+" else "" end) + "</text>" end),
@@ -693,7 +698,8 @@ def flowtable($f):
         | "<tr" + (if .isBottleneck then " class=\"bn\"" else "" end) + ">"
           + "<th scope=\"row\">" + (.stage | esc) + (if .isBottleneck then " <span class=\"rec\">bottleneck</span>" else "" end) + "</th>"
           + "<td>" + (.label | esc) + "</td>"
-          + "<td class=\"n\">" + (if .count == null then "<span class=\"cncx\">could-not-check</span>"
+          + "<td class=\"n\">" + (if .count == null and (.na // "") != "" then "<span class=\"nax\">n/a</span>"
+                                  elif .count == null then "<span class=\"cncx\">could-not-check</span>"
                                   else (.count | esc) + (if .countPartial then " <abbr title=\"at least: one or more cells were unread\">+</abbr>" else "" end) end) + "</td>"
           + "<td class=\"n\">" + (if (.queueBlind // "") != ""
                                   then "<span class=\"cncx\" title=\"" + (.queueBlind | esc) + "\">could-not-check</span>"
@@ -701,10 +707,13 @@ def flowtable($f):
           + "<td class=\"n\">" + (num(.slots) | esc) + "</td>"
           + "<td class=\"n\">" + (rat(.ratio) | esc) + "</td>"
           + "<td class=\"n\">" + ((if .dwell == "" then "—" else .dwell end) | esc) + "</td>"
-          + "<td class=\"src\">" + ((if .count == null then .blind
+          + "<td class=\"src\">" + ((if .count == null and (.na // "") != "" then .na
+                                     elif .count == null then .blind
                                      elif .countSource == "" then (.capacityNote // "")
                                      else .countSource end) | esc) + "</td></tr>"),
        "</tbody></table></div>",
+       (if (.capacityNote // "") == "" then empty
+        else "<p class=\"flowmeta\">" + (.capacityNote | esc) + "</p>" end),
        "<p class=\"flowmeta\">Flow in the window: arrivals <b>" + (num(.arrivals) | esc)
        + "</b> into the pipeline, completions <b>" + (num(.completions) | esc) + "</b> out of it"
        + (if .flowBlind == "" then "" else " — <span class=\"cncx\">" + (.flowBlind | esc) + "</span>" end)
@@ -722,8 +731,9 @@ def flowsection($f):
       + " capacity stages · " + ($f.cellCount | esc) + " cell(s)</p>",
     (flowsvg($f) | .[]),
     "<p class=\"legend\">Arrow thickness is the flow measured for the window; a dashed arrow "
-      + "is a step no reader measures. A dashed box is a stage whose reader failed — "
-      + "could-not-check, never zero.</p>",
+      + "is a step no reader measures. A box outlined in the alert colour is a stage whose "
+      + "reader failed — could-not-check, never zero. A faintly dotted box is a figure that "
+      + "does not exist at that granularity, which is not the same thing.</p>",
     ("<p class=\"advice\"><b>" + ($f.bottleneck | if . == "" then "no bottleneck named" else . end | esc)
       + "</b> — " + ($f.advice | esc) + "</p>"),
     (flowtable($f) | .[]),
@@ -774,11 +784,13 @@ def flowsection($f):
   "svg.flow{display:block;width:100%;height:auto;margin:.9rem 0 .3rem;overflow:visible}",
   "svg.flow .box{fill:var(--bg);stroke:var(--line);stroke-width:1.2}",
   "svg.flow .box.bneck{stroke:var(--bnfg);stroke-width:2.4;fill:var(--bnbg)}",
-  "svg.flow .box.blind{stroke:var(--muted);stroke-dasharray:5 4;fill:none}",
+  "svg.flow .box.blind{stroke:var(--cnc);stroke-dasharray:5 4;fill:none}",
+  "svg.flow .box.na{stroke:var(--line);stroke-dasharray:2 4;fill:none}",
   "svg.flow text{font:11px ui-sans-serif,system-ui,sans-serif;fill:var(--fg)}",
   "svg.flow .st{font-size:10.5px;fill:var(--muted);text-anchor:middle;letter-spacing:.03em}",
   "svg.flow .ct{font-size:21px;font-weight:700;text-anchor:middle}",
   "svg.flow .cnc{font-size:9.5px;fill:var(--cnc);text-anchor:middle;font-weight:700}",
+  "svg.flow .nat{font-size:9.5px;fill:var(--muted);text-anchor:middle}",
   "svg.flow .sub{font-size:9.5px;fill:var(--muted);text-anchor:middle}",
   "svg.flow .tag{font-size:9px;fill:var(--bnfg);text-anchor:middle;font-weight:700;letter-spacing:.06em}",
   "svg.flow .cell{font-size:11px;fill:var(--muted);font-weight:600}",
@@ -796,6 +808,7 @@ def flowsection($f):
   "tr.bn th,tr.bn td{background:var(--bnbg)}",
   "tr.bn span.rec{color:var(--bnfg);background:transparent;padding:0}",
   "span.cncx{color:var(--cnc);font-weight:600}",
+  "span.nax{color:var(--muted)}",
   "span.sha{color:var(--muted);font-weight:400;font-size:.78rem}",
   "p.legend,p.flowmeta{color:var(--muted);font-size:.78rem;margin:.35rem 0}",
   "p.advice{margin:.5rem 0 .2rem;font-size:.88rem}",
@@ -1040,21 +1053,28 @@ def tp2flow($n):
 def blindtext($err; $fallback): if ($err // "") == "" then $fallback else $err end;
 
 # One cell's COUNT for one stage, with the reason when there is none. A missing number is
-# ALWAYS accompanied by the reader that failed to supply it — never a bare null.
+# ALWAYS accompanied by the reason it is missing — never a bare null.
+#
+# Two DIFFERENT reasons, kept apart. `blind` is could-not-check: a reader was asked and did
+# not answer. `na` is not-applicable: nothing failed, the figure legitimately does not exist
+# at this granularity. Collapsing the second into the first would cry wolf on every per-cell
+# row and teach the reader to skip the word that matters.
 def cellcount($c; $sd):
   if $sd.stage == "intake" then
     (if $c.intake == null
-     then {count:null, blind:("statusgen --intake-debt: " + blindtext($c.intakeErr; "not read"))}
+     then {count:null, na:"", blind:("statusgen --intake-debt: " + blindtext($c.intakeErr; "not read"))}
      elif (($c.intake.state // "") != "measured")
-     then {count:null, blind:("statusgen --intake-debt reported state=" + ($c.intake.state // "absent"))}
-     else {count: $c.intake.untriaged, blind:""} end)
+     then {count:null, na:"", blind:("statusgen --intake-debt reported state=" + ($c.intake.state // "absent"))}
+     else {count: $c.intake.untriaged, na:"", blind:""} end)
   elif $sd.stage == "review" then
-    {count:null, blind:"read fleet-wide by `deskboard throughput`, which resolves no per-cell figure"}
+    {count:null, blind:"",
+     na:"read fleet-wide by `deskboard throughput`, which resolves no per-cell figure"}
   else
     (sgstage($c.bottleneck; $sd.stage) as $s
      | if $s == null
-       then {count:null, blind:("statusgen --bottleneck: " + blindtext($c.bottleneckErr; "stage not emitted"))}
-       else {count: $s.wip, blind:""} end)
+       then {count:null, na:"",
+             blind:("statusgen --bottleneck: " + blindtext($c.bottleneckErr; "stage not emitted"))}
+       else {count: $s.wip, na:"", blind:""} end)
   end;
 
 def celldwell($c; $sd):
@@ -1106,7 +1126,7 @@ def arrows($arr; $comp; $flowBlind):
           | cellcount($c; $sd) as $cc
           | celldwell($c; $sd) as $cd
           | { stage: $sd.stage, label: $sd.label,
-              count: $cc.count, countPartial: false, blind: $cc.blind,
+              count: $cc.count, countPartial: false, blind: $cc.blind, na: $cc.na,
               countSource: (if $sd.stage == "intake"
                             then "statusgen --intake-debt --json (.untriaged) @ " + $c.sha
                             elif $sd.stage == "review" then ""
@@ -1116,8 +1136,11 @@ def arrows($arr; $comp; $flowBlind):
               # repeating the fleet's slots under a cell name it does not describe.
               queue: null, queueBlind: "", queueSource: "", slots: null, slotsSource: "", ratio: null,
               maxSlots: null, boundBy: "",
-              capacityNote: "pool width is resolved fleet-wide; see the fleet row",
-              isBottleneck: false })) }
+              # Said ONCE per cell block (`capacityNote` on the row itself), not on all seven
+              # rows: a note repeated down a whole column stops being read.
+              capacityNote: "",
+              isBottleneck: false })),
+        capacityNote: "pool width is resolved fleet-wide, so this block carries no slots or ratio — see the fleet row" }
   )) as $cellrows
 
 # ---- the fleet row -------------------------------------------------------------------
@@ -1136,6 +1159,7 @@ def arrows($arr; $comp; $flowBlind):
        else ($known | add) end) as $count
     | { stage: $sd.stage, label: $sd.label,
         count: $count,
+        na: "",
         countPartial: (($unknown | length) > 0 and ($known | length) > 0 and $sd.stage != "review"),
         blind: (if $count != null then ""
                 elif $sd.stage == "review"
@@ -1190,6 +1214,7 @@ def arrows($arr; $comp; $flowBlind):
                                  else "per cell only: the ToC constraint is computed per root and is not summable" end),
               arrivals: $fleetArr, completions: $fleetComp, flowBlind: $fleetFlowBlind,
               arrows: arrows($fleetArr; $fleetComp; $fleetFlowBlind),
+              capacityNote: "",
               stages: $fleetstages }]
            + (if ($cellrows | length) > 1 then $cellrows else [] end)),
     cellCount: ($cellrows | length),
@@ -1227,10 +1252,12 @@ render_flow_text() {
               (.stage + (if .isBottleneck then " *" else "" end));
               n(.count); n(.queue); n(.slots); r(.ratio);
               (if .dwell == "" then "-" else .dwell end);
-              (if .count == null then "could-not-check: " + .blind
+              (if .count == null and (.na // "") != "" then "n/a — " + .na
+               elif .count == null then "could-not-check: " + .blind
                elif .countPartial then "AT LEAST — some cells unread"
                elif (.queueBlind // "") != "" then "queue could-not-check (see below)"
                else (.capacityNote // "") end))),
+         (if ($row.capacityNote // "") == "" then empty else "  " + $row.capacityNote end),
          "",
          ("  flow in window: arrivals " + n($row.arrivals) + " -> ... -> completions " + n($row.completions)
           + (if $row.flowBlind == "" then "" else "   [" + $row.flowBlind + "]" end)),
