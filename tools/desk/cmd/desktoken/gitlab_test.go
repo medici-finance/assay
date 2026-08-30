@@ -12,11 +12,15 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// Realistic token shapes (glpat- prefix, 30+ chars) so leak assertions exercise both the
-// prefix pattern and the bare-token pattern the Verify table greps for.
+// Token-SHAPED fixtures (glpat- prefix, 30+ chars, bare [A-Za-z0-9_-]) so leak assertions
+// exercise both the prefix pattern and the bare-token pattern the Verify table greps for.
+// These are deliberately LOW-ENTROPY, obvious-placeholder values (the `example` marker plus a
+// repeated digit): they carry the shape the redaction tests need while the pattern leaksweep's
+// own placeholder/entropy filter correctly classifies them as non-secret, so no allowlist entry
+// (and no weakening of a dedicated detection rule) is required to keep them out of the sweep.
 const (
-	glOldWorker = "glpat-oldworker0000000000AAAA"
-	glNewWorker = "glpat-newworker1111111111BBBB"
+	glOldWorker = "glpat-example00000000000000000000-old"
+	glNewWorker = "glpat-example11111111111111111111-new"
 )
 
 // makeRotateServer serves POST .../personal_access_tokens/self/rotate. It authenticates the
@@ -48,9 +52,12 @@ func makeRotateServer(t *testing.T, valid *string, newToken, expiresAt string) (
 }
 
 // pointHTTPClientAt routes the package httpClient at srv (keeping request paths) and restores
-// it on cleanup.
+// it on cleanup. It also sets GITLAB_API_BASE to an explicit self-hosted-style base: rotation
+// requires the base to be configured (no default target), and rewriteTransport rewrites the
+// host to srv, so the value's host is irrelevant — only that it is SET matters to the code path.
 func pointHTTPClientAt(t *testing.T, srv *httptest.Server) {
 	t.Helper()
+	t.Setenv("GITLAB_API_BASE", "https://gitlab.example.com/api/v4")
 	old := httpClient
 	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
 	t.Cleanup(func() { httpClient = old })
@@ -218,6 +225,37 @@ func TestGitLabMissingFileRefusal(t *testing.T) {
 	if !strings.Contains(stderr, "not found") {
 		t.Fatalf("expected a not-found remedy naming search dirs; got: %s", stderr)
 	}
+}
+
+// TestGitLabRotateRefusesWithoutAPIBase backs Blocker 2: with a valid custody file present but
+// GITLAB_API_BASE unset, the command must refuse BEFORE any network contact rather than probe a
+// default target — the role's live PAT is never transmitted to a guessed SaaS host. No client is
+// pointed at a server, so any attempted request would fail the test's isolation regardless; the
+// assertion is that the refusal names the missing env var and no token leaks.
+func TestGitLabRotateRefusesWithoutAPIBase(t *testing.T) {
+	homeDir := setupTest(t)
+	tokPath := gitlabTokenPath(homeDir, "worker")
+	writeTokenCache(t, tokPath, glOldWorker)
+
+	// Ensure the base is unset for this process even if an ambient value leaked in.
+	t.Setenv("GITLAB_API_BASE", "")
+
+	rc, stdout, stderr := runCap(t, []string{"--forge", "gitlab", "worker"})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("unset-base rc = %d, want 6; stderr: %s", rc, stderr)
+	}
+	if !strings.Contains(stderr, "GITLAB_API_BASE") {
+		t.Fatalf("refusal must name GITLAB_API_BASE; got: %s", stderr)
+	}
+	// The custody file is untouched — nothing rotated.
+	got, err := os.ReadFile(tokPath)
+	if err != nil {
+		t.Fatalf("read token file: %v", err)
+	}
+	if string(got) != glOldWorker {
+		t.Fatalf("token file mutated on a pre-contact refusal: %q", string(got))
+	}
+	assertNoTokenLeak(t, stdout+stderr)
 }
 
 func TestUnknownForgeRefused(t *testing.T) {

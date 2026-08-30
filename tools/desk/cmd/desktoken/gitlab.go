@@ -1,6 +1,6 @@
 package main
 
-// gitlab.go — GitLab token custody: rotate-on-mint + expiry backstop (forge-gitlab/03).
+// gitlab.go — GitLab token custody: rotate-on-mint + expiry backstop.
 //
 // GitLab personal access tokens are long-lived, so naive handling would be a custody
 // downgrade from the GitHub path's short-lived minted tokens — which the security-parity
@@ -38,15 +38,22 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// gitlabAPIBase returns the GitLab REST v4 base URL. GitLab Enterprise is self-hosted, so
-// there is no universal host the way GitHub has api.github.com; the deployment supplies its
-// own via GITLAB_API_BASE (e.g. https://gitlab.example.com/api/v4). gitlab.com's SaaS base is
-// the fallback so a bare invocation is not a panic, but an Enterprise deployment sets it.
+// gitlabAPIBase returns the explicitly-configured GitLab REST v4 base URL and whether it was
+// set. GitLab Enterprise is self-hosted, so there is no universal host the way GitHub has
+// api.github.com; the deployment supplies its own via GITLAB_API_BASE (e.g.
+// https://gitlab.example.com/api/v4; gitlab.com's SaaS base is https://gitlab.com/api/v4).
+//
+// There is deliberately NO default. Rotation transmits the role's live PAT in a PRIVATE-TOKEN
+// header, so silently falling back to gitlab.com would send a self-hosted deployment's
+// credential to a public SaaS endpoint the moment it forgot to configure its host. The base is
+// therefore REQUIRED and a bare invocation refuses rather than probing a default target
+// (no-default-probe convention).
 //
 // Read at call time (not a package-level var) so a test — or a shell — that sets the env var
 // after process start still takes effect.
-func gitlabAPIBase() string {
-	return envOr("GITLAB_API_BASE", "https://gitlab.com/api/v4")
+func gitlabAPIBase() (string, bool) {
+	v := strings.TrimSpace(os.Getenv("GITLAB_API_BASE"))
+	return v, v != ""
 }
 
 // gitlabTokenFileName is the per-role custody file: gitlab-<role>.token, resolved across the
@@ -202,10 +209,24 @@ func cmdGitLabRotate(role string, ac *auditCtx) error {
 			"gitlab token file at "+path+" is empty — re-provision the role's PAT (0600) via a group owner", nil)
 	}
 
+	// Resolve the network target BEFORE first contact. With no default (see gitlabAPIBase), an
+	// unset GITLAB_API_BASE refuses here — the role's live PAT is never transmitted to a guessed
+	// host — rather than silently POSTing the credential to gitlab.com's SaaS endpoint.
+	base, ok := gitlabAPIBase()
+	if !ok {
+		return deskkit.Unverifiable(
+			"GITLAB_API_BASE is not set — refusing to transmit the role's PAT to a default target. Set it to "+
+				"your deployment's REST v4 base (self-hosted: https://gitlab.example.com/api/v4; gitlab.com SaaS: "+
+				"https://gitlab.com/api/v4) and re-run.", nil)
+	}
+	// Announce the target before contact (no-default-probe convention): the operator sees exactly
+	// which host is about to receive the credential. The base is a URL, never a token.
+	fmt.Fprintf(os.Stderr, "gitlab: rotating role %s token via %s\n", role, base)
+
 	// Rotate. The endpoint invalidates `current` atomically and returns the new token; from
 	// here until write-verify succeeds, the old token is dead and the new one lives only in
 	// memory, so the new value MUST be persisted before returning.
-	result, xerr := rotateGitLabToken(gitlabAPIBase(), current)
+	result, xerr := rotateGitLabToken(base, current)
 	if xerr != nil {
 		return deskkit.Unverifiable("rotate gitlab token for role "+role, xerr)
 	}
