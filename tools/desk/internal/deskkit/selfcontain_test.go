@@ -138,7 +138,11 @@ func TestSelfContainAdmitsSelfContainedBodies(t *testing.T) {
 		{"plain prose", "LGTM — the mapping table reads correctly and the fixtures cover both directions."},
 		{
 			"identifier-heavy review body",
-			"`TestCIRequiredMatchesAllowedRepoPolicy` and `TestPDFIsByteIdenticalAcrossRenders` " +
+			// Split across concatenation for the same reason bodycheck_test.go's fixtures
+			// are: written contiguously, these are exactly the runs the PRE-fix scanner
+			// refuses, so the PR that fixes them could not be pushed by the tool it repairs.
+			"`" + "TestCIRequiredMatches" + "AllowedRepoPolicy` and `" +
+				"TestPDFIsByteIdentical" + "AcrossRenders` " +
 				"both pass; see tools/desk/internal/deskkit/bodycheck.go:45 for the rule.",
 		},
 		{

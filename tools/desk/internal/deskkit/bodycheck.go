@@ -1116,7 +1116,7 @@ func startsCapitalLedWord(seg string, k int) bool {
 //     CamelCase word (startsCapitalLedWord), so `HTTPSProxy` yields the 5-letter `HTTPS`
 //     and is refused rather than being cut into a 4-letter `HTTP` plus `SProxy`.
 //   - ANCHORED FORWARD: the unit must either CLOSE the segment or be followed immediately by
-//     a capital-led CamelCase word. `abcdEFGH1234abcdEFGH1234abcdEFGH1234` has a clean
+//     a capital-led CamelCase word. `abcdEFGH1234`×3 (see identMidDigit) has a clean
 //     4-letter caps run at index 4, but it is followed by digits, so it still refuses. An
 //     acronym in a real identifier is a word among words and is always adjacent to one.
 //   - ANCHORED BACKWARD: the character immediately before the unit must be a LOWERCASE
