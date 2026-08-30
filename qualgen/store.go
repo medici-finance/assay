@@ -38,6 +38,14 @@ const (
 	// a schema module that does not yet exist (dependency-wave ordering puts
 	// quality/06 in wave 1, ahead of quality/05's wave 2).
 	defectsTable = "defects.jsonl"
+	// metricsTable is the M1 aggregate table (spec §4/§9.4): quality/02 emits
+	// the line-taxonomy headline ratios and churn/rework rates here, each value
+	// a three-state Measure. Unlike the append-only RAW tables (commits, diffs,
+	// defects), metrics is a DERIVED aggregate recomputed over the whole corpus
+	// on every mine, so it is reset-then-rewritten each run (ResetMetrics) the
+	// way mine.json is — never accumulated. quality/05, when it lands, folds
+	// this path into its formalized artifacts schema module.
+	metricsTable = "metrics.jsonl"
 )
 
 // Kind selects which append-only table Append writes to.
@@ -47,6 +55,7 @@ const (
 	KindCommit Kind = "commits"
 	KindDiff   Kind = "diffs"
 	KindDefect Kind = "defects"
+	KindMetric Kind = "metrics"
 )
 
 // schemaVersion pins the artifact schema so a later reader can detect a stale
@@ -70,6 +79,8 @@ func (s *Store) tablePath(k Kind) (string, error) {
 		return filepath.Join(s.dir(), diffsTable), nil
 	case KindDefect:
 		return filepath.Join(s.dir(), defectsTable), nil
+	case KindMetric:
+		return filepath.Join(s.dir(), metricsTable), nil
 	default:
 		return "", fmt.Errorf("qualgen: unknown table kind %q", k)
 	}
@@ -132,6 +143,39 @@ func (s *Store) ReadDefects() ([]DefectFix, error) {
 	var out []DefectFix
 	err := s.StreamDefects(func(d DefectFix) error {
 		out = append(out, d)
+		return nil
+	})
+	return out, err
+}
+
+// ResetMetrics removes the derived metrics table so a fresh aggregation can
+// rewrite it. The metrics table is NOT append-only raw history (unlike commits /
+// diffs / defects); it is a snapshot recomputed over the whole corpus each mine,
+// so it is reset-then-rewritten like mine.json rather than accumulated — a
+// second mine must not leave two copies of every aggregate. A missing table is
+// not an error (the first mine has none to reset).
+func (s *Store) ResetMetrics() error {
+	path, err := s.tablePath(KindMetric)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// StreamMetrics streams the metrics table back as typed records.
+func (s *Store) StreamMetrics(fn func(MetricRecord) error) error {
+	path, _ := s.tablePath(KindMetric)
+	return streamJSONL(path, fn)
+}
+
+// ReadMetrics collects the whole metrics table.
+func (s *Store) ReadMetrics() ([]MetricRecord, error) {
+	var out []MetricRecord
+	err := s.StreamMetrics(func(m MetricRecord) error {
+		out = append(out, m)
 		return nil
 	})
 	return out, err

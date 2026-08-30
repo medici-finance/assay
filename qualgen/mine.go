@@ -26,9 +26,22 @@ func runMine(args []string, stdout, stderr io.Writer) int {
 	repo := fs.String("repo", ".", "path to the git repository to mine (read-only)")
 	out := fs.String("out", "", "tracking root for artifacts (required unless --in-repo)")
 	inRepo := fs.Bool("in-repo", false, "opt in to writing artifacts into the mined repo itself")
+	blockMin := fs.Int("block-min", DefaultBlockMin, "minimum identical-line run to count as a moved/copied block (M1 §4.1)")
+	churnDays := fs.Int("churn-window-days", DefaultChurnWindowDays, "churn window in days: a line revised/deleted within this of landing is churned (M1 §4.2)")
+	identityMap := fs.String("identity-map", "", "path to a JSON author-identity class map (unmapped authors fall into an explicit 'unclassified' class)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+
+	idMap, err := LoadIdentityMap(*identityMap)
+	if err != nil {
+		fmt.Fprintln(stderr, "qualgen mine:", err)
+		return 2
+	}
+	cfg := DefaultM1Config()
+	cfg.BlockMin = *blockMin
+	cfg.ChurnWindowDays = *churnDays
+	cfg.Identity = idMap
 
 	trackingRoot := *out
 	if trackingRoot == "" {
@@ -41,16 +54,27 @@ func runMine(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	if err := mine(*repo, trackingRoot, stdout); err != nil {
+	if err := mineWithConfig(*repo, trackingRoot, stdout, cfg); err != nil {
 		fmt.Fprintln(stderr, "qualgen mine:", err)
 		return 1
 	}
 	return 0
 }
 
-// mine performs the extraction. Separated from flag handling so tests drive it
-// directly.
+// mine performs the extraction with the comparable-defaults M1 configuration.
+// Separated from flag handling so tests drive it directly; it wraps
+// mineWithConfig so existing callers keep the default block/churn/identity
+// behaviour.
 func mine(repoPath, trackingRoot string, stdout io.Writer) error {
+	return mineWithConfig(repoPath, trackingRoot, stdout, DefaultM1Config())
+}
+
+// mineWithConfig extracts history and then aggregates the M1 metrics under the
+// supplied configuration. The extraction is unchanged from the wave-0 skeleton;
+// the aggregation pass (quality/02) reads the freshly-mined commit + diff tables
+// through the Store and writes the derived metrics table. Every step is
+// READ-ONLY against the target repo; the only writes land under trackingRoot.
+func mineWithConfig(repoPath, trackingRoot string, stdout io.Writer, cfg M1Config) error {
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		return fmt.Errorf("open repository: %w", err)
@@ -152,6 +176,13 @@ func mine(repoPath, trackingRoot string, stdout io.Writer) error {
 	}
 	if err := store.WriteHeader(header); err != nil {
 		return fmt.Errorf("write header: %w", err)
+	}
+
+	// M1 aggregation (quality/02): roll the per-commit line taxonomy and the
+	// cross-commit churn up to the spec §4 grains and (re)write the derived
+	// metrics table. Read-only over the raw tables just written above.
+	if err := aggregateM1(store, cfg); err != nil {
+		return fmt.Errorf("aggregate M1 metrics: %w", err)
 	}
 
 	fmt.Fprintf(stdout, "qualgen mine: %d new commit(s) extracted; tip %s; %d commit(s) in table\n",
