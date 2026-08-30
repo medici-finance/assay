@@ -1,0 +1,11 @@
+{
+  "refs": {
+    "refs/heads/main": "ebe285804ba457ec590e278fde61fdc64cbde0f9"
+  },
+  "files": {
+    "added.txt": "new line",
+    "seed.txt": "seed"
+  },
+  "val": "added.txt",
+  "err": "none"
+}
