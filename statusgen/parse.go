@@ -21,6 +21,7 @@ type frontmatter struct {
 	Tiering       *string `yaml:"tiering"`        // optional; nil when absent, non-nil (incl. "") when present.
 	MaxConcurrent *int    `yaml:"max-concurrent"` // optional; nil when absent; 1..perStreamCap when present.
 	Serves        string  `yaml:"serves"`         // optional; example-app | example-service | assay | platform | "" (untagged).
+	Theme         string  `yaml:"theme"`          // optional render-style selector for cadenced artifacts; unmapped values render as a visible marker.
 	Owner         string  `yaml:"owner"`          // optional stream owner; "" when absent — renders "—".
 	Repo          string  `yaml:"repo"`           // optional owning repo, <owner>/<name>; "" when absent.
 }
@@ -148,6 +149,7 @@ func parseStreamREADME(path string) (*Stream, error) {
 		Tiering:       fm.Tiering,
 		MaxConcurrent: fm.MaxConcurrent,
 		Serves:        fm.Serves,
+		Theme:         strings.TrimSpace(fm.Theme),
 		Owner:         fm.Owner,
 		Repo:          strings.TrimSpace(fm.Repo),
 		Briefs:        briefs,

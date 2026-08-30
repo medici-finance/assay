@@ -7,24 +7,45 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+
+	ghapi "github.com/cli/go-gh/v2/pkg/api"
 )
 
-// forge_github.go — the GitHub implementation of Forge. It is an EXTRACTION of the behavior
-// the desk tools already run against GitHub (deskpost's reviewer client, deskrelease's ref
-// client, deskclose's issue reads, the deskkit HTTPRepoInfoFetcher), pinned by the golden
-// corpus in forge_github_golden_test.go so the extraction changed nothing observable at the
-// wire: request method/path/query, pagination, and error mapping are captured per operation.
+// forge_github.go — the GitHub implementation of Forge, seated on the official go-gh
+// library (github.com/cli/go-gh/v2, its pkg/api REST client + pkg/auth resolution) rather
+// than a hand-rolled net/http stack or a shelled `gh` binary. It is an EXTRACTION of the
+// behavior the desk tools already run against GitHub, pinned by the golden corpus in
+// forge_github_golden_test.go so re-seating the transport changed nothing observable at the
+// wire: request method/path/query, pagination, and error mapping are captured per operation
+// and stay byte-identical.
+//
+// Why go-gh, and what it buys:
+//   - The GitHub backend now talks the forge through the same class of library-backed client
+//     the GitLab backend uses, so both are API-behind-one-interface, and the `gh` CLI need no
+//     longer be installed/version-matched on a runner for these operations.
+//   - Auth binds to the EXPLICITLY minted desk token. The client is constructed with both a
+//     Host and an AuthToken set AND an explicit Transport, which makes go-gh's
+//     optionsNeedResolution false — so it never consults gh's ambient keyring/config for a
+//     token or host. An empty token is REFUSED (restClient below), never silently resolved
+//     to an ambient gh-CLI identity. This preserves the refuse-if-unminted posture the desk
+//     tools depend on (mirrors #562/#563) at the transport floor.
 //
 // It is handed an already-minted token (App installation token or PAT) — minting is the
 // identity layer (spec §2/§5) and deliberately not part of this seam.
 
 // GitHubForge implements Forge against the GitHub REST/GraphQL API with a bearer token.
 // Same shape as HTTPRepoInfoFetcher (repovis.go): BaseURL defaults to GitHubAPIBase, Client
-// to http.DefaultClient, so a test points it at an httptest server.
+// defaults to go-gh's own transport, so a test points BaseURL at an httptest server (and may
+// supply a Client whose Transport reaches it).
 type GitHubForge struct {
 	Token   string
 	BaseURL string
 	Client  *http.Client
+
+	// rc caches the go-gh REST client built from Token/BaseURL. Lazily constructed by
+	// restClient so a bare struct literal (the golden test's construction shape) still works.
+	rc *ghapi.RESTClient
 }
 
 var _ Forge = (*GitHubForge)(nil)
@@ -36,11 +57,43 @@ func (g *GitHubForge) baseURL() string {
 	return GitHubAPIBase
 }
 
-func (g *GitHubForge) client() *http.Client {
-	if g.Client != nil {
-		return g.Client
+// restClient returns the go-gh REST client for this forge, building it on first use.
+//
+// The token is bound EXPLICITLY: an empty Token is refused here rather than allowed to fall
+// through to go-gh's ambient resolution (which would read gh's keyring/config). Setting Host,
+// AuthToken and Transport all non-empty makes go-gh's optionsNeedResolution false, so no
+// ambient lookup ever runs. The host is derived from BaseURL so go-gh's token roundtripper —
+// which attaches the Authorization header only when the request host matches Host — sends the
+// token to the real API host and to a test server, but never to an unrelated host.
+func (g *GitHubForge) restClient() (*ghapi.RESTClient, error) {
+	if g.Token == "" {
+		return nil, Unverifiable("refusing to reach the GitHub forge without an explicitly minted token — "+
+			"the go-gh backend never falls back to an ambient gh-CLI keyring/config identity", nil)
 	}
-	return http.DefaultClient
+	if g.rc != nil {
+		return g.rc, nil
+	}
+	host := "github.com"
+	if u, perr := url.Parse(g.baseURL()); perr == nil && u.Hostname() != "" {
+		host = u.Hostname()
+	}
+	// Transport must be non-nil so go-gh does not treat the options as needing ambient
+	// resolution. In production that is the default transport; a test may pass a Client whose
+	// Transport reaches its httptest server.
+	transport := http.DefaultTransport
+	if g.Client != nil && g.Client.Transport != nil {
+		transport = g.Client.Transport
+	}
+	rc, err := ghapi.NewRESTClient(ghapi.ClientOptions{
+		Host:      host,
+		AuthToken: g.Token,
+		Transport: transport,
+	})
+	if err != nil {
+		return nil, Unverifiable("cannot build go-gh REST client", err)
+	}
+	g.rc = rc
+	return rc, nil
 }
 
 // ForgeAPIError is a non-2xx REST/GraphQL response. A caller maps it to Unverifiable (an
@@ -63,41 +116,40 @@ func IsForgeNotFound(err error) bool {
 	return errors.As(err, &ae) && ae.Status == http.StatusNotFound
 }
 
-// doJSON performs one REST call, decoding a 2xx body into out (if non-nil). A non-2xx is a
-// *ForgeAPIError; a transport/marshal/parse failure is Unverifiable. Extracted verbatim
-// from deskpost's ghClient.doJSON (minus the 401 re-mint, which belongs to the token/identity
-// layer the caller owns — a Forge holds an already-minted token).
+// doJSON performs one REST call through the go-gh client, decoding a 2xx body into out (if
+// non-nil and non-empty). A non-2xx is mapped to a *ForgeAPIError carrying the status, method
+// and path — go-gh surfaces a non-2xx as its own *api.HTTPError, which is translated back to
+// the forge's stable error shape so error CLASSIFICATION (401 vs 403 vs 404, and
+// IsForgeNotFound) is unchanged from the pre-go-gh backend. A transport/marshal/parse failure
+// is Unverifiable. The full URL is built here (baseURL()+path) and passed to go-gh's client,
+// whose restURL passes an absolute URL through unchanged — so path, query and body are emitted
+// exactly as constructed, which is what the golden corpus pins.
 func (g *GitHubForge) doJSON(method, path string, in, out any) error {
+	rc, err := g.restClient()
+	if err != nil {
+		return err
+	}
 	var bodyReader io.Reader
 	if in != nil {
-		b, err := json.Marshal(in)
-		if err != nil {
-			return Unverifiable("cannot marshal request body", err)
+		b, merr := json.Marshal(in)
+		if merr != nil {
+			return Unverifiable("cannot marshal request body", merr)
 		}
 		bodyReader = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, g.baseURL()+path, bodyReader)
-	if err != nil {
-		return Unverifiable("cannot build request", err)
-	}
-	req.Header.Set("Authorization", "token "+g.Token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	if in != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := g.client().Do(req)
-	if err != nil {
-		return Unverifiable(fmt.Sprintf("%s %s failed", method, path), err)
+	resp, rerr := rc.Request(method, g.baseURL()+path, bodyReader)
+	if rerr != nil {
+		var he *ghapi.HTTPError
+		if errors.As(rerr, &he) {
+			return &ForgeAPIError{Status: he.StatusCode, Method: method, Path: path}
+		}
+		return Unverifiable(fmt.Sprintf("%s %s failed", method, path), rerr)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &ForgeAPIError{Status: resp.StatusCode, Method: method, Path: path}
-	}
 	if out != nil && len(raw) > 0 {
-		if err := json.Unmarshal(raw, out); err != nil {
-			return Unverifiable(fmt.Sprintf("cannot parse %s %s response", method, path), err)
+		if uerr := json.Unmarshal(raw, out); uerr != nil {
+			return Unverifiable(fmt.Sprintf("cannot parse %s %s response", method, path), uerr)
 		}
 	}
 	return nil
@@ -307,29 +359,14 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 
 // IssueReactions is SINGLE PAGE by decision — the same reasoning HTTPRepoInfoFetcher's
 // IssueReactions carries in full (repovis.go): fails closed past 100 reactions on one
-// issue, never a false pass. The reactions API requires the squirrel-girl preview accept
-// header, so the standard doJSON header set cannot serve it — a raw request is used.
+// issue, never a false pass. Routed through the go-gh client like every other read; the
+// squirrel-girl preview accept header the pre-go-gh raw request set is no longer required
+// (the reactions API has been GA for years and returns awards under the default accept).
 func (g *GitHubForge) IssueReactions(repo ForgeRepo, number int) ([]Reaction, error) {
-	path := fmt.Sprintf("/repos/%s/%s/issues/%d/reactions?per_page=100", repo.Owner, repo.Name, number)
-	req, err := http.NewRequest(http.MethodGet, g.baseURL()+path, nil)
-	if err != nil {
-		return nil, Unverifiable("cannot build reactions request", err)
-	}
-	req.Header.Set("Authorization", "token "+g.Token)
-	req.Header.Set("Accept", "application/vnd.github.squirrel-girl-preview+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	resp, err := g.client().Do(req)
-	if err != nil {
-		return nil, Unverifiable(fmt.Sprintf("GET %s failed", path), err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &ForgeAPIError{Status: resp.StatusCode, Method: http.MethodGet, Path: path}
-	}
-	body, _ := io.ReadAll(resp.Body)
 	var reactions []Reaction
-	if err := json.Unmarshal(body, &reactions); err != nil {
-		return nil, Unverifiable("cannot parse reactions response", err)
+	path := fmt.Sprintf("/repos/%s/%s/issues/%d/reactions?per_page=100", repo.Owner, repo.Name, number)
+	if err := g.doJSON(http.MethodGet, path, nil, &reactions); err != nil {
+		return nil, err
 	}
 	return reactions, nil
 }
@@ -381,7 +418,13 @@ func (g *GitHubForge) PostReview(repo ForgeRepo, number int, in ReviewInput) err
 }
 
 // MarkReadyForReview flips a draft change to ready via the GraphQL mutation (the only
-// GitHub API for the transition; `gh pr ready` uses the same). Extracted from deskpost.
+// GitHub API for the transition; `gh pr ready` uses the same). It is issued over the SAME
+// authenticated go-gh client as the REST operations, POSTing the mutation to an absolute
+// /graphql URL. go-gh's dedicated GraphQLClient targets a host-derived https endpoint it
+// gives no absolute-URL override for, so it cannot be pointed at the golden corpus's httptest
+// server without changing the observed request; routing the one mutation through the REST
+// client keeps the wire byte-identical to what the corpus pins while still binding auth to
+// the minted token.
 func (g *GitHubForge) MarkReadyForReview(nodeID string) error {
 	q := `mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft}}}`
 	in := map[string]any{"query": q, "variables": map[string]any{"id": nodeID}}

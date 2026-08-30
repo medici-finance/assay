@@ -9,6 +9,10 @@ The **review half** of the process-desk pipeline: **intake-desk** turns the inbo
 placeholder briefs; **worker-desk** dispatches workers that implement them behind draft PRs;
 **this desk** reviews those PRs and flips them ready-for-human; **human:<name> merges** — always.
 
+**The stream board is a derived, generated surface** (`docs/streams/derived-board/spec.md`) — this
+desk reviews the diff and the PR body's `Brief:` trailer that feed it; it never edits a board row
+itself.
+
 Run it in a **dedicated window**. Only this window runs the PR monitors — a second monitor
 double-dispatches reviewers. Role window, no persona (Bob belongs to the-desk only).
 
@@ -298,12 +302,25 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   a local stub does not; when they disagree CI wins and the reviewer investigates *why*.
   **Stub-validation trap:** proving a script emits the right argv is NOT proving the tool accepts
   it; a reviewer that stubs a binary must say so and may not call that end-to-end proof.
-- **Board-row flip check — the Status cell must be a BARE lifecycle token** (the recurring
-  worker-authoring break). When the PR flips its brief's row in `the stream board README`
-  (columns `| # | Brief | Wave | Effort | Status | Verified | Reviewed |`), Status must be a bare
-  token — `todo`/`in-progress`/`implemented`/`verified`/`done`, or the hold token `blocked` — with
-  no PR/commit ref, date or sign-off dressed onto it. A dressing inside Status
-  (`implemented (#<pr>)`) trips an `invalid status` PROBLEM; a prepended leading cell
+- **Generated-table bounce — no PR may hand-edit the board, and every PR must carry its trailer**
+  (`docs/streams/derived-board/spec.md`). Two mechanical checks, either one a one-line bounce,
+  never a judgment call — no reviewer edits the board itself:
+  1. **The diff touches a generated-table region** — any hunk inside a stream README's
+     `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers →
+     `--request-changes`, one line: "hand edit inside the generated table — statusgen derives this
+     row from the PR's own trailer + state; drop the hunk." Never fix the table in review, and
+     never waive this for a "substantively correct" edit — correctness there is `statusgen`'s to
+     certify, not the reviewer's.
+  2. **The PR body lacks the trailer** — no `Brief: <stream>/<NN>` line → `--request-changes`, one
+     line: "PR body is missing the `Brief: <stream>/<NN>` trailer `deskpr` requires; the board
+     can't link this PR to its brief without it." (`deskpr create` already refuses to open a PR
+     with no trailer; a trailer-less PR reaching review means the refusal was routed around, and
+     this bounce is the second layer.)
+  On a tree not yet migrated to a generated table (no `board: generated` in the stream README
+  frontmatter), the hand-maintained Status cell must still be a BARE lifecycle token — the
+  recurring worker-authoring break — `todo`/`in-progress`/`implemented`/`verified`/`done`, or the
+  hold token `blocked`, with no PR/commit ref, date or sign-off dressed onto it. A dressing inside
+  Status (`implemented (#<pr>)`) trips an `invalid status` PROBLEM; a prepended leading cell
   (`| implemented (#<pr>) ||`) shifts every column right into a cascade of PROBLEMs. Both abort the
   board regen → `--request-changes` naming the bare-token fix; refs/dates/sign-offs belong in the
   **Verified/Reviewed** columns. Do NOT flag a legitimate `blocked` cell. Run the board linter and

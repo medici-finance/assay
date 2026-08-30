@@ -135,6 +135,33 @@ it — a stale install otherwise produces a stale board with no signal. The tag 
 stamped at link time by `release-statusgen.yml`
 (`-ldflags "-X main.statusgenVersion=<tag>"`).
 
+### `reconcile` — derive lifecycle state from PRs, witnesses and approvals
+
+`statusgen reconcile` is a positional sub-command (like `verifyrun`) that derives
+each brief's lifecycle cell instead of trusting a hand-edited one. The only
+PR→brief edge it reads is the `Brief:` trailer (no title or branch-name guessing);
+a merged PR carrying the trailer makes the brief `implemented` at the merge SHA, an
+open PR makes it `in-progress`, and a search that ran and found nothing makes it
+`todo` — always with the witness it read, so a negative is never a bare default.
+
+```bash
+# Online: read the repo's PRs over the REST API and derive.
+statusgen reconcile --root . --repo medici-finance/assay --json
+
+# Offline: touch no network; every PR-derived cell is unknown(offline).
+statusgen reconcile --root . --offline --json
+```
+
+It is the **only verb that reads the network**, and only read-only REST endpoints
+(`GET /pulls`, `GET /pulls/{n}/reviews`) — never GraphQL. The token comes from
+`--token-file` or `GITHUB_TOKEN`. Every fetch is three-state: a failure is
+`lookedAt: false` with the HTTP status as the reason, never an empty board that
+reads like "nothing found". The verify-witness / approval-at-head fold that lifts a
+cell to `verified`/`done` is the pure engine in `lifecycle.go`; the demotions
+(a reverted merge, a red witness, a dismissed approval, a stale-version witness)
+fall back to the highest state still witnessed. `--root` may point anywhere inside
+the repo — reconcile walks up to the board root (the nearest `docs/streams`).
+
 ## Multi-root (a board that spans repos)
 
 `--root` is **repeatable**. Give it more than once and statusgen emits **one

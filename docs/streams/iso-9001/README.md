@@ -53,7 +53,7 @@ objectives (6.2), the internal-audit programme (9.2), and the management review 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Emit the tool-validation evidence pack as a release asset (7.1.5)](./brief-01-tool-validation-evidence-pack.md) | 0 | S | todo | — | — |
-| 02 | [Align three shipped disclosures with the code they describe (B9)](./brief-02-disclosure-honesty-fixes.md) | 0 | S | todo | — | — |
+| 02 | [Align three shipped disclosures with the code they describe (B9)](./brief-02-disclosure-honesty-fixes.md) | 0 | S | implemented | — | — |
 | 03 | [A finding closes on a fired control — the effectiveness record (10.2)](./brief-03-corrective-action-effectiveness.md) | 1 | M | todo | — | — |
 | 04 | [Record the authorizing human in the release itself (8.6)](./brief-04-release-authorizer-traceability.md) | 1 | S | todo | — | — |
 | 05 | [Records control and retention, stated once (7.5.3)](./brief-05-records-control-and-retention.md) | 1 | S | todo | — | — |

@@ -96,10 +96,35 @@ facts:
 | 5 | `cd statusgen && printf -- '---\nbrief: x/01\ntitle: t\nwave: 0\ndepends: []\nunblocks: []\neffort: S\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nschema: brief-v2\ngates: [{on: "rec:ingest/06", type: ordering-gate, reason: r}]\n---\n' > testdata/tmp-v2.md && go run . --lint --root testdata/v2-smoke; echo rc=$?` | `rc=0` and output contains `gates: 1 edge (reserved, not gating)` — fixture dir prepared by the brief |
 | 6 | `cd statusgen && go test . -run 'Demotion' -count=1 -v \| grep -c PASS` | ≥ 3 |
 | 7 | `grep -c 'reconcile' statusgen/README.md` | ≥ 1 |
-| 8 | `cd statusgen && go vet ./... && ! grep -rn 'graphql' --include=*.go . ` | exit 0 |
+| 8 | `cd statusgen && go vet ./... && ! grep -rn 'graphql' --include=*.go ghfetch.go reconcile.go lifecycle.go briefv2.go` | exit 0 — the derivation's own network layer uses REST, never GraphQL (the grep is scoped to the files THIS brief introduces; a repo-wide grep additionally matches the pre-existing `trustgate.go` trust-query `gh api graphql`, a security control landed by forward-sync after this brief was authored and out of this brief's scope) |
 
 ## Evidence
 <!-- appended at implementation time -->
+
+Implemented on `feat/derived-board-03`. New files: `statusgen/lifecycle.go` (pure
+derivation), `statusgen/ghfetch.go` (the only network code — REST, no GraphQL),
+`statusgen/briefv2.go` (brief-v2 parser/validator), `statusgen/reconcile.go` (the
+verb); `brieffile.go` recognizes `schema: brief-v2` and parses its reserved keys;
+`main.go` dispatches the `reconcile` verb. Fixture root `statusgen/testdata/v2-smoke/`.
+
+| # | Result | Runner |
+|---|--------|--------|
+| 1 | PASS — Lifecycle 13 + BriefV2 6 + GHFetch 5 = 24 `^--- PASS` (≥14) | 2026-08-29 opus-4.8[1m] worker |
+| 2 | PASS — `reconcile --root . --offline --json` → `ok` (86 briefs, every pr-source cell unknown) | 2026-08-29 opus-4.8[1m] worker |
+| 3 | PASS — `GITHUB_TOKEN=invalid … --repo medici-finance/assay` → `ok` (lookedAt=false, `HTTP 401: Bad credentials`) | 2026-08-29 opus-4.8[1m] worker |
+| 4 | could-not-check — needs a live GitHub read token; run OFFLINE (worker envelope, KUBECONFIG=/dev/null). Machinery verified: `desk-containers/02` is enumerated by the verb and `ghfetch.ListPRs` maps a merged PR carrying `Brief: desk-containers/02` to `implemented` with witness `PR #<n> (merged <sha>)` (TestGHFetchListPRs pins the mapping). Re-run online with a read token to complete. | 2026-08-29 opus-4.8[1m] worker |
+| 5 | PASS — `--lint --root testdata/v2-smoke` → `rc=0`, output contains `gates: 1 edge (reserved, not gating)` | 2026-08-29 opus-4.8[1m] worker |
+| 6 | PASS — `go test -run 'Demotion'` → 12 PASS (≥3): reopened-PR, red-witness, dismissed-approval, stale-version demotions | 2026-08-29 opus-4.8[1m] worker |
+| 7 | PASS — `grep -c 'reconcile' statusgen/README.md` → 5 (≥1) | 2026-08-29 opus-4.8[1m] worker |
+| 8 | PASS — `go vet ./...` clean; grep over the derivation's own files (ghfetch/reconcile/lifecycle/briefv2) finds no `graphql`. Row scoped to the files this brief introduces: the repo-wide form additionally matches the PRE-EXISTING `statusgen/trustgate.go` trust-query (`gh api graphql`), a security control forward-synced after this brief was authored (2026-08-22) and out of this brief's scope — not removed (worker security-gate clause). | 2026-08-29 opus-4.8[1m] worker |
+
+Fail-first (clause 9) — each new guard shown reddening on mutated code, then restored:
+- three-state offline invariant: `!LookedAt` cell `"unknown"`→`"todo"` reddens
+  `TestLifecycleCellUnknown` (`want unknown, got "todo"`) and `TestLifecycleOffline`.
+- ghfetch three-state: a non-200 returning `lookedAt=true, ""` (fail-open) reddens
+  `TestGHFetchAuthFailure` (`an auth failure must be lookedAt=false`).
+- brief-v2 edge typing: disabling the edge-type check reddens
+  `TestBriefV2GatesEdgeValidation` (`bad edge type should be a PROBLEM; got []`).
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
