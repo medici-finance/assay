@@ -270,9 +270,22 @@ var onlineLanePhrases = []struct {
 	{"kubectl", "cluster"},
 	{"live cluster", "cluster"},
 	{"against the cluster", "cluster"},
+	{"external cluster", "cluster"},
 	{"online lane", "online"},
 	{"online verify lane", "online"},
 	{"pod verify lane", "online"},
+	{"pod/online verify lane", "online"},
+	// A Verify row (or its Expect) that names an offline→online hand-off — the verdict is
+	// produced by an external/online verifier, not this offline run. These are compound,
+	// domain-specific phrases (not a bare "hand-off") so an ordinary hand-off mention does not
+	// false-bucket an actionable brief.
+	{"console-external-verify", "online"},
+	{"external-verify", "online"},
+	{"external hand-off", "online"},
+	{"hand-off to the online", "online"},
+	{"hand-off to the pod", "online"},
+	{"offline→pod", "online"},
+	{"offline->pod", "online"},
 	{"live session", "live-session"},
 	{"live-session", "live-session"},
 }
@@ -295,6 +308,8 @@ func deriveOnlineLane(verifyText string) string {
 // phrase) so a brief that merely mentions a window in some other sense is not falsely deferred.
 var longitudinalPhrases = []string{
 	"shadow window",
+	"shadow clock",
+	"dated capture trees",
 	"observation window",
 	"accrual window",
 	"window accrues",
