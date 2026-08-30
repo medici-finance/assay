@@ -11,7 +11,7 @@ When agents do the work, generating code is the easy part; knowing whether it wa
 It has four parts:
 
 - **Briefs.** A self-contained unit of scope and definition-of-done, with typed dependencies, a risk-derived review gate, and a Verify table that can actually be run. One brief is one reviewable piece of work. See [docs/brief-template.md](docs/brief-template.md) and [docs/brief-rules.md](docs/brief-rules.md).
-- **Registers.** Append-only `FINDINGS`, `INTAKE`, and `RETRO` logs. Entries are tombstoned rather than deleted, and statusgen enforces contiguous numbering so nothing goes missing quietly.
+- **Registers.** Append-only `FINDINGS`, `INTAKE`, and `RETRO` logs. Entry IDs are slugs, not a counter, so they carry no contiguity guarantee — there is no sequence to have a gap in. What keeps nothing going missing quietly is what statusgen actually enforces: an entry that has ever existed on main but is absent from the working tree is a lint failure (a tombstone check against history), and duplicate IDs are rejected. Entries are tombstoned rather than deleted.
 - **Streams and the board.** Briefs live in streams and move through a defined lifecycle. The board, `STATUS.md`, is generated, never hand-edited.
 - **Tools that enforce the above.** `statusgen` lints the tree and generates the board. A separate reviewer identity, which the author cannot post as, keeps reviews attributable to someone other than the author. A trust gate names who the tooling will obey.
 
