@@ -1184,6 +1184,11 @@ func main() {
 	// (Ian ruling #1213): DevLake feeds INTO these pages; the grouped-DORA tile
 	// they render is computed in roadmapdora.go.
 	roadmapMode := flag.Bool("roadmap", false, "render the roadmap deck overview page (docs/reports/roadmap/index.html)")
+	// Cadenced roadmap artifacts (statusgen/13): with --roadmap, re-render the
+	// same deck skeleton over a CLOSED window — weekly (prior ISO week) | monthly
+	// (prior calendar month) — to docs/reports/<cadence>/<window>/. Empty = the
+	// point-in-time --roadmap, unchanged.
+	cadenceMode := flag.String("cadence", "", "with --roadmap: render a closed-window artifact — weekly (prior ISO week) | monthly (prior calendar month) — to docs/reports/<cadence>/<window>/; empty = point-in-time --roadmap")
 	// Corroboration check: self-contained sub-command,
 	// same STATUS.md-free discipline as the verify-gate modes. Network-dependent
 	// by nature — never wired into the offline lint gate.
@@ -1512,7 +1517,13 @@ func main() {
 	// DevLake feeds INTO these internal pages; roadmapdora.go computes the DORA
 	// tiles they render today.
 	if *roadmapMode {
-		os.Exit(runRoadmap(*root))
+		os.Exit(runRoadmap(*root, *cadenceMode))
+	}
+	// --cadence acts only under --roadmap; passing it alone is a usage error
+	// rather than a silent no-op that runs a whole-board regen.
+	if *cadenceMode != "" {
+		fmt.Fprintln(os.Stderr, "statusgen: --cadence requires --roadmap")
+		os.Exit(2)
 	}
 	// Launch readiness rollup (assay-launch/04): self-contained diagnostic sub-command,
 	// same STATUS.md-free discipline as --dora/--trend/--roadmap.
