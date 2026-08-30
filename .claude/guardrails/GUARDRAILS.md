@@ -39,6 +39,12 @@ is not a pass.
 - **intake-desk** — deliberately not a site for any of the four blocks. Its
   copies are shorter paraphrases folded into intake-specific rules; normalizing
   them is a follow-up wording pass.
+- **pr-shepherd / insight-routing + escalation-labels** — the shepherd is a
+  worker-side role, not a desk: it neither files insights as a loop output nor
+  owns the escalation-label vocabulary (it uses `needs-decision` once, inside the
+  security-gate carve-out, quoting the rule it is bound by rather than restating
+  it). It IS a site for git-push-policy and no-attribution, which bind every role
+  that pushes.
 - **pr-review-desk / insight-routing** — pr-review-desk carries a one-line
   *pointer* to the insight-routing rule inside its discovery-routing table, not a
   restatement. A pointer needs no derivation, so it is not a declared site.
@@ -107,6 +113,7 @@ irreducibles, not drift. intake-desk: see "What is NOT here".
 - site: plugins/assay/skills/worker-desk/SKILL.md
 - site: plugins/assay/skills/pr-review-desk/SKILL.md
 - site: plugins/assay/skills/verify-desk/SKILL.md
+- site: plugins/assay/skills/pr-shepherd/SKILL.md
 
 ```text
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
@@ -130,6 +137,7 @@ is NOT here".
 - site: plugins/assay/skills/worker-desk/SKILL.md
 - site: plugins/assay/skills/pr-review-desk/SKILL.md
 - site: plugins/assay/skills/verify-desk/SKILL.md
+- site: plugins/assay/skills/pr-shepherd/SKILL.md
 
 ```text
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,

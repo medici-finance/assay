@@ -45,3 +45,15 @@ These five carry the current house methodology for running the five-desk pipelin
 are present and scrubbed for the public plugin — house repo slugs, issue numbers and names removed.
 Unlike the two portable methodology skills above they still carry house-specific operating prose, so
 read a skill's own `SKILL.md` before relying on its exact wording in another project.
+
+## The worker-side role skills
+
+| Skill | Namespaced as | Role |
+|-------|---------------|------|
+| pr-shepherd | `assay:pr-shepherd` | Adopts an EXISTING open PR and drives it to mergeable — merge-current, CI green, every reviewer finding addressed |
+
+`pr-shepherd` is not a desk — it is the **worker** seat opposite `pr-review-desk`. The desk
+writes the verdict and owns the ready flip; the shepherd fixes the findings, keeps the branch
+current, drives CI green, and never flips, merges or closes. Where `worker-desk` dispatches a
+worker against a *brief*, a shepherd is dispatched against an *existing PR* someone else may
+have abandoned. Authoring new work is neither of those — that is a brief and a fresh branch.
