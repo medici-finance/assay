@@ -1,0 +1,41 @@
+{
+  "test": "go test ./cmd/deskflip/... -count=1",
+  "control": {
+    "name": "CONTROL — invert the open-state check (a closed PR becomes the only flippable one)",
+    "file": "cmd/deskflip/flip.go",
+    "old": "\tif !strings.EqualFold(pr.State, \"OPEN\") {",
+    "new": "\tif strings.EqualFold(pr.State, \"OPEN\") {"
+  },
+  "mutations": [
+    {
+      "name": "stop the changed-files walk after page one (the #208 defect, restated as a mutation)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tfor _, f := range page {\n\t\t\tout = append(out, fileInfo{Path: f.Filename})\n\t\t}\n\t}\n\treturn out, nil",
+      "new": "\t\tfor _, f := range page {\n\t\t\tout = append(out, fileInfo{Path: f.Filename})\n\t\t}\n\t\tbreak\n\t}\n\treturn out, nil"
+    },
+    {
+      "name": "stop asking the forge to paginate (one default-sized page becomes the whole diff)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tr := runCmd(\"\", \"gh\", \"api\", \"--paginate\",\n\t\tfmt.Sprintf(\"repos/%s/pulls/%d/files?per_page=%d\", repo, o.pr, changedFilePerPage))",
+      "new": "\tr := runCmd(\"\", \"gh\", \"api\",\n\t\tfmt.Sprintf(\"repos/%s/pulls/%d/files?per_page=%d\", repo, o.pr, changedFilePerPage))"
+    },
+    {
+      "name": "trust a short read (the fail-closed reconcile against the forge's own total is disarmed)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tif pr.ChangedFiles > 0 && len(files) < pr.ChangedFiles {",
+      "new": "\t\tif false && pr.ChangedFiles > 0 && len(files) < pr.ChangedFiles {"
+    },
+    {
+      "name": "disarm the path-trigger classification (a risky path stops risk-classing the PR)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tif deskkit.RiskPathTriggered(repo, paths) {",
+      "new": "\t\tif false && deskkit.RiskPathTriggered(repo, paths) {"
+    },
+    {
+      "name": "let an unreadable changed-file list pass as an empty diff (could-not-check rounded to clean)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\treturn nil, deskkit.Unverifiable(fmt.Sprintf(\n\t\t\t\"condition %s: cannot read PR #%d's changed files (%s) — a diff that could not be read is \"+\n\t\t\t\t\"could-not-check, and could-not-check is never a clean risk classification.\",\n\t\t\tcondSecurityVerdict, o.pr, firstLine(r.stderr)), r.err)",
+      "new": "\t\treturn nil, nil"
+    }
+  ]
+}
