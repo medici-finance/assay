@@ -109,6 +109,21 @@ facts:
      (command, exit code, output line(s) or hash, date, runner). "verified" in the stream
      README requires this section filled by someone who did NOT implement. -->
 
+Independently verified 2026-08-30 by opus-4.8[1m]-verifier (verify-desk, non-implementer) against merged head b506390d (Merge PR #240). Offline envelope (KUBECONFIG=/dev/null). VERIFY: PASS 7/7 (6/7 as-written; row 6 rotted-table — deliverable intact). Deliverables present: qualgen/driftdetect.go(+test), qualgen/instructionbrittle.go(+test), qualgen/testdata/instrbrittle/{deadrefs,staledoc}/.
+
+| # | Command | Exit | Output | Date · Runner |
+|---|---------|------|--------|---------------|
+| 1 | cd qualgen && go build ./... && go vet ./... | 0 | clean | 2026-08-30 · opus-4.8[1m]-verifier |
+| 2 | go test -run Drift; -run InstructionBrittle | 0 | ok qualgen (both suites) | 2026-08-30 · opus-4.8[1m]-verifier |
+| 3 | go test -run TestReferenceValidity_PlantedDeadRefs -v | 0 | PASS — Live=1, Dead=3, CouldNotMeasure=1; by-kind exactly 1 each (dead-path/dead-symbol/dead-typed-ID/live-path/unclassifiable) over 5 planted refs; dereference not presence | 2026-08-30 · opus-4.8[1m]-verifier |
+| 4 | go test -run TestDocCodeStaleness_PlantedDrift -v | 0 | PASS — CodeOnlyChanges=5 (planted N), Stale=true, DocPath=doc.md, EstablishedAt SHA match | 2026-08-30 · opus-4.8[1m]-verifier |
+| 5 | go test -run TestReferenceValidity_TrendedNotSnapshot -v | 0 | PASS — Trend>=2 windows, distinct AtSHA (first!=last) | 2026-08-30 · opus-4.8[1m]-verifier |
+| 6 | grep -c 'driftdetect' instructionbrittle.go (re-baselined from `qualgen/instructionbrittle.go` — `cd qualgen &&` prefix double-nested the path) | 0 | 8 — consumes the shared driftdetect capability (no second copy) | 2026-08-30 · opus-4.8[1m]-verifier — rotted-table, deliverable present |
+| 7 | go test -run TestInstructionSet_Unconfigured_ThreeState -v | 0 | PASS — unconfigured → could-not-measure+reason, Trend nil, Staleness nil; never measured-zero | 2026-08-30 · opus-4.8[1m]-verifier |
+
+RISK-VALUE: NAMED, NOT DERIVED (out-of-scope-by-reversibility) — defaultStaleCoChangeThreshold = 2 @ qualgen/instructionbrittle.go:37 — min code-only change count before a doc is presumptively stale. NOT a risk-bearing gate: the brief is irreversible:no, all-risk-no, on a read-only OSS measurement path (not a risk-classed path, no CLAUDE.md-pinned value), so the fail-safe risk-value trigger does not fire. It is a reversible measurement tuning DEFAULT (a wrong value only mis-flags a metric, undone by edit+redeploy) and is overridable per-run via InstructionBrittleConfig.StaleCoChangeThreshold — derivation from first principles is neither affordable nor meaningful for a measurement default. Recorded for the reviewer's judgment. (defaultWindowCount=4, defaultTypedIDPattern rank below; all reversible config.)
+gate: model, all risk no, irreversible: no — desk flips implemented→verified; verified→done stays CI's on the reviewer approval. Row 6's command-path typo is a brief-authoring nit, not a deliverable defect.
+
 ## Review
 Gate: model (all four risk answers no — repo-agnostic OSS read-only history analysis over a
 configured doc set; no writes to the target repo, no shared product surface). Reviewer records
