@@ -343,12 +343,24 @@ func computeSelfImprovementSeries(records []issueMetricRecord, details map[issue
 	return points
 }
 
-func renderSelfImprovementSeriesText(points []selfImprovementSeriesPoint) string {
+// renderSelfImprovementSeriesText renders the weekly series. It takes couldNotCheck
+// for the same reason the aggregate and both JSON modes carry it: an issue whose
+// detail fetch failed is excluded from every bucket, so a reader who is not told
+// how many issues were dropped cannot tell a genuine low week from a blind one.
+// A renderer that silently omits could-not-check reports a clean number it did not
+// earn (C4) — this is the one mode that used to do that.
+func renderSelfImprovementSeriesText(points []selfImprovementSeriesPoint, couldNotCheck []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Self-improvement metric — weekly time series\n%s\n\n", selfImprovementBanner)
 	fmt.Fprintf(&b, "  %-12s %10s %12s %6s\n", "week", "self-healed", "human-touched", "rate")
 	for _, p := range points {
 		fmt.Fprintf(&b, "  %-12s %10d %12d %6s\n", p.Period, p.SelfHealed, p.HumanTouched, p.SelfImprovementRate)
+	}
+	if len(couldNotCheck) > 0 {
+		fmt.Fprintf(&b, "\nCOULD-NOT-CHECK (%d per-issue gh failure(s) — these issues are excluded from every bucket above):\n", len(couldNotCheck))
+		for _, c := range couldNotCheck {
+			fmt.Fprintf(&b, "  %s\n", c)
+		}
 	}
 	return b.String()
 }
@@ -548,10 +560,18 @@ func runSelfImprovement(root string, asJSON, series bool, staleDays int, teamLog
 			return 0
 		}
 		if len(points) == 0 {
+			// An empty series with could-not-check entries is not "no resolved issues" —
+			// it may be "every issue was unreadable", so the list is printed here too.
 			fmt.Printf("Self-improvement metric — weekly time series\n%s\n\nno resolved issues found\n", selfImprovementBanner)
+			if len(couldNotCheck) > 0 {
+				fmt.Printf("\nCOULD-NOT-CHECK (%d per-issue gh failure(s) — these issues are excluded from every bucket above):\n", len(couldNotCheck))
+				for _, c := range couldNotCheck {
+					fmt.Printf("  %s\n", c)
+				}
+			}
 			return 0
 		}
-		fmt.Print(renderSelfImprovementSeriesText(points))
+		fmt.Print(renderSelfImprovementSeriesText(points, couldNotCheck))
 		return 0
 	}
 

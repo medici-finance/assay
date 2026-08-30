@@ -1,5 +1,19 @@
 package main
 
+// selfimprovement_test.go — behaviour tests for the self-improvement classifier.
+//
+// FAIL-FIRST. These tests pin guards, so each one is shipped with a re-runnable
+// mutation that shows it going red on broken code — an assertion nobody has
+// watched fail is not a check. The spec is selfimprovement-mutations.json, in the
+// shape clusterrow-mutations.json already uses:
+//
+//	cd statusgen && muhar -j 0 -spec selfimprovement-mutations.json
+//
+// It carries a positive control (self-healed stops excluding human-touched), so a
+// harness that could not actually mutate exits 2 rather than reporting a clean
+// sweep. Ten mutations, one per guarded property, all CAUGHT at the head that
+// landed this file.
+
 import (
 	"strings"
 	"testing"
@@ -208,7 +222,7 @@ func TestSelfImprovementRateMath(t *testing.T) {
 	recs := []issueMetricRecord{
 		{Number: 1, Repo: "r", State: "CLOSED", Author: "assay-worker-app[bot]"}, // self-healed
 		{Number: 2, Repo: "r", State: "CLOSED", Author: "assay-worker-app[bot]"}, // self-healed
-		{Number: 3, Repo: "r", State: "CLOSED", Author: "outsider"},             // human-touched (raised)
+		{Number: 3, Repo: "r", State: "CLOSED", Author: "outsider"},              // human-touched (raised)
 		{Number: 4, Repo: "r", State: "CLOSED", Author: "assay-worker-app[bot]"}, // unclassified (no fixing PR, no touch)
 	}
 	details := map[issueKey]selfImprovementDetail{
@@ -294,6 +308,40 @@ func TestSelfImprovementGatherDetailsExcludesFailures(t *testing.T) {
 	}
 	if len(couldNotCheck) != 1 || !strings.Contains(couldNotCheck[0], "#2") {
 		t.Fatalf("couldNotCheck = %v, want one entry naming #2", couldNotCheck)
+	}
+}
+
+// TestSelfImprovementSeriesTextReportsCouldNotCheck: the --series TEXT renderer
+// must surface could-not-check like every other mode. Issues whose detail fetch
+// failed are excluded from every weekly bucket, so a series that prints the
+// buckets and swallows the exclusions reports a number it did not earn (C4).
+func TestSelfImprovementSeriesTextReportsCouldNotCheck(t *testing.T) {
+	points := []selfImprovementSeriesPoint{
+		{Period: "2026-08-24", SelfHealed: 2, HumanTouched: 1, SelfImprovementRate: "0.67"},
+	}
+	cnc := []string{"#2 (r): boom", "#7 (r): boom"}
+
+	text := renderSelfImprovementSeriesText(points, cnc)
+	if !strings.Contains(text, "COULD-NOT-CHECK") {
+		t.Errorf("series text dropped the could-not-check section:\n%s", text)
+	}
+	for _, want := range cnc {
+		if !strings.Contains(text, want) {
+			t.Errorf("series text missing could-not-check entry %q:\n%s", want, text)
+		}
+	}
+	if !strings.Contains(text, "2 per-issue gh failure") {
+		t.Errorf("series text should name the could-not-check COUNT:\n%s", text)
+	}
+	// The buckets themselves are still rendered — the section is additive.
+	if !strings.Contains(text, "2026-08-24") {
+		t.Errorf("series text lost its bucket rows:\n%s", text)
+	}
+
+	// No failures: no section, and no stray header.
+	clean := renderSelfImprovementSeriesText(points, nil)
+	if strings.Contains(clean, "COULD-NOT-CHECK") {
+		t.Errorf("clean run should print no could-not-check section:\n%s", clean)
 	}
 }
 

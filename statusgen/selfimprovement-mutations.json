@@ -1,0 +1,71 @@
+{
+  "test": "go test . -run SelfImprovement -count=1",
+  "control": {
+    "name": "CONTROL — self-healed stops excluding human-touched (any agent-fixed issue counts as self-healed)",
+    "file": "selfimprovement.go",
+    "old": "\tselfHealed := agentRaised && agentFixed && !humanTouched",
+    "new": "\tselfHealed := agentRaised && agentFixed"
+  },
+  "mutations": [
+    {
+      "name": "merge-gate-is-not-a-touch guard dropped (the bot's own merge-close counts as a human manual close)",
+      "file": "selfimprovement.go",
+      "old": "\tif !touch.Reopened && !det.FixingPRFound {",
+      "new": "\tif !touch.Reopened {"
+    },
+    {
+      "name": "human-raised touch never set (a human-authored issue reads as agent-raised)",
+      "file": "selfimprovement.go",
+      "old": "\ttouch.Raised = !authorAgent",
+      "new": "\ttouch.Raised = false"
+    },
+    {
+      "name": "human comment stops registering (steered-by-comment and decided both go blind)",
+      "file": "selfimprovement.go",
+      "old": "\t\tif agent, _ := classifyIssueAuthor(login, cfg); !agent {\n\t\t\thumanCommented = true\n\t\t\tbreak\n\t\t}",
+      "new": "\t\tif agent, _ := classifyIssueAuthor(login, cfg); !agent && false {\n\t\t\thumanCommented = true\n\t\t\tbreak\n\t\t}"
+    },
+    {
+      "name": "needs-decision routing collapsed (a decision answered is filed as ordinary steering)",
+      "file": "selfimprovement.go",
+      "old": "\t\tif needsDecision {\n\t\t\ttouch.Decided = true",
+      "new": "\t\tif false && needsDecision {\n\t\t\ttouch.Decided = true"
+    },
+    {
+      "name": "human reopen ignored (a human reopening the issue is not a touch)",
+      "file": "selfimprovement.go",
+      "old": "\tfor _, login := range det.ReopenActors {\n\t\tif agent, _ := classifyIssueAuthor(login, cfg); !agent {",
+      "new": "\tfor _, login := range det.ReopenActors {\n\t\tif agent, _ := classifyIssueAuthor(login, cfg); !agent && false {"
+    },
+    {
+      "name": "fixed-by-human never set (a human-authored fixing PR reads as an agent fix)",
+      "file": "selfimprovement.go",
+      "old": "\t\ttouch.FixedByHuman = !fixerAgent",
+      "new": "\t\ttouch.FixedByHuman = false"
+    },
+    {
+      "name": "rate denominator becomes every resolved issue (unclassified silently dilutes the rate)",
+      "file": "selfimprovement.go",
+      "old": "\tdenom := rep.SelfHealed + rep.HumanTouched",
+      "new": "\tdenom := rep.Resolved"
+    },
+    {
+      "name": "open issues enter the corpus (an unresolved issue is classified as if it were closed)",
+      "file": "selfimprovement.go",
+      "old": "\t\tif !strings.EqualFold(rec.State, \"closed\") {\n\t\t\tcontinue // per-RESOLVED (closed) issue only\n\t\t}",
+      "new": "\t\tif false {\n\t\t\tcontinue // per-RESOLVED (closed) issue only\n\t\t}"
+    },
+    {
+      "name": "a failed per-issue fetch is folded in as a zero-value detail instead of excluded (could-not-check rounded to clean)",
+      "file": "selfimprovement.go",
+      "old": "\t\t\tcouldNotCheck = append(couldNotCheck, fmt.Sprintf(\"#%d (%s): %v\", rec.Number, rec.Repo, err))",
+      "new": "\t\t\tdetails[issueKey{rec.Repo, rec.Number}] = selfImprovementDetail{}\n\t\t\tclassifiable = append(classifiable, rec)"
+    },
+    {
+      "name": "--series text drops could-not-check (a blind week renders as a clean week)",
+      "file": "selfimprovement.go",
+      "old": "\tif len(couldNotCheck) > 0 {\n\t\tfmt.Fprintf(&b, \"\\nCOULD-NOT-CHECK (%d per-issue gh failure(s) — these issues are excluded from every bucket above):\\n\", len(couldNotCheck))",
+      "new": "\tif false && len(couldNotCheck) > 0 {\n\t\tfmt.Fprintf(&b, \"\\nCOULD-NOT-CHECK (%d per-issue gh failure(s) — these issues are excluded from every bucket above):\\n\", len(couldNotCheck))"
+    }
+  ]
+}
