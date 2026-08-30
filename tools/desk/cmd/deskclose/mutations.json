@@ -1,0 +1,77 @@
+{
+  "test": "go test ./cmd/deskclose/... -count=1",
+  "control": {
+    "name": "CONTROL — disarm the decision-label gate (a needs-decision item becomes closeable)",
+    "file": "cmd/deskclose/github.go",
+    "old": "\t\t\tif strings.EqualFold(strings.TrimSpace(have), want) {",
+    "new": "\t\t\tif false && strings.EqualFold(strings.TrimSpace(have), want) {"
+  },
+  "mutations": [
+    {
+      "name": "a WORKER token falls through to the reviewer half (the single-actor close, restated as a mutation)",
+      "file": "cmd/deskclose/superseded.go",
+      "old": "\tif who.role == roleWorker {",
+      "new": "\tif false && who.role == roleWorker {"
+    },
+    {
+      "name": "a worker's --dispute is no longer refused (the worker disputes instead of proposing)",
+      "file": "cmd/deskclose/superseded.go",
+      "old": "\t\tif strings.TrimSpace(dispute) != \"\" {",
+      "new": "\t\tif false && strings.TrimSpace(dispute) != \"\" {"
+    },
+    {
+      "name": "the same actor may propose AND confirm (the two-role property collapses to one role)",
+      "file": "cmd/deskclose/superseded.go",
+      "old": "\tif deskkit.SameActor(p.Author, who.login) {",
+      "new": "\tif false && deskkit.SameActor(p.Author, who.login) {"
+    },
+    {
+      "name": "a reviewer may confirm with NO standing proposal (the reviewer originates the supersession)",
+      "file": "cmd/deskclose/superseded.go",
+      "old": "\tif !found {",
+      "new": "\tif false && !found {"
+    },
+    {
+      "name": "the dispute posts its reason but never applies needs-decision (the item stays closeable)",
+      "file": "cmd/deskclose/superseded.go",
+      "old": "\tif err := addLabel(c.repo, n, it.isPR(), labelNeedsDecision); err != nil {",
+      "new": "\tif err := error(nil); err != nil {"
+    },
+    {
+      "name": "the proposal posts its comment but never applies superseded? (invisible to the queue and the sweep)",
+      "file": "cmd/deskclose/superseded.go",
+      "old": "\tif err := addLabel(c.repo, n, it.isPR(), labelProposed); err != nil {",
+      "new": "\tif err := error(nil); err != nil {"
+    },
+    {
+      "name": "an UNREADABLE token identity is rounded up to the reviewer role (could-not-check becomes a grant)",
+      "file": "cmd/deskclose/superseded.go",
+      "old": "\t\treturn caller{}, deskkit.Unverifiable(\n\t\t\t\"could-not-check: the identity of the token in use could not be read from the forge \"+",
+      "new": "\t\treturn caller{login: \"fallback[bot]\", role: roleReviewer}, nil; _ = deskkit.Unverifiable(\n\t\t\t\"could-not-check: the identity of the token in use could not be read from the forge \"+"
+    },
+    {
+      "name": "a roster binding both roles to ONE App is accepted (the lane enforces nothing and says so to no one)",
+      "file": "cmd/deskclose/superseded.go",
+      "old": "\tif deskkit.SameActor(worker, reviewer) {",
+      "new": "\tif false && deskkit.SameActor(worker, reviewer) {"
+    },
+    {
+      "name": "a fenced documentation example is read as a live proposal",
+      "file": "cmd/deskclose/superseded.go",
+      "old": "\t\t\tfenced = !fenced",
+      "new": "\t\t\tfenced = false"
+    },
+    {
+      "name": "the back-reference on the target is dropped (the record reads in one direction only)",
+      "file": "cmd/deskclose/verbs.go",
+      "old": "\tif r.crossRef != nil {",
+      "new": "\tif false && r.crossRef != nil {"
+    },
+    {
+      "name": "a closed-unmerged target satisfies the confirm (work that never landed supersedes live work)",
+      "file": "cmd/deskclose/github.go",
+      "old": "\tif !pr.Merged {",
+      "new": "\tif false && !pr.Merged {"
+    }
+  ]
+}

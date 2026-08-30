@@ -52,7 +52,7 @@ const usage = `deskclose — close issues/PRs only as propagation of a human-aut
 
 USAGE:
   deskclose duplicate      -R <owner/repo> <N> --of <M> --mined <summary>
-  deskclose superseded     -R <owner/repo> <N> --by <ref>
+  deskclose superseded     -R <owner/repo> <N> --by <ref> [--dispute <reason>]
   deskclose review-request -R <owner/repo> <N>
   deskclose manifest       -R <owner/repo> --file <manifest.yaml> [--resume-from <N>]
                                                                  [--max-wait <dur>]
@@ -71,9 +71,19 @@ duplicate      — REFUSED today. R-1 withdraws the duplicate lane from the desk
                  R-1's sign-off EXPLICITLY supersedes the two-role ruling, which is what
                  R-1's own conflict disclosure requires.
 
-superseded     — the issue's substance is fully captured by --by <ref>. A PR ref must
-                 be genuinely MERGED; closed-unmerged never satisfies the lane.
-                 Closes not-planned.
+superseded     — the item's substance is fully captured by --by <ref>. TWO-ROLE, keyed
+                 on the TOKEN in use (its roster binding), never on a flag:
+                   worker token   → PROPOSES: label ` + "`superseded?`" + ` + a marker comment
+                                    naming the target. Never closes; --dispute refused.
+                   reviewer token → CONFIRMS: needs a standing proposal by a different
+                                    actor naming the same target; the target PR must be
+                                    genuinely MERGED (closed-unmerged never satisfies);
+                                    posts SUPERSEDED-CONFIRMED + a back-reference on the
+                                    target, then closes not-planned.
+                                  → --dispute <reason>: posts SUPERSEDED-DISPUTED and
+                                    applies needs-decision, after which every close is
+                                    refused — the item is a human's from there.
+                 Any other token is refused; an unreadable one is could-not-check.
 
 review-request — extracts the PR ref from the issue body; absent or ambiguous is a
                  refusal, never a guess. Verifies MERGED. Closes completed.

@@ -272,6 +272,22 @@ as the planner and acts on its rows.
   Only the human's explicit waiver substitutes for a missing security artifact. Post the wrap-up
   comment listing filed follow-ups as `<repo>#<N>` pointers. **Merge stays the human's.**
 
+- **`superseded?` → confirm or dispute, as the reviewer App — never rubber-stamp.** A PR carrying
+  the `superseded?` label is a worker's PROPOSAL that its scope landed through another PR; it is
+  not a close, and the worker cannot make it one. This desk answers it with
+  `deskclose superseded -R <repo> <N> --by <target>` under the reviewer token: the tool reads the
+  token's role from the roster binding (a flag cannot claim it), requires a standing proposal by a
+  DIFFERENT actor naming the SAME target, requires that target to be genuinely MERGED, and only
+  then posts `SUPERSEDED-CONFIRMED` on the PR, a back-reference on the target, and closes.
+  Disagree — the target lacks scope the PR carried, the target is not what the record names, or
+  the close would launder one identity's work under another — and it is
+  `--dispute "<why>"`: the tool posts `SUPERSEDED-DISPUTED: <why>` and applies `needs-decision`,
+  after which every close is refused and the item is human:<name>'s. The reviewer's work here is
+  the comparison, not the verb: read both PRs' file lists and the brief's DoD before confirming — a
+  confirm with no comparison is the rubber stamp the two-role lane cannot detect. Never close a
+  proposal by hand, and never propose one (a reviewer originating a supersession is the single
+  actor the lane exists to remove).
+
 **A merged/closed PR is DONE** — its worker stops; residual work is a NEW PR. A commit
 pushed to a merged branch is orphaned off main: rescue it as a fresh PR.
 
