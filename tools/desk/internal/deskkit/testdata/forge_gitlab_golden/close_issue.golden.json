@@ -1,0 +1,18 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/33/notes",
+      "body": {
+        "body": "closed as: not_planned"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/33",
+      "body": {
+        "state_event": "close"
+      }
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "requests": [],
+  "result": {
+    "RemoteHost": "127.0.0.1",
+    "TokenUsername": "oauth2",
+    "CredentialHelperHint": "supply the token via an inline credential.helper that reads the 0600 token file; never embed it in the remote URL"
+  }
+}

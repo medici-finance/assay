@@ -1,0 +1,19 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests",
+      "body": {
+        "title": "Draft: t",
+        "description": "b",
+        "source_branch": "feat/x",
+        "target_branch": "main"
+      }
+    }
+  ],
+  "result": {
+    "Number": 22,
+    "NodeID": "gitlab:medici-finance/assay!22",
+    "URL": "https://gitlab.example/medici-finance/assay/-/merge_requests/7"
+  }
+}

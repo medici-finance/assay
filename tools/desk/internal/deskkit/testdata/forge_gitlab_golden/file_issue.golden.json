@@ -1,0 +1,16 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues",
+      "body": {
+        "title": "bug",
+        "description": "detail"
+      }
+    }
+  ],
+  "result": {
+    "Number": 33,
+    "URL": "https://gitlab.example/medici-finance/assay/-/issues/33"
+  }
+}

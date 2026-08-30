@@ -1,0 +1,43 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/7/award_emoji",
+      "query": "per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/users/1"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/users/2"
+    }
+  ],
+  "result": [
+    {
+      "user": {
+        "login": "ian",
+        "type": "User",
+        "id": 1
+      },
+      "content": "+1"
+    },
+    {
+      "user": {
+        "login": "desk-bot",
+        "type": "Bot",
+        "id": 2
+      },
+      "content": "+1"
+    },
+    {
+      "user": {
+        "login": "ian",
+        "type": "User",
+        "id": 1
+      },
+      "content": "hooray"
+    }
+  ]
+}

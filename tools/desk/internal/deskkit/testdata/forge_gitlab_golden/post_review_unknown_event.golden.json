@@ -1,0 +1,5 @@
+{
+  "requests": [],
+  "err": "unsupported review event \"DISMISS\" — expected APPROVE, REQUEST_CHANGES or COMMENT",
+  "not_found": false
+}

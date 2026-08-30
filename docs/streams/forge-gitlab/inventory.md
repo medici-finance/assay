@@ -22,22 +22,27 @@ One row per method of `deskkit.Forge`. This table is the dereference target for 
 (`go doc ./tools/desk/internal/deskkit Forge` must match these rows). Concept mapping to
 GitLab (spec §6) is recorded per row for brief 02.
 
-| # | Method | Frozen op (spec §6) | GitHub impl (extracted from) | GitLab mapping (brief 02) |
-|---|--------|--------------------|------------------------------|---------------------------|
-| 1 | `GetPullRequest(repo, number)` | read change (supports flip + checks) | `deskpost` `getPR` (`GET /repos/{o}/{r}/pulls/{n}`) | `GET /projects/:id/merge_requests/:iid` |
-| 2 | `GetIssue(repo, number)` | resolve number kind | `deskpost` `getIssue` / `deskclose` `fetchItem` (`GET /issues/{n}`) | `GET /projects/:id/issues/:iid` |
-| 3 | `ReviewsAtHead(repo, number)` | read reviews at head | `deskpost` `listReviews` (`GET /pulls/{n}/reviews`, paginated) | MR approvals + notes |
-| 4 | `ListChangedFiles(repo, number)` | read change files (risk gate) | `deskpost` `listFiles` (`GET /pulls/{n}/files`, paginated, rename-aware) | `GET /merge_requests/:iid/changes` |
-| 5 | `ChecksAtHead(repo, sha)` | read checks at head | `deskpost` `combinedStatusAt` + `checkRunsAt` (both rollups, paginated) | pipeline status (+ external status check at Ultimate) |
-| 6 | `IssueReactions(repo, number)` | read reactions/awards | `deskpost` `IssueReactions` / `deskkit.HTTPRepoInfoFetcher` (squirrel-girl, single page) | award emoji |
-| 7 | `RepoVisibility(repo)` | repo visibility gate | `deskpost` `RepoVisibility` / `deskkit.HTTPRepoInfoFetcher` (`GET /repos/{o}/{r}`) | `GET /projects/:id` `.visibility` |
-| 8 | `CreateDraftChange(repo, in)` | create draft change | `deskpr` `gh pr create --draft` → REST `POST /pulls` `draft:true` | `Draft:` MR (`POST /merge_requests`) |
-| 9 | `PostComment(repo, number, body)` | comment | `deskpost` `postComment` (`POST /issues/{n}/comments`) | MR/issue note |
-| 10 | `PostReview(repo, number, in)` | approve/review | `deskpost` `postReview` (`POST /pulls/{n}/reviews`, head-pinned) | MR approval |
-| 11 | `MarkReadyForReview(nodeID)` | flip draft | `deskpost` `markReadyForReview` (GraphQL mutation) | clear `Draft:` prefix |
-| 12 | `FileIssue(repo, in)` | file issue | `deskfile` `gh issue create` → REST `POST /issues` | `POST /projects/:id/issues` |
-| 13 | `CloseIssue(repo, number, reason)` | close issue | `deskclose`/`deskfile` `gh issue close` → REST `PATCH /issues/{n}` `state:closed` | `PUT /issues/:iid` `state_event:close` |
-| 14 | `PushTransportHint(repo)` | push-transport hints | `x-access-token` https + inline credential.helper (no token-in-URL) | `oauth2:<PAT>` https + credential.helper |
+The `gitlab impl` column is the brief-02 tick: `implemented` means `forge_gitlab.go` covers the
+operation AND `forge_gitlab_test.go` carries at least one golden-pinned contract case for it —
+a pairing `TestForgeGitlabCoverage` reconciles against this very table, so a row cannot be
+ticked without a case behind it.
+
+| # | Method | Frozen op (spec §6) | GitHub impl (extracted from) | GitLab mapping (brief 02) | gitlab impl |
+|---|--------|--------------------|------------------------------|---------------------------|-------------|
+| 1 | `GetPullRequest(repo, number)` | read change (supports flip + checks) | `deskpost` `getPR` (`GET /repos/{o}/{r}/pulls/{n}`) | `GET /projects/:id/merge_requests/:iid`; `changes_count` → `ChangedFiles` (a truncated `N+` reports `N+1`, so it can only fail closed) | implemented |
+| 2 | `GetIssue(repo, number)` | resolve number kind | `deskpost` `getIssue` / `deskclose` `fetchItem` (`GET /issues/{n}`) | `GET /projects/:id/issues/:iid` AND `…/merge_requests/:iid` — separate IID sequences make a bare number ambiguous, so both are probed and a both-resolve is refused | implemented |
+| 3 | `ReviewsAtHead(repo, number)` | read reviews at head | `deskpost` `listReviews` (`GET /pulls/{n}/reviews`, paginated) | MR approvals + notes; the head-pin comes from `reset_approvals_on_push` (approvals) and the diff-version timestamp (notes), and is left unset where neither establishes it | implemented |
+| 4 | `ListChangedFiles(repo, number)` | read change files (risk gate) | `deskpost` `listFiles` (`GET /pulls/{n}/files`, paginated, rename-aware) | `GET /merge_requests/:iid/diffs` (paginated; `changes` is the deprecated single-shot form) | implemented |
+| 5 | `ChecksAtHead(repo, sha)` | read checks at head | `deskpost` `combinedStatusAt` + `checkRunsAt` (both rollups, paginated) | commit `status` → combined state; `/statuses` → statuses; last pipeline's JOBS → check-runs. External status checks are MR-scoped and stay for the Ultimate lane | implemented |
+| 6 | `IssueReactions(repo, number)` | read reactions/awards | `deskpost` `IssueReactions` / `deskkit.HTTPRepoInfoFetcher` (squirrel-girl, single page) | award emoji, with names mapped to GitHub's reaction vocabulary and the human/bot discriminator resolved from the users API (never defaulted) | implemented |
+| 7 | `RepoVisibility(repo)` | repo visibility gate | `deskpost` `RepoVisibility` / `deskkit.HTTPRepoInfoFetcher` (`GET /repos/{o}/{r}`) | `GET /projects/:id` `.visibility` (`internal` passes through) | implemented |
+| 8 | `CreateDraftChange(repo, in)` | create draft change | `deskpr` `gh pr create --draft` → REST `POST /pulls` `draft:true` | `Draft:` MR (`POST /merge_requests`), refused if it does not come back marked draft | implemented |
+| 9 | `PostComment(repo, number, body)` | comment | `deskpost` `postComment` (`POST /issues/{n}/comments`) | MR/issue note, routed by the same kind resolution as op 2 | implemented |
+| 10 | `PostReview(repo, number, in)` | approve/review | `deskpost` `postReview` (`POST /pulls/{n}/reviews`, head-pinned) | note first, then `POST /approve` with `sha` (server-validated); REQUEST_CHANGES = note + unapprove | implemented |
+| 11 | `MarkReadyForReview(nodeID)` | flip draft | `deskpost` `markReadyForReview` (GraphQL mutation) | clear the `Draft:` prefix via `PUT`; the node id is the backend-minted `gitlab:<owner>/<name>!<iid>` | implemented |
+| 12 | `FileIssue(repo, in)` | file issue | `deskfile` `gh issue create` → REST `POST /issues` | `POST /projects/:id/issues` | implemented |
+| 13 | `CloseIssue(repo, number, reason)` | close issue | `deskclose`/`deskfile` `gh issue close` → REST `PATCH /issues/{n}` `state:closed` | `PUT /issues/:iid` `state_event:close`; the reason has no GitLab field and is recorded as a note | implemented |
+| 14 | `PushTransportHint(repo)` | push-transport hints | `x-access-token` https + inline credential.helper (no token-in-URL) | `oauth2` username + inline credential.helper, host from the configured instance | implemented |
 
 ## Per-tool call-site inventory (current state)
 
@@ -94,6 +99,20 @@ These are NOT rewired in brief 01 — see delta D1.
   beyond what a shipping tool consumes — they are the reconciliation the brief's task 2 asks for.
 
 ## Golden corpus
+
+### gitlab (brief 02)
+
+`forge_gitlab_test.go` (`TestForgeGitlabGolden`) pins the GitLab backend the same way — request
+method, ESCAPED path, query, write bodies, `X-Next-Page` pagination, result mapping and error
+classification, one golden per scenario. `TestForgeGitlabCoverage` is the reconciliation: it
+measures the corpus against the frozen `Forge` interface (by reflection) AND against this
+document's method-set table, and fails naming any operation with no case. `TestForgeGitlabTierErrors`
+holds the three-state surface — 401/403/404 each arrive as a `could-not-check` refusal carrying a
+`ForgeAPIError`, never as an empty result. `forge-gitlab-mutations.json` is the re-runnable
+`muhar` spec for the mappings that would otherwise fail silently (`go run ./cmd/muhar -j 0 -spec
+internal/deskkit/forge-gitlab-mutations.json` from `tools/desk`).
+
+### github (brief 01)
 
 `forge_github_golden_test.go` (`TestForgeGithubGolden`) pins 17 operations — request
 method/path/query, write bodies, pagination (`per_page=100`, multi-page walk, short-page stop),

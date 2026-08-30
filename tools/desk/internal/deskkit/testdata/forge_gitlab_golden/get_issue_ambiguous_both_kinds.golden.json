@@ -1,0 +1,15 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/9"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/9"
+    }
+  ],
+  "result": null,
+  "err": "could-not-check: medici-finance/assay carries BOTH issue #9 and merge request !9 — GitLab numbers issues and merge requests in separate sequences, so a bare number cannot be resolved to one kind; use the typed operation for the kind you mean",
+  "not_found": false
+}
