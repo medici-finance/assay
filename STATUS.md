@@ -26,6 +26,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| quality | 07 — M2 B-SZZ inducing trace + derived defect metrics [exec:strong] | 2 | 4500 |
 | derived-board | 05 — desk skills: reference the brief, never flip the cell (both copies) | 1 | 2500 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
 
@@ -33,7 +34,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (47 desk-actionable of 48 total — 37 at implemented, 11 verified awaiting review)
+## Awaiting verification / review (47 desk-actionable of 48 total — 35 at implemented, 13 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -45,7 +46,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | quality | 01 [exec:strong] | verified | 8000 | 14 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
-| quality | 06 | implemented | 5000 | 8 | — | — | — |
+| quality | 06 | verified | 5000 | 8 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | derived-board | 01 [exec:strong] | verified | 4500 | 5 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | derived-board | 02 | verified | 4500 | 5 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | desktools-go-git | 01 | verified | 4500 | 7 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
@@ -64,7 +65,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | quality | 03 | implemented | 3000 | 4 | — | — | — |
 | forge-gitlab | 03 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 2500 | 3 | — | — | — |
-| quality | 04 | implemented | 2500 | 3 | — | — | — |
+| quality | 04 | verified | 2500 | 3 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | harness-portability | 06 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | iso-9001 | 02 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -205,9 +206,9 @@ _None._
 - 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — verified (wave 0)
 - 02 M1 line-operation taxonomy + churn/rework rate — verified (wave 1)
 - 03 M1 hotspots + knowledge distribution (SPOF) + change coupling — implemented (wave 1)
-- 04 M1 instruction-layer brittleness (reference-validity + doc↔code drift) — implemented (wave 1)
+- 04 M1 instruction-layer brittleness (reference-validity + doc↔code drift) — verified (wave 1)
 - 05 `QUALITY.md` single-writer trend view + metrics artifacts — todo (wave 2)
-- 06 M2 fix identification — pluggable linkage adapter + evidence tiers — implemented (wave 1)
+- 06 M2 fix identification — pluggable linkage adapter + evidence tiers — verified (wave 1)
 - 07 M2 B-SZZ inducing trace + derived defect metrics — todo (wave 2)
 - 08 `pr <n>` mode — per-file risk features (generic riskscore feed) — todo (wave 3)
 - 09 `check <files>` mode — brittleness screen for a named file set — todo (wave 2)
