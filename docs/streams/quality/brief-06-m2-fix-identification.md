@@ -112,6 +112,21 @@ facts:
      (command, exit code, output line(s) or hash, date, runner). "verified" in the stream
      README requires this section filled by someone who did NOT implement. -->
 
+Independently verified 2026-08-30 by opus-4.8[1m]-verifier (verify-desk, non-implementer) against merged head b506390d (Merge PR #240). Offline envelope (KUBECONFIG=/dev/null). VERIFY: PASS 7/7 (6/7 as-written; row 7 rotted-table — deliverable intact). Deliverables present: qualgen/fixlinkage.go(+test), qualgen/adapters/githublabels.go(+test), qualgen/testdata/fixid/planted.json.
+
+| # | Command | Exit | Output | Date · Runner |
+|---|---------|------|--------|---------------|
+| 1 | cd qualgen && go build ./... && go vet ./... | 0 | clean | 2026-08-30 · opus-4.8[1m]-verifier |
+| 2 | go test -run FixLinkage; -run GithubLabels | 0 | ok qualgen; ok qualgen/adapters | 2026-08-30 · opus-4.8[1m]-verifier |
+| 3 | go test -run TestFixID_TierPrecedence_PlantedFixtures -v | 0 | PASS — tier1 defect-labeled-issue-closer, tier2 fix-branch-and-title, tier3 keyword-only; exact planted tiers dereferenced | 2026-08-30 · opus-4.8[1m]-verifier |
+| 4 | go test -run TestFixID_TierComposition_Reported -v | 0 | PASS — known 1/1/1 split, tier-3 separate | 2026-08-30 · opus-4.8[1m]-verifier |
+| 5 | go test -run TestFixID_NonFixNotClassified -v | 0 | PASS — non-fix not recorded; unresolvable → could-not-identify | 2026-08-30 · opus-4.8[1m]-verifier |
+| 6 | go test -run TestDefectFix_RecordContract_ForSZZ -v | 0 | PASS — round-trip fix identity / closed-issue ref / tier / three-state flag | 2026-08-30 · opus-4.8[1m]-verifier |
+| 7 | grep -c 'interface' fixlinkage.go (re-baselined from `qualgen/fixlinkage.go` — the `cd qualgen &&` prefix double-nested the path) | 0 | 4 — LinkageAdapter + IssueLabelSource interfaces present (fixlinkage.go:75) | 2026-08-30 · opus-4.8[1m]-verifier — rotted-table, deliverable present |
+
+RISK-VALUE: DERIVED — DefaultDefectLabels = {"bug","defect","incident"} @ qualgen/adapters/githublabels.go:50 — matches spec §5.1 tier-1 definition verbatim; a generic default merged (never replaced) with any per-target lane via NewGithubLabels(source, extra...), no internal identifier hardcoded; reversible. Other literals (closedIssuePattern, fixKeywordPattern, taxonomy prefixes) are reversible pattern config, rank below; the evidence tiers are a precedence ordering (1>2>3), not a numeric cutoff.
+gate: model, all risk no, irreversible: no — desk flips implemented→verified; verified→done stays CI's on the reviewer approval. Row 7's command-path typo is a brief-authoring nit (a reviewer/author fix), not a deliverable defect.
+
 ## Review
 Gate: model (all four risk answers no — repo-agnostic OSS read-only linkage analysis behind a
 pluggable adapter; a generic configured issue-label source, no internal identifiers hardcoded; no
