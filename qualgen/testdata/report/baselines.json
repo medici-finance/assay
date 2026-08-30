@@ -1,0 +1,16 @@
+{
+  "copy_paste_ratio": {
+    "value": {"state": "measured", "value": 0.10},
+    "source": "GitClear published definitions",
+    "window_note": "illustrative fixture baseline (definition-matched for the test)"
+  },
+  "duplicate_block_rate": {
+    "value": {"state": "measured", "value": 0.02},
+    "source": "GitClear published definitions"
+  },
+  "churn_rate": {
+    "value": {"state": "measured", "value": 0.07},
+    "source": "GitClear code churn",
+    "window_note": "2-week window = local 14-day window — directly comparable"
+  }
+}

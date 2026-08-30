@@ -42,7 +42,7 @@ decision, not code in this stream.
 | 02 | [M1 line-operation taxonomy + churn/rework rate](brief-02-m1-taxonomy-churn.md) | 1 | M | verified | 2026-08-30 opus-4.8[1m]-verifier | — |
 | 03 | [M1 hotspots + knowledge distribution (SPOF) + change coupling](brief-03-m1-hotspots-coupling.md) | 1 | M | verified | 2026-08-30 opus-4.8[1m]-verifier | — |
 | 04 | [M1 instruction-layer brittleness (reference-validity + doc↔code drift)](brief-04-m1-instruction-brittleness.md) | 1 | M | verified | 2026-08-30 opus-4.8[1m]-verifier | — |
-| 05 | [`QUALITY.md` single-writer trend view + metrics artifacts](brief-05-quality-view-artifacts.md) | 2 | M | todo | — | — |
+| 05 | [`QUALITY.md` single-writer trend view + metrics artifacts](brief-05-quality-view-artifacts.md) | 2 | M | implemented | — | — |
 | 06 | [M2 fix identification — pluggable linkage adapter + evidence tiers](brief-06-m2-fix-identification.md) | 1 | M | verified | 2026-08-30 opus-4.8[1m]-verifier | — |
 | 07 | [M2 B-SZZ inducing trace + derived defect metrics](brief-07-m2-szz-trace-metrics.md) | 2 | L | todo | — | — |
 | 08 | [`pr <n>` mode — per-file risk features (generic riskscore feed)](brief-08-pr-riskscore-features.md) | 3 | M | todo | — | — |

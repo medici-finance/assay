@@ -107,6 +107,13 @@ type DefectFix struct {
 	ClosedIssue  *IssueRef     `json:"closed_issue,omitempty"`
 	Tier         EvidenceTier  `json:"tier,omitempty"`
 	Identified   Measure[bool] `json:"identified"`
+	// Confidence is the three-state trace confidence declared by quality/05 for
+	// the defects.jsonl schema (spec §9.4): how strongly the fix→inducing trace
+	// holds, distinct from Tier (which classifier rung matched). quality/07's
+	// B-SZZ trace populates it; it is a pointer so a record that predates a
+	// confidence (quality/06 emits tier alone) omits the field and round-trips
+	// byte-for-byte. A could-not-measure confidence is never rounded to zero.
+	Confidence *Measure[float64] `json:"confidence,omitempty"`
 }
 
 // ClassifyFix runs the three-tier precedence classifier (spec §5.1) for one
