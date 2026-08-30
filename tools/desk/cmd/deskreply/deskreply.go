@@ -151,6 +151,17 @@ func cmdReply(args []string) (err error) {
 	}, deskkit.BodyCheck(body)); serr != nil {
 		return serr
 	}
+	// #203: the PUBLIC-REPO SELF-CONTAINMENT scan, on the same body and through the same
+	// audited-override path. A no-op on a known-private repo and on an unconfigured roster
+	// (deskkit.SelfContainApplies). The PR number is the offline reference point for the
+	// bare-`#N` heuristic — a reply's own PR is by construction a number this repo owns.
+	if serr := deskkit.HandleScanRefusal(deskkit.ScanOverride{
+		Tool: "deskreply", Verb: "reply", Repo: repo, PR: &pr, Reason: *scanOverride,
+		Surface: deskkit.SurfaceBodyPublic, Content: body,
+	}, deskkit.SelfContainCheck("reply body", body,
+		deskkit.SelfContainOpts{Repo: repo, NumberHint: pr})); serr != nil {
+		return serr
+	}
 	ac.bodyDigest = deskkit.Sha256Hex(body)
 
 	// This must be the worker's OWN PR. Establish the worktree facts, then

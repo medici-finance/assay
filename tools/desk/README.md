@@ -187,6 +187,16 @@ branch name, body, and for `deskpr create` the diff against the default branch. 
 exit 5. It also refuses a body that claims a named human's ruling, because no desk write
 path ever posts as a human.
 
+When the target repo is not known-private, `deskpr create`, `deskpost` and `deskreply`
+additionally run `deskkit.SelfContainCheck` (`internal/deskkit/selfcontain.go`) over the
+body: a text free of credentials can still carry a private repo name, a cross-repo ref
+that only resolves internally, an absolute path off the author's machine, a session or
+agent id, a scratch worktree name, or an identifier out of an unpublished register. An
+unambiguous span is exit 5 through the same audited `--force-scan-override`; an ambiguous
+one (a bare `#N`, a short name that is also an ordinary word, an unconfigured withheld set)
+is a stderr NOTICE and does not block. **The categories are enumerated in exactly one
+place — `deskpr --help` — and are deliberately not repeated here or in the skill text.**
+
 Rehearse where you can. The verbs that carry `--dry-run` (`deskpost`, `deskrelease`) run
 every check and stop before the write, auditing `result=dryrun` — invisible to both
 meters, and it never suppresses the real write afterwards.
