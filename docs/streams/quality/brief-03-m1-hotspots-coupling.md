@@ -113,6 +113,23 @@ defense-in-depth obligation does not apply.
      (command, exit code, output line(s) or hash, date, runner). "verified" in the stream
      README requires this section filled by someone who did NOT implement. -->
 
+Independently verified 2026-08-30 by opus-4.8[1m]-verifier (verify-desk, non-implementer) against merged head b506390d (Merge PR #240). Offline envelope (KUBECONFIG=/dev/null). VERIFY: PASS 7/7 as-written (no re-baseline needed); zero could-not-check. Deliverables present: qualgen/hotspot.go, ownership.go, coupling.go (+ each _test.go).
+
+| # | Command | Exit | Output | Date · Runner |
+|---|---------|------|--------|---------------|
+| 1 | cd qualgen && go build ./... && go vet ./... | 0 | clean | 2026-08-30 · opus-4.8[1m]-verifier |
+| 2 | go test -run TestHotspotIsProductNotFactor | 0 | PASS — product outranks single-factor file | 2026-08-30 · opus-4.8[1m]-verifier |
+| 3 | go test -run TestIndentationComplexityProxy | 0 | PASS — deeper nesting → strictly higher proxy at equal line count | 2026-08-30 · opus-4.8[1m]-verifier |
+| 4 | go test -run TestBusFactorConcentration | 0 | PASS +4 subtests — single-owner→bf 1, even-share→higher, role-SPOF surfaces, deletions reduce surviving-line ownership, package grain | 2026-08-30 · opus-4.8[1m]-verifier |
+| 5 | go test -run TestMissingCouplingPartner | 0 | PASS — co-pair flagged coupled; A-not-B raises missing-partner; independent raises neither | 2026-08-30 · opus-4.8[1m]-verifier |
+| 6 | go test -run TestComplexityUnmeasurableIsThreeState | 0 | PASS — binary→could-not-measure+reason; unchanged→measured-zero; not conflated | 2026-08-30 · opus-4.8[1m]-verifier |
+| 7 | go run . mine --repo .. --out TMP; grep hotspot row for "path" | 0 | 607 commits, 1499 hotspot rows; sample carries real path + change_frequency/complexity_proxy/hotspot all state:measured | 2026-08-30 · opus-4.8[1m]-verifier |
+
+RISK-VALUE: DERIVED — DefaultBusFactorThresholdPct = 50.0 @ qualgen/ownership.go:12 — K=50% is the canonical majority/truck-factor threshold (bus factor = min identity/role set owning a strict majority of surviving lines; spec §4.4 "> K%"). Correct; configurable per call.
+RISK-VALUE: DERIVED — DefaultCouplingMinRatio = 0.5 (guard DefaultCouplingMinCoChanges = 2) @ qualgen/coupling.go:13-14 — pair coupled when co-changes >= 50% of the rarer file's change count, >=2 co-changes to reject single-coincidence; code-maat/Tornhill strong-coupling region. Defensible; configurable.
+RISK-VALUE: DERIVED — DefaultHotspotHalfLifeDays = 90.0 @ qualgen/hotspot.go:12 — 90-day (~one quarter) half-life for decayed change-frequency; standard recency scale; monotonic-decay behavior (row 2) drives the score. Configurable. (DefaultMaxFilesPerCommit=30 + indent normalization rank last: reversible noise/scale knobs.)
+gate: model, all risk no, irreversible: no — desk flips implemented→verified; verified→done stays CI's on the reviewer approval.
+
 ## Review
 Gate: model (all four risk answers no — read-only aggregation over quality/01's artifacts,
 writing only to the tracking root; no funds/auth/ledger surface). Reviewer records verdict +
