@@ -696,6 +696,17 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 		shortSHA = shortSHA[:7]
 	}
 	w("<div class=\"subtitle\">Generated %s UTC · commit <code>%s</code></div>", now.Format("2006-01-02 15:04"), shortSHA)
+	// Cadence overlay (statusgen/13): brand wordmark + the closed reporting
+	// window this deck is scoped to. Absent when rendering the point-in-time deck.
+	if activeCadence != nil {
+		cad := activeCadence
+		if cad.Brand.Wordmark != "" {
+			w("<div class=\"subtitle\"><strong>%s</strong></div>", htmlEscape(cad.Brand.Wordmark))
+		}
+		w("<div class=\"subtitle\">%s window <code>%s</code> · %s → %s (closed window)</div>",
+			htmlEscape(cad.Cadence), htmlEscape(cad.Label),
+			cad.Start.Format("2006-01-02"), cad.End.Format("2006-01-02"))
+	}
 
 	// --- Portfolio stage-stacked bar ---
 	w("<div class=\"section\">")
@@ -823,6 +834,44 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 	}
 	w("</div>")
 
+	// --- Cadence window section (statusgen/13) ---
+	// Overlaid only on a cadence run: the window churn count (briefs opened AND
+	// closed inside the window), the monthly's effort-mix ranked by the
+	// configured priority order + its revenue-vs-supporting-tier callout, and any
+	// unmapped-theme markers. All are empty/absent on the point-in-time deck.
+	if activeCadence != nil {
+		cad := activeCadence
+		w("<div class=\"section\">")
+		w("<h2>Reporting Window (%s %s)</h2>", htmlEscape(cad.Cadence), htmlEscape(cad.Label))
+		w("<div class=\"bar-label\">%d briefs opened and closed within the window</div>", cad.Churn)
+		if len(cad.EffortMix) > 0 {
+			w("<h2 style=\"margin-top:16px;\">Effort Mix</h2>")
+			w("<div class=\"goal-mix\">")
+			for _, e := range cad.EffortMix {
+				label := e.Label
+				tier := e.Tier
+				if tier == "" {
+					tier = "unranked"
+				}
+				w("<div class=\"goal-card\"><div class=\"label\">%s · %s</div><div class=\"counts\">%d<span> in-progress</span></div></div>",
+					htmlEscape(label), htmlEscape(tier), e.Active)
+			}
+			w("</div>")
+		}
+		if cad.RevSup != "" {
+			w("<div class=\"inversion\">⚠ %s</div>", htmlEscape(cad.RevSup))
+		}
+		if len(cad.Themes) > 0 {
+			w("<h2 style=\"margin-top:16px;\">Theme Markers</h2>")
+			w("<div class=\"exceptions-strip\">")
+			for _, t := range cad.Themes {
+				w("<div class=\"exc amber\">%s</div>", htmlEscape(t))
+			}
+			w("</div>")
+		}
+		w("</div>")
+	}
+
 	// --- Stream grid ---
 	w("<div class=\"section\">")
 	w("<h2>Streams</h2>")
@@ -919,7 +968,12 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 
 // --- Entry point ---
 
-func runRoadmap(root string) int {
+// runRoadmap renders the roadmap deck. cadence == "" is the point-in-time
+// `--roadmap` (unchanged, output docs/reports/roadmap/index.html). cadence ==
+// "weekly"|"monthly" (statusgen/13) re-renders the SAME skeleton over the prior
+// complete ISO week / calendar month, scopes transition/exception accounting to
+// that closed window, and writes to docs/reports/<cadence>/<window>/.
+func runRoadmap(root, cadence string) int {
 	// loadHydratedStreams (not bare loadStreams + attachPlaceholders): the
 	// roadmap deck scores its Next-up panel with the same nextUp() the STATUS.md
 	// write path uses and gates its critical-path candidates on Brief.Depends,
@@ -967,6 +1021,26 @@ func runRoadmap(root string) int {
 		now = nowFunc()
 	}
 	now = now.UTC()
+
+	// Cadence overlay (statusgen/13). When a cadence is requested, compute the
+	// closed window from wall-clock now (the window is "the week/month that just
+	// closed", independent of the historian's latest entry), scope the health,
+	// delta and exception accounting to the window END, and set the package var
+	// the renderer overlays its cadence sections from. Saved/restored so the var
+	// never leaks across a process or across tests (same pattern as
+	// activeDriveSet). cadenceOutDir switches the output tree below.
+	cadenceOutDir := ""
+	if cadence != "" {
+		cv, _, end, cerr := buildCadenceView(root, cadence, streams, history, nowFunc().UTC())
+		if cerr != nil {
+			fmt.Fprintln(os.Stderr, "statusgen:", cerr)
+			return 1
+		}
+		now = end // scope transition/exception accounting to the closed window
+		activeCadence = cv
+		defer func() { activeCadence = nil }()
+		cadenceOutDir = filepath.Join(root, "docs", "reports", cadence, cv.Label)
+	}
 
 	// Build sorted stream list.
 	sorted := make([]*Stream, len(streams))
@@ -1045,8 +1119,12 @@ func runRoadmap(root string) int {
 	headerNow := nowFunc().UTC()
 	html := renderRoadmap(streams, rows, exceptions, goals, inverted, invertMsg, nu, ladder, findings, sha, headerNow)
 
-	// Write output.
+	// Write output. Cadence runs write their own docs/reports/<cadence>/<window>/
+	// tree; the point-in-time deck keeps docs/reports/roadmap/.
 	outDir := filepath.Join(root, "docs", "reports", "roadmap")
+	if cadenceOutDir != "" {
+		outDir = cadenceOutDir
+	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen:", err)
 		return 1
