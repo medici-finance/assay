@@ -17,10 +17,18 @@ domain-neutral, project skills carry a domain token; descriptions are triggers o
 | install | `assay:install` | Turnkey installer — invoke → self-installs the whole project setup (Unix-first) |
 | adopt | `assay:adopt` | Install/adopt runbook — scenario routing + PRIMITIVEs the turnkey installer wraps |
 | author-brief | `assay:author-brief` | Brief authoring methodology (portable core) |
+| ask-decision | `assay:ask-decision` | Puts the pending human decisions to the driver one at a time — context, options with a recommended default, reply shape, verification — and relays each ruling back onto its issue |
 
 These are the portable, domain-neutral methodology skills every Assay bundle ships. A project
 authoring its own project-local skills follows the same naming convention above and keeps them in
 the repo's own `.claude/skills/`.
+
+`ask-decision` is the one any of the five desk roles below may invoke: it is how a desk that has
+accumulated human gates hands them over, one at a time, instead of narrating them. It carries the
+presentation and relay contract only — the escalation-label vocabulary and the close authority stay
+where they already live, in `intake-desk` and `the-desk`. It shares its rendering with the
+[`assay:inbox`](../commands/inbox.md) command's `--walk` and `--html` modes, so the skill, the
+terminal and the page cannot state the queue differently.
 
 ## The desk-role skills
 

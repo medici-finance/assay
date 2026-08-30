@@ -29,6 +29,7 @@ sources:
 exec-tier: strong
 exec-tier-why: "end-to-end cross-component verification on a live system (question b); parity judgments require reasoning beyond the runbook."
 domain: complex
+tier: free
 ---
 
 # Brief 05 — live pilot + parity walk
@@ -53,6 +54,24 @@ facts:
   tier is recorded as failed-at-tier with the Ultimate remediation named — never
   waved through.
 - Rotate-on-mint verified live: mint twice, prove the first token is rejected.
+
+## Edition
+Minimum GitLab tier: **free** (Community Edition) to run the pilot. The whole round trip the
+pilot drives — worker `Draft:` MR, reviewer approval, human merge, verifier Evidence commit,
+board regeneration by the single-writer identity, rotate-on-mint proved live — uses Free-tier
+operations only (edition-matrix.md table A). A CE pilot is therefore the cheapest way to prove
+the tooling, and it no longer needs a paid trial clock.
+
+What degrades on CE, and what the pilot must record rather than wave through: the parity walk
+rows that are tier-gated — single board-writer on `main` (Premium), required approvals and
+prevent-author approval (Premium), audit events (Premium), external status checks and custom
+roles (Ultimate). On a CE pilot each of those is recorded as failed-at-tier with the named
+remediation, exactly as the brief already requires; that is not a pilot failure, it is the
+pilot producing the evidence the ruling in edition-matrix.md's "Residual gaps" needs.
+
+Consequence for the Human decision below: option 1's paid-trial framing is no longer forced. A
+CE or unlicensed-EE instance is a legitimate fourth option that proves the tooling lane and
+leaves the two Premium parity rows as recorded gaps.
 
 ## Human decision
 The GitLab pilot needs a real group and an owner credential. Decide which to use.

@@ -511,6 +511,19 @@ func nonProbingVerbs() []nonProbingVerb {
 		{verb: "policydrift", args: []string{"policydrift"}, setup: func(t *testing.T) {
 			t.Setenv("DESKBOARD_GH_PUBLIC_REPOS", strings.Join(publicRepos(), " "))
 		}},
+		// throughput reuses cmdActions for its review depth, and cmdActions DOES probe
+		// branch health — but into a COPY of the header (`ahdr := hdr`), deliberately, so
+		// the throughput report never carries a mainHealth of its own. That is the right
+		// split: main-red is a different signal, already carried by `actions` and `health`,
+		// and a depth/slot ratio that quietly bundled it would be a second place a desk
+		// could read branch health from. This entry is what holds the copy in place — take
+		// the copy away and the field rides out on the throughput header, and this fails.
+		{verb: "throughput", args: []string{"throughput"}, setup: func(t *testing.T) {
+			installFakeStatusgen(t)
+			twoRoots(t)
+			prList(t)
+			t.Setenv("DESKBOARD_GH_PUBLIC_REPOS", strings.Join(publicRepos(), " "))
+		}},
 		{verb: "reviews", args: []string{"reviews", repo, "1"}, setup: prList},
 		{verb: "diff", args: []string{"diff", repo, "1"}, setup: prList},
 		{verb: "files", args: []string{"files", repo, "1"}, setup: prList},

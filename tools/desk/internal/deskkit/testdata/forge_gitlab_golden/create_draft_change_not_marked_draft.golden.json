@@ -1,0 +1,17 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests",
+      "body": {
+        "title": "Draft: t",
+        "description": "b",
+        "source_branch": "feat/x",
+        "target_branch": "main"
+      }
+    }
+  ],
+  "result": null,
+  "err": "could-not-check: created merge request !23 in medici-finance/assay did not come back marked draft (title \"t\") — the Draft: prefix is GitLab's only draft mechanism and it did not take",
+  "not_found": false
+}

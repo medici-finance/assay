@@ -25,13 +25,28 @@ live GitHub PR state and dispatch claims for a full "who owns what" view.
 
 USAGE:
   deskroster set   --repo R --pr N --what "..." [--role "..."] [--session NAME]
+  deskroster set   --role LOOP --width N
   deskroster drop  --repo R --pr N [--session NAME]
   deskroster list
   deskroster mine  [--session NAME]
+  deskroster width --role LOOP [--verbose]
   deskroster repos [--scope write|scan|topology|all]
   deskroster apps
   deskroster preflight --role R [--root DIR] [--repo OWNER/NAME] [--remote NAME] [--branch NAME]
   deskroster --version
+
+"width" is the agent-pool size of one desk LOOP — how many subagents that window
+runs concurrently. It is the knob the coordinator moves when "deskboard throughput"
+names a stage as the bottleneck, and the value that loop re-reads every tick.
+Widths are bounded: a width the role's write budget or the shared App token's
+concurrency ceiling cannot carry is REFUSED (exit 5) naming the maximum it will
+accept, and a tripped circuit breaker pins the width at what is already in flight
+until it clears. Widening is never a way to buy budget.
+
+A set width DECAYS: it is honoured for one hour and then the loop reads its shipped
+default again, so a coordinator that died cannot leave a pool permanently wide.
+Defaults live in ONE place (internal/deskkit/width.go) — the skill bodies point at
+that table rather than stating a number that could drift from it.
 
 "repos" and "apps" PRINT THE LIVE SETS the tools actually use, so a skill, a
 runbook or a session can READ them instead of carrying its own list. Carrying a
@@ -106,6 +121,8 @@ func run(args []string) int {
 		err = cmdRepos(rest)
 	case "apps":
 		err = cmdApps(rest)
+	case "width":
+		err = cmdWidth(rest)
 	case "preflight":
 		err = cmdPreflight(rest)
 	default:
