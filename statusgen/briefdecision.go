@@ -4,9 +4,9 @@ package main
 // "needs-decision" GitHub-issue queue — "the canonical decision-queue
 // definition (the same one the anti-starvation floor work relies on)" (brief-
 // 07 facts). decisionLabel (decisionissues.go: "needs-decision") IS that
-// canonical definition already: it is the one label --decision-issues emits
-// and the one CLAUDE.md's escalation vocabulary names, so this file reuses the
-// constant rather than re-declaring the queue.
+// canonical definition already: it is the one label --decision-issues emits and
+// the one the escalation vocabulary reserves for a human fork, so this file
+// reuses the constant rather than re-declaring the queue.
 //
 // REUSE: aggregateSeconds + doraTimingMetric (doratiming.go) already implement
 // exactly the p50/p90-with-honest-could-not-check shape latency needs; this
@@ -119,7 +119,7 @@ func runDecisionLatency(root, since, until string, asJSON bool, src decisionQueu
 	}
 	rep := bfDecisionLatencyReport{Generated: now.UTC().Format(time.RFC3339), Window: bfWindowJSON(sinceT, untilT)}
 
-	repo := doraTargetRepo(root)
+	repo := bfResolveTarget("decision-latency", root)
 	if repo == "" {
 		rep.State = "could-not-check"
 		return finishDecisionLatency(rep, asJSON)

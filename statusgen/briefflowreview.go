@@ -235,7 +235,7 @@ func runReviewRework(root, since, until string, asJSON bool, src bfPRSource) int
 		return 1
 	}
 	rep := bfReviewReworkReport{Generated: now.UTC().Format(time.RFC3339), Window: bfWindowJSON(sinceT, untilT), Distribution: map[string]int{}}
-	repo := doraTargetRepo(root)
+	repo := bfResolveTarget("review-rework", root)
 	if repo == "" {
 		rep.State = "could-not-check"
 		return finishReviewRework(rep, asJSON)
@@ -353,7 +353,7 @@ func runFirstPassYield(root, since, until string, asJSON bool, src bfPRSource) i
 		}
 	}
 
-	repo := doraTargetRepo(root)
+	repo := bfResolveTarget("first-pass-yield", root)
 	if repo == "" {
 		rep.State = "could-not-check"
 		return finishFirstPass(rep, asJSON)

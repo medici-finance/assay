@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // --- resolveBFWindow ---------------------------------------------------------
@@ -316,5 +317,84 @@ func TestComputeNetFlowNo_StreamsIsCouldNot_Check(t *testing.T) {
 	rep := computeNetFlow(nil, nil, mustTime(t, "2026-08-01T00:00:00Z"), mustTime(t, "2026-08-20T00:00:00Z"), mustTime(t, "2026-08-20T00:00:00Z"))
 	if rep.State != "could-not-check" {
 		t.Errorf("state = %q, want could-not-check", rep.State)
+	}
+}
+
+// --- no-default-probe: the gh-reading modes announce their target ------------
+
+// countingPRSource is a bfPRSource that reaches no network — it records that it
+// was called so a test can assert the announcement came FIRST.
+type countingPRSource struct{ calls int }
+
+func (s *countingPRSource) MergedPRs(repo string, since time.Time) ([]bfPRRecord, error) {
+	s.calls++
+	return nil, nil
+}
+func (s *countingPRSource) Reviews(repo string, pr int) ([]ghReview, error) { return nil, nil }
+
+// TestBFResolveTarget_Announces: bfResolveTarget must name the repo it resolved,
+// on STDERR, before the caller makes contact. These modes resolve their target
+// implicitly ($GITHUB_REPOSITORY, git remote, gh default), so an opt-in flag on
+// its own still leaves an operator run from the wrong directory unable to tell
+// WHICH repo's queue was read. Stderr, not stdout, because each mode also has a
+// --json shape an announcement would corrupt.
+func TestBFResolveTarget_Announces(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "example-org/example-repo")
+	var got string
+	errOut := captureStderr(t, func() { got = bfResolveTarget("decision-latency", t.TempDir()) })
+	if got != "example-org/example-repo" {
+		t.Fatalf("resolved repo = %q, want the env target", got)
+	}
+	if !strings.Contains(errOut, "decision-latency") {
+		t.Errorf("announcement must name the MODE that reached the network:\n%s", errOut)
+	}
+	if !strings.Contains(errOut, "example-org/example-repo") {
+		t.Errorf("announcement must name the resolved TARGET:\n%s", errOut)
+	}
+}
+
+// TestBFResolveTarget_Unresolved: an unresolvable target is announced too. The
+// caller turns it into could-not-check, and a SILENT could-not-check reads as
+// "nothing found" rather than "nowhere to look".
+func TestBFResolveTarget_Unresolved(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "")
+	// A bare temp dir has no git remote, and an emptied PATH means the
+	// `gh repo view` fallback cannot resolve one either — so the no-target
+	// branch is reachable in every environment, not just an unauthenticated one.
+	t.Setenv("PATH", "")
+	var got string
+	errOut := captureStderr(t, func() { got = bfResolveTarget("review-rework", t.TempDir()) })
+	if got != "" {
+		t.Fatalf("resolved repo = %q, want empty (no target resolvable)", got)
+	}
+	if !strings.Contains(errOut, "review-rework") || !strings.Contains(errOut, "could-not-check") {
+		t.Errorf("an unresolved target must be announced as could-not-check:\n%s", errOut)
+	}
+}
+
+// TestRunModesAnnounce_BeforeContact: the gh-reading run functions print their
+// target BEFORE the first source call — the disclosure is at contact time, not
+// merely somewhere in the run. --first-pass-yield shares the same helper but
+// needs a hydrated root, so it is covered by the helper tests above.
+func TestRunModesAnnounce_BeforeContact(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "example-org/example-repo")
+	dir := t.TempDir()
+
+	dq := &countingDecisionSource{}
+	out := captureStderr(t, func() { runDecisionLatency(dir, "2026-08-01", "2026-08-20", true, dq) })
+	if !strings.Contains(out, "decision-latency: querying example-org/example-repo") {
+		t.Errorf("decision-latency did not announce its target on stderr:\n%s", out)
+	}
+	if dq.calls == 0 {
+		t.Error("decision-latency never reached its source — the announcement was not at contact time")
+	}
+
+	pr := &countingPRSource{}
+	out = captureStderr(t, func() { runReviewRework(dir, "2026-08-01", "2026-08-20", true, pr) })
+	if !strings.Contains(out, "review-rework: querying example-org/example-repo") {
+		t.Errorf("review-rework did not announce its target on stderr:\n%s", out)
+	}
+	if pr.calls == 0 {
+		t.Error("review-rework never reached its source — the announcement was not at contact time")
 	}
 }

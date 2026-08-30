@@ -76,6 +76,34 @@ func resolveBFWindow(since, until string, now time.Time) (sinceT, untilT time.Ti
 	return sinceT, untilT, nil
 }
 
+// bfResolveTarget resolves the repo a gh-reading brief-flow mode is about to
+// query and ANNOUNCES it before first contact, mirroring the --dora-timing
+// record path's "dora-timing: recording for <repo>" line (doratiming.go).
+//
+// No-default-probe: these modes resolve their target implicitly ($GITHUB_REPOSITORY,
+// then the git remote, then gh's default repo), so run from the wrong directory they
+// would otherwise query a DIFFERENT repo's queue with nothing in the output naming
+// which one was hit. The mode is behind an explicit flag, but an opt-in that does not
+// disclose its target still leaves the operator unable to tell a real zero from a
+// zero read off the wrong repo.
+//
+// The line goes to STDERR, not stdout, because every one of these modes also has a
+// --json shape: an announcement on stdout would corrupt the document. An unresolvable
+// target is announced too — the caller turns that into could-not-check, and a silent
+// could-not-check reads as "nothing found" rather than "nowhere to look".
+//
+// mode is the flag's own name (e.g. "decision-latency") so the line names which mode
+// reached the network.
+func bfResolveTarget(mode, root string) string {
+	repo := doraTargetRepo(root)
+	if repo == "" {
+		fmt.Fprintf(os.Stderr, "%s: no target repo resolved ($GITHUB_REPOSITORY, git remote, gh default all unset) — could-not-check\n", mode)
+		return ""
+	}
+	fmt.Fprintf(os.Stderr, "%s: querying %s\n", mode, repo)
+	return repo
+}
+
 // bfWindowJSON renders a resolved window the same shape as --dora-timing
 // (doraTimingWindow, doratiming.go) — one window shape across every brief-flow
 // emitter.
