@@ -6,7 +6,7 @@
 //
 // The house-value half is deliberately wider than the other two: the references
 // and READMEs under plugins/ are as adopter-facing as a skill body, and a
-// resolved house value used to pass lint by sitting in one (assay#236/#238).
+// resolved house value used to pass lint by sitting in one (#236, #238).
 // See README.md and each file's header for what it checks and why.
 //
 //	go run ./tools/skillslint                 # lint the plugin tree under the cwd
@@ -55,7 +55,7 @@ func main() {
 
 	// The unresolved-house-value check reads the WHOLE plugin tree, not just the
 	// skill homes above: a resolved house value in a reference file is as adopter-
-	// facing as one in a SKILL.md (assay#236).
+	// facing as one in a SKILL.md (#236).
 	hvChecked, hvIssues, hvErr := LintPluginTree(*root)
 	switch {
 	case hvErr != nil:

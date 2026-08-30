@@ -7,7 +7,7 @@
 // `human:<name>` (or a `capability:<name>` binding) rather than resolving it to
 // whoever happens to drive it here. A resolved house value in a reference file
 // used to pass lint because the lint only ever read plugins/assay/skills/*/SKILL.md
-// (assay#236: two occurrences in a reference, caught by a reviewer, not by CI).
+// (#236: two occurrences in a reference, caught by a reviewer, not by CI).
 // This check reads every *.md under plugins/ instead.
 //
 // NEUTRAL BY CONSTRUCTION. The check carries no list of real names — it could not

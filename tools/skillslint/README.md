@@ -39,8 +39,7 @@ must name the driver with the neutral `human:<name>` token (or a
 
 **Scope: every `*.md` under `plugins/`, at any depth.** It used to be the skill
 bodies alone, which is how a resolved house value sat in a reference file and
-passed lint — found by a reviewer, not by CI (assay#236). Widening the walk is
-assay#238.
+passed lint — found by a reviewer, not by CI (#236). Widening the walk is #238.
 
 **Neutral by construction.** The check carries no list of real names; it could
 not ship to adopters if it did, and a name list is the artefact `human:<name>`
