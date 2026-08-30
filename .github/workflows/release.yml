@@ -353,8 +353,8 @@ jobs:
   # sit behind the full suite.
   #   statusgen    — statusgen test/vet + the three named gate bars
   #   desk-tools   — desk-tools test/vet
-  #   muhar-light  — the five short mutation sweeps (bodycheck, desksourceguard,
-  #                  loopengine ×2, reviewloop)
+  #   muhar-light  — the six short mutation sweeps (bodycheck, desksourceguard,
+  #                  loopengine ×2, reviewloop, deskclose)
   #   deskmerge ×3 — the deskmerge mutation sweep, the long pole, SHARDED across
   #                  three legs via muhar's `-shard i/n` (each leg runs the
   #                  mutations at spec index ≡ i mod 3; the three shards
@@ -627,6 +627,31 @@ jobs:
           echo "$report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::an arm of reviewloop's idle gate or coalescing survived its mutation, or could not be applied — the board reactor's could-not-check state is not load-bearing as written (tools/desk/cmd/reviewloop/doc.go)"
+            exit 1
+          fi
+
+      # deskclose's superseded lane is TWO-ROLE: a worker token proposes, a
+      # reviewer token confirms or disputes, and one identity can never both
+      # propose and close on the same item. The arms that make that safe are all
+      # negative — the same-actor check reads the comment's forge-attested author
+      # (never the self-reported Proposed-By line), the confirm requires the
+      # target genuinely MERGED, a dispute writes needs-decision and every later
+      # close is refused by the decision-label gate, a one-App roster binding
+      # both roles is refused, and an unreadable identity is could-not-check
+      # rounded to NEITHER role. A green suite proves the lane behaves as written;
+      # it does NOT prove any arm is load-bearing, so each is disarmed in turn and
+      # the suite is required to catch it. Same muhar contract: exit 2 means the
+      # HARNESS is broken; a SURVIVING mutation still exits 0 with its verdict on
+      # stdout, so the totals line is what this gates on.
+      - name: Gate bar — mutate deskclose's superseded two-role lane and require the suite to catch it
+        if: matrix.leg == 'muhar-light'
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          report=$(go run ./cmd/muhar -j 0 -spec cmd/deskclose/mutations.json)
+          echo "$report"
+          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
+            echo "::error::an arm of deskclose's superseded two-role lane survived its mutation, or could not be applied — the propose/confirm/dispute boundary is not load-bearing as written (tools/desk/cmd/deskclose/superseded.go)"
             exit 1
           fi
 
