@@ -33,7 +33,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (47 desk-actionable of 48 total — 38 at implemented, 10 verified awaiting review)
+## Awaiting verification / review (47 desk-actionable of 48 total — 37 at implemented, 11 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -56,7 +56,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
 | harness-portability | 02 [exec:strong] | implemented | 3500 | 5 | — | — | — |
-| quality | 02 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| quality | 02 [exec:strong] | verified | 3500 | 5 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | forge-gitlab | 02 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 3000 | 4 | — | — | — |
@@ -203,7 +203,7 @@ _None._
 ### quality (15 open)
 
 - 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — verified (wave 0)
-- 02 M1 line-operation taxonomy + churn/rework rate — implemented (wave 1)
+- 02 M1 line-operation taxonomy + churn/rework rate — verified (wave 1)
 - 03 M1 hotspots + knowledge distribution (SPOF) + change coupling — implemented (wave 1)
 - 04 M1 instruction-layer brittleness (reference-validity + doc↔code drift) — implemented (wave 1)
 - 05 `QUALITY.md` single-writer trend view + metrics artifacts — todo (wave 2)
