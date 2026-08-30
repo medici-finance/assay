@@ -80,6 +80,26 @@ facts:
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+**Pre-existing implementation.** The deliverable this brief describes was already built and
+merged to `main` before this dispatch: commit `b3244a1` ("statusgen: add --graph derived
+export (dot + jsonl)", 2026-08-27), referencing this same work under its prior brief name
+`landscape-followups/06` — one day after `9fa1cb8` re-authored it onto this board as
+`statusgen/10` (2026-08-26). `statusgen/graph.go`, `statusgen/graph_test.go`, the `--graph`
+wiring in `main.go`, and `docs/research/graph-export-evaluation.md` all already exist on
+`main` with no gap against this brief's Context/Task. No source changes were needed or made;
+this PR only runs the Verify table against current `main` and reconciles the board row.
+
+Runner: worker (session `statusgen-10`), local `go` toolchain, 2026-08-29.
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `cd statusgen && go run . --root .. --graph dot \| grep -m1 "digraph"` | 0 | `digraph assay {` |
+| 2 | `cd statusgen && go run . --root .. --graph jsonl \| head -1 \| python3 -m json.tool > /dev/null` | 0 | first JSONL line parses as valid JSON |
+| 3 | `cd statusgen && go test -run Graph -v . \| grep -c -e "--- PASS:"` | 0 | `9` (9 graph subtests pass) |
+| 4 | two successive `--graph jsonl` runs, sha256-compared | 0 | hashes match — byte-deterministic |
+| 5 | `grep -n "downstream" docs/research/graph-export-evaluation.md` | 0 | matches at lines 24 and 33; the required finding-impact-closure question (Q1) is answered in the note |
+| 6 | `cd statusgen && go run . --root .. --lint` | 0 | `LINT: PASS` (pre-existing NOTICEs unrelated to this brief) |
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
 Reviewer re-derives the finding-impact-closure answer by hand on the chosen case and compares
