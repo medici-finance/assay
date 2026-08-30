@@ -31,6 +31,12 @@ type Stream struct {
 	// Serves: the business goal this stream serves — example-app | example-service |
 	// assay | platform | "" (untagged, roadmap deck).
 	Serves string
+	// Theme: optional stream README `theme:` frontmatter key — a render-style
+	// selector for the cadenced roadmap artifacts (statusgen/13). "" when absent
+	// (no marker). A value outside the mapped render-style set is NOT dropped: it
+	// renders as a VISIBLE "unmapped theme: <value>" marker on the deck, the same
+	// untagged-renders-visibly philosophy as the Serves handling.
+	Theme string
 	// Owner: optional stream owner, from the README frontmatter; "" when absent.
 	Owner  string
 	Briefs []Brief

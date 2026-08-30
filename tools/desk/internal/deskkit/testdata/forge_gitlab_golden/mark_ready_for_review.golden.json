@@ -1,0 +1,15 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7",
+      "body": {
+        "title": "add the thing"
+      }
+    }
+  ]
+}

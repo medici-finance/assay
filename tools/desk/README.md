@@ -27,7 +27,7 @@ it on day one.
 
 | Tool | Verb(s) | Class | Write budget + breaker |
 |------|---------|-------|------------------------|
-| `deskboard` | `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
+| `deskboard` | `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) | yes (`run`) |
@@ -39,7 +39,7 @@ it on day one.
 | `deskpr` | `create` (draft-only), `update` (follow-up push) | outward write | yes |
 | `deskreply` | PR reply comment under the **worker** identity | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
-| `deskclose` | `duplicate`, `superseded`, `review-request`, `manifest` — the issue-CLOSING gate (a fetched human authorization or nothing) | outward write | yes |
+| `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` — the issue-CLOSING gate (a fetched human authorization or nothing) | outward write | yes |
 | `deskdigest` | (no verbs) `--dry-run` / `--post` — the weekly batched decision queue; reports only, and writes exactly one issue: its own | outward write | yes |
 | `deskdisposition` | `set`, `read`, `sweep` — machine-readable PR disposition records (#728/#827); records a verdict, never closes | outward write (`set`) / read-only (`read`, `sweep`) | yes |
 | `deskmerge` | `check` — merge-currency in three states, writes nothing; `merge` — merges main INTO a PR branch, gated on a fetched human sign-off of R-5 (unsigned today, so it merges nothing) | read-only (`check`) / outward write (`merge`) | yes (`merge`) |
@@ -51,7 +51,7 @@ it on day one.
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
-| `deskroster` | `set`, `drop`, `list`, `mine`, `preflight` | local-only, out-of-git (`preflight` mints a token and runs one read-only transport probe) | no |
+| `deskroster` | `set`, `drop`, `list`, `mine`, `width`, `repos`, `apps`, `preflight` | local-only, out-of-git (`preflight` mints a token and runs one read-only transport probe) | no |
 | `muhar` | `-spec <file>` mutation harness, `-j <n>` mutations in flight (isolated tree per worker), `-shard i/n` this invocation's slice of the spec (shards partition it; baseline + control run per shard) | local diagnostic (no `Guard`) | no |
 | `writeguard` | PreToolUse hook (F-34 isolation backstop) | hook | n/a |
 | `deskpushguard` | pre-push hook — refuses a push to a MERGED/CLOSED branch, one carrying a foreign/laundered commit, a single-parent merge masquerade, or a branch point sitting on a stray local `origin/main`, or one introducing a register-entry `id:` collision with an in-flight sibling branch (#22, #72). Cannot determine the base → prints `COULD-NOT-CHECK` and allows (fail-open, brief-10); that line means UNVERIFIED, not clean | git hook | n/a |
@@ -186,6 +186,16 @@ Every write verb runs `deskkit.BodyCheck` over what you are about to post — ti
 branch name, body, and for `deskpr create` the diff against the default branch. A hit is
 exit 5. It also refuses a body that claims a named human's ruling, because no desk write
 path ever posts as a human.
+
+When the target repo is not known-private, `deskpr create`, `deskpost` and `deskreply`
+additionally run `deskkit.SelfContainCheck` (`internal/deskkit/selfcontain.go`) over the
+body: a text free of credentials can still carry a private repo name, a cross-repo ref
+that only resolves internally, an absolute path off the author's machine, a session or
+agent id, a scratch worktree name, or an identifier out of an unpublished register. An
+unambiguous span is exit 5 through the same audited `--force-scan-override`; an ambiguous
+one (a bare `#N`, a short name that is also an ordinary word, an unconfigured withheld set)
+is a stderr NOTICE and does not block. **The categories are enumerated in exactly one
+place — `deskpr --help` — and are deliberately not repeated here or in the skill text.**
 
 Rehearse where you can. The verbs that carry `--dry-run` (`deskpost`, `deskrelease`) run
 every check and stop before the write, auditing `result=dryrun` — invisible to both
@@ -491,7 +501,7 @@ The same probe rides on `deskboard actions`: its header carries `mainHealth`, th
 merge onto it), and each row on an affected repo is flagged `baseBranchRed` with a note.
 An **absent** `mainHealth` field means the verb did not probe — never that it found
 nothing wrong. `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
-`next-up`, `scope`, `policydrift`, `stalled`,
+`next-up`, `throughput`, `scope`, `policydrift`, `stalled`,
 `reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
 the absence for every verb on it (JSON **and** `--table`), `TestVerbInventory_Complete`
 fails if a verb is added without being classified, and `TestREADME_NamesEveryNonProbingVerb`
@@ -794,13 +804,40 @@ JSON carries `population` (`awaiting-verification`), `populationStatuses`
 
 ## deskboard scope — what the board covers, and what it does not (#359)
 
+### Throughput: which desk is the bottleneck, and how wide it may run
+
+A pipeline is only as fast as its narrowest stage, and until the pool widths lived in code
+there was no way to say which stage that was — nor any value to move once you knew.
+
+- **The signal — `deskboard throughput`.** Per stage (dispatch / review / verify / intake) it
+  reports queue DEPTH against pool SLOTS, names the worst ratio as the bottleneck, and prints
+  the exact widening command. Depths are DERIVED from `dispatch`, `actions` and `awaiting` —
+  nothing re-parses the board, so the ratio always describes the queue those desks really work.
+  **SLOTS is capacity, not live occupancy**: nothing in the tree counts in-flight agents, and a
+  guessed occupancy would look precise while being a guess.
+- **The knob — `deskroster set --role <loop> --width N`**, read back with
+  `deskroster width --role <loop>`. Keyed by canonical LOOP name (`worker-desk`,
+  `pr-review-desk`, `verify-desk`, `intake-desk`, `the-desk`) through the same equivalence class
+  the stop flag uses, so a rename cannot reset a pool. A set width **decays after an hour**: a
+  coordinator that died cannot leave a pool permanently wide.
+- **The bound.** A width the role's write budget or the shared App token's concurrency ceiling
+  cannot carry is **refused (exit 5) naming the maximum it will accept**. Widening buys no
+  budget — every meter in the rate limiter applies to the wider pool unchanged — and an **open
+  circuit breaker pins the width at what is already in flight** until it clears. Narrowing never
+  kills a running agent: it stops refills and the pool converges as work lands.
+- **Defaults live in ONE place** (`internal/deskkit/width.go`), with the argument for each number
+  beside it and a test pinning the values. The desk skill bodies point at that table instead of
+  stating a number that could drift from it.
+
+### Scope: what the board covers
+
 The board sweeps a **compiled-in** repo set. Rendering a confident, complete-looking
 list of a subset means "no PRs in that repo" and "that repo is not read at all" produce
 the same output, so a merge-ready PR in an unwatched repo is not missed — it is
 structurally invisible, and nothing knows to alert. Two halves:
 
 - **Every sweeping verb states its scope.** `prs`, `actions`, `queue`, `health`, `scope`,
-  `policydrift` and `stalled` carry a `scope` object in the JSON header (repos, count, source) and
+  `policydrift`, `stalled` and `throughput` carry a `scope` object in the JSON header (repos, count, source) and
   print one scope line on `--table`. Verbs taking an explicit repo (`reviews`, `diff`,
   `files`) **omit** the field entirely — absent means "swept nothing", never "the set was
   empty". This sentence is not prose upkeep: `TestReadme_SweepingVerbSentence_359` fails
@@ -1918,10 +1955,32 @@ forbidden.
 
 ```bash
 deskclose duplicate      -R <owner/repo> <N> --of <M> --mined <summary>
-deskclose superseded     -R <owner/repo> <N> --by <ref>
+deskclose superseded     -R <owner/repo> <N> --by <ref> [--dispute <reason>]
 deskclose review-request -R <owner/repo> <N>
 deskclose manifest       -R <owner/repo> --file <manifest.yaml> [--resume-from <N>] [--max-wait <dur>]
 ```
+
+### The superseded lane is two-role, keyed on the token
+
+`deskclose superseded` no longer lets one identity record "my scope landed elsewhere" and
+close on it in the same sitting. The verb reads the identity of the token in use from the
+forge (`viewer { login }` — the one self-identification an App installation token can make;
+REST `/user` refuses integrations) and maps it through the roster's `worker=` / `reviewer=`
+binding. **No flag selects the role.**
+
+| Token role | What the verb does | Writes | Closes? |
+|---|---|---|---|
+| worker | **proposes** — requires the PR's disposition record naming `--by`, and a target that exists and is not closed-unmerged | `superseded?` label + a `<!-- desk-superseded-proposal v1 -->` marker comment | never; `--dispute` is refused |
+| reviewer | **confirms** — requires a standing proposal by a *different* actor naming the *same* target, the target genuinely MERGED, and the R-1 ruling gate | verdict comment (`SUPERSEDED-CONFIRMED`, marker block) on the item, a back-reference on the target, then the close | yes |
+| reviewer, `--dispute <why>` | **disputes** — same standing-proposal rule | `SUPERSEDED-DISPUTED: <why>` comment, then the `needs-decision` label | never — and every later close is refused by the decision-label gate |
+| anything else | refused (5); an unreadable identity is could-not-check (6); a roster binding both roles to one App is refused | none | — |
+
+The same-actor check rests on the comment's **forge-attested author**, never on the
+self-reported `Proposed-By:` line. The **manifest** lane is deliberately not role-keyed: a
+manifest row is authorized by a human whose comment carries the row set's digest, which is
+a stronger authority than a reviewer's confirmation. The design note (`superseded-confirmation.md`
+in the desk-tools planning stream) carries the flow, the pros/cons and the brief-level semantics;
+the mutation sweep is `cmd/deskclose/mutations.json`.
 
 ### The authorization gate is the whole tool
 

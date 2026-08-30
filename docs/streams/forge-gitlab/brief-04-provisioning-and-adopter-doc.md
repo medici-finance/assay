@@ -22,6 +22,7 @@ sources:
   - "freshness-checked 2026-08-24 @ 5c4a67d — no gitlab provisioning or adopter doc exists"
 exec-tier: any
 domain: complicated
+tier: free
 consumers:
   - "docs/adopting-assay.md: fixed-here (one cross-link line to the GitLab doc)"
 ---
@@ -47,10 +48,60 @@ facts:
   execution policy), group token-expiry policy, ci-config project creation.
 - ci-config runbook section: create the locked project, set consumer projects'
   CI config path to it, verify no bot membership.
-- The doc carries the tier ladder and the non-conforming Free/CE statement verbatim
-  from spec §1 — no softening.
+- The doc carries the tier ladder and, verbatim from spec §1, the CE statement: Community
+  Edition is conforming for the core lane with two named, disclosed degradations
+  (identity-granular protected branches — the Maintainer role set is the allowlist; enforced
+  approval rules — approvals are advisory, so verdict-before-merge is human-merge-only plus
+  the desk's refusal to flip without an at-head verdict). No softening in either direction:
+  the degradations are stated as degradations.
 - All REST; requires a group-owner PAT supplied by the operator at run time (never
   stored by the script).
+
+re-baselined: 2026-08-30 — Verify row 3 previously grepped the adopter doc for spec §1's
+"Free/CE non-conforming" sentence. That sentence was replaced by the tier ruling of
+2026-08-30 (medici-finance/assay#219, evidence in edition-matrix.md): CE conforms for the
+core lane with the two disclosed degradations, Premium is the hardening, Ultimate is
+refinement. Row 3 now greps the replacement sentence and both named degradations. No other
+Verify row changed, and no task changed.
+
+## Edition
+Minimum GitLab tier: **free** (Community Edition) for everything the script must do. Service
+accounts are `Tier: Free, Premium, Ultimate` from GitLab 18.11 ("Generally available in GitLab
+18.11. Feature flag removed."), below which ordinary bot users are the fallback; group,
+project and member provisioning, protected branches at role level, protected tags at role
+level, "pipelines must succeed", "all threads resolved", webhooks, and the external CI config
+path (the locked ci-config project — the one place this profile is *stronger* than the GitHub
+controls) are all Free. Citations per row in edition-matrix.md tables B and C.
+
+Two credential facts the script must respect on CE and everywhere else: on GitLab
+Self-Managed "only administrators can create either type of service account" by default, so
+service-account creation needs an admin credential rather than the group-owner PAT the rest of
+the script uses; and service accounts "do not use a seat"
+(https://docs.gitlab.com/user/profile/service_accounts/).
+
+What degrades on CE — the script prints these as human-only, tier-gated items rather than
+configuring them:
+
+- **Single board-writer on `main`.** `allowed_to_push`/`allowed_to_merge` take a `user_id` or
+  `group_id` only on Premium ("`user_id`, `group_id`, and `access_level` are Premium and
+  Ultimate only", https://docs.gitlab.com/api/protected_branches/). CE fallback: `Allowed to
+  push and merge` = **No one**, every write including board regeneration lands as an MR, and
+  the allowlist becomes Maintainer membership — role granularity, not identity granularity.
+- **Required approvals** and **prevent approval by author/committer**: both Premium
+  (https://docs.gitlab.com/user/project/merge_requests/approvals/rules/ ,
+  https://docs.gitlab.com/user/project/merge_requests/approvals/settings/). CE fallback:
+  humans-only merge plus the desk's own refusal to flip ready without an at-head verdict; the
+  bot case is already structural because a worker holds no reviewer credential.
+- **Push rules** (Premium) and **secret push protection** (Ultimate): the house leak sweep in
+  CI is the tier-independent layer.
+- **Group/project audit events** (Premium): only sign-in events exist at Free.
+
+Settled 2026-08-30 (medici-finance/assay#219): the open point this brief carried — whether the
+adopter doc must repeat a "Free/CE non-conforming" statement the matrix's per-feature tier
+reads did not support — is ruled. CE is conforming for the core lane with the two disclosed
+degradations above; Premium is the hardening that makes them server-enforced; Ultimate is
+refinement. Task 2 and Verify row 3 now carry the amended spec section 1 sentence, and the
+degradations above are the doc's tier-honesty statement.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per
@@ -72,7 +123,7 @@ facts:
 |---|---------|--------|
 | 1 | `bash -n tools/create-fleet-gitlab.sh && shellcheck tools/create-fleet-gitlab.sh` | exit 0 |
 | 2 | `bash tools/create-fleet-gitlab.sh --dry-run --group example --prefix myorg 2>&1 \| grep -c 'service account'` | ≥ 7 — dry-run enumerates every role it would create |
-| 3 | `grep -n 'Free' docs/adopting-assay-gitlab.md \| grep -ci 'non-conforming'` | ≥ 1 — the tier honesty statement is present |
+| 3 | `grep -ci 'Community Edition is conforming for the core lane' docs/adopting-assay-gitlab.md && grep -ci 'Maintainer role set is the allowlist' docs/adopting-assay-gitlab.md && grep -ci 'approvals are advisory' docs/adopting-assay-gitlab.md` | each ≥ 1, chain exits 0 — the doc carries the amended spec §1 statement: CE conforms for the core lane, plus both named degradations verbatim |
 | 4 | For each REST endpoint named in the script: `grep -oE 'api/v4/[a-z_/:{}.-]+' tools/create-fleet-gitlab.sh \| sort -u` checked against the GitLab REST v4 docs | every endpoint exists in current docs (dereference: reviewer resolves each against docs.gitlab.com and records the doc URL per endpoint) |
 
 ## Evidence

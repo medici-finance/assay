@@ -1,0 +1,107 @@
+{
+  "test": "go test ./internal/forgeban/ -count=1 && go test ./internal/deskkit/ -count=1 -run 'TestForge|TestNoForgeCLIShellout'",
+  "control": {
+    "name": "CONTROL — re-introduce a `gh` exec: a helper that shells the GitHub CLI to release a dispatch claim, exactly the passthrough the enumerated DeleteRef replaced",
+    "file": "cmd/fanoutloop/land.go",
+    "old": "const dispatchRefNamespace = \"dispatch\"",
+    "new": "const dispatchRefNamespace = \"dispatch\"\n\nfunc legacyRelease(run func(...string) (string, error), ref string) (string, error) {\n\treturn run(\"gh\", \"api\", \"-X\", \"DELETE\", ref)\n}"
+  },
+  "mutations": [
+    {
+      "name": "stop resolving an argv[0] held in a named constant (`const bin = \"gh\"; exec.Command(bin)` reads as unresolved instead of an invocation)",
+      "file": "internal/forgeban/forgeban.go",
+      "old": "\t\tif v, ok := consts[a.Name]; ok {",
+      "new": "\t\tif v, ok := consts[a.Name]; false && ok {"
+    },
+    {
+      "name": "stop treating exec.CommandContext as a launch site (every context-carrying shell-out becomes invisible)",
+      "file": "internal/forgeban/forgeban.go",
+      "old": "\t\"CommandContext\": 1,",
+      "new": "\t\"CommandContextRenamedAwayFromTheRealOne\": 1,"
+    },
+    {
+      "name": "stop resolving an ALIASED os/exec import (`import xc \"os/exec\"` hides every launch in the file)",
+      "file": "internal/forgeban/forgeban.go",
+      "old": "\t\t\tnames[imp.Name.Name] = true",
+      "new": "\t\t\t_ = imp.Name.Name"
+    },
+    {
+      "name": "stop resolving a DOT-imported os/exec (`import . \"os/exec\"` hides every launch in the file)",
+      "file": "internal/forgeban/forgeban.go",
+      "old": "\t\tif !dotImported {\n\t\t\treturn \"\", 0, false\n\t\t}",
+      "new": "\t\tif true {\n\t\t\treturn \"\", 0, false\n\t\t}"
+    },
+    {
+      "name": "disable layer 2 entirely: a forge-CLI literal in ANY position stops being a finding, so every wrapper call (`runCmd(\"gh\", …)`, `g.run(\"gh\", …)`) goes unseen",
+      "file": "internal/forgeban/forgeban.go",
+      "old": "\t\t\tif nonLaunchingPosition(node, stack) {\n\t\t\t\treturn\n\t\t\t}",
+      "new": "\t\t\tif true {\n\t\t\t\treturn\n\t\t\t}"
+    },
+    {
+      "name": "over-broaden layer 2 in the other direction: a switch case naming a forge CLI becomes an invocation, which is the false positive that gets a ban suppressed rather than fixed",
+      "file": "internal/forgeban/forgeban.go",
+      "old": "\tcase *ast.CaseClause:\n\t\treturn true",
+      "new": "\tcase *ast.CaseClause:\n\t\treturn false"
+    },
+    {
+      "name": "round could-not-check up to clean: an exec site whose argv[0] does not resolve stops being reported at all",
+      "file": "internal/forgeban/forgeban.go",
+      "old": "\t\t\t\t\tadd(Finding{File: rel, Line: line, Func: enclosing(stack), Via: via, Kind: KindUnresolved})",
+      "new": "\t\t\t\t\t_ = via"
+    },
+    {
+      "name": "stop failing closed on a tree with no shipped Go source (a mis-pointed root would certify anything)",
+      "file": "internal/forgeban/forgeban.go",
+      "old": "\t\treturn nil, fmt.Errorf(\"no shipped Go source found under %s — a scan that reads nothing clears everything\", root)",
+      "new": "\t\treturn nil, nil"
+    },
+    {
+      "name": "stop detecting STALE permit rows, so a permit outlives the call site it was written for and the ratchet stops counting anything real",
+      "file": "internal/forgeban/check.go",
+      "old": "\t\t\trep.StaleAllowed = append(rep.StaleAllowed, k)",
+      "new": "\t\t\t_ = k"
+    },
+    {
+      "name": "stop detecting STALE ledger rows, so a retired indirection keeps its could-not-check entry forever",
+      "file": "internal/forgeban/check.go",
+      "old": "\t\t\trep.StaleUnresolved = append(rep.StaleUnresolved, k)",
+      "new": "\t\t\t_ = k"
+    },
+    {
+      "name": "let a ledger row clear an observed INVOCATION (the could-not-check register silently becomes a second permit list)",
+      "file": "internal/forgeban/check.go",
+      "old": "\t\t\tif _, ok := allowed[k]; ok {",
+      "new": "\t\t\tif _, ok := unresolved[k]; ok {"
+    },
+    {
+      "name": "drop DeleteRef's ref validation on the GitHub backend — the typed op becomes `gh api -X DELETE <anything>` in a typed coat",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tclean, err := ValidateRefPath(ref)\n\tif err != nil {\n\t\treturn err\n\t}\n\tpath := fmt.Sprintf(\"/repos/%s/%s/git/refs/%s\", repo.Owner, repo.Name, clean)",
+      "new": "\tclean := ref\n\tpath := fmt.Sprintf(\"/repos/%s/%s/git/refs/%s\", repo.Owner, repo.Name, clean)"
+    },
+    {
+      "name": "stop refusing a ref component that traverses out of the ref namespace (`heads/../../branches/main/protection` reaches branch protection)",
+      "file": "internal/deskkit/forge_refpath.go",
+      "old": "\tcase strings.Contains(p, \"..\"):",
+      "new": "\tcase false && strings.Contains(p, \"..\"):"
+    },
+    {
+      "name": "stop refusing URL-significant characters in a ref, so a ref can reshape the request it is interpolated into",
+      "file": "internal/deskkit/forge_refpath.go",
+      "old": "const refForbiddenRunes = \" ~^:?*[\\\\\\x7f%#\\\"'<>|&;$`\\n\\r\\t\"",
+      "new": "const refForbiddenRunes = \" ~^:*[\\\\\\x7f\\\"'<>|&;$`\\n\\r\\t\""
+    },
+    {
+      "name": "let the GitLab backend serve a non-branch ref namespace by pretending the branch delete applies — a still-held claim would be reported released",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tbranch, ok := strings.CutPrefix(clean, \"heads/\")\n\tif !ok {",
+      "new": "\tbranch, ok := strings.CutPrefix(clean, \"heads/\")\n\tif false && !ok {"
+    },
+    {
+      "name": "let a backend export a raw-request escape hatch outside the frozen surface (the passthrough the callsite scan cannot see, which is why the shape check exists)",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "// --- Identity / transport ---",
+      "new": "// APIRequest is an arbitrary-endpoint escape hatch.\nfunc (g *GitHubForge) APIRequest(method, p string, out any) error { return g.doJSON(method, p, nil, out) }\n\n// --- Identity / transport ---"
+    }
+  ]
+}

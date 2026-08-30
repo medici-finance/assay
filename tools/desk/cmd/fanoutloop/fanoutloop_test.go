@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -537,21 +536,72 @@ func TestLand_NearNoOp_RecordsAndReleases(t *testing.T) {
 
 // --- the real claim-release command shape (unit, no network) ----------------------------------
 
-func TestReleaseDispatchClaim_GhCommandShape(t *testing.T) {
-	var got []string
-	s := &ghDispatchSink{out: io.Discard, run: func(args ...string) (string, error) { got = args; return "", nil }}
+// recordingForge is a deskkit.Forge that records the one operation this sink is allowed to
+// reach for. Every other method panics: a sink that grew a second forge call would fail here
+// rather than quietly acquire reach, which is the property the closed-forge-surface brief is about.
+type recordingForge struct {
+	deskkit.Forge // embedded nil — any un-overridden method panics on call
+	repo          deskkit.ForgeRepo
+	ref           string
+	calls         int
+	err           error
+}
+
+func (f *recordingForge) DeleteRef(repo deskkit.ForgeRepo, ref string) error {
+	f.repo, f.ref, f.calls = repo, ref, f.calls+1
+	return f.err
+}
+
+// TestReleaseDispatchClaim_UsesEnumeratedDeleteRef pins the shape of the claim release // the closed-forge-surface brief retired the `gh api -X DELETE repos/<o>/<r>/git/refs/…` passthrough. What is
+// asserted is that the sink hands the forge a repo coordinate and a ref INSIDE the dispatch
+// namespace — not a REST path — so the reach of this call site is one operation on one ref,
+// not the whole API.
+func TestReleaseDispatchClaim_UsesEnumeratedDeleteRef(t *testing.T) {
+	f := &recordingForge{}
+	s := newForgeDispatchSink(io.Discard, f)
 	it := loopengine.Item{ID: "fixture/02", Payload: map[string]string{"repo": "medici-finance/assay"}}
 	if err := s.ReleaseDispatchClaim(it); err != nil {
 		t.Fatalf("ReleaseDispatchClaim: %v", err)
 	}
-	want := []string{"gh", "api", "-X", "DELETE", "repos/medici-finance/assay/git/refs/dispatch/fixture--02"}
-	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Fatalf("release command shape:\n got %v\nwant %v", got, want)
+	if f.calls != 1 {
+		t.Fatalf("expected exactly one forge call, got %d", f.calls)
 	}
+	if want := (deskkit.ForgeRepo{Owner: "medici-finance", Name: "assay"}); f.repo != want {
+		t.Fatalf("repo coordinate: got %+v want %+v", f.repo, want)
+	}
+	if want := "dispatch/fixture--02"; f.ref != want {
+		t.Fatalf("ref: got %q want %q", f.ref, want)
+	}
+	// The ref the sink builds must survive the interface's own namespace validation — a ref
+	// that ValidateRefPath refuses would mean the sink can never release a claim at all.
+	if _, err := deskkit.ValidateRefPath(f.ref); err != nil {
+		t.Fatalf("the ref this sink constructs is refused by ValidateRefPath: %v", err)
+	}
+
 	// A missing ref (already released) is a no-op, not an error.
-	s.run = func(args ...string) (string, error) { return "Not Found", errors.New("exit status 1") }
-	if err := s.ReleaseDispatchClaim(it); err != nil {
-		t.Fatalf("missing ref must be a no-op: %v", err)
+	for _, gone := range []error{
+		&deskkit.ForgeAPIError{Status: 404, Method: "DELETE", Path: "/x"},
+		&deskkit.ForgeAPIError{Status: 422, Method: "DELETE", Path: "/x"},
+	} {
+		f.err = gone
+		if err := s.ReleaseDispatchClaim(it); err != nil {
+			t.Fatalf("missing ref (%v) must be a no-op: %v", gone, err)
+		}
+	}
+	// A permission or credential failure is NOT swallowed: reporting a still-held claim as
+	// released is how two workers land on one item.
+	f.err = &deskkit.ForgeAPIError{Status: 403, Method: "DELETE", Path: "/x"}
+	if err := s.ReleaseDispatchClaim(it); err == nil {
+		t.Fatal("a 403 on the claim release must surface, not be swallowed as already-gone")
+	}
+	// A malformed target repo never reaches the forge.
+	f.err, f.calls = nil, 0
+	bad := loopengine.Item{ID: "fixture/03", Payload: map[string]string{"repo": "notaslug"}}
+	if err := s.ReleaseDispatchClaim(bad); err == nil {
+		t.Fatal("a repo that is not owner/name must be refused")
+	}
+	if f.calls != 0 {
+		t.Fatalf("a refused repo still reached the forge %d time(s)", f.calls)
 	}
 }
 

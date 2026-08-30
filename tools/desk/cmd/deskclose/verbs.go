@@ -42,7 +42,7 @@ const (
 // splitter needs them so `-R owner/repo 123` does not read the repo as the item number.
 var valueFlags = map[string]bool{
 	"-R": true, "--of": true, "--by": true, "--file": true, "--rulings": true,
-	"--resume-from": true, "--max-wait": true, "--mined": true,
+	"--resume-from": true, "--max-wait": true, "--mined": true, "--dispute": true,
 }
 
 var numTokenRe = regexp.MustCompile(`^#?\d+$`)
@@ -114,6 +114,12 @@ type closeReq struct {
 	mined  string
 	dryRun bool
 	g      grant
+	// verdict, when set, is the two-role superseded lane's reviewer verdict, rendered
+	// into the close comment as a machine-readable block (superseded.go).
+	verdict *supersedeVerdict
+	// crossRef, when set, is posted on the superseding TARGET before the close so the
+	// record reads in both directions even if the close itself then fails.
+	crossRef *crossRef
 }
 
 func (r closeReq) stateReason() string {
@@ -171,12 +177,17 @@ func cmdDuplicate(args []string, out io.Writer) error {
 	}, out)
 }
 
+// cmdSuperseded is the TWO-ROLE lane (superseded.go). The flags are the same for both
+// roles; which half runs is decided by the token in use, never by a flag. --dispute is
+// the reviewer's disagreement and is refused under a worker token.
 func cmdSuperseded(args []string, out io.Writer) error {
 	fs := flag.NewFlagSet(modeSuperseded, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	var c common
 	c.bind(fs)
 	by := fs.String("by", "", "the issue or PR that supersedes this item")
+	dispute := fs.String("dispute", "", "reviewer role only: dispute the standing proposal for this reason — applies "+
+		labelNeedsDecision+" and never closes")
 	n, err := parseItemVerb(fs, args, &c)
 	if err != nil {
 		return err
@@ -184,14 +195,7 @@ func cmdSuperseded(args []string, out io.Writer) error {
 	if strings.TrimSpace(*by) == "" {
 		return deskkit.Refused("refused: superseded requires --by <ref> (an issue or PR)")
 	}
-	g, err := gateFor(&c)
-	if err != nil {
-		return err
-	}
-	return applyClose(closeReq{
-		repo: c.repo, number: n, mode: modeSuperseded,
-		target: strings.TrimSpace(*by), dryRun: c.dryRun, g: g,
-	}, out)
+	return runSupersededLane(c, n, strings.TrimSpace(*by), *dispute, out)
 }
 
 func cmdReviewRequest(args []string, out io.Writer) error {
@@ -263,6 +267,8 @@ func gateFor(c *common) (grant, error) {
 //  3. decision-label refusal     — before any lane logic, in every mode
 //  4. lane preconditions         — merged-not-closed, disposition record, target state
 //  5. comment (charged write)    — the trail lands BEFORE the close
+//     5b. cross-reference           — two-role superseded lane only: the back-reference on
+//     the target, also BEFORE the close
 //  6. close   (charged write)
 //
 // Steps 5 and 6 are two charged writes per item. That is the budget arithmetic the
@@ -314,6 +320,18 @@ func applyClose(r closeReq, out io.Writer) error {
 		return err
 	}
 	a.log(deskkit.ResultOK, "posted the pre-close comment")
+
+	if r.crossRef != nil {
+		if err := allowWrite(r.crossRef.repo, r.crossRef.number); err != nil {
+			a.log(deskkit.ResultRateLimited, "comment posted, cross-reference and close deferred: "+err.Error())
+			return err
+		}
+		if err := postComment(r.crossRef.repo, r.crossRef.number, r.crossRef.body); err != nil {
+			a.log(deskkit.ResultUnverifiable, err.Error())
+			return err
+		}
+		a.log(deskkit.ResultOK, fmt.Sprintf("posted the back-reference on %s#%d", r.crossRef.repo, r.crossRef.number))
+	}
 
 	if err := allowWrite(r.repo, r.number); err != nil {
 		// The comment landed and the close did not. That is the resumable state by
@@ -435,6 +453,11 @@ func closeComment(r closeReq, it item, d dispositionRead) string {
 		fmt.Fprintf(&b, "- Disposition record: %s — evidence %s (recorded %s by %s)\n",
 			deskkit.StripControl(d.Record.Verdict), deskkit.StripControl(d.Record.Evidence),
 			deskkit.StripControl(d.Record.RecordedAt), deskkit.StripControl(d.Record.RecordedBy))
+	}
+	if r.verdict != nil {
+		fmt.Fprintf(&b, "- Two-role verdict: **%s** — proposed by %s, confirmed by %s\n\n",
+			r.verdict.kind, deskkit.StripControl(r.verdict.proposal.Author), deskkit.StripControl(r.verdict.by))
+		b.WriteString(r.verdict.block())
 	}
 	b.WriteString("\nThis close is the propagation of a human-authorized event, not a judgement by the " +
 		"tool that performed it. If it is wrong, reopen it — nothing here is irreversible, and the " +

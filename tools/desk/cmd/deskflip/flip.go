@@ -226,10 +226,19 @@ func flip(o flipOpts) error {
 	o.say("%s OK", condMergeable)
 
 	// --- security-verdict --------------------------------------------------------
-	if err := checkSecurityVerdict(o, repo, pr, reviews, reviewerLogin, head); err != nil {
+	// The changed-file list is read HERE, in full, and only here: it is the security
+	// lane's input and nothing above needs it. Both calls to checkSecurityVerdict — this
+	// one and the post-TOCTOU re-check below — are handed the SAME walked list, matching
+	// how they share `pr`. The head is re-read between them, and a moved head refuses
+	// before the second call, so a stale list can never be what a flip is decided on.
+	files, err := readChangedFiles(o, repo)
+	if err != nil {
 		return err
 	}
-	o.say("%s OK", condSecurityVerdict)
+	if err := checkSecurityVerdict(o, repo, pr, files, reviews, reviewerLogin, head); err != nil {
+		return err
+	}
+	o.say("%s OK: %d changed file(s) read", condSecurityVerdict, len(files))
 
 	// --- head-stable (TOCTOU) ----------------------------------------------------
 	// The ready mutation has no compare-and-swap, so the head is re-read HERE, after every
@@ -263,7 +272,7 @@ func flip(o flipOpts) error {
 	if err := checkReviewerApproved(reviewerLogin, reviews2, head, o.pr); err != nil {
 		return err
 	}
-	if err := checkSecurityVerdict(o, repo, pr, reviews2, reviewerLogin, head); err != nil {
+	if err := checkSecurityVerdict(o, repo, pr, files, reviews2, reviewerLogin, head); err != nil {
 		return err
 	}
 	o.say("%s OK: still %s, and the verdicts at that head are unchanged", condHeadStable, short(head))
@@ -406,7 +415,18 @@ func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head stri
 //
 // A repo whose visibility risk-classes it (a public repo always does) is risk-classed
 // unconditionally — no diff reading required, and no way for a quiet path to opt out.
-func checkSecurityVerdict(o flipOpts, repo string, pr prInfo, reviews []reviewInfo, reviewerLogin, head string) error {
+//
+// The changed-file list arrives as an EXPLICIT PARAMETER rather than as a field of
+// prInfo, and that is the shape of the fix for the truncating read. `gh pr view --json
+// files` answers from a single unpaginated page, so on a PR with more changed files than
+// that page holds it returns a prefix of the diff while reporting the true `changedFiles`
+// total alongside it. Whichever way that prefix was then used, the outcome was wrong: the
+// reconcile below refused every larger PR as unverifiable, and had the reconcile not been
+// there, a risky path sitting past the page boundary would have been invisible. Carrying
+// the list on prInfo is what made the truncated read reachable at all, so the type no
+// longer has the field: the only value that can reach this gate is the one the caller
+// walked to completion (readChangedFiles), and the compiler is what enforces it.
+func checkSecurityVerdict(o flipOpts, repo string, pr prInfo, files []fileInfo, reviews []reviewInfo, reviewerLogin, head string) error {
 	verdict := securityVerdictAtHead(reviews, reviewerLogin, head)
 	if verdict == secFail {
 		return deskkit.Refused(fmt.Sprintf(
@@ -421,15 +441,16 @@ func checkSecurityVerdict(o flipOpts, repo string, pr prInfo, reviews []reviewIn
 		// Reconcile the files walk against the forge's OWN count. A walk that stopped
 		// early otherwise believes it saw the whole diff — pad the PR with enough files
 		// ahead of the risky one and the gate waives itself. A short read is UNVERIFIABLE,
-		// not clean.
-		if pr.ChangedFiles > 0 && len(pr.Files) < pr.ChangedFiles {
+		// not clean. This branch STAYS after the paginated read lands: a forge that
+		// asserts more files than it will serve is still a diff nobody read in full.
+		if pr.ChangedFiles > 0 && len(files) < pr.ChangedFiles {
 			return deskkit.Unverifiable(fmt.Sprintf(
 				"condition %s: read %d changed files but the forge reports %d for PR #%d — the diff could not "+
 					"be read in full, so the risk-class determination is unverifiable.",
-				condSecurityVerdict, len(pr.Files), pr.ChangedFiles, o.pr), nil)
+				condSecurityVerdict, len(files), pr.ChangedFiles, o.pr), nil)
 		}
-		paths := make([]string, 0, len(pr.Files))
-		for _, f := range pr.Files {
+		paths := make([]string, 0, len(files))
+		for _, f := range files {
 			paths = append(paths, f.Path)
 		}
 		if deskkit.RiskPathTriggered(repo, paths) {
@@ -571,13 +592,20 @@ type prInfo struct {
 	Mergeable         string        `json:"mergeable"`
 	HeadRefOid        string        `json:"headRefOid"`
 	ChangedFiles      int           `json:"changedFiles"`
-	Files             []fileInfo    `json:"files"`
 	StatusCheckRollup []rollupEntry `json:"statusCheckRollup"`
 	Labels            []labelInfo   `json:"labels"`
 }
 
+// prInfo carries ChangedFiles — the forge's own total — but deliberately NOT the file
+// list. `gh pr view --json files` serves one unpaginated page, so the list it returns is
+// a PREFIX on any PR larger than that page while ChangedFiles beside it stays true. A
+// field holding that prefix is a loaded gun pointed at the risk-class determination, and
+// removing the field is what makes the truncated value unreachable rather than merely
+// unused. The complete list comes from readChangedFiles and is passed explicitly.
+
+// fileInfo is one entry of the reconciled changed-file list.
 type fileInfo struct {
-	Path string `json:"path"`
+	Path string
 }
 
 type labelInfo struct {
@@ -615,8 +643,13 @@ type reviewInfo struct {
 }
 
 func readPR(o flipOpts, repo string) (prInfo, error) {
+	// `files` is NOT requested here. It is served from a single unpaginated page, so on a
+	// PR with more changed files than that page holds it answers with a prefix of the diff
+	// — and a prefix is not something the risk-class determination may be handed. The list
+	// comes from readChangedFiles, which walks every page and is reconciled against the
+	// `changedFiles` total this read returns.
 	r := runCmd("", "gh", "pr", "view", strconv.Itoa(o.pr), "-R", repo, "--json",
-		"number,state,isDraft,mergeable,headRefOid,changedFiles,files,statusCheckRollup,labels")
+		"number,state,isDraft,mergeable,headRefOid,changedFiles,statusCheckRollup,labels")
 	if r.err != nil {
 		return prInfo{}, deskkit.Unverifiable(fmt.Sprintf(
 			"condition %s: cannot read PR #%d in %s (%s) — a PR whose state could not be read is not a PR "+
@@ -646,6 +679,57 @@ func readReviews(o flipOpts, repo string) ([]reviewInfo, error) {
 				"condition %s: PR #%d's reviews did not parse", condReviewerApproved, o.pr), err)
 		}
 		out = append(out, page...)
+	}
+	return out, nil
+}
+
+// changedFilePerPage is the page size sent to the changed-files endpoint. It matches
+// deskkit's forgeFilePerPage so the two readers of the same endpoint ask for the same
+// shape. It is a REQUEST SIZE, not a limit on what is read: `--paginate` follows the
+// forge's own next-links until the listing is exhausted, and a bigger number would only
+// mean fewer round trips. Raising it is therefore never the fix for a short read — the
+// walk is.
+const changedFilePerPage = 100
+
+// readChangedFiles reads the COMPLETE changed-file list for the PR.
+//
+// It walks the pages. `gh api --paginate` follows the forge's next-links until the
+// listing is exhausted, and the pages come back as concatenated top-level JSON arrays,
+// joined here by splitJSONArrays — the same shape readReviews already handles, and the
+// reason this read is spelled as `gh api` rather than as another `gh pr view` field.
+//
+// It intentionally does NOT decide anything about the length it got. Reconciling the
+// count against the forge's asserted `changedFiles` belongs to checkSecurityVerdict,
+// where the fail-closed refusal already lives; a reader that also judged would give the
+// gate two places to be lenient in.
+//
+// `previous_filename` is not read. On a rename the forge reports the DESTINATION path in
+// `filename`, and that is the path the risk-class determination has always been given —
+// widening it to the source path too would change what counts as risk-classed, which is
+// policy and not this read's business.
+func readChangedFiles(o flipOpts, repo string) ([]fileInfo, error) {
+	r := runCmd("", "gh", "api", "--paginate",
+		fmt.Sprintf("repos/%s/pulls/%d/files?per_page=%d", repo, o.pr, changedFilePerPage))
+	if r.err != nil {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: cannot read PR #%d's changed files (%s) — a diff that could not be read is "+
+				"could-not-check, and could-not-check is never a clean risk classification.",
+			condSecurityVerdict, o.pr, firstLine(r.stderr)), r.err)
+	}
+	// The forge names the entry `filename`; the gate reads paths. Decoding into a wire
+	// type keeps the rename local to this function.
+	var out []fileInfo
+	for _, chunk := range splitJSONArrays(r.stdout) {
+		var page []struct {
+			Filename string `json:"filename"`
+		}
+		if err := json.Unmarshal([]byte(chunk), &page); err != nil {
+			return nil, deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: PR #%d's changed-file list did not parse", condSecurityVerdict, o.pr), err)
+		}
+		for _, f := range page {
+			out = append(out, fileInfo{Path: f.Filename})
+		}
 	}
 	return out, nil
 }

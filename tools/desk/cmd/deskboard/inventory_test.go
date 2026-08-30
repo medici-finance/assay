@@ -807,9 +807,17 @@ var verbScopeClass = map[string]scopeClass{
 	"awaiting":    sweepsRoots,
 	"nextup":      sweepsRoots,
 	"stalled":     sweepsRepos,
-	"reviews":     nonSweeping,
-	"diff":        nonSweeping,
-	"files":       nonSweeping,
+	// throughput spans BOTH coverage axes: it sweeps the repo set for its review depth and
+	// the configured ROOTS for its dispatch/verify depths. It is declared repo-sweeping
+	// because that is the obligation with teeth — `scope` must be present and must agree
+	// with the set the loop iterates — and it ALSO emits `roots`, which this class does not
+	// forbid. Declaring it root-sweeping instead would be worse: that class REQUIRES `scope`
+	// to be absent, and a verb that really does sweep the repo set would then be forbidden
+	// from stating the coverage it has.
+	"throughput": sweepsRepos,
+	"reviews":    nonSweeping,
+	"diff":       nonSweeping,
+	"files":      nonSweeping,
 	// #321: the dispatch queue is now SERVED — it iterates the configured ROOTS
 	// (statusgen --next-up per root), exactly like awaiting/nextup, and states its
 	// coverage as `roots`. It is no longer a refusedVerb.

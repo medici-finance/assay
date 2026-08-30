@@ -17,10 +17,18 @@ domain-neutral, project skills carry a domain token; descriptions are triggers o
 | install | `assay:install` | Turnkey installer — invoke → self-installs the whole project setup (Unix-first) |
 | adopt | `assay:adopt` | Install/adopt runbook — scenario routing + PRIMITIVEs the turnkey installer wraps |
 | author-brief | `assay:author-brief` | Brief authoring methodology (portable core) |
+| ask-decision | `assay:ask-decision` | Puts the pending human decisions to the driver one at a time — context, options with a recommended default, reply shape, verification — and relays each ruling back onto its issue |
 
 These are the portable, domain-neutral methodology skills every Assay bundle ships. A project
 authoring its own project-local skills follows the same naming convention above and keeps them in
 the repo's own `.claude/skills/`.
+
+`ask-decision` is the one any of the five desk roles below may invoke: it is how a desk that has
+accumulated human gates hands them over, one at a time, instead of narrating them. It carries the
+presentation and relay contract only — the escalation-label vocabulary and the close authority stay
+where they already live, in `intake-desk` and `the-desk`. It shares its rendering with the
+[`assay:inbox`](../commands/inbox.md) command's `--walk` and `--html` modes, so the skill, the
+terminal and the page cannot state the queue differently.
 
 ## The desk-role skills
 
@@ -37,3 +45,15 @@ These five carry the current house methodology for running the five-desk pipelin
 are present and scrubbed for the public plugin — house repo slugs, issue numbers and names removed.
 Unlike the two portable methodology skills above they still carry house-specific operating prose, so
 read a skill's own `SKILL.md` before relying on its exact wording in another project.
+
+## The worker-side role skills
+
+| Skill | Namespaced as | Role |
+|-------|---------------|------|
+| pr-shepherd | `assay:pr-shepherd` | Adopts an EXISTING open PR and drives it to mergeable — merge-current, CI green, every reviewer finding addressed |
+
+`pr-shepherd` is not a desk — it is the **worker** seat opposite `pr-review-desk`. The desk
+writes the verdict and owns the ready flip; the shepherd fixes the findings, keeps the branch
+current, drives CI green, and never flips, merges or closes. Where `worker-desk` dispatches a
+worker against a *brief*, a shepherd is dispatched against an *existing PR* someone else may
+have abandoned. Authoring new work is neither of those — that is a brief and a fresh branch.

@@ -188,6 +188,33 @@ func cmdCreate(args []string) (err error) {
 		return scanErr
 	}
 
+	// #203: the PUBLIC-REPO SELF-CONTAINMENT scan. It runs HERE rather than beside the
+	// secret scan above because it needs the target repo, which only preflight establishes
+	// — the secret scan's question ("is there a credential in this text") is repo-
+	// independent, this one is not. It is a no-op on a known-private repo and on an
+	// unconfigured roster (deskkit.SelfContainApplies), so the create path on a private
+	// repo is byte-for-byte what it was.
+	//
+	// The verdict routes through HandleScanRefusal like every other scan on this path, so
+	// the refusal advertises the SAME audited override rather than introducing a second
+	// bypass a worker would have to learn — and an override taken here writes its row
+	// before the push.
+	scOpts := deskkit.SelfContainOpts{Repo: facts.repo, NumberHint: trailerIssue}
+	for _, sc := range []struct {
+		surface string
+		content []byte
+	}{
+		{"PR body", body},
+		{"PR title", []byte(*title)},
+	} {
+		if serr := deskkit.HandleScanRefusal(deskkit.ScanOverride{
+			Tool: "deskpr", Verb: "create", Repo: facts.repo, Reason: *scanOverride,
+			Surface: sc.surface, Content: sc.content,
+		}, deskkit.SelfContainCheck(sc.surface, sc.content, scOpts)); serr != nil {
+			return serr
+		}
+	}
+
 	// --as-app defaults to true: mint/reuse the worker App installation
 	// token so every subsequent gh invocation (list, create) authenticates as
 	// the worker App instead of the ambient example-org identity. Pass

@@ -1,0 +1,50 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/commits/abc123"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/commits/abc123/statuses",
+      "query": "page=1\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines/55/jobs",
+      "query": "page=1\u0026per_page=100"
+    }
+  ],
+  "result": {
+    "CombinedState": "failure",
+    "StatusTotalCount": 2,
+    "Statuses": [
+      {
+        "State": "success",
+        "Context": "leak-sweep"
+      },
+      {
+        "State": "failure",
+        "Context": "external/policy"
+      }
+    ],
+    "CheckRunsTotalCount": 3,
+    "CheckRuns": [
+      {
+        "Name": "go-test",
+        "Status": "completed",
+        "Conclusion": "success"
+      },
+      {
+        "Name": "lint",
+        "Status": "completed",
+        "Conclusion": "failure"
+      },
+      {
+        "Name": "deploy",
+        "Status": "queued",
+        "Conclusion": ""
+      }
+    ]
+  }
+}

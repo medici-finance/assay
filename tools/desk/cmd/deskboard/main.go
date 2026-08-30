@@ -38,6 +38,17 @@ usage:
   deskboard actions                 per-PR ACTION classification (+ tombstones, security gate)
   deskboard reviews <repo> <pr>     review states + which head each verdict landed at
   deskboard queue                   open verify-gate issues (awaiting-verification view)
+  deskboard throughput              per-stage QUEUE DEPTH vs POOL SLOTS (dispatch / review /
+                                    verify / intake), naming the bottleneck stage and the
+                                    exact "deskroster set --role LOOP --width N" that widens
+                                    it. Depths are derived from dispatch, actions and
+                                    awaiting — nothing re-parses the board. SLOTS is the
+                                    loop's resolved pool width (CAPACITY, not live
+                                    occupancy). A stage whose depth could not be read is
+                                    could-not-check and is EXCLUDED from bottleneck
+                                    selection, never counted as an empty queue; the output
+                                    always states how many of the four stages it read.
+                                    Also accepted as --throughput.
   deskboard health                  default-branch ("is main red?") health per watched
                                     repo — three states: green / RED / COULD-NOT-CHECK
                                     (#295; also rides in the actions header + banner)
@@ -207,6 +218,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 				return deskkit.ExitRefused
 			}
 			unreviewedThreshold = d
+		case "--throughput":
+			// deskboard's modes are SUBCOMMANDS; `throughput` is the canonical spelling and
+			// the one every other verb's shape matches. This alias exists because the verb
+			// was specified as a flag, and a spelling that silently does nothing is worse
+			// than either choice — it would look like a board with no bottleneck.
+			pos = append(pos, "throughput")
 		case "-h", "--help":
 			fmt.Fprint(stdout, usage)
 			return deskkit.ExitOK
@@ -350,6 +367,8 @@ func dispatch(sub string, rest []string, hdr Header, mergeNowThreshold, unreview
 		// verb is deliberately distinct from `awaiting`: dispatching from `awaiting`
 		// sends workers at finished work.
 		return cmdDispatch(hdr, sub)
+	case "throughput":
+		return cmdThroughput(hdr, mergeNowThreshold, unreviewedThreshold)
 	case "policydrift":
 		return cmdPolicyDrift(hdr)
 	case "stalled":

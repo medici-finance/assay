@@ -128,6 +128,14 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		if err := bodycheck.Review(body); err != nil {
 			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
 		}
+		// #203: the PUBLIC-REPO SELF-CONTAINMENT scan. A review body is the densest
+		// evidence surface the desk writes — it quotes paths, cites issues across repos and
+		// names streams — which is precisely why it is also the likeliest to carry a span
+		// that resolves only inside the house. No-op on a known-private repo.
+		if err := deskkit.SelfContainCheck("review body", body,
+			deskkit.SelfContainOpts{Repo: repo, NumberHint: pr}); err != nil {
+			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
+		}
 		// The verdict KIND (correctness vs security) comes from the BODY,
 		// not the flag — both kinds post as the same --verdict. It is part of the
 		// idempotency key below; VerdictKind fails closed rather than yielding a key that

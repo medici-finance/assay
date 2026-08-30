@@ -13,6 +13,11 @@ description: >-
 
 # Author Brief
 
+**A stream board's Briefs table is a derived, generated surface once `statusgen` is wired up
+(`docs/streams/derived-board/spec.md`)** — a brief states the authoring facts and the edges
+(`why:`, `depends`, `unblocks`, `gate`, `risk`); it never states the lifecycle cell, and no one
+hand-edits the generated table.
+
 ## Model-tier gate (check BEFORE anything else)
 
 Brief authoring and work decomposition are **design-tier work**: this is where risk gates are
@@ -81,21 +86,58 @@ why: <prose>                        # REQUIRED for every NEW brief — one to th
 wave: <int>
 depends: []                        # typed IDs only: ["<stream>/<NN>", ...] — NEVER prose arrows
 unblocks: []                       # typed IDs
-effort: S | M | L                   # closed scale — L is the CEILING (rule 11); XL is not a size,
+effort: S | M | L                   # closed scale — L is the CEILING (rule 12); XL is not a size,
                                     # it is the signal to split into multiple briefs, each ≤ L.
 gate: model | human                # from the four risk questions below
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []                         # GH issue numbers this brief closes
-schema: brief-v1
+schema: brief-v2                    # required in a v2 tree (docs/streams/derived-board/spec.md §5);
+                                    # --lint PROBLEMs a tree of v2 briefs missing it. Reserved,
+                                    # OPTIONAL keys parsed under brief-v2 (shape-validated only,
+                                    # gating behaviour deferred to the graph stream): id (uuid,
+                                    # minted once at authoring, never reused), supersedes ([]),
+                                    # version (int, bumped on every Task/Verify edit after first
+                                    # dispatch), gates ([{on, type, reason}]), feathers ([...]).
+                                    # NO status: KEY — the lifecycle cell is DERIVED by statusgen
+                                    # from PR trailers, verifyrun witnesses and App approvals, never
+                                    # hand-asserted in frontmatter or the stream README table.
 authored: <YYYY-MM-DD> by <who/session>
 sources: []                        # provenance: scoping doc, finding IDs, intake IDs this derives from.
                                     # F-<slug>/I-<slug> references should be links: "[F-ws-token-expiry](../findings/YYYY-MM-DD-example-finding.md)"
 gate-why: <prose>                  # REQUIRED when gate: human OR any risk answer is yes — what about THIS
                                    # brief makes it risky and what the human is confirming (a line or two).
                                    # Omit only when gate: model and all four risk answers are no.
+decision-trigger: creation | start | spec   # OPTIONAL, gate: human only (absent = start) — WHEN this
+                                    # brief's self-contained decision issue is filed by the
+                                    # `<decision-issue filer>` your repo's instructions file names
+                                    # (see rule 4; the same shape as `human:<name>` — a capability the
+                                    # adopter binds, not a tool this skill ships). A JUDGEMENT recorded
+                                    # per brief, not a global rule: `creation` = the options are already
+                                    # enumerable as authored (file on landing); `start` = the decision is
+                                    # concrete once a worker first picks the brief up — the default,
+                                    # filed by the dispatcher; `spec` = the options only become
+                                    # well-formed after the pickup-time design/plan step — the executor
+                                    # authors `## Human decision` from that step, and THAT files it.
 exec-tier: any | strong             # OPTIONAL (absent = any) — minimum execution-model tier.
                                     # DERIVED from three complexity questions (see rule 9); any yes → strong.
 exec-tier-why: <one line>           # Recommended when exec-tier: strong — which question(s) it answered yes.
+domain: clear | complicated | complex | chaotic   # OPTIONAL (absent = complicated) — the work's Cynefin
+                                    # domain. Governs which diagnostic to reach for: Ordered
+                                    # (clear/complicated) → Theory of Constraints; Complex →
+                                    # probe-sense-respond / enabling constraints; Chaotic → act first,
+                                    # then sense. `statusgen --lint` PROBLEMs an unrecognized value;
+                                    # `statusgen --cynefin` shows the distribution and lists an
+                                    # absent-domain brief as Disorder. A repo that keeps a longer
+                                    # treatment binds it as `<cynefin-lens explainer>` in its own
+                                    # instructions file; the four values above are the whole contract.
+parallel-streams: []                # OPTIONAL (absent = one worker per brief — the default, and what
+                                    # nearly every brief uses). Declares that this brief's work
+                                    # decomposes into concurrent SHARDS, each scoped to file globs:
+                                    #   parallel-streams:
+                                    #     - {name: engine, files: ["statusgen/**"]}
+                                    #     - {name: docs,   files: ["docs/<stream>/**"]}
+                                    # Presence is a REQUEST, never a permission — `statusgen shardcheck`
+                                    # decides. See "Intra-brief splits" below before writing it.
 consumers: []                       # OPTIONAL — list of consumer sites when this brief changes a shared
                                     # value. Each entry: "<path>: fixed-here | follow-up <stream/NN> |
                                     # out-of-scope (<why>)". Absent = no shared value changed (the default).
@@ -111,6 +153,23 @@ out-of-repo files: <exact paths outside the repo (e.g. ~/.claude/skills/...), if
 see rule 7; omit the line entirely when none>
 facts: <the 3-5 project facts needed — key: value, no narrative. The implementer
 must never need to explore the repo.>
+
+## Human decision
+<!-- gate: human only — omit the section entirely otherwise. Lifted VERBATIM into the
+     brief's decision issue by the `<decision-issue filer>` your repo's instructions file
+     names, so write it SELF-CONTAINED: the reader sees ONLY this text, never the brief —
+     no links, no URLs (a conforming filer refuses both), no repo paths, no references to
+     other briefs or docs. REQUIRED at authoring time when decision-trigger is creation or
+     start; when decision-trigger: spec, the EXECUTOR authors it at pickup from the
+     design/plan step and commits it into this file. -->
+<3-10 lines: what is being decided and why it needs a human — enough to decide from
+this text alone>
+
+Options:
+1. **<option>** — <what it means; consequences; what happens next if chosen>
+2. **<option>** — <same>
+
+Default if no answer: <option N after <date/window>, or "none — blocks until answered">
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating kubectl. Leave commits per
@@ -165,6 +224,23 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
    trips the wire and what the human is actually confirming at the sign-off. A risk boolean with no
    rationale is an unfalsifiable assertion; the verify-gate card surfaces the `gate-why` verbatim.
    (statusgen NOTICEs a missing `gate-why` today; it becomes a hard lint error once the backfill lands.)
+   **A gate:human brief also gets a filed DECISION ISSUE.** The human gate is only real when there is
+   a concrete, self-contained tracker issue for the human to act on. Two halves, and only the first
+   ships with this methodology: `statusgen --decision-issues` emits the newly-eligible set as JSON —
+   title, `needs-decision` label, composed body, and a hidden `<!-- needs-decision: <stream>/<NN> -->`
+   marker that dedupes, so a brief that ever had one never gets a second — and the
+   `<decision-issue filer>` your repo's instructions file names is what actually files it. (Same shape
+   as `human:<name>`: a capability the adopting repo binds, because filing is tracker-specific.)
+   Record the resulting number back in the brief's `decision-issue:` frontmatter field; `statusgen
+   --lint` NOTICEs a gate:human brief in flight without one. WHEN it files is a per-brief judgement
+   you record as `decision-trigger:` (see the template): ask *"could the reader pick an option from
+   what I can write down right now?"* — yes at authoring → `creation` (author the `## Human decision`
+   section now and file as the brief lands); yes once a worker frames the work → `start` (the default;
+   the dispatcher files it, from your authored `## Human decision` section, or by deriving a fallback
+   from `gate-why`/`why` when the section is absent); only after real design exists → `spec` (the
+   executor authors the section at pickup, which is what ripens the filing). The issue body must let
+   the human decide WITHOUT opening the repo — inline everything, since a conforming filer refuses
+   links and URLs in the composed body.
 5. **Provenance is required.** A brief with an empty `sources:` — no scoping doc, no finding ID, no
    intake ID it derives from — is untraceable: no one can tell why the work exists or whether it's
    still needed.
@@ -257,10 +333,42 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
     checks are closed-form math rather than runtime assertions, that constraint stands; the
     independence test in (b) is what distinguishes a real layer from assert-spam. Adding a "layer"
     that fails for the same reason as the layer it backs up costs review time and buys nothing.
-11. **Sizing limits — L is the hard ceiling; prefer M for strong-tier / risk-gated work.** The
+11. **A brief whose deliverable makes checkable factual claims needs at least one DEREFERENCING
+    Verify row, not only presence/formatting checks.** Two rows can both go green without proving
+    the same thing:
+    - **Presence/formatting** — `grep -c`, `wc -w`, "section exists" — proves the deliverable is
+      well-formed. It CANNOT fail on a wrong-but-well-formed document: a confident falsehood sitting
+      in the right section, at the right length, passes exactly like the truth.
+    - **Dereferencing** — fetch a link and check what it actually serves; run a documented command
+      and compare its real output/exit code to the specific claim; check a documented ID or property
+      against the live system it names. This CAN fail on a wrong-but-well-formed document.
+
+    Rule 3 above ("Verify rows must be runnable by someone who didn't do the work") still stands —
+    this rule doesn't relax it. It says that when the deliverable itself carries checkable facts (a
+    setup/config guide, a market or competitive analysis, a spec — anything asserting "X is true"
+    that a reader could act on), a presence gate can't be the *whole* mechanical floor: at least one
+    row has to be capable of catching a wrong claim, not just a missing section. Skip this only for
+    genuinely presence-only deliverables with no factual claim to dereference (a docs reformat, a
+    template scaffold) — manufacturing a dereferencing row against a deliverable with nothing to
+    check is its own kind of checkmark-DoD.
+
+    It is a DIFFERENT AXIS from the row-runner rules and the unfailable-row lint: those read the
+    command TEXT and are enforced by `statusgen --lint`; this one needs to know what the deliverable
+    claims, so no lint enforces it. A row can pass every one of them and still measure only presence.
+
+    Triggering evidence (anonymized): a brief delivering a third-party-app setup guide shipped an
+    8-row Verify table, every row a grep-presence count — all 8 passed, and the guide was factually
+    wrong in four places, one load-bearing (it asserted a platform enforcement property that does not
+    exist). The sibling failure mode: a market-analysis brief whose citation links were present but
+    never resolved, carrying an invented competitor name. A proposed link-resolution lint would be a
+    partial, automated instance of *this* rule — it covers link-shaped dereferencing only; a
+    command-output check or a live-ID check dereferences just as validly and isn't a link at all.
+    Don't wait for such a lint to exist before writing the row this rule asks for.
+12. **Sizing limits — L is the hard ceiling; prefer M for strong-tier / risk-gated work.** The
     `effort:` scale is closed at S | M | L, and the top of it is a rule, not a convention: **no
     brief may be larger than L. A unit of work that would be XL (or bigger) MUST be split into
-    multiple briefs, each ≤ L**, sequenced with `depends:`/`unblocks:`. XL is only ever a
+    multiple briefs, each ≤ L**, sequenced with `depends:`/`unblocks:` (or sharded via
+    `parallel-streams:` when the intra-brief split rules below hold). XL is only ever a
     signal-to-split, never an emitted size — `statusgen --lint` already PROBLEMs any effort
     outside S/M/L.
 
@@ -349,17 +457,91 @@ unfamiliar surface, a draft you compressed hard).
 A failed probe is a defect caught before it crossed the boundary, and it costs less than one failed
 worker run.
 
+## Intra-brief splits — `parallel-streams:`
+
+A large brief whose parts are genuinely independent can be worked by several concurrent workers
+instead of one. The optional `parallel-streams:` field is how a brief declares that. **Absence is the
+default and always will be** — nearly every brief omits it and dispatches to exactly one worker.
+
+**Write it only when all four hold.** Otherwise leave it out; a serial brief is never wrong.
+
+1. **Effort: L, or the brief says why an M pays.** `statusgen --lint` NOTICEs a split on an S brief:
+   coordinating two workers, two claims and a recombine costs more than an S brief contains.
+2. **The parts are separable in the deliverable, not just in the file tree.** "These touch different
+   directories" is a statement about paths; the question is whether either half can be reviewed and
+   merged without the other.
+3. **No shard owns a shared surface.** A numbering space, a row table, a generated artifact, a module
+   graph, a pin set: two shards editing *different lines* of one of these still collide, because what
+   they contend on is not the bytes. The declared list — with the reason each surface earns its place
+   — is `sharedSurfaces` in `statusgen/shardcheck.go`; that is the one source, so do not restate the
+   list here or in a brief. Edits to those files belong to the coordinating worker, after the shards
+   land.
+4. **`statusgen shardcheck` approves it.** Declaring the field is a REQUEST. Run
+
+   ```
+   statusgen shardcheck --brief docs/<stream>/brief-<NN>-<slug>.md --root .
+   ```
+
+   before dispatch; it is also runnable on a candidate split with no brief written yet
+   (`--shard engine=statusgen/** --shard docs=docs/<stream>/**`). Three states, and only the first
+   permits a split: **0 checked-clean** · **1 checked-failed** (a named collision) ·
+   **2 could-not-check** (something it could not analyse). **1 and 2 are the same instruction —
+   dispatch ONE worker, serially.**
+
+**What the check prevents, and what it does not.** It is a precondition on the split, not a merge
+gate, and saying so plainly is the point:
+
+| Class | Prevented? | By what |
+|---|---|---|
+| Two shards editing the same file | yes | `path-overlap` — glob disjointness, checked against the real tree rather than asserted |
+| Two shards editing one numbering/row/generated space | yes | `shared-surface` — the surface is withdrawn from every shard |
+| Shard A changes a declaration shard B calls | yes, **within one Go package** | `symbol-coupling` — the class with no textual conflict, where both shards stay green alone and main goes red on merge |
+| Any other cross-shard file pair (non-Go, or Go across packages) | **NO** | reported as a `COVERAGE-GAP`, which forces could-not-check → serial |
+| A collision between this brief and a **different** branch | **NO** | out of scope by construction — one brief's shards are all it sees; that is merge-time detection, which is `statusgen mergecheck`'s job |
+| A branch that is stale relative to main | **NO** | merge-currency, also `mergecheck`'s |
+
+The middle row is the one that matters. The collision this was built for was a function growing an
+eighth parameter on one branch while another still called it with seven — different files, both green
+independently. A partition that only checks paths would have looked at those two files and seen a
+clean split. So a path partition is **necessary and not sufficient**, and the gap is named rather
+than defaulted away: any pair the checker cannot reason about produces could-not-check, and
+could-not-check runs serial.
+
 ## Phase README structure
 
 `docs/<phase>/README.md` ties the briefs together:
 
-1. **Status table** — `| # | Brief | Wave | Status | What's deployed/landed |`. Status uses
-   ✅ / ⚠️ / ❌ with a terse, honest "what's actually true" note (not aspirational).
+1. **Briefs table — generated, not hand-written, once `statusgen` is wired up**
+   (`docs/streams/derived-board/spec.md`). The table lives between
+   `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers, and the README's
+   own frontmatter carries `board: generated`; `statusgen` writes the Status / Verified / Reviewed
+   cells from PR trailers, `verifyrun` witnesses and App approvals — a hand edit inside the markers
+   is a lint PROBLEM, the same as hand-editing `STATUS.md`. Columns:
+   `| # | Brief | Wave | Effort | Status | Verified | Reviewed |`, Status a bare lifecycle token
+   (`todo` / `in-progress` / `implemented` / `verified` / `done`, or the hold token `blocked`). A
+   project not yet wired to `statusgen` hand-maintains the older
+   `| # | Brief | Wave | Status | What's deployed/landed |` shape as a stopgap — ✅ / ⚠️ / ❌ with a
+   terse, honest "what's actually true" note (not aspirational) — but the moment generation is
+   live, the table is derived, never hand-edited.
 2. **Critical path** — an ASCII chain showing the blocking order, with a one-line "smallest unblocking
    move" and a warning if any tempting-but-wrong first step is a dead end.
 3. **Dependency waves** — `Wave 0: [..]  Wave 1: [..]←0  …`, plus the one-line critical path
    (`0→8→1→2→5`).
 4. (Optional) "Before starting" prereqs and "Shared conventions" the briefs inherit.
+
+## When a spec is approved: file the authoring follow-on in the same motion
+
+A spec or scoping doc reaching `approved` is not yet work — nothing pulls it forward until
+briefs exist, so an approved-but-unrouted spec is exactly the thing that gets forgotten.
+Close that edge in the landing motion: whoever lands the PR that marks a spec `approved`
+files, in the same motion, ONE work-ready issue on your tracker titled **"Author briefs for
+&lt;spec path&gt; into &lt;destination stream&gt; (strong tier)"**, naming this
+`assay:author-brief` procedure and the **strong tier** requirement in the body so it rides
+your existing issue → work-dispatch lane to a strong-tier author. "Same motion" means the
+landing PR is not complete without it: file the issue immediately after the merge, or
+reference it from the PR body before merging. Landing those briefs later flips the spec's
+status to `routed` in the citing PR. (An automated emitter may back this floor as a second
+layer; the floor does not wait on one.)
 
 ## Working method
 
@@ -372,8 +554,12 @@ worker run.
 4. **Write the README first** (table + path + waves), then the briefs. Cross-link both directions.
 5. **Convert relative dates to absolute** (e.g. "by next week" → the actual date) — these docs
    outlive the conversation.
-6. **Be honest in status** — "⚠️ Workaround" / "Blocked by #X" beats a green checkmark that isn't
-   true; the table is the thing people trust.
+6. **Author the facts and the edges, not the cell.** Status is DERIVED, not chosen: write `why:`,
+   `depends`, `unblocks`, `gate`, `risk` accurately and let `statusgen` read the PR trailers,
+   witnesses and approvals into the Status / Verified / Reviewed cells
+   (`docs/streams/derived-board/spec.md`). A project not yet wired to `statusgen` keeps the honesty
+   rule in spirit by hand — "⚠️ Workaround" / "Blocked by #X" beats a green checkmark that isn't
+   true — but once generation is live, a hand-edited cell is a lint PROBLEM, not a courtesy.
 7. **Handoff to execution**: a brief is a scope-and-DoD contract, not a step-by-step plan — don't
    write one here. When a brief (especially Effort: L) is picked up for execution, consider running
    `superpowers:writing-plans` against that brief's Deliverables/DoD to produce a bite-sized TDD plan

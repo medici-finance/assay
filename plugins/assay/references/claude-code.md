@@ -36,6 +36,7 @@ binding ([`cursor.md`](./cursor.md)) that carry the `degrades`/`refuses` cells.
 | `intake-desk` | runs |
 | `market-intelligence` | runs |
 | `pr-review-desk` | runs |
+| `pr-shepherd` | runs |
 | `the-desk` | runs |
 | `verify-desk` | runs |
 | `worker-desk` | runs |

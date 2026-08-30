@@ -9,6 +9,10 @@ The **review half** of the process-desk pipeline: **intake-desk** turns the inbo
 placeholder briefs; **worker-desk** dispatches workers that implement them behind draft PRs;
 **this desk** reviews those PRs and flips them ready-for-human; **human:<name> merges** — always.
 
+**The stream board is a derived, generated surface** (`docs/streams/derived-board/spec.md`) — this
+desk reviews the diff and the PR body's `Brief:` trailer that feed it; it never edits a board row
+itself.
+
 Run it in a **dedicated window**. Only this window runs the PR monitors — a second monitor
 double-dispatches reviewers. Role window, no persona (Bob belongs to the-desk only).
 
@@ -178,12 +182,20 @@ than narrated. When human:<name> asks for a board report, MERGE-NOW items lead i
 
 ## Reviewer slots — keep them FULL, not waves
 
-**The unit of operation is the SLOT, not the wave.** Maintain a **standing pool of N = 5 concurrent
-reviewer agents**, continuously. (5, not worker-desk's 8: reviewers are `gh`-read-heavy and share
-one token — ~16+ concurrent agents trip GitHub's secondary rate limit and fail the board closed.)
-**An idle slot while a NEEDS-REVIEW or RE-REVIEW row exists is the failure this section prevents**,
-and there is no state in this loop called "the wave is done".
+**The unit of operation is the SLOT, not the wave.** Maintain a **standing pool of N concurrent
+reviewer agents**, continuously. **An idle slot while a NEEDS-REVIEW or RE-REVIEW row exists is the
+failure this section prevents**, and there is no state in this loop called "the wave is done".
 
+- **N is read, never remembered — `deskroster width --role pr-review-desk`, EVERY TICK.** The number
+  is not stated here; it lives in ONE place (`tools/desk/internal/deskkit/width.go`) so this body
+  cannot drift from the value the tools enforce, and so the coordinator can widen this pool when
+  `deskboard throughput` names review as the bottleneck. This pool is narrower than worker-desk's
+  because reviewers are `gh`-read-heavy and share one token — ~16+ concurrent agents trip GitHub's
+  secondary rate limit and fail the board closed — and that reason is now the CEILING the tools
+  compute, not a sentence somebody has to remember.
+  - **Narrowing NEVER kills a reviewer mid-verdict** — stop refilling and let the pool converge as
+    verdicts land.
+  - A width that cannot be read is **could-not-check**: hold at the last-read number and file it.
 - **Fill to N** at the risk-keyed tier; a risk-classed PR's separate `/security-review` agent
   occupies its own slot. **Refill on completion:** the instant a reviewer finishes (verdict posted,
   or errored), sweep and dispatch the next row into the freed slot — the re-invocation IS the cue.
@@ -268,6 +280,22 @@ as the planner and acts on its rows.
   Only the human's explicit waiver substitutes for a missing security artifact. Post the wrap-up
   comment listing filed follow-ups as `<repo>#<N>` pointers. **Merge stays the human's.**
 
+- **`superseded?` → confirm or dispute, as the reviewer App — never rubber-stamp.** A PR carrying
+  the `superseded?` label is a worker's PROPOSAL that its scope landed through another PR; it is
+  not a close, and the worker cannot make it one. This desk answers it with
+  `deskclose superseded -R <repo> <N> --by <target>` under the reviewer token: the tool reads the
+  token's role from the roster binding (a flag cannot claim it), requires a standing proposal by a
+  DIFFERENT actor naming the SAME target, requires that target to be genuinely MERGED, and only
+  then posts `SUPERSEDED-CONFIRMED` on the PR, a back-reference on the target, and closes.
+  Disagree — the target lacks scope the PR carried, the target is not what the record names, or
+  the close would launder one identity's work under another — and it is
+  `--dispute "<why>"`: the tool posts `SUPERSEDED-DISPUTED: <why>` and applies `needs-decision`,
+  after which every close is refused and the item is human:<name>'s. The reviewer's work here is
+  the comparison, not the verb: read both PRs' file lists and the brief's DoD before confirming — a
+  confirm with no comparison is the rubber stamp the two-role lane cannot detect. Never close a
+  proposal by hand, and never propose one (a reviewer originating a supersession is the single
+  actor the lane exists to remove).
+
 **A merged/closed PR is DONE** — its worker stops; residual work is a NEW PR. A commit
 pushed to a merged branch is orphaned off main: rescue it as a fresh PR.
 
@@ -298,12 +326,25 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   a local stub does not; when they disagree CI wins and the reviewer investigates *why*.
   **Stub-validation trap:** proving a script emits the right argv is NOT proving the tool accepts
   it; a reviewer that stubs a binary must say so and may not call that end-to-end proof.
-- **Board-row flip check — the Status cell must be a BARE lifecycle token** (the recurring
-  worker-authoring break). When the PR flips its brief's row in `the stream board README`
-  (columns `| # | Brief | Wave | Effort | Status | Verified | Reviewed |`), Status must be a bare
-  token — `todo`/`in-progress`/`implemented`/`verified`/`done`, or the hold token `blocked` — with
-  no PR/commit ref, date or sign-off dressed onto it. A dressing inside Status
-  (`implemented (#<pr>)`) trips an `invalid status` PROBLEM; a prepended leading cell
+- **Generated-table bounce — no PR may hand-edit the board, and every PR must carry its trailer**
+  (`docs/streams/derived-board/spec.md`). Two mechanical checks, either one a one-line bounce,
+  never a judgment call — no reviewer edits the board itself:
+  1. **The diff touches a generated-table region** — any hunk inside a stream README's
+     `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers →
+     `--request-changes`, one line: "hand edit inside the generated table — statusgen derives this
+     row from the PR's own trailer + state; drop the hunk." Never fix the table in review, and
+     never waive this for a "substantively correct" edit — correctness there is `statusgen`'s to
+     certify, not the reviewer's.
+  2. **The PR body lacks the trailer** — no `Brief: <stream>/<NN>` line → `--request-changes`, one
+     line: "PR body is missing the `Brief: <stream>/<NN>` trailer `deskpr` requires; the board
+     can't link this PR to its brief without it." (`deskpr create` already refuses to open a PR
+     with no trailer; a trailer-less PR reaching review means the refusal was routed around, and
+     this bounce is the second layer.)
+  On a tree not yet migrated to a generated table (no `board: generated` in the stream README
+  frontmatter), the hand-maintained Status cell must still be a BARE lifecycle token — the
+  recurring worker-authoring break — `todo`/`in-progress`/`implemented`/`verified`/`done`, or the
+  hold token `blocked`, with no PR/commit ref, date or sign-off dressed onto it. A dressing inside
+  Status (`implemented (#<pr>)`) trips an `invalid status` PROBLEM; a prepended leading cell
   (`| implemented (#<pr>) ||`) shifts every column right into a cascade of PROBLEMs. Both abort the
   board regen → `--request-changes` naming the bare-token fix; refs/dates/sign-offs belong in the
   **Verified/Reviewed** columns. Do NOT flag a legitimate `blocked` cell. Run the board linter and

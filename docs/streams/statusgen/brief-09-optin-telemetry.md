@@ -13,6 +13,7 @@ gate-why: >
   repo") changes the moment any ping exists. A human signs the collected-field list, the
   off-by-default/opt-in wording, retention, and the endpoint before any release carries it.
 issues: []
+decision-issue: 217
 schema: brief-v1
 authored: 2026-08-26 (re-authored clean for the statusgen board)
 sources:

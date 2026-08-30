@@ -1,7 +1,7 @@
 # Cursor — capability bindings
 
 How each neutral-core capability (named in the skill bodies as `capability:<name>`)
-is realised on **Cursor**. Target set is **both surfaces, headless-first** (Ian,
+is realised on **Cursor**. Target set is **both surfaces, headless-first** (human:<name>,
 2026-08-26): the headless `cursor-agent` CLI is the **primary** surface (best fit to
 the desk/automation model and the isolation/evidence/review-gate floor), the in-editor
 IDE agent the **secondary** end-user surface. Harness tool names are legal here — that
@@ -67,6 +67,7 @@ degradations than Codex** because isolation is native on the IDE surface and the
 | `intake-desk` | **runs** — triage/classification is interactive text plus `gh` reads/writes; `gh` write verbs need the adopter's permission posture to allow them (§2.8) — a config precondition, not a gate degradation. |
 | `market-intelligence` | **runs** — research + reads; no dispatch/isolation/gate needs. |
 | `pr-review-desk` | **runs** — the review **verdict** is text and is never degraded; posting the review and the draft→ready flip need `gh` writes → permission-posture precondition (§2.8). The review gate is upheld or the skill refuses; it never silently degrades. |
+| `pr-shepherd` | **runs on the IDE surface** — cloud background agents provide **native isolated git worktrees** (§2.9 `supported`), which is the one capability this skill treats as a floor. **Headless (`cursor-agent`): conditional on `[needs: live-install confirmation]`** — if the headless posture permits `git worktree add` (§2.8) it **runs**; if the sandbox blocks that ref-write it **refuses rather than drive the PR from the shared checkout**. Its watch loop needs no durable poll — the body states the periodic `gh pr view` read as the primary form and `capability:durable-monitor` only as an alternative, so the §2.6/§2.7 gap **degrades to the stated poll**, not to blindness. Discovery-mode fan-out (one shepherd per PR) **degrades: serial, one PR at a time, stated in-session** where headless parallel dispatch is unconfirmed (§2.5). Gates are unchanged: it never flips, merges or closes, and the security-gate carve-out is a refusal, never a degradation. *(Derived from this file's own capability rows plus the skill's declared needs — not a separate live measurement.)* |
 | `the-desk` | **runs** — coordination; its worker fan-out **degrades: serial with an in-session statement** if headless parallel dispatch is unconfirmed (§2.5); the review/merge gate is unchanged (the human merges). Isolation of dispatched implementers is delegated to `worker-desk` (below). |
 | `verify-desk` | **runs** — executes the Verify table and records **real command evidence** (`evidence-not-claims` intact); `gh` writes need the permission posture (§2.8). The evidence guarantee is never degraded. |
 | `worker-desk` | **runs on the IDE surface** — cloud background agents provide **native isolated git worktrees** (§2.9 `supported`), so the pool isolates each implementer as the floor requires. **Headless (`cursor-agent`): conditional on `[needs: live-install confirmation]`** — if the headless posture permits `git worktree add` (§2.8) so the skill can create its own isolated worktree (as on Claude Code), it **runs**; if the sandbox blocks that ref-write, per the no-isolation→refuse floor it **refuses rather than implement in the shared checkout** (the outcome Codex CLI hit). Dispatch gap → **degrades: the pool runs serially, one brief at a time, with an explicit in-session statement**. Isolation is never silently degraded. |
@@ -85,4 +86,4 @@ This binding is behavioural fact about a live harness, measured documentarily on
 2026-08-26 with no live environment. It is registered in `freshness.yaml`
 (harness-portability/12) so it expires on a clock, and the
 `[needs: live-install confirmation]` rows are re-measured once a Cursor environment
-exists (the live smoke is the stream's external head, Ian's).
+exists (the live smoke is the stream's external head, human:<name>'s).

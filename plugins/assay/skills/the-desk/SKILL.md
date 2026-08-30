@@ -178,6 +178,37 @@ verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name
   N agreements from one premise is one observation, not N. A **0-byte transcript is buffering, not
   death**: judge liveness by `capability:session-notifications` and elapsed time, never by an empty file.
 
+## Throughput — widening a bottlenecked desk (the desk's own lever)
+
+The desks are a pipeline, and a pipeline is only as fast as its narrowest stage. This coordinator
+owns the arbitration between stages; it does NOT own their agents.
+
+- **Read the signal every tick: `deskboard throughput`.** Per stage — dispatch / review / verify /
+  intake — it reports queue DEPTH against pool SLOTS, names the stage with the worst ratio, and
+  prints the exact widening command. Slots are CAPACITY, not live occupancy.
+- **Act on TWO CONSECUTIVE ticks, never one.** A single deep tick is a burst; two is a bottleneck.
+  Acting on one tick makes this desk an oscillator — widening into a queue that was about to drain,
+  then narrowing into the next burst.
+- **The move is a MESSAGE to that role's window, carrying the exact line the signal printed:**
+  `deskroster set --role <loop> --width <N>`. Then **record it in the hand-off note** — the width,
+  the stage, the two ratios that justified it, and the tick you set it. Per §Operating rules'
+  one-variable rule, a width change is a harness change: ONE variable, before/after recorded.
+- **THE DESK NEVER SPAWNS ANOTHER DESK'S AGENTS.** Widening asks a window to run more of its own
+  workers; it is not a licence to dispatch reviewers or verifiers from here. That boundary is what
+  keeps every agent attributable to the role whose App identity it posts under.
+- **The bound is not yours to argue with.** `deskroster set --width` REFUSES (exit 5) a width the
+  role's write budget or the shared App token's concurrency ceiling cannot carry, and names the
+  maximum it will accept. A refusal is a STOP: relay it, do not retry it smaller-and-smaller until
+  something sticks, and never route around it. When the signal says a stage is at its ceiling,
+  widening is not the lever — say so rather than inventing one.
+- **Narrow back when the queue drains**, on the same two-tick rule. A width also DECAYS on its own
+  after an hour, so a coordinator that dies cannot leave a pool permanently wide — but decay is the
+  backstop, not the plan.
+- **A blind stage is not an idle stage.** `throughput` excludes any stage whose depth it could not
+  read from bottleneck selection and states how many of the four it actually read. Fewer than four
+  read means the picture is partial: say so, and never widen some other stage on the strength of a
+  queue nobody measured.
+
 ## Reviews & the lifecycle
 
 **HARD RULE — the coordinator never runs review skills inline (methodology/28):** never

@@ -61,6 +61,14 @@ type stubRemote struct {
 	failItem    map[string]bool
 	dispMissing bool
 
+	// viewer is the login the forge reports for the token in use (`viewer { login }`);
+	// failViewer makes that read fail, which is the could-not-check arm of the
+	// two-role superseded lane. threads holds each item's comment list as JSON
+	// entries, keyed "repo#N" — the proposal reader walks it.
+	viewer     string
+	failViewer bool
+	threads    map[string][]string
+
 	calls     [][]string
 	dispCalls [][]string
 }
@@ -71,16 +79,21 @@ func newStub(t *testing.T) *stubRemote {
 		t: t, items: map[string]string{}, pulls: map[string]string{},
 		disps: map[string]string{}, comment: map[string]string{},
 		failComment: map[string]bool{}, failItem: map[string]bool{},
+		threads: map[string][]string{},
 	}
 }
 
 // writes returns only the argv of MUTATING calls. Refusal-path assertions compare this
 // against an empty slice, so "the tool refused" is proved by the absence of a write
-// rather than by the absence of a success message.
+// rather than by the absence of a success message. Label writes (`edit --add-label`,
+// `label create`) count: the two-role lane's proposal and dispute are label writes.
 func (s *stubRemote) writes() [][]string {
 	var out [][]string
 	for _, c := range s.calls {
-		if len(c) >= 2 && (c[0] == "issue" || c[0] == "pr") && (c[1] == "close" || c[1] == "comment") {
+		if len(c) >= 2 && (c[0] == "issue" || c[0] == "pr") && (c[1] == "close" || c[1] == "comment" || c[1] == "edit") {
+			out = append(out, c)
+		}
+		if len(c) >= 2 && c[0] == "label" && c[1] == "create" {
 			out = append(out, c)
 		}
 	}
@@ -142,8 +155,18 @@ func (s *stubRemote) install() {
 	runGH = func(args ...string) (string, error) {
 		s.calls = append(s.calls, args)
 		if args[0] == "api" {
+			if len(args) >= 2 && args[1] == "graphql" {
+				if s.failViewer {
+					return "", errors.New("HTTP 502: bad gateway")
+				}
+				return fmt.Sprintf(`{"data":{"viewer":{"login":%q}}}`, s.viewer), nil
+			}
 			path := args[len(args)-1]
 			switch {
+			case strings.Contains(path, "/comments?"):
+				// The thread listing: repos/<owner>/<name>/issues/<N>/comments?per_page=100
+				key := pathKey(strings.TrimSuffix(path[:strings.Index(path, "/comments?")], "/"), "/issues/")
+				return "[" + strings.Join(s.threads[key], ",") + "]", nil
 			case strings.Contains(path, "/issues/comments/"):
 				cid := path[strings.LastIndex(path, "/")+1:]
 				if s.failComment[cid] {
@@ -230,16 +253,23 @@ func signedRulings(t *testing.T, signOff string) string {
 }
 
 // baseWorld is the happy path every refusal test then breaks exactly one property of.
+//
+// The superseded lane is two-role, so the base world's caller is the REVIEWER and the
+// subject issue already carries a WORKER's standing proposal naming the merged PR: the
+// item-verb superseded close is then the confirm half, and every pre-existing refusal
+// test of that verb keeps its meaning (the refusal it breaks is still the one refused).
 func baseWorld(t *testing.T) (*stubRemote, string) {
 	t.Helper()
 	s := newStub(t)
 	s.comment[signOffCID] = commentJSON(blessLogin, blessID, "User",
 		"accepted. lanes B and C as written.", "https://api.github.com/repos/"+testRepo+"/issues/297")
-	s.items[testRepo+"#"+fmt.Sprint(subjectIssue)] = issueJSON(subjectIssue, "open", nil, "tracked by #40")
+	s.items[testRepo+"#"+fmt.Sprint(subjectIssue)] = issueJSON(subjectIssue, "open", []string{labelProposed}, "tracked by #40")
 	s.items[testRepo+"#"+fmt.Sprint(mergedPRNum)] = prIssueJSON(mergedPRNum, "closed")
 	s.pulls[testRepo+"#"+fmt.Sprint(mergedPRNum)] = pullJSON(mergedPRNum, "closed", true)
 	s.items[testRepo+"#"+fmt.Sprint(unmergedPR)] = prIssueJSON(unmergedPR, "closed")
 	s.pulls[testRepo+"#"+fmt.Sprint(unmergedPR)] = pullJSON(unmergedPR, "closed", false)
+	s.viewer = reviewerLogin
+	s.plantProposal(testRepo, subjectIssue, workerLogin, mergedPRRef)
 	s.install()
 	return s, signedRulings(t, signOffURL)
 }
@@ -268,14 +298,14 @@ func TestMain(m *testing.M) {
 // TestModes covers Verify row 1: each mode in the closed set closes with the right
 // state_reason against the stub, and ANY other mode string exits 5.
 func TestModes(t *testing.T) {
-	t.Run("superseded closes not planned", func(t *testing.T) {
+	t.Run("superseded closes not planned (reviewer confirming a worker's proposal)", func(t *testing.T) {
 		s, rul := baseWorld(t)
 		code, out := execCLI(modeSuperseded, "-R", testRepo, fmt.Sprint(subjectIssue),
 			"--by", mergedPRRef, "--rulings", rul)
 		if code != deskkit.ExitOK {
 			t.Fatalf("want exit 0, got %d\n%s", code, out)
 		}
-		assertClosedWith(t, s, reasonNotPlanned)
+		assertConfirmedClose(t, s, reasonNotPlanned)
 	})
 
 	t.Run("review-request closes completed", func(t *testing.T) {
@@ -350,6 +380,28 @@ func assertClosedWith(t *testing.T, s *stubRemote, reason string) {
 	}
 	if !contains(w[1], reason) {
 		t.Fatalf("want state_reason %q in the close argv, got %v", reason, w[1])
+	}
+}
+
+// assertConfirmedClose is the two-role lane's shape of a close: the verdict comment on
+// the item, the back-reference on the target, then the close — three writes, in that
+// order, so the record is bidirectional before anything is closed.
+func assertConfirmedClose(t *testing.T, s *stubRemote, reason string) {
+	t.Helper()
+	w := s.writes()
+	if len(w) != 3 {
+		t.Fatalf("want exactly three writes (verdict comment, back-reference, close), got %d: %v", len(w), w)
+	}
+	if w[0][1] != "comment" || w[1][1] != "comment" || w[2][1] != "close" {
+		t.Fatalf("want comment, comment, close — got %v", w)
+	}
+	if w[0][2] == w[1][2] {
+		t.Fatalf("the back-reference must land on the TARGET, not the item again: %v", w)
+	}
+	// A PR has no state_reason (closeItem); the lane is carried by the comment. Only an
+	// issue close carries the reason in its argv.
+	if w[2][0] == "issue" && !contains(w[2], reason) {
+		t.Fatalf("want state_reason %q in the close argv, got %v", reason, w[2])
 	}
 }
 
@@ -546,6 +598,9 @@ func TestMergedNotClosed(t *testing.T) {
 	t.Run("control: the same PR merged closes", func(t *testing.T) {
 		s, rul := baseWorld(t)
 		s.pulls[testRepo+"#"+fmt.Sprint(unmergedPR)] = pullJSON(unmergedPR, "closed", true)
+		// The standing proposal must name the target the confirm declares.
+		delete(s.threads, testRepo+"#"+fmt.Sprint(subjectIssue))
+		s.plantProposal(testRepo, subjectIssue, workerLogin, fmt.Sprintf("#%d", unmergedPR))
 		code, out := execCLI(modeSuperseded, "-R", testRepo, fmt.Sprint(subjectIssue),
 			"--by", fmt.Sprintf("#%d", unmergedPR), "--rulings", rul)
 		if code != deskkit.ExitOK {
@@ -982,6 +1037,7 @@ func TestDispositionRecordConsumed(t *testing.T) {
 		s, rul := baseWorld(t)
 		s.items[testRepo+"#90"] = prIssueJSON(90, "open")
 		s.pulls[testRepo+"#90"] = pullJSON(90, "open", false)
+		s.plantProposal(testRepo, 90, workerLogin, testRepo+"#40")
 		return s, rul
 	}
 
@@ -1123,6 +1179,28 @@ func TestRefusalPathsNeverWrite(t *testing.T) {
 			deskkit.ExitUnverifiable, func(s *stubRemote, _ *string) { s.failComment[signOffCID] = true }},
 		{"unsigned ruling", []string{modeSuperseded, "-R", testRepo, "55", "--by", "#40"},
 			deskkit.ExitRefused, func(_ *stubRemote, rul *string) { *rul = "" }},
+		// The two-role superseded lane's own refusals.
+		{"worker token cannot confirm (no proposal to make either: none recorded for a bare issue? — it PROPOSES, so the dispute flag is what is refused)",
+			[]string{modeSuperseded, "-R", testRepo, "55", "--by", "#40", "--dispute", "x"}, deskkit.ExitRefused,
+			func(s *stubRemote, _ *string) { s.viewer = workerLogin }},
+		{"reviewer with no standing proposal", []string{modeSuperseded, "-R", testRepo, "55", "--by", "#40"},
+			deskkit.ExitRefused, func(s *stubRemote, _ *string) { delete(s.threads, testRepo+"#55") }},
+		{"reviewer confirming its own proposal", []string{modeSuperseded, "-R", testRepo, "55", "--by", "#40"},
+			deskkit.ExitRefused, func(s *stubRemote, _ *string) {
+				delete(s.threads, testRepo+"#55")
+				s.plantProposal(testRepo, 55, reviewerLogin, mergedPRRef)
+			}},
+		{"proposal names a different target", []string{modeSuperseded, "-R", testRepo, "55", "--by", "#40"},
+			deskkit.ExitRefused, func(s *stubRemote, _ *string) {
+				delete(s.threads, testRepo+"#55")
+				s.plantProposal(testRepo, 55, workerLogin, "#999")
+			}},
+		{"token bound to neither role", []string{modeSuperseded, "-R", testRepo, "55", "--by", "#40"},
+			deskkit.ExitRefused, func(s *stubRemote, _ *string) { s.viewer = sharedLogin }},
+		{"token identity unreadable", []string{modeSuperseded, "-R", testRepo, "55", "--by", "#40"},
+			deskkit.ExitUnverifiable, func(s *stubRemote, _ *string) { s.failViewer = true }},
+		{"dispute with no standing proposal", []string{modeSuperseded, "-R", testRepo, "55", "--by", "#40", "--dispute", "x"},
+			deskkit.ExitRefused, func(s *stubRemote, _ *string) { delete(s.threads, testRepo+"#55") }},
 	}
 	for _, sc := range scenarios {
 		t.Run(sc.name, func(t *testing.T) {

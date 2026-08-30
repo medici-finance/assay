@@ -23,6 +23,7 @@ sources:
 exec-tier: strong
 exec-tier-why: "semantic-equivalence mapping across forges (question b): a plausible-but-wrong mapping (e.g. approval vs approval-rule eligibility) survives happy-path tests."
 domain: complicated
+tier: free
 ---
 
 # Brief 02 — gitlab forge implementation
@@ -48,6 +49,24 @@ facts:
   (visibility) — tier-gated features (approval rules, external status checks) return
   errors the tools must surface as could-not-check, never as clean.
 - Pagination: GitLab uses `X-Next-Page` headers, not link relations — cover in tests.
+
+## Edition
+Minimum GitLab tier: **free** (Community Edition). Every operation this brief implements is
+Free-tier — merge requests and the `Draft:` prefix, notes, award emoji, the approve endpoint,
+pipeline and commit-status reads, issues, project reads (edition-matrix.md table A, rows
+1-14, one docs citation per row).
+
+What degrades on CE: **`ReviewsAtHead`'s head pin**. The approvals endpoint carries no
+per-approval SHA, so pinning an approval to the head relies on the project setting "Remove all
+approvals when commits are added to the source branch", which is `Tier: Premium, Ultimate`
+(https://docs.gitlab.com/user/project/merge_requests/approvals/settings/). Fallback: the
+verdict NOTE carries the head SHA — the desk already writes it — so at-head reading works from
+the note body, and on CE the raw approval flag is treated as unpinned and advisory. The
+three-state error surface this brief already builds (task 3) is the right home for that
+distinction: an unpinnable approval is could-not-check, never clean.
+
+Making an approval *required* before merge is a different, Premium control that lives in
+brief 04's provisioning, not here — see edition-matrix.md rows B3 and B4.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per

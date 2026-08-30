@@ -25,17 +25,17 @@ findings-register state machine.
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [30-day lint-firing audit — retire cold rules](brief-01-lint-firing-audit.md) | 1 | S | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
 | 02 | [issue metrics (`--issues`)](brief-02-issue-metrics.md) | 1 | L | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
-| 03 | [self-improvement metric (self-healed vs human-touched)](brief-03-self-improvement-metric.md) | 2 | M | todo | — | — |
+| 03 | [self-improvement metric (self-healed vs human-touched)](brief-03-self-improvement-metric.md) | 2 | M | implemented | — | — |
 | 04 | [ladder-position indicator (`--ladder`)](brief-04-ladder-position-indicator.md) | 1 | S | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
 | 05 | [drives phase 3 — anti-starvation floors + critical tier](brief-05-drives-phase3-floors-critical-tier.md) | 1 | L | implemented | — | — |
 | 06 | [findings register — corroborated state machine](brief-06-findings-register-state-machine.md) | 1 | L | implemented | — | — |
-| 07 | [new brief-flow metrics](brief-07-brief-flow-metrics.md) | 1 | L | todo | — | — |
+| 07 | [new brief-flow metrics](brief-07-brief-flow-metrics.md) | 1 | L | implemented | — | — |
 | 08 | [composite AssayScore computation](brief-08-assayscore-computation.md) | 2 | M | todo | — | — |
-| 09 | [opt-in telemetry — anonymized fleet-drift corpus (off by default)](brief-09-optin-telemetry.md) | 1 | M | todo | — | — |
-| 10 | [graph export (`--graph` DOT + JSONL)](brief-10-graph-export.md) | 1 | M | todo | — | — |
+| 09 | [opt-in telemetry — anonymized fleet-drift corpus (off by default)](brief-09-optin-telemetry.md) | 1 | M | implemented | — | — |
+| 10 | [graph export (`--graph` DOT + JSONL)](brief-10-graph-export.md) | 1 | M | implemented | — | — |
 | 11 | [DORA/insights hybrid — DevLake commodity split](brief-11-devlake-hybrid-metrics-split.md) | 1 | L | implemented | — | — |
 | 12 | [`homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo](brief-12-homed-in-field.md) | 1 | M | implemented | — | — |
-| 13 | [cadenced roadmap artifacts (`--cadence weekly/monthly`)](brief-13-cadenced-roadmap-artifacts.md) | 1 | M | todo | — | — |
+| 13 | [cadenced roadmap artifacts (`--cadence weekly/monthly`)](brief-13-cadenced-roadmap-artifacts.md) | 1 | M | implemented | — | — |
 
 ## Critical path
 statusgen/02 (issue metrics) → statusgen/03 (self-improvement metric). The

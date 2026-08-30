@@ -13,6 +13,10 @@ unwatched Awaiting queue is how briefs rot at `implemented`; this loop is the **
 and the **Change Failure Rate** sensor (`verify-outcomes.jsonl` is its input). It does not run the PR
 monitor — that is pr-review-desk's.
 
+**The stream board is a derived, generated surface** (`docs/streams/derived-board/spec.md`) — this
+desk's deliverable is the witness (the Evidence row, the verifyrun log, the App approval); it never
+hand-edits a board cell, and the board follows the witness.
+
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
 
@@ -66,6 +70,12 @@ run: fix the check it names, re-run, then claim. An open verify-gate wait is a w
    Evidence) before Tier 2 (`verified → done` closes), oldest-first within a tier; Tier 2 is never
    hidden — a filtered-out free close becomes permanent debt.
 3. **Land each verdict as it returns** via `deskevidence` (below) — never a wave buffered to the end.
+   **How many verifiers may be in flight at once is `deskroster width --role verify-desk`, re-read
+   every tick.** This desk's declared default is a SEQUENTIAL drain (width 1), which is what it has
+   always done; the width exists so the coordinator can widen it when `deskboard throughput` names
+   verify as the bottleneck, without this body carrying a number that could drift from the tools.
+   Narrowing never stops a verifier mid-pass — stop dispatching and let the pool converge as
+   verdicts land. A width that cannot be read is could-not-check: hold at the last-read number.
 4. Repeat as a CONTINUOUS drain, reporting incrementally. `verifyloop verdict` is the
    deterministic-runner half; filing its signed payload is the autonomous cutover, `gate: human`.
 
