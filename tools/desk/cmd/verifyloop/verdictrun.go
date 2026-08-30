@@ -119,7 +119,15 @@ func cmdVerdict(args []string) int {
 		window:  *window,
 		dryRun:  *dryRun,
 	}
-	return deskkit.ExitCodeOf(runVerdict(cfg))
+	// Fail-closed: a red envelope (missing/unreadable PEM, an unreadable Awaiting queue, a
+	// signing failure) is reported LOUDLY on stderr — never a silent non-zero exit. The
+	// verdict lane's whole contract is "file nothing, report the envelope error loudly"
+	// (brief 04 Context), so the CLI must surface it exactly as the `plan` path does.
+	if err := runVerdict(cfg); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		return deskkit.ExitCodeOf(err)
+	}
+	return deskkit.ExitOK
 }
 
 // runVerdict is the testable core: resolve the envelope (PEM), read the queue, run the

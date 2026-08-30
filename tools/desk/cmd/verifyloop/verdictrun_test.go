@@ -123,6 +123,53 @@ func TestSignedBodyVerifiesAndTamperRefuses(t *testing.T) {
 	}
 }
 
+// --- Row 2: a DRY-RUN body verifies with the deskverdict-verify primitive; a
+// flipped byte then refuses. This is the Verify-table row-2 check named exactly so
+// `go test -run 'DryRunSignVerify'` selects it (a `-run` filter that matches nothing
+// exits 0 — a false green — so the row is only a real assertion when a test carries
+// this name). It exercises the actual `--dry-run` emit path (runVerdict dryRun),
+// extracts the emitted signed body, and verifies it through deskkit.VerifyVerdictBody
+// — the same body-level verify `deskverdict verify` calls — so signing and verifying
+// share one canonical form end-to-end.
+func TestDryRunSignVerify(t *testing.T) {
+	root := demoRoot(t)
+	pemPath, pub := writeTestKey(t)
+
+	var out bytes.Buffer
+	err := runVerdict(verdictRunConfig{
+		root: root, repo: "medici-finance/assay", head: "cafe1234",
+		pem: pemPath, dryRun: true, window: time.Hour, exec: fakeExec, out: &out,
+	})
+	if err != nil {
+		t.Fatalf("runVerdict dry-run: %v", err)
+	}
+
+	// The emitted signed body is everything before the trailing "signed verdict …" summary.
+	s := out.String()
+	body := s
+	if i := strings.Index(s, "\nsigned verdict "); i >= 0 {
+		body = s[:i]
+	}
+	if !strings.Contains(body, verdictFenceTagLiteral) {
+		t.Fatalf("dry-run body carries no verdict-payload block; got:\n%s", s)
+	}
+
+	// The untampered dry-run body verifies with deskverdict's body-level verify.
+	if state, msg := deskkit.VerifyVerdictBody(body, pub); state != deskkit.VerdictVerified {
+		t.Fatalf("VerifyVerdictBody(dry-run body) = %v (%s), want Verified", state, msg)
+	}
+
+	// Flip one byte of the logical payload (PASS -> FAIL) and the signature must refuse:
+	// the digest no longer matches the canonical bytes that were signed.
+	tampered := strings.Replace(body, `"result":"PASS"`, `"result":"FAIL"`, 1)
+	if tampered == body {
+		t.Fatalf("test setup: no PASS result to flip in the dry-run body:\n%s", body)
+	}
+	if state, msg := deskkit.VerifyVerdictBody(tampered, pub); state != deskkit.VerdictRefused {
+		t.Fatalf("VerifyVerdictBody(one flipped byte) = %v (%s), want Refused", state, msg)
+	}
+}
+
 // --- Row 3: missing-PEM env → non-zero, names the envelope, files nothing ----
 
 func TestRunVerdictMissingPEMFailsClosedAndFilesNothing(t *testing.T) {
