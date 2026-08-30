@@ -53,6 +53,12 @@ import (
 // is the default.
 const SurfaceBodyPublic = "public body"
 
+// minShortNameNotice is the shortest private-repo SHORT NAME that earns a notice. See the
+// noise-floor note at its only use: shorter tokens are ordinary English and a notice keyed
+// on one fires on nearly every body. The full `owner/name` slug refuses at any length, so
+// this bounds only the advisory half.
+const minShortNameNotice = 4
+
 // EnvWithheldIdentifiers names the environment variable carrying the register identifiers a
 // PUBLIC body must not name — stream slugs and brief ids that live in a register the house
 // does not publish, comma-separated:
@@ -92,7 +98,17 @@ var (
 	// GENERIC (every unix developer machine and every CI runner has them) rather than
 	// house-specific, so naming them here discloses nothing. `/tmp/tracker-` and
 	// `/private/tmp/tracker-` are the sanctioned worktree prefix deskwt mints under.
-	reAbsMachinePath = regexp.MustCompile(`(?:/Users/|/home/|/private/tmp/|/private/var/folders/|/tmp/tracker-)[^\s"'` + "`" + `)\]>,;]*`)
+	//
+	// The trailing `+` — at least ONE character past the root — is load-bearing and is the
+	// #380 lesson applied before it can bite. A guard that fires on its own documentation
+	// gets routed around rather than fixed, and the ROOT ALONE is what documentation of this
+	// check is made of: `deskpr --help`, the worker kit clause, this file's own comments and
+	// the PR body that introduces it all have to spell `/Users/` to say which roots are
+	// covered. A bare root with nothing after it also discloses nothing — `/Users/` names no
+	// user, no machine and no directory — while a real leaked path always carries at least
+	// one component. So the one shape the scan must tolerate is exactly the one that carries
+	// no information.
+	reAbsMachinePath = regexp.MustCompile(`(?:/Users/|/home/|/private/tmp/|/private/var/folders/|/tmp/tracker-)[^\s"'` + "`" + `)\]>,;]+`)
 	// reWorktreeName matches a scratch worktree directory name written WITHOUT its leading
 	// path — `tracker-<item>` — which is how it most often reaches a body (a command line, a
 	// "my worktree is …" sentence). deskwt mints exactly this shape (cmd/deskwt).
@@ -288,6 +304,16 @@ func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, noti
 	// word. They are reported so a human can look, never so a write is blocked.
 	notices = append(notices, bareRefNotices(surface, s, o.NumberHint)...)
 	for short := range privShort {
+		// A short name under minShortNameNotice characters is not noticed at all. This is
+		// not squeamishness about false positives — it is the console noise floor. A
+		// deployment is free to alias a repo `at` or `oit`, and a notice keyed on a token
+		// that short fires on ordinary English in nearly every body; measured on this
+		// change's own PR body, a two-letter alias produced a notice about the word "at".
+		// A channel that warns on everything is a channel nobody reads, and the FULL
+		// `owner/name` slug still REFUSES at any length, so nothing is lost but noise.
+		if len(short) < minShortNameNotice {
+			continue
+		}
 		if containsToken(strings.ToLower(s), short) {
 			notices = append(notices, fmt.Sprintf(
 				"%s: the word %q is the configured short name of a PRIVATE repository. It is not "+

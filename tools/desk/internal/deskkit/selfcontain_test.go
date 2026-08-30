@@ -169,6 +169,15 @@ func TestSelfContainAdmitsSelfContainedBodies(t *testing.T) {
 			"a relative tmp path that is not a machine root",
 			"the cache lives under tmp/build/go/pkg/mod on the runner.",
 		},
+		{
+			// The #380 shape: text DOCUMENTING the check has to spell the roots it covers,
+			// and a guard that refuses its own documentation is a guard that gets routed
+			// around instead of fixed. A bare root names no user, machine or directory, so
+			// tolerating it costs no detection — see reAbsMachinePath's trailing `+`.
+			"the roots spelled bare, as this check's own documentation must",
+			"REFUSED: an absolute machine path (`/Users/`, `/home/`, `/private/tmp/`, " +
+				"`/private/var/folders/`, `/tmp/tracker-`).",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -305,6 +314,24 @@ func TestSelfContainPrivateShortNameIsNoticeOnly(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "tracker") {
 		t.Errorf("the private repo's short name was not noticed: %s", out.String())
+	}
+
+	// The noise floor: an alias under minShortNameNotice characters is ordinary English and
+	// is not noticed at all. `trk` is the configured alias of a private repo in this
+	// fixture's roster, and a notice keyed on a token that short fires on prose.
+	var short strings.Builder
+	if err := SelfContainCheck("PR body", []byte("the trk column reads correctly"),
+		SelfContainOpts{Repo: scPublicRepo, NumberHint: 9000, Notices: &short}); err != nil {
+		t.Fatalf("a short alias must not refuse: %v", err)
+	}
+	if strings.Contains(short.String(), "\"trk\"") {
+		t.Errorf("a %d-character alias must stay under the noise floor; notices were:\n%s",
+			len("trk"), short.String())
+	}
+	// …but the FULL slug of that same repo still refuses, at any alias length.
+	if err := SelfContainCheck("PR body", []byte("see "+scPrivateRepo+" for the original"),
+		SelfContainOpts{Repo: scPublicRepo, NumberHint: 9000, Notices: io_Discard{}}); !IsRefused(err) {
+		t.Fatalf("the full private slug must still refuse whatever its alias length: %v", err)
 	}
 }
 
