@@ -28,20 +28,19 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 |---|---|---|---|
 | derived-board | 05 — desk skills: reference the brief, never flip the cell (both copies) | 1 | 2500 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
-| desk-tools | 04 — Deterministic runner — execute rows, batch, sign, file verdict issues [exec:strong] | 1 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (46 desk-actionable of 47 total — 37 at implemented, 10 verified awaiting review)
+## Awaiting verification / review (47 desk-actionable of 48 total — 37 at implemented, 11 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (46)
+### Desk-actionable (47)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -57,7 +56,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
 | harness-portability | 02 [exec:strong] | implemented | 3500 | 5 | — | — | — |
-| quality | 02 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| quality | 02 [exec:strong] | verified | 3500 | 5 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | forge-gitlab | 02 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 3000 | 4 | — | — | — |
@@ -75,6 +74,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 05 [exec:strong] | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
@@ -143,7 +143,7 @@ _None._
 - 01 Binary channel — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer — implemented (wave 1)
 - 03 Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN — implemented (wave 1)
-- 04 Deterministic runner — execute rows, batch, sign, file verdict issues — todo (wave 1)
+- 04 Deterministic runner — execute rows, batch, sign, file verdict issues — implemented (wave 1)
 - 05 Escape-valve `Decide()` primitive in deskkit — verified (wave 1)
 
 ### desktools-go-git (8 open)
@@ -203,7 +203,7 @@ _None._
 ### quality (15 open)
 
 - 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — verified (wave 0)
-- 02 M1 line-operation taxonomy + churn/rework rate — implemented (wave 1)
+- 02 M1 line-operation taxonomy + churn/rework rate — verified (wave 1)
 - 03 M1 hotspots + knowledge distribution (SPOF) + change coupling — implemented (wave 1)
 - 04 M1 instruction-layer brittleness (reference-validity + doc↔code drift) — implemented (wave 1)
 - 05 `QUALITY.md` single-writer trend view + metrics artifacts — todo (wave 2)

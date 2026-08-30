@@ -118,10 +118,12 @@ desk-hook-install:
 desk-test:
 	@cd $(DESK_DIR) && go test ./... -count=1
 
-## skillslint: validate the desk-role skill homes under plugins/assay/skills/ AND
+## skillslint: validate the desk-role skill homes under plugins/assay/skills/,
+## check EVERY *.md under plugins/ for an unresolved house value in a driver
+## position (the neutral `human:<name>` token is the only permitted form), AND
 ## byte-diff every shared-guardrail copy against its one declared source,
 ## .claude/guardrails/GUARDRAILS.md. Three-state: could-not-check is a failure,
-## never a quiet pass. Offline; safe for agents/CI.
+## never a quiet pass. Offline; safe for agents/CI. See tools/skillslint/README.md.
 skillslint:
 	@cd $(SKILLSLINT_DIR) && go run . --root ../..
 
