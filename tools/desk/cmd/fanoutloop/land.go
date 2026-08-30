@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
-	"os/exec"
+	"net/http"
 	"strings"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
@@ -27,10 +29,10 @@ type Sink interface {
 	ReleaseDispatchClaim(it loopengine.Item) error
 }
 
-// dryRunSink is the DEFAULT Sink. It NEVER runs a `gh` mutation — it prints what the real sink WOULD
+// dryRunSink is the DEFAULT Sink. It performs NO remote write — it prints what the real sink WOULD
 // do. The dry-run ground rules forbid mutating remote state, and the autonomous cutover is
-// BLOCKED-ON-HUMAN, so the safe default is an emitter. The real claim-releasing sink (ghDispatchSink)
-// is wired only at cutover, on the owner's call.
+// BLOCKED-ON-HUMAN, so the safe default is an emitter. The real claim-releasing sink
+// (forgeDispatchSink) is wired only at cutover, on the owner's call.
 type dryRunSink struct{ out io.Writer }
 
 func (d dryRunSink) RecordDispatch(r loopengine.Result) error {
@@ -47,50 +49,75 @@ func (d dryRunSink) ReleaseDispatchClaim(it loopengine.Item) error {
 	return nil
 }
 
-// ghDispatchSink is the REAL sink used only at cutover. It releases the `refs/dispatch/<id>` claim
-// via the documented one-line equivalent `gh api -X DELETE repos/<owner/repo>/git/refs/dispatch/<key>`
-// (SKILL § worker prompt essentials). `run` is injectable so the command shape is unit-testable
-// without a live remote — and so the reference build's tests never touch the network. A 422/404 on a
-// missing ref is a no-op (the claim is already gone), matching ReleaseClaim-of-missing semantics.
-type ghDispatchSink struct {
-	out io.Writer
-	run func(args ...string) (string, error)
+// forgeDispatchSink is the REAL sink used only at cutover. It releases the `refs/dispatch/<id>`
+// claim through the ENUMERATED forge operation `DeleteRef` (the closed-forge-surface brief).
+//
+// It used to spell that release as `gh api -X DELETE repos/<owner/repo>/git/refs/dispatch/<key>`.
+// That one line was the stream's live example of a passthrough: an argv carrying a whole REST path,
+// so the surface actually reachable from this sink was not "delete a dispatch ref" but "any endpoint
+// on the forge, by any method" — and reachable, besides, only on a runner with the `gh` binary
+// installed and whatever ambient credential it happened to carry. `DeleteRef(repo, "dispatch/<key>")`
+// is the same operation with the reach removed: the ref is validated inside the repo's own namespace
+// (deskkit.ValidateRefPath) before a request exists, and the identity is the token the Forge was
+// constructed with.
+//
+// The Forge is injected so the release is unit-testable without a live remote — the reference build's
+// tests never touch the network — and so a GitLab profile substitutes its own backend rather than a
+// second sink. A 404/422 on a missing ref stays a no-op: the claim is already gone, branch-as-claim
+// is live, and re-releasing is not a failure.
+type forgeDispatchSink struct {
+	out   io.Writer
+	forge deskkit.Forge
 }
 
-func newGHDispatchSink(out io.Writer) *ghDispatchSink {
-	return &ghDispatchSink{
-		out: out,
-		run: func(args ...string) (string, error) {
-			cmd := exec.Command(args[0], args[1:]...)
-			b, err := cmd.CombinedOutput()
-			return string(b), err
-		},
-	}
+func newForgeDispatchSink(out io.Writer, f deskkit.Forge) *forgeDispatchSink {
+	return &forgeDispatchSink{out: out, forge: f}
 }
 
-func (g *ghDispatchSink) RecordDispatch(r loopengine.Result) error {
-	// The dispatch log in production is the durable GitHub state (the ref, the PR, the roster). The
+func (g *forgeDispatchSink) RecordDispatch(r loopengine.Result) error {
+	// The dispatch log in production is the durable forge state (the ref, the PR, the roster). The
 	// sink records nothing extra beyond a progress line; the handle is the PR itself.
 	fmt.Fprintf(g.out, "dispatch-log: %s -> %s runner=%s\n", r.Item.ID, r.Artifact, r.RunnerID)
 	return nil
 }
 
-func (g *ghDispatchSink) ReleaseDispatchClaim(it loopengine.Item) error {
+func (g *forgeDispatchSink) ReleaseDispatchClaim(it loopengine.Item) error {
 	repo := strings.TrimSpace(it.Payload["repo"])
 	if repo == "" {
 		return fmt.Errorf("release dispatch claim for %s: no target repo in payload", it.ID)
 	}
-	ref := "repos/" + repo + "/git/refs/dispatch/" + claimKey(it)
-	out, err := g.run("gh", "api", "-X", "DELETE", ref)
-	if err != nil {
-		// A missing ref (already released, or never created) is not a failure — branch-as-claim is
-		// what matters and it is already live.
-		if strings.Contains(out, "Not Found") || strings.Contains(out, "422") || strings.Contains(out, "404") {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" {
+		return fmt.Errorf("release dispatch claim for %s: target repo %q is not owner/name", it.ID, repo)
+	}
+	if g.forge == nil {
+		return fmt.Errorf("release dispatch claim for %s: no forge wired into the sink", it.ID)
+	}
+	ref := dispatchRefNamespace + "/" + claimKey(it)
+	if err := g.forge.DeleteRef(deskkit.ForgeRepo{Owner: owner, Name: name}, ref); err != nil {
+		if refAlreadyGone(err) {
 			return nil
 		}
-		return fmt.Errorf("gh api DELETE %s: %v: %s", ref, err, out)
+		return fmt.Errorf("release dispatch claim refs/%s in %s: %w", ref, repo, err)
 	}
 	return nil
+}
+
+// dispatchRefNamespace is the ref namespace the dispatch claim lives in. It is a constant rather
+// than an interpolation so no caller-supplied value can widen which namespace this sink deletes from.
+const dispatchRefNamespace = "dispatch"
+
+// refAlreadyGone reports whether a DeleteRef error means the ref was not there to delete. GitHub
+// answers a missing git ref with 404, and 422 for a ref name it will not resolve; either way the
+// claim is not held, which is the only thing this sink cares about. Every other status — a 401
+// re-mint, a 403 permission gate — is a real failure and is NOT swallowed, because reporting a
+// still-held claim as released is how two workers end up on one item.
+func refAlreadyGone(err error) bool {
+	if deskkit.IsForgeNotFound(err) {
+		return true
+	}
+	var ae *deskkit.ForgeAPIError
+	return errors.As(err, &ae) && ae.Status == http.StatusUnprocessableEntity
 }
 
 // claimKey sanitizes an item ID into a `refs/dispatch/<key>` segment: "/" cannot appear inside a

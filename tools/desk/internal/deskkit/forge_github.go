@@ -464,6 +464,24 @@ func (g *GitHubForge) CloseIssue(repo ForgeRepo, number int, stateReason string)
 	return g.doJSON(http.MethodPatch, path, body, nil)
 }
 
+// DeleteRef deletes one git ref (the typed replacement for the `gh api -X DELETE
+// repos/<o>/<r>/git/refs/<ref>` passthrough fanoutloop used to release a dispatch claim).
+// The ref is validated by ValidateRefPath first, so the only thing this op can address is a
+// ref inside the named repo — the arbitrary-endpoint reach of the call it replaces is gone,
+// not renamed.
+//
+// A missing ref surfaces as a *ForgeAPIError the caller can test with IsForgeNotFound; the
+// seam does not decide that "already gone" is success, because for a claim release it is and
+// for a tag retraction it is not.
+func (g *GitHubForge) DeleteRef(repo ForgeRepo, ref string) error {
+	clean, err := ValidateRefPath(ref)
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/git/refs/%s", repo.Owner, repo.Name, clean)
+	return g.doJSON(http.MethodDelete, path, nil, nil)
+}
+
 // --- Identity / transport ---
 
 // PushTransportHint returns GitHub's push-transport shape: an App installation token

@@ -1209,6 +1209,42 @@ func (g *GitLabForge) CloseIssue(repo ForgeRepo, number int, stateReason string)
 	return g.mapErr(http.MethodPut, path, uerr)
 }
 
+// DeleteRef deletes one git ref. This is the mapping that does NOT reach across cleanly, and
+// the refusal below is the honest half of it.
+//
+// GitHub exposes a general git-data ref API (`DELETE /git/refs/<anything>`), so it can delete
+// a ref in any namespace — including the `refs/dispatch/*` namespace the desk's claim
+// mechanism uses. GitLab Community Edition exposes no general ref-delete endpoint at all: the
+// Branches API (`DELETE /projects/:id/repository/branches/:branch`, Tier: Free/Premium/
+// Ultimate — https://docs.gitlab.com/api/branches/) deletes a BRANCH, and tags have their own
+// endpoint. There is no CE endpoint, at any tier, for a ref outside those namespaces.
+//
+// So this backend serves "heads/<branch>" from the Branches API and REFUSES every other
+// namespace as could-not-check, naming the gap. It does not silently succeed, and it does not
+// invent a ref-shaped call the instance would answer with an HTML 404 — either would report a
+// claim as released when it is still held. A profile that needs claim refs on GitLab uses a
+// branch-namespaced claim; that is a workflow decision, not something a backend may paper over.
+func (g *GitLabForge) DeleteRef(repo ForgeRepo, ref string) error {
+	clean, err := ValidateRefPath(ref)
+	if err != nil {
+		return err
+	}
+	branch, ok := strings.CutPrefix(clean, "heads/")
+	if !ok {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: GitLab exposes no general ref-delete endpoint, so DeleteRef cannot serve %q — "+
+				"only the \"heads/<branch>\" namespace maps (the Branches API); a claim held outside refs/heads "+
+				"has no CE equivalent and is NOT reported released", ref), nil)
+	}
+	cl, cerr := g.client()
+	if cerr != nil {
+		return cerr
+	}
+	path := fmt.Sprintf("/projects/%s/repository/branches/%s", g.projectPath(repo), url.PathEscape(branch))
+	_, derr := cl.Branches.DeleteBranch(repo.Slug(), branch)
+	return g.mapErr(http.MethodDelete, path, derr)
+}
+
 // --- Identity / transport ---
 
 // PushTransportHint returns GitLab's push-transport shape: a personal/group/project access

@@ -1,0 +1,5 @@
+{
+  "requests": [],
+  "err": "could-not-check: GitLab exposes no general ref-delete endpoint, so DeleteRef cannot serve \"dispatch/item--01\" — only the \"heads/\u003cbranch\u003e\" namespace maps (the Branches API); a claim held outside refs/heads has no CE equivalent and is NOT reported released",
+  "not_found": false
+}

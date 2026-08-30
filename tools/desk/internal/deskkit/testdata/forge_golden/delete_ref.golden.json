@@ -1,0 +1,8 @@
+{
+  "requests": [
+    {
+      "method": "DELETE",
+      "path": "/repos/medici-finance/assay/git/refs/dispatch/item--01"
+    }
+  ]
+}
