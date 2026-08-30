@@ -9,7 +9,7 @@
     {
       "name": "assay",
       "source": "./plugins/assay",
-      "description": "The Assay methodology as a Claude Code plugin: the two portable methodology skills (adopt, author-brief) plus the resident operating rules (SessionStart hook). Skills surface namespaced as assay:<name>.",
+      "description": "The Assay methodology as a Claude Code plugin: the portable methodology skills (adopt, author-brief, ask-decision), the five desk-role skills, the inbox command, plus the resident operating rules (SessionStart hook). Skills surface namespaced as assay:<name>.",
       "version": "0.1.0",
       "license": "Apache-2.0",
       "author": {
