@@ -1,0 +1,40 @@
+{
+  "candidates": [
+    {
+      "id": "tier1-defect-labeled-issue-closer",
+      "commit_sha": "c111111111111111111111111111111111111111",
+      "message": "Fixes #101: stop the crash on empty input"
+    },
+    {
+      "id": "tier2-fix-branch-and-title",
+      "commit_sha": "c222222222222222222222222222222222222222",
+      "pr_number": 202,
+      "pr_branch": "fix/empty-input-crash",
+      "pr_title": "fix: crash on empty input",
+      "message": "guard the empty-input path"
+    },
+    {
+      "id": "tier3-keyword-only",
+      "commit_sha": "c333333333333333333333333333333333333333",
+      "pr_branch": "chore/cleanup",
+      "pr_title": "clean up the input parser",
+      "message": "this also happens to fix a regression in the parser"
+    },
+    {
+      "id": "non-fix",
+      "commit_sha": "c444444444444444444444444444444444444444",
+      "pr_branch": "feature/new-widget",
+      "pr_title": "add the new widget",
+      "message": "add a new widget to the dashboard"
+    },
+    {
+      "id": "unresolvable-issue-lookup",
+      "commit_sha": "c555555555555555555555555555555555555555",
+      "message": "Fixes #999: cannot happen"
+    }
+  ],
+  "issue_labels": {
+    "101": ["bug", "priority-2"]
+  },
+  "unresolvable_issues": [999]
+}
