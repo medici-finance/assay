@@ -77,12 +77,23 @@ facts:
 | 1 | `cd tools/desk && go test ./cmd/verifyloop/... -run Batch -count=1 && go test ./cmd/verifyloop/... -run Payload -count=1 && go test ./cmd/verifyloop/... -run FailRow -count=1` | exit 0 — batch-window flush logic, payload composition, and FAIL-row inclusion all pass (chained single-pattern runs; `-run` compiles RE2, so a table-cell alternation would match nothing) |
 | 2 | `cd tools/desk && go test ./cmd/verifyloop/... -run 'DryRunSignVerify' -count=1` | exit 0 — a dry-run body over a test key verifies with `deskverdict verify`; one flipped byte then refuses |
 | 3 | `cd tools/desk && go test ./cmd/verifyloop/... -run 'MissingPEM' -count=1` | exit 0 — a missing-PEM env makes the runner exit non-zero naming the envelope and file nothing |
-| 4 | `cd tools/desk && ./dist/verifyloop --dry-run --root . 2>&1 \| grep -q 'signed verdict'` | exit 0; output contains "signed verdict" (against the live local PEM + real queue) |
+| 4 | `cd tools/desk && go build -o dist/verifyloop ./cmd/verifyloop && ./dist/verifyloop --dry-run --root ../.. 2>&1 \| grep -q 'signed verdict'` | exit 0; output contains "signed verdict" (against the live local PEM + real queue). `tools/desk` is two levels below the repo root, so the scan root is `../..`; needs the config-home verifier PEM present, else a loud envelope error (could-not-check). |
 | 5 | `cd statusgen && go run . --root .. --lint; echo $?` | 0 |
 
 ## Evidence
-<!-- appended at implementation time: one row per Verify item —
-     (command, exit code, output line(s) or hash, date, runner). -->
+The runner + batcher (Task steps 1–4) and the verdict-issue rate bucket (Task step 3,
+`deskkit.VerdictIssueTool` / `AllowVerdictIssueWrite`) landed on main in
+`feat(verifyloop): deterministic verdict runner — run rows, batch, sign`; this brief-PR
+makes Verify row 2 a real (non-false-green) check by adding a `DryRunSignVerify` test, fixes
+the row-4 scan root, and surfaces the fail-closed envelope error loudly on the CLI.
+
+| # | Command | Exit | Output / hash | Date | Runner |
+|---|---------|------|---------------|------|--------|
+| 1 | `go test ./cmd/verifyloop/... -run Batch && … -run Payload && … -run FailRow -count=1` | 0 | `ok  …/cmd/verifyloop` ×3 (TestBatchDueToFlush + the ComposePayload test: payload compose, FAIL-row inclusion, provenance digest) | 2026-08-30 | opus-4.8[1m] |
+| 2 | `go test ./cmd/verifyloop/... -run 'DryRunSignVerify' -count=1` | 0 | `--- PASS: TestDryRunSignVerify` — dry-run body verifies via `deskkit.VerifyVerdictBody`; one flipped byte → Refused. Fail-first: neutering the byte-flip reds at `want Refused` (verdictrun_test.go:166) | 2026-08-30 | opus-4.8[1m] |
+| 3 | `go test ./cmd/verifyloop/... -run 'MissingPEM' -count=1` | 0 | `--- PASS: TestRunVerdictMissingPEM…` — missing PEM ⇒ Unverifiable, files/emits nothing | 2026-08-30 | opus-4.8[1m] |
+| 4 | `cd tools/desk && go build -o dist/verifyloop ./cmd/verifyloop && ./dist/verifyloop --dry-run --root ../.. 2>&1 \| grep -q 'signed verdict'` | 0 | `signed verdict for 4 row(s) across 1 brief(s) (window 5m0s) — dry-run: not filed` (live config-home verifier PEM + real awaiting queue) | 2026-08-30 | opus-4.8[1m] |
+| 5 | `cd statusgen && go run . --root .. --lint` | 0 | `LINT: PASS` | 2026-08-30 | opus-4.8[1m] |
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

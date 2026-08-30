@@ -1,17 +1,24 @@
-// Command skillslint validates the desk-role skill homes under
-// plugins/assay/skills/ and enforces the shared-guardrail derive-or-diff
-// contract. See lint.go and guardrail.go for what each half checks and why.
+// Command skillslint runs three offline checks over the plugin tree:
 //
-//	go run ./tools/skillslint                 # lint plugins/assay/skills/ under the cwd
-//	go run ./tools/skillslint --root ..       # lint a sibling checkout's skills
+//	structural       every plugins/assay/skills/*/SKILL.md (lint.go)
+//	house values     EVERY *.md under plugins/, at any depth (housevalue.go)
+//	guardrails       derive-or-diff of every shared-guardrail copy (guardrail.go)
+//
+// The house-value half is deliberately wider than the other two: the references
+// and READMEs under plugins/ are as adopter-facing as a skill body, and a
+// resolved house value used to pass lint by sitting in one (#236, #238).
+// See README.md and each file's header for what it checks and why.
+//
+//	go run ./tools/skillslint                 # lint the plugin tree under the cwd
+//	go run ./tools/skillslint --root ..       # lint a sibling checkout
 //	go run ./tools/skillslint --sync          # REGENERATE every guardrail copy
 //	make skillslint                           # the check form
 //	make guardrail-sync                       # the --sync form
 //
-// Exit codes: 0 clean; 1 one or more skill files violate a rule OR a guardrail
-// copy has drifted; 2 the check itself could not run (bad root, no skills found,
-// unreadable declared guardrail source). 2 is could-not-check — it is a
-// failure, never a quiet pass.
+// Exit codes: 0 clean; 1 a real violation (a skill file breaks a rule, a house
+// value is unresolved, or a guardrail copy has drifted); 2 the check itself
+// could not run (bad root, no skills found, no plugin tree, unreadable declared
+// guardrail source). 2 is could-not-check — it is a failure, never a quiet pass.
 package main
 
 import (
@@ -44,6 +51,29 @@ func main() {
 		exit = 1
 	} else {
 		fmt.Printf("SKILLSLINT: PASS — %d skill file(s) under %s, all frontmatter valid (name==dir, description present) and no bare unforgeable/tamper-evident claims\n", checked, *root)
+	}
+
+	// The unresolved-house-value check reads the WHOLE plugin tree, not just the
+	// skill homes above: a resolved house value in a reference file is as adopter-
+	// facing as one in a SKILL.md (#236).
+	hvChecked, hvIssues, hvErr := LintPluginTree(*root)
+	switch {
+	case hvErr != nil:
+		fmt.Fprintf(os.Stderr, "skillslint: %v\n", hvErr)
+		fmt.Fprintf(os.Stderr, "HOUSE-VALUES: COULD-NOT-CHECK — the plugin tree could not be read; a check that read nothing proved nothing\n")
+		if exit < 2 {
+			exit = 2
+		}
+	case len(hvIssues) > 0:
+		for _, is := range hvIssues {
+			fmt.Fprintf(os.Stderr, "skillslint: %s: %s\n", is.Path, is.Msg)
+		}
+		fmt.Fprintf(os.Stderr, "HOUSE-VALUES: FAIL — %d unresolved house value(s) across %d markdown file(s) under plugins/\n", len(hvIssues), hvChecked)
+		if exit < 1 {
+			exit = 1
+		}
+	default:
+		fmt.Printf("HOUSE-VALUES: PASS — %d markdown file(s) under plugins/, no proper-name-shaped token in a driver position\n", hvChecked)
 	}
 
 	rep := CheckGuardrails(*root)

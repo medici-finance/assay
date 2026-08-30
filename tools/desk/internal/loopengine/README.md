@@ -211,11 +211,13 @@ says exactly which dispatch to make; make it; feed the Result back"*.
 regardless of dispatch mode.** Interim mode is not a lesser version of the win; it is the win,
 with a human-in-the-loop dispatch step instead of a native spawn.
 
-**Eventual upgrade (native primitive):** a future Go→`Agent` binding, or running `Run()` as a
-Workflow so dispatched workers are real child processes, is a **drop-in swap of the
-`Loop.Dispatch` implementation only** — the engine loop, the `Loop`/`Handle`/`Result`
-contract, and every consumer are unchanged. `Run()` is written so that swap touches nothing
-else.
+**Native-primitive upgrade (landed):** the native-primitive dispatch has since landed —
+`cmd/verifyloop/dispatch_native.go` spawns each dispatched worker as a real ACP child process,
+selected by `adapter.go`'s `Dispatch` when `Native` is set, in place of the interim
+emit-and-await. It was a **drop-in swap of the `Loop.Dispatch` implementation only** — the
+engine loop, the `Loop`/`Handle`/`Result` contract, and every consumer were unchanged; `Run()`
+was written so that swap touched nothing else. Interim mode remains the default, so it is
+current behaviour, not history.
 
 ## Honest bound (arch doc §1.1) — do not overclaim
 
