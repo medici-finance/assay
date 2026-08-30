@@ -238,6 +238,15 @@ could-not-check, never "no repos".
   a new one — eight of ten orphan dispatches in one 2026-08-12 cycle re-derived a conclusion an
   earlier pass had already posted — and **re-write nothing when nothing changed** (§WIP-capped: a
   no-change tick makes no write at all).
+- **A `SUPERSEDED` record is a PROPOSAL, never a close.** After `deskdisposition set --verdict
+  SUPERSEDED --evidence <target>`, the worker runs `deskclose superseded -R <repo> <N> --by
+  <target>`: under a worker-bound token the tool applies `superseded?`, posts the proposal naming
+  the target, and STOPS — it cannot close, cannot confirm and cannot dispute, whatever flags it is
+  handed, because the role is read from the token's roster binding, not from the caller. The close
+  is pr-review-desk's confirm (once the target has merged); a `needs-decision` on the PR means the
+  reviewer disputed it and the item is human:<name>'s. A worker that closes its own PR as superseded
+  by hand has skipped the only independent check on "the other PR carries my scope" — the class of
+  error the lane exists to catch. A `superseded?` PR is parked, not orphaned: never re-dispatch it.
 - A red default branch is work: where the fix is mechanical this desk dispatches it like any other
   item; where it is not, it is filed (§Output contract) and named in the tick's line.
 - The un-briefed-issue sweep (§Un-briefed issues) runs over the same set in the same tick.

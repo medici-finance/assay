@@ -628,7 +628,12 @@ in markers, and is diffed against merge history until then (rule 35).
     a human-authorized event and belongs to `deskclose` (issue-flow/03), which consumes
     these records as its queue. Stated-but-unexecuted close intent is its own failure
     (one tracker item sat that way from 2026-08-09) — the record is what makes the close
-    decidable without re-investigating.
+    decidable without re-investigating. **And a `SUPERSEDED` record is answered by a
+    second role before it closes:** under a worker token `deskclose superseded` only
+    PROPOSES (`superseded?` label + proposal comment naming the target); the review desk,
+    under the reviewer token, confirms (closes, with a back-reference on the target) or
+    disputes (`needs-decision`, human-only close). The role is read from the token's roster
+    binding, never from a flag — see `docs/streams/desk-tools/superseded-confirmation.md`.
 
 33. **A check that reads a derived surface is three-state.** checked-clean (it read, and
     found nothing) / checked-failed (it read, and found something) / could-not-check (it

@@ -39,7 +39,7 @@ it on day one.
 | `deskpr` | `create` (draft-only), `update` (follow-up push) | outward write | yes |
 | `deskreply` | PR reply comment under the **worker** identity | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
-| `deskclose` | `duplicate`, `superseded`, `review-request`, `manifest` — the issue-CLOSING gate (a fetched human authorization or nothing) | outward write | yes |
+| `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` — the issue-CLOSING gate (a fetched human authorization or nothing) | outward write | yes |
 | `deskdigest` | (no verbs) `--dry-run` / `--post` — the weekly batched decision queue; reports only, and writes exactly one issue: its own | outward write | yes |
 | `deskdisposition` | `set`, `read`, `sweep` — machine-readable PR disposition records (#728/#827); records a verdict, never closes | outward write (`set`) / read-only (`read`, `sweep`) | yes |
 | `deskmerge` | `check` — merge-currency in three states, writes nothing; `merge` — merges main INTO a PR branch, gated on a fetched human sign-off of R-5 (unsigned today, so it merges nothing) | read-only (`check`) / outward write (`merge`) | yes (`merge`) |
@@ -1955,10 +1955,32 @@ forbidden.
 
 ```bash
 deskclose duplicate      -R <owner/repo> <N> --of <M> --mined <summary>
-deskclose superseded     -R <owner/repo> <N> --by <ref>
+deskclose superseded     -R <owner/repo> <N> --by <ref> [--dispute <reason>]
 deskclose review-request -R <owner/repo> <N>
 deskclose manifest       -R <owner/repo> --file <manifest.yaml> [--resume-from <N>] [--max-wait <dur>]
 ```
+
+### The superseded lane is two-role, keyed on the token
+
+`deskclose superseded` no longer lets one identity record "my scope landed elsewhere" and
+close on it in the same sitting. The verb reads the identity of the token in use from the
+forge (`viewer { login }` — the one self-identification an App installation token can make;
+REST `/user` refuses integrations) and maps it through the roster's `worker=` / `reviewer=`
+binding. **No flag selects the role.**
+
+| Token role | What the verb does | Writes | Closes? |
+|---|---|---|---|
+| worker | **proposes** — requires the PR's disposition record naming `--by`, and a target that exists and is not closed-unmerged | `superseded?` label + a `<!-- desk-superseded-proposal v1 -->` marker comment | never; `--dispute` is refused |
+| reviewer | **confirms** — requires a standing proposal by a *different* actor naming the *same* target, the target genuinely MERGED, and the R-1 ruling gate | verdict comment (`SUPERSEDED-CONFIRMED`, marker block) on the item, a back-reference on the target, then the close | yes |
+| reviewer, `--dispute <why>` | **disputes** — same standing-proposal rule | `SUPERSEDED-DISPUTED: <why>` comment, then the `needs-decision` label | never — and every later close is refused by the decision-label gate |
+| anything else | refused (5); an unreadable identity is could-not-check (6); a roster binding both roles to one App is refused | none | — |
+
+The same-actor check rests on the comment's **forge-attested author**, never on the
+self-reported `Proposed-By:` line. The **manifest** lane is deliberately not role-keyed: a
+manifest row is authorized by a human whose comment carries the row set's digest, which is
+a stronger authority than a reviewer's confirmation. The design note (`superseded-confirmation.md`
+in the desk-tools planning stream) carries the flow, the pros/cons and the brief-level semantics;
+the mutation sweep is `cmd/deskclose/mutations.json`.
 
 ### The authorization gate is the whole tool
 

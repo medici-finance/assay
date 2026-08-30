@@ -41,6 +41,12 @@ brief's Dependencies note.
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05 (all independent; parallelizable).
 
+## Design notes
+- [superseded-confirmation.md](superseded-confirmation.md) — the two-role `deskclose superseded`
+  lane (worker proposes, reviewer confirms or disputes, role read from the token's roster binding)
+  and the brief-level semantics of "superseded" (recommendation: a brief is superseded only by a
+  dated re-baseline of itself; the word stays reserved for artifacts).
+
 ## Conventions
 - Verify rows must be able to fail: exit status is the assertion, counts are captured and
   gated with `[ … ]`, and `\|` is never used as a regex alternation inside a GFM table cell
