@@ -8,10 +8,12 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/gittest"
 )
 
-// tokenFixture is a throwaway value shaped like a real GitHub App installation token
-// but never a real credential — used only to assert it never leaves the process via
-// any string this package returns.
-const tokenFixture = "ghs_fixture-token-never-leaves-0123456789abcdef"
+// tokenFixture is a throwaway value standing in for an installation token — never a
+// real credential, and deliberately NOT shaped like a real GitHub token prefix
+// (ghp_/gho_/ghs_/github_pat_) so it can appear in test output and PR evidence without
+// tripping a secret scanner on a fixture. Used only to assert it never leaves the
+// process via any string this package returns.
+const tokenFixture = "fixture-installation-token-never-leaves-0123456789abcdef"
 
 func TestTokenNeverLeaves(t *testing.T) {
 	auth := BasicAuth(tokenFixture)
