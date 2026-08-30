@@ -178,3 +178,15 @@ func IsKnownLoopName(raw string) bool {
 	_, ok := resolveLoopIdentity(raw)
 	return ok
 }
+
+// CanonicalLoopName is the exported reader of resolveLoopIdentity: it maps any name in a
+// loop's equivalence class — canonical or retired — to the canonical one.
+//
+// It exists so a cross-package table keyed on loop names (deskkit's pool-width table,
+// width.go) resolves a caller's spelling through the SAME roster the stop flag uses, and
+// so can never recognise a name the kill switch would not, or miss one it would. known=false
+// keeps resolveLoopIdentity's contract: the caller must treat it as could-not-check about
+// that name, never as a default.
+func CanonicalLoopName(raw string) (canonical string, known bool) {
+	return resolveLoopIdentity(raw)
+}

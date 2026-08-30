@@ -1,0 +1,20 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7"
+    }
+  ],
+  "result": {
+    "Number": 7,
+    "State": "open",
+    "Draft": true,
+    "NodeID": "gitlab:medici-finance/assay!7",
+    "ChangedFiles": 1001,
+    "Author": {
+      "Login": "worker-bot",
+      "ID": 99
+    },
+    "HeadSHA": "abc123"
+  }
+}

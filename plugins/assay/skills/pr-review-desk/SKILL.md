@@ -182,12 +182,20 @@ than narrated. When human:<name> asks for a board report, MERGE-NOW items lead i
 
 ## Reviewer slots — keep them FULL, not waves
 
-**The unit of operation is the SLOT, not the wave.** Maintain a **standing pool of N = 5 concurrent
-reviewer agents**, continuously. (5, not worker-desk's 8: reviewers are `gh`-read-heavy and share
-one token — ~16+ concurrent agents trip GitHub's secondary rate limit and fail the board closed.)
-**An idle slot while a NEEDS-REVIEW or RE-REVIEW row exists is the failure this section prevents**,
-and there is no state in this loop called "the wave is done".
+**The unit of operation is the SLOT, not the wave.** Maintain a **standing pool of N concurrent
+reviewer agents**, continuously. **An idle slot while a NEEDS-REVIEW or RE-REVIEW row exists is the
+failure this section prevents**, and there is no state in this loop called "the wave is done".
 
+- **N is read, never remembered — `deskroster width --role pr-review-desk`, EVERY TICK.** The number
+  is not stated here; it lives in ONE place (`tools/desk/internal/deskkit/width.go`) so this body
+  cannot drift from the value the tools enforce, and so the coordinator can widen this pool when
+  `deskboard throughput` names review as the bottleneck. This pool is narrower than worker-desk's
+  because reviewers are `gh`-read-heavy and share one token — ~16+ concurrent agents trip GitHub's
+  secondary rate limit and fail the board closed — and that reason is now the CEILING the tools
+  compute, not a sentence somebody has to remember.
+  - **Narrowing NEVER kills a reviewer mid-verdict** — stop refilling and let the pool converge as
+    verdicts land.
+  - A width that cannot be read is **could-not-check**: hold at the last-read number and file it.
 - **Fill to N** at the risk-keyed tier; a risk-classed PR's separate `/security-review` agent
   occupies its own slot. **Refill on completion:** the instant a reviewer finishes (verdict posted,
   or errored), sweep and dispatch the next row into the freed slot — the re-invocation IS the cue.

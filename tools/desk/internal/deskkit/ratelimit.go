@@ -698,6 +698,41 @@ func checkBreakerRepo(tool, repo string, now time.Time, mine []auditPoint) error
 			"detail) before attempting again, or hand the artifact back to the desk.")
 }
 
+// BreakerOpenRepoWide reports whether `tool`'s REPO-WIDE circuit breaker is currently open
+// on `repo` — the same meter AllowWriteRepoWide consults, read without attempting a write.
+//
+// It exists because a pool width has to answer "is the breaker open?" as a QUESTION, not
+// as the side effect of trying something. Before this, the only way to learn the breaker's
+// state from another command was to call an AllowWrite* probe and string-match its refusal,
+// which cannot tell an open breaker from an exhausted budget — both are exit 4. Widening a
+// pool on a mis-read of that distinction is exactly the case width.go's EffectiveWidth
+// exists to prevent, so the distinction gets a reader of its own.
+//
+// It delegates to checkBreakerRepo rather than re-walking the log, so the answer here and
+// the refusal a write would get cannot drift apart. Reading the audit log is pure: this
+// appends nothing and charges nothing.
+//
+// An unreadable audit log is an error, never a closed breaker: could-not-check must not be
+// reported as "clear to widen".
+func BreakerOpenRepoWide(tool, repo string) (open bool, err error) {
+	return BreakerOpenRepoWideAt(tool, repo, time.Now())
+}
+
+// BreakerOpenRepoWideAt is BreakerOpenRepoWide with an injectable clock (test seam).
+func BreakerOpenRepoWideAt(tool, repo string, now time.Time) (open bool, err error) {
+	mine, perr := pointsFor(tool)
+	if perr != nil {
+		return false, perr
+	}
+	if rerr := checkBreakerRepo(tool, repo, now, mine); rerr != nil {
+		if IsRateLimited(rerr) {
+			return true, nil
+		}
+		return false, rerr
+	}
+	return false, nil
+}
+
 // checkBreakerBackstop is the tool-wide consecutive-non-progress stop. It exists for the
 // storm the per-target breaker cannot see: non-progress attempts spread across many
 // targets, none forming a per-target run. Its refusal NAMES the run's members — the
