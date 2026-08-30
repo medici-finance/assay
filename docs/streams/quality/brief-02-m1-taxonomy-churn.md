@@ -124,6 +124,22 @@ fixtures in the Verify table rather than by a runtime control.
      (command, exit code, output line(s) or hash, date, runner). "verified" in the stream
      README requires this section filled by someone who did NOT implement. -->
 
+Independently verified 2026-08-30 by opus-4.8[1m]-verifier (verify-desk, non-implementer) against merged head b506390d (Merge PR #240). Offline envelope (KUBECONFIG=/dev/null). VERIFY: PASS 7/7 as-written (no re-baseline needed); zero could-not-check. Deliverables present: qualgen/taxonomy.go, churn.go, m1agg.go, identity.go, mine.go + tests.
+
+| # | Command | Exit | Output | Date · Runner |
+|---|---------|------|--------|---------------|
+| 1 | cd qualgen && go build ./... && go vet ./... | 0 | build 0, vet 0 | 2026-08-30 · opus-4.8[1m]-verifier |
+| 2 | go test -run TestTaxonomyMovedVsCopied | 0 | PASS — relocated (source deleted)=moved, duplicated (source remains)=copied; not conflated | 2026-08-30 · opus-4.8[1m]-verifier |
+| 3 | go test -run TestBlockMatchThreshold | 0 | PASS — 3-line run not a block at N=4, 4-line run is | 2026-08-30 · opus-4.8[1m]-verifier |
+| 4 | go test -run TestChurnWindowBoundary | 0 | PASS — day-13 churned, day-15 not; zero-churn window emits measured-zero | 2026-08-30 · opus-4.8[1m]-verifier |
+| 5 | go test -run TestUnclassifiedIdentityClass | 0 | PASS — unmapped author lands in explicit unclassified | 2026-08-30 · opus-4.8[1m]-verifier |
+| 6 | go test -run TestCopyPasteRatioValue | 0 | PASS — ratio == 0.5 (1 copied / (1 moved + 1 copied)), state measured (known-answer) | 2026-08-30 · opus-4.8[1m]-verifier |
+| 7 | go run . mine --repo .. --out TMP; assert metrics.jsonl + copy_paste_ratio + published-definitions | 0 | mine: 607 commits extracted, tip b506390d; both greps matched | 2026-08-30 · opus-4.8[1m]-verifier |
+
+RISK-VALUE: DERIVED — DefaultBlockMin = 4 @ qualgen/taxonomy.go:40 — GitClear's published duplicate-block granularity (a run of >=4 similar lines counts as a moved/copied block; spec §4.1). Right value: the brief's contract is comparability to GitClear's published definitions, and 4 is that published threshold. Reversible via --block-min.
+RISK-VALUE: DERIVED — DefaultChurnWindowDays = 14 @ qualgen/churn.go:22 — GitClear's published 14-day churn window (spec §4.2); the comparable published default (Faros rework 14-30d is target-selectable). Reversible via --churn-window-days.
+gate: model, all risk no, irreversible: no — desk flips implemented→verified; verified→done stays CI's on the reviewer approval.
+
 ## Review
 Gate: model (all four risk answers no — read-only aggregation over quality/01's artifacts,
 writing only to the tracking root; no funds/auth/ledger surface). exec-tier: strong —
