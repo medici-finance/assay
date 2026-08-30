@@ -9,6 +9,10 @@ description: Run the work-dispatch role of the process desk — keep a standing 
 **pr-review-desk** (a separate window) reviews those PRs and flips them ready; **human:<name>** merges. Run it
 in its own window as a standing loop — ONE window at capacity replaces running two.
 
+**The stream board is a derived, generated surface** (`docs/streams/derived-board/spec.md`) — this
+desk opens the PR carrying `Brief: <stream>/<NN>`; it never hand-edits a stream README's Briefs
+table.
+
 **The invariants this loop assumes** (state them once wherever your repo keeps house rules, and do not
 re-derive them per dispatch): every session works in its own worktree, never a shared checkout; merge,
 never rebase; the generated board is single-writer = main's CI; every post is made as the role's own
@@ -314,9 +318,13 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   dispatch. The claim contract — GitHub ref not local file, the two TTLs (`claimed` 20m →
   `dispatched` 120m), branch-as-claim takeover, `steal --reason` — has one home: the header comment of
   the repo's own `dispatch-claim` helper.
-- **Flip the board row `todo` → `in-progress` at that same `progress` step** : the
-  claim is the honest dispatch timestamp, and leaving the flip to the worker's first commit hides the
-  authored→dispatched wait. The worker's later flip no-ops, as intended.
+- **Never hand-edit the board row — neither this desk nor the worker it dispatches.**
+  `in-progress` appears the instant the worker's draft PR opens carrying the trailer
+  `Brief: <stream>/<NN>` in its body; `deskpr create` refuses to open a PR whose body lacks
+  `Brief: <stream>/<NN>`, and that refusal at write time is the enforcement, not a follow-up edit
+  to the stream README. `implemented` appears the instant that PR merges. `statusgen` derives both
+  cells from the trailer plus the PR's own state (`docs/streams/derived-board/spec.md`) — this
+  desk's job at the `progress` step is opening the PR promptly, not writing a cell.
 - **The worker prompt is the kit, verbatim.** `deskdispatch` emits `references/common-clauses.md`
   (home-worktree isolation floor, no-evasion, offline envelope, three-state instruments,
   escalate-durably) ahead of `references/worker-prompt.md` (security-gate refusal, per-invocation
