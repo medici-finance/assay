@@ -147,6 +147,29 @@ func (s *Store) ReadDefects() ([]DefectFix, error) {
 	return out, err
 }
 
+// StreamMetrics streams the metrics table back through the generic MetricRecord
+// view (the M1 line-taxonomy / churn family this brief emits). The metrics table
+// is heterogeneous — the hotspot / ownership / coupling families (quality/03)
+// write their own record shapes to the same append-only table — so a line that
+// is not a MetricRecord decodes with an empty Metric and is filtered by metric
+// name at the call site. Like the other raw tables, metrics is append-only: each
+// mine appends a fresh full snapshot (extend, never rewrite), so a trend consumer
+// reads the most recent snapshot per metric.
+func (s *Store) StreamMetrics(fn func(MetricRecord) error) error {
+	path, _ := s.tablePath(KindMetric)
+	return streamJSONL(path, fn)
+}
+
+// ReadMetrics collects the whole metrics table through the MetricRecord view.
+func (s *Store) ReadMetrics() ([]MetricRecord, error) {
+	var out []MetricRecord
+	err := s.StreamMetrics(func(m MetricRecord) error {
+		out = append(out, m)
+		return nil
+	})
+	return out, err
+}
+
 // ReadCommits collects the whole commit table. Convenience over StreamCommits
 // for callers that want a slice; large mines should prefer the streamer.
 func (s *Store) ReadCommits() ([]Commit, error) {
