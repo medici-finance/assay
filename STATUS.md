@@ -19,7 +19,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-08-30 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-30 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-30 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 0/15 | 2026-08-30 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 0/16 | 2026-08-30 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/13 | 2026-08-30 |  |
 
 ## Next up
@@ -29,8 +29,8 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | quality | 07 — M2 B-SZZ inducing trace + derived defect metrics [exec:strong] | 2 | 4500 |
 | derived-board | 05 — desk skills: reference the brief, never flip the cell (both copies) | 1 | 2500 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
-| quality | 05 — `QUALITY.md` single-writer trend view + metrics artifacts | 2 | 1000 |
 | quality | 09 — `check <files>` mode — brittleness screen for a named file set | 2 | 1000 |
+| quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
 
 ## Intake queue
 
@@ -47,7 +47,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| quality | 01 [exec:strong] | verified | 8000 | 14 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
+| quality | 01 [exec:strong] | verified | 8500 | 15 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | quality | 06 | verified | 5000 | 8 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | derived-board | 01 [exec:strong] | verified | 4500 | 5 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | derived-board | 02 | verified | 4500 | 5 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
@@ -203,7 +203,7 @@ _None._
 - 05 `newbrief` — the scaffolder as the authoring front door (B1) — todo (wave 2)
 - 06 D1 promoted to a lint obligation — a new check must carry its mutation row — todo (wave 2)
 
-### quality (15 open)
+### quality (16 open)
 
 - 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — verified (wave 0)
 - 02 M1 line-operation taxonomy + churn/rework rate — verified (wave 1)
@@ -220,6 +220,7 @@ _None._
 - 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — todo (wave 3)
 - 14 auto-filed refactor work + quality error-budgets + RETRO output feed — todo (wave 5)
 - 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
+- 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — todo (wave 1)
 
 ### statusgen (13 open)
 
@@ -245,4 +246,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**10** streams (**10** active, **0** paused) · **0/86** briefs done · completed initiatives: see `docs/archive/`
+**10** streams (**10** active, **0** paused) · **0/87** briefs done · completed initiatives: see `docs/archive/`
