@@ -31,7 +31,7 @@ findings-register state machine.
 | 06 | [findings register — corroborated state machine](brief-06-findings-register-state-machine.md) | 1 | L | implemented | — | — |
 | 07 | [new brief-flow metrics](brief-07-brief-flow-metrics.md) | 1 | L | todo | — | — |
 | 08 | [composite AssayScore computation](brief-08-assayscore-computation.md) | 2 | M | todo | — | — |
-| 09 | [opt-in telemetry — anonymized fleet-drift corpus (off by default)](brief-09-optin-telemetry.md) | 1 | M | todo | — | — |
+| 09 | [opt-in telemetry — anonymized fleet-drift corpus (off by default)](brief-09-optin-telemetry.md) | 1 | M | implemented | — | — |
 | 10 | [graph export (`--graph` DOT + JSONL)](brief-10-graph-export.md) | 1 | M | implemented | — | — |
 | 11 | [DORA/insights hybrid — DevLake commodity split](brief-11-devlake-hybrid-metrics-split.md) | 1 | L | implemented | — | — |
 | 12 | [`homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo](brief-12-homed-in-field.md) | 1 | M | implemented | — | — |
