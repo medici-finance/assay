@@ -30,6 +30,7 @@ const (
 	mineHeader   = "mine.json"
 	commitsTable = "commits.jsonl"
 	diffsTable   = "diffs.jsonl"
+	metricsTable = "metrics.jsonl"
 )
 
 // Kind selects which append-only table Append writes to.
@@ -38,6 +39,13 @@ type Kind string
 const (
 	KindCommit Kind = "commits"
 	KindDiff   Kind = "diffs"
+	// KindMetric is the M1 aggregate table (spec §9.4): heterogeneous
+	// records — one shape per metric family (hotspot, ownership, coupling,
+	// missing-coupling-partner, ...) — each discriminated by its own
+	// "metric" field. quality/05 is expected to formalize this into a
+	// dedicated schema module (artifacts.go); until then, families append
+	// here through the same generic Store.Append seam quality/01 shipped.
+	KindMetric Kind = "metrics"
 )
 
 // schemaVersion pins the artifact schema so a later reader can detect a stale
@@ -59,6 +67,8 @@ func (s *Store) tablePath(k Kind) (string, error) {
 		return filepath.Join(s.dir(), commitsTable), nil
 	case KindDiff:
 		return filepath.Join(s.dir(), diffsTable), nil
+	case KindMetric:
+		return filepath.Join(s.dir(), metricsTable), nil
 	default:
 		return "", fmt.Errorf("qualgen: unknown table kind %q", k)
 	}
