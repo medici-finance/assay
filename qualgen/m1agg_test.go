@@ -69,7 +69,7 @@ func TestUnclassifiedIdentityClass(t *testing.T) {
 	commits := []Commit{
 		{SHA: "s1", AuthorName: stranger.AuthorName, AuthorEmail: stranger.AuthorEmail, AuthorRaw: stranger.AuthorRaw},
 	}
-	diffs := []FileDiff{measuredDiff("s1", "z.go", addLine("net new line of code"))}
+	diffs := []FileDiff{measuredLineDiff("s1", "z.go", addLine("net new line of code"))}
 	store := storeWith(t, commits, diffs)
 	cfg := DefaultM1Config()
 	cfg.Identity = idmap
@@ -103,7 +103,7 @@ func TestCopyPasteRatioValue(t *testing.T) {
 	for _, s := range moved {
 		movedLines = append(movedLines, addLine(s))
 	}
-	d1 := measuredDiff("c1", "moved.go", movedLines...)
+	d1 := measuredLineDiff("c1", "moved.go", movedLines...)
 
 	// Commit 2: a copied block (source lines remain as context, block added).
 	c2 := Commit{SHA: "c2", AuthorName: "dev", AuthorRaw: "dev <d@e>"}
@@ -115,7 +115,7 @@ func TestCopyPasteRatioValue(t *testing.T) {
 	for _, s := range copied {
 		copiedLines = append(copiedLines, addLine(s))
 	}
-	d2 := measuredDiff("c2", "copied.go", copiedLines...)
+	d2 := measuredLineDiff("c2", "copied.go", copiedLines...)
 
 	store := storeWith(t, []Commit{c1, c2}, []FileDiff{d1, d2})
 	if err := aggregateM1(store, DefaultM1Config()); err != nil {
@@ -167,34 +167,5 @@ func TestMineEmitsM1Metrics(t *testing.T) {
 	}
 	if !strings.Contains(r.Note, basisPublishedDefinitions) {
 		t.Fatalf("note must carry the published-definitions label, got %q", r.Note)
-	}
-}
-
-// TestMineMetricsAreResetNotAccumulated pins that the derived metrics table is a
-// snapshot: a second mine rewrites it rather than doubling every aggregate (the
-// raw commit/diff tables stay append-only; metrics does not).
-func TestMineMetricsAreResetNotAccumulated(t *testing.T) {
-	requireGit(t)
-	repo := initFixtureRepo(t)
-	out := t.TempDir()
-
-	if err := mine(repo, out, &strings.Builder{}); err != nil {
-		t.Fatalf("first mine: %v", err)
-	}
-	store := NewStore(out)
-	first, err := store.ReadMetrics()
-	if err != nil {
-		t.Fatalf("read metrics: %v", err)
-	}
-	// Re-mine with no new commits: metrics must be rewritten, not appended-to.
-	if err := mine(repo, out, &strings.Builder{}); err != nil {
-		t.Fatalf("second mine: %v", err)
-	}
-	second, err := store.ReadMetrics()
-	if err != nil {
-		t.Fatalf("read metrics: %v", err)
-	}
-	if len(second) != len(first) {
-		t.Fatalf("metrics accumulated across mines: first=%d second=%d (must be reset-then-rewritten)", len(first), len(second))
 	}
 }

@@ -1,0 +1,6 @@
+# graph-repos.yaml — alias registry for the v2-smoke lint fixture (derived-board/03).
+schema: graph-repos-v1
+cell: smoke
+repos:
+  sg:  {cell: smoke, repo: medici-finance/assay}
+  rec: {cell: smoke, repo: null, unpublished: true}

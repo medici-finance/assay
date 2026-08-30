@@ -135,10 +135,10 @@ func aggregateM1(store *Store, cfg M1Config) error {
 	classOf := func(c Commit) string { return cfg.Identity.Classify(c) }
 	churn := computeChurn(commits, diffsByCommit, classOf, time.Duration(cfg.ChurnWindowDays)*24*time.Hour)
 
-	// --- Emit. Reset first so the derived table is a coherent snapshot. ---
-	if err := store.ResetMetrics(); err != nil {
-		return err
-	}
+	// --- Emit. The metrics table is append-only: each mine appends a fresh full
+	// snapshot of the M1 family (extend, never rewrite), alongside the hotspot /
+	// ownership / coupling snapshots quality/03 appends in the same run. A trend
+	// consumer (quality/05) reads the most recent snapshot per metric. ---
 	var records []MetricRecord
 	emit := func(metric, grain, key string, v Measure[float64]) {
 		records = append(records, MetricRecord{

@@ -30,6 +30,7 @@ const (
 	mineHeader   = "mine.json"
 	commitsTable = "commits.jsonl"
 	diffsTable   = "diffs.jsonl"
+	metricsTable = "metrics.jsonl"
 	// defectsTable is the M2 defect-lineage table (spec §9.4): quality/06
 	// appends DefectFix records here; quality/07's B-SZZ trace reads them.
 	// quality/05, when it lands, is expected to fold this path into its
@@ -38,14 +39,6 @@ const (
 	// a schema module that does not yet exist (dependency-wave ordering puts
 	// quality/06 in wave 1, ahead of quality/05's wave 2).
 	defectsTable = "defects.jsonl"
-	// metricsTable is the M1 aggregate table (spec §4/§9.4): quality/02 emits
-	// the line-taxonomy headline ratios and churn/rework rates here, each value
-	// a three-state Measure. Unlike the append-only RAW tables (commits, diffs,
-	// defects), metrics is a DERIVED aggregate recomputed over the whole corpus
-	// on every mine, so it is reset-then-rewritten each run (ResetMetrics) the
-	// way mine.json is — never accumulated. quality/05, when it lands, folds
-	// this path into its formalized artifacts schema module.
-	metricsTable = "metrics.jsonl"
 )
 
 // Kind selects which append-only table Append writes to.
@@ -54,8 +47,14 @@ type Kind string
 const (
 	KindCommit Kind = "commits"
 	KindDiff   Kind = "diffs"
-	KindDefect Kind = "defects"
+	// KindMetric is the M1 aggregate table (spec §9.4): heterogeneous
+	// records — one shape per metric family (hotspot, ownership, coupling,
+	// missing-coupling-partner, ...) — each discriminated by its own
+	// "metric" field. quality/05 is expected to formalize this into a
+	// dedicated schema module (artifacts.go); until then, families append
+	// here through the same generic Store.Append seam quality/01 shipped.
 	KindMetric Kind = "metrics"
+	KindDefect Kind = "defects"
 )
 
 // schemaVersion pins the artifact schema so a later reader can detect a stale
@@ -77,10 +76,10 @@ func (s *Store) tablePath(k Kind) (string, error) {
 		return filepath.Join(s.dir(), commitsTable), nil
 	case KindDiff:
 		return filepath.Join(s.dir(), diffsTable), nil
-	case KindDefect:
-		return filepath.Join(s.dir(), defectsTable), nil
 	case KindMetric:
 		return filepath.Join(s.dir(), metricsTable), nil
+	case KindDefect:
+		return filepath.Join(s.dir(), defectsTable), nil
 	default:
 		return "", fmt.Errorf("qualgen: unknown table kind %q", k)
 	}
@@ -148,30 +147,20 @@ func (s *Store) ReadDefects() ([]DefectFix, error) {
 	return out, err
 }
 
-// ResetMetrics removes the derived metrics table so a fresh aggregation can
-// rewrite it. The metrics table is NOT append-only raw history (unlike commits /
-// diffs / defects); it is a snapshot recomputed over the whole corpus each mine,
-// so it is reset-then-rewritten like mine.json rather than accumulated — a
-// second mine must not leave two copies of every aggregate. A missing table is
-// not an error (the first mine has none to reset).
-func (s *Store) ResetMetrics() error {
-	path, err := s.tablePath(KindMetric)
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return nil
-}
-
-// StreamMetrics streams the metrics table back as typed records.
+// StreamMetrics streams the metrics table back through the generic MetricRecord
+// view (the M1 line-taxonomy / churn family this brief emits). The metrics table
+// is heterogeneous — the hotspot / ownership / coupling families (quality/03)
+// write their own record shapes to the same append-only table — so a line that
+// is not a MetricRecord decodes with an empty Metric and is filtered by metric
+// name at the call site. Like the other raw tables, metrics is append-only: each
+// mine appends a fresh full snapshot (extend, never rewrite), so a trend consumer
+// reads the most recent snapshot per metric.
 func (s *Store) StreamMetrics(fn func(MetricRecord) error) error {
 	path, _ := s.tablePath(KindMetric)
 	return streamJSONL(path, fn)
 }
 
-// ReadMetrics collects the whole metrics table.
+// ReadMetrics collects the whole metrics table through the MetricRecord view.
 func (s *Store) ReadMetrics() ([]MetricRecord, error) {
 	var out []MetricRecord
 	err := s.StreamMetrics(func(m MetricRecord) error {

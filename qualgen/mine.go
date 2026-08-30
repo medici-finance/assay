@@ -9,6 +9,7 @@ import (
 	"time"
 
 	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
 )
@@ -71,11 +72,18 @@ func mine(repoPath, trackingRoot string, stdout io.Writer) error {
 
 // mineWithConfig extracts history and then aggregates the M1 metrics under the
 // supplied configuration. The extraction is unchanged from the wave-0 skeleton;
-// the aggregation pass (quality/02) reads the freshly-mined commit + diff tables
-// through the Store and writes the derived metrics table. Every step is
-// READ-ONLY against the target repo; the only writes land under trackingRoot.
+// the aggregation passes read the freshly-mined commit + diff tables through the
+// Store and append the derived metric families. Every step is READ-ONLY against
+// the target repo; the only writes land under trackingRoot.
 func mineWithConfig(repoPath, trackingRoot string, stdout io.Writer, cfg M1Config) error {
-	r, err := git.PlainOpen(repoPath)
+	// EnableDotGitCommonDir: the desk's own operating model dispatches every
+	// worker into its OWN linked worktree (a `.git` file pointing at
+	// `<main>/.git/worktrees/<name>`, common branch refs living in the main
+	// repo's `.git`, per C1). Plain go-git PlainOpen does not follow a linked
+	// worktree's `commondir` file, so `r.Head()` fails to resolve a branch ref
+	// that lives in the common dir with "reference not found" — this was
+	// caught running Verify #7 from inside a real dispatched worktree.
+	r, err := git.PlainOpenWithOptions(repoPath, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
 	if err != nil {
 		return fmt.Errorf("open repository: %w", err)
 	}
@@ -165,8 +173,9 @@ func mineWithConfig(repoPath, trackingRoot string, stdout io.Writer, cfg M1Confi
 		horizon = collected[0].Hash.String() // oldest, after the reverse above
 	}
 
+	runAt := time.Now().UTC()
 	header := MineHeader{
-		MinedAt:         time.Now().UTC(),
+		MinedAt:         runAt,
 		TipSHA:          tip,
 		Horizon:         horizon,
 		Discontinuities: detectDiscontinuities(repoPath, prior),
@@ -178,16 +187,90 @@ func mineWithConfig(repoPath, trackingRoot string, stdout io.Writer, cfg M1Confi
 		return fmt.Errorf("write header: %w", err)
 	}
 
-	// M1 aggregation (quality/02): roll the per-commit line taxonomy and the
-	// cross-commit churn up to the spec §4 grains and (re)write the derived
-	// metrics table. Read-only over the raw tables just written above.
+	// M1 metric families over the full mined tables (append-only fresh snapshot):
+	// the hotspot / ownership / coupling families (quality/03) and the
+	// line-operation taxonomy + churn/rework family (quality/02).
+	if err := appendM1Metrics(store, r, head.Hash(), runAt); err != nil {
+		return fmt.Errorf("compute M1 hotspot/ownership/coupling metrics: %w", err)
+	}
 	if err := aggregateM1(store, cfg); err != nil {
-		return fmt.Errorf("aggregate M1 metrics: %w", err)
+		return fmt.Errorf("aggregate M1 taxonomy/churn metrics: %w", err)
 	}
 
 	fmt.Fprintf(stdout, "qualgen mine: %d new commit(s) extracted; tip %s; %d commit(s) in table\n",
 		len(collected), shortSHA(tip), commitCount)
 	return nil
+}
+
+// appendM1Metrics computes the hotspot, ownership and change-coupling
+// families (spec §4.3-§4.5) over the FULL mined commit/diff tables — not just
+// this run's incremental delta, since decay, ownership and co-change
+// baselines are all whole-history aggregates — and appends the result to
+// metrics.jsonl. Each `mine` run appends a fresh full snapshot; the tables
+// stay append-only (extend, never rewrite), so trend consumers (quality/05)
+// read the most recent snapshot per family.
+func appendM1Metrics(store *Store, r *git.Repository, tip plumbing.Hash, runAt time.Time) error {
+	allCommits, err := store.ReadCommits()
+	if err != nil {
+		return fmt.Errorf("read commits: %w", err)
+	}
+	allDiffs, err := store.ReadDiffs()
+	if err != nil {
+		return fmt.Errorf("read diffs: %w", err)
+	}
+
+	tipCommit, err := r.CommitObject(tip)
+	if err != nil {
+		return fmt.Errorf("resolve tip commit: %w", err)
+	}
+	allPaths, err := treePaths(tipCommit)
+	if err != nil {
+		return fmt.Errorf("list tip tree: %w", err)
+	}
+
+	for _, rec := range ComputeHotspots(allCommits, allDiffs, allPaths, HotspotParams{Now: runAt}) {
+		if err := store.Append(KindMetric, rec); err != nil {
+			return fmt.Errorf("append hotspot metric: %w", err)
+		}
+	}
+	for _, rec := range ComputeOwnership(allCommits, allDiffs, DefaultIdentityClassifier, DefaultBusFactorThresholdPct, runAt) {
+		if err := store.Append(KindMetric, rec); err != nil {
+			return fmt.Errorf("append ownership metric: %w", err)
+		}
+	}
+	pairs, missing := ComputeCoupling(allCommits, allDiffs, DefaultCouplingParams(), runAt)
+	for _, rec := range pairs {
+		if err := store.Append(KindMetric, rec); err != nil {
+			return fmt.Errorf("append coupling metric: %w", err)
+		}
+	}
+	for _, rec := range missing {
+		if err := store.Append(KindMetric, rec); err != nil {
+			return fmt.Errorf("append missing-coupling-partner metric: %w", err)
+		}
+	}
+	return nil
+}
+
+// treePaths lists every regular file path in a commit's tree — the full path
+// universe ComputeHotspots uses for its measured-zero case (a file present at
+// the tip but never touched in the mined window, spec §4.3).
+func treePaths(c *object.Commit) ([]string, error) {
+	tree, err := c.Tree()
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	iter := tree.Files()
+	defer iter.Close()
+	err = iter.ForEach(func(f *object.File) error {
+		paths = append(paths, f.Name)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return paths, nil
 }
 
 // commitRecord builds the internal Commit record from a go-git commit. Author

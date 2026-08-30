@@ -266,18 +266,21 @@ func TestBriefFileParseExemptions(t *testing.T) {
 
 // TestBriefFileUnknownSchemaFailsClosed proves BRIEF-schema evolution fails
 // CLOSED (#271 / adversarial SY-4, RD-7): a file that declares a brief-schema-
-// family value this binary does not recognize (e.g. a future `brief-v2`) must be
+// family value this binary does not recognize (e.g. a future `brief-v3`) must be
 // REFUSED with a path-prefixed error — NOT silently exempted the way a pre-schema
 // legacy file is. Without this, a not-yet-upgraded pinned consumer would lint a
-// v2 brief green-by-exemption, disabling all typed-dep / gate / attribution
-// checks. The known schema (brief-v1) must still validate normally, and a
-// DIFFERENT document kind (e.g. contract-v1) must stay exempt as before — the
-// refusal is scoped to the brief-v* family, not every non-brief-v1 value.
+// too-new brief green-by-exemption, disabling all typed-dep / gate / attribution
+// checks. The known schemas (brief-v1 AND brief-v2, recognized from
+// derived-board/03) must still validate normally, and a DIFFERENT document kind
+// (e.g. contract-v1) must stay exempt as before — the refusal is scoped to the
+// brief-v* family, not every non-brief-v1/v2 value.
 func TestBriefFileUnknownSchemaFailsClosed(t *testing.T) {
 	dir := t.TempDir()
 
-	// Unrecognized brief-schema-family version → hard refusal (fail closed).
-	for _, ver := range []string{"brief-v2", "brief-v3"} {
+	// Unrecognized brief-schema-family version → hard refusal (fail closed). v2 is
+	// now RECOGNIZED (see below); the family versions this binary predates start at
+	// brief-v3.
+	for _, ver := range []string{"brief-v3", "brief-v99"} {
 		p := writeTemp(t, dir, "brief-01-"+ver+".md", "---\nschema: "+ver+"\n---\n# Brief\n")
 		bf, ok, err := parseBriefFile(p)
 		if bf != nil || ok {
@@ -289,9 +292,18 @@ func TestBriefFileUnknownSchemaFailsClosed(t *testing.T) {
 		if !strings.Contains(err.Error(), p) {
 			t.Errorf("%s: error should be path-prefixed with %q; got %v", ver, p, err)
 		}
-		if !strings.Contains(err.Error(), ver) || !strings.Contains(err.Error(), "brief-v1") {
-			t.Errorf("%s: error should name the rejected schema and the recognized one; got %v", ver, err)
+		if !strings.Contains(err.Error(), ver) || !strings.Contains(err.Error(), "brief-v2") {
+			t.Errorf("%s: error should name the rejected schema and the recognized set; got %v", ver, err)
 		}
+	}
+
+	// brief-v2 is RECOGNIZED (derived-board/03): a v2 file is NOT schema-refused —
+	// it proceeds to normal required-field validation (proof it opted in, like
+	// brief-v1). A bare v2 file missing required fields reaches the missing-field
+	// path, not the #271 refusal.
+	v2 := writeTemp(t, dir, "brief-01-brief-v2.md", "---\nschema: brief-v2\n---\n# Brief\n")
+	if _, ok, err := parseBriefFile(v2); ok || err == nil || !strings.Contains(err.Error(), "missing required field") {
+		t.Errorf("brief-v2 should validate normally (missing-field path), not be schema-refused; got ok=%v err=%v", ok, err)
 	}
 
 	// A DIFFERENT document kind (not the brief-v* family) stays EXEMPT — this is
