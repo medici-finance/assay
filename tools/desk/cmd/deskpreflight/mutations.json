@@ -1,0 +1,71 @@
+{
+  "test": "go test ./cmd/deskpreflight/... -count=1",
+  "control": {
+    "name": "CONTROL — loosen the oversize comparison (a file of exactly the threshold is reported)",
+    "file": "cmd/deskpreflight/main.go",
+    "old": "\t\tif isJunkName(filepath.Base(f.rel)) || f.size > oversizeBytes {",
+    "new": "\t\tif isJunkName(filepath.Base(f.rel)) || f.size >= oversizeBytes {"
+  },
+  "mutations": [
+    {
+      "name": "read a missing git as an EMPTY work tree (both scans silently pass having looked at nothing)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\tif _, err := tl.lookPath(\"git\"); err != nil {\n\t\treturn nil, \"git is not on PATH, so the working-tree file set is unknowable: \" + err.Error(), false\n\t}",
+      "new": "\tif _, err := tl.lookPath(\"git\"); false && err != nil {\n\t\treturn nil, \"git is not on PATH, so the working-tree file set is unknowable: \" + err.Error(), false\n\t}"
+    },
+    {
+      "name": "read a FAILED ls-files as an empty work tree (a non-repo root reports clean instead of could-not-check)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\tif code != 0 {\n\t\treturn nil, fmt.Sprintf(\"git ls-files exited %d under %s (not a git work tree?): %s\",\n\t\t\tcode, absRoot, firstLine(out)), false\n\t}",
+      "new": "\tif false && code != 0 {\n\t\treturn nil, fmt.Sprintf(\"git ls-files exited %d under %s (not a git work tree?): %s\",\n\t\t\tcode, absRoot, firstLine(out)), false\n\t}"
+    },
+    {
+      "name": "drop the declared fixture exclusion (issue #200 re-opens: the tool's own testdata fixture fails the gate)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\t\tif underDeclinedPath(f.rel) {\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif false && underDeclinedPath(f.rel) {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "widen the exclusion to any segment CONTAINING testdata (a real conflict under mytestdata/ goes unseen)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\t\tif segs[i] == \"testdata\" {",
+      "new": "\t\tif strings.Contains(segs[i], \"testdata\") {"
+    },
+    {
+      "name": "let the exclusion match a FILE named testdata, not only a directory component",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\tfor i := 0; i < len(segs)-1; i++ {",
+      "new": "\tfor i := 0; i < len(segs); i++ {"
+    },
+    {
+      "name": "stop printing the declared exclusion (the check hides the shape it cannot see)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\tdeclined := \" (declined: \" + conflictMarkerExclusion + \")\"",
+      "new": "\tdeclined := \"\""
+    },
+    {
+      "name": "read a grep ERROR as no-match (could-not-check collapses into clean)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\t\tdefault:\n\t\t\treturn couldNotCheck(nameConflictMarkers,\n\t\t\t\tfmt.Sprintf(\"grep exited %d over %s: %s\", code, absRoot, firstLine(out)))",
+      "new": "\t\tdefault:\n\t\t\tbreak"
+    },
+    {
+      "name": "drop -H from grep (a single-file batch's match names a line number instead of a file)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\t\targs := append([]string{\"-I\", \"-n\", \"-H\", \"-E\", `^(<{7}|={7}|>{7})( |$)`, \"--\"}, batch...)",
+      "new": "\t\targs := append([]string{\"-I\", \"-n\", \"-E\", `^(<{7}|={7}|>{7})( |$)`, \"--\"}, batch...)"
+    },
+    {
+      "name": "hand grep a path that is not a regular file (a mid-refactor deletion or a gitlink blocks the gate)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\t\tif err != nil || !fi.Mode().IsRegular() {",
+      "new": "\t\tif err != nil {"
+    },
+    {
+      "name": "drop the junk-NAME half of the check (only size is left; a stray .orig rides in)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\t\tif isJunkName(filepath.Base(f.rel)) || f.size > oversizeBytes {",
+      "new": "\t\tif f.size > oversizeBytes {"
+    }
+  ]
+}

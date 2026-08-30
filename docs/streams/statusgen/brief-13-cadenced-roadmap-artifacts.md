@@ -127,5 +127,19 @@ facts:
 ## Evidence
 <!-- appended at implementation time -->
 
+Implemented on feat/statusgen-13. Verify table run locally (offline, KUBECONFIG=/dev/null)
+against this root:
+
+| # | Result |
+|---|--------|
+| 1 | `--roadmap --cadence weekly` → rc 0; `docs/reports/weekly/` holds the ISO-week-labelled directory `2026-W34/` (the prior complete ISO week for the run date). |
+| 2 | `--roadmap --cadence monthly` → rc 0; `docs/reports/monthly/` holds the month-labelled directory `2026-07/` (the prior complete calendar month). |
+| 3 | `--roadmap` (no `-cadence`) → rc 0; still writes `docs/reports/roadmap/index.html` — point-in-time mode unchanged. |
+| 4 | `go test ./statusgen/ -run Cadence` and `-run Theme` → both groups exist (`--- PASS` lines) and pass. |
+| 5 | `statusgen --root . --lint` → rc 0 (`LINT: PASS`; only pre-existing NOTICEs). |
+
+Generated `docs/reports/<cadence>/<window>/` trees are STATUS.md-free build artifacts and
+are not committed, matching the existing `--roadmap`/`--dora`/`--trend` discipline.
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.

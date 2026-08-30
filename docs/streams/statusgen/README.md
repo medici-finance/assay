@@ -35,7 +35,7 @@ findings-register state machine.
 | 10 | [graph export (`--graph` DOT + JSONL)](brief-10-graph-export.md) | 1 | M | implemented | — | — |
 | 11 | [DORA/insights hybrid — DevLake commodity split](brief-11-devlake-hybrid-metrics-split.md) | 1 | L | implemented | — | — |
 | 12 | [`homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo](brief-12-homed-in-field.md) | 1 | M | implemented | — | — |
-| 13 | [cadenced roadmap artifacts (`--cadence weekly/monthly`)](brief-13-cadenced-roadmap-artifacts.md) | 1 | M | todo | — | — |
+| 13 | [cadenced roadmap artifacts (`--cadence weekly/monthly`)](brief-13-cadenced-roadmap-artifacts.md) | 1 | M | implemented | — | — |
 
 ## Critical path
 statusgen/02 (issue metrics) → statusgen/03 (self-improvement metric). The
