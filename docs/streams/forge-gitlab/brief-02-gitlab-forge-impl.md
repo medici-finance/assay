@@ -114,6 +114,8 @@ set alone.
   `forgeban_test.go:330`) — mostly tools that run under the caller's ambient CLI identity by
   documented design (deskclose, deskfile, deskdigest, deskflip, deskpr, deskreply), plus
   unenumerated ops (label create/edit, PR listing, branch→PR lookup, repo-hardening reads).
-- No brief retires these yet: assay#230 closed the *enumerated* op surface; each remaining
-  exec site carries its own TODO in `allowlist.go`, blocked on a not-yet-authored identity
-  ruling or a label-ops brief.
+- No brief retires these yet: assay#230 closed the *enumerated* op surface. The identity
+  question is ruled — assay#230, comment 5470351713 (2026-08-30) relays the driver's answer
+  as option (a): every desk tool moves to a minted role-App identity, `deskpr`'s
+  `--as-app=false` ambient fallback retires — but the migration of the 23 allowlisted sites
+  is follow-up work in this stream, not yet authored as briefs.
