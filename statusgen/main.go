@@ -1144,8 +1144,9 @@ func main() {
 	autonomyMode := flag.Bool("autonomy", false, "emit the step-3 adoption-ladder gauges (autonomy ratio ×2 variants, token efficiency, deterministic-gate share) as a system; reuses --since / --json; diagnostic, never a target or per-person scorecard")
 	ladderMode := flag.Bool("ladder", false, "emit the adoption-ladder POSITION indicator (mm/42): one computed step 0–4 from behavioral axes (autonomy ratio, gate share, dispatch autonomy, token efficiency) + the binding-constraint axis; degrades to an explicit 'unmeasured range' (never a silent zero) when the private mm/40 opmetrics day-file is absent, so it ships publicly; reuses --since / --json; diagnostic, never a target or per-person scorecard")
 	issuesMode := flag.Bool("issues", false, "emit issue metrics (counts, age/sitting-time, internal-vs-external, by-raising-desk) as a system; diagnostic, not a target")
+	selfImprovementMode := flag.Bool("self-improvement", false, "with --issues: emit the self-improvement metric (self-healed vs human-touched among resolved issues + the rate, by-touch-type breakdown); reuses --json/--series/--team-logins; diagnostic, not a target")
 	staleIssueDays := flag.Int("stale-issue-days", defaultStaleIssueDays, "--issues/--lint: age in days past which an open issue trips the stale-issue alarm (default 7)")
-	teamLogins := flag.String("team-logins", "", "--issues: extra comma-separated team/internal logins beyond the roster trusted logins + bots")
+	teamLogins := flag.String("team-logins", "", "--issues/--self-improvement: extra comma-separated team/internal logins beyond the roster trusted logins + bots")
 	cynefinMode := flag.Bool("cynefin", false, "classify active work by Cynefin domain (clear/complicated/complex/chaotic): distribution, drift, and a Disorder list of untagged briefs; reuses --json / --weekly / --daily (does not read/write STATUS.md)")
 	doraJSON := flag.Bool("json", false, "machine-readable JSON output. Used with --issues / --autonomy / --ladder / --cynefin / --bottleneck / --intake-debt")
 	doraSeries := flag.Bool("series", false, "time series (per-period buckets) instead of a single aggregate. Used with --issues")
@@ -1461,8 +1462,13 @@ func main() {
 		os.Exit(runLadder(*root, *since, *doraJSON))
 	}
 	// Issue metrics emitter — self-contained sub-command, same
-	// STATUS.md-free discipline as the modes above.
+	// STATUS.md-free discipline as the modes above. --self-improvement (mm/03)
+	// is a modifier of --issues, not its own top-level mode, mirroring how
+	// --json/--series modify it.
 	if *issuesMode {
+		if *selfImprovementMode {
+			os.Exit(runSelfImprovement(*root, *doraJSON, *doraSeries, *staleIssueDays, *teamLogins))
+		}
 		os.Exit(runIssues(*root, *doraJSON, *doraSeries, *staleIssueDays, *teamLogins))
 	}
 	// Cynefin-domain view: self-contained diagnostic sub-command — domain

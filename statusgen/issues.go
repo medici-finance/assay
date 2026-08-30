@@ -91,6 +91,9 @@ var issueSeverityTitleWords = []string{"URGENT", "BLOCKER"}
 type issueMetricRecord struct {
 	Number    int
 	Repo      string
+	OwnerRepo string // explicit "owner/repo" slug — never the "(ambient)" display
+	// label Repo carries; statusgen/03's per-issue gh api graphql fetch needs a
+	// literal owner/name pair (see resolvedOwnerRepo).
 	Title     string
 	State     string // "OPEN" | "CLOSED" (gh renders upper-case)
 	CreatedAt time.Time
@@ -600,6 +603,7 @@ var ghIssueMetricLister issueMetricLister = func(repo string) ([]issueMetricReco
 		rec := issueMetricRecord{
 			Number:    r.Number,
 			Repo:      repoLabel(repo),
+			OwnerRepo: resolvedOwnerRepo(repo),
 			Title:     r.Title,
 			State:     r.State,
 			CreatedAt: r.CreatedAt.UTC(),
@@ -633,6 +637,19 @@ func repoLabel(repo string) string {
 		return "(ambient)"
 	}
 	return repo
+}
+
+// resolvedOwnerRepo returns the explicit "owner/repo" slug for API calls that
+// cannot lean on gh's ambient-repo resolution the way `gh issue list` can — the
+// self-improvement detail fetch (`gh api graphql`) takes literal owner/name
+// arguments, not a --repo flag. Falls back to the scanner's configured home
+// repo for the ambient (no --repo) case; empty when even that is unconfigured,
+// which the caller degrades to a could-not-check per issue rather than guessing.
+func resolvedOwnerRepo(repo string) string {
+	if repo != "" {
+		return repo
+	}
+	return scanHomeRepo()
 }
 
 // reposForIssues is the repo set --issues reads. It is the scanner's owned-repo
