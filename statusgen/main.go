@@ -1187,6 +1187,17 @@ func main() {
 	// Self-contained diagnostic sub-command — never reads or writes STATUS.md.
 	bottleneckMode := flag.Bool("bottleneck", false, "emit the daily factory-floor bottleneck report (per-stage WIP + dwell, constraint, shift, action). With --json: a side-effect-free machine-readable emitter (no dated file written) for the publish pipeline")
 	intakeDebtMode := flag.Bool("intake-debt", false, "emit the intake front-door debt aggregate (untriaged count, over-threshold, oldest age). With --json: a leak-safe counts-only object for the publish pipeline (no entry ids/dates)")
+	// Brief-flow metrics (statusgen/07): the AssayScore (statusgen/08) input
+	// family. Every one is a self-contained sub-command (STATUS.md-free),
+	// reuses --since/--until/--json, and emits a three-state `state` field.
+	throughputMode := flag.Bool("throughput", false, "emit weighted brief throughput (effort-point sum of to:\"done\" historian transitions, S=1/M=3/L=8), issue-loop segmented from authored streams. Reuses --since / --until / --json")
+	leadtimeMode := flag.Bool("leadtime", false, "emit authored->done lead time (median + p85, with n) per S/M/L size bucket. Reuses --since / --until / --json; --by-size selects the (currently only) per-size breakdown")
+	leadtimeBySize := flag.Bool("by-size", false, "--leadtime: break the lead-time distribution down by S/M/L (currently the only supported --leadtime shape; the flag is accepted for forward compatibility with an aggregate-only mode)")
+	flowEfficiencyMode := flag.Bool("flow-efficiency", false, "emit touch/(touch+wait) flow efficiency from historian dwell (in-progress = touch; todo/implemented/verified = wait) — a proxy pending a real work-start event; could-not-check under thin data. Reuses --since / --until / --json")
+	firstPassYieldMode := flag.Bool("first-pass-yield", false, "emit first-pass yield: the share of to:\"done\" briefs, linked to their merged PR via the Brief: trailer, merged with 0 CHANGES_REQUESTED, no VERIFY:FAIL, and no unresolved finding naming them. Reuses --since / --until / --json; reads gh")
+	reviewReworkMode := flag.Bool("review-rework", false, "emit the CHANGES_REQUESTED rounds/PR distribution over brief-linked merged PRs, from the full (un-laundered) reviews array. Reuses --since / --until / --json; reads gh")
+	decisionLatencyMode := flag.Bool("decision-latency", false, "emit the needs-decision queue's latency (created->closed, p50/p90 hours) + live WIP + oldest-open age. Reuses --since / --until / --json; reads gh")
+	netFlowMode := flag.Bool("net-flow", false, "emit per-stream net flow (historian arrivals - completions in the window) plus a live stall flag (active ∧ backlog>0 ∧ no transition >=14d). Reuses --since / --until / --json")
 	launchMode := flag.Bool("launch", false, "print launch-readiness rollup — transitive depends: of the go-live gate (assay-launch/05) with live status (never reads/writes STATUS.md)")
 	launchTarget := flag.String("launch-target", "assay-launch/05", "target brief for --launch (default assay-launch/05)")
 	// Evidence-bundle export (gtm/05): deterministic tarball of briefs, registers,
@@ -1280,6 +1291,13 @@ func main() {
 			"--issues":                *issuesMode,
 			"--cynefin":               *cynefinMode,
 			"--intake-debt":           *intakeDebtMode,
+			"--throughput":            *throughputMode,
+			"--leadtime":              *leadtimeMode,
+			"--flow-efficiency":       *flowEfficiencyMode,
+			"--first-pass-yield":      *firstPassYieldMode,
+			"--review-rework":         *reviewReworkMode,
+			"--decision-latency":      *decisionLatencyMode,
+			"--net-flow":              *netFlowMode,
 			"--roadmap":               *roadmapMode,
 			"--bottleneck":            *bottleneckMode,
 			"--launch":                *launchMode,
@@ -1497,6 +1515,38 @@ func main() {
 	// offline, STATUS.md-free — same discipline as --bottleneck --json.
 	if *intakeDebtMode {
 		os.Exit(runIntakeDebt(*root, *doraJSON))
+	}
+	// Brief-flow metrics (statusgen/07). All seven are self-contained,
+	// STATUS.md-free sub-commands, same discipline as --dora-timing/--bottleneck;
+	// the two that read gh (--review-rework/--first-pass-yield share a source,
+	// --decision-latency has its own) degrade to could-not-check rather than
+	// error when gh or the target repo is unavailable (briefflowreview.go,
+	// briefdecision.go).
+	if *throughputMode {
+		os.Exit(runThroughput(*root, *since, *doraTimingUntil, *doraJSON))
+	}
+	if *leadtimeMode {
+		// --by-size is accepted but not yet branched on: by-size is the only
+		// --leadtime shape implemented today (briefflow.go); the flag exists so
+		// an explicit `--leadtime --by-size` invocation is forward-compatible
+		// with a future aggregate-only mode rather than erroring.
+		_ = *leadtimeBySize
+		os.Exit(runLeadTimeBySize(*root, *since, *doraTimingUntil, *doraJSON))
+	}
+	if *flowEfficiencyMode {
+		os.Exit(runFlowEfficiency(*root, *since, *doraTimingUntil, *doraJSON))
+	}
+	if *firstPassYieldMode {
+		os.Exit(runFirstPassYield(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}))
+	}
+	if *reviewReworkMode {
+		os.Exit(runReviewRework(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}))
+	}
+	if *decisionLatencyMode {
+		os.Exit(runDecisionLatency(*root, *since, *doraTimingUntil, *doraJSON, ghDecisionQueueSource{}))
+	}
+	if *netFlowMode {
+		os.Exit(runNetFlow(*root, *since, *doraTimingUntil, *doraJSON))
 	}
 	// Roadmap deck overview + per-stream pages — RETAINED (Ian ruling #1213).
 	// DevLake feeds INTO these internal pages; roadmapdora.go computes the DORA
