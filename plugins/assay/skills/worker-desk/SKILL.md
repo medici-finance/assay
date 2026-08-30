@@ -1,6 +1,6 @@
 ---
 name: worker-desk
-description: Run the work-dispatch role of the process desk — keep a standing pool of 8 parallel worker agents full, each implementing one item in its own worktree behind a draft PR. Use when human:<name> says "fan out the next batch / work the next N briefs in parallel / do what's next in parallel / fan out", i.e. the plural of "work on what's next". Reads the Next-up board of every stream root (this repo + each sibling carrying docs/streams, e.g. ../repo-a and ../repo-b; already priority + staleness + 4-per-stream-capped) PLUS trusted work-ready GitHub issues on no board, dispatches one worker per item, refills each slot the moment its worker finishes (never wave-and-stop), and hands the resulting draft PRs to the pr-review-desk window. Runs SILENT — anything needing a human is a filed GitHub issue (question / help wanted / needs-decision), never console narration. Role window, no persona (Bob belongs to the-desk only); driver human:<name>; the human merges.
+description: Run the work-dispatch role of the process desk — keep a standing pool of parallel worker agents full at the width the roster declares, each implementing one item in its own worktree behind a draft PR. Use when human:<name> says "fan out the next batch / work the next N briefs in parallel / do what's next in parallel / fan out", i.e. the plural of "work on what's next". Reads the Next-up board of every stream root (this repo + each sibling carrying docs/streams, e.g. ../repo-a and ../repo-b; already priority + staleness + 4-per-stream-capped) PLUS trusted work-ready GitHub issues on no board, dispatches one worker per item, refills each slot the moment its worker finishes (never wave-and-stop), and hands the resulting draft PRs to the pr-review-desk window. Runs SILENT — anything needing a human is a filed GitHub issue (question / help wanted / needs-decision), never console narration. Role window, no persona (Bob belongs to the-desk only); driver human:<name>; the human merges.
 ---
 
 # worker-desk — the dispatch half
@@ -35,24 +35,34 @@ gets the same rule from the common-clauses kit) and inline `-c` commit identity 
 window has a cadence from the start rather than after its first quiet queue, and print the BOARD ROOTS
 ∪ SCAN REPOS symmetric difference (§THE REPO SET) so a root nothing sweeps is visible on day one.
 
-## The pool — keep slots FULL, not waves: 8 concurrent, refill on completion
+## The pool — keep slots FULL, not waves: refill on completion
 
-**The unit of operation is the SLOT, not the wave.** Keep a standing pool of **N = 8** concurrent
+**The unit of operation is the SLOT, not the wave.** Keep a standing pool of **N** concurrent
 workers full. **An idle slot while eligible work exists — a queue row on ANY board, a qualifying
 un-briefed issue (§Un-briefed issues), or an orphan PR awaiting resume — is the failure this design
 exists to prevent**, and "dispatch a wave, report, stop" is the drift it kills (human:<name>
 2026-08-13): there is no state in this loop called "the wave is done", only full slots, refillable
 slots, and a sweep proving nothing eligible exists (§HARD GATE).
 
+- **N is read, never remembered — `deskroster width --role worker-desk`, EVERY TICK.** The number
+  is not stated here. It lives in ONE place (`tools/desk/internal/deskkit/width.go`), which is what
+  lets the coordinator widen this pool when `deskboard throughput` names dispatch as the
+  bottleneck, and what stops this body drifting from the value the tools enforce. Re-read it each
+  cycle, not once at boot: a width set mid-window is meant to reach you on the next tick.
+  - **Growing** fills the freed slots up to the new N as work lands.
+  - **Narrowing NEVER kills a running worker** — stop refilling and let the pool converge downward
+    as items land. A dispatched worker mid-item keeps its slot.
+  - A width that cannot be read is **could-not-check**: hold at the number you last read (or the
+    default) and file it. Ignorance never widens a pool.
 - **Fill to N, refill on completion** — the instant a worker finishes (draft PR open, or done /
   NEEDS_CONTEXT), dispatch the next eligible item into the freed slot.
 - **Never stop-and-wait-for-restart.** "The plan came back empty" is a reading from ONE instrument,
   not a state of the queue: re-sweep §Sources of work with each source's own instrument. Where every
   visible row really is claimed, in flight or capped, §WIP-capped — re-check, never stop applies. The
   window neither ends nor asks the driver what to do next (§Liveness contract).
-- **Concurrency (8) is DECOUPLED from the span-of-control display cap (20)**, which bounds what the
+- **Concurrency (N) is DECOUPLED from the span-of-control display cap (20)**, which bounds what the
   board SHOWS. The 4-per-stream cap is an anti-monopoly guard that must **never idle a slot**: fill
-  under-8 cycles with WIP-draining work first — orphan resumes, `Awaiting implementer rework` rows,
+  under-N cycles with WIP-draining work first — orphan resumes, `Awaiting implementer rework` rows,
   `CONFLICTING` PRs, red checks — then un-briefed issues, before leaving one empty.
 - **Scan the active PR queue on every tick** for dispatched PRs owing a worker action
   (`CHANGES_REQUESTED` at head, `CONFLICTING`, a stale draft); **resuming started work outranks a
@@ -263,7 +273,8 @@ in a single batch.
 
 **4. Refill — do NOT hand off and stop.** The draft PRs reach pr-review-desk's review monitor by
 themselves (you never review your own dispatched work). On each completion re-run the sweep and
-**dispatch the next eligible item into the freed slot immediately**, holding the pool at 8; re-plan
+**dispatch the next eligible item into the freed slot immediately**, holding the pool at the current
+N (`deskroster width --role worker-desk`, re-read this tick — §The pool); re-plan
 every root each tick. The 4-per-stream cap is per stream, and a same-named stream in two roots counts
 separately.
 
