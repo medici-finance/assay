@@ -34,14 +34,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (44 desk-actionable of 45 total — 35 at implemented, 10 verified awaiting review)
+## Awaiting verification / review (46 desk-actionable of 47 total — 37 at implemented, 10 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (44)
+### Desk-actionable (46)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -52,6 +52,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-go-git | 01 | verified | 4500 | 7 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 01 [exec:strong] | verified | 4500 | 7 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | harness-portability | 01 [exec:strong] | implemented | 4500 | 7 | — | — | — |
+| desktools-go-git | 02 | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
@@ -85,6 +86,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 04 | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -106,6 +108,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 |---|---|---|
 | desk-containers | — | — |
 | desk-tools | — | — |
+| desktools-go-git | — | — |
 | harness-portability | — | — |
 | statusgen | — | — |
 
@@ -146,7 +149,7 @@ _None._
 ### desktools-go-git (8 open)
 
 - 01 inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate — verified (wave 1)
-- 02 `gitcore` transport + in-process auth (BasicAuth) + go-git pin — todo (wave 2)
+- 02 `gitcore` transport + in-process auth (BasicAuth) + go-git pin — implemented (wave 2)
 - 03 migrate read/plumbing verbs (read-heavy tools) — todo (wave 3)
 - 04 migrate `deskpushguard` detection reads (parity + mutation test) — todo (wave 3)
 - 05 migrate fetch + retire bespoke hardening (`deskgit` / `deskadvisory`) — todo (wave 4)
@@ -225,7 +228,7 @@ _None._
 - 06 findings register — corroborated state machine — implemented (wave 1)
 - 07 new brief-flow metrics — implemented (wave 1)
 - 08 composite AssayScore computation — todo (wave 2)
-- 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — todo (wave 1)
+- 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
 - 10 graph export (`--graph` DOT + JSONL) — implemented (wave 1)
 - 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
 - 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — implemented (wave 1)
