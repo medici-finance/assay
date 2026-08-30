@@ -1000,6 +1000,16 @@ func main() {
 		os.Exit(runBackfill(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen reconcile` — derive each brief's PR-sourced lifecycle cell from
+	// the `Brief:` trailer (derived-board/03, reconcile.go). Intercepted before
+	// flag parsing for verifyrun's reason: it owns --repo/--offline/--token-file,
+	// which mean nothing to the parent parser. It is the ONLY verb that reads the
+	// network (ghfetch.go), and only READ-ONLY endpoints; `--offline` makes it
+	// tree-only, the arm --lint uses (every PR-derived cell unknown).
+	if len(os.Args) > 1 && os.Args[1] == "reconcile" {
+		os.Exit(runReconcile(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen init` — positional subcommand (like `git init`) that scaffolds the
 	// streams structure into a repo. Intercepted before flag parsing so first-run
 	// users get the natural `statusgen init` UX; `--root DIR` targets DIR.
@@ -1042,7 +1052,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, verifyrun, mergecheck, shardcheck, backfill, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, verifyrun, mergecheck, shardcheck, backfill, reconcile, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}
