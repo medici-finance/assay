@@ -105,8 +105,14 @@ var notInRepairValues = map[string]bool{
 //
 // Precedence, most-specific first:
 //  1. blocked-until — the brief cannot even be attempted this run, whatever else is true of it.
-//  2. human gate (tier == TierHuman) — preserves the pre-change routing exactly: these items
-//     were never dispatched (they printed as ROUTE-HUMAN), they are now the awaiting-human bucket.
+//  2. human gate — preserves the pre-change routing exactly: these items were never dispatched
+//     (they printed as ROUTE-HUMAN), they are now the awaiting-human bucket. Membership is EITHER
+//     the tier the risk-router computed (tier == TierHuman) OR the brief's OWN `gate: human`
+//     frontmatter read directly. The direct read is load-bearing, not belt-and-braces: TierPolicy
+//     routes `irreversible: yes` to TierLocal (dispatched-for-evidence) with HIGHER precedence than
+//     its gate:human → TierHuman branch, so a `gate: human` + `irreversible: yes` brief never
+//     reaches TierHuman and a tier-only check leaks it into DISPATCH — a risk-gate fail-open. A
+//     model may not flip a gate:human brief regardless of its tier, so the gate itself decides here.
 //  3. in-repair — a pipeline owns the table; do not race it.
 //  4. online lane — no offline verdict is possible.
 //  5. otherwise DISPATCH.
@@ -114,7 +120,7 @@ func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string
 	if bu := payloadValue(it, "blocked_until"); bu != "" {
 		return dispDeferred, bu
 	}
-	if tier == loopengine.TierHuman {
+	if tier == loopengine.TierHuman || strings.EqualFold(strings.TrimSpace(it.Gate), "human") {
 		return dispAwaitingHuman, ""
 	}
 	if ir := payloadValue(it, "in_repair"); !notInRepairValues[strings.ToLower(ir)] {
