@@ -210,6 +210,33 @@ func TestMineIncrementalExtends(t *testing.T) {
 	}
 }
 
+// TestMineOpensLinkedWorktree pins a real bug found running Verify #7 from
+// inside a dispatched worker's own worktree (the desk's standard isolation
+// model, C1): plain go-git PlainOpen does not follow a linked worktree's
+// `commondir` file, so `r.Head()` fails with "reference not found" for a
+// branch ref that lives in the main repo's `.git` rather than the worktree's
+// private gitdir. `mine` must succeed when --repo points at a linked
+// worktree, not only a normal clone.
+func TestMineOpensLinkedWorktree(t *testing.T) {
+	requireGit(t)
+	repo := initFixtureRepo(t)
+
+	wtDir := filepath.Join(t.TempDir(), "wt")
+	gitCmd(t, repo, "worktree", "add", "-b", "wt-branch", wtDir)
+
+	out := t.TempDir()
+	if err := mine(wtDir, out, &bytes.Buffer{}); err != nil {
+		t.Fatalf("mine against a linked worktree must succeed, got: %v", err)
+	}
+
+	store := NewStore(out)
+	commits := mustReadCommits(t, store)
+	want := revListCount(t, wtDir)
+	if len(commits) != want {
+		t.Fatalf("mined %d commits from the worktree, git rev-list --count HEAD = %d", len(commits), want)
+	}
+}
+
 func mustReadCommits(t *testing.T, s *Store) []Commit {
 	t.Helper()
 	c, err := s.ReadCommits()

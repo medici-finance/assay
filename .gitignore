@@ -1,6 +1,7 @@
 # Go build artifacts
 /statusgen/statusgen
 /tools/freshness/freshness
+/qualgen/qualgen
 *.exe
 *.test
 *.out

@@ -30,6 +30,7 @@ const (
 	mineHeader   = "mine.json"
 	commitsTable = "commits.jsonl"
 	diffsTable   = "diffs.jsonl"
+	metricsTable = "metrics.jsonl"
 	// defectsTable is the M2 defect-lineage table (spec §9.4): quality/06
 	// appends DefectFix records here; quality/07's B-SZZ trace reads them.
 	// quality/05, when it lands, is expected to fold this path into its
@@ -46,6 +47,13 @@ type Kind string
 const (
 	KindCommit Kind = "commits"
 	KindDiff   Kind = "diffs"
+	// KindMetric is the M1 aggregate table (spec §9.4): heterogeneous
+	// records — one shape per metric family (hotspot, ownership, coupling,
+	// missing-coupling-partner, ...) — each discriminated by its own
+	// "metric" field. quality/05 is expected to formalize this into a
+	// dedicated schema module (artifacts.go); until then, families append
+	// here through the same generic Store.Append seam quality/01 shipped.
+	KindMetric Kind = "metrics"
 	KindDefect Kind = "defects"
 )
 
@@ -68,6 +76,8 @@ func (s *Store) tablePath(k Kind) (string, error) {
 		return filepath.Join(s.dir(), commitsTable), nil
 	case KindDiff:
 		return filepath.Join(s.dir(), diffsTable), nil
+	case KindMetric:
+		return filepath.Join(s.dir(), metricsTable), nil
 	case KindDefect:
 		return filepath.Join(s.dir(), defectsTable), nil
 	default:
