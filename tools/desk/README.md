@@ -27,7 +27,7 @@ it on day one.
 
 | Tool | Verb(s) | Class | Write budget + breaker |
 |------|---------|-------|------------------------|
-| `deskboard` | `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
+| `deskboard` | `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) | yes (`run`) |
@@ -51,7 +51,7 @@ it on day one.
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
-| `deskroster` | `set`, `drop`, `list`, `mine`, `preflight` | local-only, out-of-git (`preflight` mints a token and runs one read-only transport probe) | no |
+| `deskroster` | `set`, `drop`, `list`, `mine`, `width`, `repos`, `apps`, `preflight` | local-only, out-of-git (`preflight` mints a token and runs one read-only transport probe) | no |
 | `muhar` | `-spec <file>` mutation harness, `-j <n>` mutations in flight (isolated tree per worker), `-shard i/n` this invocation's slice of the spec (shards partition it; baseline + control run per shard) | local diagnostic (no `Guard`) | no |
 | `writeguard` | PreToolUse hook (F-34 isolation backstop) | hook | n/a |
 | `deskpushguard` | pre-push hook — refuses a push to a MERGED/CLOSED branch, one carrying a foreign/laundered commit, a single-parent merge masquerade, or a branch point sitting on a stray local `origin/main`, or one introducing a register-entry `id:` collision with an in-flight sibling branch (#22, #72). Cannot determine the base → prints `COULD-NOT-CHECK` and allows (fail-open, brief-10); that line means UNVERIFIED, not clean | git hook | n/a |
@@ -501,7 +501,7 @@ The same probe rides on `deskboard actions`: its header carries `mainHealth`, th
 merge onto it), and each row on an affected repo is flagged `baseBranchRed` with a note.
 An **absent** `mainHealth` field means the verb did not probe — never that it found
 nothing wrong. `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
-`next-up`, `scope`, `policydrift`, `stalled`,
+`next-up`, `throughput`, `scope`, `policydrift`, `stalled`,
 `reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
 the absence for every verb on it (JSON **and** `--table`), `TestVerbInventory_Complete`
 fails if a verb is added without being classified, and `TestREADME_NamesEveryNonProbingVerb`
@@ -804,13 +804,40 @@ JSON carries `population` (`awaiting-verification`), `populationStatuses`
 
 ## deskboard scope — what the board covers, and what it does not (#359)
 
+### Throughput: which desk is the bottleneck, and how wide it may run
+
+A pipeline is only as fast as its narrowest stage, and until the pool widths lived in code
+there was no way to say which stage that was — nor any value to move once you knew.
+
+- **The signal — `deskboard throughput`.** Per stage (dispatch / review / verify / intake) it
+  reports queue DEPTH against pool SLOTS, names the worst ratio as the bottleneck, and prints
+  the exact widening command. Depths are DERIVED from `dispatch`, `actions` and `awaiting` —
+  nothing re-parses the board, so the ratio always describes the queue those desks really work.
+  **SLOTS is capacity, not live occupancy**: nothing in the tree counts in-flight agents, and a
+  guessed occupancy would look precise while being a guess.
+- **The knob — `deskroster set --role <loop> --width N`**, read back with
+  `deskroster width --role <loop>`. Keyed by canonical LOOP name (`worker-desk`,
+  `pr-review-desk`, `verify-desk`, `intake-desk`, `the-desk`) through the same equivalence class
+  the stop flag uses, so a rename cannot reset a pool. A set width **decays after an hour**: a
+  coordinator that died cannot leave a pool permanently wide.
+- **The bound.** A width the role's write budget or the shared App token's concurrency ceiling
+  cannot carry is **refused (exit 5) naming the maximum it will accept**. Widening buys no
+  budget — every meter in the rate limiter applies to the wider pool unchanged — and an **open
+  circuit breaker pins the width at what is already in flight** until it clears. Narrowing never
+  kills a running agent: it stops refills and the pool converges as work lands.
+- **Defaults live in ONE place** (`internal/deskkit/width.go`), with the argument for each number
+  beside it and a test pinning the values. The desk skill bodies point at that table instead of
+  stating a number that could drift from it.
+
+### Scope: what the board covers
+
 The board sweeps a **compiled-in** repo set. Rendering a confident, complete-looking
 list of a subset means "no PRs in that repo" and "that repo is not read at all" produce
 the same output, so a merge-ready PR in an unwatched repo is not missed — it is
 structurally invisible, and nothing knows to alert. Two halves:
 
 - **Every sweeping verb states its scope.** `prs`, `actions`, `queue`, `health`, `scope`,
-  `policydrift` and `stalled` carry a `scope` object in the JSON header (repos, count, source) and
+  `policydrift`, `stalled` and `throughput` carry a `scope` object in the JSON header (repos, count, source) and
   print one scope line on `--table`. Verbs taking an explicit repo (`reviews`, `diff`,
   `files`) **omit** the field entirely — absent means "swept nothing", never "the set was
   empty". This sentence is not prose upkeep: `TestReadme_SweepingVerbSentence_359` fails

@@ -251,12 +251,14 @@ func cmdSet(args []string) error {
 		what    string
 		role    string
 		session string
+		width   int
 	)
 	fs.StringVar(&repo, "repo", "", "Short repo name (e.g. tracker)")
 	fs.IntVar(&pr, "pr", 0, "PR number")
 	fs.StringVar(&what, "what", "", "Description of the work")
 	fs.StringVar(&role, "role", "", "Optional role label for this session")
 	fs.StringVar(&session, "session", "", "Session name (env: $DESK_SESSION or $CLAUDE_SESSION_ID)")
+	fs.IntVar(&width, "width", 0, "With --role: set that LOOP's agent-pool width (see `deskroster width --role`)")
 
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused(fmt.Sprintf("set: %v", err))
@@ -266,6 +268,35 @@ func cmdSet(args []string) error {
 	roleOnly := (role != "" && repo == "" && pr == 0 && what == "")
 	// Work-entry set: --repo, --pr, and --what are all required.
 	workSet := (repo != "" && pr != 0 && what != "")
+	// Width set: --role names the LOOP whose pool is being resized. It is a distinct shape
+	// from the two above, and deliberately so — see the next block.
+	widthSet := width != 0
+
+	if widthSet {
+		// --width addresses ANOTHER window's pool; it does not describe this session. Writing
+		// the role onto this session's beacon here would rename the SETTER (the coordinator
+		// steering a bottlenecked desk would relabel itself as that desk), so the width path
+		// never touches the beacon at all — see width.go's header for the full argument.
+		if role == "" {
+			return deskkit.Refused("set --width requires --role naming the loop whose pool to size " +
+				"(e.g. --role pr-review-desk --width 8); a width with no loop is a number with no pool")
+		}
+		if repo != "" || pr != 0 || what != "" {
+			return deskkit.Refused("set --width is a pool-size directive for a loop, not a work entry: " +
+				"pass it with --role alone, and register work in a separate `deskroster set --repo … --pr … --what …`")
+		}
+		setBy, serr := resolveSession(session)
+		if serr != nil {
+			return serr
+		}
+		canonical, werr := setWidth(role, width, setBy, time.Now())
+		if werr != nil {
+			return werr
+		}
+		fmt.Printf("deskroster: %s set %s pool width to %d (in force for %s; %s reads it each tick)\n",
+			setBy, canonical, width, deskkit.WidthTTL, canonical)
+		return nil
+	}
 
 	if !roleOnly && !workSet {
 		return deskkit.Refused("set requires either (--repo, --pr, --what) for a work entry, or --role alone for a standing session")
