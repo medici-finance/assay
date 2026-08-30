@@ -61,8 +61,10 @@ facts:
   policy (Ultimate — row C7; fallback: the locked ci-config project, itself Free). The two
   refinements this brief was authored around — external status checks (row B8) and custom
   roles (row B9) — are unchanged and remain Ultimate. The Task and Verify tables are as
-  authored; the Premium rows above are recorded scope, and whether they are *required* for the
-  parity claim or optional hardening is the human ruling that #219 leaves open.
+  authored; the Premium rows above are recorded scope. **Ruled the same day:** they are
+  optional hardening, not required for the parity claim — spec §1 makes CE conforming for the
+  core lane with the B2 and B3/B4 degradations disclosed, so Premium is what converts those two
+  into server-enforced controls and Ultimate stays refinement.
 
 ## Edition
 Minimum GitLab tier: **ultimate**. This is the paid-tier brief by construction — external

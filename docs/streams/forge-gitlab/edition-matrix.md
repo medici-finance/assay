@@ -3,8 +3,11 @@
 **Question this answers:** do we need a licensed GitLab, or can the Assay fleet run on
 Community Edition? What genuinely needs Premium or Ultimate, and what can be done on CE?
 
-**Recorded preference:** CE-first. Premium and Ultimate features are opt-in refinements,
-never prerequisites for the core lane (01-05, 07, 08).
+**Answer, ruled 2026-08-30:** CE. Community Edition is conforming for the core lane (01-05,
+07, 08) with the two disclosed degradations recorded under "Residual gaps" below; Premium is
+the hardening that makes both server-enforced, and Ultimate is refinement (brief 06). Premium
+and Ultimate features are opt-in, never prerequisites for the core lane. The binding wording
+is spec.md section 1; this file is its evidence.
 
 **Method.** Every tier in this file was read off the GitLab documentation page cited in its
 row — each page carries a `Tier:` badge and an `Offering:` line near the top, and some
@@ -119,27 +122,25 @@ on CE; treat Premium as the hardening that converts two disclosed degradations i
 server-enforced controls, and Ultimate as refinement — never as prerequisites for the core
 lane.
 
-## Residual gaps — the part a human must rule on
+## Residual gaps — the two disclosed degradations
 
-Two CE fallbacks are honest degradations, not equivalences:
+Two CE fallbacks are honest degradations, not equivalences. They are the two the ruling below
+names, and spec.md section 1 carries them as the profile's disclosed degradations:
 
 1. **B2 (single board-writer).** On CE the set of identities that may write `main` is a role
    membership, not a one-name allowlist. The mitigation (all writes via MR, `Allowed to push`
    = No one) is arguably a *different* strong control rather than a weaker one, but it is not
    the same control.
-2. **B4 (no self-approval).** On CE the server does not stop a human who holds both roles. The
-   fleet's own attribution separation covers the bot case structurally; the human case is
-   discipline plus tool refusal.
+2. **B3 + B4 (enforced approval rules).** Required approvals are Premium (B3), and so is
+   prevent-approval-by-author or by-committer (B4), so on CE approvals are advisory: the
+   server neither requires a verdict before merge nor stops a human who holds both roles. The
+   fleet's own attribution separation covers the bot case structurally; the rest is
+   humans-only merge, the desk's refusal to flip ready without an at-head verdict, and
+   discipline.
 
-Spec section 1 currently states the opposite conclusion — "GitLab Free/CE cannot meet the
-parity requirement and is declared non-conforming for this profile", with a Premium floor —
-and section 3's governing ruling is that "weaker but disclosed" is non-conforming. The
-evidence above shows that judgement was made without the per-feature tier reads, and that the
-CE gap is two controls wide, not a wholesale gap. **Reconciling those two sentences with this
-matrix is a human decision, not a model's**: either CE is accepted for the core lane with the
-two degradations recorded, or Premium stays the floor for the parity claim while the tooling
-lane stays CE-buildable. Until that ruling lands, this file records the evidence and the
-briefs record `tier:` values consistent with CE-first, and spec section 1 keeps its wording
-with a pointer here. Brief 04's Verify row 3 (which greps the adopter doc for the
-"non-conforming" statement) is written against the current spec wording and would need
-re-baselining if the ruling goes the other way; it is deliberately left untouched here.
+**Ruled 2026-08-30 — CE is conforming for the core lane** (briefs 01–05, 07, 08) with exactly
+these two degradations disclosed; Premium is the hardening that makes both server-enforced,
+and Ultimate is refinement (brief 06). The ruling and the wording that binds live in
+[spec.md](spec.md) section 1, with section 3 scoping the carve-out to these two rows and no
+others; this file is the evidence behind that ruling, not a second statement of it. Brief 04's
+Verify row 3 was re-baselined onto the amended sentence in the same change.

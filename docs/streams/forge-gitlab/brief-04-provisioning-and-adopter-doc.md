@@ -48,10 +48,21 @@ facts:
   execution policy), group token-expiry policy, ci-config project creation.
 - ci-config runbook section: create the locked project, set consumer projects'
   CI config path to it, verify no bot membership.
-- The doc carries the tier ladder and the non-conforming Free/CE statement verbatim
-  from spec §1 — no softening.
+- The doc carries the tier ladder and, verbatim from spec §1, the CE statement: Community
+  Edition is conforming for the core lane with two named, disclosed degradations
+  (identity-granular protected branches — the Maintainer role set is the allowlist; enforced
+  approval rules — approvals are advisory, so verdict-before-merge is human-merge-only plus
+  the desk's refusal to flip without an at-head verdict). No softening in either direction:
+  the degradations are stated as degradations.
 - All REST; requires a group-owner PAT supplied by the operator at run time (never
   stored by the script).
+
+re-baselined: 2026-08-30 — Verify row 3 previously grepped the adopter doc for spec §1's
+"Free/CE non-conforming" sentence. That sentence was replaced by the tier ruling of
+2026-08-30 (medici-finance/assay#219, evidence in edition-matrix.md): CE conforms for the
+core lane with the two disclosed degradations, Premium is the hardening, Ultimate is
+refinement. Row 3 now greps the replacement sentence and both named degradations. No other
+Verify row changed, and no task changed.
 
 ## Edition
 Minimum GitLab tier: **free** (Community Edition) for everything the script must do. Service
@@ -85,12 +96,12 @@ configuring them:
   CI is the tier-independent layer.
 - **Group/project audit events** (Premium): only sign-in events exist at Free.
 
-Open point this brief must not resolve on its own: task 2 and Verify row 3 require the adopter
-doc to carry spec section 1's "Free/CE non-conforming" statement verbatim. edition-matrix.md's
-evidence contradicts that statement — the CE gap is two controls wide, not wholesale — so the
-wording of that sentence, and therefore Verify row 3, is pending a human ruling
-(medici-finance/assay#219). The Verify row is deliberately left as authored; re-baseline it
-only after the ruling.
+Settled 2026-08-30 (medici-finance/assay#219): the open point this brief carried — whether the
+adopter doc must repeat a "Free/CE non-conforming" statement the matrix's per-feature tier
+reads did not support — is ruled. CE is conforming for the core lane with the two disclosed
+degradations above; Premium is the hardening that makes them server-enforced; Ultimate is
+refinement. Task 2 and Verify row 3 now carry the amended spec section 1 sentence, and the
+degradations above are the doc's tier-honesty statement.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per
@@ -112,7 +123,7 @@ only after the ruling.
 |---|---------|--------|
 | 1 | `bash -n tools/create-fleet-gitlab.sh && shellcheck tools/create-fleet-gitlab.sh` | exit 0 |
 | 2 | `bash tools/create-fleet-gitlab.sh --dry-run --group example --prefix myorg 2>&1 \| grep -c 'service account'` | ≥ 7 — dry-run enumerates every role it would create |
-| 3 | `grep -n 'Free' docs/adopting-assay-gitlab.md \| grep -ci 'non-conforming'` | ≥ 1 — the tier honesty statement is present |
+| 3 | `grep -ci 'Community Edition is conforming for the core lane' docs/adopting-assay-gitlab.md && grep -ci 'Maintainer role set is the allowlist' docs/adopting-assay-gitlab.md && grep -ci 'approvals are advisory' docs/adopting-assay-gitlab.md` | each ≥ 1, chain exits 0 — the doc carries the amended spec §1 statement: CE conforms for the core lane, plus both named degradations verbatim |
 | 4 | For each REST endpoint named in the script: `grep -oE 'api/v4/[a-z_/:{}.-]+' tools/create-fleet-gitlab.sh \| sort -u` checked against the GitLab REST v4 docs | every endpoint exists in current docs (dereference: reviewer resolves each against docs.gitlab.com and records the doc URL per endpoint) |
 
 ## Evidence
