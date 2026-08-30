@@ -1,7 +1,7 @@
 # Cursor — capability bindings
 
 How each neutral-core capability (named in the skill bodies as `capability:<name>`)
-is realised on **Cursor**. Target set is **both surfaces, headless-first** (Ian,
+is realised on **Cursor**. Target set is **both surfaces, headless-first** (human:<name>,
 2026-08-26): the headless `cursor-agent` CLI is the **primary** surface (best fit to
 the desk/automation model and the isolation/evidence/review-gate floor), the in-editor
 IDE agent the **secondary** end-user surface. Harness tool names are legal here — that
@@ -86,4 +86,4 @@ This binding is behavioural fact about a live harness, measured documentarily on
 2026-08-26 with no live environment. It is registered in `freshness.yaml`
 (harness-portability/12) so it expires on a clock, and the
 `[needs: live-install confirmation]` rows are re-measured once a Cursor environment
-exists (the live smoke is the stream's external head, Ian's).
+exists (the live smoke is the stream's external head, human:<name>'s).
