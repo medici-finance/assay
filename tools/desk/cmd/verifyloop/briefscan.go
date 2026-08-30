@@ -32,6 +32,25 @@ type briefFrontmatter struct {
 	Effort      string
 	ExecTier    string
 	Implementer string // optional `implementer:` field; empty disables the author!=runner guard for this item
+
+	// The three queue-truthfulness markers (see queueclass.go). All optional; an absent
+	// marker is the zero value and leaves the brief a normal DISPATCH candidate.
+	//
+	// BlockedUntil is the `blocked-until:` frontmatter marker: a condition or date whose
+	// presence DEFERS the brief out of the dispatchable list until it can be met. Its whole
+	// job is a longitudinal brief whose Verify exit criteria are a calendar/accrual window
+	// that has not accrued — re-verifying it every run only reproduces the identical
+	// "not accrued" result and burns a dispatchable slot.
+	BlockedUntil string
+	// VerifyLane is the `verify-lane:` marker naming the substrate a brief's Verify rows run
+	// against when it is not this repo's offline tree (a live cluster / online / live session).
+	// An online-lane value buckets the brief as awaiting-online-lane — an offline verifier run
+	// cannot produce its verdict.
+	VerifyLane string
+	// InRepair is the `in-repair:` marker: an in-flight table-repair pipeline already owns this
+	// brief's Verify table (a stale-artifact re-baseline). Its value is the pipeline reference,
+	// carried into the "why it waits" note. Presence buckets the brief as in-repair.
+	InRepair string
 }
 
 // scanAwaiting reads every stream README under <root>/docs/streams/*/README.md, applies the
@@ -96,9 +115,12 @@ func scanAwaiting(root, targetSHA string) ([]loopengine.Item, error) {
 			ExecTier:    r.fm.ExecTier,
 			Implementer: r.fm.Implementer,
 			Payload: map[string]string{
-				"status":   r.Status,
-				"verified": r.Verified,
-				"reviewed": r.Reviewed,
+				"status":        r.Status,
+				"verified":      r.Verified,
+				"reviewed":      r.Reviewed,
+				"blocked_until": r.fm.BlockedUntil,
+				"verify_lane":   r.fm.VerifyLane,
+				"in_repair":     r.fm.InRepair,
 			},
 		})
 	}
