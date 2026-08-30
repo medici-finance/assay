@@ -1,0 +1,77 @@
+{
+  "test": "go test ./internal/deskkit/ ./internal/loopengine/ ./cmd/deskroster/ -count=1 -run 'Width|TokenConcurrency|DefaultWidths|MaxWidth|CheckWidth|EffectiveWidth'",
+  "control": {
+    "name": "CONTROL — disarm the width bound entirely (every width is admissible)",
+    "file": "internal/deskkit/width.go",
+    "old": "\tif n > max {",
+    "new": "\tif false && n > max {"
+  },
+  "mutations": [
+    {
+      "name": "off-by-one the ceiling (a width EQUAL to the maximum is refused) — the desk's own `--width 8` on the review pool would be rejected, and a bound that refuses the case it was built for is one operators route around",
+      "file": "internal/deskkit/width.go",
+      "old": "\tif n > max {",
+      "new": "\tif n >= max {"
+    },
+    {
+      "name": "delete the BUDGET arm — a width would then be bounded only by the number a human wrote in the table, with nothing tying it to the writes the role actually makes",
+      "file": "internal/deskkit/width.go",
+      "old": "\tif p.WritesPerItem > 0 {",
+      "new": "\tif false && p.WritesPerItem > 0 {"
+    },
+    {
+      "name": "delete the TOKEN arm — the review pool's ceiling would stop tracking the shared App token's secondary-rate-limit trip, which is the entire reason it is narrower than the worker pool",
+      "file": "internal/deskkit/width.go",
+      "old": "\tif p.TokenBound {",
+      "new": "\tif false && p.TokenBound {"
+    },
+    {
+      "name": "take the MAXIMUM of the arms instead of the minimum — every ceiling would be satisfied by the loosest one, which is the opposite of a conjunctive bound",
+      "file": "internal/deskkit/width.go",
+      "old": "\t\tif a.cap < max {",
+      "new": "\t\tif a.cap > max {"
+    },
+    {
+      "name": "let a bad token-concurrency override fall back to the shipped default — a deployment declaring a NARROWER ceiling would silently run the wider one",
+      "file": "internal/deskkit/width.go",
+      "old": "\tif err != nil || n < tokenConcurrencyMargin {",
+      "new": "\tif false && (err != nil || n < tokenConcurrencyMargin) {"
+    },
+    {
+      "name": "widen THROUGH an open circuit breaker — adding agents multiplies exactly the non-progress that opened it",
+      "file": "internal/deskkit/width.go",
+      "old": "\tif breakerOpen {",
+      "new": "\tif false && breakerOpen {"
+    },
+    {
+      "name": "drop the READ-time ceiling clamp — a width stored before a budget constant was lowered would outlive the bound that admitted it",
+      "file": "internal/deskkit/width.go",
+      "old": "\tif requested > max {",
+      "new": "\tif false && requested > max {"
+    },
+    {
+      "name": "never expire a stored width — a coordinator that died would leave a pool permanently wide, with no live session that knows why",
+      "file": "internal/deskkit/widthstore.go",
+      "old": "\tif now.Sub(upd) > WidthTTL {",
+      "new": "\tif false && now.Sub(upd) > WidthTTL {"
+    },
+    {
+      "name": "treat a corrupt width entry as 'no width set' — a width the desk is relying on would silently revert while every instrument reported the default as deliberate",
+      "file": "internal/deskkit/widthstore.go",
+      "old": "\t\treturn nil, false, Unverifiable(\"malformed width entry at \"+path+",
+      "new": "\t\treturn nil, false, nil // was: Unverifiable(\"malformed width entry at \"+path+"
+    },
+    {
+      "name": "snapshot the pool cap instead of re-reading it per pass — the whole point of the knob: a width set between ticks would never reach the loop",
+      "file": "internal/loopengine/engine.go",
+      "old": "\t\tif len(inflight) >= capThisPass {",
+      "new": "\t\tif len(inflight) >= cfg.PoolSize {"
+    },
+    {
+      "name": "let an unreadable width widen the pool — ignorance about a pool's size would grow it rather than hold it at the configured floor",
+      "file": "internal/loopengine/engine.go",
+      "old": "\t\tc.logf(\"width: could-not-check (%v) — holding the pool at the configured floor %d\", err, c.PoolSize)\n\t\treturn c.PoolSize",
+      "new": "\t\tc.logf(\"width: could-not-check (%v)\", err)\n\t\treturn 1 << 30"
+    }
+  ]
+}
