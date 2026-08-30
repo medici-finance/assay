@@ -10,7 +10,7 @@ why: >-
   stream can be computed until this skeleton exists.
 wave: 0
 depends: []
-unblocks: ["quality/02", "quality/03", "quality/04", "quality/06"]
+unblocks: ["quality/02", "quality/03", "quality/04", "quality/06", "quality/16"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
