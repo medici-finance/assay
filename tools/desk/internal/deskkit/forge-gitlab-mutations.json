@@ -1,0 +1,83 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestForgeGitlab'",
+  "control": {
+    "name": "CONTROL — stop normalising GitLab's lifecycle vocabulary (an MR reports state \"opened\" instead of \"open\")",
+    "file": "internal/deskkit/forge_gitlab.go",
+    "old": "\tcase \"opened\", \"locked\":\n\t\treturn \"open\"",
+    "new": "\tcase \"opened\", \"locked\":\n\t\treturn \"opened\""
+  },
+  "mutations": [
+    {
+      "name": "report a truncated changes_count as exact (a 1000-entry walk reconciles clean against a larger change set)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\treturn n + 1, true",
+      "new": "\t\treturn n, true"
+    },
+    {
+      "name": "stamp every approval with the MR head regardless of the project's approval-reset policy",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif approvalsArePinned {",
+      "new": "\t\tif true {"
+    },
+    {
+      "name": "stamp every note with the head, ignoring when the head actually landed",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif headArrivedAt != nil && n.CreatedAt != nil && !n.CreatedAt.Before(*headArrivedAt) {",
+      "new": "\t\tif true {"
+    },
+    {
+      "name": "default an unresolvable award author to a human (a bot's award would satisfy a human-only gate)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif err != nil || u == nil {\n\t\treturn \"\"\n\t}",
+      "new": "\tif err != nil || u == nil {\n\t\treturn \"User\"\n\t}"
+    },
+    {
+      "name": "drop the award-emoji name mapping (GitLab's thumbsup never becomes the +1 the admission gate matches)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif c, ok := gitlabAwardToReaction[name]; ok {",
+      "new": "\tif c, ok := gitlabAwardToReaction[name]; false && ok {"
+    },
+    {
+      "name": "resolve an ambiguous number to the issue instead of refusing (a comment lands on the wrong object)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tcase iss != nil && mr != nil:",
+      "new": "\tcase false && iss != nil && mr != nil:"
+    },
+    {
+      "name": "accept a created merge request that did not come back marked draft",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif !mr.Draft {",
+      "new": "\tif false && !mr.Draft {"
+    },
+    {
+      "name": "treat a cancelled pipeline as green in the combined rollup",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tcase \"canceled\", \"canceling\":\n\t\treturn \"failure\"",
+      "new": "\tcase \"canceled\", \"canceling\":\n\t\treturn \"success\""
+    },
+    {
+      "name": "swallow a non-2xx into a statusless refusal (401/403/404 stop being distinguishable)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif status == 0 {",
+      "new": "\tif status >= 0 {"
+    },
+    {
+      "name": "let an unset token through to the network as an anonymous identity",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif g.Token == \"\" {",
+      "new": "\tif false && g.Token == \"\" {"
+    },
+    {
+      "name": "accept any opaque change id, including one minted by another forge",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\trest, ok := strings.CutPrefix(nodeID, gitlabNodeIDScheme)\n\tif !ok {\n\t\treturn fail()\n\t}",
+      "new": "\trest, ok := strings.CutPrefix(nodeID, gitlabNodeIDScheme)\n\tif false && !ok {\n\t\treturn fail()\n\t}"
+    },
+    {
+      "name": "degrade an unrecognised review verb to a silent success instead of refusing",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\treturn Refused(fmt.Sprintf(\"unsupported review event %q — expected APPROVE, REQUEST_CHANGES or COMMENT\",\n\t\t\tStripControl(in.Event)))",
+      "new": "\t\treturn nil"
+    }
+  ]
+}

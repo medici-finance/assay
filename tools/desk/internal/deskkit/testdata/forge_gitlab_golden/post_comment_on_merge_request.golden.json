@@ -1,0 +1,19 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/7"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/notes",
+      "body": {
+        "body": "hello"
+      }
+    }
+  ]
+}

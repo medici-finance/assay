@@ -1,0 +1,23 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/7/award_emoji",
+      "query": "per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/users/3"
+    }
+  ],
+  "result": [
+    {
+      "user": {
+        "login": "ghost",
+        "type": "",
+        "id": 3
+      },
+      "content": "+1"
+    }
+  ]
+}

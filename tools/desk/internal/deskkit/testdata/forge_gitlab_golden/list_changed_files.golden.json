@@ -1,0 +1,31 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/diffs",
+      "query": "page=1\u0026per_page=100"
+    }
+  ],
+  "result": [
+    {
+      "Filename": "config/authz/token.go",
+      "PreviousFilename": "secrets/auth/token.go",
+      "Status": "renamed"
+    },
+    {
+      "Filename": "docs/desk-tools.md",
+      "PreviousFilename": "",
+      "Status": "modified"
+    },
+    {
+      "Filename": "cmd/new.go",
+      "PreviousFilename": "",
+      "Status": "added"
+    },
+    {
+      "Filename": "cmd/gone.go",
+      "PreviousFilename": "",
+      "Status": "removed"
+    }
+  ]
+}

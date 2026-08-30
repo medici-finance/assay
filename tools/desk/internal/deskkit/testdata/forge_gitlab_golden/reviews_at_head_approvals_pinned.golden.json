@@ -1,0 +1,61 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/versions",
+      "query": "per_page=1"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/approvals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/approvals"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/notes",
+      "query": "page=1\u0026per_page=100"
+    }
+  ],
+  "result": [
+    {
+      "ID": 42,
+      "Author": {
+        "Login": "reviewer-bot",
+        "ID": 42
+      },
+      "State": "APPROVED",
+      "CommitID": "abc123",
+      "Body": "",
+      "SubmittedAt": "2026-08-30T11:00:00Z"
+    },
+    {
+      "ID": 2,
+      "Author": {
+        "Login": "reviewer-bot",
+        "ID": 42
+      },
+      "State": "COMMENTED",
+      "CommitID": "abc123",
+      "Body": "Verdict: APPROVE",
+      "SubmittedAt": "2026-08-30T11:00:01Z"
+    },
+    {
+      "ID": 3,
+      "Author": {
+        "Login": "human",
+        "ID": 7
+      },
+      "State": "COMMENTED",
+      "CommitID": "",
+      "Body": "stale comment from before this head",
+      "SubmittedAt": "2026-08-30T09:00:00Z"
+    }
+  ]
+}
