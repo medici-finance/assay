@@ -24,6 +24,9 @@ func parseFrontmatter(content string) briefFrontmatter {
 	fm.Effort = strings.TrimSpace(scalar(body, "effort"))
 	fm.ExecTier = strings.TrimSpace(scalar(body, "exec-tier"))
 	fm.Implementer = strings.TrimSpace(scalar(body, "implementer"))
+	fm.BlockedUntil = strings.TrimSpace(scalar(body, "blocked-until"))
+	fm.VerifyLane = strings.TrimSpace(scalar(body, "verify-lane"))
+	fm.InRepair = strings.TrimSpace(scalar(body, "in-repair"))
 	fm.Risk = parseRisk(body)
 	return fm
 }

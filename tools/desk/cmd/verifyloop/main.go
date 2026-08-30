@@ -109,6 +109,12 @@ func cmdPlan(args []string) error {
 		return deskkit.Unverifiable("cannot read the Awaiting queue", err)
 	}
 	fmt.Printf("verify-desk plan: %d brief(s) awaiting (tier-1 first, oldest-first within class)\n", len(items))
+
+	// bucketed collects the non-dispatchable dispositions (deferred + the three buckets) so
+	// the dispatchable list stays the genuinely-actionable set and the rest are surfaced with a
+	// count and a one-line "why it waits", never silently listed as DISPATCH (queueclass.go).
+	bucketed := map[disposition][]bucketMember{}
+	dispatchable := 0
 	for _, it := range items {
 		// author != runner is a STRUCTURAL engine guard, shown here for transparency.
 		if err := loopengine.CheckAuthorRunner(it, *runner); err != nil {
@@ -120,17 +126,54 @@ func cmdPlan(args []string) error {
 			fmt.Printf("\n-- %s: tier error: %v\n", it.ID, terr)
 			continue
 		}
-		if tier == loopengine.TierHuman {
-			fmt.Printf("\n-- %s: ROUTE-HUMAN (risk-flagged; checkpoint-PR / labeled-issue path, drain continues)\n", it.ID)
+		if disp, reason := classifyItem(it, tier); disp != dispDispatch {
+			bucketed[disp] = append(bucketed[disp], bucketMember{ID: it.ID, Reason: reason})
 			continue
 		}
 		prompt := renderDispatchPrompt(it, tier)
 		if err := assertNoSharedCheckout(prompt); err != nil {
 			return deskkit.Refused(err.Error())
 		}
+		dispatchable++
 		fmt.Printf("\n=== DISPATCH %s (tier=%s) ===\n%s\n", it.ID, tier, prompt)
 	}
+
+	printBuckets(dispatchable, bucketed)
 	return nil
+}
+
+// bucketMember is one non-dispatchable queue item: its ID plus the per-item reason detail
+// (the blocked-until condition, the lane name, or the repair pipeline reference; empty for
+// awaiting-human, whose why is identical for every member).
+type bucketMember struct {
+	ID     string
+	Reason string
+}
+
+// printBuckets renders the deferred section and each non-empty bucket, each headed by a count
+// and its one-line "why it waits" note. The order is deterministic (deferred, then the three
+// buckets) so the output is stable across runs.
+func printBuckets(dispatchable int, bucketed map[disposition][]bucketMember) {
+	total := 0
+	for _, m := range bucketed {
+		total += len(m)
+	}
+	fmt.Printf("\nverify-desk plan: %d dispatchable, %d deferred/bucketed (not offline-convertible this run)\n",
+		dispatchable, total)
+	for _, disp := range []disposition{dispDeferred, dispAwaitingHuman, dispAwaitingOnlineLane, dispInRepair} {
+		members := bucketed[disp]
+		if len(members) == 0 {
+			continue
+		}
+		fmt.Printf("\n-- %s (%d): %s\n", disp, len(members), disp.whyItWaits())
+		for _, m := range members {
+			if m.Reason != "" {
+				fmt.Printf("   %s — %s\n", m.ID, m.Reason)
+			} else {
+				fmt.Printf("   %s\n", m.ID)
+			}
+		}
+	}
 }
 
 const usage = `verifyloop — verify-desk reference consumer of the drain engine.
