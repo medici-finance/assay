@@ -95,3 +95,25 @@ brief 04's provisioning, not here — see edition-matrix.md rows B3 and B4.
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README
 table. Reviewer spot-checks two mappings against live GitLab API docs, not the fixture
 set alone.
+
+## Answer recorded 2026-08-30 — "either/both as libraries"
+
+- **Seam:** `Forge` interface, `tools/desk/internal/deskkit/forge.go:173` — a closed set of
+  typed operations, no generic `Do(endpoint)` passthrough on either backend.
+- **GitHub backend** = `github.com/cli/go-gh/v2` v2.13.0 (pinned in `tools/desk/go.mod`),
+  `pkg/api` REST client, `forge_github.go:12` (assay#214).
+- **GitLab backend** = `gitlab.com/gitlab-org/api/client-go` v1.46.0, `forge_gitlab.go:13`
+  (assay#218, this brief) — the same official client `glab` itself ships on top of.
+- Both are library-backed transports; neither `gh` nor `glab` is exec'd on the Forge path.
+- **Enforcement:** `tools/desk/internal/forgeban` (assay#230) is a two-layer static scan
+  banning `exec.Command("gh"|"glab", …)` across `tools/desk`, asserted by
+  `TestNoForgeCLIShellout` (`forge_surface_test.go:46`) and `TestForgeNoPassthrough`
+  (`forge_surface_test.go:117`, confirming no arbitrary-endpoint method survives).
+- **Remaining exceptions:** a permit-only allowlist ratcheted at 23 call sites
+  (`tools/desk/internal/forgeban/allowlist.go`, ceiling asserted at
+  `forgeban_test.go:330`) — mostly tools that run under the caller's ambient CLI identity by
+  documented design (deskclose, deskfile, deskdigest, deskflip, deskpr, deskreply), plus
+  unenumerated ops (label create/edit, PR listing, branch→PR lookup, repo-hardening reads).
+- No brief retires these yet: assay#230 closed the *enumerated* op surface; each remaining
+  exec site carries its own TODO in `allowlist.go`, blocked on a not-yet-authored identity
+  ruling or a label-ops brief.
