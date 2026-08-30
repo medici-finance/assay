@@ -67,6 +67,32 @@ body and must only decrease.
 | verifyloop | `tools/desk/cmd/verifyloop/durable.go`, `dispatch_native.go` | direct spawns |
 | deskkit | `tools/desk/internal/deskkit/preflight.go` | preflight transport probe |
 
+## Brief 02 — gitcore capability now backing these families
+
+Brief 02 stands up `internal/gitcore` and its transport/auth layer but rewires no
+caller — per the migration checklist contract above, a row is only **ticked/emptied**
+once every seam site on it routes through `internal/gitcore` (briefs 03-07). This note
+records, separately from that contract, which op families now have a working
+`gitcore` implementation for those later briefs to swap callers onto, golden-verified
+against the brief-01 harness (`internal/gitcore/gitcore_test.go`):
+
+- **#6** `rev-parse` (path + sha plumbing) — `Repo.Resolve` (`ResolveRevision`).
+- **#8** `for-each-ref` — `Repo.Refs`.
+- **#9** `ls-remote` (+ `remote get-url`) — `gitcore.List` (no local repo required).
+- **#10** `log` — `Repo.Log`.
+- **#11** `show` / **#12** `cat-file` — `Repo.FileAt` (object/blob reads).
+- **#13** `ls-tree` — `Repo.Files`.
+- **#14** `diff` — `Repo.DiffNames` (name-only, with rename detection).
+- **#15** `merge-base` / `is-ancestor` — `Repo.MergeBase` / `Repo.IsAncestor`.
+- **#19** `fetch` — `Repo.Fetch` (explicit `URL` + per-call `Auth`).
+- **#20** `push` — `Repo.Push` (explicit `URL` + per-call `Auth`; `Force` is
+  type-level — off unless set).
+
+Not yet covered by this brief (left for the briefs that need them): `init`/`add`/
+`commit`/`checkout`/`status`/`config`/`remote add-rename`/`update-ref`/`clean` (op
+families #1-5, #17-18, #23-24) — none of Fetch/Push/List/the read helpers above
+requires them, and adding them here would be scope creep past this brief's own Task.
+
 ## Baseline counter
 
 `sh tools/desk/scripts/count-git-exec.sh` — see the brief-01 PR body for the recorded
