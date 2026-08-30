@@ -1,0 +1,8 @@
+{
+  "requests": [
+    {
+      "method": "DELETE",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/branches/feat%2Fx"
+    }
+  ]
+}

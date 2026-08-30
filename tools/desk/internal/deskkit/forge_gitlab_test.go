@@ -93,6 +93,7 @@ var (
 	lCommit       = regexp.MustCompile(`/repository/commits/[^/]+$`)
 	lCommitStatus = regexp.MustCompile(`/repository/commits/[^/]+/statuses$`)
 	lPipelineJobs = regexp.MustCompile(`/pipelines/[0-9]+/jobs$`)
+	lBranch       = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/branches/[^/]+$`)
 )
 
 func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -179,6 +180,8 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.jobs)
 	case r.Method == http.MethodGet && lProjApproval.MatchString(path):
 		enc(s.projApproval)
+	case r.Method == http.MethodDelete && lBranch.MatchString(path):
+		w.WriteHeader(http.StatusNoContent)
 	case r.Method == http.MethodGet && lProject.MatchString(path):
 		enc(s.project)
 	default:
@@ -576,6 +579,23 @@ func glCases() []glCase {
 			name: "close_issue_no_reason", method: "CloseIssue",
 			setup: func(s *glServer) { s.issue = glIssue(map[string]any{"iid": 33, "state": "closed"}) },
 			run:   func(f *GitLabForge) (any, error) { return nil, f.CloseIssue(glRepo, 33, "") },
+		},
+		{
+			// The half GitLab CE CAN serve: a ref in refs/heads is a branch, and the Branches
+			// API deletes branches at Free tier. The golden pins that the project coordinate
+			// travels URL-encoded and the branch name occupies its own segment.
+			name: "delete_ref_branch", method: "DeleteRef",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return nil, f.DeleteRef(glRepo, "heads/feat/x") },
+		},
+		{
+			// The half it cannot: GitLab CE exposes no general ref-delete endpoint, so a claim
+			// ref outside refs/heads is a could-not-check REFUSAL with zero requests emitted —
+			// not a silent success, and not a guessed endpoint. A backend that reported this as
+			// released would tell the dispatcher a held claim is free.
+			name: "delete_ref_non_branch_namespace_refused", method: "DeleteRef",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return nil, f.DeleteRef(glRepo, "dispatch/item--01") },
 		},
 		{
 			name: "push_transport_hint", method: "PushTransportHint",

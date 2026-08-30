@@ -205,6 +205,12 @@ type Forge interface {
 	FileIssue(repo ForgeRepo, in IssueInput) (*IssueRef, error)
 	// CloseIssue closes an issue with an optional state reason.
 	CloseIssue(repo ForgeRepo, number int, stateReason string) error
+	// DeleteRef deletes one git ref from a repo. The ref is a REF PATH inside the repo's
+	// own ref namespace ("heads/topic", "dispatch/<key>"), never an API path: it is
+	// validated by ValidateRefPath before any request is built, so this op cannot be used
+	// to address an arbitrary endpoint. Deleting a ref that is already gone is reported as
+	// a not-found error the caller may treat as a no-op — the seam does not decide that.
+	DeleteRef(repo ForgeRepo, ref string) error
 
 	// --- Identity / transport ---
 

@@ -43,6 +43,15 @@ ticked without a case behind it.
 | 12 | `FileIssue(repo, in)` | file issue | `deskfile` `gh issue create` → REST `POST /issues` | `POST /projects/:id/issues` | implemented |
 | 13 | `CloseIssue(repo, number, reason)` | close issue | `deskclose`/`deskfile` `gh issue close` → REST `PATCH /issues/{n}` `state:closed` | `PUT /issues/:iid` `state_event:close`; the reason has no GitLab field and is recorded as a note | implemented |
 | 14 | `PushTransportHint(repo)` | push-transport hints | `x-access-token` https + inline credential.helper (no token-in-URL) | `oauth2` username + inline credential.helper, host from the configured instance | implemented |
+| 15 | `DeleteRef(repo, ref)` | delete one git ref | `DELETE /repos/{o}/{r}/git/refs/{ref}` (git-data refs) — replaces `fanoutloop`'s `gh api -X DELETE repos/…/git/refs/dispatch/…` | `DELETE /projects/:id/repository/branches/:branch` (Branches API, **Tier: Free**). GitLab CE exposes NO general ref-delete endpoint, so only the `heads/<branch>` namespace maps; every other namespace is a could-not-check REFUSAL naming the gap, never a silent success | implemented |
+
+**Op 15 was added by brief 08 under the spec §6 freeze rule** — with its consuming callsite converted in
+the same change (`fanoutloop`'s dispatch-claim sink), not speculatively. It is the one op whose argument
+is path-shaped, which is exactly the shape an arbitrary-endpoint escape hatch takes, so it carries a
+validator: `deskkit.ValidateRefPath` (`forge_refpath.go`) refuses an un-namespaced ref, a traversal
+(`..`), a URL-significant character (`? # %`), and git's own forbidden ref characters BEFORE a request
+exists. The golden `delete_ref_refuses_namespace_escape` pins that a ref aimed at
+`…/branches/main/protection` emits **zero** requests.
 
 ## Per-tool call-site inventory (current state)
 
@@ -68,6 +77,37 @@ ticked without a case behind it.
 | `deskflip` | `tools/desk/cmd/deskflip/flip.go` | `gh pr ready` | `MarkReadyForReview` |
 
 These are NOT rewired in brief 01 — see delta D1.
+
+## Residual forge-CLI call sites (brief 08 task 1)
+
+Brief 08 makes the closed surface an enforced fact. The machine-readable half of this section is
+`tools/desk/internal/forgeban/allowlist.go`, which the gate (`TestNoForgeCLIShellout`) reads; this
+table is the human-readable map, and the two are reconciled by the gate's stale-row detection — a
+permit that no longer matches a call site fails CI, so neither can rot silently.
+
+**Measured at landing: 25 forge-CLI call sites across 23 declarations, plus 14 exec sites whose
+argv[0] is not a compile-time constant.** One call site was RETIRED by this brief:
+
+| Retired | Was | Now |
+|---------|-----|-----|
+| `fanoutloop` dispatch-claim sink | `gh api -X DELETE repos/<o>/<r>/git/refs/dispatch/<key>` — the stream's live passthrough: an argv carrying a whole REST path, so the reach was every endpoint by every method | `DeleteRef(repo, "dispatch/<key>")` (op 15), ref-validated inside the repo's namespace before a request exists |
+
+The rest are classified, not migrated. Every one is blocked on a decision this brief does not own:
+
+| Class | Call sites | What blocks the migration |
+|-------|-----------|---------------------------|
+| **identity** | `deskclose`, `deskdigest`, `deskfile`, `deskflip` (7 sites), `deskreply`, `deskpr`, `deskboard`, `deskmerge`, `deskroster`, `deskdisposition`, `issueboard`, `scanloop` | Each reaches the forge under the caller's AMBIENT CLI credential BY DOCUMENTED DESIGN ("gates WHETHER and WHAT, never WHO … mints no App token on any path"). Both backends REFUSE to build a client without an explicitly minted token — deliberately (brief 07's posture, mirroring #562/#563). Routing these through the seam therefore changes WHO performs each write. That is a **token-custody ruling**, not a transport change, and it is the single decision gating ~20 of the 25 sites. |
+| **no enumerated op** | labels (`deskdispatch`, `deskflip`, `deskdisposition`, `scanloop`), `pr list` (`deskroster`, `deskdisposition`), branch→PR resolution (`deskpushguard`), issue listing + GraphQL counts (`issueboard`, `deskboard`), merge-authority read (`deskmerge`), trust-association read (`scanloop`) | Spec §6's freeze rule forbids adding a method without converting its consuming call site in the same change. Each of these is a real op set with a real GitLab mapping question (project-scoped labels, MR source-branch lookup, issue IID sequences) and needs its own brief rather than a speculative method. |
+| **not a forge op at all** | `deskadvisory` (`gh auth token`), `repohardenguard` (`gh api` reads of rulesets / branch protection / App permissions) | The first is the identity layer (delta D2); the second is repo HARDENING, the same class delta D3 keeps out of the frozen set. Neither has a Forge method it could move to, by design. |
+
+The 14 unresolved-argv sites are a **could-not-check ledger, not a permit**: each runs a resolved
+`statusgen`/`desktoken`/callout binary or a caller-supplied argv, none launches a forge CLI on any
+path the checker can reach, and none can be PROVEN not to — so they are recorded as what they are.
+`askassay`'s entry carries a correction to the brief's own premise: the brief describes its `gh`
+entry as a vestigial binary-present probe that can simply be dropped, and the tree does not agree —
+`readOnlyBinaries["gh"]` backs two live registry questions through a default-deny read-only guard,
+so dropping it removes two answers rather than a dead check. Re-sourcing those answers through the
+interface is a brief of its own.
 
 ## Reconciliation deltas vs spec §6
 

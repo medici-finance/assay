@@ -75,6 +75,7 @@ var (
 	gChecks    = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
 	gRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	gReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
+	gGitRef    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/refs/.+$`)
 )
 
 func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -141,6 +142,8 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.createResp)
 	case (r.Method == http.MethodGet || r.Method == http.MethodPatch) && gIssueNum.MatchString(path):
 		enc(s.issue)
+	case r.Method == http.MethodDelete && gGitRef.MatchString(path):
+		w.WriteHeader(http.StatusNoContent)
 	case r.Method == http.MethodGet && gRepo.MatchString(path):
 		enc(s.repo)
 	default:
@@ -320,6 +323,25 @@ func TestForgeGithubGolden(t *testing.T) {
 			name:  "close_issue",
 			setup: func(s *goldenServer) { s.issue = map[string]any{"number": 33, "state": "closed"} },
 			run:   func(f *GitHubForge) (any, error) { return nil, f.CloseIssue(forgeTestRepo, 33, "completed") },
+		},
+		{
+			// The typed replacement for fanoutloop's `gh api -X DELETE repos/…/git/refs/…`
+			// passthrough (the closed-forge-surface brief). The golden pins that the caller supplies a REF,
+			// and that the backend — not the caller — builds the one path it may address.
+			name:  "delete_ref",
+			setup: func(s *goldenServer) {},
+			run:   func(f *GitHubForge) (any, error) { return nil, f.DeleteRef(forgeTestRepo, "dispatch/item--01") },
+		},
+		{
+			// The half that makes DeleteRef a typed op rather than a passthrough with a nicer
+			// signature: a ref that would traverse out of the repo's ref namespace and land on
+			// the branch-protection endpoint is refused BEFORE a request exists. The golden's
+			// value is the empty request list — zero requests emitted, not a request that 404s.
+			name:  "delete_ref_refuses_namespace_escape",
+			setup: func(s *goldenServer) {},
+			run: func(f *GitHubForge) (any, error) {
+				return nil, f.DeleteRef(forgeTestRepo, "heads/../../branches/main/protection")
+			},
 		},
 		{
 			name:  "error_not_found",
