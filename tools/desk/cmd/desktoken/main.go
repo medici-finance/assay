@@ -70,8 +70,11 @@ GitLab (--forge gitlab) — rotate-on-mint token custody:
   invalidates the first's token BY DESIGN — give parallel actors per-actor
   service accounts, never a shared token. A missing file, a non-regular-file
   custody, or a wrong file mode each refuses with a named remedy. GITLAB_API_BASE
-  sets the REST v4 base for a self-hosted GitLab (e.g.
-  https://gitlab.example.com/api/v4).
+  is REQUIRED and sets the REST v4 base (self-hosted:
+  https://gitlab.example.com/api/v4; gitlab.com SaaS:
+  https://gitlab.com/api/v4). There is no default: with it unset the command
+  refuses BEFORE any network contact rather than transmit the role's live PAT
+  to a guessed host.
 
 Reads <role>-app.pem (0600) for the App's private key, and apps.env for the
 App ID, from the App-credential SEARCH PATH: $ASSAY_CONFIG_HOME (when set),
