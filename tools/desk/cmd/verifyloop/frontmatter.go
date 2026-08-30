@@ -94,6 +94,31 @@ func extractEvidence(content string) string {
 	return strings.Join(out, "\n")
 }
 
+// extractVerify returns the body of the `## Verify` section (between that exact heading and the
+// next `## `). Mirrors extractEvidence. The bucketer derives the online-lane and longitudinal
+// signals from this text when a brief carries no explicit marker (see briefscan.go).
+func extractVerify(content string) string {
+	lines := strings.Split(content, "\n")
+	start := -1
+	for i, l := range lines {
+		if strings.TrimSpace(l) == "## Verify" {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	var out []string
+	for _, l := range lines[start:] {
+		if strings.HasPrefix(strings.TrimSpace(l), "## ") {
+			break
+		}
+		out = append(out, l)
+	}
+	return strings.Join(out, "\n")
+}
+
 var htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
 
 // evidenceHasContent reports whether an Evidence section has real content beyond the
