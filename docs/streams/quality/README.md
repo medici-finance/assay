@@ -53,6 +53,7 @@ decision, not code in this stream.
 | 13 | [M4 session forensics — pluggable telemetry-source interface + reference adapters](brief-13-m4-session-forensics.md) | 3 | M | todo | — | — |
 | 14 | [auto-filed refactor work + quality error-budgets + RETRO output feed](brief-14-autofile-budgets-retro.md) | 5 | M | todo | — | — |
 | 15 | [learned riskscore graduation — JIT defect-prediction model](brief-15-learned-riskscore.md) | 3 | M | todo | — | — |
+| 16 | [code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report](brief-16-slop-sweep.md) | 1 | M | todo | — | — |
 
 Brief 01 implemented on branch `brief/quality-01-miner-skeleton` (new `qualgen/` module: go-git extraction, incremental extend-never-replace mine, three-state `Measure[T]` plumbing, append-only artifact store; `mine` mode live, `report`/`pr`/`check` scaffolded). Draft-PR link to be attached when the PR is opened.
 
@@ -79,7 +80,7 @@ work from day one.
 
 ```
 Wave 0: [01]
-Wave 1: [02, 03, 04, 06]      ← 01
+Wave 1: [02, 03, 04, 06, 16]  ← 01
 Wave 2: [05, 07, 09]          ← 02,03,04 (05, 09); 06 (07)
 Wave 3: [08, 10, 11, 13, 15]  ← 02,03,07 (08); 07 (10, 11, 13, 15)
 Wave 4: [12]                  ← 10 (review-escape overlay) seasoned
@@ -88,7 +89,8 @@ Wave 5: [14]                  ← 12 (gate-yield) + 03,04,07 corpus
 
 One-line critical path: `01 → 06 → 07 → 10 → 12 → 14`.
 
-Waves 0–2 are pure history mining — useful standalone even if later waves change shape
+Waves 0–2 are pure history mining (16 excepted — the sweep lane reads the CURRENT
+tree, not history) — useful standalone even if later waves change shape
 in review. The M4 and learned-model briefs (12 in wave 4, 14 in wave 5, and 13/15 in
 wave 3) are corpus-gated: each consumes an M1–M3 corpus that must season first.
 
