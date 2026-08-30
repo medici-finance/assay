@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7"
+    }
+  ],
+  "result": null,
+  "err": "could-not-check: GET /projects/medici-finance%2Fassay/merge_requests/7 — not visible (HTTP 404): the object does not exist, or the token cannot see it: forge API GET /projects/medici-finance%2Fassay/merge_requests/7 returned HTTP 404",
+  "not_found": true
+}

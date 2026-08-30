@@ -37,6 +37,16 @@ on:
       - "statusgen/**"
       - ".github/workflows/assay-statusgen.yml"
 
+# Serialize runs per ref. A merge burst on main fires one regen run per push;
+# without this they run concurrently and all but the last lose the `git push`
+# race against a moving main ("! [rejected] main -> main (fetch first)"), so
+# main shows red runs indistinguishable from a real regen failure.
+# cancel-in-progress is deliberately FALSE: queue, never cancel — a cancelled
+# regen throws away that push's board rather than merely delaying it.
+concurrency:
+  group: statusgen-board-${{ github.ref }}
+  cancel-in-progress: false
+
 # Least-privilege default: the PR lint job needs only read. The push-to-main
 # regen job is the sole thing that commits, so it alone gets contents: write
 # (job-scoped below).
@@ -119,15 +129,41 @@ jobs:
           set -euo pipefail
           git config user.name  'assay-board-writer[bot]'
           git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
-          git add STATUS.md
-          # BOOTSTRAP-SAFE GUARD: guard on `git status --porcelain -- STATUS.md`,
-          # NOT `git diff --quiet -- STATUS.md`. git diff sees only TRACKED files,
-          # so on a repo with no STATUS.md yet the diff guard mis-fires ("nothing
-          # to commit") and the first board is NEVER created; porcelain reports
-          # the new/staged file.
-          if [ -n "$(git status --porcelain -- STATUS.md)" ]; then
+          # BOUNDED RETRY (3 attempts). The concurrency: group above serializes
+          # regen runs, but main can still move under us between this job's
+          # checkout and its push (a human merge, or any push on a path this
+          # workflow does not watch). A bare `git push` loses that race and
+          # reddens main; here a rejection re-syncs to the new head and
+          # REGENERATES against it.
+          #
+          # Never `git pull --rebase`: STATUS.md is a generated artifact, so a
+          # rebase conflict in it is meaningless — regeneration against the new
+          # head IS the resolution.
+          attempts=3
+          attempt=1
+          while : ; do
+            git add STATUS.md
+            # BOOTSTRAP-SAFE GUARD: guard on `git status --porcelain -- STATUS.md`,
+            # NOT `git diff --quiet -- STATUS.md`. git diff sees only TRACKED files,
+            # so on a repo with no STATUS.md yet the diff guard mis-fires ("nothing
+            # to commit") and the first board is NEVER created; porcelain reports
+            # the new/staged file.
+            if [ -z "$(git status --porcelain -- STATUS.md)" ]; then
+              echo "STATUS.md already current — nothing to commit"
+              exit 0
+            fi
             git commit -m 'chore(status): regenerate [skip-status-regen]'
-            git push
-          else
-            echo "STATUS.md already current — nothing to commit"
-          fi
+            if git push; then
+              echo "STATUS.md pushed on attempt ${attempt}/${attempts}"
+              exit 0
+            fi
+            if [ "${attempt}" -ge "${attempts}" ]; then
+              echo "::error::statusgen board regen: push rejected on all ${attempts} attempts — main is moving faster than the regen can re-sync. Re-run this job once the merge burst settles."
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            echo "push rejected: main moved. Re-syncing and regenerating (attempt ${attempt}/${attempts})"
+            git fetch origin main
+            git reset --hard origin/main
+            "${RUNNER_TEMP}/statusgen" --root .
+          done

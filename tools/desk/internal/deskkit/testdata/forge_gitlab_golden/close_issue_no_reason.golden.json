@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "PUT",
+      "path": "/api/v4/projects/medici-finance%2Fassay/issues/33",
+      "body": {
+        "state_event": "close"
+      }
+    }
+  ]
+}

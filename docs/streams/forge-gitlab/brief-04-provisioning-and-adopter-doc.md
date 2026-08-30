@@ -22,6 +22,7 @@ sources:
   - "freshness-checked 2026-08-24 @ 5c4a67d — no gitlab provisioning or adopter doc exists"
 exec-tier: any
 domain: complicated
+tier: free
 consumers:
   - "docs/adopting-assay.md: fixed-here (one cross-link line to the GitLab doc)"
 ---
@@ -51,6 +52,45 @@ facts:
   from spec §1 — no softening.
 - All REST; requires a group-owner PAT supplied by the operator at run time (never
   stored by the script).
+
+## Edition
+Minimum GitLab tier: **free** (Community Edition) for everything the script must do. Service
+accounts are `Tier: Free, Premium, Ultimate` from GitLab 18.11 ("Generally available in GitLab
+18.11. Feature flag removed."), below which ordinary bot users are the fallback; group,
+project and member provisioning, protected branches at role level, protected tags at role
+level, "pipelines must succeed", "all threads resolved", webhooks, and the external CI config
+path (the locked ci-config project — the one place this profile is *stronger* than the GitHub
+controls) are all Free. Citations per row in edition-matrix.md tables B and C.
+
+Two credential facts the script must respect on CE and everywhere else: on GitLab
+Self-Managed "only administrators can create either type of service account" by default, so
+service-account creation needs an admin credential rather than the group-owner PAT the rest of
+the script uses; and service accounts "do not use a seat"
+(https://docs.gitlab.com/user/profile/service_accounts/).
+
+What degrades on CE — the script prints these as human-only, tier-gated items rather than
+configuring them:
+
+- **Single board-writer on `main`.** `allowed_to_push`/`allowed_to_merge` take a `user_id` or
+  `group_id` only on Premium ("`user_id`, `group_id`, and `access_level` are Premium and
+  Ultimate only", https://docs.gitlab.com/api/protected_branches/). CE fallback: `Allowed to
+  push and merge` = **No one**, every write including board regeneration lands as an MR, and
+  the allowlist becomes Maintainer membership — role granularity, not identity granularity.
+- **Required approvals** and **prevent approval by author/committer**: both Premium
+  (https://docs.gitlab.com/user/project/merge_requests/approvals/rules/ ,
+  https://docs.gitlab.com/user/project/merge_requests/approvals/settings/). CE fallback:
+  humans-only merge plus the desk's own refusal to flip ready without an at-head verdict; the
+  bot case is already structural because a worker holds no reviewer credential.
+- **Push rules** (Premium) and **secret push protection** (Ultimate): the house leak sweep in
+  CI is the tier-independent layer.
+- **Group/project audit events** (Premium): only sign-in events exist at Free.
+
+Open point this brief must not resolve on its own: task 2 and Verify row 3 require the adopter
+doc to carry spec section 1's "Free/CE non-conforming" statement verbatim. edition-matrix.md's
+evidence contradicts that statement — the CE gap is two controls wide, not wholesale — so the
+wording of that sentence, and therefore Verify row 3, is pending a human ruling
+(medici-finance/assay#219). The Verify row is deliberately left as authored; re-baseline it
+only after the ruling.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per
