@@ -42,10 +42,10 @@ var (
 	// wordDecomposition's "capital with no lowercase" branch and sank the whole identifier.
 	// The trailing-acronym relaxation admits them. Split across concatenation for the same
 	// deskpr-diff-scan reason as scanSecret40 below (each fragment is under the threshold).
-	identTrailOK   = "TestHandlesSilenceAnd" + "ReturnsNotFoundOK"    // 38 chars, trailing 2-char OK
-	identTrailHTTP = "TestRequestParserSpeaks" + "OnlyPlainHTTP"      // 36 chars, trailing 4-char HTTP
+	identTrailOK   = "TestHandlesSilenceAnd" + "ReturnsNotFoundOK" // 38 chars, trailing 2-char OK
+	identTrailHTTP = "TestRequestParserSpeaks" + "OnlyPlainHTTP"   // 36 chars, trailing 4-char HTTP
 	// Guard fixtures the relaxation must STILL refuse:
-	identTrailHTTPS = "TestRequestParserSpeaks" + "OnlyPlainHTTPS"    // 37 chars, trailing acronym is 5 chars — too long
+	identTrailHTTPS = "TestRequestParserSpeaks" + "OnlyPlainHTTPS" // 37 chars, trailing acronym is 5 chars — too long
 	// A high-entropy run that merely ENDS in two capitals — the relaxation must not launder
 	// it: its body is base64 debris (the `Qx` pair is capital-plus-one-lowercase, not a word),
 	// so it refuses at that pair long before the tail, exactly as it did before. Named without
@@ -67,6 +67,26 @@ var (
 	// The randomness alphabet for TestTwoLetterWordsCostAlmostNothing — 64 base64 chars
 	// contiguous is itself a refused run, so it is split like everything else here.
 	base64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "abcdefghijklmnopqrstuvwxyz" + "0123456789+/"
+
+	// #203 — Go test names carrying a MID-RUN short acronym. Each is over the 32-char run
+	// threshold and was refused before the acronym relaxation moved off the closing
+	// position, because the acronym's leading capital hit wordDecomposition's "capital with
+	// no lowercase" branch and sank the whole identifier. These four are verbatim shapes
+	// taken from this repository's own suites — `CI`, `ID`, `PDF`, `HTTP` — which is the
+	// point: the author of prose about them cannot reword a shipped symbol.
+	// Split across concatenation for the same deskpr-diff-scan reason as scanSecret40.
+	identMidCI   = "TestCIRequiredMatches" + "AllowedRepoPolicy"    // 38, mid-run 2-char CI
+	identMidID   = "TestResolveInstallID" + "HasNoSilentFallback"   // 39, mid-run 2-char ID
+	identMidPDF  = "TestPDFIsByteIdentical" + "AcrossRenders"       // 35, mid-run 3-char PDF
+	identMidHTTP = "TestHTTPClientIs" + "BoundedNotDefaultAnywhere" // 41, mid-run 4-char HTTP
+	// Guard fixtures the MID-RUN relaxation must STILL refuse, one per bound. Each isolates
+	// ONE of shortAcronymUnit's bounds, so a mutation that removes that bound is caught by
+	// exactly one row and the report says which bound stopped holding.
+	identMidCaps5 = "TestHandlesHTTPSProxy" + "UpstreamHealthCheck"  // SHORT: 5-letter caps run
+	identMidDigit = "abcdEFGH1234" + "abcdEFGH1234" + "abcdEFGH1234" // random-ish: caps runs among digits
+	identAcrDigit = "TestHandlesRetryHTTP2" + "AndThenTheProxy"      // ANCHORED FORWARD: one acronym, digit after it
+	identLeadAcr  = "CIRequiredMatches" + "AllowedRepoPolicyHere"    // BACKWARD/AFTER-A-WORD: acronym opens the run
+	identTwoAcr   = "TestCIAndPDFTogether" + "InOneNameHereNow"      // BUDGETED: two acronyms in one run
 )
 
 // TestBodyCheck covers BOTH directions: git SHAs and clean
@@ -541,6 +561,125 @@ func TestTrailingAcronymIdentifiers(t *testing.T) {
 				t.Fatalf("BodyCheck(%q) = %v, want Refused (exit 5)", c.run, err)
 			}
 		})
+	}
+}
+
+// TestMidRunAcronymIdentifiers is #203's half of the acronym relaxation: the acronym no
+// longer has to CLOSE the identifier. Every pass row is a verbatim Go test name from this
+// repository, so the fixture and the bug report are the same artifact.
+//
+// The refuse rows are one per bound in shortAcronymUnit's SECURITY SHAPE list. They are the
+// reason this is a widening of the identifier exemption rather than a hole: a caps run that
+// is too long, one adjacent to digits rather than to a word, one that opens the run, and a
+// run spending more than the per-run budget all still refuse.
+func TestMidRunAcronymIdentifiers(t *testing.T) {
+	pass := []struct {
+		name string
+		run  string
+	}{
+		{"mid-run 2-char acronym (CI)", identMidCI},
+		{"mid-run 2-char acronym (ID)", identMidID},
+		{"mid-run 3-char acronym (PDF)", identMidPDF},
+		{"mid-run 4-char acronym (HTTP)", identMidHTTP},
+	}
+	for _, c := range pass {
+		t.Run("pass/"+c.name, func(t *testing.T) {
+			if !isIdentifierLike(c.run) {
+				t.Fatalf("isIdentifierLike(%q) = false, want true — a shipped test name is refused, "+
+					"and renaming the symbol is not available to the author of prose about it", c.run)
+			}
+			if err := BodyCheck([]byte("the assertion is in " + c.run + " today")); err != nil {
+				t.Fatalf("BodyCheck rejected a body naming %q: %v", c.run, err)
+			}
+		})
+	}
+
+	refuse := []struct {
+		name, bound string
+		run         string
+	}{
+		{"5-letter caps run (HTTPS)", "SHORT", identMidCaps5},
+		{"one acronym followed by a digit, not a word", "ANCHORED FORWARD", identAcrDigit},
+		{"caps runs scattered among digit groups", "ANCHORED FORWARD / BUDGETED", identMidDigit},
+		{"acronym OPENS the run", "AFTER A WORD / ANCHORED BACKWARD", identLeadAcr},
+		{"two acronyms in one run", "BUDGETED", identTwoAcr},
+		{"a genuine 40-char base64 secret", "the entropy guard itself", scanSecret40},
+		{"AWS example secret key, slashes stripped", "the entropy guard itself",
+			"wJalrXUtnFEMI" + "K7MDENG" + "bPxRfiCYEXAMPLEKEY"},
+	}
+	for _, c := range refuse {
+		t.Run("refuse/"+c.name, func(t *testing.T) {
+			if isIdentifierLike(c.run) {
+				t.Fatalf("isIdentifierLike(%q) = true, want false — the %q bound has stopped holding",
+					c.run, c.bound)
+			}
+			if err := BodyCheck([]byte(c.run)); !IsRefused(err) {
+				t.Fatalf("BodyCheck(%q) = %v, want Refused (exit 5)", c.run, err)
+			}
+		})
+	}
+}
+
+// TestShortAcronymCostsAlmostNothing is the guard-strength measurement behind the acronym
+// relaxation, in the shape TestTwoLetterWordsCostAlmostNothing established for the
+// two-letter-word list: a fixed seed, the same 2,000,000 uniformly random base64 runs, and
+// a count of how many each rule exempts.
+//
+// It exists because the FIRST version of the mid-run relaxation — 2-4 caps, anchored forward
+// only — measured 27 exempted, the same order as the blanket capital-plus-one-lowercase rule
+// twoLetterWords was written to stay well under. The three further bounds (backward anchor,
+// after-a-word, per-run budget) were added in response to that number, not to a hunch, and
+// this test is what keeps a future maintainer from removing one on the reasoning that "the
+// acronym rule is already bounded".
+//
+// The assertions are a ratio against the WITHOUT-acronyms rule plus an absolute ceiling.
+// The ratio alone would be unusable here: the without-acronyms rule exempts ZERO at this
+// length, and nothing is a useful multiple of zero.
+func TestShortAcronymCostsAlmostNothing(t *testing.T) {
+	const trials = 2000000
+	// The absolute ceiling. The measured value at this seed is 7; the ceiling sits above it
+	// with room for an innocuous edit and far below the ~35 the blanket relaxation costs, so
+	// a real widening trips it and a rounding does not.
+	const ceiling = 20
+
+	withoutAcronyms := func(run string) bool {
+		if len(run) > maxIdentifierRun {
+			return false
+		}
+		ok, words, camel := wordDecomposition(run, false /* allowShortAcronym */)
+		return ok && words >= 2 && camel
+	}
+
+	rng := rand.New(rand.NewSource(20260812))
+	var shipped, noAcronym int
+	for i := 0; i < trials; i++ {
+		b := make([]byte, runThreshold)
+		for j := range b {
+			b[j] = base64Alphabet[rng.Intn(len(base64Alphabet))]
+		}
+		run := string(b)
+		if isIdentifierLike(run) {
+			shipped++
+		}
+		if withoutAcronyms(run) {
+			noAcronym++
+		}
+	}
+	t.Logf("random %d-char base64 runs exempted out of %d: shipped rule %d, acronym rule OFF %d",
+		runThreshold, trials, shipped, noAcronym)
+
+	if shipped > ceiling {
+		t.Errorf("the short-acronym relaxation now exempts %d of %d random base64 runs "+
+			"(ceiling %d, acronym rule off %d). One of shortAcronymUnit's six bounds has been "+
+			"loosened or removed; the relaxation exists to admit shipped test names, not to "+
+			"give random token material a route through the entropy rule.",
+			shipped, trials, ceiling, noAcronym)
+	}
+	// Cross-check the arithmetic the ceiling rests on: the rule with acronyms OFF must be
+	// the tighter of the two, or the measurement is not measuring what it says it is.
+	if noAcronym > shipped {
+		t.Errorf("acronym rule OFF exempted MORE (%d) than the shipped rule (%d) — the "+
+			"comparison is inverted and the ceiling above means nothing", noAcronym, shipped)
 	}
 }
 

@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain'",
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
     "file": "internal/deskkit/bodycheck.go",
@@ -60,6 +60,72 @@
       "file": "internal/deskkit/scanoverride.go",
       "old": "\tif strings.Contains(scanErr.Error(), impersonationMarker) {",
       "new": "\tif false && strings.Contains(scanErr.Error(), impersonationMarker) {"
+    },
+    {
+      "name": "#203 — drop the SHORT bound on an acronym unit (any ALL-CAPS stretch becomes one word)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif n := k - i; n < minAcronym || n > maxAcronym {",
+      "new": "\tif n := k - i; n < minAcronym {"
+    },
+    {
+      "name": "#203 — drop the FORWARD anchor (an acronym need not be adjacent to a word)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif k == len(seg) || startsCamelWord(seg, k) {\n\t\treturn k, true\n\t}",
+      "new": "\tif true {\n\t\treturn k, true\n\t}"
+    },
+    {
+      "name": "#203 — drop the BACKWARD anchor and the after-a-word rule (an acronym may open a run)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif wordsSoFar < 1 || i < 1 || seg[i-1] < 'a' || seg[i-1] > 'z' {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "#203 — drop the per-run acronym BUDGET (a run may spend as many caps runs as it likes)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\tif acronymsSoFar >= maxAcronymUnits {",
+      "new": "\tif false && acronymsSoFar >= maxAcronymUnits {"
+    },
+    {
+      "name": "#203 — make the public-repo self-containment scan a no-op on every repo",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "\tif !SelfContainApplies(o.Repo) {",
+      "new": "\tif !SelfContainApplies(o.Repo) || true {"
+    },
+    {
+      "name": "#203 — compute the self-containment verdict but never return it (a refusal that posts)",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "\tif refusal != \"\" {\n\t\treturn Refused(refusal)\n\t}",
+      "new": "\tif refusal != \"\" {\n\t\t_ = refusal\n\t}"
+    },
+    {
+      "name": "#203 — disarm the machine-shape arm (absolute paths, worktree names, session and agent ids)",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "\t\tif loc := m.re.FindString(s); loc != \"\" {",
+      "new": "\t\tif loc := m.re.FindString(s); false {"
+    },
+    {
+      "name": "#203 — stop refusing a PRIVATE repo slug on a public body",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "\t\tif !priv[slug] {",
+      "new": "\t\tif !priv[slug] || true {"
+    },
+    {
+      "name": "#203 — degrade the withheld-register category to a NOTICE even when it IS configured",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "\tif len(withheld) == 0 {",
+      "new": "\tif len(withheld) >= 0 {"
+    },
+    {
+      "name": "#203 — swallow the NOTICE lines (a could-not-check reads as clean)",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "\tfor _, n := range notices {",
+      "new": "\tfor _, n := range notices[:0] {"
+    },
+    {
+      "name": "#203 — treat a missing reference number as a checked bare-#N surface",
+      "file": "internal/deskkit/selfcontain.go",
+      "old": "\tif hint <= 0 {",
+      "new": "\tif false {"
     },
     {
       "name": "drop the encrypted-CONTENT requirement (a bare sops footer becomes sanctioned)",

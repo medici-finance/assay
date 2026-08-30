@@ -194,3 +194,28 @@ behaviour or pinning a guard. It does NOT bind docs, formatting, status-row flip
 comment-only diffs, or changes that carry no test-based claim. A one-line docs PR never
 needs a mutation harness. A Verify row IS a check for this purpose — "docs" above means
 prose, not a Verify row.
+
+## 10. A public-repo body must be SELF-CONTAINED
+
+> Everything you write to a PUBLIC repo — a PR body, a PR title, a comment, a review, a
+> reply — must stand alone for a reader outside the authoring house. No private repository
+> names, no cross-repo issue refs that only resolve internally, no absolute paths off your
+> own machine, no session or agent ids, no scratch worktree names, no identifiers out of a
+> register that is not published. Your own PR body is the first thing this binds.
+
+This used to be a sentence a worker had to remember, and it leaked anyway. The tools now
+ENFORCE it: `deskpr create`, `deskpost` and `deskreply` run a self-containment scan over
+the body whenever the target repo is not known-private, and a refusal is exit 5 — the same
+STOP every scan refusal is, taking the same audited `--force-scan-override` and no other
+way through. There is no flag that turns the check off.
+
+**The categories are enumerated in ONE place — `deskpr --help`, section
+PUBLIC-REPO SELF-CONTAINMENT — and deliberately not restated here.** Read them there; a
+second copy in a prompt is the copy that goes stale. What matters for the worker is the
+shape of the verdict: an unambiguous span REFUSES and the message names it, while an
+ambiguous one (a bare `#N`, a short name that is also an ordinary word, an unconfigured
+withheld set) prints a NOTICE on stderr and does not block. A notice is a could-not-check —
+read it, decide, and say what you decided in the PR body; it is not a pass.
+
+Run it over your body BEFORE you open the PR rather than discovering it at the refusal:
+it is the same code either way, and the round trip is better spent on the wording.

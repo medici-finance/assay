@@ -742,6 +742,13 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		// unknown-ASSAY_-key refusal. KEEP IN SYNC with statusgen's
 		// scanEnvSweepWithheldStreams.
 		EnvSweepWithheldStreams: true,
+		// EnvWithheldIdentifiers (ASSAY_WITHHELD_IDENTIFIERS, selfcontain.go) is read by
+		// the public-repo self-containment scan through a direct os.Getenv, NOT through
+		// this scanConfig — but a house that configures it does so in the SAME shared
+		// roster.env, and an unrecognised key in the ASSAY_ namespace refuses the whole
+		// configuration. It must therefore be RECOGNISED here or turning the scan's
+		// register category on would collapse every desk tool's roster at once.
+		EnvWithheldIdentifiers: true,
 	}
 	for k := range vals {
 		if known[k] {

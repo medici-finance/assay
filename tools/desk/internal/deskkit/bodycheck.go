@@ -148,6 +148,22 @@ const (
 	// key this short can contribute at most two characters of opaque material, far under
 	// runThreshold. A longer key must earn its exemption by being word-shaped.
 	maxBareAssignKey = 2
+	// minAcronym / maxAcronym bound the ALL-CAPS run that wordDecomposition will accept as
+	// ONE word unit (see shortAcronymUnit). A 1-letter "acronym" is a lone capital — the
+	// shape a truncated token ends on — and carries no acronym meaning; a 5+ letter ALL-CAPS
+	// stretch is the shape that keeps an AWS key's `EXAMPLEKEY` and a webhook token's
+	// `XXXXXXXX…` tail opaque, so it stays refused. Between those two bounds sit essentially
+	// every acronym real code writes: `CI`, `ID`, `PR`, `OK`, `PDF`, `JSON`, `HTTP`, `CRLF`.
+	minAcronym = 2
+	maxAcronym = 4
+	// maxAcronymUnits is how many short ALL-CAPS acronym units ONE run may spend. Real
+	// identifiers carry one — `Test|CIRequired…Policy`, `Test|PDFIsByte…Renders` (elided;
+	// see shortAcronymUnit for why this file spells long identifiers with a `|` and a `…`);
+	// the handful in this repository that carry two do so at the cost of staying
+	// refused, which is the price of the budget. Random base64, by contrast, needs several
+	// lucky caps runs to decompose at all, so the budget is where most of the relaxation's
+	// cost on token material is bought back — see TestShortAcronymCostsAlmostNothing.
+	maxAcronymUnits = 1
 )
 
 // twoLetterWords are the two-letter units that count as WORDS in a CamelCase
@@ -799,32 +815,42 @@ func isShortDigitRun(seg string) bool {
 // the decomposition in its default case, so isIdentifierLike never overlaps with — or
 // substitutes a weaker test for — isPathLike's slash-aware opaque-budget accounting.
 //
-// A short ALL-CAPS acronym that CLOSES the identifier — the `OK` of `…SilenceAsNotOK`, the
-// `HTTP` of `…RequestSpeaksHTTP` — is admitted: wordDecomposition's capital branch takes a
-// trailing run of 2-4 uppercase letters as one word unit (see endsInShortAcronym), so the
-// run rides on the strength of its word-shaped body and the maxIdentifierRun cap governs its
-// length. Only the CLOSING position is relaxed and only for 2-4 letters, because that is the
-// bound that keeps the relaxation off real token material: everything before the tail must
-// still decompose into word units under the normal rules, and a lone trailing capital, a
-// 5+ letter ALL-CAPS tail, or an acronym anywhere but the end stays refused.
+// A short ALL-CAPS acronym is admitted as ONE word unit — the `OK` of `…SilenceAsNotOK`,
+// the `HTTP` of `…RequestSpeaksHTTP`, the `CI` of `Test|CIRequired…Policy`,
+// the `PDF` of `Test|PDFIsByte…Renders` — when it is 2-4 letters long and it
+// either CLOSES the run or is followed immediately by a capital-led CamelCase word (see
+// shortAcronymUnit). The run then rides on the strength of its word-shaped body and the
+// maxIdentifierRun cap governs its length.
 //
-// KNOWN RESIDUAL GAP, documented rather than claimed closed: an ALL-CAPS acronym in the
-// MIDDLE of an identifier — `TestHandlesHTTPSProxy…UpstreamHealth`, elided here because the
-// unelided name trips the very gap this paragraph describes — is still refused once the run
-// clears 32 characters, and so is a trailing acronym of 5+ letters. looksLikeWords' comment
-// calls that acceptable, and for a path SEGMENT it is: failing there only spends opaque
-// budget. Here it is a refusal, so the cost is real. It is left open on purpose, because a
-// mid-run capital with no lowercase behind it is the same shape that keeps a Slack webhook
-// token's `XXXXXXXX…` tail and an AWS key's `bPxRfiCYEXAMPLEKEY` opaque, and — away from the
-// closing position that bounds it — no list of known acronyms separates the two the way
-// twoLetterWords separates English words from base64 debris. Such a name over the threshold
-// must be reworded or broken across the line, which — unlike a recorded Evidence command
-// (#775) or a shipped test identifier (#663) — is always available to the author.
+// #203 widened this from CLOSING-position-only, and the paragraph it replaced — which
+// called the mid-run case an acceptable residual — was measured and is not: ~120 of this
+// repository's OWN Go test identifiers were refused on an acronym that happens to sit in
+// the middle (`…CIRequired…`, `…IDFormat…`, `…HTTPClient…`, `…CRLFBody…`). A shipped test
+// name cannot be reworded without renaming the test, so that was a hard stop on ordinary
+// prose about ordinary code. See shortAcronymUnit for the survey, the four bounds that keep
+// the widening off token material, and why #203's alternative — requiring a secret-shaped
+// prefix before entropy may refuse — was rejected as a loss of existing detection.
+//
+// KNOWN RESIDUAL GAPS, documented rather than claimed closed. All still refuse once the run
+// clears 32 characters:
+//   - a 5+ letter ALL-CAPS stretch anywhere (`…HTTPSProxy…`, `…CORRECTNESSLane`, an AWS
+//     key's `EXAMPLEKEY`) — this is exactly the bound that keeps a webhook token's
+//     `XXXXXXXX…` tail opaque, so widening it is the one direction that would cost real
+//     detection;
+//   - a short acronym adjacent to DIGITS rather than to a word (`abcdEFGH1234…`) — the
+//     anchoring requirement, and the reason random material does not ride this exemption;
+//   - a capital followed by exactly one lowercase that is not an English word (`…NoOp…`,
+//     `…HumanStampRe…`) — twoLetterWords' closed-list rule, deliberately not widened to
+//     general abbreviations (see its comment for the measured cost of doing so).
+//
+// A name that hits one of these must be reworded or broken across the line, which — unlike
+// a recorded Evidence command (#775) or a shipped test identifier (#663) — is available to
+// the author of prose ABOUT the name even when renaming the symbol is not.
 func isIdentifierLike(run string) bool {
 	if len(run) > maxIdentifierRun {
 		return false
 	}
-	ok, words, camel := wordDecomposition(run, true /* allowTrailingAcronym */)
+	ok, words, camel := wordDecomposition(run, true /* allowShortAcronym */)
 	return ok && words >= 2 && camel
 }
 
@@ -923,12 +949,12 @@ func looksLikeWords(seg string) bool {
 	if len(seg) > maxWordSegment {
 		return false
 	}
-	// allowTrailingAcronym is left OFF here: the trailing-acronym relaxation exists to keep a
-	// bare IDENTIFIER (words>=2 && camel) from the high-entropy refusal, and admitting it for a
+	// allowShortAcronym is left OFF here: the acronym relaxation exists to keep a bare
+	// IDENTIFIER (words>=2 && camel) from the high-entropy refusal, and admitting it for a
 	// path SEGMENT would loosen the opaque-budget accounting isPathLike/isAssignmentLike rest
-	// on. A path segment that ends in an acronym still fails here and spends opaque budget,
+	// on. A path segment carrying an acronym still fails here and spends opaque budget,
 	// exactly as before — this predicate's verdict is unchanged by the relaxation.
-	ok, words, _ := wordDecomposition(seg, false /* allowTrailingAcronym */)
+	ok, words, _ := wordDecomposition(seg, false /* allowShortAcronym */)
 	return ok && words > 0
 }
 
@@ -944,13 +970,15 @@ func looksLikeWords(seg string) bool {
 // looksLikeWords at maxWordSegment (a path segment), isIdentifierLike at the wider
 // maxIdentifierRun (a bare identifier). See those two functions.
 //
-// allowTrailingAcronym lets the FINAL word unit be a short (2-4 letter) ALL-CAPS acronym
-// closing the segment (see endsInShortAcronym). isIdentifierLike passes true so a real
-// identifier ending in an acronym (`…SilenceAsNotOK`) is admitted rather than refused as a
+// allowShortAcronym lets ONE word unit be a short (2-4 letter) ALL-CAPS acronym that either
+// closes the segment or is followed by a capital-led CamelCase word (see shortAcronymUnit).
+// isIdentifierLike passes true so a real identifier carrying an acronym
+// (`…SilenceAsNotOK`, `Test|CIRequiredMatches…`) is admitted rather than refused as a
 // high-entropy run; looksLikeWords passes false so the path-segment opaque-budget accounting
-// it feeds is left exactly as it was. The relaxation touches only the CLOSING position and
-// only 2-4 letters, so the run is still admitted on the strength of its word-shaped body.
-func wordDecomposition(seg string, allowTrailingAcronym bool) (ok bool, words int, camel bool) {
+// it feeds is left exactly as it was. The relaxation is bounded to 2-4 letters with a word
+// on at least one side, so the run is still admitted on the strength of its word-shaped body.
+func wordDecomposition(seg string, allowShortAcronym bool) (ok bool, words int, camel bool) {
+	acronyms := 0
 	for i := 0; i < len(seg); {
 		c := seg[i]
 		switch {
@@ -984,18 +1012,24 @@ func wordDecomposition(seg string, allowTrailingAcronym bool) (ok bool, words in
 			//   it is what keeps `AAAA…`, ALL-CAPS stretches (`K7MDENG`) and `XXXX…` refusing,
 			//   because their lone capital is followed by another bare capital, never a word.
 			//
-			//   n == 0, allowTrailingAcronym is set, and this capital opens a TRAILING run of
-			//   2-4 uppercase letters closing the segment (see endsInShortAcronym): the `OK`
-			//   of `…SilenceAsNotOK`, the `HTTP` of `…RequestSpeaksHTTP`. It counts as a
-			//   capital-led word (camel), consuming the rest of the segment. This is the ONLY
+			//   n == 0, allowShortAcronym is set, and this capital opens a run of 2-4 uppercase
+			//   letters that either CLOSES the segment or is followed by a capital-led
+			//   CamelCase word (see shortAcronymUnit): the `OK` of `…SilenceAsNotOK`, the
+			//   `HTTP` of `…RequestSpeaksHTTP`, the `CI` of `…CIRequiredMatches…`. It counts
+			//   as a capital-led word (camel), consuming exactly the acronym. This is the ONLY
 			//   place a capital with no lowercase behind it is admitted for its own sake, and
-			//   it is bounded to the closing position and to 2-4 letters precisely so it does
-			//   NOT admit a mid-run ALL-CAPS stretch (`…HTTPSProxy…`, an AWS key's EXAMPLEKEY
-			//   sitting inside a longer run) or a 5+ letter tail — those still refuse below.
+			//   it is bounded to 2-4 letters with a word on at least one side precisely so it
+			//   does NOT admit a longer ALL-CAPS stretch (`…HTTPSProxy…`, an AWS key's
+			//   EXAMPLEKEY) or an acronym adrift among digits — those still refuse below.
 			//
-			// A capital with ZERO lowercase behind it and no qualifying follower or trailing
+			// A capital with ZERO lowercase behind it and no qualifying follower or short
 			// acronym — a lone capital or an ALL-CAPS stretch — is still refused outright.
 			n := j - (i + 1)
+			var acrEnd int
+			var acrOK bool
+			if n == 0 && allowShortAcronym {
+				acrEnd, acrOK = shortAcronymUnit(seg, i, words, acronyms)
+			}
 			switch {
 			case n >= 2:
 				i, words, camel = j, words+1, true
@@ -1003,8 +1037,9 @@ func wordDecomposition(seg string, allowTrailingAcronym bool) (ok bool, words in
 				i, words, camel = j, words+1, true
 			case n == 0 && (c == 'A' || c == 'I') && startsCapitalLedWord(seg, j):
 				i, words = j, words+1 // a one-letter word; camel comes from the follower
-			case n == 0 && allowTrailingAcronym && endsInShortAcronym(seg, i):
-				i, words, camel = len(seg), words+1, true // a short trailing acronym closes the run
+			case acrOK:
+				// a short acronym is one word unit; acronyms is the per-run budget
+				i, words, camel, acronyms = acrEnd, words+1, true, acronyms+1
 			default:
 				return false, 0, false
 			}
@@ -1038,41 +1073,110 @@ func startsCapitalLedWord(seg string, k int) bool {
 		seg[k+2] >= 'a' && seg[k+2] <= 'z'
 }
 
-// endsInShortAcronym reports whether seg[i:] is a TRAILING all-caps acronym — 2 to 4
-// uppercase letters running to the end of seg with nothing after them. It is the lookahead
-// wordDecomposition's capital branch uses (only when its caller opts in via
-// allowTrailingAcronym) to admit a short acronym that closes an otherwise word-shaped
-// identifier — the `OK` of `…SilenceAsNotOK`, the `HTTP` of `…RequestSpeaksHTTP` — so
-// isIdentifierLike accepts the whole run and the maxIdentifierRun length cap governs it,
-// rather than the run being refused as a high-entropy secret once it clears 32 characters.
+// shortAcronymUnit reports the end index of a SHORT ALL-CAPS acronym unit starting at i —
+// minAcronym to maxAcronym uppercase letters — and whether it qualifies as one word unit.
+// It is the lookahead wordDecomposition's capital branch uses (only when its caller opts in
+// via allowShortAcronym) to admit an acronym inside an otherwise word-shaped identifier:
+// the `OK` of `…SilenceAsNotOK`, the `HTTP` of `…RequestSpeaksHTTP`, and — since #203 — the
+// `CI` of `Test|CIRequired…Policy` and the `PDF` of `Test|PDFIsByte…Renders`. (Long spans
+// are elided throughout this comment, and the `|` is a reading aid, so the comment does not
+// itself trip the PRE-fix scanner on the diff that introduces the fix — the same bootstrap
+// the split fixtures in this package's tests work around.)
 //
-// SECURITY SHAPE — three bounds keep this from opening a route for real token material, and
-// each is load-bearing:
+// WHY THE MID-RUN POSITION WAS ADDED (#203). The rule shipped TRAILING-ONLY, and
+// isIdentifierLike's doc comment called the mid-run case an acceptable residual. It is not:
+// surveyed over every bare 32+ char alphanumeric run in this repository's own .go and .md
+// files, 134 distinct runs were refused, and ~120 of them are the repo's OWN Go test
+// identifiers — refused on an acronym that happens to sit in the middle rather than at the
+// end (`…CIRequired…`, `…IDFormat…`, `…HTTPClient…`, `…JSONArrays…`, `…CRLFBody…`,
+// `…PRComment…`). Only 14 were genuine token fixtures. That is the #203 report exactly: the
+// author cannot reword a shipped test name without renaming the test, so the refusal is a
+// hard stop on ordinary prose about ordinary code, and it trains workers to fight the
+// scanner — which is how a scan gets routed around instead of fixed (#328, #380).
 //
-//   - TRAILING only: the acronym must reach the end of seg. Everything BEFORE it must still
-//     decompose into word units under the normal rules, so the run is admitted on the
-//     strength of its word-shaped body, not this tail. A mid-run ALL-CAPS stretch
-//     (`…HTTPSProxy…`, an AWS key's `…EXAMPLEKEY…` inside a longer run) does not reach the
-//     end and still refuses at the capital branch's default case.
-//   - SHORT: 2 to 4 letters. A lone trailing capital stays debris — a 1-char tail carries no
-//     acronym meaning and is the shape a truncated token ends on — and a 5+ letter ALL-CAPS
-//     tail (a Slack webhook's `XXXX…`, an AWS key's 10-char `EXAMPLEKEY`) still refuses.
-//   - ALL-CAPS: every byte A-Z. A lowercase letter or digit in the tail means it is not an
-//     acronym, and the normal rules apply.
+// The considered ALTERNATIVE, and why it was rejected: #203 also offered "require a
+// secret-shaped prefix/charset (ghp_, glpat-, base64 with `=` padding, hex ≥40) before
+// entropy alone can refuse". That inverts the rule from deny-by-shape to allow-by-shape and
+// would drop every prefix-less credential the loop currently catches — an AWS **secret**
+// access key carries no prefix and is not 40 hex, and it is the one credential this file's
+// own history (#1261, #410) is written around. Keeping the deny rule and widening the
+// IDENTIFIER exemption preserves every existing positive detection; the prefix route would
+// not, and the brief's own boundary is "keep every existing positive detection".
 //
-// The bar the RUN still has to clear is unchanged: isIdentifierLike requires words>=2 and a
-// capital-led word, so a bare `OK` (one word, whole run) is still refused, and the random-
-// base64 guard stays at zero admits because a 2-4 caps tail cannot help a 90+ char body that
-// must still decompose.
-func endsInShortAcronym(seg string, i int) bool {
-	tail := len(seg) - i
-	if tail < 2 || tail > 4 {
-		return false
+// SECURITY SHAPE — six bounds keep this from opening a route for real token material, and
+// each is load-bearing. The last three were added AFTER measuring: the rule without them
+// exempted 27 of 2,000,000 uniformly random 32-char base64 runs, which is the same order as
+// the blanket capital-plus-one-lowercase relaxation twoLetterWords was deliberately written
+// to stay an order of magnitude under. With all six the number is 7.
+//
+//   - SHORT: minAcronym to maxAcronym letters. A lone capital stays debris, and a 5+ letter
+//     ALL-CAPS stretch (a Slack webhook's `XXXX…`, an AWS key's 10-char `EXAMPLEKEY`, the
+//     `HTTPS` of `…HTTPSProxy…`) still refuses at the capital branch's default case.
+//   - ALL-CAPS: every byte of the unit is A-Z. The run STOPS before a capital that opens a
+//     CamelCase word (startsCapitalLedWord), so `HTTPSProxy` yields the 5-letter `HTTPS`
+//     and is refused rather than being cut into a 4-letter `HTTP` plus `SProxy`.
+//   - ANCHORED FORWARD: the unit must either CLOSE the segment or be followed immediately by
+//     a capital-led CamelCase word. `abcdEFGH1234`×3 (see identMidDigit) has a clean
+//     4-letter caps run at index 4, but it is followed by digits, so it still refuses. An
+//     acronym in a real identifier is a word among words and is always adjacent to one.
+//   - ANCHORED BACKWARD: the character immediately before the unit must be a LOWERCASE
+//     letter — the tail of the word the acronym follows (`Test|CI…`, `…Not|OK`). An acronym
+//     opening a run, or one sitting after a digit group or another capital, is not the shape
+//     this exists for.
+//   - AFTER A WORD: at least one word unit must already have been decomposed. Combined with
+//     the backward anchor this says the acronym is never the run's opening move, which is
+//     where random material's lucky caps runs most often fall.
+//   - BUDGETED: at most maxAcronymUnits per run. Random base64 needs several lucky caps runs
+//     to decompose at all; a real identifier needs one. This bound is where most of the
+//     measured cost above is bought back.
+//
+// And, unchanged: everything outside the acronym must still decompose into word units under
+// the normal rules, and isIdentifierLike still requires words>=2 and a capital-led word — so
+// a bare `OK` (one word, whole run) is still refused.
+//
+// The measured cost of the widening on random token material is pinned by
+// TestShortAcronymCostsAlmostNothing, which runs the same 2,000,000-trial fixed-seed
+// comparison TestTwoLetterWordsCostAlmostNothing uses for the two-letter-word list.
+func shortAcronymUnit(seg string, i, wordsSoFar, acronymsSoFar int) (int, bool) {
+	if acronymsSoFar >= maxAcronymUnits {
+		return 0, false
 	}
-	for k := i; k < len(seg); k++ {
-		if seg[k] < 'A' || seg[k] > 'Z' {
-			return false
-		}
+	if wordsSoFar < 1 || i < 1 || seg[i-1] < 'a' || seg[i-1] > 'z' {
+		return 0, false
 	}
-	return true
+	if i >= len(seg) || seg[i] < 'A' || seg[i] > 'Z' {
+		return 0, false
+	}
+	k := i + 1
+	for k < len(seg) && seg[k] >= 'A' && seg[k] <= 'Z' && !startsCamelWord(seg, k) {
+		k++
+	}
+	if n := k - i; n < minAcronym || n > maxAcronym {
+		return 0, false
+	}
+	if k == len(seg) || startsCamelWord(seg, k) {
+		return k, true
+	}
+	return 0, false
+}
+
+// startsCamelWord reports whether a CamelCase WORD UNIT begins at k — either a capital-led
+// word (startsCapitalLedWord) or one of the two-letter English words wordDecomposition's
+// capital branch already accepts (twoLetterWords).
+//
+// It is the boundary shortAcronymUnit uses on BOTH sides of its scan: where the ALL-CAPS run
+// must stop, and what must follow it. Including the two-letter form is not a loosening for
+// its own sake — it is what makes the two rules agree about where a word starts. Without it
+// the greedy caps run swallows the leading capital of a two-letter word (`…PDF|Is|Byte…`
+// reads as a 4-letter `PDFI` followed by lowercase debris) and the whole identifier refuses,
+// which is the #203 class arriving through a different door.
+func startsCamelWord(seg string, k int) bool {
+	if startsCapitalLedWord(seg, k) {
+		return true
+	}
+	return k+1 < len(seg) &&
+		seg[k] >= 'A' && seg[k] <= 'Z' &&
+		seg[k+1] >= 'a' && seg[k+1] <= 'z' &&
+		(k+2 >= len(seg) || seg[k+2] < 'a' || seg[k+2] > 'z') &&
+		twoLetterWords[seg[k:k+2]]
 }

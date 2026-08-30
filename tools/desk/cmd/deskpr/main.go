@@ -35,6 +35,31 @@ the worker App via desktoken worker. Pass --as-app=false for the example-org
 fallback (transition period). The branch push (committed code) is the worker's git
 authorship; the PR is filed under the worker App identity.
 
+PUBLIC-REPO SELF-CONTAINMENT (#203). When the target repo is not known-private, the
+PR body and title are scanned for spans that only resolve inside the authoring house.
+This is the ONE place the categories are enumerated; the skill text points here rather
+than restating them.
+
+  REFUSED (exit 5) — the span is unambiguous:
+    * an absolute machine path (/Users/…, /home/…, /private/tmp/…, /tmp/tracker-…)
+    * a scratch worktree name (tracker-…)
+    * a session id (a hex UUID) or an agent id (agent-…)
+    * an owner/name slug, with or without #N, naming a repo the roster marks PRIVATE
+    * alias#N where the alias resolves to such a repo
+    * a withheld register identifier (a stream slug, or a <slug>/<NN> brief id) from
+      ASSAY_WITHHELD_IDENTIFIERS
+
+  NOTICE on stderr, never a refusal — the check could not decide:
+    * a bare #N above a number known to exist here (probably another repo's)
+    * a bare #N with no reference number available: not checked at all
+    * a word that is a PRIVATE repo's short name, 4+ characters (a shorter alias is
+      ordinary English and is not noticed at all; its full slug still REFUSES)
+    * ASSAY_WITHHELD_IDENTIFIERS unset: that category was not checked
+
+A refusal takes the same audited --force-scan-override as any other scan refusal —
+there is no second bypass and no flag that turns the check off. A known-private target
+repo, and any repo when the roster is unconfigured, are unaffected.
+
 Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.`
 
 func main() {

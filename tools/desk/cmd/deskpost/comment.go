@@ -45,6 +45,16 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 		if err := bodycheck.Comment(body); err != nil {
 			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)
 		}
+		// #203: the PUBLIC-REPO SELF-CONTAINMENT scan — a body free of credentials can
+		// still carry a private repo name, an absolute machine path, a session id or a
+		// withheld register identifier, none of which the secret scan above can see. Also
+		// before any network, and a no-op on a known-private repo (SelfContainApplies).
+		// `num` is the object being commented on, so it is a number this repo owns and is
+		// the reference point for the bare-`#N` heuristic.
+		if err := deskkit.SelfContainCheck("comment body", body,
+			deskkit.SelfContainOpts{Repo: repo, NumberHint: num}); err != nil {
+			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)
+		}
 
 		client, err := newGHClient(owner, name)
 		if err != nil {
