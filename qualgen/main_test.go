@@ -21,14 +21,15 @@ func TestVersionDefaultIsDev(t *testing.T) {
 	}
 }
 
-// TestModeScaffolding is Verify row 7: report / pr / check are each recognized,
-// parse flags, print a `not yet implemented` NOTICE, and exit 0.
+// TestModeScaffolding pins that the still-stubbed modes (pr / check) are each
+// recognized, parse flags, print a `not yet implemented` NOTICE, and exit 0.
+// The `report` mode is no longer a stub — it renders the trend view (quality/05)
+// and is exercised by the TestReport_* suite instead.
 func TestModeScaffolding(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
 	}{
-		{"report", []string{"report", "--out", "/tmp/x"}},
 		{"pr", []string{"pr", "1", "--out", "/tmp/x"}},
 		{"check", []string{"check", "qualgen/main.go", "--out", "/tmp/x"}},
 	}
