@@ -28,40 +28,35 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: statusgen. By s
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| quality | 06 — M2 fix identification — pluggable linkage adapter + evidence tiers | 1 | 5000 |
-| desktools-go-git | 02 — `gitcore` transport + in-process auth (BasicAuth) + go-git pin | 2 | 4000 |
-| derived-board | 03 — `statusgen reconcile` — derive lifecycle state from PRs + witnesses + approvals [exec:strong] | 1 | 3500 |
 | quality | 02 — M1 line-operation taxonomy + churn/rework rate [exec:strong] | 1 | 3500 |
 | forge-gitlab | 02 — `gitlab` forge implementation (MRs, notes, approvals, statuses) [exec:strong] | 2 | 3000 |
 | quality | 03 — M1 hotspots + knowledge distribution (SPOF) + change coupling | 1 | 3000 |
 | derived-board | 05 — desk skills: reference the brief, never flip the cell (both copies) | 1 | 2500 |
 | forge-gitlab | 03 — GitLab token custody — rotate-on-mint + expiry backstop in desktoken [exec:strong] | 2 | 2500 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
-| quality | 04 — M1 instruction-layer brittleness (reference-validity + doc↔code drift) | 1 | 2500 |
 | iso-9001 | 02 — Align three shipped disclosures with the code they describe (B9) [exec:strong] | 0 | 2000 |
 | forge-gitlab | 07 — GitHub forge backend on `go-gh` — retire the exec-`gh` shell path [exec:strong] | 2 | 1500 |
 | statusgen | 07 — new brief-flow metrics | 1 | 1500 |
 | desk-tools | 04 — Deterministic runner — execute rows, batch, sign, file verdict issues [exec:strong] | 1 | 1000 |
-| statusgen | 03 — self-improvement metric (self-healed vs human-touched) | 2 | 1000 |
 | statusgen | 09 — opt-in telemetry — anonymized fleet-drift corpus (off by default) | 1 | 1000 |
-| statusgen | 10 — graph export (`--graph` DOT + JSONL) [exec:strong] | 1 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (30 desk-actionable of 31 total — 21 at implemented, 10 verified awaiting review)
+## Awaiting verification / review (32 desk-actionable of 33 total — 23 at implemented, 10 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (30)
+### Desk-actionable (32)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | quality | 01 [exec:strong] | verified | 8000 | 14 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
+| quality | 06 | implemented | 5000 | 8 | — | — | — |
 | derived-board | 01 [exec:strong] | verified | 4500 | 5 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | derived-board | 02 | verified | 4500 | 5 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | desktools-go-git | 01 | verified | 4500 | 7 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
@@ -74,6 +69,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 04 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | mistake-proofing | 01 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| quality | 04 | implemented | 2500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | mistake-proofing | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
@@ -204,9 +200,9 @@ _None._
 - 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — verified (wave 0)
 - 02 M1 line-operation taxonomy + churn/rework rate — todo (wave 1)
 - 03 M1 hotspots + knowledge distribution (SPOF) + change coupling — todo (wave 1)
-- 04 M1 instruction-layer brittleness (reference-validity + doc↔code drift) — todo (wave 1)
+- 04 M1 instruction-layer brittleness (reference-validity + doc↔code drift) — implemented (wave 1)
 - 05 `QUALITY.md` single-writer trend view + metrics artifacts — todo (wave 2)
-- 06 M2 fix identification — pluggable linkage adapter + evidence tiers — todo (wave 1)
+- 06 M2 fix identification — pluggable linkage adapter + evidence tiers — implemented (wave 1)
 - 07 M2 B-SZZ inducing trace + derived defect metrics — todo (wave 2)
 - 08 `pr <n>` mode — per-file risk features (generic riskscore feed) — todo (wave 3)
 - 09 `check <files>` mode — brittleness screen for a named file set — todo (wave 2)

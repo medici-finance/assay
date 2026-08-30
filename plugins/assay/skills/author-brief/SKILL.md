@@ -13,6 +13,11 @@ description: >-
 
 # Author Brief
 
+**A stream board's Briefs table is a derived, generated surface once `statusgen` is wired up
+(`docs/streams/derived-board/spec.md`)** — a brief states the authoring facts and the edges
+(`why:`, `depends`, `unblocks`, `gate`, `risk`); it never states the lifecycle cell, and no one
+hand-edits the generated table.
+
 ## Model-tier gate (check BEFORE anything else)
 
 Brief authoring and work decomposition are **design-tier work**: this is where risk gates are
@@ -86,7 +91,16 @@ effort: S | M | L                   # closed scale — L is the CEILING (rule 11
 gate: model | human                # from the four risk questions below
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []                         # GH issue numbers this brief closes
-schema: brief-v1
+schema: brief-v2                    # required in a v2 tree (docs/streams/derived-board/spec.md §5);
+                                    # --lint PROBLEMs a tree of v2 briefs missing it. Reserved,
+                                    # OPTIONAL keys parsed under brief-v2 (shape-validated only,
+                                    # gating behaviour deferred to the graph stream): id (uuid,
+                                    # minted once at authoring, never reused), supersedes ([]),
+                                    # version (int, bumped on every Task/Verify edit after first
+                                    # dispatch), gates ([{on, type, reason}]), feathers ([...]).
+                                    # NO status: KEY — the lifecycle cell is DERIVED by statusgen
+                                    # from PR trailers, verifyrun witnesses and App approvals, never
+                                    # hand-asserted in frontmatter or the stream README table.
 authored: <YYYY-MM-DD> by <who/session>
 sources: []                        # provenance: scoping doc, finding IDs, intake IDs this derives from.
                                     # F-<slug>/I-<slug> references should be links: "[F-ws-token-expiry](../findings/YYYY-MM-DD-example-finding.md)"
@@ -353,8 +367,18 @@ worker run.
 
 `docs/<phase>/README.md` ties the briefs together:
 
-1. **Status table** — `| # | Brief | Wave | Status | What's deployed/landed |`. Status uses
-   ✅ / ⚠️ / ❌ with a terse, honest "what's actually true" note (not aspirational).
+1. **Briefs table — generated, not hand-written, once `statusgen` is wired up**
+   (`docs/streams/derived-board/spec.md`). The table lives between
+   `<!-- statusgen:briefs:begin -->` / `<!-- statusgen:briefs:end -->` markers, and the README's
+   own frontmatter carries `board: generated`; `statusgen` writes the Status / Verified / Reviewed
+   cells from PR trailers, `verifyrun` witnesses and App approvals — a hand edit inside the markers
+   is a lint PROBLEM, the same as hand-editing `STATUS.md`. Columns:
+   `| # | Brief | Wave | Effort | Status | Verified | Reviewed |`, Status a bare lifecycle token
+   (`todo` / `in-progress` / `implemented` / `verified` / `done`, or the hold token `blocked`). A
+   project not yet wired to `statusgen` hand-maintains the older
+   `| # | Brief | Wave | Status | What's deployed/landed |` shape as a stopgap — ✅ / ⚠️ / ❌ with a
+   terse, honest "what's actually true" note (not aspirational) — but the moment generation is
+   live, the table is derived, never hand-edited.
 2. **Critical path** — an ASCII chain showing the blocking order, with a one-line "smallest unblocking
    move" and a warning if any tempting-but-wrong first step is a dead end.
 3. **Dependency waves** — `Wave 0: [..]  Wave 1: [..]←0  …`, plus the one-line critical path
@@ -372,8 +396,12 @@ worker run.
 4. **Write the README first** (table + path + waves), then the briefs. Cross-link both directions.
 5. **Convert relative dates to absolute** (e.g. "by next week" → the actual date) — these docs
    outlive the conversation.
-6. **Be honest in status** — "⚠️ Workaround" / "Blocked by #X" beats a green checkmark that isn't
-   true; the table is the thing people trust.
+6. **Author the facts and the edges, not the cell.** Status is DERIVED, not chosen: write `why:`,
+   `depends`, `unblocks`, `gate`, `risk` accurately and let `statusgen` read the PR trailers,
+   witnesses and approvals into the Status / Verified / Reviewed cells
+   (`docs/streams/derived-board/spec.md`). A project not yet wired to `statusgen` keeps the honesty
+   rule in spirit by hand — "⚠️ Workaround" / "Blocked by #X" beats a green checkmark that isn't
+   true — but once generation is live, a hand-edited cell is a lint PROBLEM, not a courtesy.
 7. **Handoff to execution**: a brief is a scope-and-DoD contract, not a step-by-step plan — don't
    write one here. When a brief (especially Effort: L) is picked up for execution, consider running
    `superpowers:writing-plans` against that brief's Deliverables/DoD to produce a bite-sized TDD plan
