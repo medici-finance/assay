@@ -193,7 +193,7 @@ func mineWithConfig(repoPath, trackingRoot string, stdout io.Writer, cfg M1Confi
 	if err := appendM1Metrics(store, r, head.Hash(), runAt); err != nil {
 		return fmt.Errorf("compute M1 hotspot/ownership/coupling metrics: %w", err)
 	}
-	if err := aggregateM1(store, cfg); err != nil {
+	if err := aggregateM1(store, cfg, runAt); err != nil {
 		return fmt.Errorf("aggregate M1 taxonomy/churn metrics: %w", err)
 	}
 

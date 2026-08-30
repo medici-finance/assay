@@ -59,6 +59,14 @@ type MetricRecord struct {
 	Basis string `json:"basis"`
 	// Note is the human-readable honest-claims label.
 	Note string `json:"note"`
+
+	// MinedAt stamps the run that produced this snapshot. The metrics table is
+	// append-only, so each mine appends a fresh full M1 snapshot; MinedAt is the
+	// ordering key that lets a trend consumer select the LATEST snapshot per
+	// (metric, grain, key) rather than the table-position first-match. It is the
+	// same stamp the sibling hotspot / ownership / coupling families carry on the
+	// same table (their `mined_at`), so the whole metrics table orders uniformly.
+	MinedAt time.Time `json:"mined_at"`
 }
 
 // M1Config parameterizes the aggregation: the block-match threshold (§4.1), the
@@ -86,10 +94,13 @@ func DefaultM1Config() M1Config {
 }
 
 // aggregateM1 reads the mined commit + diff tables through the Store, computes
-// the M1 taxonomy and churn, and writes the aggregate metrics into the derived
-// metrics table (reset-then-rewritten, never accumulated). It is READ-ONLY over
-// the raw tables and writes ONLY the metrics table under the tracking root.
-func aggregateM1(store *Store, cfg M1Config) error {
+// the M1 taxonomy and churn, and appends the aggregate metrics as one fresh
+// full snapshot to the append-only metrics table (extend, never rewrite — the
+// same way the sibling hotspot / ownership / coupling families append theirs).
+// minedAt stamps every record in this snapshot so a trend consumer can pick the
+// latest snapshot per metric. It is READ-ONLY over the raw tables and writes
+// ONLY the metrics table under the tracking root.
+func aggregateM1(store *Store, cfg M1Config, minedAt time.Time) error {
 	if cfg.BlockMin < 1 {
 		cfg.BlockMin = DefaultBlockMin
 	}
@@ -114,20 +125,26 @@ func aggregateM1(store *Store, cfg M1Config) error {
 	}
 
 	// --- Taxonomy roll-up: repo total + per package. ---
+	//
+	// classifyCommitByFile attributes each commit's classified lines and detected
+	// blocks to the FILE that carries them, so the per-package grain credits a
+	// copied/moved block only to the package that gained its added lines — a
+	// commit spanning packages A and B never inflates B with A's blocks. The repo
+	// total is the sum over every file's taxonomy, identical to the whole-commit
+	// classification.
 	var repoTax CommitTaxonomy
 	repoTax.LineClasses = map[LineClass]int{}
 	perPkg := map[string]*CommitTaxonomy{}
 	for _, com := range commits {
-		ct := classifyCommit(com.SHA, diffsByCommit[com.SHA], cfg.BlockMin)
-		mergeTaxonomy(&repoTax, ct)
-		// Attribute this commit's blocks/lines to the packages its files touch.
-		for _, pkg := range commitPackages(diffsByCommit[com.SHA]) {
+		for filePath, ft := range classifyCommitByFile(com.SHA, diffsByCommit[com.SHA], cfg.BlockMin) {
+			mergeTaxonomy(&repoTax, *ft)
+			pkg := path.Dir(filePath)
 			pt := perPkg[pkg]
 			if pt == nil {
 				pt = &CommitTaxonomy{LineClasses: map[LineClass]int{}}
 				perPkg[pkg] = pt
 			}
-			mergeTaxonomy(pt, ct)
+			mergeTaxonomy(pt, *ft)
 		}
 	}
 
@@ -144,6 +161,7 @@ func aggregateM1(store *Store, cfg M1Config) error {
 		records = append(records, MetricRecord{
 			Metric: metric, Grain: grain, Key: key, Value: v,
 			Basis: basisPublishedDefinitions, Note: honestClaimsNote,
+			MinedAt: minedAt,
 		})
 	}
 
@@ -220,29 +238,6 @@ func mergeTaxonomy(dst *CommitTaxonomy, src CommitTaxonomy) {
 	dst.MovedBlocks += src.MovedBlocks
 	dst.CopiedBlocks += src.CopiedBlocks
 	dst.CouldNotMeasureLines += src.CouldNotMeasureLines
-}
-
-// commitPackages returns the distinct package (directory) paths a commit's file
-// diffs touch — the per-package aggregation grain (spec §4). The repo root is
-// the "." package.
-func commitPackages(diffs []FileDiff) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, fd := range diffs {
-		p := fd.NewPath
-		if p == "" {
-			p = fd.OldPath
-		}
-		if p == "" {
-			continue
-		}
-		pkg := path.Dir(p)
-		if !seen[pkg] {
-			seen[pkg] = true
-			out = append(out, pkg)
-		}
-	}
-	return out
 }
 
 func sortedKeys(m map[string]*CommitTaxonomy) []string {

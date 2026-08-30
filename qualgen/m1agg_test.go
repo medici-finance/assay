@@ -3,7 +3,12 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
+
+// testMinedAt is a fixed run stamp for aggregator tests (the value the metrics
+// snapshot records under `mined_at`).
+var testMinedAt = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
 // storeWith writes the given commits and their diffs into a fresh temp-rooted
 // Store, so the aggregator is exercised through the real Store read path.
@@ -73,7 +78,7 @@ func TestUnclassifiedIdentityClass(t *testing.T) {
 	store := storeWith(t, commits, diffs)
 	cfg := DefaultM1Config()
 	cfg.Identity = idmap
-	if err := aggregateM1(store, cfg); err != nil {
+	if err := aggregateM1(store, cfg, testMinedAt); err != nil {
 		t.Fatalf("aggregateM1: %v", err)
 	}
 	recs, err := store.ReadMetrics()
@@ -118,7 +123,7 @@ func TestCopyPasteRatioValue(t *testing.T) {
 	d2 := measuredLineDiff("c2", "copied.go", copiedLines...)
 
 	store := storeWith(t, []Commit{c1, c2}, []FileDiff{d1, d2})
-	if err := aggregateM1(store, DefaultM1Config()); err != nil {
+	if err := aggregateM1(store, DefaultM1Config(), testMinedAt); err != nil {
 		t.Fatalf("aggregateM1: %v", err)
 	}
 	recs, err := store.ReadMetrics()
@@ -139,6 +144,83 @@ func TestCopyPasteRatioValue(t *testing.T) {
 	}
 	if strings.Contains(strings.ToLower(r.Note), "equivalent") && !strings.Contains(r.Note, "not a GitClear-equivalence") {
 		t.Fatalf("note must not claim GitClear-equivalence: %q", r.Note)
+	}
+}
+
+// TestPerPackageBlockAttributionIsPrecise is the guard for review finding #3: a
+// commit spanning two packages must credit a copied/moved block ONLY to the
+// package that gained its added lines, never to every package the commit
+// touched. Fail-first: replacing the per-file roll-up in aggregateM1 with the
+// old whole-commit `mergeTaxonomy(pt, ct)` reddens this with pkgB reported as
+// `copy_paste_ratio: got state=measured value=1, want measured-zero`.
+func TestPerPackageBlockAttributionIsPrecise(t *testing.T) {
+	block := []string{"func dup(x int) {", "    y := x * 7", "    z := y % 3", "    _ = z", "}"}
+
+	// pkgA/a.go: a copied block — the source remains as context, the block is
+	// re-added identically.
+	var aLines []LineChange
+	for _, s := range block {
+		aLines = append(aLines, ctxLine(s))
+	}
+	aLines = append(aLines, ctxLine("// anchor context line here"))
+	for _, s := range block {
+		aLines = append(aLines, addLine(s))
+	}
+	dA := measuredLineDiff("c1", "pkgA/a.go", aLines...)
+
+	// pkgB/b.go: plain net-new lines in the SAME commit — no duplication at all.
+	dB := measuredLineDiff("c1", "pkgB/b.go",
+		addLine("package pkgB"), addLine("const answer = 42"), addLine(`var who = "b"`))
+
+	store := storeWith(t,
+		[]Commit{{SHA: "c1", AuthorName: "dev", AuthorRaw: "dev <d@e>"}},
+		[]FileDiff{dA, dB})
+	if err := aggregateM1(store, DefaultM1Config(), testMinedAt); err != nil {
+		t.Fatalf("aggregateM1: %v", err)
+	}
+	recs, err := store.ReadMetrics()
+	if err != nil {
+		t.Fatalf("read metrics: %v", err)
+	}
+
+	// pkgA gained the copied block: its ratio is the measured 1.0.
+	a := findMetric(t, recs, MetricCopyPasteRatio, GrainPackage, "pkgA")
+	if a.Value.State != StateMeasured || a.Value.Value != 1 {
+		t.Fatalf("pkgA copy_paste_ratio: got state=%q value=%v, want measured 1", a.Value.State, a.Value.Value)
+	}
+	// pkgB did NOT gain any block: a cross-directory commit must not inflate it
+	// with pkgA's copied block. Its ratio is measured-zero, not 1.
+	b := findMetric(t, recs, MetricCopyPasteRatio, GrainPackage, "pkgB")
+	if b.Value.State != StateMeasuredZero {
+		t.Fatalf("pkgB copy_paste_ratio: got state=%q value=%v, want measured-zero (no block landed in pkgB — cross-dir over-attribution)", b.Value.State, b.Value.Value)
+	}
+}
+
+// TestMineMetricsCarryRunStamp is the guard for review finding #2: because the
+// metrics table is append-only, every emitted M1 record must carry the run's
+// MinedAt stamp — the same ordering key the sibling hotspot/ownership/coupling
+// families record — so a trend consumer can select the latest snapshot per
+// (metric,grain,key). Fail-first: dropping `MinedAt: minedAt` from aggregateM1's
+// emit reddens this with a zero `mined_at`.
+func TestMineMetricsCarryRunStamp(t *testing.T) {
+	commits := []Commit{{SHA: "s1", AuthorName: "dev", AuthorRaw: "dev <d@e>"}}
+	diffs := []FileDiff{measuredLineDiff("s1", "z.go", addLine("net new line of code"))}
+	store := storeWith(t, commits, diffs)
+	if err := aggregateM1(store, DefaultM1Config(), testMinedAt); err != nil {
+		t.Fatalf("aggregateM1: %v", err)
+	}
+	recs, err := store.ReadMetrics()
+	if err != nil {
+		t.Fatalf("read metrics: %v", err)
+	}
+	if len(recs) == 0 {
+		t.Fatal("aggregateM1 produced no metrics")
+	}
+	for _, r := range recs {
+		if !r.MinedAt.Equal(testMinedAt) {
+			t.Fatalf("metric %s/%s/%q mined_at: got %v, want %v — an append-only snapshot with no run stamp cannot be ordered",
+				r.Metric, r.Grain, r.Key, r.MinedAt, testMinedAt)
+		}
 	}
 }
 

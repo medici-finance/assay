@@ -73,20 +73,61 @@ type CommitTaxonomy struct {
 // than blockMin is not a block and its lines fall back to added/updated. Move
 // takes precedence over copy for an equally-long match (a relocation is not a
 // duplication).
+//
+// The commit total is the sum of the per-file taxonomies classifyCommitByFile
+// produces; this thin wrapper exists for callers (and tests) that want the
+// whole-commit roll-up without the per-file breakdown.
 func classifyCommit(sha string, diffs []FileDiff, blockMin int) CommitTaxonomy {
+	total := CommitTaxonomy{SHA: sha, LineClasses: map[LineClass]int{}}
+	for _, ft := range classifyCommitByFile(sha, diffs, blockMin) {
+		mergeTaxonomy(&total, *ft)
+	}
+	return total
+}
+
+// classifyCommitByFile is classifyCommit's per-file core: it classifies the
+// commit's changed lines exactly as classifyCommit does (same commit-wide block
+// detection, same LineChange.Class mutation) but attributes each classified line
+// and detected block to the FILE whose added lines carry it, keyed by the file's
+// path. Summing the returned taxonomies reproduces the whole-commit total.
+//
+// Per-file (not whole-commit) attribution is what lets the aggregator's
+// per-package grain be precise: a commit spanning packages A and B credits a
+// copied/moved block only to the package that gained its ADDED lines, never to
+// every package the commit happened to touch. Block detection stays commit-wide
+// (a block moved from B to A matches B's deletions against A's adds), so the
+// destination package A — where the added lines land — is the correct owner;
+// B's package sees only the (uncounted) deletion.
+func classifyCommitByFile(sha string, diffs []FileDiff, blockMin int) map[string]*CommitTaxonomy {
 	if blockMin < 1 {
 		blockMin = DefaultBlockMin
 	}
-	ct := CommitTaxonomy{SHA: sha, LineClasses: map[LineClass]int{}}
+	byFile := map[string]*CommitTaxonomy{}
+	taxOf := func(p string) *CommitTaxonomy {
+		ct := byFile[p]
+		if ct == nil {
+			ct = &CommitTaxonomy{SHA: sha, LineClasses: map[LineClass]int{}}
+			byFile[p] = ct
+		}
+		return ct
+	}
+	diffPath := func(fd *FileDiff) string {
+		if fd.NewPath != "" {
+			return fd.NewPath
+		}
+		return fd.OldPath
+	}
 
 	// Source pools for block matching, gathered across every measured file diff
 	// in the commit: deleted-line contents (a match here means the source is
 	// GONE → moved) and context-line contents (a match here means the source
 	// REMAINS → copied).
 	var deletedPool, contextPool []string
-	// addedFiles keeps, per file, the ordered pointers to its added LineChanges
-	// plus whether that file also deleted lines (drives added-vs-updated).
+	// addedFiles keeps, per file, its path, the ordered pointers to its added
+	// LineChanges, and whether that file also deleted lines (drives
+	// added-vs-updated).
 	type addedFile struct {
+		path         string
 		lines        []*LineChange
 		hasDeletions bool
 	}
@@ -94,16 +135,21 @@ func classifyCommit(sha string, diffs []FileDiff, blockMin int) CommitTaxonomy {
 
 	for i := range diffs {
 		fd := &diffs[i]
+		p := diffPath(fd)
 		if fd.Lines.State != StateMeasured {
 			// Binary / unreadable / measured-zero: no per-line taxonomy. A
 			// could-not-measure diff contributes to that count; a measured-zero
 			// (mode/rename-only) simply has no changed lines to classify.
 			if fd.Lines.State == StateCouldNotMeasure {
-				ct.CouldNotMeasureLines++
+				taxOf(p).CouldNotMeasureLines++
 			}
 			continue
 		}
-		af := addedFile{}
+		// Register the file so a measured-but-unclassifiable file (e.g. only
+		// deletions) still appears as its own — measured-zero — grain rather
+		// than being folded into another package.
+		taxOf(p)
+		af := addedFile{path: p}
 		for hi := range fd.Lines.Value {
 			hunk := &fd.Lines.Value[hi]
 			for li := range hunk.Lines {
@@ -132,6 +178,7 @@ func classifyCommit(sha string, diffs []FileDiff, blockMin int) CommitTaxonomy {
 	// run that matches a run in the deleted pool (moved) or the context pool
 	// (copied); if that run is >= blockMin, claim it as one block and advance.
 	for _, af := range addedFiles {
+		ct := taxOf(af.path)
 		content := make([]string, len(af.lines))
 		for i, lc := range af.lines {
 			content[i] = lc.Content
@@ -168,7 +215,7 @@ func classifyCommit(sha string, diffs []FileDiff, blockMin int) CommitTaxonomy {
 			}
 		}
 	}
-	return ct
+	return byFile
 }
 
 // classifySingle assigns a single added line that is not part of any detected
