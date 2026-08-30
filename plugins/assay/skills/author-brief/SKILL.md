@@ -505,6 +505,20 @@ could-not-check runs serial.
    (`0→8→1→2→5`).
 4. (Optional) "Before starting" prereqs and "Shared conventions" the briefs inherit.
 
+## When a spec is approved: file the authoring follow-on in the same motion
+
+A spec or scoping doc reaching `approved` is not yet work — nothing pulls it forward until
+briefs exist, so an approved-but-unrouted spec is exactly the thing that gets forgotten.
+Close that edge in the landing motion: whoever lands the PR that marks a spec `approved`
+files, in the same motion, ONE work-ready issue on your tracker titled **"Author briefs for
+&lt;spec path&gt; into &lt;destination stream&gt; (strong tier)"**, naming this
+`assay:author-brief` procedure and the **strong tier** requirement in the body so it rides
+your existing issue → work-dispatch lane to a strong-tier author. "Same motion" means the
+landing PR is not complete without it: file the issue immediately after the merge, or
+reference it from the PR body before merging. Landing those briefs later flips the spec's
+status to `routed` in the citing PR. (An automated emitter may back this floor as a second
+layer; the floor does not wait on one.)
+
 ## Working method
 
 1. **Inventory the work** — list the discrete units. Each becomes a brief; keep them roughly equal-
