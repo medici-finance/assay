@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/gittest"
@@ -49,6 +51,54 @@ func TestGoldenDiffAfterChange(t *testing.T) {
 		}
 		return names[0], nil
 	})
+}
+
+// TestDiffNamesRenameMatchesGit is the rename case the "diff-after-change" golden
+// (an add: one path either way) cannot reach. It is the divergence that matters for
+// briefs 03-07: go-git's plain tree.Diff does no rename detection, so without it
+// DiffNames would report BOTH the old and the new path where the `git diff
+// --name-only` seam it replaces reports only the new one. Asserting against the git
+// binary's own output on the same fixture is what makes this fail-capable — drop
+// rename detection from DiffNames and this test reports two paths against git's one.
+func TestDiffNamesRenameMatchesGit(t *testing.T) {
+	f := gittest.NewFixture(t)
+	// A body long enough that the rename is detected by similarity, not only by
+	// exact-content match, so the test exercises the same detector git uses.
+	body := "alpha\nbravo\ncharlie\ndelta\necho\nfoxtrot\ngolf\nhotel\n"
+	f.CommitFile(t, "old_probe.txt", body, "add the file that will be renamed")
+	if _, err := f.Git("mv", "old_probe.txt", "new_probe.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Git("commit", "-q", "-m", "rename the probe file"); err != nil {
+		t.Fatal(err)
+	}
+
+	wantOut, err := f.Git("diff", "--name-only", "HEAD~1", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	if wantOut != "" {
+		want = strings.Split(wantOut, "\n")
+	}
+	sort.Strings(want)
+	// Guard the guard: if git itself stopped detecting the rename, this fixture is
+	// no longer testing what it claims and a pass would be vacuous.
+	if !reflect.DeepEqual(want, []string{"new_probe.txt"}) {
+		t.Fatalf("COULD-NOT-CHECK: git did not report this fixture as a detected rename: git diff --name-only = %v", want)
+	}
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.DiffNames("HEAD~1", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("DiffNames over a rename = %v, want %v (git diff --name-only)", got, want)
+	}
 }
 
 // --- Direct read-helper assertions (refs / objects / log / merge-base) -----

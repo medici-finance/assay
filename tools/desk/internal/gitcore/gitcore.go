@@ -20,6 +20,7 @@
 package gitcore
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sort"
@@ -151,10 +152,26 @@ func (r *Repo) Files(rev string) ([]string, error) {
 	return out, nil
 }
 
+// renameDetectOptions are the DiffTree options DiffNames runs under. go-git's
+// tree.Diff performs NO rename detection, so under it a rename surfaces as an
+// unrelated delete+add pair and DiffNames would report BOTH paths — while the
+// `git diff --name-only` seam it replaces detects renames by default (git's
+// diff.renames has defaulted to true since 2.9) and reports only the new path.
+// That divergence is exactly the kind of silent outcome change this package
+// exists to prevent, so rename detection is turned on here, at git's own
+// similarity threshold (`-M` defaults to 50%) rather than go-git's 60, so the
+// pair git calls a rename is the pair gitcore calls a rename.
+var renameDetectOptions = &object.DiffTreeOptions{
+	DetectRenames:    true,
+	RenameScore:      50,
+	RenameLimit:      0,
+	OnlyExactRenames: false,
+}
+
 // DiffNames returns the sorted set of paths that differ between from and to (each a
-// revision expression), matching `git diff --name-only <from> <to>` (with rename
-// detection: a rename contributes both its old and new path, as git's own
-// --name-only does for a detected rename pair).
+// revision expression), matching `git diff --name-only <from> <to>` — including its
+// rename detection: a detected rename contributes ONLY its new path, exactly as
+// git's own --name-only does for a detected rename pair.
 func (r *Repo) DiffNames(from, to string) ([]string, error) {
 	fromTree, err := r.treeAt(from)
 	if err != nil {
@@ -164,7 +181,7 @@ func (r *Repo) DiffNames(from, to string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	changes, err := fromTree.Diff(toTree)
+	changes, err := object.DiffTreeWithOptions(context.Background(), fromTree, toTree, renameDetectOptions)
 	if err != nil {
 		return nil, fmt.Errorf("gitcore: diff %s..%s: %w", from, to, err)
 	}
@@ -178,6 +195,15 @@ func (r *Repo) DiffNames(from, to string) ([]string, error) {
 		out = append(out, name)
 	}
 	for _, c := range changes {
+		// A detected rename is ONE change carrying both endpoints (From.Name !=
+		// To.Name, both non-empty). git --name-only prints only the new path for
+		// it, so only To.Name is added. Every other shape — add (From.Name ""),
+		// delete (To.Name ""), modify (the two names equal) — has one distinct
+		// path, and adding both endpoints yields exactly that one path.
+		if c.From.Name != "" && c.To.Name != "" && c.From.Name != c.To.Name {
+			add(c.To.Name)
+			continue
+		}
 		add(c.From.Name)
 		add(c.To.Name)
 	}
