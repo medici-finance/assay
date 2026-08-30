@@ -127,10 +127,43 @@ type Handle interface {
 }
 
 // Config is engine state, NOT a per-loop hook (the frozen contract is the Loop interface).
-// PoolSize is a CONSTANT the engine holds — it is never a variable the model manages under
-// load, which is the whole point.
+// PoolSize is the in-flight cap the engine holds — it is never a variable the MODEL manages
+// under load, which is the whole point. Width (below) does not change that: it moves the cap
+// out of the model's attention and into a value the engine re-reads for itself.
 type Config struct {
-	PoolSize   int           // constant in-flight cap. verify: sized per queue; batch: 8
+	PoolSize int // in-flight cap; the floor Width falls back to. verify: sized per queue; batch: 8
+	// Width is the OPTIONAL per-tick resolver for the in-flight cap. nil means the cap is
+	// PoolSize for the process lifetime — exactly the behaviour before this field existed,
+	// so the field is strictly additive and every existing consumer is unchanged.
+	//
+	// WHY A FUNC AND NOT AN INT. Config is passed BY VALUE into Run and again into fillPool,
+	// so a plain field is a snapshot each caller holds privately: writing to it could never
+	// be observed by the code that reads it. A resolver is the smallest thing that can be
+	// re-read, and it keeps the scheduling FACT (how many slots) in the engine while leaving
+	// the POLICY (what the operator set, what the budget allows) to the caller. It is engine
+	// data wrapped around the existing pool guard — no Loop hook, so the frozen contract
+	// (arch doc §8) is untouched.
+	//
+	// It is consulted ONCE PER fillPool PASS, not per item, so one tick cannot straddle two
+	// widths and dispatch against a cap that changed halfway down the queue.
+	//
+	// The two directions are deliberately asymmetric, and the asymmetry is the safety
+	// property:
+	//
+	//   GROW   — the next pass simply fills the freed slots up to the new, larger cap. No
+	//            special case: the existing guard already dispatches until occupancy meets
+	//            the cap.
+	//   SHRINK — the pass stops refilling and returns. Agents already in flight KEEP THEIR
+	//            SLOTS and the pool converges downward as they land. The engine has no
+	//            cancel path for a dispatched agent (a completion is awaited on a channel it
+	//            does not own), and inventing one to honour a narrower width would turn a
+	//            throughput knob into a way to destroy work in progress.
+	//
+	// An error from the resolver is COULD-NOT-CHECK, and the engine falls back to PoolSize
+	// for that pass and says so on Progress. It never falls back to "unlimited" and never
+	// treats an unreadable width as a reason to stop dispatching: the first would widen on
+	// ignorance, the second would let a config error masquerade as a drained queue.
+	Width      func() (int, error)
 	IdlePoll   time.Duration // idle-poll cadence (~60-90s in prod; small in tests)
 	ClaimsDir  string        // shared noclobber claims dir (~/.config/assay/claims)
 	StaleClaim time.Duration // age past which a claim with no live branch may be reclaimed (120m)
@@ -214,6 +247,37 @@ func (c Config) retryPolicy(it Item) RetryPolicy {
 		return *c.Retry
 	}
 	return DefaultRetryPolicy()
+}
+
+// poolCap resolves the in-flight cap for ONE fillPool pass: the Width resolver's answer
+// when there is one and it is usable, else PoolSize.
+//
+// A resolver that errors, or that answers with a width below 1, is could-not-check and
+// falls back to PoolSize — the configured floor — with a Progress line naming the reason.
+// Both are deliberate:
+//
+//   - Falling back to PoolSize (not to "no cap") means an unreadable width can only ever
+//     leave the pool at its configured size. Ignorance never widens.
+//   - Falling back at all (rather than refusing the pass) means a transient failure to read
+//     a width cannot present as an empty queue. The drain keeps draining at its floor,
+//     which is what it did before widths existed.
+//
+// A width BELOW the floor is honoured, not clamped up: narrowing is the direction an
+// operator or a tripped breaker is allowed to move a pool without argument.
+func (c Config) poolCap() int {
+	if c.Width == nil {
+		return c.PoolSize
+	}
+	n, err := c.Width()
+	if err != nil {
+		c.logf("width: could-not-check (%v) — holding the pool at the configured floor %d", err, c.PoolSize)
+		return c.PoolSize
+	}
+	if n < 1 {
+		c.logf("width: resolver returned %d, which is not a pool width — holding at the configured floor %d", n, c.PoolSize)
+		return c.PoolSize
+	}
+	return n
 }
 
 // sleep waits d through the configured seam.
@@ -405,16 +469,23 @@ func Run(cfg Config, loop Loop) error {
 	}
 }
 
-// fillPool claims + dispatches eligible items until the pool is at cfg.PoolSize. Items
+// fillPool claims + dispatches eligible items until the pool is at this pass's cap. Items
 // already in flight or parked (routed-human / author-refused this session) are skipped;
 // a claim collision is skipped (owned elsewhere — structural no-double-dispatch).
+//
+// The cap is resolved ONCE, here, at the top of the pass (cfg.poolCap) rather than per item,
+// so a width that changes mid-pass cannot produce a pool sized by neither value. When the
+// cap has dropped BELOW current occupancy the first guard below returns immediately and
+// nothing is dispatched — the shrink half of the width contract, which converges the pool
+// downward by not refilling rather than by stopping anyone.
 func fillPool(cfg Config, loop Loop, inflight map[string]Handle, parked map[string]bool, tracker *livenessTracker, completions chan<- completion) error {
+	capThisPass := cfg.poolCap()
 	queue, err := loop.SelectQueue()
 	if err != nil {
 		return err
 	}
 	for _, it := range queue {
-		if len(inflight) >= cfg.PoolSize {
+		if len(inflight) >= capThisPass {
 			return nil
 		}
 		if _, busy := inflight[it.ID]; busy {
