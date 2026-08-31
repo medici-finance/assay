@@ -36,14 +36,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (48 desk-actionable of 49 total — 34 at implemented, 15 verified awaiting review)
+## Awaiting verification / review (49 desk-actionable of 50 total — 35 at implemented, 15 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (48)
+### Desk-actionable (49)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -65,6 +65,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 04 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | mistake-proofing | 01 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | quality | 03 | verified | 3000 | 4 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
+| derived-board | 05 | implemented | 2500 | 1 | — | — | — |
 | forge-gitlab | 03 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | quality | 04 | verified | 2500 | 3 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
@@ -128,7 +129,7 @@ _None._
 - 02 `Brief:` trailer — the PR→brief link, required by `deskpr`, linted on main — verified (wave 0)
 - 03 `statusgen reconcile` — derive lifecycle state from PRs + witnesses + approvals — implemented (wave 1)
 - 04 generated Briefs table + single-writer lint — todo (wave 2)
-- 05 desk skills: reference the brief, never flip the cell (both copies) — todo (wave 1)
+- 05 desk skills: reference the brief, never flip the cell (both copies) — implemented (wave 1)
 - 06 v1.0.0 cut: migration op + file, paired-versions, same-tag pin lint — todo (wave 3)
 - 07 per-repo rollout + historical backfill as a drift-report PR — todo (wave 4)
 
