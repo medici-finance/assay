@@ -1,0 +1,51 @@
+# Changelog
+
+All notable changes to this repository — the canonical, releasing home for the
+shared Assay tools (statusgen, desk-tools, drainloop) and the `assay` plugin —
+are recorded here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this repo versions the
+whole umbrella with a plain `vX.Y.Z` tag (see `.github/workflows/release.yml`),
+so one section covers every shipped tool at that version.
+
+Every notable change adds one human-legible highlight line under `## Unreleased`
+BEFORE it merges (the `changelog-check` CI leg enforces this; a genuinely
+non-notable PR carries the `changelog:skip` label). At release time the release
+workflow lifts `## Unreleased` into the published release notes and rolls it down
+under a dated `## vX.Y.Z — <date>` heading — descriptive highlights, never a raw
+commit list.
+
+## Unreleased
+
+### Added
+- CI grows five control legs (#255): a forge-surface control sweep, a leak-sweep
+  pattern sweep, per-plugin shell suites, a gating skillslint leg, and a
+  QUALITY.md render check — each exercising a control that `go build`/`go vet`
+  alone would leave un-run.
+- A quality trend view: churn-vs-durable, hotspot and brittleness reporting land
+  behind a single-writer `QUALITY.md` (quality/01–06: #245–#248, #252, #254).
+- A per-loop pool-width knob for the desk loops (#226).
+- A deterministic verdict runner (#242).
+- Roster-from-deployment resolution (#256).
+- A PR-body self-containment scan (#227).
+- `inbox --flow` / `--walk` / `--html` views (#225, #233).
+- A two-role superseded lane for `deskclose` (#232).
+
+### Fixed
+- The board archives cleanly: statusgen now resolves streams under
+  `docs/archive/` as known depends / unblocks / affects targets (#259), so
+  archiving a finished stream no longer reds valid references from still-active
+  work.
+- The verify queue stops lying: `verifyloop` defers `blocked-until` briefs,
+  buckets online-lane and human-gated work out of DISPATCH, and reads
+  qualifier-carrying `## Verify (…)` headings (#251, #253, #257).
+- Board regeneration no longer races on concurrent pushes: regen-push is
+  serialized (#221).
+
+### Changed
+- `pr-shepherd` is de-housed into the `assay` plugin so adopters get it too
+  (#234).
+- GitLab forge support closes out with a forge tier matrix (#222, #230, #231).
+
+### Consumer action
+- Pin `statusgen` at ≥ this release to lint boards that reference archived
+  streams under `docs/archive/` (#259).

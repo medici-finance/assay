@@ -1,0 +1,131 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index aa48a40..b2a80d3 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -699,6 +699,48 @@ jobs:
+           fi
+           echo "python3 present: $(python3 --version 2>&1)"
+ 
++      # CHANGELOG discipline (driver direction 2026-08-31: releases lead with
++      # DESCRIPTIVE highlights, not a commit list). Extract the `## Unreleased`
++      # section from CHANGELOG.md and REFUSE to cut when it is empty — a release
++      # with no human-legible highlights is exactly what this convention exists to
++      # prevent. Runs on the dry_run path too: dry_run stops before the tag, but
++      # an empty-changelog refusal must surface in a dry run just as in a real cut.
++      # Placed AFTER the Preflight step so python3 is already proven present.
++      - name: CHANGELOG discipline — extract and require Unreleased highlights
++        id: changelog
++        run: |
++          set -euo pipefail
++          if [ ! -f CHANGELOG.md ]; then
++            echo "::error::CHANGELOG.md is missing — every release lifts its highlights from the '## Unreleased' section (driver direction 2026-08-31)."
++            exit 1
++          fi
++          notes="${RUNNER_TEMP}/unreleased.md"
++          python3 - CHANGELOG.md > "$notes" <<'PY'
++          import sys
++          lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
++          out, capturing = [], False
++          for ln in lines:
++              if ln.strip().lower() == "## unreleased":
++                  capturing = True
++                  continue
++              if capturing and ln.startswith("## "):
++                  break
++              if capturing:
++                  out.append(ln)
++          while out and not out[0].strip():
++              out.pop(0)
++          while out and not out[-1].strip():
++              out.pop()
++          sys.stdout.write("\n".join(out))
++          PY
++          if ! grep -qE '\S' "$notes"; then
++            echo "::error::CHANGELOG.md '## Unreleased' is empty — refusing to cut a release with no descriptive highlights. Add highlight lines under '## Unreleased' first (driver direction 2026-08-31)."
++            exit 1
++          fi
++          echo "Unreleased highlights to lift into the release body:"
++          cat "$notes"
++          echo "notes_path=$notes" >> "$GITHUB_OUTPUT"
++
+       - name: Install Go
+         env:
+           # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl. Pinned
+@@ -873,6 +915,9 @@ jobs:
+           # DESK_IMAGE is the workflow-level literal; the tag defaults to the
+           # currently published image (v0.1.0) and is overridable on dispatch.
+           DESK_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.desk_image_tag || 'v0.1.0' }}
++          # CHANGELOG discipline — the extracted `## Unreleased` highlights, lifted
++          # ABOVE the asset-inventory boilerplate in the release body below.
++          NOTES_PATH: ${{ steps.changelog.outputs.notes_path }}
+         run: |
+           set -euo pipefail
+ 
+@@ -905,7 +950,13 @@ jobs:
+             # The notes NAME the desk-tools image ref (built separately by
+             # docker-publish.yml) as an artifact line alongside the binaries.
+             desk_image_ref="${DESK_IMAGE}:${DESK_IMAGE_TAG}"
+-            body=$(RELEASE_TAG="$RELEASE_TAG" DESK_IMAGE_REF="$desk_image_ref" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; img=os.environ["DESK_IMAGE_REF"]; notes="assay release "+tag+" - statusgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * desk-tools-<platform>.tar.gz\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\ndesk-tools image (built separately by docker-publish.yml, daily-immutable-tag; pin the ref in .assay-versions):\n  * "+img+"\n\nSee checksums.txt for every asset sha256."; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
++            # CHANGELOG discipline — the release body LEADS with the descriptive
++            # `## Unreleased` highlights (extracted by the CHANGELOG-discipline
++            # step above, and required non-empty there), then the asset-inventory
++            # boilerplate below a horizontal rule. Highlights first is the whole
++            # point of the driver direction (2026-08-31): a reader sees what
++            # changed before the pin table.
++            body=$(RELEASE_TAG="$RELEASE_TAG" DESK_IMAGE_REF="$desk_image_ref" NOTES_PATH="$NOTES_PATH" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; img=os.environ["DESK_IMAGE_REF"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * desk-tools-<platform>.tar.gz\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\ndesk-tools image (built separately by docker-publish.yml, daily-immutable-tag; pin the ref in .assay-versions):\n  * "+img+"\n\nSee checksums.txt for every asset sha256."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
+             status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' -X POST "${auth[@]}" \
+               -d "$body" "${api}/releases")
+             if [ "$status" != "201" ]; then
+@@ -970,6 +1021,52 @@ jobs:
+           fi
+           echo "Published ${RELEASE_TAG} with statusgen + desk-tools binaries + checksums.txt (desk-tools image: ${DESK_IMAGE}:${DESK_IMAGE_TAG})."
+ 
++      # CHANGELOG discipline — in the SAME tagged flow, roll the just-released
++      # highlights out of `## Unreleased` and under a dated `## vX.Y.Z — <date>`
++      # heading, leaving Unreleased empty so the next cycle starts clean (and the
++      # extract-and-require step above refuses the next release until new
++      # highlights are added). Dispatch + non-dry-run only; committed to the
++      # default branch with the same per-command header-auth the tag push uses
++      # (persist-credentials was false during the build, so no token sits in
++      # .git/config). A non-fast-forward push here is a loud failure, never a
++      # force — the release bytes are already published, so a failed roll is a
++      # follow-up commit, not a lost release.
++      - name: CHANGELOG discipline — roll Unreleased under the released version
++        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
++        env:
++          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
++          GH_TOKEN: ${{ github.token }}
++          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
++        run: |
++          set -euo pipefail
++          day=$(date -u +%Y-%m-%d)
++          python3 - CHANGELOG.md "$RELEASE_TAG" "$day" <<'PY'
++          import sys
++          path, tag, day = sys.argv[1], sys.argv[2], sys.argv[3]
++          lines = open(path, encoding="utf-8").read().splitlines()
++          out, done = [], False
++          for ln in lines:
++              out.append(ln)
++              if not done and ln.strip().lower() == "## unreleased":
++                  # Leave Unreleased empty; insert a fresh dated section after it.
++                  out.append("")
++                  out.append(f"## {tag} — {day}")
++                  done = True
++          open(path, "w", encoding="utf-8").write("\n".join(out) + "\n")
++          PY
++          if git diff --quiet -- CHANGELOG.md; then
++            echo "CHANGELOG.md unchanged — nothing to roll (no '## Unreleased' heading?)."
++            exit 0
++          fi
++          git config user.name  "github-actions[bot]"
++          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
++          git add CHANGELOG.md
++          git commit -m "docs(changelog): roll Unreleased under ${RELEASE_TAG}"
++          basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
++          git -c http.extraheader="AUTHORIZATION: basic ${basic}" \
++            push origin "HEAD:${DEFAULT_BRANCH}"
++          echo "Rolled CHANGELOG '## Unreleased' under '## ${RELEASE_TAG}' and pushed to ${DEFAULT_BRANCH}."
++
+   # ───────────────────────────────────────────────────────────────────────────
+   # CONTAINER CHANNEL — the assay-harness image. ONE umbrella run emits both
+   # shapes: the `release` job above cuts the binaries + checksums.txt, and THIS
