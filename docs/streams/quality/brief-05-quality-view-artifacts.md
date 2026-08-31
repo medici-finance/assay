@@ -110,6 +110,24 @@ facts:
      (command, exit code, output line(s) or hash, date, runner). "verified" in the stream
      README requires this section filled by someone who did NOT implement. -->
 
+Independently verified 2026-08-30 by opus-4.8[1m]-verifier (verify-desk, non-implementer) against merged head 5f01bad4 (deliverable #252 @ 1ed8d97). Offline (KUBECONFIG=/dev/null). VERIFY: PASS 8/8 as-written; zero could-not-check. Deliverables present: qualgen/artifacts.go, report.go, their tests, qualgen/testdata/report/.
+
+| # | Command | Exit | Output | Date · Runner |
+|---|---------|------|--------|---------------|
+| 1 | cd qualgen && go build ./... && go vet ./... | 0 | both clean | 2026-08-30 · opus-4.8[1m]-verifier |
+| 2 | go test -run Artifacts; -run Report | 0 | ok qualgen (both) | 2026-08-30 · opus-4.8[1m]-verifier |
+| 3 | go test -run TestReport_RendersKnownMetric -v | 0 | PASS — render carries "Copy/paste ratio \| 0.42"; superseded 0.99 absent (real latest-snapshot dereference) | 2026-08-30 · opus-4.8[1m]-verifier |
+| 4 | go test -run TestReport_IndustryBesideLocal -v | 0 | PASS — "0.42 \| 0.1"; header "computed per GitClear's published definitions; not a GitClear-equivalence claim"; GitClear-equivalent absent | 2026-08-30 · opus-4.8[1m]-verifier |
+| 5 | go test -run TestReport_LocalRunDiscards -v + LIVE: qualgen report --out fix --write (env unset) | 0 (test); 2 (live) | PASS — live --write with QUALGEN_QUALITY_WRITER unset → REFUSED, exit 2, QUALITY.md untouched; env=ci → writes (exit 0). CI is the only writer | 2026-08-30 · opus-4.8[1m]-verifier |
+| 6 | go test -run TestArtifacts_AppendOnly -v | 0 | PASS — record count strictly increases, prior records unchanged | 2026-08-30 · opus-4.8[1m]-verifier |
+| 7 | go test -run TestArtifacts_ThreeStateField -v | 0 | PASS — could-not-measure renders "not measured (...)", never 0 | 2026-08-30 · opus-4.8[1m]-verifier |
+| 8 | go test -run TestArtifacts_SchemaDeclaresDefectsAndAttribution -v | 0 | PASS — defects.jsonl + attribution/ shapes declared + round-trip | 2026-08-30 · opus-4.8[1m]-verifier |
+
+Single-writer guard (the load-bearing row) confirmed real + fail-closed: local --write refuses with exit 2 and leaves the committed QUALITY.md untouched; the default local run (no --write) renders to stdout and writes nothing. Known collateral #223 (TestTopologyDriftRegistry) NOT triggered — rows are qualgen-scoped, no repo-root go test.
+
+RISK-VALUE: DERIVED — ciWriterToken = "ci" gated by ciWriterEnv = "QUALGEN_QUALITY_WRITER" @ qualgen/report.go:39 (check :46-48, :86) — CORRECT because it fails closed: unset env != "ci" → local --write REFUSED (proven live: exit 2, committed view untouched); the env name is namespaced so no common shell var collides; the compare is exact-equality (no prefix opens the gate). This is the STATUS.md single-writer discipline enforced by a guard, not a filename convention. (Reversible display knobs — top-10 hotspot cap, bus-factor-of-one <=1, attribution schema pin — rank last, no derivation owed.)
+gate: model, all risk no, irreversible: no → desk flips implemented→verified; verified→done stays CI's on the reviewer approval.
+
 ## Review
 Gate: model (all four risk answers no — repo-agnostic OSS artifact schema + a rendered view;
 single-writer discipline is enforced in code and proven by a discard test; no product surface, no
