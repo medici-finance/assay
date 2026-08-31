@@ -18,6 +18,14 @@ commit list.
 
 ### Added
 - The changelog discipline is ACTIVE: the changelog-check PR leg gates merges and release.yml refuses an empty Unreleased section, lifting highlights into the release body (#266 activation, #269).
+
+### Fixed
+
+### Changed
+
+## v0.22.0 — 2026-08-31
+
+### Added
 - CI grows five control legs (#255): a forge-surface control sweep, a leak-sweep
   pattern sweep, per-plugin shell suites, a gating skillslint leg, and a
   QUALITY.md render check — each exercising a control that `go build`/`go vet`
@@ -30,6 +38,12 @@ commit list.
 - A PR-body self-containment scan (#227).
 - `inbox --flow` / `--walk` / `--html` views (#225, #233).
 - A two-role superseded lane for `deskclose` (#232).
+- B-SZZ inducing-commit tracing plus derived defect metrics land in `qualgen`
+  (#261).
+- Spec-routing §8 spec-lifecycle enforcement: a linter and an authoring-owed
+  emitter (#267).
+- The CHANGELOG discipline itself — a per-notable-PR `## Unreleased` highlight
+  line, with the release-time roll and its CI enforcement staged (#266).
 
 ### Fixed
 - The board archives cleanly: statusgen now resolves streams under
@@ -41,6 +55,13 @@ commit list.
   qualifier-carrying `## Verify (…)` headings (#251, #253, #257).
 - Board regeneration no longer races on concurrent pushes: regen-push is
   serialized (#221).
+- A latent drift-registry test red is fixed (#262): `statusgen`'s
+  `blockingIssueLabels` is registered as a declared exception, greening the
+  release-only (desk-tools) test leg.
+- The archive fallback extends to the markdown link/backtick check (#264), so
+  references into `docs/archive/` stay green there too.
+- `muhar -j 0` auto-parallelism is capped at 2 mutants in flight (#268) — the
+  release test leg is memory-bounded by construction; every mutation still runs.
 
 ### Changed
 - `pr-shepherd` is de-housed into the `assay` plugin so adopters get it too
