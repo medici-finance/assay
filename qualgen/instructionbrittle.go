@@ -137,7 +137,13 @@ func RunInstructionBrittleness(repoPath string, store *Store, cfg InstructionBri
 		}, nil
 	}
 
-	r, err := git.PlainOpen(repoPath)
+	// EnableDotGitCommonDir: the miner drives this pass over the repo it just
+	// mined, which in the desk's operating model is a linked worktree (a `.git`
+	// file pointing at the common dir, per mine.go's own PlainOpenWithOptions).
+	// Plain PlainOpen does not follow the worktree's commondir, so r.Head() would
+	// fail to resolve the branch ref living in the common dir — the same failure
+	// mine.go already guards against.
+	r, err := git.PlainOpenWithOptions(repoPath, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
 	if err != nil {
 		return BrittleReport{}, fmt.Errorf("qualgen: instructionbrittle: open repo: %w", err)
 	}
@@ -172,6 +178,134 @@ func RunInstructionBrittleness(repoPath string, store *Store, cfg InstructionBri
 	}
 
 	return BrittleReport{Configured: Measured(true), Trend: trend, Staleness: staleness}, nil
+}
+
+// ---------------------------------------------------------------------------
+// M1 emission — the instruction-brittleness family on metrics.jsonl
+// ---------------------------------------------------------------------------
+//
+// brief-04 task 4 asks this pass to emit BOTH signals "as M1 aggregates through
+// the skeleton's aggregation path". The pass computes them in-process
+// (BrittleReport); this is the append-only emission the miner drives so the
+// numbers land in metrics.jsonl beside the hotspot / ownership / coupling /
+// taxonomy families and the quality/05 report view can render them instead of a
+// placeholder. Each `mine` run appends a fresh full snapshot (extend, never
+// rewrite), so a trend consumer reads the most recent snapshot per family.
+
+// Metric-name discriminators for the instruction-brittleness family — the
+// on-disk contract the report reader keys on (mirrors "hotspot" / "ownership").
+const (
+	MetricReferenceValidity = "reference_validity"
+	MetricDocCodeStaleness  = "doc_code_staleness"
+)
+
+// ReferenceValidityRecord is one history-window point of the trended
+// instruction reference-validity curve (spec §4.6), appended to metrics.jsonl.
+// A decaying Validity across windows is the context-rot signal. The unconfigured
+// / could-not-measure end-to-end case emits ONE marker record with an empty
+// AtSHA and a could-not-measure Validity carrying the reason (three-state:
+// never a silent zero, fact 1) — the report renders it as unmeasured.
+type ReferenceValidityRecord struct {
+	Metric      string    `json:"metric"` // "reference_validity"
+	WindowIndex int       `json:"window_index"`
+	AtSHA       string    `json:"at_sha,omitempty"`
+	AtWhen      time.Time `json:"at_when,omitempty"`
+
+	Live            int `json:"live"`
+	Dead            int `json:"dead"`
+	CouldNotMeasure int `json:"could_not_measure"`
+
+	// Validity is the three-state reference-validity ratio live/(live+dead) over
+	// the CLASSIFIABLE references in this window: measured when there were
+	// classifiable refs, measured-zero when some were classifiable but none live,
+	// could-not-measure when the window had no classifiable reference at all (or
+	// the instruction-doc set was unconfigured).
+	Validity Measure[float64] `json:"validity"`
+	MinedAt  time.Time        `json:"mined_at"`
+}
+
+// DocCodeStalenessRecord is one doc↔code co-change staleness pair (spec §4.6,
+// §4.5 applied doc→code), appended to metrics.jsonl. Stale is set when the coupled
+// code moved CodeOnlyChanges times without the doc following it, above the
+// configured threshold.
+type DocCodeStalenessRecord struct {
+	Metric          string    `json:"metric"` // "doc_code_staleness"
+	DocPath         string    `json:"doc_path"`
+	CodePath        string    `json:"code_path"`
+	EstablishedAt   string    `json:"established_at"`
+	CodeOnlyChanges int       `json:"code_only_changes"`
+	Stale           bool      `json:"stale"`
+	MinedAt         time.Time `json:"mined_at"`
+}
+
+// referenceValidityRatio scores one window's live/(live+dead) over classifiable
+// references, three-state: could-not-measure when the window had no classifiable
+// reference to score from (only could-not-classify tokens), measured-zero when
+// some were classifiable but none live, measured otherwise — never a silent zero.
+func referenceValidityRatio(w WindowResult) Measure[float64] {
+	denom := w.Live + w.Dead
+	if denom == 0 {
+		return CouldNotMeasure[float64]("no classifiable reference in this window to score reference-validity from")
+	}
+	if w.Live == 0 {
+		return MeasuredZero[float64]()
+	}
+	return Measured(float64(w.Live) / float64(denom))
+}
+
+// appendInstructionBrittleness runs the instruction-brittleness pass under cfg
+// over the freshly-mined repoPath and appends its reference-validity trend and
+// doc↔code staleness records to the metrics table as one fresh snapshot. An
+// unconfigured instruction-doc set emits a single could-not-measure
+// reference-validity marker (fact 1: could-not-measure, never a silent zero).
+// READ-ONLY against the target repo; the only writes land under the tracking root.
+func appendInstructionBrittleness(store *Store, repoPath string, cfg InstructionBrittleConfig, minedAt time.Time) error {
+	rep, err := RunInstructionBrittleness(repoPath, store, cfg)
+	if err != nil {
+		return err
+	}
+	if rep.Configured.State != StateMeasured || !rep.Configured.Value {
+		// Unconfigured / could-not-measure end-to-end: one marker record so the
+		// report renders "not measured (<reason>)", never a fabricated zero.
+		reason := rep.Configured.Reason
+		if reason == "" {
+			reason = "instruction-brittleness pass reported no measured result"
+		}
+		return store.Append(KindMetric, ReferenceValidityRecord{
+			Metric:   MetricReferenceValidity,
+			Validity: CouldNotMeasure[float64](reason),
+			MinedAt:  minedAt,
+		})
+	}
+	for _, w := range rep.Trend {
+		if err := store.Append(KindMetric, ReferenceValidityRecord{
+			Metric:          MetricReferenceValidity,
+			WindowIndex:     w.Index,
+			AtSHA:           w.AtSHA,
+			AtWhen:          w.AtWhen,
+			Live:            w.Live,
+			Dead:            w.Dead,
+			CouldNotMeasure: w.CouldNotMeasure,
+			Validity:        referenceValidityRatio(w),
+			MinedAt:         minedAt,
+		}); err != nil {
+			return fmt.Errorf("append reference-validity metric: %w", err)
+		}
+	}
+	for _, s := range rep.Staleness {
+		if err := store.Append(KindMetric, DocCodeStalenessRecord{
+			Metric:          MetricDocCodeStaleness,
+			DocPath:         s.Pair.DocPath,
+			CodePath:        s.Pair.CodePath,
+			EstablishedAt:   s.Pair.EstablishedAt,
+			CodeOnlyChanges: s.CodeOnlyChanges,
+			Stale:           s.Stale,
+			MinedAt:         minedAt,
+		}); err != nil {
+			return fmt.Errorf("append doc-code-staleness metric: %w", err)
+		}
+	}
+	return nil
 }
 
 // trendedReferenceValidity partitions commits into chronological windows and

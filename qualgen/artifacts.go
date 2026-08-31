@@ -331,6 +331,18 @@ func (s *Store) ReadOwnership() ([]OwnershipRecord, error) {
 	return readFamily[OwnershipRecord](s, map[string]bool{"ownership": true})
 }
 
+// ReadReferenceValidity reads the instruction reference-validity trend family
+// (spec §4.6, quality/04) — one record per history window, plus the single
+// could-not-measure marker an unconfigured mine emits.
+func (s *Store) ReadReferenceValidity() ([]ReferenceValidityRecord, error) {
+	return readFamily[ReferenceValidityRecord](s, map[string]bool{MetricReferenceValidity: true})
+}
+
+// ReadDocCodeStaleness reads the doc↔code co-change staleness family (spec §4.6).
+func (s *Store) ReadDocCodeStaleness() ([]DocCodeStalenessRecord, error) {
+	return readFamily[DocCodeStalenessRecord](s, map[string]bool{MetricDocCodeStaleness: true})
+}
+
 // streamRawJSONL streams a JSONL file's non-empty lines as raw bytes, one call
 // to fn per line, with the same large-record scanner budget streamJSONL uses. A
 // missing file streams nothing (an unmined root is empty, not an error). It is
