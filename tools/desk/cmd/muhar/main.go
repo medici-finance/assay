@@ -6,10 +6,15 @@
 //
 // -j is how many mutations to have in flight at once. The default, 1, runs the
 // sweep sequentially in place — the historical behaviour. -j 0 sizes the pool to
-// the machine's CPU count. With -j > 1 each worker gets its own COPY of the
-// spec's root, because a sweep whose workers shared a tree would be editing each
-// other's source and every verdict would be a coin flip. The verdicts, their
-// order, and the report text are unchanged by -j; only the wall time is.
+// the machine's CPU count, CAPPED at maxAutoJobs. With -j > 1 each worker gets
+// its own full COPY of the spec's root in memory, because a sweep whose workers
+// shared a tree would be editing each other's source and every verdict would be
+// a coin flip — but that means peak RSS scales with mutations-in-flight, not the
+// core count, so an uncapped "one per CPU" on a many-core CI box drove peak RSS
+// past the runner's memory ceiling and OOMKilled the sweep; the cap bounds peak
+// RSS by construction. The verdicts, their order, and the report text are
+// unchanged by -j — EVERY mutation in the spec still runs, only fewer at a time;
+// only the wall time changes.
 //
 // -shard i/n splits ONE spec across n independent invocations (for CI legs on
 // separate machines): shard i runs only the mutations at spec index ≡ i (mod n),
@@ -108,6 +113,36 @@ func shardSelect(ms []Mutation, i, n int) []Mutation {
 	return out
 }
 
+// maxAutoJobs bounds the pool that `-j 0` ("one per CPU") sizes itself to. Each
+// in-flight muhar worker holds its OWN full copy of the module tree in memory
+// (see Harness.Workspace / copyTree), so peak RSS scales with mutations-in-flight
+// rather than with the core count. On a many-core CI runner an uncapped
+// runtime.NumCPU() put enough tree-copies in memory at once to exceed the pool's
+// memory ceiling and OOMKill the sweep — doubling the memory limit only doubled
+// survival, the signature of unbounded growth, not a spike. Capping the
+// auto-sized pool bounds peak RSS by construction. The cap governs ONLY how many
+// mutations run at once; it never changes WHICH mutations run — Run() still
+// sweeps every mutation in the spec (harness.go), just <= maxAutoJobs at a time.
+const maxAutoJobs = 2
+
+// resolveJobs maps the -j flag value to the number of mutations to have in
+// flight, given the machine's CPU count. -j 0 means "size to the machine", which
+// is CAPPED at maxAutoJobs so an auto-sized sweep on a many-core box cannot grow
+// peak RSS without bound; on a box with fewer CPUs than the cap the cap is a
+// ceiling, not a floor, so it never inflates a small box. Any explicit -j N
+// (including the local default of 1) passes through verbatim — a caller that
+// asks for N in flight is making its own memory/time trade-off, and a negative N
+// falls straight through to main's `-j must be >= 0` rejection.
+func resolveJobs(requested, numCPU int) int {
+	if requested != 0 {
+		return requested
+	}
+	if numCPU < maxAutoJobs {
+		return numCPU
+	}
+	return maxAutoJobs
+}
+
 // muhar does NOT call deskkit.Guard(): it is a local diagnostic that makes no
 // outward writes (no GitHub, no shared-state mutation — it edits a source file
 // and restores it within the same run), so the kill switch and outward-write
@@ -115,7 +150,7 @@ func shardSelect(ms []Mutation, i, n int) []Mutation {
 // writeguard; halting local mutation testing serves no safety purpose.
 func main() {
 	specPath := flag.String("spec", "", "path to the mutation spec JSON")
-	jobs := flag.Int("j", 1, "mutations in flight at once (1 = sequential, in place; 0 = one per CPU)")
+	jobs := flag.Int("j", 1, "mutations in flight at once (1 = sequential, in place; 0 = one per CPU, capped at 2 to bound peak memory)")
 	shard := flag.String("shard", "", `run only this invocation's share of the spec: "i/n" (0-based shard i of n; the n shards partition the spec's mutations). Baseline + control still run in full per shard.`)
 	flag.Parse()
 
@@ -160,10 +195,7 @@ func main() {
 			i, n, len(s.Mutations), total, i, n)
 	}
 
-	n := *jobs
-	if n == 0 {
-		n = runtime.NumCPU()
-	}
+	n := resolveJobs(*jobs, runtime.NumCPU())
 	if n < 1 {
 		fmt.Fprintln(os.Stderr, "muhar: -j must be >= 0")
 		os.Exit(1)
