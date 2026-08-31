@@ -356,6 +356,41 @@ func nestedRootBase(root, f string) string {
 	}
 }
 
+// archivedStreamFallbackExists reports whether a markdown link or backticked-path
+// target that resolves under docs/streams/<stream>/… but does NOT exist there
+// instead exists at the archived location docs/archive/<stream>/….
+//
+// WHY IT EXISTS. Archiving a whole, completed stream (streamarchive.go) moves its
+// files from docs/streams/<stream>/ to docs/archive/<stream>/. Every valid inbound
+// markdown link or backticked path into that completed work — authored while the
+// stream was still active — otherwise regresses to a hard "dead link" /
+// "backticked path does not exist" PROBLEM the instant the referenced stream is
+// archived. That is the SAME regression #259 removed for an inbound
+// depends:/unblocks:/affects: EDGE by teaching the edge-resolution universe about
+// docs/archive/ (loadArchivedStreams); this is its link/backtick parallel — the
+// path check learns the same relocation the edge check already knows.
+//
+// THE BOUNDARY IS PRESERVED. This only ADDS the archived location as a resolution
+// fallback and suppresses nothing: a `resolved` path not under docs/streams/
+// returns false unchanged, and a target present under NEITHER docs/streams/<s>/
+// nor docs/archive/<s>/ still resolves against no base and is still reported (the
+// genuinely-broken link is still a PROBLEM). The relocation only swaps the
+// docs/streams/ prefix for docs/archive/, so the candidate it probes stays inside
+// root and cannot point at a sibling repo or escape the checkout.
+func archivedStreamFallbackExists(root, resolved string) bool {
+	rel, err := filepath.Rel(root, resolved)
+	if err != nil {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	const streamsPrefix = "docs/streams/"
+	if !strings.HasPrefix(rel, streamsPrefix) {
+		return false
+	}
+	archivedRel := "docs/archive/" + strings.TrimPrefix(rel, streamsPrefix)
+	return fileExists(filepath.Join(root, filepath.FromSlash(archivedRel)))
+}
+
 func linkProblems(root string, files []string) []string {
 	var problems []string
 	for _, f := range files {
@@ -385,7 +420,12 @@ func linkProblems(root string, files []string) []string {
 			if !withinRoot(root, resolved) {
 				continue
 			}
-			if !fileExists(resolved) {
+			// Archived-stream fallback: a link into docs/streams/<s>/… whose
+			// stream has since been archived (docs/archive/<s>/…) still resolves —
+			// the link/backtick parallel of #259's edge-resolver fix. Adds a
+			// resolution base; a genuinely-dead link resolves against neither and
+			// is still reported.
+			if !fileExists(resolved) && !archivedStreamFallbackExists(root, resolved) {
 				problems = append(problems, fmt.Sprintf("%s: dead link %q", rel, m[1]))
 			}
 		}
@@ -431,6 +471,14 @@ func linkProblems(root string, files []string) []string {
 				if nb := nestedRootBase(root, f); nb != "" {
 					exists = fileExists(filepath.Join(nb, target))
 				}
+			}
+			// Archived-stream fallback: a backticked docs/streams/<s>/… path whose
+			// stream has since been archived (docs/archive/<s>/…) still resolves —
+			// the link/backtick parallel of #259's edge-resolver fix. Adds a
+			// resolution base; a genuinely-missing deliverable resolves against
+			// none of the bases and is still reported.
+			if !exists {
+				exists = archivedStreamFallbackExists(root, filepath.Join(root, target))
 			}
 			if !exists {
 				problems = append(problems, fmt.Sprintf("%s: backticked path %q does not exist — for a deliverable this brief will create, mark it `%s` (planned); for a sibling-repo file, prefix it ../<repo>/", rel, target, target))
