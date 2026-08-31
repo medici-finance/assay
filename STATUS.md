@@ -11,16 +11,16 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-30 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-30 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/5 | 2026-08-30 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-30 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-08-30 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-08-30 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-30 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-30 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 0/16 | 2026-08-30 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/13 | 2026-08-30 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-08-31 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-08-31 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/6 | 2026-08-31 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-08-31 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-08-31 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-08-31 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-31 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-31 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 0/16 | 2026-08-31 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/13 | 2026-08-31 |  |
 
 ## Next up
 
@@ -29,6 +29,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | quality | 07 — M2 B-SZZ inducing trace + derived defect metrics [exec:strong] | 2 | 4500 |
 | derived-board | 05 — desk skills: reference the brief, never flip the cell (both copies) | 1 | 2500 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
+| desk-tools | 06 — Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) [exec:strong] | 1 | 1000 |
 | quality | 09 — `check <files>` mode — brittleness screen for a named file set | 2 | 1000 |
 | quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
 
@@ -142,13 +143,14 @@ _None._
 - 06 Kubernetes manifests — todo (wave 3)
 - 07 multi-desk control layer — tmux/equivalents, macOS + win32 — todo (wave 4)
 
-### desk-tools (5 open)
+### desk-tools (6 open)
 
 - 01 Binary channel — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer — implemented (wave 1)
 - 03 Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN — implemented (wave 1)
 - 04 Deterministic runner — execute rows, batch, sign, file verdict issues — implemented (wave 1)
 - 05 Escape-valve `Decide()` primitive in deskkit — verified (wave 1)
+- 06 Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) — todo (wave 1)
 
 ### desktools-go-git (8 open)
 
@@ -247,4 +249,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**10** streams (**10** active, **0** paused) · **0/87** briefs done · completed initiatives: see `docs/archive/`
+**10** streams (**10** active, **0** paused) · **0/88** briefs done · completed initiatives: see `docs/archive/`

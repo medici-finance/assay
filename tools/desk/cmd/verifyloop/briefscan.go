@@ -230,6 +230,106 @@ func resolveBrief(root, streamsDir, dir, num string) (relPath string, fm briefFr
 		rel = path
 	}
 	fm = parseFrontmatter(string(raw))
+	deriveContentSignals(&fm, extractVerify(string(raw)))
 	evidenceEmpty = !evidenceHasContent(extractEvidence(string(raw)))
 	return rel, fm, evidenceEmpty
+}
+
+// deriveContentSignals fills the two queue-truthfulness markers a real brief usually EXPRESSES in
+// its Verify rows rather than declaring in frontmatter — an online/cluster verify lane and a
+// longitudinal observation/accrual window. An explicit frontmatter marker always wins: derivation
+// only runs when the field is empty, so an author's stated condition/lane (and its exact reason
+// text) is never overwritten. The signals are read ONLY from the brief's own `## Verify` section,
+// never invented, and each keyword set is deliberately narrow so a genuinely-actionable brief is
+// not falsely bucketed (false-deferring an actionable brief is a worse harm than the over-report
+// this fixes).
+func deriveContentSignals(fm *briefFrontmatter, verifyText string) {
+	if verifyText == "" {
+		return
+	}
+	if fm.VerifyLane == "" {
+		if lane := deriveOnlineLane(verifyText); lane != "" {
+			fm.VerifyLane = lane
+		}
+	}
+	if fm.BlockedUntil == "" {
+		if reason := deriveBlockedUntil(verifyText); reason != "" {
+			fm.BlockedUntil = reason
+		}
+	}
+}
+
+// onlineLanePhrases are the substrings in a Verify row that mean the row's substrate is a live
+// cluster / online / live-session lane, not this repo's offline tree — an offline verifier run
+// cannot produce the verdict. Each maps to a canonical lane value in onlineLaneValues so the
+// existing classifyItem online-lane path fires on the derived value exactly as on an authored one.
+var onlineLanePhrases = []struct {
+	phrase string
+	lane   string
+}{
+	{"kubectl", "cluster"},
+	{"live cluster", "cluster"},
+	{"against the cluster", "cluster"},
+	{"external cluster", "cluster"},
+	{"online lane", "online"},
+	{"online verify lane", "online"},
+	{"pod verify lane", "online"},
+	{"pod/online verify lane", "online"},
+	// A Verify row (or its Expect) that names an offline→online hand-off — the verdict is
+	// produced by an external/online verifier, not this offline run. These are compound,
+	// domain-specific phrases (not a bare "hand-off") so an ordinary hand-off mention does not
+	// false-bucket an actionable brief.
+	{"console-external-verify", "online"},
+	{"external-verify", "online"},
+	{"external hand-off", "online"},
+	{"hand-off to the online", "online"},
+	{"hand-off to the pod", "online"},
+	{"offline→pod", "online"},
+	{"offline->pod", "online"},
+	{"live session", "live-session"},
+	{"live-session", "live-session"},
+}
+
+// deriveOnlineLane returns the canonical lane if the Verify text names an online/cluster substrate,
+// else "". Case-insensitive.
+func deriveOnlineLane(verifyText string) string {
+	lc := strings.ToLower(verifyText)
+	for _, p := range onlineLanePhrases {
+		if strings.Contains(lc, p.phrase) {
+			return p.lane
+		}
+	}
+	return ""
+}
+
+// longitudinalPhrases are the substrings in a Verify row's exit criteria that mean the brief can
+// only pass once a calendar/accrual window elapses — re-verifying it now only reproduces the same
+// "window not accrued" non-verdict. Kept narrow (an explicit "<qualifier> window" or accrual
+// phrase) so a brief that merely mentions a window in some other sense is not falsely deferred.
+var longitudinalPhrases = []string{
+	"shadow window",
+	"shadow clock",
+	"dated capture trees",
+	"observation window",
+	"accrual window",
+	"window accrues",
+	"window has accrued",
+	"window has elapsed",
+	"window elapses",
+	"window elapsed",
+	"window not yet elapsed",
+	"accrual period",
+	"observation period",
+}
+
+// deriveBlockedUntil returns a human-facing defer reason if the Verify text's exit criteria are a
+// longitudinal observation/accrual window, else "". Case-insensitive.
+func deriveBlockedUntil(verifyText string) string {
+	lc := strings.ToLower(verifyText)
+	for _, p := range longitudinalPhrases {
+		if strings.Contains(lc, p) {
+			return "longitudinal: Verify exit criteria depend on an observation/accrual window (derived from the brief's Verify rows) — add an explicit `blocked-until:` marker to state the date/condition"
+		}
+	}
+	return ""
 }
