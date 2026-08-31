@@ -47,7 +47,7 @@ on:
 # without this they run concurrently and all but the last lose the `git push`
 # race against a moving main ("! [rejected] main -> main (fetch first)"), so main
 # shows red runs indistinguishable from a real regen failure. This is the fix
-# proven on the statusgen board CI (assay#221 / #216). cancel-in-progress is
+# proven on the statusgen board CI (#221 / #216). cancel-in-progress is
 # deliberately FALSE: queue, never cancel — a cancelled regen throws away that
 # push's view rather than merely delaying it.
 concurrency:
@@ -149,7 +149,7 @@ jobs:
           # workflow does not watch). A bare `git push` loses that race and
           # reddens main; here a rejection re-syncs to the new head and
           # REGENERATES against it. (Same shape as the statusgen board regen,
-          # assay#221.)
+          # #221.)
           #
           # Never `git pull --rebase`: QUALITY.md is a generated artifact, so a
           # rebase conflict in it is meaningless — regeneration against the new
