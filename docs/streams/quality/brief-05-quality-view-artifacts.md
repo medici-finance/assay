@@ -110,7 +110,7 @@ facts:
      (command, exit code, output line(s) or hash, date, runner). "verified" in the stream
      README requires this section filled by someone who did NOT implement. -->
 
-Independently verified 2026-08-30 by opus-4.8[1m]-verifier (verify-desk, non-implementer) against merged head 5f01bad4 (deliverable assay#252 @ 1ed8d97). Offline (KUBECONFIG=/dev/null). VERIFY: PASS 8/8 as-written; zero could-not-check. Deliverables present: qualgen/artifacts.go, report.go, their tests, qualgen/testdata/report/.
+Independently verified 2026-08-30 by opus-4.8[1m]-verifier (verify-desk, non-implementer) against merged head 5f01bad4 (deliverable #252 @ 1ed8d97). Offline (KUBECONFIG=/dev/null). VERIFY: PASS 8/8 as-written; zero could-not-check. Deliverables present: qualgen/artifacts.go, report.go, their tests, qualgen/testdata/report/.
 
 | # | Command | Exit | Output | Date · Runner |
 |---|---------|------|--------|---------------|
@@ -123,7 +123,7 @@ Independently verified 2026-08-30 by opus-4.8[1m]-verifier (verify-desk, non-imp
 | 7 | go test -run TestArtifacts_ThreeStateField -v | 0 | PASS — could-not-measure renders "not measured (...)", never 0 | 2026-08-30 · opus-4.8[1m]-verifier |
 | 8 | go test -run TestArtifacts_SchemaDeclaresDefectsAndAttribution -v | 0 | PASS — defects.jsonl + attribution/ shapes declared + round-trip | 2026-08-30 · opus-4.8[1m]-verifier |
 
-Single-writer guard (the load-bearing row) confirmed real + fail-closed: local --write refuses with exit 2 and leaves the committed QUALITY.md untouched; the default local run (no --write) renders to stdout and writes nothing. Known collateral assay#223 (TestTopologyDriftRegistry) NOT triggered — rows are qualgen-scoped, no repo-root go test.
+Single-writer guard (the load-bearing row) confirmed real + fail-closed: local --write refuses with exit 2 and leaves the committed QUALITY.md untouched; the default local run (no --write) renders to stdout and writes nothing. Known collateral #223 (TestTopologyDriftRegistry) NOT triggered — rows are qualgen-scoped, no repo-root go test.
 
 RISK-VALUE: DERIVED — ciWriterToken = "ci" gated by ciWriterEnv = "QUALGEN_QUALITY_WRITER" @ qualgen/report.go:39 (check :46-48, :86) — CORRECT because it fails closed: unset env != "ci" → local --write REFUSED (proven live: exit 2, committed view untouched); the env name is namespaced so no common shell var collides; the compare is exact-equality (no prefix opens the gate). This is the STATUS.md single-writer discipline enforced by a guard, not a filename convention. (Reversible display knobs — top-10 hotspot cap, bus-factor-of-one <=1, attribution schema pin — rank last, no derivation owed.)
 gate: model, all risk no, irreversible: no → desk flips implemented→verified; verified→done stays CI's on the reviewer approval.
