@@ -17,6 +17,7 @@ commit list.
 ## Unreleased
 
 ### Added
+- The changelog discipline is ACTIVE: the changelog-check PR leg gates merges and release.yml refuses an empty Unreleased section, lifting highlights into the release body (#266 activation, #269).
 - CI grows five control legs (#255): a forge-surface control sweep, a leak-sweep
   pattern sweep, per-plugin shell suites, a gating skillslint leg, and a
   QUALITY.md render check — each exercising a control that `go build`/`go vet`
