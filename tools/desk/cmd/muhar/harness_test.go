@@ -391,6 +391,39 @@ func TestRun_ParallelVerdictsMatchSequentialExactly(t *testing.T) {
 	}
 }
 
+// The concurrency cap (maxAutoJobs) must never drop a mutation: a sweep run at
+// the capped concurrency runs the SAME set of mutations, with the SAME verdicts
+// and the SAME totals line, as the sequential sweep. This is the "no mutant
+// skipped, no gate weakened" proof for the bound — Run()/runParallel sweep every
+// mutation in the spec whatever Jobs is, so capping Jobs changes in-flight
+// parallelism only, never WHICH mutations run.
+func TestRun_CappedConcurrencyRunsEveryMutation(t *testing.T) {
+	seqH, _ := mixedHarness(t)
+	seq := seqH.Run()
+
+	capH, capSrc := mixedHarness(t)
+	capH.Jobs = maxAutoJobs // the exact concurrency `-j 0` now resolves to
+	capH.Workspace = tempWorkspace(t, capSrc)
+	capped := capH.Run()
+
+	if seq.Broken || capped.Broken {
+		t.Fatalf("neither run should be broken: seq=%v/%s capped=%v/%s", seq.Broken, seq.BrokenReason, capped.Broken, capped.BrokenReason)
+	}
+	if len(capped.Results) != len(seq.Results) {
+		t.Fatalf("capped sweep ran %d mutations, sequential ran %d — the cap dropped a mutation", len(capped.Results), len(seq.Results))
+	}
+	for i := range seq.Results {
+		if seq.Results[i].Mutation.Name != capped.Results[i].Mutation.Name || seq.Results[i].Result != capped.Results[i].Result {
+			t.Fatalf("mutation %d differs under the cap: seq=%q/%s capped=%q/%s", i,
+				seq.Results[i].Mutation.Name, seq.Results[i].Result,
+				capped.Results[i].Mutation.Name, capped.Results[i].Result)
+		}
+	}
+	if got, want := totalsLine(t, capped.Summary()), totalsLine(t, seq.Summary()); got != want {
+		t.Fatalf("totals line differs under the cap:\n  seq:    %s\n  capped: %s", want, got)
+	}
+}
+
 func totalsLine(t *testing.T, summary string) string {
 	t.Helper()
 	for _, line := range strings.Split(summary, "\n") {
