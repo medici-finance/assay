@@ -48,6 +48,14 @@ type Stream struct {
 	// nil when the stream has no placeholders.
 	Placeholders []Placeholder
 	LastTouch    time.Time
+	// Archived is true for a stream loaded from docs/archive/<stream> rather than
+	// docs/streams/<stream> — a whole, completed stream moved off the active board
+	// (streamarchive.go). An archived stream is NEVER part of the active stream set
+	// that drives the board, the per-stream checks, or the history append; it joins
+	// ONLY the edge-resolution universe so a depends:/unblocks:/affects: reference
+	// into completed work still resolves (loadArchivedStreams). false for every
+	// active stream.
+	Archived bool
 }
 
 type Brief struct {

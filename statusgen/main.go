@@ -87,11 +87,27 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	if effScope != "" {
 		checkStreams = filterStreamsByServes(streams, effScope)
 	}
+	// Archived streams (docs/archive/<stream>) are known edge/affects targets.
+	// They join ONLY the edge-resolution universe below — never `streams` /
+	// `checkStreams` (the active set that drives per-stream checks, the view build,
+	// and the append-only history), never the empty-root count. A depends:/
+	// unblocks:/affects: reference into completed, archived work must resolve
+	// exactly as it did before the stream was archived, not regress to "references
+	// unknown stream"; a stream under neither docs/streams/ nor docs/archive/ is
+	// still absent here and still PROBLEMs (the genuinely-unknown boundary).
+	archivedStreams, archErr := loadArchivedStreams(root)
+	edgeStreams := edgeResolutionUniverse(streams, archivedStreams)
 	// Per-stream/per-brief checks run against the scoped set; the findings
-	// affects: known-stream validation resolves against the FULL stream set so a
-	// single-product PR never falsely flags a finding referencing another
-	// product's stream as "unknown stream".
-	problems, notices := checkScoped(checkStreams, streams, findings)
+	// affects: known-stream validation resolves against the FULL edge universe
+	// (active + archived) so a single-product PR never falsely flags a finding
+	// referencing another product's — or an archived — stream as "unknown stream".
+	problems, notices := checkScoped(checkStreams, edgeStreams, findings)
+	// An UNREADABLE docs/archive/ is could-not-check, surfaced as a NOTICE rather
+	// than rounded to "no archived streams": edges into archived streams may then
+	// (correctly) report "unknown stream" until the directory reads cleanly.
+	if archErr != nil {
+		notices = append(notices, fmt.Sprintf("could-not-check archived streams: %v — a depends:/unblocks:/affects: edge into an archived stream may report \"unknown stream\" until docs/archive/ reads cleanly", archErr))
+	}
 	// A root that loaded cleanly but discovered zero streams.
 	// Checked against the FULL stream set, never checkStreams — an
 	// --scope-filtered subset being empty is normal (a single-product PR) and
@@ -163,11 +179,12 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// NOTICE it so the taxonomy stays complete as streams are added.
 	notices = append(notices, servesCoverageNotices(streams)...)
 	// checkStreams drives WHICH briefs are validated (product-scoped under
-	// --changed/--scope); `streams` (the full house set) resolves cross-stream
-	// depends:/unblocks: refs so a valid dependency on an out-of-scope or paused
-	// stream is not falsely reported "unknown stream". Mirrors the
-	// checkScoped(checkStreams, streams, findings) split above.
-	briefProblems, briefNotices := checkBriefFiles(checkStreams, streams)
+	// --changed/--scope); `edgeStreams` (the full house set plus archived streams)
+	// resolves cross-stream depends:/unblocks: refs so a valid dependency on an
+	// out-of-scope, paused, or archived stream is not falsely reported "unknown
+	// stream". Mirrors the checkScoped(checkStreams, edgeStreams, findings) split
+	// above.
+	briefProblems, briefNotices := checkBriefFiles(checkStreams, edgeStreams)
 	problems = append(problems, briefProblems...)
 	notices = append(notices, briefNotices...)
 	// #1250 ordering-gate lint (dependency-graph-design.md §6): flags gate-shaped
