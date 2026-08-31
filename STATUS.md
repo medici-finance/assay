@@ -20,6 +20,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-08-31 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-08-31 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 0/16 | 2026-08-31 |  |
+| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-08-31 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/13 | 2026-08-31 |  |
 
 ## Next up
@@ -30,6 +31,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | desk-tools | 06 — Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) [exec:strong] | 1 | 1000 |
 | quality | 09 — `check <files>` mode — brittleness screen for a named file set | 2 | 1000 |
 | quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
+| spec-routing | 01 — Enforce the §8 lifecycle — the linter and the authoring-owed emitter [exec:strong] | 0 | 1000 |
 
 ## Intake queue
 
@@ -225,6 +227,10 @@ _None._
 - 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
 - 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — todo (wave 1)
 
+### spec-routing (1 open)
+
+- 01 Enforce the §8 lifecycle — the linter and the authoring-owed emitter — todo (wave 0)
+
 ### statusgen (13 open)
 
 - 01 30-day lint-firing audit — retire cold rules — verified (wave 1)
@@ -249,4 +255,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**10** streams (**10** active, **0** paused) · **0/88** briefs done · completed initiatives: see `docs/archive/`
+**11** streams (**11** active, **0** paused) · **0/89** briefs done · completed initiatives: see `docs/archive/`
