@@ -1,0 +1,72 @@
+name: changelog-check
+# A cheap PR gate: a notable change must add a highlight line under
+# `## Unreleased` in CHANGELOG.md before it merges. The escape hatch for a
+# genuinely non-notable PR (a typo fix, a comment-only diff, a docs tweak) is the
+# `changelog:skip` label — applied on the PR; its use is PRINTED in this check's
+# log so a skipped changelog is always visible in the record, never silent.
+#
+# CHEAP BY DESIGN — this is a diff grep, not a semantic classifier. It does not
+# try to decide whether a change is "really" notable; it requires EITHER a new
+# CHANGELOG.md Unreleased bullet in the PR diff OR the explicit skip label. That
+# keeps the leg fast and its verdict legible: the fix for a red run is always one
+# of two obvious acts — add the line, or label the PR.
+#
+# WHERE THIS RUNS — the self-hosted `medici-builder-public` runner, matching
+# ci.yml and the other control legs. It needs no Go toolchain and no network: a
+# git diff against the PR base and a label read off the event payload.
+
+on:
+  pull_request:
+    # `labeled` / `unlabeled` are load-bearing: adding or removing the
+    # `changelog:skip` label must re-run this leg so the verdict tracks the label.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: changelog-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changelog:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history so the merge-base with the PR base resolves for the diff
+          # below (a shallow clone would not carry it).
+          fetch-depth: 0
+
+      - name: Require a CHANGELOG Unreleased line (or the changelog:skip label)
+        env:
+          SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'changelog:skip') }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # The label-gated skip is ALWAYS printed — a skipped changelog must be
+          # visible in the check record, never silent.
+          if [ "$SKIP" = "true" ]; then
+            echo "::notice title=changelog:skip::PR carries the 'changelog:skip' label — CHANGELOG '## Unreleased' line not required for this PR."
+            echo "SKIP: changelog:skip label present — Unreleased-line requirement waived for this PR."
+            exit 0
+          fi
+
+          # Cheap diff grep: does this PR add at least one highlight bullet to
+          # CHANGELOG.md? An added bullet line (`+- …` or `+  - …`) in the
+          # CHANGELOG.md diff against the PR base is the whole test — no attempt to
+          # parse section structure (that would be the "semantics" this leg
+          # deliberately avoids).
+          added=$(git diff "${BASE_SHA}...${HEAD_SHA}" -- CHANGELOG.md \
+                    | grep -E '^\+[[:space:]]*- ' || true)
+
+          if [ -n "$added" ]; then
+            echo "PASS: this PR adds CHANGELOG highlight line(s):"
+            echo "$added"
+            exit 0
+          fi
+
+          echo "::error title=missing CHANGELOG line::This PR adds no '## Unreleased' highlight line to CHANGELOG.md. Add a one-line, human-legible highlight under '## Unreleased', or label the PR 'changelog:skip' if the change is genuinely non-notable (a typo, a comment-only diff)."
+          exit 1
