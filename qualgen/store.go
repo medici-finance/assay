@@ -130,18 +130,53 @@ func (s *Store) StreamDiffs(fn func(FileDiff) error) error {
 	return streamJSONL(path, fn)
 }
 
-// StreamDefects streams the defects table (quality/06's DefectFix records)
-// back as typed records.
+// StreamDefects streams the defects table's DefectFix records (quality/06) back as
+// typed records. The defects table is HETEROGENEOUS (spec §9.4): quality/06 seeds
+// it with DefectFix rows and quality/07's B-SZZ trace appends DefectTrace rows to
+// the same append-only file. A DefectTrace line decodes here into a DefectFix whose
+// Identified state is empty (it carries no `identified` field); such a line is
+// skipped so this reader returns ONLY genuine DefectFix rows — mirroring how
+// StreamMetrics filters the heterogeneous metrics table by metric name.
 func (s *Store) StreamDefects(fn func(DefectFix) error) error {
 	path, _ := s.tablePath(KindDefect)
-	return streamJSONL(path, fn)
+	return streamJSONL(path, func(d DefectFix) error {
+		if d.Identified.State == "" {
+			return nil // a DefectTrace row (or any non-DefectFix line): not ours
+		}
+		return fn(d)
+	})
 }
 
-// ReadDefects collects the whole defects table.
+// ReadDefects collects the whole defects table's DefectFix records.
 func (s *Store) ReadDefects() ([]DefectFix, error) {
 	var out []DefectFix
 	err := s.StreamDefects(func(d DefectFix) error {
 		out = append(out, d)
+		return nil
+	})
+	return out, err
+}
+
+// StreamTraces streams the defects table's DefectTrace records (quality/07's B-SZZ
+// traces) back as typed records. The counterpart to StreamDefects on the same
+// heterogeneous table: a DefectFix line decodes here into a DefectTrace whose
+// TraceState is empty and is skipped, so this reader returns ONLY genuine
+// DefectTrace rows.
+func (s *Store) StreamTraces(fn func(DefectTrace) error) error {
+	path, _ := s.tablePath(KindDefect)
+	return streamJSONL(path, func(t DefectTrace) error {
+		if t.TraceState == "" {
+			return nil // a DefectFix row (or any non-DefectTrace line): not ours
+		}
+		return fn(t)
+	})
+}
+
+// ReadTraces collects the whole defects table's DefectTrace records.
+func (s *Store) ReadTraces() ([]DefectTrace, error) {
+	var out []DefectTrace
+	err := s.StreamTraces(func(t DefectTrace) error {
+		out = append(out, t)
 		return nil
 	})
 	return out, err
