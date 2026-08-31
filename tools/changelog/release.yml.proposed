@@ -1,0 +1,1242 @@
+# ⚠️ STAGED — NOT YET ACTIVE. This file is the COMPLETE intended content of the
+# release workflow WITH the CHANGELOG-discipline changes applied, staged here
+# under tools/ because the identity that authored it cannot push under
+# .github/workflows/ (a server-side workflows-scope block). A workflows-capable
+# identity ACTIVATES the change by copying this file verbatim over
+#     .github/workflows/release.yml
+# (see tools/changelog/README.md and tools/changelog/release.yml.patch for the
+# exact delta from the currently-live release.yml). The only changes from the
+# live file are the three CHANGELOG-discipline additions, each marked
+# "CHANGELOG discipline" below; everything else is byte-identical to the live
+# workflow. Nothing reads this file while it sits under tools/.
+# ---------------------------------------------------------------------------
+name: release
+# Build statusgen binaries for darwin-arm64, darwin-amd64 + linux-amd64 on a
+# plain `vX.Y.Z` repo tag, produce checksums.txt, and create a GitHub release.
+# Consumers pin by tag + sha256 (per-artifact, see the `.assay-versions`
+# contract), so every platform binary is checksummed and
+# uploaded under the name `statusgen-<platform>`.
+#
+# THE VERSION SCHEME
+# This repo (medici-finance/assay) is the canonical, releasing home for the
+# shared tools (statusgen first). The release IS the repo, so the tag is
+# a plain `vX.Y.Z` (v0.9.0, v0.9.1, …) — NOT a component-prefixed `assay/vX` or
+# a per-tool `statusgen/vX`. One repo version number covers the repo's shipped
+# tools, and consumers pin it.
+#
+# TWO WAYS IN
+#   push a tag        the original path: tag locally, push, this runs.
+#   workflow_dispatch the server-side path: name a version in the Actions UI and
+#                     the tag is cut here, in CI, under GitHub's own auth — no
+#                     local git credentials, and the run records who dispatched
+#                     it.
+#
+# ⚠️ WHY THE TAG IS CUT INSIDE THIS WORKFLOW AND NOT A SEPARATE ONE
+# A tag pushed by a workflow using the default GITHUB_TOKEN does NOT trigger
+# other workflows (GitHub's deliberate recursion guard). So the obvious design —
+# a small "cut a tag" workflow that expects THIS one to fire on the resulting tag
+# — fails SILENTLY: the tag appears, no release is built, and nothing errors.
+# Instead this workflow is itself dispatchable, so the same RUN that creates the
+# tag also builds and publishes. There is no cross-workflow trigger, so the
+# recursion guard never applies. (It still suppresses a second, duplicate run of
+# this workflow when the tag lands — which is exactly what we want.)
+#
+# WHERE THIS RUNS — a self-hosted runner labelled `medici-builder-release`, a
+# DEDICATED release-only label, separate from the label the general CI pipeline
+# uses. EVERY job in this workflow runs on that dedicated label, so the release
+# pipeline has its own isolated runner pool and never shares runners with
+# general CI. (PREREQUISITE — a repo-admin act tracked in the PR body:
+# a runner registered with the `medici-builder-release` label must exist before
+# a release can run.) Go is installed BY HAND from go.dev/dl (NOT
+# actions/setup-go): that runner does not reach GitHub's release-asset CDN
+# (objects.githubusercontent.com), so setup-go — which downloads the Go
+# toolchain from a GitHub release — fails, while go.dev/dl (→ dl.google.com) and
+# the module proxy (proxy.golang.org) are plain public HTTPS and work; the
+# fetched toolchain tarball is sha256-verified against a pinned digest before it
+# is unpacked. The GitHub REST API (api.github.com / uploads.github.com) IS
+# reachable — the release is created and its assets uploaded via curl against it
+# (the runner ships no `gh` CLI, and installing one would need the same blocked
+# release-asset CDN).
+#
+# WHY A DEDICATED LABEL (H1) — an earlier draft reused a shared CI label and
+# leaned on job-level segmentation to keep releases safe. That is not enough on
+# a self-hosted, non-ephemeral pool: any other job that lands on a shared pool
+# can leave state behind ($HOME, the PATH-prepended Go dir, ~/.gitconfig) for a
+# later release run — which cuts the canonical vX.Y.Z consumers pin — to inherit.
+# A dedicated `medici-builder-release` label gives the release pipeline its own
+# pool, so no unrelated job ever runs on a release runner.
+#
+# RELEASEGUARD — assay does NOT carry tools/releaseguard.
+# The heavyweight release gate (tag on main, not-behind-main, tree-unchanged,
+# version-order) is therefore SCOPED OUT here and flagged as a follow-up in the
+# PR. What IS retained is the cheap, dependency-free half that matters most: the
+# `guard` job refuses to move a published tag (consumers pin by tag + sha256, so
+# a re-pointed tag is a silent substitution), and the `test` job is the
+# build/vet gate that must pass before anything is published.
+#
+# A later tree-resolving releaseguard needs no `--tree-path`: the plain `vX.Y.Z`
+# tag carries no component prefix, so the released tree is the repo root.
+#
+# DESK-TOOLS ON THE UMBRELLA RELEASE
+# This umbrella `vX.Y.Z` release also carries the desk-tools suite, INTEGRATED
+# here rather than run as a separate per-tool `desk-tools/vX` release — consumers
+# pin the umbrella, never a per-tool tag. Two artifact lines
+# are added:
+#   * binaries — per-platform `desk-tools-<platform>.tar.gz` + a shared
+#     checksums.txt, built and uploaded to the SAME immutable draft as the
+#     statusgen binaries, then published once. The `test` job carries the four
+#     release-blocking desk-tools gate-bar assertions (docs/desk-tools-gate-bar.md).
+#   * image — `ghcr.io/medici-finance/assay/desk-tools`, built SEPARATELY by
+#     docker-publish.yml (daily-immutable-tag discipline) and NOT rebuilt
+#     here; this release only NAMES the image ref in its notes so consumers can
+#     pin it in `.assay-versions`.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to cut, e.g. v0.9.0 (a plain v-prefixed semver; a leading v is added for you if omitted)"
+        required: true
+        type: string
+      dry_run:
+        description: "Validate only: resolve the version, prove the tag is free, run the tests, and BUILD the artifacts — then stop. Cuts no tag, publishes no release, uploads nothing."
+        required: false
+        default: false
+        type: boolean
+      desk_image_tag:
+        description: "desk-tools image tag to NAME in the release notes (the image is built separately by docker-publish.yml under its daily-immutable-tag discipline; this release does not rebuild it). Default v0.1.0 — the currently published image."
+        required: false
+        default: "v0.1.0"
+        type: string
+      publish_image:
+        description: "Push the freshly built assay-harness image to GHCR. Default false — publication is a deliberate, gated decision. Off = build + inspect only, push nothing. A tag-push is build-only too (the harness image job builds behind the test gate; publication is a dispatch-flag decision)."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+# One release attempt per version at a time. Never cancel-in-progress: cancelling
+# a run mid-publish is exactly the half-finished state the ordering below exists
+# to avoid.
+#
+# The dispatch key is the RAW `inputs.version`, not the leading-v-normalised tag
+# (a `${{ }}` expression has no string op to prepend the `v` conditionally). So
+# dispatching "0.9.0" and "v0.9.0" land in DIFFERENT concurrency groups even
+# though both resolve to tag v0.9.0, and two such runs could proceed in parallel.
+# This is bounded by the non-force tag push in `release`: the second run's
+# `git push refs/tags/v0.9.0` is rejected once the first has pushed, so at most
+# one run publishes. (The push-path key is github.ref_name, already the exact
+# tag, so it has no such gap.)
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # Matches ci.yml. Kept in sync with statusgen/go.mod's `go` directive.
+  GO_VERSION: "1.25.0"
+  # The desk-tools image (built SEPARATELY by docker-publish.yml under its
+  # daily-immutable-tag discipline) NAMED alongside this umbrella release. Literal, not
+  # ${{ github.repository }}, so the pin doc + Verify grep resolve it unambiguously.
+  DESK_IMAGE: ghcr.io/medici-finance/assay/desk-tools
+  # The assay-harness image: the headless-agent harness — toolkit binaries + the
+  # `assay` plugin pre-seeded via CLAUDE_CODE_PLUGIN_SEED_DIR (images/assay-harness/
+  # Dockerfile). UNLIKE DESK_IMAGE (built separately by docker-publish.yml), this
+  # image is BUILT in this umbrella lane, behind the same `needs: test` gate as
+  # the binaries; its registry PUSH is a deliberate, gated decision (the `image` job below).
+  # Literal, for the same reason DESK_IMAGE is.
+  HARNESS_IMAGE: ghcr.io/medici-finance/assay/assay-harness
+
+jobs:
+  # Work out WHICH tag this run is about, before anything is built or written.
+  #
+  # On the tag-push path that is just github.ref_name. On the dispatch path
+  # github.ref_name is the BRANCH the run was started from ("main") — publishing
+  # against it would create a release literally named "main", so every
+  # downstream step reads this job's output instead of github.ref_name.
+  resolve:
+    runs-on: medici-builder-release
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      message: ${{ steps.tag.outputs.message }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve the release tag
+        id: tag
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+
+          # THE ONLY WAY THIS JOB WRITES AN OUTPUT.
+          #
+          # $GITHUB_OUTPUT is a line-oriented file: a newline ANYWHERE in a value
+          # is an extra assignment of the writer's choosing. None of this job's
+          # outputs can legitimately span lines, so refuse rather than escape.
+          emit() {
+            local name="$1" value="$2"
+            if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+              echo "::error::refusing to write a multi-line value into \$GITHUB_OUTPUT ($name)"
+              exit 1
+            fi
+            printf '%s=%s\n' "$name" "$value" >> "$GITHUB_OUTPUT"
+          }
+
+          # The ONE tag-format gate, applied on BOTH paths. Anchored with
+          # [[ =~ ]] against the WHOLE string (`grep -qE` matches per-line, so an
+          # injected newline would slip through). Because it admits ONLY
+          # `vMAJOR.MINOR.PATCH`, the resolved tag structurally cannot contain
+          # '/', '#', '?' or whitespace — which is what makes the later UNENCODED
+          # concatenation of the tag into REST API URLs safe on both paths.
+          version_re='^v[0-9]+\.[0-9]+\.[0-9]+$'
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            v="$INPUT_VERSION"
+            # Accept both "v0.9.0" and "0.9.0"; normalise to a leading v.
+            case "$v" in v*) ;; *) v="v$v" ;; esac
+            # Fail closed on a malformed version rather than cutting a junk tag.
+            if [[ ! "$v" =~ $version_re ]]; then
+              shown=${INPUT_VERSION%%$'\n'*}
+              [ "$shown" = "$INPUT_VERSION" ] || shown="$shown [+ further lines elided]"
+              echo "::error::version must be vMAJOR.MINOR.PATCH (got '$shown')"
+              exit 1
+            fi
+            tag="$v"
+            emit message "assay $v (dispatched by $ACTOR)"
+          else
+            # Push path: github.ref_name is the pushed tag. The trigger is
+            # `tags: ["v*"]`, which matches far more than semver (v1, vX, v1.2,
+            # v0.9.0-rc1, …). Apply the SAME anchored gate the dispatch path
+            # uses, or a stray non-semver v* tag becomes a full non-draft release
+            # (the repo has zero releases, so it would even become "latest") and
+            # the guard's own reasoning forbids deleting it to clean up. This was
+            # the push-path tag gap: the dispatch path validated, the push path
+            # took any v* ref verbatim.
+            if [[ ! "$REF_NAME" =~ $version_re ]]; then
+              shown=${REF_NAME%%$'\n'*}
+              [ "$shown" = "$REF_NAME" ] || shown="$shown [+ further lines elided]"
+              echo "::error::pushed tag must be vMAJOR.MINOR.PATCH (got '$shown') — this release workflow only builds plain repo-level semver tags"
+              exit 1
+            fi
+            tag="$REF_NAME"
+            emit message ""
+          fi
+          emit tag "$tag"
+          echo "Resolved release tag: $tag"
+
+  # The tag-immutability guard. releaseguard is scoped out (assay has no
+  # tools/releaseguard — see the header); this is the dependency-free half that
+  # protects the pin contract: consumers pin by tag + sha256, so a moved or
+  # re-published tag is a silent substitution, and this refuses it.
+  #
+  # Its own job rather than a first step in `release`, so a refusal cannot be
+  # followed by an upload.
+  guard:
+    needs: resolve
+    runs-on: medici-builder-release
+    permissions:
+      contents: read
+    steps:
+      # A clean checkout of THIS repo before any git probe. The self-hosted
+      # runner is not wiped between jobs, so without this the dispatch probe
+      # below runs `git ls-remote origin` against whatever stale working tree the
+      # runner happens to hold — a leftover clone of another repo (or none) whose
+      # `origin` points elsewhere. That answers the "does this tag exist?"
+      # question against the WRONG remote and fails OPEN, letting a published tag
+      # be re-cut. checkout pins `origin` to this repo so the probe is
+      # authoritative. (The push-path step below queries the REST API by
+      # ${{ github.repository }} and needs no git state, but the checkout is
+      # harmless there.)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Dispatch only — on the tag-push path the tag necessarily already exists
+      # (its push is what started the run), so this check must never run there.
+      # origin is the only authority: a locally-cut tag is not fetched here.
+      - name: Refuse to move an existing tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          # --exit-code: 0 = found, 2 = genuinely absent, anything else = the
+          # question was not answered. Treating an unreachable origin as "absent"
+          # would fail OPEN, so a broken lookup refuses.
+          set +e
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1
+          rc=$?
+          set -e
+          case "$rc" in
+            0) exists=yes ;;
+            2) exists=no ;;
+            *) echo "::error::could not ask origin whether $TAG exists (git ls-remote exit $rc) — refusing rather than guessing"; exit 1 ;;
+          esac
+          if [ "$exists" = yes ]; then
+            # A RE-RUN of this same dispatch is the one legitimate way the tag can
+            # already exist: attempt 1 cut it, then a later step failed. A fresh
+            # dispatch of an already-cut version is always attempt 1. On a re-run
+            # we proceed — but the immutable-asset check in `release` still fails
+            # loudly on any asset already uploaded, so a re-run can only COMPLETE
+            # a partial publish that left no assets, never swap published bytes.
+            if [ "${ATTEMPT:-1}" != "1" ]; then
+              echo "::warning::$TAG already exists, but this is run attempt ${ATTEMPT} (a re-run) — proceeding to complete a partial publish. If any asset was already uploaded, publish fails loudly; cut the next patch version instead."
+            else
+              echo "::error::$TAG already exists, and this is attempt 1 — a fresh dispatch of an already-cut version. Never move a published tag; cut the next patch version instead."
+              exit 1
+            fi
+          else
+            echo "$TAG is free."
+          fi
+
+      # Tag-push path — the OTHER half of the same control. "Does this tag exist
+      # on origin?" is trivially YES here (the push started the run), so the
+      # answerable question is whether the tag was already PUBLISHED: a GitHub
+      # release for this tag means it carried artifacts BEFORE this push, so the
+      # push re-pointed a published tag. This is DETECTION, not prevention (the
+      # push has already landed); server-side tag immutability (rulesets) is what
+      # refuses it at the origin, and that is a repo-admin act.
+      - name: Refuse to re-publish an existing release tag
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          REPO: ${{ github.repository }}
+          ATTEMPT: ${{ github.run_attempt }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # curl, not gh: the self-hosted runner ships no gh CLI. A slash in the
+          # tag is passed through unencoded — the releases/tags API accepts it
+          # verbatim. -o/-w rather than -f: the STATUS CODE is the answer, so a
+          # 404 must be readable rather than a curl failure.
+          status=$(curl -sS --retry 3 --retry-connrefused \
+            -o "$RUNNER_TEMP/release-lookup.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${REPO}/releases/tags/${TAG}") || {
+              echo "::error::could not ask GitHub whether $TAG is already published — refusing rather than guessing"
+              exit 1
+            }
+          case "$status" in
+            404)
+              echo "$TAG has no published release — first publication of this tag."
+              ;;
+            200)
+              # A RE-RUN of this same run is the one legitimate way here: the
+              # release was created and a later step failed. github.run_attempt
+              # distinguishes it — a fresh push of a moved tag is always attempt 1.
+              if [ "${ATTEMPT:-1}" != "1" ]; then
+                echo "::warning::$TAG already has a published release; proceeding because this is run attempt ${ATTEMPT} (a re-run). Any asset re-uploaded here has a NEW sha256 — re-harvest .assay-versions from the republished release before pinning."
+              else
+                echo "::error::$TAG already has a published release, and this push is attempt 1 — so the tag was re-pointed at a new commit rather than newly created. Never move a published tag: consumers pin it by tag + sha256. Cut the next patch version instead."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::unexpected HTTP $status asking whether $TAG is already published — refusing rather than guessing"
+              exit 1
+              ;;
+          esac
+
+  # The publish path's own test gate. ci.yml build/vets every module at PR time,
+  # but a tag can be cut from any commit, so re-run the suite here. No `if:` on
+  # this job, on purpose: it runs on tag push, on dispatch, and on dry_run — a
+  # dry run that skipped the tests would report a release is safe without having
+  # checked. It blocks publication structurally: `release` needs it, and the
+  # dispatched tag is pushed inside `release`, so a red suite stops the run
+  # before a version number can be burned.
+  #
+  # SPLIT ACROSS RUNNERS — the suite is a matrix of six legs run concurrently on
+  # the `medici-builder-release` pool (its scale set allows several runners; with
+  # fewer available the legs simply queue — correctness never depends on pool
+  # size). Each test/vet/gate-bar/sweep step below runs in EXACTLY ONE leg (its
+  # `if: matrix.leg == …`); the checkout + Go install prelude runs in every leg
+  # (jobs share no filesystem). Downstream gating is unchanged: `needs: test` on
+  # a matrix job waits for EVERY leg to succeed, so `release` and `image` still
+  # sit behind the full suite.
+  #   statusgen    — statusgen test/vet + the three named gate bars
+  #   desk-tools   — desk-tools test/vet
+  #   muhar-light  — the six short mutation sweeps (bodycheck, desksourceguard,
+  #                  loopengine ×2, reviewloop, deskclose)
+  #   deskmerge ×3 — the deskmerge mutation sweep, the long pole, SHARDED across
+  #                  three legs via muhar's `-shard i/n` (each leg runs the
+  #                  mutations at spec index ≡ i mod 3; the three shards
+  #                  partition the spec — every mutation exactly once across the
+  #                  set, proven by muhar's TestShardSelectPartitions — and each
+  #                  shard re-runs the baseline + positive control in full, so
+  #                  every leg is independently trustworthy).
+  # ⚠️ The three shard entries below are load-bearing: removing one would
+  # silently skip a third of the deskmerge sweep (exactly as deleting any single
+  # step always would). Change the shard set only in lockstep with the `/3`
+  # denominators.
+  test:
+    strategy:
+      # No fail-fast: a red leg must not cancel the others' verdicts — a release
+      # fix wants the full picture in one run. The gate is unchanged either way:
+      # any red leg still blocks `release` and `image`.
+      fail-fast: false
+      matrix:
+        include:
+          - leg: statusgen
+          - leg: desk-tools
+          - leg: drainloop
+          - leg: muhar-light
+          - leg: deskmerge
+            shard: 0/3
+          - leg: deskmerge
+            shard: 1/3
+          - leg: deskmerge
+            shard: 2/3
+    runs-on: medici-builder-release
+    permissions:
+      contents: read
+    steps:
+      # persist-credentials:false — this job compiles and RUNS repo code
+      # (`go test`), so keep even the read-scoped token out of .git/config while
+      # it does. It pushes nothing, so it needs no credential of its own.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Install Go by hand from go.dev/dl — NOT actions/setup-go. See header.
+      - name: Install Go
+        env:
+          # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl. Pinned
+          # to GO_VERSION above; bump both together — a GO_VERSION change without
+          # a matching digest fails this step CLOSED rather than trusting the
+          # fetch.
+          GO_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          # Verify BEFORE unpacking into a PATH-prepended dir: an unverified
+          # toolchain there would shadow the system go/sha256sum/curl/git for
+          # every later step of this run.
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      # statusgen is its own Go module at statusgen/. Same commands the PR-time
+      # ci.yml runs for it, from that module root.
+      - name: Test and vet statusgen
+        if: matrix.leg == 'statusgen'
+        run: |
+          set -euo pipefail
+          go version
+          cd statusgen && go test ./... && go vet ./...
+
+      # desk-tools is its own Go module at tools/desk/. Same full-suite gate,
+      # from that module root.
+      - name: Test and vet desk-tools
+        if: matrix.leg == 'desk-tools'
+        run: |
+          set -euo pipefail
+          cd tools/desk && go test ./... && go vet ./...
+
+      - name: Test and vet drainloop (source component, isolated)
+        if: matrix.leg == 'drainloop'
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          go version
+          cd drainloop && go vet ./... && go test ./...
+
+      # THE GATE QUALITY BAR (docs/desk-tools-gate-bar.md). The desk-tools
+      # `go test ./...` (on its own leg of this matrix) already runs these, so
+      # these steps add no coverage — they add LEGIBILITY
+      # (a named failure) and make DELETION of the measurement visible: `-run`
+      # naming the tests reddens this step if the named PASS line is missing, where
+      # a bulk `go test ./...` would stay green over a deleted corpus test.
+      - name: Gate bar — golden corpus, both directions
+        if: matrix.leg == 'statusgen'
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          out=$(go test ./internal/deskkit/ -count=1 -v \
+            -run 'TestBodycheckCorpus$|TestBodycheckPositives$|TestBodycheckCorpusCoversEveryCataloguedShape$|TestBodycheckCorpusCanFail$')
+          echo "$out"
+          for want in TestBodycheckCorpus TestBodycheckPositives \
+                      TestBodycheckCorpusCoversEveryCataloguedShape TestBodycheckCorpusCanFail; do
+            if ! grep -qE "^--- PASS: $want " <<<"$out"; then
+              echo "::error::$want did not run — the golden corpus is release-blocking (docs/desk-tools-gate-bar.md)"
+              exit 1
+            fi
+          done
+
+      - name: Gate bar — the path-rule differential, both directions
+        if: matrix.leg == 'statusgen'
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          out=$(go test ./internal/deskkit/ -count=1 -v -run 'TestPathRuleDifferential$')
+          echo "$out"
+          grep -qE '^--- PASS: TestPathRuleDifferential ' <<<"$out" || {
+            echo "::error::TestPathRuleDifferential did not run — a classifier rule change ships with its differential"
+            exit 1
+          }
+
+      - name: Gate bar — fleet-workflow acceptance
+        if: matrix.leg == 'statusgen'
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          out=$(go test ./internal/fleetharness/ -count=1 -v -run 'TestFleetWorkflowAcceptance$')
+          echo "$out"
+          grep -qE '^--- PASS: TestFleetWorkflowAcceptance ' <<<"$out" || {
+            echo "::error::TestFleetWorkflowAcceptance did not run — no gated verb ships without an acceptance run in the MANDATED workflow shape"
+            exit 1
+          }
+
+      # PROOF THE CHECKS CAN FAIL. muhar exits 2 only when the HARNESS is broken;
+      # a SURVIVING mutation still exits 0 with the verdict on stdout, so the
+      # totals line is what this step gates on — without it, a deleted refusal
+      # would report green here.
+      #
+      # `-j 0` on every sweep below: a sweep is one suite run per mutation, and
+      # the suite is the whole cost, so the mutations are dealt out to one worker
+      # per runner CPU instead of run end to end. Each worker mutates its OWN
+      # copy of the module — muhar refuses to parallelise over a shared tree, and
+      # a workspace it cannot provision is a BROKEN run, never a quiet fallback
+      # to a shared one. The gate is unchanged by this: same baseline check, same
+      # positive control, same per-mutation verdicts in the same order, same
+      # totals line. Only the wall time moves.
+      - name: Gate bar — mutate every bodycheck refusal and require the suite to catch it
+        if: matrix.leg == 'muhar-light'
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          report=$(go run ./cmd/muhar -j 0 -spec internal/deskkit/mutations.json)
+          echo "$report"
+          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
+            echo "::error::a bodycheck refusal survived its mutation, or could not be applied — the gate is not load-bearing as written (docs/desk-tools-gate-bar.md)"
+            exit 1
+          fi
+
+      # desksourceguard is a supply-chain control: it is the only thing standing
+      # between a repointed release tag and a consumer gate compiling an
+      # unreviewed tree. A green suite proves it behaves as written; it does NOT
+      # prove any refusal is load-bearing. So each refusal gets a mutation that
+      # must redden the suite. Same muhar contract as the bodycheck step above:
+      # exit 2 means the HARNESS is broken (red baseline or an uncaught positive
+      # control), while a SURVIVING mutation still exits 0 with its verdict on
+      # stdout — so the totals line is what this step gates on.
+      - name: Gate bar — mutate every desksourceguard refusal and require the suite to catch it
+        if: matrix.leg == 'muhar-light'
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          report=$(go run ./cmd/muhar -j 0 -spec cmd/desksourceguard/mutations.json)
+          echo "$report"
+          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
+            echo "::error::a desksourceguard refusal survived its mutation, or could not be applied — the guard is not load-bearing as written"
+            exit 1
+          fi
+
+      # loopengine.Claim is the single mandatory entry point for dispatch, and its
+      # dedupe-at-start guarantee is only worth the sentence it is stated in if the
+      # checks behind it can be shown to FAIL. This step disarms each half of the
+      # gate in turn — the taken-refusal, the could-not-check fail-closed, the
+      # announced evidence bound, the DEDUP line naming its evidence, and the
+      # probe-before-lock ordering — and requires the suite to catch each one.
+      # Same muhar contract: exit 2 means the HARNESS is broken; a SURVIVING
+      # mutation still exits 0 with its verdict on stdout, so the totals line gates.
+      - name: Gate bar — mutate loopengine's dedupe-at-start gate and require the suite to catch it
+        if: matrix.leg == 'muhar-light'
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          report=$(go run ./cmd/muhar -j 0 -spec internal/loopengine/mutations.json)
+          echo "$report"
+          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
+            echo "::error::a half of loopengine's dedupe-at-start gate survived its mutation, or could not be applied — Claim's stated guarantee is not load-bearing as written (tools/desk/internal/loopengine/doc.go)"
+            exit 1
+          fi
+
+      # loopengine's retry classifier is a THREE-way taxonomy: a failed dispatch is
+      # sorted into retryable (transient / retry-after), non-retryable (a refusal
+      # that must be reported, never re-dispatched), or could-not-check (an
+      # unrecognised failure the third state must hold, never collapse into either
+      # decision). A green suite proves the classifier behaves as written; it does
+      # NOT prove any arm of the split is load-bearing — a refusal reclassified
+      # retryable would re-run a rejected write forever, and a could-not-check
+      # collapsed to a decision would silently drop work. So each arm is disarmed in
+      # turn and the suite is required to catch it. Same muhar contract: exit 2 means
+      # the HARNESS is broken; a SURVIVING mutation still exits 0 with its verdict on
+      # stdout, so the totals line is what this gates on.
+      - name: Gate bar — mutate loopengine's retry taxonomy and require the suite to catch it
+        if: matrix.leg == 'muhar-light'
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          report=$(go run ./cmd/muhar -j 0 -spec internal/loopengine/mutations-retry.json)
+          echo "$report"
+          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
+            echo "::error::an arm of loopengine's retry taxonomy survived its mutation, or could not be applied — the retryable / non-retryable / could-not-check split is not load-bearing as written (tools/desk/internal/loopengine/retry.go)"
+            exit 1
+          fi
+
+      # deskmerge is the only desk tool that can rewrite the head of somebody
+      # else's PR, and the property that makes that safe is entirely negative: it
+      # merges main INTO a branch and never the reverse, the result is verified to
+      # be a true two-parent merge by inspecting the COMMIT, conflicts outside a
+      # compiled-in list are refused whole, and the whole write path sits behind a
+      # fetched human sign-off. None of that is observable from a green suite, so
+      # each refusal gets a mutation that must redden the suite. Same muhar
+      # contract: exit 2 means the HARNESS is broken; a SURVIVING mutation still
+      # exits 0 with its verdict on stdout, so the totals line is the gate.
+      # Sharded across its three matrix legs: this sweep is by far the longest
+      # single step in the suite, so it is dealt out via muhar's `-shard i/n` —
+      # one canonical spec, each leg running the third of it at spec index
+      # ≡ i mod 3. The three shards partition the spec (disjoint, union = every
+      # mutation; muhar's TestShardSelectPartitions holds this), and EVERY leg
+      # re-runs the baseline + positive control, so each leg's Totals line is an
+      # independently trustworthy verdict over its own mutations. The shard
+      # value is workflow-defined ("0/3" etc.) and still rides in via env: for
+      # consistency with the file's no-inline-splice discipline.
+      - name: Gate bar — mutate deskmerge's refusals and authority gate and require the suite to catch it
+        if: matrix.leg == 'deskmerge'
+        env:
+          MUHAR_SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          report=$(go run ./cmd/muhar -j 0 -shard "$MUHAR_SHARD" -spec cmd/deskmerge/mutations.json)
+          echo "$report"
+          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
+            echo "::error::a deskmerge refusal survived its mutation, or could not be applied — the zero-authorship boundary is not load-bearing as written"
+            exit 1
+          fi
+
+      # reviewloop is the board reactor, and its whole value is a THREE-state idle
+      # gate: a board it could not read must report could-not-check, never
+      # "nothing to do". A green suite proves the gate behaves as written; it does
+      # NOT prove any arm of it is load-bearing. So each arm is disarmed in turn —
+      # the empty-sweep diagnostic, the unknown-action fail-closed, the empty-scope,
+      # truncated-population, freshness and STALE checks, the coalescing key's head,
+      # the already-done suppression, and the exit code a caller scripts on — and
+      # the suite is required to catch each one. Same muhar contract: exit 2 means
+      # the HARNESS is broken; a SURVIVING mutation still exits 0 with its verdict
+      # on stdout, so the totals line is what this gates on.
+      - name: Gate bar — mutate reviewloop's idle gate and coalescing and require the suite to catch it
+        if: matrix.leg == 'muhar-light'
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          report=$(go run ./cmd/muhar -j 0 -spec cmd/reviewloop/mutations.json)
+          echo "$report"
+          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
+            echo "::error::an arm of reviewloop's idle gate or coalescing survived its mutation, or could not be applied — the board reactor's could-not-check state is not load-bearing as written (tools/desk/cmd/reviewloop/doc.go)"
+            exit 1
+          fi
+
+      # deskclose's superseded lane is TWO-ROLE: a worker token proposes, a
+      # reviewer token confirms or disputes, and one identity can never both
+      # propose and close on the same item. The arms that make that safe are all
+      # negative — the same-actor check reads the comment's forge-attested author
+      # (never the self-reported Proposed-By line), the confirm requires the
+      # target genuinely MERGED, a dispute writes needs-decision and every later
+      # close is refused by the decision-label gate, a one-App roster binding
+      # both roles is refused, and an unreadable identity is could-not-check
+      # rounded to NEITHER role. A green suite proves the lane behaves as written;
+      # it does NOT prove any arm is load-bearing, so each is disarmed in turn and
+      # the suite is required to catch it. Same muhar contract: exit 2 means the
+      # HARNESS is broken; a SURVIVING mutation still exits 0 with its verdict on
+      # stdout, so the totals line is what this gates on.
+      - name: Gate bar — mutate deskclose's superseded two-role lane and require the suite to catch it
+        if: matrix.leg == 'muhar-light'
+        run: |
+          set -euo pipefail
+          cd tools/desk
+          report=$(go run ./cmd/muhar -j 0 -spec cmd/deskclose/mutations.json)
+          echo "$report"
+          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
+            echo "::error::an arm of deskclose's superseded two-role lane survived its mutation, or could not be applied — the propose/confirm/dispute boundary is not load-bearing as written (tools/desk/cmd/deskclose/superseded.go)"
+            exit 1
+          fi
+
+  release:
+    needs: [resolve, guard, test]
+    # A dry run runs this job up to and including the BUILD, then stops. The
+    # whole point of a dry run is to prove the artifacts build (and the guard +
+    # tests pass) BEFORE a version number is burned — a dry run that built
+    # nothing would validate nothing. So the checkout / Go install / build /
+    # checksum steps run unconditionally; only the two mutating steps — cut the
+    # tag and publish the release — carry `!dry_run`. "Publishes nothing" is
+    # still structural: on a dry run there is no step left that tags or uploads.
+    runs-on: medici-builder-release
+    # M1 — the human gate. `release` is the only job that pushes a tag and
+    # publishes, so it (and only it) runs in the `release` environment. With the
+    # release environment's required human reviewer set, a canonical release
+    # pauses here for a named human to approve — converting "any holder of the
+    # shared token can cut a release" into "a person clicked approve".
+    # PREREQUISITE (a repo-admin act tracked in the PR body): the `release`
+    # environment must be created with a required human reviewer, or this
+    # gate is a no-op.
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      # persist-credentials:false (H2) — do NOT leave the contents:write token in
+      # .git/config while `go build` compiles arbitrary repo code below. The tag
+      # push wires the credential explicitly, for that one command only.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # PREFLIGHT — the publish step parses the REST API's JSON with a small
+      # python3 helper, and that step runs AFTER the tag is pushed. A runner
+      # missing python3 would therefore fail the release with the version number
+      # already burned. Prove python3 is present up front, before anything is
+      # built or tagged, so a missing interpreter fails here — loudly and with
+      # nothing spent — instead of after the irreversible tag push.
+      - name: Preflight — required tooling
+        run: |
+          set -euo pipefail
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "::error::python3 is required to parse the release API responses but is not on this runner. Failing before any tag is cut."
+            exit 1
+          fi
+          echo "python3 present: $(python3 --version 2>&1)"
+
+      # CHANGELOG discipline (driver direction 2026-08-31: releases lead with
+      # DESCRIPTIVE highlights, not a commit list). Extract the `## Unreleased`
+      # section from CHANGELOG.md and REFUSE to cut when it is empty — a release
+      # with no human-legible highlights is exactly what this convention exists to
+      # prevent. Runs on the dry_run path too: dry_run stops before the tag, but
+      # an empty-changelog refusal must surface in a dry run just as in a real cut.
+      # Placed AFTER the Preflight step so python3 is already proven present.
+      - name: CHANGELOG discipline — extract and require Unreleased highlights
+        id: changelog
+        run: |
+          set -euo pipefail
+          if [ ! -f CHANGELOG.md ]; then
+            echo "::error::CHANGELOG.md is missing — every release lifts its highlights from the '## Unreleased' section (driver direction 2026-08-31)."
+            exit 1
+          fi
+          notes="${RUNNER_TEMP}/unreleased.md"
+          python3 - CHANGELOG.md > "$notes" <<'PY'
+          import sys
+          lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+          out, capturing = [], False
+          for ln in lines:
+              if ln.strip().lower() == "## unreleased":
+                  capturing = True
+                  continue
+              if capturing and ln.startswith("## "):
+                  break
+              if capturing:
+                  out.append(ln)
+          while out and not out[0].strip():
+              out.pop(0)
+          while out and not out[-1].strip():
+              out.pop()
+          sys.stdout.write("\n".join(out))
+          PY
+          if ! grep -qE '\S' "$notes"; then
+            echo "::error::CHANGELOG.md '## Unreleased' is empty — refusing to cut a release with no descriptive highlights. Add highlight lines under '## Unreleased' first (driver direction 2026-08-31)."
+            exit 1
+          fi
+          echo "Unreleased highlights to lift into the release body:"
+          cat "$notes"
+          echo "notes_path=$notes" >> "$GITHUB_OUTPUT"
+
+      - name: Install Go
+        env:
+          # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl. Pinned
+          # to GO_VERSION above; bump both together — a GO_VERSION change without
+          # a matching digest fails this step CLOSED rather than trusting the
+          # fetch.
+          GO_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          # Verify BEFORE unpacking into a PATH-prepended dir: an unverified
+          # toolchain there would shadow the system go/sha256sum/curl/git for
+          # every later step of this run.
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      # -X main.statusgenVersion stamps the release tag into the binary so
+      # `statusgen --version` can be compared against a consumer's
+      # `.assay-versions` pin. Without it every build answers "dev" and a stale
+      # install is indistinguishable from a current one.
+      #
+      # The tag rides in via env:, not a `${{ }}` splice inside run: — a tag name
+      # is attacker-shaped text and expression-splicing it into a shell line is
+      # the standard workflow-injection hole. On the dispatch path it is the
+      # RESOLVED tag, never github.ref_name (which there is the branch the run
+      # started from, and would stamp every binary "main").
+      - name: Build binaries
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          go version
+          cd statusgen
+          LDFLAGS="-X main.statusgenVersion=${RELEASE_TAG}"
+          GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-arm64 .
+          GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-amd64 .
+          GOOS=linux  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-linux-amd64  .
+
+      # desk-tools ships this same umbrella release as per-platform tarballs (the
+      # suite is 25+ binaries, so one archive per platform is cleaner for
+      # consumers than 75 loose assets).
+      #
+      # The ldflags stamp maps a running desk-tools binary back to THIS umbrella
+      # release: SourceSHA + BuiltAt satisfy deskkit.IsPinned() (an unstamped
+      # build self-reports UNPINNED and warns on every invocation), and
+      # deskkit.ReleaseTag=$RELEASE_TAG records WHICH vX.Y.Z it was cut from —
+      # SourceSHA alone is a commit, not a version.
+      # TestVersionStampedFromReleaseWorkflow (tools/desk/internal/deskkit) reddens
+      # if this `deskkit.ReleaseTag=$RELEASE_TAG` stamp is dropped from release.yml.
+      #
+      # The tag rides in via env: (RELEASE_TAG), never a `${{ }}` splice inside
+      # run: — a tag name is attacker-shaped text. This is a pure Go cross-compile;
+      # it does NOT build the container image (docker-publish.yml owns that).
+      - name: Build and package desk-tools binaries
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          go version
+          # desk-tools is a SEPARATE Go module (tools/desk/go.mod) and the repo
+          # root carries no go.mod/go.work, so the build must run from inside the
+          # module. Resolve the sha at the root first, then cd in; stage each
+          # platform's binaries under RUNNER_TEMP and tar into the repo root, where
+          # the checksum + upload steps below expect the assets.
+          SHA_SHORT=$(git rev-parse --short HEAD)
+          TIMESTAMP=$(date -u +%FT%TZ)
+          LDFLAGS="-X github.com/medici-finance/assay/tools/desk/internal/deskkit.SourceSHA=${SHA_SHORT} \
+                   -X github.com/medici-finance/assay/tools/desk/internal/deskkit.BuiltAt=${TIMESTAMP} \
+                   -X github.com/medici-finance/assay/tools/desk/internal/deskkit.ReleaseTag=${RELEASE_TAG}"
+          root="$PWD"
+          cd tools/desk
+          for platform in darwin-arm64 darwin-amd64 linux-amd64; do
+            os="${platform%-*}"
+            arch="${platform#*-}"
+            stage="${RUNNER_TEMP:-/tmp}/desk-$platform"
+            rm -rf "$stage"; mkdir -p "$stage"
+            for cmd in cmd/*/; do
+              name=$(basename "$cmd")
+              GOOS="$os" GOARCH="$arch" go build -ldflags "$LDFLAGS" \
+                -o "$stage/$name" "./$cmd"
+            done
+            # Include the pre-push hook so consumers can install the main-commit
+            # backstop alongside the binaries.
+            mkdir -p "$stage/hooks"
+            cp hooks/pre-push "$stage/hooks/pre-push"
+            tar -C "$stage" -czf "$root/desk-tools-$platform.tar.gz" .
+          done
+
+      # One checksums.txt covers every asset on the umbrella release — the three
+      # statusgen binaries and the three desk-tools per-platform tarballs.
+      # Consumers pin each line by sha256 in .assay-versions.
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          sha256sum \
+            statusgen-darwin-arm64 \
+            statusgen-darwin-amd64 \
+            statusgen-linux-amd64 \
+            desk-tools-darwin-arm64.tar.gz \
+            desk-tools-darwin-amd64.tar.gz \
+            desk-tools-linux-amd64.tar.gz > checksums.txt
+          cat checksums.txt
+
+      # A dry run has now built + checksummed the artifacts (proving build, guard
+      # and tests all pass) and stops here: the two mutating steps below both
+      # carry `!dry_run`, so no tag is cut, no release is published, nothing is
+      # uploaded.
+      - name: Dry run — stop before tagging and publishing
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: |
+          echo "Dry run: artifacts built and checksummed; cutting no tag and publishing no release."
+          echo "::notice::Dry run complete — build + guard + tests passed. No tag cut, no release published."
+
+      # THE LAST POSSIBLE MOMENT. Dispatch only (and never on a dry run); the
+      # guard has passed and the artifacts are already built and checksummed, so
+      # the only things left that can fail are this push and the publish it
+      # immediately precedes.
+      #
+      # Ordering is the whole point. A tag that exists without a release burns
+      # that version number. Pushing before the build meant any transient Go or
+      # cross-compile failure burned a version. Pushed with GITHUB_TOKEN, so it
+      # does not spawn a second, duplicate run of this workflow off its own
+      # `push: tags` trigger. A racing tag push is refused ("! [rejected] …
+      # already exists"), non-zero, never force.
+      - name: Create and push the dispatched tag
+        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          TAG_MESSAGE: ${{ needs.resolve.outputs.message }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG_MESSAGE"
+          # The checkout ran with persist-credentials:false (H2), so no token was
+          # in .git/config during the build above. Wire it now, for THIS push
+          # only, as a per-command Authorization header (the same Basic scheme
+          # actions/checkout uses) — it never lands on disk in .git/config, so no
+          # later step or job on this runner inherits it.
+          basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
+          git -c http.extraheader="AUTHORIZATION: basic ${basic}" \
+            push origin "refs/tags/$TAG"
+          echo "Pushed $TAG at $(git rev-parse --short HEAD)."
+
+      # Publish via the GitHub REST API with curl — the runner ships no gh CLI,
+      # and api.github.com / uploads.github.com are reachable. Create the release
+      # as a DRAFT if absent (200 = it already exists, e.g. from a prior attempt
+      # of THIS run), upload each asset to the draft, THEN flip it to published.
+      #
+      # WHY DRAFT-THEN-PUBLISH (immutable-releases): with the immutable-releases
+      # repo setting enabled, a release is frozen the instant it is PUBLISHED —
+      # which blocks even the FIRST asset upload (the create-published-then-upload
+      # order returns HTTP 422 on every asset). A draft is mutable, so we attach
+      # every asset to the draft and publish only once they are all on; immutability
+      # then finalizes WITH the binaries already attached.
+      #
+      # Assets are IMMUTABLE (H3): a same-named asset already present is a HARD
+      # ERROR, never a delete-and-reupload clobber — the release token must never
+      # be able to swap the bytes a consumer has pinned by sha256. The recovery is
+      # to cut the next patch version, matching the tag guard's own rule.
+      - name: Create GitHub release and upload assets
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          # DESK_IMAGE is the workflow-level literal; the tag defaults to the
+          # currently published image (v0.1.0) and is overridable on dispatch.
+          DESK_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.desk_image_tag || 'v0.1.0' }}
+          # CHANGELOG discipline — the extracted `## Unreleased` highlights, lifted
+          # ABOVE the asset-inventory boilerplate in the release body below.
+          NOTES_PATH: ${{ steps.changelog.outputs.notes_path }}
+        run: |
+          set -euo pipefail
+
+          api="https://api.github.com/repos/${REPO}"
+          uploads="https://uploads.github.com/repos/${REPO}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28")
+
+          # jq is not guaranteed on the runner; parse the id with a small python3
+          # helper. python3's presence was proven by the Preflight step above,
+          # before the tag was pushed — so this never fails post-tag on a missing
+          # interpreter.
+          json_field() { python3 -c 'import sys,json; print(json.load(sys.stdin).get(sys.argv[1],""))' "$1"; }
+
+          # 1) Does a release already exist for this tag?
+          rel_json="$RUNNER_TEMP/release.json"
+          status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' "${auth[@]}" \
+            "${api}/releases/tags/${RELEASE_TAG}")
+          if [ "$status" = "200" ]; then
+            echo "Release ${RELEASE_TAG} already exists — refreshing assets."
+            release_id=$(json_field id < "$rel_json")
+            # A prior attempt of this run may have left an unpublished DRAFT;
+            # capture that so we know whether the publish flip is still owed.
+            was_draft=$(json_field draft < "$rel_json")
+          elif [ "$status" = "404" ]; then
+            echo "Creating draft release ${RELEASE_TAG}."
+            # draft:true — see the WHY DRAFT-THEN-PUBLISH note above. The release
+            # is published (draft flipped false) only after every asset is on.
+            # The notes NAME the desk-tools image ref (built separately by
+            # docker-publish.yml) as an artifact line alongside the binaries.
+            desk_image_ref="${DESK_IMAGE}:${DESK_IMAGE_TAG}"
+            # CHANGELOG discipline — the release body LEADS with the descriptive
+            # `## Unreleased` highlights (extracted by the CHANGELOG-discipline
+            # step above, and required non-empty there), then the asset-inventory
+            # boilerplate below a horizontal rule. Highlights first is the whole
+            # point of the driver direction (2026-08-31): a reader sees what
+            # changed before the pin table.
+            body=$(RELEASE_TAG="$RELEASE_TAG" DESK_IMAGE_REF="$desk_image_ref" NOTES_PATH="$NOTES_PATH" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; img=os.environ["DESK_IMAGE_REF"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * desk-tools-<platform>.tar.gz\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\ndesk-tools image (built separately by docker-publish.yml, daily-immutable-tag; pin the ref in .assay-versions):\n  * "+img+"\n\nSee checksums.txt for every asset sha256."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
+            status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' -X POST "${auth[@]}" \
+              -d "$body" "${api}/releases")
+            if [ "$status" != "201" ]; then
+              echo "::error::could not create release ${RELEASE_TAG} (HTTP $status)"; cat "$rel_json"; exit 1
+            fi
+            release_id=$(json_field id < "$rel_json")
+            was_draft="True"
+          else
+            echo "::error::unexpected HTTP $status looking up release ${RELEASE_TAG} — refusing rather than guessing"
+            cat "$rel_json"; exit 1
+          fi
+
+          if [ -z "$release_id" ]; then
+            echo "::error::could not resolve the release id for ${RELEASE_TAG}"; exit 1
+          fi
+          echo "release id = $release_id"
+
+          # 2) Upload each asset. A same-named asset already present is a hard
+          #    failure, not a clobber (H3). List the current assets first — and
+          #    if that listing itself fails, refuse rather than upload blind
+          #    (uploading blind could re-add a name and silently split the set).
+          assets_json="$RUNNER_TEMP/assets.json"
+          list_status=$(curl -sS --retry 3 -o "$assets_json" -w '%{http_code}' "${auth[@]}" \
+            "${api}/releases/${release_id}/assets?per_page=100")
+          if [ "$list_status" != "200" ]; then
+            echo "::error::could not list existing assets for ${RELEASE_TAG} (HTTP $list_status) — refusing rather than risk overwriting a published asset"
+            cat "$assets_json"; exit 1
+          fi
+
+          for f in statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 \
+                   desk-tools-darwin-arm64.tar.gz desk-tools-darwin-amd64.tar.gz desk-tools-linux-amd64.tar.gz \
+                   checksums.txt; do
+            # Fail loudly if this name is already published — never swap the bytes.
+            existing_id=$(NAME="$f" ASSETS_JSON="$assets_json" python3 -c 'import os,json; d=json.load(open(os.environ["ASSETS_JSON"])) if os.path.exists(os.environ["ASSETS_JSON"]) else []; d=d if isinstance(d,list) else []; print(next((str(a.get("id","")) for a in d if a.get("name")==os.environ["NAME"]), ""))' 2>/dev/null || true)
+            if [ -n "${existing_id:-}" ]; then
+              echo "::error::asset $f (id $existing_id) already exists on release ${RELEASE_TAG}. Release assets are immutable — never swap the bytes behind a published name. Cut the NEXT patch version instead."
+              exit 1
+            fi
+            echo "uploading $f"
+            status=$(curl -sS --retry 3 -o "$RUNNER_TEMP/upload.json" -w '%{http_code}' -X POST "${auth[@]}" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"$f" \
+              "${uploads}/releases/${release_id}/assets?name=${f}")
+            if [ "$status" != "201" ]; then
+              echo "::error::upload of $f failed (HTTP $status)"; cat "$RUNNER_TEMP/upload.json"; exit 1
+            fi
+          done
+
+          # 3) Publish. Every asset is now attached. If the release is still a
+          #    draft (freshly created, or a prior attempt left a draft), flip it
+          #    to published — immutable-releases finalizes the release at THIS
+          #    moment, with the binaries already on it. An already-published
+          #    release (was_draft=False) is left as-is: it is public already, and
+          #    PATCHing an immutable published release would fail.
+          if [ "${was_draft:-}" = "True" ] || [ "${was_draft:-}" = "true" ]; then
+            echo "Publishing draft release ${RELEASE_TAG}."
+            pub_status=$(curl -sS --retry 3 -o "$RUNNER_TEMP/publish.json" -w '%{http_code}' -X PATCH "${auth[@]}" \
+              -d '{"draft":false}' "${api}/releases/${release_id}")
+            if [ "$pub_status" != "200" ]; then
+              echo "::error::could not publish release ${RELEASE_TAG} (HTTP $pub_status)"; cat "$RUNNER_TEMP/publish.json"; exit 1
+            fi
+          fi
+          echo "Published ${RELEASE_TAG} with statusgen + desk-tools binaries + checksums.txt (desk-tools image: ${DESK_IMAGE}:${DESK_IMAGE_TAG})."
+
+      # CHANGELOG discipline — in the SAME tagged flow, roll the just-released
+      # highlights out of `## Unreleased` and under a dated `## vX.Y.Z — <date>`
+      # heading, leaving Unreleased empty so the next cycle starts clean (and the
+      # extract-and-require step above refuses the next release until new
+      # highlights are added). Dispatch + non-dry-run only; committed to the
+      # default branch with the same per-command header-auth the tag push uses
+      # (persist-credentials was false during the build, so no token sits in
+      # .git/config). A non-fast-forward push here is a loud failure, never a
+      # force — the release bytes are already published, so a failed roll is a
+      # follow-up commit, not a lost release.
+      - name: CHANGELOG discipline — roll Unreleased under the released version
+        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          day=$(date -u +%Y-%m-%d)
+          python3 - CHANGELOG.md "$RELEASE_TAG" "$day" <<'PY'
+          import sys
+          path, tag, day = sys.argv[1], sys.argv[2], sys.argv[3]
+          lines = open(path, encoding="utf-8").read().splitlines()
+          out, done = [], False
+          for ln in lines:
+              out.append(ln)
+              if not done and ln.strip().lower() == "## unreleased":
+                  # Leave Unreleased empty; insert a fresh dated section after it.
+                  out.append("")
+                  out.append(f"## {tag} — {day}")
+                  done = True
+          open(path, "w", encoding="utf-8").write("\n".join(out) + "\n")
+          PY
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md unchanged — nothing to roll (no '## Unreleased' heading?)."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "docs(changelog): roll Unreleased under ${RELEASE_TAG}"
+          basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
+          git -c http.extraheader="AUTHORIZATION: basic ${basic}" \
+            push origin "HEAD:${DEFAULT_BRANCH}"
+          echo "Rolled CHANGELOG '## Unreleased' under '## ${RELEASE_TAG}' and pushed to ${DEFAULT_BRANCH}."
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # CONTAINER CHANNEL — the assay-harness image. ONE umbrella run emits both
+  # shapes: the `release` job above cuts the binaries + checksums.txt, and THIS
+  # job builds the harness image tagged with the SAME umbrella vX.Y.Z, its
+  # immutable DIGEST emitted alongside the tag (consumers pin by content hash).
+  #
+  # BEHIND `needs: [resolve, guard, test]` — the SAME gate the binary `release`
+  # job inherits. An image lane that skipped the test gate would reopen the
+  # untested-release hole on a second channel; do not weaken this dependency.
+  #
+  # WHY docker build ON medici-builder-public-release. That label is daemon-ful —
+  # docker-publish.yml already uses it to build the combined desk-tools image with
+  # plain `docker build` — so this job MATCHES ASSAY'S image convention (docker
+  # build on that label). (A reviewer may instead prefer this build live in
+  # docker-publish.yml alongside the desk-tools image.)
+  #
+  # WHY PUBLICATION IS A FLAG, NOT A REWRITE. Publishing to a public registry is
+  # a deliberate, gated decision — WHETHER the image is pushed is a dispatch-flag
+  # call, not automatic. So the
+  # image is always BUILT (behind the test gate) and inspected; the registry PUSH
+  # is gated on the `publish_image` dispatch input (default false). With the flag
+  # off — and on every tag-push — the image is built and NOTHING is pushed.
+  image:
+    needs: [resolve, guard, test]
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+    runs-on: medici-builder-public-release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Resolve the image ref from the umbrella tag. In assay the umbrella tag is
+      # a plain vX.Y.Z (no `/`), but `tr '/' '-'` is kept so a prefixed tag could
+      # never produce an illegal registry tag. The repo is lowercased — GHCR
+      # requires it. RELEASE_TAG rides in via env:, never a `${{ }}` splice into
+      # run: — a tag name is attacker-shaped text.
+      - name: Compute the image ref
+        id: ref
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          image_tag=$(printf '%s' "${RELEASE_TAG}" | tr '/' '-')
+          repo=$(printf '%s' "${HARNESS_IMAGE}" | tr '[:upper:]' '[:lower:]')
+          echo "ref=${repo}:${image_tag}" >> "$GITHUB_OUTPUT"
+          echo "Image ref: ${repo}:${image_tag}"
+
+      # THE VISIBILITY GATE: log in only when we intend to push — a
+      # dispatch with publish_image=true. A tag-push, or a dispatch with the flag
+      # off, never touches the registry.
+      - name: Log in to GHCR
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_image }}
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # ONE build, always (behind the test gate). Plain `docker build` against the
+      # runner's Docker daemon (DOCKER_HOST is set on medici-builder-public-release),
+      # single-arch linux/amd64 — the same mechanics docker-publish.yml uses. The
+      # binaries are STAMPED via build-args so the image self-reports the umbrella
+      # version (the Dockerfile FAILS CLOSED on an empty ASSAY_VERSION). `--iidfile`
+      # records the built image's config id even on the no-push path.
+      - name: Build the harness image
+        id: build
+        env:
+          IMAGE_REF: ${{ steps.ref.outputs.ref }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+          SOURCE_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          SHA_SHORT="${GITHUB_SHA::12}"
+          docker build \
+            --iidfile "${RUNNER_TEMP}/harness.iid" \
+            --build-arg "ASSAY_VERSION=${RELEASE_TAG}" \
+            --build-arg "STATUSGEN_TAG=${RELEASE_TAG}" \
+            --build-arg "DESK_SOURCE_SHA=${SHA_SHORT}" \
+            --build-arg "DESK_BUILT_AT=$(date -u +%FT%TZ)" \
+            --build-arg "SOURCE_URL=${SOURCE_URL}" \
+            --build-arg "SOURCE_REVISION=${SOURCE_REVISION}" \
+            -t "${IMAGE_REF}" \
+            -f images/assay-harness/Dockerfile \
+            .
+          echo "built ${IMAGE_REF} (config id $(cat "${RUNNER_TEMP}/harness.iid"))"
+
+      # THE PUSH — a single flag-gated step. `docker push` publishes the
+      # umbrella-versioned tag; the registry MANIFEST digest is then read back
+      # with `docker inspect .RepoDigests` and is what consumers
+      # pin (a tag is mutable at a registry, a digest is not). Fail closed if a
+      # push produced no RepoDigest.
+      - name: Push the harness image and record its digest
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_image }}
+        env:
+          IMAGE_REF: ${{ steps.ref.outputs.ref }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker push "${IMAGE_REF}"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE_REF}" 2>/dev/null || true)
+          if [ -z "$digest" ]; then
+            echo "::error::the image was pushed but no RepoDigest is recorded — refusing to record a tag with no immutable digest"
+            exit 1
+          fi
+          {
+            echo "### assay-harness image"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| umbrella | \`${RELEASE_TAG}\` |"
+            echo "| tag | \`${IMAGE_REF}\` |"
+            echo "| pinnable ref | \`${digest}\` |"
+            echo "| pushed | true |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          echo "pushed ${digest}"
+
+      # BUILD-ONLY path (publish_image off, or any tag-push): the image is built
+      # and its config id computed, nothing is pushed. A registry MANIFEST digest
+      # exists only after a push, so record the config id and say so.
+      - name: Note build-only (no push)
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.publish_image) }}
+        env:
+          IMAGE_REF: ${{ steps.ref.outputs.ref }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          iid=""
+          if [ -s "${RUNNER_TEMP}/harness.iid" ]; then iid=$(cat "${RUNNER_TEMP}/harness.iid"); fi
+          {
+            echo "### assay-harness image (build-only)"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| umbrella | \`${RELEASE_TAG}\` |"
+            echo "| tag (unpushed) | \`${IMAGE_REF}\` |"
+            echo "| config id | \`${iid}\` |"
+            echo "| pushed | false |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          echo "::notice::publish_image off (or tag-push) — image built and inspected, NOTHING pushed (registry push is flag-gated). A registry manifest digest exists only after a push."
+
+      # GHCR packages are created PRIVATE on first push. Best-effort flip to
+      # PUBLIC so the image pulls anonymously (mirrors docker-publish.yml). The
+      # default GITHUB_TOKEN usually lacks org package-admin; a failure here is
+      # EXPECTED and non-fatal — an org owner then flips visibility once by hand.
+      - name: Make package public (best-effort)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_image }}
+        continue-on-error: true
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GHCR_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/orgs/medici-finance/packages/container/assay%2Fassay-harness \
+            -d '{"visibility":"public"}')"
+          echo "visibility PATCH -> HTTP $code"
+          if [ "$code" != "204" ] && [ "$code" != "200" ]; then
+            echo "::warning::could not set assay-harness package visibility to public (HTTP $code); an org owner must flip it in GHCR package settings."
+          fi

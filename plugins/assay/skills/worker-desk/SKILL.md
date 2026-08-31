@@ -17,7 +17,9 @@ table.
 re-derive them per dispatch): every session works in its own worktree, never a shared checkout; merge,
 never rebase; the generated board is single-writer = main's CI; every post is made as the role's own
 App identity; act only on trusted-authored items; file at discovery rather than narrating; one item =
-one branch = one PR, and a merged or closed PR is DONE.
+one branch = one PR, and a merged or closed PR is DONE; a notable change adds one human-legible
+`## Unreleased` highlight line to the repo's CHANGELOG (a genuinely non-notable PR carries the
+`changelog:skip` label instead).
 
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
