@@ -94,14 +94,19 @@ func extractEvidence(content string) string {
 	return strings.Join(out, "\n")
 }
 
-// extractVerify returns the body of the `## Verify` section (between that exact heading and the
-// next `## `). Mirrors extractEvidence. The bucketer derives the online-lane and longitudinal
-// signals from this text when a brief carries no explicit marker (see briefscan.go).
+// extractVerify returns the body of the `## Verify` section (between that heading and the next
+// `## `). Unlike extractEvidence, the heading is matched as a PREFIX: a real brief's Verify
+// heading carries an author-appended qualifier, e.g. `## Verify (executable — no prose-only DoD
+// items)`, so an exact `## Verify` match reads an empty section for every real brief and the
+// bucketer derives nothing — the load-bearing bug that kept the deferred/online-lane buckets from
+// ever firing on the board. The bucketer derives the online-lane and longitudinal signals from
+// this text when a brief carries no explicit marker (see briefscan.go).
 func extractVerify(content string) string {
 	lines := strings.Split(content, "\n")
 	start := -1
 	for i, l := range lines {
-		if strings.TrimSpace(l) == "## Verify" {
+		t := strings.TrimSpace(l)
+		if t == "## Verify" || strings.HasPrefix(t, "## Verify ") || strings.HasPrefix(t, "## Verify(") {
 			start = i + 1
 			break
 		}
