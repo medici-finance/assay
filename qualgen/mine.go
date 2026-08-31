@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	git "github.com/go-git/go-git/v5"
@@ -30,6 +31,7 @@ func runMine(args []string, stdout, stderr io.Writer) int {
 	blockMin := fs.Int("block-min", DefaultBlockMin, "minimum identical-line run to count as a moved/copied block (M1 §4.1)")
 	churnDays := fs.Int("churn-window-days", DefaultChurnWindowDays, "churn window in days: a line revised/deleted within this of landing is churned (M1 §4.2)")
 	identityMap := fs.String("identity-map", "", "path to a JSON author-identity class map (unmapped authors fall into an explicit 'unclassified' class)")
+	instructionGlobs := fs.String("instruction-globs", "", "comma-separated instruction-doc globs for the brittleness pass (spec §4.6); empty leaves reference-validity could-not-measure, never a silent zero")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -43,6 +45,7 @@ func runMine(args []string, stdout, stderr io.Writer) int {
 	cfg.BlockMin = *blockMin
 	cfg.ChurnWindowDays = *churnDays
 	cfg.Identity = idMap
+	cfg.Instruction = InstructionBrittleConfig{Globs: splitGlobs(*instructionGlobs)}
 
 	trackingRoot := *out
 	if trackingRoot == "" {
@@ -195,6 +198,13 @@ func mineWithConfig(repoPath, trackingRoot string, stdout io.Writer, cfg M1Confi
 	}
 	if err := aggregateM1(store, cfg, runAt); err != nil {
 		return fmt.Errorf("aggregate M1 taxonomy/churn metrics: %w", err)
+	}
+	// Instruction-layer brittleness (spec §4.6, quality/04): reference-validity
+	// trend + doc↔code staleness, emitted to the same append-only metrics table.
+	// An unconfigured instruction-doc glob set emits a could-not-measure marker
+	// (fact 1) rather than a silent zero.
+	if err := appendInstructionBrittleness(store, repoPath, cfg.Instruction, runAt); err != nil {
+		return fmt.Errorf("compute M1 instruction-brittleness metrics: %w", err)
 	}
 
 	fmt.Fprintf(stdout, "qualgen mine: %d new commit(s) extracted; tip %s; %d commit(s) in table\n",
@@ -385,6 +395,23 @@ func detectDiscontinuities(repoPath string, prior *MineHeader) []Discontinuity {
 			Kind:   "shallow-clone-floor",
 			Detail: "repository is a shallow clone; history before the shallow floor is unreachable",
 		})
+	}
+	return out
+}
+
+// splitGlobs parses the comma-separated --instruction-globs flag into a glob
+// slice, trimming whitespace and dropping empty entries. An empty flag yields
+// nil (unconfigured) so the brittleness pass reports could-not-measure rather
+// than a silent zero (spec §4.6 fact 1).
+func splitGlobs(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	var out []string
+	for _, g := range strings.Split(s, ",") {
+		if g = strings.TrimSpace(g); g != "" {
+			out = append(out, g)
+		}
 	}
 	return out
 }

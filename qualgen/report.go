@@ -132,6 +132,14 @@ func renderReport(store *Store, baselines BaselineSet) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	refValidity, err := store.ReadReferenceValidity()
+	if err != nil {
+		return "", err
+	}
+	staleness, err := store.ReadDocCodeStaleness()
+	if err != nil {
+		return "", err
+	}
 
 	// Latest snapshot per (metric,grain,key) for the scalar comparability table.
 	latestMetric := latestOf(metrics,
@@ -191,9 +199,98 @@ func renderReport(store *Store, baselines BaselineSet) (string, error) {
 	b.WriteString("## Per-stage ledger (M3)\n\n")
 	b.WriteString("not measured — populated by quality/10 (stage attribution). Never rendered as 0.\n\n")
 	b.WriteString("## Instruction reference-validity trend\n\n")
-	b.WriteString("not measured — the instruction-brittleness family (quality/04) is not yet emitted to the metrics table. Never rendered as 0.\n")
+	writeReferenceValidityTrend(&b, refValidity)
+	writeDocCodeStalenessAlarms(&b, staleness)
 
 	return b.String(), nil
+}
+
+// writeReferenceValidityTrend renders the instruction reference-validity trend
+// (spec §4.6): one row per history window of the latest mine snapshot, live/dead/
+// unmeasured reference counts and the three-state validity ratio. An unconfigured
+// mine emits a single marker record (empty AtSHA) rendered as unmeasured, never a
+// zero. A decaying Validity down the rows is the context-rot signal.
+func writeReferenceValidityTrend(b *strings.Builder, recs []ReferenceValidityRecord) {
+	if len(recs) == 0 {
+		b.WriteString("not measured — no instruction-brittleness family in the artifacts (run `qualgen mine --instruction-globs <glob>` to configure the instruction-doc set). Never rendered as 0.\n\n")
+		return
+	}
+	// Latest snapshot only: each mine appends a fresh full set of window rows, all
+	// stamped with the same MinedAt.
+	latestAt := recs[0].MinedAt
+	for _, r := range recs {
+		if r.MinedAt.After(latestAt) {
+			latestAt = r.MinedAt
+		}
+	}
+	rows := make([]ReferenceValidityRecord, 0, len(recs))
+	for _, r := range recs {
+		if r.MinedAt.Equal(latestAt) {
+			rows = append(rows, r)
+		}
+	}
+	// The unconfigured / could-not-measure marker is a single window-less record
+	// (empty AtSHA): render its reason as unmeasured, never a fabricated row.
+	if len(rows) == 1 && rows[0].AtSHA == "" {
+		reason := rows[0].Validity.Reason
+		if reason == "" {
+			reason = "instruction-doc set unconfigured"
+		}
+		fmt.Fprintf(b, "not measured — %s. Never rendered as 0.\n\n", reason)
+		return
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].WindowIndex < rows[j].WindowIndex })
+	b.WriteString("| Window | At commit | Live refs | Dead refs | Unmeasured | Reference-validity |\n")
+	b.WriteString("|--------|-----------|-----------|-----------|------------|--------------------|\n")
+	for _, r := range rows {
+		at := shortSHA(r.AtSHA)
+		if at == "" {
+			at = "—"
+		}
+		fmt.Fprintf(b, "| %d | %s | %d | %d | %d | %s |\n",
+			r.WindowIndex, at, r.Live, r.Dead, r.CouldNotMeasure, renderMeasureFloat(r.Validity))
+	}
+	b.WriteString("\n")
+}
+
+// writeDocCodeStalenessAlarms lists the doc↔code pairs flagged presumptively
+// stale in the latest snapshot (spec §4.6): the coupled code moved repeatedly
+// while the doc did not. A snapshot with no stale pair says so, distinct from a
+// snapshot with no staleness family at all.
+func writeDocCodeStalenessAlarms(b *strings.Builder, recs []DocCodeStalenessRecord) {
+	b.WriteString("### Doc↔code staleness alarms\n\n")
+	if len(recs) == 0 {
+		b.WriteString("not measured — no doc↔code staleness family in the artifacts. Never rendered as 0.\n\n")
+		return
+	}
+	latestAt := recs[0].MinedAt
+	for _, r := range recs {
+		if r.MinedAt.After(latestAt) {
+			latestAt = r.MinedAt
+		}
+	}
+	var alarms []DocCodeStalenessRecord
+	for _, r := range recs {
+		if r.MinedAt.Equal(latestAt) && r.Stale {
+			alarms = append(alarms, r)
+		}
+	}
+	if len(alarms) == 0 {
+		b.WriteString("none — no doc↔code pair crossed the staleness threshold in the latest snapshot.\n\n")
+		return
+	}
+	sort.Slice(alarms, func(i, j int) bool {
+		if alarms[i].DocPath != alarms[j].DocPath {
+			return alarms[i].DocPath < alarms[j].DocPath
+		}
+		return alarms[i].CodePath < alarms[j].CodePath
+	})
+	b.WriteString("| Doc | Coupled code | Code-only changes |\n")
+	b.WriteString("|-----|--------------|-------------------|\n")
+	for _, r := range alarms {
+		fmt.Fprintf(b, "| %s | %s | %d |\n", mdCell(r.DocPath), mdCell(r.CodePath), r.CodeOnlyChanges)
+	}
+	b.WriteString("\n")
 }
 
 // writeHotspots renders the top-10 hotspots of the latest snapshot by hotspot

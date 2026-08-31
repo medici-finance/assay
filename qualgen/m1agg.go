@@ -79,6 +79,11 @@ type M1Config struct {
 	// landing dates). 0 disables the per-window grain.
 	WindowDays int
 	Identity   *IdentityMap
+	// Instruction configures the instruction-layer brittleness pass (spec §4.6,
+	// quality/04). Its zero value (empty Globs) is UNCONFIGURED — the pass emits
+	// a could-not-measure marker rather than a silent zero (fact 1), so a mine
+	// with no instruction-doc glob set is honest about not having looked.
+	Instruction InstructionBrittleConfig
 }
 
 // DefaultM1Config is the comparable-defaults configuration: GitClear's published
