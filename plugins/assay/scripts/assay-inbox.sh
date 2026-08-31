@@ -1204,9 +1204,12 @@ def arrows($arr; $comp; $flowBlind):
              else ($tp.advice // "") end),
     stagesRead: (if $tp == null then 0 else ($tp.stagesRead // 0) end),
     stagesTotal: (if $tp == null then 4 else ($tp.stagesTotal // 4) end),
-    note: "This diagram RENDERS AUTHORED STATUS. The board lints consistency between status "
+    # Parenthesised so the string concatenation is a single Term: jq 1.6's object-value
+    # grammar (ExpD) rejects a bare `+` at the top level of an object entry — every other
+    # renderer here already runs under that jq, so this one field was the lone offender.
+    note: ("This diagram RENDERS AUTHORED STATUS. The board lints consistency between status "
           + "cells, Evidence and PRs; it does not measure whether the work is done. Every count "
-          + "here is exactly as good as the status somebody wrote.",
+          + "here is exactly as good as the status somebody wrote."),
     rows: ([{ cell: "fleet", root: "", sha: "", fleet: true,
               constraint: (if ($cellrows | length) == 1 then ($cellrows[0].constraint // "") else "" end),
               constraintSource: (if ($cellrows | length) == 1
