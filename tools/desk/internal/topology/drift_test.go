@@ -370,10 +370,17 @@ type handTableHit struct {
 // handTableOptOut names composite literals that DO restate topology tokens but
 // are legitimately not a second source. Every entry states why. The opt-out is
 // keyed on the declaring identifier, so it cannot silence a whole file.
-// Every entry names a DERIVATION that is bound to the declared source by its own
-// diff test. That binding is the whole reason it is not a second source, so each
-// reason states WHICH test binds it — an opt-out whose reason is "it's fine"
-// is how the registry stops meaning anything.
+// Two kinds of entry are legitimate, and each reason must make plain which it is:
+//   - a DERIVATION bound to the declared source by its own diff test. That
+//     binding is the whole reason it is not a second source, so the reason states
+//     WHICH test binds it.
+//   - a distinct POLICY SET that merely shares a label name or two with the
+//     source without mirroring either declared category, so it provably cannot
+//     drift from it. Its reason must state exactly why it does not track the
+//     source (which declared set it is NOT, and which member proves the two are
+//     different).
+// An opt-out whose reason is "it's fine" is how the registry stops meaning
+// anything.
 var handTableOptOut = map[string]string{
 	"compiled": "the desk module's derivation — bound by part 1 of this test " +
 		"(TestTopologyDriftRegistry/derivation matches the declared source)",
@@ -389,6 +396,14 @@ var handTableOptOut = map[string]string{
 		"reads it to cross-read a brief's declared paths against the risk classifier; like the label " +
 		"derivations above, statusgen ships as a pinned binary run against an arbitrary --root and " +
 		"cannot read the source at run time",
+	"blockingIssueLabels": "NOT a derivation — a distinct POLICY SET. It is statusgen's " +
+		"escalation vocabulary (question, needs-decision, help wanted): the labels that overlay " +
+		"`blocked` on an in-progress/todo brief per spec/lifecycle-v1.md §2. It is neither " +
+		"labels.system_state nor labels.decision_owed — it carries `help wanted`, which is not a " +
+		"topology label at all, and omits `needs-human`, which decision_owed carries; so it mirrors " +
+		"neither declared set and cannot drift from topology.yaml (a change to either label category " +
+		"leaves this set untouched). It restates `needs-decision`/`question` only because the " +
+		"escalation vocabulary happens to overlap decision_owed, not because it copies it.",
 }
 
 // scanForHandTables finds composite literals that restate two or more distinct
