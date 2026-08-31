@@ -32,4 +32,9 @@ not measured — populated by quality/10 (stage attribution). Never rendered as 
 
 ## Instruction reference-validity trend
 
-not measured — the instruction-brittleness family (quality/04) is not yet emitted to the metrics table. Never rendered as 0.
+not measured — no instruction-brittleness family in the artifacts (run `qualgen mine --instruction-globs <glob>` to configure the instruction-doc set). Never rendered as 0.
+
+### Doc↔code staleness alarms
+
+not measured — no doc↔code staleness family in the artifacts. Never rendered as 0.
+
