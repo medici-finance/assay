@@ -65,3 +65,71 @@ jobs:
             echo "::endgroup::"
           done < <(git ls-files '*go.mod')
           exit "$fail"
+
+  # The plugin SHELL suites. `assay-inbox.sh` / `inbound-monitor.sh` carry their
+  # own regression suites (`*.test.sh`) but the build-test job above runs Go
+  # build+vet only, so — exactly like the desk-tools controls that get their own
+  # workflows — these suites passed locally and ran NOWHERE. This job runs them.
+  #
+  # HERMETIC by construction: each suite stubs `gh` / `statusgen` / `deskboard`
+  # on PATH per case, so no token, no board, no historian and no network are
+  # involved; a suite exits non-zero on the first failing case, which reddens
+  # this job. New `plugins/assay/scripts/*.test.sh` files are picked up without
+  # editing this workflow.
+  plugin-shell-suites:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run every plugin shell suite
+        run: |
+          set -uo pipefail
+          fail=0
+          while IFS= read -r suite; do
+            echo "::group::${suite}"
+            if bash "$suite"; then
+              echo "${suite}: OK"
+            else
+              echo "::error::${suite}: shell suite failed"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done < <(git ls-files 'plugins/assay/scripts/*.test.sh')
+          exit "$fail"
+
+  # GATING house-value / skill-home / guardrail-parity lint. `tools/skillslint`
+  # runs over every *.md under plugins/ (widened from the skill
+  # bodies to the whole plugin tree): frontmatter validity, no proper-name-shaped
+  # token in a driver position (the neutral `human:<name>` token is the only
+  # permitted form), and a byte-diff of every shared-guardrail copy against its
+  # one declared source (.claude/guardrails/GUARDRAILS.md). Three-state:
+  # could-not-check is a FAILURE, never a quiet pass — so a plugin tree the tool
+  # cannot read reddens this job rather than passing silently.
+  #
+  # Needs the Go toolchain (the tool is `go run .` in tools/skillslint; the runner
+  # ships no `make`), installed by hand from go.dev/dl as build-test documents.
+  skillslint:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: skillslint
+        run: |
+          set -euo pipefail
+          go version
+          # The `medici-builder-public` runner ships no `make`, so invoke the tool exactly
+          # as the Makefile's `skillslint` target does: `cd tools/skillslint && go run .
+          # --root ../..`. skillslint is authored in THIS tree (tools/skillslint), so running
+          # it from its own source is the pinned invocation — there is no separately released
+          # skillslint binary to fetch, and the Go toolchain is already installed above.
+          cd tools/skillslint && go run . --root ../..

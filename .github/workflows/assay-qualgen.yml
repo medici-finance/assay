@@ -1,0 +1,183 @@
+name: quality-report
+# This repo's OWN QUALITY.md trend view — the single-writer shape, modelled on
+# assay-statusgen.yml (STATUS.md) exactly.
+#
+#   - pull_request: render `qualgen report` and DISCARD (stdout only). QUALITY.md
+#     is a GENERATED artifact with exactly ONE writer (the push-to-main regen job
+#     below); a branch must never modify it. `qualgen report`'s own single-writer
+#     guard enforces this from the other side — a `--write` with the CI-writer env
+#     UNSET is refused (spec §9.3), so this PR half deliberately omits `--write`
+#     and touches nothing.
+#   - push to main: render `qualgen report --write` and commit QUALITY.md if it
+#     changed. This job is QUALITY.md's single writer, and it is the ONLY context
+#     that sets QUALGEN_QUALITY_WRITER=ci — the value `qualgen report` requires to
+#     take the committed-view write path.
+#
+# qualgen is built FROM THIS REPO'S OWN SOURCE (qualgen/), not downloaded as a
+# pinned release binary: this IS the repo qualgen lives in, so a released binary
+# would lag the very source the PR is changing. (Same rationale as the statusgen
+# board CI.)
+#
+# Runner + Go install mirror ci.yml / assay-statusgen.yml: the self-hosted
+# `medici-builder-public` runner has no reach to GitHub's release-asset CDN, so Go
+# is fetched by hand from go.dev/dl rather than actions/setup-go.
+on:
+  pull_request:
+    # Fire on anything `qualgen report` reads: the committed quality artifacts it
+    # renders from, the qualgen source (the binary is built from it), and this
+    # workflow. QUALITY.md itself is EXCLUDED — it is output, not input.
+    paths:
+      - "docs/quality/**"
+      - "!docs/quality/QUALITY.md"
+      - "qualgen/**"
+      - ".github/workflows/assay-qualgen.yml"
+  push:
+    branches: [main]
+    # QUALITY.md is excluded here too (loop guard 1): the regen job's own commit —
+    # which touches only docs/quality/QUALITY.md — cannot retrigger this workflow.
+    # The regen job's `if:` also skips any [skip-qualgen-regen] commit (loop guard
+    # 2, belt and suspenders).
+    paths:
+      - "docs/quality/**"
+      - "!docs/quality/QUALITY.md"
+      - "qualgen/**"
+      - ".github/workflows/assay-qualgen.yml"
+
+# Serialize runs per ref. A merge burst on main fires one regen run per push;
+# without this they run concurrently and all but the last lose the `git push`
+# race against a moving main ("! [rejected] main -> main (fetch first)"), so main
+# shows red runs indistinguishable from a real regen failure. This is the fix
+# proven on the statusgen board CI (#221 / #216). cancel-in-progress is
+# deliberately FALSE: queue, never cancel — a cancelled regen throws away that
+# push's view rather than merely delaying it.
+concurrency:
+  group: quality-report-${{ github.ref }}
+  cancel-in-progress: false
+
+# Least-privilege default: the PR render job needs only read. The push-to-main
+# regen job is the sole thing that commits, so it alone gets contents: write
+# (via a minted App token below).
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  render:
+    if: github.event_name == 'pull_request'
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: Build qualgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd qualgen && go build -o "${RUNNER_TEMP}/qualgen" . )
+      - name: Render QUALITY.md (discard — single-writer is the main-push job)
+        run: |
+          set -euo pipefail
+          # No --write, and QUALGEN_QUALITY_WRITER unset: renders to stdout and
+          # discards. The committed QUALITY.md is never touched on a branch.
+          "${RUNNER_TEMP}/qualgen" report --out . > "${RUNNER_TEMP}/QUALITY.preview.md"
+          echo "rendered QUALITY.md preview ($(wc -l < "${RUNNER_TEMP}/QUALITY.preview.md") lines) — discarded on a branch"
+
+  regen:
+    # QUALITY.md is generated on main only, never on a branch (single writer).
+    # loop guard 2: skip our own [skip-qualgen-regen] regen commit.
+    if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-qualgen-regen]') }}
+    runs-on: medici-builder-public
+    # Sole writer of QUALITY.md. The push authenticates as the assay-board-writer
+    # App (minted below) — the same generated-artifact writer STATUS.md uses, on
+    # the protect-main + leak-sweep ruleset bypass lists — NOT the default
+    # GITHUB_TOKEN, so the default token needs only read; the App token carries
+    # the write.
+    permissions:
+      contents: read
+    steps:
+      - name: Mint assay-board-writer App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOARD_APP_ID }}
+          private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Persist the App token as the push credential (checkout default), so
+          # the QUALITY.md `git push` below authenticates as assay-board-writer[bot].
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: Build qualgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd qualgen && go build -o "${RUNNER_TEMP}/qualgen" . )
+      - name: Regenerate QUALITY.md
+        env:
+          # The CI-writer authorization `qualgen report` requires to take the
+          # committed-view --write path (spec §9.3). Set NOWHERE else — a local
+          # shell does not set it, so a local --write is refused.
+          QUALGEN_QUALITY_WRITER: ci
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/qualgen" report --out . --write
+      - name: Commit QUALITY.md if it changed
+        run: |
+          set -euo pipefail
+          git config user.name  'assay-board-writer[bot]'
+          git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
+          # BOUNDED RETRY (3 attempts). The concurrency: group above serializes
+          # regen runs, but main can still move under us between this job's
+          # checkout and its push (a human merge, or any push on a path this
+          # workflow does not watch). A bare `git push` loses that race and
+          # reddens main; here a rejection re-syncs to the new head and
+          # REGENERATES against it. (Same shape as the statusgen board regen,
+          # #221.)
+          #
+          # Never `git pull --rebase`: QUALITY.md is a generated artifact, so a
+          # rebase conflict in it is meaningless — regeneration against the new
+          # head IS the resolution.
+          attempts=3
+          attempt=1
+          while : ; do
+            git add docs/quality/QUALITY.md
+            # BOOTSTRAP-SAFE GUARD: guard on `git status --porcelain`, NOT
+            # `git diff --quiet`. git diff sees only TRACKED files, so on a repo
+            # with no QUALITY.md yet the diff guard mis-fires ("nothing to commit")
+            # and the first view is NEVER created; porcelain reports the new file.
+            if [ -z "$(git status --porcelain -- docs/quality/QUALITY.md)" ]; then
+              echo "QUALITY.md already current — nothing to commit"
+              exit 0
+            fi
+            git commit -m 'chore(quality): regenerate QUALITY.md [skip-qualgen-regen]'
+            if git push; then
+              echo "QUALITY.md pushed on attempt ${attempt}/${attempts}"
+              exit 0
+            fi
+            if [ "${attempt}" -ge "${attempts}" ]; then
+              echo "::error::qualgen QUALITY.md regen: push rejected on all ${attempts} attempts — main is moving faster than the regen can re-sync. Re-run this job once the merge burst settles."
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            echo "push rejected: main moved. Re-syncing and regenerating (attempt ${attempt}/${attempts})"
+            git fetch origin main
+            git reset --hard origin/main
+            QUALGEN_QUALITY_WRITER=ci "${RUNNER_TEMP}/qualgen" report --out . --write
+          done

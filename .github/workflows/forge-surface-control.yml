@@ -1,0 +1,97 @@
+name: forge-surface-control
+# The CI-GATING half of the closed forge surface — the control that makes
+# "desk tools reach a forge only through the enumerated interface" a checked
+# fact instead of a convention.
+#
+# WHAT THIS RUNS. Three source-level controls under tools/desk:
+#
+#   - THE SHELL-EXEC BAN (internal/forgeban + deskkit's TestNoForgeCLIShellout).
+#     Two independent detection layers over every shipped Go file under
+#     tools/desk: an os/exec launch-site walk resolved through each file's own
+#     import set, and a position-aware literal scan that catches the wrapper,
+#     method-value and slice-splat launches the first cannot resolve. An exec
+#     site whose argv[0] is not a compile-time constant is reported as
+#     could-not-check and carried in its own ledger — never rounded to clean.
+#   - THE NO-PASSTHROUGH SHAPE CHECK (deskkit's TestForgeNoPassthrough). The
+#     interface carries no generic method and no caller-supplied endpoint
+#     argument, and NEITHER BACKEND exports a method outside the frozen surface.
+#     That last clause is the one a source scan cannot reach: an exported
+#     raw-request helper is a passthrough no callsite grep would see.
+#   - THE REGISTER RATCHET (forgeban's own tests). The permit list may not grow
+#     without an in-tree edit, may not keep a row that matches no call site, and
+#     may not shrink without the ceiling coming down with it.
+#
+# WHY A DEDICATED JOB, in the same shape and for the same reason as
+# leaksweep-control.yml: ci.yml deliberately runs `go build` + `go vet` only and
+# skips `go test`, so a control proven by `go test` executes NOWHERE unless a job
+# runs it explicitly. A control that never runs is a comment. This job runs
+# exactly the invocations these controls are designed for, and nothing else.
+#
+# -count=1 is load-bearing: a cached `--- PASS:` would replay at exit 0 against a
+# tree the scan never re-read, which is the same class of false green the ban
+# exists to prevent.
+#
+# SCOPE — the whole tools/desk tree plus the stream registers the shape check
+# dereferences against. A trigger narrower than what a control READS makes the
+# control advisory rather than enforced, so the paths filter covers both.
+#
+# WHERE THIS RUNS — the self-hosted runner `medici-builder-public`, matching
+# ci.yml and leaksweep-control.yml. That runner does NOT reach GitHub's
+# release-asset CDN, so the Go toolchain is hand-installed from go.dev/dl
+# (→ dl.google.com) rather than via actions/setup-go; the runner DOES reach the
+# Go module proxy, so the build fetches deps normally.
+
+on:
+  merge_group:
+  pull_request:
+    paths:
+      - "tools/desk/**"
+      - "docs/streams/**/inventory.md"
+      - ".github/workflows/forge-surface-control.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/desk/**"
+      - "docs/streams/**/inventory.md"
+      - ".github/workflows/forge-surface-control.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forge-surface-control-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  forge-surface:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Go toolchain — hand-installed from go.dev/dl (→ dl.google.com), NOT
+      # actions/setup-go, for the same reason ci.yml documents: the runner does
+      # not reach GitHub's release-asset CDN.
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      # The ban and the shape check, from their home module. An unregistered
+      # forge-CLI invocation, an unregistered unresolved exec site, a stale
+      # register row, a generic method on the interface, or an exported method
+      # outside the frozen surface each fail the test and redden the job.
+      - name: Shell-exec ban + no-passthrough shape check
+        run: |
+          set -euo pipefail
+          go version
+          cd tools/desk
+          go test ./internal/forgeban/ -count=1 -v
+          go test ./internal/deskkit/ -run 'TestNoForgeCLIShellout|TestForgeNoPassthrough' -count=1 -v
