@@ -175,6 +175,97 @@ func loadStreams(root string) ([]*Stream, []Finding, error) {
 	return streams, findings, nil
 }
 
+// loadArchivedStreams reads the streams that have been moved off the active
+// board into docs/archive/<stream>/ (the whole-stream archival act described in
+// streamarchive.go; checks.go rejects a `done` stream still under docs/streams/).
+//
+// WHY IT EXISTS. loadStreams walks ONLY docs/streams/, so an archived stream is
+// absent from the active stream set by design — it must never reappear on the
+// board, in the per-stream checks, or in the append-only history. But an archived
+// stream is still real, completed work: a brief may legitimately `depends:` on a
+// done brief, and an OPEN finding may still `affects:` a completed stream. Those
+// inbound edges must stay resolvable after the referenced stream is archived —
+// otherwise archiving a referenced stream silently converts every valid inbound
+// edge into a hard `references unknown stream` PROBLEM (rc=1). The returned
+// streams join ONLY the edge-resolution universe (the allStreams argument of
+// checkScoped and checkBriefFiles), so docs/archive/<stream> resolves for an edge
+// EXACTLY as docs/streams/<stream> does — same README, same brief table, so a
+// per-brief ref (<stream>/<NN>) resolves too, not just the bare stream name.
+//
+// THE BOUNDARY IS PRESERVED. A genuinely-unknown stream — present under neither
+// docs/streams/ nor docs/archive/ — is still absent from this set and still
+// PROBLEMs. This function only ADDS known targets; it suppresses nothing.
+//
+// THREE-STATE READ (docs/three-state-instrument-rule.md). An ABSENT docs/archive/
+// directory is a legitimate empty (a repo that has never archived a stream) and
+// returns (nil, nil). An UNREADABLE directory returns a non-nil error — a
+// permission/I-O failure is could-not-check, never rounded to "no archived
+// streams". A subdirectory without a README.md is not a stream (docs/archive/ may
+// hold other completed artifacts) and is skipped rather than hard-erroring the run
+// — unlike docs/streams/, where a missing README is a malformed ACTIVE stream. A
+// README that fails to parse is likewise skipped: archived content is frozen and a
+// single malformed archived README must not abort the whole active board; an edge
+// into that one stream degrades to the pre-existing `unknown stream` PROBLEM
+// (still surfaced, never rounded to a pass), which is the safe direction.
+func loadArchivedStreams(root string) ([]*Stream, error) {
+	archiveDir := filepath.Join(root, "docs", "archive")
+	entries, err := os.ReadDir(archiveDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading %s: %w", archiveDir, err)
+	}
+	var streams []*Stream
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		// Registers are never streams, archived or active.
+		if reservedRegisterNames[e.Name()] {
+			continue
+		}
+		readme := filepath.Join(archiveDir, e.Name(), "README.md")
+		if _, statErr := os.Stat(readme); statErr != nil {
+			continue // not a stream directory — skip, don't hard-error
+		}
+		s, parseErr := parseStreamREADME(readme)
+		if parseErr != nil {
+			continue // frozen archived content: degrade gracefully, never abort the board
+		}
+		s.Root = root
+		s.Archived = true
+		streams = append(streams, s)
+	}
+	sort.Slice(streams, func(i, j int) bool { return streams[i].Name < streams[j].Name })
+	return streams, nil
+}
+
+// edgeResolutionUniverse returns the stream set against which cross-stream
+// depends:/unblocks:/affects: edges resolve: the active streams PLUS the archived
+// streams that no active stream already shadows by name. Active always wins a name
+// collision (a stream mid-transition may momentarily exist under both trees), so
+// the active copy — the one with the live brief table — is the one an edge
+// resolves against. The active `streams` slice is never mutated: a fresh backing
+// array is allocated so an append here cannot scribble into it.
+func edgeResolutionUniverse(streams, archived []*Stream) []*Stream {
+	universe := append([]*Stream{}, streams...)
+	if len(archived) == 0 {
+		return universe
+	}
+	activeNames := make(map[string]bool, len(streams))
+	for _, s := range streams {
+		activeNames[s.Name] = true
+	}
+	for _, a := range archived {
+		if activeNames[a.Name] {
+			continue
+		}
+		universe = append(universe, a)
+	}
+	return universe
+}
+
 // loadHydratedStreams is the load path every score/consumer view MUST go
 // through. It loads the stream READMEs (loadStreams), attaches placeholder
 // briefs (attachPlaceholders), and — the load-bearing step — hydrates each
