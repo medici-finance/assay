@@ -1,0 +1,14 @@
+{
+  "schema_version": "qualgen-mine-v1",
+  "mined_at": "2026-09-01T12:14:05.157044Z",
+  "tip_sha": "09de1a12dd417c0dea290eb8b39691cd36406df8",
+  "horizon": "6ed653749ae29198a476dfb3c79ed0e6e7a83555",
+  "discontinuities": null,
+  "coverage": {
+    "measured": 7805,
+    "measured_zero": 0,
+    "could_not_measure": 0
+  },
+  "commit_count": 693,
+  "diff_count": 7805
+}
