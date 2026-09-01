@@ -483,9 +483,16 @@ func recordDoraTiming(root string, src doraTimingSource, now time.Time) int {
 	since := now.AddDate(0, 0, -doraRecordLookbackDays)
 
 	var lines []string
+	// restoreCNC / leadCNC record that a network read could-not-check (errored),
+	// as distinct from succeeded-but-empty. They drive the LOUD degraded signal
+	// below: a read failure must never be reported as a healthy no-op, or a
+	// persistent failure — the record CI reading nothing every run — becomes a
+	// silent-unknown and the substrate never accrues with no signal anyone sees.
+	var restoreCNC, leadCNC bool
 
 	// --- restore episodes (time_to_restore) ---
 	if runs, rerr := src.MainWorkflowRuns(repo); rerr != nil {
+		restoreCNC = true
 		fmt.Printf("dora-timing: could-not-check restore episodes for %s — %v; none recorded\n", repo, rerr)
 	} else {
 		for _, ep := range matchEpisodes(headsFromRuns(runs, workflow)) {
@@ -517,6 +524,7 @@ func recordDoraTiming(root string, src doraTimingSource, now time.Time) int {
 
 	// --- PR lead times (change_lead_time) ---
 	if prs, perr := src.MergedPRs(repo, since); perr != nil {
+		leadCNC = true
 		fmt.Printf("dora-timing: could-not-check lead times for %s — %v; none recorded\n", repo, perr)
 	} else {
 		for _, pr := range prs {
@@ -539,12 +547,48 @@ func recordDoraTiming(root string, src doraTimingSource, now time.Time) int {
 		fmt.Fprintln(os.Stderr, "statusgen: dora-timing:", err)
 		return 0
 	}
+
+	// LOUD, DISTINCT degraded signal. A read that could-not-check is still
+	// fail-open — the record job is NOT failed and no interval is fabricated —
+	// but it must never be reported as a healthy no-op. Without this, a record
+	// CI whose gh reads fail every run leaves the substrate (docs/streams/
+	// .dora-timing.jsonl) silently never accruing, indistinguishable from a
+	// genuinely quiet day. The signal lands on stderr (greppable, survives a
+	// monitor), names the substrate path, and states the fail-open contract so a
+	// PERSISTENT occurrence is actionable rather than invisible.
+	if restoreCNC || leadCNC {
+		fmt.Fprintf(os.Stderr,
+			"dora-timing: DEGRADED — %s could-not-check for %s this run; the DORA-timing substrate (%s) did not accrue. "+
+				"This is fail-open (the record job is NOT failed and no interval is fabricated), but a PERSISTENT occurrence means DORA timing is silently not being recorded — "+
+				"investigate gh availability/auth in the record job.\n",
+			doraCouldNotCheckWhich(restoreCNC, leadCNC), repo, doraTimingRelPath)
+	}
+
 	if len(lines) == 0 {
-		fmt.Println("dora-timing: no new episodes or lead times — nothing appended")
+		if !(restoreCNC || leadCNC) {
+			// Genuinely healthy empty: reads succeeded, nothing new. Quiet stdout.
+			fmt.Println("dora-timing: no new episodes or lead times — nothing appended")
+		}
 		return 0
 	}
 	fmt.Printf("dora-timing: appended %d record(s) to %s\n", len(lines), path)
 	return len(lines)
+}
+
+// doraCouldNotCheckWhich names which of the two network reads could-not-check,
+// for the degraded signal. Pure so the classification is unit-tested without
+// capturing stderr.
+func doraCouldNotCheckWhich(restoreCNC, leadCNC bool) string {
+	switch {
+	case restoreCNC && leadCNC:
+		return "both restore-episode and lead-time reads"
+	case restoreCNC:
+		return "the restore-episode read"
+	case leadCNC:
+		return "the lead-time read"
+	default:
+		return ""
+	}
 }
 
 // doraTargetRepo resolves the target repo, repo-agnostically:
