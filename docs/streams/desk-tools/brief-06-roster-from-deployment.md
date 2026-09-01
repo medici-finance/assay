@@ -163,6 +163,26 @@ Row 6 is the negative-path row: a bare cross-repo issue reference in a public br
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner). -->
 
+All seven rows are pure text/lint checks over this brief's own committed content (no network
+call, no mutating action). They were run directly in the implementer's worktree — `statusgen
+verifyrun` (the execution-witness tool) could not itself produce a witness here because its
+`check:ci` class re-executes hermetically inside a network-off `unshare --net` sandbox, a Linux
+facility unavailable on this darwin host; it reported `could-not-run` for all seven rows rather
+than a fabricated pass (three-state: could-not-check is never rounded up to a pass). The rows
+below are the direct, non-hermetic run — genuinely executed, honestly labelled as such rather
+than as a sandboxed witness. A Linux runner (CI, or `verify-desk` at verify time) can produce the
+formal `statusgen verifyrun` witness by re-running the same command.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `awk '/^## Verify/{exit} /Trusted logins \+ trusted bot slugs/{n++} /Scan \/ allowed repo set/{n++} /Bless login \(the maintainer/{n++} /Per-role \/ per-cell KEY MATERIAL/{n++} /Role → App bindings \(which App/{n++} END{exit(n==5?0:1)}' docs/streams/desk-tools/brief-06-roster-from-deployment.md; echo $?` | manual-run exit=0 | `0` (sha256:9a271f2a916b) | 2026-09-01 | assay-worker-app[bot] (darwin, non-hermetic) |
+| 2 | `grep -q 'deskroster render --from cells.yaml' docs/streams/desk-tools/brief-06-roster-from-deployment.md; echo $?` | manual-run exit=0 | `0` (sha256:9a271f2a916b) | 2026-09-01 | assay-worker-app[bot] (darwin, non-hermetic) |
+| 3 | `grep -q 'render verb' ... && grep -q 'pod config-resolution path' ... && grep -q 'sealed-secret mount contract' ... && grep -q 'migration off' ...; echo $?` | manual-run exit=0 | `0` (sha256:9a271f2a916b) | 2026-09-01 | assay-worker-app[bot] (darwin, non-hermetic) |
+| 4 | `grep -q '401' ... && grep -q 'parity' ... && grep -q 'fail-clos' ...; echo $?` | manual-run exit=0 | `0` (sha256:9a271f2a916b) | 2026-09-01 | assay-worker-app[bot] (darwin, non-hermetic) |
+| 5 | `grep -q 'secret-custody ladder' ... && grep -q 'OpenBao secret-store track' ...; echo $?` | manual-run exit=0 | `0` (sha256:9a271f2a916b) | 2026-09-01 | assay-worker-app[bot] (darwin, non-hermetic) |
+| 6 | `if grep -qE '[^/A-Za-z0-9_-]#[0-9]+' docs/streams/desk-tools/brief-06-roster-from-deployment.md; then echo 1; else echo 0; fi` | manual-run exit=0 | `0` (sha256:9a271f2a916b) | 2026-09-01 | assay-worker-app[bot] (darwin, non-hermetic) |
+| 7 | `statusgen --lint --root . >/dev/null 2>&1; echo $?` | manual-run exit=0 | `0` — `LINT: PASS` (sha256:9a271f2a916b) | 2026-09-01 | assay-worker-app[bot] (darwin, non-hermetic) |
+
 ## Review
 Gate: model (from frontmatter). A reviewer answers, in the verdict: (1) is `cells.yaml` + mounted
 sealed secrets + env the right source of truth to replace the hand-kept `roster.env`, and is the
