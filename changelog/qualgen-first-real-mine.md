@@ -1,0 +1,2 @@
+### Added
+- The first real-history `qualgen` mine of this repo lands: `docs/quality/{metrics.jsonl,mine.json}` over the full 717-commit history, so CI renders live M1 numbers (copy/paste, churn, hotspots, bus-factor, coupling) plus the instruction reference-validity and doc↔code staleness trends into `QUALITY.md`, replacing the all-"not measured" placeholder board — with committer identities hashed in the ownership shares so no raw email/slug reaches the published artifact (#272).
