@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -413,6 +414,13 @@ type prFile struct {
 	Filename         string `json:"filename"`
 	PreviousFilename string `json:"previous_filename"`
 	Status           string `json:"status"` // added | modified | removed | renamed | ...
+	// Additions/Deletions are GitHub's own per-file line counts. They feed the mechanical
+	// diff-SIZE label (deskkit.ChangedLineCount): additions+deletions summed over the
+	// NON-generated files. They are advisory-only — a missing/zero pair mislabels a PR's
+	// size class but never gates anything — so, unlike the risk-path read, a short or
+	// zero-valued files walk here is not a fail-closed condition.
+	Additions int `json:"additions"`
+	Deletions int `json:"deletions"`
 }
 
 // prFilePaths flattens file entries to every path the change touched — the new path AND
@@ -603,6 +611,139 @@ func (c *ghClient) postComment(pr int, body string) error {
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments", c.owner, c.repo, pr)
 	in := map[string]any{"body": body}
 	return c.doJSON(http.MethodPost, path, in, nil)
+}
+
+// --- label + config helpers for the mechanical verdict-time labels (size + surface) ---
+//
+// These are the FIRST label writes deskpost makes. deskpost is App-token/REST throughout
+// (never the `gh` CLI other commands shell to), so labeling rides the same ghClient: label
+// application needs `issues: write`, which appScopeFor already maps and postComment already
+// exercises, so no new App permission is required.
+
+// ensureLabel creates a repo label if it does not already exist. GitHub returns 422 when
+// the label is already present; that is the SUCCESS case for an idempotent ensure (two
+// verdicts labeling in parallel must both end with the label present), so it is swallowed.
+// Any other non-2xx propagates. The color/description are cosmetic defaults.
+func (c *ghClient) ensureLabel(name, color, desc string) error {
+	path := fmt.Sprintf("/repos/%s/%s/labels", c.owner, c.repo)
+	in := map[string]any{"name": name, "color": color, "description": desc}
+	err := c.doJSON(http.MethodPost, path, in, nil)
+	if err == nil {
+		return nil
+	}
+	var ae *apiError
+	if errors.As(err, &ae) && ae.status == http.StatusUnprocessableEntity {
+		return nil // already exists — idempotent
+	}
+	return err
+}
+
+// prLabelName is one entry of GET /issues/{n}/labels.
+type prLabelName struct {
+	Name string `json:"name"`
+}
+
+// listLabels returns the label names currently on the PR (labels live on the issue view of
+// the number). Used to compute which stale same-FAMILY labels to remove before applying the
+// current ones, so a re-run replaces rather than stacks.
+func (c *ghClient) listLabels(pr int) ([]string, error) {
+	var all []prLabelName
+	for page := 1; ; page++ {
+		var chunk []prLabelName
+		path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels?per_page=100&page=%d", c.owner, c.repo, pr, page)
+		if err := c.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+			return nil, err
+		}
+		all = append(all, chunk...)
+		if len(chunk) < 100 {
+			break
+		}
+	}
+	out := make([]string, 0, len(all))
+	for _, l := range all {
+		out = append(out, l.Name)
+	}
+	return out, nil
+}
+
+// addLabels adds labels to the PR. GitHub's POST /issues/{n}/labels is additive and a
+// no-op for an already-present label (labels are a set), so applying the same label twice
+// never duplicates it.
+func (c *ghClient) addLabels(pr int, names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels", c.owner, c.repo, pr)
+	in := map[string]any{"labels": names}
+	return c.doJSON(http.MethodPost, path, in, nil)
+}
+
+// removeLabel removes ONE label from the PR. A 404 (the label is already absent) is the
+// success case for an idempotent removal and is swallowed; anything else propagates.
+func (c *ghClient) removeLabel(pr int, name string) error {
+	path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels/%s", c.owner, c.repo, pr, url.PathEscape(name))
+	err := c.doJSON(http.MethodDelete, path, nil, nil)
+	if err == nil {
+		return nil
+	}
+	if isNotFound(err) {
+		return nil
+	}
+	return err
+}
+
+// contentFile is the /repos/{o}/{r}/contents/{path} rendering — only the base64 body and
+// its encoding are consumed.
+type contentFile struct {
+	Content  string `json:"content"`
+	Encoding string `json:"encoding"`
+}
+
+// getRepoFile fetches a repo file's raw bytes from the default branch. found is false on a
+// 404 (the file does not exist) — that is the ABSENT-config signal for `.assay-surfaces`,
+// distinct from a read error, and it must be reported as itself, never as an empty config.
+// Any non-404 error propagates.
+func (c *ghClient) getRepoFile(repoPath string) (data []byte, found bool, err error) {
+	path := fmt.Sprintf("/repos/%s/%s/contents/%s", c.owner, c.repo, repoPath)
+	var cf contentFile
+	if e := c.doJSON(http.MethodGet, path, nil, &cf); e != nil {
+		if isNotFound(e) {
+			return nil, false, nil
+		}
+		return nil, false, e
+	}
+	if cf.Encoding != "base64" {
+		// GitHub returns base64 for the contents API; anything else is unexpected and read
+		// as could-not-read (found, but unusable) rather than silently mis-parsed.
+		return nil, true, deskkit.Unverifiable(fmt.Sprintf("unexpected content encoding %q for %s", cf.Encoding, repoPath), nil)
+	}
+	raw, derr := base64.StdEncoding.DecodeString(strings.ReplaceAll(cf.Content, "\n", ""))
+	if derr != nil {
+		return nil, true, deskkit.Unverifiable(fmt.Sprintf("cannot base64-decode %s", repoPath), derr)
+	}
+	return raw, true, nil
+}
+
+// issueCommentBody is one entry of GET /issues/{n}/comments — only the body is consumed,
+// to detect the marker of a surface-tier comment already posted (idempotent comment).
+type issueCommentBody struct {
+	Body string `json:"body"`
+}
+
+// listCommentBodies returns the bodies of the PR's issue comments (first page is enough for
+// the marker check — the surface-tier comment is posted early, and a false negative merely
+// posts a second advisory comment, never a wrong verdict).
+func (c *ghClient) listCommentBodies(pr int) ([]string, error) {
+	var chunk []issueCommentBody
+	path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments?per_page=100&page=1", c.owner, c.repo, pr)
+	if err := c.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(chunk))
+	for _, cm := range chunk {
+		out = append(out, cm.Body)
+	}
+	return out, nil
 }
 
 // fetchPRTrustPayload runs the trust-gate GraphQL QUERY (deskkit.PRTrustQuery) and
