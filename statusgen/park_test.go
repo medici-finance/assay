@@ -315,7 +315,7 @@ index abc..def 100644
 +parked-by: human:alex
 +parked-reason: deferred
 `
-	stamps := stampsInDiff(diff)
+	stamps := stampsInDiff("", diff)
 	if len(stamps) != 1 || stamps[0].Name != "alex" {
 		t.Fatalf("a parked-by: human:<name> line must be scanned as a corroboratable stamp; got %+v", stamps)
 	}
