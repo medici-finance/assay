@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -334,6 +335,100 @@ func TestRecordDoraTimingNoRepoIsCouldNotCheck(t *testing.T) {
 	// rely on in CI; guard by asserting no panic + no file when repo empty.)
 	src := fakeDoraSource{}
 	_ = recordDoraTiming(dir, src, now) // must not panic
+}
+
+// errDoraSource models the production condition that keeps the timing substrate
+// from ever accruing in a record CI job: both network reads fail (gh missing,
+// unauthenticated, or rate-limited). It must fail OPEN — never fabricate, never
+// fail the record job — but the failure must be LOUD and DISTINGUISHABLE from a
+// healthy idempotent no-op, or a persistent read failure is a silent-unknown.
+var errDoraStub = errors.New("gh api: could not read (no auth / offline)")
+
+type errDoraSource struct{ err error }
+
+func (e errDoraSource) MainWorkflowRuns(string) ([]workflowRun, error) { return nil, e.err }
+func (e errDoraSource) MergedPRs(string, time.Time) ([]doraMergedPR, error) {
+	return nil, e.err
+}
+func (e errDoraSource) FirstCommitAt(string, int) (time.Time, bool) { return time.Time{}, false }
+
+// captureStderr (shared with intake_scoped_unauthored_test.go) redirects
+// os.Stderr to a pipe and returns what fn wrote. recordDoraTiming is
+// synchronous, so this is reliable.
+
+// A record pass whose reads all could-not-check must fail OPEN (return 0, write
+// no file, never fabricate) yet emit a LOUD, DISTINCT degraded signal on stderr
+// — never the same "nothing appended" success line a healthy empty pass prints.
+// Without this, a consumer's record CI can fail every gh read every day and the
+// DORA-timing substrate silently never materializes with no signal anyone sees.
+func TestRecordDoraTimingReadFailureIsLoudAndDistinct(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GITHUB_REPOSITORY", "owner/repo")
+	now := mustTime(t, "2026-08-26T00:00:00Z")
+	src := errDoraSource{err: errDoraStub}
+
+	var n int
+	stderr := captureStderr(t, func() { n = recordDoraTiming(dir, src, now) })
+
+	// Fail-open preserved: the record job is never failed on a read failure.
+	if n != 0 {
+		t.Fatalf("read failure must fail open (return 0), got %d", n)
+	}
+	// Never fabricate: no substrate written when nothing could be read.
+	path := filepath.Join(dir, filepath.FromSlash(doraTimingRelPath))
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		if data, _ := os.ReadFile(path); strings.TrimSpace(string(data)) != "" {
+			t.Errorf("read failure wrote substrate content: %q", data)
+		}
+	}
+	// LOUD + DISTINCT: the degraded signal lands on stderr, names the substrate
+	// path, and is NOT the healthy-empty "nothing appended" line.
+	if !strings.Contains(stderr, "DEGRADED") {
+		t.Errorf("read failure must emit a loud DEGRADED signal on stderr, got: %q", stderr)
+	}
+	if !strings.Contains(stderr, doraTimingRelPath) {
+		t.Errorf("degraded signal must name the substrate path %q, got: %q", doraTimingRelPath, stderr)
+	}
+	if strings.Contains(stderr, "no new episodes or lead times") {
+		t.Errorf("degraded pass must NOT print the healthy-empty line on stderr: %q", stderr)
+	}
+}
+
+func TestDoraCouldNotCheckWhich(t *testing.T) {
+	cases := []struct {
+		restore, lead bool
+		want          string
+	}{
+		{false, false, ""},
+		{true, false, "the restore-episode read"},
+		{false, true, "the lead-time read"},
+		{true, true, "both restore-episode and lead-time reads"},
+	}
+	for _, c := range cases {
+		if got := doraCouldNotCheckWhich(c.restore, c.lead); got != c.want {
+			t.Errorf("doraCouldNotCheckWhich(%v,%v)=%q, want %q", c.restore, c.lead, got, c.want)
+		}
+	}
+}
+
+// A HEALTHY empty pass (reads succeeded, genuinely nothing new) must stay quiet
+// on stderr — its no-op is not a degraded condition and must not be conflated
+// with one, or the loud degraded signal loses all meaning.
+func TestRecordDoraTimingHealthyEmptyIsQuietOnStderr(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GITHUB_REPOSITORY", "owner/repo")
+	now := mustTime(t, "2026-08-26T00:00:00Z")
+	src := fakeDoraSource{} // reads succeed, return empty
+
+	var n int
+	stderr := captureStderr(t, func() { n = recordDoraTiming(dir, src, now) })
+
+	if n != 0 {
+		t.Fatalf("healthy empty pass must append nothing, got %d", n)
+	}
+	if strings.Contains(stderr, "DEGRADED") {
+		t.Errorf("healthy empty pass must not emit a degraded signal: %q", stderr)
+	}
 }
 
 // --- the query -------------------------------------------------------------
