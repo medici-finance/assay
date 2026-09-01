@@ -520,7 +520,7 @@ could-not-check runs serial.
    `| # | Brief | Wave | Effort | Status | Verified | Reviewed |`, Status a bare lifecycle token
    (`todo` / `in-progress` / `implemented` / `verified` / `done`, or the hold token `blocked`). A
    project not yet wired to `statusgen` hand-maintains the older
-   `| # | Brief | Wave | Status | What's deployed/landed |` shape as a stopgap — ✅ / ⚠️ / ❌ with a
+   `| # | Brief | Wave | Status | What's deployed/landed |` shape as a stopgap — ✅ / ⚠ / ❌ with a
    terse, honest "what's actually true" note (not aspirational) — but the moment generation is
    live, the table is derived, never hand-edited.
 2. **Critical path** — an ASCII chain showing the blocking order, with a one-line "smallest unblocking
@@ -558,7 +558,7 @@ layer; the floor does not wait on one.)
    `depends`, `unblocks`, `gate`, `risk` accurately and let `statusgen` read the PR trailers,
    witnesses and approvals into the Status / Verified / Reviewed cells
    (`docs/streams/derived-board/spec.md`). A project not yet wired to `statusgen` keeps the honesty
-   rule in spirit by hand — "⚠️ Workaround" / "Blocked by #X" beats a green checkmark that isn't
+   rule in spirit by hand — "⚠ Workaround" / "Blocked by #X" beats a green checkmark that isn't
    true — but once generation is live, a hand-edited cell is a lint PROBLEM, not a courtesy.
 7. **Handoff to execution**: a brief is a scope-and-DoD contract, not a step-by-step plan — don't
    write one here. When a brief (especially Effort: L) is picked up for execution, consider running
