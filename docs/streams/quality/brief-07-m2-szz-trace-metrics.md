@@ -149,6 +149,25 @@ contract; downstream briefs bind to these names, so changing them later is a bre
      (command, exit code, output line(s) or hash, date, runner). Include the blame
      benchmark result if the git-binary fallback was chosen. -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `09de1a1`
+
+Runner ≠ implementer. Own temporary worktree off `origin/main` at `09de1a1`, offline (`KUBECONFIG=/dev/null`); no live/cluster dependency in any row. Files present at SHA: `qualgen/szz.go`, `qualgen/blame.go`, `qualgen/refine.go` (+ their `_test.go` twins).
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `cd qualgen && go build ./... && go vet ./...` | 0 | build + vet clean |
+| 2 | `cd qualgen && go test ./... -run SZZ && … -run Blame && … -run Refine` | 0 | all three suites `ok` |
+| 3 | `go test ./... -run TestSZZ_PlantedBugTracedToInducingCommit -v` | 0 | `--- PASS` — planted bug traced to inducing commit A, `trace_state==traced` |
+| 4 | `go test ./... -run TestSZZ_ExcludesInducerPostdatingReport -v` | 0 | `--- PASS` — postdating inducer filtered, resolves `traced-none` |
+| 5 | `go test ./... -run TestSZZ_UnreachableBlameIsCouldNotTrace -v` | 0 | `--- PASS` — `could-not-trace` + `squash-floor`, excluded from numerator/denominator |
+| 6 | `go test ./... -run TestSZZ_DerivedMetricsCarryTraceRate -v` | 0 | `--- PASS` — every derived record carries a non-empty `trace_rate` + `tier_composition` |
+| 7 | `go test ./... -run TestRefine_CosmeticInducerExcluded -v` | 0 | `--- PASS` — cosmetic inducer dropped, blame falls through |
+| 8 | `cd qualgen && grep -cE -e inducing_commits -e inducing_prs -e trace_state -e could_not_trace_reason -e evidence_tier -e confidence szz.go` | 0 | count = 11 (≥ 6) — all frozen `DefectTrace` fields present. (brief command names `qualgen/szz.go` while already in `qualgen/` — a brief-side path typo; run as `szz.go`) |
+
+`RISK-VALUE: N/A` — no risk-bearing literal gates any irreversible/regulated/funds action. The nearest candidate, `confidence`, is by design a recorded (non-gating) field — `scoreConfidence` @ qualgen/refine.go:214-235; brief and code both state confidence is a recorded field, not a gate. The `len(survivors) >= 1` three-state classification @ qualgen/szz.go:289 is a measurement branch, not a guard. Read-only git-history miner writing only diffable JSONL.
+
+**VERIFY: PASS** — all eight Verify rows checked-clean by a non-implementer. Advancing `implemented → verified`.
+
 ## Review
 Gate: model (all four risk answers no — a read-only history miner over any git repo; no
 regulated/customer/irreversible/sensitive surface, writes only diffable JSONL artifacts to

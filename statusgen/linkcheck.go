@@ -199,7 +199,17 @@ func backtickPathScope(root, f string) bool {
 	if err != nil {
 		return false
 	}
-	return strings.HasPrefix(filepath.ToSlash(rel), "docs/streams/")
+	if !strings.HasPrefix(filepath.ToSlash(rel), "docs/streams/") {
+		return false
+	}
+	// A file inside a DECLARED fixture corpus is out of scope for the strict
+	// backticked-path convention: its captured run-outputs legitimately cite
+	// deliverable paths that do not yet exist. Fail-closed: a subtree without the
+	// marker is scanned exactly as before (fixturecorpus.go). docFiles already
+	// drops such files from the checkable set, so this is belt-and-suspenders —
+	// any future caller that hands a marked file straight to linkProblems still
+	// skips the backtick heuristic here.
+	return !isFixtureCorpusPath(root, filepath.ToSlash(rel))
 }
 
 // docFiles returns the link-checkable file set (CLAUDE.md plus every *.md under
@@ -230,7 +240,22 @@ func docFiles(root string) (files []string, walkProblems []string) {
 			}
 			return nil
 		}
-		if !d.IsDir() && strings.HasSuffix(p, ".md") {
+		// A DECLARED fixture corpus opts its whole subtree out of the source-quality
+		// link scans (dead-link, backticked-path, identifier-dereference,
+		// register-ref — every check keyed off this file set). Its captured `.md`
+		// run-outputs legitimately carry forward-references a live brief never
+		// would. Skip the entire directory once its marker is seen, so a large
+		// corpus is not re-probed per file. Fail-closed: a subtree WITHOUT the
+		// marker is walked and checked exactly as before (fixturecorpus.go). Live
+		// briefs are untouched — only a subtree that declared itself a fixture
+		// corpus is skipped.
+		if d.IsDir() {
+			if rel, e := filepath.Rel(root, p); e == nil && isFixtureCorpusPath(root, filepath.ToSlash(rel)+"/x") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(p, ".md") {
 			// A generator must not grade its own generated artifacts against a
 			// source-quality rule (#169). When statusgen actually emits a register
 			// view here (docs/streams/INTAKE.md / FINDINGS.md), that view's

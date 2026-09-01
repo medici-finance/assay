@@ -44,7 +44,7 @@ decision, not code in this stream.
 | 04 | [M1 instruction-layer brittleness (reference-validity + doc↔code drift)](brief-04-m1-instruction-brittleness.md) | 1 | M | verified | 2026-08-30 opus-4.8[1m]-verifier | — |
 | 05 | [`QUALITY.md` single-writer trend view + metrics artifacts](brief-05-quality-view-artifacts.md) | 2 | M | verified | 2026-08-30 opus-4.8[1m]-verifier | — |
 | 06 | [M2 fix identification — pluggable linkage adapter + evidence tiers](brief-06-m2-fix-identification.md) | 1 | M | verified | 2026-08-30 opus-4.8[1m]-verifier | — |
-| 07 | [M2 B-SZZ inducing trace + derived defect metrics](brief-07-m2-szz-trace-metrics.md) | 2 | L | implemented | — | — |
+| 07 | [M2 B-SZZ inducing trace + derived defect metrics](brief-07-m2-szz-trace-metrics.md) | 2 | L | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
 | 08 | [`pr <n>` mode — per-file risk features (generic riskscore feed)](brief-08-pr-riskscore-features.md) | 3 | M | todo | — | — |
 | 09 | [`check <files>` mode — brittleness screen for a named file set](brief-09-check-brittleness-screen.md) | 2 | M | implemented | — | — |
 | 10 | [M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter](brief-10-m3-stage-attribution.md) | 3 | L | todo | — | — |
