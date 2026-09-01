@@ -30,7 +30,6 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: quality. By str
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
-| forge-gitlab | 04 — Fleet provisioning + adopter doc + ci-config-project runbook | 3 | 2000 |
 | quality | 10 — M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter [exec:strong] | 3 | 2000 |
 | desk-tools | 06 — Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) [exec:strong] | 1 | 1000 |
 | quality | 08 — `pr <n>` mode — per-file risk features (generic riskscore feed) | 3 | 1000 |
@@ -42,14 +41,14 @@ _Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: quality. By str
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (51 desk-actionable of 52 total — 34 at implemented, 18 verified awaiting review)
+## Awaiting verification / review (52 desk-actionable of 53 total — 35 at implemented, 18 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (51)
+### Desk-actionable (52)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -76,6 +75,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 03 [exec:strong] | verified | 2500 | 3 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | harness-portability | 05 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | quality | 04 | verified | 2500 | 3 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
+| forge-gitlab | 04 | implemented | 2000 | 2 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | iso-9001 | 02 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -176,7 +176,7 @@ _None._
 - 01 `Forge` interface extraction in deskkit — `github` impl pinned by goldens — verified (wave 1)
 - 02 `gitlab` forge implementation (MRs, notes, approvals, statuses) — verified (wave 2)
 - 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — verified (wave 2)
-- 04 Fleet provisioning + adopter doc + ci-config-project runbook — todo (wave 3)
+- 04 Fleet provisioning + adopter doc + ci-config-project runbook — implemented (wave 3)
 - 05 Live pilot — one brief round-tripped on a real GitLab group; parity table walked — todo (wave 4)
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — todo (wave 5)
 - 07 GitHub forge backend on `go-gh` — retire the exec-`gh` shell path — implemented (wave 2)
