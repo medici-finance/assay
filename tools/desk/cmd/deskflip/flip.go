@@ -684,45 +684,19 @@ func (e rollupEntry) recencyKey() string {
 }
 
 // latestPerRollupName reduces the rollup to one entry per check NAME — the LATEST run for
-// each — before the green/pending/fail evaluation runs over it. This mirrors branch
-// protection's own "latest run per context" rule: a superseded run (an older CANCELLED, a
-// stale QUEUED left behind by a push+pull_request double-trigger, a re-triggered run's
-// predecessor) must NOT count against the PR, because it is not what the branch is at. Only
-// the current latest run for each name does.
+// each — before the green/pending/fail evaluation runs over it. It delegates to the SHARED
+// deskkit.LatestRunPerName so this ready-flip gate and deskboard's CI render reduce by
+// identical semantics and cannot drift: a flip that fires on a push+pull_request
+// double-triggered PR while the board still renders it CI-fail is exactly the divergence a
+// second, local copy of this rule would reintroduce. The rollupEntry methods above
+// (groupKey, recencyKey) are this type's adapters into the generic reducer.
 //
-// The reduction is by recencyKey (newest wins). It NEVER relaxes the gate: it changes only
-// WHICH run of a name is evaluated, never how a run is judged — the reduced set still flows
-// through evalRollup/failedChecks unchanged, so a name whose latest run is red, cancelled,
-// or pending still reddens or blocks the flip exactly as before. A tie on recencyKey (two
-// distinct runs the forge stamped at the same instant — not a shape seen in practice) keeps
-// the first-seen entry, so the output is deterministic. First-appearance order is preserved
-// for stable failedChecks naming and the green-count line.
+// The reduction NEVER relaxes the gate: it changes only WHICH run of a name is evaluated,
+// never how a run is judged — the reduced set still flows through evalRollup/failedChecks
+// unchanged, so a name whose latest run is red, cancelled, or pending still reddens or
+// blocks the flip exactly as before.
 func latestPerRollupName(entries []rollupEntry) []rollupEntry {
-	if len(entries) == 0 {
-		return entries
-	}
-	// index[key] is the position in `out` holding the current latest run for that name.
-	index := make(map[string]int, len(entries))
-	out := make([]rollupEntry, 0, len(entries))
-	for _, e := range entries {
-		key := e.groupKey()
-		if key == "" {
-			// Nameless: no identity to reduce by, so it is kept as its own entry.
-			out = append(out, e)
-			continue
-		}
-		pos, seen := index[key]
-		if !seen {
-			index[key] = len(out)
-			out = append(out, e)
-			continue
-		}
-		// Replace only when the candidate is STRICTLY newer, so a tie keeps first-seen.
-		if e.recencyKey() > out[pos].recencyKey() {
-			out[pos] = e
-		}
-	}
-	return out
+	return deskkit.LatestRunPerName(entries, rollupEntry.groupKey, rollupEntry.recencyKey)
 }
 
 type reviewInfo struct {

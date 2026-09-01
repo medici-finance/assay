@@ -44,10 +44,10 @@
       "new": "\tchecks := pr.StatusCheckRollup"
     },
     {
-      "name": "keep the OLDER run per name instead of the latest (an obsolete SUCCESS masks a newer FAILURE — reddens TestLatestRedRunStillRefuses)",
-      "file": "cmd/deskflip/flip.go",
-      "old": "\t\tif e.recencyKey() > out[pos].recencyKey() {",
-      "new": "\t\tif e.recencyKey() < out[pos].recencyKey() {"
+      "name": "keep the OLDER run per name instead of the latest, in the SHARED deskkit reducer (an obsolete SUCCESS masks a newer FAILURE — reddens deskflip's TestLatestRedRunStillRefuses through the shared path)",
+      "file": "internal/deskkit/prstate.go",
+      "old": "\t\tif recencyKey(e) > recencyKey(out[pos]) {",
+      "new": "\t\tif recencyKey(e) < recencyKey(out[pos]) {"
     }
   ]
 }

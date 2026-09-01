@@ -179,6 +179,56 @@ var statusStateBuckets = map[string]ciBucket{
 // subset: every value board.go's own `State` field comment lists as one it expects to
 // receive must appear here. A reducer and a doc comment that disagree about the value set
 // is exactly the gap `EXPECTED` fell through.
+// TestCIState_LatestRunPerName is the deskboard half of the #282/#289 fix: a superseded
+// run of a check NAME must not count against a PR whose current run for that name is green,
+// and a genuinely red LATEST run must still count. Without the reduction the board would
+// render a push+pull_request double-triggered PR CI-fail while deskflip flips it ready —
+// the board/flip divergence this class set out to end.
+func TestCIState_LatestRunPerName(t *testing.T) {
+	const tOld, tNew = "2026-01-01T00:00:00Z", "2026-01-01T01:00:00Z"
+	cases := map[string]struct {
+		rollup                       []check
+		pass, pending, fail, unknown int
+	}{
+		// A cancelled predecessor + the re-triggered success (assay#289 shape): the newer
+		// SUCCESS is the latest run, so the board reads one pass and zero fail.
+		"cancelled predecessor + green latest": {
+			rollup: []check{
+				{Name: "changelog", Status: "COMPLETED", Conclusion: "CANCELLED", CompletedAt: tOld},
+				{Name: "changelog", Status: "COMPLETED", Conclusion: "SUCCESS", CompletedAt: tNew},
+			},
+			pass: 1,
+		},
+		// A stale QUEUED orphan (assay#282 shape) carries no stamps, so it sorts oldest and
+		// the completed SUCCESS wins — no lingering pending.
+		"stale-queued orphan + green latest": {
+			rollup: []check{
+				{Name: "control-sweep", Status: "QUEUED"},
+				{Name: "control-sweep", Status: "COMPLETED", Conclusion: "SUCCESS", CompletedAt: tNew},
+			},
+			pass: 1,
+		},
+		// Anti-over-loosen: an older SUCCESS superseded by a newer FAILURE must still count
+		// as a failure — the reduction ignores superseded runs, never a real red latest.
+		"older success superseded by newer failure": {
+			rollup: []check{
+				{Name: "build", Status: "COMPLETED", Conclusion: "SUCCESS", CompletedAt: tOld},
+				{Name: "build", Status: "COMPLETED", Conclusion: "FAILURE", CompletedAt: tNew},
+			},
+			fail: 1,
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			pass, pending, fail, unknown := ciState(prBase{StatusCheckRollup: c.rollup})
+			if pass != c.pass || pending != c.pending || fail != c.fail || unknown != c.unknown {
+				t.Errorf("ciState = pass=%d pending=%d fail=%d unknown=%d; want pass=%d pending=%d fail=%d unknown=%d",
+					pass, pending, fail, unknown, c.pass, c.pending, c.fail, c.unknown)
+			}
+		})
+	}
+}
+
 func TestCIState_EveryStatusStateIsBucketed_400T1(t *testing.T) {
 	for state, want := range statusStateBuckets {
 		var p prBase
