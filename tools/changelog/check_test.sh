@@ -76,6 +76,39 @@ commit init; git -C "$R" tag base
 echo '- `gadget` learned to whistle.' > "$R/changelog/feat-gadget-whistle.md"; commit "add fragment, leave Unreleased alone"
 run_case "C5 pre-existing residual not a false-positive" 0
 
+# ── GATE-INTEGRITY: a fragment must carry real content. A file that satisfies the
+#    FILENAME but has no highlight bullet records nothing, so it must RED. These
+#    three are the fail-first rows for the content-validation fix — under the
+#    pre-hardening stub (CHECK_IMPL=testdata/filename-only-check.sh) they PASS
+#    (the hole); under check.sh they RED.
+
+# ── C6: a 0-byte fragment → REJECT (new). `touch changelog/x.md` must not pass.
+newrepo
+printf '%s' "$CL_EMPTY_UNREL" > "$R/CHANGELOG.md"; commit init; git -C "$R" tag base
+: > "$R/changelog/empty.md"; commit "add 0-byte fragment"
+run_case "C6 empty (0-byte) fragment rejected" 1
+
+# ── C7: a whitespace-only fragment → REJECT (new).
+newrepo
+printf '%s' "$CL_EMPTY_UNREL" > "$R/CHANGELOG.md"; commit init; git -C "$R" tag base
+printf '   \n\n\t\n' > "$R/changelog/blank.md"; commit "add whitespace-only fragment"
+run_case "C7 whitespace-only fragment rejected" 1
+
+# ── C8: a fragment with prose but NO bullet → REJECT (new): aggregate.py lifts
+#        only bullets, so a bullet-less fragment contributes nothing.
+newrepo
+printf '%s' "$CL_EMPTY_UNREL" > "$R/CHANGELOG.md"; commit init; git -C "$R" tag base
+printf '### Added\n\nsome prose but no bullet line at all\n' > "$R/changelog/prose.md"; commit "add bullet-less fragment"
+run_case "C8 bullet-less fragment rejected" 1
+
+# ── C9: a bullet-less fragment PLUS a real-bullet fragment in the same PR → PASS
+#        (new): at least one added fragment carries content.
+newrepo
+printf '%s' "$CL_EMPTY_UNREL" > "$R/CHANGELOG.md"; commit init; git -C "$R" tag base
+printf 'just prose\n' > "$R/changelog/prose.md"
+echo '- `sprocket` gained a brake.' > "$R/changelog/real.md"; commit "one empty, one real"
+run_case "C9 mixed empty+real fragment greens" 0
+
 echo "---"
 echo "check_test: $pass passed, $fail failed (impl: $CHECK)"
 [ "$fail" = 0 ]

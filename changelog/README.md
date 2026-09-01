@@ -26,6 +26,10 @@ Put one — or a few — human-legible highlight bullets in it, the same
 - **Buckets are optional.** A `### Added`, `### Fixed`, or `### Changed` heading
   classifies the bullets beneath it (Keep a Changelog). Bullets with no heading
   default to **Changed**. A fragment may carry more than one bucket.
+- **At least one real bullet.** A fragment must carry at least one `- …`
+  highlight line — an empty, whitespace-only, or bullet-less file records nothing
+  and is **rejected** by `changelog-check` (the gate is not satisfiable by
+  `touch changelog/x.md`).
 - **Keep it to highlights**, not a commit log — descriptive lines a reader
   understands without the diff.
 - **Slug uniqueness** is what keeps two PRs from colliding: name the file after

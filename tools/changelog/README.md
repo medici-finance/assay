@@ -14,9 +14,8 @@ Everything else in the rework is **live on the branch** and needs no activation:
   doc, and the seed fragments carrying the entries that were pending in
   `## Unreleased` at cutover;
 - `CHANGELOG.md` — header prose rewritten for the fragment convention, and the
-  `## Unreleased` section emptied to its pointer note (one grandfathered
-  migration bullet remains, folded into the first aggregated release — see
-  "Cutover" below);
+  `## Unreleased` section emptied to its pointer note (no bullets — see "Cutover"
+  below);
 - `tools/changelog/aggregate.py` + `tools/changelog/check.sh` — the engines the
   two workflows call, with offline unit tests (`aggregate_test.sh`,
   `check_test.sh`) and their fail-first stubs under `testdata/`;
@@ -33,10 +32,13 @@ whole activation.
    `tools/changelog/changelog-check.yml` to
    `.github/workflows/changelog-check.yml` (dropping the leading `⚠️ STAGED …`
    banner block, down to the `# ---` rule). It greens a PR that adds a fragment
-   under `changelog/` **or** carries the `changelog:skip` label, and **refuses** a
-   PR that adds a highlight bullet under `## Unreleased` in `CHANGELOG.md` (the
-   deprecation guard). The whole decision is `tools/changelog/check.sh`; the
-   workflow only feeds it the PR base/head SHAs and the label boolean. The
+   under `changelog/` **carrying at least one highlight bullet** **or** carries
+   the `changelog:skip` label, and **refuses** a PR that adds a highlight bullet
+   under `## Unreleased` in `CHANGELOG.md` (the deprecation guard). An empty,
+   whitespace-only, or bullet-less fragment is rejected — the gate is not
+   satisfiable by `touch changelog/x.md`. The whole decision is
+   `tools/changelog/check.sh`; the workflow only feeds it the PR base/head SHAs
+   and the label boolean. The
    `changelog:skip` label already exists from the prior activation; no new label
    is needed.
 
@@ -74,22 +76,24 @@ No other files change under `.github/workflows/`.
 
 ## Cutover — the pending entries are not lost
 
-The entries that were pending in `## Unreleased` at cutover are seeded as
-fragments under `changelog/` (so they aggregate into the next release exactly as
-any fragment would). One grandfathered migration bullet remains under
-`## Unreleased` in `CHANGELOG.md` — it is what satisfies the *currently-live*
-(pre-fragment) `changelog-check` on this very PR, and `aggregate.py` folds any
-residual `## Unreleased` bullet into the first aggregated release, so it is
-carried into the release notes rather than stranded. From the first release
-onward the section stays empty and fragments are the only source.
+Every entry that was pending in `## Unreleased` at cutover — including the ones
+that landed on `main` while this PR was open — is seeded as a fragment under
+`changelog/`, so they aggregate into the next release exactly as any fragment
+would. This PR **dogfoods its own convention**: its own changelog entry is the
+fragment `changelog/changelog-fragments-convention.md`, not a `## Unreleased`
+edit, so the PR passes its own new gate. `## Unreleased` in `CHANGELOG.md` is
+therefore fully empty (its pointer note only, no bullets). `aggregate.py` still
+folds any *residual* `## Unreleased` bullet into the first aggregated release as a
+safety net, but after this cutover there is nothing to fold — the fragments are
+the only source.
 
 **Promote before the next release cut.** The seed fragments are only aggregated
 by the *new* `release.yml` (step 2). If a release is cut while the live,
-pre-fragment `release.yml` is still in place, it lifts only the residual
-`## Unreleased` bullet; the seed fragment files are left untouched on disk (the
-old workflow never reads `changelog/`) and are picked up by the first release
-after promotion — deferred, not lost. Promote both halves before cutting to keep
-them in the same release.
+pre-fragment `release.yml` is still in place, it reads only `## Unreleased` (now
+just the pointer note) and does not aggregate the fragments; the seed fragment
+files are left untouched on disk (the old workflow never reads `changelog/`) and
+are picked up by the first release after promotion — deferred, not lost. Promote
+both halves before cutting so the fragments land in that release.
 
 ## Why staged rather than committed — and where
 

@@ -75,9 +75,27 @@ frag="$(git diff --name-status --diff-filter=AM "${BASE_SHA}...${HEAD_SHA}" -- '
           | grep -E '^changelog/.+\.md$' \
           | grep -v '^changelog/README\.md$' || true)"
 if [ -n "$frag" ]; then
-  echo "PASS: this PR adds/updates changelog fragment(s):"
-  printf '%s\n' "$frag"
-  exit 0
+  # FILENAME is not enough — a 0-byte, whitespace-only, or bullet-less fragment
+  # satisfies the name but records NOTHING (aggregate.py lifts only bullet lines,
+  # so a bullet-less fragment contributes zero to the release). Reject it, or the
+  # gate is satisfiable by `touch changelog/x.md`. Require at least one added/
+  # modified fragment to carry a real highlight bullet (`- …`), read from HEAD.
+  have_bullet=0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    if git show "${HEAD_SHA}:${f}" 2>/dev/null | grep -qE '^[[:space:]]*-[[:space:]]+[^[:space:]]'; then
+      have_bullet=1
+      break
+    fi
+  done <<< "$frag"
+  if [ "$have_bullet" = 1 ]; then
+    echo "PASS: this PR adds/updates changelog fragment(s) with content:"
+    printf '%s\n' "$frag"
+    exit 0
+  fi
+  echo "::error title=empty changelog fragment::This PR adds/updates changelog fragment file(s) but none carries a highlight bullet. An empty, whitespace-only, or bullet-less fragment records nothing and is rejected — the gate is not satisfiable by 'touch changelog/x.md'. Put at least one '- …' highlight line in the fragment (see changelog/README.md), or label the PR 'changelog:skip' if the change is genuinely non-notable."
+  printf 'fragment file(s) with no highlight bullet:\n%s\n' "$frag"
+  exit 1
 fi
 
 echo "::error title=missing changelog fragment::This PR adds no changelog fragment. Record the change by adding one file under changelog/ — changelog/<slug>.md, a one-to-few-line human-legible highlight (same notable bar as before; see changelog/README.md) — or label the PR 'changelog:skip' if the change is genuinely non-notable (a typo, a comment-only diff)."

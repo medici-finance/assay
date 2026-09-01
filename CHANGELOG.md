@@ -23,9 +23,6 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 release time. This section is written only by the release workflow; do not add
 highlight bullets to it directly.
 
-### Changed
-- Changelog highlights are now recorded as per-PR fragment files under `changelog/` instead of shared `## Unreleased` edits: `changelog-check` greens on a fragment (or `changelog:skip`) and refuses a direct `## Unreleased` edit, and the release workflow aggregates fragments into the dated section and release Highlights, then clears `changelog/`.
-
 ## v0.22.0 — 2026-08-31
 
 ### Added
