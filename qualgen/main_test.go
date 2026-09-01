@@ -21,17 +21,18 @@ func TestVersionDefaultIsDev(t *testing.T) {
 	}
 }
 
-// TestModeScaffolding pins that the still-stubbed modes (pr / check) are each
-// recognized, parse flags, print a `not yet implemented` NOTICE, and exit 0.
-// The `report` mode is no longer a stub — it renders the trend view (quality/05)
-// and is exercised by the TestReport_* suite instead.
+// TestModeScaffolding pins that the still-stubbed `pr` mode is recognized,
+// parses flags, prints a `not yet implemented` NOTICE, and exits 0. `report`
+// is no longer a stub — it renders the trend view (quality/05) and is
+// exercised by the TestReport_* suite instead; `check` is no longer a stub
+// either — it runs the brittleness screen (quality/09) and is exercised by
+// the TestCheck_* suite in check_test.go.
 func TestModeScaffolding(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
 	}{
 		{"pr", []string{"pr", "1", "--out", "/tmp/x"}},
-		{"check", []string{"check", "qualgen/main.go", "--out", "/tmp/x"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
