@@ -126,6 +126,25 @@ Fail-first (clause 9) — each new guard shown reddening on mutated code, then r
 - brief-v2 edge typing: disabling the edge-type check reddens
   `TestBriefV2GatesEdgeValidation` (`bad edge type should be a PROBLEM; got []`).
 
+### Non-implementer verifier run — VERIFY: PASS on offline rows; BLOCKED (offline→online hand-off) — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `63a7a8a`
+
+Runner ≠ implementer. Own temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`); rows run from inside `statusgen/`. **Held at `implemented`** — the two live-forge rows (3, 4) are could-not-check under the offline envelope and are the online-lane hand-off; the offline half is fully checked-clean.
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | statusgen lifecycle/briefv2/ghfetch tests → `grep -c '^--- PASS'` | 0 | 24 `--- PASS` (≥14) — checked-clean |
+| 2 | `go run . reconcile --root . --offline --json` → assert all pr-cell `unknown` | 0 | `ok` — no offline PR-derived cell is `todo`; checked-clean |
+| 3 | `GITHUB_TOKEN=invalid go run . reconcile --root . --repo medici-finance/assay --json` → assert `lookedAt==false`, reason `HTTP…` | — | **could-not-check (offline→online hand-off)** — live forge (`api.github.com`). Online-lane marker = this exact command. |
+| 4 | `go run . reconcile --root . --repo medici-finance/assay --json` → assert a cell is implemented/verified/done with witness `PR #…` | — | **could-not-check (offline→online hand-off)** — live forge, needs a read token. Online-lane marker = this exact command. |
+| 5 | `printf … > testdata/tmp-v2.md && go run . --lint --root testdata/v2-smoke` | 0 | `rc=0`; output contains `gates: 1 edge (reserved, not gating)` — checked-clean |
+| 6 | `go test . -run 'Demotion' -count=1 -v \| grep -c PASS` | 0 | 12 (≥3) — checked-clean |
+| 7 | `grep -c 'reconcile' statusgen/README.md` | 0 | 5 (≥1) — checked-clean |
+| 8 | `go vet ./... && ! grep -rn 'graphql' … ghfetch.go reconcile.go lifecycle.go briefv2.go` | 0 | vet clean; no `graphql` in the 4 brief files — checked-clean |
+
+`RISK-VALUE: DERIVED` — the fail-closed three-state guard `if status != http.StatusOK { return nil, false, httpReason(status, body) }` @ `statusgen/ghfetch.go:111` (paired at `:157`): any non-200 yields `lookedAt=false` + the HTTP status, never an empty "nothing found" — derived from the brief's three-state invariant, proven by `TestGHFetchAuthFailure` (the machinery behind row 3). Secondary hard-bound literal `const maxPages = 20` @ `statusgen/ghfetch.go:104` (page-loop cap).
+
+**VERIFY: BLOCKED (offline→online hand-off)** — all six offline rows (1,2,5,6,7,8) checked-clean by a non-implementer; rows 3 and 4 are live-forge could-not-check and stay for the online/live-forge verify lane (exact commands recorded above). **Status held at `implemented`** — a could-not-check is not a pass; the online lane owns rows 3/4 and the completion flip.
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
 Reviewer questions: (1) find one input combination where the engine prints a negative
