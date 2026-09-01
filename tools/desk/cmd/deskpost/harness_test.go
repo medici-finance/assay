@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -143,6 +144,15 @@ type fakeGH struct {
 	postedReview int
 	postedCmt    int
 	flips        int
+
+	// Label + surface-config fixtures for the mechanical verdict-time labeler.
+	// prLabels is the current label set on the PR (mutated by add/remove routes, as GitHub
+	// does — labels are a set). surfaceConfig, when non-nil, is the raw bytes GET
+	// /contents/.assay-surfaces serves (base64-wrapped by the route); nil ⇒ 404 (absent
+	// config). createdLabels records POST /labels calls (ensure).
+	prLabels      []string
+	surfaceConfig *string
+	createdLabels []string
 }
 
 var (
@@ -156,7 +166,11 @@ var (
 	reChecks    = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
 	reRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	reReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
-	reTimeline  = regexp.MustCompile(`/issues/[0-9]+/timeline$`)
+	reTimeline     = regexp.MustCompile(`/issues/[0-9]+/timeline$`)
+	reRepoLabels   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/labels$`)
+	reIssueLabels  = regexp.MustCompile(`/issues/[0-9]+/labels$`)
+	reIssueLabelOf = regexp.MustCompile(`/issues/[0-9]+/labels/(.+)$`)
+	reContents     = regexp.MustCompile(`^/repos/[^/]+/[^/]+/contents/(.+)$`)
 )
 
 // ghPaging mimics GitHub's documented paging contract: `per_page` defaults to **30** and
@@ -380,8 +394,17 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(out)
 
 	case r.Method == http.MethodPost && reComments.MatchString(path):
+		var in struct {
+			Body string `json:"body"`
+		}
+		reqBody, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(reqBody, &in)
 		f.mu.Lock()
 		f.postedCmt++
+		// Record the posted body so a subsequent GET sees it — the surface-tier comment's
+		// marker dedup (a re-run must not post a duplicate) is only testable if the fake
+		// remembers what was posted.
+		f.issueComments = append(f.issueComments, map[string]any{"body": in.Body})
 		f.mu.Unlock()
 		w.WriteHeader(http.StatusCreated)
 		writeJSON(map[string]any{"id": 1})
@@ -421,6 +444,84 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			writeJSON([]deskkit.Reaction{})
 		}
+
+	case r.Method == http.MethodPost && reRepoLabels.MatchString(path):
+		// Ensure-label. Record the create; return 201. (A real repo 422s on an existing
+		// label; the client swallows that, so returning 201 unconditionally is a superset.)
+		var in struct {
+			Name string `json:"name"`
+		}
+		reqBody, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(reqBody, &in)
+		f.mu.Lock()
+		f.createdLabels = append(f.createdLabels, in.Name)
+		f.mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+		writeJSON(map[string]any{"name": in.Name})
+
+	case r.Method == http.MethodGet && reIssueLabels.MatchString(path):
+		f.mu.Lock()
+		out := make([]map[string]any, 0, len(f.prLabels))
+		for _, l := range f.prLabels {
+			out = append(out, map[string]any{"name": l})
+		}
+		f.mu.Unlock()
+		writeJSON(out)
+
+	case r.Method == http.MethodPost && reIssueLabels.MatchString(path):
+		var in struct {
+			Labels []string `json:"labels"`
+		}
+		reqBody, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(reqBody, &in)
+		f.mu.Lock()
+		for _, add := range in.Labels {
+			present := false
+			for _, cur := range f.prLabels {
+				if cur == add {
+					present = true
+					break
+				}
+			}
+			if !present {
+				f.prLabels = append(f.prLabels, add) // labels are a SET — no duplicate
+			}
+		}
+		f.mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+		writeJSON([]map[string]any{})
+
+	case r.Method == http.MethodDelete && reIssueLabelOf.MatchString(path):
+		name := reIssueLabelOf.FindStringSubmatch(path)[1]
+		if dec, err := url.PathUnescape(name); err == nil {
+			name = dec
+		}
+		f.mu.Lock()
+		kept := f.prLabels[:0:0]
+		found := false
+		for _, cur := range f.prLabels {
+			if cur == name {
+				found = true
+				continue
+			}
+			kept = append(kept, cur)
+		}
+		f.prLabels = kept
+		f.mu.Unlock()
+		if !found {
+			w.WriteHeader(http.StatusNotFound) // idempotent-remove path the client swallows
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		writeJSON([]map[string]any{})
+
+	case r.Method == http.MethodGet && reContents.MatchString(path):
+		if f.surfaceConfig == nil {
+			w.WriteHeader(http.StatusNotFound) // absent-config signal
+			return
+		}
+		enc := base64.StdEncoding.EncodeToString([]byte(*f.surfaceConfig))
+		writeJSON(map[string]any{"content": enc, "encoding": "base64"})
 
 	case r.Method == http.MethodGet && reComments.MatchString(path):
 		// Serving this endpoint at all is the point (#513): the ready gate

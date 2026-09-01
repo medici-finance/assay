@@ -273,6 +273,16 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		if err := client.postReview(pr, head, shape.event, string(body)); err != nil {
 			return withDigest(fromErr(verb, repo, pr, head, err), dig)
 		}
+		// Mechanical, ADVISORY verdict-time labels (diff size class + surface tier) for
+		// merge-queue triage. This runs AFTER the verdict has landed and NEVER changes its
+		// outcome: a labeling failure is logged as a WARNING and swallowed, so the verdict
+		// still reports success. Labels gate nothing (they are a `wc -l` + glob triage aid),
+		// and a could-not-classify family is skipped, never guessed.
+		if lo, lerr := applyVerdictLabels(client, pr, info.ChangedFiles); lerr != nil {
+			fmt.Fprintln(stderr, "deskpost: WARNING: verdict-time labeling (advisory): "+lerr.Error())
+		} else if s := lo.String(); s != "no label change" {
+			fmt.Fprintln(stderr, "deskpost: verdict-time labels: "+s)
+		}
 		return done(verb, repo, pr, head, dig, "posted "+verdictFlag+" review as "+reviewerBotDisplay()+" at "+short(head))
 	})
 }
