@@ -61,6 +61,30 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 			return noop("ready", repo, pr, head, "already flipped ready at "+short(head)+" (idempotent no-op)")
 		}
 
+		// Model-capability floor. A ready-flip is an authority-bearing write, the SAME
+		// class the `deskflip` verb gates — and this is the App-identity flip verb, the OTHER
+		// live path that performs the identical markPullRequestReadyForReview mutation. Both
+		// flip verbs MUST clear the same floor, or a below-tier session simply chooses the
+		// ungated one: a floor on one of two equivalent flip verbs is only as strong as the
+		// convention it replaces. The tier is read from the target PR's DISPATCHER-attested
+		// stamp (applier-aware, so a self-applied stamp is worthless) and it fails CLOSED —
+		// a below-tier or present-but-unreadable attestation refuses; an UNATTESTED PR
+		// (human-driven or pre-attestation) proceeds with a NOTICE; the override is loud; an
+		// unreadable timeline is could-not-check, never a cleared floor.
+		events, ferr := client.listLabelEvents(pr)
+		if ferr != nil {
+			return fromReadErr("ready", repo, pr, head, ferr)
+		}
+		fd := deskkit.ModelCapabilityFloor(events, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
+		switch fd.Outcome {
+		case deskkit.FloorRefuse:
+			return refused("ready", repo, pr, head, fd.Message)
+		case deskkit.FloorOverrideAllow, deskkit.FloorNoticeAllow:
+			fmt.Fprintln(stderr, "deskpost: "+fd.Message)
+		case deskkit.FloorAllow:
+			// Attested at/above the floor: proceed silently.
+		}
+
 		// (a) open + draft.
 		if info.State != "open" || !info.Draft {
 			return refused("ready", repo, pr, head,
