@@ -25,18 +25,24 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 ## Next up
 
+_Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: quality. By stream: quality (2). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
+| forge-gitlab | 04 — Fleet provisioning + adopter doc + ci-config-project runbook | 3 | 2000 |
+| quality | 10 — M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter [exec:strong] | 3 | 2000 |
 | desk-tools | 06 — Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) [exec:strong] | 1 | 1000 |
-| quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
+| quality | 08 — `pr <n>` mode — per-file risk features (generic riskscore feed) | 3 | 1000 |
+| quality | 11 — DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source | 3 | 1000 |
+| quality | 13 — M4 session forensics — pluggable telemetry-source interface + reference adapters | 3 | 1000 |
 | spec-routing | 01 — Enforce the §8 lifecycle — the linter and the authoring-owed emitter [exec:strong] | 0 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (51 desk-actionable of 52 total — 37 at implemented, 15 verified awaiting review)
+## Awaiting verification / review (51 desk-actionable of 52 total — 34 at implemented, 18 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -54,7 +60,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-go-git | 01 | verified | 4500 | 7 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 01 [exec:strong] | verified | 4500 | 7 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | harness-portability | 01 [exec:strong] | implemented | 4500 | 7 | — | — | — |
-| quality | 07 [exec:strong] | implemented | 4500 | 7 | — | — | — |
+| quality | 07 [exec:strong] | verified | 4500 | 7 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | desktools-go-git | 02 | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
@@ -62,12 +68,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 02 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | quality | 02 [exec:strong] | verified | 3500 | 5 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
-| forge-gitlab | 02 [exec:strong] | implemented | 3000 | 4 | — | — | — |
+| forge-gitlab | 02 [exec:strong] | verified | 3000 | 4 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | harness-portability | 04 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | mistake-proofing | 01 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | quality | 03 | verified | 3000 | 4 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | derived-board | 05 | implemented | 2500 | 1 | — | — | — |
-| forge-gitlab | 03 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| forge-gitlab | 03 [exec:strong] | verified | 2500 | 3 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | harness-portability | 05 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | quality | 04 | verified | 2500 | 3 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | harness-portability | 06 [exec:strong] | implemented | 2000 | 2 | — | — | — |
@@ -168,8 +174,8 @@ _None._
 ### forge-gitlab (8 open)
 
 - 01 `Forge` interface extraction in deskkit — `github` impl pinned by goldens — verified (wave 1)
-- 02 `gitlab` forge implementation (MRs, notes, approvals, statuses) — implemented (wave 2)
-- 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — implemented (wave 2)
+- 02 `gitlab` forge implementation (MRs, notes, approvals, statuses) — verified (wave 2)
+- 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — verified (wave 2)
 - 04 Fleet provisioning + adopter doc + ci-config-project runbook — todo (wave 3)
 - 05 Live pilot — one brief round-tripped on a real GitLab group; parity table walked — todo (wave 4)
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — todo (wave 5)
@@ -216,7 +222,7 @@ _None._
 - 04 M1 instruction-layer brittleness (reference-validity + doc↔code drift) — verified (wave 1)
 - 05 `QUALITY.md` single-writer trend view + metrics artifacts — verified (wave 2)
 - 06 M2 fix identification — pluggable linkage adapter + evidence tiers — verified (wave 1)
-- 07 M2 B-SZZ inducing trace + derived defect metrics — implemented (wave 2)
+- 07 M2 B-SZZ inducing trace + derived defect metrics — verified (wave 2)
 - 08 `pr <n>` mode — per-file risk features (generic riskscore feed) — todo (wave 3)
 - 09 `check <files>` mode — brittleness screen for a named file set — implemented (wave 2)
 - 10 M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter — todo (wave 3)
