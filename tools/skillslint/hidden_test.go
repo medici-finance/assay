@@ -78,6 +78,15 @@ func TestScanInstructionSurfaces_HiddenClasses(t *testing.T) {
 		{"khmer-inherent-aa", "a\u17b5b\n", true, "U+17B5 KHMER VOWEL INHERENT AA"},
 		{"line-separator", "a\u2028b\n", true, "U+2028 LINE SEPARATOR"},
 		{"paragraph-separator", "a\u2029b\n", true, "U+2029 PARAGRAPH SEPARATOR"},
+		// Mongolian Free Variation Selectors \u2014 Mn, assigned Default_Ignorable, the
+		// same VS-steganography channel as FE00\u2013FE0F; a third block the earlier
+		// variation-selector table did not cover. U+180E (vowel separator) is Cf
+		// and is already caught by the Cf branch.
+		{"mongolian-fvs-one", "a\u180bb\n", true, "U+180B MONGOLIAN FREE VARIATION SELECTOR ONE"},
+		{"mongolian-fvs-two", "a\u180cb\n", true, "U+180C MONGOLIAN FREE VARIATION SELECTOR TWO"},
+		{"mongolian-fvs-three", "a\u180db\n", true, "U+180D MONGOLIAN FREE VARIATION SELECTOR THREE"},
+		{"mongolian-fvs-four", "a\u180fb\n", true, "U+180F MONGOLIAN FREE VARIATION SELECTOR FOUR"},
+		{"mongolian-vowel-separator", "a\u180eb\n", true, "U+180E MONGOLIAN VOWEL SEPARATOR"},
 		// Zs visible-whitespace is deliberately NOT flagged (see hiddenKind): an
 		// ordinary space and a non-breaking space stay legal.
 		{"ordinary-space-ok", "normal text here\n", false, ""},
@@ -209,6 +218,63 @@ func TestScanInstructionSurfaces_EmptyRootFindsNothing(t *testing.T) {
 	}
 	if len(issues) != 0 {
 		t.Errorf("empty root produced issues: %v", issues)
+	}
+}
+
+// TestHiddenKind_AllAssignedDefaultIgnorableFlagged is the durable-coverage
+// regression: it iterates EVERY codepoint in the assigned Default_Ignorable set
+// (the defaultIgnorable table, the control's stated basis) and asserts hiddenKind
+// flags each. This closes the class rather than a codepoint at a time — a future
+// assigned-DI member added to the table cannot silently slip past the control,
+// and the Mongolian free variation selectors (the round-3 gap) are covered here
+// among the rest. The one exception is the leading BOM, asserted separately.
+func TestHiddenKind_AllAssignedDefaultIgnorableFlagged(t *testing.T) {
+	count := 0
+	check := func(r rune) {
+		count++
+		if r == 0xFEFF {
+			// U+FEFF is DI; it is rejected everywhere EXCEPT as the leading BOM.
+			if hiddenKind(r, true) {
+				t.Errorf("U+FEFF as a leading BOM must be legal")
+			}
+			if !hiddenKind(r, false) {
+				t.Errorf("U+FEFF not at file start must be flagged")
+			}
+			return
+		}
+		if !hiddenKind(r, false) {
+			t.Errorf("assigned Default_Ignorable U+%04X is NOT flagged — the DI class has a hole", r)
+		}
+	}
+	for _, rg := range defaultIgnorable.R16 {
+		for r := rune(rg.Lo); r <= rune(rg.Hi); r += rune(rg.Stride) {
+			check(r)
+		}
+	}
+	for _, rg := range defaultIgnorable.R32 {
+		for r := rune(rg.Lo); r <= rune(rg.Hi); r += rune(rg.Stride) {
+			check(r)
+		}
+	}
+	if count < 300 {
+		t.Fatalf("iterated only %d DI codepoints — the table looks truncated", count)
+	}
+	// Spot-check the round-3 gap explicitly, independent of the table iteration.
+	for _, r := range []rune{0x180B, 0x180C, 0x180D, 0x180F} {
+		if !hiddenKind(r, false) {
+			t.Errorf("Mongolian free variation selector U+%04X must be flagged", r)
+		}
+	}
+}
+
+// TestHiddenKind_ZsWhitespaceStaysLegal pins the deliberate exclusion: the Zs
+// space separators are visible whitespace, not invisible-smuggling, and must NOT
+// be flagged. If a future change swept Zs in, this reddens.
+func TestHiddenKind_ZsWhitespaceStaysLegal(t *testing.T) {
+	for _, r := range []rune{0x0020, 0x00A0, 0x2000, 0x2003, 0x2009, 0x200A, 0x202F, 0x205F, 0x3000} {
+		if hiddenKind(r, false) {
+			t.Errorf("Zs space separator U+%04X must stay legal (visible whitespace, not smuggling)", r)
+		}
 	}
 }
 

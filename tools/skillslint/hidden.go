@@ -11,9 +11,17 @@
 // miss, so the layer that catches it must read a different signal (the bytes)
 // in a different component (this lint) than the review gate above it.
 //
-// What it rejects (hard, exit 1), by CATEGORY not by an enumerated blacklist —
-// an enumeration inevitably misses members of the class, so the check is the
-// whole category:
+// The basis. The invisible/zero-width class this control rejects IS the assigned
+// Unicode Default_Ignorable_Code_Point property (plus the C0/C1 controls and
+// invalid UTF-8, which DI does not cover). Targeting that whole property — not an
+// enumeration of the codepoints seen so far — is what makes the control durable:
+// a point patch closes one smuggling codepoint, but the property closes the CLASS
+// so the next adversarial probe finds nothing. See the defaultIgnorable table for
+// the assigned-only scoping decision (unassigned/reserved DI is deliberately left
+// legal). Zs visible whitespace is deliberately legal too (see below).
+//
+// What it rejects (hard, exit 1), by CATEGORY/PROPERTY not by an enumerated
+// blacklist — an enumeration inevitably misses members of the class:
 //
 //	format chars    the WHOLE unicode.Cf category. This is the general
 //	                invisible-formatting class and it subsumes every smuggling
@@ -34,6 +42,12 @@
 //	                (U+17B4, U+17B5), U+2800 braille blank, and the line/paragraph
 //	                separators (U+2028, U+2029). "invisible ⊆ Cf ∪ VS ∪ Cc" is
 //	                false; this closes it.
+//	default-ignore  the ASSIGNED Default_Ignorable_Code_Point property, as its own
+//	                property signal (defaultIgnorable) — the durable basis. Ensures
+//	                every assigned-DI codepoint flags even if reclassified out of a
+//	                category above (e.g. the Mongolian free variation selectors
+//	                U+180B–180D, 180F, which are Mn — also folded into the
+//	                variation-selector set for naming).
 //	C0/C1 controls  everything unicode.Cc EXCEPT \t \n \r
 //	invalid UTF-8   a byte that does not decode — an instruction file is text
 //
@@ -101,6 +115,8 @@ var zeroWidth = &unicode.RangeTable{
 // human reader, arbitrary bytes to a parser.
 var variationSelectors = &unicode.RangeTable{
 	R16: []unicode.Range16{
+		{Lo: 0x180B, Hi: 0x180D, Stride: 1}, // MONGOLIAN FREE VARIATION SELECTOR ONE..THREE
+		{Lo: 0x180F, Hi: 0x180F, Stride: 1}, // MONGOLIAN FREE VARIATION SELECTOR FOUR (U+180E is Cf, caught there)
 		{Lo: 0xFE00, Hi: 0xFE0F, Stride: 1}, // VARIATION SELECTOR-1 .. -16
 	},
 	R32: []unicode.Range32{
@@ -150,6 +166,54 @@ var otherInvisibles = &unicode.RangeTable{
 	},
 }
 
+// defaultIgnorable is the ASSIGNED members of the Unicode
+// Default_Ignorable_Code_Point property (DerivedCoreProperties.txt) — the
+// property that, by definition, marks codepoints a renderer should show as
+// nothing when it cannot render them. That property IS the invisible/zero-width
+// class this control defends, so it is the control's durable basis: point patches
+// close named codepoints one at a time, but targeting the whole DI class closes
+// it so the next adversarial probe finds nothing.
+//
+// This is a curated table rather than a category test because Go's stdlib ships
+// no RangeTable for Default_Ignorable, and no single General_Category equals it
+// (its members span Cf, Mn, Lo, Zl and Zp). It is checked as its own branch in
+// hiddenKind so a codepoint that a future Unicode revision moves OUT of Cf still
+// flags on the DI property — a signal independent of the category branches.
+//
+// BAR: ASSIGNED DI only. The property also lists UNASSIGNED/reserved ranges
+// (U+2065, U+FFF0–FFF8, U+E0000, U+E0002–E001F, U+E0080–E00FF, U+E01F0–E0FFF, and
+// the reserved gaps in the tag/VS-supplement blocks). Those are DELIBERATELY
+// EXCLUDED: an unassigned codepoint carries no payload today, rejecting reserved
+// space is churny (it changes as Unicode assigns), and the reviewer scoped the
+// bar to assigned members. When Unicode assigns one, it is added here explicitly.
+//
+// Ranges must stay sorted by Lo within R16/R32.
+var defaultIgnorable = &unicode.RangeTable{
+	R16: []unicode.Range16{
+		{Lo: 0x00AD, Hi: 0x00AD, Stride: 1}, // SOFT HYPHEN
+		{Lo: 0x034F, Hi: 0x034F, Stride: 1}, // COMBINING GRAPHEME JOINER
+		{Lo: 0x061C, Hi: 0x061C, Stride: 1}, // ARABIC LETTER MARK
+		{Lo: 0x115F, Hi: 0x1160, Stride: 1}, // HANGUL CHOSEONG/JUNGSEONG FILLER
+		{Lo: 0x17B4, Hi: 0x17B5, Stride: 1}, // KHMER VOWEL INHERENT AQ/AA
+		{Lo: 0x180B, Hi: 0x180F, Stride: 1}, // MONGOLIAN FVS ONE..FOUR + VOWEL SEPARATOR (180E)
+		{Lo: 0x200B, Hi: 0x200F, Stride: 1}, // ZWSP..ZWJ, LRM, RLM
+		{Lo: 0x202A, Hi: 0x202E, Stride: 1}, // bidi embeddings/overrides
+		{Lo: 0x2060, Hi: 0x2064, Stride: 1}, // WORD JOINER..INVISIBLE PLUS (2065 unassigned, excluded)
+		{Lo: 0x2066, Hi: 0x206F, Stride: 1}, // bidi isolates + deprecated format
+		{Lo: 0x3164, Hi: 0x3164, Stride: 1}, // HANGUL FILLER
+		{Lo: 0xFE00, Hi: 0xFE0F, Stride: 1}, // VARIATION SELECTORS
+		{Lo: 0xFEFF, Hi: 0xFEFF, Stride: 1}, // ZERO WIDTH NO-BREAK SPACE (leading BOM excepted in hiddenKind)
+		{Lo: 0xFFA0, Hi: 0xFFA0, Stride: 1}, // HALFWIDTH HANGUL FILLER
+	},
+	R32: []unicode.Range32{
+		{Lo: 0x1BCA0, Hi: 0x1BCA3, Stride: 1}, // SHORTHAND FORMAT controls
+		{Lo: 0x1D173, Hi: 0x1D17A, Stride: 1}, // MUSICAL SYMBOL BEGIN/END BEAM..PHRASE
+		{Lo: 0xE0001, Hi: 0xE0001, Stride: 1}, // LANGUAGE TAG
+		{Lo: 0xE0020, Hi: 0xE007F, Stride: 1}, // TAG characters
+		{Lo: 0xE0100, Hi: 0xE01EF, Stride: 1}, // VARIATION SELECTORS SUPPLEMENT
+	},
+}
+
 // hiddenNames gives a human-readable name for the enumerated attack codepoints,
 // so a violation message reads "U+202E RIGHT-TO-LEFT OVERRIDE" rather than a bare
 // hex value. Anything not in the map falls back to a category descriptor in
@@ -164,6 +228,11 @@ var hiddenNames = map[rune]string{
 	0x1160: "HANGUL JUNGSEONG FILLER",
 	0x17B4: "KHMER VOWEL INHERENT AQ",
 	0x17B5: "KHMER VOWEL INHERENT AA",
+	0x180B: "MONGOLIAN FREE VARIATION SELECTOR ONE",
+	0x180C: "MONGOLIAN FREE VARIATION SELECTOR TWO",
+	0x180D: "MONGOLIAN FREE VARIATION SELECTOR THREE",
+	0x180E: "MONGOLIAN VOWEL SEPARATOR",
+	0x180F: "MONGOLIAN FREE VARIATION SELECTOR FOUR",
 	0x2028: "LINE SEPARATOR",
 	0x2029: "PARAGRAPH SEPARATOR",
 	0x2800: "BRAILLE PATTERN BLANK",
@@ -212,6 +281,8 @@ func codepointName(r rune) string {
 		return "FORMAT CHARACTER"
 	case unicode.Is(unicode.Cc, r):
 		return "CONTROL CHARACTER"
+	case unicode.Is(defaultIgnorable, r):
+		return "DEFAULT-IGNORABLE CHARACTER"
 	}
 	return "HIDDEN CHARACTER"
 }
@@ -240,6 +311,12 @@ func hiddenKind(r rune, atFileStart bool) (bad bool) {
 		// grapheme joiner, Hangul/Khmer fillers, braille blank, line/paragraph
 		// separators). See otherInvisibles for the full set and the reason it is
 		// a codepoint list, not a category.
+		return true
+	case unicode.Is(defaultIgnorable, r):
+		// The assigned Default_Ignorable_Code_Point class — the durable basis.
+		// Redundant with the branches above for today's members BY DESIGN: it is
+		// an independent PROPERTY signal, so a codepoint reclassified out of a
+		// category still flags here. See defaultIgnorable.
 		return true
 	case unicode.Is(unicode.Cc, r):
 		// C0/C1 controls. Cc is disjoint from Cf; \t \n \r are excused above.

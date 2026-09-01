@@ -52,9 +52,20 @@ enumeration inevitably misses a member of the class):
   operators (U+2061–U+2064); the soft hyphen (U+00AD); and the Unicode **Tag
   block** (U+E0001, U+E0020–U+E007F — the canonical LLM ASCII-smuggling vector).
   U+FEFF is Cf too and is rejected **except** as the file's leading BOM.
-- **Variation selectors** (U+FE00–U+FE0F, U+E0100–U+E01EF). These are `Mn`/other,
-  not `Cf`, so they are covered explicitly — a run of them appended to a carrier
-  glyph is the emoji-variation-selector steganography channel.
+- **Variation selectors** (U+FE00–U+FE0F, U+E0100–U+E01EF, and the Mongolian free
+  variation selectors U+180B–U+180D, U+180F). These are `Mn`, not `Cf`, so they
+  are covered explicitly — a run of them appended to a carrier glyph is the
+  variation-selector steganography channel.
+- The **assigned Default_Ignorable_Code_Point property** (`defaultIgnorable`), as
+  its own property-based branch — the *durable basis* of the control. The DI
+  property is Unicode's own definition of "a renderer may show this as nothing",
+  i.e. the invisible/zero-width class itself; targeting the whole property (not an
+  enumeration of the codepoints seen so far) closes the class so an adversarial
+  probe finds nothing. It is a curated table because Go ships no stdlib DI
+  RangeTable and no single `General_Category` equals DI (members span Cf, Mn, Lo,
+  Zl, Zp). **Bar: assigned DI only** — unassigned/reserved DI (U+2065,
+  U+FFF0–FFF8, U+E0000, and the reserved tag/VS-supplement gaps) is deliberately
+  left legal: it carries no payload today and rejecting reserved space is churny.
 - A curated **`otherInvisibles`** set that renders to nothing yet is neither Cf,
   VS nor Cc: U+034F combining grapheme joiner, the Hangul fillers (U+115F, U+1160,
   U+3164, U+FFA0), the Khmer inherent vowels (U+17B4, U+17B5), U+2800 braille
