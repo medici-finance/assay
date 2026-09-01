@@ -118,11 +118,11 @@ func TestIsFixtureCorpusPath(t *testing.T) {
 	}
 
 	notExcluded := []string{
-		"docs/streams/c/README.md",            // ABOVE the marker — fail-closed
-		"docs/streams/c/corpus-evil/x.md",     // lookalike sibling, no marker
-		"docs/streams/other/brief-01.md",      // unrelated live brief
-		"",                                    // empty
-		"../escape/x.md",                      // escaping — never a corpus
+		"docs/streams/c/README.md",        // ABOVE the marker — fail-closed
+		"docs/streams/c/corpus-evil/x.md", // lookalike sibling, no marker
+		"docs/streams/other/brief-01.md",  // unrelated live brief
+		"",                                // empty
+		"../escape/x.md",                  // escaping — never a corpus
 	}
 	for _, p := range notExcluded {
 		if isFixtureCorpusPath(root, p) {
