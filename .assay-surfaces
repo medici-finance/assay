@@ -1,0 +1,28 @@
+# .assay-surfaces — declared risk-surface globs for the mechanical verdict-time surface tier.
+#
+# CONTRACT
+#   - One glob per line. Blank lines and lines whose first non-space character is '#' are
+#     ignored. A path may contain '#', so an inline trailing comment is NOT stripped — put a
+#     comment on its own line.
+#   - A PR is labelled `surface:core` when ANY changed path matches ANY glob here, and
+#     `surface:std` otherwise. A repo with NO .assay-surfaces file is labelled with neither
+#     (three-state: "no declared surfaces" is never guessed as std).
+#   - The label is ADVISORY — a merge-queue triage aid for the single human merge gate. It
+#     GATES NOTHING. (The fail-closed security gate is a separate, compiled+env mechanism;
+#     this file is not that.)
+#
+# GLOB SYNTAX (a small, gitignore-flavoured subset — see deskkit.MatchSurfaceGlob)
+#   *   matches any run of characters within one path segment (e.g. *guard* matches
+#       "writeguard"); it never crosses a '/'.
+#   **  as a whole path segment matches zero or more segments (e.g. dir/** matches
+#       everything under dir/, at any depth, and **/x matches x at any depth).
+#
+# The globs below name THIS repository's real risk surfaces: CI workflow definitions, the
+# advisory guardrails doc, the guard command tools, and the git hooks. (An adopter repo
+# supplies its own surfaces; the labeler reads whatever this file declares and never bakes
+# any one repo's layout into the tool.)
+
+.github/workflows/**
+.claude/guardrails/**
+tools/desk/cmd/*guard*/**
+tools/desk/hooks/**
