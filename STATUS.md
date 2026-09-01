@@ -28,7 +28,6 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
-| quality | 13 — M4 session forensics — pluggable telemetry-source interface + reference adapters | 3 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 | quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
 | spec-routing | 01 — Enforce the §8 lifecycle — the linter and the authoring-owed emitter [exec:strong] | 0 | 1000 |
@@ -37,14 +36,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (56 desk-actionable of 57 total — 38 at implemented, 19 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 58 total — 39 at implemented, 19 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (56)
+### Desk-actionable (57)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -94,6 +93,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | quality | 08 | implemented | 1000 | 0 | — | — | — |
 | quality | 09 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | quality | 11 | implemented | 1000 | 0 | — | — | — |
+| quality | 13 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 01 | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 04 | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
@@ -228,7 +228,7 @@ _None._
 - 10 M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter — implemented (wave 3)
 - 11 DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source — implemented (wave 3)
 - 12 M4 gate-yield accounting + ritual-effectiveness joins — todo (wave 4)
-- 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — todo (wave 3)
+- 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — implemented (wave 3)
 - 14 auto-filed refactor work + quality error-budgets + RETRO output feed — todo (wave 5)
 - 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
 - 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — todo (wave 1)
