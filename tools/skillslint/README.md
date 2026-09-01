@@ -1,7 +1,9 @@
 # skillslint
 
-Three offline checks over the plugin tree, run as one command. Exit code 0 clean,
+Four offline checks over the plugin tree, run as one command. Exit code 0 clean,
 1 a real violation, 2 could-not-check — and 2 is a failure, never a quiet pass.
+One of the four (the context-budget NOTICE) is advisory and never moves the exit
+code; the other three are gating.
 
 ```
 make skillslint                      # the check form (runs with --root ../..)
@@ -18,6 +20,7 @@ own directory (`cd tools/skillslint && go test ./...`), not from the repo root.
 | Check | Scope | Source |
 |---|---|---|
 | Skill-file structure | `plugins/assay/skills/*/SKILL.md` | `lint.go` |
+| Invisible-character / Trojan-Source (hard) + context-budget NOTICE (advisory) | the instruction surfaces (below) | `hidden.go` |
 | Unresolved house values | **every `*.md` under `plugins/`** | `housevalue.go` |
 | Shared-guardrail derive-or-diff | every declared guardrail copy | `guardrail.go` |
 
@@ -29,7 +32,35 @@ name, `description:` present and non-empty, and no bare "unforgeable" /
 line-oriented rather than strict YAML — see the comment at the top of `lint.go`
 for why a strict parser would be wrong about this corpus.
 
-### 2. Unresolved house values — the WHOLE plugin tree
+### 2. Invisible-character / Trojan-Source lint + context-budget NOTICE
+
+The structural check above reads the header the way the harness does; it says
+nothing about the raw bytes underneath. A skill or instruction file can carry a
+Unicode payload — a bidi override that reorders how a line *renders*, a zero-width
+joiner spliced mid-word, a stray control character — that a human reviewing the
+rendered text cannot see, yet the model reads on activation. This half reads a
+different signal (the bytes) so the layer catches what human review is built to
+miss.
+
+**Hard (exit 1), by Unicode category — never a codepoint blacklist:** bidi
+controls (U+202A–U+202E, U+2066–U+2069), zero-width characters (U+200B–U+200D,
+U+2060, and a U+FEFF that is *not* the file's leading BOM), any C0/C1 control
+outside `\t \n \r`, and invalid UTF-8. Each violation names file, line, column and
+codepoint (`U+202E RIGHT-TO-LEFT OVERRIDE`). Printable non-ASCII — accented names,
+arrows, box drawing, emoji — stays legal: the check targets invisibility, not
+foreignness.
+
+**Advisory (never exit-affecting): a context-budget NOTICE.** A file over a word
+threshold (`SKILL.md` 3,000, `CLAUDE.md` 5,000) prints
+`skillslint: NOTICE: <path>: <n> words (budget <t>) — context-bloat candidate` to
+stderr; larger instruction files correlate with more hallucination, so it is worth
+a human's eye. It is a judgment call, so it stays advisory and moves no exit code.
+
+**Scope — the instruction surfaces:** every `*.md` under `plugins/assay/skills/`
+and under `.claude/skills/`, plus `plugins/assay/resident-rules.md` and a top-level
+`CLAUDE.md`, wherever each exists in the linted root.
+
+### 3. Unresolved house values — the WHOLE plugin tree
 
 The plugin ships more adopter-facing prose than skill bodies: the harness
 references under `plugins/assay/references/`, the per-directory READMEs, the
@@ -82,7 +113,7 @@ skillslint: plugins/assay/references/example.md: line 9: "Somebody" (dated attri
 HOUSE-VALUES: FAIL — 1 unresolved house value(s) across 22 markdown file(s) under plugins/
 ```
 
-### 3. Shared-guardrail derive-or-diff
+### 4. Shared-guardrail derive-or-diff
 
 Any rule more than one skill must state verbatim has one declared home,
 `.claude/guardrails/GUARDRAILS.md`. This half byte-diffs every copy against it
