@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -125,6 +128,143 @@ func TestSendSenderIdentityIsFromContextNotArgument(t *testing.T) {
 	env, _ := comms.ParseEnvelope(gw.submitted[0])
 	if env.From.Role != "worker-desk" || env.From.Cell != "cell-a" {
 		t.Fatalf("sender identity should be the session's (cell-a/worker-desk), got %s/%s", env.From.Cell, env.From.Role)
+	}
+}
+
+// --- signer load path (the custody-key read testDeps deliberately bypasses) ----
+//
+// These tests exercise the PRODUCTION signer-load path that buildDeps defers to
+// runSend and that testDeps skips by injecting a live signer. This is the path the
+// regression left dead: loadSigner() was implemented but never called, and buildDeps
+// hardcoded signer:nil, so a correctly-configured session could never mint or submit.
+// Against the pre-fix code every one of these fails — the real-key send gets
+// could-not-mint (exit 6) instead of exit 0, and the fail-closed assertions look for
+// loadSigner's own messages that the pre-fix nil-signer branch never produced.
+
+// writeCustodyKey writes a hex ed25519 SEED to a 0600 file (the custody-mode the
+// signing key must satisfy) and returns its path plus the public key that verifies
+// anything minted with it. It is the on-disk half of the session context loadSigner
+// reads via $DESK_COMMS_KEY.
+func writeCustodyKey(t *testing.T) (path string, pub ed25519.PublicKey) {
+	t.Helper()
+	p, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generating keypair: %v", err)
+	}
+	path = filepath.Join(t.TempDir(), "comms.key")
+	if err := os.WriteFile(path, []byte(hex.EncodeToString(priv.Seed())), 0o600); err != nil {
+		t.Fatalf("writing custody key: %v", err)
+	}
+	// os.WriteFile honours umask; force the custody mode loadSigner enforces.
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatalf("chmod custody key: %v", err)
+	}
+	return path, p
+}
+
+// nilSignerDeps is testDeps with the signer deliberately UNSET, so the send reaches
+// runSend step 7 and must load the real key the production way. Everything else
+// (identity from context, fake accepting gateway, deterministic id/nonce) matches.
+func nilSignerDeps(payload string) (*deps, *fakeGateway, *bytes.Buffer) {
+	gw := &fakeGateway{receipt: Receipt{ID: "gw-1", Accepted: true}}
+	out := &bytes.Buffer{}
+	d := &deps{
+		stdin:    strings.NewReader(payload),
+		stdout:   out,
+		now:      func() time.Time { return time.Unix(1700000000, 0).UTC() },
+		cell:     "cell-a",
+		self:     "worker-desk",
+		signer:   nil, // the production state buildDeps produces; loaded at mint time
+		gateway:  gw,
+		newID:    func() string { return "msg-test-1" },
+		newNonce: func() string { return "nonce-test-1" },
+	}
+	return d, gw, out
+}
+
+// A correctly-configured session (custody key present at $DESK_COMMS_KEY, mode 0600)
+// loads its signer the production way, then mints and submits a signed, verifiable
+// envelope. This is the path the regression left unreachable: pre-fix this send died
+// at could-not-mint before ever touching the gateway. RED before the loadSigner wiring,
+// GREEN after.
+func TestSendLoadsSignerFromCustodyKeyAndSubmits(t *testing.T) {
+	keyPath, pub := writeCustodyKey(t)
+	t.Setenv(envKey, keyPath)
+
+	d, gw, out := nilSignerDeps("please pick up brief 7")
+	oc, err := cmdSend(d, []string{"--to", "pr-review-desk", "--verb", "handoff"})
+	if err != nil {
+		t.Fatalf("want a clean send through the loaded signer, got error: %v", err)
+	}
+	if deskkit.ExitCodeOf(err) != deskkit.ExitOK {
+		t.Fatalf("want exit 0, got %d", deskkit.ExitCodeOf(err))
+	}
+	if len(gw.submitted) != 1 {
+		t.Fatalf("want exactly one submission after the real signer load, got %d", len(gw.submitted))
+	}
+	if oc.bucket != "cell-a/pr-review-desk" {
+		t.Fatalf("want bucket cell-a/pr-review-desk, got %q", oc.bucket)
+	}
+	if !strings.Contains(out.String(), "gw-1") {
+		t.Fatalf("want the receipt id echoed, got %q", out.String())
+	}
+	// The assertion must authenticate against the SAME custody key loadSigner read
+	// from disk — proving the production load path minted over this envelope.
+	env, perr := comms.ParseEnvelope(gw.submitted[0])
+	if perr != nil {
+		t.Fatalf("submitted envelope does not parse: %v", perr)
+	}
+	trust := comms.Ed25519TrustStore{"cell-a": pub}
+	if verr := comms.VerifyEnvelope(env, d.now(), trust, time.Minute, comms.NewMemReplayGuard()); verr != nil {
+		t.Fatalf("envelope minted with the loaded custody key does not verify: %v", verr)
+	}
+	if env.From.Cell != "cell-a" || env.From.Role != "worker-desk" {
+		t.Fatalf("sender identity not taken from context: got %s/%s", env.From.Cell, env.From.Role)
+	}
+}
+
+// Fail-closed: no custody key configured ($DESK_COMMS_KEY unset). loadSigner refuses
+// with could-not-mint (exit 6) and the message never reaches the gateway. The error
+// must be loadSigner's own — naming DESK_COMMS_KEY — which the pre-fix nil-signer
+// branch ("no signing key available for this session") never produced: RED before the
+// wiring, GREEN after. This is the fail-closed contract preserved: a session that
+// genuinely cannot sign still cannot send.
+func TestSendFailsClosedWhenNoCustodyKeyConfigured(t *testing.T) {
+	t.Setenv(envKey, "") // no key in context
+
+	d, gw, _ := nilSignerDeps("x")
+	_, err := cmdSend(d, []string{"--to", "pr-review-desk", "--verb", "handoff"})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
+		t.Fatalf("want exit 6 (could-not-mint), got %d (%v)", deskkit.ExitCodeOf(err), err)
+	}
+	if !strings.Contains(err.Error(), envKey) {
+		t.Fatalf("want loadSigner's own could-not-mint naming %s (proving the load path ran), got %v", envKey, err)
+	}
+	if len(gw.submitted) != 0 {
+		t.Fatalf("a session that cannot sign must never reach the gateway; got %d submissions", len(gw.submitted))
+	}
+}
+
+// The custody-mode rule is enforced on the loaded key: a group/world-readable key is
+// refused (exit 5) before any message is minted. Exercises the load path's 0600 guard
+// end-to-end through send.
+func TestSendRefusesWorldReadableCustodyKey(t *testing.T) {
+	keyPath, _ := writeCustodyKey(t)
+	if err := os.Chmod(keyPath, 0o644); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Setenv(envKey, keyPath)
+
+	d, gw, _ := nilSignerDeps("x")
+	_, err := cmdSend(d, []string{"--to", "pr-review-desk", "--verb", "handoff"})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+		t.Fatalf("want exit 5 (custody-mode refusal), got %d (%v)", deskkit.ExitCodeOf(err), err)
+	}
+	if !strings.Contains(err.Error(), "0600") {
+		t.Fatalf("want a custody-mode refusal citing 0600, got %v", err)
+	}
+	if len(gw.submitted) != 0 {
+		t.Fatalf("a mode-refused key must never reach the gateway; got %d submissions", len(gw.submitted))
 	}
 }
 

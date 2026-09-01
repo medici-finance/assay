@@ -157,7 +157,7 @@ func buildDeps(stdin io.Reader, stdout io.Writer) (*deps, error) {
 		now:     time.Now,
 		cell:    cell,
 		self:    self,
-		signer:  nil, // loaded lazily by send, after the identity-independent preflight
+		signer:  nil, // loaded lazily by runSend (send.go step 7) via loadSigner(), after every refusal check
 		gateway: socketGateway{network: "unix", addr: strings.TrimSpace(os.Getenv(envGateway))},
 		rateCheck: func(bucket string) error {
 			// pr==0: a cell message carries no PR; the destination lane is the bucket.

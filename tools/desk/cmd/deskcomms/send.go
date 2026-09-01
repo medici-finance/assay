@@ -174,11 +174,28 @@ func runSend(d *deps, a *sendArgs) (*outcome, error) {
 	}
 
 	// 7. Mint the signed assertion binding {cell, role, msg-id}. The signer is this
-	//    desk-role's custody-managed key; a nil signer is could-not-mint.
-	if d.signer == nil {
-		return oc, deskkit.Unverifiable("could-not-mint: no signing key available for this session", nil)
+	//    desk-role's custody-managed key. buildDeps (client.go) leaves d.signer nil and
+	//    defers the custody-key load to HERE — after every refusal check above — so a
+	//    reserved-verb, out-of-lane, oversize, or credential-shaped send from a session
+	//    with no key still gets its own specific refusal, never a could-not-mint that
+	//    would hide it. Only once a send has earned the right to be minted do we read the
+	//    key. The identity that selects the key is the session context (loadSigner reads
+	//    the custody path $DESK_COMMS_KEY established at token-mint time, the same context
+	//    that supplied d.cell / d.self), never a flag. A signer that cannot be loaded — no
+	//    key configured, unreadable, wrong mode, or malformed — surfaces loadSigner's own
+	//    typed refusal (could-not-mint / custody-mode refused): fail closed, never an
+	//    unsigned message. A test injects d.signer directly and so bypasses the load; the
+	//    production path arrives here with d.signer nil and loads it now.
+	signer := d.signer
+	if signer == nil {
+		loaded, lerr := loadSigner()
+		if lerr != nil {
+			oc.detail = deskkit.StripControl(lerr.Error())
+			return oc, lerr
+		}
+		signer = loaded
 	}
-	assertion, err := comms.Mint(d.cell, d.self, msgID, d.newNonce(), d.now(), 0, d.signer)
+	assertion, err := comms.Mint(d.cell, d.self, msgID, d.newNonce(), d.now(), 0, signer)
 	if err != nil {
 		oc.detail = "mint: " + err.Error()
 		return oc, deskkit.Unverifiable("could-not-mint: "+err.Error(), err)
