@@ -131,6 +131,14 @@ type fakeGH struct {
 	// repoReactions is the reaction list returned for GET .../reactions.
 	repoReactions []deskkit.Reaction
 
+	// labelEvents is the PR's `labeled` timeline — the dispatcher-attestation the model-
+	// capability floor reads on a verdict write. nil serves an empty timeline, which the
+	// floor reads as UNATTESTED (a NOTICE, not a refusal), so pre-floor tests run unchanged.
+	// Each event carries its applier login, so a fixture can distinguish a dispatcher stamp
+	// from a self-applied one. timelineErr forces the timeline read to fail (could-not-check).
+	labelEvents []deskkit.LabelEvent
+	timelineErr bool
+
 	pullCalls    int
 	postedReview int
 	postedCmt    int
@@ -148,6 +156,7 @@ var (
 	reChecks    = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
 	reRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	reReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
+	reTimeline  = regexp.MustCompile(`/issues/[0-9]+/timeline$`)
 )
 
 // ghPaging mimics GitHub's documented paging contract: `per_page` defaults to **30** and
@@ -383,6 +392,28 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 			vis = "private"
 		}
 		writeJSON(map[string]any{"visibility": vis})
+
+	case r.Method == http.MethodGet && reTimeline.MatchString(path):
+		// The model-capability floor's read: the PR's `labeled` timeline, each entry naming
+		// the label and the login that applied it. A forced error models an unreadable
+		// timeline (could-not-check). Page 2+ is empty, so the walk terminates.
+		if f.timelineErr {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if page != "" && page != "1" {
+			writeJSON([]map[string]any{})
+			return
+		}
+		out := make([]map[string]any, 0, len(f.labelEvents))
+		for _, e := range f.labelEvents {
+			out = append(out, map[string]any{
+				"event": "labeled",
+				"label": map[string]any{"name": e.Name},
+				"actor": map[string]any{"login": e.AppliedBy},
+			})
+		}
+		writeJSON(out)
 
 	case r.Method == http.MethodGet && reReactions.MatchString(path):
 		if f.repoReactions != nil {

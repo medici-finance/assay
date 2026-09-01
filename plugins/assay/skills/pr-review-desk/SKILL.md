@@ -277,6 +277,7 @@ as the planner and acts on its rows.
   **The desk RUNS deskflip and honours its refusals** — it does not re-derive the condition list
   here; there is no override flag, no un-ready verb, no merge verb. Exit 5 = a condition failed
   (fix it, or leave the PR parked); exit 6 = a condition could not be READ (blind, never green).
+- **A ready-flip is an authority-bearing write, so it needs a strong-tier session** — deskflip's model-capability floor refuses a flip whose dispatch is attested below the strong tier and admits an unattested or human-driven session with a NOTICE; delegate work downward freely, but escalate the flip upward rather than issue it from a below-tier session.
   Only the human's explicit waiver substitutes for a missing security artifact. Post the wrap-up
   comment listing filed follow-ups as `<repo>#<N>` pointers. **Merge stays the human's.**
 

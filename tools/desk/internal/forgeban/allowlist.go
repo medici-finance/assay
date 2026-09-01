@@ -53,7 +53,7 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
-const allowedInvocationCeiling = 23
+const allowedInvocationCeiling = 24
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
@@ -126,6 +126,13 @@ var AllowedInvocations = []Allowance{
 		Key: "cmd/deskflip/flip.go::readHead::gh",
 		Reason: "TODO(forge-surface): `pr view --json headRefOid` maps to GetPullRequest.HeadSHA. " +
 			"Identity-blocked only.",
+	},
+	{
+		Key: "cmd/deskflip/flip.go::readLabelEvents::gh",
+		Reason: "TODO(forge-surface): `gh api --paginate …/issues/N/timeline` maps to a would-be " +
+			"ListLabelEvents op (the applier-aware model-capability-floor read); passthrough-shaped, and " +
+			"identity-blocked only with the rest of deskflip. The HTTP-client sibling (deskpost listLabelEvents) " +
+			"already goes through the enumerated path.",
 	},
 	{
 		Key: "cmd/deskmerge/exec.go::runGH::gh",

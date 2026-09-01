@@ -198,6 +198,28 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 			return withDigest(refused(verb, repo, pr, curHead,
 				fmt.Sprintf("--head %s != current head %s — a verdict must not land on unreviewed code", short(head), short(curHead))), dig)
 		}
+		// Model-capability floor. A review verdict is an authority-bearing write, so it
+		// requires a strong-tier dispatch. The tier is read from the target PR's
+		// DISPATCHER-attested stamp (applier-aware, so a self-applied stamp is worthless),
+		// and it FAILS CLOSED: an attested below-tier dispatch, or a stamp present-but-
+		// unreadable, refuses with remediation. An UNATTESTED PR (a human-driven session or
+		// a pre-attestation dispatch) is not bricked — it proceeds with a NOTICE. The
+		// override is an env toggle, and every bypass is logged loudly. A timeline that
+		// cannot be READ is could-not-check, never a cleared floor.
+		events, ferr := client.listLabelEvents(pr)
+		if ferr != nil {
+			return withDigest(fromReadErr(verb, repo, pr, curHead, ferr), dig)
+		}
+		fd := deskkit.ModelCapabilityFloor(events, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
+		switch fd.Outcome {
+		case deskkit.FloorRefuse:
+			return withDigest(refused(verb, repo, pr, curHead, fd.Message), dig)
+		case deskkit.FloorOverrideAllow, deskkit.FloorNoticeAllow:
+			// Loud (override) or a NOTICE (absent): both proceed, but neither silently.
+			fmt.Fprintln(stderr, "deskpost: "+fd.Message)
+		case deskkit.FloorAllow:
+			// Attested at/above the floor: proceed silently.
+		}
 		// GitHub-STATE idempotency (#73). The local guard above reads only
 		// this HOME's audit log; a retry from a FRESH reviewer subagent (empty log —
 		// e.g. re-dispatched after a masked exit code) would sail past it and POST A SECOND
