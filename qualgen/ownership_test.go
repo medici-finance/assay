@@ -1,12 +1,81 @@
 package main
 
 import (
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 )
 
 func testCommitBy(sha, email string, when time.Time) Commit {
 	return Commit{SHA: sha, AuthorEmail: email, AuthorWhen: when}
+}
+
+// TestOwnershipIdentitiesHashed pins the privacy guard: the emitted
+// identity_shares / role_shares keys are STABLE ANONYMIZED DIGESTS, never a raw
+// commit-author email or a bot-account slug — no raw identity may reach a
+// committed, published artifact (the leak-sweep surface). It also asserts the
+// hashing does NOT distort the measurement: distinct identities stay distinct
+// and the share VALUES are preserved.
+func TestOwnershipIdentitiesHashed(t *testing.T) {
+	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
+	commits := []Commit{
+		testCommitBy("c1", "alice@users.noreply.github.com", now),
+		testCommitBy("c2", "147393366+medici-worker-app[bot]@users.noreply.github.com", now),
+		testCommitBy("c3", "carol@users.noreply.github.com", now),
+	}
+	diffs := []FileDiff{
+		measuredDiff("c1", "f.go", addHunk("a1", "a2")), // alice: 2 lines
+		measuredDiff("c2", "f.go", addHunk("b1")),       // bot: 1 line
+		measuredDiff("c3", "f.go", addHunk("c1x")),      // carol: 1 line
+	}
+	recs := ComputeOwnership(commits, diffs, DefaultIdentityClassifier, DefaultBusFactorThresholdPct, now)
+	var rec OwnershipRecord
+	for _, r := range recs {
+		if r.Grain == "file" && r.Path == "f.go" {
+			rec = r
+		}
+	}
+	if rec.Metric == "" {
+		t.Fatalf("expected an ownership row for f.go")
+	}
+
+	keyRe := regexp.MustCompile(`^sha256-[0-9a-f]{16}$`)
+	checkKeys := func(field string, m map[string]float64) {
+		for k := range m {
+			if !keyRe.MatchString(k) {
+				t.Errorf("%s key %q is not a stable anonymized digest (want ^sha256-[0-9a-f]{16}$) — a raw identity leaked into the artifact", field, k)
+			}
+			if strings.Contains(k, "@") || strings.Contains(k, "noreply.github.com") || strings.Contains(k, "medici-worker-app") {
+				t.Errorf("%s key %q leaks a raw identity token into the published artifact", field, k)
+			}
+		}
+	}
+	checkKeys("identity_shares", rec.IdentityShares)
+	checkKeys("role_shares", rec.RoleShares)
+
+	// Measurement preserved: three distinct authors -> three distinct keys.
+	if len(rec.IdentityShares) != 3 {
+		t.Errorf("hashing must preserve the distinct-identity COUNT: want 3 keys, got %d", len(rec.IdentityShares))
+	}
+	// Share VALUES preserved: alice authored 2 of 4 surviving lines -> top share 0.5.
+	var maxShare float64
+	for _, v := range rec.IdentityShares {
+		if v > maxShare {
+			maxShare = v
+		}
+	}
+	if maxShare < 0.49 || maxShare > 0.51 {
+		t.Errorf("hashing must preserve share VALUES: want top share ~0.5, got %v", maxShare)
+	}
+	// Bus-factor count preserved (independent of the raw key strings).
+	if rec.BusFactorIdentity.State != StateMeasured || rec.BusFactorIdentity.Value != 2 {
+		t.Errorf("hashing must preserve bus-factor COUNT: want 2, got %+v", rec.BusFactorIdentity)
+	}
+	// Stability: the same identity hashes identically across calls/runs.
+	if hashIdentity("x@example.test") != hashIdentity("x@example.test") {
+		t.Error("hashIdentity must be deterministic (stable across runs)")
+	}
 }
 
 // TestBusFactorConcentration is Verify row 4: a file owned > K% by one
