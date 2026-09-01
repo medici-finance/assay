@@ -99,6 +99,24 @@ the layer that stops an unmeasurable file from reading as "safe."
 <!-- appended at implementation time by a NON-implementer: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner). -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `1d63750`
+
+Runner ≠ implementer. Own temporary worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`); `qualgen` is a nested module — rows run from inside `qualgen/`. All files present at the merged SHA (`check.go`, `check_test.go`, `features.go`).
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `cd qualgen && go build ./... && go vet ./...` | 0 | build + vet clean |
+| 2 | `cd qualgen && go test ./... -run 'Check'` | 0 | `ok github.com/medici-finance/assay/qualgen`; adapters no tests |
+| 3 | `cd qualgen && go test ./... -run TestCheck_HotspotFileFlaggedStrongerTier -v` | 0 | `--- PASS` — churned file gets stronger-tier advisory, quiet file does not |
+| 4 | `cd qualgen && go test ./... -run TestCheck_CouplingPartnerNamed -v` | 0 | `--- PASS` — coupling-partner advisory names B |
+| 5 | `cd qualgen && go test ./... -run TestCheck_AdvisoryPostureExitsZeroOnFlag -v` | 0 | `--- PASS` — flags but returns exit 0 |
+| 6 | `cd qualgen && go test ./... -run TestCheck_NoHistoryIsCouldNotScreen -v` | 0 | `--- PASS` — new file screens as could-not-screen (three-state) |
+| 7 | `grep -icE -e 'os.Exit\(1\)' -e 'os.Exit\(2\)' -e 'fail.*ci' -e block check.go` (from `qualgen/`) | 1 (grep no-match) | prints `0` — no hard-gate/blocking exit path in check.go. Independently: `grep -nE 'os\.Exit' check.go` finds nothing. (Brief's literal row-7 path `qualgen/check.go` while already in `qualgen/` is a self-inconsistent path typo; run against `check.go` it prints `0`.) |
+
+`RISK-VALUE: DERIVED — hotspotAdvisoryPercentile = 0.5 @ qualgen/check.go:38` — a self-relative median split (fires strictly above the median of the other screened files), documented as "not a fixed numeric cutoff": a definitional median, not a named brittleness threshold. No risk-bearing guard stands between a fault and damage — the screen is advisory-only and always exits 0; brief SPOF is "none".
+
+**VERIFY: PASS** — all seven Verify rows checked-clean by a non-implementer. Advancing `implemented → verified`.
+
 ## Review
 Gate: model (all four risk answers no — a read-only, write-nothing, advisory-only screen over
 any named file set; emits NOTICEs and always exits 0 in its default posture). Reviewer
