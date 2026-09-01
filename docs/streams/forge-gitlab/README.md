@@ -64,7 +64,7 @@ carries its evidence; brief 04's Verify row 3 was re-baselined onto the amended 
 | 01 | [`Forge` interface extraction in deskkit — `github` impl pinned by goldens](brief-01-forge-interface-extraction.md) | 1 | L | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
 | 02 | [`gitlab` forge implementation (MRs, notes, approvals, statuses)](brief-02-gitlab-forge-impl.md) | 2 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
 | 03 | [GitLab token custody — rotate-on-mint + expiry backstop in desktoken](brief-03-gitlab-token-custody.md) | 2 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
-| 04 | [Fleet provisioning + adopter doc + ci-config-project runbook](brief-04-provisioning-and-adopter-doc.md) | 3 | M | todo | — | — |
+| 04 | [Fleet provisioning + adopter doc + ci-config-project runbook](brief-04-provisioning-and-adopter-doc.md) | 3 | M | implemented | — | — |
 | 05 | [Live pilot — one brief round-tripped on a real GitLab group; parity table walked](brief-05-live-pilot-parity-walk.md) | 4 | M | todo | — | — |
 | 06 | [Ultimate refinements — custom reviewer role + external-status-check verdict lane](brief-06-ultimate-refinements.md) | 5 | M | todo | — | — |
 | 07 | [GitHub forge backend on `go-gh` — retire the exec-`gh` shell path](brief-07-github-forge-go-gh.md) | 2 | M | implemented | — | — |

@@ -68,7 +68,9 @@ run: fix the check it names, re-run, then claim. An open verify-gate wait is a w
 2. **Dispatch what it prints**, one verifier per item, via `deskdispatch <item-key> --kit verifier`
    (claim → worktree → roster → decision gate → model stamp → prompt). Tier 1 (`implemented`, empty
    Evidence) before Tier 2 (`verified → done` closes), oldest-first within a tier; Tier 2 is never
-   hidden — a filtered-out free close becomes permanent debt.
+   hidden — a filtered-out free close becomes permanent debt. A brief whose Verify table carries ≥4
+   risk-bearing rows fans out into per-row sub-verifications inside that dispatched pass (the
+   table-size branch — see **Verification quality** below), still one verifier session per item.
 3. **Land each verdict as it returns** via `deskevidence` (below) — never a wave buffered to the end.
    **How many verifiers may be in flight at once is `deskroster width --role verify-desk`, re-read
    every tick.** This desk's declared default is a SEQUENTIAL drain (width 1), which is what it has
@@ -108,6 +110,44 @@ sibling, run its rows there, record sibling repo + SHA in Evidence beside the in
   procedure, verbatim. Declared source, in this package's tool home and embedded in the binary
   (`deskdispatch --kits`): `tools/desk/cmd/deskdispatch/references/verifier-prompt.md` and
   `common-clauses.md`. Never paraphrase a kit clause at dispatch time — the wording IS the fix.
+
+## Verification quality — ground before you read, fan out, trace every row
+
+Three procedures harden the verify pass against the failure modes a single sequential verifier
+holding the whole table in one context is prone to. Each fails on a DIFFERENT signal, so they
+layer rather than duplicate; each is neutral procedure — no new tooling, no new value — and the
+one threshold below is a default the adopter tunes.
+
+- **Ground in the base branch — derive what SHOULD exist BEFORE you read the work.** Before the
+  verifier reads any diff, PR discussion, or the implementer's tests, it derives from the **brief
+  text + `origin/main`** what the merged work should produce — the files, behaviours, and outputs
+  the brief's Task and DoD call for — and writes that expectation down. Only THEN does it run the
+  rows against merged main and compare. Reading order is the control: grounding first in the diff
+  biases the verifier toward whatever solution the implementer happened to choose, so a
+  wrong-but-plausible implementation reads back as correct. The expectation derived from the base
+  branch is what each Evidence row is checked against.
+
+- **Per-row fan-out — one isolated sub-verification per risk-bearing row when the table is large.**
+  A Verify table with **≥4 risk-bearing rows** (default; the adopter may tune the threshold) is run
+  as independent per-row — or per-cluster-of-related-rows — sub-verifications rather than one pass
+  over the whole table. Each sub-verification receives ONLY the brief text and its own row(s); it
+  never sees a sibling row's outcome. The verifier session collects the sub-verdicts and lands them
+  as one Evidence set. Below the threshold, run the table inline as a single pass, as before.
+  Rationale: one context degrades across a long table — later rows get a rotted read of the brief
+  and requirements get skipped; per-row isolation gives every row a fresh, full read of its own
+  requirement, and a per-row fan-out is exactly the moat's dispatch shape applied within the pass.
+
+- **Scope traceability — every Evidence row names the Verify row it discharges.** When writing
+  Evidence, each row cites the Verify row (and thus the DoD line) it satisfies. Verified work that
+  maps to **no** Verify row is **invented scope** — reported in the verdict as a finding, never a
+  silent pass; the verifier confirms the requirements the brief STATES, not requirements it
+  imagines. The converse — a Verify row with no Evidence row — stays the existing unrun discipline:
+  silence reads as unrun, never as pass.
+
+**Anti-gaming — re-derive expected values, never copy them from the work.** Where a brief's DoD
+gives example `input → expected` pairs, the verifier re-derives each expected value from the
+**brief text** and compares; it never lifts the expected value out of the implementer's test code
+or output. A value copied from the work under test verifies only that the work agrees with itself.
 
 ## Risk-bearing value — desk-side routing
 
