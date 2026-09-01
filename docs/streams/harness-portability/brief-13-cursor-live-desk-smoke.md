@@ -194,4 +194,3 @@ full-desk-loop step, degradations observed matching brief 12's ruled matrix, fai
 to issues. Rows 1–7 green with row 8 BLOCKED means this brief is NOT done — that state is
 "ready for the live run," and saying otherwise is the vacuous-green failure this stream's
 bar forbids (the same reading HP/07's own Review section states for its row 7).
-</content>
