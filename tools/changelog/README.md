@@ -104,3 +104,14 @@ delta preserved in `release.yml.patch`. This `tools/changelog/` location is the
 **established** staged path in this repo (the current live workflows were
 activated from here); it is used again rather than introducing a second staging
 directory.
+
+## The cutover PR carries `changelog:skip` — on purpose
+
+The PR that introduces this convention records its own change as a fragment
+(dogfooding the new gate), so it adds no `## Unreleased` bullet. The *currently
+live* `changelog` CI leg is still the pre-fragment one: it greps `CHANGELOG.md`
+for an added bullet and cannot see fragments, so it would red this PR. The
+`changelog:skip` label is that leg's sanctioned escape hatch, applied here as the
+honest bridge for exactly one PR — the one that retires the leg. Once
+`changelog-check.yml` is promoted (it greens on the fragment directly), the label
+is moot and can be removed.
