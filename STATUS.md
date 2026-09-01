@@ -25,29 +25,27 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 ## Next up
 
-_Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: quality. By stream: quality (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
-
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
-| quality | 10 — M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter [exec:strong] | 3 | 2000 |
 | quality | 11 — DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source | 3 | 1000 |
 | quality | 13 — M4 session forensics — pluggable telemetry-source interface + reference adapters | 3 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
+| quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
 | spec-routing | 01 — Enforce the §8 lifecycle — the linter and the authoring-owed emitter [exec:strong] | 0 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (54 desk-actionable of 55 total — 36 at implemented, 19 verified awaiting review)
+## Awaiting verification / review (55 desk-actionable of 56 total — 37 at implemented, 19 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (54)
+### Desk-actionable (55)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -77,6 +75,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 04 | implemented | 2000 | 2 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | iso-9001 | 02 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| quality | 10 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | mistake-proofing | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
@@ -226,7 +225,7 @@ _None._
 - 07 M2 B-SZZ inducing trace + derived defect metrics — verified (wave 2)
 - 08 `pr <n>` mode — per-file risk features (generic riskscore feed) — implemented (wave 3)
 - 09 `check <files>` mode — brittleness screen for a named file set — verified (wave 2)
-- 10 M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter — todo (wave 3)
+- 10 M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter — implemented (wave 3)
 - 11 DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source — todo (wave 3)
 - 12 M4 gate-yield accounting + ritual-effectiveness joins — todo (wave 4)
 - 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — todo (wave 3)
