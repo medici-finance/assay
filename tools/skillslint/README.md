@@ -42,13 +42,27 @@ rendered text cannot see, yet the model reads on activation. This half reads a
 different signal (the bytes) so the layer catches what human review is built to
 miss.
 
-**Hard (exit 1), by Unicode category — never a codepoint blacklist:** bidi
-controls (U+202A–U+202E, U+2066–U+2069), zero-width characters (U+200B–U+200D,
-U+2060, and a U+FEFF that is *not* the file's leading BOM), any C0/C1 control
-outside `\t \n \r`, and invalid UTF-8. Each violation names file, line, column and
-codepoint (`U+202E RIGHT-TO-LEFT OVERRIDE`). Printable non-ASCII — accented names,
-arrows, box drawing, emoji — stays legal: the check targets invisibility, not
-foreignness.
+**Hard (exit 1), by Unicode category — never an enumerated blacklist** (an
+enumeration inevitably misses a member of the class):
+
+- The **whole `unicode.Cf` format category.** This subsumes every invisible
+  formatting vector at once: bidi controls (U+202A–U+202E, U+2066–U+2069) *and*
+  the directional marks the Trojan-Source family also uses (LRM U+200E, RLM
+  U+200F, ALM U+061C); zero-width (U+200B–U+200D, U+2060); the invisible math
+  operators (U+2061–U+2064); the soft hyphen (U+00AD); and the Unicode **Tag
+  block** (U+E0001, U+E0020–U+E007F — the canonical LLM ASCII-smuggling vector).
+  U+FEFF is Cf too and is rejected **except** as the file's leading BOM.
+- **Variation selectors** (U+FE00–U+FE0F, U+E0100–U+E01EF). These are `Mn`/other,
+  not `Cf`, so they are covered explicitly — a run of them appended to a carrier
+  glyph is the emoji-variation-selector steganography channel.
+- Any **C0/C1 control** outside `\t \n \r`, and **invalid UTF-8**.
+
+Each violation names file, line, column and codepoint (`U+202E RIGHT-TO-LEFT
+OVERRIDE`). Printable non-ASCII — accented names, arrows, box drawing, an emoji
+whose base glyph carries its own presentation — stays legal: the check targets
+invisibility, not foreignness. One consequence worth stating: an emoji written
+with an explicit variation selector (e.g. `⚠️` = U+26A0 U+FE0F) is flagged; the
+fix is the base glyph alone (`⚠`).
 
 **Advisory (never exit-affecting): a context-budget NOTICE.** A file over a word
 threshold (`SKILL.md` 3,000, `CLAUDE.md` 5,000) prints

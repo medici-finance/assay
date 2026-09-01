@@ -53,6 +53,19 @@ func TestScanInstructionSurfaces_HiddenClasses(t *testing.T) {
 		{"c1-control-nel", "ab\n", true, "CONTROL CHARACTER"},
 		{"non-leading-bom", "ok\ufeffno\n", true, "U+FEFF ZERO WIDTH NO-BREAK SPACE"},
 		{"invalid-utf8-byte", "a\xffb\n", true, "not valid UTF-8"},
+		// The wider Cf-category coverage: the bidi family the check's title names
+		// (LRM/RLM/ALM), soft hyphen, invisible math operators, the Unicode Tag
+		// block (the canonical LLM ASCII-smuggling vector), and variation selectors
+		// (Mn, not Cf \u2014 covered explicitly). Each must be flagged.
+		{"lrm-mark", "abc\u200edef\n", true, "U+200E LEFT-TO-RIGHT MARK"},
+		{"rlm-mark", "abc\u200fdef\n", true, "U+200F RIGHT-TO-LEFT MARK"},
+		{"alm-mark", "abc\u061cdef\n", true, "U+061C ARABIC LETTER MARK"},
+		{"soft-hyphen", "ab\u00adcd\n", true, "U+00AD SOFT HYPHEN"},
+		{"invisible-times", "a\u2062b\n", true, "U+2062 INVISIBLE TIMES"},
+		{"tag-block-char", "hi\U000e0041there\n", true, "TAG CHARACTER"},
+		{"tag-block-cancel", "hi\U000e007fthere\n", true, "TAG CHARACTER"},
+		{"variation-selector-16", "warn\ufe0f\n", true, "VARIATION SELECTOR"},
+		{"variation-selector-supp", "x\U000e0100y\n", true, "VARIATION SELECTOR"},
 		// legitimate content — must NOT be flagged. Printable non-ASCII is spelled
 		// literally on purpose: it is exactly what must stay legal.
 		{"clean-ascii", "just plain text\nwith two lines\n", false, ""},

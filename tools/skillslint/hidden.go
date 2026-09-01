@@ -11,18 +11,32 @@
 // miss, so the layer that catches it must read a different signal (the bytes)
 // in a different component (this lint) than the review gate above it.
 //
-// What it rejects (hard, exit 1), by CATEGORY not by codepoint blacklist:
+// What it rejects (hard, exit 1), by CATEGORY not by an enumerated blacklist —
+// an enumeration inevitably misses members of the class, so the check is the
+// whole category:
 //
-//	bidi controls   U+202A–U+202E, U+2066–U+2069   (Trojan-Source reordering)
-//	zero-width      U+200B–U+200D, U+2060, U+FEFF   (invisible splices; a U+FEFF
-//	                that is the file's leading BOM is legitimate and allowed)
+//	format chars    the WHOLE unicode.Cf category. This is the general
+//	                invisible-formatting class and it subsumes every smuggling
+//	                vector by construction: bidi controls (U+202A–U+202E,
+//	                U+2066–U+2069) AND the directional marks the Trojan-Source
+//	                family also uses (LRM U+200E, RLM U+200F, ALM U+061C);
+//	                zero-width (U+200B–U+200D, U+2060); the invisible math
+//	                operators (U+2061–U+2064); the soft hyphen (U+00AD); the
+//	                Unicode Tag block (U+E0001, U+E0020–U+E007F — the canonical
+//	                LLM ASCII-smuggling vector); and U+FEFF, EXCEPT a U+FEFF that
+//	                is the file's leading BOM, which is legitimate and allowed.
+//	variation sel.  U+FE00–U+FE0F and U+E0100–U+E01EF. These are Mn/other, NOT
+//	                Cf, so they are covered explicitly — a run of them appended to
+//	                a carrier smuggles arbitrary bytes past a human reader.
 //	C0/C1 controls  everything unicode.Cc EXCEPT \t \n \r
 //	invalid UTF-8   a byte that does not decode — an instruction file is text
 //
 // Non-ASCII PRINTABLE text stays legal: accented names, arrows, box drawing,
-// emoji. The lint targets invisibility, not foreignness — the allowlist is the
-// visible/printable categories, expressed as "is this rune in one of the hidden
-// ranges", never an enumeration of permitted codepoints.
+// emoji whose base glyph carries its own presentation. The lint targets
+// invisibility, not foreignness — it rejects the invisible CATEGORIES (Cf, the
+// variation selectors, Cc) rather than enumerating permitted codepoints. One
+// consequence worth stating: an emoji written with an explicit variation
+// selector (e.g. U+26A0 U+FE0F) is flagged; the fix is the base glyph alone.
 //
 // The budget half counts words per file and prints a NOTICE over a threshold
 // (SKILL.md 3000, CLAUDE.md 5000). Larger instruction files correlate with more
@@ -70,6 +84,28 @@ var zeroWidth = &unicode.RangeTable{
 	},
 }
 
+// variationSelectors are the Unicode variation selectors. Category Mn/other, NOT
+// Cf, so hiddenKind checks them explicitly: a run of them appended to a carrier
+// glyph is the emoji-variation-selector steganography channel — invisible to a
+// human reader, arbitrary bytes to a parser.
+var variationSelectors = &unicode.RangeTable{
+	R16: []unicode.Range16{
+		{Lo: 0xFE00, Hi: 0xFE0F, Stride: 1}, // VARIATION SELECTOR-1 .. -16
+	},
+	R32: []unicode.Range32{
+		{Lo: 0xE0100, Hi: 0xE01EF, Stride: 1}, // VARIATION SELECTOR-17 .. -256
+	},
+}
+
+// tagBlock is the Unicode Tags block (U+E0000–U+E007F). Its members ARE Cf, so
+// hiddenKind already rejects them via unicode.Cf; this table exists only so
+// codepointName can name them "TAG CHARACTER" rather than a generic descriptor.
+var tagBlock = &unicode.RangeTable{
+	R32: []unicode.Range32{
+		{Lo: 0xE0000, Hi: 0xE007F, Stride: 1},
+	},
+}
+
 // hiddenNames gives a human-readable name for the enumerated attack codepoints,
 // so a violation message reads "U+202E RIGHT-TO-LEFT OVERRIDE" rather than a bare
 // hex value. Anything not in the map falls back to a category descriptor in
@@ -77,10 +113,18 @@ var zeroWidth = &unicode.RangeTable{
 // category, in hiddenKind).
 var hiddenNames = map[rune]string{
 	0x0000: "NULL",
+	0x00AD: "SOFT HYPHEN",
+	0x061C: "ARABIC LETTER MARK",
 	0x200B: "ZERO WIDTH SPACE",
 	0x200C: "ZERO WIDTH NON-JOINER",
 	0x200D: "ZERO WIDTH JOINER",
+	0x200E: "LEFT-TO-RIGHT MARK",
+	0x200F: "RIGHT-TO-LEFT MARK",
 	0x2060: "WORD JOINER",
+	0x2061: "FUNCTION APPLICATION",
+	0x2062: "INVISIBLE TIMES",
+	0x2063: "INVISIBLE SEPARATOR",
+	0x2064: "INVISIBLE PLUS",
 	0xFEFF: "ZERO WIDTH NO-BREAK SPACE",
 	0x202A: "LEFT-TO-RIGHT EMBEDDING",
 	0x202B: "RIGHT-TO-LEFT EMBEDDING",
@@ -100,10 +144,16 @@ func codepointName(r rune) string {
 		return n
 	}
 	switch {
+	case unicode.Is(variationSelectors, r):
+		return "VARIATION SELECTOR"
+	case unicode.Is(tagBlock, r):
+		return "TAG CHARACTER"
 	case unicode.Is(bidiControls, r):
 		return "BIDI CONTROL"
 	case unicode.Is(zeroWidth, r):
 		return "ZERO-WIDTH FORMAT"
+	case unicode.Is(unicode.Cf, r):
+		return "FORMAT CHARACTER"
 	case unicode.Is(unicode.Cc, r):
 		return "CONTROL CHARACTER"
 	}
@@ -120,11 +170,17 @@ func hiddenKind(r rune, atFileStart bool) (bad bool) {
 		return false
 	case r == 0xFEFF && atFileStart:
 		return false // leading BOM is legitimate; a non-leading U+FEFF is not
-	case unicode.Is(bidiControls, r):
+	case unicode.Is(unicode.Cf, r):
+		// The WHOLE format category — bidi controls and directional marks,
+		// zero-width, invisible math operators, soft hyphen, the Tag block, and
+		// non-leading U+FEFF. A category check cannot miss a member the way an
+		// enumeration does.
 		return true
-	case unicode.Is(zeroWidth, r):
+	case unicode.Is(variationSelectors, r):
+		// Mn/other, not Cf — checked explicitly (emoji-VS steganography channel).
 		return true
 	case unicode.Is(unicode.Cc, r):
+		// C0/C1 controls. Cc is disjoint from Cf; \t \n \r are excused above.
 		return true
 	}
 	return false
