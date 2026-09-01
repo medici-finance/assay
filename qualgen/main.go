@@ -5,8 +5,9 @@
 // how do we compare") is computed from.
 //
 // This is the wave-0 skeleton: the `mine` mode extracts commits + diffs through
-// the three-state instrument wrapper and records its horizon; the `report`,
-// `pr`, and `check` modes are recognized scaffolding, filled by later briefs.
+// the three-state instrument wrapper and records its horizon. `report` (M1
+// trend view) and `check` (brittleness screen) are filled in by later briefs;
+// `pr` is still recognized scaffolding.
 //
 // The tool is repo-agnostic and OSS: no house specifics are hard-coded here;
 // they arrive as configuration in later briefs.
@@ -62,7 +63,7 @@ usage:
   qualgen mine   --repo <dir> --out <dir>   extract history into the tracking root
   qualgen report --out <dir>                render trend views          (not yet implemented)
   qualgen pr <n> --out <dir>                per-PR risk features         (not yet implemented)
-  qualgen check <paths> --out <dir>         brittleness screen           (not yet implemented)
+  qualgen check <paths> --out <dir> [--repo <dir>]  brittleness screen for a named file set
   qualgen --version                         print the release tag
 
 All modes are read-only against the mined repo; artifacts land only under --out.

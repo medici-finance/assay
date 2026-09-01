@@ -331,6 +331,19 @@ func (s *Store) ReadOwnership() ([]OwnershipRecord, error) {
 	return readFamily[OwnershipRecord](s, map[string]bool{"ownership": true})
 }
 
+// ReadCoupling reads the change-coupling family (spec §4.5, quality/03).
+func (s *Store) ReadCoupling() ([]CouplingRecord, error) {
+	return readFamily[CouplingRecord](s, map[string]bool{"coupling": true})
+}
+
+// ReadDefectDensity reads the traced M2 per-file defect-density family
+// (spec §5.3, brief 07) — present only once a B-SZZ trace pass has appended
+// it to this tracking root's metrics table (frozen contract: brief 08 and
+// brief 09's shared features.go both read it by this method).
+func (s *Store) ReadDefectDensity() ([]DefectMetricRecord, error) {
+	return readFamily[DefectMetricRecord](s, map[string]bool{MetricDefectDensity: true})
+}
+
 // ReadReferenceValidity reads the instruction reference-validity trend family
 // (spec §4.6, quality/04) — one record per history window, plus the single
 // could-not-measure marker an unconfigured mine emits.

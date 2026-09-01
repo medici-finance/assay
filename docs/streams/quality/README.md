@@ -46,7 +46,7 @@ decision, not code in this stream.
 | 06 | [M2 fix identification — pluggable linkage adapter + evidence tiers](brief-06-m2-fix-identification.md) | 1 | M | verified | 2026-08-30 opus-4.8[1m]-verifier | — |
 | 07 | [M2 B-SZZ inducing trace + derived defect metrics](brief-07-m2-szz-trace-metrics.md) | 2 | L | implemented | — | — |
 | 08 | [`pr <n>` mode — per-file risk features (generic riskscore feed)](brief-08-pr-riskscore-features.md) | 3 | M | todo | — | — |
-| 09 | [`check <files>` mode — brittleness screen for a named file set](brief-09-check-brittleness-screen.md) | 2 | M | todo | — | — |
+| 09 | [`check <files>` mode — brittleness screen for a named file set](brief-09-check-brittleness-screen.md) | 2 | M | implemented | — | — |
 | 10 | [M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter](brief-10-m3-stage-attribution.md) | 3 | L | todo | — | — |
 | 11 | [DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source](brief-11-dora-join.md) | 3 | M | todo | — | — |
 | 12 | [M4 gate-yield accounting + ritual-effectiveness joins](brief-12-m4-gate-yield-rituals.md) | 4 | M | todo | — | — |
@@ -58,6 +58,8 @@ decision, not code in this stream.
 Brief 01 implemented on branch `brief/quality-01-miner-skeleton` (new `qualgen/` module: go-git extraction, incremental extend-never-replace mine, three-state `Measure[T]` plumbing, append-only artifact store; `mine` mode live, `report`/`pr`/`check` scaffolded). Draft-PR link to be attached when the PR is opened.
 
 Brief 04 implemented on branch `feat/quality-04` (new `qualgen/driftdetect.go`: a generic source↔render drift-detection capability shared with later passes; new `qualgen/instructionbrittle.go`: trended reference-validity — dead file-path/symbol/typed-ID detection over a configured instruction-doc glob set — plus doc↔code co-change staleness applying the §4.5 coupling analysis in the doc→code direction; planted-fixture tests under `qualgen/testdata/instrbrittle/`). Draft-PR link to be attached when the PR is opened.
+
+Brief 09 implemented on branch `feat/assay--quality--09` (new `qualgen/features.go` — the shared per-file `FileFeatures` assembly briefs 08 and 09 both consume, joining the persisted M1 hotspot/ownership/coupling families and the M2 traced defect-density family; `qualgen check <paths>` now live — an advisory, always-exit-0 brittleness screen over a named file/glob set, emitting up to four NOTICE kinds (stronger execution tier, add coverage over traced defect history, an explicit coupling-partner check, and a reference-rot flag reusing brief 04's `driftdetect`/`ResolveDocReferences` live against HEAD) plus an explicit `could-not-screen` three-state marker for a path with no measurable mined history; two new `Store` family readers, `ReadCoupling`/`ReadDefectDensity`, added to `artifacts.go` alongside the existing hotspot/ownership readers). Draft-PR link to be attached when the PR is opened.
 
 ## Critical path
 
