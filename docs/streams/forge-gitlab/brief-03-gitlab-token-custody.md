@@ -91,6 +91,22 @@ is Ultimate-only. See edition-matrix.md row C3.
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `09de1a1`
+
+Runner ≠ implementer. Own temporary worktree off `origin/main` at `09de1a1`, offline (`KUBECONFIG=/dev/null`). Path note: rows run module-scoped from `tools/desk/` (`./cmd/desktoken/...`) — the same test targets the repo-root-relative command names.
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `go test ./cmd/desktoken/... -v` (from `tools/desk`) | 0 | `ok …/cmd/desktoken`; all GitLab tests PASS: TestGitLabRotateSuccess, TestRotateInvalidatesOld, TestGitLabWriteFailureLockout, TestGitLabModeRefusal, TestGitLabMissingFileRefusal, TestGitLabRotateRefusesWithoutAPIBase, TestUnknownForgeRefused |
+| 2 | `! (go run ./cmd/desktoken --forge gitlab worker 2>&1 \| grep -qE -e 'glpat-' -e '^[A-Za-z0-9_-]{30,}$')` | 0 | no token-shaped value in output; offline the invocation took the refusal path (rc 6 — path/remedy only, no token value). The no-leak property on the rotation-success path is covered by the fixture-server unit tests in row 1 (TestGitLabRotateSuccess / TestGitLabWriteFailureLockout) |
+| 3 | `go test ./cmd/desktoken/... -run TestRotateInvalidatesOld -v` | 0 | `--- PASS: TestRotateInvalidatesOld` — fixture asserts the old token is rejected after mint |
+
+`RISK-VALUE: DERIVED — file-custody mode 0o600 @ tools/desk/cmd/desktoken/gitlab.go:196` (`if fi.Mode().Perm() != 0o600 { refuse }`) — the load-bearing guard on the single-valid-credential custody file; derived from brief facts (`<config>/gitlab-<role>.token`, mode 0600) and GitHub-path key-contract parity. No fail-safe trigger fires (gate:model, risk block all-no).
+
+**Reviewer note (Review-gate; does not affect PASS):** the brief's CE-fallback narrative says "desktoken sets the expiry on every rotation" (tool-supplied 7-day backstop), but the implementation deliberately sends no `expires_at` (gitlab.go:76-77 — the new token's lifetime is set by the group token-lifetime policy). The Verify table does not test expiry-setting, so PASS stands, but the shipped expiry-backstop mechanism diverges from the brief's CE-fallback narrative — flagged for the reviewer's layered-design question.
+
+**VERIFY: PASS** — all three Verify rows checked-clean by a non-implementer. Advancing `implemented → verified`.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README
 table. Reviewer answers: with rotation bypassed, does the expiry backstop still bound
