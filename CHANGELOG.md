@@ -7,25 +7,24 @@ are recorded here. The format follows
 whole umbrella with a plain `vX.Y.Z` tag (see `.github/workflows/release.yml`),
 so one section covers every shipped tool at that version.
 
-Every notable change adds one human-legible highlight line under `## Unreleased`
-BEFORE it merges (the `changelog-check` CI leg enforces this; a genuinely
-non-notable PR carries the `changelog:skip` label). At release time the release
-workflow lifts `## Unreleased` into the published release notes and rolls it down
-under a dated `## vX.Y.Z — <date>` heading — descriptive highlights, never a raw
-commit list.
+Every notable change records itself as one small **fragment** file under
+`changelog/` (`changelog/<slug>.md`) BEFORE it merges — one file per PR, so
+concurrent PRs never collide on a shared section (the `changelog-check` CI leg
+enforces this; a genuinely non-notable PR carries the `changelog:skip` label). At
+release time the release workflow AGGREGATES the fragments (sorted, deduped) into
+a dated `## vX.Y.Z — <date>` heading here and into the published release notes,
+then clears `changelog/` — descriptive highlights, never a raw commit list. See
+`changelog/README.md`.
 
 ## Unreleased
 
-### Added
-- The changelog discipline is ACTIVE: the changelog-check PR leg gates merges and release.yml refuses an empty Unreleased section, lifting highlights into the release body (#266 activation, #269).
-- `qualgen` mines the instruction-brittleness M1 family for real: instruction reference-validity and doc↔code staleness now render into `QUALITY.md`'s trend view behind a new `--instruction-globs` flag, replacing the family's placeholder — and an unconfigured run reports could-not-measure, never a silent zero (#271).
-- `qualgen check <paths>` screens named files for brittleness signals (stronger-tier, add-coverage, coupling-partner, reference-rot) as an always-advisory, exit-0 pass over the mined M1/M2 families — the per-file complement to the corpus-wide mine (#275).
-- `deskpost` attaches mechanical verdict-time triage labels to agent PRs — a `size:S/M/L` class over changed lines (generated files excluded) and a three-state `surface:core/std` tier read from a repo's `.assay-surfaces` globs — advisory only (nothing gates on them; an unreadable surface is could-not-check, never assumed) (#277).
-
-### Fixed
-- `statusgen --record`'s DORA-timing recorder no longer fails silently when its authenticated `gh` reads (restore episodes, PR lead times) all fail — it emits a loud, distinct `DEGRADED` signal naming the failed read and the substrate path, instead of returning a no-op indistinguishable from a healthy quiet day (so a persistently token-less `--record` CI can no longer leave `.dora-timing.jsonl` silently never accruing); still fail-open, never fabricates (#279).
+Pending notable changes are recorded as one-file-per-PR fragments under
+`changelog/` (see `changelog/README.md`), aggregated into a dated section here at
+release time. This section is written only by the release workflow; do not add
+highlight bullets to it directly.
 
 ### Changed
+- Changelog highlights are now recorded as per-PR fragment files under `changelog/` instead of shared `## Unreleased` edits: `changelog-check` greens on a fragment (or `changelog:skip`) and refuses a direct `## Unreleased` edit, and the release workflow aggregates fragments into the dated section and release Highlights, then clears `changelog/`.
 
 ## v0.22.0 — 2026-08-31
 
