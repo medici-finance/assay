@@ -461,8 +461,8 @@ const (
 // TestSupersededRunDoesNotJamACleanFlip is the fix's fail-first case (clause 9, direction a):
 // a check NAME carrying a superseded older run PLUS a green LATEST run must not jam the flip.
 // Both live jams observed on this public repo are reproduced as table rows — a CANCELLED
-// predecessor (assay#289: a `changelog` run cancelled by the push + pull_request
-// double-trigger) and a stale QUEUED orphan (assay#282: a `control-sweep` run the same
+// predecessor (#289: a `changelog` run cancelled by the push + pull_request
+// double-trigger) and a stale QUEUED orphan (#282: a `control-sweep` run the same
 // double-trigger left queued). On the UNFIXED code each row refuses (the CANCELLED reddens
 // the whole rollup; the QUEUED reads as forever-pending), so this test is red pre-fix.
 func TestSupersededRunDoesNotJamACleanFlip(t *testing.T) {

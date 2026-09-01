@@ -190,7 +190,7 @@ func TestCIState_LatestRunPerName(t *testing.T) {
 		rollup                       []check
 		pass, pending, fail, unknown int
 	}{
-		// A cancelled predecessor + the re-triggered success (assay#289 shape): the newer
+		// A cancelled predecessor + the re-triggered success (#289 shape): the newer
 		// SUCCESS is the latest run, so the board reads one pass and zero fail.
 		"cancelled predecessor + green latest": {
 			rollup: []check{
@@ -199,7 +199,7 @@ func TestCIState_LatestRunPerName(t *testing.T) {
 			},
 			pass: 1,
 		},
-		// A stale QUEUED orphan (assay#282 shape) carries no stamps, so it sorts oldest and
+		// A stale QUEUED orphan (#282 shape) carries no stamps, so it sorts oldest and
 		// the completed SUCCESS wins — no lingering pending.
 		"stale-queued orphan + green latest": {
 			rollup: []check{
