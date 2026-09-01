@@ -131,3 +131,97 @@ func TestModelFloorReviewUnreadableTimelineRefuses(t *testing.T) {
 		t.Fatal("a verdict posted on an unverifiable tier read")
 	}
 }
+
+// The SECOND flip verb. `deskpost ready` is the App-identity ready-flip — the other live,
+// sanctioned verb that performs the identical markPullRequestReadyForReview mutation. It
+// MUST clear the same floor as deskflip, or a below-tier session simply flips through this
+// verb instead. The greenStatus + APPROVED fixture is TestReadySuccess's, so the ONLY
+// variable is the dispatch attestation.
+
+// CASE strong: an attested strong-tier dispatch clears the floor and the PR flips.
+func TestModelFloorReadyStrongStampFlips(t *testing.T) {
+	f, _ := setupFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+	f.labelEvents = strongStampBy(deskDispatcherLogin(t))
+
+	if code := run(readyArgs(exampleRepo)); code != 0 {
+		t.Fatalf("strong-tier ready exit = %d, want 0", code)
+	}
+	if f.flips != 1 {
+		t.Fatalf("flips = %d, want 1 — a strong-tier dispatch must flip", f.flips)
+	}
+}
+
+// CASE cheap (NEGATIVE PATH): an attested below-tier dispatch is REFUSED at the App-identity
+// flip verb too, with remediation, and NOTHING is flipped.
+func TestModelFloorReadyCheapStampRefused(t *testing.T) {
+	f, errBuf := setupFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+	f.labelEvents = cheapStampBy(deskDispatcherLogin(t))
+
+	if code := run(readyArgs(exampleRepo)); code != deskkit.ExitRefused {
+		t.Fatalf("attested-cheap ready exit = %d, want %d (refused) — the flip floor is bypassable via deskpost ready", code, deskkit.ExitRefused)
+	}
+	if f.flips != 0 {
+		t.Fatal("a below-tier session flipped a PR through deskpost ready")
+	}
+	if !strings.Contains(errBuf.String(), "strong-tier session") || !strings.Contains(errBuf.String(), "delegation downward") {
+		t.Fatalf("ready refusal lacks the remediation:\n%s", errBuf.String())
+	}
+}
+
+// CASE absent: an UNATTESTED PR is not bricked at the ready verb — it proceeds with a NOTICE.
+func TestModelFloorReadyAbsentProceedsWithNotice(t *testing.T) {
+	f, errBuf := setupFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+	// labelEvents left nil.
+
+	if code := run(readyArgs(exampleRepo)); code != 0 {
+		t.Fatalf("unattested ready exit = %d, want 0 (absent is not a refusal)", code)
+	}
+	if f.flips != 1 {
+		t.Fatalf("flips = %d, want 1 — an unattested lane must not be bricked", f.flips)
+	}
+	if !strings.Contains(errBuf.String(), "NOTICE") {
+		t.Fatalf("an unattested ready produced no NOTICE:\n%s", errBuf.String())
+	}
+}
+
+// CASE override: the env override proceeds past the ready floor on the SAME cheap stamp that
+// would otherwise refuse, and the bypass carries the loud grep-able marker.
+func TestModelFloorReadyOverrideProceedsLoudly(t *testing.T) {
+	f, errBuf := setupFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+	f.labelEvents = cheapStampBy(deskDispatcherLogin(t))
+	t.Setenv(deskkit.ModelFloorOverrideEnv, "1")
+
+	if code := run(readyArgs(exampleRepo)); code != 0 {
+		t.Fatalf("override ready exit = %d, want 0 (override proceeds)", code)
+	}
+	if f.flips != 1 {
+		t.Fatalf("flips = %d, want 1 — override must let the flip through", f.flips)
+	}
+	if !strings.Contains(errBuf.String(), deskkit.ModelFloorOverrideMarker) {
+		t.Fatalf("ready override left no loud marker %q:\n%s", deskkit.ModelFloorOverrideMarker, errBuf.String())
+	}
+}
+
+// A self-applied strong stamp must NOT clear the ready floor either — the fail-closed core
+// applies identically to both flip verbs.
+func TestModelFloorReadySelfAppliedStampRefused(t *testing.T) {
+	f, _ := setupFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+	f.status = greenStatus()
+	f.labelEvents = strongStampBy("shared-agent") // not the dispatcher
+
+	if code := run(readyArgs(exampleRepo)); code != deskkit.ExitRefused {
+		t.Fatalf("self-applied strong stamp ready exit = %d, want %d", code, deskkit.ExitRefused)
+	}
+	if f.flips != 0 {
+		t.Fatal("a self-applied stamp flipped a PR through deskpost ready")
+	}
+}
