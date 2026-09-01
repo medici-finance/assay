@@ -80,7 +80,7 @@ index ghi..jkl 100644
 +| 1 | go test ./... | PASS | human:alex (non-implementer) |
 +| 2 | go run statusgen | 0 | human:alex |
 `
-	stamps := stampsInDiff(diff)
+	stamps := stampsInDiff("", diff)
 	if len(stamps) != 2 {
 		t.Fatalf("got %d stamps, want 2: %+v", len(stamps), stamps)
 	}
@@ -109,7 +109,7 @@ func TestIsExcludedFixturePath(t *testing.T) {
 		"docs/streams/education/assay-tutorial-skeleton/root/scripts/grade/selftest.sh",
 	}
 	for _, p := range excluded {
-		if !isExcludedFixturePath(p) {
+		if !isExcludedFixturePath("", p) {
 			t.Errorf("isExcludedFixturePath(%q) = false, want true — it is under the tutorial-skeleton prefix", p)
 		}
 	}
@@ -122,7 +122,7 @@ func TestIsExcludedFixturePath(t *testing.T) {
 		"",
 	}
 	for _, p := range notExcluded {
-		if isExcludedFixturePath(p) {
+		if isExcludedFixturePath("", p) {
 			t.Errorf("isExcludedFixturePath(%q) = true, want false — only the exact prefix (with its trailing slash) is excluded", p)
 		}
 	}
@@ -162,7 +162,7 @@ diff --git a/docs/streams/methodology/README.md b/docs/streams/methodology/READM
 +++ b/docs/streams/methodology/README.md
 +| 03 | Real board | 0 | S | done | 2026-07-10 opus | 2026-07-10 HSTAMPalex |
 `, "HSTAMP", "human:")
-	stamps := stampsInDiff(diff)
+	stamps := stampsInDiff("", diff)
 
 	// The excluded fixture file must contribute NO stamp.
 	for _, s := range stamps {
@@ -215,7 +215,7 @@ func TestStampsInDiffDeduplication(t *testing.T) {
 +++ b/docs/streams/x/README.md
 +| 01 | Foo | 0 | S | done | 2026-07-10 human:alex | 2026-07-10 human:alex |
 `
-	stamps := stampsInDiff(diff)
+	stamps := stampsInDiff("", diff)
 	if len(stamps) != 1 {
 		t.Fatalf("got %d stamps, want 1 (deduped): %+v", len(stamps), stamps)
 	}
@@ -304,7 +304,7 @@ func TestStampsInDiffConfusableIsLoud(t *testing.T) {
 		"@@ -1,1 +1,1 @@\n" +
 		"+| 01 | b | 0 | S | done | 2026-07-31 opus | 2026-07-31 human:іan |\n"
 
-	stamps := stampsInDiff(diff)
+	stamps := stampsInDiff("", diff)
 	if len(stamps) == 0 {
 		t.Fatal("a homoglyph human: stamp produced no stamps — --corroborate would print \"clean\" and exit 0 on it")
 	}
