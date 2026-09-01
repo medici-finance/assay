@@ -91,6 +91,20 @@ brief 04's provisioning, not here — see edition-matrix.md rows B3 and B4.
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `09de1a1`
+
+Runner ≠ implementer. Own temporary worktree off `origin/main` at `09de1a1`, offline (`KUBECONFIG=/dev/null`); no live forge contacted (tests use `httptest` fixtures). Path note: the module root is `tools/desk` (multi-module repo, no root `go.work`), so each row was run module-scoped from `tools/desk/` with the module-relative selector — the identical package and test set the repo-root-relative command names.
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `go build ./...` + `go test ./internal/deskkit/ -run TestForgeGitlab -v` (from `tools/desk`) | 0 | build 0; `ok …/deskkit`; 18 `TestForgeGitlabGolden` subtests (post_comment, post_review_*, mark_ready_for_review, file_issue, close_issue, delete_ref_*, push_transport_hint, error_not_found, error_forbidden_tier, error_forbidden_approval_config_tier) all PASS |
+| 2 | `go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v` | 0 | PASS — "gitlab contract corpus covers all 15 operations of the frozen Forge interface"; committed inventory reconciles (15 ops, all covered) — measured against the committed inventory, not asserted inline |
+| 3 | `go test ./internal/deskkit/ -run TestForgeGitlabTierErrors -v` | 0 | PASS — `could-not-check` emitted for the 403 fixture (4×); subtest `tier_failure_is_not_an_empty_list` confirms a Premium-gated 403 ≠ empty list |
+
+`RISK-VALUE: DERIVED — gitlabDraftPrefix = "Draft: " @ tools/desk/internal/deskkit/forge_gitlab.go:269` — the single control deciding draft vs open-for-review; derived, not merely named: the create path asserts the returned MR came back `mr.Draft` and refuses with could-not-check otherwise (forge_gitlab.go:987-995), replayed by TestForgeGitlabGolden against the recorded fixture. No fail-safe trigger fires (gate:model, risk block all-no, non-risk-classed path; client-lib version pins live in go.mod, not in guard code).
+
+**VERIFY: PASS** — all three Verify rows checked-clean by a non-implementer. Advancing `implemented → verified`.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README
 table. Reviewer spot-checks two mappings against live GitLab API docs, not the fixture
