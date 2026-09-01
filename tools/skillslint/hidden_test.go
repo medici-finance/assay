@@ -66,6 +66,22 @@ func TestScanInstructionSurfaces_HiddenClasses(t *testing.T) {
 		{"tag-block-cancel", "hi\U000e007fthere\n", true, "TAG CHARACTER"},
 		{"variation-selector-16", "warn\ufe0f\n", true, "VARIATION SELECTOR"},
 		{"variation-selector-supp", "x\U000e0100y\n", true, "VARIATION SELECTOR"},
+		// The curated `otherInvisibles` set \u2014 invisibles that are NOT Cf, VS or Cc,
+		// so the earlier category branches miss them. Each must be flagged.
+		{"combining-grapheme-joiner", "a\u034fb\n", true, "U+034F COMBINING GRAPHEME JOINER"},
+		{"braille-blank", "a\u2800b\n", true, "U+2800 BRAILLE PATTERN BLANK"},
+		{"hangul-choseong-filler", "a\u115fb\n", true, "U+115F HANGUL CHOSEONG FILLER"},
+		{"hangul-jungseong-filler", "a\u1160b\n", true, "U+1160 HANGUL JUNGSEONG FILLER"},
+		{"hangul-filler", "a\u3164b\n", true, "U+3164 HANGUL FILLER"},
+		{"halfwidth-hangul-filler", "a\uffa0b\n", true, "U+FFA0 HALFWIDTH HANGUL FILLER"},
+		{"khmer-inherent-aq", "a\u17b4b\n", true, "U+17B4 KHMER VOWEL INHERENT AQ"},
+		{"khmer-inherent-aa", "a\u17b5b\n", true, "U+17B5 KHMER VOWEL INHERENT AA"},
+		{"line-separator", "a\u2028b\n", true, "U+2028 LINE SEPARATOR"},
+		{"paragraph-separator", "a\u2029b\n", true, "U+2029 PARAGRAPH SEPARATOR"},
+		// Zs visible-whitespace is deliberately NOT flagged (see hiddenKind): an
+		// ordinary space and a non-breaking space stay legal.
+		{"ordinary-space-ok", "normal text here\n", false, ""},
+		{"nbsp-ok", "a\u00a0b\n", false, ""},
 		// legitimate content — must NOT be flagged. Printable non-ASCII is spelled
 		// literally on purpose: it is exactly what must stay legal.
 		{"clean-ascii", "just plain text\nwith two lines\n", false, ""},

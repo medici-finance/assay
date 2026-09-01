@@ -55,7 +55,18 @@ enumeration inevitably misses a member of the class):
 - **Variation selectors** (U+FE00–U+FE0F, U+E0100–U+E01EF). These are `Mn`/other,
   not `Cf`, so they are covered explicitly — a run of them appended to a carrier
   glyph is the emoji-variation-selector steganography channel.
+- A curated **`otherInvisibles`** set that renders to nothing yet is neither Cf,
+  VS nor Cc: U+034F combining grapheme joiner, the Hangul fillers (U+115F, U+1160,
+  U+3164, U+FFA0), the Khmer inherent vowels (U+17B4, U+17B5), U+2800 braille
+  blank, and the line/paragraph separators (U+2028, U+2029). `invisible ⊆ Cf ∪ VS
+  ∪ Cc` is false; this closes it. It is a codepoint list, not a category, because
+  no single Unicode category means "invisible".
 - Any **C0/C1 control** outside `\t \n \r`, and **invalid UTF-8**.
+
+**Deliberately legal — Zs space separators** (the ordinary space, U+00A0 NBSP,
+U+2000–U+200A, U+202F, U+205F, U+3000): these are *visible* whitespace, not an
+invisible-smuggling class, and rejecting them would false-positive on every
+ordinary space. Left out by decision, not omission.
 
 Each violation names file, line, column and codepoint (`U+202E RIGHT-TO-LEFT
 OVERRIDE`). Printable non-ASCII — accented names, arrows, box drawing, an emoji

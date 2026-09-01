@@ -28,8 +28,19 @@
 //	variation sel.  U+FE00–U+FE0F and U+E0100–U+E01EF. These are Mn/other, NOT
 //	                Cf, so they are covered explicitly — a run of them appended to
 //	                a carrier smuggles arbitrary bytes past a human reader.
+//	other invisibles a curated set that render to nothing yet are neither Cf, VS
+//	                nor Cc: U+034F combining grapheme joiner, the Hangul fillers
+//	                (U+115F, U+1160, U+3164, U+FFA0), the Khmer inherent vowels
+//	                (U+17B4, U+17B5), U+2800 braille blank, and the line/paragraph
+//	                separators (U+2028, U+2029). "invisible ⊆ Cf ∪ VS ∪ Cc" is
+//	                false; this closes it.
 //	C0/C1 controls  everything unicode.Cc EXCEPT \t \n \r
 //	invalid UTF-8   a byte that does not decode — an instruction file is text
+//
+// DELIBERATELY LEGAL: Zs space separators (the ordinary space, U+00A0 NBSP,
+// U+2000–U+200A, U+202F, U+205F, U+3000). They are VISIBLE whitespace, not an
+// invisible-smuggling class, and rejecting them would false-positive on every
+// ordinary space. See hiddenKind for the stated rationale.
 //
 // Non-ASCII PRINTABLE text stays legal: accented names, arrows, box drawing,
 // emoji whose base glyph carries its own presentation. The lint targets
@@ -106,6 +117,39 @@ var tagBlock = &unicode.RangeTable{
 	},
 }
 
+// otherInvisibles is the curated set of invisible codepoints that render to
+// nothing (or to blank width) yet fall OUTSIDE Cf, the variation selectors, and
+// Cc — so the category branches above miss them. The closure assumption
+// "invisible ⊆ Cf ∪ variationSelectors ∪ Cc" is false, and this table is the
+// counter-set that closes it. Each entry is an invisible-smuggling vector, not a
+// visible glyph:
+//
+//	U+034F   COMBINING GRAPHEME JOINER   Mn  — zero-width; the direct analog of ZWSP
+//	U+115F   HANGUL CHOSEONG FILLER      Lo  — invisible filler
+//	U+1160   HANGUL JUNGSEONG FILLER     Lo  — invisible filler
+//	U+17B4   KHMER VOWEL INHERENT AQ     Mn  — renders to nothing
+//	U+17B5   KHMER VOWEL INHERENT AA     Mn  — renders to nothing
+//	U+2028   LINE SEPARATOR              Zl  — invisible line break
+//	U+2029   PARAGRAPH SEPARATOR         Zp  — invisible paragraph break
+//	U+2800   BRAILLE PATTERN BLANK       So  — renders blank
+//	U+3164   HANGUL FILLER               Lo  — invisible filler
+//	U+FFA0   HALFWIDTH HANGUL FILLER     Lo  — invisible filler
+//
+// It is curated by codepoint on purpose: unlike Cf there is no single Unicode
+// category that means "invisible", so a category check here would sweep in
+// visible glyphs. Range16 entries must stay sorted by Lo.
+var otherInvisibles = &unicode.RangeTable{
+	R16: []unicode.Range16{
+		{Lo: 0x034F, Hi: 0x034F, Stride: 1}, // COMBINING GRAPHEME JOINER
+		{Lo: 0x115F, Hi: 0x1160, Stride: 1}, // HANGUL CHOSEONG/JUNGSEONG FILLER
+		{Lo: 0x17B4, Hi: 0x17B5, Stride: 1}, // KHMER VOWEL INHERENT AQ/AA
+		{Lo: 0x2028, Hi: 0x2029, Stride: 1}, // LINE / PARAGRAPH SEPARATOR
+		{Lo: 0x2800, Hi: 0x2800, Stride: 1}, // BRAILLE PATTERN BLANK
+		{Lo: 0x3164, Hi: 0x3164, Stride: 1}, // HANGUL FILLER
+		{Lo: 0xFFA0, Hi: 0xFFA0, Stride: 1}, // HALFWIDTH HANGUL FILLER
+	},
+}
+
 // hiddenNames gives a human-readable name for the enumerated attack codepoints,
 // so a violation message reads "U+202E RIGHT-TO-LEFT OVERRIDE" rather than a bare
 // hex value. Anything not in the map falls back to a category descriptor in
@@ -114,7 +158,17 @@ var tagBlock = &unicode.RangeTable{
 var hiddenNames = map[rune]string{
 	0x0000: "NULL",
 	0x00AD: "SOFT HYPHEN",
+	0x034F: "COMBINING GRAPHEME JOINER",
 	0x061C: "ARABIC LETTER MARK",
+	0x115F: "HANGUL CHOSEONG FILLER",
+	0x1160: "HANGUL JUNGSEONG FILLER",
+	0x17B4: "KHMER VOWEL INHERENT AQ",
+	0x17B5: "KHMER VOWEL INHERENT AA",
+	0x2028: "LINE SEPARATOR",
+	0x2029: "PARAGRAPH SEPARATOR",
+	0x2800: "BRAILLE PATTERN BLANK",
+	0x3164: "HANGUL FILLER",
+	0xFFA0: "HALFWIDTH HANGUL FILLER",
 	0x200B: "ZERO WIDTH SPACE",
 	0x200C: "ZERO WIDTH NON-JOINER",
 	0x200D: "ZERO WIDTH JOINER",
@@ -146,6 +200,8 @@ func codepointName(r rune) string {
 	switch {
 	case unicode.Is(variationSelectors, r):
 		return "VARIATION SELECTOR"
+	case unicode.Is(otherInvisibles, r):
+		return "INVISIBLE CHARACTER"
 	case unicode.Is(tagBlock, r):
 		return "TAG CHARACTER"
 	case unicode.Is(bidiControls, r):
@@ -179,10 +235,22 @@ func hiddenKind(r rune, atFileStart bool) (bad bool) {
 	case unicode.Is(variationSelectors, r):
 		// Mn/other, not Cf — checked explicitly (emoji-VS steganography channel).
 		return true
+	case unicode.Is(otherInvisibles, r):
+		// The curated invisibles that are neither Cf, VS nor Cc (combining
+		// grapheme joiner, Hangul/Khmer fillers, braille blank, line/paragraph
+		// separators). See otherInvisibles for the full set and the reason it is
+		// a codepoint list, not a category.
+		return true
 	case unicode.Is(unicode.Cc, r):
 		// C0/C1 controls. Cc is disjoint from Cf; \t \n \r are excused above.
 		return true
 	}
+	// DELIBERATELY NOT REJECTED: Zs (space separators) — the ordinary space
+	// U+0020, the non-breaking space U+00A0, U+2000–U+200A, U+202F, U+205F,
+	// U+3000. They are VISIBLE whitespace, not invisible-smuggling: they occupy
+	// width and a human reader sees a gap. Rejecting them carries a real
+	// false-positive cost (every normal space) for no invisibility gain, so they
+	// stay legal. This is a decision, not an omission.
 	return false
 }
 
