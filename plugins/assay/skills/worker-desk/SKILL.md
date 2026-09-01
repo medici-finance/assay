@@ -17,9 +17,9 @@ table.
 re-derive them per dispatch): every session works in its own worktree, never a shared checkout; merge,
 never rebase; the generated board is single-writer = main's CI; every post is made as the role's own
 App identity; act only on trusted-authored items; file at discovery rather than narrating; one item =
-one branch = one PR, and a merged or closed PR is DONE; a notable change adds one human-legible
-`## Unreleased` highlight line to the repo's CHANGELOG (a genuinely non-notable PR carries the
-`changelog:skip` label instead).
+one branch = one PR, and a merged or closed PR is DONE; a notable change records one human-legible
+highlight as a per-PR fragment file under `changelog/` (`changelog/<slug>.md`) rather than editing a
+shared section (a genuinely non-notable PR carries the `changelog:skip` label instead).
 
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
@@ -363,6 +363,7 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Tier**: `--tier` follows the brief's `exec-tier` (absent = `any`); `strong` goes only to
   session-tier and the kit carries the pickup-STOP text. Effort S may run at your session tier, M/L go
   to a cheap tier behind the review/verify gates.
+- **Cheap implementers run below the floor, but authority-bearing writes do not**: a review verdict and a ready-flip enforce a model-capability floor keyed on the dispatcher's attested tier, so a below-tier session is refused those writes even though it may implement freely — delegate downward, and escalate a verdict or flip to a strong-tier session rather than route around the refusal.
 - **Serialize out-of-repo items** — no worktree isolation, no branch-as-claim: at most ONE in
   flight across all streams, the declaration is the claim, so check in-flight PRs for overlaps first.
 - **Placeholders stay dispatchable** (ruling 2, 2026-08-24) — and the shipped `fanoutloop plan`

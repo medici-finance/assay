@@ -8,6 +8,12 @@
   },
   "mutations": [
     {
+      "name": "disarm the model-capability floor refusal (a below-tier or self-applied-stamp session flips freely)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tdefault: // FloorRefuse\n\t\treturn deskkit.Refused(fmt.Sprintf(\"condition %s: %s\", condModelFloor, d.Message))",
+      "new": "\tdefault: // FloorRefuse\n\t\treturn nil"
+    },
+    {
       "name": "stop the changed-files walk after page one (the #208 defect, restated as a mutation)",
       "file": "cmd/deskflip/flip.go",
       "old": "\t\tfor _, f := range page {\n\t\t\tout = append(out, fileInfo{Path: f.Filename})\n\t\t}\n\t}\n\treturn out, nil",

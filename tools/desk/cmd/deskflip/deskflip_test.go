@@ -46,6 +46,13 @@ type stub struct {
 	// so a 163-entry list lands as 100 + 63 without any test having to say so.
 	filesPerPage int
 	fileReads    int
+
+	// labelEvents is the PR's `labeled` timeline — the dispatcher-attestation the model-
+	// capability floor reads. nil serves an empty timeline, which the floor reads as
+	// UNATTESTED (a NOTICE, not a refusal). Each event carries the applier login, so a
+	// fixture can distinguish a dispatcher stamp from a self-applied one.
+	labelEvents []deskkit.LabelEvent
+	timelineErr bool // when true, the timeline read fails (could-not-check)
 }
 
 func (s *stub) install(t *testing.T) string {
@@ -81,6 +88,11 @@ func (s *stub) install(t *testing.T) string {
 				return exec.Command("/bin/sh", "-c", "echo no such PR 1>&2; exit 1")
 			}
 			return echo(mustJSON(t, s.pr))
+		case strings.Contains(joined, "issues/") && strings.Contains(joined, "/timeline"):
+			if s.timelineErr {
+				return exec.Command("/bin/sh", "-c", "echo timeline unreadable 1>&2; exit 1")
+			}
+			return echo(s.servedTimeline(t))
 		case strings.Contains(joined, "pulls/") && strings.Contains(joined, "/files"):
 			s.fileReads++
 			return echo(s.servedFilePages(t))
@@ -129,6 +141,57 @@ func (s *stub) servedFilePages(t *testing.T) string {
 		return "[]"
 	}
 	return b.String()
+}
+
+// servedTimeline renders s.labelEvents as the GitHub `labeled` timeline shape the floor
+// reads: one JSON array of {event, label:{name}, actor:{login}} entries. A nil slice serves
+// an empty array — a PR with no labels, which the floor reads as UNATTESTED.
+func (s *stub) servedTimeline(t *testing.T) string {
+	t.Helper()
+	type tlEntry struct {
+		Event string            `json:"event"`
+		Label struct{ Name string } `json:"label"`
+		Actor struct{ Login string } `json:"actor"`
+	}
+	out := make([]tlEntry, 0, len(s.labelEvents))
+	for _, e := range s.labelEvents {
+		var te tlEntry
+		te.Event = "labeled"
+		te.Label.Name = e.Name
+		te.Actor.Login = e.AppliedBy
+		out = append(out, te)
+	}
+	return mustJSON(t, out)
+}
+
+// dispatcherLogin is the roster's desk-App login — the ONLY applier whose dispatched-* stamp
+// the floor trusts. Read from the fixture roster, never a literal, so a fixture stamp is
+// applied by the same identity the verb vouches for.
+func dispatcherLogin(t *testing.T) string {
+	t.Helper()
+	login, ok := deskkit.RoleAppLogin("desk")
+	if !ok {
+		t.Fatal("the fixture roster does not bind the desk (dispatcher) role")
+	}
+	return login
+}
+
+// strongStamp / cheapStamp build a complete dispatcher-applied tier attestation for a
+// fixture PR. The applier is the roster dispatcher, so AttestedModelStampOf trusts it.
+func strongStamp(t *testing.T) []deskkit.LabelEvent {
+	d := dispatcherLogin(t)
+	return []deskkit.LabelEvent{
+		{Name: deskkit.DispatchedModelPrefix + "opus-4.8", AppliedBy: d},
+		{Name: deskkit.DispatchedTierPrefix + "strong", AppliedBy: d},
+	}
+}
+
+func cheapStamp(t *testing.T) []deskkit.LabelEvent {
+	d := dispatcherLogin(t)
+	return []deskkit.LabelEvent{
+		{Name: deskkit.DispatchedModelPrefix + "haiku-3", AppliedBy: d},
+		{Name: deskkit.DispatchedTierPrefix + "any", AppliedBy: d},
+	}
 }
 
 func echo(s string) *exec.Cmd {
@@ -982,7 +1045,7 @@ func TestForeignRepoRefused(t *testing.T) {
 }
 
 func TestConditionListIsTheDocumentedContract(t *testing.T) {
-	want := []string{"caller-role", "pr-open-draft", "reviewer-approved", "checks-green",
+	want := []string{"caller-role", "pr-open-draft", "model-floor", "reviewer-approved", "checks-green",
 		"mergeable", "security-verdict", "head-stable"}
 	if len(flipConditions) != len(want) {
 		t.Fatalf("flipConditions has %d entries, want %d", len(flipConditions), len(want))

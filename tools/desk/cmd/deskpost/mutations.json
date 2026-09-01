@@ -1,0 +1,23 @@
+{
+  "test": "go test ./cmd/deskpost/... -count=1",
+  "control": {
+    "name": "CONTROL — invert the head-pin (a verdict lands on code the reviewer did NOT review)",
+    "file": "cmd/deskpost/review.go",
+    "old": "\t\tif curHead != head {",
+    "new": "\t\tif curHead == head {"
+  },
+  "mutations": [
+    {
+      "name": "disarm the model-capability floor refusal on the VERDICT path (a below-tier or self-applied-stamp session posts a verdict freely)",
+      "file": "cmd/deskpost/review.go",
+      "old": "\t\tcase deskkit.FloorRefuse:\n\t\t\treturn withDigest(refused(verb, repo, pr, curHead, fd.Message), dig)",
+      "new": "\t\tcase deskkit.FloorRefuse:\n\t\t\t_ = fd"
+    },
+    {
+      "name": "disarm the model-capability floor refusal on the FLIP path (a below-tier session flips a PR ready via deskpost ready)",
+      "file": "cmd/deskpost/ready.go",
+      "old": "\t\tcase deskkit.FloorRefuse:\n\t\t\treturn refused(\"ready\", repo, pr, head, fd.Message)",
+      "new": "\t\tcase deskkit.FloorRefuse:\n\t\t\t_ = fd"
+    }
+  ]
+}

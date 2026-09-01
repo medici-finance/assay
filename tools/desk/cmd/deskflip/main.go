@@ -64,6 +64,17 @@ nothing is mutated:
   caller-role       $DESK_LOOP presents the review role's loop identity. The flip belongs
                     to the role that watched the review.
   pr-open-draft     the PR is OPEN and still a draft. Anything else is nothing to flip.
+  model-floor       the ready-flip is an authority-bearing write, so it requires a
+                    strong-tier dispatch. The tier is read from the PR's DISPATCHER-ATTESTED
+                    stamp (not a self-report): an attested below-tier dispatch, or a stamp
+                    present-but-unreadable, is REFUSED with remediation. An UNATTESTED PR
+                    (human-driven or pre-attestation) is not bricked — it proceeds with a
+                    NOTICE. This is a floor, not a proof-of-model: it attests what the
+                    dispatcher LAUNCHED, delegation downward stays legal, and escalating an
+                    authority-bearing write upward does not. For incident recovery the env
+                    toggle DESK_MODEL_FLOOR_OVERRIDE=1 bypasses the floor, and every bypass
+                    is logged loudly (a silent one would nullify the layer). It is an env
+                    toggle, never a wave-past-me flag on the verb.
   reviewer-approved the reviewer App's latest CORRECTNESS verdict is APPROVED and was
                     submitted AT THE CURRENT HEAD. A verdict at an earlier head is STALE,
                     which is a distinct answer from "no verdict".
