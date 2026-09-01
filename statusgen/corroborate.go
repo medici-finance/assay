@@ -436,17 +436,43 @@ func confusableStampNames(s string) []string {
 //     prefix (its next character after "skeleton" is "-", not "/"), so the carve-out
 //     cannot be widened by a confusable path. Do not drop the slash.
 //
-// The exclusion set is intentionally a SET OF ONE. No "any testdata", examples/**,
-// or statusgen/testdata/** carve-out belongs here — a second path, if ever needed,
-// is a fresh human ruling, not an edit to this constant.
+// This constant stays a SET OF ONE hardcoded prefix. Its own rule was that a
+// second exclusion needs "a fresh human ruling, not an edit to this constant."
+//
+// GENERALIZATION AUTHORIZED — Ian 2026-09-01 desk walk. That fresh human ruling
+// is now recorded: rather than adding a second hardcoded prefix here, the desk
+// walk authorized a DECLARED, opt-in mechanism — a corpus excludes itself by
+// dropping the fixtureCorpusMarkerName marker at its root (fixturecorpus.go),
+// consulted by isExcludedFixturePath IN ADDITION TO this prefix. This prefix is
+// KEPT unchanged (the education corpus need not carry a marker). The generalized
+// path preserves both invariants above: it is a PATH check, and it is
+// DECLARED + FAIL-CLOSED — absent a marker on disk, a subtree is corroborated
+// exactly as today. No path-name / testdata / examples heuristic is added.
 const corroborateExcludedFixturePrefix = "docs/streams/education/assay-tutorial-skeleton/"
 
-// isExcludedFixturePath reports whether path lies UNDER
-// corroborateExcludedFixturePrefix. Because the constant carries its trailing
-// slash, this is a proper path-boundary match: a plain HasPrefix here cannot leak
-// to a "...-skeleton-evil" sibling that merely shares the leading substring.
-func isExcludedFixturePath(path string) bool {
-	return strings.HasPrefix(path, corroborateExcludedFixturePrefix)
+// isExcludedFixturePath reports whether path (repo-relative, resolved against
+// root) is a fixture-corpus path whose human:<name> stamps the corroborate scan
+// deliberately skips. It is excluded when EITHER:
+//
+//   - it lies UNDER corroborateExcludedFixturePrefix — the original, hardcoded
+//     set-of-one. Because the constant carries its trailing slash, this is a
+//     proper path-boundary match: a plain HasPrefix here cannot leak to a
+//     "...-skeleton-evil" sibling that merely shares the leading substring; OR
+//   - it lies at or under a directory that DECLARES the fixtureCorpusMarkerName
+//     marker on disk (isFixtureCorpusPath) — the generalized, opt-in mechanism.
+//
+// GENERALIZATION AUTHORIZED — Ian 2026-09-01 desk walk. The set-of-one below was
+// deliberately closed: its own doc demanded that any second exclusion be "a fresh
+// human ruling, not an edit to this constant." That ruling is now recorded — the
+// desk walk authorized generalizing the exclusion beyond the education corpus to
+// ANY corpus that DECLARES itself a fixture corpus with the marker file, while
+// KEEPING the education prefix intact. The two invariants of the original
+// carve-out are preserved by the generalized path: it is a PATH check (never a
+// NAME check), and it is DECLARED + FAIL-CLOSED (no marker on disk => the subtree
+// is corroborated exactly as before). See fixturecorpus.go.
+func isExcludedFixturePath(root, path string) bool {
+	return strings.HasPrefix(path, corroborateExcludedFixturePrefix) ||
+		isFixtureCorpusPath(root, path)
 }
 
 // stamp describes a single human:<name> occurrence found in a PR diff.
@@ -459,7 +485,12 @@ type stamp struct {
 // stampsInDiff parses a unified diff and returns every human:<name> stamp found on
 // ADDED lines (lines starting with "+" but not "+++"). Each stamp records the name,
 // the file it was added to, and the line content for context.
-func stampsInDiff(diff string) []stamp {
+//
+// root is the checkout root against which a declared fixture-corpus marker is
+// resolved (see isExcludedFixturePath / fixturecorpus.go). It is "" when there is
+// no checkout to consult, in which case only the hardcoded education prefix
+// excludes — the marker mechanism fails closed to "fully scanned".
+func stampsInDiff(root, diff string) []stamp {
 	lines := strings.Split(diff, "\n")
 	var out []stamp
 	curFile := ""
@@ -482,12 +513,14 @@ func stampsInDiff(diff string) []stamp {
 		if !strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "+++") {
 			continue
 		}
-		// A stamp on a file under the tutorial-skeleton fixture prefix is
-		// deliberately NOT corroborated — the corpus teaches the human:<name>
-		// notation with fictional personas that can never map to a login. See
-		// corroborateExcludedFixturePrefix (per Ian's ruling). This is a PATH
-		// check, so a forged human:<name> anywhere OUTSIDE the prefix is unaffected.
-		if isExcludedFixturePath(curFile) {
+		// A stamp on a file under a fixture corpus is deliberately NOT
+		// corroborated — the corpus carries human:<name> notation with fictional
+		// personas (or captured content) that can never map to a login. This
+		// covers the education tutorial-skeleton prefix AND any subtree that
+		// DECLARES itself a fixture corpus with the on-disk marker (Ian 2026-09-01
+		// desk walk). See isExcludedFixturePath. This is a PATH check, so a forged
+		// human:<name> anywhere OUTSIDE a declared corpus is unaffected.
+		if isExcludedFixturePath(root, curFile) {
 			continue
 		}
 		// Strip the leading "+" for matching.
@@ -695,12 +728,12 @@ func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int) []co
 
 // checkCorroboration runs the full corroboration pipeline for a single PR:
 // fetch diff → extract stamps → resolve logins → query reviews/comments → verdict.
-func checkCorroboration(repo string, pr int) ([]corroborateResult, error) {
+func checkCorroboration(root, repo string, pr int) ([]corroborateResult, error) {
 	diff, err := fetchPRDiff(repo, pr)
 	if err != nil {
 		return nil, err
 	}
-	stamps := stampsInDiff(diff)
+	stamps := stampsInDiff(root, diff)
 	if len(stamps) == 0 {
 		return []corroborateResult{{Verdict: verdictNoStamp}}, nil
 	}
@@ -753,7 +786,7 @@ func runCorroborate(prsArg string) int {
 			fmt.Fprintf(os.Stderr, "statusgen: invalid PR number %q\n", prStr)
 			return 2
 		}
-		results, err := checkCorroboration(repo, pr)
+		results, err := checkCorroboration(".", repo, pr)
 		if err != nil {
 			// If gh returns exit status 1 (e.g. PR not found), print and exit 1.
 			fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)

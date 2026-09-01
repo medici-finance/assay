@@ -108,6 +108,18 @@ func reservedMember(member string) (string, bool) {
 	return "", false
 }
 
+// ReservedMember is the exported view of reservedMember: it reports whether a
+// vocabulary member names a human-gate action (approve / flip / merge / ready /
+// sign / a joined phrase), and if so which reserved root/phrase it matched.
+//
+// It exists so a SECOND vocabulary — a lane-ACL matrix, a message verb set —
+// can be validated against the ONE deny-list this file already carries, rather
+// than mirroring it and letting the copy drift. The escape valve refuses such a
+// member at NewQuestion; a caller that gates its own vocabulary calls this at its
+// own construction time for the identical property (see internal/comms/laneacl.go,
+// which refuses an ACL row or verb naming a human-gate action at load).
+func ReservedMember(member string) (string, bool) { return reservedMember(member) }
+
 // Question is a validated, reusable consult template: a fixed vocabulary paired with a
 // pre-declared conservative default. It is constructed once and consulted many times.
 // The reserved-verb deny-list, the non-empty check, the no-duplicates check, and the
