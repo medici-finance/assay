@@ -58,11 +58,15 @@ var (
 	ErrUnknownClass = errors.New("comms: class is not a recognised handling class")
 )
 
-// SenderID is the minted-token identity of a message's sender: the {cell, role}
-// the signed assertion binds, plus the app and session it was minted for. It is
-// NEVER self-claimed — the identity that counts is the one the assertion in Sig
-// proves (identity.go), and VerifyEnvelope refuses any envelope whose declared
-// From disagrees with its verified assertion.
+// SenderID is the identity of a message's sender. Its {cell, role} are the
+// AUTHENTICATED identity: they are covered by the signed assertion (identity.go),
+// and VerifyEnvelope refuses any envelope whose declared From.{Cell,Role}
+// disagrees with its verified assertion — so {cell, role} are never self-claimed.
+// App and Session, by contrast, are NOT in the signed canonical bytes: they are
+// advisory metadata (the app/session the token was minted for) and are forgeable
+// within a legitimate cell+role. The lane ACL keys only on {cell, role, verb}, so
+// this does not weaken the boundary — but do NOT attribute trust or audit to
+// From.App / From.Session until they are bound into the signed bytes.
 type SenderID struct {
 	Cell    string `json:"cell"`
 	Role    string `json:"role"`
