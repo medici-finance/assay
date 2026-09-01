@@ -1,0 +1,49 @@
+# laneacl.yaml — the ONE declared source of the cell-message lane ACL.
+#
+# This is the truth; internal/comms/laneacl.go's `compiledACL` is a derivation of
+# it, and TestACLCompiledMatchesSource diffs the two and fails naming the
+# difference (TestACLCompiledMatchesSourceDiff). Edit THIS file first, then mirror it into compiledACL. A hand-edited
+# second copy that drifts from this one is the defect the diff test exists to
+# catch.
+#
+# STRICT PARSE. An unknown key, a duplicate key, an empty member, or a non-scalar
+# where a scalar is expected is a load ERROR naming the line — never a best-effort
+# read. Absent is the least-authority reading: an absent allow-set grants nothing.
+#
+# RESERVED VERBS. A role or verb naming a human-gate action is refused at LOAD,
+# against the one deny-list deskkit already carries (deskkit.ReservedMember). No
+# such token may appear anywhere below — not in a lane, not even in a comment.
+
+schema: laneacl-v1
+
+# Within-cell reach: the full desk mesh. Every standard desk role may message
+# every OTHER standard desk role inside the same cell, over the verbs below.
+within_cell:
+  roles:
+    - the-desk
+    - intake-desk
+    - worker-desk
+    - pr-review-desk
+    - verify-desk
+  # Minimal, non-human-gate verb set:
+  #   handoff — pass a work item to the next role in the pipeline
+  #   notify  — inform a role, no action required
+  #   ask     — ask a role a question
+  # Extending this set is a recorded decision, not a silent edit.
+  verbs:
+    - handoff
+    - notify
+    - ask
+
+# Cross-cell reach: coordinator-to-coordinator only. No non-coordinator desk may
+# send or receive a cross-cell message; a non-the-desk pair here is refused at load.
+cross_cell:
+  pairs:
+    - from: the-desk
+      to: the-desk
+  # OPEN DECISION (needs-decision): cross-cell verb set — do not add rows here
+  # without the recorded ruling. The cross-cell verb allow-set ships EMPTY (fail
+  # closed) until a human rules on it. Inventing a verb here is the tempting-but-
+  # wrong move the design forecloses; with this set empty, every cross-cell message
+  # is refused at the ACL.
+  verbs: []
