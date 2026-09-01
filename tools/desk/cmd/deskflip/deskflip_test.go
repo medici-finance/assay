@@ -387,6 +387,126 @@ func TestEmptyRollupOnCIRequiredRepoIsUnverifiable(t *testing.T) {
 	}
 }
 
+// The two RFC3339 stamps every latest-run-per-name fixture below is built from. tOld sorts
+// before tNew lexicographically, which is also chronologically — the property recencyKey
+// relies on.
+const (
+	tOld = "2026-01-01T00:00:00Z"
+	tNew = "2026-01-01T01:00:00Z"
+)
+
+// TestSupersededRunDoesNotJamACleanFlip is the fix's fail-first case (clause 9, direction a):
+// a check NAME carrying a superseded older run PLUS a green LATEST run must not jam the flip.
+// Both live jams observed on this public repo are reproduced as table rows — a CANCELLED
+// predecessor (assay#289: a `changelog` run cancelled by the push + pull_request
+// double-trigger) and a stale QUEUED orphan (assay#282: a `control-sweep` run the same
+// double-trigger left queued). On the UNFIXED code each row refuses (the CANCELLED reddens
+// the whole rollup; the QUEUED reads as forever-pending), so this test is red pre-fix.
+func TestSupersededRunDoesNotJamACleanFlip(t *testing.T) {
+	cases := map[string][]rollupEntry{
+		// A cancelled predecessor + the re-triggered success, same NAME. The success is
+		// newer (later CompletedAt), so it is the latest run and the flip is clean.
+		"cancelled-predecessor": {
+			{Name: "changelog", Status: "COMPLETED", Conclusion: "CANCELLED", StartedAt: tOld, CompletedAt: tOld},
+			{Name: "changelog", Status: "COMPLETED", Conclusion: "SUCCESS", StartedAt: tNew, CompletedAt: tNew},
+		},
+		// An orphaned queued run carries NO timestamps, so recencyKey sorts it oldest and
+		// the completed success is the latest run.
+		"stale-queued-orphan": {
+			{Name: "control-sweep", Status: "QUEUED"},
+			{Name: "control-sweep", Status: "COMPLETED", Conclusion: "SUCCESS", StartedAt: tNew, CompletedAt: tNew},
+		},
+	}
+	for name, rollup := range cases {
+		t.Run(name, func(t *testing.T) {
+			pr := greenPR()
+			pr.StatusCheckRollup = rollup
+			s := &stub{pr: pr}
+			s.install(t)
+			s.reviews = approvalAtHead(t, headSHA)
+
+			if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+				t.Fatalf("superseded run jammed the flip: rc = %d, want 0 — only the LATEST run per name counts", rc)
+			}
+			if !s.ran("pr ready 7") {
+				t.Errorf("the ready mutation never ran: %v", s.calls)
+			}
+		})
+	}
+}
+
+// TestLatestRedRunStillRefuses is the fix's fail-first case (clause 9, direction b): the
+// reduction must NEVER relax the gate. When the LATEST run of a name is red — an older
+// SUCCESS superseded by a newer FAILURE — the flip must still refuse. On the correct code
+// this passes; it is designed to REDDEN under a wrong reduction (keeping the older run
+// instead of the newer), which mutations.json pins as a re-runnable mutation.
+func TestLatestRedRunStillRefuses(t *testing.T) {
+	pr := greenPR()
+	pr.StatusCheckRollup = []rollupEntry{
+		{Name: "build", Status: "COMPLETED", Conclusion: "SUCCESS", StartedAt: tOld, CompletedAt: tOld},
+		{Name: "build", Status: "COMPLETED", Conclusion: "FAILURE", StartedAt: tNew, CompletedAt: tNew},
+	}
+	s := &stub{pr: pr}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("a red LATEST run did not refuse: rc = %d, want %d — the reduction must not weaken the gate",
+			rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("mutations over a red latest run: %v", m)
+	}
+}
+
+// TestLatestPerRollupNameReducesByRecency exercises the reducer directly: newest-per-name
+// wins, both forge shapes are keyed by their own identity, a stampless run loses, nameless
+// entries are never collapsed, and a genuine multi-name set is preserved.
+func TestLatestPerRollupNameReducesByRecency(t *testing.T) {
+	in := []rollupEntry{
+		{Name: "a", Status: "COMPLETED", Conclusion: "FAILURE", CompletedAt: tOld},
+		{Name: "a", Status: "COMPLETED", Conclusion: "SUCCESS", CompletedAt: tNew},
+		{Name: "b", Status: "QUEUED"}, // stampless
+		{Name: "b", Status: "COMPLETED", Conclusion: "SUCCESS", CompletedAt: tNew},
+		{Context: "legacy", State: "PENDING", CreatedAt: tOld},
+		{Context: "legacy", State: "SUCCESS", CreatedAt: tNew},
+		{Status: "COMPLETED", Conclusion: "SUCCESS"}, // nameless
+		{Status: "COMPLETED", Conclusion: "FAILURE"}, // nameless — must NOT merge with the above
+	}
+	got := latestPerRollupName(in)
+	// a, b, legacy reduced to one each; the two nameless entries kept standalone → 5.
+	if len(got) != 5 {
+		t.Fatalf("reduced to %d entries, want 5: %+v", len(got), got)
+	}
+	byName := map[string]rollupEntry{}
+	nameless := 0
+	for _, e := range got {
+		if e.groupKey() == "" {
+			nameless++
+			continue
+		}
+		byName[e.groupKey()] = e
+	}
+	if byName["a"].Conclusion != "SUCCESS" {
+		t.Errorf("name a kept %q, want the newer SUCCESS", byName["a"].Conclusion)
+	}
+	if byName["b"].Status != "COMPLETED" || byName["b"].Conclusion != "SUCCESS" {
+		t.Errorf("name b kept %+v, want the completed SUCCESS over the stampless QUEUED", byName["b"])
+	}
+	if byName["legacy"].State != "SUCCESS" {
+		t.Errorf("context legacy kept %q, want the newer SUCCESS", byName["legacy"].State)
+	}
+	if nameless != 2 {
+		t.Errorf("nameless entries collapsed to %d, want 2 (no identity to reduce by)", nameless)
+	}
+	// The reduced set is what evalRollup then judges — and it evaluates it UNCHANGED. The
+	// set here still carries the standalone nameless FAILURE, so the reduction has not
+	// swallowed a real red: the judgement stays ciFail.
+	if st := evalRollup(got); st != ciFail {
+		t.Errorf("reduced set evaluated to %v, want ciFail — the standalone nameless FAILURE must survive", st)
+	}
+}
+
 func TestConflictingPRRefused(t *testing.T) {
 	pr := greenPR()
 	pr.Mergeable = "CONFLICTING"

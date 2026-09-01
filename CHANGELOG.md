@@ -24,6 +24,7 @@ commit list.
 
 ### Fixed
 - `statusgen --record`'s DORA-timing recorder no longer fails silently when its authenticated `gh` reads (restore episodes, PR lead times) all fail — it emits a loud, distinct `DEGRADED` signal naming the failed read and the substrate path, instead of returning a no-op indistinguishable from a healthy quiet day (so a persistently token-less `--record` CI can no longer leave `.dora-timing.jsonl` silently never accruing); still fail-open, never fabricates (#279).
+- `deskflip`'s checks-green gate now evaluates the LATEST run per check NAME, mirroring branch protection's own "latest run per context" rule, so a superseded run — an older CANCELLED predecessor, or a stale QUEUED orphan left by a push + pull_request double-trigger — no longer jams an otherwise-clean, approved flip. The gate is not relaxed: a name whose current latest run is red, cancelled, or pending still refuses (#282, #289).
 
 ### Changed
 

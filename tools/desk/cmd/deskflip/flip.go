@@ -188,12 +188,18 @@ func flip(o flipOpts) error {
 	o.say("%s OK: %s APPROVED at %s", condReviewerApproved, reviewerLogin, short(head))
 
 	// --- checks-green ------------------------------------------------------------
-	switch evalRollup(pr.StatusCheckRollup) {
+	// Reduce to the LATEST run per check NAME first — branch protection's own rule — so a
+	// superseded run (an older CANCELLED, a stale QUEUED left by a push+pull_request
+	// double-trigger) does not count against a PR whose current run for that name is green.
+	// The reduction changes only WHICH run is judged, never HOW: the reduced set flows
+	// through the same evaluation, so a name whose LATEST run is red/pending still blocks.
+	checks := latestPerRollupName(pr.StatusCheckRollup)
+	switch evalRollup(checks) {
 	case ciFail:
 		return deskkit.Refused(fmt.Sprintf(
 			"condition %s: a check at %s failed — %s. A red rollup outranks any local verification: CI runs "+
 				"the real toolchain and a local trace does not.",
-			condChecksGreen, short(head), strings.Join(failedChecks(pr.StatusCheckRollup), ", ")))
+			condChecksGreen, short(head), strings.Join(failedChecks(checks), ", ")))
 	case ciPending:
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"condition %s: checks at %s are not positively green (a check has not completed). Not-yet-green "+
@@ -208,7 +214,7 @@ func flip(o flipOpts) error {
 		// A repo with no PR CI at all: an empty rollup is everything there will ever be.
 	case ciGreen:
 	}
-	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(pr.StatusCheckRollup), short(head))
+	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
 
 	// --- mergeable ---------------------------------------------------------------
 	switch strings.ToUpper(strings.TrimSpace(pr.Mergeable)) {
@@ -616,12 +622,20 @@ type labelInfo struct {
 // here — a check run (status + conclusion) and a status context (state) — and a reader
 // that understands only one silently sees an empty rollup for the other, which on a
 // CI-less policy reads as green. Both shapes are carried.
+//
+// The three timestamp fields are the recency signal the latest-run-per-name reduction
+// needs. A CheckRun carries StartedAt/CompletedAt; a StatusContext carries only CreatedAt.
+// The forge serves all of them in `statusCheckRollup` already — the fields were simply not
+// decoded before — so reducing by them costs no extra read.
 type rollupEntry struct {
-	Name       string `json:"name"`
-	Context    string `json:"context"`
-	Status     string `json:"status"`
-	Conclusion string `json:"conclusion"`
-	State      string `json:"state"`
+	Name        string `json:"name"`
+	Context     string `json:"context"`
+	Status      string `json:"status"`
+	Conclusion  string `json:"conclusion"`
+	State       string `json:"state"`
+	StartedAt   string `json:"startedAt"`
+	CompletedAt string `json:"completedAt"`
+	CreatedAt   string `json:"createdAt"`
 }
 
 func (e rollupEntry) label() string {
@@ -632,6 +646,83 @@ func (e rollupEntry) label() string {
 		return e.Context
 	}
 	return "(unnamed check)"
+}
+
+// groupKey is the identity a check is reduced BY: its NAME for a check run, its CONTEXT for
+// a status context. Branch protection keys "latest run per context" on exactly this name,
+// which is why grouping by it reproduces the platform's own rule. An entry with NEITHER a
+// name nor a context has no identity to group on, so it returns "" and the reducer keeps it
+// standalone — collapsing every nameless entry into one bucket would be a reduction the
+// forge never made.
+func (e rollupEntry) groupKey() string {
+	if e.Name != "" {
+		return e.Name
+	}
+	return e.Context
+}
+
+// recencyKey returns the entry's best available recency stamp for the latest-run-per-name
+// reduction. The forge renders RFC3339 timestamps, which sort lexicographically in
+// chronological order, so a plain string compare orders two runs of one name by age.
+//
+// CompletedAt is preferred — a finished run's true end — then StartedAt (a run that began
+// but has not finished: an in-progress run, or the moment a queued run was picked up), then
+// CreatedAt (a status context's only stamp). An entry that carries none — a freshly QUEUED
+// check run the forge has not stamped yet, the #282-class orphan left by a double-trigger —
+// returns "" and sorts OLDEST, so it loses to any run that actually ran. That is the
+// fail-SAFE direction: a stampless queued run does not get to supersede a completed one, and
+// a run whose LATEST is genuinely pending or failing is never reduced away by this rule.
+func (e rollupEntry) recencyKey() string {
+	switch {
+	case e.CompletedAt != "":
+		return e.CompletedAt
+	case e.StartedAt != "":
+		return e.StartedAt
+	default:
+		return e.CreatedAt
+	}
+}
+
+// latestPerRollupName reduces the rollup to one entry per check NAME — the LATEST run for
+// each — before the green/pending/fail evaluation runs over it. This mirrors branch
+// protection's own "latest run per context" rule: a superseded run (an older CANCELLED, a
+// stale QUEUED left behind by a push+pull_request double-trigger, a re-triggered run's
+// predecessor) must NOT count against the PR, because it is not what the branch is at. Only
+// the current latest run for each name does.
+//
+// The reduction is by recencyKey (newest wins). It NEVER relaxes the gate: it changes only
+// WHICH run of a name is evaluated, never how a run is judged — the reduced set still flows
+// through evalRollup/failedChecks unchanged, so a name whose latest run is red, cancelled,
+// or pending still reddens or blocks the flip exactly as before. A tie on recencyKey (two
+// distinct runs the forge stamped at the same instant — not a shape seen in practice) keeps
+// the first-seen entry, so the output is deterministic. First-appearance order is preserved
+// for stable failedChecks naming and the green-count line.
+func latestPerRollupName(entries []rollupEntry) []rollupEntry {
+	if len(entries) == 0 {
+		return entries
+	}
+	// index[key] is the position in `out` holding the current latest run for that name.
+	index := make(map[string]int, len(entries))
+	out := make([]rollupEntry, 0, len(entries))
+	for _, e := range entries {
+		key := e.groupKey()
+		if key == "" {
+			// Nameless: no identity to reduce by, so it is kept as its own entry.
+			out = append(out, e)
+			continue
+		}
+		pos, seen := index[key]
+		if !seen {
+			index[key] = len(out)
+			out = append(out, e)
+			continue
+		}
+		// Replace only when the candidate is STRICTLY newer, so a tie keeps first-seen.
+		if e.recencyKey() > out[pos].recencyKey() {
+			out[pos] = e
+		}
+	}
+	return out
 }
 
 type reviewInfo struct {

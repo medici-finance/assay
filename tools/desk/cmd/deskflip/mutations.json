@@ -36,6 +36,18 @@
       "file": "cmd/deskflip/flip.go",
       "old": "\t\treturn nil, deskkit.Unverifiable(fmt.Sprintf(\n\t\t\t\"condition %s: cannot read PR #%d's changed files (%s) — a diff that could not be read is \"+\n\t\t\t\t\"could-not-check, and could-not-check is never a clean risk classification.\",\n\t\t\tcondSecurityVerdict, o.pr, firstLine(r.stderr)), r.err)",
       "new": "\t\treturn nil, nil"
+    },
+    {
+      "name": "stop reducing to the latest run per name (a superseded CANCELLED/QUEUED run jams the flip again — reddens TestSupersededRunDoesNotJamACleanFlip)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tchecks := latestPerRollupName(pr.StatusCheckRollup)",
+      "new": "\tchecks := pr.StatusCheckRollup"
+    },
+    {
+      "name": "keep the OLDER run per name instead of the latest (an obsolete SUCCESS masks a newer FAILURE — reddens TestLatestRedRunStillRefuses)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tif e.recencyKey() > out[pos].recencyKey() {",
+      "new": "\t\tif e.recencyKey() < out[pos].recencyKey() {"
     }
   ]
 }
