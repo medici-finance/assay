@@ -9,6 +9,11 @@ There are two ways to install Assay, easiest first:
    scenarios that same skill wraps. Reach for it directly for a carve-out, a multi-repo suite, or
    any non-standard boot — and it is the ground truth the turnkey path delegates to.
 
+This runbook is GitHub-shaped throughout (Apps, rulesets, `gh`). Running the fleet on GitLab
+Enterprise instead — service accounts in place of Apps, protected-branch push-access lists in
+place of ruleset bypass — is a separate profile: see
+[`docs/adopting-assay-gitlab.md`](adopting-assay-gitlab.md).
+
 ## Fastest path — the turnkey `assay:install` skill
 
 For a straight install (most adopters), the fastest coherent boot is three steps: add the plugin
