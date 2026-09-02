@@ -69,10 +69,10 @@ with WSL noted only as a fallback); publishing to any Windows package manager
 
 | # | Brief | Wave | Effort | Gate | Status | Verified | Reviewed |
 |---|-------|------|--------|------|--------|----------|----------|
-| 01 | [Release build matrix — windows/amd64 + windows/arm64 + sha256s](./brief-01-release-build-matrix.md) | 0 | M | model | todo | — | — |
+| 01 | [Release build matrix — windows/amd64 + windows/arm64 + sha256s](./brief-01-release-build-matrix.md) | 0 | M | human | todo | — | — |
 | 02 | [Portability audit — enumerate + triage the shell-assuming surfaces](./brief-02-portability-audit.md) | 0 | M | model | todo | — | — |
 | 03 | [Windows install path — PowerShell-vs-Go-installer fork, then build](./brief-03-install-path.md) | 1 | L | human | todo | — | — |
-| 04 | [Windows CI leg — statusgen --lint + a desk-verb smoke on Windows](./brief-04-windows-ci-leg.md) | 1 | M | model | todo | — | — |
+| 04 | [Windows CI leg — statusgen --lint + a desk-verb smoke on Windows](./brief-04-windows-ci-leg.md) | 1 | M | human | todo | — | — |
 | 05 | [Adoption-doc delta — the Windows adopter walkthrough](./brief-05-adoption-doc-delta.md) | 2 | M | model | todo | — | — |
 
 ## Critical path

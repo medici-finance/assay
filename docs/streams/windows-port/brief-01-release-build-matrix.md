@@ -12,8 +12,14 @@ wave: 0
 depends: []
 unblocks: ["windows-port/03", "windows-port/04", "windows-port/05"]
 effort: M
-gate: model
-risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+gate: human
+gate-why: >-
+  Amends the release workflow, which mints the artifacts consumers pin by sha256 in
+  .assay-versions. A published release asset cannot be un-published once a consumer has
+  fetched it, and a .github/workflows/ change cannot be pushed by an agent credential at
+  all — it needs a workflow-scoped one, i.e. a human's hands. Both make this a human gate
+  regardless of how mechanical the diff looks.
+risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 issues: []
 schema: brief-v1
 authored: 2026-09-01 by windows-port authoring session

@@ -11,7 +11,12 @@ wave: 1
 depends: ["windows-port/01", "windows-port/02"]
 unblocks: ["windows-port/05"]
 effort: M
-gate: model
+gate: human
+gate-why: >-
+  Adds a job under .github/workflows/. The four risk answers are honestly all "no" — a CI
+  leg is reversible, touches no customer or regulated surface, and reads no sensitive data
+  — but a workflow-file change cannot be pushed by an agent credential, so the landing step
+  needs a human either way. The gate records that fact rather than pretending a risk answer.
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v1
