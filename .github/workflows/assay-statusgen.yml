@@ -236,7 +236,11 @@ jobs:
       - name: Auto-flip gate:model briefs from the App approval at the merged head
         env:
           GH_TOKEN: ${{ github.token }}
-          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS || 'reviewer=assay-reviewer-app:306477694' }}
+          # The roster is repository configuration, never a literal here: set the
+          # ASSAY_TRUSTED_BOT_SLUGS Actions variable (role=slug:id, the reviewer=
+          # binding is what the flip corroborates). Unset → every candidate is
+          # could-not-check and this job fails loudly — by design.
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
           ASSAY_HOME_REPO: ${{ vars.ASSAY_HOME_REPO || github.repository }}
         run: |
           set -uo pipefail
