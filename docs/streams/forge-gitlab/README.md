@@ -65,7 +65,7 @@ carries its evidence; brief 04's Verify row 3 was re-baselined onto the amended 
 | 02 | [`gitlab` forge implementation (MRs, notes, approvals, statuses)](brief-02-gitlab-forge-impl.md) | 2 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
 | 03 | [GitLab token custody — rotate-on-mint + expiry backstop in desktoken](brief-03-gitlab-token-custody.md) | 2 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
 | 04 | [Fleet provisioning + adopter doc + ci-config-project runbook](brief-04-provisioning-and-adopter-doc.md) | 3 | M | implemented | — | — |
-| 05 | [Live pilot — one brief round-tripped on a real GitLab group; parity table walked](brief-05-live-pilot-parity-walk.md) | 4 | M | todo | — | — |
+| 05 | [Live pilot — one brief round-tripped on a real GitLab group; parity table walked](brief-05-live-pilot-parity-walk.md) | 4 | M | implemented | — | — |
 | 06 | [Ultimate refinements — custom reviewer role + external-status-check verdict lane](brief-06-ultimate-refinements.md) | 5 | M | todo | — | — |
 | 07 | [GitHub forge backend on `go-gh` — retire the exec-`gh` shell path](brief-07-github-forge-go-gh.md) | 2 | M | implemented | — | — |
 | 08 | [Close the forge surface — enumerated operations, no passthrough, shell-exec ban](brief-08-close-the-forge-surface.md) | 3 | M | implemented | — | — |
