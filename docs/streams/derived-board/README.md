@@ -39,7 +39,7 @@ other three states, and removes the hand-edited table entirely. See [spec.md](sp
 | 02 | [`Brief:` trailer — the PR→brief link, required by `deskpr`, linted on main](brief-02-brief-trailer.md) | 0 | M | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
 | 03 | [`statusgen reconcile` — derive lifecycle state from PRs + witnesses + approvals](brief-03-reconcile-derivation.md) | 1 | L | implemented | — | — |
 | 04 | [generated Briefs table + single-writer lint](brief-04-generated-table.md) | 2 | M | todo | — | — |
-| 05 | [desk skills: reference the brief, never flip the cell (both copies)](brief-05-skill-updates.md) | 1 | S | implemented | — | — |
+| 05 | [desk skills: reference the brief, never flip the cell (both copies)](brief-05-skill-updates.md) | 1 | S | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
 | 06 | [v1.0.0 cut: migration op + file, paired-versions, same-tag pin lint](brief-06-v1-migration-and-cut.md) | 3 | M | todo | — | — |
 | 07 | [per-repo rollout + historical backfill as a drift-report PR](brief-07-rollout-backfill.md) | 4 | L | todo | — | — |
 

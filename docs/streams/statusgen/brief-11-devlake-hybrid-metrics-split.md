@@ -151,6 +151,26 @@ facts:
      (command, exit code, output line(s) or hash, date, runner).
      Filled by someone who did NOT implement. -->
 
+### Non-implementer verifier run — VERIFY: FAIL (two doc deliverables absent) — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `3287ec1`
+
+Runner ≠ implementer. Own temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`); rows run from inside `statusgen/`. **The code half PASSES; two required DOC deliverables (Task 1, Task 4) are entirely absent — the brief does NOT advance.** (deskfile budget exhausted this session — #274/#305/#315; this FAIL is recorded here durably and surfaced to the desk to file a tracking bug.)
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `test -f docs/streams/statusgen/metric-map-11.md && grep -c …` | 1 | **checked-FAILED** — `docs/streams/statusgen/metric-map-11.md` (planned) does not exist (Task 1 mapping page); absent under any name (`git ls-files \| grep metric-map` → none) |
+| 2 | `ls statusgen/dora.go statusgen/codeefficiency.go statusgen/trend.go` | 1 | checked-clean — all three removed (rc 1); `statusgen/roadmap.go` + `statusgen/roadmap_streampage.go` retained |
+| 2b | grep `computeDoraGrouped` + `go run . --root .. --roadmap` | 0 | checked-clean — `computeDoraGrouped` rehomed to `statusgen/roadmapdora.go:308`; `--roadmap` builds+runs |
+| 3 | `ls statusgen/bottleneck.go && grep 'awaiting-verification backlog' …` | 0 | checked-clean — `statusgen/bottleneck.go` present; backlog curve rehomed to `statusgen/methmetrics.go:13,16` |
+| 4 | `GOFLAGS=-buildvcs=false go test ./...` | 0 | checked-clean — `ok …/statusgen` |
+| 5 | `go run . --root .. --lint` | 0 | checked-clean — `LINT: PASS` |
+| 6 | `go run . --root .. --bottleneck` | 0 | checked-clean — per-stage WIP×dwell table renders |
+| 7 | `ls docs/streams/statusgen/devlake/` | 1 | **checked-FAILED** — the Task-4 DevLake deployment spec+runbook directory does not exist; `devlake` appears only in the brief's own filename |
+| 8 | `go run . --root .. --consumers --brief statusgen/11` | 2 | could-not-check — the code landed via forward-sync commit `18b521c`, not brief-11's own PR diff, so `--consumers` corroborates nothing at this SHA (target is the sync commit) |
+
+`RISK-VALUE: N/A` — commodity-metrics split, all risk axes `no`, gate `model`; no guard carries a risk-bearing literal.
+
+**VERIFY: FAIL** — rows 1 and 7 checked-failed: the Task-1 mapping page `docs/streams/statusgen/metric-map-11.md` (planned) and the Task-4 DevLake spec+runbook `docs/streams/statusgen/devlake/` (planned) are unfulfilled in this repo. The code half (rows 2/2b/3/4/5/6) is sound. **Status stays `implemented`** — the two doc deliverables must land, then re-verify rows 1 and 7. Fix owner: the brief's implementer/worker.
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table, checking specifically:
 the mapping page covers every removed computation (nothing vanished unmapped), the rehomed backlog
