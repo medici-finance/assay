@@ -136,10 +136,11 @@ finished `assay:install` run hands you a checklist rather than the impression th
    **separate human account** — the two are the trust boundary the whole model rests on. See the
    **two-accounts prerequisite** (§2 `automation identity`); this checklist does not re-explain it.
 2. **Create + install the GitHub Apps** (creation, key-gen, and install are repo-admin-only):
-   the **reviewer App** (`pull_requests: write`, `contents: read-only` — it must not be able to
-   commit — plus `checks`/`statuses`/`actions: read` so it can read CI to gate on it; if you run the
-   full desk pipeline, grant those same three read scopes to the worker + desk Apps, never to a
-   verifier / inbound-lane App); the **board-writer App** *only if you turn on branch protection* (`contents: write`
+   the **reviewer App** (`pull_requests: write`, `issues: write`, `contents: write` — the three
+   write duties the desk tools' boot preflight requires of **every** role, see
+   `setup-reviewer-app` in §3 — plus `checks`/`statuses`/`actions: read` so it can read CI to gate
+   on it; if you run the full desk pipeline, grant those same three read scopes to the worker + desk
+   Apps, never to a verifier / inbound-lane App); the **board-writer App** *only if you turn on branch protection* (`contents: write`
    only, added to the ruleset bypass — §3 `add-statusgen-ci`); and the **automation identity** the
    fleet runs as. For **each** App: generate the private key (PEM), store it at the config-home
    (`~/.config/assay/`, mode `0600`) — **never in the repo tree or a committed env file** — install
@@ -256,7 +257,7 @@ of these is done. Until they are, the honest sentence above is the whole of the 
 | **mistake-proofing discipline** | Normative rules for the *devices* — how a check/gate/guard/scaffold is classified and kept honest (D1-D7), plus the brief-authoring rules (B1-B10) | `docs/mistake-proofing.md` — adopt it incrementally in the value-per-cost order of its **§5 adoption ladder**, which is the on-ramp | reference only — no file lands; the rules bind the checks you write |
 | **methodology skills / plugin** | The two portable methodology skills (`assay:adopt`, `assay:author-brief`) plus the desk-role skills for the five-desk pipeline (`assay:the-desk`, `assay:intake-desk`, `assay:batch-fanout`, `assay:pr-review-desk`, `assay:verify-desk`), namespaced `assay:<name>` | `.claude-plugin/marketplace.json`, `plugins/assay/` — see `install-desk-plugin` | installed via `/plugin`, cached under `~/.claude` |
 | **desk-tools** | The desk-role **binaries** (`deskboard`, `deskpr`, `deskevidence`, `deskfile`, `deskpost`, …) the five desk-role skills drive as their **primary** path — they carry the guards, write-budgets, and roster + trust gates. **Optional-but-recommended**: without them the desk skills fall back to raw `gh`/`git` (works, but loses the guards). Acquired as a pinned, sha256-verified tarball — the **same mechanism as statusgen** | a **release tarball** (`desk-tools-<platform>.tar.gz`) from the same release as statusgen — see `install-desk-tools` | **no source in your repo** — a `.assay-versions` pin plus the installed binaries on `PATH`; config at the config-home (`~/.config/assay/`) |
-| **reviewer GitHub App** | The separate review identity (§1a) — attribution, not authorization; `pull_requests: write` with **no** `contents: write`, plus **`checks`/`statuses`/`actions: read`** so it can read CI to gate on it, is the *recommendation* (§3 `setup-reviewer-app`) | CORE `setup-reviewer-app` (runbook) | GitHub org/account settings — **not a repo file** |
+| **reviewer GitHub App** | The separate review identity (§1a) — attribution, not authorization; `pull_requests: write`, `issues: write`, `contents: write` (the desk tools' required duty set — a reviewer without all three fails the boot preflight) plus **`checks`/`statuses`/`actions: read`** so it can read CI to gate on it (§3 `setup-reviewer-app`) | CORE `setup-reviewer-app` (runbook) | GitHub org/account settings — **not a repo file** |
 | **automation identity** | The account (and/or role Apps) the fleet **runs as** — authors PRs, pushes branches, runs CI, mints tokens. Distinct from the human account (the two-accounts prerequisite). Minimum = one machine account plus the reviewer App it owns; larger fleets *optionally* split it into role Apps (worker / verifier / desk / loop) — a decomposition, **not** a requirement | operator-provisioned (GitHub org/account) | GitHub org/account settings — **not a repo file** |
 | **board-writer GitHub App** | Needed **only** if `main` is branch-protected (§3 `add-statusgen-ci`): a dedicated App with **`contents: write` only**, added to the branch's ruleset bypass so the push-to-main statusgen regen can commit `STATUS.md` past protection. Not needed when protection is off | CORE `add-statusgen-ci` (when protection is on) | GitHub org/account settings + the branch's ruleset bypass — **not a repo file** |
 | **.githooks main-guard** | `pre-commit` refusing `main` commits without `ASSAY_MAIN_COMMIT_OK` (worktree-isolation backstop) | parent-project hardening (not shipped in the toolkit) | `.githooks/pre-commit` + `core.hooksPath` |
@@ -699,8 +700,9 @@ roll-up, Next-up, awaiting-verification, unresolved-findings should reflect your
 **Verify:** `test -f "$TARGET/STATUS.md" && grep -q "Next up" "$TARGET/STATUS.md"`; `--lint` exited 0.
 
 ### PRIMITIVE: setup-reviewer-app — HUMAN-GATED
-Prepare the exact App name + permission toggles (`pull_requests: write`, `contents: read-only` — the
-reviewer must not be able to commit — plus **`checks: read`, `statuses: read`, `actions: read`** so
+Prepare the exact App name + permission toggles (`pull_requests: write`, `issues: write`,
+`contents: write` — the three duties the desk tools require of every role — plus
+**`checks: read`, `statuses: read`, `actions: read`** so
 the reviewer can read CI to gate on it), then **escalate**: App creation,
 key generation, and installation are the GitHub-admin's. The App's bot login is what makes a verdict
 **attributable to an identity the PR author cannot post as** — a placeholder or self-minted stand-in
@@ -716,18 +718,50 @@ it has a control it does not have. **§1a** gives the
 sentence to use, and why this guide retires the stronger word — do not describe the install in
 stronger terms when you report it.
 
-**Adopter caution — `contents: read-only` is the recommendation.** The
-read-only reviewer is what keeps *author ≠ approver* mechanically true. A deployment whose reviewer App
-carries `contents: write` (so it can flip its own draft PRs) makes
-that boundary discipline-held rather than mechanical. Take the read-only default unless you have a reason, and record
-the trade if you don't.
+**The required duty set — all three writes, on every role.** The desk tools run a boot preflight
+before any work is claimed, and its `app-scopes-vs-duties` check compares the installation's granted
+scopes against **one** required-duty list applied identically to every role:
 
-**CI-read scopes are separate from `contents` — grant them even on a read-only reviewer.** The
+| Permission | Level | The duty it covers |
+|---|---|---|
+| `pull_requests` | write | commenting on a PR thread (a review, or a plain comment) |
+| `issues` | write | filing and commenting on issues |
+| `contents` | write | landing commits (Evidence rows, board/status updates) |
+
+The check **refuses to run a role whose App is missing any of them** — the source of truth is
+[`tools/desk/internal/deskkit/preflight.go`](../tools/desk/internal/deskkit/preflight.go)
+(`requiredDuties`), not this guide. Provision all three for the reviewer App, and for any other role
+App you create. GitHub offers no narrower toggle: there is no separate "post a review" permission to
+grant and no separate "comment without committing" one to withhold.
+
+**Why the earlier `contents: read-only` recommendation is retired.** Revisions of this guide before
+2026-09-02 told adopters to withhold `contents: write` from the reviewer, on the reasoning that a
+reviewer that cannot commit keeps *author ≠ approver* mechanically true. Two things were wrong with
+it, and both were paid for in real installs:
+
+- **It does not boot.** A reviewer App at `contents: read` fails `app-scopes-vs-duties` and the
+  preflight stops the role before it claims anything. An adopter following the old text provisions a
+  reviewer that cannot run — which is what happened to a freshly provisioned cell on 2026-09-02
+  (its verifier App failed the same check on `pull_requests: read`).
+- **It was not buying the control it claimed.** *Author ≠ approver* comes from two things that have
+  nothing to do with the `contents` scope: the reviewer is a **distinct identity** nobody without
+  its private key can post as (§1a — attribution, and the audit trail that follows it), and **the
+  forge itself rejects a self-approval** — GitHub will not let an App approve a pull request it
+  authored. Withholding `contents: write` never touched review posting, which `pull_requests: write`
+  governs; it only stopped the reviewer landing a commit. That is a *different* boundary, and one
+  worth keeping — but keep it where it belongs: in branch protection / a ruleset that says who may
+  push where, which binds every identity rather than one App's scope sheet.
+
+If your deployment separates "may review" from "may land on the default branch", express that in
+branch protection, not by starving a role of a scope its own tooling requires.
+
+**CI-read scopes are separate from the three writes — and narrower.** The
 reviewer reads CI check status to gate on it (it never approves or flips a PR over red CI), which
 means the App needs **`checks: read`, `statuses: read`, and `actions: read`** — `checks`/`statuses`
 for the `commits/<sha>/check-runs` + `statusCheckRollup` reads, `actions` for the failing run's
-logs. These are **read-only** and orthogonal to the `contents: read-only` recommendation: a reviewer
-that cannot commit still must read CI. Missing any of them surfaces not as a clean error but as an
+logs. These are the one part of the grant that **is** role-scoped: unlike the three writes above,
+which every role needs, the CI-read trio goes only to the roles that actually read CI. Missing any
+of them surfaces not as a clean error but as an
 opaque **HTTP 403** on the CI-rollup read, after which the gate silently degrades. **If you run the
 full desk pipeline** (a separate **worker** and/or **desk** App, via `install-desk-tools`), grant the
 same three read scopes to those Apps too — they read CI to shepherd red PRs and to detect main-red.
@@ -736,10 +770,16 @@ creation, the grant is the **GitHub-admin's** act — set the toggles in the App
 events* and re-consent the install; a tool cannot self-grant.
 
 **Verify:** the App appears in the repo's installed-Apps list; a probe PR receives a review authored
-by the reviewer-App **bot**, not a user account; and — **for an install that took the `contents:
-read-only` default** — the App has no `contents: write`. If you recorded a deviation above, that
-last clause does not apply to you: check instead that the deviation is written down where the next
-reader of your setup will meet it.
+by the reviewer-App **bot**, not a user account; the install's granted permissions include all three
+of `pull_requests: write`, `issues: write`, `contents: write` (read them back — an added permission
+stays *pending* until the account owner accepts it, so a toggle set is not yet a grant held); and
+the desk tools' boot preflight reports `app-scopes-vs-duties` **checked-clean** for the role. Re-mint
+the role's token **fresh** before you trust that reading: a cached token carries the grant it was
+minted under for the rest of its reuse window, so a preflight run against a stale token re-reads the
+old scopes and stays red after a correct grant.
+
+*(This Verify clause used to assert the opposite — that the App has **no** `contents: write`. That
+check is retired: it now fails every correctly provisioned reviewer.)*
 
 ## 3a. What the bundle delivers by itself — and what you still have to write
 
@@ -1016,7 +1056,7 @@ tooling — one methodology source, one review identity, each repo contributing 
 1. **Prove the single-repo loop on the highest-traffic repo first.** Run Scenario 1's primitives there end-to-end; confirm one brief goes `todo → … → done` with a real reviewer-App verdict **before** touching another repo. **Verify:** the primary repo has a `STATUS.md` on `main` with a populated Next-up; one brief reached `verified`/`done` with a bot review. **ESCALATE** if the board never appears on `main` — that's the bootstrap-guard bug; fix it before fanning out.
 2. **Scaffold streams in each additional repo** (core primitives, per repo, in that repo's **own owned worktree** — isolation is per-repo). Run `scaffold-streams`, `install-main-guard`, `install-desk-plugin`. Do **not** run `install-statusgen` here (step 3 does it suite-wide), and do **not** re-run `configure-roster` per repo — the roster is **one file per operator**, not a per-repo artifact; adding a repo to the suite means adding it to `ASSAY_ALLOWED_REPOS`, and a repo missing from that value is refused by every desk tool. Write **each** repo's own local bindings (**§3a**): the method is shared suite-wide via one bundle and one hook, but streams, risk paths, single-writer artifacts and isolation mechanics are per-repo, and a session working in repo B cannot read repo A's instruction file. **Verify:** each repo has `docs/streams/` with a valid `brief-v1` stream README; `core.hooksPath` resolves; each repo's instruction file answers the §3a checklist.
 3. **Install the pinned statusgen release into each repo (do not vendor N copies).** The tool comes from **one place — `assay/statusgen`** — so copies can't drift. Run `install-statusgen` per repo: **channel E**, a `.assay-versions` pin plus a sha256-verified release binary. Every repo in the suite should pin the **same tag**, and a suite-wide upgrade is then N one-line pin bumps you can see in a diff. Prior revisions of this doc recommended **D — CI fetch-and-run at a pinned ref**; that is now the fallback for a runner that cannot download release assets, because a pinned ref pins *source* and rebuilds it per run, so nothing is ever hash-checked.  Then run `add-statusgen-ci` per repo. **Verify:** `statusgen --root <adopter>` writes `<adopter>/STATUS.md`; every repo's `.assay-versions` names the same `statusgen` tag (`grep -h '^statusgen ' */.assay-versions | sort -u | wc -l` → 1); no repo carries a `statusgen/` source tree; after first merge, `STATUS.md` appears on `main`. **ESCALATE** private-repo CI auth (the release-download token) to the admin.
-4. **Install ONE reviewer GitHub App across ALL repos** (`setup-reviewer-app`) — dual-installed on the account and the org with `repository_selection: all` so new repos are auto-covered; the token minter picks the install by the `owner/repo` slug. **Verify:** `gh api /app/installations` shows both installs with `all`; the App can post a review in a spot-checked repo per account; and — **for an install that took the `contents: read-only` default** — it has no `contents: write`. (Recorded deviations exempt the last clause — a reviewer deliberately granted `contents: write` will not pass it.) **ESCALATE** — App creation is the admin's alone.
+4. **Install ONE reviewer GitHub App across ALL repos** (`setup-reviewer-app`) — dual-installed on the account and the org with `repository_selection: all` so new repos are auto-covered; the token minter picks the install by the `owner/repo` slug. **Verify:** `gh api /app/installations` shows both installs with `all`; the App can post a review in a spot-checked repo per account; and each install's `.permissions` holds all three required duties — `pull_requests: write`, `issues: write`, `contents: write` (§3 `setup-reviewer-app`). **ESCALATE** — App creation is the admin's alone.
 5. **Enable multi-repo dispatch in `batch-fanout`**: define the board-bearing **repo set in ONE place** in the skill; loop it, regenerating each repo's board to scratch with **that repo's** statusgen command and extracting its Next-up (skip a non-dispatchable repo **with a logged note**); merge into one **repo-tagged** batch preserving each board's per-stream cap + ordering; make every worker-dispatch carry the target repo + "isolate in an owned worktree of that repo, open the draft PR in that repo"; reconcile the PR-scan set with the board set. **Verify:** the skill names the repo set + both statusgen forms; a dry-run surfaces a pick whose repo is **not** the primary; worker-dispatch carries per-repo isolation.
 6. **Aggregate / roll-up view (direction).** End state = a master board across the suite. Today the aggregate is the merged dispatch batch (step 5); the standalone master aggregator is a later direction. Keep the board-bearing repo set canonical in one place so a future aggregator has a single source. Don't block adoption on it.
 7. **Fan out to the rest of the suite** — repeat steps 2–4 per repo, adding each to the board-bearing set (one line) **as it becomes dispatchable**. **Verify:** every intended repo has a `STATUS.md` on `main`; the App is an available reviewer in each; a full dispatch surfaces picks from more than one repo.
