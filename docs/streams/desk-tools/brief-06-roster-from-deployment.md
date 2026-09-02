@@ -183,6 +183,24 @@ formal `statusgen verifyrun` witness by re-running the same command.
 | 6 | `if grep -qE '[^/A-Za-z0-9_-]#[0-9]+' docs/streams/desk-tools/brief-06-roster-from-deployment.md; then echo 1; else echo 0; fi` | manual-run exit=0 | `0` (sha256:9a271f2a916b) | 2026-09-01 | assay-worker-app[bot] (darwin, non-hermetic) |
 | 7 | `statusgen --lint --root . >/dev/null 2>&1; echo $?` | manual-run exit=0 | `0` — `LINT: PASS` (sha256:9a271f2a916b) | 2026-09-01 | assay-worker-app[bot] (darwin, non-hermetic) |
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5927efe`
+
+Runner ≠ implementer (the rows above are the implementer's; this is the independent non-implementer re-run). Own temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`). Design-direction brief — all seven Verify rows are text/grep/lint checks over the brief's own committed content.
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `awk '…5 resolution-table concerns… END{exit(n==5?0:1)}' <brief>` | 0 | resolution table maps exactly 5 concerns (4 config + key material) |
+| 2 | `grep -q 'deskroster render --from cells.yaml' <brief>` | 0 | render verb named |
+| 3 | grep for `render verb` + `pod config-resolution path` + `sealed-secret mount contract` + `migration off` | 0 | all four follow-on deliverables named |
+| 4 | grep for `401` + `parity` + `fail-clos` | 0 | three named pain points addressed |
+| 5 | grep for `secret-custody ladder` + `OpenBao secret-store track` | 0 | custody ladder stated, store install scoped OUT |
+| 6 | `grep -qE '[^/A-Za-z0-9_-]#[0-9]+' <brief>` (negative) | 0 | no bare `#NNN` issue ref (self-containment proxy) |
+| 7 | `statusgen --lint --root <worktree>` | 0 | `LINT: PASS` (only non-fatal NOTICEs) |
+
+`RISK-VALUE: N/A` — design-direction brief; implements no code, names no literal constant in any guard (config concepts `roster.env`/`cells.yaml`/`deskroster` are named neutrally, not as source values).
+
+**VERIFY: PASS** — all seven Verify rows checked-clean by a non-implementer. Advancing `implemented → verified`.
+
 ## Review
 Gate: model (from frontmatter). A reviewer answers, in the verdict: (1) is `cells.yaml` + mounted
 sealed secrets + env the right source of truth to replace the hand-kept `roster.env`, and is the
