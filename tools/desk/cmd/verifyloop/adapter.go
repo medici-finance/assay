@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/runnertable"
 )
 
 // VerifyLoop is the verify-desk reference consumer of the drain engine. It
@@ -56,7 +57,7 @@ type VerifyLoop struct {
 	// surface — native dispatch resolves the runner for the item's tier from it, and
 	// Result.RunnerID is derived from the resolved entry (runnertable.go). nil keeps
 	// the legacy single-value path below (additive-and-inert-by-default).
-	RunnerTable *RunnerTable
+	RunnerTable *runnertable.RunnerTable
 	// RunnerCmd is the legacy single runner value, kept as the
 	// fallback / test-injection path: a runner that silently reaches the network
 	// needs an explicit config value, so native mode with BOTH RunnerTable nil AND
