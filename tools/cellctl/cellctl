@@ -15,6 +15,10 @@
 #                                                tmux session "<cell>-cell": deskd + the-desk + one window per role
 #   cellctl down  <cell> [--keep-deskd]          tear the session (and this cell's deskd) down
 #
+# Models are PINNED per role, never the CLI default: cell.env sets DESK_MODEL_DEFAULT (every role)
+# and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the_desk=opus). Values are what
+# `claude --model` accepts (opus | sonnet | haiku | a full model id).
+#
 # A cell directory holds:
 #   cell.env            the per-cell variables (written by `cellctl new`)
 #   cells-<cell>.yaml   the cell's slice of the desk console's cells.yaml (must validate on its own)
@@ -45,7 +49,7 @@ REAL_CONFIG_HOME="${ASSAY_CONFIG_HOME:-$HOME/.config/assay}"
 ROLES_DEFAULT="the-desk pr-review-desk verify-desk intake-desk worker-desk"
 
 die(){ echo "cellctl: $*" >&2; exit 3; }
-usage(){ sed -n '2,32p' "$0"; exit "${1:-0}"; }
+usage(){ sed -n '2,36p' "$0"; exit "${1:-0}"; }
 
 cell_dir(){ local c="$1" d="$CELLS_ROOT/$1"; [[ -f "$d/cell.env" ]] || die "no cell '$c' under $CELLS_ROOT (cell.env missing)"; echo "$d"; }
 load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
@@ -61,6 +65,7 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
   DESKD_ADDR="${DESKD_ADDR:-127.0.0.1:8787}"
   DESKD_INDEX="${DESKD_INDEX:-$CELL_DIR/index/index.db}"
   ROLES="${ROLES:-$ROLES_DEFAULT}"
+  DESK_MODEL_DEFAULT="${DESK_MODEL_DEFAULT:-sonnet}"
   SESSION="${TMUX_SESSION:-${CELL}-cell}"
   [[ -n "${CELL_REPO:-}" ]] || die "cell.env: CELL_REPO (the checkout roles worktree from) is not set"
 }
@@ -162,11 +167,18 @@ cmd_desk(){
   load_cell "$1"; local role="${2:?cellctl desk <cell> <role> [CLAUDE_CONFIG_DIR]}"
   case "$role" in intake-desk|worker-desk|pr-review-desk|verify-desk|the-desk) ;; *) die "unknown role '$role'";; esac
   local cfg; cfg="$(resolve_cfg "${3:-}")"
-  local wt="$CELL_DIR/worktrees/$role" session="${CELL}-${role%-desk}"
-  [[ "$role" == "the-desk" ]] && session="${CELL}-the-desk"
+  # ONE name for both surfaces: the roster beacon (DESK_SESSION) and the session's display name
+  # (--name), so the cell's coordinator sees "<cell>-<short role>" in its agent listing and in the
+  # roster alike. `${role%-desk}` would leave "the" for the-desk, hence the explicit case.
+  local short="${role%-desk}"; [[ "$role" == "the-desk" ]] && short="the-desk"
+  local wt="$CELL_DIR/worktrees/$role" session="${CELL}-${short}"
   [[ -f "$CELL_CONFIG/roster.env" ]] || die "cell home has no roster: $CELL_CONFIG/roster.env"
+  # The model is PINNED per role, never left to the CLI default. Two `local` lines: in a single
+  # `local a=… b="${!a}"` the indirect expansion reads the name before it is assigned.
+  local mvar="DESK_MODEL_${role//-/_}"
+  local model="${!mvar:-$DESK_MODEL_DEFAULT}"
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
-    echo "[dry-run] cell=$CELL role=$role cfg=$cfg wt=$wt session=$session shims→HOME=$CELL_HOME"; return 0
+    echo "[dry-run] cell=$CELL role=$role model=$model cfg=$cfg wt=$wt session=$session shims→HOME=$CELL_HOME"; return 0
   fi
   CLAUDE_CONFIG_DIR="$cfg" claude plugin enable assay@assay >/dev/null 2>&1 \
     || echo "NOTICE: could not enable assay@assay in $cfg — inside the session: /plugin install assay@assay" >&2
@@ -189,8 +201,9 @@ cmd_desk(){
   deskd_up || echo "NOTICE: cell deskd is NOT up on $DESKD_ADDR — in your shell: CELL_ATTENDED=1 cellctl deskd $CELL" >&2
   gen_shims
   cd "$wt"
-  echo "[launch] $CELL/$role session=$session config=$cfg cwd=$wt (desk verbs → HOME=$CELL_HOME)"
-  exec env PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" claude "/assay:$role"
+  echo "[launch] $CELL/$role model=$model session=$session config=$cfg cwd=$wt (desk verbs → HOME=$CELL_HOME)"
+  exec env PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
+    claude --name "$session" --model "$model" "/assay:$role"
 }
 
 cmd_up(){
@@ -272,6 +285,9 @@ DESKD_APP_PEM=$pem
 DESKD_APP_ID_VAR=$idvar
 ORGS=$orgs
 ROLES="$ROLES_DEFAULT"
+# Pinned models (values \`claude --model\` accepts); the CLI default is never used.
+DESK_MODEL_DEFAULT=sonnet
+DESK_MODEL_the_desk=opus
 EOF
   cat > "$d/README.md" <<EOF
 # $cell cell — scaffolded by cellctl

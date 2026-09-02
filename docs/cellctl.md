@@ -204,7 +204,13 @@ and touches nothing.
 
 Each window gets: the `assay@assay` plugin enabled in that config dir; its own worktree under
 `worktrees/<role>` fast-forwarded to `origin/main`; the real `HOME` with `shim/` first on `PATH`;
-`DESK_LOOP` and `DESK_SESSION` set; and `/assay:<role>` as its first prompt.
+`DESK_LOOP` and `DESK_SESSION` set; its pinned model; and `/assay:<role>` as its first prompt.
+
+Each window is named **`<cell>-<short role>`** — the role without its `-desk` suffix, except
+`the-desk`, which keeps its full name (`<cell>-the-desk`, `<cell>-pr-review`, `<cell>-verify`,
+`<cell>-intake`, `<cell>-worker`). That one string is used for **both** surfaces: `DESK_SESSION`, the
+roster beacon, and `claude --name`, the session's display name — so the cell's coordinator sees the
+same identity in the roster and in its agent listing rather than two names for one window.
 
 Two details in the boot are there for a reason. The shared `fetch` is **serialised with a lock
 directory**, because several windows starting at once fetch the same `.git` and race on the ref lock.
@@ -245,6 +251,34 @@ Kills the session and this cell's `deskd` — matched on its own `--config` path
 
 ---
 
+## Pinned models
+
+**Every role window launches on a model named in `cell.env`. The CLI default is never used.** A
+default that moves under a running cell changes what five long-lived loops do without anything in the
+cell saying so, which is the kind of drift a cell exists to keep out.
+
+```
+DESK_MODEL_DEFAULT=sonnet     # every role that has no override
+DESK_MODEL_the_desk=opus      # per-role override: the role name with `-` replaced by `_`
+```
+
+An override is `DESK_MODEL_<role>` with hyphens replaced by underscores — `DESK_MODEL_the_desk`,
+`DESK_MODEL_pr_review_desk`, `DESK_MODEL_verify_desk`, and so on. Values are whatever
+`claude --model` accepts: an alias (`opus`, `sonnet`, `haiku`) or a full model id, including a
+long-context variant. `DESK_MODEL_DEFAULT` itself falls back to `sonnet` if `cell.env` omits it, and
+`cellctl new` scaffolds both lines above so a fresh cell is pinned from the start.
+
+**Why the defaults are shaped that way.** The four loop roles are mechanical dispatchers: they read a
+board, claim an item, open a worktree, and hand the actual judgment to the agent they dispatch. The
+coordinator window is where judgment happens in the loop itself. So the loops get the cheaper model
+and `the-desk` gets the stronger one — and either can be moved per cell, which is the point of
+putting it in `cell.env` rather than in the script.
+
+`cellctl desk` prints the resolved model on its launch line and in `DRY_RUN=1` output, so which model
+a window is on is visible without reading the config.
+
+---
+
 ## `cell.env`
 
 `cellctl new` writes it; edit it directly afterwards.
@@ -260,4 +294,6 @@ Kills the session and this cell's `deskd` — matched on its own `--config` path
 | `DESKD_APP_ID_VAR` | the variable name in the **cell home's** `apps.env` holding that App's id (default `DESK_APP_ID`, the generic role name a cell `apps.env` uses) |
 | `ORGS` | comma-separated orgs to mint one installation token each for |
 | `ROLES` | the role windows `up` opens (default: all five) |
-| `TMUX_SESSION` | override the session name (default `<cell>-cell`) |
+| `DESK_MODEL_DEFAULT` | the model every role window launches on (default `sonnet`) |
+| `DESK_MODEL_<role>` | per-role model override — role name with `-` as `_`, e.g. `DESK_MODEL_the_desk=opus` |
+| `TMUX_SESSION` | override the tmux session name (default `<cell>-cell`) |
