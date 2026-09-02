@@ -1,0 +1,298 @@
+#!/usr/bin/env bash
+# cellctl — start, stop and scaffold an Assay CELL on one laptop (the laptop route).
+#
+#   cellctl ls                                   cells under $CELLS_ROOT
+#   cellctl new   <cell> --repo <checkout> --cells-yaml <file> --orgs a,b \
+#                        --deskd-app-pem <pem> --deskd-app-id-var <VAR> [--port N]
+#                                                scaffold <cell>/ (cell.env, home/, README) — then YOU fill
+#                                                home/.config/assay/{roster.env,apps.env} + the key symlinks
+#   cellctl check <cell>                         preconditions: cell.env, roster, keys, binaries, plugin, repo
+#   cellctl deskd <cell>                         stand the cell's persistent deskd (attended: mints per-org read tokens)
+#   cellctl desk  <cell> <role> [CLAUDE_CONFIG_DIR]   one role window (own worktree, real HOME, shims)
+#   cellctl up    <cell> [--no-the-desk] [--no-attach] [CLAUDE_CONFIG_DIR]
+#                                                tmux session "<cell>-cell": deskd + the-desk + one window per role
+#   cellctl down  <cell> [--keep-deskd]          tear the session (and this cell's deskd) down
+#
+# A cell directory holds:
+#   cell.env            the per-cell variables (written by `cellctl new`)
+#   cells-<cell>.yaml   the cell's slice of the desk console's cells.yaml (must validate on its own)
+#   home/               the CELL config-home: .config/assay/roster.env (this cell's role→App bindings),
+#                       .config/assay/apps.env + <role>-app.pem symlinks into the operator's real
+#                       config home (key material is symlinked, never copied), and .config/gh +
+#                       .gitconfig symlinked to the operator's real ones
+#   bin/                deskd + deskcli for this cell
+#   index/              the persistent deskd index
+#   worktrees/<role>/   one worktree per role, fast-forwarded to origin/main at every boot
+#   shim/               generated: every desk verb wrapped to run with HOME=<cell>/home
+#
+# Design rule: the Claude session keeps the operator's REAL HOME and CLAUDE_CONFIG_DIR, because the
+# harness keys its login, plugins and memory by HOME — swapping HOME for the whole session loses the
+# login. ONLY the desk verbs run with the cell config-home, and they get there through the shims.
+set -euo pipefail
+
+CELLS_ROOT="${CELLS_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/assay/cells}"
+# Where the pinned desk-tools tarball installs its binaries (docs/adopting-assay.md,
+# PRIMITIVE: install-desk-tools). Override for a different bindir.
+DESK_TOOLS_BIN="${DESK_TOOLS_BIN:-/opt/desk-tools/bin}"
+# The operator's REAL config home — the one holding the App private keys the cell symlinks to.
+REAL_CONFIG_HOME="${ASSAY_CONFIG_HOME:-$HOME/.config/assay}"
+ROLES_DEFAULT="the-desk pr-review-desk verify-desk intake-desk worker-desk"
+
+die(){ echo "cellctl: $*" >&2; exit 3; }
+usage(){ sed -n '2,30p' "$0"; exit "${1:-0}"; }
+
+cell_dir(){ local c="$1" d="$CELLS_ROOT/$1"; [[ -f "$d/cell.env" ]] || die "no cell '$c' under $CELLS_ROOT (cell.env missing)"; echo "$d"; }
+load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
+  CELL_DIR="$(cell_dir "$1")"; CELL_DIR="$(cd "$CELL_DIR" && pwd)"
+  # shellcheck disable=SC1091
+  set -a; source "$CELL_DIR/cell.env"; set +a
+  CELL="${CELL:-$1}"
+  CELL_HOME="$CELL_DIR/home"
+  # The cell config-home is a FIXED relative path: the desk binaries resolve their config as
+  # $HOME/.config/assay, and the shims are what point $HOME at the cell.
+  CELL_CONFIG="$CELL_HOME/.config/assay"
+  CELLS_CONFIG="${CELLS_CONFIG:-$CELL_DIR/cells-$CELL.yaml}"
+  DESKD_ADDR="${DESKD_ADDR:-127.0.0.1:8787}"
+  DESKD_INDEX="${DESKD_INDEX:-$CELL_DIR/index/index.db}"
+  ROLES="${ROLES:-$ROLES_DEFAULT}"
+  SESSION="${TMUX_SESSION:-${CELL}-cell}"
+  [[ -n "${CELL_REPO:-}" ]] || die "cell.env: CELL_REPO (the checkout roles worktree from) is not set"
+}
+resolve_cfg(){ local in="${1:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"; [[ -d "$in" ]] || die "CLAUDE_CONFIG_DIR not a directory: $in"; (cd "$in" && pwd); }
+deskd_up(){ curl -fsS --max-time 3 "http://${DESKD_ADDR}/healthz" >/dev/null 2>&1; }
+
+gen_shims(){
+  mkdir -p "$CELL_DIR/shim"
+  local b n
+  for b in "$DESK_TOOLS_BIN"/*; do
+    [[ -x "$b" && -f "$b" ]] || continue
+    n="$(basename "$b")"
+    printf '#!/usr/bin/env bash\n# cellctl shim (%s): run this desk verb with the CELL config-home; the session keeps the real HOME.\nexec env HOME="%s" "%s" "$@"\n' \
+      "$CELL" "$CELL_HOME" "$b" > "$CELL_DIR/shim/$n"
+    chmod +x "$CELL_DIR/shim/$n"
+  done
+  # the cell's own deskd/deskcli come first on PATH too
+  if [[ -d "$CELL_DIR/bin" ]]; then
+    for b in "$CELL_DIR"/bin/*; do [[ -e "$b" ]] || continue; ln -sf "$b" "$CELL_DIR/shim/$(basename "$b")"; done
+  fi
+}
+
+# ---------------------------------------------------------------- verbs
+# No cells yet is a legitimate state, not a failure: an unmatched glob and an empty root both
+# print nothing and exit 0.
+cmd_ls(){ local d; for d in "$CELLS_ROOT"/*/; do [[ -f "$d/cell.env" ]] && basename "$d"; done; return 0; }
+
+cmd_check(){
+  load_cell "$1"; local ok=1
+  chk(){ if eval "$2"; then echo "  ok    $1"; else echo "  MISS  $1"; ok=0; fi; }
+  echo "[check] cell=$CELL dir=$CELL_DIR"
+  chk "cell.env CELL_REPO is a git checkout: $CELL_REPO" '[[ -d "$CELL_REPO/.git" ]]'
+  chk "cells config: $CELLS_CONFIG" '[[ -f "$CELLS_CONFIG" ]]'
+  chk "operator config home (symlink targets): $REAL_CONFIG_HOME" '[[ -d "$REAL_CONFIG_HOME" ]]'
+  chk "roster: $CELL_CONFIG/roster.env" '[[ -f "$CELL_CONFIG/roster.env" ]]'
+  chk "apps.env: $CELL_CONFIG/apps.env" '[[ -f "$CELL_CONFIG/apps.env" ]]'
+  chk "App key symlinks resolve" '! find "$CELL_HOME/.config" -type l ! -exec test -e {} \; -print | grep -q .'
+  chk "gh config linked: $CELL_HOME/.config/gh" '[[ -e "$CELL_HOME/.config/gh" ]]'
+  chk "deskd binary: $CELL_DIR/bin/deskd" '[[ -x "$CELL_DIR/bin/deskd" ]]'
+  chk "deskd read App key: ${DESKD_APP_PEM:-unset}" '[[ -r "${DESKD_APP_PEM:-/nonexistent}" ]]'
+  chk "desk-tools: $DESK_TOOLS_BIN/deskboot" '[[ -x "$DESK_TOOLS_BIN/deskboot" ]]'
+  chk "tmux" 'command -v tmux >/dev/null'
+  chk "deskd up on $DESKD_ADDR" 'deskd_up'
+  if [[ "$ok" == "1" ]]; then echo "[check] all preconditions met"; else echo "[check] fix the MISS rows first"; return 1; fi
+}
+
+cmd_deskd(){
+  load_cell "$1"
+  # deskd stands live cross-org reads on freshly minted installation tokens. It is ATTENDED-ONLY:
+  # the operator starts it from their own shell, so a token mint is never an unattended act.
+  [[ "${CELL_ATTENDED:-0}" == "1" ]] || die "deskd stands live cross-org reads — run from YOUR shell with CELL_ATTENDED=1"
+  [[ -x "$CELL_DIR/bin/deskd" ]] || die "no deskd at $CELL_DIR/bin/deskd"
+  [[ -n "${DESKD_APP_PEM:-}" && -r "${DESKD_APP_PEM:-}" ]] || die "DESKD_APP_PEM not readable: ${DESKD_APP_PEM:-unset}"
+  [[ -n "${DESKD_APP_ID_VAR:-}" ]] || die "cell.env: DESKD_APP_ID_VAR is not set"
+  [[ -n "${ORGS:-}" ]] || die "cell.env: ORGS is not set"
+  # shellcheck disable=SC1091
+  source "$CELL_CONFIG/apps.env"
+  local app_id="${!DESKD_APP_ID_VAR:-}"; [[ -n "$app_id" ]] || die "apps.env has no $DESKD_APP_ID_VAR"
+  local t; for t in openssl curl python3; do command -v "$t" >/dev/null || die "$t missing"; done
+  b64url(){ openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+  local now hdr pl sig jwt; now=$(date +%s)
+  hdr=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
+  pl=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' $((now-30)) $((now+540)) "$app_id" | b64url)
+  sig=$(printf '%s.%s' "$hdr" "$pl" | openssl dgst -sha256 -sign "$DESKD_APP_PEM" | b64url)
+  jwt="$hdr.$pl.$sig"
+  api(){ curl -fsS -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$@"; }
+  local slug; slug=$(api https://api.github.com/app | python3 -c 'import sys,json;print(json.load(sys.stdin)["slug"])')
+  echo "[deskd] signing as App $app_id ($slug)"
+  # ONE installation token PER ORG. An installation token is scoped to its own installation, so a
+  # single org's token returns 404 for every other org's slice — which reads as "repo missing", not
+  # as "wrong token", and is the failure this loop exists to prevent.
+  local org iid tok var
+  for org in ${ORGS//,/ }; do
+    iid=$(api https://api.github.com/app/installations | python3 -c '
+import sys,json; o=sys.argv[1]
+for i in json.load(sys.stdin):
+    if i["account"]["login"].lower()==o.lower(): print(i["id"]); break' "$org")
+    [[ -n "$iid" ]] || die "App $slug has NO installation on $org — install it there first"
+    tok=$(api -X POST "https://api.github.com/app/installations/${iid}/access_tokens" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+    var="DESKD_GITHUB_TOKEN_$(echo "$org" | tr '[:lower:]-' '[:upper:]_')"
+    export "$var=$tok"
+  done
+  unset jwt
+  echo "[deskd] per-org tokens minted (${ORGS}) — 1h TTL, not echoed"
+  mkdir -p "$(dirname "$DESKD_INDEX")"
+  # Go/no-go BEFORE the persistent run: --once walks every slice once and exits non-zero on a bad
+  # config or a missing installation, so a broken cell fails here rather than serving stale reads.
+  echo "[deskd] go/no-go: --once across the cell repos (expect: all slices checked, no owner 404s)"
+  "$CELL_DIR/bin/deskd" --config "$CELLS_CONFIG" --index "$DESKD_INDEX" --once
+  echo "[deskd] standing on $DESKD_ADDR (index $DESKD_INDEX)"
+  exec "$CELL_DIR/bin/deskd" --config "$CELLS_CONFIG" --index "$DESKD_INDEX" --addr "$DESKD_ADDR"
+}
+
+cmd_desk(){
+  load_cell "$1"; local role="${2:?cellctl desk <cell> <role> [CLAUDE_CONFIG_DIR]}"
+  case "$role" in intake-desk|worker-desk|pr-review-desk|verify-desk|the-desk) ;; *) die "unknown role '$role'";; esac
+  local cfg; cfg="$(resolve_cfg "${3:-}")"
+  local wt="$CELL_DIR/worktrees/$role" session="${CELL}-${role%-desk}"
+  [[ "$role" == "the-desk" ]] && session="${CELL}-the-desk"
+  [[ -f "$CELL_CONFIG/roster.env" ]] || die "cell home has no roster: $CELL_CONFIG/roster.env"
+  if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    echo "[dry-run] cell=$CELL role=$role cfg=$cfg wt=$wt session=$session shims→HOME=$CELL_HOME"; return 0
+  fi
+  CLAUDE_CONFIG_DIR="$cfg" claude plugin enable assay@assay >/dev/null 2>&1 \
+    || echo "NOTICE: could not enable assay@assay in $cfg — inside the session: /plugin install assay@assay" >&2
+  # Serialise the shared fetch: several windows boot at once against ONE .git, and concurrent
+  # fetches race on the same ref lock.
+  local lock="$CELL_REPO/.git/cellctl-fetch.lock"
+  local _i; for _i in $(seq 1 60); do mkdir "$lock" 2>/dev/null && break; sleep 1; done
+  # A fetch that lost the ref-lock race still wrote FETCH_HEAD, and FETCH_HEAD is all that is used
+  # below — so a non-zero exit here is a notice, not a stop.
+  git -C "$CELL_REPO" fetch --no-tags origin main || echo "NOTICE: fetch returned non-zero (ref-lock race?) — using FETCH_HEAD" >&2
+  local sha; sha="$(git -C "$CELL_REPO" rev-parse FETCH_HEAD)"
+  rmdir "$lock" 2>/dev/null || true
+  mkdir -p "$CELL_DIR/worktrees"
+  if [[ -e "$wt/.git" ]]; then
+    git -C "$wt" merge --ff-only "$sha" >/dev/null 2>&1 || echo "NOTICE: $wt did not fast-forward (local commits?) — left as is" >&2
+  else
+    git -C "$CELL_REPO" worktree add "$wt" -b "${CELL}-cell/${role}-$(date +%Y%m%d-%H%M%S)" "$sha"
+  fi
+  echo "[worktree] $wt @ ${sha:0:8}"
+  deskd_up || echo "NOTICE: cell deskd is NOT up on $DESKD_ADDR — in your shell: CELL_ATTENDED=1 cellctl deskd $CELL" >&2
+  gen_shims
+  cd "$wt"
+  echo "[launch] $CELL/$role session=$session config=$cfg cwd=$wt (desk verbs → HOME=$CELL_HOME)"
+  exec env PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" claude "/assay:$role"
+}
+
+cmd_up(){
+  load_cell "$1"; shift
+  local no_the_desk=0 attach=1 cfg_in="" a
+  for a in "$@"; do case "$a" in
+    --no-the-desk) no_the_desk=1;; --with-the-desk) ;; --no-attach) attach=0;; *) cfg_in="$a";;
+  esac; done
+  local cfg; cfg="$(resolve_cfg "$cfg_in")"
+  command -v tmux >/dev/null || die "tmux not installed"
+  if tmux has-session -t "$SESSION" 2>/dev/null; then
+    echo "[cell] $SESSION already running — attaching"
+    [[ "$attach" == "1" ]] && exec tmux attach -t "$SESSION"
+    return 0
+  fi
+  local deskd_cmd
+  if deskd_up; then
+    deskd_cmd="echo '[deskd] already up on $DESKD_ADDR — watching /healthz every 60s'; while :; do date -u +%H:%MZ; curl -s --max-time 5 http://$DESKD_ADDR/healthz | head -c 240; echo; sleep 60; done"
+  else
+    deskd_cmd="CELL_ATTENDED=1 '$0' deskd '$CELL'"
+  fi
+  tmux new-session -d -s "$SESSION" -n deskd -c "$CELL_DIR" "$deskd_cmd; echo '[deskd] exited'; exec \$SHELL"
+  local roles="$ROLES"
+  case " $roles " in *" the-desk "*) ;; *) roles="the-desk $roles";; esac
+  [[ "$no_the_desk" == "1" ]] && roles="${roles//the-desk/}"
+  local role name
+  for role in $roles; do
+    case "$role" in pr-review-desk) name=review;; the-desk) name=the-desk;; *) name="${role%-desk}";; esac
+    tmux new-window -t "$SESSION" -n "$name" -c "$CELL_DIR" "'$0' desk '$CELL' '$role' '$cfg'; echo '[$role] exited'; exec \$SHELL"
+    # Stagger the windows: each one fetches the shared .git, and starting them at once puts every
+    # window into the fetch lock's retry loop at the same moment.
+    sleep 2
+  done
+  tmux select-window -t "$SESSION:the-desk" 2>/dev/null || true
+  echo "[cell] $SESSION up: deskd +$roles (config=$cfg)"
+  echo "[cell] attach: tmux attach -t $SESSION   ·   down: cellctl down $CELL"
+  [[ "$attach" == "1" ]] && exec tmux attach -t "$SESSION"
+  return 0
+}
+
+cmd_down(){
+  load_cell "$1"; local keep=0; [[ "${2:-}" == "--keep-deskd" ]] && keep=1
+  if tmux has-session -t "$SESSION" 2>/dev/null; then
+    tmux kill-session -t "$SESSION"; echo "[cell] $SESSION killed"
+  else
+    echo "[cell] no session $SESSION"
+  fi
+  if [[ "$keep" == "0" ]]; then
+    if pkill -f "deskd --config $CELLS_CONFIG" 2>/dev/null; then echo "[cell] deskd stopped"; else echo "[cell] no deskd for this cell running"; fi
+  fi
+}
+
+cmd_new(){
+  local cell="${1:?cellctl new <cell> --repo … --cells-yaml … --orgs … --deskd-app-pem … --deskd-app-id-var …}"; shift
+  local repo="" yaml="" orgs="" pem="" idvar="" port=8787
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --repo) repo="$2"; shift 2;; --cells-yaml) yaml="$2"; shift 2;; --orgs) orgs="$2"; shift 2;;
+    --deskd-app-pem) pem="$2"; shift 2;; --deskd-app-id-var) idvar="$2"; shift 2;; --port) port="$2"; shift 2;;
+    *) die "new: unknown flag $1";; esac; done
+  [[ -n "$repo" && -n "$yaml" && -n "$orgs" && -n "$pem" && -n "$idvar" ]] \
+    || die "new: --repo --cells-yaml --orgs --deskd-app-pem --deskd-app-id-var are all required"
+  [[ -f "$yaml" ]] || die "new: --cells-yaml is not a file: $yaml"
+  local d="$CELLS_ROOT/$cell"; [[ -e "$d" ]] && die "$d already exists"
+  mkdir -p "$d/home/.config/assay" "$d/bin" "$d/index" "$d/worktrees"
+  cp "$yaml" "$d/cells-$cell.yaml"
+  [[ -e "$HOME/.config/gh" ]] && ln -s "$HOME/.config/gh" "$d/home/.config/gh"
+  [[ -e "$HOME/.gitconfig" ]] && ln -s "$HOME/.gitconfig" "$d/home/.gitconfig"
+  chmod 700 "$d/home" "$d/home/.config" "$d/home/.config/assay"
+  cat > "$d/cell.env" <<EOF
+# cellctl cell.env — $cell (scaffolded $(date -u +%F))
+CELL=$cell
+CELL_REPO=$repo
+CELLS_CONFIG=$d/cells-$cell.yaml
+DESKD_ADDR=127.0.0.1:$port
+DESKD_INDEX=$d/index/index.db
+DESKD_APP_PEM=$pem
+DESKD_APP_ID_VAR=$idvar
+ORGS=$orgs
+ROLES="$ROLES_DEFAULT"
+EOF
+  cat > "$d/README.md" <<EOF
+# $cell cell — scaffolded by cellctl
+
+Four steps remain. Each is a custody act — it moves key material or states who this cell trusts —
+so \`cellctl new\` does not do them for you. Then run \`cellctl check $cell\`.
+
+1. \`home/.config/assay/roster.env\` — THIS cell's roster: \`ASSAY_TRUSTED_LOGINS\`,
+   \`ASSAY_BLESS_LOGIN\`, \`ASSAY_TRUSTED_BOT_SLUGS\` with \`role=\` bindings to THIS cell's Apps,
+   and \`ASSAY_ALLOWED_REPOS\` / \`ASSAY_SCAN_REPOS\` naming the cell's repos ONLY. Start from
+   another cell's file as a template and replace every App — a copied binding points this cell's
+   writes at another cell's identity.
+2. \`home/.config/assay/apps.env\` — the cell's App ids (including \`$idvar\`), plus one
+   \`<role>-app.pem\` SYMLINK per role into your real config home (\`$REAL_CONFIG_HOME\`).
+   Symlink, never copy: one custody location for the private keys.
+3. \`bin/deskd\`, \`bin/deskcli\` — from the desk console (build its \`cmd/deskd\` and
+   \`cmd/deskcli\`), or from the release tarball if your channel ships them.
+4. \`cells-$cell.yaml\` — the cell's slice of \`cells.yaml\` and nothing else; it must validate on
+   its own, and no other cell's repos may appear in it.
+
+Then: \`CELL_ATTENDED=1 cellctl deskd $cell\` once, and \`cellctl up $cell\` for the cockpit.
+EOF
+  echo "[new] scaffolded $d — see $d/README.md for the four hand steps"
+}
+
+case "${1:-}" in
+  ls) cmd_ls ;;
+  check) cmd_check "${2:?cell}" ;;
+  deskd) cmd_deskd "${2:?cell}" ;;
+  desk) cmd_desk "${2:?cell}" "${3:-}" "${4:-}" ;;
+  up) shift; cmd_up "${1:?cell}" "${@:2}" ;;
+  down) cmd_down "${2:?cell}" "${3:-}" ;;
+  new) shift; cmd_new "$@" ;;
+  -h|--help|"") usage 0 ;;
+  *) die "unknown verb '$1' (try --help)" ;;
+esac
