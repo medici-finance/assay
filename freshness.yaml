@@ -1,0 +1,25 @@
+# freshness.yaml — periodic re-review manifest read by tools/freshness.
+#
+# tools/freshness ships as a tool; the manifest it reads is the adopter's own
+# to write. This repo is also an adopter of its own tooling for the documents
+# below, whose truth depends on code elsewhere rather than on anything the
+# lint checks — exactly the class docs/iso9001-mapping.md's 7.5.1-7.5.2 row
+# points at. Run `cd tools/freshness && go run . --root ..` to check it.
+
+artifacts:
+  - path: docs/records-and-retention.md
+    last-reviewed: "2026-09-01"
+    max-age-days: 45
+    upstreams:
+      - repo: .
+        globs:
+          - "statusgen/registers.go"
+          - "statusgen/verifyrun.go"
+          - "statusgen/witnessgate.go"
+          - "statusgen/registerrefs.go"
+          - "statusgen/viewlinks.go"
+          - ".github/workflows/assay-statusgen.yml"
+          - ".github/workflows/release.yml"
+          - "docs/registers.md"
+          - "docs/evidence-bundle.md"
+          - "docs/telemetry.md"
