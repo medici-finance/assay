@@ -68,7 +68,12 @@ discharged by a human.
 | B4 · verdict note | reviewer `41987965` | `POST …/merge_requests/2/notes` → `HTTP 201`; body carries `Verdict: APPROVE` and pins head `d775ce4e…` in text, because `reset_approvals_on_push` is Premium and reads `false` here | note id `3778082812` | 2026-09-02T21:22:01.789Z |
 | B5 · approve | reviewer `41987965` | `POST …/merge_requests/2/approve` → `HTTP 201` | `approved: true`, `approved_by[0].user.id = 41987965`; MR `author.id = 41987966` — **author ≠ approver** | 2026-09-02T21:22:02.234Z |
 | B6 · ready flip | desk `41987971` | `PUT …/merge_requests/2` stripping the `Draft:` prefix → `HTTP 200`, `draft: false`, `work_in_progress: false` (row A2, Free) | `detailed_merge_status: mergeable` | 2026-09-02T21:22:13.325Z |
-| B7 · **human merge** | — | **not performed by this session** | pending | — |
+| B7 · human merge | the owner | merged MR `!2` into protected `main` | merge commit `ac770603c3c2ce05ad35735516182ded55c002b0` | 2026-09-02 |
+| B8 · verify | verifier `41987969` | the brief's Verify row run **against merged `main`**, not against the change's own head: `test -f docs/streams/pilot/hello.txt` → exit `0` at `ac770603c3…` | Evidence row written; runner `41987969` ≠ implementer `41987966` | 2026-09-02 |
+| B9 · Evidence + status flip | verifier `41987969` | commit `e8eff009ebe5df52e8ea457454d1d0004746a4c6`; stream README `todo` → `verified`, reviewer's approval of `!2` transcribed into `Reviewed`. Landed as a merge request, not a direct push — see D-8 | MR `!3`, id `527300098` | 2026-09-02T21:38:05.239Z |
+| B10 · board regeneration | board-writer `41987978` | `statusgen --root .` at `!3`'s head; diff is STATUS.md alone | commit `bfd01ac1b57b713aec7a028f48450d6f4515731d`, MR `!4` id `527300242`, **targeting `verify/pilot-01-evidence`** so the pair merges in order | 2026-09-02T21:38:40.313Z |
+| B11 · verdicts on both | reviewer `41987965` | head-pinned `Verdict: APPROVE` note + `/approve` on each → `HTTP 201` | `!3` and `!4` both `approved: true`, `approved_by: [41987965]`; authors `41987969` and `41987978` — author ≠ approver on both | 2026-09-02 |
+| B12 · **human merge** | — | **not performed by this session.** `!3` then `!4`, in that order | pending | — |
 
 The ready flip is the desk identity's, not the reviewer's, mirroring the GitHub division where
 the ready flip belongs to the review desk and never to the implementer. Read on MR `!2` after the
@@ -76,10 +81,16 @@ merge-access repair, `user.can_merge` is `false` for worker, reviewer, desk, ver
 board-writer and `true` only for the owner — so on this deployment the flip genuinely cannot run
 on into a merge.
 
-Still to come after B7, both as merge requests because `main` is push = No one: the verifier
-identity's Evidence row against merged `main`, and the board-writer identity's STATUS.md
-regeneration. **Verify row 4 stays `COULD-NOT-CHECK` until the latter lands**, recorded as such
-in §4 rather than assumed.
+The two post-merge steps are **stacked rather than serialised into two human gates**: `!4`
+targets `!3`'s branch instead of `main`, so merging `!3` then `!4` is one sitting. The stacking is
+forced by the data, not by convenience — STATUS.md is derived from the stream README that `!3`
+flips, so a board regenerated before `!3` landed would be a board of a state that did not exist.
+
+**Verify row 4 stays `COULD-NOT-CHECK` until `!4` lands**, recorded as such in §4 rather than
+assumed. On the board-writer's branch it already reads the right answer
+(`git log --format='%an' -1 -- STATUS.md` → the board-writer account), but a branch is not `main`
+and the row names the tracking repo's board, so the branch read is evidence of readiness, not of
+the row.
 
 One parity deviation is visible from that remaining design and is recorded here rather than
 discovered later: **on GitHub the verifier lands its Evidence row straight to `main`** (the sole
@@ -182,10 +193,10 @@ observed at the predicted tier, by the predicted status code.
 
 | Row | Command | Result | Citation |
 |---|---|---|---|
-| 1 | `grep -c '^[\|]' docs/streams/forge-gitlab/pilot-report.md` ≥ 12 | **checked-clean** | `grep -c '^[\|]'` over this file returns `52`; the §3 walk table alone contributes 16 of them (14 control rows + header + separator) |
+| 1 | `grep -c '^[\|]' docs/streams/forge-gitlab/pilot-report.md` ≥ 12 | **checked-clean** | `grep -c '^[\|]'` over this file returns `57`; the §3 walk table alone contributes 16 of them (14 control rows + header + separator) |
 | 2 | `…/merge_requests/:iid/approvals` shows approval by the reviewer account, author ≠ approver | **checked-clean** | `GET /projects/86032201/merge_requests/1/approvals` → `approved: true`, `approved_by[0].user.id = 41987965` (reviewer), MR `author.id = 41987971` (desk). Reproducible against the live system from the ids in this row |
 | 3 | mint twice, first token rejected `401` | **checked-clean** | `desktoken --forge gitlab worker` run twice, 2026-09-02 ~20:29Z (exit `0` both times; it prints the token *path*, never the value). The first token was captured to a 0600 scratch file from the token file between the mints, returned `HTTP 200` on `GET /user` before the second mint and `HTTP 401 {"error":"invalid_token","error_description":"Token was revoked. You have to re-authorize from the user."}` after it; the scratch file was deleted immediately after the check. The replacement token: `GET /personal_access_tokens/self` → id `27157268`, `expires_at "2026-09-09"`, `active: true` |
-| 4 | `git log --format='%an' -1 -- STATUS.md` is the board-writer account | **could-not-check** | Board regeneration is step B8, gated on the human merge of MR `!2` (step B7). Not run, not inferred. On merged `main` today STATUS.md's only commit is `52879f61050c433276836afe61a066e1ce0e507f`, authored by the **desk** account as part of the seed — so this row would read `checked-failed` if run now, and is honestly `could-not-check` for its actual subject, which is the post-round-trip board |
+| 4 | `git log --format='%an' -1 -- STATUS.md` is the board-writer account | **could-not-check** | The regeneration exists and is correct — commit `bfd01ac1b57b713aec7a028f48450d6f4515731d`, authored by the board-writer account, and on its own branch the command already returns that account — but it is **not on `main`**: it sits in MR `!4`, which is stacked behind MR `!3` and awaits the human merge. The row names the tracking repo's board, so a branch read is evidence of readiness, not of the row. On `main` right now STATUS.md's newest commit is the desk account's seed `52879f61050c433276836afe61a066e1ce0e507f`, so the row would read `checked-failed` if run today. Recorded as could-not-check rather than pre-credited |
 
 ## 5. Deviations
 
@@ -210,8 +221,15 @@ GitLab.** `roster.env` keys identities as `<login>:<numeric GitHub user id>` and
 `<app-slug>:<GitHub App id>`. Pointed at a GitLab-only home, `statusgen --lint` reports
 `could-not-check: Evidence-actor (desk-apps/07, F-verify-self-attest) did not run — the trust
 roster … is absent or invalid, so no accepted verifier identity could be resolved`. The check
-that stops an implementer self-attesting its own Evidence has no GitLab expression today. Filed
-as a comment on `#349` (the session filing budget for this repo was spent on `#349` itself).
+that stops an implementer self-attesting its own Evidence has no GitLab expression today.
+
+The round trip then demonstrated it on a real row rather than only on an empty roster. With the
+verifier service account's Evidence committed and the brief at `verified`, lint reports:
+`Evidence-actor: 1 of 1 judged verified/done rows carry an Evidence section that no accepted
+verifier actor committed … 0 row(s) are backed`. The Evidence **was** committed by a distinct,
+non-implementing verifier identity — the check simply cannot recognise a GitLab one, so a
+correctly-verified row is indistinguishable from a self-attested one. Filed as a comment on
+`#349` (the session filing budget for this repo was spent on `#349` itself).
 
 **D-4 — the provisioner never attempts two free-tier §3 controls.** `create-fleet-gitlab.sh`
 sets neither protected tags (spec §3 "immutable release integrity"; role-level protected tags are
@@ -258,11 +276,38 @@ can leave a weaker rule than the script would have written. Filed as a comment o
 documented on `#348`; on this pilot the gap was bridged with symlinks before the run, which
 is why §4 row 3 could execute at all. Cited, not re-filed.
 
-**D-8 — the verifier's Evidence lane gains a human hop on GitLab.** Recorded in §1 under
-"Phase B": with `main` at push = No one for every identity, the GitHub carve-out that lets the
-verifier commit an Evidence row straight to `main` has no GitLab equivalent. Structural, and on
-balance a tightening rather than a weakening — but it changes the verify desk's loop shape and
-is not a detail the profile had written down.
+**D-8 — the verifier's Evidence lane gains a human hop on GitLab, and so does the board's.**
+With `main` at push = No one for every identity, the GitHub carve-out that lets the verifier
+commit an Evidence row straight to `main` has no GitLab equivalent: MR `!3` is that Evidence row
+travelling as a merge request. The same applies to the single-writer board — on GitHub STATUS.md
+is pushed to `main` by one identity under a ruleset bypass; here MR `!4` carries it.
+
+Structural, and on balance a tightening rather than a weakening: it removes the one identity that
+could write `main` unreviewed, and both writes now carry a reviewer verdict they did not carry
+before (`!3` and `!4` are each approved by the reviewer account, author ≠ approver on both). What
+it costs is human hops, and the pilot shows the cost is containable by **stacking** rather than
+serialising — `!4` targets `!3`'s branch, so the pair is one sitting. That is a loop-shape change
+the profile had not written down, and it is the shape an adopting verify desk needs to be built
+around.
+
+**D-9 — the execution-witness generator stamps a machine-derived runner, not the acting forge
+identity.** `statusgen verifyrun` appends a witness row whose `Runner` cell it composes from the
+local machine's git/environment identity. On this pilot the acting verifier is the verifier
+service account — that is who ran the row, who wrote the Evidence, and who authored the commit —
+but the witness row names a host-derived human handle instead, so the witness table and the
+Evidence table above it **disagree by construction on any non-GitHub deployment**. The brief
+annotates the row rather than editing it, since hand-correcting a generated witness is exactly
+the manufactured evidence the witness exists to prevent. Same root cause as D-3: the tooling has
+no forge-aware notion of "who is acting". Attached to the same issue as D-3.
+
+**D-10 — service-account avatars can only be set by the account itself on gitlab.com.** Observed
+while the desk applied role icons to the seven service accounts: `PUT /users/:id` as the group
+owner returns `HTTP 403` (that endpoint is instance-admin-only on SaaS), while `PUT /user/avatar`
+carrying each bot's **own** token returns `HTTP 200`. So any per-account presentation the
+provisioner wants to set has to be driven from inside each role's credential rather than from the
+owner credential that creates the accounts — a shape the provisioning script's
+one-owner-token model does not currently have. Recorded as observed; filed by the desk as a
+provisioner follow-up.
 
 ## 6. Token hygiene during this run
 
