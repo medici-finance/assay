@@ -16,7 +16,7 @@ func envGetter(m map[string]string) func(string) string {
 
 // assertMissingPinRefuses is the mandatory-pinning assertion (spec §7.3),
 // factored out so it is reachable BOTH as a TestRunnerTable subtest and as the
-// independently-selectable TestMissingPinRefuses below (acp-guardrails/06
+// independently-selectable TestMissingPinRefuses below (the extraction brief's
 // Verify row 3 needs `go test -run Pin` to find it post-extraction, and a bare
 // pattern with no slash only matches a TOP-LEVEL test name).
 func assertMissingPinRefuses(t *testing.T) {
