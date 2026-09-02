@@ -3,9 +3,11 @@ brief: windows-port/05
 title: Adoption-doc delta — the Windows adopter walkthrough
 why: >-
   The whole stream is only real to an adopter when the runbook tells them how to do it. Today
-  `docs/adopting-assay.md` and the `assay:install` skill both stop at Windows with "not yet in
-  scope — the skill stops rather than guessing." This brief replaces that stub with a real
-  Windows walkthrough — the install path, the pinned release, the CI-proven status, and the
+  both surfaces stop at Windows, in their own words: `docs/adopting-assay.md` (Prerequisites)
+  says "**Windows** is a named fast-follow, not yet in scope — on a Windows host the skill stops
+  at that step rather than guessing", and `plugins/assay/skills/install/SKILL.md` §Scope says
+  "**Windows is a deferred fast-follow — NOT in this skill's scope yet.**" This brief retires
+  both deferrals and replaces them with a real Windows walkthrough — the install path, the pinned release, the CI-proven status, and the
   triaged surfaces that need a documented workaround — so a Windows adopter has a path, not a
   dead end.
 wave: 2
@@ -20,7 +22,8 @@ authored: 2026-09-01 by windows-port authoring session
 sources:
   - "Ian's direction (2026-09-01): the Windows adopter walkthrough, mirroring the existing adopting-assay docs' per-profile pattern; end state — a Windows adopter runs the pinned release, CI-proven on Windows"
   - "docs/adopting-assay.md: the runbook has per-SCENARIO sections (green-field / existing-suite / carve-out) but NO per-OS axis; OS handling lives only inside PRIMITIVE: install-statusgen's uname detection and the skill's §Scope Windows-deferred note"
-  - "plugins/assay/skills/install/SKILL.md §Scope: 'macOS or Linux ... Windows is a named fast-follow, not yet in scope — on a Windows host the skill stops at that step rather than guessing' — the stub this brief retires"
+  - "plugins/assay/skills/install/SKILL.md §Scope (lines ~232-243): 'Unix-first (mac/linux). ... Windows is a deferred fast-follow — NOT in this skill's scope yet. The Windows arm (the statusgen-windows-amd64.exe asset, a cross-platform hash-verify, and the .exe install path) is a future, not-yet-authored follow-up. ... when a Windows host is detected, say the acquisition arm is not yet available on this platform and stop, rather than guessing' — the deferral this brief retires; note the SKILL's own wording differs from adopting-assay.md's, and each is quoted from its own file"
+  - "docs/adopting-assay.md (Prerequisites, lines ~36-38): '**macOS or Linux.** The statusgen binary acquisition is Unix-first; **Windows** is a named fast-follow, not yet in scope — on a Windows host the skill stops at that step rather than guessing.' — the second deferral this brief retires"
   - "windows-port/01 (release build matrix): the source of the statusgen-windows-<arch>.exe asset names the walkthrough tells the adopter to pin in .assay-versions"
   - "windows-port/02 (portability audit): the documented-workaround rows the doc lifts verbatim"
   - "windows-port/03 (install path): the ruled+built Windows install path the doc walks through"
@@ -77,9 +80,11 @@ facts:
 ## Task
 1. Add a `## Windows adopters` section to `docs/adopting-assay.md` covering the six items in
    `facts:`, cross-referenced from the install step of each scenario section.
-2. Update `plugins/assay/skills/install/SKILL.md` §Scope: replace the "Windows deferred / stops at
-   that step" note with a pointer to the now-real Windows path (keep the honesty: name any
-   remaining documented-workaround surfaces).
+2. Update `plugins/assay/skills/install/SKILL.md` §Scope: replace its "Windows is a deferred
+   fast-follow — NOT in this skill's scope yet" paragraph with a pointer to the now-real Windows
+   path (keep the honesty: name any remaining documented-workaround surfaces). Retire the matching
+   deferral in `docs/adopting-assay.md`'s Prerequisites ("**Windows** is a named fast-follow, not
+   yet in scope …") in the same pass — the two are worded differently and both must go.
 3. Lift brief 02's `documented-workaround` rows verbatim into the walkthrough's "known gaps"
    subsection — do not re-summarize them (drift risk).
 4. Cite brief 04's Windows CI leg as the "CI-proven on Windows" evidence, with the arm64
@@ -92,8 +97,9 @@ facts:
 | 1 | A Windows section exists: `grep -qiE '^## .*Windows' docs/adopting-assay.md; echo $?` | `0` |
 | 2 | It names the pinned windows asset (brief 01): `grep -qE -e 'statusgen-windows-amd64[.]exe' -e 'statusgen-windows-arm64[.]exe' docs/adopting-assay.md; echo $?` | `0` |
 | 3 | It documents the verify-or-refuse install control (brief 03): `grep -qiE -e 'sha256' -e 'hash' docs/adopting-assay.md && grep -qiE -e 'refus' -e 'verif' docs/adopting-assay.md; echo $?` | `0` |
-| 4 | The install SKILL's §Scope no longer flatly defers Windows: `grep -qiE 'Windows is a (named )?(deferred )?fast-follow, not yet in scope' plugins/assay/skills/install/SKILL.md; echo $?` | `1` — the flat-deferral sentence is gone (replaced by the real-path pointer) |
+| 4 | The install SKILL's §Scope no longer flatly defers Windows — grep the file's OWN deferral sentence, verbatim: `grep -qiF "Windows is a deferred fast-follow" plugins/assay/skills/install/SKILL.md; echo $?` | `1` — the deferral sentence is gone (replaced by the real-path pointer). **This row is non-vacuous by construction: on pre-brief main the same grep returns `0`, because that exact sentence is present at `plugins/assay/skills/install/SKILL.md` §Scope today.** |
 | 4a | **Positive control for row 4** — the SKILL now references the Windows path: `grep -qiF 'windows' plugins/assay/skills/install/SKILL.md; echo $?` | `0` (Windows is still mentioned — now as a supported path, not a deferral) |
+| 4b | The doc's own deferral sentence is retired too — grep `adopting-assay.md`'s verbatim wording: `grep -qiF "is a named fast-follow, not yet in scope" docs/adopting-assay.md; echo $?` | `1` — gone. Non-vacuous by construction: on pre-brief main this grep returns `0` (the sentence sits in the Prerequisites list). |
 | 5 | **Dereferencing — the doc's CI claim resolves to a REAL windows leg** (a wrong-but-well-formed doc that claims CI without one goes red here): `grep -qiE -e 'CI-proven' -e 'windows CI' -e 'windows-latest' docs/adopting-assay.md && grep -rqE 'runs-on: *windows-latest' .github/workflows/; echo $?` | `0` — the doc claims CI proof AND a windows-latest leg actually exists in the workflows |
 | 6 | **Dereferencing — a documented-workaround the doc lists is a REAL triaged surface** (not invented): `grep -qiE -e 'git.?bash' -e 'jq' -e 'SessionStart' -e 'hook' docs/adopting-assay.md && grep -qiF 'documented-workaround' docs/streams/windows-port/portability-audit.md; echo $?` | `0` — the doc's known-gap references a surface the audit actually triaged as a workaround |
 | 7 | Native-not-WSL is stated: `grep -qiF 'native' docs/adopting-assay.md && grep -qiF 'wsl' docs/adopting-assay.md; echo $?` | `0` — both the native claim and the WSL-fallback note are present |

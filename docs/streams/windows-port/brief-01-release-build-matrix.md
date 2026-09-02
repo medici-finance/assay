@@ -20,6 +20,7 @@ gate-why: >-
   all — it needs a workflow-scoped one, i.e. a human's hands. Both make this a human gate
   regardless of how mechanical the diff looks.
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
+decision-trigger: creation
 issues: []
 schema: brief-v1
 authored: 2026-09-01 by windows-port authoring session
@@ -73,14 +74,41 @@ facts:
   asset; whether its NATIVE behaviour is ever smoked is brief 04's open question, not this
   brief's — this brief only proves the two windows binaries build and are checksummed.
 
+## Human decision
+<!-- gate: human, decision-trigger: creation — filed as a self-contained decision issue.
+     Written to be decided from THIS text alone: no links, no repo paths, no brief refs.
+     NOTE: the linter's "no decision-issue" NOTICE clears only when a filed issue number is
+     recorded as `decision-issue: <NN>` in the frontmatter above — this section is the text to
+     file, not the filing itself. -->
+The project publishes its command-line tools as version-pinned release downloads: each platform's
+file is listed with a hash, and installers refuse anything whose hash does not match. Today three
+platforms are published. This asks to add two more (the two Windows processor families), built by
+the same cross-compiler on the same machine, listed in the same hash file.
+
+Two properties make it a human call rather than a mechanical one:
+
+1. **A published download cannot be recalled.** Once a release carries the two new files and
+   anyone has fetched one, the hash is in the wild; a mistake is corrected by publishing a new
+   version, never by withdrawing the old one. Approving this approves that permanence.
+2. **Only a human can land it.** The change edits the automation file that decides what runs with
+   the project's release credentials, and that file cannot be pushed by an automated identity —
+   it needs a credential only a person holds.
+
+The decision is a go/no-go on both, not a choice between designs: **authorize publishing the two
+additional Windows downloads under the existing pinned-hash contract, and landing the automation
+change by hand.** Answer "go" and the work proceeds; answer "no" and the whole Windows effort
+stops here, because nothing downstream exists until the downloads do.
+
 ## Ground rules
 - NEVER git push / trigger workflows / run a release / run mutating infra commands. Commit only
   per the task instructions.
 - **Additive-only on `release.yml`.** This brief ADDS two cross-compile targets and their
   checksum lines. It touches NONE of the workflow's security controls — not the `guard` job
   (tag-immutability), not `persist-credentials: false`, not the Go-toolchain sha256 pin, not the
-  `sha256sum` checksum step's integrity. The four risk answers are `no` on that basis. Per the
-  security-gate rule, if the change would weaken any of those, STOP and escalate — it does not.
+  `sha256sum` checksum step's integrity. `irreversible: yes` is answered on the published-asset
+  and workflow-path grounds in `gate-why`, not on any weakening of those controls; the other
+  three risk answers are `no` on this basis. Per the security-gate rule, if the change would
+  weaken any of those controls, STOP and escalate — it does not.
 - Stop at `implemented` — you do not set verified/done, and you do not cut a release.
 - Do NOT hand-write a real sha256 into `.assay-versions` — the real hash comes from a published
   release's `checksums.txt`; use a clearly-marked placeholder in the example file.
@@ -128,8 +156,10 @@ facts:
 |---|---------|------|--------|------|--------|
 
 ## Review
-Gate: **model** (from frontmatter). All four risk answers are `no` — this edits a
-cross-compile loop and a checksum list; everything is git-revertible CI config. The reviewer
+Gate: **human** (from frontmatter, risk-derived: `irreversible: yes`) — this edits
+`.github/workflows/release.yml`, a security-classified path, and a published release asset
+cannot be un-published once a consumer has fetched it; regulatory / customer / sensitive-data
+are `no` (a cross-compile loop and a checksum list, otherwise git-revertible CI config). The reviewer
 confirms rows 5 and 6 (the binaries genuinely cross-compile — the dereferencing rows), and that
 the four new asset names appear identically in the build, checksum, and (illustrative) pin
 surfaces so brief 03/04/05 read a stable name.

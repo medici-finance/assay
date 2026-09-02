@@ -16,10 +16,13 @@ cross-compiles `statusgen` and `desk-tools` for `darwin-arm64`, `darwin-amd64`, 
 `linux-amd64` only; the only documented install path is `sudo make desk-install` into
 root-owned `/opt/desk-tools/bin`; the SessionStart hooks are `#!/bin/bash` scripts invoked
 as `bash "…"` and depend on `jq`; the push guard is a `#!/bin/sh` shim execing an absolute
-POSIX path; and `docs/adopting-assay.md` states plainly that **"Windows is a named
-fast-follow, not yet in scope — on a Windows host the skill stops at that step rather than
-guessing."** This stream is that fast-follow: it turns the stated gap into a delivered,
-CI-proven path.
+POSIX path; and the gap is stated outright in two places, each in its own words —
+`docs/adopting-assay.md`'s **Prerequisites** list: **"Windows is a named fast-follow, not yet
+in scope — on a Windows host the skill stops at that step rather than guessing"**, and
+`plugins/assay/skills/install/SKILL.md` **§Scope**: **"Windows is a deferred fast-follow — NOT
+in this skill's scope yet."** This stream is that fast-follow: it turns the stated gap into a
+delivered, CI-proven path. (Both sentences are quoted from their own file; `windows-port/05`
+retires both.)
 
 The claim is deliberately bounded. The Go binaries themselves are already portable —
 `statusgen` and everything under `tools/**` are plain argv CLIs with nothing

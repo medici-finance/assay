@@ -13,11 +13,14 @@ unblocks: ["windows-port/05"]
 effort: M
 gate: human
 gate-why: >-
-  Adds a job under .github/workflows/. The four risk answers are honestly all "no" — a CI
-  leg is reversible, touches no customer or regulated surface, and reads no sensitive data
-  — but a workflow-file change cannot be pushed by an agent credential, so the landing step
-  needs a human either way. The gate records that fact rather than pretending a risk answer.
-risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+  Adds a job under .github/workflows/, which is a security-classified path in this repo:
+  a workflow file decides what runs with the repo's CI credentials, and a workflow-file
+  change cannot be pushed by an agent credential at all — it needs a workflow-scoped one,
+  i.e. a human's hands. `irreversible: yes` records that, the same answer windows-port/01
+  gives for the same reason; regulatory / customer / sensitive-data remain honestly "no"
+  (a CI leg reads no regulated, customer or secret surface). The human gate is therefore
+  risk-derived, not hand-set over four "no"s.
+risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 issues: []
 schema: brief-v1
 authored: 2026-09-01 by windows-port authoring session
@@ -133,7 +136,9 @@ result, and do not block the amd64 leg waiting on it. Record the runner-eligibil
 |---|---------|------|--------|------|--------|
 
 ## Review
-Gate: **model** (from frontmatter). All four risk answers are `no` — this adds a CI leg and
+Gate: **human** (from frontmatter, risk-derived: `irreversible: yes` — it adds a job under
+`.github/workflows/`, a security-classified path that only a workflow-scoped credential can
+push); regulatory / customer / sensitive-data are `no` — this adds a CI leg and
 removes no control. The reviewer confirms the leg is not vacuously green (the fail-first
 demonstration reddens it), the smoke stays offline (row 4), and the arm64 native-smoke is held
 BLOCKED with its reason rather than greened from amd64 (rows 6/6a). The authoritative evidence is
