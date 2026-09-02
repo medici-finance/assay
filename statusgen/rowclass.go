@@ -95,6 +95,126 @@ var knownRowClasses = map[string]bool{
 	classGateHuman:    true,
 }
 
+// ---------------------------------------------------------------------------
+// Obligation classes (mistake-proofing/03, spec §4 B2 + §3 D7)
+// ---------------------------------------------------------------------------
+//
+// AXIS DECISION — recorded here, in source, before the code, because it is the
+// central design call this brief makes.
+//
+// The five execution classes above answer ONE question: WHO EXECUTES a row (a
+// hermetic re-run, a runner, the pod runner, a model, a human). The four classes
+// below answer a DIFFERENT, orthogonal question: WHAT OBLIGATION the row
+// discharges — a mutation proves a guard reddens, a flow crosses a component
+// boundary, a dereference resolves a claim, a neighbour exercises an untouched
+// sibling. The two axes are independent: a mutation row is still executed by
+// someone. Collapsing them into ONE closed set — adding `mutation` to
+// knownRowClasses — would force every author to choose between naming WHO runs a
+// row and naming WHAT it discharges, and would silently exempt every
+// obligation-classed row from execution routing (its class() would resolve to an
+// unknown execution value and route nowhere). So the obligation is a SECOND,
+// independent closed set, carried on the SAME cell by a compound encoding.
+//
+// ENCODING — a COMPOUND CELL, chosen over a second table column. The `Class`
+// cell carries an execution value, then zero or more `+`-prefixed obligation
+// tokens, whitespace-separated. A brief-shaped worked example:
+//
+//	| # | Class                   | Command                          | Expect |
+//	|---|-------------------------|----------------------------------|--------|
+//	| 1 | check:ci +mutation      | `go test ./x -run TestGuard`     | exit 0; reddens on the mutation entry |
+//	| 2 | check +flow             | docs/streams/x/verify.d/b-1/f.sh | exit 0 |
+//	| 3 | gate:model +dereference | prose — the named symbol resolves | the claim resolves against the tree |
+//
+// Why a compound cell and NOT a second column: the execution column is OPTIONAL
+// and its ABSENCE is the legacy-default hinge (a table with no `Class` column is
+// legacy `check`). A second obligation column would add a THIRD table shape
+// (no-class / class-only / class+obligation) and force verifyRowTable to grow a
+// second optional-column search — multiplying the ways the legacy hinge could
+// shift. The compound cell keeps the table's column set byte-identical to
+// today's: the whole obligation axis lives INSIDE the one optional `Class` cell,
+// so a column-less legacy table is untouched, an execution-only cell parses
+// exactly as before, and only a cell that opts in by writing a `+token` gains an
+// obligation. splitRowClassCell is the single seam that separates the two axes.
+//
+// PRESENCE, NOT ADEQUACY (spec §3 D7). This encoding, and the derivation that
+// reads it (obligationderivation.go), carry only whether an obligation ROW IS
+// PRESENT. Whether a mutation row actually reddens a guard, whether a flow row
+// actually crosses a boundary, whether a dereference row actually dereferences —
+// that ADEQUACY is not decidable from row text and stays the reviewer's call.
+// Presence is the control; adequacy is review. Every message this surface emits
+// says which half it covers.
+//
+// NEIGHBOUR IS VALIDATED BUT NOT DERIVED. The `+neighbour` token is a defined,
+// closed-set obligation — an author may write it and it validates — but no
+// honest path-only signal distinguishes "a sibling the change did not touch"
+// from "any of the many files this change happens not to touch", so its
+// derivation TRIGGER is deferred to a follow-up (task 3 explicitly sanctions
+// this). mutation, flow and dereference are derived; neighbour is carried.
+const (
+	classMutation    = "mutation"    // breaks the guarded thing and proves the guard reddens (spec D1)
+	classFlow        = "flow"        // exercises the cross-component path end to end, not just the changed site
+	classDereference = "dereference" // resolves a claim rather than counting its presence
+	classNeighbour   = "neighbour"   // exercises a sibling site the change did not touch (validated, not yet derived)
+)
+
+// knownObligations is the closed obligation set — the SECOND axis, deliberately
+// separate from knownRowClasses. An obligation token outside it is a hard
+// PROBLEM, exactly as an unknown execution class is: an unrecognised token
+// routes nowhere. Kept unknown-fatal so a typo'd `+mutaton` cannot pass as a
+// silently-absent obligation.
+var knownObligations = map[string]bool{
+	classMutation:    true,
+	classFlow:        true,
+	classDereference: true,
+	classNeighbour:   true,
+}
+
+// obligationSeparator prefixes each obligation token in a compound Class cell
+// (`check:ci +mutation`), distinguishing it from the single execution value.
+const obligationSeparator = "+"
+
+// splitRowClassCell separates a compound `Class` cell into its execution token
+// and its obligation tokens. The cell is `<execution> +<obligation>...`: one
+// execution value (optional — an empty or `+`-leading cell is the legacy
+// default), then zero or more obligation tokens, each optionally `+`-prefixed.
+// A cell with no obligation token returns nil obligations and parses exactly as
+// the pre-obligation code did — which is why every inherited table and every
+// existing execution-class test is untouched by this change.
+func splitRowClassCell(raw string) (execCell string, obligations []string) {
+	s := strings.ToLower(strings.TrimSpace(normalizeRowID(raw)))
+	if s == "" {
+		return "", nil
+	}
+	fields := strings.Fields(s)
+	i := 0
+	if !strings.HasPrefix(fields[0], obligationSeparator) {
+		execCell = fields[0]
+		i = 1
+	}
+	for _, f := range fields[i:] {
+		obligations = append(obligations, strings.TrimPrefix(f, obligationSeparator))
+	}
+	return execCell, obligations
+}
+
+// obligations returns the KNOWN obligation tokens a row's Class cell carries.
+// nil for a legacy (unclassed) table, an execution-only cell, or a cell whose
+// only obligation tokens are unrecognised — those are caught as PROBLEMs by
+// verifyRowClassProblems; here we report only what a consumer can route on.
+func (r verifyRowCells) obligations() []string {
+	if !r.Classed {
+		return nil
+	}
+	_, obs := splitRowClassCell(r.Class)
+	var known []string
+	for _, o := range obs {
+		if knownObligations[o] {
+			known = append(known, o)
+		}
+	}
+	return known
+}
+
 // verifyRowCells is one Verify-table data row, as located by verifyRowTable.
 //
 // Class is the RAW cell text (markdown intact); resolveRowClass normalises it.
@@ -134,7 +254,13 @@ func (r verifyRowCells) class() string {
 	if !r.Classed {
 		return legacyRowClass
 	}
-	c, _ := resolveRowClass(r.Class)
+	// A compound cell (`check +mutation`) routes on its EXECUTION token only; the
+	// obligation tokens are a second axis every execution consumer ignores.
+	execCell, _ := splitRowClassCell(r.Class)
+	if execCell == "" {
+		return legacyRowClass
+	}
+	c, _ := resolveRowClass(execCell)
 	return c
 }
 
@@ -207,11 +333,25 @@ func verifyRowClassProblems(streams []*Stream) []string {
 				if r.Num != "" {
 					where = "Verify row " + r.Num
 				}
-				// (a) unknown class.
+				// (a) unknown class OR unknown obligation. A compound cell
+				// (`check +mutation`, mistake-proofing/03) is split into its
+				// execution token and its obligation tokens; each axis is
+				// validated against its own closed set, and an unrecognised value
+				// on EITHER axis is fatal — a token the tool cannot resolve routes
+				// nowhere and is silently exempt from its gate.
 				if r.Classed {
-					if cls, known := resolveRowClass(r.Class); !known {
-						add("%s: %s declares class %q, which is not a defined Verify row class — the recognised classes are `check:ci` (hermetic, CI re-executes network-off), `check` (env-bound, runner-executed), `gate:model` and `gate:human`. A row whose class the tool cannot resolve routes nowhere and is silently exempt from every gate; fix the class or drop the column (an unclassed table is legacy `check`) — verdict-lane/02", path, where, cls)
-						return // an unknown class makes the script check meaningless
+					execCell, obs := splitRowClassCell(r.Class)
+					if execCell != "" {
+						if cls, known := resolveRowClass(execCell); !known {
+							add("%s: %s declares class %q, which is not a defined Verify row class — the recognised classes are `check:ci` (hermetic, CI re-executes network-off), `check` (env-bound, runner-executed), `gate:model` and `gate:human`. A row whose class the tool cannot resolve routes nowhere and is silently exempt from every gate; fix the class or drop the column (an unclassed table is legacy `check`) — verdict-lane/02", path, where, cls)
+							return // an unknown class makes the script check meaningless
+						}
+					}
+					for _, ob := range obs {
+						if !knownObligations[ob] {
+							add("%s: %s declares obligation %q, which is not a defined Verify-row obligation — the recognised obligations are `+mutation`, `+flow`, `+dereference` and `+neighbour` (mistake-proofing/03). An obligation token the tool cannot resolve routes nowhere and is silently exempt from the obligation derivation; fix the token or drop it. This lint checks the PRESENCE of a typed obligation, not its adequacy, which stays the reviewer's call (spec §3 D7) — mistake-proofing/03", path, where, ob)
+							return // an unknown obligation makes the script check meaningless
+						}
 					}
 				}
 				// (b) missing / non-executable script.
