@@ -31,7 +31,6 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
 | windows-port | 01 — Release build matrix — windows/amd64 + windows/arm64 + sha256s | 0 | 2500 |
 | windows-port | 02 — Portability audit — enumerate + triage the shell-assuming surfaces | 0 | 2500 |
-| mistake-proofing | 03 — Typed Verify-row obligation classes, derived from the diff shape (B2, D7) [exec:strong] | 1 | 2000 |
 | mistake-proofing | 04 — Derive the authoring guidance's enforcement-status claims from the lint (B9) [exec:strong] | 1 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 | quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
@@ -42,14 +41,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (58 desk-actionable of 60 total — 30 at implemented, 30 verified awaiting review)
+## Awaiting verification / review (59 desk-actionable of 61 total — 31 at implemented, 30 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (58)
+### Desk-actionable (59)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -79,6 +78,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | quality | 04 | verified | 2500 | 3 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 04 | implemented | 2000 | 2 | — | — | — |
 | iso-9001 | 02 [exec:strong] | verified | 2000 | 2 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
+| mistake-proofing | 03 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | quality | 10 [exec:strong] | verified | 2000 | 2 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -223,7 +223,7 @@ _None._
 
 - 01 Cross-read a brief's declared paths against the risk classifier (B3) — verified (wave 0)
 - 02 Dereference named identifiers, not just backticked paths (B4) — verified (wave 0)
-- 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — todo (wave 1)
+- 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — implemented (wave 1)
 - 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — todo (wave 1)
 - 05 `newbrief` — the scaffolder as the authoring front door (B1) — todo (wave 2)
 - 06 D1 promoted to a lint obligation — a new check must carry its mutation row — todo (wave 2)
