@@ -13,6 +13,10 @@ the system's memory: what invalidated a plan (FINDINGS), what raw ideas are queu
 (INTAKE), and what each cadence retro decided (RETRO — never implemented; there is no
 RETRO parser or entry directory). Each rule below is stated with its reason.
 
+For who may write these registers, how an alteration would be detected, and how long
+they and the other artifacts in this repo are kept, see
+[`docs/records-and-retention.md`](records-and-retention.md).
+
 ## Shared conventions
 
 - **Append-only.** A new entry is a new file under `docs/streams/findings/` or
