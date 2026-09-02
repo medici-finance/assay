@@ -1,7 +1,7 @@
 # deskpr — the PR link trailer
 
-`deskpr create` and `deskpr update` require the PR body to carry exactly one link
-trailer, written at the moment the body is filled in:
+`deskpr create`, `deskpr update` and `deskpr edit` require the PR body to carry exactly
+one link trailer, written at the moment the body is filled in:
 
 - `Brief: <stream>/<NN>` — the brief this PR delivers (also accepted: `<stream>:<NN>`,
   `<repo>:<stream>:<NN>`, and the full `<cell>:<repo>:<stream>:<NN>`; the brief-v1
@@ -17,8 +17,12 @@ Rules (derived-board/02):
 - `Closes #N` / `Refs #N` keep their GitHub meaning and are NOT the link — a PR may
   close an issue and deliver a brief.
 - `create` checks before any network call; `update` reads the PR's existing body from
-  GitHub and refuses (exit 5) with the line to add — the worker edits the body and
-  re-runs.
+  GitHub and refuses (exit 5) with the line to add — the worker fixes the body with
+  `deskpr edit` and re-runs.
+- `edit` checks the REPLACEMENT body before any network call, and additionally refuses
+  (exit 5) when the replacement's trailer differs from the one the PR's current body
+  already carries: the link is not editable after the fact. A current body carrying NO
+  trailer may gain one — that is exactly the `update` migration above.
 - `Brief: <stream>/<NN>` must resolve to a brief file under `--root`
   (`docs/streams/<stream>/brief-<NN>-*.md`); a value that resolves to nothing refuses
   with the unresolved pattern.

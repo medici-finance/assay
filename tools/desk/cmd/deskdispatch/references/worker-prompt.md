@@ -140,8 +140,9 @@ reliably caught an inverted or false desk claim.
   its Evidence, and every process artifact are not code to minimize.
 - No attribution or generated-by lines in commits, PR bodies, issues, or comments.
 - Push and open the PR through the desk write verbs, not raw `git push`/`gh`:
-  `deskpr create` / `deskpr update` for the branch and its draft PR, `deskreply` for a
-  reply on its own PR. `deskreply` takes exactly two positionals
+  `deskpr create` / `deskpr update` for the branch and its draft PR, `deskpr edit
+  --body-file F [--title T]` to correct that PR's own body or title (never raw
+  `gh pr edit`), `deskreply` for a reply on its own PR. `deskreply` takes exactly two positionals
   (`deskreply <owner/repo> <pr> --body-file F`) and has no `comment` subcommand; an extra
   leading token is refused before anything is posted.
 - Release the dispatch claim once the branch is pushed — branch-as-claim takes over from

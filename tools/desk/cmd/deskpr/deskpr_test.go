@@ -133,13 +133,39 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("https://github.com/%s/pull/101\n", repoOf(target))
+	case has("edit"):
+		// gh pr edit <n> -R <repo> --body-file F [--title T]: the deskpr edit write.
+		// FAKEGH_EDIT_FAIL models a forge that refuses the edit itself.
+		if os.Getenv("FAKEGH_EDIT_FAIL") == "1" {
+			fmt.Fprintln(os.Stderr, "HTTP 422: Validation Failed")
+			os.Exit(1)
+		}
+		fmt.Printf("https://github.com/%s/pull/42\n", repoOf(val("-R")))
+	case has("comment"):
+		// gh pr comment <n> -R <repo> --body-file F: deskpr edit's re-review notice.
+		// FAKEGH_COMMENT_FAIL models the edit landing but the notice not posting.
+		if os.Getenv("FAKEGH_COMMENT_FAIL") == "1" {
+			fmt.Fprintln(os.Stderr, "HTTP 502: Bad Gateway")
+			os.Exit(1)
+		}
+		fmt.Printf("https://github.com/%s/pull/42#issuecomment-1\n", repoOf(val("-R")))
 	case has("view"):
 		// example-stream/02: gh pr view --json body serves the PR body for the update
-		// trailer check. FAKEGH_PR_BODY overrides; the default carries a resolving trailer.
-		if has("--json") && has("body") {
+		// trailer check; deskpr edit asks for body,title in one field list, so the probe
+		// is on the --json VALUE rather than on a bare argv token. FAKEGH_PR_BODY /
+		// FAKEGH_PR_TITLE override; the default body carries a resolving trailer.
+		if j := val("--json"); strings.Contains(j, "body") {
 			b := os.Getenv("FAKEGH_PR_BODY")
 			if b == "" {
 				b = "Brief: fixture/01\n"
+			}
+			if strings.Contains(j, "title") {
+				ti := os.Getenv("FAKEGH_PR_TITLE")
+				if ti == "" {
+					ti = "fixture PR title"
+				}
+				fmt.Printf("{\"body\":%q,\"title\":%q}\n", b, ti)
+				return
 			}
 			fmt.Printf("{\"body\":%q}\n", b)
 			return

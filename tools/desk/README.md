@@ -36,7 +36,7 @@ it on day one.
 | `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
 | `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
 | `deskpost` | `review`, `comment`, `ready` — as the reviewer App | outward write | yes |
-| `deskpr` | `create` (draft-only), `update` (follow-up push) | outward write | yes |
+| `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push) | outward write | yes |
 | `deskreply` | PR reply comment under the **worker** identity | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
 | `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` — the issue-CLOSING gate (a fetched human authorization or nothing) | outward write | yes |
@@ -156,6 +156,7 @@ call with no output parsing — which is also how you notice you are on a stale 
 |---|---|---|
 | Open your draft PR | `deskpr create --title T (--body-file F \| --body-min B)` | `git push -u origin <branch>` + `gh pr create --draft`, then **verify `isDraft: true`** |
 | Push a follow-up | `deskpr update` | `git push` |
+| Correct the PR's own body/title | `deskpr edit --body-file F [--title T]` | `gh pr edit` — but see below: the fallback runs none of the gates |
 | Reply on **your own** PR as the worker | `deskreply <owner/repo> <pr> --body-file F` | `gh pr comment` |
 | Post a review verdict / flip ready | `deskpost review\|comment\|ready` | (reviewer desk only) |
 | File an issue | `deskfile new -R <owner/repo> --title T --body-file F` | none — dedupe is the point |
@@ -163,10 +164,12 @@ call with no output parsing — which is also how you notice you are on a stale 
 `deskpr create` is **draft-only by construction**: `--draft` is hardcoded into the
 `gh pr create` argv it builds, so there is no `--draft` flag for *you* to pass — passing
 one is an unexpected argument and exits 5. The git argv is likewise built literally so no
-force-push flag can be emitted, and there is no ready/edit/close/merge verb anywhere in
-this tree. `deskpr update` takes only `[--as-app]`: it pushes follow-up commits and
-cannot edit a PR body — use `gh pr edit` for that. Flipping a PR ready and merging it are
-somebody else's decision, and the tools cannot make them for you.
+force-push flag can be emitted, and there is no ready/close/merge verb anywhere in this
+tree. `deskpr update` takes only `[--as-app]`: it pushes follow-up commits and never
+touches the description. Correcting the description is `deskpr edit`'s job — it replaces
+the body (and optionally the title) of the branch's open PR and pushes nothing. Flipping
+a PR ready and merging it are somebody else's decision, and the tools cannot make them
+for you.
 
 That draft guarantee is a property of `deskpr create`, **not** of the fallback beside it.
 When exit 3 or 6 sends you to `gh pr create --draft` by hand, nothing is enforcing the
@@ -188,7 +191,7 @@ branch name, body, and for `deskpr create` the diff against the default branch. 
 exit 5. It also refuses a body that claims a named human's ruling, because no desk write
 path ever posts as a human.
 
-When the target repo is not known-private, `deskpr create`, `deskpost` and `deskreply`
+When the target repo is not known-private, `deskpr create`, `deskpr edit`, `deskpost` and `deskreply`
 additionally run `deskkit.SelfContainCheck` (`internal/deskkit/selfcontain.go`) over the
 body: a text free of credentials can still carry a private repo name, a cross-repo ref
 that only resolves internally, an absolute path off the author's machine, a session or
@@ -450,13 +453,50 @@ flip on a repo whose status you are unsure of.
 `cmd/deskpr` is the worker's push-and-open-draft tool. It is **draft-only by
 construction**: `gh pr create` is always called with `--draft` (no flag omits it), git
 argv is built literally so `--force`/`--force-with-lease` can never be emitted, and
-there is no ready/edit/close/merge verb. Two subcommands:
+there is no ready/close/merge verb. Three subcommands:
 
 - `deskpr create --title T (--body-file F | --body-min B) [--base main]` — verify
   preconditions → `git push -u origin <branch>` → `gh pr create --draft` → print the URL.
-- `deskpr update` — follow-up push of the current branch to its EXISTING open draft PR
-  (the fix→re-review hot path); refuses if no open PR exists for the branch or it is not
-  a draft.
+- `deskpr update` — follow-up push of the current branch to its EXISTING open PR, draft
+  or ready-flipped (the fix→re-review hot path); refuses if no open PR exists for the
+  branch.
+- `deskpr edit --body-file F [--title T]` — replace that same open PR's **body**, and
+  optionally its **title**. It pushes nothing and runs no git write at all.
+
+### `deskpr edit` — correcting a PR's own text
+
+The rework cycle whose finding is "the PR body says X, it should say Y" — a provenance
+correction, a scope clarification, a stale `Refs` line — had no desk verb. A worker told
+to write through the desk verbs, and separately told not to route around an instruction
+with a different tool, was left choosing between leaving the description wrong and a raw
+`gh pr edit` that runs no gate and leaves no audit row. `edit` closes that with the same
+gates `create` runs over the text it publishes, so the escape hatch stays **audited**.
+
+It finds the PR the way `update` does — the OPEN PR whose head is this branch — and that
+one refusal also covers a merged or closed PR, because neither appears in a `--state open`
+listing. It runs, in order: the secret scan over the replacement body and the new title
+(same audited `--force-scan-override`), the exactly-one-trailer grammar over the
+replacement body, `SelfContainCheck` over both published surfaces, an idempotency noop
+when the PR already carries this exact text, the write rate limit, and the public-repo
+gate (asked about the PR being edited). It does **not** re-scan the branch name or the
+branch diff: those are surfaces a *push* publishes, and `edit` pushes nothing — refusing
+a body correction over code the branch already carries would strand the one verb whose
+job is fixing text.
+
+**The link trailer is not editable.** `Brief: <stream>/<NN>` / `Issue: #<N>` is the
+derived board's edge from the PR to its work item, and a body-rewrite verb that could
+re-point or drop it would make that edge assertable exactly once and silently revocable
+forever after. The replacement body must carry exactly one trailer, and when the PR's
+current body already has one, the replacement's must be identical to it (exit 5
+otherwise, naming both). The one asymmetry is deliberate: a PR whose current body carries
+**no** trailer may gain one — that is the pre-trailer migration `update` tells the worker
+to perform by hand, which until now named no verb.
+
+**It announces itself.** A body/title edit moves no head SHA, so a review monitor keyed on
+the head sees no event at all and the correction is invisible to the loop that has to act
+on it. `edit` therefore posts one short comment on the PR naming which surfaces changed.
+If the edit lands but that comment cannot be posted, the verb exits 6 saying **both**
+facts — exit 0 would claim the review desk had been told when it had not.
 
 Preconditions re-verified in-tool (C-2, all fail closed): inside a git worktree on a
 **non-default** branch (detached HEAD → exit 6; `main`/`master` → exit 5; unreadable
@@ -468,7 +508,7 @@ best-effort). An open PR already on the head branch → idempotent noop printing
 
 ### The logged scan override (`--force-scan-override`)
 
-`deskpr create`, `deskpr update` and `deskreply` accept
+`deskpr create`, `deskpr update`, `deskpr edit` and `deskreply` accept
 `--force-scan-override "<why>"`, which proceeds past a **secret-scan refusal** and writes
 an audit row naming the tool, the verb, the surface digest, the stated reason and the
 identity that stated it. The reason is required and must be long enough to be one.
