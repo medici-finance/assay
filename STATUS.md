@@ -16,7 +16,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/6 | 2026-09-02 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-09-02 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-09-02 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-09-02 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-02 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-09-02 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-09-02 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 0/16 | 2026-09-02 |  |
@@ -51,33 +51,34 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | quality | 01 [exec:strong] | verified | 8500 | 15 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
+| harness-portability | 01 [exec:strong] | implemented | 5000 | 8 | — | — | — |
 | quality | 06 | verified | 5000 | 8 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | derived-board | 01 [exec:strong] | verified | 4500 | 5 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | derived-board | 02 | verified | 4500 | 5 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | desktools-go-git | 01 | verified | 4500 | 7 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 01 [exec:strong] | verified | 4500 | 7 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
-| harness-portability | 01 [exec:strong] | implemented | 4500 | 7 | — | — | — |
 | quality | 07 [exec:strong] | verified | 4500 | 7 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | desktools-go-git | 02 | implemented | 4000 | 6 | — | — | — |
+| harness-portability | 02 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
-| harness-portability | 02 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| harness-portability | 04 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | quality | 02 [exec:strong] | verified | 3500 | 5 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | forge-gitlab | 02 [exec:strong] | verified | 3000 | 4 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
-| harness-portability | 04 [exec:strong] | implemented | 3000 | 4 | — | — | — |
+| harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | mistake-proofing | 01 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | quality | 03 | verified | 3000 | 4 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | derived-board | 05 | implemented | 2500 | 1 | — | — | — |
 | forge-gitlab | 03 [exec:strong] | verified | 2500 | 3 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
-| harness-portability | 05 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | quality | 04 | verified | 2500 | 3 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 04 | implemented | 2000 | 2 | — | — | — |
-| harness-portability | 06 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | iso-9001 | 02 [exec:strong] | verified | 2000 | 2 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | quality | 10 [exec:strong] | verified | 2000 | 2 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| harness-portability | 12 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | mistake-proofing | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 07 | verified | 1500 | 1 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
@@ -91,7 +92,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| harness-portability | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | quality | 05 | verified | 1000 | 0 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | quality | 08 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | quality | 09 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
@@ -112,7 +112,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| harness-portability | 03 | implemented | 4000 | 6 | — | — | — |
+| harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
 
 ## Age at the human gate
 
@@ -185,7 +185,7 @@ _None._
 - 07 GitHub forge backend on `go-gh` — retire the exec-`gh` shell path — implemented (wave 2)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
 
-### harness-portability (11 open)
+### harness-portability (12 open)
 
 - 01 Codex capability ground-truth — measured matrix, not inherited prior art — implemented (wave 0)
 - 02 Kill the drift debt — re-sync the bundle, flip the canonical home — implemented (wave 0)
@@ -198,6 +198,7 @@ _None._
 - 10 SpecMem portable-memory spike — one stream's registers across two harnesses — implemented (wave 0)
 - 11 Durable-monitor capability + residual harness-token prose-audit — todo (wave 3)
 - 12 Cursor — the third harness column (ground-truth + binding + generator verb + public column) — implemented (wave 5)
+- 13 Cursor live-desk-smoke protocol + first run — todo (wave 6)
 
 ### iso-9001 (6 open)
 
@@ -264,4 +265,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**11** streams (**11** active, **0** paused) · **0/89** briefs done · completed initiatives: see `docs/archive/`
+**11** streams (**11** active, **0** paused) · **0/90** briefs done · completed initiatives: see `docs/archive/`
