@@ -10,7 +10,7 @@ why: >-
   both deferrals and replaces them with a real Windows walkthrough — the install path, the pinned release, the CI-proven status, and the
   triaged surfaces that need a documented workaround — so a Windows adopter has a path, not a
   dead end.
-wave: 2
+wave: 3
 depends: ["windows-port/02", "windows-port/03", "windows-port/04"]
 unblocks: []
 effort: M

@@ -28,9 +28,9 @@ runner, and the escape-valve `Decide()` primitive.
 | 01 | [Binary channel — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag](brief-01-binary-channel-and-pin-contract.md) | 1 | M | implemented | — | — |
 | 02 | [Generalize — batch-fanout as the second drain-engine consumer](brief-02-generalize-batch-fanout.md) | 1 | M | implemented | — | — |
 | 03 | [Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN](brief-03-published-tree-residual-scrub.md) | 1 | M | implemented | — | — |
-| 04 | [Deterministic runner — execute rows, batch, sign, file verdict issues](brief-04-runner-verdict-batching.md) | 1 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
-| 05 | [Escape-valve `Decide()` primitive in deskkit](brief-05-escape-valve-decide.md) | 1 | M | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
-| 06 | [Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction)](brief-06-roster-from-deployment.md) | 1 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
+| 04 | [Deterministic runner — execute rows, batch, sign, file verdict issues](brief-04-runner-verdict-batching.md) | 1 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #306 @ 4f37b243efb70e1b1d3e726bc4019967ad64ad99) |
+| 05 | [Escape-valve `Decide()` primitive in deskkit](brief-05-escape-valve-decide.md) | 1 | M | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #156 @ 112b206fee74b470016be325dc7c2dfeff670931) |
+| 06 | [Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction)](brief-06-roster-from-deployment.md) | 1 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #318 @ 6ab8de53a40c1a4f71fa6c0a0ddccb4b27a000c8) |
 
 ## Critical path
 None. Each brief is independent and self-contained. The soft ordering their source streams
