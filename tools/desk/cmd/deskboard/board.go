@@ -166,6 +166,33 @@ type check struct {
 	// the enumeration itself was a subset once (#400 T1: EXPECTED counted as a pass).
 	Context  string `json:"context"`    // StatusContext name
 	TypeName string `json:"__typename"` // CheckRun | StatusContext (when gh emits it)
+	// Recency stamps for the latest-run-per-name reduction (#282/#289): a CheckRun carries
+	// StartedAt/CompletedAt, a StatusContext carries CreatedAt. The forge already serves
+	// them inside statusCheckRollup, so decoding them costs no extra read.
+	StartedAt   string `json:"startedAt"`
+	CompletedAt string `json:"completedAt"`
+	CreatedAt   string `json:"createdAt"`
+}
+
+// groupKey and recencyKey are check's adapters into deskkit.LatestRunPerName: the identity
+// a run is reduced BY (its check name, or a status context's context), and the recency
+// stamp the newest-wins comparison reads (CompletedAt → StartedAt → CreatedAt).
+func (c check) groupKey() string {
+	if c.Name != "" {
+		return c.Name
+	}
+	return c.Context
+}
+
+func (c check) recencyKey() string {
+	switch {
+	case c.CompletedAt != "":
+		return c.CompletedAt
+	case c.StartedAt != "":
+		return c.StartedAt
+	default:
+		return c.CreatedAt
+	}
 }
 
 type prBase struct {
@@ -453,7 +480,13 @@ func prBlessed(repo string, num int) (bool, error) {
 // "CI hasn't finished" and never clears; folding it into `pass` would be a fail-open on
 // the flip gate. It is reported, and it blocks the green verdict.
 func ciState(p prBase) (pass, pending, fail, unknown int) {
-	for _, c := range p.StatusCheckRollup {
+	// Reduce to the latest run per check NAME first — branch protection's own rule, from
+	// the SAME shared reducer deskflip's gate uses — so a superseded run (an older
+	// CANCELLED, a stale QUEUED left by a push+pull_request double-trigger) does not count
+	// against a PR whose current run for that name is not it. Without this the board would
+	// render a double-triggered PR CI-fail while deskflip flips it ready — the divergence
+	// #282/#289 set out to end.
+	for _, c := range deskkit.LatestRunPerName(p.StatusCheckRollup, check.groupKey, check.recencyKey) {
 		switch {
 		case c.Status != "": // CheckRun node
 			switch {

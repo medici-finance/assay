@@ -1027,6 +1027,19 @@ func main() {
 		os.Exit(runReconcile(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen conform` — positional subcommand (like `verifyrun` above) that
+	// validates brief frontmatter against the embedded, machine-readable brief-v1
+	// contract (schemas/brief-v1.json) and, with --emit-schema, prints that
+	// contract so it is reproducible from any pinned binary (conform.go).
+	//
+	// Intercepted before flag parsing for verifyrun's reason: it owns --root and
+	// --emit-schema. It is READ-ONLY and offline, but it is a DISTINCT surface from
+	// --lint (schema contract, not methodology rules) and reports its own
+	// three-state exit, so it is a subcommand rather than a --lint leg.
+	if len(os.Args) > 1 && os.Args[1] == "conform" {
+		os.Exit(runConform(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen init` — positional subcommand (like `git init`) that scaffolds the
 	// streams structure into a repo. Intercepted before flag parsing so first-run
 	// users get the natural `statusgen init` UX; `--root DIR` targets DIR.
@@ -1052,8 +1065,8 @@ func main() {
 	// UNKNOWN POSITIONAL SUBCOMMAND — fail closed (#1075).
 	//
 	// Every genuine positional subcommand (verifyrun, mergecheck, shardcheck,
-	// init; plus the sole-argument version/--version handled at the top) has been
-	// intercepted above. What remains here as os.Args[1] is either a flag (begins
+	// conform, init; plus the sole-argument version/--version handled at the top)
+	// has been intercepted above. What remains here as os.Args[1] is either a flag (begins
 	// with "-", which the flag parser below owns) or a bare non-flag token — and a
 	// bare non-flag token can now only be a misspelled or nonexistent subcommand.
 	//
@@ -1069,7 +1082,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, verifyrun, mergecheck, shardcheck, backfill, reconcile, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, verifyrun, mergecheck, shardcheck, conform, backfill, reconcile, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}

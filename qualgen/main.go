@@ -6,8 +6,8 @@
 //
 // This is the wave-0 skeleton: the `mine` mode extracts commits + diffs through
 // the three-state instrument wrapper and records its horizon. `report` (M1
-// trend view) and `check` (brittleness screen) are filled in by later briefs;
-// `pr` is still recognized scaffolding.
+// trend view), `check` (brittleness screen), and `pr` (per-PR risk-feature
+// feed) are filled in by later briefs.
 //
 // The tool is repo-agnostic and OSS: no house specifics are hard-coded here;
 // they arrive as configuration in later briefs.
@@ -62,7 +62,7 @@ func usage(w io.Writer) {
 usage:
   qualgen mine   --repo <dir> --out <dir>   extract history into the tracking root
   qualgen report --out <dir>                render trend views          (not yet implemented)
-  qualgen pr <n> --out <dir>                per-PR risk features         (not yet implemented)
+  qualgen pr <n> --out <dir> [--repo <dir>] [--head <ref> --base <ref>]  per-PR risk-feature feed
   qualgen check <paths> --out <dir> [--repo <dir>]  brittleness screen for a named file set
   qualgen --version                         print the release tag
 

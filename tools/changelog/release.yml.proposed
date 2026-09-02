@@ -1,14 +1,15 @@
 # ⚠️ STAGED — NOT YET ACTIVE. This file is the COMPLETE intended content of the
-# release workflow WITH the CHANGELOG-discipline changes applied, staged here
-# under tools/ because the identity that authored it cannot push under
-# .github/workflows/ (a server-side workflows-scope block). A workflows-capable
-# identity ACTIVATES the change by copying this file verbatim over
+# release workflow WITH the CHANGELOG-fragment aggregation changes applied,
+# staged here under tools/ because the identity that authored it cannot push
+# under .github/workflows/ (a server-side workflows-scope block). A
+# workflows-capable identity ACTIVATES the change by copying this file verbatim
+# (dropping this banner, down to the `# ---` rule) over
 #     .github/workflows/release.yml
 # (see tools/changelog/README.md and tools/changelog/release.yml.patch for the
 # exact delta from the currently-live release.yml). The only changes from the
-# live file are the three CHANGELOG-discipline additions, each marked
-# "CHANGELOG discipline" below; everything else is byte-identical to the live
-# workflow. Nothing reads this file while it sits under tools/.
+# live file are the CHANGELOG-fragment additions, each marked "CHANGELOG
+# discipline" below; everything else is byte-identical to the live workflow.
+# Nothing reads this file while it sits under tools/.
 # ---------------------------------------------------------------------------
 name: release
 # Build statusgen binaries for darwin-arm64, darwin-amd64 + linux-amd64 on a
@@ -712,44 +713,34 @@ jobs:
           echo "python3 present: $(python3 --version 2>&1)"
 
       # CHANGELOG discipline (driver direction 2026-08-31: releases lead with
-      # DESCRIPTIVE highlights, not a commit list). Extract the `## Unreleased`
-      # section from CHANGELOG.md and REFUSE to cut when it is empty — a release
-      # with no human-legible highlights is exactly what this convention exists to
-      # prevent. Runs on the dry_run path too: dry_run stops before the tag, but
-      # an empty-changelog refusal must surface in a dry run just as in a real cut.
-      # Placed AFTER the Preflight step so python3 is already proven present.
-      - name: CHANGELOG discipline — extract and require Unreleased highlights
+      # DESCRIPTIVE highlights, not a commit list). AGGREGATE the per-PR fragment
+      # files under `changelog/` (sorted, deduped, bucketed) into the highlights
+      # this release lifts, and REFUSE to cut when there is nothing to aggregate —
+      # no fragments and no residual `## Unreleased` content. A release with no
+      # human-legible highlights is exactly what this convention exists to
+      # prevent; the empty-fragments refusal is the direct heir of the retired
+      # empty-`## Unreleased` refusal. The aggregation (and its cutover fold of any
+      # residual `## Unreleased` bullets) lives in tools/changelog/aggregate.py,
+      # unit-tested offline by tools/changelog/aggregate_test.sh. Runs on the
+      # dry_run path too: dry_run stops before the tag, but an empty-changelog
+      # refusal must surface in a dry run just as in a real cut. Placed AFTER the
+      # Preflight step so python3 is already proven present.
+      - name: CHANGELOG discipline — aggregate fragments and require highlights
         id: changelog
         run: |
           set -euo pipefail
           if [ ! -f CHANGELOG.md ]; then
-            echo "::error::CHANGELOG.md is missing — every release lifts its highlights from the '## Unreleased' section (driver direction 2026-08-31)."
+            echo "::error::CHANGELOG.md is missing — every release aggregates its highlights from the changelog/ fragments into a dated section here (driver direction 2026-08-31)."
             exit 1
           fi
-          notes="${RUNNER_TEMP}/unreleased.md"
-          python3 - CHANGELOG.md > "$notes" <<'PY'
-          import sys
-          lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
-          out, capturing = [], False
-          for ln in lines:
-              if ln.strip().lower() == "## unreleased":
-                  capturing = True
-                  continue
-              if capturing and ln.startswith("## "):
-                  break
-              if capturing:
-                  out.append(ln)
-          while out and not out[0].strip():
-              out.pop(0)
-          while out and not out[-1].strip():
-              out.pop()
-          sys.stdout.write("\n".join(out))
-          PY
-          if ! grep -qE '\S' "$notes"; then
-            echo "::error::CHANGELOG.md '## Unreleased' is empty — refusing to cut a release with no descriptive highlights. Add highlight lines under '## Unreleased' first (driver direction 2026-08-31)."
+          notes="${RUNNER_TEMP}/highlights.md"
+          # aggregate.py exits 2 with a clear message when there is nothing to
+          # aggregate — surface that as the release refusal.
+          if ! python3 tools/changelog/aggregate.py highlights changelog CHANGELOG.md > "$notes"; then
+            echo "::error::no changelog fragments to aggregate — refusing to cut a release with no descriptive highlights. Add a fragment (changelog/<slug>.md) first (driver direction 2026-08-31; see changelog/README.md)."
             exit 1
           fi
-          echo "Unreleased highlights to lift into the release body:"
+          echo "Aggregated fragment highlights to lift into the release body:"
           cat "$notes"
           echo "notes_path=$notes" >> "$GITHUB_OUTPUT"
 
@@ -927,7 +918,7 @@ jobs:
           # DESK_IMAGE is the workflow-level literal; the tag defaults to the
           # currently published image (v0.1.0) and is overridable on dispatch.
           DESK_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.desk_image_tag || 'v0.1.0' }}
-          # CHANGELOG discipline — the extracted `## Unreleased` highlights, lifted
+          # CHANGELOG discipline — the aggregated fragment highlights, lifted
           # ABOVE the asset-inventory boilerplate in the release body below.
           NOTES_PATH: ${{ steps.changelog.outputs.notes_path }}
         run: |
@@ -963,7 +954,7 @@ jobs:
             # docker-publish.yml) as an artifact line alongside the binaries.
             desk_image_ref="${DESK_IMAGE}:${DESK_IMAGE_TAG}"
             # CHANGELOG discipline — the release body LEADS with the descriptive
-            # `## Unreleased` highlights (extracted by the CHANGELOG-discipline
+            # aggregated fragment highlights (produced by the CHANGELOG-discipline
             # step above, and required non-empty there), then the asset-inventory
             # boilerplate below a horizontal rule. Highlights first is the whole
             # point of the driver direction (2026-08-31): a reader sees what
@@ -1033,17 +1024,19 @@ jobs:
           fi
           echo "Published ${RELEASE_TAG} with statusgen + desk-tools binaries + checksums.txt (desk-tools image: ${DESK_IMAGE}:${DESK_IMAGE_TAG})."
 
-      # CHANGELOG discipline — in the SAME tagged flow, roll the just-released
-      # highlights out of `## Unreleased` and under a dated `## vX.Y.Z — <date>`
-      # heading, leaving Unreleased empty so the next cycle starts clean (and the
-      # extract-and-require step above refuses the next release until new
-      # highlights are added). Dispatch + non-dry-run only; committed to the
+      # CHANGELOG discipline — in the SAME tagged flow, WRITE the aggregated
+      # fragment highlights under a dated `## vX.Y.Z — <date>` heading in
+      # CHANGELOG.md, empty the `## Unreleased` section to its standing pointer
+      # note, and CLEAR the aggregated fragments from changelog/ — all in ONE
+      # release commit. The next cycle therefore starts with an empty changelog/,
+      # and the aggregate-and-require step above refuses the next release until a
+      # new fragment is added. Dispatch + non-dry-run only; committed to the
       # default branch with the same per-command header-auth the tag push uses
       # (persist-credentials was false during the build, so no token sits in
       # .git/config). A non-fast-forward push here is a loud failure, never a
       # force — the release bytes are already published, so a failed roll is a
       # follow-up commit, not a lost release.
-      - name: CHANGELOG discipline — roll Unreleased under the released version
+      - name: CHANGELOG discipline — write the aggregated section and clear fragments
         if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
@@ -1052,32 +1045,30 @@ jobs:
         run: |
           set -euo pipefail
           day=$(date -u +%Y-%m-%d)
-          python3 - CHANGELOG.md "$RELEASE_TAG" "$day" <<'PY'
-          import sys
-          path, tag, day = sys.argv[1], sys.argv[2], sys.argv[3]
-          lines = open(path, encoding="utf-8").read().splitlines()
-          out, done = [], False
-          for ln in lines:
-              out.append(ln)
-              if not done and ln.strip().lower() == "## unreleased":
-                  # Leave Unreleased empty; insert a fresh dated section after it.
-                  out.append("")
-                  out.append(f"## {tag} — {day}")
-                  done = True
-          open(path, "w", encoding="utf-8").write("\n".join(out) + "\n")
-          PY
-          if git diff --quiet -- CHANGELOG.md; then
-            echo "CHANGELOG.md unchanged — nothing to roll (no '## Unreleased' heading?)."
+          # Rewrite CHANGELOG.md: insert the dated section carrying the aggregated
+          # fragment highlights, and empty `## Unreleased` to its pointer note.
+          # aggregate.py exits 2 (leaving the file untouched) only when there is
+          # nothing to aggregate — but the aggregate step above already required
+          # non-empty, so a failure here is a real error, not the empty case.
+          if ! python3 tools/changelog/aggregate.py roll changelog CHANGELOG.md "$RELEASE_TAG" "$day"; then
+            echo "::error::failed to write the aggregated CHANGELOG.md section for ${RELEASE_TAG}."
+            exit 1
+          fi
+          # Clear the aggregated fragments in the SAME commit (keep README.md).
+          find changelog -maxdepth 1 -type f -name '*.md' ! -name 'README.md' -print0 \
+            | xargs -0 -r git rm -q --
+          git add CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "Nothing staged — CHANGELOG.md unchanged and no fragments to clear."
             exit 0
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          git commit -m "docs(changelog): roll Unreleased under ${RELEASE_TAG}"
+          git commit -m "docs(changelog): aggregate fragments under ${RELEASE_TAG} and clear changelog/"
           basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
           git -c http.extraheader="AUTHORIZATION: basic ${basic}" \
             push origin "HEAD:${DEFAULT_BRANCH}"
-          echo "Rolled CHANGELOG '## Unreleased' under '## ${RELEASE_TAG}' and pushed to ${DEFAULT_BRANCH}."
+          echo "Wrote '## ${RELEASE_TAG}' from the changelog/ fragments, cleared them, and pushed to ${DEFAULT_BRANCH}."
 
   # ───────────────────────────────────────────────────────────────────────────
   # CONTAINER CHANNEL — the assay-harness image. ONE umbrella run emits both
