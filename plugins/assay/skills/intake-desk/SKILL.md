@@ -117,7 +117,45 @@ age-flagged (`issueboard issues` / `issueboard intake` narrow to one lane). Its 
 roster's, resolved at runtime; an unset/empty scan-repo roster value or a repo the token cannot read
 fails the WHOLE board with exit 6, so the board is never silently partial and an empty sweep is never
 reported as a clean board. A `needs-decision` or `question` issue ages against `--sla-days` (default
-6) from the last HUMAN response — under it AWAIT, past it ESCALATE, sorted to the top.
+6) from the last HUMAN response — under it AWAIT, past it ESCALATE, sorted to the top. This top
+position is an override on the impact/risk/effort ordering below, not subordinate to it: a
+decision-latency breach is a commitment breach, orthogonal to the item's score, so the triple must
+never be able to sink an ESCALATE row beneath a fresher high-impact one.
+
+## Scored triage — the impact/risk/effort triple at exit
+
+Every item leaving triage carries a recorded **impact / risk / effort triple**, so the
+human-facing surfaces can order *worth the attention* ahead of *cheap to do*. Without it a
+digest sorts by urgency-then-age alone, and a cheap-but-worthless item and an
+expensive-but-critical one arrive indistinguishable — the front door's sharpest gap.
+
+- **Encoding — three scoped labels plus one rationale line each.** At the exit, set three
+  labels on the item — `impact:{high,med,low}`, `risk:{high,med,low}`, `effort:{s,m,l}` — and
+  post ONE comment line per axis giving the reason (e.g. `impact: high — blocks every
+  downstream consumer`). The labels are the queryable data; the comment is the audit trail.
+  The taxonomy is generic — no project names belong in a label. Label provisioning is
+  per-repo project config, like the escalation labels above: create idempotently before
+  first use on a repo.
+- **Judgment recorded, not computed.** The triple is the triage session's own call, made
+  where the judgment already happens — no model scores it in CI and no inferential sensor
+  derives it. This desk already runs on a smart tier for exactly this reason.
+- **Every exit, forward-only.** All five tracked exits (and the intake lane's four) take a
+  triple; scoring is forward-only — the corpus accretes from now, existing items are not
+  back-labelled, so an unscored older item is expected, never a defect.
+- **Ordering rule for human-facing surfaces.** SLA-ESCALATE items (past `--sla-days`, "The
+  board" above) sort first, pinned there as an override — the triple never demotes an
+  escalated decision item. Below that, sort **impact desc, then risk desc, then effort asc**
+  (highest-impact / lowest-cost first), and only THEN the existing urgency-then-age within
+  ties. An item missing any label sorts **exactly as today** — the triple never blocks,
+  reorders past, or hides an unlabelled item; absence is always still listed.
+- **The score's honesty is the single control.** A session assigning reflexive mid-scores
+  produces ordering noise dressed as signal, so three independent layers keep it honest: the
+  **required per-axis rationale** (an unrationalized label is lintable noise, not a score);
+  the **score-distribution line** a metrics surface renders per window (all-mediums is then
+  visible as a defect rather than hidden); and the **digest that shows the rationale lines**,
+  so a wrong score is contestable at the point of use. Never drop the rationale to move
+  faster — a label without its reason is precisely the failure this convention exists to
+  prevent, and no gain in queue speed buys back a score no one can audit.
 
 ## The loop — issue lane
 
