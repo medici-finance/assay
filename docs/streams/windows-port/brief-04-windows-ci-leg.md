@@ -18,7 +18,7 @@ schema: brief-v1
 authored: 2026-09-01 by windows-port authoring session
 sources:
   - "Ian's direction (2026-09-01): a windows runner leg proving statusgen --lint + a desk-verb smoke passes on Windows"
-  - "survey (2026-09-01 @ origin/main): every runs-on in .github/workflows is a self-hosted medici-builder-* runner; zero windows-latest; ci.yml build-test does go build+vet (not go test); assay-statusgen.yml lint job runs statusgen --root . --lint; toolchain hand-installed linux-amd64 by construction"
+  - "survey (2026-09-01 @ origin/main): every runs-on in .github/workflows is a self-hosted medici-builder-public / medici-builder-release runner; zero windows-latest; ci.yml build-test does go build+vet (not go test); assay-statusgen.yml lint job runs statusgen --root . --lint; toolchain hand-installed linux-amd64 by construction"
   - "windows-port/01: emits the statusgen-windows-<arch>.exe asset the smoke can install and run"
   - "windows-port/02: the portability triage — which desk verb is safe to smoke on Windows (a verb that does not shell out to a POSIX-only surface)"
   - "windows-port/03: the Windows install path — when landed, this leg's smoke installs and runs THAT release binary rather than a from-source build (the release-binary smoke that closes the CI-proven claim)"
@@ -39,7 +39,7 @@ files:
   below).
 
 facts:
-- **No CI has ever run on Windows.** Every `runs-on:` today is a self-hosted `medici-builder-*`
+- **No CI has ever run on Windows.** Every `runs-on:` today is a self-hosted `medici-builder-public` or `medici-builder-release`
   (Linux) label, and the Go toolchain is hand-installed `go…linux-amd64.tar.gz` — so Windows is
   a genuinely new substrate, not a matrix tweak on an existing job.
 - **Runner choice — the substrate decision, resolved in this brief, not gated out:**
