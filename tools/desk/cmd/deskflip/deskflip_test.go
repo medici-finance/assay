@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -65,6 +66,17 @@ func (s *stub) install(t *testing.T) string {
 	t.Setenv("DESK_SESSION", "deskflip-test")
 	t.Setenv("CLAUDE_SESSION_ID", "deskflip-test")
 	t.Setenv("DESK_LOOP", flipRole)
+
+	// The App-token condition is exercised past its refusal here: every case below is
+	// about a LATER condition, and a verb that could not authenticate would never reach
+	// one. The refusal itself has its own tests (identity_test.go), which is what keeps
+	// this stub from making the condition vacuous.
+	oldMint := mintTokenFn
+	mintTokenFn = func(role, repo string) (string, string, error) {
+		return "stub-installation-token", filepath.Join(home, ".config", "assay", role+"-token-stub"), nil
+	}
+	oldTok := ghToken
+	t.Cleanup(func() { mintTokenFn = oldMint; ghToken = oldTok })
 
 	if s.files == nil {
 		s.files = greenFiles()
@@ -1045,8 +1057,8 @@ func TestForeignRepoRefused(t *testing.T) {
 }
 
 func TestConditionListIsTheDocumentedContract(t *testing.T) {
-	want := []string{"caller-role", "pr-open-draft", "model-floor", "reviewer-approved", "checks-green",
-		"mergeable", "security-verdict", "head-stable"}
+	want := []string{"caller-role", "app-token", "pr-open-draft", "model-floor", "reviewer-approved",
+		"checks-green", "mergeable", "security-verdict", "head-stable"}
 	if len(flipConditions) != len(want) {
 		t.Fatalf("flipConditions has %d entries, want %d", len(flipConditions), len(want))
 	}

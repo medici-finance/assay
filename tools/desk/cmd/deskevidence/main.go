@@ -99,6 +99,16 @@ func run(args []string) int {
 		return deskkit.ExitCodeOf(err)
 	}
 
+	// Outward verbs present a LOOP IDENTITY. The kill switch's per-loop halt is
+	// `STOP.<loop>`, matched against $DESK_LOOP; with the variable unset nothing matches,
+	// so a stop flag a human is holding never fires and this verb keeps writing while the
+	// operator believes it has been halted. The boot verb has checked this since it was
+	// written — an outward verb run OUTSIDE a booted window did not, which is the gap.
+	if err := deskkit.RequireLoopIdentity("deskevidence"); err != nil {
+		fmt.Fprintln(os.Stderr, "deskevidence: "+err.Error())
+		return deskkit.ExitCodeOf(err)
+	}
+
 	// Running from source (go run / unstamped) is a drift risk — say so loudly.
 	deskkit.WarnIfUnpinned(stderr)
 
