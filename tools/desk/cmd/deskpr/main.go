@@ -1,10 +1,11 @@
 // Command deskpr is the worker-side desk tool.
 // It encodes ONE workflow verb — "open the draft PR for the branch I'm on" — plus its
-// hot-path sibling "push a follow-up to that same open PR". create is draft-only BY
-// CONSTRUCTION: no code path can omit --draft. update pushes to an EXISTING open PR on
-// the branch — draft or ready-flipped — but neither verb can emit a git --force, and
-// there is no verb for edit/close/merge/ready (ready lives in deskpost with its
-// preconditions).
+// hot-path siblings "push a follow-up to that same open PR" and "correct that PR's own
+// body/title text". create is draft-only BY CONSTRUCTION: no code path can omit --draft.
+// update pushes to an EXISTING open PR on the branch — draft or ready-flipped. edit
+// replaces the body (and optionally the title) of that same open PR through the gates
+// create runs, and pushes nothing. No verb can emit a git --force, and there is no verb
+// for close/merge/ready (ready lives in deskpost with its preconditions).
 //
 // Exit codes (deskkit contract): 0 success/noop, 3 disabled,
 // 4 rate-limited, 5 refused, 6 unverifiable. See deskkit/exitcodes.go.
@@ -22,13 +23,25 @@ const usage = `deskpr — push a feature branch and open (or update) its pull re
 USAGE:
   deskpr create --title T (--body-file F | --body-min B) [--base main] [--as-app=false]
   deskpr update [--as-app=false]
+  deskpr edit --body-file F [--title T] [--as-app=false]
   deskpr --version
 
 deskpr create is draft-only by construction: it can only open a DRAFT PR on a
 non-default branch. deskpr update pushes a follow-up to an EXISTING open PR on the
-branch — draft or ready-flipped. There is no ready/edit/close/merge verb, and neither
-verb can pass --force to git. Preconditions are re-verified in-tool;
-on any state it cannot positively verify it refuses.
+branch — draft or ready-flipped. deskpr edit replaces that same open PR's body, and
+optionally its title, and pushes nothing: it refuses when the branch has no OPEN PR
+(which is also how a merged or closed one is refused), and it runs the trailer,
+secret-scan, self-containment, rate-limit and public-repo gates create runs. There is
+no ready/close/merge verb, and no verb can pass --force to git. Preconditions are
+re-verified in-tool; on any state it cannot positively verify it refuses.
+
+deskpr edit cannot change the body's link trailer. "Brief: <stream>/<NN>" / "Issue: #<N>"
+is the derived board's edge from the PR to its work item: the replacement body must carry
+exactly one, and when the PR's current body already has one, the replacement's must match
+it. A PR whose current body has NO trailer may gain one — that is the pre-trailer
+migration deskpr update tells you to perform. Because a body edit moves no head SHA,
+edit also posts one short comment naming what changed, so a head-keyed review monitor
+has an event to see.
 
 By default, --as-app is true: gh calls authenticate as
 the worker App via desktoken worker. Pass --as-app=false for the example-org
@@ -118,6 +131,8 @@ func run(args []string) int {
 		err = cmdCreate(rest)
 	case "update":
 		err = cmdUpdate(rest)
+	case "edit":
+		err = cmdEdit(rest)
 	default:
 		fmt.Fprintf(os.Stderr, "deskpr: unknown subcommand %q\n\n%s\n", sub, usage)
 		return deskkit.ExitRefused
