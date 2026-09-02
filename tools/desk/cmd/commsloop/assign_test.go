@@ -134,6 +134,65 @@ func TestAssignResolvesKnownTriples(t *testing.T) {
 	}
 }
 
+// --- central safety invariant: risk:yes forces human --------------------
+
+// TestAssignRiskYesForcesHuman is the property test that PINS the table's
+// central safety invariant: "risk: yes on ANY (action, class) forces tier:
+// human". It iterates the COMPILED table itself and asserts EVERY entry with
+// Risk==true resolves to TierHuman — so a silent downgrade of any risk:yes
+// cell (the coordinated edit-source-then-mirror path the reviewer proved
+// TestAssignCompiledMatchesSourceDiff and the 7-of-28 spot-check both miss)
+// fails HERE, on a different signal (the invariant) than either of those.
+//
+// It derives the row set from the table, not a hardcoded 14, so a future
+// added risk:yes row is covered automatically; it also guards against a
+// vacuous pass by asserting it actually saw risk:yes rows.
+func TestAssignRiskYesForcesHuman(t *testing.T) {
+	riskRows := 0
+	for k, tier := range compiledAssign {
+		if !k.Risk {
+			continue
+		}
+		riskRows++
+		if tier != loopengine.TierHuman {
+			t.Errorf("risk:yes invariant VIOLATED for %+v: tier=%s, MUST be human — a risk-flagged message must never get more autonomy than an unflagged one",
+				k, tierName(tier))
+		}
+	}
+	if riskRows == 0 {
+		t.Fatal("no risk:yes rows found in compiledAssign — the invariant test would pass vacuously; the table shape has drifted")
+	}
+}
+
+// TestAssignDispatchClassNonRiskIsSession pins the inverse the design relies
+// on: the three dispatch-class actions (route-work-ready / route-review /
+// route-verify) resolve tier: session on the NON-risk path. A silent
+// downgrade there (e.g. to local/cheap) would quietly weaken dispatched work
+// and is caught here, again by iterating the compiled table rather than
+// spot-checking one cell. Derives its row set from the table; guards against
+// a vacuous pass.
+func TestAssignDispatchClassNonRiskIsSession(t *testing.T) {
+	dispatchClass := map[string]bool{
+		"route-work-ready": true,
+		"route-review":     true,
+		"route-verify":     true,
+	}
+	seen := 0
+	for k, tier := range compiledAssign {
+		if k.Risk || !dispatchClass[k.Action] {
+			continue
+		}
+		seen++
+		if tier != loopengine.TierSession {
+			t.Errorf("dispatch-class non-risk invariant VIOLATED for %+v: tier=%s, MUST be session (the standing fan-out default)",
+				k, tierName(tier))
+		}
+	}
+	if seen == 0 {
+		t.Fatal("no dispatch-class non-risk rows found in compiledAssign — the test would pass vacuously; the table shape has drifted")
+	}
+}
+
 // --- human-tier-cannot-dispatch boundary assertion ----------------------
 
 // TestAssignHumanTierNeverDispatches proves the boundary between this table
