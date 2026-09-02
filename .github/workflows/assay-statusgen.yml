@@ -167,3 +167,103 @@ jobs:
             git reset --hard origin/main
             "${RUNNER_TEMP}/statusgen" --root .
           done
+  # verified→done auto-flip for `gate: model` briefs (the third half of the
+  # single-writer shape; wired per the 2026-09-02 ruling on the house tracker).
+  # Mirrors the house `model-autoflip` job: after every push to main,
+  # `statusgen --auto-flip-model` walks each brief sitting at `verified`, finds
+  # the PR that merged it, and flips it to `done` ONLY when the reviewer App
+  # bound in ASSAY_TRUSTED_BOT_SLUGS has an APPROVED review at that PR's merged
+  # head. Every failure is a NON-flip; a candidate the tool could not check
+  # fails this job loudly (exit 1) rather than passing as a clean run. There is
+  # no override flag. The flip commits stream README rows straight to main
+  # under the board-writer App (the same identity that writes STATUS.md), and
+  # `regen` re-runs on that push so the board catches up by itself.
+  #
+  # Reads go through `gh` with the default token (this repo is public, so
+  # reviews are readable without the App); the WRITE is the App token, exactly
+  # as in `regen`. The trust roster resolves from repository Actions variables
+  # when set, else falls back to this repo's own reviewer App — the one
+  # identity whose approval the flip corroborates.
+  model-autoflip:
+    if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-status-regen]') && !contains(github.event.head_commit.message, '[skip-autoflip]') }}
+    runs-on: medici-builder-public
+    permissions:
+      contents: read
+    steps:
+      - name: Mint assay-board-writer App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOARD_APP_ID }}
+          private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the PR resolver walks the brief file's own history
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: Build statusgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+      # gh is what the flip reads PR reviews with. Pinned + sha256-verified
+      # before unpack (same release + digest the house job uses); skipped when
+      # the runner image already ships it.
+      - name: Ensure gh CLI is available (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            echo "gh present: $(gh --version | head -1)"; exit 0
+          fi
+          url="https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz"
+          want="912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/gh.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/gh.tar.gz" | cut -d' ' -f1)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::gh tarball sha256 mismatch — want ${want}, got ${got}; refusing to extract"
+            exit 1
+          fi
+          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
+          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
+      - name: Auto-flip gate:model briefs from the App approval at the merged head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS || 'reviewer=assay-reviewer-app:306477694' }}
+          ASSAY_HOME_REPO: ${{ vars.ASSAY_HOME_REPO || github.repository }}
+        run: |
+          set -uo pipefail
+          git config user.name  'assay-board-writer[bot]'
+          git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
+          flip_rc=0
+          for attempt in 1 2 3 4 5; do
+            git fetch --no-tags origin main
+            git reset --hard FETCH_HEAD
+            flip_rc=0
+            "${RUNNER_TEMP}/statusgen" --root . --auto-flip-model || flip_rc=$?
+            if [ -z "$(git status --porcelain -- docs/streams)" ]; then
+              echo "no brief flipped — nothing to commit"
+              break
+            fi
+            # Sources must stay valid before we commit them.
+            "${RUNNER_TEMP}/statusgen" --root . --lint
+            # Path-scoped add: never STATUS.md (single writer = the regen job).
+            git add -- docs/streams
+            git commit -m "chore(verify): auto-flip gate:model briefs verified→done from the App approval at head [skip-autoflip]"
+            if git push origin HEAD:main; then
+              echo "pushed model-path flips (attempt $attempt)"
+              break
+            fi
+            echo "push attempt $attempt lost a race with a concurrent push — retrying"
+          done
+          if [ "$flip_rc" -ne 0 ]; then
+            echo "::error::statusgen --auto-flip-model reported candidate(s) it COULD NOT CHECK — see the COULD-NOT-CHECK lines above. None of those briefs was flipped; each stays \`verified\` until an App approval at its merged head can be read."
+            exit 1
+          fi
