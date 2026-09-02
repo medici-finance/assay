@@ -174,10 +174,22 @@ func dispatch(o dispatchOpts) error {
 	// verb predicted.
 	wt := runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", "refs/remotes/origin/main")
 	if wt.err != nil {
-		return deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: `deskwt add %s` failed in %s (%s). The claim is HELD — release it, or fix the tree "+
-				"and re-run; do not launch an agent with no worktree of its own.",
-			stepWorktreeCreate, wtName, o.root, firstLine(wt.stderr)), wt.err)
+		// deskwt's OWN message, whole and verbatim — it is the one that names the cause
+		// (which branch, which worktree holds it, what to do). Reducing it to the first
+		// stderr line reduced it to the config echo, and an operator who cannot see the
+		// cause re-runs the claim machinery instead of clearing the stray ref.
+		msg := fmt.Sprintf(
+			"step %s: `deskwt add %s` failed in %s. The claim is HELD — release it, or fix the tree "+
+				"and re-run; do not launch an agent with no worktree of its own. deskwt said:\n%s",
+			stepWorktreeCreate, wtName, o.root, toolMessage(wt.stderr))
+		// deskwt's exit code passes THROUGH: a refusal (5) is a decision it made — the branch
+		// is held by a live worktree, or carries unpushed work — and flattening a decision
+		// into "could not be established" tells the operator to retry something that will
+		// never succeed on its own.
+		if exitCodeOf(wt.err) == deskkit.ExitRefused {
+			return deskkit.Refused(msg)
+		}
+		return deskkit.Unverifiable(msg, wt.err)
 	}
 	home := firstLine(wt.stdout)
 	if home == "" || home == "(no output)" || !strings.HasPrefix(home, "/") {
