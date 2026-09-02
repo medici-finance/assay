@@ -111,6 +111,21 @@ Default if no answer: none — blocks until answered.
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->
 
+**NON-IMPLEMENTER VERIFY 2026-09-02 — gate:human, sensitive-data:yes → status stays `implemented`; a model cannot sign a live-pilot security-parity table.** Runner: opus-4.8[1m]-verifier, offline (`KUBECONFIG=/dev/null`), public-assay merged HEAD `ecf722d068e0fa3c6273eff68931ba6c1fb96e84`. Deliverable present: `docs/streams/forge-gitlab/pilot-report.md`.
+
+| # | Command | Exit | Key observed output |
+|---|---------|------|---------------------|
+| 1 | `grep -c '^[\|]' docs/streams/forge-gitlab/pilot-report.md` | 0 | `68` (≥12) — cross-checks the report's own §4 row-1 claim of 68 exactly. PASS (offline-runnable) |
+| 2 | `glab api projects/:id/merge_requests/:iid/approvals` | — | could-not-check (offline envelope; `glab` not installed; live gitlab.com). Well-formed implementer Phase-0 record EXISTS: report §4 row 2 / §1 — MRs iid 1..4 each `approved:true`, `approved_by[0].user.id=41987965` (reviewer SA) vs authors 41987971/66/69/78 — author ≠ approver on all four. |
+| 3 | mint token twice via `desktoken --forge gitlab worker`; curl old token vs `/user` | — | could-not-check (offline; minting hits live forge). Phase-0 record EXISTS: report §4 row 3 / §3 — first token `200` pre-mint, `401 "Token was revoked."` post-mint; replacement `expires_at 2026-09-09` (7d). |
+| 4 | `git log --format='%an' -1 -- STATUS.md` in the pilot repo | — | could-not-check (offline; live pilot project id 86032201 not in this worktree). Phase-0 record EXISTS: report §4 row 4 — fresh clone returns board-writer SA (41987978) only, commit `bfd01ac`, landed via MR `!4` merged by the human owner; no other identity touched STATUS.md. |
+
+Phase-0 attestation: for the three live rows the implementer's records are well-formed conformance records (endpoint + numeric ids + HTTP status + timestamps + commit SHAs), internally consistent — I attest they EXIST and are well-formed; I did not (could not, offline) re-execute them.
+
+RISK-VALUE: DERIVED — `merge_access_level = 40` ("Maintainers") @ `docs/streams/forge-gitlab/pilot-report.md:164` — the brief's single-point-of-failure control ("merge is always the human's"); only the human owner is a member at ≥40, so 40 ⇒ humans-only merge; the report proves `can_merge:false` for all five Developer(30) bots. `push_access_level = 0` ("No one") @ :165 — floor under rows 2/10, correct for no-direct-push. Token TTL 7d ranks last (reversible). `approvals_required:0` is an OBSERVED CE limitation recorded failed-at-tier, not a value the brief pins.
+
+Verdict: BLOCKED (offline) — 1/4 rows offline-runnable and it PASSes; rows 2/3/4 could-not-check, each backed by an attested well-formed Phase-0 record. No FAIL observed. **Status stays `implemented` — the human gate (Ian) confirms the group, authorizes credentials, and signs the §3 parity verdict; the report self-records 8 failed-at-tier rows + a mid-run D-6 hand-repair as the substance to weigh (pilot report on assay#353).**
+
 ## Review
 Gate: human (from frontmatter) — the human signs the parity verdict; the reviewer
 additionally records verdict + date in the stream README table.
