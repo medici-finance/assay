@@ -8,8 +8,8 @@ why: >-
   the two Windows targets is a mechanical extension of the existing cross-compile loop — Go
   builds them from the same Linux runner — and it is the single move that unblocks the whole
   stream.
-wave: 0
-depends: []
+wave: 1
+depends: ["windows-port/00"]
 unblocks: ["windows-port/03", "windows-port/04", "windows-port/05"]
 effort: M
 gate: human
@@ -21,14 +21,15 @@ gate-why: >-
   regardless of how mechanical the diff looks.
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 decision-trigger: creation
-issues: []
+issues: [322]
 schema: brief-v1
 authored: 2026-09-01 by windows-port authoring session
 sources:
   - "Ian's direction (2026-09-01): add windows/amd64 + windows/arm64 to the statusgen + desk-tools release build WITH sha256s, mirroring the per-platform pinned-artifact contract"
   - "plugins/assay/skills/install/SKILL.md §Scope (lines ~232-243): names the deferred Windows artifacts verbatim — statusgen-windows-amd64.exe, a cross-platform hash-verify, the .exe install path — as a not-yet-authored fast-follow"
   - ".github/workflows/release.yml (build loop ~782-784 statusgen, ~819-833 desk-tools, checksums ~839-849): the exact GOOS/GOARCH list and the single checksums.txt this brief extends"
-  - "harness-portability/README.md (measured 2026-08-07): statusgen + tools/** are plain Go argv CLIs, nothing harness-specific — so they cross-compile to windows with no source change"
+  - "harness-portability/README.md (measured 2026-08-07): statusgen + tools/** are plain Go argv CLIs, nothing harness-specific — TRUE as a harness claim, but NOT the GOOS=windows claim this brief originally read into it (see #322)"
+  - "medici-finance/assay#322 (ruling ratified 2026-09-02): the 'no source change needed' premise is retired — eight unix-only syscall sites block both modules; windows-port/00 fixes the source, this brief keeps its two-file scope and now depends on 00"
   - "freshness-checked 2026-09-01 @ origin/main: release.yml builds darwin-arm64, darwin-amd64, linux-amd64 only; zero GOOS=windows / .exe anywhere in .github/workflows or Makefile"
 consumers:
   - ".github/workflows/release.yml: fixed-here (the build + checksum steps gain the two windows targets)"
@@ -64,6 +65,17 @@ facts:
 - **The build needs no Windows runner.** It is a plain `GOOS=… GOARCH=… go build` cross-compile
   on the existing self-hosted `medici-builder-release` (Linux) runner. Go cross-compiles Windows
   targets natively; nothing about this step touches a Windows host.
+- **The source cross-compiles because `windows-port/00` made it — not because it always did.**
+  This brief was authored on the premise that "the Go binaries are already portable, so no
+  source change is needed." That premise was measured on 2026-08-07 as a HARNESS claim (plain
+  argv CLIs), and working this brief disproved it as a `GOOS=windows` claim: eight unix-only
+  `syscall` sites — a process-group kill, two `Stat_t` owner checks and five `flock` copies —
+  fail to compile in `statusgen/` and `tools/desk/`, and `internal/deskkit` is imported by 38 of
+  the 39 desk-tools commands. `medici-finance/assay#322` ruled the fix into its own wave-0 brief
+  rather than widening this one, so `depends: ["windows-port/00"]`. Do NOT start this brief
+  before 00 has merged: both release build steps run under `set -euo pipefail`, so a failing
+  `GOOS=windows` line aborts the whole step and BREAKS today's working three-platform release
+  rather than merely failing to add two more.
 - **Checksums are one file.** The `Generate checksums` step runs a single `sha256sum` over every
   asset into `checksums.txt`; the two statusgen `.exe` assets and the two desk-tools windows
   tarballs are appended to that list. Consumers pin per-platform by sha256 in `.assay-versions`.
@@ -128,9 +140,12 @@ stops here, because nothing downstream exists until the downloads do.
 4. Add the two illustrative statusgen windows pin lines to
    `examples/adopter-scaffold/.assay-versions` with a placeholder sha256 and a
    `# harvested from the published release, not a local build` comment.
-5. Confirm no source change is needed in `statusgen/` or `tools/desk/` — the Go builds
-   cross-compile as-is (rule: report if any `//go:build` constraint or a `syscall`/unix-only
-   import blocks a windows build).
+5. Confirm `windows-port/00` has MERGED and that `statusgen/` and `tools/desk/` therefore
+   cross-compile on the branch base — rows 5 and 6 below are that confirmation. This brief still
+   changes no Go source: if a unix-only `syscall` site or a `//go:build` constraint 00 did not
+   cover still blocks a windows build, that is a gap in 00, not new scope here — report it on
+   `medici-finance/assay#322`'s stream and STOP rather than editing `statusgen/` or
+   `tools/desk/` from this brief.
 
 ## Verify (executable — no prose-only DoD items)
 
@@ -141,7 +156,7 @@ stops here, because nothing downstream exists until the downloads do.
 | 3 | desk-tools loop includes both windows platforms: `grep -oE -e 'windows-amd64' -e 'windows-arm64' .github/workflows/release.yml \| sort -u \| wc -l` | `2` |
 | 4 | Checksums step covers all four new assets: `for a in statusgen-windows-amd64.exe statusgen-windows-arm64.exe desk-tools-windows-amd64.tar.gz desk-tools-windows-arm64.tar.gz; do grep -qF "$a" .github/workflows/release.yml \|\| { echo "MISSING $a"; exit 1; }; done; echo OK` | `OK` |
 | 4a | **Positive control for row 4** — a bogus asset name is absent: `grep -qF 'statusgen-windows-mips.exe' .github/workflows/release.yml; echo $?` | `1` |
-| 5 | **Dereferencing — the windows binaries actually cross-compile** (proves the "no source change needed" claim, not just that YAML mentions them): `cd statusgen && GOOS=windows GOARCH=amd64 go build -o /tmp/wp01-sg-amd64.exe . && GOOS=windows GOARCH=arm64 go build -o /tmp/wp01-sg-arm64.exe . && file /tmp/wp01-sg-amd64.exe` | exit 0; `file` output contains `PE32` / `MS Windows` (a real Windows PE executable was produced) |
+| 5 | **Dereferencing — the windows binaries actually cross-compile** (proves `windows-port/00`'s split really landed on this branch's base, not just that YAML mentions the targets): `cd statusgen && GOOS=windows GOARCH=amd64 go build -o /tmp/wp01-sg-amd64.exe . && GOOS=windows GOARCH=arm64 go build -o /tmp/wp01-sg-arm64.exe . && file /tmp/wp01-sg-amd64.exe` | exit 0; `file` output contains `PE32` / `MS Windows` (a real Windows PE executable was produced) |
 | 6 | **Dereferencing — desk-tools cross-compiles for windows too**: `cd tools/desk && GOOS=windows GOARCH=amd64 go build -o /tmp/wp01-dt2.exe ./cmd/deskpost && file /tmp/wp01-dt2.exe` | exit 0; `file` output contains `PE32`/`MS Windows` (a representative desk verb cross-compiles to windows) |
 | 7 | Example pin file gained the two windows lines: `grep -cE -e '^statusgen-windows-amd64 ' -e '^statusgen-windows-arm64 ' examples/adopter-scaffold/.assay-versions` | `2` |
 | 8 | **Consumers routing corroborated by the diff** (run on the implementer's branch): `statusgen --root . --consumers windows-port/01; echo $?` | `0` — every `consumers:` claim this brief makes is proved by the branch's own diff (release.yml + the example pin changed here; the follow-up edges reference briefs that cite 01) |
@@ -163,3 +178,9 @@ are `no` (a cross-compile loop and a checksum list, otherwise git-revertible CI 
 confirms rows 5 and 6 (the binaries genuinely cross-compile — the dereferencing rows), and that
 the four new asset names appear identically in the build, checksum, and (illustrative) pin
 surfaces so brief 03/04/05 read a stable name.
+
+Rows 5 and 6 are also this brief's check on its dependency: they are copies of
+`windows-port/00`'s rows 3 and 4, kept here so that a regression in the build-tag split shows up
+as a RED on the brief that would ship a broken release, not only on the brief that fixed the
+source. The reviewer confirms this brief's diff still touches exactly its two declared files —
+adding a `statusgen/` or `tools/desk/` source edit here is out of scope and belongs to 00.

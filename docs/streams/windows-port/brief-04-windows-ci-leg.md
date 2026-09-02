@@ -7,7 +7,7 @@ why: >-
   executed on Windows. This brief adds a Windows runner leg that proves `statusgen --lint` exits
   0 and a desk-verb smoke passes on Windows, turning the end-state claim into a green check a
   reviewer and an adopter can trust.
-wave: 1
+wave: 2
 depends: ["windows-port/01", "windows-port/02"]
 unblocks: ["windows-port/05"]
 effort: M
