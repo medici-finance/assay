@@ -123,18 +123,25 @@ var ghTimeout = 120 * time.Second
 // created and killed HERE too, so a wedged unit both releases its ghSem slot and becomes
 // a terminable error within the budget rather than pinning a slot forever.
 var ghRun = func(args ...string) ([]byte, error) {
-	ghSem <- struct{}{}
-	defer func() { <-ghSem }()
-	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", args...)
 	// Authenticate the read as the session role's App installation on the account this
 	// argv targets (token.go). Without this the child `gh` falls through to the HOME
 	// keyring, which under a desk config home that is not the operator's own cannot
 	// authenticate — every private repo then 401s, and on the GraphQL path can come back
 	// falsely EMPTY, which is an absence that reads like an answer. An owner with no
 	// resolvable token yields "" and the call runs on the ambient identity, having said so.
-	if tok := ghTokenForOwner(ownerFromArgs(args)); tok != "" {
+	//
+	// Resolved BEFORE the semaphore and the deadline: the lookup shells out to the token
+	// minter at most once per account, and doing it while holding a ghSem slot would spend
+	// one of six read slots — and part of this call's own timeout budget — on a mint that
+	// is not the read being timed.
+	tok := ghTokenForOwner(ownerFromArgs(args))
+
+	ghSem <- struct{}{}
+	defer func() { <-ghSem }()
+	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	if tok != "" {
 		cmd.Env = append(os.Environ(), "GH_TOKEN="+tok)
 	}
 	// WaitDelay bounds how long Output() may block AFTER the deadline kills gh but a
