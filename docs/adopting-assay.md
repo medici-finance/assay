@@ -333,6 +333,21 @@ for a desk binary.
 roster present; a deliberately corrupted digest makes the install **fail** (proves the hash check is
 live).
 
+**The cluster-CLI shim (`clusterguard`) — optional, and only if your sessions run near a cluster.**
+One of the installed binaries is a PATH shim rather than a verb you call. Install it by creating a
+shim directory holding one symlink per shimmed CLI (`kubectl`, `flux`, `helm`, `talosctl`, `k9s`),
+each pointing at the `clusterguard` binary, and prepending that directory to the `PATH` of every
+agent session. Those CLI names then resolve to a guard that refuses by default, records every
+attempt to `<config-home>/clusterguard.log`, and execs the real CLI only when the operator opt-in is
+present. The opt-in, `ASSAY_ALLOW_CLUSTER`, is a **per-shell export a human makes deliberately** —
+`=1` for read-only verbs, `=mutate` for everything — and an agent session must never export it, the
+same rule as writeguard's shared-checkout token. Do **not** record it in `roster.env`: that file is
+the trust roster, and putting the opt-in there does not grant it. A refusal is exit `5` and is not a
+fallback trigger; the uninstall path is taking the shim directory back off `PATH`, not arming a kill
+switch. Its limits are worth reading before you rely on it — an absolute-path invocation is never
+intercepted, and it is not a network boundary — see **clusterguard — the cluster-CLI exec boundary**
+in `tools/desk/README.md`.
+
 ### PRIMITIVE: scaffold-streams
 Create the streams tree and one stream README with the required frontmatter + brief table (copy the
 shape from `examples/adopter-scaffold/docs/streams/example-service/README.md`). Author the first

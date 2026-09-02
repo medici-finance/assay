@@ -189,6 +189,20 @@ const (
 	// missing trust rather than as an error.
 	EnvRosterSchema = "ASSAY_ROSTER_SCHEMA"
 
+	// EnvAllowCluster is the clusterguard operator opt-in. It is NOT a roster
+	// value and is never read from here: cmd/clusterguard reads it with a direct
+	// os.Getenv, because it is a per-SHELL export an operator makes deliberately
+	// and a desk session must never inherit — the WRITEGUARD_SHARED_OK shape.
+	//
+	// It is declared and RECOGNISED here for one reason: it lives in the ASSAY_
+	// namespace, and an unrecognised ASSAY_ key in roster.env refuses the WHOLE
+	// configuration (parseConfig). An operator who records the opt-in in the
+	// shared roster.env — a natural mistake, since that is where every other
+	// ASSAY_ knob lives — would otherwise take every desk tool's trust roster
+	// down at once. Recognised and ignored is the fail-safe reading. Same
+	// treatment as EnvSweepWithheldStreams and EnvWithheldIdentifiers below.
+	EnvAllowCluster = "ASSAY_ALLOW_CLUSTER"
+
 	// EnvHomeRepo and EnvScanRepos are STATUSGEN-only roster values (the home repo
 	// and the --scan-issues scope). deskkit does not consume them — but the two
 	// readers share one roster.env, and an unknown key in the ASSAY_ namespace
@@ -749,6 +763,13 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		// configuration. It must therefore be RECOGNISED here or turning the scan's
 		// register category on would collapse every desk tool's roster at once.
 		EnvWithheldIdentifiers: true,
+		// EnvAllowCluster (ASSAY_ALLOW_CLUSTER) is the clusterguard operator opt-in, read
+		// by cmd/clusterguard via a direct os.Getenv and never consumed here. It is
+		// RECOGNISED so that an operator who records it in the shared roster.env does not
+		// collapse every desk tool's roster on the unknown-ASSAY_-key refusal. Recognised
+		// is not applied: putting it in roster.env still does NOT grant the opt-in, which
+		// is a per-shell export by design.
+		EnvAllowCluster: true,
 	}
 	for k := range vals {
 		if known[k] {
