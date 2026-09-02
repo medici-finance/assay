@@ -23,16 +23,16 @@ findings-register state machine.
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [30-day lint-firing audit — retire cold rules](brief-01-lint-firing-audit.md) | 1 | S | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
-| 02 | [issue metrics (`--issues`)](brief-02-issue-metrics.md) | 1 | L | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
+| 01 | [30-day lint-firing audit — retire cold rules](brief-01-lint-firing-audit.md) | 1 | S | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #156 @ 112b206fee74b470016be325dc7c2dfeff670931) |
+| 02 | [issue metrics (`--issues`)](brief-02-issue-metrics.md) | 1 | L | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #156 @ 112b206fee74b470016be325dc7c2dfeff670931) |
 | 03 | [self-improvement metric (self-healed vs human-touched)](brief-03-self-improvement-metric.md) | 2 | M | implemented | — | — |
-| 04 | [ladder-position indicator (`--ladder`)](brief-04-ladder-position-indicator.md) | 1 | S | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
+| 04 | [ladder-position indicator (`--ladder`)](brief-04-ladder-position-indicator.md) | 1 | S | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #156 @ 112b206fee74b470016be325dc7c2dfeff670931) |
 | 05 | [drives phase 3 — anti-starvation floors + critical tier](brief-05-drives-phase3-floors-critical-tier.md) | 1 | L | implemented | — | — |
 | 06 | [findings register — corroborated state machine](brief-06-findings-register-state-machine.md) | 1 | L | implemented | — | — |
-| 07 | [new brief-flow metrics](brief-07-brief-flow-metrics.md) | 1 | L | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
+| 07 | [new brief-flow metrics](brief-07-brief-flow-metrics.md) | 1 | L | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #306 @ 4f37b243efb70e1b1d3e726bc4019967ad64ad99) |
 | 08 | [composite AssayScore computation](brief-08-assayscore-computation.md) | 2 | M | todo | — | — |
 | 09 | [opt-in telemetry — anonymized fleet-drift corpus (off by default)](brief-09-optin-telemetry.md) | 1 | M | implemented | — | — |
-| 10 | [graph export (`--graph` DOT + JSONL)](brief-10-graph-export.md) | 1 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
+| 10 | [graph export (`--graph` DOT + JSONL)](brief-10-graph-export.md) | 1 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #318 @ 6ab8de53a40c1a4f71fa6c0a0ddccb4b27a000c8) |
 | 11 | [DORA/insights hybrid — DevLake commodity split](brief-11-devlake-hybrid-metrics-split.md) | 1 | L | implemented | — | — |
 | 12 | [`homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo](brief-12-homed-in-field.md) | 1 | M | implemented | — | — |
 | 13 | [cadenced roadmap artifacts (`--cadence weekly/monthly`)](brief-13-cadenced-roadmap-artifacts.md) | 1 | M | implemented | — | — |

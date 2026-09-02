@@ -38,19 +38,19 @@ decision, not code in this stream.
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [miner skeleton — go-git extraction, incremental runs, three-state plumbing](brief-01-miner-skeleton.md) | 0 | L | verified | 2026-08-26 opus-4.8[1m]-verifier | — |
-| 02 | [M1 line-operation taxonomy + churn/rework rate](brief-02-m1-taxonomy-churn.md) | 1 | M | verified | 2026-08-30 opus-4.8[1m]-verifier | — |
-| 03 | [M1 hotspots + knowledge distribution (SPOF) + change coupling](brief-03-m1-hotspots-coupling.md) | 1 | M | verified | 2026-08-30 opus-4.8[1m]-verifier | — |
-| 04 | [M1 instruction-layer brittleness (reference-validity + doc↔code drift)](brief-04-m1-instruction-brittleness.md) | 1 | M | verified | 2026-08-30 opus-4.8[1m]-verifier | — |
-| 05 | [`QUALITY.md` single-writer trend view + metrics artifacts](brief-05-quality-view-artifacts.md) | 2 | M | verified | 2026-08-30 opus-4.8[1m]-verifier | — |
-| 06 | [M2 fix identification — pluggable linkage adapter + evidence tiers](brief-06-m2-fix-identification.md) | 1 | M | verified | 2026-08-30 opus-4.8[1m]-verifier | — |
-| 07 | [M2 B-SZZ inducing trace + derived defect metrics](brief-07-m2-szz-trace-metrics.md) | 2 | L | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
-| 08 | [`pr <n>` mode — per-file risk features (generic riskscore feed)](brief-08-pr-riskscore-features.md) | 3 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
-| 09 | [`check <files>` mode — brittleness screen for a named file set](brief-09-check-brittleness-screen.md) | 2 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
-| 10 | [M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter](brief-10-m3-stage-attribution.md) | 3 | L | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
-| 11 | [DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source](brief-11-dora-join.md) | 3 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
+| 01 | [miner skeleton — go-git extraction, incremental runs, three-state plumbing](brief-01-miner-skeleton.md) | 0 | L | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #241 @ d4558fdeb56f2519adf49b63860c5455459c2761) |
+| 02 | [M1 line-operation taxonomy + churn/rework rate](brief-02-m1-taxonomy-churn.md) | 1 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #245 @ b549c04d9e0fbfbecbbba64c72f8f55bb7c9eae3) |
+| 03 | [M1 hotspots + knowledge distribution (SPOF) + change coupling](brief-03-m1-hotspots-coupling.md) | 1 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #246 @ d174cb3ea79de972879c3fca487839d039b8cb5b) |
+| 04 | [M1 instruction-layer brittleness (reference-validity + doc↔code drift)](brief-04-m1-instruction-brittleness.md) | 1 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #247 @ 38e08544a9f8b24a792e8a7f8886d3219181113e) |
+| 05 | [`QUALITY.md` single-writer trend view + metrics artifacts](brief-05-quality-view-artifacts.md) | 2 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #254 @ 56724a6baf1ef210200211ffe954b2507a337bf5) |
+| 06 | [M2 fix identification — pluggable linkage adapter + evidence tiers](brief-06-m2-fix-identification.md) | 1 | M | done | 2026-08-30 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #248 @ 2e06e6093a96bd9db39f3e09683d14f450764264) |
+| 07 | [M2 B-SZZ inducing trace + derived defect metrics](brief-07-m2-szz-trace-metrics.md) | 2 | L | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #273 @ 167dadea6e583cc44c04c29898c55086ffa9696a) |
+| 08 | [`pr <n>` mode — per-file risk features (generic riskscore feed)](brief-08-pr-riskscore-features.md) | 3 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #303 @ 80dcc91617295988e5553d8de0c79b43433c134a) |
+| 09 | [`check <files>` mode — brittleness screen for a named file set](brief-09-check-brittleness-screen.md) | 2 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #298 @ 91f4d1a6bd9815c175c02cbc0e6f2889b637fb25) |
+| 10 | [M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter](brief-10-m3-stage-attribution.md) | 3 | L | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #303 @ 80dcc91617295988e5553d8de0c79b43433c134a) |
+| 11 | [DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source](brief-11-dora-join.md) | 3 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #304 @ 4296f0a6e3e00b89b2c6dca152b94e63490c28af) |
 | 12 | [M4 gate-yield accounting + ritual-effectiveness joins](brief-12-m4-gate-yield-rituals.md) | 4 | M | implemented | — | — |
-| 13 | [M4 session forensics — pluggable telemetry-source interface + reference adapters](brief-13-m4-session-forensics.md) | 3 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
+| 13 | [M4 session forensics — pluggable telemetry-source interface + reference adapters](brief-13-m4-session-forensics.md) | 3 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #303 @ 80dcc91617295988e5553d8de0c79b43433c134a) |
 | 14 | [auto-filed refactor work + quality error-budgets + RETRO output feed](brief-14-autofile-budgets-retro.md) | 5 | M | todo | — | — |
 | 15 | [learned riskscore graduation — JIT defect-prediction model](brief-15-learned-riskscore.md) | 3 | M | todo | — | — |
 | 16 | [code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report](brief-16-slop-sweep.md) | 1 | M | todo | — | — |
