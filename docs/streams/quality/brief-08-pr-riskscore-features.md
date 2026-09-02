@@ -105,6 +105,24 @@ feature from masquerading as a real zero.
 <!-- appended at implementation time by a NON-implementer: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner). -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `63a7a8a`
+
+Runner ≠ implementer. Own temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`); qualgen nested module — rows run from inside `qualgen/`. Files present: `qualgen/features.go`, `qualgen/pr.go` (+ `_test.go` twins).
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `cd qualgen && go build ./... && go vet ./...` | 0 | build + vet clean (go1.26.5) |
+| 2 | `cd qualgen && go test ./... -run PR && go test ./... -run Features` | 0 | `ok …/qualgen` both; nested pkgs no-tests |
+| 3 | `go test ./... -run TestPR_KnownHotspotFeatureValue -v` | 0 | `--- PASS` — churned file's hotspot_percentile > quiet file's, both `measured` |
+| 4 | `go test ./... -run TestPR_MissingCouplingPartnerFlagged -v` | 0 | `--- PASS` — A's coupling_missing contains untouched partner B |
+| 5 | `go test ./... -run TestPR_DefectDensityCarriesTraceRate -v` | 0 | `--- PASS` — density carries a non-empty trace-rate |
+| 6 | `go test ./... -run TestPR_NewFileIsCouldNotMeasure -v` | 0 | `--- PASS` — new file `measured.hotspot == could-not-measure`, not 0 |
+| 7 | `grep -icE -e threshold -e verdict -e 'pass.?fail' -e 'score >' pr.go` (from `qualgen/`) | 0 | prints `0`; canary grep for `coupling` returns 7 (grep engine reads the file — genuine clean, not a shim false-clean) |
+
+`RISK-VALUE: N/A` — this mode ships no weights, thresholds, or verdicts (row 7 proves 0 threshold/verdict/score tokens). The only numeric comparisons in pr.go/features.go are structural (arg-parse, git parent-count, list-length, the hotspot-percentile RANKING `Hotspot.Value > h.Hotspot.Value` @ features.go:129, ownership top-share max) — not risk guards. Consistent with the brief's generic-feed-not-scorer contract.
+
+**VERIFY: PASS** — all seven Verify rows checked-clean by a non-implementer. Advancing `implemented → verified`.
+
 ## Review
 Gate: model (all four risk answers no — a read-only, write-nothing feature feed over any git
 repo; emits no verdict and no threshold). Reviewer confirms the feed is genuinely generic
