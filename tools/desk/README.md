@@ -56,6 +56,7 @@ it on day one.
 | `writeguard` | PreToolUse hook (F-34 isolation backstop) | hook | n/a |
 | `deskpushguard` | pre-push hook — refuses a push to a MERGED/CLOSED branch, one carrying a foreign/laundered commit, a single-parent merge masquerade, or a branch point sitting on a stray local `origin/main`, or one introducing a register-entry `id:` collision with an in-flight sibling branch (#22, #72). Cannot determine the base → prints `COULD-NOT-CHECK` and allows (fail-open, brief-10); that line means UNVERIFIED, not clean | git hook | n/a |
 | `desksourceguard` | CI gate — refuses a materialised desk-tools source tree that is not the pinned commit | CI | n/a |
+| `clusterguard` | exec-boundary shim for cluster CLIs (`kubectl`, `flux`, `helm`, `talosctl`, `k9s`) — installed as a directory of symlinks on the FRONT of a session's PATH. Refuses every shimmed CLI unless an operator shell exported `ASSAY_ALLOW_CLUSTER`, logs both verdicts, and otherwise execs the real CLI further along PATH. See [clusterguard — the cluster-CLI exec boundary](#clusterguard--the-cluster-cli-exec-boundary) | PATH shim | n/a |
 
 Read it by **class**: read-only tools only query GitHub and print; outward-write tools
 can change something on GitHub and are the only ones the rate meters gate; local-only
@@ -1486,6 +1487,117 @@ also runs a one-shot `deskwt prune` at boot so a session starts on a pruned work
 repos, `scripts/deskwt-prune-all.sh` invokes `deskwt prune --repo <path>` per existing repo
 (one-shot; safe with no session active).
 
+## clusterguard — the cluster-CLI exec boundary
+
+A permission rule that matches on command TEXT cannot see a cluster call made from inside a
+committed script, and a written policy only covers the paths somebody thought to write a line
+about. Worse, neither leaves a TRACE: the only way anyone learns a probe happened is if the
+caller mentions it.
+
+`clusterguard` moves the check to the exec boundary. It is installed as a **shim directory**
+holding one symlink per shimmed CLI, all pointing at the single `clusterguard` binary:
+
+```
+<shimdir>/kubectl  ->  <bindir>/clusterguard
+<shimdir>/flux     ->  <bindir>/clusterguard
+<shimdir>/helm     ->  <bindir>/clusterguard
+<shimdir>/talosctl ->  <bindir>/clusterguard
+<shimdir>/k9s      ->  <bindir>/clusterguard
+```
+
+A session prepends `<shimdir>` to `PATH`. Every one of those CLI names then resolves to the
+guard, which reads which CLI it is from `argv[0]`, decides, records the attempt, and — only when
+allowed — execs the real binary further along `PATH`. Installing the shim directory is part of
+`make desk-install`, which is HUMAN-ONLY (the `sudo` prompt is the gate).
+
+### The verdict table
+
+| `ASSAY_ALLOW_CLUSTER` | Verdict |
+|---|---|
+| absent | **refused**, exit `5` — every shimmed CLI. The default posture. |
+| `1` (or `ro`, `read-only`) | read-only verbs pass through; **mutating verbs refused**, exit `5` |
+| `mutate` (or `rw`, `write`) | every verb passes through |
+| any other value | **refused**, exit `5` — a typo in a safety opt-in is never read as yes or no |
+
+Two levels rather than one, because looking at a cluster and changing it are different acts: an
+operator who wants the first should not have to grant themselves the second in the same export.
+
+Read-only classification is an **allowlist per CLI**, which is the fail-closed direction — a verb
+nobody classified is MUTATING, so a subcommand added upstream tomorrow is refused rather than
+waved through on the day it appears. `k9s` carries an EMPTY allowlist on purpose: it is an
+interactive TUI whose mutating operations are reachable from inside the session, so nothing in its
+`argv` can establish that a call is read-only. The verb scan skips flags and the values of global
+flags that consume one (`-n ns get pods` classifies on `get`, not on `ns`); that table can only
+remove false REFUSALS, since an unrecognised token still lands on the mutating side.
+
+Exit `5` is a **refusal, not a fallback trigger**. The message says so explicitly: reaching the
+same CLI by absolute path, by a rebuilt `PATH`, or through another tool is not the sanctioned
+response to it.
+
+### The token rule
+
+`ASSAY_ALLOW_CLUSTER` is a **per-shell export an operator makes deliberately** — the same shape as
+writeguard's shared-checkout claim. A desk window, a dispatched worker, or a script one of them
+runs **must never export it**.
+
+It is declared in `deskkit` (`EnvAllowCluster`) for one reason: it sits in the `ASSAY_` namespace,
+and an unrecognised `ASSAY_` key in `roster.env` refuses the WHOLE configuration. An operator who
+recorded the opt-in in the shared roster file — a natural mistake, since every other `ASSAY_` knob
+lives there — would otherwise take every desk tool's trust roster down at once. **Recognised is
+not applied:** putting it in `roster.env` still does not grant the opt-in.
+
+### The kill switch: this guard does not participate, and why
+
+`clusterguard` calls `deskkit.Guard()` before any verdict, but a stop flag can only make it
+**stricter** — an armed flag is itself a refusal (exit `3`), and the fixture never runs.
+
+It deliberately does NOT participate in `DISABLED` the way an acting tool does. For an acting
+tool, "disabled" means *stop doing things*, which is safe. For a REFUSAL guard, the same
+behaviour would mean *stop intercepting* — handing every halted session the cluster CLIs back at
+exactly the moment somebody armed the kill switch because something was wrong. That is a
+fail-OPEN inversion, and this section records the decision rather than leaving the flag silently
+unimplemented. **The uninstall path is removing the shim directory from `PATH`**, not arming a
+flag.
+
+### The log
+
+One append-only line per invocation, at `<config-home>/clusterguard.log`:
+
+```
+2026-09-02T11:04:18Z cli=kubectl verdict=refused verb=get read-only=true cwd=/w argv="kubectl get pods"
+2026-09-02T11:05:02Z cli=helm verdict=allowed verb=list read-only=true cwd=/w argv="helm list"
+```
+
+The log is the **detection surface** — the thing a text-matching rule cannot provide at all. A
+stopped probe is recorded, not silent.
+
+Values of credential-bearing flags (`--token`, `--password`, `--secret`, `--key`, …) are
+**redacted**, in both the `--flag value` and `--flag=value` forms: the log is written on every
+call and must not become a credential file. A logging failure never changes a verdict, but it is
+reported on stderr so an unrecorded surface is visible rather than assumed.
+
+### Stated limits — named, not summarised as "PATH order"
+
+This is one narrow layer. Each of these is a real gap, and each is stated because a control whose
+limits are vague gets trusted for things it does not do:
+
+- **A call by ABSOLUTE PATH is never intercepted.** `/usr/local/bin/kubectl …` does not consult
+  `PATH`, so it never reaches the guard. This is by design, not an oversight, and
+  `TestAbsolutePathInvocationBypassesTheShim` asserts the bypass EXISTS so the limit cannot
+  quietly stop being true.
+- **A session that rebuilds its own environment without the shim directory evades this layer.**
+  `PATH` resolution is the single point of failure. A credential quarantine belongs behind it, so
+  that a probe which evades the shim still finds nothing to authenticate with; sandboxed
+  execution supersedes both.
+- **The guard keys on five CLI NAMES.** HTTP or SDK access (a `curl`, a client library), a
+  credentialed tool or browser integration, and `ssh`/`docker` hops are outside it entirely. This
+  narrows one exec path. **It is not a network boundary.**
+
+Pass-through **spawns** the real CLI rather than replacing the process image: the desk-tools build
+targets Windows as well as unix, exec-replacement has no portable form, and nothing in the
+contract needs the process image to be the CLI's. Stdio is inherited directly, so an interactive
+TUI behaves exactly as it does unshimmed.
+
 ## Operator reference
 
 Ported from #1169, re-verified against this tree. Where the original recorded a fact
@@ -1663,6 +1775,11 @@ Actions, not in a desk session. The fourth, `deskpushguard`, is the deliberate i
 skips `Guard` because an armed kill switch must not stop it (a halted desk still must not
 orphan commits by pushing to a merged branch), and it fails **OPEN**, allowing the push on
 any ambiguity or error.
+
+`clusterguard` calls `Guard()` like the rest, but reads the answer in one direction only: an
+armed flag makes it refuse (exit 3), never pass through. See
+[clusterguard — the cluster-CLI exec boundary](#clusterguard--the-cluster-cli-exec-boundary)
+for why a refusal-guard that honoured `DISABLED` the ordinary way would fail open.
 
 **"Rate-limited" now means two meters, not one** (#213, closing #209 — the table in
 #1169 predated this and said only "10/hr"):
