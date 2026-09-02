@@ -105,6 +105,24 @@ facts:
 <!-- appended at implementation time by a NON-implementer: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner). -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `63a7a8a`
+
+Runner ≠ implementer. Own temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`); rows run from inside `qualgen/` (nested module). Package present: `qualgen/dorajoin/`.
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `cd qualgen && go build ./... && go vet ./dorajoin/` | 0 | build + vet clean |
+| 2 | `cd qualgen && go test ./dorajoin/` | 0 | `ok …qualgen/dorajoin` — denominator, cfr, join-key, source tests pass |
+| 3 | `go test ./dorajoin/ -run TestDurableVolumeFixture -v` | 0 | `--- PASS` — `qualgen/dorajoin/denominator_test.go:24` asserts `got.Value.Value == 850` for landed=1200/churn=200/copied=150 (a real exact-value assertion, not presence) |
+| 4 | `go test ./dorajoin/ -run TestTracedCFRCarriesTierAndRate -v` | 0 | `--- PASS` — record carries non-empty trace-rate (0.64) + tier-1/2/3 split; negative case (bare rate, unset `TraceRate`) returns a non-nil error from the emit guard (`qualgen/dorajoin/cfr.go`) |
+| 5 | `go test ./dorajoin/ -run TestJoinKeyThreeState` | 0 | `--- PASS` incl. `matched`, `could-not-join on squashed SHA`, `no-match`, reachability-error→could-not-join (not dropped) |
+| 6 | `grep -c -E -e pull_requests -e incidents -e commits qualgen/dorajoin/schema.go` (from `qualgen/`) | 0 | count = 4 (≥ 1) — output fields follow DevLake domain-layer names |
+| 7 | `go test ./dorajoin/ -run TestDeliverySourcePluggable` | 0 | `--- PASS` — file-based reference adapter satisfies `DeliveryMetricsSource`; a second stub source swaps in without touching join logic |
+
+`RISK-VALUE: N/A` — no risk-bearing threshold literal in any dorajoin guard. The denominator is pure arithmetic (`landed_lines - churn_14d - copied` @ `qualgen/dorajoin/denominator.go:65`); the 14-day churn window is consumed from brief-02 upstream, not a literal in this package; 850 is a test-fixture value, not a guard constant. The CFR emit guard (`qualgen/dorajoin/cfr.go`) branches on measurement STATE, not on a numeric threshold. SPOF: none (read-only join; three-state coverage keeps an uncomputable value from masquerading as a real zero).
+
+**VERIFY: PASS** — all seven Verify rows checked-clean by a non-implementer. Advancing `implemented → verified`.
+
 ## Review
 Gate: model (all four risk answers no — repo-agnostic OSS Go joining already-mined M1/M2
 outputs to a pluggable delivery-metrics feed; read-only, no product value changed, no new
