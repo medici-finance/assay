@@ -95,5 +95,25 @@ the row-4 scan root, and surfaces the fail-closed envelope error loudly on the C
 | 4 | `cd tools/desk && go build -o dist/verifyloop ./cmd/verifyloop && ./dist/verifyloop --dry-run --root ../.. 2>&1 \| grep -q 'signed verdict'` | 0 | `signed verdict for 4 row(s) across 1 brief(s) (window 5m0s) — dry-run: not filed` (live config-home verifier PEM + real awaiting queue) | 2026-08-30 | opus-4.8[1m] |
 | 5 | `cd statusgen && go run . --root .. --lint` | 0 | `LINT: PASS` | 2026-08-30 | opus-4.8[1m] |
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `63a7a8a`
+
+Runner ≠ implementer (the rows above are the implementer's; this is the independent non-implementer re-run). Own temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`); rows run module-scoped from `tools/desk/`.
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `go test ./cmd/verifyloop/... -run Batch && … -run Payload && … -run FailRow -count=1` | 0 | `ok …/cmd/verifyloop` ×3 — batch-window flush, payload compose, FAIL-row inclusion all pass |
+| 2 | `go test ./cmd/verifyloop/... -run 'DryRunSignVerify' -count=1` | 0 | `--- PASS: TestDryRunSignVerify` — dry-run body verifies, one flipped byte refuses |
+| 3 | `go test ./cmd/verifyloop/... -run 'MissingPEM' -count=1` | 0 | `--- PASS: TestRunVerdictMissingPEMFailsClosedAndFilesNothing` — fail-closed, files nothing |
+| 4 | `go build -o dist/verifyloop ./cmd/verifyloop && ./dist/verifyloop --dry-run --root ../.. \| grep -q 'signed verdict'` | 0 | `signed verdict for 16 row(s) across 3 brief(s) (window 5m0s) — dry-run: not filed`; grep matched (live config-home verifier PEM present; ran >120s scanning the real awaiting queue) |
+| 5 | `cd statusgen && go run . --root .. --lint` | 0 | `LINT: PASS` (NOTICEs only) |
+
+`RISK-VALUE: DERIVED` — the one batching threshold is `defaultBatchWindow = 5 * time.Minute` @ `tools/desk/cmd/verifyloop/verdictpayload.go:181`, consumed by the flush guard `dueToFlush` (`verdictpayload.go:170-174`) and defaulted in the CLI (`verdictrun.go:107,171`). It maps directly to the brief's "batch window ~5 minutes; ONE issue per window" — a cadence throttle (GitHub's hard limits remain the backstop), not a security guard.
+
+Non-blocking note: the row-4 dry-run's own emitted verdict-payload internally re-ran the brief's Verify rows and self-classified row 4 as FAIL/exit 2 — that is the engine recursively invoking the row-4 command (a nested self-run artifact), not a failure of the Verify requirement (row 4's contract "exit 0; output contains 'signed verdict'" is satisfied).
+
+**Risk-answer NOTICE (surfaced for reviewer confirmation):** `statusgen --lint` emits a `[risk-files-crossread]` NOTICE — this brief answers all-risk-`no` yet declares a path under the security-trigger `tools/desk/internal/deskkit/`. It resolves in favour of the answers standing: the brief's deliverable is the `cmd/verifyloop` runner/batcher, and its deskkit touch is the verdict-issue rate bucket (`deskkit.VerdictIssueTool` / `AllowVerdictIssueWrite`) — the verify-desk's own sanctioned verdict-issue-filing cadence, an operational rate throttle (RISK-VALUE DERIVED = `defaultBatchWindow`), not a new external auth boundary or a change to the `RiskPathTriggered` accessor that gates Security-Review. Flipped on that basis; flagged here for the reviewer's independent security confirmation, exactly as the mistake-proofing/01 cross-read was confirmed.
+
+**VERIFY: PASS** — all five Verify rows checked-clean by a non-implementer. Advancing `implemented → verified`.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

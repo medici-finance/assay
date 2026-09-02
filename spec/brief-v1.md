@@ -3,7 +3,7 @@
 **Version:** v1.0-draft
 **Status:** DRAFT — published for review. v1.0-draft is unstable: breaking changes MAY be
 made without a major-version bump; no stability commitment.
-**Describes reference implementation:** `statusgen/v0.8.0`
+**Describes reference implementation:** `statusgen` v0.22.0
 
 ## 1. Scope
 
@@ -64,13 +64,23 @@ validated against the value set given.
 | `exec-tier` | string | OPTIONAL | One of `any` or `strong`. `strong` asserts the brief MUST NOT be dispatched to a cheap-tier implementer regardless of `effort` (section 6). An out-of-set value MUST be flagged. |
 | `exec-tier-why` | string | CONDITIONAL | One-line rationale. REQUIRED when `exec-tier` is `strong`; a `strong` brief without it MUST be flagged. |
 | `decision-issue` | integer | OPTIONAL | Tracker issue that carries the human sign-off for a `gate: human` brief. A conforming linter SHOULD emit a non-fatal notice when a `gate: human` brief is in flight (`in-progress`, `implemented`, or `verified`) without one, and MUST NOT hard-error on its absence. |
+| `domain` | string | OPTIONAL | Cynefin classification of the work — one of `clear`, `complicated`, `complex`, or `chaotic`. Absent is equivalent to `complicated` (the safe Ordered default) at read time. An out-of-set value MUST be flagged. |
+| `blocked-by` | string | OPTIONAL | Environment-blocked marker; the only defined value is `env` (the brief is blocked on infrastructure or environment). Absent means the brief is not blocked. An out-of-set value MUST be flagged. |
+| `homed-in` | string | OPTIONAL | The `<owner>/<repo>` the brief's deliverable was re-homed to (a de-housing) — exactly one `/`, both sides non-empty, no whitespace. Absent means a normal in-repo brief. A malformed shape MUST be flagged; the value MUST NOT be checked against a repo allowlist (the shape is all a linter can validate locally). |
+| `measures` | string | OPTIONAL | Name of the process queue this brief instruments (drain-before-instrument). The only wired queue is `verification-debt`. Absent means the brief is not an instrumentation brief. A present value MUST name a wired queue; a present-but-unrecognized name, or a present-but-empty value, MUST be flagged. |
+| `parallel-streams` | array[mapping] | OPTIONAL | Declared shards of an intra-brief split. Each entry is a mapping with a REQUIRED `name` (string) and an OPTIONAL `files` (array of path globs the shard owns); no other key is permitted in an entry. Absent means one worker per brief. Only the entry SHAPE is validated in frontmatter — whether a declared split may actually be dispatched is decided by `statusgen shardcheck` against the file tree, not by the frontmatter linter. A declaration that parses is a request, not a permission. |
 
 ### 3.3 Frontmatter linter requirements
 
 A conforming linter MUST flag any missing required field, any `gate` value inconsistent
 with the `risk` answers, any `wave` value inconsistent with `depends`, any empty
 `sources` list, any risk-gated brief missing `gate-why`, any out-of-set `value` or
-`exec-tier`, and any `exec-tier: strong` brief missing `exec-tier-why`.
+`exec-tier`, and any `exec-tier: strong` brief missing `exec-tier-why`. It MUST also flag
+any out-of-set `domain`, `blocked-by`, or `measures` value, any malformed `homed-in`
+shape, and any `parallel-streams` entry that carries a key other than `name`/`files`, is
+missing `name`, or gives `name` a non-string value. For every optional field in section
+3.2 the rule is the same: an ABSENT field is never flagged, and a wrong *type* is a parse
+error, while a present-but-out-of-set *value* is the semantic flag described here.
 
 ## 4. Body structure
 

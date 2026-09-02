@@ -11,32 +11,34 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-09-01 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-01 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/6 | 2026-09-01 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-09-01 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-09-01 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-09-01 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-09-01 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-09-01 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 0/16 | 2026-09-01 |  |
-| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-09-01 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/13 | 2026-09-01 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-09-02 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-02 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/6 | 2026-09-02 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-09-02 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-09-02 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-09-02 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-09-02 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-09-02 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 0/16 | 2026-09-02 |  |
+| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-09-02 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/13 | 2026-09-02 |  |
 
 ## Next up
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
+| quality | 12 — M4 gate-yield accounting + ritual-effectiveness joins [exec:strong] | 4 | 1500 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 | quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
 | spec-routing | 01 — Enforce the §8 lifecycle — the linter and the authoring-owed emitter [exec:strong] | 0 | 1000 |
+| statusgen | 08 — composite AssayScore computation | 2 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 58 total — 39 at implemented, 19 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 58 total — 34 at implemented, 24 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -73,15 +75,15 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 04 | implemented | 2000 | 2 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | iso-9001 | 02 [exec:strong] | implemented | 2000 | 2 | — | — | — |
-| quality | 10 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| quality | 10 [exec:strong] | verified | 2000 | 2 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | mistake-proofing | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
-| statusgen | 07 | implemented | 1500 | 1 | — | — | — |
+| statusgen | 07 | verified | 1500 | 1 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desk-tools | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 04 [exec:strong] | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | desk-tools | 05 [exec:strong] | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | desk-tools | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -90,10 +92,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | quality | 05 | verified | 1000 | 0 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
-| quality | 08 | implemented | 1000 | 0 | — | — | — |
+| quality | 08 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | quality | 09 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | quality | 11 | implemented | 1000 | 0 | — | — | — |
-| quality | 13 | implemented | 1000 | 0 | — | — | — |
+| quality | 13 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | statusgen | 01 | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 04 | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
@@ -156,7 +158,7 @@ _None._
 - 01 Binary channel — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer — implemented (wave 1)
 - 03 Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN — implemented (wave 1)
-- 04 Deterministic runner — execute rows, batch, sign, file verdict issues — implemented (wave 1)
+- 04 Deterministic runner — execute rows, batch, sign, file verdict issues — verified (wave 1)
 - 05 Escape-valve `Decide()` primitive in deskkit — verified (wave 1)
 - 06 Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) — implemented (wave 1)
 
@@ -223,12 +225,12 @@ _None._
 - 05 `QUALITY.md` single-writer trend view + metrics artifacts — verified (wave 2)
 - 06 M2 fix identification — pluggable linkage adapter + evidence tiers — verified (wave 1)
 - 07 M2 B-SZZ inducing trace + derived defect metrics — verified (wave 2)
-- 08 `pr <n>` mode — per-file risk features (generic riskscore feed) — implemented (wave 3)
+- 08 `pr <n>` mode — per-file risk features (generic riskscore feed) — verified (wave 3)
 - 09 `check <files>` mode — brittleness screen for a named file set — verified (wave 2)
-- 10 M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter — implemented (wave 3)
+- 10 M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter — verified (wave 3)
 - 11 DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source — implemented (wave 3)
 - 12 M4 gate-yield accounting + ritual-effectiveness joins — todo (wave 4)
-- 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — implemented (wave 3)
+- 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — verified (wave 3)
 - 14 auto-filed refactor work + quality error-budgets + RETRO output feed — todo (wave 5)
 - 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
 - 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — todo (wave 1)
@@ -245,7 +247,7 @@ _None._
 - 04 ladder-position indicator (`--ladder`) — verified (wave 1)
 - 05 drives phase 3 — anti-starvation floors + critical tier — implemented (wave 1)
 - 06 findings register — corroborated state machine — implemented (wave 1)
-- 07 new brief-flow metrics — implemented (wave 1)
+- 07 new brief-flow metrics — verified (wave 1)
 - 08 composite AssayScore computation — todo (wave 2)
 - 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
 - 10 graph export (`--graph` DOT + JSONL) — implemented (wave 1)
