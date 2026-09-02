@@ -49,16 +49,16 @@ Every write below is a role service account's; the group-owner credential was us
 | A8 · withdraw probe | desk `41987971` | `POST …/merge_requests/1/unapprove` → `HTTP 201` | probe approval removed | 2026-09-02 |
 | A9 · verdict note | reviewer `41987965` | `POST …/merge_requests/1/notes` → `HTTP 201`; body carries `Verdict: APPROVE` and pins the head SHA in text (the CE at-head pin, edition matrix row A7) | note id `3777865539` | 2026-09-02T20:29:03.378Z |
 | A10 · approve | reviewer `41987965` | `POST …/merge_requests/1/approve` → `HTTP 201` | `approved_by: [{username: <reviewer>, approved_at: 2026-09-02T20:29:03.870Z}]`, `approved: true` | 2026-09-02T20:29:03.870Z |
-| A11 · **human merge** | — | **not performed by this session.** `main` merge is the human's act | pending | — |
+| A11 · human merge | the owner | merged MR `!1` into protected `main`; `main` merge is the human's act and no service account can perform it | merge commit `f4839ce2ad2a59eb2d58dc391ef6d817e27d70e1`, `merge_user` = the owner | 2026-09-02T21:20:04.927Z |
 
 Author `41987971` ≠ approver `41987965` at MR `!1` — the dereference Verify row 2 asks for,
 readable at `GET /projects/86032201/merge_requests/1/approvals`.
 
-MR `!1` was merged by the human owner at 2026-09-02T21:20:04.927Z, merge commit
-`f4839ce2ad2a59eb2d58dc391ef6d817e27d70e1`, `merge_user: <the owner>` — the first human gate,
-discharged by a human.
+Step A7's probe is the reason `!1` is worth reading twice: the desk account both authored and
+approved its own merge request, and the server allowed it. A8 withdrew that approval before the
+real verdict was recorded, so the approval `!1` actually carries is the reviewer's.
 
-## 1b. The round trip — phase B (brief `pilot/01`, todo → implemented)
+## 1b. The round trip — phase B (brief `pilot/01`, todo → verified)
 
 | Step | Actor (id) | Mechanism | Artifact | Timestamp (UTC) |
 |---|---|---|---|---|
@@ -73,7 +73,8 @@ discharged by a human.
 | B9 · Evidence + status flip | verifier `41987969` | commit `e8eff009ebe5df52e8ea457454d1d0004746a4c6`; stream README `todo` → `verified`, reviewer's approval of `!2` transcribed into `Reviewed`. Landed as a merge request, not a direct push — see D-8 | MR `!3`, id `527300098` | 2026-09-02T21:38:05.239Z |
 | B10 · board regeneration | board-writer `41987978` | `statusgen --root .` at `!3`'s head; diff is STATUS.md alone | commit `bfd01ac1b57b713aec7a028f48450d6f4515731d`, MR `!4` id `527300242`, **targeting `verify/pilot-01-evidence`** so the pair merges in order | 2026-09-02T21:38:40.313Z |
 | B11 · verdicts on both | reviewer `41987965` | head-pinned `Verdict: APPROVE` note + `/approve` on each → `HTTP 201` | `!3` and `!4` both `approved: true`, `approved_by: [41987965]`; authors `41987969` and `41987978` — author ≠ approver on both | 2026-09-02 |
-| B12 · **human merge** | — | **not performed by this session.** `!3` then `!4`, in that order | pending | — |
+| B12 · human merge, `!3` | the owner | Evidence + status flip into protected `main` | merge commit `5d7fa7bf8fce37ccc1646b15c1cb2a2c4bb0e72b`, `merge_user` = the owner | 2026-09-02T21:43:32.714Z |
+| B13 · human merge, `!4` | the owner | board into protected `main`; GitLab retargeted `!4` from the Evidence branch to `main` once `!3` landed, as designed | merge commit `194f561b7f5a7f87849c25d19c81614fe0471172`, `merge_user` = the owner | 2026-09-02T21:45:02.561Z |
 
 The ready flip is the desk identity's, not the reviewer's, mirroring the GitHub division where
 the ready flip belongs to the review desk and never to the implementer. Read on MR `!2` after the
@@ -81,16 +82,39 @@ merge-access repair, `user.can_merge` is `false` for worker, reviewer, desk, ver
 board-writer and `true` only for the owner — so on this deployment the flip genuinely cannot run
 on into a merge.
 
-The two post-merge steps are **stacked rather than serialised into two human gates**: `!4`
-targets `!3`'s branch instead of `main`, so merging `!3` then `!4` is one sitting. The stacking is
-forced by the data, not by convenience — STATUS.md is derived from the stream README that `!3`
-flips, so a board regenerated before `!3` landed would be a board of a state that did not exist.
+The two post-merge steps were **stacked rather than serialised into two human gates**: `!4`
+targeted `!3`'s branch instead of `main`, so the pair merged in one sitting and GitLab retargeted
+`!4` onto `main` by itself once `!3` landed. The stacking was forced by the data, not chosen for
+convenience — STATUS.md is derived from the stream README that `!3` flips, so a board regenerated
+before `!3` landed would have been a board of a state that never existed.
 
-**Verify row 4 stays `COULD-NOT-CHECK` until `!4` lands**, recorded as such in §4 rather than
-assumed. On the board-writer's branch it already reads the right answer
-(`git log --format='%an' -1 -- STATUS.md` → the board-writer account), but a branch is not `main`
-and the row names the tracking repo's board, so the branch read is evidence of readiness, not of
-the row.
+### The round trip in one read
+
+`git log` on the tracking project's `main`, in a clone taken after the last merge. Every **content**
+commit is a distinct role service account; every **merge** commit is the human. No identity appears
+in both columns, and no service account appears twice in a row.
+
+| Commit | Author | What |
+|---|---|---|
+| `194f561b7f5a7f87849c25d19c81614fe0471172` | the human owner | merge of `!4` |
+| `bfd01ac1b57b713aec7a028f48450d6f4515731d` | board-writer `41987978` | board regeneration |
+| `5d7fa7bf8fce37ccc1646b15c1cb2a2c4bb0e72b` | the human owner | merge of `!3` |
+| `e8eff009ebe5df52e8ea457454d1d0004746a4c6` | verifier `41987969` | Evidence for Verify row 1 |
+| `ac770603c3c2ce05ad35735516182ded55c002b0` | the human owner | merge of `!2` |
+| `d775ce4eda0da5767f0c6cc87f25cf5d20946f9d` | worker `41987966` | the deliverable |
+| `f4839ce2ad2a59eb2d58dc391ef6d817e27d70e1` | the human owner | merge of `!1` |
+| `52879f61050c433276836afe61a066e1ce0e507f` | desk `41987971` | the tracking-root seed |
+
+That alternation is the whole claim of §3 row 10 and of the CE posture behind rows 2, 3 and 4,
+rendered as history rather than as settings: on this deployment a service account can propose and
+nothing else, and only the human's identity appears on `main`'s merge commits. It is also why the
+merge-access misconfiguration D-6 records mattered — for the first two merges of this log, that
+alternation was a convention the server was not enforcing.
+
+Final state on `main`: brief `pilot/01` reads `verified` in the stream register
+(`| 01 | … | verified | 2026-09-02 <verifier> | 2026-09-02 <reviewer> |`), and the board agrees —
+STATUS.md's gate queue carries the row at `verified` with the same two attributions, and its
+incomplete-briefs entry reads `01 Hello from the GitLab role chain — verified (wave 0)`.
 
 One parity deviation is visible from that remaining design and is recorded here rather than
 discovered later: **on GitHub the verifier lands its Evidence row straight to `main`** (the sole
@@ -112,8 +136,12 @@ in the stream — the `Forge` seam is forge-gitlab/02's scope and its GitHub hal
 `gh`-shelled (`#274`) — but it is what a pilot is for, so it is recorded as measurement
 rather than assumed from the plan.
 
-`statusgen` ran cleanly against the GitLab tracking root and emitted a correct board, with two
-GitHub-shaped degradations named in §5.
+`statusgen` ran cleanly against the GitLab tracking root throughout — `init`, `--lint`,
+regeneration and `verifyrun` all worked, and the board it emitted is correct and house-clean.
+Its three GitHub-shaped degradations are named in §5 as D-2 (the scaffold's CI half and the
+`gh`-shelled claim decay), D-3 (the trust roster, and with it the Evidence-actor check) and D-9
+(the execution witness's runner attribution). None of the three stopped the round trip; all three
+mean a GitLab adopter silently loses a check a GitHub adopter has.
 
 ## 3. Security parity walk — spec §3, per control, against live settings
 
@@ -189,14 +217,28 @@ documentation would have passed this group on the day it could not have.
 Nothing in this walk contradicts the edition matrix. Every tier boundary it predicted was
 observed at the predicted tier, by the predicted status code.
 
+**And the round trip completed.** One brief went `todo` → `verified` on this Free-tier group
+through five distinct role identities and four merge requests, with all four of the brief's Verify
+rows now `checked-clean` (§4). The history on `main` alternates service-account content commits
+with human merge commits and never blurs the two. So the two halves of the verdict are separable
+and should be quoted separately: **the profile works on Community Edition — the round trip is the
+proof, not a promise — and a deployment's conformance is a separate question that only a live
+per-control walk answers.** This group now passes both, and did not pass the second one when the
+walk began.
+
+What the pilot does **not** establish, and no downstream claim may borrow from it: anything about
+the CI-isolation half of the profile (§3 rows 5 and 6 are `COULD-NOT-CHECK`, not soft passes),
+anything about tiers above Free, and anything about the desk tooling on GitLab beyond
+`desktoken` — §2 records that every other write in this round trip was hand-built.
+
 ## 4. Brief Verify rows
 
 | Row | Command | Result | Citation |
 |---|---|---|---|
-| 1 | `grep -c '^[\|]' docs/streams/forge-gitlab/pilot-report.md` ≥ 12 | **checked-clean** | `grep -c '^[\|]'` over this file returns `57`; the §3 walk table alone contributes 16 of them (14 control rows + header + separator) |
-| 2 | `…/merge_requests/:iid/approvals` shows approval by the reviewer account, author ≠ approver | **checked-clean** | `GET /projects/86032201/merge_requests/1/approvals` → `approved: true`, `approved_by[0].user.id = 41987965` (reviewer), MR `author.id = 41987971` (desk). Reproducible against the live system from the ids in this row |
+| 1 | `grep -c '^[\|]' docs/streams/forge-gitlab/pilot-report.md` ≥ 12 | **checked-clean** | `grep -c '^[\|]'` over this file returns `68`; the §3 walk table alone contributes 16 of them (14 control rows + header + separator) |
+| 2 | `…/merge_requests/:iid/approvals` shows approval by the reviewer account, author ≠ approver | **checked-clean**, on all four | `GET /projects/86032201/merge_requests/<iid>/approvals` for `<iid>` in 1..4 → `approved: true` with `approved_by[0].user.id = 41987965` (the reviewer account) every time, against MR authors `41987971` (desk, `!1`), `41987966` (worker, `!2`), `41987969` (verifier, `!3`) and `41987978` (board-writer, `!4`). Author ≠ approver on each, and the approving identity is the same one in all four. Reproducible against the live system from the ids in this row |
 | 3 | mint twice, first token rejected `401` | **checked-clean** | `desktoken --forge gitlab worker` run twice, 2026-09-02 ~20:29Z (exit `0` both times; it prints the token *path*, never the value). The first token was captured to a 0600 scratch file from the token file between the mints, returned `HTTP 200` on `GET /user` before the second mint and `HTTP 401 {"error":"invalid_token","error_description":"Token was revoked. You have to re-authorize from the user."}` after it; the scratch file was deleted immediately after the check. The replacement token: `GET /personal_access_tokens/self` → id `27157268`, `expires_at "2026-09-09"`, `active: true` |
-| 4 | `git log --format='%an' -1 -- STATUS.md` is the board-writer account | **could-not-check** | The regeneration exists and is correct — commit `bfd01ac1b57b713aec7a028f48450d6f4515731d`, authored by the board-writer account, and on its own branch the command already returns that account — but it is **not on `main`**: it sits in MR `!4`, which is stacked behind MR `!3` and awaits the human merge. The row names the tracking repo's board, so a branch read is evidence of readiness, not of the row. On `main` right now STATUS.md's newest commit is the desk account's seed `52879f61050c433276836afe61a066e1ce0e507f`, so the row would read `checked-failed` if run today. Recorded as could-not-check rather than pre-credited |
+| 4 | `git log --format='%an' -1 -- STATUS.md` is the board-writer account | **checked-clean** | Run in a **fresh clone** of the tracking project taken after the last merge, on `main`: the command returns the board-writer service account's username (`<prefix>-board-writer-bot`, user id `41987978`) and nothing else. The commit behind it is `bfd01ac1b57b713aec7a028f48450d6f4515731d`, authored `2026-09-02T16:38:24-05:00` by that account's own `service_account_group_9619193_*@noreply.gitlab.com` address, landed by MR `!4` (`merged_at 2026-09-02T21:45:02.561Z`, `merge_commit_sha 194f561b7f5a7f87849c25d19c81614fe0471172`, `merge_user` the human owner). No other identity has touched STATUS.md since the seed |
 
 ## 5. Deviations
 
@@ -308,6 +350,17 @@ provisioner wants to set has to be driven from inside each role's credential rat
 owner credential that creates the accounts — a shape the provisioning script's
 one-owner-token model does not currently have. Recorded as observed; filed by the desk as a
 provisioner follow-up.
+
+**D-11 — with no pipeline configured, GitLab asks the human to merge unverified changes.** No
+`.gitlab-ci.yml` and no CI/CD configuration path exist on the pilot project, so
+`GET /projects/86032201/pipelines` returns `[]` for every one of the four merge requests. Merging
+`!4` therefore surfaced GitLab's "merge unverified changes" confirmation. That prompt is the
+correct behaviour and is worth recording precisely because it is the **only** place in the whole
+round trip where the absence of §3 row 4's pipeline half became visible to a human. Everywhere
+else it is silent: `only_allow_merge_if_pipeline_succeeds` reads `false`, so nothing blocks, and a
+merge request with no checks at all looks exactly like one whose checks passed. An adopter who
+provisions with the script's early exit (D-4, `#346`) gets that silence by default. Recorded as
+observed; the remediation is the free-tier one already named in §3 row 4.
 
 ## 6. Token hygiene during this run
 
