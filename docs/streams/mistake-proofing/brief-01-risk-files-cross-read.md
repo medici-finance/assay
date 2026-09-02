@@ -144,6 +144,28 @@ facts:
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `63a7a8a`
+
+Runner ≠ implementer. Own temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`). `statusgen/` and `tools/desk/` are separate modules — rows 6-9 (written as `go test ./statusgen/…`) run module-scoped from inside each module; all matched real tests (confirmed with `-v`, no empty `ok`).
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `git grep -c 'RiskPathTriggered' -- statusgen/` | 0 | hits `statusgen/riskpathtriggers.go`, `statusgen/testdata/risk_trigger_coupling.json` — dereference correctly INVERTED (was exit-1/no-output at authoring; now a hit → classifier reachable from lint) |
+| 2 | `git grep -n 'func RiskPathTriggersFor' -- tools/desk/internal/deskkit/riskpath.go` | 0 | `riskpath.go:138: func RiskPathTriggersFor(repo string) []string` — policy-half accessor exists |
+| 3 | `grep -q '^module github.com/medici-finance/assay/statusgen$' statusgen/go.mod` | 0 | statusgen is its own module |
+| 4 | `test -f statusgen/testdata/roster_coupling.json` | 0 | shared-vector precedent present |
+| 5 | `grep -c 'risk_path_triggers' topology.yaml` | 0 | count = 4 (non-zero) |
+| 6 | `go test ./statusgen/ -run 'RiskFilesCrossRead' -count=1` (module-scoped) | 0 | `TestRiskFilesCrossReadOrdinaryBriefQuiet` PASS |
+| 7 | `go test -run 'TriggerCoupling'` in statusgen/ and tools/desk/internal/deskkit/ | 0 / 0 | both PASS (`TestTriggerCoupling`, `TestTriggerCouplingVectorHasRefusals` in statusgen; `TestTriggerCoupling` in deskkit) |
+| 8 | `go test ./statusgen/ -run 'CrossReadFiresOnDowngradedGate' -count=1` | 0 | PASS (positive control fires; honest-yes inverse quiet) |
+| 9 | `go test ./statusgen/ -run 'CrossReadCouldNotCheck' -count=1` | 0 | PASS (absent/unparseable line → could-not-check, not pass) |
+
+`RISK-VALUE: DERIVED` — the base trigger set `{"secrets/", ".github/workflows/", "k8s/*/rbac.yaml"}` at `statusgen/riskpathtriggers.go:55` is byte-identical to, and drift-bound to, the canonical `baseRiskPathTriggers` at `tools/desk/internal/deskkit/riskpath.go:68` via the refusal-bearing coupling vector `statusgen/testdata/risk_trigger_coupling.json` (read by `TriggerCoupling` tests in BOTH modules, so a drift reddens both — `TestTriggerCouplingVectorHasRefusals` confirms the vector carries refusal cases). Policy-half-only consumption proven by `TestRiskFilesCrossReadOrdinaryBriefQuiet` (an ordinary brief stays quiet).
+
+**Risk-answer NOTICE (surfaced for reviewer confirmation):** `statusgen --lint` emits a `[risk-files-crossread]` NOTICE — this brief answers all four risk questions `no` yet declares a path under the security-trigger `tools/desk/internal/deskkit/`. It resolves in favour of the answers standing: the deliverable is a READ-ONLY cross-read check plus a **byte-identical, drift-bound** synchronized copy of the trigger list (rows 1-2, 7; the RISK-VALUE above) — it strengthens the classifier and changes no security value, customer/regulatory/irreversible/sensitive-data surface. Flipped on that basis; flagged here for the reviewer's independent security confirmation given it is a risk-classifier-adjacent surface.
+
+**VERIFY: PASS** — all nine Verify rows checked-clean by a non-implementer. Advancing `implemented → verified`.
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the
 stream README table. Reviewer questions specific to this brief: (1) does the check consume the

@@ -22,14 +22,18 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [quality](docs/streams/quality/README.md) | P2 | active | 0/16 | 2026-09-02 |  |
 | [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-09-02 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/13 | 2026-09-02 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 0/5 | 2026-09-02 |  |
 
 ## Next up
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
-| iso-9001 | 05 — Records control and retention, stated once (7.5.3) | 1 | 1500 |
+| windows-port | 01 — Release build matrix — windows/amd64 + windows/arm64 + sha256s | 0 | 2500 |
+| windows-port | 02 — Portability audit — enumerate + triage the shell-assuming surfaces | 0 | 2500 |
+| mistake-proofing | 03 — Typed Verify-row obligation classes, derived from the diff shape (B2, D7) [exec:strong] | 1 | 2000 |
 | quality | 12 — M4 gate-yield accounting + ritual-effectiveness joins [exec:strong] | 4 | 1500 |
+| mistake-proofing | 04 — Derive the authoring guidance's enforcement-status claims from the lint (B9) [exec:strong] | 1 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 | quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
 | spec-routing | 01 — Enforce the §8 lifecycle — the linter and the authoring-owed emitter [exec:strong] | 0 | 1000 |
@@ -39,7 +43,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 58 total — 31 at implemented, 27 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 59 total — 29 at implemented, 30 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -68,9 +72,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | forge-gitlab | 02 [exec:strong] | verified | 3000 | 4 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
-| mistake-proofing | 01 [exec:strong] | implemented | 3000 | 4 | — | — | — |
+| mistake-proofing | 01 [exec:strong] | verified | 3000 | 4 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | quality | 03 | verified | 3000 | 4 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
-| derived-board | 05 | implemented | 2500 | 1 | — | — | — |
+| derived-board | 05 | verified | 2500 | 1 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 03 [exec:strong] | verified | 2500 | 3 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | quality | 04 | verified | 2500 | 3 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
@@ -79,6 +83,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | quality | 10 [exec:strong] | verified | 2000 | 2 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| iso-9001 | 05 | implemented | 1500 | 1 | — | — | — |
 | mistake-proofing | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 07 | verified | 1500 | 1 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
@@ -95,7 +100,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | quality | 05 | verified | 1000 | 0 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | quality | 08 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | quality | 09 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
-| quality | 11 | implemented | 1000 | 0 | — | — | — |
+| quality | 11 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | quality | 13 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | statusgen | 01 | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
@@ -104,7 +109,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 10 [exec:strong] | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
-| statusgen | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 13 | implemented | 1000 | 0 | — | — | — |
 
@@ -113,6 +117,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
+
+### Awaiting implementer rework (1)
+
+| Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
+|---|---|---|---|---|---|---|---|
+| statusgen | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ## Age at the human gate
 
@@ -140,7 +150,7 @@ _None._
 - 02 `Brief:` trailer — the PR→brief link, required by `deskpr`, linted on main — verified (wave 0)
 - 03 `statusgen reconcile` — derive lifecycle state from PRs + witnesses + approvals — implemented (wave 1)
 - 04 generated Briefs table + single-writer lint — todo (wave 2)
-- 05 desk skills: reference the brief, never flip the cell (both copies) — implemented (wave 1)
+- 05 desk skills: reference the brief, never flip the cell (both copies) — verified (wave 1)
 - 06 v1.0.0 cut: migration op + file, paired-versions, same-tag pin lint — todo (wave 3)
 - 07 per-repo rollout + historical backfill as a drift-report PR — todo (wave 4)
 
@@ -206,12 +216,12 @@ _None._
 - 02 Align three shipped disclosures with the code they describe (B9) — verified (wave 0)
 - 03 A finding closes on a fired control — the effectiveness record (10.2) — todo (wave 1)
 - 04 Record the authorizing human in the release itself (8.6) — todo (wave 1)
-- 05 Records control and retention, stated once (7.5.3) — todo (wave 1)
+- 05 Records control and retention, stated once (7.5.3) — implemented (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 
 ### mistake-proofing (6 open)
 
-- 01 Cross-read a brief's declared paths against the risk classifier (B3) — implemented (wave 0)
+- 01 Cross-read a brief's declared paths against the risk classifier (B3) — verified (wave 0)
 - 02 Dereference named identifiers, not just backticked paths (B4) — verified (wave 0)
 - 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — todo (wave 1)
 - 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — todo (wave 1)
@@ -230,7 +240,7 @@ _None._
 - 08 `pr <n>` mode — per-file risk features (generic riskscore feed) — verified (wave 3)
 - 09 `check <files>` mode — brittleness screen for a named file set — verified (wave 2)
 - 10 M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter — verified (wave 3)
-- 11 DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source — implemented (wave 3)
+- 11 DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source — verified (wave 3)
 - 12 M4 gate-yield accounting + ritual-effectiveness joins — todo (wave 4)
 - 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — verified (wave 3)
 - 14 auto-filed refactor work + quality error-budgets + RETRO output feed — todo (wave 5)
@@ -257,6 +267,14 @@ _None._
 - 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — implemented (wave 1)
 - 13 cadenced roadmap artifacts (`--cadence weekly/monthly`) — implemented (wave 1)
 
+### windows-port (5 open)
+
+- 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — todo (wave 0)
+- 02 Portability audit — enumerate + triage the shell-assuming surfaces — todo (wave 0)
+- 03 Windows install path — PowerShell-vs-Go-installer fork, then build — todo (wave 1)
+- 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — todo (wave 1)
+- 05 Adoption-doc delta — the Windows adopter walkthrough — todo (wave 2)
+
 ## Done briefs
 
 _`done*` = unbacked (I-08 point quality): the row's Evidence section is empty and/or its Verified/Reviewed cells aren't dated+attributed per brief-16 — see `--lint` for the full list. Plain `done` is evidence-backed._
@@ -265,4 +283,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**11** streams (**11** active, **0** paused) · **0/90** briefs done · completed initiatives: see `docs/archive/`
+**12** streams (**12** active, **0** paused) · **0/95** briefs done · completed initiatives: see `docs/archive/`

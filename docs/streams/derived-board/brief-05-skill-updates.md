@@ -75,5 +75,23 @@ facts:
 ## Evidence
 <!-- appended at implementation time -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `3287ec1` (PR #311)
+
+Runner ≠ implementer. Own temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`); all rows runnable offline (no live/`gh`/cluster rows). The brief edits four skill Markdown files only: `plugins/assay/skills/author-brief/SKILL.md`, `plugins/assay/skills/worker-desk/SKILL.md`, `plugins/assay/skills/pr-review-desk/SKILL.md`, `plugins/assay/skills/verify-desk/SKILL.md`.
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `grep -c 'Brief: <stream>/<NN>' plugins/assay/skills/worker-desk/SKILL.md` | 0 | count = 3 (≥ 2) |
+| 2 | `! grep -nE 'flips? the (brief.s )?row\|…\|Board row — part of the deliverable' plugins/assay/skills/worker-desk/SKILL.md` | 0 | no match — the hand-flip instruction is gone |
+| 3 | `grep -c 'schema: brief-v2' plugins/assay/skills/author-brief/SKILL.md` | 0 | count = 1 |
+| 4 | `grep -c -E 'generated table\|statusgen:briefs:begin' plugins/assay/skills/pr-review-desk/SKILL.md` | 0 | count = 3 (≥ 1) |
+| 5 | `! grep -niE 'edit the (stream )?README.*verified\|…done' plugins/assay/skills/verify-desk/SKILL.md` | 0 | no match — the hand-edit instruction is gone |
+| 6 | `! grep -rnE '[a-z-]+#[0-9]{3,}' <the 4 SKILL.md files>` | 0 | no private issue refs (re-confirmed per-file, grep-shim guard) |
+| 7 | `statusgen --root . --lint` | 0 | `LINT: PASS` (NOTICEs only) |
+
+`RISK-VALUE: N/A` — the brief edits four skill Markdown files (documentation prose) only; no literal constant in any guard, no code path (gate:model, all-risk-no).
+
+**VERIFY: PASS** — all seven Verify rows checked-clean by a non-implementer. Advancing `implemented → verified`.
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.

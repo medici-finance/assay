@@ -48,7 +48,7 @@ decision, not code in this stream.
 | 08 | [`pr <n>` mode — per-file risk features (generic riskscore feed)](brief-08-pr-riskscore-features.md) | 3 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
 | 09 | [`check <files>` mode — brittleness screen for a named file set](brief-09-check-brittleness-screen.md) | 2 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
 | 10 | [M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter](brief-10-m3-stage-attribution.md) | 3 | L | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
-| 11 | [DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source](brief-11-dora-join.md) | 3 | M | implemented | — | — |
+| 11 | [DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source](brief-11-dora-join.md) | 3 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
 | 12 | [M4 gate-yield accounting + ritual-effectiveness joins](brief-12-m4-gate-yield-rituals.md) | 4 | M | implemented | — | — |
 | 13 | [M4 session forensics — pluggable telemetry-source interface + reference adapters](brief-13-m4-session-forensics.md) | 3 | M | verified | 2026-09-01 opus-4.8[1m]-verifier | — |
 | 14 | [auto-filed refactor work + quality error-budgets + RETRO output feed](brief-14-autofile-budgets-retro.md) | 5 | M | todo | — | — |
