@@ -131,7 +131,7 @@ facts:
 | 5 | `grep -q 'pre-push' docs/streams/windows-port/portability-audit.md && grep -qF '/opt/desk-tools/bin/deskpushguard' tools/desk/hooks/pre-push; echo $?` | 0 | `0` | 2026-09-02 | implementer |
 | 6 | `grep -cE -e 'windows-port/0[1-5]' -e 'follow-up' docs/streams/windows-port/portability-audit.md` | 0 | `21` | 2026-09-02 | implementer |
 | 7 | `grep -qiF -e 'winsock' -e 'registry hive' docs/streams/windows-port/portability-audit.md; echo $?` | 1 | `1` | 2026-09-02 | implementer |
-| 8 | `statusgen --root . --consumers -brief windows-port/02` | 0 | consumers claim corroborated against the branch diff (this brief file + `portability-audit.md` both present) | 2026-09-02 | implementer |
+| 8 | `statusgen --root . --consumers windows-port/02; echo $?` | 0 | `summary: 0 corroborated, 0 disproved, 4 unchecked` — all four consumer claims report UNCHECKED, not corroborated: `statusgen`'s corroboration checks whether *this branch's diff* freshly introduced the `consumers:` claim line itself, and this brief's frontmatter (including its `consumers:` block) was authored on 2026-09-01 before this implementation branch existed, so the tool has no basis to treat this branch as the origin of the claim — reviewer judgment call per the row's own Expect note. Exit code matches Expect (`0`) regardless. | 2026-09-02 | implementer |
 
 **Note on row 3 (checked-failed, reported as itself — not rounded to pass):** the three-part
 command fails at its third clause. Parts 1–2 pass (0): the audit doc names the hook, and the
