@@ -144,6 +144,30 @@ func main() {
 		fmt.Printf("GUARDRAILS: PASS — %d guardrail copy/copies byte-match %s\n", rep.Compared, guardrailSourcePath)
 	}
 
+	// Enforcement-status block parity: the generated block in the authoring
+	// guidance must byte-match `statusgen enforcement-status` (mistake-proofing/04).
+	// This is the ONLY plugin-tree gate CI runs on pull requests, so the byte-diff
+	// that binds the guidance copy to the lint's rule registry rides here. Derive
+	// shells out to the statusgen emitter; a failure to derive is could-not-check,
+	// never a quiet pass.
+	erep := CheckEnforcementBlock(*root, func() (string, error) { return deriveEnforcementBlock(*root) })
+	switch {
+	case erep.Unchecked != nil:
+		fmt.Fprintf(os.Stderr, "skillslint: %s: %s\n", erep.Unchecked.Path, erep.Unchecked.Msg)
+		fmt.Fprintf(os.Stderr, "ENFORCEMENT-BLOCK: COULD-NOT-CHECK — the generated block could not be compared; a check that compared nothing proved nothing\n")
+		if exit < 2 {
+			exit = 2
+		}
+	case erep.Failed != nil:
+		fmt.Fprintf(os.Stderr, "skillslint: %s: %s\n", erep.Failed.Path, erep.Failed.Msg)
+		fmt.Fprintf(os.Stderr, "ENFORCEMENT-BLOCK: FAIL — the generated enforcement-status block drifted from the lint registry. Fix the registry in statusgen and run `go run ./tools/skillslint --sync`; do not hand-edit the block.\n")
+		if exit < 1 {
+			exit = 1
+		}
+	default:
+		fmt.Printf("ENFORCEMENT-BLOCK: PASS — the generated block in %s byte-matches `statusgen enforcement-status`\n", enforcementSitePath)
+	}
+
 	os.Exit(exit)
 }
 
@@ -164,5 +188,18 @@ func runSync(root string) int {
 		return 2
 	}
 	fmt.Printf("GUARDRAIL-SYNC: %d file(s) regenerated from %s\n", len(changed), guardrailSourcePath)
+
+	// Also regenerate the enforcement-status block from the statusgen emitter
+	// (mistake-proofing/04). Same regenerate-from-source discipline: the fix for a
+	// drift finding is to change the registry and re-run this, never to hand-edit
+	// the copy.
+	echanged, erep := SyncEnforcementBlock(root, func() (string, error) { return deriveEnforcementBlock(root) })
+	if erep.Unchecked != nil {
+		fmt.Fprintf(os.Stderr, "skillslint --sync: %s: %s\n", erep.Unchecked.Path, erep.Unchecked.Msg)
+		return 2
+	}
+	if echanged {
+		fmt.Printf("regenerated: %s (enforcement-status block)\n", enforcementSitePath)
+	}
 	return 0
 }

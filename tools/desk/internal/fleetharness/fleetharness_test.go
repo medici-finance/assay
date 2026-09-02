@@ -422,6 +422,13 @@ func (e *fleetEnv) exec(t *testing.T, dir, pathDir, verb string, args ...string)
 		"XDG_CONFIG_HOME="+filepath.Join(e.home, ".config"),
 		"CLAUDE_SESSION_ID=fleet-harness",
 		"DESK_TOOLS_DISABLED=",
+		// The workflow these scenarios measure is a DISPATCHED WORKER's, and such a
+		// session is booted — it presents a loop identity, which is what makes a
+		// STOP.<loop> flag able to halt it. Every outward verb now refuses without one, so
+		// a harness that presented none would stop at that gate and every row below would
+		// measure the gate instead of the shape it is about. The refusal itself is pinned
+		// per verb in each verb's own package.
+		"DESK_LOOP=worker-desk",
 		"GIT_CONFIG_GLOBAL="+filepath.Join(e.home, "gitconfig"),
 		// The network is deliberately unreachable, so the public-repo gate — the first
 		// step that needs GitHub — fails fast and marks the boundary between "the local

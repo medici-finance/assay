@@ -1,10 +1,9 @@
-package main
+package runnertable
 
 import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
@@ -14,6 +13,30 @@ import (
 func envGetter(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }
+
+// assertMissingPinRefuses is the mandatory-pinning assertion (spec §7.3),
+// factored out so it is reachable BOTH as a TestRunnerTable subtest and as the
+// independently-selectable TestMissingPinRefuses below (the extraction brief's
+// Verify row 3 needs `go test -run Pin` to find it post-extraction, and a bare
+// pattern with no slash only matches a TOP-LEVEL test name).
+func assertMissingPinRefuses(t *testing.T) {
+	t.Helper()
+	_, err := LoadRunnerTable(envGetter(map[string]string{
+		"ASSAY_RUNNER_LOCAL": `{"cmd":["npx","claude-agent-acp"],"model":"m"}`,
+	}), nil)
+	if err == nil || !strings.Contains(err.Error(), "version pin") {
+		t.Fatalf("missing pin must refuse with a pin error, got: %v", err)
+	}
+	if !deskkit.IsRefused(err) {
+		t.Fatalf("missing pin must map to exit 5 (refused), got code %d", deskkit.ExitCodeOf(err))
+	}
+}
+
+// TestMissingPinRefuses pins the mandatory-pinning refusal as its own
+// top-level test (see assertMissingPinRefuses) so the extraction leaves it
+// independently selectable — the extracted package must not bury a refusal
+// rule so deep a narrow -run selector can no longer reach it.
+func TestMissingPinRefuses(t *testing.T) { assertMissingPinRefuses(t) }
 
 // TestRunnerTable covers the runner-table contract: valid table resolves per tier; the
 // refusal cases (missing pin, unknown tier) refuse; the C-floor isolate=false refuses; and boot
@@ -49,17 +72,7 @@ func TestRunnerTable(t *testing.T) {
 	})
 
 	// --- missing pin refuses (mandatory pinning, spec §7.3) -----------------
-	t.Run("missing pin refuses", func(t *testing.T) {
-		_, err := LoadRunnerTable(envGetter(map[string]string{
-			"ASSAY_RUNNER_LOCAL": `{"cmd":["npx","claude-agent-acp"],"model":"m"}`,
-		}), nil)
-		if err == nil || !strings.Contains(err.Error(), "version pin") {
-			t.Fatalf("missing pin must refuse with a pin error, got: %v", err)
-		}
-		if !deskkit.IsRefused(err) {
-			t.Fatalf("missing pin must map to exit 5 (refused), got code %d", deskkit.ExitCodeOf(err))
-		}
-	})
+	t.Run("missing pin refuses", func(t *testing.T) { assertMissingPinRefuses(t) })
 
 	// --- unknown / non-dispatchable tier key refuses ------------------------
 	t.Run("unknown tier refuses", func(t *testing.T) {
@@ -104,8 +117,11 @@ func TestRunnerTable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("table load: %v", err)
 		}
-		// TierLocal is always reachable (TierPolicy emits it), so a table without it fails boot.
-		err = tbl.ValidateReachable((&VerifyLoop{}).reachableTiers())
+		// TierLocal is always reachable (verifyloop's TierPolicy always emits it — see
+		// cmd/verifyloop/tier.go reachableTiers, mirrored here as a literal slice so this
+		// package's tests don't reach into a consumer package), so a table without it fails boot.
+		defaultReachable := []loopengine.Tier{loopengine.TierLocal}
+		err = tbl.ValidateReachable(defaultReachable)
 		if err == nil || !strings.Contains(err.Error(), "reachable") {
 			t.Fatalf("a reachable-but-unconfigured tier must fail boot validation, got: %v", err)
 		}
@@ -113,13 +129,14 @@ func TestRunnerTable(t *testing.T) {
 		tbl2, _ := LoadRunnerTable(envGetter(map[string]string{
 			"ASSAY_RUNNER_LOCAL": `{"cmd":["x"],"pin":"1"}`,
 		}), nil)
-		if err := tbl2.ValidateReachable((&VerifyLoop{}).reachableTiers()); err != nil {
+		if err := tbl2.ValidateReachable(defaultReachable); err != nil {
 			t.Fatalf("a table covering all reachable tiers must validate clean: %v", err)
 		}
-		// When the middle-rung flag is on, TierSession becomes reachable and must also be covered.
-		vSession := &VerifyLoop{F16ReversibleRiskToSession: true}
-		if err := tbl2.ValidateReachable(vSession.reachableTiers()); err == nil {
-			t.Fatal("with the middle-rung flag on, an uncovered TierSession must fail boot")
+		// When a consumer's middle-rung flag reaches TierSession too (verifyloop's
+		// F16ReversibleRiskToSession), an uncovered TierSession must also fail boot.
+		sessionReachable := []loopengine.Tier{loopengine.TierLocal, loopengine.TierSession}
+		if err := tbl2.ValidateReachable(sessionReachable); err == nil {
+			t.Fatal("with TierSession reachable, an uncovered TierSession must fail boot")
 		}
 	})
 
@@ -180,73 +197,5 @@ func TestRunnerTableFileForm(t *testing.T) {
 	// A missing file fails closed as unverifiable (could not read the declared config).
 	if _, err := LoadRunnerTable(envGetter(map[string]string{"ASSAY_RUNNER_TABLE": dir + "/nope.json"}), nil); err == nil {
 		t.Fatal("a missing table file must fail closed")
-	}
-}
-
-// TestNativeDispatchRoundTripViaTable drives the native ACP path with the runner selected by the
-// tier→runner table (not the LE/15 legacy RunnerCmd) and asserts Result.RunnerID is derived from
-// the resolved entry — attribution the engine knows at spawn, carrying the pin + model.
-func TestNativeDispatchRoundTripViaTable(t *testing.T) {
-	nativeTestHome(t)
-	wt := t.TempDir()
-	isolate := true
-	v := &VerifyLoop{
-		Root:          t.TempDir(),
-		TargetSHA:     "deadbeef",
-		Native:        true,
-		NativeEnv:     []string{"VERIFYLOOP_FAKE_ACP=roundtrip"},
-		NativeTimeout: 20 * time.Second,
-		RunnerTable: &RunnerTable{entries: map[loopengine.Tier]RunnerEntry{
-			loopengine.TierLocal: {Cmd: []string{os.Args[0]}, Model: "local-model", Pin: "v0", Isolate: &isolate},
-		}},
-		MakeWorktree: func(loopengine.Item) (string, func(), error) { return wt, func() {}, nil },
-	}
-	h, err := v.Dispatch(fixtureItem(), loopengine.TierLocal)
-	if err != nil {
-		t.Fatalf("native Dispatch via table: %v", err)
-	}
-	r := awaitResult(t, h)
-	if r.Verdict != loopengine.VerdictPass {
-		t.Fatalf("verdict = %q, want PASS", r.Verdict)
-	}
-	if !strings.HasPrefix(r.RunnerID, "acp:local:") || !strings.Contains(r.RunnerID, "@v0") || !strings.Contains(r.RunnerID, "#local-model") {
-		t.Fatalf("Result.RunnerID not derived from the table entry (want tier+cmd+pin+model): %q", r.RunnerID)
-	}
-}
-
-// TestNativeDispatchRefusesUnconfiguredTierViaTable: a table that does not configure the
-// dispatched tier refuses synchronously — never a silent no-runner dispatch.
-func TestNativeDispatchRefusesUnconfiguredTierViaTable(t *testing.T) {
-	nativeTestHome(t)
-	v := &VerifyLoop{
-		Root:      t.TempDir(),
-		TargetSHA: "deadbeef",
-		Native:    true,
-		RunnerTable: &RunnerTable{entries: map[loopengine.Tier]RunnerEntry{
-			loopengine.TierLocal: {Cmd: []string{"x"}, Pin: "v0"},
-		}},
-	}
-	// TierSession is not in the table.
-	if _, err := v.Dispatch(fixtureItem(), loopengine.TierSession); err == nil || !strings.Contains(err.Error(), "no runner configured for tier") {
-		t.Fatalf("dispatch on an unconfigured tier must refuse, got: %v", err)
-	}
-}
-
-// TestPreflightRunnerTable proves the boot hook is inert with no table and refuses on a bad one.
-func TestPreflightRunnerTable(t *testing.T) {
-	if err := preflightRunnerTable(envGetter(map[string]string{})); err != nil {
-		t.Fatalf("no table configured must be a no-op boot, got: %v", err)
-	}
-	// Configured but invalid (missing pin) => boot refuses.
-	if err := preflightRunnerTable(envGetter(map[string]string{
-		"ASSAY_RUNNER_LOCAL": `{"cmd":["x"]}`,
-	})); err == nil {
-		t.Fatal("a configured-but-invalid table must refuse at boot")
-	}
-	// Configured, valid, covers the reachable set => boot clean.
-	if err := preflightRunnerTable(envGetter(map[string]string{
-		"ASSAY_RUNNER_LOCAL": `{"cmd":["x"],"pin":"1"}`,
-	})); err != nil {
-		t.Fatalf("a valid table covering the reachable set must boot clean, got: %v", err)
 	}
 }

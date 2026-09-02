@@ -123,11 +123,27 @@ var ghTimeout = 120 * time.Second
 // created and killed HERE too, so a wedged unit both releases its ghSem slot and becomes
 // a terminable error within the budget rather than pinning a slot forever.
 var ghRun = func(args ...string) ([]byte, error) {
+	// Authenticate the read as the session role's App installation on the account this
+	// argv targets (token.go). Without this the child `gh` falls through to the HOME
+	// keyring, which under a desk config home that is not the operator's own cannot
+	// authenticate — every private repo then 401s, and on the GraphQL path can come back
+	// falsely EMPTY, which is an absence that reads like an answer. An owner with no
+	// resolvable token yields "" and the call runs on the ambient identity, having said so.
+	//
+	// Resolved BEFORE the semaphore and the deadline: the lookup shells out to the token
+	// minter at most once per account, and doing it while holding a ghSem slot would spend
+	// one of six read slots — and part of this call's own timeout budget — on a mint that
+	// is not the read being timed.
+	tok := ghTokenForOwner(ownerFromArgs(args))
+
 	ghSem <- struct{}{}
 	defer func() { <-ghSem }()
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", args...)
+	if tok != "" {
+		cmd.Env = append(os.Environ(), "GH_TOKEN="+tok)
+	}
 	// WaitDelay bounds how long Output() may block AFTER the deadline kills gh but a
 	// surviving child still holds the stdout pipe open (Go 1.20+): the pipe is then
 	// force-closed and Wait returns, so a wedged gh cannot keep its ghSem slot — or the
@@ -270,6 +286,71 @@ func fetchOpenPRs(repo string) (prs []prBase, truncated bool, err error) {
 			"the board may be TRUNCATED; widen prListLimit or paginate (#80)\n", repo, len(prs), prListLimit)
 	}
 	return prs, truncated, nil
+}
+
+// outOfInstallationMarkers are the phrases GitHub uses when the authenticated identity
+// cannot see a repository AT ALL — the repo is outside this App installation's account, or
+// outside its selected-repositories list.
+//
+// WHY THIS IS NOT A DEAD BOARD. A watched repo the desk App was never installed on is a
+// SCOPING fact about the installation, not an unverifiable board: it errors identically on
+// every run, forever, so failing the whole sweep closed on it means the board can never be
+// read at all — the fail-closed rule ends up costing the very coverage it protects. The
+// honest reading is per-repo could-not-check: that repo's rows are unknown, every OTHER
+// repo's rows are known, and the report says which is which.
+//
+// It stays DELIBERATELY narrow. Only this one phrase demotes; a 401, a rate limit, a
+// timeout, a parse failure and every other error still fail the whole run closed, because
+// each of those can be transient and could hide rows in a repo the desk CAN see.
+var outOfInstallationMarkers = []string{
+	"could not resolve to a repository",
+	"could not resolve to a repositoryowner",
+}
+
+// outOfInstallation reports whether err is GitHub refusing to resolve the repository for
+// the authenticated identity.
+func outOfInstallation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, m := range outOfInstallationMarkers {
+		if strings.Contains(msg, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// unreadableRepo is one watched repo whose PR list COULD NOT BE READ, with the reason.
+type unreadableRepo struct {
+	Repo   string `json:"repo"`
+	Reason string `json:"reason"`
+}
+
+// repoCoverage is the in-band statement of WHICH watched repos this verb actually managed
+// to read. Absent (omitempty) = every watched repo was read; it never means "not checked".
+//
+// It is the companion of prPopulation on the other axis: prPopulation says whether a
+// repo's PR list was read COMPLETE, this says whether it was read AT ALL.
+type repoCoverage struct {
+	Read       int              `json:"read"`
+	Unreadable []unreadableRepo `json:"unreadable,omitempty"`
+}
+
+// renderCoverageLine prints the could-not-check repos on the table path. Silent when every
+// watched repo was read — a healthy board pays nothing for this line.
+func renderCoverageLine(w io.Writer, c *repoCoverage) {
+	if c == nil || len(c.Unreadable) == 0 {
+		return
+	}
+	names := make([]string, 0, len(c.Unreadable))
+	for _, u := range c.Unreadable {
+		names = append(names, shortRepo(u.Repo)+" ("+u.Reason+")")
+	}
+	fmt.Fprintf(w, "COULD NOT CHECK %d of %d watched repo(s): %s — their rows are UNKNOWN, not absent; "+
+		"install the desk App on them or drop them from the watched set\n",
+		len(c.Unreadable), c.Read+len(c.Unreadable), strings.Join(names, ", "))
 }
 
 // prPopulation is the in-band statement of whether the open-PR set a verb rests on was
@@ -1249,6 +1330,10 @@ type Header struct {
 	// complete, on every verb that reads one. Absent = this verb read no PR list — never
 	// "complete". See prPopulation.
 	PRPopulation *prPopulation `json:"prPopulation,omitempty"`
+	// RepoCoverage states which watched repos were READ AT ALL, for the verbs that demote
+	// an out-of-installation repo to per-repo could-not-check rather than failing the
+	// whole sweep. Absent = this verb read every repo it swept, or swept none.
+	RepoCoverage *repoCoverage `json:"repoCoverage,omitempty"`
 }
 
 // Report is what a subcommand hands back to main: a value to marshal as JSON, a table
@@ -1339,11 +1424,24 @@ func cmdPRs(hdr Header) (*Report, error) {
 	now := time.Now()
 	var open []string
 	var truncatedRepos []string // #400 T2: which repos came back at the cap
+	coverage := &repoCoverage{}
 	for _, repo := range deskkit.AllowedRepos() {
 		prs, truncated, err := fetchOpenPRs(repo)
 		if err != nil {
+			// A watched repo OUTSIDE this App installation is a per-repo could-not-check,
+			// not a dead board: it fails identically on every run, so failing the sweep
+			// closed on it costs the coverage the rule exists to protect. Every other
+			// error — 401, rate limit, timeout, parse — still fails the whole run closed.
+			if outOfInstallation(err) {
+				coverage.Unreadable = append(coverage.Unreadable, unreadableRepo{
+					Repo:   repo,
+					Reason: "outside this App installation",
+				})
+				continue
+			}
 			return nil, err // exit 6, repo named — never a partial board
 		}
+		coverage.Read++
 		if truncated {
 			truncatedRepos = append(truncatedRepos, repo)
 		}
@@ -1385,9 +1483,13 @@ func cmdPRs(hdr Header) (*Report, error) {
 	})
 	sortExternal(rep.External)
 	rep.Header.PRPopulation = newPRPopulation(truncatedRepos)
+	if len(coverage.Unreadable) > 0 {
+		rep.Header.RepoCoverage = coverage
+	}
 	return &Report{value: rep, detail: openDetail(open) + externalDetail(rep.External), render: func(w io.Writer) {
 		fmt.Fprintf(w, "asOf %s\n", hdr.AsOf)
 		renderScopeLine(w, rep.Header.Scope)
+		renderCoverageLine(w, rep.Header.RepoCoverage)
 		renderPopulationLine(w, rep.Header.PRPopulation)
 		fmt.Fprintf(w, "%-11s %-5s %-6s %-10s %-22s %-8s %s\n", "REPO", "PR", "DRAFT", "HEAD", "CI", "OPEN", "TITLE")
 		for _, r := range rep.PRs {

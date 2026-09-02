@@ -18,6 +18,7 @@ const toolName = "deskflip"
 // breaks every consumer, so these are constants.
 const (
 	condCallerRole       = "caller-role"
+	condAppToken         = "app-token"
 	condPROpenDraft      = "pr-open-draft"
 	condModelFloor       = "model-floor"
 	condReviewerApproved = "reviewer-approved"
@@ -33,6 +34,7 @@ const (
 // thing checked before the mutation.
 var flipConditions = []string{
 	condCallerRole,
+	condAppToken,
 	condPROpenDraft,
 	condModelFloor,
 	condReviewerApproved,
@@ -122,6 +124,13 @@ func flip(o flipOpts) error {
 			"condition %s: %v", condReviewerApproved, rerr), nil)
 	}
 	reviewerLogin, _ := deskkit.RoleAppLogin(reviewerRole)
+
+	// --- app-token ---------------------------------------------------------------
+	// Before the FIRST forge call, so no read and no write can happen on the ambient
+	// credential even if a later condition refuses.
+	if err := checkAppToken(o, repo); err != nil {
+		return err
+	}
 
 	// --- pr-open-draft -----------------------------------------------------------
 	pr, err := readPR(o, repo)
@@ -355,6 +364,50 @@ func checkCallerRole() error {
 			condCallerRole, names[0], flipRole))
 	}
 	return nil
+}
+
+// checkAppToken resolves the App installation token this verb's writes are made under, and
+// REFUSES rather than proceeding on the ambient credential when it cannot.
+//
+// WHICH IDENTITY, AND WHY IT IS DERIVED. The flip belongs to the loop named by flipRole, so
+// the App it acts as is that loop's App role — read from the one shared loop-to-role table
+// rather than spelled again here, so the window a session presents and the identity its
+// writes carry cannot drift apart.
+//
+// EXIT 5, NOT 6. A missing App credential is not "the tool could not tell": it is a
+// completely determined state — the credential is not there — and the correct response is
+// to stop, not to write under someone else's name. The refusal names the role and the token
+// path so the operator can fix the credential rather than guess at it. The token VALUE is
+// never printed.
+func checkAppToken(o flipOpts, repo string) error {
+	role, ok := deskkit.TokenRoleForLoop(flipRole)
+	if !ok {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: loop %s has no App role, so which identity this flip would be written under "+
+				"cannot be established.", condAppToken, flipRole), nil)
+	}
+	tok, path, err := mintTokenFn(role, repo)
+	if err != nil {
+		return deskkit.Refused(fmt.Sprintf(
+			"condition %s: the %s App installation token for %s could not be minted or read (%s): %v. "+
+				"deskflip does NOT fall back to the ambient gh credential — a ready-flip and its queue "+
+				"labels written under an operator's own login read as a human decision and cannot be "+
+				"taken back. Restore the credential and re-run.",
+			condAppToken, role, deskkit.OwnerOf(repo), tokenPathForMessage(path), err))
+	}
+	ghToken = tok
+	o.say("%s OK: writes authenticate as the %s App (token file %s)", condAppToken, role, path)
+	return nil
+}
+
+// tokenPathForMessage renders the token file path for a refusal. The PATH is what an
+// operator needs and is safe to print; the token VALUE never is, and never reaches a
+// message from anywhere in this verb.
+func tokenPathForMessage(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return "the minter named no token path"
+	}
+	return "token path " + path
 }
 
 // checkModelFloor enforces the model-capability floor on the ready-flip: an authority-

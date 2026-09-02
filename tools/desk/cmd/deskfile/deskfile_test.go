@@ -156,6 +156,10 @@ func withEnv(t *testing.T) *[][]string {
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test")
 	t.Setenv("PATH", fakeGHDir+string(os.PathListSeparator)+origPATH)
+	// Outward verbs refuse with $DESK_LOOP unset (the per-loop stop flag has nothing to
+	// match against). Every case below exercises the verb PAST that gate, so the harness
+	// presents a loop identity; the refusal itself has its own test.
+	t.Setenv("DESK_LOOP", "worker-desk")
 	// Clear every fake-gh switch so an ambient value in the developer's environment
 	// cannot silently change what a test exercises.
 	for _, k := range []string{

@@ -30,8 +30,6 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 |---|---|---|---|
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
 | windows-port | 01 — Release build matrix — windows/amd64 + windows/arm64 + sha256s | 0 | 2500 |
-| windows-port | 02 — Portability audit — enumerate + triage the shell-assuming surfaces | 0 | 2500 |
-| mistake-proofing | 04 — Derive the authoring guidance's enforcement-status claims from the lint (B9) [exec:strong] | 1 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 | quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
 | spec-routing | 01 — Enforce the §8 lifecycle — the linter and the authoring-owed emitter [exec:strong] | 0 | 1000 |
@@ -41,14 +39,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (59 desk-actionable of 61 total — 31 at implemented, 30 verified awaiting review)
+## Awaiting verification / review (62 desk-actionable of 64 total — 34 at implemented, 30 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (59)
+### Desk-actionable (62)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -76,10 +74,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 03 [exec:strong] | verified | 2500 | 3 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | quality | 04 | verified | 2500 | 3 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
+| windows-port | 02 | implemented | 2500 | 3 | — | — | — |
 | forge-gitlab | 04 | implemented | 2000 | 2 | — | — | — |
 | iso-9001 | 02 [exec:strong] | verified | 2000 | 2 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | mistake-proofing | 03 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | quality | 10 [exec:strong] | verified | 2000 | 2 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
+| forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | iso-9001 | 05 | implemented | 1500 | 1 | — | — | — |
@@ -97,6 +97,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| mistake-proofing | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | quality | 05 | verified | 1000 | 0 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | quality | 08 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | quality | 09 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
@@ -135,6 +136,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | desk-containers | — | — |
 | desk-tools | — | — |
 | desktools-go-git | — | — |
+| forge-gitlab | — | — |
 | harness-portability | — | — |
 | statusgen | — | — |
 
@@ -190,7 +192,7 @@ _None._
 - 02 `gitlab` forge implementation (MRs, notes, approvals, statuses) — verified (wave 2)
 - 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — verified (wave 2)
 - 04 Fleet provisioning + adopter doc + ci-config-project runbook — implemented (wave 3)
-- 05 Live pilot — one brief round-tripped on a real GitLab group; parity table walked — todo (wave 4)
+- 05 Live pilot — one brief round-tripped on a real GitLab group; parity table walked — implemented (wave 4)
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — todo (wave 5)
 - 07 GitHub forge backend on `go-gh` — retire the exec-`gh` shell path — implemented (wave 2)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
@@ -224,7 +226,7 @@ _None._
 - 01 Cross-read a brief's declared paths against the risk classifier (B3) — verified (wave 0)
 - 02 Dereference named identifiers, not just backticked paths (B4) — verified (wave 0)
 - 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — implemented (wave 1)
-- 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — todo (wave 1)
+- 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — implemented (wave 1)
 - 05 `newbrief` — the scaffolder as the authoring front door (B1) — todo (wave 2)
 - 06 D1 promoted to a lint obligation — a new check must carry its mutation row — todo (wave 2)
 
@@ -270,7 +272,7 @@ _None._
 ### windows-port (5 open)
 
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — todo (wave 0)
-- 02 Portability audit — enumerate + triage the shell-assuming surfaces — todo (wave 0)
+- 02 Portability audit — enumerate + triage the shell-assuming surfaces — implemented (wave 0)
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — todo (wave 1)
 - 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — todo (wave 1)
 - 05 Adoption-doc delta — the Windows adopter walkthrough — todo (wave 2)

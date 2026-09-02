@@ -1,0 +1,3 @@
+### Added
+- A deterministic `(action, class, risk)` -> Tier assignment table lands in `cmd/commsloop` (`assign.go` + declared source `assign.yaml`, diffed against the compiled table), keyed on the comms prose router's closed action vocabulary — model assignment for cell-comms dispatch is now a compiled table lookup with an audit trail: absent triples refuse, there is no runtime default tier.
+- `internal/runnertable` is extracted from `cmd/verifyloop` (behavior-preserving — its own tests still pass) so the pinned tier->runner table has a second consumer, plus a new pinned DECIDER runner entry with a boot-time containment attestation for the comms prose router and outbound gate.

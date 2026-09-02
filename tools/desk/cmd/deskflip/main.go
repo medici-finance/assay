@@ -34,11 +34,14 @@
 // already out of draft gets a pure no-op when its label is already correct, and a FULL
 // re-gate before the label is written when it is not.
 //
-// RELATIONSHIP TO THE APP-IDENTITY WRITE PATH. This verb performs the mutation with the
-// ambient forge CLI, as the operator running the loop. Where a flip must be recorded under
-// the desk App's own identity, the App-identity write verb remains the path — it
-// re-verifies the same conditions in-tool with its own credentials. deskflip is the
-// role-gated LAND adapter, and it never widens what either path will accept.
+// IDENTITY. Every forge call this verb makes — the reads AND the mutation — runs under the
+// review role's App installation token, resolved by the app-token condition before the
+// first call. It does NOT fall back to the ambient forge CLI when that token is missing:
+// it refuses. A flip and its queue labels written under the operator's own login read, in
+// the timeline and to everyone afterwards, as a human decision, and unlike a failed read
+// that cannot be taken back. The App-identity write verb remains a separate path — it
+// re-verifies the same conditions in-tool with its own credentials — and deskflip never
+// widens what either path will accept.
 //
 // Exit codes (deskkit contract): 0 flipped (or already flipped — idempotent) · 3 disabled ·
 // 5 refused (a condition failed, and it is NAMED) · 6 unverifiable (a condition could not
@@ -63,6 +66,11 @@ nothing is mutated:
 
   caller-role       $DESK_LOOP presents the review role's loop identity. The flip belongs
                     to the role that watched the review.
+  app-token         the review role's App installation token is minted and readable, and
+                    every forge call runs under it. There is NO ambient-credential
+                    fallback: an unavailable token REFUSES (exit 5) naming the role and the
+                    token path, because a flip written under an operator's own login reads
+                    as a human decision and cannot be taken back.
   pr-open-draft     the PR is OPEN and still a draft. Anything else is nothing to flip.
   model-floor       the ready-flip is an authority-bearing write, so it requires a
                     strong-tier dispatch. The tier is read from the PR's DISPATCHER-ATTESTED
@@ -121,6 +129,16 @@ func run(args []string) int {
 	}
 
 	if err := deskkit.Guard(); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		return deskkit.ExitCodeOf(err)
+	}
+
+	// Outward verbs present a LOOP IDENTITY. The kill switch's per-loop halt is
+	// `STOP.<loop>`, matched against $DESK_LOOP; with the variable unset nothing matches,
+	// so a stop flag a human is holding never fires and this verb keeps writing while the
+	// operator believes it has been halted. The boot verb has checked this since it was
+	// written — an outward verb run OUTSIDE a booted window did not, which is the gap.
+	if err := deskkit.RequireLoopIdentity("deskflip"); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		return deskkit.ExitCodeOf(err)
 	}

@@ -1012,6 +1012,18 @@ func main() {
 		os.Exit(runShardcheck(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen enforcement-status` — the emitter half of mistake-proofing/04.
+	// Prints the generated enforcement-status block (the lint's rules and each
+	// one's fatal/advisory/not-enforced status) to stdout, from the compiled-in
+	// registry. It reads no files and mutates nothing, so — like the subcommands
+	// above — it owns no board semantics and is never part of `--lint`. skillslint
+	// shells out to it for the block's bytes when it regenerates or byte-diffs the
+	// copy in the authoring guidance (enforcementstatus.go's header explains why
+	// the source is a declared registry rather than a scraped lint run).
+	if len(os.Args) > 1 && os.Args[1] == "enforcement-status" {
+		os.Exit(runEnforcementStatus(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen backfill` — the ONE-OFF status-historian replayer
 	// (agentic-metrics/03, backfill.go). Walks each stream README's git history,
 	// diffs each commit's status table through diffHistory, and PREPENDS the
@@ -1093,7 +1105,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, verifyrun, mergecheck, shardcheck, conform, backfill, reconcile, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, verifyrun, mergecheck, shardcheck, conform, backfill, reconcile, enforcement-status, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}
