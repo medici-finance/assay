@@ -46,6 +46,13 @@ type stub struct {
 	// so a 163-entry list lands as 100 + 63 without any test having to say so.
 	filesPerPage int
 	fileReads    int
+
+	// labelEvents is the PR's `labeled` timeline — the dispatcher-attestation the model-
+	// capability floor reads. nil serves an empty timeline, which the floor reads as
+	// UNATTESTED (a NOTICE, not a refusal). Each event carries the applier login, so a
+	// fixture can distinguish a dispatcher stamp from a self-applied one.
+	labelEvents []deskkit.LabelEvent
+	timelineErr bool // when true, the timeline read fails (could-not-check)
 }
 
 func (s *stub) install(t *testing.T) string {
@@ -81,6 +88,11 @@ func (s *stub) install(t *testing.T) string {
 				return exec.Command("/bin/sh", "-c", "echo no such PR 1>&2; exit 1")
 			}
 			return echo(mustJSON(t, s.pr))
+		case strings.Contains(joined, "issues/") && strings.Contains(joined, "/timeline"):
+			if s.timelineErr {
+				return exec.Command("/bin/sh", "-c", "echo timeline unreadable 1>&2; exit 1")
+			}
+			return echo(s.servedTimeline(t))
 		case strings.Contains(joined, "pulls/") && strings.Contains(joined, "/files"):
 			s.fileReads++
 			return echo(s.servedFilePages(t))
@@ -129,6 +141,57 @@ func (s *stub) servedFilePages(t *testing.T) string {
 		return "[]"
 	}
 	return b.String()
+}
+
+// servedTimeline renders s.labelEvents as the GitHub `labeled` timeline shape the floor
+// reads: one JSON array of {event, label:{name}, actor:{login}} entries. A nil slice serves
+// an empty array — a PR with no labels, which the floor reads as UNATTESTED.
+func (s *stub) servedTimeline(t *testing.T) string {
+	t.Helper()
+	type tlEntry struct {
+		Event string            `json:"event"`
+		Label struct{ Name string } `json:"label"`
+		Actor struct{ Login string } `json:"actor"`
+	}
+	out := make([]tlEntry, 0, len(s.labelEvents))
+	for _, e := range s.labelEvents {
+		var te tlEntry
+		te.Event = "labeled"
+		te.Label.Name = e.Name
+		te.Actor.Login = e.AppliedBy
+		out = append(out, te)
+	}
+	return mustJSON(t, out)
+}
+
+// dispatcherLogin is the roster's desk-App login — the ONLY applier whose dispatched-* stamp
+// the floor trusts. Read from the fixture roster, never a literal, so a fixture stamp is
+// applied by the same identity the verb vouches for.
+func dispatcherLogin(t *testing.T) string {
+	t.Helper()
+	login, ok := deskkit.RoleAppLogin("desk")
+	if !ok {
+		t.Fatal("the fixture roster does not bind the desk (dispatcher) role")
+	}
+	return login
+}
+
+// strongStamp / cheapStamp build a complete dispatcher-applied tier attestation for a
+// fixture PR. The applier is the roster dispatcher, so AttestedModelStampOf trusts it.
+func strongStamp(t *testing.T) []deskkit.LabelEvent {
+	d := dispatcherLogin(t)
+	return []deskkit.LabelEvent{
+		{Name: deskkit.DispatchedModelPrefix + "opus-4.8", AppliedBy: d},
+		{Name: deskkit.DispatchedTierPrefix + "strong", AppliedBy: d},
+	}
+}
+
+func cheapStamp(t *testing.T) []deskkit.LabelEvent {
+	d := dispatcherLogin(t)
+	return []deskkit.LabelEvent{
+		{Name: deskkit.DispatchedModelPrefix + "haiku-3", AppliedBy: d},
+		{Name: deskkit.DispatchedTierPrefix + "any", AppliedBy: d},
+	}
 }
 
 func echo(s string) *exec.Cmd {
@@ -384,6 +447,126 @@ func TestEmptyRollupOnCIRequiredRepoIsUnverifiable(t *testing.T) {
 
 	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
 		t.Fatalf("empty rollup on a CI repo rc = %d, want %d", rc, deskkit.ExitUnverifiable)
+	}
+}
+
+// The two RFC3339 stamps every latest-run-per-name fixture below is built from. tOld sorts
+// before tNew lexicographically, which is also chronologically — the property recencyKey
+// relies on.
+const (
+	tOld = "2026-01-01T00:00:00Z"
+	tNew = "2026-01-01T01:00:00Z"
+)
+
+// TestSupersededRunDoesNotJamACleanFlip is the fix's fail-first case (clause 9, direction a):
+// a check NAME carrying a superseded older run PLUS a green LATEST run must not jam the flip.
+// Both live jams observed on this public repo are reproduced as table rows — a CANCELLED
+// predecessor (#289: a `changelog` run cancelled by the push + pull_request
+// double-trigger) and a stale QUEUED orphan (#282: a `control-sweep` run the same
+// double-trigger left queued). On the UNFIXED code each row refuses (the CANCELLED reddens
+// the whole rollup; the QUEUED reads as forever-pending), so this test is red pre-fix.
+func TestSupersededRunDoesNotJamACleanFlip(t *testing.T) {
+	cases := map[string][]rollupEntry{
+		// A cancelled predecessor + the re-triggered success, same NAME. The success is
+		// newer (later CompletedAt), so it is the latest run and the flip is clean.
+		"cancelled-predecessor": {
+			{Name: "changelog", Status: "COMPLETED", Conclusion: "CANCELLED", StartedAt: tOld, CompletedAt: tOld},
+			{Name: "changelog", Status: "COMPLETED", Conclusion: "SUCCESS", StartedAt: tNew, CompletedAt: tNew},
+		},
+		// An orphaned queued run carries NO timestamps, so recencyKey sorts it oldest and
+		// the completed success is the latest run.
+		"stale-queued-orphan": {
+			{Name: "control-sweep", Status: "QUEUED"},
+			{Name: "control-sweep", Status: "COMPLETED", Conclusion: "SUCCESS", StartedAt: tNew, CompletedAt: tNew},
+		},
+	}
+	for name, rollup := range cases {
+		t.Run(name, func(t *testing.T) {
+			pr := greenPR()
+			pr.StatusCheckRollup = rollup
+			s := &stub{pr: pr}
+			s.install(t)
+			s.reviews = approvalAtHead(t, headSHA)
+
+			if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+				t.Fatalf("superseded run jammed the flip: rc = %d, want 0 — only the LATEST run per name counts", rc)
+			}
+			if !s.ran("pr ready 7") {
+				t.Errorf("the ready mutation never ran: %v", s.calls)
+			}
+		})
+	}
+}
+
+// TestLatestRedRunStillRefuses is the fix's fail-first case (clause 9, direction b): the
+// reduction must NEVER relax the gate. When the LATEST run of a name is red — an older
+// SUCCESS superseded by a newer FAILURE — the flip must still refuse. On the correct code
+// this passes; it is designed to REDDEN under a wrong reduction (keeping the older run
+// instead of the newer), which mutations.json pins as a re-runnable mutation.
+func TestLatestRedRunStillRefuses(t *testing.T) {
+	pr := greenPR()
+	pr.StatusCheckRollup = []rollupEntry{
+		{Name: "build", Status: "COMPLETED", Conclusion: "SUCCESS", StartedAt: tOld, CompletedAt: tOld},
+		{Name: "build", Status: "COMPLETED", Conclusion: "FAILURE", StartedAt: tNew, CompletedAt: tNew},
+	}
+	s := &stub{pr: pr}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("a red LATEST run did not refuse: rc = %d, want %d — the reduction must not weaken the gate",
+			rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("mutations over a red latest run: %v", m)
+	}
+}
+
+// TestLatestPerRollupNameReducesByRecency exercises the reducer directly: newest-per-name
+// wins, both forge shapes are keyed by their own identity, a stampless run loses, nameless
+// entries are never collapsed, and a genuine multi-name set is preserved.
+func TestLatestPerRollupNameReducesByRecency(t *testing.T) {
+	in := []rollupEntry{
+		{Name: "a", Status: "COMPLETED", Conclusion: "FAILURE", CompletedAt: tOld},
+		{Name: "a", Status: "COMPLETED", Conclusion: "SUCCESS", CompletedAt: tNew},
+		{Name: "b", Status: "QUEUED"}, // stampless
+		{Name: "b", Status: "COMPLETED", Conclusion: "SUCCESS", CompletedAt: tNew},
+		{Context: "legacy", State: "PENDING", CreatedAt: tOld},
+		{Context: "legacy", State: "SUCCESS", CreatedAt: tNew},
+		{Status: "COMPLETED", Conclusion: "SUCCESS"}, // nameless
+		{Status: "COMPLETED", Conclusion: "FAILURE"}, // nameless — must NOT merge with the above
+	}
+	got := latestPerRollupName(in)
+	// a, b, legacy reduced to one each; the two nameless entries kept standalone → 5.
+	if len(got) != 5 {
+		t.Fatalf("reduced to %d entries, want 5: %+v", len(got), got)
+	}
+	byName := map[string]rollupEntry{}
+	nameless := 0
+	for _, e := range got {
+		if e.groupKey() == "" {
+			nameless++
+			continue
+		}
+		byName[e.groupKey()] = e
+	}
+	if byName["a"].Conclusion != "SUCCESS" {
+		t.Errorf("name a kept %q, want the newer SUCCESS", byName["a"].Conclusion)
+	}
+	if byName["b"].Status != "COMPLETED" || byName["b"].Conclusion != "SUCCESS" {
+		t.Errorf("name b kept %+v, want the completed SUCCESS over the stampless QUEUED", byName["b"])
+	}
+	if byName["legacy"].State != "SUCCESS" {
+		t.Errorf("context legacy kept %q, want the newer SUCCESS", byName["legacy"].State)
+	}
+	if nameless != 2 {
+		t.Errorf("nameless entries collapsed to %d, want 2 (no identity to reduce by)", nameless)
+	}
+	// The reduced set is what evalRollup then judges — and it evaluates it UNCHANGED. The
+	// set here still carries the standalone nameless FAILURE, so the reduction has not
+	// swallowed a real red: the judgement stays ciFail.
+	if st := evalRollup(got); st != ciFail {
+		t.Errorf("reduced set evaluated to %v, want ciFail — the standalone nameless FAILURE must survive", st)
 	}
 }
 
@@ -862,7 +1045,7 @@ func TestForeignRepoRefused(t *testing.T) {
 }
 
 func TestConditionListIsTheDocumentedContract(t *testing.T) {
-	want := []string{"caller-role", "pr-open-draft", "reviewer-approved", "checks-green",
+	want := []string{"caller-role", "pr-open-draft", "model-floor", "reviewer-approved", "checks-green",
 		"mergeable", "security-verdict", "head-stable"}
 	if len(flipConditions) != len(want) {
 		t.Fatalf("flipConditions has %d entries, want %d", len(flipConditions), len(want))

@@ -21,35 +21,12 @@ func TestVersionDefaultIsDev(t *testing.T) {
 	}
 }
 
-// TestModeScaffolding pins that the still-stubbed `pr` mode is recognized,
-// parses flags, prints a `not yet implemented` NOTICE, and exits 0. `report`
-// is no longer a stub — it renders the trend view (quality/05) and is
-// exercised by the TestReport_* suite instead; `check` is no longer a stub
-// either — it runs the brittleness screen (quality/09) and is exercised by
-// the TestCheck_* suite in check_test.go.
-func TestModeScaffolding(t *testing.T) {
-	cases := []struct {
-		name string
-		args []string
-	}{
-		{"pr", []string{"pr", "1", "--out", "/tmp/x"}},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			var out, errb bytes.Buffer
-			rc := dispatch(c.args, &out, &errb)
-			if rc != 0 {
-				t.Fatalf("exit %d, stderr=%s", rc, errb.String())
-			}
-			if !strings.Contains(out.String(), "not yet implemented") {
-				t.Fatalf("expected a not-yet-implemented NOTICE, got %q", out.String())
-			}
-			if !strings.Contains(out.String(), "NOTICE") {
-				t.Fatalf("expected a NOTICE line, got %q", out.String())
-			}
-		})
-	}
-}
+// TestModeScaffolding used to pin the still-stubbed `pr` mode's NOTICE
+// output; `pr` is no longer a stub — it emits the per-PR risk-feature feed
+// (quality/08) and is exercised by the TestPR_* suite in pr_test.go instead.
+// `report` renders the trend view (quality/05, TestReport_* suite); `check`
+// runs the brittleness screen (quality/09, TestCheck_* suite in
+// check_test.go). No mode remains scaffolding-only.
 
 // TestUnknownModeIsUsageError pins that an unknown mode is a usage error (exit 2),
 // not a silent success.

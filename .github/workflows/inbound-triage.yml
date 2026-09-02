@@ -1,0 +1,184 @@
+name: inbound-triage
+# Issue-first + per-author concurrency ADVISORY for pull requests opened by people
+# outside the maintainer circle. Filter, don't deter: a drive-by PR gets an
+# explanatory comment and a label; nothing is closed.
+#
+# TRUST MODEL / SECURITY:
+#   * pull_request_target is used so the token can comment and label on FORK PRs.
+#     This job NEVER checks out or runs the PR's code — it reads only event
+#     metadata and the REST API through actions/github-script. No untrusted code
+#     executes with the write token, so pull_request_target is safe here.
+#   * "Trusted" == GitHub author_association in {OWNER, MEMBER, COLLABORATOR}, plus
+#     bot authors. This is the PUBLIC-repo overlay of the maintainer circle; no
+#     private allowlist values are embedded in this file. Trusted authors and bots
+#     are skipped entirely (the `if:` on the job).
+#   * ENFORCEMENT IS OFF BY DEFAULT. Both gates only comment + label. Auto-close
+#     (issue-first) and the over-limit block (concurrency) are behind the two env
+#     switches below, which default to "false". Flipping either to "true" is a
+#     human decision, not a code default — do not enable without the recorded
+#     contribution-policy decision.
+#
+# RUNNER: this uses actions/github-script (Node, bundled by the action). Confirm
+#   the runner label this repo should target before enabling — the other
+#   workflows here run on a self-hosted runner. Enablement + runner choice are a
+#   maintainer step, listed with the other server-side settings for this policy.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, edited, synchronize]
+
+# Least privilege: read the repo, write PR comments/labels. No contents:write.
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: inbound-triage-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  # --- decision switches: default OFF (advisory only) ---
+  # true => after GRACE_DAYS an unlinked, unknown-author PR is auto-closed.
+  ENFORCE_ISSUE_FIRST: "false"
+  # true => a PR that puts its author over MAX_OPEN_PR_PER_AUTHOR is closed.
+  ENFORCE_CONCURRENCY: "false"
+  # --- tunables ---
+  GRACE_DAYS: "7"
+  MAX_OPEN_PR_PER_AUTHOR: "3"
+  ISSUE_FIRST_LABEL: "needs-issue-link"
+  CONCURRENCY_LABEL: "too-many-open-prs"
+
+jobs:
+  triage:
+    # Skip maintainers, collaborators, and bots. Only strangers reach the gate.
+    if: >-
+      github.event.pull_request.author_association != 'OWNER' &&
+      github.event.pull_request.author_association != 'MEMBER' &&
+      github.event.pull_request.author_association != 'COLLABORATOR' &&
+      github.event.pull_request.user.type != 'Bot'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Issue-first + concurrency advisory
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        env:
+          ENFORCE_ISSUE_FIRST: ${{ env.ENFORCE_ISSUE_FIRST }}
+          ENFORCE_CONCURRENCY: ${{ env.ENFORCE_CONCURRENCY }}
+          GRACE_DAYS: ${{ env.GRACE_DAYS }}
+          MAX_OPEN_PR_PER_AUTHOR: ${{ env.MAX_OPEN_PR_PER_AUTHOR }}
+          ISSUE_FIRST_LABEL: ${{ env.ISSUE_FIRST_LABEL }}
+          CONCURRENCY_LABEL: ${{ env.CONCURRENCY_LABEL }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const { owner, repo } = context.repo;
+            const author = pr.user.login;
+            const enforceIssueFirst = process.env.ENFORCE_ISSUE_FIRST === 'true';
+            const enforceConcurrency = process.env.ENFORCE_CONCURRENCY === 'true';
+            const maxOpen = parseInt(process.env.MAX_OPEN_PR_PER_AUTHOR, 10) || 3;
+            const issueLabel = process.env.ISSUE_FIRST_LABEL;
+            const concLabel = process.env.CONCURRENCY_LABEL;
+
+            // --- helpers -------------------------------------------------------
+            // A marker comment keeps the workflow idempotent across the "edited"
+            // and "synchronize" re-fires: we comment once per (policy, PR).
+            const marker = (tag) => `<!-- inbound-triage:${tag} -->`;
+            async function alreadyCommented(tag) {
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                { owner, repo, issue_number: pr.number, per_page: 100 },
+              );
+              return comments.some((c) => c.body && c.body.includes(marker(tag)));
+            }
+            async function comment(tag, body) {
+              if (await alreadyCommented(tag)) return;
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pr.number,
+                body: `${marker(tag)}\n${body}`,
+              });
+            }
+            async function label(name) {
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number: pr.number, labels: [name],
+              }).catch(() => {}); // label may not exist yet; advisory, non-fatal
+            }
+
+            // Does the PR link an OPEN issue? We accept a body/title reference to
+            // an issue number in this repo whose state is open. GitHub closing
+            // keywords are the common form; any `#N` also counts. The gate
+            // discriminates on LINKAGE, not on authorship alone.
+            async function linksOpenIssue() {
+              const text = `${pr.title || ''}\n${pr.body || ''}`;
+              const nums = new Set();
+              const re = /(?:^|[^\w])#(\d+)\b/g;
+              let m;
+              while ((m = re.exec(text)) !== null) nums.add(parseInt(m[1], 10));
+              for (const n of nums) {
+                try {
+                  const { data: issue } = await github.rest.issues.get({
+                    owner, repo, issue_number: n,
+                  });
+                  // issues.get also returns PRs; a real issue has no pull_request
+                  // field. An open, non-PR reference satisfies issue-first.
+                  if (!issue.pull_request && issue.state === 'open') return true;
+                } catch (_) { /* referenced number is not an issue here; skip */ }
+              }
+              return false;
+            }
+
+            // How many OTHER open PRs does this author already have here?
+            async function openPRCount() {
+              const prs = await github.paginate(github.rest.pulls.list, {
+                owner, repo, state: 'open', per_page: 100,
+              });
+              return prs.filter((p) => p.user.login === author).length;
+            }
+
+            // --- gate 1: issue-first ------------------------------------------
+            if (!(await linksOpenIssue())) {
+              await label(issueLabel);
+              const graceLine = enforceIssueFirst
+                ? `Because enforcement is on, this pull request will be closed automatically after ${process.env.GRACE_DAYS} days if no open issue is linked. Reopen it once an issue is linked.`
+                : `This is advisory only right now — nothing will be closed. Linking an issue helps a maintainer pick it up.`;
+              await comment('issue-first',
+                [
+                  `Thanks for the contribution! A quick note on how this repo takes changes:`,
+                  ``,
+                  `**Open an issue first, and link it from this pull request.** Issues are the contribution surface here; a linked open issue is how a maintainer confirms a change fits the direction before reviewing the diff. See \`CONTRIBUTING.md\`.`,
+                  ``,
+                  graceLine,
+                ].join('\n'),
+              );
+              if (enforceIssueFirst) {
+                const openedAt = new Date(pr.created_at).getTime();
+                const graceMs = (parseInt(process.env.GRACE_DAYS, 10) || 7) * 86400000;
+                if (Date.now() - openedAt > graceMs) {
+                  await github.rest.pulls.update({
+                    owner, repo, pull_number: pr.number, state: 'closed',
+                  });
+                }
+              }
+            }
+
+            // --- gate 2: per-author concurrency -------------------------------
+            const count = await openPRCount();
+            if (count > maxOpen) {
+              await label(concLabel);
+              const encLine = enforceConcurrency
+                ? `Because enforcement is on, this pull request has been closed to keep the queue reviewable; please reopen it once your other open pull requests are resolved.`
+                : `This is advisory only right now — nothing will be closed.`;
+              await comment('concurrency',
+                [
+                  `You currently have **${count}** open pull requests in this repository, over the per-author guideline of **${maxOpen}**.`,
+                  ``,
+                  `Fewer, well-scoped pull requests are easier for a maintainer to review and get merged. Consider consolidating or waiting for earlier ones to land.`,
+                  ``,
+                  encLine,
+                ].join('\n'),
+              );
+              if (enforceConcurrency) {
+                await github.rest.pulls.update({
+                  owner, repo, pull_number: pr.number, state: 'closed',
+                });
+              }
+            }

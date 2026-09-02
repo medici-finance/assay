@@ -1,0 +1,4 @@
+# Planted fixture for forensics_test.go: PR 42 has a full telemetry record
+# with retries=7; PR 99 (used by the missing-telemetry test) is deliberately
+# absent from this file.
+{"pr_number": 42, "merge_sha": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", "stream_task_id": "quality/13", "retries": 7, "context_length": 21000, "tool_call_churn": 4, "interruptions": 2, "refusals": 1}

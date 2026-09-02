@@ -19,6 +19,7 @@ const toolName = "deskflip"
 const (
 	condCallerRole       = "caller-role"
 	condPROpenDraft      = "pr-open-draft"
+	condModelFloor       = "model-floor"
 	condReviewerApproved = "reviewer-approved"
 	condChecksGreen      = "checks-green"
 	condMergeable        = "mergeable"
@@ -33,6 +34,7 @@ const (
 var flipConditions = []string{
 	condCallerRole,
 	condPROpenDraft,
+	condModelFloor,
 	condReviewerApproved,
 	condChecksGreen,
 	condMergeable,
@@ -177,6 +179,16 @@ func flip(o flipOpts) error {
 		o.say("%s OK: open + draft at %s", condPROpenDraft, short(head))
 	}
 
+	// --- model-floor -------------------------------------------------------------
+	// The authority-bearing-write floor: a ready-flip requires a strong-tier dispatch. It
+	// is read from the target PR's dispatcher-attested tier stamp (the applier-aware reader,
+	// so a self-applied stamp is worthless), and it fails CLOSED — an attested below-tier
+	// dispatch, or a stamp present-but-unreadable, refuses. An UNATTESTED PR (human-driven
+	// or pre-attestation) is not bricked: it proceeds with a NOTICE. The override is loud.
+	if err := checkModelFloor(o, repo); err != nil {
+		return err
+	}
+
 	// --- reviewer-approved -------------------------------------------------------
 	reviews, err := readReviews(o, repo)
 	if err != nil {
@@ -188,12 +200,18 @@ func flip(o flipOpts) error {
 	o.say("%s OK: %s APPROVED at %s", condReviewerApproved, reviewerLogin, short(head))
 
 	// --- checks-green ------------------------------------------------------------
-	switch evalRollup(pr.StatusCheckRollup) {
+	// Reduce to the LATEST run per check NAME first — branch protection's own rule — so a
+	// superseded run (an older CANCELLED, a stale QUEUED left by a push+pull_request
+	// double-trigger) does not count against a PR whose current run for that name is green.
+	// The reduction changes only WHICH run is judged, never HOW: the reduced set flows
+	// through the same evaluation, so a name whose LATEST run is red/pending still blocks.
+	checks := latestPerRollupName(pr.StatusCheckRollup)
+	switch evalRollup(checks) {
 	case ciFail:
 		return deskkit.Refused(fmt.Sprintf(
 			"condition %s: a check at %s failed — %s. A red rollup outranks any local verification: CI runs "+
 				"the real toolchain and a local trace does not.",
-			condChecksGreen, short(head), strings.Join(failedChecks(pr.StatusCheckRollup), ", ")))
+			condChecksGreen, short(head), strings.Join(failedChecks(checks), ", ")))
 	case ciPending:
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"condition %s: checks at %s are not positively green (a check has not completed). Not-yet-green "+
@@ -208,7 +226,7 @@ func flip(o flipOpts) error {
 		// A repo with no PR CI at all: an empty rollup is everything there will ever be.
 	case ciGreen:
 	}
-	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(pr.StatusCheckRollup), short(head))
+	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
 
 	// --- mergeable ---------------------------------------------------------------
 	switch strings.ToUpper(strings.TrimSpace(pr.Mergeable)) {
@@ -337,6 +355,79 @@ func checkCallerRole() error {
 			condCallerRole, names[0], flipRole))
 	}
 	return nil
+}
+
+// checkModelFloor enforces the model-capability floor on the ready-flip: an authority-
+// bearing write requires a strong-tier dispatch. It reads the target PR's dispatcher-
+// attested tier stamp from the label timeline and delegates the DECISION to the shared
+// deskkit floor, so deskflip and the verdict verb apply one wording of the rule and one
+// remediation.
+//
+// FAIL-CLOSED. A below-tier or present-but-unreadable attestation REFUSES (exit 5). A
+// timeline that cannot be READ is could-not-check, never a pass — it refuses UNVERIFIABLE
+// (exit 6). Only a genuinely UNATTESTED PR proceeds, and it says so (NOTICE), so a
+// human-driven or pre-attestation lane is not bricked. The override line is always printed,
+// regardless of --quiet, because a silent bypass would nullify the layer.
+func checkModelFloor(o flipOpts, repo string) error {
+	events, err := readLabelEvents(o, repo)
+	if err != nil {
+		return err
+	}
+	d := deskkit.ModelCapabilityFloor(events, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
+	switch d.Outcome {
+	case deskkit.FloorOverrideAllow:
+		fmt.Fprintf(os.Stderr, "deskflip: %s\n", d.Message)
+		return nil
+	case deskkit.FloorNoticeAllow:
+		o.say("%s: %s", condModelFloor, d.Message)
+		return nil
+	case deskkit.FloorAllow:
+		o.say("%s OK: %s", condModelFloor, d.Message)
+		return nil
+	default: // FloorRefuse
+		return deskkit.Refused(fmt.Sprintf("condition %s: %s", condModelFloor, d.Message))
+	}
+}
+
+// readLabelEvents reads the target PR's `labeled` timeline events — the label name AND the
+// login that applied it — which is what the applier-aware stamp reader needs to tell a
+// dispatcher attestation from a self-applied one. It walks every page.
+//
+// An EMPTY timeline is not an error: it is a PR with no labels, which the floor reads as
+// UNATTESTED (a NOTICE, not a refusal). A failed READ is could-not-check and refuses
+// unverifiable at the caller.
+func readLabelEvents(o flipOpts, repo string) ([]deskkit.LabelEvent, error) {
+	r := runCmd("", "gh", "api", "--paginate",
+		fmt.Sprintf("repos/%s/issues/%d/timeline?per_page=%d", repo, o.pr, changedFilePerPage))
+	if r.err != nil {
+		return nil, deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: cannot read PR #%d's label timeline (%s) — the dispatch tier could not be "+
+				"established, and could-not-check is never a cleared floor.",
+			condModelFloor, o.pr, firstLine(r.stderr)), r.err)
+	}
+	var out []deskkit.LabelEvent
+	for _, chunk := range splitJSONArrays(r.stdout) {
+		var page []struct {
+			Event string `json:"event"`
+			Label struct {
+				Name string `json:"name"`
+			} `json:"label"`
+			Actor struct {
+				Login string `json:"login"`
+			} `json:"actor"`
+		}
+		if err := json.Unmarshal([]byte(chunk), &page); err != nil {
+			return nil, deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: PR #%d's label timeline did not parse", condModelFloor, o.pr), err)
+		}
+		for _, e := range page {
+			if e.Event != "labeled" {
+				continue
+			}
+			out = append(out, deskkit.LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login})
+		}
+	}
+	return out, nil
 }
 
 // checkReviewerApproved is the correctness gate: the reviewer App's latest correctness
@@ -616,12 +707,20 @@ type labelInfo struct {
 // here — a check run (status + conclusion) and a status context (state) — and a reader
 // that understands only one silently sees an empty rollup for the other, which on a
 // CI-less policy reads as green. Both shapes are carried.
+//
+// The three timestamp fields are the recency signal the latest-run-per-name reduction
+// needs. A CheckRun carries StartedAt/CompletedAt; a StatusContext carries only CreatedAt.
+// The forge serves all of them in `statusCheckRollup` already — the fields were simply not
+// decoded before — so reducing by them costs no extra read.
 type rollupEntry struct {
-	Name       string `json:"name"`
-	Context    string `json:"context"`
-	Status     string `json:"status"`
-	Conclusion string `json:"conclusion"`
-	State      string `json:"state"`
+	Name        string `json:"name"`
+	Context     string `json:"context"`
+	Status      string `json:"status"`
+	Conclusion  string `json:"conclusion"`
+	State       string `json:"state"`
+	StartedAt   string `json:"startedAt"`
+	CompletedAt string `json:"completedAt"`
+	CreatedAt   string `json:"createdAt"`
 }
 
 func (e rollupEntry) label() string {
@@ -632,6 +731,57 @@ func (e rollupEntry) label() string {
 		return e.Context
 	}
 	return "(unnamed check)"
+}
+
+// groupKey is the identity a check is reduced BY: its NAME for a check run, its CONTEXT for
+// a status context. Branch protection keys "latest run per context" on exactly this name,
+// which is why grouping by it reproduces the platform's own rule. An entry with NEITHER a
+// name nor a context has no identity to group on, so it returns "" and the reducer keeps it
+// standalone — collapsing every nameless entry into one bucket would be a reduction the
+// forge never made.
+func (e rollupEntry) groupKey() string {
+	if e.Name != "" {
+		return e.Name
+	}
+	return e.Context
+}
+
+// recencyKey returns the entry's best available recency stamp for the latest-run-per-name
+// reduction. The forge renders RFC3339 timestamps, which sort lexicographically in
+// chronological order, so a plain string compare orders two runs of one name by age.
+//
+// CompletedAt is preferred — a finished run's true end — then StartedAt (a run that began
+// but has not finished: an in-progress run, or the moment a queued run was picked up), then
+// CreatedAt (a status context's only stamp). An entry that carries none — a freshly QUEUED
+// check run the forge has not stamped yet, the #282-class orphan left by a double-trigger —
+// returns "" and sorts OLDEST, so it loses to any run that actually ran. That is the
+// fail-SAFE direction: a stampless queued run does not get to supersede a completed one, and
+// a run whose LATEST is genuinely pending or failing is never reduced away by this rule.
+func (e rollupEntry) recencyKey() string {
+	switch {
+	case e.CompletedAt != "":
+		return e.CompletedAt
+	case e.StartedAt != "":
+		return e.StartedAt
+	default:
+		return e.CreatedAt
+	}
+}
+
+// latestPerRollupName reduces the rollup to one entry per check NAME — the LATEST run for
+// each — before the green/pending/fail evaluation runs over it. It delegates to the SHARED
+// deskkit.LatestRunPerName so this ready-flip gate and deskboard's CI render reduce by
+// identical semantics and cannot drift: a flip that fires on a push+pull_request
+// double-triggered PR while the board still renders it CI-fail is exactly the divergence a
+// second, local copy of this rule would reintroduce. The rollupEntry methods above
+// (groupKey, recencyKey) are this type's adapters into the generic reducer.
+//
+// The reduction NEVER relaxes the gate: it changes only WHICH run of a name is evaluated,
+// never how a run is judged — the reduced set still flows through evalRollup/failedChecks
+// unchanged, so a name whose latest run is red, cancelled, or pending still reddens or
+// blocks the flip exactly as before.
+func latestPerRollupName(entries []rollupEntry) []rollupEntry {
+	return deskkit.LatestRunPerName(entries, rollupEntry.groupKey, rollupEntry.recencyKey)
 }
 
 type reviewInfo struct {
