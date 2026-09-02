@@ -995,6 +995,9 @@ the environment — `ASSAY_ALLOWED_REPOS`, `ASSAY_SCAN_REPOS`, `ASSAY_TRUSTED_LO
 That is where the write boundary lives, and it was already per-cell-shaped. The split is worth
 stating plainly: **authorisation is config; stated topology is compiled.**
 
+**Running a cell on one machine** — the persistent `deskd`, a window per desk role, each resolving
+the cell's own roster and App keys — is `tools/cellctl/cellctl`; see `docs/cellctl.md`.
+
 ---
 
 # SCENARIO 1 — Green-field project(s)
