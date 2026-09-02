@@ -21,6 +21,11 @@ where their code now lives: the `.assay-versions` binary-channel contract, the d
 batch-fanout consumer, the published-tree residual-identity scrub, the deterministic verdict
 runner, and the escape-valve `Decide()` primitive.
 
+Brief 07 joins them by the same route. `clusterguard` was planned on a private board, on the
+reasoning that a security control's mechanism is a targeting aid; a disposition review found
+nothing in it specific to any one deployment — it is the same generic guard-family shape as
+`writeguard`, reading a documented opt-in — so the brief lives here with the code it plans.
+
 ## Briefs
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
@@ -31,6 +36,7 @@ runner, and the escape-valve `Decide()` primitive.
 | 04 | [Deterministic runner — execute rows, batch, sign, file verdict issues](brief-04-runner-verdict-batching.md) | 1 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #306 @ 4f37b243efb70e1b1d3e726bc4019967ad64ad99) |
 | 05 | [Escape-valve `Decide()` primitive in deskkit](brief-05-escape-valve-decide.md) | 1 | M | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #156 @ 112b206fee74b470016be325dc7c2dfeff670931) |
 | 06 | [Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction)](brief-06-roster-from-deployment.md) | 1 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #318 @ 6ab8de53a40c1a4f71fa6c0a0ddccb4b27a000c8) |
+| 07 | [`clusterguard` — exec-boundary shim for cluster CLIs, operator opt-in](brief-07-clusterguard-exec-shim.md) | 1 | M | implemented | — | — |
 
 ## Critical path
 None. Each brief is independent and self-contained. The soft ordering their source streams
@@ -40,7 +46,7 @@ work already landed outside this stream, so no typed `depends:` edge remains —
 brief's Dependencies note.
 
 ## Dependency waves
-- **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06 (all independent; parallelizable). desk-tools/06
+- **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 

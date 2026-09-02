@@ -196,6 +196,13 @@ var AllowedInvocations = []Allowance{
 // a LEDGER of blind spots, not a permit — see the file header.
 var UnresolvedArgv = []Allowance{
 	{
+		Key: "cmd/clusterguard/shim.go::passThrough::<unresolved>",
+		Reason: "the cluster-CLI shim's ONE pass-through site. argv[0] is the path clusterguard itself " +
+			"resolved from PATH for the CLI name it was invoked as, and the shimmed set is a compiled-in " +
+			"five (kubectl, flux, helm, talosctl, k9s) — no forge CLI is in it, and no caller can widen it. " +
+			"It is reachable only past the operator opt-in, and never through a shell.",
+	},
+	{
 		Key:    "cmd/deskadvisory/advisory.go::runChecks::<unresolved>",
 		Reason: "exec.LookPath of a tool name held in a variable; presence probe, launches nothing.",
 	},

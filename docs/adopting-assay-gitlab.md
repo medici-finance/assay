@@ -33,30 +33,38 @@ This statement is carried verbatim from spec.md §1 — no softening of the **pa
 What changed since it was written is the **provisioning** claim, and that is now measured
 rather than assumed:
 
-### 0.1 Free tier — a pilot lane, not a conforming deployment (measured 2026-09-02)
+### 0.1 Free tier / CE — conforming for the core lane, with the degradations disclosed below (ruling #219; measured live 2026-09-02)
 
-A live run of the §2 script against a fresh free-tier gitlab.com top-level group
-(GitLab 19.4) provisioned the whole §1 identity model: seven service accounts (free and
-seatless since GitLab 18.11 — `docs/streams/forge-gitlab/edition-matrix.md` row C1),
-their group memberships, and their 7-day PATs. So "no service accounts on Free" is no
-longer true on gitlab.com, and a free group is a legitimate place to **pilot the tooling**
-— the forge-gitlab/05 pilot runs on one.
+The edition ruling (#219, carried in `docs/streams/forge-gitlab/edition-matrix.md`) stands:
+**Community Edition / Free is conforming for the core lane** — the Maintainer membership
+set is the push allowlist, approvals are advisory, and every write reaches `main` through a
+merge request a human merges. What the pilot changed is the *size of the disclosure*, not
+the stance: a live run of the §2 script against a fresh free-tier gitlab.com top-level group
+(GitLab 19.4) provisioned the whole §1 identity model — seven service accounts (free and
+seatless since GitLab 18.11, edition-matrix row C1), their group memberships and their
+7-day PATs — and then drove one brief through desk → worker → reviewer → verifier →
+board-writer with the human as the only merger. The round trip is the proof the core lane
+runs on Free (the forge-gitlab/05 pilot report carries every read).
 
-What free tier does NOT give you, each observed live and each a row the parity walk records
-as *failed-at-tier* with its remediation:
+The disclosed degradations, each observed live and each a row the parity walk records as
+*failed-at-tier* with its remediation — an adopter on Free runs with all of them and says so:
 
-| Control | Free-tier behaviour observed | Remediation (tier) |
-|---|---|---|
-| single board-writer push allowlist on `main` (B2) | `allowed_to_*` arrays rejected (HTTP 400); only `push_access_level` / `merge_access_level` / `allow_force_push` apply. Set push = **No one** and route every write through an MR | Premium: name the board-writer in `allowed_to_push` |
-| required approvals (B3) and prevent-author/committer approval (B4) | `POST /projects/:id/approvals` returns 201 and **silently keeps** `approvals_before_merge: 0` — the setting is ignored, not refused | Premium |
-| group token-expiry policy (§5 backstop) | not available; the 7-day PAT expiry set at mint is the only backstop | Premium |
-| audit events | not available | Premium |
+| Control | Free-tier behaviour observed | What stands in for it on Free | Remediation (tier) |
+|---|---|---|---|
+| single board-writer push allowlist on `main` (B2) | `allowed_to_*` arrays rejected (HTTP 400); only `push_access_level` / `merge_access_level` / `allow_force_push` apply | push = **No one**, merge = **Maintainers**; every write, the board regeneration included, travels as an MR the human merges | Premium: name the board-writer in `allowed_to_push` |
+| required approvals (B3) and prevent-author/committer approval (B4) | `POST /projects/:id/approvals` returns 201 and **silently keeps** `approvals_before_merge: 0`; an MR's own author can `/approve` itself | the reviewer service account holds the only reviewer credential; the desk refuses an author-authored verdict and never flips ready without an at-head verdict; the human merges | Premium |
+| group token-expiry policy (§5 backstop) | not available | the 7-day PAT expiry set at mint is the only backstop; rotate-on-mint still invalidates the previous token live | Premium |
+| audit events | not available | the MR history itself — every content commit a distinct role account, every merge the human | Premium |
+| protected tags | none set by the provisioner | release tags are a human act on Free; treat any bot tag as unauthorised | Premium (tag allowlist) |
+| pipeline execution gate / merge-time CI | no pipeline configured → GitLab offers "merge unverified changes" and lets the human proceed | the human declines that prompt until a `.gitlab-ci.yml` board-writer + lint half exists (a stated gap, not a silent pass) | Free once the CI half is scaffolded; Ultimate for an *enforced* external status check |
+| reviewer that can approve but cannot push (B9) | Developer can push to feature branches | `main` is push = No one; feature-branch pushes remain possible | Ultimate (custom role) |
 
-Read that table as the profile's own honesty rule applied to a tier: you can run the
-fleet's **read** path and drive the pilot round trip on Free, and the server will not
-enforce the write-path guarantees the GitHub profile enforces. Do not deploy the write path
-for real work on Free and call it conforming; do use Free to prove the tooling before you
-pay for the tier that closes the rows above.
+Read that table as the profile's own honesty rule applied to a tier: the core lane runs
+and conforms on Free *with these degradations declared*; a deployment's conformance is a
+separate question that only a live per-control walk answers, so walk it and file the rows.
+Do not present a Free deployment as GitHub-equivalent on the rows above; do run the lane
+there, and pay for the tier that closes a row only when that row's remediation is what you
+need.
 
 ## 1. Identity model
 
