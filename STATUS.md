@@ -13,6 +13,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 |---|---|---|---|---|---|
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-02 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-02 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 0/8 | 2026-09-02 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/6 | 2026-09-02 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-02 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-02 |  |
@@ -28,8 +29,11 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| desk-supervision | 01 — Observable probes + the `desksupervise` observer — liveness that bites [exec:strong] | 0 | 3000 |
 | windows-port | 00 — Build-tag split for the unix-only syscall sites | 0 | 3000 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
+| desk-supervision | 06 — Workpad — one upserted progress comment per PR | 0 | 1500 |
+| desk-supervision | 05 — Per-class concurrency reservation — fresh / resume / rework caps in the planner | 0 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 | quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
 | spec-routing | 01 — Enforce the §8 lifecycle — the linter and the authoring-owed emitter [exec:strong] | 0 | 1000 |
@@ -132,6 +136,17 @@ _None._
 - 05 docker-compose definition — todo (wave 3)
 - 06 Kubernetes manifests — todo (wave 3)
 - 07 multi-desk control layer — tmux/equivalents, macOS + win32 — todo (wave 4)
+
+### desk-supervision (8 open)
+
+- 01 Observable probes + the `desksupervise` observer — liveness that bites — todo (wave 0)
+- 02 Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal — todo (wave 1)
+- 03 Eligibility reconciliation — stop a run whose item became ineligible — todo (wave 2)
+- 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — todo (wave 1)
+- 05 Per-class concurrency reservation — fresh / resume / rework caps in the planner — todo (wave 0)
+- 06 Workpad — one upserted progress comment per PR — todo (wave 0)
+- 07 Runtime snapshot — `desksupervise status` for operators and the console — todo (wave 1)
+- 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 
 ### desk-tools (3 open)
 
@@ -280,4 +295,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**12** streams (**12** active, **0** paused) · **30/96** briefs done · completed initiatives: see `docs/archive/`
+**13** streams (**13** active, **0** paused) · **30/104** briefs done · completed initiatives: see `docs/archive/`
