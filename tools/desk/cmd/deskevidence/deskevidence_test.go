@@ -339,6 +339,10 @@ func setupFake(t *testing.T) (*fakeGH, *bytes.Buffer) {
 	// SessionTag(); otherwise the ambient UUID wins precedence.
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("CLAUDE_SESSION_ID", "deskevidence-test")
+	// Outward verbs refuse with $DESK_LOOP unset (the per-loop stop flag has nothing to
+	// match against). Every case below exercises the verb PAST that gate, so the harness
+	// presents a loop identity; the refusal itself has its own test.
+	t.Setenv("DESK_LOOP", "verify-desk")
 	// Most tests below commit to "main" because that is the verify-desk's real target.
 	// The main-branch guard refuses that by default, so the sanction is set here for the
 	// common case; the guard's own tests clear it explicitly.

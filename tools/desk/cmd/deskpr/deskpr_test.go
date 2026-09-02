@@ -356,6 +356,10 @@ func withEnv(t *testing.T, work string) *[][]string {
 	plantFixtureRoster(t, fixtureHome)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test")
+	// Outward verbs refuse with $DESK_LOOP unset (the per-loop stop flag has nothing to
+	// match against). Every case below exercises the verb PAST that gate, so the harness
+	// presents a loop identity; the refusal itself has its own test.
+	t.Setenv("DESK_LOOP", "worker-desk")
 	t.Setenv("PATH", fakeGHDir+string(os.PathListSeparator)+origPATH)
 
 	oldwd := getwd

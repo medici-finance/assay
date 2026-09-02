@@ -1,0 +1,75 @@
+# assign.yaml — the ONE declared source of the (action, class, risk) -> Tier
+# assignment table. This is the truth; assign.go's
+# `compiledAssign` is a derivation of it, and TestAssignCompiledMatchesSourceDiff
+# diffs the two and fails naming the difference. Edit THIS file first, then
+# mirror it into compiledAssign — a hand-edited second copy that drifts from
+# this one is the defect the diff test exists to catch (the laneacl.yaml
+# precedent, internal/comms/laneacl.yaml).
+#
+# STRICT PARSE, fail closed. Every row is required (action, class, risk, tier);
+# an unknown action/class/risk/tier value is a load error. A (action, class,
+# risk) triple this table carries no row for is REFUSED at Assign() time —
+# there is no default tier and no best-effort resolution (brief Context:
+# "Absent triple = refuse (fail closed), never a default tier").
+#
+# risk: "no" | "yes" — carried on the envelope as an INPUT to model
+# resolution, never a decision made here.
+# RULE: risk: "yes" on ANY action/class forces tier: human — a risk-flagged
+# message never gets MORE autonomy than an unflagged one, only less. This
+# mirrors the standing any-risk:yes -> human-gate convention used everywhere
+# else in this house (briefs' own `risk:` frontmatter, Security-Review gates).
+#
+# tier: local | cheap | session | human — the closed set
+# internal/runnertable.LoadRunnerTable accepts (human is NEVER dispatchable;
+# a human-tier row routes to Land/escalation, mirroring loopengine.TierHuman).
+# Dispatch-class actions (route-work-ready / route-review / route-verify) use
+# tier: session on the non-risk path, per the standing fan-out convention
+# (dispatched work runs at the strong/session tier by default). The two
+# bookkeeping actions (land-report / file-question-issue) scale with class
+# instead: local for routine, cheap for sensitive. escalate-human-issue and
+# quarantine are ALWAYS tier: human — routing to a human, or holding pending
+# one, is their entire purpose regardless of class or risk.
+schema: assign-v1
+
+rows:
+  # --- route-work-ready ----------------------------------------------------
+  - {action: route-work-ready, class: routine,   risk: "no",  tier: session}
+  - {action: route-work-ready, class: sensitive, risk: "no",  tier: session}
+  - {action: route-work-ready, class: routine,   risk: "yes", tier: human}
+  - {action: route-work-ready, class: sensitive, risk: "yes", tier: human}
+
+  # --- route-review ----------------------------------------------------------
+  - {action: route-review, class: routine,   risk: "no",  tier: session}
+  - {action: route-review, class: sensitive, risk: "no",  tier: session}
+  - {action: route-review, class: routine,   risk: "yes", tier: human}
+  - {action: route-review, class: sensitive, risk: "yes", tier: human}
+
+  # --- route-verify ----------------------------------------------------------
+  - {action: route-verify, class: routine,   risk: "no",  tier: session}
+  - {action: route-verify, class: sensitive, risk: "no",  tier: session}
+  - {action: route-verify, class: routine,   risk: "yes", tier: human}
+  - {action: route-verify, class: sensitive, risk: "yes", tier: human}
+
+  # --- land-report -------------------------------------------------------
+  - {action: land-report, class: routine,   risk: "no",  tier: local}
+  - {action: land-report, class: sensitive, risk: "no",  tier: cheap}
+  - {action: land-report, class: routine,   risk: "yes", tier: human}
+  - {action: land-report, class: sensitive, risk: "yes", tier: human}
+
+  # --- file-question-issue ------------------------------------------------
+  - {action: file-question-issue, class: routine,   risk: "no",  tier: local}
+  - {action: file-question-issue, class: sensitive, risk: "no",  tier: cheap}
+  - {action: file-question-issue, class: routine,   risk: "yes", tier: human}
+  - {action: file-question-issue, class: sensitive, risk: "yes", tier: human}
+
+  # --- escalate-human-issue — always human, regardless of class/risk -----
+  - {action: escalate-human-issue, class: routine,   risk: "no",  tier: human}
+  - {action: escalate-human-issue, class: sensitive, risk: "no",  tier: human}
+  - {action: escalate-human-issue, class: routine,   risk: "yes", tier: human}
+  - {action: escalate-human-issue, class: sensitive, risk: "yes", tier: human}
+
+  # --- quarantine — always human, regardless of class/risk ----------------
+  - {action: quarantine, class: routine,   risk: "no",  tier: human}
+  - {action: quarantine, class: sensitive, risk: "no",  tier: human}
+  - {action: quarantine, class: routine,   risk: "yes", tier: human}
+  - {action: quarantine, class: sensitive, risk: "yes", tier: human}

@@ -1,6 +1,4 @@
-package main
-
-// runnertable.go — the tier→runner configuration table.
+// Package runnertable is the tier→runner configuration table.
 //
 // The initial native-dispatch design landed a single runner value (VerifyLoop.RunnerCmd):
 // the whole runner selection was one argv, good enough to prove the native ACP dispatch path end-to-end but
@@ -28,6 +26,8 @@ package main
 // Namespace: `ASSAY_*` env keys ONLY — this is generic methodology config, never the
 // product-deploy namespace (product values must not wear the ASSAY_ prefix, and this
 // config must not read product keys).
+
+package runnertable
 
 import (
 	"encoding/json"

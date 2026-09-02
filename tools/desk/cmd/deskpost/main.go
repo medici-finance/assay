@@ -74,6 +74,16 @@ func run(argv []string) int {
 		return deskkit.ExitCodeOf(err)
 	}
 
+	// Outward verbs present a LOOP IDENTITY. The kill switch's per-loop halt is
+	// `STOP.<loop>`, matched against $DESK_LOOP; with the variable unset nothing matches,
+	// so a stop flag a human is holding never fires and this verb keeps writing while the
+	// operator believes it has been halted. The boot verb has checked this since it was
+	// written — an outward verb run OUTSIDE a booted window did not, which is the gap.
+	if err := deskkit.RequireLoopIdentity("deskpost"); err != nil {
+		fmt.Fprintln(stderr, "deskpost: "+err.Error())
+		return deskkit.ExitCodeOf(err)
+	}
+
 	switch argv[0] {
 	case "review":
 		return cmdReview(argv)

@@ -285,8 +285,19 @@ At runtime the tools read/write, under `~/.config/assay/`:
     to look, which is what `Guard` already returns 6 for; exit 5 stays reserved for
     a deliberate human refusal.
 
-  The blast radius is bounded to the mis-named session alone: `DESK_LOOP` unset is
-  unaffected, and every correctly-named loop is unaffected. The roster is compiled
+  The blast radius of a mis-named value is bounded to that session alone, and every
+  correctly-named loop is unaffected.
+
+  **`DESK_LOOP` unset is a REFUSAL on any outward verb.** With nothing in the
+  variable, `STOP.<loop>` matches nothing — so a per-loop stop a human is holding
+  never fires and the verb keeps writing while the operator believes it has been
+  halted. `deskboot` has checked this since it was written; every outward verb
+  (`deskflip`, `deskpost`, `deskpr`, `deskreply`, `deskfile`, `deskevidence`) now
+  makes the same check, in the same words, beside its `Guard()` call — exit 5 for
+  unset, exit 6 for a name the roster does not recognise. Read-only verbs are
+  unaffected: they write nothing, so there is nothing for a stop to protect.
+
+  The roster is compiled
   in rather than read from a runtime file precisely so no single corrupt file can
   refuse every loop on the machine at once (cf. the `roster.env` outage, #819).
   Adding a loop is therefore a PR — that is the intended price.
@@ -801,6 +812,33 @@ DESK_ROOTS="example-org/tracker=/src/tracker,medici-finance/assay=/src/toolkit" 
 JSON carries `population` (`awaiting-verification`), `populationStatuses`
 (`["implemented","verified"]`), `populationNote`, and `aliasUsed` when reached through
 `nextup`.
+
+## deskboard reads — which identity, and which repos were actually read
+
+**The reads authenticate as the session role's App.** Every `gh` call the board makes is
+handed the cached App installation token for the ACCOUNT that call targets, resolved from
+`$DESK_LOOP` through the shared loop-to-role table and asked for once per account. Without
+it the child `gh` falls through to the HOME keyring, and under a desk config home that is
+not the operator's own that account cannot authenticate: every private repo 401s. Worse on
+the GraphQL path, where an unusable keyring account has been seen to report a bogus rate
+limit and, for some reads, to return an EMPTY list — an absence that reads like an answer
+and trips no fail-closed path. An argv the reader cannot attribute to an account gets NO
+token rather than one minted for the wrong one: a mismatched installation token does not
+401, it says "could not resolve to a repository", which reads like a missing repo instead
+of a wrong identity.
+
+A session with **no loop identity keeps the ambient credential** here and says so on
+stderr. That asymmetry with the outward verbs is deliberate: this board is a read-only
+diagnostic a human runs from a plain shell on their own login, and refusing would cost more
+than it protects. Nothing it does can be written.
+
+**A watched repo outside the App installation is per-repo could-not-check.** `deskboard
+prs` reports it in `repoCoverage` (JSON) and as a `COULD NOT CHECK` line on the table,
+and reads every other repo. That one error is permanent for such a repo, so failing the
+sweep closed on it costs the coverage the fail-closed rule exists to protect. The demotion
+is narrow by construction: a 401, a rate limit, a timeout and a parse failure all still fail
+the whole run closed, because each can be transient and could be hiding rows in a repo the
+desk CAN see.
 
 ## deskboard scope — what the board covers, and what it does not (#359)
 
@@ -3060,6 +3098,15 @@ in the target repo (`--repo`) regardless of where the script file sits.
 completed. Every other exit names what stopped it: `deskboot` names the step, `deskflip`
 names the condition. There is no partial success, no override flag on any of the three, and
 no path that degrades a could-not-check into a pass.
+
+**`deskflip` writes as the App, or not at all.** Its `app-token` condition — ordered right
+after `caller-role`, before the first forge call — resolves the review role's App
+installation token, and every `gh` call it makes runs under that token. When the token
+cannot be minted or read it REFUSES (exit 5) naming the role and the token path; there is no
+ambient-credential fallback, and a backstop inside the exec seam refuses a `gh` call that
+somehow reaches it with no token. The reason is that the flip and its queue labels are
+WRITES: made on the operator's own login they read, in the timeline and to everyone
+afterwards, as a human decision, and unlike a failed read that cannot be taken back.
 
 **Nothing durable is created before the caller's own flags are known good.**
 `deskdispatch` validates every caller-controlled precondition — item key, tier, kit, repo,

@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/runnertable"
 )
 
 // verifyloopRole is the desk role this loop operates as. It is fixed, not a
@@ -54,10 +55,10 @@ func preflightBoot(args []string) error {
 // verify loop's reachable tiers at boot, when one is configured. It is inert (returns nil) when
 // no ASSAY_RUNNER_* key is present — additive-and-inert-by-default, matching the legacy gating.
 func preflightRunnerTable(getenv func(string) string) error {
-	if !RunnerTableConfigured(getenv) {
+	if !runnertable.RunnerTableConfigured(getenv) {
 		return nil
 	}
-	table, err := LoadRunnerTable(getenv, nil)
+	table, err := runnertable.LoadRunnerTable(getenv, nil)
 	if err != nil {
 		return err
 	}
