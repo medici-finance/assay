@@ -17,6 +17,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/6 | 2026-09-02 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-02 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-02 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-02 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-02 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 1/6 | 2026-09-02 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 2/6 | 2026-09-02 |  |
@@ -29,6 +30,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| forge-neutral | 01 — Forge resolution contract — the forge comes from repo config, and refusal is the only fallback [exec:strong] | 1 | 7000 |
 | desk-supervision | 01 — Observable probes + the `desksupervise` observer — liveness that bites [exec:strong] | 0 | 3000 |
 | windows-port | 00 — Build-tag split for the unix-only syscall sites | 0 | 3000 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
@@ -172,6 +174,20 @@ _None._
 - 07 GitHub forge backend on `go-gh` — retire the exec-`gh` shell path — implemented (wave 2)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
 
+### forge-neutral (11 open)
+
+- 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — todo (wave 1)
+- 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — todo (wave 2)
+- 03 Write verbs A — deskpost, deskreply, deskflip onto the resolver — todo (wave 2)
+- 04 Write verbs B — deskpr, deskfile, deskclose, deskevidence onto the resolver — todo (wave 2)
+- 05 Claim layer — the GitLab shape of `refs/dispatch/*` and its release — todo (wave 2)
+- 06 Read verbs — deskboard, issueboard, scanloop, reviewloop on the seam — todo (wave 3)
+- 07 statusgen acting identity — Evidence-actor and `verifyrun` name the forge identity that acted — todo (wave 3)
+- 08 statusgen forge-aware — `init` CI scaffold, auto-flip corroboration, honest claim decay — todo (wave 4)
+- 09 Substrate — leak-gate verdict on merge requests, `cellctl` forge-aware `new`/`up` — todo (wave 3)
+- 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
+- 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
+
 ### harness-portability (12 open)
 
 - 01 Codex capability ground-truth — measured matrix, not inherited prior art — implemented (wave 0)
@@ -295,4 +311,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**13** streams (**13** active, **0** paused) · **30/104** briefs done · completed initiatives: see `docs/archive/`
+**14** streams (**14** active, **0** paused) · **30/115** briefs done · completed initiatives: see `docs/archive/`
