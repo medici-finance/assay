@@ -21,7 +21,7 @@ func TestOwnershipIdentitiesHashed(t *testing.T) {
 	now := time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC)
 	commits := []Commit{
 		testCommitBy("c1", "alice@users.noreply.github.com", now),
-		testCommitBy("c2", "147393366+medici-worker-app[bot]@users.noreply.github.com", now),
+		testCommitBy("c2", "123456+example-worker-app[bot]@users.noreply.github.com", now),
 		testCommitBy("c3", "carol@users.noreply.github.com", now),
 	}
 	diffs := []FileDiff{
@@ -46,7 +46,7 @@ func TestOwnershipIdentitiesHashed(t *testing.T) {
 			if !keyRe.MatchString(k) {
 				t.Errorf("%s key %q is not a stable anonymized digest (want ^sha256-[0-9a-f]{16}$) — a raw identity leaked into the artifact", field, k)
 			}
-			if strings.Contains(k, "@") || strings.Contains(k, "noreply.github.com") || strings.Contains(k, "medici-worker-app") {
+			if strings.Contains(k, "@") || strings.Contains(k, "noreply.github.com") || strings.Contains(k, "example-worker-app") {
 				t.Errorf("%s key %q leaks a raw identity token into the published artifact", field, k)
 			}
 		}
