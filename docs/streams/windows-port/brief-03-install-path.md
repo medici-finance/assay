@@ -9,7 +9,7 @@ why: >-
   brief decides HOW that install is delivered — a PowerShell script vs a Go-native install
   subcommand — surfacing the fork for a maintainer ruling rather than pre-deciding it, then
   builds the chosen one with the verify-or-refuse control intact.
-wave: 1
+wave: 2
 depends: ["windows-port/01", "windows-port/02"]
 unblocks: ["windows-port/05"]
 effort: L
