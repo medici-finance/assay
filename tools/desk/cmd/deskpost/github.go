@@ -518,6 +518,45 @@ func (c *ghClient) listReviews(pr int) ([]reviewInfo, error) {
 	return all, nil
 }
 
+// timelineEvent is one entry of the issue/PR timeline. Only `labeled` events matter to the
+// model-capability floor, and only their label name plus the login that APPLIED it: that
+// applier is what separates a dispatcher attestation from a self-applied stamp.
+type timelineEvent struct {
+	Event string `json:"event"`
+	Label struct {
+		Name string `json:"name"`
+	} `json:"label"`
+	Actor struct {
+		Login string `json:"login"`
+	} `json:"actor"`
+}
+
+// listLabelEvents returns the PR's `labeled` timeline events — the label name AND the login
+// that applied it — which the applier-aware stamp reader (AttestedModelStampOf) needs to
+// tell a dispatcher attestation from a self-applied one. It walks every page. An empty
+// result is a PR with no labels, which the floor reads as UNATTESTED; a read error
+// propagates and the caller refuses could-not-check rather than proceeding blind.
+func (c *ghClient) listLabelEvents(pr int) ([]deskkit.LabelEvent, error) {
+	var out []deskkit.LabelEvent
+	for page := 1; ; page++ {
+		var chunk []timelineEvent
+		path := fmt.Sprintf("/repos/%s/%s/issues/%d/timeline?per_page=100&page=%d", c.owner, c.repo, pr, page)
+		if err := c.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+			return nil, err
+		}
+		for _, e := range chunk {
+			if e.Event != "labeled" {
+				continue
+			}
+			out = append(out, deskkit.LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login})
+		}
+		if len(chunk) < 100 {
+			break
+		}
+	}
+	return out, nil
+}
+
 // maxFilePages bounds the files walk (100/page). Exceeding it leaves the fetched entry
 // count BELOW the PR's changed_files, which the caller reconciles and fails closed on —
 // the same degrade-closed shape maxCIPages has for the CI rollups.
