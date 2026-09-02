@@ -1,7 +1,9 @@
 # skillslint
 
-Three offline checks over the plugin tree, run as one command. Exit code 0 clean,
+Four offline checks over the plugin tree, run as one command. Exit code 0 clean,
 1 a real violation, 2 could-not-check — and 2 is a failure, never a quiet pass.
+One of the four (the context-budget NOTICE) is advisory and never moves the exit
+code; the other three are gating.
 
 ```
 make skillslint                      # the check form (runs with --root ../..)
@@ -18,6 +20,7 @@ own directory (`cd tools/skillslint && go test ./...`), not from the repo root.
 | Check | Scope | Source |
 |---|---|---|
 | Skill-file structure | `plugins/assay/skills/*/SKILL.md` | `lint.go` |
+| Invisible-character / Trojan-Source (hard) + context-budget NOTICE (advisory) | the instruction surfaces (below) | `hidden.go` |
 | Unresolved house values | **every `*.md` under `plugins/`** | `housevalue.go` |
 | Shared-guardrail derive-or-diff | every declared guardrail copy | `guardrail.go` |
 
@@ -29,7 +32,71 @@ name, `description:` present and non-empty, and no bare "unforgeable" /
 line-oriented rather than strict YAML — see the comment at the top of `lint.go`
 for why a strict parser would be wrong about this corpus.
 
-### 2. Unresolved house values — the WHOLE plugin tree
+### 2. Invisible-character / Trojan-Source lint + context-budget NOTICE
+
+The structural check above reads the header the way the harness does; it says
+nothing about the raw bytes underneath. A skill or instruction file can carry a
+Unicode payload — a bidi override that reorders how a line *renders*, a zero-width
+joiner spliced mid-word, a stray control character — that a human reviewing the
+rendered text cannot see, yet the model reads on activation. This half reads a
+different signal (the bytes) so the layer catches what human review is built to
+miss.
+
+**Hard (exit 1), by Unicode category — never an enumerated blacklist** (an
+enumeration inevitably misses a member of the class):
+
+- The **whole `unicode.Cf` format category.** This subsumes every invisible
+  formatting vector at once: bidi controls (U+202A–U+202E, U+2066–U+2069) *and*
+  the directional marks the Trojan-Source family also uses (LRM U+200E, RLM
+  U+200F, ALM U+061C); zero-width (U+200B–U+200D, U+2060); the invisible math
+  operators (U+2061–U+2064); the soft hyphen (U+00AD); and the Unicode **Tag
+  block** (U+E0001, U+E0020–U+E007F — the canonical LLM ASCII-smuggling vector).
+  U+FEFF is Cf too and is rejected **except** as the file's leading BOM.
+- **Variation selectors** (U+FE00–U+FE0F, U+E0100–U+E01EF, and the Mongolian free
+  variation selectors U+180B–U+180D, U+180F). These are `Mn`, not `Cf`, so they
+  are covered explicitly — a run of them appended to a carrier glyph is the
+  variation-selector steganography channel.
+- The **assigned Default_Ignorable_Code_Point property** (`defaultIgnorable`), as
+  its own property-based branch — the *durable basis* of the control. The DI
+  property is Unicode's own definition of "a renderer may show this as nothing",
+  i.e. the invisible/zero-width class itself; targeting the whole property (not an
+  enumeration of the codepoints seen so far) closes the class so an adversarial
+  probe finds nothing. It is a curated table because Go ships no stdlib DI
+  RangeTable and no single `General_Category` equals DI (members span Cf, Mn, Lo,
+  Zl, Zp). **Bar: assigned DI only** — unassigned/reserved DI (U+2065,
+  U+FFF0–FFF8, U+E0000, and the reserved tag/VS-supplement gaps) is deliberately
+  left legal: it carries no payload today and rejecting reserved space is churny.
+- A curated **`otherInvisibles`** set that renders to nothing yet is neither Cf,
+  VS nor Cc: U+034F combining grapheme joiner, the Hangul fillers (U+115F, U+1160,
+  U+3164, U+FFA0), the Khmer inherent vowels (U+17B4, U+17B5), U+2800 braille
+  blank, and the line/paragraph separators (U+2028, U+2029). `invisible ⊆ Cf ∪ VS
+  ∪ Cc` is false; this closes it. It is a codepoint list, not a category, because
+  no single Unicode category means "invisible".
+- Any **C0/C1 control** outside `\t \n \r`, and **invalid UTF-8**.
+
+**Deliberately legal — Zs space separators** (the ordinary space, U+00A0 NBSP,
+U+2000–U+200A, U+202F, U+205F, U+3000): these are *visible* whitespace, not an
+invisible-smuggling class, and rejecting them would false-positive on every
+ordinary space. Left out by decision, not omission.
+
+Each violation names file, line, column and codepoint (`U+202E RIGHT-TO-LEFT
+OVERRIDE`). Printable non-ASCII — accented names, arrows, box drawing, an emoji
+whose base glyph carries its own presentation — stays legal: the check targets
+invisibility, not foreignness. One consequence worth stating: an emoji written
+with an explicit variation selector (e.g. `⚠️` = U+26A0 U+FE0F) is flagged; the
+fix is the base glyph alone (`⚠`).
+
+**Advisory (never exit-affecting): a context-budget NOTICE.** A file over a word
+threshold (`SKILL.md` 3,000, `CLAUDE.md` 5,000) prints
+`skillslint: NOTICE: <path>: <n> words (budget <t>) — context-bloat candidate` to
+stderr; larger instruction files correlate with more hallucination, so it is worth
+a human's eye. It is a judgment call, so it stays advisory and moves no exit code.
+
+**Scope — the instruction surfaces:** every `*.md` under `plugins/assay/skills/`
+and under `.claude/skills/`, plus `plugins/assay/resident-rules.md` and a top-level
+`CLAUDE.md`, wherever each exists in the linted root.
+
+### 3. Unresolved house values — the WHOLE plugin tree
 
 The plugin ships more adopter-facing prose than skill bodies: the harness
 references under `plugins/assay/references/`, the per-directory READMEs, the
@@ -82,7 +149,7 @@ skillslint: plugins/assay/references/example.md: line 9: "Somebody" (dated attri
 HOUSE-VALUES: FAIL — 1 unresolved house value(s) across 22 markdown file(s) under plugins/
 ```
 
-### 3. Shared-guardrail derive-or-diff
+### 4. Shared-guardrail derive-or-diff
 
 Any rule more than one skill must state verbatim has one declared home,
 `.claude/guardrails/GUARDRAILS.md`. This half byte-diffs every copy against it

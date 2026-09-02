@@ -1,6 +1,9 @@
-// Command skillslint runs three offline checks over the plugin tree:
+// Command skillslint runs four offline checks over the plugin tree:
 //
 //	structural       every plugins/assay/skills/*/SKILL.md (lint.go)
+//	hidden chars     byte-level invisible-character / Trojan-Source lint over the
+//	                 instruction surfaces, plus an advisory context-budget NOTICE
+//	                 (hidden.go)
 //	house values     EVERY *.md under plugins/, at any depth (housevalue.go)
 //	guardrails       derive-or-diff of every shared-guardrail copy (guardrail.go)
 //
@@ -51,6 +54,41 @@ func main() {
 		exit = 1
 	} else {
 		fmt.Printf("SKILLSLINT: PASS — %d skill file(s) under %s, all frontmatter valid (name==dir, description present) and no bare unforgeable/tamper-evident claims\n", checked, *root)
+	}
+
+	// Invisible-character / Trojan-Source lint + context-budget NOTICE over the
+	// instruction surfaces (byte-level; hidden.go). The hidden-character half is a
+	// HARD check — a bidi override, a zero-width splice, a stray control or an
+	// invalid UTF-8 byte in a skill/instruction file is exit 1, because it is the
+	// exact payload human review of the rendered text cannot see. The budget half
+	// is ADVISORY: an over-budget file prints a NOTICE to stderr and never moves
+	// the exit code, per the house convention for judgment-shaped checks.
+	scChecked, scIssues, scNotices, scErr := ScanInstructionSurfaces(*root)
+	for _, n := range scNotices {
+		fmt.Fprintln(os.Stderr, n)
+	}
+	switch {
+	case scErr != nil:
+		fmt.Fprintf(os.Stderr, "skillslint: %v\n", scErr)
+		fmt.Fprintf(os.Stderr, "HIDDEN-CHARS: COULD-NOT-CHECK — an instruction surface could not be walked; a check that read nothing proved nothing\n")
+		if exit < 2 {
+			exit = 2
+		}
+	case scChecked == 0:
+		fmt.Fprintf(os.Stderr, "HIDDEN-CHARS: COULD-NOT-CHECK — 0 instruction surfaces found under %s; a check that read nothing proved nothing\n", *root)
+		if exit < 2 {
+			exit = 2
+		}
+	case len(scIssues) > 0:
+		for _, is := range scIssues {
+			fmt.Fprintf(os.Stderr, "skillslint: %s: %s\n", is.Path, is.Msg)
+		}
+		fmt.Fprintf(os.Stderr, "HIDDEN-CHARS: FAIL — %d invisible/hidden-character violation(s) across %d instruction file(s)\n", len(scIssues), scChecked)
+		if exit < 1 {
+			exit = 1
+		}
+	default:
+		fmt.Printf("HIDDEN-CHARS: PASS — %d instruction file(s) scanned, no bidi/zero-width/control/invalid-UTF-8 payload\n", scChecked)
 	}
 
 	// The unresolved-house-value check reads the WHOLE plugin tree, not just the

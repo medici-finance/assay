@@ -117,7 +117,10 @@ age-flagged (`issueboard issues` / `issueboard intake` narrow to one lane). Its 
 roster's, resolved at runtime; an unset/empty scan-repo roster value or a repo the token cannot read
 fails the WHOLE board with exit 6, so the board is never silently partial and an empty sweep is never
 reported as a clean board. A `needs-decision` or `question` issue ages against `--sla-days` (default
-6) from the last HUMAN response — under it AWAIT, past it ESCALATE, sorted to the top.
+6) from the last HUMAN response — under it AWAIT, past it ESCALATE, sorted to the top. This top
+position is an override on the impact/risk/effort ordering below, not subordinate to it: a
+decision-latency breach is a commitment breach, orthogonal to the item's score, so the triple must
+never be able to sink an ESCALATE row beneath a fresher high-impact one.
 
 ## Scored triage — the impact/risk/effort triple at exit
 
@@ -139,11 +142,12 @@ expensive-but-critical one arrive indistinguishable — the front door's sharpes
 - **Every exit, forward-only.** All five tracked exits (and the intake lane's four) take a
   triple; scoring is forward-only — the corpus accretes from now, existing items are not
   back-labelled, so an unscored older item is expected, never a defect.
-- **Ordering rule for human-facing surfaces.** Sort **impact desc, then risk desc, then
-  effort asc** (highest-impact / lowest-cost first), and only THEN the existing
-  urgency-then-age within ties. An item missing any label sorts **exactly as today** — the
-  triple never blocks, reorders past, or hides an unlabelled item; absence is always still
-  listed.
+- **Ordering rule for human-facing surfaces.** SLA-ESCALATE items (past `--sla-days`, "The
+  board" above) sort first, pinned there as an override — the triple never demotes an
+  escalated decision item. Below that, sort **impact desc, then risk desc, then effort asc**
+  (highest-impact / lowest-cost first), and only THEN the existing urgency-then-age within
+  ties. An item missing any label sorts **exactly as today** — the triple never blocks,
+  reorders past, or hides an unlabelled item; absence is always still listed.
 - **The score's honesty is the single control.** A session assigning reflexive mid-scores
   produces ordering noise dressed as signal, so three independent layers keep it honest: the
   **required per-axis rationale** (an unrationalized label is lintable noise, not a score);

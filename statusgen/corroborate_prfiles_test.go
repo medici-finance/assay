@@ -37,7 +37,7 @@ func TestPRFilesToDiff_ReconstructsParseableDiff(t *testing.T) {
 	}
 
 	diff := prFilesToDiff(files)
-	stamps := stampsInDiff(diff)
+	stamps := stampsInDiff("", diff)
 
 	// (a) exactly the ONE real stamp — the prose `human:<name>` line adds none.
 	if len(stamps) != 1 {
@@ -94,7 +94,7 @@ func TestPRFilesToDiff_DeleteRenameBinaryNoStamp(t *testing.T) {
 	}
 
 	diff := prFilesToDiff(files) // must not panic on the null patches
-	stamps := stampsInDiff(diff)
+	stamps := stampsInDiff("", diff)
 	// The only "human:alex" text lives on a DELETED ("-") line, which is not an
 	// added line, so no stamp is produced.
 	if len(stamps) != 0 {
@@ -137,7 +137,7 @@ func TestPRFilesToDiff_LargeNPastCap(t *testing.T) {
 		files = append(files, f)
 	}
 
-	stamps := stampsInDiff(prFilesToDiff(files))
+	stamps := stampsInDiff("", prFilesToDiff(files))
 	// (a) exactly the ONE real stamp across >300 files; (b) prose excluded;
 	// (c) delete-only file emits none.
 	if len(stamps) != 1 {

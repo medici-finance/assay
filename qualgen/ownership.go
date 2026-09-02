@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"path"
 	"sort"
 	"time"
@@ -33,6 +35,24 @@ func DefaultIdentityClassifier(c Commit) (identity, role string) {
 		id = c.AuthorName
 	}
 	return id, id
+}
+
+// identityHashPrefix marks a hashed identity in the emitted ownership shares so
+// a reader knows the key is an anonymized digest, not a raw handle.
+const identityHashPrefix = "sha256-"
+
+// hashIdentity returns a stable, anonymized digest of a raw identity/role
+// token (a commit author email or a bot-account slug). The digest is
+// deterministic — the same input always yields the same key, across runs — so
+// it is a bijection over the mined identity set (collisions negligible at 64
+// bits over thousands of identities). That preserves every ownership share and
+// bus-factor COUNT exactly while ensuring no raw email or house-branded slug is
+// ever written into a committed, published artifact (the leak-sweep surface).
+// A 16-hex (64-bit) truncation keeps the key compact and still collision-safe
+// at repository scale.
+func hashIdentity(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return identityHashPrefix + hex.EncodeToString(sum[:])[:16]
 }
 
 // OwnershipRecord is one per-file or per-package ownership row (spec §4.4).
@@ -105,6 +125,17 @@ func ComputeOwnership(commits []Commit, diffs []FileDiff, classify IdentityClass
 			continue // binary/unreadable: no line-level attribution possible
 		}
 		identity, role := classify(c)
+		// PRIVACY: the raw identity/role a classifier yields is a commit
+		// author email or a bot-account slug — a personal or house-branded
+		// token that must never surface into a committed, published artifact
+		// (the identity_shares/role_shares map keys). Hash it here, at the one
+		// seam every classifier's output flows through, so no raw identity
+		// reaches the emitted record. The hash is STABLE and deterministic, so
+		// distinct identities map to distinct keys (a bijection over the mined
+		// identity set, collisions negligible): every share value and every
+		// bus-factor COUNT is preserved exactly — the sanitization removes the
+		// raw token WITHOUT distorting the measurement.
+		identity, role = hashIdentity(identity), hashIdentity(role)
 		for _, hunk := range fd.Lines.Value {
 			for _, lc := range hunk.Lines {
 				switch lc.Op {

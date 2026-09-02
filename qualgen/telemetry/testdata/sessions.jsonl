@@ -1,0 +1,5 @@
+# Planted fixture for FileAdapter's tests. One JSON object per line; blank
+# lines and '#'-prefixed lines are comments, skipped by the loader.
+{"pr_number": 42, "merge_sha": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", "stream_task_id": "quality/13", "retries": 7, "context_length": 18000, "tool_call_churn": 3, "interruptions": 1, "refusals": 0}
+{"pr_number": 43, "merge_sha": "c0ffeec0ffeec0ffeec0ffeec0ffeec0ffeec0ff", "stream_task_id": "quality/13", "retries": 0, "context_length": 0, "tool_call_churn": 0, "interruptions": 0, "refusals": 0}
+{"pr_number": 44, "merge_sha": "badc0debadc0debadc0debadc0debadc0debadc0", "stream_task_id": "quality/13", "retries": 2}

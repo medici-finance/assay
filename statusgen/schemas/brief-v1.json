@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/brief-v1.json",
+  "title": "brief-v1 frontmatter",
+  "description": "Machine-readable contract for `schema: brief-v1` brief frontmatter. It is DESCRIPTIVE of the reference validator's per-file, frontmatter-shape rules: which keys are required, the field types, and the closed value sets. It deliberately does NOT encode the reference validator's cross-file or cross-field methodology rules (a brief's id matching its filename, a wave matching the stream README row, dependency-reference resolution, the verifier floor, the risk-answer/gate coupling): those need the corpus, the README tables, or a second field and are the reference validator's `--lint` surface, not the schema contract. A brief that satisfies this schema satisfies the reference validator's frontmatter-shape rules, and vice versa; the two are held in lockstep by a source-side coverage test that derives the required-key and value sets from the validator's own tables. Unknown top-level keys are tolerated (additionalProperties: true) exactly as the validator tolerates them, so a future optional field is not a schema violation; the `risk` block and each `parallel-streams` entry are the two closed objects the validator rejects unknown keys in.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "brief",
+    "title",
+    "wave",
+    "depends",
+    "unblocks",
+    "effort",
+    "gate",
+    "risk",
+    "issues",
+    "authored",
+    "sources",
+    "schema"
+  ],
+  "properties": {
+    "schema": {
+      "description": "The opt-in schema marker. Its presence is what selects a file for validation; for this contract it is exactly brief-v1.",
+      "const": "brief-v1"
+    },
+    "brief": {
+      "description": "The typed brief id, `<stream>/<NN>`.",
+      "type": "string"
+    },
+    "title": {
+      "description": "One-line human title.",
+      "type": "string"
+    },
+    "wave": {
+      "description": "Dependency wave (a non-negative integer in practice; the validator type-checks integer only).",
+      "type": "integer"
+    },
+    "depends": {
+      "description": "Typed ids this brief depends on. An empty list (or null) is allowed.",
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "unblocks": {
+      "description": "Typed ids this brief unblocks. An empty list (or null) is allowed.",
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "effort": {
+      "description": "Effort class.",
+      "type": "string",
+      "enum": ["S", "M", "L"]
+    },
+    "gate": {
+      "description": "Review gate.",
+      "type": "string",
+      "enum": ["model", "human"]
+    },
+    "risk": {
+      "description": "The four canonical risk questions. All four are required, each answered exactly `yes` or `no` (bare YAML strings, not booleans), and no other key is allowed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["regulatory", "customer", "irreversible", "sensitive-data"],
+      "properties": {
+        "regulatory": { "enum": ["yes", "no"] },
+        "customer": { "enum": ["yes", "no"] },
+        "irreversible": { "enum": ["yes", "no"] },
+        "sensitive-data": { "enum": ["yes", "no"] }
+      }
+    },
+    "issues": {
+      "description": "Tracking issue numbers. An empty list (or null) is allowed.",
+      "type": ["array", "null"],
+      "items": { "type": "integer" }
+    },
+    "authored": {
+      "description": "Authoring provenance. Required to be present; the reference validator enforces presence only, not a fixed type (a bare date and a free-text line are both accepted)."
+    },
+    "sources": {
+      "description": "Non-empty list of provenance sources.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "gate-why": {
+      "description": "Optional rationale for a risk-gated brief.",
+      "type": "string"
+    },
+    "why": {
+      "description": "Optional value rationale.",
+      "type": "string"
+    },
+    "value": {
+      "description": "Optional worth signal; absence defaults to med at scoring time.",
+      "type": "string",
+      "enum": ["low", "med", "high"]
+    },
+    "domain": {
+      "description": "Optional Cynefin domain; absence defaults to complicated at read time.",
+      "type": "string",
+      "enum": ["clear", "complicated", "complex", "chaotic"]
+    },
+    "exec-tier": {
+      "description": "Optional minimum execution-model tier; absence defaults to any.",
+      "type": "string",
+      "enum": ["any", "strong"]
+    },
+    "exec-tier-why": {
+      "description": "Optional one-line rationale for exec-tier: strong.",
+      "type": "string"
+    },
+    "blocked-by": {
+      "description": "Optional environment-blocked marker; absence means not blocked.",
+      "type": "string",
+      "enum": ["env"]
+    },
+    "measures": {
+      "description": "Optional name of the process queue this brief instruments; a present value must name a wired queue.",
+      "type": "string",
+      "enum": ["verification-debt"]
+    },
+    "homed-in": {
+      "description": "Optional `<owner>/<repo>` the deliverable was re-homed to; absence means a normal in-repo brief.",
+      "type": "string",
+      "pattern": "^[^\\s/]+/[^\\s/]+$"
+    },
+    "consumers": {
+      "description": "Optional routed reader list (a list of strings) or a prose paragraph (a single string).",
+      "type": ["string", "array"],
+      "items": { "type": "string" }
+    },
+    "parallel-streams": {
+      "description": "Optional declared shards of an intra-brief split. Only name and files are defined per entry; any other key is rejected. Shape only — whether the split is safe to dispatch is decided elsewhere.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "files": {
+            "type": ["array", "null"],
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "decision-issue": {
+      "description": "Optional GitHub issue number tracking a human decision on this brief.",
+      "type": "integer"
+    }
+  }
+}
