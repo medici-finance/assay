@@ -29,8 +29,34 @@ per-control parity table this doc only points at.
   run the Assay fleet's write path against a Free/CE group and claim GitHub-equivalent
   guarantees; there are none to claim.
 
-This statement is carried verbatim from spec.md §1 — no softening. If your group is
-Free/CE, stop here; there is no provisioning path this doc can honestly hand you.
+This statement is carried verbatim from spec.md §1 — no softening of the **parity** claim.
+What changed since it was written is the **provisioning** claim, and that is now measured
+rather than assumed:
+
+### 0.1 Free tier — a pilot lane, not a conforming deployment (measured 2026-09-02)
+
+A live run of the §2 script against a fresh free-tier gitlab.com top-level group
+(GitLab 19.4) provisioned the whole §1 identity model: seven service accounts (free and
+seatless since GitLab 18.11 — `docs/streams/forge-gitlab/edition-matrix.md` row C1),
+their group memberships, and their 7-day PATs. So "no service accounts on Free" is no
+longer true on gitlab.com, and a free group is a legitimate place to **pilot the tooling**
+— the forge-gitlab/05 pilot runs on one.
+
+What free tier does NOT give you, each observed live and each a row the parity walk records
+as *failed-at-tier* with its remediation:
+
+| Control | Free-tier behaviour observed | Remediation (tier) |
+|---|---|---|
+| single board-writer push allowlist on `main` (B2) | `allowed_to_*` arrays rejected (HTTP 400); only `push_access_level` / `merge_access_level` / `allow_force_push` apply. Set push = **No one** and route every write through an MR | Premium: name the board-writer in `allowed_to_push` |
+| required approvals (B3) and prevent-author/committer approval (B4) | `POST /projects/:id/approvals` returns 201 and **silently keeps** `approvals_before_merge: 0` — the setting is ignored, not refused | Premium |
+| group token-expiry policy (§5 backstop) | not available; the 7-day PAT expiry set at mint is the only backstop | Premium |
+| audit events | not available | Premium |
+
+Read that table as the profile's own honesty rule applied to a tier: you can run the
+fleet's **read** path and drive the pilot round trip on Free, and the server will not
+enforce the write-path guarantees the GitHub profile enforces. Do not deploy the write path
+for real work on Free and call it conforming; do use Free to prove the tooling before you
+pay for the tier that closes the rows above.
 
 ## 1. Identity model
 
@@ -97,6 +123,43 @@ script prints the file's **path**, never the token value, on stdout or in argv. 
 files out of the default `mktemp` location into your role-token store immediately — the
 directory is not cleaned up for you, by design, so a run's tokens survive the script
 exiting.
+
+**Where the role-token store is, and what the files must be called.** The desk verbs
+resolve credentials from `$HOME/.config/assay/` (the config-home; a cell runs its verbs
+with `HOME` pointed at the cell's own home, so each cell has its own store). Point
+`--out-dir` straight at it. The script names each file `<prefix>-<role>-bot.token`
+(the service account's username); `desktoken --forge gitlab <role>` — the rotate-on-mint
+custody in §5 — looks for **`gitlab-<role>.token`**. Until the two agree, link them once
+after provisioning:
+
+```
+cd "$HOME/.config/assay" && for r in reviewer worker verifier desk issue-loop intake-loop board-writer; do
+  ln -s "<prefix>-$r-bot.token" "gitlab-$r.token"
+done
+```
+
+**The owner PAT.** Use a **legacy** personal access token with scope `api` (and only
+`api`), issued by a group Owner, expiring in 30–90 days, stored `0600` in the same
+config-home (for example `gitlab-owner.token`) and exported into `GITLAB_TOKEN` only for
+the duration of the run. GitLab's fine-grained tokens are not yet proven against this
+script — it needs owner-level calls on four surfaces (service accounts and their token
+minting, group members, protected branches, approval settings) and a missing granular
+permission fails mid-run with a half-provisioned fleet. Proving the script on a
+fine-grained token is an open follow-up, not a supported path.
+
+**Known defect on free tier (until fixed — tracked on this repo's issues as the
+provisioner free-tier protect bug).** The protected-branch step first deletes the existing
+protection and then re-creates it with `allowed_to_unprotect`, a Premium-only field; on
+Free the re-create is refused (400) and **`main` is left unprotected**. If you see
+`error: protecting main failed (HTTP 400)`, re-protect by hand immediately:
+
+```
+curl -X POST -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+  "$GITLAB_URL/api/v4/projects/<id>/protected_branches?name=main&push_access_level=0&merge_access_level=30&allow_force_push=false"
+```
+
+and read the approval settings back (`GET …/approvals`) rather than trusting the script's
+approval step: on Free the write returns 201 and changes nothing.
 
 ## 3. By-hand table — what the script does, if you'd rather read the REST calls
 
