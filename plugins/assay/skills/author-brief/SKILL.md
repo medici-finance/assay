@@ -387,6 +387,28 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
     the control the risk answers lean on, and it only bites on a diff a reviewer can actually
     hold.
 
+13. **A Verify row MAY declare an OBLIGATION alongside its class — the prose MUSTs of rules 6, 10 and
+    11 carried as typed data.** The optional `Class` cell (rule 45 in the brief-rules reference) answers
+    WHO EXECUTES a row (`check:ci` / `check` / `gate:model` / `gate:human`). A second, orthogonal axis
+    answers WHAT OBLIGATION the row discharges, written as `+`-prefixed tokens appended to the same
+    cell — a **compound cell**, `<execution> +<obligation> …`, so the table's column set is unchanged
+    and a legacy column-less table is untouched. Four obligation values, each an example row:
+
+    | Obligation | What the row must do | Example `Class` cell |
+    |---|---|---|
+    | `+mutation` | break the thing the change guards and prove the guard reddens (rule 10c, spec D1) | `check:ci +mutation` |
+    | `+flow` | exercise the cross-component path end to end, not just the changed site (rule 6) | `check +flow` |
+    | `+dereference` | resolve a claim rather than count its presence (rule 11) | `gate:model +dereference` |
+    | `+neighbour` | exercise a sibling site the change did not touch | `check +neighbour` |
+
+    `statusgen --lint` derives which obligation a brief OWES from the shape of its change (the branch
+    diff, its declared paths, its task prose) and reports one owed-but-absent — it checks the PRESENCE
+    of the typed row, never its ADEQUACY, which stays the reviewer's call (spec §3 D7). An unknown
+    `+token` is a hard PROBLEM, exactly as an unknown class is. **Enforcement status:** the derivation
+    lands advisory (a NOTICE); `+mutation`'s promotion to a hard gate is a follow-up. This status line
+    is deliberately minimal — the authoritative per-obligation enforcement state is generated, not
+    hand-copied here (a hand-written status becomes the next stale second copy).
+
 Keep a brief self-contained: if executing it requires knowledge from another brief, either link it
 under "Read first" / `facts:` or state the dependency in `depends:` — never assume the reader has the
 whole plan in context.

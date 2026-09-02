@@ -412,6 +412,17 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	crProblems, crNotices := riskFilesCrossRead(checkStreams)
 	problems = append(problems, crProblems...)
 	notices = append(notices, crNotices...)
+	// Verify-row obligation derivation (mistake-proofing/03): derive the typed
+	// obligation a brief owes from the SHAPE OF ITS CHANGE (the branch diff, its
+	// declared paths, its task prose) and NOTICE each obligation owed-but-absent.
+	// Diff-scoped — evaluates only a brief this branch edited; an unavailable diff
+	// is could-not-check, never "nothing is owed". Lands ADVISORY (NOTICE) —
+	// obligationDerivationFatal gates the flip; the mutation obligation's promotion
+	// is mistake-proofing/06. Presence is the control, adequacy stays review (D7).
+	// See obligationderivation.go.
+	obProblems, obNotices := verifyObligationDerivation(root, checkStreams)
+	problems = append(problems, obProblems...)
+	notices = append(notices, obNotices...)
 	// Register-reference link lint: for every markdown link
 	// whose text is F-NN/I-NN, verify target file exists and frontmatter id
 	// matches. Bare refs are never checked. BLOCKING for the same reason — it
