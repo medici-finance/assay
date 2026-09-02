@@ -1,0 +1,10 @@
+Harness healthy: baseline GREEN, positive control CAUGHT.
+  CAUGHT           disarm the parent-2 SHA check (a merge of ANY commit passes as merge-currency)
+  CAUGHT           drop the conflict-marker check (a no-op generator launders `<<<<<<< HEAD` into the head)
+  CAUGHT           let deskmerge push to a default branch (R-5's direction bound evaporates)
+  CAUGHT           accept a fetched head that disagrees with the API's (the verdict floats free of a head)
+  CAUGHT           collapse could-not-check into success in the roll-up (the three-state invariant dies)
+  CAUGHT           fast-forward instead of forcing a merge commit (--no-ff dropped)
+  CAUGHT           accept an App-authored acceptance as a human authorization
+  CAUGHT           attribute a nested module's files to the ROOT module (the probe builds the wrong tree)
+Totals: 8 caught, 0 NOT CAUGHT, 0 could-not-mutate.

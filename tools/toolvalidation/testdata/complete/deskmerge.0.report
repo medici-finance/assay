@@ -1,0 +1,10 @@
+Harness healthy: baseline GREEN, positive control CAUGHT.
+  CAUGHT           disarm the parent-COUNT check (the #72 single-parent masquerade ships)
+  CAUGHT           let a MIXED conflict be resolved (the desk becomes the author of half a merge)
+  CAUGHT           drop the whole-tree residual-conflict check after regeneration
+  CAUGHT           let a MERGED or CLOSED PR be pushed to (the deskpushguard shape re-opens)
+  CAUGHT           accept a checkout whose origin names another project
+  CAUGHT           report an unprobeable tree as clean instead of could-not-check
+  CAUGHT           read a neighbouring ruling's sign-off as this one's (one signature signs them all)
+  CAUGHT           accept an anchorless thread link as an authorization
+Totals: 8 caught, 0 NOT CAUGHT, 0 could-not-mutate.

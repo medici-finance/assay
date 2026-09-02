@@ -508,6 +508,11 @@ jobs:
           cd tools/desk
           report=$(go run ./cmd/muhar -j 0 -spec internal/deskkit/mutations.json)
           echo "$report"
+          # Capture the gate's own report for the tool-validation evidence pack
+          # (iso-9001/01): the pack is assembled from THIS report in the release
+          # job, never a re-run. The grep below is unchanged and still gates.
+          mkdir -p "${RUNNER_TEMP}/tv-reports"
+          printf '%s\n' "$report" > "${RUNNER_TEMP}/tv-reports/bodycheck.report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::a bodycheck refusal survived its mutation, or could not be applied — the gate is not load-bearing as written (docs/desk-tools-gate-bar.md)"
             exit 1
@@ -528,6 +533,9 @@ jobs:
           cd tools/desk
           report=$(go run ./cmd/muhar -j 0 -spec cmd/desksourceguard/mutations.json)
           echo "$report"
+          # Capture for the tool-validation evidence pack (iso-9001/01).
+          mkdir -p "${RUNNER_TEMP}/tv-reports"
+          printf '%s\n' "$report" > "${RUNNER_TEMP}/tv-reports/desksourceguard.report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::a desksourceguard refusal survived its mutation, or could not be applied — the guard is not load-bearing as written"
             exit 1
@@ -548,6 +556,9 @@ jobs:
           cd tools/desk
           report=$(go run ./cmd/muhar -j 0 -spec internal/loopengine/mutations.json)
           echo "$report"
+          # Capture for the tool-validation evidence pack (iso-9001/01).
+          mkdir -p "${RUNNER_TEMP}/tv-reports"
+          printf '%s\n' "$report" > "${RUNNER_TEMP}/tv-reports/loopengine-dedupe.report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::a half of loopengine's dedupe-at-start gate survived its mutation, or could not be applied — Claim's stated guarantee is not load-bearing as written (tools/desk/internal/loopengine/doc.go)"
             exit 1
@@ -571,6 +582,9 @@ jobs:
           cd tools/desk
           report=$(go run ./cmd/muhar -j 0 -spec internal/loopengine/mutations-retry.json)
           echo "$report"
+          # Capture for the tool-validation evidence pack (iso-9001/01).
+          mkdir -p "${RUNNER_TEMP}/tv-reports"
+          printf '%s\n' "$report" > "${RUNNER_TEMP}/tv-reports/loopengine-retry.report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::an arm of loopengine's retry taxonomy survived its mutation, or could not be applied — the retryable / non-retryable / could-not-check split is not load-bearing as written (tools/desk/internal/loopengine/retry.go)"
             exit 1
@@ -603,6 +617,11 @@ jobs:
           cd tools/desk
           report=$(go run ./cmd/muhar -j 0 -shard "$MUHAR_SHARD" -spec cmd/deskmerge/mutations.json)
           echo "$report"
+          # Capture this shard's report for the tool-validation evidence pack
+          # (iso-9001/01), keyed by the shard index (0/1/2). The assembler unions
+          # all three shard reports; a missing shard makes the gate incomplete.
+          mkdir -p "${RUNNER_TEMP}/tv-reports"
+          printf '%s\n' "$report" > "${RUNNER_TEMP}/tv-reports/deskmerge.${MUHAR_SHARD%%/*}.report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::a deskmerge refusal survived its mutation, or could not be applied — the zero-authorship boundary is not load-bearing as written"
             exit 1
@@ -625,6 +644,9 @@ jobs:
           cd tools/desk
           report=$(go run ./cmd/muhar -j 0 -spec cmd/reviewloop/mutations.json)
           echo "$report"
+          # Capture for the tool-validation evidence pack (iso-9001/01).
+          mkdir -p "${RUNNER_TEMP}/tv-reports"
+          printf '%s\n' "$report" > "${RUNNER_TEMP}/tv-reports/reviewloop.report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::an arm of reviewloop's idle gate or coalescing survived its mutation, or could not be applied — the board reactor's could-not-check state is not load-bearing as written (tools/desk/cmd/reviewloop/doc.go)"
             exit 1
@@ -650,10 +672,31 @@ jobs:
           cd tools/desk
           report=$(go run ./cmd/muhar -j 0 -spec cmd/deskclose/mutations.json)
           echo "$report"
+          # Capture for the tool-validation evidence pack (iso-9001/01).
+          mkdir -p "${RUNNER_TEMP}/tv-reports"
+          printf '%s\n' "$report" > "${RUNNER_TEMP}/tv-reports/deskclose.report"
           if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
             echo "::error::an arm of deskclose's superseded two-role lane survived its mutation, or could not be applied — the propose/confirm/dispute boundary is not load-bearing as written (tools/desk/cmd/deskclose/superseded.go)"
             exit 1
           fi
+
+      # TOOL-VALIDATION EVIDENCE PACK (iso-9001/01) — persist the captured muhar
+      # reports so the `release` job can assemble the pack from them WITHOUT
+      # re-running any mutation (a second sweep would double a long CPU-bound
+      # step and create two verdicts that could disagree). Only the legs that run
+      # mutation sweeps produce reports: muhar-light (six specs) and the three
+      # deskmerge shards (one shard report each). Each leg uploads its own reports
+      # under a name unique to the leg (job index), and the release job merges
+      # them. `if-no-files-found: error` makes a leg that was expected to capture
+      # but produced nothing fail loudly rather than ship a quietly smaller pack.
+      - name: Upload captured mutation reports (tool-validation pack)
+        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tv-reports-${{ matrix.leg }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/tv-reports/
+          if-no-files-found: error
+          retention-days: 7
 
   release:
     needs: [resolve, guard, test]
@@ -848,6 +891,40 @@ jobs:
             desk-tools-linux-amd64.tar.gz > checksums.txt
           cat checksums.txt
 
+      # TOOL-VALIDATION EVIDENCE PACK (iso-9001/01) — collect the mutation reports
+      # the `test` job captured (muhar-light's six + the three deskmerge shards),
+      # merged into one directory. merge-multiple flattens every tv-reports-*
+      # artifact into ${RUNNER_TEMP}/tv-reports.
+      - name: Download captured mutation reports (tool-validation pack)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: tv-reports-*
+          path: ${{ runner.temp }}/tv-reports
+          merge-multiple: true
+
+      # Assemble the pack from those captures (NOT a re-run). The assembler reads
+      # the DECLARED control set (tools/toolvalidation), matches each declared
+      # gate's captured report, and writes tool-validation-<tag>.{md,json} into
+      # the repo root beside the other release assets. Exit 3 = emitted-but-
+      # INCOMPLETE (a declared control's report was missing / unparseable / a
+      # HARNESS BROKEN discard); `set -e` makes that FAIL the release — an
+      # incomplete evidence pack must not ship beside a complete-looking release.
+      # Runs on the dry_run path too, so a dry run proves the pack assembles.
+      - name: Assemble the tool-validation evidence pack
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          go version
+          ( cd tools/toolvalidation && go build -o "${RUNNER_TEMP}/toolvalidation" . )
+          "${RUNNER_TEMP}/toolvalidation" \
+            -root "${GITHUB_WORKSPACE}" \
+            -reports "${RUNNER_TEMP}/tv-reports" \
+            -tag "${RELEASE_TAG}" \
+            -out "${GITHUB_WORKSPACE}"
+          ls -l "${GITHUB_WORKSPACE}/tool-validation-${RELEASE_TAG}.md" \
+                "${GITHUB_WORKSPACE}/tool-validation-${RELEASE_TAG}.json"
+
       # A dry run has now built + checksummed the artifacts (proving build, guard
       # and tests all pass) and stops here: the two mutating steps below both
       # carry `!dry_run`, so no tag is cut, no release is published, nothing is
@@ -986,8 +1063,13 @@ jobs:
             cat "$assets_json"; exit 1
           fi
 
+          # The two tool-validation evidence-pack files (iso-9001/01) ride
+          # alongside the binaries: the .json a consumer parses, the .md an
+          # auditor reads. Assembled from this run's captured mutation reports by
+          # the "Assemble the tool-validation evidence pack" step above.
           for f in statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 \
                    desk-tools-darwin-arm64.tar.gz desk-tools-darwin-amd64.tar.gz desk-tools-linux-amd64.tar.gz \
+                   "tool-validation-${RELEASE_TAG}.md" "tool-validation-${RELEASE_TAG}.json" \
                    checksums.txt; do
             # Fail loudly if this name is already published — never swap the bytes.
             existing_id=$(NAME="$f" ASSETS_JSON="$assets_json" python3 -c 'import os,json; d=json.load(open(os.environ["ASSETS_JSON"])) if os.path.exists(os.environ["ASSETS_JSON"]) else []; d=d if isinstance(d,list) else []; print(next((str(a.get("id","")) for a in d if a.get("name")==os.environ["NAME"]), ""))' 2>/dev/null || true)

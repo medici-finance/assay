@@ -1,0 +1,10 @@
+Harness healthy: baseline GREEN, positive control CAUGHT.
+  CAUGHT           disarm the HEAD-vs-pin comparison (a repointed tag compiles)
+  CAUGHT           disarm the binary<->source binding (pin any commit you like)
+  CAUGHT           disarm the tag-agreement check (source and binaries may split)
+  CAUGHT           accept an unstamped guard binary (nothing anchors the pin)
+  CAUGHT           accept an abbreviated commit pin (re-resolvable anchor)
+  CAUGHT           a missing source pin becomes a silent no-op
+  CAUGHT           swallow an unresolvable HEAD instead of failing closed
+  CAUGHT           drop the trailing-space pin selection (a longer name may stand in)
+Totals: 8 caught, 0 NOT CAUGHT, 0 could-not-mutate.
