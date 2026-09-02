@@ -37,9 +37,9 @@ exec-tier-why: >-
 
 # Brief 13 — Cursor live-desk-smoke protocol + first run
 
-> **Note (re-home / de-house).** Mirroring HP/07's own note: `docs/cursor-smoke-protocol.md`
-> and the bundle's `PARITY.md`/`RELEASE-NOTES.md` are method-text-layer/bundle artifacts
-> that land with the sequenced tool/method-text de-house (the same follow-on `tools/harnessgen`
+> **Note (re-home / de-house).** Mirroring HP/07's own note: `docs/cursor-smoke-protocol.md` (planned)
+> and the bundle's `PARITY.md`/`RELEASE-NOTES.md` are method-text-layer/bundle artifacts that
+> land with the sequenced tool/method-text de-house (the same follow-on `tools/harnessgen`
 > and the generated `plugins/assay/cursor/` packaging are waiting on, per brief 12's own
 > "Tool de-house note"). `docs/adopting-assay.md` and this stream's README are already public
 > and are amended directly by this brief. Until the de-house lands, this brief's protocol-doc
@@ -48,7 +48,7 @@ exec-tier-why: >-
 ## Context
 
 files:
-- **create** `docs/cursor-smoke-protocol.md` (planned; de-housed — see note above) — the
+- **create** `docs/cursor-smoke-protocol.md` (planned) — de-housed, see note above — the
   scripted live-harness checklist, numbered steps each with a literal action and an
   `Expect:` line, mirroring HP/07's shape and minimum coverage, adapted to Cursor's ruled
   two-surface posture (headless `cursor-agent` primary, in-editor IDE agent secondary) and
@@ -126,7 +126,7 @@ clearly labeled rather than silently dropped.
 
 ## Task
 
-1. Write `docs/cursor-smoke-protocol.md` (planned; de-housed) — numbered steps, each with a
+1. Write `docs/cursor-smoke-protocol.md` (planned) — de-housed, per the note above — numbered steps, each with a
    literal action and an `Expect:` line. Minimum coverage, mirroring HP/07 adapted to
    Cursor's ruled two-surface posture:
    1. Fresh install per the adopt path's Cursor scenario (brief 12 §2c).
