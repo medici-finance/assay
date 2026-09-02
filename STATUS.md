@@ -22,14 +22,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [quality](docs/streams/quality/README.md) | P2 | active | 12/16 | 2026-09-02 |  |
 | [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-09-02 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 5/13 | 2026-09-02 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 0/5 | 2026-09-02 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 0/6 | 2026-09-02 |  |
 
 ## Next up
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| windows-port | 00 — Build-tag split for the unix-only syscall sites | 0 | 3000 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
-| windows-port | 01 — Release build matrix — windows/amd64 + windows/arm64 + sha256s | 0 | 2500 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 | quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
 | spec-routing | 01 — Enforce the §8 lifecycle — the linter and the authoring-owed emitter [exec:strong] | 0 | 1000 |
@@ -209,13 +209,14 @@ _None._
 - 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — implemented (wave 1)
 - 13 cadenced roadmap artifacts (`--cadence weekly/monthly`) — implemented (wave 1)
 
-### windows-port (5 open)
+### windows-port (6 open)
 
-- 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — todo (wave 0)
+- 00 Build-tag split for the unix-only syscall sites — todo (wave 0)
+- 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — todo (wave 1)
 - 02 Portability audit — enumerate + triage the shell-assuming surfaces — implemented (wave 0)
-- 03 Windows install path — PowerShell-vs-Go-installer fork, then build — todo (wave 1)
-- 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — todo (wave 1)
-- 05 Adoption-doc delta — the Windows adopter walkthrough — todo (wave 2)
+- 03 Windows install path — PowerShell-vs-Go-installer fork, then build — todo (wave 2)
+- 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — todo (wave 2)
+- 05 Adoption-doc delta — the Windows adopter walkthrough — todo (wave 3)
 
 ## Done briefs
 
@@ -279,4 +280,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**12** streams (**12** active, **0** paused) · **30/95** briefs done · completed initiatives: see `docs/archive/`
+**12** streams (**12** active, **0** paused) · **30/96** briefs done · completed initiatives: see `docs/archive/`
