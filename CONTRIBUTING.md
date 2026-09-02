@@ -23,6 +23,28 @@ Thanks for your interest. A few expectations up front, so nobody is surprised:
   re-pin deliberately when you want a change.
 - **Security problems** must never be a public issue. See [SECURITY.md](SECURITY.md).
 
+## Inbound pull-request policy
+
+The aim of these two guidelines is to **filter, not to deter** — they keep the review queue
+honest without turning away a genuine contributor.
+
+- **Issue-first.** A pull request from an author who is not already a maintainer should
+  **link an open issue**. Open the issue, let a maintainer confirm the change fits the
+  direction, then send the pull request linking it (a closing keyword such as `Fixes #123`,
+  or just a `#123` reference, is enough). A pull request with no linked issue gets a friendly
+  advisory comment and a `needs-issue-link` label; it is **not** closed for that reason today.
+  If a grace-window auto-close is ever switched on, this page and the comment will say so
+  plainly first.
+- **A guideline on concurrent pull requests.** Please keep the number of pull requests you
+  have open here at once **small** (the current guideline is three). Ten open pull requests
+  from one author in a minute is not ten contributions; it is one prompt and a review burden.
+  Going over the guideline earns an advisory comment and a `too-many-open-prs` label, not a
+  closed pull request. Fewer, well-scoped changes land faster.
+
+Both guidelines are **advisory** unless this page says otherwise: the automation comments and
+labels, and a human maintainer decides. Maintainers, collaborators, and repository bots are
+exempt from both.
+
 ## Practical notes
 
 - License: Apache-2.0. By contributing you agree your contribution is licensed the same.
