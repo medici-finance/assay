@@ -1,0 +1,23 @@
+Harness healthy: baseline GREEN, positive control CAUGHT.
+  CAUGHT           unanchor the go.sum digest exemption (any 32+ run behind h1: passes)
+  CAUGHT           drop the SRI length check (any payload behind an integrity key passes)
+  CAUGHT           drop the sops DOCUMENT signature (a pasted envelope alone is sanctioned)
+  CAUGHT           open the armor-label allowlist (an unknown label stops being secret-bearing)
+  CAUGHT           disarm isPathLike rule (4) — the #410 false-negative class reopens
+  CAUGHT           let a scan override proceed WITHOUT writing its audit row (an unlogged bypass)
+  CAUGHT           drop the override reason floor (an empty-ish reason is accepted)
+  CAUGHT           stop the refusal advertising the override (#585 re-opens)
+  CAUGHT           make the impersonation guard overridable
+  CAUGHT           #203 — drop the SHORT bound on an acronym unit (any ALL-CAPS stretch becomes one word)
+  CAUGHT           #203 — drop the FORWARD anchor (an acronym need not be adjacent to a word)
+  CAUGHT           #203 — drop the BACKWARD anchor and the after-a-word rule (an acronym may open a run)
+  CAUGHT           #203 — drop the per-run acronym BUDGET (a run may spend as many caps runs as it likes)
+  CAUGHT           #203 — make the public-repo self-containment scan a no-op on every repo
+  CAUGHT           #203 — compute the self-containment verdict but never return it (a refusal that posts)
+  CAUGHT           #203 — disarm the machine-shape arm (absolute paths, worktree names, session and agent ids)
+  CAUGHT           #203 — stop refusing a PRIVATE repo slug on a public body
+  CAUGHT           #203 — degrade the withheld-register category to a NOTICE even when it IS configured
+  CAUGHT           #203 — swallow the NOTICE lines (a could-not-check reads as clean)
+  CAUGHT           #203 — treat a missing reference number as a checked bare-#N surface
+  CAUGHT           drop the encrypted-CONTENT requirement (a bare sops footer becomes sanctioned)
+Totals: 21 caught, 0 NOT CAUGHT, 0 could-not-mutate.

@@ -11,32 +11,35 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-09-01 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-01 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/6 | 2026-09-01 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-09-01 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-09-01 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/11 | 2026-09-01 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-09-01 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-09-01 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 0/16 | 2026-09-01 |  |
-| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-09-01 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/13 | 2026-09-01 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 0/7 | 2026-09-02 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-02 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 0/6 | 2026-09-02 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 0/8 | 2026-09-02 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-09-02 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-02 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-09-02 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-09-02 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 0/16 | 2026-09-02 |  |
+| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-09-02 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/13 | 2026-09-02 |  |
 
 ## Next up
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
+| iso-9001 | 05 — Records control and retention, stated once (7.5.3) | 1 | 1500 |
+| quality | 12 — M4 gate-yield accounting + ritual-effectiveness joins [exec:strong] | 4 | 1500 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 | quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
 | spec-routing | 01 — Enforce the §8 lifecycle — the linter and the authoring-owed emitter [exec:strong] | 0 | 1000 |
+| statusgen | 08 — composite AssayScore computation | 2 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 58 total — 39 at implemented, 19 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 58 total — 31 at implemented, 27 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -48,59 +51,59 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | quality | 01 [exec:strong] | verified | 8500 | 15 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
+| harness-portability | 01 [exec:strong] | implemented | 5000 | 8 | — | — | — |
 | quality | 06 | verified | 5000 | 8 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | derived-board | 01 [exec:strong] | verified | 4500 | 5 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | derived-board | 02 | verified | 4500 | 5 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | desktools-go-git | 01 | verified | 4500 | 7 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 01 [exec:strong] | verified | 4500 | 7 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
-| harness-portability | 01 [exec:strong] | implemented | 4500 | 7 | — | — | — |
 | quality | 07 [exec:strong] | verified | 4500 | 7 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | desktools-go-git | 02 | implemented | 4000 | 6 | — | — | — |
+| harness-portability | 02 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
-| harness-portability | 02 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| harness-portability | 04 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | quality | 02 [exec:strong] | verified | 3500 | 5 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | forge-gitlab | 02 [exec:strong] | verified | 3000 | 4 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
-| harness-portability | 04 [exec:strong] | implemented | 3000 | 4 | — | — | — |
+| harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | mistake-proofing | 01 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | quality | 03 | verified | 3000 | 4 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | derived-board | 05 | implemented | 2500 | 1 | — | — | — |
 | forge-gitlab | 03 [exec:strong] | verified | 2500 | 3 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
-| harness-portability | 05 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | quality | 04 | verified | 2500 | 3 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 04 | implemented | 2000 | 2 | — | — | — |
-| harness-portability | 06 [exec:strong] | implemented | 2000 | 2 | — | — | — |
-| iso-9001 | 02 [exec:strong] | implemented | 2000 | 2 | — | — | — |
-| quality | 10 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| iso-9001 | 02 [exec:strong] | verified | 2000 | 2 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
+| quality | 10 [exec:strong] | verified | 2000 | 2 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| harness-portability | 12 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | mistake-proofing | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
-| statusgen | 07 | implemented | 1500 | 1 | — | — | — |
+| statusgen | 07 | verified | 1500 | 1 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| desk-tools | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 04 [exec:strong] | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | desk-tools | 05 [exec:strong] | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
-| desk-tools | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 06 [exec:strong] | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| harness-portability | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | quality | 05 | verified | 1000 | 0 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
-| quality | 08 | implemented | 1000 | 0 | — | — | — |
+| quality | 08 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | quality | 09 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | quality | 11 | implemented | 1000 | 0 | — | — | — |
-| quality | 13 | implemented | 1000 | 0 | — | — | — |
+| quality | 13 | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | statusgen | 01 | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 04 | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
-| statusgen | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| statusgen | 10 [exec:strong] | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | statusgen | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 13 | implemented | 1000 | 0 | — | — | — |
@@ -109,7 +112,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| harness-portability | 03 | implemented | 4000 | 6 | — | — | — |
+| harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
 
 ## Age at the human gate
 
@@ -156,9 +159,9 @@ _None._
 - 01 Binary channel — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer — implemented (wave 1)
 - 03 Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN — implemented (wave 1)
-- 04 Deterministic runner — execute rows, batch, sign, file verdict issues — implemented (wave 1)
+- 04 Deterministic runner — execute rows, batch, sign, file verdict issues — verified (wave 1)
 - 05 Escape-valve `Decide()` primitive in deskkit — verified (wave 1)
-- 06 Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) — implemented (wave 1)
+- 06 Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) — verified (wave 1)
 
 ### desktools-go-git (8 open)
 
@@ -182,7 +185,7 @@ _None._
 - 07 GitHub forge backend on `go-gh` — retire the exec-`gh` shell path — implemented (wave 2)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
 
-### harness-portability (11 open)
+### harness-portability (12 open)
 
 - 01 Codex capability ground-truth — measured matrix, not inherited prior art — implemented (wave 0)
 - 02 Kill the drift debt — re-sync the bundle, flip the canonical home — implemented (wave 0)
@@ -195,11 +198,12 @@ _None._
 - 10 SpecMem portable-memory spike — one stream's registers across two harnesses — implemented (wave 0)
 - 11 Durable-monitor capability + residual harness-token prose-audit — todo (wave 3)
 - 12 Cursor — the third harness column (ground-truth + binding + generator verb + public column) — implemented (wave 5)
+- 13 Cursor live-desk-smoke protocol + first run — todo (wave 6)
 
 ### iso-9001 (6 open)
 
 - 01 Emit the tool-validation evidence pack as a release asset (7.1.5) — todo (wave 0)
-- 02 Align three shipped disclosures with the code they describe (B9) — implemented (wave 0)
+- 02 Align three shipped disclosures with the code they describe (B9) — verified (wave 0)
 - 03 A finding closes on a fired control — the effectiveness record (10.2) — todo (wave 1)
 - 04 Record the authorizing human in the release itself (8.6) — todo (wave 1)
 - 05 Records control and retention, stated once (7.5.3) — todo (wave 1)
@@ -223,12 +227,12 @@ _None._
 - 05 `QUALITY.md` single-writer trend view + metrics artifacts — verified (wave 2)
 - 06 M2 fix identification — pluggable linkage adapter + evidence tiers — verified (wave 1)
 - 07 M2 B-SZZ inducing trace + derived defect metrics — verified (wave 2)
-- 08 `pr <n>` mode — per-file risk features (generic riskscore feed) — implemented (wave 3)
+- 08 `pr <n>` mode — per-file risk features (generic riskscore feed) — verified (wave 3)
 - 09 `check <files>` mode — brittleness screen for a named file set — verified (wave 2)
-- 10 M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter — implemented (wave 3)
+- 10 M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter — verified (wave 3)
 - 11 DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source — implemented (wave 3)
 - 12 M4 gate-yield accounting + ritual-effectiveness joins — todo (wave 4)
-- 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — implemented (wave 3)
+- 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — verified (wave 3)
 - 14 auto-filed refactor work + quality error-budgets + RETRO output feed — todo (wave 5)
 - 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
 - 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — todo (wave 1)
@@ -245,10 +249,10 @@ _None._
 - 04 ladder-position indicator (`--ladder`) — verified (wave 1)
 - 05 drives phase 3 — anti-starvation floors + critical tier — implemented (wave 1)
 - 06 findings register — corroborated state machine — implemented (wave 1)
-- 07 new brief-flow metrics — implemented (wave 1)
+- 07 new brief-flow metrics — verified (wave 1)
 - 08 composite AssayScore computation — todo (wave 2)
 - 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
-- 10 graph export (`--graph` DOT + JSONL) — implemented (wave 1)
+- 10 graph export (`--graph` DOT + JSONL) — verified (wave 1)
 - 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
 - 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — implemented (wave 1)
 - 13 cadenced roadmap artifacts (`--cadence weekly/monthly`) — implemented (wave 1)
@@ -261,4 +265,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**11** streams (**11** active, **0** paused) · **0/89** briefs done · completed initiatives: see `docs/archive/`
+**11** streams (**11** active, **0** paused) · **0/90** briefs done · completed initiatives: see `docs/archive/`

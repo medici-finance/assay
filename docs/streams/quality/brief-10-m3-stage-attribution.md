@@ -129,6 +129,24 @@ facts:
 <!-- appended at implementation time by a NON-implementer: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner). -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `63a7a8a`
+
+Runner ≠ implementer. Own temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`); rows run from inside `qualgen/` (nested module). Package present: `qualgen/attribution/` (provenance.go, dossier.go, stage.go, ledger.go, commitissue_adapter.go + tests).
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `go build ./... && go vet ./attribution/` | 0 | builds + vets clean |
+| 2 | `go test ./attribution/` | 0 | `ok …attribution`; provenance/dossier/stage/ledger tests pass |
+| 3 | `go test -run TestDossierDeterministic -count=2` | 0 | byte-identical dossier across runs; hash order-invariant, 64-hex, pinned to golden content address |
+| 4 | `go test -run TestStagePlantedBriefGap -v` | 0 | planted defect surface OUTSIDE brief coverage, change faithful to brief → classifier returns `brief`, not `implementation`/`spec`; companion pins all branches |
+| 5 | `go test -run TestStageUntraceableNotZeroed -v` | 0 | broken chain (adapter finds no PR/issue rung) → `untraceable`, in its own ledger bucket, never binned into `implementation` |
+| 6 | `go test -run TestReviewEscapeOverlay` | 0 | overlay lists exactly the approving lanes at head (sorted, de-duped; non-approving excluded) |
+| 7 | `go test -run TestLedgerAppendOnlyTombstone` | 0 | correction adds a tombstone; the prior dossier file is unchanged on disk |
+
+`RISK-VALUE: N/A` — no risk-bearing literal in a guard. `Classify` (stage.go:75-109) is a pure rule-based function over set-subset relations (`subset()`, no numeric thresholds, no clock/I/O). The only literals are the Stage string values (stage.go:21-32) — an on-disk contract keyed by the ledger/brief-12, not a guard threshold. The deterministic, content-addressed dossier is assembled independently of the call (the brief's single-point-of-failure control). Verify-gate checks confirmed: (a) dossier re-derivable & call-independent (row 3 + golden hash); (b) a broken chain → `untraceable`, never guessed (row 5; `ClassifyWith` refuses a refiner overriding untraceable, stage.go:130,138-142); (c) per-stage ledger + review-escape seams stable.
+
+**VERIFY: PASS** — all seven Verify rows checked-clean by a non-implementer. Advancing `implemented → verified`.
+
 ## Review
 Gate: model (all four risk answers no — repo-agnostic OSS Go over already-mined traces;
 read-only against the target, append-only artifacts, no shared product value changed).

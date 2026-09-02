@@ -1,0 +1,10 @@
+Harness healthy: baseline GREEN, positive control CAUGHT.
+  CAUGHT           disarm the parent-1 check (the PR's own history stops being load-bearing)
+  CAUGHT           swallow a failing generator (a partial resolution is committed as transport)
+  CAUGHT           disarm the flip bound (the desk supplies the commit its own at-head check reads)
+  CAUGHT           answer from stale local refs when the fetch fails (could-not-check reported as clean)
+  CAUGHT           infer semantic validity from a clean TEXTUAL merge (the #912/#913 class re-opens silently)
+  CAUGHT           let an unsigned ruling authorize the write (the human gate stops gating)
+  CAUGHT           accept ANY type=User account as the blessing authority (shared automation authorizes)
+  CAUGHT           probe every module rather than the touched ones (a pre-existing break reads as this merge's)
+Totals: 8 caught, 0 NOT CAUGHT, 0 could-not-mutate.

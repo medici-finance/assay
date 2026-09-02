@@ -156,9 +156,93 @@ type AppReview struct {
 }
 
 // CICheck is the deskkit-level check a caller reduces to a CIVerdict.
+//
+// Name/Context identify the check for the latest-run-per-name reduction (a CheckRun
+// carries Name, a legacy StatusContext carries Context), and the three timestamps are its
+// recency signal. A caller that lifts a rollup into CICheck MUST carry these through — a
+// CICheck with no name and no stamps still reduces correctly (it is kept standalone, as
+// before), but a rollup that dropped them could not run the recency reduction at all,
+// which is exactly the gap that let deskboard keep counting superseded runs.
 type CICheck struct {
-	Status     string // QUEUED / IN_PROGRESS / COMPLETED
-	Conclusion string // SUCCESS / FAILURE / SKIPPED / NEUTRAL / ...
+	Name        string // CheckRun name
+	Context     string // StatusContext name (legacy commit status)
+	Status      string // QUEUED / IN_PROGRESS / COMPLETED
+	Conclusion  string // SUCCESS / FAILURE / SKIPPED / NEUTRAL / ...
+	StartedAt   string // CheckRun start (RFC3339)
+	CompletedAt string // CheckRun completion (RFC3339)
+	CreatedAt   string // StatusContext creation (RFC3339)
+}
+
+// groupKey and recencyKey are CICheck's adapters for LatestRunPerName: the identity a run
+// is reduced BY, and the recency stamp the newest-wins comparison reads.
+func (c CICheck) groupKey() string {
+	if c.Name != "" {
+		return c.Name
+	}
+	return c.Context
+}
+
+func (c CICheck) recencyKey() string {
+	switch {
+	case c.CompletedAt != "":
+		return c.CompletedAt
+	case c.StartedAt != "":
+		return c.StartedAt
+	default:
+		return c.CreatedAt
+	}
+}
+
+// LatestRunPerName reduces a status-check rollup to one entry per check NAME — the LATEST
+// run for each — mirroring GitHub branch protection's own "latest run per context" rule.
+// A superseded run (an older CANCELLED, a stale QUEUED left behind by a push+pull_request
+// double-trigger, a re-triggered run's predecessor) must NOT count against a PR whose
+// current run for that name is not it; only the latest run for each name does.
+//
+// This is the ONE home of the reduction. deskflip's ready-flip gate and deskboard's CI
+// render both call it, so the two surfaces cannot drift into disagreeing about the same
+// double-triggered PR — the failure mode where a flip fires while the board still reads
+// CI-fail.
+//
+// The reduction is generic over the caller's own rollup type: groupKey returns the identity
+// a run is grouped BY (a check name, or a status context's context; an entry that returns
+// "" has no identity to group on and is kept STANDALONE — the forge never merged it), and
+// recencyKey returns the run's recency stamp. GitHub renders RFC3339 timestamps, which sort
+// lexicographically in chronological order, so the newest wins on a plain string compare; a
+// tie (two runs the forge stamped at the same instant — not a shape seen in practice) keeps
+// the FIRST-seen entry for determinism; and a stampless run returns "" and sorts OLDEST, so
+// it loses to any run that actually ran — the fail-safe direction.
+//
+// It changes only WHICH run of a name survives, never HOW a run is judged: the reduced set
+// flows through the caller's existing pass/pending/fail evaluation unchanged, so a name
+// whose current latest run is red, cancelled, or pending still reddens or blocks. First
+// appearance order is preserved for stable downstream naming and counts.
+func LatestRunPerName[T any](entries []T, groupKey func(T) string, recencyKey func(T) string) []T {
+	if len(entries) == 0 {
+		return entries
+	}
+	// index[key] is the position in `out` holding the current latest run for that name.
+	index := make(map[string]int, len(entries))
+	out := make([]T, 0, len(entries))
+	for _, e := range entries {
+		key := groupKey(e)
+		if key == "" {
+			// No identity to reduce by: kept as its own entry.
+			out = append(out, e)
+			continue
+		}
+		pos, seen := index[key]
+		if !seen {
+			index[key] = len(out)
+			out = append(out, e)
+			continue
+		}
+		// Replace only when the candidate is STRICTLY newer, so a tie keeps first-seen.
+		if recencyKey(e) > recencyKey(out[pos]) {
+			out[pos] = e
+		}
+	}
+	return out
 }
 
 // ReduceAppVerdict reduces the reviewer App's reviews to the decisive verdict AT HEAD.
@@ -227,6 +311,12 @@ func LastAppDecisiveReview(appBotLogin string, reviews []AppReview) (AppReview, 
 // is the full answer, not a missing one. On a CI-REQUIRED repo an empty rollup is
 // Unknown: no checks have reported, and "no checks" must never read as "green".
 func ReduceCIVerdict(checks []CICheck, ciRequired bool) CIVerdict {
+	// Reduce to the latest run per check NAME first — branch protection's own rule — so a
+	// superseded run (an older CANCELLED, a stale QUEUED left by a push+pull_request
+	// double-trigger) does not count against a PR whose current run for that name is not
+	// it. This is the SAME reduction deskflip's gate runs, from the SAME shared code, so
+	// the board verdict and the flip gate cannot diverge on a double-triggered PR.
+	checks = LatestRunPerName(checks, CICheck.groupKey, CICheck.recencyKey)
 	var pass, pending, fail int
 	for _, c := range checks {
 		switch {

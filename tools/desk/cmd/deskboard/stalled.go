@@ -573,7 +573,19 @@ func knownBriefIDs(briefStatus map[string]string) []string {
 func toCIChecks(rollup []check) []deskkit.CICheck {
 	out := make([]deskkit.CICheck, 0, len(rollup))
 	for _, c := range rollup {
-		out = append(out, deskkit.CICheck{Status: c.Status, Conclusion: c.Conclusion})
+		// Name/Context and the recency stamps are carried through so ReduceCIVerdict can
+		// run the latest-run-per-name reduction. Dropping them here (the prior shape lifted
+		// only Status/Conclusion) is what left this path structurally unable to ignore a
+		// superseded run — the deskkit half of the #282/#289 board/flip divergence.
+		out = append(out, deskkit.CICheck{
+			Name:        c.Name,
+			Context:     c.Context,
+			Status:      c.Status,
+			Conclusion:  c.Conclusion,
+			StartedAt:   c.StartedAt,
+			CompletedAt: c.CompletedAt,
+			CreatedAt:   c.CreatedAt,
+		})
 	}
 	return out
 }

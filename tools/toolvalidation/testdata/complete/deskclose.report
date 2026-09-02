@@ -1,0 +1,13 @@
+Harness healthy: baseline GREEN, positive control CAUGHT.
+  CAUGHT           a WORKER token falls through to the reviewer half (the single-actor close, restated as a mutation)
+  CAUGHT           a worker's --dispute is no longer refused (the worker disputes instead of proposing)
+  CAUGHT           the same actor may propose AND confirm (the two-role property collapses to one role)
+  CAUGHT           a reviewer may confirm with NO standing proposal (the reviewer originates the supersession)
+  CAUGHT           the dispute posts its reason but never applies needs-decision (the item stays closeable)
+  CAUGHT           the proposal posts its comment but never applies superseded? (invisible to the queue and the sweep)
+  CAUGHT           an UNREADABLE token identity is rounded up to the reviewer role (could-not-check becomes a grant)
+  CAUGHT           a roster binding both roles to ONE App is accepted (the lane enforces nothing and says so to no one)
+  CAUGHT           a fenced documentation example is read as a live proposal
+  CAUGHT           the back-reference on the target is dropped (the record reads in one direction only)
+  CAUGHT           a closed-unmerged target satisfies the confirm (work that never landed supersedes live work)
+Totals: 11 caught, 0 NOT CAUGHT, 0 could-not-mutate.

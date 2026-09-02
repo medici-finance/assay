@@ -100,6 +100,23 @@ Runner: worker (session `statusgen-10`), local `go` toolchain, 2026-08-29.
 | 5 | `grep -n "downstream" docs/research/graph-export-evaluation.md` | 0 | matches at lines 24 and 33; the required finding-impact-closure question (Q1) is answered in the note |
 | 6 | `cd statusgen && go run . --root .. --lint` | 0 | `LINT: PASS` (pre-existing NOTICEs unrelated to this brief) |
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5927efe`
+
+Runner ≠ implementer (the rows above are the implementer's; this is the independent non-implementer re-run). Own temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`); rows run from inside `statusgen/`. Deliverables present: `statusgen/graph.go`, `statusgen/graph_test.go`, `--graph` wiring in `statusgen/main.go`, `docs/research/graph-export-evaluation.md`.
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `go run . --root .. --graph dot \| grep -m1 "digraph"` | 0 | `digraph assay {` |
+| 2 | `go run . --root .. --graph jsonl \| head -1 \| python3 -m json.tool >/dev/null` | 0 | first JSONL line parses as valid JSON |
+| 3 | `go test -run Graph -v . \| grep -c -- '--- PASS:'` | 0 | 9 (9 graph subtests pass) |
+| 4 | two successive `--graph jsonl` runs, sha256-compared | 0 | identical hash `15ccbf6d…f6ba` — byte-deterministic |
+| 5 | `grep -n "downstream" docs/research/graph-export-evaluation.md` | 0 | matches L24, L33 — the required finding-impact-closure question (Q1) is answered |
+| 6 | `go run . --root .. --lint` | 0 | `LINT: PASS` (only pre-existing NOTICEs) |
+
+`RISK-VALUE: N/A` — read-only export mode; `statusgen/graph.go` writes only to `os.Stdout` (no `os.Create`/`WriteFile`), and all conditionals are structural (empty-string checks @ `statusgen/graph.go:93,110,291`, sort comparators @ `:135,148,151`), not risk-bearing guard constants.
+
+**VERIFY: PASS** — all six Verify rows checked-clean by a non-implementer; my run reproduces the implementer's Evidence exactly. Advancing `implemented → verified`.
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
 Reviewer re-derives the finding-impact-closure answer by hand on the chosen case and compares

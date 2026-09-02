@@ -106,6 +106,22 @@ facts:
 <!-- appended at implementation time by a NON-implementer: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner). -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `63a7a8a` (PR #299)
+
+Runner ≠ implementer. Own temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`); rows run from inside `qualgen/` (nested module). Packages present: `qualgen/telemetry/`, `qualgen/m4/`.
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `cd qualgen && go build ./... && go vet ./telemetry/ ./m4/` | 0 | build + vet clean, no output |
+| 2 | `cd qualgen && go test ./telemetry/ ./m4/` | 0 | `ok qualgen/telemetry`, `ok qualgen/m4` |
+| 3 | `go test ./m4/ -run TestForensics_JoinDereferencesTelemetry -v` | 0 | `--- PASS` — join resolves retries THROUGH the interface to the correct PR + M1 churn |
+| 4 | `go test ./m4/ -run TestForensics_MissingTelemetryIsCouldNotMeasure -v` | 0 | `--- PASS` — missing telemetry → could-not-measure, never zero |
+| 5 | (from `qualgen/`) `grep -L -e fileadapter -e 'Adapter{' qualgen/m4/forensics.go && go list -deps ./m4/ | grep -c 'qualgen/telemetry$'` | 0 | `grep -L` names NO concrete adapter in `qualgen/m4/forensics.go`; deps count of the interface package `qualgen/telemetry` = 1 (interface pkg only) — the OSS boundary holds |
+
+`RISK-VALUE: NAMED, NOT DERIVED — behavior-count band boundaries 0 / 2 / 5 in behaviorLabel() @ qualgen/m4/forensics.go:166-177` (buckets "0","1-2","3-5","6+"), applied to both named correlations (retries-band × churn-rate, refusal-count × defect-inducing rate). **These are PRESENTATION buckets, not safety guards** (gate:model, all risk answers no; advisory M4 forensics analytics — no fault-to-damage guard). The file itself documents the derivation gap and its owner: *"Bucket boundaries are a documented, coarse starting point (not a tuned threshold) — quality/12's later ritual work is where band width gets revisited against a seasoned corpus."* The durable pointer for tuning is therefore **quality/12** (band-width revisit against a seasoned corpus); recorded here rather than a separate question issue since quality/12 already owns it. The OSS boundary holds: `forensics.go` depends on the `qualgen/telemetry` interface package only, names no concrete adapter; the sole in-tree `TelemetrySource` is the file reference adapter reading an operator-supplied `--telemetry` path.
+
+**VERIFY: PASS** — all five Verify rows checked-clean by a non-implementer. Advancing `implemented → verified`; the NAMED-NOT-DERIVED band boundaries are presentation buckets tracked for tuning in quality/12.
+
 ## Review
 Gate: model (all four risk answers no — repo-agnostic OSS Go: an interface plus a
 file-based reference adapter plus a read-only join over already-recorded artifacts; no

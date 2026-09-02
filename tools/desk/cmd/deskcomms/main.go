@@ -66,7 +66,17 @@ type outcome struct {
 	detail string
 }
 
-func main() { os.Exit(run(os.Args[1:])) }
+func main() {
+	// Explicit roster class: deskcomms is a desk CLIENT verb — it reads the
+	// config-home roster (RoleAppLoginOrEmpty stamps the sender's App login) and
+	// never runs in CI, so ciEligible=false. Declared rather than defaulted: the
+	// deskkit echo-coverage guard treats ClassWrite-by-omission as the defect.
+	deskkit.SetToolClass(deskkit.ClassForTool(false))
+	// P3: echo the effective roster once per run, so a NARROWING of the control
+	// surface is visible at run time and not only in a settings diff.
+	deskkit.EchoEffectiveConfig(os.Stderr)
+	os.Exit(run(os.Args[1:]))
+}
 
 func run(args []string) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
