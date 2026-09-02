@@ -187,10 +187,18 @@ record — that is a follow-on, not a claim this re-home makes. Statuses therefo
 | 10 | [SpecMem portable-memory spike — one stream's registers across two harnesses](./brief-10-specmem-portable-memory-spike.md) | 0 | M | implemented | — | — |
 | 11 | [Durable-monitor capability + residual harness-token prose-audit](./brief-11-durable-monitor-capability.md) | 3 | M | todo | — | — |
 | 12 | [Cursor — the third harness column (ground-truth + binding + generator verb + public column)](./brief-12-cursor-third-column.md) | 5 | L | implemented | — | — |
+| 13 | [Cursor live-desk-smoke protocol + first run](./brief-13-cursor-live-desk-smoke.md) | 6 | M | todo | — | — |
 
 **Note on 07:** artifacts delivered (adoption docs, freshness registration, smoke
 protocol). The live Codex smoke run itself is held — it needs a Codex environment (OpenAI
 account + install), the external true head; Ian provides.
+
+**Note on 13:** brief 12 built the structural Cursor column but explicitly scoped the live
+proof out as a separate gate:human acceptance step mirroring 07's; no brief owned that step
+until 13. 13 is not on the Codex critical path and does not gate 01–07 — it is the Cursor
+column's own equivalent of 07, one wave after 12, and it is what turns "Cursor is
+structurally supported" into "a full desk loop has run on Cursor." Blocked the same way 07
+is: it needs a live Cursor install, Ian provides/sanctions.
 
 ## Critical path
 
@@ -242,6 +250,7 @@ Wave 2: [04]←{02,03}, [05]←{01,03}
 Wave 3: [06]←{03,04,05}, [11]←04
 Wave 4: [07]←{05,06}
 Wave 5: [12]←{03,04,05,06}
+Wave 6: [13]←12
 ```
 
 Critical path: `ext(Codex env) → 01 → 03 → 04 → 06 → 07`. 02 runs parallel in wave 0 and
@@ -250,15 +259,17 @@ feeds 04; 05 runs parallel with 04 in wave 2. 11 (the residual harness-token pro
 parallel to 06; it strengthens the bodies 06 packages and SHOULD land before 06 so no
 un-honorable `Monitor` prose is shipped, but it is modeled parallel since 06 already gates
 on 04's neutral core rather than carrying 11 in its `depends`. 12 (Cursor, the third
-harness column) reuses the whole seam and lands after the Codex chain (wave 5).
+harness column) reuses the whole seam and lands after the Codex chain (wave 5). 13 (the
+Cursor live-desk-smoke protocol + first run — this stream's Cursor-side equivalent of 07)
+follows 12 in wave 6; like 07 it does not extend the Codex critical path.
 
 ## Gate distribution — derived, not spread
 
-**03 and 07 are `gate: human`**: 03 because only Ian can commit the target set and a
-delivery channel whose marketplace option interacts with the one-way publication; 07
-because its acceptance evidence is a live session on the second harness — an act
-outside CI that a human runs or sanctions. All other briefs answer the four risk
-questions `no` and gate `model` — nothing here touches funds, customers, regulators,
+**03, 07, and 13 are `gate: human`**: 03 because only Ian can commit the target set and a
+delivery channel whose marketplace option interacts with the one-way publication; 07 and 13
+because their acceptance evidence is a live session on the second and third harness
+respectively — an act outside CI that a human runs or sanctions. All other briefs answer the
+four risk questions `no` and gate `model` — nothing here touches funds, customers, regulators,
 or an irreversible surface; everything is git-revertible text and tooling. (Brief 02
 declares one out-of-repo file under the rule-7 protocol; that is a serialization
 constraint, not a risk gate.)
@@ -270,7 +281,7 @@ constraint, not a risk gate.)
 | External | Relationship | Note |
 |---|---|---|
 | Live Codex environment (OpenAI account + install) | **True head** | Blocks 01's behavioural rows and 07's smoke run; Ian provides |
-| Live Cursor environment (install) | **Head for 12** | Blocks 12's live-confirm rows and its parity smoke; Ian provides |
+| Live Cursor environment (install) | **Head for 12, 13** | Blocks 12's live-confirm rows and 13's live-desk-smoke run (its full-loop acceptance step); Ian provides |
 | The upstream `.claude/skills/{the-desk,batch-fanout,verify-desk,pr-review-desk}` copies | **Sibling PR (02)** | The authority flip converts them to thin pointers; both PRs cite each other's SHA |
 | `~/.claude/skills/author-brief/SKILL.md` | **Out-of-repo file (02)** | Declared per rule 7: one in flight, applied last, committed in the `~/.claude` stopgap repo |
 | The publication review (manifest + gate) | **Gates the marketplace channel only** | The in-bundle install path ships without it; nothing in this stream publishes |
