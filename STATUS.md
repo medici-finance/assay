@@ -28,6 +28,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
+| iso-9001 | 05 — Records control and retention, stated once (7.5.3) | 1 | 1500 |
 | quality | 12 — M4 gate-yield accounting + ritual-effectiveness joins [exec:strong] | 4 | 1500 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 | quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
@@ -38,7 +39,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (57 desk-actionable of 58 total — 34 at implemented, 24 verified awaiting review)
+## Awaiting verification / review (57 desk-actionable of 58 total — 31 at implemented, 27 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -74,7 +75,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | quality | 04 | verified | 2500 | 3 | — | 2026-08-30 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 04 | implemented | 2000 | 2 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2000 | 2 | — | — | — |
-| iso-9001 | 02 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| iso-9001 | 02 [exec:strong] | verified | 2000 | 2 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | quality | 10 [exec:strong] | verified | 2000 | 2 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | mistake-proofing | 02 | verified | 1500 | 1 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
@@ -85,7 +86,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 04 [exec:strong] | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | desk-tools | 05 [exec:strong] | verified | 1000 | 0 | — | 2026-08-26 opus-4.8[1m]-verifier | — |
-| desk-tools | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 06 [exec:strong] | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | forge-gitlab | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -102,7 +103,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
-| statusgen | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| statusgen | 10 [exec:strong] | verified | 1000 | 0 | — | 2026-09-01 opus-4.8[1m]-verifier | — |
 | statusgen | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 13 | implemented | 1000 | 0 | — | — | — |
@@ -160,7 +161,7 @@ _None._
 - 03 Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN — implemented (wave 1)
 - 04 Deterministic runner — execute rows, batch, sign, file verdict issues — verified (wave 1)
 - 05 Escape-valve `Decide()` primitive in deskkit — verified (wave 1)
-- 06 Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) — implemented (wave 1)
+- 06 Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) — verified (wave 1)
 
 ### desktools-go-git (8 open)
 
@@ -201,7 +202,7 @@ _None._
 ### iso-9001 (6 open)
 
 - 01 Emit the tool-validation evidence pack as a release asset (7.1.5) — todo (wave 0)
-- 02 Align three shipped disclosures with the code they describe (B9) — implemented (wave 0)
+- 02 Align three shipped disclosures with the code they describe (B9) — verified (wave 0)
 - 03 A finding closes on a fired control — the effectiveness record (10.2) — todo (wave 1)
 - 04 Record the authorizing human in the release itself (8.6) — todo (wave 1)
 - 05 Records control and retention, stated once (7.5.3) — todo (wave 1)
@@ -250,7 +251,7 @@ _None._
 - 07 new brief-flow metrics — verified (wave 1)
 - 08 composite AssayScore computation — todo (wave 2)
 - 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
-- 10 graph export (`--graph` DOT + JSONL) — implemented (wave 1)
+- 10 graph export (`--graph` DOT + JSONL) — verified (wave 1)
 - 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
 - 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — implemented (wave 1)
 - 13 cadenced roadmap artifacts (`--cadence weekly/monthly`) — implemented (wave 1)
