@@ -105,9 +105,15 @@ cellctl new <cell> \
   --cells-yaml /path/to/cells-<cell>.yaml \
   --orgs org-a,org-b \
   --deskd-app-pem "$HOME/.config/assay/<cell>-desk-app.pem" \
-  --deskd-app-id-var <CELL>_DESK_APP_ID \
+  [--deskd-app-id-var DESK_APP_ID] \
   [--port 8787]
 ```
+
+`--deskd-app-id-var` names the variable in the **cell home's** `apps.env` holding the `deskd` App's
+id, and defaults to `DESK_APP_ID`. That default is right for most cells: `cellctl deskd` sources the
+cell home's `apps.env`, not the operator's, and a cell home names its Apps by generic **role**
+(`DESK_APP_ID`, `REVIEWER_APP_ID`, …) rather than by the operator's own naming. Pass the flag only
+when this cell's `apps.env` calls it something else.
 
 That writes `cell.env`, creates `home/`, `bin/`, `index/`, `worktrees/`, copies the cells slice in,
 and symlinks `.config/gh` + `.gitconfig` to the operator's real ones. It then prints a per-cell
@@ -121,9 +127,13 @@ states who the cell trusts — custody acts, which are the ones a human should p
    `ASSAY_ALLOWED_REPOS` / `ASSAY_SCAN_REPOS` naming **this** cell's repos only. Starting from
    another cell's file is fine; leaving one of its App bindings in place is not — that points this
    cell's writes at another cell's identity.
-2. **`home/.config/assay/apps.env`** plus one `<role>-app.pem` **symlink** per role into
+2. **`home/.config/assay/apps.env`** — the cell's App ids under the generic role names
+   (`DESK_APP_ID`, `REVIEWER_APP_ID`, …) — plus one `<role>-app.pem` **symlink** per role into
    `${ASSAY_CONFIG_HOME:-$HOME/.config/assay}`. Symlink, never copy: the private keys keep one
-   custody location, and a cell directory you delete takes no key material with it.
+   custody location, and a cell directory you delete takes no key material with it. If this cell
+   names its `deskd` App id something other than `DESK_APP_ID`, set `DESKD_APP_ID_VAR` in `cell.env`
+   to the name used here — `cellctl deskd` names both the file and the variable when it cannot find
+   one, rather than guessing.
 3. **`bin/deskd` and `bin/deskcli`** — build them from the desk console (its `cmd/deskd` and
    `cmd/deskcli`), or take them from the release tarball if your distribution channel ships them.
 4. **`cells-<cell>.yaml`** — the cell's slice of `cells.yaml` and nothing else. It must validate on
@@ -208,10 +218,19 @@ cellctl up <cell> [--no-the-desk] [--no-attach] [CLAUDE_CONFIG_DIR]
 ```
 
 A tmux session named `<cell>-cell`: a `deskd` window (standing it if it is not already up, otherwise
-watching `/healthz`) and one window per role in `ROLES`. **`the-desk` is included by default** —
-`--no-the-desk` drops the coordinator window and leaves the four loop roles. Windows start two
-seconds apart, so they do not all arrive at the fetch lock together. `up` attaches unless you pass
-`--no-attach`; re-attach later with `tmux attach -t <cell>-cell`.
+watching `/healthz`) and one window per role in `ROLES`. Windows start two seconds apart, so they do
+not all arrive at the fetch lock together. `up` attaches unless you pass `--no-attach`; re-attach
+later with `tmux attach -t <cell>-cell`.
+
+**`the-desk` is a default window, not an opt-in.** It is first in `ROLES_DEFAULT`; if a hand-edited
+`cell.env` `ROLES` omits it, `up` prepends it anyway, and the `the-desk` window is the one selected
+when the session comes up. `--no-the-desk` opts out and leaves the four loop roles. `--with-the-desk`
+is accepted and does nothing — it was the flag when the coordinator was opt-in, and silently
+ignoring it is better than failing a command that asks for what already happens.
+
+Each window re-invokes `cellctl` by its **absolute** path, resolved once at startup from
+`BASH_SOURCE`. A tmux window runs in the cell directory, where the relative `$0` a shell-invoked
+script carries (`./cellctl`) does not resolve.
 
 **Down:**
 
@@ -238,7 +257,7 @@ Kills the session and this cell's `deskd` — matched on its own `--config` path
 | `DESKD_ADDR` | the address `deskd` serves on (default `127.0.0.1:8787` — give a second cell its own port) |
 | `DESKD_INDEX` | the persistent `deskd` index path |
 | `DESKD_APP_PEM` | the `deskd` read App's private key, in the operator's config home |
-| `DESKD_APP_ID_VAR` | the variable name in `apps.env` holding that App's id |
+| `DESKD_APP_ID_VAR` | the variable name in the **cell home's** `apps.env` holding that App's id (default `DESK_APP_ID`, the generic role name a cell `apps.env` uses) |
 | `ORGS` | comma-separated orgs to mint one installation token each for |
 | `ROLES` | the role windows `up` opens (default: all five) |
 | `TMUX_SESSION` | override the session name (default `<cell>-cell`) |

@@ -2,10 +2,12 @@
 # cellctl — start, stop and scaffold an Assay CELL on one laptop (the laptop route).
 #
 #   cellctl ls                                   cells under $CELLS_ROOT
-#   cellctl new   <cell> --repo <checkout> --cells-yaml <file> --orgs a,b \
-#                        --deskd-app-pem <pem> --deskd-app-id-var <VAR> [--port N]
+#   cellctl new   <cell> --repo <checkout> --cells-yaml <file> --orgs a,b --deskd-app-pem <pem> \
+#                        [--deskd-app-id-var VAR] [--port N]
 #                                                scaffold <cell>/ (cell.env, home/, README) — then YOU fill
 #                                                home/.config/assay/{roster.env,apps.env} + the key symlinks
+#                                                VAR defaults to DESK_APP_ID, the generic role name a
+#                                                CELL apps.env uses
 #   cellctl check <cell>                         preconditions: cell.env, roster, keys, binaries, plugin, repo
 #   cellctl deskd <cell>                         stand the cell's persistent deskd (attended: mints per-org read tokens)
 #   cellctl desk  <cell> <role> [CLAUDE_CONFIG_DIR]   one role window (own worktree, real HOME, shims)
@@ -30,6 +32,10 @@
 # login. ONLY the desk verbs run with the cell config-home, and they get there through the shims.
 set -euo pipefail
 
+# Absolute path to this script. The tmux windows `up` opens re-invoke cellctl from the CELL
+# directory, where a relative `$0` (`./cellctl`) does not resolve — so the re-invocation uses this,
+# never `$0`.
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 CELLS_ROOT="${CELLS_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/assay/cells}"
 # Where the pinned desk-tools tarball installs its binaries (docs/adopting-assay.md,
 # PRIMITIVE: install-desk-tools). Override for a different bindir.
@@ -39,7 +45,7 @@ REAL_CONFIG_HOME="${ASSAY_CONFIG_HOME:-$HOME/.config/assay}"
 ROLES_DEFAULT="the-desk pr-review-desk verify-desk intake-desk worker-desk"
 
 die(){ echo "cellctl: $*" >&2; exit 3; }
-usage(){ sed -n '2,30p' "$0"; exit "${1:-0}"; }
+usage(){ sed -n '2,32p' "$0"; exit "${1:-0}"; }
 
 cell_dir(){ local c="$1" d="$CELLS_ROOT/$1"; [[ -f "$d/cell.env" ]] || die "no cell '$c' under $CELLS_ROOT (cell.env missing)"; echo "$d"; }
 load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
@@ -112,7 +118,11 @@ cmd_deskd(){
   [[ -n "${ORGS:-}" ]] || die "cell.env: ORGS is not set"
   # shellcheck disable=SC1091
   source "$CELL_CONFIG/apps.env"
-  local app_id="${!DESKD_APP_ID_VAR:-}"; [[ -n "$app_id" ]] || die "apps.env has no $DESKD_APP_ID_VAR"
+  # The variable is looked up in the CELL home's apps.env, not the operator's — cell homes name
+  # their Apps by generic ROLE (DESK_APP_ID, REVIEWER_APP_ID, …), so the operator's own naming does
+  # not carry over. Name the cell's variable here rather than guessing.
+  local app_id="${!DESKD_APP_ID_VAR:-}"
+  [[ -n "$app_id" ]] || die "cell apps.env ($CELL_CONFIG/apps.env) has no $DESKD_APP_ID_VAR — set DESKD_APP_ID_VAR in cell.env to the variable name used THERE (cell homes use the generic role names, e.g. DESK_APP_ID)"
   local t; for t in openssl curl python3; do command -v "$t" >/dev/null || die "$t missing"; done
   b64url(){ openssl base64 -A | tr '+/' '-_' | tr -d '='; }
   local now hdr pl sig jwt; now=$(date +%s)
@@ -200,7 +210,7 @@ cmd_up(){
   if deskd_up; then
     deskd_cmd="echo '[deskd] already up on $DESKD_ADDR — watching /healthz every 60s'; while :; do date -u +%H:%MZ; curl -s --max-time 5 http://$DESKD_ADDR/healthz | head -c 240; echo; sleep 60; done"
   else
-    deskd_cmd="CELL_ATTENDED=1 '$0' deskd '$CELL'"
+    deskd_cmd="CELL_ATTENDED=1 '$SELF' deskd '$CELL'"
   fi
   tmux new-session -d -s "$SESSION" -n deskd -c "$CELL_DIR" "$deskd_cmd; echo '[deskd] exited'; exec \$SHELL"
   local roles="$ROLES"
@@ -209,7 +219,7 @@ cmd_up(){
   local role name
   for role in $roles; do
     case "$role" in pr-review-desk) name=review;; the-desk) name=the-desk;; *) name="${role%-desk}";; esac
-    tmux new-window -t "$SESSION" -n "$name" -c "$CELL_DIR" "'$0' desk '$CELL' '$role' '$cfg'; echo '[$role] exited'; exec \$SHELL"
+    tmux new-window -t "$SESSION" -n "$name" -c "$CELL_DIR" "'$SELF' desk '$CELL' '$role' '$cfg'; echo '[$role] exited'; exec \$SHELL"
     # Stagger the windows: each one fetches the shared .git, and starting them at once puts every
     # window into the fetch lock's retry loop at the same moment.
     sleep 2
@@ -234,14 +244,16 @@ cmd_down(){
 }
 
 cmd_new(){
-  local cell="${1:?cellctl new <cell> --repo … --cells-yaml … --orgs … --deskd-app-pem … --deskd-app-id-var …}"; shift
-  local repo="" yaml="" orgs="" pem="" idvar="" port=8787
+  local cell="${1:?cellctl new <cell> --repo … --cells-yaml … --orgs … --deskd-app-pem … [--deskd-app-id-var VAR]}"; shift
+  # DESK_APP_ID is the default because `cellctl deskd` reads the CELL home's apps.env, and cell
+  # homes name their Apps by generic role. Override only if this cell's apps.env names it otherwise.
+  local repo="" yaml="" orgs="" pem="" idvar="DESK_APP_ID" port=8787
   while [[ $# -gt 0 ]]; do case "$1" in
     --repo) repo="$2"; shift 2;; --cells-yaml) yaml="$2"; shift 2;; --orgs) orgs="$2"; shift 2;;
     --deskd-app-pem) pem="$2"; shift 2;; --deskd-app-id-var) idvar="$2"; shift 2;; --port) port="$2"; shift 2;;
     *) die "new: unknown flag $1";; esac; done
-  [[ -n "$repo" && -n "$yaml" && -n "$orgs" && -n "$pem" && -n "$idvar" ]] \
-    || die "new: --repo --cells-yaml --orgs --deskd-app-pem --deskd-app-id-var are all required"
+  [[ -n "$repo" && -n "$yaml" && -n "$orgs" && -n "$pem" ]] \
+    || die "new: --repo --cells-yaml --orgs --deskd-app-pem are required"
   [[ -f "$yaml" ]] || die "new: --cells-yaml is not a file: $yaml"
   local d="$CELLS_ROOT/$cell"; [[ -e "$d" ]] && die "$d already exists"
   mkdir -p "$d/home/.config/assay" "$d/bin" "$d/index" "$d/worktrees"
@@ -272,9 +284,11 @@ so \`cellctl new\` does not do them for you. Then run \`cellctl check $cell\`.
    and \`ASSAY_ALLOWED_REPOS\` / \`ASSAY_SCAN_REPOS\` naming the cell's repos ONLY. Start from
    another cell's file as a template and replace every App — a copied binding points this cell's
    writes at another cell's identity.
-2. \`home/.config/assay/apps.env\` — the cell's App ids (including \`$idvar\`), plus one
-   \`<role>-app.pem\` SYMLINK per role into your real config home (\`$REAL_CONFIG_HOME\`).
-   Symlink, never copy: one custody location for the private keys.
+2. \`home/.config/assay/apps.env\` — the cell's App ids under the generic role names
+   (\`$idvar\`, \`REVIEWER_APP_ID\`, …), plus one \`<role>-app.pem\` SYMLINK per role into your real
+   config home (\`$REAL_CONFIG_HOME\`). Symlink, never copy: one custody location for the private
+   keys. If this cell names its deskd App id something other than \`$idvar\`, set
+   \`DESKD_APP_ID_VAR\` in \`cell.env\` to the name used here.
 3. \`bin/deskd\`, \`bin/deskcli\` — from the desk console (build its \`cmd/deskd\` and
    \`cmd/deskcli\`), or from the release tarball if your channel ships them.
 4. \`cells-$cell.yaml\` — the cell's slice of \`cells.yaml\` and nothing else; it must validate on
