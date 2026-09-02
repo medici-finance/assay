@@ -18,7 +18,7 @@ schema: brief-v1
 authored: 2026-09-01 by windows-port authoring session
 sources:
   - "Ian's direction (2026-09-01): a windows runner leg proving statusgen --lint + a desk-verb smoke passes on Windows"
-  - "survey (2026-09-01 @ origin/main): every runs-on in .github/workflows is a self-hosted medici-builder-public / medici-builder-release runner; zero windows-latest; ci.yml build-test does go build+vet (not go test); assay-statusgen.yml lint job runs statusgen --root . --lint; toolchain hand-installed linux-amd64 by construction"
+  - "survey (2026-09-01, re-surveyed 2026-09-02 @ origin/main): every runs-on in .github/workflows is Linux — self-hosted medici-builder-public / medici-builder-release, plus one GitHub-hosted ubuntu-latest job in inbound-triage.yml (landed after the first survey); zero windows-latest; ci.yml build-test does go build+vet (not go test); assay-statusgen.yml lint job runs statusgen --root . --lint; toolchain hand-installed linux-amd64 by construction"
   - "windows-port/01: emits the statusgen-windows-<arch>.exe asset the smoke can install and run"
   - "windows-port/02: the portability triage — which desk verb is safe to smoke on Windows (a verb that does not shell out to a POSIX-only surface)"
   - "windows-port/03: the Windows install path — when landed, this leg's smoke installs and runs THAT release binary rather than a from-source build (the release-binary smoke that closes the CI-proven claim)"
@@ -39,9 +39,12 @@ files:
   below).
 
 facts:
-- **No CI has ever run on Windows.** Every `runs-on:` today is a self-hosted `medici-builder-public` or `medici-builder-release`
-  (Linux) label, and the Go toolchain is hand-installed `go…linux-amd64.tar.gz` — so Windows is
-  a genuinely new substrate, not a matrix tweak on an existing job.
+- **No CI has ever run on Windows.** Every `runs-on:` today is Linux — the self-hosted
+  `medici-builder-public` / `medici-builder-release` labels, plus one GitHub-hosted
+  `ubuntu-latest` job in the inbound-triage workflow — and the Go toolchain is hand-installed
+  `go…linux-amd64.tar.gz`, so Windows is a genuinely new substrate, not a matrix tweak on an
+  existing job. (Re-surveyed 2026-09-02 @ origin/main; the `ubuntu-latest` job landed after the
+  brief was first authored.)
 - **Runner choice — the substrate decision, resolved in this brief, not gated out:**
   `medici-finance/assay` is public, so **GitHub-hosted `windows-latest` is free** and needs no
   procurement. Use it. This is the key difference from the harness-portability stream, whose true
