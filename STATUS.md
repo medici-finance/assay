@@ -18,7 +18,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 0/8 | 2026-09-02 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-02 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 0/6 | 2026-09-02 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-09-01 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 0/6 | 2026-09-02 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 0/16 | 2026-09-02 |  |
 | [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-09-02 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 0/13 | 2026-09-02 |  |
