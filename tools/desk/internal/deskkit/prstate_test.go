@@ -290,6 +290,24 @@ func TestReduceCIVerdict(t *testing.T) {
 		{"all skipped on ci-less is vacuously green", []CICheck{
 			{Status: "COMPLETED", Conclusion: "SKIPPED"},
 		}, false, CIVerdictPass},
+		// Latest-run-per-name (#282/#289): a superseded run of a NAME must not count against
+		// a PR whose current run for that name is green. Pre-reduction these reddened —
+		// the CANCELLED and the QUEUED both outranked the later SUCCESS.
+		{"cancelled predecessor + green latest, same name → pass", []CICheck{
+			{Name: "changelog", Status: "COMPLETED", Conclusion: "CANCELLED", CompletedAt: ciTOld},
+			{Name: "changelog", Status: "COMPLETED", Conclusion: "SUCCESS", CompletedAt: ciTNew},
+		}, true, CIVerdictPass},
+		{"stale-queued orphan + green latest, same name → pass", []CICheck{
+			{Name: "control-sweep", Status: "QUEUED"},
+			{Name: "control-sweep", Status: "COMPLETED", Conclusion: "SUCCESS", CompletedAt: ciTNew},
+		}, true, CIVerdictPass},
+		// The anti-over-loosen direction: when the LATEST run of a name is red (an older
+		// SUCCESS superseded by a newer FAILURE) the verdict must stay Fail. The reduction
+		// ignores superseded runs, never a real failing latest run.
+		{"older success superseded by newer failure, same name → fail", []CICheck{
+			{Name: "build", Status: "COMPLETED", Conclusion: "SUCCESS", CompletedAt: ciTOld},
+			{Name: "build", Status: "COMPLETED", Conclusion: "FAILURE", CompletedAt: ciTNew},
+		}, true, CIVerdictFail},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -297,5 +315,53 @@ func TestReduceCIVerdict(t *testing.T) {
 				t.Errorf("ReduceCIVerdict(ciRequired=%v) = %q, want %q", c.ciRequired, got, c.want)
 			}
 		})
+	}
+}
+
+// ciTOld sorts before ciTNew both lexicographically and chronologically — the property
+// recencyKey relies on.
+const (
+	ciTOld = "2026-01-01T00:00:00Z"
+	ciTNew = "2026-01-01T01:00:00Z"
+)
+
+// TestLatestRunPerName exercises the shared reducer directly: newest-per-name wins, a
+// stampless run loses, entries with no identity are never collapsed, and a genuinely
+// multi-name set is preserved with first-appearance order.
+func TestLatestRunPerName(t *testing.T) {
+	in := []CICheck{
+		{Name: "a", Conclusion: "FAILURE", Status: "COMPLETED", CompletedAt: ciTOld},
+		{Name: "a", Conclusion: "SUCCESS", Status: "COMPLETED", CompletedAt: ciTNew},
+		{Name: "b", Status: "QUEUED"}, // stampless
+		{Name: "b", Conclusion: "SUCCESS", Status: "COMPLETED", CompletedAt: ciTNew},
+		{Context: "legacy", CreatedAt: ciTOld},
+		{Context: "legacy", CreatedAt: ciTNew, Status: "ctx-new"},
+		{Status: "COMPLETED", Conclusion: "SUCCESS"}, // no identity
+		{Status: "COMPLETED", Conclusion: "FAILURE"}, // no identity — must NOT merge with the above
+	}
+	got := LatestRunPerName(in, CICheck.groupKey, CICheck.recencyKey)
+	if len(got) != 5 { // a, b, legacy + the two identity-less entries
+		t.Fatalf("reduced to %d entries, want 5: %+v", len(got), got)
+	}
+	byName := map[string]CICheck{}
+	identityless := 0
+	for _, c := range got {
+		if c.groupKey() == "" {
+			identityless++
+			continue
+		}
+		byName[c.groupKey()] = c
+	}
+	if byName["a"].Conclusion != "SUCCESS" {
+		t.Errorf("name a kept %q, want the newer SUCCESS", byName["a"].Conclusion)
+	}
+	if byName["b"].Conclusion != "SUCCESS" || byName["b"].Status != "COMPLETED" {
+		t.Errorf("name b kept %+v, want the completed SUCCESS over the stampless QUEUED", byName["b"])
+	}
+	if byName["legacy"].Status != "ctx-new" {
+		t.Errorf("context legacy kept %+v, want the newer entry", byName["legacy"])
+	}
+	if identityless != 2 {
+		t.Errorf("identity-less entries collapsed to %d, want 2 (no name to reduce by)", identityless)
 	}
 }
