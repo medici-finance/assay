@@ -259,17 +259,23 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
      changes no shared value). Each entry is `<path-or-component>: <routing>` where routing is one of
      `fixed-here` / `follow-up <stream>/<NN>` / `out-of-scope (<why>)`. An unlisted consumer is how
      you strand an assumption. Project wrappers (this repo's `.claude/skills/author-brief/SKILL.md`)
-     carry the full format spec. **No lint enforces this yet** — it is an authoring convention;
-     the statusgen check is a planned follow-up and reaches a consuming repo on an
-     `.assay-versions` pin bump. Conform now so the gate lands on a clean backlog.
+     carry the full format spec. **The lint enforces this field** — `statusgen --consumers` is the
+     diff-aware gate (it exits non-zero on a routing claim the diff disproves), and `statusgen
+     --lint` alone already makes one class **fatal**: a `follow-up <stream>/<NN>` naming a brief that
+     exists in no stream README is a hard PROBLEM. The rest of the field's checks are advisory
+     NOTICEs. See the generated **Enforcement status of these rules** table below for the exact
+     per-rule status; do not restate it here (it drifts — spec §4 B9).
    - **Never reclassify an entry to make it fit the grammar.** The routing token is a commitment
      record — `follow-up` says work is still owed, `out-of-scope` says it isn't — so swapping one
-     for the other to satisfy a regex destroys the fact the field exists to hold. Two cases have
-     no legal encoding yet: a `fixed-here` wanting a `(<why>)`
-     parenthetical, and a `follow-up` whose target is an intake entry or an unauthored brief, with
-     no `<NN>` to cite. Until they settle, write the entry truthfully and leave it non-conforming —
-     nothing enforces this yet, so a non-conforming entry costs nothing and a rewritten one costs
-     the record. Same reason existing briefs are not backfilled ahead of the settled grammar.
+     for the other to satisfy a regex destroys the fact the field exists to hold. A `fixed-here`
+     wanting a `(<why>)` parenthetical is already legal — the grammar is tolerant of trailing detail
+     (`fixed-here (bumps the pin in the same commit)`), so write it. The remaining awkward case is a
+     `follow-up` whose target is an intake entry or an unauthored brief with no `<NN>` to cite: do
+     **not** leave a bare `follow-up` on the belief nothing enforces it — a `follow-up` with no
+     target is a NOTICE, and inventing a `<stream>/<NN>` that does not exist is a **fatal** PROBLEM.
+     Route it truthfully as `out-of-scope (<why — deferred to an unauthored brief / intake entry>)`,
+     which records the deferral without a false or missing target. Same reason existing briefs are
+     not backfilled: the record's truth outranks the grammar, and the grammar has a truthful form.
    - **Flow Verify row**: a shared-value brief's Verify table must carry at least one row exercising
      the cross-component flow end-to-end (e.g. *frontend submits form → API persists → dashboard row
      appears*), not just the changed site. Site-green does not imply flow-green. This one stays a
@@ -384,6 +390,41 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
 Keep a brief self-contained: if executing it requires knowledge from another brief, either link it
 under "Read first" / `facts:` or state the dependency in `depends:` — never assume the reader has the
 whole plan in context.
+
+## Enforcement status of these rules (generated — do not hand-edit)
+
+Regenerate with `statusgen enforcement-status` piped through the skillslint sync
+(`go run ./tools/skillslint --sync`); the byte-diff gate in the skillslint CI job fails
+if this block drifts from the lint's rule registry. Hand-edit it and the gate reddens.
+
+This table reports what `statusgen --lint` enforces, **not** what the methodology
+requires. A rule enforced only by a tool outside the lint — a CI workflow, a desk-side
+guard — reads as `not enforced` here unless it is registered. The three statuses are
+exact: **fatal** is a `--lint` PROBLEM that makes the run exit non-zero; **advisory** is
+a NOTICE that is printed but never gates; **not enforced** means no lint rule checks it —
+it is an authoring convention only.
+
+| rule | what it checks | status |
+| --- | --- | --- |
+| `bre-alternation` | a pipe in a basic-regex grep pattern (no `-E`/`-P`) is an ordinary character, so the pattern matches the Verify row itself | advisory |
+| `consumers-flow-verify-row` | that a shared-value brief's Verify table carries at least one row exercising the cross-component flow end-to-end — a judgement call no lint decides | not enforced |
+| `consumers-followup-missing-brief` | a `consumers: follow-up <stream>/<NN>` whose target is not a brief in any stream README — the routing claim is false | fatal |
+| `consumers-followup-no-target` | a `follow-up` routing that names no `<stream>/<NN>` target — a deferral with no holder | advisory |
+| `consumers-followup-one-way` | a `follow-up` target that exists but never references the deferring brief back — the coverage claim is one-way | advisory |
+| `consumers-missing-list` | a brief whose prose reads as changing a shared surface but enumerates no `consumers:` (a heuristic prompt, never a verdict) | advisory |
+| `consumers-no-verify-row` | a brief carrying `consumers:` but no Verify row that runs `statusgen --consumers` to corroborate the routing | advisory |
+| `consumers-out-of-scope-no-reason` | an `out-of-scope` routing with no substantive reason for the reviewer who must weigh the exclusion | advisory |
+| `consumers-prose` | a `consumers:` written as a prose paragraph rather than a routed list, so nothing can corroborate it | advisory |
+| `consumers-unrouted` | a `consumers:` entry that names no routing token (`fixed-here` / `follow-up` / `out-of-scope`) | advisory |
+| `ere-literal-pipe` | a `\|` inside a `grep -E` pattern is a literal pipe, not alternation, so the row matches almost nothing and passes blind | advisory |
+| `gnu-only` | a GNU-only shell construct that fails on the BSD/macOS userland a reviewer may run the row on | advisory |
+| `gorun-exit` | a `go run` in the Command cell flattens the program's exit code, so a non-zero result reads as success | advisory |
+| `grep-zero-count` | a `grep -c` whose pass bar is satisfied by a zero count measures nothing | advisory |
+| `moving-ref` | a diff base pinned to a moving ref (a branch name, not a SHA) makes the row's result drift under it | advisory |
+| `pipeline-exit-sunk` | a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail | advisory |
+| `rE2-literal-pipe` | a `\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation | advisory |
+| `shredded-cell` | a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column | advisory |
+| `unsubstituted-metavar` | an unsubstituted `<metavar>` placeholder left in the Command cell, so the row cannot be run as written | advisory |
 
 ## Before dispatch — mistake-proofing the brief itself
 
