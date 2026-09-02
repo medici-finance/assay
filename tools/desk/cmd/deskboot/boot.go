@@ -45,18 +45,16 @@ var bootSteps = []string{
 // preflight are keyed on.
 //
 // The two vocabularies are genuinely different — a loop is a window, a role is an App
-// identity — and keeping them separate is why a session names its role ONCE here instead
+// identity — and keeping them separate is why a session names its role ONCE instead
 // of spelling both halves at every call site and eventually spelling them apart. The loop
 // half is not restated: it is DERIVED from the kill switch's compiled roster
 // (deskkit.KnownLoopNames), so a loop that exists cannot be missing from deskboot, and a
 // loop deskboot knows cannot be one the kill switch would fail to recognise.
-var loopToTokenRole = map[string]string{
-	"the-desk":       "desk",
-	"worker-desk":    "worker",
-	"pr-review-desk": "reviewer",
-	"verify-desk":    "verifier",
-	"intake-desk":    "issue-loop",
-}
+//
+// The TABLE itself now lives in deskkit, because the read verbs need the same mapping to
+// know which App identity to authenticate their reads as. A second copy here would be a
+// second answer to "which App is this window", and the two would drift.
+var loopToTokenRole = deskkit.LoopTokenRoles()
 
 // knownRoles returns the loop names deskboot accepts, sorted. It is the INTERSECTION of
 // the kill switch's roster and the mapping above: a loop with no App role cannot be

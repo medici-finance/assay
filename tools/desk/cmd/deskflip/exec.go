@@ -2,8 +2,12 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // execCommand is the single seam through which EVERY child process this verb starts
@@ -14,6 +18,24 @@ import (
 // it is a literal verb or an already-validated value, never a shell string.
 var execCommand = exec.Command
 
+// mintTokenFn is the seam the App-token lookup runs through, so a test can exercise the
+// verb without a real App credential. Production binds it to the shared deskkit resolver,
+// which shells out to the token minter and reads the file it names.
+var mintTokenFn = deskkit.RoleTokenForRepo
+
+// ghToken is the App installation token EVERY `gh` invocation from this verb authenticates
+// with. It is set once, by the app-token condition, before the first forge read.
+//
+// WHY AN EMPTY VALUE IS A HARD REFUSAL AND NEVER A FALLBACK. deskflip mutates a PR: it
+// takes it out of draft and rewrites the queue labels a human reads to decide what is
+// waiting on them. With no token in the child's environment `gh` authenticates as whatever
+// account the shell's keyring holds — in practice the operator's own login — so the write
+// lands under a HUMAN identity and reads, in the timeline and to everyone after, as a
+// human decision. A role verb acting under an operator's credential is exactly the
+// ambient-identity lane the custody rules retire, and unlike a failed read it cannot be
+// taken back once it is written. So an unset token refuses; it never degrades.
+var ghToken string
+
 type runResult struct {
 	stdout string
 	stderr string
@@ -21,9 +43,20 @@ type runResult struct {
 }
 
 func runCmd(dir, name string, args ...string) runResult {
+	// The fail-closed backstop for the rule above: even if a future code path reached a
+	// forge call before the app-token condition ran, the call does not happen. The
+	// condition is the check a caller sees; this is the one that cannot be forgotten.
+	if name == "gh" && ghToken == "" {
+		return runResult{err: errors.New(
+			"refusing to run gh with no App installation token — deskflip never falls back to the " +
+				"ambient gh identity/keyring for a write it makes under a role identity")}
+	}
 	cmd := execCommand(name, args...)
 	if dir != "" {
 		cmd.Dir = dir
+	}
+	if name == "gh" {
+		cmd.Env = append(os.Environ(), "GH_TOKEN="+ghToken)
 	}
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out

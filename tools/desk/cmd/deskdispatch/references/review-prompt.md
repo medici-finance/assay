@@ -67,7 +67,34 @@ approval RESTING on a could-not-check is unfounded. An instrument that did not l
 cleared nothing, so say which checks could not run and treat the gap as a finding rather
 than as a silence.
 
-## 5. Merge-time re-check — review against the main that will merge
+## 5. Resolve every path claim in the PR's OWN repository, at the PR's head
+
+A finding that says a file does not exist, was never added, or is not wired up is a claim
+about exactly ONE tree: the repository the pull request belongs to, at the pull request's
+head commit. The checkout the reviewer happens to be running in is a DIFFERENT tree — a
+different repository, on a different branch, at a different commit — and it agrees with the
+PR's repository only by coincidence.
+
+The failure this closes: a reviewer checked path existence in the dispatching desk's own
+checkout and reported four workflow files as missing. All four were present in the PR's
+repository. Three went out in a posted review, costing the author a round trip each, and
+each was wrong in the one way a finding must never be wrong — it asserted an absence it had
+never looked for in the place the absence would have to be.
+
+- **Read the path from the repository the PR belongs to, at the PR head** — the forge's
+  contents API at that ref, or a checkout of THAT repository at that ref. The assignment
+  block above names the target repo; it is not the same value as the checkout you are
+  running in, and it is the one that governs here.
+- **Name the tree in the finding.** Every path claim states the repository and the ref it
+  was resolved against. A reader cannot re-run a check that never says where it looked.
+- **A path claim that cannot name its tree is could-not-check, not a missing file.** Say
+  which paths could not be resolved and why; do not convert that into an absence. The
+  common kit's three-state rule binds here exactly as it binds everywhere else.
+- **A short diff is not evidence that a tree is empty.** Files a PR does not touch are
+  absent from its diff and present in its repository, so reading the diff as the tree is
+  how the invented absence gets started.
+
+## 6. Merge-time re-check — review against the main that will merge
 
 Review asks "is this correct against main?" and answers it against the main that existed at
 review time. The merge lands it in a different main. Nothing else in the loop re-asks the
@@ -93,7 +120,7 @@ question at merge time, so the reviewer carries it.
 - **Verify any artifact against its SOURCE, never against a previous render.** A render
   agrees with itself.
 
-## 6. Body and Verify table are re-checked against the CURRENT diff
+## 7. Body and Verify table are re-checked against the CURRENT diff
 
 Every re-review reads the PR body and the item's Verify table against the diff as it NOW
 stands, and treats any claim the diff contradicts as a blocker, not a nit.
@@ -114,7 +141,7 @@ stands, and treats any claim the diff contradicts as a blocker, not a nit.
   that will merge", the honest answer from that signal is could-not-check, and you may not
   upgrade that to "the approval is fine".
 
-## 7. No-default-probe convention on any committed tool or script
+## 8. No-default-probe convention on any committed tool or script
 
 When the PR adds or changes a committed tool or script, check that it does not default to
 network probing. Flag any network-reaching default (a mode that contacts a cluster or a
@@ -125,7 +152,7 @@ was a committed checker that defaulted to an auto mode and issued dozens of read
 queries against a live admin context. A network-reaching mode is acceptable only behind an
 explicit opt-in flag that prints its target.
 
-## 8. Board-row flip check — the Status cell must be a bare lifecycle token
+## 9. Board-row flip check — the Status cell must be a bare lifecycle token
 
 When the PR flips its item's row in the stream board README, the Status cell must be a bare
 token — one of `todo` / `in-progress` / `implemented` / `verified` / `done`, or the hold
@@ -135,7 +162,7 @@ column right into a cascade of problems that aborts the board regeneration. Both
 blockers even when the flip is substantively correct — the row mechanics are the defect.
 Do NOT flag a legitimate `blocked` cell as invalid: it is an accepted value.
 
-## 9. Verdict mechanics
+## 10. Verdict mechanics
 
 - Post the verdict as a real review under the reviewer App identity, through the desk
   verb — never a raw forge call, and never as the PR author.
