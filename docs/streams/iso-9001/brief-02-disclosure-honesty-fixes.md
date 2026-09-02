@@ -136,6 +136,27 @@ facts:
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-01 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5927efe`
+
+Runner ≠ implementer. Own temp worktree off `origin/main`, offline (`KUBECONFIG=/dev/null`). Docs-only brief (three shipped disclosures aligned with the code they describe); no code/guard changed.
+
+| # | Command | Exit | Result |
+|---|---------|------|--------|
+| 1 | `git grep -n 'enforces contiguous numbering' -- README.md` | 1 | no output — stale claim gone (dereference inverts as expected) |
+| 2 | `git grep -n 'contiguity is enforced by statusgen' -- docs/streams/FINDINGS.md` | 1 | no output — second copy gone |
+| 3 | `git grep -nF 'no command is run' -- docs/evidence-bundle.md` | 1 | no output — stale Testing row gone |
+| 4 | `git grep -nF 'Do not claim gap detection' -- docs/registers.md` | 0 | `docs/registers.md:25` normative statement unedited |
+| 5 | `git grep -nF 'sha256' -- docs/evidence-bundle.md` | 0 | corrected Testing row (`docs/evidence-bundle.md:108`) names the sha256 output hash |
+| 6 | `git grep -nF 'corroborate' -- docs/evidence-bundle.md` | 0 | segregation row (`:109`) + "does not claim" bullets (`:128`,`:130`) name `--corroborate --pr` |
+| 7 | `git grep -n 'tombstone' -- README.md docs/streams/FINDINGS.md` | 0 | both surfaces (`README.md:14`, `docs/streams/FINDINGS.md:5,7`) name the enforced property |
+| 8 | `git grep -nF 'not an unforgeable attestation' -- docs/evidence-bundle.md` | 0 | residual survived (`:108`,`:125`) — not overstated |
+| 9 | `git grep -n 'derived' -- statusgen/verifyrun.go` | 0 | runner attribution derived in source (`statusgen/verifyrun.go:170,599,1095`) — the new sentence is not dangling |
+| 10 | `cd statusgen && go run . --root .. --lint` | 0 | `LINT: PASS` (only NOTICEs, none for iso-9001) |
+
+`RISK-VALUE: N/A` — docs-only brief; per the brief facts "Nothing in this brief changes behaviour… it adds no control." No literal constant in any guard is introduced or changed.
+
+**VERIFY: PASS** — all ten Verify rows checked-clean by a non-implementer (rows 1-3 correctly invert to exit 1; rows 4-10 exit 0; lint green). Advancing `implemented → verified`.
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). **This table gates presence and
 absence of specific sentences, not their adequacy** (`docs/brief-rules.md` rule 8): rows 5–8
