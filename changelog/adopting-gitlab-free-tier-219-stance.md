@@ -1,0 +1,2 @@
+### Fixed
+- `docs/adopting-assay-gitlab.md` §0.1 now states the ruled edition stance (#219): Free / Community Edition is conforming for the core lane with its degradations disclosed — the earlier wording ("a pilot lane, not a conforming deployment") contradicted the ruling. The disclosed-degradation table grows from the two rows the edition matrix named to the seven the live pilot measured, each with what stands in for the control on Free and the tier that closes it.
