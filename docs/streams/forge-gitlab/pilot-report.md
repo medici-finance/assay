@@ -21,14 +21,16 @@ repo.
 | Tracking project | `GET /projects/86032201` | id `86032201`, `visibility: private`, `default_branch: main`, `merge_method: merge`, `ci_config_path: ""` |
 | Human owner | `GET /projects/86032201/members/all` | one user at `access_level: 50` (Owner) |
 | Service accounts | `GET /projects/86032201/members/all` | 7 bots: reviewer `41987965`, worker `41987966`, verifier `41987969`, desk `41987971`, board-writer `41987978` at `access_level: 30` (Developer); issue-loop `41987973`, intake-loop `41987976` at `access_level: 20` (Reporter). Every one returns `"bot": true` on `GET /user` |
-| Protected `main` | `GET /projects/86032201/protected_branches` | rule id `312839985`: `push_access_levels: [{access_level: 0, "No one", user_id: null, group_id: null}]`, `merge_access_levels: [{access_level: 30, "Developers + Maintainers"}]`, `allow_force_push: false`, `unprotect_access_levels: [{access_level: 40}]` |
+| Protected `main`, as the walk found it | `GET /projects/86032201/protected_branches` | rule id `312839985`: `push_access_levels: [{access_level: 0, "No one", user_id: null, group_id: null}]`, `merge_access_levels: [{access_level: 30, "Developers + Maintainers"}]`, `allow_force_push: false`, `unprotect_access_levels: [{access_level: 40}]` |
+| Protected `main`, after the mid-run repair (~20:45Z) | same endpoint, re-read | rule id `312856963`: `push_access_levels: [{access_level: 0, "No one"}]`, `merge_access_levels: [{access_level: 40, "Maintainers"}]`, `allow_force_push: false`, `unprotect_access_levels: [{access_level: 40}]` |
 
 Provisioning (task 1) was run by the desk before this session; its two defects are filed as
-`#346` and are not re-litigated here. Two consequences of that filing are load-bearing for
-the walk below and are recorded, not fixed: the protect step's failure path left `main` to be
-re-protected **by hand** with `merge_access_level=30` rather than the script's intended `40`,
-and the script exits before its `only_allow_merge_if_pipeline_succeeds` step, so that setting
-was never applied.
+`#346` and are not re-litigated here. Two consequences of that filing are load-bearing for the
+walk below. The first was **found by this walk and repaired mid-run**: the protect step's failure
+path left `main` to be re-protected by hand, and the hand repair used `merge_access_level=30`
+rather than the script's intended `40` — see §3 row 10 and Deviation D-6 for both reads and why
+the failing one is kept. The second stands and is recorded, not fixed: the script exits before
+its `only_allow_merge_if_pipeline_succeeds` step, so that setting was never applied.
 
 ## 1. The round trip — phase A (tracking-root seed)
 
@@ -52,17 +54,34 @@ Every write below is a role service account's; the group-owner credential was us
 Author `41987971` ≠ approver `41987965` at MR `!1` — the dereference Verify row 2 asks for,
 readable at `GET /projects/86032201/merge_requests/1/approvals`.
 
-### Phase B — the brief round trip
+MR `!1` was merged by the human owner at 2026-09-02T21:20:04.927Z, merge commit
+`f4839ce2ad2a59eb2d58dc391ef6d817e27d70e1`, `merge_user: <the owner>` — the first human gate,
+discharged by a human.
 
-Phase B (worker `Draft:` MR for `pilot/01`, reviewer approval, human merge, verifier Evidence
-commit, board regeneration by the board-writer identity) **had not started when this report was
-written**: it is gated on the human merging MR `!1`, which is step A11. This report is
-therefore published at the end of phase A. Rows in §3 that phase B would have exercised
-(nothing — phase B exercises the same controls a second time, on a second MR) are unaffected;
-Verify rows 2 and 3 are already satisfied by phase A and by §4 respectively, and **Verify row 4
-is `COULD-NOT-CHECK` until phase B lands**, recorded as such in §4 rather than assumed.
+## 1b. The round trip — phase B (brief `pilot/01`, todo → implemented)
 
-One parity deviation is already visible from phase B's design and is recorded here rather than
+| Step | Actor (id) | Mechanism | Artifact | Timestamp (UTC) |
+|---|---|---|---|---|
+| B1 · deliverable | worker `41987966` | branch `feat/pilot-01-hello` off merged `main`; the file the brief's Verify row names | commit `d775ce4eda0da5767f0c6cc87f25cf5d20946f9d`, adding `docs/streams/pilot/hello.txt` and nothing else | 2026-09-02 |
+| B2 · push | worker `41987966` | push to a feature branch; `main` is push = No one | branch created | 2026-09-02 |
+| B3 · `Draft:` MR | worker `41987966` | `POST /projects/86032201/merge_requests` with a `Draft:` title prefix → `HTTP 201`; response confirms `draft: true`, `work_in_progress: true` (edition matrix row A1, Free) | MR `!2`, id `527296142`, head `d775ce4e…` | 2026-09-02T21:21:44.529Z |
+| B4 · verdict note | reviewer `41987965` | `POST …/merge_requests/2/notes` → `HTTP 201`; body carries `Verdict: APPROVE` and pins head `d775ce4e…` in text, because `reset_approvals_on_push` is Premium and reads `false` here | note id `3778082812` | 2026-09-02T21:22:01.789Z |
+| B5 · approve | reviewer `41987965` | `POST …/merge_requests/2/approve` → `HTTP 201` | `approved: true`, `approved_by[0].user.id = 41987965`; MR `author.id = 41987966` — **author ≠ approver** | 2026-09-02T21:22:02.234Z |
+| B6 · ready flip | desk `41987971` | `PUT …/merge_requests/2` stripping the `Draft:` prefix → `HTTP 200`, `draft: false`, `work_in_progress: false` (row A2, Free) | `detailed_merge_status: mergeable` | 2026-09-02T21:22:13.325Z |
+| B7 · **human merge** | — | **not performed by this session** | pending | — |
+
+The ready flip is the desk identity's, not the reviewer's, mirroring the GitHub division where
+the ready flip belongs to the review desk and never to the implementer. Read on MR `!2` after the
+merge-access repair, `user.can_merge` is `false` for worker, reviewer, desk, verifier and
+board-writer and `true` only for the owner — so on this deployment the flip genuinely cannot run
+on into a merge.
+
+Still to come after B7, both as merge requests because `main` is push = No one: the verifier
+identity's Evidence row against merged `main`, and the board-writer identity's STATUS.md
+regeneration. **Verify row 4 stays `COULD-NOT-CHECK` until the latter lands**, recorded as such
+in §4 rather than assumed.
+
+One parity deviation is visible from that remaining design and is recorded here rather than
 discovered later: **on GitHub the verifier lands its Evidence row straight to `main`** (the sole
 carve-out from the branch-and-PR rule). On this GitLab project `main` is push = No one for every
 identity — `GET /projects/86032201/repository/branches/main` returns `can_push: false` read on
@@ -103,20 +122,22 @@ and is called out as such in the row.
 | 7b | Expiry backstop (§5's other half) | group/instance max-token-lifetime policy | `GET /groups/9619193` → `max_personal_access_token_lifetime: null` (the policy is Ultimate). The backstop is supplied tool-side instead: every rotated token above carries `expires_at` 7 days out, and the group *does* report `service_access_tokens_expiration_enforced: true` | **FAILED-AT-TIER** (Ultimate) for the server-side policy; the tool-side backstop is **PASS** and is what actually holds |
 | 8 | Secret push protection | push rules secret checks (Premium) + Secret Detection (Ultimate); house leak sweep in CI regardless | `GET /projects/86032201/push_rule` → `HTTP 404` (Premium). `GET /projects/86032201/security_settings` → `HTTP 200`, `secret_push_protection_enabled: false`, `validity_checks_enabled: false`. The compensating layer spec §3 leans on — the leak sweep in CI — is also absent: no `.gitlab-ci.yml`, no pipelines (row 4) | **FAILED-AT-TIER** (Premium for push rules, Ultimate for secret push protection) **and the free-tier compensator is unbuilt** — remediation for the compensator is tier `free` |
 | 9 | Immutable release integrity | protected tags + audit events + sha256 pins in `.assay-versions` | `GET /projects/86032201/protected_tags` → `[]` — no protected tag rule at all; role-level protected tags are **Free**, so this is unset, not unavailable. `GET /groups/9619193/audit_events` and `GET /projects/86032201/audit_events` → `HTTP 403` (Premium). The pin discipline **is** in place: `.assay-versions` on MR `!1` pins `statusgen v0.23.0` with three per-platform sha256 digests taken from that release's `checksums.txt`, no placeholder token left | **FAILED-AT-TIER** — split. Audit events: Premium. Protected tags: remediation tier `free`, a provisioning gap. The pin half, which spec §3 says the control actually leans on: **PASS** |
-| 10 | Merge is always the human's | `Allowed to merge` = humans only | `GET /projects/86032201/protected_branches` → `merge_access_levels[0] = {access_level: 30, "Developers + Maintainers"}`. Read on each credential in turn, `GET /projects/86032201/merge_requests/1` returns `user.can_merge: true` for **all five Developer service accounts** as well as for the owner. Nothing server-side stops a bot merging MR `!1` into `main` | **FAILED-AT-TIER**, remediation tier **`free`** — this is a provisioning defect, not a tier ceiling. Role-level `merge_access_level=40` is Free and is what the provisioner script intends; the hand-repair recorded in `#346` applied `30`. **The most serious finding in this walk** |
+| 10 | Merge is always the human's | `Allowed to merge` = humans only | **Found FAILED, fixed during the run, re-read PASSING — both reads are recorded below.** First read, before the fix: `merge_access_levels[0] = {access_level: 30, "Developers + Maintainers"}` on protection rule id `312839985`, and `GET /projects/86032201/merge_requests/1` returned `user.can_merge: true` for **all five Developer service accounts**. Re-read after the repair (protection rule re-created ~20:45Z, new rule id `312856963`): `merge_access_levels[0] = {access_level: 40, "Maintainers"}`, `push_access_levels[0] = {access_level: 0, "No one"}`, `allow_force_push: false`; `GET /projects/86032201/merge_requests/2` now returns `user.can_merge: false` for worker, reviewer, desk, verifier and board-writer, and `true` only for the human owner, who is the sole member at 40 or above | **PASS** as the deployment now stands. The failing read is kept because it is the walk's most consequential finding and because the repair is a human act that can regress — see Deviation D-6 |
 | 11 | Direct push to `main` closed (matrix B1, the floor under rows 2 and 10) | protected branch, role-level | `GET /projects/86032201/repository/branches/main` read on the owner and on all five Developer bots → `protected: true`, `can_push: false`, `developers_can_push: false`, `allow_force_push: false` on every one | **PASS** |
 | 12 | Reviewer identity that can approve but cannot push (matrix B9) | Ultimate custom roles | `GET /groups/9619193/member_roles` → `HTTP 403` (Ultimate). **Live probe:** the reviewer service account created a throwaway feature branch (`POST /projects/86032201/repository/branches` → `HTTP 201`) and deleted it (`DELETE …` → `HTTP 204`). A Developer-role reviewer can write feature branches | **FAILED-AT-TIER** (Ultimate) — the degradation the edition matrix predicts at B9, confirmed live |
 | 13 | Role identities are seatless bots (matrix C1) | service accounts, Free from 18.11 | `GET /user` on each of the 7 role PATs → `"bot": true`, `"state": "active"`, distinct numeric ids, distinct `service_account_group_9619193_*@noreply.gitlab.com` commit emails | **PASS** |
 
 ### Overall verdict
 
-**The pilot does not clear spec §3's governing requirement on this deployment, and the reason is
-not only the tier.** Of the fourteen rows walked: three **PASS** outright (rotate-on-mint's
-single-valid-credential property, direct-push closure on `main`, seatless role identities), two
-are **COULD-NOT-CHECK** because the CI-isolation half of the profile was never provisioned on
-this pilot, and nine are **FAILED-AT-TIER**.
+**The pilot clears spec §3's governing requirement on this deployment only after a repair the
+walk itself forced, and the tier is not the whole story.** Of the fourteen rows walked as the
+deployment now stands: four **PASS** (rotate-on-mint's single-valid-credential property,
+direct-push closure on `main`, seatless role identities, and merge-is-the-human's — the last of
+those only after the mid-run repair recorded in row 10 and D-6), two are **COULD-NOT-CHECK**
+because the CI-isolation half of the profile was never provisioned on this pilot, and eight are
+**FAILED-AT-TIER**.
 
-Those nine split into two very different populations, and conflating them would be the easiest
+Those eight split into two very different populations, and conflating them would be the easiest
 way to read this report wrongly:
 
 - **Most are genuine tier ceilings** and are exactly the ones the 2026-08-30 ruling anticipates:
@@ -129,21 +150,30 @@ way to read this report wrongly:
   as failed-at-tier with the remediation named, which is what the brief asks for and is not a
   pilot failure. Row 3 is now stronger evidence than it was: it is no longer a docs badge but a
   live `HTTP 201` on an author approving its own merge request.
-- **Four of the nine are free-tier controls that were simply never applied** — row 10 (`Allowed to merge` =
-  Developers, so every bot can merge into `main`), the pipeline half of row 4, protected tags in
-  row 9, and the missing leak-sweep CI in row 8. None of these needs a licence. Row 10 is the
-  one that matters: it defeats the single control the whole CE posture rests on. The CE story is
-  "identity-granular push is unavailable, so *every* write to `main` lands as a merge request a
-  human merges." On this deployment a human does not have to be the merger — a worker service
-  account holding an `api` PAT can merge its own approved MR. With that, the CE fallback for rows
-  2, 3 and 4 collapses at once, because all three of them discharge onto human-merge-only.
+- **Three of the eight are free-tier controls that were simply never applied** — the pipeline
+  half of row 4, protected tags in row 9, and the missing leak-sweep CI in row 8. None of these
+  needs a licence, and none of them is a tier ceiling; they are provisioning gaps wearing a
+  tier-shaped verdict, which is why every such row says so and names `free` as its remediation
+  tier.
 
-So the honest verdict is: **the tooling lane is proved and the tier story holds; this
-*deployment* is misconfigured in one specific, free-to-fix way that invalidates the CE posture
-until it is corrected.** The correction is a single call setting `merge_access_level` to `40`
-(Maintainers) on the `main` protection rule, after which the only Maintainer-or-above member is
-the human owner. Rows 4, 8 and 9's free-tier halves should be applied in the same pass. Until
-then, no downstream claim of GitLab security parity may cite this group.
+  **A fourth was in this population when the walk began, and it was the one that mattered.**
+  Row 10 read `merge_access_level: 30`, so all five Developer service accounts returned
+  `user.can_merge: true` on the pilot's first merge request. That is not one control among
+  several: the CE story is "identity-granular push is unavailable, so *every* write to `main`
+  lands as a merge request a human merges", and rows 2, 3 and the approvals half of row 4 all
+  discharge onto that one sentence. With a bot able to merge its own approved MR, all three CE
+  fallbacks collapse together. The walk surfaced it, the repair was applied mid-run, and row 10
+  re-reads `PASS`. It is recorded rather than quietly re-measured because **a control restored by
+  a human's hand is a control that can regress by a human's hand** — see D-6.
+
+So the honest verdict is: **the tooling lane is proved, the tier story holds, and this deployment
+now stands up — but it did not when the walk started, and it took the walk to notice.** The
+remaining free-tier halves of rows 4, 8 and 9 should be applied before this group is cited for
+anything. What the pilot most clearly demonstrates is not that CE is conforming — the 2026-08-30
+ruling already said that, and nothing here contradicts it — but that CE conformance is only ever
+a property of a *deployment*, and that a per-control walk against live settings is the thing that
+distinguishes a conforming one from a plausible-looking one. A parity table read off
+documentation would have passed this group on the day it could not have.
 
 Nothing in this walk contradicts the edition matrix. Every tier boundary it predicted was
 observed at the predicted tier, by the predicted status code.
@@ -152,10 +182,10 @@ observed at the predicted tier, by the predicted status code.
 
 | Row | Command | Result | Citation |
 |---|---|---|---|
-| 1 | `grep -c '^[\|]' docs/streams/forge-gitlab/pilot-report.md` ≥ 12 | **checked-clean** | `grep -c '^[\|]'` over this file returns `42`; the §3 walk table alone contributes 16 of them (14 control rows + header + separator) |
+| 1 | `grep -c '^[\|]' docs/streams/forge-gitlab/pilot-report.md` ≥ 12 | **checked-clean** | `grep -c '^[\|]'` over this file returns `52`; the §3 walk table alone contributes 16 of them (14 control rows + header + separator) |
 | 2 | `…/merge_requests/:iid/approvals` shows approval by the reviewer account, author ≠ approver | **checked-clean** | `GET /projects/86032201/merge_requests/1/approvals` → `approved: true`, `approved_by[0].user.id = 41987965` (reviewer), MR `author.id = 41987971` (desk). Reproducible against the live system from the ids in this row |
 | 3 | mint twice, first token rejected `401` | **checked-clean** | `desktoken --forge gitlab worker` run twice, 2026-09-02 ~20:29Z (exit `0` both times; it prints the token *path*, never the value). The first token was captured to a 0600 scratch file from the token file between the mints, returned `HTTP 200` on `GET /user` before the second mint and `HTTP 401 {"error":"invalid_token","error_description":"Token was revoked. You have to re-authorize from the user."}` after it; the scratch file was deleted immediately after the check. The replacement token: `GET /personal_access_tokens/self` → id `27157268`, `expires_at "2026-09-09"`, `active: true` |
-| 4 | `git log --format='%an' -1 -- STATUS.md` is the board-writer account | **could-not-check** | Board regeneration is phase B, which is gated on the human merge of MR `!1` (step A11). Not run, not inferred. At the time of writing STATUS.md's only commit is `52879f61050c433276836afe61a066e1ce0e507f`, authored by the **desk** account as part of the seed — so this row would read `checked-failed` if run now, and is honestly `could-not-check` for its actual subject, which is the post-round-trip board |
+| 4 | `git log --format='%an' -1 -- STATUS.md` is the board-writer account | **could-not-check** | Board regeneration is step B8, gated on the human merge of MR `!2` (step B7). Not run, not inferred. On merged `main` today STATUS.md's only commit is `52879f61050c433276836afe61a066e1ce0e507f`, authored by the **desk** account as part of the seed — so this row would read `checked-failed` if run now, and is honestly `could-not-check` for its actual subject, which is the post-round-trip board |
 
 ## 5. Deviations
 
@@ -198,9 +228,30 @@ no `write_repository`. A GitHub App installation token is scoped per repository 
 permission; nothing at any GitLab tier reproduces that shape for a PAT. Recorded here as a
 qualification on row 1's remediation, and as a comment on `#274`.
 
-**D-6 — post-repair merge access on `main` admits every bot.** Covered as §3 row 10 and in the
-overall verdict; the provisioning history behind it belongs to `#346` and is filed there as
-a comment rather than as a fresh issue.
+**D-6 — a hand-repair silently weakened `main`, and the repair path is where the hazard lives.**
+The full arc, because the arc is the finding:
+
+1. The provisioner's protect step fails on free tier with `HTTP 400` after having already
+   deleted the existing protection, leaving `main` writable — the defect filed as `#346`.
+2. The recovery was applied **by hand**, with `push_access_level=0&merge_access_level=30`. The
+   script's own intent is `allowed_to_merge: [{access_level: 40}]` — Maintainers. The hand
+   repair restored the push half exactly and the merge half one level too low, and nothing read
+   it back, so the group sat in that state.
+3. This walk read it back. `merge_access_levels[0] = {access_level: 30}` on rule `312839985`;
+   `user.can_merge: true` for all five Developer service accounts on MR `!1`.
+4. The rule was re-created at ~20:45Z (`DELETE` + `POST` with the three free-tier fields), new
+   rule id `312856963`, `merge_access_level: 40`. Re-read confirms `user.can_merge: false` for
+   every bot and `true` only for the owner.
+
+The generalisable part is step 2, not step 3. An unprotect-then-fail defect does not only leave a
+branch open for a window; it hands a human a **manual re-protection** to compose under time
+pressure, from memory, against an API whose free-tier field set differs from the one the script
+uses. Getting `push_access_level` right and `merge_access_level` wrong is the natural mistake,
+and it is invisible afterwards: the branch reads "protected", `can_push` reads `false`, and the
+one field that changed is the one nothing looks at. So `#346`'s fix should not stop at "do not
+unprotect before the replacement applies" — it should also **re-create the rule with the intended
+levels and read all three fields back**, so that neither the failure path nor the recovery path
+can leave a weaker rule than the script would have written. Filed as a comment on `#346`.
 
 **D-7 — token custody filenames.** The provisioner writes `<prefix>-<role>-bot.token` while
 `desktoken --forge gitlab` reads `gitlab-<role>.token` from the credential search path. Already
