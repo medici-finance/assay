@@ -154,8 +154,8 @@ cellctl check <cell>
 One `ok` / `MISS` line per precondition, exit 1 if any row missed: the checkout named by
 `CELL_REPO`, the cells slice, the operator config home, `roster.env`, `apps.env`, that every App-key
 symlink under `home/.config` resolves (a dangling symlink is the common outcome of step 2), the
-linked `gh` config, `bin/deskd`, the `deskd` App key being readable, the desk-tools bindir, `tmux`,
-and whether this cell's `deskd` answers on its address.
+linked `gh` config, `bin/deskd` and `bin/deskcli`, the `deskd` App key being readable, the desk-tools
+bindir, `tmux`, and whether this cell's `deskd` answers on its address.
 
 Run it after `new`, and again after any key rotation.
 
@@ -186,6 +186,22 @@ What it does, in order:
 
 The index is persistent, so a restart resumes rather than re-crawls. Because the tokens expire in an
 hour, `deskd` is a foreground process you restart when it stops — not a daemon you install.
+
+### How far the attended affirmation carries
+
+`cellctl up` stands `deskd` for you, which means it passes that affirmation on. It may only do so
+when **`up` is itself attended**, or the flag would widen from "an operator ran this" to "anything
+that ran `cellctl` at all" — the opposite of what it is for. Attended means one of two positive
+signals:
+
+- a **terminal on stdin** — an operator at their own shell; or
+- **`CELL_ATTENDED=1` already set** in the environment — the explicit form, for a wrapper that has
+  its own affirmation.
+
+A cron or CI invocation has neither. There `up` opens the role windows but **does not stand
+`deskd`**, prints why on stderr, and leaves the `deskd` window holding the command to run by hand.
+Neither outcome is silent: the attended path announces that it is carrying your affirmation, and the
+unattended path announces that it is not.
 
 ---
 
@@ -223,8 +239,9 @@ thing the boot reads — so it is reported as a notice and the boot continues.
 cellctl up <cell> [--no-the-desk] [--no-attach] [CLAUDE_CONFIG_DIR]
 ```
 
-A tmux session named `<cell>-cell`: a `deskd` window (standing it if it is not already up, otherwise
-watching `/healthz`) and one window per role in `ROLES`. Windows start two seconds apart, so they do
+A tmux session named `<cell>-cell`: a `deskd` window (watching `/healthz` if it is already up,
+otherwise standing it — see *How far the attended affirmation carries* above) and one window per role
+in `ROLES`. Windows start two seconds apart, so they do
 not all arrive at the fetch lock together. `up` attaches unless you pass `--no-attach`; re-attach
 later with `tmux attach -t <cell>-cell`.
 

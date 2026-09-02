@@ -105,6 +105,7 @@ cmd_check(){
   chk "App key symlinks resolve" '! find "$CELL_HOME/.config" -type l ! -exec test -e {} \; -print | grep -q .'
   chk "gh config linked: $CELL_HOME/.config/gh" '[[ -e "$CELL_HOME/.config/gh" ]]'
   chk "deskd binary: $CELL_DIR/bin/deskd" '[[ -x "$CELL_DIR/bin/deskd" ]]'
+  chk "deskcli binary: $CELL_DIR/bin/deskcli" '[[ -x "$CELL_DIR/bin/deskcli" ]]'
   chk "deskd read App key: ${DESKD_APP_PEM:-unset}" '[[ -r "${DESKD_APP_PEM:-/nonexistent}" ]]'
   chk "desk-tools: $DESK_TOOLS_BIN/deskboot" '[[ -x "$DESK_TOOLS_BIN/deskboot" ]]'
   chk "tmux" 'command -v tmux >/dev/null'
@@ -219,11 +220,29 @@ cmd_up(){
     [[ "$attach" == "1" ]] && exec tmux attach -t "$SESSION"
     return 0
   fi
+  # STANDING deskd FROM `up` — the attended affirmation, and how far it carries.
+  #
+  # `cellctl deskd` mints installation tokens and so refuses without CELL_ATTENDED=1: the
+  # affirmation is the operator saying "I am here, at my own shell". `up` is the one-command
+  # cockpit, so it passes that affirmation to the deskd window it spawns — but it may only do so
+  # when `up` is ITSELF attended, or the flag would be widened from "an operator ran this" to
+  # "anything that ran cellctl at all", which is the opposite of what it is for.
+  #
+  # Attended means one of two positive signals: a terminal on stdin (an operator at a shell), or
+  # CELL_ATTENDED=1 already set in the environment (the explicit form, for a wrapper that has its
+  # own affirmation). A cron or CI invocation has neither, and there `up` stands the role windows
+  # but NOT deskd, and says so. It is never silent in either direction.
   local deskd_cmd
   if deskd_up; then
     deskd_cmd="echo '[deskd] already up on $DESKD_ADDR — watching /healthz every 60s'; while :; do date -u +%H:%MZ; curl -s --max-time 5 http://$DESKD_ADDR/healthz | head -c 240; echo; sleep 60; done"
-  else
+  elif [[ -t 0 || "${CELL_ATTENDED:-0}" == "1" ]]; then
+    echo "[cell] deskd is not up — standing it in-session, carrying YOUR attended affirmation (cellctl up ran attended)"
     deskd_cmd="CELL_ATTENDED=1 '$SELF' deskd '$CELL'"
+  else
+    echo "[cell] deskd is not up, and this 'cellctl up' is UNATTENDED (no terminal on stdin, CELL_ATTENDED unset)." >&2
+    echo "[cell] role windows will open; deskd will NOT be stood, because minting tokens needs an affirmation this invocation cannot make." >&2
+    echo "[cell] stand it yourself: CELL_ATTENDED=1 cellctl deskd $CELL" >&2
+    deskd_cmd="echo '[deskd] NOT stood — cellctl up ran unattended. Run: CELL_ATTENDED=1 cellctl deskd $CELL'"
   fi
   tmux new-session -d -s "$SESSION" -n deskd -c "$CELL_DIR" "$deskd_cmd; echo '[deskd] exited'; exec \$SHELL"
   local roles="$ROLES"
