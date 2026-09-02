@@ -106,7 +106,8 @@ Flags: `--group` and `--prefix` are required; `--project` is optional (omitting 
 the protected-branch/approval steps with a printed NOTICE, not silently); `--gitlab-url`
 defaults to `https://gitlab.com` (point it at your self-managed instance otherwise);
 `--pat-expiry-days` defaults to 7, the RECOMMENDED backstop from spec.md §5;
-`--out-dir` controls where minted token files land (default: a fresh `mktemp -d`). Run
+`--out-dir` controls where minted token files land (default: a fresh `mktemp -d`);
+`--avatars-dir`, `--no-avatars` and `--avatars-only` control the avatar step below. Run
 `tools/create-fleet-gitlab.sh --help` for the full reference.
 
 **Idempotency.** A re-run against an already-provisioned group is a set of named no-ops,
@@ -147,19 +148,32 @@ minting, group members, protected branches, approval settings) and a missing gra
 permission fails mid-run with a half-provisioned fleet. Proving the script on a
 fine-grained token is an open follow-up, not a supported path.
 
-**Known defect on free tier (until fixed — tracked on this repo's issues as the
-provisioner free-tier protect bug).** The protected-branch step first deletes the existing
-protection and then re-creates it with `allowed_to_unprotect`, a Premium-only field; on
-Free the re-create is refused (400) and **`main` is left unprotected**. If you see
-`error: protecting main failed (HTTP 400)`, re-protect by hand immediately:
+**Bot avatars.** Each service account sets its **own** avatar, at the moment its PAT is
+minted — a group Owner cannot do it for them (`PUT /users/:id` is admin-only and answers
+`403` on gitlab.com, and the service-account endpoints carry no avatar field), so
+`PUT /user/avatar` under the account's own credential is the only path. By default the
+script fetches the public role icons from `https://assay.guide/assets/app-icon-<role>.png`
+— the same set the GitHub Apps wear — and uploads one per role; `--avatars-dir <dir>` uses
+your own `<role>.png` files instead, and `--no-avatars` skips the step. An icon that is
+missing or cannot be fetched is a NOTICE, never a failed run. Because a PAT is minted only
+for an account the script just created, a fleet that already exists is re-skinned with
+`--avatars-only --prefix <prefix> --out-dir <dir holding the role token files>`, which
+uploads and mints nothing. Verify with `GET /groups/:id/members/all`: every
+`<prefix>-<role>-bot` should carry an `avatar_url` under `/uploads/`, none under
+`gravatar.com`.
 
-```
-curl -X POST -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-  "$GITLAB_URL/api/v4/projects/<id>/protected_branches?name=main&push_access_level=0&merge_access_level=30&allow_force_push=false"
-```
-
-and read the approval settings back (`GET …/approvals`) rather than trusting the script's
-approval step: on Free the write returns 201 and changes nothing.
+**The protect step is tier-aware and never leaves `main` open.** It reads the group's
+`plan`, sends the Premium `allowed_to_*` arrays only where they are available and the three
+free-tier fields (`push_access_level=0`, `merge_access_level=40`, `allow_force_push=false`)
+otherwise — printing the omitted push allowlist as `failed-at-tier, remediation: Premium` —
+and it never removes the existing rule before the replacement is known to apply: an
+already-correct rule is a no-op, a force-push-only difference is a `PATCH`, and where a
+delete-and-recreate is unavoidable a refused re-create immediately re-applies the rule that
+was read. It then reads all three fields back and prints them, so a wrong rule (a repair at
+`merge_access_level=30` lets every Developer bot merge) is visible at provisioning time.
+Approval settings are read back the same way, because on Free the write returns 201 and
+changes nothing. A failed step no longer aborts the steps after it: every step runs, the
+failures are listed under the HUMAN-ONLY REMAINDER, and the script exits non-zero.
 
 ## 3. By-hand table — what the script does, if you'd rather read the REST calls
 
