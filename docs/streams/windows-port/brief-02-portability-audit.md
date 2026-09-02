@@ -110,7 +110,7 @@ facts:
 |---|---------|--------|
 | 1 | `test -f docs/streams/windows-port/portability-audit.md; echo $?` | `0` |
 | 2 | The four disposition tokens are all used: `grep -cF -e 'works' -e 'needs-port' -e 'documented-workaround' -e 'out-of-scope' docs/streams/windows-port/portability-audit.md` | `>= 6` — at least six disposition mentions across the table (each of the six surface classes carries one) |
-| 3 | **Dereferencing — the audit's hook fact is TRUE against the tree** (not just asserted): `grep -q 'inject-resident-rules.sh' docs/streams/windows-port/portability-audit.md && head -1 plugins/assay/hooks/inject-resident-rules.sh \| grep -qF '#!/bin/bash' && grep -qF 'bash "' plugins/assay/hooks/hooks.json; echo $?` | `0` — the doc names the hook, and the hook really is `#!/bin/bash` invoked via `bash "…"` |
+| 3 | **Dereferencing — the audit's hook fact is TRUE against the tree** (not just asserted): `grep -q 'inject-resident-rules.sh' docs/streams/windows-port/portability-audit.md && head -1 plugins/assay/hooks/inject-resident-rules.sh \| grep -qF '#!/bin/bash' && grep -qF 'bash \"' plugins/assay/hooks/hooks.json; echo $?` | `0` — the doc names the hook, and the hook really is `#!/bin/bash` invoked via a `bash \"…"` command string (the JSON source carries the quote backslash-escaped, so the fixed-string needle is `bash \"`) |
 | 4 | **Dereferencing — the config-home fact is TRUE**: `grep -q 'rosterconfig' docs/streams/windows-port/portability-audit.md && grep -qF '.config/assay' tools/desk/internal/deskkit/rosterconfig.go; echo $?` | `0` — the doc cites the const, and the const really carries `~/.config/assay` |
 | 5 | **Dereferencing — the push-guard shim fact is TRUE**: `grep -q 'pre-push' docs/streams/windows-port/portability-audit.md && grep -qF '/opt/desk-tools/bin/deskpushguard' tools/desk/hooks/pre-push; echo $?` | `0` |
 | 6 | Every triage row names an owning brief or issue: `grep -cE -e 'windows-port/0[1-5]' -e 'follow-up' docs/streams/windows-port/portability-audit.md` | `>= 6` — each disposition points somewhere it is owned |
@@ -126,29 +126,25 @@ facts:
 |---|---------|------|--------|------|--------|
 | 1 | `test -f docs/streams/windows-port/portability-audit.md; echo $?` | 0 | `0` | 2026-09-02 | implementer |
 | 2 | `grep -cF -e 'works' -e 'needs-port' -e 'documented-workaround' -e 'out-of-scope' docs/streams/windows-port/portability-audit.md` | 0 | `17` | 2026-09-02 | implementer |
-| 3 | `grep -q 'inject-resident-rules.sh' docs/streams/windows-port/portability-audit.md && head -1 plugins/assay/hooks/inject-resident-rules.sh \| grep -qF '#!/bin/bash' && grep -qF 'bash "' plugins/assay/hooks/hooks.json; echo $?` | **1** (expected 0) — see note below | `1` | 2026-09-02 | implementer |
+| 3 | `grep -q 'inject-resident-rules.sh' docs/streams/windows-port/portability-audit.md && head -1 plugins/assay/hooks/inject-resident-rules.sh \| grep -qF '#!/bin/bash' && grep -qF 'bash \"' plugins/assay/hooks/hooks.json; echo $?` | 0 | `0` | 2026-09-02 | implementer |
 | 4 | `grep -q 'rosterconfig' docs/streams/windows-port/portability-audit.md && grep -qF '.config/assay' tools/desk/internal/deskkit/rosterconfig.go; echo $?` | 0 | `0` | 2026-09-02 | implementer |
 | 5 | `grep -q 'pre-push' docs/streams/windows-port/portability-audit.md && grep -qF '/opt/desk-tools/bin/deskpushguard' tools/desk/hooks/pre-push; echo $?` | 0 | `0` | 2026-09-02 | implementer |
 | 6 | `grep -cE -e 'windows-port/0[1-5]' -e 'follow-up' docs/streams/windows-port/portability-audit.md` | 0 | `21` | 2026-09-02 | implementer |
 | 7 | `grep -qiF -e 'winsock' -e 'registry hive' docs/streams/windows-port/portability-audit.md; echo $?` | 1 | `1` | 2026-09-02 | implementer |
 | 8 | `statusgen --root . --consumers windows-port/02; echo $?` | 0 | `summary: 0 corroborated, 0 disproved, 4 unchecked` — all four consumer claims report UNCHECKED, not corroborated: `statusgen`'s corroboration checks whether *this branch's diff* freshly introduced the `consumers:` claim line itself, and this brief's frontmatter (including its `consumers:` block) was authored on 2026-09-01 before this implementation branch existed, so the tool has no basis to treat this branch as the origin of the claim — reviewer judgment call per the row's own Expect note. Exit code matches Expect (`0`) regardless. | 2026-09-02 | implementer |
 
-**Note on row 3 (checked-failed, reported as itself — not rounded to pass):** the three-part
-command fails at its third clause. Parts 1–2 pass (0): the audit doc names the hook, and the
-hook file really is `#!/bin/bash`. Part 3, `grep -qF 'bash "' plugins/assay/hooks/hooks.json`,
-does not match — dereferenced with `python3 -c "..."` byte inspection, `hooks.json`'s JSON
-string literal is `bash \"${CLAUDE_PLUGIN_ROOT}/…` (backslash then quote, the JSON escape for
-an embedded `"`), not `bash "` (space then quote with no backslash) — so the fixed-string
-search for `bash "` never matches the raw file bytes at all, regardless of what this audit
-records. This is an escaping bug in the Verify row's own grep pattern (written against the
-JSON-decoded shell command string, not the raw JSON source bytes), not a defect in
-`portability-audit.md`'s content — the underlying fact the row exists to prove (the hook is
-`#!/bin/bash`, invoked from `hooks.json` via a `bash "…"` command string once JSON-decoded) is
-independently true and is what the audit doc states. No code was changed to work around this
-(fixing it would mean editing `hooks.json`, which is out of this brief's scope — a
-documentary deliverable that changes no code). Flagged for the reviewer and for whoever
-authors a follow-up correction to this brief's Verify row 3 (e.g. `grep -qF 'bash \\"'` or a
-plain `grep -qF 'bash'` presence check).
+**Note on row 3 (Verify-pattern correction, applied at re-review):** as first recorded, row 3's
+third clause used the needle `grep -qF 'bash "'` (space then quote). That needle was written
+against the JSON-*decoded* shell command string, not the raw JSON source bytes, so it could
+never match: `hooks.json`'s on-disk bytes are `bash \"${CLAUDE_PLUGIN_ROOT}/…` — `bash`, a
+space, a backslash, then a quote (the JSON escape for an embedded `"`). The needle is now
+corrected to `grep -qF 'bash \"'` (space, backslash, quote), which matches the raw bytes, and
+the row passes on its own terms (exit 0). Byte-confirmed via `python3` inspection of the raw
+file. This was a defect in the Verify row's grep pattern, never in `portability-audit.md`'s
+content — the underlying fact the row exists to prove (the hook is `#!/bin/bash`, invoked from
+`hooks.json` via a `bash \"…"` command string) was independently true throughout and is what
+the audit doc states. No product file (`hooks.json` included) was edited; the correction touches
+only this brief's Verify/Evidence rows, keeping the deliverable a documentary one.
 
 ## Review
 Gate: **model** (from frontmatter). All four risk answers are `no` — this is a documentary
