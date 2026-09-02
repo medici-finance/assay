@@ -1,0 +1,20 @@
+Harness healthy: baseline GREEN, positive control CAUGHT.
+  CAUGHT           fail OPEN on an empty sweep — a rate-limited 403's empty stdout becomes a readable board (the #79 false all-clear)
+  CAUGHT           swallow an unknown ACTION — a board state the table does not know is skipped instead of failing closed
+  CAUGHT           downgrade the unknown-ACTION refusal — the lookup succeeds with an empty rule instead of raising exit 6
+  CAUGHT           drop the empty-scope check — an unconfigured roster sweeping nothing reads as a quiet board
+  CAUGHT           drop the truncated-population check — counts that are a FLOOR are read as totals
+  CAUGHT           drop the freshness check — a board older than the cadence supports an idle claim
+  CAUGHT           drop deskboard's own STALE flag — the board saying it cannot vouch for itself is ignored
+  CAUGHT           the idle gate stops counting RE-REVIEW — the worker-waiting-on-the-desk half of #79 disappears
+  CAUGHT           zero-value IdleVerdict becomes IDLE — a caller that forgets to set State gets a false all-clear
+  CAUGHT           coalescing keys stop carrying the head — a PR that pushes a new head is never re-dispatched (the drain-ified failure)
+  CAUGHT           coalescing stops collapsing repeat deltas — one PR at one head is dispatched once per sweep
+  CAUGHT           an unresolved head is emitted anyway — an outward verb whose idempotency cannot be checked is posted on the assumption it is fine
+  CAUGHT           the AlreadyDone idempotency gate stops suppressing — the desk posts the same verb twice at one head
+  CAUGHT           MERGE-NOW acquires an outward verb — the review desk starts acting on a merge signal that is the human's
+  CAUGHT           waiting rows stop rendering — a row with no verb vanishes from the reactor's output
+  CAUGHT           an unjoined row gets an EMPTY head rather than the UNRESOLVED sentinel — the missing key compares equal to nothing and looks answered
+  CAUGHT           the action table stops being exhaustive over deskboard — a board state is dropped with nothing saying so
+  CAUGHT           a plan run whose idle question is unanswerable exits 0 — a script reads rc=0 as all-clear
+Totals: 18 caught, 0 NOT CAUGHT, 0 could-not-mutate.

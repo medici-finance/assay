@@ -1,0 +1,15 @@
+Harness healthy: baseline GREEN, positive control CAUGHT.
+  CAUGHT           exit 5 reclassified transient — a writeguard/bodycheck refusal is retried instead of reported (deskpr create rc=5, 2026-08-13)
+  CAUGHT           exit 7 author==runner reclassified transient — a structural refusal is re-dispatched
+  CAUGHT           the third state collapses to retryable — an unrecognised failure is retried forever (the infinite-loop half of a two-state guess)
+  CAUGHT           the third state collapses to a decision — could-not-check lands BLOCKED instead of NEEDS_CONTEXT (the silent-work-loss half)
+  CAUGHT           a bare exit 4 with no stated wait becomes a guessed retry — the livelock re-entered
+  CAUGHT           the STATED retry-after is ignored and the shorter backoff used instead — re-charging the budget that refused us
+  CAUGHT           the retry-after class loses its tighter attempt cap — 'sleep the full wait and attempt ONCE' becomes MaxAttempts
+  CAUGHT           the wall-clock cap is dropped — a 22h retry-after is slept while the item's claim is held
+  CAUGHT           the claim is released between attempts — reopening the double-dispatch window claim.go's flock closes
+  CAUGHT           the resume signal is dropped — every retry re-dispatches as a fresh attempt, discarding the work a 529-killed session left intact
+  CAUGHT           a policy whose waiting outlives its own claim is accepted — MaxElapsed >= StaleClaim lets a live claim be reclaimed mid-retry
+  CAUGHT           an exhausted/refused dispatch is DROPPED instead of landed — the item leaves the queue with no durable record
+  CAUGHT           an incoherent policy is accepted instead of failing closed at Run — silent caps become reachable
+Totals: 13 caught, 0 NOT CAUGHT, 0 could-not-mutate.

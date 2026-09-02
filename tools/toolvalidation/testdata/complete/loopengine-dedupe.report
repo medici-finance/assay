@@ -1,0 +1,8 @@
+Harness healthy: baseline GREEN, positive control CAUGHT.
+  CAUGHT           drop the taken-refusal — an item with an open PR is claimed anyway (the 2026-08-13 double-dispatch)
+  CAUGHT           fail OPEN on could-not-check — an unreachable evidence source becomes a confident acquire
+  CAUGHT           downgrade could-not-check to a silent skip — no error reaches the caller, so exit 6 is never raised
+  CAUGHT           silent cap — Claim stops announcing that it consulted only the claims dir
+  CAUGHT           silent refusal — the DEDUP line stops naming what it deduplicated against
+  CAUGHT           half-claimed refusal — the evidence gate runs AFTER the lock, so a refused item still takes a claim
+Totals: 6 caught, 0 NOT CAUGHT, 0 could-not-mutate.
