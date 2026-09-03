@@ -187,6 +187,18 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	briefProblems, briefNotices := checkBriefFiles(checkStreams, edgeStreams)
 	problems = append(problems, briefProblems...)
 	notices = append(notices, briefNotices...)
+	// §8 spec/scoping-doc lifecycle lint (spec-routing/01, spec/lifecycle-v1.md §8):
+	// an approved/routed document missing `**Routes-to:**` is a hard PROBLEM (§8.3);
+	// an unclassified `**Status:**` first token is a NOTICE (§8.1); an approved
+	// document no brief's sources: dereferences is an advisory owed NOTICE (§8.5).
+	// Runs against the FULL house set so citation is evaluated across every brief,
+	// and over spec/** + docs/** so a spec doc outside a product scope is still
+	// checked. A doc carrying no `**Status:**` header is unclassified/legacy and is
+	// IGNORED, never defaulted up to approved (§8.6) — so this never reds a tree
+	// whose specs predate the header.
+	lifecycleProblems, lifecycleNotices := lifecycleLintChecks(root, streams)
+	problems = append(problems, lifecycleProblems...)
+	notices = append(notices, lifecycleNotices...)
 	// #1250 ordering-gate lint (dependency-graph-design.md §6): flags gate-shaped
 	// README/brief prose ("no X before Y", "blocked on", "gated on") whose real
 	// ordering prerequisite is encoded in no `depends:`/`unblocks:` edge, so an
@@ -1133,6 +1145,11 @@ func main() {
 	// needs-decision issue. Same STATUS.md-free discipline as verify-issues.
 	decisionIssuesMode := flag.Bool("decision-issues", false, "emit JSON for newly-eligible needs-decision (gate:human + implemented/verified) briefs")
 	decisionMarkers := flag.String("decision-markers", "", "file of already-existing decision-issue markers (one per line, or raw issue bodies)")
+	// Authoring-owed issues (spec-routing/01, spec/lifecycle-v1.md §8.5) —
+	// self-contained, STATUS.md-free, offline, same discipline as --decision-issues.
+	// One JSON issue payload per approved-but-uncited spec/scoping document.
+	owedIssuesMode := flag.Bool("owed-issues", false, "emit JSON for approved-but-uncited spec/scoping documents (spec/lifecycle-v1.md §8.5): one authoring-owed issue payload per document with no open owed issue")
+	owedMarkers := flag.String("owed-markers", "", "file of already-existing authoring-owed issue markers (one per line, or raw issue bodies)")
 	// Drive lifecycle issues (methodology-metrics phase 2) — self-contained,
 	// STATUS.md-free, offline. Emits the drive tracking issue + aged operator-act
 	// issues + the @operator ping decision as JSON, same discipline as decision-issues.
@@ -1344,6 +1361,7 @@ func main() {
 		if name := singleRootOnlySubcommand(map[string]bool{
 			"--verify-issues":         *verifyIssuesMode,
 			"--decision-issues":       *decisionIssuesMode,
+			"--owed-issues":           *owedIssuesMode,
 			"--drive-issues":          *driveIssuesMode,
 			"--signoff-digest":        *signoffDigestMode,
 			"--scan-issues":           *scanIssuesMode,
@@ -1448,6 +1466,12 @@ func main() {
 	// implemented/verified lacking an open needs-decision issue.
 	if *decisionIssuesMode {
 		os.Exit(runDecisionIssues(*root, *decisionMarkers))
+	}
+	// Authoring-owed issues (spec-routing/01): self-contained, STATUS.md-free,
+	// offline. Emits one JSON issue payload per approved spec/scoping document
+	// whose path no brief's sources: dereferences (spec/lifecycle-v1.md §8.5).
+	if *owedIssuesMode {
+		os.Exit(runOwedIssues(*root, *owedMarkers))
 	}
 	// Drive lifecycle issues (methodology-metrics phase 2): self-contained, same
 	// STATUS.md-free discipline as decision-issues. Emits the active-drive tracking

@@ -1,0 +1,86 @@
+# authoring-owed emitter — WORKFLOW TEMPLATE (spec-routing/01, spec/lifecycle-v1.md §8.5)
+#
+# THIS FILE IS A TEMPLATE, NOT A LIVE WORKFLOW. It lives under docs/, not
+# .github/workflows/, so nothing in THIS repo runs it. To use it, COPY it into
+# YOUR repo's .github/workflows/ and fill the two adopter placeholders marked
+# ADOPTER below.
+#
+# What it does: on every push to the default branch it lists the currently-open
+# authoring-owed issues (for their idempotency markers), runs
+# `statusgen --owed-issues`, and files ONE work-ready issue per approved
+# spec/scoping document whose repo-relative path no brief's `sources:` frontmatter
+# dereferences (§8.5). The hidden per-document marker makes it idempotent: a
+# re-run over an already-open issue files nothing, so there is exactly one open
+# issue per owed document. Authoring a brief that cites the document's path routes
+# it (§8.4), and the emitter then files nothing.
+#
+# IDENTITY (spec-routing/01 review Q4): this template names NO specific App. It
+# files the issue as whatever trusted App identity YOUR roster binds for this
+# purpose — mint a token for that App and expose it as GH_TOKEN in the file step
+# (the `ADOPTER: identity` placeholder). Which App that is, is your configuration,
+# not part of this device.
+
+name: authoring-owed
+
+on:
+  push:
+    branches: [main]
+
+# Least privilege: read the repo, file issues. No contents:write.
+permissions:
+  contents: read
+  issues: write
+
+# Serialize so two pushes cannot race to file the same owed issue.
+concurrency:
+  group: authoring-owed
+  cancel-in-progress: false
+
+jobs:
+  owed:
+    if: github.event_name == 'push'
+    # ADOPTER: runner — set the label your repo uses. The other Assay workflows in
+    # a house repo run on a self-hosted runner; a public adopter may use
+    # ubuntu-latest. Enablement + runner choice is a maintainer step.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned statusgen (channel E — sha256-verified release binary)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          plat="$(uname -s | tr A-Z a-z)-$(uname -m | sed 's/^x86_64$/amd64/; s/^aarch64$/arm64/')"
+          line="$(grep "^statusgen-$plat " .assay-versions || true)"
+          if [ -z "$line" ]; then
+            echo "::error::no .assay-versions pin for platform $plat — refusing rather than guessing"
+            exit 1
+          fi
+          tag="$(printf '%s' "$line" | awk '{print $2}')"
+          sha="$(printf '%s' "$line" | awk '{print $3}')"
+          # ADOPTER: release repo — the umbrella that publishes the pinned binary.
+          gh release download "$tag" --repo medici-finance/assay --pattern "statusgen-$plat" -O /tmp/statusgen
+          echo "${sha}  /tmp/statusgen" | shasum -a 256 -c -
+          sudo install -m 0755 /tmp/statusgen /usr/local/bin/statusgen
+
+      - name: File one issue per newly-owed document
+        env:
+          # ADOPTER: identity — a token for the trusted App your roster binds to
+          # file work-ready issues. This template names no specific App.
+          GH_TOKEN: ${{ secrets.ASSAY_AUTHORING_OWED_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Open owed issues -> their markers, so a re-run files nothing new. The
+          # emitter reads markers out of raw `gh issue list --json body` output.
+          gh issue list --state open --label authoring-owed --json body --limit 500 \
+            > /tmp/owed-markers.json || echo '[]' > /tmp/owed-markers.json
+          statusgen --owed-issues --owed-markers /tmp/owed-markers.json > /tmp/owed-issues.json
+          count="$(jq 'length' /tmp/owed-issues.json)"
+          echo "authoring-owed: $count new issue(s) to file"
+          jq -c '.[]' /tmp/owed-issues.json | while read -r issue; do
+            title="$(printf '%s' "$issue" | jq -r '.title')"
+            labels="$(printf '%s' "$issue" | jq -r '.labels | join(",")')"
+            printf '%s' "$issue" | jq -r '.body' | gh issue create \
+              --title "$title" --label "$labels" --body-file -
+          done
