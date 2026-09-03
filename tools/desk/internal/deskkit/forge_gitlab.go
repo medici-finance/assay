@@ -396,6 +396,9 @@ func (g *GitLabForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 	if mr.Author != nil {
 		out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
 	}
+	if mr.UpdatedAt != nil {
+		out.UpdatedAt = mr.UpdatedAt.UTC().Format(time.RFC3339)
+	}
 	return out, nil
 }
 

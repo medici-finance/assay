@@ -228,8 +228,9 @@ func glMR(overrides map[string]any) map[string]any {
 	base := map[string]any{
 		"iid": 7, "state": "opened", "draft": true, "title": "Draft: add the thing",
 		"sha": "abc123", "changes_count": "3",
-		"author":  map[string]any{"id": 99, "username": "worker-bot"},
-		"web_url": "https://gitlab.example/medici-finance/assay/-/merge_requests/7",
+		"author":     map[string]any{"id": 99, "username": "worker-bot"},
+		"web_url":    "https://gitlab.example/medici-finance/assay/-/merge_requests/7",
+		"updated_at": "2026-09-01T12:00:00Z",
 	}
 	for k, v := range overrides {
 		base[k] = v

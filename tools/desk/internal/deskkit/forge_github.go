@@ -170,7 +170,8 @@ type ghPullWire struct {
 	Head struct {
 		SHA string `json:"sha"`
 	} `json:"head"`
-	HTMLURL string `json:"html_url"`
+	HTMLURL   string `json:"html_url"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type ghIssueWire struct {
@@ -249,6 +250,7 @@ func (g *GitHubForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 		ChangedFiles: w.ChangedFiles,
 		Author:       Account{Login: w.User.Login, ID: w.User.ID},
 		HeadSHA:      w.Head.SHA,
+		UpdatedAt:    w.UpdatedAt,
 	}, nil
 }
 

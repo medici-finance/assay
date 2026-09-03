@@ -15,6 +15,7 @@
       "Login": "worker-bot",
       "ID": 99
     },
-    "HeadSHA": "abc123"
+    "HeadSHA": "abc123",
+    "UpdatedAt": "2026-09-01T12:00:00Z"
   }
 }
