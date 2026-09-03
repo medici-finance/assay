@@ -21,7 +21,11 @@ markdown extraction answers the question.
 
 ## 1. Convert
 
-Run `plugins/assay/scripts/pdfingest.sh` (or any docling-serve client):
+Run `plugins/assay/scripts/pdfingest.sh` (or any docling-serve client).
+**No endpoint yet?** `SETUP.md` beside this skill installs Docling four ways —
+local `pip install` (zero infra, the client's automatic fallback), Docker,
+a plain Kubernetes Deployment, and an optional scale-to-zero rung — all
+reproducible with no access to any particular deployment.
 
 ```bash
 pdfingest.sh paper.pdf > paper.md       # markdown to stdout
@@ -38,9 +42,9 @@ pdfingest.sh --health                   # is the endpoint up?
   `/docs` if a request 400s. A cold start after idle legitimately takes tens
   of seconds to minutes (pod schedule + image pull + model load) — use a
   generous HTTP timeout, don't retry-storm.
-- No endpoint and no local `docling` CLI: `pip install docling` (CPU-only,
-  models download once, ~2 GB) — or tell the driver what's missing rather
-  than silently downgrading to raw `pdftotext`.
+- No endpoint and no local `docling` CLI: see `SETUP.md` rung 1 (`pip install
+  docling`, CPU-only, models download once, ~2 GB) — or tell the driver what's
+  missing rather than silently downgrading to raw `pdftotext`.
 - **Confidentiality**: the document body crosses the endpoint's wire WHOLE.
   Point `ASSAY_DOCLING_URL` only at an endpoint you or your driver control —
   never a third-party API for confidential material.
