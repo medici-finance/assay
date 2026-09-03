@@ -199,7 +199,7 @@ Rules, all of them load-bearing:
   path and produces byte-identical output; the multi-root driver only wraps it.
 - **Sub-commands refuse multi-root.** `--dora`, `--autonomy`, `--ladder`, `--trend`, `--cynefin`, `--code`,
   `--alarms`, `--bottleneck`, `--roadmap`, `--launch`, `--gate-scores`,
-  `--verify-issues`, `--decision-issues`, `--scan-issues`, `--close-verify`,
+  `--verify-issues`, `--decision-issues`, `--owed-issues`, `--scan-issues`, `--close-verify`,
   `--auto-flip-model`,
   `--consumers`, `--register-links` and `init` are one-repo tools; with several `--root`s they
   exit 2 rather than quietly using the first. Run them once per root.

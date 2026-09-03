@@ -45,7 +45,7 @@ these devices, not code in this stream.
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Enforce the §8 lifecycle — the linter and the authoring-owed emitter](./brief-01-enforce-lifecycle-and-owed-emitter.md) | 0 | M | todo | — | — |
+| 01 | [Enforce the §8 lifecycle — the linter and the authoring-owed emitter](./brief-01-enforce-lifecycle-and-owed-emitter.md) | 0 | M | implemented | — | — |
 
 ## Critical path
 
