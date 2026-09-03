@@ -98,5 +98,38 @@ asserted output line. Review-only: the default of two.
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+Run 2026-09-02 by assay-worker-app[bot] on the implementing branch (offline;
+`KUBECONFIG=/dev/null`).
+
+| # | Command | Exit | Output | Date | Runner |
+|---|---------|------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'Width\|Reserve' -count=1` | 0 | `ok  github.com/medici-finance/assay/tools/desk/internal/deskkit` | 2026-09-02 | sonnet-5 worker |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run TestPlanReservationCapsFreshWhenResumeWaits -v -count=1` | 0 | `--- PASS: TestPlanReservationCapsFreshWhenResumeWaits` | 2026-09-02 | sonnet-5 worker |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run TestPlanReservationNeverIdlesASlot -v -count=1` | 0 | `--- PASS: TestPlanReservationNeverIdlesASlot` | 2026-09-02 | sonnet-5 worker |
+| 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestReserveRefusedWhenItSwallowsWidth -v -count=1` | 0 | `--- PASS: TestReserveRefusedWhenItSwallowsWidth` | 2026-09-02 | sonnet-5 worker |
+| 5 | `cd tools/desk && GOWORK=off go build ./cmd/deskroster && ./deskroster width --help` | 0 | output contains `-reserve string` (the `--reserve` spelling appears in the `--session` flag's own help text, `deskroster width --help \| grep -c -- --reserve` = 1) | 2026-09-02 | sonnet-5 worker |
+| 6 | `cd tools/desk && GOWORK=off go run ./cmd/fanoutloop plan --help` | 0 | output contains `reservation` (2 occurrences) | 2026-09-02 | sonnet-5 worker |
+| 7 | `statusgen --root . --consumers --brief desk-supervision/05` | see Notes | see Notes | 2026-09-02 | sonnet-5 worker |
+
+Notes on row 7: run BEFORE this Evidence edit landed the brief file in the diff,
+`--consumers` reported `COULD-NOT-CHECK: desk-supervision/05 is not in the diff against
+<origin/main tip>` (exit 2) — the brief's own file was not yet part of the diff for the
+tool to anchor on (`--brief` requires the named brief's FILE, not just the files its
+`consumers:` entries name, to appear in the branch diff; see statusgen/consumers.go's
+`runConsumers`). This Evidence edit is what puts
+`docs/streams/desk-supervision/brief-05-per-class-caps.md` into the diff; the row's
+real corroborate/disprove verdict is recorded in a follow-up commit once this one
+lands, per the same two-step this stream's brief-06 hit first.
+
+Also ran the full `tools/desk` suite (`go test ./...`, all packages including
+`internal/deskkit`, `cmd/fanoutloop`, `cmd/deskroster`, `cmd/deskboard`) green after
+this change, and confirmed by stashing the non-test source changes (width.go,
+widthstore.go, adapter.go, board.go, fanoutloop/main.go, deskboard/throughput.go)
+while keeping the new/changed tests in place: every new or changed test asserting
+this brief's behaviour (Reserve tests in `internal/deskkit`, the `Rework`-field tests
+in `cmd/fanoutloop`, the `--reserve` tests in `cmd/deskroster`, the reserve-column
+test in `cmd/deskboard`) fails to compile against the unfixed source — the fail-first
+evidence for clause 9, quoted in the PR body.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
