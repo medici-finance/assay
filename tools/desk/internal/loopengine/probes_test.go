@@ -261,12 +261,12 @@ func TestPRProbe_ReaderErrorIsCouldNotCheck(t *testing.T) {
 
 // --- ObservableProbes.Latest negative controls (Task item 3) ---
 
-// TestLatest_PositiveOutranksCouldNotCheckOnAnotherProbe is the negative control the brief
-// names: "a could-not-check on one probe with a clean sign of life on another yields
-// ALIVE" — Latest() is existing liveness.go behavior; this test exercises it through the
-// house probe SHAPE (two real ObservableProbe closures) rather than through hand-rolled
-// funcs, so a regression in either probe's error/observation plumbing would also trip it.
-func TestLatest_PositiveOutranksCouldNotCheckOnAnotherProbe(t *testing.T) {
+// TestLatest_LifeBeatsCouldNotCheck is the negative control the brief names: "a
+// could-not-check on one probe with a clean sign of life on another yields ALIVE" —
+// Latest() is existing liveness.go behavior; this test exercises it through the house
+// probe SHAPE (two real ObservableProbe closures) rather than through hand-rolled funcs,
+// so a regression in either probe's error/observation plumbing would also trip it.
+func TestLatest_LifeBeatsCouldNotCheck(t *testing.T) {
 	auditErr := NewAuditProbe(func() ([]AuditEntry, error) { return nil, errors.New("unreadable") })
 	branchAlive := NewBranchProbe(
 		func(string) (map[string]string, error) { return map[string]string{"refs/heads/b": "sha1"}, nil },
