@@ -112,6 +112,8 @@ func cmdReply(args []string) (err error) {
 	fs.SetOutput(new(strings.Builder)) // suppress flag's own output; we craft messages
 	bodyFile := fs.String("body-file", "", "path to a file containing the reply body (required)")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, body digest, reason, identity)")
+	workpad := fs.Bool("workpad", false, "upsert ONE workpad comment per PR instead of always posting a new reply — find the newest unresolved workpad comment authored by the worker identity and edit it in place, or create the first one")
+	dryRun := fs.Bool("dry-run", false, "with --workpad, report what would happen (WORKPAD: would edit #<id> / WORKPAD: would create) without posting or editing anything")
 	if perr := fs.Parse(args[2:]); perr != nil {
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
@@ -125,6 +127,9 @@ func cmdReply(args []string) (err error) {
 		if verr := deskkit.ValidateScanOverride(*scanOverride); verr != nil {
 			return verr
 		}
+	}
+	if *dryRun && !*workpad {
+		return deskkit.Refused("refused: --dry-run only applies to --workpad")
 	}
 
 	pr, prErr := strconv.Atoi(prArg)
@@ -163,6 +168,15 @@ func cmdReply(args []string) (err error) {
 		return serr
 	}
 	ac.bodyDigest = deskkit.Sha256Hex(body)
+
+	// --workpad posts/edits ONE marked comment; a body without the marker is a caller
+	// error (the body was meant for `deskreply <owner/repo> <pr> --body-file F`, the plain
+	// reply path) and is refused BEFORE any preflight/mint/gate work runs, exactly like
+	// every other cheap body check above it.
+	if *workpad && !deskkit.HasWorkpadMarker(string(body)) {
+		return deskkit.Refused("refused: --workpad body does not carry the exact-match workpad marker " +
+			"line (" + deskkit.WorkpadMarker + ") — render it with deskkit.Render before posting")
+	}
 
 	// This must be the worker's OWN PR. Establish the worktree facts, then
 	// confirm the positional repo is this worktree's origin — a worker replies on the PR
@@ -217,6 +231,13 @@ func cmdReply(args []string) (err error) {
 			facts.branch, pr, view.HeadRefName))
 	}
 	ac.head = view.HeadRefOid
+
+	// --workpad replaces everything below this point with the find-or-create upsert
+	// decision (workpad.go): it has its own write-budget check and its own post/edit call,
+	// and it never falls through to the plain-reply idempotency/post logic.
+	if *workpad {
+		return cmdWorkpadUpsert(ac, dir, repo, pr, body, *dryRun)
+	}
 
 	// idempotency, key (repo, pr, headSHA, bodyDigest): this exact reply body already
 	// posted at this PR head → noop, no `gh pr comment`. LoadEntries fails CLOSED on a

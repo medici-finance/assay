@@ -36,9 +36,10 @@ rather than assumed:
 ### 0.1 Free tier / CE — conforming for the core lane, with the degradations disclosed below (ruling #219; measured live 2026-09-02)
 
 The edition ruling (#219, carried in `docs/streams/forge-gitlab/edition-matrix.md`) stands:
-**Community Edition / Free is conforming for the core lane** — the Maintainer membership
-set is the push allowlist, approvals are advisory, and every write reaches `main` through a
-merge request a human merges. What the pilot changed is the *size of the disclosure*, not
+**Community Edition is conforming for the core lane** (Free on gitlab.com is the same
+edition): the Maintainer role set is the allowlist for pushes to `main`,
+approvals are advisory, and every write reaches `main` through a merge request a human
+merges. What the pilot changed is the *size of the disclosure*, not
 the stance: a live run of the §2 script against a fresh free-tier gitlab.com top-level group
 (GitLab 19.4) provisioned the whole §1 identity model — seven service accounts (free and
 seatless since GitLab 18.11, edition-matrix row C1), their group memberships and their

@@ -24,17 +24,24 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-const usage = `deskreply — post a plain reply comment on YOUR OWN open pull request.
+const usage = `deskreply — post a plain reply comment, or upsert a workpad comment, on YOUR OWN
+open pull request.
 
 USAGE:
   deskreply <owner/repo> <pr> --body-file F
+  deskreply <owner/repo> <pr> --workpad --body-file F [--dry-run]
   deskreply --version
 
-deskreply posts a plain issue comment as the worker App (the worker App) — never
-as the reviewer App. It has ONLY this verb: no review, no verdict, no ready, no merge,
-no edit. Before posting it re-verifies in-tool that the PR is OPEN and that the
-branch checked out in this worktree matches the PR's head branch — a worker replies on
-ITS OWN PR. On any state it cannot positively verify it refuses.
+deskreply posts as the worker App (the worker App) — never as the reviewer App. It has
+TWO verbs, both scoped to YOUR OWN open PR: a plain reply (always a new comment), and
+--workpad (find the newest unresolved comment authored by the worker identity that
+carries the workpad marker and edit it in place, or create the first one — never a
+second). Neither verb reviews, verdicts, readies, or merges. Before writing, it
+re-verifies in-tool that the PR is OPEN and that the branch checked out in this worktree
+matches the PR's head branch. On any state it cannot positively verify it refuses.
+
+--dry-run (only with --workpad) prints "WORKPAD: would edit #<id>" or
+"WORKPAD: would create" and writes nothing.
 
 The body is read from --body-file only (no stdin / inline body), is capped at 16 KiB, and
 is secret-scanned; there is no override flag.

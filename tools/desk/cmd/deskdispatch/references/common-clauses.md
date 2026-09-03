@@ -72,3 +72,19 @@ cannot resolve becomes a filed issue or a comment on the PR it is working, carry
 escalation label (`question` / `help wanted` / `needs-decision`) and a statement of exactly
 what is needed and from whom. Then stop that line of work — do not guess, and do not
 proceed on an assumption you have just written down as an open question.
+
+## C6. One workpad per PR — no separate done/summary comments
+
+> Keep ONE workpad per PR via `deskreply --workpad`; no separate done/summary comments;
+> update it before hand-off and at every blocker.
+
+A worker re-dispatched onto a PR starts cold unless the prior state is somewhere it can
+find it in one read. `deskreply --workpad --body-file F` finds the newest unresolved
+comment this agent's own identity already posted on the PR and edits it in place — plan,
+acceptance criteria, environment stamp, validation, notes — rather than adding another
+comment to a scatter an outward-write budget then has to police. Post a fresh reply
+(`deskreply <owner/repo> <pr> --body-file F`, no `--workpad`) only for something a workpad
+edit cannot represent — a distinct finding reply, an announcement of adoption that must
+stay visible in the thread on its own. Everything that is this agent's own running state —
+what it intends to do, what it has verified, what is blocking it — belongs in the ONE
+workpad, edited, never appended as a new comment.

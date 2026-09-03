@@ -117,6 +117,22 @@ facts:
 <!-- appended at implementation time by a NON-implementer: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner). -->
 
+Runner: opus-4.8[1m]-verifier (verify-desk dispatch, non-implementer) · Date: 2026-09-02 · public-assay merged HEAD `ecf722d068e0fa3c6273eff68931ba6c1fb96e84` (brief-12 code at `841ca8e`) · offline (`KUBECONFIG=/dev/null`).
+
+| # | Command | Exit | Key observed output |
+|---|---------|------|---------------------|
+| 1 | `cd qualgen && go build ./... && go vet ./reflex/` | 0 | clean build + vet (go1.26.5 darwin/arm64) |
+| 2 | `cd qualgen && go test ./reflex/` | 0 | `ok …/qualgen/reflex` |
+| 3 (dereferencing) | `go test ./reflex/ -run` the `GateYieldFixture` case | 0 | PASS — asserts `Catches==8`, `Escapes==2`, `CatchRate` measured `==0.8`, `EscapeRate==0.2`; a different-lane escape does not pollute; zero/zero lane could-not-measure |
+| 4 (dereferencing, negative) | `go test ./reflex/ -run` the `RitualNumberRefusedWithoutStratification` case | 0 | PASS — asserts `err != nil` AND `b == nil` (no bytes on refusal); error text contains `un-stratified`; explicit `unknown` band refused identically |
+| 5 | `go test ./reflex/ -run` the `RitualReadoutCarriesConfounders` case | 0 | PASS — stratified readout serializes WITH non-empty confounders |
+| 6 | `go test ./reflex/ -run` the `ReviewEscapeOverlayThreeState` case | 0 | PASS — a defect with no overlay entry emits could-not-join, never guessed |
+| 7 | `go test ./reflex/ -run` the `NoNewMining` case | 0 | PASS — join reads only M1/M2/M3 artifact fixtures; no git-history mining seam invoked |
+
+RISK-VALUE: DERIVED — `bandSplitLow`/`bandSplitHigh` = `1.0/3.0`, `2.0/3.0` @ `qualgen/reflex/stratify.go:51-52` — §7.2 requires three strata so a stronger tier's expected concentration on the HIGH band is not collapsed into a neighbour; equal-thirds is the canonical assumption-free split of a bounded percentile into three ordered bands. Reversible bucketing const in a read-only, calendar-gated analysis tool. Other literals (`defaultDeepVerifyThreshold=5`, band label strings) rank last. gate:model, all risk `no`.
+
+Verdict: PASS — all 7 rows exit 0; the two dereferencing rows assert exact values (0.8/0.2) and the negative path bites (error + no bytes + `un-stratified`), not presence checks. Advancing `implemented → verified`.
+
 ## Review
 Gate: model (all four risk answers no — repo-agnostic OSS Go joining already-recorded
 M1-M3 artifacts; read-only, no product value changed). Reviewer confirms: (a) no
