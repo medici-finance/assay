@@ -37,7 +37,7 @@ it on day one.
 | `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
 | `deskpost` | `review`, `comment`, `ready` — as the reviewer App | outward write | yes |
 | `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push) | outward write | yes |
-| `deskreply` | PR reply comment under the **worker** identity | outward write | yes |
+| `deskreply` | PR reply comment under the **worker** identity; `--workpad` upserts ONE marked progress comment per PR (find the worker's own newest unresolved comment carrying the workpad marker and edit it in place, or create the first one) instead of always posting a new reply — `--dry-run` reports which without writing | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
 | `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` — the issue-CLOSING gate (a fetched human authorization or nothing) | outward write | yes |
 | `deskdigest` | (no verbs) `--dry-run` / `--post` — the weekly batched decision queue; reports only, and writes exactly one issue: its own | outward write | yes |
@@ -146,9 +146,11 @@ deskroster preflight --help
 
 The first is worth internalising: `deskreply` takes **exactly two positionals** —
 `deskreply <owner/repo> <pr> --body-file F`. There is no `comment` subcommand, and the
-extra token is a refusal, not a parse warning. The second is the deliberate capability
-probe: `0` means the verb exists in this build, `5` means it does not, answered in one
-call with no output parsing — which is also how you notice you are on a stale binary.
+extra token is a refusal, not a parse warning. `--workpad` (and its `--dry-run`) are FLAGS
+layered on the same two positionals, never a third positional or a subcommand. The second
+is the deliberate capability probe: `0` means the verb exists in this
+build, `5` means it does not, answered in one call with no output parsing — which is also
+how you notice you are on a stale binary.
 
 ### 4. The write verbs, and their fallbacks
 
@@ -158,6 +160,7 @@ call with no output parsing — which is also how you notice you are on a stale 
 | Push a follow-up | `deskpr update` | `git push` |
 | Correct the PR's own body/title | `deskpr edit --body-file F [--title T]` | `gh pr edit` — but see below: the fallback runs none of the gates |
 | Reply on **your own** PR as the worker | `deskreply <owner/repo> <pr> --body-file F` | `gh pr comment` |
+| Upsert your ONE workpad comment on your own PR | `deskreply <owner/repo> <pr> --workpad --body-file F` | none — the edit path needs the candidate comment's GraphQL node id, which only the tool's own find step resolves; escalate on exit 6 rather than guess |
 | Post a review verdict / flip ready | `deskpost review\|comment\|ready` | (reviewer desk only) |
 | File an issue | `deskfile new -R <owner/repo> --title T --body-file F` | none — dedupe is the point |
 
