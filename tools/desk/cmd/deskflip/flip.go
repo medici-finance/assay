@@ -859,7 +859,7 @@ type reviewInfo struct {
 // `files` is NOT requested (as before): its single unpaginated page is a prefix on a large
 // PR, which the risk-class determination may never be handed; the list comes from
 // readChangedFiles, reconciled against the `changedFiles` total this read returns.
-const flipPRGraphQL = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number state isDraft mergeable changedFiles headRefOid labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+const flipPRGraphQL = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number state isDraft mergeable changedFiles headRefOid labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}`
 
 // flipPRReshapeJQ collapses the GraphQL response into the SAME flat shape gh's
 // `pr view --json …` produced, so prInfo and every downstream condition are unchanged.
