@@ -1267,6 +1267,7 @@ func main() {
 	reviewReworkMode := flag.Bool("review-rework", false, "emit the CHANGES_REQUESTED rounds/PR distribution over brief-linked merged PRs, from the full (un-laundered) reviews array. Reuses --since / --until / --json; reads gh")
 	decisionLatencyMode := flag.Bool("decision-latency", false, "emit the needs-decision queue's latency (created->closed, p50/p90 hours) + live WIP + oldest-open age. Reuses --since / --until / --json; reads gh")
 	netFlowMode := flag.Bool("net-flow", false, "emit per-stream net flow (historian arrivals - completions in the window) plus a live stall flag (active ∧ backlog>0 ∧ no transition >=14d). Reuses --since / --until / --json")
+	assayScoreMode := flag.Bool("assayscore", false, "emit the composite AssayScore (statusgen/08): geometric mean of the four 0–100 sub-scores (Speed/Flow/Quality/Value) rolled up from the brief-flow metrics, always published with its four sub-scores + raw inputs + baseline_window. A could-not-check dimension is excluded (never coerced to 0) and the composite is flagged `incomplete`. Reuses --since / --until / --json; Quality/Value read gh")
 	launchMode := flag.Bool("launch", false, "print launch-readiness rollup — transitive depends: of the go-live gate (assay-launch/05) with live status (never reads/writes STATUS.md)")
 	launchTarget := flag.String("launch-target", "assay-launch/05", "target brief for --launch (default assay-launch/05)")
 	// Evidence-bundle export (gtm/05): deterministic tarball of briefs, registers,
@@ -1367,6 +1368,7 @@ func main() {
 			"--review-rework":         *reviewReworkMode,
 			"--decision-latency":      *decisionLatencyMode,
 			"--net-flow":              *netFlowMode,
+			"--assayscore":            *assayScoreMode,
 			"--roadmap":               *roadmapMode,
 			"--bottleneck":            *bottleneckMode,
 			"--launch":                *launchMode,
@@ -1621,6 +1623,9 @@ func main() {
 	}
 	if *netFlowMode {
 		os.Exit(runNetFlow(*root, *since, *doraTimingUntil, *doraJSON))
+	}
+	if *assayScoreMode {
+		os.Exit(runAssayScore(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}, ghDecisionQueueSource{}))
 	}
 	// Roadmap deck overview + per-stream pages — RETAINED (Ian ruling #1213).
 	// DevLake feeds INTO these internal pages; roadmapdora.go computes the DORA
