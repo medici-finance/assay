@@ -16,14 +16,14 @@ loose `~/.claude` rule files).
 The hook registers `SessionStart` with `"matcher": "*"`. Once the plugin is
 installed there is no per-project or per-skill narrowing: **every session you
 start, in every project, receives the injected rules** — not just sessions that
-invoke an `assay:*` skill. The payload is currently 2432 characters of
-`systemMessage` (2444 bytes UTF-8 — the body carries six em-dashes), added to
+invoke an `assay:*` skill. The payload is currently 2821 characters of
+`systemMessage` (2835 bytes UTF-8 — the body carries seven em-dashes), added to
 the context of each of those sessions. Measure it the same way to get the same
 number:
 
 ```sh
-bash hooks/inject-resident-rules.sh | jq -r '.systemMessage | length'        # 2432 characters
-bash hooks/inject-resident-rules.sh | jq -j  .systemMessage | wc -c          # 2444 bytes
+bash hooks/inject-resident-rules.sh | jq -r '.systemMessage | length'        # 2821 characters
+bash hooks/inject-resident-rules.sh | jq -j  .systemMessage | wc -c          # 2835 bytes
 ```
 
 If you want the rules only in desk sessions, do not install the plugin

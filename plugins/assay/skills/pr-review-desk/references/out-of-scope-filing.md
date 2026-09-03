@@ -93,15 +93,17 @@ is worth its own issue, or its own comment on the existing one.
 ## File-and-exit, never block — the pod-loop contract (the pod-loop contract)
 
 The orthogonal half of the autonomous-drive rule: *file at discovery, don't ask permission* is one
-half; **never hold the run open after you have filed** is the other. When the review loop hits a
-decision fork, a human gate, or an external blocker it cannot resolve, it **files (or confirms
-already-filed) the escalation and exits the run** — a pod CronJob run terminates; a live session
+half; **never hold the run open after you have filed** is the other — but the reversibility test runs
+FIRST. When the review loop hits a decision fork, a human gate, or an external blocker it cannot
+resolve, a REVERSIBLE fork is acted on at its best-guess default and the filing NAMES that default
+rather than asking (the merge gate catches a wrong default); only a genuinely one-way fork makes it
+**file (or confirm already-filed) the escalation and exit the run** — a pod CronJob run terminates; a live session
 window yields to the next PR in the queue. It never blocks and never waits in-line for the answer;
 resumption is event-driven — a fresh run picks the PR up when the answer or the label lands, and
 until then the run does not hold on it. A documented wait-state that is merely SURFACED (a
 `WAIT-CI` PR reported and moved past, a MERGE-NOW awaiting the human's merge) is already
 file-and-exit-shaped: keep it, and note explicitly that the run does not hold on it either. Route a
-genuine decision FORK to a `needs-decision` issue in the self-contained shape (Situation + 2–4
+genuine ONE-WAY decision FORK to a `needs-decision` issue in the self-contained shape (Situation + 2–4
 Options with pros/cons + what-happens-on-each-answer + links, answerable without opening the repo);
 lighter input needs use `question` / `help wanted` — a bare label is not filing. **Why:** a loop
 that blocks in-run is undebuggable in a pod — its blocked state must be an at-rest FILED issue

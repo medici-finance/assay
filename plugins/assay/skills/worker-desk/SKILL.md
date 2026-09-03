@@ -219,7 +219,9 @@ four must hold:**
    none of `question` / `needs-decision` / `help wanted`, not parked awaiting a reply.
 4. **Needs no triage judgment** — single-repo, no open design fork, no risk-bearing surface
    (public-repo copy, security, prod-deploy, irreversible actions). Anything needing scoping,
-   splitting, a decision or a risk call is **intake's job**. When in doubt, leave it.
+   splitting, a decision or a risk call is **intake's job**. When in doubt, leave it to intake AND
+   LEAVE A TRACE (a `question` on the issue naming the fork) — intake's strong tier picks the default
+   a reversible fork then proceeds on.
 
 **Priority is LOWEST of the dispatch sources** (WIP-draining work → board rows → un-briefed issues),
 but the ordering is a tie-break, not a hold: an empty slot with a qualifying issue and nothing above
@@ -434,7 +436,9 @@ issue list. Two states:
 
 **A question never stops the window.** `question`, `help wanted` and `needs-decision` are filings, not
 console stops: label + comment the item saying what is needed and from whom, then **carry on with the
-rest of the queue in the same tick**. The ITEM parks awaiting input; the WINDOW does not. "What should
+rest of the queue in the same tick**. For a REVERSIBLE fork the ITEM does not park either — it is
+dispatched on its stated default with the question riding on the issue/PR (the merge gate catches a
+wrong default); only a genuinely one-way fork parks the item. The WINDOW never parks. "What should
 I work on?" is not a question this desk asks at all (§Liveness contract).
 
 A hard error that halts the loop may print its final diagnostic — but if clearing it needs a human,
@@ -448,9 +452,10 @@ instrument, the last good sweep timestamp, and what re-arming was tried). Quiet 
 only while the tick line proves the instruments are alive.
 
 **File-and-exit, never block (pod-loop contract, desk-hardening/13) — scoped to POD / CronJob runs.**
-In a bounded execution (a pod or scheduled job whose run must terminate), a decision fork, a human
-gate or an external blocker the DISPATCHER loop cannot resolve is filed — or confirmed already filed —
-and the run **exits**; it never holds a bounded run open waiting. **In a live role window this clause
+In a bounded execution (a pod or scheduled job whose run must terminate), the reversibility test runs
+FIRST: a reversible fork is dispatched on its stated default and then filed with that default named;
+only a genuinely one-way / external blocker the DISPATCHER loop cannot resolve is filed unworked — or
+confirmed already filed — and the run **exits**; it never holds a bounded run open waiting. **In a live role window this clause
 does not license an exit**: the window files the same escalation and **continues with the rest of the
 queue**. The event-only resumption the original clause assumed is superseded for live windows by the
 2026-08-25 liveness ruling recorded in the project's desk liveness contract,
@@ -498,12 +503,12 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   project's own toolkit/methodology repo — commentary is not a register. Include the triggering
   evidence and affected loops. Repo-specific defects still go to that repo's own tracker (label `bug`).
 - **Escalation labels:** any desk/loop may label a PR or issue `question` (needs an answer from the
-  driver or a stronger-tier model to proceed — the item PARKS) or `help wanted` (the desk hit its
-  capability/authority edge). Both are GitHub default labels — they exist in every repo, no setup.
-  Discipline: a bare label is unanswerable — the labeler MUST comment what it needs and from whom when
-  labeling; whoever answers removes the label with their response. A `question` that matures into a
-  formal decision fork promotes to `needs-decision` with the pros/cons template. Labeled items are
-  WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
+  driver or a stronger-tier model — the item PARKS only when the fork is one-way; a reversible item proceeds on its
+  stated default with the label riding on it) or `help wanted` (the desk hit its capability/authority edge). Both are
+  GitHub default labels — they exist in every repo, no setup. Discipline: a bare label is unanswerable — the labeler
+  MUST comment what it needs and from whom when labeling; whoever answers removes the label with their response. A
+  `question` that matures into a formal decision fork promotes to `needs-decision` with the pros/cons template.
+  Labeled items are WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
@@ -516,6 +521,23 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   - Desk-specific: **any cluster or live-infrastructure contact is outside a worker's envelope —
     read-only included.** Mutating verbs stay denied for every desk role; a worker that needs live
     state reports could-not-check + BLOCKED-ON-HUMAN, never a probe.
+- **Reversibility test — default-forward on anything a human-held gate still catches:** before
+  parking an item on the driver, ask ONE question: *is a wrong guess here caught by a gate the
+  driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a
+  human must still make?* **Yes → default-forward.** Author it, dispatch the worker, open the DRAFT
+  PR, make the best-guess call, and NOTIFY — "proceeded on `<default>`; filed as `<repo>#<N>`;
+  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. The
+  `needs-decision` / `question` issue is still filed, naming the default taken, but the ITEM does
+  not park on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
+  the record, and corrected by the gate. **No → STOP and wait for the human.** A wrong guess that
+  lands irreversibly or reaches outside the gate is caught by nobody declining a merge. That set is
+  fixed, never judged case by case: merge, a ready-flip that is not this role's, any `main` push
+  outside a standing authorization, a tag or release cut; deleting, disabling or WEAKENING a
+  security control or its CI assertion; exposing secrets, credentials, PII or exploit detail (a
+  public repo above all); money movement, identity/auth changes, deleting or overwriting durable
+  data; and anything that leaves the repo — publishing to a public or external surface, sending
+  content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
+  either side of the test — the test never routes around one.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
   or comments.
 

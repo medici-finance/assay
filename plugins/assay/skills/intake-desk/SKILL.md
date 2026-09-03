@@ -235,7 +235,10 @@ issues landed three days later. That is why the two rules sit together.
 3. **AWAIT / unblock.** A placeholder whose worker parked a question on the issue; a new human
    comment unblocks it and the worker resumes on its own PR. Keep the parked set visible — they are
    WAITING-ON-INPUT, not orphans for the fanout sweep.
-4. **needs-decision.** An issue or brief that hits a human gate. File (or confirm) a
+4. **needs-decision.** An issue or brief that hits a human gate — but the reversibility test runs
+   first: a REVERSIBLE fork is scoped on its best-guess default and rides Next-up NOW (the merge gate
+   catches a wrong default), and its `needs-decision` issue is a NOTIFICATION naming the default, not
+   a park; only a genuinely one-way gate parks the item. File (or confirm) a
    `needs-decision` issue per the **brief-06 template**: self-contained (Situation / Options 2–4
    with pros-cons at the mm/12 trade-off bar / What-happens-on-each-answer / Links). The decider is
    the human, and only a verified human account is honored. This is the SINGLE decision queue
@@ -310,11 +313,14 @@ unaffected, since both layouts parse.
    - **`scoped → <stream>`** — becomes a brief. **Tier gate: triage only QUEUES authoring.** Brief
      authoring is design-tier work (author-brief model-tier gate); a cheap-tier triage session
      **never authors inline** — it marks the entry and the strong-tier author picks it up. If *this*
-     window is strong-tier and human:<name> wants it, author then; otherwise queue.
+     window is strong-tier, author NOW — a brief is a draft PR, the yes-case of the reversibility test;
+     notify ("proceeded, filed as `<repo>#<N>`"). Otherwise queue.
    - **`scoped → issue #NN`** — operational / bug-shaped work → file a GitHub issue (label `bug`
      when bug-shaped, per the project's own convention); record the issue number. It then enters the
      issue lane above.
-   - **`decision-needed`** — a call that is human:<name>'s. Requires filing (or already having) a
+   - **`decision-needed`** — a call that is human:<name>'s BECAUSE it is one-way. A reversible fork
+     instead exits `scoped` on its best-guess default, with the `needs-decision` issue linked as a
+     NOTIFICATION. Requires filing (or already having) a
      `needs-decision` issue per brief-06's template, recorded in the entry's `decision-issue: <NN>`
      field. The intake view renders these at the top as "waiting on a human" — a **pointer** into the
      issue lane's decision queue, never a second queue.
@@ -328,7 +334,8 @@ unaffected, since both layouts parse.
 Stated once for every desk; this skill adds only what is its own above.
 
 - **Escalation labels:** any desk/loop may label an issue `question` (needs an answer from
-  human:<name> or a stronger-tier model to PROCEED — the item PARKS) or `help wanted` (hit a
+  human:<name> or a stronger-tier model to PROCEED — the item PARKS only when the fork is one-way; a
+  reversible item proceeds on its stated default with the label riding on it) or `help wanted` (hit a
   capability/authority edge). A bare label is unanswerable — **comment what you need and from whom**
   when labelling; whoever answers removes the label with their response. A `question` that matures
   into a formal decision fork promotes to `needs-decision` (issue-loop/06). Labelled items are
@@ -356,6 +363,23 @@ Stated once for every desk; this skill adds only what is its own above.
   standing-authorized (scan commits, tooling, brief authoring, close-out carriers). A blocked push or
   guard refusal is a STOP, never a prompt to route around. Never `git restore`/`clean` a shared
   checkout; isolate in your own temp worktree. No attribution lines anywhere.
+- **Reversibility test — default-forward on anything a human-held gate still catches:** before
+  parking an item on the driver, ask ONE question: *is a wrong guess here caught by a gate the
+  driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a
+  human must still make?* **Yes → default-forward.** Author it, dispatch the worker, open the DRAFT
+  PR, make the best-guess call, and NOTIFY — "proceeded on `<default>`; filed as `<repo>#<N>`;
+  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. The
+  `needs-decision` / `question` issue is still filed, naming the default taken, but the ITEM does
+  not park on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
+  the record, and corrected by the gate. **No → STOP and wait for the human.** A wrong guess that
+  lands irreversibly or reaches outside the gate is caught by nobody declining a merge. That set is
+  fixed, never judged case by case: merge, a ready-flip that is not this role's, any `main` push
+  outside a standing authorization, a tag or release cut; deleting, disabling or WEAKENING a
+  security control or its CI assertion; exposing secrets, credentials, PII or exploit detail (a
+  public repo above all); money movement, identity/auth changes, deleting or overwriting durable
+  data; and anything that leaves the repo — publishing to a public or external surface, sending
+  content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
+  either side of the test — the test never routes around one.
 
 **This desk's own grants and denials.** Branch push + draft PR is standing-authorized (scan commits,
 tooling, brief authoring, close-out carriers). This desk does **not** flip its own PRs ready
