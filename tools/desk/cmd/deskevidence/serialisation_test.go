@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -76,9 +75,9 @@ func TestAuditLockIsHeldAcrossTheRemoteCall(t *testing.T) {
 			return
 		}
 		defer fh.Close()
-		if err := syscall.Flock(int(fh.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
+		if err := deskkit.TryLockExclusive(fh); err == nil {
 			probedFree = true
-			_ = syscall.Flock(int(fh.Fd()), syscall.LOCK_UN)
+			_ = deskkit.UnlockFile(fh)
 		}
 	}
 
@@ -268,11 +267,11 @@ func TestContendedLockTimesOutUnverifiable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open lock: %v", err)
 	}
-	if err := syscall.Flock(int(holder.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := deskkit.TryLockExclusive(holder); err != nil {
 		t.Fatalf("hold lock: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = syscall.Flock(int(holder.Fd()), syscall.LOCK_UN)
+		_ = deskkit.UnlockFile(holder)
 		_ = holder.Close()
 	})
 

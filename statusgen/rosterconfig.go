@@ -100,7 +100,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 )
 
 const (
@@ -520,17 +519,10 @@ func scanCheckOwnerPerms(path string, isDir bool) error {
 			"anything that can write it can name the accounts this tool trusts. "+
 			"Fix with `chmod %s %s`", kind, path, mode, fix, path)
 	}
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		return fmt.Errorf("cannot determine the owner of %s — refusing to read a roster "+
-			"whose ownership cannot be established", path)
-	}
-	if uid := os.Getuid(); int(st.Uid) != uid {
-		return fmt.Errorf("roster config %s is owned by uid %d, not by the invoking user (uid %d) — "+
-			"refusing to take the trusted-identity list from a file this user does not own",
-			path, st.Uid, uid)
-	}
-	return nil
+	// Owner check is platform-specific: unix compares the owning uid; windows has
+	// no uid and skips it LOUDLY (see rosterowner_{unix,windows}.go). The
+	// group/world-writable mode check above runs on both platforms.
+	return checkFileOwner(path, fi)
 }
 
 func scanParseDotenv(s string) map[string]string {

@@ -83,7 +83,7 @@ with WSL noted only as a fallback); publishing to any Windows package manager
 
 | # | Brief | Wave | Effort | Gate | Status | Verified | Reviewed |
 |---|-------|------|--------|------|--------|----------|----------|
-| 00 | [Build-tag split for the unix-only syscall sites](./brief-00-unix-windows-build-tag-split.md) | 0 | M | model | todo | — | — |
+| 00 | [Build-tag split for the unix-only syscall sites](./brief-00-unix-windows-build-tag-split.md) | 0 | M | model | implemented | — | — |
 | 01 | [Release build matrix — windows/amd64 + windows/arm64 + sha256s](./brief-01-release-build-matrix.md) | 1 | M | human | todo | — | — |
 | 02 | [Portability audit — enumerate + triage the shell-assuming surfaces](./brief-02-portability-audit.md) | 0 | M | model | implemented | — | — |
 | 03 | [Windows install path — PowerShell-vs-Go-installer fork, then build](./brief-03-install-path.md) | 2 | L | human | todo | — | — |

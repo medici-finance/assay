@@ -1,10 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -49,11 +49,11 @@ func acquireAuditLock() (*auditLock, error) {
 	}
 	deadline := time.Now().Add(lockWait)
 	for {
-		lerr := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		lerr := deskkit.TryLockExclusive(f)
 		if lerr == nil {
 			return &auditLock{f: f}, nil
 		}
-		if lerr != syscall.EWOULDBLOCK {
+		if !errors.Is(lerr, deskkit.ErrLockBusy) {
 			f.Close()
 			return nil, deskkit.Unverifiable("cannot acquire audit lock", lerr)
 		}
@@ -68,7 +68,7 @@ func acquireAuditLock() (*auditLock, error) {
 }
 
 func (l *auditLock) release() {
-	_ = syscall.Flock(int(l.f.Fd()), syscall.LOCK_UN)
+	_ = deskkit.UnlockFile(l.f)
 	_ = l.f.Close()
 }
 
