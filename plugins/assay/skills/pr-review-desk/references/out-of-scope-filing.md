@@ -58,7 +58,9 @@ filings stamp.
 ## Dual-track PRs — hold until both tracks report, dedupe the union, file once
 
 A risk-classed PR gets TWO independently-dispatched reviewers over the same diff (the correctness
-reviewer plus a separate `/security-review` agent). Both can notice the same out-of-scope item, and
+reviewer plus a separate `/security-review` agent), **dispatched in the SAME turn and running
+concurrently — this hold binds the desk's FILING only; the two VERDICTS never wait for each other,
+and the ready-flip reads both at head on its own.** Both can notice the same out-of-scope item, and
 if each filed it the moment it found it, a `deskfile check` alone still loses the race: track B's
 search can run and come back clean *before* track A's `deskfile new` has landed. Filings 44 seconds
 apart, and 17 minutes apart, are both on record. The fix is desk-side, not reviewer-side:

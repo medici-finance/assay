@@ -9,14 +9,26 @@ reference is `tools/desk/README.md` — the public home of the desk tools.
 The verdict is a **real GitHub review by the reviewer App, not a text marker**:
 
 ```
-deskpost review <owner/repo> <pr> --verdict approve|request-changes --head <sha> --body-file F
-deskpost comment <owner/repo> <pr> --body-file F
+deskpost review          <owner/repo> <pr> --verdict approve|request-changes --head <sha> --body-file F   # correctness lane
+deskpost security-review <owner/repo> <pr> --verdict pass|fail               --head <sha> --body-file F   # security lane (pass = COMMENT event)
+deskpost comment         <owner/repo> <pr> --body-file F                                                  # informational, NOT a verdict
 ```
 
 The App-token mint is absorbed in-tool; `desktoken` is the only mint path anywhere (CLAUDE.md
 § Identity & posting). `--approve` on a pass, `--request-changes` on any blocker with the full
 findings body. A plain `--comment` review is allowed for informational notes but is **NOT a
 verdict** — only APPROVED / CHANGES_REQUESTED count, and only those move the board.
+
+**Two lanes, two idempotency keys.** The correctness and security lanes of one PR run concurrently
+and post independently: the correctness verdict keys on `review:correctness:<flag>` and the security
+verdict on `review:security:<flag>` plus the body digest, so two lanes landing at the SAME head
+never no-op each other. **A security pass goes through `deskpost security-review` ONLY** — it
+submits as a COMMENT-event review, visible to the flip gate but invisible to GitHub's approval
+reduction. The `deskpost review --verdict approve` shape is LEGACY for a security pass and is the
+laundering shape: under the one shared reviewer App a later same-head security APPROVE erases an
+at-head correctness CHANGES_REQUESTED (the 2026-08-15 laundering). A plain comment is the opposite
+failure — invisible to the flip gate, so it moves nothing. Exactly one verdict kind per body, read
+per-lane.
 
 ## The body schema — the BODY FILE must carry it; `--verdict` does NOT satisfy it
 
