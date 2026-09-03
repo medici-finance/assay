@@ -152,9 +152,9 @@ default policy numbers suit this house — a knob, not a defect.
 | 5 | 6 | `example-stream--dead-01  COULD-NOT-CHECK last=none via=- action=BLIND` then `1 of 1 claim(s) were COULD-NOT-CHECK (action=BLIND) — the tick ran, the reading is incomplete`; `rc=6` (no `RECLAIM` substring) | 2026-09-02 | implementing worker |
 | 6 | 0 | `example-stream--never-01  NEVER-STARTED last=none via=- action=RECLAIM-ELIGIBLE` | 2026-09-02 | implementing worker |
 | 7 | 0 | `example-stream--long-01  OVER-WALL-CAP last=2026-09-02T12:00:00Z via=branch sha moved action=BLOCKED-TIMEOUT` (no `RECLAIM` substring) | 2026-09-02 | implementing worker |
-| 8 | 0 | `5` (probes.go + cmd/desksupervise/{fixtures,live,run,sweep,tick}.go match `ObservableProbe`) | 2026-09-02 | implementing worker |
+| 8 | 0 | `5` (`internal/loopengine/probes.go` + `cmd/desksupervise/{main,run,live,fixtures}.go` match `ObservableProbe`) | 2026-09-02 | implementing worker |
 | 9 | 0 | `1` (`tools/desk/README.md`'s new `desksupervise` tool-reference row) | 2026-09-02 | implementing worker |
-| 10 | could-not-check (this Evidence row itself, once committed, is what puts brief-01 in the diff `--consumers` corroborates against — a chicken-and-egg the row's own instructions anticipate: "run on the implementing branch") | see PR body's Fail-first/Context section for the recorded run against the actual pushed head | 2026-09-02 | implementing worker |
+| 10 | 0 | `consumers corroboration — ... 1 brief(s)` / `desk-supervision/01` / both `consumers:` claims read `UNCHECKED` (each "unchanged since the merge-base", correct: `engine.go` is deliberately untouched — "no engine edit" — and the SKILL.md row is an explicit `desk-supervision/07` follow-up) / `summary: 0 corroborated, 0 disproved, 2 unchecked` — no `DISPROVED` anywhere | 2026-09-02 | implementing worker |
 
 Also run (not a Verify row, full-suite regression check): `cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./... -count=1` — every package `ok` (2026-09-02); `internal/deskkit`'s `TestNoForgeCLIShellout` required registering `cmd/desksupervise/live.go`'s runtime-resolved `tools/dispatch-claim.sh` exec site in `internal/forgeban/allowlist.go`'s `UnresolvedArgv` ledger (same shape as the existing deskboard/deskpreflight runtime-resolved-binary entries) — fixed in a follow-up commit on this branch.
 
