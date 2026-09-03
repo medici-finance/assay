@@ -1105,11 +1105,26 @@ jobs:
       # .git/config). A non-fast-forward push here is a loud failure, never a
       # force — the release bytes are already published, so a failed roll is a
       # follow-up commit, not a lost release.
+      # The roll commit lands on the PR-only default branch, which the default
+      # GITHUB_TOKEN cannot do (GH013: PR-required + leak-sweep-required — this
+      # step was rejected on v0.23.0 and v0.24.0 and the roll had to be hand-
+      # filed as a PR). It commits under the SAME identity that already writes
+      # STATUS.md straight to main: the assay-board-writer App, whose ruleset
+      # bypass covers exactly this class of generated-file write. App perms:
+      # contents:write on THIS repo only; key held as repo Actions secrets
+      # (BOARD_APP_*), minted here for the roll step alone.
+      - name: Mint assay-board-writer App token (changelog roll)
+        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+        id: roll-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOARD_APP_ID }}
+          private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
       - name: CHANGELOG discipline — write the aggregated section and clear fragments
         if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.roll-token.outputs.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
@@ -1131,9 +1146,9 @@ jobs:
             echo "Nothing staged — CHANGELOG.md unchanged and no fragments to clear."
             exit 0
           fi
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "docs(changelog): aggregate fragments under ${RELEASE_TAG} and clear changelog/"
+          git config user.name  'assay-board-writer[bot]'
+          git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
+          git commit -m "docs(changelog): aggregate fragments under ${RELEASE_TAG} and clear changelog/ [skip-status-regen]"
           basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
           git -c http.extraheader="AUTHORIZATION: basic ${basic}" \
             push origin "HEAD:${DEFAULT_BRANCH}"

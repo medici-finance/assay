@@ -56,6 +56,12 @@ type PullRequest struct {
 	ChangedFiles int    // the forge's OWN count — reconcile against ListChangedFiles
 	Author       Account
 	HeadSHA      string
+	// UpdatedAt is the forge's own last-modified timestamp, RFC3339, empty when the forge
+	// did not report one. Consumed by the loopengine liveness taxonomy's PR-activity probe
+	// (see internal/loopengine/probes.go) — every other existing consumer of PullRequest
+	// predates this field and reads none of it, so its addition changes no existing
+	// behavior.
+	UpdatedAt string
 }
 
 // Issue is the subset of an issue the desk tools read. IsPullRequest is the discriminator:

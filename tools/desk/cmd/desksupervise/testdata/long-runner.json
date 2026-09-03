@@ -1,0 +1,12 @@
+[
+  {
+    "key": "example-stream--long-01",
+    "item": "example-stream/long-01",
+    "owner": "session-long",
+    "repo": "medici-finance/assay",
+    "branch": "feat/example-stream--long-01",
+    "tier": "cheap",
+    "state": "dispatched",
+    "dispatchedAt": "2026-09-02T10:00:00Z"
+  }
+]

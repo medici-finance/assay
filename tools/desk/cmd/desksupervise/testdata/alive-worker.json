@@ -1,0 +1,12 @@
+[
+  {
+    "key": "example-stream--alive-01",
+    "item": "example-stream/alive-01",
+    "owner": "session-alive",
+    "repo": "medici-finance/assay",
+    "branch": "feat/example-stream--alive-01",
+    "tier": "cheap",
+    "state": "dispatched",
+    "dispatchedAt": "2026-09-02T11:50:00Z"
+  }
+]

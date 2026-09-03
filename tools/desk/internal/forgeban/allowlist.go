@@ -264,4 +264,12 @@ var UnresolvedArgv = []Allowance{
 		Key:    "internal/deskkit/riskcallout.go::runRiskCallout::<unresolved>",
 		Reason: "runs the configured risk-classifier binary by path; not a forge path.",
 	},
+	{
+		Key: "cmd/desksupervise/live.go::readLiveClaims::<unresolved>",
+		Reason: "runs the target repo's own tools/dispatch-claim.sh `show` verb (the SAME consumer-repo " +
+			"claim script cmd/deskdispatch/dispatch.go's stepClaim shells to, resolved at runtime under " +
+			"--root/--claim-root, never a compile-time literal) to read one dispatch claim's " +
+			"state/owner/branch. Not a forge CLI: it is a script this tree does not ship, external to " +
+			"every consumer repo it runs against.",
+	},
 }

@@ -11,31 +11,29 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-02 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-02 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 0/8 | 2026-09-02 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-03 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-03 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 0/8 | 2026-09-03 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/7 | 2026-09-02 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-02 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-02 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-02 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-02 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 1/6 | 2026-09-02 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 2/6 | 2026-09-02 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 12/16 | 2026-09-02 |  |
-| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-09-02 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 5/13 | 2026-09-02 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 0/6 | 2026-09-02 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-03 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-03 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-03 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-03 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 1/6 | 2026-09-03 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 2/6 | 2026-09-03 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 12/16 | 2026-09-03 |  |
+| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-09-03 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 5/13 | 2026-09-03 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 0/6 | 2026-09-03 |  |
 
 ## Next up
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| forge-neutral | 01 — Forge resolution contract — the forge comes from repo config, and refusal is the only fallback [exec:strong] | 1 | 7000 |
-| desk-supervision | 01 — Observable probes + the `desksupervise` observer — liveness that bites [exec:strong] | 0 | 3000 |
 | windows-port | 00 — Build-tag split for the unix-only syscall sites | 0 | 3000 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
-| desk-supervision | 06 — Workpad — one upserted progress comment per PR | 0 | 1500 |
 | desk-supervision | 05 — Per-class concurrency reservation — fresh / resume / rework caps in the planner | 0 | 1000 |
+| quality | 14 — auto-filed refactor work + quality error-budgets + RETRO output feed | 5 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 | quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
 | spec-routing | 01 — Enforce the §8 lifecycle — the linter and the authoring-owed emitter [exec:strong] | 0 | 1000 |
@@ -45,17 +43,18 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (33 desk-actionable of 35 total — 35 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (35 desk-actionable of 38 total — 37 at implemented, 1 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (33)
+### Desk-actionable (35)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
+| forge-neutral | 01 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | harness-portability | 01 [exec:strong] | implemented | 5000 | 8 | — | — | — |
 | desktools-go-git | 02 | implemented | 4000 | 6 | — | — | — |
 | harness-portability | 02 [exec:strong] | implemented | 4000 | 6 | — | — | — |
@@ -64,16 +63,17 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
+| desk-supervision | 01 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | windows-port | 02 | implemented | 2500 | 3 | — | — | — |
-| forge-gitlab | 04 | implemented | 2000 | 2 | — | — | — |
 | mistake-proofing | 03 [exec:strong] | implemented | 2000 | 2 | — | — | — |
+| desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | iso-9001 | 05 | implemented | 1500 | 1 | — | — | — |
-| quality | 12 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| quality | 12 [exec:strong] | verified | 1500 | 1 | — | 2026-09-02 opus-4.8[1m]-verifier | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -96,10 +96,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 |---|---|---|---|---|---|---|---|
 | harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
 
-### Awaiting implementer rework (1)
+### Awaiting implementer rework (2)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
+| forge-gitlab | 04 | implemented | 2000 | 2 | — | — | — |
 | statusgen | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ## Age at the human gate
@@ -114,6 +115,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | desk-tools | — | — |
 | desktools-go-git | — | — |
 | forge-gitlab | — | — |
+| forge-neutral | — | — |
 | harness-portability | — | — |
 | statusgen | — | — |
 
@@ -142,12 +144,12 @@ _None._
 
 ### desk-supervision (8 open)
 
-- 01 Observable probes + the `desksupervise` observer — liveness that bites — todo (wave 0)
+- 01 Observable probes + the `desksupervise` observer — liveness that bites — implemented (wave 0)
 - 02 Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal — todo (wave 1)
 - 03 Eligibility reconciliation — stop a run whose item became ineligible — todo (wave 2)
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — todo (wave 1)
 - 05 Per-class concurrency reservation — fresh / resume / rework caps in the planner — todo (wave 0)
-- 06 Workpad — one upserted progress comment per PR — todo (wave 0)
+- 06 Workpad — one upserted progress comment per PR — implemented (wave 0)
 - 07 Runtime snapshot — `desksupervise status` for operators and the console — todo (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 
@@ -178,7 +180,7 @@ _None._
 
 ### forge-neutral (11 open)
 
-- 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — todo (wave 1)
+- 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — todo (wave 2)
 - 03 Write verbs A — deskpost, deskreply, deskflip onto the resolver — todo (wave 2)
 - 04 Write verbs B — deskpr, deskfile, deskclose, deskevidence onto the resolver — todo (wave 2)
@@ -222,7 +224,7 @@ _None._
 
 ### quality (4 open)
 
-- 12 M4 gate-yield accounting + ritual-effectiveness joins — implemented (wave 4)
+- 12 M4 gate-yield accounting + ritual-effectiveness joins — verified (wave 4)
 - 14 auto-filed refactor work + quality error-budgets + RETRO output feed — todo (wave 5)
 - 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
 - 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — todo (wave 1)

@@ -208,6 +208,13 @@ func SelfContainCheck(surface string, content []byte, o SelfContainOpts) error {
 // the notice lines, with no I/O and no configuration reads of its own beyond the roster
 // accessors. Split out so tests can assert on both halves without capturing streams.
 func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, notices []string) {
+	// The workpad marker line (workpad.go) is exempt from every
+	// category below by EXACT LINE match — see StripWorkpadMarkerLine's own comment. It is
+	// a fixed, content-free string with no slash, no `#N`, no path and no session/agent
+	// id shape, so nothing here would flag it today; the strip makes that guaranteed
+	// rather than incidental, the same way bodycheck.go's scanSurface guarantees it for
+	// the credential scan.
+	s = StripWorkpadMarkerLine(s)
 	priv, privShort := privateRepoNames(o.Repo)
 	refuse := func(category, span, why string) {
 		if refusal == "" {

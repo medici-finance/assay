@@ -55,9 +55,13 @@ func runCmd(dir, name string, args ...string) (string, error) {
 	return stdout, nil
 }
 
-// git runs a READ-ONLY git subcommand in dir (rev-parse / config only). deskreply never
-// pushes and never mutates the worktree; there is no code path that builds a git write
-// verb, so no push/commit/force can reach git through this seam.
+// git runs a git subcommand in dir. deskreply never pushes, commits, or touches a tracked
+// file — there is no code path that builds any of those verbs, so none can reach git
+// through this seam. The one config-WRITE call site (recordWorkpadID, workpad.go) sets a
+// single worktree-scoped key (`git config --worktree assay.workpad <id>`, gated behind
+// enabling extensions.worktreeConfig first) — repository METADATA local to this checkout,
+// never a ref, an object, a tracked file, or the remote. Every other call in this package
+// is a read (rev-parse / config --get).
 func git(dir string, args ...string) (string, error) {
 	return runCmd(dir, "git", args...)
 }

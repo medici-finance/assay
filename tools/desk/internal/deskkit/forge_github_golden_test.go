@@ -209,6 +209,7 @@ func TestForgeGithubGolden(t *testing.T) {
 					"changed_files": 3,
 					"user":          map[string]any{"login": "worker[bot]", "id": 99},
 					"head":          map[string]any{"sha": "abc123"},
+					"updated_at":    "2026-09-01T12:00:00Z",
 				}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.GetPullRequest(forgeTestRepo, 7) },
