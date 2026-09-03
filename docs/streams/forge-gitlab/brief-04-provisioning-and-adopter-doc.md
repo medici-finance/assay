@@ -59,7 +59,7 @@ facts:
 
 re-baselined: 2026-08-30 — Verify row 3 previously grepped the adopter doc for spec §1's
 "Free/CE non-conforming" sentence. That sentence was replaced by the tier ruling of
-2026-08-30 (medici-finance/assay#219, evidence in edition-matrix.md): CE conforms for the
+2026-08-30 (#219, evidence in edition-matrix.md): CE conforms for the
 core lane with the two disclosed degradations, Premium is the hardening, Ultimate is
 refinement. Row 3 now greps the replacement sentence and both named degradations. No other
 Verify row changed, and no task changed.
@@ -96,7 +96,7 @@ configuring them:
   CI is the tier-independent layer.
 - **Group/project audit events** (Premium): only sign-in events exist at Free.
 
-Settled 2026-08-30 (medici-finance/assay#219): the open point this brief carried — whether the
+Settled 2026-08-30 (#219): the open point this brief carried — whether the
 adopter doc must repeat a "Free/CE non-conforming" statement the matrix's per-feature tier
 reads did not support — is ruled. CE is conforming for the core lane with the two disclosed
 degradations above; Premium is the hardening that makes them server-enforced; Ultimate is
@@ -128,6 +128,21 @@ degradations above are the doc's tier-honesty statement.
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->
+
+**NON-IMPLEMENTER VERIFY 2026-09-02 — VERIFY: FAIL (row 3, substantive spec-vs-doc contradiction).** Runner: opus-4.8[1m]-verifier, offline (`KUBECONFIG=/dev/null`), public-assay merged HEAD `ecf722d068e0fa3c6273eff68931ba6c1fb96e84`.
+
+| # | Command | Exit | Key observed output |
+|---|---------|------|---------------------|
+| 1 | `bash -n tools/create-fleet-gitlab.sh && shellcheck tools/create-fleet-gitlab.sh` | 0 | clean — no shellcheck findings |
+| 2 | `bash tools/create-fleet-gitlab.sh --dry-run --group example --prefix myorg \| grep -c 'service account'` | 0 | count=8 (≥7): 7 service-account provisions + 1 checklist mention |
+| 3 | `grep -ci 'Community Edition is conforming for the core lane' … && grep -ci 'Maintainer role set is the allowlist' … && grep -ci 'approvals are advisory' docs/adopting-assay-gitlab.md` | 1 | **FAIL** — chain exit 1; first grep = 0, all three required phrases ABSENT. The doc instead carries the opposite stance (see finding). |
+| 4 | `grep -oE 'api/v4/[a-z_/:{}.-]+' tools/create-fleet-gitlab.sh \| sort -u` vs GitLab REST v4 docs | 0 | 10 endpoints enumerated; per-endpoint live docs.gitlab.com dereference could-not-check (offline envelope C3) |
+
+**Finding (substantive, not cosmetic — routed to human).** The re-baselined brief (cites #219) requires the adopter doc to state *"Community Edition is conforming for the core lane"* + *"Maintainer role set is the allowlist"* + *"approvals are advisory"*. The MERGED `docs/adopting-assay-gitlab.md` takes the OPPOSITE position — §0.1 heading (line 36): *"Free tier — a pilot lane, not a conforming deployment (measured 2026-09-02)"*, and line 26 marks CE `NON-CONFORMING`. So either a later live measurement reversed #219 (making brief row 3 stale) or the implementer deviated. **A human must reconcile the doc's edition stance against #219** — the fork is with the-desk/Ian; the row re-runs against the amended doc once the ruling lands. The row cannot be greened by a cosmetic phrase-insert without resolving which stance is authoritative.
+
+RISK-VALUE: DERIVED — `merge_access_level = 40` (Maintainer) @ `tools/create-fleet-gitlab.sh:97` — GitLab's fixed Maintainer level; excludes Developer(30) service accounts from merging, enforcing human-merge per the brief; the in-file comment records the failure a value of 30 caused (#346). Role levels `developer=30`/`reporter=20` @ :74-80 are GitLab's fixed constants. `PAT_EXPIRY_DAYS=7` @ :84 is NAMED, NOT DERIVED (reversible token-lifetime knob, spec §5 RECOMMENDED backstop; ranks last). No irreversible constant; gate:model, all risk `no`.
+
+Verdict: FAIL — status stays `implemented`. **The fork was ruled by Ian: keep #219 — "CE conforming for the core lane, with disclosed degradations."** The doc amendment (§0.1 rewritten to the #219 stance; disclosure table grown to the 7 pilot-measured rows) is draft **#358**. This FAIL Evidence is the record until #358 lands; **row 3 re-runs against merged main once #358 merges**. No separate bug filed — the fork was already routed and ruled; #358 carries the fix.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README
