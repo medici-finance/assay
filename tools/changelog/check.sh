@@ -21,6 +21,10 @@
 #   SKIP        "true" when the PR carries the changelog:skip label, else "false"
 #   BASE_SHA    the PR base commit
 #   HEAD_SHA    the PR head commit
+#   HEAD_REF    the PR head branch name (optional; used only to suggest the exact
+#               changelog/<slug>.md path in the failure message; degrades to the
+#               literal <slug> when unset, so the script half can merge before the
+#               workflow half that supplies it)
 #   CHANGELOG_AGG  path to aggregate.py (default: alongside this script)
 #
 # It reads git history only; it contacts no network and needs no toolchain
@@ -32,6 +36,12 @@ AGG="${CHANGELOG_AGG:-$here/aggregate.py}"
 SKIP="${SKIP:-false}"
 : "${BASE_SHA:?BASE_SHA is required}"
 : "${HEAD_SHA:?HEAD_SHA is required}"
+
+# The suggested fragment path in the failure message. When HEAD_REF is supplied
+# (by the workflow) the slug is its basename, so the message names the EXACT file
+# to create; unset, it degrades to the literal <slug> placeholder.
+slug="<slug>"
+[ -n "${HEAD_REF:-}" ] && slug="$(basename "$HEAD_REF")"
 
 # The Unreleased bullet ENTRIES at a given commit's CHANGELOG.md, or nothing when
 # the file is absent there. Piped through aggregate.py so the parse matches the
@@ -98,5 +108,6 @@ if [ -n "$frag" ]; then
   exit 1
 fi
 
-echo "::error title=missing changelog fragment::This PR adds no changelog fragment. Record the change by adding one file under changelog/ — changelog/<slug>.md, a one-to-few-line human-legible highlight (same notable bar as before; see changelog/README.md) — or label the PR 'changelog:skip' if the change is genuinely non-notable (a typo, a comment-only diff)."
+echo "::error title=missing changelog fragment::This PR adds no changelog fragment and carries no 'changelog:skip' label. Fix: create changelog/${slug}.md with at least one highlight bullet, e.g. printf '### Fixed\n- <one line>\n' > changelog/${slug}.md then commit and push. The ### Added / ### Fixed / ### Changed bucket heading is optional; a bullet is not — an empty, whitespace-only, or bullet-less fragment is rejected. NEVER edit CHANGELOG.md (it is written only by the release workflow, which aggregates the fragments). The 'changelog:skip' waiver is a maintainer act, not one you self-apply. See changelog/README.md."
+echo "MISSING: no changelog/<slug>.md fragment between base ${BASE_SHA} and head ${HEAD_SHA} — suggested path: changelog/${slug}.md"
 exit 1

@@ -57,4 +57,5 @@ jobs:
           SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'changelog:skip') }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: bash tools/changelog/check.sh

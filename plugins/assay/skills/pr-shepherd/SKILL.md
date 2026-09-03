@@ -122,6 +122,15 @@ touched AND it reproduces on main, or it matches a flake the project already tra
 evidence on the PR, link the tracked flake, and re-run the failed jobs once. Reproduces
 identically → it is yours. A proven flake still blocks the desk's flip; it only routes the fix.
 
+**The commonest self-serve red is the `changelog` check**, and it is the one red that does NOT
+reproduce locally — it reads the DIFF against the PR base, not your working tree, so a green local
+build tells you nothing about it. It PASSES when the branch adds or updates a `changelog/<slug>.md`
+fragment (`<slug>` = the branch name) carrying at least one bullet, OR when the PR wears the
+`changelog:skip` label; it FAILS when neither is true. The fix is ONE commit adding
+`changelog/<slug>.md` — never an edit to a top-level `CHANGELOG.md`, and never self-applying
+`changelog:skip` (that label is the desk's or a human's, not yours). A branch you have RESUMED owes
+this file whether or not the check has run against it yet.
+
 **Carve-out — when the fix IS the removal of a security control, the red check is NOT yours
 (gate: human).** If the only way to turn a red check green is to delete, disable, or weaken a
 security or access-control control **or the CI assertion that enforces it** — a network policy

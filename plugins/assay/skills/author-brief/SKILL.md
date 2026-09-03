@@ -641,5 +641,11 @@ layer; the floor does not wait on one.)
   changes, every such brief MUST carry a docs-regeneration item in its DoD naming the specific
   pages/areas to update. State the project's concrete regen command in the project-level skill (or
   the repo's instructions file).
+- **Changelog fragment**: if the target repo enforces a per-PR fragment (a `changelog/` directory
+  carrying `changelog/README.md`), LIST `changelog/<slug>.md` in the brief's `files:` line — `files:`
+  is the implementer's contract, and a path absent from it will not get written. The fragment is
+  human-legible highlight bullets, not a restatement of the Task; a genuinely non-notable brief says so
+  in its `why:` and leaves the `changelog:skip` waiver to the desk or a human. Do NOT add a Verify row
+  for it — the repo's CI changelog check IS that row.
 - If executing a brief surfaces a NEW non-obvious gotcha, fold it into the repo's instructions file
   (CLAUDE.md / AGENTS.md / etc.) so the next person doesn't rediscover it.

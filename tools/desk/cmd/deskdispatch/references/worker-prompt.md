@@ -220,3 +220,24 @@ read it, decide, and say what you decided in the PR body; it is not a pass.
 
 Run it over your body BEFORE you open the PR rather than discovering it at the refusal:
 it is the same code either way, and the round trip is better spent on the wording.
+
+## 11. Changelog fragment — part of the deliverable where the repo enforces one
+
+> If the target repo carries `changelog/README.md`, your PR is INCOMPLETE until it adds a
+> `changelog/<slug>.md` fragment — `<slug>` is your branch name — holding at least one
+> `- …` highlight bullet (optionally grouped under an `### Added`, `### Fixed`, or
+> `### Changed` heading). Never edit a top-level `CHANGELOG.md`; the aggregate is assembled
+> from the per-PR fragments at release time.
+
+Detect it, do not remember it: `test -f changelog/README.md` in the checked-out tree tells
+you whether this repo enforces a fragment. Most repos do not, and there this clause is inert.
+
+The check that enforces the fragment reads the DIFF against the PR base, so it does NOT
+reproduce on a local test run — a clean local build is not evidence the fragment is present.
+Write the fragment before you open the PR; discovering it from the red check costs a whole
+follow-up round for a one-line file.
+
+The fragment is your default deliverable. The `changelog:skip` waiver is a label the desk or
+a human applies, NEVER one you self-apply; if the change is genuinely not notable, either add
+the fragment anyway or say in the PR body why it is skip-worthy and leave the label to them.
+An empty or bullet-less fragment is rejected — a touched file is not a fragment.

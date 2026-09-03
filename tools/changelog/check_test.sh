@@ -109,6 +109,19 @@ printf 'just prose\n' > "$R/changelog/prose.md"
 echo '- `sprocket` gained a brake.' > "$R/changelog/real.md"; commit "one empty, one real"
 run_case "C9 mixed empty+real fragment greens" 0
 
+# ── C10: the missing-fragment failure NAMES the exact fix path derived from
+#        HEAD_REF (message text only — exit code already covered by C2).
+newrepo
+printf '%s' "$CL_EMPTY_UNREL" > "$R/CHANGELOG.md"; commit init; git -C "$R" tag base
+echo 'x' > "$R/unrelated.txt"; commit "unrelated change"
+c10_base="$(git -C "$R" rev-parse base)"; c10_head="$(git -C "$R" rev-parse HEAD)"
+c10_out="$( cd "$R" && SKIP=false BASE_SHA="$c10_base" HEAD_SHA="$c10_head" HEAD_REF="feat/my-branch" bash "$CHECK" 2>&1 || true )"
+if printf '%s' "$c10_out" | grep -q 'suggested path: changelog/my-branch.md'; then
+  ok "C10 missing-fragment message names changelog/<HEAD_REF-basename>.md"
+else
+  bad "C10 missing-fragment message names changelog/<HEAD_REF-basename>.md"
+fi
+
 echo "---"
 echo "check_test: $pass passed, $fail failed (impl: $CHECK)"
 [ "$fail" = 0 ]
