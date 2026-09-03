@@ -208,6 +208,34 @@ func mintInstallationToken(owner string) (string, error) {
 	return out.Token, nil
 }
 
+// init installs deskpost's own, already-tested App-token mint (mintInstallationToken,
+// above) as the GitHub custody minter deskkit.ForgeFor calls, instead of ForgeFor's
+// default (RoleTokenForRepo, which shells to the `desktoken` binary). deskpost is always
+// the reviewer App regardless of which loop invoked it (isReviewerBot, above) — the role
+// deskkit's hook signature carries is not consulted here — so this always mints the SAME
+// identity mintInstallationToken always minted.
+//
+// Why a hook instead of letting ForgeFor mint through its own default path: deskpost
+// already mints in-process (JWT exchange against apiBaseURL, this file), and its ~30 test
+// files fake that exact exchange via a scriptable httptest server pointed to by apiBaseURL
+// (harness_test.go). Reusing the existing, golden-pinned mint here — rather than growing a
+// second implementation in deskkit — is what lets `deskpost`'s forge writes route through
+// the resolver (this proof-of-reachability wiring, comment.go's runComment)
+// while every existing test keeps exercising the SAME mint path it always has, unmodified.
+// apiBaseURL is read HERE, at call time (not cached at init), so a per-test override still
+// reaches the Forge this produces.
+//
+// (See forgeresolve.go's header for the resolver contract this hook plugs into.)
+func init() {
+	deskkit.SetGitHubCustodyMinter(func(_ string, repo deskkit.ForgeRepo) (token, baseURL string, err error) {
+		tok, merr := mintInstallationToken(repo.Owner)
+		if merr != nil {
+			return "", "", merr
+		}
+		return tok, apiBaseURL, nil
+	})
+}
+
 // ghClient is the App-authenticated GitHub client for one (owner, repo). The token lives
 // only in memory. A single 401 mid-operation triggers exactly ONE re-mint+retry — the
 // scoped exemption (a token re-mint re-verifies nothing about the world).
