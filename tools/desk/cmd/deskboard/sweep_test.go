@@ -325,8 +325,9 @@ func TestActions_FailClosed_PerPRRead(t *testing.T) {
 // does not return, the deadline did not fire and that is the #594 regression.
 func TestActions_WedgedRead_TimesOut(t *testing.T) {
 	installFakeGH(t)
-	// Wedge every repo's pr-list read; each wedged subprocess must be killed at ghTimeout.
-	t.Setenv("DESKBOARD_GH_HANG_PATH", "pr list")
+	// Wedge every repo's open-PR read (now a `gh api graphql`, #2024); each wedged
+	// subprocess must be killed at ghTimeout.
+	t.Setenv("DESKBOARD_GH_HANG_PATH", "pullRequests(states:OPEN")
 
 	// Shrink the per-unit budget so the test is fast; the shim sleeps 60s, far beyond it.
 	prev := ghTimeout

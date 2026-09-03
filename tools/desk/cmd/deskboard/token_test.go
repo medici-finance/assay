@@ -157,8 +157,10 @@ func stubPRList(t *testing.T, unreachable string, failOther error) {
 	t.Cleanup(func() { ghRun = prev })
 	ghRun = func(args ...string) ([]byte, error) {
 		joined := strings.Join(args, " ")
-		if len(args) >= 2 && args[0] == "pr" && args[1] == "list" {
-			repo := ownerRepoFromDashR(args)
+		// The open-PR read is a `gh api graphql` (#2024); its --jq yields the SAME flat
+		// array the old `gh pr list --json` did, so the stub serves that flat array here.
+		if strings.Contains(joined, "pullRequests(states:OPEN") {
+			repo := ownerRepoFromGraphQL(args)
 			if repo == unreachable {
 				if failOther != nil {
 					return nil, failOther
@@ -175,6 +177,25 @@ func stubPRList(t *testing.T, unreachable string, failOther error) {
 		}
 		return []byte("[]"), nil
 	}
+}
+
+// ownerRepoFromGraphQL reconstructs "owner/name" from the split `-f owner=… -f name=…`
+// args of the open-PR GraphQL read (the counterpart of ownerRepoFromDashR for the
+// `gh pr list -R owner/name` form it replaced).
+func ownerRepoFromGraphQL(args []string) string {
+	owner, name := "", ""
+	for _, a := range args {
+		if v, ok := strings.CutPrefix(a, "owner="); ok {
+			owner = v
+		}
+		if v, ok := strings.CutPrefix(a, "name="); ok {
+			name = v
+		}
+	}
+	if owner == "" || name == "" {
+		return ""
+	}
+	return owner + "/" + name
 }
 
 func ownerRepoFromDashR(args []string) string {

@@ -397,18 +397,20 @@ func TestStalled_EnumeratesOpenPRsOnly(t *testing.T) {
 
 	sawOpenList := false
 	for _, fields := range readInvocations(t, logPath) {
-		if len(fields) < 2 || fields[0] != "pr" || fields[1] != "list" {
+		line := strings.Join(fields, " ")
+		// The open-PR enumeration is a `gh api graphql` read (#2024). It must ask ONLY for
+		// open PRs — `pullRequests(states:OPEN …)` — never a states-less or merged query.
+		if !strings.Contains(line, "pullRequests(") {
 			continue
 		}
-		line := strings.Join(fields, " ")
-		if !strings.Contains(line, "--state open") {
-			t.Errorf("pr list without --state open: %s", line)
+		if !strings.Contains(line, "pullRequests(states:OPEN") {
+			t.Errorf("open-PR graphql without states:OPEN: %s", line)
 			continue
 		}
 		sawOpenList = true
 	}
 	if !sawOpenList {
-		t.Error("no `pr list --state open` invocation recorded — the open-only enumeration is unproven")
+		t.Error("no `pullRequests(states:OPEN …)` graphql invocation recorded — the open-only enumeration is unproven")
 	}
 }
 
