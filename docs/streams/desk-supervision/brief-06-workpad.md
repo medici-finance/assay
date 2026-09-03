@@ -104,5 +104,24 @@ worker to use it" → row 7.
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+| # | Command | Exit | Output | Date | Runner |
+|---|---------|------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'Workpad' -count=1` | 0 | `ok  	github.com/medici-finance/assay/tools/desk/internal/deskkit` | 2026-09-02 | sonnet-5-worker |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/deskreply/ -run TestWorkpadUpsertIsIdempotent -v -count=1` | 0 | `--- PASS: TestWorkpadUpsertIsIdempotent` | 2026-09-02 | sonnet-5-worker |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/deskreply/ -run TestWorkpadNeverEditsForeignMarker -v -count=1` | 0 | `--- PASS: TestWorkpadNeverEditsForeignMarker` | 2026-09-02 | sonnet-5-worker |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/deskreply/ -run TestWorkpadBodycheckRefuses -v -count=1` | 0 | `--- PASS: TestWorkpadBodycheckRefuses` | 2026-09-02 | sonnet-5-worker |
+| 5 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestWorkpadStampHasNoPath -v -count=1` | 0 | `--- PASS: TestWorkpadStampHasNoPath` | 2026-09-02 | sonnet-5-worker |
+| 6 | `cd tools/desk && GOWORK=off go build ./cmd/deskreply && ./deskreply --help` | 0 | help text contains `--workpad` (3 occurrences) | 2026-09-02 | sonnet-5-worker |
+| 7 | `grep -c 'workpad' tools/desk/cmd/deskdispatch/references/common-clauses.md` | 0 | `5` | 2026-09-02 | sonnet-5-worker |
+| 8 | `statusgen --root . --consumers --brief desk-supervision/06` | see Notes | see Notes | 2026-09-02 | sonnet-5-worker |
+
+Notes on row 8: run against the implementing branch BEFORE this Evidence edit itself landed
+in the diff, `--consumers` reported `COULD-NOT-CHECK: desk-supervision/06 is not in the
+diff` (exit 2) — the brief's own file was not yet part of the diff for the tool to anchor
+on, a could-not-check reported as itself, not rounded to a pass. This Evidence edit is what
+puts `docs/streams/desk-supervision/brief-06-workpad.md` into the diff; re-run after this
+commit lands to get row 8's real corroborate/disprove verdict — see the PR body's Verify
+section for that re-run's actual result.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
