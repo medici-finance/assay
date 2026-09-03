@@ -23,6 +23,103 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v0.25.0 — 2026-09-03
+
+### Added
+- **`desksupervise`** — the liveness *observer* that finally supplies `internal/loopengine`'s
+  fully-coded, fully-inert liveness taxonomy (`ObservableProbe`, `LivenessPolicy`) with real
+  probes. `internal/loopengine/probes.go` adds `AuditProbe`, `BranchProbe`, `PRProbe` (each
+  three-state — a probe that cannot reach its source reports could-not-check, never no-life),
+  composed by `HouseProbes()`, plus `ClassifyLiveness`/`Disposition`, the taxonomy re-exported
+  for a reader outside the engine's own in-flight tracker. `desksupervise tick` classifies
+  every `state=dispatched` dispatch claim into `ALIVE` / `NEVER-STARTED` /
+  `HEARTBEAT-EXPIRED` / `OVER-WALL-CAP` / `COULD-NOT-CHECK`, releasing a wedged claim
+  (`RECLAIM-ELIGIBLE`) or landing a budget-blowing one `BLOCKED-TIMEOUT` (a filed
+  `help wanted` issue, never re-dispatched blind) — turning a worker stuck behind the
+  120-minute stale-claim backstop into a logged, minutes-scale reclaim with no human in the
+  loop. `--dry-run` classifies and prints only; `run --interval` loops `tick` forever,
+  mirroring `deskwt prune --interval`. `--claims-fixture`/`--observations-fixture` bypass the
+  live claim tool and the forge/audit file entirely, so the whole classification path runs
+  offline. `deskkit.PullRequest` gains an `UpdatedAt` field (GitHub and GitLab both wired) as
+  the forge read PRProbe needs. See `tools/desk/README.md`'s tool-reference row and
+  `docs/streams/desk-supervision/brief-01-observable-probes-and-observer.md`.
+- A **retrospective input feed** that emits the four-part input set — churn
+  trend, gate yield, per-stage ledger, and budget status — as generated/logged
+  output a cadence retrospective consumes.
+- Custody: `ForgeFor` obtains the resolved role's already-minted token from the existing
+  per-forge path — GitHub via the `desktoken` mint-or-reuse path (`RoleTokenForRepo`),
+  GitLab by reading the `gitlab-<role>.token` file a prior rotation produced — and never
+  falls back to an ambient credential. A missing or insecurely-permissioned (non-0600)
+  custody file is refused, naming the remedy. `SetGitHubCustodyMinter` is an installable
+  seam a caller that already mints its own GitHub App tokens in-process can plug its
+  existing, tested minter into, rather than this package growing a second implementation.
+- Per-stream quality **error-budgets** (`qualgen/consumers`) in an alarm
+  posture: a breach raises an alarm record rather than a dashboard line, and a
+  budget refuses to arm until the stream has at least two measured windows
+  (could-not-measure, never armed at zero).
+- The worker prompt kit (`common-clauses.md`) now carries the workpad rule: keep one
+  workpad per PR, no separate done/summary comments.
+- `deskkit.ForgeFor(repo, role)` — the first resolver that can hand a desk tool a `Forge`
+  backend at all. Two complete backends (`GitHubForge`, `GitLabForge`) have existed with no
+  constructor, no config key, and no consumer; this is that missing answer, and the ONLY
+  function in the tree allowed to construct either backend (enforced by
+  `TestForgeSingleConstructionSite`'s AST walk plus an independent grep, and backed by the
+  existing `forge-surface-control.yml` shell-exec/passthrough CI job). Resolution reads the
+  repo's forge from a new roster key, `ASSAY_REPO_FORGES` (`owner/name=github` or
+  `owner/name=gitlab`, full slug only — a bare basename is refused, unlike the display-only
+  `ASSAY_REPO_ALIASES`), falls back to the origin remote's host when the mapping is
+  unambiguous (`github.com`/`gitlab.com` only), and otherwise refuses could-not-check naming
+  the repo and the configuration that would resolve it. There is no parameter, flag, or
+  environment variable by which a caller supplies the forge itself
+  (`TestForgeForRejectsCallerSuppliedForge`).
+- `deskpost`'s `comment` verb is wired end-to-end through `ForgeFor` as the
+  proof-of-reachability: the actual `POST .../comments` call now goes through the resolved
+  `Forge.PostComment`, authenticated via `deskpost`'s own existing App-token mint installed
+  as the custody minter above — every precondition read on the same command still runs on
+  the pre-existing client, unchanged. `deskpost` carries no `forgeban` permit row, so this
+  step moves that ratchet by zero; it only proves the resolver is reachable before any later
+  brief's migration claim rests on it.
+- `deskreply --workpad` upserts ONE marked progress comment per PR — finds the newest
+  unresolved comment authored by the worker identity carrying the `<!-- assay:workpad -->`
+  marker and edits it in place, or creates the first one; `--dry-run` reports which without
+  writing. Never edits a human's or a minimised comment.
+- `deskroster width --role <loop> --reserve resume=N,rework=M` sets a per-class concurrency RESERVATION beside a loop's pool width, riding the same stored entry and decaying with it; plain `deskroster width --role <loop>` now prints `width=<n> reserve=resume:2,rework:0 (source=default|set, expires=...)`. `fanoutloop plan` classifies its queue into resume / rework / fresh and prints `classes: resume=<n> rework=<n> fresh=<n> (fresh capped at <k> by reservation)` — a floor that protects orphan-PR resumes and `Awaiting implementer rework` rows from being crowded out by fresh dispatch under a full pool, and never idles a slot when nothing reserved is waiting. `plan` also now sources `Awaiting implementer rework` board rows directly (previously a manual board read). worker-desk ships a default reservation of `resume=2`. `deskboard throughput` reports the same reservation as an extra column beside the width it never subtracts from.
+- `internal/deskkit/workpad.go`: the marker, the fixed-section template (`Render`/`Parse`),
+  and `Stamp(worktree, sha)` for the environment-stamp line — never a machine path.
+- `qualgen sweep` — a standing, current-tree code-slop forensic sweep lane:
+  configured external linters nominate suspects (leg 1), a pluggable
+  `AgentVerifier` adjudicates each new suspect with emitter-side evidence
+  enforcement (leg 2), and an evidenced, report-only markdown artifact is
+  rendered per run (leg 3). Incremental by fingerprint — a rerun over an
+  unchanged tree re-verifies nothing — and read-only against the target repo.
+  Ships an offline scripted `Fixture` reference verifier; a live coding-agent
+  adapter is configuration.
+- `qualgen` closes the quality loop: a pluggable issue-filer (`qualgen/filer`,
+  with a GitHub Issues reference adapter and a first-class dry-run) turns
+  above-threshold hotspots and duplicate-block clusters into **advisory,
+  budgeted** refactor items — one per distinct target, degrading to dry-run/log
+  once the filing budget is spent, and never self-dispatching work.
+- `statusgen --assayscore --json`: a composite **AssayScore** — the geometric mean of four 0–100 sub-scores (Speed, Value, Flow, Quality) computed from the existing brief-flow metrics. Speed and Value normalize against trailing-90-day bands; Flow and Quality are bounded ratios. A dimension that cannot be measured is **excluded** from the mean (never coerced to 0), and the composite is flagged `incomplete` when any dimension is missing — an honest three-state read rather than a silently deflated score.
+- `statusgen` §8 lifecycle-routing support: a `**Status:**`/`**Routes-to:**` header reader plus the §8.1 grammar, §8.3 Routes-to, and §8.5 owed-detector lint rules (each finding carries a stable `[rule-tag]`), and a new `statusgen --owed-issues` emit-mode that files one marker-deduped issue per approved-but-uncited routing doc (idempotent, part of the `--decision-issues` family). Ships `docs/workflow-templates/authoring-owed.yml`, an adopter-installable main-push watcher for the emitter. Unclassified/legacy specs are ignored, never rounded up, so `--lint` stays green on existing trees.
+
+### Fixed
+- Desk-tools reclaim and house-PR probe paths now obtain their git-forge backend through the single resolver (`ForgeFor`) instead of constructing a GitHub backend directly, restoring the single-construction-site invariant its release-gating test enforces. Behavior is unchanged for GitHub repos (the same per-owner installation token is used); forge kind is now resolver-determined rather than hardcoded.
+- `deskboard` and `deskflip` no longer fail closed under a `checks:read`-only identity
+  (the reviewer App). gh's built-in `statusCheckRollup` JSON field selects a
+  `checkSuite.workflowRun` sub-field — a link to the Actions run, not a check conclusion —
+  that requires `actions:read`; under an identity without that scope it 403s and takes the
+  whole read down with no salvageable output. `deskboard`'s bulk open-PR read (`prs` /
+  `actions`) then exited 6 on the first repository alphabetically, blinding the entire
+  cross-repository board, and `deskflip`'s single-PR state read refused to flip any private
+  PR. Both reads are now hand-authored `gh api graphql` queries that request the status
+  rollup contexts WITHOUT `checkSuite`/`workflowRun`; every conclusion these tools classify
+  on (`CheckRun.status`/`conclusion`, `StatusContext.state`) is covered by `checks:read`
+  alone, so neither read depends on a scope the tool's identity is not guaranteed to hold.
+- `release.yml`'s changelog roll (write the dated section, clear the fragments) now commits and pushes under the assay-board-writer App — the identity that already writes STATUS.md straight to `main` and carries the ruleset bypass — instead of the default `GITHUB_TOKEN`, which the PR-only + leak-sweep-required ruleset rejected on v0.23.0 and v0.24.0 and left the roll to be hand-filed as a PR each time.
+- `rosterconfig.go`'s known-key set, echo, and refusal message all recognise the new
+  `ASSAY_REPO_FORGES` key, so a deployment that sets it does not fail the whole roster
+  closed on the unregistered-`ASSAY_*`-key refusal.
+
 ## v0.24.0 — 2026-09-03
 
 ### Added
