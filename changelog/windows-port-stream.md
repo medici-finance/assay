@@ -1,2 +1,0 @@
-### Added
-- A `windows-port` planning stream: a waved five-brief phase plan for native Windows support of the Assay tools (release build matrix, install path with a surfaced PowerShell-vs-Go-installer fork, portability audit, a Windows CI leg, and the adoption-doc delta), with the end state being a Windows adopter running the pinned release, CI-proven on Windows. Planning docs only — no tool behavior changes yet.
