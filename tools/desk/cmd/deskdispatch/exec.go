@@ -73,6 +73,39 @@ func firstLine(s string) string {
 	return s
 }
 
+// toolMessage is what a wrapped desk tool actually SAID, kept whole.
+//
+// Every desk tool opens its stderr with the effective-config echo (`assay-config: …`) and,
+// on an unpinned build, the drift warning. A step report that shows only the FIRST stderr
+// line therefore shows the config echo and never the tool's own message — which is how a
+// stale-branch collision reached an operator as "worktree-create failed (assay-config: …)"
+// and cost several claim-acquire/steal cycles chasing a phantom claim problem.
+//
+// So: drop the known preamble lines and return the REST verbatim, every line of it. The
+// `assay-config: REFUSED —` line is deliberately NOT preamble: when the roster is what
+// refused, it is the message. An empty remainder renders as "(no output)" so a report can
+// never read as though a tool said something it did not.
+func toolMessage(stderr string) string {
+	var kept []string
+	for _, line := range strings.Split(strings.TrimSpace(stderr), "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" {
+			continue
+		}
+		if strings.HasPrefix(t, "assay-config: ") && !strings.HasPrefix(t, "assay-config: REFUSED") {
+			continue
+		}
+		if strings.HasPrefix(t, "desk-tools WARNING: running UNPINNED") {
+			continue
+		}
+		kept = append(kept, t)
+	}
+	if len(kept) == 0 {
+		return "(no output)"
+	}
+	return strings.Join(kept, "\n")
+}
+
 // repoSlugFromURL reduces an origin URL to owner/name for the SSH and HTTPS spellings.
 // Anything else returns "" so the caller refuses instead of acting on a guess.
 func repoSlugFromURL(url string) string {

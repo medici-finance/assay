@@ -315,10 +315,26 @@ func cmdAdd(args []string) (err error) {
 		return deskkit.Unverifiable("cannot stat target "+target, serr)
 	}
 
+	// A local branch of this name may already exist in the SHARED refs store — worktrees
+	// share one — left behind by an abandoned dispatch. `git worktree add -b` dies on that
+	// with a message no wrapper surfaces, so the collision is resolved HERE, by name:
+	// reclaimed when it is a proven-empty leftover, refused (naming the holding worktree or
+	// the unpushed commit count) when it is not. See branchcollision.go.
+	reclaimed, cerr := reclaimStaleBranch(dir, br, *base)
+	if cerr != nil {
+		return cerr
+	}
+	if reclaimed != "" {
+		fmt.Fprintln(os.Stderr, "deskwt: "+reclaimed)
+	}
+
 	// Local-only verb: NO AllowWrite (deskkit/ratelimit.go "Verb classes"). Constructed
 	// argv only; no caller flag reaches git, and no --force exists.
 	if _, aerr := runGit(dir, "worktree", "add", "--track", "-b", br, target, *base); aerr != nil {
-		return deskkit.Unverifiable("git worktree add failed", aerr)
+		// Name what was attempted. A failure here is the operator's work item, and a message
+		// that says only "it failed" sends them to raw git to find out what.
+		return deskkit.Unverifiable("git worktree add failed: could not create branch "+br+" at "+target+
+			" off "+*base, aerr)
 	}
 	// Positively verify the worktree now exists (prove success, don't assume it).
 	set, lerr := guard.worktreePaths(dir)
@@ -329,6 +345,9 @@ func cmdAdd(args []string) (err error) {
 		return deskkit.Unverifiable("git worktree add reported success but "+target+" is not in `git worktree list`", nil)
 	}
 	ac.detail = "added " + target + " (branch " + br + " tracking " + *base + ")"
+	if reclaimed != "" {
+		ac.detail += "; " + reclaimed
+	}
 	fmt.Println(target)
 	return nil
 }
