@@ -44,6 +44,13 @@ PER-WORKTREE (bot USER id, #638) so concurrent sessions cannot race each other's
 shared config. An existing valid worktree is reused; a foreign-repo path is refused, never
 re-pointed. role-clean unlocks and removes it under the same safety guards as remove.
 
+add resolves a LOCAL BRANCH COLLISION by name rather than dying on git's. Worktrees share
+one refs store, so a branch left behind by an abandoned dispatch blocks every later add that
+derives the same name. A leftover that is checked out in no worktree and carries no commit its
+upstream (or --base) lacks is RECLAIMED — deleted and recreated — with an audit line. One that
+is checked out somewhere, or carries unpushed commits, is REFUSED, naming the worktree path or
+the commit count.
+
 deskwt is safe by construction: every verb acts ONLY on paths that RESOLVE under
 /private/tmp/tracker-* or <repo-root>/.claude/worktrees/, the shared checkout is refused by
 identity, and remove/prune refuse a dirty tracked tree or unpushed commits. There is NO
