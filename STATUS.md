@@ -34,22 +34,20 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
 | quality | 14 — auto-filed refactor work + quality error-budgets + RETRO output feed | 5 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
-| quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
 | spec-routing | 01 — Enforce the §8 lifecycle — the linter and the authoring-owed emitter [exec:strong] | 0 | 1000 |
-| statusgen | 08 — composite AssayScore computation | 2 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (35 desk-actionable of 38 total — 38 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (37 desk-actionable of 40 total — 40 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (35)
+### Desk-actionable (37)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -82,9 +80,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | mistake-proofing | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| quality | 16 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| statusgen | 08 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 13 | implemented | 1000 | 0 | — | — | — |
@@ -225,7 +225,7 @@ _None._
 
 - 14 auto-filed refactor work + quality error-budgets + RETRO output feed — todo (wave 5)
 - 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
-- 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — todo (wave 1)
+- 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — implemented (wave 1)
 
 ### spec-routing (1 open)
 
@@ -236,7 +236,7 @@ _None._
 - 03 self-improvement metric (self-healed vs human-touched) — implemented (wave 2)
 - 05 drives phase 3 — anti-starvation floors + critical tier — implemented (wave 1)
 - 06 findings register — corroborated state machine — implemented (wave 1)
-- 08 composite AssayScore computation — todo (wave 2)
+- 08 composite AssayScore computation — implemented (wave 2)
 - 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
 - 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
 - 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — implemented (wave 1)
