@@ -5,7 +5,8 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
-	"syscall"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // lineagelock.go — the boot-time exclusive lock that makes the "one live conductor per
@@ -60,8 +61,8 @@ func acquireLineageLock(cfg Config) (*lineageLock, bool) {
 	if err != nil {
 		return nil, false
 	}
-	if lerr := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); lerr != nil {
-		// EWOULDBLOCK: a live sibling holds it. Any other error: cannot prove sole-liveness.
+	if lerr := deskkit.TryLockExclusive(f); lerr != nil {
+		// ErrLockBusy: a live sibling holds it. Any other error: cannot prove sole-liveness.
 		// Both fail closed — do not recover.
 		_ = f.Close()
 		return nil, false
@@ -75,6 +76,6 @@ func (l *lineageLock) release() {
 	if l == nil {
 		return
 	}
-	_ = syscall.Flock(int(l.f.Fd()), syscall.LOCK_UN)
+	_ = deskkit.UnlockFile(l.f)
 	_ = l.f.Close()
 }

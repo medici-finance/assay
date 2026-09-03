@@ -24,11 +24,11 @@ package deskkit
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -160,11 +160,11 @@ func acquireClaimLock(dir string) (*claimLock, error) {
 	}
 	deadline := time.Now().Add(claimLockWait)
 	for {
-		lerr := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		lerr := TryLockExclusive(f)
 		if lerr == nil {
 			return &claimLock{f: f}, nil
 		}
-		if lerr != syscall.EWOULDBLOCK {
+		if !errors.Is(lerr, ErrLockBusy) {
 			f.Close()
 			return nil, Unverifiable("claim: cannot acquire claims lock", lerr)
 		}
@@ -179,7 +179,7 @@ func acquireClaimLock(dir string) (*claimLock, error) {
 }
 
 func (l *claimLock) release() {
-	_ = syscall.Flock(int(l.f.Fd()), syscall.LOCK_UN)
+	_ = UnlockFile(l.f)
 	_ = l.f.Close()
 }
 

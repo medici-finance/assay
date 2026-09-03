@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -76,11 +75,11 @@ func TestAcquireContendedLockIsUnverifiableNotFree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open lock: %v", err)
 	}
-	if err := syscall.Flock(int(holder.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := TryLockExclusive(holder); err != nil {
 		t.Fatalf("hold lock: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = syscall.Flock(int(holder.Fd()), syscall.LOCK_UN)
+		_ = UnlockFile(holder)
 		_ = holder.Close()
 	})
 
@@ -357,10 +356,15 @@ func TestAcquireNeverAssumesFree_Source(t *testing.T) {
 	}
 	text := string(src)
 
-	// 1. A real flock must exist.
-	flockIdx := strings.Index(text, "syscall.Flock(")
+	// 1. A real exclusive-lock call must exist. The lock primitive moved behind
+	//    deskkit.TryLockExclusive (the unix/windows build-tag split); the fail-closed
+	//    flock itself now lives in filelock_unix.go, and the windows variant's
+	//    fail-closed-ness is pinned separately (ErrLockBusy in filelock_windows.go).
+	//    This guard still binds the SAME invariant here: claim.go takes the lock, and
+	//    nothing grants a claim before it.
+	flockIdx := strings.Index(text, "TryLockExclusive(")
 	if flockIdx < 0 {
-		t.Fatal("claim.go has no syscall.Flock — the claim is not lock-serialised (the lock-serialisation fix is gone)")
+		t.Fatal("claim.go has no TryLockExclusive — the claim is not lock-serialised (the lock-serialisation fix is gone)")
 	}
 
 	// 2. No claim may be GRANTED (`return true`) textually before the lock is taken. An
