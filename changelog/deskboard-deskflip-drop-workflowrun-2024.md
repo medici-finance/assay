@@ -10,4 +10,3 @@
   rollup contexts WITHOUT `checkSuite`/`workflowRun`; every conclusion these tools classify
   on (`CheckRun.status`/`conclusion`, `StatusContext.state`) is covered by `checks:read`
   alone, so neither read depends on a scope the tool's identity is not guaranteed to hold.
-  (medici-finance/assay-toolkit#2024)

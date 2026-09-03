@@ -8,7 +8,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// TestReadPR_UnreadableWorkflowRun_CanStillFlip is the assay-toolkit#2024 flip half: the
+// TestReadPR_UnreadableWorkflowRun_CanStillFlip is the flip half: the
 // single-PR state read the pr-open-draft condition depends on must not need `actions:read`.
 // gh's built-in `pr view --json statusCheckRollup` selects `checkSuite.workflowRun`; under a
 // `checks:read`-only identity (the reviewer App) that sub-field 403s FORBIDDEN and `gh pr

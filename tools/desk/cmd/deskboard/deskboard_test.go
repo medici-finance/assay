@@ -34,7 +34,7 @@ s="$*"
 
 # The open-PR read is now a gh api graphql whose repo travels as split owner=/name=
 # args, so an owner/name FAIL_REPO never appears as one whole argv element and the loop
-# above cannot see it (#2024). Match the split form too, so failing a whole repo still
+# above cannot see it. Match the split form too, so failing a whole repo still
 # reaches the enumeration read the desk starts every sweep with.
 if [ -n "$DESKBOARD_GH_FAIL_REPO" ]; then
   case "$DESKBOARD_GH_FAIL_REPO" in
@@ -87,7 +87,7 @@ case "$s" in
     # The open-PR enumeration (fetchOpenPRs) — a gh api graphql whose --jq already
     # reshapes the response into the SAME flat array the old gh pr list --json produced,
     # so the shim serves that flat fixture directly (jq is not re-run here). The repo
-    # travels as split owner=/name= args (#2024), so DESKBOARD_GH_PR_REPO selection
+    # travels as split owner=/name= args, so DESKBOARD_GH_PR_REPO selection
     # reconstructs owner/name rather than matching an "owner/repo" element.
     if [ -n "$DESKBOARD_GH_PR_REPO" ]; then
       po=${DESKBOARD_GH_PR_REPO%%/*}
@@ -379,7 +379,7 @@ func TestReadOnly_PathShim(t *testing.T) {
 			t.Errorf("MUTATING gh call recorded: %s  (full: %s)", off, strings.Join(fields, " "))
 		}
 		if strings.Contains(strings.Join(fields, " "), "pullRequests(states:OPEN") {
-			sawList = true // the open-PR enumeration, now a `gh api graphql` read (#2024)
+			sawList = true // the open-PR enumeration, now a `gh api graphql` read
 		}
 		if len(fields) >= 1 && fields[0] == "api" {
 			sawAPI = true
@@ -1233,7 +1233,7 @@ func TestTrustGate_ActionsQuarantine(t *testing.T) {
 		t.Errorf("expected PR #7 in the external quarantine section; got %+v", rep.External)
 	}
 	// Bounded: exactly one trust-events read. The open-PR enumeration is now also a
-	// graphql read (#2024), so the trust read is identified by its own marker
+	// graphql read, so the trust read is identified by its own marker
 	// (lastEditedAt — in the trust queries, never in the enumeration query) rather than
 	// by the bare word "graphql".
 	trustReads := 0

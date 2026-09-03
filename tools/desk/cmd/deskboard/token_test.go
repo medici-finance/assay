@@ -157,7 +157,7 @@ func stubPRList(t *testing.T, unreachable string, failOther error) {
 	t.Cleanup(func() { ghRun = prev })
 	ghRun = func(args ...string) ([]byte, error) {
 		joined := strings.Join(args, " ")
-		// The open-PR read is a `gh api graphql` (#2024); its --jq yields the SAME flat
+		// The open-PR read is a `gh api graphql`; its --jq yields the SAME flat
 		// array the old `gh pr list --json` did, so the stub serves that flat array here.
 		if strings.Contains(joined, "pullRequests(states:OPEN") {
 			repo := ownerRepoFromGraphQL(args)

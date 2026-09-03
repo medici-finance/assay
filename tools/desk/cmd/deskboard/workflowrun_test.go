@@ -8,8 +8,8 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// TestFetchOpenPRs_UnreadableWorkflowRun_DoesNotBlindBoard is the assay-toolkit#2024
-// regression: the bulk open-PR read must not depend on the `checkSuite.workflowRun` link,
+// TestFetchOpenPRs_UnreadableWorkflowRun_DoesNotBlindBoard is the regression guard: the
+// bulk open-PR read must not depend on the `checkSuite.workflowRun` link,
 // which requires `actions:read`. gh's built-in `pr list --json statusCheckRollup` requests
 // that sub-field; under an App holding only `checks:read` (the reviewer App) it 403s, and on
 // a repo with many Actions check suites `gh pr list` returns those errors with NO salvageable

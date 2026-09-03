@@ -263,7 +263,7 @@ type review struct {
 
 // openPRsGraphQL is the bulk open-PR read, hand-authored so it requests EXACTLY the
 // fields the board classifies on — and nothing that needs a scope the board's identity
-// does not hold. It replaces `gh pr list --json statusCheckRollup` (assay-toolkit#2024):
+// does not hold. It replaces `gh pr list --json statusCheckRollup`:
 // gh's built-in `statusCheckRollup` field carries a hardcoded `checkSuite { workflowRun … }`
 // sub-selection — a LINK to the Actions run, not a check conclusion — that requires
 // `actions:read`. Under an App with only `checks:read` (the reviewer App) that one sub-field
@@ -294,7 +294,7 @@ const openPRsReshapeJQ = `[.data.repository.pullRequests.nodes[]|{number,title,b
 // (Header.PRPopulation); the stderr banner stays for the human on the table path.
 //
 // The read is a hand-authored `gh api graphql` (openPRsGraphQL) rather than
-// `gh pr list --json statusCheckRollup`: see openPRsGraphQL for why (assay-toolkit#2024).
+// `gh pr list --json statusCheckRollup`: see openPRsGraphQL for why.
 func fetchOpenPRs(repo string) (prs []prBase, truncated bool, err error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {

@@ -97,7 +97,7 @@ func (s *stub) install(t *testing.T) string {
 			return echo(h)
 		case strings.Contains(joined, "pullRequest(number:"):
 			// The single-PR state read is now a `gh api graphql` whose --jq yields the SAME
-			// flat prInfo shape gh's `pr view --json` did (#2024, flip half), so the stub
+			// flat prInfo shape gh's `pr view --json` did (flip half), so the stub
 			// echoes that flat fixture directly (jq is not re-run here).
 			if s.failPR {
 				return exec.Command("/bin/sh", "-c", "echo no such PR 1>&2; exit 1")

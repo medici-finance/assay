@@ -398,7 +398,7 @@ func TestStalled_EnumeratesOpenPRsOnly(t *testing.T) {
 	sawOpenList := false
 	for _, fields := range readInvocations(t, logPath) {
 		line := strings.Join(fields, " ")
-		// The open-PR enumeration is a `gh api graphql` read (#2024). It must ask ONLY for
+		// The open-PR enumeration is a `gh api graphql` read. It must ask ONLY for
 		// open PRs — `pullRequests(states:OPEN …)` — never a states-less or merged query.
 		if !strings.Contains(line, "pullRequests(") {
 			continue

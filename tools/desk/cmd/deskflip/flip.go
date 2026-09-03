@@ -845,7 +845,7 @@ type reviewInfo struct {
 	SubmittedAt string                 `json:"submitted_at"`
 }
 
-// flipPRGraphQL is the single-PR state read (assay-toolkit#2024, flip half). It replaces
+// flipPRGraphQL is the single-PR state read (flip half). It replaces
 // `gh pr view --json statusCheckRollup`: gh's built-in `statusCheckRollup` field selects a
 // `checkSuite { workflowRun … }` sub-field — a LINK to the Actions run, not a check
 // conclusion — that needs `actions:read`. Under a `checks:read`-only identity (the reviewer
