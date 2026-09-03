@@ -32,6 +32,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -105,7 +106,97 @@ type widthPolicy struct {
 	// secondary-rate-limit trip. Reviewers are the motivating case and the reason the
 	// review pool has always been narrower than the worker pool.
 	TokenBound bool
-	Why        string
+	// DefaultReserve is the shipped per-class concurrency RESERVATION (example-stream/05):
+	// a floor of slots held for resume/rework items so fresh dispatch cannot crowd them out
+	// under a full pool — the inverse of Symphony's max_concurrent_agents_by_state, which
+	// caps a state rather than floors it, because the failure this closes is fresh work
+	// starving a resume, never the reverse. nil (the common case) means no reservation for
+	// this loop; DefaultReserve(loop) below normalises that to an all-zero map so callers
+	// never branch on nil.
+	DefaultReserve map[string]int
+	Why            string
+}
+
+// KnownReserveClasses is the fixed set of concurrency-reservation classes a width entry may
+// declare, in DISPLAY order — resume before rework, matching the priority order the dispatch
+// spec states (worker-desk SKILL.md §Sources of work rows 3 and 5: resuming started work
+// outranks a fresh brief). Fixed rather than derived from any one loop's map so a `--reserve`
+// flag and a printed summary always enumerate classes in the SAME order regardless of which
+// are zero, and so an unrecognised class name is a REFUSAL (CheckReserve) rather than a typo
+// that silently reserves nothing.
+var KnownReserveClasses = []string{"resume", "rework"}
+
+func isKnownReserveClass(c string) bool {
+	for _, k := range KnownReserveClasses {
+		if k == c {
+			return true
+		}
+	}
+	return false
+}
+
+// cloneReserve normalises a stored/declared reservation map onto the full KnownReserveClasses
+// set (missing classes read as 0) and copies it, so a caller can range over the result without
+// a nil check and without aliasing the table's own map.
+func cloneReserve(in map[string]int) map[string]int {
+	out := make(map[string]int, len(KnownReserveClasses))
+	for _, c := range KnownReserveClasses {
+		out[c] = in[c] // zero value for a class the map does not mention
+	}
+	return out
+}
+
+// FormatReserve renders a reservation map in KnownReserveClasses order as `resume:2,rework:0`
+// — the ONE formatting function `deskroster width`, `deskboard throughput` and any future
+// reader share, so the printed shape cannot drift between binaries.
+func FormatReserve(m map[string]int) string {
+	parts := make([]string, 0, len(KnownReserveClasses))
+	for _, c := range KnownReserveClasses {
+		parts = append(parts, fmt.Sprintf("%s:%d", c, m[c]))
+	}
+	return strings.Join(parts, ",")
+}
+
+// DefaultReserve is the shipped per-class reservation for `loop`, stored beside its width in
+// the same widthPolicies row. A loop the table declares no reservation for returns an all-zero
+// map (never nil), so a caller can sum or range over it unconditionally.
+func DefaultReserve(loop string) (map[string]int, error) {
+	_, p, err := policyFor(loop)
+	if err != nil {
+		return nil, err
+	}
+	return cloneReserve(p.DefaultReserve), nil
+}
+
+// CheckReserve is the gate behind `deskroster width --role <loop> --reserve resume=N,rework=M`:
+// admissible only when every class named is a known one, no value is negative, and the SUM
+// stays STRICTLY BELOW width. The strict inequality is the point (Verify row 4): a reservation
+// that consumes the whole pool — or more — would starve fresh dispatch even while nothing
+// reserved is waiting, which is the opposite of what a floor is for. Bound against the width
+// explicitly passed in, never re-resolved here, so a set-time check and a set-time write agree
+// on which width they judged.
+func CheckReserve(loop string, reserve map[string]int, width int) error {
+	sum := 0
+	for class, n := range reserve {
+		if !isKnownReserveClass(class) {
+			return Refused(fmt.Sprintf(
+				"refused: %q is not a reservation class this roster recognises. Known classes: %v",
+				class, KnownReserveClasses))
+		}
+		if n < 0 {
+			return Refused(fmt.Sprintf(
+				"refused: --reserve %s=%d is negative; a reservation cannot hold a negative number of slots",
+				class, n))
+		}
+		sum += n
+	}
+	if sum >= width {
+		return Refused(fmt.Sprintf(
+			"refused: a reservation summing to %d for %s would consume the whole width (%d) or more, "+
+				"starving fresh dispatch even when nothing reserved is waiting — a reservation must never "+
+				"idle a slot. The accepted maximum sum is %d.", sum, loop, width, width-1))
+	}
+	return nil
 }
 
 // widthPolicies is the compiled-in table, keyed by CANONICAL LOOP NAME (loopnames.go),
@@ -117,16 +208,20 @@ type widthPolicy struct {
 // reason. There is no widths.env whose corruption could resize every desk at once.
 var widthPolicies = map[string]widthPolicy{
 	"worker-desk": {
-		Default:       8,
-		DeclaredMax:   12,
-		WriteTool:     "deskpr",
-		chargedCap:    func() int { return RateLimitPerPRPerHour },
-		WritesPerItem: 1,
-		TokenBound:    false,
+		Default:        8,
+		DeclaredMax:    12,
+		WriteTool:      "deskpr",
+		chargedCap:     func() int { return RateLimitPerPRPerHour },
+		WritesPerItem:  1,
+		TokenBound:     false,
+		DefaultReserve: map[string]int{"resume": 2},
 		Why: "one worker item costs one `deskpr create`, which meters REPO-WIDE at the " +
 			"per-PR cap (AllowWriteRepoWide). Workers hold their own worktrees and do most " +
 			"of their work locally, so the binding constraint is that write budget, not the " +
-			"token.",
+			"token. The reserve holds 2 of the 8 slots for orphan-PR resumes so a full pool of " +
+			"fresh briefs cannot leave a resume waiting (example-stream/05); rework starts at " +
+			"0 because it shares row 5's priority with resume but has not yet needed its own " +
+			"floor in practice — raise it the same way if it does.",
 	},
 	"pr-review-desk": {
 		Default:       5,

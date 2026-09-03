@@ -56,6 +56,14 @@ slots, and a sweep proving nothing eligible exists (§HARD GATE).
     as items land. A dispatched worker mid-item keeps its slot.
   - A width that cannot be read is **could-not-check**: hold at the number you last read (or the
     default) and file it. Ignorance never widens a pool.
+- **The reservation is the code-enforced form of the next two rules** (desk-supervision/05):
+  `deskroster width --role worker-desk --reserve resume=N,rework=M` floors N/M slots for orphan
+  resumes and `Awaiting implementer rework` rows, riding the same entry as the width and decaying
+  with it. `fanoutloop plan` classifies its queue and states the floor whenever a reserved class
+  is actually waiting (`fresh capped at <k> by reservation`) — **it never idles a slot** for a
+  class with nothing queued, which is what keeps this a floor and not a second cap. worker-desk
+  ships `resume=2`; the "resuming started work outranks a fresh brief" prose below is what that
+  floor is FOR, not a second, unenforced statement of it.
 - **Fill to N, refill on completion** — the instant a worker finishes (draft PR open, or done /
   NEEDS_CONTEXT), dispatch the next eligible item into the freed slot.
 - **Never stop-and-wait-for-restart.** "The plan came back empty" is a reading from ONE instrument,
@@ -82,7 +90,7 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | 2 | Rows **held back** by the 4-per-stream cap or the span cap | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one |
 | 3 | Orphan PRs owing a worker action, `CONFLICTING` PRs, red checks | the per-slug PR + disposition reads in [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §The tick sweep, with the disposition read FIRST |
 | 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate) |
-| 5 | `Awaiting implementer rework` board rows | the board's own section, read per root from `refs/remotes/origin/main:STATUS.md` — `plan` contains none of them |
+| 5 | `Awaiting implementer rework` board rows | `fanoutloop plan --root <root>` (desk-supervision/05: read per root from `refs/remotes/origin/main:STATUS.md`, the SAME offline ref read row 1 uses — no separate sweep) |
 | 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues` — fail-closed |
 | 7 | A red default branch on a watched repo | `deskboard health` — three-state (green / RED / COULD-NOT-CHECK) |
 | 8 | Cross-root coverage: a board root that no sweep reaches, or a scanned repo with no board | the BOARD ROOTS ∪ SCAN REPOS symmetric difference printed at boot (§THE REPO SET) |

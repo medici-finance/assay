@@ -62,8 +62,14 @@ type stageRow struct {
 	// MaxSlots is the widest this stage may be set to right now, so the reader can tell
 	// "this stage is the bottleneck AND can be widened" from "this stage is the bottleneck
 	// and is already at its ceiling" — two situations with completely different responses.
-	MaxSlots  int    `json:"maxSlots"`
-	BoundBy   string `json:"boundBy"`
+	MaxSlots int    `json:"maxSlots"`
+	BoundBy  string `json:"boundBy"`
+	// Reserve is the loop's per-class concurrency RESERVATION (example-stream/05), formatted
+	// `resume:2,rework:0` — an EXTRA column, reported beside Slots, never subtracted from it:
+	// this verb's depth/slot ratio is unchanged by the reservation, which floors a share of the
+	// pool for resume/rework rather than shrinking the pool itself. Empty for a loop this
+	// throughput verb does not resolve a reservation for (a blind row).
+	Reserve   string `json:"reserve,omitempty"`
 	Blind     string `json:"blind,omitempty"`
 	DepthNote string `json:"depthNote"`
 }
@@ -105,6 +111,11 @@ func slotsFor(row *stageRow) {
 		row.MaxSlots, row.BoundBy = max, why
 	} else {
 		row.Blind = appendBlind(row.Blind, "ceiling: "+merr.Error())
+	}
+	if reserve, _, rerr := deskkit.ResolvedReserve(row.Loop); rerr == nil {
+		row.Reserve = deskkit.FormatReserve(reserve)
+	} else {
+		row.Blind = appendBlind(row.Blind, "reserve: "+rerr.Error())
 	}
 }
 
@@ -306,8 +317,8 @@ func throughputDetail(rep *throughputReport) string {
 
 func renderThroughput(w io.Writer, rep *throughputReport) {
 	fmt.Fprintf(w, "asOf %s\n", rep.Header.AsOf)
-	fmt.Fprintf(w, "%-9s %-15s %-7s %-6s %-7s %-5s %s\n",
-		"STAGE", "LOOP", "DEPTH", "SLOTS", "RATIO", "MAX", "NOTE")
+	fmt.Fprintf(w, "%-9s %-15s %-7s %-6s %-16s %-7s %-5s %s\n",
+		"STAGE", "LOOP", "DEPTH", "SLOTS", "RESERVE", "RATIO", "MAX", "NOTE")
 	for _, s := range rep.Stages {
 		depth, ratio := "n/a", "n/a"
 		if s.Depth != nil {
@@ -316,12 +327,16 @@ func renderThroughput(w io.Writer, rep *throughputReport) {
 		if s.Ratio != nil {
 			ratio = fmt.Sprintf("%.2f", *s.Ratio)
 		}
+		reserve := s.Reserve
+		if reserve == "" {
+			reserve = "n/a"
+		}
 		note := s.SlotsSource
 		if s.Blind != "" {
 			note = "COULD-NOT-CHECK — " + s.Blind
 		}
-		fmt.Fprintf(w, "%-9s %-15s %-7s %-6d %-7s %-5d %s\n",
-			s.Stage, s.Loop, depth, s.Slots, ratio, s.MaxSlots, note)
+		fmt.Fprintf(w, "%-9s %-15s %-7s %-6d %-16s %-7s %-5d %s\n",
+			s.Stage, s.Loop, depth, s.Slots, reserve, ratio, s.MaxSlots, note)
 	}
 	fmt.Fprintf(w, "\nread %d of %d stages\n", rep.StagesRead, rep.StagesTotal)
 	fmt.Fprintf(w, "%s\n", rep.Advice)

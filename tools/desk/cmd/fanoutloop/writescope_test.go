@@ -49,6 +49,7 @@ func TestRenderPlan_WriteOverlapWarns(t *testing.T) {
 	f := &FanoutLoop{
 		Board:    func() ([]BoardRow, error) { return board, nil },
 		InFlight: func() ([]loopengine.Item, error) { return inflight, nil },
+		Rework:   noRework,
 		Emit:     &bytes.Buffer{},
 	}
 	var out bytes.Buffer
@@ -85,6 +86,7 @@ func TestRenderPlan_CouldNotDeriveReported(t *testing.T) {
 	f := &FanoutLoop{
 		Board:    func() ([]BoardRow, error) { return board, nil },
 		InFlight: func() ([]loopengine.Item, error) { return nil, nil },
+		Rework:   noRework,
 		Emit:     &bytes.Buffer{},
 	}
 	var out bytes.Buffer
@@ -107,6 +109,7 @@ func TestRenderPlan_DisjointPrintsNothing(t *testing.T) {
 	f := &FanoutLoop{
 		Board:    func() ([]BoardRow, error) { return board, nil },
 		InFlight: func() ([]loopengine.Item, error) { return inflight, nil },
+		Rework:   noRework,
 		Emit:     &bytes.Buffer{},
 	}
 	var out bytes.Buffer

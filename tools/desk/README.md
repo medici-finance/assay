@@ -903,6 +903,14 @@ there was no way to say which stage that was — nor any value to move once you 
   `pr-review-desk`, `verify-desk`, `intake-desk`, `the-desk`) through the same equivalence class
   the stop flag uses, so a rename cannot reset a pool. A set width **decays after an hour**: a
   coordinator that died cannot leave a pool permanently wide.
+- **The per-class reservation — `deskroster width --role <loop> --reserve resume=N,rework=M`**
+  (example-stream/05), riding the SAME entry as the width and decaying with it. It is a FLOOR,
+  not a cap: `fanoutloop plan` classifies its queue into resume / rework / fresh and states
+  `fresh capped at <width-reserve> by reservation` only while a reserved class actually has an
+  item waiting — never idling a slot for a class with nothing queued. worker-desk ships
+  `resume=2` (protecting orphan-PR resumes, the highest-priority source) and `rework=0`.
+  `deskboard throughput` prints the same reservation as an extra column beside the width it
+  never subtracts from.
 - **The bound.** A width the role's write budget or the shared App token's concurrency ceiling
   cannot carry is **refused (exit 5) naming the maximum it will accept**. Widening buys no
   budget — every meter in the rate limiter applies to the wider pool unchanged — and an **open

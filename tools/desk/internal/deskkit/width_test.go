@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestDefaultWidthsArePinned is the sibling of TestCapValuesArePinned: it hard-codes the
@@ -300,5 +301,129 @@ func TestEffectiveWidth_UnknownLoopDoesNotWiden(t *testing.T) {
 	}
 	if got != 2 {
 		t.Errorf("unresolvable width returned %d with 2 in flight, want 2 — ignorance must not resize a pool", got)
+	}
+}
+
+// --- example-stream/05: per-class concurrency reservation ------------------------------------
+
+// TestDefaultReserve_WorkerDeskIsTwoResumeZeroRework pins the shipped default the brief names
+// (`resume=2`), and that a class the table never mentions (`rework`) reads as 0, not absent —
+// the whole point of cloneReserve's normalisation is that a caller never has to nil-check.
+func TestDefaultReserve_WorkerDeskIsTwoResumeZeroRework(t *testing.T) {
+	got, err := DefaultReserve("worker-desk")
+	if err != nil {
+		t.Fatalf("DefaultReserve(worker-desk): %v", err)
+	}
+	want := map[string]int{"resume": 2, "rework": 0}
+	if len(got) != len(want) || got["resume"] != want["resume"] || got["rework"] != want["rework"] {
+		t.Errorf("DefaultReserve(worker-desk) = %v, want %v", got, want)
+	}
+}
+
+// TestDefaultReserve_UnreservedLoopIsAllZero: a loop with no DefaultReserve row (e.g.
+// pr-review-desk) must read as an all-zero map over the known classes, never nil — a nil map a
+// caller forgot to check would silently apply no floor and no refusal, which is a much quieter
+// failure than an explicit zero.
+func TestDefaultReserve_UnreservedLoopIsAllZero(t *testing.T) {
+	got, err := DefaultReserve("pr-review-desk")
+	if err != nil {
+		t.Fatalf("DefaultReserve(pr-review-desk): %v", err)
+	}
+	for _, c := range KnownReserveClasses {
+		if got[c] != 0 {
+			t.Errorf("DefaultReserve(pr-review-desk)[%s] = %d, want 0 (this loop declares no reservation)", c, got[c])
+		}
+	}
+}
+
+// TestReserveRefusedWhenItSwallowsWidth is Verify row 4: a reservation summing to the whole
+// width (or more) is refused, naming the maximum sum it will accept — the same shape
+// TestCheckWidth_RefusesOverTheCeilingAndNamesIt pins for the width bound itself. The failure
+// this closes is a coordinator reserving the whole pool and starving it even with nothing
+// reserved waiting; the fix is the STRICT inequality (sum < width), so this test pins both the
+// boundary (sum == width refused) and the accepted maximum (width-1 admitted).
+func TestReserveRefusedWhenItSwallowsWidth(t *testing.T) {
+	width := 8
+
+	// Exactly swallowing the width: refused, and the refusal must name the accepted maximum.
+	err := CheckReserve("worker-desk", map[string]int{"resume": 5, "rework": 3}, width)
+	if err == nil || !IsRefused(err) {
+		t.Fatalf("a reservation summing to the whole width (%d) must be Refused, got %v", width, err)
+	}
+	if !strings.Contains(err.Error(), strconv.Itoa(width-1)) {
+		t.Errorf("the refusal must name the accepted maximum sum (%d); got: %s", width-1, err.Error())
+	}
+
+	// Over the width: also refused.
+	if err := CheckReserve("worker-desk", map[string]int{"resume": 9}, width); err == nil || !IsRefused(err) {
+		t.Fatalf("a reservation exceeding the width must be Refused, got %v", err)
+	}
+
+	// One under the width: admissible — the boundary case that proves the refusal is not
+	// simply "any reservation at all".
+	if err := CheckReserve("worker-desk", map[string]int{"resume": 7}, width); err != nil {
+		t.Errorf("a reservation of width-1 (%d) must be admissible, got %v", width-1, err)
+	}
+
+	// An unknown class is refused independently of the sum.
+	if err := CheckReserve("worker-desk", map[string]int{"typo": 1}, width); err == nil || !IsRefused(err) {
+		t.Fatal("an unrecognised reservation class must be Refused")
+	}
+
+	// A negative value is refused independently of the sum.
+	if err := CheckReserve("worker-desk", map[string]int{"resume": -1}, width); err == nil || !IsRefused(err) {
+		t.Fatal("a negative reservation must be Refused")
+	}
+}
+
+// TestResolvedReserve_DecaysWithTheWidth is Task 4's third proof: a stored reservation decays
+// on the SAME TTL as the width it rides beside, because it is the same entry — there is no
+// separate reservation timer to fall out of sync with the width's.
+func TestResolvedReserve_DecaysWithTheWidth(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	stale := time.Now().Add(-2 * WidthTTL)
+	if err := SaveWidth(&WidthEntry{
+		Loop: "worker-desk", Width: 6, Reserve: map[string]int{"resume": 3, "rework": 2},
+		SetBy: "dead-session", Updated: stale.UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("SaveWidth: %v", err)
+	}
+
+	got, source, err := ResolvedReserveAt("worker-desk", time.Now())
+	if err != nil {
+		t.Fatalf("ResolvedReserveAt: %v", err)
+	}
+	want, _ := DefaultReserve("worker-desk")
+	if got["resume"] != want["resume"] || got["rework"] != want["rework"] {
+		t.Errorf("a reservation stored %s ago must have decayed to the default %v, got %v (source=%q)",
+			2*WidthTTL, want, got, source)
+	}
+
+	// And a fresh one (within the TTL) IS honoured.
+	fresh := time.Now().Add(-WidthTTL / 2)
+	if err := SaveWidth(&WidthEntry{
+		Loop: "worker-desk", Width: 6, Reserve: map[string]int{"resume": 3, "rework": 2},
+		SetBy: "live-session", Updated: fresh.UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("SaveWidth: %v", err)
+	}
+	got, _, err = ResolvedReserveAt("worker-desk", time.Now())
+	if err != nil {
+		t.Fatalf("ResolvedReserveAt: %v", err)
+	}
+	if got["resume"] != 3 || got["rework"] != 2 {
+		t.Errorf("a reservation set half a TTL ago must be in force: got %v, want resume:3,rework:2", got)
+	}
+}
+
+// TestFormatReserve_IsFixedOrder pins the one shared formatting function's shape — the reason it
+// exists is so `deskroster width` and `deskboard throughput` cannot render the same map two
+// different ways.
+func TestFormatReserve_IsFixedOrder(t *testing.T) {
+	got := FormatReserve(map[string]int{"rework": 1, "resume": 2})
+	if got != "resume:2,rework:1" {
+		t.Errorf("FormatReserve = %q, want %q (resume before rework, regardless of map order)", got, "resume:2,rework:1")
 	}
 }

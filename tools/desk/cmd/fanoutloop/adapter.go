@@ -48,6 +48,11 @@ type FanoutLoop struct {
 	// means NONE: the OFFLINE reference build issues no `gh` sweep, so the live orphan lane is wired
 	// only at cutover. Tests inject fixtures here.
 	Orphans func() ([]OrphanPR, error)
+	// Rework is the `Awaiting implementer rework` board-section source (§Sources of work row 5) —
+	// STATUS.md rows statusgen already flagged as needing implementer action on FEEDBACK, not a
+	// fresh brief. nil uses readAwaitingRework(Root), the SAME origin/main-ref read the Next-up
+	// board uses (statusMDContent). Tests inject fixtures here.
+	Rework func() ([]BoardRow, error)
 	// InFlight is the in-flight-claim source for the ADVISORY write-scope overlap warning:
 	// the items already claimed for this root, carried as their derived
 	// write-scopes. nil reads the root repo's local `refs/dispatch/*` claims (offline). Tests
@@ -80,14 +85,15 @@ type FanoutLoop struct {
 
 func (f *FanoutLoop) Name() string { return "worker-desk" }
 
-// SelectQueue is the deterministic board read. It returns ORPHAN RESUMES FIRST (resume-priority
-// over fresh dispatch) then the Next-up rows in board order, each already
-// priority/staleness/cap/dep-filtered by statusgen — so every row it sees is already `todo` and
-// unclaimed. It INCLUDES `issue-<NN>` placeholder rows: those ARE this loop's work (worker-desk
-// dispatch spec, Procedure 2 — "INCLUDE issue-placeholders — `issue-<NN>` rows ARE yours to
-// dispatch"). It drops only a DIFFERENT loop's dispatch token (a `review-request` token belongs to
-// the review loop, not here) and anything already handed off. It adds NO scoring pass of its own —
-// the order it returns is the order the boards agreed on.
+// SelectQueue is the deterministic board read. It returns ORPHAN RESUMES FIRST, then
+// AWAITING-IMPLEMENTER-REWORK rows (both outrank fresh dispatch — worker-desk SKILL.md §Sources
+// of work rows 3 and 5: "resuming started work outranks a fresh brief"), then the Next-up rows
+// in board order, each already priority/staleness/cap/dep-filtered by statusgen — so every fresh
+// row it sees is already `todo` and unclaimed. It INCLUDES `issue-<NN>` placeholder rows: those
+// ARE this loop's work (worker-desk dispatch spec, Procedure 2 — "INCLUDE issue-placeholders —
+// `issue-<NN>` rows ARE yours to dispatch"). It drops only a DIFFERENT loop's dispatch token (a
+// `review-request` token belongs to the review loop, not here) and anything already handed off.
+// It adds NO scoring pass of its own — the order it returns is the order the boards agreed on.
 func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	var items []loopengine.Item
 
@@ -103,7 +109,19 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 		items = append(items, o.toItem())
 	}
 
-	// 2. Fresh Next-up rows, board order preserved.
+	// 2. Awaiting-implementer-rework rows — second priority, ahead of fresh dispatch.
+	rework, err := f.reworkSource()
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rework {
+		if f.isHandled(r.ID()) {
+			continue
+		}
+		items = append(items, r.toReworkItem(f.TargetSHA))
+	}
+
+	// 3. Fresh Next-up rows, board order preserved.
 	rows, err := f.boardSource()
 	if err != nil {
 		return nil, err
@@ -235,6 +253,13 @@ func (f *FanoutLoop) orphanSource() ([]OrphanPR, error) {
 		return f.Orphans()
 	}
 	return nil, nil // OFFLINE reference build: no `gh` orphan sweep; wired at cutover
+}
+
+func (f *FanoutLoop) reworkSource() ([]BoardRow, error) {
+	if f.Rework != nil {
+		return f.Rework()
+	}
+	return readAwaitingRework(f.Root)
 }
 
 func (f *FanoutLoop) emit() io.Writer {

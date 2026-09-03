@@ -154,7 +154,20 @@ func (o OrphanPR) toItem() loopengine.Item {
 const (
 	kindBrief  = "brief"
 	kindOrphan = "orphan"
+	kindRework = "rework"
 )
+
+// toReworkItem is toItem's REWORK sibling: same BoardRow shape (an `Awaiting implementer
+// rework` row resolves through the identical Stream/Num/brief-file machinery as a Next-up row),
+// tagged with the rework kind so classOf (main.go, example-stream/05) buckets it into the
+// reservation's rework class rather than fresh. A separate method rather than a toItem
+// parameter because kindBrief must stay the ordinary, no-argument default — the common case
+// should not carry a kind argument nobody reading toItem's call sites would expect.
+func (r BoardRow) toReworkItem(targetSHA string) loopengine.Item {
+	it := r.toItem(targetSHA)
+	it.Payload["kind"] = kindRework
+	return it
+}
 
 func boolStr(b bool) string {
 	if b {
@@ -185,18 +198,9 @@ var nextUpBriefRe = regexp.MustCompile(`^\s*(\S+)\s*(?:—|-)\s*(.*)$`)
 // tiering, and a working-tree brief that is missing or stale degrades to the economy default rather
 // than dropping the row.
 func readNextUp(root, targetSHA string) ([]BoardRow, error) {
-	raw, fromRef := statusFromOriginMain(root)
-	if !fromRef {
-		// could-not-check the ref (root is not a git repo, or origin was never fetched, or STATUS.md
-		// is absent on origin/main): fall back to the working-tree STATUS.md and SAY SO — a sibling's
-		// working tree can be stale (#1674), so this path is reported on stderr, never silently
-		// presented as an origin/main read.
-		b, err := os.ReadFile(filepath.Join(root, "STATUS.md"))
-		if err != nil {
-			return nil, err
-		}
-		fmt.Fprintf(os.Stderr, "fanoutloop: NOTE: could not read STATUS.md from refs/remotes/origin/main under %s — falling back to the working-tree STATUS.md, which may be stale (#1674)\n", root)
-		raw = string(b)
+	raw, err := statusMDContent(root)
+	if err != nil {
+		return nil, err
 	}
 	var rows []BoardRow
 	for _, cells := range nextUpTableRows(raw) {
@@ -212,6 +216,59 @@ func readNextUp(root, targetSHA string) ([]BoardRow, error) {
 		num := strings.TrimSpace(m[1])
 		title := strings.TrimSpace(m[2])
 		br := BoardRow{Stream: stream, Num: num, Title: title}
+		br.BriefPath, br.Effort, br.ExecTier, br.Gate, br.Risk, br.Implementer, br.OutOfRepo, br.WriteScopes = resolveBrief(root, stream, num)
+		rows = append(rows, br)
+	}
+	return rows, nil
+}
+
+// statusMDContent returns STATUS.md's content for root, preferring the fetched origin/main ref
+// (statusFromOriginMain, #1674) and falling back to the working tree with a stderr NOTE. Every
+// STATUS.md section reader (readNextUp, readAwaitingRework) goes through this ONE function, so
+// there is exactly one origin/main-vs-working-tree policy to keep correct rather than one per
+// section.
+func statusMDContent(root string) (string, error) {
+	raw, fromRef := statusFromOriginMain(root)
+	if !fromRef {
+		// could-not-check the ref (root is not a git repo, or origin was never fetched, or STATUS.md
+		// is absent on origin/main): fall back to the working-tree STATUS.md and SAY SO — a sibling's
+		// working tree can be stale (#1674), so this path is reported on stderr, never silently
+		// presented as an origin/main read.
+		b, err := os.ReadFile(filepath.Join(root, "STATUS.md"))
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(os.Stderr, "fanoutloop: NOTE: could not read STATUS.md from refs/remotes/origin/main under %s — falling back to the working-tree STATUS.md, which may be stale (#1674)\n", root)
+		return string(b), nil
+	}
+	return raw, nil
+}
+
+// readAwaitingRework parses the `### Awaiting implementer rework` STATUS.md section
+// (statusgen's own classifyAwaiting output, statusgen/emit.go) into BoardRows tagged as REWORK
+// items — worker-desk §Sources of work row 5, which this makes a live `plan` source rather than
+// a section an operator reads by hand. The section's Brief cell carries only the number and an
+// optional `[exec:strong]` tag (`11 [exec:strong]`, statusgen/emit.go's rendering) — unlike the
+// Next-up Brief cell (`NUM — Title`), so it takes its own leading-token parse rather than
+// nextUpBriefRe's em-dash split.
+func readAwaitingRework(root string) ([]BoardRow, error) {
+	raw, err := statusMDContent(root)
+	if err != nil {
+		return nil, err
+	}
+	var rows []BoardRow
+	for _, cells := range sectionTableRows(raw, "Awaiting implementer rework") {
+		stream := strings.TrimSpace(cells["stream"])
+		briefCell := strings.TrimSpace(cells["brief"])
+		if stream == "" || briefCell == "" {
+			continue
+		}
+		fields := strings.Fields(briefCell)
+		if len(fields) == 0 {
+			continue
+		}
+		num := fields[0]
+		br := BoardRow{Stream: stream, Num: num}
 		br.BriefPath, br.Effort, br.ExecTier, br.Gate, br.Risk, br.Implementer, br.OutOfRepo, br.WriteScopes = resolveBrief(root, stream, num)
 		rows = append(rows, br)
 	}
@@ -285,6 +342,50 @@ func isSeparatorRow(line string) bool { return sepRowRe.MatchString(line) }
 
 func splitPipes(line string) []string {
 	return strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
+}
+
+// sectionTableRows extracts the pipe-table rows under a `### <name>` (H3) heading whose trimmed
+// text STARTS WITH headingPrefix, case-insensitively, stopping at the next `## ` or `### `
+// heading. Unlike nextUpTableRows — an exact `## Next up` (H2) match — this is a PREFIX match on
+// an H3 because statusgen renders a live count onto the heading (`### Awaiting implementer
+// rework (1)`, emit.go) that an exact match would never see.
+func sectionTableRows(content, headingPrefix string) []map[string]string {
+	lowerPrefix := strings.ToLower(headingPrefix)
+	lines := strings.Split(content, "\n")
+	inSection := false
+	var header map[string]int
+	var out []map[string]string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "## ") || strings.HasPrefix(trimmed, "### ") {
+			name := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
+			inSection = strings.HasPrefix(trimmed, "### ") && strings.HasPrefix(strings.ToLower(name), lowerPrefix)
+			header = nil
+			continue
+		}
+		if !inSection || !strings.HasPrefix(trimmed, "|") {
+			continue
+		}
+		cells := splitPipes(line)
+		if header == nil {
+			header = map[string]int{}
+			for i, c := range cells {
+				header[strings.ToLower(strings.TrimSpace(c))] = i
+			}
+			continue
+		}
+		if isSeparatorRow(line) {
+			continue
+		}
+		row := map[string]string{}
+		for name, i := range header {
+			if i < len(cells) {
+				row[name] = strings.TrimSpace(cells[i])
+			}
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // resolveBrief finds a Next-up row's brief file and parses the frontmatter subset + the

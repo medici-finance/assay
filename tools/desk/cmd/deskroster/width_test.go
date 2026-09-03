@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -248,4 +249,170 @@ func TestWidth_RetiredLoopNameSharesOneEntry(t *testing.T) {
 	if _, serr := os.Stat(filepath.Join(home, ".config", "assay", "roster", "width", "batch-fanout.json")); serr == nil {
 		t.Error("a second file was written under the retired name — one pool, one entry")
 	}
+}
+
+// --- example-stream/05: `deskroster width --role L --reserve resume=N,rework=M` -------------
+
+// TestParseReserve_ParsesPairsAndRejectsMalformed pins the flag-value grammar independently of
+// the width bound (CheckReserve), so a malformed --reserve string is caught before any width is
+// even resolved.
+func TestParseReserve_ParsesPairsAndRejectsMalformed(t *testing.T) {
+	got, err := parseReserve("resume=2,rework=1")
+	if err != nil {
+		t.Fatalf("parseReserve: %v", err)
+	}
+	if got["resume"] != 2 || got["rework"] != 1 {
+		t.Errorf("parseReserve(\"resume=2,rework=1\") = %v, want resume:2,rework:1", got)
+	}
+
+	if got, err := parseReserve(""); err != nil || len(got) != 0 {
+		t.Errorf("parseReserve(\"\") = %v, %v, want an empty map and no error", got, err)
+	}
+
+	for _, bad := range []string{"resume", "resume=", "resume=two", "resume:2"} {
+		if _, err := parseReserve(bad); err == nil || !deskkit.IsRefused(err) {
+			t.Errorf("parseReserve(%q) = %v, want a Refused", bad, err)
+		}
+	}
+}
+
+// TestSetReserve_RoundTrip proves the write half stores the reservation on the SAME width
+// entry the width read already resolves — capturing the width in force (the shipped default,
+// here) rather than leaving it unset.
+func TestSetReserve_RoundTrip(t *testing.T) {
+	home := rosterSetup(t)
+	canonical, width, err := setReserve("worker-desk", map[string]int{"resume": 3, "rework": 1}, "coordinator", time.Now())
+	if err != nil {
+		t.Fatalf("setReserve: %v", err)
+	}
+	if canonical != "worker-desk" {
+		t.Errorf("canonical = %q, want worker-desk", canonical)
+	}
+	wantWidth, _ := deskkit.DefaultWidth("worker-desk")
+	if width != wantWidth {
+		t.Errorf("setReserve captured width %d, want the current effective width %d", width, wantWidth)
+	}
+
+	e := readWidthFile(t, home, "worker-desk")
+	if e.Reserve["resume"] != 3 || e.Reserve["rework"] != 1 {
+		t.Errorf("stored reserve = %v, want resume:3,rework:1", e.Reserve)
+	}
+	if e.Width != wantWidth {
+		t.Errorf("stored width = %d, want the captured effective width %d", e.Width, wantWidth)
+	}
+
+	got, source, rerr := deskkit.ResolvedReserve("worker-desk")
+	if rerr != nil {
+		t.Fatalf("ResolvedReserve: %v", rerr)
+	}
+	if got["resume"] != 3 || got["rework"] != 1 {
+		t.Errorf("ResolvedReserve after set = %v (source=%q), want resume:3,rework:1", got, source)
+	}
+}
+
+// TestSetReserve_OverBudgetIsRefusedAndStoresNothing is the exit-5 half of Verify row 4 at the
+// CLI boundary: a reservation that would swallow the width is refused and leaves the store
+// untouched, the same safety property TestWidth_OverBudgetIsRefusedAndStoresNothing pins for a
+// refused width.
+func TestSetReserve_OverBudgetIsRefusedAndStoresNothing(t *testing.T) {
+	home := rosterSetup(t)
+	width, _, err := deskkit.ResolvedWidth("worker-desk")
+	if err != nil {
+		t.Fatalf("ResolvedWidth: %v", err)
+	}
+
+	_, _, err = setReserve("worker-desk", map[string]int{"resume": width}, "coordinator", time.Now())
+	if err == nil || !deskkit.IsRefused(err) {
+		t.Fatalf("a reservation equal to the width must be Refused, got %v", err)
+	}
+	if _, serr := os.Stat(filepath.Join(home, ".config", "assay", "roster", "width", "worker-desk.json")); serr == nil {
+		t.Error("a refused --reserve wrote the width store; a refusal must write nothing at all")
+	}
+}
+
+// TestSetWidth_NarrowingBelowExistingReserveIsRefused pins the safety net in setWidth: narrowing
+// a loop's width out from under an already-stored reservation (so the reservation would now
+// swallow the new width) must be refused, leaving the wider width — and the reservation — in
+// force, rather than silently landing a width/reserve pair CheckReserve would refuse together.
+func TestSetWidth_NarrowingBelowExistingReserveIsRefused(t *testing.T) {
+	home := rosterSetup(t)
+	if _, _, err := setReserve("pr-review-desk", map[string]int{"resume": 4}, "coordinator", time.Now()); err != nil {
+		t.Fatalf("seeding a reservation: %v", err)
+	}
+	e := readWidthFile(t, home, "pr-review-desk")
+	seededWidth := e.Width
+
+	_, err := setWidth("pr-review-desk", 4, "coordinator", time.Now()) // 4 == the reservation itself: swallows it
+	if err == nil || !deskkit.IsRefused(err) {
+		t.Fatalf("narrowing to a width the existing reservation would swallow must be Refused, got %v", err)
+	}
+	after := readWidthFile(t, home, "pr-review-desk")
+	if after.Width != seededWidth {
+		t.Errorf("a refused narrowing changed the stored width to %d; the previous width (%d) must survive", after.Width, seededWidth)
+	}
+}
+
+// TestCmdWidth_PlainReadPrintsWidthAndReserve pins the new compound stdout line
+// (`width=<n> reserve=<classes> (source=..., expires=...)`), replacing the bare integer this
+// verb used to print alone — a behaviour change the brief calls for explicitly, so it is pinned
+// here rather than left to `--verbose` alone.
+func TestCmdWidth_PlainReadPrintsWidthAndReserve(t *testing.T) {
+	rosterSetup(t)
+	out := captureStdout(t, func() {
+		if err := cmdWidth([]string{"--role", "worker-desk"}); err != nil {
+			t.Fatalf("cmdWidth: %v", err)
+		}
+	})
+	wantWidth, _ := deskkit.DefaultWidth("worker-desk")
+	wantLine := fmt.Sprintf("width=%d reserve=resume:2,rework:0 (source=default, expires=n/a)", wantWidth)
+	if !strings.Contains(out, wantLine) {
+		t.Errorf("cmdWidth plain read = %q, want it to contain %q", out, wantLine)
+	}
+}
+
+// TestCmdWidth_ReserveFlagWritesThenPlainReadReflectsIt exercises the verb end to end: setting
+// via --reserve, then reading it back with the plain (no-flag) form.
+func TestCmdWidth_ReserveFlagWritesThenPlainReadReflectsIt(t *testing.T) {
+	rosterSetup(t)
+	if err := cmdWidth([]string{"--role", "worker-desk", "--reserve", "resume=3,rework=1"}); err != nil {
+		t.Fatalf("cmdWidth --reserve: %v", err)
+	}
+	out := captureStdout(t, func() {
+		if err := cmdWidth([]string{"--role", "worker-desk"}); err != nil {
+			t.Fatalf("cmdWidth: %v", err)
+		}
+	})
+	if !strings.Contains(out, "reserve=resume:3,rework:1 (source=set") {
+		t.Errorf("cmdWidth plain read after --reserve = %q, want it to show the SET reservation", out)
+	}
+}
+
+// captureStdout redirects os.Stdout for the duration of fn and returns what was written. Used
+// only by the small set of tests that assert on cmdWidth's printed line rather than on the
+// store it reads.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	orig := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = orig }()
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("closing pipe writer: %v", err)
+	}
+	buf := make([]byte, 0, 4096)
+	tmp := make([]byte, 4096)
+	for {
+		n, rerr := r.Read(tmp)
+		buf = append(buf, tmp[:n]...)
+		if rerr != nil {
+			break
+		}
+	}
+	return string(buf)
 }
