@@ -90,12 +90,12 @@ comments what it needs and from whom. intake-desk: see "What is NOT here".
 
 ```text
 - **Escalation labels:** any desk/loop may label a PR or issue `question` (needs an answer from the
-  driver or a stronger-tier model to proceed — the item PARKS) or `help wanted` (the desk hit its
-  capability/authority edge). Both are GitHub default labels — they exist in every repo, no setup.
-  Discipline: a bare label is unanswerable — the labeler MUST comment what it needs and from whom when
-  labeling; whoever answers removes the label with their response. A `question` that matures into a
-  formal decision fork promotes to `needs-decision` with the pros/cons template. Labeled items are
-  WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
+  driver or a stronger-tier model — the item PARKS only when the fork is one-way; a reversible item proceeds on its
+  stated default with the label riding on it) or `help wanted` (the desk hit its capability/authority edge). Both are
+  GitHub default labels — they exist in every repo, no setup. Discipline: a bare label is unanswerable — the labeler
+  MUST comment what it needs and from whom when labeling; whoever answers removes the label with their response. A
+  `question` that matures into a formal decision fork promotes to `needs-decision` with the pros/cons template.
+  Labeled items are WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
 ```
 
 ## guardrail: git-push-policy
@@ -142,4 +142,45 @@ is NOT here".
 ```text
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
   or comments.
+```
+
+## guardrail: default-forward-reversibility
+
+The 2026-09-03 driver ruling: a desk must NOT stop and wait on an urgent but
+REVERSIBLE decision. The human holds the merge gate, so a wrong guess is caught
+before it lands; asking for a go-ahead the gate makes redundant just makes the
+driver decide twice. Every desk-role loop default-forwards on the reversible set
+— author, dispatch, open the DRAFT PR, make the best-guess call, and NOTIFY — and
+stops only for the genuinely one-way / outside-the-gate set the block fixes.
+
+intake-desk IS a site for this block: it is a new, neutral rule authored once here
+in the same generic voice as every copy, so there is no paraphrase carve-out for
+it (unlike the four older blocks). pr-shepherd is NOT a site — it is a worker-side
+role that quotes the security-gate rule it is bound by rather than owning the
+escalation vocabulary; the desks own the default-forward call.
+
+- site: plugins/assay/skills/the-desk/SKILL.md
+- site: plugins/assay/skills/worker-desk/SKILL.md
+- site: plugins/assay/skills/pr-review-desk/SKILL.md
+- site: plugins/assay/skills/verify-desk/SKILL.md
+- site: plugins/assay/skills/intake-desk/SKILL.md
+
+```text
+- **Reversibility test — default-forward on anything a human-held gate still catches:** before
+  parking an item on the driver, ask ONE question: *is a wrong guess here caught by a gate the
+  driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a
+  human must still make?* **Yes → default-forward.** Author it, dispatch the worker, open the DRAFT
+  PR, make the best-guess call, and NOTIFY — "proceeded on `<default>`; filed as `<repo>#<N>`;
+  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. The
+  `needs-decision` / `question` issue is still filed, naming the default taken, but the ITEM does
+  not park on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
+  the record, and corrected by the gate. **No → STOP and wait for the human.** A wrong guess that
+  lands irreversibly or reaches outside the gate is caught by nobody declining a merge. That set is
+  fixed, never judged case by case: merge, a ready-flip that is not this role's, any `main` push
+  outside a standing authorization, a tag or release cut; deleting, disabling or WEAKENING a
+  security control or its CI assertion; exposing secrets, credentials, PII or exploit detail (a
+  public repo above all); money movement, identity/auth changes, deleting or overwriting durable
+  data; and anything that leaves the repo — publishing to a public or external surface, sending
+  content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
+  either side of the test — the test never routes around one.
 ```

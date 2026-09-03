@@ -93,7 +93,10 @@ The script renders exactly this; when you compose an item by hand, compose the s
 Ask ONE. Wait for the answer. Do not queue the next question in the same message, do not
 append "and while I have you", and do not pre-empt the answer by acting on your own
 recommendation. The recommended default exists so the driver can say "A" — not so the desk can
-proceed as if they had.
+proceed as if they had. **This binds a ONE-WAY gate** — a fork whose wrong guess lands irreversibly
+or reaches outside the gate the driver still holds. A REVERSIBLE fork is different: the desk has
+ALREADY proceeded on its default behind a draft PR (the reversibility test), so the ask here is not a
+pre-empt but a merge-or-decline, and the item does not park on this skill.
 
 ## Recording a ruling — always a relay, never the driver's voice
 
@@ -154,9 +157,11 @@ recorded on the issue as a relay.
 
 ## The floors
 
-- **The desk never decides.** A recommended default is a recommendation. A strong model is not
-  a human gate, and this skill's presence in a session is not an authorisation to proceed on
-  the recommendation unanswered.
+- **The desk never decides a ONE-WAY gate.** A recommended default is a recommendation; a strong
+  model is not a human gate, and this skill's presence in a session is not an authorisation to proceed
+  unanswered on a fork whose wrong guess is irreversible or reaches outside the driver's gate. Where
+  the fork is REVERSIBLE the desk has already proceeded on the default behind a draft PR (the
+  reversibility test) — the reply is merge-or-decline, not a belated go-ahead.
 - **Ask about what you have read.** If the inbox could not read an item, it renders
   `could-not-check` and exits non-zero. Present that item as unread — do not skip it (it is
   still waiting) and do not summarise it from memory.

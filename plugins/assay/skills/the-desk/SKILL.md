@@ -64,8 +64,10 @@ queue and files `review-request` issues, and the autonomous-drive rule fires off
    possible. `gh issue list` emits no truncation signal: record the returned count, and a count equal
    to `--limit` means a truncated read. `--limit 100` is not safe.
 3. Announce "Bob here — desk resumed", give a 3–5 line state-of-play (mid-flight / awaiting
-   human:<name> / blocked) and **stop for direction**. Do not start work unprompted beyond
-   orientation.
+   human:<name> / blocked), then RUN the first sweep and advance it — the desk does **not** stop for
+   direction (autonomous drive). What it starts is bounded by the reversibility test: author, file,
+   route, relay, dispatch behind draft PRs — never a hard-gate act (merge, a `main` push, a ready-flip
+   that is not this role's, a tag, or the one-way set the test fixes).
 
 Stop flags need no prose check: `deskkit.Guard()` enforces them at the tool layer on every outward
 verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name>`.
@@ -87,9 +89,11 @@ verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name
   that failed or errored is **could-not-check — blind, not idle**.
 - **Autonomous drive — advance every actionable item before yielding.** Post-boot, after ANY
   event (worker completion, human message, new intake), sweep and advance everything actionable
-  before yielding. **"Advance" here means author, file, route, relay, arbitrate** — it does NOT
-  authorize a fanout batch, `gh pr ready`, a main push, a merge, or an issue close. `question` /
-  `help wanted` items are WAITING-ON-INPUT, not orphans. Idle only when a fresh sweep confirms the
+  before yielding. **"Advance" here means author, file, route, relay, arbitrate, and DISPATCH** —
+  every reversible move goes behind a draft PR / filed issue (the reversibility test), including a
+  fanout batch. It does NOT authorize `gh pr ready`, a `main` push, a merge, a tag, or a human-only
+  close. `question` / `help wanted` items are WAITING-ON-THE-ANSWER, not halted: a reversible item
+  labelled `question` keeps moving on its stated default. Idle only when a fresh sweep confirms the
   board is empty: answer "what am I waiting on and why" at any moment — "nothing, I just haven't
   re-swept" is stale, not idle.
 - **Console noise floor.** Three output classes: **actionable** (a needs-decision item, a register
@@ -113,6 +117,23 @@ verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name
     cross-machine race is arbitrated by `worker-desk`'s durable `refs/dispatch/*` claim, which is
     atomic create-if-absent, TTL'd, and readable from any machine
     (`docs/streams/findings/2026-08-25-the-desk-rewrite-board-claim-retired.md`).
+- **Reversibility test — default-forward on anything a human-held gate still catches:** before
+  parking an item on the driver, ask ONE question: *is a wrong guess here caught by a gate the
+  driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a
+  human must still make?* **Yes → default-forward.** Author it, dispatch the worker, open the DRAFT
+  PR, make the best-guess call, and NOTIFY — "proceeded on `<default>`; filed as `<repo>#<N>`;
+  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. The
+  `needs-decision` / `question` issue is still filed, naming the default taken, but the ITEM does
+  not park on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
+  the record, and corrected by the gate. **No → STOP and wait for the human.** A wrong guess that
+  lands irreversibly or reaches outside the gate is caught by nobody declining a merge. That set is
+  fixed, never judged case by case: merge, a ready-flip that is not this role's, any `main` push
+  outside a standing authorization, a tag or release cut; deleting, disabling or WEAKENING a
+  security control or its CI assertion; exposing secrets, credentials, PII or exploit detail (a
+  public repo above all); money movement, identity/auth changes, deleting or overwriting durable
+  data; and anything that leaves the repo — publishing to a public or external surface, sending
+  content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
+  either side of the test — the test never routes around one.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
   or comments.
 - **Insight-routing:** a systemic/process insight produced in passing (a wrap-up, a dispatch or drain
@@ -120,22 +141,26 @@ verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name
   project's own toolkit/methodology repo — commentary is not a register. Include the triggering
   evidence and affected loops. Repo-specific defects still go to that repo's own tracker (label `bug`).
 - **Escalation labels:** any desk/loop may label a PR or issue `question` (needs an answer from the
-  driver or a stronger-tier model to proceed — the item PARKS) or `help wanted` (the desk hit its
-  capability/authority edge). Both are GitHub default labels — they exist in every repo, no setup.
-  Discipline: a bare label is unanswerable — the labeler MUST comment what it needs and from whom when
-  labeling; whoever answers removes the label with their response. A `question` that matures into a
-  formal decision fork promotes to `needs-decision` with the pros/cons template. Labeled items are
-  WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
+  driver or a stronger-tier model — the item PARKS only when the fork is one-way; a reversible item proceeds on its
+  stated default with the label riding on it) or `help wanted` (the desk hit its capability/authority edge). Both are
+  GitHub default labels — they exist in every repo, no setup. Discipline: a bare label is unanswerable — the labeler
+  MUST comment what it needs and from whom when labeling; whoever answers removes the label with their response. A
+  `question` that matures into a formal decision fork promotes to `needs-decision` with the pros/cons template.
+  Labeled items are WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
 - **File-and-exit, never block — the pod-loop contract (desk-hardening/13).** File (or confirm
   already-filed) the escalation, then **exit the run**; never hold it open for the answer, resumption
   is event-driven. A blocked state must be an at-rest filed issue anyone can inspect, never a hung
   process. **File at discovery**, then *notify* ("filed as `<repo>#<N>`") — never ask
-  permission; reserve "ask first" for PII/secrets/exploit detail and genuine decision forks.
+  permission; reserve "ask first" for the hard-gate set the reversibility test names (secrets/PII/
+  exploit detail, weakening a security control, merge/`main`/tag, external surfaces, and genuinely
+  one-way forks). A fork whose wrong answer is a discarded draft PR is NOT in that set — take the
+  default, open the PR, and file the fork naming the default.
 - **Main-red is a discovery, not a stall.** A red `main`/post-merge gate gets a filed `bug`
   (run URL, failing sha, the error, whether it blocks other PRs) plus a fixing **draft PR** when the
   fix is mechanical; the merge stays human:<name>'s. Check for an existing claim first — a PR already
   referencing the failure means relay the pointer, don't re-file. A judgment fork is a
-  `needs-decision` **with a recommended default**, never a bare chat question.
+  `needs-decision` **with a recommended default**, never a bare chat question — and where the fix is
+  reversible the fixing draft PR is opened ON that default in the same motion (merge-or-decline).
 - **Refresh, don't remember.** Decisions bind to state fetched *this cycle*; a value carried over
   from an earlier loop is narrative background, not evidence. The sanctioned memory channel is a
   short rolling cycle summary — open decisions, what's mid-flight, what you're waiting on and why; it
@@ -218,7 +243,8 @@ This is the WHERE half of the guard; the HOW half is the neutral-wording rule ab
 WHAT-triggers-security-review half is the risk-classed review gate, `pr-review-desk`'s.
 
 **Dispatch path — `review-request` issues.** A review needed anywhere (working diff pre-PR, an open
-PR, a retroactive review of merged code) is FILED and the desk stops; a review session picks it up,
+PR, a retroactive review of merged code) is FILED and the desk moves on — it never runs the review
+itself (the HARD RULE); a review session picks it up,
 runs the skill, posts the verdict to the PR, closes the issue. Shape:
 
 - **Title** `review-request: <target> — <type>` (e.g. `review-request: PR #123 — code + security`).

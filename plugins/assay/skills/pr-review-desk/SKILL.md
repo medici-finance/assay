@@ -158,13 +158,14 @@ the desk-tools console-noise-floor contract. Two states:
    and those records ARE the log. An explicit request from the driver ("show me the board", "are
    you caught up?") still gets a full answer: silence binds unprompted narration, never an answer
    to a human (and an idle answer still needs the fresh sweep, §HARD GATE).
-2. **Needs a human → FILE A GITHUB ISSUE.** A decision fork, a blocker the loop cannot resolve (a
+2. **Needs a human → FILE A GITHUB ISSUE.** A ONE-WAY decision fork, a blocker the loop cannot resolve (a
    mint failure with no fallback, a flip refusal it cannot clear), a capability/authority edge:
    file it on the project's methodology tracker via `deskfile check` → `new`/`attach` (a
    repo-specific defect goes to that repo's own tracker), with the escalation label and a comment
    stating what is needed and from whom (the resident rules' filing & escalation vocabulary).
    When it concerns a PR already in flight, comment on THAT PR as the App instead. **The filed
-   issue IS the escalation.**
+   issue IS the escalation.** A fork the merge gate still catches is NOT this: act on the best-guess
+   default and let the filed issue be the NOTIFICATION, not a park (the reversibility test).
 
 **What silence does NOT change — a dead monitor is NEVER hidden.** "Silent" applies to HEALTHY
 routine operation only; the liveness machinery is internal state, not print-gated. **Detected
@@ -500,6 +501,23 @@ concluding anything about install state.
   or land) stay in its skill, directly below this block.
   - Desk-specific: this desk flips PRs ready via `deskflip` (merge stays the human's) and does NOT
     commit Evidence (that is verify-desk / post-merge).
+- **Reversibility test — default-forward on anything a human-held gate still catches:** before
+  parking an item on the driver, ask ONE question: *is a wrong guess here caught by a gate the
+  driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a
+  human must still make?* **Yes → default-forward.** Author it, dispatch the worker, open the DRAFT
+  PR, make the best-guess call, and NOTIFY — "proceeded on `<default>`; filed as `<repo>#<N>`;
+  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. The
+  `needs-decision` / `question` issue is still filed, naming the default taken, but the ITEM does
+  not park on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
+  the record, and corrected by the gate. **No → STOP and wait for the human.** A wrong guess that
+  lands irreversibly or reaches outside the gate is caught by nobody declining a merge. That set is
+  fixed, never judged case by case: merge, a ready-flip that is not this role's, any `main` push
+  outside a standing authorization, a tag or release cut; deleting, disabling or WEAKENING a
+  security control or its CI assertion; exposing secrets, credentials, PII or exploit detail (a
+  public repo above all); money movement, identity/auth changes, deleting or overwriting durable
+  data; and anything that leaves the repo — publishing to a public or external surface, sending
+  content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
+  either side of the test — the test never routes around one.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
   or comments.
 - Model-tier awareness: if downgraded mid-session, stop synthesis/judgment and fall back to

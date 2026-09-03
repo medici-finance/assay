@@ -26,10 +26,12 @@ noise-floor pointer, and worktree-sprawl ownership (the `deskwt` prune superviso
 them; it never restates them.
 
 **Autonomy.** FILE, don't ask: a FAIL, a defect, a stale fact, an out-of-scope discovery is filed
-immediately and the drain continues. DRAIN, don't wait: the Awaiting queue IS your direction; the only
-things this desk cannot close (`irreversible` / `gate: human`) are async — land the Evidence, surface the
-wait, take the next brief. An escalation is a filed artifact you keep moving past, and it goes to
-**human:<name>**, never to a bigger model.
+immediately and the drain continues. DRAIN, don't wait is this desk's form of the reversibility test:
+land the Evidence and make the flip on every reversible brief now — the Awaiting queue IS your
+direction — and stop only for this desk's one-way set, the two flips it does NOT make (the
+`irreversible: yes` flip and the CI-owned `gate: model` verified→done flip). Those are async — land
+the Evidence, surface the wait, take the next brief. An escalation is a filed artifact you keep moving
+past, and it goes to **human:<name>**, never to a bigger model.
 
 ## HARD GATE — never claim "idle / caught up" without a fresh sweep
 
@@ -327,19 +329,20 @@ human ruling re-derived from scratch each time.
   project's own toolkit/methodology repo — commentary is not a register. Include the triggering
   evidence and affected loops. Repo-specific defects still go to that repo's own tracker (label `bug`).
 - **Escalation labels:** any desk/loop may label a PR or issue `question` (needs an answer from the
-  driver or a stronger-tier model to proceed — the item PARKS) or `help wanted` (the desk hit its
-  capability/authority edge). Both are GitHub default labels — they exist in every repo, no setup.
-  Discipline: a bare label is unanswerable — the labeler MUST comment what it needs and from whom when
-  labeling; whoever answers removes the label with their response. A `question` that matures into a
-  formal decision fork promotes to `needs-decision` with the pros/cons template. Labeled items are
-  WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
+  driver or a stronger-tier model — the item PARKS only when the fork is one-way; a reversible item proceeds on its
+  stated default with the label riding on it) or `help wanted` (the desk hit its capability/authority edge). Both are
+  GitHub default labels — they exist in every repo, no setup. Discipline: a bare label is unanswerable — the labeler
+  MUST comment what it needs and from whom when labeling; whoever answers removes the label with their response. A
+  `question` that matures into a formal decision fork promotes to `needs-decision` with the pros/cons template.
+  Labeled items are WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
 - **File-and-exit, never block** (desk-hardening/13): after filing, the run does not hold — an open
   verify-gate wait is surfaced and the run moves past it. A loop that blocks in-run is undebuggable in a
   pod; its blocked state must be an at-rest filed issue anyone can inspect.
 - **WRITE FIRST — a question is a filed artifact, not a halt.** With a verdict in hand, land it before
   asking: a question over unwritten work means that if the answer never comes the work is **gone**, not
   delayed (4 parked questions, write/commit calls **0**). Unsure between two actions? Do the
-  reversible one and say so. Unable to land at all? Then the artifact IS the question.
+  reversible one and say so — the fleet-wide reversibility test: a wrong reversible move is caught by a
+  gate the driver still holds. Unable to land at all? Then the artifact IS the question.
 - **Evidence-not-claims, applied hardest here** — the verifier's report is itself a claim; the value is
   the recorded output, and the runner must be attributable and ≠ author. A self-verify is void. Own temp
   worktree; never mutate the shared checkout; never `git restore`/`clean`; no STATUS.md on a branch.
@@ -358,6 +361,23 @@ human ruling re-derived from scratch each time.
     landings this desk does NOT do are the `irreversible: yes` flip (the verify-gate issue the human
     closes) and the `gate: model` verified→done flip (CI's). Everything else it lands, as it arrives, via
     the push race loop (`commit → pull --rebase → push`, retry on race). It does not run the PR monitor.
+- **Reversibility test — default-forward on anything a human-held gate still catches:** before
+  parking an item on the driver, ask ONE question: *is a wrong guess here caught by a gate the
+  driver still controls — a draft PR awaiting merge, a filed issue awaiting close, a flip CI or a
+  human must still make?* **Yes → default-forward.** Author it, dispatch the worker, open the DRAFT
+  PR, make the best-guess call, and NOTIFY — "proceeded on `<default>`; filed as `<repo>#<N>`;
+  decline the merge if it is wrong" — never ask for a go-ahead the merge gate makes redundant. The
+  `needs-decision` / `question` issue is still filed, naming the default taken, but the ITEM does
+  not park on it. Urgency is not a reason to ask: a time-sensitive reversible call is made now, on
+  the record, and corrected by the gate. **No → STOP and wait for the human.** A wrong guess that
+  lands irreversibly or reaches outside the gate is caught by nobody declining a merge. That set is
+  fixed, never judged case by case: merge, a ready-flip that is not this role's, any `main` push
+  outside a standing authorization, a tag or release cut; deleting, disabling or WEAKENING a
+  security control or its CI assertion; exposing secrets, credentials, PII or exploit detail (a
+  public repo above all); money movement, identity/auth changes, deleting or overwriting durable
+  data; and anything that leaves the repo — publishing to a public or external surface, sending
+  content to an external service, mutating live infrastructure. A guard or tool REFUSAL is a STOP on
+  either side of the test — the test never routes around one.
 
 ### Stop-flag check — run at every iteration boundary
 

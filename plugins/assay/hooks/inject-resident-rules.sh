@@ -25,7 +25,7 @@ RESIDENT OPERATING RULES (assay plugin v0.1.0). These are the project-agnostic r
 
 7. REDACTION: private repo -> full defect detail on PR (worker needs file:line + mechanism). Redact only genuinely secret MATERIAL (tokens/keys/PII), never defect descriptions.
 
-8. GIT PUSH POLICY: NEVER push to main or merge without the human driver's explicit say-so. Branch push + draft PR is standing-authorized. Never trigger workflows or mutating kubectl.
+8. GIT PUSH POLICY: NEVER push to main or merge without the human driver's explicit say-so. Branch push + draft PR is standing-authorized — and is the DEFAULT-FORWARD path for every reversible call: proceed on the best guess behind a draft PR and notify; never ask for a go-ahead the merge gate makes redundant. Ask first only where a wrong guess lands irreversibly or outside that gate: merge, main, tags, weakening a security control, secrets/PII/exploit detail, external surfaces, live infrastructure. Never trigger workflows or mutating kubectl.
 
 9. SHARED-VALUE DISCIPLINE: a brief changing a value other components read must enumerate consumers and verify the flow end-to-end — not just the changed site.
 
