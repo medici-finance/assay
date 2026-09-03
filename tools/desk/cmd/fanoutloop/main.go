@@ -105,6 +105,7 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 		return deskkit.Unverifiable("cannot read the Next-up queue", err)
 	}
 	fmt.Fprintf(out, "worker-desk plan: %d item(s) to dispatch (orphan resumes first, then Next-up in board order)\n", len(items))
+	fmt.Fprintln(out, classLine(items))
 	for _, it := range items {
 		tier, terr := f.TierPolicy(it)
 		if terr != nil {
@@ -137,17 +138,85 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 	return nil
 }
 
+// classOf returns the per-class RESERVATION bucket an item belongs to (example-stream/05):
+// "resume" (an orphan-PR resume item), "rework" (an Awaiting-implementer-rework row), or
+// "fresh" (everything else — the Next-up board's ordinary rows). It is a pure read of the kind
+// tag SelectQueue already stamps onto Payload — no new classification pass, no new state.
+func classOf(it loopengine.Item) string {
+	switch it.Payload["kind"] {
+	case kindOrphan:
+		return "resume"
+	case kindRework:
+		return "rework"
+	default:
+		return "fresh"
+	}
+}
+
+// classLine is the per-class concurrency-reservation summary line (example-stream/05): it
+// counts each item SelectQueue already returned into its class, then states whether the
+// resume/rework floor applies THIS tick — floor = the loop's stored/default reservation summed
+// over exactly the classes that have at least one item waiting, never idling a slot for a class
+// with nothing in the queue. It is advisory, like the write-scope overlap warnings below it:
+// nothing here drops, reorders, or gates a row `plan` already rendered — it states the ceiling a
+// pool sizing itself off this ID should use.
+func classLine(items []loopengine.Item) string {
+	var resumeN, reworkN, freshN int
+	for _, it := range items {
+		switch classOf(it) {
+		case "resume":
+			resumeN++
+		case "rework":
+			reworkN++
+		default:
+			freshN++
+		}
+	}
+
+	width, _, werr := deskkit.ResolvedWidth("worker-desk")
+	reserve, _, rerr := deskkit.ResolvedReserve("worker-desk")
+	if werr != nil || rerr != nil {
+		err := werr
+		if err == nil {
+			err = rerr
+		}
+		return fmt.Sprintf("classes: resume=%d rework=%d fresh=%d (could-not-check reservation: %v)",
+			resumeN, reworkN, freshN, err)
+	}
+
+	floor := 0
+	if resumeN > 0 {
+		floor += reserve["resume"]
+	}
+	if reworkN > 0 {
+		floor += reserve["rework"]
+	}
+	if floor > 0 {
+		return fmt.Sprintf("classes: resume=%d rework=%d fresh=%d (fresh capped at %d by reservation)",
+			resumeN, reworkN, freshN, width-floor)
+	}
+	return fmt.Sprintf("classes: resume=%d rework=%d fresh=%d (no reservation applied: no reserved-class item waiting)",
+		resumeN, reworkN, freshN)
+}
+
 const usage = `fanoutloop — worker-desk (batch-fanout) reference consumer of the drain engine.
 
 USAGE:
   fanoutloop plan --root <repo> [--sha <targetSHA>]
   fanoutloop --version
 
-'plan' prints the deterministic scheduler output: the dispatch queue (orphan resumes first, then the
-Next-up board in board order — issue-<NN> placeholders INCLUDED, only a different loop's
-review-request dispatch tokens skipped), each item's tier, and the
+'plan' prints the deterministic scheduler output: the dispatch queue (orphan resumes first, then
+Awaiting-implementer-rework rows, then the Next-up board in board order — issue-<NN> placeholders
+INCLUDED, only a different loop's review-request dispatch tokens skipped), each item's tier, and the
 exact dispatch instruction. It spawns nothing, writes nothing, and touches no network. The autonomous
 drive / live-window cutover is gate:human — BLOCKED-ON-IAN.
+
+Right after the item count, 'plan' prints a 'classes: resume=<n> rework=<n> fresh=<n> (...)' line: the
+per-class concurrency RESERVATION (example-stream/05) worker-desk's width carries alongside its pool
+size (deskroster width --role worker-desk --reserve resume=N,rework=M) — a floor of slots held for
+resume/rework items so a full pool of fresh briefs cannot crowd them out. The line states whether the
+floor applied this tick ('fresh capped at <k> by reservation') or did not ('no reservation applied: no
+reserved-class item waiting') — a reservation never idles a slot when nothing reserved is waiting.
 
 After the queue rows, 'plan' prints ADVISORY write-scope overlap warnings:
 a 'WRITE-OVERLAP: <candidate> ~ <in-flight> on <prefix>' line whenever a candidate brief's write

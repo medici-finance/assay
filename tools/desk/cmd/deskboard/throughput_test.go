@@ -153,6 +153,38 @@ func TestThroughput_SlotsAreTheResolvedWidthAndMoveWithIt(t *testing.T) {
 	}
 }
 
+// TestThroughput_ReserveIsReportedNotSubtracted is example-stream/05's consumer proof: the
+// dispatch stage (worker-desk) reports its per-class reservation as an EXTRA column, and Slots
+// itself is untouched by it — the reservation floors a share of the pool, it does not shrink
+// the pool this ratio is computed against.
+func TestThroughput_ReserveIsReportedNotSubtracted(t *testing.T) {
+	throughputFixture(t)
+
+	dispatch := stage(t, runThroughput(t), "dispatch")
+	wantWidth, _ := deskkit.DefaultWidth("worker-desk")
+	if dispatch.Slots != wantWidth {
+		t.Fatalf("dispatch slots = %d, want the unreserved width %d — a reservation must not subtract from Slots", dispatch.Slots, wantWidth)
+	}
+	wantReserve, _ := deskkit.DefaultReserve("worker-desk")
+	if dispatch.Reserve != deskkit.FormatReserve(wantReserve) {
+		t.Errorf("dispatch reserve = %q, want %q (the shipped default)", dispatch.Reserve, deskkit.FormatReserve(wantReserve))
+	}
+
+	if err := deskkit.SaveWidth(&deskkit.WidthEntry{
+		Loop: "worker-desk", Width: wantWidth, Reserve: map[string]int{"resume": 3, "rework": 1},
+		SetBy: "the-desk", Updated: time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("SaveWidth: %v", err)
+	}
+	after := stage(t, runThroughput(t), "dispatch")
+	if after.Reserve != "resume:3,rework:1" {
+		t.Errorf("dispatch reserve after set = %q, want resume:3,rework:1", after.Reserve)
+	}
+	if after.Slots != wantWidth {
+		t.Errorf("dispatch slots changed to %d after only the reservation was set, want unchanged %d", after.Slots, wantWidth)
+	}
+}
+
 // TestThroughput_BlindStageIsExcludedFromBottleneck is the three-state rule where it bites.
 // A stage whose depth could not be read must be neither the bottleneck nor a zero: counting
 // it as zero would present an unreadable queue as a drained one and steer the desk to widen

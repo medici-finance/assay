@@ -27,11 +27,19 @@ import (
 
 // WidthEntry is one loop's stored pool width. SetBy is attribution, never authority: what
 // admits a width is the bound in width.go, not who wrote the file.
+//
+// Reserve is the per-class concurrency RESERVATION (example-stream/05), riding in the SAME
+// entry as Width rather than a sibling file: a reservation only means anything beside the width
+// it floors a share of, so the two are set, read and decayed together by construction — there
+// is no second TTL to keep in sync. omitempty so an entry written before this feature (or a
+// plain `--width` set with no `--reserve`) round-trips with Reserve absent, not `{}`, and reads
+// back as the shipped default via ResolvedReserve.
 type WidthEntry struct {
-	Loop    string `json:"loop"`
-	Width   int    `json:"width"`
-	SetBy   string `json:"set_by,omitempty"`
-	Updated string `json:"updated"`
+	Loop    string         `json:"loop"`
+	Width   int            `json:"width"`
+	Reserve map[string]int `json:"reserve,omitempty"`
+	SetBy   string         `json:"set_by,omitempty"`
+	Updated string         `json:"updated"`
 }
 
 // WidthDir is the beacon store's sibling: <StateDir>/roster/width.
@@ -156,4 +164,35 @@ func ResolvedWidthAt(loop string, now time.Time) (width int, source string, err 
 		source += fmt.Sprintf(" (stored %d, clamped to the current ceiling)", requested)
 	}
 	return eff, source, nil
+}
+
+// ResolvedReserve is THE reader for a loop's per-class concurrency reservation
+// (example-stream/05): the SAME entry ResolvedWidth reads, so the reservation decays with the
+// width by construction. An entry with nothing stored, or one that has expired, or one that was
+// stored by a plain `--width` set with no `--reserve`, all read as the loop's shipped default
+// reservation — never as "no reservation", which would silently stop protecting resume/rework
+// the moment any coordinator widened the pool without also restating the floor.
+func ResolvedReserve(loop string) (reserve map[string]int, source string, err error) {
+	return ResolvedReserveAt(loop, time.Now())
+}
+
+// ResolvedReserveAt is ResolvedReserve with an injectable clock (test seam).
+func ResolvedReserveAt(loop string, now time.Time) (reserve map[string]int, source string, err error) {
+	canonical, known := CanonicalLoopName(loop)
+	if !known {
+		return nil, "", Refused(fmt.Sprintf(
+			"refused: %q is not a loop this roster recognises. Known loop names: %v", loop, KnownLoopNames()))
+	}
+	stored, fresh, lerr := LoadWidth(canonical, now)
+	if lerr != nil {
+		return nil, "", lerr
+	}
+	if fresh && stored.Reserve != nil {
+		return cloneReserve(stored.Reserve), fmt.Sprintf("set by %s at %s", stored.SetBy, stored.Updated), nil
+	}
+	def, derr := DefaultReserve(canonical)
+	if derr != nil {
+		return nil, "", derr
+	}
+	return def, "shipped default", nil
 }

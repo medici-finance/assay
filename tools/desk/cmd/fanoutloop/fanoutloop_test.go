@@ -165,6 +165,14 @@ func briefRow(stream, num, effort, execTier, gate string, oo bool) BoardRow {
 	}
 }
 
+// noRework is the explicit "nothing waiting in Awaiting-implementer-rework" fixture every test
+// that does not itself exercise the rework source passes as FanoutLoop.Rework. Without it, an
+// unset Rework field falls through to reworkSource's PRODUCTION default (readAwaitingRework,
+// which reads the real ambient repo's STATUS.md exactly as boardSource's own default reads
+// readNextUp) — hermetic only when every construction site stubs it, the same discipline these
+// tests already hold Board to.
+func noRework() ([]BoardRow, error) { return nil, nil }
+
 func contains(ss []string, s string) bool {
 	for _, x := range ss {
 		if x == s {
@@ -203,7 +211,7 @@ func TestPool(t *testing.T) {
 			rows = append(rows, briefRow("pool", id, "M", "", "model", false))
 			dr.gates["pool/"+id] = gate // every item blocks until released
 		}
-		loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Feeder: dr.feeder, DispatchSink: sink, Emit: io.Discard}
+		loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Rework: noRework, Feeder: dr.feeder, DispatchSink: sink, Emit: io.Discard}
 		cfg := newLoopCfg(loop, 8, t.TempDir())
 
 		errc := make(chan error, 1)
@@ -245,7 +253,7 @@ func TestPool(t *testing.T) {
 		for i := 0; i < 5; i++ {
 			rows = append(rows, briefRow("s", fmt.Sprintf("0%d", i), "M", "", "model", false))
 		}
-		loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Feeder: dr.feeder, Emit: io.Discard}
+		loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Rework: noRework, Feeder: dr.feeder, Emit: io.Discard}
 		cfg := newLoopCfg(loop, 2, t.TempDir())
 
 		err := runUntil(t, cfg, loop, deskDir, func() bool { return len(dr.dispatched()) >= 5 })
@@ -266,6 +274,7 @@ func TestPool(t *testing.T) {
 		loop := &FanoutLoop{
 			Board:   func() ([]BoardRow, error) { return []BoardRow{fresh}, nil },
 			Orphans: func() ([]OrphanPR, error) { return []OrphanPR{orphan}, nil },
+			Rework:  noRework,
 			Feeder:  dr.feeder, Emit: io.Discard,
 		}
 		cfg := newLoopCfg(loop, 1, t.TempDir()) // ONE slot: whoever goes first is the priority winner
@@ -292,7 +301,7 @@ func TestPool(t *testing.T) {
 			{Stream: "intake", Num: "issue-42", Title: "placeholder", BriefPath: "docs/streams/intake/x.md"},
 			briefRow("real", "01", "M", "", "model", false),
 		}
-		loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Feeder: dr.feeder, Emit: io.Discard}
+		loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Rework: noRework, Feeder: dr.feeder, Emit: io.Discard}
 		cfg := newLoopCfg(loop, 4, t.TempDir())
 
 		err := runUntil(t, cfg, loop, deskDir, func() bool { return dr.has("intake/issue-42") && dr.has("real/01") })
@@ -314,7 +323,7 @@ func TestPool(t *testing.T) {
 			{Stream: "intake", Num: "issue-77", Title: "review-request: PR #123 — code + security", BriefPath: "docs/streams/intake/rr.md"},
 			briefRow("real", "02", "M", "", "model", false),
 		}
-		loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Feeder: dr.feeder, Emit: io.Discard}
+		loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Rework: noRework, Feeder: dr.feeder, Emit: io.Discard}
 		cfg := newLoopCfg(loop, 4, t.TempDir())
 
 		err := runUntil(t, cfg, loop, deskDir, func() bool { return dr.has("real/02") })
@@ -342,7 +351,7 @@ func TestSerial(t *testing.T) {
 		briefRow("oo-b", "01", "M", "", "model", true),   // out-of-repo B (must be refused while A holds the slot)
 		briefRow("plain", "01", "M", "", "model", false), // normal C (dispatches freely)
 	}
-	loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Feeder: dr.feeder, DispatchSink: sink, Emit: io.Discard}
+	loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Rework: noRework, Feeder: dr.feeder, DispatchSink: sink, Emit: io.Discard}
 	cfg := newLoopCfg(loop, 8, t.TempDir())
 
 	errc := make(chan error, 1)
@@ -397,7 +406,7 @@ func TestClaimCollision_SharedClaimsDir(t *testing.T) {
 		briefRow("hold", "01", "M", "", "model", false), // held elsewhere via the shared claims dir
 		briefRow("free", "02", "M", "", "model", false),
 	}
-	loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Feeder: dr.feeder, Emit: io.Discard}
+	loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Rework: noRework, Feeder: dr.feeder, Emit: io.Discard}
 	cfg := newLoopCfg(loop, 3, claims)
 
 	err = runUntil(t, cfg, loop, deskDir, func() bool { return dr.has("free/01") && dr.has("free/02") })
@@ -429,6 +438,7 @@ func TestCapStarvedFillsWithOrphans(t *testing.T) {
 	loop := &FanoutLoop{
 		Board:   func() ([]BoardRow, error) { return []BoardRow{fresh}, nil },
 		Orphans: func() ([]OrphanPR, error) { return orphans, nil },
+		Rework:  noRework,
 		Feeder:  dr.feeder, Emit: io.Discard,
 	}
 	cfg := newLoopCfg(loop, 3, t.TempDir()) // 3 slots, only 1 fresh brief → 2 must be orphan resumes
@@ -802,7 +812,7 @@ func TestSelectQueue_IncludesPlaceholdersExcludesForeignTokens(t *testing.T) {
 		{Stream: "intake", Num: "issue-42", Title: "some real work item", BriefPath: "docs/streams/intake/x.md"},
 		{Stream: "intake", Num: "issue-77", Title: "review-request: PR #123 — code + security", BriefPath: "docs/streams/intake/rr.md"},
 	}
-	loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, TargetSHA: "sha"}
+	loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Rework: noRework, TargetSHA: "sha"}
 
 	items, err := loop.SelectQueue()
 	if err != nil {
