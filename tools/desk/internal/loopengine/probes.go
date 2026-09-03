@@ -262,13 +262,13 @@ func NewPRProbe(read PRReader) ObservableProbe {
 	}
 }
 
-// housePRReader is the production PRReader: an App installation token minted for the PR's
-// owner (deskkit.SessionTokenRole / RoleTokenForOwner — the same read-path token
-// resolution deskboard uses) reading through deskkit.Forge.GetPullRequest. Unlike
-// deskboard's own read path, there is deliberately NO ambient-identity fallback here: a
-// token this probe cannot mint is a could-not-check, never a silent "proceed unauthenticated
-// and treat a 401 as no update" — the conservative-reclaim rule binds probes harder than it
-// binds a display board.
+// housePRReader is the production PRReader: the forge that serves the PR's repo, obtained
+// through deskkit.ForgeFor (the single construction site, which resolves the forge and reads
+// the resolved role's already-minted token from custody), reading through
+// deskkit.Forge.GetPullRequest. Unlike deskboard's own read path, there is deliberately NO
+// ambient-identity fallback here: a token this probe cannot mint is a could-not-check, never
+// a silent "proceed unauthenticated and treat a 401 as no update" — the conservative-reclaim
+// rule binds probes harder than it binds a display board.
 func housePRReader(repoSlug string, number int) (time.Time, bool, error) {
 	owner, name, ok := strings.Cut(repoSlug, "/")
 	if !ok || owner == "" || name == "" {
@@ -278,12 +278,12 @@ func housePRReader(repoSlug string, number int) (time.Time, bool, error) {
 	if rerr != nil {
 		return time.Time{}, false, rerr
 	}
-	token, _, terr := deskkit.RoleTokenForOwner(role, owner)
-	if terr != nil {
-		return time.Time{}, false, terr
+	repo := deskkit.ForgeRepo{Owner: owner, Name: name}
+	forge, ferr := deskkit.ForgeFor(repo, role)
+	if ferr != nil {
+		return time.Time{}, false, ferr
 	}
-	forge := &deskkit.GitHubForge{Token: token}
-	pr, gerr := forge.GetPullRequest(deskkit.ForgeRepo{Owner: owner, Name: name}, number)
+	pr, gerr := forge.GetPullRequest(repo, number)
 	if gerr != nil {
 		if deskkit.IsForgeNotFound(gerr) {
 			return time.Time{}, false, nil

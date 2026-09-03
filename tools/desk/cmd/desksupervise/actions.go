@@ -42,12 +42,12 @@ type reclaimFunc func(claim claimRecord) error
 // injects a recording fake.
 type fileBlockedTimeoutFunc func(claim claimRecord) error
 
-// doReclaim is the production reclaimFunc: mint an App installation token for the claim's
-// repo owner (deskkit.SessionTokenRole / RoleTokenForOwner — the same read/write-path token
-// resolution the rest of this tree uses) and delete the `dispatch/<key>` ref through
-// deskkit.Forge, exactly as cmd/fanoutloop/land.go's forgeDispatchSink does. A ref already
-// gone (404/422 — refAlreadyGone's condition in land.go) is a no-op, not a failure: the
-// claim is not held either way.
+// doReclaim is the production reclaimFunc: obtain the forge that serves the claim's repo
+// through deskkit.ForgeFor (the single construction site, which resolves the forge and reads
+// the resolved role's already-minted token from custody) and delete the `dispatch/<key>` ref
+// through deskkit.Forge, exactly as cmd/fanoutloop/land.go's forgeDispatchSink does. A ref
+// already gone (404/422 — refAlreadyGone's condition in land.go) is a no-op, not a failure:
+// the claim is not held either way.
 func doReclaim(claim claimRecord) error {
 	owner, name, ok := strings.Cut(claim.Repo, "/")
 	if !ok || owner == "" || name == "" {
@@ -57,13 +57,13 @@ func doReclaim(claim claimRecord) error {
 	if rerr != nil {
 		return fmt.Errorf("reclaim %s: cannot resolve a token role: %w", claim.Key, rerr)
 	}
-	token, _, terr := deskkit.RoleTokenForOwner(role, owner)
-	if terr != nil {
-		return fmt.Errorf("reclaim %s: cannot mint a token for %s: %w", claim.Key, owner, terr)
+	repo := deskkit.ForgeRepo{Owner: owner, Name: name}
+	forge, ferr := deskkit.ForgeFor(repo, role)
+	if ferr != nil {
+		return fmt.Errorf("reclaim %s: cannot resolve a forge for %s: %w", claim.Key, claim.Repo, ferr)
 	}
-	forge := &deskkit.GitHubForge{Token: token}
 	ref := "dispatch/" + claim.Key
-	if err := forge.DeleteRef(deskkit.ForgeRepo{Owner: owner, Name: name}, ref); err != nil {
+	if err := forge.DeleteRef(repo, ref); err != nil {
 		if deskkit.IsForgeNotFound(err) {
 			return nil
 		}
