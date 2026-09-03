@@ -14,7 +14,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-03 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-03 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 0/8 | 2026-09-03 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/7 | 2026-09-03 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-03 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-03 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-03 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-03 |  |
@@ -28,24 +28,29 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 ## Next up
 
+_Held by per-stream caps: 5 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (5). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| windows-port | 00 — Build-tag split for the unix-only syscall sites | 0 | 3000 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
+| desk-tools | 08 — `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file [exec:strong] | 1 | 1000 |
+| desk-tools | 09 — `desktoken coverage <role>` — list the repositories a role's App installations can see [exec:strong] | 1 | 1000 |
+| desk-tools | 10 — `deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand [exec:strong] | 1 | 1000 |
+| desk-tools | 11 — `deskwt add` — a worktree whose directory is gone does not hold its branch | 1 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (39 desk-actionable of 42 total — 42 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (40 desk-actionable of 43 total — 43 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (39)
+### Desk-actionable (40)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -60,6 +65,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | desk-supervision | 01 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
+| windows-port | 00 | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | windows-port | 02 | implemented | 2500 | 3 | — | — | — |
 | mistake-proofing | 03 [exec:strong] | implemented | 2000 | 2 | — | — | — |
@@ -152,12 +158,21 @@ _None._
 - 07 Runtime snapshot — `desksupervise status` for operators and the console — todo (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 
-### desk-tools (4 open)
+### desk-tools (13 open)
 
 - 01 Binary channel — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer — implemented (wave 1)
 - 03 Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN — implemented (wave 1)
 - 07 `clusterguard` — exec-boundary shim for cluster CLIs, operator opt-in — implemented (wave 1)
+- 08 `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file — todo (wave 1)
+- 09 `desktoken coverage <role>` — list the repositories a role's App installations can see — todo (wave 1)
+- 10 `deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand — todo (wave 1)
+- 11 `deskwt add` — a worktree whose directory is gone does not hold its branch — todo (wave 1)
+- 12 `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON — todo (wave 1)
+- 13 `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree — todo (wave 1)
+- 14 bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` — todo (wave 1)
+- 15 `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home — todo (wave 1)
+- 16 `deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block — todo (wave 1)
 
 ### desktools-go-git (7 open)
 
@@ -244,7 +259,7 @@ _None._
 
 ### windows-port (6 open)
 
-- 00 Build-tag split for the unix-only syscall sites — todo (wave 0)
+- 00 Build-tag split for the unix-only syscall sites — implemented (wave 0)
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — todo (wave 1)
 - 02 Portability audit — enumerate + triage the shell-assuming surfaces — implemented (wave 0)
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — todo (wave 2)
@@ -314,4 +329,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**14** streams (**14** active, **0** paused) · **31/116** briefs done · completed initiatives: see `docs/archive/`
+**14** streams (**14** active, **0** paused) · **31/125** briefs done · completed initiatives: see `docs/archive/`
