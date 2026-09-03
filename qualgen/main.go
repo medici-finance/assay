@@ -47,11 +47,13 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return runPR(rest, stdout, stderr)
 	case "check":
 		return runCheck(rest, stdout, stderr)
+	case "sweep":
+		return runSweep(rest, stdout, stderr)
 	case "-h", "--help", "help":
 		usage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "qualgen: unknown mode %q (want one of: mine, report, pr, check)\n", mode)
+		fmt.Fprintf(stderr, "qualgen: unknown mode %q (want one of: mine, report, pr, check, sweep)\n", mode)
 		return 2
 	}
 }
@@ -64,6 +66,7 @@ usage:
   qualgen report --out <dir>                render trend views          (not yet implemented)
   qualgen pr <n> --out <dir> [--repo <dir>] [--head <ref> --base <ref>]  per-PR risk-feature feed
   qualgen check <paths> --out <dir> [--repo <dir>]  brittleness screen for a named file set
+  qualgen sweep  --repo <dir> --out <dir> --config <file> [--reverify-all]  code-slop forensic sweep lane
   qualgen --version                         print the release tag
 
 All modes are read-only against the mined repo; artifacts land only under --out.

@@ -5,6 +5,10 @@
 *.exe
 *.test
 *.out
+# ...but the sweep lane's committed canned-linter-output fixtures (quality/16)
+# legitimately use the .out extension — they are test inputs, not build
+# artifacts. Un-ignore exactly that path.
+!/qualgen/testdata/sweep/canned/*.out
 
 # Editors / OS
 .DS_Store
