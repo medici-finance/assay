@@ -1,0 +1,2 @@
+### Fixed
+- `release.yml`'s changelog roll (write the dated section, clear the fragments) now commits and pushes under the assay-board-writer App — the identity that already writes STATUS.md straight to `main` and carries the ruleset bypass — instead of the default `GITHUB_TOKEN`, which the PR-only + leak-sweep-required ruleset rejected on v0.23.0 and v0.24.0 and left the roll to be hand-filed as a PR each time.
