@@ -261,7 +261,7 @@ func TestPRProbe_ReaderErrorIsCouldNotCheck(t *testing.T) {
 
 // --- ObservableProbes.Latest negative controls (Task item 3) ---
 
-// TestLatest_PositiveOutranksCoNotCheckOnAnotherProbe is the negative control the brief
+// TestLatest_PositiveOutranksCouldNotCheckOnAnotherProbe is the negative control the brief
 // names: "a could-not-check on one probe with a clean sign of life on another yields
 // ALIVE" — Latest() is existing liveness.go behavior; this test exercises it through the
 // house probe SHAPE (two real ObservableProbe closures) rather than through hand-rolled
