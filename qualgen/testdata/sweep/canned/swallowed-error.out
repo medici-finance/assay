@@ -1,0 +1,1 @@
+swallow.go:8:5: Error return value of strconv.Atoi is not checked

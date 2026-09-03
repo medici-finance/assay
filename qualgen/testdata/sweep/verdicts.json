@@ -1,0 +1,27 @@
+{
+  "dead-code|dead.go": {
+    "class": "confirmed",
+    "evidence_pointer": "dead.go:12 `func unusedHelper(x int) int` — no callers found anywhere in the target tree",
+    "rationale": "The function is unexported and has zero references; confirmed dead."
+  },
+  "dead-code|dead2.go": {
+    "class": "confirmed",
+    "evidence_pointer": "dead2.go:5 `func alsoDead() int` — no callers found in the target tree",
+    "rationale": "Unexported, unreferenced; confirmed dead."
+  },
+  "swallowed-error|swallow.go": {
+    "class": "confirmed",
+    "evidence_pointer": "swallow.go:8 `n, _ := strconv.Atoi(s)` — the conversion error is discarded",
+    "rationale": "A malformed input is silently treated as 0; the error should be surfaced."
+  },
+  "module-size|big.go": {
+    "class": "needs-human",
+    "evidence_pointer": "big.go:1 — module reported at 512 lines against a 300 threshold",
+    "rationale": "Over threshold, but whether to split is a design call a human should make."
+  },
+  "duplication|dup.go": {
+    "class": "false-positive",
+    "evidence_pointer": "",
+    "rationale": "handleA and handleB are intentionally parallel entry points; the shared shape is deliberate, not accidental duplication."
+  }
+}

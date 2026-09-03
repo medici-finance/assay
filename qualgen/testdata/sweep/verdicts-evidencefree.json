@@ -1,0 +1,7 @@
+{
+  "dead-code|dead.go": {
+    "class": "confirmed",
+    "evidence_pointer": "",
+    "rationale": "It really looks dead to me, trust me."
+  }
+}

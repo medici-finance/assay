@@ -53,7 +53,7 @@ decision, not code in this stream.
 | 13 | [M4 session forensics — pluggable telemetry-source interface + reference adapters](brief-13-m4-session-forensics.md) | 3 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #303 @ 80dcc91617295988e5553d8de0c79b43433c134a) |
 | 14 | [auto-filed refactor work + quality error-budgets + RETRO output feed](brief-14-autofile-budgets-retro.md) | 5 | M | todo | — | — |
 | 15 | [learned riskscore graduation — JIT defect-prediction model](brief-15-learned-riskscore.md) | 3 | M | todo | — | — |
-| 16 | [code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report](brief-16-slop-sweep.md) | 1 | M | todo | — | — |
+| 16 | [code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report](brief-16-slop-sweep.md) | 1 | M | implemented | — | — |
 
 Brief 01 implemented on branch `brief/quality-01-miner-skeleton` (new `qualgen/` module: go-git extraction, incremental extend-never-replace mine, three-state `Measure[T]` plumbing, append-only artifact store; `mine` mode live, `report`/`pr`/`check` scaffolded). Draft-PR link to be attached when the PR is opened.
 

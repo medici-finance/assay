@@ -39,6 +39,14 @@ const (
 	// a schema module that does not yet exist (dependency-wave ordering puts
 	// quality/06 in wave 1, ahead of quality/05's wave 2).
 	defectsTable = "defects.jsonl"
+
+	// sweepSubdir is the code-slop forensic sweep lane's own subdirectory under
+	// the quality dir (spec §3.1/§9.4 committed-artifact model; quality/16). Its
+	// two append-only tables live here, kept out of the M1–M4 history-mining
+	// tables' namespace since the sweep reads the CURRENT tree, not history.
+	sweepSubdir   = "sweep"
+	suspectsTable = "suspects.jsonl"
+	verdictsTable = "verdicts.jsonl"
 )
 
 // Kind selects which append-only table Append writes to.
@@ -55,6 +63,14 @@ const (
 	// here through the same generic Store.Append seam quality/01 shipped.
 	KindMetric Kind = "metrics"
 	KindDefect Kind = "defects"
+	// KindSweepSuspect / KindSweepVerdict are the sweep lane's two append-only
+	// tables (quality/16), written through the SAME Store.Append seam quality/01
+	// shipped — the lane extends the store, it does not re-invent artifact
+	// plumbing. Both are append-once-per-fingerprint: a suspect fingerprint is
+	// appended the first run it appears, a verdict the run it is adjudicated, so
+	// a rerun over an unchanged tree appends nothing.
+	KindSweepSuspect Kind = "sweep-suspects"
+	KindSweepVerdict Kind = "sweep-verdicts"
 )
 
 // schemaVersion pins the artifact schema so a later reader can detect a stale
@@ -80,6 +96,10 @@ func (s *Store) tablePath(k Kind) (string, error) {
 		return filepath.Join(s.dir(), metricsTable), nil
 	case KindDefect:
 		return filepath.Join(s.dir(), defectsTable), nil
+	case KindSweepSuspect:
+		return filepath.Join(s.dir(), sweepSubdir, suspectsTable), nil
+	case KindSweepVerdict:
+		return filepath.Join(s.dir(), sweepSubdir, verdictsTable), nil
 	default:
 		return "", fmt.Errorf("qualgen: unknown table kind %q", k)
 	}
@@ -99,6 +119,12 @@ func (s *Store) Append(kind Kind, record any) error {
 	}
 	path, err := s.tablePath(kind)
 	if err != nil {
+		return err
+	}
+	// Tables may live in a subdirectory of the quality dir (the sweep lane's
+	// tables do); ensure the immediate parent exists so a first append to a
+	// nested table does not fail. ensureDir above covers the top-level tables.
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	line, err := json.Marshal(record)
