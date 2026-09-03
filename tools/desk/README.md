@@ -47,6 +47,7 @@ it on day one.
 | `deskevidence` | `commit` — Evidence via the Contents API, as the verifier App | outward write | yes |
 | `deskrelease` | `cut <tag>` — create-only tag ref, as the desk App | outward write | yes |
 | `deskclaim` | `acquire`, `release`, `list` — the flock-backed claimable-action lock | local-only (claims dir) | no |
+| `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
 | `opmetrics` | (no verbs) — operator-layer collector: reads transcripts/beacons/claims, writes one **aggregates-only** day-file | local-only (strictly read-only against every input) | no |
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
