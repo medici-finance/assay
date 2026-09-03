@@ -146,6 +146,23 @@ const (
 	// malformed entry REFUSES the whole configuration like any other roster error,
 	// so broken config never silently mis-groups.
 	EnvRepoAliases = "ASSAY_REPO_ALIASES"
+	// EnvRepoForges is the SOURCE of "which forge serves this repo?":
+	// comma-separated `owner/name=github` or `owner/name=gitlab` entries, consulted by
+	// ForgeFor (forgeresolve.go) BEFORE it falls back to mapping the origin remote's host.
+	// Unlike ASSAY_REPO_ALIASES (display-only), this key chooses which minted credential a
+	// write is performed as, so it is held to a STRICTER grammar than the aliases key:
+	//
+	//	FULL SLUG ONLY   a bare basename is refused. A display grouping override may
+	//	                 reasonably collapse two orgs' same-named repos onto one label;
+	//	                 collapsing them onto one CUSTODY IDENTITY is exactly the silent
+	//	                 widening a forge binding must never do.
+	//	FAIL-CLOSED      a malformed entry, an unrecognised forge value, or a repo bound
+	//	                 twice refuses the WHOLE roster — the same treatment every other
+	//	                 security-relevant roster key gets, never a silent skip.
+	//
+	// Unset is neither an error nor a refusal: ForgeFor's remote-host fallback (and,
+	// failing that, its Unverifiable refusal) is a complete answer on its own.
+	EnvRepoForges = "ASSAY_REPO_FORGES"
 	// EnvReleaseRepo names the repo deskrelease cuts release tags in, as a single
 	// `owner/name` slug. Unset means the shipped default — the project's own public
 	// home — so an adopter who has not configured anything gets byte-identical
@@ -352,6 +369,13 @@ type Config struct {
 	// empty facet keeps the default. Display-only — no trust decision reads it.
 	RepoAliases map[string]RepoAlias
 
+	// RepoForges is the configured forge binding parsed from ASSAY_REPO_FORGES, keyed by
+	// the LOWERCASED full `owner/name` slug (a bare basename is refused at parse time, so
+	// no basename key ever lands here). The value is "github" or "gitlab". ForgeFor
+	// (forgeresolve.go) consults this FIRST, before its remote-host fallback. Empty when
+	// unset — that is a complete configuration, not a degraded one.
+	RepoForges map[string]string
+
 	// ReleaseRepo is the configured release home (EnvReleaseRepo), empty when
 	// unset — the consumer applies its own shipped default, so "unset" and
 	// "configured to the default" are the same behaviour rather than two states
@@ -516,7 +540,7 @@ func readRawConfig(class ToolClass) (map[string]string, string, []string) {
 	keys := []string{
 		EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs,
 		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
-		EnvRiskCallout, EnvRepoAliases, EnvReleaseRepo, EnvWriteguardCallout, EnvRosterSchema,
+		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo, EnvWriteguardCallout, EnvRosterSchema,
 	}
 	fromEnv := func() map[string]string {
 		m := map[string]string{}
@@ -741,8 +765,8 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	known := map[string]bool{
 		EnvBlessLogin: true, EnvTrustedLogins: true, EnvTrustedBotSlugs: true,
 		EnvAllowedRepos: true, EnvHumanLoginMap: true, EnvRiskPathTriggersExtra: true,
-		EnvRiskCallout: true, EnvRepoAliases: true, EnvReleaseRepo: true, EnvWriteguardCallout: true,
-		EnvRosterSchema: true,
+		EnvRiskCallout: true, EnvRepoAliases: true, EnvRepoForges: true, EnvReleaseRepo: true,
+		EnvWriteguardCallout: true, EnvRosterSchema: true,
 		// STATUSGEN-only keys: recognised so a shared roster.env that configures
 		// statusgen does not collapse deskkit's configuration; not consumed here.
 		EnvHomeRepo: true, EnvScanRepos: true, EnvAuthorizedAuthors: true,
@@ -779,9 +803,9 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			bad("%s: unknown key in the ASSAY_ namespace. It is not applied, so whatever it was "+
 				"meant to configure is EMPTY — and an empty control surface that reports itself "+
 				"configured is the failure this refusal exists to prevent. Recognised keys: "+
-				"%s, %s, %s, %s, %s, %s, %s, %s, %s, %s (and the optional %s)",
+				"%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s (and the optional %s)",
 				k, EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs, EnvAllowedRepos,
-				EnvHumanLoginMap, EnvRiskPathTriggersExtra, EnvRiskCallout, EnvRepoAliases,
+				EnvHumanLoginMap, EnvRiskPathTriggersExtra, EnvRiskCallout, EnvRepoAliases, EnvRepoForges,
 				EnvReleaseRepo, EnvWriteguardCallout, EnvRosterSchema)
 			continue
 		}
@@ -1050,6 +1074,40 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		cfg.RepoAliases[key] = RepoAlias{Short: short, Product: prod}
 	}
 
+	// --- repo forge binding (ASSAY_REPO_FORGES) — the SOURCE ForgeFor (forgeresolve.go)
+	// reads before its remote-host fallback. Unlike the aliases above (display-only), a
+	// malformed OR ambiguous entry here refuses the WHOLE configuration: this key decides
+	// which minted credential a write is performed as, so "configured but wrong" must fail
+	// exactly as loudly as every other identity-adjacent roster value.
+	cfg.RepoForges = map[string]string{}
+	for _, entry := range splitList(vals[EnvRepoForges]) {
+		key, val, hasEq := strings.Cut(entry, "=")
+		key = strings.ToLower(strings.TrimSpace(key))
+		val = strings.ToLower(strings.TrimSpace(val))
+		if !hasEq || key == "" || val == "" {
+			bad("%s: cannot parse entry %q — expected owner/name=github or owner/name=gitlab",
+				EnvRepoForges, entry)
+			continue
+		}
+		if strings.Count(key, "/") != 1 || strings.HasPrefix(key, "/") || strings.HasSuffix(key, "/") {
+			bad("%s: entry %q's repo %q is not a full owner/name slug — unlike %s, a bare basename is "+
+				"NOT accepted here: this key chooses a WRITE identity, and collapsing two orgs' "+
+				"same-named repos onto one forge is exactly the silent widening it must refuse",
+				EnvRepoForges, entry, key, EnvRepoAliases)
+			continue
+		}
+		if val != string(ForgeGitHub) && val != string(ForgeGitLab) {
+			bad("%s: entry %q names forge %q, which is neither %q nor %q",
+				EnvRepoForges, entry, val, ForgeGitHub, ForgeGitLab)
+			continue
+		}
+		if _, dup := cfg.RepoForges[key]; dup {
+			bad("%s: repo %q is bound to a forge more than once", EnvRepoForges, entry)
+			continue
+		}
+		cfg.RepoForges[key] = val
+	}
+
 	// --- release home (ASSAY_RELEASE_REPO) ---
 	// A SINGLE slug, never a list: a release tool that took the first entry of a
 	// list would pick its target by parse order. Unset is neither an error nor a
@@ -1159,6 +1217,14 @@ func (c Config) EffectiveConfigLines() []string {
 		aliases = append(aliases, repo+"="+a.Short+":"+a.Product)
 	}
 	sort.Strings(aliases)
+	// REPO FORGES render one `repo=forge` token per configured binding, sorted — the
+	// forge-selection identity decision, so (like the role bindings below) it must be the
+	// most visible thing here, never inferred from a diff.
+	forges := make([]string, 0, len(c.RepoForges))
+	for repo, kind := range c.RepoForges {
+		forges = append(forges, repo+"="+kind)
+	}
+	sort.Strings(forges)
 	// The release home and the writeguard callout both render their UNSET state as a
 	// named default rather than as a blank. A blank reads as "nobody filled this in";
 	// what these two actually mean when unset is a complete, shipped behaviour, and
@@ -1228,6 +1294,7 @@ func (c Config) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: %s=%s", EnvRiskPathTriggersExtra, strings.Join(c.RiskExtra, ",")),
 		fmt.Sprintf("assay-config: %s=%s", EnvRiskCallout, riskCalloutStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvRepoAliases, strings.Join(aliases, ",")),
+		fmt.Sprintf("assay-config: %s=%s", EnvRepoForges, strings.Join(forges, ",")),
 		fmt.Sprintf("assay-config: %s=%s", EnvReleaseRepo, releaseStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvWriteguardCallout, calloutStr),
 	}

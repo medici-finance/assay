@@ -81,3 +81,25 @@ func installFixtureRoster() (cleanup func(), err error) {
 		deskkit.ReloadConfig()
 	}, nil
 }
+
+// TestMain installs the fixture roster for the WHOLE test binary, the way every
+// sibling command package does.
+//
+// Without it the package's roster only existed inside stub.install, which each test
+// calls as its first STATEMENT — so a helper evaluated in the composite literal that
+// stub.install is called on (`&stub{reviews: approvalAtHead(t, headSHA)}`) ran BEFORE
+// any roster was planted and read whatever the ambient config home happened to hold.
+// On a developer's machine that is a real ~/.config/assay/roster.env and the reviewer
+// role resolves; on a CI runner there is no such file and the same test fails with
+// "the fixture roster does not bind the reviewer role". A test whose verdict depends on
+// the operator's own configuration is not a test, so the roster is installed here,
+// before m.Run, and no test can outrun it.
+func TestMain(m *testing.M) {
+	cleanup, err := installFixtureRoster()
+	if err != nil {
+		panic("cannot install the test-fixture roster: " + err.Error())
+	}
+	code := m.Run()
+	cleanup()
+	os.Exit(code)
+}

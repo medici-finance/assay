@@ -33,9 +33,15 @@ Before touching the branch, verify no other session or worker owns it:
 - **Recent pushes**: `gh pr view <N> --json commits --jq '.commits[-1].committedDate'` — a
   push within the last hour or two suggests a live worker.
 - **PR comments**: a recent worker comment ("working the findings", a claim note) = owned.
+  Check the PR's workpad first, if one exists (the one comment carrying
+  `<!-- assay:workpad -->`, authored by the worker identity) — its stamp line names the
+  worktree/sha it was last edited from, which is the fastest read of "who, and how
+  current".
 
 Owned → report and stand down (or take the next PR in discovery mode). Unowned → announce
-adoption with a short PR comment so the next shepherd sees YOUR claim.
+adoption by upserting the PR's workpad: `deskreply <owner/repo> <N> --workpad --body-file
+<file>` so the next shepherd sees YOUR claim, current state and plan in the ONE place —
+never a fresh plain comment for this (`## Notes` is where the hand-off note belongs).
 
 ## 2. Get on the branch, current with main
 

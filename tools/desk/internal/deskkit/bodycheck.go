@@ -351,7 +351,14 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 	// rather than fixed. Every arm below is therefore byte-for-byte what it was; what
 	// changed is what they are handed. See markerSurface for what is neutralised and why
 	// each neutralisation is safe.
-	raw := string(content)
+	// The workpad marker line (workpad.go) is exempt from every arm
+	// below by EXACT LINE match, applied before `raw` is even computed from `content` so
+	// it is invisible to the high-entropy loop as well as the literal-marker arms. It is a
+	// fixed, public, content-free string that will legitimately appear, quoted, in this
+	// package's own tests and in a PR body describing the feature — the same #380
+	// self-reference problem the two neutralisations below exist for, applied to a marker
+	// this file did not carry when #380 was written.
+	raw := StripWorkpadMarkerLine(string(content))
 	s := markerSurface(raw)
 	switch {
 	case reGitHubToken.MatchString(s):
