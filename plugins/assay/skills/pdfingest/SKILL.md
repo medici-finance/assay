@@ -30,11 +30,14 @@ pdfingest.sh --pages 12-14 paper.pdf    # a slice, when hunting one claim
 pdfingest.sh --health                   # is the endpoint up?
 ```
 
-- Endpoint: `ASSAY_DOCLING_URL` (default `http://localhost:5001`). If your
-  deployment runs docling-serve in-cluster, reach it by
-  `kubectl port-forward svc/docling-serve 5001:5001` first. Field names are
+- Endpoint: `ASSAY_DOCLING_URL` (default `http://localhost:5001`). Point it at
+  your deployment's FRONT (e.g. a scale-to-zero proxy in front of the pods) —
+  `kubectl port-forward` the front service, not the docling service itself
+  (a scaled-to-zero deployment has no endpoints). Field names are
   upstream's and may drift between versions — verify against the server's
-  `/docs` if a request 400s.
+  `/docs` if a request 400s. A cold start after idle legitimately takes tens
+  of seconds to minutes (pod schedule + image pull + model load) — use a
+  generous HTTP timeout, don't retry-storm.
 - No endpoint and no local `docling` CLI: `pip install docling` (CPU-only,
   models download once, ~2 GB) — or tell the driver what's missing rather
   than silently downgrading to raw `pdftotext`.
