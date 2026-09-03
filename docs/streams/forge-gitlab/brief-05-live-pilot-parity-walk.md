@@ -124,7 +124,7 @@ Phase-0 attestation: for the three live rows the implementer's records are well-
 
 RISK-VALUE: DERIVED — `merge_access_level = 40` ("Maintainers") @ `docs/streams/forge-gitlab/pilot-report.md:164` — the brief's single-point-of-failure control ("merge is always the human's"); only the human owner is a member at ≥40, so 40 ⇒ humans-only merge; the report proves `can_merge:false` for all five Developer(30) bots. `push_access_level = 0` ("No one") @ :165 — floor under rows 2/10, correct for no-direct-push. Token TTL 7d ranks last (reversible). `approvals_required:0` is an OBSERVED CE limitation recorded failed-at-tier, not a value the brief pins.
 
-Verdict: BLOCKED (offline) — 1/4 rows offline-runnable and it PASSes; rows 2/3/4 could-not-check, each backed by an attested well-formed Phase-0 record. No FAIL observed. **Status stays `implemented` — the human gate (Ian) confirms the group, authorizes credentials, and signs the §3 parity verdict; the report self-records 8 failed-at-tier rows + a mid-run D-6 hand-repair as the substance to weigh (pilot report on assay#353).**
+Verdict: BLOCKED (offline) — 1/4 rows offline-runnable and it PASSes; rows 2/3/4 could-not-check, each backed by an attested well-formed Phase-0 record. No FAIL observed. **Status stays `implemented` — the human gate (Ian) confirms the group, authorizes credentials, and signs the §3 parity verdict; the report self-records 8 failed-at-tier rows + a mid-run D-6 hand-repair as the substance to weigh (pilot report on #353).**
 
 ## Review
 Gate: human (from frontmatter) — the human signs the parity verdict; the reviewer
