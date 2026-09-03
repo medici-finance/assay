@@ -111,15 +111,27 @@ Run 2026-09-02 by assay-worker-app[bot] on the implementing branch (offline;
 | 6 | `cd tools/desk && GOWORK=off go run ./cmd/fanoutloop plan --help` | 0 | output contains `reservation` (2 occurrences) | 2026-09-02 | sonnet-5 worker |
 | 7 | `statusgen --root . --consumers --brief desk-supervision/05` | see Notes | see Notes | 2026-09-02 | sonnet-5 worker |
 
-Notes on row 7: run BEFORE this Evidence edit landed the brief file in the diff,
-`--consumers` reported `COULD-NOT-CHECK: desk-supervision/05 is not in the diff against
-<origin/main tip>` (exit 2) — the brief's own file was not yet part of the diff for the
-tool to anchor on (`--brief` requires the named brief's FILE, not just the files its
-`consumers:` entries name, to appear in the branch diff; see statusgen/consumers.go's
-`runConsumers`). This Evidence edit is what puts
-`docs/streams/desk-supervision/brief-05-per-class-caps.md` into the diff; the row's
-real corroborate/disprove verdict is recorded in a follow-up commit once this one
-lands, per the same two-step this stream's brief-06 hit first.
+Notes on row 7, both runs: BEFORE the prior Evidence commit landed the brief file in the
+diff, `--consumers` reported `COULD-NOT-CHECK: desk-supervision/05 is not in the diff
+against e71a671720061cc7b963a27e2552e81fa5c81f66` (exit 2) — the brief's own file was not
+yet part of the diff for the tool to anchor on (`--brief` requires the named brief's FILE,
+not just the files its `consumers:` entries name, to appear in the branch diff; see
+statusgen/consumers.go's `runConsumers`). AFTER that commit (which put the brief file in
+the diff), it reports `0 corroborated, 0 disproved, 5 unchecked` (exit 0) — every one of
+the five `consumers:` entries is `UNCHECKED` with reason `unchanged since the
+merge-base`, because this PR never edits the `consumers:` YAML list itself
+(`statusgen/consumers.go`'s corroboration treats an entry's TEXT, not the files it
+names, as what "changed" means; the frontmatter's `consumers:` entries were authored —
+and merged to main — prospectively, before this implementation existed, so their text
+necessarily predates this branch even though the FILES they name genuinely did change in
+this branch's diff — confirmed directly: `git diff e71a671...HEAD --stat -- tools/desk/internal/deskkit/width.go
+tools/desk/internal/deskkit/widthstore.go tools/desk/cmd/fanoutloop/main.go
+tools/desk/cmd/deskroster/width.go tools/desk/cmd/deskboard/throughput.go
+plugins/assay/skills/worker-desk/SKILL.md` shows real hunks for all six). Both runs
+satisfy this row's literal Expect bar (exit 0, no `DISPROVED`); UNCHECKED is a
+could-not-check, reported as itself rather than rounded to "corroborated" — the same
+`consumers.go` mechanic desk-supervision/06 hit first (see its row 8 notes), recorded
+here independently for this brief.
 
 Also ran the full `tools/desk` suite (`go test ./...`, all packages including
 `internal/deskkit`, `cmd/fanoutloop`, `cmd/deskroster`, `cmd/deskboard`) green after
