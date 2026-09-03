@@ -69,11 +69,11 @@ const securityFailMarker = "Security-Review: fail"
 // verifyGateLabel selects the awaiting-verification issues for the queue view.
 const verifyGateLabel = "verify-gate"
 
-// prListLimit caps `gh pr list` explicitly. Without it gh silently defaults to 30 PRs
-// per repo, so a >30-PR board truncates and the desk sweeps an incomplete queue with no
+// prListLimit caps the open-PR read (the GraphQL `pullRequests(first: …)` page) explicitly.
+// A >prListLimit-PR board would truncate and the desk would sweep an incomplete queue with no
 // signal (#80, same silent-truncation class as #79). When a repo returns exactly this
 // many open PRs, fetchOpenPRs logs a possible-truncation WARN so widening is never left
-// to guesswork.
+// to guesswork. It is also the ceiling of a single GraphQL page (`first:` maxes at 100).
 const prListLimit = 100
 
 // ---------------------------------------------------------------------------
@@ -261,8 +261,30 @@ type review struct {
 // ever returns a silent empty result on error.
 // ---------------------------------------------------------------------------
 
+// openPRsGraphQL is the bulk open-PR read, hand-authored so it requests EXACTLY the
+// fields the board classifies on — and nothing that needs a scope the board's identity
+// does not hold. It replaces `gh pr list --json statusCheckRollup`:
+// gh's built-in `statusCheckRollup` field carries a hardcoded `checkSuite { workflowRun … }`
+// sub-selection — a LINK to the Actions run, not a check conclusion — that requires
+// `actions:read`. Under an App with only `checks:read` (the reviewer App) that one sub-field
+// 403s FORBIDDEN, and on a repo with many Actions check suites `gh pr list` returns hundreds
+// of those errors with NO salvageable partial stdout: it exits non-zero and empty, which
+// fetchOpenPRs then wraps Unverifiable (exit 6), blinding the WHOLE cross-repo board on the
+// first repo alphabetically. Requesting the rollup contexts ourselves WITHOUT
+// checkSuite/workflowRun drops the field that needs `actions:read` entirely; every
+// conclusion the board reads (CheckRun.status/conclusion, StatusContext.state) is covered by
+// `checks:read` alone, so the read no longer depends on a scope the board is not guaranteed.
+const openPRsGraphQL = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+
+// openPRsReshapeJQ collapses the GraphQL response back into the SAME flat shape the old
+// `gh pr list --json …` produced, so prBase and every downstream consumer are unchanged.
+// The rollup contexts nodes already carry the exact field names the `check` struct decodes.
+// A GraphQL Bot actor carries the BARE slug as login; it is re-suffixed to "<slug>[bot]" so
+// TrustedAuthor sees the same REST rendering it does for the trust gate (deskkit.gqlActor).
+const openPRsReshapeJQ = `[.data.repository.pullRequests.nodes[]|{number,title,body,state,isDraft,createdAt,author:{login:(.author|if .==null then "" elif .__typename=="Bot" then .login+"[bot]" else .login end)},labels:[.labels.nodes[]|{name}],headRefOid,headRefName,baseRefName,mergeStateStatus,statusCheckRollup:(.commits.nodes[0].commit.statusCheckRollup.contexts.nodes//[])}]`
+
 // fetchOpenPRs returns a repo's open PRs and whether that population may be TRUNCATED —
-// the read came back exactly at the `--limit` cap, so GitHub may be holding more.
+// the read came back exactly at the `first:` cap, so GitHub may be holding more.
 //
 // #400 T2: truncation used to be a stderr WARNING and nothing else. Every count the board
 // prints rides on this population (mergeNowCount, unreviewedCount, the row set itself), and
@@ -270,10 +292,19 @@ type review struct {
 // from a complete one — a confident number over an unknown remainder, the same absence-as-
 // verdict shape this cluster is about. The flag is returned so callers can state it in-band
 // (Header.PRPopulation); the stderr banner stays for the human on the table path.
+//
+// The read is a hand-authored `gh api graphql` (openPRsGraphQL) rather than
+// `gh pr list --json statusCheckRollup`: see openPRsGraphQL for why.
 func fetchOpenPRs(repo string) (prs []prBase, truncated bool, err error) {
-	out, err := ghRun("pr", "list", "-R", repo, "--state", "open",
-		"--limit", strconv.Itoa(prListLimit), "--json",
-		"number,title,body,state,isDraft,author,createdAt,labels,headRefOid,headRefName,baseRefName,mergeStateStatus,statusCheckRollup")
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok {
+		return nil, false, deskkit.Unverifiable("bad repo "+repo, nil)
+	}
+	out, err := ghRun("api", "graphql",
+		"-f", "query="+openPRsGraphQL,
+		"-f", "owner="+owner, "-f", "name="+name,
+		"-F", "limit="+strconv.Itoa(prListLimit),
+		"--jq", openPRsReshapeJQ)
 	if err != nil {
 		return nil, false, deskkit.Unverifiable("cannot read open PRs for "+repo, err)
 	}
@@ -282,7 +313,7 @@ func fetchOpenPRs(repo string) (prs []prBase, truncated bool, err error) {
 	}
 	if len(prs) >= prListLimit {
 		truncated = true
-		fmt.Fprintf(os.Stderr, "deskboard: WARNING %s returned %d open PRs at the --limit %d cap — "+
+		fmt.Fprintf(os.Stderr, "deskboard: WARNING %s returned %d open PRs at the first:%d cap — "+
 			"the board may be TRUNCATED; widen prListLimit or paginate (#80)\n", repo, len(prs), prListLimit)
 	}
 	return prs, truncated, nil

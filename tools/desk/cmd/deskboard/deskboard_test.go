@@ -32,6 +32,21 @@ fi
 
 s="$*"
 
+# The open-PR read is now a gh api graphql whose repo travels as split owner=/name=
+# args, so an owner/name FAIL_REPO never appears as one whole argv element and the loop
+# above cannot see it. Match the split form too, so failing a whole repo still
+# reaches the enumeration read the desk starts every sweep with.
+if [ -n "$DESKBOARD_GH_FAIL_REPO" ]; then
+  case "$DESKBOARD_GH_FAIL_REPO" in
+    */*)
+      fo=${DESKBOARD_GH_FAIL_REPO%%/*}
+      fn=${DESKBOARD_GH_FAIL_REPO#*/}
+      case "$s" in
+        *"owner=$fo "*"name=$fn"*) echo "gh: simulated failure for $DESKBOARD_GH_FAIL_REPO" >&2; exit 1 ;;
+      esac ;;
+  esac
+fi
+
 # DESKBOARD_GH_FAIL_MATCH fails any call whose full argv CONTAINS the pattern.
 # DESKBOARD_GH_FAIL_REPO cannot reach the per-PR reads: it compares whole argv
 # ELEMENTS, and the slug is embedded inside "repos/<slug>/pulls/<n>", so an API
@@ -68,6 +83,25 @@ if [ -n "$DESKBOARD_GH_HANG_PATH" ]; then
 fi
 
 case "$s" in
+  *"pullRequests(states:OPEN"*)
+    # The open-PR enumeration (fetchOpenPRs) — a gh api graphql whose --jq already
+    # reshapes the response into the SAME flat array the old gh pr list --json produced,
+    # so the shim serves that flat fixture directly (jq is not re-run here). The repo
+    # travels as split owner=/name= args, so DESKBOARD_GH_PR_REPO selection
+    # reconstructs owner/name rather than matching an "owner/repo" element.
+    if [ -n "$DESKBOARD_GH_PR_REPO" ]; then
+      po=${DESKBOARD_GH_PR_REPO%%/*}
+      pn=${DESKBOARD_GH_PR_REPO#*/}
+      case "$s" in
+        *"owner=$po "*"name=$pn"*) printf '%s' "$DESKBOARD_GH_PRLIST_JSON" ;;
+        *) printf '[]' ;;
+      esac
+    elif [ -n "$DESKBOARD_GH_PRLIST_JSON" ]; then
+      printf '%s' "$DESKBOARD_GH_PRLIST_JSON"
+    else
+      printf '[]'
+    fi
+    ;;
   *"api graphql"*)
     if [ -n "$DESKBOARD_GH_GRAPHQL_JSON" ]; then printf '%s' "$DESKBOARD_GH_GRAPHQL_JSON"; else printf '{"data":{"repository":{"pullRequest":{"lastEditedAt":null,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]},"reviews":{"pageInfo":{"hasNextPage":false},"nodes":[]},"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}},"issue":{"lastEditedAt":null,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}'; fi
     ;;
@@ -344,8 +378,8 @@ func TestReadOnly_PathShim(t *testing.T) {
 		if off := firstOffense(fields); off != "" {
 			t.Errorf("MUTATING gh call recorded: %s  (full: %s)", off, strings.Join(fields, " "))
 		}
-		if len(fields) >= 2 && fields[0] == "pr" && fields[1] == "list" {
-			sawList = true
+		if strings.Contains(strings.Join(fields, " "), "pullRequests(states:OPEN") {
+			sawList = true // the open-PR enumeration, now a `gh api graphql` read
 		}
 		if len(fields) >= 1 && fields[0] == "api" {
 			sawAPI = true
@@ -358,7 +392,7 @@ func TestReadOnly_PathShim(t *testing.T) {
 		}
 	}
 	if !sawList || !sawAPI || !sawDiff {
-		t.Errorf("expected to have exercised pr list + gh api + pr diff reads; got list=%t api=%t diff=%t", sawList, sawAPI, sawDiff)
+		t.Errorf("expected to have exercised the open-PR graphql + gh api + pr diff reads; got list=%t api=%t diff=%t", sawList, sawAPI, sawDiff)
 	}
 	if !sawProbe {
 		t.Error("expected the zero-CI probe's workflow reads to be exercised (the fixture PR has a zero rollup)")
@@ -1198,10 +1232,13 @@ func TestTrustGate_ActionsQuarantine(t *testing.T) {
 	if !found {
 		t.Errorf("expected PR #7 in the external quarantine section; got %+v", rep.External)
 	}
-	// Bounded: exactly one trust-events (graphql) read.
+	// Bounded: exactly one trust-events read. The open-PR enumeration is now also a
+	// graphql read, so the trust read is identified by its own marker
+	// (lastEditedAt — in the trust queries, never in the enumeration query) rather than
+	// by the bare word "graphql".
 	trustReads := 0
 	for _, fields := range readInvocations(t, logPath) {
-		if strings.Contains(strings.Join(fields, " "), "graphql") {
+		if strings.Contains(strings.Join(fields, " "), "lastEditedAt") {
 			trustReads++
 		}
 	}

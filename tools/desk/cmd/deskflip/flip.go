@@ -845,14 +845,37 @@ type reviewInfo struct {
 	SubmittedAt string                 `json:"submitted_at"`
 }
 
+// flipPRGraphQL is the single-PR state read (flip half). It replaces
+// `gh pr view --json statusCheckRollup`: gh's built-in `statusCheckRollup` field selects a
+// `checkSuite { workflowRun … }` sub-field — a LINK to the Actions run, not a check
+// conclusion — that needs `actions:read`. Under a `checks:read`-only identity (the reviewer
+// App) that sub-field 403s FORBIDDEN and `gh pr view` fails the WHOLE read; readPR then
+// wraps it Unverifiable, and the pr-open-draft condition refuses ("a PR whose state could
+// not be read is not a PR that may be flipped") — so the desk cannot flip ANY private PR.
+// Requesting the rollup contexts ourselves WITHOUT checkSuite/workflowRun drops the field
+// that needs `actions:read`; every conclusion the flip's checks-green gate reads
+// (CheckRun.status/conclusion, StatusContext.state) is covered by `checks:read` alone.
+//
+// `files` is NOT requested (as before): its single unpaginated page is a prefix on a large
+// PR, which the risk-class determination may never be handed; the list comes from
+// readChangedFiles, reconciled against the `changedFiles` total this read returns.
+const flipPRGraphQL = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number state isDraft mergeable changedFiles headRefOid labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+
+// flipPRReshapeJQ collapses the GraphQL response into the SAME flat shape gh's
+// `pr view --json …` produced, so prInfo and every downstream condition are unchanged.
+const flipPRReshapeJQ = `.data.repository.pullRequest|{number,state,isDraft,mergeable,changedFiles,headRefOid,labels:[.labels.nodes[]|{name}],statusCheckRollup:(.commits.nodes[0].commit.statusCheckRollup.contexts.nodes//[])}`
+
 func readPR(o flipOpts, repo string) (prInfo, error) {
-	// `files` is NOT requested here. It is served from a single unpaginated page, so on a
-	// PR with more changed files than that page holds it answers with a prefix of the diff
-	// — and a prefix is not something the risk-class determination may be handed. The list
-	// comes from readChangedFiles, which walks every page and is reconciled against the
-	// `changedFiles` total this read returns.
-	r := runCmd("", "gh", "pr", "view", strconv.Itoa(o.pr), "-R", repo, "--json",
-		"number,state,isDraft,mergeable,headRefOid,changedFiles,statusCheckRollup,labels")
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok {
+		return prInfo{}, deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: %q does not parse to owner/name", condPROpenDraft, repo), nil)
+	}
+	r := runCmd("", "gh", "api", "graphql",
+		"-f", "query="+flipPRGraphQL,
+		"-f", "owner="+owner, "-f", "name="+name,
+		"-F", "number="+strconv.Itoa(o.pr),
+		"--jq", flipPRReshapeJQ)
 	if r.err != nil {
 		return prInfo{}, deskkit.Unverifiable(fmt.Sprintf(
 			"condition %s: cannot read PR #%d in %s (%s) — a PR whose state could not be read is not a PR "+
