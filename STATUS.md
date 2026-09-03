@@ -14,14 +14,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-03 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-03 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 0/8 | 2026-09-03 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/7 | 2026-09-02 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/7 | 2026-09-03 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-03 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-03 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-03 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-03 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 1/6 | 2026-09-03 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 2/6 | 2026-09-03 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 12/16 | 2026-09-03 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 13/16 | 2026-09-03 |  |
 | [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-09-03 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 5/13 | 2026-09-03 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 0/6 | 2026-09-03 |  |
@@ -32,7 +32,6 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 |---|---|---|---|
 | windows-port | 00 — Build-tag split for the unix-only syscall sites | 0 | 3000 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
-| desk-supervision | 05 — Per-class concurrency reservation — fresh / resume / rework caps in the planner | 0 | 1000 |
 | quality | 14 — auto-filed refactor work + quality error-budgets + RETRO output feed | 5 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 | quality | 16 — code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report [exec:strong] | 1 | 1000 |
@@ -43,7 +42,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (35 desk-actionable of 38 total — 37 at implemented, 1 verified awaiting review)
+## Awaiting verification / review (35 desk-actionable of 38 total — 38 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -73,7 +72,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | iso-9001 | 05 | implemented | 1500 | 1 | — | — | — |
-| quality | 12 [exec:strong] | verified | 1500 | 1 | — | 2026-09-02 opus-4.8[1m]-verifier | — |
+| desk-supervision | 05 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -148,7 +147,7 @@ _None._
 - 02 Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal — todo (wave 1)
 - 03 Eligibility reconciliation — stop a run whose item became ineligible — todo (wave 2)
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — todo (wave 1)
-- 05 Per-class concurrency reservation — fresh / resume / rework caps in the planner — todo (wave 0)
+- 05 Per-class concurrency reservation — fresh / resume / rework caps in the planner — implemented (wave 0)
 - 06 Workpad — one upserted progress comment per PR — implemented (wave 0)
 - 07 Runtime snapshot — `desksupervise status` for operators and the console — todo (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
@@ -222,9 +221,8 @@ _None._
 - 05 `newbrief` — the scaffolder as the authoring front door (B1) — todo (wave 2)
 - 06 D1 promoted to a lint obligation — a new check must carry its mutation row — todo (wave 2)
 
-### quality (4 open)
+### quality (3 open)
 
-- 12 M4 gate-yield accounting + ritual-effectiveness joins — verified (wave 4)
 - 14 auto-filed refactor work + quality error-budgets + RETRO output feed — todo (wave 5)
 - 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
 - 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — todo (wave 1)
@@ -290,7 +288,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 01 Cross-read a brief's declared paths against the risk classifier (B3) — done (wave 0)
 - 02 Dereference named identifiers, not just backticked paths (B4) — done (wave 0)
 
-### quality (12 done)
+### quality (13 done)
 
 - 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — done (wave 0)
 - 02 M1 line-operation taxonomy + churn/rework rate — done (wave 1)
@@ -303,6 +301,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 09 `check <files>` mode — brittleness screen for a named file set — done (wave 2)
 - 10 M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter — done (wave 3)
 - 11 DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source — done (wave 3)
+- 12 M4 gate-yield accounting + ritual-effectiveness joins — done (wave 4)
 - 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — done (wave 3)
 
 ### statusgen (5 done)
@@ -315,4 +314,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**14** streams (**14** active, **0** paused) · **30/116** briefs done · completed initiatives: see `docs/archive/`
+**14** streams (**14** active, **0** paused) · **31/116** briefs done · completed initiatives: see `docs/archive/`
