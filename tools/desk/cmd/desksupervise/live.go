@@ -98,12 +98,13 @@ func readLiveClaims(root, repo string, now time.Time) ([]claimRecord, error) {
 	return claims, nil
 }
 
-// claimStateFieldRe / claimAgeFieldRe / claimOwnerFieldRe / claimBranchFieldRe pull the
+// claimStateFieldRe, claimAgeFieldRe, claimOwnerFieldRe and claimBranchFieldRe pull the
 // `state=`, `age=<N>m`, `owner=` and `branch=` fields out of the claim tool's `show` output.
-// state=/age= mirror cmd/deskdispatch/dispatch.go's own claimStateFieldRe/claimAgeFieldRe
-// byte-for-byte (that file is a separate `main` package and cannot be imported, so this is
-// a parallel implementation of the SAME external contract, not a divergent one — see the
-// file doc's note on why this cannot be verified against a live script in this session).
+// state= and age= mirror cmd/deskdispatch/dispatch.go's own claimStateFieldRe and
+// claimAgeFieldRe byte-for-byte (that file is a separate `main` package and cannot be
+// imported, so this is a parallel implementation of the SAME external contract, not a
+// divergent one — see the file doc's note on why this cannot be verified against a live
+// script in this session).
 var (
 	claimStateFieldRe  = regexp.MustCompile(`state=([A-Za-z]+)`)
 	claimAgeFieldRe    = regexp.MustCompile(`age=(\d+)m`)
