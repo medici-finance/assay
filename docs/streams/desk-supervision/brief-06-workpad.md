@@ -115,13 +115,21 @@ worker to use it" → row 7.
 | 7 | `grep -c 'workpad' tools/desk/cmd/deskdispatch/references/common-clauses.md` | 0 | `5` | 2026-09-02 | sonnet-5-worker |
 | 8 | `statusgen --root . --consumers --brief desk-supervision/06` | see Notes | see Notes | 2026-09-02 | sonnet-5-worker |
 
-Notes on row 8: run against the implementing branch BEFORE this Evidence edit itself landed
-in the diff, `--consumers` reported `COULD-NOT-CHECK: desk-supervision/06 is not in the
-diff` (exit 2) — the brief's own file was not yet part of the diff for the tool to anchor
-on, a could-not-check reported as itself, not rounded to a pass. This Evidence edit is what
-puts `docs/streams/desk-supervision/brief-06-workpad.md` into the diff; re-run after this
-commit lands to get row 8's real corroborate/disprove verdict — see the PR body's Verify
-section for that re-run's actual result.
+Notes on row 8, both runs: BEFORE this Evidence edit landed in the diff, `--consumers`
+reported `COULD-NOT-CHECK: desk-supervision/06 is not in the diff` (exit 2) — the brief's
+own file was not yet part of the diff for the tool to anchor on. AFTER this edit (which
+does put the brief file in the diff), it reports `0 corroborated, 0 disproved, 5
+unchecked` (exit 0) — every one of the five `consumers:` entries is `UNCHECKED` with reason
+`unchanged since the merge-base`, because this PR never edits the `consumers:` YAML list
+itself (`statusgen/consumers.go`'s `corroborateBrief` treats an entry's TEXT, not the
+files it names, as what "changed" means; the brief's frontmatter was authored — and
+merged to main — with these entries already written, prospectively, before this
+implementation existed, so their text necessarily predates this branch even though the
+FILES they name (`main.go`, `bodycheck.go`, `common-clauses.md`) genuinely did change in
+this branch's diff — confirmed directly: `git diff <merge-base>...HEAD --stat -- <path>`
+shows real hunks for all three). Both runs satisfy this row's literal Expect bar (exit 0,
+no `DISPROVED`); UNCHECKED is a could-not-check, reported as itself rather than rounded to
+"corroborated" — see the PR body for the same finding stated for the reviewer.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
