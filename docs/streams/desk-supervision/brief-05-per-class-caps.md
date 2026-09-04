@@ -142,6 +142,24 @@ this brief's behaviour (Reserve tests in `internal/deskkit`, the `Rework`-field 
 in `cmd/fanoutloop`, the `--reserve` tests in `cmd/deskroster`, the reserve-column
 test in `cmd/deskboard`) fails to compile against the unfixed source — the fail-first
 evidence for clause 9, quoted in the PR body.
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-04 opus-4.8[1m]-verifier (verify-desk dispatch), merged main 4e500df
+
+Runner != implementer. Offline (KUBECONFIG=/dev/null). gate: model, risk {all no}, irreversible: no. Merged at c2863cd.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | GOWORK=off go test ./internal/deskkit/ -run 'Width\|Reserve' | 0 | ok deskkit — Width/Reserve suite incl. DefaultReserve/ReserveRefused/ResolvedReserve/FormatReserve PASS | 2026-09-04 | opus-4.8[1m]-verifier |
+| 2 | go test ./cmd/fanoutloop/ -run TestPlanReservationCapsFreshWhenResumeWaits | 0 | PASS; ok fanoutloop | 2026-09-04 | opus-4.8[1m]-verifier |
+| 3 | go test ./cmd/fanoutloop/ -run TestPlanReservationNeverIdlesASlot | 0 | PASS; ok fanoutloop | 2026-09-04 | opus-4.8[1m]-verifier |
+| 4 | go test ./internal/deskkit/ -run TestReserveRefusedWhenItSwallowsWidth | 0 | PASS | 2026-09-04 | opus-4.8[1m]-verifier |
+| 5 | go build ./cmd/deskroster && ./deskroster width --help | 0 | --reserve present (grep -c -- --reserve = 1) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 6 | go run ./cmd/fanoutloop plan --help | 0 | "reservation" appears 2x | 2026-09-04 | opus-4.8[1m]-verifier |
+| 7 | statusgen --consumers --brief desk-supervision/05 (implementing merge diff c2863cd^2) | 0 | 0 corroborated 0 disproved 5 unchecked; zero DISPROVED | 2026-09-04 | opus-4.8[1m]-verifier |
+
+**VERIFY: PASS** — all 7 rows satisfy their Expect (row 7 resolved on the item's actual merge diff, 0 DISPROVED).
+
+**RISK-VALUE: DERIVED** — DefaultReserve["resume"] = 2 @ tools/desk/internal/deskkit/width.go:217 — holds 2 of the worker-desk width-8 pool for resume-class items, under the width-1=7 max the CheckReserve bound enforces, leaving 6 fresh; encodes "resuming outranks a fresh brief" as a scheduler floor; decays with the 60-min WidthTTL and is operator-adjustable, so reversible.
+**RISK-VALUE: DERIVED** — reserve-sum bound = width-1 (refuse when sum(reserve) >= width) @ tools/desk/internal/deskkit/width.go:193-197 — a reservation must never idle a slot, so reserved sum must be strictly < width; max admissible = width-1; verified by row 4.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
