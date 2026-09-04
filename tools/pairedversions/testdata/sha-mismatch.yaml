@@ -1,0 +1,21 @@
+# Fixture for assertion (c): one pinned sha256 does not match the published
+# release's checksums.txt entry. This is what a hand-invented hash — or one
+# harvested from a LOCAL build, which lacks the release -ldflags stamp — looks
+# like. The installer would REFUSE the download; CI must say so first.
+schema: paired-versions-v1
+
+plugin: "0.5.0"
+
+statusgen:
+  release_home: example-org/example-releases
+  tag: v1.2.3
+  platforms:
+    darwin-arm64: statusgen-darwin-arm64 v1.2.3 0000000000000000000000000000000000000000000000000000000000000000
+    linux-amd64:  statusgen-linux-amd64  v1.2.3 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+desk-tools:
+  release_home: example-org/example-releases
+  tag: v1.2.3
+  platforms:
+    darwin-arm64: desk-tools-darwin-arm64.tar.gz v1.2.3 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    linux-amd64:  desk-tools-linux-amd64.tar.gz  v1.2.3 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd

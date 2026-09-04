@@ -27,6 +27,14 @@ Per-artifact tags (`statusgen/v0.8.2`, `desk-tools/v0.2.6`) are how the source r
 tools; they are **not** upgrade targets. An adopter moves the whole umbrella, never a single
 artifact.
 
+**A plugin bump is not cut until the pairing is re-pinned.** `assay:install` resolves the binary an
+adopter gets from `plugins/assay/paired-versions.yaml`, so bumping
+`plugins/assay/.claude-plugin/plugin.json` without re-pinning that manifest — same plugin version,
+the paired release tag, and every per-platform `sha256` refreshed from that release's published
+`checksums.txt` — ships the *previous* plugin's tool to every clean install. `make paired-versions`
+(`tools/pairedversions`) asserts all three and fails closed; it is intended as a required check, so
+a bump that skips the re-pin is red before it lands.
+
 ## The `.assay-versions` pin file
 
 The pin file lives at the consumer repo root and is the single record of which release a consumer
