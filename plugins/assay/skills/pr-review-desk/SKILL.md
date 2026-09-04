@@ -1,6 +1,6 @@
 ---
 name: pr-review-desk
-description: Run the PR-review-loop role of the process desk — the standing review window that watches the open-PR queue across the desk's configured repo set (read at boot from `deskroster repos`; this skill carries no list, so it cannot drift from the write boundary the tools enforce), keeps a standing POOL of reviewer slots full (refill on completion, never wave-and-stop) so every new/updated PR gets a reviewer within one cadence tick at any age, drives the fix-to-re-review-to-ready cycle, and flips PRs ready-for-human via `deskflip`. Runs SILENT — anything needing a human is a filed GitHub issue (question / help wanted / needs-decision), never console narration; a detected monitor outage or stale board is itself a needs-human condition and is FILED, never silenced. Use when starting or resuming the dedicated review window, when asked to "run the review loop / watch the PR queue / review the PRs", or when the coordinator desk delegates the review half. Role window, no persona (Bob belongs to the-desk only); driver human:<name>; the human merges.
+description: Run the PR-review-loop role of the process desk — the standing review window that watches the open-PR queue across the desk's configured repo set (read at boot from `deskroster repos`; this skill carries no list, so it cannot drift from the write boundary the tools enforce), keeps a standing POOL of reviewer slots full (refill on completion, never wave-and-stop; independent reviews — correctness and security of one PR, and reviews of different PRs — run IN PARALLEL, never one after another) so every new/updated PR gets its reviewer(s) within one cadence tick at any age, drives the fix-to-re-review-to-ready cycle, and flips PRs ready-for-human via `deskflip`. Runs SILENT — anything needing a human is a filed GitHub issue (question / help wanted / needs-decision), never console narration; a detected monitor outage or stale board is itself a needs-human condition and is FILED, never silenced. Use when starting or resuming the dedicated review window, when asked to "run the review loop / watch the PR queue / review the PRs", or when the coordinator desk delegates the review half. Role window, no persona (Bob belongs to the-desk only); driver human:<name>; the human merges.
 ---
 
 # PR-Review Desk
@@ -197,13 +197,30 @@ failure this section prevents**, and there is no state in this loop called "the 
   - **Narrowing NEVER kills a reviewer mid-verdict** — stop refilling and let the pool converge as
     verdicts land.
   - A width that cannot be read is **could-not-check**: hold at the last-read number and file it.
+- **A slot is one `(PR, lane, head)`, and INDEPENDENT reviews run IN PARALLEL, never in sequence.**
+  Independent = the correctness and security lanes of ONE PR (both read the SAME head), and every
+  review of a DIFFERENT PR. **Parallel by default:** on every sweep, dispatch EVERY actionable
+  `(PR, lane)` into a free slot in ONE dispatch turn (`capability:dispatch-worker` — dispatches
+  issued together run concurrently), up to N; never dispatch-one-then-wait-then-the-next. A
+  risk-classed PR takes TWO slots — correctness and security — in the SAME turn, not security after
+  the correctness verdict.
 - **Fill to N** at the risk-keyed tier; a risk-classed PR's separate `/security-review` agent
-  occupies its own slot. **Refill on completion:** the instant a reviewer finishes (verdict posted,
-  or errored), sweep and dispatch the next row into the freed slot — the re-invocation IS the cue.
+  occupies its own slot. **Refill on completion fills ALL free slots, not one:** the instant a
+  reviewer finishes (verdict posted, or errored), sweep and dispatch every actionable `(PR, lane)`
+  into every freed slot — the re-invocation IS the cue.
+- **What stays ORDERED — parallelise the reviews, never these.** A RE-review runs only AFTER the
+  push that answers a finding (a same-head APPROVE over a standing CHANGES_REQUESTED is not
+  re-verification); the ready-flip reads BOTH lanes' verdicts AT THE FINAL head (stale ≠ pass), CI
+  green at that head, mergeable; a `Security-Review: fail` at head blocks everything; dual-track
+  out-of-scope FILING waits for both lanes at the same head (the VERDICTS themselves never wait for
+  each other); the human gates (public-repo human +1 before any verdict post, `needs-decision`, the
+  merge) are never parallelised around.
 - **Never stop-and-wait.** When actionable = 0, do not exit — the watchers keep the loop alive. "I
   dispatched everything I saw" is not a stop condition and is not an idle claim (§HARD GATE).
 - **Priority within a refill:** RE-REVIEW before NEEDS-REVIEW at the same score (the worker is
-  waiting on the desk), otherwise board order (gate-score, oldest first).
+  waiting on the desk), otherwise board order (gate-score, oldest first). Priority decides which
+  rows take the free slots when rows outnumber slots; it never serialises rows that could all take a
+  free slot now.
 
 ## The loop
 
@@ -224,39 +241,57 @@ BLIND, never "all clear"; without `--prs` every outward verb is SUPPRESSED as co
 Cutover of the standing window onto reviewloop as the *driver* is `gate: human`; the desk runs it
 as the planner and acts on its rows.
 
-- **NEEDS-REVIEW / RE-REVIEW** → fill a slot at the right tier for that PR at its current head, on
-  the first sweep that shows the row, at any age, and apply `authorization-needed` in the same turn
-  (§PR-state labels). Dispatch through the ceremony, never by hand:
+- **NEEDS-REVIEW / RE-REVIEW** → fill a slot PER LANE at the right tier for that PR at its current
+  head, on the first sweep that shows the row, at any age, and apply `authorization-needed` in the
+  same turn (§PR-state labels). A risk-classed PR gets its security lane dispatched in the SAME turn
+  as its correctness lane, never queued behind the correctness verdict — classification is the flip
+  gate's `riskClassed`, read at dispatch (any public repo, `gate: human` OR any `risk:` yes, or a
+  diff touching the repo's risk-classed paths). Dispatch through the ceremony, never by hand, with a
+  lane-suffixed claim key (`#` is NOT in the item-key alphabet — a `<owner/repo>#<PR>` key is
+  rejected at claim-acquire):
 
   ```bash
-  deskdispatch <owner/repo>#<PR> --kit review --tier strong|any --repo <owner/repo> --pr <N>
+  deskdispatch <alias>--pr-<N> --kit review --tier strong|any --repo <owner/repo> --pr <N>
+  deskdispatch <alias>--pr-<N>--security --kit review --tier strong --repo <owner/repo> --pr <N>   # risk-classed only, SAME turn
   ```
 
-  It takes the durable claim, cuts the reviewer a worktree in the PR's OWN repo, stamps the
-  dispatcher's model attestation, and emits the prompt — `common-clauses` + the `review` kit,
-  verbatim and byte-identical across sessions. A claim held by someone else exits 5 with the holder
-  named: never steal. For RE-REVIEW, resume the PR's *original* reviewer
-  (`capability:message-agent`, so it keeps the prior findings) and ask for a **delta** review of
-  `<lastReviewed>..<head>`; for a first review, dispatch a fresh reviewer
+  `<alias>` is the repo's short label/basename. It takes the durable claim, cuts the reviewer a
+  worktree in the PR's OWN repo, stamps the dispatcher's model attestation, and emits the prompt —
+  `common-clauses` + the `review` kit, verbatim and byte-identical across sessions. A claim held by
+  someone else exits 5 with the holder named: never steal. The board's SECURITY-REVIEW-REQUIRED row
+  is a MISSED-DISPATCH alarm, not the trigger — it only appears AFTER a correctness approval, so
+  waiting for it serialises the two lanes; dispatch the security lane off the actions row's
+  `riskClassed` up front instead. For RE-REVIEW, resume EACH lane's *original* reviewer
+  (`capability:message-agent`, so it keeps that lane's prior findings) and ask for a **delta** review
+  of `<lastReviewed>..<head>`; a gone session gets a fresh agent (`capability:dispatch-worker`)
+  carrying that lane's FULL open-findings set, never a subset (re-approving against a SUBSET fix-list
+  is the 2026-08-15 laundering); for a first review, dispatch a fresh reviewer
   (`capability:dispatch-worker`) with the emitted prompt.
 
   **Tiering is risk-keyed, not a blanket rule (methodology/19):** a risk-clear item (all four risk answers `no`,
   gate `model`) may be reviewed at any tier; a risk-flagged item (`gate: human` OR any risk answer
   `yes`) gets a strong-tier (opus+) or human reviewer. Read the item's risk frontmatter — do not default all reviews to one tier.
 
-  **Risk-classed PRs get a SECOND, separate `/security-review` agent** — never folded into the
-  correctness reviewer (dispatch-neutral-wording rule). Classification: brief `gate: human` OR any
-  `risk:` yes; fallback — the diff touches the repo's risk-classed paths per its own resident
-  rules (e.g. `auth/`, `billing/`, `deploy/`).
+  **Risk-classed PRs get a SECOND, separate `/security-review` agent, dispatched CONCURRENTLY with
+  the correctness reviewer** — never folded into it (dispatch-neutral-wording rule), and never queued
+  behind its verdict. Classification is the flip gate's `riskClassed`, read at dispatch time: brief
+  `gate: human` OR any `risk:` yes; fallback — the diff touches the repo's risk-classed paths per its
+  own resident rules (e.g. `auth/`, `billing/`, `deploy/`).
   **The desk runs it ITSELF — a missing `/security-review` is the desk's own work item, never a
   standing blocker or a hand-off:** a `gate: human` auth/identity/ledger/funds PR
   whose only gap is the missing artifact must NOT sit flagged waiting for someone to produce it.
   Ledger/Identity auth changes → the `ledger-auth-reviewer` agent; ledger/funds changes → a
-  security-focused reviewer. Post AS THE APP at the reviewed head: no blocker → a
-  `## /security-review …` COMMENT (documents the artifact without flipping the board's review state
-  to APPROVED while other findings stand); a real blocker → `--request-changes`
-  (`Security-Review: fail`). On a dual-tracked PR neither track files its own out-of-scope
-  discoveries — `references/out-of-scope-filing.md` says why, and how the desk dedupes.
+  security-focused reviewer. **Post the security verdict AS THE APP at the reviewed head via
+  `deskpost security-review <owner/repo> <N> --verdict pass|fail --head <sha> --body-file F` ONLY** —
+  a pass submits as a COMMENT-event review, visible to the flip gate but invisible to GitHub's
+  approval reduction, so it documents the artifact without flipping the board's review state to
+  APPROVED while other findings stand; a fail carries `Security-Review: fail` and blocks either way.
+  **NEVER post a security pass as `deskpost review --verdict approve`** (that shape let a later
+  same-head security APPROVE erase an at-head correctness CHANGES_REQUESTED under the one shared
+  reviewer App — the 2026-08-15 laundering) **and NEVER as a plain comment** (invisible to the flip
+  gate). A "security fail → correctness APPROVE" pair at one head reads as SUSPECT-APPROVAL on the
+  advisory board — fail-closed, per-lane cross-read. On a dual-tracked PR neither track files its own
+  out-of-scope discoveries — `references/out-of-scope-filing.md` says why, and how the desk dedupes.
 - **MERGE-CURR** → no action: the head advanced but the PR's own files are unchanged since the last
   review (the board computes this; don't hand-diff). Keep-current merges are expected work, not
   noise — except one that had to **resolve a conflict**, which edits the PR's own files and shows
@@ -272,7 +307,8 @@ as the planner and acts on its rows.
   reviewer-approved *at the current head* (a verdict at an earlier head is STALE, a distinct answer
   from "no verdict"), checks-green (pending or unreadable is could-not-verify, never green),
   mergeable, security-verdict (on a risk-classed PR an App review at the CURRENT head carrying the
-  literal `Security-Review: pass`; an explicit fail at head blocks either way), head-stable (head
+  literal `Security-Review: pass`; an explicit fail at head blocks either way — the two lanes are
+  read separately and in whichever order they arrived), head-stable (head
   AND verdicts re-read immediately before the mutation, because a security verdict can be RETRACTED
   at the same head). On pass it performs the ready mutation and swaps the queue-legibility labels.
   **The desk RUNS deskflip and honours its refusals** — it does not re-derive the condition list
