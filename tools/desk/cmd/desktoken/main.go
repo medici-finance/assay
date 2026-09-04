@@ -51,9 +51,20 @@ const usage = `desktoken — mint or reuse a per-role forge credential.
 USAGE:
   desktoken <role> [--repo <slug>] [--ttl]           # GitHub: mint/reuse App token
   desktoken --forge gitlab <role>                     # GitLab: rotate PAT in place
+  desktoken coverage <role> [--repo <slug>] [--json]  # GitHub: list repos the role's App sees
   desktoken --version
 
 <role> ∈ {reviewer, verifier, worker, desk, issue-loop, intake-loop}
+
+coverage — read-only enumeration. Lists every installation of the role's App and
+the repositories each can see, one block per installation (stable order, by
+account login). It mints a token per installation into MEMORY only: it writes no
+token cache and no .perms sidecar, and prints no token or JWT. --repo <slug>
+prints only the installation that sees that repository and exits 0 if one does,
+5 if none (the slug is matched on owner/name, not the bare name). --json emits
+the same enumeration as one object. A repository-page read that fails is exit 6
+naming the installation — never a short list read as complete. GitHub-only:
+--forge gitlab is refused (a PAT has no installation to enumerate).
 
 --forge selects the backend: empty or github (default) mints a GitHub App
 installation token as below; gitlab rotates the role's PAT in place.
