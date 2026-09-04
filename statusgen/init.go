@@ -13,6 +13,13 @@ import (
 // directory, its frontmatter, the brief id and the register examples.
 const initStreamPlaceholder = "{{stream}}"
 
+// initCIFilePlaceholder is the token the next-steps text uses where the scaffolded
+// CI file's path belongs. runInitForge substitutes it with whichever half it
+// actually wrote (the GitHub workflow or `.gitlab-ci.yml`), so the closing advice
+// never tells a GitLab adopter to commit a file the scaffold did not create
+// (assay#349).
+const initCIFilePlaceholder = "{{cifile}}"
+
 // initFallbackStream is the identity used only when the target directory's name
 // sanitises to nothing (e.g. a root named "/" or "---"). It is deliberately the
 // historical literal: a name we cannot derive is better than one we invent.
@@ -60,6 +67,27 @@ func initStreamName(root string) string {
 	return name
 }
 
+// initCITemplate names the CI file `init` scaffolds for a given forge, and the
+// template body to write there. The scaffold writes exactly ONE CI half — the one
+// that matches the target's forge — because a GitHub workflow on a GitLab project
+// is inert (no pipeline runs it), which is exactly the silent-half-install
+// assay#349 reports.
+type initCITemplate struct {
+	path string
+	body string
+}
+
+// ciTemplateFor resolves the CI half for a forge. forgeUnknown (no remote, or a
+// self-hosted host naming neither forge) falls back to the historical GitHub
+// half: it is the established default and keeps every no-remote scaffold (a fresh
+// `t.TempDir()`, a repo whose origin is not yet set) byte-identical to before.
+func ciTemplateFor(forge forgeKind) initCITemplate {
+	if forge == forgeGitLab {
+		return initCITemplate{path: ".gitlab-ci.yml", body: initGitlabCI}
+	}
+	return initCITemplate{path: ".github/workflows/assay-statusgen.yml", body: initWorkflow}
+}
+
 // runInit scaffolds the streams structure a repo needs to adopt the methodology:
 // the registers, a streams README, one starter stream + brief, a CI workflow, and
 // the day-one agent-instruction files (CLAUDE.md + AGENTS.md) carrying the ten
@@ -68,11 +96,25 @@ func initStreamName(root string) string {
 // running it in a partially-set-up repo fills the gaps without clobbering work.
 // After scaffolding it prints next steps. `statusgen init --root DIR` targets DIR.
 //
+// The CI half is chosen from the target's `origin` forge (see runInitForge): a
+// GitHub remote (or none) gets the GitHub workflow, a GitLab remote gets a
+// `.gitlab-ci.yml` running the same two halves — because a GitHub workflow on a
+// GitLab project is inert and leaves the board with no single writer (assay#349).
+func runInit(root string) int {
+	return runInitForge(root, detectForge(root))
+}
+
+// runInitForge is runInit with the forge already resolved — from the `--forge`
+// flag when the operator gave one, else auto-detected. Kept separate so main()
+// can honour an explicit flag while the bare runInit (used across the tests and
+// as the default entry) still auto-detects.
+//
 // The starter stream is named after the target directory (see initStreamName), so
 // two freshly-init'd repos do not collide when a later run boards them together.
-func runInit(root string) int {
+func runInitForge(root string, forge forgeKind) int {
 	stream := initStreamName(root)
 	streamDir := "docs/streams/" + stream
+	ci := ciTemplateFor(forge)
 	files := []struct{ path, body string }{
 		{"docs/streams/README.md", initStreamsReadme},
 		{"docs/streams/FINDINGS.md", initFindings},
@@ -81,7 +123,7 @@ func runInit(root string) int {
 		{streamDir + "/README.md", initExampleStream},
 		{streamDir + "/brief-01-first-brief.md", initExampleBrief},
 		{".assay-versions", initAssayVersions},
-		{".github/workflows/assay-statusgen.yml", initWorkflow},
+		{ci.path, ci.body},
 		{"CLAUDE.md", initClaudeMd},
 		{"AGENTS.md", initAgentsMd},
 	}
@@ -117,7 +159,9 @@ func runInit(root string) int {
 		fmt.Println("\nNothing to create — the streams structure is already in place.")
 		return 0
 	}
-	fmt.Print(strings.ReplaceAll(initNextSteps, initStreamPlaceholder, stream))
+	next := strings.ReplaceAll(initNextSteps, initStreamPlaceholder, stream)
+	next = strings.ReplaceAll(next, initCIFilePlaceholder, ci.path)
+	fmt.Print(next)
 	return 0
 }
 
@@ -358,6 +402,103 @@ jobs:
           fi
 `
 
+// initGitlabCI is the GitLab equivalent of initWorkflow, scaffolded when the
+// target's `origin` is a GitLab remote (assay#349). It runs the SAME two halves —
+// --lint on merge requests, regen-and-commit on the default branch — so a GitLab
+// adopter's board has a single writer, exactly as the GitHub half gives a GitHub
+// adopter. Three GitLab-specific facts are load-bearing:
+//   - The pinned statusgen release assets live on the medici-finance/assay GitHub
+//     releases even when the project is on GitLab, so the install step fetches
+//     them over plain HTTPS and sha256-verifies, rather than shelling `gh`.
+//   - GitLab's default CI job token cannot push back to the repo. The regen job
+//     therefore uses a project/group access token the adopter sets as the masked
+//     CI/CD variable STATUSGEN_PUSH_TOKEN, and STOPS with a clear message rather
+//     than pushing when it is unset — the same refuse-don't-guess shape as the
+//     pin line.
+//   - A push by the regen job would itself trigger a pipeline; the [skip-status-regen]
+//     commit marker is matched by a `when: never` rule so the board write does not
+//     loop.
+const initGitlabCI = `# statusgen CI — the two-half single-writer shape on GitLab, mirroring the GitHub
+# workflow (medici-finance/assay docs/adopting-assay.md, section: add-statusgen-ci).
+# The merge-request half runs --lint only; the default-branch half regenerates
+# STATUS.md and commits it. STATUS.md is generated by this pipeline on the default
+# branch and has a SINGLE writer: never commit STATUS.md on a branch.
+#
+# statusgen comes from ONE place — the sha256-pinned release binary named in
+# .assay-versions (channel E). Its release assets live on the medici-finance/assay
+# GitHub releases even when THIS project is on GitLab, so the install step fetches
+# them over HTTPS and hash-verifies below (no ` + "`gh`" + ` needed). Fill .assay-versions
+# with a real tag + per-platform digest before the first run; the install step
+# refuses rather than guesses on a placeholder/absent pin line.
+#
+# The regen job pushes STATUS.md back to the default branch. GitLab's default CI
+# job token cannot push, so create a project (or group) access token with the
+# write_repository scope and set it as a MASKED CI/CD variable named
+# STATUSGEN_PUSH_TOKEN. Until it is set the regen job stops with a clear message
+# rather than pushing.
+stages: [statusgen]
+
+.statusgen-install: &statusgen-install
+  - |
+    set -euo pipefail
+    plat="$(uname -s | tr A-Z a-z)-$(uname -m | sed 's/^x86_64$/amd64/; s/^aarch64$/arm64/')"
+    line="$(grep "^statusgen-$plat " .assay-versions || true)"
+    if [ -z "$line" ]; then
+      echo "no .assay-versions pin for platform $plat — refusing rather than guessing"
+      exit 1
+    fi
+    tag="$(printf '%s' "$line" | awk '{print $2}')"
+    sha="$(printf '%s' "$line" | awk '{print $3}')"
+    curl -fsSL "https://github.com/medici-finance/assay/releases/download/$tag/statusgen-$plat" -o /tmp/statusgen
+    echo "${sha}  /tmp/statusgen" | sha256sum -c -
+    install -m 0755 /tmp/statusgen /usr/local/bin/statusgen
+
+statusgen-lint:
+  stage: statusgen
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  script:
+    - *statusgen-install
+    # A freshly-init'd tree ships an example stream, so docs/streams/ is never
+    # empty on day one and --lint is green WITHOUT --allow-empty-root. If you
+    # delete the example before authoring your own stream, add --allow-empty-root
+    # to the line below for that transitional window ONLY — do not leave it on, or
+    # the empty-root PROBLEM can never fire for a genuine regression.
+    - statusgen --lint
+
+statusgen-regen:
+  # STATUS.md is generated on the default branch only, never on a branch (single
+  # writer). The first rule stops the job re-firing on its OWN regen commit: the
+  # push carries the [skip-status-regen] marker, so this pipeline does not loop.
+  stage: statusgen
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_MESSAGE =~ /\[skip-status-regen\]/'
+      when: never
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"'
+  script:
+    - *statusgen-install
+    - |
+      if [ -z "${STATUSGEN_PUSH_TOKEN:-}" ]; then
+        echo "STATUSGEN_PUSH_TOKEN is not set — cannot push the regenerated board."
+        echo "Create a project access token with the write_repository scope and set it as a masked CI/CD variable named STATUSGEN_PUSH_TOKEN. Refusing rather than guessing."
+        exit 1
+      fi
+    - statusgen --root .
+    - |
+      set -euo pipefail
+      git config user.name  'statusgen'
+      git config user.email 'statusgen@users.noreply.gitlab.com'
+      git add STATUS.md
+      # BOOTSTRAP-SAFE GUARD: guard on ` + "`git status --porcelain -- STATUS.md`" + `, NOT
+      # ` + "`git diff --quiet -- STATUS.md`" + `. git diff sees only TRACKED files, so on a
+      # repo with no STATUS.md yet the diff guard mis-fires ("nothing to commit")
+      # and the first board is NEVER created; porcelain reports the new/staged file.
+      if [ -n "$(git status --porcelain -- STATUS.md)" ]; then
+        git commit -m 'chore(status): regenerate [skip-status-regen]'
+        git push "https://oauth2:${STATUSGEN_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"
+      fi
+`
+
 // initClaudeMd is the day-one agent-instruction file. It carries exactly two
 // things a session cannot infer and every adopter needs on day one: the ten
 // methodology INVARIANTS (universal — true of every repo running the method) and
@@ -465,7 +606,7 @@ Scaffolded the streams structure. Next:
   2. Lint the set:         statusgen --root . --lint
   3. Generate the board:   statusgen --root .          writes STATUS.md at the repo root
   4. Replace docs/streams/{{stream}}/ with your own stream, then delete it.
-  5. Commit .github/workflows/assay-statusgen.yml — the two-half single-writer CI
+  5. Commit {{cifile}} — the two-half single-writer CI
      is already bootstrap-safe (porcelain STATUS.md guard, [skip-status-regen] marker).
   6. Fill in the "This repo's bindings" section of the scaffolded CLAUDE.md. The
      ten invariants above it are universal and stay as they are; the bindings are
