@@ -11,7 +11,7 @@ package main
 // When a reconcile READ is available (`--repo owner/name`, online), it also folds
 // the PR witnesses through DeriveLifecycle and prints a NOTICE for every board
 // cell that DISAGREES with the derived state — the interim drift comparator the
-// assay-toolkit#2080 Q3 ruling asks for (assertedVsDerivedNotices). Offline
+// governing ruling asks for (assertedVsDerivedNotices). Offline
 // (`--offline`, or no `--repo`) every PR-derived cell is `unknown`, so no drift
 // NOTICE fires — a could-not-check is never rendered as a drift.
 

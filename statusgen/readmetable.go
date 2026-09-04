@@ -15,8 +15,8 @@ package main
 // `statusgen --lint` PROBLEM (rule 47). Everything OUTSIDE the two markers is
 // left byte-for-byte untouched.
 //
-// INTERIM behaviour (assay-toolkit#2080 Q3 ruling, 2026-09-04 — "make drift
-// visible as a NOTICE first, don't hard-flip behavior"): only the AUTHORING
+// INTERIM behaviour (governing ruling, 2026-09-04 — "make drift visible as a
+// NOTICE first, don't hard-flip behavior"): only the AUTHORING
 // columns (#, Brief link+title, Wave, Effort) are written from the brief
 // frontmatter and enforced offline; those are the deterministic, tree-only
 // columns. The LIFECYCLE columns (Status, Verified, Reviewed) are PRESERVED from
@@ -284,8 +284,8 @@ func readmeDriftRows(current, expected string) []string {
 	return rows
 }
 
-// assertedVsDerivedNotices is the INTERIM drift comparator the assay-toolkit#2080
-// Q3 ruling asks for: it compares each brief's ASSERTED README Status cell against
+// assertedVsDerivedNotices is the INTERIM drift comparator the governing ruling
+// asks for: it compares each brief's ASSERTED README Status cell against
 // the cell DeriveLifecycle computes from the witnesses, and returns one NOTICE per
 // disagreement. A derived `unknown` (the offline / could-not-look state) never
 // produces a NOTICE — a could-not-check is not a drift (the three-state

@@ -86,7 +86,7 @@ facts:
 
 ## Evidence
 
-Implemented under the assay-toolkit#2080 Q3 ruling (2026-09-04): the generated-table
+Implemented under the governing ruling (2026-09-04): the generated-table
 infrastructure lands, but the lifecycle columns are surfaced as an INTERIM drift
 NOTICE comparator rather than hard-flipped to witness-written cells ("make drift
 visible as a NOTICE first, don't hard-flip behavior"). New files:
