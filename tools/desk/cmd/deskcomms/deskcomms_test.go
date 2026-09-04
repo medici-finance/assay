@@ -301,10 +301,11 @@ func TestRefusesReservedVerb(t *testing.T) {
 }
 
 func TestRefusesCrossCellFromNonCoordinator(t *testing.T) {
-	// worker-desk reaching into cell-b: cross-cell reach is the-desk <-> the-desk,
-	// and its verb set ships empty — so this is refused twice over.
+	// worker-desk reaching into cell-b with a RULED cross-cell verb: the verb clears
+	// the cross-cell-verb gate, but cross-cell reach is the-desk <-> the-desk only, so
+	// the non-coordinator pair is refused at the ACL.
 	d, gw, _, _ := testDeps(t, "x")
-	_, err := cmdSend(d, []string{"--to", "worker-desk", "--to-cell", "cell-b", "--verb", "handoff"})
+	_, err := cmdSend(d, []string{"--to", "worker-desk", "--to-cell", "cell-b", "--verb", "status"})
 	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 		t.Fatalf("want exit 5, got %d (%v)", deskkit.ExitCodeOf(err), err)
 	}
@@ -313,6 +314,47 @@ func TestRefusesCrossCellFromNonCoordinator(t *testing.T) {
 	}
 	if len(gw.submitted) != 0 {
 		t.Fatalf("a cross-cell message must never reach the gateway; got %d submissions", len(gw.submitted))
+	}
+}
+
+// TestCrossCellVerbAccepted (#1896, row 6): the four ruled cross-cell verbs pass
+// preflight on a the-desk -> the-desk cross-cell triple and reach the gateway.
+func TestCrossCellVerbAccepted(t *testing.T) {
+	for _, verb := range []string{"status", "metrics", "help-offered", "focus-on"} {
+		d, gw, _, _ := testDeps(t, "cross-cell "+verb)
+		d.self = "the-desk" // cross-cell reach is the-desk <-> the-desk
+		_, err := cmdSend(d, []string{"--to", "the-desk", "--to-cell", "cell-b", "--verb", verb})
+		if err != nil {
+			t.Fatalf("verb %q: want a clean cross-cell send, got %v", verb, err)
+		}
+		if deskkit.ExitCodeOf(err) != deskkit.ExitOK {
+			t.Fatalf("verb %q: want exit 0, got %d", verb, deskkit.ExitCodeOf(err))
+		}
+		if len(gw.submitted) != 1 {
+			t.Fatalf("verb %q: want exactly one submission, got %d", verb, len(gw.submitted))
+		}
+		env, _ := comms.ParseEnvelope(gw.submitted[0])
+		if env.To.Cell != "cell-b" || env.Verb != verb {
+			t.Fatalf("verb %q: destination/verb not preserved: %s/%s", verb, env.To.Cell, env.Verb)
+		}
+	}
+}
+
+// TestRefusesCrossCellVerbOutsideSet (#1896, row 7): a cross-cell verb outside the
+// ruled four is refused fail-fast with a DISTINCT cross-cell-verb refusal, before
+// parse — distinct from the reserved-verb and out-of-lane refusals.
+func TestRefusesCrossCellVerbOutsideSet(t *testing.T) {
+	d, gw, _, _ := testDeps(t, "x")
+	d.self = "the-desk"
+	_, err := cmdSend(d, []string{"--to", "the-desk", "--to-cell", "cell-b", "--verb", "dispatch"})
+	if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+		t.Fatalf("want exit 5, got %d (%v)", deskkit.ExitCodeOf(err), err)
+	}
+	if !strings.Contains(err.Error(), "cross-cell-verb") {
+		t.Fatalf("want a distinct cross-cell-verb refusal, got %v", err)
+	}
+	if len(gw.submitted) != 0 {
+		t.Fatalf("a refused cross-cell verb must never reach the gateway; got %d", len(gw.submitted))
 	}
 }
 

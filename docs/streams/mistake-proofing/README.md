@@ -48,7 +48,7 @@ guess" is fighting a measured tendency and cannot be the primary device. Source-
 | 01 | [Cross-read a brief's declared paths against the risk classifier (B3)](./brief-01-risk-files-cross-read.md) | 0 | S | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #304 @ 4296f0a6e3e00b89b2c6dca152b94e63490c28af) |
 | 02 | [Dereference named identifiers, not just backticked paths (B4)](./brief-02-identifier-dereference.md) | 0 | S | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #156 @ 112b206fee74b470016be325dc7c2dfeff670931) |
 | 03 | [Typed Verify-row obligation classes, derived from the diff shape (B2, D7)](./brief-03-verify-row-obligation-classes.md) | 1 | M | verified | 2026-09-04 opus-4.8[1m]-verifier | — |
-| 04 | [Derive the authoring guidance's enforcement-status claims from the lint (B9)](./brief-04-derived-enforcement-status.md) | 1 | M | implemented | — | — |
+| 04 | [Derive the authoring guidance's enforcement-status claims from the lint (B9)](./brief-04-derived-enforcement-status.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #402 @ 1c9996082676e42f83fb3d85693629770236b9df) |
 | 05 | [`newbrief` — the scaffolder as the authoring front door (B1)](./brief-05-newbrief-scaffolder.md) | 2 | M | todo | — | — |
 | 06 | [D1 promoted to a lint obligation — a new check must carry its mutation row](./brief-06-mutation-row-obligation.md) | 2 | S | todo | — | — |
 

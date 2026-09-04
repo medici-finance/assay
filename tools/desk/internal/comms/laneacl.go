@@ -60,9 +60,14 @@ var compiledACL = ACL{
 	WithinVerbs: []string{"ask", "handoff", "notify"},
 	// Cross-cell: the-desk <-> the-desk only (ruling 5).
 	CrossPairs: []RolePair{{From: coordinatorRole, To: coordinatorRole}},
-	// Cross-cell verbs ship EMPTY — an OPEN DECISION until a human rules on it. Fail
-	// closed: with no cross-cell verb, Allow refuses every cross-cell message.
-	CrossVerbs: []string{},
+	// Cross-cell verbs — the four ruled by the cross-cell verb ruling (ratified 2026-09-02),
+	// all read-only or advisory on the the-desk <-> the-desk lane: focus-on (a REQUEST
+	// to prioritise named work; advisory only, the receiving desk may decline),
+	// help-offered (things the receiving cell might need, answered with no obligation),
+	// metrics (the cell's measured performance figures, read-derived), status (prose on
+	// how the cell is going). None mutates state on the receiving cell. Kept in sync
+	// with laneacl.yaml cross_cell.verbs by TestACLCompiledMatchesSourceDiff.
+	CrossVerbs: []string{"focus-on", "help-offered", "metrics", "status"},
 }
 
 // Compiled returns a COPY of the compiled lane ACL. An accessor that handed out
@@ -129,12 +134,19 @@ type ACL struct {
 	CrossVerbs []string
 }
 
-// KnownVerb reports whether verb is a member of the compiled within-cell
-// vocabulary. ParseEnvelope uses it to refuse an unknown verb at parse. Cross-cell
-// verbs are deliberately NOT folded in here: the cross-cell set ships empty, and a
-// verb only ever legal cross-cell would still have to clear Allow's reach check.
+// KnownVerb reports whether verb is a member of the compiled vocabulary — a
+// within-cell verb OR a cross-cell verb (the 2026-09-02 cross-cell verb ruling). ParseEnvelope uses it
+// to refuse an unknown verb at parse; the four cross-cell verbs are folded in so a
+// cross-cell status/metrics/help-offered/focus-on message parses. A verb legal only
+// cross-cell still has to clear Allow's reach + cross-verb check, and a within-cell
+// send carrying a cross-only verb is refused there as out-of-lane.
 func KnownVerb(verb string) bool {
 	for _, v := range compiledACL.WithinVerbs {
+		if v == verb {
+			return true
+		}
+	}
+	for _, v := range compiledACL.CrossVerbs {
 		if v == verb {
 			return true
 		}
