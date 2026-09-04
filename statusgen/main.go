@@ -199,6 +199,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	lifecycleProblems, lifecycleNotices := lifecycleLintChecks(root, streams)
 	problems = append(problems, lifecycleProblems...)
 	notices = append(notices, lifecycleNotices...)
+
+	// derived-board/04: a hand edit to a board: generated stream README's
+	// marker-wrapped Briefs table (its authoring columns) is a PROBLEM, the same
+	// single-writer defect as hand-editing STATUS.md (rule 47). Offline, tree-only,
+	// scoped to board: generated streams — an unwrapped README is untouched.
+	readmeTableProblems, readmeTableNotices := checkReadmeTables(checkStreams)
+	problems = append(problems, readmeTableProblems...)
+	notices = append(notices, readmeTableNotices...)
 	// #1250 ordering-gate lint (dependency-graph-design.md §6): flags gate-shaped
 	// README/brief prose ("no X before Y", "blocked on", "gated on") whose real
 	// ordering prerequisite is encoded in no `depends:`/`unblocks:` edge, so an
@@ -1062,6 +1070,15 @@ func main() {
 		os.Exit(runReconcile(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen regen --readmes` — positional subcommand (derived-board/04) that
+	// regenerates the marker-wrapped Briefs table in every board: generated stream
+	// README from the brief frontmatter, and — with an online --repo — prints the
+	// board-vs-witness drift NOTICEs. STATUS.md stays the default (flags-only)
+	// regen's job; this verb only touches stream READMEs.
+	if len(os.Args) > 1 && os.Args[1] == "regen" {
+		os.Exit(runRegen(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen conform` — positional subcommand (like `verifyrun` above) that
 	// validates brief frontmatter against the embedded, machine-readable brief-v1
 	// contract (schemas/brief-v1.json) and, with --emit-schema, prints that
@@ -1082,7 +1099,18 @@ func main() {
 		fs := flag.NewFlagSet("init", flag.ExitOnError)
 		var initRoots rootFlags
 		fs.Var(&initRoots, "root", "repository root to scaffold")
+		dryRun := fs.Bool("dry-run", false, "print what would be scaffolded (paths + bodies) without writing anything")
 		fs.Parse(os.Args[2:])
+		// The target may be given as --root DIR or as a single trailing positional
+		// (`statusgen init [--dry-run] DIR`); the positional is the natural
+		// first-run UX. Exactly one target either way.
+		if pos := fs.Args(); len(pos) > 0 {
+			if len(initRoots) > 0 || len(pos) > 1 {
+				fmt.Fprintf(os.Stderr, "statusgen: init takes exactly one target — a single --root or a single positional DIR, not both/several\n")
+				os.Exit(2)
+			}
+			initRoots = rootFlags{pos[0]}
+		}
 		// Scaffolding is inherently one-repo-at-a-time; taking the first of
 		// several silently would scaffold the wrong tree.
 		resolved, err := resolveRoots(initRoots)
@@ -1094,7 +1122,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "statusgen: init accepts exactly one --root; got %d — scaffold one repo at a time\n", len(resolved))
 			os.Exit(2)
 		}
-		os.Exit(runInit(resolved[0]))
+		os.Exit(runInit(resolved[0], *dryRun))
 	}
 
 	// UNKNOWN POSITIONAL SUBCOMMAND — fail closed (#1075).
@@ -1117,7 +1145,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, verifyrun, mergecheck, shardcheck, conform, backfill, reconcile, enforcement-status, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, verifyrun, mergecheck, shardcheck, conform, backfill, reconcile, regen, enforcement-status, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}

@@ -24,6 +24,7 @@ type frontmatter struct {
 	Theme         string  `yaml:"theme"`          // optional render-style selector for cadenced artifacts; unmapped values render as a visible marker.
 	Owner         string  `yaml:"owner"`          // optional stream owner; "" when absent — renders "—".
 	Repo          string  `yaml:"repo"`           // optional owning repo, <owner>/<name>; "" when absent.
+	Board         string  `yaml:"board"`          // optional; "generated" opts the Briefs table into the marker-wrapped generated region (derived-board/04).
 }
 
 // splitFrontmatter is the SINGLE canonical frontmatter splitter for the whole
@@ -152,6 +153,7 @@ func parseStreamREADME(path string) (*Stream, error) {
 		Theme:         strings.TrimSpace(fm.Theme),
 		Owner:         fm.Owner,
 		Repo:          strings.TrimSpace(fm.Repo),
+		Board:         strings.TrimSpace(fm.Board),
 		Briefs:        briefs,
 	}, nil
 }
