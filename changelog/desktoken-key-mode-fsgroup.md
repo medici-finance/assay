@@ -1,0 +1,2 @@
+### Fixed
+- `desktoken` now accepts group-readable private keys (0440/0640) so a Secret-mounted key in a non-root pod — root-owned, read through `fsGroup`, therefore necessarily 0440 — can mint instead of failing closed with exit 6 on every tick. The check is now a bit rule, not the literal 0600: a key that is readable by others or writable by group/others is still refused, and the refusal names the rule and the observed mode. The token cache and GitLab PAT custody file the tool writes itself keep their exact-0600 checks. (#388)
