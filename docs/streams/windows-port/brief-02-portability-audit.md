@@ -145,6 +145,24 @@ content — the underlying fact the row exists to prove (the hook is `#!/bin/bas
 `hooks.json` via a `bash \"…"` command string) was independently true throughout and is what
 the audit doc states. No product file (`hooks.json` included) was edited; the correction touches
 only this brief's Verify/Evidence rows, keeping the deliverable a documentary one.
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-04 opus-4.8[1m]-verifier (verify-desk dispatch), merged main 4e500df
+
+Runner != implementer. Offline on darwin (KUBECONFIG=/dev/null). gate: model, risk {all no}, irreversible: no. PR #323 (three documentation files, no code/config).
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | test -f docs/streams/windows-port/portability-audit.md | 0 | present (git-tracked) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 2 | grep -cF works needs-port documented-workaround out-of-scope audit.md | 0 | count 17 (>=6) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 3 | doc names hook + hook is bash + hooks.json carries bash | 0 | matches | 2026-09-04 | opus-4.8[1m]-verifier |
+| 4 | doc cites rosterconfig + rosterconfig.go carries .config/assay | 0 | matches | 2026-09-04 | opus-4.8[1m]-verifier |
+| 5 | doc names pre-push + pre-push carries deskpushguard | 0 | matches | 2026-09-04 | opus-4.8[1m]-verifier |
+| 6 | grep -cE 'windows-port/0[1-5]' follow-up audit.md | 0 | count 21 (>=6) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 7 | positive control: winsock/registry-hive NOT present | 1 | correctly absent | 2026-09-04 | opus-4.8[1m]-verifier |
+| 8 | statusgen --root . --consumers windows-port/02 | 0 | nothing to corroborate at merged head (vacuous by design); exit matches Expect | 2026-09-04 | opus-4.8[1m]-verifier |
+
+**VERIFY: PASS** — all 8 rows observed on merged main match Expect (incl. the positive control and the dereferencing rows 3-5 proving the audit's hook/config-home/push-guard facts hold against the live tree). No row required Windows or live infra.
+
+**RISK-VALUE: N/A** — enumeration over PR #323 (three Markdown files, no code) found no literal constant/threshold/binding; the only fixed values are the four triage vocabulary tokens (label strings); publishing an audit doc is reversible, no constant to derive.
 
 ## Review
 Gate: **model** (from frontmatter). All four risk answers are `no` — this is a documentary
