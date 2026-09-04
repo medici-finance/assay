@@ -51,7 +51,7 @@ decision, not code in this stream.
 | 11 | [DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source](brief-11-dora-join.md) | 3 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #304 @ 4296f0a6e3e00b89b2c6dca152b94e63490c28af) |
 | 12 | [M4 gate-yield accounting + ritual-effectiveness joins](brief-12-m4-gate-yield-rituals.md) | 4 | M | done | 2026-09-02 opus-4.8[1m]-verifier | 2026-09-03 assay-reviewer-app[bot] (approved PR #359 @ 621e01fb96091b58583a473bfa9b03c718a62b51) |
 | 13 | [M4 session forensics — pluggable telemetry-source interface + reference adapters](brief-13-m4-session-forensics.md) | 3 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #303 @ 80dcc91617295988e5553d8de0c79b43433c134a) |
-| 14 | [auto-filed refactor work + quality error-budgets + RETRO output feed](brief-14-autofile-budgets-retro.md) | 5 | M | implemented | — | — |
+| 14 | [auto-filed refactor work + quality error-budgets + RETRO output feed](brief-14-autofile-budgets-retro.md) | 5 | M | verified | 2026-09-04 opus-4.8[1m]-verifier | — |
 | 15 | [learned riskscore graduation — JIT defect-prediction model](brief-15-learned-riskscore.md) | 3 | M | todo | — | — |
 | 16 | [code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report](brief-16-slop-sweep.md) | 1 | M | implemented | — | — |
 
