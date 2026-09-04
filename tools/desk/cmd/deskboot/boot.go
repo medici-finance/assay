@@ -378,7 +378,10 @@ func summariseBoard(board string) (rows int, section string) {
 			if inSection {
 				break // the next heading ends the section
 			}
-			if strings.Contains(strings.ToLower(trimmed), "next-up") {
+			// statusgen emits the heading as `## Next up` (a SPACE); older boards and some
+			// fixtures spell it `## Next-up` (a hyphen). Accept BOTH so the boot summary
+			// stays locked to whatever spelling statusgen renders (assay#333).
+			if lower := strings.ToLower(trimmed); strings.Contains(lower, "next up") || strings.Contains(lower, "next-up") {
 				inSection = true
 				section = strings.TrimLeft(trimmed, "# ")
 			}

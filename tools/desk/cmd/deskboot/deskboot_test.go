@@ -86,7 +86,7 @@ func happyStub(t *testing.T, tokenPath string) []reply {
 		{match: "--git-common-dir", stdout: "/repo/.git"},
 		{match: "remote get-url origin", stdout: "git@github.com:medici-finance/assay.git"},
 		{match: "desktoken desk", stdout: tokenPath},
-		{match: "show FETCH_HEAD:STATUS.md", stdout: "# Board\n\n## Next-up\n\n| item | why |\n|---|---|\n| a | x |\n| b | y |\n"},
+		{match: "show FETCH_HEAD:STATUS.md", stdout: "# Board\n\n## Next up\n\n| item | why |\n|---|---|\n| a | x |\n| b | y |\n"},
 	}
 }
 
@@ -399,14 +399,21 @@ func TestKillSwitchIsHonoured(t *testing.T) {
 }
 
 func TestBoardSummaryCountsNextUpRows(t *testing.T) {
-	board := "# Status\n\n## Next-up\n\n| item | why |\n|---|---|\n| a | x |\n| b | y |\n\n## Other\n\n| c | z |\n"
-	rows, section := summariseBoard(board)
-	if rows != 2 {
-		t.Errorf("rows = %d, want 2 (the header and separator are not rows, and the next heading ends "+
-			"the section)", rows)
-	}
-	if !strings.Contains(strings.ToLower(section), "next-up") {
-		t.Errorf("section = %q, want the Next-up heading", section)
+	// The heading spelling is the whole point (assay#333): statusgen emits `## Next up`
+	// (a SPACE), so that spelling MUST be counted, not just the hyphenated form. Both are
+	// asserted so the two tools stay locked together whichever way the heading is written.
+	for _, heading := range []string{"## Next up", "## Next-up"} {
+		t.Run(heading, func(t *testing.T) {
+			board := "# Status\n\n" + heading + "\n\n| item | why |\n|---|---|\n| a | x |\n| b | y |\n\n## Other\n\n| c | z |\n"
+			rows, section := summariseBoard(board)
+			if rows != 2 {
+				t.Errorf("rows = %d, want 2 (the header and separator are not rows, and the next heading ends "+
+					"the section)", rows)
+			}
+			if !strings.Contains(strings.ToLower(section), "next") {
+				t.Errorf("section = %q, want the Next-up heading", section)
+			}
+		})
 	}
 }
 
