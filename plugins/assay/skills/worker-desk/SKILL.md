@@ -17,9 +17,12 @@ table.
 re-derive them per dispatch): every session works in its own worktree, never a shared checkout; merge,
 never rebase; the generated board is single-writer = main's CI; every post is made as the role's own
 App identity; act only on trusted-authored items; file at discovery rather than narrating; one item =
-one branch = one PR, and a merged or closed PR is DONE; a notable change records one human-legible
-highlight as a per-PR fragment file under `changelog/` (`changelog/<slug>.md`) rather than editing a
-shared section (a genuinely non-notable PR carries the `changelog:skip` label instead).
+one branch = one PR, and a merged or closed PR is DONE; and — in a repo that enforces it (one whose
+`changelog/` directory carries `changelog/README.md`) — a notable change records one human-legible
+highlight as a per-PR fragment file (`changelog/<slug>.md`) rather than editing a shared section, while
+a genuinely non-notable PR carries the `changelog:skip` label, applied by the desk or a human and never
+self-applied by the worker. This paragraph binds the DESK's own writes; the worker is bound to the same
+fragment rule through the changelog clause `deskdispatch` emits verbatim in the worker kit.
 
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
@@ -359,9 +362,11 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   desk's job at the `progress` step is opening the PR promptly, not writing a cell.
 - **The worker prompt is the kit, verbatim.** `deskdispatch` emits `references/common-clauses.md`
   (home-worktree isolation floor, no-evasion, offline envelope, three-state instruments,
-  escalate-durably) ahead of `references/worker-prompt.md` (security-gate refusal, per-invocation
-  `mktemp` body files, stop-at-`implemented` + the bare-token board-row shape, lineage self-check,
-  merge-never-rebase, verify-before-apply, scope + desk write verbs, release-the-claim) — both shipped
+  escalate-durably, one-workpad-per-PR) ahead of `references/worker-prompt.md` (security-gate refusal,
+  per-invocation `mktemp` body files, stop-at-`implemented` + the bare-token board-row shape, lineage
+  self-check, merge-never-rebase, verify-before-apply, scope + desk write verbs, release-the-claim,
+  fail-first evidence, public-body self-containment, changelog fragment where the repo enforces one) —
+  both shipped
   inside the binary from `tools/desk/cmd/deskdispatch/references/`. `--kits`
   lists what the installed binary carries; `--dry-run` prints the prompt it WOULD emit. **Never
   paraphrase, summarise or "improve" a kit clause at dispatch time**: each is a rule that has already
