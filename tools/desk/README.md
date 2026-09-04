@@ -1448,6 +1448,15 @@ deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale workt
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
 ```
 
+- **`add`** creates `tracker-<name>` on a new tracking branch. When a local branch of that
+  name already exists in the shared refs store — a leftover from an abandoned dispatch — it is
+  reclaimed only when proven empty (checked out in no worktree AND 0 commits ahead of its
+  upstream-or-`--base`); a branch a live worktree holds, or one carrying unpushed commits, is
+  refused (naming the worktree, or the count). A worktree whose DIRECTORY is gone is listed
+  `prunable` (a `rm -rf` without `git worktree remove`) and is **not** an owner for the holder
+  question — the reclaim ignores it; the stale entry itself is `deskwt prune`'s to drop, not
+  `add`'s (`add` acquires no second mutation).
+
 - **`remove`** refuses a dirty TRACKED tree, unpushed commits, a no-upstream branch, an
   unregistered path, or anything resolving outside the prefixes; untracked build artifacts
   (`node_modules`, `target/dist`, …) do NOT block. It shares its tracked-clean check and its

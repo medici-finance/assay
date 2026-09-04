@@ -173,6 +173,123 @@ func TestBranchHoldersPropagatesAGitError(t *testing.T) {
 	}
 }
 
+// --- prunable (directory-gone) holders --------------------------------------------
+//
+// The commonest way a dispatch dies is `rm -rf` of the worktree DIRECTORY without
+// `git worktree remove`: git still lists the entry, now marked `prunable`, still "on" its
+// branch. That bookkeeping entry is NOT a live owner, so it must not make the holder scan
+// refuse. These tests fence the read-fix in branchHolders: a prunable entry is skipped as a
+// holder (so the 0-ahead proof and the live-holder / ahead refusals do the deciding), and the
+// prunable attribute never leaks forward into the next, live, entry.
+//
+// NOTE ON SCOPE (see PR body — needs-decision on desk-tools/11): the read-fix lets the
+// reclaim PROCEED, but it cannot make the subsequent `git worktree add -b <br>` SUCCEED while
+// the prunable entry survives — git's own `-b` collision check consults every worktree
+// registration (prunable included), so it still refuses ("… is already used by worktree at
+// …" / "missing but already registered worktree") even after the branch ref is deleted. Only
+// `git worktree prune` drops the entry, and this tool forbids `add` from running it. So these
+// tests pin the reachable, correct behaviour of the read-fix; the brief's row-2 "second add
+// exits 0" is escalated, not asserted here.
+
+// plantPrunableHolder plants a local branch `br` checked out in a worktree whose directory is
+// then removed WITHOUT `git worktree remove` — the state a dead dispatch leaves. `git worktree
+// list --porcelain` still lists the entry, now carrying a `prunable` attribute line, still on
+// `br`. Placed OUTSIDE the sanctioned tracker- prefix; returns the (now-gone) path.
+func plantPrunableHolder(t *testing.T, work, br string) string {
+	t.Helper()
+	dead := filepath.Join(t.TempDir(), "dead-"+br)
+	mustGit(t, work, "worktree", "add", "-b", br, dead, "refs/remotes/origin/main")
+	if err := os.RemoveAll(dead); err != nil {
+		t.Fatalf("rm -rf prunable holder dir: %v", err)
+	}
+	// Positive control: the entry really is prunable and still names the branch.
+	list := mustGit(t, work, "worktree", "list", "--porcelain")
+	if !strings.Contains(list, "prunable") || !strings.Contains(list, "branch refs/heads/"+br) {
+		t.Fatalf("fixture void: no prunable entry on %s after rm -rf:\n%s", br, list)
+	}
+	return dead
+}
+
+// branchHolders must not count a prunable (directory-gone) entry as a holder, and the prunable
+// attribute of one entry must not leak into the next. The prunable entry is listed BEFORE the
+// live one, so a sticky attribute would wrongly skip the live holder — the exact reading that
+// would delete a branch out from under a live worktree.
+func TestBranchHoldersSkipsPrunableEntry(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	plantPrunableHolder(t, work, "ghost") // listed first
+	live := branchHeld(t, work, "live")   // a live worktree standing on `live`, listed after
+
+	holders, err := branchHolders(work)
+	if err != nil {
+		t.Fatalf("branchHolders: %v", err)
+	}
+	if got, ok := holders["refs/heads/ghost"]; ok {
+		t.Errorf("a prunable (directory-gone) entry was counted as a holder of ghost: %q", got)
+	}
+	if got := holders["refs/heads/live"]; got != resolvePath(live) {
+		t.Errorf("live holder of `live` = %q, want %s — the prunable attribute leaked across entries", got, resolvePath(live))
+	}
+}
+
+// Verify row 3. A LIVE holder (directory present) is still a real owner: `add` refuses (5)
+// naming the path. A prunable entry is listed BEFORE the live one, so this also proves the
+// prunable attribute does not leak forward and skip the live holder.
+func TestAddStillRefusesLiveHolder(t *testing.T) {
+	work := newRepo(t)
+	calls := withEnv(t, work)
+	plantPrunableHolder(t, work, "ghost") // listed before the live holder below
+	held := branchHeld(t, work, "collide")
+	resetCalls(calls)
+
+	rc, errout := runCapErr(t, []string{"add", "collide"})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("add over a LIVE holder rc = %d, want 5; stderr:\n%s", rc, errout)
+	}
+	if !strings.Contains(errout, "CHECKED OUT in the worktree") || !strings.Contains(errout, held) {
+		t.Fatalf("refusal did not name the live holding worktree %s:\n%s", held, errout)
+	}
+	if out := mustGit(t, work, "rev-parse", "--verify", "--quiet", "refs/heads/collide"); out == "" {
+		t.Error("a refusal deleted the live-held branch")
+	}
+	if hasWorktreeVerb(*calls, "add") {
+		t.Errorf("git worktree add ran despite a live holder: %v", gitCalls(*calls))
+	}
+}
+
+// Verify row 4 — the NEGATIVE control. A prunable entry holds a branch that is 1 commit AHEAD
+// of its upstream: the prunable reading removes the HOLDER objection, but the 0-ahead proof
+// must still refuse (5) naming the count, and the branch must survive. A "prunable ⇒ reclaim"
+// implementation that dropped the proof along with the holder would delete unfinished work.
+func TestAddStillRefusesAheadBranchEvenWhenPrunable(t *testing.T) {
+	work := newRepo(t)
+	calls := withEnv(t, work)
+	dead := filepath.Join(t.TempDir(), "dead-collide")
+	mustGit(t, work, "worktree", "add", "-b", "collide", dead, "refs/remotes/origin/main")
+	writeFile(t, filepath.Join(dead, "wip.txt"), "unpushed work\n")
+	mustGit(t, dead, "add", "wip.txt")
+	mustGit(t, dead, "commit", "-m", "unpushed work")
+	if err := os.RemoveAll(dead); err != nil { // directory gone → the entry is now prunable
+		t.Fatalf("rm -rf: %v", err)
+	}
+	resetCalls(calls)
+
+	rc, errout := runCapErr(t, []string{"add", "collide"})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("add over an AHEAD prunable-held branch rc = %d, want 5; stderr:\n%s", rc, errout)
+	}
+	if !strings.Contains(errout, "1 commit(s) not in") || !strings.Contains(errout, "unfinished work") {
+		t.Fatalf("refusal did not name the ahead count — the prunable read must remove only the "+
+			"holder objection, never the 0-ahead proof:\n%s", errout)
+	}
+	if out := mustGit(t, work, "rev-parse", "--verify", "--quiet", "refs/heads/collide"); out == "" {
+		t.Error("a refusal deleted the ahead branch")
+	}
+	if hasWorktreeVerb(*calls, "add") {
+		t.Errorf("git worktree add ran despite unfinished work: %v", gitCalls(*calls))
+	}
+}
+
 // A branch whose upstream config points at a ref that no longer resolves is still
 // MEASURABLE — against --base. Without the fallback such a branch would be unmeasurable,
 // and an unmeasurable branch is a permanently stuck dispatch.
