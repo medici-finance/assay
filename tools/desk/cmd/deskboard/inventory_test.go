@@ -373,7 +373,7 @@ var reviewFixtures = map[string]reviewState{
 // It is a second implementation on purpose. If a classifier arm is added or reordered,
 // this must be edited to match — that edit IS the review of the change.
 func expectedAction(rf rollupFixture, mv mergeVerdict, rs reviewState,
-	draft, ciRequired, humanGate, ownFilesChanged, riskClassed bool, zeroCI string) string {
+	draft, ciRequired, humanGate, ownFilesChanged, riskClassed, authorTrustedHuman bool, zeroCI string) string {
 
 	// The tallies and the CI verdict, derived ONLY from the declared fixture. #1652:
 	// a genuine zero rollup's green depends on WHAT the probe found, not just on
@@ -396,6 +396,12 @@ func expectedAction(rf rollupFixture, mv mergeVerdict, rs reviewState,
 
 	switch {
 	case !rs.ever:
+		// #177: a trusted human maintainer's OWN un-reviewed PR is HUMAN-OWNED, not
+		// desk-review neglect. Every other author (App, shared machine account,
+		// untrusted) stays NEEDS-REVIEW.
+		if authorTrustedHuman {
+			return actHumanOwned
+		}
 		return actNeedsReview
 	case !rs.atHead:
 		if !ownFilesChanged {
@@ -677,111 +683,120 @@ func TestClassify_ActionInventory(t *testing.T) {
 				for _, draft := range []bool{true, false} {
 					for _, ciRequired := range []bool{true, false} {
 						for _, humanGate := range []bool{true, false} {
-							title := "t"
-							if humanGate {
-								title = "[HUMAN GATE] t"
-							}
-							payload := `{"number":1,"title":` + mustJSON(title) + `,"body":"","isDraft":` +
-								strconv.FormatBool(draft) + `,"author":{"login":"shared-agent"},"createdAt":"` +
-								time.Now().UTC().Format(time.RFC3339) + `","labels":[],"headRefOid":"abc123",` +
-								`"headRefName":"b","mergeStateStatus":` + mustJSON(ms) + `,` + rollup +
-								`"__end":0}`
-							var p prBase
-							if err := json.Unmarshal([]byte(strings.Replace(payload, `,"__end":0`, ``, 1)), &p); err != nil {
-								t.Fatalf("fixture %s/%s: %v\n%s", rollupName, ms, err, payload)
-							}
+							// #177: the AUTHOR is a classifier dimension too. `shared-agent`
+							// is a shared machine account (∈ ASSAY_TRUSTED_LOGINS but not an
+							// accountable human) — its un-reviewed PR stays NEEDS-REVIEW.
+							// `ada` is the mapped/bless accountable human — its un-reviewed PR
+							// is HUMAN-OWNED. Both must be produced, or Direction 2 below
+							// would report actHumanOwned as an arm no payload can reach.
+							for _, author := range []string{"shared-agent", "ada"} {
+								authorTrustedHuman := deskkit.TrustedHumanAuthor(author)
+								title := "t"
+								if humanGate {
+									title = "[HUMAN GATE] t"
+								}
+								payload := `{"number":1,"title":` + mustJSON(title) + `,"body":"","isDraft":` +
+									strconv.FormatBool(draft) + `,"author":{"login":` + mustJSON(author) + `},"createdAt":"` +
+									time.Now().UTC().Format(time.RFC3339) + `","labels":[],"headRefOid":"abc123",` +
+									`"headRefName":"b","mergeStateStatus":` + mustJSON(ms) + `,` + rollup +
+									`"__end":0}`
+								var p prBase
+								if err := json.Unmarshal([]byte(strings.Replace(payload, `,"__end":0`, ``, 1)), &p); err != nil {
+									t.Fatalf("fixture %s/%s: %v\n%s", rollupName, ms, err, payload)
+								}
 
-							// The two inputs the caller fills after the extra fetches, under the
-							// same conditions cmdActions applies them.
-							for _, ownFilesChanged := range []bool{true, false} {
-								for _, riskClassed := range []bool{true, false} {
-									// #1652: zeroCI is a THIRD caller-filled input, like ownFilesChanged
-									// and riskClassed — classifyPR only probes it for a genuine zero
-									// rollup (pass==pending==fail==unknown==0), so it is only varied
-									// there; every other shape gets the one real value a caller ever
-									// passes for it: "" (never probed, because there was something to
-									// read). Without this dimension no enumerated payload can reach
-									// actCINeverRan, and a guard nothing can reach is a guard nothing
-									// tests.
-									zeroCIOptions := []string{""}
-									if rf.pass == 0 && rf.pending == 0 && rf.fail == 0 && rf.unknown == 0 {
-										zeroCIOptions = []string{"", zeroCINoChecks, zeroCINeverRan, zeroCIUnverified}
-									}
-									for _, zeroCI := range zeroCIOptions {
-										in := buildClassifyInput(p, rs, ciRequired, zeroCI)
-										in.ownFilesChanged = ownFilesChanged
-										in.riskClassed = riskClassed
-										action, note := classify(in)
+								// The two inputs the caller fills after the extra fetches, under the
+								// same conditions cmdActions applies them.
+								for _, ownFilesChanged := range []bool{true, false} {
+									for _, riskClassed := range []bool{true, false} {
+										// #1652: zeroCI is a THIRD caller-filled input, like ownFilesChanged
+										// and riskClassed — classifyPR only probes it for a genuine zero
+										// rollup (pass==pending==fail==unknown==0), so it is only varied
+										// there; every other shape gets the one real value a caller ever
+										// passes for it: "" (never probed, because there was something to
+										// read). Without this dimension no enumerated payload can reach
+										// actCINeverRan, and a guard nothing can reach is a guard nothing
+										// tests.
+										zeroCIOptions := []string{""}
+										if rf.pass == 0 && rf.pending == 0 && rf.fail == 0 && rf.unknown == 0 {
+											zeroCIOptions = []string{"", zeroCINoChecks, zeroCINeverRan, zeroCIUnverified}
+										}
+										for _, zeroCI := range zeroCIOptions {
+											in := buildClassifyInput(p, rs, ciRequired, zeroCI)
+											in.ownFilesChanged = ownFilesChanged
+											in.riskClassed = riskClassed
+											action, note := classify(in)
 
-										desc := "rollup=" + rollupName + " mergeState=" + strconv.Quote(ms) +
-											" reviews=" + revName + " draft=" + strconv.FormatBool(draft) +
-											" ciRequired=" + strconv.FormatBool(ciRequired) +
-											" humanGate=" + strconv.FormatBool(humanGate) +
-											" zeroCI=" + strconv.Quote(zeroCI)
-										if _, ok := produced[action]; !ok {
-											produced[action] = desc
-										}
+											desc := "rollup=" + rollupName + " mergeState=" + strconv.Quote(ms) +
+												" reviews=" + revName + " draft=" + strconv.FormatBool(draft) +
+												" ciRequired=" + strconv.FormatBool(ciRequired) +
+												" humanGate=" + strconv.FormatBool(humanGate) +
+												" zeroCI=" + strconv.Quote(zeroCI)
+											if _, ok := produced[action]; !ok {
+												produced[action] = desc
+											}
 
-										// #400 Q2: the REAL tallies must match what the fixture is
-										// DECLARED to mean. This is the assertion that was missing —
-										// it consults no derived boolean, so counting SKIPPED/NEUTRAL
-										// as a pass fails HERE rather than sliding through as green.
-										if in.pass != rf.pass || in.pending != rf.pending ||
-											in.fail != rf.fail || in.ciUnknown != rf.unknown {
-											t.Fatalf("%s: ciState read pass=%d pending=%d fail=%d unknown=%d, but the "+
-												"fixture declares pass=%d pending=%d fail=%d unknown=%d — a check that "+
-												"reported no verdict is not a passing check",
-												desc, in.pass, in.pending, in.fail, in.ciUnknown,
-												rf.pass, rf.pending, rf.fail, rf.unknown)
-										}
-										// #400 Q1 / #54: same, on the merge axis — checked against the
-										// declared verdict, not against `in.mergeStateUnknown` /
-										// `in.mergeBehind`.
-										if in.mergeConflict != (wantVerdict == mergeVerdictBlocked) ||
-											in.mergeStateUnknown != (wantVerdict == mergeVerdictUnknown) ||
-											in.mergeBehind != (wantVerdict == mergeVerdictBehind) {
-											t.Fatalf("%s: buildClassifyInput read mergeConflict=%v unknown=%v behind=%v, but %q is "+
-												"declared verdict %d", desc, in.mergeConflict, in.mergeStateUnknown, in.mergeBehind, ms, wantVerdict)
-										}
+											// #400 Q2: the REAL tallies must match what the fixture is
+											// DECLARED to mean. This is the assertion that was missing —
+											// it consults no derived boolean, so counting SKIPPED/NEUTRAL
+											// as a pass fails HERE rather than sliding through as green.
+											if in.pass != rf.pass || in.pending != rf.pending ||
+												in.fail != rf.fail || in.ciUnknown != rf.unknown {
+												t.Fatalf("%s: ciState read pass=%d pending=%d fail=%d unknown=%d, but the "+
+													"fixture declares pass=%d pending=%d fail=%d unknown=%d — a check that "+
+													"reported no verdict is not a passing check",
+													desc, in.pass, in.pending, in.fail, in.ciUnknown,
+													rf.pass, rf.pending, rf.fail, rf.unknown)
+											}
+											// #400 Q1 / #54: same, on the merge axis — checked against the
+											// declared verdict, not against `in.mergeStateUnknown` /
+											// `in.mergeBehind`.
+											if in.mergeConflict != (wantVerdict == mergeVerdictBlocked) ||
+												in.mergeStateUnknown != (wantVerdict == mergeVerdictUnknown) ||
+												in.mergeBehind != (wantVerdict == mergeVerdictBehind) {
+												t.Fatalf("%s: buildClassifyInput read mergeConflict=%v unknown=%v behind=%v, but %q is "+
+													"declared verdict %d", desc, in.mergeConflict, in.mergeStateUnknown, in.mergeBehind, ms, wantVerdict)
+											}
 
-										// #400 Q4: the per-fixture expected ACTION. Direction 2 below only
-										// requires each action to be produced by SOME row; this binds THIS
-										// row's outcome, which is what Q1 and Q2 escaped through.
-										if want := expectedAction(rf, wantVerdict, rs, draft, ciRequired,
-											humanGate, ownFilesChanged, riskClassed, zeroCI); action != want {
-											t.Fatalf("%s ownFilesChanged=%v riskClassed=%v: classify = %s, want %s\nnote: %s",
-												desc, ownFilesChanged, riskClassed, action, want, note)
-										}
+											// #400 Q4: the per-fixture expected ACTION. Direction 2 below only
+											// requires each action to be produced by SOME row; this binds THIS
+											// row's outcome, which is what Q1 and Q2 escaped through.
+											if want := expectedAction(rf, wantVerdict, rs, draft, ciRequired,
+												humanGate, ownFilesChanged, riskClassed, authorTrustedHuman, zeroCI); action != want {
+												t.Fatalf("%s ownFilesChanged=%v riskClassed=%v author=%s: classify = %s, want %s\nnote: %s",
+													desc, ownFilesChanged, riskClassed, author, action, want, note)
+											}
 
-										// The fail-loud guard arm (#400 R2) must be unreachable. If a
-										// payload lands on it, the classifier has a hole and the board
-										// would print a row it cannot explain.
-										if strings.Contains(note, guardArmMarker) {
-											t.Errorf("classifier hole: %s reached the fail-loud guard arm\nnote: %s", desc, note)
-										}
+											// The fail-loud guard arm (#400 R2) must be unreachable. If a
+											// payload lands on it, the classifier has a hole and the board
+											// would print a row it cannot explain.
+											if strings.Contains(note, guardArmMarker) {
+												t.Errorf("classifier hole: %s reached the fail-loud guard arm\nnote: %s", desc, note)
+											}
 
-										// The absence half, stated positively: no note may CLAIM green
-										// unless green was actually established. Read off the DECLARED
-										// tallies, not off `in.ciGreen` — a mutant that flips that
-										// boolean must not be able to make its own guard vacuous.
-										// #400 N9 strengthens this: the note may say "CI green" only when a
-										// check actually PASSED. `ciGreen` is also vacuously true on a repo
-										// the policy marks as running no PR CI — a policy statement, not a
-										// result — and asserting a verdict there is the same defect with a
-										// friendlier cause.
-										if rf.pass == 0 && strings.Contains(note, "CI green,") {
-											t.Errorf("%s: note asserts CI green over a rollup in which NOT ONE check "+
-												"passed — this is #400 R2/N9\nnote: %s", desc, note)
-										}
-										// ...and none may recommend the merge on an unread merge state.
-										if wantVerdict == mergeVerdictUnknown && action == actMergeNow {
-											t.Errorf("%s: MERGE-NOW on an unread mergeStateStatus — this is #400 R3 verbatim", desc)
-										}
-										// ...nor on a base that has moved past the reviewed diff (#54):
-										// the review never verified against the tree a merge would use.
-										if wantVerdict == mergeVerdictBehind && action == actMergeNow {
-											t.Errorf("%s: MERGE-NOW on a BEHIND mergeStateStatus — this is #54 verbatim "+
-												"(a review-time verdict trusted as still current at merge-time)", desc)
+											// The absence half, stated positively: no note may CLAIM green
+											// unless green was actually established. Read off the DECLARED
+											// tallies, not off `in.ciGreen` — a mutant that flips that
+											// boolean must not be able to make its own guard vacuous.
+											// #400 N9 strengthens this: the note may say "CI green" only when a
+											// check actually PASSED. `ciGreen` is also vacuously true on a repo
+											// the policy marks as running no PR CI — a policy statement, not a
+											// result — and asserting a verdict there is the same defect with a
+											// friendlier cause.
+											if rf.pass == 0 && strings.Contains(note, "CI green,") {
+												t.Errorf("%s: note asserts CI green over a rollup in which NOT ONE check "+
+													"passed — this is #400 R2/N9\nnote: %s", desc, note)
+											}
+											// ...and none may recommend the merge on an unread merge state.
+											if wantVerdict == mergeVerdictUnknown && action == actMergeNow {
+												t.Errorf("%s: MERGE-NOW on an unread mergeStateStatus — this is #400 R3 verbatim", desc)
+											}
+											// ...nor on a base that has moved past the reviewed diff (#54):
+											// the review never verified against the tree a merge would use.
+											if wantVerdict == mergeVerdictBehind && action == actMergeNow {
+												t.Errorf("%s: MERGE-NOW on a BEHIND mergeStateStatus — this is #54 verbatim "+
+													"(a review-time verdict trusted as still current at merge-time)", desc)
+											}
 										}
 									}
 								}

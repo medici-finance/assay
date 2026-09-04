@@ -596,6 +596,68 @@ func TestUnreviewed_TemporalSubset_359(t *testing.T) {
 	})
 }
 
+// TestHumanOwned_TrustedHumanExcludedFromNeglect_177 pins the #177 fix: a trusted
+// human maintainer's OWN open PR with no reviewer-App verdict at head is HUMAN-OWNED,
+// not NEEDS-REVIEW, and is kept out of the UNREVIEWED neglect count — while an
+// App-authored or shared-machine-account PR in the identical state stays NEEDS-REVIEW
+// and DOES trip the alarm (the non-goal: the exemption is the accountable human's
+// alone). The maintainer here is `ada` (the fixture's bless authority + mapped human);
+// `shared-agent` (∈ ASSAY_TRUSTED_LOGINS but a shared machine account) and the worker
+// App are the controls. example-org/tracker is `:private` in the fixture, so all three
+// authors clear the trust gate and get an action row.
+func TestHumanOwned_TrustedHumanExcludedFromNeglect_177(t *testing.T) {
+	// A 12-hour-old non-draft PR, CI green, NO reviews — the exact neglect-alarm case.
+	pr := func(author string) string {
+		return `{"number":177,"title":"human-gated closure ruling","body":"","isDraft":false,` +
+			`"author":{"login":"` + author + `"},"createdAt":"` + time.Now().Add(-12*time.Hour).UTC().Format(time.RFC3339) + `",` +
+			`"labels":[],"headRefOid":"aaa111","headRefName":"b","mergeStateStatus":"CLEAN",` +
+			`"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}`
+	}
+
+	t.Run("trusted human maintainer → HUMAN-OWNED, out of the neglect count", func(t *testing.T) {
+		installFakeGH(t)
+		onePR(t, pr("ada"))
+		rep := actionsJSON(t)
+		table := actionsTable(t)
+		row := findRow(t, rep, 177)
+		if row.Action != actHumanOwned {
+			t.Fatalf("action = %s, want %s (a maintainer's own un-reviewed PR is not desk neglect)", row.Action, actHumanOwned)
+		}
+		if rep.Header.UnreviewedCount != 0 || len(rep.Header.UnreviewedPRs) != 0 {
+			t.Errorf("HUMAN-OWNED must NOT trip the neglect alarm: count=%d prs=%v",
+				rep.Header.UnreviewedCount, rep.Header.UnreviewedPRs)
+		}
+		if strings.Contains(table, "UNREVIEWED:") {
+			t.Errorf("no UNREVIEWED line expected for a human-owned PR; got:\n%s", table)
+		}
+		// The non-goal: CI/mergeability display is preserved — only the neglect metric changes.
+		if row.CIPass != 1 {
+			t.Errorf("the HUMAN-OWNED row must still carry its CI state; got CIPass=%d", row.CIPass)
+		}
+	})
+
+	// The controls: an App and a shared machine account in the IDENTICAL state stay
+	// NEEDS-REVIEW and DO trip the alarm — the exemption is the accountable human's alone.
+	for name, author := range map[string]string{
+		"worker App author stays NEEDS-REVIEW":      "app/assay-worker-app",
+		"shared machine account stays NEEDS-REVIEW": "shared-agent",
+	} {
+		t.Run(name, func(t *testing.T) {
+			installFakeGH(t)
+			onePR(t, pr(author))
+			rep := actionsJSON(t)
+			row := findRow(t, rep, 177)
+			if row.Action != actNeedsReview {
+				t.Fatalf("author %s: action = %s, want %s — only the accountable human is exempt (#177 non-goal)",
+					author, row.Action, actNeedsReview)
+			}
+			if rep.Header.UnreviewedCount != 1 {
+				t.Errorf("author %s: this PR IS desk-review neglect and must be counted; count=%d", author, rep.Header.UnreviewedCount)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // #321 — the verb named for the dispatch queue returns the verification backlog
 // ---------------------------------------------------------------------------
