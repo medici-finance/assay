@@ -128,6 +128,26 @@ facts:
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-04 opus-4.8[1m]-verifier (verify-desk dispatch), merged main 4e500df
+
+Runner != implementer. Offline (KUBECONFIG=/dev/null). gate: model, risk {all no}, irreversible: no. Deliverable commit 843a437.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | test -f docs/records-and-retention.md | 0 | file present (8328 bytes) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 2 | git grep -nF registerIntegrityProblems -- statusgen/registers.go | 0 | registers.go:23 func registerIntegrityProblems | 2026-09-04 | opus-4.8[1m]-verifier |
+| 3 | git grep -n STATUS.md -- .github/workflows/assay-statusgen.yml | 0 | line 9 single-writer of STATUS.md | 2026-09-04 | opus-4.8[1m]-verifier |
+| 4 | git grep -n 'contiguity is enforced by statusgen' -- docs/streams/FINDINGS.md | 1 | no output — dep iso-9001/02 landed (inversion sense) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 5 | git grep -cE Retention retained -- docs/records-and-retention.md | 0 | count 5 | 2026-09-04 | opus-4.8[1m]-verifier |
+| 6 | git grep -nF tombstone -- docs/records-and-retention.md | 0 | 3 matches (16,28,39) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 7 | git grep -cE visible impossible -- docs/records-and-retention.md | 0 | count 4 | 2026-09-04 | opus-4.8[1m]-verifier |
+| 8 | git grep -n records-and-retention -- docs/registers.md | 0 | registers.md:18 links the page | 2026-09-04 | opus-4.8[1m]-verifier |
+| 9 | cd tools/freshness && go test ./... -count=1 | 0 | ok tools/freshness 1.139s | 2026-09-04 | opus-4.8[1m]-verifier |
+| 10 | cd statusgen && go run . --root .. --lint | 0 | LINT: PASS (NOTICEs only, no PROBLEM) | 2026-09-04 | opus-4.8[1m]-verifier |
+
+**VERIFY: PASS** — all 10 rows ran; none unrun. Pure documentation brief; no new check / no mutation row.
+
+**RISK-VALUE: NAMED, NOT DERIVED (reversible-knob class)** — max-age-days = 45 @ freshness.yaml:12 — periodic re-review cadence (poll-interval class), reversible one-line edit; ranks last, no derivation owed. No irreversible literal in the diff.
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). **This table gates the presence of
