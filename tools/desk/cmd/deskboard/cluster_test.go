@@ -92,6 +92,12 @@ func findRow(t *testing.T, rep actionsReport, num int) actionRow {
 func TestStale_ThreeStates_236(t *testing.T) {
 	oldS, oldB := deskkit.SourceSHA, deskkit.BuiltAt
 	t.Cleanup(func() { deskkit.SourceSHA, deskkit.BuiltAt = oldS, oldB })
+	// Force the #185 primary source (the `.assay-versions` desk-tools pin) OFF so
+	// these subtests deterministically reach the in-tree fallback and its
+	// could-not-check, regardless of any pin file above the test's working dir.
+	oldPin := deskToolsPin
+	t.Cleanup(func() { deskToolsPin = oldPin })
+	deskToolsPin = func() (string, string, bool) { return "", "", false }
 
 	t.Run("could-not-check fails CLOSED", func(t *testing.T) {
 		// A pinned binary whose sourceSHA does not resolve in git: the check cannot
@@ -706,8 +712,13 @@ func itoa(n int) string {
 // pinned install actually runs, and the ones #236 was about — can be asserted at all.
 func withStaleSeams(t *testing.T, pinned bool, trees map[string]string, fail bool) {
 	t.Helper()
-	oldPinned, oldTree := isPinned, gitTree
-	t.Cleanup(func() { isPinned, gitTree = oldPinned, oldTree })
+	oldPinned, oldTree, oldPin := isPinned, gitTree, deskToolsPin
+	t.Cleanup(func() { isPinned, gitTree, deskToolsPin = oldPinned, oldTree, oldPin })
+	// Default the #185 primary source OFF so these tests deterministically exercise
+	// the in-tree ref FALLBACK (the branch they were written for), independent of
+	// whether any `.assay-versions` happens to sit above the test's working dir.
+	// A pin: not found here.
+	deskToolsPin = func() (string, string, bool) { return "", "", false }
 	isPinned = func() bool { return pinned }
 	gitTree = func(ref string) (string, error) {
 		if fail {
@@ -777,6 +788,123 @@ func TestStale_MeasuringStates_236(t *testing.T) {
 		state, stale, _ := staleState()
 		if state != staleStateUnknown || !stale {
 			t.Fatalf("state=%q stale=%t, want unknown/true", state, stale)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// #185 — the drift check keys on the consumer's .assay-versions pin, so a
+// consumer checkout (no in-tree tools/desk) is no longer permanently
+// STALE-UNKNOWN. The PRIMARY source is the running binary's releaseTag vs the
+// desk-tools tag the consumer pins; the in-tree git ref is a fallback.
+// ---------------------------------------------------------------------------
+
+// withPinSeams drives staleState()'s #185 PRIMARY branch: it stubs the
+// `.assay-versions` desk-tools pin lookup and the running binary's releaseTag, and
+// forces the in-tree git fallback to FAIL — exactly the consumer-checkout shape
+// (`origin/main:tools/desk` does not resolve) the issue reported. A run that reaches
+// the fallback here is a run whose primary branch did not answer.
+func withPinSeams(t *testing.T, pinFound bool, pinTag, runningTag string) {
+	t.Helper()
+	oldPinned, oldTree, oldPin := isPinned, gitTree, deskToolsPin
+	oldRelease := deskkit.ReleaseTag
+	t.Cleanup(func() {
+		isPinned, gitTree, deskToolsPin = oldPinned, oldTree, oldPin
+		deskkit.ReleaseTag = oldRelease
+	})
+	isPinned = func() bool { return true }
+	gitTree = func(string) (string, error) {
+		return "", fmt.Errorf("simulated consumer checkout: origin/main:tools/desk does not resolve")
+	}
+	deskToolsPin = func() (string, string, bool) {
+		if !pinFound {
+			return "", "", false
+		}
+		return "/consumer/repo", pinTag, true
+	}
+	deskkit.ReleaseTag = runningTag
+}
+
+func TestStale_ConsumerPin_185(t *testing.T) {
+	oldS, oldB := deskkit.SourceSHA, deskkit.BuiltAt
+	t.Cleanup(func() { deskkit.SourceSHA, deskkit.BuiltAt = oldS, oldB })
+	deskkit.SourceSHA, deskkit.BuiltAt = "aaf6d8a", "2026-08-25T22:57:16Z"
+
+	t.Run("matching pin is in-sync, NOT STALE-UNKNOWN (the #185 regression)", func(t *testing.T) {
+		// The issue verbatim: a pinned binary run from a consumer checkout where
+		// `git rev-parse origin/main:tools/desk` does not resolve. Before #185 this
+		// went STALE-UNKNOWN forever; now the running releaseTag matches the pinned
+		// desk-tools tag, so it is in-sync and quiet.
+		withPinSeams(t, true, "v0.18.0", "v0.18.0")
+		state, stale, detail := staleState()
+		if state != staleStateInSync {
+			t.Fatalf("state = %q, want %q (detail %q)", state, staleStateInSync, detail)
+		}
+		if stale {
+			t.Errorf("a matching consumer pin must report stale=false; detail %q", detail)
+		}
+		var banner bytes.Buffer
+		printBanners(&banner, Header{StaleState: state, Stale: stale, StaleDetail: detail})
+		if strings.Contains(banner.String(), "STALE") {
+			t.Errorf("a matched pin must not raise STALE-UNKNOWN (the #185 bug); got %q", banner.String())
+		}
+	})
+
+	t.Run("differing pin is a MEASURED drift, not could-not-check", func(t *testing.T) {
+		withPinSeams(t, true, "v0.18.0", "v0.17.0")
+		state, stale, detail := staleState()
+		if state != staleStateDrift {
+			t.Fatalf("state = %q, want %q (detail %q)", state, staleStateDrift, detail)
+		}
+		if !stale {
+			t.Error("a measured pin mismatch must report stale=true")
+		}
+		if !strings.Contains(detail, "v0.17.0") || !strings.Contains(detail, "v0.18.0") {
+			t.Errorf("drift detail must name both the running and pinned tags; got %q", detail)
+		}
+		var banner bytes.Buffer
+		printBanners(&banner, Header{StaleState: state, Stale: stale, StaleDetail: detail})
+		if strings.Contains(banner.String(), "STALE-UNKNOWN") {
+			t.Errorf("a MEASURED pin drift must not render as could-not-check; got %q", banner.String())
+		}
+	})
+
+	t.Run("component-prefixed and plain tags normalize equal", func(t *testing.T) {
+		// The running stamp and the consumer pin may each be written plain (`v0.18.0`)
+		// or component-prefixed (`desk-tools/v0.18.0`); they name the same release and
+		// must not read as drift.
+		withPinSeams(t, true, "desk-tools/v0.18.0", "v0.18.0")
+		state, _, detail := staleState()
+		if state != staleStateInSync {
+			t.Fatalf("state = %q, want %q (detail %q) — tag normalization failed", state, staleStateInSync, detail)
+		}
+	})
+
+	t.Run("no pin AND no in-tree ref is could-not-check, naming both sources", func(t *testing.T) {
+		// A consumer with no desk-tools pin and no in-tree tools/desk: the honest
+		// third state. Fails CLOSED (stale=true), and the reason names which sources
+		// were missing rather than rounding up to fresh.
+		withPinSeams(t, false, "", "v0.18.0")
+		state, stale, detail := staleState()
+		if state != staleStateUnknown || !stale {
+			t.Fatalf("state=%q stale=%t, want unknown/true (detail %q)", state, stale, detail)
+		}
+		if !strings.Contains(detail, "COULD-NOT-CHECK") {
+			t.Errorf("detail must announce it could not check; got %q", detail)
+		}
+		if !strings.Contains(detail, ".assay-versions") || !strings.Contains(detail, "tools/desk") {
+			t.Errorf("could-not-check reason must name BOTH missing sources (the pin and the in-tree ref); got %q", detail)
+		}
+	})
+
+	t.Run("pin present but binary carries no releaseTag stamp falls back", func(t *testing.T) {
+		// An older stamped binary is pinned (sourceSHA/builtAt) but has no releaseTag,
+		// so the tag comparison cannot run. It must fall through to the in-tree ref —
+		// which the consumer lacks — and land on could-not-check, never a false match.
+		withPinSeams(t, true, "v0.18.0", "")
+		state, stale, detail := staleState()
+		if state != staleStateUnknown || !stale {
+			t.Fatalf("state=%q stale=%t, want unknown/true (detail %q)", state, stale, detail)
 		}
 	})
 }
