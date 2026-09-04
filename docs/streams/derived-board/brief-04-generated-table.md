@@ -85,7 +85,42 @@ facts:
 | 8 | `cd statusgen && go run . init --dry-run /tmp/adopter-x \| grep -c 'reconcile'` | ≥ 1 (scaffold parity) |
 
 ## Evidence
-<!-- appended at implementation time -->
+
+Implemented under the assay-toolkit#2080 Q3 ruling (2026-09-04): the generated-table
+infrastructure lands, but the lifecycle columns are surfaced as an INTERIM drift
+NOTICE comparator rather than hard-flipped to witness-written cells ("make drift
+visible as a NOTICE first, don't hard-flip behavior"). New files:
+`statusgen/readmetable.go` (region render/rewrite + hand-edit lint + the
+`assertedVsDerivedNotices` drift comparator), `statusgen/regen.go` (the
+`regen --readmes` verb), `statusgen/readmetable_test.go`. `parse.go`/`model.go`
+gain the `board:` frontmatter key; `main.go` dispatches `regen` and wires
+`checkReadmeTables` into `--lint`; `init.go` gains `--dry-run` + a positional
+target and scaffolds the README-regen step. This stream's README is the first
+`board: generated` example.
+
+| # | Result | Runner |
+|---|--------|--------|
+| 1 | PASS — `go test . -run ReadmeTable` → `ok` (render, rewrite+idempotency, markers-missing, hand-edit PROBLEM, drift NOTICE) | 2026-09-04 opus-4.8[1m] worker (offline) |
+| 2 | PASS — `regen --readmes --offline` then `git diff -U0` over the README: non-table changed lines = `0` (only marker-wrapped table rows are ever written) | 2026-09-04 opus-4.8[1m] worker (offline) |
+| 3 | PASS — two consecutive `regen --readmes --offline` runs leave `git status --porcelain docs/streams` = `0` (idempotent) | 2026-09-04 opus-4.8[1m] worker (offline) |
+| 4 | PASS — editing row 01's title cell inside the markers then `--lint --root ..` → `rc=1` with `PROBLEM: derived-board README: hand edit to a generated table — row 01 …` | 2026-09-04 opus-4.8[1m] worker (offline) |
+| 5 | BLOCKED-ON-HUMAN — the workflow `schedule:` trigger needs a change to `.github/workflows/assay-statusgen.yml`; the implementing App cannot push workflow files, so this repo's own workflow is unchanged (schedule count = 0). Intended change described in the PR body. | 2026-09-04 opus-4.8[1m] worker |
+| 6 | BLOCKED-ON-HUMAN — the `pull-requests: read` / `issues: read` permissions likewise need the workflow file change (count = 0 on the unchanged workflow). Scaffold parity IS landed in `init.go`'s `initWorkflow` (Go source, pushable). | 2026-09-04 opus-4.8[1m] worker |
+| 7 | PASS — `grep -c 'statusgen:briefs:begin' docs/streams/derived-board/README.md` → `1` | 2026-09-04 opus-4.8[1m] worker (offline) |
+| 8 | PASS — `init --dry-run <dir> \| grep -c 'reconcile'` → `1` (≥ 1; scaffold parity) | 2026-09-04 opus-4.8[1m] worker (offline) |
+
+Fail-first (clause 9): the rule-47 hand-edit guard is shown reddening on mutated
+code — row 4 above edits an authoring cell inside the markers and `--lint` goes
+`rc=1`; the unedited tree lints `rc=0` (full-repo `--lint --root ..`), and
+`TestReadmeTableHandEditProblem` pins both the positive (authoring-cell edit →
+PROBLEM) and the negative (a lifecycle-cell edit is preserved, not flagged
+offline). The drift comparator's three-state honesty is pinned by
+`TestReadmeTableDriftNotice` (an `unknown` derived cell never produces a NOTICE).
+
+**Held at `implemented`.** Verify rows 5 and 6 are BLOCKED-ON-HUMAN (workflow-file
+change the implementing App cannot push); the online drift-NOTICE lane and the
+schedule/PR path activate when a human lands the workflow change described in the
+PR body. A could-not-check is not a pass.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
