@@ -219,6 +219,18 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 				continue
 			}
 			if ownPath, clash := ownIDs[id]; clash {
+				// Skip the IDENTICAL-PATH case: the same register entry file touched on
+				// BOTH this branch and the sibling is a MERGE concern, not the
+				// added-vs-added id collision this guard exists to catch. Two branches
+				// modifying one path resolve to a SINGLE file on merge, so no duplicate id
+				// ever reaches main and statusgen's authoritative duplicateIDs gate never
+				// reds on it — flagging it here over-fires and blocks a legitimate push.
+				// The genuine collision is always two DIFFERENT files independently
+				// claiming the same id (distinct paths, which a git tree guarantees are
+				// distinct files); that case falls through and is still reported below.
+				if ownPath == path {
+					continue
+				}
 				collisions = append(collisions, registerIDCollision{
 					branch:       ownBranch,
 					id:           id,
