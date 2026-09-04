@@ -11,20 +11,20 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-03 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-03 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 0/8 | 2026-09-03 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-03 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-03 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-03 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-03 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-03 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 1/6 | 2026-09-03 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 2/6 | 2026-09-03 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 13/16 | 2026-09-03 |  |
-| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-09-03 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 5/13 | 2026-09-03 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 0/6 | 2026-09-03 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-04 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-04 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 0/8 | 2026-09-04 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-04 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-04 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-04 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-04 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-04 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 1/6 | 2026-09-04 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 2/6 | 2026-09-04 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 13/16 | 2026-09-04 |  |
+| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-09-04 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 5/13 | 2026-09-04 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 0/6 | 2026-09-04 |  |
 
 ## Next up
 
@@ -43,7 +43,7 @@ _Held by per-stream caps: 5 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (40 desk-actionable of 43 total — 43 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (40 desk-actionable of 43 total — 41 at implemented, 2 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -83,7 +83,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| mistake-proofing | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| mistake-proofing | 04 [exec:strong] | verified | 1000 | 0 | — | 2026-09-04 opus-4.8[1m]-verifier | — |
 | quality | 14 | implemented | 1000 | 0 | — | — | — |
 | quality | 16 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | spec-routing | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -92,7 +92,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 08 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
-| statusgen | 12 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| statusgen | 12 [exec:strong] | verified | 1000 | 0 | — | 2026-09-04 opus-4.8[1m]-verifier | — |
 | statusgen | 13 | implemented | 1000 | 0 | — | — | — |
 
 ### Awaiting human gate (1)
@@ -232,7 +232,7 @@ _None._
 ### mistake-proofing (4 open)
 
 - 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — implemented (wave 1)
-- 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — implemented (wave 1)
+- 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — verified (wave 1)
 - 05 `newbrief` — the scaffolder as the authoring front door (B1) — todo (wave 2)
 - 06 D1 promoted to a lint obligation — a new check must carry its mutation row — todo (wave 2)
 
@@ -254,7 +254,7 @@ _None._
 - 08 composite AssayScore computation — implemented (wave 2)
 - 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
 - 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
-- 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — implemented (wave 1)
+- 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — verified (wave 1)
 - 13 cadenced roadmap artifacts (`--cadence weekly/monthly`) — implemented (wave 1)
 
 ### windows-port (6 open)
