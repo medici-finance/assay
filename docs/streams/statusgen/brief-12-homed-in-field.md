@@ -151,6 +151,23 @@ Implemented 2026-08-29 (worker). Runner: local `go` toolchain, statusgen module.
 | 6 | `git diff --name-only $(git merge-base HEAD origin/main) HEAD -- STATUS.md` | 0 | empty — STATUS.md is not committed on the branch (single-writer = main CI). |
 
 Board-honesty integration verified: a `todo` row whose body trips the out-of-repo / re-homed / dehoused / statusgen-source-elsewhere heuristic is NO LONGER double-reported when it carries a valid `homed-in` (the explicit field supersedes the guess), while the git-derived already-merged-unflipped class and the sequencing-gate class still surface — pinned by `TestHomedInSupersedesPhantom` and observed live on the fixture tree.
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-04 opus-4.8[1m]-verifier (verify-desk dispatch), merged main 4e500df
+
+Runner != implementer. Offline (KUBECONFIG=/dev/null). gate: model, risk {all no}, irreversible: no. Feature commit 862e297.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | go test ./ (statusgen module) | 0 | ok statusgen — TestHomedIn{Shape,Parse,SchemaChecks,Eligibility,Inert,MarkerAndBanner,SupersedesPhantom} PASS | 2026-09-04 | opus-4.8[1m]-verifier |
+| 2 | built binary --lint --root fixture w/ one homed-in brief | 0 | LINT: PASS; homed brief absent from Next-up picks but present in tracking render; board line "HOMED IN ANOTHER REPO — 1 brief(s) not dispatchable here" | 2026-09-04 | opus-4.8[1m]-verifier |
+| 3 | same fixture, homed-in: not-a-repo | 1 | PROBLEM invalid homed-in "not-a-repo" (want owner/repo) + file path; LINT: FAIL | 2026-09-04 | opus-4.8[1m]-verifier |
+| 4 | no-homed tree: diff new-binary vs parent-binary STATUS.md render | 0 | IDENTICAL byte-for-byte — additive-inert invariant holds | 2026-09-04 | opus-4.8[1m]-verifier |
+| 5 | inspect NextUp/board for homed-in acme/widgets | 0 | board names target; NextUp.HomedElsewhere map populated (nextup.go:167,692) — dispatcher reads target without opening the brief | 2026-09-04 | opus-4.8[1m]-verifier |
+| 6 | git diff --name-only merge-base HEAD -- STATUS.md | 0 | empty; feature commit does not touch STATUS.md | 2026-09-04 | opus-4.8[1m]-verifier |
+
+**VERIFY: PASS** — all 6 rows ran; none unrun. (Fixture renders emit the offline DEGRADED/.git-absent honesty banners — tool three-state markers on a synthetic tree, not feature failures.)
+
+**RISK-VALUE: DERIVED** — validHomedInShape rule @ statusgen/brieffile.go:226 (exactly one "/", both sides non-empty, no whitespace) — matches GitHub's canonical owner/repo slug and the brief's facts line; deliberately no repo-allowlist coupling (statusgen owns no such list); reddening lint on a malformed value rather than wiring it onto the row is the design's second control against a typo silently excluding a brief.
+**RISK-VALUE: N/A** — enumeration over the 5 production .go files found no numeric constant; eligibility-only change (boolean exclusion), gate:model, reversible.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the statusgen README table.
