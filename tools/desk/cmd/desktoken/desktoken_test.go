@@ -6,11 +6,13 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -186,7 +188,135 @@ func TestKillSwitchDisabled(t *testing.T) {
 	}
 }
 
-// --- key/0600 violations --------------------------------------------------------
+// --- key file-mode rule ---------------------------------------------------------
+
+// keyModeCases is the mode table the private-key checker is specified against:
+// reject other-read (0o004) and group/other-write (0o022); allow the rest. The
+// pass rows include 0440, the mode a Secret-mounted key has inside a non-root
+// pod (kubelet writes it root-owned; the pod reads via fsGroup group-read).
+var keyModeCases = []struct {
+	mode os.FileMode
+	ok   bool
+}{
+	{0o600, true},
+	{0o400, true},
+	{0o440, true},
+	{0o640, true},
+	{0o644, false},
+	{0o660, false},
+	{0o666, false},
+	{0o604, false},
+	{0o620, false},
+}
+
+// TestPrivateKeyModeRule pins the bit rule itself, independent of the filesystem.
+func TestPrivateKeyModeRule(t *testing.T) {
+	for _, tc := range keyModeCases {
+		if got := privateKeyModeOK(tc.mode); got != tc.ok {
+			t.Errorf("privateKeyModeOK(%04o) = %v, want %v", tc.mode, got, tc.ok)
+		}
+		err := checkPrivateKeyMode("/keys/private-key.pem", tc.mode)
+		if tc.ok && err != nil {
+			t.Errorf("checkPrivateKeyMode(%04o) refused: %v", tc.mode, err)
+		}
+		if !tc.ok {
+			if err == nil {
+				t.Errorf("checkPrivateKeyMode(%04o) accepted a mode the rule rejects", tc.mode)
+				continue
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "must not be readable by others or writable by group/others") {
+				t.Errorf("checkPrivateKeyMode(%04o) error does not state the rule: %s", tc.mode, msg)
+			}
+			if want := fmt.Sprintf("permissions %04o", tc.mode); !strings.Contains(msg, want) {
+				t.Errorf("checkPrivateKeyMode(%04o) error does not name the observed mode %q: %s", tc.mode, want, msg)
+			}
+		}
+	}
+}
+
+// TestPrivateKeyModeOnDisk drives the same table through a real file: write a
+// key, chmod it to each mode, and check the verdict against what os.Stat
+// reports. Skipped where chmod does not carry POSIX permission bits (Windows).
+func TestPrivateKeyModeOnDisk(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not represented by chmod on windows")
+	}
+	dir := t.TempDir()
+	for _, tc := range keyModeCases {
+		path := filepath.Join(dir, fmt.Sprintf("key-%04o.pem", tc.mode))
+		if err := os.WriteFile(path, []byte("not-a-real-key"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+		if err := os.Chmod(path, tc.mode); err != nil {
+			t.Fatalf("chmod %04o %s: %v", tc.mode, path, err)
+		}
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		if fi.Mode().Perm() != tc.mode {
+			t.Skipf("filesystem does not preserve mode %04o (got %04o); chmod semantics differ here", tc.mode, fi.Mode().Perm())
+		}
+		err = checkPrivateKeyMode(path, fi.Mode())
+		if tc.ok && err != nil {
+			t.Errorf("mode %04o on disk refused: %v", tc.mode, err)
+		}
+		if !tc.ok && err == nil {
+			t.Errorf("mode %04o on disk accepted; want refusal", tc.mode)
+		}
+	}
+}
+
+// TestKeyGroupReadableMints is the end-to-end form of the fsGroup case: a key at
+// 0440 must get PAST the mode check and mint. (The test process owns the file, so
+// owner-read is what makes it readable here; in the pod it is the group bit.)
+func TestKeyGroupReadableMints(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not represented by chmod on windows")
+	}
+	homeDir := setupTest(t)
+	t.Setenv("REVIEWER_APP_ID", "12345")
+	pemPath := filepath.Join(homeDir, ".config", "assay", "reviewer-app.pem")
+	writeFileMode(t, pemPath, makePEM(t), 0o600)
+	if err := os.Chmod(pemPath, 0o440); err != nil {
+		t.Fatalf("chmod 0440: %v", err)
+	}
+	if fi, err := os.Stat(pemPath); err != nil || fi.Mode().Perm() != 0o440 {
+		t.Skipf("filesystem does not preserve mode 0440 (stat: %v)", err)
+	}
+
+	const installID = "100000004"
+	installs := []installationInfo{
+		{ID: 100000004, Account: struct {
+			Login string `json:"login"`
+		}{Login: "example-org"}},
+	}
+	srv, recordedPaths := makeInstallTokenServer(t, installs, "ghs_fsgroup_minted", "2124-01-01T01:00:00Z")
+	defer srv.Close()
+	oldClient := httpClient
+	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
+	defer func() { httpClient = oldClient }()
+
+	rc, stdout, stderr := runCap(t, []string{"reviewer"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("0440 key rc = %d, want 0; stderr: %s", rc, stderr)
+	}
+	tokenPath := filepath.Join(homeDir, ".config", "assay", "reviewer-token-"+installID)
+	if !strings.Contains(stdout, tokenPath) {
+		t.Fatalf("stdout should contain token path %s; got: %s", tokenPath, stdout)
+	}
+	if len(*recordedPaths) == 0 {
+		t.Fatal("expected an access_tokens request — the 0440 key never reached the mint")
+	}
+	// The token cache this tool WRITES stays exactly 0600 — the relaxed rule is
+	// for the key it reads, not the credential it persists.
+	if fi, err := os.Stat(tokenPath); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("token cache mode: want 0600, got stat=%v err=%v", fi, err)
+	}
+}
+
+// --- key violations ---------------------------------------------------------------
 
 func TestKeyMissingUnverifiable(t *testing.T) {
 	_ = setupTest(t)
@@ -205,7 +335,7 @@ func TestKeyMissingUnverifiable(t *testing.T) {
 func TestKeyWrongPermsUnverifiable(t *testing.T) {
 	homeDir := setupTest(t)
 	t.Setenv("REVIEWER_APP_ID", "12345")
-	// Create PEM with 0644 (world-readable) — violates the 0600 rule.
+	// Create PEM with 0644 (world-readable) — violates the other-read rule.
 	writeFileMode(t, filepath.Join(homeDir, ".config", "assay", "reviewer-app.pem"), makePEM(t), 0o644)
 
 	// Make a fake HTTP server so the exchange would succeed if we somehow got
@@ -224,8 +354,11 @@ func TestKeyWrongPermsUnverifiable(t *testing.T) {
 	if rc != deskkit.ExitUnverifiable {
 		t.Fatalf("wrong perms key rc = %d, want 6; stderr: %s", rc, stderr)
 	}
-	if !strings.Contains(stderr, "0600") {
-		t.Fatalf("expected 0600 error; got: %s", stderr)
+	if !strings.Contains(stderr, "must not be readable by others or writable by group/others") {
+		t.Fatalf("expected the key-mode rule in the error; got: %s", stderr)
+	}
+	if !strings.Contains(stderr, "permissions 0644") {
+		t.Fatalf("expected the observed mode 0644 in the error; got: %s", stderr)
 	}
 }
 

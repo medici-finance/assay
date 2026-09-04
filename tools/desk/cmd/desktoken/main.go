@@ -36,7 +36,8 @@
 // This tool provides attribution (which App name appears on GitHub) plus an audit
 // trail — it does NOT enforce authorization (which session may act as each role).
 // The caller holds the key and controls the env; every key is readable by any
-// session of the same OS user. File permissions (0600) protect from other users
+// session of the same OS user. File permissions (0600 on a workstation; 0440
+// for a Secret-mounted key read via a pod's fsGroup) protect from other users
 // only, not from other sessions of the same user.
 //
 // Inherits deskkit: audit (one line per mint), kill-switch (Guard first),
@@ -76,9 +77,12 @@ GitLab (--forge gitlab) — rotate-on-mint token custody:
   refuses BEFORE any network contact rather than transmit the role's live PAT
   to a guessed host.
 
-Reads <role>-app.pem (0600) for the App's private key, and apps.env for the
+Reads <role>-app.pem for the App's private key, and apps.env for the
 App ID, from the App-credential SEARCH PATH: $ASSAY_CONFIG_HOME (when set),
-then ~/.config/assay. <ROLE>_APP_ID / <ROLE>_PEM override.
+then ~/.config/assay. <ROLE>_APP_ID / <ROLE>_PEM override. The key file must
+not be readable by others or writable by group/others: 0600 or 0400 on a
+workstation; 0440 is accepted because a Secret-mounted key read through a
+pod's fsGroup is necessarily root-owned and group-readable.
 Installation resolved at runtime via GET /app/installations, matching the
 repo owner against account.login (defaults to "example-org" when --repo is
 absent); <ROLE>_INSTALL_ID overrides.

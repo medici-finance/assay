@@ -36,6 +36,24 @@
       "file": "cmd/desktoken/gitlab.go",
       "old": "\treturn v, v != \"\"",
       "new": "\tif v == \"\" {\n\t\treturn \"https://gitlab.example.invalid/api/v4\", true\n\t}\n\treturn v, v != \"\""
+    },
+    {
+      "name": "drop the group/other-WRITE refusal from the private-key mode rule (a 0660/0620 key becomes acceptable)",
+      "file": "cmd/desktoken/desktoken.go",
+      "old": "\treturn perm&0o004 == 0 && perm&0o022 == 0",
+      "new": "\treturn perm&0o004 == 0"
+    },
+    {
+      "name": "drop the other-READ refusal from the private-key mode rule (a 0644/0604 key becomes acceptable)",
+      "file": "cmd/desktoken/desktoken.go",
+      "old": "\treturn perm&0o004 == 0 && perm&0o022 == 0",
+      "new": "\treturn perm&0o022 == 0"
+    },
+    {
+      "name": "accept every private-key mode (the checker stops being a guard at all)",
+      "file": "cmd/desktoken/desktoken.go",
+      "old": "\treturn perm&0o004 == 0 && perm&0o022 == 0",
+      "new": "\treturn true"
     }
   ]
 }

@@ -408,6 +408,40 @@ func writePerms(tokenPath string, perms map[string]string) {
 	_ = os.WriteFile(permsPath(tokenPath), []byte(b.String()), 0o600)
 }
 
+// privateKeyModeOK reports whether a private-key file's mode keeps the key away
+// from OTHER principals. The rule is expressed as bits, not an exact mode:
+//
+//   - reject if readable by others (mode & 0o004), or writable by group or
+//     others (mode & 0o022);
+//   - allow otherwise.
+//
+// So owner-only 0600/0400 AND group-read 0440/0640 pass; 0644, 0660, 0666,
+// 0604 and 0620 fail. Group-read is admitted deliberately: a Kubernetes
+// Secret volume is materialised by the kubelet root-owned, and a pod running as
+// a non-root user reads it through securityContext.fsGroup — group-read — so
+// the key in that pod is necessarily 0440 (root:<fsGroup>). An exact-0600 rule
+// is unsatisfiable there (0600/0400 would be owner-root-only and unreadable by
+// the pod), and the mint would fail closed on every tick. Group-read does not
+// widen exposure beyond the pod's own group; other-read and any group/other
+// write are still refused. This checker is for the App PRIVATE KEY only; the
+// token cache and the GitLab PAT custody file are written by this tool at 0600
+// and keep their exact-mode checks.
+func privateKeyModeOK(mode os.FileMode) bool {
+	perm := mode.Perm()
+	return perm&0o004 == 0 && perm&0o022 == 0
+}
+
+// checkPrivateKeyMode is the fail-closed wrapper over privateKeyModeOK: it
+// returns the exit-6 refusal naming the rule and the observed mode, or nil.
+func checkPrivateKeyMode(pemPath string, mode os.FileMode) error {
+	if privateKeyModeOK(mode) {
+		return nil
+	}
+	return deskkit.Unverifiable(
+		fmt.Sprintf("private key at %s has permissions %04o; must not be readable by others or writable by group/others "+
+			"(0600, 0400, 0440 and 0640 are accepted) — run: chmod 600 %s", pemPath, mode.Perm(), pemPath), nil)
+}
+
 // --- main entry point -----------------------------------------------------------
 
 // run is the CLI entry point. It returns an exit code.
@@ -531,9 +565,8 @@ func cmdToken(args []string) (err error) {
 			}
 			return deskkit.Unverifiable("cannot stat private key at "+pemPath, perr)
 		}
-		if fi.Mode().Perm() != 0o600 {
-			return deskkit.Unverifiable(
-				fmt.Sprintf("private key at %s has permissions %o; must be 0600", pemPath, fi.Mode().Perm()), nil)
+		if merr := checkPrivateKeyMode(pemPath, fi.Mode()); merr != nil {
+			return merr
 		}
 
 		keyPEM, rerr := os.ReadFile(pemPath)
@@ -615,7 +648,7 @@ func cmdToken(args []string) (err error) {
 	if prebuiltJWT != "" {
 		jwt = prebuiltJWT
 	} else {
-		// Read the App private key. Check file permissions — must be 0600.
+		// Read the App private key. Check file permissions — see checkPrivateKeyMode.
 		// The key is READ here, so a deferred not-found from resolvePEMPath is
 		// raised here — naming every directory searched (#794).
 		if pemErr != nil {
@@ -628,9 +661,8 @@ func cmdToken(args []string) (err error) {
 			}
 			return deskkit.Unverifiable("cannot stat private key at "+pemPath, perr)
 		}
-		if fi.Mode().Perm() != 0o600 {
-			return deskkit.Unverifiable(
-				fmt.Sprintf("private key at %s has permissions %o; must be 0600", pemPath, fi.Mode().Perm()), nil)
+		if merr := checkPrivateKeyMode(pemPath, fi.Mode()); merr != nil {
+			return merr
 		}
 
 		keyPEM, rerr := os.ReadFile(pemPath)
