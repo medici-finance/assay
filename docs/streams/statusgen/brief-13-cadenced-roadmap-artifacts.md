@@ -140,6 +140,22 @@ against this root:
 
 Generated `docs/reports/<cadence>/<window>/` trees are STATUS.md-free build artifacts and
 are not committed, matching the existing `--roadmap`/`--dora`/`--trend` discipline.
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-04 opus-4.8[1m]-verifier (verify-desk dispatch), merged main 4e500df
+
+Runner != implementer. Offline (KUBECONFIG=/dev/null). gate: model, risk {all no}, irreversible: no.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | statusgen --root . --roadmap --cadence weekly && ls docs/reports/weekly/ | 0 | wrote docs/reports/weekly/2026-W35/index.html + 14 stream pages; prior complete ISO week | 2026-09-04 | opus-4.8[1m]-verifier |
+| 2 | statusgen --root . --roadmap --cadence monthly && ls docs/reports/monthly/ | 0 | wrote docs/reports/monthly/2026-08/index.html; prior complete month | 2026-09-04 | opus-4.8[1m]-verifier |
+| 3 | statusgen --root . --roadmap (no cadence) | 0 | docs/reports/roadmap/index.html present; point-in-time mode unchanged | 2026-09-04 | opus-4.8[1m]-verifier |
+| 4 | go test ./statusgen/ -run Cadence and -run Theme | 0 | 18 Cadence PASS (year-boundary, Dec->Jan, leap-Feb, half-open) + 3 Theme PASS | 2026-09-04 | opus-4.8[1m]-verifier |
+| 5 | statusgen --root . --lint | 0 | LINT: PASS (pre-existing NOTICEs only) | 2026-09-04 | opus-4.8[1m]-verifier |
+
+**VERIFY: PASS** — all 5 rows ran (row 4 via the module-dir equivalent; literal-from-root fails only on go.work layout, not implementation).
+
+**RISK-VALUE: DERIVED** — weekly window = curMon.AddDate(0,0,-7) with daysSinceMon=(Weekday()+6)%7 @ statusgen/cadence.go:41,43 — Go Weekday Sun=0..Sat=6; (w+6)%7 maps Mon->0..Sun->6; -7 lands prior Monday, giving half-open [prevMon,thisMon); ISOWeek supplies the ISO year for Dec/Jan-straddling weeks. Matches %G-W%V; year-boundary test passes.
+**RISK-VALUE: DERIVED** — monthly window = firstThis.AddDate(0,-1,0) -> end=firstThis @ statusgen/cadence.go:51-54 — first-of-this minus one month = first-of-prior; AddDate normalization rolls Dec->Jan, yielding [firstPrior,firstThis); label 2006-01 == %Y-%m. Dec->Jan and leap-Feb tests pass.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
