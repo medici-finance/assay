@@ -2593,6 +2593,8 @@ deskgit fetch                 # refs/remotes/origin/*
 deskgit fetch --prune         # + drop stale remote-tracking refs
 deskgit fetch --pr <N>        # pull/<N>/head -> local branch pr<N>   (N digits only)
 deskgit fetch --branch <B>    # origin's <B> -> local branch <B>      (see --branch guards)
+deskgit fetch --as <role>     # any fetch mode above, authenticated from <role>'s token file
+deskgit push --as <role>      # push the CURRENT branch to origin, authenticated
 ```
 
 `--branch` refuses `main`/`master` **in any case** (`Main`, `MASTER`, `mAiN`, …). Separately,
@@ -2703,8 +2705,58 @@ deskgit closes the proven upload-pack, env, fetch-refspec and submodule vectors,
 insteadOf **identity-substitution** vector for **both** host-bearing URLs and bare local
 paths (the latter via the local-roots allowlist, #215). It claims no more.
 
-It is a **local-read verb**: network read-only, no outward write, no credentials, so — like
-`deskwt` — it takes the audit line (C-5) and kill switch (C-6) but NOT the rate limit.
+### Authenticated transport — `--as <role>` (fetch and push)
+
+`--as <role>` supplies a role's App installation token to git from the 0600 token file the
+role already owns, and is the **sanctioned replacement for the inline credential-helper
+recipe** the desk roles used to retype before every push and private-remote refresh (the
+shell-function helper that reads the token file, needed because the shared checkout's ambient
+helper shadows per-worktree config and a token-in-URL is refused by policy). It puts that
+token path behind the same fixed-argv guard the rest of `deskgit` enforces. `deskgit fetch`
+(no `--as`) is unchanged: no identity check, no credential path.
+
+**What the token never touches.** It is READ from the role's token file and PASSED to the
+one child git process through exactly one environment variable (`DESKGIT_TOKEN`) and an
+ephemeral `GIT_ASKPASS` script (`x-access-token` as the username; `$DESKGIT_TOKEN` as the
+password), in a private `0700` temp dir removed on **every** return path including error. The
+token is **never** placed in argv, in a URL, in stdout/stderr, or in the audit line. The argv
+carries `-c credential.helper=` **before the verb**, which clears the helper list on the
+command line so **no ambient or configured credential helper is ever consulted** — only this
+askpass answers.
+
+**Identity binding.** `--as <role>` MUST equal the App role this session's loop identity
+binds (`$DESK_LOOP` → `deskkit.SessionTokenRole`); a mismatch is exit 5 **before any token is
+read**, so a session cannot borrow another role's token by naming it. The token is minted per
+**owner** of the effective origin slug (never a caller `--repo`), so it authenticates only the
+repository the effective-URL gate already admitted.
+
+**`deskgit push --as <role>`** pushes the **current branch** to origin over that authenticated
+transport, with a FIXED argv and nothing appendable:
+
+```
+git -c credential.helper= push --receive-pack=git-receive-pack origin refs/heads/<B>:refs/heads/<B>
+```
+
+- `<B>` is the current branch (`symbolic-ref --short HEAD`), validated by the **same** rule
+  `fetch --branch` uses and **never `main`/`master` in any case**; a **detached HEAD** has no
+  branch to push and is refused (exit 5).
+- `--receive-pack=git-receive-pack` is pinned (the push-side twin of fetch's upload-pack pin),
+  overriding any config/env receive-pack.
+- `--force`/`--force-with-lease`, `--delete`, `--prune`, `--mirror`, `--tags` and `--no-verify`
+  are refused **by name, with their own reason, before the FlagSet** (`checkPushSafety`); a
+  caller `--receive-pack` is refused by the transport-exec guard. None of them is in the
+  constructed argv, so none can be reached by any spelling.
+- push gates on the effective origin URL exactly as fetch does, is charged to the
+  **outward-write budget** (`deskkit.AllowWrite`, unlike fetch), and its **pre-push hook**
+  (`deskpushguard`, via `core.hooksPath`) still runs — no `--no-verify` is ever passed.
+
+`deskpr`'s own push is deliberately **not** routed through this verb yet; that is a follow-up
+once `push --as` is verified.
+
+Plain `deskgit fetch` (no `--as`) is a **local-read verb**: network read-only, no outward
+write, no credentials, so — like `deskwt` — it takes the audit line (C-5) and kill switch
+(C-6) but NOT the rate limit. `push --as` and `fetch --as` add the credential channel above;
+`push` additionally takes the outward-write budget.
 Exit: `0` ok · `3` disabled · `5` refused · `6` unverifiable.
 
 **The allowlist half lives in the consuming repo**, not here — this repo ships the binary.
