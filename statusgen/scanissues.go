@@ -101,7 +101,7 @@ type issueLister func(repo string) ([]ghIssue, error)
 // clean read: its close-out sweep is deliberately NOT run (an empty open set
 // would otherwise retire every placeholder as if its issue had closed), and its
 // presence forces runScanIssues off the exit-0 clean-board path onto the
-// could-not-check exit (assay#186).
+// could-not-check exit (#186).
 type scanRepoSkip struct {
 	Repo   string
 	Reason string
@@ -516,7 +516,7 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 // EVERY --scan-issues run, even a genuinely empty one — so a caller can always
 // see how many repos the run actually managed to read. When repos went unread it
 // names each with its reason, so the summary alone distinguishes a partial scan
-// from a clean board (assay#186).
+// from a clean board (#186).
 func scanReadSummary(total int, skipped []scanRepoSkip) string {
 	read := total - len(skipped)
 	if len(skipped) == 0 {
@@ -588,7 +588,7 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 	// one), suppress the clean-board line whenever a repo went unread, and exit on
 	// statusgen's could-not-check code (2) so a cron/desk can tell partial from
 	// clean rather than reporting a clean intake lane through a rate-limit window
-	// (assay#186).
+	// (#186).
 	fmt.Println(scanReadSummary(len(scanRepos()), skipped))
 	partial := len(skipped) > 0
 
@@ -659,7 +659,7 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 	}
 	// The successfully-read repos' work is applied above; a partial scan still
 	// returns the could-not-check code so the run is never mistaken for a
-	// complete, authoritative sweep (assay#186).
+	// complete, authoritative sweep (#186).
 	if partial {
 		return 2
 	}

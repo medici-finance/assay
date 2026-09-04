@@ -185,7 +185,7 @@ func TestScanIssuesPlan(t *testing.T) {
 	}
 
 	// The unread repo is ALSO recorded structurally so the caller can distinguish
-	// a partial scan from a clean board (assay#186) — a NOTICE alone is swallowed
+	// a partial scan from a clean board (#186) — a NOTICE alone is swallowed
 	// by exit 0.
 	if len(skipped) != 1 || skipped[0].Repo != "example-org/examples" {
 		t.Fatalf("expected exactly one skipped repo (example-org/examples), got: %+v", skipped)
@@ -315,7 +315,7 @@ func TestScanIssuesEmittedFilesRoundTrip(t *testing.T) {
 	}
 }
 
-// TestScanIssuesPartialReadIsCouldNotCheck pins the assay#186 fix: a run that
+// TestScanIssuesPartialReadIsCouldNotCheck pins the #186 fix: a run that
 // could not read one or more scanned repos (rate limit / 404 / auth) must NOT be
 // mistaken for a clean read of an empty world. It must:
 //   - exit on the could-not-check code (2), never 0, even when the readable repos
@@ -351,7 +351,7 @@ func TestScanIssuesPartialReadIsCouldNotCheck(t *testing.T) {
 					fixtureLister(empty, "example-org/examples"), nilCommentLister, blessAll)
 			})
 			if code != 2 {
-				t.Fatalf("partial read exited %d, want 2 (could-not-check) — a swallowed skip reads as a clean empty world (assay#186)", code)
+				t.Fatalf("partial read exited %d, want 2 (could-not-check) — a swallowed skip reads as a clean empty world (#186)", code)
 			}
 			if strings.Contains(out, cleanBoardLine) {
 				t.Errorf("partial read printed the clean-board line — it is byte-identical to a genuinely clean board and hides the unread repo:\n%s", out)
