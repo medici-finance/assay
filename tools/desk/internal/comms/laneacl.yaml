@@ -41,7 +41,7 @@ cross_cell:
   pairs:
     - from: the-desk
       to: the-desk
-  # Cross-cell verb allow-set — the four ruled by assay-toolkit#1896 (ratified
+  # Cross-cell verb allow-set — the four ruled by the 2026-09-02 cross-cell verb ruling (ratified
   # 2026-09-02), all read-only or advisory: status (prose on how the cell is going),
   # metrics (the cell's measured performance figures, read-derived), help-offered
   # (things the receiving cell might need, answered with no obligation to act) and

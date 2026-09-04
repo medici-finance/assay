@@ -120,7 +120,7 @@ cross_cell:
 	}
 }
 
-// TestCrossCellVerbAllowSet: the four ruled cross-cell verbs (assay-toolkit#1896)
+// TestCrossCellVerbAllowSet: the four ruled cross-cell verbs (2026-09-02 ruling)
 // are permitted the-desk <-> the-desk across cells; any other verb — including the
 // within-cell verbs — is refused there. The reach check still binds.
 func TestCrossCellVerbAllowSet(t *testing.T) {

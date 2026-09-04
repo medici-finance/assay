@@ -60,7 +60,7 @@ var compiledACL = ACL{
 	WithinVerbs: []string{"ask", "handoff", "notify"},
 	// Cross-cell: the-desk <-> the-desk only (ruling 5).
 	CrossPairs: []RolePair{{From: coordinatorRole, To: coordinatorRole}},
-	// Cross-cell verbs — the four ruled by assay-toolkit#1896 (ratified 2026-09-02),
+	// Cross-cell verbs — the four ruled by the cross-cell verb ruling (ratified 2026-09-02),
 	// all read-only or advisory on the the-desk <-> the-desk lane: focus-on (a REQUEST
 	// to prioritise named work; advisory only, the receiving desk may decline),
 	// help-offered (things the receiving cell might need, answered with no obligation),
@@ -135,7 +135,7 @@ type ACL struct {
 }
 
 // KnownVerb reports whether verb is a member of the compiled vocabulary — a
-// within-cell verb OR a cross-cell verb (assay-toolkit#1896). ParseEnvelope uses it
+// within-cell verb OR a cross-cell verb (the 2026-09-02 cross-cell verb ruling). ParseEnvelope uses it
 // to refuse an unknown verb at parse; the four cross-cell verbs are folded in so a
 // cross-cell status/metrics/help-offered/focus-on message parses. A verb legal only
 // cross-cell still has to clear Allow's reach + cross-verb check, and a within-cell
