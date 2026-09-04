@@ -84,11 +84,11 @@ desk's state directory only.
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Observable probes + the `desksupervise` observer — liveness that bites](brief-01-observable-probes-and-observer.md) | 0 | M | implemented | — | — |
+| 01 | [Observable probes + the `desksupervise` observer — liveness that bites](brief-01-observable-probes-and-observer.md) | 0 | M | verified | 2026-09-04 opus-4.8[1m]-verifier | — |
 | 02 | [Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal](brief-02-run-stop-signal.md) | 1 | M | todo | — | — |
 | 03 | [Eligibility reconciliation — stop a run whose item became ineligible](brief-03-eligibility-reconcile.md) | 2 | M | todo | — | — |
 | 04 | [Lifecycle hooks — after-create / before-run / after-run / before-remove from config home](brief-04-lifecycle-hooks.md) — **human gate** | 1 | M | todo | — | — |
-| 05 | [Per-class concurrency reservation — fresh / resume / rework caps in the planner](brief-05-per-class-caps.md) | 0 | S | implemented | — | — |
+| 05 | [Per-class concurrency reservation — fresh / resume / rework caps in the planner](brief-05-per-class-caps.md) | 0 | S | verified | 2026-09-04 opus-4.8[1m]-verifier | — |
 | 06 | [Workpad — one upserted progress comment per PR](brief-06-workpad.md) | 0 | M | implemented | — | — |
 | 07 | [Runtime snapshot — `desksupervise status` for operators and the console](brief-07-runtime-snapshot.md) | 1 | M | todo | — | — |
 | 08 | [Objectives over transitions — measure an objective-style worker kit with skillbench](brief-08-objectives-over-transitions.md) | 1 | M | todo | — | — |
