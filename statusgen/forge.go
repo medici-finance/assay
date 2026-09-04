@@ -12,7 +12,7 @@ import (
 // the CI half `init` scaffolds, and the dead-claim decay pass, which reads
 // PR/MR state through `gh` (a GitHub-only client). Both must know which forge
 // they are on so they can scaffold the matching CI file and say honestly whether
-// a GitHub-only pass applies here at all (assay#349).
+// a GitHub-only pass applies here at all (#349).
 type forgeKind int
 
 const (

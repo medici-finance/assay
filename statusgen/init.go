@@ -17,7 +17,7 @@ const initStreamPlaceholder = "{{stream}}"
 // CI file's path belongs. runInitForge substitutes it with whichever half it
 // actually wrote (the GitHub workflow or `.gitlab-ci.yml`), so the closing advice
 // never tells a GitLab adopter to commit a file the scaffold did not create
-// (assay#349).
+// (#349).
 const initCIFilePlaceholder = "{{cifile}}"
 
 // initFallbackStream is the identity used only when the target directory's name
@@ -71,7 +71,7 @@ func initStreamName(root string) string {
 // template body to write there. The scaffold writes exactly ONE CI half — the one
 // that matches the target's forge — because a GitHub workflow on a GitLab project
 // is inert (no pipeline runs it), which is exactly the silent-half-install
-// assay#349 reports.
+// #349 reports.
 type initCITemplate struct {
 	path string
 	body string
@@ -99,7 +99,7 @@ func ciTemplateFor(forge forgeKind) initCITemplate {
 // The CI half is chosen from the target's `origin` forge (see runInitForge): a
 // GitHub remote (or none) gets the GitHub workflow, a GitLab remote gets a
 // `.gitlab-ci.yml` running the same two halves — because a GitHub workflow on a
-// GitLab project is inert and leaves the board with no single writer (assay#349).
+// GitLab project is inert and leaves the board with no single writer (#349).
 func runInit(root string) int {
 	return runInitForge(root, detectForge(root))
 }
@@ -403,7 +403,7 @@ jobs:
 `
 
 // initGitlabCI is the GitLab equivalent of initWorkflow, scaffolded when the
-// target's `origin` is a GitLab remote (assay#349). It runs the SAME two halves —
+// target's `origin` is a GitLab remote (#349). It runs the SAME two halves —
 // --lint on merge requests, regen-and-commit on the default branch — so a GitLab
 // adopter's board has a single writer, exactly as the GitHub half gives a GitHub
 // adopter. Three GitLab-specific facts are load-bearing:

@@ -90,7 +90,7 @@ func decayDeadClaims(root string, branches []string) []string {
 	if len(branches) == 0 {
 		return branches
 	}
-	// Forge gate (assay#349): the decay reads PR state through `gh`, a
+	// Forge gate (#349): the decay reads PR state through `gh`, a
 	// GitHub-only client. On a remote that is DEFINITIVELY not GitHub (a GitLab
 	// host), shelling `gh` would fail every single run — that is not
 	// "unavailable this run", it is a pass that does not apply to this forge. Say

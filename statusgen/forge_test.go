@@ -76,7 +76,7 @@ func TestParseForgeFlag(t *testing.T) {
 	}
 }
 
-// TestInitScaffoldsGitLabCIForGitLabForge is the core assay#349 scaffold fix: on
+// TestInitScaffoldsGitLabCIForGitLabForge is the core #349 scaffold fix: on
 // a GitLab forge, init writes a `.gitlab-ci.yml` running the same two halves and
 // does NOT write the (inert) GitHub workflow — so the adopter's board has a single
 // writer rather than none. The closing next-steps text names the file it actually
@@ -158,7 +158,7 @@ func TestInitDefaultsToGitHubForUnknownForge(t *testing.T) {
 	}
 }
 
-// TestDecayNotApplicableOnGitLabForge is the assay#349 honesty fix: on a GitLab
+// TestDecayNotApplicableOnGitLabForge is the #349 honesty fix: on a GitLab
 // remote the dead-claim decay does not shell `gh` at all — it returns the branch
 // set unchanged and prints a DISTINCT "not applicable on this forge" NOTICE, never
 // the "unavailable this run" message that reads as a transient could-not-check.
