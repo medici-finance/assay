@@ -41,9 +41,15 @@ cross_cell:
   pairs:
     - from: the-desk
       to: the-desk
-  # OPEN DECISION (needs-decision): cross-cell verb set — do not add rows here
-  # without the recorded ruling. The cross-cell verb allow-set ships EMPTY (fail
-  # closed) until a human rules on it. Inventing a verb here is the tempting-but-
-  # wrong move the design forecloses; with this set empty, every cross-cell message
-  # is refused at the ACL.
-  verbs: []
+  # Cross-cell verb allow-set — the four ruled by assay-toolkit#1896 (ratified
+  # 2026-09-02), all read-only or advisory: status (prose on how the cell is going),
+  # metrics (the cell's measured performance figures, read-derived), help-offered
+  # (things the receiving cell might need, answered with no obligation to act) and
+  # focus-on (a REQUEST to prioritise named work; advisory only, the receiving desk
+  # may decline). None mutates state on the receiving cell; any other cross-cell verb
+  # is refused. Kept in sync with laneacl.go compiledACL.CrossVerbs.
+  verbs:
+    - status
+    - metrics
+    - help-offered
+    - focus-on
