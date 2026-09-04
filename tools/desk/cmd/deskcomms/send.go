@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/comms"
@@ -49,7 +50,7 @@ func bindSend(fs *flag.FlagSet) *sendArgs {
 	a := &sendArgs{}
 	fs.StringVar(&a.to, "to", "", "destination desk-role (within this cell unless --to-cell is given)")
 	fs.StringVar(&a.toCell, "to-cell", "", "destination cell (default: this session's own cell)")
-	fs.StringVar(&a.verb, "verb", "", "message verb (must be a lane-ACL vocabulary member)")
+	fs.StringVar(&a.verb, "verb", "", "message verb (a lane-ACL vocabulary member; with --to-cell only cross-cell verbs are accepted, and focus-on is advisory — the receiving desk may decline it)")
 	fs.StringVar(&a.class, "class", "routine", "handling class: routine | sensitive")
 	fs.Var(&a.refs, "ref", "cross-reference id (repeatable)")
 	return a
@@ -60,6 +61,14 @@ func cmdSend(d *deps, args []string) (*outcome, error) {
 	fs.SetOutput(io.Discard)
 	a := bindSend(fs)
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			// `send --help`: print the subcommand's own flag usage (which states, on
+			// --verb, that focus-on is advisory and the receiving desk may decline).
+			fmt.Fprintln(os.Stderr, "usage: deskcomms send --to <role> [--to-cell <cell>] --verb <verb> [--class routine|sensitive] [--ref <id>]... < payload")
+			fs.SetOutput(os.Stderr)
+			fs.PrintDefaults()
+			return &outcome{detail: "help"}, deskkit.Refused("send: help requested")
+		}
 		return &outcome{detail: "bad arguments"}, deskkit.Refused("send: " + err.Error())
 	}
 	return runSend(d, a)
@@ -95,7 +104,34 @@ func runSend(d *deps, a *sendArgs) (*outcome, error) {
 		return oc, deskkit.Refused("send: --to is required")
 	}
 
-	// 2. Session identity — from context, never from an argument.
+	// 2. Cross-cell verb allow-set (#1896) — identity-INDEPENDENT, so it fails fast
+	//    even before a session identity is established. When --to-cell names a
+	//    destination cell, the send is cross-cell and --verb must be a member of the
+	//    compiled cross-cell allow-set (read from the ACL, never a list held here). A
+	//    non-member refuses with a DISTINCT cross-cell-verb refusal, before identity
+	//    and parse, so an unknown verb reaching cross-cell gets this specific message
+	//    rather than a bare unknown-verb or out-of-lane. The authoritative reach+verb
+	//    check is still acl.Allow below (behaviour-identical to the gateway); this is
+	//    the fail-fast convenience the brief's fact set calls for.
+	if strings.TrimSpace(a.toCell) != "" {
+		xverbs := comms.Compiled().CrossVerbs
+		ok := false
+		for _, v := range xverbs {
+			if v == verb {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			oc.detail = "cross-cell-verb: " + verb
+			return oc, deskkit.Refused(fmt.Sprintf(
+				"refused: cross-cell-verb — %q is not in the cross-cell allow-set {%s}. Cross-cell "+
+					"messages carry only the ruled read-only/advisory verbs; any other verb is refused "+
+					"before it is sent.", verb, strings.Join(xverbs, ", ")))
+		}
+	}
+
+	// 3. Session identity — from context, never from an argument.
 	if d.cell == "" || d.self == "" {
 		return oc, deskkit.Refused("send: session identity is not established (see DESK_CELL / DESK_ROLE)")
 	}
@@ -151,7 +187,7 @@ func runSend(d *deps, a *sendArgs) (*outcome, error) {
 		oc.detail = "acl-out-of-lane"
 		return oc, deskkit.Refused(fmt.Sprintf(
 			"refused: acl — lane (%s/%s) --%s--> (%s/%s) is not permitted (deny-by-default; "+
-				"cross-cell reach is the-desk <-> the-desk and its verb set ships empty)",
+				"cross-cell reach is the-desk <-> the-desk over the ruled cross-cell verbs only)",
 			parsed.From.Cell, parsed.From.Role, parsed.Verb, parsed.To.Cell, parsed.To.Role))
 	}
 

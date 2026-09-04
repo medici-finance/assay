@@ -120,15 +120,20 @@ cross_cell:
 	}
 }
 
-// TestCrossCellVerbRefusedAtCheck: with the shipped (empty) cross-cell verb set,
-// EVERY cross-cell message is refused by Allow — including one between two
-// the-desk coordinators, which passes the reach check but has no permitted verb.
-func TestCrossCellVerbRefusedAtCheck(t *testing.T) {
+// TestCrossCellVerbAllowSet: the four ruled cross-cell verbs (2026-09-02 ruling)
+// are permitted the-desk <-> the-desk across cells; any other verb — including the
+// within-cell verbs — is refused there. The reach check still binds.
+func TestCrossCellVerbAllowSet(t *testing.T) {
 	acl := loadSourceACL(t)
-	// the-desk -> the-desk across cells: reach is permitted, but no verb is.
-	for _, verb := range []string{"handoff", "notify", "ask", "anything"} {
+	for _, verb := range []string{"status", "metrics", "help-offered", "focus-on"} {
+		if !acl.Allow("cell-a", "the-desk", verb, "cell-b", "the-desk") {
+			t.Errorf("Allow refused ruled cross-cell verb %q on the the-desk <-> the-desk lane", verb)
+		}
+	}
+	// A within-cell or unknown verb is not a cross-cell verb: refused across cells.
+	for _, verb := range []string{"handoff", "notify", "ask", "dispatch"} {
 		if acl.Allow("cell-a", "the-desk", verb, "cell-b", "the-desk") {
-			t.Errorf("Allow permitted cross-cell verb %q — the cross-cell verb set ships EMPTY, so every cross-cell message must be refused", verb)
+			t.Errorf("Allow permitted non-ruled cross-cell verb %q — only status/metrics/help-offered/focus-on are cross-cell", verb)
 		}
 	}
 	// A within-cell handoff between two distinct roles is the positive control:
