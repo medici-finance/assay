@@ -158,3 +158,135 @@ func TestChildEnvCarriesTheToken(t *testing.T) {
 			"applied under the ambient identity", r.stdout)
 	}
 }
+
+// dispatcherAppLogin is the roster's desk-App login — the identity the floor accepts, read
+// from the fixture roster rather than written as a literal.
+func dispatcherAppLogin(t *testing.T) string {
+	t.Helper()
+	login, ok := deskkit.RoleAppLogin(deskkit.DispatcherRole)
+	if !ok {
+		t.Fatalf("the fixture roster binds no App to the dispatcher role %q", deskkit.DispatcherRole)
+	}
+	return login
+}
+
+// stampReplies serves the two reads the re-stamp needs: the PR's CURRENT labels (one name
+// per line, as the `--jq '.[].name'` filter emits them) and its label timeline (one
+// `event\tlabel\tactor` line per event, in order).
+func stampReplies(worktree, labelNames, timelineTSV string) []reply {
+	return append(happyReplies(worktree),
+		reply{match: "issues/77/labels", stdout: labelNames},
+		reply{match: "issues/77/timeline", stdout: timelineTSV},
+	)
+}
+
+// THE NO-OP THIS PINS. Labels are a SET: `--add-label` over a label the PR already carries
+// changes nothing. So a PR stamped by some other login — the pre-fix dispatch path, or a
+// human — stayed stamped by that login no matter how often the dispatcher re-ran, and every
+// authority-bearing write on it kept refusing. A GitHub timeline is append-only, so the only
+// repair the forge offers is to REMOVE the label and re-apply it as the dispatcher.
+func TestStampReplacesAForeignAppliedStamp(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	model := deskkit.DispatchedModelPrefix + "example-model-1"
+	tier := deskkit.DispatchedTierPrefix + "strong"
+	s.replies = stampReplies("/private/tmp/worker-home",
+		model+"\n"+tier+"\n",
+		"labeled\t"+model+"\tsome-other-login\nlabeled\t"+tier+"\tsome-other-login\n")
+	stubMint(t, "example-installation-token", nil)
+
+	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
+		"--model", "example-model-1", "--tier", "strong",
+		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("dispatch rc = %d, want 0", rc)
+	}
+	edit := "pr edit 77 -R " + allowedRepo + " "
+	for _, l := range []string{model, tier} {
+		if !s.ran(edit + "--remove-label " + l) {
+			t.Errorf("the foreign application of %s was never removed — re-applying it on top is a no-op: %v", l, s.calls)
+		}
+		if !s.ran(edit + "--add-label " + l) {
+			t.Errorf("%s was not re-applied as the dispatcher: %v", l, s.calls)
+		}
+	}
+}
+
+// A stamp already standing under the DISPATCHER is left alone: no removal, no label churn on
+// every re-dispatch. Without this the step would remove and re-apply the labels on every run,
+// filling the timeline with noise and briefly leaving the PR unstamped.
+func TestStampLeavesItsOwnStampAlone(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	d := dispatcherAppLogin(t)
+	model := deskkit.DispatchedModelPrefix + "example-model-1"
+	tier := deskkit.DispatchedTierPrefix + "strong"
+	s.replies = stampReplies("/private/tmp/worker-home",
+		model+"\n"+tier+"\n",
+		"labeled\t"+model+"\t"+d+"\nlabeled\t"+tier+"\t"+d+"\n")
+	stubMint(t, "example-installation-token", nil)
+
+	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
+		"--model", "example-model-1", "--tier", "strong",
+		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("dispatch rc = %d, want 0", rc)
+	}
+	if s.ran("--remove-label") {
+		t.Errorf("the dispatcher removed its OWN standing stamp — re-dispatch must not churn labels: %v", s.calls)
+	}
+}
+
+// A SUPERSEDED foreign application is not a reason to remove anything: the dispatcher already
+// repaired this PR, and removing the label again would undo its own repair.
+func TestStampDoesNotRemoveAnAlreadyRepairedStamp(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	d := dispatcherAppLogin(t)
+	model := deskkit.DispatchedModelPrefix + "example-model-1"
+	tier := deskkit.DispatchedTierPrefix + "strong"
+	s.replies = stampReplies("/private/tmp/worker-home",
+		model+"\n"+tier+"\n",
+		"labeled\t"+model+"\tsome-other-login\n"+
+			"labeled\t"+tier+"\tsome-other-login\n"+
+			"unlabeled\t"+model+"\t"+d+"\n"+
+			"unlabeled\t"+tier+"\t"+d+"\n"+
+			"labeled\t"+model+"\t"+d+"\n"+
+			"labeled\t"+tier+"\t"+d+"\n")
+	stubMint(t, "example-installation-token", nil)
+
+	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
+		"--model", "example-model-1", "--tier", "strong",
+		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("dispatch rc = %d, want 0", rc)
+	}
+	if s.ran("--remove-label") {
+		t.Errorf("a PR the dispatcher had already re-stamped was stripped again: %v", s.calls)
+	}
+}
+
+// A read the step cannot complete is UNVERIFIABLE, and NO label is written. Stamping blind
+// would report success while adding over a foreign label — the exact no-op this step now
+// exists to defeat.
+func TestStampRefusesWhenTheLabelReadFails(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	s.replies = append(happyReplies("/private/tmp/worker-home"),
+		reply{match: "issues/77/labels", code: 1, stderr: "labels unreadable"})
+	stubMint(t, "example-installation-token", nil)
+
+	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
+		"--model", "example-model-1", "--tier", "strong",
+		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("rc = %d, want %d (an unreadable label set is could-not-check)", rc, deskkit.ExitUnverifiable)
+	}
+	if s.ran("--add-label") || s.ran("--remove-label") {
+		t.Errorf("a label was written on an unverifiable read: %v", s.calls)
+	}
+}

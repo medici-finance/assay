@@ -71,11 +71,11 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		// a below-tier or present-but-unreadable attestation refuses; an UNATTESTED PR
 		// (human-driven or pre-attestation) proceeds with a NOTICE; the override is loud; an
 		// unreadable timeline is could-not-check, never a cleared floor.
-		events, ferr := client.listLabelEvents(pr)
+		tl, ferr := client.stampTimeline(pr)
 		if ferr != nil {
 			return fromReadErr("ready", repo, pr, head, ferr)
 		}
-		fd := deskkit.ModelCapabilityFloor(events, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
+		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
 		switch fd.Outcome {
 		case deskkit.FloorRefuse:
 			return refused("ready", repo, pr, head, fd.Message)

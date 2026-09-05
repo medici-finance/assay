@@ -194,7 +194,7 @@ func flip(o flipOpts) error {
 	// so a self-applied stamp is worthless), and it fails CLOSED — an attested below-tier
 	// dispatch, or a stamp present-but-unreadable, refuses. An UNATTESTED PR (human-driven
 	// or pre-attestation) is not bricked: it proceeds with a NOTICE. The override is loud.
-	if err := checkModelFloor(o, repo); err != nil {
+	if err := checkModelFloor(o, repo, pr); err != nil {
 		return err
 	}
 
@@ -421,12 +421,20 @@ func tokenPathForMessage(path string) string {
 // (exit 6). Only a genuinely UNATTESTED PR proceeds, and it says so (NOTICE), so a
 // human-driven or pre-attestation lane is not bricked. The override line is always printed,
 // regardless of --quiet, because a silent bypass would nullify the layer.
-func checkModelFloor(o flipOpts, repo string) error {
+func checkModelFloor(o flipOpts, repo string, pr prInfo) error {
 	events, err := readLabelEvents(o, repo)
 	if err != nil {
 		return err
 	}
-	d := deskkit.ModelCapabilityFloor(events, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
+	// The PRESENT label set comes from the PR read, not from the events: a truncated
+	// timeline must never make a standing stamp look ABSENT, because absent proceeds on the
+	// NOTICE path. A present label the events cannot attribute is could-not-check instead.
+	present := make([]string, 0, len(pr.Labels))
+	for _, l := range pr.Labels {
+		present = append(present, l.Name)
+	}
+	tl := deskkit.StampTimeline{Present: present, Events: events}
+	d := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
 	switch d.Outcome {
 	case deskkit.FloorOverrideAllow:
 		fmt.Fprintf(os.Stderr, "deskflip: %s\n", d.Message)
@@ -442,9 +450,14 @@ func checkModelFloor(o flipOpts, repo string) error {
 	}
 }
 
-// readLabelEvents reads the target PR's `labeled` timeline events — the label name AND the
-// login that applied it — which is what the applier-aware stamp reader needs to tell a
-// dispatcher attestation from a self-applied one. It walks every page.
+// readLabelEvents reads the target PR's label timeline — BOTH `labeled` and `unlabeled`
+// events, each with the login that performed it — which is what the applier-aware stamp
+// reader needs to tell a dispatcher attestation from a self-applied one. It walks every page.
+//
+// THE REMOVALS ARE NOT OPTIONAL. A GitHub timeline is append-only, so without the
+// `unlabeled` events a stamp applied once by a foreign login is unrepairable: the dispatcher
+// can remove and re-apply the labels under its own identity and the reader still sees only
+// the original foreign application. Dropping them here would silently restore that defect.
 //
 // An EMPTY timeline is not an error: it is a PR with no labels, which the floor reads as
 // UNATTESTED (a NOTICE, not a refusal). A failed READ is could-not-check and refuses
@@ -474,10 +487,14 @@ func readLabelEvents(o flipOpts, repo string) ([]deskkit.LabelEvent, error) {
 				"condition %s: PR #%d's label timeline did not parse", condModelFloor, o.pr), err)
 		}
 		for _, e := range page {
-			if e.Event != "labeled" {
+			if e.Event != "labeled" && e.Event != "unlabeled" {
 				continue
 			}
-			out = append(out, deskkit.LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login})
+			out = append(out, deskkit.LabelEvent{
+				Name:      e.Label.Name,
+				AppliedBy: e.Actor.Login,
+				Removed:   e.Event == "unlabeled",
+			})
 		}
 	}
 	return out, nil

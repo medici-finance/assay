@@ -272,7 +272,7 @@ func TestAttestedModelStampOf(t *testing.T) {
 	}
 
 	t.Run("dispatcher-applied stamp is Stamped", func(t *testing.T) {
-		stamp, state := AttestedModelStampOf(stampedEvents, isDispatcher)
+		stamp, state := AttestedModelStampOf(tlOf(stampedEvents...), isDispatcher)
 		if state != ModelStamped || stamp.Model != "opus-4.8" || stamp.Tier != "strong" {
 			t.Fatalf("got (%+v, %v), want opus-4.8/strong stamped", stamp, state)
 		}
@@ -283,7 +283,7 @@ func TestAttestedModelStampOf(t *testing.T) {
 			{Name: "dispatched-model:opus-4.8", AppliedBy: worker}, // the worker stamping ITSELF
 			{Name: "dispatched-tier:strong", AppliedBy: dispatcher},
 		}
-		_, state := AttestedModelStampOf(events, isDispatcher)
+		_, state := AttestedModelStampOf(tlOf(events...), isDispatcher)
 		if state != ModelIndeterminate {
 			t.Fatalf("state = %v, want ModelIndeterminate — a self-applied dispatched-model label must "+
 				"not read as attestation", state)
@@ -295,20 +295,20 @@ func TestAttestedModelStampOf(t *testing.T) {
 			{Name: "dispatched-model:opus-4.8", AppliedBy: dispatcher},
 			{Name: "dispatched-tier:strong", AppliedBy: "some-random-user"},
 		}
-		if _, state := AttestedModelStampOf(events, isDispatcher); state != ModelIndeterminate {
+		if _, state := AttestedModelStampOf(tlOf(events...), isDispatcher); state != ModelIndeterminate {
 			t.Fatalf("state = %v, want ModelIndeterminate for a non-dispatcher-applied tier", state)
 		}
 	})
 
 	t.Run("nil predicate cannot vouch — Indeterminate when a stamp is present", func(t *testing.T) {
-		if _, state := AttestedModelStampOf(stampedEvents, nil); state != ModelIndeterminate {
+		if _, state := AttestedModelStampOf(tlOf(stampedEvents...), nil); state != ModelIndeterminate {
 			t.Fatalf("state = %v, want ModelIndeterminate — a nil predicate vouches for nobody", state)
 		}
 	})
 
 	t.Run("no stamp is Unknown regardless of predicate", func(t *testing.T) {
 		events := []LabelEvent{{Name: "bug", AppliedBy: worker}}
-		if _, state := AttestedModelStampOf(events, nil); state != ModelUnknown {
+		if _, state := AttestedModelStampOf(tlOf(events...), nil); state != ModelUnknown {
 			t.Fatalf("state = %v, want ModelUnknown — no dispatched-* label present", state)
 		}
 	})
@@ -319,7 +319,7 @@ func TestAttestedModelStampOf(t *testing.T) {
 			{Name: "dispatched-model:kimi-3", AppliedBy: dispatcher},
 			{Name: "dispatched-tier:strong", AppliedBy: dispatcher},
 		}
-		if _, state := AttestedModelStampOf(events, isDispatcher); state != ModelIndeterminate {
+		if _, state := AttestedModelStampOf(tlOf(events...), isDispatcher); state != ModelIndeterminate {
 			t.Fatalf("state = %v, want ModelIndeterminate — trusted applier does not fix conflicting content", state)
 		}
 	})

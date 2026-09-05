@@ -140,11 +140,14 @@ type fakeGH struct {
 	// repoReactions is the reaction list returned for GET .../reactions.
 	repoReactions []deskkit.Reaction
 
-	// labelEvents is the PR's `labeled` timeline — the dispatcher-attestation the model-
+	// labelEvents is the PR's label timeline — the dispatcher-attestation the model-
 	// capability floor reads on a verdict write. nil serves an empty timeline, which the
 	// floor reads as UNATTESTED (a NOTICE, not a refusal), so pre-floor tests run unchanged.
-	// Each event carries its applier login, so a fixture can distinguish a dispatcher stamp
-	// from a self-applied one. timelineErr forces the timeline read to fail (could-not-check).
+	// Each event carries its applier login and whether it ADDED or REMOVED the label, so a
+	// fixture can distinguish a dispatcher stamp from a self-applied one and a superseded
+	// application from the standing one. It is served in pages of 100, as GitHub does, so the
+	// client's walk is actually exercised. timelineErr forces the read to fail
+	// (could-not-check). Set it through fake.stamp, which keeps prLabels consistent with it.
 	labelEvents []deskkit.LabelEvent
 	timelineErr bool
 
@@ -450,14 +453,32 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		if page != "" && page != "1" {
-			writeJSON([]map[string]any{})
-			return
+		// Paged exactly as GitHub pages it (100 per page, a short page ends the walk), so a
+		// stamp that lands beyond page 1 is only read by a client that actually walks.
+		const per = 100
+		n := 1
+		if page != "" {
+			n, _ = strconv.Atoi(page)
 		}
-		out := make([]map[string]any, 0, len(f.labelEvents))
-		for _, e := range f.labelEvents {
+		if n < 1 {
+			n = 1
+		}
+		lo := (n - 1) * per
+		hi := lo + per
+		if lo > len(f.labelEvents) {
+			lo = len(f.labelEvents)
+		}
+		if hi > len(f.labelEvents) {
+			hi = len(f.labelEvents)
+		}
+		out := make([]map[string]any, 0, hi-lo)
+		for _, e := range f.labelEvents[lo:hi] {
+			kind := "labeled"
+			if e.Removed {
+				kind = "unlabeled"
+			}
 			out = append(out, map[string]any{
-				"event": "labeled",
+				"event": kind,
 				"label": map[string]any{"name": e.Name},
 				"actor": map[string]any{"login": e.AppliedBy},
 			})

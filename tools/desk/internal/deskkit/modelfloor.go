@@ -147,8 +147,8 @@ func ModelFloorOverrideEngaged() bool {
 // isDispatcher is the applier-aware predicate (inject IsDispatcherLogin against the live
 // roster, or a test stub). A nil predicate vouches for no one, so any dispatched-* label
 // then reads Indeterminate and the floor refuses — an unconfigured deployment fails closed.
-func ModelCapabilityFloor(events []LabelEvent, isDispatcher func(applier string) bool, override bool) FloorDecision {
-	stamp, state := AttestedModelStampOf(events, isDispatcher)
+func ModelCapabilityFloor(tl StampTimeline, isDispatcher func(applier string) bool, override bool) FloorDecision {
+	stamp, state := AttestedModelStampOf(tl, isDispatcher)
 
 	if override {
 		return FloorDecision{
@@ -201,7 +201,7 @@ func ModelCapabilityFloor(events []LabelEvent, isDispatcher func(applier string)
 			Outcome: FloorRefuse,
 			State:   state,
 			Stamp:   stamp,
-			Message: unreadableStampMessage(events, isDispatcher),
+			Message: unreadableStampMessage(tl, isDispatcher),
 		}
 	}
 }
@@ -217,17 +217,29 @@ func ModelCapabilityFloor(events []LabelEvent, isDispatcher func(applier string)
 // could tell a genuinely mis-stamped PR from a correctly dispatched one. So the applier
 // case NAMES the login that applied the stamp and the identity the floor would have
 // accepted, and the content case names which half is wrong.
-func unreadableStampMessage(events []LabelEvent, isDispatcher func(applier string) bool) string {
+func unreadableStampMessage(tl StampTimeline, isDispatcher func(applier string) bool) string {
 	var cause string
-	if untrusted := NonDispatcherStampAppliers(events, isDispatcher); len(untrusted) > 0 {
+	if untrusted := NonDispatcherStampAppliers(tl, isDispatcher); len(untrusted) > 0 {
 		cause = fmt.Sprintf(
-			"The dispatched-* labels on this PR were applied by %s, and this floor accepts a stamp only "+
-				"from the bound dispatcher identity %s (roster role %q). Re-stamp the PR from the "+
-				"dispatcher — the dispatch verb applies the stamp under that App — or escalate this write "+
+			"The dispatched-* labels this PR currently carries were applied by %s, and this floor accepts a "+
+				"stamp only from the bound dispatcher identity %s (roster role %q). Re-stamp the PR from the "+
+				"dispatcher — the dispatch verb REMOVES a foreign stamp and re-applies it under that App, "+
+				"which is the only repair an append-only timeline allows — or escalate this write "+
 				"to a strong-tier session.",
 			StripControl(strings.Join(untrusted, ", ")), RoleAppLoginOrEmpty(DispatcherRole), DispatcherRole)
+	} else if unattributed := UnattributedStampLabels(tl); len(unattributed) > 0 {
+		// A DIFFERENT remedy again: the stamp may be perfectly good and the timeline read
+		// short. Sending this operator to re-stamp a correct PR is the wrong next move, so
+		// the message names the labels and the read rather than the appliers.
+		cause = fmt.Sprintf(
+			"This PR carries %s, but the label timeline read contains no standing `labeled` event for %s — "+
+				"so who applied the stamp could not be established. That is could-not-check, not a cleared "+
+				"floor and not an unstamped PR. Re-run this write against a complete timeline read; if the "+
+				"labels really have no applying event, re-stamp the PR from the dispatcher.",
+			StripControl(strings.Join(unattributed, ", ")),
+			plural(len(unattributed), "it", "them"))
 	} else {
-		cause = stampContentCause(events) +
+		cause = stampContentCause(tl) +
 			" Re-stamp the PR with exactly one dispatched-model label and one dispatched-tier label, or " +
 			"escalate this write to a strong-tier session."
 	}
@@ -242,10 +254,10 @@ func unreadableStampMessage(events []LabelEvent, isDispatcher func(applier strin
 // where every applier was the dispatcher. It reports the INCOMPLETE case separately
 // because that one is a transport failure between the two label writes rather than a
 // malformed input, and the operator's next look is different.
-func stampContentCause(events []LabelEvent) string {
+func stampContentCause(tl StampTimeline) string {
 	models, tiers := 0, 0
-	for _, e := range events {
-		name := strings.ToLower(strings.TrimSpace(e.Name))
+	for _, l := range tl.Present {
+		name := normLabel(l)
 		switch {
 		case strings.HasPrefix(name, DispatchedModelPrefix):
 			models++
@@ -262,6 +274,15 @@ func stampContentCause(events []LabelEvent) string {
 		return "The stamp's content does not resolve to one (model, tier): the labels are conflicting, " +
 			"empty, or name a tier outside the vocabulary (" + strings.Join(DispatchTiers(), " | ") + ")."
 	}
+}
+
+// plural picks between two words for a count, so a refusal reads as a sentence rather than
+// as "label(s)".
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // tierOrNone renders a tier for the override line, naming the empty tier explicitly rather

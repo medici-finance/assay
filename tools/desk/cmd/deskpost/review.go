@@ -206,11 +206,11 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		// a pre-attestation dispatch) is not bricked — it proceeds with a NOTICE. The
 		// override is an env toggle, and every bypass is logged loudly. A timeline that
 		// cannot be READ is could-not-check, never a cleared floor.
-		events, ferr := client.listLabelEvents(pr)
+		tl, ferr := client.stampTimeline(pr)
 		if ferr != nil {
 			return withDigest(fromReadErr(verb, repo, pr, curHead, ferr), dig)
 		}
-		fd := deskkit.ModelCapabilityFloor(events, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
+		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
 		switch fd.Outcome {
 		case deskkit.FloorRefuse:
 			return withDigest(refused(verb, repo, pr, curHead, fd.Message), dig)

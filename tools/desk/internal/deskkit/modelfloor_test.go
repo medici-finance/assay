@@ -19,6 +19,36 @@ func tierEvent(tier, applier string) LabelEvent {
 	return LabelEvent{Name: DispatchedTierPrefix + tier, AppliedBy: applier}
 }
 
+// tlOf builds a StampTimeline from events alone, DERIVING the present label set from the
+// events' standing state (a label is present when its last event is a `labeled`). It is a
+// TEST convenience for rows whose subject is the applier or the content rule rather than
+// the present-set read.
+//
+// A PRODUCTION caller must NOT do this: presence comes from the authoritative labels read,
+// because a truncated timeline would otherwise make a standing stamp look ABSENT, and
+// absent proceeds on the NOTICE path. TestStampActorIsLatestStandingLabeledEvent case (e)
+// covers that direction with an explicit present set.
+func tlOf(events ...LabelEvent) StampTimeline {
+	live := map[string]bool{}
+	seen := map[string]bool{}
+	var order []string
+	for _, e := range events {
+		n := normLabel(e.Name)
+		if !seen[n] {
+			seen[n] = true
+			order = append(order, n)
+		}
+		live[n] = !e.Removed
+	}
+	var present []string
+	for _, n := range order {
+		if live[n] {
+			present = append(present, n)
+		}
+	}
+	return StampTimeline{Present: present, Events: events}
+}
+
 // The four cases the brief's Verify row 1 names — strong proceeds, cheap refuses with the
 // remediation, absent proceeds with the NOTICE, override proceeds with the loud marker —
 // plus the fail-closed Indeterminate case, exercised against the PURE decision so the
@@ -29,7 +59,7 @@ func TestModelCapabilityFloorFourCases(t *testing.T) {
 	cheapStamp := []LabelEvent{modelEvent("haiku-3", disp), tierEvent("any", disp)}
 
 	t.Run("attested strong proceeds", func(t *testing.T) {
-		d := ModelCapabilityFloor(strongStamp, dispatcherIs(disp), false)
+		d := ModelCapabilityFloor(tlOf(strongStamp...), dispatcherIs(disp), false)
 		if d.Outcome != FloorAllow || !d.Outcome.Proceeds() {
 			t.Fatalf("outcome = %v, want FloorAllow", d.Outcome)
 		}
@@ -39,7 +69,7 @@ func TestModelCapabilityFloorFourCases(t *testing.T) {
 	})
 
 	t.Run("attested cheap refuses with remediation", func(t *testing.T) {
-		d := ModelCapabilityFloor(cheapStamp, dispatcherIs(disp), false)
+		d := ModelCapabilityFloor(tlOf(cheapStamp...), dispatcherIs(disp), false)
 		if d.Outcome != FloorRefuse || d.Outcome.Proceeds() {
 			t.Fatalf("outcome = %v, want FloorRefuse", d.Outcome)
 		}
@@ -54,7 +84,7 @@ func TestModelCapabilityFloorFourCases(t *testing.T) {
 	})
 
 	t.Run("absent proceeds with NOTICE", func(t *testing.T) {
-		d := ModelCapabilityFloor(nil, dispatcherIs(disp), false)
+		d := ModelCapabilityFloor(StampTimeline{}, dispatcherIs(disp), false)
 		if d.Outcome != FloorNoticeAllow || !d.Outcome.Proceeds() {
 			t.Fatalf("outcome = %v, want FloorNoticeAllow", d.Outcome)
 		}
@@ -68,7 +98,7 @@ func TestModelCapabilityFloorFourCases(t *testing.T) {
 
 	t.Run("override proceeds with the loud marker", func(t *testing.T) {
 		// Override on the CHEAP stamp: it must proceed anyway, and loudly.
-		d := ModelCapabilityFloor(cheapStamp, dispatcherIs(disp), true)
+		d := ModelCapabilityFloor(tlOf(cheapStamp...), dispatcherIs(disp), true)
 		if d.Outcome != FloorOverrideAllow || !d.Outcome.Proceeds() {
 			t.Fatalf("outcome = %v, want FloorOverrideAllow", d.Outcome)
 		}
@@ -87,7 +117,7 @@ func TestModelCapabilityFloorRefusesSelfAppliedStamp(t *testing.T) {
 		modelEvent("opus-4.8", worker), // worker stamped itself strong
 		tierEvent("strong", worker),
 	}
-	d := ModelCapabilityFloor(selfApplied, dispatcherIs(disp), false)
+	d := ModelCapabilityFloor(tlOf(selfApplied...), dispatcherIs(disp), false)
 	if d.Outcome != FloorRefuse {
 		t.Fatalf("a self-applied strong stamp cleared the floor (outcome %v) — attestation collapsed to self-report", d.Outcome)
 	}
@@ -103,12 +133,12 @@ func TestModelCapabilityFloorRefusesSelfAppliedStamp(t *testing.T) {
 // refuses — an unconfigured deployment fails CLOSED, never open.
 func TestModelCapabilityFloorNilPredicateFailsClosed(t *testing.T) {
 	stamp := []LabelEvent{modelEvent("opus-4.8", "anyone"), tierEvent("strong", "anyone")}
-	if d := ModelCapabilityFloor(stamp, nil, false); d.Outcome != FloorRefuse {
+	if d := ModelCapabilityFloor(tlOf(stamp...), nil, false); d.Outcome != FloorRefuse {
 		t.Fatalf("nil predicate admitted a stamp (outcome %v) — an unconfigured floor must fail closed", d.Outcome)
 	}
 	// But a PR with NO stamp under a nil predicate is Unknown, not refused: absence is not a
 	// forged stamp.
-	if d := ModelCapabilityFloor(nil, nil, false); d.Outcome != FloorNoticeAllow {
+	if d := ModelCapabilityFloor(tlOf(), nil, false); d.Outcome != FloorNoticeAllow {
 		t.Fatalf("no-stamp under nil predicate = %v, want FloorNoticeAllow (absent, not a broken stamp)", d.Outcome)
 	}
 }
@@ -202,7 +232,7 @@ func TestModelCapabilityFloorStampCases(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.why, func(t *testing.T) {
-			d := ModelCapabilityFloor(c.events, dispatcherIs(disp), false)
+			d := ModelCapabilityFloor(tlOf(c.events...), dispatcherIs(disp), false)
 			if d.Outcome != c.wantOutcome {
 				t.Fatalf("outcome = %v, want %v\nmessage: %s", d.Outcome, c.wantOutcome, d.Message)
 			}
@@ -233,7 +263,7 @@ func TestFloorRefusalNamesBothLogins(t *testing.T) {
 		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "example-worker-app[bot]"},
 		{Name: DispatchedTierPrefix + "strong", AppliedBy: "example-worker-app[bot]"},
 	}
-	d := ModelCapabilityFloor(events, IsDispatcherLogin, false)
+	d := ModelCapabilityFloor(tlOf(events...), IsDispatcherLogin, false)
 	if d.Outcome != FloorRefuse {
 		t.Fatalf("outcome = %v, want FloorRefuse", d.Outcome)
 	}
@@ -246,27 +276,45 @@ func TestFloorRefusalNamesBothLogins(t *testing.T) {
 }
 
 // NonDispatcherStampAppliers is the diagnosis the message above is built from: it names
-// every applier of a dispatched-* label the predicate will not vouch for, de-duplicated
-// and ordered, and nothing else. An empty answer means "no untrusted applier", never "not
-// checked" — a nil predicate vouches for nobody, so every applier is listed.
+// every STANDING applier of a dispatched-* label the predicate will not vouch for,
+// de-duplicated and ordered, and nothing else. An empty answer means "no untrusted standing
+// applier", never "not checked" — a nil predicate vouches for nobody, so every standing
+// applier is listed.
+//
+// STANDING is the load-bearing word. A superseded application (its label later removed and
+// re-applied) must NOT be listed: naming a login that no longer holds the stamp is exactly
+// the report that made a repaired PR look unrepairable.
 func TestNonDispatcherStampAppliers(t *testing.T) {
 	const disp = "the-dispatcher"
-	events := []LabelEvent{
-		{Name: "size:S", AppliedBy: "someone-else"}, // not a stamp label: never listed
+	tl := tlOf(
+		LabelEvent{Name: "size:S", AppliedBy: "someone-else"}, // not a stamp label: never listed
 		modelEvent("example-model-1", "b-applier"),
 		tierEvent("strong", "a-applier"),
-		modelEvent("example-model-1", "b-applier"), // duplicate applier collapses
-		tierEvent("strong", disp),
-	}
-	got := NonDispatcherStampAppliers(events, dispatcherIs(disp))
+		modelEvent("example-model-1", "b-applier"), // same standing applier collapses
+	)
+	got := NonDispatcherStampAppliers(tl, dispatcherIs(disp))
 	if strings.Join(got, ",") != "a-applier,b-applier" {
 		t.Fatalf("appliers = %v, want [a-applier b-applier] (sorted, de-duplicated, stamp labels only)", got)
 	}
-	if got := NonDispatcherStampAppliers(events, nil); len(got) != 3 {
-		t.Fatalf("nil predicate vouched for %d of 4 stamp appliers (%v) — it must vouch for nobody", 4-len(got), got)
+	if got := NonDispatcherStampAppliers(tl, nil); len(got) != 2 {
+		t.Fatalf("nil predicate vouched for a standing applier (%v) — it must vouch for nobody", got)
 	}
-	if got := NonDispatcherStampAppliers(nil, dispatcherIs(disp)); len(got) != 0 {
+	if got := NonDispatcherStampAppliers(StampTimeline{}, dispatcherIs(disp)); len(got) != 0 {
 		t.Fatalf("no events yielded appliers %v", got)
+	}
+
+	// A SUPERSEDED foreign application is not reported: the dispatcher removed it and
+	// re-applied the label, so the standing applier is the dispatcher.
+	repaired := tlOf(
+		modelEvent("example-model-1", "b-applier"),
+		tierEvent("strong", "b-applier"),
+		LabelEvent{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: disp, Removed: true},
+		LabelEvent{Name: DispatchedTierPrefix + "strong", AppliedBy: disp, Removed: true},
+		modelEvent("example-model-1", disp),
+		tierEvent("strong", disp),
+	)
+	if got := NonDispatcherStampAppliers(repaired, dispatcherIs(disp)); len(got) != 0 {
+		t.Fatalf("a re-stamped PR still names %v — a superseded application is not the standing one", got)
 	}
 }
 

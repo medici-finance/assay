@@ -571,9 +571,11 @@ func (c *ghClient) listReviews(pr int) ([]reviewInfo, error) {
 	return all, nil
 }
 
-// timelineEvent is one entry of the issue/PR timeline. Only `labeled` events matter to the
-// model-capability floor, and only their label name plus the login that APPLIED it: that
-// applier is what separates a dispatcher attestation from a self-applied stamp.
+// timelineEvent is one entry of the issue/PR timeline. Only the `labeled`/`unlabeled` events
+// matter to the model-capability floor, and only their label name plus the login that
+// performed them: that applier is what separates a dispatcher attestation from a
+// self-applied stamp, and the REMOVALS are what tell a superseded application from the
+// standing one.
 type timelineEvent struct {
 	Event string `json:"event"`
 	Label struct {
@@ -584,11 +586,22 @@ type timelineEvent struct {
 	} `json:"actor"`
 }
 
-// listLabelEvents returns the PR's `labeled` timeline events — the label name AND the login
-// that applied it — which the applier-aware stamp reader (AttestedModelStampOf) needs to
-// tell a dispatcher attestation from a self-applied one. It walks every page. An empty
-// result is a PR with no labels, which the floor reads as UNATTESTED; a read error
-// propagates and the caller refuses could-not-check rather than proceeding blind.
+// listLabelEvents returns the PR's label timeline — BOTH `labeled` and `unlabeled` events,
+// each with the login that performed it — which the applier-aware stamp reader
+// (AttestedModelStampOf) needs to tell a dispatcher attestation from a self-applied one, and
+// a superseded application from the standing one. It walks every page, IN ORDER: the reader
+// resolves "who holds this label now" by replaying the events, so a page dropped or
+// reordered changes the answer.
+//
+// THE REMOVALS ARE NOT OPTIONAL. A GitHub timeline is append-only. Reading only `labeled`
+// made a foreign stamp permanent — the dispatcher could remove the labels and re-apply them
+// under its own identity and this read still reported the original foreign application, so
+// the PR refused every authority-bearing write forever with no repair available.
+//
+// An empty result is a PR whose labels have no events; the caller pairs it with the
+// authoritative label read, so a present-but-unattributable stamp reads could-not-check
+// rather than UNATTESTED. A read error propagates and the caller refuses could-not-check
+// rather than proceeding blind.
 func (c *ghClient) listLabelEvents(pr int) ([]deskkit.LabelEvent, error) {
 	var out []deskkit.LabelEvent
 	for page := 1; ; page++ {
@@ -598,16 +611,40 @@ func (c *ghClient) listLabelEvents(pr int) ([]deskkit.LabelEvent, error) {
 			return nil, err
 		}
 		for _, e := range chunk {
-			if e.Event != "labeled" {
+			if e.Event != "labeled" && e.Event != "unlabeled" {
 				continue
 			}
-			out = append(out, deskkit.LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login})
+			out = append(out, deskkit.LabelEvent{
+				Name:      e.Label.Name,
+				AppliedBy: e.Actor.Login,
+				Removed:   e.Event == "unlabeled",
+			})
 		}
 		if len(chunk) < 100 {
 			break
 		}
 	}
 	return out, nil
+}
+
+// stampTimeline pairs the PR's CURRENT labels with its label events — the whole input the
+// applier-aware floor reader takes.
+//
+// WHY BOTH READS. Presence is authoritative from the labels API; the events only say who put
+// each label there and whether that application still stands. Deriving presence from the
+// events would let a truncated timeline make a standing stamp look ABSENT, and absent is the
+// one state that PROCEEDS (on the NOTICE path). With both, an unattributable present stamp
+// is could-not-check instead — the fail-closed direction.
+func (c *ghClient) stampTimeline(pr int) (deskkit.StampTimeline, error) {
+	events, err := c.listLabelEvents(pr)
+	if err != nil {
+		return deskkit.StampTimeline{}, err
+	}
+	present, err := c.listLabels(pr)
+	if err != nil {
+		return deskkit.StampTimeline{}, err
+	}
+	return deskkit.StampTimeline{Present: present, Events: events}, nil
 }
 
 // maxFilePages bounds the files walk (100/page). Exceeding it leaves the fetched entry

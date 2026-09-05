@@ -54,6 +54,9 @@ type stub struct {
 	// fixture can distinguish a dispatcher stamp from a self-applied one.
 	labelEvents []deskkit.LabelEvent
 	timelineErr bool // when true, the timeline read fails (could-not-check)
+	// timelineSplit, when >0, serves the events as TWO concatenated JSON arrays split at
+	// this index — the shape `gh api --paginate` emits for a multi-page timeline.
+	timelineSplit int
 }
 
 func (s *stub) install(t *testing.T) string {
@@ -158,25 +161,67 @@ func (s *stub) servedFilePages(t *testing.T) string {
 	return b.String()
 }
 
-// servedTimeline renders s.labelEvents as the GitHub `labeled` timeline shape the floor
-// reads: one JSON array of {event, label:{name}, actor:{login}} entries. A nil slice serves
-// an empty array — a PR with no labels, which the floor reads as UNATTESTED.
+// servedTimeline renders s.labelEvents as the GitHub label timeline shape the floor reads:
+// one JSON array of {event, label:{name}, actor:{login}} entries, `labeled` or `unlabeled`
+// per event. A nil slice serves an empty array — a PR with no label events.
 func (s *stub) servedTimeline(t *testing.T) string {
 	t.Helper()
 	type tlEntry struct {
-		Event string            `json:"event"`
+		Event string                `json:"event"`
 		Label struct{ Name string } `json:"label"`
 		Actor struct{ Login string } `json:"actor"`
 	}
-	out := make([]tlEntry, 0, len(s.labelEvents))
-	for _, e := range s.labelEvents {
-		var te tlEntry
-		te.Event = "labeled"
-		te.Label.Name = e.Name
-		te.Actor.Login = e.AppliedBy
-		out = append(out, te)
+	render := func(events []deskkit.LabelEvent) string {
+		out := make([]tlEntry, 0, len(events))
+		for _, e := range events {
+			var te tlEntry
+			te.Event = "labeled"
+			if e.Removed {
+				te.Event = "unlabeled"
+			}
+			te.Label.Name = e.Name
+			te.Actor.Login = e.AppliedBy
+			out = append(out, te)
+		}
+		return mustJSON(t, out)
 	}
-	return mustJSON(t, out)
+	// timelineSplit models `gh api --paginate`'s real output for a multi-page timeline: the
+	// pages arrive as SEPARATE top-level JSON arrays, concatenated. A reader that parsed only
+	// the first array would silently drop every later event — including a re-stamp.
+	if n := s.timelineSplit; n > 0 && n < len(s.labelEvents) {
+		return render(s.labelEvents[:n]) + "\n" + render(s.labelEvents[n:])
+	}
+	return render(s.labelEvents)
+}
+
+// stamp puts a dispatch stamp on the fixture PR: the timeline EVENTS that record who
+// applied (or removed) each half, AND the label set the PR actually CARRIES afterwards.
+// Both, because the floor reads both — presence from the labels API, the applier from the
+// events — and a fixture that set only one of them would test a state GitHub cannot be in.
+func (s *stub) stamp(events ...deskkit.LabelEvent) {
+	s.labelEvents = events
+	live := map[string]bool{}
+	var order []string
+	for _, e := range events {
+		if _, seen := live[e.Name]; !seen {
+			order = append(order, e.Name)
+		}
+		live[e.Name] = !e.Removed
+	}
+	kept := s.pr.Labels[:0:0]
+	for _, l := range s.pr.Labels {
+		n := strings.ToLower(strings.TrimSpace(l.Name))
+		if strings.HasPrefix(n, deskkit.DispatchedModelPrefix) || strings.HasPrefix(n, deskkit.DispatchedTierPrefix) {
+			continue
+		}
+		kept = append(kept, l)
+	}
+	for _, n := range order {
+		if live[n] {
+			kept = append(kept, labelInfo{Name: n})
+		}
+	}
+	s.pr.Labels = kept
 }
 
 // dispatcherLogin is the roster's desk-App login — the ONLY applier whose dispatched-* stamp

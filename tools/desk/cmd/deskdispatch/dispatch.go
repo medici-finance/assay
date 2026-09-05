@@ -717,6 +717,51 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			stepModelStamp, deskkit.DispatcherRole, deskkit.OwnerOf(repo), tokenPathForMessage(tokPath), terr), terr)
 	}
 	dispatcherToken = tok
+
+	// RE-STAMP, NOT ADD-ON-TOP. Labels are a SET, so `--add-label` over a label the PR
+	// already carries is a NO-OP — and a stamp applied by some other login is exactly the
+	// state the floor refuses. Re-running this step therefore changed nothing on the PRs
+	// that needed it most. A GitHub timeline is APPEND-ONLY, so the only repair the forge
+	// offers is to REMOVE the label and re-apply it under the dispatcher; that is what the
+	// floor's reader resolves (the actor of the last standing `labeled` event), so it is
+	// what this step must do. The set to remove comes from deskkit.ForeignStampLabels, the
+	// same resolution the reader uses, so writer and reader cannot disagree about which
+	// application is standing.
+	//
+	// The reads are UNVERIFIABLE on failure rather than best-effort: proceeding blind would
+	// silently re-create the no-op — the labels would be "applied" and the PR would still
+	// carry the foreign stamp, which is the failure this whole step exists to prevent.
+	labelRead := runCmd("", "gh", "api", "--paginate",
+		fmt.Sprintf("repos/%s/issues/%d/labels", repo, o.pr), "--jq", ".[].name")
+	if labelRead.err != nil {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: could not read the labels currently on %s#%d (%s) — whether this PR already carries "+
+				"a foreign stamp is unknown, and adding a label over one is a no-op, so stamping blind "+
+				"would report success on a PR that stays refused.",
+			stepModelStamp, repo, o.pr, firstLine(labelRead.stderr)), labelRead.err)
+	}
+	tlRead := runCmd("", "gh", "api", "--paginate",
+		fmt.Sprintf("repos/%s/issues/%d/timeline", repo, o.pr),
+		"--jq", `.[]|select(.event=="labeled" or .event=="unlabeled")|[.event,(.label.name//""),(.actor.login//"")]|@tsv`)
+	if tlRead.err != nil {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: could not read the label timeline of %s#%d (%s) — WHO applied the stamp this PR "+
+				"carries cannot be established, so a foreign application could not be replaced.",
+			stepModelStamp, repo, o.pr, firstLine(tlRead.stderr)), tlRead.err)
+	}
+	foreign := deskkit.ForeignStampLabels(deskkit.StampTimeline{
+		Present: parseLabelNames(labelRead.stdout),
+		Events:  parseLabelEventLines(tlRead.stdout),
+	}, deskkit.IsDispatcherLogin)
+	for _, l := range foreign {
+		if r := runCmd("", "gh", "pr", "edit", fmt.Sprint(o.pr), "-R", repo, "--remove-label", l); r.err != nil {
+			return "", deskkit.Unverifiable(fmt.Sprintf(
+				"step %s: could not remove the foreign stamp %s from %s#%d (%s) — re-applying it on top "+
+					"would be a no-op, leaving the PR carrying an application the floor refuses.",
+				stepModelStamp, l, repo, o.pr, firstLine(r.stderr)), r.err)
+		}
+	}
+
 	for _, l := range labels {
 		// Label provisioning is idempotent and an already-exists error is the success
 		// case: two dispatchers stamping in parallel must both end up with the label
@@ -729,8 +774,57 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 				stepModelStamp, l, repo, o.pr, firstLine(r.stderr)), r.err)
 		}
 	}
-	return fmt.Sprintf("OK: applied %s as the %s App, the identity the capability floor accepts (%s)",
-		strings.Join(labels, " + "), deskkit.DispatcherRole, tokenPathForMessage(tokPath)), nil
+	// BOTH events are reported. A silent removal is a label disappearing from a PR with no
+	// record of why; the removal is half the repair and belongs in the step report next to
+	// the application it made possible.
+	restamped := ""
+	if len(foreign) > 0 {
+		restamped = fmt.Sprintf(" (RE-STAMPED: removed %s, applied by a login this floor does not accept, "+
+			"before applying the stamp — adding over a present label is a no-op)", strings.Join(foreign, " + "))
+	}
+	return fmt.Sprintf("OK: applied %s as the %s App, the identity the capability floor accepts (%s)%s",
+		strings.Join(labels, " + "), deskkit.DispatcherRole, tokenPathForMessage(tokPath), restamped), nil
+}
+
+// parseLabelNames reads the `gh api --jq '.[].name'` output of the PR's labels — one name
+// per line, blank lines ignored. An EMPTY output is a PR with no labels, which is a real
+// answer, not a failure: the caller has already treated a failed READ as unverifiable.
+func parseLabelNames(out string) []string {
+	var names []string
+	for _, ln := range strings.Split(out, "\n") {
+		if s := strings.TrimSpace(ln); s != "" {
+			names = append(names, s)
+		}
+	}
+	return names
+}
+
+// parseLabelEventLines reads the TSV label-event stream (`event\tlabel\tactor` per line) the
+// timeline --jq emits, IN ORDER — the order is load-bearing, because the standing applier of
+// a label is decided by which of its events came last. A line missing a field is skipped
+// rather than guessed: a half-read event would attribute a label to the wrong login, and the
+// reader treats a label it cannot attribute as could-not-check, which is the safe answer.
+func parseLabelEventLines(out string) []deskkit.LabelEvent {
+	var events []deskkit.LabelEvent
+	for _, ln := range strings.Split(out, "\n") {
+		if strings.TrimSpace(ln) == "" {
+			continue
+		}
+		f := strings.Split(ln, "\t")
+		if len(f) < 3 || strings.TrimSpace(f[1]) == "" {
+			continue
+		}
+		kind := strings.TrimSpace(f[0])
+		if kind != "labeled" && kind != "unlabeled" {
+			continue
+		}
+		events = append(events, deskkit.LabelEvent{
+			Name:      strings.TrimSpace(f[1]),
+			AppliedBy: strings.TrimSpace(f[2]),
+			Removed:   kind == "unlabeled",
+		})
+	}
+	return events
 }
 
 // tokenPathForMessage renders the token file path for a step report or refusal. The PATH is
