@@ -399,7 +399,7 @@ func TestKillSwitchIsHonoured(t *testing.T) {
 }
 
 func TestBoardSummaryCountsNextUpRows(t *testing.T) {
-	// The heading spelling is the whole point (assay#333): statusgen emits `## Next up`
+	// The heading spelling is the whole point: statusgen emits `## Next up`
 	// (a SPACE), so that spelling MUST be counted, not just the hyphenated form. Both are
 	// asserted so the two tools stay locked together whichever way the heading is written.
 	for _, heading := range []string{"## Next up", "## Next-up"} {
