@@ -72,6 +72,91 @@ whole activation.
    None of the tag-cut, signing, asset-upload, or immutable-release logic is
    touched; only the two changelog steps change.
 
+   **Steps 1 and 2 are ACTIVATED** — both halves are live under
+   `.github/workflows/`, so `release.yml.patch` / `release.yml.proposed` are kept
+   only as the historical delta. Step 3 below is the one still awaiting
+   activation.
+
+3. **`release.yml` change — move the roll into its own job, and retry the
+   push.** Apply `tools/changelog/release-roll-retry.yml.patch` to the live
+   `.github/workflows/release.yml`:
+
+   ```
+   git apply tools/changelog/release-roll-retry.yml.patch
+   ```
+
+   It applies cleanly to the currently-live file and changes nothing outside the
+   roll. Two changes, both tracked on #312:
+
+   - **The roll becomes its own job, `changelog-roll` (`needs: [resolve,
+     release]`), instead of two trailing steps of `release`.** As a trailing
+     step, a failed roll turned the whole run's conclusion to `failure` even
+     though the tag, every asset and the published notes were complete — the
+     misleading signal #312 reports. It was also unrecoverable: `release`'s
+     upload step hard-refuses an asset name that already exists, so "Re-run
+     failed jobs" could never reach the roll again and every failed roll had to
+     be hand-filed as a PR (v0.23.0, v0.24.0, v0.26.0). As its own job the roll
+     is independently re-runnable and `release`'s conclusion means "the release
+     published" again.
+
+     `continue-on-error: true` on the step was considered and rejected: it fixes
+     the conclusion and nothing else — the failure would render as a neutral,
+     near-invisible annotation inside a green job, and it would still be
+     unreachable by a re-run. The split keeps the failure loud and red where it
+     belongs while leaving the release green. Visibility and recoverability, not
+     suppression.
+
+   - **The push gets a bounded retry (5 attempts) that re-syncs and
+     re-aggregates.** The previous shape did a single bare `git push` and lost
+     the race against a moving default branch:
+
+     ```
+     ! [rejected]        HEAD -> main (fetch first)
+     error: failed to push some refs to 'https://github.com/medici-finance/assay'
+     ```
+
+     This is a plain non-fast-forward rejection, **not** a ruleset refusal — a
+     ruleset refusal is the `GH013: Repository rule violations found` message
+     that v0.23.0/v0.24.0 hit before the board-writer App token was wired in.
+     The App's bypass works; the race was simply never handled.
+
+     The window is much wider than it looks, and **no checkout tweak can close
+     it**. `actions/checkout` resolves `github.sha`, which for a
+     `workflow_dispatch` is the head the ref carried *when the run was created* —
+     not the tip when the job starts. And `release` sits behind the `release`
+     environment's human-approval gate, so dispatch→job-start is however long the
+     approver takes. The staleness window is therefore dispatch→push. Run
+     `33989081398` (2026-09-05, the v0.26.0 cut) is the worked example: `head_sha`
+     `3bb33ad5` pinned at 20:05:57Z, the release job not started until 20:12:51Z,
+     the push at 20:19:15Z — by which time the default branch had taken three
+     board-writer commits (20:06:55Z, 20:07:08Z, 20:08:40Z) that the checkout
+     could never have contained. Re-syncing *at push time* is the only shape that
+     closes this.
+
+     The recovery mirrors `assay-statusgen.yml`'s `regen` and `model-autoflip`
+     jobs exactly — the two other places in this repo that write generated files
+     straight to the default branch: on rejection, re-sync to the new head and
+     re-derive against it. Never `git pull --rebase` and never `--force`; the
+     rolled section is a generated artifact, so a rebase conflict in it is
+     meaningless and re-running `aggregate.py` against the new head *is* the
+     resolution. A retry that finds nothing left to aggregate (`aggregate.py`
+     rc 2) means a concurrent roll already landed the section, and exits 0.
+
+     One accepted divergence: a fragment merged between the tag and a retry is
+     aggregated into the `CHANGELOG.md` section but is absent from the
+     already-published release notes. Over-inclusion is the safe direction — the
+     alternative, pinning the fragment set to the tag, would drop that fragment
+     from the CHANGELOG entirely, since the roll deletes it either way on the
+     next cycle.
+
+   The identity is unchanged: the roll still commits as the board-writer App,
+   whose ruleset bypass covers this class of generated-file write, and still
+   uses per-command header auth with `persist-credentials: false`. Opening a PR
+   instead was considered and rejected — it would be the only generated-file
+   write in this repo that does not land directly, it needs a human review on a
+   mechanical commit, and it leaves `changelog/` un-cleared (so the *next*
+   release aggregates the same fragments again) for as long as the PR sits.
+
 No other files change under `.github/workflows/`.
 
 ## Cutover — the pending entries are not lost
