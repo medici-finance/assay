@@ -40,7 +40,7 @@ func TestModelFloorStrongStampFlips(t *testing.T) {
 	s.reviews = nil
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)
-	s.labelEvents = strongStamp(t)
+	s.stamp(strongStamp(t)...)
 
 	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
 		t.Fatalf("strong-tier flip rc = %d, want 0", rc)
@@ -57,7 +57,7 @@ func TestModelFloorCheapStampRefusedWithRemediation(t *testing.T) {
 	s.reviews = nil
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)
-	s.labelEvents = cheapStamp(t)
+	s.stamp(cheapStamp(t)...)
 
 	var rc int
 	out := captureStderr(t, func() { rc = run([]string{"7", "--repo", privateCIRepo}) })
@@ -101,7 +101,7 @@ func TestModelFloorOverrideProceedsLoudly(t *testing.T) {
 	s.reviews = nil
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)
-	s.labelEvents = cheapStamp(t)
+	s.stamp(cheapStamp(t)...)
 	t.Setenv(deskkit.ModelFloorOverrideEnv, "1")
 
 	var rc int
@@ -122,10 +122,10 @@ func TestModelFloorSelfAppliedStampRefused(t *testing.T) {
 	s.reviews = nil
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)
-	s.labelEvents = []deskkit.LabelEvent{
-		{Name: deskkit.DispatchedModelPrefix + "opus-4.8", AppliedBy: "shared-agent"}, // not the dispatcher
-		{Name: deskkit.DispatchedTierPrefix + "strong", AppliedBy: "shared-agent"},
-	}
+	s.stamp(
+		deskkit.LabelEvent{Name: deskkit.DispatchedModelPrefix + "opus-4.8", AppliedBy: "shared-agent"}, // not the dispatcher
+		deskkit.LabelEvent{Name: deskkit.DispatchedTierPrefix + "strong", AppliedBy: "shared-agent"},
+	)
 
 	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
 		t.Fatalf("self-applied strong stamp rc = %d, want %d — attestation collapsed to self-report", rc, deskkit.ExitRefused)
@@ -148,5 +148,100 @@ func TestModelFloorTimelineUnreadableIsUnverifiable(t *testing.T) {
 	}
 	if m := s.mutated(); len(m) != 0 {
 		t.Fatalf("mutation on an unverifiable tier read: %v", m)
+	}
+}
+
+// THE REPAIR PATH, end to end through the verb. A GitHub timeline is APPEND-ONLY: the
+// `labeled` event that recorded a foreign stamp is never removed. So the ONLY repair
+// available is for the dispatcher to REMOVE the labels and re-apply them under its own
+// identity — and a floor that read any historical `labeled` event made even that repair
+// invisible, refusing the PR forever with no move left to anyone. Observed on a live public
+// PR: the foreign stamp was removed and re-applied by the bound dispatcher App, and the flip
+// still refused naming the ORIGINAL applier.
+func TestModelFloorRestampedByDispatcherFlips(t *testing.T) {
+	s := &stub{pr: greenPR()}
+	s.reviews = nil
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+	d := dispatcherLogin(t)
+	model := deskkit.DispatchedModelPrefix + "opus-4.8"
+	tier := deskkit.DispatchedTierPrefix + "strong"
+	s.stamp(
+		deskkit.LabelEvent{Name: model, AppliedBy: "jojig-dao"}, // the foreign stamp
+		deskkit.LabelEvent{Name: tier, AppliedBy: "jojig-dao"},
+		deskkit.LabelEvent{Name: model, AppliedBy: d, Removed: true}, // the dispatcher un-stamps
+		deskkit.LabelEvent{Name: tier, AppliedBy: d, Removed: true},
+		deskkit.LabelEvent{Name: model, AppliedBy: d}, // and re-stamps as itself
+		deskkit.LabelEvent{Name: tier, AppliedBy: d},
+	)
+
+	var rc int
+	out := captureStderr(t, func() { rc = run([]string{"7", "--repo", privateCIRepo}) })
+	if rc != deskkit.ExitOK {
+		t.Fatalf("re-stamped PR rc = %d, want 0 — an append-only timeline leaves no other repair:\n%s", rc, out)
+	}
+	if !s.ran("pr ready") {
+		t.Errorf("a dispatcher re-stamp did not reach the ready mutation:\n%s", out)
+	}
+}
+
+// A foreign stamp that is STILL STANDING is not laundered by the fix: only a genuine
+// re-stamp is honoured, and this row is what tells the two apart.
+func TestModelFloorForeignStampStillStandingRefused(t *testing.T) {
+	s := &stub{pr: greenPR()}
+	s.reviews = nil
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+	d := dispatcherLogin(t)
+	model := deskkit.DispatchedModelPrefix + "opus-4.8"
+	tier := deskkit.DispatchedTierPrefix + "strong"
+	s.stamp(
+		deskkit.LabelEvent{Name: model, AppliedBy: d}, // the dispatcher stamped first...
+		deskkit.LabelEvent{Name: tier, AppliedBy: d},
+		deskkit.LabelEvent{Name: model, AppliedBy: d, Removed: true},
+		deskkit.LabelEvent{Name: tier, AppliedBy: d, Removed: true},
+		deskkit.LabelEvent{Name: model, AppliedBy: "jojig-dao"}, // ...but a foreign login holds it now
+		deskkit.LabelEvent{Name: tier, AppliedBy: "jojig-dao"},
+	)
+
+	var rc int
+	out := captureStderr(t, func() { rc = run([]string{"7", "--repo", privateCIRepo}) })
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("standing foreign stamp rc = %d, want %d — an earlier dispatcher event must not vouch "+
+			"for a later foreign one", rc, deskkit.ExitRefused)
+	}
+	if !strings.Contains(out, "jojig-dao") {
+		t.Errorf("the refusal does not name the STANDING applier:\n%s", out)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a foreign-stamped PR was mutated: %v", m)
+	}
+}
+
+// The repair usually lands LATE in a busy PR's timeline — i.e. on a later page. `gh api
+// --paginate` emits each page as its own top-level JSON array, so a reader that parsed only
+// the first array would see the foreign stamp and never the re-stamp that fixed it.
+func TestModelFloorReadsTimelineBeyondTheFirstPage(t *testing.T) {
+	s := &stub{pr: greenPR()}
+	s.reviews = nil
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+	d := dispatcherLogin(t)
+	model := deskkit.DispatchedModelPrefix + "opus-4.8"
+	tier := deskkit.DispatchedTierPrefix + "strong"
+	s.stamp(
+		deskkit.LabelEvent{Name: model, AppliedBy: "jojig-dao"},
+		deskkit.LabelEvent{Name: tier, AppliedBy: "jojig-dao"},
+		deskkit.LabelEvent{Name: model, AppliedBy: d, Removed: true},
+		deskkit.LabelEvent{Name: tier, AppliedBy: d, Removed: true},
+		deskkit.LabelEvent{Name: model, AppliedBy: d},
+		deskkit.LabelEvent{Name: tier, AppliedBy: d},
+	)
+	s.timelineSplit = 2 // the repair lives entirely in the SECOND page
+
+	var rc int
+	out := captureStderr(t, func() { rc = run([]string{"7", "--repo", privateCIRepo}) })
+	if rc != deskkit.ExitOK {
+		t.Fatalf("paged timeline rc = %d, want 0 — page 2 of the timeline was not read:\n%s", rc, out)
 	}
 }
