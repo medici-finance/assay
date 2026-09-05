@@ -812,9 +812,13 @@ jobs:
           go version
           cd statusgen
           LDFLAGS="-X main.statusgenVersion=${RELEASE_TAG}"
-          GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-arm64 .
-          GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-amd64 .
-          GOOS=linux  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-linux-amd64  .
+          GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-arm64 .
+          GOOS=darwin  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-darwin-amd64 .
+          GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-linux-amd64  .
+          # windows-port/01: Go cross-compiles the two Windows targets on this same
+          # Linux runner (no Windows host); the .exe suffix is part of the asset name.
+          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-windows-amd64.exe .
+          GOOS=windows GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../statusgen-windows-arm64.exe .
 
       # desk-tools ships this same umbrella release as per-platform tarballs (the
       # suite is 25+ binaries, so one archive per platform is cleaner for
@@ -849,15 +853,20 @@ jobs:
                    -X github.com/medici-finance/assay/tools/desk/internal/deskkit.ReleaseTag=${RELEASE_TAG}"
           root="$PWD"
           cd tools/desk
-          for platform in darwin-arm64 darwin-amd64 linux-amd64; do
+          # windows-port/01: windows-amd64 / windows-arm64 cross-compile on this
+          # same Linux runner; each cmd/* binary takes a .exe suffix on the windows
+          # legs only, so the tarball unpacks as runnable .exe files on Windows.
+          for platform in darwin-arm64 darwin-amd64 linux-amd64 windows-amd64 windows-arm64; do
             os="${platform%-*}"
             arch="${platform#*-}"
+            ext=""
+            [ "$os" = windows ] && ext=".exe"
             stage="${RUNNER_TEMP:-/tmp}/desk-$platform"
             rm -rf "$stage"; mkdir -p "$stage"
             for cmd in cmd/*/; do
               name=$(basename "$cmd")
               GOOS="$os" GOARCH="$arch" go build -ldflags "$LDFLAGS" \
-                -o "$stage/$name" "./$cmd"
+                -o "$stage/$name$ext" "./$cmd"
             done
             # Include the pre-push hook so consumers can install the main-commit
             # backstop alongside the binaries.
@@ -866,8 +875,8 @@ jobs:
             tar -C "$stage" -czf "$root/desk-tools-$platform.tar.gz" .
           done
 
-      # One checksums.txt covers every asset on the umbrella release — the three
-      # statusgen binaries and the three desk-tools per-platform tarballs.
+      # One checksums.txt covers every asset on the umbrella release — the five
+      # statusgen binaries and the five desk-tools per-platform tarballs.
       # Consumers pin each line by sha256 in .assay-versions.
       - name: Generate checksums
         run: |
@@ -876,9 +885,13 @@ jobs:
             statusgen-darwin-arm64 \
             statusgen-darwin-amd64 \
             statusgen-linux-amd64 \
+            statusgen-windows-amd64.exe \
+            statusgen-windows-arm64.exe \
             desk-tools-darwin-arm64.tar.gz \
             desk-tools-darwin-amd64.tar.gz \
-            desk-tools-linux-amd64.tar.gz > checksums.txt
+            desk-tools-linux-amd64.tar.gz \
+            desk-tools-windows-amd64.tar.gz \
+            desk-tools-windows-arm64.tar.gz > checksums.txt
           cat checksums.txt
 
       # TOOL-VALIDATION EVIDENCE PACK (iso-9001/01) — collect the mutation reports
@@ -1057,8 +1070,14 @@ jobs:
           # alongside the binaries: the .json a consumer parses, the .md an
           # auditor reads. Assembled from this run's captured mutation reports by
           # the "Assemble the tool-validation evidence pack" step above.
+          # windows-port/01: the two statusgen .exe assets and the two desk-tools
+          # windows tarballs are uploaded alongside the Unix assets — this list is
+          # explicit (not a glob), so a built+checksummed asset absent from here
+          # would be emitted in checksums.txt but never attached to the release.
           for f in statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 \
+                   statusgen-windows-amd64.exe statusgen-windows-arm64.exe \
                    desk-tools-darwin-arm64.tar.gz desk-tools-darwin-amd64.tar.gz desk-tools-linux-amd64.tar.gz \
+                   desk-tools-windows-amd64.tar.gz desk-tools-windows-arm64.tar.gz \
                    "tool-validation-${RELEASE_TAG}.md" "tool-validation-${RELEASE_TAG}.json" \
                    checksums.txt; do
             # Fail loudly if this name is already published — never swap the bytes.

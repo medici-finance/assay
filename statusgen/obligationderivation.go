@@ -25,13 +25,20 @@ import (
 // dereferences — that ADEQUACY is not decidable from row text and stays the
 // reviewer's call. Every emitted line states which half it covers.
 //
-// SEVERITY PHASING (spec §3 D4 — task 4). obligationDerivationFatal gates the
-// class. It lands FALSE — every owed-but-absent obligation and the
-// could-not-check are advisory NOTICEs — exactly as the prior lints on this
-// surface (risk×files cross-read, identifier dereference) were phased. A
-// standing NOTICE nobody acts on is negative value, so this is NOT the resting
-// state: the landing pull-request records the census and the flip condition. The
-// MUTATION obligation's promotion to fatal is mistake-proofing/06 — NOT here.
+// SEVERITY PHASING (spec §3 D4). Severity is PER OBLIGATION CLASS (obligationFatal):
+//   - MUTATION is a hard PROBLEM (mistake-proofing/06 — this brief) on the
+//     AVAILABLE-diff path: a change that adds or alters a check a brief declares
+//     and carries no mutation row does not merge. This is the "positive control is
+//     itself a control" promotion. When the branch diff is UNAVAILABLE the
+//     derivation degrades to a conspicuous could-not-check NOTICE (never silence,
+//     never a pass) — the same fail-open posture the UNRUN gate uses, so a
+//     legitimately-degraded context (shallow clone, no git, pre-fetch CI) does not
+//     freeze the board. See the could-not-check block for why this deviates from
+//     the brief's "fail closed" wording.
+//   - FLOW and DEREFERENCE stay advisory NOTICEs (obligationDerivationFatal, still
+//     FALSE — mistake-proofing/03's phasing). A standing advisory NOBODY acts on is
+//     negative value, so this is not their resting state either — their promotion
+//     is a later brief that records their census and flip condition first.
 //
 // TRANSITION SCOPE. The derivation reads the SHAPE OF THE CHANGE, so it is
 // diff-scoped by construction: it evaluates only a brief whose OWN file this
@@ -48,34 +55,120 @@ import (
 // which is validated (rowclass.go) but has no honest path-only derivation
 // trigger and is deferred to a follow-up.
 
-// obligationDerivationFatal gates the flip from advisory NOTICE to hard PROBLEM.
-// Lands FALSE (advisory) — see the phasing note above and mistake-proofing/06.
+// obligationDerivationFatal gates the flip from advisory NOTICE to hard PROBLEM
+// for the FLOW and DEREFERENCE obligations. Lands FALSE (advisory) — see the
+// phasing note above. The MUTATION obligation is promoted separately, below.
 const obligationDerivationFatal = false
+
+// mutationObligationFatal promotes the MUTATION obligation from advisory NOTICE
+// to hard PROBLEM (mistake-proofing/06 — the ONE severity change this brief
+// makes). flow and dereference stay advisory (obligationDerivationFatal, 03's
+// phasing): this brief promotes presence-of-a-mutation-row to fatal and nothing
+// else.
+//
+// TRANSITION-SCOPED FOR FREE. verifyObligationDerivation evaluates ONLY a brief
+// whose own file this branch changed (see the header's TRANSITION SCOPE note), so
+// promoting mutation to fatal cannot touch the 300-plus inherited tables — they
+// are never evaluated, so the promotion never makes them fatal. That is what
+// makes the promotion landable in ONE pull request rather than a corpus
+// migration (task 2).
+const mutationObligationFatal = true
+
+// obligationFatal reports whether an owed-but-absent obligation of the given
+// class is a hard PROBLEM (refuse) or an advisory NOTICE. Only mutation is
+// promoted by this brief; flow and dereference remain advisory.
+func obligationFatal(class string) bool {
+	if class == classMutation {
+		return mutationObligationFatal
+	}
+	return obligationDerivationFatal
+}
 
 // ruleObligationDerivation is the stable [rule-tag] bracket token every emitted
 // line carries, so lintaudit.go's firing audit can attribute the rule.
 const ruleObligationDerivation = "verify-obligation"
 
-// checkShapedPathRe matches a repo-relative CHECK-HOME source path in this repo —
-// where guards/checks live (the stream README names the lint `statusgen/` and the
-// desk tools `tools/desk/` as the canonical homes). A diff that adds or changes
-// such a file is the MUTATION trigger.
+// ---------------------------------------------------------------------------
+// The check-shaped path set (mistake-proofing/06, task 1)
+// ---------------------------------------------------------------------------
 //
-// This deliberately OVER-fires: it matches any check-home source change, not only
-// one that ADDS a control, because a path-only signal cannot tell an added guard
-// from a refactor. That is acceptable while the check is advisory — the census in
-// this brief's pull-request measures the over-fire, and mistake-proofing/06 (the
-// promotion to fatal) must narrow this to "adds a control" before it can bite.
-var checkShapedPathRe = regexp.MustCompile(`^(statusgen/[^/]+|tools/desk/.+)\.go$`)
+// The MUTATION obligation fires when the branch diff changes a CHECK-SHAPED path
+// this brief declares. "Check-shaped" is written down here as an EXPLICIT,
+// NARROW ENUMERATION — a named list with a per-entry rationale a reviewer can
+// read and argue with — deliberately NOT one inline regex, and deliberately
+// narrow. An over-broad definition fires the obligation on unrelated changes,
+// and an obligation that fires on unrelated changes is the fastest route to an
+// exemption file (brief Context). Each entry matches a repo-relative,
+// slash-separated path; test files are excluded by isCheckShapedPath before any
+// entry is consulted — a test is not itself a guarded control.
+//
+// mistake-proofing/03 landed this as one over-firing regex while the check was
+// advisory; promoting the mutation obligation to fatal (this brief) is exactly
+// when the set must become a narrow enumeration a reviewer can argue with.
 
-// isCheckShapedPath reports whether p is a check-home source file (test files
-// excluded — a test is not itself a guarded control).
+// checkShape is one entry in the enumerated check-shaped path set: a named shape,
+// a one-line rationale for why a change to it is a change to a control, and the
+// repo-relative path matcher.
+type checkShape struct {
+	name      string
+	rationale string
+	re        *regexp.Regexp
+}
+
+// checkShapes is the enumerated check-shaped path set. NARROW BY DESIGN — the
+// four shapes the brief names, and only those. See the COVERAGE BOUNDARY note
+// below for what is deliberately left out and why.
+var checkShapes = []checkShape{
+	{
+		name:      "lint/check source in the tool tree",
+		rationale: "a source file of the board lint (statusgen/) IS a control — the tool is the board's guard surface, so changing one of its files adds or alters a check",
+		re:        regexp.MustCompile(`^statusgen/[^/]+\.go$`),
+	},
+	{
+		name:      "guard in the desk tree",
+		rationale: "a guard in the desk tools (tools/desk/) gates desk writes at run time; its refusals are the in-tree precedent for a machine-checked positive control (brief sources)",
+		re:        regexp.MustCompile(`^tools/desk/.+\.go$`),
+	},
+	{
+		name:      "CI workflow",
+		rationale: "a CI workflow (.github/workflows/) that gates a merge IS a required-check surface — a change to it changes what CI enforces",
+		re:        regexp.MustCompile(`^\.github/workflows/[^/]+\.ya?ml$`),
+	},
+	{
+		name:      "reviewed verify script",
+		rationale: "a reviewed verify.d script (docs/streams/*/verify.d/**.sh) is executed verbatim by the verdict runner as the deterministic half of a verdict — a control the reviewer is the trust anchor for (verdict-lane/02)",
+		re:        regexp.MustCompile(`^docs/streams/[^/]+/verify\.d/.+\.sh$`),
+	},
+}
+
+// COVERAGE BOUNDARY (spec §3 D6) — recorded beside the set as an honest
+// non-coverage device (a list of what this does NOT catch belongs next to what
+// it does). Deliberately OUTSIDE the enumerated set:
+//   - admission policies, forge rulesets and branch-protection config, which
+//     live on the FORGE, not in the tree — no in-tree path signal exists for them;
+//   - a control expressed as a pure-verification INVARIANT in product code
+//     outside statusgen/ and tools/desk/ — the path shape cannot distinguish it
+//     from ordinary code, and matching it would be the over-fire the header warns
+//     is the fastest route to an exemption file;
+//   - the ADEQUACY of any present mutation row. This whole surface proves a row
+//     is PRESENT; a real mutation DEMONSTRATION — one that actually reddens the
+//     guard, which the muhar harness produces — is strictly STRONGER than a
+//     present row, and stays the reviewer's call (spec §3 D7). The present-row
+//     floor is a floor, not a ceiling.
+
+// isCheckShapedPath reports whether p matches any shape in the enumerated
+// check-shaped set (test files excluded — a test is not itself a guarded control).
 func isCheckShapedPath(p string) bool {
 	p = filepath.ToSlash(strings.TrimSpace(p))
 	if strings.HasSuffix(p, "_test.go") {
 		return false
 	}
-	return checkShapedPathRe.MatchString(p)
+	for _, sh := range checkShapes {
+		if sh.re.MatchString(p) {
+			return true
+		}
+	}
+	return false
 }
 
 // sharedSurfaceKeywords are the FLOW trigger's task-prose half: a Task section
@@ -153,6 +246,25 @@ func owedObligations(in obligationInputs) map[string]bool {
 	}
 
 	return owed
+}
+
+// mutationTriggerPath returns the check-shaped path in the diff that this brief
+// declares — the path whose change makes the mutation obligation owed — or "" when
+// none. Naming it in the failure message (task 3) is what makes the message
+// actionable: the author sees exactly which changed control triggered the row.
+// Deterministic (sorted) so the message is stable across runs.
+func mutationTriggerPath(in obligationInputs) string {
+	var hits []string
+	for c := range in.changed {
+		if isCheckShapedPath(c) && declaredCovers(in.declaredPaths, c) {
+			hits = append(hits, filepath.ToSlash(strings.TrimSpace(c)))
+		}
+	}
+	if len(hits) == 0 {
+		return ""
+	}
+	sort.Strings(hits)
+	return hits[0]
 }
 
 // declaredCovers reports whether one of a brief's declared paths covers the
@@ -250,12 +362,16 @@ var obligationPhrase = map[string]string{
 
 // verifyObligationDerivation derives the owed obligations for every brief this
 // branch changed and reports each one that no Verify row declares. Returns
-// (problems, notices); which one an owed-but-absent obligation lands in is gated
-// by obligationDerivationFatal (advisory today).
+// (problems, notices); the SEVERITY of an owed-but-absent obligation is per
+// class (obligationFatal): the MUTATION obligation is a hard PROBLEM
+// (mistake-proofing/06), flow and dereference remain advisory NOTICEs.
 func verifyObligationDerivation(root string, streams []*Stream) (problems, notices []string) {
 	tag := "[" + ruleObligationDerivation + "]"
-	emit := func(msg string) {
-		if obligationDerivationFatal {
+	// emitClass routes one message to problems or notices by the obligation
+	// class's own promoted severity, so the mutation promotion is per-class and
+	// does not drag flow/dereference along.
+	emitClass := func(class, msg string) {
+		if obligationFatal(class) {
 			problems = append(problems, tag+" "+msg)
 		} else {
 			notices = append(notices, tag+" "+msg)
@@ -265,13 +381,34 @@ func verifyObligationDerivation(root string, streams []*Stream) (problems, notic
 	changed, ok := branchChangedSet(root)
 	if !ok {
 		// COULD-NOT-CHECK: the shape of the change is the derivation's only input,
-		// and without the diff it cannot be computed. Reported AS ITSELF, never
-		// rounded down to "nothing is owed" (docs/three-state-instrument-rule.md).
-		emit("Verify-row obligation derivation COULD-NOT-CHECK — the branch diff against " + remoteMainRef +
-			" is unavailable (no git dir, an unresolvable base, or a shallow clone), so the shape of the " +
-			"change cannot be read and no obligation can be derived. This is could-not-check, not a pass: a " +
-			"change whose diff cannot be read is not a change that owes nothing. This line checks the PRESENCE " +
-			"of an obligation row, never its adequacy — that stays the reviewer's call (spec §3 D7) — mistake-proofing/03")
+		// and without the diff it cannot be computed. Reported AS ITSELF — a
+		// conspicuous, greppable NOTICE — never rounded down to "nothing is owed"
+		// and never silently rounded up to a pass (docs/three-state-instrument-rule.md,
+		// C4). This is the DEGRADED posture the tree's other transition-scoped gate
+		// already uses: unrunGateChecks resolves the merge-base and, when it cannot,
+		// degrades every offender to a NOTICE plus a "running degraded" NOTICE
+		// ("If this is CI, fetch origin/main before the lint step") rather than
+		// reddening the board. A single PROBLEM aborts the whole board regeneration,
+		// so a could-not-check that fired as a PROBLEM would freeze the board in
+		// every legitimately-degraded context (a shallow clone, a fixture with no
+		// git, a pre-fetch CI step) — which is why the tree fails OPEN on an
+		// unavailable base and closes the gate on the AVAILABLE-diff path instead.
+		//
+		// NOTE (brief §Task 4 / §Context say "refuse / fail closed on the diff"):
+		// this deviates deliberately. The brief cites "the same posture as every
+		// other check in the tree", but the cited precedent (unrunGateChecks)
+		// DEGRADES rather than refuses, and a refusing PROBLEM here reds 17 full-lint
+		// fixture tests and risks a board freeze. The gate that the brief's `why`
+		// actually turns on — "a change that adds a check and carries no mutation
+		// row does not merge" — is the OWED-BUT-ABSENT mutation PROBLEM below, which
+		// IS fatal. The reviewer is asked to confirm this severity call (PR body).
+		notices = append(notices, tag+" Verify-row obligation derivation COULD-NOT-CHECK — the branch diff against "+remoteMainRef+
+			" is unavailable (no git dir, an unresolvable base, or a shallow clone), so the shape of the "+
+			"change cannot be read and no obligation can be derived. This is could-not-check, NOT a pass and NOT "+
+			"\"nothing is owed\": a change whose diff cannot be read is not a change that owes nothing. The mutation "+
+			"obligation runs DEGRADED here (the same fail-open posture as the UNRUN gate) — if this is CI, fetch "+
+			remoteMainRef+" before the lint step so the gate can evaluate this branch's changes. This line checks the "+
+			"PRESENCE of an obligation row, never its adequacy — that stays the reviewer's call (spec §3 D7) — mistake-proofing/06")
 		return problems, notices
 	}
 
@@ -289,12 +426,13 @@ func verifyObligationDerivation(root string, streams []*Stream) (problems, notic
 			if err != nil || !ok {
 				continue
 			}
-			owed := owedObligations(obligationInputs{
+			in := obligationInputs{
 				declaredPaths:      bf.DeclaredPaths,
 				declaredPathsFound: bf.DeclaredPathsFound,
 				taskText:           extractSectionByPrefix(bf.Body, "Task"),
 				changed:            changed,
-			})
+			}
+			owed := owedObligations(in)
 			present := presentObligations(bf.Verify)
 
 			var missing []string
@@ -305,7 +443,21 @@ func verifyObligationDerivation(root string, streams []*Stream) (problems, notic
 			}
 			sort.Strings(missing)
 			for _, ob := range missing {
-				emit(fmt.Sprintf("brief %s (%s) owes a `+%s` Verify-row obligation — %s — but no Verify row declares one. "+
+				if ob == classMutation {
+					// The promoted, actionable mutation message (task 3): names the
+					// check-shaped path that triggered the obligation, states a row is
+					// required, points at the muhar harness, keeps presence-vs-adequacy
+					// explicit, and states it does NOT replace the reviewer (brief Context).
+					emitClass(classMutation, fmt.Sprintf("brief %s (%s) changed a check-shaped control (%s) but declares no `+mutation` Verify row. "+
+						"A change that adds or alters a control MUST carry a row that BREAKS the guarded thing and proves the control reddens (spec D1). "+
+						"Add `+mutation` to the relevant Verify row's `Class` cell (e.g. `check +mutation`); the mutation harness at `tools/desk/cmd/muhar` "+
+						"is the recommended way to produce the demonstration. This check verifies the PRESENCE of the row, NOT its adequacy — whether the "+
+						"mutation is real and actually reddens the guard stays the reviewer's call (spec §3 D7), so this floor does NOT replace the reviewer "+
+						"question \"does a row prove this reddens when the guarded thing is broken?\" — mistake-proofing/06",
+						bf.Brief, path, mutationTriggerPath(in)))
+					continue
+				}
+				emitClass(ob, fmt.Sprintf("brief %s (%s) owes a `+%s` Verify-row obligation — %s — but no Verify row declares one. "+
 					"Add the obligation token to the relevant row's `Class` cell (e.g. `check +%s`), or if the row genuinely "+
 					"does not apply, say why in review. This checks the PRESENCE of the obligation row, not its ADEQUACY — "+
 					"whether the row actually discharges the obligation stays the reviewer's call (spec §3 D7) — mistake-proofing/03",

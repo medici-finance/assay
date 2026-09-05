@@ -295,6 +295,12 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	rootRepoName, repoProblems := rootRepo(streams)
 	problems = append(problems, repoProblems...)
 	problems = append(problems, registerIntegrityProblems(root)...)
+	// REQUIREMENTS register (registers-v1 §6): per-entry shape validation —
+	// slug id, the ordered impact axis, the lifecycle, acceptance criteria,
+	// typed satisfied-by refs. The paired NOTICE states what is NOT checked:
+	// traceability is reserved, so an uncited requirement changes no exit code.
+	problems = append(problems, requirementRegisterProblems(root)...)
+	notices = append(notices, requirementRegisterNotices(root)...)
 	// The register field-gutting guard inside registerIntegrityProblems compares
 	// against the merge-base with origin/main. When that ref is unresolvable the
 	// base falls back to HEAD and already-committed gutting is compared against

@@ -68,6 +68,7 @@ validated against the value set given.
 | `blocked-by` | string | OPTIONAL | Environment-blocked marker; the only defined value is `env` (the brief is blocked on infrastructure or environment). Absent means the brief is not blocked. An out-of-set value MUST be flagged. |
 | `homed-in` | string | OPTIONAL | The `<owner>/<repo>` the brief's deliverable was re-homed to (a de-housing) — exactly one `/`, both sides non-empty, no whitespace. Absent means a normal in-repo brief. A malformed shape MUST be flagged; the value MUST NOT be checked against a repo allowlist (the shape is all a linter can validate locally). |
 | `measures` | string | OPTIONAL | Name of the process queue this brief instruments (drain-before-instrument). The only wired queue is `verification-debt`. Absent means the brief is not an instrumentation brief. A present value MUST name a wired queue; a present-but-unrecognized name, or a present-but-empty value, MUST be flagged. |
+| `satisfies` | array[string] | OPTIONAL | The requirements this brief was written against, as requirement references — `REQ-<slug>` in-repo, or `<alias>:REQ-<slug>` cross-repo through the `docs/streams/graph-repos.yaml` alias registry (`registers-v1.md` §6.5). **RESERVED, not gating**: absence MUST NEVER be flagged on any brief, and a present entry is shape-validated only. A present entry that does not match the grammar MUST be flagged; a wrong TYPE is a parse error. A conforming linter MUST emit a NOTICE saying the citation was parsed and is not gating. The corpus-wide traceability checks (a requirement no brief cites, a citation naming no requirement) are a separate change and MUST NOT be inferred from this field. |
 | `parallel-streams` | array[mapping] | OPTIONAL | Declared shards of an intra-brief split. Each entry is a mapping with a REQUIRED `name` (string) and an OPTIONAL `files` (array of path globs the shard owns); no other key is permitted in an entry. Absent means one worker per brief. Only the entry SHAPE is validated in frontmatter — whether a declared split may actually be dispatched is decided by `statusgen shardcheck` against the file tree, not by the frontmatter linter. A declaration that parses is a request, not a permission. |
 
 ### 3.3 Frontmatter linter requirements
@@ -81,6 +82,24 @@ shape, and any `parallel-streams` entry that carries a key other than `name`/`fi
 missing `name`, or gives `name` a non-string value. For every optional field in section
 3.2 the rule is the same: an ABSENT field is never flagged, and a wrong *type* is a parse
 error, while a present-but-out-of-set *value* is the semantic flag described here.
+
+It MUST also flag any `satisfies:` entry that does not match the requirement-ref grammar,
+which is exactly two forms and no others:
+
+```
+REQ-<slug>              in-repo requirement; <slug> is 10–20 chars of [a-z0-9-],
+                        starting and ending alphanumeric (registers-v1.md §3.4)
+<alias>:REQ-<slug>      cross-repo; <alias> MUST resolve in the existing
+                        docs/streams/graph-repos.yaml registry (schema graph-repos-v1)
+```
+
+An unresolvable alias MUST be flagged: the registry is a closed set, and the same registry
+serves the dependency-graph reference grammar — a conforming implementation MUST NOT add a
+second one for requirements. The linter MUST NOT flag an absent `satisfies:`, MUST NOT
+require a cited requirement to exist, and MUST NOT change its exit code on any other
+ground derived from this key (`registers-v1.md` §6.5 — reserved, not gating). It MUST
+emit a NOTICE for a brief that carries the key, so that "parsed and reserved" is
+distinguishable from "silently ignored".
 
 ## 4. Body structure
 

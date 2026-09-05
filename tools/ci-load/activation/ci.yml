@@ -1,0 +1,191 @@
+name: ci
+# Regular (non-Docker) build + test for every Go module in the tree.
+#
+# WHERE THIS RUNS — the self-hosted runner labelled `medici-builder-public`,
+#   which has no Docker daemon. That is exactly right for `go build`/`go test`,
+#   which need no container runtime. The Docker IMAGE build is a separate
+#   workflow (docker-publish.yml) that runs release-only.
+#
+# GO TOOLCHAIN — installed by hand from go.dev/dl, NOT actions/setup-go: the
+#   runner does not reach GitHub's release-asset CDN and its base image ships no
+#   Go. go.dev/dl (→ dl.google.com) and the Go module proxy (proxy.golang.org)
+#   are plain public HTTPS, so `go build`/`go test` fetch deps normally.
+#
+# ── TRIGGER SELECTION (why `push` is branch-scoped and both legs are filtered) ──
+#
+# WHAT THIS FIXES. `on: push:` with no `branches:` fires on EVERY branch and
+#   every tag. A pull-request branch therefore ran this workflow TWICE per push —
+#   once for `push`, once for `pull_request` — for six self-hosted jobs where two
+#   sets of three were wanted. Measured on this repo: over a 20-minute window
+#   there were exactly 5 `ci`/`push` runs on non-`main` branches and 5
+#   `ci`/`pull_request` runs, a 1:1 duplicate.
+#
+#   `push: branches: [main]` keeps the post-merge leg (the one that proves `main`
+#   itself builds) and drops the branch/tag leg. Nothing is lost: `pull_request`
+#   already gates every branch that is going to merge, and it evaluates the MERGE
+#   RESULT rather than the branch head, which is the stronger of the two. A
+#   branch with no pull request merges nothing, so it needs no gate. Tag pushes
+#   are covered by release.yml, which runs its own full test job.
+#
+# WHY `paths-ignore` AND WHY EXACTLY THESE PATHS. Every job below reads Go
+#   sources, `plugins/**` shell suites, or `plugins/**` + `.claude/guardrails/**`
+#   markdown. None of them reads anything under `docs/`, `changelog/`,
+#   `CHANGELOG.md` or `STATUS.md`, so a change confined to those four cannot
+#   change any verdict here. The board-regeneration commits that dominate `main`
+#   are exactly that shape.
+#
+#   `paths-ignore` skips the run only when EVERY changed path matches. A pull
+#   request that touches a brief AND a Go file still runs in full — the filter
+#   cannot half-skip.
+#
+# WHAT IS DELIBERATELY NOT FILTERED. The leak-sweep legs
+#   (leaksweep-control.yml, leaksweep-pattern.yml) keep `paths: "**"` and gain no
+#   filter of any kind: they read a projection of the whole tree, so a docs-only
+#   diff is precisely the change a narrower trigger would let through in silence.
+#   The `leak-sweep` commit status this repository's branch ruleset requires is
+#   posted by a separate gate and is untouched by anything in this file.
+#
+# CONCURRENCY. Superseded runs on a pull-request head are cancelled; runs on
+#   `main` are not. A `main` run is the record that a merged commit builds, and
+#   cancelling it would leave a merged commit with no verdict — so the cancel is
+#   conditioned on the event rather than switched on globally.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "changelog/**"
+      - "CHANGELOG.md"
+      - "STATUS.md"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "changelog/**"
+      - "CHANGELOG.md"
+      - "STATUS.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # PR heads only. See "CONCURRENCY" in the header: a `main` run must not be
+  # cancelled by the next merge, or a merged commit ends with no build verdict.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  build-test:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: Build and vet every module
+        run: |
+          set -euo pipefail
+          go version
+          # Discover each Go module (one go.mod per module) and compile + vet it
+          # from its own root, so a new module is covered without editing this file.
+          #
+          # We `build` + `vet` rather than `go test` on purpose. This is a
+          # PUBLISHED methodology tree; some tests under tools/desk are house-CI
+          # STRUCTURAL guards (they assert on the source repo's .github/workflows,
+          # go.work and sibling tool dirs — none of which exist here) and cannot
+          # pass in a consumer checkout. `vet` compiles the test files too, so
+          # this still catches compile breakage without running those dev-only
+          # guards. Full `go test` returns once those structural tests are
+          # withheld from the published tree.
+          fail=0
+          while IFS= read -r gomod; do
+            dir="$(dirname "$gomod")"
+            echo "::group::${dir}"
+            if ( cd "$dir" && go build ./... && go vet ./... ); then
+              echo "${dir}: OK"
+            else
+              echo "::error::${dir}: build/vet failed"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done < <(git ls-files '*go.mod')
+          exit "$fail"
+
+  # The plugin SHELL suites. `assay-inbox.sh` / `inbound-monitor.sh` carry their
+  # own regression suites (`*.test.sh`) but the build-test job above runs Go
+  # build+vet only, so — exactly like the desk-tools controls that get their own
+  # workflows — these suites passed locally and ran NOWHERE. This job runs them.
+  #
+  # HERMETIC by construction: each suite stubs `gh` / `statusgen` / `deskboard`
+  # on PATH per case, so no token, no board, no historian and no network are
+  # involved; a suite exits non-zero on the first failing case, which reddens
+  # this job. New `plugins/assay/scripts/*.test.sh` files are picked up without
+  # editing this workflow.
+  plugin-shell-suites:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run every plugin shell suite
+        run: |
+          set -uo pipefail
+          fail=0
+          while IFS= read -r suite; do
+            echo "::group::${suite}"
+            if bash "$suite"; then
+              echo "${suite}: OK"
+            else
+              echo "::error::${suite}: shell suite failed"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done < <(git ls-files 'plugins/assay/scripts/*.test.sh')
+          exit "$fail"
+
+  # GATING house-value / skill-home / guardrail-parity lint. `tools/skillslint`
+  # runs over every *.md under plugins/ (widened from the skill
+  # bodies to the whole plugin tree): frontmatter validity, no proper-name-shaped
+  # token in a driver position (the neutral `human:<name>` token is the only
+  # permitted form), and a byte-diff of every shared-guardrail copy against its
+  # one declared source (.claude/guardrails/GUARDRAILS.md). Three-state:
+  # could-not-check is a FAILURE, never a quiet pass — so a plugin tree the tool
+  # cannot read reddens this job rather than passing silently.
+  #
+  # Needs the Go toolchain (the tool is `go run .` in tools/skillslint; the runner
+  # ships no `make`), installed by hand from go.dev/dl as build-test documents.
+  skillslint:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: skillslint
+        run: |
+          set -euo pipefail
+          go version
+          # The `medici-builder-public` runner ships no `make`, so invoke the tool exactly
+          # as the Makefile's `skillslint` target does: `cd tools/skillslint && go run .
+          # --root ../..`. skillslint is authored in THIS tree (tools/skillslint), so running
+          # it from its own source is the pinned invocation — there is no separately released
+          # skillslint binary to fetch, and the Go toolchain is already installed above.
+          cd tools/skillslint && go run . --root ../..
