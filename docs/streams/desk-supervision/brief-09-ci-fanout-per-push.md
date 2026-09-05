@@ -54,7 +54,11 @@ files:
   reads the `paths-ignore` list out of the staged workflows and asserts GitHub's rule on
   five diff shapes, three of which must NOT skip.
 - `docs/streams/desk-supervision/README.md` — the Briefs row and the wave block.
-- `changelog/ci-per-push-fanout.md` — the fragment.
+- `changelog/ci-per-push-fanout.md` (planned) — the fragment. Marked `(planned)` because a
+  release roll AGGREGATES every fragment into the dated `CHANGELOG.md` section and CLEARS
+  `changelog/` in the same commit, so a fragment path is transient by design: it exists only
+  between the brief's own PR and the next release cut. This one was consumed by the v0.26.0
+  roll.
 
 prescribes (applied by a human copy, NOT written by this brief's diff):
 `.github/workflows/ci.yml`, `plugin-drift.yml`, `assay-statusgen.yml`, `assay-qualgen.yml`,
@@ -229,7 +233,7 @@ number rather than estimated into it.
 6. Touch nothing else in `.github/workflows/`. In particular `leaksweep-control.yml` and
    `leaksweep-pattern.yml` are not copied, not filtered, and not given a concurrency group.
 
-7. Add `changelog/ci-per-push-fanout.md`, and add the row + wave entry for this brief to
+7. Add `changelog/ci-per-push-fanout.md` (planned), and add the row + wave entry for this brief to
    `docs/streams/desk-supervision/README.md`.
 
 ### Pre-mortem → detection map
