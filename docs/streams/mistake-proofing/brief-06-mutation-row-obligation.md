@@ -53,8 +53,9 @@ facts:
   tool tree, a guard in the desk tree, a CI workflow file, and a reviewed verify script. Err toward a
   narrow, enumerated set: an over-broad definition makes the obligation fire on unrelated changes,
   and an obligation that fires on unrelated changes is the fastest route to an exemption file.
-- **Fail closed on the diff, fail open on the definition.** If the branch diff is unavailable, the
-  derivation is could-not-check and refuses — the same posture as every other check in the tree. If
+- **Degrade the diff to could-not-check, fail open on the definition.** If the branch diff is unavailable, the
+  derivation is could-not-check and surfaces as a conspicuous NOTICE — never a hard PROBLEM — matching the
+  `unrunGateChecks` precedent, so a shallow-clone / no-git tree is not frozen (one PROBLEM aborts the board write). If
   the diff is available but no path matches the enumerated set, nothing is owed. Those are different
   failures and must not be collapsed: "I could not look" is not "I looked and found nothing".
 - The methodology already treats a control with no demonstration as a finding, and already asks
@@ -87,8 +88,9 @@ facts:
    obligation, states that a mutation row is required, states that the check verifies the row's
    PRESENCE and not its adequacy, and points at the mutation harness as the recommended way to
    produce the demonstration. Carry the stable rule-tag bracket token.
-4. **Keep the two failures distinct.** Diff unavailable → could-not-check, refuse. Diff available,
-   no check-shaped path → nothing owed, silent. A test asserts they are not collapsed.
+4. **Keep the two states distinct.** Diff unavailable → could-not-check, surfaced as a conspicuous
+   NOTICE (never a hard PROBLEM). Diff available, no check-shaped path → nothing owed, silent. A test
+   asserts they are not collapsed.
 5. **Positive control on this check — the rule applied to itself.** A test that injects a diff adding
    a check-shaped path with no mutation row and asserts a fatal problem; the same diff with the row
    present asserting silence; and a diff touching no check-shaped path asserting silence. This
@@ -107,7 +109,7 @@ facts:
 | 3 | check | `git grep -n 'COLD' -- statusgen/lintaudit.go` | exit 0 — **DEREFERENCE**: the firing audit that flags a zero-firing rule as a retirement candidate is real, which is why this check owes its own positive control |
 | 4 | check | `go test ./statusgen/ -run 'MutationObligation' -count=1` | exit 0 — the promoted obligation's tests pass |
 | 5 | check +mutation | `go test ./statusgen/ -run 'MutationObligationFiresOnAddedCheck' -count=1` | exit 0 — **positive control** (the rule applied to itself): a diff adding a check-shaped path with no mutation row is fatal; the same diff with the row is silent; a diff touching no check-shaped path is silent. `+mutation` declares that this brief's own deliverable carries the demonstration it demands |
-| 6 | check | `go test ./statusgen/ -run 'MutationObligationCouldNotCheckIsNotSilence' -count=1` | exit 0 — an unavailable diff refuses, and is distinguishable in the output from "nothing owed" |
+| 6 | check | `go test ./statusgen/ -run 'MutationObligationCouldNotCheckIsNotSilence' -count=1` | exit 0 — an unavailable diff degrades to a conspicuous could-not-check NOTICE (not a hard PROBLEM), and is distinguishable in the output from "nothing owed" |
 | 7 | check | `go test ./statusgen/ -run 'MutationObligationInheritedCorpusStaysAdvisory' -count=1` | exit 0 — the promotion is transition-scoped: inherited briefs are not made fatal by this change |
 | 8 | check | `git grep -c 'adequacy' -- statusgen/` | exit 0; a non-zero count — the presence-not-adequacy boundary is stated in the source the failure message is built from. Zero hits today (2026-08-25 @ `657cab1`) |
 
