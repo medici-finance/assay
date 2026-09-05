@@ -147,16 +147,16 @@ func loadExpectations(t *testing.T) map[string]expectation {
 // ---------------------------------------------------------------------------
 
 type fleetEnv struct {
-	bin        string // dir holding the built verbs + the gh/desktoken shims
-	home       string // private HOME (roster, audit log)
-	ownRepo    string // owner/name of the worker's own origin
-	otherRepo  string // owner/name of a DIFFERENT repo in the allowed set
-	detached   string // worktree created with --detach from refs/remotes/origin/<branch>
-	onBranch   string // worktree with the feature branch checked out (the non-mandated shape)
-	branch     string
-	bodyClean  string // a body file that scans clean (and carries the link trailer)
+	bin           string // dir holding the built verbs + the gh/desktoken shims
+	home          string // private HOME (roster, audit log)
+	ownRepo       string // owner/name of the worker's own origin
+	otherRepo     string // owner/name of a DIFFERENT repo in the allowed set
+	detached      string // worktree created with --detach from refs/remotes/origin/<branch>
+	onBranch      string // worktree with the feature branch checked out (the non-mandated shape)
+	branch        string
+	bodyClean     string // a body file that scans clean (and carries the link trailer)
 	bodyNoTrailer string // a clean body WITHOUT the link trailer (example-stream/02 rows)
-	bodySecret string // a body file carrying a synthetic credential (plus the trailer)
+	bodySecret    string // a body file carrying a synthetic credential (plus the trailer)
 }
 
 // fixtureRoster mirrors cmd/deskpr's own test roster: the tools read their allowed-repo
@@ -167,6 +167,10 @@ ASSAY_TRUSTED_LOGINS=ada:2001,shared-agent:2002
 ASSAY_TRUSTED_BOT_SLUGS=worker=assay-worker-app:300000006
 ASSAY_ALLOWED_REPOS=example-org/tracker:ci:private,example-org/agents:ci:private
 ASSAY_HUMAN_LOGIN_MAP=alex:ada
+# Which forge serves each repo. The write verbs resolve it from HERE first, falling back to
+# the origin remote's host only when no entry names the repo — so without this line a verb's
+# verdict in this harness would depend on whatever remote the scratch fixture happens to have.
+ASSAY_REPO_FORGES=example-org/tracker=github,example-org/agents=github
 `
 
 func newFleetEnv(t *testing.T) *fleetEnv {

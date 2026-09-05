@@ -1,0 +1,23 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7/notes",
+      "query": "order_by=created_at\u0026page=1\u0026per_page=100\u0026sort=asc"
+    }
+  ],
+  "result": [
+    {
+      "ID": "gitlab:medici-finance/assay!7#note900",
+      "DatabaseID": 900,
+      "Author": {
+        "Login": "worker-bot",
+        "ID": 42
+      },
+      "Body": "worker note",
+      "Minimized": false,
+      "CreatedAt": "2026-08-30T12:00:00Z",
+      "URL": ""
+    }
+  ]
+}

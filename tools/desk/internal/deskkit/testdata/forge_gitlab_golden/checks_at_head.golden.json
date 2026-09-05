@@ -21,11 +21,13 @@
     "Statuses": [
       {
         "State": "success",
-        "Context": "leak-sweep"
+        "Context": "leak-sweep",
+        "CreatedAt": ""
       },
       {
         "State": "failure",
-        "Context": "external/policy"
+        "Context": "external/policy",
+        "CreatedAt": ""
       }
     ],
     "CheckRunsTotalCount": 3,
@@ -33,17 +35,23 @@
       {
         "Name": "go-test",
         "Status": "completed",
-        "Conclusion": "success"
+        "Conclusion": "success",
+        "StartedAt": "",
+        "CompletedAt": ""
       },
       {
         "Name": "lint",
         "Status": "completed",
-        "Conclusion": "failure"
+        "Conclusion": "failure",
+        "StartedAt": "",
+        "CompletedAt": ""
       },
       {
         "Name": "deploy",
         "Status": "queued",
-        "Conclusion": ""
+        "Conclusion": "",
+        "StartedAt": "",
+        "CompletedAt": ""
       }
     ]
   }

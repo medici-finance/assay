@@ -36,7 +36,7 @@ func captureStderr(t *testing.T, fn func()) string {
 
 // CASE strong: an attested strong-tier dispatch clears the floor and the PR flips.
 func TestModelFloorStrongStampFlips(t *testing.T) {
-	s := &stub{pr: greenPR()}
+	s := newStub()
 	s.reviews = nil
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)
@@ -45,7 +45,7 @@ func TestModelFloorStrongStampFlips(t *testing.T) {
 	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
 		t.Fatalf("strong-tier flip rc = %d, want 0", rc)
 	}
-	if !s.ran("pr ready") {
+	if !s.flipped() {
 		t.Error("a strong-tier dispatch did not reach the ready mutation")
 	}
 }
@@ -53,7 +53,7 @@ func TestModelFloorStrongStampFlips(t *testing.T) {
 // CASE cheap (NEGATIVE PATH, Verify row 2): an attested below-tier dispatch is REFUSED, the
 // refusal names the floor and carries the remediation, and NOTHING is mutated.
 func TestModelFloorCheapStampRefusedWithRemediation(t *testing.T) {
-	s := &stub{pr: greenPR()}
+	s := newStub()
 	s.reviews = nil
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)
@@ -78,7 +78,7 @@ func TestModelFloorCheapStampRefusedWithRemediation(t *testing.T) {
 // CASE absent (Verify row 3): an UNATTESTED PR is not bricked — it proceeds with a NOTICE.
 // Uses --dry-run so the whole condition chain runs and the NOTICE is observable at exit 0.
 func TestModelFloorAbsentProceedsWithNotice(t *testing.T) {
-	s := &stub{pr: greenPR()}
+	s := newStub()
 	s.reviews = nil
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)
@@ -97,7 +97,7 @@ func TestModelFloorAbsentProceedsWithNotice(t *testing.T) {
 // CASE override (Verify row 4): the env override proceeds past the floor on the SAME cheap
 // stamp that would otherwise refuse, and the bypass is logged with the grep-able marker.
 func TestModelFloorOverrideProceedsLoudly(t *testing.T) {
-	s := &stub{pr: greenPR()}
+	s := newStub()
 	s.reviews = nil
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)
@@ -118,7 +118,7 @@ func TestModelFloorOverrideProceedsLoudly(t *testing.T) {
 // whole point of the attestation is that a stamp anyone can self-apply is worthless. This is
 // the fail-closed core of the security surface.
 func TestModelFloorSelfAppliedStampRefused(t *testing.T) {
-	s := &stub{pr: greenPR()}
+	s := newStub()
 	s.reviews = nil
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)
@@ -138,7 +138,8 @@ func TestModelFloorSelfAppliedStampRefused(t *testing.T) {
 // A timeline that cannot be READ is could-not-check, never a cleared floor: the flip refuses
 // UNVERIFIABLE rather than proceeding blind.
 func TestModelFloorTimelineUnreadableIsUnverifiable(t *testing.T) {
-	s := &stub{pr: greenPR(), timelineErr: true}
+	s := newStub()
+	s.timelineErr = true
 	s.reviews = nil
 	s.install(t)
 	s.reviews = approvalAtHead(t, headSHA)

@@ -39,8 +39,10 @@ func workpadBody(stamp, plan string) string {
 }
 
 // swapWorkpadSeams stubs workpadFinder/workpadEditor for the duration of the test and
-// restores the real (gh-backed) implementations on cleanup.
-func swapWorkpadSeams(t *testing.T, finder func(dir, repo string, pr int, workerLogin string) ([]workpadCandidate, error), editor func(dir, nodeID, bodyPath string) error) {
+// restores the real (forge-backed) implementations on cleanup.
+func swapWorkpadSeams(t *testing.T,
+	finder func(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int, workerLogin string) ([]workpadCandidate, error),
+	editor func(fg deskkit.Forge, fr deskkit.ForgeRepo, commentID, body string) error) {
 	t.Helper()
 	origFinder, origEditor := workpadFinder, workpadEditor
 	t.Cleanup(func() { workpadFinder, workpadEditor = origFinder, origEditor })
@@ -62,21 +64,21 @@ func TestWorkpadUpsertIsIdempotent(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 
-	const fakeNodeID, fakeDatabaseID = "COMMENT_NODE_1", 555
+	const fakeCommentID, fakeDatabaseID = "COMMENT_NODE_1", 555
 	created := false
 	editCount := 0
 
 	swapWorkpadSeams(t,
-		func(dir, repo string, pr int, workerLogin string) ([]workpadCandidate, error) {
+		func(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int, workerLogin string) ([]workpadCandidate, error) {
 			if !created {
 				return nil, nil
 			}
-			return []workpadCandidate{{NodeID: fakeNodeID, DatabaseID: fakeDatabaseID}}, nil
+			return []workpadCandidate{{CommentID: fakeCommentID, DatabaseID: fakeDatabaseID}}, nil
 		},
-		func(dir, nodeID, bodyPath string) error {
+		func(fg deskkit.Forge, fr deskkit.ForgeRepo, commentID, body string) error {
 			editCount++
-			if nodeID != fakeNodeID {
-				t.Fatalf("edit targeted node %q, want %q", nodeID, fakeNodeID)
+			if commentID != fakeCommentID {
+				t.Fatalf("edit targeted comment %q, want %q", commentID, fakeCommentID)
 			}
 			return nil
 		},
@@ -87,8 +89,9 @@ func TestWorkpadUpsertIsIdempotent(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("first upsert rc = %d, want 0", rc)
 	}
-	if !anyCall(ghCalls(*calls), "pr", "comment") {
-		t.Fatalf("first upsert (no existing candidate) should CREATE via `gh pr comment`; calls: %v", ghCalls(*calls))
+	if !forgeRec(t).posted() {
+		t.Fatalf("first upsert (no existing candidate) should CREATE a comment; forge writes: %v",
+			forgeRec(t).writes())
 	}
 	if editCount != 0 {
 		t.Fatalf("first upsert should not edit anything; editCount = %d", editCount)
@@ -96,13 +99,15 @@ func TestWorkpadUpsertIsIdempotent(t *testing.T) {
 	created = true
 
 	*calls = nil
+	forgeRec(t).requests = nil
 	bf2 := bodyFileWith(t, workpadBody("w@def5678", "- step one\n- step two"))
 	rc = run([]string{"example-org/tracker", "7", "--workpad", "--body-file", bf2})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("second upsert rc = %d, want 0", rc)
 	}
-	if anyCall(ghCalls(*calls), "pr", "comment") {
-		t.Fatalf("second upsert must EDIT the existing comment, not create a second one; calls: %v", ghCalls(*calls))
+	if forgeRec(t).posted() {
+		t.Fatalf("second upsert must EDIT the existing comment, not create a second one; forge writes: %v",
+			forgeRec(t).writes())
 	}
 	if editCount != 1 {
 		t.Fatalf("second upsert should edit exactly once; editCount = %d", editCount)
@@ -115,7 +120,7 @@ func TestWorkpadUpsertIsIdempotent(t *testing.T) {
 func TestWorkpadNeverEditsForeignMarker(t *testing.T) {
 	const workerLogin = "assay-worker-app[bot]"
 
-	var human, worker workpadNode
+	var human, worker deskkit.Comment
 	human.ID, human.DatabaseID = "HUMAN_NODE", 1
 	human.Body = deskkit.WorkpadMarker + "\nada@abc1234\n\n## Plan\na human wrote this comment"
 	human.Author.Login = "ada"
@@ -124,23 +129,24 @@ func TestWorkpadNeverEditsForeignMarker(t *testing.T) {
 	worker.Body = deskkit.WorkpadMarker + "\nworktree@def5678\n\n## Plan\nthe worker's own workpad"
 	worker.Author.Login = workerLogin
 
-	cands := filterWorkpadCandidates([]workpadNode{human, worker}, workerLogin)
+	cands := filterWorkpadCandidates([]deskkit.Comment{human, worker}, workerLogin)
 	if len(cands) != 1 {
 		t.Fatalf("filterWorkpadCandidates returned %d candidates, want exactly 1 (the human's marker-carrying "+
 			"comment must never be a candidate): %+v", len(cands), cands)
 	}
-	if cands[0].NodeID != worker.ID {
-		t.Fatalf("filterWorkpadCandidates selected node %q, want the worker's own comment %q", cands[0].NodeID, worker.ID)
+	if cands[0].CommentID != worker.ID {
+		t.Fatalf("filterWorkpadCandidates selected comment %q, want the worker's own comment %q",
+			cands[0].CommentID, worker.ID)
 	}
 
 	// The same guarantee the OTHER direction: a worker-authored login that merely LOOKS
 	// similar (a human named literally "assay-worker-app", no [bot] suffix — i.e. NOT the
 	// same actor per deskkit.SameActor's App-rendering fold) is not admitted either.
-	var lookalike workpadNode
+	var lookalike deskkit.Comment
 	lookalike.ID, lookalike.DatabaseID = "LOOKALIKE_NODE", 3
 	lookalike.Body = deskkit.WorkpadMarker + "\nx@abc1234\n\n## Plan\nlookalike"
 	lookalike.Author.Login = "assay-worker-app"
-	if got := filterWorkpadCandidates([]workpadNode{lookalike}, workerLogin); len(got) != 0 {
+	if got := filterWorkpadCandidates([]deskkit.Comment{lookalike}, workerLogin); len(got) != 0 {
 		t.Fatalf("a login that is not the SAME actor as the App rendering must never be a candidate: %+v", got)
 	}
 }
@@ -152,13 +158,13 @@ func TestWorkpadNeverEditsForeignMarker(t *testing.T) {
 // TestWorkpadUpsertIsIdempotent's first call already proves creates cleanly.
 func TestWorkpadFilterIgnoresMinimizedComments(t *testing.T) {
 	const workerLogin = "assay-worker-app[bot]"
-	var resolved workpadNode
+	var resolved deskkit.Comment
 	resolved.ID, resolved.DatabaseID = "OLD_RESOLVED_NODE", 9
 	resolved.Body = deskkit.WorkpadMarker + "\nw@abc1234\n\n## Plan\nstale plan from a resolved thread"
-	resolved.IsMinimized = true
+	resolved.Minimized = true
 	resolved.Author.Login = workerLogin
 
-	cands := filterWorkpadCandidates([]workpadNode{resolved}, workerLogin)
+	cands := filterWorkpadCandidates([]deskkit.Comment{resolved}, workerLogin)
 	if len(cands) != 0 {
 		t.Fatalf("a minimised worker comment must never be a candidate: %+v", cands)
 	}
@@ -172,7 +178,7 @@ func TestWorkpadFilterIgnoresMinimizedComments(t *testing.T) {
 // preflight (mint/list/find-or-create) runs — with nothing posted.
 func TestWorkpadBodycheckRefuses(t *testing.T) {
 	work := newBaseFixture(t)
-	calls := withEnv(t, work)
+	withEnv(t, work)
 
 	body := workpadBody("w@abc1234", "here is the token ghp_"+strings.Repeat("a", 36))
 	bf := bodyFileWith(t, body)
@@ -181,8 +187,8 @@ func TestWorkpadBodycheckRefuses(t *testing.T) {
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("workpad body with a secret rc = %d, want 5 (refused)", rc)
 	}
-	if len(ghCalls(*calls)) != 0 {
-		t.Fatalf("a gh call was made despite a secret in the workpad body: %v", ghCalls(*calls))
+	if rec := forgeRec(t); len(rec.requests) != 0 {
+		t.Fatalf("the verb reached the forge despite a secret in the workpad body: %v", rec.requests)
 	}
 }
 
@@ -191,15 +197,15 @@ func TestWorkpadBodycheckRefuses(t *testing.T) {
 // write, same as the bodycheck case above.
 func TestWorkpadWithoutMarkerRefuses(t *testing.T) {
 	work := newBaseFixture(t)
-	calls := withEnv(t, work)
+	withEnv(t, work)
 
 	bf := bodyFileWith(t, "an ordinary reply body with no workpad marker")
 	rc := run([]string{"example-org/tracker", "7", "--workpad", "--body-file", bf})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("--workpad body without the marker rc = %d, want 5 (refused)", rc)
 	}
-	if len(ghCalls(*calls)) != 0 {
-		t.Fatalf("a gh call was made despite the missing workpad marker: %v", ghCalls(*calls))
+	if rec := forgeRec(t); len(rec.requests) != 0 {
+		t.Fatalf("the verb reached the forge despite the missing workpad marker: %v", rec.requests)
 	}
 }
 
@@ -207,15 +213,15 @@ func TestWorkpadWithoutMarkerRefuses(t *testing.T) {
 // --workpad; on its own it must refuse rather than silently behave like a live plain reply.
 func TestWorkpadDryRunRequiresWorkpadFlag(t *testing.T) {
 	work := newBaseFixture(t)
-	calls := withEnv(t, work)
+	withEnv(t, work)
 
 	bf := bodyFileWith(t, "a plain reply body")
 	rc := run([]string{"example-org/tracker", "7", "--dry-run", "--body-file", bf})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("--dry-run without --workpad rc = %d, want 5 (refused)", rc)
 	}
-	if len(ghCalls(*calls)) != 0 {
-		t.Fatalf("a gh call was made on a refused --dry-run-without---workpad invocation: %v", ghCalls(*calls))
+	if rec := forgeRec(t); len(rec.requests) != 0 {
+		t.Fatalf("the verb reached the forge on a refused --dry-run-without---workpad invocation: %v", rec.requests)
 	}
 }
 
@@ -226,7 +232,9 @@ func TestWorkpadDryRunReportsWithoutWriting(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	swapWorkpadSeams(t,
-		func(dir, repo string, pr int, workerLogin string) ([]workpadCandidate, error) { return nil, nil },
+		func(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int, workerLogin string) ([]workpadCandidate, error) {
+			return nil, nil
+		},
 		nil,
 	)
 
@@ -240,12 +248,12 @@ func TestWorkpadDryRunReportsWithoutWriting(t *testing.T) {
 	if !strings.Contains(out, "WORKPAD: would create") {
 		t.Fatalf("dry-run with no existing candidate did not report %q; got %q", "WORKPAD: would create", out)
 	}
-	assertNoPrComment(t, *calls)
+	assertNoComment(t, forgeRec(t))
 
 	*calls = nil
 	swapWorkpadSeams(t,
-		func(dir, repo string, pr int, workerLogin string) ([]workpadCandidate, error) {
-			return []workpadCandidate{{NodeID: "N1", DatabaseID: 42}}, nil
+		func(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int, workerLogin string) ([]workpadCandidate, error) {
+			return []workpadCandidate{{CommentID: "N1", DatabaseID: 42}}, nil
 		},
 		nil,
 	)
@@ -258,47 +266,51 @@ func TestWorkpadDryRunReportsWithoutWriting(t *testing.T) {
 	if !strings.Contains(out, "WORKPAD: would edit #42") {
 		t.Fatalf("dry-run with an existing candidate did not report %q; got %q", "WORKPAD: would edit #42", out)
 	}
-	assertNoPrComment(t, *calls)
+	assertNoComment(t, forgeRec(t))
 }
 
-// TestParseWorkpadCommentsResponseSurfacesGraphQLErrors pins the "errors" half of the
-// GraphQL response contract: a non-empty top-level errors array must be reported as an
-// error, never silently ignored in favour of whatever (possibly empty/partial) "data" came
-// back alongside it.
-func TestParseWorkpadCommentsResponseSurfacesGraphQLErrors(t *testing.T) {
-	raw := `{"data":null,"errors":[{"message":"Could not resolve to a PullRequest"}]}`
-	if _, err := parseWorkpadCommentsResponse(raw); err == nil {
-		t.Fatal("parseWorkpadCommentsResponse returned no error for a response carrying a GraphQL errors array")
+// THE THREE RETIRED TESTS, and where each one's assertion now lives. All three were about a
+// WIRE SHAPE this package no longer owns:
+//
+//	TestParseWorkpadCommentsResponseSurfacesGraphQLErrors → deskkit's GitHubForge.ListComments
+//	   reports a non-empty top-level `errors` array as an error rather than reading a partial
+//	   list as a complete one; the golden case `list_comments` pins the read, and the check
+//	   itself is one branch of that method.
+//	TestParseWorkpadCommentsResponseDecodesNodes         → the `list_comments` golden pins the
+//	   decoded nodes for BOTH backends, which is strictly more than this package's own parse
+//	   was ever checked against.
+//	TestCommentIDFromURL                                 → the create path no longer parses an
+//	   id out of a printed URL. It records the id the FORGE reported for the comment it just
+//	   created, which TestWorkpadCreateRecordsTheForgeReportedID below asserts directly — and
+//	   which works on a forge whose URLs have a different shape, where the parse silently
+//	   yielded 0.
+
+// TestWorkpadCreateRecordsTheForgeReportedID is the successor to TestCommentIDFromURL: the
+// worktree-local hint recorded after a CREATE is the numeric id the forge reported for the
+// comment it created, not a number recovered from display text.
+func TestWorkpadCreateRecordsTheForgeReportedID(t *testing.T) {
+	work := newBaseFixture(t)
+	withEnv(t, work)
+	swapWorkpadSeams(t,
+		func(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int, workerLogin string) ([]workpadCandidate, error) {
+			return nil, nil // no existing candidate: the CREATE path
+		},
+		nil,
+	)
+
+	bf := bodyFileWith(t, workpadBody("w@abc1234", "- step one"))
+	if rc := run([]string{"example-org/tracker", "7", "--workpad", "--body-file", bf}); rc != deskkit.ExitOK {
+		t.Fatalf("workpad create rc = %d, want 0", rc)
 	}
-}
-
-// TestParseWorkpadCommentsResponseDecodesNodes is a small direct pin of the wire shape
-// listWorkpadCandidatesGH depends on, independent of any gh subprocess.
-func TestParseWorkpadCommentsResponseDecodesNodes(t *testing.T) {
-	raw := `{"data":{"repository":{"pullRequest":{"comments":{"nodes":[` +
-		`{"id":"N1","databaseId":11,"body":"hello","isMinimized":false,"author":{"login":"ada"}}` +
-		`]}}}}}`
-	nodes, err := parseWorkpadCommentsResponse(raw)
+	if !forgeRec(t).posted() {
+		t.Fatalf("the create path posted nothing: %v", forgeRec(t).writes())
+	}
+	// The fake forge reports id 123 for the comment it creates; the hint must carry it.
+	got, err := git(work, "config", "--worktree", "--get", workpadConfigKey)
 	if err != nil {
-		t.Fatalf("parseWorkpadCommentsResponse: %v", err)
+		t.Fatalf("the worktree-local workpad hint was not recorded: %v", err)
 	}
-	if len(nodes) != 1 || nodes[0].ID != "N1" || nodes[0].DatabaseID != 11 || nodes[0].Author.Login != "ada" {
-		t.Fatalf("parseWorkpadCommentsResponse decoded %+v, want one node N1/11/ada", nodes)
-	}
-}
-
-// TestCommentIDFromURL pins the `#issuecomment-<id>` suffix parse the create path uses to
-// record the worktree-local hint.
-func TestCommentIDFromURL(t *testing.T) {
-	cases := map[string]int{
-		"https://github.com/example-org/tracker/pull/7#issuecomment-123": 123,
-		"https://github.com/example-org/tracker/pull/7":                  0,
-		"":          0,
-		"not a url": 0,
-	}
-	for url, want := range cases {
-		if got := commentIDFromURL(url); got != want {
-			t.Errorf("commentIDFromURL(%q) = %d, want %d", url, got, want)
-		}
+	if strings.TrimSpace(got) != "123" {
+		t.Fatalf("recorded workpad id %q, want the forge-reported 123", got)
 	}
 }

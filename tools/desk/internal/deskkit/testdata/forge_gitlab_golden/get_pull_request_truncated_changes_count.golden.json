@@ -16,6 +16,12 @@
       "ID": 99
     },
     "HeadSHA": "abc123",
+    "Mergeable": "MERGEABLE",
+    "Labels": [
+      "authorization-needed"
+    ],
+    "URL": "https://gitlab.example/medici-finance/assay/-/merge_requests/7",
+    "HeadRef": "feat/x",
     "UpdatedAt": "2026-09-01T12:00:00Z"
   }
 }

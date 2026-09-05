@@ -1,0 +1,25 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/labels",
+      "body": {
+        "name": "approval-needed",
+        "color": "#0e8a16"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7",
+      "body": {
+        "add_labels": "approval-needed"
+      }
+    }
+  ],
+  "result": {
+    "Added": [
+      "approval-needed"
+    ],
+    "Removed": []
+  }
+}

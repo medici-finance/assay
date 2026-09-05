@@ -141,7 +141,7 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 		if ferr != nil {
 			return withDigest(fromErr(verb, repo, num, tgt.head, ferr), dig)
 		}
-		if err := fg.PostComment(deskkit.ForgeRepo{Owner: owner, Name: name}, num, string(body)); err != nil {
+		if _, err := fg.PostComment(deskkit.ForgeRepo{Owner: owner, Name: name}, num, string(body)); err != nil {
 			return withDigest(fromErr(verb, repo, num, tgt.head, err), dig)
 		}
 		return done(verb, repo, num, tgt.head, dig,

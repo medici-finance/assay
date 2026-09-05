@@ -16,7 +16,8 @@
     "Statuses": [
       {
         "State": "success",
-        "Context": "leak-sweep"
+        "Context": "leak-sweep",
+        "CreatedAt": ""
       }
     ],
     "CheckRunsTotalCount": 0,

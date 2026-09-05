@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -26,13 +25,14 @@ type gitFacts struct {
 	repo   string // owner/name parsed from origin
 }
 
-// ghPRView is the slice of `gh pr view --json` deskreply needs to verify the PR is OPEN
-// and that the worktree's branch is the PR's head branch.
-type ghPRView struct {
-	State       string `json:"state"`
-	URL         string `json:"url"`
-	HeadRefName string `json:"headRefName"`
-	HeadRefOid  string `json:"headRefOid"`
+// prView is the slice of the change deskreply needs: enough to verify the PR is OPEN and
+// that the worktree's branch is the PR's head branch, plus the head oid the idempotency key
+// is built on and the URL a successful reply reports.
+type prView struct {
+	State       string
+	URL         string
+	HeadRefName string
+	HeadRefOid  string
 }
 
 // auditCtx accumulates the fields for the ONE audit line every invocation emits
@@ -93,7 +93,7 @@ func (a *auditCtx) finalize(err error) {
 // cmdReply implements the single verb `deskreply <owner/repo> <pr> --body-file F`.
 // Flow: parse args → read+scan body → verify worktree is my own PR's checkout
 // → verify the PR is OPEN and its head branch is my branch → idempotency
-// → rate limit → `gh pr comment` under ambient identity → audit.
+// → rate limit → PostComment through the resolved forge, as the worker App → audit.
 func cmdReply(args []string) (err error) {
 	ac := &auditCtx{}
 	defer func() { ac.finalize(err) }()
@@ -205,6 +205,15 @@ func cmdReply(args []string) (err error) {
 		return deskkit.Unverifiable("cannot mint worker token for deskreply", merr)
 	}
 
+	// WHICH FORGE serves this repo is the resolver's answer, taken once and used for every
+	// read and the write below. It is resolved AFTER the mint (the resolver is handed the
+	// token this tool already holds) and BEFORE the first forge call, so no read and no
+	// write can happen on an ambient credential.
+	fg, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return ferr
+	}
+
 	// Public-repo gate: refuse to write to a public repo
 	// without a qualifying +1 from an authorized human.
 	owner, name := splitOwnerRepo(repo)
@@ -215,7 +224,7 @@ func cmdReply(args []string) (err error) {
 
 	// Verify the PR is OPEN and that its head branch is the branch checked out here. Any
 	// API/parse failure is unverifiable (exit 6), never a silent assume-open.
-	view, verr := viewPR(dir, repo, pr)
+	view, verr := viewPR(fg, fr, pr)
 	if verr != nil {
 		return deskkit.Unverifiable("cannot read PR state — refuse rather than guess", verr)
 	}
@@ -236,7 +245,7 @@ func cmdReply(args []string) (err error) {
 	// decision (workpad.go): it has its own write-budget check and its own post/edit call,
 	// and it never falls through to the plain-reply idempotency/post logic.
 	if *workpad {
-		return cmdWorkpadUpsert(ac, dir, repo, pr, body, *dryRun)
+		return cmdWorkpadUpsert(ac, fg, fr, dir, repo, pr, body, *dryRun)
 	}
 
 	// idempotency, key (repo, pr, headSHA, bodyDigest): this exact reply body already
@@ -260,21 +269,18 @@ func cmdReply(args []string) (err error) {
 		return werr
 	}
 
-	// The post. argv is constructed literally: `gh pr comment <pr> -R <repo> --body-file
-	// <path>` — the ONLY mutating gh verb deskreply can ever emit. No review/ready/create.
-	bodyPath, cleanup, terr := writeTempBody(body)
-	if terr != nil {
-		return deskkit.Unverifiable("cannot stage reply body", terr)
-	}
-	defer cleanup()
-
-	out, cErr := gh(dir, "pr", "comment", strconv.Itoa(pr), "-R", repo, "--body-file", bodyPath)
+	// The post. PostComment is the ONLY mutating forge operation deskreply can reach: the
+	// resolved backend exposes review, ready-flip and create as separate operations this
+	// tool never calls, and there is no generic request method on the seam to reach them
+	// through. The body travels as a value, not as a file path in an argv, so there is no
+	// longer a temp file to stage or a flag position for anything to be injected into.
+	ref, cErr := fg.PostComment(fr, pr, string(body))
 	if cErr != nil {
-		return deskkit.Unverifiable("gh pr comment failed", cErr)
+		return deskkit.Unverifiable("posting the reply comment failed", cErr)
 	}
-	if url := lastURL(out); url != "" {
-		ac.detail = "commented " + url
-		fmt.Println(url)
+	if ref != nil && ref.URL != "" {
+		ac.detail = "commented " + ref.URL
+		fmt.Println(ref.URL)
 	} else {
 		ac.detail = "commented on PR #" + strconv.Itoa(pr)
 		fmt.Printf("commented on PR #%d\n", pr)
@@ -330,25 +336,28 @@ func preflight(dir string) (*gitFacts, error) {
 	return &gitFacts{dir: dir, branch: branch, repo: repo}, nil
 }
 
-// viewPR reads the PR's state / head branch / head oid / url via the ambient gh identity.
-func viewPR(dir, repo string, pr int) (*ghPRView, error) {
-	out, err := gh(dir, "pr", "view", strconv.Itoa(pr), "-R", repo,
-		"--json", "state,url,headRefName,headRefOid")
+// viewPR reads the PR's state / head branch / head oid / url through the resolved forge
+// backend, as the worker App.
+//
+// A read that comes back MISSING either field it is consulted for is an error, not a value
+// to proceed on. Both are load-bearing: an empty state would fail the OPEN check as "not
+// open" and an empty head branch would fail the own-PR check — so both happen to fail closed
+// today, and neither is left depending on that. A field the forge did not state is
+// could-not-check, and the caller wraps this as exit 6.
+func viewPR(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int) (*prView, error) {
+	ch, err := fg.GetPullRequest(fr, pr)
 	if err != nil {
 		return nil, err
 	}
-	out = strings.TrimSpace(out)
-	if out == "" {
-		return nil, fmt.Errorf("gh pr view returned no data")
+	if ch.State == "" || ch.HeadRef == "" {
+		return nil, fmt.Errorf("the forge reported PR #%d with no state and/or no head branch", pr)
 	}
-	var v ghPRView
-	if err := json.Unmarshal([]byte(out), &v); err != nil {
-		return nil, fmt.Errorf("cannot parse gh pr view JSON: %w", err)
-	}
-	if v.State == "" || v.HeadRefName == "" {
-		return nil, fmt.Errorf("gh pr view JSON missing state/headRefName")
-	}
-	return &v, nil
+	return &prView{
+		State:       ch.State,
+		URL:         ch.URL,
+		HeadRefName: ch.HeadRef,
+		HeadRefOid:  ch.HeadSHA,
+	}, nil
 }
 
 // parseRepo extracts owner/name from an https, ssh, or scp-style git remote URL.
@@ -395,35 +404,6 @@ func readBody(bodyFile string) ([]byte, error) {
 		return nil, deskkit.Refused(fmt.Sprintf("refused: body exceeds %d bytes (%d)", maxBodyBytes, len(b)))
 	}
 	return b, nil
-}
-
-func writeTempBody(body []byte) (path string, cleanup func(), err error) {
-	f, err := os.CreateTemp("", "deskreply-body-*.md")
-	if err != nil {
-		return "", func() {}, err
-	}
-	name := f.Name()
-	if _, err := f.Write(body); err != nil {
-		f.Close()
-		os.Remove(name)
-		return "", func() {}, err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(name)
-		return "", func() {}, err
-	}
-	return name, func() { os.Remove(name) }, nil
-}
-
-func lastURL(out string) string {
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		l := strings.TrimSpace(lines[i])
-		if strings.HasPrefix(l, "http://") || strings.HasPrefix(l, "https://") {
-			return l
-		}
-	}
-	return ""
 }
 
 func urlSuffix(url string) string {
