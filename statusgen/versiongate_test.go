@@ -26,7 +26,7 @@ func TestGateBelowV1(t *testing.T) {
 	}
 }
 
-func TestRefuseIfTreeTooNewStampedBelowV1(t *testing.T) {
+func TestRefuseIfTreeTooNew_StampedBelowV1(t *testing.T) {
 	root := migrateFixtureTree(t, true)
 	// Migrate the fixture to brief-v2 so the tree carries v2 briefs.
 	var out, errb bytes.Buffer
@@ -50,14 +50,14 @@ func TestRefuseIfTreeTooNewStampedBelowV1(t *testing.T) {
 	}
 }
 
-func TestRefuseIfTreeTooNewIgnoresV1Tree(t *testing.T) {
+func TestRefuseIfTreeTooNew_IgnoresV1Tree(t *testing.T) {
 	root := migrateFixtureTree(t, true) // still brief-v1
 	if code := refuseIfTreeTooNew([]string{root}, "v0.13.0", &bytes.Buffer{}); code != 0 {
 		t.Errorf("v1 tree must not trip the gate even on an old binary, exit=%d", code)
 	}
 }
 
-func TestAssayVersionsPinTagConsistency(t *testing.T) {
+func TestAssayVersions_PinTagConsistency(t *testing.T) {
 	root := t.TempDir()
 	// Differing artifact tags → PROBLEM.
 	mixed := "assay v1.0.0\nstatusgen v1.0.0 aaaa\ndesk-tools-linux-amd64 v0.13.0 bbbb\n"

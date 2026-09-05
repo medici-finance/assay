@@ -37,7 +37,7 @@ func migrateFixtureTree(t *testing.T, withRegistry bool) string {
 	return root
 }
 
-func TestMigrateRewritesBriefAndReadme(t *testing.T) {
+func TestMigrate_RewritesBriefAndReadme(t *testing.T) {
 	root := migrateFixtureTree(t, true)
 	var out, errb bytes.Buffer
 	if code := runMigrate([]string{"brief-v1-to-v2", "--root", root}, &out, &errb); code != 0 {
@@ -103,7 +103,7 @@ func TestMigrateIdempotent(t *testing.T) {
 	}
 }
 
-func TestMigrateRefusesWithoutRegistry(t *testing.T) {
+func TestMigrate_RefusesWithoutRegistry(t *testing.T) {
 	root := migrateFixtureTree(t, false) // no graph-repos.yaml
 	var out, errb bytes.Buffer
 	code := runMigrate([]string{"brief-v1-to-v2", "--root", root}, &out, &errb)
@@ -120,7 +120,7 @@ func TestMigrateRefusesWithoutRegistry(t *testing.T) {
 	}
 }
 
-func TestMigrateDryRunWritesNothing(t *testing.T) {
+func TestMigrate_DryRunWritesNothing(t *testing.T) {
 	root := migrateFixtureTree(t, true)
 	before, _ := os.ReadFile(filepath.Join(root, "docs", "streams", "svc", "brief-01-a.md"))
 	beforeReadme, _ := os.ReadFile(filepath.Join(root, "docs", "streams", "svc", "README.md"))
@@ -138,7 +138,7 @@ func TestMigrateDryRunWritesNothing(t *testing.T) {
 	}
 }
 
-func TestMigrateUnknownTargetIsUsageError(t *testing.T) {
+func TestMigrate_UnknownTargetIsUsageError(t *testing.T) {
 	var out, errb bytes.Buffer
 	if code := runMigrate([]string{"brief-v2-to-v3"}, &out, &errb); code != migrateExitUsage {
 		t.Fatalf("exit=%d, want %d", code, migrateExitUsage)

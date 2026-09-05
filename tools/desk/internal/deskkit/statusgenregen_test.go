@@ -35,7 +35,7 @@ func statusgenRegenMigration() Migration {
 	}
 }
 
-func TestStatusgenRegenRunsPinnedBinary(t *testing.T) {
+func TestStatusgenRegen_RunsPinnedBinary(t *testing.T) {
 	argv := fakeStatusgen(t)
 	root := t.TempDir()
 	actions, err := RunMigrations(root, []Migration{statusgenRegenMigration()}, false)
@@ -60,7 +60,7 @@ func TestStatusgenRegenRunsPinnedBinary(t *testing.T) {
 	}
 }
 
-func TestStatusgenRegenDryRunForwardsFlag(t *testing.T) {
+func TestStatusgenRegen_DryRunForwardsFlag(t *testing.T) {
 	argv := fakeStatusgen(t)
 	root := t.TempDir()
 	actions, err := RunMigrations(root, []Migration{statusgenRegenMigration()}, true)
@@ -76,7 +76,7 @@ func TestStatusgenRegenDryRunForwardsFlag(t *testing.T) {
 	}
 }
 
-func TestStatusgenRegenUnknownVerbRefused(t *testing.T) {
+func TestStatusgenRegen_UnknownVerbRefused(t *testing.T) {
 	fakeStatusgen(t)
 	root := t.TempDir()
 	mig := Migration{
@@ -96,7 +96,7 @@ func TestStatusgenRegenUnknownVerbRefused(t *testing.T) {
 	}
 }
 
-func TestStatusgenRegenParsesInMigrationFile(t *testing.T) {
+func TestStatusgenRegen_ParsesInMigrationFile(t *testing.T) {
 	dir := t.TempDir()
 	migDir := filepath.Join(dir, MigrationsDir)
 	if err := os.MkdirAll(migDir, 0o755); err != nil {
