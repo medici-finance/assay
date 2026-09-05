@@ -1,2 +1,0 @@
-### Changed
-- forge-neutral/03 brief (`docs/streams/forge-neutral/`): amended the Verify DoD to remove three internal contradictions — row 3 now forbids weakening any test assertion rather than freezing the test files (re-pointing a test's transport is allowed with a named 1:1 successor assertion), row 8 is scoped to non-test files, the permit-register ceiling is measured (`launch sites − 8`, 16 today) instead of a frozen literal, and row 11's new-transport test is exempt from the freeze.

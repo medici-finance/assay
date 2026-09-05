@@ -1,0 +1,210 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 6e16b1a..081cbcd 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -1112,35 +1112,104 @@ jobs:
+           fi
+           echo "Published ${RELEASE_TAG} with statusgen + desk-tools binaries + checksums.txt (desk-tools image: ${DESK_IMAGE}:${DESK_IMAGE_TAG})."
+ 
+-      # CHANGELOG discipline — in the SAME tagged flow, WRITE the aggregated
+-      # fragment highlights under a dated `## vX.Y.Z — <date>` heading in
+-      # CHANGELOG.md, empty the `## Unreleased` section to its standing pointer
+-      # note, and CLEAR the aggregated fragments from changelog/ — all in ONE
+-      # release commit. The next cycle therefore starts with an empty changelog/,
+-      # and the aggregate-and-require step above refuses the next release until a
+-      # new fragment is added. Dispatch + non-dry-run only; committed to the
+-      # default branch with the same per-command header-auth the tag push uses
+-      # (persist-credentials was false during the build, so no token sits in
+-      # .git/config). A non-fast-forward push here is a loud failure, never a
+-      # force — the release bytes are already published, so a failed roll is a
+-      # follow-up commit, not a lost release.
++  # ───────────────────────────────────────────────────────────────────────────
++  # CHANGELOG ROLL — its OWN job, deliberately NOT a trailing step of `release`.
++  #
++  # WHY A SEPARATE JOB (#312). As a trailing step of `release`, a failed
++  # roll turned the whole run's conclusion to `failure` even though the tag,
++  # every asset and the published notes were complete — the misleading signal
++  # #312 reports. Worse, it was UNRECOVERABLE: `release`'s upload step
++  # hard-refuses an asset name that already exists ("Release assets are
++  # immutable — never swap the bytes behind a published name"), so "Re-run
++  # failed jobs" could never reach the roll again; every failed roll had to be
++  # hand-filed as a PR (v0.23.0, v0.24.0, v0.26.0).
++  #
++  # As its own job the roll is INDEPENDENTLY RE-RUNNABLE — re-running it
++  # re-syncs to main and rolls, touching nothing that is already published —
++  # and `release`'s conclusion once again means "the release published".
++  #
++  # WHY NOT `continue-on-error` ON THE STEP. It would fix the conclusion and
++  # nothing else: the roll's failure would render as a neutral, near-invisible
++  # annotation inside a green job, and it would still be unreachable by a
++  # re-run. A separate job keeps the failure LOUD and RED where it belongs
++  # (on the roll) while leaving the release green — visibility and
++  # recoverability, not suppression.
++  #
++  # `needs: release` — the roll only ever narrates a release that actually
++  # published. Same dispatch+non-dry-run condition the steps carried before.
++  changelog-roll:
++    needs: [resolve, release]
++    if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
++    runs-on: medici-builder-release
++    # contents:read only. The WRITE is the board-writer App token minted below —
++    # the same split assay-statusgen.yml's regen and model-autoflip jobs use.
++    permissions:
++      contents: read
++    steps:
++      # persist-credentials:false — the push wires its credential explicitly,
++      # for that one command only, exactly as the tag push does.
++      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
++        with:
++          persist-credentials: false
++
+       # The roll commit lands on the PR-only default branch, which the default
+-      # GITHUB_TOKEN cannot do (GH013: PR-required + leak-sweep-required — this
+-      # step was rejected on v0.23.0 and v0.24.0 and the roll had to be hand-
+-      # filed as a PR). It commits under the SAME identity that already writes
+-      # STATUS.md straight to main: the assay-board-writer App, whose ruleset
+-      # bypass covers exactly this class of generated-file write. App perms:
+-      # contents:write on THIS repo only; key held as repo Actions secrets
+-      # (BOARD_APP_*), minted here for the roll step alone.
++      # GITHUB_TOKEN cannot do (GH013: PR-required + leak-sweep-required). It
++      # commits under the SAME identity that already writes STATUS.md straight
++      # to main: the assay-board-writer App, whose ruleset bypass covers exactly
++      # this class of generated-file write. App perms: contents:write on THIS
++      # repo only; key held as repo Actions secrets (BOARD_APP_*).
+       - name: Mint assay-board-writer App token (changelog roll)
+-        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+         id: roll-token
+         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+         with:
+           app-id: ${{ secrets.BOARD_APP_ID }}
+           private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
++
++      # CHANGELOG discipline — WRITE the aggregated fragment highlights under a
++      # dated `## vX.Y.Z — <date>` heading in CHANGELOG.md, empty the
++      # `## Unreleased` section to its standing pointer note, and CLEAR the
++      # aggregated fragments from changelog/ — all in ONE commit. The next cycle
++      # therefore starts with an empty changelog/, and the aggregate-and-require
++      # step in `release` refuses the next release until a new fragment is added.
++      #
++      # BOUNDED RETRY (5 attempts) — the v0.26.0 fix. The previous shape did a
++      # single bare `git push` and lost the race against a moving main:
++      #
++      #   ! [rejected]        HEAD -> main (fetch first)
++      #   error: failed to push some refs to 'https://github.com/medici-finance/assay'
++      #
++      # Note this was NOT a ruleset refusal — a ruleset refusal is a GH013
++      # message, which is what v0.23.0/v0.24.0 hit BEFORE the board-writer App
++      # token was wired in. The App bypass works; the race was never handled.
++      #
++      # WHY THE WINDOW IS SO WIDE. actions/checkout resolves `github.sha`, which
++      # for a workflow_dispatch is the head the ref carried WHEN THE RUN WAS
++      # CREATED — not the tip when this job starts. And `release` sits behind the
++      # `release` environment's human-approval gate, so dispatch→job-start is
++      # however long the approver takes. The staleness window is therefore
++      # dispatch→push, not job-start→push, and NO checkout tweak can close it.
++      # Run 33989081398 (2026-09-05) is the worked example: head_sha 3bb33ad5
++      # pinned at 20:05:57Z, the release job not started until 20:12:51Z, the
++      # push at 20:19:15Z — by which time the default branch had taken three
++      # board-writer commits (20:06:55Z, 20:07:08Z, 20:08:40Z) that the checkout
++      # could never have contained. Re-syncing AT PUSH TIME is the only shape
++      # that closes this.
++      #
++      # The recovery mirrors assay-statusgen.yml's `regen` and `model-autoflip`
++      # jobs exactly — the two other places in this repo that write generated
++      # files straight to main: on rejection, re-sync to the new head and
++      # RE-DERIVE against it. Never `git pull --rebase` and never `--force`: the
++      # rolled section is a generated artifact, so a rebase conflict in it is
++      # meaningless and re-running aggregate.py against the new head IS the
++      # resolution.
++      #
++      # ONE ACCEPTED DIVERGENCE: a fragment merged between the tag and a retry
++      # is aggregated into the CHANGELOG.md section but is absent from the
++      # already-published release notes. Over-inclusion is the safe direction —
++      # the alternative (pinning the fragment set to the tag) would drop that
++      # fragment from the CHANGELOG entirely, since the roll deletes it either
++      # way on the next cycle.
+       - name: CHANGELOG discipline — write the aggregated section and clear fragments
+-        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+         env:
+           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+           GH_TOKEN: ${{ steps.roll-token.outputs.token }}
+@@ -1148,30 +1217,58 @@ jobs:
+         run: |
+           set -euo pipefail
+           day=$(date -u +%Y-%m-%d)
+-          # Rewrite CHANGELOG.md: insert the dated section carrying the aggregated
+-          # fragment highlights, and empty `## Unreleased` to its pointer note.
+-          # aggregate.py exits 2 (leaving the file untouched) only when there is
+-          # nothing to aggregate — but the aggregate step above already required
+-          # non-empty, so a failure here is a real error, not the empty case.
+-          if ! python3 tools/changelog/aggregate.py roll changelog CHANGELOG.md "$RELEASE_TAG" "$day"; then
+-            echo "::error::failed to write the aggregated CHANGELOG.md section for ${RELEASE_TAG}."
+-            exit 1
+-          fi
+-          # Clear the aggregated fragments in the SAME commit (keep README.md).
+-          find changelog -maxdepth 1 -type f -name '*.md' ! -name 'README.md' -print0 \
+-            | xargs -0 -r git rm -q --
+-          git add CHANGELOG.md
+-          if git diff --cached --quiet; then
+-            echo "Nothing staged — CHANGELOG.md unchanged and no fragments to clear."
+-            exit 0
+-          fi
+           git config user.name  'assay-board-writer[bot]'
+           git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
+-          git commit -m "docs(changelog): aggregate fragments under ${RELEASE_TAG} and clear changelog/ [skip-status-regen]"
+           basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
+-          git -c http.extraheader="AUTHORIZATION: basic ${basic}" \
+-            push origin "HEAD:${DEFAULT_BRANCH}"
+-          echo "Wrote '## ${RELEASE_TAG}' from the changelog/ fragments, cleared them, and pushed to ${DEFAULT_BRANCH}."
++
++          attempts=5
++          attempt=1
++          while : ; do
++            git fetch --no-tags -c http.extraheader="AUTHORIZATION: basic ${basic}" origin "$DEFAULT_BRANCH"
++            git reset --hard FETCH_HEAD
++
++            # aggregate.py exits 2 (leaving the file untouched) only when there
++            # is nothing to aggregate. On attempt 1 that cannot happen — the
++            # aggregate-and-require step in `release` already proved the fragment
++            # set non-empty — so it is a real error. On a RETRY it CAN happen
++            # legitimately: a concurrent roll (a hand-filed PR, or a re-run of
++            # this job) may already have landed the section and cleared the
++            # fragments. Treat that as done, not as a failure.
++            roll_rc=0
++            python3 tools/changelog/aggregate.py roll changelog CHANGELOG.md "$RELEASE_TAG" "$day" || roll_rc=$?
++            if [ "$roll_rc" -eq 2 ] && [ "$attempt" -gt 1 ]; then
++              echo "nothing left to aggregate at the new head — a concurrent roll already landed ${RELEASE_TAG}. Done."
++              exit 0
++            fi
++            if [ "$roll_rc" -ne 0 ]; then
++              echo "::error::failed to write the aggregated CHANGELOG.md section for ${RELEASE_TAG} (aggregate.py rc=${roll_rc})."
++              exit 1
++            fi
++
++            # Clear the aggregated fragments in the SAME commit (keep README.md).
++            find changelog -maxdepth 1 -type f -name '*.md' ! -name 'README.md' -print0 \
++              | xargs -0 -r git rm -q --
++            # Path-scoped add: never STATUS.md (single writer = assay-statusgen).
++            git add CHANGELOG.md
++            if git diff --cached --quiet; then
++              echo "Nothing staged — CHANGELOG.md unchanged and no fragments to clear."
++              exit 0
++            fi
++            git commit -m "docs(changelog): aggregate fragments under ${RELEASE_TAG} and clear changelog/ [skip-status-regen]"
++
++            if git -c http.extraheader="AUTHORIZATION: basic ${basic}" \
++                 push origin "HEAD:${DEFAULT_BRANCH}"; then
++              echo "Wrote '## ${RELEASE_TAG}' from the changelog/ fragments, cleared them, and pushed to ${DEFAULT_BRANCH} on attempt ${attempt}/${attempts}."
++              exit 0
++            fi
++
++            if [ "${attempt}" -ge "${attempts}" ]; then
++              echo "::error::changelog roll: push rejected on all ${attempts} attempts — ${DEFAULT_BRANCH} is moving faster than the roll can re-sync. The RELEASE ITSELF IS FINE (tag + assets + notes are published); re-run THIS job once the merge burst settles, or file the roll as a PR (see #312)."
++              exit 1
++            fi
++            attempt=$((attempt + 1))
++            echo "push rejected: ${DEFAULT_BRANCH} moved. Re-syncing and re-aggregating (attempt ${attempt}/${attempts})"
++          done
+ 
+   # ───────────────────────────────────────────────────────────────────────────
+   # CONTAINER CHANNEL — the assay-harness image. ONE umbrella run emits both

@@ -1,2 +1,0 @@
-### Fixed
-- `deskflip`'s single-PR read query (`flipPRGraphQL`) had an unbalanced brace (one extra `}`), which `gh api graphql` rejected at parse time — the pr-open-draft condition failed closed on every PR, so no flip could run. Removed the extra brace and added a hermetic delimiter-balance test over both GraphQL query constants (`flipPRGraphQL`, `openPRsGraphQL`), since the gh-stubbing suite never executes the query strings and could not catch a brace typo.
