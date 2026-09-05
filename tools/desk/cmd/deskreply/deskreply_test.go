@@ -423,7 +423,7 @@ func anyDesktokenCall(calls [][]string) bool {
 
 // --- tests ----------------------------------------------------------------------
 
-func TestReplySuccessOnlyMutatingCallIsPrComment(t *testing.T) {
+func TestReplySuccessPostsOnlyOneComment(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	body := bodyFileWith(t, "Addressed in abc1234: the check is now re-verified in-tool.")

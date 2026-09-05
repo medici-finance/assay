@@ -590,7 +590,7 @@ func TestHeadMovedDuringChecksRefuses(t *testing.T) {
 // An already-ready PR whose label is ALREADY correct is a pure no-op: exit 0 and not a single
 // write. This is the common re-run case — a loop re-running its Land step over a landed item —
 // and it must stay cheap and non-failing.
-func TestAlreadyReadyWithCorrectLabelIsAPureNoOp(t *testing.T) {
+func TestAlreadyReadyWithCorrectLabelWritesNothing(t *testing.T) {
 	s := newStub()
 	s.pr.IsDraft = false
 	s.pr.Labels = []string{labelAfterFlip}
@@ -612,7 +612,7 @@ func TestAlreadyReadyWithCorrectLabelIsAPureNoOp(t *testing.T) {
 // An already-ready PR whose label is STALE needs a WRITE, and the write asserts that the review
 // lane is done — so it runs the same gate. When the conditions hold, the label is reconciled
 // and the ready mutation is NOT re-issued.
-func TestAlreadyReadyWithStaleLabelRelabelsAfterAFullReGate(t *testing.T) {
+func TestAlreadyReadyWithStaleLabelRelabelsAfterGating(t *testing.T) {
 	s := newStub()
 	s.pr.IsDraft = false // labels still carry the pre-flip label, from greenPR()
 	s.install(t)
