@@ -230,7 +230,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// v1.0.0 next to desk-tools v0.13.0 over one tree) that misreads a v2 board.
 	// PROBLEM when the tags differ; a no-op when the file is absent (this repo's
 	// own root carries no pin file), so it never reds an un-pinned tree.
-	if pinProblem, has := assayVersionsPinTagConsistency(root); has {
+	if pinProblem, has := sameTagPinLint(root); has {
 		problems = append(problems, pinProblem)
 	}
 	// The per-stream done/ archive checks — a NOTICE for a

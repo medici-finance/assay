@@ -64,7 +64,7 @@ func TestAssayVersions_PinTagConsistency(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, ".assay-versions"), []byte(mixed), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	p, ok := assayVersionsPinTagConsistency(root)
+	p, ok := sameTagPinLint(root)
 	if !ok {
 		t.Fatal("expected a PROBLEM for differing tags")
 	}
@@ -77,13 +77,13 @@ func TestAssayVersions_PinTagConsistency(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, ".assay-versions"), []byte(same), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := assayVersionsPinTagConsistency(root); ok {
+	if _, ok := sameTagPinLint(root); ok {
 		t.Error("consistent tags should not be a problem")
 	}
 
 	// Absent file → not applicable, never a false PROBLEM.
 	empty := t.TempDir()
-	if _, ok := assayVersionsPinTagConsistency(empty); ok {
+	if _, ok := sameTagPinLint(empty); ok {
 		t.Error("absent .assay-versions must not be a problem")
 	}
 }

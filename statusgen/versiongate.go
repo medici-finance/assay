@@ -113,13 +113,13 @@ func refuseIfTreeTooNew(roots []string, version string, stderr io.Writer) int {
 	return 0
 }
 
-// assayVersionsPinTagConsistency implements control (2): read <root>/.assay-versions
+// sameTagPinLint implements control (2): read <root>/.assay-versions
 // and return a PROBLEM string when the ARTIFACT lines (every line but the umbrella
 // line) do not all carry the same tag. It is a no-op — no problem — when the file
 // is ABSENT (not every adopted tree carries a pin file; this repo's own root does
 // not) or unreadable in a way that other checks already surface. A file present
 // with differing artifact tags is the mixed-version state §6 exists to catch.
-func assayVersionsPinTagConsistency(root string) (problem string, ok bool) {
+func sameTagPinLint(root string) (problem string, ok bool) {
 	path := filepath.Join(root, ".assay-versions")
 	raw, err := os.ReadFile(path)
 	if err != nil {
