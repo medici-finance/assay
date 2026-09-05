@@ -415,6 +415,16 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// *.md under docs/**, so its inputs INCLUDE every stream README and brief
 	// file. It is also the only check that catches a README row whose brief file
 	// does not exist — see the classification comment above.
+	// Declared fixture corpora (fixturecorpus.go). Runs BEFORE the link lint it
+	// narrows, so the log reads in the order the reader needs it: what was
+	// exempted, then what was checked. One NOTICE per honoured corpus naming the
+	// subtree and its file count — an exemption is never silent — and one PROBLEM
+	// per marker declared outside docs/streams/<corpus>/, which is inert in the
+	// resolver and refused here so the author is told rather than left with a
+	// mechanism that quietly does nothing.
+	fcProblems, fcNotices := fixtureCorpusChecks(root)
+	problems = append(problems, fcProblems...)
+	notices = append(notices, fcNotices...)
 	docs, docWalkProblems := docFiles(root)
 	// An unreadable docs subtree is a could-not-check, not zero problems: surface
 	// it so the lint fails instead of passing on a truncated file set
