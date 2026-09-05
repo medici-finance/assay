@@ -345,3 +345,93 @@ func TestSelfContainPrivateShortNameIsNoticeOnly(t *testing.T) {
 type io_Discard struct{}
 
 func (io_Discard) Write(p []byte) (int, error) { return len(p), nil }
+
+// scRosterWithheld is scRoster plus a roster-carried ASSAY_WITHHELD_IDENTIFIERS value. The
+// fixture writes an actual roster.env, so this is the real configuration path an adopter
+// uses — not a stand-in for it.
+func scRosterWithheld(t *testing.T, withheld string) {
+	t.Helper()
+	withRoster(t, map[string]string{
+		EnvBlessLogin:      "ada:2001",
+		EnvTrustedLogins:   "ada:2001",
+		EnvTrustedBotSlugs: "worker=assay-worker-app:300000006",
+		EnvAllowedRepos: "example-org/example-k8s:ci:public,example-org/tracker:ci:private," +
+			"example-org/proposals:no-ci:public,medici-finance/assay:ci:private",
+		EnvRepoAliases:         "example-org/tracker=trk:products",
+		EnvWithheldIdentifiers: withheld,
+	})
+}
+
+// TestWithheldIdentifiersResolveThroughRoster is #490's regression: the withheld register set
+// must resolve the way every other ASSAY_ key resolves — roster.env, overridden by the
+// environment — rather than from the environment ALONE.
+//
+// The bug it pins is the silent half of a control failure, which is why each arm asserts on
+// the SCAN's behaviour and not only on the accessor: the accessor returning nil is invisible,
+// while a public body that names a withheld slug and is allowed through is the damage.
+func TestWithheldIdentifiersResolveThroughRoster(t *testing.T) {
+	// (a) ROSTER-ONLY, no environment at all. This is the configuration the bug report
+	// describes: roster.env carries the key, every shell that runs deskpr/deskpost does not.
+	t.Run("roster only reaches the scan", func(t *testing.T) {
+		scRosterWithheld(t, "closed-stream,other-closed")
+		t.Setenv(EnvWithheldIdentifiers, "")
+
+		if got := WithheldIdentifiers(); len(got) != 2 || got[0] != "closed-stream" ||
+			got[1] != "other-closed" {
+			t.Fatalf("a roster-configured withheld set must reach WithheldIdentifiers(); got %q", got)
+		}
+		var out strings.Builder
+		err := SelfContainCheck("PR body", []byte("delivered by closed-stream/07, see the register"),
+			SelfContainOpts{Repo: scPublicRepo, NumberHint: 9000, Notices: &out})
+		if !IsRefused(err) {
+			t.Fatalf("a body naming a ROSTER-configured withheld brief id must refuse; got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "closed-stream/07") {
+			t.Errorf("the refusal must name the span the author has to edit; got: %v", err)
+		}
+		if strings.Contains(out.String(), "NOT CHECKED") {
+			t.Errorf("a configured category must not also report itself unchecked; notices were:\n%s",
+				out.String())
+		}
+	})
+
+	// (b) ENV OVERRIDES ROSTER, the precedence every other key uses. The env value is the
+	// one in force: the roster's own slug no longer refuses, the env's does.
+	t.Run("environment overrides roster", func(t *testing.T) {
+		scRosterWithheld(t, "closed-stream")
+		t.Setenv(EnvWithheldIdentifiers, "Env-Stream")
+
+		if got := WithheldIdentifiers(); len(got) != 1 || got[0] != "env-stream" {
+			t.Fatalf("the environment must override the roster (lowercased); got %q", got)
+		}
+		if err := SelfContainCheck("PR body", []byte("delivered by env-stream/02"),
+			SelfContainOpts{Repo: scPublicRepo, NumberHint: 9000, Notices: io_Discard{}}); !IsRefused(err) {
+			t.Fatalf("the overriding env value must be the set in force: %v", err)
+		}
+		if err := SelfContainCheck("PR body", []byte("delivered by closed-stream/02"),
+			SelfContainOpts{Repo: scPublicRepo, NumberHint: 9000, Notices: io_Discard{}}); err != nil {
+			t.Fatalf("the overridden roster value must NOT still refuse: %v", err)
+		}
+	})
+
+	// (c) UNSET IN BOTH is nil, and stays a complete adopter configuration: a NOTICE naming
+	// BOTH sources, never a refusal.
+	t.Run("unset in both is nil and notices both sources", func(t *testing.T) {
+		scRoster(t) // no EnvWithheldIdentifiers in the roster
+		t.Setenv(EnvWithheldIdentifiers, "")
+
+		if got := WithheldIdentifiers(); got != nil {
+			t.Fatalf("unset in both sources must be nil; got %q", got)
+		}
+		var out strings.Builder
+		if err := SelfContainCheck("PR body", []byte("delivered by closed-stream/07"),
+			SelfContainOpts{Repo: scPublicRepo, NumberHint: 9000, Notices: &out}); err != nil {
+			t.Fatalf("an unconfigured register category must NOTICE, never refuse: %v", err)
+		}
+		notice := out.String()
+		if !strings.Contains(notice, "NOT CHECKED") ||
+			!strings.Contains(notice, "not configured in roster.env or the environment") {
+			t.Errorf("the notice must name BOTH sources it looked in; notices were:\n%s", notice)
+		}
+	})
+}

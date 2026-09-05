@@ -262,13 +262,13 @@ const (
 
 	// scanEnvWithheldIdentifiers (ASSAY_WITHHELD_IDENTIFIERS) carries the
 	// identifiers the desk's public-repo self-containment scan
-	// (deskkit/selfcontain.go) refuses to let leave the house. The desk reads it
-	// with a direct os.Getenv rather than through its roster struct — but a house
-	// that configures it records it in the SAME shared roster.env, so an
+	// (deskkit/selfcontain.go) refuses to let leave the house. The desk CONSUMES
+	// it — environment first, roster second — so a house that configures the scan
+	// records it in the SAME shared roster.env this reader parses, and an
 	// unrecognised-key refusal here would mean turning that scan's register
-	// category on collapses statusgen's whole configuration. statusgen never
-	// consumes it. KEEP IN SYNC with deskkit/selfcontain.go's
-	// EnvWithheldIdentifiers.
+	// category on collapses statusgen's whole configuration. statusgen runs no
+	// such scan and consumes it in neither form. KEEP IN SYNC with
+	// deskkit/rosterconfig.go's EnvWithheldIdentifiers.
 	scanEnvWithheldIdentifiers = "ASSAY_WITHHELD_IDENTIFIERS"
 
 	// scanEnvAllowCluster (ASSAY_ALLOW_CLUSTER) is the desk clusterguard's
