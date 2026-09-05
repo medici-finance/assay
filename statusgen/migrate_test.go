@@ -37,7 +37,7 @@ func migrateFixtureTree(t *testing.T, withRegistry bool) string {
 	return root
 }
 
-func TestMigrateBriefV1ToV2RewritesEverything(t *testing.T) {
+func TestMigrateRewritesBriefAndReadme(t *testing.T) {
 	root := migrateFixtureTree(t, true)
 	var out, errb bytes.Buffer
 	if code := runMigrate([]string{"brief-v1-to-v2", "--root", root}, &out, &errb); code != 0 {

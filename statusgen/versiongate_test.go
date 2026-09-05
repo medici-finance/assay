@@ -26,7 +26,7 @@ func TestGateBelowV1(t *testing.T) {
 	}
 }
 
-func TestRefuseIfTreeTooNewRefusesStampedBelowV1OnV2Tree(t *testing.T) {
+func TestRefuseIfTreeTooNewStampedBelowV1(t *testing.T) {
 	root := migrateFixtureTree(t, true)
 	// Migrate the fixture to brief-v2 so the tree carries v2 briefs.
 	var out, errb bytes.Buffer
