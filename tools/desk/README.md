@@ -1710,6 +1710,28 @@ the search path, so the failure read as a broken key rather than a wrong directo
 
 `<ROLE>_PEM` and `<ROLE>_TOKEN` still override an individual file outright, in all three.
 
+#### `desktoken coverage <role>` — which repos a role's App sees
+
+`desktoken coverage <role> [--repo <slug>] [--json]` answers the question a coordinator
+otherwise hand-writes a JWT probe for before a roster flip or cross-org dispatch: *does
+role X's App see repo Y?* It is **read-only** on the forge and on disk. It signs the same
+App JWT the mint path signs, lists every installation of the role's App, mints a token per
+installation **into memory only**, and pages each installation's repositories — then prints
+the answer instead of discarding it. It writes **no** token cache and **no** `.perms`
+sidecar (a cache written under an enumeration would shadow the next real mint's permission
+view — the masking `--fresh` exists to undo), and it prints **no** token or JWT; the audit
+line records only role, installation count, repository count, filter and result. Output is
+one block per installation, in stable order by account login —
+`installation <id> account=<login> type=<Org|User> selection=<all|selected> repos=<n>`
+followed by one indented `<owner/name>` line per repository, sorted. `--repo <slug>` prints
+only the installation that sees that repository and exits **0** if one does, **5** if none;
+the slug is matched on `owner/name`, so a same-named repository under a different owner does
+not match. A repository page whose read fails is exit **6** naming the installation — never
+a short list presented as complete (could-not-check is not "not covered"). `--json` emits
+the same enumeration as one object: `{"installations":[{"id":…,"account":…,"type":…,
+"selection":…,"repos":["owner/name",…]}]}`. GitHub-only: `--forge gitlab` is refused with
+exit 5 — a GitLab PAT has no installation to enumerate.
+
 ### Version check (stale-binary detection)
 
 Every tool with a `--version` flag reports its embedded stamp in one shape:

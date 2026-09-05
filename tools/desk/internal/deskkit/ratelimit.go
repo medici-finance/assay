@@ -248,19 +248,31 @@ func chargesBudget(result string) bool {
 // nothing at the remote — the fuel of a spinning caller, and what the circuit breaker
 // counts.
 //
-// ResultRefused and ResultNoop qualify. So does ResultUnwritten (#448): a
+// ResultRefused qualifies. So does ResultUnwritten (#448): a
 // precondition that could not be verified before any write was attempted is, to a caller
 // looping on the same input, indistinguishable in shape from a refusal — nothing reached
 // the remote, and it must count toward the breaker or a repeated failed-precondition loop
 // would be bounded by NEITHER meter (chargesBudget already excludes it from the budget).
-// ResultRateLimited, ResultDisabled and
-// ResultDryRun deliberately do NOT: the first two are the stops' own output, and counting
-// them would let the breaker hold itself open forever off its own refusals — the exact
-// livelock this file exists to remove, re-entered through the second meter. ResultOK and
+//
+// ResultNoop no longer qualifies (#180). A no-op is the tool confirming the desired state
+// ALREADY HOLDS — the shape of a healthy idempotent verb that a standing loop re-asserts on
+// every quiet tick (e.g. `deskdisposition set` re-asserting an unchanged verdict), not a
+// caller spinning on a failure. Counting it tripped the breaker on the fifth CONSECUTIVE
+// quiet tick with nothing having failed; the refusals that trip then produced were
+// themselves non-progress, so the run never reset on its own. It is now NEUTRAL — invisible
+// via breakerIgnores, neither tripping the breaker nor resetting it — so only
+// refused/unwritten advance the run. Invisible rather than progress-that-resets is the
+// fail-closed half (identical to ResultDryRun's, #214): a spinning caller must not be able
+// to launder a refusal run clean by interleaving idempotent no-ops between its refusals.
+//
+// ResultRateLimited, ResultDisabled and ResultDryRun are likewise invisible via
+// breakerIgnores (see there): the first two are the stops' own output, and counting them
+// would let the breaker hold itself open forever off its own refusals — the exact livelock
+// this file exists to remove, re-entered through the second meter. ResultOK and
 // ResultUnverifiable are progress and RESET the breaker — a genuinely ambiguous POST may
 // have landed, so it must not be treated as though it definitely did not.
 func nonProgress(result string) bool {
-	return result == ResultRefused || result == ResultNoop || result == ResultUnwritten
+	return result == ResultRefused || result == ResultUnwritten
 }
 
 // breakerIgnores reports whether a result is invisible to the breaker's consecutive-run
@@ -280,8 +292,18 @@ func nonProgress(result string) bool {
 // refusals and reset the breaker's run to zero every time, disarming the loop stop with
 // the very flag that was supposed to be free. Ignored, it can neither trip the breaker
 // nor rescue a caller from it.
+//
+// ResultNoop is here for #180, and for the SAME fail-closed reason as ResultDryRun. A
+// no-op is the tool confirming the desired state already holds, so a standing idempotent
+// loop must be able to re-assert an unchanged verdict on every quiet tick without the
+// breaker trip counting up — five consecutive quiet ticks are a HEALTHY idle loop, not a
+// spinning caller, and counting them opened the breaker on the fifth with nothing having
+// failed. INVISIBLE is again the whole requirement: treating the no-op as progress instead
+// would let a spinning caller splice an idempotent no-op between its refusals to reset the
+// run and hold the loop stop disarmed. Ignored, it neither trips the breaker nor rescues a
+// caller from it.
 func breakerIgnores(result string) bool {
-	return result == ResultRateLimited || result == ResultDisabled || result == ResultDryRun
+	return result == ResultRateLimited || result == ResultDisabled || result == ResultDryRun || result == ResultNoop
 }
 
 // AllowWrite enforces the outward-write gate as of now. See AllowWriteAt.

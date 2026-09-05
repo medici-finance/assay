@@ -470,6 +470,17 @@ func run(args []string) int {
 	// Running from source (go run / unstamped) is a drift risk — say so loudly.
 	deskkit.WarnIfUnpinned(os.Stderr)
 
+	// `coverage` is a distinct read-only verb (list the repos a role's App
+	// installations can see). No role is named "coverage", so the dispatch is
+	// unambiguous.
+	if args[0] == "coverage" {
+		cerr := cmdCoverage(args[1:])
+		if cerr != nil {
+			fmt.Fprintln(os.Stderr, cerr.Error())
+		}
+		return deskkit.ExitCodeOf(cerr)
+	}
+
 	err := cmdToken(args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
