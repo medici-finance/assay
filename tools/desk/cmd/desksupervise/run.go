@@ -86,7 +86,7 @@ func cmdRun(args []string) (err error) {
 			ac.detail = runDetail(interval, ticks, alive, reclaimed, blocked, blind, "aborted on claim read error")
 			return cerr
 		}
-		results, tickBlind, serr := sweep(claims, liveObservationSource(houseProbesOnce()), pol, now, *dryRun, doReclaim, doFileBlockedTimeout, os.Stdout)
+		results, tickBlind, serr := sweep(claims, liveObservationSource(houseProbesOnce()), pol, now, *dryRun, doReclaim, doFileBlockedTimeout, doArmRunStop, os.Stdout)
 		if serr != nil {
 			ac.detail = runDetail(interval, ticks, alive, reclaimed, blocked, blind, "aborted on sweep error")
 			return serr

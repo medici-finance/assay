@@ -19,6 +19,7 @@ Amending the set is a stream-README edit in the same PR.
 | `capability:invoke-skill` | The **Skill** mechanism: `SKILL.md` frontmatter (`name`, `description`) is discovered from the plugin bundle, and **description-driven auto-triggering** loads the body when the request matches. Invoke-by-name is also available. |
 | `capability:session-notifications` | Background **task notifications**: a dispatched worker finishing re-invokes the parent session. Judge liveness by these completion signals and elapsed time, never by an empty output file. |
 | `capability:durable-monitor` | The **Monitor** tool with `persistent: true` — a re-arming poll that survives across turns and re-invokes the session on a new event or a fixed cadence. Check **TaskList** for an existing monitor before arming a second (never arm two). It is **best-effort by construction — NOT the sole wake signal**: pair it with a fixed-cadence board sweep as the liveness backstop, so a dead monitor is loud rather than a silent all-clear. The durable liveness home is the always-on observability service, not this tool. |
+| `capability:stop-worker` | The **TaskStop** tool — halt one dispatched worker by its id/name. The desk window's cadence sweep reads the armed per-run stops (`desksupervise status --stops`) and stops the matching dispatched worker; the STOP.run.<key> flag is the independent cooperative layer that halts the run even when the desk window never issues the harness-side stop. |
 
 ## Degradation — per skill
 

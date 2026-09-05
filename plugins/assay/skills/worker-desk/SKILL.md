@@ -590,6 +590,12 @@ worker-desk's own.
 - **A tick keeps the dead-man lease fresh.** The desk tools refuse to run when
   `~/.config/assay/HEARTBEAT` has not been touched inside its staleness window, so the standing loop
   is the thing that keeps it current: touch it on every tick, including a quiet one.
+- **A tick reads the armed per-run stops and stops each run's worker.** Every tick, read the armed
+  per-run stops (`desksupervise status --stops`) and, for each one, `capability:stop-worker` the matching
+  dispatched worker — the cooperative `STOP.run.<key>` flag already refuses that run's next desk verb,
+  and this is the independent second layer that halts a worker which never runs another verb. `tick`
+  arms the flag itself before it reclaims a wedged run, so a reclaimed item is stop-armed the moment its
+  claim is freed for re-dispatch.
 - **A tick that did not happen is could-not-check, never idle.** Two ticks with no successful sweep is
   the silent-board-freeze class — re-arm, and if it does not clear, file it (§Output contract,
   detected blindness).

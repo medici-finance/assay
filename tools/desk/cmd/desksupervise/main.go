@@ -45,6 +45,8 @@ USAGE:
   desksupervise tick [--root DIR] [--repo OWNER/NAME] [--dry-run] [--now RFC3339]
                       [--claims-fixture FILE] [--observations-fixture FILE]
   desksupervise run --interval DUR [--root DIR] [--repo OWNER/NAME] [--dry-run]
+  desksupervise stop <key> --reason "..."
+  desksupervise status --stops
   desksupervise --version
 
 tick enumerates every state=dispatched dispatch claim (live: via the claim tool's own
@@ -67,6 +69,12 @@ ran cleanly (see the three-state-instrument rule: could-not-check is never a pas
 run --interval DUR loops tick forever (sweep, sleep, sweep), honouring the kill switch /
 STOP flags between ticks and exiting 0 on SIGTERM — mirrors ` + "`deskwt prune --interval`" + `.
 --now is for the Verify fixtures only; live runs always use the real clock.
+
+stop <key> --reason "..." arms the PER-RUN stop flag (STOP.run.<key>) so deskkit.Guard
+refuses that one run's next desk verb — a halt for a single wedged or superseded run that
+never touches the loop-wide kill switch. tick arms the same flag automatically before it
+releases a reclaimed claim. status --stops lists the armed per-run stops (key, armed_at,
+reason) — the desk window's cadence read.
 
 Exit: 0 ok (every claim ALIVE/reclaimed/landed, none blind) · 3 disabled · 5 refused ·
 6 unverifiable (a claim could not be checked, or a real precondition failed).`
@@ -112,6 +120,10 @@ func run(args []string) int {
 		err = cmdTick(rest)
 	case "run":
 		err = cmdRun(rest)
+	case "stop":
+		err = cmdStop(rest)
+	case "status":
+		err = cmdStatus(rest)
 	default:
 		fmt.Fprintf(os.Stderr, "desksupervise: unknown subcommand %q\n\n%s\n", sub, usage)
 		return deskkit.ExitRefused
