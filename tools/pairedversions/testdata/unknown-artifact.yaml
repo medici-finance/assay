@@ -1,0 +1,21 @@
+# Fixture: a platform is pinned to an artifact the release does not publish
+# (here, the linux-arm64 asset that has never been cut). The manifest's header
+# says an absent platform is left OUT deliberately rather than invented; this is
+# the check that catches inventing one anyway.
+schema: paired-versions-v1
+
+plugin: "0.5.0"
+
+statusgen:
+  release_home: example-org/example-releases
+  tag: v1.2.3
+  platforms:
+    darwin-arm64: statusgen-darwin-arm64 v1.2.3 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    linux-arm64:  statusgen-linux-arm64  v1.2.3 eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+
+desk-tools:
+  release_home: example-org/example-releases
+  tag: v1.2.3
+  platforms:
+    darwin-arm64: desk-tools-darwin-arm64.tar.gz v1.2.3 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    linux-amd64:  desk-tools-linux-amd64.tar.gz  v1.2.3 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd

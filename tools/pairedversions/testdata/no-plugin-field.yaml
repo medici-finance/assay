@@ -1,0 +1,18 @@
+# Fixture: the LEFT side of the pairing is missing entirely. Nothing ties the
+# manifest to a plugin version, so it can never be caught drifting from one —
+# fail-closed rather than treat "no claim" as "no disagreement".
+schema: paired-versions-v1
+
+statusgen:
+  release_home: example-org/example-releases
+  tag: v1.2.3
+  platforms:
+    darwin-arm64: statusgen-darwin-arm64 v1.2.3 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    linux-amd64:  statusgen-linux-amd64  v1.2.3 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+desk-tools:
+  release_home: example-org/example-releases
+  tag: v1.2.3
+  platforms:
+    darwin-arm64: desk-tools-darwin-arm64.tar.gz v1.2.3 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    linux-amd64:  desk-tools-linux-amd64.tar.gz  v1.2.3 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
