@@ -504,14 +504,14 @@ func TestRequirementRegisterIsNotAStream(t *testing.T) {
 	}
 }
 
-// TestRegisterDirLintsWithoutREADME is the whole-tool version of the test above,
+// TestRegisterLintsWithoutREADME is the whole-tool version of the test above,
 // and it is the reported symptom itself: a tracking root whose register
 // directory holds entries and NO README.md must lint clean. The unit test one
 // level up pins loadStreams; this one pins the exit code and the message a user
 // actually sees, because that is what a released binary is judged on. Remove
 // requirementsDirName from reservedRegisterNames and this fails with
 // "stream directory requirements has no README.md" and rc=1.
-func TestRegisterDirLintsWithoutREADME(t *testing.T) {
+func TestRegisterLintsWithoutREADME(t *testing.T) {
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)
@@ -531,11 +531,11 @@ func TestRegisterDirLintsWithoutREADME(t *testing.T) {
 	}
 }
 
-// TestRegisterREADMEIsAllowedNotRequired: a register MAY document itself. The
+// TestRegisterREADMEIsOptional: a register MAY document itself. The
 // README must be neither required (the test above) nor treated as an entry or a
 // stray when present — otherwise "add a README" and "do not add a README" are
 // both wrong and the directory has no legal shape.
-func TestRegisterREADMEIsAllowedNotRequired(t *testing.T) {
+func TestRegisterREADMEIsOptional(t *testing.T) {
 	root := requirementRoot(t, validRequirementFixture())
 	writeFile(t, root, "docs/streams/"+requirementsDirName+"/README.md", "# requirements\n\nThe register.\n")
 	if problems := requirementRegisterProblems(root); len(problems) != 0 {
