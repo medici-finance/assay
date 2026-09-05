@@ -1165,6 +1165,19 @@ func main() {
 		os.Exit(runInit(resolved[0], *dryRun))
 	}
 
+	// `statusgen newbrief` — the brief-authoring FRONT DOOR (mistake-proofing/05,
+	// B1): a generator that emits a lint-clean brief skeleton with the gate DERIVED
+	// from the risk answers (refusing a supplied gate, and — non-interactive — an
+	// unanswered risk question), the wave DERIVED from the dependencies (refusing a
+	// nonexistent one), the INVERSE edge written into each dependency in the same
+	// change, and the freshness stamp produced by a fetch it performs (could-not-
+	// check on failure, never an invented value). Intercepted before flag parsing
+	// for verifyrun's reason: it owns its own --stream/--depends/--risk namespace,
+	// and it must NOT be reachable by fallthrough to the default write mode.
+	if len(os.Args) > 1 && os.Args[1] == "newbrief" {
+		os.Exit(runNewBrief(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+	}
+
 	// UNKNOWN POSITIONAL SUBCOMMAND — fail closed (#1075).
 	//
 	// Every genuine positional subcommand (verifyrun, mergecheck, shardcheck,
@@ -1185,7 +1198,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, verifyrun, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, enforcement-status, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, enforcement-status, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}

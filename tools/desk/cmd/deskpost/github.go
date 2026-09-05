@@ -529,6 +529,31 @@ func (c *ghClient) getPRHead(pr int) (string, error) {
 	return p.Head.SHA, nil
 }
 
+// commitInfo is the subset of GET /repos/{o}/{r}/commits/{sha} the non-author verdict
+// assertion needs: the ACCOUNT login GitHub attributes the commit to. For an App-authored
+// commit this renders as "<slug>[bot]" (the REST rendering deskkit.SameActor folds). It can
+// be null/empty when GitHub cannot map the commit's author email to an account — a
+// could-not-check the assertion treats as unknown, never as a cleared separation.
+type commitInfo struct {
+	Author struct {
+		Login string `json:"login"`
+	} `json:"author"`
+}
+
+// headCommitAuthor returns the account login GitHub attributes the head commit to. It is
+// the SECOND-LAYER input for the non-author verdict assertion (sdlc/10): the verdict must
+// not be posted by the same actor that authored the code it certifies. An empty return
+// (GitHub could not map the commit to an account) is a could-not-check the caller surfaces,
+// not a pass — see AssertNonAuthorVerdict.
+func (c *ghClient) headCommitAuthor(sha string) (string, error) {
+	var ci commitInfo
+	path := fmt.Sprintf("/repos/%s/%s/commits/%s", c.owner, c.repo, sha)
+	if err := c.doJSON(http.MethodGet, path, nil, &ci); err != nil {
+		return "", err
+	}
+	return ci.Author.Login, nil
+}
+
 // listReviews returns all reviews on the PR (paginated).
 func (c *ghClient) listReviews(pr int) ([]reviewInfo, error) {
 	var all []reviewInfo
