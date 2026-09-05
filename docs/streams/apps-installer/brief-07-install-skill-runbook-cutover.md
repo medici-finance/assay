@@ -7,7 +7,7 @@ why: >-
   say: run `deskapps init`, click Create and Install when the page asks, and read the proof — and
   the tiers need one honest page that says what each one automates and what stays the adopter's.
 wave: 4
-depends: ["apps-installer/03", "apps-installer/04", "apps-installer/06"]
+depends: ["apps-installer/01", "apps-installer/03", "apps-installer/04", "apps-installer/06"]
 unblocks: []
 effort: M
 gate: model

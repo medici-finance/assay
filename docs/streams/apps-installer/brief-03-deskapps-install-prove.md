@@ -8,7 +8,7 @@ why: >-
   the same check the preflight runs, on the same freshly minted token, means the install is proven
   before the browser closes.
 wave: 2
-depends: ["apps-installer/02"]
+depends: ["apps-installer/01", "apps-installer/02"]
 unblocks: ["apps-installer/07"]
 effort: M
 gate: model
@@ -18,7 +18,7 @@ schema: brief-v1
 authored: 2026-09-05 by apps-installer authoring session
 sources:
   - "./design.md §2 Screen 2 (Install, Verify cells), Screen 3 (Prove), §3 (poll, mint, check), §8 (installed on the wrong account; scopes ≠ duties; cross-org cell)."
-  - "`tools/desk/internal/deskkit/preflight.go` — `CheckAppScopes` (`app-scopes-vs-duties`, #571), `requiredDuties` (pull_requests:write, issues:write, contents:write), the `.perms` sidecar written on a FRESH mint, `desktoken <role> --fresh`."
+  - "`tools/desk/internal/deskkit/preflight.go` — `CheckAppScopes` (`app-scopes-vs-duties`), `requiredDuties` (pull_requests:write, issues:write, contents:write), the `.perms` sidecar written on a FRESH mint, `desktoken <role> --fresh`."
   - "`tools/desk/cmd/deskroster/preflight.go` — the check is already surfaced by `deskroster preflight`; this brief invokes the same code, never a copy."
   - "`docs/adopting-assay.md` roster section: `ASSAY_TRUSTED_BOT_SLUGS=[role=]slug:<bot-user-id>`; the bot USER id is what commits and trust matching key on."
   - "freshness-checked 2026-09-05 @ 38e96f7 (origin/main) — no code polls `/app/installations` with an App JWT; the roster is hand-written by the adopter."
