@@ -33,7 +33,7 @@ import (
 )
 
 // version is an optional bare-`vX.Y.Z` build stamp (`-ldflags -X main.version`).
-// It feeds the brief-reading version gate (derived-board/06); left empty on a real
+// It feeds the brief-reading version gate (example-stream/06); left empty on a real
 // release, where the namespaced ReleaseTag stamp supplies the version instead.
 var version string
 
@@ -159,7 +159,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return deskkit.ExitCodeOf(err)
 	}
 
-	// Brief-reading version gate (derived-board/06 §6): a stamped deskboard below
+	// Brief-reading version gate (example-stream/06 §6): a stamped deskboard below
 	// v1.0.0 refuses a brief-v2 tree (exit 6) before it reads any board.
 	if code := deskkit.RefuseIfTreeV2BelowV1(deskkit.RootsFromArgs(args), deskkit.EffectiveToolVersion(version), "deskboard", stderr); code != 0 {
 		return code

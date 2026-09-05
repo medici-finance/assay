@@ -1,6 +1,6 @@
 package deskkit
 
-// briefschemagate.go — the brief-reading version gate (derived-board/06 §6).
+// briefschemagate.go — the brief-reading version gate (example-stream/06 §6).
 //
 // brief-v2 is the first contract-breaking brief schema. A brief-reading desk tool
 // (deskboard, deskpr, deskclaim, deskevidence) built BELOW v1.0.0 would misread a

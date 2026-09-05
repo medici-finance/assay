@@ -68,7 +68,7 @@ type EnsureLine struct {
 	Text string `yaml:"text"`
 }
 
-// StatusgenRegen is the derived-board/06 op: run the PINNED statusgen's `migrate`
+// StatusgenRegen is the example-stream/06 op: run the PINNED statusgen's `migrate`
 // verb over the adopter tree so a schema/board migration stays declarative and
 // dry-runnable. Verb is the statusgen subcommand argument (`migrate`); Args are
 // the verb's positional arguments (e.g. `brief-v1-to-v2`). The op resolves the
