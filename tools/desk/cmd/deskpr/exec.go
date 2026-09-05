@@ -87,35 +87,63 @@ func gh(dir string, args ...string) (string, error) {
 	return runCmd(dir, "gh", args...)
 }
 
-// mintWorkerToken calls desktoken worker --repo <repo> to get or reuse an installation
-// token for the worker GitHub App (the worker App) SCOPED TO repo's owner, then sets it
-// as the ghToken so every subsequent gh invocation authenticates as the worker App.
+// mintWorkerToken mints or reuses the installation token for the App role THIS session
+// acts under and sets it as ghToken, so every subsequent gh invocation (list, create,
+// view) authenticates as that App. It resolves the role from the session loop identity via
+// deskkit.SessionTokenRole and calls `desktoken <role> --repo <repo>`; the WORKER App is
+// the default, kept only when no loop is set or the loop carries no App role (see below).
 //
-// --repo is not optional here (#565, mirroring #563/#562): the worker App is installed
-// on more than one account (e.g. example-org AND medici-finance), and desktoken defaults
-// the owner to "example-org" whenever --repo is absent. Without this flag, deskpr running
-// against a medici-finance/* repo would silently mint a token for the WRONG
-// installation — one with no access to the target repo — and the subsequent `gh pr
-// create`/`gh pr view` would fail with a GitHub API "Could not resolve to a Repository"
-// error, surfacing as deskpr's exit 6. Passing the caller's own already-verified repo
-// (deskpr only ever calls this with the repo it just confirmed via preflight() matches
-// this worktree's origin) makes resolution deterministic regardless of which
-// worktree/remote deskpr happens to run in. Returns an error if desktoken is not
-// available or the token file is unreadable.
+// WHY THE ROLE IS RESOLVED, NOT HARDCODED (#396). deskpr create/update/edit all land a PR
+// authored by the App whose token this mints. A verify-desk session
+// (DESK_LOOP=verify-desk, which SessionTokenRole maps to the verifier role) opens Evidence
+// PRs whose branch commits deskevidence already authored as the VERIFIER via the Contents
+// API. Hardcoding the worker token here authored the PR under a DIFFERENT App than its own
+// commits: on this repo's PR-required main that misattributes verification landings to the
+// worker role and defeats any workflow keyed on "PR author is the verifier App". Resolving
+// the role keeps PR author and commit author the same App. The name is kept for a
+// body-only diff, but the function is no longer worker-only.
+//
+// WORKER IS THE DEFAULT, NEVER A GUESS. When no loop is set, or the loop carries no App
+// role, SessionTokenRole returns an error and this falls back to the worker App — the
+// historical behavior, and the right one for an unbadged dispatch — but SAYS SO on
+// deskprStderr rather than adopting the default silently, so the fallback is auditable and
+// not mistaken for a resolved role identity. It never guesses a NON-worker role: a
+// non-worker role is only ever adopted from an explicit, recognised loop identity. (In
+// practice deskpr's main() already refuses via RequireLoopIdentity before any subcommand
+// runs when the loop is unset or unrecognised, so the fallback is a defensive floor.)
+//
+// --repo is not optional here (#565, mirroring #563/#562): each App is installed on more
+// than one account (e.g. example-org AND medici-finance), and desktoken defaults the owner
+// to "example-org" whenever --repo is absent. Without this flag, deskpr running against a
+// medici-finance/* repo would silently mint a token for the WRONG installation — one with
+// no access to the target repo — and the subsequent `gh pr create`/`gh pr view` would fail
+// with a GitHub API "Could not resolve to a Repository" error, surfacing as deskpr's exit
+// 6. Passing the caller's own already-verified repo (deskpr only ever calls this with the
+// repo it just confirmed via preflight() matches this worktree's origin) makes resolution
+// deterministic regardless of which worktree/remote deskpr happens to run in. Returns an
+// error if desktoken is not available or the token file is unreadable.
 func mintWorkerToken(repo string) error {
-	// Run desktoken worker --repo <repo>; it prints the path to the cached token file.
-	out, err := runCmd("", "desktoken", "worker", "--repo", repo)
+	// Resolve the App role this session acts under from its loop identity; fall back to
+	// the worker App, and say so, when there is no App role to resolve (#396).
+	role := "worker"
+	if r, _, rerr := deskkit.SessionTokenRole("deskpr"); rerr == nil {
+		role = r
+	} else {
+		fmt.Fprintf(deskprStderr, "deskpr: no App role resolved for this session — defaulting to the worker App token (%v)\n", rerr)
+	}
+	// Run desktoken <role> --repo <repo>; it prints the path to the cached token file.
+	out, err := runCmd("", "desktoken", role, "--repo", repo)
 	if err != nil {
-		return fmt.Errorf("desktoken worker --repo %s: %w", repo, err)
+		return fmt.Errorf("desktoken %s --repo %s: %w", role, repo, err)
 	}
 	tokenPath := strings.TrimSpace(out)
 	b, rerr := os.ReadFile(tokenPath)
 	if rerr != nil {
-		return fmt.Errorf("read worker token from %s: %w", tokenPath, rerr)
+		return fmt.Errorf("read %s token from %s: %w", role, tokenPath, rerr)
 	}
 	ghToken = strings.TrimSpace(string(b))
 	if ghToken == "" {
-		return fmt.Errorf("worker token at %s is empty", tokenPath)
+		return fmt.Errorf("%s token at %s is empty", role, tokenPath)
 	}
 	return nil
 }
