@@ -225,13 +225,104 @@ const (
 	// desk-only keys above are recognised. KEEP IN SYNC with
 	// deskkit/rosterconfig.go's EnvDeterministicGatePatterns.
 	scanEnvDeterministicGatePatterns = "ASSAY_DETERMINISTIC_GATE_PATTERNS"
+
+	// The four keys below are DESK-only roster values that statusgen does not
+	// consume, recognised here for the one reason every recognised-not-applied key
+	// above is: the desk tools and statusgen read the SAME roster.env, and an
+	// unrecognised key in the ASSAY_ namespace REFUSES the WHOLE configuration
+	// (parseConfig). "Refuses the whole configuration" means every statusgen gate
+	// that reads the roster reports it unconfigured and fails closed — so a roster
+	// key that only the desk tools need is, until it is recognised here, a
+	// fleet-wide outage of statusgen's trust-gated lanes. Recognising is NOT
+	// applying: nothing below is read into scanConfig, and adding one here grants
+	// statusgen no behaviour at all.
+	//
+	// They are held identical to deskkit's set by the shared key list in
+	// statusgen/testdata/roster_coupling.json (scanKnownRosterKeys +
+	// TestRosterKeySchemaCoupling, and deskkit's twin), so this comment is
+	// documentation, not the enforcement.
+
+	// scanEnvRepoForges (ASSAY_REPO_FORGES) binds `owner/name` to the forge that
+	// serves it, and is consulted by the desk verbs' ForgeFor
+	// (deskkit/forgeresolve.go) BEFORE its origin-remote-host fallback. It chooses
+	// which minted credential a WRITE is performed as, so the desk tools cannot
+	// operate on a repo whose remote host does not name its forge without it —
+	// which makes it a key that WILL be present in any shared roster.env the desk
+	// verbs are configured from. statusgen performs no forge-bound write and never
+	// consumes it. KEEP IN SYNC with deskkit/rosterconfig.go's EnvRepoForges.
+	scanEnvRepoForges = "ASSAY_REPO_FORGES"
+
+	// scanEnvRiskCallout (ASSAY_RISK_CALLOUT) is the adopter-supplied
+	// RISK-CLASSIFICATION callout: an absolute path to an executable the desk
+	// tools exec as `<path> classify` and union with their pattern classifier
+	// (deskkit/riskcallout.go). It is only-widens and fail-closed on the DESK
+	// side; statusgen classifies no diffs and never consumes it. KEEP IN SYNC
+	// with deskkit/rosterconfig.go's EnvRiskCallout.
+	scanEnvRiskCallout = "ASSAY_RISK_CALLOUT"
+
+	// scanEnvWithheldIdentifiers (ASSAY_WITHHELD_IDENTIFIERS) carries the
+	// identifiers the desk's public-repo self-containment scan
+	// (deskkit/selfcontain.go) refuses to let leave the house. The desk reads it
+	// with a direct os.Getenv rather than through its roster struct — but a house
+	// that configures it records it in the SAME shared roster.env, so an
+	// unrecognised-key refusal here would mean turning that scan's register
+	// category on collapses statusgen's whole configuration. statusgen never
+	// consumes it. KEEP IN SYNC with deskkit/selfcontain.go's
+	// EnvWithheldIdentifiers.
+	scanEnvWithheldIdentifiers = "ASSAY_WITHHELD_IDENTIFIERS"
+
+	// scanEnvAllowCluster (ASSAY_ALLOW_CLUSTER) is the desk clusterguard's
+	// OPERATOR opt-in, read by that command with a direct os.Getenv because it is
+	// a per-SHELL export an operator makes deliberately and a session must never
+	// inherit. Recognised here — and only recognised — because an operator who
+	// records it in the shared roster.env (the natural mistake: every other ASSAY_
+	// knob lives there) would otherwise take statusgen's whole trust
+	// configuration down. Recognised is emphatically not applied: it grants no
+	// opt-in on either side from a file. KEEP IN SYNC with
+	// deskkit/rosterconfig.go's EnvAllowCluster.
+	scanEnvAllowCluster = "ASSAY_ALLOW_CLUSTER"
 )
 
-// Product-namespaced (non-ASSAY_) config keys are supplied by build-tagged
-// product hooks (scanProductConfigKeys / scanApplyProductConfig /
-// scanProductConfigLines). The default (open-core) build has none; a product
-// build supplies them behind its own build tag. See openstub.go for the no-op
-// defaults.
+// scanKnownRosterKeys is the ASSAY_-namespace roster SCHEMA this binary speaks:
+// every key parseConfig recognises. It is a function rather than a literal inside
+// parseConfig so a test can read the set without re-deriving it, and so the set
+// can be bound to the desk tools' twin (deskkit.KnownRosterKeys) over the shared
+// vector file statusgen/testdata/roster_coupling.json.
+//
+// WHY THE BINDING EXISTS. Both binaries read the SAME ~/.config/assay/roster.env,
+// and both REFUSE the whole configuration on an ASSAY_ key they do not recognise
+// (an unapplied key leaves a control surface empty while the configuration reports
+// itself correct — see parseConfig). So a key one binary knows and the other does
+// not is not a cosmetic difference: it makes a roster that is valid and REQUIRED
+// for one tool a total refusal for the other, with no roster edit able to satisfy
+// both. That is exactly what happened when the desk tools grew ASSAY_REPO_FORGES
+// and this set did not follow.
+//
+// RECOGNISED IS NOT APPLIED. Most of these are consumed by only one of the two
+// readers; each constant's own comment names who consumes it and why the other
+// must not fail closed on it. Adding a key here does NOT make statusgen consume
+// it.
+//
+// Product-namespaced (non-ASSAY_) config keys are NOT listed here: they are
+// supplied by build-tagged product hooks (scanProductConfigKeys /
+// scanApplyProductConfig / scanProductConfigLines), are absent from the default
+// (open-core) build, and sit outside the namespace whose unknown keys refuse. See
+// openstub.go for the no-op defaults.
+func scanKnownRosterKeys() []string {
+	return []string{
+		scanEnvBlessLogin, scanEnvTrustedLogins, scanEnvTrustedBotSlugs,
+		scanEnvAllowedRepos, scanEnvHumanLoginMap, scanEnvFormerHumanLoginMap,
+		scanEnvRiskPathTriggersExtra,
+		scanEnvRepoAliases, scanEnvReleaseRepo, scanEnvWriteguardCallout,
+		scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
+		scanEnvAuthorizedAuthors, scanEnvChannelDriftTarget,
+		scanEnvSweepWithheldStreams, scanEnvDeterministicGatePatterns,
+		// DESK-only, recognised-not-applied — see their declarations above for who
+		// consumes each and why statusgen must not fail closed on it.
+		scanEnvRepoForges, scanEnvRiskCallout,
+		scanEnvWithheldIdentifiers, scanEnvAllowCluster,
+	}
+}
 
 // scanConfigHomeFile is the local source of truth — outside every ref.
 const scanConfigHomeFile = "~/.config/assay/roster.env"
@@ -605,15 +696,9 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 	// Key recognition BEFORE any value is applied. A typo inside the ASSAY_
 	// namespace REFUSES (it would otherwise leave a control surface empty while the
 	// configuration reported itself correct); a key outside it is echoed.
-	// KEEP IN SYNC with deskkit's parseConfig.
-	known := map[string]bool{
-		scanEnvBlessLogin: true, scanEnvTrustedLogins: true, scanEnvTrustedBotSlugs: true,
-		scanEnvAllowedRepos: true, scanEnvHumanLoginMap: true, scanEnvFormerHumanLoginMap: true,
-		scanEnvRiskPathTriggersExtra: true,
-		scanEnvRepoAliases: true, scanEnvReleaseRepo: true, scanEnvWriteguardCallout: true,
-		scanEnvRosterSchema: true, scanEnvHomeRepo: true, scanEnvScanRepos: true,
-		scanEnvAuthorizedAuthors: true, scanEnvChannelDriftTarget: true,
-		scanEnvSweepWithheldStreams: true, scanEnvDeterministicGatePatterns: true,
+	known := map[string]bool{}
+	for _, k := range scanKnownRosterKeys() {
+		known[k] = true
 	}
 	for _, k := range scanProductConfigKeys() {
 		known[k] = true

@@ -274,6 +274,65 @@ const (
 	EnvDeterministicGatePatterns = "ASSAY_DETERMINISTIC_GATE_PATTERNS"
 )
 
+// knownRosterKeys is the ASSAY_-namespace roster SCHEMA these tools speak: every
+// key parseConfig recognises. It is a function rather than a literal inside
+// parseConfig so a test can read the set without re-deriving it, and so the set
+// can be bound to statusgen's twin (scanKnownRosterKeys) over the shared vector
+// file statusgen/testdata/roster_coupling.json.
+//
+// WHY THE BINDING EXISTS. Both binaries read the SAME ~/.config/assay/roster.env,
+// and both REFUSE the whole configuration on an ASSAY_ key they do not recognise
+// (see the comment in parseConfig). So a key one binary knows and the other does
+// not makes a roster that is valid and REQUIRED for one tool a total refusal for
+// the other, with no roster edit able to satisfy both. That is not hypothetical:
+// ASSAY_REPO_FORGES is the only way the desk verbs resolve a repo to a forge, and
+// while statusgen did not recognise it, a roster carrying it took the whole
+// --scan-issues intake lane down.
+//
+// RECOGNISED IS NOT APPLIED. Most of these are consumed by only one of the two
+// readers, and several are consumed by neither through this scanConfig (they are
+// read by a direct os.Getenv elsewhere). Each constant's own comment names who
+// consumes it and why the other must not fail closed on it. Adding a key here
+// does NOT make deskkit consume it.
+//
+// Keys OUTSIDE the ASSAY_ namespace are not listed and never refuse: they are
+// legitimate co-tenants in the same file and are echoed as UnknownKeys.
+func knownRosterKeys() []string {
+	return []string{
+		EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs,
+		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
+		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo,
+		EnvWriteguardCallout, EnvRosterSchema,
+		// STATUSGEN-only keys: recognised so a shared roster.env that configures
+		// statusgen does not collapse deskkit's configuration; not consumed here.
+		EnvHomeRepo, EnvScanRepos, EnvAuthorizedAuthors,
+		EnvFormerHumanLoginMap,
+		EnvChannelDriftTarget, EnvDeterministicGatePatterns,
+		// EnvSweepWithheldStreams (ASSAY_SWEEP_WITHHELD_STREAMS, sweepconfig.go) is
+		// consumed by the S2 sweep via a direct os.Getenv read, NOT through this
+		// scanConfig — but the de-housing REQUIRES the house to set it in the
+		// shared roster.env for the sweep to route, so it must be RECOGNISED here or
+		// activating that de-housing collapses the whole roster on the
+		// unknown-ASSAY_-key refusal. Bound to statusgen's
+		// scanEnvSweepWithheldStreams by the shared key list.
+		EnvSweepWithheldStreams,
+		// EnvWithheldIdentifiers (ASSAY_WITHHELD_IDENTIFIERS, selfcontain.go) is read by
+		// the public-repo self-containment scan through a direct os.Getenv, NOT through
+		// this scanConfig — but a house that configures it does so in the SAME shared
+		// roster.env, and an unrecognised key in the ASSAY_ namespace refuses the whole
+		// configuration. It must therefore be RECOGNISED here or turning the scan's
+		// register category on would collapse every desk tool's roster at once.
+		EnvWithheldIdentifiers,
+		// EnvAllowCluster (ASSAY_ALLOW_CLUSTER) is the clusterguard operator opt-in, read
+		// by cmd/clusterguard via a direct os.Getenv and never consumed here. It is
+		// RECOGNISED so that an operator who records it in the shared roster.env does not
+		// collapse every desk tool's roster on the unknown-ASSAY_-key refusal. Recognised
+		// is not applied: putting it in roster.env still does NOT grant the opt-in, which
+		// is a per-shell export by design.
+		EnvAllowCluster,
+	}
+}
+
 // rosterSchemaVersion is the format version this build speaks.
 const rosterSchemaVersion = "1"
 
@@ -764,38 +823,9 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// Namespace membership is the discriminator, not a near-miss distance metric: a
 	// typo inside the owned namespace is rejected, and a key outside it is out of
 	// scope entirely.
-	known := map[string]bool{
-		EnvBlessLogin: true, EnvTrustedLogins: true, EnvTrustedBotSlugs: true,
-		EnvAllowedRepos: true, EnvHumanLoginMap: true, EnvRiskPathTriggersExtra: true,
-		EnvRiskCallout: true, EnvRepoAliases: true, EnvRepoForges: true, EnvReleaseRepo: true,
-		EnvWriteguardCallout: true, EnvRosterSchema: true,
-		// STATUSGEN-only keys: recognised so a shared roster.env that configures
-		// statusgen does not collapse deskkit's configuration; not consumed here.
-		EnvHomeRepo: true, EnvScanRepos: true, EnvAuthorizedAuthors: true,
-		EnvFormerHumanLoginMap: true,
-		EnvChannelDriftTarget:  true, EnvDeterministicGatePatterns: true,
-		// EnvSweepWithheldStreams (ASSAY_SWEEP_WITHHELD_STREAMS, sweepconfig.go) is
-		// consumed by the S2 sweep via a direct os.Getenv read, NOT through this
-		// scanConfig — but #1333's de-housing REQUIRES the house to set it in the
-		// shared roster.env for the sweep to route, so it must be RECOGNISED here or
-		// activating that de-housing collapses the whole roster on the
-		// unknown-ASSAY_-key refusal. KEEP IN SYNC with statusgen's
-		// scanEnvSweepWithheldStreams.
-		EnvSweepWithheldStreams: true,
-		// EnvWithheldIdentifiers (ASSAY_WITHHELD_IDENTIFIERS, selfcontain.go) is read by
-		// the public-repo self-containment scan through a direct os.Getenv, NOT through
-		// this scanConfig — but a house that configures it does so in the SAME shared
-		// roster.env, and an unrecognised key in the ASSAY_ namespace refuses the whole
-		// configuration. It must therefore be RECOGNISED here or turning the scan's
-		// register category on would collapse every desk tool's roster at once.
-		EnvWithheldIdentifiers: true,
-		// EnvAllowCluster (ASSAY_ALLOW_CLUSTER) is the clusterguard operator opt-in, read
-		// by cmd/clusterguard via a direct os.Getenv and never consumed here. It is
-		// RECOGNISED so that an operator who records it in the shared roster.env does not
-		// collapse every desk tool's roster on the unknown-ASSAY_-key refusal. Recognised
-		// is not applied: putting it in roster.env still does NOT grant the opt-in, which
-		// is a per-shell export by design.
-		EnvAllowCluster: true,
+	known := map[string]bool{}
+	for _, k := range knownRosterKeys() {
+		known[k] = true
 	}
 	for k := range vals {
 		if known[k] {
