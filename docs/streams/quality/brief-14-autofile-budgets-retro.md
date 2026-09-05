@@ -99,6 +99,21 @@ facts:
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner). -->
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-04 opus-4.8[1m]-verifier (verify-desk dispatch), merged main 4e500df
+
+Runner != implementer. Offline (KUBECONFIG=/dev/null). gate: model, risk {all no}, irreversible: no.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | cd qualgen && go build ./... && go vet ./consumers/ ./filer/ | 0 | clean build + vet, no output | 2026-09-04 | opus-4.8[1m]-verifier |
+| 2 | cd qualgen && go test ./consumers/ ./filer/ | 0 | ok consumers 0.826s; ok filer 1.603s | 2026-09-04 | opus-4.8[1m]-verifier |
+| 3 | cd qualgen && go test ./consumers/ -run TestAutofile_AboveThresholdFilesExactlyOne -v | 0 | PASS — exactly one item filed, body references the hotspot path | 2026-09-04 | opus-4.8[1m]-verifier |
+| 4 | cd qualgen && go test ./consumers/ -run TestAutofile_OverBudgetDegradesToDryRun -v && go test ./consumers/ -run TestBudgets_RefusesUnderTwoWindows -v | 0 | both PASS — over-budget degrades to dry-run; under two windows refused | 2026-09-04 | opus-4.8[1m]-verifier |
+| 5 | cd qualgen && go test ./consumers/ -run TestRetro_EmitsFourInputSet -v && grep -c -e churn -e gate.yield -e ledger -e budget consumers/retro.go | 0 | PASS; grep count 15 (>=4) | 2026-09-04 | opus-4.8[1m]-verifier |
+
+**VERIFY: PASS** — all 5 Verify rows offline-clean; none unrun.
+
+**RISK-VALUE: DERIVED** — MinWindowsToArm = 2 @ qualgen/consumers/budgets.go:19 — spec 9.6 pins "armable only after >=2 windows": a budget alarm compares an observed window against a ceiling meaningless without history, so two (a prior + current window) is the least history under which it is honest; arming at 1 or 0 false-alarms on the first measurement. Code const matches the spec value exactly.
 
 ## Review
 Gate: model (all four risk answers no — repo-agnostic OSS Go consuming already-mined
