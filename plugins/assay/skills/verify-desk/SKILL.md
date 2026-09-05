@@ -390,6 +390,10 @@ human ruling re-derived from scratch each time.
 write always completes. Precedence: `DISABLED` (C-6) > `STOP` > `STOP.<name>`. `deskkit.Guard()` enforces
 these independently: a loop that skips its own check is defanged — every outward verb refuses.
 
+The same cadence tick reads the per-claim **armed stops** across in-flight dispatches with
+`desksupervise status --stops` (the liveness observer's runtime snapshot) — so this window sees a
+stop armed on a claim it is verifying, not only the global loop flags above.
+
 ## Liveness contract (binding)
 
 A standing liveness contract binds this window from boot: start the standing

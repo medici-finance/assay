@@ -1,0 +1,33 @@
+[
+  {
+    "key": "example-stream--alive-01",
+    "item": "example-stream/alive-01",
+    "owner": "session-alive",
+    "repo": "medici-finance/assay",
+    "branch": "feat/example-stream--alive-01",
+    "tier": "cheap",
+    "state": "dispatched",
+    "claimedAt": "2026-09-02T11:53:00Z",
+    "dispatchedAt": "2026-09-02T11:55:00Z"
+  },
+  {
+    "key": "example-stream--never-01",
+    "item": "example-stream/never-01",
+    "owner": "session-never",
+    "repo": "medici-finance/assay",
+    "branch": "feat/example-stream--never-01",
+    "tier": "cheap",
+    "state": "dispatched",
+    "dispatchedAt": "2026-09-02T11:45:00Z"
+  },
+  {
+    "key": "example-stream--dead-01",
+    "item": "example-stream/dead-01",
+    "owner": "session-dead",
+    "repo": "medici-finance/assay",
+    "branch": "feat/example-stream--dead-01",
+    "tier": "cheap",
+    "state": "dispatched",
+    "dispatchedAt": "2026-09-02T10:30:00Z"
+  }
+]
