@@ -20,3 +20,5 @@ statusgen              v0.9.1 6d2e95f1d33203b7dc6016f7cc68e2fd4afeebac99eb9e95a3
 statusgen-linux-amd64  v0.9.1 6d2e95f1d33203b7dc6016f7cc68e2fd4afeebac99eb9e95a35e73cc0d7659ac  # CI runners
 statusgen-darwin-arm64 v0.9.1 f2203ea531ac5ea26bf84cfe36c4ca2baaa26c16fb4cea8b0c163fbd17466fc7  # apple silicon
 statusgen-darwin-amd64 v0.9.1 50e34b63b540ff107251cb28f8be1e4ccd697c615162550878935aad40a0e046  # intel mac
+statusgen-windows-amd64 v0.9.1 0000000000000000000000000000000000000000000000000000000000000000  # PLACEHOLDER sha256 — harvested from the published release, not a local build (asset: statusgen-windows-amd64.exe)
+statusgen-windows-arm64 v0.9.1 0000000000000000000000000000000000000000000000000000000000000000  # PLACEHOLDER sha256 — harvested from the published release, not a local build (asset: statusgen-windows-arm64.exe)
