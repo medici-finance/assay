@@ -1,22 +1,23 @@
-# statusgen pin for the adopter-scaffold example.
+# statusgen + desk-tools pins for the adopter-scaffold example.
 #
 # This is the file an adopting repo commits so its CI (and a local install) can
-# fetch a KNOWN statusgen binary and verify it byte-for-byte before running it.
-# A pinned sha256 is the one thing a re-tagged release cannot silently swap out.
+# fetch KNOWN binaries and verify them byte-for-byte before running them. A pinned
+# sha256 is the one thing a re-tagged release cannot silently swap out.
 #
-# Format: <artifact> <tag> <sha256>
-#   - <artifact> field 1 carries the component; a bare `statusgen` line is what
-#     CI selects with `grep '^statusgen '` (trailing space, never matching a
-#     `statusgen-<platform>` line) and always wants linux-amd64.
-#   - <tag> is the plain repo-level semver tag this public `assay` release home
-#     cuts (`v0.9.1`), NOT a component-prefixed `statusgen/vX.Y.Z`.
-#   - <sha256> is harvested from the PUBLISHED release's checksums.txt, never a
-#     local build (a local build lacks the release -ldflags stamp and hashes
-#     differently).
+# The umbrella line (`assay vX.Y.Z`, no sha256) names a COMPOSITION — which
+# per-artifact tags make up that suite version (see releases/<umbrella>.yaml). It
+# is what `deskversion` / `upgrade-assay` read to know which suite version this
+# tree is on.
 #
-# Per-platform lines below carry the same three-field shape; a local install
-# selects by DETECTED platform and needs a committed hash for each one.
-statusgen              v0.9.1 6d2e95f1d33203b7dc6016f7cc68e2fd4afeebac99eb9e95a35e73cc0d7659ac  # linux-amd64 (CI-built)
-statusgen-linux-amd64  v0.9.1 6d2e95f1d33203b7dc6016f7cc68e2fd4afeebac99eb9e95a35e73cc0d7659ac  # CI runners
-statusgen-darwin-arm64 v0.9.1 f2203ea531ac5ea26bf84cfe36c4ca2baaa26c16fb4cea8b0c163fbd17466fc7  # apple silicon
-statusgen-darwin-amd64 v0.9.1 50e34b63b540ff107251cb28f8be1e4ccd697c615162550878935aad40a0e046  # intel mac
+# ONE TAG, ONE TREE (derived-board §6): every ARTIFACT line carries the SAME tag —
+# statusgen and desk-tools read one tree and must not straddle two schema
+# boundaries. `statusgen --lint` PROBLEMs an .assay-versions whose artifact tags
+# differ.
+#
+# The sha256 digests below are FIXTURE placeholders, not real release digests.
+assay v0.13.0
+statusgen              v0.13.0 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  # linux-amd64 (CI-built)
+statusgen-linux-amd64  v0.13.0 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  # CI runners
+statusgen-darwin-arm64 v0.13.0 f2203ea531ac5ea26bf84cfe36c4ca2baaa26c16fb4cea8b0c163fbd17466fc7  # apple silicon
+statusgen-darwin-amd64 v0.13.0 50e34b63b540ff107251cb28f8be1e4ccd697c615162550878935aad40a0e046  # intel mac
+desk-tools             v0.13.0 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd  # desk pipeline binaries

@@ -1,0 +1,15 @@
+# Composition manifest for umbrella v0.13.0 — adopter-scaffold example.
+#
+# The suite version this scaffold is pinned to (see ../.assay-versions). The
+# per-artifact tags match, line-for-line, the artifact lines in .assay-versions,
+# so `deskversion` resolves this tree to a single KNOWN umbrella v0.13.0.
+# `upgrade-assay --to v1.0.0` moves it up to releases/v1.0.0.yaml. Digests are
+# fixture placeholders.
+umbrella: v0.13.0
+artifacts:
+  - artifact: statusgen
+    tag: v0.13.0
+    sha256: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+  - artifact: desk-tools
+    tag: v0.13.0
+    sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd

@@ -32,6 +32,11 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// version is an optional bare-`vX.Y.Z` build stamp (`-ldflags -X main.version`).
+// It feeds the brief-reading version gate (derived-board/06); left empty on a real
+// release, where the namespaced ReleaseTag stamp supplies the version instead.
+var version string
+
 var usage = `deskboard — read-only cross-repo board (desk-tools)
 
 usage:
@@ -152,6 +157,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := deskkit.Guard(); err != nil {
 		fmt.Fprintln(stderr, err)
 		return deskkit.ExitCodeOf(err)
+	}
+
+	// Brief-reading version gate (derived-board/06 §6): a stamped deskboard below
+	// v1.0.0 refuses a brief-v2 tree (exit 6) before it reads any board.
+	if code := deskkit.RefuseIfTreeV2BelowV1(deskkit.RootsFromArgs(args), deskkit.EffectiveToolVersion(version), "deskboard", stderr); code != 0 {
+		return code
 	}
 
 	table := false

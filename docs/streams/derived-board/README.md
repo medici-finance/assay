@@ -42,7 +42,7 @@ other three states, and removes the hand-edited table entirely. See [spec.md](sp
 | 03 | [`statusgen reconcile` — derive lifecycle state from PRs, witnesses, approvals and rulings; brief-v2 parser](brief-03-reconcile-derivation.md) | 1 | L | implemented | — | — |
 | 04 | [generated Briefs table in every stream README + single-writer lint + scheduled reconcile PR](brief-04-generated-table.md) | 2 | M | implemented | — | — |
 | 05 | [desk skills — reference the brief, never flip the cell (author-brief, worker-desk, pr-review-desk, verify-desk; public copies)](brief-05-skill-updates.md) | 1 | S | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #316 @ 7d9ab3f8a772155ef8e4347a16b5f25b421e23e6) |
-| 06 | [v1.0.0 — deskmigrate statusgen-regen op, the v0.13.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1](brief-06-v1-migration-and-cut.md) | 3 | M | todo | — | — |
+| 06 | [v1.0.0 — deskmigrate statusgen-regen op, the v0.13.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1](brief-06-v1-migration-and-cut.md) | 3 | M | implemented | — | — |
 | 07 | [per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills](brief-07-rollout-backfill.md) | 4 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 

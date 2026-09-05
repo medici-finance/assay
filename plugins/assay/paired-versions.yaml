@@ -23,20 +23,27 @@ schema: paired-versions-v1
 
 # LEFT side of the pairing: the plugin version this manifest is paired for.
 # Must match plugins/assay/.claude-plugin/plugin.json `version`.
-plugin: "0.5.0"
+plugin: "1.0.0"
 
 # RIGHT side: the statusgen release the plugin above is paired with.
+#
+# v1.0.0 is UNRELEASED at commit time: the tag is not cut until the human runs the
+# cut (cut-release skill) after review. So every sha256 below is the placeholder
+# `<harvest-after-release>`, NOT a hand-invented digest — the cut skill fills them
+# from the published checksums.txt once the release exists (a hand-typed hash for a
+# tag that does not yet exist is exactly the fiction the pinning discipline forbids;
+# `statusgen --lint`'s row-8 guard asserts no v1.0.0 64-hex hash was hand-typed).
 statusgen:
   # Release home the umbrella statusgen binaries are published from (public).
   release_home: medici-finance/assay
   # Concrete, pinned repo-level semver tag. Never a floating/rolling ref.
-  tag: v0.25.1
+  tag: v1.0.0
   # Per-platform channel-E pins: `<artifact> <tag> <sha256>`, the exact shape the adopter's
-  # `.assay-versions` carries. sha256 values harvested from the v0.25.1 release checksums.txt.
+  # `.assay-versions` carries. sha256 harvested AFTER the release is cut (placeholders now).
   platforms:
-    darwin-arm64: statusgen-darwin-arm64 v0.25.1 5181d7656ea04ca72cea82249813d20dbdc57273e50c809a9a4aa9ea4b5a696d
-    darwin-amd64: statusgen-darwin-amd64 v0.25.1 ef8a898e483875cda5c08f3d0a5d312d4fc8e1fdcf91a20d2de6ca01642990e3
-    linux-amd64:  statusgen-linux-amd64  v0.25.1 8134d0ac87b599f1d2031484808da082225239f258f811c188f101a78f8430b2
+    darwin-arm64: statusgen-darwin-arm64 v1.0.0 <harvest-after-release>
+    darwin-amd64: statusgen-darwin-amd64 v1.0.0 <harvest-after-release>
+    linux-amd64:  statusgen-linux-amd64  v1.0.0 <harvest-after-release>
     # linux-arm64: no published statusgen-linux-arm64 asset in the v0.25.1 release yet.
     #   Left out deliberately rather than pinned to an invented hash; the install skill REFUSES
     #   (never guesses) when the pin line for a detected platform is absent.
@@ -52,14 +59,14 @@ desk-tools:
   # Same public release home the statusgen binaries are published from.
   release_home: medici-finance/assay
   # Pinned to the SAME tag as statusgen above — the desk binaries and statusgen are cut together.
-  tag: v0.25.1
+  tag: v1.0.0
   # Per-platform channel-E pins: `<artifact> <tag> <sha256>`. The artifact is a `.tar.gz` (the
-  # desk-tools ship as a tarball of binaries, not a single file). sha256 values harvested from the
-  # v0.25.1 release checksums.txt — never hand-invented.
+  # desk-tools ship as a tarball of binaries, not a single file). sha256 harvested AFTER the
+  # release is cut (placeholders now — never hand-invented).
   platforms:
-    darwin-arm64: desk-tools-darwin-arm64.tar.gz v0.25.1 c7bef9a8b2cc13533ecb874338e014948490ef2b32b51c1bb835504caf8c4727
-    darwin-amd64: desk-tools-darwin-amd64.tar.gz v0.25.1 30f0c0abd8db311ee25a07137d4474474ea8cc004eb178d702766c72d10499f4
-    linux-amd64:  desk-tools-linux-amd64.tar.gz  v0.25.1 16e4295b40bcd4c070242e34eebc95540e2ee37a958aad4d8fe904feca510dcf
+    darwin-arm64: desk-tools-darwin-arm64.tar.gz v1.0.0 <harvest-after-release>
+    darwin-amd64: desk-tools-darwin-amd64.tar.gz v1.0.0 <harvest-after-release>
+    linux-amd64:  desk-tools-linux-amd64.tar.gz  v1.0.0 <harvest-after-release>
     # linux-arm64: no published desk-tools-linux-arm64 asset in the v0.25.1 release yet.
     #   Left out deliberately rather than pinned to an invented hash; the acquisition REFUSES
     #   (never guesses) when the pin line for a detected platform is absent — same as statusgen.

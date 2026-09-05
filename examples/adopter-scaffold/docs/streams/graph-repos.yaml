@@ -1,0 +1,15 @@
+# graph-repos.yaml — the alias registry for the adopter-scaffold example
+# (docs/dependency-graph-design.md §3.3; schema graph-repos-v1).
+#
+# A brief-v2 tree REQUIRES this registry: the hierarchical `brief:` id
+# <cell>:<repo>:<stream>:<NN> is minted against it, so the v0.13.0→v1.0.0
+# migration REFUSES to run without it (the release note says to write it first).
+#
+# `self:` names THIS tree's own repo alias — the namespace the migration stamps
+# onto this repo's own briefs. Sibling repos in the cell get their own aliases;
+# an unpublished sibling carries `repo: null` and `unpublished: true`.
+schema: graph-repos-v1
+cell: example
+self: svc
+repos:
+  svc: {cell: example, repo: example-org/example-service}

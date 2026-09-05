@@ -18,10 +18,19 @@
 #                    `desk-tools.tag`, and the tag field of every per-platform pin line. The
 #                    binaries are cut from one release together; a per-platform line left on an
 #                    older tag is the shape that ships a mismatched pair to one platform only.
-#   C  HASH SHAPE    every sha256 is exactly 64 lowercase hex characters. Cannot prove a hash is
+#   C  HASH SHAPE    every sha256 is exactly 64 lowercase hex characters, OR the single
+#                    reserved placeholder `<harvest-after-release>`. Cannot prove a hash is
 #                    the RIGHT one without the network — that is the release job's and the
 #                    re-pin author's evidence — but it does catch a truncated, upper-cased or
-#                    placeholder digest before an adopter's verification fails on it.
+#                    stray-placeholder digest before an adopter's verification fails on it.
+#                    The reserved placeholder is the ONE legitimate not-yet-64-hex state: a
+#                    manifest paired to a tag whose release is not yet cut (v1.0.0 at commit
+#                    time) carries `<harvest-after-release>`, which the cut-release skill
+#                    replaces with the real digest from the published checksums.txt once the
+#                    release exists. A hand-invented digest for an uncut tag is exactly the
+#                    fiction the pinning discipline forbids, so the placeholder — not a made-up
+#                    hash — is the honest committed state. Every OTHER non-64-hex value still
+#                    fails (the placeholder is a specific sentinel, not a wildcard).
 #
 # Deliberately NOT checked: whether the pinned tag is the LATEST release. Pinning is the design
 # (never a floating tag), so "behind latest" is a re-pin decision, not a defect this script can
@@ -125,12 +134,18 @@ hashes=$(printf '%s\n' "$pin_lines" | awk 'NF{print $4}')
 if [[ -z "$hashes" ]]; then
   bad "no sha256 field on any pin line — could-not-check"
 else
+  # The ONE reserved placeholder a manifest may carry in place of a real digest:
+  # a tag whose release is not yet cut. Anything else non-64-hex still fails.
+  placeholder='<harvest-after-release>'
   n=0
   while IFS= read -r h; do
     [[ -z "$h" ]] && continue
     n=$((n + 1))
+    if [[ "$h" == "$placeholder" ]]; then
+      continue
+    fi
     if [[ ! "$h" =~ ^[0-9a-f]{64}$ ]]; then
-      bad "sha256 is not 64 lowercase hex: ${h}"
+      bad "sha256 is not 64 lowercase hex (nor the reserved ${placeholder} placeholder): ${h}"
     fi
   done <<< "$hashes"
   # Every pin line must carry one, and nothing beyond the four fields.
@@ -141,7 +156,7 @@ else
       bad "pin line has $fields fields, expected 4 (<platform>: <artifact> <tag> <sha256>): ${line# }"
     fi
   done <<< "$pin_lines"
-  [[ "$fail" -eq 0 ]] && ok "hash shape: $n sha256 values are 64 lowercase hex"
+  [[ "$fail" -eq 0 ]] && ok "hash shape: $n sha256 values are 64 lowercase hex (or the reserved ${placeholder} placeholder)"
 fi
 
 if [[ "$fail" -ne 0 ]]; then

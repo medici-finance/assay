@@ -38,6 +38,11 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// version is an optional bare-`vX.Y.Z` build stamp (`-ldflags -X main.version`)
+// feeding the brief-reading version gate (derived-board/06); empty on a real
+// release, where the namespaced ReleaseTag stamp supplies the version.
+var version string
+
 const usage = `deskevidence — commit Evidence rows as the verifier App (the verifier App).
 
 USAGE:
@@ -97,6 +102,12 @@ func run(args []string) int {
 	if err := deskkit.Guard(); err != nil {
 		fmt.Fprintln(os.Stderr, "deskevidence: "+err.Error())
 		return deskkit.ExitCodeOf(err)
+	}
+
+	// Brief-reading version gate (derived-board/06 §6): a stamped deskevidence
+	// below v1.0.0 refuses a brief-v2 tree (exit 6).
+	if code := deskkit.RefuseIfTreeV2BelowV1(deskkit.RootsFromArgs(args), deskkit.EffectiveToolVersion(version), "deskevidence", os.Stderr); code != 0 {
+		return code
 	}
 
 	// Outward verbs present a LOOP IDENTITY. The kill switch's per-loop halt is
