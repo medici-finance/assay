@@ -11,14 +11,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-05 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-04 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-05 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/8 | 2026-09-05 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-05 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-05 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-05 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-05 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-04 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-05 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 1/6 | 2026-09-05 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 4/6 | 2026-09-05 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 13/16 | 2026-09-05 |  |
@@ -48,14 +48,14 @@ _Held by per-stream caps: 3 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (34 desk-actionable of 37 total — 37 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (35 desk-actionable of 38 total — 38 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (34)
+### Desk-actionable (35)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -67,6 +67,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | windows-port | 00 | implemented | 3000 | 4 | — | — | — |
@@ -131,10 +132,10 @@ _None._
 
 ### derived-board (4 open)
 
-- 03 `statusgen reconcile` — derive lifecycle state from PRs + witnesses + approvals — implemented (wave 1)
-- 04 generated Briefs table + single-writer lint — todo (wave 2)
-- 06 v1.0.0 cut: migration op + file, paired-versions, same-tag pin lint — todo (wave 3)
-- 07 per-repo rollout + historical backfill as a drift-report PR — todo (wave 4)
+- 03 `statusgen reconcile` — derive lifecycle state from PRs, witnesses, approvals and rulings; brief-v2 parser — implemented (wave 1)
+- 04 generated Briefs table in every stream README + single-writer lint + scheduled reconcile PR — implemented (wave 2)
+- 06 v1.0.0 — deskmigrate statusgen-regen op, the v0.13.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1 — todo (wave 3)
+- 07 per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills — todo (wave 4)
 
 ### desk-containers (7 open)
 
@@ -262,9 +263,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ### derived-board (3 done)
 
-- 01 brief-v2 spec: derived lifecycle, generated table, public re-stage of brief-rules/template — done (wave 0)
-- 02 `Brief:` trailer — the PR→brief link, required by `deskpr`, linted on main — done (wave 0)
-- 05 desk skills: reference the brief, never flip the cell (both copies) — done (wave 1)
+- 01 brief-v2 spec — derived lifecycle cells, generated table, reserved graph keys; public re-stage of brief-rules + template — done (wave 0)
+- 02 `Brief:` trailer — the PR→brief link, required by deskpr create, linted on main — done (wave 0)
+- 05 desk skills — reference the brief, never flip the cell (author-brief, worker-desk, pr-review-desk, verify-desk; public copies) — done (wave 1)
 
 ### desk-supervision (2 done)
 
