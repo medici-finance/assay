@@ -41,6 +41,8 @@ cross_cell:
   pairs:
     - from: the-desk
       to: the-desk
+  # cross-cell verb allow-set: ruled 2026-09-02 (decision record 1896)
+  #
   # Cross-cell verb allow-set — the four ruled by the 2026-09-02 cross-cell verb ruling (ratified
   # 2026-09-02), all read-only or advisory: status (prose on how the cell is going),
   # metrics (the cell's measured performance figures, read-derived), help-offered
