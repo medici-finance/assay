@@ -67,6 +67,13 @@ type BriefFile struct {
 	// default: not an instrumentation brief), non-nil when present, including
 	// the empty string. Feeds the drain-before-instrument eligibility gate.
 	Measures *string
+	// Satisfies is the optional brief-v1 `satisfies:` list (registers-v1 §6.5):
+	// the requirements this brief was written against, as REQ-<slug> /
+	// <alias>:REQ-<slug> references. RESERVED, not gating — the refs are parsed
+	// and shape-validated and a NOTICE says so, but an absent list is never
+	// flagged and no traceability is enforced from it. A wrong TYPE is a parse
+	// error; a present-but-malformed ref is a PROBLEM in checkBriefFiles.
+	Satisfies []string
 	// Consumers is the optional brief-v1 `consumers:` list (brief-rule 9): the
 	// readers of a shared value this brief changes,
 	// each routed `<site>: fixed-here | follow-up <stream>/<NN> | out-of-scope
@@ -651,6 +658,21 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 			addBad("consumers: %v", lerr)
 		}
 	}
+	// satisfies is an OPTIONAL but KNOWN key (registers-v1 §6.5): the
+	// requirement citations this brief carries. Parsed under the EXISTING
+	// brief-v1 schema rather than behind a schema bump — brief-schema evolution
+	// fails closed (#271, above), so minting a new schema value to add one
+	// optional key would refuse the whole tree on every not-yet-upgraded pinned
+	// consumer. An unknown key is silently tolerated under v1, which is exactly
+	// what makes adding it here free; a wrong TYPE is a parse error, and the ref
+	// grammar is checked semantically in checkBriefFiles.
+	if v, ok := data["satisfies"]; ok {
+		if list, lerr := stringList(v); lerr == nil {
+			bf.Satisfies = list
+		} else {
+			addBad("satisfies: %v", lerr)
+		}
+	}
 	// decision-issue is an OPTIONAL but KNOWN key: the GitHub
 	// issue # for the open needs-decision issue tracking this brief. Absence is
 	// fine (most briefs do not need a human decision); a wrong TYPE is an error.
@@ -1184,6 +1206,24 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 			// Next-up — it reddens lint instead.
 			if bf.HomedIn != "" && !validHomedInShape(bf.HomedIn) {
 				add("%s: invalid homed-in %q (want <owner>/<repo>)", path, bf.HomedIn)
+			}
+			// satisfies: the RESERVED requirement citation (registers-v1 §6.5).
+			// An absent list is never flagged — no brief is required to cite a
+			// requirement at this version. A PRESENT ref is shape-validated
+			// against the grammar (and its alias, for the cross-repo form,
+			// against the same graph-repos registry the dependency-graph refs
+			// use), and the NOTICE below is what keeps "parsed and reserved"
+			// distinguishable from "silently ignored". Nothing here checks that
+			// the cited requirement EXISTS: that is traceability, and it is
+			// deliberately deferred.
+			if len(bf.Satisfies) > 0 {
+				reqReg := graphReposFor(s.Root)
+				for _, ref := range bf.Satisfies {
+					if ok, reason := validRequirementRef(ref, reqReg); !ok {
+						add("%s: satisfies ref %s", path, reason)
+					}
+				}
+				notice("%s: satisfies: %s (reserved, not gating)", path, requirementCountPhrase(len(bf.Satisfies)))
 			}
 			anyYes := false
 			for _, v := range bf.Risk {

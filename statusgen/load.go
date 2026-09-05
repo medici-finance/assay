@@ -41,8 +41,9 @@ func emptyRootMessage(root string) string {
 // reservedRegisterNames are directory names under docs/streams that are
 // registers (not streams) and must be skipped by stream discovery.
 var reservedRegisterNames = map[string]bool{
-	"intake":   true,
-	"findings": true,
+	"intake":            true,
+	"findings":          true,
+	requirementsDirName: true,
 }
 
 // parseFindings reads findings from the docs/streams/findings/ per-entry
