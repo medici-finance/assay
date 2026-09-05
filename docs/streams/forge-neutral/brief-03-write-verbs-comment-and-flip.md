@@ -35,6 +35,19 @@ consumers:
 
 # Brief 03 — Write verbs A: deskpost, deskreply, deskflip
 
+> **Amended 2026-09-05** per desk ruling on #454 (rows 3/5/8/11): row 3 forbids
+> REMOVING or LOOSENING any assertion — NOT freezing the test files; re-pointing a test's
+> transport (and editing/adding its `_test.go`) is expressly allowed, provided each retired
+> `gh`-argv assertion gains a named successor on the HTTP-transport recorder as a 1:1 map in
+> the diff. Row 8 is scoped to NON-TEST files only — `harness_test.go`'s `apiBaseURL`
+> assignment moves with the harness. The ceiling (rows 4–5) is now MEASURED, not pinned:
+> `(gh launch sites on main at this sha) − 8` = **16** today (the seven deskflip rows —
+> `flip`, `ensureLabelSwap`, `readPR`, `readReviews`, `readChangedFiles`, `readHead`,
+> `readLabelEvents` — plus the one deskreply row), which supersedes every frozen `17` /
+> "seven rows" figure elsewhere in this brief (`why`, `consumers`, Task step 5). Row 11's
+> new-transport test lives under `cmd/deskflip/` and is exempt from row 3's no-weakening
+> rule. See #454.
+
 ## Context
 files:
 - `tools/desk/cmd/deskpost/github.go`, `tools/desk/cmd/deskpost/ready.go` — the `net/http`
@@ -120,15 +133,15 @@ facts:
 |---|---------|--------|
 | 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 |
 | 2 | `cd tools/desk && git stash list >/dev/null; go test ./cmd/deskpost/... ./cmd/deskreply/... ./cmd/deskflip/... -count=1` | exit 0 — all three suites green |
-| 3 | `git diff --stat origin/main -- tools/desk/cmd/deskpost tools/desk/cmd/deskreply tools/desk/cmd/deskflip \| grep -c '_test.go' \|\| true` | prints `0` — no verb's own test file was edited to make the migration pass |
-| 4 | `grep -n 'allowedInvocationCeiling' tools/desk/internal/forgeban/allowlist.go` | shows `= 17` |
-| 5 | `cd tools/desk && go test ./internal/forgeban/... -count=1 -v` | exit 0; the ratchet test passes at 17 — it fails if the list is longer OR shorter than the ceiling |
+| 3 | `git diff origin/main -- tools/desk/cmd/deskpost tools/desk/cmd/deskreply tools/desk/cmd/deskflip -- '*_test.go'` | **no assertion is removed or loosened** (this row forbids weakening coverage, NOT editing the test files). Re-pointing a test's transport during this migration is EXPRESSLY ALLOWED — editing or adding a verb's `_test.go` is expected. The diff must read as a **1:1 map**: each retired `gh`-argv assertion has a **named successor assertion on the HTTP-transport recorder** with the same request shape (method, path, body fields, auth-header presence). A diff that DROPS an argv assertion with no named successor, or WEAKENS one (fewer fields checked, a dropped read-count counter), FAILS this row. Reviewer confirms the map is complete and reviewable. |
+| 4 | `grep -n 'allowedInvocationCeiling' tools/desk/internal/forgeban/allowlist.go` | shows `= 16` — the MEASURED ceiling from row 5, not a frozen literal |
+| 5 | **Measure the ceiling, do not hard-code it.** The measuring command counts the `gh` launch sites on main at the amendment sha: `git fetch origin && grep -c '::gh"' <(git show refs/remotes/origin/main:tools/desk/internal/forgeban/allowlist.go)` (**24** at the amendment sha). The ceiling is that count **− 8** (the seven deskflip rows + the one deskreply row this brief retires) = **16 today**. Then `cd tools/desk && go test ./internal/forgeban/... -count=1 -v` | exit 0; the ratchet test passes at the MEASURED ceiling — it fails if the register is longer OR shorter than the ceiling. **Record the measuring command and its count in the Evidence row**, so a future launch-site drift is a re-measure, not a brief rewrite. |
 | 6 | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -count=1 -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -count=1 -v` | exit 0 — no `gh`/`glab` launch remains in these three verbs, and the label op added no passthrough |
 | 7 | `grep -rn -e '"gh"' tools/desk/cmd/deskpost tools/desk/cmd/deskreply tools/desk/cmd/deskflip --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — independent cross-check of row 6 by a different instrument |
-| 8 | `grep -rn -e 'apiBaseURL' tools/desk/cmd/deskpost --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — the hardcoded host binding is gone, not merely unused |
+| 8 | `grep -rn -e 'apiBaseURL' tools/desk/cmd/deskpost --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — `apiBaseURL` is absent from **non-test files** under `cmd/deskpost` (the hardcoded host binding is gone, not merely unused). Scope is NON-TEST files only: `harness_test.go`'s `apiBaseURL` assignment MOVES WITH THE HARNESS (a test file — allowed, and required for the deskpost suite to compile). |
 | 9 | `cd tools/desk && go test ./internal/deskkit/ -run TestLabelOpBothBackends -count=1 -v` | exit 0; the new label op runs against both recorded backends' fixtures with the same scenario names |
 | 10 | `cd tools/desk && go test ./internal/deskkit/ -run TestFlipRefusesUnsupportedForge -count=1 -v` | **negative path**: with the resolver returning a forge whose backend cannot serve the ready flip, `deskflip` exits could-not-check (class 6) naming forge and operation, and performs NO write — asserted by a recording transport that must show zero write calls |
-| 11 | `cd tools/desk && go test ./cmd/deskflip/... -run TestNodeIDNotConstructed -count=1 -v` | **negative path**: the flip path obtains its node id from `GetPullRequest` and refuses a locally-composed one, so a GitLab synthetic id cannot be forged by string-building |
+| 11 | `cd tools/desk && go test ./cmd/deskflip/... -run TestNodeIDNotConstructed -count=1 -v` | **negative path**: the flip path obtains its node id from `GetPullRequest` and refuses a locally-composed one, so a GitLab synthetic id cannot be forged by string-building. This new-transport test lives under `cmd/deskflip/`, beside the suite it extends; **row 3's no-weakening rule does NOT cover it** — adding a test that exercises the new transport is expected, not a frozen-file violation. |
 | 12 | `grep -c 'label' docs/streams/forge-gitlab/inventory.md` | ≥ 1 — the new op is recorded in the frozen inventory with its consuming verbs |
 | 13 | `statusgen --root . --consumers --brief forge-neutral/03` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff |
 
