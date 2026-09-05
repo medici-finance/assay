@@ -83,9 +83,11 @@ var AllowedInvocations = []Allowance{
 	},
 	{
 		Key: "cmd/deskdispatch/dispatch.go::stepStamp::gh",
-		Reason: "TODO(forge-surface): `label create` + `pr edit --add-label`. Labels are not in the frozen op " +
-			"set; a SetLabels/CreateLabel pair needs its own brief (GitLab labels are project-scoped with a " +
-			"different create/idempotency shape) rather than being invented here.",
+		Reason: "TODO(forge-surface): `label create`, `pr edit --add-label`/`--remove-label`, and the two " +
+			"reads the re-stamp needs (the PR's current labels and its label timeline). Labels are not in " +
+			"the frozen op set; a SetLabels/CreateLabel/ListLabelEvents group needs its own brief (GitLab " +
+			"labels are project-scoped with a different create/idempotency shape, and its label history " +
+			"lives in system notes) rather than being invented here.",
 	},
 	{
 		Key: "cmd/deskdisposition/exec.go::gh::gh",

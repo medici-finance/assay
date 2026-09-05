@@ -483,6 +483,35 @@ func AttestedModelStampOf(tl StampTimeline, isDispatcher func(applier string) bo
 	return ModelStampOf(tl.Present)
 }
 
+// ForeignStampLabels names the dispatched-* labels the PR CARRIES whose standing
+// application this predicate will not vouch for — including any the timeline cannot
+// attribute at all. It is the exact set a RE-STAMP has to remove before applying its own.
+//
+// IT IS THE WRITER'S HALF OF THE APPEND-ONLY PROBLEM. Labels are a SET, so `--add-label`
+// over a label the PR already carries is a NO-OP: a dispatcher re-running its stamp step on
+// a PR someone else stamped changes nothing, and the PR keeps refusing every
+// authority-bearing write. The only repair the forge offers is to REMOVE the label and
+// re-apply it, which is what the reader above now reads — so the writer needs to know which
+// labels those are. Reader and writer therefore project the same answer from one function
+// rather than each deciding what "foreign" means.
+//
+// An UNATTRIBUTABLE label is included, deliberately: the dispatcher re-applying a label it
+// cannot prove it applied is safe (the result is a label it definitely applied), while
+// leaving it is the state the floor refuses. A nil predicate vouches for nobody, so every
+// present stamp label is returned.
+func ForeignStampLabels(tl StampTimeline, isDispatcher func(applier string) bool) []string {
+	appliers, unattributed := resolveStampAppliers(tl)
+	out := append([]string(nil), unattributed...)
+	for name, who := range appliers {
+		if isDispatcher != nil && isDispatcher(who) {
+			continue
+		}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // DispatcherRole is the desk ROLE whose App identity is the dispatcher — the ONE declared
 // source of that answer, for the reader AND the writer.
 //

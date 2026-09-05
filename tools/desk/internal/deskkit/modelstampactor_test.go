@@ -197,3 +197,74 @@ func TestRemovedLabelContributesNoStampContent(t *testing.T) {
 			state, stamp.Tier)
 	}
 }
+
+// ForeignStampLabels is the WRITER's half of the same resolution: exactly the labels a
+// re-stamp must REMOVE before applying its own, because adding over a present label is a
+// no-op. Reader and writer project it from one function so they cannot disagree about which
+// application is standing.
+func TestForeignStampLabels(t *testing.T) {
+	const (
+		disp    = "the-dispatcher"
+		foreign = "some-other-login"
+	)
+	model := DispatchedModelPrefix + "example-model-1"
+	tier := DispatchedTierPrefix + "strong"
+
+	cases := []struct {
+		why  string
+		tl   StampTimeline
+		want []string
+	}{
+		{
+			why:  "a standing foreign application must be removed",
+			tl:   StampTimeline{Present: []string{model, tier}, Events: []LabelEvent{labeledBy(model, foreign), labeledBy(tier, disp)}},
+			want: []string{model},
+		},
+		{
+			why: "the dispatcher's own standing stamp is left alone (no churn per re-dispatch)",
+			tl: StampTimeline{Present: []string{model, tier},
+				Events: []LabelEvent{labeledBy(model, disp), labeledBy(tier, disp)}},
+			want: nil,
+		},
+		{
+			why: "an ALREADY REPAIRED stamp is not stripped again",
+			tl: StampTimeline{Present: []string{model, tier}, Events: []LabelEvent{
+				labeledBy(model, foreign), labeledBy(tier, foreign),
+				unlabeledBy(model, disp), unlabeledBy(tier, disp),
+				labeledBy(model, disp), labeledBy(tier, disp),
+			}},
+			want: nil,
+		},
+		{
+			why:  "an unattributable present label is re-stamped: re-applying it is safe, leaving it is refused",
+			tl:   StampTimeline{Present: []string{model, tier}, Events: []LabelEvent{labeledBy(model, disp)}},
+			want: []string{tier},
+		},
+		{
+			why:  "a REMOVED label is not removed again",
+			tl:   StampTimeline{Present: nil, Events: []LabelEvent{labeledBy(model, foreign), unlabeledBy(model, disp)}},
+			want: nil,
+		},
+		{
+			why:  "non-stamp labels are never touched",
+			tl:   StampTimeline{Present: []string{"size:S", "approval-needed"}, Events: []LabelEvent{labeledBy("size:S", foreign)}},
+			want: nil,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.why, func(t *testing.T) {
+			got := ForeignStampLabels(c.tl, dispatcherIs(disp))
+			if strings.Join(got, ",") != strings.Join(c.want, ",") {
+				t.Fatalf("ForeignStampLabels = %v, want %v", got, c.want)
+			}
+		})
+	}
+
+	// A nil predicate vouches for nobody, so every present stamp label is returned — the
+	// same fail-closed direction the reader takes.
+	all := ForeignStampLabels(StampTimeline{Present: []string{model, tier},
+		Events: []LabelEvent{labeledBy(model, disp), labeledBy(tier, disp)}}, nil)
+	if len(all) != 2 {
+		t.Fatalf("nil predicate returned %v, want both stamp labels", all)
+	}
+}
