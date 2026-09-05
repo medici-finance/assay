@@ -19,25 +19,24 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-05 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-05 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-05 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 1/6 | 2026-09-05 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-05 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 4/6 | 2026-09-05 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 13/16 | 2026-09-05 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-05 |  |
 | [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 1/1 | 2026-09-05 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 7/13 | 2026-09-05 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 8/13 | 2026-09-05 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 1/6 | 2026-09-05 |  |
 
 ## Next up
 
-_Held by per-stream caps: 3 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (3). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
-| desk-supervision | 02 — Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal [exec:strong] | 1 | 1500 |
 | desk-tools | 08 — `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file [exec:strong] | 1 | 1000 |
-| desk-tools | 10 — `deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand [exec:strong] | 1 | 1000 |
-| desk-tools | 12 — `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON | 1 | 1000 |
 | desk-tools | 13 — `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree | 1 | 1000 |
+| desk-tools | 14 — bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` [exec:strong] | 1 | 1000 |
+| desk-tools | 15 — `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home | 1 | 1000 |
 | mistake-proofing | 05 — `newbrief` — the scaffolder as the authoring front door (B1) [exec:strong] | 2 | 1000 |
 | mistake-proofing | 06 — D1 promoted to a lint obligation — a new check must carry its mutation row | 2 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
@@ -46,14 +45,14 @@ _Held by per-stream caps: 3 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (38 desk-actionable of 41 total — 41 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (37 desk-actionable of 40 total — 40 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (38)
+### Desk-actionable (37)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -71,11 +70,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | windows-port | 00 | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| desk-supervision | 02 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| iso-9001 | 05 | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 07 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -83,17 +82,16 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 07 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 12 | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| quality | 14 | implemented | 1000 | 0 | — | — | — |
-| quality | 16 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| statusgen | 08 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 
 ### Awaiting human gate (1)
@@ -151,7 +149,7 @@ _None._
 
 ### desk-supervision (6 open)
 
-- 02 Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal — todo (wave 1)
+- 02 Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal — implemented (wave 1)
 - 03 Eligibility reconciliation — stop a run whose item became ineligible — todo (wave 2)
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — implemented (wave 1)
 - 06 Workpad — one upserted progress comment per PR — implemented (wave 0)
@@ -166,9 +164,9 @@ _None._
 - 07 `clusterguard` — exec-boundary shim for cluster CLIs, operator opt-in — implemented (wave 1)
 - 08 `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file — todo (wave 1)
 - 09 `desktoken coverage <role>` — list the repositories a role's App installations can see — implemented (wave 1)
-- 10 `deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand — todo (wave 1)
+- 10 `deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand — implemented (wave 1)
 - 11 `deskwt add` — a worktree whose directory is gone does not hold its branch — blocked (wave 1)
-- 12 `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON — todo (wave 1)
+- 12 `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON — implemented (wave 1)
 - 13 `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree — todo (wave 1)
 - 14 bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` — todo (wave 1)
 - 15 `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home — todo (wave 1)
@@ -221,12 +219,11 @@ _None._
 - 12 Cursor — the third harness column (ground-truth + binding + generator verb + public column) — implemented (wave 5)
 - 13 Cursor live-desk-smoke protocol + first run — todo (wave 6)
 
-### iso-9001 (5 open)
+### iso-9001 (4 open)
 
 - 01 Emit the tool-validation evidence pack as a release asset (7.1.5) — todo (wave 0)
 - 03 A finding closes on a fired control — the effectiveness record (10.2) — todo (wave 1)
 - 04 Record the authorizing human in the release itself (8.6) — todo (wave 1)
-- 05 Records control and retention, stated once (7.5.3) — implemented (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 
 ### mistake-proofing (2 open)
@@ -234,18 +231,15 @@ _None._
 - 05 `newbrief` — the scaffolder as the authoring front door (B1) — todo (wave 2)
 - 06 D1 promoted to a lint obligation — a new check must carry its mutation row — todo (wave 2)
 
-### quality (3 open)
+### quality (1 open)
 
-- 14 auto-filed refactor work + quality error-budgets + RETRO output feed — implemented (wave 5)
 - 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
-- 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — implemented (wave 1)
 
-### statusgen (6 open)
+### statusgen (5 open)
 
 - 03 self-improvement metric (self-healed vs human-touched) — implemented (wave 2)
 - 05 drives phase 3 — anti-starvation floors + critical tier — implemented (wave 1)
 - 06 findings register — corroborated state machine — implemented (wave 1)
-- 08 composite AssayScore computation — implemented (wave 2)
 - 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
 - 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
 
@@ -290,9 +284,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 02 `gitlab` forge implementation (MRs, notes, approvals, statuses) — done (wave 2)
 - 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — done (wave 2)
 
-### iso-9001 (1 done)
+### iso-9001 (2 done)
 
 - 02 Align three shipped disclosures with the code they describe (B9) — done (wave 0)
+- 05 Records control and retention, stated once (7.5.3) — done (wave 1)
 
 ### mistake-proofing (4 done)
 
@@ -301,7 +296,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — done (wave 1)
 - 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — done (wave 1)
 
-### quality (13 done)
+### quality (15 done)
 
 - 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — done (wave 0)
 - 02 M1 line-operation taxonomy + churn/rework rate — done (wave 1)
@@ -316,17 +311,20 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 11 DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source — done (wave 3)
 - 12 M4 gate-yield accounting + ritual-effectiveness joins — done (wave 4)
 - 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — done (wave 3)
+- 14 auto-filed refactor work + quality error-budgets + RETRO output feed — done (wave 5)
+- 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — done (wave 1)
 
 ### spec-routing (1 done)
 
 - 01 Enforce the §8 lifecycle — the linter and the authoring-owed emitter — done (wave 0)
 
-### statusgen (7 done)
+### statusgen (8 done)
 
 - 01 30-day lint-firing audit — retire cold rules — done (wave 1)
 - 02 issue metrics (`--issues`) — done (wave 1)
 - 04 ladder-position indicator (`--ladder`) — done (wave 1)
 - 07 new brief-flow metrics — done (wave 1)
+- 08 composite AssayScore computation — done (wave 2)
 - 10 graph export (`--graph` DOT + JSONL) — done (wave 1)
 - 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — done (wave 1)
 - 13 cadenced roadmap artifacts (`--cadence weekly/monthly`) — done (wave 1)
@@ -337,4 +335,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**14** streams (**14** active, **0** paused) · **39/125** briefs done · completed initiatives: see `docs/archive/`
+**14** streams (**14** active, **0** paused) · **43/125** briefs done · completed initiatives: see `docs/archive/`
