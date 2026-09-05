@@ -342,9 +342,18 @@ type Config struct {
 	Bless Identity
 	// Humans maps a lowercased human login to its pinned id (0 = unpinned).
 	Humans map[string]int64
-	// Bots maps a lowercased App slug to its BOT USER id (0 = unpinned).
+	// Bots maps a lowercased GitHub App slug to its BOT USER id (0 = unpinned). It
+	// carries GITHUB entries only — the github-slug-keyed shape trust.go's GitHub
+	// paths read. A GitLab identity lives in BotIdents (and its username in Logins),
+	// never here, so a github-slug lookup never resolves a GitLab account by accident.
 	Bots map[string]int64
-	// RoleBots maps a desk role ("reviewer") to its App slug.
+	// BotIdents maps a lowercased slug-or-login to its full forge-qualified identity
+	// (forge, inferred flag, id). It is the source of truth for every forge-aware
+	// consumer — the commit-identity check, the role commit identity, the
+	// forge-agreement gate — while Bots/Logins remain the flat views the pre-existing
+	// GitHub trust paths read. See forgeidentity.go.
+	BotIdents map[string]BotIdentity
+	// RoleBots maps a desk role ("reviewer") to its App slug-or-login.
 	RoleBots map[string]string
 	// Logins is the set of ACCEPTED rendered login forms, lowercased: each human
 	// login verbatim, and each App slug in BOTH GitHub renderings. The BARE slug
@@ -727,6 +736,7 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		Source:      source,
 		Humans:      map[string]int64{},
 		Bots:        map[string]int64{},
+		BotIdents:   map[string]BotIdentity{},
 		RoleBots:    map[string]string{},
 		Logins:      map[string]bool{},
 		Repos:       map[string]repoPolicy{},
@@ -823,20 +833,26 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			role = strings.ToLower(strings.TrimSpace(r))
 			entry = rest
 		}
-		slug, id, ok := splitIdentity(entry)
+		ident, ok := splitBotEntry(entry)
 		if !ok {
-			bad("%s: cannot parse entry %q — expected [role=]slug[:id] with a positive numeric id",
-				EnvTrustedBotSlugs, entry)
+			bad("%s: cannot parse entry %q — expected [role=]<forge>:slug-or-login[:id] "+
+				"(forge is github or gitlab; an entry with no forge is read as github). The id, "+
+				"when present, must be a positive number", EnvTrustedBotSlugs, entry)
 			continue
 		}
-		cfg.Bots[slug] = id
-		// BOTH GitHub renderings are accepted; the bare slug never is.
-		//   REST API user.login:        "<slug>[bot]"
-		//   gh CLI --json author login: "app/<slug>"
-		cfg.Logins[slug+"[bot]"] = true
-		cfg.Logins["app/"+slug] = true
+		cfg.BotIdents[ident.Slug] = ident
+		// Per-forge renderings (forgeidentity.go): GitHub keeps <slug>[bot] and
+		// app/<slug>; GitLab registers the account's username. The bare GitHub App slug
+		// is never accepted on any forge. The bot USER id is kept in the flat Bots view
+		// for GITHUB entries only, the shape trust.go's GitHub paths read.
+		for _, login := range ident.AcceptedLogins() {
+			cfg.Logins[login] = true
+		}
+		if ident.Forge == ForgeGitHub {
+			cfg.Bots[ident.Slug] = ident.ID
+		}
 		if role != "" {
-			cfg.RoleBots[role] = slug
+			cfg.RoleBots[role] = ident.Slug
 		}
 	}
 
@@ -1278,7 +1294,7 @@ func (c Config) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: class=%s source=%s configured=%t", c.Class, c.Source, c.Configured()),
 		fmt.Sprintf("assay-config: %s=%s", EnvBlessLogin, blessStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvTrustedLogins, sortedIdents(c.Humans)),
-		fmt.Sprintf("assay-config: %s=%s", EnvTrustedBotSlugs, sortedIdents(c.Bots)),
+		fmt.Sprintf("assay-config: %s=%s", EnvTrustedBotSlugs, c.sortedBotIdents()),
 		fmt.Sprintf("assay-config: role-bindings=%s", rolesStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvAllowedRepos, reposStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvScanRepos, strings.Join(c.ScanRepos, ",")),
