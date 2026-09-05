@@ -1100,7 +1100,13 @@ func main() {
 		var initRoots rootFlags
 		fs.Var(&initRoots, "root", "repository root to scaffold")
 		dryRun := fs.Bool("dry-run", false, "print what would be scaffolded (paths + bodies) without writing anything")
+		forgeFlag := fs.String("forge", "", "which forge's CI half to scaffold: github | gitlab (default: auto-detect from the origin remote, falling back to github)")
 		fs.Parse(os.Args[2:])
+		forge, err := parseForgeFlag(*forgeFlag)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "statusgen:", err)
+			os.Exit(2)
+		}
 		// The target may be given as --root DIR or as a single trailing positional
 		// (`statusgen init [--dry-run] DIR`); the positional is the natural
 		// first-run UX. Exactly one target either way.
@@ -1121,6 +1127,11 @@ func main() {
 		if len(resolved) > 1 {
 			fmt.Fprintf(os.Stderr, "statusgen: init accepts exactly one --root; got %d — scaffold one repo at a time\n", len(resolved))
 			os.Exit(2)
+		}
+		// An explicit --forge wins; otherwise detect from the target's origin
+		// remote (runInit does the detection). --dry-run previews either way.
+		if forge != forgeUnknown {
+			os.Exit(runInitForge(resolved[0], forge, *dryRun))
 		}
 		os.Exit(runInit(resolved[0], *dryRun))
 	}

@@ -10,12 +10,17 @@
 // main's CI (statusgen/registers.go: duplicateIDs).
 //
 // This file closes that gap at push time: for every register entry newly ADDED or MODIFIED on
-// the pushed ref, it checks whether the same id is already claimed by a register entry present
-// on some OTHER remote branch that is not itself already merged into origin/main (an
-// in-flight sibling). It is local-only — it only consults already-fetched remote-tracking
-// branches (`git branch -r`), the same data source foreigncommit.go's checks would use, so
-// it adds no network/gh call — and fails open on any ambiguity, matching this tool's stated
-// Fail-OPEN contract (main.go's package doc).
+// the pushed ref whose id is NEW relative to origin/main, it checks whether the same id is
+// already claimed by a register entry present on some OTHER remote branch that is not itself
+// already merged into origin/main (an in-flight sibling). It enumerates candidate siblings from
+// already-fetched remote-tracking branches (`git branch -r`), the same data source
+// foreigncommit.go's checks would use, so the ordinary push adds no network/gh call, and it
+// fails open on any ambiguity, matching this tool's stated Fail-OPEN contract (main.go's
+// package doc). The one network touch is deliberate and rare (#189): when a collision would
+// otherwise be reported, the sibling ref's liveness is confirmed against origin with a single
+// `git ls-remote` so a stale remote-tracking ref (a merged-and-deleted sibling) is not treated
+// as a live competing claim — a probe that runs only on the collision path and degrades to
+// could-not-check, never an error, when origin is unreachable.
 //
 // ADVISORY, aligned with the authoritative gate. statusgen's duplicateIDs lint
 // (splitFrontmatter + yaml.v3) is the authoritative fail-closed CI gate; this pre-push layer
@@ -47,6 +52,35 @@ var registerEntryDirs = []string{"docs/streams/findings/", "docs/streams/intake/
 // an entry on another in-flight branch.
 type registerIDCollision struct {
 	branch, id, ownPath, sourceBranch, sourcePath string
+	sourceLive                                    refLiveness
+}
+
+// refLiveness is the tri-state answer to "is this remote-tracking ref still a live head on
+// origin?" — the three-state instrument this check now reports per collision (#189, ask 3) so a
+// stale local remote-tracking artifact is never presented as a live competing claim, and a
+// collision whose source ref could not be verified against origin is reported AS unverified
+// rather than rounded up to a confident "live".
+type refLiveness int
+
+const (
+	livenessUnknown refLiveness = iota // could-not-check — origin unreachable (e.g. an offline push)
+	livenessLive                       // ls-remote confirms the head is present on origin
+	livenessStale                      // ls-remote confirms the head is ABSENT on origin
+)
+
+// note renders the per-refusal liveness clause (#189, ask 3), so a reader can tell a
+// confirmed-live competing claim from one whose source ref could not be verified against origin.
+func (l refLiveness) note() string {
+	switch l {
+	case livenessLive:
+		return "source ref live"
+	case livenessStale:
+		// Never reached in a refusal — stale collisions are DROPPED before reporting (#189,
+		// ask 2). Kept for completeness so a future caller printing every state is correct.
+		return "source ref stale"
+	default:
+		return "source ref liveness unverified (origin unreachable)"
+	}
 }
 
 // inRegisterDir reports whether path falls under one of registerEntryDirs.
@@ -113,9 +147,68 @@ func extractRegisterID(content string) string {
 	return e.ID
 }
 
+// idClaimedOnMainAtPath reports whether origin/main ALREADY carries this id at THIS same path —
+// i.e. the id is a pre-existing entry, not a new claim this push introduces.
+//
+// #189: a branch that edits an existing findings entry for an unrelated reason (repointing a
+// backtick path, fixing a typo in the body) leaves the `id:` untouched, so the id is already
+// on main in the same file. The check used to treat any ADDED-or-MODIFIED entry as staking a
+// fresh claim on its id, which made every such branch collide with every remote-tracking ref
+// that merely carried an unmodified copy of the same entry — a refusal that could not be
+// satisfied as written, since renaming an id already on main is the actual defect. An id is a
+// CLAIM only when it is NEW relative to origin/main: the file is newly added (absent on main —
+// git show errors, so this returns false), or the id was changed in place (the
+// F-original -> F-collide MODIFY shape, where main's id at this path differs, so this returns
+// false and the new id is still flagged).
+func idClaimedOnMainAtPath(dir, originMain, path, id string) bool {
+	content, err := gitOut(dir, "show", originMain+":"+path)
+	if err != nil {
+		return false // path absent on main — a genuinely new file, so its id is a new claim
+	}
+	return extractRegisterID(content) == id
+}
+
+// remoteHeadLiveness asks origin DIRECTLY whether remoteRef (an `origin/<name>` remote-tracking
+// ref) still corresponds to a live head — the resolution of #189's stale-ref half.
+//
+// A sibling branch that was merged and DELETED leaves refs/remotes/origin/<name> behind in this
+// clone until someone prunes; `git branch -r` still lists it, and the check compared against
+// that stale ref, reporting a collision against a branch that no longer exists. `git branch -r`
+// cannot distinguish live from stale — only origin can — so this consults origin via
+// `git ls-remote`.
+//
+// It runs ONLY when a collision would otherwise be reported (rare), so an ordinary push pays no
+// network cost, and it never returns an error: an unreachable origin (an offline push) is
+// reported as livenessUnknown, keeping this tool's offline-push and fail-open contracts intact.
+// The fully-qualified `refs/heads/<name>` pattern is used so a head named `foo` cannot be
+// matched by a stray `bar/foo` on the remote.
+func remoteHeadLiveness(dir, remoteRef string) refLiveness {
+	head := strings.TrimPrefix(remoteRef, "origin/")
+	out, err := gitOut(dir, "ls-remote", "--heads", "origin", "refs/heads/"+head)
+	if err != nil {
+		return livenessUnknown // origin unreachable (offline) — could-not-check
+	}
+	if strings.TrimSpace(out) == "" {
+		return livenessStale // origin has no such head — the local remote-tracking ref is stale
+	}
+	return livenessLive
+}
+
 // checkRegisterIDCollisions inspects register entry files newly ADDED or MODIFIED by localSHA
-// relative to origin/main and reports any whose id is also claimed by a register entry file
-// present on some other remote branch that is not itself already merged into origin/main.
+// relative to origin/main and reports any whose id is NEW relative to origin/main and is also
+// claimed by a register entry file present on some other LIVE remote branch that is not itself
+// already merged into origin/main.
+//
+// Two #189 scoping rules keep this from refusing a push it cannot let the author satisfy:
+//
+//   - NEW ids only. An id already present on origin/main in the SAME file is a pre-existing
+//     entry, not a claim (idClaimedOnMainAtPath) — a branch editing an existing findings entry
+//     for an unrelated reason does not stake a fresh claim on its id and cannot collide.
+//   - LIVE source refs only. Before reporting a collision the source ref's liveness is
+//     confirmed against origin (remoteHeadLiveness); a stale remote-tracking ref left behind by
+//     a merged-and-deleted sibling is dropped, and each reported collision carries the source
+//     ref's liveness (live / could-not-check) so a stale-ref artifact is distinguishable from a
+//     real, in-flight collision.
 //
 // dir is the repository to run git in (empty = process cwd). ownBranch's own remote-tracking
 // ref (if already pushed) is excluded from the "other branch" search so an UPDATE push never
@@ -170,6 +263,12 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 			continue // fail open on this file
 		}
 		if id := extractRegisterID(content); id != "" {
+			// #189: only NEW ids are claims. An id already present on origin/main in this same
+			// file is a pre-existing entry the push merely carries or edits for an unrelated
+			// reason (a repointed backtick, a typo fix), and cannot collide with anything.
+			if idClaimedOnMainAtPath(dir, originMain, path, id) {
+				continue
+			}
 			ownIDs[id] = path
 		}
 	}
@@ -182,6 +281,7 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 		return nil, nil
 	}
 	ownRemote := "origin/" + ownBranch
+	livenessCache := map[string]refLiveness{} // #189: probe each source ref's liveness at most once
 	var collisions []registerIDCollision
 	for _, raw := range strings.Split(branchesOut, "\n") {
 		b := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(raw), "* "))
@@ -219,12 +319,24 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 				continue
 			}
 			if ownPath, clash := ownIDs[id]; clash {
+				live, cached := livenessCache[b]
+				if !cached {
+					live = remoteHeadLiveness(dir, b)
+					livenessCache[b] = live
+				}
+				if live == livenessStale {
+					// #189: the sibling's remote-tracking ref is a stale local artifact — origin
+					// confirms the head is gone (merged and deleted). It is not a live claim, so
+					// it cannot collide; skip it rather than refuse an unsatisfiable push.
+					continue
+				}
 				collisions = append(collisions, registerIDCollision{
 					branch:       ownBranch,
 					id:           id,
 					ownPath:      ownPath,
 					sourceBranch: b,
 					sourcePath:   path,
+					sourceLive:   live,
 				})
 			}
 		}

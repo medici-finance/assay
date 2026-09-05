@@ -140,13 +140,19 @@ func TestChargingAndBreakerClassByResult(t *testing.T) {
 		{"unverifiable charges the per-PR budget", ResultUnverifiable, RateLimitPerPRPerHour, "pr-budget"},
 		// Not charged, but non-progress: the refusal loop, moved to the breaker.
 		{"refused does not charge, it trips the breaker", ResultRefused, RateLimitPerPRPerHour, "breaker"},
-		{"noop does not charge, it trips the breaker", ResultNoop, RateLimitPerPRPerHour, "breaker"},
 		// #448: a precondition that could not be verified BEFORE any write
 		// was attempted (a failed GET, a local CI/diff determination) must not be billed
 		// as if it may have reached the remote -- it provably did not. Same treatment as
-		// refused/noop: no budget charge, but it still trips the breaker so a repeated
+		// refused: no budget charge, but it still trips the breaker so a repeated
 		// failed-precondition loop is bounded by something.
 		{"unwritten does not charge, it trips the breaker", ResultUnwritten, RateLimitPerPRPerHour, "breaker"},
+		// #180: a no-op is the tool confirming the desired state already holds, the shape of
+		// a healthy idempotent idle loop rather than a spinning caller. It charges no budget
+		// AND is invisible to the breaker, so a standing loop re-asserting an unchanged
+		// verdict on every quiet tick never trips it. The count is deliberately past the
+		// breaker's own trip point.
+		{"noop feeds neither meter", ResultNoop, RateLimitPerPRPerHour, "none"},
+		{"a long quiet idle loop feeds neither meter", ResultNoop, BreakerTrip * 10, "none"},
 		// The stops' own output: invisible to both meters, or the meters feed themselves.
 		{"ratelimited feeds neither meter", ResultRateLimited, RateLimitPerPRPerHour, "none"},
 		{"a 500-line ratelimited retry storm feeds neither meter", ResultRateLimited, 500, "none"},
@@ -301,7 +307,7 @@ func TestBudgetLivelockRecovery(t *testing.T) {
 // BreakerTrip and not before, so a reviewer reworking a refused body once or twice is not
 // punished for it.
 func TestBreakerTripsOnConsecutiveNonProgress(t *testing.T) {
-	for _, result := range []string{ResultRefused, ResultNoop} {
+	for _, result := range []string{ResultRefused, ResultUnwritten} {
 		t.Run(result, func(t *testing.T) {
 			dir := setup(t)
 			base := time.Date(2026, 7, 30, 12, 31, 0, 0, time.UTC)
@@ -596,6 +602,65 @@ func TestDryRunIsNotIdempotencyDone(t *testing.T) {
 	entries[0].Result = ResultOK
 	if !AlreadyDoneIn(entries, "medici-finance/assay", pr, head, "review:APPROVE") {
 		t.Fatal("an ok entry did not count as already-done — the lookup itself is broken")
+	}
+}
+
+// TestNoopsNeverOpenTheBreaker is the #180 fix: a healthy idle loop must not trip the
+// breaker. An idempotent verb a standing loop re-asserts on every quiet tick
+// (`deskdisposition set` re-asserting an unchanged verdict, or any verb that legitimately
+// no-ops when nothing changed) returns ResultNoop, and a run of them is a healthy quiet
+// loop, not a spinning caller. The loop below runs well past BreakerTrip and past
+// RateLimitPerPRPerHour, so a failure here names which meter regressed rather than just
+// "something refused".
+func TestNoopsNeverOpenTheBreaker(t *testing.T) {
+	dir := setup(t)
+	base := time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC)
+	for i := 0; i < RateLimitPerPRPerHour*2; i++ {
+		appendEntry(t, dir, Entry{Repo: testRepo, PR: testPRPtr, Tool: "deskdisposition", Verb: "set", Result: ResultNoop,
+			TS: base.Add(time.Duration(i) * time.Second).UTC().Format(time.RFC3339)})
+	}
+	now := base.Add(time.Minute)
+	if got := meterOf(AllowWriteAt("deskdisposition", testRepo, testPR, now)); got != "none" {
+		t.Fatalf("after %d consecutive no-ops the %s meter fired, want none — a healthy idle "+
+			"loop re-asserting an unchanged state must not open a breaker (#180)",
+			RateLimitPerPRPerHour*2, got)
+	}
+}
+
+// TestNoopsDoNotResetTheBreakerEither is the fail-closed half, exactly as for dry runs
+// (#214): making a no-op merely "not non-progress" is not enough. If a no-op were treated
+// as PROGRESS, checkBreaker's backward walk would stop at it and clear the consecutive run,
+// so a spinning caller could splice an idempotent no-op between its refusals and hold the
+// loop stop permanently disarmed. A no-op must be INVISIBLE — it neither trips the breaker
+// nor rescues a caller from it. Here BreakerTrip refusals straddle a no-op and the breaker
+// must still be open.
+func TestNoopsDoNotResetTheBreakerEither(t *testing.T) {
+	dir := setup(t)
+	base := time.Date(2026, 8, 29, 10, 0, 0, 0, time.UTC)
+	at := func(d time.Duration) string { return base.Add(d).UTC().Format(time.RFC3339) }
+
+	n := 0
+	add := func(result string) {
+		appendEntry(t, dir, Entry{Repo: testRepo, PR: testPRPtr, Tool: "deskpost", Verb: "review", Result: result,
+			TS: at(time.Duration(n) * time.Second)})
+		n++
+	}
+	// A refusal loop with an idempotent no-op spliced into the middle of it.
+	for i := 0; i < BreakerTrip-1; i++ {
+		add(ResultRefused)
+	}
+	add(ResultNoop)
+	add(ResultRefused)
+
+	err := AllowWriteAt("deskpost", testRepo, testPR, base.Add(time.Duration(n)*time.Second))
+	if got := meterOf(err); got != "breaker" {
+		t.Fatalf("a no-op spliced into a %d-refusal loop left the %s meter firing, want "+
+			"breaker — an ignored result must not RESET the consecutive run, or an idempotent "+
+			"no-op becomes a way to hold the loop stop open forever (#180)", BreakerTrip, got)
+	}
+	// The cooldown is measured from the last NON-PROGRESS attempt, not from the no-op.
+	if d := RetryAfterOf(err); d <= 0 || d > BreakerCooldown {
+		t.Fatalf("breaker retry-after = %v, want a positive duration <= %v", d, BreakerCooldown)
 	}
 }
 

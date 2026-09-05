@@ -1,0 +1,4 @@
+{
+  "name": "assay",
+  "description": "Fixture plugin manifest with the `version` field removed — the record that OWNS the plugin version is absent, so the pairing cannot be checked at all."
+}

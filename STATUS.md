@@ -13,7 +13,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 |---|---|---|---|---|---|
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-04 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-04 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 0/8 | 2026-09-04 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/8 | 2026-09-04 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-04 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-04 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-04 |  |
@@ -22,9 +22,9 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 1/6 | 2026-09-04 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 3/6 | 2026-09-04 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 13/16 | 2026-09-04 |  |
-| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 0/1 | 2026-09-04 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 6/13 | 2026-09-04 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 0/6 | 2026-09-04 |  |
+| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 1/1 | 2026-09-04 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 7/13 | 2026-09-04 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 1/6 | 2026-09-04 |  |
 
 ## Next up
 
@@ -46,14 +46,14 @@ _Held by per-stream caps: 5 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (38 desk-actionable of 41 total — 36 at implemented, 5 verified awaiting review)
+## Awaiting verification / review (33 desk-actionable of 36 total — 36 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (38)
+### Desk-actionable (33)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -66,18 +66,15 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
-| desk-supervision | 01 [exec:strong] | verified | 3000 | 4 | — | 2026-09-04 opus-4.8[1m]-verifier | — |
 | harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | windows-port | 00 | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
-| windows-port | 02 | verified | 2500 | 3 | — | 2026-09-04 opus-4.8[1m]-verifier | — |
 | mistake-proofing | 03 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | iso-9001 | 05 | implemented | 1500 | 1 | — | — | — |
-| desk-supervision | 05 | verified | 1000 | 0 | — | 2026-09-04 opus-4.8[1m]-verifier | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -88,13 +85,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | quality | 14 | implemented | 1000 | 0 | — | — | — |
 | quality | 16 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| spec-routing | 01 [exec:strong] | verified | 1000 | 0 | — | 2026-09-04 opus-4.8[1m]-verifier | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 08 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
-| statusgen | 13 | verified | 1000 | 0 | — | 2026-09-04 opus-4.8[1m]-verifier | — |
 
 ### Awaiting human gate (1)
 
@@ -148,13 +143,11 @@ _None._
 - 06 Kubernetes manifests — todo (wave 3)
 - 07 multi-desk control layer — tmux/equivalents, macOS + win32 — todo (wave 4)
 
-### desk-supervision (8 open)
+### desk-supervision (6 open)
 
-- 01 Observable probes + the `desksupervise` observer — liveness that bites — verified (wave 0)
 - 02 Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal — todo (wave 1)
 - 03 Eligibility reconciliation — stop a run whose item became ineligible — todo (wave 2)
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — todo (wave 1)
-- 05 Per-class concurrency reservation — fresh / resume / rework caps in the planner — verified (wave 0)
 - 06 Workpad — one upserted progress comment per PR — implemented (wave 0)
 - 07 Runtime snapshot — `desksupervise status` for operators and the console — todo (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
@@ -242,11 +235,7 @@ _None._
 - 15 learned riskscore graduation — JIT defect-prediction model — todo (wave 3)
 - 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — implemented (wave 1)
 
-### spec-routing (1 open)
-
-- 01 Enforce the §8 lifecycle — the linter and the authoring-owed emitter — verified (wave 0)
-
-### statusgen (7 open)
+### statusgen (6 open)
 
 - 03 self-improvement metric (self-healed vs human-touched) — implemented (wave 2)
 - 05 drives phase 3 — anti-starvation floors + critical tier — implemented (wave 1)
@@ -254,13 +243,11 @@ _None._
 - 08 composite AssayScore computation — implemented (wave 2)
 - 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
 - 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
-- 13 cadenced roadmap artifacts (`--cadence weekly/monthly`) — verified (wave 1)
 
-### windows-port (6 open)
+### windows-port (5 open)
 
 - 00 Build-tag split for the unix-only syscall sites — implemented (wave 0)
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — todo (wave 1)
-- 02 Portability audit — enumerate + triage the shell-assuming surfaces — verified (wave 0)
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — todo (wave 2)
 - 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — todo (wave 2)
 - 05 Adoption-doc delta — the Windows adopter walkthrough — todo (wave 3)
@@ -276,6 +263,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 01 brief-v2 spec: derived lifecycle, generated table, public re-stage of brief-rules/template — done (wave 0)
 - 02 `Brief:` trailer — the PR→brief link, required by `deskpr`, linted on main — done (wave 0)
 - 05 desk skills: reference the brief, never flip the cell (both copies) — done (wave 1)
+
+### desk-supervision (2 done)
+
+- 01 Observable probes + the `desksupervise` observer — liveness that bites — done (wave 0)
+- 05 Per-class concurrency reservation — fresh / resume / rework caps in the planner — done (wave 0)
 
 ### desk-tools (3 done)
 
@@ -319,7 +311,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 12 M4 gate-yield accounting + ritual-effectiveness joins — done (wave 4)
 - 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — done (wave 3)
 
-### statusgen (6 done)
+### spec-routing (1 done)
+
+- 01 Enforce the §8 lifecycle — the linter and the authoring-owed emitter — done (wave 0)
+
+### statusgen (7 done)
 
 - 01 30-day lint-firing audit — retire cold rules — done (wave 1)
 - 02 issue metrics (`--issues`) — done (wave 1)
@@ -327,7 +323,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 07 new brief-flow metrics — done (wave 1)
 - 10 graph export (`--graph` DOT + JSONL) — done (wave 1)
 - 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — done (wave 1)
+- 13 cadenced roadmap artifacts (`--cadence weekly/monthly`) — done (wave 1)
+
+### windows-port (1 done)
+
+- 02 Portability audit — enumerate + triage the shell-assuming surfaces — done (wave 0)
 
 ## Totals
 
-**14** streams (**14** active, **0** paused) · **33/125** briefs done · completed initiatives: see `docs/archive/`
+**14** streams (**14** active, **0** paused) · **38/125** briefs done · completed initiatives: see `docs/archive/`
