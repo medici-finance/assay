@@ -282,6 +282,123 @@ func TestGuardStopFlags(t *testing.T) {
 	})
 }
 
+// withRunKey points the per-run-stop layer's run-key resolver at a fixed key for the
+// duration of a test, standing in for `git config --worktree assay.runKey` in a real
+// worktree. The empty string models a verb running OUTSIDE any stamped worktree.
+func withRunKey(t *testing.T, key string) {
+	t.Helper()
+	old := runKeyResolver
+	runKeyResolver = func() string { return key }
+	t.Cleanup(func() { runKeyResolver = old })
+}
+
+// TestRunStopArmListRoundTrip is the arm/list round trip: ArmRunStop writes a flag whose
+// key and reason ListRunStops reads back, and the file name is the one RunStopFlagName
+// derives — the single mapping both sides share.
+func TestRunStopArmListRoundTrip(t *testing.T) {
+	dir := setup(t)
+	const key = "assay--example-stream--02"
+	if err := ArmRunStop(key, "wedged: superseded by a re-dispatch"); err != nil {
+		t.Fatalf("ArmRunStop: %v", err)
+	}
+	// The file lands under the name the reading side derives.
+	if _, err := os.Stat(filepath.Join(dir, RunStopFlagName(key))); err != nil {
+		t.Fatalf("armed flag not written at %s: %v", RunStopFlagName(key), err)
+	}
+	stops, err := ListRunStops()
+	if err != nil {
+		t.Fatalf("ListRunStops: %v", err)
+	}
+	if len(stops) != 1 {
+		t.Fatalf("ListRunStops = %+v, want exactly one armed stop", stops)
+	}
+	if stops[0].Key != key {
+		t.Fatalf("recovered key = %q, want %q", stops[0].Key, key)
+	}
+	if stops[0].Reason != "wedged: superseded by a re-dispatch" {
+		t.Fatalf("recovered reason = %q", stops[0].Reason)
+	}
+	if stops[0].ArmedAt.IsZero() {
+		t.Fatalf("armed_at is zero — status --stops could not report a time")
+	}
+	// An empty key is refused: a per-run stop that names no run cannot be resolved back.
+	if err := ArmRunStop("   ", "x"); err == nil {
+		t.Fatalf("ArmRunStop(empty key) should be refused")
+	}
+}
+
+// TestRunStopRefusesOnlyItsOwnKey pins the per-run-stop layer's blast radius: a flag armed
+// for key A refuses the run whose worktree records key A, does NOT touch a run recording key
+// B, and — with no run key in cwd at all — never fires (no false refusals for a verb run
+// outside a stamped worktree).
+func TestRunStopRefusesOnlyItsOwnKey(t *testing.T) {
+	dir := setup(t)
+	mkFlag(t, dir, RunStopFlagName("keyA"), "stop just keyA")
+
+	t.Run("its own key A → refused (exit 3), reason surfaced", func(t *testing.T) {
+		withRunKey(t, "keyA")
+		err := Guard()
+		if !IsDisabled(err) {
+			t.Fatalf("Guard() = %v, want Disabled for the run whose flag is armed", err)
+		}
+		if ExitCodeOf(err) != ExitDisabled {
+			t.Fatalf("ExitCodeOf = %d, want %d", ExitCodeOf(err), ExitDisabled)
+		}
+		if !strings.Contains(err.Error(), "stop just keyA") {
+			t.Fatalf("reason not surfaced: %q", err.Error())
+		}
+	})
+
+	t.Run("a different key B → not armed", func(t *testing.T) {
+		withRunKey(t, "keyB")
+		if err := Guard(); err != nil {
+			t.Fatalf("Guard() = %v, want nil — keyA's flag must not stop keyB's run", err)
+		}
+	})
+
+	t.Run("no run key in cwd → layer skipped, never a false refusal", func(t *testing.T) {
+		withRunKey(t, "")
+		if err := Guard(); err != nil {
+			t.Fatalf("Guard() = %v, want nil — a verb with no run key skips the per-run layer", err)
+		}
+	})
+}
+
+// TestRunStopNeverMasksStopAll is the precedence property: when a loop-wide STOP is armed
+// AND this run's own per-run flag is armed, the STOP wins — the per-run layer can only ADD a
+// refusal, never lift or mask a loop-wide one, so the reason names STOP, not the run flag.
+// The check would fail if the per-run layer were ever placed ABOVE the STOP check in Guard.
+func TestRunStopNeverMasksStopAll(t *testing.T) {
+	dir := setup(t)
+	withRunKey(t, "keyA")
+	mkFlag(t, dir, "STOP", "all loops halted by operator")
+	mkFlag(t, dir, RunStopFlagName("keyA"), "stop just keyA")
+
+	err := Guard()
+	if !IsDisabled(err) {
+		t.Fatalf("Guard() = %v, want Disabled", err)
+	}
+	if !strings.Contains(err.Error(), "STOP") || !strings.Contains(err.Error(), "all loops halted by operator") {
+		t.Fatalf("the loop-wide STOP must win over a per-run flag, got %q", err.Error())
+	}
+	if strings.Contains(err.Error(), "stop just keyA") {
+		t.Fatalf("a per-run flag masked the loop-wide STOP: %q", err.Error())
+	}
+}
+
+// TestRunStopExcludedFromActiveStopFlags proves a STOP.run.<key> file is NOT mis-reported as
+// an inert per-loop STOP.<loop> flag by the deskboard diagnostic — it is a different concept,
+// enumerated by ListRunStops instead.
+func TestRunStopExcludedFromActiveStopFlags(t *testing.T) {
+	dir := setup(t)
+	mkFlag(t, dir, RunStopFlagName("keyA"), "stop just keyA")
+	for _, f := range ActiveStopFlags() {
+		if strings.HasPrefix(f.Name, "STOP.run.") {
+			t.Fatalf("a per-run stop leaked into ActiveStopFlags as %+v", f)
+		}
+	}
+}
+
 // TestActiveStopFlags exercises the diagnostic export used by deskboard.
 func TestActiveStopFlags(t *testing.T) {
 	t.Run("no flags → empty", func(t *testing.T) {

@@ -147,6 +147,9 @@ func dispatch(o dispatchOpts) error {
 		for i, s := range dispatchSteps {
 			fmt.Printf("  %d %s\n", i+1, s)
 		}
+		// Step 2 records the run key worktree-locally on a real dispatch; name it here so an
+		// operator can see which STOP.run.<key> would stop this run before launching it.
+		fmt.Printf("  run key (recorded at step %s as assay.runKey): %s\n", stepWorktreeCreate, plan.claimKey)
 		if line, herr := deskkit.HookDryRunLine(deskkit.HookBeforeRun); herr != nil {
 			return herr
 		} else {
@@ -204,6 +207,28 @@ func dispatch(o dispatchOpts) error {
 				"dispatch it must not make.", stepWorktreeCreate, wtName, wt.stdout), nil)
 	}
 	o.say("%s OK: %s on %s", stepWorktreeCreate, home, branch)
+
+	// Record the run key worktree-locally (assay.runKey) so the per-run stop layer
+	// (deskkit.Guard's STOP.run.<key> check) resolves it from cwd with
+	// NO agent cooperation: every desk verb the worker runs next reads the key from its own
+	// worktree and refuses if that run has been stopped. `git config --worktree` needs the
+	// worktreeConfig extension on to write into a LINKED worktree's own config, so enable it
+	// first (a benign, idempotent repo setting). This is Layer A of the two-layer stop; a
+	// failure here degrades to Layer B (the desk window's cadence sweep) and is REPORTED,
+	// never silent — but it never fails the dispatch, which is already claimed and homed.
+	if ext := runCmd(home, "git", "config", "extensions.worktreeConfig", "true"); ext.err == nil {
+		if rk := runCmd(home, "git", "config", "--worktree", "assay.runKey", plan.claimKey); rk.err == nil {
+			o.say("%s OK: recorded run key %s (assay.runKey) in %s", stepWorktreeCreate, plan.claimKey, home)
+		} else {
+			o.say("%s WARNING: could not record assay.runKey=%s in %s (%s) — the per-run stop's "+
+				"cooperative layer is off for this run; the desk-window sweep still covers it",
+				stepWorktreeCreate, plan.claimKey, home, firstLine(rk.stderr))
+		}
+	} else {
+		o.say("%s WARNING: could not enable extensions.worktreeConfig in %s (%s) — the per-run "+
+			"stop's cooperative layer is off for this run; the desk-window sweep still covers it",
+			stepWorktreeCreate, home, firstLine(ext.stderr))
+	}
 
 	// before_run — runs after the worktree is prepared and BEFORE the prompt is emitted (the
 	// agent's "run"). FATAL failure class: a failure ABORTS the attempt — no prompt is

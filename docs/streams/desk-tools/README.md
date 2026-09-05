@@ -52,7 +52,7 @@ no-op in `deskevidence`.
 | 09 | [`desktoken coverage <role>` — list the repositories a role's App installations can see](brief-09-desktoken-coverage.md) | 1 | M | implemented | — | — |
 | 10 | [`deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand](brief-10-deskclaim-stale-probe-and-branch-liveness.md) | 1 | M | implemented | — | — |
 | 11 | [`deskwt add` — a worktree whose directory is gone does not hold its branch](brief-11-deskwt-add-prunable-holder.md) | 1 | S | blocked | — | — |
-| 12 | [`statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON](brief-12-statusgen-brief-subcommand.md) | 1 | M | todo | — | — |
+| 12 | [`statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON](brief-12-statusgen-brief-subcommand.md) | 1 | M | implemented | — | — |
 | 13 | [`pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree](brief-13-paced-pr-monitor.md) | 1 | M | todo | — | — |
 | 14 | [bodycheck — three measured false-positive classes into the negative corpus, plus `--explain`](brief-14-bodycheck-negative-classes-and-explain.md) | 1 | M | todo | — | — |
 | 15 | [`deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home](brief-15-deskdispatch-dryrun-worktree.md) | 1 | S | todo | — | — |

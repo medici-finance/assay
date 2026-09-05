@@ -186,6 +186,8 @@ USAGE:
 
 'plan' prints the deterministic scheduler output: the Awaiting queue, each item's tier, and
 the exact dispatch instruction (or the human-route note). It spawns nothing and writes nothing.
+The item keys it prints (<stream>/<NN>) resolve to their file, frontmatter and board row with
+'statusgen brief <key>'.
 
 'verdict' is the DETERMINISTIC runner: it runs each brief's check/check:ci Verify rows locally
 (exit code = verdict), batches results over the flush window into ONE signed verdict-v1

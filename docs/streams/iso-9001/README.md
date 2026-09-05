@@ -56,7 +56,7 @@ objectives (6.2), the internal-audit programme (9.2), and the management review 
 | 02 | [Align three shipped disclosures with the code they describe (B9)](./brief-02-disclosure-honesty-fixes.md) | 0 | S | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #318 @ 6ab8de53a40c1a4f71fa6c0a0ddccb4b27a000c8) |
 | 03 | [A finding closes on a fired control — the effectiveness record (10.2)](./brief-03-corrective-action-effectiveness.md) | 1 | M | todo | — | — |
 | 04 | [Record the authorizing human in the release itself (8.6)](./brief-04-release-authorizer-traceability.md) | 1 | S | todo | — | — |
-| 05 | [Records control and retention, stated once (7.5.3)](./brief-05-records-control-and-retention.md) | 1 | S | implemented | — | — |
+| 05 | [Records control and retention, stated once (7.5.3)](./brief-05-records-control-and-retention.md) | 1 | S | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #400 @ 90c19fd7a273835d01247292ad91f217a4ff9fe1) |
 | 06 | [The auditor one-pager — what Assay is and is not](./brief-06-auditor-one-pager.md) | 2 | S | todo | — | — |
 
 ## Critical path

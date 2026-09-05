@@ -53,7 +53,7 @@ type sweepResult struct {
 // (malformed fixture `at`) aborts the WHOLE tick as could-not-check: these are config
 // errors in the tick's own INPUT, not liveness questions about the claim, and guessing a
 // default would silently misclassify every claim after the bad one.
-func sweep(claims []claimRecord, obsSource observationSource, pol loopengine.LivenessPolicy, now time.Time, dryRun bool, reclaim reclaimFunc, fileBT fileBlockedTimeoutFunc, out io.Writer) ([]sweepResult, bool, error) {
+func sweep(claims []claimRecord, obsSource observationSource, pol loopengine.LivenessPolicy, now time.Time, dryRun bool, reclaim reclaimFunc, fileBT fileBlockedTimeoutFunc, arm armRunStopFunc, out io.Writer) ([]sweepResult, bool, error) {
 	runTag := fmt.Sprintf("desksupervise-%d", now.UnixNano())
 	var results []sweepResult
 	anyBlind := false
@@ -83,7 +83,7 @@ func sweep(claims []claimRecord, obsSource observationSource, pol loopengine.Liv
 
 		clock := loopengine.ClaimClock{DispatchedAt: dispatchedAt}
 		disp := loopengine.ClassifyLiveness(pol, clock, tier, now, resolved.obs)
-		action, aerr := runAction(claim, disp, dryRun, reclaim, fileBT, runTag)
+		action, aerr := runAction(claim, disp, dryRun, reclaim, fileBT, arm, runTag)
 		if aerr != nil {
 			return results, anyBlind, deskkit.Unverifiable("claim "+claim.Key+": action "+action+" failed", aerr)
 		}

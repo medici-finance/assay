@@ -110,6 +110,18 @@ Pre-mortem → detection map:
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
 
+| # | Command | Exit | Output | Date | Runner |
+|---|---------|------|--------|------|--------|
+| 1 | `cd statusgen && go build ./... && go vet ./...` | 0 | clean build + vet | 2026-09-04 | opus-4.8[1m] |
+| 2 | `cd statusgen && go test . -run '^TestBriefInfoResolvesFrontmatterAndRow$' -count=1` | 0 | PASS — gate=model, risk all no, exec-tier=strong, effort=M, row.status=implemented; file path relative (no leading `/`) | 2026-09-04 | opus-4.8[1m] |
+| 3 | `cd statusgen && go test . -run '^TestBriefInfoDuplicatePrefixIsAnError$' -count=1` | 0 | PASS — two `brief-03-*` files → exit 2 naming both, empty stdout | 2026-09-04 | opus-4.8[1m] |
+| 4 | `cd statusgen && go test . -run '^TestBriefInfoLegacyAndMissingRow$' -count=1` | 0 | PASS — legacy → `schema: legacy`; no row → `"row": null`; both exit 0 | 2026-09-04 | opus-4.8[1m] |
+| 5 | `cd statusgen && go test . -run '^TestBriefInfoMultiKeyPartialFailure$' -count=1` | 0 | PASS — one bad key among three → exit 2, every key reported, no partial array | 2026-09-04 | opus-4.8[1m] |
+| 6 | `cd statusgen && go run . brief desk-tools/12 --root .. --json` | 0 | resolves live: `"gate": "model"`, `"status": "todo"` present, `"file"` relative | 2026-09-04 | opus-4.8[1m] |
+| 7 | `cd statusgen && go test . -count=1` | 0 | full suite ok (incl. unknown-subcommand test with `brief` in the known list) | 2026-09-04 | opus-4.8[1m] |
+| 8 | `gofmt -l statusgen` | 0 | changed files (`briefinfo.go`, `briefinfo_test.go`) gofmt-clean under both go1.25 (CI pin) and go1.26; 4 unrelated pre-existing files flag only under a local go1.26 gofmt, not the CI toolchain | 2026-09-04 | opus-4.8[1m] |
+| 9 | `cd statusgen && go run . --root .. --lint` | 0 | `LINT: PASS` | 2026-09-04 | opus-4.8[1m] |
+
 ## Review
 
 Gate: model (all four risk answers no). The reviewer confirms the subcommand is read-only and
