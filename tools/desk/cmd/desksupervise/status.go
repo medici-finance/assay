@@ -537,7 +537,7 @@ func cmdStatus(args []string) (err error) {
 	}
 
 	// Per-claim stops: from --stops-fixture offline, or from the live STOP.run.<key> registry
-	// (deskkit.ListRunStops) in live mode. The per-run stop signal (desk-supervision/02) is the
+	// (deskkit.ListRunStops) in live mode. The per-run stop signal is the
 	// LIVE per-item source the earlier gap called for — `desksupervise stop <key>` and tick's
 	// reclaim classes (actions.go) arm STOP.run.<key> flags keyed by run key (== the dispatch
 	// claim key), and status surfaces them here. A GLOBAL STOP flag still halts this tool via
