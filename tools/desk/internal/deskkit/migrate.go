@@ -28,8 +28,10 @@ package deskkit
 //     the common upgrade path is therefore empty and silent.
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -37,6 +39,21 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+// StatusgenBinEnv overrides which statusgen binary the statusgen-regen op runs.
+// Without it the installed `statusgen` on PATH is used — the sha256-verified
+// pinned release `desk-install` places there. It mirrors deskboard's nextup
+// resolution so the whole desk toolchain reaches statusgen ONE way.
+const StatusgenBinEnv = "STATUSGEN_BIN"
+
+// statusgenRegenSupportedVerbs is the closed set of statusgen `migrate` targets a
+// statusgen-regen op may name. An op naming anything else is REFUSED (not run) —
+// an unknown verb is a migration authored against a statusgen this op does not
+// understand, and running it blind is exactly the silent-misread the closed set
+// exists to stop.
+var statusgenRegenSupportedVerbs = map[string]map[string]bool{
+	"migrate": {"brief-v1-to-v2": true},
+}
 
 // MigrationsDir is the conventional directory, under a migration root, holding one
 // file per migration.
@@ -51,12 +68,40 @@ type EnsureLine struct {
 	Text string `yaml:"text"`
 }
 
+// StatusgenRegen is the example-stream/06 op: run the PINNED statusgen's `migrate`
+// verb over the adopter tree so a schema/board migration stays declarative and
+// dry-runnable. Verb is the statusgen subcommand argument (`migrate`); Args are
+// the verb's positional arguments (e.g. `brief-v1-to-v2`). The op resolves the
+// statusgen binary the SAME way the rest of desk-tools does — the installed,
+// sha256-verified pinned release (`STATUSGEN_BIN`, else `statusgen` on PATH, which
+// is where `desk-install` places the verified binary) — never the frozen in-repo
+// source. It is idempotent because `statusgen migrate` is, and honours dry-run by
+// forwarding `--dry-run` (the statusgen verb then writes nothing).
+type StatusgenRegen struct {
+	Verb string   `yaml:"verb"`
+	Args []string `yaml:"args"`
+}
+
 // Step is one apply step. Exactly one op field is set; a step with none is
 // malformed and fails the migration closed (never a silent skip). New op types are
 // added as additional pointer fields — additive, and an older runner that does not
 // know a newer op reports it rather than ignoring it.
 type Step struct {
-	EnsureLine *EnsureLine `yaml:"ensure-line"`
+	EnsureLine     *EnsureLine     `yaml:"ensure-line"`
+	StatusgenRegen *StatusgenRegen `yaml:"statusgen-regen"`
+}
+
+// op returns a one-word name of the step's op, or "" for a malformed step naming
+// none. Used both to validate (exactly one op) and for messages.
+func (s Step) op() string {
+	switch {
+	case s.EnsureLine != nil && s.StatusgenRegen == nil:
+		return "ensure-line"
+	case s.StatusgenRegen != nil && s.EnsureLine == nil:
+		return "statusgen-regen"
+	default:
+		return ""
+	}
 }
 
 // Migration is one parsed migration file.
@@ -194,13 +239,20 @@ func parseMigrationFile(path string) (Migration, error) {
 		return Migration{}, Unverifiable("migration "+path+" has no human-readable `what changed` body", nil)
 	}
 	for i, s := range m.Apply {
-		if s.EnsureLine == nil {
+		switch s.op() {
+		case "ensure-line":
+			if s.EnsureLine.File == "" || s.EnsureLine.Text == "" {
+				return Migration{}, Unverifiable(
+					fmt.Sprintf("migration %s ensure-line step %d needs both file and text", path, i+1), nil)
+			}
+		case "statusgen-regen":
+			if s.StatusgenRegen.Verb == "" {
+				return Migration{}, Unverifiable(
+					fmt.Sprintf("migration %s statusgen-regen step %d needs a verb", path, i+1), nil)
+			}
+		default:
 			return Migration{}, Unverifiable(
-				fmt.Sprintf("migration %s apply step %d names no known op (want ensure-line)", path, i+1), nil)
-		}
-		if s.EnsureLine.File == "" || s.EnsureLine.Text == "" {
-			return Migration{}, Unverifiable(
-				fmt.Sprintf("migration %s ensure-line step %d needs both file and text", path, i+1), nil)
+				fmt.Sprintf("migration %s apply step %d names no known op, or names more than one (want exactly one of ensure-line, statusgen-regen)", path, i+1), nil)
 		}
 	}
 	return m, nil
@@ -248,6 +300,14 @@ func RunMigrations(root string, selected []Migration, dryRun bool) ([]StepAction
 	var actions []StepAction
 	for _, m := range selected {
 		for _, s := range m.Apply {
+			if s.StatusgenRegen != nil {
+				action, err := runStatusgenRegen(root, m.ID, s.StatusgenRegen, dryRun)
+				if err != nil {
+					return actions, err
+				}
+				actions = append(actions, action)
+				continue
+			}
 			el := s.EnsureLine
 			// Refuse a path escaping root — a migration mutates the adopter repo,
 			// never anything above it. The check is both LEXICAL (a `..` component)
@@ -279,6 +339,92 @@ func RunMigrations(root string, selected []Migration, dryRun bool) ([]StepAction
 		}
 	}
 	return actions, nil
+}
+
+// runStatusgenRegen executes (or, under dryRun, previews) a statusgen-regen op:
+// it resolves the pinned statusgen and runs `<statusgen> <verb> <args...> --root
+// <root> [--dry-run]`, streaming nothing but capturing the combined output into
+// the returned StepAction's Desc so a caller renders the statusgen plan under its
+// own migration line. The op is idempotent (statusgen migrate is), so a re-run on
+// an already-migrated tree is a clean no-op.
+func runStatusgenRegen(root, migID string, sr *StatusgenRegen, dryRun bool) (StepAction, error) {
+	// Closed-set verb/target check — refuse an unknown op rather than shelling out
+	// a target this runner cannot vouch for.
+	targets, known := statusgenRegenSupportedVerbs[sr.Verb]
+	if !known {
+		return StepAction{}, Refused(fmt.Sprintf(
+			"migration %s statusgen-regen names unknown verb %q (known: migrate)", migID, sr.Verb))
+	}
+	if len(sr.Args) == 0 || !targets[sr.Args[0]] {
+		got := "(none)"
+		if len(sr.Args) > 0 {
+			got = sr.Args[0]
+		}
+		return StepAction{}, Refused(fmt.Sprintf(
+			"migration %s statusgen-regen verb %q names unknown target %q (known: brief-v1-to-v2)", migID, sr.Verb, got))
+	}
+
+	bin, err := resolveStatusgenBinary()
+	if err != nil {
+		return StepAction{}, err
+	}
+
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return StepAction{}, Unverifiable("cannot resolve migration root: "+root, err)
+	}
+	cmdArgs := []string{sr.Verb}
+	cmdArgs = append(cmdArgs, sr.Args...)
+	cmdArgs = append(cmdArgs, "--root", absRoot)
+	if dryRun {
+		cmdArgs = append(cmdArgs, "--dry-run")
+	}
+
+	var buf bytes.Buffer
+	cmd := exec.Command(bin, cmdArgs...)
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	runErr := cmd.Run()
+	out := strings.TrimSpace(buf.String())
+	if runErr != nil {
+		msg := fmt.Sprintf("migration %s statusgen-regen: %s %s failed: %v\n%s",
+			migID, bin, strings.Join(cmdArgs, " "), runErr, out)
+		// PROPAGATE statusgen's own exit code so a determinate refusal stays a
+		// refusal: statusgen migrate exits 5 when it REFUSES (e.g. a v2 id cannot
+		// be minted without graph-repos.yaml). Mapping that to unverifiable (6)
+		// would launder a hard refusal into a could-not-check. Any other non-zero
+		// exit is a genuine could-not-run → unverifiable.
+		if exit, ok := runErr.(*exec.ExitError); ok && exit.ExitCode() == ExitRefused {
+			return StepAction{}, Refused(msg)
+		}
+		return StepAction{}, Unverifiable(msg, runErr)
+	}
+	desc := fmt.Sprintf("statusgen-regen (%s %s) — %s", sr.Verb, strings.Join(sr.Args, " "), out)
+	if dryRun {
+		desc = "WOULD statusgen-regen (" + sr.Verb + " " + strings.Join(sr.Args, " ") + "):\n" + out
+	}
+	return StepAction{Migration: migID, Desc: desc, Changed: true}, nil
+}
+
+// resolveStatusgenBinary locates the statusgen the regen op runs: STATUSGEN_BIN
+// when set, else `statusgen` on PATH (the installed, sha256-verified pinned
+// release). It NEVER runs the frozen in-repo tools/statusgen source. Mirrors
+// deskboard's nextup resolveStatusgen so the toolchain reaches statusgen one way.
+func resolveStatusgenBinary() (string, error) {
+	if bin := strings.TrimSpace(os.Getenv(StatusgenBinEnv)); bin != "" {
+		path, err := exec.LookPath(bin)
+		if err != nil {
+			return "", Unverifiable(StatusgenBinEnv+"="+bin+" is not an executable", err)
+		}
+		return path, nil
+	}
+	path, err := exec.LookPath("statusgen")
+	if err != nil {
+		return "", Unverifiable(
+			"statusgen is not on PATH — install the pinned release (see tools/statusgen/README.md) "+
+				"or set "+StatusgenBinEnv+"; a statusgen-regen migration op cannot run without it", err)
+	}
+	return path, nil
 }
 
 // resolveEnsureTarget resolves the on-disk target for an ensure-line step and

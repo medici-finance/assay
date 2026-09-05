@@ -9,7 +9,8 @@
 #         than plugin.json. Passed silently before the guard; must fail now.
 #   B     TAG drift — three shapes: one platform line left behind on an older tag, the
 #         desk-tools section on a different tag from statusgen, and a wholesale two-tag file.
-#   C     HASH shape — truncated, upper-cased, and placeholder digests.
+#   C     HASH shape — truncated, upper-cased, stray-placeholder digests FAIL; the one
+#         reserved <harvest-after-release> placeholder (a tag not yet cut) PASSES.
 #   D     COULD-NOT-CHECK — missing file, missing `plugin:` key, missing `version` field, and a
 #         file with no pin lines at all. Each must FAIL, never quietly pass.
 #
@@ -89,23 +90,36 @@ sed -i.bak 's/statusgen-linux-amd64  v[0-9][^ ]*/statusgen-linux-amd64  v0.24.0/
 expect 1 "B3 a second tag anywhere in the file fails" --root "$r"
 
 # ------------------------------------------------------------------- C hash shape
+# The committed manifest may carry the reserved <harvest-after-release> placeholder
+# (a tag whose release is not yet cut), so the C mutations SET the arm64 hash field
+# directly rather than assuming a 64-hex value is there to bite.
+setarmhash() { # <root> <value>
+  sed -i.bak "s|\(statusgen-darwin-arm64 v[^ ]* \)[^ ]*|\1$2|" \
+    "$1/plugins/assay/paired-versions.yaml"
+}
+
 r=$(fixture c1)
-sed -i.bak 's/\(statusgen-darwin-arm64 v[^ ]* \)[0-9a-f]\{64\}/\1deadbeef/' \
-  "$r/plugins/assay/paired-versions.yaml"
+setarmhash "$r" "deadbeef"
 expect 1 "C1 truncated sha256 fails" --root "$r"
 
 r=$(fixture c2)
-# Upper-case the real digest in place (derived, never a literal digest in this file) — the
-# hash is still CORRECT, only mis-cased, which is exactly the shape a hand-copied pin takes.
-upper=$(awk '/statusgen-darwin-arm64 v/ {print $4}' "$r/plugins/assay/paired-versions.yaml" | tr 'a-f' 'A-F')
-sed -i.bak "s/\(statusgen-darwin-arm64 v[^ ]* \)[0-9a-f]\{64\}/\1${upper}/" \
-  "$r/plugins/assay/paired-versions.yaml"
+# A 64-char UPPER-case value — correct length, wrong case, the shape a hand-copied pin takes.
+# Built at runtime (never a 64-char literal in this file, which a secret-scan would flag).
+upper64=$(printf 'A%.0s' $(seq 1 64))
+setarmhash "$r" "$upper64"
 expect 1 "C2 upper-cased sha256 fails" --root "$r"
 
 r=$(fixture c3)
-sed -i.bak 's/\(statusgen-darwin-arm64 v[^ ]* \)[0-9a-f]\{64\}/\1TODO-harvest-from-the-release/' \
-  "$r/plugins/assay/paired-versions.yaml"
-expect 1 "C3 placeholder sha256 fails" --root "$r"
+# A STRAY placeholder that is NOT the one reserved sentinel — still fails (the allowance is a
+# specific token, never a wildcard for any non-hex value).
+setarmhash "$r" "TODO-harvest-from-the-release"
+expect 1 "C3 stray (non-reserved) placeholder fails" --root "$r"
+
+r=$(fixture c4)
+# The RESERVED placeholder is the one legitimate not-yet-64-hex state — a manifest paired to a
+# tag whose release is not yet cut. It must PASS (derived-board/06).
+setarmhash "$r" "<harvest-after-release>"
+expect 0 "C4 reserved <harvest-after-release> placeholder passes" --root "$r"
 
 # ------------------------------------------------------------------- D could-not-check
 r=$(fixture d1)

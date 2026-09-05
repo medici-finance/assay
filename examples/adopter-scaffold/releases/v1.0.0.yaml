@@ -1,0 +1,16 @@
+# Composition manifest for umbrella v1.0.0 — adopter-scaffold example.
+#
+# The upgrade TARGET `upgrade-assay --to v1.0.0` moves the scaffold to. v1.0.0 is
+# the first MAJOR: the brief-v1 → brief-v2 flag day (see
+# migrations/0001-v0.13.0-to-v1.0.0-derived-board.md and
+# docs/release-notes/v1.0.0.md). statusgen and desk-tools are cut together at the
+# same tag. Digests are fixture placeholders; a real release harvests them from
+# the published checksums.txt.
+umbrella: v1.0.0
+artifacts:
+  - artifact: statusgen
+    tag: v1.0.0
+    sha256: 1111111111111111111111111111111111111111111111111111111111111111
+  - artifact: desk-tools
+    tag: v1.0.0
+    sha256: 2222222222222222222222222222222222222222222222222222222222222222

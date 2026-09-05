@@ -272,4 +272,14 @@ var UnresolvedArgv = []Allowance{
 			"state/owner/branch. Not a forge CLI: it is a script this tree does not ship, external to " +
 			"every consumer repo it runs against.",
 	},
+	{
+		Key: "internal/deskkit/migrate.go::runStatusgenRegen::<unresolved>",
+		Reason: "runs the resolved statusgen binary path for a statusgen-regen migration op; the binary " +
+			"is resolved by resolveStatusgenBinary (STATUSGEN_BIN or `statusgen` on PATH — the installed, " +
+			"sha256-verified pinned release), never a forge CLI. Mirrors deskboard's execGateScores row.",
+	},
+	{
+		Key:    "internal/deskkit/migrate.go::resolveStatusgenBinary::<unresolved>",
+		Reason: "exec.LookPath of the STATUSGEN_BIN env value for a presence probe; launches nothing, and the bare `statusgen` fallback in the same func is a compile-time literal. Not a forge path. Mirrors deskboard's nextup.go::resolveStatusgen row.",
+	},
 }

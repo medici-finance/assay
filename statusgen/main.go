@@ -225,6 +225,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	placeholderProblems, placeholderNotices := checkPlaceholderFiles(checkStreams)
 	problems = append(problems, placeholderProblems...)
 	notices = append(notices, placeholderNotices...)
+	// Same-tag pin lint (derived-board/06 §6): a root's .assay-versions whose
+	// artifact lines carry DIFFERENT tags is the mixed-version state (statusgen
+	// v1.0.0 next to desk-tools v0.13.0 over one tree) that misreads a v2 board.
+	// PROBLEM when the tags differ; a no-op when the file is absent (this repo's
+	// own root carries no pin file), so it never reds an un-pinned tree.
+	if pinProblem, has := sameTagPinLint(root); has {
+		problems = append(problems, pinProblem)
+	}
 	// The per-stream done/ archive checks — a NOTICE for a
 	// retired placeholder still at the stream root (archive candidate) and a
 	// PROBLEM for any non-done brief/placeholder parked under done/. Additive,
@@ -1092,6 +1100,16 @@ func main() {
 		os.Exit(runConform(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen migrate brief-v1-to-v2 [--dry-run] [--root DIR]` — the brief-v1 →
+	// brief-v2 flag-day migration (derived-board/06, migrate.go). Intercepted
+	// before flag parsing for verifyrun's reason: it owns its own target
+	// positional plus --root/--dry-run, and it is a WRITE-capable tree mutation
+	// that has no business inside the offline, side-effect-free --lint. It is the
+	// executable half of a deskmigrate `statusgen-regen` op.
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		os.Exit(runMigrate(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter
 	// and board row, as JSON (desk-tools/12, briefinfo.go). Intercepted before flag
 	// parsing for verifyrun's reason: it owns --root and its own --json/--text, and
@@ -1166,7 +1184,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, verifyrun, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, enforcement-status, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, verifyrun, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, enforcement-status, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}
@@ -1859,6 +1877,14 @@ func main() {
 			os.Exit(2)
 		}
 		os.Exit(runDiffLintRoots(resolvedRoots, *diffBaseFlag, budgetSpecs, *changedFile, *scopeFlag))
+	}
+	// Brief-reading version gate (derived-board/06 §6): a STAMPED statusgen below
+	// v1.0.0 refuses to read a brief-v2 tree (exit 6), pointing at
+	// assay:upgrade-assay. An unstamped local build reports "dev" and behaves as
+	// latest, so running from source is never gated. This is the SEPARATE, release-
+	// boundary control alongside parseBriefFile's #271 fail-closed trap.
+	if gate := refuseIfTreeTooNew(resolvedRoots, statusgenVersion, os.Stderr); gate != 0 {
+		os.Exit(gate)
 	}
 	code := runRoots(resolvedRoots, mode, budgetSpecs, changedPaths, *scopeFlag)
 	// Opt-in telemetry (gtm/08): only after an ordinary lint/write run, and only
