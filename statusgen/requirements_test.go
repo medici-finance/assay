@@ -8,6 +8,11 @@ import (
 	"testing"
 )
 
+// Test names here stay under 42 characters: the repository's pre-push secret scan
+// reads any longer unbroken alphanumeric run as a possible credential, and a
+// CamelCase identifier is exactly that shape. Descriptive, not abbreviated —
+// but short enough that a real token is the only thing that trips the scan.
+
 // ---------- fixtures ----------
 
 // requirementFixture renders a REQUIREMENTS entry file body from a field map, so
@@ -225,10 +230,10 @@ func TestRequirementStatusMustBeInLifecycle(t *testing.T) {
 	}
 }
 
-// TestRequirementAcceptanceMustCarryACriterion: an ask nobody can settle is not a
+// TestRequirementAcceptanceRequired: an ask nobody can settle is not a
 // requirement. A list of blanks counts as empty — otherwise the presence rule is
 // satisfiable by typing two quotes.
-func TestRequirementAcceptanceMustCarryACriterion(t *testing.T) {
+func TestRequirementAcceptanceRequired(t *testing.T) {
 	for _, acc := range [][]string{{}, {""}, {"   "}} {
 		f := validRequirementFixture()
 		f.Acceptance = acc
@@ -239,7 +244,7 @@ func TestRequirementAcceptanceMustCarryACriterion(t *testing.T) {
 	}
 }
 
-func TestRequirementAskedByAndTitleAndDateRequired(t *testing.T) {
+func TestRequirementCoreFieldsRequired(t *testing.T) {
 	cases := map[string]func(*requirementFixture){
 		"asked-by": func(f *requirementFixture) { f.AskedBy = "" },
 		"title":    func(f *requirementFixture) { f.Title = "" },
@@ -260,11 +265,11 @@ func TestRequirementAskedByAndTitleAndDateRequired(t *testing.T) {
 	}
 }
 
-// TestRequirementSatisfiedStatusNeedsSatisfiedBy is the entry's one
+// TestRequirementSatisfiedNeedsRef is the entry's one
 // internal-consistency rule: a satisfaction CLAIM must say what is claimed to
 // satisfy it. It is not a traceability check — nothing here asks whether the
 // named brief exists, let alone whether it met the criteria (registers-v1 §6.4).
-func TestRequirementSatisfiedStatusNeedsSatisfiedBy(t *testing.T) {
+func TestRequirementSatisfiedNeedsRef(t *testing.T) {
 	f := validRequirementFixture()
 	f.Status = requirementStatusSatisfied
 	problems := requirementRegisterProblems(requirementRoot(t, f))
@@ -283,7 +288,7 @@ func TestRequirementSatisfiedStatusNeedsSatisfiedBy(t *testing.T) {
 	}
 }
 
-func TestRequirementSatisfiedByMustBeTypedBriefID(t *testing.T) {
+func TestRequirementSatisfiedByTyped(t *testing.T) {
 	f := validRequirementFixture()
 	f.Status = requirementStatusSatisfied
 	f.SatisfiedBy = []string{"the traceability brief"}
@@ -305,10 +310,10 @@ func TestRequirementAbsentRegisterIsClean(t *testing.T) {
 	}
 }
 
-// TestRequirementUnreadableRegisterIsNotEmpty is the three-state rule: an
+// TestRequirementUnreadableIsNotEmpty is the three-state rule: an
 // unreadable register is a could-not-check and must NOT be rounded down to "no
 // entries". Skipped when the test process can read anything regardless (root).
-func TestRequirementUnreadableRegisterIsNotEmpty(t *testing.T) {
+func TestRequirementUnreadableIsNotEmpty(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("running as root: a 0o000 directory is still readable, so the could-not-check cannot be staged")
 	}
@@ -394,11 +399,11 @@ facts:
 	return path
 }
 
-// TestRequirementSatisfiesParsesUnderBriefV1 pins the schema decision: the key
+// TestRequirementCiteParsesOnV1 pins the schema decision: the key
 // rides the EXISTING brief-v1 schema. Brief-schema evolution fails closed, so
 // minting a new schema value for one optional key would refuse the whole tree on
 // every pinned consumer that had not upgraded yet.
-func TestRequirementSatisfiesParsesUnderBriefV1(t *testing.T) {
+func TestRequirementCiteParsesOnV1(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "docs", "streams", "sdlc")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -416,7 +421,7 @@ func TestRequirementSatisfiesParsesUnderBriefV1(t *testing.T) {
 	}
 }
 
-func TestRequirementSatisfiesWrongTypeIsParseError(t *testing.T) {
+func TestRequirementCiteWrongType(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "docs", "streams", "sdlc")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -427,10 +432,10 @@ func TestRequirementSatisfiesWrongTypeIsParseError(t *testing.T) {
 	}
 }
 
-// TestRequirementSatisfiesAbsenceIsNeverFlagged and its malformed-ref twin are
+// TestRequirementCiteAbsenceIsFree and its malformed-ref twin are
 // the two halves of "reserved, not gating": absence costs nothing, a present ref
 // is shape-checked, and carrying the key produces a NOTICE rather than silence.
-func TestRequirementSatisfiesAbsenceIsNeverFlagged(t *testing.T) {
+func TestRequirementCiteAbsenceIsFree(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "docs", "streams", "sdlc")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -447,7 +452,7 @@ func TestRequirementSatisfiesAbsenceIsNeverFlagged(t *testing.T) {
 	}
 }
 
-func TestRequirementSatisfiesMalformedRefIsFlagged(t *testing.T) {
+func TestRequirementCiteMalformedFlagged(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "docs", "streams", "sdlc")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -461,7 +466,7 @@ func TestRequirementSatisfiesMalformedRefIsFlagged(t *testing.T) {
 	}
 }
 
-func TestRequirementSatisfiesPresentEmitsReservedNotice(t *testing.T) {
+func TestRequirementCiteEmitsNotice(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "docs", "streams", "sdlc")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
