@@ -46,7 +46,7 @@ it on day one.
 | `deskscanbody` | `emit`, `check` — derives the issue-loop scan PR title/body from the branch diff (#685) | local-only (git read) | no |
 | `deskevidence` | `commit` — Evidence via the Contents API, as the verifier App | outward write | yes |
 | `deskrelease` | `cut <tag>` — create-only tag ref, as the desk App | outward write | yes |
-| `deskclaim` | `acquire`, `release`, `list` — the flock-backed claimable-action lock | local-only (claims dir) | no |
+| `deskclaim` | `acquire`, `release`, `list`, `stale` — the flock-backed claimable-action lock | local-only (claims dir) | no |
 | `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
 | `opmetrics` | (no verbs) — operator-layer collector: reads transcripts/beacons/claims, writes one **aggregates-only** day-file | local-only (strictly read-only against every input) | no |
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); each takes `--dry-run` to report the hook plan without touching anything | local-only | no |
@@ -3280,16 +3280,70 @@ mutual-exclusion **LOCK**: it decides who owns a handoff so two racers cannot bo
 route, file, close, or verify the same item.
 
 ```bash
-deskclaim acquire --kind dispatch --item stream-a/01 [--branch B] [--owner O]
+deskclaim acquire --kind dispatch --item stream-a/01 [--branch B] [--owner O] [--repo R]
 deskclaim release --item stream-a/01
 deskclaim list
+deskclaim stale   --item stream-a/01 [--repo R]
 ```
 
 `acquire` exits **0** when the claim is acquired (a fresh create, or a stale reclaim), **5**
 when a live holder already owns the item (do NOT proceed), and **6** when the lock could not
 be held or the claim could not be read/written. That exit-6 is the load-bearing contract:
 **no path may degrade to "proceed unclaimed / assume free."** A lock this process cannot hold
-is `Unverifiable`, never a silent success.
+is `Unverifiable`, never a silent success. When it takes over a stale claim its stdout says
+`reclaimed` (not `acquired`) and its audit line carries `reclaimed age=<m>m ttl=<m>m
+prior-owner=<o> because=old-no-live-signal`, so a later sweep can see the reclaim happened
+through the tool — under the flock — rather than by hand.
+
+### Branch liveness — reclaiming a `--branch` claim through the tool (`stale` + the probe)
+
+A claim recorded with `--branch` is protected from age-only reclaim: `deskkit.isStale` will not
+steal it unless a probe can PROVE the branch is no longer doing live work. Before the probe was
+wired into the CLI, no such proof was ever supplied, so **every `--branch` claim was
+un-reclaimable through the tool at any age**, and the only exit left was a hand-delete of the
+claim file — which bypasses the directory-wide `flock` that closes double-dispatch. **A
+hand-delete of a claim file is never the remedy; run `deskclaim stale` then `deskclaim acquire`
+instead** — both take the lock, both leave an audit line.
+
+`deskclaim stale` is the **read-only** verdict — it computes exactly what an `acquire` would
+decide but never acquires, releases, or rewrites (the claim file's bytes and mtime are
+untouched). It prints one line:
+
+```
+item=<I> age=<m>m ttl=<m>m branch=<B|-> holder=<owner> verdict=<stale|live|unreadable> because=<…>
+```
+
+| `verdict` | exit | meaning |
+|-----------|------|---------|
+| `stale`      | **0** | reclaimable — old, and every readable liveness signal says the branch is inactive |
+| `live`       | **5** | do NOT reclaim — inside the TTL, or a signal proves the branch/session is alive, or a required signal could not be read |
+| `unreadable` | **6** | the claim is missing (nothing to reclaim) or could not be read — never reported as stale |
+
+The `because` vocabulary (the reason for the verdict):
+
+| `because` | verdict | why |
+|-----------|---------|-----|
+| `age-under-ttl`             | live  | the claim is younger than its TTL (`deskkit.DefaultStaleClaim` = 120m); the age floor decides before the probe runs |
+| `branch-checked-out:<path>` | live  | the branch is checked out in a registered worktree of `--repo` at `<path>` |
+| `beacon-live`               | live  | the owner session re-stamped its roster beacon within the 60-minute freshness window |
+| `no-repo-cannot-prove`      | live  | a required liveness signal could not be read — `--repo` is absent or not a git repo, or the roster beacon dir is unreadable — so inactivity cannot be proven (fail-closed) |
+| `old-no-live-signal`        | stale | old, and every readable signal says the branch is not doing live work — reclaimable |
+
+**Fail-closed composition (the load-bearing rule).** A branch is judged INACTIVE only when
+EVERY signal the probe can actually read says so; a signal it could not look at counts as
+ACTIVE. The probe reads two signals and never contacts the forge: (1) is the branch checked
+out in a registered worktree of `--repo` (`git worktree list --porcelain`)? (2) does the
+claim's owner session have a fresh roster beacon? The only path to `stale` is: `--repo` is a
+readable git repo **and** the branch is checked out in none of its worktrees **and** the
+beacon dir is readable **and** the owner's beacon is gone. A branch that exists only on a
+remote — a worktree on another machine — is invisible to the local `git worktree list`; that
+is why the beacon is a second, independent signal, and why an unreadable beacon dir keeps the
+claim `live` rather than stealing it.
+
+**Scope boundary.** This probe governs only the machine-local claim files under the config
+home's `claims/` dir. The `dispatch` kind's cross-machine form — the forge ref
+`refs/dispatch/*` written by `tools/dispatch-claim.sh` — is OUT OF SCOPE: its reclaim is a
+forge-side decision with no TTL in this library, and `deskclaim stale`/`acquire` never touch it.
 
 **Why a binary and not a shell line (the #146 close).** The atomic-claim idiom used to live
 in a shell `(set -C; … > "$f")`. The `writeguard` hook blocks the `>` redirect, so an agent

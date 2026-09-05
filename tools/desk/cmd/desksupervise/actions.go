@@ -42,6 +42,20 @@ type reclaimFunc func(claim claimRecord) error
 // injects a recording fake.
 type fileBlockedTimeoutFunc func(claim claimRecord) error
 
+// armRunStopFunc arms the per-run stop flag for a claim before its reclaim, so a still-live
+// wedged worker is halted by deskkit.Guard on its next desk verb even after its claim is
+// freed for re-dispatch (Layer A of the two-layer per-run stop). Production writes the state-dir
+// flag through deskkit.ArmRunStop; a test injects a recording fake — arming is a real
+// filesystem write with real consequences (it can STOP a production run), so it is a seam
+// for the same reason reclaim and fileBlockedTimeout are.
+type armRunStopFunc func(claim claimRecord, reason string) error
+
+// doArmRunStop is the production armRunStopFunc: write the STOP.run.<key> flag through the
+// single deskkit writer so its format has one author.
+func doArmRunStop(claim claimRecord, reason string) error {
+	return deskkit.ArmRunStop(claim.Key, reason)
+}
+
 // doReclaim is the production reclaimFunc: obtain the forge that serves the claim's repo
 // through deskkit.ForgeFor (the single construction site, which resolves the forge and reads
 // the resolved role's already-minted token from custody) and delete the `dispatch/<key>` ref
@@ -119,14 +133,22 @@ func doFileBlockedTimeout(claim claimRecord) error {
 // runAction executes (or, under dryRun, only PRINTS) the action a Disposition implies, and
 // journals the decision when it actually ran. It is the single place sweep calls into for
 // side effects, so the dry-run suppression lives in exactly one function.
-func runAction(claim claimRecord, disp loopengine.Disposition, dryRun bool, reclaim reclaimFunc, fileBT fileBlockedTimeoutFunc, runTag string) (action string, err error) {
+func runAction(claim claimRecord, disp loopengine.Disposition, dryRun bool, reclaim reclaimFunc, fileBT fileBlockedTimeoutFunc, arm armRunStopFunc, runTag string) (action string, err error) {
 	switch disp {
 	case loopengine.ReclaimNeverStarted, loopengine.ReclaimHeartbeat:
 		action = "RECLAIM-ELIGIBLE"
 		if dryRun {
-			fmt.Fprintf(os.Stderr, "[dry-run] would release dispatch claim %s (%s)\n", claim.Key, disp)
+			fmt.Fprintf(os.Stderr, "[dry-run] would arm STOP.run.%s then release dispatch claim %s (%s)\n", claim.Key, claim.Key, disp)
 			fireAfterRun(claim, true)
 			return action, nil
+		}
+		// Arm the per-run stop BEFORE releasing the claim. A NEVER-STARTED / HEARTBEAT-EXPIRED
+		// classification is the OBSERVER's evidence that the run is dead, not proof the worker
+		// PROCESS is gone — so Layer A (Guard refuses the worker's next desk verb) must already
+		// be armed when the claim is freed, or a still-live wedged worker races the fresh
+		// dispatch onto the same item. Order is the property row 6 pins.
+		if aerr := arm(claim, fmt.Sprintf("desksupervise reclaim: %s %s (%s)", disp, claim.Key, runTag)); aerr != nil {
+			return action, aerr
 		}
 		if rerr := reclaim(claim); rerr != nil {
 			return action, rerr

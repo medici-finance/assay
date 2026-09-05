@@ -1,0 +1,2 @@
+### Added
+- `deskclaim` gains a fail-closed branch-liveness probe and a read-only `stale` verb, so a claim recorded with `--branch` can be reclaimed through the tool (under the directory-wide lock) instead of a hand-delete that bypasses it. A branch is INACTIVE (reclaimable) only when every readable signal — a worktree checkout and the owner's roster beacon — says so; any unreadable signal is treated as ACTIVE. `stale` reports 0 (none) / 5 (live) / 6 (unreadable) and never mutates the claim.

@@ -20,6 +20,14 @@ name: forge-surface-control
 #   - THE REGISTER RATCHET (forgeban's own tests). The permit list may not grow
 #     without an in-tree edit, may not keep a row that matches no call site, and
 #     may not shrink without the ceiling coming down with it.
+#   - THE SINGLE CONSTRUCTION SITE (deskkit's TestForgeSingleConstructionSite).
+#     An AST walk over every shipped Go file under tools/desk asserting that a
+#     `GitHubForge{}` / `GitLabForge{}` literal appears in exactly one file,
+#     forgeresolve.go. This is the third layer of the same closed surface: the
+#     ban and the shape check constrain how a backend may be REACHED, this one
+#     constrains where a backend may be BUILT. Without it the surface is
+#     bypassed by constructing a backend inline — a caller that skips the
+#     resolver skips its auth, base-URL and repo-to-forge mapping too.
 #
 # WHY A DEDICATED JOB, in the same shape and for the same reason as
 # leaksweep-control.yml: ci.yml deliberately runs `go build` + `go vet` only and
@@ -84,14 +92,15 @@ jobs:
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
 
-      # The ban and the shape check, from their home module. An unregistered
-      # forge-CLI invocation, an unregistered unresolved exec site, a stale
-      # register row, a generic method on the interface, or an exported method
-      # outside the frozen surface each fail the test and redden the job.
-      - name: Shell-exec ban + no-passthrough shape check
+      # The ban, the shape check and the construction-site check, from their home
+      # module. An unregistered forge-CLI invocation, an unregistered unresolved
+      # exec site, a stale register row, a generic method on the interface, an
+      # exported method outside the frozen surface, or a backend literal built
+      # outside forgeresolve.go each fail the test and redden the job.
+      - name: Shell-exec ban + no-passthrough shape check + single construction site
         run: |
           set -euo pipefail
           go version
           cd tools/desk
           go test ./internal/forgeban/ -count=1 -v
-          go test ./internal/deskkit/ -run 'TestNoForgeCLIShellout|TestForgeNoPassthrough' -count=1 -v
+          go test ./internal/deskkit/ -run 'TestNoForgeCLIShellout|TestForgeNoPassthrough|TestForgeSingleConstructionSite' -count=1 -v

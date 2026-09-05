@@ -6,8 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
+
+// noopArm is the arm seam for tests that do not assert on arming; a test that DOES (the
+// arm-before-release order) injects its own recording arm instead.
+func noopArm(claimRecord, string) error { return nil }
 
 func mustParseTS(t *testing.T, s string) time.Time {
 	t.Helper()
@@ -46,7 +51,7 @@ func TestSweep_DryRunNeverCallsActions(t *testing.T) {
 	now := mustParseTS(t, "2026-09-02T12:00:00Z")
 	var out bytes.Buffer
 
-	results, anyBlind, err := sweep(claims, heartbeatDeadObs(), loopengine.DefaultLivenessPolicy(), now, true, reclaim, fileBT, &out)
+	results, anyBlind, err := sweep(claims, heartbeatDeadObs(), loopengine.DefaultLivenessPolicy(), now, true, reclaim, fileBT, noopArm, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -79,7 +84,7 @@ func TestSweep_NonDryRunCallsReclaim(t *testing.T) {
 	now := mustParseTS(t, "2026-09-02T12:00:00Z")
 	var out bytes.Buffer
 
-	if _, _, err := sweep(claims, heartbeatDeadObs(), loopengine.DefaultLivenessPolicy(), now, false, reclaim, fileBT, &out); err != nil {
+	if _, _, err := sweep(claims, heartbeatDeadObs(), loopengine.DefaultLivenessPolicy(), now, false, reclaim, fileBT, noopArm, &out); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if calls != 1 {
@@ -103,7 +108,7 @@ func TestSweep_BlindNeverActs(t *testing.T) {
 	now := mustParseTS(t, "2026-09-02T12:00:00Z")
 	var out bytes.Buffer
 
-	results, anyBlind, err := sweep(claims, blindSource, loopengine.DefaultLivenessPolicy(), now, false, reclaim, fileBT, &out)
+	results, anyBlind, err := sweep(claims, blindSource, loopengine.DefaultLivenessPolicy(), now, false, reclaim, fileBT, noopArm, &out)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -124,6 +129,80 @@ func TestSweep_BlindNeverActs(t *testing.T) {
 	}
 }
 
+// TestTickArmsStopBeforeRelease pins the ORDER property of the per-run stop: a
+// non-dry-run reclaim (NEVER-STARTED / HEARTBEAT-EXPIRED) arms the per-run stop flag BEFORE
+// it releases the claim, so a still-live wedged worker is already halted by Layer A when its
+// claim is freed for re-dispatch. If arming moved after release — or dropped — this ordering
+// (or presence) assertion fails.
+func TestTickArmsStopBeforeRelease(t *testing.T) {
+	var order []string
+	arm := func(c claimRecord, reason string) error {
+		if reason == "" {
+			t.Error("arm was called with an empty reason")
+		}
+		order = append(order, "arm:"+c.Key)
+		return nil
+	}
+	reclaim := func(c claimRecord) error { order = append(order, "release:"+c.Key); return nil }
+	fileBT := func(claimRecord) error { t.Fatal("fileBlockedTimeout must not run for a reclaim"); return nil }
+
+	claims := []claimRecord{heartbeatDeadClaim()} // HEARTBEAT-EXPIRED → RECLAIM-ELIGIBLE
+	now := mustParseTS(t, "2026-09-02T12:00:00Z")
+	var out bytes.Buffer
+
+	if _, _, err := sweep(claims, heartbeatDeadObs(), loopengine.DefaultLivenessPolicy(), now, false, reclaim, fileBT, arm, &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(order) != 2 || order[0] != "arm:x--01" || order[1] != "release:x--01" {
+		t.Fatalf("arm must precede release for a reclaimed run, got %v", order)
+	}
+}
+
+// TestTickDryRunArmsNothing: under --dry-run the reclaim path arms NOTHING (and releases
+// nothing), the same dry-run suppression the reclaim/file seams already have.
+func TestTickDryRunArmsNothing(t *testing.T) {
+	armed := false
+	arm := func(claimRecord, string) error { armed = true; return nil }
+	reclaim := func(claimRecord) error { t.Fatal("dry-run must not release"); return nil }
+	fileBT := func(claimRecord) error { t.Fatal("dry-run must not file"); return nil }
+
+	claims := []claimRecord{heartbeatDeadClaim()}
+	now := mustParseTS(t, "2026-09-02T12:00:00Z")
+	var out bytes.Buffer
+
+	if _, _, err := sweep(claims, heartbeatDeadObs(), loopengine.DefaultLivenessPolicy(), now, true, reclaim, fileBT, arm, &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if armed {
+		t.Fatal("--dry-run must NEVER arm a per-run stop")
+	}
+}
+
+// TestTickProductionArmWritesTheFlag exercises the PRODUCTION arm path (doArmRunStop →
+// deskkit.ArmRunStop) hermetically by pointing HOME at a temp dir, and proves the flag it
+// writes is the one deskkit.ListRunStops reads back.
+func TestTickProductionArmWritesTheFlag(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("DESK_TOOLS_DISABLED", "")
+	reclaim := func(claimRecord) error { return nil }
+	fileBT := func(claimRecord) error { return nil }
+
+	claims := []claimRecord{heartbeatDeadClaim()}
+	now := mustParseTS(t, "2026-09-02T12:00:00Z")
+	var out bytes.Buffer
+
+	if _, _, err := sweep(claims, heartbeatDeadObs(), loopengine.DefaultLivenessPolicy(), now, false, reclaim, fileBT, doArmRunStop, &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	stops, err := deskkit.ListRunStops()
+	if err != nil {
+		t.Fatalf("ListRunStops: %v", err)
+	}
+	if len(stops) != 1 || stops[0].Key != "x--01" {
+		t.Fatalf("production arm did not write the expected flag: %+v", stops)
+	}
+}
+
 // TestSweep_MalformedTierAbortsWholeTick pins the fail-closed config-error path: a claim
 // with an unrecognised tier aborts the tick as could-not-check rather than guessing a
 // default tier (which would silently apply the wrong wall cap).
@@ -132,7 +211,7 @@ func TestSweep_MalformedTierAbortsWholeTick(t *testing.T) {
 	always := func(claimRecord) (resolvedObservation, error) { return resolvedObservation{observed: true}, nil }
 	var out bytes.Buffer
 
-	_, _, err := sweep(claims, always, loopengine.DefaultLivenessPolicy(), time.Now(), true, nil, nil, &out)
+	_, _, err := sweep(claims, always, loopengine.DefaultLivenessPolicy(), time.Now(), true, nil, nil, noopArm, &out)
 	if err == nil {
 		t.Fatal("an unrecognised tier must abort the tick, not silently proceed")
 	}
@@ -194,7 +273,7 @@ func TestSweep_AllFixtureScenarios(t *testing.T) {
 
 			// sweep() itself never errors on a blind claim — it only sets anyBlind=true;
 			// mapping that to exit 6 is tick.go's job (cmdTick), not sweep's.
-			_, anyBlind, serr := sweep(claims, fixtureObservationSource(obsByKey), loopengine.DefaultLivenessPolicy(), now, true, noopReclaim, noopFile, &out)
+			_, anyBlind, serr := sweep(claims, fixtureObservationSource(obsByKey), loopengine.DefaultLivenessPolicy(), now, true, noopReclaim, noopFile, noopArm, &out)
 			if serr != nil {
 				t.Fatalf("unexpected error: %v", serr)
 			}

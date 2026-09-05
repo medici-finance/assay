@@ -87,7 +87,7 @@ func cmdTick(args []string) (err error) {
 		obsSource = liveObservationSource(loopengine.HouseProbes())
 	}
 
-	results, anyBlind, serr := sweep(claims, obsSource, pol, now, *dryRun, doReclaim, doFileBlockedTimeout, os.Stdout)
+	results, anyBlind, serr := sweep(claims, obsSource, pol, now, *dryRun, doReclaim, doFileBlockedTimeout, doArmRunStop, os.Stdout)
 	if serr != nil {
 		return serr
 	}

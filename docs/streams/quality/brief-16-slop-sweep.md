@@ -174,6 +174,24 @@ facts:
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner). -->
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-04 opus-4.8[1m]-verifier (verify-desk dispatch), merged main 4e500df
+
+Runner != implementer. Offline (KUBECONFIG=/dev/null). gate: model, risk {all no}, irreversible: no.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | cd qualgen && go build ./... && go vet ./... | 0 | clean build + vet | 2026-09-04 | opus-4.8[1m]-verifier |
+| 2 | cd qualgen && go test ./... | 0 | all 11 packages ok (qualgen, adapters, attribution, consumers, dorajoin, filer, m4, reflex, riskscore, telemetry, verifier) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 3 | cd qualgen && go test -run TestSweep_FixtureRepo_EndToEnd -v | 0 | PASS — report names planted dead-fn path + rule | 2026-09-04 | opus-4.8[1m]-verifier |
+| 4 | cd qualgen && go test -run TestSweep_EvidenceFreeVerdictNotConfirmed -v | 0 | PASS — evidence-free verdict -> could-not-verify (never silent confirm) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 5 | cd qualgen && go test -run TestSweep_RerunSkipsAdjudicated -v | 0 | PASS — rerun sends 0 to verifier | 2026-09-04 | opus-4.8[1m]-verifier |
+| 6 | cd qualgen && go test -run TestSweep_TargetTreeUnmodified -v | 0 | PASS — target tree byte-identical | 2026-09-04 | opus-4.8[1m]-verifier |
+| 7 | cd qualgen && go test -run TestSweep_NoToolsConfigured_CouldNotMeasure -v | 0 | PASS — empty config -> could-not-measure | 2026-09-04 | opus-4.8[1m]-verifier |
+
+**VERIFY: PASS** — all 7 Verify rows offline-clean; none unrun. Report-only lane (never auto-acts; a human re-adjudicates from verbatim evidence).
+
+**RISK-VALUE: DERIVED** — maxContextBytes = 8*1024 @ qualgen/verdicts.go:26 — caps the file region carried in an agent context pack; 8 KiB is enough surrounding code to adjudicate one lead without ballooning to a runaway module, well within any agent prompt budget; reversible knob, degrades fail-safe to could-not-verify if undersized (never a silent confirm, enforced emitter-side per row 4).
+**RISK-VALUE: DERIVED** — contextMarginLines = 8 @ qualgen/verdicts.go:30 — lines of context above/below the flagged region; secondary sizing knob subordinate to maxContextBytes, same fail-safe degradation, no irreversible exposure.
 
 ## Review
 Gate: model (all four risk answers no — OSS, repo-agnostic, read-only against the
