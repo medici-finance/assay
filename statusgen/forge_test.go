@@ -85,7 +85,7 @@ func TestInitScaffoldsGitLabCIForGitLabForge(t *testing.T) {
 	dir := t.TempDir()
 
 	next := captureStdout(t, func() {
-		if code := runInitForge(dir, forgeGitLab); code != 0 {
+		if code := runInitForge(dir, forgeGitLab, false); code != 0 {
 			t.Fatalf("runInitForge(gitlab) exit = %d, want 0", code)
 		}
 	})
@@ -147,7 +147,7 @@ func TestInitScaffoldsGitLabCIForGitLabForge(t *testing.T) {
 // `t.TempDir()` test relies on.
 func TestInitDefaultsToGitHubForUnknownForge(t *testing.T) {
 	dir := t.TempDir()
-	if code := runInitForge(dir, forgeUnknown); code != 0 {
+	if code := runInitForge(dir, forgeUnknown, false); code != 0 {
 		t.Fatalf("runInitForge(unknown) exit = %d, want 0", code)
 	}
 	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(".github/workflows/assay-statusgen.yml"))); err != nil {

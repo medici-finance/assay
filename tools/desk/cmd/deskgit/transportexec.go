@@ -40,8 +40,10 @@ import (
 //   - upload-pack   — names the program run on the "remote" end. For a local-path
 //     remote that end is THIS machine: the proven #1555 RCE.
 //   - exec          — git fetch's own alias for --upload-pack. Same vector, other spelling.
-//   - receive-pack  — the push-side twin (and `--exec`'s meaning there). deskgit never
-//     pushes, but the name is refused so the vector cannot arrive by any spelling.
+//   - receive-pack  — the push-side twin (and `--exec`'s meaning there). deskgit push now
+//     PINS `--receive-pack=git-receive-pack` in its own fixed argv (the push-side twin of
+//     fetch's upload-pack pin), so a caller-supplied `--receive-pack` is refused here by
+//     name — the caller can never override the pinned program by any spelling.
 //   - upload-archive — the git-archive-side program-naming option.
 //   - config-env / c — config injection. `-c remote.origin.uploadpack=<prog>` reaches
 //     upload-pack by another route, and `-c core.sshCommand=…` reaches a shell.
@@ -67,6 +69,49 @@ var deniedTransportExec = []string{
 // deskgit verified — defeating the repo gate rather than the exec guard.
 var deniedShortOpts = map[string]string{
 	"C": "changes git's working directory, which would move the act off the verified worktree",
+}
+
+// deniedPushOpts are options that do not name a program (so they are NOT #1555
+// transport-exec vectors — checkTransportExec's message would be wrong for them) but that
+// would widen `deskgit push` past its fixed argv: change what the push writes, or skip the
+// pre-push hook. Each is refused by NAME with its OWN reason, before the FlagSet, so the
+// audit line names the exact property that was attempted and the guard can be tested by
+// name rather than passing incidentally as "unknown flag". `receive-pack` is NOT here — it
+// names a program and is already refused by deniedTransportExec, which cmdPush also runs.
+//
+// Matching is on the option name with the same bidirectional prefix rule as the
+// transport-exec table, because git honours unambiguous long-option abbreviations
+// (`--force` ← `--f` is refused, and so is any extension).
+// `force` also covers `--force-with-lease` via the extension half of the prefix rule.
+var deniedPushOpts = map[string]string{
+	"force":     "would overwrite the remote ref non-fast-forward — deskgit push only fast-forwards the current branch",
+	"delete":    "would delete the remote ref — deskgit push only advances the current branch's own ref",
+	"prune":     "would delete remote refs absent locally — deskgit push touches only the current branch",
+	"mirror":    "would force every local ref onto the remote — deskgit push touches only the current branch",
+	"tags":      "would push tags — deskgit push moves only the current branch's ref",
+	"no-verify": "would skip the pre-push hook (deskpushguard) — deskgit never bypasses it",
+}
+
+// checkPushSafety refuses, BY NAME and before the FlagSet, any argv token naming an option
+// that would push past `deskgit push`'s fixed argv (a forced/deleting/hook-skipping push).
+// It is the push-side twin of checkTransportExec; cmdPush runs BOTH. Returns nil when no
+// token is denied.
+func checkPushSafety(args []string) error {
+	for _, arg := range args {
+		name := optionName(arg)
+		if name == "" {
+			continue
+		}
+		for denied, why := range deniedPushOpts {
+			if strings.HasPrefix(denied, name) || strings.HasPrefix(name, denied) {
+				return deskkit.Refused(fmt.Sprintf(
+					"refused: %q names the option --%s, which %s. deskgit push builds a fixed argv "+
+						"and passes no caller flag to git; the option is refused by name as well",
+					arg, denied, why))
+			}
+		}
+	}
+	return nil
 }
 
 // optionName reduces an argv token to the option name it denotes, or "" if the token is

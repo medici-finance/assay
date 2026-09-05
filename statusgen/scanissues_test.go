@@ -177,11 +177,21 @@ func TestScanIssuesPlan(t *testing.T) {
 		// example-org/examples is the failing repo (below) — its data is never read.
 	}
 
-	plans, closeOuts, notices := planScan(root, streams, fixtureLister(data, "example-org/examples"), blessAll)
+	plans, closeOuts, notices, skipped := planScan(root, streams, fixtureLister(data, "example-org/examples"), blessAll)
 
 	// A one-repo gh failure is a NOTICE, and the rest of the scan still ran.
 	if !hasProblem(notices, "examples", "skipped") {
 		t.Errorf("expected a NOTICE for the failed examples repo, got: %v", notices)
+	}
+
+	// The unread repo is ALSO recorded structurally so the caller can distinguish
+	// a partial scan from a clean board (#186) — a NOTICE alone is swallowed
+	// by exit 0.
+	if len(skipped) != 1 || skipped[0].Repo != "example-org/examples" {
+		t.Fatalf("expected exactly one skipped repo (example-org/examples), got: %+v", skipped)
+	}
+	if skipped[0].Reason == "" {
+		t.Error("skipped repo carries no reason — the caller cannot name why it went unread")
 	}
 
 	// No close-outs: all placeholders are todo and their issues are open.
@@ -299,10 +309,79 @@ func TestScanIssuesEmittedFilesRoundTrip(t *testing.T) {
 	// creates nothing.
 	streams2, _, _ := loadStreams(root)
 	attachPlaceholders(streams2)
-	plans2, _, _ := planScan(root, streams2, list, blessAll)
+	plans2, _, _, _ := planScan(root, streams2, list, blessAll)
 	if len(plans2) != 0 {
 		t.Errorf("re-scan should be idempotent, but planned %d: %+v", len(plans2), plans2)
 	}
+}
+
+// TestScanIssuesPartialReadIsCouldNotCheck pins the #186 fix: a run that
+// could not read one or more scanned repos (rate limit / 404 / auth) must NOT be
+// mistaken for a clean read of an empty world. It must:
+//   - exit on the could-not-check code (2), never 0, even when the readable repos
+//     yielded no changes;
+//   - NOT print the byte-identical clean-board line a genuinely empty scan prints;
+//   - print the read/skipped summary naming the unread repo and its reason.
+//
+// The positive control at the end proves a fully-readable empty scan still exits 0
+// and DOES print the clean-board line — so the guard distinguishes the two states
+// rather than reddening every empty run.
+func TestScanIssuesPartialReadIsCouldNotCheck(t *testing.T) {
+	newRoot := func() string {
+		root := t.TempDir()
+		if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
+			t.Fatal(err)
+		}
+		return root
+	}
+	// No open issues anywhere: readable repos genuinely have nothing to do, so the
+	// ONLY difference between the two runs below is whether a repo went unread.
+	empty := map[string][]ghIssue{}
+	cleanBoardLine := "no changes — nothing to create or retire"
+
+	for _, mode := range []struct {
+		name   string
+		dryRun bool
+	}{{"dry-run", true}, {"write", false}} {
+		t.Run(mode.name+"/partial", func(t *testing.T) {
+			var code int
+			out := captureStdout(t, func() {
+				// One configured repo returns an error — the rate-limit / unresolvable case.
+				code = runScanIssues(newRoot(), mode.dryRun,
+					fixtureLister(empty, "example-org/examples"), nilCommentLister, blessAll)
+			})
+			if code != 2 {
+				t.Fatalf("partial read exited %d, want 2 (could-not-check) — a swallowed skip reads as a clean empty world (#186)", code)
+			}
+			if strings.Contains(out, cleanBoardLine) {
+				t.Errorf("partial read printed the clean-board line — it is byte-identical to a genuinely clean board and hides the unread repo:\n%s", out)
+			}
+			if !strings.Contains(out, "example-org/examples") {
+				t.Errorf("read/skipped summary does not name the unread repo:\n%s", out)
+			}
+			if !strings.Contains(out, "skipped") {
+				t.Errorf("run did not report any repo as skipped:\n%s", out)
+			}
+		})
+	}
+
+	// Positive control: with EVERY repo readable and empty, the run is a genuine
+	// clean board — exit 0, and the clean-board line IS printed.
+	t.Run("clean/full-read", func(t *testing.T) {
+		var code int
+		out := captureStdout(t, func() {
+			code = runScanIssues(newRoot(), true, fixtureLister(empty, ""), nilCommentLister, blessAll)
+		})
+		if code != 0 {
+			t.Fatalf("fully-readable empty scan exited %d, want 0", code)
+		}
+		if !strings.Contains(out, cleanBoardLine) {
+			t.Errorf("genuinely clean board must still print the clean-board line:\n%s", out)
+		}
+		if !strings.Contains(out, "0 skipped") {
+			t.Errorf("read/skipped summary must report 0 skipped on a clean run:\n%s", out)
+		}
+	})
 }
 
 // TestScanIssuesDryRunWritesNothing — --dry-run lists plans but writes no files.
@@ -832,7 +911,7 @@ func TestCloseOutRetire(t *testing.T) {
 		},
 	}
 
-	plans, closeOuts, notices := planScan(root, streams, fixtureLister(data, ""), blessAll)
+	plans, closeOuts, notices, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
 	_ = notices
 
 	// Issue 700 is unhandled → created.
@@ -865,7 +944,7 @@ func TestCloseOutReactivate(t *testing.T) {
 		},
 	}
 
-	plans, closeOuts, notices := planScan(root, streams, fixtureLister(data, ""), blessAll)
+	plans, closeOuts, notices, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
 	_ = notices
 
 	// Issue 601 already has a placeholder → no creation plan.
@@ -900,7 +979,7 @@ func TestCloseOutCreateAndRetireOneSweep(t *testing.T) {
 		},
 	}
 
-	plans, closeOuts, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
+	plans, closeOuts, _, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
 
 	// Creation: issue 603 → new placeholder.
 	if findPlan(plans, scanHomeRepo(), 603) == nil {
@@ -935,7 +1014,7 @@ func TestCloseOutAlreadyDoneSweepsToArchive(t *testing.T) {
 		scanHomeRepo(): {},
 	}
 
-	_, closeOuts, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
+	_, closeOuts, _, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
 
 	// Already done + at the root → sweep it into done/ (no frontmatter change).
 	c := findCloseOut(closeOuts, scanHomeRepo(), 604)
@@ -961,7 +1040,7 @@ func TestCloseOutAlreadyTodoSkipsReactivate(t *testing.T) {
 		},
 	}
 
-	_, closeOuts, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
+	_, closeOuts, _, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
 
 	// Already todo with open issue → no close-out action.
 	if findCloseOut(closeOuts, scanHomeRepo(), 605) != nil {
@@ -1227,7 +1306,7 @@ func TestCloseOutBlockedPlaceholderRetired(t *testing.T) {
 		scanHomeRepo(): {},
 	}
 
-	_, closeOuts, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
+	_, closeOuts, _, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
 
 	c := findCloseOut(closeOuts, scanHomeRepo(), 630)
 	if c == nil || c.Action != "retire" {
@@ -1267,7 +1346,7 @@ func TestCloseOutRetireLabelGained(t *testing.T) {
 		},
 	}
 
-	plans, closeOuts, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
+	plans, closeOuts, _, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
 
 	// Still excluded from creation (would only matter if no placeholder
 	// existed yet) and, since one DOES exist, no re-creation either.
@@ -1299,7 +1378,7 @@ func TestCloseOutRetireLabelGainedIdempotentSweeps(t *testing.T) {
 		},
 	}
 
-	_, closeOuts, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
+	_, closeOuts, _, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
 
 	c := findCloseOut(closeOuts, scanHomeRepo(), 641)
 	if c == nil || c.Action != "sweep" {
@@ -1326,7 +1405,7 @@ func TestCloseOutReactivateAfterLabelRemoved(t *testing.T) {
 		},
 	}
 
-	plans, closeOuts, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
+	plans, closeOuts, _, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
 
 	if findPlan(plans, scanHomeRepo(), 642) != nil {
 		t.Error("issue 642 already has a placeholder — must not be re-created")
@@ -1506,7 +1585,7 @@ func TestScanTrustGateQuarantine(t *testing.T) {
 		return false, nil
 	}
 
-	plans, _, notices := planScan(root, streams, fixtureLister(data, ""), bless)
+	plans, _, notices, _ := planScan(root, streams, fixtureLister(data, ""), bless)
 
 	if len(plans) != 1 || plans[0].Issue != 401 {
 		t.Fatalf("expected exactly the trusted issue 401 planned, got %+v", plans)
@@ -1528,7 +1607,7 @@ func TestScanTrustGateBlessedCreates(t *testing.T) {
 			{Number: 402, Title: "external but blessed", Author: ghAuthor{Login: "external-user"}, Labels: lbl("bug")},
 		},
 	}
-	plans, _, notices := planScan(root, streams, fixtureLister(data, ""), blessAll)
+	plans, _, notices, _ := planScan(root, streams, fixtureLister(data, ""), blessAll)
 	if len(plans) != 1 || plans[0].Issue != 402 {
 		t.Fatalf("blessed external issue must be planned; plans=%+v notices=%v", plans, notices)
 	}
@@ -1544,7 +1623,7 @@ func TestScanTrustGateUnverifiableFailsClosed(t *testing.T) {
 		},
 	}
 	bless := func(string, int) (bool, error) { return false, fmt.Errorf("simulated network failure") }
-	plans, _, notices := planScan(root, streams, fixtureLister(data, ""), bless)
+	plans, _, notices, _ := planScan(root, streams, fixtureLister(data, ""), bless)
 	if len(plans) != 0 {
 		t.Fatalf("unverifiable blessing must not create a placeholder; got %+v", plans)
 	}
@@ -1562,7 +1641,7 @@ func TestScanTrustGateEmptyAuthorQuarantined(t *testing.T) {
 			{Number: 403, Title: "ghost author", Labels: lbl("bug")},
 		},
 	}
-	plans, _, notices := planScan(root, streams, fixtureLister(data, ""), blessNone)
+	plans, _, notices, _ := planScan(root, streams, fixtureLister(data, ""), blessNone)
 	if len(plans) != 0 {
 		t.Fatalf("empty-author issue must be quarantined; got %+v", plans)
 	}

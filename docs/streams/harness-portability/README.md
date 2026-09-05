@@ -185,7 +185,7 @@ record — that is a follow-on, not a claim this re-home makes. Statuses therefo
 | 07 | [Adoption docs, freshness registration, live Codex smoke protocol + first run](./brief-07-adoption-live-smoke.md) | 4 | M | implemented | — | — |
 | 09 | [jcode desk-harness spike — measured parity + fleet-density for driving desks](./brief-09-jcode-desk-harness-spike.md) | 0 | L | implemented | — | — |
 | 10 | [SpecMem portable-memory spike — one stream's registers across two harnesses](./brief-10-specmem-portable-memory-spike.md) | 0 | M | implemented | — | — |
-| 11 | [Durable-monitor capability + residual harness-token prose-audit](./brief-11-durable-monitor-capability.md) | 3 | M | todo | — | — |
+| 11 | [Durable-monitor capability + residual harness-token prose-audit](./brief-11-durable-monitor-capability.md) | 3 | M | implemented | — | — |
 | 12 | [Cursor — the third harness column (ground-truth + binding + generator verb + public column)](./brief-12-cursor-third-column.md) | 5 | L | implemented | — | — |
 | 13 | [Cursor live-desk-smoke protocol + first run](./brief-13-cursor-live-desk-smoke.md) | 6 | M | todo | — | — |
 

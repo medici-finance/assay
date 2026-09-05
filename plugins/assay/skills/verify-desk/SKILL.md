@@ -10,8 +10,8 @@ pr-review-desk reviews and flips ready → **human:<name> merges** → **verify-
 window) runs each merged brief's Verify table on merged main as a NON-implementer, fills Evidence,
 advances `implemented → verified → done`. Merging is deployment frequency, not completion, and an
 unwatched Awaiting queue is how briefs rot at `implemented`; this loop is the **Change Lead Time** fix
-and the **Change Failure Rate** sensor (`verify-outcomes.jsonl` is its input). It does not run the PR
-monitor — that is pr-review-desk's.
+and the **Change Failure Rate** sensor (`verify-outcomes.jsonl` is its input). It does not run the
+PR event watcher (`capability:durable-monitor`) — that is pr-review-desk's.
 
 **The stream board is a derived, generated surface** (`docs/streams/derived-board/spec.md`) — this
 desk's deliverable is the witness (the Evidence row, the verifyrun log, the App approval); it never
@@ -390,11 +390,17 @@ human ruling re-derived from scratch each time.
 write always completes. Precedence: `DISABLED` (C-6) > `STOP` > `STOP.<name>`. `deskkit.Guard()` enforces
 these independently: a loop that skips its own check is defanged — every outward verb refuses.
 
+The same cadence tick reads the per-claim **armed stops** across in-flight dispatches with
+`desksupervise status --stops` (the liveness observer's runtime snapshot) — so this window sees a
+stop armed on a claim it is verifying, not only the global loop flags above.
+
 ## Liveness contract (binding)
 
 A standing liveness contract binds this window from boot: start the standing
-self-scheduled loop BEFORE the first sweep and keep it ticking for the life of
-the window; every tick re-sweeps this desk's own queue fresh; every relay (a
+self-scheduled loop (`capability:durable-monitor` — best-effort, never the sole
+wake signal; the fixed-cadence board sweep is the real liveness backstop and the
+always-on observability service its durable home) BEFORE the first sweep and keep
+it ticking for the life of the window; every tick re-sweeps this desk's own queue fresh; every relay (a
 cross-session hand-over) is acknowledged or filed, never assumed delivered.
 The desk runs **default-forward** — never ask the driver what to work on next:
 a driver scope instruction narrows preference, not a cage — when the scoped

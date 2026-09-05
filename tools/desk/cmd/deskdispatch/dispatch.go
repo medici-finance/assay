@@ -150,6 +150,11 @@ func dispatch(o dispatchOpts) error {
 		// Step 2 records the run key worktree-locally on a real dispatch; name it here so an
 		// operator can see which STOP.run.<key> would stop this run before launching it.
 		fmt.Printf("  run key (recorded at step %s as assay.runKey): %s\n", stepWorktreeCreate, plan.claimKey)
+		if line, herr := deskkit.HookDryRunLine(deskkit.HookBeforeRun); herr != nil {
+			return herr
+		} else {
+			fmt.Println("  " + line)
+		}
 		prompt, perr := assemblePrompt(o, plan, "")
 		if perr != nil {
 			return perr
@@ -223,6 +228,21 @@ func dispatch(o dispatchOpts) error {
 		o.say("%s WARNING: could not enable extensions.worktreeConfig in %s (%s) — the per-run "+
 			"stop's cooperative layer is off for this run; the desk-window sweep still covers it",
 			stepWorktreeCreate, home, firstLine(ext.stderr))
+	}
+
+	// before_run — runs after the worktree is prepared and BEFORE the prompt is emitted (the
+	// agent's "run"). FATAL failure class: a failure ABORTS the attempt — no prompt is
+	// emitted — and, because this is the one lifecycle point AFTER the durable claim, the
+	// claim is RELEASED so a corrected re-run is not wedged behind a dispatcher that never
+	// dispatched. The hook is the checked form of the KUBECONFIG=/dev/null envelope every
+	// agent is otherwise asked to remember.
+	if _, herr := deskkit.RunHook(deskkit.HookBeforeRun, deskkit.HookEnv{
+		RunKey: plan.claimKey, Worktree: home, Repo: repo, Role: o.kit,
+	}); herr != nil {
+		released := releaseClaim(o, plan.claimScript, plan.claimKey, repo)
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"step before_run: the before_run hook failed, so no prompt is emitted. The claim was %s. Hook: %v",
+			released, herr), herr)
 	}
 
 	prompt, perr := assemblePrompt(o, plan, home)
@@ -519,6 +539,21 @@ func stepClaim(o dispatchOpts, repo, script, claimKey string) error {
 			"step %s: the claim on %s could not be established (%s) — fail closed, NEVER 'assume free'.",
 			stepClaimAcquire, claimKey, firstLine(r.stderr)), r.err)
 	}
+}
+
+// releaseClaim releases the durable claim via the consumer claim script's own `release`
+// verb — the same tool the acquire went through, never a re-implementation. It is used when
+// a lifecycle failure AFTER the claim (a failed before_run hook) must not wedge the item
+// behind a dispatcher that never dispatched. It returns a human phrase for the report; a
+// release that itself fails is surfaced in that phrase rather than swallowed, because a
+// claim this verb believed it released but did not is worse than one it never touched.
+func releaseClaim(o dispatchOpts, script, claimKey, repo string) string {
+	r := runCmd(o.root, script, "release", claimKey, "--repo", repo)
+	if r.err != nil {
+		return "NOT released (release failed: " + firstLine(refusalDetail(r)) + ") — release it by hand: " +
+			script + " release " + claimKey + " --repo " + repo
+	}
+	return "released"
 }
 
 // refusalDetail picks the claim tool's refusal text: its errors go to stderr, its DEDUP

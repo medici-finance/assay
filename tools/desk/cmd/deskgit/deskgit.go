@@ -15,6 +15,41 @@ import (
 // parallel processes).
 var getwd = os.Getwd
 
+// roleTokenForRepo is the seam through which the authenticated `--as` forms resolve a
+// role's App installation token for the effective origin slug. Production binds it to
+// deskkit.RoleTokenForRepo (per-OWNER installation tokens, read from the 0600 file the
+// role already owns); a test replaces it so no real App credential is minted. It returns
+// the token VALUE, the PATH it was read from, and an error — and the token value is never
+// placed in that error, exactly as the real resolver guarantees.
+var roleTokenForRepo = deskkit.RoleTokenForRepo
+
+// sessionTokenRole is the seam for the loop-identity → App-role binding. Production binds
+// it to deskkit.SessionTokenRole (reads $DESK_LOOP); tests set $DESK_LOOP directly, so the
+// seam exists mainly so a token-resolution test can assert the identity check ran BEFORE
+// any token was read (row 4) by leaving roleTokenForRepo fatal.
+var sessionTokenRole = deskkit.SessionTokenRole
+
+// requireBoundRole enforces the `--as <role>` identity rule shared by both authenticated
+// verbs: the role a session names MUST equal the App role its loop identity binds
+// (deskkit.SessionTokenRole). A mismatch is exit 5 (Refused) and — critically — is decided
+// BEFORE any token is read, so a session cannot borrow another role's token by naming it.
+//
+// An EMPTY asRole means the verb runs unauthenticated (fetch's default); the caller decides
+// whether that is allowed (fetch: yes; push: no). This helper only validates a NAMED role.
+func requireBoundRole(verb, asRole string) error {
+	bound, _, err := sessionTokenRole(verb)
+	if err != nil {
+		return err
+	}
+	if asRole != bound {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: --as %q does not match this session's bound token role %q — a session may act "+
+				"only as the role its loop identity binds; it cannot borrow another role's token by naming it",
+			asRole, bound))
+	}
+	return nil
+}
+
 // prNumRe / branchRe bound the values that flow into a constructed refspec. Digits-only
 // for --pr; a single ref-ish token for --branch with no leading dash (arg-injection),
 // no `+` (force), no `:` (second refspec), no `..`/`~`/`^`/`?`/`*`/whitespace.
@@ -114,8 +149,19 @@ func cmdFetch(args []string) (err error) {
 	prune := fs.Bool("prune", false, "also drop remote-tracking refs deleted on origin")
 	prNum := fs.String("pr", "", "fetch pull/<N>/head into local branch pr<N> (digits only)")
 	branch := fs.String("branch", "", "fetch origin's <B> into local branch <B> (not main/master in any case)")
+	asRole := fs.String("as", "", "authenticate as <role> using that role's token file (must match this session's bound role)")
 	if perr := fs.Parse(args); perr != nil {
 		return deskkit.Refused("refused: bad flags — " + perr.Error())
+	}
+
+	// --as identity check FIRST — before any token is read (exit 5 on a role this session's
+	// loop identity does not bind). Without --as, fetch is unchanged: no identity check, no
+	// credential path. The token itself is resolved only after the effective-origin gate
+	// below, since it is minted per OWNER of the slug the gate decides on.
+	if *asRole != "" {
+		if ierr := requireBoundRole("fetch", *asRole); ierr != nil {
+			return ierr
+		}
 	}
 	if fs.NArg() != 0 {
 		// Refusing operands is what stops a raw refspec (`+refs/heads/x:refs/heads/main`,
@@ -218,7 +264,27 @@ func cmdFetch(args []string) (err error) {
 	fetchArgs := append([]string{"fetch"}, fetchHardening...)
 	fetchArgs = append(fetchArgs, tail...)
 
-	out, ferr := runGit(dir, fetchArgs...)
+	// Authenticated form: resolve the role's token for THIS slug (never a caller --repo) and
+	// run through the askpass supply with the ambient helper silenced. The unauthenticated
+	// form (no --as) is byte-for-byte the pre-existing path. fetch is not an outward WRITE
+	// (it takes no rate limit), so --as only adds the credential channel — every fetch guard
+	// above (hardening pins, refmap, effective-URL gate, env scrub) is untouched.
+	var out string
+	var ferr error
+	if *asRole != "" {
+		token, _, terr := roleTokenForRepo(*asRole, repo)
+		if terr != nil {
+			return terr // Unverifiable (exit 6), naming the path searched, never the token
+		}
+		env, argvPrefix, cleanup, aerr := askpassSupply(token)
+		if aerr != nil {
+			return deskkit.Unverifiable("cannot stage credential supply", aerr)
+		}
+		defer cleanup()
+		out, ferr = runGitWithEnv(dir, env, append(append([]string{}, argvPrefix...), fetchArgs...)...)
+	} else {
+		out, ferr = runGit(dir, fetchArgs...)
+	}
 	if ferr != nil {
 		return deskkit.Unverifiable("git fetch failed", ferr)
 	}
@@ -230,6 +296,136 @@ func cmdFetch(args []string) (err error) {
 	// compensating control available: it does not gate anything, but it makes the smuggle
 	// DETECTABLE after the fact instead of invisible.
 	ac.detail = detail + " [origin " + redactURL(originURL) + "]"
+	if out != "" {
+		fmt.Fprintln(os.Stderr, out)
+	}
+	return nil
+}
+
+// cmdPush pushes the CURRENT branch to origin over authenticated transport, from the token
+// file of the role named by --as. Its whole safety rests on a FIXED argv — no caller flag
+// reaches git — exactly as cmdFetch's does. The argv is, invariantly:
+//
+//	git -c credential.helper= push --receive-pack=git-receive-pack origin \
+//	    refs/heads/<B>:refs/heads/<B>
+//
+// where <B> is the current branch (`symbolic-ref --short HEAD`), validated by the same rule
+// --branch uses and never main/master in any case. There is no --force, no --delete, no -o,
+// no --tags, no --no-verify: those are refused BY NAME before the FlagSet (checkPushSafety),
+// and none is in the constructed argv, so none can be reached by any spelling. The
+// `-c credential.helper=` prefix (BEFORE the verb) clears the ambient helper list so only
+// the ephemeral askpass answers; `--receive-pack=git-receive-pack` is the push-side twin of
+// fetch's upload-pack pin, overriding any config/env receive-pack.
+//
+// Unlike fetch, push is an OUTWARD WRITE: it takes the outward-write budget
+// (deskkit.AllowWrite) and its audit line records role/repo/branch — never the token. The
+// pre-push hook (deskpushguard, via core.hooksPath) still runs; no --no-verify is passed.
+func cmdPush(args []string) (err error) {
+	ac := &auditCtx{verb: "push"}
+	defer func() { ac.finalize(err) }()
+
+	// Named refusals FIRST, before the FlagSet — push-safety options (force/delete/…) and
+	// the transport-exec/config-injection options (upload-pack/receive-pack/-c/-C/…). Both
+	// run so each vector is named in the audit line rather than lumped as "unknown flag".
+	if terr := checkPushSafety(args); terr != nil {
+		return terr
+	}
+	if terr := checkTransportExec(args); terr != nil {
+		return terr
+	}
+
+	fs := flag.NewFlagSet("push", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	asRole := fs.String("as", "", "authenticate as <role> using that role's token file (must match this session's bound role)")
+	if perr := fs.Parse(args); perr != nil {
+		return deskkit.Refused("refused: bad flags — " + perr.Error())
+	}
+	if fs.NArg() != 0 {
+		// No positional operands: a raw refspec/remote is exactly the widening the fixed argv
+		// exists to prevent.
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: push takes no positional operands (got %q); it pushes the current branch to origin",
+			strings.Join(fs.Args(), " ")))
+	}
+	if *asRole == "" {
+		return deskkit.Refused("refused: push requires --as <role> — the authenticated transport reads that role's token file")
+	}
+
+	// Identity match — BEFORE any token is read. A role the session's loop identity does not
+	// bind is exit 5 here, with roleTokenForRepo never called.
+	if ierr := requireBoundRole("push", *asRole); ierr != nil {
+		return ierr
+	}
+
+	dir, werr := getwd()
+	if werr != nil {
+		return deskkit.Unverifiable("cannot determine working directory", werr)
+	}
+	if _, terr := runGit(dir, "rev-parse", "--is-inside-work-tree"); terr != nil {
+		return deskkit.Unverifiable("not inside a git worktree", terr)
+	}
+
+	// The current branch is the ONLY thing pushed. A detached HEAD has no branch to name, so
+	// there is nothing to push — refuse (exit 5) rather than guess a ref.
+	branch, berr := runGit(dir, "symbolic-ref", "--short", "HEAD")
+	if berr != nil || branch == "" {
+		return deskkit.Refused("refused: HEAD is detached — there is no current branch to push; check out a branch first")
+	}
+	// Validate the branch by the SAME rules --branch uses, and never push main/master in any
+	// case: the desk never pushes its integration branches through this verb.
+	if !branchRe.MatchString(branch) || isProtectedBranch(branch) {
+		return deskkit.Refused("refused: current branch must be a ref-ish name and not main/master, got " + branch)
+	}
+	if why := branchRejectReason(branch); why != "" {
+		return deskkit.Refused("refused: current branch " + why + ", got " + branch)
+	}
+
+	// Effective-origin gate — identical to fetch: decide on `ls-remote --get-url` (which
+	// expands insteadOf and contacts no remote), refuse an unparseable/foreign/out-of-set
+	// origin BEFORE any credential is offered.
+	originURL, oerr := runGit(dir, "ls-remote", "--get-url", "origin")
+	if oerr != nil {
+		return deskkit.Unverifiable("cannot resolve effective origin URL", oerr)
+	}
+	repo, rerr := parseRepo(originURL)
+	if rerr != nil {
+		return deskkit.Refused("refused: cannot parse origin repo from " +
+			redactURL(originURL) + ": " + rerr.Error())
+	}
+	ac.repo = repo
+	if !deskkit.IsAllowedRepo(repo) {
+		return deskkit.Refused("refused: origin " + repo + " is not in the desk-tools repo set")
+	}
+
+	// Outward-write budget — charged BEFORE the credential is read, so a rate-limited push
+	// never touches the token file.
+	if aerr := deskkit.AllowWrite("deskgit", repo, 0); aerr != nil {
+		return aerr
+	}
+
+	// Token for the slug the gate decided on — per OWNER of that slug, never a caller --repo.
+	token, _, terr := roleTokenForRepo(*asRole, repo)
+	if terr != nil {
+		return terr // Unverifiable (exit 6), naming the path searched, never the token
+	}
+
+	env, argvPrefix, cleanup, aerr := askpassSupply(token)
+	if aerr != nil {
+		return deskkit.Unverifiable("cannot stage credential supply", aerr)
+	}
+	defer cleanup()
+
+	pushArgs := append(append([]string{}, argvPrefix...),
+		"push", "--receive-pack=git-receive-pack", "origin",
+		"refs/heads/"+branch+":refs/heads/"+branch)
+	out, perr := runGitWithEnv(dir, env, pushArgs...)
+	if perr != nil {
+		return deskkit.Unverifiable("git push failed", perr)
+	}
+	// Audit records role/repo/branch and the effective origin URL — never the token or its
+	// path's contents. redactURL strips any userinfo from the echoed URL.
+	ac.detail = "pushed " + branch + " -> origin/" + branch + " as " + *asRole +
+		" [origin " + redactURL(originURL) + "]"
 	if out != "" {
 		fmt.Fprintln(os.Stderr, out)
 	}

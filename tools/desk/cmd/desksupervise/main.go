@@ -44,6 +44,8 @@ const usage = `desksupervise — the liveness observer: reclaim a wedged dispatc
 USAGE:
   desksupervise tick [--root DIR] [--repo OWNER/NAME] [--dry-run] [--now RFC3339]
                       [--claims-fixture FILE] [--observations-fixture FILE]
+  desksupervise status [--json] [--stops] [--root DIR] [--repo OWNER/NAME] [--now RFC3339]
+                      [--claims-fixture FILE] [--observations-fixture FILE] [--stops-fixture FILE]
   desksupervise run --interval DUR [--root DIR] [--repo OWNER/NAME] [--dry-run]
   desksupervise stop <key> --reason "..."
   desksupervise status --stops
@@ -65,6 +67,15 @@ the run (idempotent — deskfile's own dedupe makes a repeat filing a no-op) —
 write a journal line. A COULD-NOT-CHECK claim (action=BLIND) is never acted on either way,
 and a tick that saw one exits 6 — the reading is incomplete even though the tick itself
 ran cleanly (see the three-state-instrument rule: could-not-check is never a pass).
+
+status renders the observer's per-claim runtime state as ONE structured record — a human
+table, or (--json) a document validating against schemas/desksupervise-status-v1.json: per
+claim its liveness, the three remaining-time timers, its armed stop (if any), and token
+accounting (could-not-check BY DESIGN — the harness holds usage, no desk read path exists,
+so it is NEVER rendered as zero). --stops filters to claims carrying an armed stop. status
+is a PURE READ (no reclaim, no filing, no journal) and, like tick, exits 6 when any claim
+was COULD-NOT-CHECK this tick. run --interval additionally writes this JSON to
+<StateDir>/supervise/status.json atomically each tick for a local reader.
 
 run --interval DUR loops tick forever (sweep, sleep, sweep), honouring the kill switch /
 STOP flags between ticks and exiting 0 on SIGTERM — mirrors ` + "`deskwt prune --interval`" + `.

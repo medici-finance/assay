@@ -72,52 +72,10 @@ func cmdStop(args []string) (err error) {
 	return nil
 }
 
-const statusUsage = `desksupervise status — read the observer's own state.
-
-USAGE:
-  desksupervise status --stops     list the armed per-run stops (key  armed_at  reason)
-
---stops prints one line per armed STOP.run.<key> flag. It is the desk window's cadence read:
-the sweep lists armed stops and, per harness, stops the dispatched worker for each.`
-
-// cmdStatus implements `desksupervise status --stops`.
-func cmdStatus(args []string) (err error) {
-	for _, a := range args {
-		if a == "-h" || a == "--help" || a == "help" {
-			fmt.Fprintln(os.Stdout, statusUsage)
-			return nil
-		}
-	}
-
-	ac := &auditCtx{verb: "status"}
-	defer func() { ac.finalize(err) }()
-
-	fs := flag.NewFlagSet("status", flag.ContinueOnError)
-	fs.SetOutput(new(strings.Builder))
-	stops := fs.Bool("stops", false, "list the armed per-run stops")
-	if perr := fs.Parse(args); perr != nil {
-		return deskkit.Refused("refused: bad flags: " + perr.Error())
-	}
-	if fs.NArg() != 0 {
-		return deskkit.Refused("refused: status takes no positional arguments")
-	}
-	if !*stops {
-		return deskkit.Refused("refused: status needs a read to perform (e.g. --stops)")
-	}
-
-	list, lerr := deskkit.ListRunStops()
-	if lerr != nil {
-		return deskkit.Unverifiable("could not list per-run stops", lerr)
-	}
-	for _, s := range list {
-		fmt.Fprintf(os.Stdout, "%s\t%s\t%s\n", s.Key, s.ArmedAt.UTC().Format("2006-01-02T15:04:05Z"), s.Reason)
-	}
-	ac.detail = fmt.Sprintf("%d armed per-run stop(s)", len(list))
-	if len(list) == 0 {
-		ac.successResult = deskkit.ResultNoop
-	}
-	return nil
-}
+// The armed per-run stops are surfaced by the `status` verb (status.go): in live mode
+// `desksupervise status [--stops]` reads deskkit.ListRunStops() and renders each armed
+// STOP.run.<key> against its claim — the same registry the desk window's cadence sweep and
+// deskkit.Guard read. `stop` (above) and tick's reclaim classes (actions.go) are the writers.
 
 // firstLineOf collapses a reason to one audit-safe line.
 func firstLineOf(s string) string {

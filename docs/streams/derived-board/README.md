@@ -5,6 +5,7 @@ serves: assay
 status: active
 priority: P1
 track: platform
+board: generated
 issues: []
 ---
 
@@ -33,15 +34,17 @@ other three states, and removes the hand-edited table entirely. See [spec.md](sp
 
 ## Briefs
 
+<!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [brief-v2 spec: derived lifecycle, generated table, public re-stage of brief-rules/template](brief-01-brief-v2-spec.md) | 0 | M | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #156 @ 112b206fee74b470016be325dc7c2dfeff670931) |
-| 02 | [`Brief:` trailer — the PR→brief link, required by `deskpr`, linted on main](brief-02-brief-trailer.md) | 0 | M | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #156 @ 112b206fee74b470016be325dc7c2dfeff670931) |
-| 03 | [`statusgen reconcile` — derive lifecycle state from PRs + witnesses + approvals](brief-03-reconcile-derivation.md) | 1 | L | implemented | — | — |
-| 04 | [generated Briefs table + single-writer lint](brief-04-generated-table.md) | 2 | M | todo | — | — |
-| 05 | [desk skills: reference the brief, never flip the cell (both copies)](brief-05-skill-updates.md) | 1 | S | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #316 @ 7d9ab3f8a772155ef8e4347a16b5f25b421e23e6) |
-| 06 | [v1.0.0 cut: migration op + file, paired-versions, same-tag pin lint](brief-06-v1-migration-and-cut.md) | 3 | M | todo | — | — |
-| 07 | [per-repo rollout + historical backfill as a drift-report PR](brief-07-rollout-backfill.md) | 4 | L | todo | — | — |
+| 01 | [brief-v2 spec — derived lifecycle cells, generated table, reserved graph keys; public re-stage of brief-rules + template](brief-01-brief-v2-spec.md) | 0 | M | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #156 @ 112b206fee74b470016be325dc7c2dfeff670931) |
+| 02 | [`Brief:` trailer — the PR→brief link, required by deskpr create, linted on main](brief-02-brief-trailer.md) | 0 | M | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #156 @ 112b206fee74b470016be325dc7c2dfeff670931) |
+| 03 | [`statusgen reconcile` — derive lifecycle state from PRs, witnesses, approvals and rulings; brief-v2 parser](brief-03-reconcile-derivation.md) | 1 | L | implemented | — | — |
+| 04 | [generated Briefs table in every stream README + single-writer lint + scheduled reconcile PR](brief-04-generated-table.md) | 2 | M | implemented | — | — |
+| 05 | [desk skills — reference the brief, never flip the cell (author-brief, worker-desk, pr-review-desk, verify-desk; public copies)](brief-05-skill-updates.md) | 1 | S | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #316 @ 7d9ab3f8a772155ef8e4347a16b5f25b421e23e6) |
+| 06 | [v1.0.0 — deskmigrate statusgen-regen op, the v0.13.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1](brief-06-v1-migration-and-cut.md) | 3 | M | todo | — | — |
+| 07 | [per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills](brief-07-rollout-backfill.md) | 4 | L | todo | — | — |
+<!-- statusgen:briefs:end -->
 
 ## Critical path
 

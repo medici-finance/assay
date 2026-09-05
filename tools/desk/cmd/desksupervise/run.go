@@ -92,6 +92,17 @@ func cmdRun(args []string) (err error) {
 			return serr
 		}
 		ticks++
+		// Write the runtime snapshot for a local reader, atomically, from THIS tick's own
+		// results (no re-probe — see snapshotFromSweep). A write failure is logged and the loop
+		// continues: status.json is a convenience for a local reader, never a precondition for
+		// the observer's own reclaim work.
+		if statusPath, spErr := statusJSONPath(); spErr == nil {
+			if werr := writeStatusJSON(statusPath, snapshotFromSweep(results, pol, now)); werr != nil {
+				fmt.Fprintf(os.Stderr, "%s desksupervise run: WARNING: could not write %s: %v\n", nowStamp(), statusPath, werr)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "%s desksupervise run: WARNING: could not resolve the status.json path: %v\n", nowStamp(), spErr)
+		}
 		for _, r := range results {
 			switch {
 			case r.Blind:

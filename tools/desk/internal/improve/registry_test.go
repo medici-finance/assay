@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/medici-finance/assay/tools/desk/internal/askassay"
+	"github.com/medici-finance/assay/tools/desk/askassay"
 )
 
 // TestImprovePaneEveryStripDeclaresACompleteSource — no silent caps. A strip

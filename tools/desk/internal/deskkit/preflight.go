@@ -741,32 +741,44 @@ var noreplyRe = regexp.MustCompile(`^(\d+)\+(.+)@users\.noreply\.github\.com$`)
 // doc fix.
 func checkCommitIdentity(p PreflightProbes, role, dir string) Check {
 	const refs = "#638"
-	slug, bound := EffectiveConfig().RoleBots[role]
-	if !bound || strings.TrimSpace(slug) == "" {
+	ident, bound := EffectiveConfig().RoleBotIdentity(role)
+	if !bound {
 		return unchecked(CheckCommitIdentity, "the roster binds no App to role "+role,
-			"add "+role+"=<app-slug>:<bot-user-id> to "+EnvTrustedBotSlugs+" in "+ConfigHomePath(), refs)
+			"add "+role+"=<forge>:<slug-or-login>[:<id>] to "+EnvTrustedBotSlugs+" in "+ConfigHomePath(), refs)
 	}
-	botID := EffectiveConfig().Bots[strings.ToLower(slug)]
-	if botID == 0 {
-		return unchecked(CheckCommitIdentity, "the roster pins no BOT USER id for "+slug,
-			"pin it: "+EnvTrustedBotSlugs+" entry "+role+"="+slug+":<bot-user-id> (the bot USER id, from `gh api /users/"+slug+"[bot]`)", refs)
-	}
-	want := fmt.Sprintf("%d+%s[bot]@users.noreply.github.com", botID, slug)
 
 	email, err := p.CommitEmail(dir)
 	if err != nil {
-		return unchecked(CheckCommitIdentity, oneLine(err.Error()),
-			"set it for this worktree: git -C "+orDot(dir)+" config user.email "+want, refs)
+		return unchecked(CheckCommitIdentity, oneLine(err.Error()), commitIdentityRemedy(ident, dir), refs)
 	}
 	email = strings.TrimSpace(email)
 	if email == "" {
-		return failed(CheckCommitIdentity, "no commit author email is configured",
-			"git -C "+orDot(dir)+" config user.email "+want, refs)
+		return failed(CheckCommitIdentity, "no commit author email is configured", commitIdentityRemedy(ident, dir), refs)
 	}
+
+	// The expected commit address is derived from the ENTRY's forge; neither forge
+	// falls back to the other's shape. GitHub keeps the #638 exact-match logic; GitLab
+	// matches the service-account noreply SHAPE (its group id / suffix are not derivable
+	// from the roster — forgeidentity.go).
+	if ident.Forge == ForgeGitLab {
+		return checkGitLabCommitIdentity(ident, email, dir, refs)
+	}
+	return checkGitHubCommitIdentity(p, ident, role, email, dir, refs)
+}
+
+// checkGitHubCommitIdentity is the #638 commit-identity logic: the email must carry the
+// bot USER id, not the App id (which lands the commit account-UNLINKED), and must name
+// the role's own bound App.
+func checkGitHubCommitIdentity(p PreflightProbes, ident BotIdentity, role, email, dir, refs string) Check {
+	spec := ident.CommitEmailSpec()
+	if !spec.Derivable {
+		return unchecked(CheckCommitIdentity, "the roster pins no BOT USER id for "+ident.Slug,
+			"pin it: "+EnvTrustedBotSlugs+" entry "+role+"=github:"+ident.Slug+":<bot-user-id> (the bot USER id, from `gh api /users/"+ident.Slug+"[bot]`)", refs)
+	}
+	want := spec.Exact
 	if strings.EqualFold(email, want) {
 		return clean(CheckCommitIdentity, "commit email carries the bot USER id ("+want+")", refs)
 	}
-
 	m := noreplyRe.FindStringSubmatch(email)
 	if m == nil {
 		return failed(CheckCommitIdentity, "commit email "+email+" is not the App noreply form",
@@ -778,13 +790,51 @@ func checkCommitIdentity(p PreflightProbes, role, dir string) Check {
 			"commit email prefix "+prefix+" is the APP id, not the bot USER id — commits land account-UNLINKED (author.login=null)",
 			"git -C "+orDot(dir)+" config user.email "+want, refs)
 	}
-	if !strings.EqualFold(login, slug+"[bot]") {
-		return failed(CheckCommitIdentity, "commit email names "+login+", but role "+role+" is bound to "+slug+"[bot]",
+	if !strings.EqualFold(login, ident.Slug+"[bot]") {
+		return failed(CheckCommitIdentity, "commit email names "+login+", but role "+role+" is bound to "+ident.Slug+"[bot]",
 			"git -C "+orDot(dir)+" config user.email "+want, refs)
 	}
 	return failed(CheckCommitIdentity, "commit email prefix "+prefix+" is neither the bot USER id ("+
-		strconv.FormatInt(botID, 10)+") nor a recognised id",
+		strconv.FormatInt(ident.ID, 10)+") nor a recognised id",
 		"git -C "+orDot(dir)+" config user.email "+want, refs)
+}
+
+// checkGitLabCommitIdentity validates a GitLab service-account commit address by SHAPE.
+// The group id and per-account suffix are not in the roster, so the shape is the tightest
+// available check — but a GitHub noreply address for a GitLab entry is a hard failure
+// (the cross-forge case), never a fall-through that a skipped check would let pass.
+func checkGitLabCommitIdentity(ident BotIdentity, email, dir, refs string) Check {
+	if ident.CommitEmailSpec().Accepts(email) {
+		return clean(CheckCommitIdentity, "commit email is the GitLab service-account noreply form ("+email+
+			"); the group id and per-account suffix are not derivable from the roster, so the shape is the "+
+			"tightest available check", refs)
+	}
+	if noreplyRe.MatchString(email) {
+		return failed(CheckCommitIdentity,
+			"commit email "+email+" is the GitHub noreply form, but role's identity is a GitLab service "+
+				"account — a GitHub-shaped address for a GitLab entry lands the commit under no GitLab identity",
+			commitIdentityRemedy(ident, dir), refs)
+	}
+	return failed(CheckCommitIdentity,
+		"commit email "+email+" is not the GitLab service-account noreply form "+
+			"(service_account_group_<group-id>_<suffix>@noreply.<host>)",
+		commitIdentityRemedy(ident, dir), refs)
+}
+
+// commitIdentityRemedy renders the forge-appropriate fix for a missing or wrong commit
+// author email. GitHub can name the exact address to set; GitLab cannot (the roster does
+// not carry the group id / suffix), so it points at the provisioned service-account form.
+func commitIdentityRemedy(ident BotIdentity, dir string) string {
+	spec := ident.CommitEmailSpec()
+	if spec.Forge == ForgeGitHub && spec.Derivable {
+		return "git -C " + orDot(dir) + " config user.email " + spec.Exact
+	}
+	if spec.Forge == ForgeGitLab {
+		return "set this worktree's user.email to the " + ident.Slug + " GitLab service-account noreply " +
+			"address (service_account_group_<group-id>_<suffix>@noreply.<host>) provisioned for it"
+	}
+	return "pin the bot USER id in " + EnvTrustedBotSlugs + " for " + ident.Slug +
+		", then set this worktree's user.email to the resulting noreply address"
 }
 
 // commitEmailProbe reads the effective commit author email: GIT_AUTHOR_EMAIL

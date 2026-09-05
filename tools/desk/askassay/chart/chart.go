@@ -53,7 +53,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/askassay"
+	"github.com/medici-finance/assay/tools/desk/askassay"
 )
 
 // CouldNotCheckToken is the literal string drawn in the plot, printed in the

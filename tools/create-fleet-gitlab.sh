@@ -4,8 +4,9 @@
 #
 # Creates the seven per-role service accounts, their group memberships and
 # personal access tokens, has each new account set its own avatar, then (when
-# --project is given) configures the fleet project's protected `main` branch
-# and MR-approval settings. Prints a plain-text summary ending with the
+# --project is given) configures the fleet project's protected `main` branch,
+# MR-approval settings, protected release tags, and the pipeline /
+# all-discussions-resolved merge gates. Prints a plain-text summary ending with the
 # HUMAN-ONLY remainder this script never attempts: Ultimate-tier settings, the
 # group token-expiry policy, and creation of the locked ci-config project.
 #
@@ -46,7 +47,10 @@
 #   POST   api/v4/projects/:id/protected_branches
 #   GET    api/v4/projects/:id/approvals            (read-back, tier check)
 #   POST   api/v4/projects/:id/approvals
-#   PUT    api/v4/projects/:id
+#   GET    api/v4/projects/:id/protected_tags       (idempotency check)
+#   POST   api/v4/projects/:id/protected_tags       (create_access_level SCALAR — Free)
+#   PUT    api/v4/projects/:id                       (pipeline + all-discussions-resolved merge checks)
+#   GET    api/v4/projects/:id                       (merge-checks read-back)
 #
 # One non-API URL is fetched, and only when avatars are left at their default:
 #   GET    https://assay.guide/assets/app-icon-<role>.png   (public role icons)
@@ -95,6 +99,13 @@ AVATAR_ICON_BASE="https://assay.guide/assets"
 # here because a hand repair that used 30 (Developers) let every Developer
 # service account merge its own MR — issue #346's comment 1.
 MERGE_ACCESS_LEVEL=40
+# Protected release tags (issue #346 comment 1 §4 / pilot D-4). The glob covers
+# every tag and create_access_level is the SCALAR Free-tier field (40 =
+# Maintainers) — NEVER the Premium `allowed_to_create` array, which is exactly
+# the array shape that produced this issue's 400. With this rule only a human
+# owner can create or move a tag, so a release tag is immutable to every bot.
+PROTECTED_TAG_GLOB='*'
+PROTECTED_TAG_CREATE_LEVEL=40
 
 usage() {
   cat <<'USAGE'
@@ -761,11 +772,89 @@ configure_approvals() {
   fi
 }
 
+# Protected release tags (issue #346 comment 1 §4 / pilot D-4 — "immutable
+# release integrity", spec §3). Role-level protected tags are FREE tier and use
+# the SCALAR create_access_level field, never the Premium allowed_to_create
+# array (that array is the exact shape that produced this issue's 400). The
+# rule is idempotent: an existing rule for the glob is a NAMED no-op, not a
+# duplicate POST.
+configure_protected_tags() {
+  local st msg existing body
+  gl_api GET "/projects/${PROJECT_ID}/protected_tags"
+  if [ "$GL_LAST_STATUS" = "200" ]; then
+    existing=$(jq -r --arg g "$PROTECTED_TAG_GLOB" '.[] | select(.name==$g) | .name' "$GL_LAST_BODY_FILE" | head -1)
+    rm -f "$GL_LAST_BODY_FILE"
+    if [ -n "$existing" ]; then
+      echo "no-op: tags matching '${PROTECTED_TAG_GLOB}' are already protected (create_access_level unchanged)"
+      return 0
+    fi
+  else
+    rm -f "$GL_LAST_BODY_FILE"
+    echo "NOTICE: could not list protected tags (HTTP ${GL_LAST_STATUS}) — could-not-check the existing rule; still attempting to create it"
+  fi
+
+  body=$(jq -n --arg g "$PROTECTED_TAG_GLOB" --argjson c "$PROTECTED_TAG_CREATE_LEVEL" \
+    '{name: $g, create_access_level: $c}')
+  gl_api POST "/projects/${PROJECT_ID}/protected_tags" "$body"
+  st="$GL_LAST_STATUS"
+  msg=$(cat "$GL_LAST_BODY_FILE")
+  rm -f "$GL_LAST_BODY_FILE"
+  if [ "$st" = "201" ]; then
+    echo "protected: tags '${PROTECTED_TAG_GLOB}' (create_access_level=${PROTECTED_TAG_CREATE_LEVEL} Maintainers) — only a human owner can create or move a release tag"
+  else
+    echo "error: protecting tags '${PROTECTED_TAG_GLOB}' failed (HTTP ${st}): ${msg}" >&2
+    record_failure "protected-tags rule for '${PROTECTED_TAG_GLOB}' not created (HTTP ${st}) — any Developer bot can create/move a release tag until fixed"
+  fi
+}
+
+# Merge checks (issue #346): only_allow_merge_if_pipeline_succeeds AND
+# only_allow_merge_if_all_discussions_are_resolved. Both are FREE tier (matrix
+# B6) and actually server-enforced — on a tier where approval rules are
+# advisory, the unresolved-threads gate is one of the few merge checks that
+# binds. Set together in one PUT, then read the two fields back off
+# GET /projects/:id (three-state: a could-not-read is not a pass, and because
+# both are enforced at Free a value that did not take is a real failure).
+configure_merge_settings() {
+  local body st p d
+  body=$(jq -n '{only_allow_merge_if_pipeline_succeeds: true, only_allow_merge_if_all_discussions_are_resolved: true}')
+  gl_api PUT "/projects/${PROJECT_ID}" "$body"
+  st="$GL_LAST_STATUS"
+  rm -f "$GL_LAST_BODY_FILE"
+  if [ "$st" != "200" ]; then
+    echo "error: setting merge checks failed (HTTP ${st})" >&2
+    record_failure "merge checks (pipeline-succeeds, all-discussions-resolved) could not be set (HTTP ${st})"
+    return 0
+  fi
+  echo "configured: pipelines must succeed before merge; all discussions must be resolved before merge"
+
+  gl_api GET "/projects/${PROJECT_ID}"
+  if [ "$GL_LAST_STATUS" != "200" ]; then
+    rm -f "$GL_LAST_BODY_FILE"
+    echo "NOTICE: could not read merge checks back (HTTP ${GL_LAST_STATUS}) — could-not-check, not a pass"
+    record_failure "merge-checks read-back failed — verify the pipeline and discussion gates by hand"
+    return 0
+  fi
+  # Same `false`-is-not-absent rule as the read-backs above: test for the KEY.
+  p=$(jq -r 'if has("only_allow_merge_if_pipeline_succeeds") then (.only_allow_merge_if_pipeline_succeeds|tostring) else "unknown" end' "$GL_LAST_BODY_FILE")
+  d=$(jq -r 'if has("only_allow_merge_if_all_discussions_are_resolved") then (.only_allow_merge_if_all_discussions_are_resolved|tostring) else "unknown" end' "$GL_LAST_BODY_FILE")
+  rm -f "$GL_LAST_BODY_FILE"
+  echo "read-back: only_allow_merge_if_pipeline_succeeds=${p} only_allow_merge_if_all_discussions_are_resolved=${d}"
+  if [ "$p" != "true" ]; then
+    echo "NOTICE: only_allow_merge_if_pipeline_succeeds reads ${p}, intended true"
+    record_failure "only_allow_merge_if_pipeline_succeeds read back as ${p}, intended true"
+  fi
+  if [ "$d" != "true" ]; then
+    echo "NOTICE: only_allow_merge_if_all_discussions_are_resolved reads ${d}, intended true"
+    record_failure "only_allow_merge_if_all_discussions_are_resolved read back as ${d}, intended true"
+  fi
+}
+
 if [ -n "$PROJECT" ]; then
   if [ "$DRY_RUN" -eq 1 ]; then
     echo "[dry-run] would protect branch 'main' on project ${PROJECT}: allowed_to_push=[board-writer], allowed_to_merge=[Maintainer role]"
     echo "[dry-run] would set approvals: merge_requests_author_approval=false, merge_requests_disable_committers_approval=true"
-    echo "[dry-run] would set only_allow_merge_if_pipeline_succeeds=true"
+    echo "[dry-run] would protect tags '${PROTECTED_TAG_GLOB}' with create_access_level=${PROTECTED_TAG_CREATE_LEVEL} (Maintainers)"
+    echo "[dry-run] would set only_allow_merge_if_pipeline_succeeds=true and only_allow_merge_if_all_discussions_are_resolved=true"
   else
     # A missing board-writer id no longer skips the whole block: it only rules
     # out the Premium push allowlist, which the free-tier form does not use.
@@ -790,18 +879,8 @@ if [ -n "$PROJECT" ]; then
       # gate, so the blast radius of one 400 was every later setting.
       configure_protected_main
       configure_approvals
-
-      body=$(jq -n '{only_allow_merge_if_pipeline_succeeds: true}')
-      gl_api PUT "/projects/${PROJECT_ID}" "$body"
-      if [ "$GL_LAST_STATUS" != "200" ]; then
-        echo "error: setting only_allow_merge_if_pipeline_succeeds failed (HTTP ${GL_LAST_STATUS})" >&2
-        cat "$GL_LAST_BODY_FILE" >&2
-        rm -f "$GL_LAST_BODY_FILE"
-        record_failure "only_allow_merge_if_pipeline_succeeds could not be set (HTTP ${GL_LAST_STATUS})"
-      else
-        rm -f "$GL_LAST_BODY_FILE"
-        echo "configured: pipelines must succeed before merge"
-      fi
+      configure_protected_tags
+      configure_merge_settings
     }
   fi
 else
