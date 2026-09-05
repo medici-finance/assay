@@ -54,28 +54,30 @@ func Quarantine(root string, env comms.Envelope, reason string, now time.Time, f
 // attributed to, per house convention (`deskfile new --raised-by <role>`).
 const RaisedByRole = "worker-desk"
 
+// deskfileBin is the sibling binary DeskfileIssueFiler.File shells out to,
+// resolved on PATH. It is a package-level CONSTANT — never a struct field or
+// other caller-supplied value — so the forge-surface ban's shell-exec scanner
+// can resolve argv[0] at compile time and confirm it is not a forge CLI,
+// rather than having to carry this call site as an unresolved (could-not-check)
+// exec site. Same shell-to-desk-verb pattern as cmd/desksupervise/actions.go's
+// doFileBlockedTimeout.
+const deskfileBin = "deskfile"
+
 // DeskfileIssueFiler is the concrete IssueFiler: it shells out to the
 // `deskfile` CLI, the desk write verb every quarantine-issue filing goes
 // through (never a hand-rolled `gh issue create`).
 type DeskfileIssueFiler struct {
-	// Deskfile is the path/name of the deskfile binary. Empty defaults to
-	// "deskfile" resolved on PATH.
-	Deskfile string
 	// Repo is the owner/repo the issue is filed against.
 	Repo string
 }
 
 func (f DeskfileIssueFiler) File(env comms.Envelope, reason string) error {
-	bin := f.Deskfile
-	if bin == "" {
-		bin = "deskfile"
-	}
 	title := fmt.Sprintf("comms quarantine: message %s (%s -> %s, verb %s)", env.ID, env.From.Cell, env.To.Cell, env.Verb)
 	body := fmt.Sprintf("A cell-gateway message was quarantined (held, never dropped).\n\n"+
 		"- id: %s\n- from: %s/%s\n- to: %s/%s\n- verb: %s\n- reason: %s\n",
 		env.ID, env.From.Cell, env.From.Role, env.To.Cell, env.To.Role, env.Verb, reason)
 	args := []string{"new", "--raised-by", RaisedByRole, "--repo", f.Repo, "--title", title, "--label", "help wanted", "--body", body}
-	cmd := exec.Command(bin, args...)
+	cmd := exec.Command(deskfileBin, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
