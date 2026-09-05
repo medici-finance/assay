@@ -536,15 +536,27 @@ func cmdStatus(args []string) (err error) {
 		obsSource = liveStatusObs(loopengine.HouseProbes())
 	}
 
-	// Per-claim stops come from --stops-fixture offline. KNOWN GAP: no LIVE per-item stop
-	// source is implemented yet — a GLOBAL STOP flag already halts this tool via
-	// deskkit.Guard() before status runs, so a global halt cannot silently pass unseen; a
-	// per-ITEM stop marker is follow-on work. In live mode the per-claim stop stays null.
+	// Per-claim stops: from --stops-fixture offline, or from the live STOP.run.<key> registry
+	// (deskkit.ListRunStops) in live mode. The per-run stop signal is the
+	// LIVE per-item source the earlier gap called for — `desksupervise stop <key>` and tick's
+	// reclaim classes (actions.go) arm STOP.run.<key> flags keyed by run key (== the dispatch
+	// claim key), and status surfaces them here. A GLOBAL STOP flag still halts this tool via
+	// deskkit.Guard() before status runs, so a global halt can never pass unseen. Fixture mode
+	// (--claims-fixture) never reads the live registry, so an offline snapshot stays deterministic.
 	stopsByKey := map[string]*StatusStop{}
-	if *stopsFixture != "" {
+	switch {
+	case *stopsFixture != "":
 		stopsByKey, err = loadStopsFixture(*stopsFixture)
 		if err != nil {
 			return err
+		}
+	case *claimsFixture == "":
+		runStops, lerr := deskkit.ListRunStops()
+		if lerr != nil {
+			return deskkit.Unverifiable("could not list the live per-run stops", lerr)
+		}
+		for _, s := range runStops {
+			stopsByKey[s.Key] = &StatusStop{ArmedAt: s.ArmedAt.UTC().Format(time.RFC3339), Reason: s.Reason}
 		}
 	}
 
