@@ -148,6 +148,25 @@ Pre-mortem → detection map:
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
 
+Runner: opus-4.8[1m] worker (assay--desk-tools--10), 2026-09-04, macOS, `KUBECONFIG=/dev/null`.
+
+| # | Command | Exit | Witness |
+|---|---------|------|---------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | 0 | build rc=0; vet clean (touched pkgs `./cmd/deskclaim/... ./internal/deskkit/...` vetted rc=0) |
+| 2 | `go test ./cmd/deskclaim/ -run '^TestStaleVerdictOldBranchCheckedOut$' -count=1` | 0 | `ok …/cmd/deskclaim` — `stale` exits 5 `because=branch-checked-out:`; claim bytes+mtime asserted unchanged; `acquire` refuses (5) |
+| 3 | `go test ./cmd/deskclaim/ -run '^TestAcquireReclaimsOldUnheldBranchClaim$' -count=1` | 0 | `ok` — `stale` exits 0; `acquire` reclaims (0); audit detail carries `reclaimed age=` and `prior-owner=deadsession` |
+| 4 | `go test ./cmd/deskclaim/ -run '^TestYoungClaimIsLiveWhateverTheSignals$' -count=1` | 0 | `ok` — inside TTL → live (`because=age-under-ttl`) with no repo/beacon signal |
+| 5 | `go test ./cmd/deskclaim/ -run '^TestProbeFailsClosedWithoutRepoOrBeaconDir$' -count=1` | 0 | `ok` — both arms (no repo; readable repo + absent beacon dir) answer live (5) `because=no-repo-cannot-prove` |
+| 6 | `go test ./cmd/deskclaim/ -run '^TestBeaconKeepsClaimLive$' -count=1` | 0 | `ok` — fresh owner beacon alone keeps an aged, unheld-branch claim live (`because=beacon-live`) |
+| 7 | `go test ./cmd/deskclaim/ -run '^TestStaleMissingAndUnreadableAreSix$' -count=1` | 0 | `ok` — missing (`because=no-claim`) and aged-unreadable (mode 000) both exit 6; neither reported stale |
+| 8 | `go test ./internal/deskkit/ -run '^TestAcquire' -count=1` | 0 | `ok …/internal/deskkit` — existing acquire/race/fail-closed tests (incl. `TestAcquireNeverAssumesFree_Source`) unchanged and green with the extended `AcquireDetailed` return |
+| 9 | `go test ./... -count=1` | — | Full-module run exceeds the 600s stall budget on this desk; ran the touched + consumer packages instead: `./internal/deskkit/...` ok (18.8s), `./cmd/deskclaim/...` ok (0.8s), `./internal/loopengine/...` ok (1.2s). CI runs the whole suite on the PR. |
+| 10 | `gofmt -l tools/desk/cmd/deskclaim tools/desk/internal/deskkit` | — | The files THIS brief touches are gofmt-clean (empty for the four `cmd/deskclaim` files and `tools/desk/internal/deskkit/claim.go`). The whole-dir command additionally lists three files unformatted **on `origin/main` already** — `tools/desk/internal/deskkit/migrate.go`, `tools/desk/internal/deskkit/sizesurface.go`, `tools/desk/internal/deskkit/sizesurface_test.go` — pre-existing and untouched here; left alone (out of scope). The merge gate (`deskpreflight` go-fmt-vet) is scoped to touched files and is clean. |
+| 11 | `cd statusgen && go run . --root .. --lint; echo $?` | 0 | rc=0; **0 PROBLEM lines** (re-run after fully spelling the four `tools/desk/internal/deskkit/*.go` paths in row 10's witness cell — the earlier RED was four `[unresolved-path]` PROBLEMs from bare `deskkit/…` spans statusgen resolved from the repo root). Remaining output is data-quality NOTICEs; the only one naming desk-tools/10 is a `+mutation` verify-obligation NOTICE (reviewer's-call per its own text), which does not redden the `lint` gate. |
+
+**Fail-first (clause 9).** With the fix stashed (old `claim.go`/`main.go`, no `liveness.go`) and only the new `liveness_test.go` in place, the two behaviour tests fail on the unfixed code:
+`refused: unknown verb stale (want one of: acquire, release, list)` → `TestStaleVerdictOldBranchCheckedOut` FAIL (`stale line = ""`) and `TestAcquireReclaimsOldUnheldBranchClaim` FAIL (`stale rc = 5, want 0`). The verb and the branch-claim reclaim did not exist before this change.
+
 ## Review
 
 Gate: model (all four risk answers no). The reviewer records verdict + date in the stream README

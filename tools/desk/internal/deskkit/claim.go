@@ -136,6 +136,14 @@ func claimPath(cfg ClaimConfig, item string) string {
 	return filepath.Join(cfg.ClaimsDir, safe+".claim")
 }
 
+// ClaimPath exposes the on-disk path of an item's claim — the SAME sanitized path Acquire
+// writes and IsStale reads — so a read-only consumer (deskclaim stale) can stat and read one
+// claim directly without re-deriving the sanitizer. It is a pure path computation: it
+// touches no file and takes no lock.
+func ClaimPath(cfg ClaimConfig, item string) string {
+	return claimPath(cfg, item)
+}
+
 // claimLock is a held flock over the whole claims directory.
 type claimLock struct{ f *os.File }
 
@@ -183,24 +191,65 @@ func (l *claimLock) release() {
 	_ = l.f.Close()
 }
 
-// Acquire flock-serialises the whole create-or-reclaim decision, then:
+// AcquireResult reports which of the two success shapes an Acquire took, so a caller can
+// distinguish a fresh claim from an in-place reclaim of a stale one in its audit line. It
+// carries meaning ONLY when the acquire succeeded (Acquired == true); on a live collision
+// or a fail-closed error it is the zero value.
+//
+//   - Acquired  — the claim is now held by the caller (fresh create OR reclaim).
+//   - Reclaimed — the acquire replaced an existing stale claim in place (false for a fresh
+//     create). PriorOwner and Age describe the claim that was replaced.
+//   - PriorOwner — the owner recorded on the reclaimed claim (best-effort; "" when it could
+//     not be read). Empty on a fresh create.
+//   - Age — how old the reclaimed claim was at reclaim time (its mtime distance from now).
+//     Zero on a fresh create.
+//
+// The report is DERIVED, not a new decision: it never changes whether or how a claim is
+// acquired. The create-or-reclaim decision and its locking are byte-for-byte the same as
+// before — AcquireDetailed simply observes which branch it took.
+type AcquireResult struct {
+	Acquired   bool
+	Reclaimed  bool
+	PriorOwner string
+	Age        time.Duration
+}
+
+// Acquire flock-serialises the whole create-or-reclaim decision and returns whether the
+// claim is now held. It is a thin wrapper over AcquireDetailed kept at the original
+// (bool, error) signature so every existing caller and test is unchanged; callers that need
+// to distinguish a fresh claim from a reclaim call AcquireDetailed.
 //
 //   - fresh item          → O_CREATE|O_EXCL create the claim → (true, nil);
 //   - existing + live      → (false, nil)  collision, do NOT dispatch;
 //   - existing + stale      → reclaim IN PLACE (O_WRONLY|O_TRUNC, never Remove) → (true, nil);
 //   - lock unheld / unreadable / unwritable → (false, Unverifiable)  fail closed.
+func Acquire(cfg ClaimConfig, c Claim) (acquired bool, err error) {
+	res, lerr := AcquireDetailed(cfg, c)
+	if lerr != nil {
+		// Propagate the fail-closed error (a lock we could not hold, an unreadable claim)
+		// verbatim — NEVER swallow it into a (false, nil) "assume free". AcquireDetailed
+		// carries the exact same fail-closed returns Acquire always did.
+		return false, lerr
+	}
+	return res.Acquired, nil
+}
+
+// AcquireDetailed is Acquire with the fresh-vs-reclaimed report. The decision and the
+// locking are identical to Acquire's documented behaviour; the ONLY addition is that, on the
+// reclaim branch, it reads the prior claim's owner and mtime BEFORE the in-place rewrite so
+// the caller can say which claim it displaced and how old it was.
 //
 // The reclaim rewrites the file in place — it is NEVER Remove-then-create. A Remove would
 // leave a window in which the claim file does not exist and an unrelated fresh O_EXCL
 // create would succeed alongside the reclaim: two winners, one item, double-dispatch. The
 // directory-wide flock already excludes concurrent reclaimers; the in-place rewrite closes
 // the fresh-claimant gap as well.
-func Acquire(cfg ClaimConfig, c Claim) (acquired bool, err error) {
+func AcquireDetailed(cfg ClaimConfig, c Claim) (AcquireResult, error) {
 	if cfg.ClaimsDir == "" {
-		return false, Unverifiable("claim: Acquire needs a ClaimsDir", nil)
+		return AcquireResult{}, Unverifiable("claim: Acquire needs a ClaimsDir", nil)
 	}
 	if c.Item == "" {
-		return false, Refused("claim: Acquire needs a non-empty Item")
+		return AcquireResult{}, Refused("claim: Acquire needs a non-empty Item")
 	}
 	cfg = cfg.withDefaults()
 	if c.TS == "" {
@@ -211,13 +260,13 @@ func Acquire(cfg ClaimConfig, c Claim) (acquired bool, err error) {
 	if lerr != nil {
 		// A lock we could not hold is NOT permission to write. Fail closed (exit 6),
 		// never "assume free".
-		return false, lerr
+		return AcquireResult{}, lerr
 	}
 	defer lock.release()
 
 	payload, merr := json.Marshal(c)
 	if merr != nil {
-		return false, Unverifiable("claim: cannot marshal claim", merr)
+		return AcquireResult{}, Unverifiable("claim: cannot marshal claim", merr)
 	}
 	path := claimPath(cfg, c.Item)
 
@@ -226,42 +275,64 @@ func Acquire(cfg ClaimConfig, c Claim) (acquired bool, err error) {
 		_, werr := f.Write(payload)
 		cerr := f.Close()
 		if werr != nil {
-			return false, Unverifiable("claim: cannot write claim", werr)
+			return AcquireResult{}, Unverifiable("claim: cannot write claim", werr)
 		}
 		if cerr != nil {
-			return false, Unverifiable("claim: cannot close claim", cerr)
+			return AcquireResult{}, Unverifiable("claim: cannot close claim", cerr)
 		}
-		return true, nil
+		return AcquireResult{Acquired: true}, nil // fresh create
 	}
 	if !os.IsExist(oerr) {
-		return false, Unverifiable("claim: cannot create claim", oerr)
+		return AcquireResult{}, Unverifiable("claim: cannot create claim", oerr)
 	}
 
 	// A claim already exists — collision unless provably stale.
 	stale, serr := isStale(cfg, path)
 	if serr != nil {
-		return false, serr // unreadable existing claim => fail closed, do not steal
+		return AcquireResult{}, serr // unreadable existing claim => fail closed, do not steal
 	}
 	if !stale {
-		return false, nil // live claim held elsewhere
+		return AcquireResult{}, nil // live claim held elsewhere
 	}
+
+	// Reclaim. Read the prior claim's identity BEFORE overwriting it so the caller can
+	// report what it displaced. Best-effort: a claim we could not read is still reclaimable
+	// (isStale already proved it stale), it just carries no prior-owner in the report.
+	priorOwner, age := priorClaimInfo(path)
 
 	rf, rerr := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o600)
 	if rerr != nil {
 		if os.IsNotExist(rerr) {
-			return false, nil // released underneath us; let the next cycle claim it fresh
+			return AcquireResult{}, nil // released underneath us; let the next cycle claim it fresh
 		}
-		return false, Unverifiable("claim: cannot rewrite stale claim", rerr)
+		return AcquireResult{}, Unverifiable("claim: cannot rewrite stale claim", rerr)
 	}
 	_, werr := rf.Write(payload)
 	cerr := rf.Close()
 	if werr != nil {
-		return false, Unverifiable("claim: cannot write reclaimed claim", werr)
+		return AcquireResult{}, Unverifiable("claim: cannot write reclaimed claim", werr)
 	}
 	if cerr != nil {
-		return false, Unverifiable("claim: cannot close reclaimed claim", cerr)
+		return AcquireResult{}, Unverifiable("claim: cannot close reclaimed claim", cerr)
 	}
-	return true, nil
+	return AcquireResult{Acquired: true, Reclaimed: true, PriorOwner: priorOwner, Age: age}, nil
+}
+
+// priorClaimInfo reads the owner and age of an existing claim for the reclaim report. It is
+// a DISPLAY read, not a correctness one — isStale has already made the reclaim decision — so
+// it fails soft: an unreadable owner is "" and an unstattable file is a zero age. It never
+// changes whether the reclaim happens.
+func priorClaimInfo(path string) (owner string, age time.Duration) {
+	if fi, err := os.Stat(path); err == nil {
+		age = time.Since(fi.ModTime())
+	}
+	if b, err := os.ReadFile(path); err == nil {
+		var rec Claim
+		if json.Unmarshal(b, &rec) == nil {
+			owner = rec.Owner
+		}
+	}
+	return owner, age
 }
 
 // isStale reports whether the existing claim file is older than cfg.StaleClaim AND its

@@ -54,6 +54,24 @@ facts:
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-04 opus-4.8[1m]-verifier (verify-desk dispatch), merged main 4e500df
+
+Runner != implementer. Offline (KUBECONFIG=/dev/null). gate: model, risk {all no}, irreversible: no. Rows run inside the statusgen/ module.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | go run . --root .. --assayscore --json \| python3 assert score+subscores | 0 | ok | 2026-09-04 | opus-4.8[1m]-verifier |
+| 2 | go run . --root .. --assayscore --json \| python3 len(subscores) | 0 | 4 | 2026-09-04 | opus-4.8[1m]-verifier |
+| 3 | go test ./ -run AssayScore | 0 | ok statusgen 33.656s | 2026-09-04 | opus-4.8[1m]-verifier |
+| 4 | go run . --root .. --assayscore --json \| grep -q '"incomplete"' | 0 | flag present (Quality/Value degrade to could-not-check offline by design — three-state) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 5 | go run . --root .. --lint | 0 | LINT: PASS (two NOTICEs, non-fatal) | 2026-09-04 | opus-4.8[1m]-verifier |
+
+**VERIFY: PASS** — all 5 rows ran; none unrun.
+
+**RISK-VALUE: DERIVED** — geometric-mean exponent = math.Pow(prod, 1.0/float64(k)) @ statusgen/assayscore.go:198 — composite is (Speed.Flow.Quality.Value)^(1/4), (prod available)^(1/k) for the incomplete case; recomputed both golden fixtures by hand (16,000,000^(1/4)=63.2; 160000^(1/3)=54.3) — match; 54.3 (not 0) proves could-not-check is excluded, never coerced to zero.
+**RISK-VALUE: DERIVED** — assayBaselineDays = 90 @ statusgen/assayscore.go:57 — spec self-relative trailing-90-day baseline; literal matches.
+**RISK-VALUE: DERIVED** — band percentiles = 0.10 / 0.90 @ statusgen/assayscore.go:120-121 — spec p10/p90 reference band; symmetric, outlier-robust.
+**RISK-VALUE: NAMED, NOT DERIVED** — assayBaselineMinObs = 5 @ statusgen/assayscore.go:50 — baseline guard floor; the settled metric-definitions spec fixing 5 is external/not in-repo, so why 5 (not 3/8) is not derivable offline; low irreversibility (a wrong floor only shifts the ok/could-not-check boundary, and N is emitted beside the band). Route to the spec of record.
 
 ## Review
 Gate: model. Reviewer recomputes the golden fixture by hand and confirms a `could-not-check` dimension
