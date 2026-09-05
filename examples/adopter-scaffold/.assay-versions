@@ -9,16 +9,16 @@
 #     CI selects with `grep '^statusgen '` (trailing space, never matching a
 #     `statusgen-<platform>` line) and always wants linux-amd64.
 #   - <tag> is the plain repo-level semver tag this public `assay` release home
-#     cuts (`v0.9.1`), NOT a component-prefixed `statusgen/vX.Y.Z`.
+#     cuts (`v0.26.0`), NOT a component-prefixed `statusgen/vX.Y.Z`.
 #   - <sha256> is harvested from the PUBLISHED release's checksums.txt, never a
 #     local build (a local build lacks the release -ldflags stamp and hashes
 #     differently).
 #
 # Per-platform lines below carry the same three-field shape; a local install
 # selects by DETECTED platform and needs a committed hash for each one.
-statusgen              v0.9.1 6d2e95f1d33203b7dc6016f7cc68e2fd4afeebac99eb9e95a35e73cc0d7659ac  # linux-amd64 (CI-built)
-statusgen-linux-amd64  v0.9.1 6d2e95f1d33203b7dc6016f7cc68e2fd4afeebac99eb9e95a35e73cc0d7659ac  # CI runners
-statusgen-darwin-arm64 v0.9.1 f2203ea531ac5ea26bf84cfe36c4ca2baaa26c16fb4cea8b0c163fbd17466fc7  # apple silicon
-statusgen-darwin-amd64 v0.9.1 50e34b63b540ff107251cb28f8be1e4ccd697c615162550878935aad40a0e046  # intel mac
-statusgen-windows-amd64 v0.9.1 0000000000000000000000000000000000000000000000000000000000000000  # PLACEHOLDER sha256 — harvested from the published release, not a local build (asset: statusgen-windows-amd64.exe)
-statusgen-windows-arm64 v0.9.1 0000000000000000000000000000000000000000000000000000000000000000  # PLACEHOLDER sha256 — harvested from the published release, not a local build (asset: statusgen-windows-arm64.exe)
+statusgen              v0.26.0 127f8cd1ba46c671f7f8c429a921443cdfac40c424ca761191dd7c4d80841c55  # linux-amd64 (CI-built)
+statusgen-linux-amd64  v0.26.0 127f8cd1ba46c671f7f8c429a921443cdfac40c424ca761191dd7c4d80841c55  # CI runners
+statusgen-darwin-arm64 v0.26.0 0c733d05a4604432275602eb992a076aab2c9526fa2b7b30f4723725c540850d  # apple silicon
+statusgen-darwin-amd64 v0.26.0 1295b07f5e51924a0c66574520c4d0fc902523353261cc80c1f5d0f028acdbf2  # intel mac
+statusgen-windows-amd64 v0.26.0 fa549fa1e19a0006ef109c61265aab397d528f7c69aa9181ee963a5f8d9b2f39  # asset: statusgen-windows-amd64.exe
+statusgen-windows-arm64 v0.26.0 9b01f839841742634377dd1b8c70e07503fe905ed32b14f3e19345c722f313c6  # asset: statusgen-windows-arm64.exe
