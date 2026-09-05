@@ -156,7 +156,9 @@ func TestDispatchClaimsFirstThenBuildsTheWorktreeAndEmitsThePrompt(t *testing.T)
 		`mktemp "${TMPDIR:-/tmp}/pr-body.XXXXXX"`, // the body-file rule
 		"this item requires a strong implementer", // the strong-tier pickup STOP
 		"It is not your writable root",            // the checkout base is not writable
-		root,                                      // the checkout base, stated ABSOLUTE
+		"NEVER run the whole-module `go test ./...` inside the agent", // bounded-Verify: no full-module run in-agent
+		"PUSH before you start a long Verify row",                     // bounded-Verify: push guards against a watchdog kill
+		root, // the checkout base, stated ABSOLUTE
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("the emitted prompt is missing %q — a dispatched agent without this clause is the "+
