@@ -151,6 +151,30 @@ facts:
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+### Non-implementer verifier run — VERIFY: PASS (rows 1-10); row 11 BLOCKED (post-merge instrument) — HELD at implemented (gate:human, sensitive-data:yes) — 2026-09-05 opus-4.8[1m]-verifier (verify-desk dispatch), medici-finance/assay merged main 55bb04c
+
+Runner != implementer. Offline envelope (KUBECONFIG=/dev/null). gate: human; risk {regulatory:no, customer:no, irreversible:no, sensitive-data:yes} — human gate.
+
+| # | command | expected | observed (exit + key line) | date · runner |
+|---|---------|----------|----------------------------|---------------|
+| 1 | cd tools/desk; go build ./... and go test ./... | exit 0 | build 0; suite 0 on clean re-run (ok deskkit 26.5s); one non-reproducing loopengine timing flake on first run, passed 3/3 in isolation — not this brief's deskkit | 2026-09-05 · opus-4.8[1m]-verifier |
+| 2 | go test ./internal/deskkit/ -run TestRosterForgeQualifiedEntry -v | exit 0; parses gitlab: and github: entries, records forge | PASS ok 0.24s | 2026-09-05 · opus-4.8[1m]-verifier |
+| 3 | ...TestRosterUnqualifiedEntryDefaultsToGitHub -v | exit 0; legacy entry to github, flagged INFERRED | PASS ok 0.23s | 2026-09-05 · opus-4.8[1m]-verifier |
+| 4 | ...TestRosterForgeMismatchRefuses -v | negative: gitlab entry on github repo refused naming both | PASS ok 0.24s | 2026-09-05 · opus-4.8[1m]-verifier |
+| 5 | ...TestRosterBareSlugStillRejected -v | negative: bare slug rejected on both forges | PASS ok 0.24s | 2026-09-05 · opus-4.8[1m]-verifier |
+| 6 | ...TestCommitIdentityPerForge -v | exit 0; github vs gitlab address forms, neither accepts the other | PASS ok 0.25s | 2026-09-05 · opus-4.8[1m]-verifier |
+| 7 | ...TestCommitIdentityCrossForgeRejected -v | negative: cross-forge commit address fails preflight | PASS ok 0.25s | 2026-09-05 · opus-4.8[1m]-verifier |
+| 8 | go test ./cmd/deskwt ./cmd/deskflip ./cmd/deskboard ./cmd/deskclose | exit 0, legacy fixtures unmodified | all four ok (deskboard 84.3s) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 9 | grep -c table rows in docs/streams/forge-neutral/identity.md | >= 2 | 6 (rendering + corroboration tables present) exit 0 | 2026-09-05 · opus-4.8[1m]-verifier |
+| 10 | ...TestRosterKnownKeySet | exit 0; no new unregistered key | ok 0.29s | 2026-09-05 · opus-4.8[1m]-verifier |
+| 11 | statusgen --root . --consumers --brief forge-neutral/02 | exit 0 | BLOCKED could-not-check — the consumers instrument refuses to judge a merged brief by design and mandates a M^2 checkout + merge-base base; that checkout is writeguard-blocked in this shared-homed session (a STOP), and the brief predates the branch merge-base so it never appears in the branch three-dot diff. Also the register dir docs/streams/requirements/ lacks a README (#471), aborting the global scan. Manual inspection: the three fixed-here consumers are present in the implementing commit; follow-up-routed paths untouched. Route to CI. Not a FAIL | 2026-09-05 · opus-4.8[1m]-verifier |
+
+**VERIFY: PASS (rows 1-10 green, 0 disproved); row 11 BLOCKED (post-merge instrument + writeguard) — HELD at implemented.** gate:human + sensitive-data:yes — a model cannot sign off; the human gate owns the flip.
+
+RISK-VALUE: DERIVED — defaultForge = ForgeGitHub with ForgeInferred:true @ tools/desk/internal/deskkit/forgeidentity.go:72 — an entry with no forge segment resolves to github, flagged inferred; github is the only forge any deployed roster addressed, so this is the exact backward-compat rule, and the inferred flag lets legacy entries be exempted without widening trust to a second forge.
+RISK-VALUE: DERIVED — githubCommitAddr = the botUSERid+login noreply form @ forgeidentity.go:134 and gitlabServiceAccountRe anchored regexp @ forgeidentity.go:60 — the GitHub form matches GitHub's bot-USER-id convention (per the null-author rule), the GitLab shape matches the pilot-measured service-account address; the regexp is fully anchored and the two are mutually exclusive (row 7 rejects cross-forge).
+RISK-VALUE: DERIVED — githubAcceptedLogins = {slug[bot], app/slug} (bare slug absent) @ forgeidentity.go:104; gitlabAcceptedLogins = {username} @ forgeidentity.go:102 — GitHub keeps the two decorated renderings and excludes the bare slug (spoof risk; row 5 guards); GitLab uses username-only because that is the identity the API attributes to.
+
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in
 the stream README table.
