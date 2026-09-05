@@ -1,0 +1,276 @@
+name: evidence-automerge
+# Enables GitHub AUTO-MERGE on verifier-App Evidence PRs — nothing more.
+#
+# WHAT THIS IS FOR
+#
+# The verify desk's job is to run a merged brief's Verify table and record the
+# result: `## Evidence` rows in the brief, then the stream README row flip
+# `implemented → verified`. On a repo whose `main` accepts a direct App push it
+# commits that straight to main. Here it cannot: `main` requires a pull request,
+# an approving review that is not the last pusher, and the withheld-content
+# status check, and the verifier App is on no bypass list. So the verifier lands
+# Evidence on a `verify-desk/<stream>-<NN>-evidence-<YYYYMMDD>` branch behind a
+# draft PR instead (the name the verify desk actually cuts), and this
+# workflow marks that PR auto-merge.
+#
+# THE GATE STACK — every existing control stays in force, and TWO MORE sit in
+# front of the write. Auto-merge is a REQUEST, not a merge: GitHub merges the PR
+# only once every branch rule is already satisfied.
+#
+#   1. This workflow's own guards (below): author is the verifier App, the PR is
+#      not a draft, and EVERY changed file is under `docs/streams/` and is not a
+#      generated single-writer artifact.
+#   2. The branch ruleset's required approving review, from the reviewer App, at
+#      the current head, and not from the last pusher.
+#   3. The branch ruleset's required status check for withheld content.
+#   4. Every other required check on the branch, unchanged.
+#
+# This workflow NEVER approves, NEVER merges directly, and NEVER touches a
+# ruleset. It cannot merge anything a human or the reviewer App has not already
+# cleared; the most it can do is stop a cleared PR from needing a merge click.
+#
+# REVOCATION: delete or disable THIS ONE FILE and the lane is gone. Evidence PRs
+# keep opening and keep waiting for a human merge; nothing else changes. That is
+# deliberate — a lane whose revocation needs a ruleset edit is not revocable.
+#
+# WHY NOT `pull_request_target`: this workflow reads a PR's metadata and never
+# checks the PR tree out, so it needs none of the elevated context
+# `pull_request_target` grants — and that event would run with repository
+# secrets in scope of a branch this workflow does not control. There is no
+# `actions/checkout` step here at all: no code from the pull request is ever
+# fetched or executed.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+
+# One evaluation per PR at a time. A review landing on the same second as a push
+# would otherwise run two enable-auto-merge calls concurrently; the second is
+# harmless but the log reads as a mystery. Never cancel: a cancelled run leaves
+# an eligible PR un-enabled and waiting on a click nobody knows is needed.
+concurrency:
+  group: evidence-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+# Least privilege. The default token READS the PR and its file list; it has no
+# write of any kind. The auto-merge request itself is made with a token minted
+# from the board-writer App, which is the only identity in this workflow that
+# can write anything.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  enable:
+    # PRE-FILTER, NOT A GUARD. This workflow fires on every pull request in the
+    # repository and on every review submitted on one, and until this line it
+    # started a self-hosted job for all of them — a job whose entire outcome, for
+    # every pull request but the verifier App's own, is the guard step below
+    # printing "not an Evidence PR" and exiting 0. On a two-runner pool that is a
+    # measurable share of the queue: over one 20-minute window this workflow
+    # accounted for 11 runs (5 `pull_request`, 6 `pull_request_review`), none of
+    # them on an Evidence PR.
+    #
+    # WHY THIS CANNOT WEAKEN THE LANE. The authority is unchanged: the
+    # "Evaluate the Evidence-PR guards" step below still writes `eligible=false`
+    # first and still re-reads the author, the draft flag and the full paginated
+    # file list itself. This condition can only ever cause the job NOT to run,
+    # and a job that does not run requests no auto-merge. Drift is therefore
+    # fail-safe in BOTH directions, which is why duplicating the login here does
+    # not carry the hazard the `DO NOT WIDEN THIS` note below is guarding
+    # against:
+    #   - narrowed or mistyped here  -> the lane silently stops; Evidence pull
+    #     requests wait for a human merge, which is exactly the pre-lane state.
+    #   - widened here               -> the extra pull request starts a job and
+    #     is then declined by the unchanged in-job author check, as it is today.
+    # It is a cheap filter in front of an unchanged default-deny guard, never a
+    # second copy of the decision.
+    #
+    # KEEP IN SYNC with EVIDENCE_AUTHOR in the guard step below. If that constant
+    # is ever changed by a ruling, change this line in the SAME commit; a stale
+    # value here shows up as the lane going quiet, not as a widened lane.
+    if: github.event.pull_request.user.login == 'assay-verifier-app[bot]'
+    runs-on: medici-builder-public
+    steps:
+      # The self-hosted runner image does not ship the gh CLI. Install a pinned,
+      # sha256-verified release to $GITHUB_PATH when it is missing (same release
+      # and digest the board workflow uses). Durable alternative: bake gh into
+      # the runner image.
+      - name: Ensure gh CLI is available (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            echo "gh present: $(gh --version | head -1)"; exit 0
+          fi
+          url="https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz"
+          want="912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/gh.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/gh.tar.gz" | cut -d' ' -f1)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::gh tarball sha256 mismatch — want ${want}, got ${got}; refusing to extract"
+            exit 1
+          fi
+          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
+          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
+
+      # Every guard is evaluated HERE, in one step, and every outcome is exit 0
+      # with a reason printed. A PR that is not an Evidence PR is the normal
+      # case, not a failure — this workflow fires on every PR in the repo and
+      # must be silent on all but its own. Only an infrastructure fault (the
+      # file list could not be read) fails the job: a file list that could not be
+      # read is could-not-check, and could-not-check must never be treated as
+      # "all files were under docs/streams/".
+      #
+      # Untrusted values (the PR author login, the file paths) are read through
+      # env vars and compared as data; none is interpolated into a shell script.
+      - name: Evaluate the Evidence-PR guards
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          # The one identity whose Evidence PRs this lane covers. It is the
+          # verify desk's App — no other author, bot or human, is eligible.
+          #
+          # DO NOT WIDEN THIS. The author check is the lane's primary scope
+          # control: it is what makes "an Evidence PR" a decidable question
+          # rather than a pattern match on file paths. Adding a second login
+          # here — the implementer App above all — would let any PR that happens
+          # to touch only docs/streams/ inherit an auto-merge the reviewer never
+          # granted for that class of change. If a PR authored by another role
+          # needs this lane, that is a ruling, not an edit.
+          #
+          # Practical consequence for whoever opens the PR: the PR must be
+          # CREATED under the verifier App's own token. A tool that mints a
+          # fixed different role's token authors the PR as that role, and this
+          # guard will correctly decline it.
+          EVIDENCE_AUTHOR: assay-verifier-app[bot]
+        run: |
+          set -euo pipefail
+          # Default-deny: written first so every early return below leaves
+          # the output false. A later true line overrides it (last write wins
+          # for a repeated key in $GITHUB_OUTPUT).
+          echo "eligible=false" >> "$GITHUB_OUTPUT"
+
+          # ─── SHARED BLOCK: "is this a verify-desk Evidence PR?" ───────────────
+          # Kept BYTE-IDENTICAL with the block of the same name in the other
+          # workflow that asks this question (evidence-automerge.yml and
+          # changelog-check.yml). Two gates answering "is this an Evidence PR?"
+          # differently is the exact failure this named duplication prevents, so
+          # if you change one copy, change the other IN THE SAME COMMIT. It is
+          # deliberately NOT a composite action: a local action is a second file a
+          # `.github/workflows/*` reviewer does not see in the same diff, and this
+          # decision has to be readable where it is used.
+          #
+          # It sets `is_evidence` to one of THREE values — true / false /
+          # could-not-check — and prints a reason for every non-true one. Each
+          # caller decides what could-not-check costs it; neither may round it up
+          # to true.
+          #
+          # It reads PR METADATA only. It never checks the PR tree out and never
+          # runs anything from it. Untrusted values (the author login, the file
+          # paths) are compared as data and are never interpolated into a script.
+          is_evidence=false
+          if [ "$PR_AUTHOR" != "$EVIDENCE_AUTHOR" ]; then
+            echo "not an Evidence PR: author is '$PR_AUTHOR', not '$EVIDENCE_AUTHOR'"
+          # Paginate: an Evidence PR is small, but a truncated first page read as
+          # the whole list is exactly how a non-docs file slips through.
+          elif ! gh api --paginate "repos/${REPO}/pulls/${PR}/files" \
+                   --jq '.[].filename' > "${RUNNER_TEMP}/evidence-files.txt"; then
+            echo "could-not-check: the changed-file list for PR ${PR} could not be read"
+            is_evidence=could-not-check
+          else
+            echo "changed files:"; sed 's/^/  /' "${RUNNER_TEMP}/evidence-files.txt"
+            if [ ! -s "${RUNNER_TEMP}/evidence-files.txt" ]; then
+              echo "not an Evidence PR: the PR changes no files"
+            # ALL files must live under docs/streams/. One file outside it
+            # disqualifies the whole PR: this lane covers the verify desk's own
+            # Evidence writes and nothing else, so a mixed PR is not an Evidence PR.
+            elif grep -qvE '^docs/streams/' "${RUNNER_TEMP}/evidence-files.txt"; then
+              echo "not an Evidence PR: changed files outside docs/streams/:"
+              grep -vE '^docs/streams/' "${RUNNER_TEMP}/evidence-files.txt" | sed 's/^/  /'
+            # Generated, single-writer artifacts are never part of an Evidence PR.
+            # The findings register is generated from its per-entry files; the
+            # board at the repo root is generated by main CI. (The root board
+            # would already fail the docs/streams/ test above; it is named here so
+            # the intent survives any future widening of that test.)
+            elif grep -qxE 'docs/streams/FINDINGS\.md|STATUS\.md' "${RUNNER_TEMP}/evidence-files.txt"; then
+              echo "not an Evidence PR: changed files include a generated single-writer artifact:"
+              grep -xE 'docs/streams/FINDINGS\.md|STATUS\.md' "${RUNNER_TEMP}/evidence-files.txt" | sed 's/^/  /'
+            else
+              is_evidence=true
+            fi
+          fi
+          echo "is_evidence=${is_evidence}"
+          # ─── END SHARED BLOCK ─────────────────────────────────────────────────
+
+          # This workflow's reading of the three states:
+          #   could-not-check -> FAIL the job. A file list that could not be
+          #     read must never be treated as "all files were under
+          #     docs/streams/", and a silent green here would leave an
+          #     un-enabled PR looking handled.
+          #   false           -> exit 0, nothing to do. This workflow fires on
+          #     every PR in the repo and must be silent on all but its own.
+          if [ "$is_evidence" = "could-not-check" ]; then
+            echo "::error::could-not-check on PR ${PR} — refusing to enable auto-merge"
+            exit 1
+          fi
+          [ "$is_evidence" = "true" ] || exit 0
+
+          # Draft state is this workflow's OWN gate and is deliberately not in
+          # the shared block: a draft Evidence PR is still an Evidence PR (the
+          # changelog gate must green on it), it is just not ready to be
+          # queued for merge. The review desk owns the ready flip.
+          if [ "$PR_DRAFT" = "true" ]; then
+            echo "PR is still a DRAFT — auto-merge is not requested until the review desk flips it ready"
+            exit 0
+          fi
+
+          echo "eligible: verifier-App Evidence PR, ready, docs/streams/ only"
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+
+      # Minted only for an eligible PR, so a token exists for no other PR in the
+      # repo. This App is already the board's writer; it is used here because the
+      # default GITHUB_TOKEN cannot request auto-merge on a protected branch.
+      - name: Mint board-writer App token
+        id: app-token
+        if: steps.guard.outputs.eligible == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOARD_APP_ID }}
+          private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
+
+      # `enablePullRequestAutoMerge` is a REQUEST. GitHub merges when — and only
+      # when — every branch rule is satisfied: the required approving review from
+      # a reviewer that is not the last pusher, the required status checks, and
+      # anything else the ruleset demands. It cannot bypass a single one of them.
+      # Merge method `merge`, so the two-parent history the fleet requires is
+      # preserved and no commit is rewritten.
+      - name: Request auto-merge
+        if: steps.guard.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NODE_ID: ${{ github.event.pull_request.node_id }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          # Already enabled (a second synchronize, or a review after a push) is a
+          # benign replay: GitHub answers with a "Pull request Auto merge is not
+          # allowed ... already enabled" style error. Treat that ONE case as
+          # success; every other failure is a real failure and reddens the run.
+          out=$(gh api graphql \
+            -f query='mutation($pr:ID!){enablePullRequestAutoMerge(input:{pullRequestId:$pr,mergeMethod:MERGE}){pullRequest{number autoMergeRequest{enabledAt}}}}' \
+            -F pr="$PR_NODE_ID" 2>&1) || {
+              printf '%s\n' "$out"
+              if printf '%s' "$out" | grep -qi 'already enabled'; then
+                echo "auto-merge was already enabled on PR ${PR} — no-op"
+                exit 0
+              fi
+              echo "::error::could not enable auto-merge on PR ${PR}"
+              exit 1
+            }
+          printf '%s\n' "$out"
+          echo "auto-merge requested on PR ${PR}; GitHub will merge once the required review and status checks are satisfied"
