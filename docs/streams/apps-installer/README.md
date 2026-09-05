@@ -65,6 +65,10 @@ per Secret or per user). The tiers change **who does the work**, never the metho
 | 07 | [Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented](./brief-07-install-skill-runbook-cutover.md) | 4 | M | todo | — | — |
 | 08 | [Solo identity mode — spec + decision: the desk verbs on the operator's own token](./brief-08-solo-identity-spec.md) | 0 | S | todo | — | — |
 
+Ruling for 08 is already recorded on #467 (2026-09-05): adopt Solo as specified, and the install
+page and runbook must say plainly that Solo means the operator does far more than in the other
+tiers — 07 carries that callout. 08's remaining work is the spec itself.
+
 ## Critical path
 
 ```

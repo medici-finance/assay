@@ -21,7 +21,7 @@ gate-why: >-
   mode's boundaries — which verbs may run under it, what the roster records, that it is refused on
   a repo whose ruleset expects a bot identity — before any code is authored.
 decision-trigger: spec
-issues: []
+issues: [467]
 schema: brief-v1
 authored: 2026-09-05 by apps-installer authoring session
 sources:
@@ -30,6 +30,7 @@ sources:
   - "`tools/desk/internal/deskkit/trust.go` — role Apps are trusted by `<slug>[bot]` login from `ASSAY_TRUSTED_BOT_SLUGS`; humans by `ASSAY_TRUSTED_LOGINS`; `ASSAY_BLESS_LOGIN` blesses content."
   - "`tools/desk/cmd/desktoken/desktoken.go` — `<ROLE>_TOKEN` env overrides the mint for one role; today this is the only non-App token path and it is undocumented as a mode."
   - "freshness-checked 2026-09-05 @ 38e96f7 (origin/main) — no 'solo' or user-token mode exists; the preflight refuses a role without a minted grant."
+  - "Decision issue #467 — ruling recorded 2026-09-05: adopt Solo as specified (option 1), with the condition that the install page and runbook state plainly that Solo means the operator does far more than in the other tiers (carried by apps-installer/07)."
 exec-tier: strong
 exec-tier-why: >-
   Question (a) — the spec must decide the trust-model boundaries the facts leave open (which verbs,
@@ -79,7 +80,8 @@ facts:
 2. `## Human decision` section: the options (adopt the spec as written / adopt with named
    changes / reject Solo as a supported mode) with the consequence of each for the README's tier
    table.
-3. File the decision issue per the repo's decision procedure; record its number in `issues:`.
+3. The decision issue is #467 and the ruling is already recorded on it (adopt as specified). Cite it
+   in the spec's `## Human decision` section as the standing ruling; do not re-ask.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |

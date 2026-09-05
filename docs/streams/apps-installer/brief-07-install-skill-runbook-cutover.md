@@ -21,6 +21,7 @@ sources:
   - "`docs/adopting-assay.md` — `PRIMITIVE: setup-reviewer-app — HUMAN-GATED`, the required duty set table, the roster section (`ASSAY_TRUSTED_BOT_SLUGS=[role=]slug:<bot-user-id>`), the Human post-install checklist."
   - "apps-installer/01 — the `<ROLE>_APP` binding the runbook must now describe; apps-installer/02 — the `deskapps init` flow and the `apps.env` records the runbook describes; apps-installer/03 — the roster block deskapps writes."
   - "freshness-checked 2026-09-05 @ 38e96f7 (origin/main) — the skill and the runbook describe hand creation only; neither mentions tiers or a manifest flow."
+  - "Decision issue #467 (apps-installer/08 ruling, 2026-09-05): the install page and runbook must say plainly that Solo means the operator does far more than in the other tiers."
 exec-tier: strong
 exec-tier-why: >-
   Question (b) — the skill, the runbook and the tool must agree on which acts stay human (Create,
@@ -57,6 +58,11 @@ facts:
   (only when `ASSAY_TRUSTED_BOT_SLUGS` is absent) and when it prints it instead.
 - The runbook's duty-set table is unchanged; the sentence "provision all three for the reviewer
   App, and for any other role App you create" gains "— `deskapps` manifests carry exactly this set".
+- Solo callout (ruling on #467): the runbook's "Choosing a tier" section and the skill's hand-off
+  both carry, above the tier table, one plainly worded paragraph beginning **"Solo means you do the
+  work"**: you start every loop by hand, you post every verdict as yourself, you merge, you flip
+  status, you answer every decision, and nothing runs while your machine is closed. A trial user
+  must read it before choosing Solo.
 - Honest claims: no page may say the tool "creates" or "installs" an App. It *prepares*,
   *converts*, *records*, *proves*.
 
@@ -93,6 +99,7 @@ facts:
 | 7 | `grep -cE -e 'ASSAY_TRUSTED_BOT_SLUGS' -e 'only when' docs/adopting-assay.md` | ≥ 2 |
 | 8 | `grep -cE -e 'deskapps' tools/desk/README.md` | ≥ 1 |
 | 9 | `statusgen --root . --lint` | exit 0 |
+| 11 | `grep -cE -e 'Solo means you do the work' docs/adopting-assay.md plugins/assay/skills/install/SKILL.md` | 2 (one per file, above the tier table) |
 | 10 | `statusgen --root . --consumers --brief apps-installer/07` | exit 0 (routing claims corroborated against the diff) |
 
 ## Evidence
