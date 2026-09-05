@@ -35,9 +35,10 @@ exec-tier-why: >-
   directory only, never the item's tree) and the failure semantics are safety plumbing a
   subtle slip would silently weaken while every test still passes.
 consumers:
-  - "tools/desk/cmd/deskwt/main.go add / remove / prune: fixed-here (after_create on add; before_remove on remove and on each prune removal)"
-  - "tools/desk/cmd/deskdispatch/main.go: fixed-here (before_run between worktree-create and prompt-emit)"
-  - "tools/desk/cmd/desksupervise/main.go: fixed-here (after_run when a claim is released or landed by the observer)"
+  - "tools/desk/cmd/deskwt/deskwt.go add / remove: fixed-here (after_create on add; before_remove on remove — the verbs live in deskwt.go, main.go is only the router)"
+  - "tools/desk/cmd/deskwt/prune.go: fixed-here (before_remove on each prune removal)"
+  - "tools/desk/cmd/deskdispatch/dispatch.go: fixed-here (before_run between worktree-create and prompt-emit — the dispatch flow lives in dispatch.go, not main.go)"
+  - "tools/desk/cmd/desksupervise/actions.go: fixed-here (after_run when a claim is released or landed by the observer — the runAction seam lives in actions.go, not main.go)"
   - "tools/desk/cmd/deskdispatch/references/common-clauses.md KUBECONFIG clause: fixed-here (the clause stays as the agent-facing rule; the shipped before_run hook makes it checked, not remembered)"
   - "plugins/assay/skills/worker-desk/SKILL.md §Boot 'two residues': follow-up desk-supervision/04 (the residue paragraph shrinks to a pointer at the hooks file in the implementation PR, after the hooks are proven)"
 ---
