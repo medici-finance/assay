@@ -18,9 +18,9 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-05 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-05 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-05 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-05 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-04 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 1/6 | 2026-09-05 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 3/6 | 2026-09-05 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 4/6 | 2026-09-05 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 13/16 | 2026-09-05 |  |
 | [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 1/1 | 2026-09-05 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 7/13 | 2026-09-05 |  |
@@ -28,7 +28,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 ## Next up
 
-_Held by per-stream caps: 4 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (4). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 3 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (3). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
@@ -38,8 +38,10 @@ _Held by per-stream caps: 4 brief(s) across 1 stream(s) — top: desk-tools. By 
 | desk-supervision | 07 — Runtime snapshot — `desksupervise status` for operators and the console | 1 | 1000 |
 | desk-tools | 08 — `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file [exec:strong] | 1 | 1000 |
 | desk-tools | 10 — `deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand [exec:strong] | 1 | 1000 |
-| desk-tools | 11 — `deskwt add` — a worktree whose directory is gone does not hold its branch | 1 | 1000 |
 | desk-tools | 12 — `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON | 1 | 1000 |
+| desk-tools | 13 — `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree | 1 | 1000 |
+| mistake-proofing | 05 — `newbrief` — the scaffolder as the authoring front door (B1) [exec:strong] | 2 | 1000 |
+| mistake-proofing | 06 — D1 promoted to a lint obligation — a new check must carry its mutation row | 2 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 
 ## Intake queue
@@ -69,7 +71,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | windows-port | 00 | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
-| mistake-proofing | 03 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -84,6 +85,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| harness-portability | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | quality | 14 | implemented | 1000 | 0 | — | — | — |
 | quality | 16 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
@@ -162,7 +164,7 @@ _None._
 - 08 `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file — todo (wave 1)
 - 09 `desktoken coverage <role>` — list the repositories a role's App installations can see — implemented (wave 1)
 - 10 `deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand — todo (wave 1)
-- 11 `deskwt add` — a worktree whose directory is gone does not hold its branch — todo (wave 1)
+- 11 `deskwt add` — a worktree whose directory is gone does not hold its branch — blocked (wave 1)
 - 12 `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON — todo (wave 1)
 - 13 `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree — todo (wave 1)
 - 14 bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` — todo (wave 1)
@@ -212,7 +214,7 @@ _None._
 - 07 Adoption docs, freshness registration, live Codex smoke protocol + first run — implemented (wave 4)
 - 09 jcode desk-harness spike — measured parity + fleet-density for driving desks — implemented (wave 0)
 - 10 SpecMem portable-memory spike — one stream's registers across two harnesses — implemented (wave 0)
-- 11 Durable-monitor capability + residual harness-token prose-audit — todo (wave 3)
+- 11 Durable-monitor capability + residual harness-token prose-audit — implemented (wave 3)
 - 12 Cursor — the third harness column (ground-truth + binding + generator verb + public column) — implemented (wave 5)
 - 13 Cursor live-desk-smoke protocol + first run — todo (wave 6)
 
@@ -224,9 +226,8 @@ _None._
 - 05 Records control and retention, stated once (7.5.3) — implemented (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 
-### mistake-proofing (3 open)
+### mistake-proofing (2 open)
 
-- 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — implemented (wave 1)
 - 05 `newbrief` — the scaffolder as the authoring front door (B1) — todo (wave 2)
 - 06 D1 promoted to a lint obligation — a new check must carry its mutation row — todo (wave 2)
 
@@ -290,10 +291,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 - 02 Align three shipped disclosures with the code they describe (B9) — done (wave 0)
 
-### mistake-proofing (3 done)
+### mistake-proofing (4 done)
 
 - 01 Cross-read a brief's declared paths against the risk classifier (B3) — done (wave 0)
 - 02 Dereference named identifiers, not just backticked paths (B4) — done (wave 0)
+- 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — done (wave 1)
 - 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — done (wave 1)
 
 ### quality (13 done)
@@ -332,4 +334,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**14** streams (**14** active, **0** paused) · **38/125** briefs done · completed initiatives: see `docs/archive/`
+**14** streams (**14** active, **0** paused) · **39/125** briefs done · completed initiatives: see `docs/archive/`
