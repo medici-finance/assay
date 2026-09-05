@@ -45,6 +45,24 @@ ticked without a case behind it.
 | 14 | `PushTransportHint(repo)` | push-transport hints | `x-access-token` https + inline credential.helper (no token-in-URL) | `oauth2` username + inline credential.helper, host from the configured instance | implemented |
 | 15 | `DeleteRef(repo, ref)` | delete one git ref | `DELETE /repos/{o}/{r}/git/refs/{ref}` (git-data refs) — replaces `fanoutloop`'s `gh api -X DELETE repos/…/git/refs/dispatch/…` | `DELETE /projects/:id/repository/branches/:branch` (Branches API, **Tier: Free**). GitLab CE exposes NO general ref-delete endpoint, so only the `heads/<branch>` namespace maps; every other namespace is a could-not-check REFUSAL naming the gap, never a silent success | implemented |
 
+| 16 | `ListLabelEvents(repo, number)` | read label APPLICATIONS with their applier | `deskpost` `listLabelEvents` / `deskflip` `readLabelEvents` (`GET /issues/{n}/timeline`, paginated, `labeled` events only) | `GET /merge_requests/:iid/resource_label_events`, `action:add` only; an event whose label was since deleted comes back unnamed and is dropped (a stamp nobody can name attests to nothing) | implemented |
+| 17 | `ListComments(repo, number)` | read comments (identity + marker + hidden state) | `deskreply` `--workpad` comment list (GraphQL `comments(first:100)` — REST carries no `isMinimized`) | `GET /merge_requests/:iid/notes` ordered `created_at asc`; SYSTEM notes dropped (GitLab lists its own activity beside human comments); `Minimized` is false because GitLab has no minimise feature — exact, not defaulted; `URL` is empty because GitLab publishes no per-note permalink | implemented |
+| 18 | `EditComment(repo, commentID, body)` | edit ONE existing comment | `deskreply` `--workpad` edit (GraphQL `updateIssueComment`, node id) | `PUT /merge_requests/:iid/notes/:id`; the opaque id is the backend-minted `gitlab:<owner>/<name>!<iid>#note<id>`, and a foreign or project-mismatched id is REFUSED rather than resolved | implemented |
+| 19 | `ApplyLabels(repo, number, change)` | reconcile a change's labels in one operation | `deskpost` `ensureLabel`+`listLabels`+`addLabels`+`removeLabel` (4 hand-built requests) / `deskflip` `ensureLabelSwap` (`gh pr edit --add-label/--remove-label`) | `POST /projects/:id/labels` to ensure (409/400 "already taken" = the ensure's post-condition already holds), then ONE `PUT /merge_requests/:iid` carrying `add_labels`+`remove_labels` — atomic, where the GitHub backend issues one DELETE per removal. Colors travel as bare hex and each backend renders its own form (GitHub forbids a leading `#`, GitLab requires one) | implemented |
+
+**Ops 16–19 were added by brief `forge-neutral/03` under the same freeze rule**, each with its consuming
+call sites converted in the same change: 16 by `deskflip`'s model-capability-floor read and `deskpost`'s
+sibling; 17 and 18 by `deskreply`'s `--workpad` upsert; 19 by `deskflip`'s queue-label swap and
+`deskpost`'s mechanical verdict labels. `ApplyLabels` is declarative rather than a set of primitives
+(create / list / add / remove) precisely so the seam grows ONE method where the tools consume one
+intent — and so a caller never needs a label-LISTING operation of its own: it names the label-name
+FAMILIES it owns this run and the backend drops their stale members. A family the caller has no
+definite value for is simply not named, so nothing in it is touched.
+
+`PostComment` (op 9) also gained a return value in that brief — a `CommentRef` carrying the created
+comment's opaque id, numeric id and (where the forge publishes one) URL — so a write is answerable
+without a follow-up read, the same way `CreateDraftChange` returns a `PullRef`.
+
 **Op 15 was added by brief 08 under the spec §6 freeze rule** — with its consuming callsite converted in
 the same change (`fanoutloop`'s dispatch-claim sink), not speculatively. It is the one op whose argument
 is path-shaped, which is exactly the shape an arbitrary-endpoint escape hatch takes, so it carries a

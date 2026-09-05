@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,25 +18,27 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// fakeGHSource is compiled once (TestMain) into a temp dir placed FIRST on PATH, so the
-// tool's `gh` and `desktoken` invocations hit this canned stand-in instead of the
-// network. `pr view` prints a single JSON object (state / url / headRefName / headRefOid,
-// each overridable by env); `pr comment` prints a comment URL; `desktoken worker` creates
-// a fake token file and prints its path. It appends its argv to FAKEGH_LOG when set; the
-// in-process execCommand recorder is the authoritative one used by assertions.
+// fakeDesktokenSource is compiled once (TestMain) into a temp dir placed FIRST on PATH, so
+// the tool's `desktoken worker` invocation hits this canned stand-in instead of a real App
+// mint. It appends its argv to FAKEGH_LOG when set; the in-process execCommand recorder is
+// the authoritative one used by assertions.
 //
-// The `worker` and `view`/`comment` cases model the REAL cross-installation failure mode
-// from #562, not just a canned success: `desktoken worker` resolves an "owner" from
-// `--repo <slug>` — defaulting to "example-org" when the flag is ABSENT, exactly like the
-// production tool — and mints a token whose value encodes that owner
-// ("fake-worker-installation-token-for-<owner>"). `gh pr view`/`pr comment` then check
-// that GH_TOKEN's embedded owner matches the owner of the `-R <repo>` target: a mismatch
-// exits 1 with the same "Could not resolve to a Repository" wording GitHub's real API
-// returns for an installation token scoped to the wrong org (reproduced verbatim against
-// live desktoken/gh during the #562 investigation). Without deskreply forwarding
-// --repo, this fake would reproduce the bug and TestReplyMintsWorkerTokenScopedToOwnRepo /
-// TestReplyMediciFinanceRepoSucceeds below would fail exactly as the real tool did.
-const fakeGHSource = `package main
+// It models the REAL cross-installation failure mode from #562, not just a canned success:
+// `desktoken worker` resolves an "owner" from `--repo <slug>` — defaulting to "example-org"
+// when the flag is ABSENT, exactly like the production tool — and mints a token whose VALUE
+// encodes that owner ("fake-worker-installation-token-for-<owner>"). The fake forge
+// (forgeRecorder, below) then checks that the token presented in the Authorization header
+// belongs to the owner of the repo the request addresses, and answers a mismatch the way
+// GitHub's real API does for an installation token scoped to the wrong org. Without deskreply
+// forwarding --repo, that pairing reproduces the bug and
+// TestReplyMintsWorkerTokenScopedToOwnRepo / TestReplyMediciFinanceRepoSucceeds fail exactly
+// as the real tool did.
+//
+// (The `gh` half of this fake is gone with the transport: deskreply launches no forge CLI, so
+// there is nothing left for a fake CLI to stand in for. The owner-mismatch assertion it
+// carried moved to the fake forge, one layer down, where it checks the credential that was
+// actually presented rather than an environment variable that was handed over.)
+const fakeDesktokenSource = `package main
 
 import (
 	"fmt"
@@ -60,13 +63,6 @@ func main() {
 		}
 		return false
 	}
-	env := func(k, def string) string {
-		if v := os.Getenv(k); v != "" {
-			return v
-		}
-		return def
-	}
-	// flagVal returns the value following flag name in args, or "".
 	flagVal := func(name string) string {
 		for i, a := range args {
 			if a == name && i+1 < len(args) {
@@ -81,53 +77,33 @@ func main() {
 		}
 		return repoSlug
 	}
-	switch {
-	case has("worker"):
-		// desktoken worker [--repo <slug>]: mirror the REAL desktoken default — owner is
-		// parsed from --repo when present, else defaults to "example-org" (the bug #562
-		// fixed was deskreply never passing --repo, so this always resolved "example-org").
-		o := "example-org"
-		if repo := flagVal("--repo"); repo != "" {
-			o = owner(repo)
-		}
-		f, err := os.CreateTemp("", "fake-worker-token-*")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "create temp token: %v\n", err)
-			os.Exit(1)
-		}
-		if _, werr := f.WriteString("fake-worker-installation-token-for-" + o + "\n"); werr != nil {
-			f.Close()
-			os.Remove(f.Name())
-			os.Exit(1)
-		}
-		f.Close()
-		if cerr := os.Chmod(f.Name(), 0o600); cerr != nil {
-			os.Remove(f.Name())
-			os.Exit(1)
-		}
-		// Output the absolute path of the token cache file, matching desktoken's behaviour.
-		abs, _ := filepath.Abs(f.Name())
-		fmt.Println(abs)
-	case has("view"):
-		target := flagVal("-R")
-		tokenOwner := strings.TrimPrefix(os.Getenv("GH_TOKEN"), "fake-worker-installation-token-for-")
-		if target != "" && tokenOwner != "" && owner(target) != tokenOwner {
-			fmt.Fprintf(os.Stderr, "GraphQL: Could not resolve to a Repository with the name '%s'. (repository)\n", target)
-			os.Exit(1)
-		}
-		state := env("FAKEGH_PR_STATE", "OPEN")
-		head := env("FAKEGH_PR_HEAD", "feature/test-branch")
-		oid := env("FAKEGH_PR_OID", "1111111111111111111111111111111111111111")
-		fmt.Printf("{\"state\":%q,\"url\":\"https://github.com/%s/pull/7\",\"headRefName\":%q,\"headRefOid\":%q}\n", state, env("FAKEGH_PR_REPO", "example-org/tracker"), head, oid)
-	case has("comment"):
-		target := flagVal("-R")
-		tokenOwner := strings.TrimPrefix(os.Getenv("GH_TOKEN"), "fake-worker-installation-token-for-")
-		if target != "" && tokenOwner != "" && owner(target) != tokenOwner {
-			fmt.Fprintf(os.Stderr, "GraphQL: Could not resolve to a Repository with the name '%s'. (repository)\n", target)
-			os.Exit(1)
-		}
-		fmt.Printf("https://github.com/%s/pull/7#issuecomment-123\n", env("FAKEGH_PR_REPO", "example-org/tracker"))
+	if !has("worker") {
+		os.Exit(0)
 	}
+	// desktoken worker [--repo <slug>]: mirror the REAL desktoken default — owner is parsed
+	// from --repo when present, else defaults to "example-org" (the bug #562 fixed was
+	// deskreply never passing --repo, so this always resolved "example-org").
+	o := "example-org"
+	if repo := flagVal("--repo"); repo != "" {
+		o = owner(repo)
+	}
+	f, err := os.CreateTemp("", "fake-worker-token-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "create temp token: %v\n", err)
+		os.Exit(1)
+	}
+	if _, werr := f.WriteString("fake-worker-installation-token-for-" + o + "\n"); werr != nil {
+		f.Close()
+		os.Remove(f.Name())
+		os.Exit(1)
+	}
+	f.Close()
+	if cerr := os.Chmod(f.Name(), 0o600); cerr != nil {
+		os.Remove(f.Name())
+		os.Exit(1)
+	}
+	abs, _ := filepath.Abs(f.Name())
+	fmt.Println(abs)
 }
 `
 
@@ -152,19 +128,10 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, werr)
 		os.Exit(1)
 	}
-	if werr := os.WriteFile(filepath.Join(dir, "main.go"), []byte(fakeGHSource), 0o644); werr != nil {
+	if werr := os.WriteFile(filepath.Join(dir, "main.go"), []byte(fakeDesktokenSource), 0o644); werr != nil {
 		fmt.Fprintln(os.Stderr, werr)
 		os.Exit(1)
 	}
-	build := exec.Command("go", "build", "-o", filepath.Join(dir, "gh"), ".")
-	build.Dir = dir
-	build.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
-	if out, berr := build.CombinedOutput(); berr != nil {
-		fmt.Fprintf(os.Stderr, "build fake gh: %v\n%s\n", berr, out)
-		os.Exit(1)
-	}
-	// Also build as desktoken (same fake binary, different name — the tool shells
-	// out to `desktoken worker`; the fake handles the "worker" argv check).
 	buildDT := exec.Command("go", "build", "-o", filepath.Join(dir, "desktoken"), ".")
 	buildDT.Dir = dir
 	buildDT.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
@@ -243,9 +210,11 @@ func newMediciFixture(t *testing.T) string {
 	return work
 }
 
-// withEnv points deskkit's runtime dir at a fresh HOME, prepends the fake gh to PATH,
-// binds getwd to work, and installs the in-process command recorder. Returns the recorded
-// argv slice.
+// withEnv points deskkit's runtime dir at a fresh HOME, prepends the fake desktoken to PATH,
+// binds getwd to work, installs the in-process command recorder AND the fake forge, and
+// returns the recorded argv slice. The forge recorder is reachable as forgeRec(t) — it is
+// stored per-test so the many existing cases that only need the argv slice keep their
+// signature.
 func withEnv(t *testing.T, work string) *[][]string {
 	t.Helper()
 	fixtureHome := t.TempDir()
@@ -275,7 +244,23 @@ func withEnv(t *testing.T, work string) *[][]string {
 	publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, owner, repo string, issueNumber int) error { return nil }
 	t.Cleanup(func() { publicRepoGateFn = oldGate })
 
+	currentForge = newForgeRecorder(t)
+	t.Cleanup(func() { currentForge = nil })
+
 	return calls
+}
+
+// currentForge is the fake forge withEnv installed for the running test. A package var rather
+// than a second return value so the cases below keep the signature they had before the
+// transport migration — the diff stays about the ASSERTIONS, not about plumbing.
+var currentForge *forgeRecorder
+
+func forgeRec(t *testing.T) *forgeRecorder {
+	t.Helper()
+	if currentForge == nil {
+		t.Fatal("no fake forge is installed — call withEnv first")
+	}
+	return currentForge
 }
 
 // bodyFileWith writes body to a temp file and returns its path.
@@ -334,16 +319,6 @@ func gitCalls(calls [][]string) [][]string {
 	return out
 }
 
-func ghCalls(calls [][]string) [][]string {
-	var out [][]string
-	for _, c := range calls {
-		if len(c) > 0 && filepath.Base(c[0]) == "gh" {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
 func callContainsAll(c []string, want ...string) bool {
 	for _, w := range want {
 		found := false
@@ -369,22 +344,33 @@ func anyCall(calls [][]string, want ...string) bool {
 	return false
 }
 
-// forbiddenGHVerbs are the mutating gh tokens deskreply must NEVER emit: it is a
-// worker tool, so it can post nothing a board/desk reads as a reviewer signal, and it
-// never opens/edits/merges/closes a PR. The ONLY mutating verb allowed is `pr comment`.
-var forbiddenGHVerbs = []string{
-	"review", "ready", "merge", "close", "edit", "create",
-	"approve", "request-changes", "--approve", "--request-changes", "api",
-}
+// forbiddenWritePaths are the forge WRITE surfaces deskreply must never touch: it is a worker
+// tool, so it can post nothing a board or desk reads as a reviewer signal, and it never
+// opens/edits/merges/closes a change. The only mutating operations it may perform are a
+// comment post and — on the --workpad path — an edit of its OWN comment.
+//
+// This is the successor to the argv-era `forbiddenGHVerbs` list, and it is stricter in the way
+// that matters: an argv check could only refuse WORDS a CLI was handed, so a mutation issued
+// through some other spelling was invisible to it. This enumerates the write surfaces
+// themselves, and the catch-all below refuses any write that is neither of the two allowed.
+var forbiddenWritePaths = []string{"/reviews", "/merge", "/labels", "/pulls", "/issues/7$"}
 
-func assertOnlyPrComment(t *testing.T, calls [][]string) {
+func assertOnlyCommentWrites(t *testing.T, rec *forgeRecorder) {
 	t.Helper()
-	for _, c := range ghCalls(calls) {
-		for _, a := range c[1:] {
-			for _, bad := range forbiddenGHVerbs {
-				if a == bad {
-					t.Fatalf("deskreply emitted a forbidden gh token %q: %v", bad, c)
-				}
+	for _, r := range rec.writes() {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.Path, "/comments"):
+			continue // the comment post
+		case r.Path == "/graphql" && strings.Contains(r.Body, "updateIssueComment"):
+			continue // the --workpad edit of the tool's own comment
+		}
+		t.Fatalf("deskreply made a write outside its two allowed operations: %s", r)
+	}
+	for _, r := range rec.writes() {
+		for _, bad := range forbiddenWritePaths {
+			if strings.Contains(r.Path, strings.TrimSuffix(bad, "$")) &&
+				!strings.HasSuffix(r.Path, "/comments") {
+				t.Fatalf("deskreply wrote to a forbidden surface %q: %s", bad, r)
 			}
 		}
 	}
@@ -395,7 +381,7 @@ func assertOnlyPrComment(t *testing.T, calls [][]string) {
 // simulates a public-repo-without-+1 result, and asserts ZERO write calls were made.
 func TestPublicRepoGateWired(t *testing.T) {
 	work := newBaseFixture(t)
-	calls := withEnv(t, work)
+	withEnv(t, work)
 
 	// Override the gate stub with one that refuses as if the repo is public with no +1.
 	publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, owner, repo string, issueNumber int) error {
@@ -409,17 +395,13 @@ func TestPublicRepoGateWired(t *testing.T) {
 	}
 
 	// Assert ZERO mutating write calls were made.
-	for _, c := range *calls {
-		if len(c) >= 3 && c[0] == "gh" && c[1] == "pr" && c[2] == "comment" {
-			t.Fatalf("gate refused -- must NOT make gh pr comment call; calls: %v", *calls)
-		}
-	}
+	assertNoComment(t, forgeRec(t))
 }
 
-func assertNoPrComment(t *testing.T, calls [][]string) {
+func assertNoComment(t *testing.T, rec *forgeRecorder) {
 	t.Helper()
-	if anyCall(ghCalls(calls), "pr", "comment") {
-		t.Fatalf("a `gh pr comment` was made on a path that must not post: %v", ghCalls(calls))
+	if rec.posted() {
+		t.Fatalf("a comment was posted on a path that must not post: %v", rec.writes())
 	}
 }
 
@@ -441,7 +423,7 @@ func anyDesktokenCall(calls [][]string) bool {
 
 // --- tests ----------------------------------------------------------------------
 
-func TestReplySuccessOnlyMutatingCallIsPrComment(t *testing.T) {
+func TestReplySuccessPostsOnlyOneComment(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	body := bodyFileWith(t, "Addressed in abc1234: the check is now re-verified in-tool.")
@@ -450,10 +432,11 @@ func TestReplySuccessOnlyMutatingCallIsPrComment(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("reply rc = %d, want 0", rc)
 	}
-	if !anyCall(ghCalls(*calls), "pr", "comment") {
-		t.Fatalf("expected a `gh pr comment`; gh calls: %v", ghCalls(*calls))
+	rec := forgeRec(t)
+	if !rec.posted() {
+		t.Fatalf("expected a comment post; forge writes: %v", rec.writes())
 	}
-	assertOnlyPrComment(t, *calls) // never review/ready/create/merge/close/edit/approve/api
+	assertOnlyCommentWrites(t, rec) // never a review, a ready flip, a merge, a label, a create
 	assertNoGitPush(t, *calls)
 }
 
@@ -514,7 +497,7 @@ func TestReplyMintsWorkerTokenScopedToOwnRepo(t *testing.T) {
 // once --repo is forwarded.
 func TestReplyMediciFinanceRepoSucceeds(t *testing.T) {
 	work := newMediciFixture(t)
-	calls := withEnv(t, work)
+	withEnv(t, work)
 	t.Setenv("FAKEGH_PR_REPO", "medici-finance/assay")
 	body := bodyFileWith(t, "replying on a repo under an org other than example-org")
 
@@ -523,8 +506,8 @@ func TestReplyMediciFinanceRepoSucceeds(t *testing.T) {
 		t.Fatalf("reply on a medici-finance-origin worktree rc = %d, want 0 (#562 regression: "+
 			"desktoken must resolve the medici-finance installation, not silently default to example-org)", rc)
 	}
-	if !anyCall(ghCalls(*calls), "pr", "comment") {
-		t.Fatalf("expected a `gh pr comment`; gh calls: %v", ghCalls(*calls))
+	if !forgeRec(t).posted() {
+		t.Fatalf("expected a comment post; forge writes: %v", forgeRec(t).writes())
 	}
 }
 
@@ -536,17 +519,18 @@ func TestReplyIdempotentNoopSameBodySameHead(t *testing.T) {
 	if rc := run([]string{"example-org/tracker", "7", "--body-file", body}); rc != deskkit.ExitOK {
 		t.Fatalf("first reply rc = %d, want 0", rc)
 	}
-	// Reset the recorder; the SECOND identical invocation must post nothing.
+	// Reset the recorders; the SECOND identical invocation must post nothing.
 	*calls = nil
+	forgeRec(t).requests = nil
 	if rc := run([]string{"example-org/tracker", "7", "--body-file", body}); rc != deskkit.ExitOK {
 		t.Fatalf("duplicate reply rc = %d, want 0 (noop)", rc)
 	}
-	assertNoPrComment(t, *calls)
+	assertNoComment(t, forgeRec(t))
 }
 
 func TestReplyNotMyOwnBranchRefuses(t *testing.T) {
 	work := newBaseFixture(t)
-	calls := withEnv(t, work)
+	withEnv(t, work)
 	t.Setenv("FAKEGH_PR_HEAD", "someone-elses-branch") // PR head != this worktree's branch
 	body := bodyFileWith(t, "trying to reply on a PR that is not mine")
 
@@ -554,12 +538,12 @@ func TestReplyNotMyOwnBranchRefuses(t *testing.T) {
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("reply on a not-my-branch PR rc = %d, want 5", rc)
 	}
-	assertNoPrComment(t, *calls)
+	assertNoComment(t, forgeRec(t))
 }
 
 func TestReplyPRNotOpenRefuses(t *testing.T) {
 	work := newBaseFixture(t)
-	calls := withEnv(t, work)
+	withEnv(t, work)
 	t.Setenv("FAKEGH_PR_STATE", "MERGED")
 	body := bodyFileWith(t, "reply on a merged PR")
 
@@ -567,12 +551,12 @@ func TestReplyPRNotOpenRefuses(t *testing.T) {
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("reply on a non-open PR rc = %d, want 5", rc)
 	}
-	assertNoPrComment(t, *calls)
+	assertNoComment(t, forgeRec(t))
 }
 
 func TestReplyOriginMismatchRefuses(t *testing.T) {
 	work := newBaseFixture(t)
-	calls := withEnv(t, work)
+	withEnv(t, work)
 	body := bodyFileWith(t, "replying on a different (allowed) repo than my origin")
 
 	// example-org/agents IS an allowed repo, but it is not THIS worktree's origin.
@@ -580,48 +564,48 @@ func TestReplyOriginMismatchRefuses(t *testing.T) {
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("origin-mismatch reply rc = %d, want 5", rc)
 	}
-	assertNoPrComment(t, *calls)
+	assertNoComment(t, forgeRec(t))
 }
 
 func TestReplyRepoNotAllowedRefuses(t *testing.T) {
 	work := newBaseFixture(t)
-	calls := withEnv(t, work)
+	withEnv(t, work)
 	body := bodyFileWith(t, "x")
 
 	rc := run([]string{"otheruser/otherrepo", "7", "--body-file", body})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("repo outside the set rc = %d, want 5", rc)
 	}
-	if len(ghCalls(*calls)) != 0 {
-		t.Fatalf("a gh call was made for a disallowed repo: %v", ghCalls(*calls))
+	if rec := forgeRec(t); len(rec.requests) != 0 {
+		t.Fatalf("the verb reached the forge for a disallowed repo: %v", rec.requests)
 	}
 }
 
 func TestReplyOversizeBodyRefusesNoCall(t *testing.T) {
 	work := newBaseFixture(t)
-	calls := withEnv(t, work)
+	withEnv(t, work)
 	body := bodyFileWith(t, strings.Repeat("a", maxBodyBytes+1))
 
 	rc := run([]string{"example-org/tracker", "7", "--body-file", body})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("oversize body rc = %d, want 5", rc)
 	}
-	if len(ghCalls(*calls)) != 0 {
-		t.Fatalf("a gh call was made despite an oversize body: %v", ghCalls(*calls))
+	if rec := forgeRec(t); len(rec.requests) != 0 {
+		t.Fatalf("the verb reached the forge despite an oversize body: %v", rec.requests)
 	}
 }
 
 func TestReplySecretInBodyRefusesNoCall(t *testing.T) {
 	work := newBaseFixture(t)
-	calls := withEnv(t, work)
+	withEnv(t, work)
 	body := bodyFileWith(t, "here is the token ghp_"+strings.Repeat("a", 36))
 
 	rc := run([]string{"example-org/tracker", "7", "--body-file", body})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("secret in body rc = %d, want 5", rc)
 	}
-	if len(ghCalls(*calls)) != 0 {
-		t.Fatalf("a gh call was made despite a secret in the body: %v", ghCalls(*calls))
+	if rec := forgeRec(t); len(rec.requests) != 0 {
+		t.Fatalf("the verb reached the forge despite a secret in the body: %v", rec.requests)
 	}
 }
 
@@ -646,7 +630,7 @@ func TestReplyMissingBodyFileRefuses(t *testing.T) {
 
 func TestReplyKillSwitchDisabled(t *testing.T) {
 	work := newBaseFixture(t)
-	calls := withEnv(t, work)
+	withEnv(t, work)
 	t.Setenv("DESK_TOOLS_DISABLED", "1")
 	body := bodyFileWith(t, "should never post")
 
@@ -654,14 +638,14 @@ func TestReplyKillSwitchDisabled(t *testing.T) {
 	if rc != deskkit.ExitDisabled {
 		t.Fatalf("kill switch rc = %d, want 3", rc)
 	}
-	if len(ghCalls(*calls)) != 0 {
-		t.Fatalf("a gh call was made while the kill switch was armed: %v", ghCalls(*calls))
+	if rec := forgeRec(t); len(rec.requests) != 0 {
+		t.Fatalf("the verb reached the forge while the kill switch was armed: %v", rec.requests)
 	}
 }
 
 func TestReplyRateLimitedNoCall(t *testing.T) {
 	work := newBaseFixture(t)
-	calls := withEnv(t, work)
+	withEnv(t, work)
 	seedAudit(t, deskkit.RateLimitPerPRPerHour, 7) // PR 7's budget already spent this hour
 	body := bodyFileWith(t, "one reply too many")
 
@@ -669,7 +653,7 @@ func TestReplyRateLimitedNoCall(t *testing.T) {
 	if rc != deskkit.ExitRateLimited {
 		t.Fatalf("rate-limited reply rc = %d, want 4", rc)
 	}
-	assertNoPrComment(t, *calls)
+	assertNoComment(t, forgeRec(t))
 }
 
 // TestNoReviewerAppPath is the mechanical proof of the identity separation (

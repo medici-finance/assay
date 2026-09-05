@@ -1,0 +1,39 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/labels",
+      "body": {
+        "color": "c5def5",
+        "description": "size",
+        "name": "size:s"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/issues/7/labels",
+      "query": "per_page=100\u0026page=1"
+    },
+    {
+      "method": "DELETE",
+      "path": "/repos/medici-finance/assay/issues/7/labels/size:xl"
+    },
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/issues/7/labels",
+      "body": {
+        "labels": [
+          "size:s"
+        ]
+      }
+    }
+  ],
+  "result": {
+    "Added": [
+      "size:s"
+    ],
+    "Removed": [
+      "size:xl"
+    ]
+  }
+}

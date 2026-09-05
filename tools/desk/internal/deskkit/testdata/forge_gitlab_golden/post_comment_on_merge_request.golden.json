@@ -15,5 +15,10 @@
         "body": "hello"
       }
     }
-  ]
+  ],
+  "result": {
+    "ID": "gitlab:medici-finance/assay!7#note900",
+    "DatabaseID": 900,
+    "URL": ""
+  }
 }

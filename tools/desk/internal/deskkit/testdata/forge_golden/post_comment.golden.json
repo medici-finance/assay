@@ -7,5 +7,10 @@
         "body": "hello"
       }
     }
-  ]
+  ],
+  "result": {
+    "ID": "IC_node1",
+    "DatabaseID": 1,
+    "URL": "https://example/pull/7#issuecomment-1"
+  }
 }

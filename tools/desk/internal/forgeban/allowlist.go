@@ -22,19 +22,27 @@ package forgeban
 // Nearly every entry below is one of two shapes:
 //
 //	(identity) The tool reaches the forge under the caller's AMBIENT CLI credential, by
-//	documented design — deskclose, deskdigest, deskfile and deskflip each carry a comment
-//	saying the tool gates WHETHER and WHAT, never WHO, and that it mints no token on any
-//	path. Both Forge backends REFUSE to construct a client without an explicitly minted
-//	token (forge_github.go restClient, forge_gitlab.go client) — deliberately, so that no
-//	desk write can silently run as whatever identity happens to be active. Routing these
-//	tools through the seam therefore changes WHO performs the write, which is a token-custody
-//	decision, not a transport change. It is not this brief's to make.
+//	documented design — deskclose, deskdigest and deskfile each carry a comment saying the
+//	tool gates WHETHER and WHAT, never WHO, and that it mints no token on any path. Both
+//	Forge backends REFUSE to construct a client without an explicitly minted token
+//	(forge_github.go restClient, forge_gitlab.go client) — deliberately, so that no desk
+//	write can silently run as whatever identity happens to be active. Routing these tools
+//	through the seam therefore changes WHO performs the write, which is a token-custody
+//	decision, not a transport change. It is not those tools' briefs to make.
+//
+//	deskflip and deskreply were listed under this heading and are NOT here any more: both
+//	already MINTED an App installation token and already refused an ambient fallback, so
+//	their identity question was answered before the migration and the eight rows they held
+//	(deskflip's six reads and its two writes, deskreply's one helper) came off the register
+//	with the transport swap. The ceiling below came down by the same eight.
 //
 //	(no-op) The operation has no enumerated Forge method, and spec §6's freeze rule forbids
-//	adding one without converting its consuming callsite in the same change. Labels, PR
-//	listing, branch→PR resolution, repo-hardening reads and issue listing are each a real op
-//	set with a real GitLab mapping question behind it, and each needs its own brief rather
-//	than a speculative method added here.
+//	adding one without converting its consuming callsite in the same change. PR listing,
+//	branch→PR resolution, repo-hardening reads and issue listing are each a real op set with
+//	a real GitLab mapping question behind it, and each needs its own brief rather than a
+//	speculative method added here. LABELS are no longer in that list — ApplyLabels landed
+//	with its two consuming call sites — so the rows below that cited "the label brief" now
+//	cite whatever is actually left blocking them.
 //
 // A migration that does not answer its row's blocker is not a migration; it is the ban being
 // satisfied by moving the identity question somewhere less visible.
@@ -53,7 +61,7 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
-const allowedInvocationCeiling = 24
+const allowedInvocationCeiling = 16
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
@@ -83,56 +91,19 @@ var AllowedInvocations = []Allowance{
 	},
 	{
 		Key: "cmd/deskdispatch/dispatch.go::stepStamp::gh",
-		Reason: "TODO(forge-surface): `label create` + `pr edit --add-label`. Labels are not in the frozen op " +
-			"set; a SetLabels/CreateLabel pair needs its own brief (GitLab labels are project-scoped with a " +
-			"different create/idempotency shape) rather than being invented here.",
+		Reason: "TODO(forge-surface): `label create` + `pr edit --add-label`. BOTH now map to the enumerated " +
+			"ApplyLabels, so this row is no longer blocked on the op — it is blocked on identity: deskdispatch " +
+			"mints no token on any path, and both backends refuse a client without one.",
 	},
 	{
 		Key: "cmd/deskdisposition/exec.go::gh::gh",
-		Reason: "TODO(forge-surface): mixed. `pr comment` maps to PostComment; `pr edit --add-label`, " +
-			"`label list`, `label create` and `pr list` have no enumerated op. Blocked on the same label brief.",
+		Reason: "TODO(forge-surface): mixed. `pr comment` maps to PostComment and the label verbs now map to " +
+			"ApplyLabels; `label list` and `pr list` still have no enumerated op, and the tool mints no token.",
 	},
 	{
 		Key: "cmd/deskfile/exec.go::gh::gh",
 		Reason: "TODO(forge-surface): identity. FileIssue/PostComment/CloseIssue exist; exec.go states deskfile " +
 			"gates WHETHER and WHERE an issue is filed, never WHO, and mints no App token on any path.",
-	},
-	{
-		Key: "cmd/deskflip/flip.go::flip::gh",
-		Reason: "TODO(forge-surface): `pr ready` — MarkReadyForReview exists and takes the node id, which the " +
-			"tool would first have to read. Blocked with the rest of deskflip on identity: the tool mints no token.",
-	},
-	{
-		Key: "cmd/deskflip/flip.go::ensureLabelSwap::gh",
-		Reason: "TODO(forge-surface): `pr edit --add-label`/`--remove-label`. No enumerated label op; blocked on " +
-			"the label brief and on deskflip's identity question.",
-	},
-	{
-		Key:    "cmd/deskflip/flip.go::readPR::gh",
-		Reason: "TODO(forge-surface): `pr view --json` maps to GetPullRequest. Identity-blocked only.",
-	},
-	{
-		Key: "cmd/deskflip/flip.go::readReviews::gh",
-		Reason: "TODO(forge-surface): `gh api --paginate …/pulls/N/reviews` maps to ReviewsAtHead — and is a " +
-			"PASSTHROUGH-shaped argv besides. Identity-blocked only; this is the next best migration after the " +
-			"claim-release sink.",
-	},
-	{
-		Key: "cmd/deskflip/flip.go::readChangedFiles::gh",
-		Reason: "TODO(forge-surface): `gh api --paginate …/pulls/N/files` maps to ListChangedFiles, and is " +
-			"passthrough-shaped. Identity-blocked only.",
-	},
-	{
-		Key: "cmd/deskflip/flip.go::readHead::gh",
-		Reason: "TODO(forge-surface): `pr view --json headRefOid` maps to GetPullRequest.HeadSHA. " +
-			"Identity-blocked only.",
-	},
-	{
-		Key: "cmd/deskflip/flip.go::readLabelEvents::gh",
-		Reason: "TODO(forge-surface): `gh api --paginate …/issues/N/timeline` maps to a would-be " +
-			"ListLabelEvents op (the applier-aware model-capability-floor read); passthrough-shaped, and " +
-			"identity-blocked only with the rest of deskflip. The HTTP-client sibling (deskpost listLabelEvents) " +
-			"already goes through the enumerated path.",
 	},
 	{
 		Key: "cmd/deskmerge/exec.go::runGH::gh",
@@ -150,12 +121,6 @@ var AllowedInvocations = []Allowance{
 		Reason: "TODO(forge-surface): `pr view <branch> --json state,number` resolves a PR from a BRANCH NAME. " +
 			"No enumerated op does that — every read on the interface is keyed by number. Needs a typed " +
 			"branch→change lookup, with its GitLab source-branch mapping, in its own brief.",
-	},
-	{
-		Key: "cmd/deskreply/exec.go::gh::gh",
-		Reason: "TODO(forge-surface): PostComment exists and deskreply mints a token, so this is the closest " +
-			"of the identity-class rows to migratable; it is held with the rest so the identity ruling lands once " +
-			"rather than tool by tool.",
 	},
 	{
 		Key: "cmd/deskroster/roster.go::ghViewPR::gh",
@@ -181,8 +146,9 @@ var AllowedInvocations = []Allowance{
 			"branches + push rules), which is a brief, not a line.",
 	},
 	{
-		Key:    "cmd/scanloop/lane.go::scanCarrierPRLane.Execute::gh",
-		Reason: "TODO(forge-surface): `pr edit`. Blocked on the label/edit brief.",
+		Key: "cmd/scanloop/lane.go::scanCarrierPRLane.Execute::gh",
+		Reason: "TODO(forge-surface): `pr edit --add-label` maps to the enumerated ApplyLabels; what is left " +
+			"is identity — this lane mints no token of its own.",
 	},
 	{
 		Key: "cmd/scanloop/trust.go::ghTrustProbe::gh",

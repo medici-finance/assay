@@ -206,7 +206,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Forge resolution contract — the forge comes from repo config, and refusal is the only fallback](brief-01-forge-resolution-contract.md) | 1 | M | implemented | — | — |
 | 02 | [Forge-qualified identity — roster entries, bot renderings, review corroboration](brief-02-forge-qualified-identity.md) | 2 | M | implemented | — | — |
-| 03 | [Write verbs A — deskpost, deskreply, deskflip onto the resolver](brief-03-write-verbs-comment-and-flip.md) | 2 | M | todo | — | — |
+| 03 | [Write verbs A — deskpost, deskreply, deskflip onto the resolver](brief-03-write-verbs-comment-and-flip.md) | 2 | M | implemented | — | — |
 | 04 | [Write verbs B — deskpr, deskfile, deskclose, deskevidence onto the resolver](brief-04-write-verbs-issues-and-evidence.md) | 2 | M | todo | — | — |
 | 05 | [Claim layer — the GitLab shape of `refs/dispatch/*` and its release](brief-05-claim-layer-forge-shape.md) | 2 | M | todo | — | — |
 | 06 | [Read verbs — deskboard, issueboard, scanloop, reviewloop on the seam](brief-06-read-verbs-on-the-seam.md) | 3 | M | todo | — | — |

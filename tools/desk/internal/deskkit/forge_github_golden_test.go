@@ -57,6 +57,13 @@ type goldenServer struct {
 	repo       map[string]any
 	createResp map[string]any
 	graphql    map[string]any
+	timeline   []map[string]any
+	prLabels   []map[string]any
+	// labelCreateStatus, when set, is the status the label-create route returns instead of
+	// 201 — 422 is GitHub's "already exists", the SUCCESS case for an idempotent ensure.
+	labelCreateStatus int
+	// labelDeleteStatus likewise: 404 is "already absent", the success case for a removal.
+	labelDeleteStatus int
 	// forceStatus, when set for a path suffix, returns that HTTP status (error-mapping cases).
 	forceStatus map[string]int
 	// bigReviewPages: when true, /reviews returns 100 entries on page 1, 1 on page 2.
@@ -76,6 +83,10 @@ var (
 	gRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	gReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
 	gGitRef    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/refs/.+$`)
+	gTimeline  = regexp.MustCompile(`/issues/[0-9]+/timeline$`)
+	gPRLabels  = regexp.MustCompile(`/issues/[0-9]+/labels$`)
+	gPRLabel1  = regexp.MustCompile(`/issues/[0-9]+/labels/[^/]+$`)
+	gRepoLabel = regexp.MustCompile(`^/repos/[^/]+/[^/]+/labels$`)
 )
 
 func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +109,35 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodPost && path == "/graphql":
 		enc(s.graphql)
+	case r.Method == http.MethodGet && gTimeline.MatchString(path):
+		if page != "" && page != "1" {
+			enc([]map[string]any{})
+			return
+		}
+		enc(s.timeline)
+	case r.Method == http.MethodPost && gRepoLabel.MatchString(path):
+		if s.labelCreateStatus != 0 {
+			w.WriteHeader(s.labelCreateStatus)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		enc(map[string]any{"name": "x"})
+	case r.Method == http.MethodDelete && gPRLabel1.MatchString(path):
+		if s.labelDeleteStatus != 0 {
+			w.WriteHeader(s.labelDeleteStatus)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		enc([]map[string]any{})
+	case r.Method == http.MethodGet && gPRLabels.MatchString(path):
+		if page != "" && page != "1" {
+			enc([]map[string]any{})
+			return
+		}
+		enc(s.prLabels)
+	case r.Method == http.MethodPost && gPRLabels.MatchString(path):
+		w.WriteHeader(http.StatusOK)
+		enc(s.prLabels)
 	case r.Method == http.MethodGet && gReactions.MatchString(path):
 		enc(s.reactions)
 	case r.Method == http.MethodGet && gReviews.MatchString(path):
@@ -136,7 +176,10 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.createResp)
 	case r.Method == http.MethodPost && gComments.MatchString(path):
 		w.WriteHeader(http.StatusCreated)
-		enc(map[string]any{"id": 1})
+		enc(map[string]any{
+			"id": 1, "node_id": "IC_node1",
+			"html_url": "https://example/pull/7#issuecomment-1",
+		})
 	case r.Method == http.MethodPost && gIssueRoot.MatchString(path):
 		w.WriteHeader(http.StatusCreated)
 		enc(s.createResp)
@@ -208,8 +251,41 @@ func TestForgeGithubGolden(t *testing.T) {
 					"number": 7, "state": "open", "draft": true, "node_id": "PR_node",
 					"changed_files": 3,
 					"user":          map[string]any{"login": "worker[bot]", "id": 99},
-					"head":          map[string]any{"sha": "abc123"},
+					"head":          map[string]any{"sha": "abc123", "ref": "feat/x"},
+					"html_url":      "https://example/pull/7",
+					"labels":        []map[string]any{{"name": "authorization-needed"}},
+					"mergeable":     true,
 					"updated_at":    "2026-09-01T12:00:00Z",
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.GetPullRequest(forgeTestRepo, 7) },
+		},
+		{
+			// GitHub's `mergeable` is a JSON TRI-STATE, and null means "not computed yet".
+			// It must not collapse to CONFLICTING (which would refuse a flip that should
+			// proceed) nor to MERGEABLE (the fail-open half) — UNKNOWN is the only honest
+			// mapping, and it is what the consuming gate reads as could-not-check.
+			name: "get_pull_request_mergeable_unknown",
+			setup: func(s *goldenServer) {
+				s.pull = map[string]any{
+					"number": 7, "state": "open", "draft": true, "node_id": "PR_node",
+					"changed_files": 3,
+					"user":          map[string]any{"login": "worker[bot]", "id": 99},
+					"head":          map[string]any{"sha": "abc123", "ref": "feat/x"},
+					"mergeable":     nil,
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.GetPullRequest(forgeTestRepo, 7) },
+		},
+		{
+			name: "get_pull_request_conflicting",
+			setup: func(s *goldenServer) {
+				s.pull = map[string]any{
+					"number": 7, "state": "open", "draft": true, "node_id": "PR_node",
+					"changed_files": 3,
+					"user":          map[string]any{"login": "worker[bot]", "id": 99},
+					"head":          map[string]any{"sha": "abc123", "ref": "feat/x"},
+					"mergeable":     false,
 				}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.GetPullRequest(forgeTestRepo, 7) },
@@ -265,9 +341,10 @@ func TestForgeGithubGolden(t *testing.T) {
 			name: "checks_at_head",
 			setup: func(s *goldenServer) {
 				s.status = map[string]any{"state": "success", "total_count": 1,
-					"statuses": []map[string]any{{"state": "success", "context": "ci/legacy"}}}
+					"statuses": []map[string]any{{"state": "success", "context": "ci/legacy", "created_at": "2026-08-24T00:00:00Z"}}}
 				s.checks = map[string]any{"total_count": 1,
-					"check_runs": []map[string]any{{"name": "go-test", "status": "completed", "conclusion": "success"}}}
+					"check_runs": []map[string]any{{"name": "go-test", "status": "completed", "conclusion": "success",
+						"started_at": "2026-08-24T00:00:00Z", "completed_at": "2026-08-24T00:05:00Z"}}}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.ChecksAtHead(forgeTestRepo, "abc123") },
 		},
@@ -295,7 +372,7 @@ func TestForgeGithubGolden(t *testing.T) {
 		{
 			name:  "post_comment",
 			setup: func(s *goldenServer) {},
-			run:   func(f *GitHubForge) (any, error) { return nil, f.PostComment(forgeTestRepo, 7, "hello") },
+			run:   func(f *GitHubForge) (any, error) { return f.PostComment(forgeTestRepo, 7, "hello") },
 		},
 		{
 			name:  "post_review",
@@ -310,6 +387,99 @@ func TestForgeGithubGolden(t *testing.T) {
 				s.graphql = map[string]any{"data": map[string]any{"markPullRequestReadyForReview": map[string]any{"pullRequest": map[string]any{"isDraft": false}}}}
 			},
 			run: func(f *GitHubForge) (any, error) { return nil, f.MarkReadyForReview("PR_node") },
+		},
+		{
+			// The applier-aware label-event read: `labeled` events survive with the actor
+			// that applied them; every other timeline event is dropped, because only an
+			// APPLICATION is an attestation.
+			name: "list_label_events",
+			setup: func(s *goldenServer) {
+				s.timeline = []map[string]any{
+					{"event": "labeled", "label": map[string]any{"name": "dispatched-tier:strong"},
+						"actor": map[string]any{"login": "desk[bot]"}},
+					{"event": "commented", "actor": map[string]any{"login": "someone"}},
+					{"event": "unlabeled", "label": map[string]any{"name": "stale"},
+						"actor": map[string]any{"login": "desk[bot]"}},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.ListLabelEvents(forgeTestRepo, 7) },
+		},
+		{
+			// The comment read is GraphQL because REST carries no `isMinimized`, and a
+			// minimised comment must never be picked up for an edit.
+			name: "list_comments",
+			setup: func(s *goldenServer) {
+				s.graphql = map[string]any{"data": map[string]any{"repository": map[string]any{
+					"pullRequest": map[string]any{"comments": map[string]any{"nodes": []map[string]any{
+						{"id": "IC_1", "databaseId": 11, "body": "first", "isMinimized": false,
+							"createdAt": "2026-08-24T00:00:00Z", "url": "https://example/pull/7#issuecomment-11",
+							"author": map[string]any{"login": "worker[bot]"}},
+						{"id": "IC_2", "databaseId": 12, "body": "hidden", "isMinimized": true,
+							"createdAt": "2026-08-24T00:01:00Z", "url": "https://example/pull/7#issuecomment-12",
+							"author": map[string]any{"login": "worker[bot]"}},
+					}}},
+				}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.ListComments(forgeTestRepo, 7) },
+		},
+		{
+			name: "edit_comment",
+			setup: func(s *goldenServer) {
+				s.graphql = map[string]any{"data": map[string]any{"updateIssueComment": map[string]any{
+					"issueComment": map[string]any{"databaseId": 11}}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return nil, f.EditComment(forgeTestRepo, "IC_1", "new body") },
+		},
+		{
+			// A locally composed id is not a thing this operation accepts: an EMPTY id is
+			// refused before a request exists, and the golden's empty request list is the
+			// assertion that nothing was written.
+			name:  "edit_comment_refuses_an_empty_id",
+			setup: func(s *goldenServer) {},
+			run:   func(f *GitHubForge) (any, error) { return nil, f.EditComment(forgeTestRepo, "", "new body") },
+		},
+		{
+			// The label reconciliation: ensure, then drop the stale same-family member, then
+			// apply. The REQUEST SEQUENCE is the assertion — creating after applying, or
+			// removing after applying, would leave the change momentarily wrong.
+			name: "apply_labels",
+			setup: func(s *goldenServer) {
+				s.prLabels = []map[string]any{{"name": "size:xl"}, {"name": "keep-me"}}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
+					Add:            []LabelSpec{{Name: "size:s", Color: "c5def5", Description: "size"}},
+					RemoveFamilies: []string{"size:"},
+				})
+			},
+		},
+		{
+			// 422 on create is "already exists", which for an ENSURE is success — the golden
+			// shows the reconciliation continuing past it rather than aborting.
+			name: "apply_labels_existing_label_ok",
+			setup: func(s *goldenServer) {
+				s.labelCreateStatus = http.StatusUnprocessableEntity
+				s.prLabels = []map[string]any{}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
+					Add: []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
+				})
+			},
+		},
+		{
+			// 404 on removal is "already absent", the success case for an idempotent removal
+			// — and the label is NOT reported as removed, because it was not.
+			name: "apply_labels_absent_removal_ok",
+			setup: func(s *goldenServer) {
+				s.labelDeleteStatus = http.StatusNotFound
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
+					Add:    []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
+					Remove: []string{"authorization-needed"},
+				})
+			},
 		},
 		{
 			name: "file_issue",

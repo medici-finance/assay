@@ -1,0 +1,42 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/graphql",
+      "body": {
+        "query": "query($owner:String!, $name:String!, $number:Int!) {\n  repository(owner: $owner, name: $name) {\n    pullRequest(number: $number) {\n      comments(first: 100) {\n        nodes {\n          id\n          databaseId\n          body\n          isMinimized\n          createdAt\n          url\n          author { login }\n        }\n      }\n    }\n  }\n}",
+        "variables": {
+          "name": "assay",
+          "number": 7,
+          "owner": "medici-finance"
+        }
+      }
+    }
+  ],
+  "result": [
+    {
+      "ID": "IC_1",
+      "DatabaseID": 11,
+      "Author": {
+        "Login": "worker[bot]",
+        "ID": 0
+      },
+      "Body": "first",
+      "Minimized": false,
+      "CreatedAt": "2026-08-24T00:00:00Z",
+      "URL": "https://example/pull/7#issuecomment-11"
+    },
+    {
+      "ID": "IC_2",
+      "DatabaseID": 12,
+      "Author": {
+        "Login": "worker[bot]",
+        "ID": 0
+      },
+      "Body": "hidden",
+      "Minimized": true,
+      "CreatedAt": "2026-08-24T00:01:00Z",
+      "URL": "https://example/pull/7#issuecomment-12"
+    }
+  ]
+}

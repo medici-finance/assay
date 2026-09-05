@@ -1,0 +1,15 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/graphql",
+      "body": {
+        "query": "mutation($id: ID!, $body: String!) {\n  updateIssueComment(input: {id: $id, body: $body}) {\n    issueComment { databaseId }\n  }\n}",
+        "variables": {
+          "body": "new body",
+          "id": "IC_1"
+        }
+      }
+    }
+  ]
+}

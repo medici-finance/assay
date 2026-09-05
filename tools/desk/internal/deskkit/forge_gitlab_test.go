@@ -62,6 +62,11 @@ type glServer struct {
 	createMR     map[string]any
 	createIssue  map[string]any
 	updateMR     map[string]any
+	labelEvents  []map[string]any
+	// labelCreateStatus, when set, is the status the project-label create route returns
+	// instead of 201. GitLab answers a duplicate name with 409 (or 400 on older versions),
+	// both of which mean the ensure's post-condition already holds.
+	labelCreateStatus int
 
 	// notePages, when true, serves 2 pages of notes and sets X-Next-Page on the first —
 	// GitLab's continuation signal (it uses headers, not Link relations).
@@ -94,6 +99,9 @@ var (
 	lCommitStatus = regexp.MustCompile(`/repository/commits/[^/]+/statuses$`)
 	lPipelineJobs = regexp.MustCompile(`/pipelines/[0-9]+/jobs$`)
 	lBranch       = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/branches/[^/]+$`)
+	lMRLabelEvts  = regexp.MustCompile(`/merge_requests/[0-9]+/resource_label_events$`)
+	lMRNote1      = regexp.MustCompile(`/merge_requests/[0-9]+/notes/[0-9]+$`)
+	lProjLabels   = regexp.MustCompile(`^/api/v4/projects/[^/]+/labels$`)
 )
 
 func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -114,6 +122,19 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 	page := r.URL.Query().Get("page")
 
 	switch {
+	case r.Method == http.MethodGet && lMRLabelEvts.MatchString(path):
+		enc(s.labelEvents)
+	case r.Method == http.MethodPut && lMRNote1.MatchString(path):
+		enc(map[string]any{"id": 900, "body": "updated"})
+	case r.Method == http.MethodPost && lProjLabels.MatchString(path):
+		if s.labelCreateStatus != 0 {
+			w.WriteHeader(s.labelCreateStatus)
+			_ = json.NewEncoder(w).Encode(map[string]any{"message": map[string]any{
+				"title": []string{"has already been taken"}}})
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		enc(map[string]any{"id": 5, "name": "size:s", "color": "#c5def5"})
 	case r.Method == http.MethodGet && lMRVersions.MatchString(path):
 		enc(s.versions)
 	case r.Method == http.MethodGet && lMRApprovals.MatchString(path):
@@ -228,9 +249,12 @@ func glMR(overrides map[string]any) map[string]any {
 	base := map[string]any{
 		"iid": 7, "state": "opened", "draft": true, "title": "Draft: add the thing",
 		"sha": "abc123", "changes_count": "3",
-		"author":     map[string]any{"id": 99, "username": "worker-bot"},
-		"web_url":    "https://gitlab.example/medici-finance/assay/-/merge_requests/7",
-		"updated_at": "2026-09-01T12:00:00Z",
+		"source_branch":         "feat/x",
+		"detailed_merge_status": "mergeable",
+		"labels":                []string{"authorization-needed"},
+		"author":                map[string]any{"id": 99, "username": "worker-bot"},
+		"web_url":               "https://gitlab.example/medici-finance/assay/-/merge_requests/7",
+		"updated_at":            "2026-09-01T12:00:00Z",
 	}
 	for k, v := range overrides {
 		base[k] = v
@@ -488,7 +512,7 @@ func glCases() []glCase {
 				s.issue = glIssue(nil)
 				s.mrMissing = true
 			},
-			run: func(f *GitLabForge) (any, error) { return nil, f.PostComment(glRepo, 12, "hello") },
+			run: func(f *GitLabForge) (any, error) { return f.PostComment(glRepo, 12, "hello") },
 		},
 		{
 			name: "post_comment_on_merge_request", method: "PostComment",
@@ -496,7 +520,7 @@ func glCases() []glCase {
 				s.issueMissing = true
 				s.mr = glMR(nil)
 			},
-			run: func(f *GitLabForge) (any, error) { return nil, f.PostComment(glRepo, 7, "hello") },
+			run: func(f *GitLabForge) (any, error) { return f.PostComment(glRepo, 7, "hello") },
 		},
 		{
 			// The note is posted BEFORE the approval. The request sequence in the golden is
@@ -597,6 +621,97 @@ func glCases() []glCase {
 			name: "delete_ref_non_branch_namespace_refused", method: "DeleteRef",
 			setup: func(s *glServer) {},
 			run:   func(f *GitLabForge) (any, error) { return nil, f.DeleteRef(glRepo, "dispatch/item--01") },
+		},
+		{
+			// The resource-label-events endpoint is GitLab's exact analog of the GitHub
+			// timeline read: add/remove per label WITH the acting user. `remove` events are
+			// dropped (a removal is not an attestation), and an event whose label GitLab has
+			// since deleted comes back unnamed and is dropped too — a stamp nobody can name
+			// attests to nothing.
+			name: "list_label_events", method: "ListLabelEvents",
+			setup: func(s *glServer) {
+				s.labelEvents = []map[string]any{
+					{"id": 1, "action": "add", "user": map[string]any{"id": 42, "username": "desk-bot"},
+						"label": map[string]any{"id": 9, "name": "dispatched-tier:strong"}},
+					{"id": 2, "action": "remove", "user": map[string]any{"id": 42, "username": "desk-bot"},
+						"label": map[string]any{"id": 9, "name": "dispatched-tier:strong"}},
+					{"id": 3, "action": "add", "user": map[string]any{"id": 42, "username": "desk-bot"},
+						"label": map[string]any{"id": 0, "name": ""}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListLabelEvents(glRepo, 7) },
+		},
+		{
+			// SYSTEM notes are dropped: GitLab records its own activity in the same list as
+			// human comments, and a caller filtering on authorship would otherwise treat a
+			// system note (which carries the acting user as its author) as somebody's comment.
+			// Minimized is false for every GitLab note — exact, not defaulted: GitLab has no
+			// minimise feature, so nothing is hidden.
+			name: "list_comments", method: "ListComments",
+			setup: func(s *glServer) {
+				s.notes = []map[string]any{
+					{"id": 900, "body": "worker note", "system": false, "created_at": "2026-08-30T12:00:00Z",
+						"author": map[string]any{"id": 42, "username": "worker-bot"}},
+					{"id": 901, "body": "changed the description", "system": true,
+						"created_at": "2026-08-30T12:01:00Z",
+						"author":     map[string]any{"id": 42, "username": "worker-bot"}},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListComments(glRepo, 7) },
+		},
+		{
+			name: "edit_comment", method: "EditComment",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.EditComment(glRepo, "gitlab:medici-finance/assay!7#note900", "new body")
+			},
+		},
+		{
+			// A GitHub GraphQL node id handed to this backend is a wiring bug, refused before
+			// a request exists — the golden's empty request list is that assertion.
+			name: "edit_comment_refuses_a_foreign_id", method: "EditComment",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return nil, f.EditComment(glRepo, "IC_kwDOabc", "new body") },
+		},
+		{
+			// An id naming a DIFFERENT project than the call is refused rather than resolved
+			// in favour of either half: silently trusting one would edit a note in the wrong
+			// project.
+			name: "edit_comment_refuses_a_project_swap", method: "EditComment",
+			setup: func(s *glServer) {},
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.EditComment(glRepo, "gitlab:someone-else/thing!7#note900", "new body")
+			},
+		},
+		{
+			// The whole reconciliation lands in ONE PUT carrying add_labels and remove_labels
+			// together — GitLab has no per-label MR endpoint, which here is an advantage: the
+			// change is atomic where the GitHub backend issues one request per removal.
+			name: "apply_labels", method: "ApplyLabels",
+			setup: func(s *glServer) {
+				s.mr = glMR(map[string]any{"labels": []string{"size:xl", "keep-me"}})
+				s.updateMR = glMR(map[string]any{"labels": []string{"size:s", "keep-me"}})
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ApplyLabels(glRepo, 7, LabelChange{
+					Add:            []LabelSpec{{Name: "size:s", Color: "c5def5", Description: "size"}},
+					RemoveFamilies: []string{"size:"},
+				})
+			},
+		},
+		{
+			// A duplicate label name is the ensure's post-condition already holding, not a
+			// failure — the golden shows the PUT still being issued after it.
+			name: "apply_labels_existing_label_ok", method: "ApplyLabels",
+			setup: func(s *glServer) {
+				s.labelCreateStatus = http.StatusConflict
+				s.updateMR = glMR(nil)
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ApplyLabels(glRepo, 7, LabelChange{
+					Add: []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
+				})
+			},
 		},
 		{
 			name: "push_transport_hint", method: "PushTransportHint",
