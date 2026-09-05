@@ -286,12 +286,12 @@ func requirementRegisterProblems(root string) []string {
 	return problems
 }
 
-// requirementRegisterNotices returns the advisory lines for the REQUIREMENTS
-// register. There is exactly one, and it exists to make the RESERVATION visible:
-// the register is parsed and shape-validated, and the traceability it looks like
-// it enables is deliberately not wired. A reader of a --lint run must be able to
-// tell "parsed and reserved" from "silently ignored", which is the same reason
-// briefv2.go emits its reserved-edge notices.
+// requirementRegisterNotices returns the advisory summary line for the
+// REQUIREMENTS register: the entry count plus the fact that traceability is now
+// checked. sdlc/02 wired the three checks §6.5 had deferred as reserved, so this
+// line no longer claims traceability is unchecked — it names the checks that run,
+// so a reader of a --lint run can tell "parsed and traced" from "silently
+// ignored" and knows where each check lives.
 func requirementRegisterNotices(root string) []string {
 	entries, err := parseRequirementsDir(root)
 	if err != nil || len(entries) == 0 {
@@ -300,8 +300,8 @@ func requirementRegisterNotices(root string) []string {
 		return nil
 	}
 	return []string{fmt.Sprintf(
-		"docs/streams/%s: %s parsed, %s (reserved, not gating) — requirement traceability (an uncited requirement, a brief citing none, a citation naming no requirement) is not checked at this version",
-		requirementsDirName, requirementCountPhrase(len(entries)), "satisfies: citations are shape-validated only")}
+		"docs/streams/%s: %s parsed — traceability is checked (orphan-requirement and untraced-brief are advisory NOTICEs, dangling-satisfies is a PROBLEM; registers-v1 §6.5)",
+		requirementsDirName, requirementCountPhrase(len(entries)))}
 }
 
 // requirementCountPhrase renders an entry count with correct grammar, so the

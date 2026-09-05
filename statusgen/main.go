@@ -301,6 +301,19 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// traceability is reserved, so an uncited requirement changes no exit code.
 	problems = append(problems, requirementRegisterProblems(root)...)
 	notices = append(notices, requirementRegisterNotices(root)...)
+	// Requirement TRACEABILITY (registers-v1 §6.5, sdlc/02): the three corpus-wide
+	// checks §6.5 deferred as reserved, landed advisory-first (§4.5). orphan-
+	// requirement (an accepted requirement no brief cites) and untraced-brief (a
+	// forward brief in a `traced:` stream citing nothing) are NOTICEs that never
+	// change the exit code; dangling-satisfies (a satisfies: naming an in-repo REQ
+	// id no entry defines) is a hard PROBLEM, because the append-only register
+	// makes a missing in-repo id a typo or a deleted entry, never legacy debt. Runs
+	// on the FULL stream set, never checkStreams: a requirement's satisfying brief
+	// may live in any stream, so a product-scoped subset would manufacture false
+	// orphans. Pure over the tree, same offline envelope as the register checks.
+	problems = append(problems, danglingSatisfiesProblems(root, streams)...)
+	notices = append(notices, orphanRequirementNotices(root, streams, time.Now())...)
+	notices = append(notices, untracedBriefNotices(streams)...)
 	// The register field-gutting guard inside registerIntegrityProblems compares
 	// against the merge-base with origin/main. When that ref is unresolvable the
 	// base falls back to HEAD and already-committed gutting is compared against
@@ -1341,6 +1354,12 @@ func main() {
 	netFlowMode := flag.Bool("net-flow", false, "emit per-stream net flow (historian arrivals - completions in the window) plus a live stall flag (active ∧ backlog>0 ∧ no transition >=14d). Reuses --since / --until / --json")
 	assayScoreMode := flag.Bool("assayscore", false, "emit the composite AssayScore (statusgen/08): geometric mean of the four 0–100 sub-scores (Speed/Flow/Quality/Value) rolled up from the brief-flow metrics, always published with its four sub-scores + raw inputs + baseline_window. A could-not-check dimension is excluded (never coerced to 0) and the composite is flagged `incomplete`. Reuses --since / --until / --json; Quality/Value read gh")
 	launchMode := flag.Bool("launch", false, "print launch-readiness rollup — transitive depends: of the go-live gate (assay-launch/05) with live status (never reads/writes STATUS.md)")
+	// Per-release requirement traceability rollup (sdlc/02): per requirement, its
+	// acceptance criteria, the briefs that name it, each brief's status + Evidence,
+	// and a three-state per-requirement verdict (satisfied | partial |
+	// could-not-check). An INPUT to --export-evidence (sdlc/08), never a second
+	// bundler. Read-only, STATUS.md-free, offline. Reuses --since / --json.
+	requirementsRollupMode := flag.Bool("requirements-rollup", false, "emit the per-release requirement traceability rollup: per requirement its acceptance criteria, the briefs that name it, each brief's status + Evidence, and a three-state verdict (satisfied | partial | could-not-check). Reuses --since / --json; reports what was authored, not measured (registers-v1 §6.4)")
 	launchTarget := flag.String("launch-target", "assay-launch/05", "target brief for --launch (default assay-launch/05)")
 	// Evidence-bundle export (gtm/05): deterministic tarball of briefs, registers,
 	// and Evidence blocks in a date range, with a generated manifest.json.
@@ -1445,6 +1464,7 @@ func main() {
 			"--roadmap":               *roadmapMode,
 			"--bottleneck":            *bottleneckMode,
 			"--launch":                *launchMode,
+			"--requirements-rollup":   *requirementsRollupMode,
 			"--export-evidence":       *exportEvidenceMode,
 			"--graph":                 *graphMode != "",
 			"--gate-scores":           *gateScoresMode,
@@ -1722,6 +1742,12 @@ func main() {
 	// same STATUS.md-free discipline as --dora/--trend/--roadmap.
 	if *launchMode {
 		os.Exit(runLaunch(*root, *launchTarget))
+	}
+	// Requirement traceability rollup (sdlc/02): self-contained, read-only,
+	// STATUS.md-free, offline. Emits the per-release ask→work→evidence rollup the
+	// audit-pack brief (sdlc/08) feeds into --export-evidence.
+	if *requirementsRollupMode {
+		os.Exit(runRequirementsRollup(*root, *since, *doraJSON))
 	}
 	// Derived graph export (landscape-followups/06): self-contained, read-only,
 	// STATUS.md-free — same discipline as --gate-scores / --next-up. Emits the

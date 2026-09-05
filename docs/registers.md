@@ -107,13 +107,21 @@ Two properties are worth stating here because they are the ones most easily misr
   was claimed to satisfy it. It does not establish that the product meets the ask; that
   lives in the cited brief's Verify rows and Evidence, recorded by someone who did not
   implement it. Do not present the register as coverage.
-- **The brief citation is reserved, not gating.** A brief may carry
-  `satisfies: ["REQ-<slug>"]`. The key is parsed, its refs are shape-checked, and the
-  linter says out loud that it is reserved — but an absent citation is never flagged, a
-  citation naming a requirement that does not exist is not an error, and nothing about
-  traceability changes an exit code. Reason: the enforcing half costs a linter release and
-  a re-pin in every consumer, and that is not spent before the schema has been used once
-  in anger.
+- **The brief citation feeds three traceability checks.** A brief may carry
+  `satisfies: ["REQ-<slug>"]`; an absent citation is never flagged. On top of the grammar
+  shape-check, `statusgen --lint` now runs three corpus-wide checks (spec §6.5), landed
+  advisory-first so an adopter who bumps their statusgen pin gets NOTICEs, not a red gate,
+  over a corpus authored before the register existed:
+  - `orphan-requirement` (NOTICE) — an `accepted` requirement no brief cites.
+  - `untraced-brief` (NOTICE) — a forward brief in a stream that opted in with `traced: true`
+    and cites nothing.
+  - `dangling-satisfies` (PROBLEM) — a `satisfies:` naming an in-repo `REQ-<slug>` no entry
+    defines; the register is append-only, so a missing in-repo id is a typo or a deletion.
+
+  `statusgen --requirements-rollup [--since <date>] [--json]` emits the per-release rollup —
+  each requirement, its acceptance criteria, the briefs that cite it with their status and
+  Evidence, and a three-state verdict (`satisfied`/`partial`/`could-not-check`). Like the
+  register itself it reports what was **authored**, not re-measured (§6.4).
 
 ## RETRO — cadence retrospective
 

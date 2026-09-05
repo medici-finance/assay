@@ -175,14 +175,15 @@ func TestRequirementValidEntryIsClean(t *testing.T) {
 	}
 }
 
-// TestRequirementReservedNoticeIsEmitted: the reservation must be VISIBLE. A key
-// that is parsed but never mentioned cannot be told apart from one that is
-// ignored, which is the whole reason briefv2.go emits its reserved-edge notices.
+// TestRequirementReservedNoticeIsEmitted: the register summary must be VISIBLE. A
+// register that is parsed but never mentioned cannot be told apart from one that is
+// ignored. Since sdlc/02 wired the traceability checks, the line announces that
+// traceability is checked (not that it is reserved) and names the entry count.
 func TestRequirementReservedNoticeIsEmitted(t *testing.T) {
 	root := requirementRoot(t, validRequirementFixture())
 	notices := requirementRegisterNotices(root)
-	if !containsAll(notices, "reserved, not gating", "1 requirement") {
-		t.Errorf("the register must announce itself as reserved and not gating; got:\n%s", joined(notices))
+	if !containsAll(notices, "traceability is checked", "1 requirement") {
+		t.Errorf("the register must announce itself parsed with traceability checked; got:\n%s", joined(notices))
 	}
 }
 

@@ -379,22 +379,47 @@ a conforming implementation MUST NOT introduce a second alias registry for requi
 An alias absent from that registry MUST be flagged — the closed-set property is the point
 of the grammar.
 
-**This citation is RESERVED, not gating**, in the sense the brief-v2 dependency-graph keys
-are reserved: it is parsed, type-checked and shape-validated, and its consequences are
-deferred. Precisely:
+The citation is parsed, type-checked and shape-validated, and it now feeds the corpus-wide
+traceability checks below. Precisely:
 
 - An ABSENT `satisfies:` MUST NOT be flagged, on any brief, ever. No brief is required to
-  cite a requirement in this version.
+  cite a requirement.
 - A PRESENT entry MUST match the grammar above; a violation is a hard flag. A wrong TYPE
   (a scalar where a list is required, a non-string list element) is a parse error.
-- A conforming linter MUST make the reservation VISIBLE — it MUST emit a NOTICE stating
-  that the citation was parsed and is not gating. Silence is not acceptable: a key that is
-  read but never mentioned is indistinguishable from a key that is ignored.
-- The corpus-wide traceability checks — a requirement no brief cites, a brief that cites
-  nothing, a citation naming a requirement that does not exist — are deliberately NOT part
-  of this version and MUST NOT change any exit code here. They are a separate change,
-  because they impose a cost (a linter release and a re-pin in every consumer) that should
-  not be spent before the schema has been used in anger.
+- A conforming linter MUST emit a NOTICE for a brief carrying the key, so that "parsed and
+  traced" is distinguishable from "silently ignored".
+
+**The corpus-wide traceability checks.** These were deferred as reserved at the schema's
+first version and land **advisory-first**, in the §4.5 escalation posture: the two questions
+a legacy corpus answers wrong land as advisory NOTICEs that change no exit code, and only the
+one question a legacy corpus CANNOT answer wrong — a citation of a requirement that was never
+defined — is a hard PROBLEM.
+
+- **`orphan-requirement`** (NOTICE) — a requirement whose `status` is `accepted` and which no
+  brief's `satisfies:` names. Listed with its `impact` and age, sorted by impact descending
+  (the §3.5 ordered axis). A `proposed` requirement is not yet orphan-eligible (the house has
+  not committed to it); a `satisfied`/`withdrawn` one is closed. Advisory: it never changes
+  the exit code.
+- **`untraced-brief`** (NOTICE) — a brief that is `in-progress` or later, in a stream whose
+  README declares `traced: true`, and which names no `satisfies:`. The stream opt-in is
+  required: a corpus-wide untraced sweep over legacy briefs that predate the register is
+  noise (§4.5). Advisory: it never changes the exit code.
+- **`dangling-satisfies`** (PROBLEM) — a `satisfies:` naming an IN-REPO `REQ-<slug>` that this
+  root's register does not define. Unlike the two NOTICEs it cannot be legacy debt: the
+  register is append-only (§3.1, §3.3), so an in-repo id no entry defines can only be a typo
+  or a deleted entry. A cross-repo `<alias>:REQ-<slug>` names a register in another repo the
+  offline linter cannot read — could-not-check, never dangling.
+
+**What the rollup establishes.** `statusgen --requirements-rollup` walks, per requirement, the
+briefs that cite it, each brief's board status, and each brief's Evidence, and reports a
+three-state verdict (`satisfied` only when at least one backing brief exists and every one is
+`done`; `partial`; `could-not-check`). Like the register itself (§6.4), it reports what was
+**authored** — the register and the board rows — not what was **measured**: a `done` backing
+brief means the board says the work landed, not that the tool re-ran the acceptance criteria.
+
+These checks reach a consumer only on an `.assay-versions` statusgen pin bump, which is why
+they land advisory: an un-bumped adopter is unaffected, and a bumped one gets NOTICEs, not a
+red gate, over a corpus authored before the register existed.
 
 ## 7. RETRO register (informative — not implemented)
 
