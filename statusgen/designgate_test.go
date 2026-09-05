@@ -77,6 +77,53 @@ func TestDesignGate(t *testing.T) {
 			t.Errorf("a design: reference that resolves to no record must be flagged; got:\n%s", strings.Join(problems, "\n"))
 		}
 	})
+
+	t.Run("UnparseableAuthoredDoesNotHardFail", func(t *testing.T) {
+		// dg/07: risk-gated, in-progress, authored: is a bare unquoted date that
+		// decodes as a YAML timestamp (not a string), so bf.Authored stays "" —
+		// authoredAfterCutover("") returns (false, false). The documented contract
+		// is fail-OPEN: the gate must not hard-fail this brief.
+		if hasProblem(problems, "dg/brief-07") {
+			t.Errorf("an unparseable/empty authored: must fail OPEN (no PROBLEM), never hard-fail the gate; got:\n%s", strings.Join(problems, "\n"))
+		}
+	})
+}
+
+// TestDesignGateUnparseableAuthoredNotice pins the visible half of the
+// fail-open contract authoredAfterCutover documents in its own comment: "an
+// unparseable authored line means the gate does not fire (fail-open on the
+// scope question), reported as a NOTICE, never a silent red". Before this fix
+// designGateProblems's `!dateOK || !after` was a SILENT continue with no
+// counterpart in designGateNotices, so dg/07 (risk-gated, in-progress,
+// authored: present-but-unparseable) vanished from the gate with no visible
+// trace at all — contradicting the documented three-state contract. This test
+// asserts the per-brief could-not-check NOTICE now exists.
+func TestDesignGateUnparseableAuthoredNotice(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("testdata/designgate")); err != nil {
+		t.Fatal(err)
+	}
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notices := designGateNotices(root, streams)
+	joined := strings.Join(notices, "\n")
+	if !strings.Contains(joined, "dg/brief-07") || !strings.Contains(joined, "COULD-NOT-CHECK") {
+		t.Errorf("a risk-gated in-progress brief with an unparseable authored: must emit a per-brief COULD-NOT-CHECK notice naming it; got:\n%s", joined)
+	}
+	// The notice must not name a brief still at todo (dg/05, dg/03's scope-out,
+	// etc.) — the could-not-check only matters once the guarded transition has
+	// actually happened.
+	if strings.Contains(joined, "dg/brief-05") {
+		t.Errorf("a brief still at todo must not get the authored could-not-check notice; got:\n%s", joined)
+	}
+	// And the gate must still not hard-fail dg/07 — this is the fail-open half
+	// of the same contract, pinned again here alongside the notice so the two
+	// assertions travel together.
+	if hasProblem(designGateProblems(root, streams), "dg/brief-07") {
+		t.Errorf("dg/07 must not be a PROBLEM even though it now gets a NOTICE — fail-open, not silent, not red; got:\n%s", strings.Join(designGateProblems(root, streams), "\n"))
+	}
 }
 
 // TestDesignGateMutationReversion pins the Verify-row-4 revert step: with dg/02's

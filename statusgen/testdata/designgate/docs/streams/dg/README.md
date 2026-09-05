@@ -17,3 +17,4 @@ track: platform
 | 04 | [Risk-gated, pre-cutover, no record](./brief-04-grandfathered.md) | 0 | S | in-progress | — | — |
 | 05 | [Risk-gated, todo, no record](./brief-05-todo.md) | 0 | S | todo | — | — |
 | 06 | [Risk-gated, in-progress, dangling ref](./brief-06-dangling.md) | 0 | S | in-progress | — | — |
+| 07 | [Risk-gated, in-progress, unparseable authored](./brief-07-unparseable-authored.md) | 0 | S | in-progress | — | — |

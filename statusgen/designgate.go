@@ -317,8 +317,10 @@ func designGateProblems(root string, streams []*Stream) []string {
 }
 
 // designGateNotices carries the advisory half of the gate: the reserved-status
-// line whenever records exist, and the three-state could-not-check when the
-// register is unreadable (so a run that could not confirm the dereference is
+// line whenever records exist, the per-brief could-not-check when a risk-gated
+// brief already at or past the guarded transition has an authored: date that
+// cannot be parsed, and the three-state could-not-check when the register
+// itself is unreadable (so a run that could not confirm the dereference is
 // distinguishable from a clean pass).
 func designGateNotices(root string, streams []*Stream) []string {
 	var notices []string
@@ -328,6 +330,52 @@ func designGateNotices(root string, streams []*Stream) []string {
 	}
 	if len(entries) > 0 {
 		notices = append(notices, fmt.Sprintf("docs/streams/%s: %s parsed — the design-approval gate binds risk-gated briefs authored after %s (spec/lifecycle-v1.md §4.4)", decisionsDirName, decisionCountPhrase(len(entries)), designGateCutover))
+	}
+	notices = append(notices, designGateAuthoredCouldNotCheckNotices(streams)...)
+	return notices
+}
+
+// designGateAuthoredCouldNotCheckNotices is the visible counterpart of
+// designGateProblems's `!dateOK` skip. authoredAfterCutover documents that an
+// unparseable (or empty — the bare-date-decodes-as-a-YAML-timestamp case
+// brieffile.go's `data["authored"].(string)` type-assertion silently drops,
+// leaving bf.Authored == "") authored: value must fail OPEN on the gate — it
+// must NOT be treated as "subject to the gate" — but VISIBLY, as a NOTICE,
+// never a silent drop from the corpus. This only fires for a brief already at
+// or past the guarded todo→in-progress transition (designGateStatuses): a
+// brief still at todo has not made the move the gate cares about yet, so
+// whether its authored: date parses is not yet interesting.
+func designGateAuthoredCouldNotCheckNotices(streams []*Stream) []string {
+	var notices []string
+	for _, s := range streams {
+		for _, path := range briefFilePaths(s) {
+			bf, ok, perr := parseBriefFile(path)
+			if perr != nil || !ok {
+				continue // malformed reported by checkBriefFiles; legacy exempt
+			}
+			if !riskGated(bf) {
+				continue // scoped: gate: model all-risks-no briefs are untouched
+			}
+			if _, dateOK := authoredAfterCutover(bf.Authored); dateOK {
+				continue // parses fine either way — not this could-not-check
+			}
+			_, num, okName := expectedBriefID(path)
+			if !okName {
+				continue
+			}
+			var row *Brief
+			for i := range s.Briefs {
+				if s.Briefs[i].Num == num {
+					row = &s.Briefs[i]
+					break
+				}
+			}
+			if row == nil || !designGateStatuses[row.Status] {
+				continue // not yet in gate scope (still todo, or no row)
+			}
+			label := fmt.Sprintf("%s/brief-%s", s.Name, num)
+			notices = append(notices, fmt.Sprintf("%s: design-approval gate COULD-NOT-CHECK: authored: %q does not parse as a leading YYYY-MM-DD date — cannot confirm whether the brief was authored after %s, so the gate does NOT fire on it this run (fail-open); read as unverified, not exempt (spec/lifecycle-v1.md §4.4)", label, bf.Authored, designGateCutover))
+		}
 	}
 	return notices
 }
