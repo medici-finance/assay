@@ -314,6 +314,16 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	problems = append(problems, danglingSatisfiesProblems(root, streams)...)
 	notices = append(notices, orphanRequirementNotices(root, streams, time.Now())...)
 	notices = append(notices, untracedBriefNotices(streams)...)
+	// Design-approval gate (sdlc/05, spec/lifecycle-v1.md §4.4): a RISK-GATED brief
+	// authored after the cutover may not sit at in-progress-or-later without an
+	// approved design-decision record (DR-<slug> under docs/streams/decisions/).
+	// Scoped — gate: model all-risks-no briefs are untouched — and grandfathered by
+	// authoring date, so the pin bump reds nothing already in flight. The paired
+	// NOTICE carries the three-state could-not-check when the register is
+	// unreadable. Runs on the product-scoped subset for the gate and reads the
+	// register at root. Declared source: statusgen/designgate.go.
+	problems = append(problems, designGateProblems(root, checkStreams)...)
+	notices = append(notices, designGateNotices(root, checkStreams)...)
 	// The register field-gutting guard inside registerIntegrityProblems compares
 	// against the merge-base with origin/main. When that ref is unresolvable the
 	// base falls back to HEAD and already-committed gutting is compared against

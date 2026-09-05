@@ -7,13 +7,13 @@ made without a major-version bump; no stability commitment.
 
 ## 1. Scope
 
-This document specifies the append-only registers — FINDINGS, INTAKE and REQUIREMENTS —
-that form the system's memory: what invalidated a plan (FINDINGS), what raw ideas are
-queued (INTAKE), and what the product was asked to do (REQUIREMENTS). A conforming
-implementation MUST maintain each register as an append-only log that satisfies every
-MUST in this document.
+This document specifies the append-only registers — FINDINGS, INTAKE, REQUIREMENTS and
+DECISIONS — that form the system's memory: what invalidated a plan (FINDINGS), what raw
+ideas are queued (INTAKE), what the product was asked to do (REQUIREMENTS), and what was
+decided about how to build it and why (DECISIONS). A conforming implementation MUST
+maintain each register as an append-only log that satisfies every MUST in this document.
 
-Section 7 (RETRO) is **informative, not normative** — see the note there.
+Section 8 (RETRO) is **informative, not normative** — see the note there.
 
 ### 1.1 Terminology
 
@@ -421,7 +421,88 @@ These checks reach a consumer only on an `.assay-versions` statusgen pin bump, w
 they land advisory: an un-bumped adopter is unaffected, and a bumped one gets NOTICEs, not a
 red gate, over a corpus authored before the register existed.
 
-## 7. RETRO register (informative — not implemented)
+## 7. DECISIONS register
+
+### 7.1 Purpose
+
+A DECISION is a recorded **design-decision record**: what was decided about how a change
+would be built, the alternatives considered and why each was ruled out, the consequences
+accepted, and the dated human identity that decided. It is the artifact the lifecycle's
+design-approval gate (`lifecycle-v1.md` §4.4) dereferences: a risk-gated brief may not
+move to `in-progress` until it cites an approved record here.
+
+A DECISION is NOT a brief and NOT a requirement: it carries no wave, no DoD, and no
+acceptance criteria. It records *why a design was chosen*, so that a wrong design is
+caught at authoring — when the alternatives were never enumerated — rather than only
+after the finished diff reaches the review gate.
+
+### 7.2 Format
+
+Each entry is a file under `docs/streams/decisions/` with YAML frontmatter and a prose
+body:
+
+```
+---
+id: DR-<slug>
+date: "YYYY-MM-DD"
+title: "<one line: what was decided>"
+consequence: minor | major | critical    # the ordered axis required by section 3.5
+decided-by: "human:<name>"                # the design-approval authority
+alternatives:
+  - "<a path not taken> — <why it was ruled out>"
+accepted:
+  - "<a consequence accepted by taking this path>"
+---
+
+<body: the decision, the constraint behind it, and what is explicitly not decided>
+```
+
+**`consequence` is the section 3.5 ordered axis**, lowest to highest: `minor` < `major` <
+`critical`. It ranks the consequence-if-this-design-is-wrong, so a register of decisions
+can rank its own backlog by blast radius:
+
+| Level | Meaning |
+|-------|---------|
+| `critical` | Getting this design wrong breaks a central product claim or cannot be walked back. |
+| `major` | Getting it wrong blocks a named user or forces an expensive rework, but a route back exists. |
+| `minor` | Getting it wrong is friction or cosmetics with a documented workaround. |
+
+### 7.3 Rules
+
+- `id` MUST be a slug-form ID per section 3.4, with the `DR-` prefix.
+- `date`, `title`, `consequence`, `decided-by`, `alternatives` and `accepted` MUST all
+  be present.
+- `consequence` MUST be one of the three ordered levels. A missing or out-of-set value
+  MUST be flagged, naming the offending value (section 3.5: a register whose severity
+  axis can be omitted has no severity axis).
+- `decided-by` MUST name a human with a `human:<name>` token — the design-approval
+  authority (`lifecycle-v1.md` §4.4). A record whose `decided-by` names no human MUST be
+  flagged: a design decision on a risk-gated brief is a recorded human act, not a model
+  self-sign-off.
+- `alternatives` MUST enumerate at least one path not taken. A record with no
+  alternatives records an outcome, not a decision — enumerating the roads not taken, and
+  why, is the register's reason for existing.
+- `accepted` MUST state at least one consequence accepted. A decision that accepts
+  nothing hides its cost.
+- Append-only (section 3.1) and tombstone-withdrawal (section 3.3) are inherited: to
+  retract a decision, keep the file and explain the reversal in the body; deleting it
+  loses the record and trips the section 3.2 tombstone check.
+
+### 7.4 What this register does NOT establish
+
+The register records **what was decided and why**, with a human approver. It does not, by
+itself:
+
+- Prove the approver is a different identity from the brief's author. `decided-by` is an
+  attributed stamp; enforcing author≠approver mechanically needs a brief-author→human
+  mapping briefs do not carry, and a conforming implementation MUST NOT claim that
+  independence as a checked boundary (the same attribution-not-identity limit
+  `lifecycle-v1.md` §7.1.2 declares for verification).
+- Prove the chosen design was correct. That the alternatives were weighed is recorded;
+  whether the choice was right is the review gate's judgement, then the change's own
+  validation (`docs/validation.md`) after it lands.
+
+## 8. RETRO register (informative — not implemented)
 
 > **Non-normative.** No RETRO register exists in the reference implementation: there is
 > no entry directory, no generated view, and no parser. Nothing in this section is
@@ -429,13 +510,13 @@ red gate, over a corpus authored before the register existed.
 > It is recorded here as the intended shape of a cadence retrospective, for
 > implementations that choose to build one and for a future normative revision.
 
-### 7.1 Purpose
+### 8.1 Purpose
 
 A RETRO is a cadence retrospective (weekly by default) whose inputs are
 generated/logged only — no prose-status narrative. A retro that reads its own narrative
 measures the narrator, not the system.
 
-### 7.2 Format
+### 8.2 Format
 
 ```
 ## R-<slug> — YYYY-MM-DD
@@ -443,7 +524,7 @@ measures the narrator, not the system.
 <the one process change (or "none"), links>
 ```
 
-### 7.3 Inputs
+### 8.3 Inputs
 
 A retro walks these generated inputs:
 
@@ -458,18 +539,18 @@ A retro walks these generated inputs:
 - Branch and worktree hygiene.
 - Knob tuning: Next-up weights, caps, priorities, pause/unpause.
 
-### 7.4 Process-change cap
+### 8.4 Process-change cap
 
 A retro enacts no more than one process change. A change must displace the current
 worst pain to get in; otherwise it waits. The change is recorded as an intake entry,
 finding, or brief — never enacted inline.
 
-## 8. Conformance
+## 9. Conformance
 
 Conformance is **self-asserted and unaudited** — see `spec/README.md` § "Conformance is
 self-declared".
 
-### 8.1 Register conformance
+### 9.1 Register conformance
 
 A conforming register:
 
@@ -485,7 +566,7 @@ A conforming register:
 5. MUST use tombstone-withdrawal (flip disposition/resolution, preserve the file) for
    retractions.
 
-### 8.2 Linter conformance
+### 9.2 Linter conformance
 
 A conforming linter MUST:
 
@@ -516,6 +597,12 @@ A conforming linter MUST:
     never dangling. The two companion checks, `orphan-requirement` (an `accepted`
     requirement no brief cites) and `untraced-brief` (a forward brief in an opted-in
     stream that cites nothing), are advisory NOTICEs that MUST NOT change the exit code.
+12. Flag any DECISIONS entry (section 7) missing or out-of-set on its ordered
+    `consequence` axis (sections 3.5, 7.3), whose `decided-by` names no human, or whose
+    `alternatives`/`accepted` list is empty. And flag any brief `design:` reference
+    (section 7, `brief-v1.md` §3.2) that does not match the `DR-<slug>` grammar or
+    dereferences to no record — subject to the grandfathering and three-state rules the
+    design-approval gate carries (`lifecycle-v1.md` §4.4).
 
 A conforming linter MUST NOT claim sequence-contiguity or gap detection (section 3.2),
 and MUST NOT let a `satisfies:` citation or a REQUIREMENTS entry change an exit code on

@@ -58,6 +58,7 @@ var reservedRegisterNames = map[string]bool{
 	"intake":            true,
 	"findings":          true,
 	requirementsDirName: true,
+	decisionsDirName:    true,
 }
 
 // parseFindings reads findings from the docs/streams/findings/ per-entry
