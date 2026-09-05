@@ -98,7 +98,7 @@ Entries are per-entry files under `docs/streams/requirements/<slug>.md` with slu
 (`REQ-<slug>`). The normative format, the ordered `impact` axis, the `proposed → accepted
 → satisfied → withdrawn` lifecycle and the reserved `satisfies:` citation on a brief are
 specified in [`../spec/registers-v1.md`](../spec/registers-v1.md) §6 — unlike the two
-sections below, this one has never had a legacy single-file dialect, so the spec is the
+sections above, this one has never had a legacy single-file dialect, so the spec is the
 only description of it and this page does not restate the fields.
 
 Two properties are worth stating here because they are the ones most easily misread:
