@@ -1,2 +1,0 @@
-### Fixed
-- `deskpr create/update/edit` now mint the token for the session's own App role (resolved from the loop identity) instead of always the worker App. Under `DESK_LOOP=verify-desk` this mints the verifier App, so verify-desk Evidence PRs keep the correct verifier authorship (PR author == Evidence-commit author). The worker App remains the default only when no loop role is set, and that fallback is announced rather than silent.
