@@ -100,16 +100,16 @@ facts:
    catch belongs next to what it does.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `git grep -ci 'mutation' -- statusgen/rowclass.go` | exit 1, no output — **DEREFERENCE, true at authoring (2026-08-25 @ `657cab1`)**: the mutation obligation does not exist in the row-class source. Inverts once mistake-proofing/03 and this brief land |
-| 2 | `test -d tools/desk/cmd/muhar` | exit 0 — **DEREFERENCE**: the mutation harness the failure message points at really exists, so the recommendation is not a dangling reference |
-| 3 | `git grep -n 'COLD' -- statusgen/lintaudit.go` | exit 0 — **DEREFERENCE**: the firing audit that flags a zero-firing rule as a retirement candidate is real, which is why this check owes its own positive control |
-| 4 | `go test ./statusgen/ -run 'MutationObligation' -count=1` | exit 0 — the promoted obligation's tests pass |
-| 5 | `go test ./statusgen/ -run 'MutationObligationFiresOnAddedCheck' -count=1` | exit 0 — **positive control**: a diff adding a check-shaped path with no mutation row is fatal; the same diff with the row is silent; a diff touching no check-shaped path is silent |
-| 6 | `go test ./statusgen/ -run 'MutationObligationCouldNotCheckIsNotSilence' -count=1` | exit 0 — an unavailable diff refuses, and is distinguishable in the output from "nothing owed" |
-| 7 | `go test ./statusgen/ -run 'MutationObligationInheritedCorpusStaysAdvisory' -count=1` | exit 0 — the promotion is transition-scoped: inherited briefs are not made fatal by this change |
-| 8 | `git grep -c 'adequacy' -- statusgen/` | exit 0; a non-zero count — the presence-not-adequacy boundary is stated in the source the failure message is built from. Zero hits today (2026-08-25 @ `657cab1`) |
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check | `git grep -ci 'mutation' -- statusgen/rowclass.go` | exit 1, no output — **DEREFERENCE, true at authoring (2026-08-25 @ `657cab1`)**: the mutation obligation does not exist in the row-class source. Inverts once mistake-proofing/03 and this brief land |
+| 2 | check | `test -d tools/desk/cmd/muhar` | exit 0 — **DEREFERENCE**: the mutation harness the failure message points at really exists, so the recommendation is not a dangling reference |
+| 3 | check | `git grep -n 'COLD' -- statusgen/lintaudit.go` | exit 0 — **DEREFERENCE**: the firing audit that flags a zero-firing rule as a retirement candidate is real, which is why this check owes its own positive control |
+| 4 | check | `go test ./statusgen/ -run 'MutationObligation' -count=1` | exit 0 — the promoted obligation's tests pass |
+| 5 | check +mutation | `go test ./statusgen/ -run 'MutationObligationFiresOnAddedCheck' -count=1` | exit 0 — **positive control** (the rule applied to itself): a diff adding a check-shaped path with no mutation row is fatal; the same diff with the row is silent; a diff touching no check-shaped path is silent. `+mutation` declares that this brief's own deliverable carries the demonstration it demands |
+| 6 | check | `go test ./statusgen/ -run 'MutationObligationCouldNotCheckIsNotSilence' -count=1` | exit 0 — an unavailable diff refuses, and is distinguishable in the output from "nothing owed" |
+| 7 | check | `go test ./statusgen/ -run 'MutationObligationInheritedCorpusStaysAdvisory' -count=1` | exit 0 — the promotion is transition-scoped: inherited briefs are not made fatal by this change |
+| 8 | check | `git grep -c 'adequacy' -- statusgen/` | exit 0; a non-zero count — the presence-not-adequacy boundary is stated in the source the failure message is built from. Zero hits today (2026-08-25 @ `657cab1`) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
