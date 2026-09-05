@@ -13,7 +13,7 @@ import (
 func TestInitScaffoldsLintCleanTree(t *testing.T) {
 	dir := t.TempDir()
 
-	if code := runInit(dir); code != 0 {
+	if code := runInit(dir, false); code != 0 {
 		t.Fatalf("runInit exit = %d, want 0", code)
 	}
 
@@ -96,7 +96,7 @@ func TestInitScaffoldsLintCleanTree(t *testing.T) {
 // install, --lint per PR, regen on main only).
 func TestInitEmitsDayOneRulesFiles(t *testing.T) {
 	dir := t.TempDir()
-	if code := runInit(dir); code != 0 {
+	if code := runInit(dir, false); code != 0 {
 		t.Fatalf("runInit exit = %d, want 0", code)
 	}
 
@@ -190,7 +190,7 @@ func TestInitPreservesExistingRulesFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if code := runInit(dir); code != 0 {
+	if code := runInit(dir, false); code != 0 {
 		t.Fatalf("runInit exit = %d, want 0", code)
 	}
 
@@ -213,7 +213,7 @@ func TestInitPreservesExistingRulesFiles(t *testing.T) {
 // token to an adopter.
 func TestInitLeavesNoUnsubstitutedPlaceholder(t *testing.T) {
 	dir := t.TempDir()
-	if code := runInit(dir); code != 0 {
+	if code := runInit(dir, false); code != 0 {
 		t.Fatalf("runInit exit = %d, want 0", code)
 	}
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
@@ -279,7 +279,7 @@ func TestInitTwiceThenMultiRootDoesNotCollide(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if code := runInit(dir); code != 0 {
+		if code := runInit(dir, false); code != 0 {
 			t.Fatalf("runInit(%s) exit = %d, want 0", dir, code)
 		}
 	}
@@ -339,7 +339,7 @@ func TestEffectiveBudgetSpecs(t *testing.T) {
 // existing file is left byte-for-byte unchanged.
 func TestInitIsIdempotentAndNeverClobbers(t *testing.T) {
 	dir := t.TempDir()
-	if code := runInit(dir); code != 0 {
+	if code := runInit(dir, false); code != 0 {
 		t.Fatalf("first runInit exit = %d, want 0", code)
 	}
 
@@ -350,7 +350,7 @@ func TestInitIsIdempotentAndNeverClobbers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if code := runInit(dir); code != 0 {
+	if code := runInit(dir, false); code != 0 {
 		t.Fatalf("second runInit exit = %d, want 0", code)
 	}
 	got, err := os.ReadFile(readme)
