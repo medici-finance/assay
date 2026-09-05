@@ -147,7 +147,7 @@ func TestPeerAuth(t *testing.T) {
 		future := f.now.Add(comms.DefaultTTL + time.Minute)
 		_, err := PreCheck(PreCheckInput{PeerAuthenticated: true, Raw: raw, Now: future}, f.deps)
 		if !errors.Is(err, ErrAssertionInvalid) || !errors.Is(err, comms.ErrExpired) {
-			t.Fatalf("want ErrAssertionInvalid+ErrExpired, got %v", err)
+			t.Fatalf("want ErrAssertionInvalid + ErrExpired, got %v", err)
 		}
 	})
 
@@ -173,7 +173,7 @@ func TestPeerAuth(t *testing.T) {
 		raw2, _ = json.Marshal(we)
 		_, err = PreCheck(PreCheckInput{PeerAuthenticated: true, Raw: raw2, Now: f.now}, f.deps)
 		if !errors.Is(err, ErrAssertionInvalid) || !errors.Is(err, comms.ErrReplay) {
-			t.Fatalf("want ErrAssertionInvalid+ErrReplay, got %v", err)
+			t.Fatalf("want ErrAssertionInvalid + ErrReplay, got %v", err)
 		}
 	})
 
@@ -196,7 +196,7 @@ func TestPeerAuth(t *testing.T) {
 		raw, _ = json.Marshal(we)
 		_, err = PreCheck(PreCheckInput{PeerAuthenticated: true, Raw: raw, Now: f.now}, f.deps)
 		if !errors.Is(err, ErrAssertionInvalid) || !errors.Is(err, comms.ErrUnknownCell) {
-			t.Fatalf("want ErrAssertionInvalid+ErrUnknownCell, got %v", err)
+			t.Fatalf("want ErrAssertionInvalid + ErrUnknownCell, got %v", err)
 		}
 	})
 }
