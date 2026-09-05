@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/medici-finance/assay/tools/desk/internal/askassay"
-	"github.com/medici-finance/assay/tools/desk/internal/askassay/chart"
+	"github.com/medici-finance/assay/tools/desk/askassay"
+	"github.com/medici-finance/assay/tools/desk/askassay/chart"
 )
 
 func stamp() askassay.Stamp {

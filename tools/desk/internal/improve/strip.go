@@ -68,7 +68,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/medici-finance/assay/tools/desk/internal/askassay"
+	"github.com/medici-finance/assay/tools/desk/askassay"
 )
 
 // nowFn is the clock seam. It exists so a refusal that has to invent its own
