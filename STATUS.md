@@ -41,21 +41,20 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-tools. By 
 | desk-tools | 13 — `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree | 1 | 1000 |
 | desk-tools | 14 — bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` [exec:strong] | 1 | 1000 |
 | desk-tools | 15 — `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home | 1 | 1000 |
-| mistake-proofing | 05 — `newbrief` — the scaffolder as the authoring front door (B1) [exec:strong] | 2 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (40 desk-actionable of 43 total — 43 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (41 desk-actionable of 44 total — 44 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (40)
+### Desk-actionable (41)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -94,6 +93,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| mistake-proofing | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | mistake-proofing | 06 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -247,7 +247,7 @@ _None._
 
 ### mistake-proofing (2 open)
 
-- 05 `newbrief` — the scaffolder as the authoring front door (B1) — todo (wave 2)
+- 05 `newbrief` — the scaffolder as the authoring front door (B1) — implemented (wave 2)
 - 06 D1 promoted to a lint obligation — a new check must carry its mutation row — implemented (wave 2)
 
 ### quality (1 open)
