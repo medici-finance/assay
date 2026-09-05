@@ -180,6 +180,57 @@ func parseRequirementsDir(root string) ([]requirementEntry, error) {
 	return entries, nil
 }
 
+// requirementRegisterStrays returns the names of members of the register
+// directory that are NEITHER a requirement entry NOR the register's own README —
+// a non-Markdown file, or a subdirectory.
+//
+// WHY THIS EXISTS. The register directory is a reserved name in load.go's stream
+// discovery: it is skipped, on purpose, because a register is not a stream and
+// must not be required to carry a stream README and a brief status table. That
+// skip is what keeps the board honest, but it also means nothing else in the tool
+// walks this directory — so a file dropped here that the entry parser does not
+// recognise is read by NOTHING. Silence is the wrong answer to "I put a file in
+// the register and no check ever mentioned it": that is how a register grows
+// content nobody validates. One PROBLEM naming the file is the whole rule.
+//
+// What is NOT a stray: a `.md` file (it is an entry, and its shape is validated
+// by requirementRegisterProblems, which reports a malformed one on its own terms),
+// `README.md` (directory documentation — registers-v1 §2.1 makes each entry its
+// own file and says nothing that forbids documenting the directory), and any
+// dot-prefixed name (`.gitkeep` and friends are housekeeping, not register
+// content).
+//
+// Three-state read, same as parseRequirementsDir: an ABSENT directory is a
+// legitimate empty (nil, nil); an UNREADABLE one is an error, never rounded to
+// "no strays".
+func requirementRegisterStrays(root string) ([]string, error) {
+	dir := filepath.Join(root, "docs", "streams", requirementsDirName)
+	files, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var strays []string
+	for _, f := range files {
+		name := f.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		if f.IsDir() {
+			strays = append(strays, name+"/")
+			continue
+		}
+		if name == "README.md" || strings.HasSuffix(name, ".md") {
+			continue
+		}
+		strays = append(strays, name)
+	}
+	sort.Strings(strays)
+	return strays, nil
+}
+
 // parseRequirementFile parses a single requirement entry (YAML frontmatter +
 // prose body).
 func parseRequirementFile(raw []byte) (*requirementEntry, error) {
@@ -212,11 +263,24 @@ func requirementRegisterProblems(root string) []string {
 		// the alternative is a run that silently validated nothing.
 		return []string{fmt.Sprintf("requirements register unreadable: %v", err)}
 	}
-	if len(entries) == 0 {
-		return nil
-	}
 	var problems []string
 	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
+
+	// Content the register directory holds but no parser reads. Checked BEFORE
+	// the empty-register early return below: a directory holding nothing but
+	// strays is exactly the case where the silence would be total.
+	strays, strayErr := requirementRegisterStrays(root)
+	if strayErr != nil {
+		add("requirements register unreadable: %v", strayErr)
+	}
+	for _, s := range strays {
+		add("docs/streams/%s/%s: not a requirement entry and not the register's README — the register directory is skipped by stream discovery (it is a register, not a stream), so nothing reads a file that is neither; move it out of the register, or give it the entry shape (registers-v1 §2.1: one entry per <slug>.md file)",
+			requirementsDirName, s)
+	}
+
+	if len(entries) == 0 {
+		return problems
+	}
 	label := func(e requirementEntry) string {
 		if e.File != "" {
 			return "docs/streams/" + requirementsDirName + "/" + e.File
@@ -286,12 +350,12 @@ func requirementRegisterProblems(root string) []string {
 	return problems
 }
 
-// requirementRegisterNotices returns the advisory lines for the REQUIREMENTS
-// register. There is exactly one, and it exists to make the RESERVATION visible:
-// the register is parsed and shape-validated, and the traceability it looks like
-// it enables is deliberately not wired. A reader of a --lint run must be able to
-// tell "parsed and reserved" from "silently ignored", which is the same reason
-// briefv2.go emits its reserved-edge notices.
+// requirementRegisterNotices returns the advisory summary line for the
+// REQUIREMENTS register: the entry count plus the fact that traceability is now
+// checked. sdlc/02 wired the three checks §6.5 had deferred as reserved, so this
+// line no longer claims traceability is unchecked — it names the checks that run,
+// so a reader of a --lint run can tell "parsed and traced" from "silently
+// ignored" and knows where each check lives.
 func requirementRegisterNotices(root string) []string {
 	entries, err := parseRequirementsDir(root)
 	if err != nil || len(entries) == 0 {
@@ -300,8 +364,8 @@ func requirementRegisterNotices(root string) []string {
 		return nil
 	}
 	return []string{fmt.Sprintf(
-		"docs/streams/%s: %s parsed, %s (reserved, not gating) — requirement traceability (an uncited requirement, a brief citing none, a citation naming no requirement) is not checked at this version",
-		requirementsDirName, requirementCountPhrase(len(entries)), "satisfies: citations are shape-validated only")}
+		"docs/streams/%s: %s parsed — traceability is checked (orphan-requirement and untraced-brief are advisory NOTICEs, dangling-satisfies is a PROBLEM; registers-v1 §6.5)",
+		requirementsDirName, requirementCountPhrase(len(entries)))}
 }
 
 // requirementCountPhrase renders an entry count with correct grammar, so the

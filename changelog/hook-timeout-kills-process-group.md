@@ -1,0 +1,2 @@
+### Fixed
+- A lifecycle hook that outruns its `timeout_ms` is now killed as a whole process group, and `RunHook` no longer blocks past the timeout waiting on an output pipe a surviving grandchild still holds open. Previously the kill reached only the `/bin/sh` the hook was launched as, so on any host whose `/bin/sh` forks rather than exec's the last command (Debian `dash`, as in the Linux CI image), the hook's own children ran on unreaped and a 200ms budget could take the full length of the hung command to return.

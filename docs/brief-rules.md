@@ -59,6 +59,12 @@ These three rules say what a row must BE. Rules 25-29 ("Row-runner discipline",
 below) say what its command must not DO — the shapes that report a verdict
 nothing measured.
 
+> A Verify row probes the **delta** a brief introduces; the **baseline** it does not
+> touch is guarded separately by the standing truth suite, and the tiers, regression
+> floor, and flake rules that frame both live in [`docs/test-policy.md`](test-policy.md).
+> A green Verify table is not a claim about the baseline — that split is the policy's,
+> stated there rather than restated here.
+
 7. **Verify rows must be runnable by someone who didn't do the work.** A row with no literal
    command and no expected exit/output is not a DoD item — it's a hope.
 8. **Prose deliverables get PRESENCE gates; quality is the human gate (the honesty rule).**
