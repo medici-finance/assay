@@ -17,7 +17,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/9 | 2026-09-05 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-05 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-05 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-05 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-05 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-05 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/12 | 2026-09-05 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-05 |  |
@@ -47,14 +47,14 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (41 desk-actionable of 43 total — 42 at implemented, 1 verified awaiting review)
+## Awaiting verification / review (40 desk-actionable of 42 total — 42 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (41)
+### Desk-actionable (40)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -73,7 +73,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | windows-port | 00 | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | windows-port | 01 | implemented | 2500 | 3 | — | — | — |
-| forge-gitlab | 04 | verified | 2000 | 2 | — | 2026-09-05 opus-4.8[1m]-verifier | — |
 | desk-supervision | 02 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -200,9 +199,8 @@ _None._
 - 07 `deskmerge` exception — fence the trial merge, migrate the rest — todo (wave 3)
 - 08 flip the drop-the-binary CI gate + CVE floor + file the follow-on — todo (wave 5)
 
-### forge-gitlab (5 open)
+### forge-gitlab (4 open)
 
-- 04 Fleet provisioning + adopter doc + ci-config-project runbook — verified (wave 3)
 - 05 Live pilot — one brief round-tripped on a real GitLab group; parity table walked — implemented (wave 4)
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — todo (wave 5)
 - 07 GitHub forge backend on `go-gh` — retire the exec-`gh` shell path — implemented (wave 2)
@@ -295,11 +293,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 - 01 inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate — done (wave 1)
 
-### forge-gitlab (3 done)
+### forge-gitlab (4 done)
 
 - 01 `Forge` interface extraction in deskkit — `github` impl pinned by goldens — done (wave 1)
 - 02 `gitlab` forge implementation (MRs, notes, approvals, statuses) — done (wave 2)
 - 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — done (wave 2)
+- 04 Fleet provisioning + adopter doc + ci-config-project runbook — done (wave 3)
 
 ### harness-portability (1 done)
 
@@ -356,4 +355,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **44/134** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **45/134** briefs done · completed initiatives: see `docs/archive/`
