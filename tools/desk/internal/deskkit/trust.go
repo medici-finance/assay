@@ -90,6 +90,60 @@ func TrustedPublicAuthor(login string) bool {
 	return false
 }
 
+// TrustedHumanAuthor reports whether login is an ACCOUNTABLE trusted human — the
+// person who owns and merges their OWN PR, as distinct from a role App or a shared
+// machine account. It answers one question for the board's neglect axis (#177): a
+// PR with no reviewer-App verdict at head is desk-review neglect ONLY when the desk
+// is responsible for reviewing it; a maintainer's own un-reviewed PR (the closure
+// artifact of a human-gated brief, where the human fills the decision table in their
+// own PR and merges it) is theirs to merge, and the review desk deliberately does
+// not dispatch a model reviewer on it — a model reviewing the human's ratified
+// ruling inverts the gate.
+//
+// The accountable-human set is the SAME one the public-repo trust bar honours as a
+// human (TrustedPublicAuthor, #943): the mapped humans of ASSAY_HUMAN_LOGIN_MAP,
+// plus the single blessing authority (an accountable human by construction — the
+// loader refuses a bot/App bless login). It deliberately EXCLUDES:
+//   - role Apps / bot renderings ([bot], app/, -app, -bot) — never a human, and
+//     #177's non-goal keeps App-authored PRs in the review-neglect metric;
+//   - a shared machine account admitted to ASSAY_TRUSTED_LOGINS as a plain human
+//     (an org push/token account, not an accountable person) — exactly the account
+//     TrustedPublicAuthor refuses public-review trust to. Its PRs are NOT "a trusted
+//     human's own PRs" and stay in the neglect metric. This is why the check is NOT
+//     `TrustedAuthor && !bot`: that would sweep the shared account in too.
+//
+// Empty/unknown logins and an unconfigured roster are false (fail closed).
+func TrustedHumanAuthor(login string) bool {
+	if login == "" {
+		return false
+	}
+	l := strings.ToLower(strings.TrimSpace(login))
+	if l == "" {
+		return false
+	}
+	// A bot/App/shared-agent rendering is never an accountable human, however
+	// trusted its App identity — fail closed against one reaching here.
+	if looksLikeBot(l) {
+		return false
+	}
+	c := EffectiveConfig()
+	if !c.Configured() {
+		return false
+	}
+	// The blessing authority is an accountable human by construction.
+	if c.Bless.Login != "" && strings.EqualFold(l, c.Bless.Login) {
+		return true
+	}
+	// A mapped, accountable human (ASSAY_HUMAN_LOGIN_MAP). Values are lowercased at
+	// parse. NOT the broad ASSAY_TRUSTED_LOGINS set (c.Humans) — see the doc above.
+	for _, mapped := range c.HumanLogins {
+		if strings.EqualFold(mapped, l) {
+			return true
+		}
+	}
+	return false
+}
+
 // expectedID resolves a trusted login (any accepted rendered form) to its pinned
 // numeric id. ok is false for logins outside the trusted set.
 func expectedID(login string) (id int64, ok bool) {

@@ -1082,7 +1082,13 @@ func main() {
 		fs := flag.NewFlagSet("init", flag.ExitOnError)
 		var initRoots rootFlags
 		fs.Var(&initRoots, "root", "repository root to scaffold")
+		forgeFlag := fs.String("forge", "", "which forge's CI half to scaffold: github | gitlab (default: auto-detect from the origin remote, falling back to github)")
 		fs.Parse(os.Args[2:])
+		forge, err := parseForgeFlag(*forgeFlag)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "statusgen:", err)
+			os.Exit(2)
+		}
 		// Scaffolding is inherently one-repo-at-a-time; taking the first of
 		// several silently would scaffold the wrong tree.
 		resolved, err := resolveRoots(initRoots)
@@ -1093,6 +1099,11 @@ func main() {
 		if len(resolved) > 1 {
 			fmt.Fprintf(os.Stderr, "statusgen: init accepts exactly one --root; got %d — scaffold one repo at a time\n", len(resolved))
 			os.Exit(2)
+		}
+		// An explicit --forge wins; otherwise detect from the target's origin
+		// remote (runInit does the detection).
+		if forge != forgeUnknown {
+			os.Exit(runInitForge(resolved[0], forge))
 		}
 		os.Exit(runInit(resolved[0]))
 	}
