@@ -138,7 +138,7 @@ func TestPeerAuth(t *testing.T) {
 		}
 		_, err = PreCheck(PreCheckInput{PeerAuthenticated: true, Raw: raw, Now: f.now}, f.deps)
 		if !errors.Is(err, ErrAssertionInvalid) || !errors.Is(err, comms.ErrBadSignature) {
-			t.Fatalf("want ErrAssertionInvalid+ErrBadSignature, got %v", err)
+			t.Fatalf("want ErrAssertionInvalid + ErrBadSignature, got %v", err)
 		}
 	})
 
