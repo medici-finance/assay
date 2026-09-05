@@ -447,6 +447,177 @@ func TestCheckRegisterIDCollisions_SkipsIdenticalPathButKeepsAddedVsAdded(t *tes
 	})
 }
 
+// TestCheckRegisterIDCollisions_IdAlreadyOnMainSameFile_NotAClaim is the #189 primary proof:
+// a branch that MODIFIES an existing findings entry for an unrelated reason (repointing a
+// backtick path) WITHOUT touching its `id:` does not stake a new claim on that id — the id is
+// already on origin/main in the same file — so it cannot collide with a sibling branch that
+// merely carries an unmodified copy of the same entry. Before the fix, the MODIFY was flagged
+// against every remote-tracking ref that carried the file, an unsatisfiable refusal (renaming
+// an id already on main is the actual defect).
+func TestCheckRegisterIDCollisions_IdAlreadyOnMainSameFile_NotAClaim(t *testing.T) {
+	remoteDir := t.TempDir()
+	regIDRunGitT(t, remoteDir, "init", "--bare", "-b", "main")
+
+	seed := t.TempDir()
+	regIDRunGitT(t, seed, "init", "-b", "main")
+	regIDRunGitT(t, seed, "config", "user.email", "seed@test")
+	regIDRunGitT(t, seed, "config", "user.name", "seed")
+	regIDRunGitT(t, seed, "remote", "add", "origin", remoteDir)
+	regIDWriteFile(t, seed, "README.md", "# repo\n")
+	// An existing findings entry, id F-existing, already landed on main.
+	regIDWriteFile(t, seed, "docs/streams/findings/2026-07-01-existing.md",
+		"---\nid: F-existing\ndate: \"2026-07-01\"\ntitle: \"existing\"\n---\n\nSee `old/path.md`.\n")
+	regIDRunGitT(t, seed, "add", ".")
+	regIDRunGitT(t, seed, "commit", "-m", "chore: initial commit on main")
+	regIDRunGitT(t, seed, "push", "origin", "main")
+
+	// Worker A: an in-flight sibling that does unrelated work (adds a new unrelated file, so it
+	// is NOT an ancestor of main) and thereby still carries an UNMODIFIED copy of the existing
+	// entry. It is pushed and live.
+	workerA := t.TempDir()
+	regIDRunGitT(t, workerA, "clone", remoteDir, ".")
+	regIDRunGitT(t, workerA, "config", "user.email", "a@test")
+	regIDRunGitT(t, workerA, "config", "user.name", "worker-a")
+	regIDRunGitT(t, workerA, "checkout", "-b", "worker-a-branch", "origin/main")
+	regIDWriteFile(t, workerA, "docs/notes/unrelated.md", "unrelated work\n")
+	regIDRunGitT(t, workerA, "add", ".")
+	regIDRunGitT(t, workerA, "commit", "-m", "docs: unrelated work")
+	regIDRunGitT(t, workerA, "push", "origin", "worker-a-branch")
+
+	// Worker B: MODIFIES the existing entry for an unrelated reason — repoints the backtick path
+	// — leaving the id F-existing untouched.
+	workerB := t.TempDir()
+	regIDRunGitT(t, workerB, "clone", remoteDir, ".")
+	regIDRunGitT(t, workerB, "config", "user.email", "b@test")
+	regIDRunGitT(t, workerB, "config", "user.name", "worker-b")
+	regIDRunGitT(t, workerB, "checkout", "-b", "worker-b-branch", "origin/main")
+	regIDWriteFile(t, workerB, "docs/streams/findings/2026-07-01-existing.md",
+		"---\nid: F-existing\ndate: \"2026-07-01\"\ntitle: \"existing\"\n---\n\nSee `new/path.md`.\n")
+	regIDRunGitT(t, workerB, "add", ".")
+	regIDRunGitT(t, workerB, "commit", "-m", "docs(findings): repoint backtick path")
+	headSHA := regIDRunGitT(t, workerB, "rev-parse", "HEAD")
+
+	collisions, err := checkRegisterIDCollisions(workerB, "worker-b-branch", headSHA)
+	if err != nil {
+		t.Fatalf("checkRegisterIDCollisions error: %v", err)
+	}
+	if len(collisions) != 0 {
+		t.Fatalf("expected 0 collisions — F-existing is already on main in the same file, not a "+
+			"new claim — got %d: %+v", len(collisions), collisions)
+	}
+}
+
+// TestCheckRegisterIDCollisions_StaleSourceRefDropped is the #189 stale-ref proof: a sibling
+// branch that carries a NEW colliding id but was merged and DELETED on the remote leaves a stale
+// refs/remotes/origin/<name> behind locally. `git branch -r` still lists it, so before the fix
+// the check reported a collision against a branch that no longer exists. Confirming liveness
+// against origin (ls-remote) drops the stale ref.
+func TestCheckRegisterIDCollisions_StaleSourceRefDropped(t *testing.T) {
+	remoteDir := t.TempDir()
+	regIDRunGitT(t, remoteDir, "init", "--bare", "-b", "main")
+
+	seed := t.TempDir()
+	regIDRunGitT(t, seed, "init", "-b", "main")
+	regIDRunGitT(t, seed, "config", "user.email", "seed@test")
+	regIDRunGitT(t, seed, "config", "user.name", "seed")
+	regIDRunGitT(t, seed, "remote", "add", "origin", remoteDir)
+	regIDWriteFile(t, seed, "README.md", "# repo\n")
+	regIDRunGitT(t, seed, "add", ".")
+	regIDRunGitT(t, seed, "commit", "-m", "chore: initial commit on main")
+	regIDRunGitT(t, seed, "push", "origin", "main")
+
+	// Worker A: adds a NEW entry claiming F-99, pushes — worker B fetches origin/worker-a-branch
+	// at clone time — then the branch is DELETED on the remote (merged elsewhere and cleaned up).
+	workerA := t.TempDir()
+	regIDRunGitT(t, workerA, "clone", remoteDir, ".")
+	regIDRunGitT(t, workerA, "config", "user.email", "a@test")
+	regIDRunGitT(t, workerA, "config", "user.name", "worker-a")
+	regIDRunGitT(t, workerA, "checkout", "-b", "worker-a-branch", "origin/main")
+	regIDWriteFile(t, workerA, "docs/streams/findings/2026-08-01-a.md",
+		"---\nid: F-99\ndate: \"2026-08-01\"\ntitle: \"a\"\n---\n\nBody.\n")
+	regIDRunGitT(t, workerA, "add", ".")
+	regIDRunGitT(t, workerA, "commit", "-m", "docs(findings): a")
+	regIDRunGitT(t, workerA, "push", "origin", "worker-a-branch")
+
+	// Worker B clones (fetching origin/worker-a-branch), then worker A's branch is deleted on the
+	// remote — worker B's remote-tracking ref for it is now stale.
+	workerB := t.TempDir()
+	regIDRunGitT(t, workerB, "clone", remoteDir, ".")
+	regIDRunGitT(t, workerB, "config", "user.email", "b@test")
+	regIDRunGitT(t, workerB, "config", "user.name", "worker-b")
+	regIDRunGitT(t, workerA, "push", "origin", "--delete", "worker-a-branch")
+
+	// Sanity: worker B still carries the stale remote-tracking ref (it did not prune).
+	if brOut := regIDRunGitT(t, workerB, "branch", "-r"); !strings.Contains(brOut, "origin/worker-a-branch") {
+		t.Fatalf("fixture invariant broken: worker B should still hold the stale origin/worker-a-branch; got:\n%s", brOut)
+	}
+
+	regIDRunGitT(t, workerB, "checkout", "-b", "worker-b-branch", "origin/main")
+	regIDWriteFile(t, workerB, "docs/streams/findings/2026-08-01-b.md",
+		"---\nid: F-99\ndate: \"2026-08-01\"\ntitle: \"b\"\n---\n\nBody.\n")
+	regIDRunGitT(t, workerB, "add", ".")
+	regIDRunGitT(t, workerB, "commit", "-m", "docs(findings): b")
+	headSHA := regIDRunGitT(t, workerB, "rev-parse", "HEAD")
+
+	collisions, err := checkRegisterIDCollisions(workerB, "worker-b-branch", headSHA)
+	if err != nil {
+		t.Fatalf("checkRegisterIDCollisions error: %v", err)
+	}
+	if len(collisions) != 0 {
+		t.Fatalf("expected 0 collisions — origin/worker-a-branch is a stale remote-tracking ref "+
+			"(deleted on origin) — got %d: %+v", len(collisions), collisions)
+	}
+}
+
+// TestCheckRegisterIDCollisions_LiveSourceRefReportedAsLive is the #189 ask-3 proof: a real,
+// in-flight collision is reported with its source ref confirmed live against origin.
+func TestCheckRegisterIDCollisions_LiveSourceRefReportedAsLive(t *testing.T) {
+	dir, ownBranch, ownSHA := newRegisterIDCollisionFixture(t, "F-39", "F-39")
+
+	collisions, err := checkRegisterIDCollisions(dir, ownBranch, ownSHA)
+	if err != nil {
+		t.Fatalf("checkRegisterIDCollisions error: %v", err)
+	}
+	if len(collisions) != 1 {
+		t.Fatalf("expected exactly 1 collision, got %d: %+v", len(collisions), collisions)
+	}
+	if collisions[0].sourceLive != livenessLive {
+		t.Errorf("sourceLive = %v, want livenessLive — origin/worker-a-branch is still on origin",
+			collisions[0].sourceLive)
+	}
+}
+
+// TestRun_RefusalNamesSourceRefLiveness is the #189 ask-3 end-to-end proof: the refusal message
+// tells the reader the colliding source ref is live.
+func TestRun_RefusalNamesSourceRefLiveness(t *testing.T) {
+	dir, ownBranch, ownSHA := newRegisterIDCollisionFixture(t, "F-39", "F-39")
+
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("os.Chdir(%s): %v", dir, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(old); err != nil {
+			t.Fatalf("restore os.Chdir(%s): %v", old, err)
+		}
+	})
+	t.Setenv("DESKPUSHGUARD_FAKE_STATE", "NONE")
+
+	stdin := strings.NewReader("refs/heads/" + ownBranch + " " + ownSHA + " refs/heads/" + ownBranch + " 0000000000000000000000000000000000000000\n")
+	var stderr strings.Builder
+	rc := run([]string{"origin", "https://github.com/medici-finance/assay.git"}, stdin, &stderr)
+
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("rc = %d, want ExitRefused(%d). stderr:\n%s", rc, deskkit.ExitRefused, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "source ref live") {
+		t.Errorf("expected stderr to report the source ref liveness (source ref live), got:\n%s", stderr.String())
+	}
+}
+
 // TestCheckRegisterIDCollisions_DoesNotSkipBranchNamedLikeHEAD is the #764 item-2 (ref-skip)
 // proof: a sibling branch whose name merely ENDS in "HEAD" must still be scanned. The old
 // HasSuffix(b, "HEAD") skip silently excluded it; the exact-match origin/HEAD skip does not.

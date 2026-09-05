@@ -1,0 +1,18 @@
+# Fixture: a section with no pinned tag at all. A pairing with no tag is not a
+# pin — there is nothing for the installer to resolve, and nothing for this
+# checker to resolve it against.
+schema: paired-versions-v1
+
+plugin: "0.5.0"
+
+statusgen:
+  release_home: example-org/example-releases
+  platforms:
+    darwin-arm64: statusgen-darwin-arm64 v1.2.3 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+desk-tools:
+  release_home: example-org/example-releases
+  tag: v1.2.3
+  platforms:
+    darwin-arm64: desk-tools-darwin-arm64.tar.gz v1.2.3 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    linux-amd64:  desk-tools-linux-amd64.tar.gz  v1.2.3 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd

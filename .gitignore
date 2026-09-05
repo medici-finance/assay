@@ -1,6 +1,7 @@
 # Go build artifacts
 /statusgen/statusgen
 /tools/freshness/freshness
+/tools/pairedversions/pairedversions
 /qualgen/qualgen
 *.exe
 *.test

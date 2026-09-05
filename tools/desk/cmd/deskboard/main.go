@@ -24,6 +24,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -426,16 +427,16 @@ func buildHeader() Header {
 // check", and reported the second as the first — a fail-open on a drift detector, on
 // the field the operator guidance names as authoritative.
 const (
-	staleStateInSync        = "in-sync"        // checked: installed tree == origin/main
+	staleStateInSync        = "in-sync"        // checked: running binary == the version this checkout pins/tracks
 	staleStateDrift         = "drift"          // checked: they differ
 	staleStateNotApplicable = "not-applicable" // unpinned build: there is no install to drift
-	staleStateUnknown       = "unknown"        // COULD-NOT-CHECK: git unavailable / refs missing
+	staleStateUnknown       = "unknown"        // COULD-NOT-CHECK: no pin found AND no in-tree ref
 )
 
-// staleState reports installed-vs-origin drift as a three-state verdict plus the
+// staleState reports installed-vs-tracked drift as a three-state verdict plus the
 // authoritative boolean.
 //
-// The boolean now fails CLOSED: an `unknown` (the check could not run) reports
+// The boolean fails CLOSED: an `unknown` (the check could not run) reports
 // stale=true, because the one answer a drift detector must never give is "fresh" when
 // it did not look. `not-applicable` is the separate, honest case — an unpinned `go run`
 // has no installed binary that COULD have drifted, which is a statement about the
@@ -443,15 +444,28 @@ const (
 // two are kept apart rather than both folded into "not assessable", which is what made
 // the old detail line contradict its own boolean.
 //
-// isPinned and gitTree are vars for the same reason searchOpenPRs and ghRun already are:
-// the two MEASURING outcomes (drift / in-sync) are the ones a pinned install actually
-// runs, and with the real git call hard-wired neither could be driven from a test — the
-// drift branch could be mutated back to "in-sync, stale=false" (i.e. #236 itself, on the
-// live path) with the whole suite still green. Seams, not behaviour: production still
-// calls deskkit.IsPinned and the real git.
+// #185 — the PRIMARY drift source is the consumer's `.assay-versions` pin, not the
+// in-tree `tools/desk` git ref. Once the desk tools moved out of the consumer's tree
+// to their release home, `git rev-parse origin/main:tools/desk` stopped resolving in
+// any consumer checkout, so the old in-tree-only check went permanently
+// STALE-UNKNOWN there — it could never distinguish "the binary is behind the source"
+// from "the source is not in this tree". The running binary embeds its own
+// `releaseTag`; comparing that against the `desk-tools` tag the consumer pins in its
+// own `.assay-versions` resolves WHERE the binary actually runs. The in-tree ref is
+// kept as a FALLBACK for the source-repo case (assay's own tree, where tools/desk
+// still exists), and only a run that finds NEITHER source reports could-not-check.
+//
+// isPinned, gitTree and deskToolsPin are vars for the same reason searchOpenPRs and
+// ghRun already are: the MEASURING outcomes (drift / in-sync) are the ones a pinned
+// install actually runs, and with the real git/filesystem calls hard-wired neither
+// could be driven from a test — the drift branch could be mutated back to "in-sync,
+// stale=false" (i.e. #236 itself, on the live path) with the whole suite still green.
+// Seams, not behaviour: production still calls deskkit.IsPinned, the real git, and the
+// real `.assay-versions` walk.
 var (
-	isPinned = deskkit.IsPinned
-	gitTree  = gitTreeReal
+	isPinned     = deskkit.IsPinned
+	gitTree      = gitTreeReal
+	deskToolsPin = deskToolsPinReal
 )
 
 func staleState() (state string, stale bool, detail string) {
@@ -459,6 +473,31 @@ func staleState() (state string, stale bool, detail string) {
 		return staleStateNotApplicable, false,
 			"unpinned build (go run) — there is no installed binary to drift; install via `sudo make desk-install`"
 	}
+
+	// PRIMARY (#185): the running binary's release tag vs the desk-tools tag this
+	// checkout pins in its own `.assay-versions`. This is the check that resolves in
+	// a consumer, where the desk tools no longer live in the tree.
+	if pinRoot, pinTag, found := deskToolsPin(); found {
+		running := deskkit.ReleaseTag
+		if running != "" {
+			pinFile := filepath.Join(pinRoot, deskkit.AssayVersionsFile)
+			if normalizeTag(running) == normalizeTag(pinTag) {
+				return staleStateInSync, false,
+					"in sync with " + pinFile + " (desk-tools " + pinTag + ")"
+			}
+			return staleStateDrift, true,
+				"installed desk-tools releaseTag " + running + " differs from the pinned " + pinTag +
+					" in " + pinFile + " — reinstall the pinned release (sudo make desk-install)"
+		}
+		// Pinned by sourceSHA/builtAt but carrying no releaseTag stamp (an older
+		// stamped binary): the tag comparison cannot run. Fall through to the
+		// in-tree ref, then could-not-check.
+	}
+
+	// FALLBACK: the in-tree `tools/desk` git ref — the source-repo case, where the
+	// desk tools still live in the tree. Only meaningful when origin/main's
+	// tools/desk path resolves; a consumer checkout falls straight through to
+	// could-not-check.
 	src, _ := deskkit.Version()
 	installedTree, err1 := gitTree(src)
 	// FULLY-QUALIFIED remote-tracking ref, not the bare short name `origin/main`
@@ -467,15 +506,58 @@ func staleState() (state string, stale bool, detail string) {
 	originTree, err2 := gitTree("refs/remotes/origin/main")
 	if err1 != nil || err2 != nil || installedTree == "" || originTree == "" {
 		return staleStateUnknown, true,
-			"COULD-NOT-CHECK drift (git unavailable or refs missing) — reported as STALE because " +
-				"an unverifiable drift check is not evidence of freshness (#236); re-run where " +
-				"`git rev-parse origin/main:tools/desk` resolves"
+			"COULD-NOT-CHECK drift — reported as STALE because an unverifiable drift check is not " +
+				"evidence of freshness (#236). Neither source resolved: no readable `desk-tools` pin in a " +
+				"`.assay-versions` at or above the working directory, and the in-tree " +
+				"`git rev-parse refs/remotes/origin/main:tools/desk` ref is missing. Re-run where the " +
+				"consumer's `.assay-versions` pins desk-tools, or from the source tree where tools/desk exists"
 	}
 	if installedTree != originTree {
 		return staleStateDrift, true,
 			"installed sourceSHA " + src + " tools/desk tree differs from origin/main — reinstall (sudo make desk-install)"
 	}
 	return staleStateInSync, false, "in sync with origin/main"
+}
+
+// normalizeTag strips an optional `<component>/` prefix so the two legitimate pin-tag
+// shapes compare equal: the running binary's releaseTag stamp and a consumer pin may
+// each be written as the plain `vX.Y.Z` the public release home cuts OR the legacy
+// `desk-tools/vX.Y.Z` per-tool form (see deskkit/pins.go artifactTagPattern). Comparing
+// the raw strings would report a spurious drift between `v0.18.0` and
+// `desk-tools/v0.18.0`, which name the same release.
+func normalizeTag(tag string) string {
+	if i := strings.LastIndex(tag, "/"); i >= 0 {
+		return tag[i+1:]
+	}
+	return tag
+}
+
+// deskToolsPinReal locates the consumer's `.assay-versions` — walking up from the
+// working directory — and returns the `desk-tools` pin tag it carries. found=false
+// means either no `.assay-versions` was located at or above the working directory (the
+// source-repo case: assay's own tree never carries one) OR the nearest one has no
+// readable `desk-tools` line; both fall through to staleState's in-tree fallback rather
+// than being reported as a failure here, per #185's stated fallback order (fall back to
+// the in-tree ref "when it exists", could-not-check only when neither source resolves).
+// Malformed-pin detection is `deskpins --check`'s job, not the drift banner's.
+func deskToolsPinReal() (root, tag string, found bool) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", "", false
+	}
+	for {
+		if _, statErr := os.Stat(filepath.Join(dir, deskkit.AssayVersionsFile)); statErr == nil {
+			if t, _, perr := deskkit.ArtifactPin(dir, "desk-tools"); perr == nil {
+				return dir, t, true
+			}
+			return "", "", false // pin file present but no usable desk-tools line
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", "", false // reached the filesystem root without a pin file
+		}
+		dir = parent
+	}
 }
 
 // gitTreeReal returns the git tree object id of tools/desk at a ref/sha (read-only).

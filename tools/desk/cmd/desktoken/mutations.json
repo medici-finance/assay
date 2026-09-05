@@ -54,6 +54,36 @@
       "file": "cmd/desktoken/desktoken.go",
       "old": "\treturn perm&0o004 == 0 && perm&0o022 == 0",
       "new": "\treturn true"
+    },
+    {
+      "name": "coverage: a failed repository page becomes a SHORT list read as complete (drop the exit-6 refusal; return the partial list)",
+      "file": "cmd/desktoken/coverage.go",
+      "old": "\t\trepos, rerr := listInstallationRepos(tok.Token)\n\t\tif rerr != nil {",
+      "new": "\t\trepos, rerr := listInstallationRepos(tok.Token)\n\t\tif false && rerr != nil {"
+    },
+    {
+      "name": "coverage: print the enumeration token beside the installation header (the no-token-leak assertion must fire)",
+      "file": "cmd/desktoken/coverage.go",
+      "old": "\t\trepos, rerr := listInstallationRepos(tok.Token)\n\t\tif rerr != nil {\n\t\t\t// A page read that failed",
+      "new": "\t\tfmt.Println(tok.Token)\n\t\trepos, rerr := listInstallationRepos(tok.Token)\n\t\tif rerr != nil {\n\t\t\t// A page read that failed"
+    },
+    {
+      "name": "coverage: --repo matches on the bare name, not full_name (a same-named repo in another org matches the wrong installation)",
+      "file": "cmd/desktoken/coverage.go",
+      "old": "\t\t\t\tif strings.EqualFold(full, slug) {",
+      "new": "\t\t\t\tif strings.EqualFold(full[strings.IndexByte(full, '/')+1:], slug[strings.IndexByte(slug, '/')+1:]) {"
+    },
+    {
+      "name": "coverage: render installations in API order, not sorted by account.login (two runs differ)",
+      "file": "cmd/desktoken/coverage.go",
+      "old": "\tsort.Slice(installs, func(i, j int) bool {\n\t\tif strings.EqualFold(installs[i].Account.Login, installs[j].Account.Login) {\n\t\t\treturn installs[i].ID < installs[j].ID\n\t\t}\n\t\treturn strings.ToLower(installs[i].Account.Login) < strings.ToLower(installs[j].Account.Login)\n\t})",
+      "new": "\t_ = sort.Strings"
+    },
+    {
+      "name": "coverage: stop refusing GitLab (the verb runs against a forge that has no installation to enumerate)",
+      "file": "cmd/desktoken/coverage.go",
+      "old": "\tcase \"gitlab\":\n\t\treturn deskkit.Refused(\"coverage is GitHub-only: a GitLab PAT has no App installation to enumerate\")",
+      "new": "\tcase \"gitlab\":\n\t\tbreak"
     }
   ]
 }
