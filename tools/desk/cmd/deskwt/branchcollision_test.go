@@ -182,7 +182,7 @@ func TestBranchHoldersPropagatesAGitError(t *testing.T) {
 // holder (so the 0-ahead proof and the live-holder / ahead refusals do the deciding), and the
 // prunable attribute never leaks forward into the next, live, entry.
 //
-// NOTE ON SCOPE (see PR body — needs-decision on desk-tools/11): the read-fix lets the
+// NOTE ON SCOPE (see PR body — the needs-decision recorded there): the read-fix lets the
 // reclaim PROCEED, but it cannot make the subsequent `git worktree add -b <br>` SUCCEED while
 // the prunable entry survives — git's own `-b` collision check consults every worktree
 // registration (prunable included), so it still refuses ("… is already used by worktree at
