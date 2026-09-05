@@ -40,6 +40,20 @@ func emptyRootMessage(root string) string {
 
 // reservedRegisterNames are directory names under docs/streams that are
 // registers (not streams) and must be skipped by stream discovery.
+//
+// The names are the register entry directories the register spec fixes
+// (spec/registers-v1.md §2.1) — they are not a convention this file invents.
+// A register holds per-entry files; it has no README with a brief status table
+// and no waves, so walking one as a stream produces the fabricated complaint
+// "stream directory <register> has no README.md" about a directory that is
+// working exactly as specified. Adding a README to silence that would be worse:
+// it would make the tool's correctness depend on a file the spec never asks for,
+// and the next register would hit the same wall.
+//
+// Skipping is not the same as ignoring. Each register is read by its own parser,
+// and content a register directory holds that its parser does not recognise is
+// reported there (requirements.go's requirementRegisterStrays) rather than left
+// invisible by this skip.
 var reservedRegisterNames = map[string]bool{
 	"intake":            true,
 	"findings":          true,
