@@ -18,7 +18,10 @@ name: truth-suite
 # WHERE THIS RUNS — the self-hosted `medici-builder-public` runner, matching ci.yml and
 # release.yml. The Go toolchain is hand-installed from go.dev/dl (the runner reaches
 # dl.google.com and the module proxy but not GitHub's release-asset CDN, so
-# actions/setup-go is not used), exactly as ci.yml documents.
+# actions/setup-go is not used), exactly as ci.yml documents. Unlike ci.yml (which does
+# not pin the tarball), this suite verifies it against GO_SHA256 before unpacking, same
+# as release.yml — this is the suite CI's own coverage claims rest on, so it establishes
+# trust in its toolchain rather than matching ci.yml's parity claim on that one point.
 #
 # ── STAGED, PENDING HUMAN PROMOTION ──
 # This file is authored in the PR but STAGED at ci/staged-workflows/ rather than
@@ -57,11 +60,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Go
+        env:
+          # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl. Same pin
+          # release.yml carries for the same GO_VERSION — bump both together (there and
+          # here) — a GO_VERSION change without a matching digest fails this step CLOSED
+          # rather than trusting the fetch. This suite is a trust-establishing baseline,
+          # so it verifies the toolchain before unpacking, same as release.yml.
+          GO_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
           echo "fetching $url"
           curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          # Verify BEFORE unpacking into a PATH-prepended dir: an unverified toolchain
+          # there would shadow the system go/sha256sum/curl/git for every later step.
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
           mkdir -p "${HOME}/go-toolchain"
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
@@ -109,10 +122,17 @@ jobs:
           exit "$fail"
 
   # ── The mutation gate the release already runs ──────────────────────────────
-  # The same muhar sweeps release.yml's `muhar-light` leg runs: each spec mutates a
-  # guard's refusals and requires the suite to CATCH every one. This proves the baseline
-  # checks are load-bearing — a green test run only shows the guards behave as written;
-  # a surviving mutation shows one would not fire.
+  # The same muhar sweeps release.yml's `muhar-light` leg AND its `deskmerge` legs run:
+  # each spec mutates a guard's refusals and requires the suite to CATCH every one. This
+  # proves the baseline checks are load-bearing — a green test run only shows the guards
+  # behave as written; a surviving mutation shows one would not fire.
+  #
+  # deskmerge IS INCLUDED, unsharded — release.yml shards it into three legs
+  # (`-shard i/3`) only because it is the long pole in a per-PR-blocking suite where wall
+  # time matters; this suite is push+daily, not a per-PR gate, so one leg runs the whole
+  # spec in a single invocation. deskmerge is the highest-risk guard here — it is the
+  # only desk tool that can rewrite the head of somebody else's branch — so a standing
+  # baseline that claims release-equivalent coverage cannot omit it.
   #
   # muhar's contract, unchanged from release.yml: exit 2 means the HARNESS is broken (a
   # red baseline or an uncaught positive control) — that is COULD-NOT-CHECK and it
@@ -130,15 +150,26 @@ jobs:
           - internal/loopengine/mutations-retry.json
           - cmd/deskclose/mutations.json
           - cmd/reviewloop/mutations.json
+          - cmd/deskmerge/mutations.json
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Go
+        env:
+          # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl. Same pin
+          # release.yml carries for the same GO_VERSION — bump both together (there and
+          # here) — a GO_VERSION change without a matching digest fails this step CLOSED
+          # rather than trusting the fetch. This suite is a trust-establishing baseline,
+          # so it verifies the toolchain before unpacking, same as release.yml.
+          GO_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
           echo "fetching $url"
           curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          # Verify BEFORE unpacking into a PATH-prepended dir: an unverified toolchain
+          # there would shadow the system go/sha256sum/curl/git for every later step.
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
           mkdir -p "${HOME}/go-toolchain"
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"

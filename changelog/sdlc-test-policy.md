@@ -8,10 +8,11 @@
   "ignore" bucket (a quarantined test reports `could-not-check`, never pass), defines the
   **standing truth suite** as the CI-owned baseline distinct from delta-probing Verify rows,
   and adds **plan-in-PR** for effort-M/L briefs as a rework signal that is not a gate.
-- **Standing truth-suite workflow.** Runs the repo's test corpus plus the release mutation
-  gate on push to the default branch and on a daily schedule, reporting three-state.
-  Delivered staged at `ci/staged-workflows/truth-suite.yml` because no App holds
-  workflow-push permission; a maintainer promotes it to `.github/workflows/truth-suite.yml`
-  to activate it.
+- **Standing truth-suite workflow.** Runs the repo's test corpus plus the full release
+  mutation gate — all seven specs, including the deskmerge sweep (unsharded here, since
+  this suite is push+daily rather than a per-PR long pole) — on push to the default
+  branch and on a daily schedule, reporting three-state. Delivered staged at
+  `ci/staged-workflows/truth-suite.yml` because no App holds workflow-push permission;
+  a maintainer promotes it to `.github/workflows/truth-suite.yml` to activate it.
 - Cross-reference from `docs/brief-rules.md` and an honesty note in `docs/how-assay-works.md`
   recording that a Verify table proves the delta, not the baseline.
