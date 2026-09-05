@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/desksupervise-status-v1.json",
+  "title": "desksupervise-status-v1 runtime snapshot",
+  "description": "Machine-readable contract for the JSON document `desksupervise status --json` emits: the liveness observer's per-claim runtime state as one structured record, so a console can consume it without reading Go. Every field follows the three-state-instrument rule (docs/three-state-instrument-rule.md): an unreadable or not-applicable source renders `n/a` (durations, timestamps) or `could-not-check` (tokens), never a default zero. `tokens` is could-not-check BY DESIGN at this layer — a dispatched worker's usage is held by the harness, not by desk tools, and no read path exists; the field is present so a future harness binding can fill it. The human table `desksupervise status` (without --json) is NOT a contract and is not described here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "now",
+    "claims",
+    "aggregates"
+  ],
+  "properties": {
+    "schema": {
+      "description": "The schema marker; exactly desksupervise-status-v1 for this contract.",
+      "const": "desksupervise-status-v1"
+    },
+    "now": {
+      "description": "The RFC3339 clock the snapshot was evaluated at (the --now override under fixtures, else the real clock).",
+      "type": "string"
+    },
+    "claims": {
+      "description": "One entry per in-flight claim rendered (all in-flight claims, or — under --stops — only those carrying an armed stop).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "repo",
+          "item",
+          "state",
+          "holder",
+          "claimed_at",
+          "dispatched_at",
+          "last_observed_at",
+          "observed_via",
+          "liveness",
+          "timers",
+          "stop",
+          "tokens"
+        ],
+        "properties": {
+          "key": { "description": "The dispatch claim key (refs/dispatch/<key>).", "type": "string" },
+          "repo": { "description": "owner/name of the repo the claim lives on.", "type": "string" },
+          "item": { "description": "The item id the claim covers.", "type": "string" },
+          "state": {
+            "description": "The claim's lifecycle state.",
+            "type": "string",
+            "enum": ["claimed", "dispatched"]
+          },
+          "holder": { "description": "The session/owner holding the claim, or n/a.", "type": "string" },
+          "claimed_at": { "description": "RFC3339 acquisition time, or n/a when unknown.", "type": "string" },
+          "dispatched_at": { "description": "RFC3339 dispatch time (schedule-to-start origin).", "type": "string" },
+          "last_observed_at": { "description": "RFC3339 most-recent sign of life, or n/a when none/blind.", "type": "string" },
+          "observed_via": { "description": "The source that last observed the worker, or n/a.", "type": "string" },
+          "liveness": {
+            "description": "The liveness taxonomy verdict (loopengine.ClassifyLiveness), or COULD-NOT-CHECK when the probes could not be read.",
+            "type": "string",
+            "enum": ["ALIVE", "NEVER-STARTED", "HEARTBEAT-EXPIRED", "OVER-WALL-CAP", "COULD-NOT-CHECK"]
+          },
+          "timers": {
+            "description": "Remaining time on each of the three liveness timers; each a Go duration string (e.g. 5m0s) or n/a when the timer does not apply to this claim's phase, its policy knob is disabled, or the claim is blind. A blind claim NEVER renders 0s.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["schedule_to_start_remaining", "heartbeat_remaining", "wall_cap_remaining"],
+            "properties": {
+              "schedule_to_start_remaining": { "type": "string" },
+              "heartbeat_remaining": { "type": "string" },
+              "wall_cap_remaining": { "type": "string" }
+            }
+          },
+          "stop": {
+            "description": "The stop armed for this claim/item, or null when none is armed. Distinct from a global STOP flag, which halts the whole desk before status runs.",
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["armed_at", "reason"],
+            "properties": {
+              "armed_at": { "description": "RFC3339 time the stop was armed, or n/a.", "type": "string" },
+              "reason": { "description": "Why the stop was armed.", "type": "string" }
+            }
+          },
+          "tokens": {
+            "description": "Token accounting for the dispatched worker. could-not-check BY DESIGN at this layer (the harness holds usage; no desk read path exists) — never rendered as zero.",
+            "const": "could-not-check"
+          }
+        }
+      }
+    },
+    "aggregates": {
+      "description": "Roll-up counts over the evaluated claims.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["by_liveness", "by_state", "armed_stops", "blind_sources"],
+      "properties": {
+        "by_liveness": {
+          "description": "Count of claims per liveness class.",
+          "type": "object"
+        },
+        "by_state": {
+          "description": "Count of claims per lifecycle state.",
+          "type": "object"
+        },
+        "armed_stops": {
+          "description": "Number of claims carrying an armed stop.",
+          "type": "integer"
+        },
+        "blind_sources": {
+          "description": "The probe sources that could not be read this tick (one per COULD-NOT-CHECK claim), each naming the reason and claim key. Empty when every claim was read cleanly.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

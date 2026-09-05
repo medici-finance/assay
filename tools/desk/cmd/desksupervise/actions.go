@@ -125,25 +125,50 @@ func runAction(claim claimRecord, disp loopengine.Disposition, dryRun bool, recl
 		action = "RECLAIM-ELIGIBLE"
 		if dryRun {
 			fmt.Fprintf(os.Stderr, "[dry-run] would release dispatch claim %s (%s)\n", claim.Key, disp)
+			fireAfterRun(claim, true)
 			return action, nil
 		}
 		if rerr := reclaim(claim); rerr != nil {
 			return action, rerr
 		}
 		loopengine.JournalObserverDecision("desksupervise", loopengine.EventReclaim, claim.Item, claim.Tier, "", disp.String(), runTag)
+		fireAfterRun(claim, false)
 		return action, nil
 	case loopengine.BlockedStartToClose:
 		action = "BLOCKED-TIMEOUT"
 		if dryRun {
 			fmt.Fprintf(os.Stderr, "[dry-run] would file a help-wanted issue for %s (blocked-timeout)\n", claim.Key)
+			fireAfterRun(claim, true)
 			return action, nil
 		}
 		if ferr := fileBT(claim); ferr != nil {
 			return action, ferr
 		}
 		loopengine.JournalObserverDecision("desksupervise", loopengine.EventLand, claim.Item, claim.Tier, "blocked-timeout", disp.String(), runTag)
+		fireAfterRun(claim, false)
 		return action, nil
 	default:
 		return "none", nil
+	}
+}
+
+// fireAfterRun runs the after_run lifecycle hook at the end of an observer action that
+// released or landed a claim (an "attempt end" in Symphony's model). LOGGED failure class:
+// an after_run failure is reported to stderr but never changes the action's outcome — the
+// claim was already released/landed. Under dryRun it only reports the hook plan and touches
+// nothing.
+func fireAfterRun(claim claimRecord, dryRun bool) {
+	if dryRun {
+		if line, err := deskkit.HookDryRunLine(deskkit.HookAfterRun); err != nil {
+			fmt.Fprintf(os.Stderr, "[dry-run] after_run hook plan unreadable for %s: %v\n", claim.Key, err)
+		} else {
+			fmt.Fprintf(os.Stderr, "[dry-run] %s (%s)\n", line, claim.Key)
+		}
+		return
+	}
+	if _, err := deskkit.RunHook(deskkit.HookAfterRun, deskkit.HookEnv{
+		RunKey: claim.Key, Repo: claim.Repo,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "desksupervise: after_run hook failed for %s (action already completed): %v\n", claim.Key, err)
 	}
 }

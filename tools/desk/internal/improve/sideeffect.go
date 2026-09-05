@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/askassay"
+	"github.com/medici-finance/assay/tools/desk/askassay"
 )
 
 // THE WRITE-SIDE-EFFECT REGISTER
@@ -21,12 +21,22 @@ import (
 //
 // The mode is in the answer layer's declared READ set. It is a report
 // generator whose report is a file, and nothing about the invocation says so.
-// The consequence is not cosmetic: `docs/reports/` has no row in the
-// publication disposition manifest, so once that file is tracked,
-// `pubmanifest check` goes from `CHECK: PASS  paths=2311 rules-resolved=2311`
-// to `1 unclassified` and FAILS — which makes `pubmanifest stage` refuse to
-// build a tree at all. A pane that ran one read-looking probe would break the
-// publication pipeline of the repo it was reporting on.
+// The write itself is the hazard this guard exists for: a mode declared a READ
+// must not create a tracked file in the tree it is pointed at, whatever
+// downstream does or does not notice the new file.
+//
+// The original blast radius reached further. When this row was first measured,
+// `docs/reports/` had NO row in the publication disposition manifest, so once
+// the created file was tracked `pubmanifest check` went from PASS to
+// `1 unclassified` and FAILED — which made `pubmanifest stage` refuse to build
+// a tree at all: one read-looking probe from this pane could break the
+// publication pipeline of the repo it was reporting on. That downstream
+// consequence is now REMEDIATED elsewhere — a covering `docs/reports/**`
+// withhold row (disposition `do-not-copy`) exists in the manifest, so the
+// created file classifies and the check PASSES. The guard stays regardless:
+// the write side effect is unchanged and still real, and a read that writes is
+// refused here on its own merit, not on whether it happens to redden a
+// downstream check today.
 //
 // So this package keeps a SECOND, narrower gate in front of the first: an
 // argv must pass the answer layer's read-only guard AND must not appear here.
@@ -66,7 +76,7 @@ var declaredSideEffects = []SideEffect{
 		Writes: "docs/reports/factory-floor/<YYYY-MM-DD>.md",
 		Measured: "run against a pristine archive of this tree at a scratch root: the command exited 0, printed the report to stdout, AND created the dated file under the root it was pointed at. " +
 			"Re-running it is how to reproduce this row; do not run it against a working tree you care about",
-		Consequence: "`docs/reports/` resolves to NO row in the publication disposition manifest. With the created file tracked, the manifest check went from PASS at 2311 paths resolved to `1 unclassified` and a FAILED verdict, and the stager refuses to build a tree while any path is unclassified. One read-looking probe from this pane would therefore break publication staging for the repo it is reporting on",
+		Consequence: "The write itself is the hazard: a mode declared a READ created a tracked file in the tree it was pointed at. When first measured this also broke publication staging — `docs/reports/` resolved to NO manifest row, so the tracked file drove the manifest check from PASS to `1 unclassified` and a FAILED verdict, and the stager refuses to build a tree while any path is unclassified. That downstream break is now remediated: a covering `docs/reports/**` withhold row (disposition `do-not-copy`) exists in the publication disposition manifest, so the created file classifies and the check PASSES. The guard stays: the read-that-writes is refused on its own merit, independent of any downstream check",
 	},
 }
 

@@ -33,7 +33,7 @@ it on day one.
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) | yes (`run`) |
 | `reviewloop` | `plan` — pr-review-desk's BOARD REACTOR: classifies a `deskboard` sweep against an action table derived from deskboard's own ACTION constants, coalesces outward verbs on `(repo, pr, head, verb)`, and answers the #79 idle question in THREE states. Not a drain: it does not link `internal/loopengine` | read-only (spawns nothing, writes nothing, makes no GitHub call) | no |
 | `deskboot` | `<role>` — the adapter verb for a loop's BOOT seam: loop identity, worktree prune + lock, roster register, envelope preflight, token-mint proof, board summary. Fails closed with the step NAMED | local-only (delegates every step to the verb that owns it) | no |
-| `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
+| `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, the `before_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (failure ⇒ exit 6, no prompt, claim released), roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
 | `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
 | `deskpost` | `review`, `comment`, `ready` — as the reviewer App | outward write | yes |
 | `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push) | outward write | yes |
@@ -47,9 +47,9 @@ it on day one.
 | `deskevidence` | `commit` — Evidence via the Contents API, as the verifier App | outward write | yes |
 | `deskrelease` | `cut <tag>` — create-only tag ref, as the desk App | outward write | yes |
 | `deskclaim` | `acquire`, `release`, `list`, `stale` — the flock-backed claimable-action lock | local-only (claims dir) | no |
-| `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
+| `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
 | `opmetrics` | (no verbs) — operator-layer collector: reads transcripts/beacons/claims, writes one **aggregates-only** day-file | local-only (strictly read-only against every input) | no |
-| `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes | local-only | no |
+| `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); each takes `--dry-run` to report the hook plan without touching anything | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
 | `deskroster` | `set`, `drop`, `list`, `mine`, `width`, `repos`, `apps`, `preflight` | local-only, out-of-git (`preflight` mints a token and runs one read-only transport probe) | no |
@@ -1448,6 +1448,15 @@ deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale workt
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
 ```
 
+- **`add`** creates `tracker-<name>` on a new tracking branch. When a local branch of that
+  name already exists in the shared refs store — a leftover from an abandoned dispatch — it is
+  reclaimed only when proven empty (checked out in no worktree AND 0 commits ahead of its
+  upstream-or-`--base`); a branch a live worktree holds, or one carrying unpushed commits, is
+  refused (naming the worktree, or the count). A worktree whose DIRECTORY is gone is listed
+  `prunable` (a `rm -rf` without `git worktree remove`) and is **not** an owner for the holder
+  question — the reclaim ignores it; the stale entry itself is `deskwt prune`'s to drop, not
+  `add`'s (`add` acquires no second mutation).
+
 - **`remove`** refuses a dirty TRACKED tree, unpushed commits, a no-upstream branch, an
   unregistered path, or anything resolving outside the prefixes; untracked build artifacts
   (`node_modules`, `target/dist`, …) do NOT block. It shares its tracked-clean check and its
@@ -2615,6 +2624,8 @@ deskgit fetch                 # refs/remotes/origin/*
 deskgit fetch --prune         # + drop stale remote-tracking refs
 deskgit fetch --pr <N>        # pull/<N>/head -> local branch pr<N>   (N digits only)
 deskgit fetch --branch <B>    # origin's <B> -> local branch <B>      (see --branch guards)
+deskgit fetch --as <role>     # any fetch mode above, authenticated from <role>'s token file
+deskgit push --as <role>      # push the CURRENT branch to origin, authenticated
 ```
 
 `--branch` refuses `main`/`master` **in any case** (`Main`, `MASTER`, `mAiN`, …). Separately,
@@ -2725,8 +2736,58 @@ deskgit closes the proven upload-pack, env, fetch-refspec and submodule vectors,
 insteadOf **identity-substitution** vector for **both** host-bearing URLs and bare local
 paths (the latter via the local-roots allowlist, #215). It claims no more.
 
-It is a **local-read verb**: network read-only, no outward write, no credentials, so — like
-`deskwt` — it takes the audit line (C-5) and kill switch (C-6) but NOT the rate limit.
+### Authenticated transport — `--as <role>` (fetch and push)
+
+`--as <role>` supplies a role's App installation token to git from the 0600 token file the
+role already owns, and is the **sanctioned replacement for the inline credential-helper
+recipe** the desk roles used to retype before every push and private-remote refresh (the
+shell-function helper that reads the token file, needed because the shared checkout's ambient
+helper shadows per-worktree config and a token-in-URL is refused by policy). It puts that
+token path behind the same fixed-argv guard the rest of `deskgit` enforces. `deskgit fetch`
+(no `--as`) is unchanged: no identity check, no credential path.
+
+**What the token never touches.** It is READ from the role's token file and PASSED to the
+one child git process through exactly one environment variable (`DESKGIT_TOKEN`) and an
+ephemeral `GIT_ASKPASS` script (`x-access-token` as the username; `$DESKGIT_TOKEN` as the
+password), in a private `0700` temp dir removed on **every** return path including error. The
+token is **never** placed in argv, in a URL, in stdout/stderr, or in the audit line. The argv
+carries `-c credential.helper=` **before the verb**, which clears the helper list on the
+command line so **no ambient or configured credential helper is ever consulted** — only this
+askpass answers.
+
+**Identity binding.** `--as <role>` MUST equal the App role this session's loop identity
+binds (`$DESK_LOOP` → `deskkit.SessionTokenRole`); a mismatch is exit 5 **before any token is
+read**, so a session cannot borrow another role's token by naming it. The token is minted per
+**owner** of the effective origin slug (never a caller `--repo`), so it authenticates only the
+repository the effective-URL gate already admitted.
+
+**`deskgit push --as <role>`** pushes the **current branch** to origin over that authenticated
+transport, with a FIXED argv and nothing appendable:
+
+```
+git -c credential.helper= push --receive-pack=git-receive-pack origin refs/heads/<B>:refs/heads/<B>
+```
+
+- `<B>` is the current branch (`symbolic-ref --short HEAD`), validated by the **same** rule
+  `fetch --branch` uses and **never `main`/`master` in any case**; a **detached HEAD** has no
+  branch to push and is refused (exit 5).
+- `--receive-pack=git-receive-pack` is pinned (the push-side twin of fetch's upload-pack pin),
+  overriding any config/env receive-pack.
+- `--force`/`--force-with-lease`, `--delete`, `--prune`, `--mirror`, `--tags` and `--no-verify`
+  are refused **by name, with their own reason, before the FlagSet** (`checkPushSafety`); a
+  caller `--receive-pack` is refused by the transport-exec guard. None of them is in the
+  constructed argv, so none can be reached by any spelling.
+- push gates on the effective origin URL exactly as fetch does, is charged to the
+  **outward-write budget** (`deskkit.AllowWrite`, unlike fetch), and its **pre-push hook**
+  (`deskpushguard`, via `core.hooksPath`) still runs — no `--no-verify` is ever passed.
+
+`deskpr`'s own push is deliberately **not** routed through this verb yet; that is a follow-up
+once `push --as` is verified.
+
+Plain `deskgit fetch` (no `--as`) is a **local-read verb**: network read-only, no outward
+write, no credentials, so — like `deskwt` — it takes the audit line (C-5) and kill switch
+(C-6) but NOT the rate limit. `push --as` and `fetch --as` add the credential channel above;
+`push` additionally takes the outward-write budget.
 Exit: `0` ok · `3` disabled · `5` refused · `6` unverifiable.
 
 **The allowlist half lives in the consuming repo**, not here — this repo ships the binary.

@@ -1,0 +1,64 @@
+# hooks.example.yaml — the shipped lifecycle-hook defaults, documented.
+#
+# ── THE SOURCE RULE ──────────────────────────────────────────────────────────
+# Hooks are read from ONE place: the desk-tools STATE DIRECTORY (~/.config/assay/hooks.yaml),
+# the same $HOME-anchored directory the kill switch and the audit log live in. They are read
+# from NOWHERE ELSE. There is no --hooks flag; a hooks.yaml placed inside a worktree or a
+# repo root is NEVER read. This is deliberate: the state directory is not operator-relocatable
+# (relocating it would move the kill switch too), and the item's own tree is UNTRUSTED content
+# — an agent or a PR head that could drop a hooks.yaml the tools would execute is exactly the
+# surface this rule closes.
+#
+# To adopt these defaults:  cp tools/desk/hooks.example.yaml ~/.config/assay/hooks.yaml
+# (then edit for your deployment — the commit identity below is deployment-specific).
+#
+# ── LIFECYCLE MOMENTS & FAILURE CLASSES (mirrors OpenAI Symphony §5.3.4) ──────
+#   after_create  — a NEW worktree only (deskwt add). Failure ABORTS creation (rolled back).
+#   before_run    — each dispatch attempt, after the worktree is prepared and before the
+#                   agent's prompt is emitted (deskdispatch). Failure ABORTS the attempt,
+#                   emits no prompt, and RELEASES the claim.
+#   after_run     — each attempt end, any outcome (desksupervise, when a claim is released or
+#                   landed). Failure is LOGGED; the run's result stands.
+#   before_remove — before a worktree is deleted (deskwt remove / prune). Failure is LOGGED;
+#                   the deletion PROCEEDS.
+#
+# ── ENVIRONMENT ──────────────────────────────────────────────────────────────
+# Every hook runs via /bin/sh with cwd = the worktree, and sees a FIXED set of variables —
+# ASSAY_RUN_KEY, ASSAY_WORKTREE, ASSAY_REPO, ASSAY_ROLE, ASSAY_HOOK — on top of the caller's
+# environment with every SECRET-shaped variable scrubbed out (any name containing TOKEN,
+# SECRET or PEM, or beginning GH_). A hook is operator shell; it must never be the path an App
+# token leaks into a log. Hook stdout/stderr land (truncated) in the audit line's detail and
+# NEVER in an agent's prompt.
+#
+# Absent this file, every hook is a no-op and the tools behave exactly as they did before
+# hooks existed.
+
+# Per-hook wall-clock budget, milliseconds. Non-positive ⇒ 60000 (the Symphony default).
+timeout_ms: 60000
+
+# after_create: set the worktree-local git credential helper and App commit identity — the
+# same envelope `deskwt role-init` sets today, expressed ONCE here. The bot USER id is
+# deployment-specific (bot USER id, not App id — a commit authored with the App id links to no
+# account), so a real deployment fills in the identity from its roster; the shape is shown.
+after_create: |
+  git -C "$ASSAY_WORKTREE" config extensions.worktreeConfig true
+  # git -C "$ASSAY_WORKTREE" config --worktree user.name  "<bot-user-id>+<slug>[bot]"
+  # git -C "$ASSAY_WORKTREE" config --worktree user.email "<bot-user-id>+<slug>[bot]@users.noreply.github.com"
+
+# before_run: enforce the offline envelope. Refuse the attempt when KUBECONFIG names a
+# readable file — the checked form of the KUBECONFIG=/dev/null rule every agent is otherwise
+# asked only to remember.
+before_run: |
+  if [ -n "${KUBECONFIG:-}" ] && [ -r "${KUBECONFIG:-}" ] && [ "${KUBECONFIG:-}" != /dev/null ]; then
+    echo "before_run refusing $ASSAY_RUN_KEY: KUBECONFIG names a readable file ($KUBECONFIG) — the offline envelope requires KUBECONFIG=/dev/null" 1>&2
+    exit 1
+  fi
+
+# after_run: record the run's end to the audit line (hook stdout → audit detail). A real
+# deployment can compute a duration against a start stamp it wrote in before_run.
+after_run: |
+  echo "after_run $ASSAY_RUN_KEY ($ASSAY_REPO) ended $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# before_remove: nothing by default — a documented empty slot. Failure here is logged and the
+# deletion proceeds regardless, so a cleanup command placed here can never strand a worktree.
+before_remove: ""

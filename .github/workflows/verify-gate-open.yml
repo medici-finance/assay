@@ -1,0 +1,137 @@
+name: verify-gate-open
+# Opens one self-contained "human sign-off" GitHub issue per brief that is
+# gate: human AND newly eligible (README-row status `verified`, or `implemented`
+# for an irreversible brief with a recorded model verify pass — the one-step
+# path) AND has no verify-gate issue yet (open OR closed). statusgen is the
+# single brain; this workflow is thin glue. Idempotent: the marker check spans
+# ALL existing verify-gate issues, open and closed, so a re-run on a later push
+# creates nothing new.
+#
+# The paired closer is verify-gate-close.yml, which advances the brief
+# verified → done when an allowlisted HUMAN closes the issue this one files.
+# Together they are the only sign-off surface a `gate: human` brief has; without
+# them such a brief rots at `verified` with no way to reach `done`.
+#
+# statusgen is BUILT FROM THIS REPO'S OWN SOURCE (statusgen/), exactly as the
+# board workflow builds it — this is the repo statusgen lives in, so a released
+# binary would lag the very source a PR is changing, and there is no pinned-tool
+# install action here to consume one with.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Serialise runs of this emitter: the marker check-then-act window sits between
+# "collect existing markers" and "create issue", so two overlapping runs both
+# miss each other's issue and file duplicates. Keyed on the workflow — NOT the
+# ref — so a workflow_dispatch from any branch serialises against main pushes
+# too. No cancel-in-progress: a queued run must still execute (it no-ops once
+# the first run's issues exist); a cancelled run could die mid-create and leave
+# the gate un-filed.
+concurrency:
+  group: verify-gate-open
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  open:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # Runner + Go install mirror the board workflow: this self-hosted runner
+      # has no Docker and no reach to the release-asset CDN, so Go is fetched by
+      # hand rather than with a setup action.
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: Build statusgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+
+      # The self-hosted runner image does not ship the gh CLI. Install a pinned,
+      # sha256-verified release to $GITHUB_PATH when it is missing (same release
+      # and digest the board workflow uses). Durable alternative: bake gh into
+      # the runner image.
+      - name: Ensure gh CLI is available (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            echo "gh present: $(gh --version | head -1)"; exit 0
+          fi
+          url="https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz"
+          want="912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/gh.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/gh.tar.gz" | cut -d' ' -f1)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::gh tarball sha256 mismatch — want ${want}, got ${got}; refusing to extract"
+            exit 1
+          fi
+          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
+          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
+
+      - name: Collect markers of existing verify-gate issues (open + closed)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # `--state all` so a brief that ever had an issue never gets a second
+          # one. Extract just the hidden markers so statusgen stays offline.
+          #
+          # Every command here carries `|| true` for the same reason the close
+          # workflow's marker parse does: `grep` exits 1 on the wholly legitimate
+          # "no verify-gate issues exist yet" case, and an empty markers file is
+          # the CORRECT input to the next step (everything eligible is newly
+          # eligible). Without the guard, a `set -o pipefail` / `shell: bash`
+          # added later would abort the first run this workflow ever makes on a
+          # repo. The file is created either way, so the next step never reads a
+          # missing path.
+          gh issue list --repo "$GITHUB_REPOSITORY" --label verify-gate \
+            --state all --limit 1000 --json body --jq '.[].body' \
+            > "${RUNNER_TEMP}/issue-bodies.txt" || true
+          grep -o '<!-- verify-gate: [^>]* -->' "${RUNNER_TEMP}/issue-bodies.txt" \
+            > "${RUNNER_TEMP}/markers.txt" || true
+          echo "existing markers:"; cat "${RUNNER_TEMP}/markers.txt" || true
+
+      - name: Compute newly-eligible verify-gate issues
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/statusgen" --root . --verify-issues \
+            --existing-markers "${RUNNER_TEMP}/markers.txt" > "${RUNNER_TEMP}/issues.json"
+          echo "eligible: $(jq 'length' "${RUNNER_TEMP}/issues.json")"
+          cat "${RUNNER_TEMP}/issues.json"
+
+      - name: Create one issue per eligible brief
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          count=$(jq 'length' "${RUNNER_TEMP}/issues.json")
+          if [ "$count" -eq 0 ]; then
+            echo "no newly-eligible briefs — nothing to open"
+            exit 0
+          fi
+          for i in $(seq 0 $((count - 1))); do
+            title=$(jq -r ".[$i].title" "${RUNNER_TEMP}/issues.json")
+            labels=$(jq -r ".[$i].labels | join(\",\")" "${RUNNER_TEMP}/issues.json")
+            jq -r ".[$i].body" "${RUNNER_TEMP}/issues.json" > "${RUNNER_TEMP}/body.md"
+            echo "creating issue: $title"
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "$title" --label "$labels" --body-file "${RUNNER_TEMP}/body.md"
+          done

@@ -72,21 +72,27 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-const usage = `deskgit — the desk's narrow git verb: refresh refs from origin.
+const usage = `deskgit — the desk's narrow git verb: refresh refs from origin, and push the current branch.
 
 USAGE:
-  deskgit fetch [--prune]        # refs/remotes/origin/* (--prune drops stale ones)
-  deskgit fetch --pr <N>         # pull/<N>/head -> local branch pr<N> (N digits only)
-  deskgit fetch --branch <B>     # origin's <B> -> local branch <B> (not main/master in any case)
+  deskgit fetch [--prune]         # refs/remotes/origin/* (--prune drops stale ones)
+  deskgit fetch --pr <N>          # pull/<N>/head -> local branch pr<N> (N digits only)
+  deskgit fetch --branch <B>      # origin's <B> -> local branch <B> (not main/master in any case)
+  deskgit fetch --as <role>       # any fetch mode above, authenticated from <role>'s token file
+  deskgit push --as <role>        # push the CURRENT branch to origin, authenticated (not main/master)
   deskgit --version
 
 deskgit is safe by construction: each mode builds a FIXED git argv from literal verbs
 plus a refspec derived from a validated value — no caller flag, no arbitrary refspec, no
---upload-pack/--exec reaches git. It pins --upload-pack=git-upload-pack (overriding the
-config/env upload-pack code-execution vector), pins --refmap= + an explicit refspec,
-scrubs the child env to an allowlist, and gates on the effective origin URL (expands
-insteadOf). It is not a sandbox against a fully attacker-controlled .git/config. On any
-state it cannot positively verify it refuses.
+--upload-pack/--exec/--receive-pack reaches git. fetch pins --upload-pack=git-upload-pack
+(overriding the config/env upload-pack code-execution vector), pins --refmap= + an explicit
+refspec; push pins --receive-pack=git-receive-pack and refuses --force/--delete/--no-verify
+by name. Both scrub the child env to an allowlist and gate on the effective origin URL
+(expands insteadOf). --as reads the role's 0600 token file and supplies it to the child ONLY
+via an ephemeral GIT_ASKPASS script with the ambient credential helper silenced
+(-c credential.helper=); the token never reaches argv, a URL, stdout, or the audit line.
+It is not a sandbox against a fully attacker-controlled .git/config. On any state it cannot
+positively verify it refuses.
 
 Exit: 0 ok/noop · 3 disabled · 5 refused · 6 unverifiable.`
 
@@ -134,6 +140,8 @@ func run(args []string) int {
 	switch sub {
 	case "fetch":
 		err = cmdFetch(rest)
+	case "push":
+		err = cmdPush(rest)
 	default:
 		fmt.Fprintf(os.Stderr, "deskgit: unknown subcommand %q\n\n%s\n", sub, usage)
 		return deskkit.ExitRefused

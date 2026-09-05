@@ -97,7 +97,7 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues` — fail-closed |
 | 7 | A red default branch on a watched repo | `deskboard health` — three-state (green / RED / COULD-NOT-CHECK) |
 | 8 | Cross-root coverage: a board root that no sweep reaches, or a scanned repo with no board | the BOARD ROOTS ∪ SCAN REPOS symmetric difference printed at boot (§THE REPO SET) |
-| 9 | Queue **suppressors** — expired `refs/dispatch/*` claims and dead branch-claims from merged/closed PRs | `git ls-remote origin 'refs/dispatch/*'` and the repo's `dispatch-claim` helper's list/show verbs |
+| 9 | Queue **suppressors** — expired `refs/dispatch/*` claims and dead branch-claims from merged/closed PRs | `desksupervise status --stops` (the liveness observer's runtime snapshot: per-claim liveness, timers-to-fire, and which stops are armed — the one structured read the sweep uses instead of guessing); the raw `git ls-remote origin 'refs/dispatch/*'` + the repo's `dispatch-claim` helper's list/show verbs stay as the fallback |
 
 **Rows 5 and 3 outrank row 1** — resuming started work outranks a fresh brief (mm/10) — and row 2 is
 what tells you whether row 1's zero means drained or throttled.

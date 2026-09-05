@@ -1,0 +1,293 @@
+name: verify-gate-close
+# When a verify-gate issue is closed, advance its brief verified → done — but
+# ONLY when a HUMAN in the allowlist closes it. This is the enforcement that a
+# bot can never complete the human sign-off gate, and it is the only permitted
+# writer of a human sign-off stamp.
+#
+# Paired with verify-gate-open.yml, which files the issue this one consumes.
+#
+# Two things are adapted from the reference implementation, both mechanical:
+#   - statusgen is BUILT FROM THIS REPO'S OWN SOURCE (statusgen/), exactly as the
+#     board workflow builds it — this is the repo statusgen lives in, and there
+#     is no pinned-tool install action here to consume a release binary with.
+#   - the done-flip PUSH authenticates as the board-writer App, not the default
+#     GITHUB_TOKEN. `main` here requires a pull request plus an approving review
+#     plus the withheld-content status, and the board-writer App is the sole
+#     actor on that ruleset's bypass list; the default token's push is rejected
+#     (GH013). Same mechanism, same App, same secrets as the board workflow.
+#
+# Human-not-bot guard (see the "Enforce ..." step): GitHub sets
+# `github.event.sender.type` to `User` for a person and `Bot` for a GitHub App /
+# Actions token, so any automated close is rejected. The FULL guard (type == User
+# AND closer is in the allowlist) is enforced inside a step rather than only in
+# the job `if:`, precisely so an invalid close (bot OR non-allowlisted user) is
+# actively REOPENED and commented on, not silently ignored. The job `if:` still
+# keeps this workflow inert on issues without the label.
+on:
+  issues:
+    types: [closed]
+
+# One run per issue. Two closes in quick succession (a close, a reopen by this
+# very workflow, a re-close) would otherwise race each other's push.
+concurrency:
+  group: verify-gate-close-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+# The default token needs issues:write (reopen + comment) and only READ on
+# contents — the done-flip push is made with the App token minted below.
+permissions:
+  contents: read
+  issues: write
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  close:
+    runs-on: medici-builder-public
+    if: contains(github.event.issue.labels.*.name, 'verify-gate')
+    env:
+      # Allowlist of GitHub logins whose close completes the gate. Sourced from
+      # the SAME repository Actions variable statusgen treats as the blessing
+      # authority, so the guard here and statusgen's notion of "the human" cannot
+      # drift apart after a roster change. Nothing is hard-coded: a literal login
+      # here is a lockout waiting to happen (a placeholder that matches no real
+      # user reopens every genuine close).
+      #
+      # The roster carries entries in `login:id` form, comma- or space-separated,
+      # so this value is NOT matched verbatim — the enforce step normalises it to
+      # bare logins first. Matching the raw value would compare a login against
+      # "login:id" and never hit, reintroducing the same lockout.
+      ALLOWED_CLOSERS: ${{ vars.ASSAY_BLESS_LOGIN }}
+    steps:
+      # gh is needed by the enforce step below, which runs BEFORE any checkout —
+      # nothing from the repo is required to decide whether the closer is
+      # allowed, and refusing before checkout keeps the refusal cheap.
+      - name: Ensure gh CLI is available (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            echo "gh present: $(gh --version | head -1)"; exit 0
+          fi
+          url="https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz"
+          want="912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/gh.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/gh.tar.gz" | cut -d' ' -f1)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::gh tarball sha256 mismatch — want ${want}, got ${got}; refusing to extract"
+            exit 1
+          fi
+          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
+          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
+
+      # Untrusted inputs (issue body, closer login) are read ONLY via env vars,
+      # never interpolated into a run: script — avoids shell/command injection.
+      - name: Enforce allowlisted human closer (reopen + comment otherwise)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SENDER_TYPE: ${{ github.event.sender.type }}
+          CLOSER: ${{ github.event.sender.login }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # ALLOWED_CLOSERS comes from the roster variable in `login:id` form,
+          # comma- or space-separated. Reduce to bare logins so the match below
+          # compares like with like.
+          allowed_logins=$(printf '%s' "$ALLOWED_CLOSERS" \
+            | tr ',' ' ' \
+            | tr -s ' ' '\n' \
+            | sed 's/:.*$//' \
+            | grep -v '^$' \
+            | tr '\n' ' ')
+
+          # An unset/malformed roster variable is a CONFIGURATION fault, not an
+          # illegitimate close. Fail the job (so no later step advances the brief
+          # to done) but do NOT reopen: reopening here would punish a legitimate
+          # reviewer for a repo-settings mistake, and would spam the issue on
+          # every retry.
+          if [ -z "$allowed_logins" ]; then
+            echo "::error::verify-gate close allowlist is empty — the ASSAY_BLESS_LOGIN repository variable is unset or malformed"
+            echo "Refusing to evaluate the human-closer gate against an empty allowlist."
+            echo "Issue #${ISSUE} deliberately left CLOSED and the brief NOT advanced; fix the repository variable and re-run."
+            exit 1
+          fi
+
+          allowed=0
+          if [ "$SENDER_TYPE" = "User" ]; then
+            case " $allowed_logins " in
+              *" $CLOSER "*) allowed=1 ;;
+            esac
+          fi
+          if [ "$allowed" -ne 1 ]; then
+            echo "closer '$CLOSER' (type=$SENDER_TYPE) is not an allowlisted human — reopening"
+            gh issue reopen "$ISSUE" --repo "$REPO"
+            gh issue comment "$ISSUE" --repo "$REPO" \
+              --body "verify-gate issues must be closed by the human reviewer (allowed: ${allowed_logins}); reopened. Closing them is what marks a brief \`done\`, so only a human sign-off is honored."
+            # exit 1, not 0: a refused close IS a failure of the attempted action.
+            # None of the later steps (token mint, checkout, statusgen,
+            # advance-to-done + push) carry an `if:` guard, so this step MUST fail
+            # the job non-zero — exit 0 here would let the run continue past the
+            # refusal and still advance the brief to `done`, silently defeating
+            # the human-only gate this workflow exists to enforce.
+            exit 1
+          fi
+          echo "closer '$CLOSER' is an allowlisted human — proceeding"
+
+      # Minted only AFTER the human gate passes, so an illegitimate close never
+      # brings a write-capable token into existence. This App is the sole actor
+      # on the branch ruleset's bypass list, which is why the done-flip push
+      # below succeeds where the default GITHUB_TOKEN's would be rejected.
+      - name: Mint board-writer App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOARD_APP_ID }}
+          private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: main
+          # Persist the App token as the push credential (checkout default), so
+          # the done-flip `git push` below authenticates as the board-writer App.
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: Build statusgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+
+      - name: Advance the brief to done and push
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE: ${{ github.event.issue.number }}
+          CLOSER: ${{ github.event.sender.login }}
+          REPO: ${{ github.repository }}
+          ASSAY_BLESS_LOGIN: ${{ vars.ASSAY_BLESS_LOGIN }}
+          ASSAY_TRUSTED_LOGINS: ${{ vars.ASSAY_TRUSTED_LOGINS }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+          ASSAY_ALLOWED_REPOS: ${{ vars.ASSAY_ALLOWED_REPOS }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+        run: |
+          # Parse the hidden marker → <stream>/<NN>. ISSUE_BODY is untrusted, so
+          # it is only ever fed to grep via stdin, never eval'd.
+          #
+          # `|| true` is LOAD-BEARING, not defensive noise. On a body with no
+          # marker `grep -o` exits 1. Under the runner's default shell for a bare
+          # `run:` (`bash -e {0}`) the pipeline's status is `tr`'s, so the
+          # assignment succeeds and the empty-marker handler below runs — but the
+          # moment this step gains `shell: bash` or a `set -o pipefail` line, the
+          # pipeline's status becomes grep's, `set -e` aborts the step on the
+          # assignment, and the handler below becomes UNREACHABLE: no explanatory
+          # comment on the issue, no ::error:: annotation, just a step that died.
+          # `|| true` pins the diagnostic path open under either shell. Verified
+          # both ways; the empty result is still caught by the `-z` test.
+          brief=$(printf '%s' "$ISSUE_BODY" \
+            | grep -o '<!-- verify-gate: [^>]* -->' \
+            | head -1 \
+            | sed -E 's/<!-- verify-gate: (.*) -->/\1/' \
+            | tr -d '[:space:]') || true
+          if [ -z "$brief" ]; then
+            gh issue comment "$ISSUE" --repo "$REPO" \
+              --body "Could not find a verify-gate marker in this issue body; no brief advanced."
+            echo "::error::no verify-gate marker found in issue #$ISSUE"
+            exit 1
+          fi
+          # Defense-in-depth: $brief is derived from the untrusted issue body.
+          # Every current use is double-quoted and shell values are not
+          # re-parsed, so there is no command injection today — but validate it
+          # against the brief-id grammar immediately, before ANY use, so a future
+          # unquoted use / eval can never turn issue-body content into a shell or
+          # path payload, and so the file ops below (stream → readme path) do not
+          # rely on statusgen for path safety. Grammar matches statusgen's brief
+          # name regexp: <stream>/<NN>[a] (numeric + optional a-z).
+          if ! printf '%s' "$brief" | grep -qE '^[a-zA-Z0-9_-]+/[0-9]+[a-z]?$'; then
+            gh issue comment "$ISSUE" --repo "$REPO" \
+              --body "Extracted brief id is not a valid \`<stream>/<NN>\` id; no brief advanced."
+            echo "::error::invalid brief id extracted from issue body"
+            exit 1
+          fi
+          echo "brief = $brief"
+          stream=${brief%%/*}
+          readme="docs/streams/${stream}/README.md"
+
+          git config user.name  'assay-board-writer[bot]'
+          git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
+
+          for attempt in 1 2 3 4 5; do
+            # Always operate on the current main tip so a concurrent push cannot
+            # leave a stale README behind (mirrors the board workflow's regen job).
+            git fetch --no-tags origin main
+            git reset --hard FETCH_HEAD
+
+            if ! out=$("${RUNNER_TEMP}/statusgen" --root . --close-verify "$brief" 2>&1); then
+              printf '%s\n' "$out"
+              # Idempotency (already done): the brief is ALREADY `done`, so this
+              # close is a benign replay of an earlier successful sign-off (the
+              # gate issue closed twice, or a prior run of this workflow already
+              # pushed). statusgen refuses with `status is "done"`. Treat as
+              # success on ANY attempt — there is genuinely nothing left to sign
+              # off and no bad state to report.
+              if printf '%s' "$out" | grep -q 'status is "done"'; then
+                echo "brief $brief is already done — close is a no-op, treating as success"
+                exit 0
+              fi
+              # Idempotency (race): on a RETRY (attempt > 1), any other refusal
+              # almost always means a prior iteration's push already advanced the
+              # brief (this reset-to-FETCH_HEAD now sees a non-`verified` status).
+              # Treat that as success rather than an error comment.
+              if [ "$attempt" -gt 1 ]; then
+                echo "close-verify refused on retry $attempt — a prior attempt already advanced $brief; treating as success"
+                exit 0
+              fi
+              # First attempt refusal, not already-done: genuine bad state (never
+              # verified / not gate:human). Leave the issue closed, comment the
+              # reason, commit nothing.
+              gh issue comment "$ISSUE" --repo "$REPO" \
+                --body "Could not advance \`$brief\` to done — statusgen refused (it is not currently \`verified\` / \`gate: human\`). Left closed; no change committed."
+              echo "::error::close-verify refused for $brief"
+              exit 1
+            fi
+
+            # Sources must stay valid before we commit them — but this flip only
+            # stages ONE file ($readme), so gate it ONLY on a lint problem that
+            # THIS flip could have introduced (i.e. one naming $readme). The lint
+            # still RUNS whole-board for observability; a pre-existing, unrelated
+            # problem in some other brief must NOT discard an already-computed,
+            # legitimate human sign-off flip.
+            if ! lint_out=$("${RUNNER_TEMP}/statusgen" --root . --lint 2>&1); then
+              printf '%s\n' "$lint_out"
+              if printf '%s' "$lint_out" | grep -qF "$readme"; then
+                echo "::error::this flip's file ($readme) fails lint — refusing to commit"
+                exit 1
+              fi
+              echo "::warning::pre-existing unrelated lint problem(s) present; not blocking this brief's human-gate flip"
+            fi
+
+            if [ -z "$(git status --porcelain -- "$readme")" ]; then
+              echo "no README change (already done?) — nothing to commit"
+              exit 0
+            fi
+            # Path-specific add only.
+            git add -- "$readme"
+            git commit -m "chore(verify): ${brief} done — human:${CLOSER} sign-off (closes #${ISSUE})"
+            if git push origin HEAD:main; then
+              echo "pushed brief ${brief} → done (attempt $attempt)"
+              exit 0
+            fi
+            echo "push attempt $attempt lost a race — retrying"
+          done
+          echo "::error::could not push after 5 attempts"
+          exit 1

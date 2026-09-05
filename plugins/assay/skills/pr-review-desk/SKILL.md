@@ -13,7 +13,7 @@ placeholder briefs; **worker-desk** dispatches workers that implement them behin
 desk reviews the diff and the PR body's `Brief:` trailer that feed it; it never edits a board row
 itself.
 
-Run it in a **dedicated window**. Only this window runs the PR monitors — a second monitor
+Run it in a **dedicated window**. Only this window runs the PR watchers (`capability:durable-monitor`) — a second
 double-dispatches reviewers. Role window, no persona (Bob belongs to the-desk only).
 
 **Project layer — this skill states ROLE procedure only.** The project's resident rules file
@@ -75,7 +75,7 @@ identity. Three desk-specific residues `deskboot` does not carry:
      ONLY "review notes recorded internally; maintainer follow-up required". Non-sensitive findings
      post publicly as normal.
 
-3. **Arm BOTH monitors — each a durable, re-arming watcher that survives across turns** (check
+3. **Arm BOTH watchers via `capability:durable-monitor` — each a durable, re-arming watcher that survives across turns** (check
    what is already armed first; never arm a second of either). The **event monitor** polls
    `gh pr list --state open --limit 100` head-shas + states across the repo set, keyed
    `<slug>#<num> <sha> <state>`, pre-seeded with current open heads/states so it emits only on
@@ -138,6 +138,10 @@ Before each loop cycle (monitor wakeup, board sweep, dispatch), check for active
 Never halt mid-action; a started outward write always completes. Precedence: `DISABLED` > `STOP` >
 `STOP.<name>`. The tool layer (`deskkit.Guard()`) independently enforces these flags — a loop that
 skips its own check is defanged: every outward verb will refuse.
+
+The same cadence tick reads the per-claim **armed stops** across in-flight dispatches with
+`desksupervise status --stops` (the liveness observer's runtime snapshot) — so this window sees a
+stop armed on a claim it is reviewing, not only the global loop flags above.
 
 ### Worktree hygiene
 
@@ -565,8 +569,10 @@ concluding anything about install state.
 ## Liveness contract (binding)
 
 A standing liveness contract binds this window from boot: start the standing
-self-scheduled loop BEFORE the first sweep and keep it ticking for the life of
-the window; every tick re-sweeps this desk's own queue fresh; every relay (a
+self-scheduled loop (`capability:durable-monitor` — best-effort, never the sole
+wake signal; the fixed-cadence board sweep is the real liveness backstop and the
+always-on observability service its durable home) BEFORE the first sweep and keep
+it ticking for the life of the window; every tick re-sweeps this desk's own queue fresh; every relay (a
 cross-session hand-over) is acknowledged or filed, never assumed delivered.
 The desk runs **default-forward** — never ask the driver what to work on next:
 a driver scope instruction narrows preference, not a cage — when the scoped

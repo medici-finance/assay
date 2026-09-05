@@ -367,6 +367,86 @@ func TestCheckRegisterIDCollisions_DetectsInPlaceModifiedID(t *testing.T) {
 	}
 }
 
+// TestCheckRegisterIDCollisions_SkipsIdenticalPathButKeepsAddedVsAdded is the
+// identical-path false-positive fix's regression proof, asserting BOTH halves in one test so
+// the narrowing can never silently disable the real control:
+//
+//	(a) the SAME register entry file touched on both this branch and an in-flight sibling
+//	    (same path, same id) NO LONGER refuses — it is a merge concern, not an id collision;
+//	(b) two DIFFERENT files independently claiming the same id STILL refuse — the genuine
+//	    added-vs-added collision this guard exists to catch.
+//
+// Without the ownPath == path skip in checkRegisterIDCollisions, sub-test (a) reports a
+// spurious collision (the observed false positive that blocked legitimate pushes).
+func TestCheckRegisterIDCollisions_SkipsIdenticalPathButKeepsAddedVsAdded(t *testing.T) {
+	t.Run("identical path modified on both sides is NOT a collision", func(t *testing.T) {
+		remoteDir := t.TempDir()
+		regIDRunGitT(t, remoteDir, "init", "--bare", "-b", "main")
+
+		seed := t.TempDir()
+		regIDRunGitT(t, seed, "init", "-b", "main")
+		regIDRunGitT(t, seed, "config", "user.email", "seed@test")
+		regIDRunGitT(t, seed, "config", "user.name", "seed")
+		regIDRunGitT(t, seed, "remote", "add", "origin", remoteDir)
+		regIDWriteFile(t, seed, "README.md", "# repo\n")
+		// An existing findings entry already on main, id F-shared.
+		regIDWriteFile(t, seed, "docs/streams/findings/2026-07-01-existing.md",
+			"---\nid: F-shared\ndate: \"2026-07-01\"\ntitle: \"existing\"\n---\n\nBody.\n")
+		regIDRunGitT(t, seed, "add", ".")
+		regIDRunGitT(t, seed, "commit", "-m", "chore: initial commit on main")
+		regIDRunGitT(t, seed, "push", "origin", "main")
+
+		// Worker A: in-flight sibling MODIFIES the SAME existing entry in place, keeping its
+		// id F-shared (so A's branch is a non-ancestor of main and carries the same path+id).
+		workerA := t.TempDir()
+		regIDRunGitT(t, workerA, "clone", remoteDir, ".")
+		regIDRunGitT(t, workerA, "config", "user.email", "a@test")
+		regIDRunGitT(t, workerA, "config", "user.name", "worker-a")
+		regIDRunGitT(t, workerA, "checkout", "-b", "worker-a-branch", "origin/main")
+		regIDWriteFile(t, workerA, "docs/streams/findings/2026-07-01-existing.md",
+			"---\nid: F-shared\ndate: \"2026-07-01\"\ntitle: \"existing (edited by A)\"\n---\n\nBody, A's edit.\n")
+		regIDRunGitT(t, workerA, "add", ".")
+		regIDRunGitT(t, workerA, "commit", "-m", "docs(findings): A edits existing entry")
+		regIDRunGitT(t, workerA, "push", "origin", "worker-a-branch")
+
+		// Worker B: MODIFIES the SAME file at the SAME path in place, also keeping id F-shared.
+		// This is a merge question on one file, NOT an added-vs-added id collision.
+		workerB := t.TempDir()
+		regIDRunGitT(t, workerB, "clone", remoteDir, ".")
+		regIDRunGitT(t, workerB, "config", "user.email", "b@test")
+		regIDRunGitT(t, workerB, "config", "user.name", "worker-b")
+		regIDRunGitT(t, workerB, "checkout", "-b", "worker-b-branch", "origin/main")
+		regIDWriteFile(t, workerB, "docs/streams/findings/2026-07-01-existing.md",
+			"---\nid: F-shared\ndate: \"2026-07-01\"\ntitle: \"existing (edited by B)\"\n---\n\nBody, B's edit.\n")
+		regIDRunGitT(t, workerB, "add", ".")
+		regIDRunGitT(t, workerB, "commit", "-m", "docs(findings): B edits existing entry")
+		headSHA := regIDRunGitT(t, workerB, "rev-parse", "HEAD")
+
+		collisions, err := checkRegisterIDCollisions(workerB, "worker-b-branch", headSHA)
+		if err != nil {
+			t.Fatalf("checkRegisterIDCollisions error: %v", err)
+		}
+		if len(collisions) != 0 {
+			t.Fatalf("identical-path modify on both sides is a merge concern, not an id collision; expected 0, got %d: %+v", len(collisions), collisions)
+		}
+	})
+
+	t.Run("different paths with same id IS still a collision", func(t *testing.T) {
+		dir, ownBranch, ownSHA := newRegisterIDCollisionFixture(t, "F-39", "F-39")
+
+		collisions, err := checkRegisterIDCollisions(dir, ownBranch, ownSHA)
+		if err != nil {
+			t.Fatalf("checkRegisterIDCollisions error: %v", err)
+		}
+		if len(collisions) != 1 {
+			t.Fatalf("added-vs-added collision (distinct paths, same id) must still refuse; expected 1, got %d: %+v", len(collisions), collisions)
+		}
+		if collisions[0].ownPath == collisions[0].sourcePath {
+			t.Fatalf("real collision must be between DIFFERENT paths, got identical: %+v", collisions[0])
+		}
+	})
+}
+
 // TestCheckRegisterIDCollisions_IdAlreadyOnMainSameFile_NotAClaim is the #189 primary proof:
 // a branch that MODIFIES an existing findings entry for an unrelated reason (repointing a
 // backtick path) WITHOUT touching its `id:` does not stake a new claim on that id — the id is

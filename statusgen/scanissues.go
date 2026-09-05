@@ -95,6 +95,18 @@ type ghLabel struct {
 // shells out to gh; tests inject a fixture so the scanner is exercised offline.
 type issueLister func(repo string) ([]ghIssue, error)
 
+// scanRepoSkip records a scanned repo whose OPEN-issue read failed (rate limit,
+// 404/unresolvable, auth) so the scan can distinguish a genuinely clean board
+// from one it never managed to read. A skipped repo is a could-not-check, not a
+// clean read: its close-out sweep is deliberately NOT run (an empty open set
+// would otherwise retire every placeholder as if its issue had closed), and its
+// presence forces runScanIssues off the exit-0 clean-board path onto the
+// could-not-check exit (#186).
+type scanRepoSkip struct {
+	Repo   string
+	Reason string
+}
+
 // ghIssueLister is the default issueLister: `gh issue list` for one repo. A gh
 // failure is returned as an error so planScan can degrade it to a per-repo NOTICE
 // ("gh failure on one repo → skip that repo … don't abort").
@@ -297,7 +309,7 @@ func existingPlaceholderIssues(streams []*Stream) map[string]bool {
 // resolved marker put it there.
 //
 // Output is sorted (repo, then issue) for deterministic dry-run and write order.
-func planScan(root string, streams []*Stream, list issueLister, bless issueBlessChecker) (plans []scanPlan, closeOuts []closeOutPlan, notices []string) {
+func planScan(root string, streams []*Stream, list issueLister, bless issueBlessChecker) (plans []scanPlan, closeOuts []closeOutPlan, notices []string, skipped []scanRepoSkip) {
 	existing := existingPlaceholderIssues(streams)
 	// (D3): archived placeholders (already moved into
 	// `<stream>/done/`) count as EXISTING — a reopened issue reactivates its
@@ -315,6 +327,13 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 	for _, repo := range scanRepos() {
 		issues, err := list(repo)
 		if err != nil {
+			// A read failure is a could-not-check for THIS repo, not a clean
+			// empty read. Record it structurally (skipped) as well as a NOTICE so
+			// runScanIssues can refuse the exit-0 clean-board path and name the
+			// unread repo. The `continue` also skips this repo's close-out sweep
+			// below, which is essential: an empty open set would otherwise retire
+			// every one of its placeholders as if the issue had closed.
+			skipped = append(skipped, scanRepoSkip{Repo: repo, Reason: err.Error()})
 			notices = append(notices, fmt.Sprintf("scan-issues: %s skipped — %v", repo, err))
 			continue
 		}
@@ -489,7 +508,26 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 		}
 		return closeOuts[i].Issue < closeOuts[j].Issue
 	})
-	return plans, closeOuts, notices
+	sort.Slice(skipped, func(i, j int) bool { return skipped[i].Repo < skipped[j].Repo })
+	return plans, closeOuts, notices, skipped
+}
+
+// scanReadSummary renders the per-run "repos read vs skipped" line printed on
+// EVERY --scan-issues run, even a genuinely empty one — so a caller can always
+// see how many repos the run actually managed to read. When repos went unread it
+// names each with its reason, so the summary alone distinguishes a partial scan
+// from a clean board (#186).
+func scanReadSummary(total int, skipped []scanRepoSkip) string {
+	read := total - len(skipped)
+	if len(skipped) == 0 {
+		return fmt.Sprintf("scan-issues: read %d of %d configured repos (0 skipped)", read, total)
+	}
+	parts := make([]string, 0, len(skipped))
+	for _, s := range skipped {
+		parts = append(parts, fmt.Sprintf("%s (%s)", s.Repo, s.Reason))
+	}
+	return fmt.Sprintf("scan-issues: read %d of %d configured repos — COULD-NOT-CHECK: %d skipped: %s",
+		read, total, len(skipped), strings.Join(parts, "; "))
 }
 
 // runScanIssues is the --scan-issues entrypoint. It loads streams (for
@@ -540,9 +578,19 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 	unblockPlans, unblockNotices := planUnblock(streams, comments)
 	notices := append([]string(nil), unblockNotices...)
 
-	plans, closeOuts, scanNotices := planScan(root, streams, list, bless)
+	plans, closeOuts, scanNotices, skipped := planScan(root, streams, list, bless)
 	notices = append(notices, scanNotices...)
-	emitNotices(notices) // per-repo gh failures surface as NOTICE, exit stays 0
+	emitNotices(notices) // per-repo gh failures ALSO surface as NOTICE
+
+	// A run that could not read one or more scanned repos (rate limit,
+	// 404/unresolvable, auth) is a could-not-check, not a clean read of an empty
+	// world. Print the read/skipped summary on EVERY run (even a genuinely empty
+	// one), suppress the clean-board line whenever a repo went unread, and exit on
+	// statusgen's could-not-check code (2) so a cron/desk can tell partial from
+	// clean rather than reporting a clean intake lane through a rate-limit window
+	// (#186).
+	fmt.Println(scanReadSummary(len(scanRepos()), skipped))
+	partial := len(skipped) > 0
 
 	if dryRun {
 		for _, u := range unblockPlans {
@@ -556,8 +604,11 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 		for _, c := range closeOuts {
 			fmt.Printf("would %s %s  (%s#%d, %s)\n", c.Action, c.Rel, c.Repo, c.Issue, closeOutReason(c.Action))
 		}
-		if len(unblockPlans) == 0 && len(plans) == 0 && len(closeOuts) == 0 {
+		if len(unblockPlans) == 0 && len(plans) == 0 && len(closeOuts) == 0 && !partial {
 			fmt.Println("scan-issues: no changes — nothing to create or retire")
+		}
+		if partial {
+			return 2
 		}
 		return 0
 	}
@@ -585,8 +636,11 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 	}
 
 	if len(plans) == 0 {
-		if len(closeOuts) == 0 {
+		if len(closeOuts) == 0 && !partial {
 			fmt.Println("scan-issues: no unhandled open issues — nothing to create or retire")
+		}
+		if partial {
+			return 2
 		}
 		return 0
 	}
@@ -602,6 +656,12 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 			return 1
 		}
 		fmt.Printf("created %s\n", p.Rel)
+	}
+	// The successfully-read repos' work is applied above; a partial scan still
+	// returns the could-not-check code so the run is never mistaken for a
+	// complete, authoritative sweep (#186).
+	if partial {
+		return 2
 	}
 	return 0
 }

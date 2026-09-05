@@ -100,8 +100,8 @@ func ciTemplateFor(forge forgeKind) initCITemplate {
 // GitHub remote (or none) gets the GitHub workflow, a GitLab remote gets a
 // `.gitlab-ci.yml` running the same two halves — because a GitHub workflow on a
 // GitLab project is inert and leaves the board with no single writer (#349).
-func runInit(root string) int {
-	return runInitForge(root, detectForge(root))
+func runInit(root string, dryRun bool) int {
+	return runInitForge(root, detectForge(root), dryRun)
 }
 
 // runInitForge is runInit with the forge already resolved — from the `--forge`
@@ -111,7 +111,7 @@ func runInit(root string) int {
 //
 // The starter stream is named after the target directory (see initStreamName), so
 // two freshly-init'd repos do not collide when a later run boards them together.
-func runInitForge(root string, forge forgeKind) int {
+func runInitForge(root string, forge forgeKind, dryRun bool) int {
 	stream := initStreamName(root)
 	streamDir := "docs/streams/" + stream
 	ci := ciTemplateFor(forge)
@@ -126,6 +126,20 @@ func runInitForge(root string, forge forgeKind) int {
 		{ci.path, ci.body},
 		{"CLAUDE.md", initClaudeMd},
 		{"AGENTS.md", initAgentsMd},
+	}
+	// --dry-run: print each file that would be created plus its rendered body, and
+	// write NOTHING. It is a preview of the scaffold — including the CI workflow's
+	// regen + reconcile steps — so an adopter (or a Verify row) can inspect what
+	// `init` would lay down without mutating any tree.
+	if dryRun {
+		for _, f := range files {
+			body := strings.ReplaceAll(f.body, initStreamPlaceholder, stream)
+			fmt.Printf("would create  %s\n", f.path)
+			fmt.Println("----------------------------------------")
+			fmt.Println(body)
+			fmt.Println("----------------------------------------")
+		}
+		return 0
 	}
 	var created, skipped []string
 	for _, f := range files {
@@ -386,17 +400,31 @@ jobs:
           sudo install -m 0755 /tmp/statusgen /usr/local/bin/statusgen
       - name: Regenerate STATUS.md
         run: statusgen --root .
-      - name: Commit STATUS.md if it changed
+      # Regenerate every board: generated stream README's Briefs table (its
+      # authoring columns), the same single-writer discipline as STATUS.md. A
+      # README without board: generated is left hand-maintained (NOTICE only).
+      - name: Regenerate stream README tables
+        run: statusgen regen --readmes --root .
+      # ONLINE DRIFT COMPARATOR (opt-in). When this repo grants the regen job
+      # ` + "`pull-requests: read`" + ` and ` + "`issues: read`" + ` and passes ` + "`--repo <owner>/<name>`" + `,
+      # ` + "`statusgen regen --readmes --repo …`" + ` folds the PR witnesses through the
+      # lifecycle derivation and prints a NOTICE for every board cell that
+      # disagrees with the derived state. It is READ-ONLY (the reconcile verb
+      # touches only read endpoints) and never fires offline — a could-not-check
+      # is not a drift. Uncomment and add the permissions to enable it:
+      #   run: statusgen regen --readmes --root . --repo ${{ github.repository }}
+      - name: Commit generated board surfaces if they changed
         run: |
           set -euo pipefail
           git config user.name  'statusgen'
           git config user.email 'statusgen@users.noreply.github.com'
-          git add STATUS.md
-          # BOOTSTRAP-SAFE GUARD: guard on ` + "`git status --porcelain -- STATUS.md`" + `, NOT
-          # ` + "`git diff --quiet -- STATUS.md`" + `. git diff sees only TRACKED files, so on a
-          # repo with no STATUS.md yet the diff guard mis-fires ("nothing to commit")
+          # Path-scoped add: STATUS.md plus the generated stream README tables.
+          git add STATUS.md docs/streams
+          # BOOTSTRAP-SAFE GUARD: guard on ` + "`git status --porcelain`" + ` for the paths,
+          # NOT ` + "`git diff --quiet`" + `. git diff sees only TRACKED files, so on a repo
+          # with no STATUS.md yet the diff guard mis-fires ("nothing to commit")
           # and the first board is NEVER created; porcelain reports the new/staged file.
-          if [ -n "$(git status --porcelain -- STATUS.md)" ]; then
+          if [ -n "$(git status --porcelain -- STATUS.md docs/streams)" ]; then
             git commit -m 'chore(status): regenerate [skip-status-regen]'
             git push
           fi
