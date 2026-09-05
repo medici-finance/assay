@@ -47,7 +47,7 @@ func stubMint(t *testing.T, token string, err error) *[]mintCall {
 // and NOT as whatever role this session's own loop acts under. The session here presents
 // the review loop (the reviewer App), which is precisely the case that produced the field
 // failure: a stamp applied by the reviewer App is a stamp the floor cannot trust.
-func TestModelStampIsAppliedUnderTheDispatcherIdentity(t *testing.T) {
+func TestStampAppliedAsDispatcherApp(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
@@ -91,7 +91,7 @@ func TestModelStampIsAppliedUnderTheDispatcherIdentity(t *testing.T) {
 // untrusted stamp is worse than no stamp: absent reads UNKNOWN and proceeds with a NOTICE,
 // while present-but-untrusted refuses every authority-bearing write on that PR. So a
 // failed mint stops before the first label, and says so.
-func TestStampNeverFallsBackToTheAmbientIdentity(t *testing.T) {
+func TestStampNeverUsesAmbientIdentity(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
@@ -113,7 +113,7 @@ func TestStampNeverFallsBackToTheAmbientIdentity(t *testing.T) {
 // The fail-closed backstop, independent of the step that is supposed to mint first: a `gh`
 // invocation with no dispatcher token does not happen at all. Without this, a future code
 // path that reaches the forge before the mint silently re-creates the defect.
-func TestGhRefusesToRunWithoutTheDispatcherToken(t *testing.T) {
+func TestForgeCallNeedsDeskToken(t *testing.T) {
 	var ran bool
 	old := execCommand
 	execCommand = func(name string, args ...string) *exec.Cmd {
@@ -140,7 +140,7 @@ func TestGhRefusesToRunWithoutTheDispatcherToken(t *testing.T) {
 // The token reaches the child process's environment, which is what actually decides the
 // identity GitHub records for the label. Asserting the mint alone would pass while the
 // token sat in a variable nothing read.
-func TestGhInvocationCarriesTheDispatcherTokenInItsEnvironment(t *testing.T) {
+func TestChildEnvCarriesTheToken(t *testing.T) {
 	old := execCommand
 	execCommand = func(name string, args ...string) *exec.Cmd {
 		return exec.Command("/bin/sh", "-c", `printf %s "$GH_TOKEN"`)

@@ -227,7 +227,7 @@ func TestModelCapabilityFloorStampCases(t *testing.T) {
 // operator cannot tell WHICH identity applied the stamp, nor which one the floor would
 // have accepted. This is the diagnosis the field report had to reconstruct by hand from
 // the timeline API, so the message must carry both logins.
-func TestModelFloorUnreadableRefusalNamesApplierAndExpectedDispatcher(t *testing.T) {
+func TestFloorRefusalNamesBothLogins(t *testing.T) {
 	plantRoster(t, modelstampFixtureRoster) // binds desk=example-desk-app
 	events := []LabelEvent{
 		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "example-worker-app[bot]"},
@@ -274,7 +274,7 @@ func TestNonDispatcherStampAppliers(t *testing.T) {
 // the writer (the dispatch verb's stamp step). The field defect was exactly this pair
 // naming different identities, so the constant is pinned here: the reader must resolve the
 // dispatcher login from DispatcherRole and nothing else.
-func TestDispatcherRoleIsTheOneDeclaredIdentity(t *testing.T) {
+func TestDispatcherRoleIsOneDeclaration(t *testing.T) {
 	plantRoster(t, modelstampFixtureRoster)
 	login, ok := RoleAppLogin(DispatcherRole)
 	if !ok {
