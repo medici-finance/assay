@@ -249,6 +249,29 @@ any change here; they are reported as-observed, never rounded to green. This bri
 (rows 1, 2a, 4, 4a, 5, 5a, 6, 7, 8, and the `durable-monitor` closure inside the bindings check) is
 all green. The out-of-scope binding/coverage gap is flagged on the PR for a follow-up.
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-05 opus-4.8[1m]-verifier (verify-desk dispatch), medici-finance/assay merged main 55bb04c
+
+Runner != implementer. Offline envelope (KUBECONFIG=/dev/null). gate: model; risk {regulatory:no, customer:no, irreversible:no, sensitive-data:no}. harnesslint built offline from the house tool source (its embedded banned-tokens carries the HP/11 additions).
+
+| # | command | expected | observed (exit + key line) | date · runner |
+|---|---------|----------|----------------------------|---------------|
+| 1 | sed the capability-vocabulary block in README.md, grep durable-monitor | 0 | exit 0 — durable-monitor present in the machine-readable closed set | 2026-09-05 · opus-4.8[1m]-verifier |
+| 2 | harnesslint bindings plugins/assay/references | 0 | exit 1 — 12 violations, ALL out-of-scope (no degradation cell for skill ask-decision/install/pdfingest/upgrade-assay across 3 reference files); ZERO name durable-monitor; closure satisfied (see 2a). Bundle skills added after the binding files, not this diff | 2026-09-05 · opus-4.8[1m]-verifier |
+| 2a | grep -lc capability:durable-monitor in claude-code.md + codex.md | 2 | 2 — durable-monitor row present in BOTH binding files (positive control) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 3 | harnesslint bodies plugins/assay/skills | 0 | exit 1 — 3 violations, ALL out-of-scope (CLAUDE_PLUGIN_ROOT in ask-decision/SKILL.md); ZERO in the five desk bodies this brief touches | 2026-09-05 · opus-4.8[1m]-verifier |
+| 4 | grep Monitor / persistent:true / TaskList in skills SKILL.md | exit 1 | exit 1 — no capital-Monitor/persistent:true/TaskList harness token in any body | 2026-09-05 · opus-4.8[1m]-verifier |
+| 4a | sum capability:durable-monitor across the desk bodies | >= 8 | 10 — sites rewritten to the capability, not deleted (positive control) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 5 | grep EnterWorktree in skills SKILL.md | exit 1 | exit 1 — no EnterWorktree token remains | 2026-09-05 · opus-4.8[1m]-verifier |
+| 5a | count capability:isolate-workspace in verify/worker-desk | 1 (both sites) | 1 — both former EnterWorktree sites carry capability:isolate-workspace (positive control) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 6 | plant persistent:true into the-desk body, harnesslint bodies, restore | exit 1, names the-desk | exit 1 — the-desk/SKILL.md banned harness token "persistent: true" flagged; after restore count 0, worktree clean, desk bodies return to zero HP violations. Recurrence guard works | 2026-09-05 · opus-4.8[1m]-verifier |
+| 7 | grep -c "never degrade" codex.md | >= 1 | 4 — never-degrade floor intact; durable-monitor sits below as a convenience | 2026-09-05 · opus-4.8[1m]-verifier |
+| 8 | statusgen --root . --lint | 0 | exit 0 — LINT: PASS; harness-portability carries only NOTICE-level items, zero PROBLEM | 2026-09-05 · opus-4.8[1m]-verifier |
+
+**VERIFY: PASS.** The brief's own deliverable is fully green (rows 1, 2a, 4, 4a, 5, 5a, 6, 7, 8) and the durable-monitor closure inside the bindings check is satisfied (2a=2). Rows 2 and 3 are checked-failed exit-1 SOLELY from out-of-scope pre-existing harness-neutrality debt (bundle skills ask-decision/install/pdfingest/upgrade-assay lacking degradation cells; CLAUDE_PLUGIN_ROOT in ask-decision) — none introduced by this diff, none naming durable-monitor or the five desk bodies; reported as-observed, not rounded. Corroborated by the prior recorded outcome (harness-portability/11 verified 7/7 in the verify-outcomes ledger). Follow-up (out-of-scope, not a brief-11 defect): the reference-file binding closure + ask-decision body carry pre-existing harness-neutrality debt that keeps rows 2/3 exit-1 until a separate brief adds those degradation cells.
+
+RISK-VALUE: DERIVED — Codex durable-monitor classification = degrades @ plugins/assay/references/codex.md — the stream floor (isolation/evidence/review-gates) fixes the only three never-degrade guarantees; a durable wake-signal is a convenience below that floor, so on Codex (process-local child agents, silently-killed background → no durable cross-turn wake) the capability correctly degrades to event-driven + fixed-cadence sweep rather than refusing. Row 7 confirms the never-degrade floor text survives (count 4). Git-reversible method text.
+RISK-VALUE: N/A (numeric) — the only other literal is the capability identifier durable-monitor (a naming ratification flagged for reviewer sign-off, closure-checked by harnesslint bindings row 2a=2); no numeric constant/threshold/authority-numeric, no transfer/spend/publish; gate:model, irreversible:no.
+
 ## Review
 
 Gate: **model** (from frontmatter — this is git-revertible method text; no
