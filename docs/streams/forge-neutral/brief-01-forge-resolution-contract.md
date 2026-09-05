@@ -183,7 +183,7 @@ Runner != implementer. Offline envelope (KUBECONFIG=/dev/null). gate: human; ris
 | 8 | go test ./cmd/deskpost/... | exit 0 unmodified | exit 0; ok deskpost 25.2s, ok bodycheck | 2026-09-05 · opus-4.8[1m]-verifier |
 | 9 | forgeban tests + TestNoForgeCLIShellout + TestForgeNoPassthrough | exit 0, ratchet closed | exit 0; ok forgeban, ok deskkit | 2026-09-05 · opus-4.8[1m]-verifier |
 | 10 | go test ...TestRosterKnownKeySet | exit 0 (new key registered) | exit 0 PASS | 2026-09-05 · opus-4.8[1m]-verifier |
-| 11 | statusgen --root . --consumers --brief forge-neutral/01 | exit 0 | could-not-check — local statusgen v0.25.0 refuses ASSAY_REPO_FORGES as an unknown key (the brief registers it in deskkit rosterconfig, verified by row 10; statusgen forge-awareness is deferred to forge-neutral/08), AND the global scan aborts on the register dir docs/streams/requirements/ having no README (assay#471). Route to CI pinned statusgen. Not a FAIL; no diff defect | 2026-09-05 · opus-4.8[1m]-verifier |
+| 11 | statusgen --root . --consumers --brief forge-neutral/01 | exit 0 | could-not-check — local statusgen v0.25.0 refuses ASSAY_REPO_FORGES as an unknown key (the brief registers it in deskkit rosterconfig, verified by row 10; statusgen forge-awareness is deferred to forge-neutral/08), AND the global scan aborts on the register dir docs/streams/requirements/ having no README (#471). Route to CI pinned statusgen. Not a FAIL; no diff defect | 2026-09-05 · opus-4.8[1m]-verifier |
 
 **VERIFY: PASS (rows 1-10, the full code contract green); row 11 could-not-check — HELD at implemented.** gate:human + sensitive-data:yes: a model runs the table for Evidence but cannot sign off; the human gate owns the flip.
 
