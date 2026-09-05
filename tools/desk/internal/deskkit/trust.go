@@ -480,15 +480,21 @@ func RoleBotCommitIdentity(role string) (name, email string, ok bool) {
 	if !c.Configured() {
 		return "", "", false
 	}
-	slug, bound := c.RoleBots[strings.ToLower(role)]
-	if !bound || strings.TrimSpace(slug) == "" {
+	ident, bound := c.RoleBotIdentity(role)
+	if !bound {
 		return "", "", false
 	}
-	id, hasID := c.Bots[slug]
-	if !hasID || id <= 0 {
+	// The commit address is derived from the ENTRY's forge, never a fixed shape. A
+	// GitLab service-account address embeds a group id and per-account suffix the roster
+	// does not carry (forgeidentity.go), so it is not DERIVABLE here — a caller that must
+	// stamp an identity gets ok=false and refuses, rather than falling back to the GitHub
+	// shape for a GitLab account. GitHub is unchanged: <slug>[bot] and the bot-USER-id
+	// noreply address (#638), ok=false when the id is unpinned.
+	spec := ident.CommitEmailSpec()
+	if spec.Forge != ForgeGitHub || !spec.Derivable {
 		return "", "", false
 	}
-	return slug + "[bot]", fmt.Sprintf("%d+%s[bot]@users.noreply.github.com", id, slug), true
+	return ident.Slug + "[bot]", spec.Exact, true
 }
 
 // RoleBound reports whether a desk role has an App bound to it. Tools that need a

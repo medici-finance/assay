@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/medici-finance/assay/tools/desk/internal/askassay"
+	"github.com/medici-finance/assay/tools/desk/askassay"
 )
 
 // TestImprovePaneRefusesTheMeasuredWriteSideEffect is the finding of this
@@ -20,6 +20,15 @@ import (
 // guard. The second-layer guard is kept deliberately as defense-in-depth
 // (belt-and-suspenders): if the answer layer ever regresses and re-permits the
 // mode, this package still refuses it and says so.
+//
+// The mode's original downstream consequence — a tracked report file left
+// `docs/reports/` unclassified and failed the publication manifest check — is
+// now remediated: a covering `docs/reports/**` withhold row (disposition
+// `do-not-copy`) exists in the publication disposition manifest, so the created
+// file classifies and the check PASSES. The guard is NOT relaxed by that: the
+// write side effect is unchanged and still real, and a read that writes a
+// tracked file is refused here on its own merit, independent of any downstream
+// check.
 func TestImprovePaneRefusesTheMeasuredWriteSideEffect(t *testing.T) {
 	argv := []string{"statusgen", "--root", ".", "--bottleneck"}
 
@@ -36,7 +45,7 @@ func TestImprovePaneRefusesTheMeasuredWriteSideEffect(t *testing.T) {
 	// so the second-layer guard's own refusal is proven in isolation here.
 	err := GuardNoSideEffect(argv)
 	if err == nil {
-		t.Fatalf("GuardNoSideEffect PERMITTED %v — this mode was measured creating a report file, which then makes the publication manifest check fail with an unclassified path", argv)
+		t.Fatalf("GuardNoSideEffect PERMITTED %v — this mode was measured creating a tracked report file in the tree it is pointed at, which is a write a mode declared a READ must never perform", argv)
 	}
 	if !errors.Is(err, ErrSideEffect) {
 		t.Fatalf("refusal is not classed as a side effect: %v", err)

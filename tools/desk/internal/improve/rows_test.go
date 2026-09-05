@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/medici-finance/assay/tools/desk/internal/askassay"
+	"github.com/medici-finance/assay/tools/desk/askassay"
 )
 
 func figure(v int64) askassay.Answer {

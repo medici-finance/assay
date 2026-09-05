@@ -37,25 +37,47 @@ import (
 // dir. A worktree in detached HEAD contributes nothing. A git error propagates so callers
 // fail CLOSED — an unreadable worktree list is never read as "nobody holds it", because
 // that reading is the one that would delete a branch out from under a live worktree.
+//
+// A `prunable` entry is NOT a holder. `git worktree list --porcelain` marks an entry
+// `prunable <reason>` when its directory is gone (git ≥ 2.36) — the commonest way a
+// dispatch dies is `rm -rf` of the worktree dir without `git worktree remove`, which leaves
+// exactly such an entry still "on" its branch. That is stale bookkeeping, not a live owner:
+// counting it as a holder makes `reclaimStaleBranch` refuse and name a path that no longer
+// exists, so the operator clears the branch by hand and bypasses the 0-ahead proof. The
+// bookkeeping entry itself is `deskwt prune`'s to drop (`git worktree prune`); the branch
+// question is answered here by ignoring it. A `locked` attribute on a prunable entry does
+// not change this — the lock protects a directory that is gone; the branch proof stays the
+// 0-ahead check. The parse is deferred to end-of-entry because git emits the `branch` line
+// BEFORE the `prunable` attribute line, so the attribute is not yet seen when the ref is
+// read; each `worktree` line (and end of input) flushes the entry accumulated so far, which
+// also keeps a `prunable` reading from leaking across into the next, live, entry.
 func branchHolders(dir string) (map[string]string, error) {
 	out, err := runGit(dir, "worktree", "list", "--porcelain")
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot read `git worktree list` to find which worktree holds a branch", err)
 	}
 	holders := make(map[string]string)
-	var cur string
+	var curPath, curRef string
+	var curPrunable bool
+	flush := func() {
+		if curPath != "" && curRef != "" && !curPrunable {
+			holders[curRef] = curPath
+		}
+		curPath, curRef, curPrunable = "", "", false
+	}
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "worktree "):
-			cur = resolvePath(strings.TrimSpace(strings.TrimPrefix(line, "worktree ")))
+			flush() // close the previous entry before starting a new one
+			curPath = resolvePath(strings.TrimSpace(strings.TrimPrefix(line, "worktree ")))
 		case strings.HasPrefix(line, "branch "):
-			ref := strings.TrimSpace(strings.TrimPrefix(line, "branch "))
-			if cur != "" && ref != "" {
-				holders[ref] = cur
-			}
+			curRef = strings.TrimSpace(strings.TrimPrefix(line, "branch "))
+		case line == "prunable" || strings.HasPrefix(line, "prunable "):
+			curPrunable = true
 		}
 	}
+	flush() // close the final entry (no trailing `worktree` line follows it)
 	return holders, nil
 }
 

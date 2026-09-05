@@ -51,8 +51,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/askassay"
-	"github.com/medici-finance/assay/tools/desk/internal/askassay/chart"
+	"github.com/medici-finance/assay/tools/desk/askassay"
+	"github.com/medici-finance/assay/tools/desk/askassay/chart"
 )
 
 // ErrRefused is returned for a document that cannot be built without breaking

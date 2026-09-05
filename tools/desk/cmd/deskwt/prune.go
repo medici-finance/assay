@@ -38,6 +38,9 @@ type pruneOpts struct {
 	reclaimStaleLocks bool
 	// lockTTL is the age fallback for locks that name no session. 0 disables it.
 	lockTTL time.Duration
+	// dryRun reports what a sweep WOULD remove (and the before_remove hook plan) without
+	// deleting anything. It is one-shot only (refused with --interval).
+	dryRun bool
 }
 
 // cmdPrune implements `deskwt prune [--repo <path>] [--interval <dur>]
@@ -103,16 +106,17 @@ func cmdPrune(args []string) (err error) {
 	// because "old" is not by itself evidence that a session is gone.
 	lockTTLStr := fs.String("lock-ttl", "0",
 		"with --reclaim-stale-locks: also treat any lock older than this (e.g. 24h) as stale; 0 disables the age test")
+	dryRun := fs.Bool("dry-run", false, "report what a sweep would remove and the before_remove hook plan; delete nothing (one-shot only)")
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
 		return deskkit.Refused("refused: prune takes no flags but --repo, --interval, " +
-			"--reclaim-stale-locks and --lock-ttl (there is no --force): " + perr.Error())
+			"--reclaim-stale-locks, --lock-ttl and --dry-run (there is no --force): " + perr.Error())
 	}
 	if len(positionals) != 0 {
 		return deskkit.Refused("refused: prune takes no positional arguments")
 	}
 
-	opts := pruneOpts{reclaimStaleLocks: *reclaim}
+	opts := pruneOpts{reclaimStaleLocks: *reclaim, dryRun: *dryRun}
 	if s := strings.TrimSpace(*lockTTLStr); s != "" && s != "0" {
 		d, derr := time.ParseDuration(s)
 		if derr != nil {
@@ -139,6 +143,18 @@ func cmdPrune(args []string) (err error) {
 			return deskkit.Refused("refused: --interval must be positive: " + *intervalStr)
 		}
 		interval = d
+	}
+	// A dry run of a forever-loop is meaningless — refuse the pairing rather than silently
+	// looping a read-only sweep.
+	if opts.dryRun && interval > 0 {
+		return deskkit.Refused("refused: --dry-run is one-shot only; it cannot be combined with --interval")
+	}
+	if opts.dryRun {
+		line, herr := deskkit.HookDryRunLine(deskkit.HookBeforeRemove)
+		if herr != nil {
+			return herr
+		}
+		fmt.Fprintln(os.Stderr, line)
 	}
 
 	dir := *repo
@@ -384,8 +400,23 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 			continue
 		}
 
-		// Proven safe: tracked-clean, NOT at origin/main tip, AND fully merged into origin/main. Remove via the exact
-		// same primitive remove uses (recursive delete of the proven dir + prune + verify).
+		// Proven safe: tracked-clean, NOT at origin/main tip, AND fully merged into origin/main.
+		// --dry-run stops here: count it as a would-remove, delete nothing.
+		if opts.dryRun {
+			res.removed++
+			continue
+		}
+
+		// before_remove — runs before each deletion. LOGGED failure class: a hook failure is
+		// reported but the removal PROCEEDS (a cleanup hook must never wedge the sweep).
+		if _, herr := deskkit.RunHook(deskkit.HookBeforeRemove, deskkit.HookEnv{
+			RunKey: filepath.Base(rt), Worktree: rt, Repo: repoOrEmpty(dir),
+		}); herr != nil {
+			res.warns = append(res.warns, "before_remove hook failed for "+rt+" (removal proceeds): "+herr.Error())
+		}
+
+		// Remove via the exact same primitive remove uses (recursive delete of the proven dir
+		// + prune + verify).
 		if rmErr := removeWorktreeDir(guard, dir, rt); rmErr != nil {
 			res.skips = append(res.skips, skipEntry{rt, "removal failed: " + rmErr.Error()})
 			continue

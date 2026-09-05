@@ -1,0 +1,2 @@
+### Added
+- Verify-lane activation: an evidence-automerge path plus the verify-gate open/close workflows land the verifier's Evidence rows behind reviewer approval and the leak-sweep gate, and a front-door drift gate plus a board-reconcile schedule keep the generated board honest. A `changelog-check` workflow now requires a `changelog/` fragment (or the maintainer `changelog:skip` label) on every notable PR.

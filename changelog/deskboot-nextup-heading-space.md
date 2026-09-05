@@ -1,0 +1,2 @@
+### Fixed
+- `deskboot`'s board summary reported "no Next-up section" on every boot: `summariseBoard` matched the heading as the hyphenated `next-up`, but statusgen emits it as `## Next up` (a space), so the section was never found and the boot line understated the queue as empty. It now accepts both spellings, and the regression test asserts row counting under the real `## Next up` heading so the two tools stay locked together.

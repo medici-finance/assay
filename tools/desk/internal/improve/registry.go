@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/askassay"
+	"github.com/medici-finance/assay/tools/desk/askassay"
 )
 
 // THE STRIP REGISTRY

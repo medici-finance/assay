@@ -13,6 +13,11 @@
 #
 # On a plugin bump, re-pin (bump `statusgen.tag` and refresh every `sha256`) rather than editing a
 # hash in place, so the upgrade shows in a diff. Keep `plugin` in step with plugin.json's version.
+#
+# GUARDED: `plugins/assay/scripts/check-paired-versions.sh` asserts, offline and in CI, that
+# `plugin` below equals plugin.json's `version`, that every pinned tag is the SAME tag, and that
+# every sha256 is 64 lowercase hex. Run it after any edit here — a re-pin that leaves the two
+# files disagreeing is exactly the drift that shipped adopters a stale tool.
 
 schema: paired-versions-v1
 

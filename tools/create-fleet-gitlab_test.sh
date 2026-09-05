@@ -8,11 +8,12 @@
 #
 # No cluster, no GitLab, no toolchain beyond bash + jq.
 #
-# Default impl is ../create-fleet-gitlab.sh. Point FLEET_IMPL at the version
-# before the tier-safe/avatar fix to see the new behaviours fail — the
-# fail-first evidence:
-#   git show origin/main:tools/create-fleet-gitlab.sh > /tmp/old-fleet.sh
-#   FLEET_IMPL=/tmp/old-fleet.sh ./tools/create-fleet-gitlab_test.sh   # RED
+# Default impl is ../create-fleet-gitlab.sh. Point FLEET_IMPL at an earlier
+# version to see the behaviours it lacks fail — the fail-first evidence. Against
+# the impl before this change (protected release tags + the all-discussions-
+# resolved merge gate, issue #346 comment 1 §4), T7 and T8 go RED:
+#   git show HEAD~1:tools/create-fleet-gitlab.sh > /tmp/old-fleet.sh
+#   FLEET_IMPL=/tmp/old-fleet.sh ./tools/create-fleet-gitlab_test.sh   # RED (T7/T8)
 #   ./tools/create-fleet-gitlab_test.sh                                # green
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -126,6 +127,9 @@ common_accounts='
     "POST /groups/1/members") echo "201"; echo "{}"; return ;;
     "GET /projects/proj") echo "200"; echo "{\"id\":7}"; return ;;
     "PUT /projects/7") echo "200"; echo "{}"; return ;;
+    "GET /projects/7") echo "200"; echo "{\"only_allow_merge_if_pipeline_succeeds\":true,\"only_allow_merge_if_all_discussions_are_resolved\":true}"; return ;;
+    "GET /projects/7/protected_tags") echo "200"; echo "[]"; return ;;
+    "POST /projects/7/protected_tags") echo "201"; echo "{}"; return ;;
     "PUT /user/avatar") echo "200"; echo "{\"avatar_url\":\"/uploads/-/system/user/avatar/1/x.png\"}"; return ;;
   esac
   case "$m $p" in
@@ -374,6 +378,133 @@ if has "could not fetch the default icon" && has "skipped, not a failure" && [ "
   ok "T6b an unfetchable icon is a NOTICE, not a failure (rc=$RC)"
 else
   bad "T6b an unfetchable icon is a NOTICE, not a failure (rc=$RC)"
+fi
+
+# ===========================================================================
+# T7 — protected release tags: created with the SCALAR create_access_level
+#      field (Free tier), never the Premium allowed_to_create array, and the
+#      decision is printed. (issue #346 comment 1 §4 / pilot D-4)
+# ===========================================================================
+newcase
+cat > "$FAKE_CURL_RESPONDER" <<RESP
+$bump_helper
+PLANFIELD=',"plan":"free"'
+respond() {
+  local m="\$1" p="\$2" n
+  $common_accounts
+  case "\$m \$p" in
+    "GET /projects/7/protected_branches/main")
+      echo "200"
+      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
+      return ;;
+    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
+    "GET /projects/7/approvals")
+      echo "200"
+      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
+      return ;;
+  esac
+  echo "500"; echo '{"unstubbed":true}'
+}
+RESP
+run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
+if grep -q 'BODY POST .*/protected_tags |.*"create_access_level":40' "$FAKE_CURL_LOG"; then
+  ok "T7 protected-tags POST carries the scalar create_access_level=40"
+else
+  bad "T7 protected-tags POST carries the scalar create_access_level=40"
+fi
+if grep -q 'BODY POST .*/protected_tags |.*allowed_to_create' "$FAKE_CURL_LOG"; then
+  bad "T7 protected-tags POST must NOT send the Premium allowed_to_create array"
+else
+  ok "T7 protected-tags POST never sends the Premium allowed_to_create array"
+fi
+if has "protected: tags '*' (create_access_level=40 Maintainers)"; then
+  ok "T7 the protected-tags decision is printed"
+else
+  bad "T7 the protected-tags decision is printed"
+fi
+if [ "$RC" = "0" ]; then ok "T7 a clean run with protected tags exits 0"; else bad "T7 a clean run with protected tags exits 0 (rc=$RC)"; fi
+
+# ===========================================================================
+# T7b — protected tags are idempotent: an existing rule for the glob is a
+#       named no-op, not a duplicate POST.
+# ===========================================================================
+newcase
+cat > "$FAKE_CURL_RESPONDER" <<RESP
+$bump_helper
+PLANFIELD=',"plan":"free"'
+respond() {
+  local m="\$1" p="\$2" n
+  case "\$m \$p" in
+    "GET /projects/7/protected_tags") echo "200"; echo '[{"name":"*","create_access_level":40}]'; return ;;
+  esac
+  $common_accounts
+  case "\$m \$p" in
+    "GET /projects/7/protected_branches/main")
+      echo "200"
+      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
+      return ;;
+    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
+    "GET /projects/7/approvals")
+      echo "200"
+      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
+      return ;;
+  esac
+  echo "500"; echo '{"unstubbed":true}'
+}
+RESP
+run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
+posts=$(logn "^POST https://gitlab.com/api/v4/projects/7/protected_tags")
+if [ "$posts" = "0" ] && has "already protected"; then
+  ok "T7b an existing protected-tags rule is a no-op (zero POSTs)"
+else
+  bad "T7b an existing protected-tags rule is a no-op (posts=$posts)"
+fi
+
+# ===========================================================================
+# T8 — merge checks: the PUT carries only_allow_merge_if_all_discussions_are_resolved
+#      alongside the pipeline gate, and both are read back and printed.
+# ===========================================================================
+newcase
+cat > "$FAKE_CURL_RESPONDER" <<RESP
+$bump_helper
+PLANFIELD=',"plan":"free"'
+respond() {
+  local m="\$1" p="\$2" n
+  $common_accounts
+  case "\$m \$p" in
+    "GET /projects/7/protected_branches/main")
+      echo "200"
+      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
+      return ;;
+    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
+    "GET /projects/7/approvals")
+      echo "200"
+      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
+      return ;;
+  esac
+  echo "500"; echo '{"unstubbed":true}'
+}
+RESP
+run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
+if grep -q 'BODY PUT .*/projects/7 |.*"only_allow_merge_if_all_discussions_are_resolved":true' "$FAKE_CURL_LOG"; then
+  ok "T8 the merge-checks PUT sets only_allow_merge_if_all_discussions_are_resolved"
+else
+  bad "T8 the merge-checks PUT sets only_allow_merge_if_all_discussions_are_resolved"
+fi
+if has "all discussions must be resolved before merge"; then
+  ok "T8 the discussions gate is reported"
+else
+  bad "T8 the discussions gate is reported"
+fi
+if has "read-back: only_allow_merge_if_pipeline_succeeds=true only_allow_merge_if_all_discussions_are_resolved=true"; then
+  ok "T8 both merge-check fields are read back and printed"
+else
+  bad "T8 both merge-check fields are read back and printed"
+fi
+if grep -q '^GET https://gitlab.com/api/v4/projects/7 ' "$FAKE_CURL_LOG"; then
+  ok "T8 the project settings are read back after the write"
+else
+  bad "T8 the project settings are read back after the write"
 fi
 
 echo

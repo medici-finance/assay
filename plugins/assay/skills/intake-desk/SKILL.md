@@ -40,7 +40,7 @@ tracked exit per item and fails the pass otherwise.
   issues and merges. Both are always the human's.
 
 Run this in a **dedicated window** so its per-minute monitor churn does not fragment the coordinator
-desk (`the-desk`). **Only this window runs the inbound monitor** — a second monitor double-files
+desk (`the-desk`). **Only this window runs the inbound watcher (`capability:durable-monitor`)** — a second double-files
 placeholders and double-triages. Role window, no persona (Bob belongs to `the-desk` only); the
 register/evidence discipline of `the-desk` applies (read it if not already booted).
 
@@ -200,7 +200,7 @@ so the scan-carrier flow above stands until R-7 signs and the cutover lands (sca
 intake-desk"*). The cut is not *who owns issues* — it is **who told you to do this, a monitor or a
 human?**
 
-- **Monitor-fired → THIS desk owns it, exclusively**: routing comments, decision-consumption and
+- **`capability:durable-monitor`-fired → THIS desk owns it, exclusively**: routing comments, decision-consumption and
   recording, relabeling, triage, duplicate-marking, small inline pipeline-unblock fixes. The
   coordinator (`the-desk`) does not fire on inbound GitHub **issue or comment** events. (Its
   PR-queue watch — filing `review-request` issues on new/updated heads — is a different surface and
@@ -389,8 +389,10 @@ workflows / mutating `kubectl`. Filing issues is allowed; closing is bounded by 
 ## Liveness contract (binding)
 
 A standing liveness contract binds this window from boot: start the standing
-self-scheduled loop BEFORE the first sweep and keep it ticking for the life of
-the window; every tick re-sweeps this desk's own queue fresh; every relay (a
+self-scheduled loop (`capability:durable-monitor` — best-effort, never the sole
+wake signal; the fixed-cadence board sweep is the real liveness backstop and the
+always-on observability service its durable home) BEFORE the first sweep and keep
+it ticking for the life of the window; every tick re-sweeps this desk's own queue fresh; every relay (a
 cross-session hand-over) is acknowledged or filed, never assumed delivered.
 The desk runs **default-forward** — never ask the driver what to work on next:
 a driver scope instruction narrows preference, not a cage — when the scoped

@@ -18,6 +18,34 @@ name: changelog-check
 # ci.yml and the other control legs. It needs no Go toolchain and no network: a
 # git diff against the PR base, a label read off the event payload, and python3
 # (present on the runner) for the shared changelog parser.
+#
+# ── ADDED: a second, in-workflow SKIP condition for verify-desk Evidence PRs ──
+#
+# The label path above is unchanged and stays the maintainer's. This adds ONE
+# more way for the gate to pass, computed here rather than granted by a label:
+# a pull request that is authored by the verify desk's App AND changes nothing
+# outside `docs/streams/` records a brief's `## Evidence` rows and its stream
+# README status flip. That is not a notable change — it is the METHODOLOGY
+# recording that an already-released change was verified — so requiring a
+# changelog fragment for it is a category error, and one that is fatal in
+# practice: this leg is a required check, so every Evidence PR sits red forever
+# and the Evidence lane never merges.
+#
+# WHY NOT JUST LABEL THEM. `changelog:skip` is a maintainer act by design (the
+# script's own failure message says so). Handing label-write to an automation
+# App to self-waive a required check is exactly the widening this repo refuses;
+# a maintainer-only label must stay maintainer-only. Deciding the same question
+# in-workflow, from PR metadata the automation cannot forge, keeps the label
+# where it belongs and leaves an auditable reason in every run log.
+#
+# WHAT IT DOES NOT WEAKEN. The `## Unreleased` deprecation guard is checked
+# FIRST inside check.sh and is absolute — SKIP does not excuse it, and an
+# Evidence PR that somehow edited CHANGELOG.md would still be refused. Nothing
+# here touches CHANGELOG.md handling, the fragment rule, or the label path. Any
+# PR that is not an Evidence PR is decided exactly as before.
+#
+# REVOCATION: delete the "Classify" step and restore the one-expression `SKIP:`
+# below. The gate returns to label-or-fragment for everything.
 
 on:
   pull_request:
@@ -27,6 +55,10 @@ on:
 
 permissions:
   contents: read
+  # ADDED: the classify step below reads the PR's changed-file list through
+  # `gh api repos/.../pulls/{n}/files`. Read-only, and the narrowest scope that
+  # endpoint accepts. Nothing in this workflow writes anything.
+  pull-requests: read
 
 concurrency:
   group: changelog-check-${{ github.event.pull_request.number }}
@@ -43,9 +75,125 @@ jobs:
           # would not carry them).
           fetch-depth: 0
 
+      # ADDED. The classify step below reads the PR file list with gh, and this
+      # self-hosted runner image does not ship it. Pinned + sha256-verified
+      # before unpack (the same release and digest the board workflow uses), and
+      # skipped when the image already has it. Durable alternative: bake gh into
+      # the runner image and delete this step.
+      - name: Ensure gh CLI is available (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            echo "gh present: $(gh --version | head -1)"; exit 0
+          fi
+          url="https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz"
+          want="912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/gh.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/gh.tar.gz" | cut -d' ' -f1)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::gh tarball sha256 mismatch — want ${want}, got ${got}; refusing to extract"
+            exit 1
+          fi
+          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
+          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
+
+      # ADDED. Runs before the gate and only classifies — it writes nothing and
+      # decides nothing on its own; its single output feeds the `SKIP:` env of
+      # the unchanged step below.
+      - name: Classify — is this a verify-desk Evidence PR?
+        id: evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          # The one identity whose Evidence PRs waive the fragment requirement.
+          # DO NOT WIDEN THIS: it is the whole scope control, and the same
+          # constant the auto-merge lane keys on. Widening it here would silently
+          # exempt another role's PRs from a required check.
+          EVIDENCE_AUTHOR: assay-verifier-app[bot]
+        run: |
+          set -euo pipefail
+          # Default-deny, written first: any path that does not reach a `true`
+          # below leaves the gate in force.
+          echo "evidence=false" >> "$GITHUB_OUTPUT"
+
+          # ─── SHARED BLOCK: "is this a verify-desk Evidence PR?" ───────────────
+          # Kept BYTE-IDENTICAL with the block of the same name in the other
+          # workflow that asks this question (evidence-automerge.yml and
+          # changelog-check.yml). Two gates answering "is this an Evidence PR?"
+          # differently is the exact failure this named duplication prevents, so
+          # if you change one copy, change the other IN THE SAME COMMIT. It is
+          # deliberately NOT a composite action: a local action is a second file a
+          # `.github/workflows/*` reviewer does not see in the same diff, and this
+          # decision has to be readable where it is used.
+          #
+          # It sets `is_evidence` to one of THREE values — true / false /
+          # could-not-check — and prints a reason for every non-true one. Each
+          # caller decides what could-not-check costs it; neither may round it up
+          # to true.
+          #
+          # It reads PR METADATA only. It never checks the PR tree out and never
+          # runs anything from it. Untrusted values (the author login, the file
+          # paths) are compared as data and are never interpolated into a script.
+          is_evidence=false
+          if [ "$PR_AUTHOR" != "$EVIDENCE_AUTHOR" ]; then
+            echo "not an Evidence PR: author is '$PR_AUTHOR', not '$EVIDENCE_AUTHOR'"
+          # Paginate: an Evidence PR is small, but a truncated first page read as
+          # the whole list is exactly how a non-docs file slips through.
+          elif ! gh api --paginate "repos/${REPO}/pulls/${PR}/files" \
+                   --jq '.[].filename' > "${RUNNER_TEMP}/evidence-files.txt"; then
+            echo "could-not-check: the changed-file list for PR ${PR} could not be read"
+            is_evidence=could-not-check
+          else
+            echo "changed files:"; sed 's/^/  /' "${RUNNER_TEMP}/evidence-files.txt"
+            if [ ! -s "${RUNNER_TEMP}/evidence-files.txt" ]; then
+              echo "not an Evidence PR: the PR changes no files"
+            # ALL files must live under docs/streams/. One file outside it
+            # disqualifies the whole PR: this lane covers the verify desk's own
+            # Evidence writes and nothing else, so a mixed PR is not an Evidence PR.
+            elif grep -qvE '^docs/streams/' "${RUNNER_TEMP}/evidence-files.txt"; then
+              echo "not an Evidence PR: changed files outside docs/streams/:"
+              grep -vE '^docs/streams/' "${RUNNER_TEMP}/evidence-files.txt" | sed 's/^/  /'
+            # Generated, single-writer artifacts are never part of an Evidence PR.
+            # The findings register is generated from its per-entry files; the
+            # board at the repo root is generated by main CI. (The root board
+            # would already fail the docs/streams/ test above; it is named here so
+            # the intent survives any future widening of that test.)
+            elif grep -qxE 'docs/streams/FINDINGS\.md|STATUS\.md' "${RUNNER_TEMP}/evidence-files.txt"; then
+              echo "not an Evidence PR: changed files include a generated single-writer artifact:"
+              grep -xE 'docs/streams/FINDINGS\.md|STATUS\.md' "${RUNNER_TEMP}/evidence-files.txt" | sed 's/^/  /'
+            else
+              is_evidence=true
+            fi
+          fi
+          echo "is_evidence=${is_evidence}"
+          # ─── END SHARED BLOCK ─────────────────────────────────────────────────
+          # This workflow's reading of the three states, and it is the OPPOSITE
+          # asymmetry from the auto-merge lane's — deliberately, because the two
+          # gates fail safe in opposite directions:
+          #   could-not-check -> DO NOT SKIP, and do not fail this job either.
+          #     The changelog gate simply stays in force and the PR goes red on
+          #     the ordinary "missing fragment" path, which is visible, has a
+          #     documented fix, and blocks nothing that should not be blocked.
+          #     Failing the job here would convert an unreadable file list into
+          #     an unexplained red, which is strictly worse.
+          #   false           -> DO NOT SKIP. The gate decides as it always has.
+          if [ "$is_evidence" != "true" ]; then
+            echo "changelog gate stays in force for this PR (is_evidence=${is_evidence})"
+            exit 0
+          fi
+          echo "::notice title=Evidence PR::Verify-desk Evidence PR (docs/streams/ only) — the changelog fragment requirement is waived for this PR."
+          echo "evidence=true" >> "$GITHUB_OUTPUT"
+
       - name: Require a changelog fragment (or the changelog:skip label); refuse a direct Unreleased edit
         env:
-          SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'changelog:skip') }}
+          # CHANGED: was `contains(... 'changelog:skip')` alone. The label half is
+          # byte-for-byte the same expression; the `||` adds the Evidence-PR half
+          # computed by the step above. check.sh is untouched and still sees a
+          # plain "true"/"false" in SKIP, so its own logic — Unreleased guard
+          # first, then skip, then fragment — is unchanged.
+          SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'changelog:skip') || steps.evidence.outputs.evidence == 'true' }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: bash tools/changelog/check.sh
