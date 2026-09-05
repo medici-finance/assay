@@ -63,14 +63,15 @@ than restating them.
     * an owner/name slug, with or without #N, naming a repo the roster marks PRIVATE
     * alias#N where the alias resolves to such a repo
     * a withheld register identifier (a stream slug, or a <slug>/<NN> brief id) from
-      ASSAY_WITHHELD_IDENTIFIERS
+      ASSAY_WITHHELD_IDENTIFIERS, read from roster.env or from the environment
 
   NOTICE on stderr, never a refusal — the check could not decide:
     * a bare #N above a number known to exist here (probably another repo's)
     * a bare #N with no reference number available: not checked at all
     * a word that is a PRIVATE repo's short name, 4+ characters (a shorter alias is
       ordinary English and is not noticed at all; its full slug still REFUSES)
-    * ASSAY_WITHHELD_IDENTIFIERS unset: that category was not checked
+    * ASSAY_WITHHELD_IDENTIFIERS not configured in roster.env or the environment:
+      that category was not checked
 
 A refusal takes the same audited --force-scan-override as any other scan refusal —
 there is no second bypass and no flag that turns the check off. A known-private target

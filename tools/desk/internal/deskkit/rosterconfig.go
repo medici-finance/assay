@@ -216,7 +216,9 @@ const (
 	// shared roster.env — a natural mistake, since that is where every other
 	// ASSAY_ knob lives — would otherwise take every desk tool's trust roster
 	// down at once. Recognised and ignored is the fail-safe reading. Same
-	// treatment as EnvSweepWithheldStreams and EnvWithheldIdentifiers below.
+	// treatment as EnvSweepWithheldStreams below. (EnvWithheldIdentifiers used to
+	// belong to this list and no longer does: since #490 it is parsed and APPLIED,
+	// which is what recognised-and-ignored keys are one bug report away from being.)
 	EnvAllowCluster = "ASSAY_ALLOW_CLUSTER"
 
 	// EnvHomeRepo and EnvScanRepos are STATUSGEN-only roster values (the home repo
@@ -394,6 +396,19 @@ type Config struct {
 	// (EnvWriteguardCallout), empty when unset. Empty means the compiled generic
 	// indicators alone — see the const's ONLY-WIDENS note.
 	WriteguardCallout string
+
+	// WithheldIdentifiers is the normalised withheld register set parsed from
+	// ASSAY_WITHHELD_IDENTIFIERS — the stream slugs and brief ids the public-repo
+	// self-containment scan (selfcontain.go) refuses in an outward body. Nil when
+	// unset, which is a COMPLETE adopter configuration and not a degraded one: the
+	// scan's register category degrades to a NOTICE and every other category runs.
+	//
+	// Read through deskkit.WithheldIdentifiers(), never off this field directly —
+	// that accessor is where the environment override lives. Landing it here at all
+	// is #490's fix: the key was recognised by the parser but only ever read from
+	// the environment, so a roster-configured value loaded clean and was then never
+	// applied.
+	WithheldIdentifiers []string
 
 	// RepoPatterns is the sorted, de-duplicated set of owner/* PATTERN entries parsed
 	// out of ASSAY_ALLOWED_REPOS (extended to configuration: an entry
@@ -782,12 +797,12 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		// unknown-ASSAY_-key refusal. KEEP IN SYNC with statusgen's
 		// scanEnvSweepWithheldStreams.
 		EnvSweepWithheldStreams: true,
-		// EnvWithheldIdentifiers (ASSAY_WITHHELD_IDENTIFIERS, selfcontain.go) is read by
-		// the public-repo self-containment scan through a direct os.Getenv, NOT through
-		// this scanConfig — but a house that configures it does so in the SAME shared
-		// roster.env, and an unrecognised key in the ASSAY_ namespace refuses the whole
-		// configuration. It must therefore be RECOGNISED here or turning the scan's
-		// register category on would collapse every desk tool's roster at once.
+		// EnvWithheldIdentifiers (ASSAY_WITHHELD_IDENTIFIERS, selfcontain.go) is CONSUMED
+		// here, not merely recognised: parseConfig lands it on cfg.WithheldIdentifiers and
+		// the public-repo self-containment scan reads it through WithheldIdentifiers(),
+		// environment first and this roster value second. Recognised-and-ignored is what
+		// it used to be, and #490 is the bug that shape produced — a roster carrying the
+		// key loaded clean and the scan's register category still never ran.
 		EnvWithheldIdentifiers: true,
 		// EnvAllowCluster (ASSAY_ALLOW_CLUSTER) is the clusterguard operator opt-in, read
 		// by cmd/clusterguard via a direct os.Getenv and never consumed here. It is
@@ -1159,6 +1174,15 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			cfg.WriteguardCallout = raw
 		}
 	}
+
+	// --- withheld register identifiers (selfcontain.go) ---
+	//
+	// A plain list value with nothing to validate: an identifier is whatever this
+	// deployment's register calls a stream, so there is no shape to refuse and an
+	// empty result is the legitimate unset state. It is normalised HERE, at load,
+	// through the same splitter the environment arm uses, so the two sources cannot
+	// disagree about case or spacing.
+	cfg.WithheldIdentifiers = splitWithheldIdentifiers(vals[EnvWithheldIdentifiers])
 
 	if len(problems) > 0 {
 		return Config{Class: class, Source: source, Problems: problems}
