@@ -52,7 +52,7 @@ decision, not code in this stream.
 | 12 | [M4 gate-yield accounting + ritual-effectiveness joins](brief-12-m4-gate-yield-rituals.md) | 4 | M | done | 2026-09-02 opus-4.8[1m]-verifier | 2026-09-03 assay-reviewer-app[bot] (approved PR #359 @ 621e01fb96091b58583a473bfa9b03c718a62b51) |
 | 13 | [M4 session forensics — pluggable telemetry-source interface + reference adapters](brief-13-m4-session-forensics.md) | 3 | M | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #303 @ 80dcc91617295988e5553d8de0c79b43433c134a) |
 | 14 | [auto-filed refactor work + quality error-budgets + RETRO output feed](brief-14-autofile-budgets-retro.md) | 5 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #398 @ a4525730c8041b710fdc4fabcfe7dc95cf243428) |
-| 15 | [learned riskscore graduation — JIT defect-prediction model](brief-15-learned-riskscore.md) | 3 | M | todo | — | — |
+| 15 | [learned riskscore graduation — JIT defect-prediction model](brief-15-learned-riskscore.md) | 3 | M | implemented | — | — |
 | 16 | [code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report](brief-16-slop-sweep.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #399 @ 8c45e4c8aed8e603a3b41d13299e17abfda2e369) |
 
 Brief 01 implemented on branch `brief/quality-01-miner-skeleton` (new `qualgen/` module: go-git extraction, incremental extend-never-replace mine, three-state `Measure[T]` plumbing, append-only artifact store; `mine` mode live, `report`/`pr`/`check` scaffolded). Draft-PR link to be attached when the PR is opened.
@@ -78,6 +78,23 @@ wiring), reads only caller-supplied M1/M2/M3 fixtures — no new mining, structu
 enforced by `TestNoNewMining`). Draft-PR link to be attached when the PR is opened.
 
 Brief 13 implemented on branch `feat/assay--quality--13` (new self-contained `qualgen/telemetry` package: the pluggable `TelemetrySource` interface keyed by PR number + merge SHA + stream/task ID, and `FileAdapter`, the file-based reference adapter reading a documented, operator-supplied telemetry JSONL — the only concrete `TelemetrySource` in-tree, no house-private source wired in; new `qualgen/m4` package: a read-only join over caller-supplied M1 churn and M2 defect-outcome inputs (no Store/CLI wiring — the brief's own Task list scopes this to library code testable via fixtures ahead of a seasoned corpus), pulling telemetry through the interface and emitting two named per-behavior correlations (retries-band × churn-rate, refusal-count × defect-inducing rate) with three-state coverage reported beside every average; `m4` depends on `qualgen/telemetry`'s interface only, never a concrete adapter). Draft-PR link to be attached when the PR is opened.
+
+Brief 15 implemented via PR #309 (new self-contained `qualgen/riskscore` package,
+library-only — no Store or CLI wiring, matching the brief's own file list:
+`heuristic.go` — the §9.1 hand-weighted features (hotspot percentile, traced defect
+density, top-identity ownership share, missing coupling partners) carrying a
+three-state flag each and renormalizing over the usable weights, so a
+could-not-measure feature is dropped rather than counted as zero; `features.go` — the
+Kamei-style JIT feature vector for a change (diffusion including change entropy, size,
+history, author-class), computed purely from a change record; `learned.go` —
+temporally-split training (a defect's label may inform only predictions at or after
+its label time, so a change is never scored using knowledge from its own future),
+logistic regression over the standardized JIT vector, a `LearnedScore` type that
+structurally cannot carry a learned number without its §9.1 heuristic decomposition,
+under-corpus fallback to heuristic-only with a could-not-learn status and no
+fabricated learned zero, and a `Comparison` type that forces the held-out AUC plus the
+corpus size and trace-rate to travel with any learned-vs-heuristic claim per §10).
+The status flip to `implemented` was omitted from that PR and is recorded separately.
 
 ## Critical path
 
