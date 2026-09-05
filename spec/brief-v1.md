@@ -68,7 +68,7 @@ validated against the value set given.
 | `blocked-by` | string | OPTIONAL | Environment-blocked marker; the only defined value is `env` (the brief is blocked on infrastructure or environment). Absent means the brief is not blocked. An out-of-set value MUST be flagged. |
 | `homed-in` | string | OPTIONAL | The `<owner>/<repo>` the brief's deliverable was re-homed to (a de-housing) — exactly one `/`, both sides non-empty, no whitespace. Absent means a normal in-repo brief. A malformed shape MUST be flagged; the value MUST NOT be checked against a repo allowlist (the shape is all a linter can validate locally). |
 | `measures` | string | OPTIONAL | Name of the process queue this brief instruments (drain-before-instrument). The only wired queue is `verification-debt`. Absent means the brief is not an instrumentation brief. A present value MUST name a wired queue; a present-but-unrecognized name, or a present-but-empty value, MUST be flagged. |
-| `satisfies` | array[string] | OPTIONAL | The requirements this brief was written against, as requirement references — `REQ-<slug>` in-repo, or `<alias>:REQ-<slug>` cross-repo through the `docs/streams/graph-repos.yaml` alias registry (`registers-v1.md` §6.5). **RESERVED, not gating**: absence MUST NEVER be flagged on any brief, and a present entry is shape-validated only. A present entry that does not match the grammar MUST be flagged; a wrong TYPE is a parse error. A conforming linter MUST emit a NOTICE saying the citation was parsed and is not gating. The corpus-wide traceability checks (a requirement no brief cites, a citation naming no requirement) are a separate change and MUST NOT be inferred from this field. |
+| `satisfies` | array[string] | OPTIONAL | The requirements this brief was written against, as requirement references — `REQ-<slug>` in-repo, or `<alias>:REQ-<slug>` cross-repo through the `docs/streams/graph-repos.yaml` alias registry (`registers-v1.md` §6.5). Absence MUST NEVER be flagged on any brief. A present entry that does not match the grammar MUST be flagged; a wrong TYPE is a parse error. A conforming linter MUST emit a NOTICE for a brief carrying the key. The citation feeds the corpus-wide traceability checks §6.5 defines: a `satisfies:` naming an in-repo requirement that does not exist is a `dangling-satisfies` PROBLEM, and a forward brief in a `traced:` stream that cites nothing is an advisory `untraced-brief` NOTICE (§3.3). |
 | `design` | string | CONDITIONAL | The design-decision record this brief was approved against, as a typed reference `DR-<slug>` into the DECISIONS register (`registers-v1.md` §7). REQUIRED for a **risk-gated** brief in the design-approval gate's scope (`lifecycle-v1.md` §4.4) once it is at `in-progress` or later; OPTIONAL — and never flagged when absent — otherwise. A present value that is not a valid `DR-<slug>` reference, or that dereferences to no record in the register, MUST be flagged; a wrong TYPE is a parse error. The gate is grandfathered (§4.4), so absence is flagged only for briefs in the gate's live scope, never for grandfathered legacy briefs. |
 | `parallel-streams` | array[mapping] | OPTIONAL | Declared shards of an intra-brief split. Each entry is a mapping with a REQUIRED `name` (string) and an OPTIONAL `files` (array of path globs the shard owns); no other key is permitted in an entry. Absent means one worker per brief. Only the entry SHAPE is validated in frontmatter — whether a declared split may actually be dispatched is decided by `statusgen shardcheck` against the file tree, not by the frontmatter linter. A declaration that parses is a request, not a permission. |
 
@@ -96,11 +96,25 @@ REQ-<slug>              in-repo requirement; <slug> is 10–20 chars of [a-z0-9-
 
 An unresolvable alias MUST be flagged: the registry is a closed set, and the same registry
 serves the dependency-graph reference grammar — a conforming implementation MUST NOT add a
-second one for requirements. The linter MUST NOT flag an absent `satisfies:`, MUST NOT
-require a cited requirement to exist, and MUST NOT change its exit code on any other
-ground derived from this key (`registers-v1.md` §6.5 — reserved, not gating). It MUST
-emit a NOTICE for a brief that carries the key, so that "parsed and reserved" is
-distinguishable from "silently ignored".
+second one for requirements. The linter MUST NOT flag an absent `satisfies:` (no brief is
+required to cite a requirement), and it MUST emit a NOTICE for a brief that carries the key,
+so that "parsed and traced" is distinguishable from "silently ignored".
+
+Beyond the grammar, `satisfies:` now feeds the corpus-wide traceability checks that
+`registers-v1.md` §6.5 defines (they were reserved at the schema's first version and landed
+advisory-first, per §4.5):
+
+- **`dangling-satisfies`** — a `satisfies:` naming an IN-REPO `REQ-<slug>` that this root's
+  register does not define is a hard PROBLEM. The register is append-only (§3.1/§3.3), so an
+  in-repo id no entry defines can only be a typo or a deleted entry. A cross-repo
+  `<alias>:REQ-<slug>` names a register in another repo the offline linter cannot read, so it
+  is could-not-check, never dangling.
+- **`untraced-brief`** — a brief that is `in-progress` or later, in a stream whose README
+  declares `traced: true`, and that names no `satisfies:`, raises an advisory NOTICE. Absent
+  the stream opt-in the check never fires — a corpus-wide untraced sweep over legacy briefs
+  that predate the register is noise (§4.5).
+
+The companion `orphan-requirement` advisory check lives on the register side (§6.5).
 
 ## 4. Body structure
 
