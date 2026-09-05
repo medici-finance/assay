@@ -149,6 +149,27 @@ facts:
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-04 opus-4.8[1m]-verifier (verify-desk dispatch), merged main 4e500df
+
+Runner != implementer. Offline (KUBECONFIG=/dev/null). gate: model, risk {all no}, irreversible: no. Rows 6-9 run inside the statusgen/ module.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | git grep -c classMutation classFlow classDereference classNeighbour -- statusgen/ | 0 | matches in rowclass.go, obligationderivation.go (+tests) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 2 | git grep -n knownRowClasses -- statusgen/rowclass.go | 0 | rowclass.go:90 | 2026-09-04 | opus-4.8[1m]-verifier |
+| 3 | git grep -n legacyRowClass -- statusgen/rowclass.go | 0 | rowclass.go:86 const legacyRowClass = classCheck | 2026-09-04 | opus-4.8[1m]-verifier |
+| 4 | git grep -n 'func verifyRowClassProblems' -- statusgen/rowclass.go | 0 | rowclass.go:311 | 2026-09-04 | opus-4.8[1m]-verifier |
+| 5 | git grep -n changedPathsSince -- statusgen/consumers.go | 0 | consumers.go:949 | 2026-09-04 | opus-4.8[1m]-verifier |
+| 6 | go test ./statusgen/ -run RowClass -count=1 | 0 | ok statusgen; 15 tests 0 FAIL | 2026-09-04 | opus-4.8[1m]-verifier |
+| 7 | go test ./statusgen/ -run RowClassLegacyDefaultUnchanged -count=1 | 0 | ok; legacy no-class resolves unchanged | 2026-09-04 | opus-4.8[1m]-verifier |
+| 8 | go test ./statusgen/ -run ObligationDerivation -count=1 | 0 | ok; 11 tests | 2026-09-04 | opus-4.8[1m]-verifier |
+| 9 | go test ./statusgen/ -run ObligationDerivationCouldNotCheck -count=1 | 0 | ok; unavailable diff -> could-not-check | 2026-09-04 | opus-4.8[1m]-verifier |
+| 10 | git grep -c adequacy -- statusgen/rowclass.go | 0 | count 2 (D7 boundary stated) | 2026-09-04 | opus-4.8[1m]-verifier |
+
+**VERIFY: PASS** — all 10 rows ran; dereference rows 1/4/10 inverted authoring->implementation as specified. Advisory.
+
+**RISK-VALUE: DERIVED** — obligationDerivationFatal = false @ statusgen/obligationderivation.go:53 — derived obligations land advisory NOTICE; fatal promotion assigned to mistake-proofing/06; true would flip every owed-but-absent obligation to a corpus-wide PROBLEM.
+**RISK-VALUE: DERIVED** — flow threshold = 1 (topLevelSpan > 1) @ statusgen/obligationderivation.go:140 — spanning >1 top-level dir is the flow-obligation definition (crosses a component boundary); advisory, reversible.
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the
