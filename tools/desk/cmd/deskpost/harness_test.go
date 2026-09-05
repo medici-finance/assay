@@ -79,6 +79,14 @@ type fakeGH struct {
 	prAuthorID int64
 	trustJSON  string
 
+	// headAuthorLogin is the account GET /commits/{sha} attributes the head commit to —
+	// the non-author verdict assertion's second-layer input (sdlc/10). Empty serves the PR
+	// author (a plausible default: in the desk model the PR author authored the head), so a
+	// test only sets it to drive the COLLAPSE case (poster == head author). headAuthorErr
+	// forces the commit read to fail (could-not-check → fall back to the PR author).
+	headAuthorLogin string
+	headAuthorErr   bool
+
 	// Issue fixtures (#296). GitHub numbers issues and PRs from ONE
 	// sequence, so the fake models that: a number in issueNums is an ISSUE — GET
 	// /pulls/{n} 404s for it and GET /issues/{n} serves it with NO `pull_request` key —
@@ -156,16 +164,17 @@ type fakeGH struct {
 }
 
 var (
-	reTokens    = regexp.MustCompile(`/access_tokens$`)
-	rePull      = regexp.MustCompile(`/pulls/[0-9]+$`)
-	reReviews   = regexp.MustCompile(`/pulls/[0-9]+/reviews$`)
-	reFiles     = regexp.MustCompile(`/pulls/[0-9]+/files$`)
-	reComments  = regexp.MustCompile(`/issues/[0-9]+/comments$`)
-	reIssue     = regexp.MustCompile(`/issues/([0-9]+)$`)
-	reStatus    = regexp.MustCompile(`/commits/[^/]+/status$`)
-	reChecks    = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
-	reRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
-	reReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
+	reTokens       = regexp.MustCompile(`/access_tokens$`)
+	rePull         = regexp.MustCompile(`/pulls/[0-9]+$`)
+	reReviews      = regexp.MustCompile(`/pulls/[0-9]+/reviews$`)
+	reFiles        = regexp.MustCompile(`/pulls/[0-9]+/files$`)
+	reComments     = regexp.MustCompile(`/issues/[0-9]+/comments$`)
+	reIssue        = regexp.MustCompile(`/issues/([0-9]+)$`)
+	reStatus       = regexp.MustCompile(`/commits/[^/]+/status$`)
+	reChecks       = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
+	reCommit       = regexp.MustCompile(`/commits/[^/]+$`)
+	reRepo         = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
+	reReactions    = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
 	reTimeline     = regexp.MustCompile(`/issues/[0-9]+/timeline$`)
 	reRepoLabels   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/labels$`)
 	reIssueLabels  = regexp.MustCompile(`/issues/[0-9]+/labels$`)
@@ -351,6 +360,23 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(f.servedFiles())
+
+	case r.Method == http.MethodGet && reCommit.MatchString(path):
+		// GET /commits/{sha} — the non-author verdict assertion's head-author read (sdlc/10).
+		// Ordered before reStatus/reChecks is unnecessary (those end in /status, /check-runs
+		// and never match /commits/{sha}$), but it must come before any broader match.
+		if f.headAuthorErr {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		login := f.headAuthorLogin
+		if login == "" {
+			login = f.prAuthor
+			if login == "" {
+				login = "shared-agent"
+			}
+		}
+		writeJSON(map[string]any{"author": map[string]any{"login": login}})
 
 	case r.Method == http.MethodGet && reStatus.MatchString(path):
 		per, pg := ghPaging(r.URL.Query())

@@ -17,9 +17,9 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/9 | 2026-09-05 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-05 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-05 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-05 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-05 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-05 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 0/12 | 2026-09-05 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/12 | 2026-09-05 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-05 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 4/6 | 2026-09-05 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-05 |  |
@@ -41,14 +41,13 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-tools. By 
 | desk-tools | 13 — `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree | 1 | 1000 |
 | desk-tools | 14 — bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` [exec:strong] | 1 | 1000 |
 | desk-tools | 15 — `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home | 1 | 1000 |
-| mistake-proofing | 05 — `newbrief` — the scaffolder as the authoring front door (B1) [exec:strong] | 2 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (40 desk-actionable of 43 total — 43 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (40 desk-actionable of 42 total — 42 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -60,16 +59,16 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | forge-neutral | 01 [exec:strong] | implemented | 7000 | 10 | — | — | — |
-| harness-portability | 01 [exec:strong] | implemented | 5000 | 8 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
+| harness-portability | 01 [exec:strong] | implemented | 4500 | 7 | — | — | — |
 | desktools-go-git | 02 | implemented | 4000 | 6 | — | — | — |
-| harness-portability | 02 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
-| harness-portability | 04 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| harness-portability | 02 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
+| harness-portability | 04 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | windows-port | 00 | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
@@ -93,7 +92,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| harness-portability | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| mistake-proofing | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | mistake-proofing | 06 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -104,13 +103,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
+| harness-portability | 03 | implemented | 4000 | 6 | — | — | — |
 
-### Awaiting implementer rework (2)
+### Awaiting implementer rework (1)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| forge-gitlab | 04 | implemented | 2000 | 2 | — | — | — |
 | statusgen | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 
 ## Age at the human gate
@@ -201,9 +199,8 @@ _None._
 - 07 `deskmerge` exception — fence the trial merge, migrate the rest — todo (wave 3)
 - 08 flip the drop-the-binary CI gate + CVE floor + file the follow-on — todo (wave 5)
 
-### forge-gitlab (5 open)
+### forge-gitlab (4 open)
 
-- 04 Fleet provisioning + adopter doc + ci-config-project runbook — implemented (wave 3)
 - 05 Live pilot — one brief round-tripped on a real GitLab group; parity table walked — implemented (wave 4)
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — todo (wave 5)
 - 07 GitHub forge backend on `go-gh` — retire the exec-`gh` shell path — implemented (wave 2)
@@ -223,7 +220,7 @@ _None._
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
 
-### harness-portability (12 open)
+### harness-portability (11 open)
 
 - 01 Codex capability ground-truth — measured matrix, not inherited prior art — implemented (wave 0)
 - 02 Kill the drift debt — re-sync the bundle, flip the canonical home — implemented (wave 0)
@@ -234,7 +231,6 @@ _None._
 - 07 Adoption docs, freshness registration, live Codex smoke protocol + first run — implemented (wave 4)
 - 09 jcode desk-harness spike — measured parity + fleet-density for driving desks — implemented (wave 0)
 - 10 SpecMem portable-memory spike — one stream's registers across two harnesses — implemented (wave 0)
-- 11 Durable-monitor capability + residual harness-token prose-audit — implemented (wave 3)
 - 12 Cursor — the third harness column (ground-truth + binding + generator verb + public column) — implemented (wave 5)
 - 13 Cursor live-desk-smoke protocol + first run — todo (wave 6)
 
@@ -247,7 +243,7 @@ _None._
 
 ### mistake-proofing (2 open)
 
-- 05 `newbrief` — the scaffolder as the authoring front door (B1) — todo (wave 2)
+- 05 `newbrief` — the scaffolder as the authoring front door (B1) — implemented (wave 2)
 - 06 D1 promoted to a lint obligation — a new check must carry its mutation row — implemented (wave 2)
 
 ### quality (1 open)
@@ -297,11 +293,16 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 - 01 inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate — done (wave 1)
 
-### forge-gitlab (3 done)
+### forge-gitlab (4 done)
 
 - 01 `Forge` interface extraction in deskkit — `github` impl pinned by goldens — done (wave 1)
 - 02 `gitlab` forge implementation (MRs, notes, approvals, statuses) — done (wave 2)
 - 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — done (wave 2)
+- 04 Fleet provisioning + adopter doc + ci-config-project runbook — done (wave 3)
+
+### harness-portability (1 done)
+
+- 11 Durable-monitor capability + residual harness-token prose-audit — done (wave 3)
 
 ### iso-9001 (2 done)
 
@@ -354,4 +355,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **43/134** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **45/134** briefs done · completed initiatives: see `docs/archive/`

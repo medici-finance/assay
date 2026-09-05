@@ -25,6 +25,7 @@ type frontmatter struct {
 	Owner         string  `yaml:"owner"`          // optional stream owner; "" when absent — renders "—".
 	Repo          string  `yaml:"repo"`           // optional owning repo, <owner>/<name>; "" when absent.
 	Board         string  `yaml:"board"`          // optional; "generated" opts the Briefs table into the marker-wrapped generated region (derived-board/04).
+	Traced        *bool   `yaml:"traced"`         // optional; true opts the stream INTO the untraced-brief traceability check (registers-v1 §6.5). nil/false = out (the default): the check never fires over a corpus that has not opted in.
 }
 
 // splitFrontmatter is the SINGLE canonical frontmatter splitter for the whole
@@ -154,6 +155,7 @@ func parseStreamREADME(path string) (*Stream, error) {
 		Owner:         fm.Owner,
 		Repo:          strings.TrimSpace(fm.Repo),
 		Board:         strings.TrimSpace(fm.Board),
+		Traced:        fm.Traced != nil && *fm.Traced,
 		Briefs:        briefs,
 	}, nil
 }

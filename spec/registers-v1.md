@@ -362,7 +362,7 @@ A reader who wants to know whether an ask was actually met follows the citation 
 brief and reads its Evidence. The register's job is to make that walk possible, not to
 perform it.
 
-### 6.5 The reserved brief citation (`satisfies:`) and the requirement-ref grammar
+### 6.5 The brief citation (`satisfies:`) and the requirement-ref grammar
 
 A brief cites the requirements it was written against with the OPTIONAL `satisfies:`
 frontmatter key (`brief-v1.md` §3.2, §3.3). A requirement reference takes one of two
@@ -379,22 +379,47 @@ a conforming implementation MUST NOT introduce a second alias registry for requi
 An alias absent from that registry MUST be flagged — the closed-set property is the point
 of the grammar.
 
-**This citation is RESERVED, not gating**, in the sense the brief-v2 dependency-graph keys
-are reserved: it is parsed, type-checked and shape-validated, and its consequences are
-deferred. Precisely:
+The citation is parsed, type-checked and shape-validated, and it now feeds the corpus-wide
+traceability checks below. Precisely:
 
 - An ABSENT `satisfies:` MUST NOT be flagged, on any brief, ever. No brief is required to
-  cite a requirement in this version.
+  cite a requirement.
 - A PRESENT entry MUST match the grammar above; a violation is a hard flag. A wrong TYPE
   (a scalar where a list is required, a non-string list element) is a parse error.
-- A conforming linter MUST make the reservation VISIBLE — it MUST emit a NOTICE stating
-  that the citation was parsed and is not gating. Silence is not acceptable: a key that is
-  read but never mentioned is indistinguishable from a key that is ignored.
-- The corpus-wide traceability checks — a requirement no brief cites, a brief that cites
-  nothing, a citation naming a requirement that does not exist — are deliberately NOT part
-  of this version and MUST NOT change any exit code here. They are a separate change,
-  because they impose a cost (a linter release and a re-pin in every consumer) that should
-  not be spent before the schema has been used in anger.
+- A conforming linter MUST emit a NOTICE for a brief carrying the key, so that "parsed and
+  traced" is distinguishable from "silently ignored".
+
+**The corpus-wide traceability checks.** These were deferred as reserved at the schema's
+first version and land **advisory-first**, in the §4.5 escalation posture: the two questions
+a legacy corpus answers wrong land as advisory NOTICEs that change no exit code, and only the
+one question a legacy corpus CANNOT answer wrong — a citation of a requirement that was never
+defined — is a hard PROBLEM.
+
+- **`orphan-requirement`** (NOTICE) — a requirement whose `status` is `accepted` and which no
+  brief's `satisfies:` names. Listed with its `impact` and age, sorted by impact descending
+  (the §3.5 ordered axis). A `proposed` requirement is not yet orphan-eligible (the house has
+  not committed to it); a `satisfied`/`withdrawn` one is closed. Advisory: it never changes
+  the exit code.
+- **`untraced-brief`** (NOTICE) — a brief that is `in-progress` or later, in a stream whose
+  README declares `traced: true`, and which names no `satisfies:`. The stream opt-in is
+  required: a corpus-wide untraced sweep over legacy briefs that predate the register is
+  noise (§4.5). Advisory: it never changes the exit code.
+- **`dangling-satisfies`** (PROBLEM) — a `satisfies:` naming an IN-REPO `REQ-<slug>` that this
+  root's register does not define. Unlike the two NOTICEs it cannot be legacy debt: the
+  register is append-only (§3.1, §3.3), so an in-repo id no entry defines can only be a typo
+  or a deleted entry. A cross-repo `<alias>:REQ-<slug>` names a register in another repo the
+  offline linter cannot read — could-not-check, never dangling.
+
+**What the rollup establishes.** `statusgen --requirements-rollup` walks, per requirement, the
+briefs that cite it, each brief's board status, and each brief's Evidence, and reports a
+three-state verdict (`satisfied` only when at least one backing brief exists and every one is
+`done`; `partial`; `could-not-check`). Like the register itself (§6.4), it reports what was
+**authored** — the register and the board rows — not what was **measured**: a `done` backing
+brief means the board says the work landed, not that the tool re-ran the acceptance criteria.
+
+These checks reach a consumer only on an `.assay-versions` statusgen pin bump, which is why
+they land advisory: an un-bumped adopter is unaffected, and a bumped one gets NOTICEs, not a
+red gate, over a corpus authored before the register existed.
 
 ## 7. RETRO register (informative — not implemented)
 
@@ -484,11 +509,19 @@ A conforming linter MUST:
    vocabulary of section 6.2, naming the offending value (sections 3.5, 6.3).
 10. Flag any `satisfies:` entry on a brief that does not match the requirement-ref
     grammar of section 6.5, and NEVER flag its absence.
+11. Flag a `satisfies:` entry naming an in-repo `REQ-<slug>` that this root's
+    REQUIREMENTS register does not define (`dangling-satisfies`, section 6.5) — a hard
+    PROBLEM that changes the exit code. A cross-repo `<alias>:REQ-<slug>` names a
+    register in another repo the offline linter cannot read, so it is could-not-check,
+    never dangling. The two companion checks, `orphan-requirement` (an `accepted`
+    requirement no brief cites) and `untraced-brief` (a forward brief in an opted-in
+    stream that cites nothing), are advisory NOTICEs that MUST NOT change the exit code.
 
 A conforming linter MUST NOT claim sequence-contiguity or gap detection (section 3.2),
 and MUST NOT let a `satisfies:` citation or a REQUIREMENTS entry change an exit code on
-any ground other than the two flags above — the traceability checks are reserved
-(section 6.5).
+any ground other than the three flags above (items 9, 10 and 11) — `orphan-requirement`
+and `untraced-brief` stay advisory-only; `dangling-satisfies` (item 11) is the one
+corpus-wide traceability check that is gating (section 6.5).
 
 A conforming linter SHOULD additionally surface an **advisory** `finding-without-control`
 NOTICE for every unresolved `class: recurring` finding whose class has not landed a
@@ -498,8 +531,10 @@ hard error: forcing it over an unclassified legacy backlog would manufacture
 false-positives (section 4.5). The reference implementation implements it
 (`statusgen/findingcontrol.go`, wired into `--lint`).
 
-A conforming linter MUST emit a NOTICE making the reserved status of the requirement
-citation visible (section 6.5) — a key that is parsed but never mentioned cannot be told
-apart from a key that is ignored. The reference implementation implements the
-REQUIREMENTS parser, the `impact` and lifecycle validation, the requirement-ref grammar
-and that NOTICE in `statusgen/requirements.go`, wired into `--lint`.
+A conforming linter MUST emit a NOTICE stating that requirement traceability is checked
+(section 6.5) — a key that is parsed but never mentioned cannot be told apart from a key
+that is ignored, and the NOTICE is the place a reader learns which of the corpus-wide
+checks are advisory (`orphan-requirement`, `untraced-brief`) and which is gating
+(`dangling-satisfies`). The reference implementation implements the REQUIREMENTS parser,
+the `impact` and lifecycle validation, the requirement-ref grammar and that NOTICE in
+`statusgen/requirements.go`, wired into `--lint`.

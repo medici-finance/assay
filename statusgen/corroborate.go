@@ -772,6 +772,12 @@ func runCorroborate(prsArg string) int {
 		return 1
 	}
 
+	// The stamp scan below honours the same declared fixture-corpus markers the
+	// lint does (isExcludedFixturePath -> isFixtureCorpusPath), and no lint runs
+	// on this path — so announce them here too. Without this the only visible
+	// trace of a skipped subtree would be stamps that never appear in the report.
+	emitFixtureCorpusNotices(".", os.Stderr)
+
 	prStrs := strings.Split(prsArg, ",")
 	var allResults []corroborateResult
 	anyMissing := false

@@ -68,6 +68,14 @@ for every new brief.** It carries the same concepts as data (YAML frontmatter fi
 of only prose, so a script — or the next agent, or you in six months — can rely on the structure
 without re-reading the whole plan to extract it.
 
+**Start here: don't hand-type a brief — generate it.** `statusgen newbrief --stream <s> --title <t>`
+emits this skeleton with every derivable field already correct: the gate computed from the four risk
+answers (it refuses a supplied gate, and in non-interactive mode refuses an unanswered risk question
+rather than defaulting it), the wave computed from `--depends`, the inverse `unblocks:` edge written
+into each named dependency in the same change, and a freshness stamp from a fetch it performs. Hand-
+authoring stays valid (fix a typo without re-running a tool); the generator just removes the fields an
+author can otherwise get wrong. Run `statusgen newbrief --help` for the flags.
+
 ### Brief file template (data-first)
 
 ```markdown

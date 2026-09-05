@@ -372,20 +372,72 @@ func AttestedModelStampOf(events []LabelEvent, isDispatcher func(applier string)
 	return ModelStampOf(names)
 }
 
-// IsDispatcherLogin reports whether a GitHub login is the fleet's DISPATCHER — the desk
-// role's App identity, the only actor whose dispatched-* stamp counts as attestation. It
-// is the roster-derived answer (RoleAppLogin("desk")): false for an unbound desk role, an
-// unconfigured roster, or an empty login, so an unconfigured deployment vouches for
-// nobody rather than defaulting to trust. Inject it as AttestedModelStampOf's predicate
-// wherever the strong form is needed against the live roster.
+// DispatcherRole is the desk ROLE whose App identity is the dispatcher — the ONE declared
+// source of that answer, for the reader AND the writer.
+//
+// WHY IT IS A CONSTANT AND NOT A STRING IN TWO PLACES. The reader (IsDispatcherLogin) and
+// the WRITER (the dispatch verb's stamp step) have to name the same identity or the whole
+// mechanism inverts: a stamp applied under one identity and verified against another reads
+// as a forged self-report, which the floor refuses — so a correctly dispatched, genuinely
+// strong-tier PR is refused while an UNSTAMPED one proceeds on the NOTICE path. That is
+// exactly the failure this constant exists to make impossible: the writer projects the
+// role it must authenticate as from here, the reader projects the login it accepts from
+// here, and a change moves both at once.
+const DispatcherRole = "desk"
+
+// IsDispatcherLogin reports whether a GitHub login is the fleet's DISPATCHER — the
+// DispatcherRole App identity, the only actor whose dispatched-* stamp counts as
+// attestation. It is the roster-derived answer (RoleAppLogin(DispatcherRole)): false for
+// an unbound role, an unconfigured roster, or an empty login, so an unconfigured
+// deployment vouches for nobody rather than defaulting to trust. Inject it as
+// AttestedModelStampOf's predicate wherever the strong form is needed against the live
+// roster.
 func IsDispatcherLogin(login string) bool {
 	want := strings.TrimSpace(login)
 	if want == "" {
 		return false
 	}
-	deskLogin, ok := RoleAppLogin("desk")
+	deskLogin, ok := RoleAppLogin(DispatcherRole)
 	if !ok {
 		return false
 	}
 	return strings.EqualFold(want, deskLogin)
+}
+
+// NonDispatcherStampAppliers names every identity that applied a dispatched-* label the
+// predicate will not vouch for — sorted and de-duplicated, and EMPTY when every stamp
+// label came from the dispatcher.
+//
+// IT EXISTS FOR THE REFUSAL MESSAGE. "Applied by a non-dispatcher identity" is a verdict
+// the operator cannot act on: the two remedies (re-stamp the PR under the dispatcher vs
+// escalate the write to a strong-tier session) are different, and choosing between them
+// needs the login that actually applied the stamp. Reconstructing it by hand from the
+// timeline API is what the field report had to do.
+//
+// A nil predicate vouches for NOBODY, so every stamp applier is listed — the same
+// fail-closed direction AttestedModelStampOf takes, so the message never claims a clean
+// applier set it did not actually check.
+func NonDispatcherStampAppliers(events []LabelEvent, isDispatcher func(applier string) bool) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, e := range events {
+		name := strings.ToLower(strings.TrimSpace(e.Name))
+		if !strings.HasPrefix(name, DispatchedModelPrefix) && !strings.HasPrefix(name, DispatchedTierPrefix) {
+			continue
+		}
+		if isDispatcher != nil && isDispatcher(e.AppliedBy) {
+			continue
+		}
+		who := strings.TrimSpace(e.AppliedBy)
+		if who == "" {
+			who = "(an actor the timeline does not name)"
+		}
+		if seen[who] {
+			continue
+		}
+		seen[who] = true
+		out = append(out, who)
+	}
+	sort.Strings(out)
+	return out
 }

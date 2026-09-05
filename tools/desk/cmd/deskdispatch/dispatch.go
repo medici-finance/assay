@@ -696,6 +696,27 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 		return "PENDING: apply " + strings.Join(labels, " + ") +
 			" under the DISPATCHER's identity the instant the draft PR opens", nil
 	}
+	// The identity comes FIRST, before any label is written. The role is the one deskkit
+	// declares as the dispatcher — the same declaration the floor's reader resolves the
+	// accepted applier login from — so the identity a stamp is WRITTEN under and the
+	// identity it is VERIFIED against cannot drift apart. Writing the labels under the
+	// calling session's own credential is what made a correctly dispatched strong-tier PR
+	// read as a forged self-report and refuse every verdict and ready-flip on it.
+	//
+	// A mint failure is UNVERIFIABLE and stops the step: the alternative — stamping under
+	// the ambient credential — produces an attestation the floor must refuse, and a PR
+	// carrying an untrusted stamp is in a WORSE state than an unstamped one (absent reads
+	// UNKNOWN and proceeds with a NOTICE). So no stamp at all is the safe failure here.
+	tok, tokPath, terr := mintTokenFn(deskkit.DispatcherRole, repo)
+	if terr != nil {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: the %s App installation token for %s could not be minted or read (%s): %v — so the "+
+				"identity the stamp would be applied under cannot be established. NO label was applied: a "+
+				"stamp written under this session's own credential reads as a non-dispatcher stamp and "+
+				"refuses every authority-bearing write on the PR, which is worse than leaving it unstamped.",
+			stepModelStamp, deskkit.DispatcherRole, deskkit.OwnerOf(repo), tokenPathForMessage(tokPath), terr), terr)
+	}
+	dispatcherToken = tok
 	for _, l := range labels {
 		// Label provisioning is idempotent and an already-exists error is the success
 		// case: two dispatchers stamping in parallel must both end up with the label
@@ -708,7 +729,18 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 				stepModelStamp, l, repo, o.pr, firstLine(r.stderr)), r.err)
 		}
 	}
-	return "OK: applied " + strings.Join(labels, " + "), nil
+	return fmt.Sprintf("OK: applied %s as the %s App, the identity the capability floor accepts (%s)",
+		strings.Join(labels, " + "), deskkit.DispatcherRole, tokenPathForMessage(tokPath)), nil
+}
+
+// tokenPathForMessage renders the token file path for a step report or refusal. The PATH is
+// what an operator needs and is safe to print; the token VALUE never is, and never reaches
+// a message from anywhere in this verb.
+func tokenPathForMessage(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return "the minter named no token path"
+	}
+	return "token file " + path
 }
 
 // validTier checks the tier against the dispatch-tier vocabulary the stamp reader owns,

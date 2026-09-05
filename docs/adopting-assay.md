@@ -14,6 +14,36 @@ Enterprise instead — service accounts in place of Apps, protected-branch push-
 place of ruleset bypass — is a separate profile: see
 [`docs/adopting-assay-gitlab.md`](adopting-assay-gitlab.md).
 
+## What adopting Assay actually costs — read this before "three commands"
+
+The turnkey path above is three shell lines, but the *setup it drives* is not free, and the cost
+falls almost entirely on **identities**, not commands. State it plainly here so a reader learns the
+true shape on this page and not at step four:
+
+| What you must provide | Minimum | Why |
+|---|---|---|
+| **Accounts** | **2** — one human, one machine | The human merges and rules on gates; the machine account is what the fleet runs *as*. They must be distinct (the two-accounts prerequisite). |
+| **GitHub App identities** | **the implementer identity + a separate reviewer App** | This one pair is **load-bearing and non-negotiable**: the identity that *writes* a change and the identity that *approves* it must be different, and the forge will not let a PR author approve their own PR. Everything else is attribution, not separation — see **§1a** and [`docs/enforcement-model.md`](enforcement-model.md). |
+| **Supported platform** | **GitHub** (primary); **GitLab** via a separate profile ([`adopting-assay-gitlab.md`](adopting-assay-gitlab.md)) | The runbook is GitHub-shaped; the GitLab profile substitutes service accounts for Apps. |
+| **Supported harness** | **Claude Code**, Opus-class agent | The skills and desk tools are written for it; other harnesses are not a supported path today. |
+
+**Per-App scope cost.** Every role App you *do* create must carry the **same three write duties** —
+`pull_requests: write`, `issues: write`, `contents: write` (`requiredDuties`; see *The required duty
+set* in §3 `setup-reviewer-app`). GitHub offers no narrower toggle, so "a reviewer that can only
+comment" is not a provisionable thing; the boot preflight refuses a role missing any of the three.
+
+**Is there a smaller — "minimal" — supported path?** The larger fleet splits the machine identity
+into per-role Apps (worker / verifier / desk / loop) for a per-role **audit trail**; that split is a
+*decomposition, not a requirement* (§2, *automation identity*). The floor that keeps the product's
+central claim is the implementer↔reviewer pair above. **Which further collapses are supported —
+whether the verifier may share the reviewer's identity, and whether a single-person, single-repo
+adopter is a supported configuration at all — is a live human decision (`medici-finance/assay#463`),
+not yet settled.** Until it is ruled, this guide documents the true cost of the full path honestly
+and does **not** publish a collapsed identity topology as "supported": doing so on a guess is exactly
+what would put the segregation-of-duties claim at risk. What the run-time tooling *already* enforces
+on any path — including a collapsed one — is described in
+[`docs/enforcement-model.md`](enforcement-model.md).
+
 ## Fastest path — the turnkey `assay:install` skill
 
 For a straight install (most adopters), the fastest coherent boot is three steps: add the plugin
@@ -367,6 +397,16 @@ Create the three append-only logs (`docs/streams/{FINDINGS,INTAKE,RETRO}.md`; fo
 `docs/registers.md`). `statusgen` consumes FINDINGS + INTAKE (findings hold affected briefs out of
 Next-up until resolved); RETRO is the cadence log. Numbering must be gap-free; withdraw with a
 tombstone (keep the number, flip disposition), never by deleting a heading.
+
+A fourth register, **REQUIREMENTS** (`docs/streams/requirements/<slug>.md`, per-entry files),
+records what the product was asked to do and links each ask to the briefs written against it via a
+brief's `satisfies:` key. When it is populated, `--lint` runs three traceability checks:
+`orphan-requirement` (NOTICE — an `accepted` requirement no brief cites), `untraced-brief` (NOTICE —
+a forward brief in a stream that opted in with `traced: true` and cites nothing), and
+`dangling-satisfies` (PROBLEM — a `satisfies:` naming a `REQ-<slug>` no entry defines). The two
+NOTICEs never change the exit code, so an adopter is never red-gated over a legacy corpus.
+`statusgen --requirements-rollup` prints the per-release ask→work→evidence rollup. See
+`docs/registers.md` and spec §6.
 
 **Verify:** `--lint` exits 0; then delete a middle entry (`## I-02` between I-01/I-03) and re-run —
 expect NON-zero (proves sequence-contiguity is live). Restore it.
