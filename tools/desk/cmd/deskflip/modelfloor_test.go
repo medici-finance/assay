@@ -8,6 +8,13 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// foreignApplier is the stand-in for "a login that is not the bound dispatcher" in the
+// re-stamp fixtures below. It is a NEUTRAL placeholder, declared once, and it must stay one:
+// this tree is public, so a fixture naming a real account would publish that account's
+// handle to satisfy a test that does not need it. What the rows exercise is only "the
+// predicate does not vouch for this applier", which any non-dispatcher string states.
+const foreignApplier = "not-the-dispatcher"
+
 // captureStderr runs fn with os.Stderr redirected to a temp file and returns what was
 // written. deskflip prints its per-condition lines — including the floor's NOTICE and the
 // loud override line — to os.Stderr, so an assertion on those needs the capture.
@@ -167,8 +174,8 @@ func TestModelFloorRestampedByDispatcherFlips(t *testing.T) {
 	model := deskkit.DispatchedModelPrefix + "opus-4.8"
 	tier := deskkit.DispatchedTierPrefix + "strong"
 	s.stamp(
-		deskkit.LabelEvent{Name: model, AppliedBy: "jojig-dao"}, // the foreign stamp
-		deskkit.LabelEvent{Name: tier, AppliedBy: "jojig-dao"},
+		deskkit.LabelEvent{Name: model, AppliedBy: foreignApplier}, // the foreign stamp
+		deskkit.LabelEvent{Name: tier, AppliedBy: foreignApplier},
 		deskkit.LabelEvent{Name: model, AppliedBy: d, Removed: true}, // the dispatcher un-stamps
 		deskkit.LabelEvent{Name: tier, AppliedBy: d, Removed: true},
 		deskkit.LabelEvent{Name: model, AppliedBy: d}, // and re-stamps as itself
@@ -200,8 +207,8 @@ func TestModelFloorForeignStampStillStandingRefused(t *testing.T) {
 		deskkit.LabelEvent{Name: tier, AppliedBy: d},
 		deskkit.LabelEvent{Name: model, AppliedBy: d, Removed: true},
 		deskkit.LabelEvent{Name: tier, AppliedBy: d, Removed: true},
-		deskkit.LabelEvent{Name: model, AppliedBy: "jojig-dao"}, // ...but a foreign login holds it now
-		deskkit.LabelEvent{Name: tier, AppliedBy: "jojig-dao"},
+		deskkit.LabelEvent{Name: model, AppliedBy: foreignApplier}, // ...but a foreign login holds it now
+		deskkit.LabelEvent{Name: tier, AppliedBy: foreignApplier},
 	)
 
 	var rc int
@@ -210,7 +217,7 @@ func TestModelFloorForeignStampStillStandingRefused(t *testing.T) {
 		t.Fatalf("standing foreign stamp rc = %d, want %d — an earlier dispatcher event must not vouch "+
 			"for a later foreign one", rc, deskkit.ExitRefused)
 	}
-	if !strings.Contains(out, "jojig-dao") {
+	if !strings.Contains(out, foreignApplier) {
 		t.Errorf("the refusal does not name the STANDING applier:\n%s", out)
 	}
 	if m := s.mutated(); len(m) != 0 {
@@ -230,8 +237,8 @@ func TestModelFloorReadsTimelineBeyondTheFirstPage(t *testing.T) {
 	model := deskkit.DispatchedModelPrefix + "opus-4.8"
 	tier := deskkit.DispatchedTierPrefix + "strong"
 	s.stamp(
-		deskkit.LabelEvent{Name: model, AppliedBy: "jojig-dao"},
-		deskkit.LabelEvent{Name: tier, AppliedBy: "jojig-dao"},
+		deskkit.LabelEvent{Name: model, AppliedBy: foreignApplier},
+		deskkit.LabelEvent{Name: tier, AppliedBy: foreignApplier},
 		deskkit.LabelEvent{Name: model, AppliedBy: d, Removed: true},
 		deskkit.LabelEvent{Name: tier, AppliedBy: d, Removed: true},
 		deskkit.LabelEvent{Name: model, AppliedBy: d},

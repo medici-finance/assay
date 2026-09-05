@@ -7,6 +7,13 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// foreignApplier is the stand-in for "a login that is not the bound dispatcher" in the
+// re-stamp fixtures below. It is a NEUTRAL placeholder, declared once, and it must stay one:
+// this tree is public, so a fixture naming a real account would publish that account's
+// handle to satisfy a test that does not need it. What the rows exercise is only "the
+// predicate does not vouch for this applier", which any non-dispatcher string states.
+const foreignApplier = "not-the-dispatcher"
+
 // deskDispatcherLogin is the roster's desk-App login — the ONLY applier whose dispatched-*
 // stamp the floor trusts. Read from the fixture roster, never a literal.
 func deskDispatcherLogin(t *testing.T) string {
@@ -273,8 +280,8 @@ func TestModelFloorReviewRestampedByDispatcherPosts(t *testing.T) {
 	model := deskkit.DispatchedModelPrefix + "opus-4.8"
 	tier := deskkit.DispatchedTierPrefix + "strong"
 	f.stamp(
-		deskkit.LabelEvent{Name: model, AppliedBy: "jojig-dao"}, // the foreign stamp
-		deskkit.LabelEvent{Name: tier, AppliedBy: "jojig-dao"},
+		deskkit.LabelEvent{Name: model, AppliedBy: foreignApplier}, // the foreign stamp
+		deskkit.LabelEvent{Name: tier, AppliedBy: foreignApplier},
 		removedBy(model, d), // the dispatcher un-stamps
 		removedBy(tier, d),
 		deskkit.LabelEvent{Name: model, AppliedBy: d}, // and re-stamps as itself
@@ -301,8 +308,8 @@ func TestModelFloorReadyRestampedByDispatcherFlips(t *testing.T) {
 	model := deskkit.DispatchedModelPrefix + "opus-4.8"
 	tier := deskkit.DispatchedTierPrefix + "strong"
 	f.stamp(
-		deskkit.LabelEvent{Name: model, AppliedBy: "jojig-dao"},
-		deskkit.LabelEvent{Name: tier, AppliedBy: "jojig-dao"},
+		deskkit.LabelEvent{Name: model, AppliedBy: foreignApplier},
+		deskkit.LabelEvent{Name: tier, AppliedBy: foreignApplier},
 		removedBy(model, d),
 		removedBy(tier, d),
 		deskkit.LabelEvent{Name: model, AppliedBy: d},
@@ -331,11 +338,11 @@ func TestModelFloorReviewStandingApplierDecides(t *testing.T) {
 			why: "removed then re-applied by a foreign login",
 			events: func(disp string) []deskkit.LabelEvent {
 				return []deskkit.LabelEvent{
-					{Name: model, AppliedBy: "jojig-dao"},
-					{Name: tier, AppliedBy: "jojig-dao"},
+					{Name: model, AppliedBy: foreignApplier},
+					{Name: tier, AppliedBy: foreignApplier},
 					removedBy(model, disp), removedBy(tier, disp),
-					{Name: model, AppliedBy: "jojig-dao"},
-					{Name: tier, AppliedBy: "jojig-dao"},
+					{Name: model, AppliedBy: foreignApplier},
+					{Name: tier, AppliedBy: foreignApplier},
 				}
 			},
 		},
@@ -345,9 +352,9 @@ func TestModelFloorReviewStandingApplierDecides(t *testing.T) {
 				return []deskkit.LabelEvent{
 					{Name: model, AppliedBy: disp},
 					{Name: tier, AppliedBy: disp},
-					removedBy(model, "jojig-dao"), removedBy(tier, "jojig-dao"),
-					{Name: model, AppliedBy: "jojig-dao"},
-					{Name: tier, AppliedBy: "jojig-dao"},
+					removedBy(model, foreignApplier), removedBy(tier, foreignApplier),
+					{Name: model, AppliedBy: foreignApplier},
+					{Name: tier, AppliedBy: foreignApplier},
 				}
 			},
 		},
@@ -365,7 +372,7 @@ func TestModelFloorReviewStandingApplierDecides(t *testing.T) {
 			if f.postedReview != 0 {
 				t.Fatal("a foreign standing stamp posted a verdict")
 			}
-			if !strings.Contains(errBuf.String(), "jojig-dao") {
+			if !strings.Contains(errBuf.String(), foreignApplier) {
 				t.Errorf("the refusal does not name the standing applier:\n%s", errBuf.String())
 			}
 		})
