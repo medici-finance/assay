@@ -166,8 +166,31 @@ Pre-mortem → detection map:
 | README says "sanctioned replacement" but a skill still carries the recipe | review-only — skills are retired in a follow-up once this verb is verified |
 
 ## Evidence
-<!-- appended at implementation time: one witness row per Verify row —
-     (command, exit code, output line(s), date, runner). -->
+
+Runner: opus-4.8[1m] worker · Date: 2026-09-04 · offline (`KUBECONFIG=/dev/null`) · worktree off `refs/remotes/origin/main`.
+Rows run per-package (`go test -timeout 150s ./cmd/deskgit/... ./internal/forgeban/...`) — the whole `tools/desk`
+module is left to CI, per house guidance (a full `go test ./...` exceeds the local watchdog).
+
+| # | Command | Exit | Witness |
+|---|---------|------|---------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | 0 | build + vet clean |
+| 2 | `go test ./cmd/deskgit/ -run '^TestPushAdvancesFixtureRemote$' -count=1` | 0 | remote `refs/heads/feature-1` == worktree HEAD; argv exactly `git -c credential.helper= push --receive-pack=git-receive-pack origin refs/heads/feature-1:refs/heads/feature-1` |
+| 3 | `go test ./cmd/deskgit/ -run '^TestPushRefusesMainAndDetachedHead$' -count=1` | 0 | current-branch main, mixed-case master, and detached HEAD each exit 5; remote main untouched; no token read |
+| 4 | `go test ./cmd/deskgit/ -run '^TestAsRoleMustMatchSessionIdentity$' -count=1` | 0 | worker session, `--as reviewer` exits 5 with `roleTokenForRepo` never called (push and fetch) |
+| 5 | `go test ./cmd/deskgit/ -run '^TestAmbientCredentialHelperNeverConsulted$' -count=1` | 0 | armed repo-config `credential.helper` canary never fires; argv clears the helper BEFORE the verb |
+| 6 | `go test ./cmd/deskgit/ -run '^TestTokenNeverLeavesTheChild$' -count=1` | 0 | fixture token absent from argv/stdout/stderr/audit on success AND on an injected push failure; askpass dir gone both paths |
+| 7 | `go test ./cmd/deskgit/ -run '^TestPushOptionsRefusedByName$' -count=1` | 0 | `--force`/`--delete`/`--no-verify` each refused by name with their own reason; `--receive-pack=x` by the transport-exec guard; no push constructed |
+| 8 | `go test ./cmd/deskgit/ -run '^TestFetchAsRoleKeepsEveryFetchGuard$' -count=1` | 0 | `fetch --as` still pins upload-pack + refmap + `--no-recurse-submodules`, clears the helper, and refuses a rewritten origin before any token read |
+| 9 | `go test ./cmd/deskgit/... ./internal/forgeban/...` (changed pkgs; full module → CI) | 0 | `ok cmd/deskgit`; `ok internal/forgeban` (no new exec-site ledger entry — `git` is a resolved, non-forge binary) |
+| 10 | `gofmt -l tools/desk/cmd/deskgit` | 0 | empty output |
+| 11 | `cd statusgen && go run . --root .. --lint` | 0 | rc 0 (pre-existing NOTICEs only) |
+
+Fail-first (kit §9) — new guards shown red on a mutated build, then reverted:
+- Drop `-c credential.helper=` from the argv prefix → rows 2, 5, 8 red (`"-c credential.helper=" missing` / argv mismatch).
+- Append the token to the audit detail → row 6 red (`the token value appeared in the audit line`).
+- Make the `--as` identity check always pass → row 4 red (`exit = 0, want 5`).
+- Skip `checkPushSafety` → row 7 red (force/delete/no-verify fall to generic `flag provided but not defined`, losing their named reason; `--receive-pack` still caught by the transport-exec guard — defence in depth).
+- Bypass `isProtectedBranch` in `cmdPush` → row 3 red (`push on main exit = 0, want 5`; mixed-case master likewise).
 
 ## Review
 
