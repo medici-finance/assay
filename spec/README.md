@@ -123,8 +123,8 @@ An adopter's green lint is silent about all of them.
 | `brief-v1.md` §9.2.7 (literal commands) | Only that a Verify table exists with one row whose Command and Expect cells are non-empty. | A prose-only row (`the tests should all pass` / `it works`) lints clean. | — |
 | `brief-v1.md` §9.2.10 (diagnostic shape) | No diagnostic carries a line number; the rule reference appears on some only. | A diagnostic is not machine-locatable within its file. | — |
 | `brief-v1.md` §5.4 (`unblocks` inversion) | Each `unblocks` entry is resolved to a real brief, but mutual inversion with the target's `depends` is never verified. | A one-way dependency edge lints clean, and the wave graph derived from it is wrong in one direction. | — |
-| `registers-v1.md` §8.2.6 (scoped-but-`new`) | Not implemented; the tool has the *inverse* alarm (it ages entries still marked `new`). | An entry scoped into a stream but left `new` is not flagged. | — |
-| `registers-v1.md` §8.2.8 (entry format) for FINDINGS | An entry with an empty `affects:` lints clean, though §4.3 requires one or more brief IDs. Holds for INTAKE (date + disposition key). | A finding that affects nothing passes, and excludes nothing. | — |
+| `registers-v1.md` §9.2.6 (scoped-but-`new`) | Not implemented; the tool has the *inverse* alarm (it ages entries still marked `new`). | An entry scoped into a stream but left `new` is not flagged. | — |
+| `registers-v1.md` §9.2.8 (entry format) for FINDINGS | An entry with an empty `affects:` lints clean, though §4.3 requires one or more brief IDs. Holds for INTAKE (date + disposition key). | A finding that affects nothing passes, and excludes nothing. | — |
 | `registers-v1.md` §2.2 (generated view) for REQUIREMENTS | The entry directory is parsed and validated, but `docs/streams/REQUIREMENTS.md` is not generated: there is no view writer for this register. | A reader who wants the whole register reads the entry directory. No view can go stale, because none is written — but the single-writer view the section requires does not exist. | — |
 
 `brief-v1.md` §9.2.3 (wave-versus-`depends`) is **not** in this table: the specification

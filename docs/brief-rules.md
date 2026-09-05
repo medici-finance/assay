@@ -838,3 +838,35 @@ and needs neither.
     dereferencing row on the assumption that a future lint will supply one — this rule is the
     authoring-time requirement, that proposed lint (if built) is a narrower automated assist layered
     on top.
+
+## Design gate and threat model (risk-gated briefs)
+
+48. **A risk-gated brief passes the DESIGN-APPROVAL GATE before it moves to `in-progress`.**
+    A brief whose `gate` is `human`, or any of whose four `risk` answers is `yes`, may not
+    leave `todo` until it cites an approved **design-decision record** — a `DR-<slug>` entry
+    in the DECISIONS register (`docs/streams/decisions/`, [`../spec/registers-v1.md`](../spec/registers-v1.md)
+    §7) — with its `design:` frontmatter key. The record captures what was decided, the
+    alternatives ruled out, the consequences accepted, its ordered `consequence` axis, and a
+    `human:<name>` `decided-by` stamp. The gate exists so a wrong DESIGN is caught at
+    authoring — when the alternatives were never enumerated — not only when the finished diff
+    reaches the review gate. It is scoped (a `gate: model` all-risks-`no` brief is untouched)
+    and grandfathered by authoring date (a pin bump reds nothing already in flight); the
+    normative rules are [`../spec/lifecycle-v1.md`](../spec/lifecycle-v1.md) §4.4.
+    `statusgen --lint` enforces it (`designgate.go`), three-state: an unreadable register is
+    `could-not-check`, never a silent pass. Design-approval authority is the same human-gate
+    the `gate: human` decision-issue already carries — it is NOT a second channel — and the
+    gate proves an approved record with a human approver EXISTS; it does not mechanically
+    prove that approver differs from the brief's author (the attribution-not-identity limit,
+    `lifecycle-v1.md` §7.1.2).
+
+49. **A risk-gated brief carries a recorded THREAT MODEL — the pre-mortem made mandatory.**
+    The pre-mortem of [`mistake-proofing.md`](mistake-proofing.md) **B5** — "this shipped and
+    was wrong, what went wrong?", each failure mode mapped to the Verify row that catches it —
+    is REQUIRED and RECORDED on any risk-gated brief ([`../spec/brief-v1.md`](../spec/brief-v1.md)
+    §4.7), with an explicit "no row; review-only" line for any failure mode no row covers.
+    This is B5 made mandatory for the briefs where a wrong design costs most, wired into the
+    brief's existing single-point-of-failure note rather than a second pre-mortem ceremony.
+    The recorded threat model is what a reviewer of a core-system-adjacent brief reads to
+    answer the defense-in-depth question — does a lower layer catch the fault with the upper
+    one bypassed. Presence is checkable; whether the enumerated failure modes are the *right*
+    ones is the review gate's judgement (rule 8's honesty split).

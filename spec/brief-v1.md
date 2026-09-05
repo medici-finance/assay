@@ -69,6 +69,7 @@ validated against the value set given.
 | `homed-in` | string | OPTIONAL | The `<owner>/<repo>` the brief's deliverable was re-homed to (a de-housing) — exactly one `/`, both sides non-empty, no whitespace. Absent means a normal in-repo brief. A malformed shape MUST be flagged; the value MUST NOT be checked against a repo allowlist (the shape is all a linter can validate locally). |
 | `measures` | string | OPTIONAL | Name of the process queue this brief instruments (drain-before-instrument). The only wired queue is `verification-debt`. Absent means the brief is not an instrumentation brief. A present value MUST name a wired queue; a present-but-unrecognized name, or a present-but-empty value, MUST be flagged. |
 | `satisfies` | array[string] | OPTIONAL | The requirements this brief was written against, as requirement references — `REQ-<slug>` in-repo, or `<alias>:REQ-<slug>` cross-repo through the `docs/streams/graph-repos.yaml` alias registry (`registers-v1.md` §6.5). **RESERVED, not gating**: absence MUST NEVER be flagged on any brief, and a present entry is shape-validated only. A present entry that does not match the grammar MUST be flagged; a wrong TYPE is a parse error. A conforming linter MUST emit a NOTICE saying the citation was parsed and is not gating. The corpus-wide traceability checks (a requirement no brief cites, a citation naming no requirement) are a separate change and MUST NOT be inferred from this field. |
+| `design` | string | CONDITIONAL | The design-decision record this brief was approved against, as a typed reference `DR-<slug>` into the DECISIONS register (`registers-v1.md` §7). REQUIRED for a **risk-gated** brief in the design-approval gate's scope (`lifecycle-v1.md` §4.4) once it is at `in-progress` or later; OPTIONAL — and never flagged when absent — otherwise. A present value that is not a valid `DR-<slug>` reference, or that dereferences to no record in the register, MUST be flagged; a wrong TYPE is a parse error. The gate is grandfathered (§4.4), so absence is flagged only for briefs in the gate's live scope, never for grandfathered legacy briefs. |
 | `parallel-streams` | array[mapping] | OPTIONAL | Declared shards of an intra-brief split. Each entry is a mapping with a REQUIRED `name` (string) and an OPTIONAL `files` (array of path globs the shard owns); no other key is permitted in an entry. Absent means one worker per brief. Only the entry SHAPE is validated in frontmatter — whether a declared split may actually be dispatched is decided by `statusgen shardcheck` against the file tree, not by the frontmatter linter. A declaration that parses is a request, not a permission. |
 
 ### 3.3 Frontmatter linter requirements
@@ -167,6 +168,26 @@ author — subject to the attribution-not-identity limit in `lifecycle-v1.md` §
 
 The body MUST contain a `## Review` section recording the gate type (from frontmatter)
 and the reviewer's verdict and date.
+
+### 4.7 Threat model (risk-gated briefs)
+
+A **risk-gated** brief — `gate: human`, or any `risk` answer `yes` — MUST carry a
+recorded threat model. This is the pre-mortem of `docs/mistake-proofing.md` **B5** made
+REQUIRED and RECORDED rather than an optional authoring habit: at authoring time the
+author names the ways this change could ship and be wrong, and MAPS each named failure
+mode to the `## Verify` row that would catch it. A failure mode with no row MUST carry an
+explicit line saying so — "no row; review-only" — rather than being silently omitted; an
+unmapped failure mode the reader cannot see is the defect this rule closes.
+
+The threat model plugs into the brief's existing defense-in-depth obligation rather than
+duplicating it: where the project layer requires a single-point-of-failure note (the one
+control the design leans on and the layer(s) behind it), the threat model's failure modes
+and their detection rows are the evidence for that note. A conforming implementation MUST
+NOT stand up a second pre-mortem concept parallel to **B5**.
+
+This is a body-content requirement checked for PRESENCE, not quality — the same posture
+section 4.4 takes for the Verify table. Whether the enumerated failure modes are the
+*right* ones is the review gate's judgement, not the linter's.
 
 ## 5. Structural rules
 

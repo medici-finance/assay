@@ -74,6 +74,14 @@ type BriefFile struct {
 	// flagged and no traceability is enforced from it. A wrong TYPE is a parse
 	// error; a present-but-malformed ref is a PROBLEM in checkBriefFiles.
 	Satisfies []string
+	// Design is the optional brief-v1 `design:` key (sdlc/05): a typed reference
+	// DR-<slug> to the design-decision record this brief was approved against, kept
+	// under docs/streams/decisions/. "" when absent. The design-approval gate
+	// (designgate.go) reads it: a risk-gated brief authored after the cutover may
+	// not sit at in-progress-or-later without a design record that dereferences. A
+	// wrong TYPE is a parse error; the ref grammar and the dereference are checked
+	// in designgate.go, not here (the same split satisfies:/Satisfies uses).
+	Design string
 	// Consumers is the optional brief-v1 `consumers:` list (brief-rule 9): the
 	// readers of a shared value this brief changes,
 	// each routed `<site>: fixed-here | follow-up <stream>/<NN> | out-of-scope
@@ -671,6 +679,19 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 			bf.Satisfies = list
 		} else {
 			addBad("satisfies: %v", lerr)
+		}
+	}
+	// design is an OPTIONAL but KNOWN key (sdlc/05): the DR-<slug> design-decision
+	// record this brief was approved against. Absence is the neutral default and is
+	// NEVER flagged on its own — only the design-approval gate (designgate.go),
+	// scoped to risk-gated post-cutover briefs at in-progress-or-later, turns an
+	// absent record into a PROBLEM. A wrong TYPE is a parse error here; the ref
+	// grammar and the dereference are checked in designgate.go.
+	if v, ok := data["design"]; ok {
+		if s, ok := v.(string); ok {
+			bf.Design = s
+		} else {
+			addBad("design must be a string")
 		}
 	}
 	// decision-issue is an OPTIONAL but KNOWN key: the GitHub

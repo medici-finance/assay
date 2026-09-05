@@ -149,6 +149,17 @@ failure mode is mapped to the Verify row that would catch it. A failure mode wit
 is the finding — either add the row or record why it is review-only. (This is the useful
 core of FMEA — the detection column — without its discredited risk-priority arithmetic.)
 
+**On a RISK-GATED brief this pre-mortem is REQUIRED and RECORDED, not optional** (sdlc/05,
+[`../spec/brief-v1.md`](../spec/brief-v1.md) §4.7). A brief whose `gate` is `human`, or any
+of whose four `risk` answers is `yes`, MUST carry the pre-mortem as its recorded threat
+model: the named failure modes, each mapped to the Verify row that catches it, with an
+explicit "no row; review-only" line for any mode no row covers. This is B5 made mandatory
+for the briefs where a wrong design costs most — it is NOT a second pre-mortem concept, and
+a design must plug the threat model into its existing single-point-of-failure note (the one
+control the design leans on and the layer(s) behind it) rather than stand up a parallel
+ceremony. The recorded threat model is the evidence a reviewer reads when answering the
+defense-in-depth question: does a lower layer catch the fault with the upper one bypassed?
+
 **B6 — Negative control on the Verify table.** A Verify table SHOULD be able to fail: for
 a table guarding a deliverable, ask what a *wrong-but-plausible* deliverable looks like
 and confirm at least one row goes red on it. A table of presence-greps that passes on a
