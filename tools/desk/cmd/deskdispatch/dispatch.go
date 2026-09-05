@@ -147,6 +147,11 @@ func dispatch(o dispatchOpts) error {
 		for i, s := range dispatchSteps {
 			fmt.Printf("  %d %s\n", i+1, s)
 		}
+		if line, herr := deskkit.HookDryRunLine(deskkit.HookBeforeRun); herr != nil {
+			return herr
+		} else {
+			fmt.Println("  " + line)
+		}
 		prompt, perr := assemblePrompt(o, plan, "")
 		if perr != nil {
 			return perr
@@ -199,6 +204,21 @@ func dispatch(o dispatchOpts) error {
 				"dispatch it must not make.", stepWorktreeCreate, wtName, wt.stdout), nil)
 	}
 	o.say("%s OK: %s on %s", stepWorktreeCreate, home, branch)
+
+	// before_run — runs after the worktree is prepared and BEFORE the prompt is emitted (the
+	// agent's "run"). FATAL failure class: a failure ABORTS the attempt — no prompt is
+	// emitted — and, because this is the one lifecycle point AFTER the durable claim, the
+	// claim is RELEASED so a corrected re-run is not wedged behind a dispatcher that never
+	// dispatched. The hook is the checked form of the KUBECONFIG=/dev/null envelope every
+	// agent is otherwise asked to remember.
+	if _, herr := deskkit.RunHook(deskkit.HookBeforeRun, deskkit.HookEnv{
+		RunKey: plan.claimKey, Worktree: home, Repo: repo, Role: o.kit,
+	}); herr != nil {
+		released := releaseClaim(o, plan.claimScript, plan.claimKey, repo)
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"step before_run: the before_run hook failed, so no prompt is emitted. The claim was %s. Hook: %v",
+			released, herr), herr)
+	}
 
 	prompt, perr := assemblePrompt(o, plan, home)
 	if perr != nil {
@@ -494,6 +514,21 @@ func stepClaim(o dispatchOpts, repo, script, claimKey string) error {
 			"step %s: the claim on %s could not be established (%s) — fail closed, NEVER 'assume free'.",
 			stepClaimAcquire, claimKey, firstLine(r.stderr)), r.err)
 	}
+}
+
+// releaseClaim releases the durable claim via the consumer claim script's own `release`
+// verb — the same tool the acquire went through, never a re-implementation. It is used when
+// a lifecycle failure AFTER the claim (a failed before_run hook) must not wedge the item
+// behind a dispatcher that never dispatched. It returns a human phrase for the report; a
+// release that itself fails is surfaced in that phrase rather than swallowed, because a
+// claim this verb believed it released but did not is worse than one it never touched.
+func releaseClaim(o dispatchOpts, script, claimKey, repo string) string {
+	r := runCmd(o.root, script, "release", claimKey, "--repo", repo)
+	if r.err != nil {
+		return "NOT released (release failed: " + firstLine(refusalDetail(r)) + ") — release it by hand: " +
+			script + " release " + claimKey + " --repo " + repo
+	}
+	return "released"
 }
 
 // refusalDetail picks the claim tool's refusal text: its errors go to stderr, its DEDUP

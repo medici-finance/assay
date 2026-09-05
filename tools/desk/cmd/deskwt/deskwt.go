@@ -249,6 +249,7 @@ func cmdAdd(args []string) (err error) {
 	fs.SetOutput(new(strings.Builder))
 	branch := fs.String("branch", "", "new branch name for the worktree (default: the worktree name)")
 	base := fs.String("base", "origin/main", "start-point ref for the new worktree")
+	dryRun := fs.Bool("dry-run", false, "print the lifecycle-hook plan (HOOK after_create: ...) and touch nothing")
 	// Usage puts <name> first, but Go's flag stops at the first positional;
 	// parse in a loop so flags may appear before OR after the name (a stray/unknown flag
 	// still errors → refused).
@@ -272,6 +273,18 @@ func cmdAdd(args []string) (err error) {
 	}
 	if !refRe.MatchString(*base) || strings.Contains(*base, "..") {
 		return deskkit.Refused("refused: --base must be a plain ref (no leading dash, no '..')")
+	}
+
+	// --dry-run: report the after_create hook plan and touch nothing (no claim, no worktree).
+	if *dryRun {
+		line, herr := deskkit.HookDryRunLine(deskkit.HookAfterCreate)
+		if herr != nil {
+			return herr
+		}
+		fmt.Fprintln(os.Stderr, line)
+		ac.successResult = deskkit.ResultDryRun
+		ac.detail = "dry-run add " + name + " (" + line + ")"
+		return nil
 	}
 
 	dir, gerr := getwd()
@@ -344,6 +357,20 @@ func cmdAdd(args []string) (err error) {
 	if !set[resolvePath(target)] {
 		return deskkit.Unverifiable("git worktree add reported success but "+target+" is not in `git worktree list`", nil)
 	}
+
+	// after_create — runs on a NEWLY created worktree only (we are past the never-clobber
+	// guard, so this is always a fresh path). FATAL failure class: a hook that fails ABORTS
+	// creation, so the just-made worktree is rolled back rather than left half-provisioned
+	// with, e.g., no credential helper. The hook runs with cwd = the new worktree.
+	if _, herr := deskkit.RunHook(deskkit.HookAfterCreate, deskkit.HookEnv{
+		RunKey: name, Worktree: resolvePath(target), Repo: repo,
+	}); herr != nil {
+		// Roll back best-effort — the worktree is proven fresh (just created off the base),
+		// so removeWorktreeDir's plain delete+prune is safe. The hook error is what we return.
+		_ = removeWorktreeDir(guard, dir, resolvePath(target))
+		return deskkit.Unverifiable("after_create hook failed; worktree "+target+" rolled back", herr)
+	}
+
 	ac.detail = "added " + target + " (branch " + br + " tracking " + *base + ")"
 	if reclaimed != "" {
 		ac.detail += "; " + reclaimed
@@ -361,16 +388,30 @@ func cmdRemove(args []string) (err error) {
 
 	fs := flag.NewFlagSet("remove", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
-	// No flags are defined: a stray flag (e.g. --force) makes Parse error → refused.
-	// There is NO force / override flag anywhere in this tool.
+	// The ONLY flag is --dry-run (report the before_remove hook plan, touch nothing). A stray
+	// flag — e.g. --force — still makes Parse error → refused. There is NO force / override
+	// flag anywhere in this tool.
+	dryRun := fs.Bool("dry-run", false, "print the lifecycle-hook plan (HOOK before_remove: ...) and touch nothing")
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
-		return deskkit.Refused("refused: remove takes no flags (there is no --force): " + perr.Error())
+		return deskkit.Refused("refused: remove takes no flags but --dry-run (there is no --force): " + perr.Error())
 	}
 	if len(positionals) != 1 {
 		return deskkit.Refused("refused: remove takes exactly one <path> argument")
 	}
 	path := positionals[0]
+
+	// --dry-run: report the before_remove hook plan and touch nothing.
+	if *dryRun {
+		line, herr := deskkit.HookDryRunLine(deskkit.HookBeforeRemove)
+		if herr != nil {
+			return herr
+		}
+		fmt.Fprintln(os.Stderr, line)
+		ac.successResult = deskkit.ResultDryRun
+		ac.detail = "dry-run remove " + path + " (" + line + ")"
+		return nil
+	}
 
 	dir, gerr := getwd()
 	if gerr != nil {
@@ -434,6 +475,15 @@ func cmdRemove(args []string) (err error) {
 	// the only thing lost is untracked artifacts. removeWorktreeDir does the plain recursive
 	// remove + prune + positive-gone verification — the SAME primitive `prune` uses;
 	// there is no code path that overrides a failed guard.
+	// before_remove — runs before deletion. LOGGED failure class: a hook failure is reported
+	// but the deletion PROCEEDS (a cleanup hook that fails must never strand a worktree the
+	// caller asked to remove). The hook runs with cwd = the worktree about to be removed.
+	if _, herr := deskkit.RunHook(deskkit.HookBeforeRemove, deskkit.HookEnv{
+		RunKey: filepath.Base(rt), Worktree: rt, Repo: repoOrEmpty(dir),
+	}); herr != nil {
+		fmt.Fprintln(os.Stderr, "deskwt: before_remove hook failed (deletion proceeds): "+herr.Error())
+	}
+
 	if rmErr := removeWorktreeDir(guard, dir, rt); rmErr != nil {
 		return rmErr
 	}
