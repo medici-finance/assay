@@ -1,0 +1,21 @@
+# Fixture: the section pins v1.2.3 but a pin LINE still repeats the old tag.
+# `assay:install` reads the tag from the pin line, so a half-applied re-pin —
+# section bumped, a line missed — would download a different release than the one
+# whose checksums were verified.
+schema: paired-versions-v1
+
+plugin: "0.5.0"
+
+statusgen:
+  release_home: example-org/example-releases
+  tag: v1.2.3
+  platforms:
+    darwin-arm64: statusgen-darwin-arm64 v1.2.3 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    linux-amd64:  statusgen-linux-amd64  v1.0.0 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+desk-tools:
+  release_home: example-org/example-releases
+  tag: v1.2.3
+  platforms:
+    darwin-arm64: desk-tools-darwin-arm64.tar.gz v1.2.3 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    linux-amd64:  desk-tools-linux-amd64.tar.gz  v1.2.3 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd

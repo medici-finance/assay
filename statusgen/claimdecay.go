@@ -90,6 +90,20 @@ func decayDeadClaims(root string, branches []string) []string {
 	if len(branches) == 0 {
 		return branches
 	}
+	// Forge gate (#349): the decay reads PR state through `gh`, a
+	// GitHub-only client. On a remote that is DEFINITIVELY not GitHub (a GitLab
+	// host), shelling `gh` would fail every single run — that is not
+	// "unavailable this run", it is a pass that does not apply to this forge. Say
+	// so with a DISTINCT message and return the branch set unchanged, so a
+	// three-state instrument never dresses a permanent not-applicable as a
+	// transient could-not-check. forgeUnknown (self-hosted, no remote) is left to
+	// the `gh` attempt below: "could not tell" is not "confirmed not GitHub".
+	if detectForge(root) == forgeGitLab {
+		fmt.Fprintf(os.Stderr, "NOTICE: dead-claim decay NOT APPLICABLE on this forge — the `origin` remote is a GitLab host, "+
+			"and PR-state decay reads GitHub through `gh`. This pass does not run here and will not until statusgen reads merge-request state through the forge seam; "+
+			"it is not \"unavailable this run\". Open branches of merged/closed merge requests are not decayed, so they may still consume their stream's dispatch cap.\n")
+		return branches
+	}
 	dead, err := listMergedClosedBranches(root)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "NOTICE: dead-claim decay unavailable — %v. "+
