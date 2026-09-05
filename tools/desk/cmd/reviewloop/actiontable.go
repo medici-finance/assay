@@ -94,6 +94,16 @@ var actionTable = map[string]rule{
 	// ---- benign head advance ----
 	"MERGE-CURR": {DispositionNoOp, "", "keep-current merge; the PR's own files are unchanged since the last review — deliberately NOT a re-review"},
 
+	// ---- the trusted human maintainer's own PR (#177) ----
+	// A trusted human's own open PR with no reviewer verdict at head — e.g. the
+	// closure artifact of a human-gated brief. The review desk deliberately does NOT
+	// review a human's own ratified ruling (a model reviewing it inverts the human
+	// gate), and the author merges it. NoOp, emphatically not SURFACE: there is no
+	// desk work item here and no human to alert — the human author already owns it.
+	// This is what keeps such a PR out of the neglect metric on the reactor side, the
+	// same way the board keeps it out of the UNREVIEWED count.
+	"HUMAN-OWNED": {DispositionNoOp, "", "a trusted human maintainer's own PR with no desk review at head — the author owns and merges it; the review desk declines to review a human's ratified ruling (#177)"},
+
 	// ---- waiting on someone else, visible, never dropped ----
 	"BLOCKED": {DispositionWait, "", "the reviewer bot requested changes at head — the worker must act"},
 	"WAIT-CI": {DispositionWait, "", "CI is still running at head — waiting, not idle"},
