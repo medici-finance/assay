@@ -96,7 +96,7 @@ dependency edges, no DoD.
 
 Entries are per-entry files under `docs/streams/requirements/<slug>.md` with slug IDs
 (`REQ-<slug>`). The normative format, the ordered `impact` axis, the `proposed → accepted
-→ satisfied → withdrawn` lifecycle and the reserved `satisfies:` citation on a brief are
+→ satisfied → withdrawn` lifecycle and the `satisfies:` citation on a brief are
 specified in [`../spec/registers-v1.md`](../spec/registers-v1.md) §6 — unlike the two
 sections above, this one has never had a legacy single-file dialect, so the spec is the
 only description of it and this page does not restate the fields.

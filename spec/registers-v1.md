@@ -362,7 +362,7 @@ A reader who wants to know whether an ask was actually met follows the citation 
 brief and reads its Evidence. The register's job is to make that walk possible, not to
 perform it.
 
-### 6.5 The reserved brief citation (`satisfies:`) and the requirement-ref grammar
+### 6.5 The brief citation (`satisfies:`) and the requirement-ref grammar
 
 A brief cites the requirements it was written against with the OPTIONAL `satisfies:`
 frontmatter key (`brief-v1.md` §3.2, §3.3). A requirement reference takes one of two
@@ -509,11 +509,19 @@ A conforming linter MUST:
    vocabulary of section 6.2, naming the offending value (sections 3.5, 6.3).
 10. Flag any `satisfies:` entry on a brief that does not match the requirement-ref
     grammar of section 6.5, and NEVER flag its absence.
+11. Flag a `satisfies:` entry naming an in-repo `REQ-<slug>` that this root's
+    REQUIREMENTS register does not define (`dangling-satisfies`, section 6.5) — a hard
+    PROBLEM that changes the exit code. A cross-repo `<alias>:REQ-<slug>` names a
+    register in another repo the offline linter cannot read, so it is could-not-check,
+    never dangling. The two companion checks, `orphan-requirement` (an `accepted`
+    requirement no brief cites) and `untraced-brief` (a forward brief in an opted-in
+    stream that cites nothing), are advisory NOTICEs that MUST NOT change the exit code.
 
 A conforming linter MUST NOT claim sequence-contiguity or gap detection (section 3.2),
 and MUST NOT let a `satisfies:` citation or a REQUIREMENTS entry change an exit code on
-any ground other than the two flags above — the traceability checks are reserved
-(section 6.5).
+any ground other than the three flags above (items 9, 10 and 11) — `orphan-requirement`
+and `untraced-brief` stay advisory-only; `dangling-satisfies` (item 11) is the one
+corpus-wide traceability check that is gating (section 6.5).
 
 A conforming linter SHOULD additionally surface an **advisory** `finding-without-control`
 NOTICE for every unresolved `class: recurring` finding whose class has not landed a
@@ -523,8 +531,10 @@ hard error: forcing it over an unclassified legacy backlog would manufacture
 false-positives (section 4.5). The reference implementation implements it
 (`statusgen/findingcontrol.go`, wired into `--lint`).
 
-A conforming linter MUST emit a NOTICE making the reserved status of the requirement
-citation visible (section 6.5) — a key that is parsed but never mentioned cannot be told
-apart from a key that is ignored. The reference implementation implements the
-REQUIREMENTS parser, the `impact` and lifecycle validation, the requirement-ref grammar
-and that NOTICE in `statusgen/requirements.go`, wired into `--lint`.
+A conforming linter MUST emit a NOTICE stating that requirement traceability is checked
+(section 6.5) — a key that is parsed but never mentioned cannot be told apart from a key
+that is ignored, and the NOTICE is the place a reader learns which of the corpus-wide
+checks are advisory (`orphan-requirement`, `untraced-brief`) and which is gating
+(`dangling-satisfies`). The reference implementation implements the REQUIREMENTS parser,
+the `impact` and lifecycle validation, the requirement-ref grammar and that NOTICE in
+`statusgen/requirements.go`, wired into `--lint`.
