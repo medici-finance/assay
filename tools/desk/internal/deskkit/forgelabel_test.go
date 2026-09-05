@@ -236,7 +236,7 @@ func TestFlipRefusesUnsupportedForge(t *testing.T) {
 
 	// The positive control, without which the negative one proves nothing: with an opaque id
 	// present the SAME code path does perform the mutation.
-	t.Run("performs_the_mutation_when_the_backend_serves_an_id", func(t *testing.T) {
+	t.Run("mutates_when_an_id_is_served", func(t *testing.T) {
 		rec := newWriteRecorder(t, map[string]any{
 			"number": 7, "state": "open", "draft": true, "node_id": "PR_node",
 			"head": map[string]any{"sha": "abc123", "ref": "feat/x"},

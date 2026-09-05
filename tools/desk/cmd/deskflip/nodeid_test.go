@@ -26,11 +26,11 @@ import (
 // TestNodeIDNotConstructed drives the whole verb and asserts the mutation carried the id the
 // CHANGE READ produced — a value the verb has no other way to obtain.
 func TestNodeIDNotConstructed(t *testing.T) {
-	t.Run("the_mutation_targets_the_id_the_change_read_returned", func(t *testing.T) {
+	t.Run("mutation_targets_the_id_that_was_read", func(t *testing.T) {
 		// A deliberately unguessable id: nothing in this package could compose it from the
 		// repo, the number, or any other value it holds. If the mutation carries it, the
 		// mutation got it from the change.
-		const served = "PR_kwDOnot_derivable_from_repo_or_number_9f31"
+		const served = "PR_only_a_change_read_has_this"
 		s := newStub()
 		s.pr.NodeID = served
 		s.install(t)
@@ -66,7 +66,7 @@ func TestNodeIDNotConstructed(t *testing.T) {
 
 	// The refusal half: a backend that serves NO opaque id gets a could-not-check, not a
 	// locally composed one. The recorder must show no write at all.
-	t.Run("a_change_with_no_opaque_id_refuses_rather_than_composing_one", func(t *testing.T) {
+	t.Run("no_opaque_id_refuses_not_composes", func(t *testing.T) {
 		s := newStub()
 		s.pr.NodeID = "-" // rendered, then stripped below so the payload carries an EMPTY node_id
 		s.install(t)
@@ -86,7 +86,7 @@ func TestNodeIDNotConstructed(t *testing.T) {
 	// The rule is enforced by the SIGNATURE, not by convention: ReadyFlip takes the change the
 	// backend returned, so there is no string parameter for a composed id to arrive through.
 	// A GitLab-shaped id built by hand cannot reach the mutation at all.
-	t.Run("a_hand_built_gitlab_id_cannot_be_handed_to_the_flip", func(t *testing.T) {
+	t.Run("no_composed_id_reaches_the_flip", func(t *testing.T) {
 		src, err := readDeskflipSource()
 		if err != nil {
 			t.Fatalf("could-not-check: %v", err)

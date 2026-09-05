@@ -265,7 +265,7 @@ func TestForgeGithubGolden(t *testing.T) {
 			// It must not collapse to CONFLICTING (which would refuse a flip that should
 			// proceed) nor to MERGEABLE (the fail-open half) — UNKNOWN is the only honest
 			// mapping, and it is what the consuming gate reads as could-not-check.
-			name: "get_pull_request_mergeable_not_yet_computed",
+			name: "get_pull_request_mergeable_unknown",
 			setup: func(s *goldenServer) {
 				s.pull = map[string]any{
 					"number": 7, "state": "open", "draft": true, "node_id": "PR_node",
@@ -456,7 +456,7 @@ func TestForgeGithubGolden(t *testing.T) {
 		{
 			// 422 on create is "already exists", which for an ENSURE is success — the golden
 			// shows the reconciliation continuing past it rather than aborting.
-			name: "apply_labels_existing_label_is_not_an_error",
+			name: "apply_labels_existing_label_ok",
 			setup: func(s *goldenServer) {
 				s.labelCreateStatus = http.StatusUnprocessableEntity
 				s.prLabels = []map[string]any{}
@@ -470,7 +470,7 @@ func TestForgeGithubGolden(t *testing.T) {
 		{
 			// 404 on removal is "already absent", the success case for an idempotent removal
 			// — and the label is NOT reported as removed, because it was not.
-			name: "apply_labels_absent_removal_is_not_an_error",
+			name: "apply_labels_absent_removal_ok",
 			setup: func(s *goldenServer) {
 				s.labelDeleteStatus = http.StatusNotFound
 			},

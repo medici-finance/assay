@@ -677,7 +677,7 @@ func glCases() []glCase {
 			// An id naming a DIFFERENT project than the call is refused rather than resolved
 			// in favour of either half: silently trusting one would edit a note in the wrong
 			// project.
-			name: "edit_comment_refuses_a_project_mismatch", method: "EditComment",
+			name: "edit_comment_refuses_a_project_swap", method: "EditComment",
 			setup: func(s *glServer) {},
 			run: func(f *GitLabForge) (any, error) {
 				return nil, f.EditComment(glRepo, "gitlab:someone-else/thing!7#note900", "new body")
@@ -702,7 +702,7 @@ func glCases() []glCase {
 		{
 			// A duplicate label name is the ensure's post-condition already holding, not a
 			// failure — the golden shows the PUT still being issued after it.
-			name: "apply_labels_existing_label_is_not_an_error", method: "ApplyLabels",
+			name: "apply_labels_existing_label_ok", method: "ApplyLabels",
 			setup: func(s *glServer) {
 				s.labelCreateStatus = http.StatusConflict
 				s.updateMR = glMR(nil)

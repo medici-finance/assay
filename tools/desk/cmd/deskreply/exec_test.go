@@ -25,7 +25,7 @@ import (
 // independent layers, and the second is checked against a recording server that must see zero
 // requests — an assertion the argv-era test could not make at all.
 func TestForgeRefusesWithoutMintedToken(t *testing.T) {
-	t.Run("this_package_refuses_to_hand_over_an_empty_token", func(t *testing.T) {
+	t.Run("refuses_to_hand_over_an_empty_token", func(t *testing.T) {
 		old := ghToken
 		ghToken = ""
 		t.Cleanup(func() { ghToken = old })
