@@ -136,6 +136,27 @@ facts:
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-04 opus-4.8[1m]-verifier (verify-desk dispatch), merged main 4e500df
+
+Runner != implementer. Offline (KUBECONFIG=/dev/null). gate: model, risk {all no}, irreversible: no.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | grep -n 'No lint enforces this yet' plugins/assay/skills/author-brief/SKILL.md | 1 | no hits — stale claim removed | 2026-09-04 | opus-4.8[1m]-verifier |
+| 2 | test -f statusgen/consumers.go | 0 | present | 2026-09-04 | opus-4.8[1m]-verifier |
+| 3 | git grep -n 'guardrail: ' -- tools/skillslint/guardrail.go | 0 | 4 hits | 2026-09-04 | opus-4.8[1m]-verifier |
+| 4 | git grep -c skillslint -- .github/workflows/ | 0 | ci.yml:8 — gate wired into PR workflow (inverts) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 5 | git grep -n ruleTagFor -- statusgen/lintaudit.go | 0 | 5 hits | 2026-09-04 | opus-4.8[1m]-verifier |
+| 6 | git grep -n 'unattributed:' -- statusgen/lintaudit.go | 0 | lintaudit.go:67 | 2026-09-04 | opus-4.8[1m]-verifier |
+| 7 | go test ./statusgen/ -run EnforcementStatus -count=1 | 0 | ok statusgen 17.243s | 2026-09-04 | opus-4.8[1m]-verifier |
+| 8 | go test ./tools/skillslint/ -count=1 | 0 | ok tools/skillslint 72.883s | 2026-09-04 | opus-4.8[1m]-verifier |
+| 9 | go test ./tools/skillslint/ -run GeneratedBlockDiffFailsOnHandEdit -count=1 | 0 | PASS | 2026-09-04 | opus-4.8[1m]-verifier |
+| 10 | go test ./statusgen/ -run EnforcementStatusTracksTheLint -count=1 | 0 | PASS | 2026-09-04 | opus-4.8[1m]-verifier |
+| 11 | grep -c 'nothing enforces this yet' plugins/assay/skills/author-brief/SKILL.md | 1 | 0 — instruction gone | 2026-09-04 | opus-4.8[1m]-verifier |
+
+**VERIFY: PASS** — all 11 rows ran; dereference rows 1/4/11 inverted authoring->implementation as specified.
+
+**RISK-VALUE: DERIVED** — consumers-followup-missing-brief = "fatal" (StatusFatal) @ statusgen/enforcementstatus.go:124 — a follow-up whose target is absent from every stream README routes into add() = a --lint PROBLEM (consumers.go:370-392: add=problem vs notice=advisory); the verify-row family is advisory (verifyrows.go:26 NOTICE). Classification matches the lint's real behavior; reversible registry edit.
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the

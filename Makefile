@@ -30,9 +30,10 @@ LDFLAGS  := -X $(DESK_PKG).SourceSHA=$(SHA) -X $(DESK_PKG).BuiltAt=$(BUILT_AT)
 
 DESK_CMDS := $(wildcard $(DESK_DIR)/cmd/*)
 
-.PHONY: desk-build desk-install desk-manifest desk-hook-install desk-test skillslint guardrail-sync
+.PHONY: desk-build desk-install desk-manifest desk-hook-install desk-test skillslint guardrail-sync paired-versions
 
-SKILLSLINT_DIR := tools/skillslint
+SKILLSLINT_DIR       := tools/skillslint
+PAIREDVERSIONS_DIR   := tools/pairedversions
 
 ## desk-build: local unprivileged build into tools/desk/dist/
 desk-build:
@@ -126,6 +127,18 @@ desk-test:
 ## never a quiet pass. Offline; safe for agents/CI. See tools/skillslint/README.md.
 skillslint:
 	@cd $(SKILLSLINT_DIR) && go run . --root ../..
+
+## paired-versions: assert the adopter FRONT DOOR is consistent — plugin.json's
+## version equals paired-versions.yaml's `plugin`, each paired tag is a PUBLISHED
+## release of its release home, and every per-platform sha256 equals that
+## release's own checksums.txt entry. `assay:install` resolves the binary an
+## adopter gets from that manifest, so a plugin bump that skipped the re-pin
+## installs the tool the PREVIOUS plugin was paired with.
+## Three-state and fail-closed: a disagreement and a could-not-check both exit
+## non-zero. Reads api.github.com; honours $GH_TOKEN/$GITHUB_TOKEN.
+## See tools/pairedversions/README.md.
+paired-versions:
+	@cd $(PAIREDVERSIONS_DIR) && go run . --root ../..
 
 ## guardrail-sync: REGENERATE every shared-guardrail copy from its one declared
 ## source, .claude/guardrails/GUARDRAILS.md. Edit a shared rule THERE, run this,

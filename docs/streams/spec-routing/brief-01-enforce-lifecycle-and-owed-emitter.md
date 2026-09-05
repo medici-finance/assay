@@ -171,6 +171,28 @@ facts:
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-04 opus-4.8[1m]-verifier (verify-desk dispatch), merged main 4e500df
+
+Runner != implementer. Offline (KUBECONFIG=/dev/null). statusgen built from the merged tree (stale-oracle avoidance). gate: model, risk {all no}, irreversible: no.
+
+| # | Command | Exit | Key output | Date | Runner |
+|---|---------|------|-----------|------|--------|
+| 1 | git grep -niE routes-to -- statusgen/ | 0 | matches in lifecycleheader.go, lifecyclelint.go, owedissues.go (+tests) — header enforcement exists (inverts) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 2 | grep -n '^## 8. Spec and scoping-doc lifecycle' spec/lifecycle-v1.md | 0 | 289 — authority present on main | 2026-09-04 | opus-4.8[1m]-verifier |
+| 3 | git grep -niE authoring-owed owed-issues -- statusgen/ | 0 | owedissues.go, lifecyclelint.go, main.go (--owed-issues flag) — inverts | 2026-09-04 | opus-4.8[1m]-verifier |
+| 4 | git grep -n 'decisionMarker(' statusgen/decisionissues.go | 0 | defined :38, used :72,:183 | 2026-09-04 | opus-4.8[1m]-verifier |
+| 5 | git grep -n 'unattributed:' statusgen/lintaudit.go | 0 | :67 | 2026-09-04 | opus-4.8[1m]-verifier |
+| 6 | go test . -run SpecStatusHeader (in statusgen/) | 0 | PASS 9 subtests (uppercase-DRAFT->unclassified, prose-tail discarded, empty Routes-to not counted) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 7 | go test . -run RoutesToRequired | 0 | PASS | 2026-09-04 | opus-4.8[1m]-verifier |
+| 8 | go test . -run AuthoringOwed | 0 | PASS 4 subtests (citing-brief flips owed->not-owed; title-mention/substring-path do NOT clear) | 2026-09-04 | opus-4.8[1m]-verifier |
+| 9 | go test . -run OwedIssueMarkerDedup | 0 | PASS | 2026-09-04 | opus-4.8[1m]-verifier |
+| 10 | statusgen --root . --lint | 0 | LINT: PASS — legacy DRAFT specs fire lifecycle-unclassified NOTICEs, IGNORED not defaulted up (§8.6); no lifecycle PROBLEMs | 2026-09-04 | opus-4.8[1m]-verifier |
+| 11 | statusgen --root . --consumers --brief spec-routing/01 | 0 | via merged-brief recipe (b256012 vs 814c0cb): 1 corroborated, 0 disproved; the self-routed follow-up CORROBORATED | 2026-09-04 | opus-4.8[1m]-verifier |
+
+**VERIFY: PASS** — all 11 rows checked-clean; §8.6 legacy-ignore, §8.5 dereference, and --owed-issues idempotency positively controlled; tree stays green.
+
+**RISK-VALUE: DERIVED** — {lifecycleDraft,lifecycleApproved,lifecycleRouted} = "draft"/"approved"/"routed" @ statusgen/lifecycleheader.go:29-31 — verbatim the §8.1 normative token set (case-sensitive; uppercase DRAFT -> unclassified, confirmed by the header-parser test); §8 authority present on main (row 2).
+**RISK-VALUE: DERIVED** — workflow permissions = {contents: read, issues: write} @ docs/workflow-templates/authoring-owed.yml — least-privilege for a watcher whose only acts are read-the-tree + create-an-issue; no contents:write. Derivable directly from the task.
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the
