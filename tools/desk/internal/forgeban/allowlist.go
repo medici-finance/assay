@@ -244,7 +244,7 @@ var UnresolvedArgv = []Allowance{
 		Reason: "spawns the configured agent-protocol server command; not a forge path.",
 	},
 	{
-		Key: "internal/askassay/probe.go::execRead::<unresolved>",
+		Key: "askassay/probe.go::execRead::<unresolved>",
 		Reason: "the ask-pane's ONE subprocess site, reachable only past GuardReadOnly — a closed default-deny " +
 			"allow-list of binaries, verbs and HTTP methods. It CAN launch `gh` (two registry questions read " +
 			"issue counts through it), which is worth stating plainly: the stream brief describes this as a " +

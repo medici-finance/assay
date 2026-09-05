@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/medici-finance/assay/tools/desk/internal/askassay"
+	"github.com/medici-finance/assay/tools/desk/askassay"
 )
 
 // TestImprovePaneRefusesTheMeasuredWriteSideEffect is the finding of this

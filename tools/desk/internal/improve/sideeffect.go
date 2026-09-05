@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/askassay"
+	"github.com/medici-finance/assay/tools/desk/askassay"
 )
 
 // THE WRITE-SIDE-EFFECT REGISTER

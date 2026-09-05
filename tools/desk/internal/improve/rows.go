@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/medici-finance/assay/tools/desk/internal/askassay"
+	"github.com/medici-finance/assay/tools/desk/askassay"
 )
 
 // Row is one line in a strip. Every row can be asked for its ID and can refuse
