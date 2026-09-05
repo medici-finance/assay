@@ -111,11 +111,15 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 		return deskkit.ExitOK
 	}
 
-	// Register-id collision check: mechanical, local-only (no gh/network
-	// call — only already-fetched remote-tracking branches are consulted, matching this
-	// tool's fail-open-on-ambiguity contract) detection of a new register entry whose `id:`
-	// collides with one already claimed by another in-flight branch. Runs regardless of
-	// whether the remote/repo below is derivable, since it needs neither.
+	// Register-id collision check: mechanical detection of a NEW register entry `id:` (new
+	// relative to origin/main — #189) that collides with one already claimed by another
+	// in-flight branch. Candidate siblings come from already-fetched remote-tracking branches
+	// (`git branch -r`), so the ordinary push makes no gh/network call; the only network touch
+	// is a single `git ls-remote` on the rare collision path, to confirm a sibling ref is still
+	// live before refusing (a stale merged-and-deleted ref is dropped, #189). It degrades to
+	// could-not-check, never an error, when origin is unreachable, matching this tool's
+	// fail-open-on-ambiguity contract. Runs regardless of whether the remote/repo below is
+	// derivable, since it needs neither.
 	var collisions []registerIDCollision
 	for _, ref := range refs {
 		cs, cerr := checkRegisterIDCollisions("", ref.branch, ref.localSHA)
@@ -220,8 +224,8 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 				m.branch, shortSHA(m.commit.sha), m.commit.subject)
 		}
 		for _, c := range collisions {
-			fmt.Fprintf(stderr, "refusing: %s: register entry %s claims id %q, already claimed by %s on %s — rename/re-derive the id before pushing.\n",
-				c.branch, c.ownPath, c.id, c.sourcePath, c.sourceBranch)
+			fmt.Fprintf(stderr, "refusing: %s: register entry %s claims id %q, already claimed by %s on %s (%s) — rename/re-derive the id before pushing.\n",
+				c.branch, c.ownPath, c.id, c.sourcePath, c.sourceBranch, c.sourceLive.note())
 		}
 		if len(blocked) > 0 {
 			auditBlock(stderr, blocked)
