@@ -43,10 +43,13 @@ migration deskpr update tells you to perform. Because a body edit moves no head 
 edit also posts one short comment naming what changed, so a head-keyed review monitor
 has an event to see.
 
-By default, --as-app is true: gh calls authenticate as
-the worker App via desktoken worker. Pass --as-app=false for the example-org
-fallback (transition period). The branch push (committed code) is the worker's git
-authorship; the PR is filed under the worker App identity.
+By default, --as-app is true: gh calls authenticate as this session's App role via
+desktoken, resolved from the loop identity ($DESK_LOOP). That is the worker App by
+default, and the VERIFIER App under DESK_LOOP=verify-desk — so an Evidence PR is filed
+under the same App that authored its branch commits, not misattributed to the worker
+(#396). Pass --as-app=false for the example-org fallback (transition period). When no
+loop carries an App role the worker App is the default. The branch push (committed
+code) carries the role App's git authorship; the PR is filed under that same App.
 
 PUBLIC-REPO SELF-CONTAINMENT (#203). When the target repo is not known-private, the
 PR body and title are scanned for spans that only resolve inside the authoring house.

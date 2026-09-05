@@ -130,7 +130,7 @@ func cmdCreate(args []string) (err error) {
 	bodyMin := fs.String("body-min", "", "one-line PR body (alternative to --body-file)")
 	base := fs.String("base", "main", "base branch")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
-	asApp := fs.Bool("as-app", true, "authenticate as the worker App via desktoken worker (default on); --as-app=false for example-org fallback")
+	asApp := fs.Bool("as-app", true, "authenticate as this session's App role via desktoken (worker by default; the verifier App under DESK_LOOP=verify-desk, etc.); --as-app=false for example-org fallback")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	if perr := fs.Parse(args); perr != nil {
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
@@ -387,7 +387,7 @@ func cmdUpdate(args []string) (err error) {
 
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
-	asApp := fs.Bool("as-app", true, "authenticate as the worker App via desktoken worker (default on); --as-app=false for example-org fallback")
+	asApp := fs.Bool("as-app", true, "authenticate as this session's App role via desktoken (worker by default; the verifier App under DESK_LOOP=verify-desk, etc.); --as-app=false for example-org fallback")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	if perr := fs.Parse(args); perr != nil {

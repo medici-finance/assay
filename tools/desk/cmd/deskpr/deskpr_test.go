@@ -831,6 +831,78 @@ func TestUpdateNoAsAppUsesAmbientIdentity(t *testing.T) {
 	}
 }
 
+// TestMintTokenResolvesRoleFromLoop is the #396 regression: mintWorkerToken must mint the
+// token for the App role THIS session acts under — resolved from $DESK_LOOP via
+// deskkit.SessionTokenRole — not the worker App unconditionally. Under
+// DESK_LOOP=verify-desk it must run `desktoken verifier` (so a verify-desk Evidence PR is
+// authored by the same App as its branch commits), and default to `desktoken worker` when
+// no loop carries an App role. It calls mintWorkerToken directly with a recording
+// execCommand stub: the "no loop" case cannot go through run(), because deskpr's main()
+// refuses via RequireLoopIdentity before any subcommand is reached when $DESK_LOOP is
+// unset.
+func TestMintTokenResolvesRoleFromLoop(t *testing.T) {
+	cases := []struct {
+		name     string
+		loop     string
+		wantRole string
+	}{
+		{"verify-desk mints the verifier App", "verify-desk", "verifier"},
+		{"worker-desk mints the worker App", "worker-desk", "worker"},
+		{"no loop defaults to the worker App", "", "worker"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// t.Setenv with "" reproduces the unset case: RequireLoopIdentity treats an
+			// empty $DESK_LOOP as unset, so SessionTokenRole errors and the default fires.
+			t.Setenv("DESK_LOOP", tc.loop)
+			withStderrCapture(t) // absorb the fallback note the default path prints
+
+			// A token file the stubbed desktoken "prints" the path of, so mintWorkerToken's
+			// ReadFile succeeds and sets ghToken.
+			tokPath := filepath.Join(t.TempDir(), "tok")
+			if werr := os.WriteFile(tokPath, []byte("fake-token\n"), 0o600); werr != nil {
+				t.Fatalf("write token fixture: %v", werr)
+			}
+
+			var recorded [][]string
+			oldExec := execCommand
+			execCommand = func(name string, args ...string) *exec.Cmd {
+				recorded = append(recorded, append([]string{name}, args...))
+				return oldExec("echo", tokPath) // any role: echo the token path, exit 0
+			}
+			oldTok := ghToken
+			t.Cleanup(func() { execCommand, ghToken = oldExec, oldTok })
+
+			if merr := mintWorkerToken("medici-finance/assay"); merr != nil {
+				t.Fatalf("mintWorkerToken: %v", merr)
+			}
+
+			// Exactly one desktoken call, and it names the resolved role plus the scoped
+			// --repo (the #565 property must survive the role resolution).
+			var dt []string
+			for _, c := range recorded {
+				if len(c) > 0 && filepath.Base(c[0]) == "desktoken" {
+					dt = c
+				}
+			}
+			if dt == nil {
+				t.Fatalf("no desktoken call recorded; calls: %v", recorded)
+			}
+			if len(dt) < 2 || dt[1] != tc.wantRole {
+				t.Fatalf("desktoken role = %q, want %q (loop %q); call: %v", func() string {
+					if len(dt) >= 2 {
+						return dt[1]
+					}
+					return "<none>"
+				}(), tc.wantRole, tc.loop, dt)
+			}
+			if !callContainsAll(dt, "--repo", "medici-finance/assay") {
+				t.Fatalf("desktoken %s call did not forward --repo <own repo>: %v", tc.wantRole, dt)
+			}
+		})
+	}
+}
+
 // TestCreateRefusesNoTrailer is the example-stream/02 regression test: create refuses
 // (exit 5) a body without a Brief:/Issue: trailer BEFORE any network call — neither the
 // fake gh nor the fake desktoken binary is reached. In-process call so the refusal
