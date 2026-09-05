@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // newbrief tests (mistake-proofing/05). Top-level functions are named TestNewBrief*
@@ -410,6 +412,93 @@ func TestNewBriefOutputLintsClean(t *testing.T) {
 	if p, _ := identifierDereferenceCheck(root, []string{briefPath}); len(p) != 0 {
 		t.Errorf("identifier dereference (mistake-proofing/02) fired on the generated brief:\n%s", strings.Join(p, "\n"))
 	}
+}
+
+// TestNewBriefTitleWithYAMLMetacharacters proves that a realistic single-line
+// title carrying YAML metacharacters — a colon+space, a leading bracket, and an
+// embedded double quote — generates a brief whose frontmatter reparses cleanly and
+// lints clean, rather than refusing with an opaque internal YAML parse error.
+// Regression for review 5121184611: the `title:` frontmatter scalar was written
+// unescaped, so unremarkable titles like `[urgent] fix thing` or
+// `Quote " and colon: value` made the front door refuse (`did not find expected
+// key` / `mapping values are not allowed in this context`) instead of generating.
+func TestNewBriefTitleWithYAMLMetacharacters(t *testing.T) {
+	root := nbTree(t)
+	newBriefFreshness = func(string) (string, string, error) { return "cafe123", "2026-09-04", nil }
+	const trickyTitle = `[urgent] Fix: the "thing"`
+	code, _, se := nbRun(t,
+		"--root", root, "--stream", "demo", "--title", trickyTitle, "--depends", "demo/01",
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	if code != newBriefExitOK {
+		t.Fatalf("a title with :, \" and [ must generate, not refuse; got exit %d, stderr=%s", code, se)
+	}
+
+	// Locate the generated brief (its slug is derived from the title).
+	matches, _ := filepath.Glob(filepath.Join(root, "docs", "streams", "demo", "brief-02-*.md"))
+	if len(matches) != 1 {
+		t.Fatalf("want exactly one generated brief-02, got %v", matches)
+	}
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("brief not created: %v", err)
+	}
+	body := string(raw)
+
+	// The frontmatter must reparse as YAML with the title recovered byte-for-byte —
+	// no corruption, no truncation, no injected key. Both the `title:` scalar and
+	// the `sources:` entry embed the title and must survive.
+	fmStart := strings.Index(body, "---\n")
+	fmEnd := strings.Index(body, "\n---\n")
+	if fmStart != 0 || fmEnd <= 0 {
+		t.Fatalf("no frontmatter block found; body:\n%s", body)
+	}
+	front := body[len("---\n"):fmEnd]
+	var fm map[string]interface{}
+	if err := yaml.Unmarshal([]byte(front), &fm); err != nil {
+		t.Fatalf("emitted frontmatter does not reparse as YAML: %v\nfrontmatter:\n%s", err, front)
+	}
+	if got, _ := fm["title"].(string); got != trickyTitle {
+		t.Errorf("title did not round-trip through the frontmatter:\n got  %q\n want %q", got, trickyTitle)
+	}
+
+	// And the whole document must lint clean through the reference validator — the
+	// same bar TestNewBriefOutputLintsClean holds the ordinary case to.
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatalf("loadStreams: %v", err)
+	}
+	if problems, _ := checkBriefFiles(streams, streams); len(problems) != 0 {
+		t.Errorf("generated brief tripped checkBriefFiles PROBLEMs:\n%s", strings.Join(problems, "\n"))
+	}
+}
+
+// TestNewBriefTitleWithNewlineRefusesCleanly documents the fourth character from
+// the review — an embedded newline. A brief title spanning lines is nonsensical
+// (it cannot inhabit the README's single-line Briefs-table row), so the correct
+// behavior is a CLEAN refusal caught by the validate-before-write stage, never a
+// partial write. This is the behavior the review already found acceptable; the
+// frontmatter fix must not regress it into a silent corruption.
+func TestNewBriefTitleWithNewlineRefusesCleanly(t *testing.T) {
+	root := nbTree(t)
+	newBriefFreshness = func(string) (string, string, error) { return "", "", os.ErrNotExist }
+	code, out, se := nbRun(t,
+		"--root", root, "--stream", "demo", "--title", "Evil\nsecond line", "--depends", "demo/01",
+		"--regulatory", "no", "--customer", "no", "--irreversible", "no", "--sensitive-data", "no")
+	if code == newBriefExitOK {
+		t.Fatalf("a title with an embedded newline must refuse; got exit 0, stderr=%s", se)
+	}
+	// No partial write: no brief-02 file, and the dependency's inverse edge untouched.
+	entries, _ := os.ReadDir(filepath.Join(root, "docs", "streams", "demo"))
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "brief-02") {
+			t.Errorf("a refusal wrote output: %s", e.Name())
+		}
+	}
+	dep, _ := os.ReadFile(filepath.Join(root, "docs", "streams", "demo", "brief-01-first.md"))
+	if strings.Contains(string(dep), "demo/02") {
+		t.Errorf("a refusal wrote an inverse edge into the dependency")
+	}
+	_ = out
 }
 
 func nbMentions(lines []string, sub string) bool {

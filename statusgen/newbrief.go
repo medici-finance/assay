@@ -51,6 +51,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // newbrief exit codes — the three-state contract, and the same numbers, that
@@ -627,6 +629,21 @@ type newBriefSpec struct {
 // still carrying their key), the required body sections in order, the derived gate
 // and wave, the gate-why / decision-section owed by a risk- or human-gated brief as
 // empty-but-present, and the freshness stamp when the fetch produced one.
+// yamlScalar renders v as a single valid YAML scalar node (quoted, escaped, or
+// emitted as a block scalar as the value requires), with the trailing newline
+// yaml.Marshal appends stripped. Any string — one containing a colon+space, a
+// leading bracket, an embedded quote, a tab, or a newline — round-trips through
+// this back to itself, so an ordinary brief title can never corrupt the emitted
+// frontmatter or make generation refuse with an opaque YAML parse error.
+func yamlScalar(v string) string {
+	out, err := yaml.Marshal(v)
+	if err != nil {
+		// A double-quoted Go literal is itself valid YAML for any string.
+		return strconv.Quote(v)
+	}
+	return strings.TrimRight(string(out), "\n")
+}
+
 func renderNewBrief(s newBriefSpec) string {
 	var b strings.Builder
 	num := s.id
@@ -649,7 +666,7 @@ func renderNewBrief(s newBriefSpec) string {
 
 	b.WriteString("---\n")
 	b.WriteString("brief: " + s.id + "\n")
-	b.WriteString("title: " + s.title + "\n")
+	b.WriteString("title: " + yamlScalar(s.title) + "\n")
 	// why: emitted empty-but-present — REQUIRED for every new brief; the author
 	// replaces it with one to three lines a non-engineer could justify the work from.
 	b.WriteString("why: \"\"\n")
@@ -670,9 +687,9 @@ func renderNewBrief(s newBriefSpec) string {
 	// sources: non-empty by construction (a stream provenance line), plus the
 	// freshness stamp when the fetch produced one — never an invented value.
 	b.WriteString("sources:\n")
-	b.WriteString("  - \"" + s.stream + ": " + strings.ReplaceAll(s.title, "\"", "'") + "\"\n")
+	b.WriteString("  - " + yamlScalar(s.stream+": "+s.title) + "\n")
 	if s.freshness != "" {
-		b.WriteString("  - \"" + s.freshness + "\"\n")
+		b.WriteString("  - " + yamlScalar(s.freshness) + "\n")
 	}
 	b.WriteString("---\n\n")
 
