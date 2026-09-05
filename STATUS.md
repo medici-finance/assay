@@ -11,7 +11,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-04 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-05 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-05 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/8 | 2026-09-05 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-05 |  |
@@ -34,8 +34,6 @@ _Held by per-stream caps: 3 brief(s) across 1 stream(s) — top: desk-tools. By 
 |---|---|---|---|
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
 | desk-supervision | 02 — Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal [exec:strong] | 1 | 1500 |
-| desk-supervision | 04 — Lifecycle hooks — after-create / before-run / after-run / before-remove from config home [exec:strong] | 1 | 1000 |
-| desk-supervision | 07 — Runtime snapshot — `desksupervise status` for operators and the console | 1 | 1000 |
 | desk-tools | 08 — `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file [exec:strong] | 1 | 1000 |
 | desk-tools | 10 — `deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand [exec:strong] | 1 | 1000 |
 | desk-tools | 12 — `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON | 1 | 1000 |
@@ -48,19 +46,20 @@ _Held by per-stream caps: 3 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (35 desk-actionable of 38 total — 38 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (38 desk-actionable of 41 total — 41 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (35)
+### Desk-actionable (38)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | forge-neutral | 01 [exec:strong] | implemented | 7000 | 10 | — | — | — |
 | harness-portability | 01 [exec:strong] | implemented | 5000 | 8 | — | — | — |
+| forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | desktools-go-git | 02 | implemented | 4000 | 6 | — | — | — |
 | harness-portability | 02 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
@@ -77,6 +76,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | iso-9001 | 05 | implemented | 1500 | 1 | — | — | — |
+| desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| desk-supervision | 07 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -117,6 +118,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | Stream | Oldest at gate | Brief |
 |---|---|---|
 | desk-containers | — | — |
+| desk-supervision | — | — |
 | desk-tools | — | — |
 | desktools-go-git | — | — |
 | forge-gitlab | — | — |
@@ -151,9 +153,9 @@ _None._
 
 - 02 Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal — todo (wave 1)
 - 03 Eligibility reconciliation — stop a run whose item became ineligible — todo (wave 2)
-- 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — todo (wave 1)
+- 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — implemented (wave 1)
 - 06 Workpad — one upserted progress comment per PR — implemented (wave 0)
-- 07 Runtime snapshot — `desksupervise status` for operators and the console — todo (wave 1)
+- 07 Runtime snapshot — `desksupervise status` for operators and the console — implemented (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 
 ### desk-tools (13 open)
@@ -193,7 +195,7 @@ _None._
 ### forge-neutral (11 open)
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
-- 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — todo (wave 2)
+- 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
 - 03 Write verbs A — deskpost, deskreply, deskflip onto the resolver — todo (wave 2)
 - 04 Write verbs B — deskpr, deskfile, deskclose, deskevidence onto the resolver — todo (wave 2)
 - 05 Claim layer — the GitLab shape of `refs/dispatch/*` and its release — todo (wave 2)
