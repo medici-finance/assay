@@ -104,7 +104,9 @@ expect 1 "C1 truncated sha256 fails" --root "$r"
 
 r=$(fixture c2)
 # A 64-char UPPER-case value — correct length, wrong case, the shape a hand-copied pin takes.
-setarmhash "$r" "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+# Built at runtime (never a 64-char literal in this file, which a secret-scan would flag).
+upper64=$(printf 'A%.0s' $(seq 1 64))
+setarmhash "$r" "$upper64"
 expect 1 "C2 upper-cased sha256 fails" --root "$r"
 
 r=$(fixture c3)
