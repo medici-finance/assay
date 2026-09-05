@@ -11,9 +11,10 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 0/8 | 2026-09-05 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-05 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-05 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/8 | 2026-09-05 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 2/9 | 2026-09-05 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 3/16 | 2026-09-05 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-05 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 3/8 | 2026-09-05 |  |
@@ -32,27 +33,29 @@ _Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-tools. By 
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| apps-installer | 01 — Role→App indirection — six roles on N Apps without symlinks [exec:strong] | 0 | 4500 |
+| apps-installer | 05 — `deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof | 0 | 3000 |
 | iso-9001 | 01 — Emit the tool-validation evidence pack as a release asset (7.1.5) [exec:strong] | 0 | 2500 |
+| apps-installer | 08 — Solo identity mode — spec + decision: the desk verbs on the operator's own token [exec:strong] | 0 | 2000 |
 | desk-tools | 08 — `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file [exec:strong] | 1 | 1000 |
 | desk-tools | 13 — `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree | 1 | 1000 |
 | desk-tools | 14 — bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` [exec:strong] | 1 | 1000 |
 | desk-tools | 15 — `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home | 1 | 1000 |
 | mistake-proofing | 05 — `newbrief` — the scaffolder as the authoring front door (B1) [exec:strong] | 2 | 1000 |
-| mistake-proofing | 06 — D1 promoted to a lint obligation — a new check must carry its mutation row | 2 | 1000 |
 | quality | 15 — learned riskscore graduation — JIT defect-prediction model [exec:strong] | 3 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (37 desk-actionable of 40 total — 40 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (40 desk-actionable of 43 total — 43 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (37)
+### Desk-actionable (40)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -70,6 +73,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 05 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | windows-port | 00 | implemented | 3000 | 4 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 2500 | 3 | — | — | — |
+| windows-port | 01 | implemented | 2500 | 3 | — | — | — |
 | desk-supervision | 02 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
@@ -77,6 +81,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 12 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 07 | implemented | 1000 | 0 | — | — | — |
+| desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -89,6 +94,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 11 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| mistake-proofing | 06 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -123,12 +129,24 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | forge-neutral | — | — |
 | harness-portability | — | — |
 | statusgen | — | — |
+| windows-port | — | — |
 
 ## Unresolved findings
 
 _None._
 
 ## Incomplete briefs
+
+### apps-installer (8 open)
+
+- 01 Role→App indirection — six roles on N Apps without symlinks — todo (wave 0)
+- 02 `deskapps init` — loopback page, tier manifests, the manifest→code→conversion flow, key + record writes — todo (wave 1)
+- 03 `deskapps` install + prove — installation poll, fresh mint, scopes-vs-duties, roster write — todo (wave 2)
+- 04 `deskapps resume` / `status` — per-App state machine, throttle pause, expired-code re-arm, page verbs — todo (wave 2)
+- 05 `deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof — todo (wave 0)
+- 06 Avatar step in the run board — generated PNG beside the settings page, confirmed not uploaded — todo (wave 3)
+- 07 Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented — todo (wave 4)
+- 08 Solo identity mode — spec + decision: the desk verbs on the operator's own token — todo (wave 0)
 
 ### derived-board (4 open)
 
@@ -147,7 +165,7 @@ _None._
 - 06 Kubernetes manifests — todo (wave 3)
 - 07 multi-desk control layer — tmux/equivalents, macOS + win32 — todo (wave 4)
 
-### desk-supervision (6 open)
+### desk-supervision (7 open)
 
 - 02 Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal — implemented (wave 1)
 - 03 Eligibility reconciliation — stop a run whose item became ineligible — todo (wave 2)
@@ -155,6 +173,7 @@ _None._
 - 06 Workpad — one upserted progress comment per PR — implemented (wave 0)
 - 07 Runtime snapshot — `desksupervise status` for operators and the console — implemented (wave 1)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
+- 09 Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build — implemented (wave 0)
 
 ### desk-tools (13 open)
 
@@ -229,7 +248,7 @@ _None._
 ### mistake-proofing (2 open)
 
 - 05 `newbrief` — the scaffolder as the authoring front door (B1) — todo (wave 2)
-- 06 D1 promoted to a lint obligation — a new check must carry its mutation row — todo (wave 2)
+- 06 D1 promoted to a lint obligation — a new check must carry its mutation row — implemented (wave 2)
 
 ### quality (1 open)
 
@@ -246,7 +265,7 @@ _None._
 ### windows-port (5 open)
 
 - 00 Build-tag split for the unix-only syscall sites — implemented (wave 0)
-- 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — todo (wave 1)
+- 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — implemented (wave 1)
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — todo (wave 2)
 - 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — todo (wave 2)
 - 05 Adoption-doc delta — the Windows adopter walkthrough — todo (wave 3)
@@ -335,4 +354,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**14** streams (**14** active, **0** paused) · **43/125** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **43/134** briefs done · completed initiatives: see `docs/archive/`
