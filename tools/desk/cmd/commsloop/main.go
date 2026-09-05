@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/comms"
 	"github.com/medici-finance/assay/tools/desk/internal/commsqueue"
@@ -32,6 +33,16 @@ const EnvQueueDir = "ASSAY_COMMS_QUEUE_DIR"
 // EnvRepo names the owner/repo commsloop's own quarantine issues are filed
 // against.
 const EnvRepo = "ASSAY_COMMS_REPO"
+
+// idlePollCadence is the steady-state idle-poll cadence on the empty
+// accepted-queue (loopengine.Config.IdlePoll). A zero value here makes
+// loopengine.Run's idle branch call time.Sleep(0) / time.After(0) in a tight
+// loop — a CPU spin plus a stderr "idle" flood — every cycle the
+// accepted-queue is empty, which is the steady state for this drain
+// consumer. Pinned as a named constant (rather than inlined) so
+// main_test.go can assert on the exact value the production wiring uses;
+// see cmd/scanloop/run.go's IdlePoll: time.Minute for the sibling pattern.
+const idlePollCadence = time.Minute
 
 func main() {
 	os.Exit(run(os.Getenv))
@@ -70,6 +81,7 @@ func run(getenv func(string) string) int {
 
 	cfg := loopengine.Config{
 		PoolSize:   1,
+		IdlePoll:   idlePollCadence,
 		ClaimsDir:  filepath.Join(claimsDir, "claims"),
 		StaleClaim: deskkit.DefaultStaleClaim,
 		Progress:   os.Stderr,

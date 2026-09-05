@@ -56,6 +56,14 @@ var (
 	ErrDuplicateMessage = errors.New("commsgw: message id already claimed (duplicate)")
 	// ErrBudgetExhausted — this sender (cell/role) is over its rate/budget.
 	ErrBudgetExhausted = errors.New("commsgw: sender rate/budget exhausted")
+	// ErrRateLimiterUnconfigured — deps.RateLimiter is nil. Per PreCheckDeps'
+	// own doc ("a nil/zero field here fails a specific stage closed rather
+	// than skipping it silently"), a gateway missing its rate limiter refuses
+	// every message at this stage rather than admitting them uncounted — a
+	// misconfiguration is never allowed to present as "no rate limiting
+	// needed". DISTINCT from ErrBudgetExhausted: one is "we checked and this
+	// sender is over budget", the other is "we could not check at all".
+	ErrRateLimiterUnconfigured = errors.New("commsgw: rate limiter is not configured (fail closed, never default-allow)")
 	// ErrKillSwitch — the desk kill switch (deskkit.Guard) is armed. Checked
 	// LAST, deliberately: every prior stage is a property of THIS message, so a
 	// malformed/forged/out-of-lane message is refused on ITS OWN merits even
@@ -129,10 +137,11 @@ func PreCheck(in PreCheckInput, deps PreCheckDeps) (*comms.Envelope, error) {
 		return nil, err
 	}
 
-	if deps.RateLimiter != nil {
-		if !deps.RateLimiter.Allow(env.From.Cell+"/"+env.From.Role, in.Now) {
-			return nil, fmt.Errorf("%w: %s/%s", ErrBudgetExhausted, env.From.Cell, env.From.Role)
-		}
+	if deps.RateLimiter == nil {
+		return nil, ErrRateLimiterUnconfigured
+	}
+	if !deps.RateLimiter.Allow(env.From.Cell+"/"+env.From.Role, in.Now) {
+		return nil, fmt.Errorf("%w: %s/%s", ErrBudgetExhausted, env.From.Cell, env.From.Role)
 	}
 
 	guard := deps.GuardFn

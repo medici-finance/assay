@@ -201,6 +201,55 @@ func TestPeerAuth(t *testing.T) {
 	})
 }
 
+// --- Blocker 3: nil RateLimiter fails the stage CLOSED, never admits -------
+
+// TestNilRateLimiterFailsClosed pins the fix for the fail-open regression: a
+// nil deps.RateLimiter must REFUSE every message at the rate/budget stage
+// (ErrRateLimiterUnconfigured), never silently skip the stage and admit. An
+// otherwise-legal, well-formed, first-ever message (no dedupe collision, no
+// budget actually exhausted) is used deliberately — every OTHER stage would
+// accept it, so a PASS here can only mean the missing RateLimiter let it
+// through uncounted, exactly the fail-open PreCheckDeps' own doc rules out.
+func TestNilRateLimiterFailsClosed(t *testing.T) {
+	f := newFixture(t)
+	f.deps.RateLimiter = nil // the regression under test
+
+	raw := f.envelope(t, "msg-nil-ratelimiter", nil)
+	env, err := PreCheck(PreCheckInput{PeerAuthenticated: true, Raw: raw, Now: f.now}, f.deps)
+	if err == nil {
+		t.Fatalf("PreCheck admitted a message with deps.RateLimiter == nil (env=%v) — a nil rate limiter must fail the stage closed, not skip it and admit", env)
+	}
+	if !errors.Is(err, ErrRateLimiterUnconfigured) {
+		t.Fatalf("PreCheck error = %v, want ErrRateLimiterUnconfigured", err)
+	}
+	// It must NOT be masquerading as an ordinary budget-exhausted refusal —
+	// those are semantically distinct (checked-and-over vs could-not-check).
+	if errors.Is(err, ErrBudgetExhausted) {
+		t.Fatalf("nil RateLimiter refusal must be distinct from ErrBudgetExhausted, got %v", err)
+	}
+}
+
+// TestRateLimiterAllowsThenExhausts is the companion happy-path/sad-path
+// pair proving the CONFIGURED stage still does real work (Finding 4/5 asked
+// for genuine coverage, not just the nil-guard): a limiter of 1-per-window
+// admits the sender's first message and refuses (ErrBudgetExhausted) its
+// second, distinguishing "checked and over budget" from the nil case above.
+func TestRateLimiterAllowsThenExhausts(t *testing.T) {
+	f := newFixture(t)
+	f.deps.RateLimiter = NewRateLimiter(1, time.Minute)
+
+	raw1 := f.envelope(t, "msg-budget-1", nil)
+	if _, err := PreCheck(PreCheckInput{PeerAuthenticated: true, Raw: raw1, Now: f.now}, f.deps); err != nil {
+		t.Fatalf("first message under budget should accept, got %v", err)
+	}
+
+	raw2 := f.envelope(t, "msg-budget-2", nil)
+	_, err := PreCheck(PreCheckInput{PeerAuthenticated: true, Raw: raw2, Now: f.now}, f.deps)
+	if !errors.Is(err, ErrBudgetExhausted) {
+		t.Fatalf("second message over a 1-per-window budget should refuse ErrBudgetExhausted, got %v", err)
+	}
+}
+
 // --- Verify row 8: ReplayGuardWired, through the REAL construction path -----
 
 func TestReplayGuardWired(t *testing.T) {
