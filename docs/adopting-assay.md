@@ -398,6 +398,16 @@ Create the three append-only logs (`docs/streams/{FINDINGS,INTAKE,RETRO}.md`; fo
 Next-up until resolved); RETRO is the cadence log. Numbering must be gap-free; withdraw with a
 tombstone (keep the number, flip disposition), never by deleting a heading.
 
+A fourth register, **REQUIREMENTS** (`docs/streams/requirements/<slug>.md`, per-entry files),
+records what the product was asked to do and links each ask to the briefs written against it via a
+brief's `satisfies:` key. When it is populated, `--lint` runs three traceability checks:
+`orphan-requirement` (NOTICE — an `accepted` requirement no brief cites), `untraced-brief` (NOTICE —
+a forward brief in a stream that opted in with `traced: true` and cites nothing), and
+`dangling-satisfies` (PROBLEM — a `satisfies:` naming a `REQ-<slug>` no entry defines). The two
+NOTICEs never change the exit code, so an adopter is never red-gated over a legacy corpus.
+`statusgen --requirements-rollup` prints the per-release ask→work→evidence rollup. See
+`docs/registers.md` and spec §6.
+
 **Verify:** `--lint` exits 0; then delete a middle entry (`## I-02` between I-01/I-03) and re-run —
 expect NON-zero (proves sequence-contiguity is live). Restore it.
 
