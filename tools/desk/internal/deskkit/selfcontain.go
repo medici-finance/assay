@@ -30,7 +30,7 @@ package deskkit
 //
 // WHAT IS NEVER COMPILED IN. The private repo names, the aliases and the withheld register
 // identifiers are all DEPLOYMENT VALUES read at run time from the roster
-// (ASSAY_ALLOWED_REPOS, ASSAY_REPO_ALIASES) and from EnvWithheldIdentifiers. Embedding any
+// (ASSAY_ALLOWED_REPOS, ASSAY_REPO_ALIASES, ASSAY_WITHHELD_IDENTIFIERS). Embedding any
 // of them in this file would make the shipped binary the leak the scan exists to prevent —
 // the same reasoning sweepconfig.go records for the disclosure sweep's routed-away set. An
 // adopter with none of it configured gets a complete, usable configuration: the machine-
@@ -59,9 +59,9 @@ const SurfaceBodyPublic = "public body"
 // this bounds only the advisory half.
 const minShortNameNotice = 4
 
-// EnvWithheldIdentifiers names the environment variable carrying the register identifiers a
-// PUBLIC body must not name — stream slugs and brief ids that live in a register the house
-// does not publish, comma-separated:
+// EnvWithheldIdentifiers names the roster key carrying the register identifiers a PUBLIC
+// body must not name — stream slugs and brief ids that live in a register the house does
+// not publish, comma-separated:
 //
 //	ASSAY_WITHHELD_IDENTIFIERS=<slug>,<other-slug>
 //
@@ -70,6 +70,12 @@ const minShortNameNotice = 4
 // gets a NOTICE saying the category was not checked, and every other category still runs.
 //
 // A configured slug matches both the bare slug and any `<slug>/<NN>` brief id under it.
+//
+// It resolves like every other ASSAY_ key — roster.env, overridden by the environment; see
+// WithheldIdentifiers. It was env-ONLY until #490, which is the failure mode that rule
+// exists to prevent: the key was RECOGNISED by the roster parser (so a roster carrying it
+// loaded clean) and then never applied, leaving the operator with a control they had
+// configured, that reported itself unconfigured, and that never ran.
 //
 // KEEP IN SYNC with parseConfig's `known` map in rosterconfig.go: an unrecognised key in the
 // ASSAY_ namespace REFUSES the whole roster, so a house that sets this without the key being
@@ -131,12 +137,38 @@ var (
 	reBriefID = regexp.MustCompile(`\b([a-z0-9][a-z0-9-]*)/([0-9]{1,3})\b`)
 )
 
-// WithheldIdentifiers returns the house-configured withheld register identifiers from
+// WithheldIdentifiers returns the house-configured withheld register identifiers for
 // EnvWithheldIdentifiers, lowercased, split on commas and trimmed, with empties dropped.
 // A nil return is the UNSET case and is a complete adopter configuration — see the const.
+//
+// TWO SOURCES, in the order every other ASSAY_ key uses: the ENVIRONMENT when it carries a
+// non-empty value, otherwise the ROSTER (EffectiveConfig, parsed by parseConfig through the
+// same splitWithheldIdentifiers below, so the two sources cannot normalise differently).
+// Unset in BOTH is the nil case above.
+//
+// Why the roster arm had to be added (#490): roster.env is the documented home of every
+// other ASSAY_ value, so a house that configured the withheld set there got the NOTICE — the
+// register category silently not running — on every public write unless each shell that ran
+// deskpr/deskpost ALSO exported the variable. A control that is configured and not applied
+// is worse than an absent one, because the operator believes the scan runs.
+//
+// Why the env arm STAYS, and why reading it here is not the env-roster hole ClassWrite's
+// readRawConfig closes: the roster ITSELF is still file-only for a write-class tool — this
+// reads one deployment VALUE, not the trust roster, and no trust decision consults it. Its
+// only effect is on which spans this scan REFUSES, and an operator who can set this
+// process's environment can already choose not to run the scan at all.
 func WithheldIdentifiers() []string {
-	raw := strings.TrimSpace(os.Getenv(EnvWithheldIdentifiers))
-	if raw == "" {
+	if env := splitWithheldIdentifiers(os.Getenv(EnvWithheldIdentifiers)); len(env) > 0 {
+		return env
+	}
+	return EffectiveConfig().WithheldIdentifiers
+}
+
+// splitWithheldIdentifiers is the ONE normalisation for a raw EnvWithheldIdentifiers value,
+// shared by the accessor above and by parseConfig's roster arm: lowercased, split on commas,
+// trimmed, empties dropped, nil for an empty or blank value.
+func splitWithheldIdentifiers(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
 		return nil
 	}
 	var out []string
@@ -274,12 +306,18 @@ func selfContainScan(surface, s string, o SelfContainOpts) (refusal string, noti
 	// REFUSES when the deployment configured a withheld set and the body names one of its
 	// slugs or a brief id under it. NOTICES — never refuses — when the key is absent, so an
 	// adopter with no withheld register is not blocked by a check it cannot satisfy.
+	//
+	// The notice names BOTH sources (#490). "unset" alone sent an operator who HAD
+	// configured the key — in roster.env, where every other ASSAY_ value lives — looking for
+	// a typo in a file that was correct, rather than at the reader that was not consulting
+	// it. A could-not-check has to say where it looked.
 	withheld := WithheldIdentifiers()
 	if len(withheld) == 0 {
 		notices = append(notices, fmt.Sprintf(
-			"%s: withheld register identifiers NOT CHECKED — %s is unset, so this scan cannot "+
-				"know which stream slugs or brief ids this deployment withholds. Every other "+
-				"category ran.", surface, EnvWithheldIdentifiers))
+			"%s: withheld register identifiers NOT CHECKED — %s is not configured in roster.env "+
+				"or the environment, so this scan cannot know which stream slugs or brief ids "+
+				"this deployment withholds. Every other category ran.",
+			surface, EnvWithheldIdentifiers))
 	} else {
 		// Brief ids FIRST, so a `<slug>/<NN>` span is reported whole. The bare-slug arm
 		// below would otherwise fire on the slug half and name a shorter span than the one

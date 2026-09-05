@@ -175,14 +175,15 @@ func TestRequirementValidEntryIsClean(t *testing.T) {
 	}
 }
 
-// TestRequirementReservedNoticeIsEmitted: the reservation must be VISIBLE. A key
-// that is parsed but never mentioned cannot be told apart from one that is
-// ignored, which is the whole reason briefv2.go emits its reserved-edge notices.
+// TestRequirementReservedNoticeIsEmitted: the register summary must be VISIBLE. A
+// register that is parsed but never mentioned cannot be told apart from one that is
+// ignored. Since sdlc/02 wired the traceability checks, the line announces that
+// traceability is checked (not that it is reserved) and names the entry count.
 func TestRequirementReservedNoticeIsEmitted(t *testing.T) {
 	root := requirementRoot(t, validRequirementFixture())
 	notices := requirementRegisterNotices(root)
-	if !containsAll(notices, "reserved, not gating", "1 requirement") {
-		t.Errorf("the register must announce itself as reserved and not gating; got:\n%s", joined(notices))
+	if !containsAll(notices, "traceability is checked", "1 requirement") {
+		t.Errorf("the register must announce itself parsed with traceability checked; got:\n%s", joined(notices))
 	}
 }
 
@@ -501,5 +502,100 @@ func TestRequirementRegisterIsNotAStream(t *testing.T) {
 		if s.Name == requirementsDirName {
 			t.Errorf("the register directory must not load as a stream")
 		}
+	}
+}
+
+// TestRegisterLintsWithoutREADME is the whole-tool version of the test above,
+// and it is the reported symptom itself: a tracking root whose register
+// directory holds entries and NO README.md must lint clean. The unit test one
+// level up pins loadStreams; this one pins the exit code and the message a user
+// actually sees, because that is what a released binary is judged on. Remove
+// requirementsDirName from reservedRegisterNames and this fails with
+// "stream directory requirements has no README.md" and rc=1.
+func TestRegisterLintsWithoutREADME(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, root, "docs/streams/"+requirementsDirName+"/evidence-visible.md",
+		validRequirementFixture().render())
+	if _, err := os.Stat(filepath.Join(root, "docs", "streams", requirementsDirName, "README.md")); !os.IsNotExist(err) {
+		t.Fatalf("the fixture must have NO register README — that is the case under test (stat err = %v)", err)
+	}
+	var code int
+	stderr := captureStderr(t, func() { code = run(root, "lint", nil, nil, "") })
+	if code != 0 {
+		t.Errorf("lint on a root with a README-less register exited %d, want 0; stderr:\n%s", code, stderr)
+	}
+	if strings.Contains(stderr, "has no README.md") {
+		t.Errorf("the register must not be walked as a stream; got:\n%s", stderr)
+	}
+}
+
+// TestRegisterREADMEIsOptional: a register MAY document itself. The
+// README must be neither required (the test above) nor treated as an entry or a
+// stray when present — otherwise "add a README" and "do not add a README" are
+// both wrong and the directory has no legal shape.
+func TestRegisterREADMEIsOptional(t *testing.T) {
+	root := requirementRoot(t, validRequirementFixture())
+	writeFile(t, root, "docs/streams/"+requirementsDirName+"/README.md", "# requirements\n\nThe register.\n")
+	if problems := requirementRegisterProblems(root); len(problems) != 0 {
+		t.Errorf("a register README must raise nothing; got:\n%s", joined(problems))
+	}
+	notices := requirementRegisterNotices(root)
+	if !containsAll(notices, "1 requirement") {
+		t.Errorf("the README must not be counted as an entry; got:\n%s", joined(notices))
+	}
+}
+
+// TestRegisterStrayFileIsFlagged: because stream discovery skips the register
+// directory, a file that is neither an entry nor the README is read by nothing.
+// Silence there is how a register grows unvalidated content, so it is one
+// PROBLEM naming the file. Fails before the stray check exists.
+func TestRegisterStrayFileIsFlagged(t *testing.T) {
+	root := requirementRoot(t, validRequirementFixture())
+	writeFile(t, root, "docs/streams/"+requirementsDirName+"/notes.txt", "loose content\n")
+	problems := requirementRegisterProblems(root)
+	if n := mentioning(problems, "notes.txt"); n != 1 {
+		t.Errorf("want exactly 1 PROBLEM naming the stray file, got %d:\n%s", n, joined(problems))
+	}
+	if !containsAll(problems, "not a requirement entry") {
+		t.Errorf("the PROBLEM must say what is wrong with the file; got:\n%s", joined(problems))
+	}
+}
+
+// TestRegisterStraySubdirIsFlagged: a subdirectory is stray content too — the
+// entry parser skips directories, so an entry filed one level down would be
+// silently unread.
+func TestRegisterStraySubdirIsFlagged(t *testing.T) {
+	root := requirementRoot(t, validRequirementFixture())
+	writeFile(t, root, "docs/streams/"+requirementsDirName+"/archive/old.md", "---\nid: REQ-old-and-filed\n---\n")
+	problems := requirementRegisterProblems(root)
+	if n := mentioning(problems, "archive/"); n != 1 {
+		t.Errorf("want exactly 1 PROBLEM naming the stray subdirectory, got %d:\n%s", n, joined(problems))
+	}
+}
+
+// TestRegisterStrayInEmptyRegister: the stray check must run even when the
+// register holds no entries at all. A directory whose ONLY content is unread is
+// the case where the silence would be total, and it is the one an early return
+// on "no entries" would miss.
+func TestRegisterStrayInEmptyRegister(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "docs/streams/"+requirementsDirName+"/notes.txt", "loose content\n")
+	if n := mentioning(requirementRegisterProblems(root), "notes.txt"); n != 1 {
+		t.Errorf("an entry-less register full of strays must still report them; got:\n%s",
+			joined(requirementRegisterProblems(root)))
+	}
+}
+
+// TestRegisterDotfilesAreNotStrays: housekeeping files are not register content.
+// Flagging .gitkeep would make the conforming way to hold an empty register
+// directory in git a lint failure.
+func TestRegisterDotfilesAreNotStrays(t *testing.T) {
+	root := requirementRoot(t, validRequirementFixture())
+	writeFile(t, root, "docs/streams/"+requirementsDirName+"/.gitkeep", "")
+	if problems := requirementRegisterProblems(root); len(problems) != 0 {
+		t.Errorf("a dot-prefixed housekeeping file must raise nothing; got:\n%s", joined(problems))
 	}
 }
