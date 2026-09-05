@@ -44,6 +44,15 @@ ASSAY_TRUSTED_LOGINS=ada:2001,shared-agent:2002
 ASSAY_TRUSTED_BOT_SLUGS=desk=assay-desk-app:300000001,intake-loop=assay-intake-loop-app:300000002,issue-loop=assay-issue-loop-app:300000003,reviewer=assay-reviewer-app:300000004,verifier=assay-verifier-app:300000005,worker=assay-worker-app:300000006
 ASSAY_ALLOWED_REPOS=example-org/tracker:ci:private,example-org/agents:ci:private,example-org/examples:no-ci:private,example-org/console:ci:private,medici-finance/assay:ci:private,example-org/example-k8s:ci:public,example-org/example-reconciler:ci:private,example-org/org-slides:no-ci:private,example-org/proposals:no-ci:public,example-org/platform:ci:private,example-org/demo-slides:no-ci:private,example-org/assay-slides:no-ci:private,example-org/example-reconciler-slides:no-ci:private
 ASSAY_HUMAN_LOGIN_MAP=alex:ada
+# Bind every allowed repo to GitHub so ForgeFor (deskkit/forgeresolve.go) resolves the
+# forge from THIS roster (resolution step a) rather than falling through to step b — the
+# ambient "git remote get-url origin" of whatever checkout runs the suite. Without this
+# line every write-path test (comment/review/ready) that reaches ForgeFor is
+# non-deterministic: it passes only where the running checkout's origin host maps to
+# github.com, and returns Unverifiable (exit 6) everywhere else — e.g. a worktree whose
+# origin is an unrecognised host, or none (medici-finance/assay#415). The suite must pin
+# the forge exactly as a real deployment's roster does, not inherit it from the runner.
+ASSAY_REPO_FORGES=example-org/tracker=github,example-org/agents=github,example-org/examples=github,example-org/console=github,medici-finance/assay=github,example-org/example-k8s=github,example-org/example-reconciler=github,example-org/org-slides=github,example-org/proposals=github,example-org/platform=github,example-org/demo-slides=github,example-org/assay-slides=github,example-org/example-reconciler-slides=github
 `
 
 // plantFixtureRoster writes the fixture roster under home. A test that relocates
