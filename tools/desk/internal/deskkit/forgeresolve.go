@@ -304,6 +304,14 @@ func ForgeFor(repo ForgeRepo, role string) (Forge, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Forge agreement is ENFORCED, not assumed: a role whose EXPLICITLY forge-qualified
+	// roster entry names a forge other than the one this repo resolves to is refused here,
+	// BEFORE any credential is read — a mismatched entry must never be handed a backend
+	// (the forge-qualified-identity brief, assertEntryForgeAgrees). An inferred-github entry is exempt (the
+	// human-gated backward-compatibility rule).
+	if aerr := assertEntryForgeAgrees(role, res.Kind); aerr != nil {
+		return nil, aerr
+	}
 	tok, base, cerr := custody(res.Kind, role, repo)
 	if cerr != nil {
 		return nil, cerr

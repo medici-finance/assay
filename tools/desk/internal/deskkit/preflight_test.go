@@ -496,6 +496,83 @@ func TestPreflightCommitIdentityUnboundRoleIsCouldNotCheck(t *testing.T) {
 	}
 }
 
+// ---- check 4: commit identity, per forge (the forge-qualified-identity brief) ---------------
+
+const (
+	pfGitLabEmail   = "service_account_group_9619193_ab12cd@noreply.gitlab.com"
+	pfGitHubReviewE = "300000004+assay-reviewer-app[bot]@users.noreply.github.com"
+)
+
+// TestCommitIdentityPerForge — Verify row 6. A github: entry expects the exact
+// bot-user-id noreply address; a gitlab: entry expects the service-account noreply SHAPE;
+// and neither accepts the other forge's address.
+func TestCommitIdentityPerForge(t *testing.T) {
+	dir := t.TempDir()
+
+	// GitHub entry: exact address clean, GitLab address rejected.
+	withRoster(t, map[string]string{
+		EnvBlessLogin:      "ada:2001",
+		EnvTrustedBotSlugs: "reviewer=github:assay-reviewer-app:300000004",
+	})
+	p := okProbes().withDefaults()
+	p.CommitEmail = func(string) (string, error) { return pfGitHubReviewE, nil }
+	if c := checkCommitIdentity(p, "reviewer", dir); c.State != CheckedClean {
+		t.Fatalf("github entry + github email = %s, want clean (%s)", c.State, c.Detail)
+	}
+	p.CommitEmail = func(string) (string, error) { return pfGitLabEmail, nil }
+	if c := checkCommitIdentity(p, "reviewer", dir); c.State != CheckedFailed {
+		t.Fatalf("github entry + gitlab email = %s, want failed", c.State)
+	}
+
+	// GitLab entry: service-account shape clean, exact GitHub address rejected.
+	withRoster(t, map[string]string{
+		EnvBlessLogin:      "ada:2001",
+		EnvTrustedBotSlugs: "verifier=gitlab:assay-verifier-bot:41987969",
+	})
+	p.CommitEmail = func(string) (string, error) { return pfGitLabEmail, nil }
+	if c := checkCommitIdentity(p, "verifier", dir); c.State != CheckedClean {
+		t.Fatalf("gitlab entry + gitlab email = %s, want clean (%s)", c.State, c.Detail)
+	}
+	p.CommitEmail = func(string) (string, error) { return pfGitHubReviewE, nil }
+	if c := checkCommitIdentity(p, "verifier", dir); c.State != CheckedFailed {
+		t.Fatalf("gitlab entry + github email = %s, want failed", c.State)
+	}
+}
+
+// TestCommitIdentityCrossForgeRejected — Verify row 7 (negative path). A commit authored
+// with the GitHub noreply address FAILS the preflight for a gitlab: entry, and a GitLab
+// service-account address fails it for a github: entry. Because this asserts the
+// cross-forge case FAILS, a check that merely SKIPPED the wrong forge could not pass it —
+// which is the pre-mortem the row is written against.
+func TestCommitIdentityCrossForgeRejected(t *testing.T) {
+	dir := t.TempDir()
+
+	// gitlab entry must REJECT the github address, and say why.
+	withRoster(t, map[string]string{
+		EnvBlessLogin:      "ada:2001",
+		EnvTrustedBotSlugs: "reviewer=gitlab:assay-reviewer-bot:41987965",
+	})
+	p := okProbes().withDefaults()
+	p.CommitEmail = func(string) (string, error) { return pfGitHubReviewE, nil }
+	c := checkCommitIdentity(p, "reviewer", dir)
+	if c.State != CheckedFailed {
+		t.Fatalf("gitlab entry accepted a GitHub noreply address: %s (%s)", c.State, c.Detail)
+	}
+	if !strings.Contains(strings.ToLower(c.Detail), "github") {
+		t.Fatalf("the cross-forge failure should name the wrong (github) shape: %q", c.Detail)
+	}
+
+	// github entry must REJECT the gitlab address.
+	withRoster(t, map[string]string{
+		EnvBlessLogin:      "ada:2001",
+		EnvTrustedBotSlugs: "reviewer=github:assay-reviewer-app:300000004",
+	})
+	p.CommitEmail = func(string) (string, error) { return pfGitLabEmail, nil }
+	if c := checkCommitIdentity(p, "reviewer", dir); c.State != CheckedFailed {
+		t.Fatalf("github entry accepted a GitLab service-account address: %s (%s)", c.State, c.Detail)
+	}
+}
+
 // ---- check 5: sibling checkouts (#679) ------------------------------------
 
 // TestPreflightMissingSiblingIsRed is the #679 positive control: a queued brief

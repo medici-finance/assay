@@ -135,6 +135,19 @@ func cmdRoleInit(args []string) (err error) {
 		return perr
 	}
 
+	// The commit identity is derived from the roster entry's FORGE (the forge-qualified-identity brief),
+	// never a fixed shape. A GitLab service-account commit email embeds a group id and a
+	// per-account suffix the roster entry does not carry, so deskwt cannot derive it here —
+	// and it must NOT fall back to the GitHub noreply shape for a GitLab account. Refuse
+	// loudly and point at the provisioning path that knows the address.
+	if ident, bound := deskkit.EffectiveConfig().RoleBotIdentity(p.role); bound && ident.Forge == deskkit.ForgeGitLab {
+		return deskkit.Refused("refused: role " + p.role + " is a GitLab identity (" + ident.Slug + "); its " +
+			"service-account commit email (service_account_group_<group-id>_<suffix>@noreply.<host>) embeds a " +
+			"group id and per-account suffix the roster entry does not carry, so deskwt cannot derive it — it must " +
+			"not fall back to the GitHub noreply shape. Provision the GitLab worktree commit identity via the " +
+			"forge-gitlab custody/provisioning path, not from the roster.")
+	}
+
 	// The App commit identity comes from the roster, not a source literal: the bot USER id is
 	// deployment-specific. Refuse loudly rather than stamp an empty/unlinked identity.
 	botName, botEmail, ok := deskkit.RoleBotCommitIdentity(p.role)
