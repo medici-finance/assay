@@ -139,6 +139,10 @@ Never halt mid-action; a started outward write always completes. Precedence: `DI
 `STOP.<name>`. The tool layer (`deskkit.Guard()`) independently enforces these flags — a loop that
 skips its own check is defanged: every outward verb will refuse.
 
+The same cadence tick reads the per-claim **armed stops** across in-flight dispatches with
+`desksupervise status --stops` (the liveness observer's runtime snapshot) — so this window sees a
+stop armed on a claim it is reviewing, not only the global loop flags above.
+
 ### Worktree hygiene
 
 Worktree sprawl is owned by `deskwt prune` — it runs at boot and under its own interval

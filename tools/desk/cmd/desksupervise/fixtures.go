@@ -26,7 +26,8 @@ type claimRecord struct {
 	Branch       string `json:"branch"`
 	Tier         string `json:"tier"` // local | cheap | session | human
 	State        string `json:"state,omitempty"`
-	DispatchedAt string `json:"dispatchedAt"` // RFC3339
+	ClaimedAt    string `json:"claimedAt,omitempty"` // RFC3339 — when the claim was first acquired (before dispatch); optional
+	DispatchedAt string `json:"dispatchedAt"`        // RFC3339
 }
 
 // observationRecord is one claim's cross-probe observation, keyed by claim key in
