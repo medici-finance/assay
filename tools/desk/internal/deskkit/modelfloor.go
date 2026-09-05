@@ -201,15 +201,66 @@ func ModelCapabilityFloor(events []LabelEvent, isDispatcher func(applier string)
 			Outcome: FloorRefuse,
 			State:   state,
 			Stamp:   stamp,
-			Message: fmt.Sprintf(
-				"model-capability floor: the dispatch attestation on this PR is present but UNREADABLE "+
-					"(conflicting, incomplete, or applied by a non-dispatcher identity), so it cannot PROVE "+
-					"a %s tier and does not clear the floor — a stamp anyone could self-apply is not "+
-					"attestation. Re-dispatch under the dispatcher identity so the stamp is trustable, or "+
-					"escalate to a strong-tier session. (Incident-recovery override: set %s=1; it is logged "+
-					"loudly.)",
-				ModelFloorTier, ModelFloorOverrideEnv),
+			Message: unreadableStampMessage(events, isDispatcher),
 		}
+	}
+}
+
+// unreadableStampMessage writes the present-but-UNREADABLE refusal, naming the CAUSE it
+// actually found rather than listing every cause it might have found.
+//
+// WHY THE CAUSE, NOT THE MENU. The two causes have DIFFERENT remedies. An untrusted
+// applier is fixed on the PR (re-stamp it from the dispatcher); unreadable CONTENT is
+// fixed by correcting the labels themselves. A refusal that reads "conflicting, incomplete,
+// or applied by a non-dispatcher identity" makes the operator diagnose which one from the
+// timeline API by hand — which is what a field report of this floor had to do before it
+// could tell a genuinely mis-stamped PR from a correctly dispatched one. So the applier
+// case NAMES the login that applied the stamp and the identity the floor would have
+// accepted, and the content case names which half is wrong.
+func unreadableStampMessage(events []LabelEvent, isDispatcher func(applier string) bool) string {
+	var cause string
+	if untrusted := NonDispatcherStampAppliers(events, isDispatcher); len(untrusted) > 0 {
+		cause = fmt.Sprintf(
+			"The dispatched-* labels on this PR were applied by %s, and this floor accepts a stamp only "+
+				"from the bound dispatcher identity %s (roster role %q). Re-stamp the PR from the "+
+				"dispatcher — the dispatch verb applies the stamp under that App — or escalate this write "+
+				"to a strong-tier session.",
+			StripControl(strings.Join(untrusted, ", ")), RoleAppLoginOrEmpty(DispatcherRole), DispatcherRole)
+	} else {
+		cause = stampContentCause(events) +
+			" Re-stamp the PR with exactly one dispatched-model label and one dispatched-tier label, or " +
+			"escalate this write to a strong-tier session."
+	}
+	return fmt.Sprintf(
+		"model-capability floor: the dispatch attestation on this PR is present but UNREADABLE, so it "+
+			"cannot PROVE a %s tier and does not clear the floor — a stamp anyone could self-apply is not "+
+			"attestation. %s (Incident-recovery override: set %s=1; it is logged loudly.)",
+		ModelFloorTier, cause, ModelFloorOverrideEnv)
+}
+
+// stampContentCause names which way the stamp's CONTENT failed to resolve, for the branch
+// where every applier was the dispatcher. It reports the INCOMPLETE case separately
+// because that one is a transport failure between the two label writes rather than a
+// malformed input, and the operator's next look is different.
+func stampContentCause(events []LabelEvent) string {
+	models, tiers := 0, 0
+	for _, e := range events {
+		name := strings.ToLower(strings.TrimSpace(e.Name))
+		switch {
+		case strings.HasPrefix(name, DispatchedModelPrefix):
+			models++
+		case strings.HasPrefix(name, DispatchedTierPrefix):
+			tiers++
+		}
+	}
+	switch {
+	case models == 0:
+		return "The stamp is incomplete: a dispatched-tier label is present with no dispatched-model half."
+	case tiers == 0:
+		return "The stamp is incomplete: a dispatched-model label is present with no dispatched-tier half."
+	default:
+		return "The stamp's content does not resolve to one (model, tier): the labels are conflicting, " +
+			"empty, or name a tier outside the vocabulary (" + strings.Join(DispatchTiers(), " | ") + ")."
 	}
 }
 

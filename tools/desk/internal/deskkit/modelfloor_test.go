@@ -120,6 +120,172 @@ func TestFloorOutcomeZeroValueRefuses(t *testing.T) {
 	}
 }
 
+// TestModelCapabilityFloorStampCases is the CASE TABLE for the whole stamp-to-decision
+// contract, in one place, so the six answers are read side by side rather than inferred
+// from five separate tests.
+//
+// WHY A TABLE, AND WHY NOW. The floor was reported in the field as refusing every STAMPED
+// PR while an UNSTAMPED one proceeded — the stamp read as "applied by a non-dispatcher
+// identity" no matter what it said. The cause was on the WRITER's side (the stamp was
+// applied under the calling session's own credential rather than the dispatcher App's),
+// but the table is what makes the reader's side unambiguous afterwards: each row states
+// what the decision must be, so a future change that collapses two of these rows into one
+// fails here rather than in a review lane.
+func TestModelCapabilityFloorStampCases(t *testing.T) {
+	const disp, other = "the-dispatcher", "someone-else"
+	cases := []struct {
+		why         string
+		events      []LabelEvent
+		wantOutcome FloorOutcome
+		wantState   ModelState
+		wantInMsg   []string
+	}{
+		{
+			why:         "absent: no stamp at all proceeds with a NOTICE",
+			events:      nil,
+			wantOutcome: FloorNoticeAllow,
+			wantState:   ModelUnknown,
+			wantInMsg:   []string{"NOTICE"},
+		},
+		{
+			why:         "strong by the dispatcher: CLEARED",
+			events:      []LabelEvent{modelEvent("example-model-1", disp), tierEvent("strong", disp)},
+			wantOutcome: FloorAllow,
+			wantState:   ModelStamped,
+			wantInMsg:   []string{"OK", "strong"},
+		},
+		{
+			why:         "strong by another identity: UNREADABLE, refused",
+			events:      []LabelEvent{modelEvent("example-model-1", other), tierEvent("strong", other)},
+			wantOutcome: FloorRefuse,
+			wantState:   ModelIndeterminate,
+			wantInMsg:   []string{"UNREADABLE", "not attestation", other},
+		},
+		{
+			why: "MIXED appliers: the dispatcher's tier plus someone else's model half is UNREADABLE",
+			events: []LabelEvent{
+				modelEvent("example-model-1", other),
+				tierEvent("strong", disp),
+			},
+			wantOutcome: FloorRefuse,
+			wantState:   ModelIndeterminate,
+			wantInMsg:   []string{"UNREADABLE", other},
+		},
+		{
+			why:         "any by the dispatcher: READABLE but below the floor — refuse NAMING the tier",
+			events:      []LabelEvent{modelEvent("example-model-2", disp), tierEvent("any", disp)},
+			wantOutcome: FloorRefuse,
+			wantState:   ModelStamped,
+			// A readable below-floor stamp must NOT be reported as unreadable: the operator's
+			// next action differs (escalate the write vs re-stamp the PR), so the message must
+			// name the tier it actually read and must not say UNREADABLE.
+			wantInMsg: []string{`tier "any"`, "strong-tier session"},
+		},
+		{
+			why: "conflicting tiers from the dispatcher: UNREADABLE",
+			events: []LabelEvent{
+				modelEvent("example-model-1", disp),
+				tierEvent("strong", disp),
+				tierEvent("any", disp),
+			},
+			wantOutcome: FloorRefuse,
+			wantState:   ModelIndeterminate,
+			wantInMsg:   []string{"UNREADABLE", "conflicting"},
+		},
+		{
+			why:         "incomplete stamp (tier half only) from the dispatcher: UNREADABLE",
+			events:      []LabelEvent{tierEvent("strong", disp)},
+			wantOutcome: FloorRefuse,
+			wantState:   ModelIndeterminate,
+			wantInMsg:   []string{"UNREADABLE", "incomplete"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.why, func(t *testing.T) {
+			d := ModelCapabilityFloor(c.events, dispatcherIs(disp), false)
+			if d.Outcome != c.wantOutcome {
+				t.Fatalf("outcome = %v, want %v\nmessage: %s", d.Outcome, c.wantOutcome, d.Message)
+			}
+			if d.State != c.wantState {
+				t.Fatalf("state = %v, want %v\nmessage: %s", d.State, c.wantState, d.Message)
+			}
+			for _, want := range c.wantInMsg {
+				if !strings.Contains(d.Message, want) {
+					t.Errorf("message does not carry %q:\n%s", want, d.Message)
+				}
+			}
+			// A readable stamp is never reported with the unreadable wording, and vice
+			// versa: conflating them sends the operator to the wrong remedy.
+			if c.wantState == ModelStamped && strings.Contains(d.Message, "UNREADABLE") {
+				t.Errorf("a READABLE stamp was reported as UNREADABLE:\n%s", d.Message)
+			}
+		})
+	}
+}
+
+// A refusal that says only "applied by a non-dispatcher identity" cannot be acted on: the
+// operator cannot tell WHICH identity applied the stamp, nor which one the floor would
+// have accepted. This is the diagnosis the field report had to reconstruct by hand from
+// the timeline API, so the message must carry both logins.
+func TestModelFloorUnreadableRefusalNamesApplierAndExpectedDispatcher(t *testing.T) {
+	plantRoster(t, modelstampFixtureRoster) // binds desk=example-desk-app
+	events := []LabelEvent{
+		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "example-worker-app[bot]"},
+		{Name: DispatchedTierPrefix + "strong", AppliedBy: "example-worker-app[bot]"},
+	}
+	d := ModelCapabilityFloor(events, IsDispatcherLogin, false)
+	if d.Outcome != FloorRefuse {
+		t.Fatalf("outcome = %v, want FloorRefuse", d.Outcome)
+	}
+	if !strings.Contains(d.Message, "example-worker-app[bot]") {
+		t.Errorf("the refusal does not name the identity that APPLIED the stamp:\n%s", d.Message)
+	}
+	if !strings.Contains(d.Message, "example-desk-app[bot]") {
+		t.Errorf("the refusal does not name the dispatcher identity it would have ACCEPTED:\n%s", d.Message)
+	}
+}
+
+// NonDispatcherStampAppliers is the diagnosis the message above is built from: it names
+// every applier of a dispatched-* label the predicate will not vouch for, de-duplicated
+// and ordered, and nothing else. An empty answer means "no untrusted applier", never "not
+// checked" — a nil predicate vouches for nobody, so every applier is listed.
+func TestNonDispatcherStampAppliers(t *testing.T) {
+	const disp = "the-dispatcher"
+	events := []LabelEvent{
+		{Name: "size:S", AppliedBy: "someone-else"}, // not a stamp label: never listed
+		modelEvent("example-model-1", "b-applier"),
+		tierEvent("strong", "a-applier"),
+		modelEvent("example-model-1", "b-applier"), // duplicate applier collapses
+		tierEvent("strong", disp),
+	}
+	got := NonDispatcherStampAppliers(events, dispatcherIs(disp))
+	if strings.Join(got, ",") != "a-applier,b-applier" {
+		t.Fatalf("appliers = %v, want [a-applier b-applier] (sorted, de-duplicated, stamp labels only)", got)
+	}
+	if got := NonDispatcherStampAppliers(events, nil); len(got) != 3 {
+		t.Fatalf("nil predicate vouched for %d of 4 stamp appliers (%v) — it must vouch for nobody", 4-len(got), got)
+	}
+	if got := NonDispatcherStampAppliers(nil, dispatcherIs(disp)); len(got) != 0 {
+		t.Fatalf("no events yielded appliers %v", got)
+	}
+}
+
+// The dispatcher role is ONE declared value shared by the reader (IsDispatcherLogin) and
+// the writer (the dispatch verb's stamp step). The field defect was exactly this pair
+// naming different identities, so the constant is pinned here: the reader must resolve the
+// dispatcher login from DispatcherRole and nothing else.
+func TestDispatcherRoleIsTheOneDeclaredIdentity(t *testing.T) {
+	plantRoster(t, modelstampFixtureRoster)
+	login, ok := RoleAppLogin(DispatcherRole)
+	if !ok {
+		t.Fatalf("the roster binds no App to the dispatcher role %q", DispatcherRole)
+	}
+	if !IsDispatcherLogin(login) {
+		t.Fatalf("IsDispatcherLogin rejected %q, the App bound to the dispatcher role %q — reader and "+
+			"role declaration have drifted apart", login, DispatcherRole)
+	}
+}
+
 func TestModelFloorTierIsTopOfVocabulary(t *testing.T) {
 	// The floor must be the STRONGEST tier the vocabulary offers, or it is not a floor. Pin
 	// it against DispatchTiers so a vocabulary change that adds a stronger tier is caught.
