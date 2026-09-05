@@ -42,7 +42,7 @@ self-report.
 | **Coordinate** | `the-desk` (this window) | arbitration across streams, authoring, methodology, register honesty |
 | **Merge** | **human:<name>** | the human gate — merge is always theirs |
 
-**Only the review window runs the PR monitor** (a second double-dispatches reviewers), and **this
+**Only the review window runs the PR watcher (`capability:durable-monitor`)** (a second double-dispatches reviewers), and **this
 coordinator never autonomously responds to inbound ISSUE or COMMENT events** — monitor-fired response
 is `intake-desk`'s alone (the origin test is stated ONCE, in `skills/intake-desk/SKILL.md` § "The
 loop — issue lane"). That scopes issue/comment inbound only: this desk still watches the open-PR
@@ -289,8 +289,10 @@ restate.
 ## Liveness contract (binding)
 
 A standing liveness contract binds this window from boot: start the standing
-self-scheduled loop BEFORE the first sweep and keep it ticking for the life of
-the window; every tick re-sweeps this desk's own queue fresh; every relay (a
+self-scheduled loop (`capability:durable-monitor` — best-effort, never the sole
+wake signal; the fixed-cadence board sweep is the real liveness backstop and the
+always-on observability service its durable home) BEFORE the first sweep and keep
+it ticking for the life of the window; every tick re-sweeps this desk's own queue fresh; every relay (a
 cross-session hand-over) is acknowledged or filed, never assumed delivered.
 The desk runs **default-forward** — never ask the driver what to work on next:
 a driver scope instruction narrows preference, not a cage — when the scoped
