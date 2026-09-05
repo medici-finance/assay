@@ -162,6 +162,35 @@ cell to `verified`/`done` is the pure engine in `lifecycle.go`; the demotions
 fall back to the highest state still witnessed. `--root` may point anywhere inside
 the repo — reconcile walks up to the board root (the nearest `docs/streams`).
 
+### `brief` — resolve an item key to its file, frontmatter and board row
+
+`statusgen brief <stream>/<NN>` is a positional sub-command (like `verifyrun`) that
+turns an item KEY — the `<stream>/<NN>` form the dispatch and verify verbs emit —
+into the three facts every consumer otherwise re-derives by hand: which file the key
+names, what its frontmatter (`gate:` / `risk:` / `exec-tier:` …) says, and what the
+stream README's board row reports for its status. It reuses the SAME parsers the
+lint uses (`parseBriefFile` for the frontmatter, `parseBriefTable` for the row), so
+the answer it prints and the answer `--lint` validates can never disagree.
+
+```bash
+# JSON (the default) — one object for one key, an array for several.
+statusgen brief desk-tools/12 --root .
+statusgen brief a/01 b/02 --root .          # JSON array, argument order
+
+# key: value lines instead of JSON.
+statusgen brief desk-tools/12 --root . --text
+```
+
+It is **read-only**: it never writes STATUS.md or any generated file, touches no
+network, and shells out to nothing. Resolution is exact — exactly one brief file
+must match the key: zero files, or more than one (the numeric-prefix collision a
+hand-rolled glob cannot detect), is an error naming what it found, exit 2, and no
+JSON body — so a consumer never reads a partial or wrong answer as success. A legacy
+brief (no `schema:` frontmatter) resolves with `"schema": "legacy"` and empty
+frontmatter fields; a brief with no README row resolves with `"row": null` — absence
+is reported as itself, never invented as a status. The emitted `file` path is
+RELATIVE to `--root`, so the output carries no machine path.
+
 ## Multi-root (a board that spans repos)
 
 `--root` is **repeatable**. Give it more than once and statusgen emits **one
