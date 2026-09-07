@@ -78,21 +78,48 @@ facts:
    sentence that the uploaded avatar omits the fineness mark by design.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && go build ./... && go test ./cmd/deskavatar/ ./internal/avatar/ -count=1` | exit 0 |
-| 2 | `cd tools/desk && go build -o /tmp/deskavatar ./cmd/deskavatar && D=$(mktemp -d) && /tmp/deskavatar --org example-org --tier family --out $D && ls $D \| grep -cE -e '\.png$'` | 6 |
-| 3 | `D=$(mktemp -d) && /tmp/deskavatar --org example-org --tier team --out $D && ls $D \| grep -cE -e 'example-org-read\.png' -e 'example-org-act\.png'` | 2 |
-| 4 | `D1=$(mktemp -d); D2=$(mktemp -d); /tmp/deskavatar --org example-org --tier family --out $D1 && /tmp/deskavatar --org example-org --tier family --out $D2 && diff -rq $D1 $D2; echo $?` | no diff lines; exit 0 (deterministic) |
-| 5 | `cd tools/desk && go test ./internal/avatar/ -run 'TestGolden20px' -count=1` | exit 0 |
-| 6 | `cd tools/desk && go test ./internal/avatar/ -run 'TestProofFailsOnCollapsedPalette' -count=1 -v 2>&1 \| grep -cE -e 'reviewer.*worker' -e 'exit 5'` | ≥ 1 — with every role hue forced to #3366FF the proof names a colliding pair |
-| 7 | `cd tools/desk && go test ./internal/avatar/ -run 'TestUploadedOmitsFinenessMark' -count=1` | exit 0 — the generated SVG contains no `A·999` text node |
-| 8 | `cd tools/desk && ! go list -deps ./cmd/deskavatar 2>/dev/null \| grep -qxE 'C'` | exit 0 (no cgo dependency) |
-| 9 | `grep -cE -e '20 px' -e 'ΔE' -e 'deterministic' docs/desk-tools/deskavatar.md` | ≥ 3 |
-| 10 | `statusgen --root . --consumers --brief apps-installer/05` | exit 0 (routing claims corroborated against the diff) |
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check | `cd tools/desk && go build ./... && go test ./cmd/deskavatar/ ./internal/avatar/ -count=1` | exit 0 |
+| 2 | check | `cd tools/desk && go build -o /tmp/deskavatar ./cmd/deskavatar && D=$(mktemp -d) && /tmp/deskavatar --org example-org --tier family --out $D && ls $D \| grep -cE -e '\.png$'` | 6 |
+| 3 | check | `D=$(mktemp -d) && /tmp/deskavatar --org example-org --tier team --out $D && ls $D \| grep -cE -e 'example-org-read\.png' -e 'example-org-act\.png'` | 2 |
+| 4 | check | `D1=$(mktemp -d); D2=$(mktemp -d); /tmp/deskavatar --org example-org --tier family --out $D1 && /tmp/deskavatar --org example-org --tier family --out $D2 && diff -rq $D1 $D2; echo $?` | no diff lines; exit 0 (deterministic) |
+| 5 | check | `cd tools/desk && go test ./internal/avatar/ -run 'TestGolden20px' -count=1` | exit 0 |
+| 6 | check +mutation | `cd tools/desk && go test ./internal/avatar/ -run 'TestProofFailsOnCollapsedPalette' -count=1 -v 2>&1 \| grep -cE -e 'reviewer.*worker' -e 'exit 5'` | ≥ 1 — with every role hue forced to #3366FF the proof reddens (the guarded distinguishability control) and names a colliding pair |
+| 7 | check | `cd tools/desk && go test ./internal/avatar/ -run 'TestUploadedOmitsFinenessMark' -count=1` | exit 0 — the generated SVG contains no `A·999` text node |
+| 8 | check | `cd tools/desk && ! go list -deps ./cmd/deskavatar 2>/dev/null \| grep -qxE 'C'` | exit 0 (no cgo dependency) |
+| 9 | check | `grep -cE -e '20 px' -e 'ΔE' -e 'deterministic' docs/desk-tools/deskavatar.md` | ≥ 3 |
+| 10 | check | `statusgen --root . --consumers --brief apps-installer/05` | exit 0 (routing claims corroborated against the diff) |
 
 ## Evidence
 <!-- appended at implementation time -->
+
+Implemented on `feat/apps-installer-05`. New: `tools/desk/cmd/deskavatar/`
+(`main.go`), `tools/desk/internal/avatar/` (`color.go`, `glyph.go`, `compose.go`,
+`generate.go`, `raster.go`, `proof.go` + tests and
+`testdata/golden/{team,family}-20px.png`), `docs/desk-tools/deskavatar.md`, and
+the `oksvg`/`rasterx` rasteriser dependency in `tools/desk/go.mod`.
+
+Verify table run locally (all pass):
+
+| # | Result |
+|---|--------|
+| 1 | `go build ./... && go test ./cmd/deskavatar/ ./internal/avatar/ -count=1` → exit 0 |
+| 2 | family tier → 6 PNGs |
+| 3 | team tier → `example-org-read.png`, `example-org-act.png` (2) |
+| 4 | two family runs byte-identical (`diff -rq` exit 0) |
+| 5 | `TestGolden20px` → exit 0 |
+| 6 | `TestProofFailsOnCollapsedPalette` names `reviewer / worker` (grep count 1 ≥ 1) |
+| 7 | `TestUploadedOmitsFinenessMark` → exit 0 (no `A·999` node) |
+| 8 | `go list -deps ./cmd/deskavatar` has no `C` (no cgo) → exit 0 |
+| 9 | docs grep `20 px`/`ΔE`/`deterministic` → 15 (≥ 3) |
+| 10 | `statusgen --root . --consumers --brief apps-installer/05` → exit 0 |
+
+Design note recorded in `docs/desk-tools/deskavatar.md`: the palette has hues
+under the 20 px ΔE floor, so every colour-close pair is routed through a
+silhouette-distinct glyph; reviewer (disc) and worker (ticket) are the deliberate
+colour-only-separated pair the collapse test (row 6) targets. The golden strips
+are the independent layer behind the proof metric.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table. Reviewer also eyeballs the

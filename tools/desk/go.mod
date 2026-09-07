@@ -6,7 +6,10 @@ require (
 	github.com/a2aproject/a2a-go/v2 v2.5.0
 	github.com/cli/go-gh/v2 v2.13.0
 	github.com/go-git/go-git/v5 v5.19.2
+	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c
+	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 	gitlab.com/gitlab-org/api/client-go v1.46.0
+	golang.org/x/image v0.0.0-20211028202545-6944b10bf410
 	golang.org/x/sys v0.46.0
 	gopkg.in/yaml.v3 v3.0.1
 )
