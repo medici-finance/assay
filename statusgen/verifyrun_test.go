@@ -169,6 +169,37 @@ func TestRunVerifyCommandRunsAtTheRootAndUnescapesPipes(t *testing.T) {
 	}
 }
 
+// TestRunVerifyCommandPipefailSurfacesLeftHandFailure is a REGRESSION test for
+// the pipe-masked false clean: a Verify row shaped `<a check that fails> |
+// <a reader that succeeds>` must FAIL, not score `pass exit=0` on the trailing
+// reader's exit. Without `set -o pipefail` the pipeline reports only its last
+// stage, so a failed left-hand command is invisible — the worst-direction
+// witness (a check recorded as passing when it never really ran).
+func TestRunVerifyCommandPipefailSurfacesLeftHandFailure(t *testing.T) {
+	root := t.TempDir()
+
+	// A failing left-hand command with a succeeding trailing reader. Pre-fix
+	// this scored `pass exit=0` (cat's exit); with pipefail it must FAIL.
+	if got := runVerifyCommand(root, `false \| cat`, 30*time.Second); got.couldNotRun || got.exit == 0 {
+		t.Errorf("`false | cat` = %+v, want a failing (non-zero, not could-not-run) result — a failed left-hand stage must surface", got)
+	}
+
+	// The mirror: a genuinely passing pipeline still passes.
+	if got := runVerifyCommand(root, `true \| cat`, 30*time.Second); got.couldNotRun || got.exit != 0 {
+		t.Errorf("`true | cat` = %+v, want pass exit=0 — pipefail must not redden a pipeline whose every stage succeeds", got)
+	}
+
+	// A non-piped failing command is unchanged: it still fails on its own exit.
+	if got := runVerifyCommand(root, `false`, 30*time.Second); got.couldNotRun || got.exit == 0 {
+		t.Errorf("`false` = %+v, want a plain failing result", got)
+	}
+
+	// A non-piped passing command is unchanged.
+	if got := runVerifyCommand(root, `true`, 30*time.Second); got.couldNotRun || got.exit != 0 {
+		t.Errorf("`true` = %+v, want pass exit=0", got)
+	}
+}
+
 // TestRunVerifyCommandFreshShellPerRow pins the isolation claim: a row cannot
 // leave shell state behind for the next one.
 func TestRunVerifyCommandFreshShellPerRow(t *testing.T) {

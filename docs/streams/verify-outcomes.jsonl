@@ -1,0 +1,12 @@
+{"ts": "2026-09-07T01:19:23Z", "brief": "desk-tools/20", "outcome": "verified", "rows_passed": 5, "rows_total": 5, "sha": "67abbac"}
+{"ts": "2026-09-07T01:19:23Z", "brief": "desk-tools/09", "outcome": "verify-fail", "rows_passed": 8, "rows_total": 9, "sha": "67abbac"}
+{"ts": "2026-09-07T01:36:11Z", "brief": "mistake-proofing/05", "outcome": "verified", "rows_passed": 9, "rows_total": 9, "sha": "67abbac"}
+{"ts": "2026-09-07T01:36:11Z", "brief": "forge-neutral/03", "outcome": "verify-fail", "rows_passed": 9, "rows_total": 14, "sha": "67abbac"}
+{"ts": "2026-09-07T02:00:35Z", "brief": "mistake-proofing/06", "outcome": "verified", "rows_passed": 8, "rows_total": 8, "sha": "5d20ff9"}
+{"ts": "2026-09-07T02:00:35Z", "brief": "desk-containers/03", "outcome": "verify-fail", "rows_passed": 1, "rows_total": 7, "sha": "5d20ff9"}
+{"ts": "2026-09-07T02:38:01Z", "brief": "desk-supervision/02", "outcome": "verified", "rows_passed": 9, "rows_total": 9, "sha": "67abbac"}
+{"ts": "2026-09-07T02:41:22Z", "brief": "desk-supervision/07", "outcome": "verified", "rows_passed": 8, "rows_total": 8, "sha": "5d20ff9"}
+{"ts": "2026-09-07T02:49:48Z", "brief": "iso-9001/01", "outcome": "verify-fail", "rows_passed": 10, "rows_total": 11, "sha": "5d20ff9"}
+{"ts": "2026-09-07T03:46:30Z", "brief": "derived-board/03", "outcome": "verify-fail", "rows_passed": 7, "rows_total": 8, "sha": "5d20ff9"}
+{"ts": "2026-09-07T03:46:30Z", "brief": "statusgen/11", "outcome": "verify-fail", "rows_passed": 6, "rows_total": 9, "sha": "5d20ff9"}
+{"ts": "2026-09-07T18:05:00Z", "brief": "windows-port/05", "outcome": "verified", "rows_passed": 8, "rows_total": 8, "sha": "9b1cf06"}

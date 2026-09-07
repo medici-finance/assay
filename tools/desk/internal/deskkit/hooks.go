@@ -70,6 +70,12 @@ const DefaultHookTimeoutMS = 60000
 // large; it is a diagnostic, not a payload, so it is truncated rather than streamed.
 const maxHookOutputBytes = 2000
 
+// hookWaitDelay bounds how long cmd.Wait may keep waiting on the hook's output pipe AFTER
+// the timeout has fired and the kill has been delivered. It is not extra budget for the
+// hook: it is the ceiling on how far past the budget a straggler holding the inherited pipe
+// can drag the caller. See the note in Run.
+const hookWaitDelay = 2 * time.Second
+
 // Hooks is the schema of <StateDir>/hooks.yaml. Each field is a shell snippet run at the
 // matching lifecycle moment; an empty field is a no-op. Unknown keys in the file are
 // ignored (yaml.v3 does not error on them without KnownFields), so a newer file can carry
@@ -228,6 +234,24 @@ func (h Hooks) Run(name string, he HookEnv) (ran bool, err error) {
 		cmd.Dir = he.Worktree
 	}
 	cmd.Env = hookEnviron(name, he)
+
+	// The timeout must reap the hook's whole PROCESS TREE, not just the shell. Whether
+	// `sh -c 'sleep 30'` even HAS a tree is host-dependent — BSD/macOS sh exec's the last
+	// command so the shell IS the sleep, while Debian dash (the Linux CI image's /bin/sh)
+	// forks, making the sleep a grandchild — so a fix that works only on the developer's
+	// laptop is the failure mode this guards against. Killing only the shell there costs
+	// twice: the grandchild runs on unreaped, AND it inherits the write end of the pipe
+	// os/exec opened for the buffers below, so the copying goroutine — and therefore
+	// cmd.Wait — blocks until the GRANDCHILD exits. That turns a 200ms budget into the
+	// full 30s of the sleep, which is how a hung hook can wedge the caller despite there
+	// being a timeout at all.
+	isolateHookProcess(cmd)
+	// Belt to the process group's braces, and the only protection on platforms where the
+	// group kill is a no-op: once the context is done and the kill has been delivered,
+	// Wait stops waiting on the output pipe after this long and returns regardless of who
+	// still holds it. Small, because by this point the budget is already spent — it bounds
+	// the overrun rather than granting the hook more time.
+	cmd.WaitDelay = hookWaitDelay
 
 	var out bytes.Buffer
 	cmd.Stdout = &out

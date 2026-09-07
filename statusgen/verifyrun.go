@@ -503,10 +503,21 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// The wrapper (e.g. `unshare --net --map-root-user`) prefixes the `sh -c`
+	// The wrapper (e.g. `unshare --net --map-root-user`) prefixes the shell
 	// invocation, so the network namespace is entered before any of the row's
 	// own shell runs.
-	argv := append(append([]string{}, wrapper...), "sh", "-c", unescapePipes(command))
+	//
+	// The shell is `bash -o pipefail`, NOT plain `sh`. Without pipefail, a
+	// pipeline reports only its LAST stage's exit status, so a row shaped
+	// `<a check that can silently fail> | head/tail/grep -c ...` scores the
+	// trailing reader's exit — a FAILED left-hand command with a succeeding
+	// reader is recorded `pass exit=0`, the worst-direction false clean (a
+	// witness that a check passed when it never really ran). pipefail makes ANY
+	// failing stage surface as the pipeline's own non-zero exit, so the row
+	// FAILS. Non-piped commands are unaffected: a single command's exit is its
+	// pipeline's exit with or without pipefail. This matches how the repo's CI
+	// shell steps run.
+	argv := append(append([]string{}, wrapper...), "bash", "-o", "pipefail", "-c", unescapePipes(command))
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = root
 	cmd.Env = os.Environ()

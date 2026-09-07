@@ -130,9 +130,18 @@ func TestArgsDigestStable(t *testing.T) {
 }
 
 func TestSessionTag(t *testing.T) {
-	// Primary: the variable the Claude Code harness actually exports wins.
+	// FIRST: the desk tools' own per-agent session id. A dispatched agent is a child
+	// process and inherits the harness ids of the session that dispatched it, so those
+	// name the DISPATCHER; $DESK_SESSION is what distinguishes one agent from its
+	// siblings, and it must outrank both.
+	t.Setenv("DESK_SESSION", "  desk-sess  ") // and it is trimmed
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "code-sess")
 	t.Setenv("CLAUDE_SESSION_ID", "legacy-sess")
+	if got := SessionTag(); got != "desk-sess" {
+		t.Fatalf("SessionTag = %q, want desk-sess (DESK_SESSION names the acting agent and takes precedence)", got)
+	}
+	// Then the variable the Claude Code harness actually exports.
+	t.Setenv("DESK_SESSION", "")
 	if got := SessionTag(); got != "code-sess" {
 		t.Fatalf("SessionTag = %q, want code-sess (CLAUDE_CODE_SESSION_ID takes precedence)", got)
 	}
@@ -141,7 +150,7 @@ func TestSessionTag(t *testing.T) {
 	if got := SessionTag(); got != "legacy-sess" {
 		t.Fatalf("SessionTag = %q, want legacy-sess (legacy fallback)", got)
 	}
-	// Neither set → "unknown".
+	// None set → "unknown".
 	t.Setenv("CLAUDE_SESSION_ID", "")
 	if got := SessionTag(); got != "unknown" {
 		t.Fatalf("SessionTag = %q, want unknown", got)

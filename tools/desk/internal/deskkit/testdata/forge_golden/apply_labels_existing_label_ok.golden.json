@@ -1,0 +1,28 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/labels",
+      "body": {
+        "color": "0e8a16",
+        "description": "",
+        "name": "approval-needed"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/repos/medici-finance/assay/issues/7/labels",
+      "body": {
+        "labels": [
+          "approval-needed"
+        ]
+      }
+    }
+  ],
+  "result": {
+    "Added": [
+      "approval-needed"
+    ],
+    "Removed": null
+  }
+}

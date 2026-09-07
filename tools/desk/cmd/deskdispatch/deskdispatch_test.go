@@ -147,15 +147,15 @@ func TestDispatchClaimsFirstThenBuildsTheWorktreeAndEmitsThePrompt(t *testing.T)
 	}
 	prompt := string(body)
 	for _, want := range []string{
-		"medici-finance/assay",                    // the target repo, stated
-		"/private/tmp/worker-home",                // the home deskwt reported
-		"every file operation stays under it",     // the isolation floor, verbatim
-		"NEVER re-attempt the same effect",        // the no-evasion clause
-		"security-gate removal",                   // the security-gate refusal
-		"KUBECONFIG=/dev/null",                    // the offline envelope
-		`mktemp "${TMPDIR:-/tmp}/pr-body.XXXXXX"`, // the body-file rule
-		"this item requires a strong implementer", // the strong-tier pickup STOP
-		"It is not your writable root",            // the checkout base is not writable
+		"medici-finance/assay",                                        // the target repo, stated
+		"/private/tmp/worker-home",                                    // the home deskwt reported
+		"every file operation stays under it",                         // the isolation floor, verbatim
+		"NEVER re-attempt the same effect",                            // the no-evasion clause
+		"security-gate removal",                                       // the security-gate refusal
+		"KUBECONFIG=/dev/null",                                        // the offline envelope
+		`mktemp "${TMPDIR:-/tmp}/pr-body.XXXXXX"`,                     // the body-file rule
+		"this item requires a strong implementer",                     // the strong-tier pickup STOP
+		"It is not your writable root",                                // the checkout base is not writable
 		"NEVER run the whole-module `go test ./...` inside the agent", // bounded-Verify: no full-module run in-agent
 		"PUSH before you start a long Verify row",                     // bounded-Verify: push guards against a watchdog kill
 		root, // the checkout base, stated ABSOLUTE

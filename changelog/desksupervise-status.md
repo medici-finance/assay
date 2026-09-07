@@ -1,2 +1,0 @@
-### Added
-- `desksupervise status [--json] [--stops]` reports a read-only runtime snapshot of the supervisor: per-claim liveness (reusing the same taxonomy `tick` runs, without acting), armed run-stops, and observation state. Three-state throughout — a claim it cannot read is `COULD-NOT-CHECK` (listed in `blind_sources`, snapshot exits 6), timers show `n/a` never `0s`, and token usage is `could-not-check` by design rather than zero. `run --interval` writes the snapshot to `<StateDir>/supervise/status.json` atomically each tick.

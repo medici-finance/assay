@@ -24,6 +24,8 @@ file points, never re-states; incident rationale lives in the project's findings
 link. Bindings for your harness — which mechanism each `capability:*` names — are in
 `../../references/<harness>.md`.
 
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+
 **References**, each carrying text the reviewer prompt needs verbatim:
 `references/leak-audience-check.md` (leak/audience axes for an outward-facing artifact),
 `references/merge-time-recheck.md` (merge-time + body/Verify re-check in full),
@@ -318,7 +320,7 @@ as the planner and acts on its rows.
   **The desk RUNS deskflip and honours its refusals** — it does not re-derive the condition list
   here; there is no override flag, no un-ready verb, no merge verb. Exit 5 = a condition failed
   (fix it, or leave the PR parked); exit 6 = a condition could not be READ (blind, never green).
-- **A ready-flip is an authority-bearing write, so it needs a strong-tier session** — deskflip's model-capability floor refuses a flip whose dispatch is attested below the strong tier and admits an unattested or human-driven session with a NOTICE; delegate work downward freely, but escalate the flip upward rather than issue it from a below-tier session.
+- **A ready-flip is an authority-bearing write, so it needs a strong-tier session** — deskflip's model-capability floor refuses a flip whose dispatch is ATTESTED below the strong tier, and admits with a NOTICE any session carrying no strength attestation: an unattested or human-driven one, and a `dispatched-tier:any` dispatch, since `any` records that the brief demanded no particular tier rather than that a weak runner ran. The NOTICE is not a clearance — delegate work downward freely, but escalate the flip upward rather than issue it from a below-tier session.
   Only the human's explicit waiver substitutes for a missing security artifact. Post the wrap-up
   comment listing filed follow-ups as `<repo>#<N>` pointers. **Merge stays the human's.**
 
@@ -340,6 +342,37 @@ as the planner and acts on its rows.
 
 **A merged/closed PR is DONE** — its worker stops; residual work is a NEW PR. A commit
 pushed to a merged branch is orphaned off main: rescue it as a fresh PR.
+
+### Round cap + arbiter packet — bounding the fix-to-re-review cycle
+
+**Default cap N = 3** full verdict→fix→re-review rounds on the SAME finding class on one PR
+(adopter-tunable). The cap counts ROUNDS on that one class, never commits and never the whole
+PR: a new finding class opens its own counter at zero, and "never exit with a review pending"
+is unchanged — filing the packet below IS the exit condition for the capped class, not an
+exception to it.
+
+On round N+1 for that class, the reviewer STOPS re-litigating it and instead files the
+escalation the methodology already has — `needs-decision` — carrying an **arbiter packet**
+in place of another verdict: one row per disputed finding, each side's position plus a link to
+the evidence for it. Structured disagreement, not a transcript dump — the human reads rows, not
+review history (a small-team conference talk on a capped adversarial review loop, 2026:
+"we've only lost ten minutes" against unbounded re-litigation cost).
+
+| finding | worker's position + evidence | reviewer's position + evidence |
+|---|---|---|
+| `<file:line> — <one-line defect>` | `<claim>` — `<commit/PR-comment link>` | `<claim>` — `<review/PR-comment link>` |
+
+File via `deskfile new --raised-by reviewer`, label `needs-decision`, body = the packet table
+plus the PR link, then comment on the PR pointing at the filed issue
+(`references/out-of-scope-filing.md`'s dual-track dedupe applies if a packet for this class is
+already open). `authorization-needed` stays on the PR — the packet is a human fork, not a flip,
+and does not touch ready-flip ownership, human merge, or the security carve-out.
+
+**Recurrence-promotion:** a finding the reviewer has raised **three or more times across
+separate PRs** (repetition of the same finding, not rounds on one PR) is itself worth filing as
+a guardrail-promotion candidate through the existing insight-routing lane — independent of
+whether any one PR ever hit the round cap above (a harness-engineering talk from the same
+event: never give the same review feedback twice; recurrence promotes leftward).
 
 ### PR-state labels — who is the PR waiting on
 
@@ -391,6 +424,16 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   board regen → `--request-changes` naming the bare-token fix; refs/dates/sign-offs belong in the
   **Verified/Reviewed** columns. Do NOT flag a legitimate `blocked` cell. Run the board linter and
   treat these PROBLEMs as blockers even when the flip is substantively correct.
+- **Steady-state gating — a skill/guardrail edit needs a warm-up marker line.**
+  A PR that edits a skill body (the plugin bundle's `skills/**`, or a project-level
+  `skills/**` home) or a guardrail/hook, or lands a behavior-carrying pin bump to the
+  project's tool-version file, is a window-worthy event: check it appends one line to the
+  repo's `.assay-warmup` (format documented in the file's own header, default 7-day window)
+  naming the change. Missing is a finding, not a blocker on its own — `.assay-warmup` may not
+  exist yet in every adopter — but where the file is present, ask for the line before
+  approving; an unmarked window-worthy merge still gets caught after the fact by the
+  daily-harvest mechanical backstop, where that tool is adopted, which is the reason this
+  bullet is a should, not the ONLY line of defense.
 - **Spec-landing files the authoring follow-on in the same motion.** A PR that
   lands a spec/scoping doc as `approved` — or flips one to `approved` — must show the follow-on
   authoring issue filed in the same motion: a work-ready issue titled `Author briefs for <spec path>
@@ -434,6 +477,13 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   report, not a row to soften or delete. Quietly weakening a correctly-red check to reach green is
   worse than leaving it red with a note explaining why; a correctly-red row is doing exactly its
   job, and this rule must never be read as pressure toward weaker checks.
+- **Decision-drift pass — does this diff contradict a record no one is holding in their head.**
+  Check the diff against three BOUNDED sources only, never a whole-repo archaeology pass: (a) the
+  owning brief's own Context/constraints, (b) a finding in the findings register that names the
+  touched surface, (c) a ruling recorded on the PR's own linked issues. A contradiction is a
+  normal finding citing the contradicted record by link — not a separate escalation track (a
+  product-teams conference talk, 2026: agents quietly violating a standing decision no single
+  human held in their head, caught only because a reviewer happened to remember it).
 - **Only the human's OWN account proves the human; a shared machine account proves nothing.**
   Check the ACCOUNT, never the text prefix: a shared-account comment claiming to be the human
   ("Decision (…)") is agent output and carries NO gate authority. An agent relaying a real human decision says so and links where it was

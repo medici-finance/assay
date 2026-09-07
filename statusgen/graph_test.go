@@ -253,6 +253,12 @@ func TestGraphSourcesTypedIDFidelity(t *testing.T) {
 	writeGraphBrief(t, streamsDir, "beta", "01", nil, nil,
 		[]string{"F-real-register-entry — real", "F-not-a-real-entry — unknown"}, nil)
 	writeGraphFinding(t, streamsDir, "F-real-register-entry", "real", nil)
+	// A complete tree carries an intake register. buildGraph reads intake
+	// three-state-honestly: a tree with NEITHER a docs/streams/intake/ directory
+	// NOR a docs/streams/INTAKE.md view is could-not-check, not an empty graph, so
+	// this minimal fixture supplies an (empty) monolithic register to stay a
+	// measured read rather than trip that could-not-check.
+	writeTemp(t, streamsDir, "INTAKE.md", "# Intake\n\nNo intake entries yet.\n")
 
 	g, err := buildGraph(root)
 	if err != nil {

@@ -1,0 +1,149 @@
+name: windows-ci-leg
+# The WINDOWS CI LEG — windows-port/04. The first check in this repo to run on a
+# Windows runner. Every other `runs-on:` is Linux (self-hosted medici-builder-public
+# / medici-builder-release, plus one GitHub-hosted ubuntu-latest in inbound-triage);
+# the Go toolchain there is hand-installed linux-amd64. Nothing has ever executed on
+# Windows, so "statusgen runs on Windows" is a claim until this leg corroborates it.
+#
+# WHAT IT PROVES (Ian's direction, 2026-09-01):
+#   (1) `statusgen --lint` exits 0 on Windows, and
+#   (2) an OFFLINE desk-verb smoke passes on Windows.
+# The smoke verb is `--version` — pure introspection (statusgen/main.go recognises
+# `--version` as the SOLE argument and prints the build tag), no filesystem write, no
+# forge/network, no POSIX shell-out. windows-port/02's portability triage classes the
+# git/gh argv shell-outs `works` on Windows and names `--version`/`--help` as the safe
+# offline smoke; a verb that contacts a live forge (deskpost / deskpr / gh PR create /
+# gh issue create) or a POSIX-only surface is deliberately NOT used here.
+#
+# WHERE THIS RUNS — GitHub-hosted `windows-latest` (amd64). medici-finance/assay is
+# PUBLIC, so windows-latest is free and needs no procurement; unlike the self-hosted
+# Linux pool it reaches GitHub's release-asset CDN, so `actions/setup-go` works and the
+# toolchain is not hand-installed. This is the amd64 substrate decision windows-port/04
+# resolves; the native windows/arm64 smoke is a SEPARATE, held row (see below).
+#
+# WHAT THE LEG EXERCISES — an interim `go build` of statusgen from source on the Windows
+# runner, then `--lint` + the `--version` smoke on that `statusgen.exe`. windows-port/03
+# landed the release-binary install path (a Go-native `deskinstall` that resolves the
+# pinned tag + per-platform sha256 from paired-versions.yaml and hash-verifies the
+# `statusgen-windows-<arch>.exe` asset before placing it). The release-binary smoke —
+# install via deskinstall, then `--lint`/`--version` on the INSTALLED `.exe` — is the
+# follow-up form once a windows asset is published for the pinned tag; the from-source
+# build here proves the Go/Windows code path works in the meantime and is the sanctioned
+# interim per the brief. Both invoke the binary by its `.exe`-suffixed name.
+#
+# FAIL-FIRST (Task 5) — the green is load-bearing. Each assertion runs under
+# `set -euo pipefail`, so a non-zero exit from statusgen reddens the job; statusgen
+# itself exits non-zero on a broken input (a bogus verb → exit 2, a nonexistent lint
+# root → exit 1, both measured on the host binary at implementation time). The
+# `workflow_dispatch` input `failfirst`, when `true`, runs a step that points the smoke
+# at a nonexistent verb and INVERTS the check — it fails the job unless statusgen
+# refuses — so a maintainer can demonstrate on demand that the leg reddens rather than
+# silently swallowing a failure. A `|| true`-style swallow or a smoke that runs nothing
+# is exactly the vacuously-green design the brief rejects.
+#
+# NATIVE windows/arm64 smoke — held BLOCKED, never inferred from amd64. `windows-latest` is amd64. A NATIVE
+# windows/arm64 smoke needs a `windows-11-arm` hosted runner or a self-hosted arm64
+# Windows runner; this leg does NOT infer an arm64 result from the amd64 run. See the
+# `arm64-native-smoke` job below — it is held BLOCKED with its reason and does no work.
+# windows/arm64 still ships cross-compiled + checksummed from windows-port/01 regardless.
+#
+# ── STAGED, PENDING HUMAN PROMOTION ──
+# This file is authored in the PR but STAGED at ci/staged-workflows/ rather than
+# .github/workflows/: no bot/App in this repo holds workflow-push permission (a
+# deliberate supply-chain boundary — GitHub hard-rejects any App push that creates or
+# updates a `.github/workflows/*` file), so a maintainer PROMOTES it to
+# .github/workflows/windows-ci-leg.yml to activate it (see ci/staged-workflows/README.md).
+# Until promoted it runs nowhere, which is expected — the reviewable artifact is the
+# deliverable here, not a run. The authoritative evidence for the brief's rows 2-3 is a
+# green run of THIS leg once promoted.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      failfirst:
+        description: "Run the fail-first demonstration (points the smoke at a bogus verb; the leg MUST redden)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  windows-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build statusgen.exe (interim from-source build)
+        shell: bash
+        run: |
+          set -euo pipefail
+          go version
+          cd statusgen
+          go build -o statusgen.exe .
+          ./statusgen.exe --version
+
+      - name: statusgen --lint (assert exit 0 on Windows)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd statusgen
+          # --root is the REPO ROOT; statusgen resolves <root>/docs/streams under it,
+          # so `--root ..` lints this repo's own stream tree. Exit 0 == clean.
+          ./statusgen.exe --root .. --lint
+
+      - name: Desk-verb smoke (offline; --version introspection)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd statusgen
+          # Offline envelope: `--version` shells out to nothing and contacts no forge or
+          # network. It is pure introspection — no mutating desk/forge verb runs here.
+          out="$(./statusgen.exe --version)"
+          echo "smoke: statusgen --version => ${out}"
+          test -n "${out}"
+
+      - name: Fail-first demonstration (opt-in; the leg MUST redden on a broken input)
+        # `inputs.failfirst` is a real boolean (type: boolean) — use it directly; comparing it
+        # to the string 'true' casts boolean→1 vs string→NaN (1 == NaN is false), which would
+        # skip this step even when dispatched with failfirst=true. Falsy on push/pull_request
+        # (no input present), so it stays dormant outside workflow_dispatch.
+        if: ${{ inputs.failfirst }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          cd statusgen
+          # Point the smoke at a nonexistent verb and INVERT the assertion: statusgen must
+          # refuse (non-zero). If it exits 0 the leg is not load-bearing — fail the job.
+          if ./statusgen.exe --i-am-not-a-verb; then
+            echo "::error::fail-first BROKEN — statusgen accepted a bogus verb; the green would be vacuous"
+            exit 1
+          fi
+          echo "fail-first OK — statusgen refused the bogus verb (leg reddens on broken input as intended)"
+
+  # native windows/arm64 smoke: BLOCKED — needs a windows-11-arm hosted runner (or a
+  # self-hosted arm64 Windows runner). This leg does NOT green arm64 from the amd64
+  # windows-latest result. Held with its reason per windows-port/04; unblocked when a
+  # windows-11-arm runner is available to the repo. windows/arm64 ships cross-compiled +
+  # checksummed from windows-port/01 regardless — this row is only the NATIVE smoke.
+  arm64-native-smoke:
+    # Intentionally never scheduled: `if: false` holds the row BLOCKED and does no work,
+    # so it can never be mistaken for a passing arm64 result. Flip to a windows-11-arm
+    # runner when one is available; do not derive its state from windows-smoke.
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: BLOCKED — native windows/arm64 smoke awaits a windows-11-arm runner
+        run: |
+          echo "native windows/arm64 smoke is BLOCKED: no windows-11-arm runner available"
+          exit 1

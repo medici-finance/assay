@@ -31,6 +31,10 @@ contradicts it.
 > tables' generator/lint commands run in the tool's source tree. Statuses below reflect the
 > completed planning/implementation work.
 
+That follow-on is now a brief of its own — brief 14 in the table below, authored 2026-09-06.
+It is live work owned here, not a retired record: until it lands, briefs 01/02/06/07/12 are
+held at `implemented` with no Evidence PRs on this repository. See "Note on 14" below.
+
 **What is measured, not assumed** (2026-08-07):
 
 - `statusgen` and the `tools/**` binaries are plain Go CLIs invoked by argv — nothing
@@ -185,9 +189,10 @@ record — that is a follow-on, not a claim this re-home makes. Statuses therefo
 | 07 | [Adoption docs, freshness registration, live Codex smoke protocol + first run](./brief-07-adoption-live-smoke.md) | 4 | M | implemented | — | — |
 | 09 | [jcode desk-harness spike — measured parity + fleet-density for driving desks](./brief-09-jcode-desk-harness-spike.md) | 0 | L | implemented | — | — |
 | 10 | [SpecMem portable-memory spike — one stream's registers across two harnesses](./brief-10-specmem-portable-memory-spike.md) | 0 | M | implemented | — | — |
-| 11 | [Durable-monitor capability + residual harness-token prose-audit](./brief-11-durable-monitor-capability.md) | 3 | M | implemented | — | — |
+| 11 | [Durable-monitor capability + residual harness-token prose-audit](./brief-11-durable-monitor-capability.md) | 3 | M | done | 2026-09-05 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #475 @ ebbb6c6a828080a29ccef26b2707c49730871513) |
 | 12 | [Cursor — the third harness column (ground-truth + binding + generator verb + public column)](./brief-12-cursor-third-column.md) | 5 | L | implemented | — | — |
 | 13 | [Cursor live-desk-smoke protocol + first run](./brief-13-cursor-live-desk-smoke.md) | 6 | M | todo | — | — |
+| 14 | [Code de-house — land the stream's tool and packaging deliverables in the public tree](./brief-14-code-dehouse.md) | 6 | L | todo | — | — |
 
 **Note on 07:** artifacts delivered (adoption docs, freshness registration, smoke
 protocol). The live Codex smoke run itself is held — it needs a Codex environment (OpenAI
@@ -199,6 +204,18 @@ until 13. 13 is not on the Codex critical path and does not gate 01–07 — it 
 column's own equivalent of 07, one wave after 12, and it is what turns "Cursor is
 structurally supported" into "a full desk loop has run on Cursor." Blocked the same way 07
 is: it needs a live Cursor install, Ian provides/sanctions.
+
+**Note on 14 — this is the brief the re-home note above owed.** The re-home landed the
+planning record here and left the code and doc deliverables in the private source tree, so
+briefs 01/02/06/07/12 name paths that do not exist in this repository and their Verify tables
+cannot be run here at all. A non-implementer's fresh run at public main on 2026-09-05 returned
+FAIL-as-written for 01 and could-not-check for 02/06/07; 12 passed only against the private
+tree, which is a different claim than the public brief makes. **Those five are consequently
+HELD at `implemented` with no Evidence PRs on this repository until 14 lands** (ruling recorded
+2026-09-05, relayed 2026-09-06). 14 is not on the Codex critical path — everything it moves is
+already built — but it is the head of the *verification* path: no public Evidence row in this
+stream is honest before it. It is `gate: human` because it is a publication, the one act here
+that git does not undo.
 
 ## Critical path
 
@@ -250,7 +267,7 @@ Wave 2: [04]←{02,03}, [05]←{01,03}
 Wave 3: [06]←{03,04,05}, [11]←04
 Wave 4: [07]←{05,06}
 Wave 5: [12]←{03,04,05,06}
-Wave 6: [13]←12
+Wave 6: [13]←12, [14]←{06,12}
 ```
 
 Critical path: `ext(Codex env) → 01 → 03 → 04 → 06 → 07`. 02 runs parallel in wave 0 and
@@ -263,14 +280,26 @@ harness column) reuses the whole seam and lands after the Codex chain (wave 5). 
 Cursor live-desk-smoke protocol + first run — this stream's Cursor-side equivalent of 07)
 follows 12 in wave 6; like 07 it does not extend the Codex critical path.
 
+14 (the code de-house) also sits in wave 6: it moves the artifacts 06 and 12 produced, so it
+cannot precede them, and it depends on nothing else. It carries no `unblocks` edge that
+reverses those two — `depends: {06,12}` records that their *implementation* must exist first,
+while the five briefs it lists under `unblocks` are unblocked in a different sense: their public
+*verification*, not their implementation, is what 14 makes possible. Read as a second graph,
+14 is the sole head of the verification path: `14 → Evidence(01, 02, 06, 07, 12)`. Nothing else
+in the stream is waiting on it.
+
 ## Gate distribution — derived, not spread
 
-**03, 07, and 13 are `gate: human`**: 03 because only Ian can commit the target set and a
+**03, 07, 13 and 14 are `gate: human`**: 03 because only Ian can commit the target set and a
 delivery channel whose marketplace option interacts with the one-way publication; 07 and 13
 because their acceptance evidence is a live session on the second and third harness
-respectively — an act outside CI that a human runs or sanctions. All other briefs answer the
-four risk questions `no` and gate `model` — nothing here touches funds, customers, regulators,
-or an irreversible surface; everything is git-revertible text and tooling. (Brief 02
+respectively — an act outside CI that a human runs or sanctions; 14 because it is a
+publication, and publication is the one act in this stream git does not undo (it is the only
+brief here answering `irreversible: yes` and `sensitive-data: yes`). All other briefs answer the
+four risk questions `no` and gate `model` — nothing else here touches funds, customers,
+regulators, or an irreversible surface; everything else is git-revertible text and tooling.
+(14 is the exception the sentence used to be able to omit: a public commit is revertible in
+the tree and not in the world.) (Brief 02
 declares one out-of-repo file under the rule-7 protocol; that is a serialization
 constraint, not a risk gate.)
 
@@ -284,6 +313,8 @@ constraint, not a risk gate.)
 | Live Cursor environment (install) | **Head for 12, 13** | Blocks 12's live-confirm rows and 13's live-desk-smoke run (its full-loop acceptance step); Ian provides |
 | The upstream `.claude/skills/{the-desk,batch-fanout,verify-desk,pr-review-desk}` copies | **Sibling PR (02)** | The authority flip converts them to thin pointers; both PRs cite each other's SHA |
 | `~/.claude/skills/author-brief/SKILL.md` | **Out-of-repo file (02)** | Declared per rule 7: one in flight, applied last, committed in the `~/.claude` stopgap repo |
+| The private source tree holding this stream's code deliverables | **Head for 14, and for every public Evidence row** | 44 files (three Go modules, the bundle's provenance + packaging files, two capability matrices, the smoke protocol) are authored there and absent here, so 01/02/06/07/12 cannot be verified in this repository at all. 14 copies them in; it removes nothing there, so a red gate costs only 14's own PR |
+| The control-based `leak-sweep` commit status | **Merge gate for 14** | Produced by a workflow in another repository under a token this repo's roles do not hold, against a map this repo never sees; it posts on its own cadence and nothing here dispatches it. A red carries no detail by design — the detail is read from the operator's private detail channel |
 | The publication review (manifest + gate) | **Gates the marketplace channel only** | The in-bundle install path ships without it; nothing in this stream publishes |
 | `github.com/obra/superpowers` | **Prior art only** | Read, not depended on; its findings are re-measured in 01 |
 

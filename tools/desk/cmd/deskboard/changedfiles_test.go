@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -30,8 +31,12 @@ func actionsWith(t *testing.T, prFilesJSON, prMetaJSON string) actionRow {
 	head := "deadbeefcafe"
 	installFakeGH(t)
 	t.Setenv("DESKBOARD_GH_PR_REPO", cfRepo)
+	// The PR carries an Issue: link trailer: real App-authored PRs always carry one (deskpr
+	// makes it mandatory), and a trailer keeps the #587 trailer-absent-App risk term silent so
+	// these cases isolate the PATH classification they are about. Issue: (not Brief:) so the
+	// owning-brief risk term stays silent too — there is no brief to resolve here.
 	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
-		`[{"number":42,"title":"t","isDraft":true,"author":{"login":"app/assay-worker-app"},"headRefOid":"`+head+`","mergeStateStatus":"CLEAN","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}]`)
+		`[{"number":42,"title":"t","body":"Issue: #123","isDraft":true,"author":{"login":"app/assay-worker-app"},"headRefOid":"`+head+`","mergeStateStatus":"CLEAN","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}]`)
 	t.Setenv("DESKBOARD_GH_REVIEWS_JSON",
 		`[{"user":{"login":"`+reviewerBotDisplay()+`"},"state":"APPROVED","commit_id":"`+head+`","body":`+jsonStr("looks good")+`,"submitted_at":"2026-07-10T00:00:00Z"}]`)
 	t.Setenv("DESKBOARD_GH_PRFILES_JSON", prFilesJSON)
@@ -72,6 +77,47 @@ func TestCompleteCleanDiffIsNotRiskClassed(t *testing.T) {
 	row := actionsWith(t, `[{"filename":"README.md"}]`, `{"changed_files":1}`)
 	if row.RiskClassed {
 		t.Fatal("a complete, clean diff must not be risk-classed")
+	}
+}
+
+// TestTrailerAbsentAppRowSaysWhy is the #587 deskboard proof: an approved-at-head, CI-green,
+// clean-PATH draft PR authored by a role App but carrying NO link trailer is risk-classed and
+// surfaces SECURITY-REVIEW-REQUIRED whose note NAMES the reason. Before #587 the same row read
+// as a clean FLIP candidate — the exact hole this closes. The only difference from the clean
+// control above is the missing trailer, so this isolates the trailer-absent-App term.
+func TestTrailerAbsentAppRowSaysWhy(t *testing.T) {
+	head := "deadbeefcafe"
+	installFakeGH(t)
+	t.Setenv("DESKBOARD_GH_PR_REPO", cfRepo)
+	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
+		`[{"number":42,"title":"t","body":"a change with no link trailer at all","isDraft":true,"author":{"login":"app/assay-worker-app"},"headRefOid":"`+head+`","mergeStateStatus":"CLEAN","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}]`)
+	t.Setenv("DESKBOARD_GH_REVIEWS_JSON",
+		`[{"user":{"login":"`+reviewerBotDisplay()+`"},"state":"APPROVED","commit_id":"`+head+`","body":`+jsonStr("looks good")+`,"submitted_at":"2026-07-10T00:00:00Z"}]`)
+	t.Setenv("DESKBOARD_GH_PRFILES_JSON", `[{"filename":"README.md"}]`) // a clean, non-risky path
+	t.Setenv("DESKBOARD_GH_PRMETA_JSON", `{"changed_files":1}`)
+
+	var out, errb bytes.Buffer
+	if code := run([]string{"actions"}, &out, &errb); code != deskkit.ExitOK {
+		t.Fatalf("run(actions) = exit %d, stderr=%s", code, errb.String())
+	}
+	var rep actionsReport
+	if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+		t.Fatalf("parsing actions JSON: %v\n%s", err, out.String())
+	}
+	var row actionRow
+	for _, r := range rep.Rows {
+		if r.Number == 42 {
+			row = r
+		}
+	}
+	if !row.RiskClassed {
+		t.Fatal("a trailer-less App-authored PR must be risk-classed (#587)")
+	}
+	if row.Action != actSecReview {
+		t.Fatalf("action = %s, want %s (a risk-classed PR with no Security-Review pass)", row.Action, actSecReview)
+	}
+	if !strings.Contains(row.Note, "trailer absent on App-authored PR") {
+		t.Fatalf("the SECURITY-REVIEW-REQUIRED row must SAY WHY; note = %q", row.Note)
 	}
 }
 

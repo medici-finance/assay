@@ -43,6 +43,7 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 		// effects. This runs identically for both kinds: the checks are a
 		// property of the BODY, and nothing about targeting an issue relaxes them.
 		if err := bodycheck.Comment(body); err != nil {
+			deskkit.MaybeExplain(stderr, opts.explain, err)
 			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)
 		}
 		// #203: the PUBLIC-REPO SELF-CONTAINMENT scan — a body free of credentials can
@@ -141,7 +142,7 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 		if ferr != nil {
 			return withDigest(fromErr(verb, repo, num, tgt.head, ferr), dig)
 		}
-		if err := fg.PostComment(deskkit.ForgeRepo{Owner: owner, Name: name}, num, string(body)); err != nil {
+		if _, err := fg.PostComment(deskkit.ForgeRepo{Owner: owner, Name: name}, num, string(body)); err != nil {
 			return withDigest(fromErr(verb, repo, num, tgt.head, err), dig)
 		}
 		return done(verb, repo, num, tgt.head, dig,

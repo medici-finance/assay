@@ -1,0 +1,68 @@
+# values.yaml — Helm values for a self-hosted Apache DevLake (Apache-2.0),
+# targeting the platform k8s cluster.
+#
+# STAGED, NOT APPLIED. This file is configuration staged for statusgen/11; it is
+# NOT applied by this brief. Standing DevLake up (helm/kubectl apply, secret
+# provisioning, first ingest) is a human/platform act — see runbook.md. The
+# values below are the intended shape for the platform-side apply, with secrets
+# referenced (never inlined) and placeholders where a platform value is supplied
+# at apply time.
+#
+# Chart: apache/devlake (the official Apache DevLake Helm chart).
+#   helm repo add devlake https://apache.github.io/incubator-devlake-helm-chart
+#   helm install devlake devlake/devlake -n devlake -f values.yaml   # human/platform act
+#
+# Deployment target: the platform k8s cluster (operator-named). Deployed
+# self-hosted into its own namespace on that cluster; no hostname is asserted in
+# this public spec — the platform operator supplies the real cluster context and
+# ingress host at apply time.
+
+# --- placement on the platform k8s cluster ---------------------------------
+namespace: devlake            # own namespace on the platform k8s cluster
+# nodeSelector / tolerations for the platform k8s cluster's worker pool are
+# supplied by the platform operator at apply time (kept out of this public spec).
+nodeSelector: {}
+tolerations: []
+
+# --- images (pinned by the platform operator to a released DevLake tag) -----
+lake:
+  image:
+    repository: apache/devlake
+    tag: ""                   # PIN to a released DevLake version at apply time
+config-ui:
+  image:
+    repository: apache/devlake-config-ui
+    tag: ""                   # PIN to match `lake.image.tag`
+
+# --- persistence (MySQL-compatible store DevLake requires) ------------------
+# Use the platform k8s cluster's managed database or the chart's bundled MySQL.
+# Credentials come from a pre-provisioned secret, never inlined here.
+mysql:
+  useExternal: false          # set true + externalServer when using a managed DB
+  storage:
+    class: ""                 # platform k8s cluster's storage class, at apply time
+    size: 20Gi
+  existingSecret: devlake-mysql-auth   # provisioned platform-side (runbook step)
+
+# --- grafana dashboards (the commodity-DORA dashboard set) ------------------
+grafana:
+  enabled: true               # serves the four DORA + delivery dashboards
+
+# --- ingress on the platform k8s cluster ------------------------------------
+ingress:
+  enabled: true
+  # host is the platform k8s cluster's ingress host, supplied at apply time.
+  host: ""
+  className: ""
+
+# --- the GitHub ingestion secret (App/PAT) ----------------------------------
+# DevLake reads its GitHub credential from a k8s secret the platform provisions
+# (human act — runbook). It is NEVER inlined in this spec. The connection + scope
+# that consume it are in github-connection.yaml.
+githubSecret:
+  existingSecret: devlake-github-auth   # provisioned platform-side (runbook step)
+
+# Encryption key for DevLake's stored connection credentials — a k8s secret the
+# platform provisions once; never inlined here.
+encryptionSecret:
+  existingSecret: devlake-encryption-key

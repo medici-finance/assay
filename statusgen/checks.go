@@ -86,7 +86,7 @@ func checkScoped(streams, allStreams []*Stream, findings []Finding) ([]string, [
 			}
 			seen[b.Num] = true
 			if !validBriefStatus[b.Status] {
-				add("%s/brief-%s: invalid status %q", s.Name, b.Num, b.Status)
+				add("%s/brief-%s: invalid status %q — the Status cell takes ONLY a bare lifecycle token (todo / in-progress / implemented / verified / done, or the hold token blocked). A decorated value such as `implemented (#80)` is rejected; the PR association belongs in the PR body or the `Brief:` trailer, never in the Status cell", s.Name, b.Num, b.Status)
 			}
 			// Placeholder-v1 rows are exempt from the Verified/Reviewed gate —
 			// their lifecycle is issue-driven (close-out), not

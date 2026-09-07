@@ -21,16 +21,184 @@ import (
 //     but is absent from the working tree — a deletion where only a tombstone
 //     (disposition: rejected / resolved: yes) is allowed (F-05/F-08 lineage).
 func registerIntegrityProblems(root string) []string {
-	var problems []string
+	return registerMsgs(registerIntegrityEntries(root))
+}
+
+// registerProblem pairs a register-integrity PROBLEM message with the register
+// entry file(s) it concerns. It exists so the PR-side gate (`--lint --changed`)
+// can path-scope this check the same way the DAR/product-scope checks already
+// honour --changed: a problem whose owning file the diff actually touches stays
+// a hard PROBLEM, while a pre-existing main-side defect on a file the diff never
+// changed demotes to a NOTICE. That removes the cross-PR coupling whereby one
+// unrelated register defect on main hard-failed every open PR that touched
+// docs/streams/** and stayed red until the unrelated defect was fixed. See
+// registerIntegrityScoped.
+//
+// paths are repo-relative, slash-form register entry file paths — or a
+// directory prefix ending in "/" for a whole-subdir fault. EMPTY paths means
+// the problem is not attributable to a specific changed file (a read error, a
+// degraded check) and is therefore NEVER scoped away: it fails closed and stays
+// a PROBLEM on every run, changed-set or not.
+type registerProblem struct {
+	msg   string
+	paths []string
+}
+
+// registerMsgs projects the messages out of a structured problem list, in
+// order — the flat form the whole-tree callers and the existing tests consume.
+func registerMsgs(ps []registerProblem) []string {
+	if len(ps) == 0 {
+		return nil // preserve the nil-vs-empty distinction leaf callers assert on
+	}
+	out := make([]string, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, p.msg)
+	}
+	return out
+}
+
+// intakeRelPath renders an intake file location as a repo-relative, slash-form
+// path (e.g. docs/streams/intake/new/2026-07-08-x.md).
+func intakeRelPath(loc intakeFileLoc) string {
+	return "docs/streams/intake/" + intakeFileLabel(loc)
+}
+
+// intakeIDToPaths indexes every intake entry file by its frontmatter id →
+// repo-relative path(s). A duplicate id (two files claiming it) appears under
+// both, so a duplicate-id problem is attributed to every file that carries it.
+func intakeIDToPaths(root string) map[string][]string {
+	out := map[string][]string{}
+	for _, loc := range listIntakeFiles(root) {
+		raw, err := os.ReadFile(filepath.Join(loc.Dir, loc.Name))
+		if err != nil {
+			continue
+		}
+		if id := extractIDFromYAMLFrontmatter(raw); id != "" {
+			out[id] = append(out[id], intakeRelPath(loc))
+		}
+	}
+	return out
+}
+
+// findingIDToPaths is the findings-register counterpart of intakeIDToPaths.
+func findingIDToPaths(root string) map[string][]string {
+	out := map[string][]string{}
+	dir := filepath.Join(root, "docs", "streams", "findings")
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return out
+	}
+	for _, f := range files {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".md") || f.Name() == "README.md" {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, f.Name()))
+		if err != nil {
+			continue
+		}
+		if id := extractIDFromYAMLFrontmatter(raw); id != "" {
+			out[id] = append(out[id], "docs/streams/findings/"+f.Name())
+		}
+	}
+	return out
+}
+
+// normalizeChangedPath renders a --changed line as a slash-form, repo-relative
+// path comparable to the owning paths above (dropping a leading "./").
+func normalizeChangedPath(p string) string {
+	return strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(p)), "./")
+}
+
+// registerPathInScope reports whether a register problem owning `paths` is in
+// scope for a diff whose (normalized) changed set is `set`/`list`. Empty paths
+// → always in scope (fail-closed). An owning path ending in "/" is a directory
+// prefix and matches any changed path beneath it; otherwise it is an exact
+// file match.
+func registerPathInScope(paths []string, set map[string]bool, list []string) bool {
+	if len(paths) == 0 {
+		return true
+	}
+	for _, op := range paths {
+		if strings.HasSuffix(op, "/") {
+			for _, c := range list {
+				if strings.HasPrefix(c, op) {
+					return true
+				}
+			}
+			continue
+		}
+		if set[op] {
+			return true
+		}
+	}
+	return false
+}
+
+// registerIntegrityScoped is the --lint entry point for the register-integrity
+// check. With NO changed set (a full-tree / main-side regen run) it behaves
+// exactly as before: every problem is a hard PROBLEM. With a --changed set (the
+// PR-side gate) it partitions: a problem whose owning register file the diff
+// introduces or touches stays a PROBLEM; a pre-existing defect on a file the
+// diff never changed demotes to a NOTICE (surfaced, never silently dropped),
+// because that defect is already red on main's own status-regen, which owns it.
+//
+// This deliberately does NOT weaken the gate for the case it exists for: a PR
+// that adds or edits a defective register entry lands that file in the changed
+// set, so its defect is still a hard PROBLEM. Only defects on paths OUTSIDE the
+// changed set — which this PR cannot have introduced — are exempted.
+func registerIntegrityScoped(root string, changed []string) (problems, notices []string) {
+	entries := registerIntegrityEntries(root)
+	if len(changed) == 0 {
+		return registerMsgs(entries), nil
+	}
+	set := make(map[string]bool, len(changed))
+	list := make([]string, 0, len(changed))
+	for _, c := range changed {
+		n := normalizeChangedPath(c)
+		if n == "" {
+			continue
+		}
+		if !set[n] {
+			set[n] = true
+			list = append(list, n)
+		}
+	}
+	for _, e := range entries {
+		if registerPathInScope(e.paths, set, list) {
+			problems = append(problems, e.msg)
+		} else {
+			notices = append(notices, "pre-existing register defect on a path outside this PR's --changed set (owned by main's status-regen, not introduced by this diff — fix it on main): "+e.msg)
+		}
+	}
+	return problems, notices
+}
+
+// registerIntegrityEntries is the register-integrity check body, producing every
+// problem paired with the register entry file(s) it concerns (see
+// registerProblem / registerIntegrityScoped). registerIntegrityProblems flattens
+// this to the historical []string form; the scoped gate consumes the paths.
+//
+// registerIntegrityProblems replaces the old registerSequenceProblems (contiguous-
+// numbering gap/dup check on the single-file registers). The check:
+//   - Flags duplicate ids across per-entry files.
+//   - Flags any register entry file that has ever existed on main (per git history)
+//     but is absent from the working tree — a deletion where only a tombstone
+//     (disposition: rejected / resolved: yes) is allowed (F-05/F-08 lineage).
+func registerIntegrityEntries(root string) []registerProblem {
+	var problems []registerProblem
+	intakeIdx := intakeIDToPaths(root)
+	add := func(msg string, paths ...string) {
+		problems = append(problems, registerProblem{msg: msg, paths: paths})
+	}
 
 	// intake duplicate-id check
 	intakeEntries, err := parseIntakeDir(root)
 	if err != nil {
-		return []string{fmt.Sprintf("register integrity: reading intake: %v", err)}
+		return []registerProblem{{msg: fmt.Sprintf("register integrity: reading intake: %v", err)}}
 	}
 	if dups := duplicateIDs(entriesToKeyed(intakeEntries)); len(dups) > 0 {
 		for _, d := range dups {
-			problems = append(problems, fmt.Sprintf("intake register: duplicate id %s (two or more per-entry files claim this id)", d))
+			add(fmt.Sprintf("intake register: duplicate id %s (two or more per-entry files claim this id)", d), intakeIdx[d]...)
 		}
 	}
 
@@ -40,9 +208,9 @@ func registerIntegrityProblems(root string) []string {
 	for _, e := range intakeEntries {
 		// date parse check: a malformed date makes an entry permanently age-invisible
 		if _, err := time.Parse("2006-01-02", strings.TrimSpace(e.Date)); err != nil {
-			problems = append(problems, fmt.Sprintf(
+			add(fmt.Sprintf(
 				"intake register: %s: unparseable date %q — age not computable; fix the date: field",
-				e.ID, e.Date))
+				e.ID, e.Date), intakeIdx[e.ID]...)
 		}
 	}
 
@@ -78,9 +246,9 @@ func registerIntegrityProblems(root string) []string {
 			if err := yaml.Unmarshal([]byte(fm), &entry); err != nil || entry.ID == "" {
 				continue
 			}
-			problems = append(problems, fmt.Sprintf(
+			add(fmt.Sprintf(
 				"intake register: %s: missing disposition key — add 'disposition: new' (or another valid disposition) to the frontmatter",
-				entry.ID))
+				entry.ID), intakeRelPath(loc))
 		}
 	}
 
@@ -100,16 +268,17 @@ func registerIntegrityProblems(root string) []string {
 		if !ok || expected == e.Subdir {
 			continue
 		}
-		problems = append(problems, fmt.Sprintf(
+		add(fmt.Sprintf(
 			"intake register: %s: file under intake/%s/ but disposition %q maps to intake/%s/ — dir↔disposition mismatch (issue-loop/15)",
-			e.ID, e.Subdir, e.Disposition, expected))
+			e.ID, e.Subdir, e.Disposition, expected), intakeIdx[e.ID]...)
 	}
 
 	// unknown-subdir check (issue-loop/15): any directory directly under
 	// intake/ whose name is not one of the five known disposition subdirs is
 	// a PROBLEM, not a silent skip — parseIntakeDir/listIntakeFiles never
 	// descend into it, so an entry filed there is otherwise invisible to
-	// every other check in this file.
+	// every other check in this file. Owning path is the subdir prefix, so a
+	// changed-set-scoped run flags it only when the diff touches that subdir.
 	if topLevel, err := os.ReadDir(intakeDir); err == nil {
 		known := make(map[string]bool, len(intakeKnownSubdirs))
 		for _, s := range intakeKnownSubdirs {
@@ -119,29 +288,32 @@ func registerIntegrityProblems(root string) []string {
 			if !d.IsDir() || known[d.Name()] {
 				continue
 			}
-			problems = append(problems, fmt.Sprintf(
+			add(fmt.Sprintf(
 				"intake register: unknown subdir intake/%s/ — must be one of new, decision-needed, watching, completed, rejected (issue-loop/15)",
-				d.Name()))
+				d.Name()), "docs/streams/intake/"+d.Name()+"/")
 		}
 	}
 
 	// findings duplicate-id check
+	findingIdx := findingIDToPaths(root)
 	findingEntries, err := parseFindingsDir(root)
 	if err != nil {
-		return append(problems, fmt.Sprintf("register integrity: reading findings: %v", err))
+		return append(problems, registerProblem{msg: fmt.Sprintf("register integrity: reading findings: %v", err)})
 	}
 	if dups := duplicateIDs(entriesToKeyed(findingEntries)); len(dups) > 0 {
 		for _, d := range dups {
-			problems = append(problems, fmt.Sprintf("findings register: duplicate id %s (two or more per-entry files claim this id)", d))
+			add(fmt.Sprintf("findings register: duplicate id %s (two or more per-entry files claim this id)", d), findingIdx[d]...)
 		}
 	}
 
 	// file-presence-vs-git-history check: any entry file ever added on main
 	// that is now absent from the working tree is a tombstone-not-delete
 	// violation. Only meaningful in a git checkout; silently skip otherwise.
+	// The deleted path is itself the owning path (a deletion shows in the diff
+	// as the removed path), so a PR that deletes a landed entry still fails.
 	if deleted := deletedRegisterFiles(root); len(deleted) > 0 {
 		for _, d := range deleted {
-			problems = append(problems, fmt.Sprintf("register entry removed (tombstone-not-delete): %s — a register entry file that was landed as of the merge-base with origin/main has been deleted; withdraw in-place (disposition: rejected or resolved: yes), never delete the file", d))
+			add(fmt.Sprintf("register entry removed (tombstone-not-delete): %s — a register entry file that was landed as of the merge-base with origin/main has been deleted; withdraw in-place (disposition: rejected or resolved: yes), never delete the file", d), normalizeChangedPath(d))
 		}
 	}
 
@@ -149,24 +321,29 @@ func registerIntegrityProblems(root string) []string {
 	// whole entry is caught above, but silently GUTTING the load-bearing fields
 	// of a finding that survives in the tree is the same falsification by a
 	// subtler route. Fires as a HARD problem unless a verified-human anchor
-	// authorizes it.
-	problems = append(problems, guttedRegisterFields(root)...)
+	// authorizes it. Each gutting is attributed to the finding file it mutates.
+	problems = append(problems, guttedRegisterFieldsEntries(root)...)
 
 	// bounded-park schema check (statusgen/06): a park (any parked-* field set)
 	// must carry all three fields — parked-until (a parseable bounded expiry),
 	// parked-by (human:<name> authority), parked-reason — or it silences the
 	// standing alarm without a bounded, attributed, reasoned decision. Read error
 	// here is already surfaced above as could-not-check, so a failed re-parse just
-	// skips this check rather than double-reporting.
+	// skips this check rather than double-reporting. Each malformed park is
+	// attributed to its finding file (parkFieldProblems run per-finding).
 	if findings, ferr := parseFindings(root); ferr == nil {
-		problems = append(problems, parkFieldProblems(findings)...)
+		for _, f := range findings {
+			for _, msg := range parkFieldProblems([]Finding{f}) {
+				add(msg, findingIdx[f.ID]...)
+			}
+		}
 	}
 
 	// ID format validation: every entry must use either the new
 	// slug form ([FI]-<slug>, 10-20 chars after prefix, [a-z0-9-]) or a
 	// grandfathered legacy numeric form ([FI]-NN(-a)?). New entries using the
 	// numeric form are a PROBLEM (regression to the counter).
-	problems = append(problems, idFormatProblems(root)...)
+	problems = append(problems, idFormatProblemsEntries(root)...)
 
 	return problems
 }
@@ -481,6 +658,14 @@ func registerBaseFallbackNotices(root string) []string {
 //     NOTICE-level output (untriaged-age alarm, decision-issue notice), so no hard
 //     gate is bypassed — an asymmetry, not a hole.
 func guttedRegisterFields(root string) []string {
+	return registerMsgs(guttedRegisterFieldsEntries(root))
+}
+
+// guttedRegisterFieldsEntries is guttedRegisterFields' structured form: each
+// detected gutting paired with the finding file it mutates, so the --changed
+// gate can tell a gutting THIS PR makes (that file in the changed set) from a
+// pre-existing one on a finding the diff never touched.
+func guttedRegisterFieldsEntries(root string) []registerProblem {
 	// Only meaningful in a git checkout.
 	if _, err := os.Stat(filepath.Join(root, ".git")); os.IsNotExist(err) {
 		return nil
@@ -525,7 +710,7 @@ func guttedRegisterFields(root string) []string {
 		}
 	}
 
-	var problems []string
+	var problems []registerProblem
 	for _, f := range files {
 		if f.IsDir() || !strings.HasSuffix(f.Name(), ".md") {
 			continue
@@ -621,11 +806,14 @@ func guttedRegisterFields(root string) []string {
 		if len(unauthorized) == 0 {
 			continue
 		}
-		problems = append(problems, fmt.Sprintf(
-			"register field-gutting (unauthorized): %s — %s vs the version landed at the merge-base with origin/main, with no verified-human authorization. In-place gutting of a finding's load-bearing fields silently unblocks the brief it demoted, and adding/extending a park silently mutes its standing alarm. This is a HUMAN gate: add an `authorized-by: human:<name>` key (or, for a park, a `parked-by: human:<name>` key) to the entry's YAML frontmatter whose name is mapped in the configured ASSAY_HUMAN_LOGIN_MAP; an agent-written justification is not sufficient. Know what this check does and does not do before you add that key: this offline --lint check does NOT itself read the PR. The anchor gets corroborated online only where `statusgen --corroborate <pr>` is wired into a pull_request job — the toolkit's reference CI wires it into the lint job of .github/workflows/assay-statusgen.yml, where the added `human:<name>` line lands on an ADDED diff line and fails that PR's CI unless the named human ACTED on the PR (an APPROVED review or an approval comment from their own account). If your own CI runs --corroborate on PRs, writing the key on your own authority will NOT quietly pass; if it does not, this gutting gate is all that stands here — either way, get the named human to authorize the change.",
-			rel, strings.Join(unauthorized, "; ")))
+		problems = append(problems, registerProblem{
+			msg: fmt.Sprintf(
+				"register field-gutting (unauthorized): %s — %s vs the version landed at the merge-base with origin/main, with no verified-human authorization. In-place gutting of a finding's load-bearing fields silently unblocks the brief it demoted, and adding/extending a park silently mutes its standing alarm. This is a HUMAN gate: add an `authorized-by: human:<name>` key (or, for a park, a `parked-by: human:<name>` key) to the entry's YAML frontmatter whose name is mapped in the configured ASSAY_HUMAN_LOGIN_MAP; an agent-written justification is not sufficient. Know what this check does and does not do before you add that key: this offline --lint check does NOT itself read the PR. The anchor gets corroborated online only where `statusgen --corroborate <pr>` is wired into a pull_request job — the toolkit's reference CI wires it into the lint job of .github/workflows/assay-statusgen.yml, where the added `human:<name>` line lands on an ADDED diff line and fails that PR's CI unless the named human ACTED on the PR (an APPROVED review or an approval comment from their own account). If your own CI runs --corroborate on PRs, writing the key on your own authority will NOT quietly pass; if it does not, this gutting gate is all that stands here — either way, get the named human to authorize the change.",
+				rel, strings.Join(unauthorized, "; ")),
+			paths: []string{rel},
+		})
 	}
-	sort.Strings(problems)
+	sort.Slice(problems, func(i, j int) bool { return problems[i].msg < problems[j].msg })
 	return problems
 }
 

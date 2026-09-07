@@ -147,15 +147,29 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return deskkit.Refused(fmt.Sprintf("refused: evidence file exceeds %d bytes (%d)", maxBytes, len(localContent)))
 	}
 
+	// Mint the verifier App installation token and resolve the forge that serves this repo,
+	// under the verifier App's custody. The JWT→installation-token exchange moved OUT of this
+	// package to the identity layer (mintTokenFn → `desktoken verifier`); ForgeFor hands the
+	// minted token to the backend it constructs and never falls back to an ambient identity.
+	// Placed after the cheap/stateless refusals so a doomed call never mints.
+	if merr := mintTokenFn(repoSlug); merr != nil {
+		return merr
+	}
+	fg, fr, ferr := forgeForFn(owner, name)
+	if ferr != nil {
+		return ferr
+	}
+
 	// Determine the target repo path and content to commit.
 	var targetRepoPath string
 	var commitContent []byte
 
 	if *briefPath != "" {
 		targetRepoPath = *briefPath
-		// Append evidence to the brief file's Evidence section.
-		// Fetch the current brief from GitHub, find ## Evidence, append.
-		merged, merr := mergeEvidence(owner, name, branch, *briefPath, localContent)
+		// Read the remote brief, find its ## Evidence section, append the row — a genuine
+		// read → transform → write, which is why ReadFile exists on the seam alongside
+		// WriteFile: the merge cannot be folded into a backend-agnostic write.
+		merged, merr := mergeEvidence(fg, fr, branch, *briefPath, localContent)
 		if merr != nil {
 			return merr
 		}
@@ -169,7 +183,6 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// Append-only sidecars (the .jsonl streams under docs/streams/) grow row-by-row and
 	// never shrink in normal use; a net row DROP is the #1709 signature. Auto-enable the
 	// shrink guard for that class, and honour an explicit --append-only for any other file.
-	// The actual comparison happens once the remote row count is known.
 	appendOnly := *appendOnlyFlag || strings.HasSuffix(targetRepoPath, ".jsonl")
 
 	// Secret-scan the content that will be committed.
@@ -177,50 +190,43 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return berr
 	}
 
-	// Public-repo trust gate. deskevidence commits a file directly to a
-	// remote branch via PUT /repos/{owner}/{repo}/contents/{path} — an outward write.
-	// Placed here, after all cheap/stateless refusals (repo-set gate, main-branch guard, STATUS.md,
-	// file-read, oversize, secret-scan) and before the first remote fetch.
-	// There is no associated issue/PR number, so the gate fails closed (exit 6) for
-	// public repos (a file commit has no reactions surface to consult) and passes
-	// through for private/internal repos.
-	tok, terr := mintVerifierToken(owner, name)
-	if terr != nil {
-		return terr
-	}
-	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: tok, BaseURL: apiBaseURL}
-	if gerr := deskkit.PublicRepoGate(fetcher, owner, name, 0); gerr != nil {
+	// Public-repo trust gate. deskevidence writes a file directly to a remote branch — an
+	// outward write with no associated issue/PR number, so the gate fails closed (exit 6) for
+	// public repos (no reactions surface to consult) and passes through for private/internal.
+	// The fetcher uses the minted verifier token and the backend's own default host (this tool
+	// no longer binds a GitHub API host literal of its own).
+	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
+	if gerr := publicRepoGateFn(fetcher, owner, name, 0); gerr != nil {
 		return gerr
 	}
 
 	bodyDig := deskkit.Sha256Hex(commitContent)
 	ac.bodyDig = bodyDig
 
-	// Fetch remote file to get current SHA and check for idempotency.
-	remoteSHA, remoteContent, ferr := fetchRemoteFile(owner, name, targetRepoPath, branch)
-	if ferr != nil {
-		return ferr // already a *DeskError from the API layer
+	// Read the current target for idempotency + the shrink-guard base. A path ABSENT on the
+	// branch is a create (empty remote), not an error — the seam reports it as IsForgeNotFound.
+	var remoteContent []byte
+	remoteExists := false
+	if cur, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: targetRepoPath, Ref: branch}); rerr != nil {
+		if !deskkit.IsForgeNotFound(rerr) {
+			return rerr
+		}
+	} else {
+		remoteContent, remoteExists = cur.Content, cur.Exists
 	}
 
-	// Check if the remote content matches what we'd commit.
-	// If identical, this is a noop.
-	remoteDig := deskkit.Sha256Hex(remoteContent)
-	if remoteDig == bodyDig {
-		// Idempotency: same content already on the branch.
+	// Idempotency: same content already on the branch → noop, before any write budget is spent.
+	if remoteExists && deskkit.Sha256Hex(remoteContent) == bodyDig {
 		ac.successResult = deskkit.ResultNoop
-		ac.detail = fmt.Sprintf("noop: %s already has this content on %s (sha %s)", targetRepoPath, branch, shortSHA(remoteSHA))
-		fmt.Println("noop: " + targetRepoPath + " already has this content at " + shortSHA(remoteSHA))
+		ac.detail = fmt.Sprintf("noop: %s already has this content on %s", targetRepoPath, branch)
+		fmt.Fprintln(stdout, "noop: "+targetRepoPath+" already has this content on "+branch)
 		return nil
 	}
 
-	// Append-only shrink guard (#1709). For a line-oriented sidecar, a commit that leaves
-	// FEWER rows than the remote already holds is almost always a stale-cwd or wrong-file
-	// mistake — the whole-file Contents-API PUT would otherwise revert the file and report
-	// success, deleting rows unattributably. Refuse before spending a write budget; the
-	// operator either re-points --root at the right checkout or passes --allow-shrink when
-	// the reduction is genuinely intended. Placed after the noop check so an idempotent
-	// re-commit is never mistaken for a shrink.
-	if appendOnly && !*allowShrink {
+	// Append-only shrink guard (#1709), pre-checked here so a doomed write never spends a
+	// budget; the WriteFile op enforces the SAME constraint post-fetch as an independent second
+	// layer (constraint passed in via AppendOnly, backend refuses after its own fetch).
+	if appendOnly && !*allowShrink && remoteExists {
 		remoteRows := rowCount(remoteContent)
 		newRows := rowCount(commitContent)
 		if newRows < remoteRows {
@@ -233,43 +239,130 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		}
 	}
 
-	// Outward-write rate limit. A deskevidence commit targets a BRANCH, not a
-	// PR, so there is no number to pass and the audit line it writes records none either.
-	// pr=0 is therefore the repo's unnumbered bucket. deskevidence carries a per-tool
-	// override on that bucket (deskkit.UnnumberedCapFor("deskevidence"), currently 30 — see
-	// unnumberedBucketCap in ratelimit.go), which RAISES its effective ceiling above the base
-	// per-PR cap without dropping the per-PR tier: it is NOT an exemption — passing 0 used to
-	// skip the per-PR tier outright and leave this Contents-API write path on the 100/hr
-	// per-repo cap (#439 review). The breaker and the per-repo tier still apply on top.
+	// Outward-write rate limit. pr=0 is the repo's unnumbered bucket; deskevidence carries a
+	// per-tool override on it (see unnumberedBucketCap in ratelimit.go).
 	if werr := deskkit.AllowWrite(toolName, repoSlug, 0); werr != nil {
 		return werr
 	}
 
-	// Commit via GitHub Contents API as the verifier App.
-	newSHA, author, cerr := commitFile(owner, name, targetRepoPath, branch, remoteSHA, commitContent)
+	// Write the Evidence row through the resolved forge, as the verifier App.
+	res, cerr := fg.WriteFile(fr, deskkit.WriteFileInput{
+		File:        targetRepoPath,
+		Branch:      branch,
+		Content:     commitContent,
+		Message:     "Evidence: verification row for " + targetRepoPath,
+		AppendOnly:  appendOnly,
+		AllowShrink: *allowShrink,
+	})
 	if cerr != nil {
 		return cerr
 	}
 
-	// Post-condition: the commit that landed must carry the verifier App's identity.
-	// Checked against the response GitHub returned, not against the token we sent —
-	// the token is what we *intended*, the author is what actually happened
-	// (#228).
-	attr, aerr := checkAttribution(author)
-	// Name the net row delta so the success message can no longer hide a replace or a
-	// deletion behind a "committed … success" (#1709). +A names rows the commit adds,
-	// -R names rows it drops, both computed against the remote content at the target path.
+	// The Evidence lane on a forge whose default branch takes no direct write. WriteFile
+	// reports the sentinel WITHOUT writing; land the row on a side branch and open a draft
+	// change instead, and say so on stdout. It never attempts the direct write and reports
+	// success, and it never skips the row.
+	if res.DefaultBranchNotWritable {
+		return landEvidenceAsChange(fg, fr, repoSlug, branch, targetRepoPath, commitContent, appendOnly, *allowShrink, remoteContent, ac)
+	}
+
+	// Post-condition: the write that landed must carry the verifier App's identity. Checked
+	// against what the forge reported the write recorded, not the token we sent (#228).
+	attr, aerr := checkAttribution(res.Author)
+	// Name the net row delta so a success line can no longer hide a replace or a deletion
+	// behind a "committed … success" (#1709).
 	added, removed := rowDelta(remoteContent, commitContent)
 	delta := fmt.Sprintf("+%d/-%d rows", added, removed)
-	base := fmt.Sprintf("committed %s to %s on %s (sha %s, %s)", targetRepoPath, repoSlug, branch, shortSHA(newSHA), delta)
+	base := fmt.Sprintf("committed %s to %s on %s (sha %s, %s)", targetRepoPath, repoSlug, branch, shortSHA(res.SHA), delta)
 	ac.detail = base + " — " + attr
 	if aerr != nil {
 		return aerr
 	}
-	fmt.Fprintf(stdout, "committed %s to %s on %s (new tree sha %s, %s) — %s\n",
-		targetRepoPath, repoSlug, branch, shortSHA(newSHA), delta, attr)
+	fmt.Fprintf(stdout, "committed %s to %s on %s (sha %s, %s) — %s\n",
+		targetRepoPath, repoSlug, branch, shortSHA(res.SHA), delta, attr)
 	return nil
 }
+
+// landEvidenceAsChange is the Evidence lane for a forge whose default branch takes no direct
+// write (GitLab — pilot D-8). It writes the row to a NEW side branch (WriteFile with
+// StartBranch cutting it from the closed default), opens a DRAFT change from that branch, and
+// names the change on stdout — so a verified brief's Evidence still lands, as a reviewable
+// change rather than a direct commit, and NO direct write to the default branch is attempted.
+func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base, target string, content []byte, appendOnly, allowShrink bool, remoteContent []byte, ac *auditCtx) error {
+	dig := deskkit.Sha256Hex(content)
+	side := "evidence/" + sanitizeBranchComponent(path.Base(target)) + "-" + dig[:8]
+
+	res, werr := fg.WriteFile(fr, deskkit.WriteFileInput{
+		File:        target,
+		Branch:      side,
+		Content:     content,
+		Message:     "Evidence: verification row for " + target,
+		StartBranch: base,
+		AppendOnly:  appendOnly,
+		AllowShrink: allowShrink,
+	})
+	if werr != nil {
+		return werr
+	}
+	if res.DefaultBranchNotWritable {
+		// The side branch is not the default; a sentinel here is a backend contradiction, not
+		// a lane to fall further through.
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"could-not-check: the forge reported side branch %s not directly writable either — the Evidence "+
+				"row was NOT landed", side), nil)
+	}
+
+	pr, perr := fg.CreateDraftChange(fr, deskkit.DraftChangeInput{
+		Title: "Evidence: " + target,
+		Body: "Verification Evidence row for `" + target + "`, landed on branch `" + side + "` and opened " +
+			"as a draft change because the default branch `" + base + "` takes no direct write on this forge. " +
+			"A reviewer verdict lands the row.",
+		Head: side,
+		Base: base,
+	})
+	if perr != nil {
+		return perr
+	}
+
+	attr, aerr := checkAttribution(res.Author)
+	added, removed := rowDelta(remoteContent, content)
+	delta := fmt.Sprintf("+%d/-%d rows", added, removed)
+	loc := fmt.Sprintf("change #%d", pr.Number)
+	if pr.URL != "" {
+		loc = pr.URL
+	}
+	ac.detail = fmt.Sprintf("landed %s on %s in %s via draft %s (%s) — default branch not directly writable — %s",
+		target, repoSlug, side, loc, delta, attr)
+	if aerr != nil {
+		return aerr
+	}
+	fmt.Fprintf(stdout, "landed %s on %s: %s takes no direct write, so wrote branch %s and opened draft %s (%s) — %s\n",
+		target, repoSlug, base, side, loc, delta, attr)
+	return nil
+}
+
+// sanitizeBranchComponent renders a file-base into a git-branch-safe component: only letters,
+// digits, dot, dash and underscore survive, and everything else collapses to a dash.
+func sanitizeBranchComponent(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-.")
+	if out == "" {
+		out = "evidence"
+	}
+	return out
+}
+
+// publicRepoGateFn is the seam for deskkit.PublicRepoGate — tests set it to a no-op stub so
+// they need no live repo-visibility read. Production uses the real gate.
+var publicRepoGateFn = deskkit.PublicRepoGate
 
 // rowCount returns the number of non-empty (row-bearing) lines in b. Trailing newlines and
 // blank lines do not count, so a sidecar with or without a final newline reports the same
@@ -385,13 +478,16 @@ func shortSHA(sha string) string {
 	return sha
 }
 
-// mergeEvidence reads the brief file from GitHub, finds the ## Evidence section,
-// and appends the evidence content. It returns the merged content.
-func mergeEvidence(owner, name, branch, briefPath string, evidence []byte) ([]byte, error) {
-	_, remoteContent, err := fetchRemoteFile(owner, name, briefPath, branch)
+// mergeEvidence reads the brief file from the forge, finds the ## Evidence section, and appends
+// the evidence content. It returns the merged content. The read is the ReadFile op — a brief
+// absent on the branch is an error (the brief must exist to be merged into), so a not-found is
+// propagated rather than treated as a first-write.
+func mergeEvidence(fg deskkit.Forge, fr deskkit.ForgeRepo, branch, briefPath string, evidence []byte) ([]byte, error) {
+	cur, err := fg.ReadFile(fr, deskkit.ReadFileInput{File: briefPath, Ref: branch})
 	if err != nil {
 		return nil, err
 	}
+	remoteContent := cur.Content
 
 	// Find the ## Evidence section and append.
 	// The Evidence section starts with "## Evidence" and ends at end of file

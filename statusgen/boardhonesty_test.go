@@ -16,11 +16,12 @@ func TestClassifyPhantom(t *testing.T) {
 	const id = "some-stream/03"
 
 	cases := []struct {
-		name      string
-		body      string
-		readme    string
-		merged    map[string]bool
-		wantClass string // "" => must be clean
+		name        string
+		body        string
+		readme      string
+		merged      map[string]bool
+		filePresent bool   // the row's own brief file exists — gates ONLY the re-homed class (#581)
+		wantClass   string // "" => must be clean
 	}{
 		// 1. already-merged-unflipped ------------------------------------------
 		{
@@ -61,15 +62,27 @@ func TestClassifyPhantom(t *testing.T) {
 			wantClass: "",
 		},
 		// 4. re-homed ----------------------------------------------------------
+		// re-homed fires only on a POINTER row: README marks it re-homed AND the
+		// brief file is GONE. filePresent=false is the pointer-row case (#581).
 		{
-			name:      "re-homed POSITIVE: README retired the row",
+			name:      "re-homed POSITIVE: README retired the row and the brief file is gone",
 			readme:    "This stream was re-homed; the record merged as a plain commit.\n",
 			wantClass: phantomReHomed,
 		},
 		{
-			name:      "re-homed POSITIVE: do-not-re-implement wording",
+			name:      "re-homed POSITIVE: do-not-re-implement wording, no brief file",
 			readme:    "Do not re-implement — the deliverable already landed.\n",
 			wantClass: phantomReHomed,
+		},
+		{
+			// The #581 fix: a stream re-homed INTO this repo describes its arrival
+			// in its README, but its rows are LIVE work with real brief files. The
+			// present brief file overrides the stream-level history — no notice.
+			name:        "re-homed NEGATIVE: README says re-homed but the row's brief file is PRESENT (live re-homed-in row)",
+			readme:      "This stream was re-homed here from the platform repo; do not re-implement the OLD rows.\n",
+			body:        "## Context\nA live, dispatchable brief in this re-homed-in stream.\n",
+			filePresent: true,
+			wantClass:   "",
 		},
 		{
 			name:      "re-homed NEGATIVE: an ordinary README",
@@ -119,7 +132,7 @@ func TestClassifyPhantom(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			class, reason, ok := classifyPhantom(id, tc.body, tc.readme, tc.merged)
+			class, reason, ok := classifyPhantom(id, tc.body, tc.readme, tc.merged, tc.filePresent)
 			if tc.wantClass == "" {
 				if ok {
 					t.Fatalf("want CLEAN, got class %q (reason %q)", class, reason)
@@ -148,13 +161,15 @@ func TestClassifyPhantomPrecedence(t *testing.T) {
 	body := "Any statusgen SOURCE change must be made in medici-finance/assay. STATUS: DEFERRED.\n"
 	readme := "This stream was re-homed.\n"
 
+	// filePresent=false keeps the re-homed arm a live competing match (pointer
+	// row), so this proves precedence ORDER, not the #581 file-presence gate.
 	// Merged wins over every text detector.
-	if class, _, ok := classifyPhantom(id, body, readme, map[string]bool{id: true}); !ok || class != phantomMergedUnflipped {
+	if class, _, ok := classifyPhantom(id, body, readme, map[string]bool{id: true}, false); !ok || class != phantomMergedUnflipped {
 		t.Fatalf("merged must win: got ok=%v class=%q", ok, class)
 	}
 	// Without the merge, the source-moved banner (more specific) wins over the
 	// deferred/re-homed matches also present.
-	if class, _, ok := classifyPhantom(id, body, readme, nil); !ok || class != phantomStatusgenSource {
+	if class, _, ok := classifyPhantom(id, body, readme, nil, false); !ok || class != phantomStatusgenSource {
 		t.Fatalf("statusgen-source must win over deferred/re-homed: got ok=%v class=%q", ok, class)
 	}
 }
@@ -221,14 +236,29 @@ func TestBoardHonestyNotices(t *testing.T) {
 		}
 	})
 
-	t.Run("README-detected re-homed phantom fires without a brief body", func(t *testing.T) {
+	t.Run("re-homed pointer row: README retired it AND the brief file is gone -> one NOTICE", func(t *testing.T) {
 		root := t.TempDir()
-		s := writeStream(t, root, "distribution", "This stream was re-homed; do not re-implement.\n",
-			"07", "Plain body, no banner.\n")
+		// No brief file on disk (briefNum ""): only a pointer row remains after the
+		// record was re-homed OUT of this root.
+		s := writeStream(t, root, "distribution", "This stream was re-homed; do not re-implement.\n", "", "")
 		s.Briefs = []Brief{{Num: "07", Status: "todo"}}
 		got := boardHonestyNotices([]*Stream{s}, nil, nil)
 		if len(got) != 1 || !strings.Contains(got[0], phantomReHomed) {
-			t.Fatalf("README re-homed banner must surface the row; got %v", got)
+			t.Fatalf("a re-homed pointer row with no brief file must surface; got %v", got)
+		}
+	})
+
+	// The #581 fail-first case: a stream re-homed INTO this repo has "re-homed"
+	// in its README (describing its own arrival) but its rows are LIVE work with
+	// real brief files. The board must NOT tell the dispatcher to skip them.
+	t.Run("#581: a live row of a stream re-homed INTO this repo is silent despite the README history", func(t *testing.T) {
+		root := t.TempDir()
+		s := writeStream(t, root, "harness-portability",
+			"This stream was re-homed here from the platform repo; do not re-implement the OLD rows.\n",
+			"13", "## Context\nA live, dispatchable brief in this re-homed-in stream.\n")
+		s.Briefs = []Brief{{Num: "13", Status: "todo"}}
+		if got := boardHonestyNotices([]*Stream{s}, nil, nil); len(got) != 0 {
+			t.Fatalf("a live re-homed-in row (brief file present) must be silent; got %v", got)
 		}
 	})
 

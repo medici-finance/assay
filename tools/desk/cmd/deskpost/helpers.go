@@ -137,7 +137,7 @@ func isFullSHA(s string) bool {
 // text"). It discriminates the abbreviated SHA — by far the most common mistake, and the
 // one whose downstream symptom is most misleading — from every other malformed value.
 func headFormError(head string) string {
-	const want = "--head must be the FULL 40-character lowercase-hex commit SHA " +
+	const want = "--head must be the FULL 40- (or 64-) character lowercase-hex commit SHA " +
 		"(`gh pr view <N> --json headRefOid -q .headRefOid`)"
 	if len(head) < 40 && len(head) > 0 && isHexish(head) {
 		return fmt.Sprintf("--head %q is an ABBREVIATED SHA (%d chars) — %s. "+

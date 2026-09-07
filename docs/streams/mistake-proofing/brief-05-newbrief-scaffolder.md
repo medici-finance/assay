@@ -147,6 +147,27 @@ facts:
 | 9 | `git grep -c 'newbrief' -- plugins/assay/skills/author-brief/SKILL.md` | exit 0 at implementation; a small count — the guidance points at the front door without restating the field list. Zero hits today (2026-08-25 @ `657cab1`) |
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: PASS (9/9 rows) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `67abbac`
+
+Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=/dev/null`); statusgen go-test rows module-scoped from `statusgen/`. Frontmatter: `gate: model`, all risk `no`, `irreversible: no`. Rows 1/2/9 carried authoring-time expectations that invert at implementation; verified against merged main the inverted (implemented) state is the PASS.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | git grep -c newbrief -- statusgen/ | present at impl | exit 0 — main.go:3, newbrief.go:35, newbrief_test.go:1 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | git grep known-subcommands statusgen/main.go | dispatcher names newbrief | exit 0 — main.go:1250 lists init, newbrief, verifyrun, … | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | git grep never-overwrites/only-if-absent statusgen/init.go | never-overwrite convention real | exit 0 — init.go:95 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | git grep tokenizeCommand statusgen/verifyrows.go | tokenizer ships | exit 0 — verifyrows.go:131 def, :1226 use | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | go test ./ -run NewBrief -count=1 (statusgen) | exit 0 | exit 0, ok — 16 tests RUN | 2026-09-06 | opus-4.8[1m]-verifier |
+| 6 | go test ./ -run NewBriefRefuses | exit 0; 5 refusals | exit 0, ok — 5 RUN (supplied-gate, unanswered-risk-noninteractive, nonexistent-dependency, untokenizable-verify-command, stamp-on-failed-fetch) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 7 | go test ./ -run NewBriefInverseEdgeAtomic | exit 0; atomic inverse edge + rollback | exit 0, ok — 2 RUN (atomic, atomic-rollback) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 8 | go test ./ -run NewBriefOutputLintsClean | exit 0; generated brief lints clean | exit 0, ok — 1 RUN | 2026-09-06 | opus-4.8[1m]-verifier |
+| 9 | git grep -c newbrief author-brief/SKILL.md | present at impl, small count | exit 0 — count 2 | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: DERIVED — gate = "human" iff anyYes else "model" @ statusgen/newbrief.go:208-215 — matches docs/brief-rules.md:359-361 ("if ANY risk is yes, gate must be human"); only all-four-no yields model. Correct.`
+`RISK-VALUE: DERIVED — wave = 0 (no deps) / max(dep waves)+1 @ statusgen/newbrief.go newBriefDeriveWave — matches docs/brief-rules.md:27 (wave 0 = no deps, wave N depends only on < N); N=max+1 keeps every dep in a wave ≤ N-1 < N. Correct. (Exit codes 0/1/2 @ newbrief.go:64-66 are reversible operational conventions, rank last.)`
+
+**VERIFY: PASS** — all 9 Verify rows PASS on merged main `67abbac`; both risk-bearing derived constants (gate, wave) DERIVED from the repo's own stated constraints. `gate: model`, all risk `no` — deliverable verifies clean.
+
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled

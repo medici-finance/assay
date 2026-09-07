@@ -141,7 +141,23 @@ stands, and treats any claim the diff contradicts as a blocker, not a nit.
   that will merge", the honest answer from that signal is could-not-check, and you may not
   upgrade that to "the approval is fine".
 
-## 8. No-default-probe convention on any committed tool or script
+## 8. A "claim is false" finding is swept, not just its cited line
+
+A finding that a statement or claim is false — as opposed to a defect at one location — is a
+finding about the CLAIM, not about the line it happened to be pointed at. Checking only
+whether the cited line changed is not the same question as checking whether the claim is
+gone: the same false or unsupported assertion routinely repeats in a sibling file or an
+adjacent paragraph, and a fix that clears one copy while another survives untouched is how a
+single falsehood costs several review rounds instead of one.
+
+- **On a re-review of this finding class, search the WHOLE diff for other assertions of the
+  same claim** — not only the cited file:line — before accepting the fix.
+- **Where cheap, check the rest of the repository too**: a claim wrong in this diff can
+  already have a sibling copy the diff never touches.
+- **Report every surviving instance together, in the same verdict.** Naming one and leaving
+  the next round to discover another is the failure this clause exists to stop.
+
+## 9. No-default-probe convention on any committed tool or script
 
 When the PR adds or changes a committed tool or script, check that it does not default to
 network probing. Flag any network-reaching default (a mode that contacts a cluster or a
@@ -152,7 +168,7 @@ was a committed checker that defaulted to an auto mode and issued dozens of read
 queries against a live admin context. A network-reaching mode is acceptable only behind an
 explicit opt-in flag that prints its target.
 
-## 9. Board-row flip check — the Status cell must be a bare lifecycle token
+## 10. Board-row flip check — the Status cell must be a bare lifecycle token
 
 When the PR flips its item's row in the stream board README, the Status cell must be a bare
 token — one of `todo` / `in-progress` / `implemented` / `verified` / `done`, or the hold
@@ -162,7 +178,7 @@ column right into a cascade of problems that aborts the board regeneration. Both
 blockers even when the flip is substantively correct — the row mechanics are the defect.
 Do NOT flag a legitimate `blocked` cell as invalid: it is an accepted value.
 
-## 10. Verdict mechanics
+## 11. Verdict mechanics
 
 - Post the verdict as a real review under the reviewer App identity, through the desk
   verb — never a raw forge call, and never as the PR author.
@@ -172,6 +188,21 @@ Do NOT flag a legitimate `blocked` cell as invalid: it is an accepted value.
 - An APPROVED that immediately follows a CHANGES_REQUESTED at the SAME commit, with no
   push in between, cannot be a re-verification — there is nothing new to verify. Do not
   post one; the flip gate refuses it.
+- ONE EXEMPTION, and only this one: when the only thing that changed since the
+  CHANGES_REQUESTED is a LABEL, and that label turned a REQUIRED CHECK green, a same-head
+  re-approve IS a re-verification — of a condition that was genuinely unsatisfied when the
+  block was written and is satisfied now. The premise of the rule above is that nothing
+  changed; here something did, and it is simply not something a head sha can carry (a
+  label moves no head, which is exactly why the sha looks unchanged). Post it, and say so
+  IN THE BODY: name the label, name the check it greened, and state that the diff is
+  byte-identical to the one reviewed. Without those three facts the review is
+  indistinguishable from the no-op the rule above forbids, and should be read as one.
+  The exemption covers a re-approve whose ONLY basis is the label; a finding about the
+  code still stands until the code changes, and no label clears it.
+  Know what this does and does not unblock: the flip gate compares head shas, so it still
+  reads the re-approve as same-head and still refuses on its own terms. The re-approve
+  records the correct verdict on the PR; clearing the standing rejection for the flip
+  remains with whoever owns that gate.
 - Findings first, scope second: re-read the PR's reviews before and after every push you
   make to it.
 - Escalate per the common kit's escalate-durably rule: anything the loop cannot resolve

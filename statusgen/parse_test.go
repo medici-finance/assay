@@ -116,6 +116,30 @@ func TestParseBriefTableMissingColumn(t *testing.T) {
 	}
 }
 
+// TestParseBriefTableDecoratedStatusShiftsColumns pins the recurring defect
+// from #82: a worker records the PR association IN the Status cell
+// (`implemented (#80)`) plus a stray `||`, prepending a cell and shifting every
+// column right. splitRow then yields more cells than the header. The parser must
+// REJECT the row (a count mismatch in either direction is malformed) with a
+// message that names the fix — bare token in the cell, PR link in the trailer —
+// rather than silently proceeding and misreporting a downstream `invalid status`.
+func TestParseBriefTableDecoratedStatusShiftsColumns(t *testing.T) {
+	bad := "## Briefs\n\n" +
+		"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
+		"|---|-------|------|--------|--------|----------|----------|\n" +
+		"| implemented (#80) || 02 | [brief](./brief-02.md) | 0 | M | implemented | — | — |\n"
+	_, err := parseBriefTable(bad)
+	if err == nil {
+		t.Fatal("want error for a column-shifted row (decorated Status cell), got nil")
+	}
+	msg := err.Error()
+	for _, want := range []string{"Status cell", "bare", "Brief:", "trailer"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error message does not name the fix (missing %q): %s", want, msg)
+		}
+	}
+}
+
 func TestParseNoTableIsValid(t *testing.T) {
 	briefs, err := parseBriefTable("# Just prose\nno table here\n")
 	if err != nil || briefs != nil {

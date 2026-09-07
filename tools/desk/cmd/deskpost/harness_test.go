@@ -79,6 +79,14 @@ type fakeGH struct {
 	prAuthorID int64
 	trustJSON  string
 
+	// headAuthorLogin is the account GET /commits/{sha} attributes the head commit to —
+	// the non-author verdict assertion's second-layer input (sdlc/10). Empty serves the PR
+	// author (a plausible default: in the desk model the PR author authored the head), so a
+	// test only sets it to drive the COLLAPSE case (poster == head author). headAuthorErr
+	// forces the commit read to fail (could-not-check → fall back to the PR author).
+	headAuthorLogin string
+	headAuthorErr   bool
+
 	// Issue fixtures (#296). GitHub numbers issues and PRs from ONE
 	// sequence, so the fake models that: a number in issueNums is an ISSUE — GET
 	// /pulls/{n} 404s for it and GET /issues/{n} serves it with NO `pull_request` key —
@@ -132,11 +140,14 @@ type fakeGH struct {
 	// repoReactions is the reaction list returned for GET .../reactions.
 	repoReactions []deskkit.Reaction
 
-	// labelEvents is the PR's `labeled` timeline — the dispatcher-attestation the model-
+	// labelEvents is the PR's label timeline — the dispatcher-attestation the model-
 	// capability floor reads on a verdict write. nil serves an empty timeline, which the
 	// floor reads as UNATTESTED (a NOTICE, not a refusal), so pre-floor tests run unchanged.
-	// Each event carries its applier login, so a fixture can distinguish a dispatcher stamp
-	// from a self-applied one. timelineErr forces the timeline read to fail (could-not-check).
+	// Each event carries its applier login and whether it ADDED or REMOVED the label, so a
+	// fixture can distinguish a dispatcher stamp from a self-applied one and a superseded
+	// application from the standing one. It is served in pages of 100, as GitHub does, so the
+	// client's walk is actually exercised. timelineErr forces the read to fail
+	// (could-not-check). Set it through fake.stamp, which keeps prLabels consistent with it.
 	labelEvents []deskkit.LabelEvent
 	timelineErr bool
 
@@ -156,16 +167,17 @@ type fakeGH struct {
 }
 
 var (
-	reTokens    = regexp.MustCompile(`/access_tokens$`)
-	rePull      = regexp.MustCompile(`/pulls/[0-9]+$`)
-	reReviews   = regexp.MustCompile(`/pulls/[0-9]+/reviews$`)
-	reFiles     = regexp.MustCompile(`/pulls/[0-9]+/files$`)
-	reComments  = regexp.MustCompile(`/issues/[0-9]+/comments$`)
-	reIssue     = regexp.MustCompile(`/issues/([0-9]+)$`)
-	reStatus    = regexp.MustCompile(`/commits/[^/]+/status$`)
-	reChecks    = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
-	reRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
-	reReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
+	reTokens       = regexp.MustCompile(`/access_tokens$`)
+	rePull         = regexp.MustCompile(`/pulls/[0-9]+$`)
+	reReviews      = regexp.MustCompile(`/pulls/[0-9]+/reviews$`)
+	reFiles        = regexp.MustCompile(`/pulls/[0-9]+/files$`)
+	reComments     = regexp.MustCompile(`/issues/[0-9]+/comments$`)
+	reIssue        = regexp.MustCompile(`/issues/([0-9]+)$`)
+	reStatus       = regexp.MustCompile(`/commits/[^/]+/status$`)
+	reChecks       = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
+	reCommit       = regexp.MustCompile(`/commits/[^/]+$`)
+	reRepo         = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
+	reReactions    = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
 	reTimeline     = regexp.MustCompile(`/issues/[0-9]+/timeline$`)
 	reRepoLabels   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/labels$`)
 	reIssueLabels  = regexp.MustCompile(`/issues/[0-9]+/labels$`)
@@ -352,6 +364,23 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(f.servedFiles())
 
+	case r.Method == http.MethodGet && reCommit.MatchString(path):
+		// GET /commits/{sha} — the non-author verdict assertion's head-author read (sdlc/10).
+		// Ordered before reStatus/reChecks is unnecessary (those end in /status, /check-runs
+		// and never match /commits/{sha}$), but it must come before any broader match.
+		if f.headAuthorErr {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		login := f.headAuthorLogin
+		if login == "" {
+			login = f.prAuthor
+			if login == "" {
+				login = "shared-agent"
+			}
+		}
+		writeJSON(map[string]any{"author": map[string]any{"login": login}})
+
 	case r.Method == http.MethodGet && reStatus.MatchString(path):
 		per, pg := ghPaging(r.URL.Query())
 		lo, hi := pageBounds(len(f.status.Statuses), per, pg)
@@ -424,14 +453,32 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		if page != "" && page != "1" {
-			writeJSON([]map[string]any{})
-			return
+		// Paged exactly as GitHub pages it (100 per page, a short page ends the walk), so a
+		// stamp that lands beyond page 1 is only read by a client that actually walks.
+		const per = 100
+		n := 1
+		if page != "" {
+			n, _ = strconv.Atoi(page)
 		}
-		out := make([]map[string]any, 0, len(f.labelEvents))
-		for _, e := range f.labelEvents {
+		if n < 1 {
+			n = 1
+		}
+		lo := (n - 1) * per
+		hi := lo + per
+		if lo > len(f.labelEvents) {
+			lo = len(f.labelEvents)
+		}
+		if hi > len(f.labelEvents) {
+			hi = len(f.labelEvents)
+		}
+		out := make([]map[string]any, 0, hi-lo)
+		for _, e := range f.labelEvents[lo:hi] {
+			kind := "labeled"
+			if e.Removed {
+				kind = "unlabeled"
+			}
 			out = append(out, map[string]any{
-				"event": "labeled",
+				"event": kind,
 				"label": map[string]any{"name": e.Name},
 				"actor": map[string]any{"login": e.AppliedBy},
 			})
@@ -620,9 +667,9 @@ func setupFake(t *testing.T) (*fakeGH, *bytes.Buffer) {
 	f.srv = httptest.NewServer(http.HandlerFunc(f.handler))
 	t.Cleanup(f.srv.Close)
 
-	oldBase := apiBaseURL
-	apiBaseURL = f.srv.URL
-	t.Cleanup(func() { apiBaseURL = oldBase })
+	oldBase := forgeAPIBase
+	forgeAPIBase = f.srv.URL
+	t.Cleanup(func() { forgeAPIBase = oldBase })
 
 	var errBuf bytes.Buffer
 	oldOut, oldErr := stdout, stderr

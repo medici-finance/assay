@@ -190,6 +190,68 @@ func parseOwner(repo string) string {
 	return repo
 }
 
+// placeholderOwner is the account the shipped topology carries as a placeholder.
+// It is NOT a usable default owner: when --repo is absent the account must be
+// resolved from the configured roster, and if that resolves nothing the mint
+// fails closed NAMING this placeholder rather than silently resolving an
+// installation for it. The old default (owner := placeholderOwner whenever --repo
+// was absent) surfaced in a configured deployment as a bare rc=6 that read like a
+// bad credential, when the real cause was that the owner had never been resolved.
+const placeholderOwner = "example-org"
+
+// configuredOwners returns the sorted, de-duplicated set of account owners across
+// the configured allowed-repo set (ASSAY_ALLOWED_REPOS) — the same
+// write-authorisation roster the other desk verbs resolve the org from. A
+// deployment that names all its repos under one account yields one owner; the
+// unconfigured/placeholder tree yields none.
+func configuredOwners() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, r := range deskkit.AllowedRepos() {
+		o := parseOwner(r)
+		if o == "" || seen[o] {
+			continue
+		}
+		seen[o] = true
+		out = append(out, o)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// resolveMintOwner determines the account whose App installation the token is
+// minted against.
+//
+//   - --repo given: its owner half, verbatim (unchanged behaviour).
+//   - --repo absent: the owner is resolved from the SAME configured source the
+//     other desk verbs read — the allowed-repo roster (ASSAY_ALLOWED_REPOS).
+//     Exactly one configured owner is used. Zero or several fail CLOSED with a
+//     message that names what to do (exit 6), never a silent mint against the
+//     shipped placeholder that reads back as an auth failure.
+func resolveMintOwner(repo string) (string, error) {
+	if strings.TrimSpace(repo) != "" {
+		return parseOwner(repo), nil
+	}
+	owners := configuredOwners()
+	switch len(owners) {
+	case 1:
+		return owners[0], nil
+	case 0:
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"COULD-NOT-CHECK: no --repo was given and the allowed-repo roster (%s) names no account, so "+
+				"the owner cannot be resolved. The mint would otherwise fall back to the shipped placeholder "+
+				"%q, which is not a real installation — a mint against it fails as if the credential were bad "+
+				"when the real cause is that no owner is configured. Pass --repo <owner>/<name>, or set %s in %s.",
+			deskkit.EnvAllowedRepos, placeholderOwner, deskkit.EnvAllowedRepos, deskkit.ConfigHomePath()), nil)
+	default:
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"COULD-NOT-CHECK: no --repo was given and the allowed-repo roster names more than one account "+
+				"(%s), so the owner is ambiguous. An installation token is per account and this process will "+
+				"not guess which one — pass --repo <owner>/<name> to name the account.",
+			strings.Join(owners, ", ")), nil)
+	}
+}
+
 // --- key parsing ----------------------------------------------------------------
 
 // parsePrivateKey tries PKCS1 then PKCS8 decoding of a PEM-encoded RSA key.
@@ -543,8 +605,9 @@ func cmdToken(args []string) (err error) {
 
 	// Resolve install ID: env override takes priority; otherwise resolve at
 	// runtime by signing a JWT and querying GET /app/installations, matching
-	// account.login against the repo owner. When --repo is absent we default
-	// the owner to "example-org".
+	// account.login against the repo owner. When --repo is absent the owner is
+	// resolved from the configured roster (see resolveMintOwner) rather than
+	// defaulting to the shipped placeholder account.
 	// This is attribution (which App name appears), not authorization (which
 	// session is permitted to act as the role) — the caller holds the key and
 	// controls the env, so every key is readable by any session of the same OS
@@ -556,11 +619,13 @@ func cmdToken(args []string) (err error) {
 		installID = override
 	} else {
 		// Resolve install ID at runtime: build JWT, query GitHub
-		// /app/installations, match account.login against repo owner.
-		// Default owner to example-org when --repo is absent.
-		owner := "example-org"
-		if *repo != "" {
-			owner = parseOwner(*repo)
+		// /app/installations, match account.login against repo owner. With --repo
+		// absent the owner comes from the configured allowed-repo roster; an
+		// unresolvable owner fails closed here rather than minting against the
+		// placeholder.
+		owner, oerr := resolveMintOwner(*repo)
+		if oerr != nil {
+			return oerr
 		}
 
 		// Must read PEM, sign JWT before we know the install ID.

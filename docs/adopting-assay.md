@@ -14,6 +14,36 @@ Enterprise instead — service accounts in place of Apps, protected-branch push-
 place of ruleset bypass — is a separate profile: see
 [`docs/adopting-assay-gitlab.md`](adopting-assay-gitlab.md).
 
+## What adopting Assay actually costs — read this before "three commands"
+
+The turnkey path above is three shell lines, but the *setup it drives* is not free, and the cost
+falls almost entirely on **identities**, not commands. State it plainly here so a reader learns the
+true shape on this page and not at step four:
+
+| What you must provide | Minimum | Why |
+|---|---|---|
+| **Accounts** | **2** — one human, one machine | The human merges and rules on gates; the machine account is what the fleet runs *as*. They must be distinct (the two-accounts prerequisite). |
+| **GitHub App identities** | **the implementer identity + a separate reviewer App** | This one pair is **load-bearing and non-negotiable**: the identity that *writes* a change and the identity that *approves* it must be different, and the forge will not let a PR author approve their own PR. Everything else is attribution, not separation — see **§1a** and [`docs/enforcement-model.md`](enforcement-model.md). |
+| **Supported platform** | **GitHub** (primary); **GitLab** via a separate profile ([`adopting-assay-gitlab.md`](adopting-assay-gitlab.md)) | The runbook is GitHub-shaped; the GitLab profile substitutes service accounts for Apps. |
+| **Supported harness** | **Claude Code**, Opus-class agent | The skills and desk tools are written for it; other harnesses are not a supported path today. |
+
+**Per-App scope cost.** Every role App you *do* create must carry the **same three write duties** —
+`pull_requests: write`, `issues: write`, `contents: write` (`requiredDuties`; see *The required duty
+set* in §3 `setup-reviewer-app`). GitHub offers no narrower toggle, so "a reviewer that can only
+comment" is not a provisionable thing; the boot preflight refuses a role missing any of the three.
+
+**Is there a smaller — "minimal" — supported path?** The larger fleet splits the machine identity
+into per-role Apps (worker / verifier / desk / loop) for a per-role **audit trail**; that split is a
+*decomposition, not a requirement* (§2, *automation identity*). The floor that keeps the product's
+central claim is the implementer↔reviewer pair above. **Which further collapses are supported —
+whether the verifier may share the reviewer's identity, and whether a single-person, single-repo
+adopter is a supported configuration at all — is a live human decision (`medici-finance/assay#463`),
+not yet settled.** Until it is ruled, this guide documents the true cost of the full path honestly
+and does **not** publish a collapsed identity topology as "supported": doing so on a guess is exactly
+what would put the segregation-of-duties claim at risk. What the run-time tooling *already* enforces
+on any path — including a collapsed one — is described in
+[`docs/enforcement-model.md`](enforcement-model.md).
+
 ## Fastest path — the turnkey `assay:install` skill
 
 For a straight install (most adopters), the fastest coherent boot is three steps: add the plugin
@@ -33,9 +63,11 @@ never-autonomous escalation points below.
 - **Claude Code**, with the plugin installed (the two `/plugin` commands above).
 - An **authenticated `gh`** — the skill downloads the pinned statusgen release with
   `gh release download`.
-- **macOS or Linux.** The statusgen binary acquisition is Unix-first; **Windows** is a named
-  fast-follow, not yet in scope — on a Windows host the skill stops at that step rather than
-  guessing.
+- **macOS, Linux, or native Windows.** The statusgen binary acquisition is Unix-first via
+  `gh release download`; on a **native Windows** host follow the **[Windows adopters](#windows-adopters)**
+  section — the pinned `statusgen-windows-<arch>.exe` is acquired through the PowerShell
+  bootstrap + Go-native `deskinstall` path (same sha256-verify-or-refuse control), with the
+  SessionStart-hook `bash`+`jq` workaround and the arm64-native-smoke caveat stated there.
 
 **What the skill does** — it DELEGATES every PRIMITIVE and every human-gate to the manual runbook
 below; the two are **one story with one mechanism**, not two implementations:
@@ -367,6 +399,16 @@ Create the three append-only logs (`docs/streams/{FINDINGS,INTAKE,RETRO}.md`; fo
 `docs/registers.md`). `statusgen` consumes FINDINGS + INTAKE (findings hold affected briefs out of
 Next-up until resolved); RETRO is the cadence log. Numbering must be gap-free; withdraw with a
 tombstone (keep the number, flip disposition), never by deleting a heading.
+
+A fourth register, **REQUIREMENTS** (`docs/streams/requirements/<slug>.md`, per-entry files),
+records what the product was asked to do and links each ask to the briefs written against it via a
+brief's `satisfies:` key. When it is populated, `--lint` runs three traceability checks:
+`orphan-requirement` (NOTICE — an `accepted` requirement no brief cites), `untraced-brief` (NOTICE —
+a forward brief in a stream that opted in with `traced: true` and cites nothing), and
+`dangling-satisfies` (PROBLEM — a `satisfies:` naming a `REQ-<slug>` no entry defines). The two
+NOTICEs never change the exit code, so an adopter is never red-gated over a legacy corpus.
+`statusgen --requirements-rollup` prints the per-release ask→work→evidence rollup. See
+`docs/registers.md` and spec §6.
 
 **Verify:** `--lint` exits 0; then delete a middle entry (`## I-02` between I-01/I-03) and re-run —
 expect NON-zero (proves sequence-contiguity is live). Restore it.
@@ -796,6 +838,121 @@ old scopes and stays red after a correct grant.
 *(This Verify clause used to assert the opposite — that the App has **no** `contents: write`. That
 check is retired: it now fails every correctly provisioned reviewer.)*
 
+## Windows adopters
+
+Assay runs on **native Windows** — a `windows/amd64` process, not WSL. The Go tools (`statusgen`
+and the desk binaries) cross-compile for Windows and ship as pinned, sha256-verified release
+assets. This section is the **Windows arm of the install step** every scenario's
+`install-statusgen` references; an adopter on Windows follows their scenario *and* this section at
+the install step. **WSL is a noted fallback for local development only** — WSL is Linux, so a WSL
+install is a Linux install and is never the native-Windows claim itself.
+
+**What the stream delivered, and what it did not — read this before claiming parity.** The
+delivery layer is real: a Windows release matrix (`statusgen-windows-<arch>.exe` +
+`desk-tools-windows-<arch>.tar.gz`, checksummed), a Go-native install path with the
+sha256-verify-or-refuse control intact, and a portability triage of every shell-assuming surface.
+Two honesty caveats travel with it, spelled out below: the SessionStart hooks need a documented
+`bash`+`jq` workaround, and the **native `windows/arm64` smoke is BLOCKED** for want of an arm64
+Windows runner. Do not read "runs on Windows" as "every surface is native and CI-green" — read the
+specifics.
+
+### Prerequisites
+- A **native 64-bit Windows host** (Windows 10 / 11 or Windows Server), `windows/amd64`. The
+  `windows/arm64` binaries are published and checksummed, but their native smoke is BLOCKED (see
+  **CI-proven status**); an arm64 host installs the same way, with that caveat stated.
+- **PowerShell** (ships with Windows) — for the ~5-line first-install bootstrap.
+- **No Go toolchain and no `gh` are required to install.** The adopter downloads the *pinned
+  release binary*, not a from-source build: the bootstrap fetches over `Invoke-WebRequest` and the
+  Go-native installer over `net/http`. `git` and `gh` — both ship native Windows builds — are
+  needed only to *run the desk pipeline*, not to install.
+- **Git-Bash** (or WSL, local dev only) — supplies `bash` + `jq` for the SessionStart hooks; see
+  **Known gaps** for exactly why this is a manual step, not automatic.
+
+### Install path — the pinned, verify-or-refuse flow
+The Windows install mirrors the Unix acquire→verify→place flow, with the **sha256-verify-or-refuse
+control as the first post-download step** — a mismatch **refuses** and places nothing; it never
+warns-and-continues.
+
+1. **Bootstrap the first binary** (solves the chicken-and-egg: you need a binary to run the
+   installer). Run `scripts/bootstrap-windows.ps1`, passing the pinned tag and the sha256 copied
+   from the release's `paired-versions.yaml` / `checksums.txt` — the bootstrap never invents a hash
+   of its own:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts/bootstrap-windows.ps1 `
+     -Tag v0.26.0 -Arch amd64 `
+     -Sha256 fa549fa1e19a0006ef109c61265aab397d528f7c69aa9181ee963a5f8d9b2f39
+   ```
+
+   It downloads `statusgen-windows-amd64.exe`, computes its SHA256, and **REFUSES on mismatch**
+   ("no unverified bytes installed") before placing the verified binary in `%LOCALAPPDATA%\Assay\bin`.
+2. **Install the rest with the Go-native installer.** `deskinstall` resolves the pinned tag +
+   per-platform sha256 from the plugin-shipped `paired-versions.yaml` (never a floating ref),
+   downloads `statusgen-windows-<arch>.exe` and `desk-tools-windows-<arch>.tar.gz`, **verifies each
+   sha256 and refuses on any mismatch** (nothing placed on a bad hash), then installs the verified
+   binaries into a `PATH`-resolvable dir:
+
+   ```powershell
+   deskinstall --manifest paired-versions.yaml --dest $env:LOCALAPPDATA\Assay\bin
+   ```
+
+   Exit `0` = installed & verified; exit `5` = refused (hash mismatch, absent pin, or bad input).
+
+The install fork — a **Go-native installer with a thin PowerShell bootstrap**, chosen over a pure
+PowerShell script — was a maintainer decision: it keeps the security-critical hash-verify in one
+tested Go implementation and confines PowerShell to a trivial, auditable download-and-verify.
+
+### Pin the Windows assets in `.assay-versions`
+Pin the Windows release exactly as any other platform (CORE `install-statusgen`, channel E): one
+line per platform you install on, `<artifact> <tag> <sha256>`, re-pinned — never edited in place —
+on an upgrade so the bump shows in a diff. The Windows artifact names carry `.exe`:
+
+```
+statusgen-windows-amd64.exe  v0.26.0  fa549fa1e19a0006ef109c61265aab397d528f7c69aa9181ee963a5f8d9b2f39
+statusgen-windows-arm64.exe  v0.26.0  9b01f839841742634377dd1b8c70e07503fe905ed32b14f3e19345c722f313c6
+```
+
+(These are the `v0.26.0` pins from `plugins/assay/paired-versions.yaml`; the desk-tools tarballs
+`desk-tools-windows-<arch>.tar.gz` pin the same way.) `windows/arm64` is pinned and checksummed
+like any other platform — the BLOCKED item below is only its *native smoke*, never its release
+asset.
+
+### CI-proven status — staged, pending promotion (not yet a live check)
+A Windows CI leg — `statusgen --lint` plus an **offline** `--version` smoke on `windows-latest` —
+is authored and **staged**: it lives at `ci/staged-workflows/windows-ci-leg.yml`, *not yet* under
+`.github/workflows/`. Promoting it into the live workflow set requires a **maintainer's
+workflow-scoped credential** — an agent credential cannot push a workflow file at all — so today
+the Windows leg is **pending promotion, not a live green check**. Until it is promoted, the "runs
+on Windows" claim rests on the cross-compiled, checksummed release assets and the local install
+path above; the CI leg is the corroboration that goes live when a maintainer promotes it. The
+**native `windows/arm64` smoke stays BLOCKED** pending an arm64 Windows runner, and is never
+greened from the amd64 result.
+
+### Known gaps — documented workarounds
+The portability audit (`docs/streams/windows-port/portability-audit.md`) triaged every
+shell-assuming surface. Most run natively as-is: the `git`/`gh` shell-outs are argv-based (no shell
+interpolation); the config home resolves via `os.UserHomeDir()` to `%USERPROFILE%\.config\assay`;
+real filesystem paths go through `filepath.Join`. The one adopter-facing surface the audit triaged
+**`documented-workaround`** — state the manual step honestly, do not assume it just works:
+
+- **SessionStart hooks** (`plugins/assay/hooks/inject-resident-rules.sh`, `inject-board-state.sh`,
+  wired via `plugins/assay/hooks/hooks.json`'s `bash "…"` command). The audit's disposition and
+  note, verbatim:
+
+  > Windows Claude Code ships no `bash`/`jq` by default. `hooks.json`'s `bash "…"` command string
+  > is the load-bearing SessionStart mechanism (delivers the resident operating rules) and is
+  > itself POSIX-only — rewriting it to a portable invocation is a plugin-host-level change, not a
+  > per-hook fix, so the cheap near-term answer is a documented prerequisite (Git-Bash/WSL provides
+  > `bash`+`jq`) rather than a port. Revisit if the plugin host ever supports a per-OS hook command.
+
+  **Workaround for the adopter:** install **Git-Bash** (which ships `bash` + `jq`) so the hooks
+  run; or run inside **WSL for local dev only** — never presented as the native-Windows claim
+  itself.
+
+The rest of the audit's `needs-port` rows were closed by the install path above (the
+`sudo make desk-install` POSIX install and the push-guard shim / `/opt` assumptions) or are
+internal to the desk pipeline, not surfaces an adopter touches directly.
+
 ## 3a. What the bundle delivers by itself — and what you still have to write
 
 The install leaves you with working skills and **two things that behave very differently**. Read
@@ -1024,7 +1181,7 @@ already carries streams, a legacy board, or in-flight work, use **Scenario 2** i
 ### Ordered steps (zero → exercised end-to-end)
 
 1. **Initialize the repo.** `git init && git checkout -b main && git commit --allow-empty -m "chore: initial commit"`, then create the remote and push `main` (human does remote-create if org policy requires — see Step 7). **Verify:** `git rev-parse --abbrev-ref HEAD` = `main`; `git remote -v` shows `origin`.
-2. **Run `install-statusgen`.** Green-field default: **channel E — the pinned release binary**. Commit `.assay-versions`, install, verify the sha256. The old "green-field default: vendor" advice is **retired**: a new repo has no update-propagation cost *on day one*, which is exactly how a fork starts, and every day after that it drifts (a frozen vendored fork is that story, still gating a repo's PRs). Starting pinned costs one file. **Verify:** `statusgen --version` prints the pinned tag; the pin line for your platform exists in `.assay-versions`.
+2. **Run `install-statusgen`.** Green-field default: **channel E — the pinned release binary**. Commit `.assay-versions`, install, verify the sha256. The old "green-field default: vendor" advice is **retired**: a new repo has no update-propagation cost *on day one*, which is exactly how a fork starts, and every day after that it drifts (a frozen vendored fork is that story, still gating a repo's PRs). Starting pinned costs one file. On a **native Windows** host, take the install path from the **[Windows adopters](#windows-adopters)** section (the PowerShell bootstrap + `deskinstall`, pinning `statusgen-windows-<arch>.exe`) instead of the Unix `install -m 0755` flow — the rest of this step is unchanged. **Verify:** `statusgen --version` prints the pinned tag; the pin line for your platform exists in `.assay-versions`.
 3. **Run `scaffold-registers` + `scaffold-streams`.** Create `docs/streams/{FINDINGS,INTAKE,RETRO}.md` and **exactly one** stream dir. **Verify:** `ls docs/streams/` shows the three registers + one stream; `yq eval '.' docs/streams/<stream>/README.md >/dev/null`.
 4. **Run `add-statusgen-ci`.** Confirm `paths:` match your streams and the bootstrap-safe guard is present. **Verify:** both a `lint` (pull_request) and a `regen` (push→main) job exist; the porcelain guard is present.
 5. **Run `install-desk-plugin` + `install-main-guard`, then write the local bindings (§3a).** The plugin's `SessionStart` hook fires in every session in every project — take that trade knowingly, per **§3a**. Then fill your repo's own instruction file with the §3a checklist; the hook delivers the method, not your streams / pins / gate-holder / risk paths. **Verify:** `assay:adopt` and `assay:author-brief` resolve; `git config core.hooksPath` returns the hooks path; every §3a bullet except the review identity (which step 7 establishes) is answered or recorded as not-applicable.
@@ -1073,7 +1230,7 @@ tooling — one methodology source, one review identity, each repo contributing 
 
 1. **Prove the single-repo loop on the highest-traffic repo first.** Run Scenario 1's primitives there end-to-end; confirm one brief goes `todo → … → done` with a real reviewer-App verdict **before** touching another repo. **Verify:** the primary repo has a `STATUS.md` on `main` with a populated Next-up; one brief reached `verified`/`done` with a bot review. **ESCALATE** if the board never appears on `main` — that's the bootstrap-guard bug; fix it before fanning out.
 2. **Scaffold streams in each additional repo** (core primitives, per repo, in that repo's **own owned worktree** — isolation is per-repo). Run `scaffold-streams`, `install-main-guard`, `install-desk-plugin`. Do **not** run `install-statusgen` here (step 3 does it suite-wide), and do **not** re-run `configure-roster` per repo — the roster is **one file per operator**, not a per-repo artifact; adding a repo to the suite means adding it to `ASSAY_ALLOWED_REPOS`, and a repo missing from that value is refused by every desk tool. Write **each** repo's own local bindings (**§3a**): the method is shared suite-wide via one bundle and one hook, but streams, risk paths, single-writer artifacts and isolation mechanics are per-repo, and a session working in repo B cannot read repo A's instruction file. **Verify:** each repo has `docs/streams/` with a valid `brief-v1` stream README; `core.hooksPath` resolves; each repo's instruction file answers the §3a checklist.
-3. **Install the pinned statusgen release into each repo (do not vendor N copies).** The tool comes from **one place — `assay/statusgen`** — so copies can't drift. Run `install-statusgen` per repo: **channel E**, a `.assay-versions` pin plus a sha256-verified release binary. Every repo in the suite should pin the **same tag**, and a suite-wide upgrade is then N one-line pin bumps you can see in a diff. Prior revisions of this doc recommended **D — CI fetch-and-run at a pinned ref**; that is now the fallback for a runner that cannot download release assets, because a pinned ref pins *source* and rebuilds it per run, so nothing is ever hash-checked.  Then run `add-statusgen-ci` per repo. **Verify:** `statusgen --root <adopter>` writes `<adopter>/STATUS.md`; every repo's `.assay-versions` names the same `statusgen` tag (`grep -h '^statusgen ' */.assay-versions | sort -u | wc -l` → 1); no repo carries a `statusgen/` source tree; after first merge, `STATUS.md` appears on `main`. **ESCALATE** private-repo CI auth (the release-download token) to the admin.
+3. **Install the pinned statusgen release into each repo (do not vendor N copies).** The tool comes from **one place — `assay/statusgen`** — so copies can't drift. Run `install-statusgen` per repo: **channel E**, a `.assay-versions` pin plus a sha256-verified release binary. Every repo in the suite should pin the **same tag**, and a suite-wide upgrade is then N one-line pin bumps you can see in a diff. Prior revisions of this doc recommended **D — CI fetch-and-run at a pinned ref**; that is now the fallback for a runner that cannot download release assets, because a pinned ref pins *source* and rebuilds it per run, so nothing is ever hash-checked. For any repo whose host is **native Windows**, run the install through the **[Windows adopters](#windows-adopters)** section (the pinned `.exe` + `deskinstall`), pinning `statusgen-windows-<arch>.exe` in that repo's `.assay-versions`.  Then run `add-statusgen-ci` per repo. **Verify:** `statusgen --root <adopter>` writes `<adopter>/STATUS.md`; every repo's `.assay-versions` names the same `statusgen` tag (`grep -h '^statusgen ' */.assay-versions | sort -u | wc -l` → 1); no repo carries a `statusgen/` source tree; after first merge, `STATUS.md` appears on `main`. **ESCALATE** private-repo CI auth (the release-download token) to the admin.
 4. **Install ONE reviewer GitHub App across ALL repos** (`setup-reviewer-app`) — dual-installed on the account and the org with `repository_selection: all` so new repos are auto-covered; the token minter picks the install by the `owner/repo` slug. **Verify:** `gh api /app/installations` shows both installs with `all`; the App can post a review in a spot-checked repo per account; and each install's `.permissions` holds all three required duties — `pull_requests: write`, `issues: write`, `contents: write` (§3 `setup-reviewer-app`). **ESCALATE** — App creation is the admin's alone.
 5. **Enable multi-repo dispatch in `batch-fanout`**: define the board-bearing **repo set in ONE place** in the skill; loop it, regenerating each repo's board to scratch with **that repo's** statusgen command and extracting its Next-up (skip a non-dispatchable repo **with a logged note**); merge into one **repo-tagged** batch preserving each board's per-stream cap + ordering; make every worker-dispatch carry the target repo + "isolate in an owned worktree of that repo, open the draft PR in that repo"; reconcile the PR-scan set with the board set. **Verify:** the skill names the repo set + both statusgen forms; a dry-run surfaces a pick whose repo is **not** the primary; worker-dispatch carries per-repo isolation.
 6. **Aggregate / roll-up view (direction).** End state = a master board across the suite. Today the aggregate is the merged dispatch batch (step 5); the standalone master aggregator is a later direction. Keep the board-bearing repo set canonical in one place so a future aggregator has a single source. Don't block adoption on it.
@@ -1121,7 +1278,7 @@ Read-only investigation, written down before any move:
 **3a. Own repo (product-cell shape).**
 1. **Create the repo + grant access — HUMAN-GATED. STOP and escalate.** Hand the human: the slug/org, the Go module path (match the slug so no import rename is needed), the license, and the admin-grant request. Do not run `gh repo create` or set permissions. Wait for the repo + access confirmation.
 2. **Move the code preserving history — HUMAN-GATED rewrite; never destructive-unattended.** Use `git filter-repo` on a **throwaway fresh clone** (never the working checkout): one `--path` per moving-set entry, `--path-rename` to the destination layout. Push the rewritten history to the empty repo. **Do NOT delete the source from the parent yet** — deletion is a separate, later, dependency-gated brief. **Verify (history survived):** `git log --oneline -- <a moved path>` in the new repo shows real historical commits, not one "initial import" squash; `git log --follow` crosses the rename. One commit ⇒ history dropped; stop and redo.
-3. **Run the core primitives** in the new repo (`scaffold-streams`, `install-statusgen`, `add-statusgen-ci`, `install-desk-plugin`, `setup-reviewer-app`, `install-main-guard`). **Verify:** `--lint` = 0; CI single-writes `STATUS.md`; the App is installed.
+3. **Run the core primitives** in the new repo (`scaffold-streams`, `install-statusgen`, `add-statusgen-ci`, `install-desk-plugin`, `setup-reviewer-app`, `install-main-guard`). On a **native Windows** host, take `install-statusgen` from the **[Windows adopters](#windows-adopters)** section. **Verify:** `--lint` = 0; CI single-writes `STATUS.md`; the App is installed.
 4. **Seed its streams from the real backlog** (§4).
 
 **3b. Own stream-set in place (intermediate shape).** `docs/streams/<subsystem>/` with a stream README

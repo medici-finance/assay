@@ -21,11 +21,17 @@ one branch = one PR, and a merged or closed PR is DONE; and — in a repo that e
 `changelog/` directory carries `changelog/README.md`) — a notable change records one human-legible
 highlight as a per-PR fragment file (`changelog/<slug>.md`) rather than editing a shared section, while
 a genuinely non-notable PR carries the `changelog:skip` label, applied by the desk or a human and never
-self-applied by the worker. This paragraph binds the DESK's own writes; the worker is bound to the same
-fragment rule through the changelog clause `deskdispatch` emits verbatim in the worker kit.
+self-applied by the worker. The split is decided by the DIFF, not by taste: a notable CODE PR ships the
+fragment, while a documentation-only or Evidence-only PR owes none — and on a repo whose changelog check
+does not already classify documentation and Evidence PRs on its own, the waiver is ASKED FOR from the
+maintainer rather than applied by any automation. This paragraph
+binds the DESK's own writes; the worker is bound to the same fragment rule through the changelog clause
+`deskdispatch` emits verbatim in the worker kit.
 
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
+
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
 ## Boot
 
@@ -378,11 +384,54 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Tier**: `--tier` follows the brief's `exec-tier` (absent = `any`); `strong` goes only to
   session-tier and the kit carries the pickup-STOP text. Effort S may run at your session tier, M/L go
   to a cheap tier behind the review/verify gates.
-- **Cheap implementers run below the floor, but authority-bearing writes do not**: a review verdict and a ready-flip enforce a model-capability floor keyed on the dispatcher's attested tier, so a below-tier session is refused those writes even though it may implement freely — delegate downward, and escalate a verdict or flip to a strong-tier session rather than route around the refusal.
+- **Cheap implementers run below the floor, but authority-bearing writes do not**: a review verdict and a ready-flip enforce a model-capability floor keyed on the dispatcher's attested tier, so a dispatch ATTESTED below the strong tier is refused those writes even though it may implement freely — delegate downward, and escalate a verdict or flip to a strong-tier session rather than route around the refusal. A `dispatched-tier:any` stamp is not such an attestation (`any` is the brief's "no tier demanded"), so it proceeds with a NOTICE; the convention to escalate still stands.
 - **Serialize out-of-repo items** — no worktree isolation, no branch-as-claim: at most ONE in
   flight across all streams, the declaration is the claim, so check in-flight PRs for overlaps first.
 - **Placeholders stay dispatchable** (ruling 2, 2026-08-24) — and the shipped `fanoutloop plan`
   includes them, so skill and binary now agree.
+
+## Cockpit-aware worktree creation — additive, detected on PATH, never required
+
+The per-item worktree the ceremony isolates is a plain
+`git worktree add ../<repo>-<item> -b <branch> refs/remotes/origin/main`, and that path is the
+default and stays fully supported on any terminal, any OS, with nothing installed. Where the
+operator runs a **cockpit** — a terminal shell that manages git worktrees and agent sessions —
+the same isolated worktree may be cut by the cockpit's own worktree verb instead: it performs the
+identical `git worktree add` underneath and adds a titled worktree plus a live agent-presence
+badge. This is **sugar on the same primitive, not a new requirement**. The methodology is
+unchanged; the invariant is isolation off `refs/remotes/origin/main`, one worktree per dispatched
+item, and the cockpit is only a nicer way to reach it.
+
+- **Selection is by command presence on PATH, never a config flag someone must remember.** For
+  the worktree-create step of each dispatched item, resolve the FIRST that is present. Every path
+  spells the base in full as `refs/remotes/origin/main` — never the bare `origin/main`, which
+  resolves to a stray local branch of that name where one exists:
+  - `supacode` on PATH → `supacode repo worktree-new --branch <branch> --base
+    refs/remotes/origin/main --path ../<repo>-<item> --fetch` (it fetches for you and opens a
+    titled worktree in one command). Pin the base and the per-item path explicitly rather than
+    leaning on the cockpit's defaults; if the installed build accepts neither flag, do not use it
+    for the create step — fall through to the fallback rather than trust an unstated default base.
+  - else `herdr` on PATH → `git -C <repo> fetch origin && herdr worktree create --cwd <repo>
+    --branch <branch> --base refs/remotes/origin/main --path ../<repo>-<item> --label <item>` (it
+    has no `--fetch`, so fetch first, then it runs the `git worktree add` and opens a labelled
+    workspace).
+  - else the always-works fallback → `git fetch origin && git worktree add ../<repo>-<item> -b
+    <branch> refs/remotes/origin/main`.
+- **The base is verified after the create, not trusted from any tool's default.** Whichever path
+  cut the worktree, before the worker is dispatched confirm the new worktree sits at the
+  remote-tracking tip — `git -C ../<repo>-<item> rev-parse HEAD` must equal `git -C <repo>
+  rev-parse refs/remotes/origin/main` — and that it is the per-item `../<repo>-<item>` path (one
+  worktree per dispatched item, collision-free by construction). A cockpit whose base or path
+  cannot be pinned to that invariant is not used for the create step; the fallback is. This is the
+  isolation clause enforced, not merely asserted.
+- **Only the worktree-create step changes — nothing else forks.** The branch name, the
+  `refs/remotes/origin/main` base, the claim key, the roster register, the decision gate, the
+  model-stamp and the emitted worker kit are all identical; the desk still RUNS the dispatch verb
+  and honours its exits. A cockpit is chosen only where its CLI is actually on PATH, so the same
+  skill drives a fanout whether or not either cockpit is installed.
+- **The fallback is not a degraded path.** An operator with no cockpit loses only the titled
+  worktree and the presence badge, never any isolation or correctness. Nothing in a brief, a loop
+  or this skill may require a cockpit to function.
 
 ## gate:human items dispatch normally — and file the decision issue at first dispatch
 

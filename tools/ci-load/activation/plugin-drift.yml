@@ -1,0 +1,104 @@
+name: plugin-drift
+# The front-door consistency gate. STAGED, NOT ACTIVE: this file lives at
+# tools/pairedversions/activation/plugin-drift.yml and does nothing until a human
+# copies it to .github/workflows/plugin-drift.yml. See the README beside it.
+#
+# WHAT IT GUARDS
+#   `assay:install` resolves the statusgen binary an adopter gets FROM
+#   plugins/assay/paired-versions.yaml, on behalf of the version in
+#   plugins/assay/.claude-plugin/plugin.json. Those two records are edited by
+#   different changes at different times. This job asserts:
+#     (a) plugin.json `version` == paired-versions.yaml `plugin`
+#     (b) each section's `tag` is a PUBLISHED release of its release home
+#     (c) every per-platform sha256 == that release's checksums.txt entry
+#   A plugin bump that skips the re-pin is exactly the diff that reddens here.
+#
+# WHY pull_request AND push: main
+#   pull_request catches the bump BEFORE it lands — the only moment the fix is
+#   cheap. push:main catches the other direction: the manifest can also go stale
+#   without anyone touching it, when a release is re-tagged or removed upstream,
+#   and a pull_request-only gate would never look again after the merge.
+#
+# WHY NO paths: FILTER
+#   The pins can rot with no file in this repo changing at all (see above), so
+#   scoping this job to plugins/** would make it blind to precisely the drift it
+#   is named for. It is a cheap job — two API reads and a Go build.
+#
+#   THAT ARGUMENT IS ABOUT THE `push: main` LEG, AND IT STANDS — that leg is the
+#   one that must look again when no diff exists, and it keeps no filter at all.
+#   The `pull_request` leg's stated purpose is different and narrower: it "catches
+#   the bump BEFORE it lands". A pull request whose every changed path is under
+#   `docs/`, `changelog/`, `CHANGELOG.md` or `STATUS.md` cannot be a bump — it
+#   changes neither `plugins/assay/.claude-plugin/plugin.json` nor
+#   `plugins/assay/paired-versions.yaml` — so the `paths-ignore` below removes
+#   only runs that could not have found anything, and removes nothing from the
+#   driftless-rot detection the paragraph above is defending. `paths-ignore`
+#   skips only when EVERY changed path matches, so a mixed pull request still
+#   runs in full.
+#
+# THREE-STATE
+#   The checker is fail-closed: a disagreement and a could-not-check both exit
+#   non-zero and are reported as themselves. There is no skip-the-network mode,
+#   so an unreachable release home reddens this job rather than passing it.
+
+on:
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "changelog/**"
+      - "CHANGELOG.md"
+      - "STATUS.md"
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  paired-versions:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Installed by hand from go.dev/dl, NOT actions/setup-go: this runner does
+      # not reach GitHub's release-asset CDN, so setup-go — which pulls the
+      # toolchain from a GitHub release — fails, while go.dev/dl and the module
+      # proxy are plain public HTTPS. Same recipe as ci.yml.
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      # The checker's own unit tests. ci.yml's build-test job runs build+vet
+      # only, so without this step the tests that prove this guard can FAIL
+      # would run nowhere — and a guard whose red state is never exercised is
+      # the shape that quietly rots into a decorative green.
+      - name: Test the checker
+        run: |
+          set -euo pipefail
+          go version
+          cd tools/pairedversions && go test ./... -count=1
+
+      - name: Check the plugin↔statusgen pairing
+        env:
+          # Reads the release home over api.github.com. The release home is
+          # public, so the default repo-scoped token is enough; it is passed for
+          # rate-limit headroom. If it is ever withheld the checker reports
+          # could-not-check and this job goes red — the honest unknown, never a
+          # quietly green skip.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd tools/pairedversions && go run . --root ../..

@@ -72,7 +72,7 @@ func TestUnboundReviewerRoleAdmitsNothing(t *testing.T) {
 	if _, _, found, _ := latestAppVerdict(authorless); found {
 		t.Error("the CORRECTNESS lane accepted a review with no author under an unbound role")
 	}
-	if v := securityVerdictAtHead(authorless, head); v == secPass {
+	if v := securityVerdictStanding(authorless, head); v == secPass {
 		t.Error("the SECURITY lane returned pass on a review with no author under an unbound role")
 	}
 	if dup, _ := appReviewExistsAt(authorless, head, "APPROVED", "correctness", digOf(okReviewBody)); dup {

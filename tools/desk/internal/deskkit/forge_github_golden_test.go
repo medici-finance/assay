@@ -2,6 +2,7 @@ package deskkit
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"net/http"
@@ -51,12 +52,27 @@ type goldenServer struct {
 	files      []map[string]any
 	status     map[string]any
 	checks     map[string]any
+	reqChecks  map[string]any
 	reactions  []map[string]any
 	pull       map[string]any
 	issue      map[string]any
 	repo       map[string]any
 	createResp map[string]any
 	graphql    map[string]any
+	timeline   []map[string]any
+	prLabels   []map[string]any
+	// labelCreateStatus, when set, is the status the label-create route returns instead of
+	// 201 — 422 is GitHub's "already exists", the SUCCESS case for an idempotent ensure.
+	labelCreateStatus int
+	// labelDeleteStatus likewise: 404 is "already absent", the success case for a removal.
+	labelDeleteStatus int
+	// contentsGet is the Contents-API read response (ReadFile / WriteFile idempotency read).
+	// When contentsGetStatus is set (e.g. 404), the GET returns that status instead — the
+	// "file absent → create" path.
+	contentsGet       map[string]any
+	contentsGetStatus int
+	// contentsPut is the Contents-API write response (WriteFile). Served with 201.
+	contentsPut map[string]any
 	// forceStatus, when set for a path suffix, returns that HTTP status (error-mapping cases).
 	forceStatus map[string]int
 	// bigReviewPages: when true, /reviews returns 100 entries on page 1, 1 on page 2.
@@ -73,9 +89,15 @@ var (
 	gIssueRoot = regexp.MustCompile(`^/repos/[^/]+/[^/]+/issues$`)
 	gStatus    = regexp.MustCompile(`/commits/[^/]+/status$`)
 	gChecks    = regexp.MustCompile(`/commits/[^/]+/check-runs$`)
+	gReqChecks = regexp.MustCompile(`/branches/[^/]+/protection/required_status_checks$`)
 	gRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	gReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
 	gGitRef    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/refs/.+$`)
+	gTimeline  = regexp.MustCompile(`/issues/[0-9]+/timeline$`)
+	gPRLabels  = regexp.MustCompile(`/issues/[0-9]+/labels$`)
+	gPRLabel1  = regexp.MustCompile(`/issues/[0-9]+/labels/[^/]+$`)
+	gRepoLabel = regexp.MustCompile(`^/repos/[^/]+/[^/]+/labels$`)
+	gContents  = regexp.MustCompile(`^/repos/[^/]+/[^/]+/contents/`)
 )
 
 func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -96,8 +118,46 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 	page := r.URL.Query().Get("page")
 
 	switch {
+	case r.Method == http.MethodGet && gContents.MatchString(path):
+		if s.contentsGetStatus != 0 {
+			w.WriteHeader(s.contentsGetStatus)
+			return
+		}
+		enc(s.contentsGet)
+	case r.Method == http.MethodPut && gContents.MatchString(path):
+		w.WriteHeader(http.StatusCreated)
+		enc(s.contentsPut)
 	case r.Method == http.MethodPost && path == "/graphql":
 		enc(s.graphql)
+	case r.Method == http.MethodGet && gTimeline.MatchString(path):
+		if page != "" && page != "1" {
+			enc([]map[string]any{})
+			return
+		}
+		enc(s.timeline)
+	case r.Method == http.MethodPost && gRepoLabel.MatchString(path):
+		if s.labelCreateStatus != 0 {
+			w.WriteHeader(s.labelCreateStatus)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		enc(map[string]any{"name": "x"})
+	case r.Method == http.MethodDelete && gPRLabel1.MatchString(path):
+		if s.labelDeleteStatus != 0 {
+			w.WriteHeader(s.labelDeleteStatus)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		enc([]map[string]any{})
+	case r.Method == http.MethodGet && gPRLabels.MatchString(path):
+		if page != "" && page != "1" {
+			enc([]map[string]any{})
+			return
+		}
+		enc(s.prLabels)
+	case r.Method == http.MethodPost && gPRLabels.MatchString(path):
+		w.WriteHeader(http.StatusOK)
+		enc(s.prLabels)
 	case r.Method == http.MethodGet && gReactions.MatchString(path):
 		enc(s.reactions)
 	case r.Method == http.MethodGet && gReviews.MatchString(path):
@@ -129,6 +189,15 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.status)
 	case r.Method == http.MethodGet && gChecks.MatchString(path):
 		enc(s.checks)
+	case r.Method == http.MethodGet && gReqChecks.MatchString(path):
+		// A branch with no protection (or no required checks) answers 404 — the "nothing
+		// required" case, distinct from a served object. A case that wants the 404 sets it via
+		// forceStatus; a nil reqChecks here also 404s, matching an unprotected branch.
+		if s.reqChecks == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		enc(s.reqChecks)
 	case r.Method == http.MethodGet && gPull.MatchString(path):
 		enc(s.pull)
 	case r.Method == http.MethodPost && gPullsRoot.MatchString(path):
@@ -136,7 +205,10 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.createResp)
 	case r.Method == http.MethodPost && gComments.MatchString(path):
 		w.WriteHeader(http.StatusCreated)
-		enc(map[string]any{"id": 1})
+		enc(map[string]any{
+			"id": 1, "node_id": "IC_node1",
+			"html_url": "https://example/pull/7#issuecomment-1",
+		})
 	case r.Method == http.MethodPost && gIssueRoot.MatchString(path):
 		w.WriteHeader(http.StatusCreated)
 		enc(s.createResp)
@@ -166,6 +238,9 @@ func readAllCompact(r *http.Request) (json.RawMessage, error) {
 	}
 	return json.RawMessage(out.Bytes()), nil
 }
+
+// ghB64 renders s as the base64 the Contents API returns for file content.
+func ghB64(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
 
 func makeReviews(n int) []map[string]any {
 	out := make([]map[string]any, 0, n)
@@ -208,8 +283,42 @@ func TestForgeGithubGolden(t *testing.T) {
 					"number": 7, "state": "open", "draft": true, "node_id": "PR_node",
 					"changed_files": 3,
 					"user":          map[string]any{"login": "worker[bot]", "id": 99},
-					"head":          map[string]any{"sha": "abc123"},
+					"head":          map[string]any{"sha": "abc123", "ref": "feat/x"},
+					"base":          map[string]any{"ref": "main"},
+					"html_url":      "https://example/pull/7",
+					"labels":        []map[string]any{{"name": "authorization-needed"}},
+					"mergeable":     true,
 					"updated_at":    "2026-09-01T12:00:00Z",
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.GetPullRequest(forgeTestRepo, 7) },
+		},
+		{
+			// GitHub's `mergeable` is a JSON TRI-STATE, and null means "not computed yet".
+			// It must not collapse to CONFLICTING (which would refuse a flip that should
+			// proceed) nor to MERGEABLE (the fail-open half) — UNKNOWN is the only honest
+			// mapping, and it is what the consuming gate reads as could-not-check.
+			name: "get_pull_request_mergeable_unknown",
+			setup: func(s *goldenServer) {
+				s.pull = map[string]any{
+					"number": 7, "state": "open", "draft": true, "node_id": "PR_node",
+					"changed_files": 3,
+					"user":          map[string]any{"login": "worker[bot]", "id": 99},
+					"head":          map[string]any{"sha": "abc123", "ref": "feat/x"},
+					"mergeable":     nil,
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.GetPullRequest(forgeTestRepo, 7) },
+		},
+		{
+			name: "get_pull_request_conflicting",
+			setup: func(s *goldenServer) {
+				s.pull = map[string]any{
+					"number": 7, "state": "open", "draft": true, "node_id": "PR_node",
+					"changed_files": 3,
+					"user":          map[string]any{"login": "worker[bot]", "id": 99},
+					"head":          map[string]any{"sha": "abc123", "ref": "feat/x"},
+					"mergeable":     false,
 				}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.GetPullRequest(forgeTestRepo, 7) },
@@ -265,11 +374,36 @@ func TestForgeGithubGolden(t *testing.T) {
 			name: "checks_at_head",
 			setup: func(s *goldenServer) {
 				s.status = map[string]any{"state": "success", "total_count": 1,
-					"statuses": []map[string]any{{"state": "success", "context": "ci/legacy"}}}
+					"statuses": []map[string]any{{"state": "success", "context": "ci/legacy", "created_at": "2026-08-24T00:00:00Z"}}}
 				s.checks = map[string]any{"total_count": 1,
-					"check_runs": []map[string]any{{"name": "go-test", "status": "completed", "conclusion": "success"}}}
+					"check_runs": []map[string]any{{"name": "go-test", "status": "completed", "conclusion": "success",
+						"started_at": "2026-08-24T00:00:00Z", "completed_at": "2026-08-24T00:05:00Z"}}}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.ChecksAtHead(forgeTestRepo, "abc123") },
+		},
+		{
+			// Branch protection with required checks in BOTH shapes GitHub serves: the legacy
+			// flat `contexts` list and the newer `checks` array. The two are unioned, and a
+			// context named in both (go-test) appears once.
+			name: "required_status_checks",
+			setup: func(s *goldenServer) {
+				s.reqChecks = map[string]any{
+					"contexts": []string{"lint", "go-test"},
+					"checks": []map[string]any{
+						{"context": "go-test"}, {"context": "leak-sweep"},
+					},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.RequiredStatusChecks(forgeTestRepo, "main") },
+		},
+		{
+			// An unprotected branch (or one requiring no checks) answers 404, which the backend
+			// reads as the EMPTY required set — nothing required, no error.
+			name: "required_status_checks_unprotected_branch",
+			setup: func(s *goldenServer) {
+				s.forceStatus["/required_status_checks"] = http.StatusNotFound
+			},
+			run: func(f *GitHubForge) (any, error) { return f.RequiredStatusChecks(forgeTestRepo, "main") },
 		},
 		{
 			name: "issue_reactions",
@@ -295,7 +429,7 @@ func TestForgeGithubGolden(t *testing.T) {
 		{
 			name:  "post_comment",
 			setup: func(s *goldenServer) {},
-			run:   func(f *GitHubForge) (any, error) { return nil, f.PostComment(forgeTestRepo, 7, "hello") },
+			run:   func(f *GitHubForge) (any, error) { return f.PostComment(forgeTestRepo, 7, "hello") },
 		},
 		{
 			name:  "post_review",
@@ -310,6 +444,99 @@ func TestForgeGithubGolden(t *testing.T) {
 				s.graphql = map[string]any{"data": map[string]any{"markPullRequestReadyForReview": map[string]any{"pullRequest": map[string]any{"isDraft": false}}}}
 			},
 			run: func(f *GitHubForge) (any, error) { return nil, f.MarkReadyForReview("PR_node") },
+		},
+		{
+			// The applier-aware label-event read: `labeled` events survive with the actor
+			// that applied them; every other timeline event is dropped, because only an
+			// APPLICATION is an attestation.
+			name: "list_label_events",
+			setup: func(s *goldenServer) {
+				s.timeline = []map[string]any{
+					{"event": "labeled", "label": map[string]any{"name": "dispatched-tier:strong"},
+						"actor": map[string]any{"login": "desk[bot]"}},
+					{"event": "commented", "actor": map[string]any{"login": "someone"}},
+					{"event": "unlabeled", "label": map[string]any{"name": "stale"},
+						"actor": map[string]any{"login": "desk[bot]"}},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.ListLabelEvents(forgeTestRepo, 7) },
+		},
+		{
+			// The comment read is GraphQL because REST carries no `isMinimized`, and a
+			// minimised comment must never be picked up for an edit.
+			name: "list_comments",
+			setup: func(s *goldenServer) {
+				s.graphql = map[string]any{"data": map[string]any{"repository": map[string]any{
+					"pullRequest": map[string]any{"comments": map[string]any{"nodes": []map[string]any{
+						{"id": "IC_1", "databaseId": 11, "body": "first", "isMinimized": false,
+							"createdAt": "2026-08-24T00:00:00Z", "url": "https://example/pull/7#issuecomment-11",
+							"author": map[string]any{"login": "worker[bot]"}},
+						{"id": "IC_2", "databaseId": 12, "body": "hidden", "isMinimized": true,
+							"createdAt": "2026-08-24T00:01:00Z", "url": "https://example/pull/7#issuecomment-12",
+							"author": map[string]any{"login": "worker[bot]"}},
+					}}},
+				}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.ListComments(forgeTestRepo, 7) },
+		},
+		{
+			name: "edit_comment",
+			setup: func(s *goldenServer) {
+				s.graphql = map[string]any{"data": map[string]any{"updateIssueComment": map[string]any{
+					"issueComment": map[string]any{"databaseId": 11}}}}
+			},
+			run: func(f *GitHubForge) (any, error) { return nil, f.EditComment(forgeTestRepo, "IC_1", "new body") },
+		},
+		{
+			// A locally composed id is not a thing this operation accepts: an EMPTY id is
+			// refused before a request exists, and the golden's empty request list is the
+			// assertion that nothing was written.
+			name:  "edit_comment_refuses_an_empty_id",
+			setup: func(s *goldenServer) {},
+			run:   func(f *GitHubForge) (any, error) { return nil, f.EditComment(forgeTestRepo, "", "new body") },
+		},
+		{
+			// The label reconciliation: ensure, then drop the stale same-family member, then
+			// apply. The REQUEST SEQUENCE is the assertion — creating after applying, or
+			// removing after applying, would leave the change momentarily wrong.
+			name: "apply_labels",
+			setup: func(s *goldenServer) {
+				s.prLabels = []map[string]any{{"name": "size:xl"}, {"name": "keep-me"}}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
+					Add:            []LabelSpec{{Name: "size:s", Color: "c5def5", Description: "size"}},
+					RemoveFamilies: []string{"size:"},
+				})
+			},
+		},
+		{
+			// 422 on create is "already exists", which for an ENSURE is success — the golden
+			// shows the reconciliation continuing past it rather than aborting.
+			name: "apply_labels_existing_label_ok",
+			setup: func(s *goldenServer) {
+				s.labelCreateStatus = http.StatusUnprocessableEntity
+				s.prLabels = []map[string]any{}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
+					Add: []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
+				})
+			},
+		},
+		{
+			// 404 on removal is "already absent", the success case for an idempotent removal
+			// — and the label is NOT reported as removed, because it was not.
+			name: "apply_labels_absent_removal_ok",
+			setup: func(s *goldenServer) {
+				s.labelDeleteStatus = http.StatusNotFound
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.ApplyLabels(forgeTestRepo, 7, LabelChange{
+					Add:    []LabelSpec{{Name: "approval-needed", Color: "0e8a16"}},
+					Remove: []string{"authorization-needed"},
+				})
+			},
 		},
 		{
 			name: "file_issue",
@@ -342,6 +569,53 @@ func TestForgeGithubGolden(t *testing.T) {
 			setup: func(s *goldenServer) {},
 			run: func(f *GitHubForge) (any, error) {
 				return nil, f.DeleteRef(forgeTestRepo, "heads/../../branches/main/protection")
+			},
+		},
+		{
+			name: "read_file",
+			setup: func(s *goldenServer) {
+				s.contentsGet = map[string]any{"sha": "blob-1", "content": ghB64("row one\n")}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.ReadFile(forgeTestRepo, ReadFileInput{File: "EVIDENCE.md", Ref: "feat/x"})
+			},
+		},
+		{
+			// Update path: the idempotency read finds a DIFFERENT content, so the PUT carries the
+			// prior blob sha. GitHub's default branch is directly writable by the App (carve-out),
+			// so no sentinel — the write lands on the branch directly.
+			name: "write_file_updates_existing",
+			setup: func(s *goldenServer) {
+				s.contentsGet = map[string]any{"sha": "blob-1", "content": ghB64("row one\n")}
+				s.contentsPut = map[string]any{
+					"content": map[string]any{"sha": "blob-2"},
+					"commit": map[string]any{"sha": "c0ffee", "author": map[string]any{
+						"name": "assay-verifier-app[bot]", "email": "1+assay-verifier-app[bot]@users.noreply.github.com"}},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.WriteFile(forgeTestRepo, WriteFileInput{
+					File: "EVIDENCE.md", Branch: "feat/x", Content: []byte("row one\nrow two\n"),
+					Message: "Evidence: verification row",
+				})
+			},
+		},
+		{
+			// Create path: the read 404s (file absent), so the PUT carries no prior sha.
+			name: "write_file_creates_when_absent",
+			setup: func(s *goldenServer) {
+				s.contentsGetStatus = http.StatusNotFound
+				s.contentsPut = map[string]any{
+					"content": map[string]any{"sha": "blob-new"},
+					"commit": map[string]any{"sha": "c0ffee", "author": map[string]any{
+						"name": "assay-verifier-app[bot]", "email": "1+assay-verifier-app[bot]@users.noreply.github.com"}},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.WriteFile(forgeTestRepo, WriteFileInput{
+					File: "EVIDENCE.md", Branch: "feat/x", Content: []byte("row one\n"),
+					Message: "Evidence: verification row",
+				})
 			},
 		},
 		{

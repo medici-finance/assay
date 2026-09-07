@@ -121,6 +121,27 @@ the skill sweep, row 7 proves it is written (its live behaviour is review-only u
 harness smoke exists); "skill edit names a harness tool" → row 8.
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: PASS (9/9 rows; row 9 re-run clean with a current-source statusgen after #557 closed as stale-oracle) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `67abbac`
+
+Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=/dev/null`); desk rows module-scoped from `tools/desk`. Frontmatter: `gate: model`, all risk `no`, `irreversible: no`. Implementation: commit `5c28224` (per-run stop signal) + `39e3c7c`.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | go test ./internal/deskkit -run run-stop/killswitch/stop-flag | exit 0, ok | exit 0, ok (weak `-run` glob matched none; substantive cases covered by rows 3-4) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | go build ./cmd/desksupervise && desksupervise stop --help | exit 0; --reason | exit 0 — help shows "--reason is REQUIRED" | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | go test -run run-stop-refuses-only-its-own-key -v | exit 0 PASS | exit 0 — PASS (3 subtests) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | go test -run run-stop-never-masks-stop-all -v | exit 0 PASS | exit 0 — PASS (ordering: run-stop resolved AFTER loop-wide flags) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | go test ./cmd/deskdispatch -run dispatch-records-run-key -v | exit 0 PASS | exit 0 — PASS (records assay.runKey) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 6 | go test ./cmd/desksupervise -run tick-arms-stop-before-release -v | exit 0 PASS | exit 0 — PASS | 2026-09-06 | opus-4.8[1m]-verifier |
+| 7 | grep -c 'status --stops' worker-desk/SKILL.md | ≥1 | exit 0 — 2 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 8 | harnesslint (or SKIP-no-harnesslint) | exit 0, no FAIL | harnesslint absent tree-wide → designed fallback SKIP-no-harnesslint, exit 0 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 9 | statusgen --root . --consumers --brief desk-supervision/02 | exit 0; no DISPROVED | PASS — exit 0, no DISPROVED; consumers UNCHECKED by construction (this branch did not make those claims). Re-run with a statusgen built from current public main `5d20ff9`; the earlier exit-2 abort on docs/streams/decisions/README.md was a STALE-ORACLE (pinned v0.27.0 lacked the complete reservedRegisterNames skip that b730bd8 added; current source skips the decisions register — #557 closed stale-oracle) | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: DERIVED — ExitDisabled = 3 @ tools/desk/internal/deskkit/exitcodes.go:20 — the exit an armed STOP.run.<key> returns (killswitch.go:485); REUSED not introduced — a per-run stop must be indistinguishable from a loop-wide STOP to every desk verb, so existing exit-3 handling applies. Flag/dir modes 0o600/0o700 (the only new numeric literals) are owner-only least-privilege for control-plane flags. Reversible.`
+`RISK-VALUE: NAMED, NOT DERIVED — runStopPrefix = "STOP.run." @ tools/desk/internal/deskkit/killswitch.go:22 — a string, not a numeric bound; collision-safety with STOP / STOP.<loop> is enforced by the exact-match guard (n != runStopPrefix @ :282) and proven by row 4. The brief's safety property (a per-run flag can never mask a loop-wide DISABLED/STOP) is an ORDERING (runStopState resolved at guard() step 3, after loop-wide flags @ :476-486), not a literal — proven by row 4 PASS.`
+
+**VERIFY: PASS** — all 9 rows PASS (per-run stop signal is ordered after the loop-wide flags and cannot mask them; --reason required; run-key recorded). Row 9's earlier could-not-check was a STALE-ORACLE (pinned v0.27.0 statusgen predating b730bd8's complete `reservedRegisterNames` skip); re-run with a statusgen built from current public main `5d20ff9` exits 0 with no DISPROVED (consumers UNCHECKED by construction). #557 closed stale-oracle. `gate: model`, all risk `no` — advances `implemented → verified`.
+
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled

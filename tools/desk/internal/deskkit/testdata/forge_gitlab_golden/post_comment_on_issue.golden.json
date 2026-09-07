@@ -15,5 +15,10 @@
         "body": "hello"
       }
     }
-  ]
+  ],
+  "result": {
+    "ID": "",
+    "DatabaseID": 901,
+    "URL": ""
+  }
 }

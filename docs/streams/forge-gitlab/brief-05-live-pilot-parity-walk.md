@@ -126,6 +126,22 @@ RISK-VALUE: DERIVED — `merge_access_level = 40` ("Maintainers") @ `docs/stream
 
 Verdict: BLOCKED (offline) — 1/4 rows offline-runnable and it PASSes; rows 2/3/4 could-not-check, each backed by an attested well-formed Phase-0 record. No FAIL observed. **Status stays `implemented` — the human gate (Ian) confirms the group, authorizes credentials, and signs the §3 parity verdict; the report self-records 8 failed-at-tier rows + a mid-run D-6 hand-repair as the substance to weigh (pilot report on #353).**
 
+### Non-implementer verifier run — VERIFY: BLOCKED (offline; row 1 PASS, rows 2-4 could-not-check w/ Phase-0 records) — HELD at implemented (gate:human, sensitive-data:yes) — 2026-09-05 opus-4.8[1m]-verifier (verify-desk dispatch), medici-finance/assay merged main 203dac5
+
+Runner != implementer. Offline envelope (KUBECONFIG=/dev/null). gate: human; risk {regulatory:no, customer:no, irreversible:no, sensitive-data:yes}; gate-why = the deliverable is a security-parity verdict signing the walked parity table — a security judgment no model self-certifies. A live/externally-authenticated probe brief: the live rows are Phase-0 implementer records; the non-implementer confirms they EXIST and are well-formed, never re-runs a live/billed probe.
+
+| # | command | expected | observed (exit + key line) | date · runner |
+|---|---------|----------|----------------------------|---------------|
+| 1 | grep -c table rows in docs/streams/forge-gitlab/pilot-report.md | >= 12 | exit 0 — 68 (>= 12); matches the report section-4 self-claim of 68. PASS (offline-runnable) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 2 | glab api merge_requests approvals (author != approver) | approval by reviewer SA, author != approver | could-not-check — glab absent + live gitlab.com (offline). Phase-0 record present + well-formed: MR iid 1..4 each approved:true, approved_by user id 41987965 (reviewer SA) vs distinct author ids; author != approver on all four | 2026-09-05 · opus-4.8[1m]-verifier |
+| 3 | desktoken --forge gitlab worker (mint x2); curl old token vs /user | 401 rotated-out | could-not-check — desktoken present but mint hits the live forge (offline). Phase-0 record present + well-formed: first token 200 pre-mint, 401 "Token was revoked" post-mint; replacement expires_at 2026-09-09 (7d) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 4 | git log author of STATUS.md in the pilot project | board-writer SA only | could-not-check — pilot project 86032201 not in this worktree (offline). Phase-0 record present + well-formed: pilot fresh clone returns board-writer SA 41987978 only, commit bfd01ac, landed via MR !4 merged by the human owner | 2026-09-05 · opus-4.8[1m]-verifier |
+
+**VERIFY: BLOCKED (offline) — HELD at implemented.** Row 1 (offline parity-table presence) PASSES; rows 2/3/4 are live/externally-authenticated probes the offline desk cannot re-run, each backed by an attested well-formed Phase-0 record (endpoint + numeric ids + HTTP status + timestamps + commit SHAs, internally consistent). No FAIL. gate:human + sensitive-data:yes and a risk-bearing live probe ⇒ a model does not sign the live-pilot security-parity verdict; the human gate (owner) confirms the group, authorizes credentials, and signs the parity table (which self-records 8 failed-at-tier rows, all Premium/Ultimate-gated with named remediation, plus the mid-run merge-access hand-repair). Corroborates the prior 2026-09-02 run (report commits are ancestors of 203dac5; literals unchanged).
+
+RISK-VALUE: DERIVED — merge_access_level = 40 (Maintainers) @ docs/streams/forge-gitlab/pilot-report.md:164 — the single-point-of-failure control "merge is always the human's": only the human owner is a member at >=40, so 40 ⇒ humans-only merge; the report proves can_merge:false for all five Developer(30) bots and true only for the owner.
+RISK-VALUE: DERIVED — push_access_level = 0 (No one) @ docs/streams/forge-gitlab/pilot-report.md:164 — the floor under the no-direct-push parity rows; every write travels via MR. Correct for the CE posture the spec requires. (Token TTL 7d ranks last — reversible knob; approvals_required:0 is an observed CE limitation recorded failed-at-tier, not a brief-pinned value.)
+
 ## Review
 Gate: human (from frontmatter) — the human signs the parity verdict; the reviewer
 additionally records verdict + date in the stream README table.

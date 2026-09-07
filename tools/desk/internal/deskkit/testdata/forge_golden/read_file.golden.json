@@ -1,0 +1,14 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/contents/EVIDENCE.md",
+      "query": "ref=feat%2Fx"
+    }
+  ],
+  "result": {
+    "Content": "cm93IG9uZQo=",
+    "SHA": "blob-1",
+    "Exists": true
+  }
+}

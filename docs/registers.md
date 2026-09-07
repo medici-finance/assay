@@ -1,4 +1,4 @@
-# Registers — FINDINGS, INTAKE, RETRO
+# Registers — FINDINGS, INTAKE, REQUIREMENTS, RETRO
 
 > **SUPERSEDED — the normative source is the versioned registers-v1 specification.**
 > This page predates the per-entry-file register model and describes the retired
@@ -8,10 +8,11 @@
 > rewrite is tracked separately, as is the scaffold that
 > still emits the legacy dialect.
 
-Three append-only logs sit at `docs/streams/` alongside the stream directories. They are
+Four append-only logs sit at `docs/streams/` alongside the stream directories. They are
 the system's memory: what invalidated a plan (FINDINGS), what raw ideas are queued
-(INTAKE), and what each cadence retro decided (RETRO — never implemented; there is no
-RETRO parser or entry directory). Each rule below is stated with its reason.
+(INTAKE), what the product was asked to do (REQUIREMENTS), and what each cadence retro
+decided (RETRO — never implemented; there is no RETRO parser or entry directory). Each
+rule below is stated with its reason.
 
 For who may write these registers, how an alteration would be detected, and how long
 they and the other artifacts in this repo are kept, see
@@ -36,7 +37,7 @@ they and the other artifacts in this repo are kept, see
   flip its disposition/resolution, and let the body explain the withdrawal. Reason:
   deleting the file both loses the record and trips the tombstone check above.
 - **Typed IDs.** Entries reference briefs and each other by typed ID (`stream/NN`,
-  `F-<slug>`, `I-<slug>`), never prose names.
+  `F-<slug>`, `I-<slug>`, `REQ-<slug>`), never prose names.
 
 ## FINDINGS — knowledge that invalidates a brief
 
@@ -84,6 +85,43 @@ Disposition: new | watching | scoped → <stream> | rejected — <why>
   disposition is the single place that says whether an idea is live, parked, or dead — no
   guessing from surrounding prose.
 - Withdrawal: keep the number, set `Disposition: rejected — <why>`, body explains. (Tombstone.)
+
+## REQUIREMENTS — what the product was asked to do
+
+What someone wanted the product to do, in that person's terms, with the criteria that
+would settle whether the ask was met. It is the first link of the chain ask → work →
+evidence → release; without it, acceptance criteria exist only inside one brief's Verify
+table, where nothing can rank or roll them up. A requirement is not a brief: no wave, no
+dependency edges, no DoD.
+
+Entries are per-entry files under `docs/streams/requirements/<slug>.md` with slug IDs
+(`REQ-<slug>`). The normative format, the ordered `impact` axis, the `proposed → accepted
+→ satisfied → withdrawn` lifecycle and the `satisfies:` citation on a brief are
+specified in [`../spec/registers-v1.md`](../spec/registers-v1.md) §6 — unlike the two
+sections above, this one has never had a legacy single-file dialect, so the spec is the
+only description of it and this page does not restate the fields.
+
+Two properties are worth stating here because they are the ones most easily misread:
+
+- **The register records claims, not observations.** It says what was asked for and what
+  was claimed to satisfy it. It does not establish that the product meets the ask; that
+  lives in the cited brief's Verify rows and Evidence, recorded by someone who did not
+  implement it. Do not present the register as coverage.
+- **The brief citation feeds three traceability checks.** A brief may carry
+  `satisfies: ["REQ-<slug>"]`; an absent citation is never flagged. On top of the grammar
+  shape-check, `statusgen --lint` now runs three corpus-wide checks (spec §6.5), landed
+  advisory-first so an adopter who bumps their statusgen pin gets NOTICEs, not a red gate,
+  over a corpus authored before the register existed:
+  - `orphan-requirement` (NOTICE) — an `accepted` requirement no brief cites.
+  - `untraced-brief` (NOTICE) — a forward brief in a stream that opted in with `traced: true`
+    and cites nothing.
+  - `dangling-satisfies` (PROBLEM) — a `satisfies:` naming an in-repo `REQ-<slug>` no entry
+    defines; the register is append-only, so a missing in-repo id is a typo or a deletion.
+
+  `statusgen --requirements-rollup [--since <date>] [--json]` emits the per-release rollup —
+  each requirement, its acceptance criteria, the briefs that cite it with their status and
+  Evidence, and a three-state verdict (`satisfied`/`partial`/`could-not-check`). Like the
+  register itself it reports what was **authored**, not re-measured (§6.4).
 
 ## RETRO — cadence retrospective
 

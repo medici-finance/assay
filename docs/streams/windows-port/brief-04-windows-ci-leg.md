@@ -119,7 +119,7 @@ result, and do not block the amd64 leg waiting on it. Record the runner-eligibil
 | 2 | The leg runs `statusgen --lint`: `grep -rEA30 'runs-on: *windows-latest' .github/workflows/ \| grep -qE 'statusgen([.]exe)? +.*--lint'; echo $?` | `0` |
 | 3 | The leg runs a desk-verb smoke: `grep -rEA40 'runs-on: *windows-latest' .github/workflows/ \| grep -qiE -e 'smoke' -e '--version' -e '--help' -e 'dry-run' -e 'validate'; echo $?` | `0` |
 | 4 | **Offline envelope** — the smoke names no live-forge verb: `grep -rEA40 'runs-on: *windows-latest' .github/workflows/ \| grep -qiE -e 'deskpost' -e 'deskpr' -e 'gh pr create' -e 'gh pr comment' -e 'gh issue create' -e 'gh issue comment' -e 'git push'; echo $?` | `1` (no mutating/network verb in the smoke) |
-| 5 | **Dereferencing — statusgen genuinely lints clean on a windows-built binary** (proves the leg's assertion is real, run from any host via cross-build + a linux `--lint` as a proxy, plus the workflow's own windows run is the true check): `cd statusgen && go build -o /tmp/wp04-sg . && /tmp/wp04-sg --root ../docs/streams --lint; echo "exit=$?"` | `exit=0` — statusgen lints the stream tree clean (the windows leg runs the same command on the windows binary) |
+| 5 | **Dereferencing — statusgen genuinely lints clean on a windows-built binary** (proves the leg's assertion is real, run from any host via cross-build + a linux `--lint` as a proxy, plus the workflow's own windows run is the true check): `cd statusgen && go build -o /tmp/wp04-sg . && /tmp/wp04-sg --root .. --lint; echo "exit=$?"` | `exit=0` — statusgen lints the stream tree clean, resolving `docs/streams` under the repo `--root` (the windows leg runs the same command on the windows binary) |
 | 6 | The native-arm64 row is present and BLOCKED, not greened: `grep -qiE -e 'arm64.*BLOCKED' -e 'BLOCKED.*arm64' -e 'windows-11-arm' .github/workflows/*.yml docs/streams/windows-port/brief-04-windows-ci-leg.md; echo $?` | `0` — the arm64 native smoke is explicitly held with its reason |
 | 6a | **Positive control for row 6** — arm64 is NOT falsely marked passing: `grep -riE -e 'windows.?arm64 .*PASS' -e 'windows.?arm64 .*green' -e 'windows.?arm64 .*verified' .github/workflows/ docs/streams/windows-port/brief-04-windows-ci-leg.md; echo $?` | `1` |
 | 7 | **Consumers routing corroborated by the diff** (run on the implementer's branch): `statusgen --root . --consumers windows-port/04; echo $?` | `0` — the Windows CI leg (fixed-here) is proved by the branch diff |
@@ -134,6 +134,49 @@ result, and do not block the amd64 leg waiting on it. Record the runner-eligibil
 
 | # | Command | Exit | Output | Date | Runner |
 |---|---------|------|--------|------|--------|
+| 1 | `grep -rlE 'runs-on: *windows-latest' .github/workflows/` | — | **satisfied on apply** — the staged `ci/staged-workflows/windows-ci-leg.yml` carries a `runs-on: windows-latest` job (`windows-smoke`); turns green when the maintainer promotes it into `.github/workflows/`. Proven against a copy of the staged file placed at `.github/workflows/`: one file listed. | 2026-09-06 | host (apply-gated) |
+| 2 | `grep -rEA30 'runs-on: *windows-latest' .github/workflows/ \| grep -qE 'statusgen([.]exe)? +.*--lint'` | — | **satisfied on apply** — the leg runs `./statusgen.exe --root .. --lint`. Proven `0` against the staged file copied to `.github/workflows/`. Authoritative evidence is a green promoted-leg run. | 2026-09-06 | host (apply-gated) |
+| 3 | `grep -rEA40 'runs-on: *windows-latest' .github/workflows/ \| grep -qiE -e 'smoke' -e '--version' …` | — | **satisfied on apply** — the offline smoke is `./statusgen.exe --version` in a step named "Desk-verb smoke". Proven `0` against the staged copy. | 2026-09-06 | host (apply-gated) |
+| 4 | `grep -rEA40 'runs-on: *windows-latest' .github/workflows/ \| grep -qiE -e 'deskpost' -e 'deskpr' -e 'gh pr create' … -e 'git push'` | — | **satisfied on apply** — no mutating/forge verb appears in the leg's steps. Proven `1` (no match) against the staged copy. Offline envelope holds. | 2026-09-06 | host (apply-gated) |
+| 5 | `cd statusgen && go build -o /tmp/wp04-sg . && /tmp/wp04-sg --root .. --lint; echo "exit=$?"` | `0` | `LINT: PASS` — statusgen lints the stream tree clean on a from-source build (the proxy for the windows leg, which runs the same command on `statusgen.exe`). **Correction:** the brief's literal command uses `--root ../docs/streams`, but statusgen resolves `<root>/docs/streams` under `--root` (it treats `--root` as the REPO ROOT), so `--root ../docs/streams` reads a nonexistent `../docs/streams/docs/streams` and exits 1. The correct repo-root invocation is `--root ..`, which the staged leg uses. | 2026-09-06 | host (macOS/darwin, linux-equivalent proxy) |
+| 6 | `grep -qiE -e 'arm64.*BLOCKED' -e 'BLOCKED.*arm64' -e 'windows-11-arm' .github/workflows/*.yml <brief>` | `0` | The native-arm64 row is present and held BLOCKED: this brief's "Open question" section and Evidence carry `windows-11-arm` + `arm64 … BLOCKED`, and the staged yml carries an `arm64-native-smoke` job held BLOCKED (`if: false`). Passes now via the brief; also passes via the yml on apply. | 2026-09-06 | host |
+| 6a | `grep -riE -e 'windows.?arm64 .*PASS' -e 'windows.?arm64 .*green' -e 'windows.?arm64 .*verified' .github/workflows/ <brief>` | `1` | No false-pass: arm64 is nowhere marked passing/green/verified. Proven `1` (no match) over the brief + the staged copy. | 2026-09-06 | host |
+| 7 | `statusgen --root . --consumers windows-port/04` | — | **satisfied on apply** — the declared consumer is `.github/workflows/` (fixed-here); the branch diff only touches `ci/staged-workflows/` in the prep-only phase, so consumer routing is corroborated once the maintainer promotes the staged file into `.github/workflows/`. | 2026-09-06 | host (apply-gated) |
+
+### Fail-first (Task 5) — the green is load-bearing
+
+The leg's assertions run under `set -euo pipefail`, and statusgen exits non-zero on a broken
+input, so a failure reddens the job rather than being swallowed. Measured on the host binary at
+implementation time (2026-09-06):
+
+- `statusgen --i-am-not-a-verb` → **exit 2** (a bogus verb is refused).
+- `statusgen --root /nonexistent-tree --lint` → **exit 1** (a broken lint root fails).
+
+The staged leg encodes an opt-in fail-first demonstration: `workflow_dispatch` input
+`failfirst=true` runs a step that points the smoke at a nonexistent verb and INVERTS the
+assertion (fails the job unless statusgen refuses), so a maintainer can show on demand that the
+leg is not vacuously green.
+
+### Native windows/arm64 smoke — BLOCKED
+
+The native windows/arm64 smoke is **BLOCKED**: `windows-latest` is amd64, and a native
+windows/arm64 smoke needs a `windows-11-arm` hosted runner or a self-hosted arm64 Windows runner.
+Runner-eligibility finding: `windows-11-arm` GitHub-hosted runners exist but their availability to
+this repo is unconfirmed at implementation time — the row is held BLOCKED and is NOT derived from
+the amd64 result. windows/arm64 still ships cross-compiled + checksummed from windows-port/01
+regardless; only the native smoke is held. The staged yml carries the held `arm64-native-smoke`
+job (`if: false`) so the row can never be mistaken for a passing arm64 result.
+
+### Prep-only note (workflow-scope maintainer-apply)
+
+The LIVE workflow file is maintainer-pushed: no bot/App in this repo holds workflow-push
+permission (GitHub hard-rejects any App push that creates or updates a `.github/workflows/*`
+file). The complete leg is therefore staged at `ci/staged-workflows/windows-ci-leg.yml` (the exact
+content that goes into `.github/workflows/`), with the promotion step in
+`ci/staged-workflows/README.md`. Rows 1-4, 6 (yml half), and 7 turn green when the maintainer
+promotes the staged file into `.github/workflows/`; they are proven here against a copy of the
+staged file placed at `.github/workflows/`. Row 5 is proven now as a host-side proxy; row 6 also
+passes now via this brief.
 
 ## Review
 Gate: **human** (from frontmatter, risk-derived: `irreversible: yes` — it adds a job under

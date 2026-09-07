@@ -1,0 +1,16 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay"
+    }
+  ],
+  "result": {
+    "Changed": false,
+    "SHA": "",
+    "Author": "",
+    "DefaultBranchNotWritable": true,
+    "Rows": 0,
+    "PriorRows": 0
+  }
+}

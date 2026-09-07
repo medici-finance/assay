@@ -1,0 +1,27 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/contents/EVIDENCE.md",
+      "query": "ref=feat%2Fx"
+    },
+    {
+      "method": "PUT",
+      "path": "/repos/medici-finance/assay/contents/EVIDENCE.md",
+      "body": {
+        "branch": "feat/x",
+        "content": "cm93IG9uZQpyb3cgdHdvCg==",
+        "message": "Evidence: verification row",
+        "sha": "blob-1"
+      }
+    }
+  ],
+  "result": {
+    "Changed": true,
+    "SHA": "blob-2",
+    "Author": "assay-verifier-app[bot]",
+    "DefaultBranchNotWritable": false,
+    "Rows": 0,
+    "PriorRows": 0
+  }
+}

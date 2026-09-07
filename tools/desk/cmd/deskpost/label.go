@@ -37,7 +37,7 @@ const surfaceCommentMarker = "<!-- assay:surface-tier -->"
 
 // verdictLabelOutcome records what the labeler did, for the caller's audit/warning line.
 type verdictLabelOutcome struct {
-	sizeLabel    string   // the size label applied, "" when the diff could not be read
+	sizeLabel    string // the size label applied, "" when the diff could not be read
 	surface      deskkit.SurfaceState
 	surfaceLabel string   // the surface label applied, "" when unknown/could-not-check
 	matched      []string // the surface globs that matched, when surface:core
@@ -72,6 +72,15 @@ func (o verdictLabelOutcome) String() string {
 // It returns the outcome and the FIRST error encountered while applying labels. A non-nil
 // error is advisory: the caller logs it and does not change the verdict result. A skipped
 // family (short read, absent config) is NOT an error — it is a note on the outcome.
+//
+// THE LABEL WRITES GO THROUGH THE RESOLVER, not through this package's own client. Which
+// forge serves the repo is deskkit.ForgeFor's answer (the roster binding, else an
+// unambiguous origin host, else a refusal), and the whole reconciliation — ensure the
+// labels exist, drop the stale same-family ones, apply the current ones — is ONE typed
+// operation on the seam rather than four hand-built requests here. That is what makes this
+// path forge-neutral: nothing below constructs a label endpoint, and a forge whose label
+// mapping does not fit refuses by name inside the backend rather than being approximated
+// here.
 func applyVerdictLabels(c *ghClient, pr, reportedFiles int) (verdictLabelOutcome, error) {
 	var out verdictLabelOutcome
 
@@ -120,41 +129,35 @@ func applyVerdictLabels(c *ghClient, pr, reportedFiles int) (verdictLabelOutcome
 		desired = append(desired, out.surfaceLabel)
 	}
 
-	// Ensure every label we are about to apply exists (idempotent; 422 already-exists is ok).
+	// ONE reconciliation request. The FAMILIES named here are the ones this run has a
+	// definite value for: size always (a complete diff always yields one), surface only when
+	// out.surfaceLabel != "" — never when Unknown, because an absent or unreadable
+	// `.assay-surfaces` has no opinion and must therefore remove nothing. Naming a family is
+	// what licenses the backend to drop its stale members; not naming it leaves it untouched.
+	change := deskkit.LabelChange{
+		Add:            []deskkit.LabelSpec{},
+		RemoveFamilies: []string{deskkit.SizeLabelPrefix},
+	}
 	for _, l := range desired {
-		if e := c.ensureLabel(l, labelColorFor(l), labelDescFor(l)); e != nil {
-			return out, fmt.Errorf("ensuring label %q exists: %w", l, e)
-		}
+		change.Add = append(change.Add, deskkit.LabelSpec{
+			Name: l, Color: labelColorFor(l), Description: labelDescFor(l),
+		})
 	}
-
-	// Remove stale SAME-FAMILY labels so a re-run replaces rather than stacks. A family is
-	// only touched when this run has a definite value for it: size always (a complete diff
-	// always yields one), surface only when out.surfaceLabel != "" (never when Unknown —
-	// an absent/unreadable config has no opinion, so it removes nothing).
-	current, lerr := c.listLabels(pr)
-	if lerr != nil {
-		return out, fmt.Errorf("reading current labels: %w", lerr)
+	if out.surfaceLabel != "" {
+		change.RemoveFamilies = append(change.RemoveFamilies, deskkit.SurfaceLabelPrefix)
 	}
-	for _, cur := range current {
-		if strings.HasPrefix(cur, deskkit.SizeLabelPrefix) && cur != out.sizeLabel {
-			if e := c.removeLabel(pr, cur); e != nil {
-				return out, fmt.Errorf("removing stale label %q: %w", cur, e)
-			}
-			out.removed = append(out.removed, cur)
-		}
-		if out.surfaceLabel != "" && strings.HasPrefix(cur, deskkit.SurfaceLabelPrefix) && cur != out.surfaceLabel {
-			if e := c.removeLabel(pr, cur); e != nil {
-				return out, fmt.Errorf("removing stale label %q: %w", cur, e)
-			}
-			out.removed = append(out.removed, cur)
-		}
+	fg, ferr := deskkit.ForgeFor(deskkit.ForgeRepo{Owner: c.owner, Name: c.repo}, "reviewer")
+	if ferr != nil {
+		return out, fmt.Errorf("resolving the forge for the verdict labels: %w", ferr)
 	}
-
-	// Apply the desired labels (additive; an already-present label is a no-op set member).
-	if e := c.addLabels(pr, desired); e != nil {
-		return out, fmt.Errorf("applying labels %v: %w", desired, e)
+	res, aerr := fg.ApplyLabels(deskkit.ForgeRepo{Owner: c.owner, Name: c.repo}, pr, change)
+	if aerr != nil {
+		return out, fmt.Errorf("applying labels %v: %w", desired, aerr)
 	}
-	out.applied = desired
+	if res != nil {
+		out.applied = res.Added
+		out.removed = res.Removed
+	}
 
 	// surface:core → post the dereferencing comment naming the matched globs, once.
 	if out.surface == deskkit.SurfaceCore {

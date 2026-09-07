@@ -2,6 +2,7 @@
 /statusgen/statusgen
 /tools/freshness/freshness
 /tools/pairedversions/pairedversions
+/tools/claimguard/claimguard
 /qualgen/qualgen
 *.exe
 *.test
@@ -27,3 +28,12 @@
 /statusgen/testdata/stubroot/STATUS.md
 /statusgen/testdata/stubroot/docs/streams/INTAKE.md
 /statusgen/testdata/stubroot/docs/streams/FINDINGS.md
+
+# Codex project config: shareable config is committed; local state and
+# secrets are not. Credentials are forwarded from the environment
+# (`env_vars = [...]` in config.toml), never inlined.
+/.codex/*
+!/.codex/config.toml
+!/.codex/hooks.json
+!/.codex/rules/
+!/.codex/prompts/

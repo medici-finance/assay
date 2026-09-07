@@ -34,7 +34,9 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
          (exit 6) — minting a possibly-duplicate issue is the expensive direction. The
          escape hatch is --force-new --reason <r>, which bypasses the search and is
          audit-logged. A session may file at most 3 new issues per repo per rolling 24h
-         (exit 4 over); attach comments are never budgeted.
+         (exit 4 over); attach comments are never budgeted. The budget is charged to the
+         FILING agent's own session tag ($DESK_SESSION ahead of the harness session id a
+         dispatched agent inherits), so each agent in a fan-out has its own 3.
 
          --raised-by <role> stamps the provenance label raised-by:<role> so the by-desk
          issue metric can attribute the filing. The role vocabulary is DERIVED from the

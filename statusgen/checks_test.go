@@ -35,6 +35,35 @@ func TestCheckCatchesProblems(t *testing.T) {
 	}
 }
 
+// TestInvalidStatusNamesTheFix pins the #82 remedy: when the Status cell
+// carries a decorated value (a PR ref), the `invalid status` PROBLEM must name
+// the fix inline — a bare lifecycle token in the cell, the PR association in the
+// PR body / `Brief:` trailer — so the author does not have to re-derive it. It
+// must also retain the `invalid status` fragment classifyLintProblem keys on.
+func TestInvalidStatusNamesTheFix(t *testing.T) {
+	streams := []*Stream{mkStream("s", "active", "P1",
+		Brief{Num: "02", Wave: 0, Status: "implemented (#80)"},
+	)}
+	problems, _ := check(streams, nil)
+	var got string
+	for _, p := range problems {
+		if strings.Contains(p, "invalid status") {
+			got = p
+		}
+	}
+	if got == "" {
+		t.Fatalf("no invalid-status problem raised: %v", problems)
+	}
+	for _, want := range []string{"bare", "Brief:", "trailer"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("invalid-status message does not name the fix (missing %q): %s", want, got)
+		}
+	}
+	if classifyLintProblem(got) != lintCatBriefStatus {
+		t.Errorf("enriched message lost its telemetry category: %q -> %s", got, classifyLintProblem(got))
+	}
+}
+
 func TestCheckHealthy(t *testing.T) {
 	streams := []*Stream{mkStream("ok", "active", "P1",
 		Brief{Num: "01", Wave: 0, Status: "done", Verified: "grandfathered", Reviewed: "grandfathered"},

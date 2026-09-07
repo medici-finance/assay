@@ -1,0 +1,6 @@
+# corpus: a slash-separated list of issue numbers
+# expect: clean
+# refs:   measured false-positive class (numeric slash-lists lost review rounds)
+# shape:  #-optional 1-6-digit groups separated by '/', every group numeric
+# why:    an issue-number list carries no payload; the groups are short and all-numeric
+Superseded by the batch #1017/1024/1031/{{+}}1042/1055/1063/{{+}}1078/1082/1096/{{+}}1103/1110 landed in one wave.

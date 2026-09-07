@@ -172,7 +172,7 @@ func RoleTokenForOwner(role, owner string) (token, path string, err error) {
 	}
 	path, stderr, err := tokenMinter(role, owner)
 	if err != nil {
-		detail := firstLine(stderr)
+		detail := minterErrorDetail(stderr)
 		if detail == "" {
 			detail = err.Error()
 		}
@@ -194,6 +194,23 @@ func RoleTokenForOwner(role, owner string) (token, path string, err error) {
 			"the %s App installation token at %s is empty", role, path), nil)
 	}
 	return token, path, nil
+}
+
+// minterErrorDetail extracts the one line of the minter's stderr worth quoting as
+// the failure detail. The minter now emits the P3 effective-config echo (the
+// "assay-config: ..." lines) on stderr BEFORE any error, so a naive firstLine
+// would quote the echo header instead of the actual refusal. This skips the echo
+// lines and returns the first real line, falling back to firstLine when there is
+// nothing but echo (or nothing at all).
+func minterErrorDetail(stderr string) string {
+	for _, ln := range strings.Split(stderr, "\n") {
+		t := strings.TrimSpace(ln)
+		if t == "" || strings.HasPrefix(t, "assay-config:") {
+			continue
+		}
+		return t
+	}
+	return firstLine(stderr)
 }
 
 // RoleTokenForRepo is RoleTokenForOwner keyed by a repository slug, for the callers that

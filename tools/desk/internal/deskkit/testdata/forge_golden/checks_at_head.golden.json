@@ -17,7 +17,8 @@
     "Statuses": [
       {
         "State": "success",
-        "Context": "ci/legacy"
+        "Context": "ci/legacy",
+        "CreatedAt": "2026-08-24T00:00:00Z"
       }
     ],
     "CheckRunsTotalCount": 1,
@@ -25,7 +26,9 @@
       {
         "Name": "go-test",
         "Status": "completed",
-        "Conclusion": "success"
+        "Conclusion": "success",
+        "StartedAt": "2026-08-24T00:00:00Z",
+        "CompletedAt": "2026-08-24T00:05:00Z"
       }
     ]
   }

@@ -226,7 +226,13 @@ type prBase struct {
 		Login string `json:"login"` // gh CLI renders App authors as "app/<slug>"
 	} `json:"author"`
 	CreatedAt string `json:"createdAt"`
-	Labels    []struct {
+	// LastEditedAt is when the PR's TITLE or BODY was last edited — null (→ "") until the
+	// first edit, and it moves ONLY on a title/body edit, never on a comment, a label
+	// change, or a CI update. That precision is what lets a body-edit resolution be
+	// detected without re-flagging on every unrelated `updatedAt` bump (see
+	// detectNonCommitResolution).
+	LastEditedAt string `json:"lastEditedAt"`
+	Labels       []struct {
 		Name string `json:"name"`
 	} `json:"labels"`
 	HeadRefOid        string  `json:"headRefOid"`
@@ -274,14 +280,14 @@ type review struct {
 // checkSuite/workflowRun drops the field that needs `actions:read` entirely; every
 // conclusion the board reads (CheckRun.status/conclusion, StatusContext.state) is covered by
 // `checks:read` alone, so the read no longer depends on a scope the board is not guaranteed.
-const openPRsGraphQL = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+const openPRsGraphQL = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
 
 // openPRsReshapeJQ collapses the GraphQL response back into the SAME flat shape the old
 // `gh pr list --json …` produced, so prBase and every downstream consumer are unchanged.
 // The rollup contexts nodes already carry the exact field names the `check` struct decodes.
 // A GraphQL Bot actor carries the BARE slug as login; it is re-suffixed to "<slug>[bot]" so
 // TrustedAuthor sees the same REST rendering it does for the trust gate (deskkit.gqlActor).
-const openPRsReshapeJQ = `[.data.repository.pullRequests.nodes[]|{number,title,body,state,isDraft,createdAt,author:{login:(.author|if .==null then "" elif .__typename=="Bot" then .login+"[bot]" else .login end)},labels:[.labels.nodes[]|{name}],headRefOid,headRefName,baseRefName,mergeStateStatus,statusCheckRollup:(.commits.nodes[0].commit.statusCheckRollup.contexts.nodes//[])}]`
+const openPRsReshapeJQ = `[.data.repository.pullRequests.nodes[]|{number,title,body,state,isDraft,createdAt,lastEditedAt,author:{login:(.author|if .==null then "" elif .__typename=="Bot" then .login+"[bot]" else .login end)},labels:[.labels.nodes[]|{name}],headRefOid,headRefName,baseRefName,mergeStateStatus,statusCheckRollup:(.commits.nodes[0].commit.statusCheckRollup.contexts.nodes//[])}]`
 
 // fetchOpenPRs returns a repo's open PRs and whether that population may be TRUNCATED —
 // the read came back exactly at the `first:` cap, so GitHub may be holding more.
@@ -547,6 +553,105 @@ func changedFilesBetween(repo, base, head string) (map[string]bool, error) {
 	return set, nil
 }
 
+// isResolutionLabel reports whether a label name plausibly RESOLVES a standing review
+// finding rather than merely categorising the PR. Deliberately NARROW — the gate-skip
+// family (`*:skip`, e.g. `changelog:skip`), which a worker applies to clear a gate
+// finding without a commit. A broad match here would re-review on any label churn; this
+// keeps the non-commit-resolution trigger scoped to labels that plausibly answer a
+// finding, per the conservative direction the trigger requires.
+func isResolutionLabel(name string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(name)), ":skip")
+}
+
+// labelEvent is one `labeled` timeline event: which label, and when it was added.
+type labelEvent struct {
+	Event     string `json:"event"`
+	CreatedAt string `json:"created_at"`
+	Label     struct {
+		Name string `json:"name"`
+	} `json:"label"`
+}
+
+// fetchLabelEvents returns the PR's `labeled` timeline events (label name + added time)
+// from the issues events API. Paginated like fetchReviews; a fetch/parse failure is
+// Unverifiable (exit 6) rather than a silent empty, so a could-not-read never reads as
+// "no resolution label".
+func fetchLabelEvents(repo string, num int) ([]labelEvent, error) {
+	var all []labelEvent
+	for page := 1; ; page++ {
+		out, err := ghRun("api", fmt.Sprintf("repos/%s/issues/%d/events?per_page=%d&page=%d", repo, num, apiPageSize, page))
+		if err != nil {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read label events for %s#%d", repo, num), err)
+		}
+		var chunk []labelEvent
+		if err := json.Unmarshal(out, &chunk); err != nil {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("cannot parse label events for %s#%d", repo, num), err)
+		}
+		all = append(all, chunk...)
+		if len(chunk) < apiPageSize {
+			return all, nil
+		}
+	}
+}
+
+// detectNonCommitResolution answers whether a BLOCKED-at-head PR shows a finding-relevant
+// change that left the head sha UNCHANGED and landed AFTER the last review — the class the
+// head-sha re-review trigger is blind to. Two conservative signals:
+//
+//   - a resolution label (isResolutionLabel — the `*:skip` gate-skip family) was ADDED
+//     after the last review (read from the `labeled` timeline events, so the ADD time is
+//     compared, not mere present-ness); and
+//   - the PR's title/body was edited after the last review (lastEditedAt, which moves ONLY
+//     on a title/body edit — never on a comment, a label, or a CI update, so this does not
+//     fire on every unrelated `updatedAt` bump).
+//
+// lastReviewAt zero (no verdict at head, or an unparseable timestamp) ⇒ no baseline ⇒
+// false: it can never manufacture a re-review out of a could-not-compare. The label probe
+// runs first (it is the more specific signal and names WHICH label in the note); the
+// body-edit probe needs no extra fetch.
+func detectNonCommitResolution(repo string, p prBase, lastReviewAt time.Time) (bool, string, error) {
+	if lastReviewAt.IsZero() {
+		return false, "", nil
+	}
+
+	// Label signal: a resolution label added after the last review. Only worth the
+	// timeline read when the PR actually carries such a label right now.
+	hasResolutionLabel := false
+	for _, l := range p.Labels {
+		if isResolutionLabel(l.Name) {
+			hasResolutionLabel = true
+			break
+		}
+	}
+	if hasResolutionLabel {
+		events, err := fetchLabelEvents(repo, p.Number)
+		if err != nil {
+			return false, "", err
+		}
+		for _, e := range events {
+			if e.Event != "labeled" || !isResolutionLabel(e.Label.Name) {
+				continue
+			}
+			t, perr := time.Parse(time.RFC3339, e.CreatedAt)
+			if perr != nil {
+				continue // unreadable timestamp is not evidence of a post-review add
+			}
+			if t.After(lastReviewAt) {
+				return true, fmt.Sprintf("resolution label %q added after the last review", e.Label.Name), nil
+			}
+		}
+	}
+
+	// Body-edit signal: title/body edited after the last review.
+	if p.LastEditedAt != "" {
+		if t, perr := time.Parse(time.RFC3339, p.LastEditedAt); perr == nil && t.After(lastReviewAt) {
+			return true, "PR body/title edited after the last review", nil
+		}
+	}
+
+	return false, "", nil
+}
+
 // prBlessed evaluates the blessing for a PR whose AUTHOR is untrusted: ONE
 // bounded `gh api graphql` read (deskkit.PRTrustQuery) covering the PR body's
 // lastEditedAt plus all three comment surfaces — conversation comments, reviews, and
@@ -660,6 +765,11 @@ type reviewState struct {
 	lastSHA      string
 	securityPass bool
 	approvedAt   time.Time
+	// lastReviewAt is the submitted time of the EFFECTIVE standing verdict at head
+	// (approved or blocking) — the baseline detectNonCommitResolution compares label /
+	// body-edit timestamps against, so only a change that landed AFTER the last review
+	// counts. Zero when there is no verdict at head or its timestamp was unparseable.
+	lastReviewAt time.Time
 	// suspectNoOp (#37) is true when the effective verdict AT HEAD reads as
 	// blocking specifically because an APPROVED review was SUPPRESSED: it immediately
 	// followed a CHANGES_REQUESTED at the SAME commit, with no push in between. See the
@@ -776,8 +886,9 @@ func reduceReviews(reviews []review, head string) reviewState {
 		st.blocking = effState == "CHANGES_REQUESTED"
 		st.approved = effState == "APPROVED"
 		st.suspectNoOp = suspect
-		if st.approved {
-			if t, err := time.Parse(time.RFC3339, effSubmittedAt); err == nil {
+		if t, err := time.Parse(time.RFC3339, effSubmittedAt); err == nil {
+			st.lastReviewAt = t
+			if st.approved {
 				st.approvedAt = t
 			}
 		}
@@ -845,6 +956,17 @@ func anyRiskPath(repo string, files map[string]bool) bool {
 	}
 	sort.Strings(paths)
 	return deskkit.RiskPathTriggered(repo, paths)
+}
+
+// secReviewReason renders the risk-class reason for the SECURITY-REVIEW-REQUIRED row. A
+// risk-classed row always carries a reason (the union that fired sets one), but this defends
+// against an empty string so the row never reads "risk-classed ()"; the fallback is the
+// historical generic phrase.
+func secReviewReason(reason string) string {
+	if strings.TrimSpace(reason) == "" {
+		return "touches a security path"
+	}
+	return reason
 }
 
 // Action verbs. MERGE-NOW ranks above all — an approved-at-head CI-green PR
@@ -1000,9 +1122,13 @@ type classifyInput struct {
 	fail            int
 	ownFilesChanged bool
 	riskClassed     bool
-	securityPass    bool
-	ciGreen         bool
-	mergeConflict   bool
+	// riskReason names WHY the row is risk-classed (which union term fired), so the
+	// SECURITY-REVIEW-REQUIRED row says why rather than always blaming a security path —
+	// e.g. "trailer absent on App-authored PR" (#587).
+	riskReason    string
+	securityPass  bool
+	ciGreen       bool
+	mergeConflict bool
 	// mergeStateUnknown (#400 R3): the mergeStateStatus could not be read (UNKNOWN,
 	// absent, or a value this code does not recognise). Distinct from mergeConflict —
 	// that is a measured "no", this is "we did not measure". It blocks MERGE-NOW.
@@ -1029,6 +1155,18 @@ type classifyInput struct {
 	// an APPROVED posted over a standing CHANGES_REQUESTED at the same head, with no
 	// intervening push. See reduceReviews.
 	suspectNoOp bool
+	// nonCommitResolution: the PR carries a standing CHANGES_REQUESTED at head,
+	// but a finding-relevant change that leaves the head sha UNCHANGED — a resolution
+	// label (e.g. `*:skip`) added, or the body/title edited — landed AFTER the last
+	// review. The head-sha-keyed re-review trigger never sees such a fix, so the row would
+	// sit BLOCKED (worker-owns) indefinitely until a human flagged it. When set, the
+	// blocking arm re-flags the row RE-REVIEW so a reviewer re-examines it (and verifies
+	// the check state at head, since a label/body edit does not re-run CI). Consulted ONLY
+	// in the plain blocking arm — a suspected forged no-op flip (suspectNoOp) still wins,
+	// so this can never mask that. Self-limiting: once the re-review posts, the new
+	// verdict's submitted time is AFTER the label/edit, so the signal clears — no loop.
+	nonCommitResolution     bool
+	nonCommitResolutionNote string
 	// authorTrustedHuman (#177): the PR's author is an ACCOUNTABLE trusted human
 	// (deskkit.TrustedHumanAuthor) — a maintainer's own PR, not a role App's nor a
 	// shared machine account's. Consulted ONLY in the no-verdict-at-head arm, to
@@ -1072,6 +1210,25 @@ func classify(in classifyInput) (action, note string) {
 			"own CHANGES_REQUESTED at the SAME head, with no intervening push — that cannot be a " +
 			"re-verification (#37); treating as a suspected forged/no-op flip attempt, never FLIP-eligible, " +
 			"until a new commit lands"
+	// Non-commit-resolution re-review: a standing CHANGES_REQUESTED at head normally stays
+	// BLOCKED (worker-owns) until a NEW commit moves the head and re-triggers review. But a
+	// worker can resolve a finding WITHOUT a commit — adding a resolution label (e.g.
+	// `*:skip`) or editing the body — which leaves the head unchanged, so the head-sha
+	// re-review trigger never fires and the row sits BLOCKED forever. When such a
+	// finding-relevant non-commit change landed after the last review, re-flag RE-REVIEW so
+	// the row re-enters the dispatch gate and a reviewer re-examines it. This never WEAKENS
+	// the blocking signal: with no such change (the common case) the row stays BLOCKED
+	// exactly as before, and a suspected forged no-op flip is handled by the arm above,
+	// never here.
+	case in.blocking && in.nonCommitResolution:
+		note := in.nonCommitResolutionNote
+		if note == "" {
+			note = "standing CHANGES_REQUESTED at head, but a finding-relevant non-commit change " +
+				"(resolution label or body edit) landed after the last review"
+		}
+		return actReReview, note + " — re-flag for re-review (the head-sha trigger cannot see " +
+			"a non-commit fix); the reviewer must verify the check state at head, since a label/body " +
+			"edit does not re-run CI"
 	case in.blocking:
 		return actBlocked, reviewerBotDisplay() + " requested changes at head — worker must act"
 	// A DEFINITE failure outranks an indefinite unknown. When the rollup carries both,
@@ -1113,7 +1270,7 @@ func classify(in classifyInput) (action, note string) {
 		// A risk-classed PR without a security-review pass at head must stay
 		// SEC-REVIEW-REQUIRED regardless of the CI-zero reason.
 		if in.riskClassed && !in.securityPass {
-			return actSecReview, "risk-classed (touches a security path) and no '" + securityPassMarker +
+			return actSecReview, "risk-classed (" + secReviewReason(in.riskReason) + ") and no '" + securityPassMarker +
 				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP"
 		}
 		switch in.zeroCI {
@@ -1145,7 +1302,7 @@ func classify(in classifyInput) (action, note string) {
 			ciPhrase = "no PR CI configured for this repo and nothing ran (not a green verdict)"
 		}
 		if in.draft && in.riskClassed && !in.securityPass {
-			return actSecReview, "risk-classed (touches a security path) and no '" + securityPassMarker +
+			return actSecReview, "risk-classed (" + secReviewReason(in.riskReason) + ") and no '" + securityPassMarker +
 				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP"
 		}
 		// #1652: on a CI-less repo with a probed no-checks zero the green is
@@ -1855,6 +2012,21 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	in := buildClassifyInput(p, rs, ciRequired, zeroState)
 	humanGate, hgReason := in.humanGate, in.humanGateReason
 
+	// Non-commit-resolution re-review: only meaningful for a PR that is BLOCKED at head
+	// (a standing CHANGES_REQUESTED, head unchanged) and NOT a suspected forged no-op
+	// flip. Probed only then — mirroring the ownFilesChanged fetch below — so ordinary PRs
+	// pay no extra API. A finding-relevant non-commit change (resolution label added, or
+	// body/title edited) after the last review re-flags the row RE-REVIEW instead of
+	// leaving it BLOCKED where the head-sha trigger can never see the fix.
+	if rs.blocking && rs.atHead && !rs.suspectNoOp {
+		ncr, note, err := detectNonCommitResolution(repo, p, rs.lastReviewAt)
+		if err != nil {
+			return prOutcome{}, err
+		}
+		in.nonCommitResolution = ncr
+		in.nonCommitResolutionNote = note
+	}
+
 	// MERGE-CURR needs the PR's own files vs the changes since the reviewed
 	// sha; both are fetched only when actually needed (head advanced).
 	if rs.ever && !rs.atHead {
@@ -1874,22 +2046,48 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 	// Risk classification (#216) only matters at the FLIP decision: bot
 	// APPROVED at head, CI green, still draft, not blocking. Fetch changed
 	// files there to test the path triggers.
+	// Resolve the owning brief from the PR body's `Brief:` trailer and read its own
+	// gate/risk frontmatter (deskkit.BriefRiskFromBody) — the authoritative owner edge and
+	// a risk term. Branch-as-claim is the fallback for a body that names no brief.
+	briefRisk := deskkit.BriefRiskFromBody(repo, p.Body)
+
 	riskClassed := false
+	riskReason := ""
 	if rs.approved && rs.atHead && !rs.blocking && p.IsDraft && fail == 0 && pending == 0 {
 		files, complete, err := fetchChangedFiles(repo, p.Number)
 		if err != nil {
 			return prOutcome{}, err
 		}
-		// A diff we could not read in full is risk-classed: the trigger we did not
-		// see is exactly the one this gate exists to catch.
-		riskClassed = !complete || anyRiskPath(repo, files)
+		// UNION (only widens); the FIRST term that fires also names the reason the row shows.
+		// A diff we could not read in full — the trigger we did not see is exactly the one this
+		// gate exists to catch — OR a changed path in the trigger set OR the owning brief term
+		// (a frontmatter-declared sensitive change, or a DECLARED-but-unreadable brief, fail
+		// closed) OR the #587 trailer-absent-App anomaly: a role-App-authored PR with no
+		// Brief:/Issue: trailer is a change deskpr cannot produce, so it risk-classes and the
+		// board must say so rather than let the flip look clean. A body with no trailer leaves
+		// the brief term silent, which is exactly the gap the App term fills.
+		switch {
+		case !complete:
+			riskClassed, riskReason = true, "the diff could not be read in full — fail closed"
+		case anyRiskPath(repo, files):
+			riskClassed, riskReason = true, "touches a security path"
+		case briefRisk.RiskClassed:
+			riskClassed, riskReason = true, briefRisk.Reason
+		case deskkit.TrailerAbsentAppAnomaly(p.Author.Login, []byte(p.Body)):
+			riskClassed, riskReason = true, "trailer absent on App-authored PR"
+		}
 	}
 	in.riskClassed = riskClassed
+	in.riskReason = riskReason
 
 	action, note := classify(in)
 
-	// map PR to its owning brief via branch-as-claim.
-	owning := mapBranchToBrief(p.HeadRefName, knownBriefs)
+	// The owning brief is the trailer's; branch-as-claim is the fallback for a body that
+	// names none.
+	owning := briefRisk.OwningBrief
+	if owning == "" {
+		owning = mapBranchToBrief(p.HeadRefName, knownBriefs)
+	}
 	score := defaultGateScore
 	if owning != "" {
 		score = briefScore[owning]

@@ -86,6 +86,57 @@ func TestHookTimeoutKills(t *testing.T) {
 	}
 }
 
+// TestHookTimeoutKillsProcessTree is the harder half of the timeout control, and the one
+// that fails on a host whose /bin/sh does NOT exec the last command of `sh -c`.
+//
+// TestHookTimeoutKills above writes `sleep 30`, which BSD/macOS sh turns into an exec: the
+// shell process IS the sleep, so killing the one process we started ends everything and the
+// test passes even when the implementation only kills that one process. Debian's dash — the
+// /bin/sh in the Linux CI image — forks instead, so `sleep 30` is a GRANDCHILD. Two separate
+// things then go wrong if the hook is not run as a process group:
+//
+//   - the grandchild inherits the write end of the stdout/stderr pipe os/exec created for the
+//     bytes.Buffer, so cmd.Wait blocks on the copying goroutine until the GRANDCHILD exits —
+//     the hook "times out" after the full 30s, 150x its 200ms budget; and
+//   - the grandchild is never signalled at all, so a hung hook leaks a live process per run.
+//
+// The script here reproduces both on ANY sh: the `&` guarantees a separate process, and the
+// marker file it would create proves whether that process survived the timeout.
+func TestHookTimeoutKillsProcessTree(t *testing.T) {
+	stateDir := setup(t)
+	marker := filepath.Join(t.TempDir(), "survivor")
+	// A backgrounded child (which outlives a kill aimed only at the shell) plus a foreground
+	// sleep to hold the hook open. Non-interactive sh runs both in the shell's OWN process
+	// group, so a group-wide kill reaches them and a single-process kill does not.
+	writeHooksFile(t, stateDir,
+		"before_run: (sleep 1; touch "+marker+") & sleep 30\ntimeout_ms: 200\n")
+
+	start := time.Now()
+	ran, err := RunHook(HookBeforeRun, HookEnv{})
+	elapsed := time.Since(start)
+
+	if !ran {
+		t.Fatal("the hook should be recorded as having RUN before it timed out")
+	}
+	if err == nil {
+		t.Fatal("a hook that outran its timeout must return an error, not succeed")
+	}
+	if !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("error does not name the timeout: %v", err)
+	}
+	// (1) Wait must not block on a pipe the grandchild still holds open.
+	if elapsed.Seconds() > 5 {
+		t.Fatalf("RunHook blocked past the timeout waiting on an inherited pipe — it took %s", elapsed)
+	}
+	// (2) The whole tree must be dead. The child would touch the marker at ~1s; give it
+	// well past that and require that it never got there.
+	time.Sleep(2 * time.Second)
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Fatalf("a child of the hook SURVIVED the timeout and ran on (it created %s) — "+
+			"the kill reached only the shell, not the process group", marker)
+	}
+}
+
 // TestHookEnvScrubsSecrets proves a GH_TOKEN (and other secret-shaped names) set in the
 // caller's environment does NOT reach the hook, while the fixed ASSAY_* vars and ordinary
 // vars DO. A hook is operator shell, but it must never be the leak path for an App token.

@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen verifyrun` now runs each Verify row's command under `bash -o pipefail`, so a failing left-hand stage in a pipeline (e.g. `<a check that fails> | head/tail/grep -c ...`) surfaces as the pipeline's own non-zero exit and the row is recorded `fail`. Previously the row scored `pass exit=0` on the trailing reader's exit — a false clean where a check that never really ran was witnessed as passing. Non-piped commands are unaffected.

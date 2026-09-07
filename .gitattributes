@@ -1,0 +1,23 @@
+# Line-ending policy.
+#
+# statusgen reads the board's inputs — STATUS.md, CLAUDE.md, and everything under
+# docs/streams/** — and `statusgen --lint` compares them byte-for-byte against a fresh
+# regeneration. A default Windows checkout (git autocrlf) rewrites those files with CRLF
+# on checkout, so the windows-latest CI leg (windows-port/04) reddened `statusgen --lint`
+# while Linux passed on the identical tree. Pinning the board's inputs to LF on checkout
+# keeps a Windows working tree byte-identical to Linux. (#584)
+*.md            text eol=lf
+docs/streams/** text eol=lf
+
+# Windows-native scripts keep their CRLF endings.
+*.ps1  text eol=crlf
+*.psm1 text eol=crlf
+
+# Append-only evidence log: every verifier Evidence PR appends one self-contained JSON row.
+# With several open at once, each landing makes the rest CONFLICTING on this file (add/add on
+# an append-only log), stalling the auto-merge lane. The rows are line-oriented and independent
+# (keyed by brief/ts/sha, read by key — never by position), so git's union merge driver is the
+# right resolution: a base-side append and a branch-side append both survive with no conflict
+# markers. Row order may interleave by merge order rather than timestamp; any consumer that
+# wants chronological order sorts by `ts`. (#588)
+docs/streams/verify-outcomes.jsonl merge=union

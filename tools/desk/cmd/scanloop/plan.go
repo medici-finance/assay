@@ -40,6 +40,7 @@ type planOptions struct {
 	scanPR     int
 	scanBranch string
 	prCreated  string
+	prState    string
 }
 
 func (o *planOptions) bind(fs *flag.FlagSet, withRun bool) {
@@ -53,6 +54,7 @@ func (o *planOptions) bind(fs *flag.FlagSet, withRun bool) {
 	fs.IntVar(&o.scanPR, "scan-pr", 0, "this session's open scan PR number, if one is open")
 	fs.StringVar(&o.scanBranch, "scan-branch", "", "the open scan PR's branch")
 	fs.StringVar(&o.prCreated, "scan-pr-created", "", "the open scan PR's RFC3339 createdAt — an unread age never coalesces")
+	fs.StringVar(&o.prState, "scan-pr-state", "", "the open scan PR's draft/ready state: 'draft' (still in the review loop — the window decides) or 'ready' (flipped for-human — push-quiet, so a fresh PR is cut). Empty is unread and never coalesces")
 	if withRun {
 		fs.StringVar(&o.worktrees, "worktree-base", "", "ABSOLUTE dir the isolated scan worktrees are cut under (default: the parent of --root)")
 		fs.BoolVar(&o.dryRun, "dry-run", false, "print every lane step without running it")
@@ -152,7 +154,35 @@ func (o *planOptions) openScanPR() *OpenScanPR {
 	if t, err := time.Parse(time.RFC3339, strings.TrimSpace(o.prCreated)); err == nil {
 		pr.CreatedAt = t.UTC()
 	}
+	// The state is validated at command entry (validateScanPRState); an invalid value never reaches
+	// here, so a parse miss falls back to the bounded UNREAD.
+	if st, err := scanPRState(o.prState); err == nil {
+		pr.State = st
+	}
 	return pr
+}
+
+// scanPRState maps the --scan-pr-state flag to the tri-state. An unrecognised value is REFUSED
+// rather than silently read as unread: a typo that turned a flip signal into "not established"
+// would push to a PR the operator meant to seal.
+func scanPRState(s string) (ScanPRState, error) {
+	switch strings.TrimSpace(s) {
+	case "":
+		return ScanPRStateUnread, nil
+	case string(ScanPRDraft):
+		return ScanPRDraft, nil
+	case string(ScanPRReady):
+		return ScanPRReady, nil
+	default:
+		return "", deskkit.Refused("scanloop: --scan-pr-state must be 'draft', 'ready', or empty (unread), got " + s)
+	}
+}
+
+// validateScanPRState is the command-entry guard for the flag, so both subcommands reject a bad
+// value at parse time rather than at the coalesce decision.
+func (o *planOptions) validateScanPRState() error {
+	_, err := scanPRState(o.prState)
+	return err
 }
 
 // cmdPlan is the read-only queue print.
@@ -166,6 +196,9 @@ func cmdPlan(args []string, stdout io.Writer) error {
 	}
 	now, err := o.now()
 	if err != nil {
+		return err
+	}
+	if err := o.validateScanPRState(); err != nil {
 		return err
 	}
 

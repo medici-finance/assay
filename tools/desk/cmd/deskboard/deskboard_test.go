@@ -1233,12 +1233,13 @@ func TestTrustGate_ActionsQuarantine(t *testing.T) {
 		t.Errorf("expected PR #7 in the external quarantine section; got %+v", rep.External)
 	}
 	// Bounded: exactly one trust-events read. The open-PR enumeration is now also a
-	// graphql read, so the trust read is identified by its own marker
-	// (lastEditedAt — in the trust queries, never in the enumeration query) rather than
-	// by the bare word "graphql".
+	// graphql read, and it too carries `lastEditedAt` (the body-edit signal the
+	// non-commit-resolution re-review trigger reads), so the trust read is identified by
+	// `reviewThreads` — a field the PRTrustQuery requests and the enumeration query never
+	// does — rather than by `lastEditedAt` or the bare word "graphql".
 	trustReads := 0
 	for _, fields := range readInvocations(t, logPath) {
-		if strings.Contains(strings.Join(fields, " "), "lastEditedAt") {
+		if strings.Contains(strings.Join(fields, " "), "reviewThreads") {
 			trustReads++
 		}
 	}

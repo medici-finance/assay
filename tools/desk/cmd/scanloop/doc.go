@@ -61,7 +61,10 @@
 //     never reached a stable head: it could be approved, green and mergeable and still be a growing
 //     draft hours later, because every coalesce moved the head and re-opened the review cycle. The
 //     window seals each scan PR at a stable head. A PR whose age cannot be established does NOT
-//     coalesce — could-not-check takes the bounded direction.
+//     coalesce — could-not-check takes the bounded direction. And a scan PR that has been flipped
+//     ready-for-human is push-quiet regardless of its age: a post-flip push re-signals the review
+//     loop, so a new batch opens the NEXT scan PR and leaves the flipped one sealed for merge. A
+//     draft/ready state that cannot be read does not coalesce either — the same bounded direction.
 //
 //  2. THE BODY IS REGENERATED ON EVERY PUSH, not just the first. The title and body state counts
 //     describing a diff that grows with every coalesced commit, so a body written once is wrong by

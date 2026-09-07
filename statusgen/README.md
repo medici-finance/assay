@@ -303,6 +303,73 @@ duplicate stream names across roots are exactly what multi-root rejects, so a
 fixture copied from a live stream would demand the thing the tool forbids. Its
 generated boards are gitignored, not committed.
 
+### Declared fixture corpora (`.statusgen-fixtures`)
+
+An **eval or fixture corpus** is a directory of committed run-outputs — captured
+`.md` transcripts kept verbatim as measurement data. Such content legitimately
+carries forward-references a hand-authored brief never would: deliverable paths
+the captured run *will* create, links to siblings that do not exist, and literal
+`human:<name>` strings demonstrating sign-off notation. Scanned as if it were a
+live brief it reds `--lint` (dead links, non-existent backticked paths) and
+`--corroborate` (a stamp that maps to no login) on content that is correct
+exactly as captured — and the only alternatives are hand-editing the fixtures,
+which stops them being honest measurement data, or moving them out of `docs/`,
+which silences the link check but not the whole-diff stamp scan.
+
+A corpus therefore **declares itself**, by dropping an (ordinarily empty) marker
+file at its root:
+
+```
+docs/streams/<stream>/<corpus>/.statusgen-fixtures
+```
+
+The marker is a **file, not frontmatter**. Frontmatter is per-file: it would have
+to be added to every captured output — editing the very artifacts the mechanism
+exists to keep verbatim — and it would be re-litigated on every new capture. The
+marker is one artifact per corpus, at the directory boundary the exemption
+actually has, and it is the same signal both surfaces read.
+
+**What it does.** Every file at or under the marker's directory is skipped by
+exactly two scans:
+
+- the `--lint` link check — dead markdown links, the strict backticked-path
+  convention, identifier dereference and register-ref checks, all of which key
+  off the same `docs/**` file set; and
+- `--corroborate`'s `human:<name>` stamp scan.
+
+**What it does not do.** Nothing else changes. The leak sweep, the register
+lints, brief and stream numbering-collision detection, and the board generator
+itself all keep reading those files. The marker narrows two source-quality
+checks; it does not remove a subtree from the repo's controls.
+
+**Three properties keep it an exemption rather than a bypass:**
+
+1. **Declared, never inferred.** Only the marker's presence on disk triggers it.
+   No path-name convention (`testdata`, `fixtures`, `examples`) and no heuristic
+   does. Absent the marker, a subtree is scanned exactly as before.
+2. **Bounded.** The marker is honoured **only strictly under
+   `docs/streams/<corpus>/`**. A marker at the repo root, over `docs/`, or over
+   `docs/streams/` itself would switch both scans off for every stream at once —
+   a bypass, not an exemption. Such a marker is **inert** (the resolver ignores
+   it, so `--corroborate` is unaffected even though no lint ran) *and* refused
+   out loud: `--lint` reports it as a PROBLEM naming the marker and where it
+   belongs. Ambiguity fails closed in both directions.
+3. **Visible.** Every honoured corpus is announced on **every** run, by `--lint`
+   and by `--corroborate` alike:
+
+   ```
+   NOTICE: fixture corpus exempted: docs/streams/<stream>/<corpus> (92 files) — declared by .statusgen-fixtures. …
+   ```
+
+   A silent skip is how evidence goes missing; the count is what makes the line
+   reviewable. A tree that declares no corpus prints nothing, so the mechanism is
+   invisible until it is used.
+
+One pre-existing exclusion predates the marker and is kept: the tutorial-skeleton
+prefix in `corroborate.go`, which teaches the `human:<name>` notation itself with
+fictional personas. It is a named constant, reviewed on its own terms, and it
+needs no marker.
+
 ## Standalone layout
 
 The module lives **at `statusgen/`**, not at this repo's root. There is

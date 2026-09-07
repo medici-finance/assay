@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -20,6 +21,26 @@ import (
 // child process, so a key cannot be read as a flag or escape into a path.
 var execCommand = exec.Command
 
+// mintTokenFn is the seam the DISPATCHER App-token lookup runs through, so the stamp step
+// can be exercised without a real App credential. Production binds it to the shared
+// deskkit resolver, which shells out to the token minter and reads the file it names.
+var mintTokenFn = deskkit.RoleTokenForRepo
+
+// dispatcherToken is the DISPATCHER App installation token every `gh` invocation from this
+// verb authenticates with. It is set by the stamp step, from the role deskkit declares as
+// the dispatcher, before the first label is applied.
+//
+// WHY AN EMPTY VALUE IS A REFUSAL AND NEVER A FALLBACK. The only thing this verb writes to
+// the forge is the dispatch attestation — two labels whose whole value is WHO applied
+// them. With no token in the child's environment `gh` authenticates as whatever credential
+// the calling shell holds (another role's App, or the operator's own login), and the
+// capability floor's applier-aware reader then sees a dispatched-* label from a
+// non-dispatcher: the exact shape it exists to refuse. The result is worse than not
+// stamping at all — an unstamped PR reads UNKNOWN and proceeds with a NOTICE, while a
+// PR stamped under the wrong identity refuses every authority-bearing write made on it.
+// So the ambient credential is never a fallback here.
+var dispatcherToken string
+
 type runResult struct {
 	stdout string
 	stderr string
@@ -27,9 +48,20 @@ type runResult struct {
 }
 
 func runCmd(dir, name string, args ...string) runResult {
+	// The fail-closed backstop for the rule above: even if a future code path reached a
+	// forge call before the token was minted, the call does not happen. The stamp step's
+	// own mint is the check a caller sees; this is the one that cannot be forgotten.
+	if name == "gh" && dispatcherToken == "" {
+		return runResult{err: errors.New(
+			"refusing to run gh with no dispatcher App installation token — the dispatch stamp is an " +
+				"attestation about WHO applied it, so it is never written under the ambient gh identity")}
+	}
 	cmd := execCommand(name, args...)
 	if dir != "" {
 		cmd.Dir = dir
+	}
+	if name == "gh" {
+		cmd.Env = append(os.Environ(), "GH_TOKEN="+dispatcherToken)
 	}
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out

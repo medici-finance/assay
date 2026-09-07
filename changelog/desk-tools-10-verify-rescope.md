@@ -1,0 +1,2 @@
+### Changed
+- `desk-tools/10`: re-scoped the brief's two whole-module Verify rows to what the brief owns — row 9's `go test ./...` becomes the brief's own + consumer packages (`deskclaim`, `deskkit`, `loopengine`) with #555's two unrelated deskkit test reds `-skip`'d, and row 10's `gofmt -l` narrows to the touched files (`cmd/deskclaim/*` + `tools/desk/internal/deskkit/claim.go`); module-wide debt stays #555's and CI still runs the full suite.

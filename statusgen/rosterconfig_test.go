@@ -28,7 +28,11 @@ const couplingVectorPath = "testdata/roster_coupling.json"
 
 type couplingVectors struct {
 	Roster map[string]string `json:"roster"`
-	Cases  []struct {
+	// KnownRosterKeys is the DECLARED ASSAY_-namespace roster schema — the one
+	// list both binaries' known-key sets are held to. See the fixture's
+	// _knownRosterKeysComment and TestRosterKeySchemaCoupling below.
+	KnownRosterKeys []string `json:"knownRosterKeys"`
+	Cases           []struct {
 		Why            string `json:"why"`
 		Login          string `json:"login"`
 		ID             int64  `json:"id"`
@@ -98,6 +102,95 @@ func scanExampleRoster() map[string]string {
 		scanEnvTrustedLogins:   "ada:100001,shared-agent:100002",
 		scanEnvTrustedBotSlugs: "reviewer=assay-reviewer-app:300000004,worker=assay-worker-app:300000006",
 		scanEnvHumanLoginMap:   "alex:ada",
+	}
+}
+
+// TestRosterKeySchemaCoupling binds this binary's ASSAY_-namespace known-key set
+// to the DECLARED schema in the shared vector file, in BOTH directions.
+//
+// WHAT IT PREVENTS. statusgen and the desk tools read the SAME roster.env and both
+// REFUSE the whole configuration on an ASSAY_ key they do not recognise. That is
+// the right failure for a typo and the wrong one for a sibling's key: a key one
+// binary knows and the other does not turns a roster that is valid and REQUIRED
+// for one tool into a total refusal for the other, and no roster edit satisfies
+// both. It is not hypothetical — the desk verbs' forge-resolution key was added to
+// the roster, statusgen did not recognise it, and the whole --scan-issues intake
+// lane refused fail-closed on every scan repo.
+//
+// SHAPE. The two trees are separate Go modules and deliberately share no code, so
+// a shared package cannot hold the list. The shared VECTOR FILE does, and each
+// module asserts its own set equals it exactly. Adding a key to one reader without
+// declaring it reds that reader's half; declaring one without teaching a reader
+// reds the other's. The twin is deskkit's TestRosterKeySchemaCoupling.
+//
+// If this fires, the fix is to make the two sets agree — teach the missing binary
+// the key (recognised-not-applied is fine, and is what most of these are) and
+// declare it in the fixture. Deleting the key from the fixture to green one half
+// is not a fix: it re-opens the whole-roster refusal on the other.
+func TestRosterKeySchemaCoupling(t *testing.T) {
+	raw, err := os.ReadFile(couplingVectorPath)
+	if err != nil {
+		t.Fatalf("cannot read the shared cross-tree roster vectors at %s: %v — this file declares "+
+			"the roster key schema BOTH binaries are held to; if desk-tools moved, re-point this "+
+			"test, do NOT delete it", couplingVectorPath, err)
+	}
+	var vec couplingVectors
+	if err := json.Unmarshal(raw, &vec); err != nil {
+		t.Fatalf("%s does not parse: %v", couplingVectorPath, err)
+	}
+	if len(vec.KnownRosterKeys) == 0 {
+		t.Fatalf("%s declares no knownRosterKeys — an empty schema list is a coupling guard that "+
+			"cannot fail", couplingVectorPath)
+	}
+
+	declared := map[string]bool{}
+	for _, k := range vec.KnownRosterKeys {
+		if !strings.HasPrefix(k, "ASSAY_") {
+			t.Errorf("knownRosterKeys declares %q, which is outside the ASSAY_ namespace. Only "+
+				"ASSAY_ keys refuse when unrecognised; a co-tenant key is echoed, never bound here", k)
+		}
+		if declared[k] {
+			t.Errorf("knownRosterKeys declares %q twice", k)
+		}
+		declared[k] = true
+	}
+
+	mine := map[string]bool{}
+	for _, k := range scanKnownRosterKeys() {
+		if mine[k] {
+			t.Errorf("scanKnownRosterKeys() lists %q twice", k)
+		}
+		mine[k] = true
+	}
+
+	var missing, extra []string
+	for k := range declared {
+		if !mine[k] {
+			missing = append(missing, k)
+		}
+	}
+	for k := range mine {
+		if !declared[k] {
+			extra = append(extra, k)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(extra)
+
+	if len(missing) > 0 {
+		t.Errorf("statusgen does NOT recognise %d declared roster key(s): %s.\n"+
+			"A roster carrying any of them makes statusgen report the WHOLE trust roster "+
+			"unconfigured (parseConfig's unknown-ASSAY_-key refusal), so every gate that reads it "+
+			"fails closed — while the desk tools, which share that file, accept it. Add each to "+
+			"scanKnownRosterKeys() as recognised-not-applied, with a comment saying who consumes it",
+			len(missing), strings.Join(missing, ", "))
+	}
+	if len(extra) > 0 {
+		t.Errorf("statusgen recognises %d roster key(s) the shared schema does not declare: %s.\n"+
+			"The desk tools read the same roster.env and will refuse the whole configuration on "+
+			"each of them. Declare them in %s's knownRosterKeys AND teach deskkit's "+
+			"knownRosterKeys() to recognise them",
+			len(extra), strings.Join(extra, ", "), couplingVectorPath)
 	}
 }
 

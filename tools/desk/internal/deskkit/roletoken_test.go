@@ -4,6 +4,7 @@ package deskkit
 // property that neither of them can ever print the credential they are complaining about.
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -174,6 +175,38 @@ func TestRoleTokenForOwnerFailsClosedOnAMissingCacheFile(t *testing.T) {
 	}
 	if path != missing || !strings.Contains(err.Error(), missing) || !strings.Contains(err.Error(), "reviewer") {
 		t.Fatalf("the refusal must name the role AND the path an operator has to fix: %v", err)
+	}
+}
+
+// The minter now prints the P3 effective-config echo on stderr BEFORE any error,
+// so the failure detail this surfaces must be the REAL refusal, not the echo
+// header — otherwise every mint failure reads "assay-config: class=..." instead of
+// what actually went wrong.
+func TestMinterFailureDetailSkipsTheConfigEcho(t *testing.T) {
+	stderr := "assay-config: class=write source=file configured=true\n" +
+		"assay-config: ASSAY_ALLOWED_REPOS=example-org/tracker:ci:private\n" +
+		"no installation found for owner \"example-org\"\n"
+	stubMinter(t, "unused", stderr, fmt.Errorf("exit status 6"))
+	_, _, err := RoleTokenForOwner("reviewer", "example-org")
+	if err == nil {
+		t.Fatal("a minter error returned no error")
+	}
+	if !strings.Contains(err.Error(), "no installation found for owner") {
+		t.Fatalf("failure detail must quote the real refusal, not the config echo: %v", err)
+	}
+	if strings.Contains(err.Error(), "assay-config:") {
+		t.Fatalf("failure detail leaked the config echo header: %v", err)
+	}
+}
+
+// minterErrorDetail falls back to firstLine when stderr is nothing but echo.
+func TestMinterErrorDetailFallsBackWhenOnlyEcho(t *testing.T) {
+	only := "assay-config: class=write source=file configured=false\n"
+	if got := minterErrorDetail(only); got != "assay-config: class=write source=file configured=false" {
+		t.Fatalf("with only echo lines minterErrorDetail should fall back to firstLine; got %q", got)
+	}
+	if got := minterErrorDetail(""); got != "" {
+		t.Fatalf("empty stderr should yield empty detail; got %q", got)
 	}
 }
 

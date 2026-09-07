@@ -20,9 +20,11 @@ func setup(t *testing.T) string {
 	dirOverride = dir
 	t.Cleanup(func() { dirOverride = old })
 	t.Setenv("DESK_TOOLS_DISABLED", "") // "" is not "1" → not armed
-	// Neutralise the harness's real session var so the fixture value below is what
-	// SessionTag() returns — otherwise the ambient $CLAUDE_CODE_SESSION_ID (present in
-	// every Claude Code session) wins the precedence and the tag is non-deterministic.
+	// Neutralise every session var that outranks the fixture value below, so SessionTag()
+	// is deterministic — $DESK_SESSION (consulted FIRST, and exported by a real desk that
+	// might be running this suite) and the ambient $CLAUDE_CODE_SESSION_ID (present in
+	// every Claude Code session).
+	t.Setenv("DESK_SESSION", "")
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test-session")
 	return dir

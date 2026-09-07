@@ -127,6 +127,27 @@ Pre-mortem → detection map:
 | The verb runs against GitLab and prints nothing useful with exit 0 | row 6 |
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: FAIL (row 7 — pre-existing unrelated whole-module red, not this brief's defect) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `67abbac`
+
+Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=/dev/null`); module-scoped from `tools/desk/`. Frontmatter: `gate: model`, all risk `no`, `irreversible: no`.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | tools/desk go build ./... && go vet ./... | exit 0 | exit 0, clean | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | go test ./cmd/desktoken/ -run coverage-lists-every-installation | exit 0 | exit 0 — RUN + PASS; ok desktoken | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | go test ./cmd/desktoken/ -run coverage-repo-filter-exit-codes | exit 0 | exit 0 — RUN + PASS | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | go test ./cmd/desktoken/ -run coverage-page-failure-is-unverifiable | exit 0 | exit 0 — RUN + PASS | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | go test ./cmd/desktoken/ -run coverage-writes-no-cache-and-prints-no-token | exit 0 | exit 0 — ok desktoken (token bytes appear nowhere on stdout/stderr/audit) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 6 | go test ./cmd/desktoken/ -run coverage-refuses-gitlab-forge | exit 0 | exit 0 — ok desktoken | 2026-09-06 | opus-4.8[1m]-verifier |
+| 7 | cd tools/desk && go test ./... -count=1 | exit 0 | **exit 1 FAIL** — two deterministic reds in internal/deskkit (registry-covers-cmd-binaries: `deskinstall` not registered in canonical tool-keys; restamp-recovery floor: below-floor tier = notice-allow, want floor-refuse). PRE-EXISTING on merged main 67abbac, OUTSIDE dt09's deliverables (cmd/desktoken); last touched by unrelated PRs. Filed medici-finance/assay#555 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 8 | gofmt -l tools/desk/cmd/desktoken | empty | exit 0, empty (nothing unformatted) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 9 | statusgen --root .. --lint | exit 0 | exit 0 — LINT: PASS (notices only) | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: DERIVED — coveragePerPage = 100 @ tools/desk/cmd/desktoken/coverage.go:58 — GitHub REST's documented per_page maximum. The completion test len(page) < coveragePerPage @ coverage.go:323 is only sound when the requested size does not exceed the server cap: a value above 100 would silently truncate (server returns ≤100, the break fires after page one, dropping later pages); 100 sits exactly at the cap. Reversible (edit + rebuild).`
+`RISK-VALUE: N/A (token-redaction) — no literal constant governs redaction; the control is the absence of token bytes from output/audit, verified structurally by row 5.`
+
+**VERIFY: FAIL — row 7.** desk-tools/09's own deliverable verifies CLEAN — rows 1-6, 8, 9 PASS, including the token-redaction (row 5) and the three-state page-failure (row 4) guarantees. The single failing row is a PRE-EXISTING whole-module red on merged main `67abbac` in an UNRELATED package (deskkit: `deskinstall` tool-key registration + a model-stamp floor-recovery weakening), surfaced by row 7's broad `go test ./...`, not introduced by this brief — filed medici-finance/assay#555. desk-tools/09 flips to `verified` once #555 is triaged and row 7 goes green. Status stays `implemented`. CFR sidecar row appended (verify-fail, 8/9).
+
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
 

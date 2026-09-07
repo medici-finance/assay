@@ -168,8 +168,28 @@ is ruled; guessing bakes in exactly the decision this gate exists to make.
      (command, exit code, output line(s) or hash, date, runner).
      "verified" requires a non-implementer. -->
 
+### Non-implementer verifier run — VERIFY: PASS on the mechanical rows; HELD at `implemented` (gate: human) — 2026-09-07 assay-verifier (verify-desk dispatch), merged main `9b1cf06`
+
+Runner ≠ implementer (fresh dispatched verifier, offline `KUBECONFIG=/dev/null`). Ruled fork = Option 2 (Go-native `deskinstall` + a ~5-line PowerShell bootstrap), delivered by commit `11bf3e2`: `tools/desk/cmd/deskinstall/{main.go,install.go,install_test.go}` + `scripts/bootstrap-windows.ps1`. Rows 1–6 + fail-first 5a run offline (the Go tests take a `--platform windows-amd64` override, so no Windows runtime is needed).
+
 | # | Command | Exit | Output | Date | Runner |
 |---|---------|------|--------|------|--------|
+| 1 | `ls scripts/install-windows.ps1 tools/desk/cmd/deskinstall/main.go \| head -1` | 0 | `tools/desk/cmd/deskinstall/main.go` (Go fork present) | 2026-09-07 | assay-verifier |
+| 2 | grep paired-versions pin / never-latest | 0 | `pin=0`, `NO-LATEST` | 2026-09-07 | assay-verifier |
+| 3 | grep windows `.exe` + `.tar.gz` asset names | 0 | `row3=0` (both amd64/arm64 asset names present) | 2026-09-07 | assay-verifier |
+| 4 | `go test ./cmd/deskinstall/ -run 'TestWindowsInstall.*Verifies' -count=1` | 0 | `--- PASS: TestWindowsInstallVerifiesCorrectHash` | 2026-09-07 | assay-verifier |
+| 5 | `go test ./cmd/deskinstall/ -run 'TestWindowsInstall.*RefusesOnHashMismatch' -count=1` | 0 | `--- PASS` — tampered binary REFUSED; neither statusgen.exe nor deskboard.exe placed | 2026-09-07 | assay-verifier |
+| 5a | fail-first: stub `verifySHA256` → `return nil`, rerun row-5 test | 1 | `--- FAIL … SECURITY: tampered binary was accepted` (read-only isolated copy); baseline PASSes → guard is load-bearing | 2026-09-07 | assay-verifier |
+| 6 | run installer vs local fixture; grep `installed .*v[0-9]+.*sha256` | 0 | `installed statusgen v0.26.0 sha256:67e36fb6…` + `installed desk-tools v0.26.0 sha256:a426ae50…` (offline fixture manifest) | 2026-09-07 | assay-verifier |
+| 7 | `statusgen --root . --consumers windows-port/03` | 2 | **could-not-check** — local statusgen v0.27.0 vs brief-pinned v0.26.0 (version-mismatched oracle); aborts on the unrelated local-only FP `decisions/README.md: no frontmatter` before evaluating wp/03. Corroborated by diff: fixed-here `tools/desk/cmd/deskinstall/main.go` created by commit `11bf3e2` | 2026-09-07 | assay-verifier |
+
+**RISK-VALUE: DERIVED** (security/trust-boundary — executable-byte acquisition; the SPOF the brief names):
+- sha256-verify-or-refuse control: `reSHA256 = ^[0-9a-f]{64}$` @ `tools/desk/cmd/deskinstall/install.go:61`, exact-inequality refusal `gotHex != wantHex` @ `install.go:109` (`crypto/sha256.Sum256` @ `install.go:106`) — 64-hex = 32-byte digest, the exact form in `plugins/assay/paired-versions.yaml`; any single-byte tamper refused (row 5), `wantHex` public so no timing-safety needed.
+- pin source `manifestName = "paired-versions.yaml"` @ `main.go:42` — the expected hash comes from the plugin-shipped, version-committed pin file (`tag: v0.26.0`): the independent second layer (check and pin fail for different reasons).
+- never-latest guard `reTag = ^v[0-9]+\.[0-9]+\.[0-9]+` @ `install.go:62` + `tag != m.Tag` @ `install.go:85` — forces a pinned semver, rejects floating refs (row 2 `NO-LATEST`).
+Reversible knobs (out of scope): file mode `0o755`, HTTP timeout `120s`.
+
+**VERIFY: PASS on the mechanical rows (1–6 + fail-first 5a); row 7 could-not-check (stale oracle). This is `gate: human` — a model cannot sign it off; status stays `implemented`, routed to the human gate.** Human-gate confirmation points: (1) the PowerShell-vs-Go fork ruling was recorded before the build (impl matches the recommended Option 2 + bootstrap); (2) the PowerShell bootstrap's own hash-verify (`scripts/bootstrap-windows.ps1:32-33`) is untested PowerShell, exercisable only on a Windows runtime — its negative path was could-not-check here. Read-only, offline; no flip.
 
 ## Review
 Gate: **human** (from frontmatter). The human confirms the fork ruling was recorded before the

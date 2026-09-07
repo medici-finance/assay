@@ -18,13 +18,13 @@ func TestDeskLoopUnsetRefusesTheOutwardVerb(t *testing.T) {
 	t.Setenv("DESK_LOOP", "")
 
 	evidencePath := writeRepoFile(t, "docs/brief.md", "# Brief\n\n## Evidence\n| 1 | x | y |\n")
-	f.setFile(evidencePath, "old", "old-sha")
+	f.setFile(evidencePath, "old")
 
 	rc := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
 	if rc != deskkit.ExitRefused {
 		t.Fatalf("rc = %d, want %d (refused); stderr=%s", rc, deskkit.ExitRefused, errBuf.String())
 	}
 	if f.putCalls != 0 {
-		t.Fatalf("the refusal still wrote %d time(s) to the contents API", f.putCalls)
+		t.Fatalf("the refusal still wrote %d time(s) through the forge", f.putCalls)
 	}
 }

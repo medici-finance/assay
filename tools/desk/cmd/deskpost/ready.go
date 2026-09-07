@@ -71,11 +71,11 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		// a below-tier or present-but-unreadable attestation refuses; an UNATTESTED PR
 		// (human-driven or pre-attestation) proceeds with a NOTICE; the override is loud; an
 		// unreadable timeline is could-not-check, never a cleared floor.
-		events, ferr := client.listLabelEvents(pr)
+		tl, ferr := client.stampTimeline(pr)
 		if ferr != nil {
 			return fromReadErr("ready", repo, pr, head, ferr)
 		}
-		fd := deskkit.ModelCapabilityFloor(events, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
+		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
 		switch fd.Outcome {
 		case deskkit.FloorRefuse:
 			return refused("ready", repo, pr, head, fd.Message)
@@ -190,11 +190,13 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		// reduction. Open-PR heads have relied on exactly that accident; splitting the
 		// lanes without this check would have converted them from blocked to flippable on
 		// any non-risk-classed path.
-		secv := securityVerdictAtHead(reviews, head)
+		secv := securityVerdictStanding(reviews, head)
 		if secv == secFail {
 			return refused("ready", repo, pr, head,
-				"an App review at head "+short(head)+" carries 'Security-Review: fail' — the security "+
-					"verdict is RETRACTED; clear it with a later 'Security-Review: pass' at this head")
+				"an App review carries a standing 'Security-Review: fail' — the security verdict is "+
+					"RETRACTED. This blocks the flip whether or not the PR is risk-classed, and a "+
+					"content-preserving head move (a resync) does NOT clear it; clear it only with a "+
+					"later 'Security-Review: pass' at the current head "+short(head))
 		}
 
 		// (e) security-review gate for risk-classed PRs (#216).
@@ -426,7 +428,7 @@ const (
 //     out-of-band through the raw `gh pr review` fallback — the path #197 documents as the
 //     COMMON one under a saturated budget. It is admitted to NEITHER lane as a GRANT: it
 //     cannot be the correctness APPROVED (latestAppVerdict skips it) and it cannot be the
-//     security pass (securityVerdictAtHead skips it). It CAN still block, in both lanes: a
+//     security pass (securityVerdictStanding skips it). It CAN still block, in both lanes: a
 //     CHANGES_REQUESTED still counts, and a `fail` marker still retracts. Ambiguity
 //     resolves toward blocking in every direction, never toward a grant.
 //   - anything else → laneCorrectness, including a body with no readable verdict of any
@@ -472,50 +474,70 @@ func classifySecurityBody(body string) secVerdict {
 	}
 }
 
-// securityVerdictAtHead reduces every App security verdict at head to ONE governing
-// verdict — secPass, secFail, or secNone when nobody spoke.
+// securityVerdictStanding reduces every App security verdict to ONE governing verdict —
+// secPass, secFail, or secNone when nobody spoke — with a DELIBERATE ASYMMETRY between the
+// two verdict kinds across a content-preserving head move (#361, and its deskflip twin PR
+// #529: this is the companion fix on deskpost's ready path).
+//
+// A `Security-Review: fail` is a reviewer's retraction of the reviewed CODE, not of a
+// particular commit sha. A content-preserving head move — a resync, a merge-from-main, any
+// re-trigger that leaves the flagged code byte-identical — moves the head sha WITHOUT
+// touching what the reviewer flagged, so it must NOT launder the fail. A fail therefore
+// STANDS regardless of the commit it was posted against: the only things that clear it are a
+// later `Security-Review: pass` AT THE CURRENT head, or a genuine content change that makes
+// a reviewer re-review and pass. A bare head-sha change clears nothing. Before this fix the
+// loop skipped every review whose `r.CommitID != head`, so a fail whose commit predated the
+// current head was silently treated as not-current and the standing retraction was flipped
+// past — a security-gate laundering bypass via a no-op resync.
+//
+// A `pass`, in contrast, GRANTS only by binding to the CURRENT head. New code needs a fresh
+// review, so a pass whose commit predates the head neither stands as a pass nor clears a
+// standing fail — and the empty string is not a commit either (gate (a) refuses a malformed
+// PR payload before this is reachable, but head-binding is the property gate (e) rests on,
+// so it must not silently hold only for non-empty inputs). The asymmetry is the whole point:
+// a head move is fail-SAFE for a pass (it stops granting) and must be fail-safe for a fail
+// too (it must keep blocking).
 //
 // Reviews arrive in ascending submitted order, so the reduction is ORDER-SENSITIVE:
-// per author, the LAST security verdict at head governs, and every author that has
-// spoken must end on `pass` for the result to be secPass. A `pass` later retracted by a
-// `fail` at the same head is therefore NOT green (#216) — the old
-// any-pass-wins reduction could not see a retraction at all, because `fail` was never
-// parsed.
+// per author, the LAST applicable security verdict governs, and every author that has
+// spoken must end on `pass` for the result to be secPass. A `pass` at head later retracted
+// by a `fail` is therefore NOT green (#216) — the old any-pass-wins reduction could not see
+// a retraction at all, because `fail` was never parsed.
 //
 // The per-author reduction is deliberate even though the loop currently admits only
 // reviewerBotDisplay(): the "last verdict wins" property must belong to the reduction, not
 // to the accident of there being exactly one admitted author.
 //
 // Returning the VERDICT rather than a bool is what lets runReady distinguish the two
-// answers that are not the same: "no security verdict at head" (blocks a risk-classed
-// flip only) and "the security verdict is FAIL" (blocks every flip — see gate (e0)).
-// Collapsing both to `false`, as the old securityPassAtHead did, is what made an explicit
-// retraction indistinguishable from silence.
-func securityVerdictAtHead(reviews []reviewInfo, head string) secVerdict {
+// answers that are not the same: "no security verdict" (blocks a risk-classed flip only)
+// and "the security verdict is FAIL" (blocks every flip — see gate (e0)). Collapsing both
+// to `false`, as the old securityPassAtHead did, is what made an explicit retraction
+// indistinguishable from silence.
+func securityVerdictStanding(reviews []reviewInfo, head string) secVerdict {
 	last := map[string]secVerdict{}
 	var authors []string
 	for _, r := range reviews {
-		if !isReviewerBot(r.User.Login) || r.CommitID != head {
+		if !isReviewerBot(r.User.Login) {
 			continue
 		}
 		v := securityGrantOf(r)
-		if v == secPass && head == "" {
-			// A verdict GRANTS only by binding to the commit it was issued against, and
-			// the empty string is not a commit. If head ever reads empty, `r.CommitID !=
-			// head` above stops rejecting anything with an empty commit_id, so every
-			// head comparison in the gate goes vacuous at once — exactly when there is
-			// least reason to believe a grant. gate (a) refuses a malformed PR payload
-			// before this is reachable, so this is depth rather than a live bypass; it is
-			// here because head-binding is the property gate (e) rests on, and a property
-			// that silently holds only for non-empty inputs is not the property.
-			//
-			// The asymmetry of securityGrantOf is preserved deliberately: a FAIL is NOT
-			// skipped here. An unbound retraction still blocks, because every reason to
-			// doubt a fail is a reason to keep blocking.
+		switch v {
+		case secFail:
+			// A fail STANDS whatever commit it names: a content-preserving head move (a
+			// resync) that did not touch the reviewed code cannot launder a retraction.
+			// Every reason to doubt a fail is a reason to keep blocking, so it is admitted
+			// regardless of r.CommitID — this is the factor-1 fix.
+		case secPass:
+			// A pass GRANTS only at the CURRENT head; an empty head is not a commit, and a
+			// pass at an earlier head neither grants nor clears a standing fail. If head
+			// ever reads empty, admitting a pass would make every head comparison in the
+			// gate go vacuous at once — exactly when there is least reason to believe a
+			// grant — so the empty head is refused here too.
+			if head == "" || r.CommitID != head {
+				continue
+			}
+		default: // secNone — a review with no security line neither grants nor retracts
 			continue
-		}
-		if v == secNone {
-			continue // a review with no security line neither grants nor retracts
 		}
 		if _, seen := last[r.User.Login]; !seen {
 			authors = append(authors, r.User.Login)
@@ -610,8 +632,9 @@ var securityPassStates = map[string]bool{
 	"COMMENTED": true, // `deskpost security-review --verdict pass`
 }
 
-// securityPassAtHead reports whether the governing security verdict at head is pass.
-// Absence is never a pass.
+// securityPassAtHead reports whether the governing security verdict is a pass at the
+// current head. Absence is never a pass, and a pass grants only at head (a standing fail,
+// by contrast, blocks regardless of the commit it names — see securityVerdictStanding).
 func securityPassAtHead(reviews []reviewInfo, head string) bool {
-	return securityVerdictAtHead(reviews, head) == secPass
+	return securityVerdictStanding(reviews, head) == secPass
 }

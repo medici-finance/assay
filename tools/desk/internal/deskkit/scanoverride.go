@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -187,7 +188,12 @@ func HandleScanRefusal(o ScanOverride, scanErr error) error {
 		return scanErr
 	}
 	if reason == "" {
-		return Refused(scanErr.Error() + OverrideHint())
+		// Re-wrap with the override hint but PRESERVE any ScanFinding, so a --explain caller
+		// still reaches the rule id and line through the annotated refusal (the message is
+		// unchanged bar the appended hint).
+		var f *ScanFinding
+		errors.As(scanErr, &f)
+		return RefusedFinding(scanErr.Error()+OverrideHint(), f)
 	}
 	o.Refusal = scanErr.Error()
 	return LogScanOverride(o)

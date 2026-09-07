@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -21,80 +20,26 @@ import (
 // comment), the trust gate already refusing every write verb on an untrusted PR — is a
 // layer this file leans on rather than re-implements.
 
-// workpadNode is the shape one comment takes in the GraphQL response: enough to filter on
-// identity, marker and resolution state, and to drive either write path (the GraphQL node
-// id for an edit, the REST-numbered id for the worktree-local record and for display).
-type workpadNode struct {
-	ID          string `json:"id"`
-	DatabaseID  int    `json:"databaseId"`
-	Body        string `json:"body"`
-	IsMinimized bool   `json:"isMinimized"`
-	Author      struct {
-		Login string `json:"login"`
-	} `json:"author"`
-}
-
-// workpadCandidate is one workpadNode that survived filterWorkpadCandidates — a comment
+// workpadCandidate is one comment that survived filterWorkpadCandidates — a comment
 // authored by the worker identity, carrying the marker, not minimised.
 type workpadCandidate struct {
-	NodeID     string // GraphQL global id — the updateIssueComment mutation's target
-	DatabaseID int    // REST numeric id — what the worktree config and "#<id>" messages carry
+	// CommentID is the forge's OPAQUE comment id — EditComment's target. It is whatever the
+	// backend minted (a GraphQL global id on GitHub, a project-scoped coordinate on GitLab)
+	// and is passed back verbatim, never composed here.
+	CommentID string
+	// DatabaseID is the forge's own numeric id — what the worktree config and the "#<id>"
+	// messages carry.
+	DatabaseID int
 }
 
-// workpadCommentsQuery fetches the first 100 comments on a PR. 100 is every PR this
-// tooling has driven to date; a PR that outgrows it is a stated residual (this file does
-// not follow a pagination cursor), not a silent mishandling — the newest-wins rule below
-// would simply be reading a page that is not actually the newest.
-const workpadCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
-  repository(owner: $owner, name: $name) {
-    pullRequest(number: $number) {
-      comments(first: 100) {
-        nodes {
-          id
-          databaseId
-          body
-          isMinimized
-          author { login }
-        }
-      }
-    }
-  }
-}`
-
-type workpadCommentsResponse struct {
-	Data struct {
-		Repository struct {
-			PullRequest struct {
-				Comments struct {
-					Nodes []workpadNode `json:"nodes"`
-				} `json:"comments"`
-			} `json:"pullRequest"`
-		} `json:"repository"`
-	} `json:"data"`
-	Errors []struct {
-		Message string `json:"message"`
-	} `json:"errors"`
-}
-
-// parseWorkpadCommentsResponse decodes the GraphQL response body into the comment nodes it
-// carries. A non-empty top-level "errors" array is reported as an error even when "data"
-// also came back partially populated — GraphQL's own convention for a partial failure —
-// because a partial comment list must never be silently read as the complete one the
-// newest-wins rule assumes.
-func parseWorkpadCommentsResponse(raw string) ([]workpadNode, error) {
-	var resp workpadCommentsResponse
-	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
-		return nil, fmt.Errorf("cannot parse workpad comments response: %w", err)
-	}
-	if len(resp.Errors) > 0 {
-		msgs := make([]string, len(resp.Errors))
-		for i, e := range resp.Errors {
-			msgs[i] = e.Message
-		}
-		return nil, fmt.Errorf("workpad comments GraphQL error: %s", strings.Join(msgs, "; "))
-	}
-	return resp.Data.Repository.PullRequest.Comments.Nodes, nil
-}
+// workpadNode is the shape one comment takes as the forge seam reports it: enough to filter
+// on identity, marker and resolution state, and to drive either write path (the OPAQUE id
+// for an edit, the forge's own numeric id for the worktree-local record and for display).
+//
+// The list is bounded by the backend's own comment read (100 on the GitHub backend). A change
+// that outgrows it is a stated residual — this file follows no pagination cursor — not a
+// silent mishandling: the newest-wins rule below would simply be reading a page that is not
+// actually the newest.
 
 // filterWorkpadCandidates is the pure identity/marker/resolution filter: a node is a
 // candidate ONLY when its author is the worker identity (deskkit.SameActor, which folds
@@ -106,7 +51,7 @@ func parseWorkpadCommentsResponse(raw string) ([]workpadNode, error) {
 // structurally impossible rather than merely untested: a human-authored node never has
 // SameActor(node.Author.Login, workerLogin) true, and a minimised node never survives the
 // IsMinimized check, so NEITHER can ever reach the caller's edit path.
-func filterWorkpadCandidates(nodes []workpadNode, workerLogin string) []workpadCandidate {
+func filterWorkpadCandidates(nodes []deskkit.Comment, workerLogin string) []workpadCandidate {
 	var cands []workpadCandidate
 	for _, n := range nodes {
 		if !deskkit.SameActor(n.Author.Login, workerLogin) {
@@ -115,18 +60,20 @@ func filterWorkpadCandidates(nodes []workpadNode, workerLogin string) []workpadC
 		if !deskkit.HasWorkpadMarker(n.Body) {
 			continue
 		}
-		if n.IsMinimized {
+		if n.Minimized {
 			continue
 		}
-		cands = append(cands, workpadCandidate{NodeID: n.ID, DatabaseID: n.DatabaseID})
+		cands = append(cands, workpadCandidate{CommentID: n.ID, DatabaseID: int(n.DatabaseID)})
 	}
 	return cands
 }
 
-// newestWorkpadCandidate returns the LAST entry of cands. The comments connection GitHub's
-// API returns is chronologically ascending (its documented default order), so the last
-// surviving candidate is the newest — "two upserts ⇒ one comment" (Verify row 2) depends
-// on this being deterministic across repeated calls against an unchanged comment list.
+// newestWorkpadCandidate returns the LAST entry of cands. The seam's comment list is
+// oldest-first on BOTH backends — a contract ListComments states and each backend upholds in
+// its own way (GitHub's connection is ascending by default; the GitLab backend REQUESTS
+// ascending order rather than reversing a page after the fact) — so the last surviving
+// candidate is the newest. "two upserts ⇒ one comment" (Verify row 2) depends on this being
+// deterministic across repeated calls against an unchanged comment list.
 func newestWorkpadCandidate(cands []workpadCandidate) (workpadCandidate, bool) {
 	if len(cands) == 0 {
 		return workpadCandidate{}, false
@@ -134,51 +81,34 @@ func newestWorkpadCandidate(cands []workpadCandidate) (workpadCandidate, bool) {
 	return cands[len(cands)-1], true
 }
 
-// listWorkpadCandidatesGH is the REAL transport behind workpadFinder: one bounded GraphQL
-// read (workpadCommentsQuery) via `gh api graphql`, parsed and filtered. It is the only
-// function in this file that shells out.
-func listWorkpadCandidatesGH(dir, repo string, pr int, workerLogin string) ([]workpadCandidate, error) {
-	owner, name := splitOwnerRepo(repo)
-	out, err := gh(dir, "api", "graphql",
-		"-f", "query="+workpadCommentsQuery,
-		"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(pr))
+// listWorkpadCandidates is the REAL transport behind workpadFinder: ONE bounded comment read
+// through the resolved forge backend, filtered to the worker's own unminimised marked
+// comments.
+func listWorkpadCandidates(fg deskkit.Forge, fr deskkit.ForgeRepo, pr int, workerLogin string) ([]workpadCandidate, error) {
+	comments, err := fg.ListComments(fr, pr)
 	if err != nil {
 		return nil, err
 	}
-	nodes, perr := parseWorkpadCommentsResponse(out)
-	if perr != nil {
-		return nil, perr
-	}
-	return filterWorkpadCandidates(nodes, workerLogin), nil
+	return filterWorkpadCandidates(comments, workerLogin), nil
 }
 
-const workpadUpdateMutation = `mutation($id: ID!, $body: String!) {
-  updateIssueComment(input: {id: $id, body: $body}) {
-    issueComment { databaseId }
-  }
-}`
-
-// editWorkpadCommentGH is the REAL transport behind workpadEditor: the updateIssueComment
-// GraphQL mutation, targeting the comment's GraphQL node id — the ONLY mutating call this
-// file ever issues, and the only place in the whole deskreply binary that edits (rather
-// than creates) a comment; the plain-reply path never reaches this file at all.
-func editWorkpadCommentGH(dir, nodeID, bodyPath string) error {
-	_, err := gh(dir, "api", "graphql",
-		"-f", "query="+workpadUpdateMutation,
-		"-f", "id="+nodeID, "-F", "body=@"+bodyPath)
-	return err
+// editWorkpadComment is the REAL transport behind workpadEditor: the seam's EditComment,
+// targeting the comment's OPAQUE id — the id ListComments reported, never one composed here.
+// It is the only place in the whole deskreply binary that edits (rather than creates) a
+// comment; the plain-reply path never reaches this file at all.
+func editWorkpadComment(fg deskkit.Forge, fr deskkit.ForgeRepo, commentID, body string) error {
+	return fg.EditComment(fr, commentID, body)
 }
 
 // workpadFinder and workpadEditor are the seams cmdWorkpadUpsert calls through. Tests stub
-// them directly rather than driving a fake `gh api graphql` subprocess: the behaviour under
-// test is the UPSERT DECISION deskreply makes from what a finder returns (idempotent
-// upsert, never a foreign marker, dry-run reporting), which is exactly as observable
-// through a stub as through a real transport — and filterWorkpadCandidates /
-// parseWorkpadCommentsResponse, the parts that actually decode GitHub's wire shape, have
-// their own direct tests with no process at all.
+// them directly rather than driving a recorded backend: the behaviour under test is the
+// UPSERT DECISION deskreply makes from what a finder returns (idempotent upsert, never a
+// foreign marker, dry-run reporting), which is exactly as observable through a stub as
+// through a real transport — and filterWorkpadCandidates, the part that decides which
+// comment is mine to edit, has its own direct test with no transport at all.
 var (
-	workpadFinder = listWorkpadCandidatesGH
-	workpadEditor = editWorkpadCommentGH
+	workpadFinder = listWorkpadCandidates
+	workpadEditor = editWorkpadComment
 )
 
 // workpadConfigKey is the worktree-local git-config key a successful upsert records, so a
@@ -215,27 +145,11 @@ func recordWorkpadID(dir string, id int) {
 	_, _ = git(dir, "config", "--worktree", workpadConfigKey, strconv.Itoa(id))
 }
 
-// commentIDFromURL extracts the trailing numeric id from a `.../pull/N#issuecomment-ID`
-// URL, as `gh pr comment` prints on success. Returns 0 (never treated as a valid id by any
-// caller) when the URL does not carry the expected suffix.
-func commentIDFromURL(url string) int {
-	const marker = "issuecomment-"
-	idx := strings.LastIndex(url, marker)
-	if idx < 0 {
-		return 0
-	}
-	id, err := strconv.Atoi(strings.TrimSpace(url[idx+len(marker):]))
-	if err != nil || id <= 0 {
-		return 0
-	}
-	return id
-}
-
 // cmdWorkpadUpsert is cmdReply's --workpad tail: it runs strictly AFTER the same
 // preflight/mint/public-repo-gate/PR-state verification the plain-reply path already ran
 // (ac.head is already set, the worker token already minted), and replaces the plain
 // path's idempotency+post block with the find-or-create decision.
-func cmdWorkpadUpsert(ac *auditCtx, dir, repo string, pr int, body []byte, dryRun bool) error {
+func cmdWorkpadUpsert(ac *auditCtx, fg deskkit.Forge, fr deskkit.ForgeRepo, dir, repo string, pr int, body []byte, dryRun bool) error {
 	workerLogin, ok := deskkit.RoleAppLogin("worker")
 	if !ok {
 		return deskkit.Unverifiable(
@@ -243,7 +157,7 @@ func cmdWorkpadUpsert(ac *auditCtx, dir, repo string, pr int, body []byte, dryRu
 				"refuse rather than guess which comment is mine to edit", nil)
 	}
 
-	cands, lerr := workpadFinder(dir, repo, pr, workerLogin)
+	cands, lerr := workpadFinder(fg, fr, pr, workerLogin)
 	if lerr != nil {
 		return deskkit.Unverifiable("cannot list PR comments for the workpad upsert decision", lerr)
 	}
@@ -264,14 +178,8 @@ func cmdWorkpadUpsert(ac *auditCtx, dir, repo string, pr int, body []byte, dryRu
 		return werr
 	}
 
-	bodyPath, cleanup, terr := writeTempBody(body)
-	if terr != nil {
-		return deskkit.Unverifiable("cannot stage workpad body", terr)
-	}
-	defer cleanup()
-
 	if found {
-		if eerr := workpadEditor(dir, target.NodeID, bodyPath); eerr != nil {
+		if eerr := workpadEditor(fg, fr, target.CommentID, string(body)); eerr != nil {
 			return deskkit.Unverifiable("workpad comment edit failed", eerr)
 		}
 		recordWorkpadID(dir, target.DatabaseID)
@@ -280,13 +188,18 @@ func cmdWorkpadUpsert(ac *auditCtx, dir, repo string, pr int, body []byte, dryRu
 		return nil
 	}
 
-	out, cErr := gh(dir, "pr", "comment", strconv.Itoa(pr), "-R", repo, "--body-file", bodyPath)
+	// The create path. The id recorded for the NEXT invocation is the one the FORGE reported
+	// for the comment it just created — not a number parsed back out of a printed URL, which
+	// only ever worked for one forge's URL shape and silently yielded 0 for anything else.
+	ref, cErr := fg.PostComment(fr, pr, string(body))
 	if cErr != nil {
-		return deskkit.Unverifiable("gh pr comment failed", cErr)
+		return deskkit.Unverifiable("posting the workpad comment failed", cErr)
 	}
-	url := lastURL(out)
-	id := commentIDFromURL(url)
-	recordWorkpadID(dir, id)
+	url := ""
+	if ref != nil {
+		recordWorkpadID(dir, int(ref.DatabaseID))
+		url = ref.URL
+	}
 	if url != "" {
 		ac.detail = "created workpad comment " + url
 		fmt.Println(url)

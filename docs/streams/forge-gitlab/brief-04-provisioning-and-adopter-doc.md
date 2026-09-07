@@ -144,6 +144,23 @@ RISK-VALUE: DERIVED — `merge_access_level = 40` (Maintainer) @ `tools/create-f
 
 Verdict: FAIL — status stays `implemented`. **The fork was ruled by Ian: keep #219 — "CE conforming for the core lane, with disclosed degradations."** The doc amendment (§0.1 rewritten to the #219 stance; disclosure table grown to the 7 pilot-measured rows) is draft **#358**. This FAIL Evidence is the record until #358 lands; **row 3 re-runs against merged main once #358 merges**. No separate bug filed — the fork was already routed and ruled; #358 carries the fix.
 
+### Non-implementer verifier run — VERIFY: PASS (supersedes the prior FAIL) — 2026-09-05 opus-4.8[1m]-verifier (verify-desk dispatch), medici-finance/assay merged main 203dac5
+
+Runner != implementer. Offline envelope (KUBECONFIG=/dev/null). gate: model; risk {regulatory:no, customer:no, irreversible:no, sensitive-data:no}. This SUPERSEDES the prior 2026-09-02 FAIL (row 3): Ian's #219 ruling landed the doc fix (commit 60bc3dad) so row 3 now passes as written.
+
+| # | command | expected | observed (exit + key line) | date · runner |
+|---|---------|----------|----------------------------|---------------|
+| 1 | bash -n tools/create-fleet-gitlab.sh and shellcheck it | exit 0 | exit 0 — bash -n clean; shellcheck clean, no findings | 2026-09-05 · opus-4.8[1m]-verifier |
+| 2 | bash tools/create-fleet-gitlab.sh --dry-run --group example --prefix myorg, grep -c "service account" | >= 7 | count 8 (>= 7) — 7 dry-run service-account provisions (reviewer/worker/verifier/desk/issue-loop/intake-loop/board-writer) + 1 checklist mention | 2026-09-05 · opus-4.8[1m]-verifier |
+| 3 | grep the three amended-spec phrases in docs/adopting-assay-gitlab.md (CE conforming for core lane / Maintainer role set is the allowlist / approvals are advisory) | each >= 1, chain exit 0 | 1/1/1, chain exit 0 — all three present verbatim (the #219 phrasing) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 4 | enumerate api/v4 endpoints in tools/create-fleet-gitlab.sh, check each exists in GitLab REST v4 | every endpoint exists | exit 0 — 11 unique endpoints enumerated (groups, members, service_accounts + PATs, projects, approvals, protected_branches, protected_tags, user/avatar); per-endpoint LIVE docs.gitlab.com dereference could-not-check (offline envelope); shapes consistent with known GitLab v4 paths | 2026-09-05 · opus-4.8[1m]-verifier |
+
+**VERIFY: PASS.** Rows 1-3 green; row 4's endpoint enumeration ran clean (shapes match known GitLab v4), only its live docs.gitlab.com dereference is could-not-check under the offline envelope. Supersedes the prior FAIL — the recorded remediation condition (#219 phrasing carried verbatim, commit 60bc3dad) is met. Status advanced implemented→verified.
+
+RISK-VALUE: DERIVED — MERGE_ACCESS_LEVEL = 40 (Maintainer) @ tools/create-fleet-gitlab.sh:101 — 40 excludes Developer(30) service accounts from merging their own MRs, enforcing "allowed-to-merge = maintainer humans"; value 30 was proven wrong by issue #346 (every Developer bot could self-merge), recorded in the in-file comment.
+RISK-VALUE: DERIVED — PROTECTED_TAG_CREATE_LEVEL = 40 (Maintainer) @ tools/create-fleet-gitlab.sh:108 — the Free-tier scalar field (not the Premium allowed_to_create array that caused #346's 400) makes release tags immutable to every bot; only a human owner creates/moves them.
+RISK-VALUE: reversible knob (ranked last, no derivation owed) — PAT_EXPIRY_DAYS = 7 @ tools/create-fleet-gitlab.sh:88 — a spec-RECOMMENDED token-lifetime backstop, overridable via --pat-expiry-days; reversible by edit + re-run.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README
 table.

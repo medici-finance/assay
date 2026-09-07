@@ -11,6 +11,8 @@ description: Run the intake-desk — the generic front door of the process desk 
 > bindings, and its own escalation labels. Those pieces are project config, not part of this
 > portable core.
 
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+
 The **intake-desk** is the generic front door of the process-desk pipeline — the first of the four
 desks (`intake-desk → worker-desk → pr-review-desk → verify-desk`). Where pr-review-desk watches
 work *leaving* the system (PRs → ready), this desk watches work *arriving* from **any** source:
@@ -352,6 +354,24 @@ Stated once for every desk; this skill adds only what is its own above.
   "remember triaging" is not proof of its current label, state or comment thread. The sanctioned
   memory channel is a rolling cycle summary; it tells you *where to look*, the fresh read tells you
   *what is true*.
+- **Cross-repo evidence binds to the REMOTE, never a bare sibling checkout.** A triage or
+  verification claim about a repo other than the one this desk's worktree is checked out from —
+  "the code still has X", "the fix already landed", a cited file:line — must be resolved against
+  that repo's remote state: `gh api repos/<owner>/<repo>/contents/<path>` (or an equivalent forge
+  read) directly, or a sibling working copy **fetched and confirmed current in this same cycle**.
+  A `git fetch` alone does not confirm anything — it can fail silently (a rewritten remote, a dead
+  credential) and leave the tree exactly as stale as before it ran, and comparing the checkout's
+  own `HEAD` to its own `origin/main` afterward proves nothing since both move together. The only
+  check that catches a silent fetch failure is an INDEPENDENT read of the same ref — e.g. `git -C
+  <checkout> rev-parse origin/main` after the fetch, compared against `gh api
+  repos/<owner>/<repo>/commits/<branch> --jq .sha` (a different protocol, so a rewrite that
+  silently misroutes the git fetch does not also misroute the API call). A local sibling tree read
+  with no such cross-check is not evidence: it can drift arbitrarily far behind with no visible
+  signal, and a grep against a stale tree returns confident, precise, *wrong* line numbers that
+  read as stronger proof than a vaguer correct one. Citing a sibling-repo detail without stating
+  the SHA it was cross-checked against is the same failure — state the SHA, or don't cite the
+  detail. Cannot reach the remote and cannot cross-check the checkout → **could-not-check**, never
+  a claim badged as re-verified.
 - **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskpost`,
   `deskreply`, `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script. A shared
   human/operator login makes authorship ambiguous; a token 404-ing on a repo it should cover means

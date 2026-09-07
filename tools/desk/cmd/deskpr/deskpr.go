@@ -116,6 +116,15 @@ func (a *auditCtx) finalize(err error) {
 	a.log(result, err.Error())
 }
 
+// explainScanRefusal is the deferred tail every deskpr verb registers after flag parse:
+// when --explain was passed and the terminal error carries a secret-scan ScanFinding, it
+// prints one scan-explain line (rule id + line number, never the offending span). Without
+// the flag, and on any non-scan error, it is a no-op — so the verb's default output is
+// byte-identical to before --explain existed.
+func explainScanRefusal(explain bool, err error) {
+	deskkit.MaybeExplain(os.Stderr, explain, err)
+}
+
 // cmdCreate implements `deskpr create`. Flow: verify
 // preconditions → secret-scan → idempotency → push (plain, never --force) →
 // `gh pr create --draft` → print URL.
@@ -132,9 +141,11 @@ func cmdCreate(args []string) (err error) {
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	asApp := fs.Bool("as-app", true, "authenticate as this session's App role via desktoken (worker by default; the verifier App under DESK_LOOP=verify-desk, etc.); --as-app=false for example-org fallback")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
+	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	if perr := fs.Parse(args); perr != nil {
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
+	defer func() { explainScanRefusal(*explain, err) }()
 	if fs.NArg() != 0 {
 		return deskkit.Refused("refused: create takes no positional arguments")
 	}
@@ -390,9 +401,11 @@ func cmdUpdate(args []string) (err error) {
 	asApp := fs.Bool("as-app", true, "authenticate as this session's App role via desktoken (worker by default; the verifier App under DESK_LOOP=verify-desk, etc.); --as-app=false for example-org fallback")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
+	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	if perr := fs.Parse(args); perr != nil {
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
+	defer func() { explainScanRefusal(*explain, err) }()
 	if fs.NArg() != 0 {
 		return deskkit.Refused("refused: update takes no arguments")
 	}
@@ -932,30 +945,12 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 // <cell>:<repo>:<stream>:<NN>. For the colon forms the LAST two parts are stream and NN;
 // the repo/cell prefixes resolve against graph-repos.yaml elsewhere (example-stream/01)
 // and are not needed for the file resolution here. NN must be numeric.
+//
+// It delegates to deskkit.SplitBriefTrailer so this writer-side validation and the
+// reader-side phantom key (RepresentedBriefs) apply ONE reduction and cannot disagree
+// on which trailer spelling names which brief.
 func splitBriefTrailer(v string) (stream, nn string, ok bool) {
-	var parts []string
-	if strings.Contains(v, ":") {
-		parts = strings.Split(v, ":")
-		if len(parts) < 2 {
-			return "", "", false
-		}
-		stream, nn = parts[len(parts)-2], parts[len(parts)-1]
-	} else {
-		parts = strings.Split(v, "/")
-		if len(parts) != 2 {
-			return "", "", false
-		}
-		stream, nn = parts[0], parts[1]
-	}
-	if stream == "" || nn == "" {
-		return "", "", false
-	}
-	for _, c := range nn {
-		if c < '0' || c > '9' {
-			return "", "", false
-		}
-	}
-	return stream, nn, true
+	return deskkit.SplitBriefTrailer(v)
 }
 
 func readBody(bodyFile, bodyMin string) ([]byte, error) {

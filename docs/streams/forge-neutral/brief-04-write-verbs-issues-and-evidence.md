@@ -35,15 +35,42 @@ gate-why: >-
   that structural difference must be a stated design, not a discovered one.
 domain: complicated
 consumers:
-  - "tools/desk/cmd/deskpr: fixed-here"
-  - "tools/desk/cmd/deskfile: fixed-here (acting identity changes — see gate-why)"
-  - "tools/desk/cmd/deskclose: fixed-here (acting identity changes — see gate-why)"
   - "tools/desk/cmd/deskevidence: fixed-here"
-  - "tools/desk/internal/forgeban/allowlist.go: fixed-here (three rows removed, ceiling lowered to 14)"
+  - "tools/desk/internal/deskkit/forge.go: fixed-here (WriteFile + ReadFile added to the frozen seam, both backends)"
+  - "docs/streams/forge-gitlab/inventory.md: fixed-here (both ops inventoried, rows 21–22)"
+  - "tools/desk/cmd/deskpr: follow-on forge-neutral/04b (the gh-migration for deskpr/deskfile/deskclose; #509 ruled it a code-aware rescope that first adds the enumerated ops each still lacks, not a ratchet-number correction)"
+  - "tools/desk/cmd/deskfile: follow-on forge-neutral/04b"
+  - "tools/desk/cmd/deskclose: follow-on forge-neutral/04b"
   - "plugins/assay/skills/verify-desk/SKILL.md: follow-up forge-neutral/10 (the Evidence-landing lane gains a hop on a forge with no direct-default-branch push; the conformance round trip is where the loop shape is proved before the skill text is changed)"
 ---
 
 # Brief 04 — Write verbs B: deskpr, deskfile, deskclose, deskevidence
+
+## Amendment (#509 — slice C, delivered here)
+
+The four-verb scope below was NOT implementable as one change: five worker rounds established
+against the code that the migration's premise — that it lowers the forge-CLI ratchet — is false
+in scope, because `deskpr`, `deskfile` and `deskclose` each keep un-migratable `gh` calls with no
+enumerated forge op, so their permit rows must stay exactly as `deskclose`'s did. The human gate
+(#509) ruled **Option C**: this brief delivers ONLY the `deskevidence` slice, and the
+`deskpr`/`deskfile`/`deskclose` gh-migration becomes a code-aware follow-on brief
+(`forge-neutral/04b`) that first adds the enumerated ops each still lacks (a branch→change
+lookup, PR body/title fields, an issue-search op, a label-list op). The ratchet is **untouched at
+16** — the forge-method count is not the ratchet, and no `deskevidence` permit row exists to
+remove (it reaches the forge over `net/http`, never a forge CLI).
+
+The delivered slice adds **two** ops to the seam, not one: a fat `WriteFile` AND a companion
+`ReadFile`. The `--brief-path` Evidence landing is a genuine read → transform → write (read the
+remote brief, merge its `## Evidence` section, write the result), and the transform cannot be
+folded into a backend-agnostic write, so the read is its own op. Both are consumed by
+`deskevidence` in this same change (the §6 freeze rule is amended by this brief, not bypassed).
+`WriteFile` folds the idempotency-noop read (a `Changed` flag), the append-only shrink guard (the
+constraint is passed in and the backend refuses post-fetch), the default-branch writability probe
+(a `DefaultBranchNotWritable` sentinel), and the branch-creation fallback (GitLab `start_branch`
+inline; GitHub's default branch is directly writable by the verifier App — no new `CreateRef` op).
+
+The Task and Verify sections below are rewritten to this slice; the original four-verb text is
+preserved in the git history and in `docs/streams/forge-gitlab/inventory.md` rows 21–22.
 
 ## Context
 files:
@@ -97,56 +124,61 @@ facts:
 - Do not remove or weaken the `--as-app=false` refusal semantics without saying so in the PR;
   narrowing an escape hatch is in scope, widening one is not.
 
-## Task
-1. **Name the acting identity first, then migrate.** For `deskfile`, `deskclose` and `deskpr`,
-   record in the PR body which role identity each verb writes as after this change and why —
-   this is the custody decision the permit register defers, and it is what the human gate
-   reviews. Retire `deskpr`'s ambient `--as-app=false` fallback or state in the same place why
-   it survives.
-2. Route `deskpr`'s draft-change creation through `CreateDraftChange`, `deskfile`'s filing
-   through `FileIssue`, `deskclose`'s close through `CloseIssue` and its authority read
-   through `GetIssue`/`GetPullRequest`. Delete the shell helpers and their permit rows.
-3. **Evidence landing.** Add ONE typed operation to `Forge` for writing a file at a path on a
-   branch, with `deskevidence` as its consuming call site in the same change; implement it on
-   both backends (GitHub Contents API ↔ GitLab Repository Files API) and record it in
-   `docs/streams/forge-gitlab/inventory.md`. Delete `deskevidence`'s `apiBaseURL` and its
-   hand-rolled JWT/installation exchange, which moves to the resolver's custody binding.
-4. **The Evidence lane on a forge with no direct-default-branch push.** `deskevidence` asks
-   the resolved forge whether the default branch accepts a direct write. When it does not, it
-   lands the Evidence row on a branch and opens a draft change instead — and says so on
-   stdout. It does NOT attempt the direct write and report success, and it does NOT silently
-   skip the row.
-5. Lower `allowedInvocationCeiling` from 17 to **14** and remove the three retired rows.
+## Task (slice C — delivered)
+1. **Add TWO ops to `Forge`, both backends, both consumed by `deskevidence` in this change.**
+   `WriteFile(repo, WriteFileInput)` writes a file's whole content on a branch (GitHub Contents
+   API ↔ GitLab Repository Files API), folding: the idempotency-noop read (returns a `Changed`
+   flag, writes nothing on byte-identical content); the append-only shrink guard (`AppendOnly`
+   passed in, the backend refuses post-fetch below the branch's current row count); the
+   default-branch writability probe (a `DefaultBranchNotWritable` sentinel — GitLab's protected
+   default; GitHub's is directly writable by the verifier App); and the branch-creation fallback
+   (`StartBranch` cuts the side branch inline — no new `CreateRef` op). `ReadFile(repo,
+   ReadFileInput)` reads a file's content at a ref, consumed by the `--brief-path` Evidence merge
+   (read the remote brief → merge the `## Evidence` section → write via `WriteFile`). Record both
+   in `docs/streams/forge-gitlab/inventory.md` (rows 21–22) and give each a both-backend contract
+   case.
+2. **Migrate `deskevidence` onto the resolver.** Route its Evidence write through `WriteFile` and
+   its brief read through `ReadFile`, under `ForgeFor(fr, "verifier")` with a
+   `SetGitHubCustodyMinter` hook (the /03 / PR #498 precedent). Delete its `apiBaseURL` and its
+   hand-rolled JWT/installation exchange — the mint moves to the identity layer
+   (`desktoken verifier --repo`), reached through a `mintVerifierToken` helper.
+3. **The Evidence lane on a forge with no direct-default-branch push.** When `WriteFile` reports
+   the `DefaultBranchNotWritable` sentinel, `deskevidence` lands the row on a side branch (via
+   `WriteFile` with `StartBranch`) and opens a draft change — and says so on stdout. It does NOT
+   attempt the direct write and report success, and it does NOT skip the row.
+4. **Ratchet untouched at 16.** No `allowedInvocationCeiling` change and no forgeban permit-row
+   change: the forge-method count is not the ratchet, and `deskevidence` has no permit row.
+   `deskpr`/`deskfile`/`deskclose` are rescoped OUT to the follow-on brief `forge-neutral/04b`.
+5. **Amend this brief in the same PR** (done above): enumerate `ReadFile` as in-scope for the
+   slice, and name the `deskpr`/`deskfile`/`deskclose` gh-migration as the follow-on brief. The
+   /03-style test rewrites `deskevidence` needs are permitted (amended row 3 below).
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 |
-| 2 | `cd tools/desk && go test ./cmd/deskpr/... ./cmd/deskfile/... ./cmd/deskclose/... ./cmd/deskevidence/... -count=1` | exit 0 — all four suites green |
-| 3 | `git diff --stat origin/main -- tools/desk/cmd/deskpr tools/desk/cmd/deskfile tools/desk/cmd/deskclose tools/desk/cmd/deskevidence \| grep -c '_test.go' \|\| true` | prints `0` — no verb's own tests were edited to make the migration pass |
-| 4 | `grep -n 'allowedInvocationCeiling' tools/desk/internal/forgeban/allowlist.go` | shows `= 14` |
-| 5 | `cd tools/desk && go test ./internal/forgeban/... -count=1 -v` | exit 0 — the ratchet passes at 14 |
-| 6 | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -count=1 -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -count=1 -v` | exit 0 |
-| 7 | `grep -rnE -e 'runCmd\([^)]*"gh"' -e 'runGH\(' -e 'exec\.Command(Context)?\([^)]*"gh"' tools/desk/cmd/deskpr tools/desk/cmd/deskfile tools/desk/cmd/deskclose --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — written against the WRAPPER form, which is what `#274` reports the old row was blind to |
+| 2 | `cd tools/desk && go test ./cmd/deskevidence/... -count=1` | exit 0 — the migrated suite is green |
+| 3 | *(amended, #509)* — no EXISTING assertion in a migrated test suite is weakened or deleted except gh-argv / hand-rolled-transport assertions replaced by their forge-op equivalents (the /03 precedent); new test files are expected. `deskevidence`'s install-id/JWT tests are gone WITH the code they pinned — the custody question they were about is now the resolver's (`tools/desk/internal/deskkit/forgeresolve_test.go`). | reviewer reads the diff |
+| 4 | `grep -n 'allowedInvocationCeiling' tools/desk/internal/forgeban/allowlist.go` | shows `= 16` — **untouched** (the migration removes no permit row) |
+| 5 | `cd tools/desk && go test ./internal/forgeban/... -count=1` | exit 0 — the ratchet passes at 16 |
+| 6 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestNoForgeCLIShellout\|TestForgeNoPassthrough' -count=1` | exit 0 — the seam grows two ops and stays closed (no generic/endpoint method, no extra exported backend method) |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestForgeGithubGolden\|TestForgeGitlabGolden\|TestForgeGitlabCoverage' -count=1` | exit 0 — `read_file` / `write_file*` golden cases pin both backends' wire, and coverage reconciles the seam against the inventory |
 | 8 | `grep -rn -e 'apiBaseURL' -e 'access_tokens' tools/desk/cmd/deskevidence --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — the hardcoded host and the hand-rolled installation exchange are gone, not merely unused |
-| 9 | `cd tools/desk && go test ./internal/deskkit/ -run TestWriteFileOpBothBackends -count=1 -v` | exit 0 — the new file-write op runs the same scenario names against both backends' recorded fixtures |
-| 10 | `cd tools/desk && go test ./cmd/deskevidence/... -run TestEvidenceLandsAsChangeWhenDefaultBranchClosed -count=1 -v` | **negative path**: with the resolved forge reporting the default branch not directly writable, the run opens a draft change and performs NO direct write — asserted by a recording transport showing zero direct-write calls — and exits 0 with the change named on stdout |
-| 11 | `cd tools/desk && go test ./cmd/deskfile/... ./cmd/deskclose/... -run TestRefusesUnmintedToken -count=1 -v` | **negative path**: with no minted token for the resolved forge, each verb refuses (class 5) naming the remedy and reads NO ambient credential — asserted by an environment carrying a decoy ambient credential that must go untouched |
-| 12 | `cd tools/desk && go test ./cmd/deskpr/... -run TestAmbientFallback -count=1 -v` | exit 0 — whichever way task 1 rules on `--as-app=false`, the test states the ruling: either the flag is gone and its use is refused, or it survives with its refusal semantics unchanged |
-| 13 | `statusgen --root . --consumers --brief forge-neutral/04` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff |
+| 9 | `cd tools/desk && go test ./internal/deskkit/ -run TestWriteFileOpBothBackends -count=1 -v` | exit 0 — the new file ops run the same scenario names (including a `ReadFile` case) against both backends' recorded fixtures |
+| 10 | `cd tools/desk && go test ./cmd/deskevidence/... -run TestEvidenceLandsAsChangeWhenDefaultBranchClosed -count=1 -v` | **negative path**: with the resolved forge reporting the default branch not directly writable, the run opens a draft change and performs NO direct write to that branch — asserted by the recording fake forge showing zero writes to the default branch — and exits 0 with the change named on stdout |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/04` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff |
 
 ## Pre-mortem → detection map
 
 | Failure mode of the work | Caught by |
 |---|---|
-| The migration lands but the wrapper-shelled `gh` path stays reachable — `#274` repeated verbatim | row 7, written against `runCmd(…, "gh", …)` / `runGH(` rather than `exec.Command("gh")`; plus row 6's launch-site walk as a second instrument |
-| The acting identity silently changes and nobody notices which account now files issues | row 11 (refuses without a minted token, so the identity is never implicit) + the human gate, which reads task 1's recorded decision |
-| An ambient credential is quietly used as a fallback when the mint fails | row 11's decoy credential must go untouched |
-| A file-write op is added with no consuming call site, violating the freeze rule | row 9 + the inventory entry |
-| On a forge with no direct-default-branch push, `deskevidence` reports success having written nothing | row 10 asserts a change was opened AND zero direct writes occurred |
+| A file op is added with no consuming call site, violating the freeze rule | row 9 + rows 21–22 of the inventory + `deskevidence`'s own suite (row 2) |
+| The seam grows a generic/passthrough op behind the two file ops | row 6 (`TestForgeNoPassthrough`: no generic-verb method, no endpoint parameter, no extra exported backend method) |
+| The extraction changes a backend's wire behaviour | row 7 (the golden corpora pin `read_file` / `write_file*` per backend) |
+| On a forge with no direct-default-branch push, `deskevidence` reports success having written nothing | row 10 asserts a change was opened AND zero direct writes to the default branch occurred |
 | The Evidence row is skipped entirely rather than re-routed, so a verified brief has no Evidence | row 10 asserts exit 0 with the change named — a skip would produce neither |
-| The ratchet is not lowered so the gain is not locked in | rows 4 + 5 |
-| `deskevidence`'s bot commit identity is lost when the JWT exchange moves to the resolver | row 2 (its suite covers the commit identity) + `TestCommitIdentityPerForge` (planned) from forge-neutral/02 |
+| `deskevidence`'s bot commit identity is lost when the JWT exchange moves to the resolver | row 2 (its suite covers the attribution three-state via the author `WriteFile` reports) |
+| The ratchet is silently moved when it should not be | rows 4 + 5 (ceiling stays 16, no permit-row change) |
 | The verify-desk skill text still describes a direct-to-default-branch Evidence landing | **no row** — deliberately deferred to forge-neutral/10, which proves the loop shape before the prose changes; recorded in `consumers:` as a follow-up rather than left implicit |
 
 ## Evidence

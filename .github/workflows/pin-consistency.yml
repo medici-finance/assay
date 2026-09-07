@@ -1,0 +1,80 @@
+name: pin-consistency
+# The CI-GATING leg for the version-pin surface — the adopter front door.
+#
+# WHY A DEDICATED JOB, in the same shape and for the same reason as
+# forge-surface-control.yml and leaksweep-control.yml: ci.yml deliberately runs
+# `go build` + `go vet` only and skips `go test`, so a control proven by
+# `go test` executes NOWHERE unless a job runs it explicitly. The pin controls
+# (umbrella-pin three-state, marker consistency, artifact-pin grammar, the
+# statusgen thin-wrapper check) are all `go test` controls, so today a PR that
+# edits nothing but a pin file gets build+vet+skillslint and no pin check at
+# all — the pins can go inconsistent with the released artifacts and no PR is
+# blocked.
+#
+# SCOPE — every file the pin controls READ (the paired-versions pin file, the
+# plugin manifest whose version it must agree with, the scaffolded adopter pin
+# file) plus the package the controls live in. A trigger narrower than what a
+# control reads makes the control advisory rather than enforced.
+#
+# -count=1 is load-bearing: a cached `--- PASS:` would replay at exit 0 against
+# a pin file the check never re-read.
+#
+# WHERE THIS RUNS — the self-hosted runner `medici-builder-public`, matching
+# ci.yml and forge-surface-control.yml. That runner does NOT reach GitHub's
+# release-asset CDN, so the Go toolchain is hand-installed from go.dev/dl
+# (→ dl.google.com) rather than via actions/setup-go.
+
+on:
+  merge_group:
+  pull_request:
+    paths:
+      - "plugins/assay/paired-versions.yaml"
+      - "plugins/assay/.claude-plugin/plugin.json"
+      - "examples/adopter-scaffold/.assay-versions"
+      - "tools/desk/internal/deskkit/**"
+      - ".github/workflows/pin-consistency.yml"
+  push:
+    branches: [main]
+    paths:
+      - "plugins/assay/paired-versions.yaml"
+      - "plugins/assay/.claude-plugin/plugin.json"
+      - "examples/adopter-scaffold/.assay-versions"
+      - "tools/desk/internal/deskkit/**"
+      - ".github/workflows/pin-consistency.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pin-consistency-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  pin-consistency:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Go toolchain — hand-installed from go.dev/dl (→ dl.google.com), NOT
+      # actions/setup-go, for the same reason ci.yml documents: the runner does
+      # not reach GitHub's release-asset CDN.
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: Pin controls
+        run: |
+          set -euo pipefail
+          go version
+          cd tools/desk
+          go test ./internal/deskkit/ -count=1 -v -run \
+            'TestCheckPins|TestMarker_|TestUmbrellaPin|TestArtifactPin|TestPinTagGrammar|TestStatusgenPinIsThinWrapper|TestVersionPinned|TestVersionUnpinned|TestVersionStampedFromReleaseWorkflow'

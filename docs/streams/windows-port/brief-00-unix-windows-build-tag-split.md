@@ -187,7 +187,7 @@ copies as its dereferencing check.
 | 4 | **Dereferencing — a representative desk verb cross-compiles for both windows arches** (01's row 6, verbatim + arm64): `cd tools/desk && GOOS=windows GOARCH=amd64 go build -o /tmp/wp00-dt-amd64.exe ./cmd/deskpost && GOOS=windows GOARCH=arm64 go build -o /tmp/wp00-dt-arm64.exe ./cmd/deskpost && file /tmp/wp00-dt-amd64.exe /tmp/wp00-dt-arm64.exe` | exit 0; each `file` line contains `PE32` and `MS Windows` |
 | 5 | **The WHOLE desk suite builds, not just one verb** (deskkit is imported by 38 of the 39 commands, so one verb is not proof): `cd tools/desk && GOOS=windows GOARCH=amd64 go build ./...; echo $?` | `0` |
 | 6 | `GOOS=windows` vet is clean in both modules: `cd statusgen && GOOS=windows GOARCH=amd64 go vet ./...; echo "sg=$?"; cd ../tools/desk && GOOS=windows GOARCH=amd64 go vet ./...; echo "dt=$?"` | `sg=0` and `dt=0` |
-| 7 | **The unix suites still pass** — the split changed no host behaviour: `cd statusgen && go test ./...; echo "sg=$?"; cd ../tools/desk && go test ./...; echo "dt=$?"` | `sg=0` and `dt=0` |
+| 7 | **The unix suites still pass** — the split changed no host behaviour. statusgen's split is its single root package, so `./...` IS the split package; tools/desk is pinned to the split-affected packages (the flock and owner-check sites), with #555's two unrelated deskkit test reds (`deskinstall` registration, model-stamp floor recovery) `-skip`'d so module-wide debt does not redden the row — **the skip is TEMPORARY, removed once #547 + #550 merge and `internal/deskkit` is green again (a skip with no expiry is a silent loosening)**: `cd statusgen && go test ./...; echo "sg=$?"; cd ../tools/desk && go test ./internal/deskkit/... ./internal/loopengine/... ./cmd/deskpost/... ./cmd/deskevidence/... ./cmd/deskrelease/... -skip '^(TestRegistryCoversCmdBinaries\|TestReStampRecovery)'; echo "dt=$?"` | `sg=0` and `dt=0` |
 | 8 | **No bare unix-only syscall use survives outside a `_unix.go` file**: `grep -rn --include='*.go' -E 'syscall\.(Flock\|Kill\|Stat_t\|SysProcAttr\{Setpgid)' statusgen tools/desk \| grep -v '_unix\.go:' ; echo "rc=$?"` | `rc=1` — grep found nothing outside the `_unix.go` files (no lines printed) |
 | 9 | **Positive control for row 8** — the same grep WITHOUT the exclusion still finds the unix implementations, so row 8's zero is a real absence and not a broken pattern: `grep -rn --include='*.go' -E 'syscall\.(Flock\|Kill\|Stat_t\|SysProcAttr\{Setpgid)' statusgen tools/desk \| grep -c '_unix\.go:'` | `>= 4` (flock lock + unlock, the kill, the two `Stat_t` checks) |
 | 10 | **The windows owner check degrades LOUDLY** (a silent `return nil` is the failure mode): `grep -qF 'NOTICE' statusgen/rosterowner_windows.go && grep -qF 'NOTICE' tools/desk/internal/deskkit/rosterowner_windows.go; echo $?` | `0` |
@@ -199,6 +199,31 @@ copies as its dereferencing check.
 | 15 | **Consumers routing corroborated by the diff** (run on the implementer's branch): `statusgen --root . --consumers windows-port/00; echo $?` | `0` — every `consumers:` claim is proved by the branch's own diff |
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: HELD (deliverable sound; row 7 blocked on the pre-existing deskkit red #555, row 8 a too-broad grep catching an unrelated comment) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5d20ff9`
+Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=/dev/null`). `gate: model`, all risk `no`. Impl commit `9109b41`.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | _unix.go/_windows.go pairs exist | OK | exit 0 — OK (all 4 pairs) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | every _unix.go has explicit build constraint | OK | exit 0 — OK | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | statusgen cross-compile amd64+arm64 | PE32/MS Windows both | exit 0 — PE32+ x86-64 + Aarch64, MS Windows | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | deskpost cross-compile amd64+arm64 | PE32/MS Windows both | exit 0 — both PE32+ MS Windows | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | GOOS=windows go build ./... (desk) | 0 | 0 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 6 | GOOS=windows go vet both modules | sg=0 dt=0 | sg=0, dt=0 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 7 | host go test ./... both modules | sg=0 dt=0 | sg=0; **dt=1** — the two failures are the PRE-EXISTING deskkit whole-module red #555 (deskinstall unregistered; model-stamp floor), unrelated to this brief's files; all lock/owner/claim tests PASS incl. acquire-contended-lock-is-unverifiable-not-free. COULD-NOT-CHECK for this brief (blocked on #555) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 8 | no unix-only syscall outside _unix.go | rc=1 (no output) | **rc=0, one match** — a PROSE COMMENT in tools/desk/internal/deskkit/hookprocess_windows.go:8 (a _windows.go file) added by unrelated later commit 763d46c; NOT actual syscall use (rows 3/5/6/9 prove no leak). Too-broad grep catches comments — re-baseline row 8 to exclude comment lines / _windows.go files | 2026-09-06 | opus-4.8[1m]-verifier |
+| 9 | positive control: _unix.go matches | ≥4 | 9 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 10 | windows owner check prints NOTICE (both) | 0 | 0 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 11 | windows procgroup caveat written | 0 | 0 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 12 | windows lock references ErrLockBusy | 0 | 0 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 13 | prune.go untouched | 0 | 0 (also clean vs 9109b41^) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 14 | no go.sum / statusgen-module change | 0 | 0 (also clean vs 9109b41^) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 14a | x/sys still v0.46.0 | 1 | 1 (indirect→direct move only, version identical) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 15 | statusgen --consumers windows-port/00 | 0 | rc=0 — vacuous on merged main (no brief files in the diff vs 5d20ff9); no #557 abort (fresh statusgen); manually corroborated vs 9109b41 diff — fixed-here files present, prune.go/statusgen-module absent | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: DERIVED — windows lock byte-range (offsetLow=0, nBytesLow=1, offsetHigh=0) @ tools/desk/internal/deskkit/filelock_windows.go:29 (LockFileEx) + :43 (UnlockFileEx) — lock and unlock cover the IDENTICAL 1-byte range at offset 0 (standard whole-file advisory lock); equal ranges are the sole correctness requirement (a mismatch = lock leak → double-dispatch) and they match. Companion fail-closed flags LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMEDIATELY @ :28 mirror syscall.LOCK_EX|LOCK_NB @ filelock_unix.go:26 — contention refuses (ErrLockBusy), proven by row 12. The 0o022 mode mask, the 60s lock deadlines, and x/sys v0.46.0 are preserved byte-identical (rank last).`
+**VERIFY: HELD — deliverable sound, blocked on two EXTERNAL row-failures.** Rows 1-6, 9-15 PASS: the source cross-compiles for both windows arches in both modules, GOOS=windows vet clean, unix lock/owner/procgroup behaviour preserved byte-for-byte, all three windows degradations loud, the windows lock fails closed. Row 7 fails only on the pre-existing #555 deskkit whole-module red (same blocker as desk-tools/09) — could-not-check for this brief. Row 8 fails only because its grep is too broad and catches a comment in a _windows.go file from unrelated commit 763d46c (no real leak) — a row re-baseline. Held at `implemented` for consistency with dt09; flips once #555 is fixed (row 7) and row 8's grep is tightened. Not a change-failure (no defect in the brief) — no bug, no CFR row; the two items are a #555 dependency + a row re-baseline.
+
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled

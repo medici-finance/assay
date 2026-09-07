@@ -39,7 +39,7 @@ rows:
 // TestPrivateDirDoNotCopyWholesaleWithholdClean: a *-private dir covered by the
 // wholesale docs/streams/ do-not-copy prefix resolves to do-not-copy — clean.
 func TestPrivateDirDoNotCopyWholesaleWithholdClean(t *testing.T) {
-	root, s := privateStreamFixture(t, "methodology", wholesaleWithhold)
+	root, s := privateStreamFixture(t, "example-track", wholesaleWithhold)
 	problems, notices := privateStreamDoNotCopyProblems(root, []*Stream{s})
 	if len(problems) != 0 {
 		t.Errorf("a *-private dir under the wholesale do-not-copy prefix must be clean; got %v", problems)
@@ -58,12 +58,12 @@ rows:
     kind: tree
     disposition: copy
     reason: (hypothetical) the streams tree is public
-  - path: docs/streams/methodology-private/
+  - path: docs/streams/example-track-private/
     kind: tree
     disposition: do-not-copy
     reason: this private sibling is withheld even though the tree above is copy
 `
-	root, s := privateStreamFixture(t, "methodology", manifest)
+	root, s := privateStreamFixture(t, "example-track", manifest)
 	problems, _ := privateStreamDoNotCopyProblems(root, []*Stream{s})
 	if len(problems) != 0 {
 		t.Errorf("an exact do-not-copy row (longest match) must win and be clean; got %v", problems)
@@ -75,17 +75,17 @@ rows:
 func TestPrivateDirDoNotCopyCopyDispositionReds(t *testing.T) {
 	manifest := `schema: publication-manifest-v1
 rows:
-  - path: docs/streams/methodology-private/
+  - path: docs/streams/example-track-private/
     kind: tree
     disposition: copy
     reason: MIS-SET — a private stream marked copy, which must red
 `
-	root, s := privateStreamFixture(t, "methodology", manifest)
+	root, s := privateStreamFixture(t, "example-track", manifest)
 	problems, _ := privateStreamDoNotCopyProblems(root, []*Stream{s})
 	if len(problems) != 1 {
 		t.Fatalf("a *-private dir marked copy must produce exactly 1 problem; got %d: %v", len(problems), problems)
 	}
-	if !strings.Contains(problems[0], "methodology-private") || !strings.Contains(problems[0], "copy") {
+	if !strings.Contains(problems[0], "example-track-private") || !strings.Contains(problems[0], "copy") {
 		t.Errorf("problem must name the dir and its bad disposition; got %q", problems[0])
 	}
 }
@@ -101,7 +101,7 @@ rows:
     disposition: copy
     reason: unrelated row; nothing covers docs/streams/
 `
-	root, s := privateStreamFixture(t, "methodology", manifest)
+	root, s := privateStreamFixture(t, "example-track", manifest)
 	problems, _ := privateStreamDoNotCopyProblems(root, []*Stream{s})
 	if len(problems) != 1 {
 		t.Fatalf("an uncovered *-private dir must produce exactly 1 problem; got %d: %v", len(problems), problems)
@@ -115,7 +115,7 @@ rows:
 // publication manifest present cannot be verified — a could-not-check NOTICE,
 // never a silent pass.
 func TestPrivateDirDoNotCopyNoManifestIsCouldNotCheck(t *testing.T) {
-	root, s := privateStreamFixture(t, "methodology", "") // no manifest written
+	root, s := privateStreamFixture(t, "example-track", "") // no manifest written
 	problems, notices := privateStreamDoNotCopyProblems(root, []*Stream{s})
 	if len(problems) != 0 {
 		t.Errorf("a missing manifest must not be a hard PROBLEM; got %v", problems)
@@ -128,7 +128,7 @@ func TestPrivateDirDoNotCopyNoManifestIsCouldNotCheck(t *testing.T) {
 // TestPrivateDirDoNotCopyUnparseableManifestIsCouldNotCheck: a present but
 // malformed manifest is could-not-check, not a false pass or a false fail.
 func TestPrivateDirDoNotCopyUnparseableManifestIsCouldNotCheck(t *testing.T) {
-	root, s := privateStreamFixture(t, "methodology", "schema: x\nrows: [ this is : not valid yaml")
+	root, s := privateStreamFixture(t, "example-track", "schema: x\nrows: [ this is : not valid yaml")
 	problems, notices := privateStreamDoNotCopyProblems(root, []*Stream{s})
 	if len(problems) != 0 {
 		t.Errorf("an unparseable manifest must not be a hard PROBLEM; got %v", problems)
@@ -142,7 +142,7 @@ func TestPrivateDirDoNotCopyUnparseableManifestIsCouldNotCheck(t *testing.T) {
 // stream never loads the manifest and emits nothing (the public-repo posture).
 func TestPrivateDirDoNotCopyInertWithoutPrivateStream(t *testing.T) {
 	root := t.TempDir()
-	s := &Stream{Name: "methodology", Dir: filepath.Join(root, "docs", "streams", "methodology")}
+	s := &Stream{Name: "example-track", Dir: filepath.Join(root, "docs", "streams", "example-track")}
 	problems, notices := privateStreamDoNotCopyProblems(root, []*Stream{s})
 	if len(problems) != 0 || len(notices) != 0 {
 		t.Errorf("no *-private stream → the lint must be fully inert; got problems=%v notices=%v", problems, notices)
@@ -155,10 +155,10 @@ func TestPrivateDirDoNotCopyResolvePrecedence(t *testing.T) {
 	m := &pubManifest{Rows: []pubManifestRow{
 		{Path: "docs/", Disposition: "copy"},
 		{Path: "docs/streams/", Disposition: "do-not-copy"},
-		{Path: "docs/streams/methodology-private/", Disposition: "relocate"},
+		{Path: "docs/streams/example-track-private/", Disposition: "relocate"},
 	}}
-	row, ok := m.resolveDir("docs/streams/methodology-private/")
-	if !ok || row.Path != "docs/streams/methodology-private/" {
+	row, ok := m.resolveDir("docs/streams/example-track-private/")
+	if !ok || row.Path != "docs/streams/example-track-private/" {
 		t.Errorf("exact/longest match must win; got ok=%v row=%+v", ok, row)
 	}
 	row, ok = m.resolveDir("docs/streams/other-private/")

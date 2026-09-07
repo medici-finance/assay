@@ -1,0 +1,2 @@
+### Changed
+- `windows-port/00`: re-scoped Verify row 7's whole-module `go test ./...` in tools/desk to the split-affected packages (`internal/deskkit`, `internal/loopengine`, `cmd/deskpost`, `cmd/deskevidence`, `cmd/deskrelease` — the flock and owner-check sites), with #555's two unrelated deskkit test reds `-skip`'d; statusgen stays `./...` (its single root package is the split package). CI still runs the whole suite.

@@ -76,13 +76,28 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 		base = abs
 	}
 
+	review := reviewKit(o.kit)
+
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Assignment — %s\n\n", o.item)
 	fmt.Fprintf(&b, "- **Item key:** `%s`\n", o.item)
-	fmt.Fprintf(&b, "- **Target repo:** `%s` — the PR opens THERE, not anywhere else.\n", repo)
-	fmt.Fprintf(&b, "- **Checkout base:** `%s` — the `git -C` source you branch FROM. It is not your writable root.\n", base)
+	if review {
+		// A reviewer opens no PR, so the "the PR opens THERE" framing is not just noise here —
+		// it is the very scaffold that leads a reviewer to open a spurious draft PR. The repo
+		// is named as the tree the PR under review belongs to, which is the value the review
+		// clauses require path claims to be resolved against.
+		fmt.Fprintf(&b, "- **Target repo:** `%s` — the repository the PR under review belongs to; resolve every path claim there.\n", repo)
+	} else {
+		fmt.Fprintf(&b, "- **Target repo:** `%s` — the PR opens THERE, not anywhere else.\n", repo)
+	}
+	fmt.Fprintf(&b, "- **Checkout base:** `%s` — the `git -C` source your worktree is cut FROM. It is not your writable root.\n", base)
 	fmt.Fprintf(&b, "- **Your home worktree:** `%s` — every file operation stays under it.\n", home)
-	fmt.Fprintf(&b, "- **Branch:** `%s`\n", branch)
+	// The auto-cut worktree branch is the IMPLEMENTER's output surface. A reviewer produces
+	// no branch and must review the PR's HEAD, not this fresh branch off main, so naming it
+	// here would only invite a reviewer to work on the wrong tree.
+	if !review {
+		fmt.Fprintf(&b, "- **Branch:** `%s`\n", branch)
+	}
 	fmt.Fprintf(&b, "- **Execution tier:** `%s`\n", o.tier)
 	if strings.TrimSpace(o.brief) != "" {
 		fmt.Fprintf(&b, "- **Specification:** `%s` — implement to its contract; do not expand scope.\n", o.brief)
@@ -96,25 +111,15 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	fmt.Fprintf(&b, "```\ngit -C %s worktree add %s refs/remotes/origin/main --detach\n```\n\n", base, home)
 	b.WriteString("Check `git rev-parse --show-toplevel` before your first write and ABORT if it resolves " +
 		"anywhere but your home worktree.\n\n")
-	b.WriteString("## Open the draft PR in that repo\n\n")
-	fmt.Fprintf(&b, "Run `deskpr create` from INSIDE your worktree, so the PR lands against `%s`'s own main. "+
-		"Stop at `implemented`: never set verified/done and never flip a PR ready.\n\n", repo)
-	b.WriteString("Self-register the instant your draft PR opens:\n\n")
-	fmt.Fprintf(&b, "```\nDESK_SESSION=<your-session> deskroster set --repo %s --pr <N> --what %q\n```\n\n",
-		shortRepo(repo), o.item)
-	b.WriteString("Release the dispatch claim once your branch is pushed — branch-as-claim takes over:\n\n")
-	// With no --claim-root the script sits in the agent's own worktree, so the stable
-	// repo-relative spelling is kept (it is also machine-independent, which keeps two
-	// dispatchers' prompts byte-identical). With --claim-root the worktree does NOT carry
-	// the script, so the resolved path is stated — a tool to invoke, not a place to work.
-	releaseTool := claimScriptRel
-	if strings.TrimSpace(o.claimRoot) != "" {
-		releaseTool = plan.claimScript
+	// The assignment's action half is the ONE thing that differs by class: an implementer
+	// OPENS a PR and stops at `implemented`; a reviewer opens nothing, produces a VERDICT,
+	// and reviews the PR's head. Emitting the implementer scaffold to a reviewer is the
+	// defect this split fixes — a reviewer handed "open the draft PR" opens a spurious one.
+	if review {
+		writeReviewAssignment(&b, o, plan, repo, home)
+	} else {
+		writeWorkerAssignment(&b, o, plan, repo)
 	}
-	// The release names the CLAIM key — the one the acquire was taken under (translated
-	// from the plan item key when they differ) — or the agent would release a key nobody
-	// holds and the real claim would sit until its TTL.
-	fmt.Fprintf(&b, "```\n%s release %q --repo %s\n```\n", releaseTool, plan.claimKey, repo)
 
 	if strings.EqualFold(o.tier, "strong") {
 		fmt.Fprintf(&b, "\n%s\n", tierClause)
@@ -129,4 +134,77 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	b.WriteString(kit)
 	b.WriteString("\n")
 	return b.String(), nil
+}
+
+// reviewKit reports whether this dispatch is a REVIEW dispatch. A reviewer's assignment is
+// read-only and PR-head-shaped rather than the implementer's open-a-PR scaffold, so the one
+// place the assignment differs by class turns on this.
+func reviewKit(kit string) bool { return strings.EqualFold(strings.TrimSpace(kit), "review") }
+
+// writeWorkerAssignment emits the IMPLEMENTER's action half: open the draft PR in the target
+// repo, self-register the instant it opens, and release the dispatch claim once the branch is
+// pushed so branch-as-claim takes over. This is the scaffold an agent that PRODUCES a change
+// needs; a reviewer, which produces a verdict and no branch, gets writeReviewAssignment. The
+// text here is byte-for-byte what every worker dispatch has always carried.
+func writeWorkerAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo string) {
+	b.WriteString("## Open the draft PR in that repo\n\n")
+	fmt.Fprintf(b, "Run `deskpr create` from INSIDE your worktree, so the PR lands against `%s`'s own main. "+
+		"Stop at `implemented`: never set verified/done and never flip a PR ready.\n\n", repo)
+	b.WriteString("Self-register the instant your draft PR opens:\n\n")
+	fmt.Fprintf(b, "```\nDESK_SESSION=<your-session> deskroster set --repo %s --pr <N> --what %q\n```\n\n",
+		shortRepo(repo), o.item)
+	b.WriteString("Release the dispatch claim once your branch is pushed — branch-as-claim takes over:\n\n")
+	writeReleaseClaim(b, o, plan, repo)
+}
+
+// writeReviewAssignment emits the REVIEWER's action half. A reviewer is READ-ONLY: it opens
+// no PR, runs no `deskpr create`, pushes no branch, and does not stop at `implemented` —
+// those are the implementer's scaffold, and a reviewer handed them can open a spurious draft
+// PR for a PR that is already open or waste a round pushing a branch it must never touch. A
+// reviewer reviews the PULL REQUEST's HEAD, so the assignment fetches pull/<N>/head into the
+// worktree rather than leaving it on the fresh branch off main the worktree was cut on; a
+// reviewer that does not fetch the head reviews the wrong tree. Its output is a VERDICT posted
+// via `deskpost` per the review clauses below — never a PR, a merge, or a ready-flip.
+func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo, home string) {
+	b.WriteString("## Review the open PR — READ-ONLY\n\n")
+	fmt.Fprintf(b, "You are REVIEWING %s in `%s`. This is a REVIEW, not an implementation: you produce a "+
+		"VERDICT, never a change. Do not create a pull request, do not push a branch, and do not advance "+
+		"the item past review. A reviewer posts its verdict via `deskpost` (per the standing review "+
+		"clauses below); it never implements, merges, or flips a PR ready.\n\n", prRef(o.pr), repo)
+	b.WriteString("Review the PULL REQUEST's HEAD, not the fresh branch your worktree was cut on. Fetch the " +
+		"head into your worktree and check it out first:\n\n")
+	if o.pr > 0 {
+		fmt.Fprintf(b, "```\ngit -C %s fetch origin pull/%d/head && git -C %s checkout FETCH_HEAD\n```\n\n",
+			home, o.pr, home)
+	} else {
+		fmt.Fprintf(b, "```\ngit -C %s fetch origin pull/<N>/head && git -C %s checkout FETCH_HEAD\n```\n\n",
+			home, home)
+	}
+	b.WriteString("Release the dispatch claim once your verdict is posted:\n\n")
+	writeReleaseClaim(b, o, plan, repo)
+}
+
+// writeReleaseClaim emits the dispatch-claim release command. The release names the CLAIM key
+// — the one the acquire was taken under (translated from the plan item key when they differ)
+// — or the agent would release a key nobody holds and the real claim would sit until its TTL.
+// With no --claim-root the script sits in the agent's own worktree, so the stable
+// repo-relative spelling is kept (it is also machine-independent, which keeps two dispatchers'
+// prompts byte-identical). With --claim-root the worktree does NOT carry the script, so the
+// resolved path is stated — a tool to invoke, not a place to work.
+func writeReleaseClaim(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo string) {
+	releaseTool := claimScriptRel
+	if strings.TrimSpace(o.claimRoot) != "" {
+		releaseTool = plan.claimScript
+	}
+	fmt.Fprintf(b, "```\n%s release %q --repo %s\n```\n", releaseTool, plan.claimKey, repo)
+}
+
+// prRef names the PR under review for the assignment prose. --pr is optional on a review
+// dispatch, so when it is absent the prose points at "the PR named in your dispatch" rather
+// than printing a wrong number.
+func prRef(pr int) string {
+	if pr > 0 {
+		return fmt.Sprintf("PR #%d", pr)
+	}
+	return "the PR named in your dispatch"
 }

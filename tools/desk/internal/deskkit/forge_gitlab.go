@@ -1,7 +1,9 @@
 package deskkit
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -232,6 +234,41 @@ func gitlabTime(t *time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
+// gitlabMergeableState maps GitLab's `detailed_merge_status` to the three-value
+// PullRequest.Mergeable vocabulary.
+//
+// GitLab reports a DOZEN detailed statuses where GitHub reports a tri-state, and the mapping
+// is deliberately narrow in both directions:
+//
+//   - only `mergeable` maps to MERGEABLE. Everything the forge has not positively cleared
+//     stays out of that bucket.
+//   - only the two statuses that describe the CHANGE ITSELF being un-mergeable —
+//     `broken_status` (the source cannot be merged into the target) and `conflict` — map to
+//     CONFLICTING, because CONFLICTING is what the consuming gate treats as a decided
+//     refusal rather than a retry.
+//   - EVERYTHING ELSE maps to UNKNOWN. That includes `checking`/`unchecked` (not computed
+//     yet), the policy holds (`not_approved`, `blocked_status`, `discussions_not_resolved`,
+//     `draft_status`, `ci_still_running`, …) and any status this table has never seen.
+//
+// The last clause is the load-bearing one. A GitLab release that adds a new detailed status
+// must not fall into MERGEABLE by default, and it must not fall into CONFLICTING either — a
+// policy hold is not a conflict, and reporting it as one would tell a caller the change needs
+// rebasing when it needs an approval. UNKNOWN is the honest answer for a status this tree has
+// not been taught, and the consuming gate reads UNKNOWN as could-not-check.
+//
+// An EMPTY detailed_merge_status (an older instance that does not send the field) is UNKNOWN
+// for the same reason: absence is not a clearance.
+func gitlabMergeableState(detailed string) string {
+	switch strings.ToLower(strings.TrimSpace(detailed)) {
+	case "mergeable":
+		return Mergeable
+	case "broken_status", "conflict":
+		return MergeableConflicting
+	default:
+		return MergeableUnknown
+	}
+}
+
 // gitlabChangedFileCount maps GitLab's `changes_count` to the interface's exact
 // ChangedFiles int, FAILING CLOSED on truncation.
 //
@@ -390,8 +427,14 @@ func (g *GitLabForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 		State:        gitlabState(mr.State),
 		Draft:        mr.Draft,
 		NodeID:       gitlabNodeID(repo, int(mr.IID)),
+		Body:         mr.Description,
 		ChangedFiles: changed,
 		HeadSHA:      mr.SHA,
+		Mergeable:    gitlabMergeableState(mr.DetailedMergeStatus),
+		Labels:       append([]string(nil), mr.Labels...),
+		URL:          mr.WebURL,
+		HeadRef:      mr.SourceBranch,
+		BaseRef:      mr.TargetBranch,
 	}
 	if mr.Author != nil {
 		out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
@@ -750,8 +793,9 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 				continue
 			}
 			out.Statuses = append(out.Statuses, StatusContext{
-				State:   gitlabBuildState(s.Status),
-				Context: s.Name,
+				State:     gitlabBuildState(s.Status),
+				Context:   s.Name,
+				CreatedAt: gitlabTime(s.CreatedAt),
 			})
 		}
 		if resp == nil || resp.NextPage == 0 {
@@ -781,6 +825,11 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 			status, conclusion := gitlabJobStatus(j.Status)
 			out.CheckRuns = append(out.CheckRuns, CheckRun{
 				Name: j.Name, Status: status, Conclusion: conclusion,
+				// GitLab's finished_at is the job's true end — the same fact GitHub's
+				// completed_at carries — so the latest-run-per-name reduction orders both
+				// forges' rollups by the same kind of stamp rather than by list position.
+				StartedAt:   gitlabTime(j.StartedAt),
+				CompletedAt: gitlabTime(j.FinishedAt),
 			})
 		}
 		if resp == nil || resp.NextPage == 0 {
@@ -789,6 +838,46 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 	}
 	out.CheckRunsTotalCount = gitlabTotal(lastResp, len(out.CheckRuns))
 	return out, nil
+}
+
+// RequiredStatusChecks answers, for GitLab, whether a merge on the branch is gated on a
+// status check — the forge-neutral question deskflip's checks-green condition asks.
+//
+// The all-tier analog of GitHub's required status checks is the project setting
+// `only_allow_merge_if_pipeline_succeeds`: when it is on, GitLab gates the merge on the
+// pipeline, so an absent pipeline is NOT "nothing required" and the required set is
+// non-empty. When it is off, nothing forces a check and the set is empty. The setting is
+// read from `GET /projects/:id`, which is available at every tier — so this answer does not
+// depend on the Ultimate-only external-status-check surface (those checks are MR-scoped and
+// already surface through ChecksAtHead's statuses; see the forge-gitlab inventory, op 5).
+//
+// A project read that FAILS is could-not-check and is returned as the mapped error, so the
+// caller fails closed rather than assuming nothing is required.
+//
+// The branch argument is accepted for seam parity with GitHub; GitLab's pipeline-gating
+// setting is project-scoped, so the same answer holds for every branch of the project. An
+// empty branch is still refused, matching the GitHub backend's could-not-check.
+func (g *GitLabForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(branch) == "" {
+		return nil, Unverifiable("cannot read the required status checks without a branch name — "+
+			"undetermined is could-not-check", nil)
+	}
+	path := fmt.Sprintf("/projects/%s", g.projectPath(repo))
+	p, _, perr := cl.Projects.GetProject(repo.Slug(), nil)
+	if perr != nil {
+		return nil, g.mapErr(http.MethodGet, path, perr)
+	}
+	if p.OnlyAllowMergeIfPipelineSucceeds {
+		// GitLab names no individual context here — the gate is "the pipeline must succeed" —
+		// so a single synthetic context reports that a check IS required without inventing a
+		// name the forge did not give.
+		return []string{"pipeline"}, nil
+	}
+	return nil, nil
 }
 
 // gitlabBuildState maps a GitLab build state to GitHub's combined-status vocabulary
@@ -1009,25 +1098,38 @@ func (g *GitLabForge) CreateDraftChange(repo ForgeRepo, in DraftChangeInput) (*P
 // `/merge_requests/:iid/notes`, so the kind must be resolved before the write. It is
 // resolved by GetIssue, which carries the both-kinds-exist refusal — deliberately, because
 // posting a comment at the wrong object is exactly the failure that ambiguity produces.
-func (g *GitLabForge) PostComment(repo ForgeRepo, number int, body string) error {
+// The reference it returns carries the note's numeric id and the opaque id EditComment
+// takes. It carries NO url: GitLab's notes API publishes no per-note location, and composing
+// one would be this tree inventing an address the forge never asserted (see Comment.URL).
+func (g *GitLabForge) PostComment(repo ForgeRepo, number int, body string) (*CommentRef, error) {
 	cl, err := g.client()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	kind, err := g.GetIssue(repo, number)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if kind.IsPullRequest {
 		path := fmt.Sprintf("/projects/%s/merge_requests/%d/notes", g.projectPath(repo), number)
-		_, _, perr := cl.Notes.CreateMergeRequestNote(repo.Slug(), int64(number),
+		note, _, perr := cl.Notes.CreateMergeRequestNote(repo.Slug(), int64(number),
 			&gitlab.CreateMergeRequestNoteOptions{Body: gitlab.Ptr(body)})
-		return g.mapErr(http.MethodPost, path, perr)
+		if perr != nil {
+			return nil, g.mapErr(http.MethodPost, path, perr)
+		}
+		return &CommentRef{ID: gitlabNoteID(repo, number, note.ID), DatabaseID: note.ID}, nil
 	}
 	path := fmt.Sprintf("/projects/%s/issues/%d/notes", g.projectPath(repo), number)
-	_, _, perr := cl.Notes.CreateIssueNote(repo.Slug(), int64(number),
+	note, _, perr := cl.Notes.CreateIssueNote(repo.Slug(), int64(number),
 		&gitlab.CreateIssueNoteOptions{Body: gitlab.Ptr(body)})
-	return g.mapErr(http.MethodPost, path, perr)
+	if perr != nil {
+		return nil, g.mapErr(http.MethodPost, path, perr)
+	}
+	// An ISSUE note's id is deliberately NOT wrapped in a merge-request-shaped opaque id:
+	// EditComment addresses merge-request notes, and handing back an id that would route an
+	// edit at the wrong endpoint is worse than handing back none. The numeric id is reported
+	// so the write is still answerable.
+	return &CommentRef{DatabaseID: note.ID}, nil
 }
 
 // PostReview submits a head-pinned verdict on a merge request.
@@ -1246,6 +1348,418 @@ func (g *GitLabForge) DeleteRef(repo ForgeRepo, ref string) error {
 	path := fmt.Sprintf("/projects/%s/repository/branches/%s", g.projectPath(repo), url.PathEscape(branch))
 	_, derr := cl.Branches.DeleteBranch(repo.Slug(), branch)
 	return g.mapErr(http.MethodDelete, path, derr)
+}
+
+// ListLabelEvents returns the merge request's label-application events with the user that
+// applied each one.
+//
+// GitLab's RESOURCE LABEL EVENTS endpoint is the exact analog of the GitHub timeline read
+// this replaces: it records add/remove per label with the acting user, which is the one fact
+// the model-capability floor needs and the label LIST cannot give. Events whose action is
+// not `add` are dropped, matching the GitHub side's filter to `labeled` — a removal is not an
+// attestation.
+//
+// An event whose label GitLab has since DELETED comes back with an empty label name (the
+// documented shape: the event survives, the label record does not). It is dropped rather than
+// emitted as an unnamed attestation, because a stamp nobody can name attests to nothing.
+func (g *GitLabForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/projects/%s/merge_requests/%d/resource_label_events",
+		g.projectPath(repo), number)
+	var out []LabelEvent
+	for page := 1; page <= gitlabMaxNotePage; page++ {
+		chunk, resp, lerr := cl.ResourceLabelEvents.ListMergeRequestsLabelEvents(repo.Slug(), int64(number),
+			&gitlab.ListLabelEventsOptions{
+				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
+			})
+		if lerr != nil {
+			return nil, g.mapErr(http.MethodGet, path, lerr)
+		}
+		for _, e := range chunk {
+			if e == nil || e.Action != "add" || strings.TrimSpace(e.Label.Name) == "" {
+				continue
+			}
+			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username})
+		}
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+	}
+	return out, nil
+}
+
+// gitlabNoteIDScheme prefixes the opaque comment id this backend mints. Like
+// gitlabNodeIDScheme it carries the coordinates the update endpoint needs — project, MR iid
+// and note id — because GitLab's note update is addressed by all three while the interface's
+// EditComment takes only an opaque id. The shape is legible on purpose:
+// `gitlab:<owner>/<name>!<iid>#note<id>`.
+const gitlabNoteIDScheme = "gitlab:"
+
+func gitlabNoteID(repo ForgeRepo, iid int, noteID int64) string {
+	return fmt.Sprintf("%s%s!%d#note%d", gitlabNoteIDScheme, repo.Slug(), iid, noteID)
+}
+
+// parseGitLabNoteID reverses gitlabNoteID, REFUSING anything it did not mint. A GitHub
+// GraphQL node id handed to this backend is a wiring bug; half-parsing it would edit a note
+// in the wrong project.
+func parseGitLabNoteID(id string) (ForgeRepo, int, int64, error) {
+	fail := func() (ForgeRepo, int, int64, error) {
+		return ForgeRepo{}, 0, 0, Refused(fmt.Sprintf(
+			"not a GitLab comment id: %q (expected %s<owner>/<name>!<iid>#note<id>, as minted by the "+
+				"GitLab forge backend's ListComments)", StripControl(id), gitlabNoteIDScheme))
+	}
+	rest, ok := strings.CutPrefix(id, gitlabNoteIDScheme)
+	if !ok {
+		return fail()
+	}
+	changeRef, noteRef, ok := strings.Cut(rest, "#note")
+	if !ok {
+		return fail()
+	}
+	slug, iidStr, ok := strings.Cut(changeRef, "!")
+	if !ok {
+		return fail()
+	}
+	owner, name, ok := strings.Cut(slug, "/")
+	if !ok || owner == "" || name == "" {
+		return fail()
+	}
+	iid, ierr := strconv.Atoi(iidStr)
+	if ierr != nil || iid <= 0 {
+		return fail()
+	}
+	noteID, nerr := strconv.ParseInt(noteRef, 10, 64)
+	if nerr != nil || noteID <= 0 {
+		return fail()
+	}
+	return ForgeRepo{Owner: owner, Name: name}, iid, noteID, nil
+}
+
+// ListComments returns a merge request's notes, oldest first.
+//
+// SYSTEM NOTES ARE DROPPED. GitLab records its own activity ("changed the description",
+// "added label X") as notes with `system: true` in the SAME list as human comments. GitHub
+// keeps those in a separate timeline, so a backend that passed them through would hand a
+// caller a comment list containing entries no account ever wrote — and the consuming
+// upsert filters on authorship, which a system note technically satisfies (it carries the
+// acting user as its author).
+//
+// Comment.Minimized is false for every GitLab note, and that is EXACT rather than a default:
+// GitLab has no minimise/hide-comment feature, so on a GitLab instance no comment is hidden.
+func (g *GitLabForge) ListComments(repo ForgeRepo, number int) ([]Comment, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/projects/%s/merge_requests/%d/notes", g.projectPath(repo), number)
+	var out []Comment
+	for page := 1; page <= gitlabMaxNotePage; page++ {
+		chunk, resp, nerr := cl.Notes.ListMergeRequestNotes(repo.Slug(), int64(number),
+			&gitlab.ListMergeRequestNotesOptions{
+				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
+				// GitLab's default note order is newest-first; the interface promises
+				// oldest-first (GitHub's order), and the consuming newest-wins rule depends
+				// on it, so the order is REQUESTED rather than reversed after the fact —
+				// a local reversal would only reorder the page that was fetched.
+				OrderBy: gitlab.Ptr("created_at"),
+				Sort:    gitlab.Ptr("asc"),
+			})
+		if nerr != nil {
+			return nil, g.mapErr(http.MethodGet, path, nerr)
+		}
+		for _, n := range chunk {
+			if n == nil || n.System {
+				continue
+			}
+			out = append(out, Comment{
+				ID:         gitlabNoteID(repo, number, n.ID),
+				DatabaseID: n.ID,
+				Author:     gitlabAccount(n.Author.ID, n.Author.Username),
+				Body:       n.Body,
+				Minimized:  false,
+				CreatedAt:  gitlabTime(n.CreatedAt),
+			})
+		}
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+	}
+	return out, nil
+}
+
+// EditComment replaces a note's body. The repo argument is carried for the error message
+// only: the note's coordinates travel inside the opaque id (see gitlabNoteID), and a
+// MISMATCH between the two is refused rather than resolved in favour of either — a caller
+// that passes one project's id with another project's coordinate has a wiring bug, and
+// silently trusting one half would write to whichever the backend happened to prefer.
+func (g *GitLabForge) EditComment(repo ForgeRepo, commentID, body string) error {
+	idRepo, iid, noteID, err := parseGitLabNoteID(commentID)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(idRepo.Slug(), repo.Slug()) {
+		return Refused(fmt.Sprintf(
+			"comment id %q names project %s but the call names %s — refusing to guess which is meant",
+			StripControl(commentID), idRepo.Slug(), repo.Slug()))
+	}
+	cl, cerr := g.client()
+	if cerr != nil {
+		return cerr
+	}
+	path := fmt.Sprintf("/projects/%s/merge_requests/%d/notes/%d", g.projectPath(repo), iid, noteID)
+	_, _, uerr := cl.Notes.UpdateMergeRequestNote(repo.Slug(), int64(iid), noteID,
+		&gitlab.UpdateMergeRequestNoteOptions{Body: gitlab.Ptr(body)})
+	return g.mapErr(http.MethodPut, path, uerr)
+}
+
+// ApplyLabels reconciles a merge request's labels.
+//
+// The GitLab mapping is 1:1 with GitHub's in effect but not in shape, and the difference is
+// where the care goes:
+//
+//   - Labels are PROJECT-scoped on both forges, and both require a label to exist before it
+//     can be applied — so the ensure step is `POST /projects/:id/labels`, with an
+//     already-exists response treated as the success case for an ensure exactly as GitHub's
+//     422 is.
+//   - GitLab has NO per-label add/remove endpoints on an MR. Instead ONE `PUT
+//     /merge_requests/:iid` carries `add_labels` and `remove_labels` together, which is
+//     strictly better for this operation: the whole reconciliation lands atomically, where
+//     the GitHub backend has to issue one request per removal.
+//   - GitLab colors REQUIRE a leading `#`; GitHub forbids one. LabelSpec carries the bare
+//     hex digits and each backend renders its own form, so a caller never has to know which
+//     forge it is talking to.
+//
+// The current label set comes from the MR read the family reconciliation needs anyway, so a
+// change with no RemoveFamilies issues no extra read.
+func (g *GitLabForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	proj := g.projectPath(repo)
+	out := &LabelOutcome{}
+	adding := map[string]bool{}
+	for _, l := range change.Add {
+		if strings.TrimSpace(l.Name) == "" {
+			return nil, Refused("refusing to apply an unnamed label — the label NAME is the load-bearing part")
+		}
+		adding[l.Name] = true
+	}
+
+	labelPath := fmt.Sprintf("/projects/%s/labels", proj)
+	for _, l := range change.Add {
+		opts := &gitlab.CreateLabelOptions{Name: gitlab.Ptr(l.Name)}
+		if l.Color != "" {
+			opts.Color = gitlab.Ptr(gitlabLabelColor(l.Color))
+		}
+		if l.Description != "" {
+			opts.Description = gitlab.Ptr(l.Description)
+		}
+		_, _, cerr := cl.Labels.CreateLabel(repo.Slug(), opts)
+		if cerr == nil {
+			continue
+		}
+		var er *gitlab.ErrorResponse
+		if errors.As(cerr, &er) && er.Response != nil && er.Response.StatusCode == http.StatusConflict {
+			continue // already exists — the success case for an ensure
+		}
+		if errors.As(cerr, &er) && er.Response != nil && er.Response.StatusCode == http.StatusBadRequest {
+			// GitLab answers a duplicate label name with 400 + "already exists" on some
+			// versions and 409 on others. Both mean the post-condition already holds.
+			continue
+		}
+		return nil, g.mapErr(http.MethodPost, labelPath, cerr)
+	}
+
+	remove := map[string]bool{}
+	for _, n := range change.Remove {
+		remove[n] = true
+	}
+	if len(change.RemoveFamilies) > 0 {
+		mrPath := fmt.Sprintf("/projects/%s/merge_requests/%d", proj, number)
+		mr, _, gerr := cl.MergeRequests.GetMergeRequest(repo.Slug(), int64(number), nil)
+		if gerr != nil {
+			return nil, g.mapErr(http.MethodGet, mrPath, gerr)
+		}
+		for _, cur := range mr.Labels {
+			if adding[cur] {
+				continue
+			}
+			for _, fam := range change.RemoveFamilies {
+				if fam != "" && strings.HasPrefix(cur, fam) {
+					remove[cur] = true
+					break
+				}
+			}
+		}
+	}
+	removeList := make([]string, 0, len(remove))
+	for _, name := range sortedKeys(remove) {
+		if adding[name] {
+			continue
+		}
+		removeList = append(removeList, name)
+	}
+
+	addList := make([]string, 0, len(change.Add))
+	for _, l := range change.Add {
+		addList = append(addList, l.Name)
+	}
+	if len(addList) == 0 && len(removeList) == 0 {
+		return out, nil
+	}
+	opts := &gitlab.UpdateMergeRequestOptions{}
+	if len(addList) > 0 {
+		opts.AddLabels = (*gitlab.LabelOptions)(&addList)
+	}
+	if len(removeList) > 0 {
+		opts.RemoveLabels = (*gitlab.LabelOptions)(&removeList)
+	}
+	updPath := fmt.Sprintf("/projects/%s/merge_requests/%d", proj, number)
+	if _, _, uerr := cl.MergeRequests.UpdateMergeRequest(repo.Slug(), int64(number), opts); uerr != nil {
+		return nil, g.mapErr(http.MethodPut, updPath, uerr)
+	}
+	out.Added = addList
+	out.Removed = removeList
+	return out, nil
+}
+
+// gitlabLabelColor renders a bare 6-hex-digit LabelSpec color in the form GitLab requires
+// (a leading `#`). A value that already carries one is passed through, and a value that is
+// not hex at all is passed through unchanged so GitLab's own validation — not a silent local
+// rewrite — is what rejects it.
+func gitlabLabelColor(color string) string {
+	c := strings.TrimSpace(color)
+	if c == "" || strings.HasPrefix(c, "#") {
+		return c
+	}
+	return "#" + c
+}
+
+// --- File content (read / write on a branch) ---
+
+// ReadFile reads a file's content at a ref via the Repository Files API. GitLab returns the
+// content base64-encoded; the optimistic-lock id an update must cite is `last_commit_id`, which
+// this maps onto FileContent.SHA (the same opaque-id contract the GitHub blob sha carries). A
+// 404 propagates as a *ForgeAPIError (IsForgeNotFound true) via mapErr.
+func (g *GitLabForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/projects/%s/repository/files/%s", g.projectPath(repo), url.PathEscape(in.File))
+	f, _, ferr := cl.RepositoryFiles.GetFile(repo.Slug(), in.File, &gitlab.GetFileOptions{Ref: gitlab.Ptr(in.Ref)})
+	if ferr != nil {
+		return nil, g.mapErr(http.MethodGet, path, ferr)
+	}
+	decoded, derr := base64.StdEncoding.DecodeString(f.Content)
+	if derr != nil {
+		return nil, Unverifiable("cannot decode base64 content for "+in.File, derr)
+	}
+	sha := f.LastCommitID
+	if sha == "" {
+		sha = f.BlobID
+	}
+	return &FileContent{Content: decoded, SHA: sha, Exists: true}, nil
+}
+
+// WriteFile writes a file's whole content on a branch via the Repository Files API.
+//
+// The DEFAULT-BRANCH WRITABILITY PROBE is the GitLab half of the Evidence-lane design. The
+// GitLab pilot found the default branch takes no direct write for any identity, the owner
+// included, so a direct write to it is refused with the DefaultBranchNotWritable sentinel:
+// nothing is written and no write call is made (the caller lands the change on a side branch
+// instead). The default branch is read from the project rather than guessed.
+//
+// StartBranch is GitLab's inline branch-creation: a write to a branch that does not yet exist,
+// with StartBranch naming the base, creates the branch AS PART of the write — which is why the
+// Evidence-lane fallback needs no separate CreateRef op. The idempotency read and append-only
+// shrink guard are folded in exactly as the GitHub backend's, so the two behave the same.
+func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileResult, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	proj := g.projectPath(repo)
+	res := &WriteFileResult{}
+
+	projPath := fmt.Sprintf("/projects/%s", proj)
+	p, _, perr := cl.Projects.GetProject(repo.Slug(), nil)
+	if perr != nil {
+		return nil, g.mapErr(http.MethodGet, projPath, perr)
+	}
+	if p.DefaultBranch != "" && in.Branch == p.DefaultBranch {
+		res.DefaultBranchNotWritable = true
+		return res, nil
+	}
+
+	var priorSHA string
+	var priorContent []byte
+	exists := false
+	cur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: in.Branch})
+	if rerr != nil {
+		if !IsForgeNotFound(rerr) {
+			return nil, rerr
+		}
+	} else {
+		priorSHA, priorContent, exists = cur.SHA, cur.Content, true
+	}
+
+	if in.AppendOnly {
+		res.PriorRows = forgeRowCount(priorContent)
+		res.Rows = forgeRowCount(in.Content)
+	}
+	if exists && bytes.Equal(priorContent, in.Content) {
+		res.SHA = priorSHA
+		return res, nil
+	}
+	if in.AppendOnly && !in.AllowShrink && exists && res.Rows < res.PriorRows {
+		return nil, Refused(fmt.Sprintf(
+			"refusing an append-only write to %s on %s that would SHRINK it from %d to %d row(s) — "+
+				"almost always a stale-base or wrong-file write; pass AllowShrink when the reduction is intended",
+			in.File, in.Branch, res.PriorRows, res.Rows))
+	}
+
+	filePath := fmt.Sprintf("/projects/%s/repository/files/%s", proj, url.PathEscape(in.File))
+	encoded := base64.StdEncoding.EncodeToString(in.Content)
+	if exists {
+		opt := &gitlab.UpdateFileOptions{
+			Branch:        gitlab.Ptr(in.Branch),
+			Content:       gitlab.Ptr(encoded),
+			Encoding:      gitlab.Ptr("base64"),
+			CommitMessage: gitlab.Ptr(in.Message),
+		}
+		if priorSHA != "" {
+			opt.LastCommitID = gitlab.Ptr(priorSHA)
+		}
+		if in.StartBranch != "" {
+			opt.StartBranch = gitlab.Ptr(in.StartBranch)
+		}
+		if _, _, uerr := cl.RepositoryFiles.UpdateFile(repo.Slug(), in.File, opt); uerr != nil {
+			return nil, g.mapErr(http.MethodPut, filePath, uerr)
+		}
+	} else {
+		opt := &gitlab.CreateFileOptions{
+			Branch:        gitlab.Ptr(in.Branch),
+			Content:       gitlab.Ptr(encoded),
+			Encoding:      gitlab.Ptr("base64"),
+			CommitMessage: gitlab.Ptr(in.Message),
+		}
+		if in.StartBranch != "" {
+			opt.StartBranch = gitlab.Ptr(in.StartBranch)
+		}
+		if _, _, cerr := cl.RepositoryFiles.CreateFile(repo.Slug(), in.File, opt); cerr != nil {
+			return nil, g.mapErr(http.MethodPost, filePath, cerr)
+		}
+	}
+	res.Changed = true
+	// GitLab's file-write response (FileInfo) carries neither a commit sha nor an author, so
+	// SHA and Author are left empty — the honest could-not-check, never a guessed value. A
+	// caller that needs the new lock id reads it back with ReadFile.
+	return res, nil
 }
 
 // --- Identity / transport ---

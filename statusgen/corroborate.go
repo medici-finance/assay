@@ -570,6 +570,12 @@ const (
 	verdictCorroborated verdict = iota
 	verdictMissing
 	verdictNoStamp
+	// verdictCitationUncheckable is the three-state middle: the instrument never
+	// observed the cited artifact (a transient/auth/rate-limit fetch failure), so
+	// it can neither confirm nor deny the citation. It is NOT rounded down to
+	// verdictMissing — an absence the check never observed must not be fabricated
+	// (clause 4 / clause 8). It does not fail the gate.
+	verdictCitationUncheckable
 )
 
 func (v verdict) String() string {
@@ -578,6 +584,8 @@ func (v verdict) String() string {
 		return "CORROBORATED"
 	case verdictMissing:
 		return "MISSING-CORROBORATION"
+	case verdictCitationUncheckable:
+		return "COULD-NOT-CHECK"
 	default:
 		return ""
 	}
@@ -726,25 +734,6 @@ func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int) []co
 	return results
 }
 
-// checkCorroboration runs the full corroboration pipeline for a single PR:
-// fetch diff → extract stamps → resolve logins → query reviews/comments → verdict.
-func checkCorroboration(root, repo string, pr int) ([]corroborateResult, error) {
-	diff, err := fetchPRDiff(repo, pr)
-	if err != nil {
-		return nil, err
-	}
-	stamps := stampsInDiff(root, diff)
-	if len(stamps) == 0 {
-		return []corroborateResult{{Verdict: verdictNoStamp}}, nil
-	}
-
-	data, err := fetchPRData(repo, pr)
-	if err != nil {
-		return nil, err
-	}
-
-	return corroborateStamps(stamps, data, repo, pr), nil
-}
 
 // reviewURL constructs a URL for a review. The gh API does not return a direct
 // review URL, so we construct one from the PR and review ID.
@@ -772,8 +761,15 @@ func runCorroborate(prsArg string) int {
 		return 1
 	}
 
+	// The stamp scan below honours the same declared fixture-corpus markers the
+	// lint does (isExcludedFixturePath -> isFixtureCorpusPath), and no lint runs
+	// on this path — so announce them here too. Without this the only visible
+	// trace of a skipped subtree would be stamps that never appear in the report.
+	emitFixtureCorpusNotices(".", os.Stderr)
+
 	prStrs := strings.Split(prsArg, ",")
 	var allResults []corroborateResult
+	var allCitationResults []citationResult
 	anyMissing := false
 
 	for _, prStr := range prStrs {
@@ -786,18 +782,35 @@ func runCorroborate(prsArg string) int {
 			fmt.Fprintf(os.Stderr, "statusgen: invalid PR number %q\n", prStr)
 			return 2
 		}
-		results, err := checkCorroboration(".", repo, pr)
+		// Fetch the PR diff ONCE and reuse it for both the stamp scan and the
+		// prose/commit acceptance-citation scan.
+		diff, err := fetchPRDiff(repo, pr)
 		if err != nil {
-			// If gh returns exit status 1 (e.g. PR not found), print and exit 1.
 			fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)
 			return 1
 		}
-		if len(results) == 1 && results[0].Verdict == verdictNoStamp {
+
+		// --- human:<name> STAMP corroboration ---
+		stamps := stampsInDiff(".", diff)
+		if len(stamps) == 0 {
 			fmt.Printf("PR #%d: no human:<name> stamps found in diff — clean\n", pr)
-			continue
+		} else {
+			data, err := fetchPRData(repo, pr)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)
+				return 1
+			}
+			for _, r := range corroborateStamps(stamps, data, repo, pr) {
+				allResults = append(allResults, r)
+				if r.Verdict == verdictMissing {
+					anyMissing = true
+				}
+			}
 		}
-		for _, r := range results {
-			allResults = append(allResults, r)
+
+		// --- human-acceptance / human-ruling CITATION corroboration ---
+		for _, r := range checkCitationCorroboration(".", repo, diff, pr) {
+			allCitationResults = append(allCitationResults, r)
 			if r.Verdict == verdictMissing {
 				anyMissing = true
 			}
@@ -842,6 +855,35 @@ func runCorroborate(prsArg string) int {
 		fmt.Println("# (a negation or conditional in the same comment voids it — a refusal")
 		fmt.Println("#  such as \"not lgtm\" / \"cannot lgtm\" / \"nack\" / \"non-lgtm\", or a REQUEST")
 		fmt.Println("#  for approval such as \"is this lgtm?\" / \"please lgtm\", is not a sign-off)")
+	}
+
+	// --- acceptance/ruling CITATION section ---
+	// A separate lane from the stamp report above: it reads FREE-PROSE and
+	// commit-message claims that a named human accepted/ruled on something, and
+	// requires an artifact by that human on the CITED issue/PR.
+	if len(allCitationResults) > 0 {
+		fmt.Println()
+		fmt.Println("# human-acceptance / human-ruling citations")
+		fmt.Println("# Scope: a claim in tracked prose or a commit message that a configured")
+		fmt.Println("# human ACCEPTED or RULED ON something must be backed by a comment or")
+		fmt.Println("# review authored by that human on the cited issue/PR (>=1 hit). An")
+		fmt.Println("# unlinked claim, or one with no such artifact, is fabricated authority.")
+		fmt.Println()
+		for _, r := range allCitationResults {
+			switch r.Verdict {
+			case verdictCorroborated:
+				fmt.Printf("citation of %s in %s CORROBORATED — %s\n",
+					r.Citation.Name, r.Citation.Source, r.Evidence)
+			case verdictMissing:
+				fmt.Printf("citation of %s in %s MISSING-CORROBORATION — %s\n",
+					r.Citation.Name, r.Citation.Source, r.Evidence)
+			case verdictCitationUncheckable:
+				// Surfaced, never a gate failure: the cited artifact could not be
+				// read, so the check neither corroborates nor condemns the citation.
+				fmt.Printf("citation of %s in %s COULD-NOT-CHECK — %s\n",
+					r.Citation.Name, r.Citation.Source, r.Evidence)
+			}
+		}
 	}
 
 	if anyMissing {

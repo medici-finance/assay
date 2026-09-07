@@ -125,17 +125,25 @@ func TestObligationDerivation(t *testing.T) {
 			s, briefRel := streamForBrief(t, root, "01", c.declared, c.task, noObligationRows)
 			withBranchChangedSet(t, func(string) (map[string]bool, bool) { return c.changed(root, briefRel), true })
 			p, n := verifyObligationDerivation(root, []*Stream{s})
-			if len(p) != 0 {
-				t.Fatalf("advisory phase must not produce PROBLEMs, got %v", p)
+			// Severity is per class: mutation is a hard PROBLEM (mistake-proofing/06),
+			// flow and dereference remain advisory NOTICEs (mistake-proofing/03).
+			owed, other := n, p
+			if obligationFatal(c.obligation) {
+				owed, other = p, n
+			}
+			for _, m := range other {
+				if strings.Contains(m, "+"+c.obligation) {
+					t.Fatalf("obligation %q landed in the wrong severity bucket: %q", c.obligation, m)
+				}
 			}
 			hit := false
-			for _, m := range n {
+			for _, m := range owed {
 				if strings.Contains(m, "+"+c.obligation) && strings.Contains(m, "["+ruleObligationDerivation+"]") {
 					hit = true
 				}
 			}
 			if !hit {
-				t.Fatalf("obligation %q owed but absent: got notices %v, want one naming +%s", c.obligation, n, c.obligation)
+				t.Fatalf("obligation %q owed but absent: got %v, want one naming +%s", c.obligation, owed, c.obligation)
 			}
 		})
 		t.Run(c.name+"/present-silent", func(t *testing.T) {
@@ -166,15 +174,18 @@ func TestObligationDerivation_UntouchedBriefSilent(t *testing.T) {
 	}
 }
 
-// TestObligationDerivationCouldNotCheck (Verify row 9): an unavailable diff
-// reports could-not-check, never "nothing is owed".
+// TestObligationDerivationCouldNotCheck: an unavailable diff reports
+// could-not-check as a conspicuous NOTICE, never "nothing is owed" and never
+// silence. The derivation degrades on an unresolvable base (the same fail-open
+// posture the UNRUN gate uses); the merge gate is the OWED-BUT-ABSENT mutation
+// PROBLEM on the available-diff path, not this could-not-check.
 func TestObligationDerivationCouldNotCheck(t *testing.T) {
 	root := t.TempDir()
 	s, _ := streamForBrief(t, root, "01", []string{"statusgen/foo.go"}, "Extend the lint.", noObligationRows)
 	withBranchChangedSet(t, func(string) (map[string]bool, bool) { return nil, false })
 	p, n := verifyObligationDerivation(root, []*Stream{s})
 	if len(p) != 0 {
-		t.Fatalf("advisory phase must not produce PROBLEMs, got %v", p)
+		t.Fatalf("could-not-check must degrade to a NOTICE, not freeze the board with a PROBLEM, got %v", p)
 	}
 	if len(n) != 1 || !strings.Contains(n[0], "COULD-NOT-CHECK") {
 		t.Fatalf("unavailable diff: got %v, want one could-not-check NOTICE", n)

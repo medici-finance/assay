@@ -29,7 +29,6 @@ const cmdDir = "../../cmd"
 // surface. Each is listed with the reason, so adding a name here is a decision
 // someone has to write down rather than a silent opt-out.
 var exemptFromRoster = map[string]string{
-	"desktoken":       "mints App tokens from apps.env + PEM; makes no trust decision",
 	"muhar":           "harvest/report utility; consults no roster",
 	"deskpushguard":   "PR-state guard; consults no roster",
 	"repohardenguard": "GET-only hardening checker; reads the checklist doc + the repo's own live settings, deliberately NOT the roster (see its main.go § write-authorisation set)",

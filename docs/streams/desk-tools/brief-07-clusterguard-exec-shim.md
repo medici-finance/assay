@@ -214,6 +214,29 @@ what it asserts is the ABSENCE of interception.
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
 
+**NON-IMPLEMENTER VERIFY 2026-09-02 — VERIFY: FAIL (row 11 only; a verification-row/spec defect, NOT a guard regression).** Runner: opus-4.8[1m]-verifier, offline (`KUBECONFIG=/dev/null`), merged main `4174fa7c60551153e79f4d4e0e3d6f032b25c3ba` (impl commit ad72698, PR #357). 13 of 14 rows pass.
+
+| # | Command | Exit | Key observed output | Runner |
+|---|---------|------|---------------------|--------|
+| 1 | `go build ./... && go vet ./...` | 0 | clean build + vet | opus-4.8[1m]-verifier |
+| 2 | `go test ./cmd/clusterguard/... -count=1` | 0 | `ok …/cmd/clusterguard` | opus-4.8[1m]-verifier |
+| 3 | `-run RefusesWithoutOptIn -v` | 0 | PASS — refusal names guard + opt-in; fixture not run | opus-4.8[1m]-verifier |
+| 4 | `-run RefusesScriptWrappedCall` | 0 | script-wrapped call refused identically | opus-4.8[1m]-verifier |
+| 5 | `PassesThroughWithOptIn` + `PassThroughSkipsTheShimDirectory` | 0 | args intact; self-exec loop skipped (shim dir doubled on PATH) | opus-4.8[1m]-verifier |
+| 6 | `-run SymlinkNameDispatch -v` | 0 | 5 subtests PASS (kubectl, flux, helm, talosctl, k9s) | opus-4.8[1m]-verifier |
+| 7 | `VerbClassification` + `ReadOnlyTierRefusesMutatingVerbs` | 0 | per-CLI RO table + RO-tier refuses mutating verb (exit 5, no CLI reached) | opus-4.8[1m]-verifier |
+| 8 | `UnrecognisedOptInValueRefuses` + `NoRealBinaryIsUnverifiable` + `UnknownInvocationNameIsUnverifiable` | 0 | three fail-closed edges (5 / 6 / 6) | opus-4.8[1m]-verifier |
+| 9 | `-run StopFlagRefusesEvenWithOptIn` | 0 | armed stop flag exits 3; fixture not run | opus-4.8[1m]-verifier |
+| 10 | `AbsolutePathInvocationBypassesTheShim` + `LogRecordsBothVerdicts` + `LogRedactsCredentialArguments` | 0 | abs-path negative control + both log verdicts + credential redaction | opus-4.8[1m]-verifier |
+| 11 | build to `/tmp/cg-clusterguard`, run, `grep offline` + `grep talosctl` | **1** | **FAIL as written** — built binary exits 6 (`invoked as "cg-clusterguard", not one of the shimmed CLIs`); `grep offline` misses. TWO row defects: (a) `cg-` prefix defeats the row's own "run under its own name" intent — the guard keys the informational path on argv[0] basename `clusterguard` @ `tools/desk/cmd/clusterguard/shim.go:376`; (b) `offline` is absent from the `usage` const (`shim.go:353-365`) — it lives only in the default-refusal message (`shim.go:224`). Guard behaviour is correct. | opus-4.8[1m]-verifier |
+| 12 | `go test ./... -count=1` | 0 | 57 `ok` packages incl. `internal/forgeban` | opus-4.8[1m]-verifier |
+| 13 | `gofmt -l tools/desk/cmd/clusterguard` | 0 | no unformatted file | opus-4.8[1m]-verifier |
+| 14 | `cd statusgen && go run . --root .. --lint` | 0 | `LINT: PASS` | opus-4.8[1m]-verifier |
+
+**RISK-VALUE: DERIVED** (fail-closed gate literals, all correct): default posture `tierNone → ExitRefused(5)`, no default-allow branch @ `tools/desk/cmd/clusterguard/shim.go:221-228` (opt-in env `ASSAY_ALLOW_CLUSTER` @ `tools/desk/internal/deskkit/rosterconfig.go:204`); unrecognised opt-in value → `tierInvalid → ExitRefused(5)` @ `shim.go:126-127`; read-only allowlist fail-closed (`isReadOnly` false for unknown verb / empty map, `"k9s": {}` = zero read-only lane) @ `shim.go:162-172,51`; shimmed set `{kubectl,flux,helm,talosctl,k9s}` @ `shim.go:33`; credential-redaction set + log perms `0o600`/`0o700`. All reversible knobs consistent with the brief's contract; none irreversible. gate:model, all risk `no`.
+
+**Verdict: FAIL — status stays `implemented`.** The single failing row (11) is a Verify-row/spec defect, not a guard regression: every guard-behaviour and fail-closed row (1–10, 12–14) passes. **Fix is on the verification side** (a worker re-points row 11): build the output named `clusterguard` (not `cg-`-prefixed), and grep a token the `usage` const actually carries (e.g. `ASSAY_ALLOW_CLUSTER` or `refused`) — or add "offline-by-default" to the usage const. Re-run row 11 after that fix; the guard needs no rework.
+
 ## Review
 
 Gate: model (all four risk answers no). The reviewer records verdict + date in the stream README

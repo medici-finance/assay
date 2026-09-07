@@ -150,9 +150,12 @@ func withEnv(t *testing.T) *[][]string {
 	t.Setenv("HOME", home)
 	plantFixtureRoster(t, home)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
-	// Neutralise the harness's real session var ($CLAUDE_CODE_SESSION_ID, present in every
-	// Claude Code session) so the legacy fixture value below deterministically drives
-	// SessionTag(); otherwise the ambient UUID wins precedence and the budget bucket shifts.
+	// Neutralise every session var that outranks the fixture value below, so SessionTag()
+	// is deterministic here: $DESK_SESSION (which a real desk running this suite exports,
+	// and which SessionTag consults FIRST) and $CLAUDE_CODE_SESSION_ID (present in every
+	// Claude Code session). Otherwise the ambient value wins precedence and the budget
+	// bucket shifts under the test.
+	t.Setenv("DESK_SESSION", "")
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test")
 	t.Setenv("PATH", fakeGHDir+string(os.PathListSeparator)+origPATH)
@@ -1553,4 +1556,96 @@ func readInto(b *strings.Builder, r *os.File) {
 			break
 		}
 	}
+}
+
+// --- the budget is charged to the FILING agent's own session ------------------------
+
+// TestBudgetChargedToFilingAgentNotTheDispatcher: two dispatched agents that inherited the
+// SAME harness session id, but carry their own $DESK_SESSION, each get their own budget.
+//
+// WHY THIS IS THE DEFECT AND NOT A NICETY. A dispatched agent is a child process of the
+// session that dispatched it, so it INHERITS $CLAUDE_CODE_SESSION_ID / $CLAUDE_SESSION_ID
+// verbatim — the harness's id names the dispatcher, and every agent it fans out reports the
+// same one. Keyed on that alone the budget is not "3 new issues per session per repo per
+// 24h" at all: it is 3 for the whole fan-out, so the first agent to file three exhausts
+// every sibling's budget and each of the others is refused having filed nothing. The var
+// that DOES distinguish them is $DESK_SESSION — the desk tools' own per-agent session id,
+// which deskwt and deskroster already consult ahead of the harness id — so that is the tag
+// the filing agent is charged under.
+//
+// The cap is unchanged at 3 and the window is unchanged at 24h: this test files exactly
+// three under one tag, which must all succeed, and then ONE under a second tag, which must
+// also succeed. TestBudgetExhaustsAtCap still holds the 4th-under-one-tag refusal.
+func TestBudgetChargedToFilingAgentNotTheDispatcher(t *testing.T) {
+	withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
+	// The id BOTH dispatched agents inherit from the session that fanned them out.
+	t.Setenv("CLAUDE_SESSION_ID", "the-dispatching-session")
+
+	fileOne := func(t *testing.T, title string) int {
+		t.Helper()
+		body := bodyFileWith(t, "observation for "+title)
+		rc, _ := runCapture([]string{"new", "-R", allowedRepo, "--title", title, "--body-file", body})
+		return rc
+	}
+
+	// Agent A spends its whole budget.
+	t.Setenv("DESK_SESSION", "dispatched-agent-a")
+	for i := 0; i < defaultNewBudgetPerSession; i++ {
+		if rc := fileOne(t, fmt.Sprintf("agent a filing %d", i+1)); rc != deskkit.ExitOK {
+			t.Fatalf("agent A filing %d rc = %d, want 0 (within its own budget)", i+1, rc)
+		}
+	}
+
+	// Agent B has filed NOTHING. Its first `new` must be admitted: it is a different agent,
+	// and the only thing it shares with A is the dispatcher's harness id.
+	t.Setenv("DESK_SESSION", "dispatched-agent-b")
+	if rc := fileOne(t, "agent b first filing"); rc != deskkit.ExitOK {
+		t.Fatalf("agent B's FIRST filing rc = %d, want 0 — agent B was charged agent A's budget, "+
+			"so one agent in a fan-out exhausts every sibling's", rc)
+	}
+
+	// The audit must record the tag each filing was charged under, so the forensic trail
+	// names the agent that filed rather than the session that dispatched it.
+	counts := map[string]int{}
+	for _, e := range readAudit(t) {
+		if e.Tool == "deskfile" && e.Verb == "new" && e.Result == deskkit.ResultOK {
+			counts[e.SessionTag]++
+		}
+	}
+	if counts["dispatched-agent-a"] != defaultNewBudgetPerSession {
+		t.Errorf("audit charged %d `new` to dispatched-agent-a, want %d: %v",
+			counts["dispatched-agent-a"], defaultNewBudgetPerSession, counts)
+	}
+	if counts["dispatched-agent-b"] != 1 {
+		t.Errorf("audit charged %d `new` to dispatched-agent-b, want 1: %v", counts["dispatched-agent-b"], counts)
+	}
+	if counts["the-dispatching-session"] != 0 {
+		t.Errorf("%d `new` were charged to the DISPATCHING session, which filed nothing: %v",
+			counts["the-dispatching-session"], counts)
+	}
+}
+
+// TestBudgetStillCapsOneAgentAtThree: the loop-spam bound is per ACTOR, and giving each
+// dispatched agent its own bucket must not raise any single agent's cap. A fourth filing
+// under one $DESK_SESSION is still refused with exit 4, whatever the inherited harness id
+// says.
+func TestBudgetStillCapsOneAgentAtThree(t *testing.T) {
+	calls := withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
+	t.Setenv("CLAUDE_SESSION_ID", "the-dispatching-session")
+	t.Setenv("DESK_SESSION", "dispatched-agent-a")
+	seedNewAudit(t, defaultNewBudgetPerSession, allowedRepo, "dispatched-agent-a")
+	body := bodyFileWith(t, "the fourth filing from one agent")
+
+	rc, errOut := runCapture([]string{"new", "-R", allowedRepo,
+		"--title", "agent a fourth filing", "--body-file", body})
+	if rc != deskkit.ExitRateLimited {
+		t.Fatalf("one agent's 4th new rc = %d, want %d — the per-actor cap must stay at %d",
+			rc, deskkit.ExitRateLimited, defaultNewBudgetPerSession)
+	}
+	if !strings.Contains(errOut, "dispatched-agent-a") {
+		t.Errorf("the refusal does not name the session it charged:\n%s", errOut)
+	}
+	assertNoIssueCreate(t, *calls)
 }

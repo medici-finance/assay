@@ -172,7 +172,7 @@ func TestReadySecurityOrderPassFailApproveStaysRefused(t *testing.T) {
 
 // TestSecurityVerdictEmptyHeadNeverGrants pins head-binding at its degenerate input.
 //
-// securityVerdictAtHead head-pins with `r.CommitID != head`. That is a plain string
+// securityVerdictStanding head-pins a PASS with `r.CommitID != head`. That is a plain string
 // compare, so if `head` is ever the empty string it stops rejecting anything carrying an
 // empty commit_id, and every head comparison in the gate goes vacuous simultaneously — a
 // verdict would bind to no commit at all and still grant. gate (a) refuses a malformed PR
@@ -197,8 +197,8 @@ func TestSecurityVerdictEmptyHeadNeverGrants(t *testing.T) {
 	})
 	t.Run("unbound fail still blocks", func(t *testing.T) {
 		rv := []reviewInfo{appReview("CHANGES_REQUESTED", "", "Security-Review: fail")}
-		if got := securityVerdictAtHead(rv, ""); got != secFail {
-			t.Fatalf("securityVerdictAtHead = %v, want secFail — an unbound retraction must still block", got)
+		if got := securityVerdictStanding(rv, ""); got != secFail {
+			t.Fatalf("securityVerdictStanding = %v, want secFail — an unbound retraction must still block", got)
 		}
 	})
 	t.Run("a bound pass at a real head is unaffected", func(t *testing.T) {
@@ -207,4 +207,107 @@ func TestSecurityVerdictEmptyHeadNeverGrants(t *testing.T) {
 			t.Fatal("the empty-head guard must not withhold a genuine bound pass")
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// #361 companion (deskflip twin: PR #529) — a `Security-Review: fail` STANDS across a
+// content-preserving head move on the deskpost ready path.
+//
+// The reduction used to skip EVERY review whose commit_id was not the current head
+// (`r.CommitID != head`), so a fail posted at head A read as not-current after a resync to
+// head B and gate (e0) no longer refused the flip. A fail is a retraction of the reviewed
+// CODE, not of a commit sha; a resync / merge-from-main that leaves the flagged code
+// byte-identical must not launder it. Only a later `Security-Review: pass` AT THE CURRENT
+// head — or a genuine content change a reviewer re-reviews and passes — clears it. A pass
+// keeps its at-head binding, so the two verdict kinds stay asymmetric, both fail safe.
+//
+// These run on exampleRepo with the harness's default NON-risk changed file, so gate (e)
+// (the risk-classed pass requirement) never fires: the ONLY thing that can block the flip
+// is the standing fail itself (gate (e0)) — a clean isolation of the laundering bypass.
+// ---------------------------------------------------------------------------
+
+// TestReadySecurityFailStandsAcrossAContentPreservingHeadMove — THE BUG THIS BRANCH EXISTS
+// FOR. A `Security-Review: fail` posted at the superseded head (head A) must STILL BLOCK the
+// ready-flip after a content-preserving resync moved the head to testHead (head B). The
+// correctness approval is at the CURRENT head (a resync re-ran the reviewer), so nothing but
+// the standing fail is left to refuse.
+func TestReadySecurityFailStandsAcrossAContentPreservingHeadMove(t *testing.T) {
+	f, _ := setupFake(t)
+	f.reviews = []reviewInfo{
+		appReview("APPROVED", testHead, okReviewBody), // correctness current at head B
+		appReview("CHANGES_REQUESTED", testOldHead, "## Security review\n\nSecurity-Review: fail\n"),
+	}
+	f.status = greenStatus()
+
+	code := run(readyArgs(exampleRepo))
+	if code != deskkit.ExitRefused {
+		t.Fatalf("standing fail after a content-preserving resync exit = %d, want %d (ExitRefused) — "+
+			"a head move that did not touch the flagged code must not launder the fail", code, deskkit.ExitRefused)
+	}
+	if f.flips != 0 {
+		t.Fatalf("flips = %d, want 0 — a resync flipped a PR over a standing Security-Review: fail", f.flips)
+	}
+}
+
+// TestReadyStalePassDoesNotClearAStandingFailAfterAResync — a `pass` at the OLD head is not a
+// re-review of the current code, so it neither stands as a pass nor clears a standing fail.
+// fail@A then pass@A, head now B: at B the pass is stale and the fail still stands.
+func TestReadyStalePassDoesNotClearAStandingFailAfterAResync(t *testing.T) {
+	f, _ := setupFake(t)
+	f.reviews = []reviewInfo{
+		appReview("APPROVED", testHead, okReviewBody), // correctness current at head B
+		appReview("CHANGES_REQUESTED", testOldHead, "## Security review\n\nSecurity-Review: fail\n"),
+		appReview("APPROVED", testOldHead, "## Security review\n\nSecurity-Review: pass\n"), // stale pass at head A
+	}
+	f.status = greenStatus()
+
+	code := run(readyArgs(exampleRepo))
+	if code != deskkit.ExitRefused {
+		t.Fatalf("stale pass across a resync exit = %d, want %d (ExitRefused) — a pass at the old head "+
+			"must not clear a standing fail", code, deskkit.ExitRefused)
+	}
+	if f.flips != 0 {
+		t.Fatalf("flips = %d, want 0 — the PR flipped over a fail only a STALE pass tried to clear", f.flips)
+	}
+}
+
+// TestReadyGenuineNewPassAtHeadClearsAStandingFail — the clearing side that keeps the
+// standing-fail rule from being a one-way trap: a GENUINE `Security-Review: pass` AT THE
+// CURRENT head clears a fail posted at the old head, so the flip proceeds. fail@A + pass@B
+// (== head) reduces to a pass.
+func TestReadyGenuineNewPassAtHeadClearsAStandingFail(t *testing.T) {
+	f, _ := setupFake(t)
+	f.reviews = []reviewInfo{
+		appReview("APPROVED", testHead, okReviewBody), // correctness current at head B
+		appReview("CHANGES_REQUESTED", testOldHead, "## Security review\n\nSecurity-Review: fail\n"),
+		appReview("APPROVED", testHead, "## Security review\n\nRe-reviewed the current code.\n\nSecurity-Review: pass\n"),
+	}
+	f.status = greenStatus()
+
+	code := run(readyArgs(exampleRepo))
+	if code != 0 {
+		t.Fatalf("a fresh pass at head exit = %d, want 0 — it must clear the standing fail", code)
+	}
+	if f.flips != 1 {
+		t.Fatalf("flips = %d, want 1 — a genuine new pass at head did not clear the fail", f.flips)
+	}
+}
+
+// TestSecurityFailStandsRegardlessOfCommitReduction pins the property at the reducer
+// boundary, independent of the gate: a fail at a superseded head governs the reduction with
+// no pass to clear it, and a fresh pass at head reduces the same inputs back to a pass.
+func TestSecurityFailStandsRegardlessOfCommitReduction(t *testing.T) {
+	fail := appReview("CHANGES_REQUESTED", testOldHead, "Security-Review: fail")
+	if got := securityVerdictStanding([]reviewInfo{fail}, testHead); got != secFail {
+		t.Fatalf("fail at old head, head moved: got %v, want secFail — a content-preserving move "+
+			"must not launder a standing fail", got)
+	}
+	stalePass := appReview("APPROVED", testOldHead, "Security-Review: pass")
+	if got := securityVerdictStanding([]reviewInfo{fail, stalePass}, testHead); got != secFail {
+		t.Fatalf("fail@old + stale pass@old: got %v, want secFail — a stale pass clears nothing", got)
+	}
+	freshPass := appReview("APPROVED", testHead, "Security-Review: pass")
+	if got := securityVerdictStanding([]reviewInfo{fail, freshPass}, testHead); got != secPass {
+		t.Fatalf("fail@old + fresh pass@head: got %v, want secPass — a pass at head clears the fail", got)
+	}
 }

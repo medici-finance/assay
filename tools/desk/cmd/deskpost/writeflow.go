@@ -29,6 +29,10 @@ const toolName = "deskpost"
 type postOpts struct {
 	dryRun bool
 	wait   time.Duration
+	// explain prints a scan-explain line (rule id + line number, never the span) when a
+	// secret-scan refusal carries a ScanFinding. Off by default, so default output is
+	// byte-identical to before --explain existed.
+	explain bool
 }
 
 // writeResult is what a verb's plan returns: the outcome to audit and the exit status.

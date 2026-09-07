@@ -1,0 +1,286 @@
+name: statusgen-board
+# This repo's OWN statusgen board CI — the two-half single-writer shape.
+#
+#   - pull_request: run `statusgen --root . --lint` only. STATUS.md is a
+#     GENERATED artifact with exactly ONE writer (the push-to-main regen job
+#     below); a branch must never modify it, so this half never reads or writes
+#     STATUS.md.
+#   - push to main: regenerate STATUS.md and commit it if it changed. This job
+#     is STATUS.md's single writer.
+#
+# statusgen is built FROM THIS REPO'S OWN SOURCE (statusgen/), not downloaded as a
+# pinned release binary: this IS the repo statusgen lives in, so a released binary
+# would lag the very source the PR is changing. Adopter repos consume the pinned
+# release binary instead (see statusgen init's scaffolded workflow); a source repo
+# builds and lints with its in-tree tool.
+#
+# Runner + Go install mirror ci.yml: the self-hosted `medici-builder-public`
+# runner has no Docker and no reach to GitHub's release-asset CDN, so Go is
+# fetched by hand from go.dev/dl rather than actions/setup-go.
+on:
+  pull_request:
+    # Fire on anything --lint reads: the stream docs, STATUS.md itself, the
+    # statusgen source (the lint binary is built from it), and this workflow.
+    paths:
+      - "docs/**"
+      - "STATUS.md"
+      - "statusgen/**"
+      - ".github/workflows/assay-statusgen.yml"
+  push:
+    branches: [main]
+    # STATUS.md is deliberately NOT listed and lives at the repo root (outside
+    # docs/**), so the regen job's own commit — which touches only STATUS.md —
+    # cannot retrigger this workflow (loop guard 1). The regen job's `if:` also
+    # skips any [skip-status-regen] commit (loop guard 2, belt and suspenders).
+    paths:
+      - "docs/**"
+      - "statusgen/**"
+      - ".github/workflows/assay-statusgen.yml"
+
+# Serialize runs per ref. A merge burst on main fires one regen run per push;
+# without this they run concurrently and all but the last lose the `git push`
+# race against a moving main ("! [rejected] main -> main (fetch first)"), so
+# main shows red runs indistinguishable from a real regen failure.
+# cancel-in-progress is deliberately FALSE on `main`: queue, never cancel — a
+# cancelled regen throws away that push's board rather than merely delaying it.
+#
+# It is TRUE on a pull-request ref, and the asymmetry is the whole point. The
+# two halves of this workflow do different things and want opposite answers:
+#   - `main` runs the REGEN job, which WRITES STATUS.md. It is a single-writer
+#     job and its work is not reproducible by a later run of a different push,
+#     so it must never be cancelled. That is the `false` case, unchanged.
+#   - a pull-request ref runs the LINT job only, which writes nothing. When a
+#     worker pushes three times in a minute the first two lint runs are already
+#     answering a question nobody will read — the verdict that matters is the
+#     one at the current head — and on a saturated runner pool those superseded
+#     runs are the ones the head's own run is queued behind.
+# Conditioning the flag on the event keeps the writer uncancellable and drops
+# only the runs whose answer is already stale.
+concurrency:
+  group: statusgen-board-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Least-privilege default: the PR lint job needs only read. The push-to-main
+# regen job is the sole thing that commits, so it alone gets contents: write
+# (job-scoped below).
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  lint:
+    if: github.event_name == 'pull_request'
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: Build statusgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+      - name: statusgen --lint
+        run: |
+          "${RUNNER_TEMP}/statusgen" --root . --lint
+
+  regen:
+    # STATUS.md is generated on main only, never on a branch (single writer).
+    # loop guard 2: skip our own [skip-status-regen] regen commit.
+    if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-status-regen]') }}
+    runs-on: medici-builder-public
+    # Sole writer of STATUS.md. The push authenticates as the assay-board-writer
+    # App (minted below), NOT the default GITHUB_TOKEN — so the default token
+    # needs only read; the App token carries the write.
+    permissions:
+      contents: read
+    steps:
+      # Mint a token for the assay-board-writer App. This App is the sole actor
+      # on the protect-main + leak-sweep ruleset bypass lists, so its push to
+      # main is admitted where the default GITHUB_TOKEN's is rejected (GH013:
+      # PR-required + leak-sweep-required). App perms: contents:write on THIS
+      # repo only; key held as repo Actions secrets (BOARD_APP_*).
+      - name: Mint assay-board-writer App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOARD_APP_ID }}
+          private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Persist the App token as the push credential (checkout default), so
+          # the STATUS.md `git push` below authenticates as assay-board-writer[bot].
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: Build statusgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+      - name: Regenerate STATUS.md
+        run: |
+          "${RUNNER_TEMP}/statusgen" --root .
+      - name: Commit STATUS.md if it changed
+        run: |
+          set -euo pipefail
+          git config user.name  'assay-board-writer[bot]'
+          git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
+          # BOUNDED RETRY (3 attempts). The concurrency: group above serializes
+          # regen runs, but main can still move under us between this job's
+          # checkout and its push (a human merge, or any push on a path this
+          # workflow does not watch). A bare `git push` loses that race and
+          # reddens main; here a rejection re-syncs to the new head and
+          # REGENERATES against it.
+          #
+          # Never `git pull --rebase`: STATUS.md is a generated artifact, so a
+          # rebase conflict in it is meaningless — regeneration against the new
+          # head IS the resolution.
+          attempts=3
+          attempt=1
+          while : ; do
+            git add STATUS.md
+            # BOOTSTRAP-SAFE GUARD: guard on `git status --porcelain -- STATUS.md`,
+            # NOT `git diff --quiet -- STATUS.md`. git diff sees only TRACKED files,
+            # so on a repo with no STATUS.md yet the diff guard mis-fires ("nothing
+            # to commit") and the first board is NEVER created; porcelain reports
+            # the new/staged file.
+            if [ -z "$(git status --porcelain -- STATUS.md)" ]; then
+              echo "STATUS.md already current — nothing to commit"
+              exit 0
+            fi
+            git commit -m 'chore(status): regenerate [skip-status-regen]'
+            if git push; then
+              echo "STATUS.md pushed on attempt ${attempt}/${attempts}"
+              exit 0
+            fi
+            if [ "${attempt}" -ge "${attempts}" ]; then
+              echo "::error::statusgen board regen: push rejected on all ${attempts} attempts — main is moving faster than the regen can re-sync. Re-run this job once the merge burst settles."
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            echo "push rejected: main moved. Re-syncing and regenerating (attempt ${attempt}/${attempts})"
+            git fetch origin main
+            git reset --hard origin/main
+            "${RUNNER_TEMP}/statusgen" --root .
+          done
+  # verified→done auto-flip for `gate: model` briefs (the third half of the
+  # single-writer shape; wired per the 2026-09-02 ruling on the house tracker).
+  # Mirrors the house `model-autoflip` job: after every push to main,
+  # `statusgen --auto-flip-model` walks each brief sitting at `verified`, finds
+  # the PR that merged it, and flips it to `done` ONLY when the reviewer App
+  # bound in ASSAY_TRUSTED_BOT_SLUGS has an APPROVED review at that PR's merged
+  # head. Every failure is a NON-flip; a candidate the tool could not check
+  # fails this job loudly (exit 1) rather than passing as a clean run. There is
+  # no override flag. The flip commits stream README rows straight to main
+  # under the board-writer App (the same identity that writes STATUS.md), and
+  # `regen` re-runs on that push so the board catches up by itself.
+  #
+  # Reads go through `gh` with the default token (this repo is public, so
+  # reviews are readable without the App); the WRITE is the App token, exactly
+  # as in `regen`. The trust roster resolves from repository Actions variables
+  # when set, else falls back to this repo's own reviewer App — the one
+  # identity whose approval the flip corroborates.
+  model-autoflip:
+    if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-status-regen]') && !contains(github.event.head_commit.message, '[skip-autoflip]') }}
+    runs-on: medici-builder-public
+    permissions:
+      contents: read
+    steps:
+      - name: Mint assay-board-writer App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOARD_APP_ID }}
+          private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the PR resolver walks the brief file's own history
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: Build statusgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+      # gh is what the flip reads PR reviews with. Pinned + sha256-verified
+      # before unpack (same release + digest the house job uses); skipped when
+      # the runner image already ships it.
+      - name: Ensure gh CLI is available (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            echo "gh present: $(gh --version | head -1)"; exit 0
+          fi
+          url="https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz"
+          want="912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/gh.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/gh.tar.gz" | cut -d' ' -f1)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::gh tarball sha256 mismatch — want ${want}, got ${got}; refusing to extract"
+            exit 1
+          fi
+          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
+          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
+      - name: Auto-flip gate:model briefs from the App approval at the merged head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # The roster is repository configuration, never a literal here: set the
+          # ASSAY_TRUSTED_BOT_SLUGS Actions variable (role=slug:id, the reviewer=
+          # binding is what the flip corroborates). Unset → every candidate is
+          # could-not-check and this job fails loudly — by design.
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+          ASSAY_HOME_REPO: ${{ vars.ASSAY_HOME_REPO || github.repository }}
+        run: |
+          set -uo pipefail
+          git config user.name  'assay-board-writer[bot]'
+          git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
+          flip_rc=0
+          for attempt in 1 2 3 4 5; do
+            git fetch --no-tags origin main
+            git reset --hard FETCH_HEAD
+            flip_rc=0
+            "${RUNNER_TEMP}/statusgen" --root . --auto-flip-model || flip_rc=$?
+            if [ -z "$(git status --porcelain -- docs/streams)" ]; then
+              echo "no brief flipped — nothing to commit"
+              break
+            fi
+            # Sources must stay valid before we commit them.
+            "${RUNNER_TEMP}/statusgen" --root . --lint
+            # Path-scoped add: never STATUS.md (single writer = the regen job).
+            git add -- docs/streams
+            git commit -m "chore(verify): auto-flip gate:model briefs verified→done from the App approval at head [skip-autoflip]"
+            if git push origin HEAD:main; then
+              echo "pushed model-path flips (attempt $attempt)"
+              break
+            fi
+            echo "push attempt $attempt lost a race with a concurrent push — retrying"
+          done
+          if [ "$flip_rc" -ne 0 ]; then
+            echo "::error::statusgen --auto-flip-model reported candidate(s) it COULD NOT CHECK — see the COULD-NOT-CHECK lines above. None of those briefs was flipped; each stays \`verified\` until an App approval at its merged head can be read."
+            exit 1
+          fi

@@ -237,8 +237,8 @@ func IsGeneratedPath(path string) bool {
 // MatchSurfaceGlob reports whether a slash-separated path matches an `.assay-surfaces`
 // glob. The syntax is a deliberately small, gitignore-flavoured subset:
 //
-//	*   matches any run of non-'/' characters WITHIN one path segment (including empty)
-//	**  as a whole segment matches zero or more path segments
+//   - matches any run of non-'/' characters WITHIN one path segment (including empty)
+//     **  as a whole segment matches zero or more path segments
 //
 // Every other character is literal; leading and trailing '/' are ignored. This is a RICHER
 // syntax than deskkit's risk-path matchTrigger (single-segment '*', trailing-'/' directory

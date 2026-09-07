@@ -26,8 +26,10 @@
 // App ID comes from <ROLE>_APP_ID env (e.g. REVIEWER_APP_ID) else apps.env on the
 // same search path — App IDs are never baked into source. The installation is
 // resolved at runtime via GET /app/installations, matching the repo owner against
-// account.login (defaults to "example-org" when --repo is absent); <ROLE>_INSTALL_ID
-// overrides. The token is cached as <role>-token-<installID> (0600) and reused if
+// account.login. When --repo is absent the owner is resolved from the configured
+// allowed-repo roster (the same source the other desk verbs use); it fails closed
+// naming the "example-org" placeholder when no owner can be resolved.
+// <ROLE>_INSTALL_ID overrides. The token is cached as <role>-token-<installID> (0600) and reused if
 // < 50 min old, alongside a <cache>.perms sidecar recording what the installation
 // was GRANTED (the grant is visible only in the mint response; `deskroster
 // preflight` checks it against the role's duties — #571). The token SECRET is
@@ -44,7 +46,11 @@
 // fail-closed. Exit: 0 ok/noop · 3 disabled · 5 refused · 6 unverifiable.
 package main
 
-import "os"
+import (
+	"os"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+)
 
 const usage = `desktoken — mint or reuse a per-role forge credential.
 
@@ -95,8 +101,11 @@ not be readable by others or writable by group/others: 0600 or 0400 on a
 workstation; 0440 is accepted because a Secret-mounted key read through a
 pod's fsGroup is necessarily root-owned and group-readable.
 Installation resolved at runtime via GET /app/installations, matching the
-repo owner against account.login (defaults to "example-org" when --repo is
-absent); <ROLE>_INSTALL_ID overrides.
+repo owner against account.login. When --repo is absent the owner is resolved
+from the configured allowed-repo roster (ASSAY_ALLOWED_REPOS, the same source
+the other desk verbs use); an owner that cannot be resolved fails closed with a
+message naming the "example-org" placeholder rather than minting against it.
+<ROLE>_INSTALL_ID overrides.
 Caches the token as <role>-token-<installID> (0600) at the HEAD of the search
 path, plus a <cache>.perms sidecar recording the installation's granted scopes.
 Reuses the cached token if < 50 min old; otherwise mints a fresh one.
@@ -111,5 +120,12 @@ directory this repo's App-provisioning walkthrough uses (#794).
 Exit: 0 ok/noop · 3 disabled · 5 refused · 6 unverifiable.`
 
 func main() {
+	// Explicit roster class: desktoken ACTS (it mints a credential) and, when --repo
+	// is absent, it READS the configured allowed-repo roster to resolve the owner —
+	// file-only, never the environment — so ciEligible=false. The P3 echo makes that
+	// control-surface read visible at run time, like every other roster-reading verb.
+	// Both go to stderr; desktoken's stdout stays the token PATH alone.
+	deskkit.SetToolClass(deskkit.ClassForTool(false))
+	deskkit.EchoEffectiveConfig(os.Stderr)
 	os.Exit(run(os.Args[1:]))
 }

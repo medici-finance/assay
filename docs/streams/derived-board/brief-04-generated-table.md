@@ -85,6 +85,23 @@ facts:
 | 8 | `cd statusgen && go run . init --dry-run /tmp/adopter-x \| grep -c 'reconcile'` | ≥ 1 (scaffold parity) |
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: HELD (rows 1-3,7,8 PASS; rows 5-6 FAIL on the unlanded human-gated workflow half; row 4 could-not-check — env writeguard blocked the mutation, mechanism corroborated green) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5d20ff9`
+Runner ≠ implementer (first non-implementer run). Isolated worktree off origin/main. Offline; statusgen from source, not PATH. `gate: model`. Impl (code side) landed; the workflow-file half is BLOCKED-ON-HUMAN (an App cannot push .github/workflows/**) — the brief itself holds at implemented for it.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | go test . -run ReadmeTable (statusgen) | ok | exit 0 — render/rewrite+idempotency/markers-missing/hand-edit-PROBLEM/drift-NOTICE | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | regen --readmes --offline; non-table diff → 0 | 0 | exit 0 — non-table changed lines 0 (README already canonical on main) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | two consecutive regen; porcelain count | 0 | exit 0 — 0 (idempotent) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | MUTATION: hand-edit a generated table cell, --lint → rc=1 naming hand-edit + derived-board | rc=1 | COULD-NOT-CHECK — env writeguard blanket-blocks `sed -i` from a shared-homed session (both sanctioned remedies refused); mechanism corroborated GREEN by TestReadmeTableHandEditProblem (row 1 set): an authoring-cell edit inside the markers yields "PROBLEM: … hand edit to a generated table" @ readmetable.go:249 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | workflow has schedule: trigger | schedule present | FAIL — .github/workflows/assay-statusgen.yml has NO schedule: on merged main (KeyError 'on'). The UNLANDED human-gated workflow push (App cannot push .github/workflows/**); code-side scaffold parity is landed in init.go | 2026-09-06 | opus-4.8[1m]-verifier |
+| 6 | grep -c pull-requests:read + issues:read in the workflow | 2 | FAIL — 0; the read-only reconcile-job scope is part of the same unlanded workflow half | 2026-09-06 | opus-4.8[1m]-verifier |
+| 7 | grep statusgen:briefs:begin in derived-board README | 1 | exit 0 — 1 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 8 | statusgen init --dry-run adopter grep reconcile | ≥1 | exit 0 — 1 (scaffold parity; reconcile/drift step shipped commented-out opt-in) | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: DERIVED — the [skip-status-regen] loop-guard marker @ statusgen/init.go:428 — reused unchanged (matched by the skip regex @ :503 + the pre-existing STATUS.md paths: exclusion); a mismatch would loop CI. Reversible. RISK-VALUE: DERIVED — reconcile-job scope pull-requests:read + issues:read is least-privilege-correct (the reconcile verb only reads PR/issue witnesses) but NOT landed on merged main (rows 5-6) — present only as commented opt-in in the init.go scaffold. Remaining literals (board:generated opt-in, briefs markers) are reversible, fail-safe by construction.`
+**VERIFY: HELD.** The checkable code rows (1,2,3,7,8) PASS and row 4's mechanism is corroborated green; rows 5-6 fail because the workflow's schedule:+read-only-perms are the UNLANDED human-gated .github/workflows half the brief itself holds at implemented (like sdlc/03's staged workflow) — a documented human-activation wait, not a shipped-code defect (no CFR row). Row 4 is env-blocked (needs a non-shared-homed runner or the writeguard-shared-ok sentinel). Advances once a human lands the workflow (schedule + read-only perms), then rows 5-6 run.
+
 
 Implemented under the governing ruling (2026-09-04): the generated-table
 infrastructure lands, but the lifecycle columns are surfaced as an INTERIM drift

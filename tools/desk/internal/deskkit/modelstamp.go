@@ -66,11 +66,20 @@ package deskkit
 // WORKER's own App — or any identity that is not the dispatcher — reads Indeterminate, not
 // Stamped. That is the whole point: a stamp anyone could apply to themselves is the
 // exec-tier honor-system with extra steps. The label-content reader (ModelStampOf) cannot
-// see WHO applied a label; the applier-aware reader (AttestedModelStampOf) takes the
-// label-EVENT actor (from the timeline API) and downgrades to Indeterminate when a
-// dispatched-* label was applied by a non-dispatcher. A consumer that needs the strong
-// form MUST use the applier-aware reader; the content reader answers only "what do the
-// labels say", not "may I trust them".
+// see WHO applied a label; the applier-aware reader (AttestedModelStampOf) takes a
+// StampTimeline (the labels the PR CARRIES plus the ordered label events) and downgrades to
+// Indeterminate when the STANDING application of a dispatched-* label came from a
+// non-dispatcher. A consumer that needs the strong form MUST use the applier-aware reader;
+// the content reader answers only "what do the labels say", not "may I trust them".
+//
+// STANDING, NOT HISTORICAL — and it is a correctness property, not a nicety. A GitHub
+// timeline is APPEND-ONLY. A reader that took ANY historical `labeled` event as the applier
+// made a foreign stamp PERMANENT: the real dispatcher could remove the labels and re-apply
+// them under its own identity, and the reader still found the original foreign event and
+// refused every authority-bearing write on that PR forever, with no repair available to
+// anyone. The applier is therefore the actor of the LAST `labeled` event for each currently
+// present label that is not followed by an `unlabeled` of the same name. A foreign stamp
+// that is still standing is NOT laundered by this — only a genuine re-stamp is honoured.
 //
 // SINGLE-POINT-OF-FAILURE, and the layer behind it. The one fragile step is the dispatcher
 // applying the labels reliably. The reader's ModelUnknown is fail-safe underneath it — a
@@ -323,13 +332,119 @@ func ModelStampOf(labels []string) (ModelStamp, ModelState) {
 	return ModelStamp{Model: modelFound, Tier: tierFound}, ModelStamped
 }
 
-// LabelEvent pairs a label name with the login that APPLIED it (from the issue/PR timeline
-// `labeled` events). AttestedModelStampOf needs it because a self-applied dispatched-*
-// label is worthless by design — the applier identity is the only thing separating this
-// attestation from the exec-tier honor-system it repairs.
+// LabelEvent is ONE label mutation from the issue/PR timeline — a `labeled` or an
+// `unlabeled` event, and the login that performed it. AttestedModelStampOf needs the actor
+// because a self-applied dispatched-* label is worthless by design; it needs the REMOVALS
+// because a GitHub timeline is APPEND-ONLY, so without them a label applied once by a
+// foreign login can never be repaired (see StampTimeline).
 type LabelEvent struct {
 	Name      string // the label name, e.g. "dispatched-model:opus-4.8"
-	AppliedBy string // GitHub login of the actor who added the label
+	AppliedBy string // GitHub login of the actor who added (or removed) the label
+	Removed   bool   // true for an `unlabeled` event: this application was superseded
+}
+
+// StampTimeline is the applier-aware reader's whole input: the labels CURRENTLY on the PR,
+// and the ordered label events that put them there.
+//
+// WHY BOTH, AND WHY THE EVENTS ARE NOT ENOUGH. A GitHub timeline is APPEND-ONLY: a
+// `labeled` event is never rewritten or deleted, so a reader that treats ANY historical
+// `labeled` event for a dispatched-* label as "the applier" makes a foreign stamp permanent
+// — the real dispatcher can remove the label and re-apply it under its own identity and the
+// reader still sees the original foreign event, so the PR is refused forever and there is no
+// repair. Present + ordered events is what makes a genuine RE-STAMP readable: for each label
+// still on the PR, the applier is the actor of the LAST `labeled` event not followed by an
+// `unlabeled` of the same name.
+//
+// WHY THE PRESENT SET IS SEPARATE AND AUTHORITATIVE. Presence is NOT derived from the
+// events, because a truncated or partial timeline read would then make a present stamp look
+// ABSENT — and absent proceeds on the NOTICE path. That is the one direction this floor must
+// never fail. So the present set comes from the labels API, and a present dispatched-* label
+// the events cannot attribute is could-not-check (UNREADABLE), never unstamped.
+//
+// Events must be OLDEST FIRST — the order both forge timeline reads return them in.
+type StampTimeline struct {
+	Present []string     // label names currently on the PR, from the labels read
+	Events  []LabelEvent // `labeled`/`unlabeled` events, OLDEST FIRST
+}
+
+// normLabel is the ONE spelling of label-name normalization the stamp readers share, so the
+// present set and the event stream cannot key on subtly different strings.
+func normLabel(name string) string { return strings.ToLower(strings.TrimSpace(name)) }
+
+// isStampLabelName reports whether a NORMALIZED label name is one half of a dispatch stamp.
+func isStampLabelName(name string) bool {
+	return strings.HasPrefix(name, DispatchedModelPrefix) || strings.HasPrefix(name, DispatchedTierPrefix)
+}
+
+// presentStampLabels returns the normalized, de-duplicated dispatched-* labels currently on
+// the PR, sorted, so every caller enumerates the same set in the same order.
+func presentStampLabels(present []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, l := range present {
+		n := normLabel(l)
+		if !isStampLabelName(n) || seen[n] {
+			continue
+		}
+		seen[n] = true
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// resolveStampAppliers answers, for every dispatched-* label CURRENTLY present, WHO applied
+// the standing application of it — and names the present labels no standing application
+// could be found for.
+//
+// THE RULE, and it is the whole fix. Walk the events in order; a `labeled` event records its
+// actor as the standing applier of that name, and a later `unlabeled` of the same name
+// SUPERSEDES it (the application it recorded is gone). What survives the walk is, per label
+// name, the actor of the last `labeled` event not followed by an `unlabeled` — which is
+// exactly the application the PR is carrying now. A foreign stamp that was removed and
+// re-applied by the dispatcher therefore reads as the DISPATCHER's; a foreign stamp that is
+// still standing reads as foreign. The fix respects a real re-stamp without laundering
+// history.
+//
+// unattributed lists present dispatched-* labels with no standing `labeled` event — an
+// incomplete timeline read. It is returned SEPARATELY rather than folded into the applier
+// map with an empty login, because "nobody applied this" and "an actor the timeline does not
+// name applied this" have different remedies and the refusal has to say which one it found.
+func resolveStampAppliers(tl StampTimeline) (appliers map[string]string, unattributed []string) {
+	standing := map[string]string{}
+	for _, e := range tl.Events {
+		n := normLabel(e.Name)
+		if !isStampLabelName(n) {
+			continue
+		}
+		if e.Removed {
+			delete(standing, n)
+			continue
+		}
+		standing[n] = strings.TrimSpace(e.AppliedBy)
+	}
+	appliers = map[string]string{}
+	for _, n := range presentStampLabels(tl.Present) {
+		who, ok := standing[n]
+		if !ok {
+			unattributed = append(unattributed, n)
+			continue
+		}
+		appliers[n] = who
+	}
+	return appliers, unattributed
+}
+
+// UnattributedStampLabels names every dispatched-* label the PR CARRIES that the timeline
+// read cannot attribute to any applier — a present stamp with no standing `labeled` event,
+// i.e. a timeline this reader did not see all of.
+//
+// IT EXISTS FOR THE REFUSAL MESSAGE, for the same reason NonDispatcherStampAppliers does:
+// "unreadable" without the cause is a verdict the operator cannot act on, and the remedy
+// here (re-read the timeline / re-stamp the PR) is not the remedy for a foreign applier.
+func UnattributedStampLabels(tl StampTimeline) []string {
+	_, unattributed := resolveStampAppliers(tl)
+	return unattributed
 }
 
 // AttestedModelStampOf is the applier-aware reader — the STRONG form a consumer must use
@@ -344,48 +459,196 @@ type LabelEvent struct {
 // carries any dispatched-* label with a nil predicate is Indeterminate (could-not-check),
 // never Stamped: the strong reader fails safe rather than trusting an applier it cannot
 // check. A PR with NO dispatched-* labels is Unknown regardless of the predicate.
-func AttestedModelStampOf(events []LabelEvent, isDispatcher func(applier string) bool) (ModelStamp, ModelState) {
-	names := make([]string, 0, len(events))
-	sawStampLabel := false
-	trusted := true
-	for _, e := range events {
-		name := strings.ToLower(strings.TrimSpace(e.Name))
-		names = append(names, e.Name)
-		if !strings.HasPrefix(name, DispatchedModelPrefix) && !strings.HasPrefix(name, DispatchedTierPrefix) {
-			continue
-		}
-		sawStampLabel = true
-		if isDispatcher == nil || !isDispatcher(e.AppliedBy) {
-			trusted = false
-		}
+func AttestedModelStampOf(tl StampTimeline, isDispatcher func(applier string) bool) (ModelStamp, ModelState) {
+	if len(presentStampLabels(tl.Present)) == 0 {
+		// No dispatched-* label ON THE PR: the applier question does not arise, and the
+		// content reader will return Unknown. Historical stamp events that were later
+		// removed are deliberately NOT consulted here — a stamp the PR no longer carries is
+		// not an attestation it is making.
+		return ModelStampOf(tl.Present)
 	}
-	if !sawStampLabel {
-		// No dispatched-* label present: the applier question does not arise, and the
-		// content reader will return Unknown.
-		return ModelStampOf(names)
-	}
-	if !trusted {
-		// A dispatched-* label was applied by someone the predicate will not vouch for.
-		// Self-report is worthless by design.
+	appliers, unattributed := resolveStampAppliers(tl)
+	if len(unattributed) > 0 {
+		// A standing stamp the timeline read cannot attribute. Could-not-check, never
+		// unstamped: the NOTICE path is the one direction this floor must not fail.
 		return ModelStamp{}, ModelIndeterminate
 	}
-	return ModelStampOf(names)
+	for _, who := range appliers {
+		if isDispatcher == nil || !isDispatcher(who) {
+			// The STANDING application of a dispatched-* label came from someone the
+			// predicate will not vouch for. Self-report is worthless by design.
+			return ModelStamp{}, ModelIndeterminate
+		}
+	}
+	return ModelStampOf(tl.Present)
 }
 
-// IsDispatcherLogin reports whether a GitHub login is the fleet's DISPATCHER — the desk
-// role's App identity, the only actor whose dispatched-* stamp counts as attestation. It
-// is the roster-derived answer (RoleAppLogin("desk")): false for an unbound desk role, an
-// unconfigured roster, or an empty login, so an unconfigured deployment vouches for
-// nobody rather than defaulting to trust. Inject it as AttestedModelStampOf's predicate
-// wherever the strong form is needed against the live roster.
+// ForeignStampLabels names the dispatched-* labels the PR CARRIES whose standing
+// application this predicate will not vouch for — including any the timeline cannot
+// attribute at all. It is the exact set a RE-STAMP has to remove before applying its own.
+//
+// IT IS THE WRITER'S HALF OF THE APPEND-ONLY PROBLEM. Labels are a SET, so `--add-label`
+// over a label the PR already carries is a NO-OP: a dispatcher re-running its stamp step on
+// a PR someone else stamped changes nothing, and the PR keeps refusing every
+// authority-bearing write. The only repair the forge offers is to REMOVE the label and
+// re-apply it, which is what the reader above now reads — so the writer needs to know which
+// labels those are. Reader and writer therefore project the same answer from one function
+// rather than each deciding what "foreign" means.
+//
+// An UNATTRIBUTABLE label is included, deliberately: the dispatcher re-applying a label it
+// cannot prove it applied is safe (the result is a label it definitely applied), while
+// leaving it is the state the floor refuses. A nil predicate vouches for nobody, so every
+// present stamp label is returned.
+func ForeignStampLabels(tl StampTimeline, isDispatcher func(applier string) bool) []string {
+	appliers, unattributed := resolveStampAppliers(tl)
+	out := append([]string(nil), unattributed...)
+	for name, who := range appliers {
+		if isDispatcher != nil && isDispatcher(who) {
+			continue
+		}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ReStampRemovals names every dispatched-* label CURRENTLY on the PR that a re-stamp to the
+// exact label set `want` must REMOVE before applying `want`, so that afterwards the PR
+// carries exactly `want`, each standing under the dispatcher.
+//
+// WHY IT TAKES `want` AND ForeignStampLabels DOES NOT. ForeignStampLabels answers only the
+// APPLIER question — which present stamp labels a non-dispatcher applied — because that is the
+// whole of the append-only repair for a stamp whose CONTENT is already the right pair. But a
+// re-dispatch also has to survive a stamp whose content is WRONG: an earlier run of the
+// dispatcher ITSELF may have left a different model slug, a stale tier, a second tier, or an
+// out-of-vocabulary half. Those labels were applied by the dispatcher, so ForeignStampLabels
+// leaves them — and adding the new pair on top cannot displace them, because labels are a SET,
+// so the stamp stays conflicting (ModelIndeterminate) and every authority-bearing write keeps
+// refusing. That is the "present-but-unreadable, re-dispatch cannot fix" deadlock: re-dispatch
+// reported OK yet the floor still refused, because the step only ever cleared FOREIGN labels.
+// A re-stamp that means to REPLACE a corrupt stamp with a good one must therefore clear every
+// present dispatched-* label that is not part of the pair it is about to apply, regardless of
+// who applied it — which is the dispatcher-identity recovery the floor's refusal already tells
+// the operator to run.
+//
+// A present dispatched-* label is removed when EITHER:
+//   - its name is NOT in `want` — a conflicting, stale, or malformed stamp label. It keeps the
+//     stamp unreadable no matter what `want` adds on top, and this holds REGARDLESS of the
+//     applier: a wrong label the dispatcher itself left on an earlier run is just as unreadable
+//     as a foreign one, and only removing it repairs the PR.
+//   - its name IS in `want` but its standing application is not the dispatcher's (foreign, or a
+//     present label the timeline read cannot attribute) — remove-and-re-apply under the
+//     dispatcher is the only repair an append-only timeline offers (the ForeignStampLabels
+//     case, subsumed here).
+//
+// A `want` label already standing under the dispatcher is NOT listed: leaving it and adding
+// over it is a harmless no-op, and removing it would churn the timeline and briefly leave the
+// PR unstamped for nothing.
+//
+// This never widens what the floor TRUSTS — it only lets the DISPATCHER replace a corrupt
+// stamp with a clean one. A stamp applied by anyone else still reads Indeterminate (the reader
+// is unchanged), and a re-stamp to a below-floor `want` tier still clears to a Stamped-but-
+// below state the floor refuses. The security guarantee is untouched; the deadlock is not.
+//
+// `want` is normalized the same way present labels are. A nil predicate vouches for nobody, so
+// every present stamp label whose name is in `want` is removed too — the same fail-closed
+// direction the reader takes.
+func ReStampRemovals(tl StampTimeline, want []string, isDispatcher func(applier string) bool) []string {
+	wantSet := map[string]bool{}
+	for _, w := range want {
+		wantSet[normLabel(w)] = true
+	}
+	appliers, unattributed := resolveStampAppliers(tl)
+	unattr := map[string]bool{}
+	for _, u := range unattributed {
+		unattr[u] = true
+	}
+	var out []string
+	for _, n := range presentStampLabels(tl.Present) {
+		switch {
+		case !wantSet[n]:
+			// Conflicting / stale / malformed stamp content — must go regardless of applier.
+			out = append(out, n)
+		case unattr[n]:
+			// A `want` label the timeline read cannot attribute — re-apply under the dispatcher.
+			out = append(out, n)
+		default:
+			// A `want` label whose standing application is foreign — remove so the re-apply takes.
+			if who := appliers[n]; isDispatcher == nil || !isDispatcher(who) {
+				out = append(out, n)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// DispatcherRole is the desk ROLE whose App identity is the dispatcher — the ONE declared
+// source of that answer, for the reader AND the writer.
+//
+// WHY IT IS A CONSTANT AND NOT A STRING IN TWO PLACES. The reader (IsDispatcherLogin) and
+// the WRITER (the dispatch verb's stamp step) have to name the same identity or the whole
+// mechanism inverts: a stamp applied under one identity and verified against another reads
+// as a forged self-report, which the floor refuses — so a correctly dispatched, genuinely
+// strong-tier PR is refused while an UNSTAMPED one proceeds on the NOTICE path. That is
+// exactly the failure this constant exists to make impossible: the writer projects the
+// role it must authenticate as from here, the reader projects the login it accepts from
+// here, and a change moves both at once.
+const DispatcherRole = "desk"
+
+// IsDispatcherLogin reports whether a GitHub login is the fleet's DISPATCHER — the
+// DispatcherRole App identity, the only actor whose dispatched-* stamp counts as
+// attestation. It is the roster-derived answer (RoleAppLogin(DispatcherRole)): false for
+// an unbound role, an unconfigured roster, or an empty login, so an unconfigured
+// deployment vouches for nobody rather than defaulting to trust. Inject it as
+// AttestedModelStampOf's predicate wherever the strong form is needed against the live
+// roster.
 func IsDispatcherLogin(login string) bool {
 	want := strings.TrimSpace(login)
 	if want == "" {
 		return false
 	}
-	deskLogin, ok := RoleAppLogin("desk")
+	deskLogin, ok := RoleAppLogin(DispatcherRole)
 	if !ok {
 		return false
 	}
 	return strings.EqualFold(want, deskLogin)
+}
+
+// NonDispatcherStampAppliers names every identity holding the STANDING application of a
+// dispatched-* label the predicate will not vouch for — sorted and de-duplicated, and EMPTY
+// when every label the PR currently carries came from the dispatcher.
+//
+// STANDING, not historical. A login whose application was later removed and re-applied by
+// the dispatcher is NOT listed: naming it would report a repaired PR as still foreign-
+// stamped, which is the append-only trap this reader was corrected for.
+//
+// IT EXISTS FOR THE REFUSAL MESSAGE. "Applied by a non-dispatcher identity" is a verdict
+// the operator cannot act on: the two remedies (re-stamp the PR under the dispatcher vs
+// escalate the write to a strong-tier session) are different, and choosing between them
+// needs the login that actually applied the stamp. Reconstructing it by hand from the
+// timeline API is what the field report had to do.
+//
+// A nil predicate vouches for NOBODY, so every stamp applier is listed — the same
+// fail-closed direction AttestedModelStampOf takes, so the message never claims a clean
+// applier set it did not actually check.
+func NonDispatcherStampAppliers(tl StampTimeline, isDispatcher func(applier string) bool) []string {
+	appliers, _ := resolveStampAppliers(tl)
+	seen := map[string]bool{}
+	var out []string
+	for _, who := range appliers {
+		if isDispatcher != nil && isDispatcher(who) {
+			continue
+		}
+		if who == "" {
+			who = "(an actor the timeline does not name)"
+		}
+		if seen[who] {
+			continue
+		}
+		seen[who] = true
+		out = append(out, who)
+	}
+	sort.Strings(out)
+	return out
 }

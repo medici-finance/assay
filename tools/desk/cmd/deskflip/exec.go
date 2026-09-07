@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -12,10 +10,15 @@ import (
 
 // execCommand is the single seam through which EVERY child process this verb starts
 // flows. Production binds it to exec.Command; tests wrap it to record the real
-// constructed argv, which is how the assertion "nothing is mutated after a refused
-// condition" is checked against what would actually have run. Nothing else in this package
-// builds a command, so there is exactly one place argv is assembled — and every value in
-// it is a literal verb or an already-validated value, never a shell string.
+// constructed argv. Nothing else in this package builds a command, so there is exactly one
+// place argv is assembled — and every value in it is a literal verb or an already-validated
+// value, never a shell string.
+//
+// SINCE THE FORGE MIGRATION THE ONLY THING THAT REACHES IT IS `git`. Every forge read and
+// write this verb makes now goes through the resolved deskkit.Forge (an HTTP client bound
+// to an explicitly minted App token), so there is no forge CLI to launch and no ambient CLI
+// identity to fall back to. The seam stays because the repo resolution still reads
+// `git remote get-url origin` — a local read that carries no identity at all.
 var execCommand = exec.Command
 
 // mintTokenFn is the seam the App-token lookup runs through, so a test can exercise the
@@ -23,18 +26,35 @@ var execCommand = exec.Command
 // which shells out to the token minter and reads the file it names.
 var mintTokenFn = deskkit.RoleTokenForRepo
 
-// ghToken is the App installation token EVERY `gh` invocation from this verb authenticates
-// with. It is set once, by the app-token condition, before the first forge read.
+// forgeAPIBase is a TEST-ONLY override of the API base the resolved GitHub backend is
+// pointed at. It is EMPTY in production, which means "the backend's own default" — so this
+// verb binds no forge host literal of its own anywhere, and there is deliberately no flag or
+// environment variable that sets it (a production override could redirect a ready-flip, and
+// the queue labels that go with it, at an attacker).
+var forgeAPIBase string
+
+// init installs this verb's existing, tested App-token lookup as the GitHub custody step
+// deskkit.ForgeFor calls, instead of ForgeFor's default (which resolves the same
+// RoleTokenForRepo path itself).
 //
-// WHY AN EMPTY VALUE IS A HARD REFUSAL AND NEVER A FALLBACK. deskflip mutates a PR: it
-// takes it out of draft and rewrites the queue labels a human reads to decide what is
-// waiting on them. With no token in the child's environment `gh` authenticates as whatever
-// account the shell's keyring holds — in practice the operator's own login — so the write
-// lands under a HUMAN identity and reads, in the timeline and to everyone after, as a
-// human decision. A role verb acting under an operator's credential is exactly the
-// ambient-identity lane the custody rules retire, and unlike a failed read it cannot be
-// taken back once it is written. So an unset token refuses; it never degrades.
-var ghToken string
+// WHY A HOOK RATHER THAN THE DEFAULT PATH. Two reasons, and only the second is about tests.
+// First, the app-token CONDITION has to refuse BEFORE the first forge call, with a message
+// naming the role and the token path — so this verb has to perform the lookup itself in any
+// case, and letting ForgeFor repeat it would mint twice per run. Second, `mintTokenFn` is
+// the seam the identity tests drive; routing custody through it keeps those tests exercising
+// the same lookup the production path uses rather than a parallel one.
+//
+// The base URL is read HERE, at call time, so a per-test override still reaches the Forge
+// this produces. (See forgeresolve.go's header for the resolver contract this plugs into.)
+func init() {
+	deskkit.SetGitHubCustodyMinter(func(role string, repo deskkit.ForgeRepo) (token, baseURL string, err error) {
+		tok, _, merr := mintTokenFn(role, repo.Slug())
+		if merr != nil {
+			return "", "", merr
+		}
+		return tok, forgeAPIBase, nil
+	})
+}
 
 type runResult struct {
 	stdout string
@@ -43,20 +63,9 @@ type runResult struct {
 }
 
 func runCmd(dir, name string, args ...string) runResult {
-	// The fail-closed backstop for the rule above: even if a future code path reached a
-	// forge call before the app-token condition ran, the call does not happen. The
-	// condition is the check a caller sees; this is the one that cannot be forgotten.
-	if name == "gh" && ghToken == "" {
-		return runResult{err: errors.New(
-			"refusing to run gh with no App installation token — deskflip never falls back to the " +
-				"ambient gh identity/keyring for a write it makes under a role identity")}
-	}
 	cmd := execCommand(name, args...)
 	if dir != "" {
 		cmd.Dir = dir
-	}
-	if name == "gh" {
-		cmd.Env = append(os.Environ(), "GH_TOKEN="+ghToken)
 	}
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out

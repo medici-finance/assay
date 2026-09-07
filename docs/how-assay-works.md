@@ -74,6 +74,14 @@ badly designed, and the reverse also happens. `done` requires both: a verified V
 table and a recorded review verdict, attributed and dated, from an identity the
 implementer cannot write on its own behalf.
 
+What the Verify table proves is bounded: it probes the *delta* a brief introduced —
+the behaviour that change was supposed to add — chosen by the same author who wrote the
+change. The *baseline* the change did not touch is guarded separately, by a standing
+truth suite that CI owns and the change's author does not write, under a test policy
+that also fixes the tiers, the regression floor, and what a flaky result means
+([`test-policy.md`](test-policy.md)). A green Verify table is a claim about the delta,
+not about everything the change left alone.
+
 **4. Every instrument reports in three states, never two.** A check that can only say
 `pass` or `fail` is forced to lie whenever it can't actually look — a network timeout, a
 missing prerequisite, a truncated page of results. Every desk instrument in Assay instead

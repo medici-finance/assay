@@ -12,11 +12,11 @@ func TestSizeClassLabelBoundaries(t *testing.T) {
 	}{
 		{0, "size:S"},
 		{1, "size:S"},
-		{99, "size:S"},   // just under the S/M boundary
-		{100, "size:M"},  // AT the S/M boundary → M (threshold is <100 for S)
+		{99, "size:S"},  // just under the S/M boundary
+		{100, "size:M"}, // AT the S/M boundary → M (threshold is <100 for S)
 		{101, "size:M"},
-		{399, "size:M"},  // just under the M/L boundary
-		{400, "size:L"},  // AT the M/L boundary → L (threshold is <400 for M)
+		{399, "size:M"}, // just under the M/L boundary
+		{400, "size:L"}, // AT the M/L boundary → L (threshold is <400 for M)
 		{401, "size:L"},
 		{5000, "size:L"},
 	}

@@ -19,6 +19,13 @@ var (
 	reBase64ish   = regexp.MustCompile(`[A-Za-z0-9+/=]{32,}`)
 	reLowerHex    = regexp.MustCompile(`^[0-9a-f]+$`)
 
+	// reDocExtension matches a DOC-file extension immediately after a run — the ".md",
+	// ".txt", ".json", ".yaml" or ".yml" a doc PATH ends on, bounded so ".md" matches but
+	// ".mdx"/".markdown" do not. It is the forward half of isDocPathHexSegment (Rule 1's
+	// doc-extension arm): a 32-hex filename STEM followed by one of these is a doc path
+	// segment, not a bare MD5-shaped token.
+	reDocExtension = regexp.MustCompile(`^\.(md|txt|json|yaml|yml)([^A-Za-z0-9]|$)`)
+
 	// rePEMBegin captures the LABEL of a PEM / ASCII-armor BEGIN line so the scanner can
 	// tell an UNENCRYPTED key block (which it must refuse) from an ENCRYPTED one (which is
 	// ciphertext, safe to commit at rest — see encryptedArmorLabels).
@@ -115,6 +122,11 @@ const (
 	// bits each, so short groups (ports, years, `python311`) are noise; a long unbroken
 	// digit run is not name material (it could be an account or card number).
 	maxDigitRun = 12
+	// maxIssueDigits bounds a single group in an issue-number slash-list (isIssueNumberList,
+	// Rule 2). Issue/PR numbers are 1–6 digits even in the largest tracked repos; a group of
+	// 7+ digits is a numeric TOKEN wearing slashes (an account/card number, an id), not a
+	// tracker reference, and stays refused — the paired positive's 8-digit groups prove it.
+	maxIssueDigits = 6
 	// minLowerWord is the shortest lowercase run that reads as a word rather than as
 	// base64 debris. `tools`, `api`, `src` qualify; the `b` of `bPxRfi…` does not.
 	minLowerWord = 3
@@ -362,13 +374,17 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 	s := markerSurface(raw)
 	switch {
 	case reGitHubToken.MatchString(s):
-		return Refused("refused: " + surface + " contains a GitHub token prefix (ghp_/github_pat_/ghs_/gho_)")
+		return RefusedFinding("refused: "+surface+" contains a GitHub token prefix (ghp_/github_pat_/ghs_/gho_)",
+			regexFinding("github-token", s, reGitHubToken))
 	case reAWSKeyID.MatchString(s):
-		return Refused("refused: " + surface + " contains an AWS access-key ID (AKIA…)")
+		return RefusedFinding("refused: "+surface+" contains an AWS access-key ID (AKIA…)",
+			regexFinding("aws-key-id", s, reAWSKeyID))
 	case hasPlaintextPEM(s):
-		return Refused("refused: " + surface + " contains an unencrypted PEM key block (-----BEGIN …-----)")
+		return RefusedFinding("refused: "+surface+" contains an unencrypted PEM key block (-----BEGIN …-----)",
+			&ScanFinding{Rule: "pem-block", Line: lineOf(s, strings.Index(s, "-----BEGIN")), Shape: "pem (armor)"})
 	case reJWT.MatchString(s):
-		return Refused("refused: " + surface + " contains a JWT-shaped token (eyJ….….…)")
+		return RefusedFinding("refused: "+surface+" contains a JWT-shaped token (eyJ….….…)",
+			regexFinding("jwt", s, reJWT))
 	// decryptedK8sSecret reads `raw`, NOT the marker surface `s`, and it is the one arm
 	// that must. Every other arm fires on a MARKER, so neutralising a marker that
 	// structured recognition has already accounted for is exactly right for them. This arm
@@ -377,10 +393,11 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 	// sanctioned document. Reading `s` therefore made a CORRECTLY sops-encrypted Secret
 	// look decrypted and refused it: a false positive on the exact artifact #778 exists to
 	// let through, caught by the corpus fixture neg-sops-encrypted-manifest.
-	case decryptedK8sSecret(raw):
-		return Refused("refused: " + surface + " contains a DECRYPTED Kubernetes Secret " +
-			"(kind: Secret with a data/stringData value that is not ENC[AES256_GCM…]) — " +
-			"sops-encrypt every value before committing")
+	case k8sLine(raw) > 0:
+		return RefusedFinding("refused: "+surface+" contains a DECRYPTED Kubernetes Secret "+
+			"(kind: Secret with a data/stringData value that is not ENC[AES256_GCM…]) — "+
+			"sops-encrypt every value before committing",
+			&ScanFinding{Rule: "decrypted-k8s-secret", Line: k8sLine(raw), Shape: "k8s-plaintext-value"})
 	// The sops arm STAYS, and #778 is still satisfied. An earlier draft of this branch
 	// deleted it outright on the reasoning that ciphertext at rest is sanctioned. Deleting
 	// it opens false negatives the entropy loop structurally cannot cover: a sops IMITATION
@@ -393,7 +410,8 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 	// metadata block). A genuine encrypted-at-rest manifest therefore never reaches this
 	// arm, and everything wearing the shape without earning it still does.
 	case reSopsEncVal.MatchString(s) || (reSopsKey.MatchString(s) && reSopsField.MatchString(s)):
-		return Refused("refused: " + surface + " contains a sops-encrypted secret block or ENC[ marker")
+		return RefusedFinding("refused: "+surface+" contains a sops-encrypted secret block or ENC[ marker",
+			&ScanFinding{Rule: "sops-block", Line: sopsLine(s), Shape: "sops-marker"})
 	}
 	// A sops-ENCRYPTED value (ENC[AES256_GCM,…]) is no longer refused on sight (#778):
 	// this scan catches UNENCRYPTED secrets, and sops ciphertext committed at rest is
@@ -462,13 +480,24 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 		if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) {
 			continue
 		}
-		return Refused(fmt.Sprintf(
+		// Rule 1 (doc-extension arm) and Rule 2. Both are NARROWER than the
+		// class they clear and each is bounded by a paired positive fixture that stays
+		// refused: isDocPathHexSegment admits a 32-hex doc-path FILENAME stem
+		// (pos-hex-token-wearing-a-doc-path keeps every other length and the no-neighbour
+		// case refused); isIssueNumberList admits a slash-list of short numeric groups
+		// (pos-digit-token-wearing-slashes keeps 8-digit+ groups and bare numeric tokens
+		// refused). Rule 1's SLASH arm lives in isPathLike, where the run keeps its '/'.
+		if isDocPathHexSegment(raw, loc[0], loc[1]) || isIssueNumberList(run) {
+			continue
+		}
+		return RefusedFinding(fmt.Sprintf(
 			"refused: %s contains a %d-char high-entropy run (possible secret); "+
 				"only git SHAs (40/64 lowercase hex), slash-separated paths built from "+
 				"word-shaped segments, bare word-shaped identifiers, key=<path> shell "+
 				"assignments, all-'=' banner separators, and the marker-anchored digest "+
 				"fields of a recognised structured format (go.sum h1:, SRI integrity, a "+
-				"complete sops envelope) are exempt", surface, len(run)))
+				"complete sops envelope) are exempt", surface, len(run)),
+			&ScanFinding{Rule: "high-entropy-run", Line: lineOf(raw, loc[0]), Length: len(run), Shape: redactShape(run)})
 	}
 	return nil
 }
@@ -477,6 +506,139 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 // lowercase-hex string — the one exemption to the high-entropy-run rule.
 func isGitSHA(run string) bool {
 	return (len(run) == 40 || len(run) == 64) && reLowerHex.MatchString(run)
+}
+
+// regexFinding builds the explain ScanFinding for a literal-marker arm: the rule id, the
+// 1-based line of the first match, its length and a redacted shape. It never carries the
+// matched bytes — redactShape keeps only the two ends and the character class.
+func regexFinding(rule, s string, re *regexp.Regexp) *ScanFinding {
+	loc := re.FindStringIndex(s)
+	if loc == nil {
+		return &ScanFinding{Rule: rule}
+	}
+	m := s[loc[0]:loc[1]]
+	return &ScanFinding{Rule: rule, Line: lineOf(s, loc[0]), Length: len(m), Shape: redactShape(m)}
+}
+
+// sopsLine is the 1-based line of the first sops marker, for the sops arm's finding.
+func sopsLine(s string) int {
+	if loc := reSopsEncVal.FindStringIndex(s); loc != nil {
+		return lineOf(s, loc[0])
+	}
+	if loc := reSopsKey.FindStringIndex(s); loc != nil {
+		return lineOf(s, loc[0])
+	}
+	return 1
+}
+
+// isDocHashSegment reports whether seg is EXACTLY 32 lowercase-hex characters — a finding
+// or date-hash directory/filename segment, the shape a 32-char MD5-style path component
+// takes. It is the segment predicate behind Rule 1's slash arm in isPathLike; a bare
+// 32-hex run (no path context) is NOT admitted by it, since isPathLike is only consulted
+// on a run that already carries a '/'.
+func isDocHashSegment(seg string) bool {
+	return len(seg) == 32 && reLowerHex.MatchString(seg)
+}
+
+// isDocPathHexSegment is Rule 1's DOC-EXTENSION arm. It admits a run that
+// is EXACTLY 32 lowercase hex characters when, in the surrounding surface, it is a filename
+// STEM immediately followed by a doc extension (.md/.txt/.json/.yaml/.yml) AND it sits
+// inside a real path — the maximal surrounding run of path characters contains a '/'. That
+// is the shape `…/docs/streams/<stream>/2026-08-30-<32hex>.md` takes, where the '-'/'.'
+// join the hex stem to its date and extension so reBase64ish reports the hex alone with no
+// '/' of its own (the slash case keeps its '/' and is handled in isPathLike).
+//
+// It is bounded HARD by the paired positive pos-hex-token-wearing-a-doc-path: the run must
+// be EXACTLY 32 hex (a 31/33/48-char run fails on length — an MD5-shaped token in prose is
+// exactly that shape), the following characters must be a doc extension (a bare 32-hex run
+// with nothing after it stays refused), and the surrounding token must be a real path (a
+// 32-hex "hash" with no '/' around it is prose, and stays refused).
+func isDocPathHexSegment(raw string, start, end int) bool {
+	run := raw[start:end]
+	if len(run) != 32 || !reLowerHex.MatchString(run) {
+		return false
+	}
+	if !reDocExtension.MatchString(raw[end:]) {
+		return false
+	}
+	lo, hi := pathTokenBounds(raw, start, end)
+	return strings.ContainsRune(raw[lo:hi], '/')
+}
+
+// pathTokenBounds expands [start,end) over the maximal surrounding run of path characters
+// [A-Za-z0-9._/-] and returns the resulting bounds — the whole path token the run sits in.
+func pathTokenBounds(raw string, start, end int) (int, int) {
+	lo, hi := start, end
+	for lo > 0 && isPathTokenByte(raw[lo-1]) {
+		lo--
+	}
+	for hi < len(raw) && isPathTokenByte(raw[hi]) {
+		hi++
+	}
+	return lo, hi
+}
+
+// isPathTokenByte reports whether c is a filesystem/module PATH-token character: the
+// base64ish alphanumerics plus the '.', '-', '_' and '/' that join a path's segments,
+// stems, dates and extensions — but never '+' or '=', which no real path carries.
+func isPathTokenByte(c byte) bool {
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+		c == '.' || c == '-' || c == '_' || c == '/'
+}
+
+// isIssueNumberList is Rule 2. It admits a run that is ONLY short numeric
+// groups joined by '/', every group 1–maxIssueDigits digits — a slash-list of issue
+// numbers (`#101/102/104/…`, whose leading '#' is outside the base64ish charset so the run
+// starts at the first digit). A group longer than maxIssueDigits, or ANY non-digit
+// character in the run, denies the exemption: that is a numeric TOKEN wearing slashes (the
+// AWS-example lesson isPathLike is written around), bounded by the paired positive
+// pos-digit-token-wearing-slashes (8-digit groups and bare numeric runs stay refused).
+func isIssueNumberList(run string) bool {
+	segs := strings.Split(run, "/")
+	if len(segs) < 2 {
+		return false // a single group is not a slash-LIST; a bare numeric run stays refused
+	}
+	sawGroup := false
+	for _, seg := range segs {
+		if seg == "" {
+			continue // a leading/trailing/`//` slash carries no group
+		}
+		if len(seg) > maxIssueDigits {
+			return false
+		}
+		for i := 0; i < len(seg); i++ {
+			if seg[i] < '0' || seg[i] > '9' {
+				return false
+			}
+		}
+		sawGroup = true
+	}
+	return sawGroup
+}
+
+// isPlaceholderSecretValue is Rule 3's per-value test: a data/stringData
+// value that is a PLACEHOLDER, not a decrypted secret. An angle-bracket token `<…>`, a
+// `${…}` or `{{…}}` template expression, or the literal word REDACTED/PLACEHOLDER is a
+// template's stand-in for a value that will be filled at deploy time. Surrounding quotes
+// are tolerated. One NON-placeholder value among placeholders still refuses (the loop in
+// decryptedK8sSecretLine returns on it), which is what the paired positive
+// pos-k8s-secret-literal-in-fence proves.
+func isPlaceholderSecretValue(val string) bool {
+	v := strings.TrimSpace(strings.Trim(strings.TrimSpace(val), `"'`))
+	if v == "" {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(v, "<") && strings.HasSuffix(v, ">"):
+		return true
+	case strings.HasPrefix(v, "${") && strings.HasSuffix(v, "}"):
+		return true
+	case strings.HasPrefix(v, "{{") && strings.HasSuffix(v, "}}"):
+		return true
+	case v == "REDACTED" || v == "PLACEHOLDER":
+		return true
+	}
+	return false
 }
 
 // isAllEquals reports whether run is composed ENTIRELY of '=' — the FOURTH exemption to
@@ -565,9 +727,24 @@ func hasPlaintextPEM(s string) bool {
 // is refused rather than passed: an unreadable mapping is a could-not-check, and a
 // could-not-check must never report clean. Diff markers are tolerated on every line
 // because the surface that carries a committed Secret is deskpr's branch diff.
+//
+// Rule 3 adds a TEMPLATE carve-out at the VALUE level, never a
+// "skip fenced blocks" rule (a fence is where a real manifest gets pasted): a value that
+// is a PLACEHOLDER (isPlaceholderSecretValue — `<…>`, `${…}`, `{{…}}`, REDACTED,
+// PLACEHOLDER) is a template's stand-in, not a decrypted value, and is passed like an
+// ENC[…] value. The test stays PER VALUE, so ONE literal value among placeholders keeps
+// the refusal — the paired positive pos-k8s-secret-literal-in-fence proves it.
 func decryptedK8sSecret(s string) bool {
+	return k8sLine(s) > 0
+}
+
+// k8sLine is decryptedK8sSecret's line-returning form: it returns the 1-based line of the
+// first DECRYPTED value (or of the unreadable data mapping), or 0 when the Secret is clean
+// / absent. The switch arm reads it so the explain finding can name WHERE the plaintext
+// value is; decryptedK8sSecret is the boolean wrapper the tests exercise directly.
+func k8sLine(s string) int {
 	if !reK8sSecretKind.MatchString(s) {
-		return false
+		return 0
 	}
 	lines := strings.Split(s, "\n")
 	for i, line := range lines {
@@ -590,16 +767,19 @@ func decryptedK8sSecret(s string) bool {
 			if strings.Contains(val, "ENC[AES256_GCM") {
 				continue
 			}
+			if isPlaceholderSecretValue(val) {
+				continue // Rule 3: a placeholder is a template stand-in, not a decrypted value
+			}
 			if isBlockScalarIndicator(val) && blockScalarEncrypted(lines, j+1, len(e[1])) {
 				continue
 			}
-			return true
+			return j + 1 // 1-based line of the first decrypted value
 		}
 		if !sawEntry {
-			return true // could-not-check: a Secret data mapping we could not read
+			return i + 1 // could-not-check: a Secret data mapping we could not read
 		}
 	}
-	return false
+	return 0
 }
 
 // isBlockScalarIndicator reports whether a YAML scalar value is empty or one of the
@@ -730,9 +910,26 @@ func isPathLike(run string) bool {
 	if strings.ContainsAny(run, "+=") {
 		return false
 	}
-	opaque, wordSegs, opaqueSegs := 0, 0, 0
-	for _, seg := range strings.Split(run, "/") {
+	opaque, wordSegs, opaqueSegs, hexSegs := 0, 0, 0, 0
+	segs := strings.Split(run, "/")
+	for i, seg := range segs {
 		if seg == "" || isGitSHA(seg) {
+			continue
+		}
+		// Rule 1 (SLASH arm). An EXACTLY-32-lowercase-hex segment that is FOLLOWED BY '/'
+		// (a non-final segment, or one before a trailing slash) is a finding/date HASH
+		// DIRECTORY (`…/findings/<32hex>/README`), not opaque token material — the same way
+		// a git SHA segment is skipped above. Two bounds, both load-bearing:
+		//   (a) DIRECTORY position only. The brief's statement is "followed by `/` and a
+		//       further word-shaped segment", so a run ENDING in `<32hex>` (before whatever
+		//       non-`/word` follows it, e.g. a `.bin`) is NOT admitted here; the final-segment
+		//       DOC-extension case is isDocPathHexSegment's, checked in the loop.
+		//   (b) counted separately so the exemption is CONDITIONAL on a word-shaped neighbour
+		//       (below): a run of hex segments with no word around it stays refused — the
+		//       paired positive pos-hex-token-wearing-a-doc-path's `<32hex>/<32hex>.md`
+		//       exercises both bounds.
+		if isDocHashSegment(seg) && i < len(segs)-1 {
+			hexSegs++
 			continue
 		}
 		if looksLikeWords(seg) {
@@ -754,6 +951,13 @@ func isPathLike(run string) bool {
 		if !isShortDigitRun(seg) {
 			opaqueSegs++
 		}
+	}
+	// A 32-hex segment earns its path exemption only WITH a word-shaped neighbour: a run of
+	// hex segments alone (or hex among only opaque segments) is a token wearing slashes, not
+	// a doc path, and stays refused. This is the SLASH-arm bound the doc-extension arm gets
+	// from length-exactness and the surrounding '/'.
+	if hexSegs > 0 && wordSegs == 0 {
+		return false
 	}
 	if opaqueSegs > 0 && wordSegs <= opaqueSegs {
 		return false

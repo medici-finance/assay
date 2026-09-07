@@ -211,9 +211,12 @@ func TestBlamePorcelainAuthorsIgnoresNonContentLines(t *testing.T) {
 		entry("bbb", 3, fixtureWorkerName, fixtureWorkerEmail, "| 1 | `true` | pass |") +
 		entry("bbb", 4, fixtureWorkerName, fixtureWorkerEmail, "| 2 | `true` | pass |")
 
-	got := blamePorcelainAuthors(out)
+	got, sawBoundary := blamePorcelainAuthors(out)
 	if len(got) != 1 || got[0].Email != fixtureWorkerEmail {
 		t.Fatalf("only the content-bearing rows count; got %+v, want just the worker", got)
+	}
+	if sawBoundary {
+		t.Error("no line carried a `boundary` header, so sawBoundary must be false")
 	}
 
 	// A multi-line HTML comment must stay excluded across all of its lines, and
@@ -221,9 +224,37 @@ func TestBlamePorcelainAuthorsIgnoresNonContentLines(t *testing.T) {
 	multi := entry("aaa", 1, fixtureVerifierName, fixtureVerifierEmail, "<!-- contract") +
 		entry("aaa", 2, fixtureVerifierName, fixtureVerifierEmail, "still inside the comment") +
 		entry("aaa", 3, fixtureVerifierName, fixtureVerifierEmail, "--> | 1 | real row |")
-	got = blamePorcelainAuthors(multi)
+	got, _ = blamePorcelainAuthors(multi)
 	if len(got) != 1 || got[0].Email != fixtureVerifierEmail {
 		t.Fatalf("content after a comment closes must count; got %+v", got)
+	}
+}
+
+// TestBlamePorcelainAuthorsBoundaryOnlyOnContentLines pins the graft-detection
+// half: a `boundary` header (git's marker for a commit whose parents blame could
+// not walk to — the graft point in a shallow clone) sets sawBoundary ONLY when it
+// covers a CONTENT-BEARING line. A boundary marker over a blank line or a comment
+// line is structure, not evidence, and must not arm the shallow could-not-check.
+func TestBlamePorcelainAuthorsBoundaryOnlyOnContentLines(t *testing.T) {
+	entryB := func(sha string, n int, name, email, content string, boundary bool) string {
+		s := fmt.Sprintf("%s %d %d 1\nauthor %s\nauthor-mail <%s>\n", sha, n, n, name, email)
+		if boundary {
+			s += "boundary\n"
+		}
+		return s + fmt.Sprintf("\t%s\n", content)
+	}
+
+	// A boundary marker over ONLY a blank line — structure, not evidence.
+	blankBoundary := entryB("aaa", 1, fixtureWorkerName, fixtureWorkerEmail, "", true) +
+		entryB("bbb", 2, fixtureWorkerName, fixtureWorkerEmail, "| 1 | `true` | pass |", false)
+	if _, saw := blamePorcelainAuthors(blankBoundary); saw {
+		t.Error("a boundary marker over a blank line must not set sawBoundary")
+	}
+
+	// A boundary marker over a real content line — the graft shape.
+	contentBoundary := entryB("aaa", 1, fixtureWorkerName, fixtureWorkerEmail, "| 1 | `true` | pass |", true)
+	if _, saw := blamePorcelainAuthors(contentBoundary); !saw {
+		t.Error("a boundary marker over a content-bearing line must set sawBoundary")
 	}
 }
 
@@ -233,11 +264,11 @@ func TestBlamePorcelainAuthorsIgnoresNonContentLines(t *testing.T) {
 func TestEvidenceActorJudgeBlameErrorIsCouldNotCheck(t *testing.T) {
 	p := evidenceActorPolicy{Verifier: actorRef{Login: "assay-verifier-app", ID: 300000005}}
 	rows := []evidenceActorRow{{ID: "a/01"}, {ID: "b/02"}}
-	got := evidenceActorJudge(p, rows, func(i int) ([]blameAuthor, error) {
+	got := evidenceActorJudge(p, false, rows, func(i int) ([]blameAuthor, bool, error) {
 		if i == 0 {
-			return nil, fmt.Errorf("boom")
+			return nil, false, fmt.Errorf("boom")
 		}
-		return []blameAuthor{{Name: fixtureVerifierName, Email: fixtureVerifierEmail}}, nil
+		return []blameAuthor{{Name: fixtureVerifierName, Email: fixtureVerifierEmail}}, false, nil
 	})
 	if got[0].Err == nil {
 		t.Error("a failed blame must be could-not-check, not a verdict")
@@ -249,10 +280,61 @@ func TestEvidenceActorJudgeBlameErrorIsCouldNotCheck(t *testing.T) {
 	// An empty author set is also could-not-check: blame that returned nothing
 	// establishes nobody, and calling that "no accepted actor" would fail open
 	// into a finding the run did not earn.
-	empty := evidenceActorJudge(p, []evidenceActorRow{{ID: "c/03"}},
-		func(int) ([]blameAuthor, error) { return nil, nil })
+	empty := evidenceActorJudge(p, false, []evidenceActorRow{{ID: "c/03"}},
+		func(int) ([]blameAuthor, bool, error) { return nil, false, nil })
 	if empty[0].Err == nil {
 		t.Error("an empty blame result must be could-not-check")
+	}
+}
+
+// TestEvidenceActorJudgeShallowGraftIsCouldNotCheck is the row-level heart of the
+// fix: a plain reject whose blame bottomed out at a graft boundary is could-not-check
+// ONLY when the clone is shallow — never on a full clone, and never for the impostor
+// or clean verdicts (the tamper detection those carry must not be weakened).
+func TestEvidenceActorJudgeShallowGraftIsCouldNotCheck(t *testing.T) {
+	p := evidenceActorPolicy{Verifier: actorRef{Login: "assay-verifier-app", ID: 300000005}}
+	workerOnly := func(int) ([]blameAuthor, bool, error) {
+		// A boundary-marked worker line: the graft attributed a pre-graft line to
+		// the boundary/status-regen commit.
+		return []blameAuthor{{Name: fixtureWorkerName, Email: fixtureWorkerEmail}}, true, nil
+	}
+
+	// SHALLOW + reject at a boundary → could-not-check, NOT unbacked.
+	shallow := evidenceActorJudge(p, true, []evidenceActorRow{{ID: "s/01"}}, workerOnly)
+	if !shallow[0].GraftHidden {
+		t.Fatalf("a shallow-graft reject must be could-not-check (GraftHidden); got %+v", shallow[0])
+	}
+	if shallow[0].Err != nil {
+		t.Errorf("graft-hidden is its own could-not-check, not a blame error: %+v", shallow[0])
+	}
+
+	// FULL clone (not shallow), same boundary reject → still unbacked. A genuine
+	// root commit in a full clone is a real boundary and must NOT be relaxed.
+	full := evidenceActorJudge(p, false, []evidenceActorRow{{ID: "f/01"}}, workerOnly)
+	if full[0].GraftHidden {
+		t.Error("a full clone must never report graft-hidden — real tamper detection stays armed")
+	}
+	if full[0].Verdict != actorRejected {
+		t.Errorf("a full-clone genuinely-worker-authored section stays unbacked; got %v", full[0].Verdict)
+	}
+
+	// SHALLOW but no boundary line (backing commit visible past the graft) → judged
+	// normally, still unbacked. Shallowness alone must not blanket-suppress rejects.
+	visible := evidenceActorJudge(p, true, []evidenceActorRow{{ID: "v/01"}},
+		func(int) ([]blameAuthor, bool, error) {
+			return []blameAuthor{{Name: fixtureWorkerName, Email: fixtureWorkerEmail}}, false, nil
+		})
+	if visible[0].GraftHidden {
+		t.Error("a shallow clone whose reject is NOT at a graft boundary must stay unbacked")
+	}
+
+	// SHALLOW + boundary but the section IS verifier-backed → clean, never suppressed.
+	backed := evidenceActorJudge(p, true, []evidenceActorRow{{ID: "b/01"}},
+		func(int) ([]blameAuthor, bool, error) {
+			return []blameAuthor{{Name: fixtureVerifierName, Email: fixtureVerifierEmail}}, true, nil
+		})
+	if backed[0].GraftHidden || backed[0].Verdict != actorVerifier {
+		t.Errorf("a verifier-backed section stays clean even on a shallow clone; got %+v", backed[0])
 	}
 }
 
@@ -262,11 +344,11 @@ func TestEvidenceActorJudgeBlameErrorIsCouldNotCheck(t *testing.T) {
 // re-attributed 93 of 133 rows in this repo to a single repo-wide scrub commit.
 func TestEvidenceActorAcceptAnywhereInSection(t *testing.T) {
 	p := evidenceActorPolicy{Verifier: actorRef{Login: "assay-verifier-app", ID: 300000005}}
-	got := evidenceActorJudge(p, []evidenceActorRow{{ID: "a/01"}}, func(int) ([]blameAuthor, error) {
+	got := evidenceActorJudge(p, false, []evidenceActorRow{{ID: "a/01"}}, func(int) ([]blameAuthor, bool, error) {
 		return []blameAuthor{
 			{Name: fixtureWorkerName, Email: fixtureWorkerEmail},
 			{Name: fixtureVerifierName, Email: fixtureVerifierEmail},
-		}, nil
+		}, false, nil
 	})
 	if got[0].Verdict != actorVerifier {
 		t.Errorf("one verifier-owned line backs the section; got %v (%s)", got[0].Verdict, got[0].Reason)
@@ -448,5 +530,88 @@ func TestEvidenceActorRealRepoUncommittedIsNotBacked(t *testing.T) {
 	joined := strings.Join(evidenceActorNotices(root, streams), "\n")
 	if !strings.Contains(joined, "wip/01") {
 		t.Fatalf("an uncommitted rewrite of the whole Evidence section must not read as backed; got:\n%s", joined)
+	}
+}
+
+// TestEvidenceActorRealRepoShallowGraftIsCouldNotCheck is THE control for the
+// tamper-sensor-honesty fix, in a real shallow clone: a row whose Evidence section
+// was authored by the VERIFIER, then hidden behind a `.git/shallow` graft, must come
+// back COULD-NOT-CHECK — never "unbacked". Reading a truncated history as
+// self-attestation is a tamper sensor failing toward the unsafe verdict.
+//
+// The origin has two commits: the verifier writes the brief (its Evidence lines),
+// then the worker makes an unrelated commit on top. A `--depth=1` clone keeps only
+// the worker's HEAD and grafts the verifier commit away, so `git blame` bottoms out
+// at the worker boundary and attributes the verifier's Evidence lines to the worker
+// — exactly the shape that turned 52/248 into 246/249 unbacked on the incident box.
+// The SAME repo cloned in FULL still reads the row as verifier-backed, proving it is
+// the shallowness, not the content, that produces could-not-check.
+func TestEvidenceActorRealRepoShallowGraftIsCouldNotCheck(t *testing.T) {
+	origin := t.TempDir()
+	evActorGit(t, origin, "init", "-q", "-b", "main")
+	dir := filepath.Join(origin, "docs", "streams", "graftbacked")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "brief-01-x.md"),
+		[]byte(briefWithEvidence("| 1 | `true` | pass exit=0 | 2026-08-13 | verify-desk |\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// commit 1: the VERIFIER authors the brief and its Evidence lines.
+	gitCommitAs(t, origin, fixtureVerifierName, fixtureVerifierEmail, "verifier writes the brief")
+	// commit 2: an UNRELATED worker commit on top, so HEAD != the verifier commit and
+	// a --depth=1 clone grafts the verifier commit away.
+	if err := os.WriteFile(filepath.Join(origin, "unrelated.txt"), []byte("noise\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAs(t, origin, fixtureWorkerName, fixtureWorkerEmail, "worker: unrelated status-regen-like commit")
+
+	clone := func(depth bool) string {
+		dest := t.TempDir()
+		args := []string{"clone", "-q"}
+		if depth {
+			args = append(args, "--depth=1")
+		}
+		args = append(args, "file://"+origin, dest)
+		cmd := exec.Command("git", args...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git clone (depth=%v): %v\n%s", depth, err, out)
+		}
+		return dest
+	}
+	streamsFor := func(root string) []*Stream {
+		return []*Stream{{
+			Name: "graftbacked",
+			Dir:  filepath.Join(root, "docs", "streams", "graftbacked"),
+			Briefs: []Brief{{
+				Num: "01", Status: "verified", Verified: "2026-08-13 opus-verifier"}}}}
+	}
+
+	// SHALLOW clone: the backing commit is grafted away → could-not-check, NOT unbacked.
+	shallowRoot := clone(true)
+	if !isShallowRepository(shallowRoot) { // guard: the fixture must actually be shallow
+		t.Fatal("the --depth=1 clone is not shallow; the test fixture is wrong")
+	}
+	shallowJoined := strings.Join(evidenceActorNotices(shallowRoot, streamsFor(shallowRoot)), "\n")
+	if !strings.Contains(shallowJoined, "could-not-check") || !strings.Contains(shallowJoined, "graftbacked/01") {
+		t.Fatalf("BUG: a shallow/grafted clone must report the row could-not-check.\nnotices:\n%s", shallowJoined)
+	}
+	if !strings.Contains(shallowJoined, "SHALLOW") && !strings.Contains(shallowJoined, "shallow") {
+		t.Errorf("the could-not-check notice must name the shallow/grafted cause; got:\n%s", shallowJoined)
+	}
+	// It must NOT be laundered as an unbacked/self-attest finding.
+	if strings.Contains(shallowJoined, "F-verify-self-attest") || strings.Contains(shallowJoined, "no accepted verifier actor committed") {
+		t.Fatalf("REGRESSION: a shallow blind spot must never be reported as unbacked.\nnotices:\n%s", shallowJoined)
+	}
+
+	// FULL clone of the SAME origin: the verifier commit is present → clean, no notice.
+	fullRoot := clone(false)
+	if isShallowRepository(fullRoot) {
+		t.Fatal("the full clone reports shallow; the test fixture is wrong")
+	}
+	fullJoined := strings.Join(evidenceActorNotices(fullRoot, streamsFor(fullRoot)), "\n")
+	if strings.Contains(fullJoined, "graftbacked/01") {
+		t.Fatalf("on a FULL clone the verifier-authored Evidence must read as backed, not flagged.\nnotices:\n%s", fullJoined)
 	}
 }

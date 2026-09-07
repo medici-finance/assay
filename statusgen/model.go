@@ -45,7 +45,15 @@ type Stream struct {
 	// written from brief frontmatter by `statusgen regen --readmes` and a hand
 	// edit to them is a `statusgen --lint` PROBLEM (rule 47). "" (absent) leaves
 	// the table hand-maintained, as today. Trimmed at parse.
-	Board  string
+	Board string
+	// Traced opts this stream into the untraced-brief traceability check
+	// (registers-v1 §6.5, sdlc/02): when true, a brief in this stream that is
+	// in-progress or later and names no `satisfies:` raises the untraced-brief
+	// NOTICE. false (the default, from an absent `traced:` frontmatter key) holds
+	// the whole stream out of that check — a corpus-wide untraced sweep over legacy
+	// briefs that predate the requirement register is noise, and §4.5 says a new
+	// check lands opt-in, advisory-first.
+	Traced bool
 	Briefs []Brief
 	// Placeholders are the issue-loop placeholder rows (schema: placeholder-v1)
 	// parsed from this stream's issue-<NN>.md files. Each is also appended to

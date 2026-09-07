@@ -10,8 +10,9 @@ description: >-
   (`--lint` == 0, `--version` prints the pinned tag). It is idempotent and REFUSES-not-clobbers an
   already-adopted repo, opens DRAFT PRs only, and escalates every never-autonomous step (reviewer
   App, repo/permission grants, merge/push/tag, private-repo CI auth) to a human. Unix-first
-  (mac/linux); Windows binary acquisition is a named fast-follow. For the step-by-step PRIMITIVE
-  detail and the scenario routing it delegates to the `adopt` skill + docs/adopting-assay.md.
+  (mac/linux), with a native-Windows acquisition arm (PowerShell bootstrap + Go-native
+  `deskinstall`, same sha256-verify-or-refuse). For the step-by-step PRIMITIVE detail and the
+  scenario routing it delegates to the `adopt` skill + docs/adopting-assay.md.
 ---
 
 # Install Assay — turnkey installer
@@ -22,8 +23,9 @@ scenario and holds the PRIMITIVEs and human-gates so a human or agent can hand-w
 each step itself and stopping only at the never-autonomous escalation points.
 
 The orchestration logic here is **Claude-Code-driven and OS-agnostic**. The single OS-specific
-piece is the statusgen *binary acquisition* in step 3 — Unix (mac/linux) today, Windows a named
-fast-follow (see **Scope**). Everything else runs identically on every platform.
+piece is the statusgen *binary acquisition* in step 3 — Unix (mac/linux) via `gh release download`,
+and a native-Windows arm via the PowerShell bootstrap + Go-native `deskinstall` (see **Scope**).
+Everything else runs identically on every platform.
 
 This skill does **not** fork the install steps. It DELEGATES the PRIMITIVE detail — exact commands,
 per-step Verify, the failure modes — to **`assay:adopt`** and the full runbook at
@@ -231,16 +233,22 @@ reviewer App, and the human-merge gate each fire once (the `adopt` runbook's "he
 
 ## Scope
 
-**Unix-first (mac/linux).** The statusgen binary acquisition in step 3 is the only OS-specific arm,
-and it is implemented for mac and linux today.
+**Unix-first (mac/linux), with a real native-Windows arm.** The statusgen binary acquisition in
+step 3 is the only OS-specific arm. It is implemented for mac and linux with `gh release download`,
+and there is now a **native-Windows path** that slots in beside the Unix one without reshaping the
+flow.
 
-**Windows is a deferred fast-follow — NOT in this skill's scope yet.** The Windows arm (the
-`statusgen-windows-amd64.exe` asset, a cross-platform hash-verify, and the `.exe` install path) is a
-future, not-yet-authored follow-up. Because the orchestration logic above is already OS-agnostic,
-the fast-follow adds a *platform arm to step 3* — it is not a second skill. The platform detection
-in step 3 is written so a Windows branch slots in beside the Unix one without reshaping the flow. Do
-NOT implement Windows acquisition here; when a Windows host is detected, say the acquisition arm is
-not yet available on this platform and stop, rather than guessing.
+**Windows is supported — the acquisition arm is real, not deferred.** On a native Windows host,
+step 3 acquires the pinned `statusgen-windows-<arch>.exe` (and `desk-tools-windows-<arch>.tar.gz`)
+through a PowerShell first-install bootstrap (`scripts/bootstrap-windows.ps1`) plus the Go-native
+`deskinstall` command, keeping the same **sha256-verify-or-refuse** control the Unix path uses
+(a hash mismatch is a hard refuse — exit 5 — never a warn-and-continue). Two honesty caveats remain
+and are stated in the runbook, not hidden: the SessionStart hooks need a documented `bash`+`jq`
+workaround (install Git-Bash, or WSL for local dev only — WSL is a fallback, not the native claim),
+and the **native `windows/arm64` smoke is BLOCKED** pending an arm64 Windows runner (the arm64
+asset still ships cross-compiled + checksummed). The full step-by-step Windows walkthrough — install
+command, `.assay-versions` pins, CI-proven status, and the documented-workaround surfaces — lives in
+`docs/adopting-assay.md` § **Windows adopters**.
 
 ## Delegation
 - **`assay:adopt`** — the scenario router (green-field / existing-suite / carve-out) and the

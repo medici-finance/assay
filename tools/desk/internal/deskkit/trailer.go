@@ -59,6 +59,57 @@ func (e *ErrTrailerBoth) Error() string {
 		e.BriefLine, e.IssueLine)
 }
 
+// SplitBriefTrailer reduces an accepted `Brief:` trailer value to its (stream, NN)
+// parts. It is the SINGLE reduction the writer (deskpr's create-time trailer
+// validation) and the reader (RepresentedBriefs' phantom key) both share, so a
+// colon-form trailer and its slash-form brief id can never be classed differently
+// by the two sides — the exact way a phantom double-dispatch slipped through when
+// only the writer knew the colon form.
+//
+// Accepted forms: <stream>/<NN> (brief-v1), <stream>:<NN>, <repo>:<stream>:<NN>, and
+// the full <cell>:<repo>:<stream>:<NN> (example-stream/01). For the colon forms the
+// LAST two parts are stream and NN; the repo/cell prefixes resolve against
+// graph-repos.yaml elsewhere and are not needed for the reduction here. NN must be
+// numeric. ok is false when v is not a well-formed brief trailer value.
+func SplitBriefTrailer(v string) (stream, nn string, ok bool) {
+	v = strings.TrimSpace(v)
+	var parts []string
+	if strings.Contains(v, ":") {
+		parts = strings.Split(v, ":")
+		if len(parts) < 2 {
+			return "", "", false
+		}
+		stream, nn = parts[len(parts)-2], parts[len(parts)-1]
+	} else {
+		parts = strings.Split(v, "/")
+		if len(parts) != 2 {
+			return "", "", false
+		}
+		stream, nn = parts[0], parts[1]
+	}
+	if stream == "" || nn == "" {
+		return "", "", false
+	}
+	for _, c := range nn {
+		if c < '0' || c > '9' {
+			return "", "", false
+		}
+	}
+	return stream, nn, true
+}
+
+// CanonicalBriefID reduces a `Brief:` trailer value to the canonical brief id
+// `<stream>/<NN>`, lower-cased — the one spelling both the phantom key and the plan's
+// item id use, regardless of whether the trailer was written in the slash or the colon
+// form. It returns "" when v is not a well-formed brief trailer value.
+func CanonicalBriefID(v string) string {
+	stream, nn, ok := SplitBriefTrailer(v)
+	if !ok {
+		return ""
+	}
+	return strings.ToLower(stream + "/" + nn)
+}
+
 // ParseTrailers returns the link trailers in a PR body. Lines inside fenced code
 // blocks (```) are ignored — a trailer inside a code sample is documentation, not
 // a link. Exactly one link may exist: a second Brief: or Issue: line, or one of

@@ -140,15 +140,25 @@ var phantomRemediation = map[string]string{
 }
 
 // classifyPhantom is the pure classifier. Given a todo brief's id, its raw file
-// body, its stream README text, and the set of brief ids a local merge already
-// named, it returns the phantom class that caught the row and a human reason, or
-// ok=false when the row is clean.
+// body, its stream README text, the set of brief ids a local merge already
+// named, and whether the row's own brief file exists on disk, it returns the
+// phantom class that caught the row and a human reason, or ok=false when the row
+// is clean.
+//
+// briefFilePresent is the ROW's own record. The re-homed class keys on it: a
+// stream re-homed INTO this repo (statusgen #581) carries "re-homed" in its
+// README narrative describing its own arrival, while its rows are LIVE work with
+// real brief files. Keying re-homed on the README history alone falsely flagged
+// every one of those live rows NON-DISPATCHABLE. A present brief file is the
+// live-work signal that overrides the stream-level history, so re-homed fires
+// only on a POINTER row — one the README marks re-homed AND whose brief file is
+// gone (the record moved elsewhere, leaving only the row behind).
 //
 // Precedence runs most-specific -> most-general and the FIRST match wins, so a
 // row that is both already-merged and carries a banner is reported as merged
 // (the strongest, git-derived fact) rather than by a weaker text match. The
 // ordering is the detector's contract and the tests pin it.
-func classifyPhantom(briefID, body, readme string, mergedIDs map[string]bool) (class, reason string, ok bool) {
+func classifyPhantom(briefID, body, readme string, mergedIDs map[string]bool, briefFilePresent bool) (class, reason string, ok bool) {
 	if mergedIDs[briefID] {
 		return phantomMergedUnflipped,
 			"a merged PR/commit already names this brief but the row is still todo — Next-up keeps offering work that has already landed",
@@ -169,9 +179,13 @@ func classifyPhantom(briefID, body, readme string, mergedIDs map[string]bool) (c
 			"the work was de-housed to another repo by ruling — owned there, not here",
 			true
 	}
-	if reReHomed.MatchString(readme) {
+	// re-homed fires only on a POINTER row: the README marks it re-homed AND the
+	// row's own brief file is gone. A present brief file means live work — a
+	// stream re-homed INTO this repo whose README describes its own arrival must
+	// NOT flag its live rows on that history alone (statusgen #581).
+	if !briefFilePresent && reReHomed.MatchString(readme) {
 		return phantomReHomed,
-			"the stream README has retired this row (re-homed / do-not-re-implement) — its record merged elsewhere",
+			"the stream README has retired this row (re-homed / do-not-re-implement) and its brief file is gone — the record merged elsewhere, only the pointer row remains",
 			true
 	}
 	if reDeferredByGate.MatchString(body) {
@@ -261,7 +275,12 @@ func boardHonestyNotices(streams []*Stream, merged []mergedPR, mergedErr error) 
 		for _, num := range nums {
 			id := s.Name + "/" + num
 			body := ""
-			if path, ok := pathByNum[num]; ok {
+			// briefFilePresent is the ROW's own record: whether a brief file for
+			// this todo row exists on disk. It gates the re-homed class so a live
+			// row of a stream re-homed INTO this repo is not flagged on the
+			// README's arrival narrative alone (statusgen #581).
+			path, briefFilePresent := pathByNum[num]
+			if briefFilePresent {
 				if raw, err := os.ReadFile(path); err != nil {
 					add("could-not-check: board-honesty could not read %s (%v), so the body-keyed "+
 						"phantom classes were not checked for %s.", path, err, id)
@@ -269,7 +288,7 @@ func boardHonestyNotices(streams []*Stream, merged []mergedPR, mergedErr error) 
 					body = string(raw)
 				}
 			}
-			class, reason, ok := classifyPhantom(id, body, readme, mergedIDs)
+			class, reason, ok := classifyPhantom(id, body, readme, mergedIDs, briefFilePresent)
 			if !ok {
 				continue
 			}

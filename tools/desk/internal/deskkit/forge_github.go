@@ -2,12 +2,15 @@ package deskkit
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
+	"strings"
 
 	ghapi "github.com/cli/go-gh/v2/pkg/api"
 )
@@ -51,10 +54,7 @@ type GitHubForge struct {
 var _ Forge = (*GitHubForge)(nil)
 
 func (g *GitHubForge) baseURL() string {
-	if g.BaseURL != "" {
-		return g.BaseURL
-	}
-	return GitHubAPIBase
+	return GitHubBaseURLOrDefault(g.BaseURL)
 }
 
 // restClient returns the go-gh REST client for this forge, building it on first use.
@@ -162,6 +162,7 @@ type ghPullWire struct {
 	State        string `json:"state"`
 	Draft        bool   `json:"draft"`
 	NodeID       string `json:"node_id"`
+	Body         string `json:"body"`
 	ChangedFiles int    `json:"changed_files"`
 	User         struct {
 		Login string `json:"login"`
@@ -169,9 +170,35 @@ type ghPullWire struct {
 	} `json:"user"`
 	Head struct {
 		SHA string `json:"sha"`
+		Ref string `json:"ref"`
 	} `json:"head"`
+	Base struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
 	HTMLURL   string `json:"html_url"`
 	UpdatedAt string `json:"updated_at"`
+	Labels    []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
+	// Mergeable is GitHub's THREE-state answer rendered as a JSON tri-state: true, false,
+	// or null while the background merge computation is still running. It is decoded as a
+	// *bool precisely so null stays distinguishable from false — collapsing the two would
+	// report "not yet computed" as "conflicting", which refuses flips that should proceed,
+	// and the opposite collapse would report it as mergeable, which is the fail-open half.
+	Mergeable *bool `json:"mergeable"`
+}
+
+// ghMergeableState maps GitHub's tri-state `mergeable` field onto the forge-neutral
+// vocabulary PullRequest.Mergeable carries.
+func ghMergeableState(m *bool) string {
+	switch {
+	case m == nil:
+		return MergeableUnknown
+	case *m:
+		return Mergeable
+	default:
+		return MergeableConflicting
+	}
 }
 
 type ghIssueWire struct {
@@ -209,18 +236,51 @@ type ghCombinedStatusWire struct {
 	State      string `json:"state"`
 	TotalCount int    `json:"total_count"`
 	Statuses   []struct {
-		State   string `json:"state"`
-		Context string `json:"context"`
+		State     string `json:"state"`
+		Context   string `json:"context"`
+		CreatedAt string `json:"created_at"`
 	} `json:"statuses"`
 }
 
 type ghCheckRunsWire struct {
 	TotalCount int `json:"total_count"`
 	CheckRuns  []struct {
-		Name       string `json:"name"`
-		Status     string `json:"status"`
-		Conclusion string `json:"conclusion"`
+		Name        string `json:"name"`
+		Status      string `json:"status"`
+		Conclusion  string `json:"conclusion"`
+		StartedAt   string `json:"started_at"`
+		CompletedAt string `json:"completed_at"`
 	} `json:"check_runs"`
+}
+
+// ghLabelWire is one entry of the repo/issue label listings.
+type ghLabelWire struct {
+	Name string `json:"name"`
+}
+
+// ghRequiredStatusChecksWire is the branch-protection required-status-checks object. GitHub
+// carries the required contexts in TWO shapes for compatibility: the legacy flat `contexts`
+// list of names, and the newer `checks` array whose entries pair a context name with an
+// optional app id. Both are decoded and unioned so a context named in only one shape is
+// never missed — a required check the reader dropped would read as "nothing required", the
+// fail-open direction.
+type ghRequiredStatusChecksWire struct {
+	Contexts []string `json:"contexts"`
+	Checks   []struct {
+		Context string `json:"context"`
+	} `json:"checks"`
+}
+
+// ghTimelineWire is one entry of the issue/PR timeline. Only `labeled` events matter to the
+// applier-aware label-event read, and only the label name plus the actor that applied it.
+type ghTimelineWire struct {
+	Event string `json:"event"`
+	Label struct {
+		Name string `json:"name"`
+	} `json:"label"`
+	Actor struct {
+		Login string `json:"login"`
+	} `json:"actor"`
 }
 
 // Pagination constants — extracted from deskpost's github.go, byte-for-byte. GitHub's
@@ -242,15 +302,25 @@ func (g *GitHubForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
 		return nil, err
 	}
+	labels := make([]string, 0, len(w.Labels))
+	for _, l := range w.Labels {
+		labels = append(labels, l.Name)
+	}
 	return &PullRequest{
 		Number:       w.Number,
 		State:        w.State,
 		Draft:        w.Draft,
 		NodeID:       w.NodeID,
+		Body:         w.Body,
 		ChangedFiles: w.ChangedFiles,
 		Author:       Account{Login: w.User.Login, ID: w.User.ID},
 		HeadSHA:      w.Head.SHA,
 		UpdatedAt:    w.UpdatedAt,
+		Mergeable:    ghMergeableState(w.Mergeable),
+		Labels:       labels,
+		URL:          w.HTMLURL,
+		HeadRef:      w.Head.Ref,
+		BaseRef:      w.Base.Ref,
 	}, nil
 }
 
@@ -332,7 +402,9 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 			out.StatusTotalCount = cs.TotalCount
 		}
 		for _, s := range cs.Statuses {
-			out.Statuses = append(out.Statuses, StatusContext{State: s.State, Context: s.Context})
+			out.Statuses = append(out.Statuses, StatusContext{
+				State: s.State, Context: s.Context, CreatedAt: s.CreatedAt,
+			})
 		}
 		if len(cs.Statuses) < forgeCIPerPage {
 			break
@@ -350,11 +422,60 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 			out.CheckRunsTotalCount = cr.TotalCount
 		}
 		for _, c := range cr.CheckRuns {
-			out.CheckRuns = append(out.CheckRuns, CheckRun{Name: c.Name, Status: c.Status, Conclusion: c.Conclusion})
+			out.CheckRuns = append(out.CheckRuns, CheckRun{
+				Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
+				StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
+			})
 		}
 		if len(cr.CheckRuns) < forgeCIPerPage {
 			break
 		}
+	}
+	return out, nil
+}
+
+// RequiredStatusChecks reads the branch's required status-check contexts from GitHub branch
+// protection (`GET /repos/{o}/{r}/branches/{branch}/protection/required_status_checks`).
+//
+// The 404 IS the answer, not an error. GitHub returns 404 both for a branch with no
+// protection AND for a protected branch that requires no status checks; in either case
+// nothing gates the merge on a check, so the required set is EMPTY and no error is returned.
+// Every OTHER non-2xx (401/403 permission, 5xx, a parse failure) is could-not-check and is
+// returned as-is, so the caller fails closed — an absent rollup is never read as green off a
+// required-set the tool could not actually read.
+func (g *GitHubForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error) {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return nil, Unverifiable("cannot read the required status checks without a branch name — "+
+			"which branch's protection applies is undetermined, and undetermined is could-not-check", nil)
+	}
+	var w ghRequiredStatusChecksWire
+	path := fmt.Sprintf("/repos/%s/%s/branches/%s/protection/required_status_checks",
+		repo.Owner, repo.Name, url.PathEscape(branch))
+	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+		if IsForgeNotFound(err) {
+			// No branch protection, or protection with no required checks: nothing is
+			// required to merge, so the required set is empty. This is the honest "green" for
+			// an absent rollup, and it is distinct from the error return below.
+			return nil, nil
+		}
+		return nil, err
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(w.Contexts)+len(w.Checks))
+	add := func(c string) {
+		c = strings.TrimSpace(c)
+		if c == "" || seen[c] {
+			return
+		}
+		seen[c] = true
+		out = append(out, c)
+	}
+	for _, c := range w.Contexts {
+		add(c)
+	}
+	for _, c := range w.Checks {
+		add(c.Context)
 	}
 	return out, nil
 }
@@ -371,6 +492,281 @@ func (g *GitHubForge) IssueReactions(repo ForgeRepo, number int) ([]Reaction, er
 		return nil, err
 	}
 	return reactions, nil
+}
+
+// ListLabelEvents walks the issue/PR TIMELINE and returns its `labeled` events with the
+// login that applied each one.
+//
+// It reads the timeline rather than the current label set on purpose: the current set says
+// only WHAT labels are on the change, and the model-capability floor's whole question is WHO
+// applied the tier stamp. A dispatcher's attestation and a stamp the PR author applied to
+// itself are indistinguishable in the label list and distinguishable only here.
+//
+// An EMPTY result is a change with no label applications, which the floor reads as
+// UNATTESTED. A read FAILURE propagates — the caller refuses could-not-check rather than
+// treating an unreadable timeline as an empty one.
+func (g *GitHubForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
+	var out []LabelEvent
+	for page := 1; page <= forgeMaxFilePages; page++ {
+		var chunk []ghTimelineWire
+		path := fmt.Sprintf("/repos/%s/%s/issues/%d/timeline?per_page=%d&page=%d",
+			repo.Owner, repo.Name, number, forgeFilePerPage, page)
+		if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+			return nil, err
+		}
+		for _, e := range chunk {
+			if e.Event != "labeled" {
+				continue
+			}
+			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login})
+		}
+		if len(chunk) < forgeFilePerPage {
+			break
+		}
+	}
+	return out, nil
+}
+
+// ghCommentsQuery reads a change's comments with the two properties REST does not carry: the
+// GraphQL node id an edit targets, and `isMinimized`. A minimised (hidden/collapsed) comment
+// must never be picked up and edited — it was hidden deliberately — and REST's issue-comments
+// listing has no field for that state at all, so this read is GraphQL by necessity rather
+// than by preference.
+//
+// `first: 100` is the same bound the call site it replaces used, and the same stated
+// residual: a change with more than 100 comments is read as its first 100, never silently
+// re-ordered.
+const ghCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      comments(first: 100) {
+        nodes {
+          id
+          databaseId
+          body
+          isMinimized
+          createdAt
+          url
+          author { login }
+        }
+      }
+    }
+  }
+}`
+
+func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error) {
+	in := map[string]any{
+		"query": ghCommentsQuery,
+		"variables": map[string]any{
+			"owner": repo.Owner, "name": repo.Name, "number": number,
+		},
+	}
+	var out struct {
+		Data struct {
+			Repository struct {
+				PullRequest struct {
+					Comments struct {
+						Nodes []struct {
+							ID          string `json:"id"`
+							DatabaseID  int64  `json:"databaseId"`
+							Body        string `json:"body"`
+							IsMinimized bool   `json:"isMinimized"`
+							CreatedAt   string `json:"createdAt"`
+							URL         string `json:"url"`
+							Author      struct {
+								Login string `json:"login"`
+							} `json:"author"`
+						} `json:"nodes"`
+					} `json:"comments"`
+				} `json:"pullRequest"`
+			} `json:"repository"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
+		return nil, err
+	}
+	// A non-empty top-level `errors` is reported even when `data` came back partly
+	// populated — GraphQL's own partial-failure convention. A partial comment list read as
+	// a complete one is how a "no existing comment" conclusion gets drawn from a failed read.
+	if len(out.Errors) > 0 {
+		msgs := make([]string, 0, len(out.Errors))
+		for _, e := range out.Errors {
+			msgs = append(msgs, e.Message)
+		}
+		return nil, Unverifiable("comments GraphQL error: "+strings.Join(msgs, "; "), nil)
+	}
+	nodes := out.Data.Repository.PullRequest.Comments.Nodes
+	res := make([]Comment, 0, len(nodes))
+	for _, n := range nodes {
+		res = append(res, Comment{
+			ID:         n.ID,
+			DatabaseID: n.DatabaseID,
+			Author:     Account{Login: n.Author.Login},
+			Body:       n.Body,
+			Minimized:  n.IsMinimized,
+			CreatedAt:  n.CreatedAt,
+			URL:        n.URL,
+		})
+	}
+	return res, nil
+}
+
+// ghEditCommentMutation replaces an issue comment's body. The target is the comment's
+// GraphQL node id, which is why Comment.ID is opaque: a REST numeric id will not address
+// this mutation, and composing one locally is not possible.
+const ghEditCommentMutation = `mutation($id: ID!, $body: String!) {
+  updateIssueComment(input: {id: $id, body: $body}) {
+    issueComment { databaseId }
+  }
+}`
+
+func (g *GitHubForge) EditComment(repo ForgeRepo, commentID, body string) error {
+	if strings.TrimSpace(commentID) == "" {
+		return Refused("refusing to edit a comment with no id — the id comes from ListComments, " +
+			"never from a locally composed value")
+	}
+	in := map[string]any{
+		"query":     ghEditCommentMutation,
+		"variables": map[string]any{"id": commentID, "body": body},
+	}
+	var out struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
+		return err
+	}
+	if len(out.Errors) > 0 {
+		return Unverifiable("updateIssueComment GraphQL error: "+out.Errors[0].Message, nil)
+	}
+	return nil
+}
+
+// sortedKeys renders a set's members in a deterministic order. Label removals are issued one
+// request at a time, so an unordered map walk would make the REQUEST SEQUENCE — which the
+// golden corpus pins — differ run to run for the same input.
+func sortedKeys(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ApplyLabels reconciles a change's labels: it ensures every Add label exists on the repo,
+// removes the named and stale-family labels, then applies the Add set.
+//
+// ORDER IS LOAD-BEARING. Creation comes first because applying a label the repo does not
+// carry is not idempotent on GitHub; removal comes before application so a re-run of a
+// family REPLACES rather than momentarily stacks. The label list is read ONCE, before any
+// write, and the removals are computed from it — so a caller never has to make a listing call
+// of its own (which is what would have put a second label operation on the frozen interface).
+//
+// Every step degrades in the direction the operation is idempotent in: a create that comes
+// back 422 (already exists) is the SUCCESS case for an ensure, and a removal that comes back
+// 404 (already absent) is the success case for a removal. Anything else propagates.
+func (g *GitHubForge) ApplyLabels(repo ForgeRepo, number int, change LabelChange) (*LabelOutcome, error) {
+	out := &LabelOutcome{}
+	adding := map[string]bool{}
+	for _, l := range change.Add {
+		if strings.TrimSpace(l.Name) == "" {
+			return nil, Refused("refusing to apply an unnamed label — the label NAME is the load-bearing part")
+		}
+		adding[l.Name] = true
+	}
+
+	// 1. Ensure each label exists on the repo (422 = already present = success).
+	for _, l := range change.Add {
+		body := map[string]any{"name": l.Name, "color": l.Color, "description": l.Description}
+		err := g.doJSON(http.MethodPost, fmt.Sprintf("/repos/%s/%s/labels", repo.Owner, repo.Name), body, nil)
+		if err != nil {
+			var ae *ForgeAPIError
+			if errors.As(err, &ae) && ae.Status == http.StatusUnprocessableEntity {
+				continue
+			}
+			return nil, err
+		}
+	}
+
+	// 2. Work out what to take off: the explicit Remove names, plus every current label in a
+	//    named family that is not being re-applied.
+	remove := map[string]bool{}
+	for _, n := range change.Remove {
+		remove[n] = true
+	}
+	if len(change.RemoveFamilies) > 0 {
+		current, err := g.ghChangeLabels(repo, number)
+		if err != nil {
+			return nil, err
+		}
+		for _, cur := range current {
+			if adding[cur] {
+				continue
+			}
+			for _, fam := range change.RemoveFamilies {
+				if fam != "" && strings.HasPrefix(cur, fam) {
+					remove[cur] = true
+					break
+				}
+			}
+		}
+	}
+	for _, name := range sortedKeys(remove) {
+		if adding[name] {
+			// Naming a label in both halves is a caller bug, not an instruction to churn it.
+			continue
+		}
+		path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels/%s",
+			repo.Owner, repo.Name, number, url.PathEscape(name))
+		if err := g.doJSON(http.MethodDelete, path, nil, nil); err != nil {
+			if IsForgeNotFound(err) {
+				continue // already absent — the success case for an idempotent removal
+			}
+			return nil, err
+		}
+		out.Removed = append(out.Removed, name)
+	}
+
+	// 3. Apply. GitHub's POST /issues/{n}/labels is additive over a SET, so re-applying a
+	//    present label never duplicates it.
+	if len(change.Add) > 0 {
+		names := make([]string, 0, len(change.Add))
+		for _, l := range change.Add {
+			names = append(names, l.Name)
+		}
+		path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels", repo.Owner, repo.Name, number)
+		if err := g.doJSON(http.MethodPost, path, map[string]any{"labels": names}, nil); err != nil {
+			return nil, err
+		}
+		out.Added = names
+	}
+	return out, nil
+}
+
+// ghChangeLabels lists the label names currently on a change (labels live on the ISSUE view
+// of the number on GitHub, for both issues and pull requests).
+func (g *GitHubForge) ghChangeLabels(repo ForgeRepo, number int) ([]string, error) {
+	var all []string
+	for page := 1; page <= forgeMaxFilePages; page++ {
+		var chunk []ghLabelWire
+		path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels?per_page=%d&page=%d",
+			repo.Owner, repo.Name, number, forgeFilePerPage, page)
+		if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+			return nil, err
+		}
+		for _, l := range chunk {
+			all = append(all, l.Name)
+		}
+		if len(chunk) < forgeFilePerPage {
+			break
+		}
+	}
+	return all, nil
 }
 
 func (g *GitHubForge) RepoVisibility(repo ForgeRepo) (string, error) {
@@ -408,9 +804,22 @@ func (g *GitHubForge) CreateDraftChange(repo ForgeRepo, in DraftChangeInput) (*P
 	return &PullRef{Number: w.Number, NodeID: w.NodeID, URL: w.HTMLURL}, nil
 }
 
-func (g *GitHubForge) PostComment(repo ForgeRepo, number int, body string) error {
+// ghCommentWire is the issue-comment rendering. `node_id` is REST's spelling of the same
+// GraphQL global id ListComments reports and EditComment takes, so a comment posted here can
+// be edited later without a second read.
+type ghCommentWire struct {
+	ID      int64  `json:"id"`
+	NodeID  string `json:"node_id"`
+	HTMLURL string `json:"html_url"`
+}
+
+func (g *GitHubForge) PostComment(repo ForgeRepo, number int, body string) (*CommentRef, error) {
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments", repo.Owner, repo.Name, number)
-	return g.doJSON(http.MethodPost, path, map[string]any{"body": body}, nil)
+	var w ghCommentWire
+	if err := g.doJSON(http.MethodPost, path, map[string]any{"body": body}, &w); err != nil {
+		return nil, err
+	}
+	return &CommentRef{ID: w.NodeID, DatabaseID: w.ID, URL: w.HTMLURL}, nil
 }
 
 func (g *GitHubForge) PostReview(repo ForgeRepo, number int, in ReviewInput) error {
@@ -482,6 +891,121 @@ func (g *GitHubForge) DeleteRef(repo ForgeRepo, ref string) error {
 	}
 	path := fmt.Sprintf("/repos/%s/%s/git/refs/%s", repo.Owner, repo.Name, clean)
 	return g.doJSON(http.MethodDelete, path, nil, nil)
+}
+
+// --- File content (read / write on a branch) ---
+
+// ghContentsWire is the Contents-API read shape (only the fields consumed). `content` is
+// base64 with the API's own 60-column line wrapping, stripped before decoding.
+type ghContentsWire struct {
+	SHA      string `json:"sha"`
+	Content  string `json:"content"`
+	Encoding string `json:"encoding"`
+}
+
+// ghContentsCommitWire is the Contents-API write response: the new blob sha under `content`
+// and the git author the created commit carries under `commit.author` (for an App-token write,
+// the App's bot — the identity an Evidence commit is supposed to have).
+type ghContentsCommitWire struct {
+	Content struct {
+		SHA string `json:"sha"`
+	} `json:"content"`
+	Commit struct {
+		SHA    string `json:"sha"`
+		Author struct {
+			Name  string `json:"name"`
+			Email string `json:"email"`
+		} `json:"author"`
+	} `json:"commit"`
+}
+
+// stripBase64Whitespace removes the newlines GitHub wraps base64 content at (every 60 cols),
+// which StdEncoding.DecodeString does not tolerate.
+func stripBase64Whitespace(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '\n', '\r', ' ', '\t':
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// ReadFile reads a file's content at a ref via the Contents API. A 404 propagates as a
+// *ForgeAPIError (IsForgeNotFound true) so a caller can distinguish "absent" from "unreadable".
+func (g *GitHubForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, error) {
+	path := fmt.Sprintf("/repos/%s/%s/contents/%s?ref=%s",
+		repo.Owner, repo.Name, in.File, url.QueryEscape(in.Ref))
+	var w ghContentsWire
+	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+		return nil, err
+	}
+	if w.SHA == "" {
+		return nil, Unverifiable(fmt.Sprintf("empty sha in contents response for %s@%s", in.File, in.Ref), nil)
+	}
+	decoded, derr := base64.StdEncoding.DecodeString(stripBase64Whitespace(w.Content))
+	if derr != nil {
+		return nil, Unverifiable("cannot decode base64 content for "+in.File, derr)
+	}
+	return &FileContent{Content: decoded, SHA: w.SHA, Exists: true}, nil
+}
+
+// WriteFile writes a file's whole content on a branch via the Contents API, as the minted
+// (App) identity. GitHub's default branch is directly writable by the verifier App — the
+// direct-main carve-out — so this backend never returns the DefaultBranchNotWritable sentinel
+// and ignores StartBranch: on GitHub the Evidence row lands on the target branch directly. The
+// idempotency read and the append-only shrink guard are folded in per WriteFileInput.
+func (g *GitHubForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileResult, error) {
+	res := &WriteFileResult{}
+	var priorSHA string
+	var priorContent []byte
+	exists := false
+	cur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: in.Branch})
+	if rerr != nil {
+		if !IsForgeNotFound(rerr) {
+			return nil, rerr
+		}
+		// Absent on the branch → this is a create.
+	} else {
+		priorSHA, priorContent, exists = cur.SHA, cur.Content, true
+	}
+
+	if in.AppendOnly {
+		res.PriorRows = forgeRowCount(priorContent)
+		res.Rows = forgeRowCount(in.Content)
+	}
+
+	// Idempotency: byte-identical content already on the branch is a noop, no write.
+	if exists && bytes.Equal(priorContent, in.Content) {
+		res.SHA = priorSHA
+		return res, nil
+	}
+
+	// Append-only shrink guard, refused post-fetch (see WriteFileInput.AppendOnly).
+	if in.AppendOnly && !in.AllowShrink && exists && res.Rows < res.PriorRows {
+		return nil, Refused(fmt.Sprintf(
+			"refusing an append-only write to %s on %s that would SHRINK it from %d to %d row(s) — "+
+				"almost always a stale-base or wrong-file write; pass AllowShrink when the reduction is intended",
+			in.File, in.Branch, res.PriorRows, res.Rows))
+	}
+
+	body := map[string]any{
+		"message": in.Message,
+		"content": base64.StdEncoding.EncodeToString(in.Content),
+		"branch":  in.Branch,
+	}
+	if priorSHA != "" {
+		body["sha"] = priorSHA
+	}
+	var w ghContentsCommitWire
+	path := fmt.Sprintf("/repos/%s/%s/contents/%s", repo.Owner, repo.Name, in.File)
+	if err := g.doJSON(http.MethodPut, path, body, &w); err != nil {
+		return nil, err
+	}
+	res.Changed = true
+	res.SHA = w.Content.SHA
+	res.Author = w.Commit.Author.Name
+	return res, nil
 }
 
 // --- Identity / transport ---

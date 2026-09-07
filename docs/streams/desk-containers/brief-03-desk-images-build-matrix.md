@@ -102,6 +102,22 @@ facts:
   base tag; `docs/docker.md` regenerated accordingly (docs-regen item).
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: FAIL (row 5 — docker-publish.yml not extended with the base+matrix+scan; brief Task 2 unimplemented) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5d20ff9`
+Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=/dev/null`); docker rows offline-barred. `gate: model`, all risk `no`.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | docker build the five desk images | exit 0 all five | COULD-NOT-CHECK — docker offline-barred. STATIC: each containers/<d>/Dockerfile:35 sets ENV ASSAY_DESK=<d> | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | docker inspect ASSAY_DESK per image | exit 0 | COULD-NOT-CHECK (needs built images). STATIC cross-check PASS | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | layer-secret-scan.sh on each image | exit 0 clean | COULD-NOT-CHECK — operates on built images (docker history/inspect), offline-barred | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | docker run worker-desk with no mounts → fail-closed | non-zero, names missing PEM+env | COULD-NOT-CHECK — docker offline. STATIC: entrypoint.sh fail-closed preflight, exit 78 @ :111, no ambient fallback | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | grep -c layer-secret-scan .github/workflows/docker-publish.yml | ≥1 | **FAIL — 0, grep exit 1.** Workflow never extended: no layer-secret-scan, no desk-base build, no per-desk matrix. Last touch (97108ef) predates brief-03; brief-03 commit f21f2ee touched only containers/. docs/docker.md:175 describes scan-in-workflow the workflow does not perform (docs/impl mismatch) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 6 | grep COPY/ADD key-material in containers/*/Dockerfile == none | exit 0 | PASS — count 0; COPY/ADD carry only binaries/plugin/entrypoint | 2026-09-06 | opus-4.8[1m]-verifier |
+| 7 | statusgen --consumers --brief desk-containers/03 | exit 0; 04/05/06 listed | COULD-NOT-CHECK — statusgen aborts on docs/streams/decisions/README.md no-frontmatter (#557), not this brief | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: NAMED, NOT DERIVED — DESK_TOOLS_IMAGE = ghcr.io/medici-finance/assay/desk-tools:v0.1.0 @ containers/base/Dockerfile:43 — a MUTABLE TAG pin, not a content-addressed digest. Satisfies "no floating latest FROM" (v0.1.0 fixed) but whether v0.1.0 is the correct/current release, and whether it should be a @sha256: digest for supply-chain immutability, needs a registry/release-ledger lookup (offline-barred) — a reviewer/human call.`
+**VERIFY: FAIL — row 5.** Brief Task 2 (extend docker-publish.yml with base + five-desk build matrix running layer-secret-scan on all six images) was NOT implemented — the merged workflow is still the original single combined-image publish, defeating the DoD's "publish workflow enforces the scan on every future build"; docs/docker.md:175 compounds it (docs/impl mismatch). Rows 1-4 could-not-check (docker/online lane), row 7 could-not-check (#557), row 6 PASS. Status stays `implemented`. (Bug filing budget-deferred this session — detail is here + in the PR; route for a `bug` next cycle.) CFR sidecar row appended (verify-fail).
+
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
 
 ## Review

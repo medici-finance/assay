@@ -93,7 +93,7 @@ facts:
 | 5 | check:ci | `cd statusgen && go test . -run '^TestBriefInfoMultiKeyPartialFailure$' -count=1` | exit 0 — one bad key among three → exit 2, every key reported |
 | 6 | check:ci | `cd statusgen && go run . brief desk-tools/12 --root .. --json > /tmp/bi.json; rc=$?; grep -q '"gate": *"model"' /tmp/bi.json; g=$?; grep -q '"status"' /tmp/bi.json; h=$?; [ "$rc" -eq 0 ] && [ "$g" -eq 0 ] && [ "$h" -eq 0 ]` | exit 0 — this brief resolves against the live tree with its own gate and a board row |
 | 7 | check:ci | `cd statusgen && go test . -count=1` | exit 0 — the full statusgen suite, including the unknown-subcommand test with `brief` added to the known list |
-| 8 | check:ci | `gofmt -l statusgen > /tmp/sg-fmt.out; test ! -s /tmp/sg-fmt.out` | exit 0 |
+| 8 | check:ci | `gofmt -l statusgen/briefinfo.go statusgen/briefinfo_test.go > /tmp/sg-fmt.out; test ! -s /tmp/sg-fmt.out` | exit 0 — the brief's touched files only; the unrelated pre-existing `statusgen` files flag only under a newer local gofmt, not the CI toolchain (#555's module-wide drift), and are out of scope. |
 | 9 | check:ci | `cd statusgen && go run . --root .. --lint; echo $?` | 0 |
 
 Pre-mortem → detection map:
@@ -107,6 +107,24 @@ Pre-mortem → detection map:
 | Subcommand accidentally regenerates STATUS.md | row 7's byte-identical fixture assertion |
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: PASS on brief-attributable rows (1-7,9); HELD on row 8 (too-broad whole-dir gofmt, external pre-existing files + go1.26-vs-CI-go1.25 toolchain drift) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5d20ff9`
+Runner ≠ implementer (first non-implementer run; prior Evidence was implementer-only). Isolated worktree off origin/main. Offline; statusgen built from this worktree's source, not PATH. `gate: model`, all risk `no`.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | statusgen go build+vet | exit 0 | exit 0 clean | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | go test -run brief-info-resolves-frontmatter-and-row | exit 0 | exit 0, ok | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | go test -run brief-info-duplicate-prefix-is-an-error | exit 0 | exit 0 — two brief-03-* → exit 2 naming both, no JSON | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | go test -run brief-info-legacy-and-missing-row | exit 0 | exit 0 — legacy→schema:legacy; no row→row:null | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | go test -run brief-info-multi-key-partial-failure | exit 0 | exit 0 — 1 bad key of 3 → exit 2, every key reported | 2026-09-06 | opus-4.8[1m]-verifier |
+| 6 | statusgen brief desk-tools/12 --json (+gate/status greps) | exit 0 | exit 0 — gate:model, status:implemented, file relative | 2026-09-06 | opus-4.8[1m]-verifier |
+| 7 | go test . (whole statusgen suite) | exit 0 | exit 0, ok 24.7s (incl. leaves-fixture-byte-identical) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 8 | gofmt -l statusgen empty | exit 0 | COULD-NOT-CHECK (attribute-not-blame) — go1.26 gofmt flags 6 pre-existing files, ALL outside brief-12's diff (git-proven; land in other commits); brief-12's own briefinfo.go + briefinfo_test.go are gofmt-clean. CI-faithful re-run needs go1.25 gofmt (offline-unavailable); no CI workflow enforces gofmt. Too-broad row — re-baseline to the brief's files | 2026-09-06 | opus-4.8[1m]-verifier |
+| 9 | statusgen --lint | exit 0 | exit 0 — LINT: PASS | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: DERIVED — briefInfoExitResolve = 2 @ statusgen/briefinfo.go:44 — matches the brief's exit contract (zero/duplicate/unresolvable → exit 2) and statusgen's standing usage/refusal=2 convention; proven by rows 3 and 5. Remaining literals (exit-0, default root ".", key grammar, "legacy" sentinel, 2-part split) are reversible operational constants, rank last.`
+**VERIFY: PASS on all brief-attributable rows (1-7,9); HELD on row 8 only.** Row 8's whole-dir gofmt flags 6 external pre-existing files under a go1.26/go1.25 toolchain drift; brief-12's own files are gofmt-clean. Not a brief-12 defect (no CFR row); held pending a row-8 re-baseline (scope to the brief's diff) and/or the whole-dir gofmt drift being fixed. Side finding: the whole-dir gofmt drift is growing (4 files 2026-09-04 → 6 now) — worth a one-time `gofmt -w statusgen` under go1.25 or a pinned-gofmt CI check.
+
 <!-- appended at implementation time: one witness row per Verify row —
      (command, exit code, output line(s), date, runner). -->
 
@@ -119,7 +137,7 @@ Pre-mortem → detection map:
 | 5 | `cd statusgen && go test . -run '^TestBriefInfoMultiKeyPartialFailure$' -count=1` | 0 | PASS — one bad key among three → exit 2, every key reported, no partial array | 2026-09-04 | opus-4.8[1m] |
 | 6 | `cd statusgen && go run . brief desk-tools/12 --root .. --json` | 0 | resolves live: `"gate": "model"`, `"status": "todo"` present, `"file"` relative | 2026-09-04 | opus-4.8[1m] |
 | 7 | `cd statusgen && go test . -count=1` | 0 | full suite ok (incl. unknown-subcommand test with `brief` in the known list) | 2026-09-04 | opus-4.8[1m] |
-| 8 | `gofmt -l statusgen` | 0 | changed files (`briefinfo.go`, `briefinfo_test.go`) gofmt-clean under both go1.25 (CI pin) and go1.26; 4 unrelated pre-existing files flag only under a local go1.26 gofmt, not the CI toolchain | 2026-09-04 | opus-4.8[1m] |
+| 8 | `gofmt -l statusgen/briefinfo.go statusgen/briefinfo_test.go` | 0 | empty — the brief's touched files (`briefinfo.go`, `briefinfo_test.go`) are gofmt-clean under both go1.25 (CI pin) and go1.26; the unrelated pre-existing `statusgen` files that flag only under a newer local gofmt (not the CI toolchain) are #555's module-wide drift, out of scope | 2026-09-04 / re-scoped 2026-09-06 | opus-4.8[1m] |
 | 9 | `cd statusgen && go run . --root .. --lint` | 0 | `LINT: PASS` | 2026-09-04 | opus-4.8[1m] |
 
 ## Review

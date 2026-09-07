@@ -52,6 +52,11 @@ is complete, and its Verify table is defined.
 A session owns the brief and is implementing it. Only one session MUST own a given
 brief at a time.
 
+A **risk-gated** brief (section 4.4) MUST NOT enter `in-progress` until it has passed
+the **design-approval gate** — an approved design-decision record exists and the brief
+cites it. This is a precondition on the `todo → in-progress` transition, not a new
+ordered state: the five-state sequence is unchanged. See section 4.4.
+
 ### 2.3 `implemented`
 
 The implementer has finished and filled the Evidence section with their own run.
@@ -147,6 +152,50 @@ pass. The verdict MUST be recorded in the stream README table.
 - If all four risk answers are `no`: `gate` MAY be `model`.
 
 A `gate: human` brief at `done` MUST carry a review entry naming a human.
+
+### 4.4 Design-approval gate
+
+Review (section 4.1) reads the finished diff; it is the LAST control before a change
+lands, so a wrong *design* — the alternatives were never weighed, the consequences of
+failure were never written down — is caught only after it has been built. The
+design-approval gate adds one EARLIER control, on the `todo → in-progress` transition,
+so a risk-gated brief records what was decided and why before implementation begins.
+
+**Scope.** The gate binds a **risk-gated** brief only — one whose `gate` is `human`, or
+any of whose four `risk` answers is `yes` (the same derivation section 4.3 uses). A
+`gate: model` brief with all four risk answers `no` is NOT subject to it. The gate is
+deliberately scoped: it is not a blanket new obligation on every brief.
+
+**The design-decision record.** A risk-gated brief passes the gate by citing an approved
+**design-decision record** — a typed register entry (`DR-<slug>`, schema `decision-v1`,
+`registers-v1.md` §7) that records what was decided, the alternatives considered and why
+each was ruled out, the consequences accepted, its ordered `consequence` severity axis,
+and a dated `human:<name>` `decided-by` stamp. A brief cites it with the OPTIONAL
+`design:` frontmatter key (`brief-v1.md` §3.2).
+
+**Design-approval authority.** `decided-by` MUST be a `human:<name>` stamp — the same
+human-gate authority a `gate: human` brief already carries, reusing the existing
+decision-issue mechanism rather than opening a second human-gate channel. Approval is a
+recorded human act; a model sign-off MUST NOT stand in for it.
+
+**What the gate does and does not attest.** The gate proves an approved design-decision
+record with a human approver EXISTS and dereferences. It does NOT mechanically prove the
+approver is a different identity from the brief's author — that is the same
+attribution-not-identity limit section 7.1.2 declares for verification, and a conforming
+implementation MUST NOT claim author≠approver as a mechanical boundary.
+
+**Grandfathering — a forward-only obligation.** Because this gate is a lifecycle change
+that reaches every consumer on a pin bump and cannot be quietly reverted, a conforming
+implementation MUST NOT retroactively fail a brief already in flight. The reference
+implementation grandfathers by authoring date: the gate binds only a brief `authored:`
+STRICTLY AFTER a named cutover constant, so every brief already in any corpus is exempt
+and the obligation attaches only to risk-gated briefs authored after the rule lands. An
+implementation MAY choose a different grandfathering mechanism, but it MUST provide one,
+and it MUST document the boundary it chose.
+
+**Three-state.** Where the design-decision register cannot be read, a conforming
+implementation MUST report the gate as `could-not-check` (an unverified dereference),
+never as a clean pass and never as a blanket failure of every citing brief.
 
 ## 5. Next-up semantics
 
@@ -253,6 +302,10 @@ A conforming implementation:
 3. MUST require dated, attributed Verified/Reviewed cells.
 4. MUST derive `gate` from `risk` answers exclusively.
 5. MUST require a human-named review for `gate: human` briefs at `done`.
+6. MUST NOT allow a risk-gated brief (section 4.4) subject to the design-approval gate
+   to sit at `in-progress` or later without citing an approved design-decision record,
+   and MUST grandfather briefs outside the gate's scope so a pin bump reds nothing
+   already in flight.
 
 ### 7.2 Board generator conformance
 
@@ -285,6 +338,13 @@ A conforming linter MUST:
    `blocked`.
 7. Flag any `risk.irreversible: yes` brief marked `verified` or `done` without a
    human-named review entry (section 2.5).
+8. Flag any risk-gated brief in the design-approval gate's scope (section 4.4) that is
+   at `in-progress` or later and either cites no design-decision record or cites one
+   that does not dereference. It MUST report `could-not-check` where the register is
+   unreadable, and MUST NOT flag a brief the gate grandfathers.
+9. Flag any design-decision record (`registers-v1.md` §7) missing its ordered
+   `consequence` axis, its `human:<name>` `decided-by` stamp, or its enumerated
+   alternatives.
 
 ## 8. Spec and scoping-doc lifecycle
 

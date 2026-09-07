@@ -341,7 +341,7 @@ func TestClassifyLiveness_Table(t *testing.T) {
 		{
 			name:  "over its wall cap despite a recent observation",
 			clock: ClaimClock{DispatchedAt: mustParse(t, "2026-09-02T10:00:00Z")},
-			tier:  TierCheap, // 90m cap
+			tier:  TierCheap,                                             // 90m cap
 			obs:   Observation{At: mustParse(t, "2026-09-02T10:05:00Z")}, // proves start at 10:05 — 115m ago
 			want:  BlockedStartToClose,
 		},

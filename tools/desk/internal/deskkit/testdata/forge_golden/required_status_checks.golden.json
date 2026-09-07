@@ -1,0 +1,13 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/branches/main/protection/required_status_checks"
+    }
+  ],
+  "result": [
+    "lint",
+    "go-test",
+    "leak-sweep"
+  ]
+}

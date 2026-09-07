@@ -167,6 +167,29 @@ facts:
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
 
+### Non-implementer verifier run — VERIFY: PASS (code contract rows 1-10); row 11 could-not-check — HELD at implemented (gate:human, sensitive-data:yes) — 2026-09-05 opus-4.8[1m]-verifier (verify-desk dispatch), medici-finance/assay merged main 55bb04c
+
+Runner != implementer. Offline envelope (KUBECONFIG=/dev/null). gate: human; risk {regulatory:no, customer:no, irreversible:no, sensitive-data:yes} — human gate; a model records Evidence and holds.
+
+| # | command | expected | observed (exit + key line) | date · runner |
+|---|---------|----------|----------------------------|---------------|
+| 1 | cd tools/desk; go build ./... and go test ./... | exit 0 | exit 0; two full runs, 0 FAIL (a single earlier run showed a transient deskpost-suite flake, non-reproducing across two clean re-runs) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 2 | go test ./internal/deskkit/ -run TestForgeSingleConstructionSite | exit 0 PASS | exit 0; PASS | 2026-09-05 · opus-4.8[1m]-verifier |
+| 3 | grep GitHubForge/GitLabForge backend literals outside forgeresolve.go | prints 0 | prints 0 (no backend literal outside the resolver) | 2026-09-05 · opus-4.8[1m]-verifier |
+| 4 | go test ...TestForgeForRejectsCallerSuppliedForge | exit 0, no forge arg | exit 0 PASS | 2026-09-05 · opus-4.8[1m]-verifier |
+| 5 | go test ...TestForgeForUnconfiguredRepoRefuses | Unverifiable, names repo+config, no GitHub backend | exit 0 PASS | 2026-09-05 · opus-4.8[1m]-verifier |
+| 6 | go test ...TestForgeForMissingTokenRefuses | Refused, no backend, no ambient cred | exit 0; PASS incl subtests file_absent, insecure_mode 0644, no_ambient_fallback | 2026-09-05 · opus-4.8[1m]-verifier |
+| 7 | go test ...TestUnsupportedOperationIsCouldNotCheck | Unverifiable naming forge+op+gap | exit 0 PASS | 2026-09-05 · opus-4.8[1m]-verifier |
+| 8 | go test ./cmd/deskpost/... | exit 0 unmodified | exit 0; ok deskpost 25.2s, ok bodycheck | 2026-09-05 · opus-4.8[1m]-verifier |
+| 9 | forgeban tests + TestNoForgeCLIShellout + TestForgeNoPassthrough | exit 0, ratchet closed | exit 0; ok forgeban, ok deskkit | 2026-09-05 · opus-4.8[1m]-verifier |
+| 10 | go test ...TestRosterKnownKeySet | exit 0 (new key registered) | exit 0 PASS | 2026-09-05 · opus-4.8[1m]-verifier |
+| 11 | statusgen --root . --consumers --brief forge-neutral/01 | exit 0 | could-not-check — local statusgen v0.25.0 refuses ASSAY_REPO_FORGES as an unknown key (the brief registers it in deskkit rosterconfig, verified by row 10; statusgen forge-awareness is deferred to forge-neutral/08), AND the global scan aborts on the register dir docs/streams/requirements/ having no README (#471). Route to CI pinned statusgen. Not a FAIL; no diff defect | 2026-09-05 · opus-4.8[1m]-verifier |
+
+**VERIFY: PASS (rows 1-10, the full code contract green); row 11 could-not-check — HELD at implemented.** gate:human + sensitive-data:yes: a model runs the table for Evidence but cannot sign off; the human gate owns the flip.
+
+RISK-VALUE: DERIVED — verifyCustodyFileMode perm = 0o600 @ tools/desk/internal/deskkit/forgeresolve.go:284 — owner-only read/write is the correct secret-credential-file mode and matches the existing desktoken gitlab rotation path; row 6 insecure_mode subtest asserts a 0644 file is Refused. A looser mode would hand a group/other-readable token to a backend — the sensitive-data leak the human gate guards.
+RISK-VALUE: DERIVED — wellKnownForgeHosts = {github.com:github, gitlab.com:gitlab} @ tools/desk/internal/deskkit/forgeresolve.go:79-80 — the canonical public hostnames, exact-match only; every self-hosted instance deliberately does not match and falls through to refusal rather than guessing, so the set cannot silently misroute an unrecognised host to the wrong forge/identity.
+
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in
 the stream README table.

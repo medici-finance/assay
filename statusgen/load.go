@@ -11,6 +11,13 @@ import (
 
 var findingHeadRe = regexp.MustCompile(`^## (F-\d+) — (\d{4}-\d{2}-\d{2}) — (.+)$`)
 
+// intakeHeadRe matches an entry heading in the monolithic docs/streams/INTAKE.md
+// view. Both `##` (the ordinary entries) and `###` (the decision-queue section)
+// heading depths are accepted, matching generateIntakeView's own output. The id
+// is the letter-prefixed slug form (`I-<slug>`) or the frozen numeric legacy
+// form (`I-01`).
+var intakeHeadRe = regexp.MustCompile(`^#{2,3} (I-[A-Za-z0-9-]+) — (\d{4}-\d{2}-\d{2}) — (.+)$`)
+
 // allowEmptyRoot is the fail-closed opt-in for a root whose docs/streams
 // exists and reads cleanly but resolves to ZERO streams. Wired
 // once in main() from --allow-empty-root, before any run().
@@ -40,9 +47,25 @@ func emptyRootMessage(root string) string {
 
 // reservedRegisterNames are directory names under docs/streams that are
 // registers (not streams) and must be skipped by stream discovery.
+//
+// The names are the register entry directories the register spec fixes
+// (spec/registers-v1.md §2.1) — they are not a convention this file invents.
+// A register holds per-entry files; it has no README with a brief status table
+// and no waves, so walking one as a stream produces the fabricated complaint
+// "stream directory <register> has no README.md" about a directory that is
+// working exactly as specified. Adding a README to silence that would be worse:
+// it would make the tool's correctness depend on a file the spec never asks for,
+// and the next register would hit the same wall.
+//
+// Skipping is not the same as ignoring. Each register is read by its own parser,
+// and content a register directory holds that its parser does not recognise is
+// reported there (requirements.go's requirementRegisterStrays) rather than left
+// invisible by this skip.
 var reservedRegisterNames = map[string]bool{
-	"intake":   true,
-	"findings": true,
+	"intake":            true,
+	"findings":          true,
+	requirementsDirName: true,
+	decisionsDirName:    true,
 }
 
 // parseFindings reads findings from the docs/streams/findings/ per-entry
@@ -304,7 +327,100 @@ func loadHydratedStreams(root string) ([]*Stream, []Finding, error) {
 	return streams, findings, nil
 }
 
-// loadIntake reads all intake entries from the per-entry directory.
+// loadIntake reads all intake entries for the untriaged-intake alarm and board
+// line. It reads the per-entry docs/streams/intake/ directory when that directory
+// exists — the source of truth. When the per-entry directory is ABSENT it falls
+// back to the monolithic docs/streams/INTAKE.md view (parseIntakeLegacy), the
+// same legacy fallback the findings register has (parseFindingsLegacy), so a repo
+// whose intake still lives in the single-file register is READ rather than
+// silently rounded to zero. When NEITHER register exists the untriaged set is
+// genuinely undetermined and this returns an error, which the caller renders as
+// could-not-check.
+//
+// WHY THE FALLBACK LIVES HERE, not in parseIntakeDir. A missing per-entry
+// directory made parseIntakeDir return (nil, nil) — an empty set — which the
+// board rendered as "the front door is clear": a confident negative over a
+// register that was never read, a three-state-instrument-rule violation
+// (docs/three-state-instrument-rule.md, sub-rule 1). But parseIntakeDir's other
+// callers — the register-view generator (generateIntakeView) and the per-entry
+// integrity/tamper checks — operate specifically on the per-entry files and MUST
+// keep the per-entry semantics (an absent directory is a legitimate empty for a
+// view that regenerates FROM those files). Only the alarm/board path wants the
+// monolithic fallback, so it is applied here and nowhere else.
 func loadIntake(root string) ([]intakeEntry, error) {
-	return parseIntakeDir(root)
+	intakeDir := filepath.Join(root, "docs", "streams", "intake")
+	info, err := os.Stat(intakeDir)
+	switch {
+	case err == nil && info.IsDir():
+		// Per-entry register present — the source of truth. An EMPTY directory
+		// here is a legitimate empty (the adopter uses the per-entry register and
+		// has no open entries), not a could-not-check.
+		return parseIntakeDir(root)
+	case err == nil:
+		// A non-directory at docs/streams/intake is a malformed register: surface
+		// it as a read error, never a silent zero.
+		return nil, fmt.Errorf("intake register unreadable: %s exists but is not a directory", intakeDir)
+	case os.IsNotExist(err):
+		// Per-entry directory ABSENT — fall back to the monolithic INTAKE.md view.
+		return parseIntakeLegacy(filepath.Join(root, "docs", "streams", "INTAKE.md"))
+	default:
+		// Stat failed for a reason other than absence (permission/I-O) —
+		// could-not-check, never a clean zero.
+		return nil, fmt.Errorf("intake register unreadable: %s: %w", intakeDir, err)
+	}
+}
+
+// parseIntakeLegacy reads intake dispositions from the monolithic
+// docs/streams/INTAKE.md register — the fallback loadIntake takes when the
+// per-entry docs/streams/intake/ directory is absent. It is the intake twin of
+// parseFindingsLegacy: the same heading + field-line scan.
+//
+// Three-state read (docs/three-state-instrument-rule.md, sub-rule 1): reaching
+// here already means the per-entry directory was ABSENT. If the monolithic view
+// is ALSO absent (os.IsNotExist) then there is NO intake register to read at all,
+// so the untriaged set is genuinely undetermined — this returns a non-nil error
+// (could-not-check), never (nil, nil), because an empty result here would render
+// as a clean "the front door is clear" over a register that was never read. An
+// UNREADABLE file (any other error) is likewise could-not-check.
+//
+// Each entry's Disposition carries the raw text after "Disposition:" (e.g.
+// "new", "scoped → <stream>", "new — proposed …"); isUntriagedDisposition then
+// classifies it exactly as it does a per-entry file's, so the monolithic and
+// per-entry paths count untriaged identically. A missing Disposition line
+// defaults to "new" — parseIntakeFile's rule for a per-entry file with no
+// disposition key.
+func parseIntakeLegacy(path string) ([]intakeEntry, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("no intake register found: neither the per-entry docs/streams/intake/ directory nor the docs/streams/INTAKE.md view exists — the untriaged set cannot be determined, so this is could-not-check, not a clear front door")
+	}
+	if err != nil {
+		return nil, err
+	}
+	var entries []intakeEntry
+	var cur *intakeEntry
+	flush := func() {
+		if cur != nil {
+			if strings.TrimSpace(cur.Disposition) == "" {
+				cur.Disposition = "new"
+			}
+			entries = append(entries, *cur)
+			cur = nil
+		}
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if m := intakeHeadRe.FindStringSubmatch(line); m != nil {
+			flush()
+			cur = &intakeEntry{ID: m[1], Date: m[2], Title: m[3]}
+			continue
+		}
+		if cur == nil {
+			continue
+		}
+		if v, ok := strings.CutPrefix(line, "Disposition:"); ok {
+			cur.Disposition = strings.TrimSpace(v)
+		}
+	}
+	flush()
+	return entries, nil
 }

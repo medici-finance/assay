@@ -49,6 +49,26 @@ func (d CoalesceDecision) Act() CoalesceDecision {
 	return d
 }
 
+// ScanPRState is the draft/ready state of an open scan PR, as read from the forge. It is the
+// FLIP-boundary signal. pr-review-desk flips a reviewed scan PR ready-for-human, and the review-loop
+// convention is that a worker is DONE pushing pre-flip: a post-flip push re-signals the whole review
+// loop (a wasted delta RE-REVIEW) for churn the reviewer has already sealed off. So a flipped scan PR
+// is push-quiet, and this batch opens the NEXT scan PR instead. The zero value is UNREAD — the
+// could-not-check arm — and never coalesces, the same bounded direction an unread age takes: a PR
+// that MIGHT be flipped is treated as one that is.
+type ScanPRState string
+
+const (
+	// ScanPRStateUnread — the PR's draft/ready state was not established. Bounded direction: a PR
+	// that might already be flipped is never pushed to, so a fresh PR is cut.
+	ScanPRStateUnread ScanPRState = ""
+	// ScanPRDraft — the PR is still a draft, i.e. still in the review loop. The age window decides.
+	ScanPRDraft ScanPRState = "draft"
+	// ScanPRReady — the PR has been flipped ready-for-human (non-draft). It is push-quiet: this
+	// batch opens the next scan PR rather than re-signalling the flipped one, however young it is.
+	ScanPRReady ScanPRState = "ready"
+)
+
 // OpenScanPR is this session's currently-open scan PR, if any.
 type OpenScanPR struct {
 	Number int
@@ -57,6 +77,9 @@ type OpenScanPR struct {
 	// deliberately the PR's createdAt and not the branch's first commit: the review cycle the window
 	// bounds starts when the PR opens.
 	CreatedAt time.Time
+	// State is the PR's draft/ready state. The zero value (ScanPRStateUnread) never coalesces — see
+	// ScanPRState. A flipped (ScanPRReady) PR never coalesces however young it is.
+	State ScanPRState
 }
 
 // CoalescePolicy is the engine-side configuration of the window.
@@ -83,6 +106,21 @@ func (p CoalescePolicy) Decide(open *OpenScanPR, now time.Time) (CoalesceDecisio
 	}
 	if w < 0 {
 		return CoalesceFresh, fmt.Sprintf("coalescing is disabled by configuration — #%d is left sealed at its current head", open.Number)
+	}
+	// THE FLIP BOUNDARY, checked BEFORE the age window: a young-but-flipped PR is exactly the case
+	// this exists to catch. A scan PR that pr-review-desk has flipped ready-for-human is push-quiet
+	// — a post-flip push re-signals the review loop — so a batch with new placeholders opens the
+	// NEXT scan PR and leaves the flipped one sealed for the human to merge, regardless of its age.
+	switch open.State {
+	case ScanPRReady:
+		return CoalesceFresh, fmt.Sprintf(
+			"#%d has been flipped ready-for-human — a flipped scan PR is push-quiet, so a post-flip push would "+
+				"re-signal the review loop; this batch opens the next scan PR and #%d is left sealed for merge",
+			open.Number, open.Number)
+	case ScanPRStateUnread:
+		return CoalesceCouldNotCheck, fmt.Sprintf(
+			"#%d is open but its draft/ready state could not be read — a PR that may already be flipped is never "+
+				"pushed to, so cutting a fresh PR is the bounded direction", open.Number)
 	}
 	if open.CreatedAt.IsZero() {
 		return CoalesceCouldNotCheck, fmt.Sprintf(

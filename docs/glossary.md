@@ -131,7 +131,7 @@ report from it. See
 
 ## register
 
-One of the append-only logs (FINDINGS, INTAKE; RETRO is never-implemented) that sit at
+One of the append-only logs (FINDINGS, INTAKE, REQUIREMENTS; RETRO is never-implemented) that sit at
 `docs/streams/` as the system's memory. Entries are per-file and slug-identified;
 withdrawal is a tombstone (flip disposition, keep the file), never a deletion. See
 [`registers.md`](./registers.md).

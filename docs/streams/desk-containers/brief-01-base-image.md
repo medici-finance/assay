@@ -91,6 +91,22 @@ facts:
   section).
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: HELD (row 6 PASS; rows 1-5,7 could-not-check — docker/online lane) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5d20ff9`
+Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=/dev/null`); docker rows offline-barred. `gate: model`, all risk `no`. Impl commit `46a684f` (containers/base).
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | docker build -t assay-desk-base:dev containers/base | exit 0 | COULD-NOT-CHECK — docker offline (online lane). STATIC DEFECT: the row's build context `containers/base` fails Dockerfile:125 `COPY plugins/assay/` (resolves against context root); docs/docker.md:102 uses the correct root-context form `-f containers/base/Dockerfile … .`. Re-baseline row 1 to that form | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | docker run … tool versions | exit 0; each prints a version | COULD-NOT-CHECK — docker offline (online lane) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | docker run … ls /opt/assay/plugin/skills has five desks | exit 0 | COULD-NOT-CHECK — docker offline. STATIC: plugins/assay/skills carries all five desks | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | docker inspect Volumes contains /work | contains /work | COULD-NOT-CHECK — needs built image. STATIC: Dockerfile:174 VOLUME /work | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | docker inspect User is desk | desk | COULD-NOT-CHECK — needs built image. STATIC: Dockerfile:185 USER desk (non-root) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 6 | grep COPY/ADD key-material in containers/base/Dockerfile == none | exit 0 | PASS — count 0; only COPY --from=desktools /usr/local/bin/ and plugins/assay/; no ADD | 2026-09-06 | opus-4.8[1m]-verifier |
+| 7 | docker history no key-shaped material | exit 0 | COULD-NOT-CHECK — needs built image (online lane) | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: NAMED, NOT DERIVED — DESK_TOOLS_IMAGE = ghcr.io/medici-finance/assay/desk-tools:v0.1.0 @ containers/base/Dockerfile:43 — the COPY --from source, deciding which desk-tools/statusgen binaries the base carries. The repo's binary suite is pinned v0.26.0 (plugins/assay/paired-versions.yaml:57), so a v0.1.0 image pin is a suspected stale/placeholder tag; a registry probe to confirm the valid current image tag is offline-barred. Route to human. Companion GO_VERSION=1.25.0 @ :57 is DERIVED (matches tools/desk/go.mod:3 + statusgen/go.mod:3); AGENT_CLI_VERSION:=latest @ :145 is a floating tag worth an implementer note.`
+**VERIFY: HELD** — row 6 (Dockerfile grep) PASS; rows 1-5,7 are could-not-check (docker build/run/inspect/history — offline/online lane, re-run by a docker-capable verifier). Two carry-to-human items: row-1 build-context command defect (re-baseline to the root-context form docs already use), and the DESK_TOOLS_IMAGE v0.1.0-vs-v0.26.0 pin. Status stays `implemented`.
+
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
 - 2026-08-22 (board-row worker, post-46a684f): implementation was already on main via
   commit `46a684f` (containers/base/Dockerfile, containers/README.md, docs/docker.md §Desk

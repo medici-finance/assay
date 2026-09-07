@@ -7,12 +7,13 @@ made without a major-version bump; no stability commitment.
 
 ## 1. Scope
 
-This document specifies the append-only registers — FINDINGS and INTAKE — that form
-the system's memory: what invalidated a plan (FINDINGS) and what raw ideas are queued
-(INTAKE). A conforming implementation MUST maintain each register as an append-only
-log that satisfies every MUST in this document.
+This document specifies the append-only registers — FINDINGS, INTAKE, REQUIREMENTS and
+DECISIONS — that form the system's memory: what invalidated a plan (FINDINGS), what raw
+ideas are queued (INTAKE), what the product was asked to do (REQUIREMENTS), and what was
+decided about how to build it and why (DECISIONS). A conforming implementation MUST
+maintain each register as an append-only log that satisfies every MUST in this document.
 
-Section 6 (RETRO) is **informative, not normative** — see the note there.
+Section 8 (RETRO) is **informative, not normative** — see the note there.
 
 ### 1.1 Terminology
 
@@ -28,6 +29,7 @@ Each register entry MUST be a **separate file** under its register's entry direc
 
 - FINDINGS entries: `docs/streams/findings/<slug>.md`
 - INTAKE entries: `docs/streams/intake/<slug>.md`
+- REQUIREMENTS entries: `docs/streams/requirements/<slug>.md`
 
 One entry per file. This is the source of record — the only thing an author writes.
 Per-entry files exist so that parallel authors never contend for the same lines of the
@@ -35,8 +37,8 @@ same file; that property is the reason for most of the rules below.
 
 ### 2.2 Generated views
 
-`docs/streams/FINDINGS.md` and `docs/streams/INTAKE.md` are **generated views** of the
-entry directories, not source. A conforming implementation:
+`docs/streams/FINDINGS.md`, `docs/streams/INTAKE.md` and `docs/streams/REQUIREMENTS.md`
+are **generated views** of the entry directories, not source. A conforming implementation:
 
 - MUST regenerate each view from the entry files.
 - MUST treat the views as single-writer — written only by the trunk branch's CI, never
@@ -106,12 +108,14 @@ the record and trips the tombstone check in section 3.2.
 ### 3.4 Typed IDs
 
 Entries MUST reference briefs and other entries by typed ID (`<stream>/<NN>`,
-`F-<slug>`, `I-<slug>`). Prose names MUST NOT be used as identifiers.
+`F-<slug>`, `I-<slug>`, `REQ-<slug>`). Prose names MUST NOT be used as identifiers.
 
 Register entry IDs MUST use the slug form:
 
 - FINDINGS: `F-<slug>`
 - INTAKE: `I-<slug>`
+- REQUIREMENTS: `REQ-<slug>` (`R-<slug>` is reserved by the RETRO register of
+  section 7 and MUST NOT be used for a requirement)
 
 where `<slug>` is 10–20 characters of `[a-z0-9-]`, starting and ending with `[a-z0-9]`,
 derived from the entry's title. Example: `F-ws-token-expiry`.
@@ -268,21 +272,251 @@ Disposition: new | watching | scoped → <stream> | rejected — <why> | decisio
 - Withdrawal: keep the file, set `Disposition: rejected — <why>`, and explain in the
   body. The file MUST NOT be deleted.
 
-## 6. RETRO register (informative — not implemented)
+## 6. REQUIREMENTS register
+
+### 6.1 Purpose
+
+A REQUIREMENT is a recorded ask: what someone wanted the product to do, in that
+person's terms, with the criteria that would settle whether the ask was met. It is the
+first link of the chain ask → work → evidence → release. Without it, acceptance criteria
+exist only inside an individual brief's Verify table, where they cannot be ranked, rolled
+up, or shown to a reader who wants to know what a release was *for*.
+
+A REQUIREMENT is NOT a brief: it carries no wave, no dependency edges, no DoD, and no
+implementation plan. It states the ask and the bar; a brief states the work.
+
+### 6.2 Format
+
+Each entry is a file under `docs/streams/requirements/` with YAML frontmatter and a
+prose body:
+
+```
+---
+id: REQ-<slug>
+date: "YYYY-MM-DD"
+title: "<one line, in the asker's terms>"
+impact: minor | major | critical    # the ordered axis required by section 3.5
+asked-by: "<the seat that wants it>"
+acceptance:
+  - "<a criterion a Verify row could be written against>"
+status: proposed | accepted | satisfied | withdrawn
+satisfied-by: ["<stream>/<NN>", ...]   # OPTIONAL — typed brief IDs
+---
+
+<body: the ask, the constraint behind it, and what is explicitly not being asked for>
+```
+
+**`impact` is the section 3.5 ordered axis**, lowest to highest: `minor` < `major` <
+`critical`. The levels are defined by consequence-if-unmet, so that two people ranking
+the same ask land on the same level:
+
+| Level | Meaning |
+|-------|---------|
+| `critical` | A central claim of the product is false, or a named user cannot proceed at all, until this is met. |
+| `major` | A named user is blocked on a real task, but another route to their goal exists. |
+| `minor` | Friction, cosmetics, or a documented workaround that holds. |
+
+**`status` is an ordered lifecycle**: `proposed` → `accepted` → `satisfied`, with
+`withdrawn` as the terminal tombstone state reachable from any of the three. `proposed`
+means recorded but not yet agreed to; `accepted` means the house has taken the ask on;
+`satisfied` means work that CLAIMS to meet the acceptance criteria has landed — see
+section 6.4 for the limit on what that claim establishes.
+
+### 6.3 Rules
+
+- `id` MUST be a slug-form ID per section 3.4, with the `REQ-` prefix.
+- `date`, `title`, `asked-by`, `impact`, `acceptance` and `status` MUST all be present.
+- `impact` MUST be one of the three ordered levels. A missing or out-of-set `impact`
+  MUST be flagged, and the flag MUST name the offending value (section 3.5: a register
+  whose severity axis can be omitted has no severity axis).
+- `acceptance` MUST carry at least one non-empty criterion. Each criterion SHOULD be a
+  sentence a Verify row could be written against — a statement that some observation
+  would settle. The register does NOT require that such a Verify row exists; that is a
+  brief's business.
+- `status` MUST be one of the four lifecycle values.
+- A `satisfied` entry MUST name at least one `satisfied-by` brief. This is an
+  internal-consistency rule about the entry, not a traceability check over the corpus:
+  it says an entry may not claim satisfaction anonymously. Whether every requirement has
+  work against it, and whether every citing brief resolves, are the corpus-wide checks
+  section 6.5 defers.
+- `satisfied-by` entries MUST be typed brief IDs per section 3.4. Prose names MUST NOT
+  be used.
+- Append-only (section 3.1) and tombstone-withdrawal (section 3.3) are inherited: to
+  retract an ask, keep the file, set `status: withdrawn`, and explain in the body.
+  Deleting the file both loses the record and trips the section 3.2 tombstone check.
+
+### 6.4 What this register does NOT establish
+
+The register records **what was asked for** and **what was claimed to satisfy it**. It
+does not observe that the product meets the ask. Specifically:
+
+- A `status: satisfied` entry is an author's claim, not an observation. The observation
+  lives in the cited brief's Verify rows and its Evidence, recorded by someone who did
+  not implement it.
+- An `acceptance` criterion is a sentence, not a check. Nothing in this register runs it.
+- A `satisfied-by` reference asserts that a brief was written against the ask. It does
+  not assert that the brief covers every acceptance criterion, and a conforming
+  implementation MUST NOT present the register as coverage.
+
+A reader who wants to know whether an ask was actually met follows the citation into the
+brief and reads its Evidence. The register's job is to make that walk possible, not to
+perform it.
+
+### 6.5 The brief citation (`satisfies:`) and the requirement-ref grammar
+
+A brief cites the requirements it was written against with the OPTIONAL `satisfies:`
+frontmatter key (`brief-v1.md` §3.2, §3.3). A requirement reference takes one of two
+forms:
+
+```
+REQ-<slug>              in-repo — a requirement in this tracking root's register
+<alias>:REQ-<slug>      cross-repo — <alias> resolved through the existing
+                        docs/streams/graph-repos.yaml registry (schema graph-repos-v1)
+```
+
+The alias registry is the one already defined for the dependency-graph reference grammar;
+a conforming implementation MUST NOT introduce a second alias registry for requirements.
+An alias absent from that registry MUST be flagged — the closed-set property is the point
+of the grammar.
+
+The citation is parsed, type-checked and shape-validated, and it now feeds the corpus-wide
+traceability checks below. Precisely:
+
+- An ABSENT `satisfies:` MUST NOT be flagged, on any brief, ever. No brief is required to
+  cite a requirement.
+- A PRESENT entry MUST match the grammar above; a violation is a hard flag. A wrong TYPE
+  (a scalar where a list is required, a non-string list element) is a parse error.
+- A conforming linter MUST emit a NOTICE for a brief carrying the key, so that "parsed and
+  traced" is distinguishable from "silently ignored".
+
+**The corpus-wide traceability checks.** These were deferred as reserved at the schema's
+first version and land **advisory-first**, in the §4.5 escalation posture: the two questions
+a legacy corpus answers wrong land as advisory NOTICEs that change no exit code, and only the
+one question a legacy corpus CANNOT answer wrong — a citation of a requirement that was never
+defined — is a hard PROBLEM.
+
+- **`orphan-requirement`** (NOTICE) — a requirement whose `status` is `accepted` and which no
+  brief's `satisfies:` names. Listed with its `impact` and age, sorted by impact descending
+  (the §3.5 ordered axis). A `proposed` requirement is not yet orphan-eligible (the house has
+  not committed to it); a `satisfied`/`withdrawn` one is closed. Advisory: it never changes
+  the exit code.
+- **`untraced-brief`** (NOTICE) — a brief that is `in-progress` or later, in a stream whose
+  README declares `traced: true`, and which names no `satisfies:`. The stream opt-in is
+  required: a corpus-wide untraced sweep over legacy briefs that predate the register is
+  noise (§4.5). Advisory: it never changes the exit code.
+- **`dangling-satisfies`** (PROBLEM) — a `satisfies:` naming an IN-REPO `REQ-<slug>` that this
+  root's register does not define. Unlike the two NOTICEs it cannot be legacy debt: the
+  register is append-only (§3.1, §3.3), so an in-repo id no entry defines can only be a typo
+  or a deleted entry. A cross-repo `<alias>:REQ-<slug>` names a register in another repo the
+  offline linter cannot read — could-not-check, never dangling.
+
+**What the rollup establishes.** `statusgen --requirements-rollup` walks, per requirement, the
+briefs that cite it, each brief's board status, and each brief's Evidence, and reports a
+three-state verdict (`satisfied` only when at least one backing brief exists and every one is
+`done`; `partial`; `could-not-check`). Like the register itself (§6.4), it reports what was
+**authored** — the register and the board rows — not what was **measured**: a `done` backing
+brief means the board says the work landed, not that the tool re-ran the acceptance criteria.
+
+These checks reach a consumer only on an `.assay-versions` statusgen pin bump, which is why
+they land advisory: an un-bumped adopter is unaffected, and a bumped one gets NOTICEs, not a
+red gate, over a corpus authored before the register existed.
+
+## 7. DECISIONS register
+
+### 7.1 Purpose
+
+A DECISION is a recorded **design-decision record**: what was decided about how a change
+would be built, the alternatives considered and why each was ruled out, the consequences
+accepted, and the dated human identity that decided. It is the artifact the lifecycle's
+design-approval gate (`lifecycle-v1.md` §4.4) dereferences: a risk-gated brief may not
+move to `in-progress` until it cites an approved record here.
+
+A DECISION is NOT a brief and NOT a requirement: it carries no wave, no DoD, and no
+acceptance criteria. It records *why a design was chosen*, so that a wrong design is
+caught at authoring — when the alternatives were never enumerated — rather than only
+after the finished diff reaches the review gate.
+
+### 7.2 Format
+
+Each entry is a file under `docs/streams/decisions/` with YAML frontmatter and a prose
+body:
+
+```
+---
+id: DR-<slug>
+date: "YYYY-MM-DD"
+title: "<one line: what was decided>"
+consequence: minor | major | critical    # the ordered axis required by section 3.5
+decided-by: "human:<name>"                # the design-approval authority
+alternatives:
+  - "<a path not taken> — <why it was ruled out>"
+accepted:
+  - "<a consequence accepted by taking this path>"
+---
+
+<body: the decision, the constraint behind it, and what is explicitly not decided>
+```
+
+**`consequence` is the section 3.5 ordered axis**, lowest to highest: `minor` < `major` <
+`critical`. It ranks the consequence-if-this-design-is-wrong, so a register of decisions
+can rank its own backlog by blast radius:
+
+| Level | Meaning |
+|-------|---------|
+| `critical` | Getting this design wrong breaks a central product claim or cannot be walked back. |
+| `major` | Getting it wrong blocks a named user or forces an expensive rework, but a route back exists. |
+| `minor` | Getting it wrong is friction or cosmetics with a documented workaround. |
+
+### 7.3 Rules
+
+- `id` MUST be a slug-form ID per section 3.4, with the `DR-` prefix.
+- `date`, `title`, `consequence`, `decided-by`, `alternatives` and `accepted` MUST all
+  be present.
+- `consequence` MUST be one of the three ordered levels. A missing or out-of-set value
+  MUST be flagged, naming the offending value (section 3.5: a register whose severity
+  axis can be omitted has no severity axis).
+- `decided-by` MUST name a human with a `human:<name>` token — the design-approval
+  authority (`lifecycle-v1.md` §4.4). A record whose `decided-by` names no human MUST be
+  flagged: a design decision on a risk-gated brief is a recorded human act, not a model
+  self-sign-off.
+- `alternatives` MUST enumerate at least one path not taken. A record with no
+  alternatives records an outcome, not a decision — enumerating the roads not taken, and
+  why, is the register's reason for existing.
+- `accepted` MUST state at least one consequence accepted. A decision that accepts
+  nothing hides its cost.
+- Append-only (section 3.1) and tombstone-withdrawal (section 3.3) are inherited: to
+  retract a decision, keep the file and explain the reversal in the body; deleting it
+  loses the record and trips the section 3.2 tombstone check.
+
+### 7.4 What this register does NOT establish
+
+The register records **what was decided and why**, with a human approver. It does not, by
+itself:
+
+- Prove the approver is a different identity from the brief's author. `decided-by` is an
+  attributed stamp; enforcing author≠approver mechanically needs a brief-author→human
+  mapping briefs do not carry, and a conforming implementation MUST NOT claim that
+  independence as a checked boundary (the same attribution-not-identity limit
+  `lifecycle-v1.md` §7.1.2 declares for verification).
+- Prove the chosen design was correct. That the alternatives were weighed is recorded;
+  whether the choice was right is the review gate's judgement, then the change's own
+  validation (`docs/validation.md`) after it lands.
+
+## 8. RETRO register (informative — not implemented)
 
 > **Non-normative.** No RETRO register exists in the reference implementation: there is
 > no entry directory, no generated view, and no parser. Nothing in this section is
-> enforced by any conforming linter today, and section 7 imposes no RETRO requirement.
+> enforced by any conforming linter today, and section 8 imposes no RETRO requirement.
 > It is recorded here as the intended shape of a cadence retrospective, for
 > implementations that choose to build one and for a future normative revision.
 
-### 6.1 Purpose
+### 8.1 Purpose
 
 A RETRO is a cadence retrospective (weekly by default) whose inputs are
 generated/logged only — no prose-status narrative. A retro that reads its own narrative
 measures the narrator, not the system.
 
-### 6.2 Format
+### 8.2 Format
 
 ```
 ## R-<slug> — YYYY-MM-DD
@@ -290,7 +524,7 @@ measures the narrator, not the system.
 <the one process change (or "none"), links>
 ```
 
-### 6.3 Inputs
+### 8.3 Inputs
 
 A retro walks these generated inputs:
 
@@ -305,31 +539,34 @@ A retro walks these generated inputs:
 - Branch and worktree hygiene.
 - Knob tuning: Next-up weights, caps, priorities, pause/unpause.
 
-### 6.4 Process-change cap
+### 8.4 Process-change cap
 
 A retro enacts no more than one process change. A change must displace the current
 worst pain to get in; otherwise it waits. The change is recorded as an intake entry,
 finding, or brief — never enacted inline.
 
-## 7. Conformance
+## 9. Conformance
 
 Conformance is **self-asserted and unaudited** — see `spec/README.md` § "Conformance is
 self-declared".
 
-### 7.1 Register conformance
+### 9.1 Register conformance
 
 A conforming register:
 
 1. MUST store each entry as a separate file under the entry directory specified in
    section 2.1.
-2. MUST treat `FINDINGS.md` / `INTAKE.md` as single-writer generated views (section 2.2).
+2. MUST treat `FINDINGS.md` / `INTAKE.md` / `REQUIREMENTS.md` as single-writer generated
+   views (section 2.2). **Diverges for REQUIREMENTS** — the reference implementation
+   parses and validates the entry directory but does not yet generate the view. See
+   `spec/README.md` § "Known divergences from the reference implementation".
 3. MUST use slug-form entry IDs for new entries (section 3.4), and typed IDs for all
    cross-references.
 4. MUST NOT delete existing entry files.
 5. MUST use tombstone-withdrawal (flip disposition/resolution, preserve the file) for
    retractions.
 
-### 7.2 Linter conformance
+### 9.2 Linter conformance
 
 A conforming linter MUST:
 
@@ -344,13 +581,34 @@ A conforming linter MUST:
    it has the inverse alarm, ageing entries that are still `new`. See `spec/README.md`
    § "Known divergences from the reference implementation".
 7. Flag any prose reference where a typed ID is expected.
-8. Flag any register entry whose format does not match sections 4.2 or 5.2.
+8. Flag any register entry whose format does not match sections 4.2, 5.2 or 6.2.
    **Diverges for FINDINGS** — the reference implementation validates each `affects:`
    entry it finds, but accepts a finding whose `affects:` is empty, which section 4.3
    forbids. The INTAKE half (date and disposition key) holds. See the divergence
    section.
+9. Flag any REQUIREMENTS entry whose `impact` is missing or outside the ordered
+   vocabulary of section 6.2, naming the offending value (sections 3.5, 6.3).
+10. Flag any `satisfies:` entry on a brief that does not match the requirement-ref
+    grammar of section 6.5, and NEVER flag its absence.
+11. Flag a `satisfies:` entry naming an in-repo `REQ-<slug>` that this root's
+    REQUIREMENTS register does not define (`dangling-satisfies`, section 6.5) — a hard
+    PROBLEM that changes the exit code. A cross-repo `<alias>:REQ-<slug>` names a
+    register in another repo the offline linter cannot read, so it is could-not-check,
+    never dangling. The two companion checks, `orphan-requirement` (an `accepted`
+    requirement no brief cites) and `untraced-brief` (a forward brief in an opted-in
+    stream that cites nothing), are advisory NOTICEs that MUST NOT change the exit code.
+12. Flag any DECISIONS entry (section 7) missing or out-of-set on its ordered
+    `consequence` axis (sections 3.5, 7.3), whose `decided-by` names no human, or whose
+    `alternatives`/`accepted` list is empty. And flag any brief `design:` reference
+    (section 7, `brief-v1.md` §3.2) that does not match the `DR-<slug>` grammar or
+    dereferences to no record — subject to the grandfathering and three-state rules the
+    design-approval gate carries (`lifecycle-v1.md` §4.4).
 
-A conforming linter MUST NOT claim sequence-contiguity or gap detection (section 3.2).
+A conforming linter MUST NOT claim sequence-contiguity or gap detection (section 3.2),
+and MUST NOT let a `satisfies:` citation or a REQUIREMENTS entry change an exit code on
+any ground other than the three flags above (items 9, 10 and 11) — `orphan-requirement`
+and `untraced-brief` stay advisory-only; `dangling-satisfies` (item 11) is the one
+corpus-wide traceability check that is gating (section 6.5).
 
 A conforming linter SHOULD additionally surface an **advisory** `finding-without-control`
 NOTICE for every unresolved `class: recurring` finding whose class has not landed a
@@ -359,3 +617,11 @@ not yet `done`. This is RECOMMENDED, not REQUIRED, and it MUST be a NOTICE, neve
 hard error: forcing it over an unclassified legacy backlog would manufacture
 false-positives (section 4.5). The reference implementation implements it
 (`statusgen/findingcontrol.go`, wired into `--lint`).
+
+A conforming linter MUST emit a NOTICE stating that requirement traceability is checked
+(section 6.5) — a key that is parsed but never mentioned cannot be told apart from a key
+that is ignored, and the NOTICE is the place a reader learns which of the corpus-wide
+checks are advisory (`orphan-requirement`, `untraced-brief`) and which is gating
+(`dangling-satisfies`). The reference implementation implements the REQUIREMENTS parser,
+the `impact` and lifecycle validation, the requirement-ref grammar and that NOTICE in
+`statusgen/requirements.go`, wired into `--lint`.

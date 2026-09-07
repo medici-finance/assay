@@ -316,7 +316,7 @@ func RunMigrations(root string, selected []Migration, dryRun bool) ([]StepAction
 			// write out of the tree.
 			target, err := resolveEnsureTarget(root, el.File)
 			if err != nil {
-				return actions, Refused("migration "+m.ID+" ensure-line file escapes root: "+el.File)
+				return actions, Refused("migration " + m.ID + " ensure-line file escapes root: " + el.File)
 			}
 			present, err := fileHasLine(target, el.Text)
 			if err != nil {

@@ -1,2 +1,0 @@
-### Added
-- Per-run stop signal: a `STOP.run.<key>` flag halts a single dispatched run without touching any other, checked below the loop-wide `DISABLED` > `STOP` > `STOP.<loop>` precedence (it can only add a refusal, never mask a loop-wide one). The run key is recorded on the worktree at dispatch, so every desk verb reads it from cwd with no agent cooperation. `desksupervise stop <key> --reason R` arms it (audited) and `status --stops` lists armed run-stops; the worker-desk sweep reads them and stops the matching worker via the new `stop-worker` capability.

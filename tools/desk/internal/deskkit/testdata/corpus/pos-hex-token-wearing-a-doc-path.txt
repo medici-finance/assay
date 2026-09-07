@@ -1,0 +1,7 @@
+# corpus: hex token material dressed as a doc path, which must STILL refuse
+# expect: refused
+# refs:   the paired positive that bounds the doc-path-hex rule
+# shape:  a hex run of a length OTHER than 32, and a slash-joined pair of 32-hex segments with no word-shaped neighbour
+# why:    the doc-path-hex exemption is length-exact (32) AND requires a word-shaped neighbour; an MD5-shaped token in prose is exactly this shape
+A 48-hex blob wearing a filename: configs/secrets/deploy-key-1234567890abcdef{{+}}1234567890abcdef{{+}}1234567890abcdef.md
+Two opaque hashes joined by a slash, no word segment: fedcba9876543210{{+}}fedcba9876543210/{{+}}0011223344556677{{+}}8899aabbccddeeff.md

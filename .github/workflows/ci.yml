@@ -56,7 +56,13 @@ jobs:
           while IFS= read -r gomod; do
             dir="$(dirname "$gomod")"
             echo "::group::${dir}"
-            if ( cd "$dir" && go build ./... && go vet ./... ); then
+            # tools/desk also runs its full suite here: the release workflow's
+            # desk-tools leg already runs `go test ./...` on this tree (the
+            # structural-guard caveat above no longer applies to it), and two
+            # guard tests went latent on main under build+vet alone (#547, #550).
+            extra=true
+            case "$dir" in */tools/desk|tools/desk) extra="go test ./..." ;; esac
+            if ( cd "$dir" && go build ./... && go vet ./... && eval "$extra" ); then
               echo "${dir}: OK"
             else
               echo "::error::${dir}: build/vet failed"

@@ -77,10 +77,11 @@ package main
 //
 //	checked-clean      an accepted actor owns at least one current Evidence line
 //	checked-failed     the section exists and NO accepted actor owns any of it
-//	could-not-check    the accepted-actor set is unknown, or blame could not run
+//	could-not-check    the accepted-actor set is unknown, blame could not run, or
+//	                   the clone is shallow/grafted and blame cannot see the backing
 //
 // could-not-check is load-bearing and is never rendered as either of the others.
-// The two shapes that produce it:
+// The shapes that produce it:
 //
 //   - THE ROSTER IS UNCONFIGURED, or configures no `verifier=` role. There is then
 //     no accepted actor to compare against, and "no accepted actor committed this"
@@ -93,9 +94,28 @@ package main
 //     those rows are excluded from the clean AND the flagged tally, never folded
 //     into either.
 //
+//   - THE CLONE IS SHALLOW OR GRAFTED (`.git/shallow`), and blame for the row
+//     bottoms out at the graft boundary. This is the failure this check was
+//     hardened against: a `.git/shallow` graft (a `--depth` fetch anywhere in the
+//     shared object DB is enough) truncates history, so `git blame` cannot walk
+//     past the boundary commit and attributes every pre-graft line to that boundary
+//     — which is typically a status-regen/worker commit, not the verifier who
+//     actually authored the Evidence. The backing commit is UNREACHABLE, not
+//     ABSENT. Reading that as "unbacked" would make a single shallow fetch silently
+//     flip a tamper sensor toward "everything is self-attested" for every session on
+//     the box — a sensor failing toward the UNSAFE verdict, which is as wrong as one
+//     failing open. Detected via `git rev-parse --is-shallow-repository` AND the
+//     `boundary` marker git blame emits for the grafted commit, so it fires ONLY on
+//     graft-induced unreachability: a genuinely-absent backing on a FULL clone
+//     (is-shallow == false) still reports unbacked, and a shallow clone whose
+//     backing commit is visible past the graft is still judged normally. The remedy
+//     is `git fetch --unshallow`; the sensor only reports honestly, it does not
+//     attempt the fetch (offline, and out of its scope).
+//
 // A tamper-evidence check that fails open is worse than no check, because it
-// launders an unverified row as checked. So every path that cannot establish the
-// actor says so by name.
+// launders an unverified row as checked; one that fails toward "unbacked" on a
+// blind spot is just as wrong, because it launders a blind spot as a finding. So
+// every path that cannot establish the actor says so by name.
 //
 // ── SEVERITY: NOTICE, AND THE NUMBER THAT DECIDED IT ──────────────────────────
 //
@@ -376,10 +396,19 @@ type blameAuthor struct {
 // This is why the parse is --line-porcelain rather than --porcelain: the cheaper
 // form emits author fields once per distinct commit with no way to tell which
 // LINES they cover, so it cannot answer "who owns the non-blank ones".
-func blamePorcelainAuthors(out string) []blameAuthor {
-	var authors []blameAuthor
+//
+// sawBoundary reports whether any CONTENT-BEARING line is owned by a git-blame
+// BOUNDARY commit — the marker git emits for a commit whose parents blame could not
+// walk to. In a shallow/grafted clone that is the graft point, and a content line
+// pinned to it means the real backing commit is unreachable behind the graft, not
+// absent. The caller pairs this with `--is-shallow-repository` so it fires only on
+// graft-induced unreachability, never on a genuine root commit in a full clone.
+// --line-porcelain repeats the `boundary` header for every line of the boundary
+// commit (verified against a real shallow clone), so it is read per line-group.
+func blamePorcelainAuthors(out string) (authors []blameAuthor, sawBoundary bool) {
 	seen := map[string]bool{}
 	name, mail := "", ""
+	boundary := false
 	inComment := false
 	for _, line := range strings.Split(out, "\n") {
 		switch {
@@ -387,6 +416,8 @@ func blamePorcelainAuthors(out string) []blameAuthor {
 			name = strings.TrimSpace(strings.TrimPrefix(line, "author "))
 		case strings.HasPrefix(line, "author-mail "):
 			mail = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "author-mail ")), "<>")
+		case line == "boundary":
+			boundary = true
 		case strings.HasPrefix(line, "\t"):
 			// The blamed line's own content, verbatim after the leading TAB.
 			content := strings.TrimSpace(line[1:])
@@ -417,18 +448,21 @@ func blamePorcelainAuthors(out string) []blameAuthor {
 				rest = after
 			}
 			if !bearing {
-				name, mail = "", ""
+				name, mail, boundary = "", "", false
 				continue
+			}
+			if boundary {
+				sawBoundary = true
 			}
 			key := name + "\x00" + mail
 			if !seen[key] {
 				seen[key] = true
 				authors = append(authors, blameAuthor{Name: name, Email: mail})
 			}
-			name, mail = "", ""
+			name, mail, boundary = "", "", false
 		}
 	}
-	return authors
+	return authors, sawBoundary
 }
 
 // blameEvidenceAuthors blames one Evidence line range and returns its authors.
@@ -439,14 +473,31 @@ func blamePorcelainAuthors(out string) []blameAuthor {
 // would be attributed to whoever last touched that region rather than to nobody.
 // Uncommitted lines come back owned by git's `not.committed.yet` address, which
 // pins no GitHub account and therefore cannot back a row.
-func blameEvidenceAuthors(root, rel string, start, end int) ([]blameAuthor, error) {
+func blameEvidenceAuthors(root, rel string, start, end int) (authors []blameAuthor, sawBoundary bool, err error) {
 	cmd := exec.Command("git", "-C", root, "blame", "--line-porcelain",
 		"-L", fmt.Sprintf("%d,%d", start, end), "--", rel)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("git blame -L %d,%d %s: %w", start, end, rel, err)
+	out, cerr := cmd.Output()
+	if cerr != nil {
+		return nil, false, fmt.Errorf("git blame -L %d,%d %s: %w", start, end, rel, cerr)
 	}
-	return blamePorcelainAuthors(string(out)), nil
+	authors, sawBoundary = blamePorcelainAuthors(string(out))
+	return authors, sawBoundary, nil
+}
+
+// isShallowRepository reports whether the object DB behind root is shallow or
+// grafted (a `.git/shallow` graft). A shallow fetch anywhere — including a
+// `--depth` fetch in a linked worktree of a shared checkout — shallows the whole
+// object DB, so `git rev-parse --is-shallow-repository` (which reads the object
+// store's shallow state and therefore covers worktrees whose `.git` is a file) is
+// the authoritative signal. An error resolving it is treated as NOT shallow: the
+// shallow-aware path only ever RELAXES a reject to could-not-check, so failing that
+// signal closed keeps the ordinary tamper detection fully armed.
+func isShallowRepository(root string) bool {
+	out, err := exec.Command("git", "-C", root, "rev-parse", "--is-shallow-repository").Output()
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(out)) == "true"
 }
 
 // ---------------------------------------------------------------------------
@@ -461,6 +512,10 @@ type evidenceActorRow struct {
 	Verdict  actorVerdict
 	Reason   string
 	Err      error // non-nil => could-not-check for this row
+	// GraftHidden => could-not-check because the clone is shallow/grafted and blame
+	// for this row bottomed out at the graft boundary, so the backing commit is
+	// unreachable rather than absent. Never rendered as unbacked.
+	GraftHidden bool
 }
 
 // evidenceActorBlameLimit bounds how many blames run at once. `git blame` is
@@ -474,8 +529,8 @@ const evidenceActorBlameLimit = 8
 // without a git repo — but the shipped positive control uses a REAL repo, because
 // a check whose only proof of failure runs against a stub has not been shown to
 // read git correctly.
-func evidenceActorJudge(p evidenceActorPolicy, rows []evidenceActorRow,
-	blame func(row int) ([]blameAuthor, error)) []evidenceActorRow {
+func evidenceActorJudge(p evidenceActorPolicy, shallow bool, rows []evidenceActorRow,
+	blame func(row int) ([]blameAuthor, bool, error)) []evidenceActorRow {
 
 	out := make([]evidenceActorRow, len(rows))
 	copy(out, rows)
@@ -489,7 +544,7 @@ func evidenceActorJudge(p evidenceActorPolicy, rows []evidenceActorRow,
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			authors, err := blame(i)
+			authors, sawBoundary, err := blame(i)
 			if err != nil {
 				out[i].Err = err
 				return
@@ -514,6 +569,20 @@ func evidenceActorJudge(p evidenceActorPolicy, rows []evidenceActorRow,
 				}
 			}
 			out[i].Verdict, out[i].Reason = best, bestReason
+
+			// SHALLOW/GRAFTED could-not-check. A plain reject in a shallow clone
+			// whose blame bottomed out at the graft boundary is NOT proof of
+			// self-attestation: the accepted actor's backing commit may be
+			// unreachable behind the graft. Convert it to could-not-check so the
+			// sensor never fails toward "unbacked" on a blind spot. Only actorRejected
+			// is relaxed — an impostor is a signal from a PRESENT commit and stays a
+			// tamper finding, and clean/human verdicts are already established.
+			if shallow && sawBoundary && best == actorRejected {
+				out[i].GraftHidden = true
+				out[i].Reason = "blame bottomed out at the shallow/grafted boundary commit, so the " +
+					"backing commit is unreachable (behind the `.git/shallow` graft) rather than " +
+					"absent — authorship cannot be established (could-not-check, not unbacked)"
+			}
 		}(i)
 	}
 	wg.Wait()
@@ -593,14 +662,17 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 	for i := range work {
 		rows[i] = work[i].row
 	}
-	judged := evidenceActorJudge(p, rows, func(i int) ([]blameAuthor, error) {
+	shallow := isShallowRepository(root)
+	judged := evidenceActorJudge(p, shallow, rows, func(i int) ([]blameAuthor, bool, error) {
 		return blameEvidenceAuthors(root, work[i].rel, work[i].start, work[i].end)
 	})
 
-	var flagged, impostors, unreadable []string
+	var flagged, impostors, unreadable, graftHidden []string
 	clean := 0
 	for _, r := range judged {
 		switch {
+		case r.GraftHidden:
+			graftHidden = append(graftHidden, r.ID)
 		case r.Err != nil:
 			unreadable = append(unreadable, fmt.Sprintf("%s (%v)", r.ID, r.Err))
 		case r.Verdict == actorVerifier || r.Verdict == actorHuman:
@@ -618,6 +690,7 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 	sort.Strings(flagged)
 	sort.Strings(impostors)
 	sort.Strings(unreadable)
+	sort.Strings(graftHidden)
 
 	var notices []string
 
@@ -649,6 +722,15 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 			len(flagged), clean+len(flagged)+len(impostors), clean, pin, strings.Join(flagged, ", ")))
 	}
 
+	if len(graftHidden) > 0 {
+		notices = append(notices, fmt.Sprintf(
+			"could-not-check: Evidence-actor could not establish authorship for %d `verified`/`done` "+
+				"row(s) because this clone is SHALLOW or GRAFTED (`.git/shallow`): `git blame` bottoms out "+
+				"at the graft boundary, so the backing commit is unreachable rather than absent. These rows "+
+				"are counted neither clean nor unbacked — a tamper sensor must not read a truncated history "+
+				"as self-attestation. Restore full history (`git fetch --unshallow`) and re-run to judge "+
+				"them. Rows: %s", len(graftHidden), strings.Join(graftHidden, ", ")))
+	}
 	if len(unreadable) > 0 {
 		notices = append(notices, fmt.Sprintf(
 			"could-not-check: Evidence-actor could not read git blame for %d row(s), which are counted "+

@@ -85,13 +85,14 @@ desk's state directory only.
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Observable probes + the `desksupervise` observer — liveness that bites](brief-01-observable-probes-and-observer.md) | 0 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #411 @ ee156917abb50f02d5a92649a8bccf563d22474f) |
-| 02 | [Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal](brief-02-run-stop-signal.md) | 1 | M | implemented | — | — |
+| 02 | [Per-run stop signal — `STOP.run.<key>` flag + desk-window stop on observer signal](brief-02-run-stop-signal.md) | 1 | M | done | 2026-09-06 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #561 @ 311bb7ccad3e6e59c92f40556fae3b3bb915ec8a) |
 | 03 | [Eligibility reconciliation — stop a run whose item became ineligible](brief-03-eligibility-reconcile.md) | 2 | M | todo | — | — |
 | 04 | [Lifecycle hooks — after-create / before-run / after-run / before-remove from config home](brief-04-lifecycle-hooks.md) — **human gate** | 1 | M | implemented | — | — |
 | 05 | [Per-class concurrency reservation — fresh / resume / rework caps in the planner](brief-05-per-class-caps.md) | 0 | S | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #412 @ 4db07e12b5f6821104244d0386f062851144b7bb) |
 | 06 | [Workpad — one upserted progress comment per PR](brief-06-workpad.md) | 0 | M | implemented | — | — |
-| 07 | [Runtime snapshot — `desksupervise status` for operators and the console](brief-07-runtime-snapshot.md) | 1 | M | implemented | — | — |
+| 07 | [Runtime snapshot — `desksupervise status` for operators and the console](brief-07-runtime-snapshot.md) | 1 | M | done | 2026-09-06 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #352 @ 496796982b573be17a032163cd3f6423e58be239) |
 | 08 | [Objectives over transitions — measure an objective-style worker kit with skillbench](brief-08-objectives-over-transitions.md) | 1 | M | todo | — | — |
+| 09 | [Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build](brief-09-ci-fanout-per-push.md) | 0 | S | implemented | — | — |
 
 ## Critical path
 
@@ -108,14 +109,20 @@ both, read-only, and proves reclaim-eligibility on a fixture with a dead worker.
 downstream can be verified without it: 02's stop needs a run to name, 03's reconciliation
 needs the observer tick to hang off, 07's snapshot is the observer's own state rendered.
 
-Smallest unblocking move: land 01. Briefs 05 and 06 are independent of it and can run in the
-same wave; 08 waits on 06 because an objective-style prompt leans on the workpad for
+Smallest unblocking move: land 01. Briefs 05, 06 and 09 are independent of it and can run in
+the same wave; 08 waits on 06 because an objective-style prompt leans on the workpad for
 continuity across attempts.
+
+**Brief 09 sits in this stream, and off the critical path, on purpose.** It is the same
+concern as 05 one layer down: 05 caps how many workers the desk runs at once, and 09 caps
+what each of their pushes then costs on a runner pool two runners wide. Neither blocks the
+other — 09 touches no engine code and no desk verb, only which CI workflows a given diff
+shape asks a question of — so it is wave 0 with no `depends:` and no `unblocks:`.
 
 ## Dependency waves
 
 ```
-Wave 0: [01 probes+observer]  [05 per-class caps]  [06 workpad]
+Wave 0: [01 probes+observer]  [05 per-class caps]  [06 workpad]  [09 CI fan-out]
 Wave 1: [02 run-stop] ← 01    [04 hooks] ← 01    [07 snapshot] ← 01    [08 objectives A/B] ← 06
 Wave 2: [03 reconcile] ← 01, 02
 ```

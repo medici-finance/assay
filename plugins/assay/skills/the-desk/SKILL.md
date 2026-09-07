@@ -179,6 +179,8 @@ verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
 
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+
 - **Dedupe against the open-issue register BEFORE any fanout:** "is this already filed?" precedes
   "who can investigate this?". On a board PROBLEM: confirm the red is not a stale-oracle artifact
   (check the board tool's provenance line against the pinned release), THEN dedupe, THEN dispatch.

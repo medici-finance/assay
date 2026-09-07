@@ -833,6 +833,65 @@ func TestSelectQueue_IncludesPlaceholdersExcludesForeignTokens(t *testing.T) {
 	}
 }
 
+// TestSelectQueue_ExcludesRowsAlreadyRepresentedByAPR is the fanoutloop half of the phantom fix:
+// a fresh Next-up row whose brief already has an OPEN or MERGED PR is NOT offered for dispatch,
+// while an unrepresented row survives. Orphan-resume and rework items are never subject to the
+// exclusion (they act on an existing PR by design) — proven by leaving the represented set to
+// carry a brief that is ALSO the rework row's, and asserting the rework item still appears.
+func TestSelectQueue_ExcludesRowsAlreadyRepresentedByAPR(t *testing.T) {
+	rows := []BoardRow{
+		briefRow("example-a", "00", "M", "", "model", false), // has an open PR — a phantom
+		briefRow("example-b", "08", "M", "", "model", false), // has a MERGED PR — a phantom
+		briefRow("live", "03", "M", "", "model", false),      // no PR — dispatchable
+	}
+	reworkRows := []BoardRow{briefRow("rew", "09", "M", "", "model", false)} // rework, acts on its PR
+	loop := &FanoutLoop{
+		Board:  func() ([]BoardRow, error) { return rows, nil },
+		Rework: func() ([]BoardRow, error) { return reworkRows, nil },
+		Represented: func() (map[string]bool, error) {
+			// The exclusion set carries the two phantom briefs AND the rework brief; the rework row
+			// must survive regardless — the exclusion applies to FRESH rows only.
+			return map[string]bool{"example-a/00": true, "example-b/08": true, "rew/09": true}, nil
+		},
+		TargetSHA: "sha",
+	}
+
+	items, err := loop.SelectQueue()
+	if err != nil {
+		t.Fatalf("SelectQueue: %v", err)
+	}
+	var ids []string
+	for _, it := range items {
+		ids = append(ids, it.ID)
+	}
+	if contains(ids, "example-a/00") {
+		t.Errorf("a fresh row with an OPEN PR was offered — it is a phantom: %v", ids)
+	}
+	if contains(ids, "example-b/08") {
+		t.Errorf("a fresh row with a MERGED PR was offered — it is a phantom: %v", ids)
+	}
+	if !contains(ids, "live/03") {
+		t.Errorf("an unrepresented fresh row was dropped: %v", ids)
+	}
+	if !contains(ids, "rew/09") {
+		t.Errorf("a rework row was excluded by the represented set — the exclusion is for FRESH rows only: %v", ids)
+	}
+}
+
+// TestSelectQueue_NilRepresentedOffersEveryRow pins the OFFLINE reference-build default: with no
+// Represented source wired, the exclusion is inert and every fresh row is offered exactly as before.
+func TestSelectQueue_NilRepresentedOffersEveryRow(t *testing.T) {
+	rows := []BoardRow{briefRow("example-a", "00", "M", "", "model", false)}
+	loop := &FanoutLoop{Board: func() ([]BoardRow, error) { return rows, nil }, Rework: noRework, TargetSHA: "sha"}
+	items, err := loop.SelectQueue()
+	if err != nil {
+		t.Fatalf("SelectQueue: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != "example-a/00" {
+		t.Fatalf("nil Represented must offer every row unchanged; got %+v", items)
+	}
+}
+
 // TestDispatchTokenDiscriminators pins the two independent predicates the fix separates: an
 // `issue-<NN>` placeholder is recognised as this loop's work and NOT as a foreign token, while a
 // `review-request` token (issue-shaped by number but the review loop's) is a foreign token.

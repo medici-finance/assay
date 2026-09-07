@@ -47,6 +47,8 @@ never a fresh plain comment for this (`## Notes` is where the hand-off note belo
 
 Work in your **own worktree** (`capability:isolate-workspace`), never the shared checkout:
 
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+
 ```bash
 git fetch origin <branch>:<branch>            # branch may not exist locally yet
 git worktree add ../pr-<N> <branch>           # or check the PR out inside your own worktree
@@ -130,6 +132,13 @@ fragment (`<slug>` = the branch name) carrying at least one bullet, OR when the 
 `changelog/<slug>.md` — never an edit to a top-level `CHANGELOG.md`, and never self-applying
 `changelog:skip` (that label is the desk's or a human's, not yours). A branch you have RESUMED owes
 this file whether or not the check has run against it yet.
+
+**Check what the PR actually owes before you write a fragment for it.** A documentation-only or
+Evidence-only PR owes none — a fragment added on top of one is a code changelog entry describing a
+change that is not in the diff — and some repos' changelog checks classify such a PR themselves and go
+green with no label at all. Where the check does NOT classify it and the branch is genuinely
+documentation-only, the move is to ASK the maintainer for `changelog:skip` and say so on the PR. It is
+never a fragment to invent, and never a label to apply yourself.
 
 **Carve-out — when the fix IS the removal of a security control, the red check is NOT yours
 (gate: human).** If the only way to turn a red check green is to delete, disable, or weaken a

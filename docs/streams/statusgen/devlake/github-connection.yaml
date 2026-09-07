@@ -1,0 +1,43 @@
+# github-connection.yaml — the GitHub connection + scope config DevLake ingests
+# through. STAGED, NOT APPLIED.
+#
+# DevLake ingests GitHub via a CONNECTION (auth + endpoint) plus a SCOPE set (the
+# orgs/repos to pull) bound into a BLUEPRINT (schedule). This file stages that
+# config for statusgen/11; creating the connection and running the blueprint is a
+# human/platform act (see runbook.md), performed against the running DevLake once
+# it is applied to the platform k8s cluster. Nothing here authenticates or runs.
+#
+# Auth is App/PAT-based and NEVER inlined: the token/App credential lives in the
+# k8s secret `devlake-github-auth` (values.yaml -> githubSecret), provisioned by a
+# human. This file references it; it does not carry a secret.
+
+connection:
+  name: github-primary
+  endpoint: https://api.github.com/
+  # Auth: GitHub App (preferred) or a PAT, provisioned by a human and stored in
+  # the k8s secret referenced by values.yaml `githubSecret.existingSecret`.
+  # DevLake reads the credential from that secret at runtime — do not inline it.
+  authType: app        # "app" (GitHub App install) | "token" (PAT)
+  tokenFromSecret: devlake-github-auth   # k8s secret key; provisioned platform-side
+
+# --- scope: the orgs/repos DevLake ingests ----------------------------------
+# The real scope set (the configured GitHub orgs/repos to ingest) is supplied by
+# the platform operator at apply time — this public spec lists the shape and a
+# neutral example only, never a private roster. medici-finance/assay is the public
+# home repo; add the rest of the configured orgs/repos platform-side.
+scopes:
+  - org: medici-finance        # public org (home of this repo)
+    repos:
+      - assay                  # medici-finance/assay (public)
+      # additional configured repos are added platform-side at apply time
+  # additional orgs (the configured GitHub orgs to ingest) are added platform-side
+
+# --- blueprint: schedule binding the connection + scope ---------------------
+blueprint:
+  name: statusgen-commodity-dora
+  connection: github-primary
+  # DORA-enrichment on, so the dashboards in values.yaml `grafana` render the four
+  # DORA core metrics + delivery velocity (the DevLake column of metric-map-11.md).
+  enrichDora: true
+  schedule: "0 3 * * *"        # nightly ingest; cadence set platform-side
+  # First run is a human/platform act — see runbook.md "first ingest".

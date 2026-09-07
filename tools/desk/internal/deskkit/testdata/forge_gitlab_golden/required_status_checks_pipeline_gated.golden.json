@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay"
+    }
+  ],
+  "result": [
+    "pipeline"
+  ]
+}

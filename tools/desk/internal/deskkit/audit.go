@@ -91,10 +91,28 @@ func auditPath() (string, error) {
 	return filepath.Join(dir, "audit.jsonl"), nil
 }
 
-// SessionTag returns $CLAUDE_CODE_SESSION_ID if set (the variable the Claude Code
-// harness actually exports), else the legacy $CLAUDE_SESSION_ID, else "unknown".
-// It is self-reported: forensics, not enforcement.
+// SessionTag names the AGENT this process is acting as: $DESK_SESSION if set, else
+// $CLAUDE_CODE_SESSION_ID (the variable the Claude Code harness actually exports), else
+// the legacy $CLAUDE_SESSION_ID, else "unknown". It is self-reported: forensics, not
+// enforcement.
+//
+// WHY $DESK_SESSION COMES FIRST. A dispatched agent is a CHILD PROCESS of the session that
+// fanned it out, so it inherits the harness's session id verbatim: every agent in a
+// fan-out reports the same $CLAUDE_CODE_SESSION_ID, the dispatcher's. A tag read from that
+// alone therefore names the DISPATCHER, not the actor — which is wrong for an audit trail
+// (a fan-out's whole output attributed to one id) and wrong for anything keyed on it, since
+// a per-session budget then covers the fan-out rather than the agent. $DESK_SESSION is the
+// desk tools' own per-agent session id, set per dispatched agent and per role window, and
+// it is what distinguishes siblings; deskwt and deskroster already resolve it ahead of the
+// harness id, so preferring it here makes the tools agree on who "this session" is rather
+// than answering it two ways.
+//
+// The harness ids remain the fallback, so a plain human-driven session that never sets
+// $DESK_SESSION is unaffected.
 func SessionTag() string {
+	if s := strings.TrimSpace(os.Getenv("DESK_SESSION")); s != "" {
+		return s
+	}
 	if s := os.Getenv("CLAUDE_CODE_SESSION_ID"); s != "" {
 		return s
 	}
@@ -126,6 +144,13 @@ func Log(e Entry) error {
 	if e.Result == "" {
 		return Unverifiable("audit entry missing result (internal)", nil)
 	}
+	// Record the CANONICAL tool key so a line written under a variant spelling — most often
+	// a guard() line keyed off the running binary's basename (a test build, a locally built
+	// or renamed copy) — lands in the same bucket the write path counts, instead of splitting
+	// the trail and escaping the budget (audittoolkey.go). Best-effort: a key that resolves
+	// to no known tool is left exactly as given (CanonicalToolKeyOr), so recording never
+	// fails closed and a non-tool binary's guard line still records verbatim for forensics.
+	e.Tool = CanonicalToolKeyOr(e.Tool)
 	if e.TS == "" {
 		e.TS = time.Now().UTC().Format(time.RFC3339)
 	}
@@ -170,8 +195,10 @@ func Log(e Entry) error {
 // LoadEntries reads and parses the whole audit file. Semantics:
 //   - a MISSING file is empty history — bootstrap, returns (nil, nil);
 //   - an unreadable file, ANY malformed line, or a scan error is a REFUSAL
-//     (Unverifiable → exit 6). The tools never skip or repair a bad line; the
-//     printed recovery is: a HUMAN moves the file to audit.jsonl.corrupt-<ts>.
+//     (Unverifiable → exit 6). The tools never skip or repair a bad line here; the
+//     printed recovery is `deskaudit recover`, which quarantines the bad LINE and carries
+//     every good entry forward (RecoverCorruptAudit) — NOT a plain `mv` of the whole file,
+//     which resets the counter and idempotency store (see auditrecover.go).
 //
 // This is the canonical reader the outward-write flow calls (under its flock) BEFORE
 // AllowWrite / AlreadyDoneIn, so corruption surfaces as a single exit-6 refusal.
@@ -185,7 +212,7 @@ func LoadEntries() ([]Entry, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, Unverifiable("cannot read audit file — move it aside to audit.jsonl.corrupt-<ts>", err)
+		return nil, Unverifiable("cannot read audit file — run `deskaudit recover` (quarantines the bad content and carries good entries forward; a plain move resets the budget + idempotency)", err)
 	}
 	defer f.Close()
 
@@ -202,7 +229,7 @@ func LoadEntries() ([]Entry, error) {
 		var e Entry
 		if err := json.Unmarshal([]byte(raw), &e); err != nil {
 			return nil, Unverifiable(
-				fmt.Sprintf("malformed audit line %d — move file aside to audit.jsonl.corrupt-<ts>", n), err)
+				fmt.Sprintf("malformed audit line %d — run `deskaudit recover` (quarantines the bad line and carries good entries forward; a plain move resets the budget + idempotency)", n), err)
 		}
 		entries = append(entries, e)
 	}

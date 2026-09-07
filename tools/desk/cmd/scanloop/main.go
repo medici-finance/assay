@@ -69,7 +69,8 @@ const usage = `scanloop — the intake desk's drain consumer of the deterministi
 USAGE:
   scanloop plan --root <repo> [--scan-target <owner/name>] [--inbound <file|->] [--state-dir <dir>]
                 [--monitor <path>] [--coalesce-window 20m]
-                [--scan-pr <N> --scan-branch <b> --scan-pr-created <ts>] [--now <RFC3339>]
+                [--scan-pr <N> --scan-branch <b> --scan-pr-created <ts> --scan-pr-state draft|ready]
+                [--now <RFC3339>]
   scanloop run  --root <repo> [--worktree-base <abs dir>] [--offline --inbound <file|->]
                 [--dry-run] [everything 'plan' takes]
   scanloop --version
@@ -94,6 +95,10 @@ item. --dry-run prints every lane step without running it; --offline takes the p
   the coalesce window      An open scan PR younger than the window absorbs the batch; at or past it
                            the PR stays sealed at a stable head and a fresh one is cut. An age that
                            cannot be read never coalesces.
+  the flip boundary        A scan PR that has been flipped ready-for-human (--scan-pr-state ready) is
+                           push-quiet: a post-flip push re-signals the review loop, so a new batch
+                           opens the NEXT scan PR regardless of the window. A draft/ready state that
+                           cannot be read never coalesces either.
   body regeneration        The scan PR's title and body are REGENERATED — re-derived from the
                            branch's own diff — on EVERY push, never carried over, never hand-edited.
   the judgment half        Which exit an item takes, and the ownership routing test, are EMITTED for

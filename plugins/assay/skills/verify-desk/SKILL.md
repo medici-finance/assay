@@ -20,6 +20,8 @@ hand-edits a board cell, and the board follows the witness.
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
 
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+
 **House rules live in the repo's own house-rules doc (`CLAUDE.md`)** — git/PR discipline, identity and
 posting, trust gate, filing and escalation, refresh-don't-remember, board hygiene, the console
 noise-floor pointer, and worktree-sprawl ownership (the `deskwt` prune supervisor). This skill points at
@@ -54,7 +56,15 @@ run: fix the check it names, re-run, then claim. An open verify-gate wait is a w
    is `could-not-run` for the WHOLE pass**: report the one summary line and STOP — claim nothing, and
    file no issue about the desk's own envelope (each failing check names the issue that owns it). A
    probe REJECTION is a STOP; never retry under another identity.
-3. Resync before every wave, scoped to your worktree, identity guard FIRST — a mismatched origin is a
+3. **Export the stream-root map BEFORE the first queue read** — `DESK_ROOTS="<owner>/<repo>=<path>,…"`,
+   one entry per checkout on this machine that carries `docs/streams/`; the project layer states the
+   value (this desk never hardcodes a list). The shipped compiled defaults are a PLACEHOLDER topology,
+   so with `DESK_ROOTS` unset a queue read either refuses outright ("root … is configured for
+   `<placeholder>` but statusgen reports its stream … as `<real repo>`") or covers only the
+   placeholder's roots — either way the cross-repo merge aborts and whole repos never appear in the
+   Awaiting queue. Both outcomes are **could-not-check**, never an empty queue: prove the map by
+   reading back the `roots` array the queue prints and confirming every repo you expect is in it.
+4. Resync before every wave, scoped to your worktree, identity guard FIRST — a mismatched origin is a
    hard STOP, not a re-point, and a **bare** `git reset --hard` from outside your own tree wipes another
    session's work (what the F-34 writeguard blocks; re-issue with `git -C "$WT"`, never bare):
    ```
@@ -87,6 +97,15 @@ run: fix the check it names, re-run, then claim. An open verify-gate wait is a w
 cross-repo is verified in the sibling checkout — read the set from `deskroster repos`, never a
 hardcoded list; an uncloned repo is **could-not-check** for that row, never a fail. Resync the
 sibling, run its rows there, record sibling repo + SHA in Evidence beside the in-repo row.
+**"Resync" means confirmed-current, not merely attempted**: `git -C <sibling> fetch origin` can
+fail silently (a rewritten remote, a dead credential) and leave the tree exactly as stale as
+before the fetch ran, and comparing the checkout's own `HEAD` to its own `origin/main` afterward
+proves nothing — a silently-stale fetch moves neither, so they still agree. Cross-check instead
+against an INDEPENDENT read of the same ref: `git -C <sibling> rev-parse origin/main` compared
+against `gh api repos/<owner>/<repo>/commits/main --jq .sha` (a different protocol, so a rewrite
+that misroutes the git fetch does not also misroute the API call). A mismatch this desk cannot
+resolve is could-not-check for that row, never a row run against whatever the tree happened to
+hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the one requested.
 
 ## The verifier dispatch — the moat
 
@@ -214,6 +233,64 @@ desk posts goes out under the role App via the desk verbs (`deskpost` / `deskpr`
 **Standing-doctrine pointer (2026-08-17):** the verdict-transcription lane (`docs/streams/verdict-lane/`,
 ruling R-6) would replace this path with signed verdict issues and a main-side sole writer; until R-6 is
 SIGNED and the lane armed (cutover = verdict-lane/06), this section stands unchanged.
+
+### Public repo (PR-required main) — Evidence lands by PR
+
+Some repos' `main` refuses a direct App push outright: a branch ruleset requires a pull request, an
+approving review that is not the last pusher, and a named status check, with the verifier App on no
+bypass list. `deskevidence`'s direct-to-main commit is REJECTED there (`GH013`), and that rejection is
+a STOP — never a prompt to seek a bypass grant. The carve-out above is **not widened** by this
+subsection: it stays exactly what it was, and on these repos this desk does not push `main` at all.
+
+**Precondition — a recorded ruling.** This lane is available for a repo only when a human ruling on the
+record names that repo and this landing shape. Without one the brief is surfaced as awaiting a decision
+and the drain moves on; do not open Evidence PRs on a repo speculatively.
+
+Once the ruling exists, land each verdict as a PR instead of a push — same `deskevidence`, same guards,
+a branch as the target instead of `main`:
+
+0. **Cut the branch FIRST, server-side, from the current main.** `deskevidence` writes to a branch that
+   already exists and REFUSES `main`/`master` outright, so this step is a precondition, not a
+   convenience — and cutting server-side from the fetched remote head keeps the Evidence off a tip that
+   has already moved:
+
+   ```
+   git push origin refs/remotes/origin/main:refs/heads/verify-desk/<stream>-<NN>-evidence-<YYYYMMDD>
+   ```
+
+   Spell the source `refs/remotes/origin/main` in full: a bare `origin/main` resolves to a stray LOCAL
+   branch of that name wherever one exists, and the push then silently seeds the branch from a stale
+   commit.
+
+1. **`deskevidence <owner/repo> verify-desk/<stream>-<NN>-evidence-<YYYYMMDD>`, ONE invocation per
+   file** — the same one-file-per-call interface, just aimed at the branch: first the brief's
+   `## Evidence` rows (`--evidence-file` plus `--brief-path`), then the stream README row flip
+   `implemented → verified`. **Both land on the SAME branch and ride in the SAME PR** — an Evidence PR
+   that carries the rows but not the flip leaves the board lying, and a flip without the rows is a
+   stamp. `VERIFIER_MAIN_OK` is a main-push switch and is irrelevant here; every other guard (repo
+   allowlist, BodyCheck, the outward-write rate limit, the bot-USER attribution check, the audit line)
+   fires exactly as before.
+2. **Open the DRAFT PR under THIS DESK'S OWN token.** The PR's AUTHOR identity is load-bearing: an
+   Evidence-landing lane keys on the verifier App having authored the PR, so a PR opened under any
+   other role's identity is not an Evidence PR and will not be treated as one. Check what your PR verb
+   authenticates as before you use it — where it mints a FIXED role's token rather than the session's,
+   it is the wrong tool here, and the stopgap is a plain forge `pr create --draft` with the verifier
+   token exported. Title `verify(<stream>/<NN>): evidence + implemented→verified`; body carrying
+   EXACTLY ONE `Brief: <stream>/<NN>` trailer. On a public repo the body must be SELF-CONTAINED — no
+   private repo names, no internal ids, no local paths — and the stopgap path has no body scan in
+   front of it, so run the project's own leak sweep over the body and the branch tree yourself before
+   opening. Read back the PR's author login and confirm it is the verifier App; anything else is a
+   STOP, not a "close enough".
+3. **Hand off and move on.** The review desk owns the verdict and the ready-flip; this desk never
+   approves, never flips ready, never merges. Where the project has armed an Evidence auto-merge lane,
+   merge follows the reviewer's approval and the required status with no further action; where it has
+   not, the PR waits on a human merge. Either way the brief's row is `verified` the moment the Evidence
+   PR merges, and the `gate: model` verified→done flip stays CI's (see below).
+
+**Land-as-each-verdict-arrives still applies** — the PR replaces the push, not the cadence. Buffering a
+wave of Evidence PRs to the end of the pass is the same defect as buffering pushes: a PASS in hand and
+not on a branch within one landing cycle is phantom verification debt. One brief = one branch = one
+draft PR, as everywhere else in the fleet.
 
 ## Irreversible briefs (`risk.irreversible: yes`) — the model records Evidence, a HUMAN flips
 

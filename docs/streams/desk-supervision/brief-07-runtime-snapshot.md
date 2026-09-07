@@ -97,6 +97,23 @@ tick prints a clean-looking table with exit 0" → row 4; "the JSON drifts from 
 the console reads" → row 3; "only the worker desk reads stops" → row 7.
 
 ## Evidence
+### Non-implementer verifier run — VERIFY: PASS (8/8 rows) — 2026-09-06 opus-4.8[1m]-verifier (verify-desk dispatch), merged main `5d20ff9`
+Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=/dev/null`, `GOWORK=off`); desk rows module-scoped from `tools/desk`. `gate: model`, all risk `no`, `irreversible: no`. Impl commit `cb920f2`.
+
+| # | command | expected | exit / observed | Date | Runner |
+|---|---------|----------|-----------------|------|--------|
+| 1 | go test ./cmd/desksupervise -run Status/Snapshot | exit 0, ok | exit 0, ok — 6 tests PASS (status-snapshot-mixed, tokens-never-zero, snapshot-blind, stops-filter, json-validates-against-schema, snapshot-from-sweep-atomic-write) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 2 | desksupervise status --json mixed | exit 0; desksupervise-status-v1 3 could-not-check | exit 0 — final line "desksupervise-status-v1 3 could-not-check" | 2026-09-06 | opus-4.8[1m]-verifier |
+| 3 | go test -run status-json-validates-against-schema -v | exit 0; PASS | exit 0 — PASS (0.00s) | 2026-09-06 | opus-4.8[1m]-verifier |
+| 4 | desksupervise status blind-obs | blind_sources/BLIND, could-not-check, no ` 0s` timer for blind claim, rc=6 | exit 6 — "blind_sources (COULD-NOT-CHECK this tick): forge unreachable"; tokens=could-not-check; blind timers all n/a (no ` 0s`); rc=6 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 5 | desksupervise status --stops stops.json | exit 0; exactly the keys in stops.json | exit 0 — only claim key rendered is the sole key in stops.json; other claims in aggregates only | 2026-09-06 | opus-4.8[1m]-verifier |
+| 6 | test -f schemas/desksupervise-status-v1.json && grep -c '"tokens"' | ≥1 | exit 0 — 2 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 7 | grep -l 'desksupervise status' in worker/pr-review/verify-desk SKILL.md | 3 | exit 0 — 3 | 2026-09-06 | opus-4.8[1m]-verifier |
+| 8 | statusgen --root . --consumers --brief desk-supervision/07 | exit 0; no DISPROVED | PASS — exit 0, no DISPROVED (post-merge could-not-check for corroboration: brief not in the diff vs 5d20ff9). Re-run with a statusgen built from current public main; the verifier's first pass used the pinned v0.27.0 which aborted on the decisions register (the #557 STALE-ORACLE, now closed — current source skips it) | 2026-09-06 | opus-4.8[1m]-verifier |
+
+`RISK-VALUE: DERIVED — statusSchemaID = "desksupervise-status-v1" @ tools/desk/cmd/desksupervise/status.go:40 — equals the published schema's own const (schemas/desksupervise-status-v1.json:17) and the deliverable filename; row 2 asserted the emitted JSON schema field equals it, so producer/contract/consumer agree by construction. The liveness thresholds it renders come from loopengine.LivenessPolicy (brief 01), not introduced here; blind exit 6 is the house deskkit.Unverifiable convention. Reversible.`
+**VERIFY: PASS** — rows 1-7 PASS; row 8 re-run clean with a current-source statusgen (its earlier could-not-check was the #557 stale-oracle pinned binary). `gate: model`, all risk `no` — advances `implemented → verified`.
+
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled

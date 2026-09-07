@@ -86,11 +86,19 @@ const (
 // budgeted — directing filers to attach is the very motion the gate encourages, so it must
 // never be the path the budget refuses.
 //
-// The budget cannot be reset by varying $CLAUDE_SESSION_ID without a trace: every `new`
-// audit line carries the sessionTag it charged (deskkit.SessionTag()), so a caller that
-// rotates the env var to reset its bucket leaves a forensic trail of which sessions filed
-// what. Rotating the ID does reset the bucket (a new session is a new session) — the audit
-// trace is the control, not a hard block.
+// WHOSE session. The tag is deskkit.SessionTag(), which names the agent DOING THE FILING —
+// $DESK_SESSION ahead of the harness's own session id, because a dispatched agent is a
+// child process and inherits the harness id of the session that dispatched it. Keyed on the
+// inherited id the budget would cover a whole FAN-OUT rather than an agent: the first agent
+// to file three would exhaust every sibling's budget, and the others would be refused
+// having filed nothing. The cap is per ACTOR — one agent still gets 3, and gets no more by
+// being dispatched alongside others.
+//
+// The budget cannot be reset by varying the session id without a trace: every `new` audit
+// line carries the sessionTag it charged (deskkit.SessionTag()), so a caller that rotates
+// the env var to reset its bucket leaves a forensic trail of which sessions filed what.
+// Rotating the ID does reset the bucket (a new session is a new session) — the audit trace
+// is the control, not a hard block.
 const (
 	// defaultNewBudgetPerSession is the per-session, per-repo cap on `new` writes in a
 	// rolling 24h window. 3 is the default — enough for a productive session,
@@ -168,7 +176,7 @@ func checkSessionBudget(repo, session string, now time.Time) error {
 		ts, perr := time.Parse(time.RFC3339, e.TS)
 		if perr != nil {
 			return deskkit.Unverifiable(
-				fmt.Sprintf("deskfile budget: audit entry has an unparseable ts %q — move file aside to audit.jsonl.corrupt-<ts>", e.TS), perr)
+				fmt.Sprintf("deskfile budget: audit entry has an unparseable ts %q — run `deskaudit recover` (quarantines the bad line and carries good entries forward; a plain move resets the budget + idempotency)", e.TS), perr)
 		}
 		if ts.Before(cutoff) {
 			continue
@@ -189,8 +197,9 @@ func checkSessionBudget(repo, session string, now time.Time) error {
 	return deskkit.RateLimitedAfter(fmt.Sprintf(
 		"refused: deskfile session budget exhausted (%d `new` on %s in the last 24h for session %q; max %d) — "+
 			"retry-after: %ds (free at %s). Attach further observations to an existing issue instead of filing "+
-			"new ones, or wait for the 24h window to roll. DO NOT retry-loop by varying CLAUDE_SESSION_ID: each "+
-			"`new` audit line records the sessionTag it charged, so rotating the ID leaves a trail, it does not "+
+			"new ones, or wait for the 24h window to roll. This is YOUR agent's budget, not the whole "+
+			"fan-out's. DO NOT retry-loop by varying $DESK_SESSION (or the harness session id): each `new` "+
+			"audit line records the sessionTag it charged, so rotating the ID leaves a trail, it does not "+
 			"erase one.",
 		len(charged), repo, session, defaultNewBudgetPerSession,
 		int(retryAfter/time.Second), freeAt.UTC().Format(time.RFC3339)),

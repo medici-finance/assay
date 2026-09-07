@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
@@ -58,6 +59,18 @@ type FanoutLoop struct {
 	// write-scopes. nil reads the root repo's local `refs/dispatch/*` claims (offline). Tests
 	// inject fixtures here. It is ADVISORY only — nothing dispatches or blocks on it.
 	InFlight func() ([]loopengine.Item, error)
+
+	// Represented is the ALREADY-REPRESENTED exclusion source: the set of brief IDs
+	// (`<stream>/<NN>`, lower-cased) that already have an OPEN or MERGED PR, so a phantom fresh row
+	// whose work is already in flight or merged is never offered for dispatch. nil = NONE: the
+	// OFFLINE reference build issues no `gh` PR sweep (exactly like Orphans), so the exclusion is
+	// wired only at the live cutover, where the source builds the set with
+	// deskkit.RepresentedBriefSet over the repo's open+merged PRs — keyed on each PR's `Brief:`
+	// trailer, NEVER a branch name (a branch spelled differently from the derived pattern is exactly
+	// the phantom this exclusion exists to catch). Tests inject fixtures here. It applies ONLY to
+	// fresh Next-up rows: orphan-resume and Awaiting-rework items act on an existing PR by design and
+	// are never excluded by it.
+	Represented func() (map[string]bool, error)
 
 	// Emit is where interim-mode dispatch instructions are printed. nil = stdout.
 	Emit io.Writer
@@ -126,11 +139,25 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The already-represented exclusion set (brief IDs with an OPEN or MERGED PR). Applied to FRESH
+	// rows ONLY — orphan-resume and rework items above act on an existing PR by design.
+	represented, err := f.representedSource()
+	if err != nil {
+		return nil, err
+	}
 	for _, r := range rows {
 		if isForeignDispatchToken(r) {
 			// A DIFFERENT loop's consumer (e.g. a `review-request` token owned by the review loop);
 			// skipped so the two consumers never double-dispatch. NOTE: `issue-<NN>` placeholders are
 			// NOT dropped here — they ARE this loop's work (Procedure 2) and flow through below.
+			continue
+		}
+		if represented[strings.ToLower(r.Stream+"/"+r.Num)] {
+			// A fresh row whose brief already has an OPEN or MERGED PR — a phantom the board has not
+			// yet caught up with (the READMEs still read `todo`/`implemented` while the forge moved
+			// on). Excluded so a worker is never spent re-deriving that the PR already exists. The
+			// match is on the brief id (keyed against the PR's `Brief:` trailer at the source), never
+			// on a branch name.
 			continue
 		}
 		if f.isHandled(r.ID()) {
@@ -260,6 +287,16 @@ func (f *FanoutLoop) reworkSource() ([]BoardRow, error) {
 		return f.Rework()
 	}
 	return readAwaitingRework(f.Root)
+}
+
+// representedSource returns the already-represented brief-id set (open/merged PRs). nil Represented
+// means NONE — the OFFLINE reference build reconciles against no PRs, so every fresh board row is
+// offered exactly as before; the exclusion activates only when the live cutover wires a source.
+func (f *FanoutLoop) representedSource() (map[string]bool, error) {
+	if f.Represented != nil {
+		return f.Represented()
+	}
+	return nil, nil
 }
 
 func (f *FanoutLoop) emit() io.Writer {

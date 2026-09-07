@@ -46,6 +46,9 @@ func cmdRun(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if err := o.validateScanPRState(); err != nil {
+		return err
+	}
 	if err := deskkit.ScanScopeError(); err != nil {
 		return err
 	}

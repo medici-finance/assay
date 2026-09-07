@@ -39,9 +39,10 @@ func TestAbbreviatedHeadIsAFormErrorNotAHeadMismatch(t *testing.T) {
 				t.Fatalf("stderr %q does not name the abbreviation — the whole point of the "+
 					"gate is that the caller learns the REAL problem on the first try", msg)
 			}
-			if !strings.Contains(msg, "40-character") {
+			if !strings.Contains(msg, "40- (or 64-) character") {
 				t.Fatalf("stderr %q does not state the required form; #1255's third item "+
-					"asks specifically for the form to be surfaced in the refusal", msg)
+					"asks specifically for the form to be surfaced in the refusal, and the "+
+					"form the code accepts is 40- OR 64-char lowercase hex", msg)
 			}
 			if f.postedReview != 0 || len(f.hits) != 0 {
 				t.Fatalf("a malformed --head reached the network: postedReview=%d hits=%v",

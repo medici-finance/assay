@@ -1,2 +1,0 @@
-### Changed
-- The desk improve-pane side-effect register no longer asserts that a `statusgen --bottleneck` write under `docs/reports/` leaves the path unclassified and drives the publication-manifest check to fail. A covering `docs/reports/**` withhold row now exists in the publication disposition manifest, so the created file classifies and the check passes — the write side effect itself, and the guard on it, are unchanged.

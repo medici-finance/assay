@@ -68,7 +68,10 @@ validated against the value set given.
 | `blocked-by` | string | OPTIONAL | Environment-blocked marker; the only defined value is `env` (the brief is blocked on infrastructure or environment). Absent means the brief is not blocked. An out-of-set value MUST be flagged. |
 | `homed-in` | string | OPTIONAL | The `<owner>/<repo>` the brief's deliverable was re-homed to (a de-housing) — exactly one `/`, both sides non-empty, no whitespace. Absent means a normal in-repo brief. A malformed shape MUST be flagged; the value MUST NOT be checked against a repo allowlist (the shape is all a linter can validate locally). |
 | `measures` | string | OPTIONAL | Name of the process queue this brief instruments (drain-before-instrument). The only wired queue is `verification-debt`. Absent means the brief is not an instrumentation brief. A present value MUST name a wired queue; a present-but-unrecognized name, or a present-but-empty value, MUST be flagged. |
+| `satisfies` | array[string] | OPTIONAL | The requirements this brief was written against, as requirement references — `REQ-<slug>` in-repo, or `<alias>:REQ-<slug>` cross-repo through the `docs/streams/graph-repos.yaml` alias registry (`registers-v1.md` §6.5). Absence MUST NEVER be flagged on any brief. A present entry that does not match the grammar MUST be flagged; a wrong TYPE is a parse error. A conforming linter MUST emit a NOTICE for a brief carrying the key. The citation feeds the corpus-wide traceability checks §6.5 defines: a `satisfies:` naming an in-repo requirement that does not exist is a `dangling-satisfies` PROBLEM, and a forward brief in a `traced:` stream that cites nothing is an advisory `untraced-brief` NOTICE (§3.3). |
+| `design` | string | CONDITIONAL | The design-decision record this brief was approved against, as a typed reference `DR-<slug>` into the DECISIONS register (`registers-v1.md` §7). REQUIRED for a **risk-gated** brief in the design-approval gate's scope (`lifecycle-v1.md` §4.4) once it is at `in-progress` or later; OPTIONAL — and never flagged when absent — otherwise. A present value that is not a valid `DR-<slug>` reference, or that dereferences to no record in the register, MUST be flagged; a wrong TYPE is a parse error. The gate is grandfathered (§4.4), so absence is flagged only for briefs in the gate's live scope, never for grandfathered legacy briefs. |
 | `parallel-streams` | array[mapping] | OPTIONAL | Declared shards of an intra-brief split. Each entry is a mapping with a REQUIRED `name` (string) and an OPTIONAL `files` (array of path globs the shard owns); no other key is permitted in an entry. Absent means one worker per brief. Only the entry SHAPE is validated in frontmatter — whether a declared split may actually be dispatched is decided by `statusgen shardcheck` against the file tree, not by the frontmatter linter. A declaration that parses is a request, not a permission. |
+| `split-from` | string | OPTIONAL | The `<stream>/<NN>` id of the brief this brief was split off from — the explicit parent for the split-flag conservation gate (§3.4), used when the parentage is NOT encoded in the numbering (a split across streams, or a renumbered child). Absent means the brief is not a declared split child. A value that is not a `<stream>/<NN>` in-repo brief reference, or that names the brief itself, MUST be flagged; a wrong TYPE is a parse error. A value that does not resolve to a brief in the tree is a `could-not-check` NOTICE (the parent may have been retired in the same change), never a silent pass. |
 
 ### 3.3 Frontmatter linter requirements
 
@@ -81,6 +84,71 @@ shape, and any `parallel-streams` entry that carries a key other than `name`/`fi
 missing `name`, or gives `name` a non-string value. For every optional field in section
 3.2 the rule is the same: an ABSENT field is never flagged, and a wrong *type* is a parse
 error, while a present-but-out-of-set *value* is the semantic flag described here.
+
+It MUST also flag any `satisfies:` entry that does not match the requirement-ref grammar,
+which is exactly two forms and no others:
+
+```
+REQ-<slug>              in-repo requirement; <slug> is 10–20 chars of [a-z0-9-],
+                        starting and ending alphanumeric (registers-v1.md §3.4)
+<alias>:REQ-<slug>      cross-repo; <alias> MUST resolve in the existing
+                        docs/streams/graph-repos.yaml registry (schema graph-repos-v1)
+```
+
+An unresolvable alias MUST be flagged: the registry is a closed set, and the same registry
+serves the dependency-graph reference grammar — a conforming implementation MUST NOT add a
+second one for requirements. The linter MUST NOT flag an absent `satisfies:` (no brief is
+required to cite a requirement), and it MUST emit a NOTICE for a brief that carries the key,
+so that "parsed and traced" is distinguishable from "silently ignored".
+
+Beyond the grammar, `satisfies:` now feeds the corpus-wide traceability checks that
+`registers-v1.md` §6.5 defines (they were reserved at the schema's first version and landed
+advisory-first, per §4.5):
+
+- **`dangling-satisfies`** — a `satisfies:` naming an IN-REPO `REQ-<slug>` that this root's
+  register does not define is a hard PROBLEM. The register is append-only (§3.1/§3.3), so an
+  in-repo id no entry defines can only be a typo or a deleted entry. A cross-repo
+  `<alias>:REQ-<slug>` names a register in another repo the offline linter cannot read, so it
+  is could-not-check, never dangling.
+- **`untraced-brief`** — a brief that is `in-progress` or later, in a stream whose README
+  declares `traced: true`, and that names no `satisfies:`, raises an advisory NOTICE. Absent
+  the stream opt-in the check never fires — a corpus-wide untraced sweep over legacy briefs
+  that predate the register is noise (§4.5).
+
+The companion `orphan-requirement` advisory check lives on the register side (§6.5).
+
+### 3.4 Split-flag conservation
+
+Splitting a brief is authoring, and a split MUST NOT downgrade risk. A brief that is a
+split child MUST carry, for `gate` and for each of the four canonical `risk` answers, a flag
+at least as strict/high as the brief it was split from:
+
+```
+gate  = the stricter of (parent, child)   — human >= model
+risk  = MAX(parent, child) per key        — yes >= no, for each of
+        regulatory, customer, irreversible, sensitive-data
+```
+
+A child that is STRICTER than its parent (an escalation) is always conforming and MUST NOT
+be flagged; only a WEAKER flag is a downgrade. A conforming linter MUST flag a downgrade as a
+hard PROBLEM. The rule fails safe toward more gating — because risk is a property of what a
+change DOES, not of the size of its diff, the small "mechanical" child of a split is exactly
+where a human gate is most likely to be dropped.
+
+The parent is resolved from whichever signal is present:
+
+- **Numeric-stem lineage** — the split convention `02` → `02a`, `02b`, `02c`: a lettered
+  shard shares the numeric stem of the brief it came from. When the un-lettered parent
+  (`02`) is present it IS the floor. When the parent was retired in the same change, the
+  strictest SIBLING shard stands in as the floor, so a downgraded shard is still caught by a
+  faithful one.
+- **A declared `split-from`** (§3.2) — the explicit parent, for lineage the numbering does
+  not encode. A `split-from` that does not resolve in the tree is a `could-not-check` NOTICE,
+  never a silent pass.
+
+This is a conservation check, not an authorization one: it never licenses lowering a flag,
+and a genuinely clean split whose risky work all went to a sibling conserves by keeping the
+child's flags UP, not down.
 
 ## 4. Body structure
 
@@ -148,6 +216,26 @@ author — subject to the attribution-not-identity limit in `lifecycle-v1.md` §
 
 The body MUST contain a `## Review` section recording the gate type (from frontmatter)
 and the reviewer's verdict and date.
+
+### 4.7 Threat model (risk-gated briefs)
+
+A **risk-gated** brief — `gate: human`, or any `risk` answer `yes` — MUST carry a
+recorded threat model. This is the pre-mortem of `docs/mistake-proofing.md` **B5** made
+REQUIRED and RECORDED rather than an optional authoring habit: at authoring time the
+author names the ways this change could ship and be wrong, and MAPS each named failure
+mode to the `## Verify` row that would catch it. A failure mode with no row MUST carry an
+explicit line saying so — "no row; review-only" — rather than being silently omitted; an
+unmapped failure mode the reader cannot see is the defect this rule closes.
+
+The threat model plugs into the brief's existing defense-in-depth obligation rather than
+duplicating it: where the project layer requires a single-point-of-failure note (the one
+control the design leans on and the layer(s) behind it), the threat model's failure modes
+and their detection rows are the evidence for that note. A conforming implementation MUST
+NOT stand up a second pre-mortem concept parallel to **B5**.
+
+This is a body-content requirement checked for PRESENCE, not quality — the same posture
+section 4.4 takes for the Verify table. Whether the enumerated failure modes are the
+*right* ones is the review gate's judgement, not the linter's.
 
 ## 5. Structural rules
 

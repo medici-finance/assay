@@ -167,7 +167,21 @@ func extractIDFromYAMLFrontmatter(raw []byte) string {
 // numeric-form regression rule (new entries must use slug format).
 // Returns lint PROBLEM strings; empty slice = all IDs valid.
 func idFormatProblems(root string) []string {
-	var problems []string
+	return registerMsgs(idFormatProblemsEntries(root))
+}
+
+// idFormatProblemsEntries is idFormatProblems' structured form: each id-format
+// PROBLEM paired with the register entry file it concerns, so the --changed gate
+// can scope a pre-existing bad id on an untouched entry to a NOTICE while a bad
+// id the diff introduces still fails. A read error attributes to no file (empty
+// paths) and stays a hard PROBLEM.
+func idFormatProblemsEntries(root string) []registerProblem {
+	var problems []registerProblem
+	intakeIdx := intakeIDToPaths(root)
+	findingIdx := findingIDToPaths(root)
+	add := func(msg string, paths ...string) {
+		problems = append(problems, registerProblem{msg: msg, paths: paths})
+	}
 
 	// Gather the set of IDs that are grandfathered (exist at the merge-base).
 	grandfathered := grandfatheredIDs(root)
@@ -191,7 +205,7 @@ func idFormatProblems(root string) []string {
 	// --- intake ---
 	intakeEntries, err := parseIntakeDir(root)
 	if err != nil {
-		return []string{fmt.Sprintf("id format: reading intake: %v", err)}
+		return []registerProblem{{msg: fmt.Sprintf("id format: reading intake: %v", err)}}
 	}
 	for _, e := range intakeEntries {
 		// Grandfathered entries (exist at merge-base) are exempt from all
@@ -205,39 +219,39 @@ func idFormatProblems(root string) []string {
 		// Not git-dependent — a genuinely malformed id is malformed regardless
 		// of whether history is available, so this rule always runs.
 		if !isValidRegisterID(e.ID) {
-			problems = append(problems, fmt.Sprintf(
+			add(fmt.Sprintf(
 				"intake register: invalid id %q — must be %s (new slug form: 10-20 chars after prefix, [a-z0-9-], starts/ends alphanumeric) or %s (legacy numeric, grandfathered)",
-				e.ID, "[FI]-<slug>", "[FI]-NN(-a)?"))
+				e.ID, "[FI]-<slug>", "[FI]-NN(-a)?"), intakeIdx[e.ID]...)
 		}
 
 		// Numeric-regression check: a new entry using a numeric-form ID
 		// is a regression to the counter. Skipped entirely with no .git (see
 		// skipNumericRegression above).
 		if !skipNumericRegression && isLegacyNumericID(e.ID) {
-			problems = append(problems, fmt.Sprintf(
+			add(fmt.Sprintf(
 				"intake register: %s uses numeric id %q — new entries must use slug-form ids (10-20 chars after prefix, [a-z0-9-]); numeric ids are frozen legacy",
-				e.Date, e.ID))
+				e.Date, e.ID), intakeIdx[e.ID]...)
 		}
 	}
 
 	// --- findings ---
 	findingEntries, err := parseFindingsDir(root)
 	if err != nil {
-		return append(problems, fmt.Sprintf("id format: reading findings: %v", err))
+		return append(problems, registerProblem{msg: fmt.Sprintf("id format: reading findings: %v", err)})
 	}
 	for _, e := range findingEntries {
 		if grandfathered[e.ID] {
 			continue
 		}
 		if !isValidRegisterID(e.ID) {
-			problems = append(problems, fmt.Sprintf(
+			add(fmt.Sprintf(
 				"findings register: invalid id %q — must be %s (new slug form: 10-20 chars after prefix, [a-z0-9-], starts/ends alphanumeric) or %s (legacy numeric, grandfathered)",
-				e.ID, "[FI]-<slug>", "[FI]-NN(-a)?"))
+				e.ID, "[FI]-<slug>", "[FI]-NN(-a)?"), findingIdx[e.ID]...)
 		}
 		if !skipNumericRegression && isLegacyNumericID(e.ID) {
-			problems = append(problems, fmt.Sprintf(
+			add(fmt.Sprintf(
 				"findings register: %s uses numeric id %q — new entries must use slug-form ids (10-20 chars after prefix, [a-z0-9-]); numeric ids are frozen legacy",
-				e.Date, e.ID))
+				e.Date, e.ID), findingIdx[e.ID]...)
 		}
 	}
 

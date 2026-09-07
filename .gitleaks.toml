@@ -79,3 +79,37 @@ regexes = [
   # character (`_`) and so does not match this shape, and fires on its own rule.
   '''\bconst secret = "[A-Za-z0-9]{40}"''',
 ]
+
+# desk-tools/14 (bodycheck negative classes + `--explain`) adds two NEW test files
+# whose positive controls DELIBERATELY carry a 40-char high-entropy run: the
+# `high-entropy-run` rule they exercise fires only on a genuinely secret-shaped run,
+# so — unlike the k8s-template fixture, which was reshaped to a short below-threshold
+# base64 literal that the k8s-template rule still refuses — these fixtures cannot be
+# shortened without gutting the positive control. gitleaks flags the run as
+# `generic-api-key`; the dedicated high-signal rules never match it. This is the
+# fail-closed "new secret-shaped fixture added" case the block above documents, so the
+# fixture is enrolled here on the SAME structure-only terms, in its OWN block so its AND
+# never crosses with the entries above.
+#
+# The two fixtures write the synthetic run as a SPLIT string literal —
+# `secret := "<24 base62>" + "<16 base62>"` — and the anchor keys on exactly that split
+# assignment shape. It carries no token bytes (only a character class and the `+`
+# concatenation), and a real leaked credential is a single literal, not a Go string
+# concatenation, so it does not match this shape and still fires on its own rule. A
+# different secret elsewhere in either file (any line without the split-assignment
+# scaffolding) still refuses — this is not a whole-file exemption.
+[[allowlists]]
+description = "Synthetic 40-char high-entropy fixtures in desk-tools/14's new tests (split-literal assignment anchor, no token material)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''tools/desk/cmd/deskpr/explain_test\.go$''',
+  '''tools/desk/internal/deskkit/bodycheck_negclasses_test\.go$''',
+]
+regexTarget = "line"
+regexes = [
+  # `secret := "<base62>" + "<base62>"` — the split-literal assignment shape. A single
+  # real literal (ghp_…/AKIA…) carries no `" + "` join and does not match; it fires on
+  # its dedicated rule regardless.
+  '''secret := "[A-Za-z0-9]+" \+ "[A-Za-z0-9]+"''',
+]

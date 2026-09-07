@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,14 +22,24 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// apiBaseURL is the GitHub API/GraphQL base. It is overridable ONLY from in-package
-// tests (a fake httptest server); there is deliberately NO env var or flag override — a
-// production override could redirect the App-token mint or a review-post to an attacker.
-// This is the same test-hook shape deskkit uses for its desk-tools directory.
-// The host literal is sourced from deskkit.GitHubAPIBase (the forge module) so it is never
-// constructed in a cmd package (the forge-abstraction seam); the var is kept so in-package tests can
-// still point it at a fake server.
-var apiBaseURL = deskkit.GitHubAPIBase
+// forgeAPIBase is a TEST-ONLY override of the API base deskpost's REST reads and its
+// App-token mint are pointed at. It is EMPTY in production, which means "the forge module's
+// own default" (deskkit.GitHubBaseURLOrDefault → deskkit.GitHubAPIBase) — so this verb binds
+// no forge host literal of its own anywhere, exactly like deskflip's `forgeAPIBase`. There is
+// deliberately NO env var or flag override: a production override could redirect the
+// App-token mint or a review-post at an attacker. In-package tests point it at a fake
+// httptest server (harness_test.go).
+//
+// The custody minter this file installs on deskkit.ForgeFor (init, below) returns this same
+// empty override, so the resolved forge's writes (comment/label posting) share the one seam:
+// the resolver applies the default the same way GitHubForge.baseURL() does.
+var forgeAPIBase string
+
+// ghAPIBase resolves the effective REST/GraphQL host for deskpost's own raw reads. It reads
+// forgeAPIBase at CALL TIME (never cached at init), so a per-test override still reaches
+// every request, and it resolves the empty production override through the forge module so
+// the concrete host literal is never constructed in this cmd package.
+func ghAPIBase() string { return deskkit.GitHubBaseURLOrDefault(forgeAPIBase) }
 
 // reviewerBotLogin() is the reviewer App's bot identity — the unforgeable distinct actor.
 // deskpost posts every review/comment/flip AS this App by minting the
@@ -182,7 +191,7 @@ func mintInstallationToken(owner string) (string, error) {
 	}
 	jwt := signingInput + "." + b64url(sig)
 
-	url := fmt.Sprintf("%s/app/installations/%s/access_tokens", apiBaseURL, installID)
+	url := fmt.Sprintf("%s/app/installations/%s/access_tokens", ghAPIBase(), installID)
 	req, _ := http.NewRequest(http.MethodPost, url, nil)
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -216,14 +225,16 @@ func mintInstallationToken(owner string) (string, error) {
 // identity mintInstallationToken always minted.
 //
 // Why a hook instead of letting ForgeFor mint through its own default path: deskpost
-// already mints in-process (JWT exchange against apiBaseURL, this file), and its ~30 test
-// files fake that exact exchange via a scriptable httptest server pointed to by apiBaseURL
+// already mints in-process (JWT exchange against ghAPIBase(), this file), and its test
+// files fake that exact exchange via a scriptable httptest server pointed to by forgeAPIBase
 // (harness_test.go). Reusing the existing, golden-pinned mint here — rather than growing a
 // second implementation in deskkit — is what lets `deskpost`'s forge writes route through
 // the resolver (this proof-of-reachability wiring, comment.go's runComment)
 // while every existing test keeps exercising the SAME mint path it always has, unmodified.
-// apiBaseURL is read HERE, at call time (not cached at init), so a per-test override still
-// reaches the Forge this produces.
+// The base URL is read HERE, at call time (not cached at init), so a per-test override still
+// reaches the Forge this produces: the hook returns the EMPTY production override, which the
+// resolver resolves to the forge module's default exactly as GitHubForge.baseURL() does — so
+// no forge host literal is bound in this cmd package.
 //
 // (See forgeresolve.go's header for the resolver contract this hook plugs into.)
 func init() {
@@ -232,7 +243,7 @@ func init() {
 		if merr != nil {
 			return "", "", merr
 		}
-		return tok, apiBaseURL, nil
+		return tok, forgeAPIBase, nil
 	})
 }
 
@@ -338,7 +349,7 @@ func (c *ghClient) doJSONRetry(method, path string, in, out any, allowRemint boo
 		}
 		bodyReader = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, apiBaseURL+path, bodyReader)
+	req, err := http.NewRequest(method, ghAPIBase()+path, bodyReader)
 	if err != nil {
 		return deskkit.Unverifiable("cannot build request", err)
 	}
@@ -529,6 +540,31 @@ func (c *ghClient) getPRHead(pr int) (string, error) {
 	return p.Head.SHA, nil
 }
 
+// commitInfo is the subset of GET /repos/{o}/{r}/commits/{sha} the non-author verdict
+// assertion needs: the ACCOUNT login GitHub attributes the commit to. For an App-authored
+// commit this renders as "<slug>[bot]" (the REST rendering deskkit.SameActor folds). It can
+// be null/empty when GitHub cannot map the commit's author email to an account — a
+// could-not-check the assertion treats as unknown, never as a cleared separation.
+type commitInfo struct {
+	Author struct {
+		Login string `json:"login"`
+	} `json:"author"`
+}
+
+// headCommitAuthor returns the account login GitHub attributes the head commit to. It is
+// the SECOND-LAYER input for the non-author verdict assertion (sdlc/10): the verdict must
+// not be posted by the same actor that authored the code it certifies. An empty return
+// (GitHub could not map the commit to an account) is a could-not-check the caller surfaces,
+// not a pass — see AssertNonAuthorVerdict.
+func (c *ghClient) headCommitAuthor(sha string) (string, error) {
+	var ci commitInfo
+	path := fmt.Sprintf("/repos/%s/%s/commits/%s", c.owner, c.repo, sha)
+	if err := c.doJSON(http.MethodGet, path, nil, &ci); err != nil {
+		return "", err
+	}
+	return ci.Author.Login, nil
+}
+
 // listReviews returns all reviews on the PR (paginated).
 func (c *ghClient) listReviews(pr int) ([]reviewInfo, error) {
 	var all []reviewInfo
@@ -546,9 +582,11 @@ func (c *ghClient) listReviews(pr int) ([]reviewInfo, error) {
 	return all, nil
 }
 
-// timelineEvent is one entry of the issue/PR timeline. Only `labeled` events matter to the
-// model-capability floor, and only their label name plus the login that APPLIED it: that
-// applier is what separates a dispatcher attestation from a self-applied stamp.
+// timelineEvent is one entry of the issue/PR timeline. Only the `labeled`/`unlabeled` events
+// matter to the model-capability floor, and only their label name plus the login that
+// performed them: that applier is what separates a dispatcher attestation from a
+// self-applied stamp, and the REMOVALS are what tell a superseded application from the
+// standing one.
 type timelineEvent struct {
 	Event string `json:"event"`
 	Label struct {
@@ -559,11 +597,22 @@ type timelineEvent struct {
 	} `json:"actor"`
 }
 
-// listLabelEvents returns the PR's `labeled` timeline events — the label name AND the login
-// that applied it — which the applier-aware stamp reader (AttestedModelStampOf) needs to
-// tell a dispatcher attestation from a self-applied one. It walks every page. An empty
-// result is a PR with no labels, which the floor reads as UNATTESTED; a read error
-// propagates and the caller refuses could-not-check rather than proceeding blind.
+// listLabelEvents returns the PR's label timeline — BOTH `labeled` and `unlabeled` events,
+// each with the login that performed it — which the applier-aware stamp reader
+// (AttestedModelStampOf) needs to tell a dispatcher attestation from a self-applied one, and
+// a superseded application from the standing one. It walks every page, IN ORDER: the reader
+// resolves "who holds this label now" by replaying the events, so a page dropped or
+// reordered changes the answer.
+//
+// THE REMOVALS ARE NOT OPTIONAL. A GitHub timeline is append-only. Reading only `labeled`
+// made a foreign stamp permanent — the dispatcher could remove the labels and re-apply them
+// under its own identity and this read still reported the original foreign application, so
+// the PR refused every authority-bearing write forever with no repair available.
+//
+// An empty result is a PR whose labels have no events; the caller pairs it with the
+// authoritative label read, so a present-but-unattributable stamp reads could-not-check
+// rather than UNATTESTED. A read error propagates and the caller refuses could-not-check
+// rather than proceeding blind.
 func (c *ghClient) listLabelEvents(pr int) ([]deskkit.LabelEvent, error) {
 	var out []deskkit.LabelEvent
 	for page := 1; ; page++ {
@@ -573,16 +622,65 @@ func (c *ghClient) listLabelEvents(pr int) ([]deskkit.LabelEvent, error) {
 			return nil, err
 		}
 		for _, e := range chunk {
-			if e.Event != "labeled" {
+			if e.Event != "labeled" && e.Event != "unlabeled" {
 				continue
 			}
-			out = append(out, deskkit.LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login})
+			out = append(out, deskkit.LabelEvent{
+				Name:      e.Label.Name,
+				AppliedBy: e.Actor.Login,
+				Removed:   e.Event == "unlabeled",
+			})
 		}
 		if len(chunk) < 100 {
 			break
 		}
 	}
 	return out, nil
+}
+
+// listLabels returns the label names currently on the PR (labels live on the issue view of
+// the number) — the AUTHORITATIVE present set the applier-aware floor pairs with the label
+// timeline, so a truncated timeline can never make a standing stamp look absent. It walks
+// every page. Like every other deskpost READ this stays on the ghClient's own transport;
+// only the label WRITES moved to the resolved forge's typed ApplyLabels.
+func (c *ghClient) listLabels(pr int) ([]string, error) {
+	var out []string
+	for page := 1; ; page++ {
+		var chunk []struct {
+			Name string `json:"name"`
+		}
+		path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels?per_page=100&page=%d", c.owner, c.repo, pr, page)
+		if err := c.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+			return nil, err
+		}
+		for _, l := range chunk {
+			out = append(out, l.Name)
+		}
+		if len(chunk) < 100 {
+			break
+		}
+	}
+	return out, nil
+}
+
+// stampTimeline pairs the PR's CURRENT labels with its label events — the whole input the
+// applier-aware floor reader takes.
+//
+// WHY BOTH READS. Presence is authoritative from the labels API; the events only say who put
+// each label there and whether that application still stands. Deriving presence from the
+// events would let a truncated timeline make a standing stamp look ABSENT, and absent is the
+// one state that PROCEEDS (on the NOTICE path). With both, an unattributable present stamp
+// is could-not-check instead — the fail-closed direction.
+func (c *ghClient) stampTimeline(pr int) (deskkit.StampTimeline, error) {
+	events, err := c.listLabelEvents(pr)
+	if err != nil {
+		return deskkit.StampTimeline{}, err
+	}
+	present, err := c.listLabels(pr)
+	if err != nil {
+		return deskkit.StampTimeline{}, err
+	}
+	return deskkit.StampTimeline{Present: present, Events: events}, nil
 }
 
 // maxFilePages bounds the files walk (100/page). Exceeding it leaves the fetched entry
@@ -680,84 +778,12 @@ func (c *ghClient) postComment(pr int, body string) error {
 	return c.doJSON(http.MethodPost, path, in, nil)
 }
 
-// --- label + config helpers for the mechanical verdict-time labels (size + surface) ---
-//
-// These are the FIRST label writes deskpost makes. deskpost is App-token/REST throughout
-// (never the `gh` CLI other commands shell to), so labeling rides the same ghClient: label
-// application needs `issues: write`, which appScopeFor already maps and postComment already
-// exercises, so no new App permission is required.
-
-// ensureLabel creates a repo label if it does not already exist. GitHub returns 422 when
-// the label is already present; that is the SUCCESS case for an idempotent ensure (two
-// verdicts labeling in parallel must both end with the label present), so it is swallowed.
-// Any other non-2xx propagates. The color/description are cosmetic defaults.
-func (c *ghClient) ensureLabel(name, color, desc string) error {
-	path := fmt.Sprintf("/repos/%s/%s/labels", c.owner, c.repo)
-	in := map[string]any{"name": name, "color": color, "description": desc}
-	err := c.doJSON(http.MethodPost, path, in, nil)
-	if err == nil {
-		return nil
-	}
-	var ae *apiError
-	if errors.As(err, &ae) && ae.status == http.StatusUnprocessableEntity {
-		return nil // already exists — idempotent
-	}
-	return err
-}
-
-// prLabelName is one entry of GET /issues/{n}/labels.
-type prLabelName struct {
-	Name string `json:"name"`
-}
-
-// listLabels returns the label names currently on the PR (labels live on the issue view of
-// the number). Used to compute which stale same-FAMILY labels to remove before applying the
-// current ones, so a re-run replaces rather than stacks.
-func (c *ghClient) listLabels(pr int) ([]string, error) {
-	var all []prLabelName
-	for page := 1; ; page++ {
-		var chunk []prLabelName
-		path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels?per_page=100&page=%d", c.owner, c.repo, pr, page)
-		if err := c.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
-			return nil, err
-		}
-		all = append(all, chunk...)
-		if len(chunk) < 100 {
-			break
-		}
-	}
-	out := make([]string, 0, len(all))
-	for _, l := range all {
-		out = append(out, l.Name)
-	}
-	return out, nil
-}
-
-// addLabels adds labels to the PR. GitHub's POST /issues/{n}/labels is additive and a
-// no-op for an already-present label (labels are a set), so applying the same label twice
-// never duplicates it.
-func (c *ghClient) addLabels(pr int, names []string) error {
-	if len(names) == 0 {
-		return nil
-	}
-	path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels", c.owner, c.repo, pr)
-	in := map[string]any{"labels": names}
-	return c.doJSON(http.MethodPost, path, in, nil)
-}
-
-// removeLabel removes ONE label from the PR. A 404 (the label is already absent) is the
-// success case for an idempotent removal and is swallowed; anything else propagates.
-func (c *ghClient) removeLabel(pr int, name string) error {
-	path := fmt.Sprintf("/repos/%s/%s/issues/%d/labels/%s", c.owner, c.repo, pr, url.PathEscape(name))
-	err := c.doJSON(http.MethodDelete, path, nil, nil)
-	if err == nil {
-		return nil
-	}
-	if isNotFound(err) {
-		return nil
-	}
-	return err
-}
+// The mechanical verdict-time labels (size + surface) are NOT written from this file. They
+// go through deskkit's typed ApplyLabels operation on the resolved forge backend
+// (label.go's applyVerdictLabels) — one reconciliation request, addressed by the backend
+// rather than by a path this package builds. The four hand-built label helpers that used to
+// live here (create / list / add / remove) are gone rather than left dormant: a reachable
+// old path is not a migration.
 
 // contentFile is the /repos/{o}/{r}/contents/{path} rendering — only the base64 body and
 // its encoding are consumed.
@@ -939,7 +965,7 @@ func (c *ghClient) IssueReactions(owner, repo string, issueNumber int) ([]deskki
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/reactions?per_page=100", owner, repo, issueNumber)
 	// The reactions API requires the squirrel-girl preview accept header.
 	// Our doJSON method sets the standard accept header, so we need to use a raw request.
-	url := apiBaseURL + path
+	url := ghAPIBase() + path
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot build reactions request", err)

@@ -300,9 +300,22 @@ func verifyCustodyFileMode(path string) error {
 // or environment variable anywhere in this package by which a caller supplies the forge
 // itself (TestForgeForRejectsCallerSuppliedForge).
 func ForgeFor(repo ForgeRepo, role string) (Forge, error) {
+	f, _, err := ResolveForge(repo, role)
+	return f, err
+}
+
+// ResolveForge is ForgeFor plus the PROVENANCE of the answer. A caller that has to REPORT
+// which forge it acted against — a refusal naming the forge, an audit line, a could-not-check
+// that says which backend could not serve an operation — needs the ForgeResolution, and
+// re-deriving it by calling resolveForgeKind a second time would let the two answers drift
+// (the roster is read at call time, so a second read is a second question).
+//
+// It is the same function as ForgeFor in every other respect, including that there is no
+// parameter, flag or environment variable by which a caller supplies the forge.
+func ResolveForge(repo ForgeRepo, role string) (Forge, ForgeResolution, error) {
 	res, err := resolveForgeKind(repo)
 	if err != nil {
-		return nil, err
+		return nil, ForgeResolution{}, err
 	}
 	// Forge agreement is ENFORCED, not assumed: a role whose EXPLICITLY forge-qualified
 	// roster entry names a forge other than the one this repo resolves to is refused here,
@@ -310,24 +323,59 @@ func ForgeFor(repo ForgeRepo, role string) (Forge, error) {
 	// (the forge-qualified-identity brief, assertEntryForgeAgrees). An inferred-github entry is exempt (the
 	// human-gated backward-compatibility rule).
 	if aerr := assertEntryForgeAgrees(role, res.Kind); aerr != nil {
-		return nil, aerr
+		return nil, ForgeResolution{}, aerr
 	}
 	tok, base, cerr := custody(res.Kind, role, repo)
 	if cerr != nil {
-		return nil, cerr
+		return nil, ForgeResolution{}, cerr
 	}
 	switch res.Kind {
 	case ForgeGitHub:
-		return &GitHubForge{Token: tok, BaseURL: base}, nil
+		return &GitHubForge{Token: tok, BaseURL: base}, res, nil
 	case ForgeGitLab:
-		return &GitLabForge{Token: tok, BaseURL: base}, nil
+		return &GitLabForge{Token: tok, BaseURL: base}, res, nil
 	default:
 		// Unreachable given resolveForgeKind only ever returns a value from
 		// wellKnownForgeHosts or cfg.RepoForges (both constrained to the two known kinds
 		// at parse/lookup time) — kept as Unverifiable, never a panic, because a resolver
 		// that cannot name a backend must fail closed even on a case it believes is
 		// impossible.
-		return nil, Unverifiable(fmt.Sprintf(
+		return nil, ForgeResolution{}, Unverifiable(fmt.Sprintf(
 			"forge resolution for %s returned an unrecognised kind %q", repo.Slug(), res.Kind), nil)
 	}
+}
+
+// ReadyFlip performs the draft→ready transition on an ALREADY-READ change, and is the one
+// place the flip's node-id rule is enforced.
+//
+// THE RULE: the opaque id comes from the change the backend itself returned, and from
+// nowhere else. MarkReadyForReview takes an id whose ENCODING is the backend's own — a
+// GraphQL global id on GitHub, a `gitlab:<owner>/<name>!<iid>` coordinate on GitLab — and a
+// caller that composed one by string-building would be constructing a value whose format the
+// forge, not the caller, defines. That is not a style preference: the GitLab encoding names a
+// PROJECT and an IID, so a locally built id addresses whatever project the builder guessed at,
+// and it would keep working on the happy path (where the guess matches) right up until it did
+// not. Taking *PullRequest rather than a string is what makes the rule checkable by the
+// compiler: the only way to obtain one is to have read the change.
+//
+// A change carrying NO opaque id is a backend that cannot serve this operation for it. That
+// is could-not-check (exit 6), naming the forge and the operation, and NOTHING is written —
+// not a fallback to some other transition, not a raw request, not a guess at an id.
+func ReadyFlip(res ForgeResolution, f Forge, pr *PullRequest) error {
+	if f == nil {
+		return Unverifiable("refusing to flip a change ready with no resolved forge backend", nil)
+	}
+	if pr == nil {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: the %s backend was asked to perform MarkReadyForReview without a change to "+
+				"perform it on — the opaque id is read from the change, never composed", res.Kind), nil)
+	}
+	if strings.TrimSpace(pr.NodeID) == "" {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: the resolved %s backend serves no opaque change id for %s#%d, so the "+
+				"MarkReadyForReview operation cannot be performed against it. The id is READ from the change "+
+				"(GetPullRequest), never composed locally, so there is nothing to fall back to — and nothing "+
+				"was written.", res.Kind, res.Repo.Slug(), pr.Number), nil)
+	}
+	return f.MarkReadyForReview(pr.NodeID)
 }

@@ -379,6 +379,7 @@ type handTableHit struct {
 //     drift from it. Its reason must state exactly why it does not track the
 //     source (which declared set it is NOT, and which member proves the two are
 //     different).
+//
 // An opt-out whose reason is "it's fine" is how the registry stops meaning
 // anything.
 var handTableOptOut = map[string]string{

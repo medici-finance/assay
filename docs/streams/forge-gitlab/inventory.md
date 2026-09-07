@@ -45,6 +45,53 @@ ticked without a case behind it.
 | 14 | `PushTransportHint(repo)` | push-transport hints | `x-access-token` https + inline credential.helper (no token-in-URL) | `oauth2` username + inline credential.helper, host from the configured instance | implemented |
 | 15 | `DeleteRef(repo, ref)` | delete one git ref | `DELETE /repos/{o}/{r}/git/refs/{ref}` (git-data refs) — replaces `fanoutloop`'s `gh api -X DELETE repos/…/git/refs/dispatch/…` | `DELETE /projects/:id/repository/branches/:branch` (Branches API, **Tier: Free**). GitLab CE exposes NO general ref-delete endpoint, so only the `heads/<branch>` namespace maps; every other namespace is a could-not-check REFUSAL naming the gap, never a silent success | implemented |
 
+| 16 | `ListLabelEvents(repo, number)` | read label APPLICATIONS with their applier | `deskpost` `listLabelEvents` / `deskflip` `readLabelEvents` (`GET /issues/{n}/timeline`, paginated, `labeled` events only) | `GET /merge_requests/:iid/resource_label_events`, `action:add` only; an event whose label was since deleted comes back unnamed and is dropped (a stamp nobody can name attests to nothing) | implemented |
+| 17 | `ListComments(repo, number)` | read comments (identity + marker + hidden state) | `deskreply` `--workpad` comment list (GraphQL `comments(first:100)` — REST carries no `isMinimized`) | `GET /merge_requests/:iid/notes` ordered `created_at asc`; SYSTEM notes dropped (GitLab lists its own activity beside human comments); `Minimized` is false because GitLab has no minimise feature — exact, not defaulted; `URL` is empty because GitLab publishes no per-note permalink | implemented |
+| 18 | `EditComment(repo, commentID, body)` | edit ONE existing comment | `deskreply` `--workpad` edit (GraphQL `updateIssueComment`, node id) | `PUT /merge_requests/:iid/notes/:id`; the opaque id is the backend-minted `gitlab:<owner>/<name>!<iid>#note<id>`, and a foreign or project-mismatched id is REFUSED rather than resolved | implemented |
+| 19 | `ApplyLabels(repo, number, change)` | reconcile a change's labels in one operation | `deskpost` `ensureLabel`+`listLabels`+`addLabels`+`removeLabel` (4 hand-built requests) / `deskflip` `ensureLabelSwap` (`gh pr edit --add-label/--remove-label`) | `POST /projects/:id/labels` to ensure (409/400 "already taken" = the ensure's post-condition already holds), then ONE `PUT /merge_requests/:iid` carrying `add_labels`+`remove_labels` — atomic, where the GitHub backend issues one DELETE per removal. Colors travel as bare hex and each backend renders its own form (GitHub forbids a leading `#`, GitLab requires one) | implemented |
+| 20 | `RequiredStatusChecks(repo, branch)` | read the status checks branch protection REQUIRES on a branch | `deskflip` `readRequiredChecks` (`GET /repos/{o}/{r}/branches/{branch}/protection/required_status_checks`; 404 = no protection / none required = empty set, every other non-2xx = could-not-check) — union of the legacy `contexts` and the newer `checks[].context` | `GET /projects/:id` `only_allow_merge_if_pipeline_succeeds` — the all-tier pipeline-gating setting; ON → a synthetic `pipeline` context (a check IS required), OFF → empty. External status checks stay in the Ultimate/MR-scoped lane (op 5) | implemented |
+
+| 21 | `WriteFile(repo, in)` | write a file's whole content on a branch (Evidence landing) | `deskevidence` `commitFile` (`PUT /repos/{o}/{r}/contents/{path}`, base64, branch) | `POST`/`PUT /projects/:id/repository/files/:path` (Repository Files API); `start_branch` creates the side branch inline; the default branch is protected (pilot D-8) so a direct write to it returns the `DefaultBranchNotWritable` sentinel — nothing written, no write call | implemented |
+| 22 | `ReadFile(repo, in)` | read a file's content at a ref (Evidence merge) | `deskevidence` `fetchRemoteFile` (`GET /repos/{o}/{r}/contents/{path}?ref=`) | `GET /projects/:id/repository/files/:path?ref=`; `last_commit_id` → the opaque `FileContent.SHA` an update cites; a 404 propagates as a could-not-check the caller tests with `IsForgeNotFound` | implemented |
+
+**Ops 21–22 were added by brief `forge-neutral/04` under the same freeze rule**, with `deskevidence` as
+the consuming call site in the same change: it routes its Evidence write through `WriteFile` and its
+`--brief-path` Evidence-section merge (read → transform → write) through `ReadFile`, and drops its
+hand-rolled JWT/installation exchange + `apiBaseURL` — the mint moves to the resolver's custody binding
+(`ForgeFor(fr, "verifier")`). `WriteFile` is deliberately FAT: it folds the idempotency read (returning a
+`Changed` flag), the append-only shrink guard (`AppendOnly`/`AllowShrink` passed in, the backend refuses
+post-fetch), and the default-branch writability probe + inline branch-creation fallback, so the Evidence
+lane needs no separate `CreateRef` op on the frozen interface. The ratchet ceiling is UNCHANGED at 16:
+the forge-method count is not the ratchet, and no `deskevidence` permit row exists to remove (it reaches
+the forge over `net/http`, never a forge CLI). The `deskpr`/`deskfile`/`deskclose` gh-migration those
+tools' permit rows still gate is the FOLLOW-ON brief (`forge-neutral/04b`), which first adds the
+enumerated ops each still needs (branch→change lookup, PR body/title fields, an issue-search op, a
+label-list op) — see #509's ruling for why a code-aware rescope, not a ratchet-number correction, is
+what that work needs.
+
+**Ops 16–19 were added by brief `forge-neutral/03` under the same freeze rule**, each with its consuming
+call sites converted in the same change: 16 by `deskflip`'s model-capability-floor read and `deskpost`'s
+sibling; 17 and 18 by `deskreply`'s `--workpad` upsert; 19 by `deskflip`'s queue-label swap and
+`deskpost`'s mechanical verdict labels. `ApplyLabels` is declarative rather than a set of primitives
+(create / list / add / remove) precisely so the seam grows ONE method where the tools consume one
+intent — and so a caller never needs a label-LISTING operation of its own: it names the label-name
+FAMILIES it owns this run and the backend drops their stale members. A family the caller has no
+definite value for is simply not named, so nothing in it is touched.
+
+**Op 20 (`RequiredStatusChecks`) was added under the same freeze rule** with its one consuming call
+site converted in the same change: `deskflip`'s checks-green condition. It exists because an ABSENT
+CI rollup has two very different meanings — "nothing is required to merge" (green) and "the required
+checks have not reported yet" (could-not-verify) — and the coarse roster ci-tag cannot tell them
+apart, so a repo that runs CI without REQUIRING any check on App-authored PRs was unflippable
+forever. The read keys the gate on what the forge actually enforces: an empty required set makes an
+absent rollup green, a non-empty one keeps it could-not-verify, and a required-set that cannot be
+read stays could-not-check (fail closed). It is a READ only; nothing about the gate's non-empty-rollup
+behaviour changed.
+
+`PostComment` (op 9) also gained a return value in that brief — a `CommentRef` carrying the created
+comment's opaque id, numeric id and (where the forge publishes one) URL — so a write is answerable
+without a follow-up read, the same way `CreateDraftChange` returns a `PullRef`.
+
 **Op 15 was added by brief 08 under the spec §6 freeze rule** — with its consuming callsite converted in
 the same change (`fanoutloop`'s dispatch-claim sink), not speculatively. It is the one op whose argument
 is path-shaped, which is exactly the shape an arbitrary-endpoint escape hatch takes, so it carries a
@@ -154,7 +201,8 @@ internal/deskkit/forge-gitlab-mutations.json` from `tools/desk`).
 
 ### github (brief 01)
 
-`forge_github_golden_test.go` (`TestForgeGithubGolden`) pins 17 operations — request
+`forge_github_golden_test.go` (`TestForgeGithubGolden`) pins one case per operation (plus the
+`read_file` / `write_file_*` cases added with the file ops) — request
 method/path/query, write bodies, pagination (`per_page=100`, multi-page walk, short-page stop),
 result mapping, and error classification (404 → `IsForgeNotFound`; 403 → `ForgeAPIError`).
 `TestForgeGithubGoldenCount` guards the floor (≥ 10). Regenerate on an INTENTIONAL change with

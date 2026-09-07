@@ -43,6 +43,13 @@ type DeskError struct {
 	// and their retries kept one another out. Callers read this — or the retry-after
 	// stated in Msg — and sleep ONCE for the stated duration instead of polling.
 	RetryAfter time.Duration
+	// Finding is the structured explanation of a secret-scan refusal — which rule
+	// fired, on which line, the run's length and a REDACTED shape (never the span). It
+	// is set only by the scan arms (bodycheck.go) and reached via errors.As(err,
+	// &finding), and it is DELIBERATELY not rendered by Error(): a caller that passes
+	// --explain prints it, and a caller that does not sees a byte-identical message. The
+	// span itself is never carried here — the refusal must not become the leak.
+	Finding *ScanFinding
 }
 
 func (e *DeskError) Error() string {
@@ -54,6 +61,22 @@ func (e *DeskError) Error() string {
 
 // Unwrap exposes the wrapped cause for errors.Is / errors.As.
 func (e *DeskError) Unwrap() error { return e.Err }
+
+// As lets errors.As(err, &finding) reach a scan refusal's ScanFinding WITHOUT the finding
+// leaking into Error() (it lives in its own field, not in the Unwrap chain). errors.As
+// only calls this for a target type Error() does not already satisfy, so the existing
+// errors.As(err, &deskErr) path — which matches *DeskError by assignability first — is
+// untouched.
+func (e *DeskError) As(target any) bool {
+	if f, ok := target.(**ScanFinding); ok {
+		if e.Finding == nil {
+			return false
+		}
+		*f = e.Finding
+		return true
+	}
+	return false
+}
 
 // ExitCode returns the canonical exit code this error maps to.
 func (e *DeskError) ExitCode() int { return e.Code }
@@ -85,6 +108,13 @@ func RetryAfterOf(err error) time.Duration {
 
 // Refused builds a constraint refusal (exit 5).
 func Refused(msg string) *DeskError { return &DeskError{Code: ExitRefused, Msg: msg} }
+
+// RefusedFinding is Refused with a structured ScanFinding attached — same message, same
+// exit 5, plus the explain payload a --explain caller can read via errors.As. The message
+// is byte-identical to Refused(msg): the finding is carried out of band, never in Error().
+func RefusedFinding(msg string, f *ScanFinding) *DeskError {
+	return &DeskError{Code: ExitRefused, Msg: msg, Finding: f}
+}
 
 // Unverifiable builds a fail-closed refusal for state that could not be positively
 // verified (exit 6). Pass the underlying cause as err so it survives Unwrap.

@@ -1,0 +1,199 @@
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -10,14 +10,70 @@
+ #   runner does not reach GitHub's release-asset CDN and its base image ships no
+ #   Go. go.dev/dl (→ dl.google.com) and the Go module proxy (proxy.golang.org)
+ #   are plain public HTTPS, so `go build`/`go test` fetch deps normally.
++#
++# ── TRIGGER SELECTION (why `push` is branch-scoped and both legs are filtered) ──
++#
++# WHAT THIS FIXES. `on: push:` with no `branches:` fires on EVERY branch and
++#   every tag. A pull-request branch therefore ran this workflow TWICE per push —
++#   once for `push`, once for `pull_request` — for six self-hosted jobs where two
++#   sets of three were wanted. Measured on this repo: over a 20-minute window
++#   there were exactly 5 `ci`/`push` runs on non-`main` branches and 5
++#   `ci`/`pull_request` runs, a 1:1 duplicate.
++#
++#   `push: branches: [main]` keeps the post-merge leg (the one that proves `main`
++#   itself builds) and drops the branch/tag leg. Nothing is lost: `pull_request`
++#   already gates every branch that is going to merge, and it evaluates the MERGE
++#   RESULT rather than the branch head, which is the stronger of the two. A
++#   branch with no pull request merges nothing, so it needs no gate. Tag pushes
++#   are covered by release.yml, which runs its own full test job.
++#
++# WHY `paths-ignore` AND WHY EXACTLY THESE PATHS. Every job below reads Go
++#   sources, `plugins/**` shell suites, or `plugins/**` + `.claude/guardrails/**`
++#   markdown. None of them reads anything under `docs/`, `changelog/`,
++#   `CHANGELOG.md` or `STATUS.md`, so a change confined to those four cannot
++#   change any verdict here. The board-regeneration commits that dominate `main`
++#   are exactly that shape.
++#
++#   `paths-ignore` skips the run only when EVERY changed path matches. A pull
++#   request that touches a brief AND a Go file still runs in full — the filter
++#   cannot half-skip.
++#
++# WHAT IS DELIBERATELY NOT FILTERED. The leak-sweep legs
++#   (leaksweep-control.yml, leaksweep-pattern.yml) keep `paths: "**"` and gain no
++#   filter of any kind: they read a projection of the whole tree, so a docs-only
++#   diff is precisely the change a narrower trigger would let through in silence.
++#   The `leak-sweep` commit status this repository's branch ruleset requires is
++#   posted by a separate gate and is untouched by anything in this file.
++#
++# CONCURRENCY. Superseded runs on a pull-request head are cancelled; runs on
++#   `main` are not. A `main` run is the record that a merged commit builds, and
++#   cancelling it would leave a merged commit with no verdict — so the cancel is
++#   conditioned on the event rather than switched on globally.
+ 
+ on:
+   push:
++    branches: [main]
++    paths-ignore:
++      - "docs/**"
++      - "changelog/**"
++      - "CHANGELOG.md"
++      - "STATUS.md"
+   pull_request:
++    paths-ignore:
++      - "docs/**"
++      - "changelog/**"
++      - "CHANGELOG.md"
++      - "STATUS.md"
+ 
+ permissions:
+   contents: read
+ 
++concurrency:
++  group: ci-${{ github.ref }}
++  # PR heads only. See "CONCURRENCY" in the header: a `main` run must not be
++  # cancelled by the next merge, or a merged commit ends with no build verdict.
++  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
++
+ env:
+   GO_VERSION: "1.25.0"
+ 
+--- a/.github/workflows/plugin-drift.yml
++++ b/.github/workflows/plugin-drift.yml
+@@ -24,6 +24,18 @@
+ #   scoping this job to plugins/** would make it blind to precisely the drift it
+ #   is named for. It is a cheap job — two API reads and a Go build.
+ #
++#   THAT ARGUMENT IS ABOUT THE `push: main` LEG, AND IT STANDS — that leg is the
++#   one that must look again when no diff exists, and it keeps no filter at all.
++#   The `pull_request` leg's stated purpose is different and narrower: it "catches
++#   the bump BEFORE it lands". A pull request whose every changed path is under
++#   `docs/`, `changelog/`, `CHANGELOG.md` or `STATUS.md` cannot be a bump — it
++#   changes neither `plugins/assay/.claude-plugin/plugin.json` nor
++#   `plugins/assay/paired-versions.yaml` — so the `paths-ignore` below removes
++#   only runs that could not have found anything, and removes nothing from the
++#   driftless-rot detection the paragraph above is defending. `paths-ignore`
++#   skips only when EVERY changed path matches, so a mixed pull request still
++#   runs in full.
++#
+ # THREE-STATE
+ #   The checker is fail-closed: a disagreement and a could-not-check both exit
+ #   non-zero and are reported as themselves. There is no skip-the-network mode,
+@@ -31,6 +43,11 @@
+ 
+ on:
+   pull_request:
++    paths-ignore:
++      - "docs/**"
++      - "changelog/**"
++      - "CHANGELOG.md"
++      - "STATUS.md"
+   push:
+     branches: [main]
+ 
+--- a/.github/workflows/assay-statusgen.yml
++++ b/.github/workflows/assay-statusgen.yml
+@@ -41,11 +41,24 @@
+ # without this they run concurrently and all but the last lose the `git push`
+ # race against a moving main ("! [rejected] main -> main (fetch first)"), so
+ # main shows red runs indistinguishable from a real regen failure.
+-# cancel-in-progress is deliberately FALSE: queue, never cancel — a cancelled
+-# regen throws away that push's board rather than merely delaying it.
++# cancel-in-progress is deliberately FALSE on `main`: queue, never cancel — a
++# cancelled regen throws away that push's board rather than merely delaying it.
++#
++# It is TRUE on a pull-request ref, and the asymmetry is the whole point. The
++# two halves of this workflow do different things and want opposite answers:
++#   - `main` runs the REGEN job, which WRITES STATUS.md. It is a single-writer
++#     job and its work is not reproducible by a later run of a different push,
++#     so it must never be cancelled. That is the `false` case, unchanged.
++#   - a pull-request ref runs the LINT job only, which writes nothing. When a
++#     worker pushes three times in a minute the first two lint runs are already
++#     answering a question nobody will read — the verdict that matters is the
++#     one at the current head — and on a saturated runner pool those superseded
++#     runs are the ones the head's own run is queued behind.
++# Conditioning the flag on the event keeps the writer uncancellable and drops
++# only the runs whose answer is already stale.
+ concurrency:
+   group: statusgen-board-${{ github.ref }}
+-  cancel-in-progress: false
++  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+ 
+ # Least-privilege default: the PR lint job needs only read. The push-to-main
+ # regen job is the sole thing that commits, so it alone gets contents: write
+--- a/.github/workflows/assay-qualgen.yml
++++ b/.github/workflows/assay-qualgen.yml
+@@ -47,12 +47,19 @@
+ # without this they run concurrently and all but the last lose the `git push`
+ # race against a moving main ("! [rejected] main -> main (fetch first)"), so main
+ # shows red runs indistinguishable from a real regen failure. This is the fix
+-# proven on the statusgen board CI (#221 / #216). cancel-in-progress is
+-# deliberately FALSE: queue, never cancel — a cancelled regen throws away that
+-# push's view rather than merely delaying it.
++# proven on the statusgen board CI. cancel-in-progress is deliberately FALSE on
++# `main`: queue, never cancel — a cancelled regen throws away that push's view
++# rather than merely delaying it.
++#
++# It is TRUE on a pull-request ref, for the same reason and with the same
++# asymmetry the statusgen board CI now carries: the `main` half runs the REGEN
++# job, which WRITES QUALITY.md and must never be cancelled, while the
++# pull-request half runs the RENDER job, which explicitly discards its output. A
++# superseded render is answering a question about a head nobody will read, and
++# on a saturated runner pool it is what the current head's run waits behind.
+ concurrency:
+   group: quality-report-${{ github.ref }}
+-  cancel-in-progress: false
++  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+ 
+ # Least-privilege default: the PR render job needs only read. The push-to-main
+ # regen job is the sole thing that commits, so it alone gets contents: write
+--- a/.github/workflows/evidence-automerge.yml
++++ b/.github/workflows/evidence-automerge.yml
+@@ -63,6 +63,34 @@
+ 
+ jobs:
+   enable:
++    # PRE-FILTER, NOT A GUARD. This workflow fires on every pull request in the
++    # repository and on every review submitted on one, and until this line it
++    # started a self-hosted job for all of them — a job whose entire outcome, for
++    # every pull request but the verifier App's own, is the guard step below
++    # printing "not an Evidence PR" and exiting 0. On a two-runner pool that is a
++    # measurable share of the queue: over one 20-minute window this workflow
++    # accounted for 11 runs (5 `pull_request`, 6 `pull_request_review`), none of
++    # them on an Evidence PR.
++    #
++    # WHY THIS CANNOT WEAKEN THE LANE. The authority is unchanged: the
++    # "Evaluate the Evidence-PR guards" step below still writes `eligible=false`
++    # first and still re-reads the author, the draft flag and the full paginated
++    # file list itself. This condition can only ever cause the job NOT to run,
++    # and a job that does not run requests no auto-merge. Drift is therefore
++    # fail-safe in BOTH directions, which is why duplicating the login here does
++    # not carry the hazard the `DO NOT WIDEN THIS` note below is guarding
++    # against:
++    #   - narrowed or mistyped here  -> the lane silently stops; Evidence pull
++    #     requests wait for a human merge, which is exactly the pre-lane state.
++    #   - widened here               -> the extra pull request starts a job and
++    #     is then declined by the unchanged in-job author check, as it is today.
++    # It is a cheap filter in front of an unchanged default-deny guard, never a
++    # second copy of the decision.
++    #
++    # KEEP IN SYNC with EVIDENCE_AUTHOR in the guard step below. If that constant
++    # is ever changed by a ruling, change this line in the SAME commit; a stale
++    # value here shows up as the lane going quiet, not as a widened lane.
++    if: github.event.pull_request.user.login == 'assay-verifier-app[bot]'
+     runs-on: medici-builder-public
+     steps:
+       # The self-hosted runner image does not ship the gh CLI. Install a pinned,

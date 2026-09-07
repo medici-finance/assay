@@ -1,0 +1,32 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/files/EVIDENCE%2Emd",
+      "query": "ref=evidence%2Frow"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/files/EVIDENCE%2Emd",
+      "body": {
+        "branch": "evidence/row",
+        "start_branch": "main",
+        "encoding": "base64",
+        "content": "cm93IG9uZQo=",
+        "commit_message": "Evidence: verification row"
+      }
+    }
+  ],
+  "result": {
+    "Changed": true,
+    "SHA": "",
+    "Author": "",
+    "DefaultBranchNotWritable": false,
+    "Rows": 0,
+    "PriorRows": 0
+  }
+}

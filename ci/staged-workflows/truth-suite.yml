@@ -1,0 +1,199 @@
+name: truth-suite
+# The STANDING TRUTH SUITE — the baseline assertions CI owns, independent of whoever
+# wrote the last brief (docs/test-policy.md § "Standing truth suite"). A per-brief
+# Verify row probes the DELTA a change introduced; this suite guards the BASELINE the
+# change did not touch, and reddens on a regression the delta's author never considered.
+#
+# STANDING, not only diff-triggered — it runs on push to the default branch AND on a
+# daily schedule, so a baseline that quietly rotted (a dependency shift, a runner change,
+# a mutation spec that stopped biting) is caught by a cadence run rather than waiting for
+# someone to happen to touch the same file. `workflow_dispatch` lets a maintainer run it
+# on demand.
+#
+# THREE-STATE (docs/three-state-instrument-rule.md): a leg that could not run — a missing
+# toolchain, an absent module, a harness that would not build — reports COULD-NOT-CHECK
+# and reddens this suite. An un-run baseline is never a green tick: "I could not look" must
+# not render as "I looked and it was clean".
+#
+# WHERE THIS RUNS — the self-hosted `medici-builder-public` runner, matching ci.yml and
+# release.yml. The Go toolchain is hand-installed from go.dev/dl (the runner reaches
+# dl.google.com and the module proxy but not GitHub's release-asset CDN, so
+# actions/setup-go is not used), exactly as ci.yml documents. Unlike ci.yml (which does
+# not pin the tarball), this suite verifies it against GO_SHA256 before unpacking, same
+# as release.yml — this is the suite CI's own coverage claims rest on, so it establishes
+# trust in its toolchain rather than matching ci.yml's parity claim on that one point.
+#
+# ── STAGED, PENDING HUMAN PROMOTION ──
+# This file is authored in the PR but STAGED at ci/staged-workflows/ rather than
+# .github/workflows/: no bot/App holds workflow-push permission (a deliberate security
+# boundary — see ci/staged-workflows/README.md), so a maintainer promotes it to
+# .github/workflows/truth-suite.yml to activate it. Until then it runs nowhere, which is
+# expected — the artifact is the deliverable here, not a run.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 06:17 UTC daily — an off-the-hour minute so this suite is not contending with
+    # every other cron scheduled on the hour.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  # ── The repo's own test corpus ──────────────────────────────────────────────
+  # Build + vet every Go module, exactly as ci.yml does and for the same reason:
+  # this is a PUBLISHED methodology tree, and some tests under tools/desk are house-CI
+  # STRUCTURAL guards that assert on the source repo's layout (.github/workflows,
+  # go.work, sibling tool dirs) and cannot pass in a consumer checkout. `vet` compiles
+  # the test files too, so baseline compile breakage is still caught without running
+  # those dev-only guards. A module that fails to build/vet is checked-FAILED; a tree
+  # with no discoverable module is COULD-NOT-CHECK, never a silent green.
+  corpus:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        env:
+          # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl. Same pin
+          # release.yml carries for the same GO_VERSION — bump both together (there and
+          # here) — a GO_VERSION change without a matching digest fails this step CLOSED
+          # rather than trusting the fetch. This suite is a trust-establishing baseline,
+          # so it verifies the toolchain before unpacking, same as release.yml.
+          GO_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          # Verify BEFORE unpacking into a PATH-prepended dir: an unverified toolchain
+          # there would shadow the system go/sha256sum/curl/git for every later step.
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: Build and vet every module (baseline corpus)
+        run: |
+          set -euo pipefail
+          go version
+          # COULD-NOT-CHECK guard: if no module is discoverable the suite has nothing
+          # to stand on — say so and redden, never report a clean baseline over an
+          # empty read (docs/three-state-instrument-rule.md, sub-rule 1).
+          mods="$(git ls-files '*go.mod')"
+          if [ -z "$mods" ]; then
+            echo "::error::could-not-check: no go.mod discovered — the baseline corpus could not be located"
+            exit 1
+          fi
+          fail=0
+          while IFS= read -r gomod; do
+            dir="$(dirname "$gomod")"
+            echo "::group::${dir}"
+            if ( cd "$dir" && go build ./... && go vet ./... ); then
+              echo "${dir}: OK"
+            else
+              echo "::error::${dir}: build/vet failed — baseline regression"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done <<< "$mods"
+          exit "$fail"
+
+      - name: Run every plugin shell suite (baseline corpus)
+        run: |
+          set -uo pipefail
+          fail=0
+          while IFS= read -r suite; do
+            echo "::group::${suite}"
+            if bash "$suite"; then
+              echo "${suite}: OK"
+            else
+              echo "::error::${suite}: shell suite failed — baseline regression"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done < <(git ls-files 'plugins/assay/scripts/*.test.sh')
+          exit "$fail"
+
+  # ── The mutation gate the release already runs ──────────────────────────────
+  # The same muhar sweeps release.yml's `muhar-light` leg AND its `deskmerge` legs run:
+  # each spec mutates a guard's refusals and requires the suite to CATCH every one. This
+  # proves the baseline checks are load-bearing — a green test run only shows the guards
+  # behave as written; a surviving mutation shows one would not fire.
+  #
+  # deskmerge IS INCLUDED, unsharded — release.yml shards it into three legs
+  # (`-shard i/3`) only because it is the long pole in a per-PR-blocking suite where wall
+  # time matters; this suite is push+daily, not a per-PR gate, so one leg runs the whole
+  # spec in a single invocation. deskmerge is the highest-risk guard here — it is the
+  # only desk tool that can rewrite the head of somebody else's branch — so a standing
+  # baseline that claims release-equivalent coverage cannot omit it.
+  #
+  # muhar's contract, unchanged from release.yml: exit 2 means the HARNESS is broken (a
+  # red baseline or an uncaught positive control) — that is COULD-NOT-CHECK and it
+  # reddens; a SURVIVING mutation still exits 0 with its verdict on stdout, so the totals
+  # line "N caught, 0 NOT CAUGHT, 0 could-not-mutate" is what each leg gates on.
+  mutation-gate:
+    runs-on: medici-builder-public
+    strategy:
+      fail-fast: false
+      matrix:
+        spec:
+          - internal/deskkit/mutations.json
+          - cmd/desksourceguard/mutations.json
+          - internal/loopengine/mutations.json
+          - internal/loopengine/mutations-retry.json
+          - cmd/deskclose/mutations.json
+          - cmd/reviewloop/mutations.json
+          - cmd/deskmerge/mutations.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        env:
+          # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl. Same pin
+          # release.yml carries for the same GO_VERSION — bump both together (there and
+          # here) — a GO_VERSION change without a matching digest fails this step CLOSED
+          # rather than trusting the fetch. This suite is a trust-establishing baseline,
+          # so it verifies the toolchain before unpacking, same as release.yml.
+          GO_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          # Verify BEFORE unpacking into a PATH-prepended dir: an unverified toolchain
+          # there would shadow the system go/sha256sum/curl/git for every later step.
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: Mutate the spec and require the suite to catch every mutation
+        env:
+          SPEC: ${{ matrix.spec }}
+        run: |
+          set -euo pipefail
+          go version
+          cd tools/desk
+          spec="$SPEC"
+          # COULD-NOT-CHECK guard: a spec the tree no longer carries cannot be a clean
+          # pass — redden and name it, never skip past a missing baseline gate.
+          if [ ! -f "$spec" ]; then
+            echo "::error::could-not-check: mutation spec $spec not found in tools/desk — the baseline mutation gate could not run"
+            exit 1
+          fi
+          report="$(go run ./cmd/muhar -j 0 -spec "$spec")"
+          echo "$report"
+          # muhar exits non-zero (2) when the harness itself is broken — that is
+          # could-not-check and `set -e` already reddens on it. A surviving mutation
+          # exits 0 with its verdict on stdout, so gate on the totals line too.
+          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<"$report"; then
+            echo "::error::a refusal in $spec survived its mutation, or could not be applied — a baseline guard is not load-bearing as written"
+            exit 1
+          fi

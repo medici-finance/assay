@@ -126,6 +126,7 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		// Body validation (verdict schema + secret scan) BEFORE any network — a bad
 		// body must refuse with zero side effects.
 		if err := bodycheck.Review(body); err != nil {
+			deskkit.MaybeExplain(stderr, opts.explain, err)
 			return withDigest(fromReadErr(preVerb, repo, pr, "", err), dig)
 		}
 		// #203: the PUBLIC-REPO SELF-CONTAINMENT scan. A review body is the densest
@@ -206,11 +207,11 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		// a pre-attestation dispatch) is not bricked — it proceeds with a NOTICE. The
 		// override is an env toggle, and every bypass is logged loudly. A timeline that
 		// cannot be READ is could-not-check, never a cleared floor.
-		events, ferr := client.listLabelEvents(pr)
+		tl, ferr := client.stampTimeline(pr)
 		if ferr != nil {
 			return withDigest(fromReadErr(verb, repo, pr, curHead, ferr), dig)
 		}
-		fd := deskkit.ModelCapabilityFloor(events, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
+		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
 		switch fd.Outcome {
 		case deskkit.FloorRefuse:
 			return withDigest(refused(verb, repo, pr, curHead, fd.Message), dig)
@@ -263,6 +264,38 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		// without a qualifying +1 from an authorized human.
 		if gerr := deskkit.PublicRepoGate(client, owner, name, pr); gerr != nil {
 			return withDigest(fromErr(verb, repo, pr, head, gerr), dig)
+		}
+		// Non-author verdict assertion (sdlc/10) — the SECOND layer behind the forge's own
+		// "an author cannot approve their own PR" refusal. The forge's refusal is keyed on
+		// PR authorship and may NOT fire on a collapsed identity path (the supported minimal
+		// set sdlc/10's human gate is deciding); this one fires at verdict time, in the desk
+		// tool, on identity equality against the CERTIFIED HEAD. The posting identity is the
+		// reviewer App; the certified identity is who authored the head commit. An unreadable
+		// head-commit author is a could-not-check: it FALLS BACK to the PR author (always
+		// present) rather than vanishing, and warns — never a silent pass.
+		posting := reviewerBotDisplay()
+		headAuthor, haErr := client.headCommitAuthor(curHead)
+		if haErr != nil || strings.TrimSpace(headAuthor) == "" {
+			if haErr != nil {
+				fmt.Fprintln(stderr, "deskpost: WARNING: could not read head-commit author for the non-author "+
+					"verdict check ("+haErr.Error()+") — falling back to the PR author")
+			} else {
+				fmt.Fprintln(stderr, "deskpost: WARNING: GitHub attributes the head commit to no account — "+
+					"falling back to the PR author for the non-author verdict check")
+			}
+			headAuthor = info.User.Login
+		}
+		switch deskkit.NonAuthorVerdict(posting, headAuthor) {
+		case deskkit.NonAuthorRefused:
+			return withDigest(fromErr(verb, repo, pr, curHead,
+				deskkit.AssertNonAuthorVerdict(posting, headAuthor)), dig)
+		case deskkit.NonAuthorUnknown:
+			// Both the head-commit author AND the PR author were unreadable — could-not-check.
+			// Proceed (a transient read gap must not brick the reviewer loop) but say so.
+			fmt.Fprintln(stderr, "deskpost: WARNING: could not determine the head author for the non-author "+
+				"verdict check — proceeding, but the poster-vs-author separation could NOT be verified")
+		case deskkit.NonAuthorOK:
+			// Poster and head author are distinct actors — the separation holds.
 		}
 		if opts.dryRun {
 			return withDigest(dryRun(verb, repo, pr, head,

@@ -10,7 +10,9 @@ import (
 var coalesceNow = time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
 
 func openPR(ageFromNow time.Duration) *OpenScanPR {
-	return &OpenScanPR{Number: 42, Branch: "chore/intake-scan-2026-08-24-1140", CreatedAt: coalesceNow.Add(-ageFromNow)}
+	// The helper's PR is a KNOWN draft — still in the review loop — so the age window is what these
+	// tests exercise. The flip boundary is a separate dimension covered by its own tests below.
+	return &OpenScanPR{Number: 42, Branch: "chore/intake-scan-2026-08-24-1140", CreatedAt: coalesceNow.Add(-ageFromNow), State: ScanPRDraft}
 }
 
 // TestCoalesce_InsideTheWindowAbsorbs is the positive control.
@@ -56,10 +58,57 @@ func TestCoalesce_NoOpenPRCutsFresh(t *testing.T) {
 	}
 }
 
+// TestCoalesce_FlippedReadyPRCutsFresh is THE property this file gains. A scan PR that pr-review-desk
+// has flipped ready-for-human is push-quiet: a post-flip push re-signals the whole review loop for
+// churn the reviewer has already sealed off. So a batch with new placeholders opens the NEXT scan
+// PR rather than pushing to the flipped one — however YOUNG the flipped PR is. This is the observed
+// case: the PR was flipped well inside the coalesce window, and age alone would have coalesced.
+func TestCoalesce_FlippedReadyPRCutsFresh(t *testing.T) {
+	pr := openPR(5 * time.Minute) // deep inside the window — age alone would COALESCE
+	pr.State = ScanPRReady
+	d, why := CoalescePolicy{}.Decide(pr, coalesceNow)
+	if d != CoalesceFresh {
+		t.Fatalf("flipped-ready PR inside the window = %s (%s), want FRESH-PR — a flipped scan PR is push-quiet", d, why)
+	}
+	if !strings.Contains(why, "flipped") {
+		t.Fatalf("the reason does not name the flip boundary: %s", why)
+	}
+}
+
+// TestCoalesce_UnreadDraftStateNeverCoalesces — a draft/ready state that could not be read takes the
+// BOUNDED direction, the same asymmetry the unreadable-age arm takes: a PR that MIGHT already be
+// flipped is never pushed to. An extra PR costs a review slot; a push to a flipped PR re-signals the
+// loop the flip closed.
+func TestCoalesce_UnreadDraftStateNeverCoalesces(t *testing.T) {
+	pr := openPR(5 * time.Minute) // age would coalesce, but the state is unknown
+	pr.State = ScanPRStateUnread
+	d, why := CoalescePolicy{}.Decide(pr, coalesceNow)
+	if d != CoalesceCouldNotCheck {
+		t.Fatalf("unread draft/ready state = %s, want COULD-NOT-CHECK", d)
+	}
+	if d.Act() != CoalesceFresh {
+		t.Fatalf("could-not-check resolved to %s, want the bounded FRESH-PR action", d.Act())
+	}
+	if !strings.Contains(why, "draft/ready state could not be read") {
+		t.Fatalf("reason = %s", why)
+	}
+}
+
+// TestCoalesce_KnownDraftInsideWindowStillCoalesces is the positive control for the new dimension:
+// a PR KNOWN to still be a draft coalesces inside the window exactly as before — the flip gate has
+// not broken the loop's normal in-window batching.
+func TestCoalesce_KnownDraftInsideWindowStillCoalesces(t *testing.T) {
+	pr := openPR(5 * time.Minute)
+	pr.State = ScanPRDraft
+	if d, why := (CoalescePolicy{}).Decide(pr, coalesceNow); d != CoalesceInto {
+		t.Fatalf("known-draft PR inside the window = %s (%s), want COALESCE", d, why)
+	}
+}
+
 // TestCoalesce_UnreadableAgeNeverCoalesces — could-not-check takes the BOUNDED direction. An extra
 // PR costs a review slot; a wrong coalesce re-opens the failure the window exists to close.
 func TestCoalesce_UnreadableAgeNeverCoalesces(t *testing.T) {
-	pr := &OpenScanPR{Number: 42, Branch: "b"} // CreatedAt unread
+	pr := &OpenScanPR{Number: 42, Branch: "b", State: ScanPRDraft} // known draft, CreatedAt unread
 	d, why := CoalescePolicy{}.Decide(pr, coalesceNow)
 	if d != CoalesceCouldNotCheck {
 		t.Fatalf("decision = %s, want COULD-NOT-CHECK", d)
@@ -85,6 +134,28 @@ func TestCoalesce_FutureCreatedAtIsCouldNotCheck(t *testing.T) {
 func TestCoalesce_NegativeWindowDisables(t *testing.T) {
 	if d, _ := (CoalescePolicy{Window: -1}).Decide(openPR(time.Second), coalesceNow); d != CoalesceFresh {
 		t.Fatalf("decision = %s, want FRESH-PR with coalescing disabled", d)
+	}
+}
+
+// TestScanPRState_RejectsATypo — an unrecognised --scan-pr-state is REFUSED, never read as unread:
+// a typo silently downgraded to "not established" would push to a PR the operator meant to seal.
+func TestScanPRState_RejectsATypo(t *testing.T) {
+	for _, ok := range []string{"", "draft", "ready"} {
+		if _, err := scanPRState(ok); err != nil {
+			t.Fatalf("scanPRState(%q) refused a valid value: %v", ok, err)
+		}
+	}
+	if _, err := scanPRState("readyish"); err == nil {
+		t.Fatal("scanPRState accepted an unrecognised value — a typo would silently disable the flip gate")
+	}
+}
+
+// TestOpenScanPR_CarriesTheState — the flag flows into the coalesce decision through OpenScanPR.
+func TestOpenScanPR_CarriesTheState(t *testing.T) {
+	o := &planOptions{scanPR: 7, scanBranch: "b", prState: "ready"}
+	pr := o.openScanPR()
+	if pr == nil || pr.State != ScanPRReady {
+		t.Fatalf("openScanPR did not carry the ready state: %+v", pr)
 	}
 }
 
