@@ -1736,6 +1736,39 @@ the search path, so the failure read as a broken key rather than a wrong directo
 
 `<ROLE>_PEM` and `<ROLE>_TOKEN` still override an individual file outright, in all three.
 
+#### Role→App binding — running fewer Apps than roles
+
+`desktoken` otherwise keys every credential lookup on the **role** name: role `reviewer` reads
+`reviewer-app.pem`, `REVIEWER_APP_ID` and `REVIEWER_INSTALL_ID`. A deployment that runs fewer
+Apps than roles — the recommended **two-App tier** is one App that reads and one that writes —
+therefore has no supported layout but six copies or six symlinks of two keys.
+
+One optional binding removes that. In `apps.env` (or the environment), one line per role:
+
+```
+REVIEWER_APP=<app-name>
+```
+
+`<app-name>` is the **stem** of the key file (`<app-name>.pem`) and the **prefix** of the App-ID
+and install-ID keys (`<APP_NAME>_APP_ID`, `<APP_NAME>_INSTALL_ID`, upper-cased with `-`→`_`).
+So `REVIEWER_APP=acme-act` makes the reviewer role mint from `acme-act.pem` / `ACME_ACT_APP_ID`
+/ `ACME_ACT_INSTALL_ID`, and a second role bound to the same `acme-act` mints the same key.
+
+**Default.** Absent, `<app-name>` is `<role>-app` — byte-identical to the layout above
+(`reviewer-app` → `reviewer-app.pem`, `REVIEWER_APP_ID`, `REVIEWER_INSTALL_ID`), so an
+unconfigured deployment resolves exactly the files it always did.
+
+**Precedence.** The binding resolves environment first, then `apps.env`, like the App ID and
+install ID it parameterises; `<PREFIX>_PEM` / `<PREFIX>_TOKEN` still override an individual file.
+`desktoken --version` prints the effective bindings on one `bindings=` line, `role=app-name` per
+role, so the resolution is visible without minting.
+
+**A two-App deployment is two keys and six bindings, never six keys.** The binding decides which
+key a role mints with; it is one of two independent layers. The other is the roster's `role=slug`
+binding in `ASSAY_TRUSTED_BOT_SLUGS`, which decides which `<slug>[bot]` login the **trust gate**
+accepts for that role — and the two must agree: a key that mints for an App whose `[bot]` login
+the roster does not bind to the posting role is refused by that gate, not silently accepted.
+
 #### `desktoken coverage <role>` — which repos a role's App sees
 
 `desktoken coverage <role> [--repo <slug>] [--json]` answers the question a coordinator

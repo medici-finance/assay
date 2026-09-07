@@ -507,6 +507,14 @@ var requiredDuties = []Duty{
 // could-not-check — reading a permission LISTING as a grant would be the exact
 // mistake AGENTS.md forbids in the other direction, so an ABSENT listing is
 // certainly not one.
+//
+// ROLE→APP BINDING. This check is role-aware THROUGH the binding
+// with no code of its own: tokenPath is what the role's cold mint produced, and that mint
+// resolves the App the role is BOUND to (<ROLE>_APP; appconfig.go AppBinding). So the grant
+// read here is already the BOUND App's grant. requiredDuties is one fixed set for every
+// role, so when several roles are bound to one App they mint one grant that this check reads
+// per role — a shared grant covering the duties passes every bound role. Proven by
+// TestMultiRoleSharedGrantPassesEveryBoundRole.
 func checkAppScopes(p PreflightProbes, role, tokenPath string) Check {
 	const refs = "#571"
 	if tokenPath == "" {

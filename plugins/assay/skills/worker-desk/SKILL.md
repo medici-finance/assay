@@ -28,6 +28,12 @@ maintainer rather than applied by any automation. This paragraph
 binds the DESK's own writes; the worker is bound to the same fragment rule through the changelog clause
 `deskdispatch` emits verbatim in the worker kit.
 
+The "one item = one branch = one PR, and a merged or closed PR is DONE" invariant now has a mechanical
+backstop: the `desksupervise` observer reconciles every in-flight dispatch claim each tick and STOPS
+(and, for a terminal verdict, releases) any run whose item became ineligible mid-run — its PR was merged
+or closed, its board row flipped off `todo`/`in-progress`, or its claim was released/stolen — so the rule
+fires within one observer interval instead of relying on a worker to remember it.
+
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
 

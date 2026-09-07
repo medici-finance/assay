@@ -236,11 +236,12 @@ var UnresolvedArgv = []Allowance{
 		Reason: "runs the configured risk-classifier binary by path; not a forge path.",
 	},
 	{
-		Key: "cmd/desksupervise/live.go::readLiveClaims::<unresolved>",
-		Reason: "runs the target repo's own tools/dispatch-claim.sh `show` verb (the SAME consumer-repo " +
-			"claim script cmd/deskdispatch/dispatch.go's stepClaim shells to, resolved at runtime under " +
-			"--root/--claim-root, never a compile-time literal) to read one dispatch claim's " +
-			"state/owner/branch. Not a forge CLI: it is a script this tree does not ship, external to " +
-			"every consumer repo it runs against.",
+		Key: "cmd/desksupervise/live.go::showClaim::<unresolved>",
+		Reason: "the SINGLE exec site (readLiveClaims' enumeration and reconcile.go's live claim reader " +
+			"both route through it) that runs the target repo's own tools/dispatch-claim.sh `show` verb " +
+			"(the SAME consumer-repo claim script cmd/deskdispatch/dispatch.go's stepClaim shells to, " +
+			"resolved at runtime under --root/--claim-root, never a compile-time literal) to read one " +
+			"dispatch claim's state/owner/branch. Not a forge CLI: it is a script this tree does not " +
+			"ship, external to every consumer repo it runs against.",
 	},
 }

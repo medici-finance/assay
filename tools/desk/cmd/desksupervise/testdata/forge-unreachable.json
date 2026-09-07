@@ -1,0 +1,14 @@
+[
+  {
+    "key": "example-stream--blind-01",
+    "item": "example-stream/blind-01",
+    "owner": "session-blind",
+    "repo": "medici-finance/assay",
+    "branch": "feat/example-stream--blind-01",
+    "pr": 104,
+    "tier": "cheap",
+    "state": "dispatched",
+    "dispatchedAt": "2026-09-02T11:50:00Z",
+    "eligibility": { "prUnreadable": true }
+  }
+]

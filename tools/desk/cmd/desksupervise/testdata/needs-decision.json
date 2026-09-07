@@ -1,0 +1,14 @@
+[
+  {
+    "key": "example-stream--held-01",
+    "item": "example-stream/held-01",
+    "owner": "session-held",
+    "repo": "medici-finance/assay",
+    "branch": "feat/example-stream--held-01",
+    "pr": 103,
+    "tier": "cheap",
+    "state": "dispatched",
+    "dispatchedAt": "2026-09-02T11:50:00Z",
+    "eligibility": { "prState": "open", "prLabels": ["area:desk", "needs-decision"] }
+  }
+]

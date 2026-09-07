@@ -15,7 +15,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-07 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-07 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 4/9 | 2026-09-07 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 4/20 | 2026-09-07 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/20 | 2026-09-07 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-07 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-07 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-07 |  |
@@ -29,35 +29,32 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 ## Next up
 
-_Held by per-stream caps: 3 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (3). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (2). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| apps-installer | 01 — Role→App indirection — six roles on N Apps without symlinks [exec:strong] | 0 | 4500 |
 | apps-installer | 05 — `deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof | 0 | 3000 |
-| apps-installer | 08 — Solo identity mode — spec + decision: the desk verbs on the operator's own token [exec:strong] | 0 | 2000 |
-| desk-supervision | 03 — Eligibility reconciliation — stop a run whose item became ineligible [exec:strong] | 2 | 1000 |
 | desk-tools | 13 — `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree | 1 | 1000 |
-| desk-tools | 14 — bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` [exec:strong] | 1 | 1000 |
 | desk-tools | 15 — `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home | 1 | 1000 |
-| desk-tools | 16 — `deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block | 1 | 1000 |
+| desk-tools | 17 — One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on [exec:strong] | 1 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (35 desk-actionable of 46 total — 46 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (38 desk-actionable of 49 total — 49 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (35)
+### Desk-actionable (38)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | harness-portability | 01 [exec:strong] | implemented | 5000 | 8 | — | — | — |
+| apps-installer | 01 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | desktools-go-git | 02 | implemented | 4000 | 6 | — | — | — |
 | harness-portability | 02 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
@@ -70,11 +67,13 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 04 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-neutral | 05 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | windows-port | 00 | implemented | 2500 | 3 | — | — | — |
+| apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | windows-port | 01 | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| desk-supervision | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -122,6 +121,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 | Stream | Oldest at gate | Brief |
 |---|---|---|
+| apps-installer | — | — |
 | desk-containers | — | — |
 | desk-supervision | — | — |
 | desk-tools | — | — |
@@ -140,14 +140,14 @@ _None._
 
 ### apps-installer (8 open)
 
-- 01 Role→App indirection — six roles on N Apps without symlinks — todo (wave 0)
+- 01 Role→App indirection — six roles on N Apps without symlinks — implemented (wave 0)
 - 02 `deskapps init` — loopback page, tier manifests, the manifest→code→conversion flow, key + record writes — todo (wave 1)
 - 03 `deskapps` install + prove — installation poll, fresh mint, scopes-vs-duties, roster write — todo (wave 2)
 - 04 `deskapps resume` / `status` — per-App state machine, throttle pause, expired-code re-arm, page verbs — todo (wave 2)
 - 05 `deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof — todo (wave 0)
 - 06 Avatar step in the run board — generated PNG beside the settings page, confirmed not uploaded — todo (wave 3)
 - 07 Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented — todo (wave 4)
-- 08 Solo identity mode — spec + decision: the desk verbs on the operator's own token — todo (wave 0)
+- 08 Solo identity mode — spec + decision: the desk verbs on the operator's own token — implemented (wave 0)
 
 ### derived-board (4 open)
 
@@ -168,13 +168,13 @@ _None._
 
 ### desk-supervision (5 open)
 
-- 03 Eligibility reconciliation — stop a run whose item became ineligible — todo (wave 2)
+- 03 Eligibility reconciliation — stop a run whose item became ineligible — implemented (wave 2)
 - 04 Lifecycle hooks — after-create / before-run / after-run / before-remove from config home — implemented (wave 1)
 - 06 Workpad — one upserted progress comment per PR — implemented (wave 0)
 - 08 Objectives over transitions — measure an objective-style worker kit with skillbench — todo (wave 1)
 - 09 Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build — implemented (wave 0)
 
-### desk-tools (16 open)
+### desk-tools (15 open)
 
 - 01 Binary channel — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer — implemented (wave 1)
@@ -186,7 +186,6 @@ _None._
 - 11 `deskwt add` — a worktree whose directory is gone does not hold its branch — blocked (wave 1)
 - 12 `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON — implemented (wave 1)
 - 13 `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree — todo (wave 1)
-- 14 bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` — todo (wave 1)
 - 15 `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home — todo (wave 1)
 - 16 `deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block — todo (wave 1)
 - 17 One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on — todo (wave 1)
@@ -284,11 +283,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 05 Per-class concurrency reservation — fresh / resume / rework caps in the planner — done (wave 0)
 - 07 Runtime snapshot — `desksupervise status` for operators and the console — done (wave 1)
 
-### desk-tools (4 done)
+### desk-tools (5 done)
 
 - 04 Deterministic runner — execute rows, batch, sign, file verdict issues — done (wave 1)
 - 05 Escape-valve `Decide()` primitive in deskkit — done (wave 1)
 - 06 Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) — done (wave 1)
+- 14 bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` — done (wave 1)
 - 20 Cross-repo triage/verify evidence binds to the remote — a sibling checkout must be cross-checked, not trusted as-is — done (wave 1)
 
 ### desktools-go-git (1 done)
@@ -360,4 +360,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **51/139** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **52/139** briefs done · completed initiatives: see `docs/archive/`

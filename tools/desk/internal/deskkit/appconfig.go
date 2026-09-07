@@ -65,6 +65,76 @@ func AppID(role string) (string, error) {
 		role, envName, appConfigFile, strings.Join(searched, ", "))
 }
 
+// --- role→App indirection -------------------------------------------------------
+//
+// A deployment may run FEWER Apps than roles — the recommended two-App tier is one
+// App that reads and one that writes, six roles across two keys. desktoken otherwise
+// keys every credential lookup on the ROLE name (`<role>-app.pem`, `<ROLE>_APP_ID`),
+// so that tier has no supported layout but six copies or six symlinks of two keys.
+//
+// AppBinding adds ONE optional indirection: the App-NAME a role mints as. It is the
+// stem of `<app-name>.pem` and the source of the env-var prefix its `<PREFIX>_APP_ID`
+// / `<PREFIX>_INSTALL_ID` keys use (AppEnvPrefix). Absent, it defaults to `<role>-app`
+// — byte-identical to the pre-binding layout, so an unconfigured deployment resolves
+// exactly the same files it does today. A bound deployment sets `<ROLE>_APP=<app-name>`
+// (env, then apps.env), and N roles collapse onto M<N Apps with no symlink and no copy.
+//
+// This binding decides which KEY a role mints with; it is one of TWO independent layers.
+// The other is the roster's `role=slug` binding in ASSAY_TRUSTED_BOT_SLUGS (RoleBots),
+// which decides which `[bot]` login the TRUST gate accepts for that role — read by a
+// different package (trust.go) from a different file (roster.env). A mis-bound key that
+// mints for an App whose `[bot]` login the roster does not bind to the posting role is
+// refused by that trust gate; the two must agree, and neither is derivable from the other.
+
+// AppBinding returns the App-NAME bound to a desk role. Resolution, env-first then file,
+// exactly like the App ID and install ID it parameterises:
+//
+//	(a) env <ROLE>_APP if non-empty (REVIEWER_APP, ISSUE_LOOP_APP);
+//	(b) else the <ROLE>_APP line in the first apps.env on the App-credential search path;
+//	(c) else the default <role>-app — the pre-binding layout, byte for byte.
+//
+// The App-name VALUE never appears in source, only this resolution logic — the same rule
+// the App ID already follows.
+func AppBinding(role string) string {
+	key := strings.ToUpper(strings.ReplaceAll(role, "-", "_")) + "_APP"
+	if v := resolveAppConfigValue(key); v != "" {
+		return v
+	}
+	return role + "-app"
+}
+
+// AppEnvPrefix maps an App-name to the env-var prefix its App ID / install ID keys use:
+// the App-name upper-cased with '-'→'_', minus a trailing _APP. The default `<role>-app`
+// name therefore keeps the historical `<ROLE>_APP_ID` / `<ROLE>_INSTALL_ID` keys byte for
+// byte (reviewer-app → REVIEWER_APP → REVIEWER), while a bound App-name like `x-act`
+// yields X_ACT_APP_ID / X_ACT_INSTALL_ID. Stripping the conventional `-app` suffix is what
+// reconciles "the default is byte-identical to today" with "the App-name is the prefix of
+// <APP_NAME>_APP_ID": every real bound App-name (no `-app` suffix) uses the plain prefix,
+// and only the default's suffix is trimmed to preserve the pre-binding keys.
+func AppEnvPrefix(appName string) string {
+	p := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(appName), "-", "_"))
+	return strings.TrimSuffix(p, "_APP")
+}
+
+// AppIDForApp resolves the GitHub App ID for a given App-NAME (the role→App binding's
+// stem), env <PREFIX>_APP_ID first then the matching apps.env line, where <PREFIX> is
+// AppEnvPrefix(appName). It is the binding-aware sibling of AppID: AppID keys the lookup
+// on the ROLE name (the pre-binding layout other tools still resolve directly), this keys
+// it on the App a role is BOUND to. For the default App-name `<role>-app` the two are the
+// same key, so a fresh mint reads the same file it always did.
+func AppIDForApp(appName string) (string, error) {
+	envName := AppEnvPrefix(appName) + "_APP_ID"
+	if v := strings.TrimSpace(os.Getenv(envName)); v != "" {
+		return v, nil
+	}
+	path, searched, _ := FindConfigFile(appConfigFile)
+	if v, err := appIDFromFile(path, envName); err == nil && v != "" {
+		return v, nil
+	}
+	return "", fmt.Errorf("no App ID for App %q: set %s, or add it to %s in one of: %s",
+		appName, envName, appConfigFile, strings.Join(searched, ", "))
+}
+
 // roleInstallEnvName converts a desk role to its SINGLE-installation install-id env-var
 // name: "reviewer" → "REVIEWER_INSTALL_ID".
 func roleInstallEnvName(role string) string {

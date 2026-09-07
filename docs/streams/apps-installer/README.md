@@ -56,18 +56,20 @@ per Secret or per user). The tiers change **who does the work**, never the metho
 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Role→App indirection — six roles on N Apps without symlinks](./brief-01-role-app-indirection.md) | 0 | M | todo | — | — |
+| 01 | [Role→App indirection — six roles on N Apps without symlinks](./brief-01-role-app-indirection.md) | 0 | M | implemented | — | — |
 | 02 | [`deskapps init` — loopback page, tier manifests, the manifest→code→conversion flow, key + record writes](./brief-02-deskapps-manifest-flow.md) | 1 | L | todo | — | — |
 | 03 | [`deskapps` install + prove — installation poll, fresh mint, scopes-vs-duties, roster write](./brief-03-deskapps-install-prove.md) | 2 | M | todo | — | — |
 | 04 | [`deskapps resume` / `status` — per-App state machine, throttle pause, expired-code re-arm, page verbs](./brief-04-deskapps-resume-status.md) | 2 | M | todo | — | — |
 | 05 | [`deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof](./brief-05-deskavatar-generator.md) | 0 | M | implemented | — | — |
 | 06 | [Avatar step in the run board — generated PNG beside the settings page, confirmed not uploaded](./brief-06-avatar-step-wiring.md) | 3 | S | todo | — | — |
 | 07 | [Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented](./brief-07-install-skill-runbook-cutover.md) | 4 | M | todo | — | — |
-| 08 | [Solo identity mode — spec + decision: the desk verbs on the operator's own token](./brief-08-solo-identity-spec.md) | 0 | S | todo | — | — |
+| 08 | [Solo identity mode — spec + decision: the desk verbs on the operator's own token](./brief-08-solo-identity-spec.md) | 0 | S | implemented | — | — |
 
 Ruling for 08 is already recorded on #467 (2026-09-05): adopt Solo as specified, and the install
 page and runbook must say plainly that Solo means the operator does far more than in the other
-tiers — 07 carries that callout. 08's remaining work is the spec itself.
+tiers — 07 carries that callout. The spec itself is now written:
+[`solo-identity.md`](./solo-identity.md); its implementation brief is authored after the ruling and
+cites both #467 and that spec. That follow-on authoring task is filed and work-ready as #607.
 
 ## Critical path
 

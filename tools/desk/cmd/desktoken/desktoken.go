@@ -48,6 +48,7 @@ const (
 type auditCtx struct {
 	verb       string
 	role       string
+	appName    string
 	installID  string
 	appID      string
 	detail     string
@@ -94,6 +95,31 @@ var httpClient = http.DefaultClient
 // "issue-loop" → "ISSUE_LOOP", "reviewer" → "REVIEWER".
 func roleEnvPrefix(role string) string {
 	return strings.ToUpper(strings.ReplaceAll(role, "-", "_"))
+}
+
+// appNameFor resolves the App-NAME a role mints as — the role→App indirection
+// that lets N roles mint with M<N Apps without a symlink or a copied
+// key. It is the stem for the PEM file (`<app-name>.pem`), the App ID key and the install
+// ID key. Absent a binding it is `<role>-app`, byte-identical to the pre-binding layout.
+//
+// Removing this indirection (returning `role + "-app"` unconditionally) is mutations.json's
+// removed-binding mutant: the --version bindings echo (Verify row 2) reddens on it, because
+// a bound App-name would then resolve back to the role's own default.
+func appNameFor(role string) string {
+	return deskkit.AppBinding(role)
+}
+
+// effectiveBindings renders the role→App bindings for every valid role, sorted,
+// as a single `role=app-name` space-separated string for the --version echo
+// (Verify rows 2 and 3 read this). It resolves each role through appNameFor, so
+// it reports exactly the App each role would mint as.
+func effectiveBindings() string {
+	roles := roleNames() // sorted
+	parts := make([]string, 0, len(roles))
+	for _, r := range roles {
+		parts = append(parts, r+"="+appNameFor(r))
+	}
+	return strings.Join(parts, " ")
 }
 
 // roleNames returns the valid roles as a sorted slice for error messages.
@@ -402,10 +428,12 @@ func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
 // clean.
 const provisioningDoc = "docs/github-apps-setup.md"
 
-// resolvePEMPath finds the role's App private key.
+// resolvePEMPath finds the App private key for an App-NAME (the role→App binding's stem;
+// `<role>-app` when the role is unbound, so an unconfigured deployment resolves exactly
+// `<role>-app.pem` as before).
 //
-// Order: an explicit <ROLE>_PEM override wins verbatim; otherwise the first
-// existing <role>-app.pem across the App-credential search path
+// Order: an explicit <PREFIX>_PEM override wins verbatim; otherwise the first
+// existing <app-name>.pem across the App-credential search path
 // (ASSAY_CONFIG_HOME, then the shipped ~/.config/assay).
 //
 // It returns BOTH a path and a deferred not-found error. The error is deliberately
@@ -419,11 +447,11 @@ const provisioningDoc = "docs/github-apps-setup.md"
 // walkthrough that records where this deployment provisions keys. The #794
 // symptom was a bare "private key not found at <one path>" that named none of
 // the three, so a fresh-shell mint failure read as a broken tool.
-func resolvePEMPath(role, prefix string) (string, error) {
+func resolvePEMPath(appName, prefix string) (string, error) {
 	if override := strings.TrimSpace(os.Getenv(prefix + "_PEM")); override != "" {
 		return home(override), nil
 	}
-	name := role + "-app.pem"
+	name := appName + ".pem"
 	path, searched, found := deskkit.FindConfigFile(name)
 	if found {
 		return path, nil
@@ -512,6 +540,11 @@ func run(args []string) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
 		fmt.Printf("desktoken sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
+		// Echo the EFFECTIVE role→App bindings so a two-App
+		// deployment can see, without minting, which App each role resolves to.
+		// One `bindings=` line, `role=app-name` per role, sorted. Absent binding
+		// prints the default `<role>-app`. This is a pure read (env + apps.env).
+		fmt.Printf("bindings=%s\n", effectiveBindings())
 		return deskkit.ExitOK
 	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
@@ -588,16 +621,22 @@ func cmdToken(args []string) (err error) {
 		return deskkit.Refused("unknown --forge " + *forge + "; valid: github (default), gitlab")
 	}
 
-	prefix := roleEnvPrefix(role)
+	// Resolve the App this role mints as. The binding is the ONE
+	// indirection read FIRST — before the PEM, App ID and install ID lookups, which all
+	// take the App-name as their stem. Unbound, the App-name is <role>-app and every
+	// lookup below resolves exactly the pre-binding file/key.
+	appName := appNameFor(role)
+	ac.appName = appName
+	prefix := deskkit.AppEnvPrefix(appName)
 
 	// Resolve PEM path across the App-credential search path (#794). A not-found
 	// error is DEFERRED to the point the key is read (see resolvePEMPath), so the
 	// existing precondition-reporting order is unchanged.
-	pemPath, pemErr := resolvePEMPath(role, prefix)
+	pemPath, pemErr := resolvePEMPath(appName, prefix)
 
-	// Resolve App ID: env <ROLE>_APP_ID, else ~/.config/assay/apps.env (no source default —
-	// a fresh invocation works with no shell sourcing).
-	appID, err := deskkit.AppID(role)
+	// Resolve App ID: env <PREFIX>_APP_ID, else ~/.config/assay/apps.env (no source default —
+	// a fresh invocation works with no shell sourcing). <PREFIX> is the bound App's prefix.
+	appID, err := deskkit.AppIDForApp(appName)
 	if err != nil {
 		return deskkit.Unverifiable(err.Error(), nil)
 	}
@@ -712,7 +751,7 @@ func cmdToken(args []string) (err error) {
 		if age < cacheMaxAge {
 			// Output only the token file path — never the token value.
 			fmt.Println(tokenPath)
-			ac.detail = fmt.Sprintf("reused cached %s token [install %s] (%dm old)", role, installID, int(age.Minutes()))
+			ac.detail = fmt.Sprintf("reused cached %s token [app=%s install %s] (%dm old)", role, appName, installID, int(age.Minutes()))
 			return nil
 		}
 	} else if !os.IsNotExist(serr) {
@@ -783,6 +822,6 @@ func cmdToken(args []string) (err error) {
 
 	// Output only the token file path — never the token value.
 	fmt.Println(tokenPath)
-	ac.detail = fmt.Sprintf("minted new %s token [install %s] (expires %s)", role, installID, result.ExpiresAt)
+	ac.detail = fmt.Sprintf("minted new %s token [app=%s install %s] (expires %s)", role, appName, installID, result.ExpiresAt)
 	return nil
 }

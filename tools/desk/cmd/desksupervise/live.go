@@ -72,30 +72,40 @@ func readLiveClaims(root, repo string, now time.Time) ([]claimRecord, error) {
 
 	var claims []claimRecord
 	for _, key := range keys {
-		out, serr := exec.Command(script, "show", key, "--repo", repo).CombinedOutput()
+		out, serr := showClaim(script, key, repo)
 		if serr != nil {
-			return nil, deskkit.Unverifiable(dispatchClaimScriptRel+" show "+key+" failed: "+strings.TrimSpace(string(out)), serr)
+			return nil, deskkit.Unverifiable(dispatchClaimScriptRel+" show "+key+" failed: "+strings.TrimSpace(out), serr)
 		}
-		state := claimShowField(claimStateFieldRe, string(out))
+		state := claimShowField(claimStateFieldRe, out)
 		if state != "dispatched" {
 			continue
 		}
-		ageMin, aerr := strconv.Atoi(claimShowField(claimAgeFieldRe, string(out)))
+		ageMin, aerr := strconv.Atoi(claimShowField(claimAgeFieldRe, out))
 		if aerr != nil {
-			return nil, deskkit.Unverifiable(dispatchClaimScriptRel+" show "+key+": no parseable age= field: "+strings.TrimSpace(string(out)), aerr)
+			return nil, deskkit.Unverifiable(dispatchClaimScriptRel+" show "+key+": no parseable age= field: "+strings.TrimSpace(out), aerr)
 		}
 		claims = append(claims, claimRecord{
 			Key:          key,
 			Item:         key,
-			Owner:        claimShowField(claimOwnerFieldRe, string(out)),
+			Owner:        claimShowField(claimOwnerFieldRe, out),
 			Repo:         repo,
-			Branch:       claimShowField(claimBranchFieldRe, string(out)),
+			Branch:       claimShowField(claimBranchFieldRe, out),
 			Tier:         "cheap", // the script's `show` carries no tier; see the doc note below
 			State:        state,
 			DispatchedAt: now.Add(-time.Duration(ageMin) * time.Minute).Format(time.RFC3339),
 		})
 	}
 	return claims, nil
+}
+
+// showClaim is the SINGLE exec site for the consumer repo's own tools/dispatch-claim.sh `show`
+// verb — both readLiveClaims (enumeration) and reconcile.go's live claim reader route through
+// it, so the tree carries ONE unresolved-argv blind spot for this script, not two (the
+// forgeban ledger entry keys on this function). argv[0] is the script path resolved at runtime
+// under --root; it is not a forge CLI, and this tree does not ship the script.
+func showClaim(script, key, repo string) (string, error) {
+	out, err := exec.Command(script, "show", key, "--repo", repo).CombinedOutput()
+	return string(out), err
 }
 
 // claimStateFieldRe, claimAgeFieldRe, claimOwnerFieldRe and claimBranchFieldRe pull the

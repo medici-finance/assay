@@ -1,0 +1,14 @@
+[
+  {
+    "key": "example-stream--flipped-01",
+    "item": "example-stream/flipped-01",
+    "owner": "session-flipped",
+    "repo": "medici-finance/assay",
+    "branch": "feat/example-stream--flipped-01",
+    "pr": 102,
+    "tier": "cheap",
+    "state": "dispatched",
+    "dispatchedAt": "2026-09-02T11:50:00Z",
+    "eligibility": { "boardStatus": "implemented" }
+  }
+]

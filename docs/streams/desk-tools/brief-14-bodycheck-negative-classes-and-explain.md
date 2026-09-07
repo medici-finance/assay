@@ -165,6 +165,31 @@ Pre-mortem → detection map:
      (command, exit code, output line(s), date, runner). Row 1 of the Task
      (fail-first corpus run) is recorded here too. -->
 
+### Non-implementer verifier run — VERIFY: PASS — 2026-09-07 opus-4.8[1m]-verifier
+
+Runner ≠ implementer (fresh dispatched verifier). Isolated detached read-only worktree off `refs/remotes/origin/main`, offline (`KUBECONFIG=/dev/null`). Verified against merged main **f0be382452a40f452ffc7bb52330b26507fe8d12** (the brief's deliverable **cea8ebb** confirmed as an ancestor). Frontmatter: gate model, risk all no, irreversible no.
+
+| # | Command | Exit | Key observed output |
+|---|---------|------|---------------------|
+| 1 | go build ./... && go vet ./... (tools/desk) | 0 | build exit 0, vet exit 0 (no output) |
+| 2 | go test ./internal/deskkit/ -run '^TestBodycheckCorpus$' -count=1 | 0 | ok .../deskkit 0.288s — every neg-* incl. the three new ones clean |
+| 3 | go test ./internal/deskkit/ -run '^TestBodycheckPositives$' -count=1 | 0 | ok .../deskkit 0.275s — every pos-* incl. the three paired ones refused |
+| 4 | go test ./internal/deskkit/ -run '^TestBodycheckCorpusCanFail$' then '^TestBodycheckCorpusCoversEveryCataloguedShape$' -count=1 | 0 / 0 | ok 0.289s / ok 0.263s — harness can still fail; three shapes catalogued |
+| 5 | go test ./internal/deskkit/ -run each of '^TestHexPathSegmentBoundaries$' / '^TestIssueNumberSlashListBoundaries$' / '^TestK8sSecretTemplateBoundaries$' -count=1 | 0/0/0 | all ok .../deskkit — the negative controls (31/33-hex, bare 32-hex run, 8-digit group, one literal among placeholders) each still refused |
+| 6 | go test ./internal/deskkit/ -run '^TestExplainNamesRuleAndLineNeverSpan$' -count=1 | 0 | PASS — rule id + line present; offending bytes absent from explain text |
+| 7 | go test ./cmd/deskpr/ -run '^TestExplainFlagPrintsFinding$' -count=1 | 0 | PASS — with --explain the refusal carries the finding; without it byte-identical to today's |
+| 8 | go test ./... -count=1 (whole tools/desk module) | 0 | ok on re-run — see note (a) |
+| 9 | gofmt -l over the brief's touched packages; test ! -s | 0 on brief scope | see note (b) — all 15 brief-owned .go files gofmt-clean |
+| 10 | statusgen (built from merged-main source) --root .. --lint | 0 | LINT: PASS (NOTICEs only) |
+
+Notes (both out-of-scope, pre-existing main conditions — not this brief's deliverable):
+- (a) Row 8's first whole-module run tripped a single internal/loopengine failure; loopengine is not in this brief's diff scope, passed 5/5 in isolation, and the whole-module re-run was clean (exit 0). A load-induced timing flake, not a deliverable defect.
+- (b) Row 9's only gofmt-flagged file is internal/deskkit/forge_writefile_test.go (a struct-field-alignment nit), last touched by fe05b33 (forge-neutral/04) — not in cea8ebb. Every file the brief itself touched is gofmt-clean.
+
+RISK-VALUE: DERIVED — hex-doc-path exact-length gate = 32 at tools/desk/internal/deskkit/bodycheck.go line 558 (and 540). This is the tightest refuse-vs-admit boundary the brief adds: Rule 1 admits a run only when it is exactly 32 lowercase-hex chars AND carries doc-path/extension context. 32 is right because it is the exact width of an MD5-style finding-hash path component (…/2026-08-30-<32hex>.md); a 31/33/48-char run fails on length and a bare 32-hex token in prose with no path context stays refused (line 555), so the exact-32-plus-context gate admits the measured false-positive without widening the door to real hash-shaped token material. Secondary boundaries: maxIssueDigits = 6 at line 129 (issue-number slash-list groups — low-entropy numeric, non-secret) and the k8s template-placeholder stand-in gate (~line 621, admits definitionally-empty ${...}/{{...}}/REDACTED placeholders); both lower-consequence than the hex gate. Consistent with gate model, risk all no, irreversible no.
+
+**VERIFY: PASS** — 10/10 Verify rows green on brief scope (rows 8 and 9's only non-green results are external, out-of-diff, pre-existing main conditions, called out above). rows_passed/rows_total = 10/10. Status carried todo → verified.
+
 ## Review
 
 Gate: model (all four risk answers no). Model-gated because the control that makes a classifier

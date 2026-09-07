@@ -1,0 +1,65 @@
+{
+  "test": "go test ./internal/loopengine/ -count=1 -run 'Eligib|Reconcile'",
+  "control": {
+    "name": "CONTROL — the whole reconciliation is disarmed: every claim is declared Eligible before any read",
+    "file": "internal/loopengine/reconcile.go",
+    "old": "func Eligibility(c ClaimRecord, r EligibilityReaders) (EligibilityVerdict, error) {",
+    "new": "func Eligibility(c ClaimRecord, r EligibilityReaders) (EligibilityVerdict, error) {\n\tif true {\n\t\treturn Eligible, nil\n\t}"
+  },
+  "mutations": [
+    {
+      "name": "a merged PR is no longer terminal — the run whose PR a human merged keeps working (the motivating leak)",
+      "file": "internal/loopengine/reconcile.go",
+      "old": "\tcase deskkit.PRMerged:\n\t\treturn IneligibleTerminal(\"pr-merged\"), nil",
+      "new": "\tcase deskkit.PRMerged:\n\t\treturn Eligible, nil"
+    },
+    {
+      "name": "a closed PR is no longer terminal",
+      "file": "internal/loopengine/reconcile.go",
+      "old": "\tcase deskkit.PRClosed:\n\t\treturn IneligibleTerminal(\"pr-closed\"), nil",
+      "new": "\tcase deskkit.PRClosed:\n\t\treturn Eligible, nil"
+    },
+    {
+      "name": "the board-row flip is ignored — a brief flipped to implemented/verified/done is still worked",
+      "file": "internal/loopengine/reconcile.go",
+      "old": "\t\treturn IneligibleTerminal(\"board-row-\" + stNorm), nil",
+      "new": "\t\treturn Eligible, nil"
+    },
+    {
+      "name": "fail OPEN on a blind claim read — an unreadable claim becomes a confident Eligible instead of could-not-check",
+      "file": "internal/loopengine/reconcile.go",
+      "old": "\tcur, err := r.Claim(c.Key)\n\tif err != nil {\n\t\treturn EligibilityVerdict{}, &BlindError{Source: \"claim\", Err: err}\n\t}",
+      "new": "\tcur, err := r.Claim(c.Key)\n\tif false && err != nil {\n\t\treturn EligibilityVerdict{}, &BlindError{Source: \"claim\", Err: err}\n\t}"
+    },
+    {
+      "name": "fail OPEN on a blind PR read — the SPOF read errors and the run is declared Eligible anyway",
+      "file": "internal/loopengine/reconcile.go",
+      "old": "\tpr, err := r.PR(c.Repo, c.PR)\n\tif err != nil {\n\t\treturn EligibilityVerdict{}, &BlindError{Source: \"pr\", Err: err}\n\t}",
+      "new": "\tpr, err := r.PR(c.Repo, c.PR)\n\tif false && err != nil {\n\t\treturn EligibilityVerdict{}, &BlindError{Source: \"pr\", Err: err}\n\t}"
+    },
+    {
+      "name": "a held label releases the claim — needs-decision is treated as terminal, so a fresh worker re-dispatches into it",
+      "file": "internal/loopengine/reconcile.go",
+      "old": "\tif hasLabel(pr.Labels, \"needs-decision\") {\n\t\treturn IneligibleHeld(\"needs-decision\"), nil\n\t}",
+      "new": "\tif hasLabel(pr.Labels, \"needs-decision\") {\n\t\treturn IneligibleTerminal(\"needs-decision\"), nil\n\t}"
+    },
+    {
+      "name": "a reassigned claim is released — DeleteRef would delete the NEW live holder's claim ref (double-dispatch)",
+      "file": "internal/loopengine/reconcile.go",
+      "old": "\t\treturn IneligibleHeld(\"claim-reassigned\"), nil",
+      "new": "\t\treturn IneligibleTerminal(\"claim-reassigned\"), nil"
+    },
+    {
+      "name": "a blocked board row is released — the human-hold state is treated as finished and the claim freed",
+      "file": "internal/loopengine/reconcile.go",
+      "old": "\t\t\treturn IneligibleHeld(\"board-row-blocked\"), nil",
+      "new": "\t\t\treturn IneligibleTerminal(\"board-row-blocked\"), nil"
+    },
+    {
+      "name": "board-row PARSE returns a status for a missing row instead of an error — a not-found row reads as active",
+      "file": "internal/loopengine/reconcile.go",
+      "old": "\treturn \"\", errors.New(\"no brief row for \" + nn + \" in the board README\")",
+      "new": "\treturn \"in-progress\", nil"
+    }
+  ]
+}
