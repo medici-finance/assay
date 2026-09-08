@@ -8,6 +8,25 @@ IDE agent the **secondary** end-user surface. Harness tool names are legal here 
 is this file's whole purpose — and illegal in a skill body (`tools/harnesslint bodies`
 enforces it).
 
+## Install — copy, do not marketplace
+
+Cursor has **no** `/plugin marketplace add` / `/plugin install` path. That is Claude Code.
+
+1. Copy `plugins/assay/skills/*` into the adopter repo at `.cursor/skills/` or
+   `.agents/skills/`.
+2. Copy `plugins/assay/references/*.md` next to that tree so skill includes of
+   `../../references/*.md` resolve. Skills-only copies leave those links dead.
+3. Resident rules arrive through `AGENTS.md` and/or `.cursor/rules/*.mdc`. Assay's
+   Claude `SessionStart` hooks do **not** run here.
+4. Desk binaries on `PATH`. GitHub desks use `gh`. GitLab desks use `glab` /
+   `--forge gitlab`. Skill examples that say `gh` are GitHub-shaped; they are not a
+   Cursor requirement and they are wrong on GitLab.
+5. `harnessgen cursor` output is optional. If `plugins/assay/cursor/` is absent from
+   the tree, the copy path above still stands.
+
+The in-editor agent is a supported install surface. Headless `cursor-agent` is the
+smoke/automation surface (HP/13); blocked live smoke does not mean "do not copy skills."
+
 Every mechanism and degradation cell below cites the measured Cursor capability matrix
 (HP/12, documentary + public-docs sweep, 2026-08-26 — **no live Cursor environment**;
 the rows a live install must settle stay flagged `[needs: live-install confirmation]`).
