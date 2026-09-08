@@ -772,18 +772,11 @@ func checkOwnerPerms(path string, isDir bool) error {
 	if isDir && !fi.IsDir() {
 		return fmt.Errorf("%s is not a directory", path)
 	}
-	if mode := fi.Mode().Perm(); mode&0o022 != 0 {
-		kind := "file"
-		if isDir {
-			kind = "directory"
-		}
-		return fmt.Errorf("roster config %s %s is group- or world-writable (mode %04o): "+
-			"anything that can write it can name the accounts this tool trusts. "+
-			"Fix with `chmod %s %s`", kind, path, mode, map[bool]string{true: "0700", false: "0600"}[isDir], path)
-	}
-	// Owner check is platform-specific: unix compares the owning uid; windows has
-	// no uid and skips it LOUDLY (see rosterowner_{unix,windows}.go). The
-	// group/world-writable mode check above runs on both platforms.
+	// Permission enforcement is platform-specific and lives entirely in
+	// checkFileOwner (rosterowner_{unix,windows}.go): unix checks the group/world-
+	// writable mode bits AND the owning uid; windows checks the owner SID and DACL,
+	// because os.FileMode's permission bits are synthetic there (a normal file
+	// reads 0666) and a shared mode check would fire on every Windows file.
 	return checkFileOwner(path, fi)
 }
 
