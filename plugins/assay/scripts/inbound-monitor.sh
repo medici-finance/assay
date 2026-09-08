@@ -75,6 +75,11 @@ BURST_CAP="${INBOUND_MONITOR_BURST_CAP:-25}"
 # zero-check leaves open. 0 disables the proportional floor (the zero-check and
 # the at-limit check still stand).
 RETAIN_FLOOR="${INBOUND_MONITOR_RETAIN_FLOOR:-50}"
+# Pacing (shared vocabulary with pr-monitor.sh): ASSAY_MONITOR_PACE_SECONDS is
+# slept BETWEEN consecutive repo reads so a wide repo set does not become a
+# tight-loop poll that trips the forge's secondary rate limit. Default 2; 0
+# disables the sleep (the test's own speed).
+PACE="${ASSAY_MONITOR_PACE_SECONDS:-2}"
 
 usage() {
   cat <<'EOF'
@@ -123,7 +128,7 @@ command -v jq >/dev/null 2>&1 || { echo "inbound-monitor: jq not found" >&2; exi
 
 # Numeric knobs must be non-negative integers — a non-numeric value would poison
 # the arithmetic guards below and could silently disable a fail-closed check.
-for _kv in "LIMIT=$LIMIT" "BURST_CAP=$BURST_CAP" "RETAIN_FLOOR=$RETAIN_FLOOR"; do
+for _kv in "LIMIT=$LIMIT" "BURST_CAP=$BURST_CAP" "RETAIN_FLOOR=$RETAIN_FLOOR" "PACE=$PACE"; do
   if [[ ! "${_kv#*=}" =~ ^[0-9]+$ ]]; then
     echo "inbound-monitor: ${_kv%%=*} must be a non-negative integer, got '${_kv#*=}'" >&2
     exit 1
@@ -192,6 +197,12 @@ countlines() {
   printf '%s' "${n:-0}"
 }
 
+# The secondary-rate-limit / 429 signature, read from the captured gh stderr. A
+# tripped limit must not be compounded by the remaining reads (see the loop).
+is_ratelimit() {
+  grep -qiE 'secondary rate limit|(http )?429|too many requests' "$TMP_ERR"
+}
+
 # Is this an ARM run? Only if NOT ONE resolved repo already has state. A repo
 # added to an already-armed set seeds silently — we never re-flood on expansion.
 armed_run=1
@@ -201,9 +212,18 @@ done
 
 degraded=0
 armed_total=0
+read_done=0        # how many gh reads this cycle has made (paces the next one)
+_ri=-1             # index of the current repo (for the stop-on-limit tail)
 
 for repo in "${REPOS[@]}"; do
+  _ri=$((_ri + 1))
   sf=$(statefile "$repo")
+
+  # PACING: sleep between consecutive reads — never before the first, never
+  # around a repo that makes no call.
+  if [[ "$read_done" -gt 0 && "$PACE" -gt 0 ]]; then
+    sleep "$PACE"
+  fi
 
   # Poll. `if hits=$(...)` keeps `set -e`-free status inspection; gh's own
   # diagnostics are captured, never discarded — they are the only thing that
@@ -213,6 +233,20 @@ for repo in "${REPOS[@]}"; do
     read_ok=1
   else
     read_ok=0
+  fi
+  read_done=$((read_done + 1))
+
+  # STOP-ON-LIMIT: a tripped secondary rate limit marks this repo and every
+  # repo after it `rate-limited, skipped` (baselines retained) and ends the
+  # cycle without another `gh` call.
+  if [[ "$read_ok" -eq 0 ]] && is_ratelimit; then
+    degraded=1
+    _rj=$_ri
+    while [[ "$_rj" -lt "${#REPOS[@]}" ]]; do
+      printf 'MONITOR-DEGRADED: %s rate-limited, skipped\n' "${REPOS[$_rj]}"
+      _rj=$((_rj + 1))
+    done
+    break
   fi
 
   at_limit=0

@@ -1008,8 +1008,14 @@ translation:
   discipline every harness uses, and where the sandbox cannot create a worktree the worker
   **refuses** rather than working in a shared checkout — the isolation floor never degrades.
 
-The one acceptance step is a live smoke run on a Cursor install, the same posture every harness
-target holds until it has been exercised end-to-end.
+The one acceptance step is a live smoke run on a Cursor install, run against the scripted
+Cursor smoke protocol checklist (`cursor-smoke-protocol.md`) — a full desk loop (dispatch →
+isolated worktree → draft PR → one review cycle) on both surfaces, headless-first, not just a
+single skill invocation. The acceptance step and its Verify rows are specified in
+[brief 13](./streams/harness-portability/brief-13-cursor-live-desk-smoke.md). Its signed run
+log is the acceptance evidence; until a live Cursor environment exists the step is **blocked,
+not skipped**, the same posture every harness target holds until it has been exercised
+end-to-end.
 
 **You start with a stub, not a blank page.** `scaffold-streams` (`statusgen init`) writes a
 starting `CLAUDE.md` plus an `AGENTS.md` that points at it. The stub carries the **ten invariants**

@@ -78,12 +78,21 @@ identity. Three desk-specific residues `deskboot` does not carry:
      post publicly as normal.
 
 3. **Arm BOTH watchers via `capability:durable-monitor` — each a durable, re-arming watcher that survives across turns** (check
-   what is already armed first; never arm a second of either). The **event monitor** polls
-   `gh pr list --state open --limit 100` head-shas + states across the repo set, keyed
-   `<slug>#<num> <sha> <state>`, pre-seeded with current open heads/states so it emits only on
-   genuinely new PRs / pushes / state changes; the explicit `--limit` is mandatory (bare `gh pr list` silently caps at 30, and a repo
-   returning 100 rows may be truncated — widen). **Never a disowned shell loop** (`... & disown`):
-   it dies silently and nothing says so (§HARD GATE). The **cadenced liveness sweep** is a second,
+   what is already armed first; never arm a second of either). The **event monitor** is the
+   shipped `plugins/assay/scripts/pr-monitor.sh` — do NOT hand-write the poll. It reads each
+   repo's open PRs once (`gh pr list --state open --limit <N> --json
+   number,headRefOid,isDraft,state,mergeStateStatus`, the explicit `--limit` mandatory — bare
+   `gh pr list` silently caps at 30, and a page returning `--limit` rows is truncated and
+   degraded, not diffed), keeps a per-repo baseline so the first sight of a repo SEEDS silently
+   (pre-seeded, never a flood), and emits one `PR-EVENT: <slug>#<num> <kind> <old> -> <new>` line
+   per change (`kind ∈ opened | pushed | draft-flip | state | merge-state | closed`) — so a fresh
+   PR, a push, or a draft flip surfaces within one cadence tick. It PACES its reads: it sleeps
+   `ASSAY_MONITOR_PACE_SECONDS` (default 2) between repos and, at
+   `ASSAY_MONITOR_MAX_REPOS_PER_CYCLE` (default 0 = all), caps a cycle and carries a cursor to the
+   next run, so the watcher cannot become the tight-loop poll that once tripped the forge's
+   secondary rate limit and blocked the same session's flip tool; a tripped limit ends the cycle
+   without further reads. **Never a disowned shell loop** (`... & disown`): it dies silently and
+   nothing says so (§HARD GATE) — arm the script through the durable monitor. The **cadenced liveness sweep** is a second,
    independent watcher running the CLASSIFIED board — `deskboard actions --delta --quiet`, ~5 min —
    emitting *regardless of whether the event monitor fired*; the event monitor is best-effort,
    never the sole wake signal. **Never substitute `deskboard prs --quiet`**: the `prs` payload
