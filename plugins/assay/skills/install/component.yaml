@@ -1,0 +1,20 @@
+component: assay/install
+version: 0.28.0
+# The turnkey installer skill: scaffolds, acquires the pinned statusgen binary,
+# wires CI + the main-guard, and proves the install.
+provides:
+  - assay.skill.install
+inject:
+  required:
+    - key: assay.desk.verbs
+      range: ">=0.20.0 <1.0.0"
+    - key: assay.forge
+  optional:
+    - key: assay.harness
+apply:
+  - id: skill-body
+    effect: install the install skill directory into the harness plugin cache
+    boundary: inside
+    inverse: remove the skill directory (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

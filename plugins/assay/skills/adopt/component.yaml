@@ -1,0 +1,20 @@
+component: assay/adopt
+version: 0.28.0
+# The adoption-routing methodology skill: routes green-field / existing-suite /
+# carve-out installs and drives the install primitives.
+provides:
+  - assay.skill.adopt
+inject:
+  required:
+    - key: assay.desk.verbs
+      range: ">=0.20.0 <1.0.0"
+  optional:
+    - key: assay.harness
+    - key: assay.forge
+apply:
+  - id: skill-body
+    effect: install the adopt skill directory into the harness plugin cache
+    boundary: inside
+    inverse: remove the skill directory (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

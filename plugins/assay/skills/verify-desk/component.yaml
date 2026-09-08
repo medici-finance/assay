@@ -1,0 +1,21 @@
+component: assay/verify-desk
+version: 0.28.0
+# The post-merge verify role skill: drains the "Awaiting verification" queue and
+# advances implemented -> verified -> done on merged main.
+provides:
+  - assay.desk.role.verify-desk
+inject:
+  required:
+    - key: assay.desk.verbs
+      range: ">=0.20.0 <1.0.0"
+    - key: assay.roster.trust
+  optional:
+    - key: assay.harness
+    - key: assay.reviewer-identity
+apply:
+  - id: skill-body
+    effect: install the verify-desk skill directory into the harness plugin cache
+    boundary: inside
+    inverse: remove the skill directory (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

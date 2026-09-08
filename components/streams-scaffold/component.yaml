@@ -1,0 +1,16 @@
+component: assay/streams-scaffold
+version: 0.28.0
+# Scaffolds docs/streams/ with a README and the stream layout. A root provider:
+# the board and the registers read the streams tree.
+provides:
+  - assay.streams
+inject:
+  required: []
+  optional: []
+apply:
+  - id: streams-tree
+    effect: create docs/streams/ with a README and the per-stream layout
+    boundary: inside
+    inverse: remove docs/streams/ (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

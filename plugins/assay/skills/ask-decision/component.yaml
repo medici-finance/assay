@@ -1,0 +1,19 @@
+component: assay/ask-decision
+version: 0.28.0
+# The escalation skill: files a durable needs-decision / question / help-wanted
+# issue when a human fork is needed.
+provides:
+  - assay.skill.ask-decision
+inject:
+  required:
+    - key: assay.desk.verbs
+      range: ">=0.20.0 <1.0.0"
+  optional:
+    - key: assay.harness
+apply:
+  - id: skill-body
+    effect: install the ask-decision skill directory into the harness plugin cache
+    boundary: inside
+    inverse: remove the skill directory (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

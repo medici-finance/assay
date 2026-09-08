@@ -1,0 +1,19 @@
+component: assay/upgrade-assay
+version: 0.28.0
+# The upgrade skill: moves an adopter across umbrella versions, driving the
+# version marker and migration runner.
+provides:
+  - assay.skill.upgrade-assay
+inject:
+  required:
+    - key: assay.desk.verbs
+      range: ">=0.20.0 <1.0.0"
+  optional:
+    - key: assay.harness
+apply:
+  - id: skill-body
+    effect: install the upgrade-assay skill directory into the harness plugin cache
+    boundary: inside
+    inverse: remove the skill directory (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

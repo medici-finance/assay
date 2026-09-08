@@ -1,0 +1,17 @@
+component: assay/pdfingest
+version: 0.28.0
+# A utility skill: ingests PDFs for the research corpus. Self-contained — it reads
+# local input and depends only on the harness it runs in.
+provides:
+  - assay.skill.pdfingest
+inject:
+  required: []
+  optional:
+    - key: assay.harness
+apply:
+  - id: skill-body
+    effect: install the pdfingest skill directory into the harness plugin cache
+    boundary: inside
+    inverse: remove the skill directory (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

@@ -1,0 +1,19 @@
+component: assay/author-brief
+version: 0.28.0
+# The brief-authoring methodology skill: structures a phase plan as self-contained
+# briefs into dependency waves, written into the streams tree.
+provides:
+  - assay.skill.author-brief
+inject:
+  required:
+    - key: assay.streams
+      range: ">=0.20.0 <1.0.0"
+  optional:
+    - key: assay.harness
+apply:
+  - id: skill-body
+    effect: install the author-brief skill directory into the harness plugin cache
+    boundary: inside
+    inverse: remove the skill directory (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}
