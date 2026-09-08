@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
@@ -56,7 +57,7 @@ type FanoutLoop struct {
 	Rework func() ([]BoardRow, error)
 	// InFlight is the in-flight-claim source for the ADVISORY write-scope overlap warning:
 	// the items already claimed for this root, carried as their derived
-	// write-scopes. nil reads the root repo's local `refs/dispatch/*` claims (offline). Tests
+	// write-scopes. nil reads the root repo's local `refs/heads/dispatch/*` claims (offline). Tests
 	// inject fixtures here. It is ADVISORY only — nothing dispatches or blocks on it.
 	InFlight func() ([]loopengine.Item, error)
 
@@ -79,9 +80,16 @@ type FanoutLoop struct {
 	// is BLOCKED-ON-HUMAN, so Dispatch refuses rather than pretend to run.
 	Feeder func(loopengine.Item, loopengine.Tier, string) (loopengine.Result, error)
 	// DispatchSink makes a landed dispatch durable (record the handle + release the dispatch claim).
-	// nil defaults to the SAFE dry-run sink, which performs no network write — the autonomous cutover
-	// is BLOCKED-ON-HUMAN.
+	// nil builds the real releasing sink from the forge resolver (see sink()). Tests inject here.
 	DispatchSink Sink
+	// DryRun selects the printing sink instead of the releasing one: no network write is made,
+	// and every release is emitted as the line it WOULD have performed. It is an explicit
+	// choice, never a fallback — see sink().
+	DryRun bool
+	// ResolveForge overrides how the real sink obtains the Forge for an item's target repo.
+	// nil is production: deskkit.ForgeFor under the session's own App role. Tests inject here
+	// so the release path is exercised without a live remote.
+	ResolveForge forgeResolver
 
 	mu sync.Mutex
 	// inFlight / handled model the board's own claim-filtering for the reference build: a brief with
@@ -98,8 +106,10 @@ type FanoutLoop struct {
 
 func (f *FanoutLoop) Name() string { return "worker-desk" }
 
-// SelectQueue is the deterministic board read. It returns ORPHAN RESUMES FIRST, then
-// AWAITING-IMPLEMENTER-REWORK rows (both outrank fresh dispatch — worker-desk SKILL.md §Sources
+// SelectQueue is the deterministic board read. A fresh row addressed to THIS desk
+// (`to:worker`) is a DIRECTED message and LEADS the whole queue;
+// after the addressed lead it returns ORPHAN RESUMES, then
+// AWAITING-IMPLEMENTER-REWORK rows (both outrank ordinary fresh dispatch — worker-desk SKILL.md §Sources
 // of work rows 3 and 5: "resuming started work outranks a fresh brief"), then the Next-up rows
 // in board order, each already priority/staleness/cap/dep-filtered by statusgen — so every fresh
 // row it sees is already `todo` and unclaimed. It INCLUDES `issue-<NN>` placeholder rows: those
@@ -109,6 +119,13 @@ func (f *FanoutLoop) Name() string { return "worker-desk" }
 // It adds NO scoring pass of its own — the order it returns is the order the boards agreed on.
 func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	var items []loopengine.Item
+	// addressed holds fresh rows carrying this desk's inbox label (`to:worker`). They are
+	// a DIRECTED message to this desk, so they LEAD the whole queue — ahead of orphan
+	// resumes and rework — by construction (`fanoutloop plan` emits
+	// `to:<my role>` items first). Only fresh board rows can be addressed; orphan/rework
+	// items act on an existing PR and carry no board labels.
+	var addressed []loopengine.Item
+	inbox := f.inboxRole()
 
 	// 1. Orphan resumes — highest priority (drain started work before starting new).
 	orphans, err := f.orphanSource()
@@ -163,9 +180,39 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 		if f.isHandled(r.ID()) {
 			continue
 		}
-		items = append(items, r.toItem(f.TargetSHA))
+		it := r.toItem(f.TargetSHA)
+		if inbox != "" && addressedToRole(r, inbox) {
+			// A directed message to THIS desk. Stamp the addressee (so the plan output and
+			// any downstream reader can see the `to:` kind) and route it to the leading lane.
+			it.Payload["to"] = inbox
+			addressed = append(addressed, it)
+			continue
+		}
+		items = append(items, it)
 	}
-	return items, nil
+	// Addressed items lead the whole queue; board order is preserved within each lane.
+	return append(addressed, items...), nil
+}
+
+// inboxRole is the desk role whose `to:<role>` inbox this loop leads with — the App role
+// bound to the worker-desk loop (deskkit.TokenRoleForLoop), i.e. `worker`. An unbound loop
+// name yields "" and no addressed lane, rather than a guessed role.
+func (f *FanoutLoop) inboxRole() string {
+	role, ok := deskkit.TokenRoleForLoop(f.Name())
+	if !ok {
+		return ""
+	}
+	return role
+}
+
+// addressedToRole reports whether a board row carries the `to:<role>` desk-inbox label
+// naming exactly this role (deskkit.AddressedToOf's Stamped state — a conflicting pair is
+// malformed and is NOT treated as addressed). Rows from a label-less board source (the
+// default STATUS.md reader) carry no labels and are never addressed, exactly as
+// isForeignDispatchToken degrades.
+func addressedToRole(r BoardRow, role string) bool {
+	addr, state := deskkit.AddressedToOf(r.Labels)
+	return state == deskkit.RaisedByStamped && strings.EqualFold(addr, role)
 }
 
 // TierPolicy is in tier.go.
@@ -227,7 +274,10 @@ func (f *FanoutLoop) Land(r loopengine.Result) error {
 	f.handled[r.Item.ID] = true
 	f.mu.Unlock()
 
-	s := f.sink()
+	s, serr := f.sink()
+	if serr != nil {
+		return serr
+	}
 	if err := s.RecordDispatch(r); err != nil {
 		return err
 	}
@@ -306,11 +356,34 @@ func (f *FanoutLoop) emit() io.Writer {
 	return os.Stdout
 }
 
-func (f *FanoutLoop) sink() Sink {
+// sink returns the Sink a landing acts through.
+//
+// The DEFAULT is the real, claim-releasing sink, constructed from the forge resolver — this is
+// where the file-level "wired only at cutover, on the owner's call" deferral is discharged. It
+// can no longer yield a sink holding a nil forge: the resolver is obtained here and refused at
+// construction if absent (newForgeDispatchSink), and the forge for the item's target repo is
+// resolved through deskkit.ForgeFor at release time.
+//
+// DryRun selects the printing sink INSTEAD, explicitly. That is the shape the safety property
+// needs: a driver that must not touch the network says so, rather than a misconfigured
+// deployment silently falling back to a sink that leaks a claim per landing.
+func (f *FanoutLoop) sink() (Sink, error) {
 	if f.DispatchSink != nil {
-		return f.DispatchSink
+		return f.DispatchSink, nil
 	}
-	return dryRunSink{out: f.emit()}
+	if f.DryRun {
+		return dryRunSink{out: f.emit()}, nil
+	}
+	return newForgeDispatchSink(f.emit(), f.forgeResolver())
+}
+
+// forgeResolver is the resolver the real sink is built from: production's deskkit.ForgeFor
+// wiring unless a test injected one.
+func (f *FanoutLoop) forgeResolver() forgeResolver {
+	if f.ResolveForge != nil {
+		return f.ResolveForge
+	}
+	return productionForgeResolver
 }
 
 // handle is the interim in-flight tracker: Done() fires when Feeder returns the structured Result.

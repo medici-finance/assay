@@ -77,9 +77,9 @@ func (g *fakeGit) exec(dir, name string, args ...string) (string, error) {
 			g.prsCreated++
 		case "update":
 			g.prsUpdated++
-		}
-	case "gh":
-		if len(args) >= 2 && args[0] == "pr" && args[1] == "edit" {
+		case "edit":
+			// The coalesced title/body refresh now goes out through the sanctioned
+			// `deskpr edit` verb, not a raw `gh pr edit`.
 			g.prEdits++
 		}
 	}

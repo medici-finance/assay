@@ -31,9 +31,11 @@ const dispatchClaimScriptRel = "tools/dispatch-claim.sh"
 
 // readLiveClaims enumerates every `state=dispatched` dispatch claim for repo, live:
 //
-//  1. list refs/dispatch/* on the repo's remote (an in-process go-git listing, gitcore.List
-//     — never the git binary) to get the claim KEYS (the documented house convention: SKILL.md
-//     and the worker prompt both name `git ls-remote origin 'refs/dispatch/*'` for this read);
+//  1. list the claim namespace on the repo's remote (an in-process go-git listing, gitcore.List
+//     — never the git binary) to get the claim KEYS. The prefix is deskkit.ClaimRefsPrefix, the
+//     same constant the release path builds its ref from, so this listing and that delete cannot
+//     name different namespaces (the documented house convention: SKILL.md and the worker prompt
+//     both name `git ls-remote origin 'refs/heads/dispatch/*'` for this read);
 //  2. for each key, shell to the consumer's own tools/dispatch-claim.sh `show <key> --repo
 //     <repo>` — the SAME external script cmd/deskdispatch/dispatch.go already shells to for
 //     acquire/show, so this is a second, read-only caller of an existing external contract,
@@ -59,43 +61,51 @@ func readLiveClaims(root, repo string, now time.Time) ([]claimRecord, error) {
 
 	refs, lerr := gitcore.List(gitcore.ListOpts{URL: "https://github.com/" + repo + ".git"})
 	if lerr != nil {
-		return nil, deskkit.Unverifiable("cannot list refs/dispatch/* on "+repo, lerr)
+		return nil, deskkit.Unverifiable("cannot list "+deskkit.ClaimRefsPattern+" on "+repo, lerr)
 	}
 	var keys []string
-	const prefix = "refs/dispatch/"
 	for _, r := range refs {
-		name := string(r.Name())
-		if strings.HasPrefix(name, prefix) {
-			keys = append(keys, strings.TrimPrefix(name, prefix))
+		if key, ok := deskkit.ClaimKeyFromRef(string(r.Name())); ok {
+			keys = append(keys, key)
 		}
 	}
 
 	var claims []claimRecord
 	for _, key := range keys {
-		out, serr := exec.Command(script, "show", key, "--repo", repo).CombinedOutput()
+		out, serr := showClaim(script, key, repo)
 		if serr != nil {
-			return nil, deskkit.Unverifiable(dispatchClaimScriptRel+" show "+key+" failed: "+strings.TrimSpace(string(out)), serr)
+			return nil, deskkit.Unverifiable(dispatchClaimScriptRel+" show "+key+" failed: "+strings.TrimSpace(out), serr)
 		}
-		state := claimShowField(claimStateFieldRe, string(out))
+		state := claimShowField(claimStateFieldRe, out)
 		if state != "dispatched" {
 			continue
 		}
-		ageMin, aerr := strconv.Atoi(claimShowField(claimAgeFieldRe, string(out)))
+		ageMin, aerr := strconv.Atoi(claimShowField(claimAgeFieldRe, out))
 		if aerr != nil {
-			return nil, deskkit.Unverifiable(dispatchClaimScriptRel+" show "+key+": no parseable age= field: "+strings.TrimSpace(string(out)), aerr)
+			return nil, deskkit.Unverifiable(dispatchClaimScriptRel+" show "+key+": no parseable age= field: "+strings.TrimSpace(out), aerr)
 		}
 		claims = append(claims, claimRecord{
 			Key:          key,
 			Item:         key,
-			Owner:        claimShowField(claimOwnerFieldRe, string(out)),
+			Owner:        claimShowField(claimOwnerFieldRe, out),
 			Repo:         repo,
-			Branch:       claimShowField(claimBranchFieldRe, string(out)),
+			Branch:       claimShowField(claimBranchFieldRe, out),
 			Tier:         "cheap", // the script's `show` carries no tier; see the doc note below
 			State:        state,
 			DispatchedAt: now.Add(-time.Duration(ageMin) * time.Minute).Format(time.RFC3339),
 		})
 	}
 	return claims, nil
+}
+
+// showClaim is the SINGLE exec site for the consumer repo's own tools/dispatch-claim.sh `show`
+// verb — both readLiveClaims (enumeration) and reconcile.go's live claim reader route through
+// it, so the tree carries ONE unresolved-argv blind spot for this script, not two (the
+// forgeban ledger entry keys on this function). argv[0] is the script path resolved at runtime
+// under --root; it is not a forge CLI, and this tree does not ship the script.
+func showClaim(script, key, repo string) (string, error) {
+	out, err := exec.Command(script, "show", key, "--repo", repo).CombinedOutput()
+	return string(out), err
 }
 
 // claimStateFieldRe, claimAgeFieldRe, claimOwnerFieldRe and claimBranchFieldRe pull the

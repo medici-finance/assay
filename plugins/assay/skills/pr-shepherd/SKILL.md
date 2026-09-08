@@ -24,7 +24,7 @@ verdict on the work is the review desk's. Between those two sits this skill.
 
 Before touching the branch, verify no other session or worker owns it:
 
-- **Dispatch claims**: `git ls-remote origin 'refs/dispatch/*'` — a live claim naming this
+- **Dispatch claims**: `git ls-remote origin 'refs/heads/dispatch/*'` — a live claim naming this
   PR's brief/issue key means it is owned; skip it. The claim is a **forge ref**, so this read
   sees dispatchers on other machines too, which a machine-local claims directory never did.
   The repo's own `dispatch-claim` helper's `show <key>` verb prints the holder, state and age:
@@ -180,7 +180,7 @@ body.
 **Report a review verdict with its id and its verbatim source line — NEVER synthesize one.**
 A shepherd once reported the reviewer App as APPROVED at head, with a plausible timestamp and a
 "supersedes CHANGES_REQUESTED" narrative, for a review that did not exist; the true state was
-CHANGES_REQUESTED with findings still open. When you tell the desk — or your final report —
+CHANGES_REQUESTED with findings still open. When you report to the desk — or in your final report —
 what a review says, quote the review `id` and the verbatim
 `gh api repos/<owner>/<repo>/pulls/<N>/reviews` line it came from, so the reader can re-run that
 read before acting. **You never recommend a ready-flip** (that is the desk's call, §5), and "I

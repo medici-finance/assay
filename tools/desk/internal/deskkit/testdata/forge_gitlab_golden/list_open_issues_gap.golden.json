@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": null,
+  "err": "could-not-check: the GitLab backend does not serve ListOpenIssues for medici-finance/assay — the issue-board summary is consumed only paired with IssueTrustEvents (the trust gate + escalation clock), which is itself could-not-check on GitLab, so the whole issue lane is deferred to the forge-gitlab trust-events brief rather than shipping a list its gate cannot admit.",
+  "not_found": false
+}

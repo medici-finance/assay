@@ -1,12 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"os/exec"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -150,49 +146,34 @@ func AdmissionCounts(as []Admission) (admitted, quarantined, couldNotCheck int) 
 	return
 }
 
-// ghTrustProbe is the production probe: GET-only reads, one cheap author read plus — for untrusted
-// authors ONLY — one bounded thread read. A trusted author costs no second call, which is what
-// keeps the API growth bounded on a busy scope.
-func ghTrustProbe(run func(args ...string) ([]byte, error)) TrustProbe {
-	if run == nil {
-		run = func(args ...string) ([]byte, error) {
-			cmd := exec.Command("gh", args...)
-			return cmd.Output()
-		}
+// forgeTrustProbe is the production probe, reaching the forge through deskkit.ForgeFor (never
+// the `gh` CLI): one cheap author read (GetIssue) plus — for untrusted authors ONLY — one
+// bounded thread read (IssueTrustEvents). A trusted author costs no second call, which is what
+// keeps the API growth bounded on a busy scope. resolve is the forge-resolution seam so a test
+// can inject a recorded backend without a network.
+func forgeTrustProbe(resolve func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error)) TrustProbe {
+	if resolve == nil {
+		resolve = forgeFor
 	}
 	return func(repo string, number int) (string, time.Time, []deskkit.ContentEvent, bool, error) {
-		out, err := run("issue", "view", strconv.Itoa(number), "-R", repo, "--json", "author")
+		f, fr, ferr := resolve(repo)
+		if ferr != nil {
+			return "", time.Time{}, nil, false, ferr
+		}
+		iss, err := f.GetIssue(fr, number)
 		if err != nil {
 			return "", time.Time{}, nil, false, fmt.Errorf("cannot read the author of %s#%d: %w", repo, number, err)
 		}
-		var v struct {
-			Author struct {
-				Login string `json:"login"`
-			} `json:"author"`
-		}
-		if err := json.Unmarshal(out, &v); err != nil {
-			return "", time.Time{}, nil, false, fmt.Errorf("cannot parse the author of %s#%d: %w", repo, number, err)
-		}
-		author := v.Author.Login
+		author := iss.Author.Login
 		if deskkit.TrustedAuthor(author) {
 			// Trusted authors never need the blessing read. complete=true is honest here: the
 			// blessing question is not asked, not answered partially.
 			return author, time.Time{}, nil, true, nil
 		}
-		owner, name, ok := strings.Cut(repo, "/")
-		if !ok {
-			return author, time.Time{}, nil, false, fmt.Errorf("bad repo slug %q", repo)
+		tp, terr := f.IssueTrustEvents(fr, number)
+		if terr != nil {
+			return author, time.Time{}, nil, false, fmt.Errorf("cannot read the thread of %s#%d: %w", repo, number, terr)
 		}
-		raw, err := run("api", "graphql",
-			"-f", "query="+deskkit.IssueTrustQuery,
-			"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(number))
-		if err != nil {
-			return author, time.Time{}, nil, false, fmt.Errorf("cannot read the thread of %s#%d: %w", repo, number, err)
-		}
-		bodyEdited, events, complete, perr := deskkit.ParseIssueTrustPayload(raw)
-		if perr != nil {
-			return author, time.Time{}, nil, false, fmt.Errorf("cannot parse the thread of %s#%d: %w", repo, number, perr)
-		}
-		return author, bodyEdited, events, complete, nil
+		return author, tp.BodyEdited, tp.Events, tp.Complete, nil
 	}
 }

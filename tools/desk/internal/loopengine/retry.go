@@ -60,7 +60,7 @@ import (
 //     unclassified below.
 //   - The three-state WorkEvidence probe on Claim landed earlier. This file reuses
 //     that shape rather than inventing a second one.
-//   - The GitHub-durable refs/dispatch/<id> claim is elsewhere. Retry interacts with
+//   - The forge-durable refs/heads/dispatch/<id> claim is elsewhere. Retry interacts with
 //     claims by HOLDING one across attempts — see dispatchWithRetry.
 
 // FailureClass is the classification of a dispatch failure. It is a string so the declared

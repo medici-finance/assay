@@ -84,6 +84,12 @@
       "file": "cmd/desktoken/coverage.go",
       "old": "\tcase \"gitlab\":\n\t\treturn deskkit.Refused(\"coverage is GitHub-only: a GitLab PAT has no App installation to enumerate\")",
       "new": "\tcase \"gitlab\":\n\t\tbreak"
+    },
+    {
+      "name": "role->App binding: remove the binding lookup (appNameFor returns the role's own default unconditionally, ignoring the <ROLE>_APP binding) — the --version bindings echo must redden",
+      "file": "cmd/desktoken/desktoken.go",
+      "old": "\treturn deskkit.AppBinding(role)",
+      "new": "\treturn role + \"-app\""
     }
   ]
 }

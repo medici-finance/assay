@@ -127,6 +127,15 @@ func parseEnvelope(raw []byte, pr bool) (*gqlItem, error) {
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return nil, fmt.Errorf("cannot parse trust query response: %w", err)
 	}
+	return itemFromEnvelope(env, pr)
+}
+
+// itemFromEnvelope extracts the trusted item from an ALREADY-DECODED GraphQL envelope,
+// applying the same GraphQL-errors and missing-item refusals parseEnvelope applies to a raw
+// body. It exists so a caller that decoded the envelope itself — a Forge backend running the
+// query through its own authenticated transport rather than the CLI — parses the payload
+// through exactly this one reader, so the seam and the two CLI surfaces cannot drift.
+func itemFromEnvelope(env gqlEnvelope, pr bool) (*gqlItem, error) {
 	if len(env.Errors) > 0 {
 		msgs := make([]string, 0, len(env.Errors))
 		for _, e := range env.Errors {
@@ -142,6 +151,23 @@ func parseEnvelope(raw []byte, pr bool) (*gqlItem, error) {
 		return nil, fmt.Errorf("trust query returned no item (wrong number, or no access)")
 	}
 	return item, nil
+}
+
+// trustFromEnvelope parses an already-decoded trust-query envelope into a TrustPayload — the
+// typed result a Forge backend's PRTrustEvents/IssueTrustEvents returns. It routes through
+// itemFromEnvelope + collectEvents, the same two functions the raw-bytes ParseXTrustPayload
+// readers use, so the backend and the CLI surfaces yield identical verdicts on identical
+// payloads.
+func trustFromEnvelope(env gqlEnvelope, pr bool) (TrustPayload, error) {
+	item, err := itemFromEnvelope(env, pr)
+	if err != nil {
+		return TrustPayload{}, err
+	}
+	bodyEdited, events, complete, cerr := collectEvents(item, pr)
+	if cerr != nil {
+		return TrustPayload{}, cerr
+	}
+	return TrustPayload{BodyEdited: bodyEdited, Events: events, Complete: complete}, nil
 }
 
 func collectEvents(item *gqlItem, pr bool) (bodyEdited time.Time, events []ContentEvent, complete bool, err error) {

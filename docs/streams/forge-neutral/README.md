@@ -208,13 +208,14 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 02 | [Forge-qualified identity — roster entries, bot renderings, review corroboration](brief-02-forge-qualified-identity.md) | 2 | M | implemented | — | — |
 | 03 | [Write verbs A — deskpost, deskreply, deskflip onto the resolver](brief-03-write-verbs-comment-and-flip.md) | 2 | M | implemented | — | — |
 | 04 | [Write verbs B — deskpr, deskfile, deskclose, deskevidence onto the resolver](brief-04-write-verbs-issues-and-evidence.md) | 2 | M | implemented | — | — |
-| 05 | [Claim layer — the GitLab shape of `refs/dispatch/*` and its release](brief-05-claim-layer-forge-shape.md) | 2 | M | todo | — | — |
-| 06 | [Read verbs — deskboard, issueboard, scanloop, reviewloop on the seam](brief-06-read-verbs-on-the-seam.md) | 3 | M | todo | — | — |
+| 05 | [Claim layer — the GitLab shape of `refs/dispatch/*` and its release](brief-05-claim-layer-forge-shape.md) | 2 | M | implemented | — | — |
+| 06 | [Read verbs — deskboard (board.go reads), issueboard, scanloop on the seam](brief-06-read-verbs-on-the-seam.md) | 3 | M | implemented | — | — |
 | 07 | [statusgen acting identity — Evidence-actor and `verifyrun` name the forge identity that acted](brief-07-statusgen-acting-identity.md) | 3 | M | todo | — | — |
 | 08 | [statusgen forge-aware — `init` CI scaffold, auto-flip corroboration, honest claim decay](brief-08-statusgen-forge-aware.md) | 4 | M | todo | — | — |
 | 09 | [Substrate — leak-gate verdict on merge requests, `cellctl` forge-aware `new`/`up`](brief-09-substrate-leakgate-and-cellctl.md) | 3 | M | todo | — | — |
 | 10 | [Conformance — one round trip driven entirely by desk verbs, and the writes they refuse](brief-10-conformance-round-trip.md) | 5 | M | todo | — | — |
 | 11 | [Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives](brief-11-install-without-gh.md) | 5 | M | todo | — | — |
+| 12 | [deskboard non-board reads onto the seam — PR search, commit history, single-commit, combined-status, workflow listing](brief-12-deskboard-non-board-reads-onto-the-seam.md) | 4 | L | todo | — | — |
 
 ## Critical path
 
@@ -272,16 +273,37 @@ hand-built API calls — the exact property the 2026-09-02 pilot could not have
 the install completes on a box with no `gh` on `PATH` (11), since today the very first
 primitive is `gh release download`.
 
-**What the ratchet reads at each wave.** 24 at `deae247` → 17 after 03 (`deskreply` 1 +
-`deskflip` 6) → 14 after 04 (`deskpr`, `deskfile`, `deskclose`) → 10 after 06 (`deskboard`,
-`issueboard`, `scanloop` ×2). The **ten rows that remain are declared out of scope and named**
-rather than left implicit: `deskadvisory`, `deskdigest`, `deskdisposition`, `deskmerge`
-(identity — each runs under an ambient credential by documented design, so migrating them is a
-custody decision this stream does not take), `deskroster` ×2, `deskpushguard`,
-`repohardenguard`, `deskdispatch` (no-op — branch→PR resolution, ruleset and App-permission
-reads, and label writes have no enumerated `Forge` method and no settled GitLab mapping), and
-`internal/askassay/probe.go::execRead` (unresolved argv). Each is a follow-up brief, not a
-silent remainder.
+**What the ratchet reads at each step** (the value is `const allowedInvocationCeiling` in
+`tools/desk/internal/forgeban/allowlist.go`; each step is a set of permit rows whose `reason:`
+names its own exit condition — read the reasons, not a wave count):
+
+- **24** at `deae247` — the starting census.
+- **17** after 03 — `deskreply`'s one helper and `deskflip`'s six rows came off with the write
+  wiring (both already minted an App token, so their identity question was already answered).
+- **16** after 04 — 04 is a PARTIAL step: it added the Evidence read/write ops
+  (`WriteFile`/`ReadFile`) and re-homed `deskevidence`'s mint onto the resolver, but retired
+  NO permit row, because `deskpr`/`deskfile`/`deskclose` still ship a documented ambient-
+  identity fallback; migrating them is the follow-on `04b`, not 04.
+- **13** after 06 — `issueboard`'s `ghRun` and `scanloop`'s two gh sites (`lane.go`'s
+  coalesced title/body refresh, now the sanctioned `deskpr edit` verb; `trust.go`'s probe, now
+  the seam) came off. `deskboard`'s row is NARROWED, not removed: its two hand-authored GraphQL
+  reads moved to typed ops, its five peripheral read categories stay behind that one row, whose
+  exit is the deskboard non-board-reads follow-up brief. 06 also removed the now-stale
+  `scanloop lane.go::RealExec` unresolved-argv LEDGER row (its argv[0] resolves at compile time
+  now).
+- **10** once `04b` retires `deskpr`/`deskfile`/`deskclose` (their ambient-fallback flags gone).
+- **9** once the deskboard non-board-reads follow-up puts the five peripheral read categories on
+  the interface and retires deskboard's narrowed row.
+
+The **rows that remain after 06 are declared out of scope and named** by their own `reason:`,
+not left implicit: `deskadvisory`, `deskdigest`, `deskdisposition`, `deskmerge` (identity — each
+runs under an ambient credential by documented design, so migrating them is a custody decision
+this stream does not take), `deskroster` ×2, `deskpushguard`, `repohardenguard`, `deskdispatch`
+(no-op — branch→PR resolution, ruleset and App-permission reads, and the label-timeline read
+have no enumerated `Forge` method and no settled GitLab mapping), plus `deskpr`/`deskfile`/
+`deskclose` (04b) and `deskboard` (the non-board-reads follow-up). The `askassay/probe.go::
+execRead` unresolved-argv row remains in the LEDGER, not the permit list. Each is a follow-up
+brief, not a silent remainder.
 
 **Related open work, not on this path.** `#274` (the `go-gh` call-site migration for
 `deskpr`/`deskfile`/`deskclose`) overlaps brief 04's GitHub half: 04 subsumes it for those

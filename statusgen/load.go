@@ -68,6 +68,39 @@ var reservedRegisterNames = map[string]bool{
 	decisionsDirName:    true,
 }
 
+// selfDeclaredRegisterRe matches the canonical self-declaration a register's
+// README carries per spec/registers-v1.md §7 — the DECISIONS register README
+// states "It is a register, not a stream — stream discovery skips it." A
+// directory whose README makes this declaration is a register index, not a
+// stream board.
+//
+// It complements reservedRegisterNames above: the name set skips the registers
+// the spec fixes by directory name (findings/intake/requirements/decisions),
+// while this marker skips a self-declaring register directory whose name is NOT
+// in that set — a register the spec adds later, or a house-local one — so stream
+// discovery degrades to a SKIP rather than aborting the whole --next-up /
+// --consumers run on the register's frontmatter-free README (issue #616). The
+// anchor "register, not a stream" is specific enough not to match an ordinary
+// stream README that merely uses the words "not a stream" in prose.
+var selfDeclaredRegisterRe = regexp.MustCompile(`(?i)register,\s+not\s+a\s+stream`)
+
+// isSelfDeclaredRegisterREADME reports whether the README at path declares its
+// directory a register per spec/registers-v1.md §7. A register README
+// legitimately carries no `--- … ---` frontmatter, so it is consulted ONLY when
+// a README has already failed stream-frontmatter parsing — it can therefore
+// never override a well-formed stream README.
+//
+// An UNREADABLE README returns false (three-state discipline: a permission/I-O
+// failure is could-not-check, never rounded to a silent register skip — the
+// caller then surfaces the original parse error).
+func isSelfDeclaredRegisterREADME(path string) bool {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return selfDeclaredRegisterRe.Match(raw)
+}
+
 // parseFindings reads findings from the docs/streams/findings/ per-entry
 // directory. Returns nil, nil when the directory does not exist (empty register).
 func parseFindings(path string) ([]Finding, error) {
@@ -180,6 +213,15 @@ func loadStreams(root string) ([]*Stream, []Finding, error) {
 		}
 		s, err := parseStreamREADME(readme)
 		if err != nil {
+			// A README that declares itself a register (spec/registers-v1.md §7)
+			// is a register index, not a malformed stream: its "no frontmatter"
+			// is the EXPECTED shape for a register, not an error. Skip it so
+			// stream discovery does not abort the whole --next-up/--consumers run
+			// on a register README whose directory name is not in
+			// reservedRegisterNames (issue #616).
+			if isSelfDeclaredRegisterREADME(readme) {
+				continue
+			}
 			return nil, nil, err
 		}
 		// Stream→root tagging: the root a stream was

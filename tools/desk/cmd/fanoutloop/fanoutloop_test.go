@@ -568,7 +568,10 @@ func (f *recordingForge) DeleteRef(repo deskkit.ForgeRepo, ref string) error {
 // not the whole API.
 func TestReleaseDispatchClaim_UsesEnumeratedDeleteRef(t *testing.T) {
 	f := &recordingForge{}
-	s := newForgeDispatchSink(io.Discard, f)
+	s, serr := newForgeDispatchSink(io.Discard, staticResolver(f))
+	if serr != nil {
+		t.Fatalf("newForgeDispatchSink: %v", serr)
+	}
 	it := loopengine.Item{ID: "fixture/02", Payload: map[string]string{"repo": "medici-finance/assay"}}
 	if err := s.ReleaseDispatchClaim(it); err != nil {
 		t.Fatalf("ReleaseDispatchClaim: %v", err)
@@ -579,7 +582,7 @@ func TestReleaseDispatchClaim_UsesEnumeratedDeleteRef(t *testing.T) {
 	if want := (deskkit.ForgeRepo{Owner: "medici-finance", Name: "assay"}); f.repo != want {
 		t.Fatalf("repo coordinate: got %+v want %+v", f.repo, want)
 	}
-	if want := "dispatch/fixture--02"; f.ref != want {
+	if want := deskkit.ClaimRefNamespace + "/fixture--02"; f.ref != want {
 		t.Fatalf("ref: got %q want %q", f.ref, want)
 	}
 	// The ref the sink builds must survive the interface's own namespace validation — a ref

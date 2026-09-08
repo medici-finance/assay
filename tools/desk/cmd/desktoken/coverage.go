@@ -332,7 +332,11 @@ func listInstallationRepos(token string) ([]string, error) {
 // path's primitives (resolvePEMPath, checkPrivateKeyMode, parsePrivateKey,
 // buildJWT) and writes NOTHING.
 func buildAppJWTForRole(role, prefix string) (string, error) {
-	pemPath, pemErr := resolvePEMPath(role, prefix)
+	// coverage is a read-only diagnostic and stays role-keyed (the role→App binding
+	// is scoped to the mint path): pass the default App-name so
+	// resolvePEMPath resolves the same `<role>-app.pem` it did before its signature
+	// took an App-name.
+	pemPath, pemErr := resolvePEMPath(role+"-app", prefix)
 
 	appID, aerr := deskkit.AppID(role)
 	if aerr != nil {

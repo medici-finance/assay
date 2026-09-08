@@ -18,7 +18,7 @@ import (
 // on overlap it would be a lock — a different, rejected design.
 //
 // It is best-effort: the candidate's scopes come from its `--brief` (when given); the in-flight
-// universe is the root repo's local `refs/dispatch/*` claims resolved to briefs under `--root`.
+// universe is the root repo's local `refs/heads/dispatch/*` claims resolved to briefs under `--root`.
 // A missing brief, a non-git root, or an underivable scope simply yields fewer (or no) lines —
 // never a failed dispatch.
 

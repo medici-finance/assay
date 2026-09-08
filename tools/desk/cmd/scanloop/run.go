@@ -96,7 +96,7 @@ func cmdRun(args []string, stdout io.Writer) error {
 
 	probe := TrustProbe(nil)
 	if !o.offline {
-		probe = ghTrustProbe(nil)
+		probe = forgeTrustProbe(nil)
 	}
 
 	worktreeBase := o.worktrees

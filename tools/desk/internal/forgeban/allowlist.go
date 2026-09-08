@@ -61,7 +61,7 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
-const allowedInvocationCeiling = 16
+const allowedInvocationCeiling = 13
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
@@ -74,9 +74,16 @@ var AllowedInvocations = []Allowance{
 	},
 	{
 		Key: "cmd/deskboard/board.go::ghRun::gh",
-		Reason: "TODO(forge-surface): the board's whole read surface (pr list, pr diff, repo contents, the " +
-			"compare endpoint, two GraphQL queries and the issues-by-label walk). Four of those have enumerated " +
-			"ops; pr list, pr diff, contents, compare and the GraphQL reads do not, and deskboard mints no token.",
+		Reason: "TODO(forge-surface): NARROWED — its exit condition is the deskboard non-board-reads " +
+			"follow-up brief. The board's two hand-authored GraphQL reads (the bulk open-PR read and the " +
+			"PR/issue trust queries) now route through the typed ListOpenChanges/PRTrustEvents/" +
+			"IssueTrustEvents ops, so ghRun's SURVIVING callers are the board's five PERIPHERAL read " +
+			"categories: PR search (scope.go), commit-history listing (health.go), single-commit reads " +
+			"(stalled.go, prstate.go), the combined-status probe (zeroci.go) and the workflow-directory / " +
+			"contents / compare / label-events / reviews / changed-files REST reads (zeroci.go, board.go). None " +
+			"of those has an enumerated Forge op yet, and putting code-search or commit-history on the " +
+			"interface is a surface decision reserved to that follow-up brief's Review gate. This is the ONE " +
+			"gh literal left in cmd/deskboard.",
 	},
 	{
 		Key: "cmd/deskclose/exec.go::runGH::gh",
@@ -139,27 +146,11 @@ var AllowedInvocations = []Allowance{
 			"real addition with a real GitLab paging shape behind it.",
 	},
 	{
-		Key: "cmd/issueboard/board.go::ghRun::gh",
-		Reason: "TODO(forge-surface): `issue list`, `issue view --json title`, and a GraphQL count. No " +
-			"enumerated issue-listing op; the count query has no REST equivalent on either forge.",
-	},
-	{
 		Key: "cmd/repohardenguard/check.go::ghRun::gh",
 		Reason: "TODO(forge-surface): `gh api` reads of rulesets, branch protection and App permissions. These " +
 			"are repo-HARDENING reads, not workflow forge ops — the same class inventory delta D3 keeps out of " +
 			"the frozen set. They need their own enumerated surface and their own GitLab mapping (protected " +
 			"branches + push rules), which is a brief, not a line.",
-	},
-	{
-		Key: "cmd/scanloop/lane.go::scanCarrierPRLane.Execute::gh",
-		Reason: "TODO(forge-surface): `pr edit --add-label` maps to the enumerated ApplyLabels; what is left " +
-			"is identity — this lane mints no token of its own.",
-	},
-	{
-		Key: "cmd/scanloop/trust.go::ghTrustProbe::gh",
-		Reason: "TODO(forge-surface): GET-only trust reads (author identity, and the association read for an " +
-			"untrusted author). The author half is covered by GetIssue/GetPullRequest's Account; the association " +
-			"read is not enumerated.",
 	},
 }
 
@@ -202,11 +193,6 @@ var UnresolvedArgv = []Allowance{
 		Reason: "the preflight probe seam; the argv comes from deskkit's preflight probe table, not from a caller.",
 	},
 	{
-		Key: "cmd/scanloop/lane.go::RealExec::<unresolved>",
-		Reason: "the lane executor seam. Its callers pass literal argvs, so a forge CLI reaching it is caught " +
-			"by layer 2 at the caller — which is how the one `gh pr edit` caller in this file is already listed.",
-	},
-	{
 		Key:    "cmd/verifyloop/durable.go::newGitDurable::<unresolved>",
 		Reason: "git-only durable-state helper; its callers pass git argvs.",
 	},
@@ -236,12 +222,13 @@ var UnresolvedArgv = []Allowance{
 		Reason: "runs the configured risk-classifier binary by path; not a forge path.",
 	},
 	{
-		Key: "cmd/desksupervise/live.go::readLiveClaims::<unresolved>",
-		Reason: "runs the target repo's own tools/dispatch-claim.sh `show` verb (the SAME consumer-repo " +
-			"claim script cmd/deskdispatch/dispatch.go's stepClaim shells to, resolved at runtime under " +
-			"--root/--claim-root, never a compile-time literal) to read one dispatch claim's " +
-			"state/owner/branch. Not a forge CLI: it is a script this tree does not ship, external to " +
-			"every consumer repo it runs against.",
+		Key: "cmd/desksupervise/live.go::showClaim::<unresolved>",
+		Reason: "the SINGLE exec site (readLiveClaims' enumeration and reconcile.go's live claim reader " +
+			"both route through it) that runs the target repo's own tools/dispatch-claim.sh `show` verb " +
+			"(the SAME consumer-repo claim script cmd/deskdispatch/dispatch.go's stepClaim shells to, " +
+			"resolved at runtime under --root/--claim-root, never a compile-time literal) to read one " +
+			"dispatch claim's state/owner/branch. Not a forge CLI: it is a script this tree does not " +
+			"ship, external to every consumer repo it runs against.",
 	},
 	{
 		Key: "internal/deskkit/migrate.go::runStatusgenRegen::<unresolved>",

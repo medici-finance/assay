@@ -53,13 +53,10 @@ type ListCap struct {
 
 // declaredListCaps is the register. Order is stable for diff review.
 var declaredListCaps = []ListCap{
-	{
-		File:        "cmd/issueboard/board.go",
-		Needle:      `"--limit", "1000"`,
-		Occurrences: 1,
-		Cap:         1000,
-		Effect:      "the open-issue read for a repo truncates at 1000 rows and reports no truncation. A repo at or over 1000 open issues yields a board that is silently short, and the caller sees a clean exit. This is the live instance, in this tree, of the class that produced the 500-against-958 measurement",
-	},
+	// The issueboard open-issue read's `--limit 1000` cap is GONE: issueboard migrated off the
+	// `gh` CLI onto the typed ListOpenIssues op (the read-verbs-on-the-seam migration), which
+	// paginates the REST issues endpoint to exhaustion rather than capping at 1000. There is no
+	// silent-cap instance left in that file, so its register row is retired with the flag.
 	{
 		File:        "cmd/deskboard/board.go",
 		Needle:      "const prListLimit = 100",

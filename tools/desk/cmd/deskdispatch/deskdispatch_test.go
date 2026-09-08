@@ -953,7 +953,7 @@ func TestClaimRefusalWithNoHolderIsNotReportedAsACollision(t *testing.T) {
 		{"verifier: show reports the key FREE",
 			[]string{"verdict-lane/05", "--kit", "verifier"},
 			reply{match: "dispatch-claim.sh show",
-				stdout: "dispatch-claim: FREE assay--verdict-lane--05 (no refs/dispatch/... in the repo)"}},
+				stdout: "dispatch-claim: FREE assay--verdict-lane--05 (no refs/heads/dispatch/... in the repo)"}},
 		{"verifier: show itself is refused (same malformed key)",
 			[]string{"verdict-lane/05", "--kit", "verifier"},
 			reply{match: "dispatch-claim.sh show", code: deskkit.ExitRefused}},

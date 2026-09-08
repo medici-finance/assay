@@ -267,30 +267,8 @@ type review struct {
 // ever returns a silent empty result on error.
 // ---------------------------------------------------------------------------
 
-// openPRsGraphQL is the bulk open-PR read, hand-authored so it requests EXACTLY the
-// fields the board classifies on — and nothing that needs a scope the board's identity
-// does not hold. It replaces `gh pr list --json statusCheckRollup`:
-// gh's built-in `statusCheckRollup` field carries a hardcoded `checkSuite { workflowRun … }`
-// sub-selection — a LINK to the Actions run, not a check conclusion — that requires
-// `actions:read`. Under an App with only `checks:read` (the reviewer App) that one sub-field
-// 403s FORBIDDEN, and on a repo with many Actions check suites `gh pr list` returns hundreds
-// of those errors with NO salvageable partial stdout: it exits non-zero and empty, which
-// fetchOpenPRs then wraps Unverifiable (exit 6), blinding the WHOLE cross-repo board on the
-// first repo alphabetically. Requesting the rollup contexts ourselves WITHOUT
-// checkSuite/workflowRun drops the field that needs `actions:read` entirely; every
-// conclusion the board reads (CheckRun.status/conclusion, StatusContext.state) is covered by
-// `checks:read` alone, so the read no longer depends on a scope the board is not guaranteed.
-const openPRsGraphQL = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
-
-// openPRsReshapeJQ collapses the GraphQL response back into the SAME flat shape the old
-// `gh pr list --json …` produced, so prBase and every downstream consumer are unchanged.
-// The rollup contexts nodes already carry the exact field names the `check` struct decodes.
-// A GraphQL Bot actor carries the BARE slug as login; it is re-suffixed to "<slug>[bot]" so
-// TrustedAuthor sees the same REST rendering it does for the trust gate (deskkit.gqlActor).
-const openPRsReshapeJQ = `[.data.repository.pullRequests.nodes[]|{number,title,body,state,isDraft,createdAt,lastEditedAt,author:{login:(.author|if .==null then "" elif .__typename=="Bot" then .login+"[bot]" else .login end)},labels:[.labels.nodes[]|{name}],headRefOid,headRefName,baseRefName,mergeStateStatus,statusCheckRollup:(.commits.nodes[0].commit.statusCheckRollup.contexts.nodes//[])}]`
-
 // fetchOpenPRs returns a repo's open PRs and whether that population may be TRUNCATED —
-// the read came back exactly at the `first:` cap, so GitHub may be holding more.
+// the read came back exactly at the cap, so the forge may be holding more.
 //
 // #400 T2: truncation used to be a stderr WARNING and nothing else. Every count the board
 // prints rides on this population (mergeNowCount, unreviewedCount, the row set itself), and
@@ -299,28 +277,60 @@ const openPRsReshapeJQ = `[.data.repository.pullRequests.nodes[]|{number,title,b
 // verdict shape this cluster is about. The flag is returned so callers can state it in-band
 // (Header.PRPopulation); the stderr banner stays for the human on the table path.
 //
-// The read is a hand-authored `gh api graphql` (openPRsGraphQL) rather than
-// `gh pr list --json statusCheckRollup`: see openPRsGraphQL for why.
+// The read is the TYPED deskkit.ForgeFor.ListOpenChanges op — which resolves on any configured
+// forge (could-not-check where a backend cannot serve the CI-rollup shape) — rather than a
+// hand-authored `gh api graphql`. The op requests the rollup CONTEXTS without gh's built-in
+// `checkSuite { workflowRun … }` sub-selection, so the read does not depend on `actions:read`
+// (see the GitHub backend's ghOpenChangesQuery for that rationale).
 func fetchOpenPRs(repo string) (prs []prBase, truncated bool, err error) {
-	owner, name, ok := strings.Cut(repo, "/")
-	if !ok {
-		return nil, false, deskkit.Unverifiable("bad repo "+repo, nil)
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, false, ferr
 	}
-	out, err := ghRun("api", "graphql",
-		"-f", "query="+openPRsGraphQL,
-		"-f", "owner="+owner, "-f", "name="+name,
-		"-F", "limit="+strconv.Itoa(prListLimit),
-		"--jq", openPRsReshapeJQ)
-	if err != nil {
-		return nil, false, deskkit.Unverifiable("cannot read open PRs for "+repo, err)
+	oc, oerr := f.ListOpenChanges(fr)
+	if oerr != nil {
+		return nil, false, deskkit.Unverifiable("cannot read open PRs for "+repo, oerr)
 	}
-	if err := json.Unmarshal(out, &prs); err != nil {
-		return nil, false, deskkit.Unverifiable("cannot parse PR list for "+repo, err)
+	prs = make([]prBase, 0, len(oc.Changes))
+	for _, c := range oc.Changes {
+		pb := prBase{
+			Number:           c.Number,
+			Title:            c.Title,
+			Body:             c.Body,
+			State:            c.State,
+			IsDraft:          c.Draft,
+			CreatedAt:        c.CreatedAt,
+			LastEditedAt:     c.LastEditedAt,
+			HeadRefOid:       c.HeadSHA,
+			HeadRefName:      c.HeadRef,
+			BaseRefName:      c.BaseRef,
+			MergeStateStatus: c.MergeStateStatus,
+		}
+		pb.Author.Login = c.Author.Login
+		for _, l := range c.Labels {
+			pb.Labels = append(pb.Labels, struct {
+				Name string `json:"name"`
+			}{Name: l})
+		}
+		for _, r := range c.Rollup {
+			pb.StatusCheckRollup = append(pb.StatusCheckRollup, check{
+				Status:      r.Status,
+				Conclusion:  r.Conclusion,
+				Name:        r.Name,
+				State:       r.State,
+				Context:     r.Context,
+				TypeName:    r.Typename,
+				StartedAt:   r.StartedAt,
+				CompletedAt: r.CompletedAt,
+				CreatedAt:   r.CreatedAt,
+			})
+		}
+		prs = append(prs, pb)
 	}
-	if len(prs) >= prListLimit {
+	if oc.TruncatedAtCap {
 		truncated = true
 		fmt.Fprintf(os.Stderr, "deskboard: WARNING %s returned %d open PRs at the first:%d cap — "+
-			"the board may be TRUNCATED; widen prListLimit or paginate (#80)\n", repo, len(prs), prListLimit)
+			"the board may be TRUNCATED; widen prListLimit or paginate (#80)\n", repo, len(prs), oc.Cap)
 	}
 	return prs, truncated, nil
 }
@@ -661,24 +671,18 @@ func detectNonCommitResolution(repo string, p prBase, lastReviewAt time.Time) (b
 // incomplete payload (any connection past first:100) is NOT blessed — fail closed to
 // quarantine; a fetch/parse error is Unverifiable (exit 6).
 func prBlessed(repo string, num int) (bool, error) {
-	owner, name, ok := strings.Cut(repo, "/")
-	if !ok {
-		return false, deskkit.Unverifiable("bad repo "+repo, nil)
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return false, ferr
 	}
-	out, err := ghRun("api", "graphql",
-		"-f", "query="+deskkit.PRTrustQuery,
-		"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(num))
+	tp, err := f.PRTrustEvents(fr, num)
 	if err != nil {
 		return false, deskkit.Unverifiable(fmt.Sprintf("cannot read trust events for %s#%d (trust gate)", repo, num), err)
 	}
-	bodyEdited, events, complete, perr := deskkit.ParsePRTrustPayload(out)
-	if perr != nil {
-		return false, deskkit.Unverifiable(fmt.Sprintf("cannot parse trust events for %s#%d (trust gate)", repo, num), perr)
-	}
-	if !complete {
+	if !tp.Complete {
 		return false, nil // overflowed thread — quarantine, never silently admit
 	}
-	return deskkit.Blessed(bodyEdited, events), nil
+	return deskkit.Blessed(tp.BodyEdited, tp.Events), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -2541,24 +2545,18 @@ type queueReport struct {
 // issueBlessed is the issue twin of prBlessed (deskkit.IssueTrustQuery), for the
 // verify-gate queue: called only for untrusted-author issues, fail closed.
 func issueBlessed(repo string, num int) (bool, error) {
-	owner, name, ok := strings.Cut(repo, "/")
-	if !ok {
-		return false, deskkit.Unverifiable("bad repo "+repo, nil)
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return false, ferr
 	}
-	out, err := ghRun("api", "graphql",
-		"-f", "query="+deskkit.IssueTrustQuery,
-		"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(num))
+	tp, err := f.IssueTrustEvents(fr, num)
 	if err != nil {
 		return false, deskkit.Unverifiable(fmt.Sprintf("cannot read trust events for %s#%d (trust gate)", repo, num), err)
 	}
-	bodyEdited, events, complete, perr := deskkit.ParseIssueTrustPayload(out)
-	if perr != nil {
-		return false, deskkit.Unverifiable(fmt.Sprintf("cannot parse trust events for %s#%d (trust gate)", repo, num), perr)
-	}
-	if !complete {
+	if !tp.Complete {
 		return false, nil
 	}
-	return deskkit.Blessed(bodyEdited, events), nil
+	return deskkit.Blessed(tp.BodyEdited, tp.Events), nil
 }
 
 // gateIssue is one row of the verify-gate issue listing (REST /issues). The endpoint

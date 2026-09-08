@@ -178,6 +178,27 @@ promotes the staged file into `.github/workflows/`; they are proven here against
 staged file placed at `.github/workflows/`. Row 5 is proven now as a host-side proxy; row 6 also
 passes now via this brief.
 
+### Non-implementer verifier run — VERIFY: PASS (7/7; now against the PROMOTED leg, not a staged copy); HELD at `implemented` (gate: human) — 2026-09-07 assay-verifier (verify-desk dispatch), merged main `cd19bf8`
+
+Runner ≠ implementer (fresh dispatched verifier, offline `KUBECONFIG=/dev/null`; `gh` used only for CI-run reads). The staged leg has been PROMOTED — the workflow now lives at `.github/workflows/windows-ci-leg.yml`, so the implementer's "satisfied on apply" rows resolve against the real live file.
+
+| # | Command | Exit | Observed | Date | Runner |
+|---|---------|------|----------|------|--------|
+| 1 | `grep -rlE 'runs-on: *windows-latest' .github/workflows/` | 0 | `.github/workflows/windows-ci-leg.yml` (job `windows-smoke`) | 2026-09-07 | assay-verifier |
+| 2 | leg runs `statusgen --lint` | 0 | leg runs `./statusgen.exe --root .. --lint` | 2026-09-07 | assay-verifier |
+| 3 | leg runs an offline desk-verb smoke | 0 | offline smoke `./statusgen.exe --version` (step "Desk-verb smoke") | 2026-09-07 | assay-verifier |
+| 4 | no mutating/forge verb in the leg | 1 (no match) | no deskpost/deskpr/gh-pr/git-push in the leg; offline envelope holds | 2026-09-07 | assay-verifier |
+| 5 | `go build -o wp04-sg . && wp04-sg --root <repo> --lint` | 0 | `LINT: PASS` (host from-source proxy; NOTICEs data-quality only) | 2026-09-07 | assay-verifier |
+| 6 | arm64 native smoke held BLOCKED | 0 | `arm64-native-smoke` job `if: false` + brief Open-question section | 2026-09-07 | assay-verifier |
+| 6a | arm64 nowhere marked passing/green | 1 (no match) | no false-pass | 2026-09-07 | assay-verifier |
+| 7 | `statusgen --root . --consumers windows-port/04` | 0 | "no brief files in the diff against cd19bf8 — nothing to corroborate" (vacuous post-merge) | 2026-09-07 | assay-verifier |
+
+**Authoritative green run (rows 2–3):** `windows-ci-leg` run **34152585132**, event push, branch **main**, head **cd19bf8**, conclusion **success**; job `windows-smoke` on `windows-latest`; steps `statusgen --lint (assert exit 0 on Windows)` → success and `Desk-verb smoke (offline; --version)` → success; `Fail-first` skipped (opt-in), `arm64-native-smoke` skipped (`if: false`). https://github.com/medici-finance/assay/actions/runs/34152585132 — also green at #583's promotion head `d684440` (runs 34132073703 + 34132069915).
+
+**RISK-VALUE: DERIVED** — `permissions.contents = read` @ `.github/workflows/windows-ci-leg.yml:71-72` (the leg only reads → builds → --lint → --version; writes to no contents/issue/PR/forge surface, so read is least-privilege). Action pins verified full-SHA against their tags via gh api: `actions/checkout@3d3c42e5…` = v7.0.1 @:80, `actions/setup-go@d35c59ab…` = v5.5.0 @:83 (correct supply-chain form, no floating ref). Reversible knobs (out of scope): `GO_VERSION="1.25.0"`, `if:false`, `failfirst=false`. SPOF: none — additive corroborating check, removes no control.
+
+**VERIFY: PASS** — every row passes on the promoted leg; the authoritative Windows run is green. This brief is **gate: human** (`irreversible: yes` — workflow-file push is a human-only credential boundary): a model verifier CANNOT sign it off. Evidence complete; status stays `implemented`, routed to the human gate. Read-only, no flip.
+
 ## Review
 Gate: **human** (from frontmatter, risk-derived: `irreversible: yes` — it adds a job under
 `.github/workflows/`, a security-classified path that only a workflow-scoped credential can

@@ -55,6 +55,7 @@ import (
 var canonicalToolKeys = map[string]struct{}{
 	// tools/desk/cmd/* — one entry per binary.
 	"clusterguard":    {},
+	"deskack":         {},
 	"commsgw":         {},
 	"commsloop":       {},
 	"deskadvisory":    {},

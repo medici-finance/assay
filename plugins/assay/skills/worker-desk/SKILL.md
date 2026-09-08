@@ -28,6 +28,12 @@ maintainer rather than applied by any automation. This paragraph
 binds the DESK's own writes; the worker is bound to the same fragment rule through the changelog clause
 `deskdispatch` emits verbatim in the worker kit.
 
+The "one item = one branch = one PR, and a merged or closed PR is DONE" invariant now has a mechanical
+backstop: the `desksupervise` observer reconciles every in-flight dispatch claim each tick and STOPS
+(and, for a terminal verdict, releases) any run whose item became ineligible mid-run — its PR was merged
+or closed, its board row flipped off `todo`/`in-progress`, or its claim was released/stolen — so the rule
+fires within one observer interval instead of relying on a worker to remember it.
+
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
 
@@ -103,7 +109,7 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues` — fail-closed |
 | 7 | A red default branch on a watched repo | `deskboard health` — three-state (green / RED / COULD-NOT-CHECK) |
 | 8 | Cross-root coverage: a board root that no sweep reaches, or a scanned repo with no board | the BOARD ROOTS ∪ SCAN REPOS symmetric difference printed at boot (§THE REPO SET) |
-| 9 | Queue **suppressors** — expired `refs/dispatch/*` claims and dead branch-claims from merged/closed PRs | `desksupervise status --stops` (the liveness observer's runtime snapshot: per-claim liveness, timers-to-fire, and which stops are armed — the one structured read the sweep uses instead of guessing); the raw `git ls-remote origin 'refs/dispatch/*'` + the repo's `dispatch-claim` helper's list/show verbs stay as the fallback |
+| 9 | Queue **suppressors** — expired `refs/heads/dispatch/*` claims and dead branch-claims from merged/closed PRs | `desksupervise status --stops` (the liveness observer's runtime snapshot: per-claim liveness, timers-to-fire, and which stops are armed — the one structured read the sweep uses instead of guessing); the raw `git ls-remote origin 'refs/heads/dispatch/*'` + the repo's `dispatch-claim` helper's list/show verbs stay as the fallback |
 
 **Rows 5 and 3 outrank row 1** — resuming started work outranks a fresh brief (mm/10) — and row 2 is
 what tells you whether row 1's zero means drained or throttled.
@@ -300,7 +306,7 @@ every root each tick. The 4-per-stream cap is per stream, and a same-named strea
 separately.
 
 **5. Keep the records current — silently.** The dispatch log is what the machinery already writes:
-`refs/dispatch/*` claims, roster registrations, branches, draft PRs, dispatch comments. The loop
+`refs/heads/dispatch/*` claims, roster registrations, branches, draft PRs, dispatch comments. The loop
 pauses only between ticks — never because "the wave finished". Note what that log does NOT cover: the
 sweep itself leaves no audit row, so a tick that only planned is indistinguishable from a tick that
 never ran unless the tick's own line (§Output contract) says otherwise.
@@ -487,6 +493,13 @@ issue list. Two states:
    Escalation vocabulary and label discipline: §Guardrails. When it concerns a PR/issue already in
    flight, label + comment THAT item rather than filing a duplicate. **The filed issue IS the
    escalation.**
+3. **Receipt on a human-typed message.** After ANY human-typed message, the FIRST line of your turn
+   is `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when it
+   concerns one), then act. It is the ONE acknowledgement line the floor above permits — not
+   narration, and a second acknowledgement line is a violation. Say what you UNDERSTOOD, never a
+   quote, so a misread is corrected on your next turn. To hand work to another desk, address it —
+   `deskfile new --to <role> …` files a durable message that desk's own sweep leads with — never a
+   typed relay through the human.
 
 **A question never stops the window.** `question`, `help wanted` and `needs-decision` are filings, not
 console stops: label + comment the item saying what is needed and from whom, then **carry on with the

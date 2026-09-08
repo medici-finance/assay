@@ -109,6 +109,49 @@ func TestParseBriefTable(t *testing.T) {
 	}
 }
 
+// A double-quoted string so the backtick tag can be embedded literally; the em dashes are UTF-8.
+var backtickTitleTable = "\n## Briefs\n\n" +
+	"| # | Brief | Wave | Effort | Status | Verified | Reviewed | Notes |\n" +
+	"|---|-------|------|--------|--------|----------|----------|-------|\n" +
+	"| 10a | [`[assay]` askassay importable — pin the contract and guard it](./brief-10a-askassay-public-pin-contract.md) | 0 | M | todo | — | — | |\n" +
+	"| 11 | [[draft] scoping note before the split](./brief-11-draft.md) | 1 | S | todo | — | — | |\n" +
+	"| 12 | [Plain unlinked-strip control](./brief-12-plain.md) | 1 | S | todo | — | — | |\n"
+
+// TestParseBriefTableUnwrapsBacktickBracketTitle pins #591: a title whose link TEXT begins with a
+// bracket — a backticked tag “ `[assay]` “ or a bare `[draft]` — must strip to a BARE title like
+// every other Next-up row, never keeping the README-relative `./brief-…` link (dead from
+// STATUS.md). The old `\[([^\]]+)\]\(…\)` regexp stopped at the inner `]` and left the whole link,
+// so these cases fail against the pre-fix code. The plain-title row is the control the fix must
+// not regress.
+func TestParseBriefTableUnwrapsBacktickBracketTitle(t *testing.T) {
+	briefs, err := parseBriefTable(backtickTitleTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"10a": "`[assay]` askassay importable — pin the contract and guard it",
+		"11":  "[draft] scoping note before the split",
+		"12":  "Plain unlinked-strip control",
+	}
+	seen := 0
+	for _, b := range briefs {
+		w, ok := want[b.Num]
+		if !ok {
+			t.Fatalf("unexpected brief %q", b.Num)
+		}
+		seen++
+		if b.Title != w {
+			t.Errorf("brief %s: title = %q, want %q (link must be stripped)", b.Num, b.Title, w)
+		}
+		if strings.Contains(b.Title, "](") || strings.Contains(b.Title, "./brief-") {
+			t.Errorf("brief %s: title still carries a link target: %q", b.Num, b.Title)
+		}
+	}
+	if seen != len(want) {
+		t.Fatalf("parsed %d briefs, want %d", seen, len(want))
+	}
+}
+
 func TestParseBriefTableMissingColumn(t *testing.T) {
 	bad := "| # | Brief | Wave | Status |\n|---|---|---|---|\n| 01 | X | 0 | todo |\n"
 	if _, err := parseBriefTable(bad); err == nil {

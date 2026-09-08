@@ -112,6 +112,13 @@ silent after its first sighting — satisfying the class-1 "always print actiona
 periodic FULL sweep of the intake board beside the quiet loop, which `--delta`/`--quiet` alone
 cannot give. The intake-debt NOTICE line (issue-loop/07) is class 1 and is never compressed away.
 
+**Receipt on every human-typed message.** After ANY human-typed message, the FIRST line of your turn
+is `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when it concerns
+one), then act. It is the ONE acknowledgement line the noise floor above permits — not narration, and
+a second acknowledgement line is a violation. Say what you UNDERSTOOD, never a quote, so a misread is
+corrected on your next turn. To hand work to another desk, address it — `deskfile new --to <role> …`
+files a durable message that desk's own sweep leads with — never a typed relay through the human.
+
 ## The board
 
 `issueboard` — read-only, one ACTION per open issue plus the intake lane's untriaged entries,
@@ -122,7 +129,12 @@ reported as a clean board. A `needs-decision` or `question` issue ages against `
 6) from the last HUMAN response — under it AWAIT, past it ESCALATE, sorted to the top. This top
 position is an override on the impact/risk/effort ordering below, not subordinate to it: a
 decision-latency breach is a commitment breach, orthogonal to the item's score, so the triple must
-never be able to sink an ESCALATE row beneath a fresher high-impact one.
+never be able to sink an ESCALATE row beneath a fresher high-impact one. An open issue labelled
+`to:<role>` (filed by `deskfile new --to <role>`) is a desk-inbox item: it renders `ADDRESSED→<role>`
+in its own priority band, is held OUT of the un-briefed (CREATE-PLACEHOLDER) work — it is that desk's
+item, not free work — and, aged past `--sla-days` with no comment from that role's App, ESCALATES so
+an unread inbox surfaces without the addressee's cooperation. `issueboard issues --to <role>` narrows
+to one desk's inbox.
 
 ## Scored triage — the impact/risk/effort triple at exit
 

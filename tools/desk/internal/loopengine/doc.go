@@ -74,7 +74,7 @@
 //     check the dispatching consumer runs.
 //   - Cross-machine claims are NOT this package's job. The claims dir is machine-local:
 //     it serialises dispatchers sharing a machine and does nothing for two desks on
-//     different machines. That case is the GitHub-durable refs/dispatch/<id> claim,
+//     different machines. That case is the forge-durable refs/heads/dispatch/<id> claim,
 //     which is a separate home and is not re-implemented here.
 //   - Enforcement is not complete yet. This package states the contract; every
 //     dispatcher actually routing through Claim arrives with the consumer migrations.

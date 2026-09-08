@@ -23,7 +23,7 @@ const usage = `deskfile — filing gate: mandatory dedupe, class-issue attach, p
 
 USAGE:
   deskfile new    -R <owner/repo> --title <t> --body-file <f> [--label ...] [--raised-by <role>]
-                  [--force-new --reason <r>]
+                  [--to <role>] [--force-new --reason <r>]
   deskfile attach -R <owner/repo> --to <N> --body-file <f>
   deskfile check  -R <owner/repo> --title <t>
   deskfile --version
@@ -49,6 +49,17 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
          audit line (raised-by=<role> | UNSTAMPED:not-requested | UNSTAMPED:label-missing |
          UNSTAMPED:could-not-check). The raised-by:* labels are not GitHub defaults and
          deskfile does not create them; the NOTICE prints the one-off gh label create.
+
+         --to <role> ADDRESSES the issue to a desk: it stamps the label to:<role> so that
+         desk's own sweep (fanoutloop / issueboard) leads with the issue, turning a typed
+         "tell the-desk…" relay into a durable, forge-visible message. It takes the SAME
+         role vocabulary as --raised-by (one resolver, two flags) — an unbound role is
+         REFUSED (exit 5) — and degrades the same way when the to:<role> label does not yet
+         exist on the repo (filed UNADDRESSED, a NOTICE prints the one-off gh label
+         create). Omitting --to is the normal case and is SILENT. The audit line records
+         to=<role> or to=UNADDRESSED:<reason>. CAUTION: on the new subcommand, --to takes a
+         ROLE; on the attach subcommand (below), --to takes an issue NUMBER — same token,
+         two meanings by subcommand.
 
 attach — post an observation as a comment on issue N (a class issue or duplicate target).
          Never budgeted. Refuses (exit 5) if N is CLOSED, with reopen-or-new guidance.

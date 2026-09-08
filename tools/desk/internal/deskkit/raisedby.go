@@ -135,27 +135,42 @@ func RaisedByRoles() []string {
 // The error names the enumerated vocabulary, because "unknown role" without the list is a
 // refusal the caller cannot act on.
 func RaisedByLabel(role string) (string, error) {
+	r, err := boundRole(role)
+	if err != nil {
+		return "", err
+	}
+	return RaisedByPrefix + r, nil
+}
+
+// boundRole is the SHARED desk-role resolver behind BOTH the `--raised-by` provenance
+// flag (RaisedByLabel) and the `--to` addressee flag (AddressedToLabel, addressto.go):
+// one resolver, two label prefixes. It validates role against the roster's DERIVED
+// vocabulary (RaisedByRoles — the `role=` prefixes on ASSAY_TRUSTED_BOT_SLUGS) and
+// returns the canonical lowercased role, or a typed refusal that names the bound set so
+// a caller has the fix in hand. Keeping the vocabulary in ONE place is why `--to` cannot
+// address a role `--raised-by` could not stamp, and vice versa.
+func boundRole(role string) (string, error) {
 	want := strings.ToLower(strings.TrimSpace(role))
 	if want == "" {
-		return "", Refused("raised-by: an empty role is not a stamp — " +
-			"omit the flag entirely if the provenance is genuinely unknown, so the issue records " +
-			"UNKNOWN rather than a blank role")
+		return "", Refused("desk role: an empty role is not a stamp — " +
+			"omit the flag entirely if the provenance/addressee is genuinely unknown, so nothing " +
+			"is recorded rather than a blank role")
 	}
 	roles := RaisedByRoles()
 	if len(roles) == 0 {
-		return "", Refused("raised-by: no desk role is bound in the roster, " +
-			"so there is no vocabulary to stamp from. Bind roles with the `role=` prefix on " +
-			EnvTrustedBotSlugs + " (e.g. `reviewer=<slug>:<id>`); an unconfigured roster stamps nothing")
+		return "", Refused("desk role: no desk role is bound in the roster, " +
+			"so there is no vocabulary to resolve from. Bind roles with the `role=` prefix on " +
+			EnvTrustedBotSlugs + " (e.g. `reviewer=<slug>:<id>`); an unconfigured roster resolves nothing")
 	}
 	for _, r := range roles {
 		if r == want {
-			return RaisedByPrefix + r, nil
+			return r, nil
 		}
 	}
-	return "", Refused("raised-by: " + want +
+	return "", Refused("desk role: " + want +
 		" is not a desk role bound in the roster. Bound roles: " + strings.Join(roles, ", ") +
 		". The vocabulary is DERIVED from " + EnvTrustedBotSlugs + "'s `role=` prefixes — add the " +
-		"binding there rather than inventing a label, or the metric groups by a role nothing emits")
+		"binding there rather than inventing a label, or the metric/inbox groups by a role nothing emits")
 }
 
 // RaisedByOf is the READER contract: given an issue's label names, answer which desk
@@ -166,23 +181,33 @@ func RaisedByLabel(role string) (string, error) {
 // re-validated against the current roster (a stamp is a historical fact; see the file
 // comment). role is "" for every state except RaisedByStamped.
 func RaisedByOf(labels []string) (role string, state RaisedByState) {
+	return stampOf(labels, RaisedByPrefix)
+}
+
+// stampOf is the SHARED three-state reader behind RaisedByOf and AddressedToOf
+// (addressto.go): given an issue's label names and a stamp PREFIX, it answers which
+// role the stamp names, in the three states RaisedByState enumerates. The non-answers
+// (Unknown / Indeterminate) are first-class here for the SAME reason they are on the
+// raised-by metric: a `to:` inbox that collapses "no addressee" and "two conflicting
+// addressees" into one bucket routes on a guess.
+func stampOf(labels []string, prefix string) (role string, state RaisedByState) {
 	found := ""
 	count := 0
 	empty := false
 	for _, l := range labels {
 		name := strings.ToLower(strings.TrimSpace(l))
-		if !strings.HasPrefix(name, RaisedByPrefix) {
+		if !strings.HasPrefix(name, prefix) {
 			continue
 		}
 		count++
-		r := strings.TrimSpace(strings.TrimPrefix(name, RaisedByPrefix))
+		r := strings.TrimSpace(strings.TrimPrefix(name, prefix))
 		if r == "" {
 			empty = true
 			continue
 		}
 		if found != "" && found != r {
-			// Two DIFFERENT roles: conflicting provenance, adjudicating is not this
-			// package's call.
+			// Two DIFFERENT roles: conflicting provenance/addressee, adjudicating is not
+			// this package's call.
 			return "", RaisedByIndeterminate
 		}
 		found = r
@@ -191,9 +216,9 @@ func RaisedByOf(labels []string) (role string, state RaisedByState) {
 	case count == 0:
 		return "", RaisedByUnknown
 	case empty:
-		// A `raised-by:` with no role half is a malformed stamp. It is not Unknown —
-		// something DID try to record provenance and produced an unreadable answer, and
-		// those two need different remedies.
+		// A stamp with no role half is malformed. It is not Unknown — something DID try
+		// to record a role and produced an unreadable answer, and those two need
+		// different remedies.
 		return "", RaisedByIndeterminate
 	case found == "":
 		return "", RaisedByIndeterminate

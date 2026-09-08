@@ -57,8 +57,9 @@ func cmdTick(args []string) (err error) {
 	}
 
 	var (
-		claims    []claimRecord
-		obsSource observationSource
+		claims     []claimRecord
+		obsSource  observationSource
+		eligSource eligibilitySource
 	)
 	if *claimsFixture != "" {
 		claims, err = loadClaimsFixture(*claimsFixture)
@@ -70,6 +71,7 @@ func cmdTick(args []string) (err error) {
 			return oerr
 		}
 		obsSource = fixtureObservationSource(obsByKey)
+		eligSource = fixtureEligibilitySource()
 	} else {
 		dir := *root
 		if dir == "" {
@@ -85,28 +87,51 @@ func cmdTick(args []string) (err error) {
 		}
 		claims = liveClaims
 		obsSource = liveObservationSource(loopengine.HouseProbes())
+		eligSource = liveEligibilitySource(dir)
 	}
 
-	results, anyBlind, serr := sweep(claims, obsSource, pol, now, *dryRun, doReclaim, doFileBlockedTimeout, doArmRunStop, os.Stdout)
+	// Reconciliation runs FIRST: an INELIGIBLE claim is stopped (and, terminal-only, its
+	// claim released) and skipped by the liveness step; only the ELIGIBLE subset reaches the
+	// liveness sweep. A reconcile that could not be READ (BLIND) keeps its run and is counted
+	// toward the exit-6 could-not-check verdict.
+	eligible, recResults, recBlind, rerr := reconcile(claims, eligSource, now, *dryRun, doReclaim, doArmRunStop, os.Stdout)
+	if rerr != nil {
+		return rerr
+	}
+
+	results, anyBlind, serr := sweep(eligible, obsSource, pol, now, *dryRun, doReclaim, doFileBlockedTimeout, doArmRunStop, os.Stdout)
 	if serr != nil {
 		return serr
 	}
 
-	ac.detail = fmt.Sprintf("%d claim(s) classified, blind=%t, dry-run=%t", len(results), anyBlind, *dryRun)
-	if len(results) == 0 {
+	totalClassified := len(recResults) + len(results)
+	blindTotal := recBlind || anyBlind
+	ac.detail = fmt.Sprintf("%d claim(s) classified (%d reconciled), blind=%t, dry-run=%t", totalClassified, len(recResults), blindTotal, *dryRun)
+	if totalClassified == 0 {
 		ac.successResult = deskkit.ResultNoop
 	}
-	if anyBlind {
+	if blindTotal {
 		// The tick itself ran cleanly (every claim WAS classified — see the printed lines),
-		// but the READING is incomplete: at least one claim's liveness could not be
-		// positively established. Exit 6, not 0 — could-not-check is never a pass, and a
-		// caller scripting on exit code must see the difference between "every claim alive"
+		// but the READING is incomplete: at least one claim's eligibility or liveness could
+		// not be positively established. Exit 6, not 0 — could-not-check is never a pass, and
+		// a caller scripting on exit code must see the difference between "every claim alive"
 		// and "some claim unknown".
 		return deskkit.Unverifiable(fmt.Sprintf(
-			"%d of %d claim(s) were COULD-NOT-CHECK (action=BLIND) — the tick ran, the reading is incomplete",
-			blindCount(results), len(results)), nil)
+			"%d of %d claim(s) were COULD-NOT-CHECK — the tick ran, the reading is incomplete",
+			reconcileBlindCount(recResults)+blindCount(results), totalClassified), nil)
 	}
 	return nil
+}
+
+// reconcileBlindCount counts the reconcile results that were BLIND (could-not-check).
+func reconcileBlindCount(results []reconcileResult) int {
+	n := 0
+	for _, r := range results {
+		if r.Blind {
+			n++
+		}
+	}
+	return n
 }
 
 func blindCount(results []sweepResult) int {

@@ -22,6 +22,14 @@ reviewable artifact, not a run.
 
 ## Contents
 
+- `evidence-automerge.yml` — the Evidence-PR auto-merge lane. Unlike the other files here
+  this one is **already live**: it was promoted, and the copy in this directory is kept
+  byte-identical to `.github/workflows/evidence-automerge.yml` as the reviewable edit
+  surface, because no App may push a `.github/workflows/*` file. Every change to that lane
+  therefore lands here first, and a maintainer re-promotes it by copying the file over the
+  live one (`cp ci/staged-workflows/evidence-automerge.yml .github/workflows/evidence-automerge.yml`)
+  in a separate maintainer-credentialled commit. Until that copy lands, the merged change
+  is inert: the running workflow is still the old file.
 - `truth-suite.yml` — the standing truth suite (`docs/test-policy.md` § "Standing truth
   suite"): the test corpus plus the release mutation gate, on push to the default branch and
   on a daily schedule, reporting three-state. Promote it to `.github/workflows/truth-suite.yml`
@@ -51,5 +59,16 @@ authoritative evidence for the brief's rows 2-3 (record its run URL, the `--lint
 `workflow_dispatch`. The `arm64-native-smoke` row stays held until a `windows-11-arm` runner is
 available; flip it to that runner then — do not derive it from the amd64 leg. The offline
 constraint is a design invariant: the smoke uses only `--lint`/`--version`, and any change that
-adds a live-forge or mutating verb to this leg breaks the offline envelope the brief's row 4
-asserts.
+adds a live-forge or mutating verb to the `windows-smoke` job breaks the offline envelope the
+brief's row 4 asserts.
+
+The file also carries a SECOND `windows-latest` job, `windows-bootstrap-smoke` — the sanctioned
+ONLINE exception (windows-port/03, decision #508). It exercises `scripts/bootstrap-windows.ps1`'s
+sha256 hash-verify at Windows runtime via `scripts/windows-bootstrap-hashcheck-smoke.ps1`: a
+tampered checksum must REFUSE (nothing installed), the pinned checksum installs, and a
+check-removed copy installs the tampered asset (so the refusal is non-vacuous). The bootstrap
+downloads a release asset (`Invoke-WebRequest` to the GitHub release CDN), so this job is
+deliberately kept SEPARATE from `windows-smoke` — the download is decision #508's sanctioned
+live-forge exception and does not weaken the offline invariant of the `windows-smoke` job. It is
+promoted with the rest of this file; a green `windows-bootstrap-smoke` run is the evidence for
+the brief's row 8 (record its run URL).

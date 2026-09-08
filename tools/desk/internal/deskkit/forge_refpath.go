@@ -10,7 +10,7 @@ import (
 //
 // DeleteRef is the one frozen op whose argument is a path-shaped string, and that is exactly
 // the shape an arbitrary-endpoint escape hatch takes: the callsite it replaces was
-// `gh api -X DELETE repos/<owner>/<repo>/git/refs/dispatch/<key>`, a call that could as
+// `gh api -X DELETE repos/<owner>/<repo>/git/refs/heads/dispatch/<key>`, a call that could as
 // easily have addressed `/repos/<o>/<r>/branches/main/protection`. What stops the typed op
 // from being the same hole with better manners is that the caller supplies only the tail
 // INSIDE the repo's ref namespace, and that tail is checked here before any request is
@@ -21,11 +21,12 @@ import (
 // The rules below are git's own check-ref-format restrictions, kept deliberately STRICTER
 // than git where the extra strictness costs nothing: git permits a single-component ref,
 // this refuses one, because every ref a desk tool addresses is namespaced
-// ("heads/…", "tags/…", "dispatch/…") and a bare component is far more likely to be a
+// ("heads/…", "tags/…", and the claim namespace "heads/dispatch/…") and a bare component is far
+// more likely to be a
 // caller that meant to pass a branch name.
 
 // ValidateRefPath checks a ref path and returns it in the canonical form the backends
-// address: the path WITHOUT a leading "refs/", e.g. "heads/topic" or "dispatch/item--01".
+// address: the path WITHOUT a leading "refs/", e.g. "heads/topic" or "heads/dispatch/item--01".
 // Both spellings are accepted on input ("refs/heads/x" and "heads/x") so a caller holding a
 // fully-qualified ref does not have to strip it and risk stripping the wrong prefix.
 //
@@ -41,7 +42,7 @@ func ValidateRefPath(ref string) (string, error) {
 	}
 	parts := strings.Split(r, "/")
 	if len(parts) < 2 {
-		return "", Unverifiable(fmt.Sprintf("refusing ref %q: a ref path must be namespaced (\"heads/<branch>\", \"tags/<tag>\", \"dispatch/<key>\")", ref), nil)
+		return "", Unverifiable(fmt.Sprintf("refusing ref %q: a ref path must be namespaced (\"heads/<branch>\", \"tags/<tag>\", \"heads/dispatch/<key>\")", ref), nil)
 	}
 	for _, p := range parts {
 		if err := validateRefComponent(ref, p); err != nil {

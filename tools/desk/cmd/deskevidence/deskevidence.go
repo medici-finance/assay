@@ -163,22 +163,40 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// Determine the target repo path and content to commit.
 	var targetRepoPath string
 	var commitContent []byte
+	blockAlready := false
+	remoteBriefSHA := ""
 
 	if *briefPath != "" {
 		targetRepoPath = *briefPath
 		// Read the remote brief, find its ## Evidence section, append the row — a genuine
 		// read → transform → write, which is why ReadFile exists on the seam alongside
 		// WriteFile: the merge cannot be folded into a backend-agnostic write.
-		merged, merr := mergeEvidence(fg, fr, branch, *briefPath, localContent)
+		merged, present, sha, merr := mergeEvidence(fg, fr, branch, *briefPath, localContent)
 		if merr != nil {
 			return merr
 		}
 		commitContent = merged
+		blockAlready = present
+		remoteBriefSHA = sha
 	} else {
 		targetRepoPath = evidenceRepoPath
 		commitContent = localContent
 	}
 	ac.file = targetRepoPath
+
+	// Block-level idempotency: a fresh Evidence block byte-equivalent (after normalising line
+	// endings, trailing whitespace and trailing blank lines) to the block already standing in
+	// the brief's ## Evidence section is a no-op — it proves what the last run proved and has
+	// nothing to land. Decided on the content the merge already fetched, so it adds no API call,
+	// and taken BEFORE the shrink guard (like the file-level noop) so an idempotent re-run is
+	// never mistaken for a shrink. NOTHING is fetched-then-put.
+	if blockAlready {
+		ac.successResult = deskkit.ResultNoop
+		ac.detail = fmt.Sprintf("noop: Evidence block already present in %s on %s (sha %s)",
+			targetRepoPath, branch, shortSHA(remoteBriefSHA))
+		fmt.Fprintln(stdout, ac.detail)
+		return nil
+	}
 
 	// Append-only sidecars (the .jsonl streams under docs/streams/) grow row-by-row and
 	// never shrink in normal use; a net row DROP is the #1709 signature. Auto-enable the
@@ -479,15 +497,18 @@ func shortSHA(sha string) string {
 }
 
 // mergeEvidence reads the brief file from the forge, finds the ## Evidence section, and appends
-// the evidence content. It returns the merged content. The read is the ReadFile op — a brief
-// absent on the branch is an error (the brief must exist to be merged into), so a not-found is
-// propagated rather than treated as a first-write.
-func mergeEvidence(fg deskkit.Forge, fr deskkit.ForgeRepo, branch, briefPath string, evidence []byte) ([]byte, error) {
+// the evidence content. It returns the merged content, a flag that is true when the fresh block
+// is already standing in the section (a block-level no-op — see blockAlreadyPresent), and the
+// forge's blob SHA for the brief it read. The read is the ReadFile op — a brief absent on the
+// branch is an error (the brief must exist to be merged into), so a not-found is propagated
+// rather than treated as a first-write.
+func mergeEvidence(fg deskkit.Forge, fr deskkit.ForgeRepo, branch, briefPath string, evidence []byte) (merged []byte, alreadyPresent bool, remoteSHA string, err error) {
 	cur, err := fg.ReadFile(fr, deskkit.ReadFileInput{File: briefPath, Ref: branch})
 	if err != nil {
-		return nil, err
+		return nil, false, "", err
 	}
 	remoteContent := cur.Content
+	remoteSHA = cur.SHA
 
 	// Find the ## Evidence section and append.
 	// The Evidence section starts with "## Evidence" and ends at end of file
@@ -507,9 +528,10 @@ func mergeEvidence(fg deskkit.Forge, fr deskkit.ForgeRepo, branch, briefPath str
 		idx = strings.Index(remoteStr, evidenceMarker)
 	}
 	if idx < 0 {
-		// No Evidence section found — append one at the end.
-		merged := strings.TrimRight(remoteStr, "\n") + "\n\n## Evidence\n" + evidenceStr + "\n"
-		return []byte(merged), nil
+		// No Evidence section found — append one at the end. This CREATES the section, so it is
+		// never a block-level no-op.
+		out := strings.TrimRight(remoteStr, "\n") + "\n\n## Evidence\n" + evidenceStr + "\n"
+		return []byte(out), false, remoteSHA, nil
 	}
 
 	// Find the end of the Evidence section (next ## heading or EOF).
@@ -522,14 +544,59 @@ func mergeEvidence(fg deskkit.Forge, fr deskkit.ForgeRepo, branch, briefPath str
 
 	// Build the merged content: before Evidence + Evidence header + existing + new + after.
 	existingEvidence := strings.TrimRight(remoteStr[idx+len(evidenceMarker):evidenceEnd], "\n")
-	merged := remoteStr[:idx] + evidenceMarker
+
+	// Block-level idempotency: if the fresh block is already standing in the section, report it
+	// so the flow can no-op WITHOUT a second fetch or any write. Decided on the content this
+	// read already returned.
+	alreadyPresent = blockAlreadyPresent(existingEvidence, evidenceStr)
+
+	out := remoteStr[:idx] + evidenceMarker
 	if existingEvidence != "" {
-		merged += existingEvidence + "\n"
+		out += existingEvidence + "\n"
 	}
-	merged += evidenceStr + "\n"
+	out += evidenceStr + "\n"
 	if evidenceEnd < len(remoteStr) {
-		merged += remoteStr[evidenceEnd:]
+		out += remoteStr[evidenceEnd:]
 	}
 
-	return []byte(merged), nil
+	return []byte(out), alreadyPresent, remoteSHA, nil
+}
+
+// normalizeEvidenceText normalises a block or an Evidence section for the block-equivalence
+// check: line endings collapse to "\n", trailing whitespace is trimmed per line, and trailing
+// blank lines are dropped. Nothing looser — once these are applied the comparison stays exact,
+// so a re-run on a different date or with a different runner (genuinely new text) still differs.
+func normalizeEvidenceText(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		lines[i] = strings.TrimRight(ln, " \t")
+	}
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return strings.Join(lines, "\n")
+}
+
+// blockAlreadyPresent reports whether the fresh Evidence block, after normalisation, is already
+// standing at the tail of the existing ## Evidence section — a contiguous substring anchored at
+// the section's end. The most-recently-appended block sits at that tail, so an exact re-run
+// matches it, while:
+//   - a PARTIAL re-run (a prefix of the standing block) does not reach the section's end and is
+//     new content that lands;
+//   - a block differing by even one character does not match and lands;
+//   - a SUPERSET (the standing block plus new rows) is longer than the tail and lands, carrying
+//     its whole fresh content unchanged.
+//
+// Anchoring at the end (rather than a match anywhere in the section) is what keeps the prefix
+// case new content; a leading placeholder comment or an older block ahead of the tail is skipped
+// by the same anchoring.
+func blockAlreadyPresent(existingSection, freshBlock string) bool {
+	section := normalizeEvidenceText(existingSection)
+	block := normalizeEvidenceText(freshBlock)
+	if block == "" {
+		return false
+	}
+	return section == block || strings.HasSuffix(section, "\n"+block)
 }

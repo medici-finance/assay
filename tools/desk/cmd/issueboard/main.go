@@ -38,6 +38,8 @@ usage:
   issueboard              full board: issue lane + intake lane (default)
   issueboard board        same as no subcommand
   issueboard issues       issue lane only (one ACTION per open issue)
+  issueboard issues --to <role>
+                          desk-inbox view: only issues ADDRESSED to <role> (to:<role>)
   issueboard intake       intake lane only (untriaged entries, age-flagged)
   issueboard --version    source SHA / build time
 
@@ -45,6 +47,17 @@ flags:
   --root <path>      repo root to read docs/streams/{issue-loop,intake} from (default ".")
   --sla-days <N>     decision-owed silence threshold before ESCALATE (default 6, the
                       market-scan "silent 6d" figure — desk-console-design.md §13.3)
+  --to <role>        (issues lane only) restrict to the desk-inbox items addressed to
+                      <role>. Without it, an issue carrying a to:<role> label renders
+                      ADDRESSED→<role> in its own priority band and is EXCLUDED from the
+                      un-briefed (CREATE-PLACEHOLDER) work — it is the addressee's item,
+                      not free work.
+
+desk inbox: an open issue labelled to:<role> (deskfile new --to <role>) is a durable
+message TO a desk. It leads its addressee's sweep and is held out of un-briefed work. A
+to:<role> item aged past --sla-days with NO comment from that role's App classifies
+ESCALATE — an unread inbox becomes visible without the addressee's cooperation (a second,
+independent layer over the addressee's own sweep). The human-response clock is unchanged.
 
 escalation: an open issue carrying a needs-decision or
 question label ages against --sla-days, counted from the last HUMAN response (a bot
@@ -104,10 +117,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	root := "."
 	slaDays := escalateSLADays
+	toFilter := ""
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
+		case a == "--to":
+			if i+1 >= len(args) {
+				fmt.Fprintln(stderr, "refused: --to needs a role")
+				return deskkit.ExitRefused
+			}
+			toFilter = args[i+1]
+			i++
 		case a == "--root":
 			if i+1 >= len(args) {
 				fmt.Fprintln(stderr, "refused: --root needs a path")
@@ -140,8 +161,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		sub = pos[0]
 	}
 
+	// --to is the desk-inbox filter and is meaningful only on the `issues` lane. Passing
+	// it to another subcommand is a caller error with a fix in hand, refused rather than
+	// silently ignored (a filter that quietly does nothing reads as an empty inbox).
+	if toFilter != "" && sub != "issues" {
+		fmt.Fprintln(stderr, "refused: --to <role> filters the `issues` lane only; it has no meaning for `"+sub+"`")
+		return deskkit.ExitRefused
+	}
+
 	now := time.Now().UTC()
-	rep, err := dispatch(sub, root, now, slaDays)
+	rep, err := dispatch(sub, root, now, slaDays, toFilter)
 	if err != nil {
 		logRun(sub, resultFor(err), err.Error())
 		fmt.Fprintln(stderr, err)
@@ -155,12 +184,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 // dispatch routes a subcommand to its handler. An unknown subcommand is a Refused
 // (exit 5), never a guessed default.
-func dispatch(sub, root string, now time.Time, slaDays int) (*Report, error) {
+func dispatch(sub, root string, now time.Time, slaDays int, toFilter string) (*Report, error) {
 	switch sub {
 	case "board":
 		return cmdBoard(root, now, slaDays)
 	case "issues":
-		return cmdIssues(root, now, slaDays)
+		return cmdIssues(root, now, slaDays, toFilter)
 	case "intake":
 		return cmdIntake(root, now)
 	default:

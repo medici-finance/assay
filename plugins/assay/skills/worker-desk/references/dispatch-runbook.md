@@ -102,9 +102,9 @@ close intent is its own failure.
 ### Queue suppressors — read them when a stream offers nothing for several consecutive ticks
 
 A claim subtracts twice: once as an eligibility exclusion and again as a per-stream cap decrement, so
-branch-claim corpses from merged/closed PRs — and expired `refs/dispatch/*` claims, which nothing
+branch-claim corpses from merged/closed PRs — and expired `refs/heads/dispatch/*` claims, which nothing
 re-surfaces onto a board — can zero a stream's whole allowance while it still holds work. Read them
-with `git ls-remote origin 'refs/dispatch/*'` plus the repo's own `dispatch-claim` helper's list/show
+with `git ls-remote origin 'refs/heads/dispatch/*'` plus the repo's own `dispatch-claim` helper's list/show
 verbs, and file what the read shows rather than concluding the stream is drained.
 
 ## Intra-brief splits — N shards, ONE brief PR (methodology/43)

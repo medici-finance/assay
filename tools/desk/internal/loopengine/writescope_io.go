@@ -4,19 +4,33 @@ package loopengine
 // in-flight-claim universe for the advisory overlap warning (writescope.go). Kept apart from
 // the pure derivation/overlap logic because these touch git and the filesystem.
 //
-// OFFLINE ENVELOPE. The only git this runs is `git for-each-ref refs/dispatch/*` against LOCAL
-// refs — never `git ls-remote`, never a fetch. No network is contacted. Every failure (not a
-// git repo, git absent, an unreadable brief) degrades to "no in-flight items": the warning is
-// advisory, so an unreadable claim universe prints nothing rather than failing a plan.
+// OFFLINE ENVELOPE. The only git this runs is a `git for-each-ref` over the claim namespace
+// against LOCAL refs — never `git ls-remote`, never a fetch. No network is contacted. Every
+// failure (not a git repo, git absent, an unreadable brief) degrades to "no in-flight items":
+// the warning is advisory, so an unreadable claim universe prints nothing rather than failing
+// a plan.
+//
+// WHICH NAMESPACE. Not this file's decision, and deliberately not this file's literal: the
+// prefix comes from deskkit.ClaimRefsPrefix, the same constant the writer builds the ref it
+// deletes from. A reader pointed at a namespace the writer no longer uses sees zero claims and
+// reports every slot free, which is the worst failure this primitive has — so the two are one
+// definition, not two spellings that happen to agree today.
 
 import (
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// InFlightClaimScopes reads the root repo's live `refs/dispatch/*` dispatch claims and resolves
+// claimRefPrefix is the local ref prefix this reader lists, DERIVED from the single claim-ref
+// definition in deskkit. It exists as a named identifier so the derivation is assertable
+// (TestClaimReaderNamespaceMatchesWriter) rather than buried in a call argument.
+const claimRefPrefix = deskkit.ClaimRefsPrefix
+
+// InFlightClaimScopes reads the root repo's live dispatch claims and resolves
 // each to the brief it names under the same root, returning one Item per resolved claim
 // carrying the brief's derived write-scopes. This is the "overlap universe" for the advisory
 // warning: the items already claimed for this root. Claims that resolve to no brief under this
@@ -40,11 +54,15 @@ func InFlightClaimScopes(root string) []Item {
 	return out
 }
 
-// DispatchClaimKeys returns the last path segment of every LOCAL `refs/dispatch/*` ref in the
-// root git repo — the claim keys (`<repo>--<stream>--<NN>`, `<stream>--<NN>`, `<repo>--issue-<NN>`).
-// Offline (local refs only). Returns nil on any error.
+// DispatchClaimKeys returns the claim key of every LOCAL claim ref in the root git repo
+// (`<repo>--<stream>--<NN>`, `<stream>--<NN>`, `<repo>--issue-<NN>`). Offline (local refs
+// only). Returns nil on any error.
+//
+// The key is parsed by deskkit.ClaimKeyFromRef, not by taking the last path segment: a ref one
+// level deeper than the namespace would yield a plausible-looking key that names nothing, and
+// this reader's answer decides whether a slot is free.
 func DispatchClaimKeys(root string) []string {
-	cmd := exec.Command("git", "-C", root, "for-each-ref", "--format=%(refname)", "refs/dispatch/")
+	cmd := exec.Command("git", "-C", root, "for-each-ref", "--format=%(refname)", claimRefPrefix)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat")
 	out, err := cmd.Output()
 	if err != nil {
@@ -56,8 +74,7 @@ func DispatchClaimKeys(root string) []string {
 		if ln == "" {
 			continue
 		}
-		key := ln[strings.LastIndexByte(ln, '/')+1:]
-		if key != "" {
+		if key, ok := deskkit.ClaimKeyFromRef(ln); ok {
 			keys = append(keys, key)
 		}
 	}

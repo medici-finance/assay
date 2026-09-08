@@ -7,13 +7,13 @@ import "github.com/medici-finance/assay/tools/desk/internal/loopengine"
 // same root — the SAME universe the dispatch-claim system tracks — carried as their derived
 // write-scopes so `plan` can warn a candidate whose scopes overlap an in-flight one.
 //
-// OFFLINE. The default source reads the target repo's LOCAL `refs/dispatch/*` refs via
+// OFFLINE. The default source reads the target repo's LOCAL `refs/heads/dispatch/*` claim refs via
 // loopengine.InFlightClaimScopes — never `git ls-remote`. Any failure yields no in-flight
 // items: the warning is advisory, so an unreadable claim universe prints no warnings rather
 // than failing the plan.
 
 // inFlightSource returns the in-flight claim items (ID + derived write-scopes) for the root.
-// A test injects InFlight; the default reads local refs/dispatch claims from Root.
+// A test injects InFlight; the default reads the local claim refs under refs/heads/dispatch/ from Root.
 func (f *FanoutLoop) inFlightSource() ([]loopengine.Item, error) {
 	if f.InFlight != nil {
 		return f.InFlight()

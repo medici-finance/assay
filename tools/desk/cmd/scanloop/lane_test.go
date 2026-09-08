@@ -121,7 +121,7 @@ func TestScanCarrierLane_CoalescedPushRegeneratesTheBody(t *testing.T) {
 	if !strings.Contains(joined, "deskpr update") {
 		t.Fatalf("a coalesced push did not use the follow-up push verb:\n%s", joined)
 	}
-	for _, want := range []string{"--format title", "--format body", "gh pr edit 42"} {
+	for _, want := range []string{"--format title", "--format body", "deskpr edit"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("a coalesced push did not regenerate %q:\n%s", want, joined)
 		}

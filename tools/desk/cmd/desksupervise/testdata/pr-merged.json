@@ -1,0 +1,14 @@
+[
+  {
+    "key": "example-stream--merged-01",
+    "item": "example-stream/merged-01",
+    "owner": "session-merged",
+    "repo": "medici-finance/assay",
+    "branch": "feat/example-stream--merged-01",
+    "pr": 100,
+    "tier": "cheap",
+    "state": "dispatched",
+    "dispatchedAt": "2026-09-02T11:50:00Z",
+    "eligibility": { "prState": "merged" }
+  }
+]

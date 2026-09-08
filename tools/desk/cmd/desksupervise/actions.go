@@ -22,10 +22,10 @@ import (
 // liveness.go's own internal reclaimForLiveness does, but reclaimForLiveness reclaims
 // against cfg.ClaimsDir, the LOCAL flock-backed claims directory (internal/deskkit/claim.go).
 // A dispatch claim has not lived there since 2026-08-13 (cmd/deskclaim/main.go's own SCOPE
-// NOTE: "the dispatch kind no longer belongs here... now the GitHub ref
-// refs/dispatch/<id>"), and cmd/fanoutloop/land.go's forgeDispatchSink — the one other place
+// NOTE: "the dispatch kind no longer belongs here... now the forge ref under the claim
+// namespace"), and cmd/fanoutloop/land.go's forgeDispatchSink — the one other place
 // in this tree that releases a dispatch claim — releases it through
-// deskkit.Forge.DeleteRef(repo, "dispatch/<key>"), never through ReleaseMatching. Since the
+// deskkit.Forge.DeleteRef(repo, deskkit.ClaimRefPath(key)), never through ReleaseMatching. Since the
 // claims desksupervise's Task exists to reclaim ARE dispatch claims (the brief's own
 // motivating scenario is a wedged WORKER's dispatch), this file follows land.go's
 // established, currently-correct path rather than the brief's fact citation, which
@@ -76,7 +76,10 @@ func doReclaim(claim claimRecord) error {
 	if ferr != nil {
 		return fmt.Errorf("reclaim %s: cannot resolve a forge for %s: %w", claim.Key, claim.Repo, ferr)
 	}
-	ref := "dispatch/" + claim.Key
+	ref, rerr := deskkit.ClaimRefPath(claim.Key)
+	if rerr != nil {
+		return fmt.Errorf("reclaim %s: %w", claim.Key, rerr)
+	}
 	if err := forge.DeleteRef(repo, ref); err != nil {
 		if deskkit.IsForgeNotFound(err) {
 			return nil

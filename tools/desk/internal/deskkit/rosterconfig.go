@@ -908,6 +908,14 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			cfg.Bots[ident.Slug] = ident.ID
 		}
 		if role != "" {
+			// One slug may carry MORE THAN ONE role= binding
+			// (`reviewer=x-act:1,worker=x-act:1`). RoleBots is keyed on the ROLE, so each
+			// prefix lands its own role→slug entry and several roles legitimately share one
+			// App slug — exactly the two-App tier's shape (measured
+			// 2026-09-07: the parser already accepts it, no widening was needed). The App
+			// custody side of that same binding — which KEY a role MINTS with — is the
+			// separate <ROLE>_APP indirection in appconfig.go (AppBinding); the two layers
+			// are independent and must agree (see AppBinding's comment).
 			cfg.RoleBots[role] = ident.Slug
 		}
 	}

@@ -496,13 +496,13 @@ func (g *GitLabForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 				"use the typed operation for the kind you mean",
 			repo.Slug(), number, number), nil)
 	case iss != nil:
-		out := &Issue{Number: int(iss.IID), State: gitlabState(iss.State), IsPullRequest: false}
+		out := &Issue{Number: int(iss.IID), Title: iss.Title, State: gitlabState(iss.State), IsPullRequest: false}
 		if iss.Author != nil {
 			out.Author = gitlabAccount(iss.Author.ID, iss.Author.Username)
 		}
 		return out, nil
 	case mr != nil:
-		out := &Issue{Number: int(mr.IID), State: gitlabState(mr.State), IsPullRequest: true}
+		out := &Issue{Number: int(mr.IID), Title: mr.Title, State: gitlabState(mr.State), IsPullRequest: true}
 		if mr.Author != nil {
 			out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
 		}
@@ -512,6 +512,65 @@ func (g *GitLabForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 		// IsForgeNotFound holds.
 		return nil, g.mapErr(http.MethodGet, issuePath, issErr)
 	}
+}
+
+// ListOpenChanges is a could-not-check REFUSAL on GitLab, naming the gap — the DeleteRef
+// reference shape (a partial per-forge mapping refuses by name, never a zero-value return).
+// The op returns each open change WITH its CI status-check rollup as the two-shape RollupNode
+// union (GitHub CheckRun ↔ StatusContext). GitLab's CI model is pipelines-and-jobs, which the
+// stream's own ChecksAtHead mapping already carries as a DIFFERENT shape (a pipeline's jobs →
+// synthetic check-runs, the commit status → a combined state) rather than this union; and
+// `mergeStateStatus` is a GitHub-only enum with no GitLab analog. A rollup approximated across
+// that gap would feed the board's MERGE-NOW verdict a shape the forge never asserted, so the
+// bulk read is deferred to the forge-gitlab board-read brief rather than half-mapped here.
+func (g *GitLabForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: the GitLab backend does not serve ListOpenChanges for %s — the bulk open-change "+
+			"read carries a GitHub statusCheckRollup (the CheckRun/StatusContext union) and a mergeStateStatus "+
+			"enum that have no 1:1 GitLab mapping (GitLab's CI is pipelines-and-jobs; see ChecksAtHead's "+
+			"different shape). It is deferred to the forge-gitlab board-read brief, not approximated here.",
+		repo.Slug()), nil)
+}
+
+// ListOpenIssues is a could-not-check REFUSAL on GitLab, naming the gap. GitLab DOES list open
+// issues, but this summary is defined to FEED the trust gate and the escalation clock — the
+// rendered bot-suffixed login, the numeric author id a recycled login cannot fake, paired per
+// issue with IssueTrustEvents (below, itself could-not-check on GitLab). Shipping the list
+// while its consuming gate cannot be served on the same forge would hand the issue lane a set
+// it can enumerate but never admit or escalate, so the whole issue lane is deferred together
+// to the forge-gitlab trust-events brief rather than half-served here.
+func (g *GitLabForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: the GitLab backend does not serve ListOpenIssues for %s — the issue-board summary "+
+			"is consumed only paired with IssueTrustEvents (the trust gate + escalation clock), which is "+
+			"itself could-not-check on GitLab, so the whole issue lane is deferred to the forge-gitlab "+
+			"trust-events brief rather than shipping a list its gate cannot admit.",
+		repo.Slug()), nil)
+}
+
+// PRTrustEvents is a could-not-check REFUSAL on GitLab, naming the gap. The trust gate reads
+// GitHub GraphQL `lastEditedAt` CONTENT-edit tracking on the body and every comment/review,
+// plus the numeric `databaseId` with GitHub's Bot/User actor discrimination — the recycled-
+// login defense. GitLab's note model exposes edit state and actor identity differently (system
+// notes intermixed, a distinct id space, no 1:1 content-edit-time on every surface), so the
+// blessing verdict cannot be reproduced 1:1; it is deferred to the forge-gitlab trust-events
+// brief rather than approximated, which on a trust gate is the fail-open direction.
+func (g *GitLabForge) PRTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
+	return nil, g.trustEventsGap(repo, number, "PRTrustEvents")
+}
+
+// IssueTrustEvents is PRTrustEvents' issue twin — the same could-not-check gap.
+func (g *GitLabForge) IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
+	return nil, g.trustEventsGap(repo, number, "IssueTrustEvents")
+}
+
+func (g *GitLabForge) trustEventsGap(repo ForgeRepo, number int, op string) error {
+	return Unverifiable(fmt.Sprintf(
+		"could-not-check: the GitLab backend does not serve %s for %s#%d — the trust gate reads GitHub "+
+			"GraphQL lastEditedAt content-edit tracking and the numeric databaseId with Bot/User actor "+
+			"discrimination, which GitLab's note/system-note model and id space do not map 1:1. It is deferred "+
+			"to the forge-gitlab trust-events brief, never approximated (a guessed blessing is fail-open).",
+		op, repo.Slug(), number), nil)
 }
 
 // ReviewsAtHead returns the verdicts on a merge request, WITH the head each is provably
@@ -1318,8 +1377,7 @@ func (g *GitLabForge) CloseIssue(repo ForgeRepo, number int, stateReason string)
 // the refusal below is the honest half of it.
 //
 // GitHub exposes a general git-data ref API (`DELETE /git/refs/<anything>`), so it can delete
-// a ref in any namespace — including the `refs/dispatch/*` namespace the desk's claim
-// mechanism uses. GitLab Community Edition exposes no general ref-delete endpoint at all: the
+// a ref in any namespace. GitLab Community Edition exposes no general ref-delete endpoint at all: the
 // Branches API (`DELETE /projects/:id/repository/branches/:branch`, Tier: Free/Premium/
 // Ultimate — https://docs.gitlab.com/api/branches/) deletes a BRANCH, and tags have their own
 // endpoint. There is no CE endpoint, at any tier, for a ref outside those namespaces.
@@ -1327,8 +1385,16 @@ func (g *GitLabForge) CloseIssue(repo ForgeRepo, number int, stateReason string)
 // So this backend serves "heads/<branch>" from the Branches API and REFUSES every other
 // namespace as could-not-check, naming the gap. It does not silently succeed, and it does not
 // invent a ref-shaped call the instance would answer with an HTML 404 — either would report a
-// claim as released when it is still held. A profile that needs claim refs on GitLab uses a
-// branch-namespaced claim; that is a workflow decision, not something a backend may paper over.
+// claim as released when it is still held.
+//
+// The dispatch claim is the one caller this limit actually bound, and the answer was to move
+// the claim rather than to widen the backend: a claim now lives at deskkit.ClaimRefsPrefix,
+// INSIDE the branch namespace, so the release round-trips here on the same Free-tier endpoint
+// GitHub's git-data delete maps to (the claim-shape decision record of the stream that made it
+// carries the decision, the live reads it turns on, and the costs it accepts). The refusal below therefore
+// stands unweakened — it is what a caller reaching for a namespace GitLab cannot serve still
+// gets — and it now names the claim namespace, because "outside refs/heads" is precisely the
+// mistake a caller carrying a pre-move claim ref is making.
 func (g *GitLabForge) DeleteRef(repo ForgeRepo, ref string) error {
 	clean, err := ValidateRefPath(ref)
 	if err != nil {
@@ -1338,8 +1404,9 @@ func (g *GitLabForge) DeleteRef(repo ForgeRepo, ref string) error {
 	if !ok {
 		return Unverifiable(fmt.Sprintf(
 			"could-not-check: GitLab exposes no general ref-delete endpoint, so DeleteRef cannot serve %q — "+
-				"only the \"heads/<branch>\" namespace maps (the Branches API); a claim held outside refs/heads "+
-				"has no CE equivalent and is NOT reported released", ref), nil)
+				"only the \"heads/<branch>\" namespace maps (the Branches API); a ref held outside refs/heads "+
+				"has no CE equivalent and is NOT reported released. A dispatch claim belongs at %s<key> "+
+				"(deskkit.ClaimRefPath), which IS inside that namespace", ref, ClaimRefsPrefix), nil)
 	}
 	cl, cerr := g.client()
 	if cerr != nil {

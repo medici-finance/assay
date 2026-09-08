@@ -42,7 +42,7 @@ func gitFixture(t *testing.T, root string) {
 }
 
 // TestEchoWriteOverlap_WarnsAdvisory proves the deskdispatch echo emits a WRITE-OVERLAP line
-// when the item's --brief scopes overlap an in-flight refs/dispatch claim's scopes, and nothing
+// when the item's --brief scopes overlap an in-flight claim's scopes, and nothing
 // when they are disjoint — the advisory hint, offline (local refs only).
 func TestEchoWriteOverlap_WarnsAdvisory(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
@@ -52,7 +52,7 @@ func TestEchoWriteOverlap_WarnsAdvisory(t *testing.T) {
 	candBrief := writeBriefFile(t, root, "alpha", "01", "files:\n- `internal/loopengine/engine.go`\n")
 	writeBriefFile(t, root, "beta", "02", "files:\n- `internal/loopengine/`\n")
 	gitFixture(t, root)
-	gitRun(t, root, "update-ref", "refs/dispatch/repo--beta--02", "HEAD")
+	gitRun(t, root, "update-ref", "refs/heads/dispatch/repo--beta--02", "HEAD")
 
 	var buf bytes.Buffer
 	echoWriteOverlap(&buf, dispatchOpts{item: "alpha/01", brief: candBrief, root: root})
@@ -102,13 +102,13 @@ func TestDispatch_OverlapWarnsAndProceeds(t *testing.T) {
 	t.Setenv("CLAUDE_SESSION_ID", "deskdispatch-test")
 
 	// root is a REAL git repo (InFlightClaimScopes reads its local refs directly), carrying the
-	// consumer scripts, the candidate brief, and an in-flight refs/dispatch claim it overlaps.
+	// consumer scripts, the candidate brief, and an in-flight claim ref it overlaps.
 	root := t.TempDir()
 	plantScripts(t, root)
 	candBrief := writeBriefFile(t, root, "alpha", "01", "files:\n- `internal/loopengine/engine.go`\n")
 	writeBriefFile(t, root, "beta", "02", "files:\n- `internal/loopengine/`\n")
 	gitFixture(t, root)
-	gitRun(t, root, "update-ref", "refs/dispatch/repo--beta--02", "HEAD")
+	gitRun(t, root, "update-ref", "refs/heads/dispatch/repo--beta--02", "HEAD")
 
 	// Mock the child processes: claim acquire succeeds (exit 0), worktree create returns a path.
 	old := execCommand

@@ -110,7 +110,45 @@ facts:
 | 8 | `statusgen --root . --consumers --brief apps-installer/01` | exit 0 (routing claims corroborated against the diff) |
 
 ## Evidence
-<!-- appended at implementation time -->
+
+Implemented on branch `feat/apps-installer-01`. All eight Verify rows run locally (offline).
+
+| # | Result |
+|---|--------|
+| 1 | PASS — `go build ./...` clean; `go test ./cmd/desktoken/ -run RoleApp` and `go test ./internal/deskkit/ -run MultiRole` both exit 0 |
+| 2 | PASS — `desktoken --version` with `REVIEWER_APP=x-act` prints `bindings=… reviewer=x-act …`, exit 0 |
+| 3 | PASS — `desktoken --version` with no binding prints `reviewer=reviewer-app` (absent binding = today's layout) |
+| 4 | PASS — the `MultiRole` test logs `role-bindings=reviewer=x-act worker=x-act`; the row's grep counts 1 (≥1) |
+| 5 | PASS — `tools/desk/README.md` § App credentials documents `<ROLE>_APP` / `REVIEWER_APP` (grep ≥1) |
+| 6 | PASS — `TestUnboundRoleRefused`: a `[bot]` login the roster does not bind to the posting role is refused, and an unbound role resolves to no login (the independent lower layer) |
+| 7 | PASS — `TestMutationRemovedBindingInCorpus`: `mutations.json` carries the removed-binding mutant, and the `--version` echo is the guard that reddens on it |
+| 8 | PASS — `statusgen --root . --consumers --brief <this brief>` exits 0 (routing claims corroborated / inherited) |
+
+**Fail-first (Task 5 / rule 9).** With the binding lookup removed (`appNameFor` returning
+`role + "-app"` unconditionally — the `mutations.json` removed-binding mutant), the `--version`
+bindings echo shows `reviewer=reviewer-app` instead of the bound `reviewer=x-act`, and
+`TestRoleAppBindingVersionEcho`, `TestRoleAppBindingResolvesBoundAppID` and
+`TestMutationRemovedBindingInCorpus` all fail. Reverting restores green — the guard observes the
+mutant.
+
+**Design decisions (frontmatter question (a) — the binding record format).**
+- Record: one line per role, `<ROLE>_APP=<app-name>` (env, then `apps.env`), the App-name being
+  the PEM stem and the App-ID / install-ID key prefix. Default `<role>-app`.
+- App-name → env-prefix (`AppEnvPrefix`): upper-case with `-`→`_`, then strip a trailing `_APP`.
+  This is the one rule that reconciles "the default is byte-identical to today"
+  (`reviewer-app` → `REVIEWER` → `REVIEWER_APP_ID`) with "the App-name is the prefix of
+  `<APP_NAME>_APP_ID`" (`x-act` → `X_ACT` → `X_ACT_APP_ID`): only the default's conventional
+  `-app` suffix is trimmed, every real bound App-name uses the plain prefix.
+- Task 1 measurement: the roster parser ALREADY accepts several `role=` prefixes on one slug
+  (`RoleBots` is keyed on the role), so no parser widening was needed — the test is the
+  regression guard, and `rosterconfig.go` documents the property.
+- Task 3: `checkAppScopes` needed no logic change — the token path it reads is the bound App's
+  mint, and `requiredDuties` is one fixed set, so a shared grant passes every bound role; a
+  comment records this and `TestMultiRoleSharedGrantPassesEveryBoundRole` proves it.
+- Scope boundary: the binding is confined to the mint path (`desktoken` + the deskkit
+  `AppBinding`/`AppEnvPrefix`/`AppIDForApp` helpers) per the consumer list. `deskpost` /
+  `deskevidence` / `desktoken coverage` still resolve role-keyed; extending the binding to their
+  own JWT-signing paths is follow-up territory (they are not in this brief's consumer set).
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.

@@ -28,6 +28,31 @@ type claimRecord struct {
 	State        string `json:"state,omitempty"`
 	ClaimedAt    string `json:"claimedAt,omitempty"` // RFC3339 — when the claim was first acquired (before dispatch); optional
 	DispatchedAt string `json:"dispatchedAt"`        // RFC3339
+
+	// Eligibility, when present, supplies the eligibility-reconciliation inputs for this
+	// claim in --claims-fixture mode (the reconcile Verify rows). It is nil on every live
+	// claim (live reconciliation reads the real forge/git — see reconcile.go's live source)
+	// and on the liveness-only fixtures, and a nil block means "not a reconcile fixture:
+	// treat as eligible and defer to the liveness step".
+	Eligibility *eligibilityFixture `json:"eligibility,omitempty"`
+}
+
+// eligibilityFixture is the offline stand-in for the three eligibility reads, embedded in a
+// --claims-fixture record so the reconcile Verify rows run with no forge and no git. Each
+// field's zero value is the ELIGIBLE reading (claim still held by us, an active board row, an
+// open PR with no held signal); a test sets only the field whose scenario it exercises. The
+// three *Unreadable flags force a could-not-check on that one read, so the BLIND(<source>)
+// path is fixture-reachable.
+type eligibilityFixture struct {
+	ClaimHolder     string   `json:"claimHolder,omitempty"`   // current holder; "" ⇒ still ours (matches owner); a value ⇒ compared to owner
+	ClaimReleased   bool     `json:"claimReleased,omitempty"` // the claim ref was released underneath ⇒ holder empty
+	ClaimUnreadable bool     `json:"claimUnreadable,omitempty"`
+	BoardStatus     string   `json:"boardStatus,omitempty"` // "" ⇒ in-progress (active)
+	BoardUnreadable bool     `json:"boardUnreadable,omitempty"`
+	PRState         string   `json:"prState,omitempty"` // "" ⇒ open
+	PRDisposition   string   `json:"prDisposition,omitempty"`
+	PRLabels        []string `json:"prLabels,omitempty"`
+	PRUnreadable    bool     `json:"prUnreadable,omitempty"`
 }
 
 // observationRecord is one claim's cross-probe observation, keyed by claim key in

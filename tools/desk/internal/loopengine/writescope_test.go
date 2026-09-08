@@ -150,7 +150,7 @@ func TestWriteOverlapWarnings(t *testing.T) {
 }
 
 // TestInFlightClaimScopes_ReadsLocalRefs proves the offline in-flight reader: a local
-// refs/dispatch claim resolves to the named brief under the root and carries its derived
+// claim ref resolves to the named brief under the root and carries its derived
 // scopes, and a non-git root degrades to nil (advisory, never a failure).
 func TestInFlightClaimScopes_ReadsLocalRefs(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
@@ -165,7 +165,7 @@ func TestInFlightClaimScopes_ReadsLocalRefs(t *testing.T) {
 	}
 
 	gitInit(t, root)
-	gitRun(t, root, "update-ref", "refs/dispatch/repo--beta--02", "HEAD")
+	gitRun(t, root, "update-ref", "refs/heads/dispatch/repo--beta--02", "HEAD")
 
 	got := InFlightClaimScopes(root)
 	if len(got) != 1 || got[0].ID != "beta/02" {

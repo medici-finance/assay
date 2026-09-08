@@ -87,8 +87,14 @@ with WSL noted only as a fallback); publishing to any Windows package manager
 | 01 | [Release build matrix — windows/amd64 + windows/arm64 + sha256s](./brief-01-release-build-matrix.md) | 1 | M | human | implemented | — | — |
 | 02 | [Portability audit — enumerate + triage the shell-assuming surfaces](./brief-02-portability-audit.md) | 0 | M | model | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #413 @ ae22e4fc5f1aac543f4e160cef027f2353a2260f) |
 | 03 | [Windows install path — PowerShell-vs-Go-installer fork, then build](./brief-03-install-path.md) | 2 | L | human | implemented | — | — |
-| 04 | [Windows CI leg — statusgen --lint + a desk-verb smoke on Windows](./brief-04-windows-ci-leg.md) | 2 | M | human | todo | — | — |
+| 04 | [Windows CI leg — statusgen --lint + a desk-verb smoke on Windows](./brief-04-windows-ci-leg.md) | 2 | M | human | implemented | — | — |
 | 05 | [Adoption-doc delta — the Windows adopter walkthrough](./brief-05-adoption-doc-delta.md) | 3 | M | model | done | 2026-09-07 assay-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #593 @ 57ac2401e4a807da14aef81d3a288431b7a5f148) |
+
+Brief 04 implemented via PR #569 (the staged `ci/staged-workflows/windows-ci-leg.yml`) and
+PR #583 (its promotion into `.github/workflows/`); the `windows-smoke` job runs green at
+d684440 on the LF checkout the repo `.gitattributes` provides (#584/#585). The status flip to
+`implemented` was omitted from those PRs and is recorded separately here; verification of the
+`gate: human` Verify rows is a separate step.
 
 ## Critical path
 

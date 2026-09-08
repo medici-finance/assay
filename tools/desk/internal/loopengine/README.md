@@ -29,7 +29,7 @@ on every item (`BOUND <id> — evidence consulted is the claims dir ONLY`): no s
 Boundary conditions — sanitized-ID over-locking, single-winner stale reclaim, `ReleaseClaim` on
 dispatch failure, probe-then-lock not being one atomic step — are stated in
 [`doc.go`](./doc.go). Cross-machine claiming is **not** this package's job; that is the
-GitHub-durable `refs/dispatch/<id>` claim, out of scope here. Full enforcement (every dispatcher
+forge-durable `refs/heads/dispatch/<id>` claim, out of scope here. Full enforcement (every dispatcher
 routing through `Claim()`) arrives with the consumer migrations.
 
 ## Retry is DECLARED DATA, and the taxonomy has THREE outcomes
@@ -128,7 +128,7 @@ A held claim also **ages**. That is why `MaxElapsed` exists and why `Run` refuse
 `MaxElapsed` could reach `Config.StaleClaim`: a dispatcher that waited past the stale threshold
 could have its own live claim reclaimed under it by a second dispatcher that correctly judged it
 abandoned — a double dispatch produced by the retry policy itself. Cross-machine claiming is
-still the GitHub-durable `refs/dispatch/<id>` claim, unchanged by this.
+still the forge-durable `refs/heads/dispatch/<id>` claim, unchanged by this.
 
 ### Retry re-dispatches; whether the worker RESUMES is the adapter's business
 

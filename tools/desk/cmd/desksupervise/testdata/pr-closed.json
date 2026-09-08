@@ -1,0 +1,14 @@
+[
+  {
+    "key": "example-stream--closed-01",
+    "item": "example-stream/closed-01",
+    "owner": "session-closed",
+    "repo": "medici-finance/assay",
+    "branch": "feat/example-stream--closed-01",
+    "pr": 101,
+    "tier": "cheap",
+    "state": "dispatched",
+    "dispatchedAt": "2026-09-02T11:50:00Z",
+    "eligibility": { "prState": "closed" }
+  }
+]

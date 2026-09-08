@@ -53,6 +53,67 @@ func splitFrontmatter(content string) (string, string, error) {
 
 var linkRe = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
 
+// unwrapTitleLink returns the link TEXT of the first well-formed `[text](url)` inline link in a
+// README status-table title cell, so the Next-up row renders a bare title like every other row.
+// It matches brackets by DEPTH rather than by regexp: a title whose link text itself contains a
+// bracket — a backticked tag such as “ [`[assay]` …](./brief-…md) “ — presents an inner `]`
+// that the old `\[([^\]]+)\]\(…\)` form stopped at, so the outer link never unwrapped and the
+// raw `./brief-…` target rode into STATUS.md, dead from the repo root and reddening any snapshot
+// that copied it (#591). A cell with no well-formed inline link is returned unchanged.
+func unwrapTitleLink(cell string) string {
+	i := 0
+	for {
+		j := strings.Index(cell[i:], "](")
+		if j < 0 {
+			return cell
+		}
+		j += i
+		open, okOpen := matchOpenBracket(cell, j)
+		_, okEnd := matchCloseParen(cell, j+1)
+		if okOpen && okEnd {
+			return cell[open+1 : j]
+		}
+		// Not a well-formed link at this `](`; keep scanning past it.
+		i = j + 2
+	}
+}
+
+// matchOpenBracket walks BACKWARD from the `]` at index close to the `[` that opens it, counting
+// nested bracket pairs so an inner `[...]` inside the link text does not steal the match.
+func matchOpenBracket(s string, close int) (int, bool) {
+	depth := 0
+	for k := close - 1; k >= 0; k-- {
+		switch s[k] {
+		case ']':
+			depth++
+		case '[':
+			if depth == 0 {
+				return k, true
+			}
+			depth--
+		}
+	}
+	return 0, false
+}
+
+// matchCloseParen walks FORWARD from the `(` at index open to the `)` that closes it, counting
+// nested parens so a `(...)` inside the URL does not close the match early.
+func matchCloseParen(s string, open int) (int, bool) {
+	depth := 0
+	for k := open; k < len(s); k++ {
+		switch s[k] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return k, true
+			}
+		}
+	}
+	return 0, false
+}
+
 func splitRow(line string) []string {
 	return strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
 }
@@ -101,10 +162,7 @@ func parseBriefTable(body string) ([]Brief, error) {
 			if err != nil {
 				return nil, fmt.Errorf("brief %s: wave %q is not an integer", get("#"), get("wave"))
 			}
-			title := get("brief")
-			if m := linkRe.FindStringSubmatch(title); m != nil {
-				title = m[1]
-			}
+			title := unwrapTitleLink(get("brief"))
 			b := Brief{
 				Num:      get("#"),
 				Title:    title,
