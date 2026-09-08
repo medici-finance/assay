@@ -27,12 +27,15 @@ USAGE:
                        [--remote <name>] [--branch <name>] [--claimed-brief <id>] [--verbose]
 
 Runs five checks, each answering checked-clean / checked-failed / could-not-check
-with a NAMED remediation:
+/ not-applicable with a NAMED remediation:
 
   token-mint-cold        a credential is obtainable from a FRESH scrubbed process:
                          GitHub mints an App token; GitLab verifies the PAT custody
                          path read-only (it does NOT rotate)                       (#794 #567 #655)
-  app-scopes-vs-duties   the installation's grant covers the role's duties        (#571)
+  app-scopes-vs-duties   the installation's grant covers the role's duties; on a
+                         GitLab-forge repo this GitHub-grant read does not apply and
+                         is not-applicable (confirm PAT scopes at the group's Access
+                         Tokens page) — it does NOT redden the envelope            (#571 #655 #671)
   write-transport        a READ-ONLY probe of the role's landing path             (#823)
   commit-identity        the commit email carries the BOT USER id, not the App id (#638)
   sibling-checkouts      the checkouts the QUEUED briefs declare are present      (#679 #661)
@@ -41,9 +44,11 @@ Sibling checkouts resolve through the configured roots (DESK_ROOTS / topology),
 not a flat ../<repo>; at boot an absent sibling is a NOTICE, and only a brief
 named by --claimed-brief turns its own absent sibling into a hard failure (#661).
 
-A non-green result is COULD-NOT-RUN for the whole pass: one summary line, exit 6.
-The desk stops — it does not claim work, burn a pass, or file an issue about its
-own envelope (those issues already exist; the refs above are them).
+A checked-failed or could-not-check result is COULD-NOT-RUN for the whole pass:
+one summary line, exit 6. The desk stops — it does not claim work, burn a pass,
+or file an issue about its own envelope (those issues already exist; the refs
+above are them). A not-applicable check does NOT block the pass and is surfaced
+on its own line rather than counted as checked-clean.
 
 A probe REJECTION is a STOP. It is never retried under another identity
 (AGENTS.md, "Scope rejections") and this verb offers no way to.
