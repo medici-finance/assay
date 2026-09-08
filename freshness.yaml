@@ -23,3 +23,33 @@ artifacts:
           - "docs/registers.md"
           - "docs/evidence-bundle.md"
           - "docs/telemetry.md"
+
+  # Harness-portability capability matrices (harness-portability/01) and the
+  # per-harness capability binding files (harness-portability/04/07). These
+  # carry empirical vendor/harness behaviour — mechanism + degradation posture
+  # per skill — so they rot on a clock rather than against tracked code, and
+  # register with an empty upstreams list and a 45-day re-review leash.
+  - path: docs/research/codex-harness-capabilities.md
+    last-reviewed: "2026-08-08"
+    max-age-days: 45
+    upstreams: []
+
+  - path: docs/research/cursor-harness-capabilities.md
+    last-reviewed: "2026-08-26"
+    max-age-days: 45
+    upstreams: []
+
+  - path: plugins/assay/references/codex.md
+    last-reviewed: "2026-08-24"
+    max-age-days: 45
+    upstreams: []
+
+  - path: plugins/assay/references/claude-code.md
+    last-reviewed: "2026-08-24"
+    max-age-days: 45
+    upstreams: []
+
+  - path: plugins/assay/references/cursor.md
+    last-reviewed: "2026-08-26"
+    max-age-days: 45
+    upstreams: []

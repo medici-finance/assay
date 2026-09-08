@@ -3496,6 +3496,23 @@ claimed. A mistyped flag must cost a refusal, not an item nobody can pick up unt
 deletes a ref by hand. `TestNoCallerPreconditionIsCheckedAfterTheClaim` drives the whole
 table of bad inputs and asserts that *zero* processes ran.
 
+**`--dry-run --worktree PATH` renders against an operator-stated home, verified — never
+predicted.** A dry run normally shows the agent's home worktree as a not-yet-known
+placeholder, on purpose: the worktree verb owns where a worktree lands, and a predicted path
+in a prompt would be a second source of truth for the one value the isolation floor rests on.
+But a dry run is also how a batch of prompts is previewed, and each preview then has that
+placeholder substituted by hand before it reaches an agent. `--worktree` (accepted **only**
+with `--dry-run`; refused with exit 5 on a real dispatch, where the home is the worktree
+verb's to name) lets the verb render an operator-stated home that *already exists* — but only
+after proving it, three checks all fail-closed with exit 5 and their own reason: the path
+resolves under a sanctioned worktree prefix (the same two-line rule the worktree verb
+enforces, no looser), it IS a registered git worktree of the item's *own* repo (both
+`rev-parse --show-toplevel` equal to the path and its git-common-dir equal to the item
+repo's — so a typo, a plain directory, or a clone of another repo is refused), and it is not
+the shared checkout (refused by identity first, the isolation floor). A verified path is
+substituted at *both* placeholder sites and echoed on the PLAN banner as `worktree=<path>
+(operator-supplied, verified)`, so a transcript shows it was checked, not guessed.
+
 **`deskflip` re-reads the verdicts, not just the head, before it mutates.** A head re-read
 catches a push. It does not catch a `Security-Review: fail`, because a retraction is a
 review event posted at the *same* head — so a head-only re-read reports "still current" and
@@ -3884,6 +3901,31 @@ collector are different facts: an empty transcript tree and a mis-pointed `--tra
 look identical from the inside, and collapsing them is how a broken collector reads as a
 perfect day. The same rule applies to the trend block, whose "nothing to compare against"
 is `no-prior-data`, never a delta of `0` (which would read as *steady*).
+
+## Monitors — the paced pollers (`inbound-monitor.sh`, `pr-monitor.sh`)
+
+Two durable, stateful pollers ship in the plugin tree for a desk window to arm behind the
+harness `Monitor` tool: `inbound-monitor.sh` watches every repo's open issues and
+`pr-monitor.sh` watches every repo's open PRs (head sha, draft state, state, merge state).
+Both resolve the same repo set (args, `./.assay/repos.txt`, or the origin remote), keep a
+per-repo baseline so a repo's first sight SEEDS silently, poll as the keyring account (never an
+inherited App token that cannot see the private set), and RETAIN a repo's baseline on any read
+they cannot trust rather than go silently blind — a failed read, or a page that comes back at
+the explicit `--limit` (truncated: `gh` gives no truncation signal, so an at-limit read is a
+moving window, not ground truth). Neither script writes to the forge or holds a credential.
+
+**The pacing contract** is the same for both scripts, so a wide repo set cannot become the
+tight-loop poll that trips the forge's secondary rate limit:
+
+| Knob | Effect | Applies to |
+|---|---|---|
+| `ASSAY_MONITOR_PACE_SECONDS` | seconds slept between consecutive per-repo reads — default **2**; `0` disables the sleep (used by the test suites for speed). It is slept *between* reads only: never before the first read, and never around a repo that makes no call. | both scripts |
+| `ASSAY_MONITOR_MAX_REPOS_PER_CYCLE` | maximum repos a single cycle reads — default **0** = all. Above 0, the cycle reads that many repos and carries a cursor in the state dir so the next run resumes where this one stopped, sweeping a large set across cycles instead of in one burst. | `pr-monitor.sh` |
+| — (no knob; automatic) | a `gh` exit carrying the secondary-rate-limit signature (a 403 whose stderr names `secondary rate limit`, or a 429) marks every remaining repo `MONITOR-DEGRADED: <slug> rate-limited, skipped` and ends the cycle with no further `gh` call — one tripped limit is never compounded by the reads behind it. | both scripts |
+
+The pace and cap in force are echoed on the `MONITOR-ARMED` line so a transcript records what
+was set. Each script's `.test.sh` runs hermetically against a stubbed `gh` on `PATH`; no test
+touches the network.
 
 ## Handoff coverage
 

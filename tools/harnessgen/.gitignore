@@ -1,0 +1,3 @@
+# Built binary from `go build` — never commit an in-tree binary (leak-sweep /
+# publication-boundary treat a committed binary as a leak).
+/harnessgen

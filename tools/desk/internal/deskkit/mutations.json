@@ -52,8 +52,8 @@
     {
       "name": "stop the refusal advertising the override (#585 re-opens)",
       "file": "internal/deskkit/scanoverride.go",
-      "old": "\t\treturn Refused(scanErr.Error() + OverrideHint())",
-      "new": "\t\treturn Refused(scanErr.Error())"
+      "old": "\t\treturn RefusedFinding(scanErr.Error()+OverrideHint(), f)",
+      "new": "\t\treturn RefusedFinding(scanErr.Error(), f)"
     },
     {
       "name": "make the impersonation guard overridable",

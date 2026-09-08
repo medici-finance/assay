@@ -50,7 +50,7 @@ USAGE:
   deskdispatch <item-key> [--tier strong|any] [--kit worker|review|verifier]
                [--repo OWNER/NAME] [--root DIR] [--claim-root DIR] [--model SLUG]
                [--branch NAME] [--brief PATH] [--gate-human] [--pr N]
-               [--prompt-file FILE] [--quiet] [--dry-run]
+               [--prompt-file FILE] [--quiet] [--dry-run] [--worktree PATH]
   deskdispatch --kits
   deskdispatch --version
 
@@ -103,7 +103,16 @@ holding an in-flight dispatch claim for the same root, as 'WRITE-OVERLAP: <item>
 the echo has no exit code, and overlap never blocks or delays the claim.
 
 --kits lists the prompt kits this binary carries and exits 0.
---dry-run runs no step: it prints the plan and the prompt that WOULD be emitted.
+--dry-run runs no step: it prints the plan and the prompt that WOULD be emitted. The prompt
+shows the agent's home worktree as a not-yet-known placeholder, because a real dispatch names
+the path deskwt printed and this verb never predicts one.
+--worktree PATH (with --dry-run ONLY) renders the prompt against an operator-STATED home that
+already exists, instead of that placeholder — for previewing a batch whose worktrees are
+already cut. The path is validated first, all three checks fail-closed (exit 5): it resolves
+under a sanctioned worktree prefix, it IS a registered git worktree of the item's own repo,
+and it is not the shared checkout. A verified path also appears on the PLAN banner as
+"worktree=<path> (operator-supplied, verified)" so a transcript shows it was checked, not
+guessed. On a real dispatch --worktree is refused (exit 5): the home is deskwt's to name.
 --quiet suppresses the per-step OK lines; failures and the prompt always print.
 
 Exit: 0 dispatch prepared · 3 disabled · 5 refused (live claim holder / caller

@@ -1,0 +1,4 @@
+# Built binary from `go build` — never commit an in-tree binary (leak-sweep /
+# publication-boundary treat a committed binary as a leak). CI and the Makefile
+# invoke the tool via `go run ./tools/harnesslint`, so no committed binary is needed.
+/harnesslint

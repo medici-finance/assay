@@ -183,8 +183,24 @@ clearly labeled rather than silently dropped.
      reference. BLOCKED until the live environment exists.
      "verified" requires a non-implementer. -->
 
+Two trees, per the re-home note: rows 1–3, 5, 6 run in the **private source tree** that holds
+this stream's de-housed code deliverables — the protocol doc plus the bundle's
+`plugin.json`/`RELEASE-NOTES.md` — exactly as brief 12's generator rows do; rows 4, 7 run in
+this **public** tree, where `docs/adopting-assay.md` and this README already live. Row 8 stays
+BLOCKED — the live run is the desk's, under the human gate's sanction.
+
 | # | Command | Exit | Output | Date | Runner |
 |---|---------|------|--------|------|--------|
+| 1 | `test -f docs/cursor-smoke-protocol.md` | 0 | file present (tool source tree) | 2026-09-07 | assay-worker-app[bot] opus-4.8[1m] |
+| 2 | step-count == Expect-count, ≥8 | 0 | `steps=8 expects=8` | 2026-09-07 | assay-worker-app[bot] opus-4.8[1m] |
+| 3 | Step 8 names a draft PR AND a review cycle | 0 | matched `draft PR` + `pr-review-desk`/`review` within Step 8 | 2026-09-07 | assay-worker-app[bot] opus-4.8[1m] |
+| 3a | positive control `draft-PR-no-such-token` absent | 1 | token absent (as required) | 2026-09-07 | assay-worker-app[bot] opus-4.8[1m] |
+| 4 | `grep -qF 'cursor-smoke-protocol.md' docs/adopting-assay.md` | 0 | reference present in the Cursor section (public tree) | 2026-09-07 | assay-worker-app[bot] opus-4.8[1m] |
+| 4a | positive control `cursor-smoke-protocol-no-such-file.md` absent | 1 | token absent (as required) | 2026-09-07 | assay-worker-app[bot] opus-4.8[1m] |
+| 5 | version bumped past `origin/main`'s | 0 | `base=0.3.0 cur=0.4.0` (tool source tree) | 2026-09-07 | assay-worker-app[bot] opus-4.8[1m] |
+| 6 | current version's RELEASE-NOTES names Cursor smoke | 0 | v0.4.0 section names "Cursor live-desk-smoke" (tool source tree) | 2026-09-07 | assay-worker-app[bot] opus-4.8[1m] |
+| 7 | README carries row 13 + gate-distribution line | 0 | row 13 present; "03, 07, 13 and 14 are `gate: human`" present (public tree) | 2026-09-07 | assay-worker-app[bot] opus-4.8[1m] |
+| 8 | first run log complete (live desk loop) | — | **BLOCKED-ON-HUMAN** — needs a live Cursor environment (`cursor-agent` CLI + IDE install + `<Ian-named scratch repo>`) Ian provides/sanctions; the desk runs it under that sanction. No run log exists by design — never greened from the protocol text alone (this stream's vacuous-green bar). | — | — |
 
 ## Review
 

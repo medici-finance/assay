@@ -68,6 +68,29 @@ The shape check is still a real gate: a GitHub noreply address presented for a `
 `github:` entry **fails** (it is not the exact GitHub string). Neither forge accepts the other's
 address.
 
+### The GitLab session / implementer identity is distinct from the service account (#643)
+
+On GitLab the desk runs **two** identities, and they are not the same entity the way they are on
+GitHub (where the App *is* the committer). The **session / implementer identity** — a real GitLab
+user such as `ih-bot` — authors the worktree's commits under its own ordinary `user.email`, while
+the role **service account** (`assay-worker-bot`) is the analog of the GitHub role App and is used
+only for **minted API writes** (creating the MR, posting notes, approving). Demanding the
+service-account noreply address for the *commit* email therefore blocks the documented session
+actor, whose commit email is a normal user address (`#643`).
+
+So the GitLab commit-identity preflight accepts the commit email when it is **either**:
+
+- an **explicitly trusted session address** listed in `ASSAY_GITLAB_SESSION_EMAILS` (the
+  two-identity path — the deployment declares which user addresses author its commits), **or**
+- the role **service-account noreply shape** (the commit-as-SA path — the pilot's mode).
+
+`ASSAY_GITLAB_SESSION_EMAILS` is an **exact-match allowlist read from the trusted roster**, so it
+never degrades to "any user email passes": an ordinary address that is not listed still **fails**,
+and the cross-forge rejection above is unchanged (a GitHub noreply address for a `gitlab:` entry
+still fails). It is **additive and fail-closed** — **unset** means the service-account noreply
+shape is the only accepted GitLab commit email, byte-for-byte the pre-`#643` behaviour — and it is
+**never consulted on a GitHub identity**, so the `#638` bot-USER-id guarantee is untouched.
+
 ## Forge agreement is enforced, not assumed
 
 An entry whose forge does not match the forge that `ForgeFor` resolves for the repo being acted

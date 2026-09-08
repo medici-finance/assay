@@ -290,36 +290,44 @@ func TestConfigHomePermissionsEnforced(t *testing.T) {
 	// for this test name and pins the count at exactly 2 (one per module). A
 	// t.Run subtest prints its own `--- PASS: <Test>/<case>` line and would
 	// silently inflate that count past the pin.
-	for _, tc := range []struct {
-		name string
-		path string
-		mode os.FileMode
-	}{
-		{"group-writable file", file, 0o660},
-		{"world-writable file", file, 0o606},
-		{"group-writable directory", dir, 0o770},
-		{"world-writable directory", dir, 0o707},
-	} {
-		if err := os.Chmod(tc.path, tc.mode); err != nil {
-			t.Fatal(err)
+	//
+	// Gated on supportsPOSIXRosterModes: os.Chmod cannot produce group/world-
+	// writable mode bits on Windows (os.FileMode is synthetic there), so the POSIX
+	// mode assertions run on unix only. The Windows equivalent — a foreign
+	// write-granting ACE is refused — is covered by TestEvaluateRosterACL (the
+	// platform-independent decision) and TestWindowsRosterACLIntegration.
+	if supportsPOSIXRosterModes {
+		for _, tc := range []struct {
+			name string
+			path string
+			mode os.FileMode
+		}{
+			{"group-writable file", file, 0o660},
+			{"world-writable file", file, 0o606},
+			{"group-writable directory", dir, 0o770},
+			{"world-writable directory", dir, 0o707},
+		} {
+			if err := os.Chmod(tc.path, tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			ReloadConfig()
+			cfg := EffectiveConfig()
+			if cfg.Configured() {
+				t.Errorf("the loader accepted a roster from a %s — anything that can write it can name "+
+					"the accounts this tool trusts", tc.name)
+			}
+			if !strings.Contains(strings.Join(cfg.Problems, " "), "writable") {
+				t.Errorf("the %s refusal does not name the permission problem, so a user cannot fix it: %v",
+					tc.name, cfg.Problems)
+			}
+			if err := os.Chmod(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(file, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			ReloadConfig()
 		}
-		ReloadConfig()
-		cfg := EffectiveConfig()
-		if cfg.Configured() {
-			t.Errorf("the loader accepted a roster from a %s — anything that can write it can name "+
-				"the accounts this tool trusts", tc.name)
-		}
-		if !strings.Contains(strings.Join(cfg.Problems, " "), "writable") {
-			t.Errorf("the %s refusal does not name the permission problem, so a user cannot fix it: %v",
-				tc.name, cfg.Problems)
-		}
-		if err := os.Chmod(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(file, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		ReloadConfig()
 	}
 
 	// Positive control restored: the same file at 0600 loads again.
