@@ -36,9 +36,12 @@ name: evidence-automerge
 # WHY NOT `pull_request_target`: this workflow reads a PR's metadata and never
 # checks the PR tree out, so it needs none of the elevated context
 # `pull_request_target` grants — and that event would run with repository
-# secrets in scope of a branch this workflow does not control. There is no
-# `actions/checkout` step here at all: no code from the pull request is ever
-# fetched or executed.
+# secrets in scope of a branch this workflow does not control. NO CODE FROM THE
+# PULL REQUEST IS EVER FETCHED OR EXECUTED. The single `actions/checkout` below
+# takes the DEFAULT BRANCH — already-reviewed, already-merged content, at the
+# same trust level as this file — and only the one directory holding the
+# decision script; it never resolves the pull request's head, its merge ref, or
+# `github.sha`, and it persists no credential.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -215,6 +218,22 @@ jobs:
           app-id: ${{ secrets.BOARD_APP_ID }}
           private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
 
+      # The refusal decision below lives in a script, so it can be unit-tested
+      # offline (`tools/evidence-automerge/automerge-refusal_test.sh`) instead of
+      # being provable only by re-running this workflow against a live pull
+      # request. That is the ONLY reason a checkout appears in this workflow, and
+      # it is scoped to match: the DEFAULT BRANCH (already-reviewed content, the
+      # same trust level as this file — never the pull request's head or merge
+      # ref), only the one directory holding the script, no credential kept, and
+      # only for a pull request that already passed every guard above.
+      - name: Check out the decision script (default branch, never the PR tree)
+        if: steps.guard.outputs.eligible == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: tools/evidence-automerge
+
       # `enablePullRequestAutoMerge` is a REQUEST. GitHub merges when — and only
       # when — every branch rule is satisfied: the required approving review from
       # a reviewer that is not the last pusher, the required status checks, and
@@ -227,33 +246,41 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NODE_ID: ${{ github.event.pull_request.node_id }}
           PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          # The name of the check run THIS workflow publishes. `github.job` is
+          # the job key (`enable`), which is the check-run name for a job that
+          # declares no `name:` — so renaming the job renames both together and
+          # the decision can never drift from the job it is about.
+          SELF_CHECK: ${{ github.job }}
         run: |
           set -uo pipefail
-          # Two failures from this mutation are benign and must NOT redden the run:
-          #   1. Already enabled (a second synchronize, or a review after a push) is
-          #      a benign replay: GitHub answers with a "... already enabled" style
-          #      error. The request is redundant, not wrong.
-          #   2. Repository auto-merge is turned OFF at the repo level: GitHub answers
-          #      "Auto merge is not allowed for this repository". Enabling auto-merge
-          #      is an OPTIMISATION, not the merge itself — the required review and
-          #      status checks still gate the merge, and a human can merge directly —
-          #      so a repo that has the setting off is a benign skip, not a failure.
-          #      (Turning the setting on is the other resolution; see #579.)
-          # Every OTHER failure is a real failure and reddens the run.
-          out=$(gh api graphql \
+          # WHAT COUNTS AS A FAILURE here is decided by
+          # tools/evidence-automerge/automerge-refusal.sh, which documents the
+          # four benign outcomes (accepted / already enabled / repository
+          # auto-merge off / refused as unstable when this job's own check is the
+          # only failing one) and reddens on everything else, could-not-check
+          # included. This step only gathers the two facts that decision needs:
+          # what the mutation answered, and — when it refused — which checks are
+          # currently failing on the PR.
+          out="$(gh api graphql \
             -f query='mutation($pr:ID!){enablePullRequestAutoMerge(input:{pullRequestId:$pr,mergeMethod:MERGE}){pullRequest{number autoMergeRequest{enabledAt}}}}' \
-            -F pr="$PR_NODE_ID" 2>&1) || {
-              printf '%s\n' "$out"
-              if printf '%s' "$out" | grep -qi 'already enabled'; then
-                echo "auto-merge was already enabled on PR ${PR} — no-op"
-                exit 0
-              fi
-              if printf '%s' "$out" | grep -qi 'not allowed for this repository'; then
-                echo "repository auto-merge is disabled — skipping enable on PR ${PR} (benign; see #579)"
-                exit 0
-              fi
-              echo "::error::could not enable auto-merge on PR ${PR}"
-              exit 1
-            }
+            -F pr="$PR_NODE_ID" 2>&1)"
+          rc=$?
           printf '%s\n' "$out"
-          echo "auto-merge requested on PR ${PR}; GitHub will merge once the required review and status checks are satisfied"
+          printf '%s\n' "$out" > "${RUNNER_TEMP}/automerge-out.txt"
+
+          # Read only on a refusal, and never fatal here: an unreadable rollup is
+          # could-not-check, and the script — not this step — is what refuses to
+          # round could-not-check up to "nothing else is failing".
+          rollup="${RUNNER_TEMP}/automerge-rollup.json"
+          : > "$rollup"
+          if [ "$rc" -ne 0 ]; then
+            gh pr view "$PR" --repo "$REPO" --json statusCheckRollup > "$rollup" || : > "$rollup"
+          fi
+
+          MUTATION_RC="$rc" \
+          MUTATION_OUT="${RUNNER_TEMP}/automerge-out.txt" \
+          ROLLUP_JSON="$rollup" \
+          SELF_CHECK="$SELF_CHECK" \
+          PR="$PR" \
+            bash tools/evidence-automerge/automerge-refusal.sh

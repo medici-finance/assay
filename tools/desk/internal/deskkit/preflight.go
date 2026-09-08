@@ -407,8 +407,8 @@ func checkColdMint(p PreflightProbes, role, repo string) (string, Check) {
 // carry <ROLE>_TOKEN / <ROLE>_PEM / <ROLE>_APP_ID / GH_TOKEN forward and the
 // probe would pass on an ambient credential that a fresh shell will not have —
 // which is precisely the failure #794 describes: everything works until the warm
-// cache lapses. Only HOME, PATH, the config-home knob, the proxy/TLS variables
-// the network call needs, and TMPDIR survive.
+// cache lapses. Only the home-defining variables, PATH, the config-home knob,
+// the proxy/TLS variables the network call needs, and TMPDIR survive.
 //
 // The probe MINTS (it does not use --ttl): --ttl fails on a cold machine that
 // has no cache yet, which is the normal state at boot, so it would report red
@@ -468,8 +468,23 @@ func deriveRepoSlug(dir, remote string) string {
 // scrubbedEnv is the ALLOWLIST a cold probe runs under. An allowlist, not a
 // denylist: a new credential env var added elsewhere must not silently start
 // warming this probe.
+//
+// The home-defining variables are load-bearing, not incidental. The child mint
+// resolves the roster and the App-credential home through os.UserHomeDir()
+// (rosterconfig.go's configHomeFile, appconfig.go's expandHome), and
+// os.UserHomeDir() reads a DIFFERENT variable per platform: HOME on unix/plan9,
+// %USERPROFILE% on Windows. An allowlist that carried only HOME therefore left
+// the Windows child with no home at all — os.UserHomeDir() failed with
+// "%userprofile% is not defined", the roster read as absent, and the cold mint
+// refused on an envelope that was actually intact (#642). Keeping every
+// platform's home variable — plus HOMEDRIVE/HOMEPATH, the pair git-for-Windows
+// composes a home from — lets the child reconstruct the SAME home the parent
+// resolved, on any OS, without dragging a credential across. On unix the Windows
+// names are simply unset and skipped, so this is not a widening of what a unix
+// child inherits.
 func scrubbedEnv() []string {
-	keep := []string{"HOME", "PATH", EnvConfigHome, "TMPDIR",
+	keep := []string{"HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+		"PATH", EnvConfigHome, "TMPDIR",
 		"HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy",
 		"SSL_CERT_FILE", "SSL_CERT_DIR"}
 	var env []string
@@ -807,11 +822,29 @@ func checkGitHubCommitIdentity(p PreflightProbes, ident BotIdentity, role, email
 		"git -C "+orDot(dir)+" config user.email "+want, refs)
 }
 
-// checkGitLabCommitIdentity validates a GitLab service-account commit address by SHAPE.
-// The group id and per-account suffix are not in the roster, so the shape is the tightest
-// available check — but a GitHub noreply address for a GitLab entry is a hard failure
-// (the cross-forge case), never a fall-through that a skipped check would let pass.
+// checkGitLabCommitIdentity validates a GitLab worktree's commit author. On GitLab the
+// desk runs TWO distinct identities (#643): the SESSION / implementer identity (a real
+// GitLab user, e.g. `ih-bot`) authors the commits under an ordinary user address, while
+// the role SERVICE ACCOUNT — the analog of the GitHub role App — is used only for minted
+// API writes. So this check accepts EITHER:
+//
+//   - a commit email that is an EXPLICITLY TRUSTED session address
+//     (ASSAY_GITLAB_SESSION_EMAILS — the two-identity path), or
+//   - the role service-account noreply SHAPE (the commit-as-SA path). The group id and
+//     per-account suffix are not in the roster, so the shape is the tightest available
+//     check for that form.
+//
+// A GitHub noreply address for a GitLab entry is a hard failure (the cross-forge case),
+// never a fall-through that a skipped check would let pass; and an email that is neither
+// a trusted session address nor the service-account shape still FAILS. The session
+// allowlist is the ONLY widening here, it is EXACT-MATCH from the trusted roster, and it
+// is never consulted on a GitHub identity (the #638 bot-USER-id guarantee is untouched).
 func checkGitLabCommitIdentity(ident BotIdentity, email, dir, refs string) Check {
+	if GitLabSessionEmailAllowed(email) {
+		return clean(CheckCommitIdentity, "commit email "+email+" is an explicitly trusted GitLab session / "+
+			"implementer address ("+EnvGitLabSessionEmails+"); the role service account ("+ident.Slug+
+			") is the API-write identity, not the commit author", refs)
+	}
 	if ident.CommitEmailSpec().Accepts(email) {
 		return clean(CheckCommitIdentity, "commit email is the GitLab service-account noreply form ("+email+
 			"); the group id and per-account suffix are not derivable from the roster, so the shape is the "+
@@ -824,7 +857,8 @@ func checkGitLabCommitIdentity(ident BotIdentity, email, dir, refs string) Check
 			commitIdentityRemedy(ident, dir), refs)
 	}
 	return failed(CheckCommitIdentity,
-		"commit email "+email+" is not the GitLab service-account noreply form "+
+		"commit email "+email+" is neither an explicitly trusted GitLab session / implementer address "+
+			"("+EnvGitLabSessionEmails+") nor the role service-account noreply form "+
 			"(service_account_group_<group-id>_<suffix>@noreply.<host>)",
 		commitIdentityRemedy(ident, dir), refs)
 }
@@ -838,8 +872,10 @@ func commitIdentityRemedy(ident BotIdentity, dir string) string {
 		return "git -C " + orDot(dir) + " config user.email " + spec.Exact
 	}
 	if spec.Forge == ForgeGitLab {
-		return "set this worktree's user.email to the " + ident.Slug + " GitLab service-account noreply " +
-			"address (service_account_group_<group-id>_<suffix>@noreply.<host>) provisioned for it"
+		return "commit as the session / implementer identity — set this worktree's user.email to a GitLab " +
+			"user address listed in " + EnvGitLabSessionEmails + " — OR, to commit AS the service account, " +
+			"set it to the " + ident.Slug + " GitLab service-account noreply address " +
+			"(service_account_group_<group-id>_<suffix>@noreply.<host>) provisioned for it"
 	}
 	return "pin the bot USER id in " + EnvTrustedBotSlugs + " for " + ident.Slug +
 		", then set this worktree's user.email to the resulting noreply address"

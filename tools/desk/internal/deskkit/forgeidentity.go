@@ -154,6 +154,48 @@ func (s CommitEmailSpec) Accepts(email string) bool {
 	}
 }
 
+// splitGitLabSessionEmails is the ONE normalisation for a raw EnvGitLabSessionEmails
+// value (#643), shared by the accessor below and parseConfig's roster arm: split on
+// commas, lowercased, trimmed, empties dropped, nil for an empty or blank value — the
+// same shape splitWithheldIdentifiers uses, so a session email cannot be admitted under
+// one casing and rejected under another.
+func splitGitLabSessionEmails(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(raw, ",") {
+		if p = strings.ToLower(strings.TrimSpace(p)); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// GitLabSessionEmailAllowed reports whether email is an explicitly TRUSTED session /
+// implementer commit author on a GitLab worktree (#643) — i.e. it appears verbatim in
+// the ASSAY_GITLAB_SESSION_EMAILS allowlist. The comparison is case-insensitive because
+// the allowlist is normalised to lowercase at load. An empty allowlist (the unset state)
+// admits nothing, so an unconfigured deployment keeps the pre-#643 behaviour where the
+// service-account noreply shape is the only accepted GitLab commit email.
+//
+// This is the ONLY widening of the commit-identity check, and it is deliberately an
+// EXACT-MATCH allowlist read from the trusted roster: it never accepts a shape or a
+// pattern, so nothing an attacker can influence enters it, and it is never consulted on
+// a GitHub identity (the #638 bot-USER-id guarantee is untouched).
+func GitLabSessionEmailAllowed(email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return false
+	}
+	for _, e := range EffectiveConfig().GitLabSessionEmails {
+		if e == email {
+			return true
+		}
+	}
+	return false
+}
+
 // RoleBotIdentity resolves a desk role to its forge-qualified bot identity. ok is false
 // for an unbound role or one whose slug has no parsed identity — the same fail-closed
 // shape RoleAppLogin's ok return enforces, so a caller cannot turn an unbound role into
