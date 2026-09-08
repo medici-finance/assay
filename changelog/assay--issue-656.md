@@ -6,4 +6,4 @@
   `\private\tmp\…` that fails the sanctioned-prefix check — so no desk worktree could be
   created and `deskboot` refused the shared checkout. Both prefixes were already in the
   allowlist; only the target selection was Unix-locked. The prefix guard is unchanged, so
-  the isolation guarantee still holds on every platform (assay#656).
+  the isolation guarantee still holds on every platform (#656).

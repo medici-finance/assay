@@ -9,7 +9,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// windowsprefix_test.go pins the fix for assay#656: `deskwt add` / `role-init` must build
+// windowsprefix_test.go pins the fix for #656: `deskwt add` / `role-init` must build
 // their worktree target under a prefix that is PORTABLE on the host OS. On native Windows
 // the compiled `/private/tmp` prefix becomes a drive-rooted `\private\tmp\...` that fails
 // the sanctioned-prefix guard, so no desk worktree can be created and `deskboot` refuses
@@ -50,7 +50,7 @@ func TestWorktreeTargetChoosesPrefixPerOS(t *testing.T) {
 		t.Fatalf("Windows target = %q, want %q (the portable <repo-root>/.claude/worktrees/ prefix)", got, want)
 	}
 	if strings.HasPrefix(g.worktreeTarget("tracker-x"), tmpBaseDir) {
-		t.Fatalf("Windows target is still under the tmp prefix %q — the assay#656 bug", tmpBaseDir)
+		t.Fatalf("Windows target is still under the tmp prefix %q — the #656 bug", tmpBaseDir)
 	}
 }
 
@@ -77,7 +77,7 @@ func TestAddOnWindowsCreatesUnderPortablePrefix(t *testing.T) {
 	}
 	// It must NOT have gone to the /private/tmp prefix that fails the guard on Windows.
 	if _, err := os.Stat(filepath.Join(tmpBaseDir, "tracker-win")); !os.IsNotExist(err) {
-		t.Fatalf("worktree was created under the tmp prefix on the windows codepath (err=%v) — assay#656 not fixed", err)
+		t.Fatalf("worktree was created under the tmp prefix on the windows codepath (err=%v) — #656 not fixed", err)
 	}
 }
 
@@ -97,7 +97,7 @@ func TestRoleInitOnWindowsUsesPortablePrefix(t *testing.T) {
 		t.Fatalf("expected the role worktree under the portable prefix %s: %v", portable, err)
 	}
 	if _, err := os.Stat(filepath.Join(tmpBaseDir, "tracker-verify-desk-winsess")); !os.IsNotExist(err) {
-		t.Fatalf("role worktree created under the tmp prefix on the windows codepath — assay#656 not fixed")
+		t.Fatalf("role worktree created under the tmp prefix on the windows codepath — #656 not fixed")
 	}
 
 	// role-clean resolves the same portable target and removes it.

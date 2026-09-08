@@ -140,7 +140,7 @@ func (g *pathGuard) check(path string) (string, error) {
 //     prefix (see README + `allowed`). `/private/tmp` is not a usable absolute path on
 //     Windows: filepath.Abs turns it into a drive-rooted `<drive>\private\tmp\...` that
 //     resolves nowhere near the resolved tmp dir, so `allowed` refuses it and no desk
-//     worktree can be created (assay#656). The `.claude/worktrees/` prefix lives inside the
+//     worktree can be created (#656). The `.claude/worktrees/` prefix lives inside the
 //     repo, so it is drive-correct on every platform.
 //
 // This picks WHICH sanctioned prefix to target; it never widens or bypasses the allowlist —

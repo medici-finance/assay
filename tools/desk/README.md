@@ -1472,7 +1472,7 @@ deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks who
   only decides WHICH one is targeted, never widening it. `/private/tmp` is not a usable
   absolute path on native Windows — it resolves to a drive-rooted `\private\tmp\…` that fails
   the sanctioned-prefix check, so no desk worktree could be created and `deskboot` refused the
-  shared checkout (assay#656) — whereas the `.claude/worktrees/` prefix lives inside the repo
+  shared checkout (#656) — whereas the `.claude/worktrees/` prefix lives inside the repo
   and is drive-correct everywhere. When a local branch of that
   name already exists in the shared refs store — a leftover from an abandoned dispatch — it is
   reclaimed only when proven empty (checked out in no worktree AND 0 commits ahead of its

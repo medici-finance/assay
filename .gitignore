@@ -23,7 +23,7 @@
 /tools/statusgen
 
 # Desk worktrees created under the portable sanctioned prefix (deskwt add / role-init on
-# Windows, where the /private/tmp prefix is not a usable absolute path — assay#656). The
+# Windows, where the /private/tmp prefix is not a usable absolute path — #656). The
 # `.claude/` dir itself carries tracked files (guardrails), so ignore only this subtree.
 /.claude/worktrees/
 
