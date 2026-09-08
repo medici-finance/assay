@@ -20,7 +20,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-08 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-08 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/12 | 2026-09-08 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/13 | 2026-09-08 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/14 | 2026-09-08 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-08 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 6/6 | 2026-09-08 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-08 |  |
@@ -52,27 +52,28 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| harness-portability | 01 [exec:strong] | implemented | 5000 | 8 | — | — | — |
+| harness-portability | 01 [exec:strong] | implemented | 5500 | 9 | — | — | — |
 | apps-installer | 01 [exec:strong] | implemented | 4500 | 5 | — | — | — |
+| harness-portability | 02 [exec:strong] | implemented | 4500 | 7 | — | — | — |
 | desktools-go-git | 02 | implemented | 4000 | 6 | — | — | — |
-| harness-portability | 02 [exec:strong] | implemented | 4000 | 6 | — | — | — |
+| harness-portability | 04 [exec:strong] | implemented | 4000 | 6 | — | — | — |
+| harness-portability | 05 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
-| harness-portability | 04 [exec:strong] | implemented | 3500 | 5 | — | — | — |
-| harness-portability | 05 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | forge-neutral | 06 [exec:strong] | implemented | 3000 | 2 | — | — | — |
-| harness-portability | 06 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-neutral | 05 [exec:strong] | implemented | 2500 | 1 | — | — | — |
+| harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | windows-port | 00 | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
-| harness-portability | 12 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | windows-port | 01 | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -90,7 +91,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| harness-portability | 14 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | quality | 15 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 03 | implemented | 1000 | 0 | — | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -102,8 +102,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
 | forge-neutral | 01 [exec:strong] | implemented | 7500 | 11 | — | — | — |
+| harness-portability | 03 | implemented | 5000 | 8 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
-| harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | windows-port | 04 | implemented | 1000 | 0 | — | — | — |
 
@@ -238,7 +238,7 @@ _None._
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
 - 12 deskboard non-board reads onto the seam — PR search, commit history, single-commit, combined-status, workflow listing — todo (wave 4)
 
-### harness-portability (12 open)
+### harness-portability (13 open)
 
 - 01 Codex capability ground-truth — measured matrix, not inherited prior art — implemented (wave 0)
 - 02 Kill the drift debt — re-sync the bundle, flip the canonical home — implemented (wave 0)
@@ -252,6 +252,7 @@ _None._
 - 12 Cursor — the third harness column (ground-truth + binding + generator verb + public column) — implemented (wave 5)
 - 13 Cursor live-desk-smoke protocol + first run — implemented (wave 6)
 - 14 Code de-house — land the stream's tool and packaging deliverables in the public tree — implemented (wave 6)
+- 15 Public CI wiring + harnesslint clean-up for the de-housed tools — todo (wave 7)
 
 ### iso-9001 (4 open)
 
@@ -375,4 +376,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**16** streams (**16** active, **0** paused) · **52/146** briefs done · completed initiatives: see `docs/archive/`
+**16** streams (**16** active, **0** paused) · **52/147** briefs done · completed initiatives: see `docs/archive/`
