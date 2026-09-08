@@ -1,18 +1,33 @@
 # Adopting Assay — install runbook for an LLM agent
 
-There are two ways to install Assay, easiest first:
+There are two ways to install Assay, easiest first **when the shape matches**:
 
-1. **The turnkey `assay:install` skill (recommended — right below).** Add the plugin, invoke one
-   skill, and it self-installs the whole setup, stopping only at the human-gated steps. Most
-   adopters should start here.
+1. **The turnkey `assay:install` skill (recommended for Claude Code + GitHub).** Add the plugin,
+   invoke one skill, and it self-installs the whole setup, stopping only at the human-gated steps.
 2. **The manual runbook (further down).** The full step-by-step PRIMITIVEs and three adoption
    scenarios that same skill wraps. Reach for it directly for a carve-out, a multi-repo suite, or
    any non-standard boot — and it is the ground truth the turnkey path delegates to.
 
 This runbook is GitHub-shaped throughout (Apps, rulesets, `gh`). Running the fleet on GitLab
-Enterprise instead — service accounts in place of Apps, protected-branch push-access lists in
-place of ruleset bypass — is a separate profile: see
-[`docs/adopting-assay-gitlab.md`](adopting-assay-gitlab.md).
+instead — service accounts in place of Apps, protected-branch push-access lists in place of
+ruleset bypass — is a separate profile: see
+[`docs/adopting-assay-gitlab.md`](adopting-assay-gitlab.md). **Cursor has no `/plugin` path**;
+use [Running Assay on Cursor](#running-assay-on-cursor--a-second-first-class-harness). **Native
+Windows** follows [Windows adopters](#windows-adopters) at the install step (release assets, or
+a from-source pin).
+
+### Pick the path that matches the adopter
+
+| Forge | Harness | OS | Start here |
+|---|---|---|---|
+| GitHub | Claude Code | macOS / Linux | Turnkey `assay:install` below |
+| GitHub | Claude Code | native Windows | Turnkey skill **plus** [Windows adopters](#windows-adopters) (channel E release, or channel D source) |
+| GitLab (any edition you will actually run) | any | any | [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) **first**, then this file for CORE (`statusgen init`, pins, instruction-file bindings). Do not run `/plugin` + `gh` as if the forge were GitHub. |
+| GitHub or GitLab | Cursor (IDE or `cursor-agent`) | any | [Cursor section](#running-assay-on-cursor--a-second-first-class-harness): copy skills + `references/`, no marketplace install |
+| GitHub or GitLab | Codex | any | Codex / `AGENTS.md` path in this runbook; not the Claude `/plugin` commands |
+
+A Windows + GitLab + Cursor boot is a **real combination**. It is three documented arms, not
+"unsupported." What it is *not* is the three-line Claude marketplace install.
 
 ## What adopting Assay actually costs — read this before "three commands"
 
@@ -24,8 +39,8 @@ true shape on this page and not at step four:
 |---|---|---|
 | **Accounts** | **2** — one human, one machine | The human merges and rules on gates; the machine account is what the fleet runs *as*. They must be distinct (the two-accounts prerequisite). |
 | **GitHub App identities** | **the implementer identity + a separate reviewer App** | This one pair is **load-bearing and non-negotiable**: the identity that *writes* a change and the identity that *approves* it must be different, and the forge will not let a PR author approve their own PR. Everything else is attribution, not separation — see **§1a** and [`docs/enforcement-model.md`](enforcement-model.md). |
-| **Supported platform** | **GitHub** (primary); **GitLab** via a separate profile ([`adopting-assay-gitlab.md`](adopting-assay-gitlab.md)) | The runbook is GitHub-shaped; the GitLab profile substitutes service accounts for Apps. |
-| **Supported harness** | **Claude Code**, Opus-class agent | The skills and desk tools are written for it; other harnesses are not a supported path today. |
+| **Supported platform** | **GitHub** (primary runbook); **GitLab** via [`adopting-assay-gitlab.md`](adopting-assay-gitlab.md) | This page is GitHub-shaped (`gh`, Apps). GitLab substitutes service accounts for Apps. Self-managed Community Edition is not the same as gitlab.com Free — read the GitLab doc's edition + read-back rules before claiming controls. |
+| **Supported harness** | **Claude Code** (turnkey plugin); **Cursor** (copy-skills); **Codex** (`AGENTS.md`) | Desk CLIs are harness-neutral. `/plugin marketplace add` is Claude Code only. Cursor does not get a marketplace install. |
 
 **Per-App scope cost.** Every role App you *do* create must carry the **same three write duties** —
 `pull_requests: write`, `issues: write`, `contents: write` (`requiredDuties`; see *The required duty
@@ -44,10 +59,11 @@ what would put the segregation-of-duties claim at risk. What the run-time toolin
 on any path — including a collapsed one — is described in
 [`docs/enforcement-model.md`](enforcement-model.md).
 
-## Fastest path — the turnkey `assay:install` skill
+## Fastest path — the turnkey `assay:install` skill (Claude Code + GitHub)
 
-For a straight install (most adopters), the fastest coherent boot is three steps: add the plugin
-from the marketplace, install it, then invoke the installer skill.
+For a straight **Claude Code + GitHub** install, the fastest coherent boot is three steps: add the
+plugin from the marketplace, install it, then invoke the installer skill. GitLab, Cursor, and
+from-source Windows pins skip this block and use the chooser above.
 
 ```text
 /plugin marketplace add medici-finance/assay
@@ -842,10 +858,10 @@ check is retired: it now fails every correctly provisioned reviewer.)*
 
 Assay runs on **native Windows** — a `windows/amd64` process, not WSL. The Go tools (`statusgen`
 and the desk binaries) cross-compile for Windows and ship as pinned, sha256-verified release
-assets. This section is the **Windows arm of the install step** every scenario's
-`install-statusgen` references; an adopter on Windows follows their scenario *and* this section at
-the install step. **WSL is a noted fallback for local development only** — WSL is Linux, so a WSL
-install is a Linux install and is never the native-Windows claim itself.
+assets **when a release exists**. This section is the **Windows arm of the install step** every
+scenario's `install-statusgen` references; an adopter on Windows follows their scenario *and* this
+section at the install step. **WSL is a noted fallback for local development only** — WSL is Linux,
+so a WSL install is a Linux install and is never the native-Windows claim itself.
 
 **What the stream delivered, and what it did not — read this before claiming parity.** The
 delivery layer is real: a Windows release matrix (`statusgen-windows-<arch>.exe` +
@@ -856,24 +872,61 @@ Two honesty caveats travel with it, spelled out below: the SessionStart hooks ne
 Windows runner. Do not read "runs on Windows" as "every surface is native and CI-green" — read the
 specifics.
 
+### Two install lanes — do not mix them
+
+| Lane | When | What you pin | Need Go? |
+|---|---|---|---|
+| **Channel E (release)** | Adopter wants the published tag (example: `v0.26.0`) | `statusgen-windows-<arch>.exe` + `desk-tools-windows-<arch>.tar.gz` **tag + sha256** in `.assay-versions` | **No.** Bootstrap + `deskinstall` download verified assets. |
+| **Channel D (source SHA)** | Adopter asked for `main` (or any commit that is **not** a release asset) | the assay commit SHA your CI clones and rebuilds — recorded in CI config, **not** as a `-source` `.assay-versions` line (see the channel-D lane below) | **Yes.** A Go 1.25 toolchain, `go build` of `statusgen` and the desk-tools, and CI that clones that SHA and rebuilds. Copying a release sha256 onto a source lane is a lie. |
+
+`gh` is not required to *install* either lane. GitHub-shaped *desk* work still wants `gh`; GitLab-shaped desk work wants `glab` / `--forge gitlab`, not a GitHub App PEM path.
+
 ### Prerequisites
 - A **native 64-bit Windows host** (Windows 10 / 11 or Windows Server), `windows/amd64`. The
   `windows/arm64` binaries are published and checksummed, but their native smoke is BLOCKED (see
   **CI-proven status**); an arm64 host installs the same way, with that caveat stated.
-- **PowerShell** (ships with Windows) — for the ~5-line first-install bootstrap.
-- **No Go toolchain and no `gh` are required to install.** The adopter downloads the *pinned
-  release binary*, not a from-source build: the bootstrap fetches over `Invoke-WebRequest` and the
-  Go-native installer over `net/http`. `git` and `gh` — both ship native Windows builds — are
-  needed only to *run the desk pipeline*, not to install.
-- **Git-Bash** (or WSL, local dev only) — supplies `bash` + `jq` for the SessionStart hooks; see
-  **Known gaps** for exactly why this is a manual step, not automatic.
+- **PowerShell** (ships with Windows) — for the ~5-line first-install bootstrap (channel E).
+- **Channel E:** **No Go toolchain and no `gh` are required to install.** The adopter downloads the
+  *pinned release binary*, not a from-source build: the bootstrap fetches over `Invoke-WebRequest`
+  and the Go-native installer over `net/http`.
+- **Channel D:** a **Go 1.25** toolchain on `PATH` (or a documented portable install) **is**
+  required. There is no checksummed Windows asset for an unpublished SHA.
+- **`git`** — needed to clone Assay (bootstrap script lives **in this repo**, not on a blank
+  adopter machine) and to run desks. `gh` is GitHub-desk only.
+- **Git-Bash** (or WSL) — two different jobs, do not collapse them:
+  - Claude Code **SessionStart hooks** need `bash` + `jq` (see **Known gaps**). Cursor does **not**
+    use those hooks.
+  - GitLab **fleet provisioning** (`tools/create-fleet-gitlab.sh`) is bash + curl + jq. Native
+    PowerShell cannot run it. Token files on Windows are **copied**, not `ln -s` (see the GitLab
+    runbook).
 
-### Install path — the pinned, verify-or-refuse flow
-The Windows install mirrors the Unix acquire→verify→place flow, with the **sha256-verify-or-refuse
-control as the first post-download step** — a mismatch **refuses** and places nothing; it never
-warns-and-continues.
+### Config home, PATH, and child processes (Windows-specific)
 
-1. **Bootstrap the first binary** (solves the chicken-and-egg: you need a binary to run the
+- Place binaries in `%LOCALAPPDATA%\Assay\bin` and put that directory on the **user** PATH. A
+  `deskinstall` that succeeds in one session does not update already-open shells.
+- Config home is `%USERPROFILE%\.config\assay` (`os.UserHomeDir()`). Spawned mint/preflight
+  children that drop `USERPROFILE` / `HOME` report the roster **absent** even when the parent
+  already loaded it. Inherit both, or set `ASSAY_CONFIG_HOME` to the directory that holds
+  `roster.env` and role tokens. A GitLab adopter should **not** be told to point that variable at
+  GitHub App PEM files.
+- **Roster / token-file permissions — use an owner-only ACL, not `chmod`.** Go reports NTFS
+  files and directories with synthetic POSIX bits (a normal file reads `0666`), so the old
+  group/world-writable mode check misfired on Windows. Do **not** document `chmod` as the Windows
+  fix: a `chmod 600` that reports `0600` without tightening the DACL is not what the check wants.
+  On native Windows the roster owner check is now **ACL-aware** (#640/#641) — it accepts a roster
+  owned by the invoking user and writable by no principal but the owner (plus SYSTEM /
+  Administrators) and refuses any foreign write-capable principal — and GitLab token custody uses
+  the same owner-only ACL evaluation (#667). Lock the roster and role-token files down with an
+  owner-only ACL.
+
+### Install path — the pinned, verify-or-refuse flow (channel E)
+The Windows **release** install mirrors the Unix acquire→verify→place flow, with the
+**sha256-verify-or-refuse control as the first post-download step** — a mismatch **refuses** and
+places nothing; it never warns-and-continues.
+
+1. **Clone or unpack this repo** so `scripts/bootstrap-windows.ps1` exists on disk. The script is
+   not a standalone gist.
+2. **Bootstrap the first binary** (solves the chicken-and-egg: you need a binary to run the
    installer). Run `scripts/bootstrap-windows.ps1`, passing the pinned tag and the sha256 copied
    from the release's `paired-versions.yaml` / `checksums.txt` — the bootstrap never invents a hash
    of its own:
@@ -886,7 +939,7 @@ warns-and-continues.
 
    It downloads `statusgen-windows-amd64.exe`, computes its SHA256, and **REFUSES on mismatch**
    ("no unverified bytes installed") before placing the verified binary in `%LOCALAPPDATA%\Assay\bin`.
-2. **Install the rest with the Go-native installer.** `deskinstall` resolves the pinned tag +
+3. **Install the rest with the Go-native installer.** `deskinstall` resolves the pinned tag +
    per-platform sha256 from the plugin-shipped `paired-versions.yaml` (never a floating ref),
    downloads `statusgen-windows-<arch>.exe` and `desk-tools-windows-<arch>.tar.gz`, **verifies each
    sha256 and refuses on any mismatch** (nothing placed on a bad hash), then installs the verified
@@ -903,7 +956,7 @@ PowerShell script — was a maintainer decision: it keeps the security-critical 
 tested Go implementation and confines PowerShell to a trivial, auditable download-and-verify.
 
 ### Pin the Windows assets in `.assay-versions`
-Pin the Windows release exactly as any other platform (CORE `install-statusgen`, channel E): one
+**Channel E:** pin the Windows release exactly as any other platform (CORE `install-statusgen`): one
 line per platform you install on, `<artifact> <tag> <sha256>`, re-pinned — never edited in place —
 on an upgrade so the bump shows in a diff. The Windows artifact names carry `.exe`:
 
@@ -953,6 +1006,31 @@ The rest of the audit's `needs-port` rows were closed by the install path above 
 `sudo make desk-install` POSIX install and the push-guard shim / `/opt` assumptions) or are
 internal to the desk pipeline, not surfaces an adopter touches directly.
 
+### Channel D — from-source Windows (when there is no release asset)
+
+Channel D is the sanctioned source fallback (`statusgen/channels.go`, channel D — "CI
+fetch-and-run at a pinned git ref"): a runner clones assay at one immutable commit and rebuilds
+the tools per run. It pins the **git ref your CI checks out**; it does **not** write a `-source`
+line into `.assay-versions` (see the note below).
+
+1. Clone this repository at the SHA the adopter named, and pin **that full 40-hex commit SHA** in
+   your CI config as the ref CI checks out — an immutable commit, never a moving branch name.
+2. `go build` `statusgen` and the desk-tool cmds into `%LOCALAPPDATA%\Assay\bin` (same dest as
+   channel E). `statusgen --version` will print a `dev-<shortsha>` string, not a `v*` tag — that
+   is expected.
+3. Scaffold with `statusgen init --forge <github|gitlab> --root <adopter>`. Your CI should
+   **clone that SHA and `go build`**, not `gh release download` a tag the SHA never published.
+4. Do **not** fill `.assay-versions` with `v0.26.0` (or any other release) sha256s for this lane;
+   a source lane runs the commit you cloned, not a published binary.
+
+> **Channel D does not use a `-source` `.assay-versions` pin line.** The `statusgen-source` /
+> `desk-tools-source` pin is a *separate* mechanism — release provenance (#519) — whose grammar is
+> `<artifact> <tag> <40-hex-commit-SHA>`: field 2 is a **published release tag** and field 3 is the
+> **40-hex git commit** that tag was built from (`tools/desk/cmd/desksourceguard/verify.go`;
+> `tools/desk/README.md`). An unpublished `main` SHA has no such tag, so it cannot be recorded as a
+> `-source` line, and the literal string `channel-D` is never a field in that grammar. Pin the
+> commit in CI (step 1) instead.
+
 ## 3a. What the bundle delivers by itself — and what you still have to write
 
 The install leaves you with working skills and **two things that behave very differently**. Read
@@ -991,31 +1069,43 @@ adopters never clone this one.
 
 Assay is the method, not the harness: the CLI tooling, the `SKILL.md` skills, and the `AGENTS.md`
 instructions run on any agent that reads them — the capability table in
-[how-assay-works.md](./how-assay-works.md) gives the concrete mapping per harness. **Cursor** is a
-supported end-user harness, targeted **headless-first**: the headless `cursor-agent` CLI is the
-primary surface (it runs the CLI tooling and desk automation the way any terminal does), the
-in-editor agent the secondary one. Because Cursor reads `AGENTS.md` natively and reads the same
-`SKILL.md` open standard the skills are written in, most of Assay arrives with no per-harness
-translation:
+[how-assay-works.md](./how-assay-works.md) gives the concrete mapping per harness. Capability
+bindings: [`plugins/assay/references/cursor.md`](../plugins/assay/references/cursor.md).
 
-- **Skills** — place the skills tree where Cursor discovers it (`.cursor/skills/` or
-  `.agents/skills/`); the same tree Claude Code and Codex use, no per-harness copy.
-- **Resident rules + repo bindings** — Cursor reads `AGENTS.md` natively, so the invariants and
-  your repo's bindings arrive through the same `AGENTS.md` this section already describes; a
-  `.cursor/rules/*.mdc` always-apply rule is the equivalent Cursor-native channel if you prefer it.
-- **Isolation** — Cursor's background agents run in isolated git worktrees, so parallel workers
-  isolate natively there; on the headless CLI, worker isolation follows the same `git worktree`
-  discipline every harness uses, and where the sandbox cannot create a worktree the worker
-  **refuses** rather than working in a shared checkout — the isolation floor never degrades.
+**There is no Cursor marketplace / `/plugin` install.** Do not run the Claude Code
+`/plugin marketplace add` commands in Cursor and call the harness unsupported when they no-op.
+The in-editor agent is the path most adopters actually use; headless `cursor-agent` remains the
+automation/smoke surface (brief 13) and is **not** a prerequisite for copying skills.
 
-The one acceptance step is a live smoke run on a Cursor install, run against the scripted
-Cursor smoke protocol checklist (`cursor-smoke-protocol.md`) — a full desk loop (dispatch →
-isolated worktree → draft PR → one review cycle) on both surfaces, headless-first, not just a
-single skill invocation. The acceptance step and its Verify rows are specified in
+**Install (IDE agent):**
+
+1. From this repository's `plugins/assay/skills/` (or the plugin cache on a Claude host), copy the
+   skill directories into the **adopter repo** at `.cursor/skills/` (or `.agents/skills/`).
+2. Copy `plugins/assay/references/*.md` to `.cursor/references/` (or a sibling of `skills/` that
+   keeps the skills' `../../references/*.md` includes resolvable). Copying **only** `skills/`
+   leaves those includes dead.
+3. Bindings stay in the adopter `AGENTS.md` / `CLAUDE.md` stub from `statusgen init`. Optional:
+   `.cursor/rules/*.mdc`. Cursor does **not** run Assay's Claude `SessionStart` hooks; Git-Bash
+   is not required for Cursor resident rules.
+4. Put desk binaries on PATH (Windows: `%LOCALAPPDATA%\Assay\bin`). On GitLab, use `glab` and
+   `--forge gitlab`; skill text that says `gh` is GitHub-shaped leftover, not a Cursor requirement.
+5. Generated `harnessgen cursor` / `plugins/assay/cursor/` output is **not** required for the copy
+   path above. If those artifacts are absent from the tree you cloned, do not block the install
+   on them.
+
+**Isolation** — Cursor's background agents run in isolated git worktrees, so parallel workers
+isolate natively there; on the headless CLI, worker isolation follows the same `git worktree`
+discipline every harness uses, and where the sandbox cannot create a worktree the worker
+**refuses** rather than working in a shared checkout — the isolation floor never degrades.
+
+The one **parity** acceptance step is a live smoke run on a Cursor install, run against the
+scripted Cursor smoke protocol checklist (`cursor-smoke-protocol.md`) — a full desk loop
+(dispatch → isolated worktree → draft PR → one review cycle) on both surfaces, headless-first,
+not just a single skill invocation. That step and its Verify rows are specified in
 [brief 13](./streams/harness-portability/brief-13-cursor-live-desk-smoke.md). Its signed run
 log is the acceptance evidence; until a live Cursor environment exists the step is **blocked,
-not skipped**, the same posture every harness target holds until it has been exercised
-end-to-end.
+not skipped**. **Copying skills and running desk CLIs in the IDE is still the documented
+install**; blocked smoke is not "Cursor unsupported."
 
 **You start with a stub, not a blank page.** `scaffold-streams` (`statusgen init`) writes a
 starting `CLAUDE.md` plus an `AGENTS.md` that points at it. The stub carries the **ten invariants**
