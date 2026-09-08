@@ -57,3 +57,37 @@ func firstLine(s string) string {
 	}
 	return s
 }
+
+// preflightSummary extracts the roster-preflight's OWN verdict from a red run's captured
+// streams, skipping the two preamble lines every desk tool prints on stderr BEFORE its
+// real message: the effective-config echo (`assay-config: …`) and the unpinned-build
+// warning. A naive firstLine over that output quotes the banner's
+// `… configured=true` header instead of the `preflight role=… RED n/5` summary and the
+// per-check `<check>=checked-failed: … → fix: …` remediations, so the failing check never
+// reaches the pod log — the boot logs the banner three ticks running and the real red stays
+// unknown (assay#660). The REFUSED roster line is deliberately NOT preamble: when the
+// roster itself refused, that line IS the message. Every kept line is returned verbatim so
+// the summary and every remediation survive; an empty remainder renders as "(no output)"
+// so a report never reads as though the tool spoke.
+func preflightSummary(streams ...string) string {
+	var kept []string
+	for _, s := range streams {
+		for _, line := range strings.Split(s, "\n") {
+			t := strings.TrimSpace(line)
+			if t == "" {
+				continue
+			}
+			if strings.HasPrefix(t, "assay-config: ") && !strings.HasPrefix(t, "assay-config: REFUSED") {
+				continue
+			}
+			if strings.HasPrefix(t, "desk-tools WARNING: running UNPINNED") {
+				continue
+			}
+			kept = append(kept, t)
+		}
+	}
+	if len(kept) == 0 {
+		return "(no output)"
+	}
+	return strings.Join(kept, "\n")
+}

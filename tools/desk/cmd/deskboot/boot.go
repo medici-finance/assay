@@ -171,7 +171,7 @@ func boot(o bootOpts) error {
 				"A red preflight is could-not-run for the whole pass: claim nothing, burn no pass, and do "+
 				"NOT file an issue about the desk's own envelope (each failing check already names its "+
 				"own remediation). A probe REJECTION is a STOP — never retry it under another identity.",
-			stepRosterPreflight, tokenRole, firstLine(r.stderr+"\n"+r.stdout)), r.err)
+			stepRosterPreflight, tokenRole, preflightSummary(r.stderr, r.stdout)), r.err)
 	}
 	o.say("%s OK: envelope green for role %s", stepRosterPreflight, tokenRole)
 

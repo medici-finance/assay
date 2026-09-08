@@ -23,6 +23,7 @@ type stub struct {
 type reply struct {
 	match  string // matched against the joined argv
 	stdout string
+	stderr string // emitted on the child's stderr; when set with fail, replaces the default stub-failure line
 	fail   bool
 }
 
@@ -47,6 +48,9 @@ func (s *stub) install(t *testing.T) (home, root string) {
 		for _, r := range s.replies {
 			if strings.Contains(joined, r.match) {
 				if r.fail {
+					if r.stderr != "" {
+						return exec.Command("/bin/sh", "-c", "cat >&2 <<'STUBEOF'\n"+r.stderr+"\nSTUBEOF\nexit 1")
+					}
 					return exec.Command("/bin/sh", "-c", "echo stub-failure 1>&2; exit 1")
 				}
 				return exec.Command("/bin/sh", "-c", "cat <<'STUBEOF'\n"+r.stdout+"\nSTUBEOF")
@@ -146,6 +150,71 @@ func TestRedPreflightStopsTheBootAndReadsNoBoard(t *testing.T) {
 	if s.ran("fetch --no-tags") {
 		t.Error("the board was fetched after a red preflight — nothing proceeds past a red envelope")
 	}
+}
+
+// A red preflight must log the roster's OWN verdict — the `preflight role=… RED n/5`
+// summary and each `<check>=checked-failed: … → fix: …` remediation — NOT the
+// effective-config banner (`assay-config: … configured=true`) that every desk tool prints
+// on stderr before its real message. deskboot step 5 used to firstLine the captured
+// streams, so the banner (always line one) was all the pod log ever saw: three exit-6 boot
+// ticks logged nothing but the banner and the real failing check stayed unknown (assay#660).
+func TestRedPreflightSurfacesSummaryNotBanner(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	// The real shape of a red preflight's stderr: the config banner FIRST (what firstLine
+	// used to quote), then the RED summary carrying every checked-failed remediation.
+	preflightStderr := "assay-config: class=write source=config file /x/roster.env configured=true\n" +
+		"assay-config: ASSAY_ALLOWED_REPOS=example-org/tracker:ci:private\n" +
+		"preflight role=desk RED 4/5 checked-clean · sibling-checkouts=checked-failed: " +
+		"declared checkout ../sibling-repo is absent → fix: clone the sibling checkouts the queued briefs declare [#679]"
+	s.replies = append(happyStub(t, writeToken(t, home)),
+		reply{match: "deskroster preflight", fail: true, stderr: preflightStderr})
+
+	stderr := captureStderr(t, func() int { return run([]string{"the-desk", "--root", root}) })
+
+	if !strings.Contains(stderr, "preflight role=desk RED 4/5") {
+		t.Errorf("the boot log did not carry the RED summary line — the failing check stays unknown.\nGot:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "sibling-checkouts=checked-failed") {
+		t.Errorf("the boot log did not carry the per-check checked-failed remediation.\nGot:\n%s", stderr)
+	}
+	// The banner is preamble, not the message: it must be stripped, not surfaced as the
+	// verdict. (deskboot's own main echoes the banner, but run() — exercised here — does not.)
+	if strings.Contains(stderr, "configured=true") {
+		t.Errorf("the boot log surfaced the assay-config banner instead of the preflight verdict.\nGot:\n%s", stderr)
+	}
+}
+
+// captureStderr redirects os.Stderr for the duration of fn and returns what was written.
+func captureStderr(t *testing.T, fn func() int) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = w
+	done := make(chan string, 1)
+	go func() {
+		var b strings.Builder
+		buf := make([]byte, 4096)
+		for {
+			n, rerr := r.Read(buf)
+			if n > 0 {
+				b.Write(buf[:n])
+			}
+			if rerr != nil {
+				break
+			}
+		}
+		done <- b.String()
+	}()
+	fn()
+	os.Stderr = old
+	_ = w.Close()
+	out := <-done
+	_ = r.Close()
+	return out
 }
 
 // $DESK_LOOP unset means every STOP.<name> flag a human is holding would silently fail to
