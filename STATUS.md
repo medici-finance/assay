@@ -35,20 +35,19 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | composability | 00 — Component manifests, key catalogue, and the resolve/cycle lint | 0 | 3500 |
 | desk-tools | 17 — One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on [exec:strong] | 1 | 1000 |
 | desk-tools | 18 — Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check [exec:strong] | 1 | 1000 |
-| desk-tools | 19 — `verifyloop plan` fails safe on risk — any risk answer `yes` routes to ROUTE-HUMAN, and the Evidence-only lane says so [exec:strong] | 1 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (46 desk-actionable of 56 total — 56 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (47 desk-actionable of 57 total — 57 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (46)
+### Desk-actionable (47)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -62,6 +61,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
+| apps-installer | 05 | implemented | 3000 | 2 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | forge-neutral | 06 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -151,7 +151,7 @@ _None._
 - 02 `deskapps init` — loopback page, tier manifests, the manifest→code→conversion flow, key + record writes — todo (wave 1)
 - 03 `deskapps` install + prove — installation poll, fresh mint, scopes-vs-duties, roster write — todo (wave 2)
 - 04 `deskapps resume` / `status` — per-App state machine, throttle pause, expired-code re-arm, page verbs — todo (wave 2)
-- 05 `deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof — todo (wave 0)
+- 05 `deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof — implemented (wave 0)
 - 06 Avatar step in the run board — generated PNG beside the settings page, confirmed not uploaded — todo (wave 3)
 - 07 Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented — todo (wave 4)
 - 08 Solo identity mode — spec + decision: the desk verbs on the operator's own token — implemented (wave 0)
