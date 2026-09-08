@@ -193,10 +193,12 @@ func cmdGitLabRotate(role string, ac *auditCtx) error {
 			"gitlab custody at %s is not a regular file (mode %s); token custody requires a 0600 regular "+
 				"file — re-provision the role's PAT there via a group owner", path, fi.Mode()), nil)
 	}
-	if fi.Mode().Perm() != 0o600 {
-		return deskkit.Unverifiable(fmt.Sprintf(
-			"gitlab token file at %s has permissions %o; must be 0600 — run: chmod 600 %s",
-			path, fi.Mode().Perm(), path), nil)
+	// Owner-only custody, behind the OS boundary (#667): a POSIX 0600 test on unix, the
+	// owner-only NTFS ACL evaluation on Windows, where os.FileMode's permission bits are
+	// synthetic (a normal file reads 0666) and a 0600 test would reject a correctly
+	// ACL-locked PAT — the same check the cold-mint probe and ForgeFor custody read use.
+	if err := deskkit.VerifyCustodyOwnerOnly(path, fi); err != nil {
+		return deskkit.Unverifiable(err.Error(), nil)
 	}
 
 	raw, rerr := os.ReadFile(path)
