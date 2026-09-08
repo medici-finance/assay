@@ -9,29 +9,41 @@ runbook, and token custody. The accepted design this doc implements is
 anything here seems to assert a control without justifying it; the spec carries the
 per-control parity table this doc only points at.
 
+**Windows + Cursor.** Native Windows still follows the Windows arm of
+[`adopting-assay.md`](adopting-assay.md) (config home, PATH, channel D vs E). Cursor still
+copies skills (no `/plugin`). This file does not make those into GitHub App installs.
+
 ## 0. Tier ladder — read this before provisioning anything
 
 > The GitLab profile MUST be **at least as secure as the existing GitHub controls**, even
 > where the mechanism is completely different. "Weaker but disclosed" is non-conforming.
 > — spec.md, governing requirement
 
-- **Premium** is the floor. Below Premium there is no protected-branch push-access list
-  granular enough to name a single bypass identity, no project-level approval-prevention
-  settings, and no service-accounts feature — the identity model in §1 below cannot be
-  built at all.
-- **Ultimate is REQUIRED for public or risk-classed work.** Per-resource permission
-  parity with a GitHub App only exists at Ultimate custom roles; below that, a service
-  account's role grant is coarser than an App's per-resource permission matrix (spec.md
-  §3, row 1).
-- **GitLab Free / Community Edition (CE) is NON-CONFORMING for this profile.** It cannot
-  meet the parity requirement — there is no protected-branch granular push-access list, no
-  service accounts, and no project-level approval-prevention settings on Free/CE. Do not
-  run the Assay fleet's write path against a Free/CE group and claim GitHub-equivalent
-  guarantees; there are none to claim.
+**Parity vs provisioning are different claims.** GitHub-equivalent *controls* still need
+Premium/Ultimate for several rows (push allowlist, approval-prevention, custom roles). The
+*core lane* (human-merged MRs, service-account role fleet, desk verbs) can run on Free /
+Community Edition with the degradations in §0.1 **declared**. Do not refuse to provision
+because the first sentence of an older draft said "Premium is the floor"; do not present a
+Free/CE fleet as GitHub-equivalent either.
 
-This statement is carried verbatim from spec.md §1 — no softening of the **parity** claim.
-What changed since it was written is the **provisioning** claim, and that is now measured
-rather than assumed:
+- **Premium** is the floor for **GitHub-equivalent** protected-branch push-access lists,
+  project-level approval-prevention, and some policy backstops.
+- **Ultimate is REQUIRED for public or risk-classed work** that needs per-resource permission
+  parity with a GitHub App (custom roles; spec.md §3, row 1).
+- **GitLab Free / Community Edition (CE) is non-conforming for GitHub-equivalent controls.**
+  It **is** a documented core-lane target (ruling #219, §0.1). Do not run the write path on
+  Free/CE and claim GitHub-equivalent guarantees; do run the lane there if the disclosed
+  degradations are acceptable.
+
+**Self-managed is not gitlab.com Free.** A live gitlab.com Free run (GitLab 19.4, 2026-09-02)
+is the evidence behind the table below. A self-managed CE/EE instance can differ: approval
+settings may **404** instead of `201` with a silent no-op; protected-branch read-back may
+show Maintainer (`40`) push/merge rather than "push = No one." **Always print and keep the
+script's read-back.** Script exit `1` with accounts created is a degraded provision, not a
+rolled-back one. Do not treat a different HTTP status as the gitlab.com row.
+
+This statement is carried from spec.md §1, with the **provisioning** claim measured rather
+than assumed:
 
 ### 0.1 Free tier / CE — conforming for the core lane, with the degradations disclosed below (ruling #219; measured live 2026-09-02)
 
@@ -53,7 +65,7 @@ The disclosed degradations, each observed live and each a row the parity walk re
 | Control | Free-tier behaviour observed | What stands in for it on Free | Remediation (tier) |
 |---|---|---|---|
 | single board-writer push allowlist on `main` (B2) | `allowed_to_*` arrays rejected (HTTP 400); only `push_access_level` / `merge_access_level` / `allow_force_push` apply | push = **No one**, merge = **Maintainers**; every write, the board regeneration included, travels as an MR the human merges | Premium: name the board-writer in `allowed_to_push` |
-| required approvals (B3) and prevent-author/committer approval (B4) | `POST /projects/:id/approvals` returns 201 and **silently keeps** `approvals_before_merge: 0`; an MR's own author can `/approve` itself | the reviewer service account holds the only reviewer credential; the desk refuses an author-authored verdict and never flips ready without an at-head verdict; the human merges | Premium |
+| required approvals (B3) and prevent-author/committer approval (B4) | gitlab.com Free: `POST /projects/:id/approvals` returns 201 and **silently keeps** `approvals_before_merge: 0`; some self-managed CE: **HTTP 404**. An MR's own author can `/approve` itself where the setting never applied | the reviewer service account holds the only reviewer credential; the desk refuses an author-authored verdict and never flips ready without an at-head verdict; the human merges | Premium |
 | group token-expiry policy (§5 backstop) | not available | the 7-day PAT expiry set at mint is the only backstop; rotate-on-mint still invalidates the previous token live | Premium |
 | audit events | not available | the MR history itself — every content commit a distinct role account, every merge the human | Premium |
 | protected tags | none set by the provisioner | release tags are a human act on Free; treat any bot tag as unauthorised | Premium (tag allowlist) |
@@ -66,6 +78,13 @@ separate question that only a live per-control walk answers, so walk it and file
 Do not present a Free deployment as GitHub-equivalent on the rows above; do run the lane
 there, and pay for the tier that closes a row only when that row's remediation is what you
 need.
+
+## 0.2 Group, not a personal namespace
+
+`create-fleet-gitlab.sh` provisions **group-owned** service accounts. A project under a
+personal namespace cannot host that fleet. Create (or use) a top-level **group**, put the
+adopter project in it, then pass `--group` / `--project` as `group/project`. Moving a
+personal project into a group is a human GitLab act, not something the script infers.
 
 ## 1. Identity model
 
@@ -88,6 +107,25 @@ token (PAT):
 Attribution separation holds exactly as on GitHub: notes/approvals/commits carry the
 service-account identity, which the PR/MR author's own token cannot produce — the same
 honest limit as the GitHub profile (separation of attribution, not proof of diligence).
+
+**Three credential classes — do not collapse them.**
+
+| Class | Who | Lives in config-home as | Used for |
+|---|---|---|---|
+| Bless / merge human | the Owner who may merge protected `main` | roster `ASSAY_BLESS_LOGIN` / `ASSAY_TRUSTED_LOGINS` (humans only) | human gates, merge, tags |
+| Session actor | the account the agent/`glab` session authenticates as | e.g. `gitlab-second-human.token` | interactive API; **must not** merge protected `main` if it is only Developer |
+| Role fleet | one SA per Assay role | `gitlab-<role>.token` (see §2 copies) | minted desk writes |
+
+Never put a `*-bot` login in `ASSAY_TRUSTED_LOGINS` — the roster loader refuses that mix.
+Role tokens are not the session git identity.
+
+**Commit identity vs role identity.** `deskroster preflight --role worker` may require the
+worktree `user.email` to be the **worker service-account noreply** form
+(`service_account_group_<group-id>_<suffix>@noreply.<host>`). That can disagree with a
+session-actor email the rest of the GitLab profile documents. Until the check matches the
+two-identity model, either set the worktree email to the worker SA noreply **or** expect
+`commit-identity=checked-failed` while using a session actor. Preflight text that tells a
+GitLab adopter to install GitHub App PEMs is leftover from the GitHub path; ignore it.
 
 ## 2. Provisioning script — `tools/create-fleet-gitlab.sh`
 
@@ -135,18 +173,27 @@ directory is not cleaned up for you, by design, so a run's tokens survive the sc
 exiting.
 
 **Where the role-token store is, and what the files must be called.** The desk verbs
-resolve credentials from `$HOME/.config/assay/` (the config-home; a cell runs its verbs
-with `HOME` pointed at the cell's own home, so each cell has its own store). Point
-`--out-dir` straight at it. The script names each file `<prefix>-<role>-bot.token`
+resolve credentials from the config-home (`$HOME/.config/assay/` on Unix;
+`%USERPROFILE%\.config\assay` on Windows). A cell that spawns verbs with a stripped
+environment (no `HOME` / `USERPROFILE`) will not see this store. Point `--out-dir`
+straight at it. The script names each file `<prefix>-<role>-bot.token`
 (the service account's username); `desktoken --forge gitlab <role>` — the rotate-on-mint
-custody in §5 — looks for **`gitlab-<role>.token`**. Until the two agree, link them once
-after provisioning:
+custody in §5 — looks for **`gitlab-<role>.token`**. Until the two agree, link **or copy**
+them once after provisioning.
+
+Unix:
 
 ```
 cd "$HOME/.config/assay" && for r in reviewer worker verifier desk issue-loop intake-loop board-writer; do
   ln -s "<prefix>-$r-bot.token" "gitlab-$r.token"
 done
 ```
+
+Windows (no `ln -s` required): copy each `<prefix>-<role>-bot.token` to `gitlab-<role>.token`
+in the same directory. Keep both files `0600`-equivalent (owner-only ACL).
+
+The script itself is **bash + curl + jq**. On native Windows run it from Git-Bash or WSL,
+not from PowerShell.
 
 **`GITLAB_API_BASE` — required before the next boot, and it is not a `roster.env` key.**
 Every GitLab-side token operation — the read-only custody check `deskboot` / `deskroster
@@ -217,9 +264,13 @@ already-correct rule is a no-op, a force-push-only difference is a `PATCH`, and 
 delete-and-recreate is unavoidable a refused re-create immediately re-applies the rule that
 was read. It then reads all three fields back and prints them, so a wrong rule (a repair at
 `merge_access_level=30` lets every Developer bot merge) is visible at provisioning time.
-Approval settings are read back the same way, because on Free the write returns 201 and
-changes nothing. A failed step no longer aborts the steps after it: every step runs, the
-failures are listed under the HUMAN-ONLY REMAINDER, and the script exits non-zero.
+On some self-managed instances the intended "push = No one" fields do not stick and
+read-back stays Maintainer (`40`); treat **that printed read-back** as the live control,
+not the script's request body. Approval settings are read back the same way, because on
+gitlab.com Free the write can return 201 and change nothing, and on some CE instances
+`POST /projects/:id/approvals` returns **404**. A failed step no longer aborts the steps
+after it: every step runs, the failures are listed under the HUMAN-ONLY REMAINDER, and the
+script exits non-zero.
 
 ## 3. By-hand table — what the script does, if you'd rather read the REST calls
 
