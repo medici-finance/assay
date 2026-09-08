@@ -47,14 +47,39 @@ func driveRegionLintProblems(root string, now time.Time) (problems, notices []st
 			continue
 		}
 		slug := strings.TrimSuffix(e.Name(), ".md")
+		planPath := filepath.Join(dir, e.Name())
+		// Symlink containment, fail-CLOSED. --lint runs automatically over the PR's
+		// OWN checked-out tree on a shared PUBLIC runner (assay-statusgen.yml,
+		// pull_request → `statusgen --root . --lint`), so a plan .md here is
+		// attacker-plantable: a symlink at docs/roadmap/drives/<slug>.md would make
+		// the os.ReadFile below follow it and load an out-of-tree file (e.g. a
+		// secret) into the lint. Refuse any symlink/escape LOUDLY (a PROBLEM, never
+		// silent, never followed) before touching the file — the same surface
+		// parseDrive already hardened for the sibling <slug>.yaml manifest
+		// (escapesRoot + filepath.EvalSymlinks, drives.go).
+		if prob := drivePlanEscapeProblem(dir, planPath, e.Name()); prob != "" {
+			problems = append(problems, prob)
+			continue
+		}
 		mfPath := filepath.Join(dir, slug+".yaml")
-		if _, statErr := os.Stat(mfPath); statErr != nil {
+		// Lstat (not Stat): a manifest committed as a symlink must not be laundered
+		// into "manifest present" by following it. Absent ⇒ drive-without-manifest;
+		// a symlinked manifest ⇒ its own loud PROBLEM (parseDrive contains the read
+		// itself, but the lint refuses to treat an escape as a legitimate manifest).
+		mfInfo, statErr := os.Lstat(mfPath)
+		if statErr != nil {
 			problems = append(problems, fmt.Sprintf(
 				"drive-without-manifest: drive-plan file docs/roadmap/drives/%s has no %s.yaml manifest beside it — a drive the dispatcher cannot load is not a drive; add the manifest or remove the plan file",
 				e.Name(), slug))
 			continue
 		}
-		content, readErr := os.ReadFile(filepath.Join(dir, e.Name()))
+		if mfInfo.Mode()&os.ModeSymlink != 0 {
+			problems = append(problems, fmt.Sprintf(
+				"drive-manifest-symlink: docs/roadmap/drives/%s.yaml is a symlink — a drive manifest must be a regular in-tree file; --lint refuses to follow it (symlink escape)",
+				slug))
+			continue
+		}
+		content, readErr := os.ReadFile(planPath)
 		if readErr != nil {
 			notices = append(notices, fmt.Sprintf("drive-region-drift: docs/roadmap/drives/%s unreadable (%v) — could-not-check", e.Name(), readErr))
 			continue
@@ -80,4 +105,36 @@ func driveRegionLintProblems(root string, now time.Time) (problems, notices []st
 		}
 	}
 	return problems, notices
+}
+
+// drivePlanEscapeProblem reports a fail-closed PROBLEM string when the plan-file
+// entry at path is not a plain, in-tree regular file safe to read during --lint,
+// else "". --lint runs automatically over the PR's OWN checked-out tree on a
+// shared PUBLIC runner, so an entry under docs/roadmap/drives is attacker-
+// plantable: a symlink there could point at an out-of-tree secret and os.ReadFile
+// would follow it. Refuse any symlink LOUDLY (never silent, never followed) and
+// reject any path that resolves outside root — the same containment parseDrive
+// uses for the sibling <slug>.yaml manifest (escapesRoot + filepath.EvalSymlinks,
+// drives.go). root is the drives dir; name is the base name for the message.
+func drivePlanEscapeProblem(root, path, name string) string {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		// A genuine stat failure is handled by the caller's own os.ReadFile error
+		// path as a could-not-check NOTICE — this guard only refuses symlink/escape,
+		// it never swallows an ordinary unreadable file into a false PROBLEM.
+		return ""
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Sprintf(
+			"drive-plan-symlink: docs/roadmap/drives/%s is a symlink — a drive-plan file must be a regular in-tree file; --lint refuses to follow it (symlink escape)",
+			name)
+	}
+	// Belt-and-suspenders: even a non-symlink entry whose real path escapes root
+	// (e.g. reached through a symlinked parent) is refused before it is read.
+	if real, rerr := filepath.EvalSymlinks(path); rerr == nil && escapesRoot(root, real) {
+		return fmt.Sprintf(
+			"drive-plan-symlink: docs/roadmap/drives/%s resolves outside the repository (symlink escape) — a drive-plan file must live under the repo root",
+			name)
+	}
+	return ""
 }

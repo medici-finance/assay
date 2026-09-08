@@ -99,3 +99,81 @@ func TestLintDriveWithoutManifest(t *testing.T) {
 		t.Errorf("a manifest beside the plan must clear drive-without-manifest: %v", problems2)
 	}
 }
+
+// TestLintDrivePlanSymlinkRefused pins the symlink-escape containment (security
+// review of PR #638): --lint runs automatically over an attacker-plantable PR
+// tree on a public runner, so a plan .md that is a symlink pointing OUT of the
+// tree must be REFUSED (a loud PROBLEM) and never followed/read — the same
+// surface parseDrive already hardened for the sibling .yaml manifest. It also
+// checks a symlinked manifest is refused, and a real in-tree file is still read.
+func TestLintDrivePlanSymlinkRefused(t *testing.T) {
+	// A secret living OUTSIDE the repo root; if the read followed the symlink its
+	// bytes would enter the lint. The refusal must fire before any os.ReadFile.
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "outside-secret.txt")
+	const secretMarker = "TOP-SECRET-OUT-OF-TREE-BYTES"
+	if err := os.WriteFile(secret, []byte(secretMarker+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("plan-md-symlink-refused", func(t *testing.T) {
+		root := t.TempDir()
+		makeStreamsDir(t, root)
+		// A valid manifest so the loop reaches the .md read (which is the vuln).
+		writeDrive(t, root, "evil", activeActOnlyManifest)
+		link := filepath.Join(root, "docs", "roadmap", "drives", "evil.md")
+		if err := os.Symlink(secret, link); err != nil {
+			t.Skipf("symlinks unsupported on this platform: %v", err)
+		}
+		problems, notices := driveRegionLintProblems(root, driveTestNow)
+		if !hasProblemContaining(problems, "symlink escape") {
+			t.Fatalf("a symlinked plan .md must PROBLEM a symlink escape: problems=%v", problems)
+		}
+		if !hasProblemContaining(problems, "evil.md") {
+			t.Errorf("the PROBLEM must name the symlinked plan file: %v", problems)
+		}
+		// Fail-closed: the out-of-tree secret must never be read, so its bytes must
+		// appear in NO problem and NO notice.
+		for _, m := range append(append([]string{}, problems...), notices...) {
+			if strings.Contains(m, secretMarker) {
+				t.Fatalf("out-of-tree secret bytes leaked into lint output — symlink was followed: %q", m)
+			}
+		}
+	})
+
+	t.Run("manifest-symlink-refused", func(t *testing.T) {
+		root := t.TempDir()
+		makeStreamsDir(t, root)
+		writePlanMD(t, root, "evilmf", "# plan\n")
+		link := filepath.Join(root, "docs", "roadmap", "drives", "evilmf.yaml")
+		if err := os.Symlink(secret, link); err != nil {
+			t.Skipf("symlinks unsupported on this platform: %v", err)
+		}
+		problems, _ := driveRegionLintProblems(root, driveTestNow)
+		if !hasProblemContaining(problems, "drive-manifest-symlink") {
+			t.Fatalf("a symlinked manifest must PROBLEM drive-manifest-symlink: %v", problems)
+		}
+	})
+
+	t.Run("real-plan-file-still-read", func(t *testing.T) {
+		root := t.TempDir()
+		makeStreamsDir(t, root)
+		writeDrive(t, root, "d1", activeActOnlyManifest)
+		fresh, rc := driveSnapshotSection(root, "d1", driveTestNow)
+		if rc != 0 {
+			t.Fatalf("fixture drive d1 must render (rc %d)", rc)
+		}
+		region := driveSnapshotBeginPrefix + "d1 @deadbee 2026-08-15" + driveSnapshotMarkerSuffix + "\n" +
+			fresh + driveSnapshotEndMarker + "\n"
+		writePlanMD(t, root, "d1", "# Drive d1\n\nprose\n\n"+region)
+		// A real, in-tree, identical-region plan file raises no symlink PROBLEM and
+		// no drift PROBLEM: the containment guard never blocks legitimate files.
+		problems, _ := driveRegionLintProblems(root, driveTestNow)
+		if hasProblemContaining(problems, "symlink") {
+			t.Errorf("a real in-tree plan file must not PROBLEM a symlink: %v", problems)
+		}
+		if hasProblemContaining(problems, "drive-region-drift") {
+			t.Errorf("an identical real plan file must not drift: %v", problems)
+		}
+	})
+}
