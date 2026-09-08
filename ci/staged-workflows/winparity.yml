@@ -1,0 +1,57 @@
+name: winparity
+# The Windows-build ↔ Makefile target-parity gate (#665).
+#
+# scripts/build-windows.ps1 is the Windows counterpart to the root Makefile; it
+# mirrors the Makefile's `.PHONY` target set by hand. tools/winparity asserts the
+# two sets are equal, so a target added on one side and not the other cannot ship
+# a Windows build that silently fell behind (or ran ahead of) the Unix target set.
+# The script runs the same guard as a preflight on the Windows side; this leg is
+# its Linux-CI enforcement, so a Makefile-only edit — the exact change that would
+# never run the Windows script — still reddens.
+#
+# WHERE THIS RUNS — the self-hosted `medici-builder-public` runner, which ships no
+# `make` and no Go; the toolchain is hand-installed from go.dev/dl exactly as
+# ci.yml's build-test and skillslint jobs document. winparity is authored in this
+# tree (tools/winparity), so `cd tools/winparity && go run . --root ../..` is the
+# pinned invocation — there is no separately released binary to fetch.
+#
+# ── STAGED, PENDING HUMAN PROMOTION ──
+# No bot or App in this repo holds workflow-push permission (GitHub hard-rejects an
+# App push that creates or updates a `.github/workflows/*` file — a deliberate
+# supply-chain boundary), so this file is STAGED here and a maintainer PROMOTES it
+# to .github/workflows/winparity.yml to activate it. Until promoted it runs
+# nowhere; the staged copy is the reviewable artifact. See ci/staged-workflows/README.md.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25.0"
+
+jobs:
+  winparity:
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: winparity
+        run: |
+          set -euo pipefail
+          go version
+          # Exit 0 = the Windows build script and the Makefile declare the same
+          # target set; exit 1 = drift or a could-not-check (both reddens the leg).
+          cd tools/winparity && go run . --root ../..
