@@ -87,6 +87,28 @@ NARROWED (its five peripheral read categories stay on `ghRun`) with `forge-neutr
 GitLab all four ops are could-not-check-with-gap per the ruling: the GraphQL trust reads and the
 CI-rollup-bearing bulk read are not 1:1, and the issue lane defers with its trust gate.
 
+| # | Operation | Purpose | GitHub source | GitLab mapping | Status |
+|---|-----------|---------|---------------|----------------|--------|
+| 27 | `ListRecentCommits(repo, limit)` | commit-history listing (branch health) | `deskboard` `fetchRecentCommits` (`GET /repos/{o}/{r}/commits?per_page=N`, default branch) | `GET /projects/:id/repository/commits` — 1:1: the sha (`id`) and `committed_date` are the fields the probe reads (only the sha). An EMPTY project answers 404 (GitHub 409), surfaced as the `IsForgeEmptyRepo` known-state | implemented |
+| 28 | `GetCommit(repo, sha)` | single-commit read (stall clock) | `deskboard` `fetchHeadCommit` (`GET /repos/{o}/{r}/commits/{sha}`) | `GET /projects/:id/repository/commits/:sha` — `committed_date` is 1:1; the resolved-account login fields are a per-field could-not-check (left EMPTY) because a GitLab commit carries raw git author/committer name+email, not a resolved instance account (the ReviewsAtHead-CommitID posture) | implemented |
+| 29 | `CompareRefs(repo, base, head)` | ref comparison (benign-merge + behind-by) | `deskboard` `changedFilesBetween` + `fetchBehindMain` (`GET /repos/{o}/{r}/compare/{base}...{head}` — files + `behind_by` + `status`) | **could-not-check.** GitLab's compare reports neither the divergence STATUS word (identical/ahead/behind/diverged) nor a `behind_by` count — the two facts the consumers key on; behind_by needs a separate inverted compare and the status vocabulary has no analog. Deferred to the forge-gitlab compare brief, never approximated | github-only |
+| 30 | `SearchOpenChanges(owner)` | owner-wide open-change search (scope reconcile) | `deskboard` `searchOpenPRs` (`gh search prs --owner <o> --state open` → `GET /search/issues?q=is:pr+is:open+user:<o>`) | **could-not-check.** GitHub's owner-wide PR search has no 1:1 GitLab analog — GitLab search is group/project-scoped and paginated differently. Deferred to the forge-gitlab search brief; an under/over-reported scope reconciliation is worse than a stated could-not-check | github-only |
+| 31 | `ListWorkflowFiles(repo, ref)` | workflow-directory listing (zero-CI probe) | `deskboard` `listWorkflowFiles` (`GET /repos/{o}/{r}/contents/.github/workflows?ref=`) | **could-not-check.** GitHub-Actions-specific: GitLab CI config is a single `.gitlab-ci.yml`, not a per-workflow-file directory, so there is no 1:1 listing. Deferred to the forge-gitlab CI brief | github-only |
+| 32 | `ChangeDiff(repo, number)` | raw unified-diff document (human display) | `deskboard` `cmdDiff` (`gh pr diff` → `GET /repos/{o}/{r}/pulls/{n}` with the `.v3.diff` media type) | **could-not-check.** GitLab serves a change's diff as a STRUCTURED per-file list (op 4, `ListChangedFiles`), not a single raw unified-diff document; the raw-text read has no 1:1 form. Deferred to the forge-gitlab diff brief, never assembled here | github-only |
+
+**Ops 27–32 were added by brief `forge-neutral/12`** under the freeze rule, each with its consuming
+`deskboard` call site migrated in the same change — the five PERIPHERAL read categories `forge-neutral/06`
+left on the NARROWED `ghRun` permit row, plus the reads that already had an enumerated op and only stayed
+on `ghRun` for historical reasons (`fetchReviews`→`ReviewsAtHead`, `fetchChangedFiles`→`GetPullRequest`+
+`ListChangedFiles`, `fetchCheckRuns`+`fetchCombinedStatusTotal`→`ChecksAtHead`, `fetchWorkflowContent`+
+`cmdFiles`→`ReadFile`, `fetchLabelEvents`→`ListLabelEvents`, `fetchLastAuthorComment`→`ListComments`,
+`fetchPRState`→`GetPullRequest` gaining a `MergedAt` field, `cmdQueue`→`ListOpenIssues` gaining a `URL`
+field, the policy-drift metadata reads→`RepoVisibility`). The combined-status TOTAL folded into
+`ChecksAtHead`'s existing `StatusTotalCount` rather than growing a redundant op. With `deskboard`'s last
+`ghRun` caller gone, its `cmd/deskboard/board.go::ghRun::gh` permit row is removed and the forge-CLI
+ceiling falls 13 → 12. Ops 27–28 map 1:1 on GitLab (commit reads); ops 29–32 are could-not-check-with-gap
+(a genuine non-1:1 each, named above) per the same ruling `forge-neutral/06` landed under.
+
 **Ops 16–19 were added by brief `forge-neutral/03` under the same freeze rule**, each with its consuming
 call sites converted in the same change: 16 by `deskflip`'s model-capability-floor read and `deskpost`'s
 sibling; 17 and 18 by `deskreply`'s `--workpad` upsert; 19 by `deskflip`'s queue-label swap and

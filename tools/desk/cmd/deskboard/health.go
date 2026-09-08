@@ -57,7 +57,6 @@ package main
 // subset (the general board-wide version of that property is #359).
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -142,18 +141,16 @@ type branchHealthReport struct {
 // this costs one call and needs no separate "what is the default branch" read.
 // An empty repository is a distinct, KNOWN answer (no-commits), not a read failure.
 func fetchRecentCommits(repo string) (shas []string, empty bool, err error) {
-	out, gerr := ghRun("api", fmt.Sprintf("repos/%s/commits?per_page=%d", repo, bhLookback))
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, false, ferr
+	}
+	commits, gerr := f.ListRecentCommits(fr, bhLookback)
 	if gerr != nil {
-		if strings.Contains(strings.ToLower(gerr.Error()), "repository is empty") {
+		if deskkit.IsForgeEmptyRepo(gerr) {
 			return nil, true, nil
 		}
 		return nil, false, gerr
-	}
-	var commits []struct {
-		SHA string `json:"sha"`
-	}
-	if jerr := json.Unmarshal(out, &commits); jerr != nil {
-		return nil, false, fmt.Errorf("unparseable commits payload: %v", jerr)
 	}
 	for _, c := range commits {
 		if c.SHA != "" {
@@ -167,15 +164,22 @@ func fetchRecentCommits(repo string) (shas []string, empty bool, err error) {
 // reported more runs than it returned — the caller must then report could-not-check
 // rather than judge a partial list.
 func fetchCheckRuns(repo, sha string) (runs []checkRun, truncated bool, err error) {
-	out, gerr := ghRun("api", fmt.Sprintf("repos/%s/commits/%s/check-runs?per_page=%d", repo, sha, bhPageCap))
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, false, ferr
+	}
+	checks, gerr := f.ChecksAtHead(fr, sha)
 	if gerr != nil {
 		return nil, false, gerr
 	}
-	var resp checkRunsResp
-	if jerr := json.Unmarshal(out, &resp); jerr != nil {
-		return nil, false, fmt.Errorf("unparseable check-runs payload: %v", jerr)
+	runs = make([]checkRun, 0, len(checks.CheckRuns))
+	for _, c := range checks.CheckRuns {
+		runs = append(runs, checkRun{Name: c.Name, Status: c.Status, Conclusion: c.Conclusion})
 	}
-	return resp.CheckRuns, resp.TotalCount > len(resp.CheckRuns), nil
+	// ChecksAtHead paginates the check-runs rollup to exhaustion and reports the forge's own
+	// asserted total, so a read that came back short of it is truncated — the same guard the
+	// per_page-vs-total_count comparison expressed.
+	return runs, checks.CheckRunsTotalCount > len(runs), nil
 }
 
 // classifyCheckRuns reduces a commit's check runs to a verdict.

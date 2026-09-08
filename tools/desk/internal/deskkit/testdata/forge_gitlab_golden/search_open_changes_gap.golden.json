@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": null,
+  "err": "could-not-check: the GitLab backend does not serve SearchOpenChanges for owner \"medici-finance\" — GitHub's owner-wide PR search has no 1:1 GitLab analog (GitLab search is group/project-scoped and paginated differently). It is deferred to the forge-gitlab search brief, never approximated (an under- or over-reported scope reconciliation is worse than a stated could-not-check).",
+  "not_found": false
+}

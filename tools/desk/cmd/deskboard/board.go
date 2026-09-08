@@ -15,8 +15,6 @@ package main
 // after his latest comment voids the blessing (bless-then-edit).
 
 import (
-	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -75,92 +73,6 @@ const verifyGateLabel = "verify-gate"
 // many open PRs, fetchOpenPRs logs a possible-truncation WARN so widening is never left
 // to guesswork. It is also the ceiling of a single GraphQL page (`first:` maxes at 100).
 const prListLimit = 100
-
-// ---------------------------------------------------------------------------
-// gh runner (the single choke point every GET goes through)
-// ---------------------------------------------------------------------------
-
-// ghConcurrency is the AUTHORITATIVE global cap on how many `gh` subprocesses the real
-// runner will have in flight at once. It is enforced inside ghRun itself — the single
-// choke point — so it holds no matter how the concurrent sweep nests its fan-out
-// (repo-level × per-PR level): the product of the sweep's pool sizes can never exceed this
-// number of live subprocesses, which is what keeps a burst of REST reads clear of GitHub's
-// secondary rate limits. The desk's outward-WRITE budget (deskkit/ratelimit.go) is a
-// separate control for mutations; this read-only board makes none. 6 mirrors
-// sweepConcurrency (sweep.go): the safe direction to be wrong in is LOW, because a
-// secondary-limit 403/429 fails the whole run closed.
-const ghConcurrency = 6
-
-// ghSem bounds concurrent real `gh` executions to ghConcurrency. A buffered channel is a
-// concurrency-safe counting semaphore; it introduces no second exec route and no shared
-// MUTABLE state (the PATH-shim read-only proof is untouched — it exercises this same real
-// path, just never more than ghConcurrency at a time). ghRun never calls itself, so
-// acquire→exec→release cannot deadlock.
-var ghSem = make(chan struct{}, ghConcurrency)
-
-// ghTimeout is the per-unit deadline on a SINGLE `gh` subprocess, enforced at this same
-// choke point. It is the #594 fix: #594 was one `gh` wedging forever on a blocking
-// auth/token-refresh, and with no deadline that worker blocks and the concurrent sweep's
-// wg.Wait() then blocks the whole board FOREVER with no output (parallelizing the sweep
-// without this just lets 6 goroutines wedge instead of 1). A finite per-call budget here
-// turns a wedge into a terminable error — the repo then fails closed (exit 6, named) like
-// any other unverifiable read, instead of stalling the sweep. It is a package var so the
-// wedge test (TestActions_WedgedRead_TimesOut) can shrink it; 120s is far above a healthy
-// read (~1–2s) yet finite, so a live-but-slow `gh` is never false-tripped. The safe
-// direction to be wrong in is HIGH (a too-short budget could fail a slow-but-live read
-// closed) — the opposite of ghConcurrency, and both fail CLOSED, never open.
-var ghTimeout = 120 * time.Second
-
-// ghRun shells out to the real `gh` binary and returns stdout. It is a package var so
-// the PATH-shim test can exercise the REAL exec path (a fake gh first in PATH) and so
-// nothing here can silently swap in a mutating call. A non-zero gh exit becomes an
-// error carrying gh's stderr; callers wrap it as Unverifiable (exit 6) naming the repo.
-//
-// It holds ghSem across the exec so the concurrent sweep's total in-flight subprocess
-// count is bounded HERE, at the choke point, rather than depending on every caller to
-// respect a budget (#439's lesson: no call site can opt out of a global cap
-// if the cap lives at the one point they all pass through). The ghTimeout context is
-// created and killed HERE too, so a wedged unit both releases its ghSem slot and becomes
-// a terminable error within the budget rather than pinning a slot forever.
-var ghRun = func(args ...string) ([]byte, error) {
-	// Authenticate the read as the session role's App installation on the account this
-	// argv targets (token.go). Without this the child `gh` falls through to the HOME
-	// keyring, which under a desk config home that is not the operator's own cannot
-	// authenticate — every private repo then 401s, and on the GraphQL path can come back
-	// falsely EMPTY, which is an absence that reads like an answer. An owner with no
-	// resolvable token yields "" and the call runs on the ambient identity, having said so.
-	//
-	// Resolved BEFORE the semaphore and the deadline: the lookup shells out to the token
-	// minter at most once per account, and doing it while holding a ghSem slot would spend
-	// one of six read slots — and part of this call's own timeout budget — on a mint that
-	// is not the read being timed.
-	tok := ghTokenForOwner(ownerFromArgs(args))
-
-	ghSem <- struct{}{}
-	defer func() { <-ghSem }()
-	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", args...)
-	if tok != "" {
-		cmd.Env = append(os.Environ(), "GH_TOKEN="+tok)
-	}
-	// WaitDelay bounds how long Output() may block AFTER the deadline kills gh but a
-	// surviving child still holds the stdout pipe open (Go 1.20+): the pipe is then
-	// force-closed and Wait returns, so a wedged gh cannot keep its ghSem slot — or the
-	// whole sweep — past the budget by leaking a grandchild.
-	cmd.WaitDelay = 5 * time.Second
-	out, err := cmd.Output()
-	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return nil, fmt.Errorf("gh %s: timed out after %s (wedged subprocess killed)", strings.Join(args, " "), ghTimeout)
-		}
-		if ee, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("gh %s: %s", strings.Join(args, " "), strings.TrimSpace(string(ee.Stderr)))
-		}
-		return nil, fmt.Errorf("gh %s: %v", strings.Join(args, " "), err)
-	}
-	return out, nil
-}
 
 // ---------------------------------------------------------------------------
 // data model (mirrors the gh JSON shapes)
@@ -446,21 +358,25 @@ const apiPageSize = 100
 // 30 reviews used to have its older verdicts silently dropped, and after the #216
 // order-sensitive reduction a dropped page can change the answer.
 func fetchReviews(repo string, num int) ([]review, error) {
-	var all []review
-	for page := 1; ; page++ {
-		out, err := ghRun("api", fmt.Sprintf("repos/%s/pulls/%d/reviews?per_page=%d&page=%d", repo, num, apiPageSize, page))
-		if err != nil {
-			return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read reviews for %s#%d", repo, num), err)
-		}
-		var chunk []review
-		if err := json.Unmarshal(out, &chunk); err != nil {
-			return nil, deskkit.Unverifiable(fmt.Sprintf("cannot parse reviews for %s#%d", repo, num), err)
-		}
-		all = append(all, chunk...)
-		if len(chunk) < apiPageSize {
-			return all, nil
-		}
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, ferr
 	}
+	rs, err := f.ReviewsAtHead(fr, num)
+	if err != nil {
+		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read reviews for %s#%d", repo, num), err)
+	}
+	all := make([]review, 0, len(rs))
+	for _, r := range rs {
+		var rv review
+		rv.User.Login = r.Author.Login
+		rv.Body = r.Body
+		rv.State = r.State
+		rv.CommitID = r.CommitID
+		rv.SubmittedAt = r.SubmittedAt
+		all = append(all, rv)
+	}
+	return all, nil
 }
 
 // maxFilePages bounds the changed-files walk (100/page). Exceeding it leaves the entry
@@ -486,52 +402,35 @@ const maxFilePages = 40 // 4000 entries; GitHub's own /files cap is 3000
 // and RE-REVIEW rather than MERGE-CURR) instead of failing the whole board, so one
 // enormous PR cannot brick the desk's sweep.
 func fetchChangedFiles(repo string, num int) (files map[string]bool, complete bool, err error) {
-	// GitHub's own count, for reconciliation. Zero (or an old API without the field)
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, false, ferr
+	}
+	// The forge's own count, for reconciliation. Zero (or a forge without the field)
 	// disables the cross-check rather than faking one.
-	metaOut, err := ghRun("api", fmt.Sprintf("repos/%s/pulls/%d", repo, num))
-	if err != nil {
-		return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read PR metadata for %s#%d", repo, num), err)
+	pr, perr := f.GetPullRequest(fr, num)
+	if perr != nil {
+		return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read PR metadata for %s#%d", repo, num), perr)
 	}
-	var meta struct {
-		ChangedFiles int `json:"changed_files"`
+	changed, ferr2 := f.ListChangedFiles(fr, num)
+	if ferr2 != nil {
+		return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read changed files for %s#%d", repo, num), ferr2)
 	}
-	if err := json.Unmarshal(metaOut, &meta); err != nil {
-		return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot parse PR metadata for %s#%d", repo, num), err)
-	}
-
 	set := map[string]bool{}
-	entries := 0
-	for page := 1; page <= maxFilePages; page++ {
-		out, err := ghRun("api", fmt.Sprintf("repos/%s/pulls/%d/files?per_page=%d&page=%d",
-			repo, num, apiPageSize, page))
-		if err != nil {
-			return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read changed files for %s#%d", repo, num), err)
+	entries := len(changed)
+	for _, cf := range changed {
+		if cf.Filename != "" {
+			set[cf.Filename] = true
 		}
-		var chunk []struct {
-			Filename         string `json:"filename"`
-			PreviousFilename string `json:"previous_filename"`
-		}
-		if err := json.Unmarshal(out, &chunk); err != nil {
-			return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot parse changed files for %s#%d", repo, num), err)
-		}
-		entries += len(chunk)
-		for _, f := range chunk {
-			if f.Filename != "" {
-				set[f.Filename] = true
-			}
-			if f.PreviousFilename != "" {
-				set[f.PreviousFilename] = true
-			}
-		}
-		if len(chunk) < apiPageSize {
-			break
+		if cf.PreviousFilename != "" {
+			set[cf.PreviousFilename] = true
 		}
 	}
 
-	complete = meta.ChangedFiles == 0 || entries >= meta.ChangedFiles
+	complete = pr.ChangedFiles == 0 || entries >= pr.ChangedFiles
 	if !complete {
 		fmt.Fprintf(os.Stderr, "deskboard: WARNING %s#%d — read %d changed-file entries but GitHub reports %d; "+
-			"the diff is TRUNCATED, so this PR degrades to risk-classed / RE-REVIEW\n", repo, num, entries, meta.ChangedFiles)
+			"the diff is TRUNCATED, so this PR degrades to risk-classed / RE-REVIEW\n", repo, num, entries, pr.ChangedFiles)
 	}
 	return set, complete, nil
 }
@@ -542,22 +441,18 @@ func changedFilesBetween(repo, base, head string) (map[string]bool, error) {
 	if base == "" || head == "" {
 		return nil, deskkit.Unverifiable("compare needs both base and head", nil)
 	}
-	out, err := ghRun("api", fmt.Sprintf("repos/%s/compare/%s...%s", repo, base, head))
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, ferr
+	}
+	cmp, err := f.CompareRefs(fr, base, head)
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot compare %s %s...%s", repo, short(base), short(head)), err)
 	}
-	var v struct {
-		Files []struct {
-			Filename string `json:"filename"`
-		} `json:"files"`
-	}
-	if err := json.Unmarshal(out, &v); err != nil {
-		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot parse compare for %s", repo), err)
-	}
 	set := map[string]bool{}
-	for _, f := range v.Files {
-		if f.Filename != "" {
-			set[f.Filename] = true
+	for _, cf := range cmp.Files {
+		if cf.Filename != "" {
+			set[cf.Filename] = true
 		}
 	}
 	return set, nil
@@ -587,21 +482,29 @@ type labelEvent struct {
 // Unverifiable (exit 6) rather than a silent empty, so a could-not-read never reads as
 // "no resolution label".
 func fetchLabelEvents(repo string, num int) ([]labelEvent, error) {
-	var all []labelEvent
-	for page := 1; ; page++ {
-		out, err := ghRun("api", fmt.Sprintf("repos/%s/issues/%d/events?per_page=%d&page=%d", repo, num, apiPageSize, page))
-		if err != nil {
-			return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read label events for %s#%d", repo, num), err)
-		}
-		var chunk []labelEvent
-		if err := json.Unmarshal(out, &chunk); err != nil {
-			return nil, deskkit.Unverifiable(fmt.Sprintf("cannot parse label events for %s#%d", repo, num), err)
-		}
-		all = append(all, chunk...)
-		if len(chunk) < apiPageSize {
-			return all, nil
-		}
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, ferr
 	}
+	evs, err := f.ListLabelEvents(fr, num)
+	if err != nil {
+		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read label events for %s#%d", repo, num), err)
+	}
+	// ListLabelEvents returns only APPLICATION (`labeled` / `action:add`) events on both
+	// backends, so each maps to a `labeled` local event; a removal (Removed) is not an
+	// application and is dropped, matching the old timeline filter.
+	all := make([]labelEvent, 0, len(evs))
+	for _, e := range evs {
+		if e.Removed {
+			continue
+		}
+		var le labelEvent
+		le.Event = "labeled"
+		le.CreatedAt = e.CreatedAt
+		le.Label.Name = e.Name
+		all = append(all, le)
+	}
+	return all, nil
 }
 
 // detectNonCommitResolution answers whether a BLOCKED-at-head PR shows a finding-relevant
@@ -1929,10 +1832,11 @@ type prOutcome struct {
 // Within the repo it fans the PER-PR reads out concurrently too (classifyPR under a second
 // bounded pool) — that fan-out is what removes the long pole of one PR-heavy repo, and it
 // is safe because each PR is classified from independent reads with no shared mutable
-// state, and the TOTAL number of concurrent `gh` subprocesses is bounded globally by
-// ghRun's ghSem regardless of how repo-level and PR-level pools multiply. It fails CLOSED
-// exactly as the old serial body did: any gh/parse error is wrapped-and-repo/PR-named
-// and propagates to fail the whole run, deterministically (lowest-index PR first).
+// state. The reads now go through the typed Forge seam (no forge subprocess), so concurrent
+// reads are bounded by the two worker-pool limits together (repo-level × PR-level), not by
+// any global semaphore. It fails CLOSED exactly as the old serial body did: any read/parse
+// error is wrapped-and-repo/PR-named and propagates to fail the whole run, deterministically
+// (lowest-index PR first).
 func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (actionsPartial, error) {
 	var part actionsPartial
 	prs, truncated, err := fetchOpenPRs(repo)
@@ -2579,46 +2483,35 @@ func cmdQueue(hdr Header) (*Report, error) {
 	hdr.Scope = boardScope() // #359: a sweeping verb states its coverage
 	rep := queueReport{Header: hdr, Issues: []issueRow{}, External: []externalRow{}}
 	for _, repo := range deskkit.AllowedRepos() {
-		// Page explicitly: the REST default of 30/page silently hid every verify-gate
-		// issue past the thirtieth, and an invisible queue item is one nobody works.
-		var issues []gateIssue
-		for page := 1; ; page++ {
-			out, err := ghRun("api", fmt.Sprintf("repos/%s/issues?labels=%s&state=open&per_page=%d&page=%d",
-				repo, verifyGateLabel, apiPageSize, page))
-			if err != nil {
-				return nil, deskkit.Unverifiable("cannot read verify-gate issues for "+repo, err)
-			}
-			var chunk []gateIssue
-			if err := json.Unmarshal(out, &chunk); err != nil {
-				return nil, deskkit.Unverifiable("cannot parse verify-gate issues for "+repo, err)
-			}
-			issues = append(issues, chunk...)
-			if len(chunk) < apiPageSize {
-				break
-			}
+		f, fr, ferr := forgeFor(repo)
+		if ferr != nil {
+			return nil, ferr
+		}
+		// ListOpenIssues returns every OPEN issue (never a change) exhaustively — no page cap
+		// hides a verify-gate item past the thirtieth — and the verify-gate filter is applied
+		// client-side over the returned labels.
+		issues, err := f.ListOpenIssues(fr)
+		if err != nil {
+			return nil, deskkit.Unverifiable("cannot read verify-gate issues for "+repo, err)
 		}
 		for _, is := range issues {
-			if is.PullRequest != nil {
-				continue // the issues endpoint also returns PRs; keep only real issues
+			if !hasLabel(is.Labels, verifyGateLabel) {
+				continue
 			}
-			// Trust gate: REST gives login AND numeric id here — both must match the
+			// Trust gate: the summary carries login AND numeric id — both must match the
 			// compiled-in identity (TrustedAuthorID, recycled-login defense).
-			if !deskkit.TrustedAuthorID(is.User.Login, is.User.ID) {
+			if !deskkit.TrustedAuthorID(is.Author.Login, is.Author.ID) {
 				blessed, berr := issueBlessed(repo, is.Number)
 				if berr != nil {
 					return nil, berr
 				}
 				if !blessed {
-					rep.External = append(rep.External, externalRow{Repo: repo, Number: is.Number, Title: is.Title, Author: is.User.Login})
+					rep.External = append(rep.External, externalRow{Repo: repo, Number: is.Number, Title: is.Title, Author: is.Author.Login})
 					continue
 				}
 			}
-			labels := make([]string, 0, len(is.Labels))
-			for _, l := range is.Labels {
-				labels = append(labels, l.Name)
-			}
 			rep.Issues = append(rep.Issues, issueRow{
-				Repo: repo, Number: is.Number, Title: is.Title, URL: is.HTMLURL, Labels: labels,
+				Repo: repo, Number: is.Number, Title: is.Title, URL: is.URL, Labels: append([]string(nil), is.Labels...),
 			})
 		}
 	}
@@ -2647,11 +2540,15 @@ type diffReport struct {
 }
 
 func cmdDiff(hdr Header, repo string, num int) (*Report, error) {
-	out, err := ghRun("pr", "diff", fmt.Sprint(num), "-R", repo)
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, ferr
+	}
+	out, err := f.ChangeDiff(fr, num)
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read diff for %s#%d", repo, num), err)
 	}
-	rep := diffReport{Header: hdr, Repo: repo, Number: num, Diff: string(out)}
+	rep := diffReport{Header: hdr, Repo: repo, Number: num, Diff: out}
 	return &Report{value: rep, render: func(w io.Writer) {
 		fmt.Fprintf(w, "asOf %s  %s#%d\n", hdr.AsOf, shortRepo(repo), num)
 		io.WriteString(w, rep.Diff)
@@ -2714,26 +2611,15 @@ func cmdFiles(hdr Header, repo string, num int, path string) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	out, err := ghRun("api", fmt.Sprintf("repos/%s/contents/%s?ref=%s", repo, path, head))
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, ferr
+	}
+	fc, err := f.ReadFile(fr, deskkit.ReadFileInput{File: path, Ref: head})
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read %s at %s#%d", path, repo, num), err)
 	}
-	var v struct {
-		Content  string `json:"content"`
-		Encoding string `json:"encoding"`
-	}
-	if err := json.Unmarshal(out, &v); err != nil {
-		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot parse contents of %s (%s#%d)", path, repo, num), err)
-	}
-	content := v.Content
-	if v.Encoding == "base64" {
-		dec, derr := base64.StdEncoding.DecodeString(strings.ReplaceAll(v.Content, "\n", ""))
-		if derr != nil {
-			return nil, deskkit.Unverifiable(fmt.Sprintf("cannot base64-decode %s (%s#%d)", path, repo, num), derr)
-		}
-		content = string(dec)
-	}
-	rep.Content = content
+	rep.Content = string(fc.Content)
 	return &Report{value: rep, render: func(w io.Writer) {
 		fmt.Fprintf(w, "asOf %s  %s#%d %s @ %s\n", hdr.AsOf, shortRepo(repo), num, path, short(head))
 		io.WriteString(w, rep.Content)
@@ -2798,6 +2684,16 @@ func ciSummary(pass, pending, fail, unknown int, zero string) string {
 		s += fmt.Sprintf(" %d?unk", unknown)
 	}
 	return s
+}
+
+// hasLabel reports whether names contains label (exact match).
+func hasLabel(names []string, label string) bool {
+	for _, n := range names {
+		if n == label {
+			return true
+		}
+	}
+	return false
 }
 
 func intersects(a, b map[string]bool) bool {
@@ -2957,46 +2853,32 @@ type policyDriftReport struct {
 	Drift []string        `json:"drift"`
 }
 
-// repoMeta is the slice of GET repos/<repo> this check consumes.
-type repoMeta struct {
-	Visibility string `json:"visibility"`
-	Private    bool   `json:"private"`
-}
-
 func cmdPolicyDrift(hdr Header) (*Report, error) {
 	hdr.Scope = boardScope() // #359: a sweeping verb states its coverage
 	observed := make(map[string]string, len(deskkit.AllowedRepos()))
 	rep := policyDriftReport{Header: hdr, Repos: []visibilityRow{}, Drift: []string{}}
-	var mismatch []string
 
 	for _, repo := range deskkit.AllowedRepos() {
-		out, err := ghRun("api", "repos/"+repo)
+		f, fr, ferr := forgeFor(repo)
+		if ferr != nil {
+			return nil, ferr
+		}
+		vis, err := f.RepoVisibility(fr)
 		if err != nil {
-			// a repo we could not read is NOT a pass. Fail the whole run.
+			// a repo we could not read is NOT a pass. Fail the whole run. RepoVisibility already
+			// refuses an empty/absent visibility (could-not-check), the case the raw read guarded.
 			return nil, deskkit.Unverifiable("cannot read repo metadata for "+repo, err)
 		}
-		var m repoMeta
-		if err := json.Unmarshal(out, &m); err != nil {
-			return nil, deskkit.Unverifiable("cannot parse repo metadata for "+repo, err)
-		}
-		// Cross-check the two fields GitHub returns. They should never disagree; if
-		// they do, we do not know which to believe, so we say so rather than pick.
-		switch {
-		case m.Visibility == "public" && m.Private:
-			mismatch = append(mismatch, repo+": API self-contradicts — visibility=\"public\" but private=true")
-		case m.Visibility == "private" && !m.Private:
-			mismatch = append(mismatch, repo+": API self-contradicts — visibility=\"private\" but private=false")
-		}
-		observed[repo] = m.Visibility
+		observed[repo] = vis
 		rep.Repos = append(rep.Repos, visibilityRow{
 			Repo:       repo,
 			CompiledIn: deskkit.RepoVisibility(repo).String(),
-			Observed:   m.Visibility,
+			Observed:   vis,
 			RiskClass:  deskkit.VisibilityRiskClassed(repo),
 		})
 	}
 
-	rep.Drift = append(deskkit.VisibilityDrift(observed), mismatch...)
+	rep.Drift = deskkit.VisibilityDrift(observed)
 	if len(rep.Drift) > 0 {
 		return nil, deskkit.Unverifiable("repo visibility policy DRIFT — the compiled-in table no longer "+
 			"matches GitHub; the risk-class gate is deciding on stale facts:\n  "+
@@ -3046,27 +2928,20 @@ func assessPolicyDrift() policyDriftAlarm {
 	scope := deskkit.AllowedRepos()
 	alarm := policyDriftAlarm{Scope: scope}
 	observed := make(map[string]string, len(scope))
-	var mismatch []string
 
 	for _, repo := range scope {
-		out, err := ghRun("api", "repos/"+repo)
-		if err != nil {
+		f, fr, ferr := forgeFor(repo)
+		if ferr != nil {
 			continue // left out of `observed` → VisibilityDrift reports it NOT OBSERVED
 		}
-		var m repoMeta
-		if err := json.Unmarshal(out, &m); err != nil {
-			continue // same as above: unparseable is unobserved, not a guessed pass
+		vis, err := f.RepoVisibility(fr)
+		if err != nil {
+			continue // could-not-read (incl. empty/absent visibility) is unobserved, not a guessed pass
 		}
-		switch {
-		case m.Visibility == "public" && m.Private:
-			mismatch = append(mismatch, repo+": API self-contradicts — visibility=\"public\" but private=true")
-		case m.Visibility == "private" && !m.Private:
-			mismatch = append(mismatch, repo+": API self-contradicts — visibility=\"private\" but private=false")
-		}
-		observed[repo] = m.Visibility
+		observed[repo] = vis
 	}
 
-	alarm.Drift = append(deskkit.VisibilityDrift(observed), mismatch...)
+	alarm.Drift = deskkit.VisibilityDrift(observed)
 	return alarm
 }
 

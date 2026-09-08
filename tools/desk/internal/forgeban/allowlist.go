@@ -61,7 +61,7 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
-const allowedInvocationCeiling = 13
+const allowedInvocationCeiling = 12
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
@@ -71,19 +71,6 @@ var AllowedInvocations = []Allowance{
 			"operation at all but the identity layer, which inventory delta D2 keeps deliberately outside the " +
 			"interface. Retiring it means giving deskadvisory a minted token of its own; there is no Forge " +
 			"method it could move to.",
-	},
-	{
-		Key: "cmd/deskboard/board.go::ghRun::gh",
-		Reason: "TODO(forge-surface): NARROWED — its exit condition is the deskboard non-board-reads " +
-			"follow-up brief. The board's two hand-authored GraphQL reads (the bulk open-PR read and the " +
-			"PR/issue trust queries) now route through the typed ListOpenChanges/PRTrustEvents/" +
-			"IssueTrustEvents ops, so ghRun's SURVIVING callers are the board's five PERIPHERAL read " +
-			"categories: PR search (scope.go), commit-history listing (health.go), single-commit reads " +
-			"(stalled.go, prstate.go), the combined-status probe (zeroci.go) and the workflow-directory / " +
-			"contents / compare / label-events / reviews / changed-files REST reads (zeroci.go, board.go). None " +
-			"of those has an enumerated Forge op yet, and putting code-search or commit-history on the " +
-			"interface is a surface decision reserved to that follow-up brief's Review gate. This is the ONE " +
-			"gh literal left in cmd/deskboard.",
 	},
 	{
 		Key: "cmd/deskclose/exec.go::runGH::gh",
