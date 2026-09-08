@@ -193,6 +193,7 @@ record — that is a follow-on, not a claim this re-home makes. Statuses therefo
 | 12 | [Cursor — the third harness column (ground-truth + binding + generator verb + public column)](./brief-12-cursor-third-column.md) | 5 | L | implemented | — | — |
 | 13 | [Cursor live-desk-smoke protocol + first run](./brief-13-cursor-live-desk-smoke.md) | 6 | M | implemented | — | — |
 | 14 | [Code de-house — land the stream's tool and packaging deliverables in the public tree](./brief-14-code-dehouse.md) | 6 | L | implemented | — | — |
+| 15 | [Public CI wiring + harnesslint clean-up for the de-housed tools](./brief-15-ci-wiring-harnesslint.md) | 7 | M | todo | — | — |
 
 **Note on 07:** artifacts delivered (adoption docs, freshness registration, smoke
 protocol). The live Codex smoke run itself is held — it needs a Codex environment (OpenAI
@@ -216,6 +217,16 @@ HELD at `implemented` with no Evidence PRs on this repository until 14 lands** (
 already built — but it is the head of the *verification* path: no public Evidence row in this
 stream is honest before it. It is `gate: human` because it is a publication, the one act here
 that git does not undo.
+
+**Note on 15 — the follow-up hp/14 (#631) owed.** hp/14 landed the three Go modules and the
+packaging in the public tree, but CI's module walk only `build`s and `vet`s them — their test
+suites (harnessgen's real-tree `--check` roster/version oracle among them) never run — and it
+flagged two clean-ups out of its own scope: four banned-harness-token violations in shipped skill
+bodies (`ask-decision`, `install`) and nineteen bindings violations against `plugins/assay/references/desk-shell.md`,
+a reference that is by its own first paragraph "not a per-harness capability binding." 15 wires the
+three suites plus the real-tree neutrality lint into `ci.yml`, scrubs the four tokens, and declares
+`desk-shell.md` a non-matrix reference the bindings lint skips. It is `gate: model` (no publication,
+no leak surface — the content already went public at 14) and does not extend any critical path.
 
 ## Critical path
 
@@ -268,6 +279,7 @@ Wave 3: [06]←{03,04,05}, [11]←04
 Wave 4: [07]←{05,06}
 Wave 5: [12]←{03,04,05,06}
 Wave 6: [13]←12, [14]←{06,12}
+Wave 7: [15]←14
 ```
 
 Critical path: `ext(Codex env) → 01 → 03 → 04 → 06 → 07`. 02 runs parallel in wave 0 and
