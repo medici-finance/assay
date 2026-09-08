@@ -245,11 +245,27 @@ type Landing struct {
 // filled with the real, environment-backed probe — tests supply their own so the
 // suite is hermetic (no network, no credentials, no git remote).
 type PreflightProbes struct {
-	// ColdMint mints the role's token in a FRESH process with a scrubbed
-	// environment and returns the TOKEN FILE PATH (never the token value). repo
-	// is the owner/name slug whose INSTALLATION the token is minted against;
-	// empty means the minter applies its own default.
+	// ColdMint mints the role's GitHub App token in a FRESH process with a
+	// scrubbed environment and returns the TOKEN FILE PATH (never the token
+	// value). repo is the owner/name slug whose INSTALLATION the token is minted
+	// against; empty means the minter applies its own default. It is consulted
+	// ONLY on the GitHub custody path — a GitLab-forge repo takes GitLabColdCustody.
 	ColdMint func(role, repo string) (tokenPath string, err error)
+	// ResolveForgeKind reports which forge serves the role's repo, so the
+	// cold-mint and app-scopes checks pick the right custody path (#655). It
+	// answers from the repo's configured forge (ASSAY_REPO_FORGES) then the origin
+	// remote's host, and returns "" (unresolved) when neither answers — unresolved
+	// is treated as GitHub, the historical default, so a GitHub adopter with no
+	// forge config is unaffected. It is never a caller-supplied forge selector:
+	// the default wraps the ONE resolver (forgeresolve.go's resolveForgeKind).
+	ResolveForgeKind func(repo string) ForgeKind
+	// GitLabColdCustody verifies — READ-ONLY, without rotating — that a fresh
+	// `desktoken --forge gitlab <role>` would have what it needs: the role's 0600
+	// gitlab-<role>.token on the App-credential search path, non-empty, and
+	// GITLAB_API_BASE set. It returns the custody file PATH (never the token
+	// value). It NEVER rotates: rotation invalidates the live PAT, so a boot probe
+	// that ran it would silently kill a working credential on every boot (#655).
+	GitLabColdCustody func(role string) (tokenPath string, err error)
 	// GrantedScopes returns the permission map GitHub granted the installation
 	// the token was minted for. tokenPath is what ColdMint returned; an empty
 	// tokenPath means the mint produced nothing to read scopes from.
@@ -333,10 +349,17 @@ func (req PreflightRequest) Run() PreflightReport {
 		repo = deriveRepoSlug(l.Dir, l.Remote)
 	}
 
-	tokenPath, mint := checkColdMint(p, role, repo)
+	// Which forge serves this repo decides the credential custody path the
+	// cold-mint and app-scopes checks take. It is RESOLVED (from ASSAY_REPO_FORGES
+	// then the remote host), never a caller's choice; unresolved reads as GitHub,
+	// the historical default, so a GitHub adopter with no forge config is
+	// unaffected (#655).
+	forge := p.ResolveForgeKind(repo)
+
+	tokenPath, mint := checkColdMint(p, role, repo, forge)
 	rep.Checks = append(rep.Checks,
 		mint,
-		checkAppScopes(p, role, tokenPath),
+		checkAppScopes(p, role, tokenPath, forge),
 		checkWriteTransport(p, l),
 		checkCommitIdentity(p, role, l.Dir),
 		checkSiblings(p, root),
@@ -348,6 +371,12 @@ func (req PreflightRequest) Run() PreflightReport {
 func (p PreflightProbes) withDefaults() PreflightProbes {
 	if p.ColdMint == nil {
 		p.ColdMint = coldMintProbe
+	}
+	if p.ResolveForgeKind == nil {
+		p.ResolveForgeKind = forgeKindProbe
+	}
+	if p.GitLabColdCustody == nil {
+		p.GitLabColdCustody = gitlabColdCustodyProbe
 	}
 	if p.GrantedScopes == nil {
 		p.GrantedScopes = grantedScopesProbe
@@ -376,7 +405,22 @@ func (p PreflightProbes) withDefaults() PreflightProbes {
 // with no inherited token, pem override or App-id override — the exact state a
 // long session lands in ~1h after boot when the cached token lapses (#794), and
 // the state a worker starts in when the tool is not even on PATH (#567).
-func checkColdMint(p PreflightProbes, role, repo string) (string, Check) {
+//
+// The credential's SHAPE is forge-specific, so the check is forge-aware (#655): a
+// GitLab-forge repo has no App PEM/apps.env and must NOT be told to provision
+// one — it takes the GitLab PAT custody path. An unresolved or GitHub forge takes
+// the GitHub App mint path, byte-for-byte the pre-#655 behaviour.
+func checkColdMint(p PreflightProbes, role, repo string, forge ForgeKind) (string, Check) {
+	if forge == ForgeGitLab {
+		return checkGitLabColdCustody(p, role)
+	}
+	return checkGitHubColdMint(p, role, repo)
+}
+
+// checkGitHubColdMint is the #794/#567 GitHub-App cold-mint check: a token mints
+// from a fresh, scrubbed process reading <role>-app.pem and apps.env off the
+// App-credential search path.
+func checkGitHubColdMint(p PreflightProbes, role, repo string) (string, Check) {
 	tokenPath, err := p.ColdMint(role, repo)
 	if err != nil {
 		st := CheckedFailed
@@ -398,6 +442,41 @@ func checkColdMint(p PreflightProbes, role, repo string) (string, Check) {
 			"re-run `desktoken "+role+"` by hand and read its stdout — it must print the token cache PATH", "#794")
 	}
 	return tokenPath, clean(CheckColdMint, "cold mint ok ("+tokenPath+")", "#794 #567")
+}
+
+// checkGitLabColdCustody is the GitLab arm of the cold-mint check (#655). GitLab
+// custody is a PROVISIONED PAT, not a minted App token: the role's rotate-on-mint
+// credential lives 0600 in gitlab-<role>.token on the App-credential search path,
+// and `desktoken --forge gitlab <role>` rotates it against GITLAB_API_BASE. This
+// check proves that rotate's preconditions READ-ONLY — it never rotates, because
+// rotation invalidates the live PAT and a boot probe must not silently kill a
+// working credential (the issue's explicit constraint). Its remediation names the
+// GitLab custody path, never App PEMs/apps.env: a GitLab adopter has none, and
+// pointing one at PEM files was the exact #655 symptom.
+func checkGitLabColdCustody(p PreflightProbes, role string) (string, Check) {
+	const refs = "#655 #794"
+	tokenPath, err := p.GitLabColdCustody(role)
+	if err != nil {
+		st := CheckedFailed
+		if strings.Contains(err.Error(), "could not stat") || strings.Contains(err.Error(), "could not read") {
+			st = CouldNotCheck
+		}
+		return "", Check{
+			Name:   CheckColdMint,
+			State:  st,
+			Detail: oneLine(err.Error()),
+			Remediation: "provision the role's GitLab PAT 0600 as gitlab-" + role +
+				".token on the App-credential search path (set " + EnvConfigHome + " to that directory), and " +
+				"set GITLAB_API_BASE to your REST v4 base (self-hosted: https://gitlab.example.com/api/v4; " +
+				"gitlab.com SaaS: https://gitlab.com/api/v4) — the GitLab custody path needs no GitHub App private key",
+			Refs: refs,
+		}
+	}
+	if strings.TrimSpace(tokenPath) == "" {
+		return "", unchecked(CheckColdMint, "the GitLab custody check reported success but named no token file",
+			"run `desktoken --forge gitlab "+role+"` by hand and read its stdout — it must print the token file PATH", refs)
+	}
+	return tokenPath, clean(CheckColdMint, "gitlab cold custody ok, rotate-on-mint ready ("+tokenPath+")", refs)
 }
 
 // coldMintProbe is the real cold mint: `desktoken <role>` in a fresh process
@@ -441,6 +520,76 @@ func coldMintProbe(role, repo string) (string, error) {
 		return "", Unverifiable("could not run desktoken "+role+": "+oneLine(err.Error()), nil)
 	}
 	return strings.TrimSpace(lastLine(string(out))), nil
+}
+
+// forgeKindProbe is the default forge resolver for the cold-mint / app-scopes
+// checks: it wraps resolveForgeKind — the ONE resolver in this tree (forgeresolve.go)
+// — so the preflight reads the forge from the SAME place ForgeFor does
+// (ASSAY_REPO_FORGES, then the origin remote host) rather than growing a second,
+// driftable answer. An unresolvable forge returns "" (not an error): the caller
+// treats "" as GitHub, the historical default, so a GitHub adopter that never
+// configured ASSAY_REPO_FORGES is unaffected (#655).
+func forgeKindProbe(repo string) ForgeKind {
+	res, err := resolveForgeKind(parseForgeSlug(repo))
+	if err != nil {
+		return ""
+	}
+	return res.Kind
+}
+
+// parseForgeSlug turns an "owner/name" slug into a ForgeRepo for resolveForgeKind.
+// An empty or malformed slug yields a zero ForgeRepo, whose "/" key simply misses
+// the roster map so resolution falls through to the remote-host step — never a
+// panic and never an invented owner.
+func parseForgeSlug(repo string) ForgeRepo {
+	owner, name, ok := strings.Cut(strings.TrimSpace(repo), "/")
+	if !ok {
+		return ForgeRepo{}
+	}
+	return ForgeRepo{Owner: owner, Name: name}
+}
+
+// gitlabColdCustodyProbe verifies — READ-ONLY, without rotating — that a fresh
+// `desktoken --forge gitlab <role>` would have what it needs (#655). It mirrors
+// that command's own preconditions (cmd/desktoken/gitlab.go): the role's PAT at
+// gitlab-<role>.token on the App-credential search path, a 0600 regular file, a
+// non-empty value, and GITLAB_API_BASE set (the rotate refuses before any network
+// contact without it). It returns the custody file PATH — never the token value.
+//
+// It deliberately does NOT rotate. The GitLab mint is rotate-on-mint: it
+// invalidates the current PAT and issues a new one. Running that as a boot probe
+// would silently invalidate a live credential on every preflight, so this proves
+// the rotate's preconditions without performing it — the read-only analogue of
+// the GitHub cold mint, which writes only its 0600 cache and touches no repo.
+func gitlabColdCustodyProbe(role string) (string, error) {
+	name := gitlabTokenFileName(role)
+	path, searched, found := FindConfigFile(name)
+	if !found {
+		return "", fmt.Errorf("gitlab token file not found: no %s on the App-credential search path (searched: %s)",
+			name, strings.Join(searched, ", "))
+	}
+	fi, serr := os.Stat(path)
+	if serr != nil {
+		return "", fmt.Errorf("could not stat gitlab token file at %s: %v", path, serr)
+	}
+	if !fi.Mode().IsRegular() {
+		return "", fmt.Errorf("gitlab custody at %s is not a regular file (mode %s); custody requires a 0600 regular file", path, fi.Mode())
+	}
+	if fi.Mode().Perm() != 0o600 {
+		return "", fmt.Errorf("gitlab token file at %s has permissions %o; must be 0600", path, fi.Mode().Perm())
+	}
+	raw, rerr := os.ReadFile(path)
+	if rerr != nil {
+		return "", fmt.Errorf("could not read gitlab token file at %s: %v", path, rerr)
+	}
+	if strings.TrimSpace(string(raw)) == "" {
+		return "", fmt.Errorf("the gitlab token file at %s is empty", path)
+	}
+	if strings.TrimSpace(os.Getenv("GITLAB_API_BASE")) == "" {
+		return "", fmt.Errorf("GITLAB_API_BASE is not set — a fresh `desktoken --forge gitlab %s` rotate refuses "+
+			"before contacting any host without it", role)
+	}
+	return path, nil
 }
 
 // remoteSlugRe pulls owner/name out of a git remote URL in any of the shapes a
@@ -530,8 +679,26 @@ var requiredDuties = []Duty{
 // role, so when several roles are bound to one App they mint one grant that this check reads
 // per role — a shared grant covering the duties passes every bound role. Proven by
 // TestMultiRoleSharedGrantPassesEveryBoundRole.
-func checkAppScopes(p PreflightProbes, role, tokenPath string) Check {
+func checkAppScopes(p PreflightProbes, role, tokenPath string, forge ForgeKind) Check {
 	const refs = "#571"
+	// The grant this check reads is a GitHub App INSTALLATION grant, recorded in a
+	// .perms sidecar the GitHub mint writes. GitLab has no such object: a PAT's
+	// scopes are set by the group owner at provisioning and are not observable
+	// offline from any mint response. So on a GitLab-forge repo this check does not
+	// apply — reporting it against a GitLab custody path would read a non-existent
+	// sidecar and emit a GitHub `--fresh` remediation, the #655 wrong-forge trap one
+	// check further along. It is could-not-check (never a false pass, per the
+	// three-state contract), with a GitLab-appropriate remediation and NO App/PEM
+	// text; the cold-mint check's GitLab arm is the credential envelope control.
+	if forge == ForgeGitLab {
+		return unchecked(CheckAppScopes,
+			"gitlab credential: a PAT's scopes are set by the group owner at provisioning and are not "+
+				"observable offline from a mint grant (GitLab records no per-mint permission sidecar)",
+			"confirm at the GitLab group's Access Tokens page that the "+role+" PAT carries the scopes its "+
+				"duties need (api / write_repository); this check reads a GitHub App installation grant and "+
+				"does not apply to a GitLab PAT",
+			refs)
+	}
 	if tokenPath == "" {
 		return unchecked(CheckAppScopes, "no token was minted, so no grant could be read",
 			"fix the "+CheckColdMint+" check first — scopes are read from the mint's recorded grant", refs)
