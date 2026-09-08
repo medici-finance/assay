@@ -51,7 +51,7 @@ files:
   migration, once); wrap each stream README's Briefs table in
   the markers and add `board: generated`; refuse (exit 5) if any README has no
   recognisable table. Prints a per-file plan under `--dry-run`.
-- `migrations/0001-v0.28.0-to-v1.0.0-derived-board.md` (planned) — the first REAL migration (source umbrella v0.28.0, the latest at cut time — assay#453) — `apply:` =
+- `migrations/0001-v0.28.0-to-v1.0.0-derived-board.md` (planned) — the first REAL migration (source umbrella v0.28.0, the latest at cut time — medici-finance/assay#453) — `apply:` =
   `statusgen-regen` + `ensure-line` in `docs/UPGRADING.txt`; body = the adopter-facing
   release note (what changes on their board, the trailer they must now write, the
   reconcile step they must add to their workflow — with the exact YAML).
@@ -99,7 +99,7 @@ facts:
 | 4b | check | `rm -rf "$TMPDIR/adopt2" && cp -r examples/adopter-scaffold "$TMPDIR/adopt2" && rm "$TMPDIR/adopt2/docs/streams/graph-repos.yaml" && cd tools/desk && go run ./cmd/deskmigrate --from v0.28.0 --to v1.0.0 --root "$TMPDIR/adopt2"; echo rc=$?` | `rc=5`; stderr names `graph-repos.yaml` (registry required before ids can be rewritten) |
 | 5 | check +mutation | `printf 'statusgen v1.0.0 aaaa\ndesk-tools-linux-amd64 v0.13.0 bbbb\n' > "$TMPDIR/adopt/.assay-versions" && statusgen --root "$TMPDIR/adopt" --lint; echo rc=$?` | `rc=1`; output contains `artifact tags differ` (breaks the one-tag-one-tree guard in `statusgen/main.go`'s `sameTagPinLint`; proves it reddens) |
 | 6 | check +mutation | `cd tools/desk && go build -ldflags '-X main.version=v0.13.0' -o "$TMPDIR/deskboard-old" ./cmd/deskboard && "$TMPDIR/deskboard-old" --root "$TMPDIR/adopt"; echo rc=$?` | `rc=6`; stderr contains `tree is brief-v2` (breaks the brief-reading version gate with a sub-v1.0.0 stamp; proves it reddens) |
-| 7 | check | `python3 -c "import json,yaml;p=json.load(open('plugins/assay/.claude-plugin/plugin.json'))['version'];y=yaml.safe_load(open('plugins/assay/paired-versions.yaml'));assert p==y['plugin']=='1.0.0' and y['statusgen']['tag']==y['desk-tools']['tag'];print('ok')" && bash plugins/assay/scripts/check-paired-versions.sh >/dev/null && echo checked` | `ok` then `checked` — plugin bumped to 1.0.0; paired-versions holds the last real umbrella release tag (one tag, one tree, check green). The v1.0.0 re-pin + `sha256` harvest is cut-release's post-tag step (assay#453) — never hand-typed here |
+| 7 | check | `python3 -c "import json,yaml;p=json.load(open('plugins/assay/.claude-plugin/plugin.json'))['version'];y=yaml.safe_load(open('plugins/assay/paired-versions.yaml'));assert p==y['plugin']=='1.0.0' and y['statusgen']['tag']==y['desk-tools']['tag'];print('ok')" && bash plugins/assay/scripts/check-paired-versions.sh >/dev/null && echo checked` | `ok` then `checked` — plugin bumped to 1.0.0; paired-versions holds the last real umbrella release tag (one tag, one tree, check green). The v1.0.0 re-pin + `sha256` harvest is cut-release's post-tag step (medici-finance/assay#453) — never hand-typed here |
 | 8 | check | `! grep -n -E 'v1\.0\.0 [0-9a-f]{64}' plugins/assay/paired-versions.yaml` | exit 0 (no hand-typed hash for the unreleased tag) |
 | 9 | check | `cd tools/desk && go run ./cmd/upgrade-assay --root "$TMPDIR/adopt" --to v1.0.0 --dry-run \| grep -c 'What changed'` | ≥ 1 (release-note prose surfaced before consent) |
 | 10 | check | `statusgen --root . --lint` | exit 0 on this repo's own tree after migration |
