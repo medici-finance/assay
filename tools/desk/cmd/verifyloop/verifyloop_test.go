@@ -79,7 +79,8 @@ func TestTierPolicy_Routing(t *testing.T) {
 		{"risk-clear -> local", loopengine.Item{Gate: "model"}, loopengine.TierLocal},
 		{"gate human -> human", loopengine.Item{Gate: "human"}, loopengine.TierHuman},
 		{"regulatory yes -> human", loopengine.Item{Gate: "human", Risk: loopengine.RiskFlags{Regulatory: true}}, loopengine.TierHuman},
-		{"irreversible -> local (dispatched for Evidence)", loopengine.Item{Gate: "human", Risk: loopengine.RiskFlags{Irreversible: true}}, loopengine.TierLocal},
+		{"irreversible -> human (fail-safe; Evidence-only lane lives in Land)", loopengine.Item{Gate: "human", Risk: loopengine.RiskFlags{Irreversible: true}}, loopengine.TierHuman},
+		{"irreversible gate:model -> human (the fail-open that was fixed)", loopengine.Item{Gate: "model", Risk: loopengine.RiskFlags{Irreversible: true}}, loopengine.TierHuman},
 	}
 	for _, c := range cases {
 		got, err := v.TierPolicy(c.it)
@@ -102,10 +103,12 @@ func TestTierPolicy_F16RungOffByDefaultOneLineOn(t *testing.T) {
 	if got, _ := on.TierPolicy(risky); got != loopengine.TierSession {
 		t.Fatalf("reversible-risk rung ON (one-line) should route reversible risk to session: got %v", got)
 	}
-	// Irreversible stays a human flip even with the rung ON.
+	// Irreversible is human-only even with the rung ON — the fail-safe arm runs first, ahead of
+	// the reversible-risk branch the flag diverts, so the dormant flag can never route
+	// irreversible work to a model tier.
 	irr := loopengine.Item{Gate: "human", Risk: loopengine.RiskFlags{Irreversible: true}}
-	if got, _ := on.TierPolicy(irr); got != loopengine.TierLocal {
-		t.Fatalf("irreversible must stay TierLocal (Evidence, human flip) even with rung ON: got %v", got)
+	if got, _ := on.TierPolicy(irr); got != loopengine.TierHuman {
+		t.Fatalf("irreversible must stay TierHuman (fail-safe) even with rung ON: got %v", got)
 	}
 }
 

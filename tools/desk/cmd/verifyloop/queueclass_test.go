@@ -195,6 +195,223 @@ func TestSelectQueue_CarriesBucketMarkers(t *testing.T) {
 	}
 }
 
+// TestClassifyItemRiskGateTable is the fail-safe truth table: every one of the four risk keys
+// individually yes (plus the all-no row) crossed with every gate form (model, human, absent,
+// Human, and a human value carrying a trailing qualifier). It asserts BOTH the disposition and
+// the tier the policy computed for the SAME input, so the two independent layers cannot silently
+// disagree — a divergence is a test failure, not a quiet fail-open.
+//
+//   - awaiting-human whenever ANY risk answer is yes OR the gate reads human;
+//   - dispatch ONLY for the all-no + non-human-gate rows.
+//
+// The tier and the disposition agree by construction with the middle-rung flag off: a row is
+// TierHuman iff it is awaiting-human.
+func TestClassifyItemRiskGateTable(t *testing.T) {
+	v := &VerifyLoop{}
+	riskForms := []struct {
+		name string
+		r    loopengine.RiskFlags
+	}{
+		{"all-no", loopengine.RiskFlags{}},
+		{"regulatory", loopengine.RiskFlags{Regulatory: true}},
+		{"customer", loopengine.RiskFlags{Customer: true}},
+		{"irreversible", loopengine.RiskFlags{Irreversible: true}},
+		{"sensitive-data", loopengine.RiskFlags{SensitiveData: true}},
+	}
+	gateForms := []struct {
+		name  string
+		gate  string
+		human bool
+	}{
+		{"model", "model", false},
+		{"human", "human", true},
+		{"absent", "", false},
+		{"Human", "Human", true},
+		{"human-qualified", "human — maintainer sign-off", true},
+	}
+	for _, rf := range riskForms {
+		for _, gf := range gateForms {
+			name := rf.name + "/" + gf.name
+			t.Run(name, func(t *testing.T) {
+				it := item("t/01", gf.gate, rf.r, nil)
+				anyRisk := rf.r.Any()
+				wantHuman := anyRisk || gf.human
+
+				wantDisp := dispDispatch
+				wantTier := loopengine.TierLocal
+				if wantHuman {
+					wantDisp = dispAwaitingHuman
+					wantTier = loopengine.TierHuman
+				}
+
+				tier, err := v.TierPolicy(it)
+				if err != nil {
+					t.Fatalf("TierPolicy: %v", err)
+				}
+				if tier != wantTier {
+					t.Fatalf("tier = %v; want %v (the two layers must agree on the same input)", tier, wantTier)
+				}
+				disp, reason := classifyItem(it, tier)
+				if disp != wantDisp {
+					t.Fatalf("disposition = %v; want %v", disp, wantDisp)
+				}
+				// The reason names the risk answers when any is yes; it is empty for a
+				// gate:human-only (or purely dispatchable) row.
+				if anyRisk {
+					if !strings.HasPrefix(reason, "risk: ") || !strings.Contains(reason, rf.name) {
+						t.Fatalf("reason = %q; want it to name risk %q", reason, rf.name)
+					}
+				} else if reason != "" {
+					t.Fatalf("reason = %q; want empty for a non-risk row", reason)
+				}
+			})
+		}
+	}
+}
+
+// TestRiskClearBriefStillDispatches is the NEGATIVE control: the fix moves items OUT of the
+// dispatchable list only — it must never sweep a risk-clear, non-human-gate brief out with them.
+// A table on which every case is risk-flagged proves the bucket works and says nothing about
+// whether the queue still has anything in it; this asserts the queue is not emptied.
+func TestRiskClearBriefStillDispatches(t *testing.T) {
+	v := &VerifyLoop{}
+	// The canonical dispatchable shape: all-no risk, gate:model, no markers.
+	clear := item("neg/01", "model", loopengine.RiskFlags{}, nil)
+	tier, err := v.TierPolicy(clear)
+	if err != nil {
+		t.Fatalf("TierPolicy: %v", err)
+	}
+	if tier != loopengine.TierLocal {
+		t.Fatalf("risk-clear tier = %v; want TierLocal", tier)
+	}
+	if disp, _ := classifyItem(clear, tier); disp != dispDispatch {
+		t.Fatalf("risk-clear gate:model classified %v; want dispatch — the fix must not empty the queue", disp)
+	}
+	// Other previously-dispatchable shapes must also stay dispatchable: an offline verify-lane
+	// value and an explicit falsey in-repair value are NOT risk signals and must not bucket.
+	for _, it := range []loopengine.Item{
+		item("neg/02", "model", loopengine.RiskFlags{}, map[string]string{"verify_lane": "offline"}),
+		item("neg/03", "model", loopengine.RiskFlags{}, map[string]string{"in_repair": "no"}),
+	} {
+		tr, _ := v.TierPolicy(it)
+		if disp, _ := classifyItem(it, tr); disp != dispDispatch {
+			t.Fatalf("%s classified %v; want dispatch (no risk signal — must not be swept out)", it.ID, disp)
+		}
+	}
+}
+
+// TestDormantReversibleFlagNeverDivertsIrreversible pins that enabling the dormant
+// reversible-risk middle rung does NOT divert an irreversible item away from the human: the
+// fail-safe arm runs FIRST, ahead of the branch the flag controls. The flag still does its job
+// for a REVERSIBLE risk-flagged item (routed to session), so the test also proves the flag is
+// genuinely on.
+func TestDormantReversibleFlagNeverDivertsIrreversible(t *testing.T) {
+	on := &VerifyLoop{F16ReversibleRiskToSession: true}
+
+	irr := item("dorm/01", "model", loopengine.RiskFlags{Irreversible: true}, nil)
+	tier, err := on.TierPolicy(irr)
+	if err != nil {
+		t.Fatalf("TierPolicy: %v", err)
+	}
+	if tier != loopengine.TierHuman {
+		t.Fatalf("irreversible with the reversible-risk flag ON routed to %v; want TierHuman (the flag must not divert irreversible work)", tier)
+	}
+	if disp, _ := classifyItem(irr, tier); disp != dispAwaitingHuman {
+		t.Fatalf("irreversible with flag ON classified %v; want awaiting-human", disp)
+	}
+
+	// The flag IS genuinely on: a reversible risk-flagged item routes to session.
+	rev := item("dorm/02", "model", loopengine.RiskFlags{Customer: true}, nil)
+	if tr, _ := on.TierPolicy(rev); tr != loopengine.TierSession {
+		t.Fatalf("reversible risk with flag ON routed to %v; want TierSession (proves the flag is active)", tr)
+	}
+}
+
+// planFixtureRoot lays down a one-stream board whose briefs are all implemented, so cmdPlan's
+// SelectQueue picks every one of them up. briefs maps a two-digit num to its full frontmatter+body.
+func planFixtureRoot(t *testing.T, briefs map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	var rows strings.Builder
+	rows.WriteString("| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n")
+	rows.WriteString("|---|-------|------|--------|--------|----------|----------|\n")
+	for num := range briefs {
+		rows.WriteString("| " + num + " | b" + num + " | 0 | S | implemented | — | — |\n")
+	}
+	writeFixtureStream(t, root, "example-stream", rows.String(), briefs)
+	return root
+}
+
+func planBrief(gate string, reg, cust, irr, sens string) string {
+	return "---\nbrief: x\ngate: " + gate + "\n" +
+		"risk: {regulatory: " + reg + ", customer: " + cust + ", irreversible: " + irr + ", sensitive-data: " + sens + "}\neffort: S\n---\n\n" +
+		"# Brief\n\n## Verify\n\n| # | Command | Expect |\n| 1 | `go test ./...` | exit 0 |\n\n" +
+		"## Evidence\n<!-- appended at verification time -->\n"
+}
+
+// TestIrreversibleBriefIsRouteHumanNotDispatch runs the actual plan output: an irreversible,
+// gate:model brief appears under the ROUTE-HUMAN heading and its ID NEVER appears after
+// "=== DISPATCH". A risk-clear sibling proves DISPATCH lines are produced at all, so the absence
+// of the irreversible ID from a DISPATCH line is meaningful, not an empty-plan artifact.
+func TestIrreversibleBriefIsRouteHumanNotDispatch(t *testing.T) {
+	root := planFixtureRoot(t, map[string]string{
+		"01": planBrief("model", "no", "no", "yes", "no"), // irreversible, gate:model — the fail-open
+		"02": planBrief("model", "no", "no", "no", "no"),  // risk-clear — genuinely dispatchable
+	})
+
+	var perr error
+	out := captureStdout(t, func() { perr = cmdPlan([]string{"--root", root}) })
+	if perr != nil {
+		t.Fatalf("cmdPlan: %v", perr)
+	}
+
+	if !strings.Contains(out, "ROUTE-HUMAN") {
+		t.Fatalf("plan output has no ROUTE-HUMAN heading:\n%s", out)
+	}
+	if !strings.Contains(out, "example-stream/01") {
+		t.Fatalf("irreversible brief not listed in the plan:\n%s", out)
+	}
+	if strings.Contains(out, "=== DISPATCH example-stream/01") {
+		t.Fatalf("irreversible gate:model brief was printed as a DISPATCH candidate (fail-open):\n%s", out)
+	}
+	// The risk-clear sibling IS dispatched — so a DISPATCH section exists and 01's absence is real.
+	if !strings.Contains(out, "=== DISPATCH example-stream/02") {
+		t.Fatalf("risk-clear sibling was not dispatched — the negative anchor is void:\n%s", out)
+	}
+}
+
+// TestRouteHumanLineCarriesEvidenceOnlyMarker asserts the member line of a risk-flagged item
+// carries BOTH the risk reason (in canonical key order) AND the literal
+// "Evidence-only (never flip-eligible)" — the permission and its limit on one line.
+func TestRouteHumanLineCarriesEvidenceOnlyMarker(t *testing.T) {
+	root := planFixtureRoot(t, map[string]string{
+		"01": planBrief("model", "no", "yes", "yes", "no"), // customer + irreversible
+	})
+
+	var perr error
+	out := captureStdout(t, func() { perr = cmdPlan([]string{"--root", root}) })
+	if perr != nil {
+		t.Fatalf("cmdPlan: %v", perr)
+	}
+
+	var memberLine string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "example-stream/01") {
+			memberLine = line
+			break
+		}
+	}
+	if memberLine == "" {
+		t.Fatalf("risk-flagged brief not listed:\n%s", out)
+	}
+	if !strings.Contains(memberLine, "risk: customer, irreversible") {
+		t.Fatalf("member line missing the canonical-order risk reason: %q", memberLine)
+	}
+	if !strings.Contains(memberLine, "Evidence-only (never flip-eligible)") {
+		t.Fatalf("member line missing the Evidence-only marker: %q", memberLine)
+	}
+}
+
 // captureStdout runs fn with os.Stdout redirected and returns everything it printed.
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
@@ -230,7 +447,7 @@ func TestPrintBuckets_RendersSectionsWithCounts(t *testing.T) {
 		"2 dispatchable, 4 deferred/bucketed",
 		"-- deferred (1):",
 		"demo/02 — 2026-09-15 (shadow accrual window not yet elapsed)",
-		"-- awaiting-human (1):",
+		"-- awaiting-human / ROUTE-HUMAN (1):",
 		"-- awaiting-online-lane (1):",
 		"demo/04 — cluster",
 		"-- in-repair (1):",

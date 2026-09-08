@@ -2,34 +2,42 @@ package main
 
 import "github.com/medici-finance/assay/tools/desk/internal/loopengine"
 
-// TierPolicy encodes verify-desk's CURRENT rules, unchanged (arch doc §6 irreducibles).
-// Precedence:
+// TierPolicy FAILS SAFE on risk (maintainer ruling 2026-09-06). Precedence:
 //
-//  1. irreversible: yes  -> TierLocal. The Verify table IS run by a dispatched local-model
-//     verifier so the Evidence is real and recorded; Land then writes Evidence with NO
-//     status flip and opens a checkpoint PR for a human (statusgen's brieffile.go human-gate
-//     stays authoritative). Dispatched, not human-only, because the mechanical verification
-//     is worth recording.
-//  2. risk-flagged (gate: human OR any OTHER risk answer yes)  -> TierHuman. Not dispatched:
-//     routed to the checkpoint-PR / labeled-issue path, drain continues. A model may not
-//     sign off a risk-flagged brief (a maintainer's ruling: verify dispatches the local model only,
-//     never opus/external; the risk-keyed floor's upper rung is a HUMAN, full stop).
+//  1. irreversible: yes  -> TierHuman, FIRST, before any branch the dormant reversible-risk
+//     flag can divert. Irreversible is the most serious risk answer, so it is routed to the
+//     human — never dispatched by the model path — whatever the brief's gate value says.
+//     The Evidence-only lane the ruling preserves lives in Land, not here: on an irreversible
+//     PASS Land still writes Evidence with NO status flip and opens a checkpoint PR for a
+//     human (statusgen's brieffile.go human-gate stays authoritative). A model may gather
+//     Evidence; it may never flip.
+//  2. risk-flagged but REVERSIBLE (gate: human OR any OTHER risk answer yes)  -> TierSession
+//     when the dormant middle-rung flag is on, else TierHuman. Not dispatched to a model at
+//     TierHuman: routed to the checkpoint-PR / labeled-issue path, drain continues.
 //  3. otherwise (risk-clear)  -> TierLocal. The normal path, the majority of the queue.
 //
-// The tier is ALWAYS the local session model when a model runs at all — never opus, never an
-// external/paid tier. The adapter maps TierLocal onto the local model; there is no tier that
-// maps onto a bigger model.
+// The precedence used to put irreversible ahead of the risk branch but route it to TierLocal
+// (dispatched-for-evidence). That was a fail-OPEN: an irreversible brief whose gate was `model`
+// was handed a dispatchable tier and, keyed only on the computed tier, read as dispatchable in
+// the plan. The fix is one-way — it can only move an item OUT of the dispatchable set.
+//
+// When a model does run (TierLocal / TierSession) it is ALWAYS the local session model — never
+// opus, never an external/paid tier. The adapter maps those onto the local model; there is no
+// tier that maps onto a bigger model.
 func (v *VerifyLoop) TierPolicy(it loopengine.Item) (loopengine.Tier, error) {
 	if it.Risk.Irreversible {
-		return loopengine.TierLocal, nil // dispatched for Evidence; Land does no-flip + checkpoint PR
+		// FAIL SAFE: irreversible is human-only, never dispatched — and ahead of the
+		// reversible-risk branch so the dormant flag below can never divert it.
+		return loopengine.TierHuman, nil
 	}
 	if it.Risk.Flagged(it.Gate) {
 		// MIDDLE RUNG (arch doc §9.2) — the owner's OPEN decision, left OFF.
 		// Flipping v.F16ReversibleRiskToSession to true is the ENTIRE change needed to
 		// restore the middle rung: session-tier verification for risk-flagged
-		// -but-REVERSIBLE briefs, reserving the human for irreversible only. It is one line
-		// and deliberately dormant — enabling it loosens the cost rule and widens
-		// the model-sign-off surface on risk-flagged work, which is the owner's trade to make, not
+		// -but-REVERSIBLE briefs, reserving the human for irreversible only (which the arm
+		// above already routes to the human regardless of this flag). It is one line and
+		// deliberately dormant — enabling it loosens the cost rule and widens the
+		// model-sign-off surface on risk-flagged work, which is the owner's trade to make, not
 		// the engine's.
 		if v.F16ReversibleRiskToSession {
 			return loopengine.TierSession, nil
