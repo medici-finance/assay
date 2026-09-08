@@ -180,7 +180,7 @@ body.
 **Report a review verdict with its id and its verbatim source line — NEVER synthesize one.**
 A shepherd once reported the reviewer App as APPROVED at head, with a plausible timestamp and a
 "supersedes CHANGES_REQUESTED" narrative, for a review that did not exist; the true state was
-CHANGES_REQUESTED with findings still open. When you tell the desk — or your final report —
+CHANGES_REQUESTED with findings still open. When you report to the desk — or in your final report —
 what a review says, quote the review `id` and the verbatim
 `gh api repos/<owner>/<repo>/pulls/<N>/reviews` line it came from, so the reader can re-run that
 read before acting. **You never recommend a ready-flip** (that is the desk's call, §5), and "I

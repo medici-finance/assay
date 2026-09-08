@@ -172,6 +172,13 @@ the desk-tools console-noise-floor contract. Two states:
    When it concerns a PR already in flight, comment on THAT PR as the App instead. **The filed
    issue IS the escalation.** A fork the merge gate still catches is NOT this: act on the best-guess
    default and let the filed issue be the NOTIFICATION, not a park (the reversibility test).
+3. **Receipt on a human-typed message.** After ANY human-typed message, the FIRST line of your turn
+   is `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when it
+   concerns one), then act. It is the ONE line the silence above permits — not narration, and a
+   second acknowledgement line is a violation. Say what you UNDERSTOOD, never a quote, so a misread
+   is corrected on your next turn. To hand work to another desk, address it — `deskfile new --to
+   <role> …` files a durable message that desk's own sweep leads with — never a typed relay through
+   the human.
 
 **What silence does NOT change — a dead monitor is NEVER hidden.** "Silent" applies to HEALTHY
 routine operation only; the liveness machinery is internal state, not print-gated. **Detected

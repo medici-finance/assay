@@ -2666,6 +2666,19 @@ that would be committed (C-3), idempotent noop when the remote already holds tha
 content, `AllowWrite` (C-5) charged only once the write is actually attempted, and one
 audit line per invocation.
 
+**Block-level idempotency (`--brief-path`).** The file-level noop above is not enough for a
+brief merge: a fresh verifier run whose Evidence block equals the one already standing is
+otherwise appended again, and the brief grows a duplicate. So before the shrink guard and
+without a second fetch, the merge checks block equivalence — after normalising line endings
+to `\n`, trimming trailing whitespace per line and dropping trailing blank lines, the fresh
+block is a **contiguous substring anchored at the end of the brief's `## Evidence` section**
+(the most-recently-appended block sits there). When it matches, the run is a no-op:
+`noop: Evidence block already present in <path> on <branch> (sha <short>)`, audited `noop`,
+exit 0, nothing committed. Equivalence is deliberately narrow — no "same commands", no "same
+runner": a re-run on a different date or with a different runner is new evidence and lands.
+A partial re-run (a prefix of the standing block), a block differing by one character, and a
+superset that adds new rows are all new content and still land.
+
 ## deskgit — the narrow git verb (#1555 F-1)
 
 `cmd/deskgit` gives the desk loops the one git verb they legitimately need unprompted —

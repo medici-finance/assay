@@ -69,6 +69,24 @@ enumerated ops each still needs (branch→change lookup, PR body/title fields, a
 label-list op) — see #509's ruling for why a code-aware rescope, not a ratchet-number correction, is
 what that work needs.
 
+| # | Operation | Purpose | GitHub source | GitLab mapping | Status |
+|---|-----------|---------|---------------|----------------|--------|
+| 23 | `ListOpenChanges(repo)` | bulk open-PR read + CI rollup (board) | `deskboard` `fetchOpenPRs` (one `gh api graphql`, `pullRequests(states:OPEN,first:100)` with the rollup CONTEXTS but not the `actions:read`-gated `checkSuite/workflowRun` sub-field) | **could-not-check.** The result carries GitHub's `statusCheckRollup` (the CheckRun ↔ StatusContext union) and `mergeStateStatus`, neither 1:1 on GitLab (CI is pipelines-and-jobs — a DIFFERENT shape, see op 5; `mergeStateStatus` is GitHub-only). Deferred to the forge-gitlab board-read brief, not approximated — a rollup the board feeds MERGE-NOW must not be a shape the forge never asserted | github-only |
+| 24 | `ListOpenIssues(repo)` | bulk open-issue read (issue board) | `issueboard` `fetchOpenIssues` (`gh issue list --state open`, issues only) | **could-not-check.** GitLab lists open issues, but this summary FEEDS the trust gate + escalation clock (rendered bot-suffixed login, numeric author id, created-at) paired per issue with `IssueTrustEvents` (op 26, could-not-check on GitLab), so the whole issue lane is deferred to the forge-gitlab trust-events brief rather than shipping a list its gate cannot admit | github-only |
+| 25 | `PRTrustEvents(repo, number)` | PR trust-gate content events | `deskboard` `prBlessed` (`gh api graphql`, `deskkit.PRTrustQuery`) | **could-not-check.** The gate reads GitHub GraphQL `lastEditedAt` content-edit tracking + numeric `databaseId` with Bot/User actor discrimination; GitLab's note/system-note model and id space do not map 1:1. Deferred to the forge-gitlab trust-events brief, never approximated (a guessed blessing is fail-open) | github-only |
+| 26 | `IssueTrustEvents(repo, number)` | issue trust-gate content events | `deskboard` `issueBlessed` / `issueboard` trust gate + escalation clock / `scanloop` queueing gate (`gh api graphql`, `deskkit.IssueTrustQuery`) | **could-not-check.** The issue twin of op 25 — same GraphQL content-edit / numeric-actor-id gap, same deferral | github-only |
+
+**Ops 23–26 were added by brief `forge-neutral/06`** under the freeze rule, each with its consuming call
+site migrated in the same change: `deskboard`'s two hand-authored GraphQL reads (open-PR + trust) route
+through ops 23/25/26; `issueboard` migrates FULLY onto ops 24/26 (+ `GetIssue` for a RETIRE-row title,
+which gains an `Issue.Title` field); `scanloop` migrates FULLY (its trust probe onto `GetIssue`+op 26, its
+title/body refresh onto the sanctioned `deskpr edit` verb, and its `RealExec` seam onto literal-argv
+dispatch so it leaves the unresolved-argv ledger). The three retired permit rows (issueboard's `ghRun`,
+scanloop's `lane.go` and `trust.go` gh sites) drop the forge-CLI ceiling 16 → 13; `deskboard`'s row is
+NARROWED (its five peripheral read categories stay on `ghRun`) with `forge-neutral/12` as its exit. On
+GitLab all four ops are could-not-check-with-gap per the ruling: the GraphQL trust reads and the
+CI-rollup-bearing bulk read are not 1:1, and the issue lane defers with its trust gate.
+
 **Ops 16–19 were added by brief `forge-neutral/03` under the same freeze rule**, each with its consuming
 call sites converted in the same change: 16 by `deskflip`'s model-capability-floor read and `deskpost`'s
 sibling; 17 and 18 by `deskreply`'s `--workpad` upsert; 19 by `deskflip`'s queue-label swap and

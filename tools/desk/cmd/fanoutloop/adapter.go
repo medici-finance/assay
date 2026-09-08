@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
@@ -105,8 +106,10 @@ type FanoutLoop struct {
 
 func (f *FanoutLoop) Name() string { return "worker-desk" }
 
-// SelectQueue is the deterministic board read. It returns ORPHAN RESUMES FIRST, then
-// AWAITING-IMPLEMENTER-REWORK rows (both outrank fresh dispatch — worker-desk SKILL.md §Sources
+// SelectQueue is the deterministic board read. A fresh row addressed to THIS desk
+// (`to:worker`) is a DIRECTED message and LEADS the whole queue;
+// after the addressed lead it returns ORPHAN RESUMES, then
+// AWAITING-IMPLEMENTER-REWORK rows (both outrank ordinary fresh dispatch — worker-desk SKILL.md §Sources
 // of work rows 3 and 5: "resuming started work outranks a fresh brief"), then the Next-up rows
 // in board order, each already priority/staleness/cap/dep-filtered by statusgen — so every fresh
 // row it sees is already `todo` and unclaimed. It INCLUDES `issue-<NN>` placeholder rows: those
@@ -116,6 +119,13 @@ func (f *FanoutLoop) Name() string { return "worker-desk" }
 // It adds NO scoring pass of its own — the order it returns is the order the boards agreed on.
 func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	var items []loopengine.Item
+	// addressed holds fresh rows carrying this desk's inbox label (`to:worker`). They are
+	// a DIRECTED message to this desk, so they LEAD the whole queue — ahead of orphan
+	// resumes and rework — by construction (`fanoutloop plan` emits
+	// `to:<my role>` items first). Only fresh board rows can be addressed; orphan/rework
+	// items act on an existing PR and carry no board labels.
+	var addressed []loopengine.Item
+	inbox := f.inboxRole()
 
 	// 1. Orphan resumes — highest priority (drain started work before starting new).
 	orphans, err := f.orphanSource()
@@ -170,9 +180,39 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 		if f.isHandled(r.ID()) {
 			continue
 		}
-		items = append(items, r.toItem(f.TargetSHA))
+		it := r.toItem(f.TargetSHA)
+		if inbox != "" && addressedToRole(r, inbox) {
+			// A directed message to THIS desk. Stamp the addressee (so the plan output and
+			// any downstream reader can see the `to:` kind) and route it to the leading lane.
+			it.Payload["to"] = inbox
+			addressed = append(addressed, it)
+			continue
+		}
+		items = append(items, it)
 	}
-	return items, nil
+	// Addressed items lead the whole queue; board order is preserved within each lane.
+	return append(addressed, items...), nil
+}
+
+// inboxRole is the desk role whose `to:<role>` inbox this loop leads with — the App role
+// bound to the worker-desk loop (deskkit.TokenRoleForLoop), i.e. `worker`. An unbound loop
+// name yields "" and no addressed lane, rather than a guessed role.
+func (f *FanoutLoop) inboxRole() string {
+	role, ok := deskkit.TokenRoleForLoop(f.Name())
+	if !ok {
+		return ""
+	}
+	return role
+}
+
+// addressedToRole reports whether a board row carries the `to:<role>` desk-inbox label
+// naming exactly this role (deskkit.AddressedToOf's Stamped state — a conflicting pair is
+// malformed and is NOT treated as addressed). Rows from a label-less board source (the
+// default STATUS.md reader) carry no labels and are never addressed, exactly as
+// isForeignDispatchToken degrades.
+func addressedToRole(r BoardRow, role string) bool {
+	addr, state := deskkit.AddressedToOf(r.Labels)
+	return state == deskkit.RaisedByStamped && strings.EqualFold(addr, role)
 }
 
 // TierPolicy is in tier.go.

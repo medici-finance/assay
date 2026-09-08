@@ -149,34 +149,26 @@ func outOfInstallationErr(repo string) error {
 		fmt.Errorf("gh pr list: GraphQL: Could not resolve to a Repository with the name '%s'. (repository)", repo))
 }
 
-// stubPRList installs a ghRun serving one open PR for every repo EXCEPT `unreachable`,
-// which fails the way an out-of-installation repo fails.
+// stubPRList serves one open PR through the TYPED ListOpenChanges op for every repo EXCEPT
+// `unreachable`, which fails the way an out-of-installation repo fails. The open-PR read
+// migrated off `gh` onto the Forge (the read-verbs-on-the-seam migration), so the per-repo behavior is stubbed at
+// the forgeFor seam now rather than in a ghRun override.
 func stubPRList(t *testing.T, unreachable string, failOther error) {
 	t.Helper()
-	prev := ghRun
-	t.Cleanup(func() { ghRun = prev })
-	ghRun = func(args ...string) ([]byte, error) {
-		joined := strings.Join(args, " ")
-		// The open-PR read is a `gh api graphql`; its --jq yields the SAME flat
-		// array the old `gh pr list --json` did, so the stub serves that flat array here.
-		if strings.Contains(joined, "pullRequests(states:OPEN") {
-			repo := ownerRepoFromGraphQL(args)
-			if repo == unreachable {
-				if failOther != nil {
-					return nil, failOther
-				}
-				return nil, outOfInstallationErr(repo)
+	stubForgeList(t, func(repo string) (*deskkit.OpenChanges, error) {
+		if repo == unreachable {
+			if failOther != nil {
+				return nil, failOther
 			}
-			return []byte(`[{"number":7,"title":"a change","state":"OPEN","isDraft":true,` +
-				`"author":{"login":"ada"},"createdAt":"2026-01-01T00:00:00Z","headRefOid":"abc123",` +
-				`"mergeStateStatus":"CLEAN","statusCheckRollup":[{"__typename":"CheckRun","name":"ci",` +
-				`"status":"COMPLETED","conclusion":"SUCCESS"}]}]`), nil
+			return nil, outOfInstallationErr(repo)
 		}
-		if strings.Contains(joined, "graphql") {
-			return []byte(`{"data":{}}`), nil
-		}
-		return []byte("[]"), nil
-	}
+		return &deskkit.OpenChanges{Cap: prListLimit, Changes: []deskkit.OpenChange{{
+			Number: 7, Title: "a change", State: "OPEN", Draft: true,
+			Author: deskkit.Account{Login: "ada"}, CreatedAt: "2026-01-01T00:00:00Z",
+			HeadSHA: "abc123", MergeStateStatus: "CLEAN",
+			Rollup: []deskkit.RollupNode{{Typename: "CheckRun", Name: "ci", Status: "COMPLETED", Conclusion: "SUCCESS"}},
+		}}}, nil
+	})
 }
 
 // ownerRepoFromGraphQL reconstructs "owner/name" from the split `-f owner=… -f name=…`

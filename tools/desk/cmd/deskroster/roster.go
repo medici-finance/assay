@@ -26,11 +26,26 @@ type WorkEntry struct {
 
 // Beacon is a session's self-declared roster entry stored at
 // ~/.config/assay/roster/<session>.json.
+//
+// Acks is carried as an OPAQUE RawMessage, not a typed field, deliberately: the `deskack`
+// verb appends receipt records under the `acks` key of this SAME
+// file, and deskroster owns none of that shape. Round-tripping it verbatim keeps
+// deskroster's own rewrites (set / auto-prune) from dropping another writer's data on the
+// floor — the same reason AppendAck (deskkit/ackbeacon.go) preserves deskroster's fields.
 type Beacon struct {
-	Session  string      `json:"session"`
-	Role     string      `json:"role,omitempty"`
-	Updated  string      `json:"updated"`
-	OpenWork []WorkEntry `json:"open_work,omitempty"`
+	Session  string          `json:"session"`
+	Role     string          `json:"role,omitempty"`
+	Updated  string          `json:"updated"`
+	OpenWork []WorkEntry     `json:"open_work,omitempty"`
+	Acks     json.RawMessage `json:"acks,omitempty"`
+}
+
+// hasAcks reports whether a beacon carries at least one receipt record — used so a beacon
+// is not deleted merely because it has no open work, when it still holds receipt history
+// a metric has not yet read.
+func (b *Beacon) hasAcks() bool {
+	s := strings.TrimSpace(string(b.Acks))
+	return s != "" && s != "[]" && s != "null"
 }
 
 // Claim is the LEGACY roster/bash write shape for a per-brief dispatch claim stored at
@@ -390,8 +405,10 @@ func cmdDrop(args []string) error {
 		return nil
 	}
 
-	// If no work left and no role, remove the file entirely.
-	if len(b.OpenWork) == 0 && b.Role == "" {
+	// If no work left, no role, and no receipt history, remove the file entirely. A beacon
+	// that still holds acks is KEPT (saved below) so a receipt a metric has not yet read is
+	// not deleted along with the last PR entry.
+	if len(b.OpenWork) == 0 && b.Role == "" && !b.hasAcks() {
 		if err := removeBeaconFile(sess); err != nil {
 			return deskkit.Unverifiable("cannot remove beacon file", err)
 		}
@@ -523,9 +540,10 @@ func cmdList() error {
 		}
 	}
 
-	// Flush modified beacons (auto-pruned from merged/closed).
+	// Flush modified beacons (auto-pruned from merged/closed). A beacon keeps its file while
+	// it still holds a role OR receipt history, even with no open work left.
 	for _, b := range modifiedBeacons {
-		if len(b.OpenWork) == 0 && b.Role == "" {
+		if len(b.OpenWork) == 0 && b.Role == "" && !b.hasAcks() {
 			_ = removeBeaconFile(b.Session)
 		} else {
 			_ = saveBeacon(b)

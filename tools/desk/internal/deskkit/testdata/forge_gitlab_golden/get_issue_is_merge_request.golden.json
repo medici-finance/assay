@@ -16,6 +16,7 @@
       "Login": "worker-bot",
       "ID": 99
     },
-    "IsPullRequest": true
+    "IsPullRequest": true,
+    "Title": "Draft: add the thing"
   }
 }

@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": null,
+  "err": "could-not-check: the GitLab backend does not serve ListOpenChanges for medici-finance/assay — the bulk open-change read carries a GitHub statusCheckRollup (the CheckRun/StatusContext union) and a mergeStateStatus enum that have no 1:1 GitLab mapping (GitLab's CI is pipelines-and-jobs; see ChecksAtHead's different shape). It is deferred to the forge-gitlab board-read brief, not approximated here.",
+  "not_found": false
+}

@@ -1,36 +1,7 @@
 package main
 
-import "testing"
-
-// balancedDelimiters — see the deskflip copy. Duplicated per package because
-// each command owns its own GraphQL query constant and is a separate `main`.
-func balancedDelimiters(s string) (string, bool) {
-	pairs := map[rune]rune{')': '(', '}': '{', ']': '['}
-	var stack []rune
-	for _, r := range s {
-		switch r {
-		case '(', '{', '[':
-			stack = append(stack, r)
-		case ')', '}', ']':
-			if len(stack) == 0 {
-				return "unexpected closing '" + string(r) + "' with no opener", false
-			}
-			if stack[len(stack)-1] != pairs[r] {
-				return "closing '" + string(r) + "' does not match opener '" + string(stack[len(stack)-1]) + "'", false
-			}
-			stack = stack[:len(stack)-1]
-		}
-	}
-	if len(stack) != 0 {
-		return "unclosed opener '" + string(stack[len(stack)-1]) + "'", false
-	}
-	return "", true
-}
-
-// TestOpenPRsGraphQLBalanced guards the board's open-PR read constant against
-// the same never-executed-string brace-typo class as flipPRGraphQL.
-func TestOpenPRsGraphQLBalanced(t *testing.T) {
-	if msg, ok := balancedDelimiters(openPRsGraphQL); !ok {
-		t.Fatalf("openPRsGraphQL has unbalanced delimiters: %s\nquery: %s", msg, openPRsGraphQL)
-	}
-}
+// querybalance_test.go — the board's open-PR GraphQL read constant moved to the forge
+// backend (internal/deskkit, ghOpenChangesQuery) when fetchOpenPRs was migrated onto the typed
+// ListOpenChanges op (the read-verbs-on-the-seam migration), so its never-executed-string brace-typo guard moved
+// with it (internal/deskkit/openchangesquery_test.go). No GraphQL query constant remains in
+// this package to balance-check.

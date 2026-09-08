@@ -100,6 +100,13 @@ verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name
   defect, an error, a question) always printed in full; the **full board** only when it changed or on
   request; otherwise ONE **quiet** line — timestamp, boards swept, delta count, actionable count,
   next wake. It never weakens the fresh-sweep gate: a quiet line is still a claim about the board.
+- **Receipt on every human-typed message.** After ANY human-typed message, the FIRST line of your
+  turn is `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when the
+  message concerns one), then act. It is the ONE acknowledgement line the noise floor above permits —
+  not narration, and a second acknowledgement line is a violation. Say what you UNDERSTOOD, never a
+  quote, so a misread can be corrected on your next turn. To hand work to another desk, address it —
+  `deskfile new --to <role> …` files a durable message that desk's own sweep leads with — never a
+  typed relay through the human.
 
 ## Operating rules
 

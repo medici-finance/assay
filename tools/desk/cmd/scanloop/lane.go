@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -105,9 +104,29 @@ type WriteFile func(path, content string) error
 // lanes' command SHAPES are unit-testable without a checkout, a remote or a token.
 type Exec func(dir, name string, args ...string) (string, error)
 
-// RealExec runs commands for real.
+// RealExec runs the lane's declared toolset for real. It launches by dispatching name to a
+// LITERAL-argv `exec.Command` per binary rather than `exec.Command(name, …)` with a variable —
+// so the forge-CLI ban resolves every launch site to a compile-time constant and this seam is
+// no longer an unresolved-argv blind spot the ban has to carry in its ledger. The toolset is
+// closed by construction: an unknown name is refused, never launched, so a name reaching here
+// from anywhere can only start one of the five binaries named below (none a forge CLI).
 func RealExec(dir, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
+	var cmd *exec.Cmd
+	switch name {
+	case "git":
+		cmd = exec.Command("git", args...)
+	case "statusgen":
+		cmd = exec.Command("statusgen", args...)
+	case "deskpr":
+		cmd = exec.Command("deskpr", args...)
+	case "deskscanbody":
+		cmd = exec.Command("deskscanbody", args...)
+	case "deskfile":
+		cmd = exec.Command("deskfile", args...)
+	default:
+		return "", fmt.Errorf("scanloop: refusing to launch %q — the lane executor launches only its "+
+			"declared toolset (git, statusgen, deskpr, deskscanbody, deskfile)", name)
+	}
 	cmd.Dir = dir
 	b, err := cmd.CombinedOutput()
 	if err != nil {
@@ -267,13 +286,14 @@ func (l scanCarrierPRLane) Execute(req LaneRequest) (LaneOutcome, error) {
 				if err := regenerate(); err != nil {
 					return err
 				}
-				// There is no sanctioned EDIT verb: the PR-opening verb is create-only by
-				// construction and there is no ready/edit/close verb beside it. The title/body
-				// refresh therefore goes out on the direct path, after the write-boundary check
-				// above and under the same kill switch as every other write this binary makes.
-				// Move it to a sanctioned verb the day one exists.
-				return step(req.Worktree, "gh", "pr", "edit", strconv.Itoa(req.Open.Number),
-					"--title", title, "--body-file", bodyFile)
+				// The title/body refresh goes out through the sanctioned `deskpr edit` verb —
+				// which edits the OPEN PR of the branch this worktree is on (in the coalesce
+				// path that branch IS the open scan PR's branch, req.Branch == open.Branch, so
+				// the edit lands on req.Open.Number), and carries the same secret-scan, public-
+				// repo self-containment gate, rate limit and re-review notice every other desk
+				// write does. It replaces the raw `gh pr edit` this lane used before the edit
+				// verb existed, so the lane no longer reaches a forge through a CLI at all.
+				return step(req.Worktree, "deskpr", "edit", "--title", title, "--body-file", bodyFile)
 			})
 		if err != nil {
 			return out, err

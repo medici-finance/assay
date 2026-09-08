@@ -20,7 +20,10 @@ package deskkit
 // behavior, pinned by the golden corpus (forge_github_golden_test.go) so the extraction
 // changed nothing observable at the wire.
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // GitHubAPIBase is the single home of the GitHub REST/GraphQL host literal. Desk commands
 // that keep a package-level test hook (`var apiBaseURL = GitHubAPIBase`) source their
@@ -134,6 +137,11 @@ type Issue struct {
 	State         string // open | closed
 	Author        Account
 	IsPullRequest bool
+	// Title is the issue's title. Consumer: cmd/issueboard's RETIRE-row title read, which
+	// resolves the title of a now-CLOSED issue no longer in the open list (best-effort — the
+	// caller falls back to a placeholder string on error). omitempty keeps a change that
+	// carries no title byte-identical in the forge golden corpus.
+	Title string `json:",omitempty"`
 }
 
 // Review is one review/approval on a change (GitHub review ↔ GitLab MR approval). CommitID
@@ -417,6 +425,95 @@ func forgeRowCount(b []byte) int {
 	return n
 }
 
+// RollupNode is one entry of a change's CI status-check rollup, carrying BOTH of the two
+// shapes GitHub's statusCheckRollup unions: a CheckRun node (Status+Conclusion, the Actions
+// shape) and a StatusContext node (State, the legacy commit-status shape every non-Actions CI
+// still posts). Typename says which. It is a UNION carried as one struct rather than two typed
+// arms because the consumer (cmd/deskboard's ciState reducer) already switches on which fields
+// are populated; forcing an either/or here would only move that switch, not remove it. The
+// recency stamps (StartedAt/CompletedAt for a CheckRun, CreatedAt for a StatusContext) are the
+// keys the latest-run-per-name reduction orders by — an entry carrying none sorts oldest, the
+// fail-safe direction (a stampless queued orphan never supersedes a completed run).
+type RollupNode struct {
+	Typename    string // "CheckRun" | "StatusContext" (empty when the forge did not tag it)
+	Name        string // CheckRun name
+	Status      string // CheckRun: queued | in_progress | completed
+	Conclusion  string // CheckRun: success | failure | ...
+	StartedAt   string // CheckRun recency stamp, RFC3339, "" when none
+	CompletedAt string // CheckRun recency stamp, RFC3339, "" when none
+	Context     string // StatusContext name
+	State       string // StatusContext: success | pending | failure | error | expected
+	CreatedAt   string // StatusContext recency stamp, RFC3339, "" when none
+}
+
+// OpenChange is one open change (PR ↔ MR) in the bulk board read, carrying the fields the
+// desk's cross-repo board classifies on AND its CI status-check rollup, so the board reads a
+// whole repo's queue in one call rather than N+1 per-PR reads. Author.Login is the RENDERED
+// login the trust set expects (a bot carries the "<slug>[bot]" suffix), matching the
+// per-forge rendering GetPullRequest already applies. MergeStateStatus is the forge's own
+// merge-readiness enum verbatim (GitHub's mergeStateStatus: BEHIND/BLOCKED/CLEAN/DIRTY/
+// UNKNOWN/…) — the consumer reads its four-state mergeVerdict off it, and an empty value is
+// could-not-check, never mergeable. Consumer: cmd/deskboard's fetchOpenPRs → prBase.
+type OpenChange struct {
+	Number           int
+	Title            string
+	Body             string
+	State            string // OPEN | CLOSED | MERGED
+	Draft            bool
+	CreatedAt        string // RFC3339
+	LastEditedAt     string // RFC3339, "" until the title/body is first edited
+	Author           Account
+	Labels           []string
+	HeadSHA          string
+	HeadRef          string
+	BaseRef          string
+	MergeStateStatus string
+	Rollup           []RollupNode
+}
+
+// OpenChanges is the result of the bulk open-change read: the changes plus whether the read
+// came back exactly at the page cap, so the board can state a TRUNCATED population in-band
+// rather than printing a confident count over an unknown remainder (an absence that reads
+// like an answer). Consumer: cmd/deskboard's fetchOpenPRs, which maps TruncatedAtCap onto its
+// Header.PRPopulation.
+type OpenChanges struct {
+	// Changes are the open changes, newest first, up to Cap of them.
+	Changes []OpenChange
+	// TruncatedAtCap is true when the read returned exactly Cap changes — the forge may be
+	// holding more, so every count derived from Changes is a FLOOR, not a total.
+	TruncatedAtCap bool
+	// Cap is the page cap the read was bounded to (the `first:`/`per_page` ceiling).
+	Cap int
+}
+
+// IssueSummary is one open issue in the bulk issue-board read: the fields the issue lane
+// classifies on. Author.Login is the RENDERED login (a bot carries its "<slug>[bot]" suffix)
+// and Author.ID the permanent numeric id the trust gate pins on. CreatedAt is the escalation
+// clock's baseline (the question was posed then). Consumer: cmd/issueboard's fetchOpenIssues.
+// The read returns ISSUES only, never changes (PRs/MRs): a forge that serves both from one
+// number sequence (GitHub) filters the changes out, so the caller never has to.
+type IssueSummary struct {
+	Number    int
+	Title     string
+	Author    Account
+	Labels    []string
+	CreatedAt string // RFC3339
+}
+
+// TrustPayload is the parsed result of a trust-gate content-events read: the item's
+// body-edit time, its content events (comments/reviews with author identity and edit
+// times), and whether the read was COMPLETE. Complete=false means a comment/review
+// connection overflowed the single bounded page the gate reads — the item is treated as NOT
+// blessed (fail closed), never silently admitted off a partial thread. The events carry the
+// numeric author id a recycled login cannot fake and the lastEditedAt a REST updated_at could
+// not (it moves on unrelated events). Consumers: cmd/deskboard (prBlessed/issueBlessed),
+// cmd/issueboard (the trust gate + escalation clock), cmd/scanloop (the queueing trust gate).
+type TrustPayload struct {
+	BodyEdited time.Time
+	Events     []ContentEvent
+	Complete   bool
+}
+
 // Forge is the single seam every desk tool reaches a forge through. The method set is the
 // operations a shipping tool consumes (stream spec §6), reconciled against the stream's
 // per-tool inventory. It is FROZEN: an addition requires a consuming tool in the same
@@ -428,6 +525,28 @@ type Forge interface {
 	GetPullRequest(repo ForgeRepo, number int) (*PullRequest, error)
 	// GetIssue reads an issue and answers whether the number is in fact a pull request.
 	GetIssue(repo ForgeRepo, number int) (*Issue, error)
+	// ListOpenChanges reads a repo's OPEN changes (PRs ↔ MRs) with their CI status-check
+	// rollups in one bounded read, reporting whether the population was truncated at the page
+	// cap (see OpenChanges). It exists because the cross-repo board reads a whole repo's queue
+	// at once and an N+1 per-PR fan-out would multiply into secondary-rate-limit territory.
+	// Consumer: cmd/deskboard's fetchOpenPRs (freeze rule: this read lands with the call site
+	// that consumes it). A forge whose CI rollup does not map to the two-shape union RollupNode
+	// carries returns could-not-check naming the gap rather than an approximation.
+	ListOpenChanges(repo ForgeRepo) (*OpenChanges, error)
+	// ListOpenIssues reads a repo's OPEN issues (never changes) as classification summaries —
+	// number, title, rendered author, labels, creation time (see IssueSummary). Consumer:
+	// cmd/issueboard's fetchOpenIssues (freeze rule).
+	ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error)
+	// PRTrustEvents reads a change's trust-gate content events: the body-edit time plus every
+	// comment, review and review-comment with its author identity and edit time, bounded to a
+	// single page and reporting completeness (see TrustPayload). Consumer: cmd/deskboard's
+	// prBlessed (freeze rule). A forge whose content-edit / numeric-actor-id semantics do not
+	// map 1:1 returns could-not-check naming the gap.
+	PRTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error)
+	// IssueTrustEvents is PRTrustEvents' issue twin (an issue has no reviews or review
+	// threads). Consumers: cmd/deskboard's issueBlessed, cmd/issueboard's trust gate and
+	// escalation clock, cmd/scanloop's queueing trust gate (freeze rule).
+	IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error)
 	// ReviewsAtHead returns every review on a change (paginated to exhaustion).
 	ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error)
 	// ListChangedFiles returns a change's file entries (paginated, rename-aware). The

@@ -203,6 +203,7 @@ func ghMergeableState(m *bool) string {
 
 type ghIssueWire struct {
 	Number int    `json:"number"`
+	Title  string `json:"title"`
 	State  string `json:"state"`
 	User   struct {
 		Login string `json:"login"`
@@ -332,10 +333,216 @@ func (g *GitHubForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 	}
 	return &Issue{
 		Number:        w.Number,
+		Title:         w.Title,
 		State:         w.State,
 		Author:        Account{Login: w.User.Login, ID: w.User.ID},
 		IsPullRequest: w.PullRequest != nil,
 	}, nil
+}
+
+// forgeIssuePerPage / forgeOpenChangesCap bound the two bulk board reads. The issue read
+// paginates to exhaustion (per_page=100); the open-change read is a SINGLE bounded page
+// whose cap is reported (OpenChanges.Cap) so a read that came back exactly full signals a
+// possibly-truncated population rather than a confident count over an unknown remainder.
+const (
+	forgeIssuePerPage   = 100
+	forgeOpenChangesCap = 100
+)
+
+// ghOpenChangesQuery is the bulk open-PR read, hand-authored so it requests EXACTLY the
+// fields the board classifies on — and, deliberately, the rollup CONTEXTS without the
+// `checkSuite { workflowRun … }` sub-selection gh's built-in `statusCheckRollup` field
+// hardcodes. That sub-field is a LINK to the Actions run and needs `actions:read`; under an
+// App holding only `checks:read` it 403s and, on a repo with many Actions suites, sinks the
+// whole read to an empty non-2xx. Every conclusion the board reads (CheckRun.status/
+// conclusion, StatusContext.state) is covered by `checks:read` alone, so requesting the
+// contexts ourselves without checkSuite/workflowRun drops the scope dependency entirely.
+const ghOpenChangesQuery = `query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$limit,orderBy:{field:CREATED_AT,direction:DESC}){nodes{number title body state isDraft createdAt lastEditedAt author{login __typename} mergeStateStatus headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
+
+func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
+	in := map[string]any{
+		"query": ghOpenChangesQuery,
+		"variables": map[string]any{
+			"owner": repo.Owner, "name": repo.Name, "limit": forgeOpenChangesCap,
+		},
+	}
+	var out struct {
+		Data struct {
+			Repository struct {
+				PullRequests struct {
+					Nodes []struct {
+						Number       int    `json:"number"`
+						Title        string `json:"title"`
+						Body         string `json:"body"`
+						State        string `json:"state"`
+						IsDraft      bool   `json:"isDraft"`
+						CreatedAt    string `json:"createdAt"`
+						LastEditedAt string `json:"lastEditedAt"`
+						Author       *struct {
+							Login    string `json:"login"`
+							Typename string `json:"__typename"`
+						} `json:"author"`
+						MergeStateStatus string `json:"mergeStateStatus"`
+						HeadRefOid       string `json:"headRefOid"`
+						HeadRefName      string `json:"headRefName"`
+						BaseRefName      string `json:"baseRefName"`
+						Labels           struct {
+							Nodes []struct {
+								Name string `json:"name"`
+							} `json:"nodes"`
+						} `json:"labels"`
+						Commits struct {
+							Nodes []struct {
+								Commit struct {
+									StatusCheckRollup *struct {
+										Contexts struct {
+											Nodes []struct {
+												Typename    string `json:"__typename"`
+												Name        string `json:"name"`
+												Status      string `json:"status"`
+												Conclusion  string `json:"conclusion"`
+												StartedAt   string `json:"startedAt"`
+												CompletedAt string `json:"completedAt"`
+												Context     string `json:"context"`
+												State       string `json:"state"`
+												CreatedAt   string `json:"createdAt"`
+											} `json:"nodes"`
+										} `json:"contexts"`
+									} `json:"statusCheckRollup"`
+								} `json:"commit"`
+							} `json:"nodes"`
+						} `json:"commits"`
+					} `json:"nodes"`
+				} `json:"pullRequests"`
+			} `json:"repository"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := g.doJSON(http.MethodPost, "/graphql", in, &out); err != nil {
+		return nil, err
+	}
+	if len(out.Errors) > 0 {
+		msgs := make([]string, 0, len(out.Errors))
+		for _, e := range out.Errors {
+			msgs = append(msgs, e.Message)
+		}
+		return nil, Unverifiable("open-changes GraphQL error: "+strings.Join(msgs, "; "), nil)
+	}
+	nodes := out.Data.Repository.PullRequests.Nodes
+	changes := make([]OpenChange, 0, len(nodes))
+	for _, n := range nodes {
+		oc := OpenChange{
+			Number: n.Number, Title: n.Title, Body: n.Body, State: n.State, Draft: n.IsDraft,
+			CreatedAt: n.CreatedAt, LastEditedAt: n.LastEditedAt, MergeStateStatus: n.MergeStateStatus,
+			HeadSHA: n.HeadRefOid, HeadRef: n.HeadRefName, BaseRef: n.BaseRefName,
+		}
+		if n.Author != nil {
+			// A GraphQL Bot actor carries the BARE slug as login; re-suffix it to
+			// "<slug>[bot]" so the trust set sees the same REST rendering it does elsewhere.
+			// A null author (deleted account) stays "" — untrusted, fail closed.
+			login := n.Author.Login
+			if n.Author.Typename == "Bot" {
+				login += "[bot]"
+			}
+			oc.Author = Account{Login: login}
+		}
+		for _, l := range n.Labels.Nodes {
+			oc.Labels = append(oc.Labels, l.Name)
+		}
+		if len(n.Commits.Nodes) > 0 {
+			if r := n.Commits.Nodes[0].Commit.StatusCheckRollup; r != nil {
+				for _, c := range r.Contexts.Nodes {
+					oc.Rollup = append(oc.Rollup, RollupNode{
+						Typename: c.Typename, Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
+						StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
+						Context: c.Context, State: c.State, CreatedAt: c.CreatedAt,
+					})
+				}
+			}
+		}
+		changes = append(changes, oc)
+	}
+	return &OpenChanges{
+		Changes:        changes,
+		Cap:            forgeOpenChangesCap,
+		TruncatedAtCap: len(changes) >= forgeOpenChangesCap,
+	}, nil
+}
+
+func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
+	var out []IssueSummary
+	for page := 1; ; page++ {
+		var chunk []struct {
+			Number int    `json:"number"`
+			Title  string `json:"title"`
+			User   struct {
+				Login string `json:"login"`
+				ID    int64  `json:"id"`
+			} `json:"user"`
+			Labels []struct {
+				Name string `json:"name"`
+			} `json:"labels"`
+			CreatedAt   string    `json:"created_at"`
+			PullRequest *struct{} `json:"pull_request"`
+		}
+		path := fmt.Sprintf("/repos/%s/%s/issues?state=open&per_page=%d&page=%d",
+			repo.Owner, repo.Name, forgeIssuePerPage, page)
+		if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+			return nil, err
+		}
+		for _, is := range chunk {
+			// The REST /issues endpoint serves PRs too, distinguished by a non-nil
+			// pull_request member — the issue lane wants issues only, so a change is dropped.
+			if is.PullRequest != nil {
+				continue
+			}
+			labels := make([]string, 0, len(is.Labels))
+			for _, l := range is.Labels {
+				labels = append(labels, l.Name)
+			}
+			out = append(out, IssueSummary{
+				Number: is.Number, Title: is.Title,
+				Author:    Account{Login: is.User.Login, ID: is.User.ID},
+				Labels:    labels,
+				CreatedAt: is.CreatedAt,
+			})
+		}
+		if len(chunk) < forgeIssuePerPage {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (g *GitHubForge) PRTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
+	return g.trustEvents(repo, number, PRTrustQuery, true)
+}
+
+func (g *GitHubForge) IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
+	return g.trustEvents(repo, number, IssueTrustQuery, false)
+}
+
+// trustEvents runs one trust-gate GraphQL query through the backend's own authenticated
+// transport and parses the response through the SAME reader (trustFromEnvelope) the CLI
+// surfaces use, so the seam and the CLI cannot draw different blessings from one payload.
+func (g *GitHubForge) trustEvents(repo ForgeRepo, number int, gql string, pr bool) (*TrustPayload, error) {
+	in := map[string]any{
+		"query": gql,
+		"variables": map[string]any{
+			"owner": repo.Owner, "name": repo.Name, "number": number,
+		},
+	}
+	var env gqlEnvelope
+	if err := g.doJSON(http.MethodPost, "/graphql", in, &env); err != nil {
+		return nil, err
+	}
+	tp, err := trustFromEnvelope(env, pr)
+	if err != nil {
+		return nil, Unverifiable(fmt.Sprintf("cannot read trust events for %s#%d", repo.Slug(), number), err)
+	}
+	return &tp, nil
 }
 
 func (g *GitHubForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error) {

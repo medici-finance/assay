@@ -496,13 +496,13 @@ func (g *GitLabForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 				"use the typed operation for the kind you mean",
 			repo.Slug(), number, number), nil)
 	case iss != nil:
-		out := &Issue{Number: int(iss.IID), State: gitlabState(iss.State), IsPullRequest: false}
+		out := &Issue{Number: int(iss.IID), Title: iss.Title, State: gitlabState(iss.State), IsPullRequest: false}
 		if iss.Author != nil {
 			out.Author = gitlabAccount(iss.Author.ID, iss.Author.Username)
 		}
 		return out, nil
 	case mr != nil:
-		out := &Issue{Number: int(mr.IID), State: gitlabState(mr.State), IsPullRequest: true}
+		out := &Issue{Number: int(mr.IID), Title: mr.Title, State: gitlabState(mr.State), IsPullRequest: true}
 		if mr.Author != nil {
 			out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
 		}
@@ -512,6 +512,65 @@ func (g *GitLabForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 		// IsForgeNotFound holds.
 		return nil, g.mapErr(http.MethodGet, issuePath, issErr)
 	}
+}
+
+// ListOpenChanges is a could-not-check REFUSAL on GitLab, naming the gap — the DeleteRef
+// reference shape (a partial per-forge mapping refuses by name, never a zero-value return).
+// The op returns each open change WITH its CI status-check rollup as the two-shape RollupNode
+// union (GitHub CheckRun ↔ StatusContext). GitLab's CI model is pipelines-and-jobs, which the
+// stream's own ChecksAtHead mapping already carries as a DIFFERENT shape (a pipeline's jobs →
+// synthetic check-runs, the commit status → a combined state) rather than this union; and
+// `mergeStateStatus` is a GitHub-only enum with no GitLab analog. A rollup approximated across
+// that gap would feed the board's MERGE-NOW verdict a shape the forge never asserted, so the
+// bulk read is deferred to the forge-gitlab board-read brief rather than half-mapped here.
+func (g *GitLabForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: the GitLab backend does not serve ListOpenChanges for %s — the bulk open-change "+
+			"read carries a GitHub statusCheckRollup (the CheckRun/StatusContext union) and a mergeStateStatus "+
+			"enum that have no 1:1 GitLab mapping (GitLab's CI is pipelines-and-jobs; see ChecksAtHead's "+
+			"different shape). It is deferred to the forge-gitlab board-read brief, not approximated here.",
+		repo.Slug()), nil)
+}
+
+// ListOpenIssues is a could-not-check REFUSAL on GitLab, naming the gap. GitLab DOES list open
+// issues, but this summary is defined to FEED the trust gate and the escalation clock — the
+// rendered bot-suffixed login, the numeric author id a recycled login cannot fake, paired per
+// issue with IssueTrustEvents (below, itself could-not-check on GitLab). Shipping the list
+// while its consuming gate cannot be served on the same forge would hand the issue lane a set
+// it can enumerate but never admit or escalate, so the whole issue lane is deferred together
+// to the forge-gitlab trust-events brief rather than half-served here.
+func (g *GitLabForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: the GitLab backend does not serve ListOpenIssues for %s — the issue-board summary "+
+			"is consumed only paired with IssueTrustEvents (the trust gate + escalation clock), which is "+
+			"itself could-not-check on GitLab, so the whole issue lane is deferred to the forge-gitlab "+
+			"trust-events brief rather than shipping a list its gate cannot admit.",
+		repo.Slug()), nil)
+}
+
+// PRTrustEvents is a could-not-check REFUSAL on GitLab, naming the gap. The trust gate reads
+// GitHub GraphQL `lastEditedAt` CONTENT-edit tracking on the body and every comment/review,
+// plus the numeric `databaseId` with GitHub's Bot/User actor discrimination — the recycled-
+// login defense. GitLab's note model exposes edit state and actor identity differently (system
+// notes intermixed, a distinct id space, no 1:1 content-edit-time on every surface), so the
+// blessing verdict cannot be reproduced 1:1; it is deferred to the forge-gitlab trust-events
+// brief rather than approximated, which on a trust gate is the fail-open direction.
+func (g *GitLabForge) PRTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
+	return nil, g.trustEventsGap(repo, number, "PRTrustEvents")
+}
+
+// IssueTrustEvents is PRTrustEvents' issue twin — the same could-not-check gap.
+func (g *GitLabForge) IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
+	return nil, g.trustEventsGap(repo, number, "IssueTrustEvents")
+}
+
+func (g *GitLabForge) trustEventsGap(repo ForgeRepo, number int, op string) error {
+	return Unverifiable(fmt.Sprintf(
+		"could-not-check: the GitLab backend does not serve %s for %s#%d — the trust gate reads GitHub "+
+			"GraphQL lastEditedAt content-edit tracking and the numeric databaseId with Bot/User actor "+
+			"discrimination, which GitLab's note/system-note model and id space do not map 1:1. It is deferred "+
+			"to the forge-gitlab trust-events brief, never approximated (a guessed blessing is fail-open).",
+		op, repo.Slug(), number), nil)
 }
 
 // ReviewsAtHead returns the verdicts on a merge request, WITH the head each is provably

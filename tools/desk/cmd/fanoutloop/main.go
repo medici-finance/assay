@@ -107,7 +107,7 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 	if err != nil {
 		return deskkit.Unverifiable("cannot read the Next-up queue", err)
 	}
-	fmt.Fprintf(out, "worker-desk plan: %d item(s) to dispatch (orphan resumes first, then Next-up in board order)\n", len(items))
+	fmt.Fprintf(out, "worker-desk plan: %d item(s) to dispatch (addressed to:worker items first, then orphan resumes, then Next-up in board order)\n", len(items))
 	fmt.Fprintln(out, classLine(items))
 	for _, it := range items {
 		tier, terr := f.TierPolicy(it)
@@ -208,10 +208,10 @@ USAGE:
   fanoutloop plan --root <repo> [--sha <targetSHA>]
   fanoutloop --version
 
-'plan' prints the deterministic scheduler output: the dispatch queue (orphan resumes first, then
-Awaiting-implementer-rework rows, then the Next-up board in board order — issue-<NN> placeholders
-INCLUDED, only a different loop's review-request dispatch tokens skipped), each item's tier, and the
-exact dispatch instruction. It spawns nothing, writes nothing, and touches no network. The autonomous
+'plan' prints the deterministic scheduler output: the dispatch queue (a to:worker desk-inbox item —
+a directed message to this desk — leads, then orphan resumes, then Awaiting-implementer-rework rows,
+then the Next-up board in board order — issue-<NN> placeholders INCLUDED, only a different loop's
+review-request dispatch tokens skipped), each item's tier, and the exact dispatch instruction. It spawns nothing, writes nothing, and touches no network. The autonomous
 drive / live-window cutover is gate:human — BLOCKED-ON-IAN.
 
 Right after the item count, 'plan' prints a 'classes: resume=<n> rework=<n> fresh=<n> (...)' line: the

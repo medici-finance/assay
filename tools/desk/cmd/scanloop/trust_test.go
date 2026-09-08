@@ -114,40 +114,59 @@ func TestGate_CountsAreThreeState(t *testing.T) {
 	}
 }
 
-// TestGhTrustProbe_TrustedAuthorCostsOneRead — API growth on a busy scope is bounded by NOT
+// fakeForge is a minimal Forge for the trust-probe tests: it embeds the interface (so every
+// method the probe never calls is present and would panic if reached) and implements only the
+// two reads the probe uses. That the probe reaches NO other method is part of what these tests
+// prove — a probe that grew a third read would panic on the nil-embedded method rather than
+// pass unnoticed.
+type fakeForge struct {
+	deskkit.Forge
+	getIssueCalls   int
+	issueTrustCalls int
+	author          string
+	trust           *deskkit.TrustPayload
+}
+
+func (f *fakeForge) GetIssue(deskkit.ForgeRepo, int) (*deskkit.Issue, error) {
+	f.getIssueCalls++
+	return &deskkit.Issue{Author: deskkit.Account{Login: f.author}}, nil
+}
+
+func (f *fakeForge) IssueTrustEvents(deskkit.ForgeRepo, int) (*deskkit.TrustPayload, error) {
+	f.issueTrustCalls++
+	return f.trust, nil
+}
+
+func fakeResolve(f *fakeForge) func(string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+	return func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+		return f, deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}, nil
+	}
+}
+
+// TestForgeTrustProbe_TrustedAuthorCostsOneRead — API growth on a busy scope is bounded by NOT
 // reading the thread of an item whose author is already trusted.
-func TestGhTrustProbe_TrustedAuthorCostsOneRead(t *testing.T) {
-	var calls int
-	p := ghTrustProbe(func(args ...string) ([]byte, error) {
-		calls++
-		if args[0] != "issue" {
-			t.Fatalf("call %d was %v — a trusted author must not trigger a thread read", calls, args)
-		}
-		return []byte(`{"author":{"login":"ada"}}`), nil
-	})
+func TestForgeTrustProbe_TrustedAuthorCostsOneRead(t *testing.T) {
+	f := &fakeForge{author: "ada", trust: &deskkit.TrustPayload{Complete: true}}
+	p := forgeTrustProbe(fakeResolve(f))
 	author, _, _, complete, err := p("example-org/tracker", 9)
 	if err != nil || author != "ada" || !complete {
 		t.Fatalf("probe = %q %v %v", author, complete, err)
 	}
-	if calls != 1 {
-		t.Fatalf("calls = %d, want exactly 1", calls)
+	if f.getIssueCalls != 1 || f.issueTrustCalls != 0 {
+		t.Fatalf("calls = author:%d thread:%d, want 1/0 (a trusted author must not trigger a thread read)",
+			f.getIssueCalls, f.issueTrustCalls)
 	}
 }
 
-// TestGhTrustProbe_UntrustedAuthorReadsTheThread — and only then.
-func TestGhTrustProbe_UntrustedAuthorReadsTheThread(t *testing.T) {
-	var verbs []string
-	p := ghTrustProbe(func(args ...string) ([]byte, error) {
-		verbs = append(verbs, args[0])
-		if args[0] == "issue" {
-			return []byte(`{"author":{"login":"outsider"}}`), nil
-		}
-		return []byte(`{"data":{"repository":{"issue":{"lastEditedAt":null,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}`), nil
-	})
+// TestForgeTrustProbe_UntrustedAuthorReadsTheThread — and only then.
+func TestForgeTrustProbe_UntrustedAuthorReadsTheThread(t *testing.T) {
+	f := &fakeForge{author: "outsider", trust: &deskkit.TrustPayload{Complete: true}}
+	p := forgeTrustProbe(fakeResolve(f))
 	if _, _, _, _, err := p("example-org/tracker", 10); err != nil {
 		t.Fatal(err)
 	}
-	if len(verbs) != 2 || verbs[1] != "api" {
-		t.Fatalf("calls = %v, want the author read then ONE bounded thread read", verbs)
+	if f.getIssueCalls != 1 || f.issueTrustCalls != 1 {
+		t.Fatalf("calls = author:%d thread:%d, want the author read then ONE bounded thread read",
+			f.getIssueCalls, f.issueTrustCalls)
 	}
 }

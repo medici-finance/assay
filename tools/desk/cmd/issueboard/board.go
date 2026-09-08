@@ -7,11 +7,9 @@ package main
 // invocation, mirroring tools/desk/cmd/deskboard/board.go + deskboard_test.go.
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -123,6 +121,26 @@ func lastHumanResponseAt(issueCreatedAt time.Time, events []deskkit.ContentEvent
 	return last
 }
 
+// addresseeHasResponded reports whether the desk App bound to role has commented on the
+// issue — the signal the desk-inbox ESCALATE arm turns on. It folds the two GitHub
+// renderings of one App identity (`app/<slug>` and `<slug>[bot]`) through
+// deskkit.SameActor, so a comment from the role's App counts however gh rendered it. An
+// UNBOUND role (the roster has no App for it) yields false: nothing can prove that desk
+// answered, so an aged unbound-addressee item still surfaces rather than being silently
+// treated as answered.
+func addresseeHasResponded(role string, events []deskkit.ContentEvent) bool {
+	login, ok := deskkit.RoleAppLogin(role)
+	if !ok {
+		return false
+	}
+	for _, e := range events {
+		if deskkit.SameActor(e.Author, login) {
+			return true
+		}
+	}
+	return false
+}
+
 // escalationAgeDays is the whole-days age since the escalation clock's last reset.
 func escalationAgeDays(lastHumanResponse, now time.Time) int {
 	return int(now.Sub(lastHumanResponse).Hours() / 24)
@@ -136,26 +154,7 @@ func escalationExceedsSLA(ageDays, slaDays int) bool {
 }
 
 // ---------------------------------------------------------------------------
-// gh runner (the single choke point every GET goes through)
-// ---------------------------------------------------------------------------
-
-// ghRun shells out to the real `gh` binary and returns stdout. It is a package var so
-// the PATH-shim test can exercise the REAL exec path (a fake gh first in PATH) and so
-// nothing here can silently swap in a mutating call. A non-zero gh exit becomes an
-// error carrying gh's stderr.
-var ghRun = func(args ...string) ([]byte, error) {
-	out, err := exec.Command("gh", args...).Output()
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("gh %s: %s", strings.Join(args, " "), strings.TrimSpace(string(ee.Stderr)))
-		}
-		return nil, fmt.Errorf("gh %s: %v", strings.Join(args, " "), err)
-	}
-	return out, nil
-}
-
-// ---------------------------------------------------------------------------
-// data model (mirrors the gh JSON shapes)
+// data model (the fields the classifier reads, mapped from the Forge summaries)
 // ---------------------------------------------------------------------------
 
 type ghLabel struct {
@@ -180,36 +179,54 @@ type ghIssue struct {
 
 // fetchOpenIssues returns every open issue for repo (state=open only — the caller
 // cross-references against local placeholders to detect closed ones without ever
-// querying gh for closed issues).
+// querying the forge for closed issues). It reaches the forge through deskkit.ForgeFor's
+// ListOpenIssues (never the `gh` CLI), which returns ISSUES only — a forge that serves
+// issues and changes from one number sequence filters the changes out itself.
 func fetchOpenIssues(repo string) ([]ghIssue, error) {
-	out, err := ghRun("issue", "list", "-R", repo, "--state", "open", "--limit", "1000",
-		"--json", "number,title,author,labels,createdAt")
+	f, fr, err := forgeFor(repo)
 	if err != nil {
-		return nil, deskkit.Unverifiable("cannot read open issues for "+repo, err)
+		return nil, err
 	}
-	var issues []ghIssue
-	if err := json.Unmarshal(out, &issues); err != nil {
-		return nil, deskkit.Unverifiable("cannot parse issue list for "+repo, err)
+	summaries, lerr := f.ListOpenIssues(fr)
+	if lerr != nil {
+		return nil, deskkit.Unverifiable("cannot read open issues for "+repo, lerr)
 	}
-	return issues, nil
+	out := make([]ghIssue, 0, len(summaries))
+	for _, s := range summaries {
+		labels := make([]ghLabel, 0, len(s.Labels))
+		for _, n := range s.Labels {
+			labels = append(labels, ghLabel{Name: n})
+		}
+		created, perr := time.Parse(time.RFC3339, s.CreatedAt)
+		if perr != nil && s.CreatedAt != "" {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("cannot parse createdAt for %s#%d", repo, s.Number), perr)
+		}
+		out = append(out, ghIssue{
+			Number:    s.Number,
+			Title:     s.Title,
+			Author:    ghAuthor{Login: s.Author.Login},
+			Labels:    labels,
+			CreatedAt: created,
+		})
+	}
+	return out, nil
 }
 
 // fetchIssueTitle resolves a single issue's title (used for RETIRE rows, where the
 // issue is no longer in the open list so its title isn't otherwise known). Best
 // effort: the caller falls back to a placeholder string on error rather than failing
-// the whole board — RETIRE is already fully determined without the title.
+// the whole board — RETIRE is already fully determined without the title. It reads the
+// title through the typed GetIssue op (never the `gh` CLI); a closed issue reads fine.
 func fetchIssueTitle(repo string, num int) (string, error) {
-	out, err := ghRun("issue", "view", strconv.Itoa(num), "-R", repo, "--json", "title")
+	f, fr, err := forgeFor(repo)
 	if err != nil {
 		return "", err
 	}
-	var v struct {
-		Title string `json:"title"`
+	iss, gerr := f.GetIssue(fr, num)
+	if gerr != nil {
+		return "", gerr
 	}
-	if err := json.Unmarshal(out, &v); err != nil {
-		return "", err
-	}
-	return v.Title, nil
+	return iss.Title, nil
 }
 
 // fetchIssueBlessed evaluates the blessing for an issue whose AUTHOR is
@@ -237,21 +254,15 @@ func fetchIssueBlessed(repo string, num int) (bool, error) {
 // the item's body-edit time and its content events. A query, never a mutation — the
 // PATH-shim test allows graphql invocations only when no mutation appears.
 func fetchIssueTrustPayload(repo string, num int) (bodyEdited time.Time, events []deskkit.ContentEvent, complete bool, err error) {
-	owner, name, ok := strings.Cut(repo, "/")
-	if !ok {
-		return time.Time{}, nil, false, deskkit.Unverifiable("bad repo "+repo, nil)
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return time.Time{}, nil, false, ferr
 	}
-	out, err := ghRun("api", "graphql",
-		"-f", "query="+deskkit.IssueTrustQuery,
-		"-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(num))
-	if err != nil {
-		return time.Time{}, nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read events for %s#%d", repo, num), err)
+	tp, terr := f.IssueTrustEvents(fr, num)
+	if terr != nil {
+		return time.Time{}, nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read events for %s#%d", repo, num), terr)
 	}
-	bodyEdited, events, complete, perr := deskkit.ParseIssueTrustPayload(out)
-	if perr != nil {
-		return time.Time{}, nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot parse events for %s#%d", repo, num), perr)
-	}
-	return bodyEdited, events, complete, nil
+	return tp.BodyEdited, tp.Events, tp.Complete, nil
 }
 
 // fetchIssueEvents reads a decision-owed issue's content-event history for the
@@ -476,6 +487,7 @@ func loadIntakeRows(root string, now time.Time) ([]intakeRow, error) {
 
 const (
 	actEscalate          = "ESCALATE"
+	actAddressed         = "ADDRESSED"
 	actCreatePlaceholder = "CREATE-PLACEHOLDER"
 	actRetire            = "RETIRE"
 	actAwait             = "AWAIT"
@@ -491,6 +503,17 @@ type issueClassifyInput struct {
 	blocked         bool // that placeholder carries blocked: awaiting-issue-response
 	decisionOwed    bool // carries a needs-decision/question label
 	agedPastSLA     bool // age since last human response > SLA
+
+	// addressed is set when the issue carries a `to:<role>` desk-inbox label naming ONE
+	// role (deskkit.AddressedToOf → RaisedByStamped). An addressed item is someone else's
+	// work item, not free work: it is EXCLUDED from CREATE-PLACEHOLDER and rendered
+	// ADDRESSED→<role> so the addressee's own sweep leads with it.
+	addressed bool
+	// addresseeResponded is whether the addressed role's App has commented on the issue.
+	// It is the SECOND, independent layer behind the inbox: an addressed item aged past
+	// the SLA with no response from that role's App becomes visible (ESCALATE) without the
+	// addressee's cooperation. The human-response clock rule (agedPastSLA) is unchanged.
+	addresseeResponded bool
 }
 
 // classifyIssue maps one repo+issue's state to its ACTION (issue #703 spec):
@@ -510,6 +533,16 @@ func classifyIssue(in issueClassifyInput) string {
 			return actEscalate
 		}
 		return actAwait
+	}
+	// A desk-inbox item (`to:<role>`) is checked ahead of the placeholder machinery: it is
+	// the addressee's work, not free work for whoever swept it. Aged past the SLA with no
+	// response from that role's App, it ESCALATES (the second, cooperation-free layer);
+	// otherwise it is held ADDRESSED→<role> and, crucially, kept out of CREATE-PLACEHOLDER.
+	if in.open && in.addressed {
+		if in.agedPastSLA && !in.addresseeResponded {
+			return actEscalate
+		}
+		return actAddressed
 	}
 	if in.hasPlaceholder {
 		if !in.open {
@@ -534,10 +567,11 @@ func classifyIssue(in issueClassifyInput) string {
 
 var issueActionPrio = map[string]int{
 	actEscalate:          0,
-	actCreatePlaceholder: 1,
-	actRetire:            2,
-	actAwait:             3,
-	actNone:              4,
+	actAddressed:         1,
+	actCreatePlaceholder: 2,
+	actRetire:            3,
+	actAwait:             4,
+	actNone:              5,
 }
 
 // ---------------------------------------------------------------------------
@@ -545,11 +579,12 @@ var issueActionPrio = map[string]int{
 // ---------------------------------------------------------------------------
 
 type issueBoardRow struct {
-	Repo    string
-	Number  int
-	Title   string
-	Action  string
-	AgeDays int // escalation-clock age in days; meaningful only when Action is ESCALATE
+	Repo     string
+	Number   int
+	Title    string
+	Action   string
+	AgeDays  int    // escalation-clock age in days; meaningful only when Action is ESCALATE
+	AddrRole string // the addressed desk role; set only when the issue carries `to:<role>`
 }
 
 // externalRow is an open issue quarantined by the trust gate: untrusted author and no
@@ -577,7 +612,10 @@ type externalRow struct {
 // trust gate above — pay ONE extra bounded events read to compute the escalation
 // clock. slaDays is the silence threshold (escalateSLADays by default, overridable
 // per invocation).
-func computeIssueBoard(root string, now time.Time, slaDays int) ([]issueBoardRow, []externalRow, error) {
+// toFilter, when non-empty, restricts the issue lane to items addressed to that role
+// (`to:<role>`) — the `issueboard issues --to <role>` desk-inbox view. Empty shows every
+// issue, with `to:*` items rendered ADDRESSED→<role> in their own priority band.
+func computeIssueBoard(root string, now time.Time, slaDays int, toFilter string) ([]issueBoardRow, []externalRow, error) {
 	// Fail closed on an EMPTY scan scope BEFORE any read (#777). ownedRepos() is
 	// ScanRepos(): unset ASSAY_SCAN_REPOS yields zero repos, the loop below then runs
 	// zero iterations, makes no gh call, and the empty result renders as "(no open
@@ -621,15 +659,34 @@ func computeIssueBoard(root string, now time.Time, slaDays int) ([]issueBoardRow
 					return nil, nil, cerr
 				}
 				if !blessed {
-					external = append(external, externalRow{Repo: repo, Number: iss.Number, Title: iss.Title, Author: iss.Author.Login})
+					// The --to inbox view lists only that role's OWN items; an untrusted,
+					// unblessed quarantine row is not part of it.
+					if toFilter == "" {
+						external = append(external, externalRow{Repo: repo, Number: iss.Number, Title: iss.Title, Author: iss.Author.Login})
+					}
 					continue
 				}
 			}
 
-			decisionOwed := hasDecisionLabel(labelNames(iss.Labels))
+			names := labelNames(iss.Labels)
+			decisionOwed := hasDecisionLabel(names)
+
+			// Desk-inbox addressee (`to:<role>`), ONE valid role only (a conflicting pair
+			// is malformed and falls through to ordinary classification, never a guess).
+			addrRole, addrState := deskkit.AddressedToOf(names)
+			addressed := addrState == deskkit.RaisedByStamped
+
+			// The --to view shows ONLY that role's inbox: an issue addressed to a different
+			// role (or to nobody) is not part of it and is dropped before any extra read.
+			if toFilter != "" && (!addressed || !strings.EqualFold(addrRole, toFilter)) {
+				continue
+			}
+
+			// Decision-owed AND addressed items each pay ONE bounded events read (the same
+			// discipline the trust gate uses); a plain issue costs nothing extra.
 			var ageDays int
-			var agedPastSLA bool
-			if decisionOwed {
+			var agedPastSLA, addresseeResponded bool
+			if decisionOwed || addressed {
 				events, everr := fetchIssueEvents(repo, iss.Number)
 				if everr != nil {
 					return nil, nil, everr
@@ -637,23 +694,37 @@ func computeIssueBoard(root string, now time.Time, slaDays int) ([]issueBoardRow
 				last := lastHumanResponseAt(iss.CreatedAt, events)
 				ageDays = escalationAgeDays(last, now)
 				agedPastSLA = escalationExceedsSLA(ageDays, slaDays)
+				if addressed {
+					addresseeResponded = addresseeHasResponded(addrRole, events)
+				}
 			}
 
 			ph, hasPh := byKey[key]
 			action := classifyIssue(issueClassifyInput{
-				open:            true,
-				hasPlaceholder:  hasPh,
-				placeholderDone: hasPh && ph.Status == "done",
-				excludedLabel:   hasExcludedLabel(labelNames(iss.Labels)),
-				blocked:         hasPh && ph.Blocked == "awaiting-issue-response",
-				decisionOwed:    decisionOwed,
-				agedPastSLA:     agedPastSLA,
+				open:               true,
+				hasPlaceholder:     hasPh,
+				placeholderDone:    hasPh && ph.Status == "done",
+				excludedLabel:      hasExcludedLabel(names),
+				blocked:            hasPh && ph.Blocked == "awaiting-issue-response",
+				decisionOwed:       decisionOwed,
+				agedPastSLA:        agedPastSLA,
+				addressed:          addressed,
+				addresseeResponded: addresseeResponded,
 			})
-			rows = append(rows, issueBoardRow{Repo: repo, Number: iss.Number, Title: iss.Title, Action: action, AgeDays: ageDays})
+			row := issueBoardRow{Repo: repo, Number: iss.Number, Title: iss.Title, Action: action, AgeDays: ageDays}
+			if addressed {
+				row.AddrRole = addrRole
+			}
+			rows = append(rows, row)
 		}
 
 		for key, ph := range byKey {
 			if ph.Repo != repo || seen[key] {
+				continue
+			}
+			// The --to inbox view is scoped to open `to:<role>` items; a closed-issue
+			// placeholder (RETIRE/NONE) is not addressed to anyone and is not part of it.
+			if toFilter != "" {
 				continue
 			}
 			action := classifyIssue(issueClassifyInput{open: false, hasPlaceholder: true, placeholderDone: ph.Status == "done"})
@@ -699,8 +770,8 @@ func summarizeIssues(rows []issueBoardRow, external []externalRow) string {
 	for _, r := range rows {
 		counts[r.Action]++
 	}
-	return fmt.Sprintf("issues: escalate=%d create=%d retire=%d await=%d none=%d external=%d",
-		counts[actEscalate], counts[actCreatePlaceholder], counts[actRetire], counts[actAwait], counts[actNone], len(external))
+	return fmt.Sprintf("issues: escalate=%d addressed=%d create=%d retire=%d await=%d none=%d external=%d",
+		counts[actEscalate], counts[actAddressed], counts[actCreatePlaceholder], counts[actRetire], counts[actAwait], counts[actNone], len(external))
 }
 
 func summarizeIntake(rows []intakeRow) string {
@@ -713,6 +784,15 @@ func summarizeIntake(rows []intakeRow) string {
 	return fmt.Sprintf("intake: untriaged=%d over=%d", len(rows), over)
 }
 
+// issueActionLabel renders the ACTION cell. An ADDRESSED item shows the desk it is
+// addressed to (`ADDRESSED→verifier`); every other action is its bare token.
+func issueActionLabel(r issueBoardRow) string {
+	if r.Action == actAddressed && r.AddrRole != "" {
+		return actAddressed + "→" + r.AddrRole
+	}
+	return r.Action
+}
+
 func renderIssueLane(w io.Writer, rows []issueBoardRow) {
 	fmt.Fprintln(w, "ISSUE LANE")
 	fmt.Fprintf(w, "%-20s %-40s %s\n", "ACTION", "REPO#NUM", "TITLE")
@@ -720,8 +800,12 @@ func renderIssueLane(w io.Writer, rows []issueBoardRow) {
 		t := title(r.Title, 70)
 		if r.Action == actEscalate {
 			t = fmt.Sprintf("%s [age %dd]", t, r.AgeDays) // render age in the row
+			if r.AddrRole != "" {
+				// An addressed item that aged out shows WHO it was waiting on.
+				t = fmt.Sprintf("%s [to %s, unanswered]", t, r.AddrRole)
+			}
 		}
-		fmt.Fprintf(w, "%-20s %-40s %s\n", r.Action, shortRepo(r.Repo)+"#"+strconv.Itoa(r.Number), t)
+		fmt.Fprintf(w, "%-20s %-40s %s\n", issueActionLabel(r), shortRepo(r.Repo)+"#"+strconv.Itoa(r.Number), t)
 	}
 	if len(rows) == 0 {
 		fmt.Fprintln(w, "(no open issues across owned repos)")
@@ -769,7 +853,9 @@ func renderIntakeLane(w io.Writer, rows []intakeRow) {
 }
 
 func cmdBoard(root string, now time.Time, slaDays int) (*Report, error) {
-	issues, external, err := computeIssueBoard(root, now, slaDays)
+	// The full board shows every issue (no --to filter); `to:*` items render in their own
+	// ADDRESSED band.
+	issues, external, err := computeIssueBoard(root, now, slaDays, "")
 	if err != nil {
 		return nil, err
 	}
@@ -788,8 +874,8 @@ func cmdBoard(root string, now time.Time, slaDays int) (*Report, error) {
 	}, nil
 }
 
-func cmdIssues(root string, now time.Time, slaDays int) (*Report, error) {
-	issues, external, err := computeIssueBoard(root, now, slaDays)
+func cmdIssues(root string, now time.Time, slaDays int, toFilter string) (*Report, error) {
+	issues, external, err := computeIssueBoard(root, now, slaDays, toFilter)
 	if err != nil {
 		return nil, err
 	}

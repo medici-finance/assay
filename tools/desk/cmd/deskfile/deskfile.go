@@ -65,6 +65,9 @@ const (
 	// raisedByFlag is the flag name, restated once so the NOTICE text and the usage
 	// string cannot drift from the flag registration.
 	raisedByFlag = "raised-by"
+	// toFlag is the addressee flag name, restated once so its NOTICE text and usage
+	// string cannot drift from the flag registration.
+	toFlag = "to"
 	// labelListLimit bounds the label-existence probe. A repo with MORE labels than this
 	// can have its stamp label paged out of the answer — in which case the probe reports
 	// it missing and the filing lands UNSTAMPED with a NOTICE. That is the safe
@@ -75,6 +78,27 @@ const (
 	stampOutcomeOmitted   = "raised-by=UNSTAMPED:not-requested"
 	stampOutcomeNoLabel   = "raised-by=UNSTAMPED:label-missing"
 	stampOutcomeUnchecked = "raised-by=UNSTAMPED:could-not-check"
+)
+
+// --- the desk-inbox addressee stamp (`--to <role>` → `to:<role>`) -------------------
+//
+// `--to <role>` addresses a filing TO a desk, so the addressee's own sweep leads with it
+// (fanoutloop/issueboard). It reuses the `--raised-by` role resolver (one resolver, two
+// flags — deskkit.AddressedToLabel over the same bound vocabulary), and it degrades the
+// SAME way the raised-by stamp does: an unbound role is REFUSED (exit 5), but a role that
+// is valid where the repo simply has no `to:<role>` label yet files UNSTAMPED with a
+// NOTICE carrying the one-off `gh label create`, because `gh issue create --label
+// <missing>` would fail the whole filing.
+//
+// ONE DIFFERENCE FROM raised-by, deliberate: omitting `--to` is the NORMAL, common case
+// (most filings are not addressed to a desk), so it is SILENT — no NOTICE, just the
+// UNADDRESSED audit token. Omitting `--raised-by`, by contrast, is a metric gap worth a
+// NOTICE. The audit token is `to=<role>` when applied, else `to=UNADDRESSED:<reason>`.
+const (
+	toOutcomeAddressed = "to=%s"
+	toOutcomeOmitted   = "to=UNADDRESSED:not-requested"
+	toOutcomeNoLabel   = "to=UNADDRESSED:label-missing"
+	toOutcomeUnchecked = "to=UNADDRESSED:could-not-check"
 )
 
 // --- per-session new-issue budget (NEW accounting, NOT the deskkit limiter) --
@@ -241,6 +265,12 @@ type auditCtx struct {
 	// NOTICE scrolls past.
 	raisedBy string
 
+	// addressedTo records WHICH `to:` outcome the filing took (applied / not-requested /
+	// label-missing / could-not-check). Appended to the audit detail AFTER raisedBy, for
+	// the same reason raisedBy is appended not prepended: chargedNewEntry keys on
+	// createSentMarker being the PREFIX of Detail, so nothing may go in front of it.
+	addressedTo string
+
 	// createSent is set immediately BEFORE the `gh issue create` exec and stamps
 	// createSentMarker onto the audit detail. It is the discriminator the per-session
 	// budget reads to tell "the create was sent and we cannot confirm it" (charges) from
@@ -273,6 +303,9 @@ func (a *auditCtx) log(result, detail string) {
 	}
 	if a.raisedBy != "" {
 		detail = strings.TrimSpace(detail + " | " + a.raisedBy)
+	}
+	if a.addressedTo != "" {
+		detail = strings.TrimSpace(detail + " | " + a.addressedTo)
 	}
 	e := deskkit.Entry{
 		Tool:       "deskfile",
@@ -364,6 +397,9 @@ func cmdNew(args []string) (err error) {
 	fs.Var(&labels, "label", "label to apply (repeatable)")
 	raisedBy := fs.String(raisedByFlag, "", "desk role that RAISED this issue — stamps `raised-by:<role>` "+
 		"(vocabulary derived from the roster's role-bindings; omitting it files with UNKNOWN provenance)")
+	toRole := fs.String(toFlag, "", "desk role this issue is ADDRESSED TO — stamps `to:<role>` so that desk's "+
+		"sweep leads with it (same role vocabulary as --"+raisedByFlag+"; omitting it is normal and silent). "+
+		"NOTE: on `new` --to takes a ROLE; on `attach` --to takes an issue NUMBER")
 	forceNew := fs.Bool("force-new", false, "bypass the dedupe search (escape hatch; requires --reason)")
 	reason := fs.String("reason", "", "stated reason for --force-new (required with --force-new)")
 	if perr := fs.Parse(args); perr != nil {
@@ -403,6 +439,19 @@ func cmdNew(args []string) (err error) {
 			return lerr
 		}
 		stampLabel = l
+	}
+
+	// Validate the --to ROLE the same way and for the same reason: an unbound addressee
+	// is a caller error with a fix in hand (exit 5, bound set named), refused BEFORE any
+	// write. Whether the `to:<role>` LABEL exists on the repo is resolved later, after the
+	// dedupe/budget gates, so a filing that would be refused anyway spends no API call.
+	toLabel := ""
+	if strings.TrimSpace(*toRole) != "" {
+		l, lerr := deskkit.AddressedToLabel(*toRole)
+		if lerr != nil {
+			return lerr
+		}
+		toLabel = l
 	}
 
 	// Body: file only, 16 KiB cap, secret scan. No override flag exists.
@@ -479,12 +528,24 @@ func cmdNew(args []string) (err error) {
 		fmt.Fprintln(os.Stderr, stampNotice)
 	}
 
+	// Resolve the addressee stamp the same way. Like resolveRaisedByStamp it NEVER errors:
+	// an unappliable `to:` label degrades to UNADDRESSED + a NOTICE rather than blocking
+	// the filing.
+	toApply, toNote, toNotice := resolveAddressedToStamp(*repo, toLabel)
+	ac.addressedTo = toNote
+	if toNotice != "" {
+		fmt.Fprintln(os.Stderr, toNotice)
+	}
+
 	ghArgs := []string{"issue", "create", "--repo", *repo, "--title", *title, "--body-file", bodyPath}
 	for _, l := range labels {
 		ghArgs = append(ghArgs, "--label", l)
 	}
 	if stampApply != "" {
 		ghArgs = append(ghArgs, "--label", stampApply)
+	}
+	if toApply != "" {
+		ghArgs = append(ghArgs, "--label", toApply)
 	}
 	// From here on the create HAS been sent, so every outcome charges session budget —
 	// including an unconfirmable one. Set before the call, not after: an error return must
@@ -688,6 +749,43 @@ func resolveRaisedByStamp(repo, stampLabel string) (apply, note, notice string) 
 			" desk\" --force"
 	default:
 		return stampLabel, fmt.Sprintf(stampOutcomeStamped, strings.TrimPrefix(stampLabel, deskkit.RaisedByPrefix)), ""
+	}
+}
+
+// resolveAddressedToStamp decides whether the `to:<role>` addressee label can actually be
+// applied, and returns (label-to-apply, audit note, NOTICE for stderr). Like
+// resolveRaisedByStamp it NEVER returns an error — an addressee stamp that could refuse a
+// filing would be an annotation with veto power over the thing it annotates.
+//
+// toLabel is "" when no --to was given; it has already been validated against the roster
+// by the caller when it is not.
+//
+// The one behavioural difference from resolveRaisedByStamp: the OMITTED case is SILENT
+// (no NOTICE). Addressing a filing to a desk is the rare, deliberate case; NOT addressing
+// one is the overwhelming default, so a NOTICE on every unaddressed filing would be noise,
+// unlike the raised-by metric where an omission is a gap worth flagging. The other three
+// outcomes (label present / label missing / probe outage) mirror the raised-by resolver
+// exactly, because `gh issue create --label <missing>` fails the whole filing the same way.
+func resolveAddressedToStamp(repo, toLabel string) (apply, note, notice string) {
+	if toLabel == "" {
+		return "", toOutcomeOmitted, ""
+	}
+	present, perr := labelExists(repo, toLabel)
+	switch {
+	case perr != nil:
+		return "", toOutcomeUnchecked, "NOTICE: could not check whether label " + toLabel +
+			" exists on " + repo + " (" + perr.Error() + ") — filing UNADDRESSED rather than risking a " +
+			"failed `gh issue create --label`. This is could-not-check, not 'the label is absent'."
+	case !present:
+		return "", toOutcomeNoLabel, "NOTICE: label " + toLabel + " does not exist on " + repo +
+			" — filing UNADDRESSED (applying it would have failed the whole `gh issue create`). " +
+			"The addressee's sweep will NOT lead with this issue until it is labelled. Create the label " +
+			"once, then re-run:\n" +
+			"  gh label create " + toLabel + " --repo " + repo +
+			" --description \"addressed to the " + strings.TrimPrefix(toLabel, deskkit.AddressedToPrefix) +
+			" desk\" --force"
+	default:
+		return toLabel, fmt.Sprintf(toOutcomeAddressed, strings.TrimPrefix(toLabel, deskkit.AddressedToPrefix)), ""
 	}
 }
 

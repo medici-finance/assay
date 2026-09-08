@@ -401,6 +401,13 @@ human ruling re-derived from scratch each time.
 
 ## Rules (inherited)
 
+- **Receipt on a human-typed message.** After ANY human-typed message, the FIRST line of your turn is
+  `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when it concerns
+  one), then act. It is the ONE acknowledgement line the silent output floor permits — not narration,
+  and a second acknowledgement line is a violation. Say what you UNDERSTOOD, never a quote, so a
+  misread is corrected on your next turn. To hand work to another desk, address it — `deskfile new
+  --to <role> …` files a durable message that desk's own sweep leads with — never a typed relay
+  through the human.
 - **Insight-routing:** a systemic/process insight produced in passing (a wrap-up, a dispatch or drain
   note, an Evidence aside, a "this keeps recurring" observation) MUST also be filed as an issue in the
   project's own toolkit/methodology repo — commentary is not a register. Include the triggering

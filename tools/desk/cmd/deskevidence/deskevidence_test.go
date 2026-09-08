@@ -420,6 +420,96 @@ func TestMergeEvidenceIntoBrief(t *testing.T) {
 	}
 }
 
+// --- Block-level idempotency: an Evidence block equivalent to one already standing is a no-op ---
+
+// TestEquivalentEvidenceBlockIsNoop: a fresh block byte-equivalent to the block already standing
+// under ## Evidence (past a leading placeholder comment) is a no-op — exit 0, NO WriteFile, audit
+// noop, and the noop line on stdout.
+func TestEquivalentEvidenceBlockIsNoop(t *testing.T) {
+	f, _ := setupFake(t)
+	briefPath := "docs/streams/x/brief.md"
+	block := "| 1 | check:ci | go build | 0 |\n| 2 | check:ci | go test | 0 |"
+	// The brief already carries a placeholder comment AND this exact block under ## Evidence.
+	f.setFile(briefPath, "# Brief\n\n## Evidence\n<!-- appended at implementation time -->\n"+block+"\n")
+	evidencePath := writeRepoFile(t, "row.md", block+"\n")
+
+	stdoutBuf := stdout.(*bytes.Buffer)
+	code := run([]string{"example-org/tracker", "main",
+		"--evidence-file", evidencePath, "--brief-path", briefPath})
+	if code != deskkit.ExitOK {
+		t.Fatalf("equivalent-block noop exit = %d, want 0", code)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("expected 0 WriteFile for an equivalent block, got %d", f.putCalls)
+	}
+	if got := lastAudit(t).Result; got != deskkit.ResultNoop {
+		t.Fatalf("audit result = %q, want %q", got, deskkit.ResultNoop)
+	}
+	if !strings.Contains(stdoutBuf.String(), "noop: Evidence block already present") {
+		t.Fatalf("stdout missing the block-already-present noop line: %q", stdoutBuf.String())
+	}
+}
+
+// TestEquivalenceSurvivesLineEndingsAndTrailingSpace: a fresh block that differs from the
+// standing one ONLY by CRLF line endings and trailing whitespace is still equivalent — a
+// Windows-authored re-run must not defeat the check.
+func TestEquivalenceSurvivesLineEndingsAndTrailingSpace(t *testing.T) {
+	f, _ := setupFake(t)
+	briefPath := "docs/streams/x/brief.md"
+	standing := "| 1 | check:ci | go build | 0 |\n| 2 | check:ci | go test | 0 |"
+	f.setFile(briefPath, "# Brief\n\n## Evidence\n"+standing+"\n")
+	// Byte-different from the standing block: CRLF line endings and trailing spaces/tabs.
+	fresh := "| 1 | check:ci | go build | 0 |  \r\n| 2 | check:ci | go test | 0 |\t\r\n"
+	evidencePath := writeRepoFile(t, "row.md", fresh)
+
+	code := run([]string{"example-org/tracker", "main",
+		"--evidence-file", evidencePath, "--brief-path", briefPath})
+	if code != deskkit.ExitOK {
+		t.Fatalf("CRLF/trailing-space equivalent exit = %d, want 0", code)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("CRLF/trailing-space equivalent block should be a noop, got %d PUT(s)", f.putCalls)
+	}
+	if got := lastAudit(t).Result; got != deskkit.ResultNoop {
+		t.Fatalf("audit result = %q, want %q", got, deskkit.ResultNoop)
+	}
+}
+
+// TestNearEquivalentBlocksStillLand is the NEGATIVE control: a block differing by one character,
+// a partial (prefix) re-run, and a superset that adds a new row each LAND (a PUT is recorded) —
+// the equivalence check must never swallow genuinely new evidence.
+func TestNearEquivalentBlocksStillLand(t *testing.T) {
+	standing := "| 1 | check:ci | go build | 0 |\n| 2 | check:ci | go test | 0 |"
+	cases := []struct {
+		name  string
+		fresh string
+	}{
+		{"one-character-difference", "| 1 | check:ci | go build | 0 |\n| 2 | check:ci | go test | 1 |"},
+		{"prefix-partial-rerun", "| 1 | check:ci | go build | 0 |"},
+		{"superset-adds-a-row", standing + "\n| 3 | check:ci | go vet | 0 |"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _ := setupFake(t)
+			briefPath := "docs/streams/x/brief.md"
+			f.setFile(briefPath, "# Brief\n\n## Evidence\n"+standing+"\n")
+			evidencePath := writeRepoFile(t, "row.md", tc.fresh+"\n")
+
+			code := run([]string{"example-org/tracker", "main",
+				"--evidence-file", evidencePath, "--brief-path", briefPath})
+			if code != deskkit.ExitOK {
+				t.Fatalf("%s exit = %d, want 0", tc.name, code)
+			}
+			if f.putCalls != 1 {
+				t.Fatalf("%s: new content must land — expected 1 WriteFile, got %d", tc.name, f.putCalls)
+			}
+			if got := lastAudit(t).Result; got != deskkit.ResultOK {
+				t.Fatalf("%s: audit result = %q, want %q", tc.name, got, deskkit.ResultOK)
+			}
+		})
+	}
+}
+
 // --- The Evidence lane on a forge whose default branch takes no direct write (Verify row 10) ---
 
 // TestEvidenceLandsAsChangeWhenDefaultBranchClosed: with the resolved forge reporting the
@@ -693,7 +783,7 @@ func TestRootWithAbsoluteEvidenceFileRefused(t *testing.T) {
 func TestAppendOnlyShrinkRefused(t *testing.T) {
 	f, _ := setupFake(t)
 	target := "docs/rows.jsonl"
-	root := rootWithFile(t, target, "{\"a\":1}\n") // local has 1 row
+	root := rootWithFile(t, target, "{\"a\":1}\n")         // local has 1 row
 	f.setFile(target, "{\"a\":1}\n{\"b\":2}\n{\"c\":3}\n") // remote has 3
 	code := run([]string{"example-org/tracker", "main", "--evidence-file", target, "--root", root})
 	if code != deskkit.ExitRefused {

@@ -870,6 +870,39 @@ func glCases() []glCase {
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ReviewsAtHead(glRepo, 7) },
 		},
+		{
+			// forge-neutral/06. The bulk open-change read carries GitHub's statusCheckRollup
+			// (the CheckRun/StatusContext union) and mergeStateStatus, neither 1:1 on GitLab —
+			// so this backend is a could-not-check REFUSAL with zero requests emitted, the
+			// DeleteRef reference shape, never a guessed rollup shape the board would feed
+			// MERGE-NOW.
+			name: "list_open_changes_gap", method: "ListOpenChanges",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.ListOpenChanges(glRepo) },
+		},
+		{
+			// forge-neutral/06. The issue-lane summary feeds a trust gate that is itself
+			// could-not-check on GitLab, so the whole lane is deferred together — a refusal
+			// with zero requests, not a half-served list.
+			name: "list_open_issues_gap", method: "ListOpenIssues",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.ListOpenIssues(glRepo) },
+		},
+		{
+			// forge-neutral/06. The trust gate reads GitHub GraphQL lastEditedAt content-edit
+			// tracking + numeric databaseId with Bot/User discrimination; GitLab's note model
+			// and id space do not map 1:1, so this is a could-not-check refusal — a guessed
+			// blessing is fail-open.
+			name: "pr_trust_events_gap", method: "PRTrustEvents",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.PRTrustEvents(glRepo, 7) },
+		},
+		{
+			// forge-neutral/06. The issue twin of the trust-events gap — same could-not-check.
+			name: "issue_trust_events_gap", method: "IssueTrustEvents",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.IssueTrustEvents(glRepo, 7) },
+		},
 	}
 }
 

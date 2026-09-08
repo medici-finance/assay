@@ -1849,8 +1849,9 @@ func TestPRPopulation_TruncationIsInBand_400T2(t *testing.T) {
 			n    int
 			want bool
 		}{{prListLimit, true}, {prListLimit - 1, false}, {0, false}} {
-			stubGHFunc(t, func(args ...string) ([]byte, error) {
-				return []byte(prList(c.n)), nil
+			n := c.n
+			stubForgeList(t, func(repo string) (*deskkit.OpenChanges, error) {
+				return openChangesFromPRListJSON(prList(n), repo)
 			})
 			prs, truncated, err := fetchOpenPRs("o/r")
 			if err != nil {
@@ -1868,7 +1869,9 @@ func TestPRPopulation_TruncationIsInBand_400T2(t *testing.T) {
 	// headOfPR's absence answer is only a statement about the world when the list was
 	// COMPLETE. Over a capped read, "not an open PR" is a statement about the page.
 	t.Run("headOfPR distinguishes absent-from-a-complete-list from absent-from-a-capped-one", func(t *testing.T) {
-		stubGHFunc(t, func(args ...string) ([]byte, error) { return []byte(prList(prListLimit)), nil })
+		stubForgeList(t, func(repo string) (*deskkit.OpenChanges, error) {
+			return openChangesFromPRListJSON(prList(prListLimit), repo)
+		})
 		_, truncated, err := headOfPR("o/r", 999999)
 		if err == nil {
 			t.Fatal("a PR missing from a capped list must not resolve")
@@ -1880,7 +1883,7 @@ func TestPRPopulation_TruncationIsInBand_400T2(t *testing.T) {
 			t.Errorf("over a capped read the error must say the list may be short, not assert the PR is "+
 				"not open: %v", err)
 		}
-		stubGHFunc(t, func(args ...string) ([]byte, error) { return []byte(prList(2)), nil })
+		stubForgeList(t, func(repo string) (*deskkit.OpenChanges, error) { return openChangesFromPRListJSON(prList(2), repo) })
 		_, truncated2, err := headOfPR("o/r", 999999)
 		if err == nil || !strings.Contains(err.Error(), "is not an open PR") {
 			t.Errorf("over a COMPLETE read the definite answer must survive: %v", err)
@@ -1979,7 +1982,9 @@ func TestOwnFilesChanged_TruncatedReadForcesReReview_400(t *testing.T) {
 // result on error. An unparseable PR list rendering as an EMPTY BOARD is the worst possible
 // output of this tool: no rows, no error, and a desk concluding there is nothing to do.
 func TestFetchOpenPRs_ParseFailureFailsLoud_400(t *testing.T) {
-	stubGHFunc(t, func(args ...string) ([]byte, error) { return []byte(`{"not":"an array"}`), nil })
+	stubForgeList(t, func(repo string) (*deskkit.OpenChanges, error) {
+		return openChangesFromPRListJSON(`{"not":"an array"}`, repo)
+	})
 	prs, truncated, err := fetchOpenPRs("o/r")
 	if err == nil {
 		t.Fatalf("an unparseable PR list returned no error (%d PRs, truncated=%v) — the board would "+
@@ -1992,9 +1997,9 @@ func TestFetchOpenPRs_ParseFailureFailsLoud_400(t *testing.T) {
 		t.Errorf("the error must name what could not be read: %v", err)
 	}
 	// The read failure half of the same contract.
-	stubGHFunc(t, func(args ...string) ([]byte, error) { return nil, fmt.Errorf("gh: 401") })
+	stubForgeList(t, func(repo string) (*deskkit.OpenChanges, error) { return nil, fmt.Errorf("forge: 401") })
 	if _, _, err := fetchOpenPRs("o/r"); err == nil {
-		t.Error("a gh failure must fail the run, never yield an empty board")
+		t.Error("a read failure must fail the run, never yield an empty board")
 	}
 }
 

@@ -18,7 +18,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/20 | 2026-09-07 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-07 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-07 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/11 | 2026-09-07 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/12 | 2026-09-07 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/13 | 2026-09-07 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-07 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 6/6 | 2026-09-07 |  |
@@ -29,27 +29,27 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 ## Next up
 
-_Held by per-stream caps: 2 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (2). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 1 brief(s) across 1 stream(s) — top: desk-tools. By stream: desk-tools (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| apps-installer | 05 — `deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof | 0 | 3000 |
 | desk-tools | 13 — `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree | 1 | 1000 |
 | desk-tools | 15 — `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home | 1 | 1000 |
 | desk-tools | 17 — One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on [exec:strong] | 1 | 1000 |
+| desk-tools | 18 — Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check [exec:strong] | 1 | 1000 |
 
 ## Intake queue
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (38 desk-actionable of 49 total — 49 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (40 desk-actionable of 51 total — 51 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (38)
+### Desk-actionable (40)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -63,6 +63,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 04 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
+| forge-neutral | 06 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-neutral | 05 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -82,6 +83,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 12 | implemented | 1000 | 0 | — | — | — |
+| desk-tools | 16 | implemented | 1000 | 0 | — | — | — |
 | forge-gitlab | 08 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -96,7 +98,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| forge-neutral | 01 [exec:strong] | implemented | 7000 | 10 | — | — | — |
+| forge-neutral | 01 [exec:strong] | implemented | 7500 | 11 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | harness-portability | 03 | implemented | 4500 | 7 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -106,8 +108,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
+| forge-neutral | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
-| forge-neutral | 03 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | iso-9001 | 01 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | desk-tools | 07 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -187,7 +189,7 @@ _None._
 - 12 `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON — implemented (wave 1)
 - 13 `pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree — todo (wave 1)
 - 15 `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home — todo (wave 1)
-- 16 `deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block — todo (wave 1)
+- 16 `deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block — implemented (wave 1)
 - 17 One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on — todo (wave 1)
 - 18 Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check — todo (wave 1)
 - 19 `verifyloop plan` fails safe on risk — any risk answer `yes` routes to ROUTE-HUMAN, and the Evidence-only lane says so — todo (wave 1)
@@ -209,19 +211,20 @@ _None._
 - 07 GitHub forge backend on `go-gh` — retire the exec-`gh` shell path — implemented (wave 2)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
 
-### forge-neutral (11 open)
+### forge-neutral (12 open)
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
 - 03 Write verbs A — deskpost, deskreply, deskflip onto the resolver — implemented (wave 2)
 - 04 Write verbs B — deskpr, deskfile, deskclose, deskevidence onto the resolver — implemented (wave 2)
 - 05 Claim layer — the GitLab shape of `refs/dispatch/*` and its release — implemented (wave 2)
-- 06 Read verbs — deskboard, issueboard, scanloop, reviewloop on the seam — todo (wave 3)
+- 06 Read verbs — deskboard (board.go reads), issueboard, scanloop on the seam — implemented (wave 3)
 - 07 statusgen acting identity — Evidence-actor and `verifyrun` name the forge identity that acted — todo (wave 3)
 - 08 statusgen forge-aware — `init` CI scaffold, auto-flip corroboration, honest claim decay — todo (wave 4)
 - 09 Substrate — leak-gate verdict on merge requests, `cellctl` forge-aware `new`/`up` — todo (wave 3)
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
+- 12 deskboard non-board reads onto the seam — PR search, commit history, single-commit, combined-status, workflow listing — todo (wave 4)
 
 ### harness-portability (12 open)
 
@@ -360,4 +363,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**15** streams (**15** active, **0** paused) · **52/139** briefs done · completed initiatives: see `docs/archive/`
+**15** streams (**15** active, **0** paused) · **52/140** briefs done · completed initiatives: see `docs/archive/`

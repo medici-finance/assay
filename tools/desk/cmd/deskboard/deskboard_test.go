@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -250,7 +251,166 @@ func installFakeGH(t *testing.T) string {
 	t.Setenv("DESKBOARD_GH_LOG", logPath)
 	t.Setenv("DESK_TOOLS_DISABLED", "")          // ensure the kill switch is disarmed
 	t.Setenv("DESKBOARD_GATE_SCORES_JSON", "[]") // default: no gate scores (existing tests)
+	installFakeForge(t)
 	return logPath
+}
+
+// installFakeForge overrides the forgeFor seam so the board's THREE typed reads
+// (ListOpenChanges + the PR/issue trust events) resolve to a fake backend that reads the SAME
+// env fixtures the gh shim used before those reads migrated off the CLI (the read-verbs-on-the-seam migration):
+// DESKBOARD_GH_PRLIST_JSON for the enumeration, DESKBOARD_GH_GRAPHQL_JSON for the trust
+// queries, and DESKBOARD_GH_FAIL_REPO to fail the enumeration for one whole repo. The board's
+// PERIPHERAL reads (reviews, changed files, commits, search, status) stay on the gh shim, so
+// the two mechanisms run side by side and no per-test fixture changes.
+// fakeTrust records how many typed trust-events reads (PRTrustEvents + IssueTrustEvents) the
+// board issued, so a bounded-fetch test can assert exactly one fired for the one untrusted
+// author. The board's sweep is concurrent, so the counter is mutex-guarded; the tests that
+// read it are sequential (t.Setenv forbids t.Parallel), so it is reset per install.
+var (
+	fakeTrustMu    sync.Mutex
+	fakeTrustReads int
+)
+
+func resetFakeTrust() {
+	fakeTrustMu.Lock()
+	fakeTrustReads = 0
+	fakeTrustMu.Unlock()
+}
+
+func countFakeTrustReads() int {
+	fakeTrustMu.Lock()
+	defer fakeTrustMu.Unlock()
+	return fakeTrustReads
+}
+
+func installFakeForge(t *testing.T) {
+	t.Helper()
+	resetFakeTrust()
+	prev := forgeFor
+	forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+		owner, name, ok := strings.Cut(repo, "/")
+		if !ok {
+			return nil, deskkit.ForgeRepo{}, deskkit.Unverifiable("bad repo "+repo, nil)
+		}
+		return &fakeForge{repo: repo}, deskkit.ForgeRepo{Owner: owner, Name: name}, nil
+	}
+	t.Cleanup(func() { forgeFor = prev })
+}
+
+// fakeForge serves the three migrated reads from env fixtures; it embeds the interface, so any
+// OTHER (write) op the board never calls would panic if reached.
+type fakeForge struct {
+	deskkit.Forge
+	repo string
+}
+
+func (f *fakeForge) ListOpenChanges(deskkit.ForgeRepo) (*deskkit.OpenChanges, error) {
+	if fr := os.Getenv("DESKBOARD_GH_FAIL_REPO"); fr != "" && fr == f.repo {
+		// The enumeration read is the split-owner gh-api-graphql the shim's FAIL_REPO branch
+		// used to break; the typed op fails the same whole repo.
+		return nil, deskkit.Unverifiable("cannot read open PRs for "+f.repo+": simulated failure", nil)
+	}
+	js := os.Getenv("DESKBOARD_GH_PRLIST_JSON")
+	if prRepo := os.Getenv("DESKBOARD_GH_PR_REPO"); prRepo != "" && prRepo != f.repo {
+		js = "" // per-repo selection: only the named repo serves the fixture
+	}
+	if strings.TrimSpace(js) == "" {
+		return &deskkit.OpenChanges{Cap: prListLimit}, nil
+	}
+	return openChangesFromPRListJSON(js, f.repo)
+}
+
+// openChangesFromPRListJSON maps the SAME flat prBase-shaped array the old openPRs reshape
+// produced into an *OpenChanges — so an existing fixture (a []prBase JSON literal) drives the
+// typed ListOpenChanges read unchanged. It is the exact inverse of fetchOpenPRs's own
+// OpenChange→prBase mapping, which is what makes the round trip byte-faithful.
+func openChangesFromPRListJSON(js, repo string) (*deskkit.OpenChanges, error) {
+	var prs []prBase
+	if err := json.Unmarshal([]byte(js), &prs); err != nil {
+		return nil, deskkit.Unverifiable("cannot parse PR list fixture for "+repo, err)
+	}
+	oc := &deskkit.OpenChanges{Cap: prListLimit}
+	for _, p := range prs {
+		change := deskkit.OpenChange{
+			Number: p.Number, Title: p.Title, Body: p.Body, State: p.State, Draft: p.IsDraft,
+			CreatedAt: p.CreatedAt, LastEditedAt: p.LastEditedAt, MergeStateStatus: p.MergeStateStatus,
+			HeadSHA: p.HeadRefOid, HeadRef: p.HeadRefName, BaseRef: p.BaseRefName,
+			Author: deskkit.Account{Login: p.Author.Login}, Labels: p.labelNames(),
+		}
+		for _, c := range p.StatusCheckRollup {
+			change.Rollup = append(change.Rollup, deskkit.RollupNode{
+				Typename: c.TypeName, Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
+				StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
+				Context: c.Context, State: c.State, CreatedAt: c.CreatedAt,
+			})
+		}
+		oc.Changes = append(oc.Changes, change)
+	}
+	oc.TruncatedAtCap = len(oc.Changes) >= prListLimit
+	return oc, nil
+}
+
+// stubForgeList overrides forgeFor so the bulk open-change read is served by list(repo) — for a
+// direct fetchOpenPRs/headOfPR unit test that needs a per-repo Go error (out-of-installation,
+// 401) the env fixture cannot express. The trust reads still read env fixtures, and the
+// peripheral gh reads are unaffected.
+func stubForgeList(t *testing.T, list func(repo string) (*deskkit.OpenChanges, error)) {
+	t.Helper()
+	prev := forgeFor
+	t.Cleanup(func() { forgeFor = prev })
+	forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+		owner, name, ok := strings.Cut(repo, "/")
+		if !ok {
+			return nil, deskkit.ForgeRepo{}, deskkit.Unverifiable("bad repo "+repo, nil)
+		}
+		return &listFnForge{fakeForge: fakeForge{repo: repo}, list: list}, deskkit.ForgeRepo{Owner: owner, Name: name}, nil
+	}
+}
+
+type listFnForge struct {
+	fakeForge
+	list func(repo string) (*deskkit.OpenChanges, error)
+}
+
+func (f *listFnForge) ListOpenChanges(deskkit.ForgeRepo) (*deskkit.OpenChanges, error) {
+	return f.list(f.repo)
+}
+
+func (f *fakeForge) PRTrustEvents(_ deskkit.ForgeRepo, _ int) (*deskkit.TrustPayload, error) {
+	return f.trustFromFixture(true)
+}
+
+func (f *fakeForge) IssueTrustEvents(_ deskkit.ForgeRepo, _ int) (*deskkit.TrustPayload, error) {
+	return f.trustFromFixture(false)
+}
+
+func (f *fakeForge) trustFromFixture(pr bool) (*deskkit.TrustPayload, error) {
+	fakeTrustMu.Lock()
+	fakeTrustReads++
+	fakeTrustMu.Unlock()
+	js := os.Getenv("DESKBOARD_GH_GRAPHQL_JSON")
+	if strings.TrimSpace(js) == "" {
+		if pr {
+			js = `{"data":{"repository":{"pullRequest":{"lastEditedAt":null,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]},"reviews":{"pageInfo":{"hasNextPage":false},"nodes":[]},"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}`
+		} else {
+			js = `{"data":{"repository":{"issue":{"lastEditedAt":null,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}`
+		}
+	}
+	var (
+		be       time.Time
+		ev       []deskkit.ContentEvent
+		complete bool
+		err      error
+	)
+	if pr {
+		be, ev, complete, err = deskkit.ParsePRTrustPayload([]byte(js))
+	} else {
+		be, ev, complete, err = deskkit.ParseIssueTrustPayload([]byte(js))
+	}
+	if err != nil {
+		return nil, deskkit.Unverifiable("cannot parse trust fixture", err)
+	}
+	return &deskkit.TrustPayload{BodyEdited: be, Events: ev, Complete: complete}, nil
 }
 
 // mutatingVerbs are the gh subcommand verbs that WRITE. A read-only tool must never
@@ -373,13 +533,16 @@ func TestReadOnly_PathShim(t *testing.T) {
 	if len(inv) == 0 {
 		t.Fatal("no gh invocations recorded — the read-only proof enumerates nothing")
 	}
-	sawList, sawAPI, sawDiff, sawProbe := false, false, false, false
+	// The open-PR enumeration and the PR/issue trust reads migrated off the CLI onto typed
+	// Forge READ ops (the read-verbs-on-the-seam migration); the ban (internal/forgeban) proves the board reaches
+	// no forge CLI for them, and a typed read op cannot mutate. What remains on the gh shim is
+	// the board's PERIPHERAL read surface, and THAT is what this proof still enumerates: no
+	// recorded gh invocation may be a mutating call, and the peripheral reads (gh api, pr diff,
+	// the zero-CI probe's workflow reads) are exercised.
+	sawAPI, sawDiff, sawProbe := false, false, false
 	for _, fields := range inv {
 		if off := firstOffense(fields); off != "" {
 			t.Errorf("MUTATING gh call recorded: %s  (full: %s)", off, strings.Join(fields, " "))
-		}
-		if strings.Contains(strings.Join(fields, " "), "pullRequests(states:OPEN") {
-			sawList = true // the open-PR enumeration, now a `gh api graphql` read
 		}
 		if len(fields) >= 1 && fields[0] == "api" {
 			sawAPI = true
@@ -391,8 +554,8 @@ func TestReadOnly_PathShim(t *testing.T) {
 			sawProbe = true
 		}
 	}
-	if !sawList || !sawAPI || !sawDiff {
-		t.Errorf("expected to have exercised the open-PR graphql + gh api + pr diff reads; got list=%t api=%t diff=%t", sawList, sawAPI, sawDiff)
+	if !sawAPI || !sawDiff {
+		t.Errorf("expected to have exercised the peripheral gh api + pr diff reads; got api=%t diff=%t", sawAPI, sawDiff)
 	}
 	if !sawProbe {
 		t.Error("expected the zero-CI probe's workflow reads to be exercised (the fixture PR has a zero rollup)")
@@ -1206,7 +1369,7 @@ func gqlPRReview(login, typename string, id int64, submittedAt string) string {
 // ada blessing gets NO ACTION row — it lands in the external quarantine section,
 // with the trust-events read fired only for that PR (bounded fetch).
 func TestTrustGate_ActionsQuarantine(t *testing.T) {
-	logPath := installFakeGH(t)
+	installFakeGH(t)
 	t.Setenv("DESKBOARD_GH_PR_REPO", "example-org/tracker")
 	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
 		`[{"number":7,"title":"external drive-by PR","isDraft":true,"author":{"login":"external-user"},"headRefOid":"abc123","mergeStateStatus":"CLEAN","statusCheckRollup":[]}]`)
@@ -1237,14 +1400,10 @@ func TestTrustGate_ActionsQuarantine(t *testing.T) {
 	// non-commit-resolution re-review trigger reads), so the trust read is identified by
 	// `reviewThreads` — a field the PRTrustQuery requests and the enumeration query never
 	// does — rather than by `lastEditedAt` or the bare word "graphql".
-	trustReads := 0
-	for _, fields := range readInvocations(t, logPath) {
-		if strings.Contains(strings.Join(fields, " "), "reviewThreads") {
-			trustReads++
-		}
-	}
-	if trustReads != 1 {
-		t.Errorf("expected exactly 1 trust-events read, got %d", trustReads)
+	// Bounded fetch: the trust-events read (now the typed PRTrustEvents op) fires ONCE, for the
+	// single untrusted-author PR — never for a trusted-author one.
+	if got := countFakeTrustReads(); got != 1 {
+		t.Errorf("expected exactly 1 trust-events read, got %d", got)
 	}
 }
 

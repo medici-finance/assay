@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": null,
+  "err": "could-not-check: the GitLab backend does not serve IssueTrustEvents for medici-finance/assay#7 — the trust gate reads GitHub GraphQL lastEditedAt content-edit tracking and the numeric databaseId with Bot/User actor discrimination, which GitLab's note/system-note model and id space do not map 1:1. It is deferred to the forge-gitlab trust-events brief, never approximated (a guessed blessing is fail-open).",
+  "not_found": false
+}
