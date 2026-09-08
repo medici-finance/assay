@@ -124,8 +124,11 @@ worktree `user.email` to be the **worker service-account noreply** form
 (`service_account_group_<group-id>_<suffix>@noreply.<host>`). That can disagree with a
 session-actor email the rest of the GitLab profile documents. Until the check matches the
 two-identity model, either set the worktree email to the worker SA noreply **or** expect
-`commit-identity=checked-failed` while using a session actor. Preflight text that tells a
-GitLab adopter to install GitHub App PEMs is leftover from the GitHub path; ignore it.
+`commit-identity=checked-failed` while using a session actor. `deskroster preflight` is now
+forge-aware (#655): on a GitLab adopter `token-mint-cold` verifies the
+`desktoken --forge gitlab <role>` custody path READ-ONLY and its remediation names that path,
+not GitHub App PEMs. Any older PEM-oriented remediation you still see is GitHub-path leftover —
+a GitLab deployment has no PEMs to install.
 
 ## 2. Provisioning script — `tools/create-fleet-gitlab.sh`
 

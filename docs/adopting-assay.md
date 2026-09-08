@@ -909,11 +909,15 @@ specifics.
   already loaded it. Inherit both, or set `ASSAY_CONFIG_HOME` to the directory that holds
   `roster.env` and role tokens. A GitLab adopter should **not** be told to point that variable at
   GitHub App PEM files.
-- **Roster directory mode.** Go reports NTFS directories as world-writable (`0777`). A POSIX
-  `chmod 0700` check **refuses** a valid owner-only ACL roster. Do not document `chmod` as the
-  Windows fix. Native Windows roster load needs an ACL-aware owner check (tracked separately);
-  until that lands, `configured=false` / roster unusable on native Windows is a product bug, not
-  an adopter misconfiguration.
+- **Roster / token-file permissions — use an owner-only ACL, not `chmod`.** Go reports NTFS
+  files and directories with synthetic POSIX bits (a normal file reads `0666`), so the old
+  group/world-writable mode check misfired on Windows. Do **not** document `chmod` as the Windows
+  fix: a `chmod 600` that reports `0600` without tightening the DACL is not what the check wants.
+  On native Windows the roster owner check is now **ACL-aware** (#640/#641) — it accepts a roster
+  owned by the invoking user and writable by no principal but the owner (plus SYSTEM /
+  Administrators) and refuses any foreign write-capable principal — and GitLab token custody uses
+  the same owner-only ACL evaluation (#667). Lock the roster and role-token files down with an
+  owner-only ACL.
 
 ### Install path — the pinned, verify-or-refuse flow (channel E)
 The Windows **release** install mirrors the Unix acquire→verify→place flow, with the
