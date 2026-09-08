@@ -58,12 +58,12 @@ package main
 // renders.
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // Zero-rollup states. The empty string means "not a zero row" (the rollup
@@ -229,17 +229,18 @@ func probeZeroCI(repo string, p prBase) (state, detail string) {
 // statuses, not check runs — a zero-check-runs sha with statuses here is a
 // suspect rollup read, not a checked zero.
 func fetchCombinedStatusTotal(repo, sha string) (int, error) {
-	out, err := ghRun("api", fmt.Sprintf("repos/%s/commits/%s/status", repo, sha))
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return 0, ferr
+	}
+	// ChecksAtHead already carries the combined-status rollup's asserted total (StatusTotalCount)
+	// — the exact bare count this probe reads — so the combined-status read folds into the
+	// existing op rather than a redundant new one.
+	checks, err := f.ChecksAtHead(fr, sha)
 	if err != nil {
 		return 0, err
 	}
-	var v struct {
-		TotalCount int `json:"total_count"`
-	}
-	if err := json.Unmarshal(out, &v); err != nil {
-		return 0, fmt.Errorf("unparseable combined-status payload: %v", err)
-	}
-	return v.TotalCount, nil
+	return checks.StatusTotalCount, nil
 }
 
 // isNotFound reports whether a gh api failure was an HTTP 404 — for the
@@ -252,52 +253,24 @@ func isNotFound(err error) bool {
 // listWorkflowFiles returns the .yml/.yaml file names under .github/workflows
 // at ref, sorted for deterministic messages.
 func listWorkflowFiles(repo, ref string) ([]string, error) {
-	out, err := ghRun("api", fmt.Sprintf("repos/%s/contents/.github/workflows?ref=%s", repo, ref))
-	if err != nil {
-		return nil, err
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, ferr
 	}
-	var entries []struct {
-		Name string `json:"name"`
-		Type string `json:"type"`
-	}
-	if err := json.Unmarshal(out, &entries); err != nil {
-		return nil, fmt.Errorf("unparseable workflows listing: %v", err)
-	}
-	var names []string
-	for _, e := range entries {
-		if e.Type != "file" {
-			continue
-		}
-		if strings.HasSuffix(e.Name, ".yml") || strings.HasSuffix(e.Name, ".yaml") {
-			names = append(names, e.Name)
-		}
-	}
-	sort.Strings(names)
-	return names, nil
+	return f.ListWorkflowFiles(fr, ref)
 }
 
 // fetchWorkflowContent reads one workflow file at ref (GET-only contents API).
 func fetchWorkflowContent(repo, name, ref string) (string, error) {
-	out, err := ghRun("api", fmt.Sprintf("repos/%s/contents/.github/workflows/%s?ref=%s", repo, name, ref))
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return "", ferr
+	}
+	fc, err := f.ReadFile(fr, deskkit.ReadFileInput{File: ".github/workflows/" + name, Ref: ref})
 	if err != nil {
 		return "", err
 	}
-	var v struct {
-		Content  string `json:"content"`
-		Encoding string `json:"encoding"`
-	}
-	if err := json.Unmarshal(out, &v); err != nil {
-		return "", fmt.Errorf("unparseable workflow payload: %v", err)
-	}
-	content := v.Content
-	if v.Encoding == "base64" {
-		dec, derr := base64.StdEncoding.DecodeString(strings.ReplaceAll(content, "\n", ""))
-		if derr != nil {
-			return "", fmt.Errorf("cannot base64-decode workflow %s: %v", name, derr)
-		}
-		content = string(dec)
-	}
-	return content, nil
+	return string(fc.Content), nil
 }
 
 // ---------------------------------------------------------------------------

@@ -60,3 +60,18 @@ var forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 	}
 	return f, fr, nil
 }
+
+// forgeForOwner resolves the forge serving an OWNER, for the one owner-wide read
+// (SearchOpenChanges). The forge and its minted token are resolved per account, so this reuses
+// forgeFor on a WATCHED repo under the owner — the scope-reconciliation verb only asks about
+// owners derived from the watched set, so such a repo always exists. It refuses (could-not-check)
+// when the owner has no watched repo to resolve a coordinate from, rather than guessing one.
+var forgeForOwner = func(owner string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+	for _, repo := range deskkit.AllowedRepos() {
+		if o, _, ok := strings.Cut(repo, "/"); ok && o == owner {
+			return forgeFor(repo)
+		}
+	}
+	return nil, deskkit.ForgeRepo{}, deskkit.Unverifiable(
+		"cannot resolve a forge for owner "+owner+" — no watched repo under it to bind the account's App token", nil)
+}

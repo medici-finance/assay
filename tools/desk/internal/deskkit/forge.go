@@ -116,6 +116,23 @@ type PullRequest struct {
 	// gate/risk frontmatter (BriefRiskFromBody) as an additive risk-classification term.
 	// omitempty keeps a bodyless change byte-identical in the forge golden corpus.
 	Body string `json:",omitempty"`
+	// MergedAt is the forge's own merge timestamp (RFC3339), set ONLY when the change was
+	// merged and EMPTY for an open or closed-unmerged change. State alone cannot carry this:
+	// a merged change and a closed-unmerged change both report State=="closed" on GitHub, and
+	// the distinction is load-bearing where an irreversible action keys on it (deskboard's
+	// #209 tombstone lane: a closed-unmerged PR wearing a MERGED label closes issues whose fix
+	// never landed). A caller reads a NON-EMPTY MergedAt as "merged", an empty one on a
+	// State=="closed" change as "closed-unmerged", and never infers merge from State.
+	// Consumer: cmd/deskboard's fetchPRState (freeze rule: this field lands with its consumer).
+	// omitempty keeps an open/closed change byte-identical in the forge golden corpus.
+	MergedAt string `json:",omitempty"`
+	// Merged is the forge's own merged FLAG, independent of MergedAt: GitHub reports a merged
+	// change as merged:true with merged_at USUALLY but not always populated (a merged PR can
+	// carry a null merged_at), so a reader keying on MergedAt alone would tombstone a genuinely
+	// merged change as closed-unmerged (#400 N1). A caller reads "merged" as `Merged ||
+	// MergedAt != ""`. Consumer: cmd/deskboard's fetchPRState. omitempty keeps a non-merged
+	// change byte-identical in the forge golden corpus.
+	Merged bool `json:",omitempty"`
 }
 
 // The three values PullRequest.Mergeable takes. They are constants rather than free strings
@@ -498,6 +515,13 @@ type IssueSummary struct {
 	Author    Account
 	Labels    []string
 	CreatedAt string // RFC3339
+	// URL is the issue's human-facing page, EMPTY where the forge did not report one.
+	// Consumer: cmd/deskboard's cmdQueue, which prints the verify-gate issue's location in
+	// its JSON row. omitempty keeps a change that carries no URL byte-identical in the forge
+	// golden corpus. It is the only field cmdQueue needs beyond what the issue-board summary
+	// already carried, so the queue lane reuses ListOpenIssues (label-filtered client-side)
+	// rather than growing a redundant label-scoped list op.
+	URL string `json:",omitempty"`
 }
 
 // TrustPayload is the parsed result of a trust-gate content-events read: the item's
@@ -512,6 +536,60 @@ type TrustPayload struct {
 	BodyEdited time.Time
 	Events     []ContentEvent
 	Complete   bool
+}
+
+// RepoCommit is one commit on a repository's default branch or at a ref: its sha, the
+// committed date, and the forge accounts the commit is ATTRIBUTED to. AuthorLogin/
+// CommitterLogin are the RENDERED account logins ("<slug>[bot]" for an App) the forge
+// resolved the commit's author/committer email to — an identity comparable to a change
+// author's login — and are EMPTY where the forge attributes the commit to no account, which
+// a caller reads as UNKNOWN attribution, never as "not the author". GitLab commit payloads
+// carry the raw git author/committer name+email but do NOT resolve them to an instance
+// account, so its backend leaves these EMPTY (a per-field could-not-check, the same honest
+// posture ReviewsAtHead takes on an unpinnable CommitID) while filling SHA and CommittedDate.
+// Consumers: cmd/deskboard's fetchHeadCommit (the stall clock reads CommittedDate and the
+// committer/author login) and fetchRecentCommits (branch-health reads only SHA) — freeze
+// rule: these land with their call sites.
+type RepoCommit struct {
+	SHA            string
+	CommittedDate  string // RFC3339, "" when the forge reported none
+	AuthorLogin    string // rendered account login, "" when unattributed / not resolved
+	CommitterLogin string // rendered account login, "" when unattributed / not resolved
+}
+
+// RefComparison is the two-dot/three-dot comparison of two refs: the files that differ, plus
+// the divergence counts and the forge's own status vocabulary. BehindBy is how many commits
+// `base` holds that `head` does not (the PR's "behind by" count); AheadBy the reverse. Status
+// is the forge's own divergence word (GitHub: identical | ahead | behind | diverged) — EMPTY
+// where the forge does not report one, which a caller reads as could-not-check rather than
+// inventing a verdict. Consumers: cmd/deskboard's changedFilesBetween (the MERGE-CURR
+// benign-merge check reads Files) and fetchBehindMain (the close-candidate hint reads BehindBy
+// and refuses on an empty Status) — freeze rule: this lands with its call sites.
+type RefComparison struct {
+	Files    []ChangedFile
+	AheadBy  int
+	BehindBy int
+	Status   string // "" when the forge reported none
+}
+
+// ChangeSearchResult is one open change (PR ↔ MR) found by an owner-wide search, carrying the
+// repo it belongs to so a caller reconciling an owner's changes against a watched set can
+// attribute each row. Consumer: cmd/deskboard's scope-reconciliation verb.
+type ChangeSearchResult struct {
+	Repo      string // "owner/name"
+	Number    int
+	Title     string
+	CreatedAt string // RFC3339
+}
+
+// ChangeSearchResults is the result of an owner-wide open-change search: the rows plus whether
+// the read came back exactly at the page cap (TruncatedAtCap), so a caller can state a
+// possibly-incomplete reconciliation in-band rather than treating a capped read as complete.
+// Consumer: cmd/deskboard's cmdScope.
+type ChangeSearchResults struct {
+	Results        []ChangeSearchResult
+	TruncatedAtCap bool
+	Cap            int
 }
 
 // Forge is the single seam every desk tool reaches a forge through. The method set is the
@@ -584,6 +662,43 @@ type Forge interface {
 	// IsForgeNotFound — the seam does not decide whether "absent" is an error, because for a
 	// merge-into-existing it is and for a first-write it is not.
 	ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, error)
+	// ListRecentCommits returns up to limit commits from the head of repo's DEFAULT branch,
+	// newest first (GitHub `/repos/{o}/{r}/commits` ↔ GitLab `/projects/:id/repository/
+	// commits`). An EMPTY repository is an error the caller tests with IsForgeEmptyRepo
+	// (GitHub 409 / GitLab 404), not a read failure — the seam does not decide whether "no
+	// commits" is an error, because for branch-health it is a distinct KNOWN state. Consumer:
+	// cmd/deskboard's fetchRecentCommits (freeze rule).
+	ListRecentCommits(repo ForgeRepo, limit int) ([]RepoCommit, error)
+	// GetCommit reads ONE commit's committed date and attributed author/committer accounts
+	// (GitHub `/repos/{o}/{r}/commits/{sha}` ↔ GitLab `/projects/:id/repository/commits/:sha`).
+	// The account-login fields are a per-field could-not-check where the forge resolves no
+	// account (see RepoCommit). Consumer: cmd/deskboard's fetchHeadCommit (freeze rule).
+	GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
+	// CompareRefs compares two refs and returns the files that differ plus the divergence
+	// counts and the forge's own status word (see RefComparison). A forge that does not report
+	// the divergence status/counts in the shape GitHub's compare API does returns
+	// could-not-check naming the gap rather than approximating a benign-merge verdict.
+	// Consumers: cmd/deskboard's changedFilesBetween and fetchBehindMain (freeze rule).
+	CompareRefs(repo ForgeRepo, base, head string) (*RefComparison, error)
+	// SearchOpenChanges returns every OPEN change under one account (GitHub `search prs
+	// --owner`). The account is a single owner name, not a repo — this is the ONE owner-wide
+	// read on the seam, used by the scope-reconciliation verb to find open changes in repos the
+	// board does not watch. A forge whose search is not owner-wide (GitLab's search is group/
+	// project-scoped and paginated differently) returns could-not-check naming the gap.
+	// Consumer: cmd/deskboard's cmdScope (freeze rule).
+	SearchOpenChanges(owner string) (*ChangeSearchResults, error)
+	// ListWorkflowFiles returns the CI workflow file names configured at a ref (GitHub
+	// `.github/workflows/*.yml`). A path absent at the ref is a not-found error the caller
+	// tests with IsForgeNotFound (a repo with no workflows). It is GitHub-Actions-specific: a
+	// forge whose CI configuration is not a per-workflow-file directory (GitLab's single
+	// `.gitlab-ci.yml`) returns could-not-check naming the gap. Consumer: cmd/deskboard's
+	// listWorkflowFiles, the zero-CI probe (freeze rule).
+	ListWorkflowFiles(repo ForgeRepo, ref string) ([]string, error)
+	// ChangeDiff returns a change's raw unified diff TEXT (GitHub `pr diff`). It is the human-
+	// display read behind `deskboard diff`; the STRUCTURED file list is ListChangedFiles. A
+	// forge that does not serve a single raw unified-diff document for a change returns
+	// could-not-check naming the gap. Consumer: cmd/deskboard's cmdDiff (freeze rule).
+	ChangeDiff(repo ForgeRepo, number int) (string, error)
 
 	// --- Writes ---
 

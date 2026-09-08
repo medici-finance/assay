@@ -116,6 +116,17 @@ func IsForgeNotFound(err error) bool {
 	return errors.As(err, &ae) && ae.Status == http.StatusNotFound
 }
 
+// IsForgeEmptyRepo reports whether err is the forge saying the repository has no commits yet
+// — GitHub answers 409 Conflict ("Git Repository is empty.") on the commits endpoint of an
+// empty repo, and GitLab answers 404 on its commits list for the same. Both are a distinct
+// KNOWN state (no-commits), not a read failure, so a caller (deskboard's branch-health probe)
+// tests for it explicitly rather than folding it into could-not-check. It unwraps like
+// IsForgeNotFound.
+func IsForgeEmptyRepo(err error) bool {
+	var ae *ForgeAPIError
+	return errors.As(err, &ae) && (ae.Status == http.StatusConflict || ae.Status == http.StatusNotFound)
+}
+
 // doJSON performs one REST call through the go-gh client, decoding a 2xx body into out (if
 // non-nil and non-empty). A non-2xx is mapped to a *ForgeAPIError carrying the status, method
 // and path — go-gh surfaces a non-2xx as its own *api.HTTPError, which is translated back to
@@ -177,6 +188,8 @@ type ghPullWire struct {
 	} `json:"base"`
 	HTMLURL   string `json:"html_url"`
 	UpdatedAt string `json:"updated_at"`
+	MergedAt  string `json:"merged_at"`
+	Merged    bool   `json:"merged"`
 	Labels    []struct {
 		Name string `json:"name"`
 	} `json:"labels"`
@@ -275,8 +288,9 @@ type ghRequiredStatusChecksWire struct {
 // ghTimelineWire is one entry of the issue/PR timeline. Only `labeled` events matter to the
 // applier-aware label-event read, and only the label name plus the actor that applied it.
 type ghTimelineWire struct {
-	Event string `json:"event"`
-	Label struct {
+	Event     string `json:"event"`
+	CreatedAt string `json:"created_at"`
+	Label     struct {
 		Name string `json:"name"`
 	} `json:"label"`
 	Actor struct {
@@ -317,6 +331,8 @@ func (g *GitHubForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 		Author:       Account{Login: w.User.Login, ID: w.User.ID},
 		HeadSHA:      w.Head.SHA,
 		UpdatedAt:    w.UpdatedAt,
+		MergedAt:     w.MergedAt,
+		Merged:       w.Merged,
 		Mergeable:    ghMergeableState(w.Mergeable),
 		Labels:       labels,
 		URL:          w.HTMLURL,
@@ -485,6 +501,7 @@ func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 				Name string `json:"name"`
 			} `json:"labels"`
 			CreatedAt   string    `json:"created_at"`
+			HTMLURL     string    `json:"html_url"`
 			PullRequest *struct{} `json:"pull_request"`
 		}
 		path := fmt.Sprintf("/repos/%s/%s/issues?state=open&per_page=%d&page=%d",
@@ -507,6 +524,7 @@ func (g *GitHubForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 				Author:    Account{Login: is.User.Login, ID: is.User.ID},
 				Labels:    labels,
 				CreatedAt: is.CreatedAt,
+				URL:       is.HTMLURL,
 			})
 		}
 		if len(chunk) < forgeIssuePerPage {
@@ -725,7 +743,7 @@ func (g *GitHubForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent,
 			if e.Event != "labeled" {
 				continue
 			}
-			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login})
+			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login, CreatedAt: e.CreatedAt})
 		}
 		if len(chunk) < forgeFilePerPage {
 			break
@@ -988,6 +1006,204 @@ func (g *GitHubForge) RepoVisibility(repo ForgeRepo) (string, error) {
 		return "", Unverifiable(fmt.Sprintf("repo %s has no .visibility field in API response", repo.Slug()), nil)
 	}
 	return info.Visibility, nil
+}
+
+// forgeSearchPerPage bounds the owner-wide open-change search in one page; a read that comes
+// back exactly full is reported as possibly-truncated (ChangeSearchResults.TruncatedAtCap).
+const forgeSearchPerPage = 200
+
+// ghCommitWire is the /commits and /commits/{sha} read shape (only the fields consumed). The
+// top-level author/committer are the GitHub ACCOUNTS GitHub resolved the commit to (an identity
+// comparable to a change author's login); commit.committer.date is the committed date.
+type ghCommitWire struct {
+	SHA    string `json:"sha"`
+	Author *struct {
+		Login string `json:"login"`
+	} `json:"author"`
+	Committer *struct {
+		Login string `json:"login"`
+	} `json:"committer"`
+	Commit struct {
+		Committer struct {
+			Date string `json:"date"`
+		} `json:"committer"`
+	} `json:"commit"`
+}
+
+func (w ghCommitWire) toRepoCommit() RepoCommit {
+	rc := RepoCommit{SHA: w.SHA, CommittedDate: w.Commit.Committer.Date}
+	if w.Author != nil {
+		rc.AuthorLogin = w.Author.Login
+	}
+	if w.Committer != nil {
+		rc.CommitterLogin = w.Committer.Login
+	}
+	return rc
+}
+
+// ListRecentCommits reads up to limit commits from the head of the default branch. Omitting
+// ?sha= makes GitHub use the default branch, so this needs no separate default-branch read; an
+// empty repository answers 409, surfaced as a *ForgeAPIError the caller tests with
+// IsForgeEmptyRepo.
+func (g *GitHubForge) ListRecentCommits(repo ForgeRepo, limit int) ([]RepoCommit, error) {
+	if limit <= 0 {
+		return nil, Unverifiable("ListRecentCommits needs a positive limit", nil)
+	}
+	var chunk []ghCommitWire
+	path := fmt.Sprintf("/repos/%s/%s/commits?per_page=%d", repo.Owner, repo.Name, limit)
+	if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+		return nil, err
+	}
+	out := make([]RepoCommit, 0, len(chunk))
+	for _, c := range chunk {
+		out = append(out, c.toRepoCommit())
+	}
+	return out, nil
+}
+
+// GetCommit reads one commit's committed date and attributed author/committer accounts.
+func (g *GitHubForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error) {
+	if strings.TrimSpace(sha) == "" {
+		return nil, Unverifiable("GetCommit needs a non-empty sha for "+repo.Slug(), nil)
+	}
+	var w ghCommitWire
+	path := fmt.Sprintf("/repos/%s/%s/commits/%s", repo.Owner, repo.Name, sha)
+	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+		return nil, err
+	}
+	rc := w.toRepoCommit()
+	return &rc, nil
+}
+
+// ghCompareWire is the compare-API read shape (only the fields consumed).
+type ghCompareWire struct {
+	Status   string       `json:"status"` // identical | ahead | behind | diverged
+	AheadBy  int          `json:"ahead_by"`
+	BehindBy int          `json:"behind_by"`
+	Files    []ghFileWire `json:"files"`
+}
+
+// CompareRefs compares base...head via the compare API, returning the differing files plus the
+// divergence counts and GitHub's own status word.
+func (g *GitHubForge) CompareRefs(repo ForgeRepo, base, head string) (*RefComparison, error) {
+	if strings.TrimSpace(base) == "" || strings.TrimSpace(head) == "" {
+		return nil, Unverifiable("CompareRefs needs both base and head for "+repo.Slug(), nil)
+	}
+	var w ghCompareWire
+	path := fmt.Sprintf("/repos/%s/%s/compare/%s...%s", repo.Owner, repo.Name, base, head)
+	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+		return nil, err
+	}
+	out := &RefComparison{Status: w.Status, AheadBy: w.AheadBy, BehindBy: w.BehindBy}
+	for _, f := range w.Files {
+		out.Files = append(out.Files, ChangedFile{
+			Filename: f.Filename, PreviousFilename: f.PreviousFilename, Status: f.Status,
+		})
+	}
+	return out, nil
+}
+
+// ghSearchWire is the /search/issues read shape (only the fields consumed). The search API
+// serves issues and PRs from one endpoint; a `is:pr is:open` query returns only changes.
+type ghSearchWire struct {
+	TotalCount        int  `json:"total_count"`
+	IncompleteResults bool `json:"incomplete_results"`
+	Items             []struct {
+		Number        int    `json:"number"`
+		Title         string `json:"title"`
+		CreatedAt     string `json:"created_at"`
+		RepositoryURL string `json:"repository_url"` // .../repos/{owner}/{name}
+	} `json:"items"`
+}
+
+// SearchOpenChanges finds every open change under one owner via the search API
+// (`is:pr is:open user:<owner>`), the typed form of `gh search prs --owner`. The repo each row
+// belongs to is recovered from repository_url's trailing owner/name.
+func (g *GitHubForge) SearchOpenChanges(owner string) (*ChangeSearchResults, error) {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return nil, Unverifiable("SearchOpenChanges needs a non-empty owner", nil)
+	}
+	q := fmt.Sprintf("is:pr is:open user:%s", owner)
+	var w ghSearchWire
+	path := fmt.Sprintf("/search/issues?q=%s&per_page=%d", url.QueryEscape(q), forgeSearchPerPage)
+	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+		return nil, err
+	}
+	out := &ChangeSearchResults{Cap: forgeSearchPerPage, TruncatedAtCap: len(w.Items) >= forgeSearchPerPage}
+	for _, it := range w.Items {
+		slug := ""
+		if i := strings.Index(it.RepositoryURL, "/repos/"); i >= 0 {
+			slug = it.RepositoryURL[i+len("/repos/"):]
+		}
+		out.Results = append(out.Results, ChangeSearchResult{
+			Repo: slug, Number: it.Number, Title: it.Title, CreatedAt: it.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
+// ListWorkflowFiles lists the .yml/.yaml workflow file names under .github/workflows at ref
+// (GET-only contents API). A repo with no such directory answers 404, surfaced as a
+// *ForgeAPIError the caller tests with IsForgeNotFound.
+func (g *GitHubForge) ListWorkflowFiles(repo ForgeRepo, ref string) ([]string, error) {
+	if strings.TrimSpace(ref) == "" {
+		return nil, Unverifiable("ListWorkflowFiles needs a ref for "+repo.Slug(), nil)
+	}
+	var entries []struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
+	}
+	path := fmt.Sprintf("/repos/%s/%s/contents/.github/workflows?ref=%s",
+		repo.Owner, repo.Name, url.QueryEscape(ref))
+	if err := g.doJSON(http.MethodGet, path, nil, &entries); err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.Type != "file" {
+			continue
+		}
+		if strings.HasSuffix(e.Name, ".yml") || strings.HasSuffix(e.Name, ".yaml") {
+			names = append(names, e.Name)
+		}
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// ChangeDiff returns a change's raw unified diff text via the pulls endpoint with the diff
+// media type (the REST equivalent of `gh pr diff`). go-gh's RESTClient hardcodes a JSON Accept
+// header and exposes no hook to change it, so the diff media type is requested on a request
+// this backend builds itself — still inside the forge implementation (the "no API construction
+// outside the backend" contract), on the SAME transport and token restClient uses, so no
+// second auth path or ambient-identity fallback is introduced.
+func (g *GitHubForge) ChangeDiff(repo ForgeRepo, number int) (string, error) {
+	if g.Token == "" {
+		return "", Unverifiable("refusing to reach the GitHub forge without an explicitly minted token — "+
+			"the go-gh backend never falls back to an ambient gh-CLI keyring/config identity", nil)
+	}
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", repo.Owner, repo.Name, number)
+	req, rerr := http.NewRequest(http.MethodGet, g.baseURL()+path, nil)
+	if rerr != nil {
+		return "", Unverifiable("cannot build diff request for "+repo.Slug(), rerr)
+	}
+	req.Header.Set("Authorization", "token "+g.Token)
+	req.Header.Set("Accept", "application/vnd.github.v3.diff")
+	transport := http.DefaultTransport
+	if g.Client != nil && g.Client.Transport != nil {
+		transport = g.Client.Transport
+	}
+	resp, derr := (&http.Client{Transport: transport}).Do(req)
+	if derr != nil {
+		return "", Unverifiable(fmt.Sprintf("GET %s (diff) failed", path), derr)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", &ForgeAPIError{Status: resp.StatusCode, Method: http.MethodGet, Path: path}
+	}
+	return string(raw), nil
 }
 
 // --- Writes ---

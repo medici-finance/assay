@@ -39,11 +39,9 @@ package main
 //     A read it could not perform is exit 6 (could-not-check), never "no gaps".
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -173,14 +171,26 @@ func ownersOf(repos []string) []string {
 // is a read). Any failure is Unverifiable (exit 6) naming the owner — a search that did
 // not run must never render as "this owner has no unwatched repos".
 var searchOpenPRs = func(owner string) ([]searchPR, error) {
-	out, err := ghRun("search", "prs", "--owner", owner, "--state", "open",
-		"--limit", strconv.Itoa(searchLimit), "--json", "number,title,createdAt,repository")
+	// SearchOpenChanges is the ONE owner-wide read on the seam; it resolves the forge from the
+	// owner (any watched repo under it serves to build the coordinate). A backend with no
+	// owner-wide search (GitLab) returns could-not-check, which this verb surfaces as exit 6 —
+	// a search that did not run must never render as "this owner has no unwatched repos".
+	f, _, ferr := forgeForOwner(owner)
+	if ferr != nil {
+		return nil, ferr
+	}
+	res, err := f.SearchOpenChanges(owner)
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot search open PRs for owner "+owner, err)
 	}
-	var rows []searchPR
-	if err := json.Unmarshal(out, &rows); err != nil {
-		return nil, deskkit.Unverifiable("cannot parse open-PR search for owner "+owner, err)
+	rows := make([]searchPR, 0, len(res.Results))
+	for _, r := range res.Results {
+		var sp searchPR
+		sp.Number = r.Number
+		sp.Title = r.Title
+		sp.CreatedAt = r.CreatedAt
+		sp.Repository.NameWithOwner = r.Repo
+		rows = append(rows, sp)
 	}
 	return rows, nil
 }

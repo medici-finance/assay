@@ -22,14 +22,29 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// stubGH swaps the package-level gh runner for a request-matching fake and restores it
-// afterwards. Used for the state-machine tests, where per-sha fixtures are needed;
-// the read-only proof and the end-to-end demos keep using the PATH shim.
-func stubGHFunc(t *testing.T, fn func(args ...string) ([]byte, error)) {
+// stubForgeHooks installs the fake forge and sets its programmatic hooks — the replacement for
+// the old per-call `ghRun` stub, used where a test needs per-sha fixtures or error injection
+// the env fixtures cannot express (installFakeForge resets the hooks on cleanup).
+func stubForgeHooks(t *testing.T, h forgeHookSet) {
 	t.Helper()
-	prev := ghRun
-	ghRun = fn
-	t.Cleanup(func() { ghRun = prev })
+	installFakeForge(t)
+	forgeHooks = h
+}
+
+// commitsOf builds a recentCommits hook returning the given shas.
+func commitsOf(shas ...string) func(string, int) ([]deskkit.RepoCommit, error) {
+	return func(string, int) ([]deskkit.RepoCommit, error) {
+		out := make([]deskkit.RepoCommit, 0, len(shas))
+		for _, s := range shas {
+			out = append(out, deskkit.RepoCommit{SHA: s})
+		}
+		return out, nil
+	}
+}
+
+// checkRunsResult builds a ChecksAtHead from a total and a set of runs.
+func checkRunsResult(total int, runs ...deskkit.CheckRun) *deskkit.ChecksAtHead {
+	return &deskkit.ChecksAtHead{CheckRunsTotalCount: total, CheckRuns: runs}
 }
 
 // ---------------------------------------------------------------------------
@@ -125,14 +140,11 @@ const ciRepo = "example-org/tracker"      // deskkit.CIRequired == true
 const noCIRepo = "example-org/org-slides" // deskkit.CIRequired == false
 
 func TestAssessRepoBranch_Red(t *testing.T) {
-	stubGHFunc(t, func(args ...string) ([]byte, error) {
-		req := strings.Join(args, " ")
-		switch {
-		case strings.Contains(req, "/check-runs"):
-			return []byte(`{"total_count":1,"check_runs":[{"name":"validate","status":"completed","conclusion":"failure","head_sha":"deadbeef"}]}`), nil
-		default:
-			return []byte(`[{"sha":"deadbeef"}]`), nil
-		}
+	stubForgeHooks(t, forgeHookSet{
+		recentCommits: commitsOf("deadbeef"),
+		checks: func(string, string) (*deskkit.ChecksAtHead, error) {
+			return checkRunsResult(1, deskkit.CheckRun{Name: "validate", Status: "completed", Conclusion: "failure"}), nil
+		},
 	})
 	row := assessRepoBranch(ciRepo)
 	if row.State != bhRed {
@@ -149,8 +161,10 @@ func TestAssessRepoBranch_Red(t *testing.T) {
 // TestAssessRepoBranch_ReadFailureIsUnknownNotGreen is the defect this issue is an
 // instance of: a probe that could not look must never report health.
 func TestAssessRepoBranch_ReadFailureIsUnknownNotGreen(t *testing.T) {
-	stubGHFunc(t, func(args ...string) ([]byte, error) {
-		return nil, errString("gh api: HTTP 502 Bad Gateway")
+	stubForgeHooks(t, forgeHookSet{
+		recentCommits: func(string, int) ([]deskkit.RepoCommit, error) {
+			return nil, deskkit.Unverifiable("cannot read commits: HTTP 502 Bad Gateway", nil)
+		},
 	})
 	row := assessRepoBranch(ciRepo)
 	if row.State != bhUnknown {
@@ -165,12 +179,11 @@ func TestAssessRepoBranch_ReadFailureIsUnknownNotGreen(t *testing.T) {
 }
 
 func TestAssessRepoBranch_CheckRunReadFailureIsUnknown(t *testing.T) {
-	stubGHFunc(t, func(args ...string) ([]byte, error) {
-		req := strings.Join(args, " ")
-		if strings.Contains(req, "/check-runs") {
-			return nil, errString("gh api: HTTP 403 rate limit exceeded")
-		}
-		return []byte(`[{"sha":"aaaa1111"}]`), nil
+	stubForgeHooks(t, forgeHookSet{
+		recentCommits: commitsOf("aaaa1111"),
+		checks: func(string, string) (*deskkit.ChecksAtHead, error) {
+			return nil, deskkit.Unverifiable("cannot read checks: HTTP 403 rate limit exceeded", nil)
+		},
 	})
 	row := assessRepoBranch(ciRepo)
 	if row.State != bhUnknown || !strings.Contains(row.Reason, "COULD-NOT-CHECK") {
@@ -181,12 +194,11 @@ func TestAssessRepoBranch_CheckRunReadFailureIsUnknown(t *testing.T) {
 // TestAssessRepoBranch_TruncationIsUnknown — three-state rule sub-rule 2: a truncated
 // list is not evidence. A failing run could be on the page we never read.
 func TestAssessRepoBranch_TruncationIsUnknown(t *testing.T) {
-	stubGHFunc(t, func(args ...string) ([]byte, error) {
-		req := strings.Join(args, " ")
-		if strings.Contains(req, "/check-runs") {
-			return []byte(`{"total_count":250,"check_runs":[{"name":"a","status":"completed","conclusion":"success"}]}`), nil
-		}
-		return []byte(`[{"sha":"aaaa1111"}]`), nil
+	stubForgeHooks(t, forgeHookSet{
+		recentCommits: commitsOf("aaaa1111"),
+		checks: func(string, string) (*deskkit.ChecksAtHead, error) {
+			return checkRunsResult(250, deskkit.CheckRun{Name: "a", Status: "completed", Conclusion: "success"}), nil
+		},
 	})
 	row := assessRepoBranch(ciRepo)
 	if row.State != bhUnknown {
@@ -200,16 +212,14 @@ func TestAssessRepoBranch_TruncationIsUnknown(t *testing.T) {
 // TestAssessRepoBranch_LookbackSkipsCheckless — the noise damper. A docs/status commit
 // carries no check runs; that is not an alarm, it is a reason to look one commit back.
 func TestAssessRepoBranch_LookbackSkipsCheckless(t *testing.T) {
-	stubGHFunc(t, func(args ...string) ([]byte, error) {
-		req := strings.Join(args, " ")
-		switch {
-		case strings.Contains(req, "/commits/head0000/check-runs"):
-			return []byte(`{"total_count":0,"check_runs":[]}`), nil
-		case strings.Contains(req, "/commits/prev1111/check-runs"):
-			return []byte(`{"total_count":1,"check_runs":[{"name":"ci","status":"completed","conclusion":"success"}]}`), nil
-		default:
-			return []byte(`[{"sha":"head0000"},{"sha":"prev1111"}]`), nil
-		}
+	stubForgeHooks(t, forgeHookSet{
+		recentCommits: commitsOf("head0000", "prev1111"),
+		checks: func(_ string, sha string) (*deskkit.ChecksAtHead, error) {
+			if sha == "prev1111" {
+				return checkRunsResult(1, deskkit.CheckRun{Name: "ci", Status: "completed", Conclusion: "success"}), nil
+			}
+			return checkRunsResult(0), nil // head0000 carries no check runs
+		},
 	})
 	row := assessRepoBranch(ciRepo)
 	if row.State != bhGreen {
@@ -227,14 +237,12 @@ func TestAssessRepoBranch_LookbackSkipsCheckless(t *testing.T) {
 // repo that runs CI, "no check runs anywhere in the window" is could-not-check. On a
 // repo that runs none, it is a stated not-applicable — and neither one is green.
 func TestAssessRepoBranch_NoChecksAnywhere(t *testing.T) {
-	fixture := func(args ...string) ([]byte, error) {
-		req := strings.Join(args, " ")
-		if strings.Contains(req, "/check-runs") {
-			return []byte(`{"total_count":0,"check_runs":[]}`), nil
-		}
-		return []byte(`[{"sha":"a1"},{"sha":"a2"},{"sha":"a3"}]`), nil
-	}
-	stubGHFunc(t, fixture)
+	stubForgeHooks(t, forgeHookSet{
+		recentCommits: commitsOf("a1", "a2", "a3"),
+		checks: func(string, string) (*deskkit.ChecksAtHead, error) {
+			return checkRunsResult(0), nil
+		},
+	})
 	if row := assessRepoBranch(ciRepo); row.State != bhUnknown {
 		t.Errorf("CI-running repo with no check runs: state = %q, want %q (reason %q)", row.State, bhUnknown, row.Reason)
 	}
@@ -246,8 +254,11 @@ func TestAssessRepoBranch_NoChecksAnywhere(t *testing.T) {
 }
 
 func TestAssessRepoBranch_EmptyRepo(t *testing.T) {
-	stubGHFunc(t, func(args ...string) ([]byte, error) {
-		return nil, errString("gh api repos/x/commits: Git Repository is empty. (HTTP 409)")
+	stubForgeHooks(t, forgeHookSet{
+		recentCommits: func(string, int) ([]deskkit.RepoCommit, error) {
+			// An empty repo answers 409 on GitHub / 404 on GitLab — IsForgeEmptyRepo.
+			return nil, &deskkit.ForgeAPIError{Status: 409, Method: "GET", Path: "/commits"}
+		},
 	})
 	row := assessRepoBranch("example-org/proposals")
 	if row.State != bhNoCommits {
@@ -263,12 +274,11 @@ func TestAssessRepoBranch_EmptyRepo(t *testing.T) {
 // it covered can have "0 red" read as "nothing is red", which is exactly the confusion
 // #295 and #359 are both instances of.
 func TestBranchHealth_AnnouncesScopeAndTally(t *testing.T) {
-	stubGHFunc(t, func(args ...string) ([]byte, error) {
-		req := strings.Join(args, " ")
-		if strings.Contains(req, "/check-runs") {
-			return []byte(`{"total_count":1,"check_runs":[{"name":"ci","status":"completed","conclusion":"success"}]}`), nil
-		}
-		return []byte(`[{"sha":"a1"}]`), nil
+	stubForgeHooks(t, forgeHookSet{
+		recentCommits: commitsOf("a1"),
+		checks: func(string, string) (*deskkit.ChecksAtHead, error) {
+			return checkRunsResult(1, deskkit.CheckRun{Name: "ci", Status: "completed", Conclusion: "success"}), nil
+		},
 	})
 	rep := assessBranchHealth()
 	want := len(deskkit.AllowedRepos())
@@ -289,12 +299,11 @@ func TestBranchHealth_AnnouncesScopeAndTally(t *testing.T) {
 // TestBranchHealth_QuietWhenHealthy — requirement 4. A signal that fires constantly is
 // trained away. A wholly healthy board prints ONE line and no alarm.
 func TestBranchHealth_QuietWhenHealthy(t *testing.T) {
-	stubGHFunc(t, func(args ...string) ([]byte, error) {
-		req := strings.Join(args, " ")
-		if strings.Contains(req, "/check-runs") {
-			return []byte(`{"total_count":1,"check_runs":[{"name":"ci","status":"completed","conclusion":"success"}]}`), nil
-		}
-		return []byte(`[{"sha":"a1"}]`), nil
+	stubForgeHooks(t, forgeHookSet{
+		recentCommits: commitsOf("a1"),
+		checks: func(string, string) (*deskkit.ChecksAtHead, error) {
+			return checkRunsResult(1, deskkit.CheckRun{Name: "ci", Status: "completed", Conclusion: "success"}), nil
+		},
 	})
 	var buf bytes.Buffer
 	assessBranchHealth().renderAlarms(&buf)

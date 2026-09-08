@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -286,7 +288,10 @@ func countFakeTrustReads() int {
 func installFakeForge(t *testing.T) {
 	t.Helper()
 	resetFakeTrust()
+	resetForgeHooks()
+	fakeForgeT = t
 	prev := forgeFor
+	prevOwner := forgeForOwner
 	forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 		owner, name, ok := strings.Cut(repo, "/")
 		if !ok {
@@ -294,7 +299,12 @@ func installFakeForge(t *testing.T) {
 		}
 		return &fakeForge{repo: repo}, deskkit.ForgeRepo{Owner: owner, Name: name}, nil
 	}
-	t.Cleanup(func() { forgeFor = prev })
+	// The owner-wide search resolves through the same fake; the coordinate is nominal (the
+	// fake's SearchOpenChanges reads an env fixture, not the repo).
+	forgeForOwner = func(owner string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+		return &fakeForge{repo: owner + "/_"}, deskkit.ForgeRepo{Owner: owner}, nil
+	}
+	t.Cleanup(func() { forgeFor = prev; forgeForOwner = prevOwner; resetForgeHooks() })
 }
 
 // fakeForge serves the three migrated reads from env fixtures; it embeds the interface, so any
@@ -413,6 +423,461 @@ func (f *fakeForge) trustFromFixture(pr bool) (*deskkit.TrustPayload, error) {
 	return &deskkit.TrustPayload{BodyEdited: be, Events: ev, Complete: complete}, nil
 }
 
+// forgeHooks lets a UNIT test drive the board's peripheral reads programmatically (per-sha
+// fixtures, error injection) where an env fixture cannot — the replacement for the old
+// per-call `ghRun` stub. A nil hook falls through to the env-fixture reader below, which is
+// what keeps the end-to-end run() tests working unchanged. Tests are sequential (t.Setenv
+// forbids t.Parallel), so a package-level hook set is safe; installFakeForge resets it.
+type forgeHookSet struct {
+	recentCommits func(repo string, limit int) ([]deskkit.RepoCommit, error)
+	getCommit     func(repo, sha string) (*deskkit.RepoCommit, error)
+	checks        func(repo, sha string) (*deskkit.ChecksAtHead, error)
+	reviews       func(repo string, num int) ([]deskkit.Review, error)
+	comments      func(repo string, num int) ([]deskkit.Comment, error)
+	labelEvents   func(repo string, num int) ([]deskkit.LabelEvent, error)
+	compare       func(repo, base, head string) (*deskkit.RefComparison, error)
+	getPR         func(repo string, num int) (*deskkit.PullRequest, error)
+}
+
+var forgeHooks forgeHookSet
+
+func resetForgeHooks() { forgeHooks = forgeHookSet{} }
+
+// envJSON reads env var name into out; empty/unset leaves out unchanged and returns false.
+func envJSON(t *testing.T, name string, out any) bool {
+	t.Helper()
+	js := os.Getenv(name)
+	if strings.TrimSpace(js) == "" {
+		return false
+	}
+	if err := json.Unmarshal([]byte(js), out); err != nil {
+		t.Fatalf("bad %s fixture: %v", name, err)
+		return false
+	}
+	return true
+}
+
+// failFor honors the fail-injection envs the gh shim used (DESKBOARD_GH_FAIL_PATH /
+// DESKBOARD_GH_FAIL_MATCH): if either is a substring of any hint, the op fails could-not-check,
+// mirroring the shim's per-read exit-1. It lets the per-PR fail-closed tests drive the typed
+// reads exactly as they drove the gh argv.
+func (f *fakeForge) failFor(hints ...string) error {
+	for _, env := range []string{"DESKBOARD_GH_FAIL_PATH", "DESKBOARD_GH_FAIL_MATCH"} {
+		pat := os.Getenv(env)
+		if pat == "" {
+			continue
+		}
+		for _, h := range hints {
+			if strings.Contains(h, pat) {
+				return deskkit.Unverifiable("simulated failure for "+pat, nil)
+			}
+		}
+	}
+	return nil
+}
+
+func (f *fakeForge) tb() *testing.T { return fakeForgeT }
+
+// fakeForgeT is the current test, set by installFakeForge, so a fixture parse failure fails
+// the test rather than panicking.
+var fakeForgeT *testing.T
+
+func (f *fakeForge) GetPullRequest(_ deskkit.ForgeRepo, num int) (*deskkit.PullRequest, error) {
+	if forgeHooks.getPR != nil {
+		return forgeHooks.getPR(f.repo, num)
+	}
+	if err := f.failFor(fmt.Sprintf("/repos/%s/pulls/%d", f.repo, num), fmt.Sprintf("/pulls/%d", num)); err != nil {
+		return nil, err
+	}
+	var w struct {
+		State        string `json:"state"`
+		MergedAt     string `json:"merged_at"`
+		Merged       bool   `json:"merged"`
+		ChangedFiles int    `json:"changed_files"`
+	}
+	js := os.Getenv("DESKBOARD_GH_PRSTATE_JSON")
+	if js == "" {
+		js = os.Getenv("DESKBOARD_GH_PRMETA_JSON")
+	}
+	if strings.TrimSpace(js) != "" {
+		// An unparseable payload is a READ failure the real backend returns as could-not-check
+		// (not a test-fatal), so fetchPRState can map it to `unknown` rather than a guessed merge.
+		if err := json.Unmarshal([]byte(js), &w); err != nil {
+			return nil, deskkit.Unverifiable("cannot parse PR payload", err)
+		}
+	}
+	return &deskkit.PullRequest{State: w.State, MergedAt: w.MergedAt, Merged: w.Merged, ChangedFiles: w.ChangedFiles}, nil
+}
+
+func (f *fakeForge) ReviewsAtHead(_ deskkit.ForgeRepo, num int) ([]deskkit.Review, error) {
+	if forgeHooks.reviews != nil {
+		return forgeHooks.reviews(f.repo, num)
+	}
+	if err := f.failFor(fmt.Sprintf("/repos/%s/pulls/%d/reviews", f.repo, num), "/reviews"); err != nil {
+		return nil, err
+	}
+	var raw []struct {
+		User        struct{ Login string } `json:"user"`
+		Body        string                 `json:"body"`
+		State       string                 `json:"state"`
+		CommitID    string                 `json:"commit_id"`
+		SubmittedAt string                 `json:"submitted_at"`
+	}
+	envJSON(f.tb(), "DESKBOARD_GH_REVIEWS_JSON", &raw)
+	out := make([]deskkit.Review, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, deskkit.Review{
+			Author: deskkit.Account{Login: r.User.Login}, Body: r.Body, State: r.State,
+			CommitID: r.CommitID, SubmittedAt: r.SubmittedAt,
+		})
+	}
+	return out, nil
+}
+
+func (f *fakeForge) ListChangedFiles(_ deskkit.ForgeRepo, _ int) ([]deskkit.ChangedFile, error) {
+	var raw []struct {
+		Filename         string `json:"filename"`
+		PreviousFilename string `json:"previous_filename"`
+	}
+	envJSON(f.tb(), "DESKBOARD_GH_PRFILES_JSON", &raw)
+	out := make([]deskkit.ChangedFile, 0, len(raw))
+	for _, c := range raw {
+		out = append(out, deskkit.ChangedFile{Filename: c.Filename, PreviousFilename: c.PreviousFilename})
+	}
+	return out, nil
+}
+
+func (f *fakeForge) CompareRefs(_ deskkit.ForgeRepo, base, head string) (*deskkit.RefComparison, error) {
+	if forgeHooks.compare != nil {
+		return forgeHooks.compare(f.repo, base, head)
+	}
+	if err := f.failFor(fmt.Sprintf("/repos/%s/compare/%s...%s", f.repo, base, head), "/compare/"); err != nil {
+		return nil, err
+	}
+	var w struct {
+		Status   string `json:"status"`
+		BehindBy int    `json:"behind_by"`
+		Files    []struct {
+			Filename string `json:"filename"`
+		} `json:"files"`
+	}
+	envJSON(f.tb(), "DESKBOARD_GH_COMPARE_JSON", &w)
+	out := &deskkit.RefComparison{Status: w.Status, BehindBy: w.BehindBy}
+	for _, c := range w.Files {
+		out.Files = append(out.Files, deskkit.ChangedFile{Filename: c.Filename})
+	}
+	return out, nil
+}
+
+func (f *fakeForge) ListComments(_ deskkit.ForgeRepo, num int) ([]deskkit.Comment, error) {
+	if forgeHooks.comments != nil {
+		return forgeHooks.comments(f.repo, num)
+	}
+	if err := f.failFor(fmt.Sprintf("repos/%s/issues/%d/comments", f.repo, num), fmt.Sprintf("issues/%d/comments", num), "/comments"); err != nil {
+		return nil, err
+	}
+	var raw []struct {
+		User      struct{ Login string } `json:"user"`
+		CreatedAt string                 `json:"created_at"`
+		Body      string                 `json:"body"`
+	}
+	envJSON(f.tb(), "DESKBOARD_GH_PRCOMMENTS_JSON", &raw)
+	out := make([]deskkit.Comment, 0, len(raw))
+	for _, c := range raw {
+		out = append(out, deskkit.Comment{Author: deskkit.Account{Login: c.User.Login}, CreatedAt: c.CreatedAt, Body: c.Body})
+	}
+	return out, nil
+}
+
+func (f *fakeForge) ListLabelEvents(_ deskkit.ForgeRepo, num int) ([]deskkit.LabelEvent, error) {
+	if forgeHooks.labelEvents != nil {
+		return forgeHooks.labelEvents(f.repo, num)
+	}
+	var raw []struct {
+		Event     string `json:"event"`
+		CreatedAt string `json:"created_at"`
+		Label     struct {
+			Name string `json:"name"`
+		} `json:"label"`
+	}
+	envJSON(f.tb(), "DESKBOARD_GH_LABELEVENTS_JSON", &raw)
+	out := make([]deskkit.LabelEvent, 0, len(raw))
+	for _, e := range raw {
+		if e.Event != "labeled" {
+			continue
+		}
+		out = append(out, deskkit.LabelEvent{Name: e.Label.Name, CreatedAt: e.CreatedAt})
+	}
+	return out, nil
+}
+
+func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCommit, error) {
+	if forgeHooks.getCommit != nil {
+		return forgeHooks.getCommit(f.repo, sha)
+	}
+	if err := f.failFor(fmt.Sprintf("/repos/%s/commits/%s", f.repo, sha), "/commits/"); err != nil {
+		return nil, err
+	}
+	js := os.Getenv("DESKBOARD_GH_COMMIT_JSON")
+	if strings.TrimSpace(js) == "" {
+		return &deskkit.RepoCommit{SHA: sha, CommittedDate: time.Now().UTC().Format(time.RFC3339)}, nil
+	}
+	var w struct {
+		Author    *struct{ Login string } `json:"author"`
+		Committer *struct{ Login string } `json:"committer"`
+		Commit    struct {
+			Committer struct {
+				Date string `json:"date"`
+			} `json:"committer"`
+		} `json:"commit"`
+	}
+	if err := json.Unmarshal([]byte(js), &w); err != nil {
+		return nil, deskkit.Unverifiable("bad DESKBOARD_GH_COMMIT_JSON", err)
+	}
+	rc := &deskkit.RepoCommit{SHA: sha, CommittedDate: w.Commit.Committer.Date}
+	if w.Author != nil {
+		rc.AuthorLogin = w.Author.Login
+	}
+	if w.Committer != nil {
+		rc.CommitterLogin = w.Committer.Login
+	}
+	return rc, nil
+}
+
+func (f *fakeForge) ListRecentCommits(_ deskkit.ForgeRepo, limit int) ([]deskkit.RepoCommit, error) {
+	if forgeHooks.recentCommits != nil {
+		return forgeHooks.recentCommits(f.repo, limit)
+	}
+	js := os.Getenv("DESKBOARD_GH_COMMITS_JSON")
+	if strings.TrimSpace(js) == "" {
+		js = `[{"sha":"deadbeef0000"}]`
+	}
+	if js == "not json at all" { // TestActions_HealthUnknownDoesNotFailTheBoard
+		return nil, deskkit.Unverifiable("unparseable commits payload", nil)
+	}
+	var raw []struct {
+		SHA string `json:"sha"`
+	}
+	if err := json.Unmarshal([]byte(js), &raw); err != nil {
+		return nil, deskkit.Unverifiable("bad DESKBOARD_GH_COMMITS_JSON", err)
+	}
+	out := make([]deskkit.RepoCommit, 0, len(raw))
+	for _, c := range raw {
+		out = append(out, deskkit.RepoCommit{SHA: c.SHA})
+	}
+	return out, nil
+}
+
+func (f *fakeForge) ChecksAtHead(_ deskkit.ForgeRepo, sha string) (*deskkit.ChecksAtHead, error) {
+	if forgeHooks.checks != nil {
+		return forgeHooks.checks(f.repo, sha)
+	}
+	if err := f.failFor(fmt.Sprintf("/repos/%s/commits/%s/check-runs", f.repo, sha), "/check-runs"); err != nil {
+		return nil, err
+	}
+	out := &deskkit.ChecksAtHead{}
+	// Check-runs rollup: the RED-repo override wins, else DESKBOARD_GH_CHECKRUNS_JSON, else a
+	// default single green run (mirrors the gh shim's default).
+	crJS := ""
+	if red := os.Getenv("DESKBOARD_GH_CR_RED_REPO"); red != "" && red == f.repo {
+		crJS = os.Getenv("DESKBOARD_GH_CR_RED_JSON")
+	}
+	if crJS == "" {
+		crJS = os.Getenv("DESKBOARD_GH_CHECKRUNS_JSON")
+	}
+	if strings.TrimSpace(crJS) == "" {
+		crJS = `{"total_count":1,"check_runs":[{"name":"ci","status":"completed","conclusion":"success"}]}`
+	}
+	var cr struct {
+		TotalCount int `json:"total_count"`
+		CheckRuns  []struct {
+			Name       string `json:"name"`
+			Status     string `json:"status"`
+			Conclusion string `json:"conclusion"`
+		} `json:"check_runs"`
+	}
+	if err := json.Unmarshal([]byte(crJS), &cr); err != nil {
+		return nil, deskkit.Unverifiable("bad check-runs fixture", err)
+	}
+	out.CheckRunsTotalCount = cr.TotalCount
+	for _, c := range cr.CheckRuns {
+		out.CheckRuns = append(out.CheckRuns, deskkit.CheckRun{Name: c.Name, Status: c.Status, Conclusion: c.Conclusion})
+	}
+	// Combined-status rollup (zero-CI probe reads StatusTotalCount).
+	if csJS := os.Getenv("DESKBOARD_GH_COMBINED_STATUS_JSON"); strings.TrimSpace(csJS) != "" {
+		var cs struct {
+			TotalCount int `json:"total_count"`
+			Statuses   []struct {
+				State   string `json:"state"`
+				Context string `json:"context"`
+			} `json:"statuses"`
+		}
+		if err := json.Unmarshal([]byte(csJS), &cs); err != nil {
+			return nil, deskkit.Unverifiable("bad combined-status fixture", err)
+		}
+		out.StatusTotalCount = cs.TotalCount
+		for _, s := range cs.Statuses {
+			out.Statuses = append(out.Statuses, deskkit.StatusContext{State: s.State, Context: s.Context})
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeForge) ListWorkflowFiles(_ deskkit.ForgeRepo, _ string) ([]string, error) {
+	js := os.Getenv("DESKBOARD_GH_WORKFLOWS_DIR_JSON")
+	if strings.TrimSpace(js) == "" {
+		return nil, &deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: "/contents/.github/workflows"}
+	}
+	var entries []struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal([]byte(js), &entries); err != nil {
+		return nil, deskkit.Unverifiable("bad workflows-dir fixture", err)
+	}
+	var names []string
+	for _, e := range entries {
+		if e.Type != "file" {
+			continue
+		}
+		if strings.HasSuffix(e.Name, ".yml") || strings.HasSuffix(e.Name, ".yaml") {
+			names = append(names, e.Name)
+		}
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+func (f *fakeForge) ReadFile(_ deskkit.ForgeRepo, in deskkit.ReadFileInput) (*deskkit.FileContent, error) {
+	if strings.HasPrefix(in.File, ".github/workflows/") {
+		name := strings.TrimPrefix(in.File, ".github/workflows/")
+		key := strings.Map(func(r rune) rune {
+			switch {
+			case r >= 'a' && r <= 'z':
+				return r - 32
+			case (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9'):
+				return r
+			default:
+				return '_'
+			}
+		}, name)
+		body := os.Getenv("DESKBOARD_GH_WORKFLOW_" + key)
+		if body == "" {
+			return nil, &deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: "/contents/" + in.File}
+		}
+		// The fixture is the Contents-API shape ({"content":<base64>,"encoding":"base64"}) the
+		// gh shim served; decode it to the raw file bytes the typed ReadFile returns.
+		return &deskkit.FileContent{Content: decodeContentsFixture(body), Exists: true, SHA: "wf"}, nil
+	}
+	// Default: the gh shim served base64 "aGVsbG8K" = "hello\n".
+	return &deskkit.FileContent{Content: []byte("hello\n"), Exists: true, SHA: "c"}, nil
+}
+
+func (f *fakeForge) ChangeDiff(_ deskkit.ForgeRepo, _ int) (string, error) {
+	return "diff --git a/x b/x\n+hello\n", nil
+}
+
+// decodeContentsFixture turns a Contents-API fixture ({"content":<base64>,"encoding":"base64"})
+// into the raw file bytes; a plain (non-JSON) fixture is returned as-is.
+func decodeContentsFixture(body string) []byte {
+	var v struct {
+		Content  string `json:"content"`
+		Encoding string `json:"encoding"`
+	}
+	if err := json.Unmarshal([]byte(body), &v); err != nil {
+		return []byte(body)
+	}
+	if v.Encoding == "base64" {
+		if dec, derr := base64.StdEncoding.DecodeString(strings.ReplaceAll(v.Content, "\n", "")); derr == nil {
+			return dec
+		}
+	}
+	return []byte(v.Content)
+}
+
+func (f *fakeForge) SearchOpenChanges(owner string) (*deskkit.ChangeSearchResults, error) {
+	// The gh shim failed `search prs --owner <owner>` when DESKBOARD_GH_FAIL_REPO matched the
+	// owner arg; a search that could not run is could-not-check, never "no gaps".
+	if fr := os.Getenv("DESKBOARD_GH_FAIL_REPO"); fr != "" && strings.Contains(owner, fr) {
+		return nil, deskkit.Unverifiable("cannot search open PRs for owner "+owner, nil)
+	}
+	var raw []struct {
+		Number     int    `json:"number"`
+		Title      string `json:"title"`
+		CreatedAt  string `json:"createdAt"`
+		Repository struct {
+			NameWithOwner string `json:"nameWithOwner"`
+		} `json:"repository"`
+	}
+	envJSON(f.tb(), "DESKBOARD_GH_SEARCH_JSON", &raw)
+	out := &deskkit.ChangeSearchResults{Cap: 200}
+	for _, r := range raw {
+		out.Results = append(out.Results, deskkit.ChangeSearchResult{
+			Repo: r.Repository.NameWithOwner, Number: r.Number, Title: r.Title, CreatedAt: r.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (f *fakeForge) ListOpenIssues(_ deskkit.ForgeRepo) ([]deskkit.IssueSummary, error) {
+	var raw []struct {
+		Number  int    `json:"number"`
+		Title   string `json:"title"`
+		HTMLURL string `json:"html_url"`
+		User    struct {
+			Login string `json:"login"`
+			ID    int64  `json:"id"`
+		} `json:"user"`
+		Labels []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
+		CreatedAt   string    `json:"created_at"`
+		PullRequest *struct{} `json:"pull_request"`
+	}
+	envJSON(f.tb(), "DESKBOARD_GH_ISSUES_JSON", &raw)
+	out := make([]deskkit.IssueSummary, 0, len(raw))
+	for _, is := range raw {
+		if is.PullRequest != nil {
+			continue
+		}
+		labels := make([]string, 0, len(is.Labels))
+		for _, l := range is.Labels {
+			labels = append(labels, l.Name)
+		}
+		out = append(out, deskkit.IssueSummary{
+			Number: is.Number, Title: is.Title, URL: is.HTMLURL, CreatedAt: is.CreatedAt,
+			Author: deskkit.Account{Login: is.User.Login, ID: is.User.ID}, Labels: labels,
+		})
+	}
+	return out, nil
+}
+
+func (f *fakeForge) RepoVisibility(_ deskkit.ForgeRepo) (string, error) {
+	// The policy-drift fail-closed test names a repo the read cannot resolve via
+	// DESKBOARD_GH_FAIL_REPO ("repos/<owner>/<name>"); an unreadable repo is could-not-check.
+	if fr := os.Getenv("DESKBOARD_GH_FAIL_REPO"); fr != "" && strings.Contains(fr, f.repo) {
+		return "", deskkit.Unverifiable("cannot read repo metadata for "+f.repo, nil)
+	}
+	if o := os.Getenv("DESKBOARD_GH_REPOMETA_OVERRIDE"); strings.TrimSpace(o) != "" {
+		var w struct {
+			Visibility string `json:"visibility"`
+		}
+		if err := json.Unmarshal([]byte(o), &w); err != nil {
+			return "", deskkit.Unverifiable("bad repometa override", err)
+		}
+		if w.Visibility == "" {
+			return "", deskkit.Unverifiable("repo "+f.repo+" has no .visibility field", nil)
+		}
+		return w.Visibility, nil
+	}
+	for _, p := range strings.Fields(os.Getenv("DESKBOARD_GH_PUBLIC_REPOS")) {
+		if p == f.repo {
+			return "public", nil
+		}
+	}
+	return "private", nil
+}
+
 // mutatingVerbs are the gh subcommand verbs that WRITE. A read-only tool must never
 // emit any of them in the verb position (fields[1]).
 var mutatingVerbs = map[string]bool{
@@ -479,9 +944,15 @@ func readInvocations(t *testing.T, logPath string) [][]string {
 	return out
 }
 
-// TestReadOnly_PathShim is the read-only proof: it runs every subcommand through a fake
-// gh recorded via PATH, then asserts that NO recorded invocation is a mutating call.
-func TestReadOnly_PathShim(t *testing.T) {
+// TestReadsReachNoForgeCLI is the successor to the old read-only PATH-shim proof. That proof
+// ran every subcommand and asserted no recorded `gh` invocation was a mutating call; the
+// the forge-seam migration retired the last `gh` read in cmd/deskboard, so the property is
+// now STRONGER and structural — deskboard reaches no forge CLI at all (the ban's
+// TestNoForgeCLIShellout pins that at the source level; Verify row 4 greps it to zero), and a
+// typed Forge READ op cannot mutate. This test keeps the end-to-end half: every subcommand
+// runs green through the forge seam, and the fake `gh` on PATH is NEVER invoked (its log stays
+// empty) — a recorded invocation would mean a read slipped back onto the CLI.
+func TestReadsReachNoForgeCLI(t *testing.T) {
 	logPath := installFakeGH(t)
 	// One PR per repo so prs/actions make real per-PR reads.
 	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
@@ -529,38 +1000,17 @@ func TestReadOnly_PathShim(t *testing.T) {
 		}
 	}
 
-	inv := readInvocations(t, logPath)
-	if len(inv) == 0 {
-		t.Fatal("no gh invocations recorded — the read-only proof enumerates nothing")
-	}
-	// The open-PR enumeration and the PR/issue trust reads migrated off the CLI onto typed
-	// Forge READ ops (the read-verbs-on-the-seam migration); the ban (internal/forgeban) proves the board reaches
-	// no forge CLI for them, and a typed read op cannot mutate. What remains on the gh shim is
-	// the board's PERIPHERAL read surface, and THAT is what this proof still enumerates: no
-	// recorded gh invocation may be a mutating call, and the peripheral reads (gh api, pr diff,
-	// the zero-CI probe's workflow reads) are exercised.
-	sawAPI, sawDiff, sawProbe := false, false, false
-	for _, fields := range inv {
-		if off := firstOffense(fields); off != "" {
-			t.Errorf("MUTATING gh call recorded: %s  (full: %s)", off, strings.Join(fields, " "))
-		}
-		if len(fields) >= 1 && fields[0] == "api" {
-			sawAPI = true
-		}
-		if len(fields) >= 2 && fields[0] == "pr" && fields[1] == "diff" {
-			sawDiff = true
-		}
-		if strings.Contains(strings.Join(fields, " "), ".github/workflows") {
-			sawProbe = true
+	// deskboard reaches every forge read through the typed Forge seam now, so the fake `gh`
+	// must never have been invoked: an empty log is the whole point. A recorded invocation —
+	// mutating or not — would mean a read regressed back onto the CLI, which the ban would also
+	// catch at the source level.
+	if b, err := os.ReadFile(logPath); err == nil {
+		if inv := readInvocations(t, logPath); len(inv) != 0 {
+			t.Fatalf("deskboard invoked the forge CLI %d time(s) — every read must reach the typed "+
+				"Forge seam, not gh:\n%s", len(inv), string(b))
 		}
 	}
-	if !sawAPI || !sawDiff {
-		t.Errorf("expected to have exercised the peripheral gh api + pr diff reads; got api=%t diff=%t", sawAPI, sawDiff)
-	}
-	if !sawProbe {
-		t.Error("expected the zero-CI probe's workflow reads to be exercised (the fixture PR has a zero rollup)")
-	}
-	t.Logf("read-only proof: %d gh invocations enumerated, all read-only", len(inv))
+	t.Logf("no-forge-CLI proof: every subcommand ran green through the Forge seam; the gh shim was never invoked")
 }
 
 // TestClassify ports v1's ACTION semantics (same input → same ACTION) and adds the

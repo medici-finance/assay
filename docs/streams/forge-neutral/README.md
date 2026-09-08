@@ -215,7 +215,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 09 | [Substrate — leak-gate verdict on merge requests, `cellctl` forge-aware `new`/`up`](brief-09-substrate-leakgate-and-cellctl.md) | 3 | M | todo | — | — |
 | 10 | [Conformance — one round trip driven entirely by desk verbs, and the writes they refuse](brief-10-conformance-round-trip.md) | 5 | M | todo | — | — |
 | 11 | [Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives](brief-11-install-without-gh.md) | 5 | M | todo | — | — |
-| 12 | [deskboard non-board reads onto the seam — PR search, commit history, single-commit, combined-status, workflow listing](brief-12-deskboard-non-board-reads-onto-the-seam.md) | 4 | L | todo | — | — |
+| 12 | [deskboard non-board reads onto the seam — PR search, commit history, single-commit, combined-status, workflow listing](brief-12-deskboard-non-board-reads-onto-the-seam.md) | 4 | L | implemented | — | — |
 
 ## Critical path
 

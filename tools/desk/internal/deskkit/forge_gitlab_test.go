@@ -57,6 +57,7 @@ type glServer struct {
 	notes        []map[string]any
 	diffs        []map[string]any
 	commit       map[string]any
+	commits      []map[string]any
 	statuses     []map[string]any
 	jobs         []map[string]any
 	awards       []map[string]any
@@ -104,6 +105,7 @@ var (
 	lAwards       = regexp.MustCompile(`/issues/[0-9]+/award_emoji$`)
 	lUser         = regexp.MustCompile(`^/api/v4/users/[0-9]+$`)
 	lCommit       = regexp.MustCompile(`/repository/commits/[^/]+$`)
+	lCommitList   = regexp.MustCompile(`/repository/commits$`)
 	lCommitStatus = regexp.MustCompile(`/repository/commits/[^/]+/statuses$`)
 	lPipelineJobs = regexp.MustCompile(`/pipelines/[0-9]+/jobs$`)
 	lBranch       = regexp.MustCompile(`^/api/v4/projects/[^/]+/repository/branches/[^/]+$`)
@@ -226,6 +228,8 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.createIssue)
 	case r.Method == http.MethodGet && lCommitStatus.MatchString(path):
 		enc(s.statuses)
+	case r.Method == http.MethodGet && lCommitList.MatchString(path):
+		enc(s.commits)
 	case r.Method == http.MethodGet && lCommit.MatchString(path):
 		enc(s.commit)
 	case r.Method == http.MethodGet && lPipelineJobs.MatchString(path):
@@ -902,6 +906,61 @@ func glCases() []glCase {
 			name: "issue_trust_events_gap", method: "IssueTrustEvents",
 			setup: func(s *glServer) {},
 			run:   func(f *GitLabForge) (any, error) { return f.IssueTrustEvents(glRepo, 7) },
+		},
+		{
+			// forge-neutral/12. Commit-history listing maps 1:1: GitLab's ListCommits returns
+			// each commit's id + committed_date, the two fields the branch-health probe reads.
+			name: "list_recent_commits", method: "ListRecentCommits",
+			setup: func(s *glServer) {
+				s.commits = []map[string]any{
+					{"id": "aaa111", "committed_date": "2026-09-01T10:00:00Z"},
+					{"id": "bbb222", "committed_date": "2026-08-31T09:00:00Z"},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListRecentCommits(glRepo, 5) },
+		},
+		{
+			// forge-neutral/12. Single-commit read: committed_date is 1:1; the resolved-account
+			// login fields stay EMPTY (per-field could-not-check) because a GitLab commit carries
+			// only raw git author/committer name+email, not a resolved instance account.
+			name: "get_commit", method: "GetCommit",
+			setup: func(s *glServer) {
+				s.commit = map[string]any{
+					"id": "abc123", "committed_date": "2026-09-01T10:00:00Z",
+					"author_name": "A Dev", "author_email": "a@example.com",
+					"committer_name": "A Dev", "committer_email": "a@example.com",
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.GetCommit(glRepo, "abc123") },
+		},
+		{
+			// forge-neutral/12. Ref comparison is could-not-check on GitLab: the compare endpoint
+			// reports neither the divergence status word nor a behind_by count — a refusal with
+			// zero requests, never a half-mapped benign-merge verdict.
+			name: "compare_refs_gap", method: "CompareRefs",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.CompareRefs(glRepo, "main", "abc123") },
+		},
+		{
+			// forge-neutral/12. Owner-wide open-change search is could-not-check on GitLab: no
+			// 1:1 owner-wide analog (search is group/project-scoped).
+			name: "search_open_changes_gap", method: "SearchOpenChanges",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.SearchOpenChanges("medici-finance") },
+		},
+		{
+			// forge-neutral/12. Workflow-directory listing is could-not-check on GitLab:
+			// GitHub-Actions-specific; GitLab CI config is a single .gitlab-ci.yml.
+			name: "list_workflow_files_gap", method: "ListWorkflowFiles",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.ListWorkflowFiles(glRepo, "abc123") },
+		},
+		{
+			// forge-neutral/12. The raw unified-diff document is could-not-check on GitLab:
+			// GitLab serves a structured per-file list (ListChangedFiles), not a raw-text doc.
+			name: "change_diff_gap", method: "ChangeDiff",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.ChangeDiff(glRepo, 7) },
 		},
 	}
 }
