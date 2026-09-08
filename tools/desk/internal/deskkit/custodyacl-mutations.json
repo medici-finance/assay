@@ -1,0 +1,29 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestEvaluateCustodyACL'",
+  "control": {
+    "name": "CONTROL — stop refusing a custody file owned by another Windows user (a credential could be read from a file this user does not own)",
+    "file": "internal/deskkit/custodyacl.go",
+    "old": "\tif m.Owner != m.CurrentUser {",
+    "new": "\tif false && m.Owner != m.CurrentUser {"
+  },
+  "mutations": [
+    {
+      "name": "accept a foreign write-capable ACE (any principal that can rewrite the token file passes owner-only custody)",
+      "file": "internal/deskkit/custodyacl.go",
+      "old": "\t\tif ace.InheritOnly || !ace.GrantsWrite {\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif ace.InheritOnly || !ace.GrantsWrite || true {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "treat an uninterpretable DACL entry as clean instead of refusing (write scope is guessed, not established)",
+      "file": "internal/deskkit/custodyacl.go",
+      "old": "\t\tcase rosterACEUnsupported:\n\t\t\treturn fmt.Errorf(\"custody file %s has a Windows DACL entry (#%d) this tool cannot \"+\n\t\t\t\t\"interpret — refusing rather than guessing its write scope\", path, i)",
+      "new": "\t\tcase rosterACEUnsupported:\n\t\t\t_ = i\n\t\t\tcontinue"
+    },
+    {
+      "name": "pass an undeterminable owner instead of refusing (a could-not-check ownership is rounded up to clean)",
+      "file": "internal/deskkit/custodyacl.go",
+      "old": "\tif m.Owner == \"\" {\n\t\treturn fmt.Errorf(\"cannot determine the Windows owner of custody file %s — refusing to read a \"+\n\t\t\t\"credential whose ownership cannot be established\", path)\n\t}",
+      "new": "\tif m.Owner == \"\" {\n\t\tm.Owner = m.CurrentUser\n\t}"
+    }
+  ]
+}

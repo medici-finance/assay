@@ -25,11 +25,27 @@ import (
 // descriptor it cannot read, or an ACE it cannot interpret, is a refusal. These
 // are deskkit's OWN error strings, deliberately NOT converged with statusgen's.
 func checkFileOwner(path string, _ os.FileInfo) error {
+	model, err := windowsFileACLModel(path)
+	if err != nil {
+		return err
+	}
+	return evaluateRosterACL(path, model)
+}
+
+// windowsFileACLModel reads a file's owner SID and DACL and decodes them into the
+// platform-independent rosterACLModel that the evaluateRosterACL (roster) and
+// evaluateCustodyACL (GitLab token custody, #667) decisions consume. Both need the
+// identical "who owns this file and who can write it" question answered from the
+// real security descriptor, so the Win32 decode lives here once rather than being
+// copied per caller. It never returns a silent nil model on a gap: a descriptor,
+// owner, or ACE it cannot establish is a refusal, so the decision above it refuses
+// rather than reading past an undetermined permission as clean.
+func windowsFileACLModel(path string) (rosterACLModel, error) {
 	sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
 		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
-		return fmt.Errorf("cannot read the Windows owner/DACL of %s — refusing to read a roster "+
-			"whose permissions cannot be established: %w", path, err)
+		return rosterACLModel{}, fmt.Errorf("cannot read the Windows owner/DACL of %s — refusing to act on a "+
+			"file whose permissions cannot be established: %w", path, err)
 	}
 
 	model := rosterACLModel{}
@@ -54,8 +70,8 @@ func checkFileOwner(path string, _ os.FileInfo) error {
 
 	dacl, _, err := sd.DACL()
 	if err != nil {
-		return fmt.Errorf("cannot establish a Windows DACL for %s — refusing to read a roster "+
-			"whose write access cannot be bounded: %w", path, err)
+		return rosterACLModel{}, fmt.Errorf("cannot establish a Windows DACL for %s — refusing to act on a "+
+			"file whose write access cannot be bounded: %w", path, err)
 	}
 	// A nil DACL means "everyone, full control" in the Windows model — the widest
 	// possible grant. Model it as one write-granting ACE for the World SID so the
@@ -66,14 +82,14 @@ func checkFileOwner(path string, _ os.FileInfo) error {
 			world = w.String()
 		}
 		model.Entries = []rosterACE{{SID: world, Kind: rosterACEAllow, GrantsWrite: true}}
-		return evaluateRosterACL(path, model)
+		return model, nil
 	}
 
 	for i := uint16(0); i < dacl.AceCount; i++ {
 		var raw *windows.ACCESS_ALLOWED_ACE
 		if err := windows.GetAce(dacl, uint32(i), &raw); err != nil || raw == nil {
-			return fmt.Errorf("cannot inspect Windows DACL entry %d for %s — refusing rather than "+
-				"reading past an unreadable ACE: %w", i, path, err)
+			return rosterACLModel{}, fmt.Errorf("cannot inspect Windows DACL entry %d for %s — refusing rather "+
+				"than reading past an unreadable ACE: %w", i, path, err)
 		}
 		ace := rosterACE{
 			InheritOnly: raw.Header.AceFlags&windows.INHERIT_ONLY_ACE != 0,
@@ -92,5 +108,5 @@ func checkFileOwner(path string, _ os.FileInfo) error {
 		model.Entries = append(model.Entries, ace)
 	}
 
-	return evaluateRosterACL(path, model)
+	return model, nil
 }

@@ -615,8 +615,8 @@ func gitlabColdCustodyProbe(role string) (string, error) {
 	if !fi.Mode().IsRegular() {
 		return "", fmt.Errorf("gitlab custody at %s is not a regular file (mode %s); custody requires a 0600 regular file", path, fi.Mode())
 	}
-	if fi.Mode().Perm() != 0o600 {
-		return "", fmt.Errorf("gitlab token file at %s has permissions %o; must be 0600", path, fi.Mode().Perm())
+	if err := VerifyCustodyOwnerOnly(path, fi); err != nil {
+		return "", err
 	}
 	raw, rerr := os.ReadFile(path)
 	if rerr != nil {
