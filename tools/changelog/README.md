@@ -158,12 +158,8 @@ whole activation.
    release aggregates the same fragments again) for as long as the PR sits.
 
 4. **`release.yml` fix — `-c` before the `fetch` subcommand in the roll retry.**
-   Apply `tools/changelog/release-roll-fetch-order.yml.patch` to the live
-   `.github/workflows/release.yml`:
-
-   ```
-   git apply tools/changelog/release-roll-fetch-order.yml.patch
-   ```
+   Applied directly to `.github/workflows/release.yml` in #675; no separate apply
+   step.
 
    The `changelog-roll` job's re-sync step (added by step 3) invoked
    `git fetch --no-tags -c http.extraheader=… origin main` — with `-c` placed
