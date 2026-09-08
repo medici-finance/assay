@@ -677,7 +677,23 @@ type corroborateResult struct {
 // corroborateStamps is the testable core: given parsed stamps and pre-fetched PR data,
 // it resolves each stamp's name to a GitHub login and checks for corroboration in the
 // PR's reviews and comments. Returns one result per stamp.
-func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int) []corroborateResult {
+//
+// There are THREE accepted corroboration anchors, checked in order and none
+// replacing another:
+//
+//  1. an APPROVED review by the named human on the PR (strongest signal);
+//  2. an explicit approval COMMENT by the named human on the PR;
+//  3. a linked, human-CLOSED needs-decision issue carrying this brief's per-brief
+//     decision-gate marker (the sanctioned ratification channel — see
+//     decisionGateCorroboration and the tracker ruling #2237). This third anchor is
+//     ADDITIVE: it fires only for a brief-file stamp whose brief links such an issue,
+//     and it never weakens anchors 1 and 2, which are unchanged.
+//
+// gates carries the pre-fetched decision-issue state for the third anchor, keyed by
+// the brief file the stamp was found in; it is empty/nil when only the PR anchors are
+// in play (every existing caller and test), so the two PR anchors decide exactly as
+// before.
+func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int, gates decisionGateLinks) []corroborateResult {
 	if len(stamps) == 0 {
 		return []corroborateResult{{Verdict: verdictNoStamp}}
 	}
@@ -722,6 +738,22 @@ func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int) []co
 			}
 		}
 
+		// Third anchor: a linked, human-closed needs-decision issue carrying this
+		// brief's per-brief decision-gate marker — the sanctioned ratification
+		// channel (tracker ruling #2237). A gate:human decision brief whose ruling
+		// was recorded by CLOSING its decision-issue (rather than as a PR approval)
+		// corroborates through this path. It requires no PR data, so it is checked
+		// after — and independently of — the two PR anchors above.
+		if ev, ok := decisionGateCorroboration(s, gates); ok {
+			results = append(results, corroborateResult{
+				Stamp:    s,
+				Verdict:  verdictCorroborated,
+				Login:    login,
+				Evidence: ev,
+			})
+			goto nextStamp
+		}
+
 		// No corroboration found.
 		results = append(results, corroborateResult{
 			Stamp:    s,
@@ -733,7 +765,6 @@ func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int) []co
 	}
 	return results
 }
-
 
 // reviewURL constructs a URL for a review. The gh API does not return a direct
 // review URL, so we construct one from the PR and review ID.
@@ -800,7 +831,13 @@ func runCorroborate(prsArg string) int {
 				fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)
 				return 1
 			}
-			for _, r := range corroborateStamps(stamps, data, repo, pr) {
+			// Third corroboration anchor (tracker ruling #2237): pre-fetch the
+			// needs-decision issues each brief-file stamp links, so a gate:human
+			// decision brief ratified by CLOSING its decision-issue can corroborate
+			// even without a PR approval anchor. Empty when no brief links such an
+			// issue — the two PR anchors then decide exactly as before.
+			gates := gatherDecisionGateLinks(".", repo, stamps)
+			for _, r := range corroborateStamps(stamps, data, repo, pr, gates) {
 				allResults = append(allResults, r)
 				if r.Verdict == verdictMissing {
 					anyMissing = true

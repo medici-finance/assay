@@ -194,7 +194,7 @@ func TestCIHumanLoginMapResidualBoundary(t *testing.T) {
 	prData := &ghPRData{Comments: []ghComment{
 		{Author: ghAuthor{Login: "attacker"}, Body: "lgtm", URL: "https://example.invalid/c/1"},
 	}}
-	mapped := corroborateStamps([]stamp{{Name: "alex"}}, prData, "example-org/example", 1)
+	mapped := corroborateStamps([]stamp{{Name: "alex"}}, prData, "example-org/example", 1, nil)
 	if len(mapped) != 1 || mapped[0].Verdict != verdictCorroborated {
 		t.Errorf("the residual is documented as flipping --corroborate to CORROBORATED for a "+
 			"mapped name whose login commented an approval, but it did not: %+v\n\nIf this was "+
@@ -203,7 +203,7 @@ func TestCIHumanLoginMapResidualBoundary(t *testing.T) {
 	}
 	// The same PR data with an UNMAPPED stamp name stays MISSING — so it is the map
 	// doing the widening here, not the comment.
-	unmapped := corroborateStamps([]stamp{{Name: "nobody"}}, prData, "example-org/example", 1)
+	unmapped := corroborateStamps([]stamp{{Name: "nobody"}}, prData, "example-org/example", 1, nil)
 	if len(unmapped) != 1 || unmapped[0].Verdict != verdictMissing {
 		t.Errorf("an UNMAPPED stamp name was corroborated (%+v) — then the map is not what flips "+
 			"this verdict and this row is measuring the wrong thing", unmapped)
