@@ -1,149 +1,25 @@
 package main
 
-// token_test.go — the read path authenticates as the session role's App, and a repo
-// outside that App's installation is per-repo could-not-check rather than a dead board.
+// token_test.go — a repo outside the resolved forge's installation is per-repo
+// could-not-check rather than a dead board.
 //
-// FAIL-FIRST. Both halves were observed RED on the pre-fix code:
-// TestReadInjectsTheAppTokenIntoTheChild saw an empty GH_TOKEN (the whole defect — the
-// child fell through to the HOME keyring), and TestOutOfInstallationRepoIsCouldNotCheck
-// returned exit 6 with no rows at all, taking the entire board down over one repo the App
-// was never installed on.
+// The read path used to authenticate as the session role's App by injecting GH_TOKEN into a
+// child `gh` (token.go); the forge-seam migration retired the last `gh` read in
+// cmd/deskboard, so that injection machinery — and the tests that pinned it — are gone with
+// ghRun. What survives is the property those reads were FOR: one repo the forge cannot resolve
+// demotes to a could-not-check ROW, and every OTHER repo's rows are still read.
 
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// resetTokenState clears the process-wide per-owner token memo so one test's answer cannot
-// leak into the next.
-func resetTokenState(t *testing.T) {
-	t.Helper()
-	restore := func() {
-		tokenState.mu.Lock()
-		defer tokenState.mu.Unlock()
-		tokenState.roleOnce = false
-		tokenState.role = ""
-		tokenState.byOwner = map[string]string{}
-		tokenState.noticed = map[string]bool{}
-	}
-	restore()
-	t.Cleanup(restore)
-}
-
-// stubToken binds the token seams to fixed answers for one test.
-func stubToken(t *testing.T, role string, roleErr error, token string, tokenErr error) *[]string {
-	t.Helper()
-	resetTokenState(t)
-	var asked []string
-	prevRole, prevTok := sessionTokenRoleFn, ownerTokenFn
-	t.Cleanup(func() { sessionTokenRoleFn, ownerTokenFn = prevRole, prevTok })
-	sessionTokenRoleFn = func(verb string) (string, string, error) {
-		return role, "pr-review-desk", roleErr
-	}
-	ownerTokenFn = func(r, owner string) (string, string, error) {
-		asked = append(asked, r+" "+owner)
-		return token, "/config/home/" + r + "-token-1", tokenErr
-	}
-	return &asked
-}
-
-func TestOwnerFromArgsReadsEveryShapeThisPackageEmits(t *testing.T) {
-	cases := []struct {
-		name string
-		args []string
-		want string
-	}{
-		{"pr list -R", []string{"pr", "list", "-R", "example-org/tracker", "--state", "open"}, "example-org"},
-		{"pr diff -R", []string{"pr", "diff", "7", "-R", "medici-finance/assay"}, "medici-finance"},
-		{"rest path", []string{"api", "repos/example-org/tracker/pulls/7/reviews?per_page=100&page=1"}, "example-org"},
-		{"rest repo metadata", []string{"api", "repos/example-org/console"}, "example-org"},
-		{"owner search", []string{"search", "prs", "--owner", "example-org", "--state", "open"}, "example-org"},
-		{"graphql owner field", []string{"api", "graphql", "-f", "query=query(...)", "-f", "owner=medici-finance", "-f", "name=assay"}, "medici-finance"},
-		{"unattributable", []string{"api", "rate_limit"}, ""},
-	}
-	for _, c := range cases {
-		if got := ownerFromArgs(c.args); got != c.want {
-			t.Errorf("%s: ownerFromArgs(%v) = %q, want %q", c.name, c.args, got, c.want)
-		}
-	}
-}
-
-// An argv the reader cannot attribute must yield NO token rather than one minted for some
-// other account: a mismatched installation token does not 401, it reports "could not
-// resolve to a repository", which reads like a missing repo instead of a wrong identity.
-func TestUnattributableArgvGetsNoToken(t *testing.T) {
-	stubToken(t, "reviewer", nil, "installation-token-stub", nil)
-	if tok := ghTokenForOwner(ownerFromArgs([]string{"api", "rate_limit"})); tok != "" {
-		t.Fatalf("an unattributable call was handed the token for some other account: %q", tok)
-	}
-}
-
-// The core assertion of the fix: the token reaches the CHILD's environment. The original
-// defect was exactly this step missing — the write verbs resolved a token, the read path
-// never put one in GH_TOKEN, and gh fell through to the HOME keyring.
-func TestReadInjectsTheAppTokenIntoTheChild(t *testing.T) {
-	dir := t.TempDir()
-	binDir := filepath.Join(dir, "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// A gh that reports only what it was handed as GH_TOKEN.
-	shim := "#!/bin/sh\nprintf %s \"$GH_TOKEN\"\n"
-	if err := os.WriteFile(filepath.Join(binDir, "gh"), []byte(shim), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	plantFixtureRoster(t, home)
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("GH_TOKEN", "")
-
-	stubToken(t, "reviewer", nil, "installation-token-for-this-test", nil)
-
-	out, err := ghRun("pr", "list", "-R", "example-org/tracker")
-	if err != nil {
-		t.Fatalf("ghRun: %v", err)
-	}
-	if string(out) != "installation-token-for-this-test" {
-		t.Fatalf("the child saw GH_TOKEN=%q — the read still falls through to the HOME keyring", out)
-	}
-}
-
-// No loop identity means no App role, and a READ then proceeds on the ambient credential
-// rather than refusing: this is a diagnostic a human runs from a plain shell on their own
-// login, and taking that away would cost more than it protects. It says so on stderr.
-func TestNoLoopIdentityLeavesTheReadOnTheAmbientCredential(t *testing.T) {
-	stubToken(t, "", deskkit.Refused("$DESK_LOOP is unset"), "installation-token-stub", nil)
-	if tok := ghTokenForOwner("example-org"); tok != "" {
-		t.Fatalf("a session with no App role was handed a token: %q", tok)
-	}
-}
-
-// A per-owner token that cannot be resolved is memoised, so a 13-repo sweep does not shell
-// out to the minter once per read for an owner it already knows it has no credential for.
-func TestUnavailableOwnerTokenIsAskedForOnce(t *testing.T) {
-	asked := stubToken(t, "reviewer", nil, "", errors.New("no installation for this account"))
-	for i := 0; i < 5; i++ {
-		if tok := ghTokenForOwner("example-org"); tok != "" {
-			t.Fatalf("a failed lookup returned a token: %q", tok)
-		}
-	}
-	if len(*asked) != 1 {
-		t.Fatalf("the minter was asked %d times for one account (%v) — a failed lookup must be "+
-			"remembered", len(*asked), *asked)
-	}
-}
-
-// --- the secondary observation: out-of-installation repos ------------------------
-
-// outOfInstallationErr is the error GitHub actually returns for a repo the authenticated
-// App installation cannot see.
+// outOfInstallationErr is the error the forge returns for a repo the authenticated identity
+// cannot see.
 func outOfInstallationErr(repo string) error {
 	return deskkit.Unverifiable("cannot read open PRs for "+repo,
 		fmt.Errorf("gh pr list: GraphQL: Could not resolve to a Repository with the name '%s'. (repository)", repo))
@@ -151,8 +27,7 @@ func outOfInstallationErr(repo string) error {
 
 // stubPRList serves one open PR through the TYPED ListOpenChanges op for every repo EXCEPT
 // `unreachable`, which fails the way an out-of-installation repo fails. The open-PR read
-// migrated off `gh` onto the Forge (the read-verbs-on-the-seam migration), so the per-repo behavior is stubbed at
-// the forgeFor seam now rather than in a ghRun override.
+// reaches the forge through forgeFor, so the per-repo behavior is stubbed at that seam.
 func stubPRList(t *testing.T, unreachable string, failOther error) {
 	t.Helper()
 	stubForgeList(t, func(repo string) (*deskkit.OpenChanges, error) {
@@ -171,37 +46,8 @@ func stubPRList(t *testing.T, unreachable string, failOther error) {
 	})
 }
 
-// ownerRepoFromGraphQL reconstructs "owner/name" from the split `-f owner=… -f name=…`
-// args of the open-PR GraphQL read (the counterpart of ownerRepoFromDashR for the
-// `gh pr list -R owner/name` form it replaced).
-func ownerRepoFromGraphQL(args []string) string {
-	owner, name := "", ""
-	for _, a := range args {
-		if v, ok := strings.CutPrefix(a, "owner="); ok {
-			owner = v
-		}
-		if v, ok := strings.CutPrefix(a, "name="); ok {
-			name = v
-		}
-	}
-	if owner == "" || name == "" {
-		return ""
-	}
-	return owner + "/" + name
-}
-
-func ownerRepoFromDashR(args []string) string {
-	for i, a := range args {
-		if a == "-R" && i+1 < len(args) {
-			return args[i+1]
-		}
-	}
-	return ""
-}
-
 func TestOutOfInstallationRepoIsCouldNotCheck(t *testing.T) {
 	installFakeGH(t)
-	stubToken(t, "reviewer", nil, "installation-token-stub", nil)
 	const unreachable = "example-org/proposals"
 	stubPRList(t, unreachable, nil)
 
@@ -246,7 +92,6 @@ func TestOutOfInstallationRepoIsCouldNotCheck(t *testing.T) {
 // could be hiding rows in a repo the desk CAN see.
 func TestOtherReadErrorsStillFailTheRunClosed(t *testing.T) {
 	installFakeGH(t)
-	stubToken(t, "reviewer", nil, "installation-token-stub", nil)
 	stubPRList(t, "example-org/proposals",
 		deskkit.Unverifiable("cannot read open PRs for example-org/proposals",
 			errors.New("gh pr list: HTTP 401: Requires authentication")))

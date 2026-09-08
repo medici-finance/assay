@@ -1465,7 +1465,15 @@ deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale workt
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
 ```
 
-- **`add`** creates `tracker-<name>` on a new tracking branch. When a local branch of that
+- **`add`** creates `tracker-<name>` on a new tracking branch, under the sanctioned prefix
+  that is PORTABLE on the host OS: `/private/tmp/tracker-<name>` on POSIX, and
+  `<repo-root>/.claude/worktrees/tracker-<name>` on Windows (`role-init` follows the same rule
+  for its session-scoped worktree). Both prefixes are already in the allowlist above; the OS
+  only decides WHICH one is targeted, never widening it. `/private/tmp` is not a usable
+  absolute path on native Windows — it resolves to a drive-rooted `\private\tmp\…` that fails
+  the sanctioned-prefix check, so no desk worktree could be created and `deskboot` refused the
+  shared checkout (#656) — whereas the `.claude/worktrees/` prefix lives inside the repo
+  and is drive-correct everywhere. When a local branch of that
   name already exists in the shared refs store — a leftover from an abandoned dispatch — it is
   reclaimed only when proven empty (checked out in no worktree AND 0 commits ahead of its
   upstream-or-`--base`); a branch a live worktree holds, or one carrying unpushed commits, is
@@ -3566,7 +3574,7 @@ through, and spending the rest of the pass writing an issue about itself:
 | a sibling checkout a queued brief's rows need is simply not there | #679 |
 
 ```bash
-deskroster preflight --role verifier [--root DIR] [--remote NAME] [--branch NAME] [--verbose]
+deskroster preflight --role verifier [--root DIR] [--remote NAME] [--branch NAME] [--claimed-brief ID] [--verbose]
 ```
 
 Five checks, run **before any work is claimed**. Each answers one of three states with a
@@ -3578,7 +3586,7 @@ Five checks, run **before any work is claimed**. Each answers one of three state
 | `app-scopes-vs-duties` | the installation's recorded grant covers `pull_requests:write`, `issues:write`, `contents:write` | #571 |
 | `write-transport` | a **read-only** probe (`git push --dry-run`) of the role's landing path is permitted | #823 |
 | `commit-identity` | the commit email's numeric prefix is the roster's **bot USER id**, not the App id | #638 |
-| `sibling-checkouts` | the out-of-repo checkouts the **queued** briefs declare are present | #679 |
+| `sibling-checkouts` | the out-of-repo checkouts the **queued** briefs declare can be resolved — through the **configured roots** (`DESK_ROOTS` / topology), not a flat `../<repo>`; absent for an **unclaimed** brief is a **notice**, absent for the brief named by `--claimed-brief` is a **failure** | #679 #661 |
 
 **Four properties are the whole point.**
 

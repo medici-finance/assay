@@ -12,6 +12,7 @@ package deskkit
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +40,10 @@ const (
 func okProbes() PreflightProbes {
 	return PreflightProbes{
 		ColdMint: func(string, string) (string, error) { return "/tmp/fake-token", nil },
+		// Deterministic GitHub forge keeps the suite hermetic: without this, Run()
+		// would fall through to the real resolver and read the ambient git remote.
+		ResolveForgeKind:  func(string) ForgeKind { return ForgeGitHub },
+		GitLabColdCustody: func(string) (string, error) { return "/tmp/fake-gitlab-token", nil },
 		GrantedScopes: func(string, string) (map[string]string, error) {
 			return map[string]string{"pull_requests": "write", "issues": "write", "contents": "write"}, nil
 		},
@@ -711,23 +716,82 @@ func TestGitLabSessionEmailAllowedNormalisation(t *testing.T) {
 
 // ---- check 5: sibling checkouts (#679) ------------------------------------
 
-// TestPreflightMissingSiblingIsRed is the #679 positive control: a queued brief
-// declares an out-of-repo checkout that is not there, and the rows that need it
-// would be discovered unrunnable mid-pass.
-func TestPreflightMissingSiblingIsRed(t *testing.T) {
+// TestPreflightMissingSiblingOfClaimedBriefIsRed is the #679/#661 positive
+// control: when a brief is being CLAIMED and its declared out-of-repo checkout is
+// not there, the rows that need it would be discovered unrunnable mid-pass, so
+// the check must go red.
+func TestPreflightMissingSiblingOfClaimedBriefIsRed(t *testing.T) {
 	withRoster(t, goldenRoster())
 	p := okProbes()
 	p.QueuedSiblings = func(string) ([]SiblingReq, error) {
 		return []SiblingReq{{Brief: "docs/streams/example-stream/brief-43-x.md", Rel: "../tracker"}}, nil
 	}
 	p.DirExists = func(string) (bool, error) { return false, nil }
-	rep := runPF(t, p)
+	rep := PreflightRequest{Role: pfRole, Root: t.TempDir(), ClaimedBrief: "brief-43", Probes: p}.Run()
 	c := pfCheck(t, rep, CheckSiblings)
 	if c.State != CheckedFailed {
-		t.Fatalf("%s = %s with a missing sibling, want checked-failed", c.Name, c.State)
+		t.Fatalf("%s = %s with the CLAIMED brief's sibling missing, want checked-failed", c.Name, c.State)
 	}
 	if !strings.Contains(c.Detail, "../tracker") || !strings.Contains(c.Detail, "brief-43") {
 		t.Fatalf("detail %q does not name both the missing checkout and the brief that declared it", c.Detail)
+	}
+}
+
+// TestPreflightMissingSiblingOfUnclaimedBriefIsNotice pins the #661 boot fix: at
+// boot NOTHING is claimed, so an absent sibling declared by an unclaimed brief is
+// a NOTICE on an otherwise-GREEN check, not a boot-blocking failure. This is the
+// change that un-bricks a whole cell whose unclaimed cross-repo briefs point at
+// checkouts that legitimately live elsewhere.
+func TestPreflightMissingSiblingOfUnclaimedBriefIsNotice(t *testing.T) {
+	withRoster(t, goldenRoster())
+	p := okProbes()
+	p.QueuedSiblings = func(string) ([]SiblingReq, error) {
+		return []SiblingReq{{Brief: "docs/streams/example-stream/brief-43-x.md", Rel: "../tracker"}}, nil
+	}
+	p.DirExists = func(string) (bool, error) { return false, nil }
+	rep := runPF(t, p) // boot mode: no ClaimedBrief
+	c := pfCheck(t, rep, CheckSiblings)
+	if c.State != CheckedClean {
+		t.Fatalf("%s = %s at boot with an unclaimed brief's sibling missing, want checked-clean", c.Name, c.State)
+	}
+	if c.Notice == "" || !strings.Contains(c.Notice, "../tracker") || !strings.Contains(c.Notice, "brief-43") {
+		t.Fatalf("notice %q does not name the absent unclaimed sibling and its brief", c.Notice)
+	}
+	if !rep.Green() {
+		t.Fatalf("a boot preflight with only an unclaimed absent sibling is not GREEN (blocking: %v)", rep.Blocking())
+	}
+	if len(rep.Notices()) == 0 {
+		t.Fatal("PreflightReport.Notices() is empty though a check carries a notice")
+	}
+	if !strings.Contains(rep.SummaryLine(), "NOTICE") {
+		t.Fatalf("SummaryLine does not surface the notice: %q", rep.SummaryLine())
+	}
+}
+
+// TestPreflightSiblingResolvesThroughConfiguredRoots pins the #661 resolution
+// fix: a declared ../<repo> is located through the CONFIGURED roots
+// (DESK_ROOTS / topology), not a flat ../<repo> next to the desk root. The
+// configured checkout here sits at a path that is NOT ../tracker; the check must
+// stat THAT path and, finding it present, stay green with no notice.
+func TestPreflightSiblingResolvesThroughConfiguredRoots(t *testing.T) {
+	withRoster(t, goldenRoster())
+	const configured = "/workspace/example-org/tracker"
+	p := okProbes()
+	p.QueuedSiblings = func(string) ([]SiblingReq, error) {
+		return []SiblingReq{{Brief: "docs/streams/s/brief-07-x.md", Rel: "../tracker"}}, nil
+	}
+	p.SiblingRoots = func() ([]RootConfig, error) {
+		return []RootConfig{{Repo: "example-org/tracker", Path: configured}}, nil
+	}
+	// Only the CONFIGURED path is present; a flat ../tracker join is absent.
+	p.DirExists = func(path string) (bool, error) { return path == configured, nil }
+	rep := runPF(t, p)
+	c := pfCheck(t, rep, CheckSiblings)
+	if c.State != CheckedClean {
+		t.Fatalf("%s = %s though the configured checkout resolves and is present, want checked-clean (detail %q)", c.Name, c.State, c.Detail)
+	}
+	if c.Notice != "" {
+		t.Fatalf("a resolved-and-present sibling should carry no notice, got %q", c.Notice)
 	}
 }
 
@@ -823,9 +887,12 @@ func TestPreflightEveryNonGreenCheckNamesARemediation(t *testing.T) {
 			p.WriteTransport = func(Landing) (ProbeVerdict, string, error) { return ProbeRejected, "403", nil }
 		},
 		"identity": func(p *PreflightProbes) { p.CommitEmail = func(string) (string, error) { return pfAppIDEmail, nil } },
+		// An UNCLAIMED brief's absent sibling degrades to a notice (#661), so to
+		// exercise the non-green sibling path here we darken it via an unreadable
+		// checkout (stat error → could-not-check), which still names a remediation.
 		"siblings": func(p *PreflightProbes) {
 			p.QueuedSiblings = func(string) ([]SiblingReq, error) { return []SiblingReq{{Brief: "b", Rel: "../x"}}, nil }
-			p.DirExists = func(string) (bool, error) { return false, nil }
+			p.DirExists = func(string) (bool, error) { return false, errors.New("permission denied") }
 		},
 	}
 	for name, darken := range scenarios {
@@ -1003,5 +1070,199 @@ func write(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// --- #655: GitLab cold-mint / forge inference -------------------------------
+
+// TestPreflightColdMintForgeInferenceBothWays is the #655 positive control, both
+// directions in one test. The cold-mint check picks its credential custody path
+// from the RESOLVED forge (ASSAY_REPO_FORGES here), so:
+//
+//   - a github-forge repo takes the GitHub App mint path (the ColdMint probe), and
+//   - a gitlab-forge repo takes the GitLab PAT custody path (GitLabColdCustody),
+//     WITHOUT ever calling the GitHub App minter.
+//
+// FAIL-FIRST. On the pre-#655 code checkColdMint had no forge arm and always
+// called ColdMint, so the gitlab sub-case's "GitLabColdCustody called, ColdMint
+// NOT called" assertion FAILS red. Mutation to reproduce: delete the
+// `if forge == ForgeGitLab { return checkGitLabColdCustody(...) }` arm from
+// checkColdMint — the gitlab case then routes to the GitHub minter, exactly the
+// bug (a GitLab adopter told to provision App PEMs).
+func TestPreflightColdMintForgeInferenceBothWays(t *testing.T) {
+	const slug = "example-org/pilot"
+
+	// The remote-host fallback must never decide the forge here: resolution comes
+	// purely from ASSAY_REPO_FORGES, so make the remote probe fail if consulted.
+	prevHost := originRemoteHost
+	originRemoteHost = func() (string, error) { return "", fmt.Errorf("no remote in this fixture") }
+	t.Cleanup(func() { originRemoteHost = prevHost })
+
+	for _, tc := range []struct {
+		forge          string
+		wantGitHubMint bool
+		wantGitLabCust bool
+		wantDetail     string
+	}{
+		{"github", true, false, "cold mint ok"},
+		{"gitlab", false, true, "gitlab cold custody ok"},
+	} {
+		t.Run(tc.forge, func(t *testing.T) {
+			roster := goldenRoster()
+			roster[EnvRepoForges] = slug + "=" + tc.forge
+			withRoster(t, roster)
+
+			var githubCalled, gitlabCalled bool
+			p := okProbes()
+			p.ResolveForgeKind = nil // exercise the REAL forgeKindProbe (reads ASSAY_REPO_FORGES)
+			p.ColdMint = func(string, string) (string, error) {
+				githubCalled = true
+				return "/tmp/gh-token", nil
+			}
+			p.GitLabColdCustody = func(string) (string, error) {
+				gitlabCalled = true
+				return "/tmp/gitlab-worker.token", nil
+			}
+
+			rep := PreflightRequest{Role: pfRole, Root: t.TempDir(), Repo: slug, Probes: p}.Run()
+			c := pfCheck(t, rep, CheckColdMint)
+			if c.State != CheckedClean {
+				t.Fatalf("forge=%s cold-mint = %s, want checked-clean (%s)", tc.forge, c.State, c.Detail)
+			}
+			if !strings.Contains(c.Detail, tc.wantDetail) {
+				t.Errorf("forge=%s cold-mint detail %q does not contain %q", tc.forge, c.Detail, tc.wantDetail)
+			}
+			if githubCalled != tc.wantGitHubMint {
+				t.Errorf("forge=%s: GitHub minter called=%v, want %v", tc.forge, githubCalled, tc.wantGitHubMint)
+			}
+			if gitlabCalled != tc.wantGitLabCust {
+				t.Errorf("forge=%s: GitLab custody called=%v, want %v — a GitLab repo must NOT take the GitHub App path (#655)",
+					tc.forge, gitlabCalled, tc.wantGitLabCust)
+			}
+		})
+	}
+}
+
+// TestPreflightGitLabColdCustodyRemediationHasNoAppPEM — a GitLab cold-custody
+// failure must name the GitLab custody path, not App PEMs/apps.env. The #655
+// symptom was precisely a GitLab adopter told to point ASSAY_CONFIG_HOME at
+// <role>-app.pem / apps.env, which a GitLab deployment does not have.
+func TestPreflightGitLabColdCustodyRemediationHasNoAppPEM(t *testing.T) {
+	withRoster(t, goldenRoster())
+	p := okProbes()
+	p.ResolveForgeKind = func(string) ForgeKind { return ForgeGitLab }
+	p.GitLabColdCustody = func(string) (string, error) {
+		return "", fmt.Errorf("gitlab token file not found: no gitlab-verifier.token on the App-credential search path")
+	}
+	rep := runPF(t, p)
+	c := pfCheck(t, rep, CheckColdMint)
+	if c.State != CheckedFailed {
+		t.Fatalf("gitlab custody missing = %s, want checked-failed (%s)", c.State, c.Detail)
+	}
+	for _, want := range []string{"gitlab-" + pfRole + ".token", "GITLAB_API_BASE"} {
+		if !strings.Contains(c.Remediation, want) {
+			t.Errorf("gitlab remediation %q does not name %q", c.Remediation, want)
+		}
+	}
+	for _, banned := range []string{"app.pem", "apps.env"} {
+		if strings.Contains(strings.ToLower(c.Remediation), banned) {
+			t.Errorf("gitlab remediation names the GitHub App artifact %q — the #655 wrong-forge text: %q", banned, c.Remediation)
+		}
+	}
+}
+
+// TestPreflightGitLabAppScopesIsNotGitHubGrant — on a GitLab repo the
+// app-scopes-vs-duties check must NOT read a GitHub installation grant or emit a
+// GitHub `--fresh` / apps.env remediation. It is could-not-check (never a false
+// pass) with GitLab-appropriate text.
+func TestPreflightGitLabAppScopesIsNotGitHubGrant(t *testing.T) {
+	withRoster(t, goldenRoster())
+	p := okProbes()
+	p.ResolveForgeKind = func(string) ForgeKind { return ForgeGitLab }
+	p.GitLabColdCustody = func(string) (string, error) { return "/tmp/gitlab-verifier.token", nil }
+	// If the GitHub grant reader were consulted on GitLab it would be through this
+	// probe; make it fail loudly so a regression is unmistakable.
+	p.GrantedScopes = func(string, string) (map[string]string, error) {
+		t.Fatal("the GitHub grant reader was consulted for a GitLab repo (#655)")
+		return nil, nil
+	}
+	rep := runPF(t, p)
+	c := pfCheck(t, rep, CheckAppScopes)
+	if c.State != CouldNotCheck {
+		t.Fatalf("gitlab app-scopes = %s, want could-not-check (%s)", c.State, c.Detail)
+	}
+	for _, banned := range []string{"--fresh", "apps.env", "app.pem"} {
+		if strings.Contains(strings.ToLower(c.Remediation), strings.ToLower(banned)) {
+			t.Errorf("gitlab app-scopes remediation carries GitHub text %q: %q", banned, c.Remediation)
+		}
+	}
+}
+
+// TestForgeKindProbeInfersFromRoster pins the default resolver the cold-mint check
+// uses: ASSAY_REPO_FORGES answers github/gitlab, and an unconfigured repo with no
+// resolvable remote answers "" (unresolved → the caller's GitHub default), never a
+// guess.
+func TestForgeKindProbeInfersFromRoster(t *testing.T) {
+	const slug = "example-org/pilot"
+	prevHost := originRemoteHost
+	originRemoteHost = func() (string, error) { return "", fmt.Errorf("no remote in this fixture") }
+	t.Cleanup(func() { originRemoteHost = prevHost })
+
+	for forge, want := range map[string]ForgeKind{"github": ForgeGitHub, "gitlab": ForgeGitLab} {
+		roster := goldenRoster()
+		roster[EnvRepoForges] = slug + "=" + forge
+		withRoster(t, roster)
+		if got := forgeKindProbe(slug); got != want {
+			t.Errorf("forgeKindProbe(%q) with %s=%s = %q, want %q", slug, EnvRepoForges, forge, got, want)
+		}
+	}
+
+	withRoster(t, goldenRoster()) // no ASSAY_REPO_FORGES entry
+	if got := forgeKindProbe(slug); got != "" {
+		t.Errorf("forgeKindProbe of an unconfigured repo = %q, want \"\" (unresolved, never a guess)", got)
+	}
+}
+
+// TestGitLabColdCustodyProbeReadOnly exercises the REAL gitlabColdCustodyProbe. It
+// proves the probe verifies a fresh rotate's preconditions WITHOUT rotating: it is
+// pure filesystem + env, never a network call (a boot probe must not invalidate a
+// live PAT — #655). Every precondition of `desktoken --forge gitlab` is checked.
+func TestGitLabColdCustodyProbeReadOnly(t *testing.T) {
+	home := withRoster(t, goldenRoster()) // sets HOME → ~/.config/assay is the cred search head
+	credDir := filepath.Join(home, ".config", "assay")
+	tokenFile := filepath.Join(credDir, gitlabTokenFileName(pfRole))
+
+	// (a) No custody file → not-found, no App-PEM language.
+	t.Setenv("GITLAB_API_BASE", "https://gitlab.example.com/api/v4")
+	if _, err := gitlabColdCustodyProbe(pfRole); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("missing custody: err=%v, want a not-found error", err)
+	}
+
+	// (b) Present, 0600, non-empty, GITLAB_API_BASE set → path returned, no error.
+	write(t, tokenFile, "glpat-stub-value")
+	path, err := gitlabColdCustodyProbe(pfRole)
+	if err != nil {
+		t.Fatalf("valid custody + GITLAB_API_BASE set: unexpected err %v", err)
+	}
+	if path != tokenFile {
+		t.Errorf("returned path %q, want the custody file %q (never the token value)", path, tokenFile)
+	}
+	if strings.Contains(path, "glpat-stub-value") {
+		t.Fatal("the probe leaked the token VALUE into its return — it must return the PATH only")
+	}
+
+	// (c) GITLAB_API_BASE unset → refuse before any network contact, named remedy.
+	t.Setenv("GITLAB_API_BASE", "")
+	if _, err := gitlabColdCustodyProbe(pfRole); err == nil || !strings.Contains(err.Error(), "GITLAB_API_BASE") {
+		t.Fatalf("unset GITLAB_API_BASE: err=%v, want a GITLAB_API_BASE error", err)
+	}
+
+	// (d) Wrong file mode → refuse, name 0600.
+	t.Setenv("GITLAB_API_BASE", "https://gitlab.example.com/api/v4")
+	if err := os.Chmod(tokenFile, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitlabColdCustodyProbe(pfRole); err == nil || !strings.Contains(err.Error(), "0600") {
+		t.Fatalf("wrong-mode custody: err=%v, want a 0600 error", err)
 	}
 }

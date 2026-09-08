@@ -442,6 +442,13 @@ func (g *GitLabForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 	if mr.UpdatedAt != nil {
 		out.UpdatedAt = mr.UpdatedAt.UTC().Format(time.RFC3339)
 	}
+	// MergedAt is set ONLY on a merged MR (GitLab reports merged_at null otherwise), so it
+	// carries the merged-vs-closed distinction 1:1 with GitHub's field: a non-nil value is
+	// "merged", a nil value on a State=="closed" MR is "closed-unmerged". Merged mirrors
+	// GitHub's flag from GitLab's own "merged" state, so the merged read does not depend on the
+	// timestamp being populated.
+	out.MergedAt = gitlabTime(mr.MergedAt)
+	out.Merged = strings.EqualFold(mr.State, "merged")
 	return out, nil
 }
 
@@ -1107,6 +1114,130 @@ func (g *GitLabForge) RepoVisibility(repo ForgeRepo) (string, error) {
 	return string(p.Visibility), nil
 }
 
+// ListRecentCommits reads up to limit commits from the head of the default branch (GitLab
+// `GET /projects/:id/repository/commits`, newest first). This maps 1:1: GitLab returns each
+// commit's id and committed_date, the two fields the branch-health probe consumes (it reads
+// only the sha). An EMPTY project answers 404 on the commits list, translated HERE into the
+// backend-neutral ErrForgeEmptyRepo sentinel the caller tests with IsForgeEmptyRepo (the GitHub
+// backend does the same for its own 409 empty signal). Any other status stays a read failure
+// the caller surfaces as could-not-check.
+func (g *GitLabForge) ListRecentCommits(repo ForgeRepo, limit int) ([]RepoCommit, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		return nil, Unverifiable("ListRecentCommits needs a positive limit", nil)
+	}
+	path := fmt.Sprintf("/projects/%s/repository/commits", g.projectPath(repo))
+	commits, _, cerr := cl.Commits.ListCommits(repo.Slug(), &gitlab.ListCommitsOptions{
+		ListOptions: gitlab.ListOptions{PerPage: int64(limit), Page: 1},
+	})
+	if cerr != nil {
+		mapped := g.mapErr(http.MethodGet, path, cerr)
+		if IsForgeNotFound(mapped) {
+			return nil, fmt.Errorf("GitLab project %s has no commits (empty repository, HTTP 404): %w",
+				repo.Slug(), ErrForgeEmptyRepo)
+		}
+		return nil, mapped
+	}
+	out := make([]RepoCommit, 0, len(commits))
+	for _, c := range commits {
+		if c == nil {
+			continue
+		}
+		out = append(out, RepoCommit{SHA: c.ID, CommittedDate: gitlabTime(c.CommittedDate)})
+	}
+	return out, nil
+}
+
+// GetCommit reads one commit's committed date (GitLab `GET /projects/:id/repository/commits/
+// :sha`). CommittedDate maps 1:1; the account-login fields are a per-field could-not-check on
+// GitLab (left EMPTY) because a GitLab commit payload carries the raw git author/committer
+// name+email but does NOT resolve them to an instance account — the same honest posture
+// ReviewsAtHead takes on a CommitID it cannot pin. A caller reads the empty login as UNKNOWN
+// attribution, never as "not the author".
+func (g *GitLabForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(sha) == "" {
+		return nil, Unverifiable("GetCommit needs a non-empty sha for "+repo.Slug(), nil)
+	}
+	path := fmt.Sprintf("/projects/%s/repository/commits/%s", g.projectPath(repo), sha)
+	c, _, cerr := cl.Commits.GetCommit(repo.Slug(), sha, nil)
+	if cerr != nil {
+		return nil, g.mapErr(http.MethodGet, path, cerr)
+	}
+	return &RepoCommit{SHA: c.ID, CommittedDate: gitlabTime(c.CommittedDate)}, nil
+}
+
+// CompareRefs is a could-not-check REFUSAL on GitLab, naming the gap. GitLab's compare
+// endpoint (`GET /projects/:id/repository/compare`) returns the commits and diffs one ref has
+// beyond another, but it reports NO divergence STATUS word (GitHub's identical/ahead/behind/
+// diverged) and NO behind_by count — the two facts the consumers actually key on
+// (changedFilesBetween reads the file set for the MERGE-CURR benign-merge verdict, which the
+// board must not approximate, and fetchBehindMain refuses on an empty status rather than
+// fabricate a "0 commits behind" close-candidate). behind_by would require a SEPARATE inverted
+// compare and the status vocabulary has no GitLab analog at all, so this is a genuine non-1:1
+// deferred to the forge-gitlab compare brief rather than a half-mapped verdict.
+func (g *GitLabForge) CompareRefs(repo ForgeRepo, base, head string) (*RefComparison, error) {
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: the GitLab backend does not serve CompareRefs for %s (%s...%s) — GitLab's compare "+
+			"endpoint reports neither the divergence STATUS word (GitHub's identical/ahead/behind/diverged) nor a "+
+			"behind_by count, the two facts the benign-merge and close-candidate consumers key on; behind_by needs "+
+			"a separate inverted compare and the status vocabulary has no GitLab analog. It is deferred to the "+
+			"forge-gitlab compare brief, never approximated.",
+		repo.Slug(), base, head), nil)
+}
+
+// SearchOpenChanges is a could-not-check REFUSAL on GitLab, naming the gap. This is the ONE
+// owner-wide read on the seam: GitHub's `search prs --owner` asks a single account-scoped
+// question and returns changes across every repo under it. GitLab's search is scoped per group
+// or per project and paginated differently, with no owner-wide "all my open MRs across every
+// project" analog that maps 1:1 — an approximation would silently under- or over-report the
+// scope-reconciliation gap the consuming verb exists to surface, so it is deferred to the
+// forge-gitlab search brief rather than half-mapped here.
+func (g *GitLabForge) SearchOpenChanges(owner string) (*ChangeSearchResults, error) {
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: the GitLab backend does not serve SearchOpenChanges for owner %q — GitHub's "+
+			"owner-wide PR search has no 1:1 GitLab analog (GitLab search is group/project-scoped and paginated "+
+			"differently). It is deferred to the forge-gitlab search brief, never approximated (an under- or "+
+			"over-reported scope reconciliation is worse than a stated could-not-check).",
+		owner), nil)
+}
+
+// ListWorkflowFiles is a could-not-check REFUSAL on GitLab, naming the gap. It is
+// GitHub-Actions-specific: it enumerates the per-workflow files under `.github/workflows`,
+// which the zero-CI probe reads to decide whether a workflow WOULD fire on a diff. GitLab CI
+// configuration is a SINGLE `.gitlab-ci.yml` (plus includes), not a directory of workflow
+// files, so there is no 1:1 listing to return — the whole zero-CI trigger model is
+// GitHub-Actions-shaped and is deferred to the forge-gitlab CI brief rather than mapped onto a
+// different configuration shape here.
+func (g *GitLabForge) ListWorkflowFiles(repo ForgeRepo, ref string) ([]string, error) {
+	return nil, Unverifiable(fmt.Sprintf(
+		"could-not-check: the GitLab backend does not serve ListWorkflowFiles for %s@%s — the workflow-directory "+
+			"listing is GitHub-Actions-specific (`.github/workflows/*.yml`); GitLab CI config is a single "+
+			"`.gitlab-ci.yml`, not a per-workflow-file directory, so there is no 1:1 listing. It is deferred to "+
+			"the forge-gitlab CI brief, never approximated.",
+		repo.Slug(), ref), nil)
+}
+
+// ChangeDiff is a could-not-check REFUSAL on GitLab, naming the gap. It returns a change's raw
+// unified-diff DOCUMENT (GitHub `pr diff`) for human display. GitLab serves a change's diff as
+// a STRUCTURED per-file list (the shape ListChangedFiles already carries on both backends), not
+// as a single raw unified-diff document, so the raw-text read has no 1:1 GitLab form; it is
+// deferred to the forge-gitlab diff brief rather than assembled from the structured form here.
+func (g *GitLabForge) ChangeDiff(repo ForgeRepo, number int) (string, error) {
+	return "", Unverifiable(fmt.Sprintf(
+		"could-not-check: the GitLab backend does not serve ChangeDiff for %s!%d — the raw unified-diff document "+
+			"(`gh pr diff`) has no 1:1 GitLab form; GitLab serves a change's diff as a structured per-file list "+
+			"(ListChangedFiles), not a single raw-text document. It is deferred to the forge-gitlab diff brief, "+
+			"never assembled here.",
+		repo.Slug(), number), nil)
+}
+
 // --- Writes ---
 
 // CreateDraftChange opens a merge request as a DRAFT.
@@ -1449,7 +1580,7 @@ func (g *GitLabForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent,
 			if e == nil || e.Action != "add" || strings.TrimSpace(e.Label.Name) == "" {
 				continue
 			}
-			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username})
+			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username, CreatedAt: gitlabTime(e.CreatedAt)})
 		}
 		if resp == nil || resp.NextPage == 0 {
 			break

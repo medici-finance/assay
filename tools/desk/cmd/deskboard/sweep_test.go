@@ -314,52 +314,6 @@ func TestActions_FailClosed_PerPRRead(t *testing.T) {
 	}
 }
 
-// TestActions_WedgedRead_TimesOut is the #594 proof the other fail-closed tests could not
-// give: a `gh` subprocess that WEDGES — blocks far longer than the per-unit budget, the way
-// a blocking auth/token-refresh did in #594 — must be KILLED by ghRun's context deadline
-// and become a terminable error, so the run fails CLOSED (exit 6) instead of stalling the
-// whole concurrent sweep forever. A fast exit-1 (the DESKBOARD_GH_FAIL_PATH tests) never
-// exercised the hang; before the per-unit ghTimeout this run had no output and never
-// returned. It uses the real exec path (PATH shim) so the deadline and the subprocess kill
-// are genuinely exercised, not stubbed, and it is wrapped in a wall-clock guard: if the run
-// does not return, the deadline did not fire and that is the #594 regression.
-func TestActions_WedgedRead_TimesOut(t *testing.T) {
-	installFakeGH(t)
-	// The open-PR enumeration migrated onto the typed Forge op; ghRun's per-unit deadline now
-	// guards the board's PERIPHERAL gh reads. Seed one open PR (served by the fake Forge) so
-	// the sweep reaches a per-PR ghRun read, then WEDGE that read (the /reviews fetch): each
-	// wedged subprocess must be killed at ghTimeout, and the run must fail closed rather than
-	// hang the whole sweep (#594).
-	t.Setenv("DESKBOARD_GH_PRLIST_JSON", `[{"number":7,"title":"t","state":"OPEN","isDraft":false,`+
-		`"author":{"login":"assay-worker-app[bot]"},"createdAt":"2026-01-01T00:00:00Z","headRefOid":"abc123",`+
-		`"mergeStateStatus":"CLEAN","statusCheckRollup":[{"__typename":"CheckRun","name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}]}]`)
-	t.Setenv("DESKBOARD_GH_HANG_PATH", "/reviews")
-
-	// Shrink the per-unit budget so the test is fast; the shim sleeps 60s, far beyond it.
-	prev := ghTimeout
-	ghTimeout = 300 * time.Millisecond
-	t.Cleanup(func() { ghTimeout = prev })
-
-	var out, errb bytes.Buffer
-	done := make(chan int, 1)
-	go func() { done <- run([]string{"actions"}, &out, &errb) }()
-
-	select {
-	case code := <-done:
-		if code != deskkit.ExitUnverifiable {
-			t.Fatalf("a wedged read must fail closed: exit %d, want %d", code, deskkit.ExitUnverifiable)
-		}
-		if bytes.Contains(out.Bytes(), []byte(`"rows"`)) {
-			t.Errorf("a wedged run must not emit a (partial) board on stdout; got: %s", out.String())
-		}
-		if !bytes.Contains(errb.Bytes(), []byte("timed out")) {
-			t.Errorf("the exit-6 message should report the timeout; got: %s", errb.String())
-		}
-	case <-time.After(20 * time.Second):
-		t.Fatal("run(actions) hung on a wedged gh subprocess — ghRun's per-unit deadline did not fire (#594 regression)")
-	}
-}
-
 // TestSweepRepos_AllErrorPaths is a guard that a NON-first failure still fails: even if the
 // only failing repo is the LAST one swept, the sweep reports it. Pairs with the fail-closed
 // test above by removing any "first repo is special" assumption.
