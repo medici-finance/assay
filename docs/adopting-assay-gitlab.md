@@ -148,6 +148,43 @@ cd "$HOME/.config/assay" && for r in reviewer worker verifier desk issue-loop in
 done
 ```
 
+**`GITLAB_API_BASE` — required before the next boot, and it is not a `roster.env` key.**
+Every GitLab-side token operation — the read-only custody check `deskboot` / `deskroster
+preflight` runs at boot (`token-mint-cold`, GitLab arm), and the rotate-on-mint
+`desktoken --forge gitlab <role>` it is proving the preconditions of — needs the deployment's
+REST v4 base and refuses before any network contact without it. There is **no fallback**:
+unlike GitHub's fixed `api.github.com`, GitLab is commonly self-hosted, so a default host
+would risk sending a role's live PAT to a guessed target the first time this variable was
+left unset. Set it to:
+
+```
+https://gitlab.example.com/api/v4   # self-hosted
+https://gitlab.com/api/v4           # gitlab.com SaaS
+```
+
+It is a plain **environment variable**, read directly from the process environment at call
+time (`os.Getenv("GITLAB_API_BASE")`) — never a `roster.env` key. `roster.env` only recognises
+a fixed, namespaced allowlist of keys (`ASSAY_*`); an unrecognised key in that namespace fails
+the whole shared file closed, and `GITLAB_API_BASE` does not follow that namespace, so writing
+it into `roster.env` does nothing — the tools would not read it there. Export it in the
+environment of whatever shell or session-bootstrap actually invokes the desk verbs (the same
+place that would export e.g. `ASSAY_CONFIG_HOME`), before the next `deskboot` /
+`deskroster preflight` / `desktoken --forge gitlab` call: the GitLab custody check reads the
+variable in-process, with no child process and no scrubbed environment in between, so once it
+is exported in that process's own environment there is nothing further to propagate. A value
+set only in an interactive shell that later exits, or in a config file nothing sources into
+that process's environment, does not count as set.
+
+*Should this become a `roster.env` key instead of an environment variable?* Weighing it: the
+value is deployment-wide (one REST base per GitLab instance, not per-role like the token
+files), which is roster-shaped; but `gitlabAPIBase()` is deliberately read at call time rather
+than cached, specifically so a value exported or changed after process start still takes
+effect (`tools/desk/cmd/desktoken/gitlab.go:52-54`) — a property a `roster.env` key would lose,
+since that file is parsed once through `rosterconfig.go`'s fixed `ASSAY_*` allowlist, and
+adding a new key there means registering it in that allowlist plus threading a second read
+path everywhere `GITLAB_API_BASE` is currently read. That is a real design question, not a
+docs fix — it is not decided here, and this doc does not anticipate the outcome.
+
 **The owner PAT.** Use a **legacy** personal access token with scope `api` (and only
 `api`), issued by a group Owner, expiring in 30–90 days, stored `0600` in the same
 config-home (for example `gitlab-owner.token`) and exported into `GITLAB_TOKEN` only for
