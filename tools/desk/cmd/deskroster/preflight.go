@@ -24,7 +24,7 @@ const preflightUsage = `deskroster preflight — desk operating-envelope check, 
 
 USAGE:
   deskroster preflight --role <role> [--root <dir>] [--repo <owner/name>]
-                       [--remote <name>] [--branch <name>] [--verbose]
+                       [--remote <name>] [--branch <name>] [--claimed-brief <id>] [--verbose]
 
 Runs five checks, each answering checked-clean / checked-failed / could-not-check
 with a NAMED remediation:
@@ -33,7 +33,11 @@ with a NAMED remediation:
   app-scopes-vs-duties   the installation's grant covers the role's duties        (#571)
   write-transport        a READ-ONLY probe of the role's landing path             (#823)
   commit-identity        the commit email carries the BOT USER id, not the App id (#638)
-  sibling-checkouts      the checkouts the QUEUED briefs declare are present      (#679)
+  sibling-checkouts      the checkouts the QUEUED briefs declare are present      (#679 #661)
+
+Sibling checkouts resolve through the configured roots (DESK_ROOTS / topology),
+not a flat ../<repo>; at boot an absent sibling is a NOTICE, and only a brief
+named by --claimed-brief turns its own absent sibling into a hard failure (#661).
 
 A non-green result is COULD-NOT-RUN for the whole pass: one summary line, exit 6.
 The desk stops — it does not claim work, burn a pass, or file an issue about its
@@ -62,6 +66,7 @@ func cmdPreflight(args []string) error {
 	remote := fs.String("remote", "origin", "git remote the role's landing path targets")
 	branch := fs.String("branch", "", "landing branch (default: this worktree's current branch)")
 	repo := fs.String("repo", "", "owner/name whose INSTALLATION the token is minted against (default: derived from the landing remote)")
+	claimedBrief := fs.String("claimed-brief", "", "the brief being CLAIMED (number, file name, or path): its absent sibling checkout is a hard failure, all others degrade to a notice (default: boot mode, every absent sibling a notice)")
 	verbose := fs.Bool("verbose", false, "print every check, not just the summary line")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("bad flags: " + err.Error())
@@ -72,10 +77,11 @@ func cmdPreflight(args []string) error {
 	}
 
 	rep := deskkit.PreflightRequest{
-		Role:    *role,
-		Root:    *root,
-		Repo:    *repo,
-		Landing: deskkit.Landing{Dir: *root, Remote: *remote, Branch: *branch},
+		Role:         *role,
+		Root:         *root,
+		Repo:         *repo,
+		ClaimedBrief: *claimedBrief,
+		Landing:      deskkit.Landing{Dir: *root, Remote: *remote, Branch: *branch},
 	}.Run()
 
 	if *verbose {
@@ -83,6 +89,9 @@ func cmdPreflight(args []string) error {
 			fmt.Fprintf(os.Stdout, "%-22s %-16s %s\n", c.Name, c.State, c.Detail)
 			if c.Remediation != "" {
 				fmt.Fprintf(os.Stdout, "%-22s %-16s fix: %s%s\n", "", "", c.Remediation, refSuffix(c.Refs))
+			}
+			if c.Notice != "" {
+				fmt.Fprintf(os.Stdout, "%-22s %-16s notice: %s\n", "", "", c.Notice)
 			}
 		}
 	}

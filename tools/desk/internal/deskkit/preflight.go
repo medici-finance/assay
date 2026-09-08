@@ -108,6 +108,12 @@ type Check struct {
 	// summary so the reader can see the failure already has a home and does NOT
 	// need a new issue filed about it.
 	Refs string
+	// Notice is an informational message on an OTHERWISE-GREEN check: something
+	// the reader should see that does NOT block the pass. A sibling checkout an
+	// UNCLAIMED cross-repo brief declares is absent at boot is a notice, not a
+	// failure (#661) — the brief is not being claimed now, so the pass proceeds;
+	// the notice records that claiming it later needs that checkout.
+	Notice string
 }
 
 // clean builds a green result. A green check carries no remediation by construction.
@@ -157,6 +163,20 @@ func (r PreflightReport) Blocking() []Check {
 	return out
 }
 
+// Notices returns the informational notices attached to otherwise-green checks,
+// in check order, each prefixed with the check name. A notice is something the
+// reader should see that does NOT block the pass — an unclaimed brief's absent
+// cross-repo sibling, say (#661) — so it is reported even on a GREEN preflight.
+func (r PreflightReport) Notices() []string {
+	var out []string
+	for _, c := range r.Checks {
+		if c.Notice != "" {
+			out = append(out, c.Name+": "+c.Notice)
+		}
+	}
+	return out
+}
+
 // SummaryLine is the ONE line a red preflight prints. It is one line by
 // construction — every embedded newline and carriage return is collapsed to a
 // space — because the contract is "report one line and stop", and a probe's
@@ -179,6 +199,9 @@ func (r PreflightReport) SummaryLine() string {
 		if c.Refs != "" {
 			fmt.Fprintf(&b, " [%s]", c.Refs)
 		}
+	}
+	for _, n := range r.Notices() {
+		fmt.Fprintf(&b, " · NOTICE %s", n)
 	}
 	return oneLine(b.String())
 }
@@ -264,6 +287,12 @@ type PreflightProbes struct {
 	AppIDFor func(role string) (string, error)
 	// QueuedSiblings returns the sibling checkouts the QUEUED briefs declare.
 	QueuedSiblings func(root string) ([]SiblingReq, error)
+	// SiblingRoots returns the multi-repo roots the desk is CONFIGURED to trust
+	// (DESK_ROOTS / the topology map). A declared `../<repo>` sibling resolves to
+	// that repo's configured checkout path rather than a flat `../<repo>` next to
+	// the desk root (#661) — the flat layout is only the fallback. nil → the real
+	// ConfiguredRoots.
+	SiblingRoots func() ([]RootConfig, error)
 	// DirExists reports whether a directory is present and readable.
 	DirExists func(path string) (bool, error)
 }
@@ -287,7 +316,15 @@ type PreflightRequest struct {
 	// tests an installation the pass will never use.
 	Repo    string
 	Landing Landing
-	Probes  PreflightProbes
+	// ClaimedBrief, when non-empty, puts the sibling-checkout check in CLAIM mode:
+	// an absent sibling declared by THIS brief is a hard failure, while an absent
+	// sibling declared by any OTHER (unclaimed) queued brief degrades to a notice
+	// (#661). Empty is BOOT mode — nothing is claimed yet, so every absent sibling
+	// is a notice and none blocks boot. The value is matched as a substring of the
+	// brief's stream-relative path, so a caller may name the brief by number
+	// ("43"), file name ("brief-43-x.md"), or full path.
+	ClaimedBrief string
+	Probes       PreflightProbes
 }
 
 // Preflight runs the five envelope checks for a role against the current
@@ -339,7 +376,7 @@ func (req PreflightRequest) Run() PreflightReport {
 		checkAppScopes(p, role, tokenPath),
 		checkWriteTransport(p, l),
 		checkCommitIdentity(p, role, l.Dir),
-		checkSiblings(p, root),
+		checkSiblings(p, root, req.ClaimedBrief),
 	)
 	return rep
 }
@@ -363,6 +400,9 @@ func (p PreflightProbes) withDefaults() PreflightProbes {
 	}
 	if p.QueuedSiblings == nil {
 		p.QueuedSiblings = QueuedSiblings
+	}
+	if p.SiblingRoots == nil {
+		p.SiblingRoots = ConfiguredRoots
 	}
 	if p.DirExists == nil {
 		p.DirExists = dirExistsProbe
@@ -897,11 +937,26 @@ func commitEmailProbe(dir string) (string, error) {
 
 // --- check 5: sibling checkouts --------------------------------------------
 
-// checkSiblings proves the sibling checkouts the QUEUED briefs declare are
-// actually present, before a pass claims a brief whose rows cannot run (#679 —
-// two rows deferred mid-verify for want of a co-located sibling checkout).
-func checkSiblings(p PreflightProbes, root string) Check {
-	const refs = "#679"
+// checkSiblings proves the sibling checkouts the QUEUED briefs declare can be
+// found, before a pass claims a brief whose rows cannot run (#679 — two rows
+// deferred mid-verify for want of a co-located sibling checkout).
+//
+// Two properties #661 added, after a flat-layout assumption bricked a whole
+// cell's boot:
+//
+//   - RESOLUTION IS NOT FLAT. A declared `../<repo>` is resolved through the
+//     CONFIGURED roots (DESK_ROOTS / the topology map) first, so a desk whose
+//     checkouts do not sit in a `../<repo>` layout — a pod at
+//     /workspace/<org>/<repo>, say — still locates the sibling. The flat
+//     `<root>/../<repo>` join is only the fallback when no configured root's
+//     repo name matches.
+//   - PRESENCE IS SCOPED TO THE CLAIM. At boot (claimedBrief == "") nothing is
+//     claimed, so an absent sibling is a NOTICE, not a failure — an unclaimed
+//     brief's missing cross-repo checkout must not block the boot of every loop
+//     in the cell. Only when a brief is being CLAIMED does its own absent
+//     sibling become a hard failure: that brief's rows genuinely cannot run.
+func checkSiblings(p PreflightProbes, root, claimedBrief string) Check {
+	const refs = "#679 #661"
 	reqs, err := p.QueuedSiblings(root)
 	if err != nil {
 		return unchecked(CheckSiblings, oneLine(err.Error()),
@@ -910,28 +965,92 @@ func checkSiblings(p PreflightProbes, root string) Check {
 	if len(reqs) == 0 {
 		return clean(CheckSiblings, "no queued brief declares an out-of-repo checkout", refs)
 	}
-	var missing []string
+	// Resolve declared ../<repo> siblings through the configured roots so a
+	// non-flat checkout layout still finds them (#661). A roots-config error is
+	// not this check's to raise: fall back to the flat per-sibling join.
+	roots, rootsErr := p.SiblingRoots()
+	if rootsErr != nil {
+		roots = nil
+	}
+	var missing, notices []string
 	for _, r := range reqs {
-		abs := r.Rel
-		if !filepath.IsAbs(abs) {
-			abs = filepath.Join(root, r.Rel)
-		}
+		abs := resolveSiblingPath(root, r.Rel, roots)
 		ok, derr := p.DirExists(abs)
 		if derr != nil {
 			return unchecked(CheckSiblings, "cannot stat "+abs+" (declared by "+r.Brief+"): "+oneLine(derr.Error()),
 				"make "+abs+" readable, or correct the out-of-repo declaration in "+r.Brief, refs)
 		}
-		if !ok {
-			missing = append(missing, r.Rel+" (declared by "+r.Brief+")")
+		if ok {
+			continue
+		}
+		entry := r.Rel + " (declared by " + r.Brief + ")"
+		if claimedBrief != "" && briefMatchesClaim(r.Brief, claimedBrief) {
+			missing = append(missing, entry)
+		} else {
+			notices = append(notices, entry)
 		}
 	}
 	if len(missing) > 0 {
 		sort.Strings(missing)
-		return failed(CheckSiblings, "declared sibling checkout(s) absent: "+strings.Join(missing, "; "),
-			"clone or `git worktree add` the missing checkout(s) next to "+root+
-				" before claiming those briefs — a row that cannot run must not be claimed", refs)
+		return failed(CheckSiblings, "sibling checkout(s) the CLAIMED brief declares are absent: "+strings.Join(missing, "; "),
+			"clone or `git worktree add` the missing checkout(s) — resolve their location via "+RootsEnv+
+				" if your layout is not ../<repo> — before claiming that brief; a row that cannot run must not be claimed", refs)
 	}
-	return clean(CheckSiblings, fmt.Sprintf("%d declared sibling checkout(s) present", len(reqs)), refs)
+	present := len(reqs) - len(notices)
+	c := clean(CheckSiblings, fmt.Sprintf("%d declared sibling checkout(s) resolved", len(reqs)), refs)
+	if len(notices) > 0 {
+		sort.Strings(notices)
+		c.Detail = fmt.Sprintf("%d of %d declared sibling checkout(s) present", present, len(reqs))
+		c.Notice = "unclaimed brief(s) declare an out-of-repo checkout not present here: " + strings.Join(notices, "; ") +
+			" — not a boot failure; needed only when that brief is claimed (resolve its location via " + RootsEnv + ")"
+	}
+	return c
+}
+
+// repoName returns the name segment of an owner/name repo slug.
+func repoName(slug string) string {
+	if i := strings.LastIndex(slug, "/"); i >= 0 {
+		return slug[i+1:]
+	}
+	return slug
+}
+
+// resolveSiblingPath turns a brief's declared ../<repo> sibling into the
+// directory the check should stat. It prefers the CONFIGURED checkout for the
+// repo whose name matches <repo> (DESK_ROOTS / the topology map), so a desk
+// whose checkouts do not sit in a flat ../<repo> layout still resolves the
+// sibling (#661). Only when no configured root's repo name matches does it fall
+// back to the historical flat join of <root>/../<repo>.
+func resolveSiblingPath(root, rel string, roots []RootConfig) string {
+	name := strings.TrimPrefix(rel, "../")
+	// The declared head is ../<repo>; guard against anything trailing it.
+	if i := strings.IndexByte(name, '/'); i >= 0 {
+		name = name[:i]
+	}
+	for _, r := range roots {
+		if repoName(r.Repo) == name {
+			if abs, err := filepath.Abs(r.Path); err == nil {
+				return abs
+			}
+			return r.Path
+		}
+	}
+	if filepath.IsAbs(rel) {
+		return rel
+	}
+	return filepath.Join(root, rel)
+}
+
+// briefMatchesClaim reports whether the queued brief that declared a sibling is
+// the one the pass is CLAIMING. The claim id is matched as a substring of the
+// brief's stream-relative path, so a caller may name the brief by its number
+// ("43"), its file name ("brief-43-x.md"), or its full path.
+func briefMatchesClaim(briefPath, claim string) bool {
+	claim = strings.TrimSpace(claim)
+	if claim == "" {
+		return false
+	}
+	return strings.Contains(briefPath, claim)
 }
 
 // siblingRe extracts a sibling checkout root from an out-of-repo declaration:
