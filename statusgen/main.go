@@ -377,6 +377,13 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		if n := openIssueDebtNotice(staleIssueDaysCfg); n != "" {
 			notices = append(notices, n)
 		}
+		// Drive-plan honesty: PROBLEM a drive-plan .md whose
+		// snapshot region has drifted from a fresh render, or that has no manifest
+		// beside it. --lint only (the PR gate); STATUS.md-free and offline. Absent
+		// docs/roadmap/drives ⇒ inert.
+		dp, dn := driveRegionLintProblems(root, nowFunc())
+		problems = append(problems, dp...)
+		notices = append(notices, dn...)
 	}
 	// T9: when origin/main is unresolvable, grandfatheredIDs returns empty and
 	// idFormatProblems fires numeric-regression PROBLEMs against every
@@ -1292,6 +1299,14 @@ func main() {
 	// so a board-build PROBLEM can neither abort nor silence it.
 	watchdogMode := flag.Bool("watchdog", false, "board-freeze watchdog: alarm (rc 1 + JSON issue payload) when STATUS.md freshness exceeds 2× the regen cadence; does NO board build")
 	driveMarkers := flag.String("drive-markers", "", "file of already-existing drive-issue markers (tracking/act/ping; one per line, or raw issue bodies/comments)")
+	// Drive snapshot: print the `## Drive: <slug>` dashboard
+	// section on its own — the same render drivedash writes into STATUS.md, offline
+	// and STATUS.md-free — so a drive-plan file can carry a fenced snapshot of the
+	// board's own truth. With the boolean --check modifier and a trailing <file>
+	// positional it compares that file's region against a fresh render (0 identical,
+	// 1 drift, 2 could-not-check). Reuses the existing --check flag; the shipped
+	// board-check is untouched.
+	driveSnapshotSlug := flag.String("drive-snapshot", "", "print the `## Drive: <slug>` dashboard section (offline, STATUS.md-free); with --check <file> compare that file's drive-snapshot region against a fresh render (exit 0 identical, 1 drift, 2 could-not-check)")
 	// Sign-off digest (methodology-metrics/38) — the BATCH view over
 	// --verify-issues' per-brief cards: one body listing EVERY brief awaiting a
 	// human sign-off, oldest-first, each with its recorded Evidence link. Same
@@ -1499,6 +1514,7 @@ func main() {
 			"--decision-issues":       *decisionIssuesMode,
 			"--owed-issues":           *owedIssuesMode,
 			"--drive-issues":          *driveIssuesMode,
+			"--drive-snapshot":        *driveSnapshotSlug != "",
 			"--signoff-digest":        *signoffDigestMode,
 			"--scan-issues":           *scanIssuesMode,
 			"--transcribe-scan":       *transcribeScanMode,
@@ -1626,6 +1642,14 @@ func main() {
 	// it detects.
 	if *watchdogMode {
 		os.Exit(runWatchdog(*root))
+	}
+	// Drive snapshot: self-contained, STATUS.md-free,
+	// offline. Prints the `## Drive: <slug>` section, or (with --check + a trailing
+	// <file>) compares that file's region. Placed BEFORE the checkMode board-check
+	// switch below so the boolean --check reads as this sub-command's modifier when
+	// --drive-snapshot is set.
+	if *driveSnapshotSlug != "" {
+		os.Exit(runDriveSnapshot(*root, *driveSnapshotSlug, *checkMode, flag.Args(), nowFunc()))
 	}
 	// Sign-off digest: the roll-up over the per-brief cards. Self-contained,
 	// STATUS.md-free, offline. Non-zero exit means could-not-check — never an

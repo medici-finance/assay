@@ -1,0 +1,101 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// activeActOnlyManifest is an operator-act-only active drive: it applies and
+// renders (WAITING-ON-YOU) without naming any stream, so the lint fixtures need
+// no on-disk docs/streams to resolve against.
+const activeActOnlyManifest = "declared-by: ian\n" + liveWindow +
+	"intensity: focus\nstate: active\nwhy: lint fixture\n" +
+	"items:\n  - owner: operator\n    unblocks: sign the release\n    since: \"2026-08-13\"\n"
+
+func writePlanMD(t *testing.T, root, slug, content string) {
+	t.Helper()
+	dir := filepath.Join(root, "docs", "roadmap", "drives")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, slug+".md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func hasProblemContaining(problems []string, sub string) bool {
+	for _, p := range problems {
+		if strings.Contains(p, sub) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestLintDriveRegionDrift (Verify row 7a, mutation): --lint PROBLEMs a
+// drive-plan .md whose snapshot region has been hand-edited away from a fresh
+// render; an identical region is clean.
+func TestLintDriveRegionDrift(t *testing.T) {
+	root := t.TempDir()
+	makeStreamsDir(t, root)
+	writeDrive(t, root, "d1", activeActOnlyManifest)
+
+	fresh, rc := driveSnapshotSection(root, "d1", driveTestNow)
+	if rc != 0 {
+		t.Fatalf("fixture drive d1 must render (rc %d)", rc)
+	}
+	region := driveSnapshotBeginPrefix + "d1 @deadbee 2026-08-15" + driveSnapshotMarkerSuffix + "\n" +
+		fresh + driveSnapshotEndMarker + "\n"
+	plan := "# Drive d1\n\nprose\n\n" + region
+
+	// Clean: an identical region raises no drift PROBLEM.
+	writePlanMD(t, root, "d1", plan)
+	if problems, _ := driveRegionLintProblems(root, driveTestNow); hasProblemContaining(problems, "drive-region-drift") {
+		t.Fatalf("identical region must not PROBLEM: %v", problems)
+	}
+
+	// Drift: one hand-edited cell inside the fence PROBLEMs.
+	drifted := strings.Replace(plan, "sign the release", "sign the RELEASE", 1)
+	if drifted == plan {
+		t.Fatal("mutation target not found")
+	}
+	writePlanMD(t, root, "d1", drifted)
+	problems, _ := driveRegionLintProblems(root, driveTestNow)
+	if !hasProblemContaining(problems, "drive-region-drift") {
+		t.Fatalf("a hand-edited region must PROBLEM drive-region-drift: %v", problems)
+	}
+	if !hasProblemContaining(problems, "d1.md") {
+		t.Errorf("the PROBLEM must name the drifted plan file: %v", problems)
+	}
+
+	// Absent docs/roadmap/drives ⇒ inert.
+	empty := t.TempDir()
+	if p, n := driveRegionLintProblems(empty, driveTestNow); len(p) != 0 || len(n) != 0 {
+		t.Errorf("no drives dir must be inert: problems=%v notices=%v", p, n)
+	}
+}
+
+// TestLintDriveWithoutManifest (Verify row 7a): --lint PROBLEMs a drive-plan .md
+// with no <slug>.yaml manifest beside it.
+func TestLintDriveWithoutManifest(t *testing.T) {
+	root := t.TempDir()
+	makeStreamsDir(t, root)
+	writePlanMD(t, root, "orphan", "# Orphan drive\n\nno manifest beside me\n")
+
+	problems, _ := driveRegionLintProblems(root, driveTestNow)
+	if !hasProblemContaining(problems, "drive-without-manifest") {
+		t.Fatalf("a plan file with no manifest must PROBLEM drive-without-manifest: %v", problems)
+	}
+	if !hasProblemContaining(problems, "orphan") {
+		t.Errorf("the PROBLEM must name the orphan plan file: %v", problems)
+	}
+
+	// With the manifest beside it, the drive-without-manifest PROBLEM clears.
+	writeDrive(t, root, "orphan", activeActOnlyManifest)
+	problems2, _ := driveRegionLintProblems(root, driveTestNow)
+	if hasProblemContaining(problems2, "drive-without-manifest") {
+		t.Errorf("a manifest beside the plan must clear drive-without-manifest: %v", problems2)
+	}
+}
