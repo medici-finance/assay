@@ -107,7 +107,13 @@ func withRoster(t *testing.T, vals map[string]string) string {
 	for _, k := range keys {
 		fmt.Fprintf(&b, "%s=%s\n", k, vals[k])
 	}
-	if err := os.WriteFile(filepath.Join(dir, "roster.env"), []byte(b.String()), 0o600); err != nil {
+	file := filepath.Join(dir, "roster.env")
+	if err := os.WriteFile(file, []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// On Windows a fresh temp dir inherits ACEs the roster ACL check would flag;
+	// establish the owner-only state a correctly-installed roster has. No-op on unix.
+	if err := secureTestRosterPaths(dir, file); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)

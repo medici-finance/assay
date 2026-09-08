@@ -34,6 +34,14 @@ reviewable artifact, not a run.
   suite"): the test corpus plus the release mutation gate, on push to the default branch and
   on a daily schedule, reporting three-state. Promote it to `.github/workflows/truth-suite.yml`
   to activate.
+- `winparity.yml` — the Windows-build ↔ Makefile target-parity gate (#665). Runs
+  `cd tools/winparity && go run . --root ../..` on the self-hosted `medici-builder-public` runner
+  (hand-installed Go, no `make`), asserting that `scripts/build-windows.ps1`'s declared target set
+  equals the root `Makefile`'s `.PHONY` set — so a target added on one side and not the other
+  reddens rather than shipping a Windows build that fell behind the Unix target set. The Windows
+  script runs the same `tools/winparity` guard as a preflight; this leg is the Linux-CI half, so a
+  Makefile-only edit (the change that never runs the Windows script) is still caught. Promote it to
+  `.github/workflows/winparity.yml` to activate.
 - `windows-ci-leg.yml` — the Windows CI leg (`windows-port/04`): the first check in this repo
   to run on a Windows runner. On GitHub-hosted `windows-latest` it installs Go
   (`actions/setup-go`, which works there — unlike the self-hosted Linux pool), builds

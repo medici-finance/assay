@@ -78,7 +78,13 @@ func scanWithRoster(t *testing.T, vals map[string]string) string {
 	for _, k := range keys {
 		b.WriteString(k + "=" + vals[k] + "\n")
 	}
-	if err := os.WriteFile(filepath.Join(dir, "roster.env"), []byte(b.String()), 0o600); err != nil {
+	file := filepath.Join(dir, "roster.env")
+	if err := os.WriteFile(file, []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// On Windows a fresh temp dir inherits ACEs the roster ACL check would flag;
+	// establish the owner-only state a correctly-installed roster has. No-op on unix.
+	if err := secureTestRosterPaths(dir, file); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
@@ -424,30 +430,38 @@ func TestConfigHomePermissionsEnforced(t *testing.T) {
 	// A flat loop, NOT subtests: the brief's Verify row pins the `--- PASS:` count
 	// for this test name at exactly 2 (one per module), and a t.Run subtest would
 	// print its own line and inflate it past the pin.
-	for _, tc := range []struct {
-		name string
-		path string
-		mode os.FileMode
-	}{
-		{"group-writable file", file, 0o660},
-		{"world-writable file", file, 0o606},
-		{"group-writable directory", dir, 0o770},
-		{"world-writable directory", dir, 0o707},
-	} {
-		if err := os.Chmod(tc.path, tc.mode); err != nil {
-			t.Fatal(err)
+	//
+	// Gated on supportsPOSIXRosterModes: os.Chmod cannot produce group/world-
+	// writable mode bits on Windows (os.FileMode is synthetic there), so the POSIX
+	// mode assertions run on unix only. The Windows equivalent — a foreign
+	// write-granting ACE is refused — is covered by TestEvaluateRosterACL (the
+	// platform-independent decision) and TestWindowsRosterACLIntegration.
+	if supportsPOSIXRosterModes {
+		for _, tc := range []struct {
+			name string
+			path string
+			mode os.FileMode
+		}{
+			{"group-writable file", file, 0o660},
+			{"world-writable file", file, 0o606},
+			{"group-writable directory", dir, 0o770},
+			{"world-writable directory", dir, 0o707},
+		} {
+			if err := os.Chmod(tc.path, tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			scanReloadConfig()
+			cfg := scanEffectiveConfig()
+			if cfg.Configured() {
+				t.Errorf("statusgen accepted a roster from a %s", tc.name)
+			}
+			if !strings.Contains(strings.Join(cfg.Problems, " "), "writable") {
+				t.Errorf("the %s refusal does not name the permission problem: %v", tc.name, cfg.Problems)
+			}
+			_ = os.Chmod(dir, 0o700)
+			_ = os.Chmod(file, 0o600)
+			scanReloadConfig()
 		}
-		scanReloadConfig()
-		cfg := scanEffectiveConfig()
-		if cfg.Configured() {
-			t.Errorf("statusgen accepted a roster from a %s", tc.name)
-		}
-		if !strings.Contains(strings.Join(cfg.Problems, " "), "writable") {
-			t.Errorf("the %s refusal does not name the permission problem: %v", tc.name, cfg.Problems)
-		}
-		_ = os.Chmod(dir, 0o700)
-		_ = os.Chmod(file, 0o600)
-		scanReloadConfig()
 	}
 
 	_ = os.Chmod(dir, 0o700)

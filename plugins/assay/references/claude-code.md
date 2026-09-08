@@ -32,13 +32,17 @@ binding ([`cursor.md`](./cursor.md)) that carry the `degrades`/`refuses` cells.
 | Skill | Claude Code |
 |---|---|
 | `adopt` | runs |
+| `ask-decision` | runs |
 | `author-brief` | runs |
 | `dailies` | runs |
+| `install` | runs |
 | `intake-desk` | runs |
 | `market-intelligence` | runs |
+| `pdfingest` | runs |
 | `pr-review-desk` | runs |
 | `pr-shepherd` | runs |
 | `the-desk` | runs |
+| `upgrade-assay` | runs |
 | `verify-desk` | runs |
 | `worker-desk` | runs |
 

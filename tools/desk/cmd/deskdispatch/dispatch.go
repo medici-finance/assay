@@ -86,6 +86,10 @@ type dispatchOpts struct {
 	promptFile string
 	quiet      bool
 	dryRun     bool
+	// worktree is an operator-STATED home for the agent, accepted ONLY with --dry-run.
+	// A real dispatch names the path deskwt printed and nothing else — this flag never
+	// reaches one. See validateOperatorWorktree for the fail-closed checks it must pass.
+	worktree string
 }
 
 func cmdDispatch(args []string) error {
@@ -106,6 +110,8 @@ func cmdDispatch(args []string) error {
 	promptFile := fs.String("prompt-file", "", "write the assembled prompt here instead of stdout")
 	quiet := fs.Bool("quiet", false, "suppress the per-step OK lines")
 	dryRun := fs.Bool("dry-run", false, "print the plan and the prompt; touch nothing")
+	worktree := fs.String("worktree", "", "with --dry-run ONLY: render the prompt against this operator-stated, "+
+		"already-existing home worktree instead of the not-yet-known placeholder. Refused on a real dispatch")
 
 	if len(args) == 0 {
 		return deskkit.Refused("deskdispatch requires an <item-key>")
@@ -124,7 +130,7 @@ func cmdDispatch(args []string) error {
 	o := dispatchOpts{
 		item: item, tier: *tier, kit: *kit, repo: *repo, root: *root, claimRoot: *claimRoot,
 		model: *model, branch: *branch, brief: *brief, gateHuman: *gateHuman, pr: *pr,
-		promptFile: *promptFile, quiet: *quiet, dryRun: *dryRun,
+		promptFile: *promptFile, quiet: *quiet, dryRun: *dryRun, worktree: *worktree,
 	}
 	err := dispatch(o)
 	audit(o, err)
@@ -142,8 +148,15 @@ func dispatch(o dispatchOpts) error {
 	repo, branch, wtName := plan.repo, plan.branch, plan.wtName
 
 	if o.dryRun {
-		fmt.Printf("deskdispatch: PLAN (dry run — nothing touched) item=%s repo=%s tier=%s kit=%s branch=%s\n",
-			o.item, repo, o.tier, o.kit, branch)
+		wtBanner := ""
+		if plan.home != "" {
+			// The banner records that the path was CHECKED, not predicted — a transcript reader
+			// can tell an operator-supplied verified home from the placeholder the verb renders
+			// when it does not know where the worktree will land.
+			wtBanner = fmt.Sprintf(" worktree=%s (operator-supplied, verified)", plan.home)
+		}
+		fmt.Printf("deskdispatch: PLAN (dry run — nothing touched) item=%s repo=%s tier=%s kit=%s branch=%s%s\n",
+			o.item, repo, o.tier, o.kit, branch, wtBanner)
 		for i, s := range dispatchSteps {
 			fmt.Printf("  %d %s\n", i+1, s)
 		}
@@ -155,7 +168,7 @@ func dispatch(o dispatchOpts) error {
 		} else {
 			fmt.Println("  " + line)
 		}
-		prompt, perr := assemblePrompt(o, plan, "")
+		prompt, perr := assemblePrompt(o, plan, plan.home)
 		if perr != nil {
 			return perr
 		}
@@ -302,6 +315,11 @@ type dispatchPlan struct {
 	// the invocation cannot drift onto two different files.
 	claimScript    string
 	decisionScript string
+	// home is the operator-supplied, VALIDATED home worktree to render the dry-run prompt
+	// against (from --worktree). It is "" on every path but a --dry-run that passed
+	// validateOperatorWorktree — an empty value renders the not-yet-known placeholder, so a
+	// real dispatch, which never sets it, is unaffected.
+	home string
 }
 
 // validateCallerPreconditions checks EVERY caller-controlled precondition, and it runs
@@ -326,6 +344,18 @@ type dispatchPlan struct {
 // of bad inputs and asserts NOTHING was executed.
 func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	var plan dispatchPlan
+
+	// --worktree is accepted ONLY together with --dry-run. On a real dispatch the home is the
+	// path deskwt printed and nothing else, so an operator-stated one must never reach it —
+	// letting it through would override deskwt's own placement, the one value the isolation
+	// floor rests on. Checked FIRST, before any durable state or child process, so the refusal
+	// costs nothing and TestWorktreeFlagRefusedOnRealDispatch can prove zero processes ran.
+	if strings.TrimSpace(o.worktree) != "" && !o.dryRun {
+		return plan, deskkit.Refused(fmt.Sprintf(
+			"step %s: --worktree is accepted only with --dry-run. A real dispatch names the home worktree "+
+				"deskwt printed and nothing else; an operator-stated path must not override that placement.",
+			stepWorktreeCreate))
+	}
 
 	if !itemKeyRe.MatchString(o.item) {
 		return plan, deskkit.Refused(fmt.Sprintf(
@@ -473,6 +503,17 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 				"step %s: --prompt-file %q sits under %s, which is not a directory.",
 				stepPromptEmit, p, dir))
 		}
+	}
+
+	// The operator-supplied home worktree (--dry-run only; the flag pairing was refused above
+	// otherwise). All three checks fail closed with their own reason. On success plan.home
+	// carries the RESOLVED path both placeholder sites render against.
+	if strings.TrimSpace(o.worktree) != "" {
+		home, err := validateOperatorWorktree(o.root, o.worktree)
+		if err != nil {
+			return plan, err
+		}
+		plan.home = home
 	}
 
 	return plan, nil

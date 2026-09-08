@@ -4,12 +4,13 @@ package main
 //
 // WHY THIS EXISTS. Every board-wide verb (actions / prs / queue / health / stalled /
 // policydrift) used to walk `deskkit.AllowedRepos()` in a plain serial `for` loop, and
-// inside each repo it walked the repo's PRs serially, shelling out through `ghRun` once
-// per read. With a 15-repo roster that is a serial chain of 50–150 `gh` subprocess
-// round-trips, and the wall-clock is dominated almost entirely by subprocess/network
-// latency, not compute (a measured `actions` run spent ~3.5s of CPU across ~98s of wall
-// clock — 96% of it waiting on `gh`). The fix is to run the per-repo work concurrently
-// under a BOUNDED worker pool.
+// inside each repo it walked the repo's PRs serially, one forge read at a time. With a
+// 15-repo roster that is a serial chain of 50–150 read round-trips whose wall-clock is
+// dominated almost entirely by network latency, not compute (a measured `actions` run
+// spent ~3.5s of CPU across ~98s of wall clock — 96% of it waiting on the forge). The fix
+// is to run the per-repo work concurrently under a BOUNDED worker pool. The reads
+// themselves reach the forge through deskkit's typed Forge seam (HTTP GETs), not a CLI
+// subprocess — the forge-neutral migration deleted deskboard's `gh`/ghRun path.
 //
 // THE STRUCTURE: per-repo → product → full. sweepRepos runs one closure
 // per repo concurrently and returns each repo's PARTIAL result — its own rows/tombstone
@@ -22,8 +23,8 @@ package main
 // future `--product <name>` partial board would filter on.
 //
 // THE INVARIANTS THIS MUST NOT BREAK (all reviewer-checked):
-//   - ghRun stays the single exec choke point. Concurrency is plain `exec.Command`s
-//     running at once; there is no second exec route. Nothing here calls exec itself.
+//   - No forge CLI. The reads run through the typed Forge seam (HTTP GETs); concurrency is
+//     plain typed reads running at once. Nothing here shells a forge CLI or calls exec.
 //   - Fail-closed. A repo error must still fail the WHOLE run and still name the
 //     repo — concurrency must never downgrade a hard error into a partial "clean" board.
 //     sweepRepos collects every repo's error and returns the LOWEST-INDEX repo's error
@@ -32,9 +33,10 @@ package main
 //     upstream of here, and is untouched.
 //   - Bounded concurrency. Exactly `limit` worker goroutines are ever alive (a fixed
 //     worker pool, not one goroutine per repo blocking on a semaphore), so a large roster
-//     cannot explode into hundreds of concurrent `gh` subprocesses and trip GitHub's
-//     secondary rate limits. The per-PR reads inside a repo stay SERIAL within that repo's
-//     worker, so the total number of concurrent `gh` processes never exceeds `limit`.
+//     cannot explode into hundreds of concurrent forge reads and trip GitHub's secondary
+//     rate limits. The per-PR reads inside a repo stay SERIAL within that repo's worker
+//     (except where a verb fans them out under its own bounded pool, e.g. actions), so the
+//     number of concurrent forge reads is bounded by the pool limit(s) in play.
 
 import (
 	"sort"
@@ -44,8 +46,8 @@ import (
 )
 
 // sweepConcurrency bounds how many repos are swept at once — and, because each repo's
-// per-PR reads run serially inside its worker, it also bounds the total number of
-// concurrent `gh` subprocesses to this value.
+// per-PR reads run serially inside its worker (save a verb's own inner fan-out pool), it
+// bounds the number of concurrent forge reads to roughly this value.
 //
 // 6 is a deliberate middle: high enough to turn a 15-repo serial chain into ~3 waves
 // (a several-× wall-clock win), low enough to stay well clear of GitHub's secondary
@@ -68,10 +70,10 @@ const sweepConcurrency = 6
 // and the workers are bounded, so draining them is cheap and keeps the failure deterministic.
 //
 // Exactly min(limit, len(items)) worker GOROUTINES are created — never one per item — so
-// this cannot spawn an unbounded number of goroutines. The number of concurrent `gh`
-// SUBPROCESSES is bounded separately and authoritatively by ghRun's ghSem, so nesting one
-// sweepConcurrent (per-PR) inside another (per-repo) still cannot exceed ghConcurrency
-// live subprocesses no matter what pool sizes the two levels pass.
+// this cannot spawn an unbounded number of goroutines. There is no global forge-read
+// semaphore (the forge-neutral migration deleted ghRun and its ghSem), so nesting one
+// sweepConcurrent (per-PR) inside another (per-repo) bounds concurrent reads by the PRODUCT
+// of the two levels' `limit`s — the per-level pools are the only bound.
 func sweepConcurrent[In, Out any](items []In, limit int, work func(In) (Out, error)) ([]Out, error) {
 	results := make([]Out, len(items))
 	errs := make([]error, len(items))

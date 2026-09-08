@@ -1182,6 +1182,26 @@ result as root, so the module cache is not written as root. Both `desk-build` an
 `desk-install` guard the `cmd/*` glob and succeed with zero commands present (as today,
 before briefs 02-05/07 add binaries).
 
+**On Windows**, the same targets are driven by
+[`scripts/build-windows.ps1`](../../scripts/build-windows.ps1) — a PowerShell script,
+so no `nmake`, Visual Studio build tools, or `make` are needed (only PowerShell + the Go
+toolchain, which every target already requires):
+
+```powershell
+pwsh -File scripts/build-windows.ps1 desk-build       # → tools/desk/dist/<tool>.exe
+pwsh -File scripts/build-windows.ps1 desk-install      # per-user install into %LOCALAPPDATA%\Assay\bin
+pwsh -File scripts/build-windows.ps1 -Help             # all targets + options
+```
+
+It mirrors the Makefile's `.PHONY` target set exactly. Windows `desk-install` is a
+**per-user** install (into `%LOCALAPPDATA%\Assay\bin`) and needs no elevation — it is not
+the human-only root install the Unix `sudo make desk-install` is. The Go tools already
+cross-compile, so this is orchestration + Windows path handling (`.exe` suffixes,
+`Get-FileHash` manifests), not new build logic. The two files are kept from drifting by
+[`tools/winparity`](../winparity/README.md), which asserts the script's target set equals
+the Makefile's `.PHONY` set (run `cd tools/winparity && go run . --root ../..`, exit 0 = in
+parity); the Windows script runs that guard as a preflight before any target.
+
 ## deskpost — the reviewer App's verdict / comment / ready-flip (brief 03)
 
 `deskpost` posts the review verdict, plain comments, and the draft→ready flip **AS the
@@ -1465,7 +1485,15 @@ deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale workt
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
 ```
 
-- **`add`** creates `tracker-<name>` on a new tracking branch. When a local branch of that
+- **`add`** creates `tracker-<name>` on a new tracking branch, under the sanctioned prefix
+  that is PORTABLE on the host OS: `/private/tmp/tracker-<name>` on POSIX, and
+  `<repo-root>/.claude/worktrees/tracker-<name>` on Windows (`role-init` follows the same rule
+  for its session-scoped worktree). Both prefixes are already in the allowlist above; the OS
+  only decides WHICH one is targeted, never widening it. `/private/tmp` is not a usable
+  absolute path on native Windows — it resolves to a drive-rooted `\private\tmp\…` that fails
+  the sanctioned-prefix check, so no desk worktree could be created and `deskboot` refused the
+  shared checkout (#656) — whereas the `.claude/worktrees/` prefix lives inside the repo
+  and is drive-correct everywhere. When a local branch of that
   name already exists in the shared refs store — a leftover from an abandoned dispatch — it is
   reclaimed only when proven empty (checked out in no worktree AND 0 commits ahead of its
   upstream-or-`--base`); a branch a live worktree holds, or one carrying unpushed commits, is
@@ -3496,6 +3524,23 @@ claimed. A mistyped flag must cost a refusal, not an item nobody can pick up unt
 deletes a ref by hand. `TestNoCallerPreconditionIsCheckedAfterTheClaim` drives the whole
 table of bad inputs and asserts that *zero* processes ran.
 
+**`--dry-run --worktree PATH` renders against an operator-stated home, verified — never
+predicted.** A dry run normally shows the agent's home worktree as a not-yet-known
+placeholder, on purpose: the worktree verb owns where a worktree lands, and a predicted path
+in a prompt would be a second source of truth for the one value the isolation floor rests on.
+But a dry run is also how a batch of prompts is previewed, and each preview then has that
+placeholder substituted by hand before it reaches an agent. `--worktree` (accepted **only**
+with `--dry-run`; refused with exit 5 on a real dispatch, where the home is the worktree
+verb's to name) lets the verb render an operator-stated home that *already exists* — but only
+after proving it, three checks all fail-closed with exit 5 and their own reason: the path
+resolves under a sanctioned worktree prefix (the same two-line rule the worktree verb
+enforces, no looser), it IS a registered git worktree of the item's *own* repo (both
+`rev-parse --show-toplevel` equal to the path and its git-common-dir equal to the item
+repo's — so a typo, a plain directory, or a clone of another repo is refused), and it is not
+the shared checkout (refused by identity first, the isolation floor). A verified path is
+substituted at *both* placeholder sites and echoed on the PLAN banner as `worktree=<path>
+(operator-supplied, verified)`, so a transcript shows it was checked, not guessed.
+
 **`deskflip` re-reads the verdicts, not just the head, before it mutates.** A head re-read
 catches a push. It does not catch a `Security-Review: fail`, because a retraction is a
 review event posted at the *same* head — so a head-only re-read reports "still current" and
@@ -3549,7 +3594,7 @@ through, and spending the rest of the pass writing an issue about itself:
 | a sibling checkout a queued brief's rows need is simply not there | #679 |
 
 ```bash
-deskroster preflight --role verifier [--root DIR] [--remote NAME] [--branch NAME] [--verbose]
+deskroster preflight --role verifier [--root DIR] [--remote NAME] [--branch NAME] [--claimed-brief ID] [--verbose]
 ```
 
 Five checks, run **before any work is claimed**. Each answers one of three states with a
@@ -3561,7 +3606,7 @@ Five checks, run **before any work is claimed**. Each answers one of three state
 | `app-scopes-vs-duties` | the installation's recorded grant covers `pull_requests:write`, `issues:write`, `contents:write` | #571 |
 | `write-transport` | a **read-only** probe (`git push --dry-run`) of the role's landing path is permitted | #823 |
 | `commit-identity` | the commit email's numeric prefix is the roster's **bot USER id**, not the App id | #638 |
-| `sibling-checkouts` | the out-of-repo checkouts the **queued** briefs declare are present | #679 |
+| `sibling-checkouts` | the out-of-repo checkouts the **queued** briefs declare can be resolved — through the **configured roots** (`DESK_ROOTS` / topology), not a flat `../<repo>`; absent for an **unclaimed** brief is a **notice**, absent for the brief named by `--claimed-brief` is a **failure** | #679 #661 |
 
 **Four properties are the whole point.**
 
@@ -3884,6 +3929,31 @@ collector are different facts: an empty transcript tree and a mis-pointed `--tra
 look identical from the inside, and collapsing them is how a broken collector reads as a
 perfect day. The same rule applies to the trend block, whose "nothing to compare against"
 is `no-prior-data`, never a delta of `0` (which would read as *steady*).
+
+## Monitors — the paced pollers (`inbound-monitor.sh`, `pr-monitor.sh`)
+
+Two durable, stateful pollers ship in the plugin tree for a desk window to arm behind the
+harness `Monitor` tool: `inbound-monitor.sh` watches every repo's open issues and
+`pr-monitor.sh` watches every repo's open PRs (head sha, draft state, state, merge state).
+Both resolve the same repo set (args, `./.assay/repos.txt`, or the origin remote), keep a
+per-repo baseline so a repo's first sight SEEDS silently, poll as the keyring account (never an
+inherited App token that cannot see the private set), and RETAIN a repo's baseline on any read
+they cannot trust rather than go silently blind — a failed read, or a page that comes back at
+the explicit `--limit` (truncated: `gh` gives no truncation signal, so an at-limit read is a
+moving window, not ground truth). Neither script writes to the forge or holds a credential.
+
+**The pacing contract** is the same for both scripts, so a wide repo set cannot become the
+tight-loop poll that trips the forge's secondary rate limit:
+
+| Knob | Effect | Applies to |
+|---|---|---|
+| `ASSAY_MONITOR_PACE_SECONDS` | seconds slept between consecutive per-repo reads — default **2**; `0` disables the sleep (used by the test suites for speed). It is slept *between* reads only: never before the first read, and never around a repo that makes no call. | both scripts |
+| `ASSAY_MONITOR_MAX_REPOS_PER_CYCLE` | maximum repos a single cycle reads — default **0** = all. Above 0, the cycle reads that many repos and carries a cursor in the state dir so the next run resumes where this one stopped, sweeping a large set across cycles instead of in one burst. | `pr-monitor.sh` |
+| — (no knob; automatic) | a `gh` exit carrying the secondary-rate-limit signature (a 403 whose stderr names `secondary rate limit`, or a 429) marks every remaining repo `MONITOR-DEGRADED: <slug> rate-limited, skipped` and ends the cycle with no further `gh` call — one tripped limit is never compounded by the reads behind it. | both scripts |
+
+The pace and cap in force are echoed on the `MONITOR-ARMED` line so a transcript records what
+was set. Each script's `.test.sh` runs hermetically against a stubbed `gh` on `PATH`; no test
+touches the network.
 
 ## Handoff coverage
 

@@ -98,6 +98,7 @@ var canonicalToolKeys = map[string]struct{}{
 	"repohardenguard": {},
 	"reviewloop":      {},
 	"scanloop":        {},
+	"untrustcorpus":   {},
 	"upgrade-assay":   {},
 	"verifyloop":      {},
 	"writeguard":      {},

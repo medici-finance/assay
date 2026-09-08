@@ -266,11 +266,14 @@ func gitlabAPIBaseOverride() string {
 	return strings.TrimSpace(os.Getenv("GITLAB_API_BASE"))
 }
 
-// verifyCustodyFileMode enforces that a custody file is a 0600 regular file — the same
-// rule cmd/desktoken/gitlab.go's rotation path already enforces before it will rotate a
-// PAT, applied here uniformly to every file-backed custody read. A missing, non-regular,
-// or loosely-permissioned file is Refused (exit 5): the deployment has not provisioned
-// this correctly, which is a precondition an operator fixes, not a could-not-check.
+// verifyCustodyFileMode enforces that a custody file is a regular file locked to its
+// owner — the same rule cmd/desktoken/gitlab.go's rotation path already enforces before
+// it will rotate a PAT, applied here uniformly to every file-backed custody read. The
+// owner-only test is behind the OS boundary (VerifyCustodyOwnerOnly): a POSIX 0600 test
+// on unix, and the owner-only NTFS ACL evaluation on Windows, where os.FileMode's
+// permission bits are synthetic (#667). A missing, non-regular, or loosely-permissioned
+// file is Refused (exit 5): the deployment has not provisioned this correctly, which is a
+// precondition an operator fixes, not a could-not-check.
 func verifyCustodyFileMode(path string) error {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -281,10 +284,8 @@ func verifyCustodyFileMode(path string) error {
 			"custody token at %s is not a regular file (mode %s); token custody requires a 0600 "+
 				"regular file — re-provision it", path, fi.Mode()))
 	}
-	if fi.Mode().Perm() != 0o600 {
-		return Refused(fmt.Sprintf(
-			"custody token file at %s has permissions %o; must be 0600 — run: chmod 600 %s",
-			path, fi.Mode().Perm(), path))
+	if err := VerifyCustodyOwnerOnly(path, fi); err != nil {
+		return Refused(err.Error())
 	}
 	return nil
 }

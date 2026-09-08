@@ -1,0 +1,20 @@
+{
+  "name": "assay",
+  "version": "0.5.1",
+  "description": "The Assay methodology as a Claude Code plugin: the portable methodology skills (adopt, author-brief, ask-decision), the five desk-role skills (intake-desk, the-desk, verify-desk, pr-review-desk, worker-desk), the worker-side pr-shepherd role, plus the resident operating rules, delivered namespaced as assay:<name>.",
+  "author": {
+    "name": "medici-finance"
+  },
+  "homepage": "https://github.com/medici-finance/assay",
+  "repository": "https://github.com/medici-finance/assay",
+  "license": "Apache-2.0",
+  "keywords": [
+    "methodology",
+    "streams",
+    "briefs",
+    "process-desk",
+    "assay"
+  ],
+  "skills": "./skills/",
+  "hooks": {}
+}

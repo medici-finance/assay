@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -22,6 +23,13 @@ var getwd = os.Getwd
 // any env var or flag — an operator-relocatable prefix would defeat the point of a
 // fixed allowlist.
 var tmpBaseDir = "/private/tmp"
+
+// goos is the seam for the host OS. Production reads runtime.GOOS; white-box tests set
+// it to "windows" to exercise the portable-prefix target selection without a Windows
+// runner. It selects WHICH sanctioned prefix `add`/`role-init` build their target under
+// (worktreeTarget), never WHETHER a path is sanctioned — the allowlist in `allowed`
+// still gates both prefixes on every platform.
+var goos = runtime.GOOS
 
 var (
 	// nameRe bounds the worktree <name>: a single path segment, no slashes, no leading
@@ -122,6 +130,27 @@ func (g *pathGuard) check(path string) (string, error) {
 			", outside the sanctioned worktree prefixes (/private/tmp/tracker-* or <repo-root>/.claude/worktrees/)")
 	}
 	return rt, nil
+}
+
+// worktreeTarget builds the sanctioned target path for a new worktree whose leaf directory
+// is `leaf` (e.g. "tracker-<name>"), choosing the prefix that is PORTABLE on the host OS:
+//
+//   - POSIX hosts: `<tmpBaseDir>/<leaf>` — the compiled `/private/tmp/tracker-*` prefix.
+//   - Windows: `<repo-root>/.claude/worktrees/<leaf>` — the other DOCUMENTED sanctioned
+//     prefix (see README + `allowed`). `/private/tmp` is not a usable absolute path on
+//     Windows: filepath.Abs turns it into a drive-rooted `<drive>\private\tmp\...` that
+//     resolves nowhere near the resolved tmp dir, so `allowed` refuses it and no desk
+//     worktree can be created (#656). The `.claude/worktrees/` prefix lives inside the
+//     repo, so it is drive-correct on every platform.
+//
+// This picks WHICH sanctioned prefix to target; it never widens or bypasses the allowlist —
+// the returned path is still handed to `check`/`allowed`, which gates it the same on both
+// platforms. The isolation guarantee is unchanged: both prefixes were already sanctioned.
+func (g *pathGuard) worktreeTarget(leaf string) string {
+	if goos == "windows" {
+		return filepath.Join(g.worktreesDir, leaf)
+	}
+	return filepath.Join(tmpBaseDir, leaf)
 }
 
 // allowed reports whether a RESOLVED path is a sanctioned worktree location: a direct
@@ -317,7 +346,7 @@ func cmdAdd(args []string) (err error) {
 	if perr != nil {
 		return perr
 	}
-	target := filepath.Join(tmpBaseDir, "tracker-"+name)
+	target := guard.worktreeTarget("tracker-" + name)
 	if _, cerr := guard.check(target); cerr != nil {
 		return cerr
 	}
@@ -341,6 +370,13 @@ func cmdAdd(args []string) (err error) {
 		fmt.Fprintln(os.Stderr, "deskwt: "+reclaimed)
 	}
 
+	// Ensure the sanctioned parent prefix exists. On POSIX `/private/tmp` is already there;
+	// the `<repo-root>/.claude/worktrees/` prefix (Windows target, and any first use) may not
+	// be, and `git worktree add` does not create missing PARENT dirs — only the leaf. MkdirAll
+	// touches only the sanctioned parent, never the never-clobbered leaf checked above.
+	if merr := os.MkdirAll(filepath.Dir(target), 0o755); merr != nil {
+		return deskkit.Unverifiable("cannot create the sanctioned worktree parent dir "+filepath.Dir(target), merr)
+	}
 	// Local-only verb: NO AllowWrite (deskkit/ratelimit.go "Verb classes"). Constructed
 	// argv only; no caller flag reaches git, and no --force exists.
 	if _, aerr := runGit(dir, "worktree", "add", "--track", "-b", br, target, *base); aerr != nil {

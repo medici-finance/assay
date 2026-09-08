@@ -32,6 +32,11 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// version is an optional bare-`vX.Y.Z` build stamp (`-ldflags -X main.version`).
+// It feeds the brief-reading version gate (example-stream/06); left empty on a real
+// release, where the namespaced ReleaseTag stamp supplies the version instead.
+var version string
+
 var usage = `deskboard — read-only cross-repo board (desk-tools)
 
 usage:
@@ -152,6 +157,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := deskkit.Guard(); err != nil {
 		fmt.Fprintln(stderr, err)
 		return deskkit.ExitCodeOf(err)
+	}
+
+	// Brief-reading version gate (example-stream/06 §6): a stamped deskboard below
+	// v1.0.0 refuses a brief-v2 tree (exit 6) before it reads any board.
+	if code := deskkit.RefuseIfTreeV2BelowV1(deskkit.RootsFromArgs(args), deskkit.EffectiveToolVersion(version), "deskboard", stderr); code != 0 {
+		return code
 	}
 
 	table := false
@@ -456,7 +467,7 @@ const (
 // still exists), and only a run that finds NEITHER source reports could-not-check.
 //
 // isPinned, gitTree and deskToolsPin are vars for the same reason searchOpenPRs and
-// ghRun already are: the MEASURING outcomes (drift / in-sync) are the ones a pinned
+// forgeFor already are: the MEASURING outcomes (drift / in-sync) are the ones a pinned
 // install actually runs, and with the real git/filesystem calls hard-wired neither
 // could be driven from a test — the drift branch could be mutated back to "in-sync,
 // stale=false" (i.e. #236 itself, on the live path) with the whole suite still green.
