@@ -34,7 +34,7 @@ reviewable artifact, not a run.
   suite"): the test corpus plus the release mutation gate, on push to the default branch and
   on a daily schedule, reporting three-state. Promote it to `.github/workflows/truth-suite.yml`
   to activate.
-- `winparity.yml` — the Windows-build ↔ Makefile target-parity gate (assay#665). Runs
+- `winparity.yml` — the Windows-build ↔ Makefile target-parity gate (#665). Runs
   `cd tools/winparity && go run . --root ../..` on the self-hosted `medici-builder-public` runner
   (hand-installed Go, no `make`), asserting that `scripts/build-windows.ps1`'s declared target set
   equals the root `Makefile`'s `.PHONY` set — so a target added on one side and not the other

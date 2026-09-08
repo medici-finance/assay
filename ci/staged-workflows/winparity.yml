@@ -1,5 +1,5 @@
 name: winparity
-# The Windows-build ↔ Makefile target-parity gate (assay#665).
+# The Windows-build ↔ Makefile target-parity gate (#665).
 #
 # scripts/build-windows.ps1 is the Windows counterpart to the root Makefile; it
 # mirrors the Makefile's `.PHONY` target set by hand. tools/winparity asserts the
