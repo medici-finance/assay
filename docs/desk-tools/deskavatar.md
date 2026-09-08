@@ -25,6 +25,11 @@ deskavatar --org <login> --tier team|family --out <dir> [--sizes 200,512,1000] [
 - The 20 px proof runs **before** any file is written; a failing set writes
   nothing and exits **5**.
 
+`--org` is validated against the GitHub login grammar
+(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}$`) so it cannot smuggle a separator or `..` into
+the output file stems, and each `--sizes` value is capped (`MaxRenderSize`, 4096
+px) so a size cannot drive an unbounded allocation.
+
 ## The rules (design of record §5, verbatim)
 
 > - **The octagon is constant.** It is the Assay stamp and the one thing that

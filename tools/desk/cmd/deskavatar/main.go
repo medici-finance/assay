@@ -112,6 +112,9 @@ func parseSizes(csv string) ([]int, error) {
 		if err != nil || n < 1 {
 			return nil, fmt.Errorf("invalid size %q (want positive integers)", tok)
 		}
+		if n > avatar.MaxRenderSize {
+			return nil, fmt.Errorf("size %d exceeds the maximum %d px", n, avatar.MaxRenderSize)
+		}
 		if !seen[n] {
 			seen[n] = true
 			out = append(out, n)

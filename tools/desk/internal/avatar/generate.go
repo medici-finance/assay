@@ -2,9 +2,23 @@ package avatar
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
+
+// orgLoginRe is the GitHub org/user login shape: 1–39 chars, ASCII
+// alphanumeric or hyphen, not starting with a hyphen. Validating the org here is
+// defense-in-depth: the org flows into output file stems (`<org>-<role>.svg`), so
+// pinning it to the login grammar keeps a stray `/` or `..` out of a path the
+// caller later joins, whatever the caller's own trust boundary.
+var orgLoginRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}$`)
+
+// MaxRenderSize caps a requested pixel size. Each size allocates an
+// image.NewRGBA(size×size) (4 bytes/px), so an unbounded size is an unbounded
+// allocation; 4096 px is far above GitHub's ~512 px master and keeps the worst
+// case at ~64 MiB per tile.
+const MaxRenderSize = 4096
 
 // Tier selects which set of avatars Generate produces.
 type Tier string
@@ -83,9 +97,17 @@ func Generate(org string, tier Tier, opts Options) ([]Avatar, error) {
 	if strings.TrimSpace(org) == "" {
 		return nil, fmt.Errorf("avatar: org login is required")
 	}
+	if !orgLoginRe.MatchString(org) {
+		return nil, fmt.Errorf("avatar: org %q is not a valid login (want %s — ASCII alphanumeric and hyphen, ≤39 chars, no leading hyphen)", org, orgLoginRe)
+	}
 	sizes := opts.Sizes
 	if len(sizes) == 0 {
 		sizes = []int{512}
+	}
+	for _, sz := range sizes {
+		if sz < 1 || sz > MaxRenderSize {
+			return nil, fmt.Errorf("avatar: size %d out of range (want 1..%d)", sz, MaxRenderSize)
+		}
 	}
 	sort.Ints(sizes)
 

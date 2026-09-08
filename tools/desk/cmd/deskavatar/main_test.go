@@ -72,6 +72,28 @@ func TestRunSizesMultiple(t *testing.T) {
 	}
 }
 
+func TestRunRejectsOversizedSize(t *testing.T) {
+	dir := t.TempDir()
+	var errb bytes.Buffer
+	code := run([]string{"--org", "example-org", "--tier", "team", "--out", dir, "--sizes", "99999"}, &errb)
+	if code != 2 {
+		t.Errorf("want exit 2 for an oversized --sizes, got %d (stderr=%s)", code, errb.String())
+	}
+}
+
+func TestRunRejectsBadOrg(t *testing.T) {
+	dir := t.TempDir()
+	var errb bytes.Buffer
+	// A path-traversal org must be refused before any file is written.
+	code := run([]string{"--org", "../evil", "--tier", "team", "--out", dir}, &errb)
+	if code == 0 {
+		t.Errorf("want non-zero exit for a path-traversal --org, got 0")
+	}
+	if entries, _ := filepath.Glob(filepath.Join(dir, "*")); len(entries) != 0 {
+		t.Errorf("no files should be written for a rejected org, found %v", entries)
+	}
+}
+
 func TestRunMissingArgs(t *testing.T) {
 	var errb bytes.Buffer
 	if code := run([]string{"--tier", "team"}, &errb); code != 2 {

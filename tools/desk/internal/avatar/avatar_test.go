@@ -3,6 +3,7 @@ package avatar
 import (
 	"bytes"
 	"image/png"
+	"strings"
 	"testing"
 )
 
@@ -83,6 +84,32 @@ func TestGenerateDeterministic(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestGenerateRejectsInvalidOrg(t *testing.T) {
+	// The org flows into output file stems, so a login-shaped value is required —
+	// a path-traversal or separator-bearing org must be refused, never rendered.
+	for _, bad := range []string{"../evil", "a/b", "-leading", "has space", "under_score", "dot.org", strings.Repeat("x", 40)} {
+		if _, err := Generate(bad, TierTeam, Options{}); err == nil {
+			t.Errorf("Generate(%q) should be rejected as a non-login org", bad)
+		}
+	}
+	for _, ok := range []string{"example-org", "medici-finance", "a", "ACME", strings.Repeat("x", 39)} {
+		if _, err := Generate(ok, TierTeam, Options{}); err != nil {
+			t.Errorf("Generate(%q) should be accepted: %v", ok, err)
+		}
+	}
+}
+
+func TestGenerateRejectsBadSize(t *testing.T) {
+	for _, sz := range []int{0, -1, MaxRenderSize + 1} {
+		if _, err := Generate("example-org", TierTeam, Options{Sizes: []int{sz}}); err == nil {
+			t.Errorf("Generate with size %d should be rejected", sz)
+		}
+	}
+	if _, err := Generate("example-org", TierTeam, Options{Sizes: []int{MaxRenderSize}}); err != nil {
+		t.Errorf("Generate at the max size %d should be accepted: %v", MaxRenderSize, err)
 	}
 }
 
