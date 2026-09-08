@@ -1,2 +1,0 @@
-### Fixed
-- `statusgen --next-up` / `--consumers` no longer abort with `no frontmatter: first line must be ---` when a register directory under `docs/streams/` (e.g. the DECISIONS register) carries a self-declaring, frontmatter-free README. Stream discovery now recognizes a register that declares itself one per `spec/registers-v1.md` §7 and skips it instead of parsing it as a stream board, so every `statusgen`-driven Verify row returns its real result rather than could-not-check.

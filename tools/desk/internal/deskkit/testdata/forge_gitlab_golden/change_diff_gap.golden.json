@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": "",
+  "err": "could-not-check: the GitLab backend does not serve ChangeDiff for medici-finance/assay!7 — the raw unified-diff document (`gh pr diff`) has no 1:1 GitLab form; GitLab serves a change's diff as a structured per-file list (ListChangedFiles), not a single raw-text document. It is deferred to the forge-gitlab diff brief, never assembled here.",
+  "not_found": false
+}

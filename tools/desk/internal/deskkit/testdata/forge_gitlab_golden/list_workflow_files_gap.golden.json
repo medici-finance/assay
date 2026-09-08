@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": null,
+  "err": "could-not-check: the GitLab backend does not serve ListWorkflowFiles for medici-finance/assay@abc123 — the workflow-directory listing is GitHub-Actions-specific (`.github/workflows/*.yml`); GitLab CI config is a single `.gitlab-ci.yml`, not a per-workflow-file directory, so there is no 1:1 listing. It is deferred to the forge-gitlab CI brief, never approximated.",
+  "not_found": false
+}

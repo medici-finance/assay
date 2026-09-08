@@ -1,2 +1,0 @@
-### Changed
-- `derived-board/03` Verify row 4 re-anchored from `desk-containers/02`/`PR #67` to `derived-board/02`/`PR #80`: the reconcile engine can only witness a brief whose merged deliverable PR carries a `Brief:` trailer, and `desk-containers/02`'s deliverable PR lives in another repository and carries none — so a `--repo medici-finance/assay` run correctly returns it `todo`. The engine is sound; the row now dereferences PR #80, whose body carries `Brief: derived-board/02`, and passes online.

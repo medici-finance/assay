@@ -344,6 +344,13 @@ func strayManifestWarnings(dir string) []string {
 			warns = append(warns, fmt.Sprintf("DRIVE NOT APPLIED (WARN): manifest %q sits in a subdirectory under docs/roadmap/drives — only top-level *.yaml manifests are read; move it up — zero boost, board still generated (fail-neutral)", rel))
 			return nil
 		}
+		if strings.HasSuffix(d.Name(), ".md") {
+			// A top-level .md is a DRIVE-PLAN NARRATIVE file (the plan lives beside
+			// its manifest, the --drive-snapshot feature). It is not a mistyped
+			// manifest — its honesty is governed by the --lint drive-region rules
+			// (drivesnapshotlint.go), not by a stray-manifest WARN. Silent here.
+			return nil
+		}
 		if !strings.HasSuffix(d.Name(), ".yaml") {
 			warns = append(warns, fmt.Sprintf("DRIVE NOT APPLIED (WARN): file %q under docs/roadmap/drives is not a *.yaml manifest (a .yml typo is the likeliest cause) — it is ignored; rename to *.yaml — zero boost, board still generated (fail-neutral)", rel))
 		}

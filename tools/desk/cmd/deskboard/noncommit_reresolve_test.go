@@ -12,10 +12,10 @@ package main
 // lastReviewAt baseline).
 
 import (
-	"fmt"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // TestClassify_NonCommitResolution_ReFlags — the pure classifier. A blocking row with a
@@ -63,18 +63,13 @@ func TestDetectNonCommitResolution(t *testing.T) {
 	before := reviewAt.Add(-2 * time.Hour).Format(time.RFC3339)
 	after := reviewAt.Add(2 * time.Hour).Format(time.RFC3339)
 
-	// stubEvents serves one page of issues/events (empty second page) and errors on any
-	// other API call, so an unexpected fetch is loud rather than silently empty.
-	stubEvents := func(t *testing.T, eventsJSON string) {
-		stubGHFunc(t, func(args ...string) ([]byte, error) {
-			if len(args) >= 2 && args[0] == "api" && strings.Contains(args[1], "/events") {
-				if strings.Contains(args[1], "page=1") {
-					return []byte(eventsJSON), nil
-				}
-				return []byte(`[]`), nil
-			}
-			return nil, fmt.Errorf("unexpected gh call: %v", args)
-		})
+	// stubEvents installs the fake forge with a ListLabelEvents hook returning one `labeled`
+	// event at the given time — the typed replacement for the old issues/events gh stub.
+	stubEvents := func(t *testing.T, name, createdAt string) {
+		installFakeForge(t)
+		forgeHooks.labelEvents = func(string, int) ([]deskkit.LabelEvent, error) {
+			return []deskkit.LabelEvent{{Name: name, CreatedAt: createdAt}}, nil
+		}
 	}
 
 	labelPR := func() prBase {
@@ -87,7 +82,7 @@ func TestDetectNonCommitResolution(t *testing.T) {
 	}
 
 	t.Run("resolution label added AFTER the last review → re-flag", func(t *testing.T) {
-		stubEvents(t, fmt.Sprintf(`[{"event":"labeled","label":{"name":"changelog:skip"},"created_at":%q}]`, after))
+		stubEvents(t, "changelog:skip", after)
 		got, note, err := detectNonCommitResolution(repo, labelPR(), reviewAt)
 		if err != nil {
 			t.Fatal(err)
@@ -98,7 +93,7 @@ func TestDetectNonCommitResolution(t *testing.T) {
 	})
 
 	t.Run("resolution label added BEFORE the last review → no re-flag", func(t *testing.T) {
-		stubEvents(t, fmt.Sprintf(`[{"event":"labeled","label":{"name":"changelog:skip"},"created_at":%q}]`, before))
+		stubEvents(t, "changelog:skip", before)
 		got, _, err := detectNonCommitResolution(repo, labelPR(), reviewAt)
 		if err != nil {
 			t.Fatal(err)
@@ -110,9 +105,11 @@ func TestDetectNonCommitResolution(t *testing.T) {
 
 	t.Run("body edited AFTER the last review → re-flag", func(t *testing.T) {
 		// No resolution label present, so no timeline fetch happens; any gh call is a bug.
-		stubGHFunc(t, func(args ...string) ([]byte, error) {
-			return nil, fmt.Errorf("no gh call expected for the body-edit path: %v", args)
-		})
+		installFakeForge(t)
+		forgeHooks.labelEvents = func(string, int) ([]deskkit.LabelEvent, error) {
+			t.Fatal("no label-events fetch expected on this path")
+			return nil, nil
+		}
 		var p prBase
 		p.Number = 323
 		p.LastEditedAt = after
@@ -126,9 +123,11 @@ func TestDetectNonCommitResolution(t *testing.T) {
 	})
 
 	t.Run("unrelated no-op (no label, body edited BEFORE review) → no re-flag", func(t *testing.T) {
-		stubGHFunc(t, func(args ...string) ([]byte, error) {
-			return nil, fmt.Errorf("no gh call expected: %v", args)
-		})
+		installFakeForge(t)
+		forgeHooks.labelEvents = func(string, int) ([]deskkit.LabelEvent, error) {
+			t.Fatal("no label-events fetch expected on this path")
+			return nil, nil
+		}
 		var p prBase
 		p.Number = 500
 		p.LastEditedAt = before
@@ -142,9 +141,11 @@ func TestDetectNonCommitResolution(t *testing.T) {
 	})
 
 	t.Run("no review baseline (zero time) → no re-flag", func(t *testing.T) {
-		stubGHFunc(t, func(args ...string) ([]byte, error) {
-			return nil, fmt.Errorf("no gh call expected: %v", args)
-		})
+		installFakeForge(t)
+		forgeHooks.labelEvents = func(string, int) ([]deskkit.LabelEvent, error) {
+			t.Fatal("no label-events fetch expected on this path")
+			return nil, nil
+		}
 		p := labelPR()
 		p.LastEditedAt = after
 		got, _, err := detectNonCommitResolution(repo, p, time.Time{})

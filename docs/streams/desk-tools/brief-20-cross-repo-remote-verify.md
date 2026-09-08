@@ -39,7 +39,7 @@ None. Prose-only change to two already-published skill bodies; no code and no on
 files:
 - `plugins/assay/skills/intake-desk/SKILL.md` (§Shared desk rules — new bullet)
 - `plugins/assay/skills/verify-desk/SKILL.md` (§The loop — tightens the existing sibling-repo clause)
-- `changelog/intake-desk-cross-repo-remote-verify.md` (fragment)
+- changelog fragment intake-desk-cross-repo-remote-verify.md (rolled into `CHANGELOG.md` §v0.28.0 at release and cleared from `changelog/`)
 
 facts:
 - `intake-desk`'s shared-desk rules are the neutral, adopter-facing statement of desk-wide

@@ -375,42 +375,31 @@ func fetchHeadCommit(repo, sha string) (when time.Time, by string, err error) {
 	if sha == "" {
 		return time.Time{}, "", deskkit.Unverifiable("head sha empty for "+repo, nil)
 	}
-	out, gerr := ghRun("api", fmt.Sprintf("repos/%s/commits/%s", repo, sha))
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return time.Time{}, "", ferr
+	}
+	c, gerr := f.GetCommit(fr, sha)
 	if gerr != nil {
 		return time.Time{}, "", deskkit.Unverifiable(fmt.Sprintf("cannot read head commit for %s @ %s", repo, short(sha)), gerr)
 	}
-	var v struct {
-		// Top-level author/committer are the GITHUB ACCOUNTS GitHub resolved the commit
-		// to; `commit.author`/`commit.committer` are the raw git name/email. Only the
-		// former is an identity comparable to a PR author login.
-		Author *struct {
-			Login string `json:"login"`
-		} `json:"author"`
-		Committer *struct {
-			Login string `json:"login"`
-		} `json:"committer"`
-		Commit struct {
-			Committer struct {
-				Date string `json:"date"`
-			} `json:"committer"`
-		} `json:"commit"`
-	}
-	if err := json.Unmarshal(out, &v); err != nil {
-		return time.Time{}, "", deskkit.Unverifiable(fmt.Sprintf("cannot parse head commit for %s @ %s", repo, short(sha)), err)
-	}
-	if v.Commit.Committer.Date == "" {
+	if c.CommittedDate == "" {
 		return time.Time{}, "", deskkit.Unverifiable(fmt.Sprintf("head commit %s @ %s has no committer date", repo, short(sha)), nil)
 	}
-	t, perr := time.Parse(time.RFC3339, v.Commit.Committer.Date)
+	t, perr := time.Parse(time.RFC3339, c.CommittedDate)
 	if perr != nil {
 		return time.Time{}, "", deskkit.Unverifiable(fmt.Sprintf("head commit date for %s @ %s is not RFC3339: %s",
-			repo, short(sha), v.Commit.Committer.Date), perr)
+			repo, short(sha), c.CommittedDate), perr)
 	}
+	// CommitterLogin/AuthorLogin are the RESOLVED account logins the forge attributes the
+	// commit to (empty where the forge resolves none — GitLab, or a GitHub commit whose email
+	// maps to no account). Empty is UNKNOWN attribution, which the caller already treats as
+	// "not established", never as "not the author".
 	switch {
-	case v.Committer != nil && v.Committer.Login != "":
-		by = v.Committer.Login
-	case v.Author != nil && v.Author.Login != "":
-		by = v.Author.Login
+	case c.CommitterLogin != "":
+		by = c.CommitterLogin
+	case c.AuthorLogin != "":
+		by = c.AuthorLogin
 	}
 	return t, by, nil
 }
@@ -441,34 +430,24 @@ func isStalled(now, lastActivity time.Time, minAge time.Duration) bool {
 // omitting lastAuthorCommentAt — which a dispatch consumer reads as the established
 // fact "the author never replied".
 func fetchLastAuthorComment(repo string, num int, authorLogin string) (time.Time, error) {
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return time.Time{}, ferr
+	}
+	comments, err := f.ListComments(fr, num)
+	if err != nil {
+		return time.Time{}, deskkit.Unverifiable(fmt.Sprintf("cannot read comments for %s#%d", repo, num), err)
+	}
 	var last time.Time
-	for page := 1; ; page++ {
-		out, err := ghRun("api", fmt.Sprintf("repos/%s/issues/%d/comments?per_page=%d&page=%d",
-			repo, num, apiPageSize, page))
-		if err != nil {
-			return time.Time{}, deskkit.Unverifiable(fmt.Sprintf("cannot read comments for %s#%d", repo, num), err)
+	for _, c := range comments {
+		if !deskkit.SameActor(c.Author.Login, authorLogin) || c.CreatedAt == "" {
+			continue
 		}
-		var chunk []struct {
-			User struct {
-				Login string `json:"login"`
-			} `json:"user"`
-			CreatedAt string `json:"created_at"`
-		}
-		if err := json.Unmarshal(out, &chunk); err != nil {
-			return time.Time{}, deskkit.Unverifiable(fmt.Sprintf("cannot parse comments for %s#%d", repo, num), err)
-		}
-		for _, c := range chunk {
-			if !deskkit.SameActor(c.User.Login, authorLogin) || c.CreatedAt == "" {
-				continue
-			}
-			if t, perr := time.Parse(time.RFC3339, c.CreatedAt); perr == nil && t.After(last) {
-				last = t
-			}
-		}
-		if len(chunk) < apiPageSize {
-			return last, nil
+		if t, perr := time.Parse(time.RFC3339, c.CreatedAt); perr == nil && t.After(last) {
+			last = t
 		}
 	}
+	return last, nil
 }
 
 // stalledDefaultBranch is the branch a PR head is compared against. Every repo in the
@@ -485,26 +464,24 @@ func fetchBehindMain(repo, headSHA string) (int, error) {
 	if headSHA == "" {
 		return -1, deskkit.Unverifiable("behind-main compare needs a head sha for "+repo, nil)
 	}
-	out, err := ghRun("api", fmt.Sprintf("repos/%s/compare/%s...%s", repo, stalledDefaultBranch, headSHA))
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return -1, ferr
+	}
+	cmp, err := f.CompareRefs(fr, stalledDefaultBranch, headSHA)
 	if err != nil {
 		return -1, err
 	}
-	var v struct {
-		BehindBy int    `json:"behind_by"`
-		Status   string `json:"status"`
-	}
-	if err := json.Unmarshal(out, &v); err != nil {
-		return -1, err
-	}
-	// A compare with no `status` is a body this code did not understand. Returning its
-	// zero `behind_by` would read as "0 commits behind — perfectly current", which is the
-	// #236 fail-open shape: report NOT ASSESSED instead, and the disposition stays
-	// "shepherd" rather than becoming a fabricated close-candidate either way.
-	if v.Status == "" {
+	// A compare with no `status` is a result this code cannot interpret. Returning its zero
+	// `behind_by` would read as "0 commits behind — perfectly current", which is the #236
+	// fail-open shape: report NOT ASSESSED instead, and the disposition stays "shepherd"
+	// rather than becoming a fabricated close-candidate either way. A backend that cannot
+	// report the status word returns could-not-check from CompareRefs, caught above.
+	if cmp.Status == "" {
 		return -1, deskkit.Unverifiable(fmt.Sprintf("compare %s %s...%s returned no status field",
 			repo, stalledDefaultBranch, short(headSHA)), nil)
 	}
-	return v.BehindBy, nil
+	return cmp.BehindBy, nil
 }
 
 // fetchBriefStatusBestEffort returns a brief→lifecycle-status map from statusgen

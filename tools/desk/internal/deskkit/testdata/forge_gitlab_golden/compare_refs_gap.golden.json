@@ -1,0 +1,6 @@
+{
+  "requests": [],
+  "result": null,
+  "err": "could-not-check: the GitLab backend does not serve CompareRefs for medici-finance/assay (main...abc123) — GitLab's compare endpoint reports neither the divergence STATUS word (GitHub's identical/ahead/behind/diverged) nor a behind_by count, the two facts the benign-merge and close-candidate consumers key on; behind_by needs a separate inverted compare and the status vocabulary has no GitLab analog. It is deferred to the forge-gitlab compare brief, never approximated.",
+  "not_found": false
+}

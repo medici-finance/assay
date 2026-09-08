@@ -41,8 +41,48 @@ func TestReadOpsBothBackends(t *testing.T) {
 			}
 			return
 		}
+		p := r.URL.Path
+		// GitLab commit reads (real on GitLab per the 1:1 ruling) — checked FIRST because a
+		// GitLab commit path also contains "/commits/" and would otherwise match a GitHub arm.
+		if r.Method == http.MethodGet && strings.HasPrefix(p, "/api/v4/") && strings.Contains(p, "/repository/commits") {
+			if strings.HasSuffix(p, "/repository/commits") {
+				io.WriteString(w, `[{"id":"aaa111","committed_date":"2026-09-01T10:00:00Z"}]`)
+			} else {
+				io.WriteString(w, `{"id":"abc123","committed_date":"2026-09-01T10:00:00Z","author_name":"A","committer_name":"A"}`)
+			}
+			return
+		}
+		switch {
+		// GitHub single-commit read (GetCommit).
+		case strings.Contains(p, "/commits/"):
+			io.WriteString(w, `{"sha":"abc123","author":{"login":"pusher"},"committer":{"login":"pusher"},`+
+				`"commit":{"committer":{"date":"2026-09-01T10:00:00Z"}}}`)
+			return
+		// GitHub commit-history listing (ListRecentCommits).
+		case strings.HasSuffix(p, "/commits"):
+			io.WriteString(w, `[{"sha":"aaa111","commit":{"committer":{"date":"2026-09-01T10:00:00Z"}}},`+
+				`{"sha":"bbb222","commit":{"committer":{"date":"2026-08-31T09:00:00Z"}}}]`)
+			return
+		// GitHub compare (CompareRefs).
+		case strings.Contains(p, "/compare/"):
+			io.WriteString(w, `{"status":"behind","ahead_by":0,"behind_by":2,"files":[{"filename":"a.go","status":"modified"}]}`)
+			return
+		// GitHub owner-wide search (SearchOpenChanges).
+		case strings.HasSuffix(p, "/search/issues"):
+			io.WriteString(w, `{"total_count":1,"incomplete_results":false,"items":[`+
+				`{"number":9,"title":"open pr","created_at":"2026-01-01T00:00:00Z","repository_url":"https://api.github.com/repos/o/otherrepo"}]}`)
+			return
+		// GitHub workflow-directory listing (ListWorkflowFiles).
+		case strings.Contains(p, "/contents/.github/workflows"):
+			io.WriteString(w, `[{"name":"ci.yml","type":"file"},{"name":"README","type":"file"},{"name":"sub","type":"dir"}]`)
+			return
+		// GitHub raw diff (ChangeDiff) — the pulls endpoint with the diff media type.
+		case strings.Contains(p, "/pulls/"):
+			io.WriteString(w, "diff --git a/a.go b/a.go\n")
+			return
+		}
 		// REST issues list (ListOpenIssues) — one issue and one PR entry; the PR is dropped.
-		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/issues") {
+		if r.Method == http.MethodGet && strings.Contains(p, "/issues") {
 			io.WriteString(w, `[`+
 				`{"number":3,"title":"an issue","user":{"login":"u","id":5},"labels":[{"name":"question"}],"created_at":"2026-01-01T00:00:00Z"},`+
 				`{"number":4,"title":"a PR","user":{"login":"u","id":5},"labels":[],"created_at":"2026-01-02T00:00:00Z","pull_request":{"url":"x"}}]`)
@@ -59,8 +99,12 @@ func TestReadOpsBothBackends(t *testing.T) {
 		name string
 		// ghCheck runs the GitHub op and asserts the typed result decoded.
 		ghCheck func(t *testing.T)
-		// glRun runs the GitLab op; it must return a could-not-check error.
+		// glRun runs the GitLab op; when glCheck is nil it must return a could-not-check error
+		// (the op is not 1:1 on GitLab).
 		glRun func() error
+		// glCheck, when set, asserts the GitLab op returns a REAL typed result — for the ops
+		// this brief found genuinely 1:1 (the commit reads). Exactly one of glRun/glCheck is set.
+		glCheck func(t *testing.T)
 	}{
 		{
 			name: "ListOpenChanges",
@@ -124,11 +168,115 @@ func TestReadOpsBothBackends(t *testing.T) {
 			},
 			glRun: func() error { _, err := gl.IssueTrustEvents(repo, 3); return err },
 		},
+		{
+			name: "ListRecentCommits",
+			ghCheck: func(t *testing.T) {
+				cs, err := gh.ListRecentCommits(repo, 5)
+				if err != nil {
+					t.Fatalf("github ListRecentCommits: %v", err)
+				}
+				if len(cs) != 2 || cs[0].SHA != "aaa111" || cs[0].CommittedDate == "" {
+					t.Fatalf("github ListRecentCommits = %+v", cs)
+				}
+			},
+			// 1:1 on GitLab — a REAL result, not could-not-check.
+			glCheck: func(t *testing.T) {
+				cs, err := gl.ListRecentCommits(repo, 5)
+				if err != nil {
+					t.Fatalf("gitlab ListRecentCommits: %v", err)
+				}
+				if len(cs) != 1 || cs[0].SHA != "aaa111" {
+					t.Fatalf("gitlab ListRecentCommits = %+v", cs)
+				}
+			},
+		},
+		{
+			name: "GetCommit",
+			ghCheck: func(t *testing.T) {
+				c, err := gh.GetCommit(repo, "abc123")
+				if err != nil {
+					t.Fatalf("github GetCommit: %v", err)
+				}
+				if c.SHA != "abc123" || c.CommittedDate == "" || c.CommitterLogin != "pusher" {
+					t.Fatalf("github GetCommit = %+v", c)
+				}
+			},
+			// 1:1 on GitLab for the date; the account-login field is a per-field could-not-check
+			// (EMPTY) because GitLab commits carry only raw git identity.
+			glCheck: func(t *testing.T) {
+				c, err := gl.GetCommit(repo, "abc123")
+				if err != nil {
+					t.Fatalf("gitlab GetCommit: %v", err)
+				}
+				if c.SHA != "abc123" || c.CommittedDate == "" {
+					t.Fatalf("gitlab GetCommit = %+v", c)
+				}
+				if c.AuthorLogin != "" || c.CommitterLogin != "" {
+					t.Errorf("gitlab GetCommit must leave account logins EMPTY (no resolved account), got %+v", c)
+				}
+			},
+		},
+		{
+			name: "CompareRefs",
+			ghCheck: func(t *testing.T) {
+				rc, err := gh.CompareRefs(repo, "main", "abc123")
+				if err != nil {
+					t.Fatalf("github CompareRefs: %v", err)
+				}
+				if rc.BehindBy != 2 || rc.Status != "behind" || len(rc.Files) != 1 {
+					t.Fatalf("github CompareRefs = %+v", rc)
+				}
+			},
+			glRun: func() error { _, err := gl.CompareRefs(repo, "main", "abc123"); return err },
+		},
+		{
+			name: "SearchOpenChanges",
+			ghCheck: func(t *testing.T) {
+				res, err := gh.SearchOpenChanges("o")
+				if err != nil {
+					t.Fatalf("github SearchOpenChanges: %v", err)
+				}
+				if len(res.Results) != 1 || res.Results[0].Repo != "o/otherrepo" || res.Results[0].Number != 9 {
+					t.Fatalf("github SearchOpenChanges = %+v", res)
+				}
+			},
+			glRun: func() error { _, err := gl.SearchOpenChanges("o"); return err },
+		},
+		{
+			name: "ListWorkflowFiles",
+			ghCheck: func(t *testing.T) {
+				names, err := gh.ListWorkflowFiles(repo, "abc123")
+				if err != nil {
+					t.Fatalf("github ListWorkflowFiles: %v", err)
+				}
+				if len(names) != 1 || names[0] != "ci.yml" { // README + dir dropped
+					t.Fatalf("github ListWorkflowFiles = %+v", names)
+				}
+			},
+			glRun: func() error { _, err := gl.ListWorkflowFiles(repo, "abc123"); return err },
+		},
+		{
+			name: "ChangeDiff",
+			ghCheck: func(t *testing.T) {
+				d, err := gh.ChangeDiff(repo, 7)
+				if err != nil {
+					t.Fatalf("github ChangeDiff: %v", err)
+				}
+				if !strings.HasPrefix(d, "diff --git") {
+					t.Fatalf("github ChangeDiff = %q", d)
+				}
+			},
+			glRun: func() error { _, err := gl.ChangeDiff(repo, 7); return err },
+		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name+"/github", c.ghCheck)
 		t.Run(c.name+"/gitlab", func(t *testing.T) {
+			if c.glCheck != nil {
+				c.glCheck(t)
+				return
+			}
 			err := c.glRun()
 			if err == nil {
 				t.Fatalf("gitlab %s must return could-not-check, got nil", c.name)

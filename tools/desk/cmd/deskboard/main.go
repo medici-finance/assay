@@ -456,7 +456,7 @@ const (
 // still exists), and only a run that finds NEITHER source reports could-not-check.
 //
 // isPinned, gitTree and deskToolsPin are vars for the same reason searchOpenPRs and
-// ghRun already are: the MEASURING outcomes (drift / in-sync) are the ones a pinned
+// forgeFor already are: the MEASURING outcomes (drift / in-sync) are the ones a pinned
 // install actually runs, and with the real git/filesystem calls hard-wired neither
 // could be driven from a test — the drift branch could be mutated back to "in-sync,
 // stale=false" (i.e. #236 itself, on the live path) with the whole suite still green.

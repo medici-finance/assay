@@ -1,0 +1,14 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/commits/abc123"
+    }
+  ],
+  "result": {
+    "SHA": "abc123",
+    "CommittedDate": "2026-09-01T10:00:00Z",
+    "AuthorLogin": "",
+    "CommitterLogin": ""
+  }
+}
