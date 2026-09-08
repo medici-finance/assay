@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -40,10 +41,34 @@ type RiskFlags struct {
 	Regulatory, Customer, Irreversible, SensitiveData bool
 }
 
-// Flagged reports whether the item is risk-flagged: gate is human OR any risk answer is
-// yes. This is the exact predicate statusgen's brieffile.go uses for its verifier floor.
+// Any reports whether ANY of the four risk answers is yes. It is the risk half of the
+// fail-safe routing: a brief with any risk answer yes is held for a human regardless of the
+// value in its gate field, so a routing decision that reads Any() cannot be fooled by a
+// gate that says model on a risk-bearing brief.
+func (r RiskFlags) Any() bool {
+	return r.Regulatory || r.Customer || r.Irreversible || r.SensitiveData
+}
+
+// Flagged reports whether the item is risk-flagged: the gate is the human gate OR any risk
+// answer is yes. This is the exact predicate statusgen's brieffile.go uses for its verifier
+// floor.
+//
+// The gate value is NORMALIZED before comparison (GateIsHuman): trimmed, lowercased, and
+// reduced to its first whitespace-delimited token, so `human`, `Human`, `human ` and
+// `human — <qualifier>` all count as the human gate and anything else does not. A byte-exact
+// `gate == "human"` let a re-cased or trailing-qualifier gate value slip the human branch —
+// an independent way a risk-gated brief could miss the human route.
 func (r RiskFlags) Flagged(gate string) bool {
-	return gate == "human" || r.Regulatory || r.Customer || r.Irreversible || r.SensitiveData
+	return GateIsHuman(gate) || r.Any()
+}
+
+// GateIsHuman normalizes a raw `gate:` frontmatter value and reports whether it is the human
+// gate: trim surrounding whitespace, lowercase, and read the first whitespace-delimited token.
+// `human`, `Human`, `  human  ` and `human — sign-off required` are all the human gate; a
+// hyphenated or otherwise different value (e.g. `model`, `human-gate`, `superhuman`) is not.
+func GateIsHuman(gate string) bool {
+	f := strings.Fields(strings.ToLower(strings.TrimSpace(gate)))
+	return len(f) > 0 && f[0] == "human"
 }
 
 // Tier is a dispatch DESTINATION, not a model name — the adapter maps a Tier onto a

@@ -15,7 +15,9 @@ import (
 // surfaced honestly (a deferred section, or a counted bucket with a one-line "why it waits").
 //
 // The signals are the ones ALREADY present in the brief/board — no parallel taxonomy:
-//   - the human gate is the engine's own predicate (RiskFlags.Flagged via TierPolicy → TierHuman),
+//   - the human gate / risk answers are read from the brief's OWN frontmatter (loopengine.GateIsHuman
+//     on the gate value + RiskFlags.Any()), fail-safe and independent of the tier the risk-router
+//     computed — so a fail-open in TierPolicy cannot leak a risk-bearing brief into DISPATCH,
 //   - the three markers (blocked-until / verify-lane / in-repair) are frontmatter fields parsed by
 //     parseFrontmatter and carried on Item.Payload by scanAwaiting.
 type disposition int
@@ -31,8 +33,12 @@ const (
 	// reproduces the same "not met" result, so it is deferred out of the dispatchable list until
 	// the condition can be met, printed in the deferred section with its reason.
 	dispDeferred
-	// dispAwaitingHuman: gated on a human sign-off (gate: human, or a risk answer yes) — the
-	// exact set TierPolicy routes to TierHuman. A model may not flip it, so it is not dispatchable.
+	// dispAwaitingHuman: gated on a human sign-off (gate: human, or ANY risk answer yes). A
+	// model may not flip it, so it is not dispatchable — though a model MAY still gather Evidence
+	// for it (the Evidence-only lane; Land writes Evidence with no flip). Membership is decided
+	// INDEPENDENTLY of the computed tier: the classifier reads the brief's own gate and risk
+	// frontmatter directly (tier == TierHuman is admitted too, but is not required), so a
+	// fail-open in the tier policy cannot leak a risk-bearing brief into DISPATCH.
 	dispAwaitingHuman
 	// dispAwaitingOnlineLane: the Verify substrate is a live cluster / online / live session,
 	// not this repo's offline tree — an offline verifier run cannot produce the verdict.
@@ -66,7 +72,7 @@ func (d disposition) whyItWaits() string {
 	case dispDeferred:
 		return "blocked until a stated condition/window is met — re-verifying now only reproduces the same non-verdict"
 	case dispAwaitingHuman:
-		return "gated on human sign-off (gate:human or a risk answer) — a model may not flip it"
+		return "gated on human sign-off (gate:human or any risk answer yes) — a model MAY gather Evidence for it, and never flips it"
 	case dispAwaitingOnlineLane:
 		return "needs a cluster / online / live-session hand-off — an offline verifier run cannot produce the verdict"
 	case dispInRepair:
@@ -100,19 +106,20 @@ var notInRepairValues = map[string]bool{
 // second copy of the predicate) plus the markers scanAwaiting carried onto Item.Payload.
 //
 // The returned reason is the human-facing detail for that item's line: the blocked-until
-// condition, the lane name, or the repair pipeline reference. It is empty for dispDispatch and
-// for dispAwaitingHuman (whose why is the same for every member — carried by whyItWaits).
+// condition, the lane name, the repair pipeline reference, or — for an awaiting-human item with
+// a risk answer yes — which risk answers are yes ("risk: irreversible", "risk: customer,
+// irreversible"). It is empty for dispDispatch and for a gate:human-only awaiting-human item
+// (whose why is the same for every member — carried by whyItWaits).
 //
 // Precedence, most-specific first:
 //  1. blocked-until — the brief cannot even be attempted this run, whatever else is true of it.
-//  2. human gate — preserves the pre-change routing exactly: these items were never dispatched
-//     (they printed as ROUTE-HUMAN), they are now the awaiting-human bucket. Membership is EITHER
-//     the tier the risk-router computed (tier == TierHuman) OR the brief's OWN `gate: human`
-//     frontmatter read directly. The direct read is load-bearing, not belt-and-braces: TierPolicy
-//     routes `irreversible: yes` to TierLocal (dispatched-for-evidence) with HIGHER precedence than
-//     its gate:human → TierHuman branch, so a `gate: human` + `irreversible: yes` brief never
-//     reaches TierHuman and a tier-only check leaks it into DISPATCH — a risk-gate fail-open. A
-//     model may not flip a gate:human brief regardless of its tier, so the gate itself decides here.
+//  2. human gate / risk-flagged — FAIL SAFE. These items are never dispatched to a model. The
+//     arm is INDEPENDENT of the tier the risk-router computed: it admits an item when the tier is
+//     TierHuman OR the brief's OWN `gate:` reads human (normalized) OR ANY risk answer is yes.
+//     Reading the frontmatter directly is the load-bearing half — it is the second, independent
+//     control that catches a fail-open in TierPolicy (a re-cased gate, a future edit that hands a
+//     risk-bearing brief a dispatchable tier). A model may gather Evidence for such a brief but
+//     may never flip it, so the gate/risk answers decide here regardless of the computed tier.
 //  3. in-repair — a pipeline owns the table; do not race it.
 //  4. online lane — no offline verdict is possible.
 //  5. otherwise DISPATCH.
@@ -120,8 +127,8 @@ func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string
 	if bu := payloadValue(it, "blocked_until"); bu != "" {
 		return dispDeferred, bu
 	}
-	if tier == loopengine.TierHuman || strings.EqualFold(strings.TrimSpace(it.Gate), "human") {
-		return dispAwaitingHuman, ""
+	if tier == loopengine.TierHuman || loopengine.GateIsHuman(it.Gate) || it.Risk.Any() {
+		return dispAwaitingHuman, riskReason(it.Risk)
 	}
 	if ir := payloadValue(it, "in_repair"); !notInRepairValues[strings.ToLower(ir)] {
 		return dispInRepair, ir
@@ -130,6 +137,29 @@ func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string
 		return dispAwaitingOnlineLane, lane
 	}
 	return dispDispatch, ""
+}
+
+// riskReason names the risk answers that are yes, in canonical key order, as
+// "risk: <key>[, <key>...]". It is empty when no risk answer is yes — a gate:human-only item
+// carries no risk reason and keeps its bare member line.
+func riskReason(r loopengine.RiskFlags) string {
+	var keys []string
+	if r.Regulatory {
+		keys = append(keys, "regulatory")
+	}
+	if r.Customer {
+		keys = append(keys, "customer")
+	}
+	if r.Irreversible {
+		keys = append(keys, "irreversible")
+	}
+	if r.SensitiveData {
+		keys = append(keys, "sensitive-data")
+	}
+	if len(keys) == 0 {
+		return ""
+	}
+	return "risk: " + strings.Join(keys, ", ")
 }
 
 // payloadValue is a nil-safe trimmed read of one Item.Payload key.

@@ -267,3 +267,67 @@ func TestRun_RejectsBadPoolSize(t *testing.T) {
 		t.Fatal("PoolSize 0 should be rejected")
 	}
 }
+
+// TestRiskFlags_Flagged_GateVariants pins the gate-value NORMALIZATION: a re-cased or
+// trailing-qualifier `human` gate must still be the human gate, and only a real `human` first
+// token counts. A byte-exact `gate == "human"` (the pre-fix predicate) missed every one of the
+// true rows below except the bare lowercase "human" — the second, independent way a risk-gated
+// brief could slip the human branch.
+func TestRiskFlags_Flagged_GateVariants(t *testing.T) {
+	clear := RiskFlags{}
+	cases := []struct {
+		gate string
+		want bool
+	}{
+		{"human", true},
+		{"Human", true},
+		{"HUMAN", true},
+		{"human ", true},
+		{"  human  ", true},
+		{"human — sign-off required", true},
+		{"human (with a qualifier)", true},
+		{"model", false},
+		{"", false},
+		{"   ", false},
+		{"human-gate", false}, // hyphenated compound is a different value, not the human gate
+		{"superhuman", false},
+		{"humane", false},
+	}
+	for _, c := range cases {
+		if got := GateIsHuman(c.gate); got != c.want {
+			t.Errorf("GateIsHuman(%q) = %v; want %v", c.gate, got, c.want)
+		}
+		if got := clear.Flagged(c.gate); got != c.want {
+			t.Errorf("RiskFlags{}.Flagged(%q) = %v; want %v (gate normalization)", c.gate, got, c.want)
+		}
+	}
+	// A risk answer yes flags the item regardless of a non-human gate value.
+	if !(RiskFlags{Customer: true}).Flagged("model") {
+		t.Error("a risk answer yes must flag the item even with gate:model")
+	}
+}
+
+// TestRiskFlags_Any_AllSixteen exhausts the sixteen combinations of the four risk booleans:
+// Any() is true iff at least one is set, and Flagged with a non-human gate equals Any() (the
+// gate contributes nothing when it is not the human gate).
+func TestRiskFlags_Any_AllSixteen(t *testing.T) {
+	for mask := 0; mask < 16; mask++ {
+		r := RiskFlags{
+			Regulatory:    mask&1 != 0,
+			Customer:      mask&2 != 0,
+			Irreversible:  mask&4 != 0,
+			SensitiveData: mask&8 != 0,
+		}
+		want := mask != 0
+		if got := r.Any(); got != want {
+			t.Errorf("Any() for mask %04b = %v; want %v", mask, got, want)
+		}
+		if got := r.Flagged("model"); got != want {
+			t.Errorf("Flagged(model) for mask %04b = %v; want %v (must equal Any() for a non-human gate)", mask, got, want)
+		}
+		// With the human gate, Flagged is always true regardless of the risk mask.
+		if !r.Flagged("human") {
+			t.Errorf("Flagged(human) for mask %04b = false; want true (human gate always flags)", mask)
+		}
+	}
+}
