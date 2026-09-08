@@ -61,25 +61,52 @@ const (
 	CheckedClean
 	// CheckedFailed — the check looked and the envelope is broken.
 	CheckedFailed
+	// CheckedNotApplicable — the check does not apply to THIS envelope, on a
+	// forge/config axis the check itself is authoritative about — e.g. the GitHub
+	// App installation-grant read of app-scopes-vs-duties on a GitLab-forge repo,
+	// where a PAT records no per-mint permission sidecar to read (#671). It is
+	// NOT a pass in the checked-clean sense (nothing was verified) and NOT a
+	// could-not-check (the check DID look — it looked and found the check
+	// inapplicable), so it is a distinct fourth state: it does not redden the
+	// envelope, and it is surfaced explicitly rather than folded into the
+	// checked-clean count, so "green because inapplicable" can never be read as
+	// "green because verified". A future author must not reach for this to paper
+	// over an unreadable grant on the forge the check DOES cover — that is
+	// could-not-check, and rounding it up here would be the exact green-by-omission
+	// failure the three-state contract exists to stop.
+	CheckedNotApplicable
 )
 
 // String renders the state in the fixed vocabulary the desk reports in
-// ("checked-clean" / "checked-failed" / "could-not-check"). An out-of-range
-// value renders as could-not-check rather than as an unknown token, keeping the
-// fail-closed reading of a corrupted value.
+// ("checked-clean" / "checked-failed" / "could-not-check" / "not-applicable").
+// An out-of-range value renders as could-not-check rather than as an unknown
+// token, keeping the fail-closed reading of a corrupted value.
 func (s CheckState) String() string {
 	switch s {
 	case CheckedClean:
 		return "checked-clean"
 	case CheckedFailed:
 		return "checked-failed"
+	case CheckedNotApplicable:
+		return "not-applicable"
 	default:
 		return "could-not-check"
 	}
 }
 
-// Green reports whether this state permits work to proceed. ONLY CheckedClean does.
+// Green reports whether this state was VERIFIED clean. ONLY CheckedClean is. A
+// not-applicable check is NOT green: nothing was verified, so it must never be
+// counted as a checked-clean pass. Use Passing to ask the different question
+// "does this state permit the pass to proceed".
 func (s CheckState) Green() bool { return s == CheckedClean }
+
+// Passing reports whether this state permits the pass to proceed. A verified
+// CheckedClean does, and so does CheckedNotApplicable — a check that does not
+// apply to this envelope is not a broken envelope. CouldNotCheck and
+// CheckedFailed do NOT: an unread envelope and a broken one both block. Passing
+// is deliberately WIDER than Green so a not-applicable check clears the boot
+// without ever being miscounted as verified.
+func (s CheckState) Passing() bool { return s == CheckedClean || s == CheckedNotApplicable }
 
 // Check names of the five envelope checks. They are exported constants because
 // the summary line, the tests and the consumers all refer to the same names —
@@ -132,31 +159,62 @@ func unchecked(name, detail, remediation, refs string) Check {
 	return Check{Name: name, State: CouldNotCheck, Detail: detail, Remediation: remediation, Refs: refs}
 }
 
+// notApplicable builds a not-applicable result: the check LOOKED and found it
+// does not apply to this envelope (a forge/config axis the check is
+// authoritative about). It does not redden the envelope, but it is not a
+// checked-clean pass either — nothing was verified — so it carries the
+// remediation naming what a human should confirm out of band, and it is
+// surfaced on its own in the summary rather than folded into the checked-clean
+// count.
+func notApplicable(name, detail, remediation, refs string) Check {
+	return Check{Name: name, State: CheckedNotApplicable, Detail: detail, Remediation: remediation, Refs: refs}
+}
+
 // PreflightReport is the whole envelope answer for one role.
 type PreflightReport struct {
 	Role   string
 	Checks []Check
 }
 
-// Green reports whether EVERY check is checked-clean. An empty report is NOT
-// green: a preflight that ran no checks proved nothing.
+// Green reports whether the envelope permits the pass to proceed: every check is
+// PASSING (checked-clean, or not-applicable to this envelope). An empty report is
+// NOT green: a preflight that ran no checks proved nothing. A not-applicable
+// check does not block the boot, but it is not counted as verified — see
+// SummaryLine, which reports the checked-clean tally separately and surfaces each
+// not-applicable check on its own.
 func (r PreflightReport) Green() bool {
 	if len(r.Checks) == 0 {
 		return false
 	}
 	for _, c := range r.Checks {
-		if !c.State.Green() {
+		if !c.State.Passing() {
 			return false
 		}
 	}
 	return true
 }
 
-// Blocking returns the non-green checks, in check order.
+// Blocking returns the checks that block the pass — could-not-check and
+// checked-failed — in check order. A not-applicable check is NOT blocking (it is
+// surfaced by NotApplicable instead), so it never appears here.
 func (r PreflightReport) Blocking() []Check {
 	var out []Check
 	for _, c := range r.Checks {
-		if !c.State.Green() {
+		if !c.State.Passing() {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// NotApplicable returns the checks that looked and found themselves inapplicable
+// to this envelope, in check order. They do not block the pass, but they are
+// surfaced explicitly (SummaryLine renders them) so a green boot that rests on an
+// inapplicable check can never be mistaken for one where the check verified clean.
+func (r PreflightReport) NotApplicable() []Check {
+	var out []Check
+	for _, c := range r.Checks {
+		if c.State == CheckedNotApplicable {
 			out = append(out, c)
 		}
 	}
@@ -196,6 +254,15 @@ func (r PreflightReport) SummaryLine() string {
 	fmt.Fprintf(&b, "preflight role=%s %s %d/%d checked-clean", r.Role, verdict, green, len(r.Checks))
 	for _, c := range r.Blocking() {
 		fmt.Fprintf(&b, " · %s=%s: %s → fix: %s", c.Name, c.State, c.Detail, c.Remediation)
+		if c.Refs != "" {
+			fmt.Fprintf(&b, " [%s]", c.Refs)
+		}
+	}
+	for _, c := range r.NotApplicable() {
+		fmt.Fprintf(&b, " · %s=%s: %s", c.Name, c.State, c.Detail)
+		if c.Remediation != "" {
+			fmt.Fprintf(&b, " → confirm: %s", c.Remediation)
+		}
 		if c.Refs != "" {
 			fmt.Fprintf(&b, " [%s]", c.Refs)
 		}
@@ -724,20 +791,30 @@ func checkAppScopes(p PreflightProbes, role, tokenPath string, forge ForgeKind) 
 	// The grant this check reads is a GitHub App INSTALLATION grant, recorded in a
 	// .perms sidecar the GitHub mint writes. GitLab has no such object: a PAT's
 	// scopes are set by the group owner at provisioning and are not observable
-	// offline from any mint response. So on a GitLab-forge repo this check does not
-	// apply — reporting it against a GitLab custody path would read a non-existent
-	// sidecar and emit a GitHub `--fresh` remediation, the #655 wrong-forge trap one
-	// check further along. It is could-not-check (never a false pass, per the
-	// three-state contract), with a GitLab-appropriate remediation and NO App/PEM
-	// text; the cold-mint check's GitLab arm is the credential envelope control.
+	// offline from any mint response (there is no per-mint permission sidecar to
+	// read). So on a GitLab-forge repo this GitHub-installation-grant check does
+	// not APPLY — it is not that the grant could not be read, it is that there is
+	// no such grant on this forge. Reporting could-not-check reddened the envelope
+	// and a correctly provisioned GitLab fleet could not boot (#671); reporting
+	// checked-clean would be a false pass (nothing was verified). It is therefore
+	// CheckedNotApplicable: it does not block the boot, it is surfaced on its own
+	// (never folded into the checked-clean count), and it carries a GitLab-native
+	// human-confirm remediation with NO App/PEM/`--fresh` text — that GitHub
+	// remediation is the #655 wrong-forge trap one check further along. The
+	// credential ENVELOPE control on GitLab is the cold-mint check's GitLab arm
+	// (PAT custody, read-only); the scopes a PAT actually carries are set out of
+	// band at the group's Access Tokens page and confirmed there by a human, not
+	// observable to this offline check.
 	if forge == ForgeGitLab {
-		return unchecked(CheckAppScopes,
-			"gitlab credential: a PAT's scopes are set by the group owner at provisioning and are not "+
-				"observable offline from a mint grant (GitLab records no per-mint permission sidecar)",
-			"confirm at the GitLab group's Access Tokens page that the "+role+" PAT carries the scopes its "+
-				"duties need (api / write_repository); this check reads a GitHub App installation grant and "+
-				"does not apply to a GitLab PAT",
-			refs)
+		return notApplicable(CheckAppScopes,
+			"gitlab credential: this check reads a GitHub App installation grant, which a GitLab PAT does not "+
+				"have — a PAT's scopes are set by the group owner at provisioning and are not observable offline "+
+				"from a mint grant (GitLab records no per-mint permission sidecar), so the GitHub grant check does "+
+				"not apply to a GitLab PAT",
+			"confirm at the GitLab group's Access Tokens page (Settings → Access Tokens) that the "+role+" PAT "+
+				"carries the scopes its duties need (api / write_repository); this is an out-of-band human check, "+
+				"not something the offline preflight can verify",
+			"#655, #671")
 	}
 	if tokenPath == "" {
 		return unchecked(CheckAppScopes, "no token was minted, so no grant could be read",

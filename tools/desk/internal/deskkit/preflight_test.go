@@ -1173,8 +1173,12 @@ func TestPreflightGitLabColdCustodyRemediationHasNoAppPEM(t *testing.T) {
 
 // TestPreflightGitLabAppScopesIsNotGitHubGrant — on a GitLab repo the
 // app-scopes-vs-duties check must NOT read a GitHub installation grant or emit a
-// GitHub `--fresh` / apps.env remediation. It is could-not-check (never a false
-// pass) with GitLab-appropriate text.
+// GitHub `--fresh` / apps.env remediation. It is NOT-APPLICABLE (#671): the
+// GitHub installation grant it reads does not exist on a GitLab PAT, so the check
+// does not apply. Not-applicable is a distinct state — never rounded up to
+// checked-clean, never a GitHub grant read — and it does NOT redden the boot
+// envelope (a correctly provisioned GitLab fleet could not boot while this was
+// could-not-check). It carries GitLab-native human-confirm text.
 func TestPreflightGitLabAppScopesIsNotGitHubGrant(t *testing.T) {
 	withRoster(t, goldenRoster())
 	p := okProbes()
@@ -1188,14 +1192,100 @@ func TestPreflightGitLabAppScopesIsNotGitHubGrant(t *testing.T) {
 	}
 	rep := runPF(t, p)
 	c := pfCheck(t, rep, CheckAppScopes)
-	if c.State != CouldNotCheck {
-		t.Fatalf("gitlab app-scopes = %s, want could-not-check (%s)", c.State, c.Detail)
+	if c.State != CheckedNotApplicable {
+		t.Fatalf("gitlab app-scopes = %s, want not-applicable (%s)", c.State, c.Detail)
+	}
+	// not-applicable is distinct from a verified pass: it must not read Green.
+	if c.State.Green() {
+		t.Fatal("gitlab app-scopes reads Green — not-applicable must never be counted as a verified checked-clean pass")
+	}
+	// ...but it MUST permit the pass to proceed, and it must not appear as a blocker.
+	if !c.State.Passing() {
+		t.Fatal("gitlab app-scopes is not Passing — a not-applicable check must not block the boot (#671)")
+	}
+	for _, b := range rep.Blocking() {
+		if b.Name == CheckAppScopes {
+			t.Errorf("gitlab app-scopes appears in Blocking() — not-applicable must not redden the envelope")
+		}
+	}
+	// The whole GitLab envelope (every other check green) must boot GREEN, not RED.
+	if !rep.Green() {
+		t.Fatalf("GitLab envelope is not GREEN with app-scopes not-applicable: %s", rep.SummaryLine())
+	}
+	// It is surfaced explicitly, not silently green: the summary names it as not-applicable.
+	line := rep.SummaryLine()
+	if !strings.Contains(line, CheckAppScopes+"=not-applicable") {
+		t.Errorf("SummaryLine does not surface the not-applicable check: %q", line)
+	}
+	// Surfaced, but NOT counted toward the checked-clean tally (4 of 5 are verified).
+	if !strings.Contains(line, "GREEN 4/5 checked-clean") {
+		t.Errorf("SummaryLine should report GREEN 4/5 checked-clean (one check not-applicable): %q", line)
+	}
+	if got := rep.NotApplicable(); len(got) != 1 || got[0].Name != CheckAppScopes {
+		t.Errorf("NotApplicable() = %v, want exactly [%s]", pfNamesOf(got), CheckAppScopes)
 	}
 	for _, banned := range []string{"--fresh", "apps.env", "app.pem"} {
 		if strings.Contains(strings.ToLower(c.Remediation), strings.ToLower(banned)) {
 			t.Errorf("gitlab app-scopes remediation carries GitHub text %q: %q", banned, c.Remediation)
 		}
 	}
+	// Citation points at live GitLab-forge issues, not the stale GitHub-shaped #571.
+	if strings.Contains(c.Refs, "#571") {
+		t.Errorf("gitlab app-scopes still cites the stale GitHub-shaped #571; refs=%q", c.Refs)
+	}
+	for _, want := range []string{"#655", "#671"} {
+		if !strings.Contains(c.Refs, want) {
+			t.Errorf("gitlab app-scopes refs %q does not cite %q", c.Refs, want)
+		}
+	}
+}
+
+// TestPreflightGitHubAppScopesUnchangedByNotApplicable pins that the #671
+// GitLab not-applicable arm did NOT weaken or hide the GitHub path: a GitHub-forge
+// repo still reads the installation grant and still FAILS the envelope on a
+// missing scope. If the not-applicable state ever leaked onto the GitHub path a
+// real scope gap would boot green — the exact regression the security precision
+// forbids.
+func TestPreflightGitHubAppScopesUnchangedByNotApplicable(t *testing.T) {
+	withRoster(t, goldenRoster())
+
+	// GitHub + full grant → checked-clean, as before.
+	pClean := okProbes() // ResolveForgeKind defaults to ForgeGitHub
+	repClean := runPF(t, pClean)
+	if c := pfCheck(t, repClean, CheckAppScopes); c.State != CheckedClean {
+		t.Fatalf("github app-scopes with full grant = %s, want checked-clean", c.State)
+	}
+
+	// GitHub + a missing duty → checked-failed, and it BLOCKS the envelope.
+	pGap := okProbes()
+	pGap.GrantedScopes = func(string, string) (map[string]string, error) {
+		return map[string]string{"pull_requests": "write", "issues": "write"}, nil // contents missing
+	}
+	repGap := runPF(t, pGap)
+	c := pfCheck(t, repGap, CheckAppScopes)
+	if c.State != CheckedFailed {
+		t.Fatalf("github app-scopes with a missing duty = %s, want checked-failed (not-applicable must not leak onto GitHub)", c.State)
+	}
+	if repGap.Green() {
+		t.Fatal("github envelope with a missing scope reads GREEN — a real scope gap would boot green")
+	}
+	blocked := false
+	for _, b := range repGap.Blocking() {
+		if b.Name == CheckAppScopes {
+			blocked = true
+		}
+	}
+	if !blocked {
+		t.Error("github app-scopes with a missing duty is not in Blocking() — a real scope gap must redden the envelope")
+	}
+}
+
+func pfNamesOf(cs []Check) []string {
+	var out []string
+	for _, c := range cs {
+		out = append(out, c.Name)
+	}
+	return out
 }
 
 // TestForgeKindProbeInfersFromRoster pins the default resolver the cold-mint check
