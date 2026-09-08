@@ -310,16 +310,30 @@ func stepMint(o bootOpts, tokenRole string) (string, error) {
 				"Boot from a repo the desk operates on, or pass --repo <owner/name> naming one.",
 			stepTokenMint, repo))
 	}
+	// Which forge serves this repo decides the mint's custody path. It is RESOLVED from
+	// the SAME single seam the preflight's cold-mint check reads (#659: deskkit.ForgeKindForRepo
+	// wraps the one resolveForgeKind — ASSAY_REPO_FORGES, then the origin remote host), never
+	// a caller's choice, so the mint and the preflight that precedes it can never disagree
+	// about the forge. Unresolved reads as GitHub, the historical default, so a GitHub adopter
+	// with no forge config mints byte-for-byte as before (#671's preflight fix made the
+	// GitLab envelope green; this closes the leftover boot half). A GitLab-resolved repo takes
+	// desktoken's GitLab PAT custody path via `--forge gitlab` — desktoken then rotates the
+	// role's `gitlab-<role>.token` rather than looking for a GitHub App PEM / apps.env a
+	// GitLab deployment does not have, which was the boot's stopping point (#676).
+	mintArgs := []string{tokenRole, "--repo", repo}
+	if deskkit.ForgeKindForRepo(repo) == deskkit.ForgeGitLab {
+		mintArgs = append(mintArgs, "--forge", "gitlab")
+	}
 	// --repo is NOT optional. A role's App is installed on more than one account, and a
 	// mint with no repo defaults to whichever owner the tool considers first — producing
 	// a token with no access to the repo this desk is about to work in, which surfaces
 	// later as an unrelated-looking API error.
-	r := runCmd("", "desktoken", tokenRole, "--repo", repo)
+	r := runCmd("", "desktoken", mintArgs...)
 	if r.err != nil {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: `desktoken %s --repo %s` did not mint (%s). Say so IN the artifact you were about "+
+			"step %s: `desktoken %s` did not mint (%s). Say so IN the artifact you were about "+
 				"to post — never silently fall back to another identity.",
-			stepTokenMint, tokenRole, repo, firstLine(r.stderr)), r.err)
+			stepTokenMint, strings.Join(mintArgs, " "), firstLine(r.stderr)), r.err)
 	}
 	path := firstLine(r.stdout)
 	fi, serr := os.Stat(path)
