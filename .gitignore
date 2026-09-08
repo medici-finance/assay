@@ -22,6 +22,11 @@
 # Built binaries land in tools/ via release, not committed as source
 /tools/statusgen
 
+# Desk worktrees created under the portable sanctioned prefix (deskwt add / role-init on
+# Windows, where the /private/tmp prefix is not a usable absolute path — #656). The
+# `.claude/` dir itself carries tracked files (guardrails), so ignore only this subtree.
+/.claude/worktrees/
+
 # The multi-root fixture root's GENERATED boards (assay-selfcontain/01). Its
 # sources are committed; its output is not — a checked-in copy of a generated
 # board is a stale value waiting to be mistaken for the expected one.

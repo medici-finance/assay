@@ -1,0 +1,275 @@
+# SOURCES.yaml — machine-readable provenance for the bundled assay skills.
+#
+# PARITY.md is the human record: what was ported, what changed, and why.
+# This file is the SAME provenance in a form a checker can read, so that
+# "copy three has rotted" is something a command reports rather than
+# something somebody has to remember to notice.
+#
+# Run:  make plugin-drift                      (advisory; always exit 0)
+#       go run ./tools/plugindrift --fail-on-drift   (exit 1 on any drift)
+#
+# CANONICAL-HERE. Since the harness-portability/02 authority flip (2026-08-11)
+# the five method-text skills are declared `canonical:` — the bundle IS their
+# home. The port relationship that used to pin them to an upstream is over:
+# there is no source to re-fetch, so nothing can report `behind`, `moved` or
+# `unreachable`, and `--fail-on-drift` cannot trip. `notes:` carries the
+# porting history in prose; the exact SHAs live in PARITY.md.
+#
+# `dailies` and `intake-desk` are NOT part of this flip — they were added by
+# later, independent briefs (assay-selfcontain/10, education/04) after this
+# flip's scope was set, and stay in `files:` with a real `source:` block,
+# still measured for drift. Bringing them under a future flip is separate work.
+#
+# Coverage still applies: every `skills/*/SKILL.md` on disk must appear in
+# `files:`, `canonical:` or `unported:` (a file in none of them is a hard
+# error, exit 2, in both advisory and strict mode). A skill added to the
+# bundle with no declaration cannot slip in unchecked.
+#
+# The checker reports one of:
+#
+#   in-sync      head blob == the recorded blob
+#   behind       head blob differs; N commits have touched the path since
+#   moved        the recorded path no longer exists at head
+#   unreachable  the source could not be read (network, auth, or not a remote)
+#
+# `unreachable` is NEVER reported as `in-sync`. A source the checker cannot
+# read is an unknown, not a pass. The five flipped skills below carry no
+# source, so nothing is checked for them and the coverage line is the whole
+# signal; `dailies` and `intake-desk` under `files:` are still checked.
+
+version: 1
+bundle: plugins/assay
+bundle-version: "0.3.0"
+
+files: []
+  # dailies and intake-desk retired from here to `canonical:` at
+  # assay-dogfood/07 (skill-body convergence) — see that entry below. This
+  # key stays declared, empty, rather than removed: an empty `files:` is
+  # still a meaningful state (nothing is pinned/ported today), distinct from
+  # the key never having existed.
+
+canonical:
+  # ---------------------------------------------------------------------------
+  # education/04 (Phase 0 ruling 2) / assay-dogfood/07. intake-desk moved here
+  # from `files:` — the convergence brief replaced the hand-scrubbed port
+  # (house repo slugs, internal issue numbers, the persona reference) with the
+  # same neutral-form resolution the other five canonical skills already use,
+  # so the scrub this row used to need no longer applies.
+  # ---------------------------------------------------------------------------
+  - path: skills/intake-desk/SKILL.md
+    reason: >-
+      Canonical home of the intake-desk method text since the assay-dogfood/07
+      skill-body convergence, and the ONLY home since the assay-dogfood/04
+      dogfood cutover retired the in-repo shadow copy — this repo now loads the
+      role from the installed `assay@assay` plugin as `assay:intake-desk`, so
+      there is no house copy left to hold in sync and the name has left
+      `tools/skillslint`'s PARITY intersection.
+    notes: >-
+      Scrubbed port under education/04 (Phase 0 ruling 2 — the front door
+      ships in the plugin bundle), through a `files:` pinned/scrubbed row;
+      converged to a single neutral body and declared canonical-here at
+      assay-dogfood/07. Independent Security-Review (education/04's gate-why)
+      is superseded by the convergence brief's own review gate. Exact SHAs of
+      the pre-convergence port history remain in PARITY.md.
+  # PARITY.md "Canonical files" row 1. The author-brief portable core, published
+  # here from the user-level ~/.claude copy at the assay-selfcontain/08
+  # inversion; declared canonical-here by harness-portability/02. the tracker keeps its
+  # author-brief as a project wrapper that delegates to this file; ~/.claude
+  # keeps the user-level convenience copy, pointed at this home.
+  - path: skills/author-brief/SKILL.md
+    reason: >-
+      Canonical home of the author-brief method text since the
+      harness-portability/02 authority flip (2026-08-11). No upstream remains —
+      consumers are the tracker project wrapper and the ~/.claude convenience copy.
+    notes: >-
+      Ported from the ~/.claude local-git core at the v0.1.0 cut; re-ported from
+      the assay .claude/skills home at the assay-selfcontain/08
+      inversion; declared canonical-here at harness-portability/02. Exact SHAs in
+      PARITY.md.
+
+  - path: skills/the-desk/SKILL.md
+    reason: >-
+      Canonical home of the the-desk method text since the harness-portability/02
+      authority flip (2026-08-11). No upstream remains — the tracker copy was removed
+      at the assay-selfcontain/08 consumer cutover (the tracker reads a CLAUDE.md
+      breadcrumb instead).
+    notes: >-
+      Ported from example-org/tracker at the v0.1.0 cut;
+      re-ported from the assay .claude/skills home at the
+      assay-selfcontain/08 inversion; declared canonical-here at
+      harness-portability/02. Exact SHAs in PARITY.md.
+
+  - path: skills/worker-desk/SKILL.md
+    reason: >-
+      Canonical home of the worker-desk method text since the
+      harness-portability/02 authority flip (2026-08-11). No upstream remains —
+      the tracker copy was removed at the assay-selfcontain/08 consumer cutover.
+      Renamed from `batch-fanout` by methodology/46.
+    notes: >-
+      Ported from example-org/tracker at the v0.1.0 cut;
+      re-ported from the assay .claude/skills home at the
+      assay-selfcontain/08 inversion; final re-sync at harness-portability/02
+      (deskreply tool-wiring table + issue-shaped claim-key rule); renamed from
+      `batch-fanout` to `worker-desk` by methodology/46; declared
+      canonical-here. Exact SHAs in PARITY.md.
+
+  - path: skills/verify-desk/SKILL.md
+    reason: >-
+      Canonical home of the verify-desk method text since the
+      harness-portability/02 authority flip (2026-08-11). No upstream remains —
+      the tracker copy was removed at the assay-selfcontain/08 consumer cutover.
+    notes: >-
+      Ported from example-org/tracker at the v0.1.0 cut;
+      re-ported from the assay .claude/skills home at the
+      assay-selfcontain/08 inversion; declared canonical-here at
+      harness-portability/02. Exact SHAs in PARITY.md.
+
+  - path: skills/pr-review-desk/SKILL.md
+    reason: >-
+      Canonical home of the pr-review-desk method text since the
+      harness-portability/02 authority flip (2026-08-11). No upstream remains —
+      the tracker copy was removed at the assay-selfcontain/08 consumer cutover.
+    notes: >-
+      Ported from example-org/tracker at the v0.1.0 cut;
+      re-ported from the assay .claude/skills home at the
+      assay-selfcontain/08 inversion; final re-sync at harness-portability/02
+      (sensitive-findings channel wording); declared canonical-here. Exact SHAs
+      in PARITY.md.
+
+# Bundled files with NO upstream: authored in this repo, so there is nothing to
+# drift against. Declared here so the coverage check can tell "has no source"
+# apart from "somebody forgot to pin it".
+unported:
+  - path: skills/adopt/SKILL.md
+    reason: >-
+      Authored in this repo (3c33240) as the invokable entry to the adoption
+      runbook. It documents THIS bundle, so it has no upstream to port from and
+      no drift baseline to hold.
+  - path: skills/ask-decision/SKILL.md
+    reason: >-
+      Authored/homed in this repository as the decision-filing utility skill. It
+      carries no upstream source block, so there is no drift baseline to hold —
+      declared here so coverage accounts for it rather than reporting it
+      unaccounted.
+  - path: skills/install/SKILL.md
+    reason: >-
+      Authored in this repo (assay-dogfood/06) as the turnkey install verb that
+      orchestrates the `adopt` runbook's PRIMITIVEs. It documents THIS bundle
+      (and reads the sibling plugins/assay/paired-versions.yaml), so it has no
+      upstream to port from and no drift baseline to hold.
+  - path: skills/pdfingest/SKILL.md
+    reason: >-
+      Authored/homed in this repository as a local PDF-ingestion utility. It
+      carries no upstream source block, so there is no drift baseline to hold —
+      declared here so coverage accounts for it rather than reporting it
+      unaccounted.
+  - path: skills/pr-shepherd/SKILL.md
+    reason: >-
+      Homed in this bundle: it shipped in the public bundle and the in-repo
+      shadow copy is retired, so the installed skill is the only one and there
+      is no upstream to port from or drift against. Declared here for coverage.
+  - path: skills/upgrade-assay/SKILL.md
+    reason: >-
+      Authored/homed in this repository as the umbrella-version upgrade verb; it
+      documents THIS bundle's version markers and migrations, so it has no
+      upstream to port from and no drift baseline to hold.
+
+# ---------------------------------------------------------------------------
+# Resident operating rules — single source + generated delivery artifacts
+# (harness-portability/05, 2026-08-16).
+#
+# These are NOT skills (they do not match the coverage glob skills/*/SKILL.md),
+# so plugindrift neither pins nor coverage-checks them; their provenance is
+# recorded here so the manifest is not silent about them, and their in-sync
+# guarantee is enforced by tools/harnessgen instead of by drift re-fetch:
+#
+#   plugins/assay/resident-rules.md
+#     The SINGLE source of the ten resident operating rules (one `## R<N>`
+#     section each). Authored in this repo; no upstream. HAND-EDIT THIS ONE.
+#
+#   plugins/assay/hooks/resident-rules.payload.txt   (GENERATED — do not edit)
+#     The Claude Code SessionStart payload; inject-resident-rules.sh wraps it as
+#     the {systemMessage: …} JSON. Byte-identical to the pre-refactor heredoc.
+#
+#   plugins/assay/codex/AGENTS-assay.md              (GENERATED — do not edit)
+#     The Codex AGENTS.md fragment (HP/03 ruling A1: Codex CLI for v1), framed
+#     as one `## ` section for AGENTS.md composition (HP/01 §3.1).
+#
+# Regenerate:  go run ./tools/harnessgen resident
+# CI enforces: go run ./tools/harnessgen resident --check   (.github/workflows/tools.yml)
+#   0 clean · 1 drift (source edited without regenerating, or an artifact
+#   hand-edited) · 2 could-not-check (source missing/unparseable). The check
+#   also runs in tools/harnessgen's unit suite (TestCommittedArtifactsMatchSource),
+#   triggered on plugins/** and tools/** — see the cross-module-reader registry
+#   row in tools/desk/internal/deskkit/citrigger_test.go.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Codex plugin manifest — generated from the single metadata source
+# (harness-portability/06, 2026-08-22).
+#
+# Also NOT skills (they do not match skills/*/SKILL.md), so plugindrift neither
+# pins nor coverage-checks them; their in-sync guarantee is enforced by
+# tools/harnessgen instead:
+#
+#   plugins/assay/.claude-plugin/plugin.json
+#     The Claude Code plugin manifest — ALSO the single METADATA source the Codex
+#     manifest derives from (name, version, description, author, homepage,
+#     repository, license, keywords). HAND-EDIT THIS ONE; the Codex manifest
+#     follows. It cannot skew on version because it is generated, not hand-copied.
+#
+#   plugins/assay/.codex-plugin/plugin.json           (GENERATED — do not edit)
+#     The Codex CLI plugin manifest (HP/01 §3.2 measured schema + superpowers
+#     6.2.0 shape: a `skills: "./skills/"` directory pointer, not a per-skill
+#     array). HP/03 A1: Codex CLI for v1 — the App-marketplace `interface` block
+#     superpowers carries is deliberately omitted (App is HP/08, out of scope).
+#
+#   plugins/assay/codex/packaging.md
+#     The coverage roster (the SOURCES.yaml discipline, ported): every
+#     skills/*/SKILL.md must be listed packaged or excluded-with-reason; an
+#     unaccounted skill is a hard error (exit 2). HAND-MAINTAIN when adding or
+#     removing a skill. No exclusions today — every current skill runs/degrades/
+#     refuses on Codex CLI, all of which ship (see references/codex.md).
+#
+# Regenerate:  go run ./tools/harnessgen codex
+# CI enforces: tools/harnessgen's unit suite (TestCodexCommittedManifestMatchesSource
+#   + the TestCodex* skew/coverage/binding tests) runs `codex --check` against the
+#   repo root inside the harnessgen `go test` matrix leg (.github/workflows/tools.yml,
+#   triggered on plugins/** and tools/**), so a version skew, a hand-edit, an
+#   unaccounted skill, or a packaging↔binding skew reddens CI today.
+#   0 clean · 1 drift (metadata source edited without regenerating, or the
+#   manifest hand-edited/version-skewed) · 2 could-not-check (metadata source or
+#   roster missing/unparseable; a skill on disk unaccounted-for in the roster;
+#   or a packaged skill with no degradation cell in references/codex.md).
+#   FOLLOW-UP: an explicit `codex --check` step in tools.yml (mirroring the
+#   `resident --check` step) is desired belt-and-suspenders but edits a workflow
+#   file, which the worker App cannot push (no `workflows` scope). It must be added
+#   by a workflows-scoped identity; the unit suite already carries the guarantee.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# references: — provenance for the per-harness binding files (harness-portability/04).
+#
+# These are NOT skills, so they sit OUTSIDE plugindrift's `skills/*/SKILL.md`
+# coverage universe by design (the pinned/canonical/unported lists above must
+# equal the SKILL.md files on disk — a tested invariant). This section is
+# documentation-only: plugindrift ignores the key, so it changes no coverage
+# count. It is here so a reader of the manifest sees the WHOLE shipped tree, and
+# so the bundle's provenance is complete.
+#
+# Their closure — every capability in the closed vocabulary resolves in every
+# binding file, and every skill has a degradation cell in each — is a machine
+# property held by `tools/harnesslint bindings`, wired into CI (tools.yml). That
+# is the checker that keeps references/ coverage closed; plugindrift is not.
+# ---------------------------------------------------------------------------
+references:
+  - path: references/claude-code.md
+    reason: >-
+      Authored in this repo (harness-portability/04) as the Claude Code capability
+      binding: capability vocabulary → Claude mechanisms, all-`runs` degradation.
+      No upstream. Closure held by `tools/harnesslint bindings`.
+  - path: references/codex.md
+    reason: >-
+      Authored in this repo (harness-portability/04) as the Codex CLI capability
+      binding, from HP/01's capability matrix and HP/03's degradation ruling.
+      No upstream. Closure held by `tools/harnesslint bindings`.

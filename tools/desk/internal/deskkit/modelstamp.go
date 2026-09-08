@@ -341,6 +341,12 @@ type LabelEvent struct {
 	Name      string // the label name, e.g. "dispatched-model:opus-4.8"
 	AppliedBy string // GitHub login of the actor who added (or removed) the label
 	Removed   bool   // true for an `unlabeled` event: this application was superseded
+	// CreatedAt is when the event happened (RFC3339), "" when the forge reported none. The
+	// applier-aware model-capability floor (StampTimeline) reduces by ORDER and does not read
+	// it; it is carried for the SECOND consumer, cmd/deskboard's detectNonCommitResolution,
+	// which must compare a resolution label's ADD time against the last review to tell a
+	// post-review resolution from an old one (freeze rule: added with that consumer).
+	CreatedAt string
 }
 
 // StampTimeline is the applier-aware reader's whole input: the labels CURRENTLY on the PR,

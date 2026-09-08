@@ -25,11 +25,6 @@ package main
 // deciding an irreversible action must handle a missing field; it can never read a
 // zero-value `false` as "closed unmerged" or a stale `true` as "merged".
 
-import (
-	"encoding/json"
-	"fmt"
-)
-
 const (
 	prStateMerged  = "merged"
 	prStateClosed  = "closed"
@@ -42,29 +37,30 @@ const (
 // the whole board over one vanished PR would be the noise that gets a board ignored —
 // but it MUST degrade to `unknown` carrying the reason, never to a guessed `merged`.
 func fetchPRState(repo string, num int) (state string, merged *bool, detail string) {
-	out, err := ghRun("api", fmt.Sprintf("repos/%s/pulls/%d", repo, num))
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return prStateUnknown, nil, "could not resolve forge: " + ferr.Error()
+	}
+	pr, err := f.GetPullRequest(fr, num)
 	if err != nil {
 		return prStateUnknown, nil, "could not read PR state: " + err.Error()
 	}
-	var v struct {
-		State    string  `json:"state"`
-		Merged   *bool   `json:"merged"`
-		MergedAt *string `json:"merged_at"`
-	}
-	if err := json.Unmarshal(out, &v); err != nil {
-		return prStateUnknown, nil, "could not parse PR state: " + err.Error()
-	}
 	switch {
-	case v.MergedAt != nil && *v.MergedAt != "":
+	case pr.MergedAt != "":
+		// A non-empty MergedAt is the forge's own merge timestamp — set on a merged change —
+		// so it carries the merged-vs-closed distinction #209 depends on without inferring
+		// merge from State.
 		t := true
-		return prStateMerged, &t, "merged_at " + *v.MergedAt
-	case v.Merged != nil && *v.Merged:
+		return prStateMerged, &t, "merged_at " + pr.MergedAt
+	case pr.Merged:
+		// #400 N1: the forge says merged:true with no merged_at (a genuinely merged change can
+		// carry a null timestamp). The flag is the API saying it merged; honor it.
 		t := true
 		return prStateMerged, &t, "merged=true"
-	case v.State == "closed":
+	case pr.State == "closed":
 		f := false
 		return prStateClosed, &f, "state=closed, merged_at null"
-	case v.State == "open":
+	case pr.State == "open":
 		// It is open again (reopened between sweeps) — say so rather than tombstoning
 		// it as gone.
 		return prStateOpen, nil, "state=open (reopened since the prior sweep)"

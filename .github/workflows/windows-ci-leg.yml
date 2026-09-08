@@ -131,6 +131,36 @@ jobs:
           fi
           echo "fail-first OK — statusgen refused the bogus verb (leg reddens on broken input as intended)"
 
+  # windows-bootstrap-smoke: the ONLINE bootstrap hash-verify leg (windows-port/03, decision
+  # #508). Kept SEPARATE from windows-smoke ON PURPOSE. windows-smoke is an OFFLINE envelope
+  # (--lint / --version only, no live-forge contact — brief-04 row 4 asserts it), whereas
+  # scripts/bootstrap-windows.ps1 downloads a release asset (Invoke-WebRequest to the GitHub
+  # release CDN) to verify its sha256 at runtime. That live-forge download is the sanctioned
+  # exception decision #508 requires; isolating it in this job keeps windows-smoke's offline
+  # invariant intact rather than quietly widening it.
+  windows-bootstrap-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Bootstrap hash-verify at Windows runtime (tamper -> refuse; windows-port/03)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # decision #508: exercise scripts/bootstrap-windows.ps1's sha256 hash-verify at Windows
+          # runtime — a TAMPERED checksum must REFUSE (nothing installed), the pinned checksum must
+          # install, and a check-removed copy must install the tampered asset (so the refusal is
+          # non-vacuous). The pinned windows-amd64 tag + sha come from paired-versions.yaml (single
+          # source of truth), so the untampered path downloads the real published asset. This step
+          # DOES contact the release CDN — the sanctioned online exception, which is exactly why it
+          # lives in this job and NOT in the offline windows-smoke.
+          line=$(grep -E '^[[:space:]]*windows-amd64:[[:space:]]+statusgen-windows-amd64\.exe' plugins/assay/paired-versions.yaml | head -1)
+          tag=$(echo "$line" | awk '{print $3}')
+          sha=$(echo "$line" | awk '{print $4}')
+          echo "pinned windows-amd64: tag=${tag} sha=${sha}"
+          test -n "${tag}" && test -n "${sha}"
+          pwsh -NoProfile -File scripts/windows-bootstrap-hashcheck-smoke.ps1 -Tag "${tag}" -RealSha256 "${sha}"
+
   # native windows/arm64 smoke: BLOCKED — needs a windows-11-arm hosted runner (or a
   # self-hosted arm64 Windows runner). This leg does NOT green arm64 from the amd64
   # windows-latest result. Held with its reason per windows-port/04; unblocked when a

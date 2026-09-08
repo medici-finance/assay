@@ -124,3 +124,41 @@ func TestForgeGithubTierErrors(t *testing.T) {
 		})
 	}
 }
+
+// TestGithubListRecentCommits_EmptyRepoTranslation proves the GitHub backend translates ONLY
+// its own empty signal — 409 Conflict ("Git Repository is empty.") on the commits endpoint —
+// into the backend-neutral ErrForgeEmptyRepo sentinel, and that a 404 (the repo is gone/renamed,
+// or the token lost access) stays a read failure the caller surfaces as could-not-check, never
+// folded into a benign "empty repo". This is the regression the correctness review flagged: the
+// old IsForgeEmptyRepo tested a raw HTTP status backend-blind, so a GitHub 404 was read as empty
+// and the branch-health probe's could-not-check was silenced (rendered as a healthy empty repo).
+func TestGithubListRecentCommits_EmptyRepoTranslation(t *testing.T) {
+	const tok = "test-injected-token-0000"
+
+	t.Run("conflict_409_is_empty", func(t *testing.T) {
+		a := newAuthCapture(t, http.StatusConflict)
+		f := &GitHubForge{Token: tok, BaseURL: a.srv.URL, Client: a.srv.Client()}
+		_, err := f.ListRecentCommits(forgeTestRepo, 5)
+		if !IsForgeEmptyRepo(err) {
+			t.Fatalf("GitHub 409 must translate to the empty-repo sentinel; got %v", err)
+		}
+	})
+
+	t.Run("not_found_404_is_not_empty", func(t *testing.T) {
+		a := newAuthCapture(t, http.StatusNotFound)
+		f := &GitHubForge{Token: tok, BaseURL: a.srv.URL, Client: a.srv.Client()}
+		_, err := f.ListRecentCommits(forgeTestRepo, 5)
+		if err == nil {
+			t.Fatal("GitHub 404 must surface a read failure, not a clean read")
+		}
+		if IsForgeEmptyRepo(err) {
+			t.Fatalf("GitHub 404 (gone/renamed or lost access) must NOT read as empty; got %v", err)
+		}
+		if !IsForgeNotFound(err) {
+			t.Fatalf("GitHub 404 must stay a not-found read failure the caller surfaces; got %v", err)
+		}
+		if code := ExitCodeOf(err); code != ExitUnverifiable {
+			t.Fatalf("GitHub 404 must map to ExitUnverifiable (%d), got %d", ExitUnverifiable, code)
+		}
+	})
+}

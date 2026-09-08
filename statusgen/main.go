@@ -232,6 +232,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	placeholderProblems, placeholderNotices := checkPlaceholderFiles(checkStreams)
 	problems = append(problems, placeholderProblems...)
 	notices = append(notices, placeholderNotices...)
+	// Same-tag pin lint (derived-board/06 §6): a root's .assay-versions whose
+	// artifact lines carry DIFFERENT tags is the mixed-version state (statusgen
+	// v1.0.0 next to desk-tools v0.13.0 over one tree) that misreads a v2 board.
+	// PROBLEM when the tags differ; a no-op when the file is absent (this repo's
+	// own root carries no pin file), so it never reds an un-pinned tree.
+	if pinProblem, has := sameTagPinLint(root); has {
+		problems = append(problems, pinProblem)
+	}
 	// The per-stream done/ archive checks — a NOTICE for a
 	// retired placeholder still at the stream root (archive candidate) and a
 	// PROBLEM for any non-done brief/placeholder parked under done/. Additive,
@@ -377,6 +385,13 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		if n := openIssueDebtNotice(staleIssueDaysCfg); n != "" {
 			notices = append(notices, n)
 		}
+		// Drive-plan honesty: PROBLEM a drive-plan .md whose
+		// snapshot region has drifted from a fresh render, or that has no manifest
+		// beside it. --lint only (the PR gate); STATUS.md-free and offline. Absent
+		// docs/roadmap/drives ⇒ inert.
+		dp, dn := driveRegionLintProblems(root, nowFunc())
+		problems = append(problems, dp...)
+		notices = append(notices, dn...)
 	}
 	// T9: when origin/main is unresolvable, grandfatheredIDs returns empty and
 	// idFormatProblems fires numeric-regression PROBLEMs against every
@@ -1160,6 +1175,16 @@ func main() {
 		os.Exit(runConform(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
+	// `statusgen migrate brief-v1-to-v2 [--dry-run] [--root DIR]` — the brief-v1 →
+	// brief-v2 flag-day migration (derived-board/06, migrate.go). Intercepted
+	// before flag parsing for verifyrun's reason: it owns its own target
+	// positional plus --root/--dry-run, and it is a WRITE-capable tree mutation
+	// that has no business inside the offline, side-effect-free --lint. It is the
+	// executable half of a deskmigrate `statusgen-regen` op.
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		os.Exit(runMigrate(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
 	// `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter
 	// and board row, as JSON (desk-tools/12, briefinfo.go). Intercepted before flag
 	// parsing for verifyrun's reason: it owns --root and its own --json/--text, and
@@ -1247,7 +1272,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, enforcement-status, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, enforcement-status, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			os.Exit(2)
 		}
@@ -1292,6 +1317,14 @@ func main() {
 	// so a board-build PROBLEM can neither abort nor silence it.
 	watchdogMode := flag.Bool("watchdog", false, "board-freeze watchdog: alarm (rc 1 + JSON issue payload) when STATUS.md freshness exceeds 2× the regen cadence; does NO board build")
 	driveMarkers := flag.String("drive-markers", "", "file of already-existing drive-issue markers (tracking/act/ping; one per line, or raw issue bodies/comments)")
+	// Drive snapshot: print the `## Drive: <slug>` dashboard
+	// section on its own — the same render drivedash writes into STATUS.md, offline
+	// and STATUS.md-free — so a drive-plan file can carry a fenced snapshot of the
+	// board's own truth. With the boolean --check modifier and a trailing <file>
+	// positional it compares that file's region against a fresh render (0 identical,
+	// 1 drift, 2 could-not-check). Reuses the existing --check flag; the shipped
+	// board-check is untouched.
+	driveSnapshotSlug := flag.String("drive-snapshot", "", "print the `## Drive: <slug>` dashboard section (offline, STATUS.md-free); with --check <file> compare that file's drive-snapshot region against a fresh render (exit 0 identical, 1 drift, 2 could-not-check)")
 	// Sign-off digest (methodology-metrics/38) — the BATCH view over
 	// --verify-issues' per-brief cards: one body listing EVERY brief awaiting a
 	// human sign-off, oldest-first, each with its recorded Evidence link. Same
@@ -1499,6 +1532,7 @@ func main() {
 			"--decision-issues":       *decisionIssuesMode,
 			"--owed-issues":           *owedIssuesMode,
 			"--drive-issues":          *driveIssuesMode,
+			"--drive-snapshot":        *driveSnapshotSlug != "",
 			"--signoff-digest":        *signoffDigestMode,
 			"--scan-issues":           *scanIssuesMode,
 			"--transcribe-scan":       *transcribeScanMode,
@@ -1626,6 +1660,14 @@ func main() {
 	// it detects.
 	if *watchdogMode {
 		os.Exit(runWatchdog(*root))
+	}
+	// Drive snapshot: self-contained, STATUS.md-free,
+	// offline. Prints the `## Drive: <slug>` section, or (with --check + a trailing
+	// <file>) compares that file's region. Placed BEFORE the checkMode board-check
+	// switch below so the boolean --check reads as this sub-command's modifier when
+	// --drive-snapshot is set.
+	if *driveSnapshotSlug != "" {
+		os.Exit(runDriveSnapshot(*root, *driveSnapshotSlug, *checkMode, flag.Args(), nowFunc()))
 	}
 	// Sign-off digest: the roll-up over the per-brief cards. Self-contained,
 	// STATUS.md-free, offline. Non-zero exit means could-not-check — never an
@@ -1953,6 +1995,14 @@ func main() {
 			os.Exit(2)
 		}
 		os.Exit(runDiffLintRoots(resolvedRoots, *diffBaseFlag, budgetSpecs, *changedFile, *scopeFlag))
+	}
+	// Brief-reading version gate (derived-board/06 §6): a STAMPED statusgen below
+	// v1.0.0 refuses to read a brief-v2 tree (exit 6), pointing at
+	// assay:upgrade-assay. An unstamped local build reports "dev" and behaves as
+	// latest, so running from source is never gated. This is the SEPARATE, release-
+	// boundary control alongside parseBriefFile's #271 fail-closed trap.
+	if gate := refuseIfTreeTooNew(resolvedRoots, statusgenVersion, os.Stderr); gate != 0 {
+		os.Exit(gate)
 	}
 	code := runRoots(resolvedRoots, mode, budgetSpecs, changedPaths, *scopeFlag)
 	// Opt-in telemetry (gtm/08): only after an ordinary lint/write run, and only

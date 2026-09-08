@@ -103,11 +103,11 @@ import (
 )
 
 const (
-	scanEnvBlessLogin            = "ASSAY_BLESS_LOGIN"
-	scanEnvTrustedLogins         = "ASSAY_TRUSTED_LOGINS"
-	scanEnvTrustedBotSlugs       = "ASSAY_TRUSTED_BOT_SLUGS"
-	scanEnvAllowedRepos          = "ASSAY_ALLOWED_REPOS"
-	scanEnvHumanLoginMap         = "ASSAY_HUMAN_LOGIN_MAP"
+	scanEnvBlessLogin      = "ASSAY_BLESS_LOGIN"
+	scanEnvTrustedLogins   = "ASSAY_TRUSTED_LOGINS"
+	scanEnvTrustedBotSlugs = "ASSAY_TRUSTED_BOT_SLUGS"
+	scanEnvAllowedRepos    = "ASSAY_ALLOWED_REPOS"
+	scanEnvHumanLoginMap   = "ASSAY_HUMAN_LOGIN_MAP"
 	// scanEnvFormerHumanLoginMap carries the FORMER-humans map: name:login entries
 	// for humans who WERE confirmed at some past point but have since left the
 	// roster. Same format and bot-shape validation as ASSAY_HUMAN_LOGIN_MAP. It is
@@ -281,6 +281,18 @@ const (
 	// opt-in on either side from a file. KEEP IN SYNC with
 	// deskkit/rosterconfig.go's EnvAllowCluster.
 	scanEnvAllowCluster = "ASSAY_ALLOW_CLUSTER"
+
+	// scanEnvGitLabSessionEmails (ASSAY_GITLAB_SESSION_EMAILS) is the desk's GitLab
+	// SESSION / implementer commit-author allowlist, CONSUMED by the desk's
+	// commit-identity preflight (deskkit/preflight.go) to distinguish the session
+	// identity that authors commits from the role service account used for API
+	// writes (#643). statusgen runs no such preflight and consumes it in neither
+	// form — but the house records it in the SAME shared roster.env this reader
+	// parses, so an unrecognised-key refusal here would mean turning the desk's
+	// GitLab two-identity path on collapses statusgen's whole configuration.
+	// Recognised, not applied. KEEP IN SYNC with deskkit/rosterconfig.go's
+	// EnvGitLabSessionEmails.
+	scanEnvGitLabSessionEmails = "ASSAY_GITLAB_SESSION_EMAILS"
 )
 
 // scanKnownRosterKeys is the ASSAY_-namespace roster SCHEMA this binary speaks:
@@ -321,6 +333,7 @@ func scanKnownRosterKeys() []string {
 		// consumes each and why statusgen must not fail closed on it.
 		scanEnvRepoForges, scanEnvRiskCallout,
 		scanEnvWithheldIdentifiers, scanEnvAllowCluster,
+		scanEnvGitLabSessionEmails,
 	}
 }
 
@@ -591,6 +604,13 @@ func scanReadConfigFile() (map[string]string, string, error) {
 // scanCheckOwnerPerms is the sshd rule: a configuration that decides who is
 // trusted must not be writable by anyone but its owner, and must be owned by the
 // user running the tool.
+//
+// The permission enforcement is platform-specific and lives entirely in
+// checkFileOwner (rosterowner_{unix,windows}.go): unix checks the group/world-
+// writable mode bits AND the owning uid; windows checks the owner SID and DACL,
+// because os.FileMode's permission bits are synthetic there (a normal file reads
+// 0666) and a shared mode check would fire on every Windows file. This function
+// only resolves the path and the directory/file distinction before delegating.
 func scanCheckOwnerPerms(path string, isDir bool) error {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -599,20 +619,6 @@ func scanCheckOwnerPerms(path string, isDir bool) error {
 	if isDir && !fi.IsDir() {
 		return fmt.Errorf("%s is not a directory", path)
 	}
-	if mode := fi.Mode().Perm(); mode&0o022 != 0 {
-		kind := "file"
-		fix := "0600"
-		if isDir {
-			kind = "directory"
-			fix = "0700"
-		}
-		return fmt.Errorf("roster config %s %s is group- or world-writable (mode %04o): "+
-			"anything that can write it can name the accounts this tool trusts. "+
-			"Fix with `chmod %s %s`", kind, path, mode, fix, path)
-	}
-	// Owner check is platform-specific: unix compares the owning uid; windows has
-	// no uid and skips it LOUDLY (see rosterowner_{unix,windows}.go). The
-	// group/world-writable mode check above runs on both platforms.
 	return checkFileOwner(path, fi)
 }
 

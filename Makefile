@@ -15,6 +15,11 @@
 # `tools/desk/` is canonical here (medici-finance/assay) post-dehouse; this
 # Makefile is its build home. The README documents these targets — keep the two in
 # step.
+#
+# Windows counterpart: scripts/build-windows.ps1 mirrors the .PHONY target set
+# below (PowerShell; no nmake/VS/make needed). Adding or removing a target here
+# means editing that script too — tools/winparity asserts the two target sets are
+# equal and reddens on drift (see tools/winparity/README.md).
 
 SHELL       := /bin/sh
 DESK_MODULE  := github.com/medici-finance/assay/tools/desk

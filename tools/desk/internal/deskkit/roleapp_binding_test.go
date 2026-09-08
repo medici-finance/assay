@@ -77,7 +77,7 @@ func TestMultiRoleSharedGrantPassesEveryBoundRole(t *testing.T) {
 	}
 	p := PreflightProbes{GrantedScopes: grantedScopesProbe}
 	for _, role := range []string{"reviewer", "worker"} {
-		c := checkAppScopes(p, role, tokenPath)
+		c := checkAppScopes(p, role, tokenPath, ForgeGitHub)
 		if c.State != CheckedClean {
 			t.Fatalf("checkAppScopes(%s) over the shared grant = %s (%s), want checked-clean — "+
 				"a shared grant covering the duties must pass every bound role", role, c.State, c.Detail)

@@ -1,16 +1,16 @@
 package main
 
-// forge.go — the resolver seam the board's TYPED reads authenticate through.
+// forge.go — the resolver seam every board read authenticates through.
 //
-// deskboard's peripheral reads (PR search, commit history, combined status, workflow-directory
-// listing, single-commit reads) still shell `gh` through ghRun, behind the one narrowed permit
-// row that names them and their follow-up brief. The board's CENTRAL reads — the bulk open-PR
-// read and the two trust-gate reads — reach the forge through deskkit.ForgeFor instead, as
-// TYPED ops that resolve on any configured forge (could-not-check where a backend cannot serve
-// one). Unlike the ambient-fallback ghRun read path, ForgeFor is handed this session's minted
-// App token and REFUSES a client without one: these three reads therefore do NOT degrade onto
-// an ambient identity — a session with no resolvable role gets a refusal the board surfaces as
-// could-not-check (the same fail-closed direction the peripheral reads already take on a 401).
+// As of the forge-neutral migration, deskboard's reads ALL reach the forge as TYPED ops on
+// deskkit's Forge seam: the CENTRAL reads (the bulk open-PR read and the two trust-gate reads)
+// alongside the former-peripheral reads (PR search, commit history, combined status,
+// workflow-directory listing, single-commit reads, compare, raw diff) that used to shell `gh`
+// through the now-deleted ghRun choke point — so cmd/deskboard carries no forge-CLI literal.
+// Every op resolves on any configured forge (could-not-check where a backend cannot serve one).
+// ForgeFor is handed this session's minted App token and REFUSES a client without one: a read
+// therefore never degrades onto an ambient identity — a session with no resolvable role gets a
+// refusal the board surfaces as could-not-check.
 
 import (
 	"strings"
@@ -40,9 +40,9 @@ func init() {
 	})
 }
 
-// forgeFor resolves the forge serving repo for the board's typed reads. It is a package var
-// so a test can inject a recorded backend for the three typed reads without a network or a
-// minted credential, while the peripheral ghRun reads keep their own PATH-shim.
+// forgeFor resolves the forge serving repo for the board's reads. It is a package var so a
+// test can inject a recorded backend for the typed reads without a network or a minted
+// credential.
 var forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok {
@@ -59,4 +59,19 @@ var forgeFor = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 		return nil, fr, ferr
 	}
 	return f, fr, nil
+}
+
+// forgeForOwner resolves the forge serving an OWNER, for the one owner-wide read
+// (SearchOpenChanges). The forge and its minted token are resolved per account, so this reuses
+// forgeFor on a WATCHED repo under the owner — the scope-reconciliation verb only asks about
+// owners derived from the watched set, so such a repo always exists. It refuses (could-not-check)
+// when the owner has no watched repo to resolve a coordinate from, rather than guessing one.
+var forgeForOwner = func(owner string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+	for _, repo := range deskkit.AllowedRepos() {
+		if o, _, ok := strings.Cut(repo, "/"); ok && o == owner {
+			return forgeFor(repo)
+		}
+	}
+	return nil, deskkit.ForgeRepo{}, deskkit.Unverifiable(
+		"cannot resolve a forge for owner "+owner+" — no watched repo under it to bind the account's App token", nil)
 }

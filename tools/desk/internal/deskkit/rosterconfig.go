@@ -274,6 +274,40 @@ const (
 	// configuration. It is recognised here and otherwise ignored. KEEP IN SYNC with
 	// statusgen/rosterconfig.go's scanEnvDeterministicGatePatterns.
 	EnvDeterministicGatePatterns = "ASSAY_DETERMINISTIC_GATE_PATTERNS"
+
+	// EnvGitLabSessionEmails is the SESSION / implementer commit-author allowlist for
+	// a GitLab worktree, comma-separated EXACT emails (#643). It exists because on
+	// GitLab the desk runs TWO distinct identities: the SESSION / implementer identity
+	// (a real GitLab user, e.g. `ih-bot`) authors the worktree's commits under its own
+	// user.name / user.email, while the role SERVICE ACCOUNT (e.g. `assay-worker-bot`)
+	// is the analog of the GitHub role App and is used only for minted API writes.
+	// The commit-identity preflight (preflight.go) was written for the GitHub model,
+	// where the App IS the committer, so it demanded the SERVICE-ACCOUNT noreply shape
+	// for the commit email and wrongly blocked the documented session actor whose
+	// commit email is an ordinary user address.
+	//
+	// This key names the session emails the deployment TRUSTS as commit authors on a
+	// GitLab worktree. It is consulted ONLY on the GitLab commit-identity path, IN
+	// ADDITION to the service-account noreply shape — never on GitHub, where the
+	// #638 bot-USER-id guarantee is unchanged.
+	//
+	// Two rules, both load-bearing:
+	//
+	//	ADDITIVE-ONLY  a configured session email is an ADDITIONAL accepted commit
+	//	               author; it never displaces the service-account shape (a worktree
+	//	               that DOES commit as the SA still passes) and never relaxes the
+	//	               cross-forge rejection (a GitHub noreply address presented for a
+	//	               GitLab entry still FAILS). There is no syntax here that widens
+	//	               what a GitHub entry accepts.
+	//	FAIL-CLOSED    UNSET is not an error and not a degraded state: it means the
+	//	               service-account noreply shape is the ONLY accepted GitLab commit
+	//	               email — byte-for-byte today's behaviour. An email that is neither
+	//	               a configured session email NOR the service-account shape still
+	//	               FAILS. The set is an EXPLICIT allowlist read from the trusted
+	//	               roster (~/.config/assay), the same trust anchor every other
+	//	               identity fact is read from, so an arbitrary or attacker-supplied
+	//	               email cannot enter it.
+	EnvGitLabSessionEmails = "ASSAY_GITLAB_SESSION_EMAILS"
 )
 
 // knownRosterKeys is the ASSAY_-namespace roster SCHEMA these tools speak: every
@@ -310,6 +344,12 @@ func knownRosterKeys() []string {
 		EnvHomeRepo, EnvScanRepos, EnvAuthorizedAuthors,
 		EnvFormerHumanLoginMap,
 		EnvChannelDriftTarget, EnvDeterministicGatePatterns,
+		// EnvGitLabSessionEmails (ASSAY_GITLAB_SESSION_EMAILS) is CONSUMED here, not
+		// merely recognised: parseConfig lands it on cfg.GitLabSessionEmails and the
+		// GitLab commit-identity preflight reads it via GitLabSessionEmailAllowed()
+		// (#643). It must be recognised or a roster carrying it collapses the whole
+		// configuration on the unknown-ASSAY_-key refusal.
+		EnvGitLabSessionEmails,
 		// EnvSweepWithheldStreams (ASSAY_SWEEP_WITHHELD_STREAMS, sweepconfig.go) is
 		// consumed by the S2 sweep via a direct os.Getenv read, NOT through this
 		// scanConfig — but the de-housing REQUIRES the house to set it in the
@@ -472,6 +512,16 @@ type Config struct {
 	// the environment, so a roster-configured value loaded clean and was then never
 	// applied.
 	WithheldIdentifiers []string
+
+	// GitLabSessionEmails is the normalised SESSION / implementer commit-author
+	// allowlist parsed from ASSAY_GITLAB_SESSION_EMAILS (#643): the exact commit
+	// emails accepted as a session identity on a GitLab worktree, IN ADDITION to the
+	// role service-account noreply shape. Lowercased, trimmed, empties dropped; nil
+	// when unset — which is a COMPLETE configuration (the service-account shape is
+	// then the only accepted GitLab commit email, byte-for-byte the pre-#643
+	// behaviour), not a degraded one. Read through GitLabSessionEmailAllowed(); it is
+	// consulted ONLY on the GitLab commit-identity path, never on GitHub.
+	GitLabSessionEmails []string
 
 	// RepoPatterns is the sorted, de-duplicated set of owner/* PATTERN entries parsed
 	// out of ASSAY_ALLOWED_REPOS (extended to configuration: an entry
@@ -722,18 +772,11 @@ func checkOwnerPerms(path string, isDir bool) error {
 	if isDir && !fi.IsDir() {
 		return fmt.Errorf("%s is not a directory", path)
 	}
-	if mode := fi.Mode().Perm(); mode&0o022 != 0 {
-		kind := "file"
-		if isDir {
-			kind = "directory"
-		}
-		return fmt.Errorf("roster config %s %s is group- or world-writable (mode %04o): "+
-			"anything that can write it can name the accounts this tool trusts. "+
-			"Fix with `chmod %s %s`", kind, path, mode, map[bool]string{true: "0700", false: "0600"}[isDir], path)
-	}
-	// Owner check is platform-specific: unix compares the owning uid; windows has
-	// no uid and skips it LOUDLY (see rosterowner_{unix,windows}.go). The
-	// group/world-writable mode check above runs on both platforms.
+	// Permission enforcement is platform-specific and lives entirely in
+	// checkFileOwner (rosterowner_{unix,windows}.go): unix checks the group/world-
+	// writable mode bits AND the owning uid; windows checks the owner SID and DACL,
+	// because os.FileMode's permission bits are synthetic there (a normal file
+	// reads 0666) and a shared mode check would fire on every Windows file.
 	return checkFileOwner(path, fi)
 }
 
@@ -1233,6 +1276,15 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// disagree about case or spacing.
 	cfg.WithheldIdentifiers = splitWithheldIdentifiers(vals[EnvWithheldIdentifiers])
 
+	// --- GitLab session / implementer commit-author allowlist (#643) ---
+	//
+	// A plain list of exact commit emails, normalised through the same splitter as the
+	// accessor so the two sources cannot disagree about case or spacing. There is no
+	// shape to refuse — an ordinary user address is whatever this deployment's session
+	// actor commits under — and an empty result is the legitimate unset state (the
+	// service-account noreply shape is then the only accepted GitLab commit email).
+	cfg.GitLabSessionEmails = splitGitLabSessionEmails(vals[EnvGitLabSessionEmails])
+
 	if len(problems) > 0 {
 		return Config{Class: class, Source: source, Problems: problems}
 	}
@@ -1378,6 +1430,11 @@ func (c Config) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: %s=%s", EnvRepoForges, strings.Join(forges, ",")),
 		fmt.Sprintf("assay-config: %s=%s", EnvReleaseRepo, releaseStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvWriteguardCallout, calloutStr),
+		// The GitLab session / implementer commit-author allowlist WIDENS the
+		// commit-identity check, so it renders its full sorted set here (never a
+		// count) — a widening on an identity gate must be as visible in the run as
+		// the role bindings above (#643).
+		fmt.Sprintf("assay-config: %s=%s", EnvGitLabSessionEmails, strings.Join(c.GitLabSessionEmails, ",")),
 	}
 	if len(c.UnknownKeys) > 0 {
 		// Not a refusal on its own (a non-ASSAY_ key may legitimately share the file
