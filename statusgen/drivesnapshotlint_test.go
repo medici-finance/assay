@@ -141,6 +141,56 @@ func TestLintDrivePlanSymlinkRefused(t *testing.T) {
 		}
 	})
 
+	// ancestor-dir-symlink-refused is the FAIL-FIRST pin for the ancestor-symlink
+	// gap the security re-review found: the leaf plan .md is a REGULAR file, but an ANCESTOR directory
+	// (docs/roadmap) is a symlink pointing OUT of the tree at a dir that already
+	// holds drives/<slug>.md + .yaml. The leaf Lstat cannot see the parent
+	// symlink, and a sub-dir-rooted containment resolves both the root and the
+	// plan path under the same out-of-tree location so the escape slips through —
+	// os.ReadFile then follows out of tree. The containment MUST be rooted at the
+	// repo root and reject the symlinked ancestor BEFORE any bytes are read. This
+	// subtest goes red against the pre-fix (sub-dir-rooted) reader.
+	t.Run("ancestor-dir-symlink-refused", func(t *testing.T) {
+		// The out-of-tree drive tree the symlinked ancestor points at: a valid
+		// manifest + a plan .md carrying the secret marker.
+		otherRoadmap := filepath.Join(outside, "roadmap")
+		otherDrives := filepath.Join(otherRoadmap, "drives")
+		if err := os.MkdirAll(otherDrives, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(otherDrives, "evil.yaml"), []byte(activeActOnlyManifest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(otherDrives, "evil.md"), []byte("# plan\n"+secretMarker+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		root := t.TempDir()
+		makeStreamsDir(t, root)
+		if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// docs/roadmap is a SYMLINK to the out-of-tree roadmap dir. Its leaf
+		// (evil.md) is a regular file at the target — only the ancestor is a link.
+		if err := os.Symlink(otherRoadmap, filepath.Join(root, "docs", "roadmap")); err != nil {
+			t.Skipf("symlinks unsupported on this platform: %v", err)
+		}
+
+		problems, notices := driveRegionLintProblems(root, driveTestNow)
+		if !hasProblemContaining(problems, "symlinked ancestor") {
+			t.Fatalf("a symlinked ANCESTOR dir must PROBLEM a symlink escape before any read: problems=%v", problems)
+		}
+		if !hasProblemContaining(problems, "evil.md") {
+			t.Errorf("the PROBLEM must name the plan file reached through the symlinked ancestor: %v", problems)
+		}
+		// Fail-closed: the out-of-tree bytes must never be read on any path.
+		for _, m := range append(append([]string{}, problems...), notices...) {
+			if strings.Contains(m, secretMarker) {
+				t.Fatalf("out-of-tree secret bytes leaked into lint output — a symlinked ancestor was followed: %q", m)
+			}
+		}
+	})
+
 	t.Run("manifest-symlink-refused", func(t *testing.T) {
 		root := t.TempDir()
 		makeStreamsDir(t, root)

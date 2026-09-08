@@ -51,13 +51,16 @@ func driveRegionLintProblems(root string, now time.Time) (problems, notices []st
 		// Symlink containment, fail-CLOSED. --lint runs automatically over the PR's
 		// OWN checked-out tree on a shared PUBLIC runner (assay-statusgen.yml,
 		// pull_request → `statusgen --root . --lint`), so a plan .md here is
-		// attacker-plantable: a symlink at docs/roadmap/drives/<slug>.md would make
-		// the os.ReadFile below follow it and load an out-of-tree file (e.g. a
-		// secret) into the lint. Refuse any symlink/escape LOUDLY (a PROBLEM, never
-		// silent, never followed) before touching the file — the same surface
-		// parseDrive already hardened for the sibling <slug>.yaml manifest
-		// (escapesRoot + filepath.EvalSymlinks, drives.go).
-		if prob := drivePlanEscapeProblem(dir, planPath, e.Name()); prob != "" {
+		// attacker-plantable: a symlink at docs/roadmap/drives/<slug>.md — OR a
+		// symlinked ANCESTOR directory of it — would make the os.ReadFile below
+		// follow it and load an out-of-tree file (e.g. a secret) into the lint.
+		// Refuse any symlink/escape LOUDLY (a PROBLEM, never silent, never followed)
+		// before touching the file. Containment is rooted at the REPO ROOT — the
+		// same rooting parseDrive uses for the sibling <slug>.yaml manifest
+		// (escapesRoot + filepath.EvalSymlinks, drives.go); a sub-dir root would let
+		// a symlinked ancestor resolve the containment root and the plan path to the
+		// same out-of-tree place and slip through.
+		if prob := drivePlanEscapeProblem(root, planPath, e.Name()); prob != "" {
 			problems = append(problems, prob)
 			continue
 		}
@@ -111,12 +114,21 @@ func driveRegionLintProblems(root string, now time.Time) (problems, notices []st
 // entry at path is not a plain, in-tree regular file safe to read during --lint,
 // else "". --lint runs automatically over the PR's OWN checked-out tree on a
 // shared PUBLIC runner, so an entry under docs/roadmap/drives is attacker-
-// plantable: a symlink there could point at an out-of-tree secret and os.ReadFile
-// would follow it. Refuse any symlink LOUDLY (never silent, never followed) and
-// reject any path that resolves outside root — the same containment parseDrive
-// uses for the sibling <slug>.yaml manifest (escapesRoot + filepath.EvalSymlinks,
-// drives.go). root is the drives dir; name is the base name for the message.
-func drivePlanEscapeProblem(root, path, name string) string {
+// plantable: a symlink there — the leaf OR any ANCESTOR directory — could point
+// at an out-of-tree secret and os.ReadFile would follow it. The refusal must land
+// BEFORE any bytes are read, on EVERY path:
+//
+//	(a) the leaf entry itself is a symlink;
+//	(b) any ancestor directory between repoRoot and the leaf is a symlink; and
+//	(c) the fully symlink-resolved path escapes repoRoot.
+//
+// repoRoot is the REPOSITORY ROOT (the same rooting parseDrive uses for the
+// sibling <slug>.yaml manifest, drives.go) — NOT the docs/roadmap/drives sub-dir:
+// rooting the containment at the sub-dir lets a symlinked ancestor resolve the
+// containment root and the plan path to the same out-of-tree location so the
+// escape is not flagged. name is the base name for the message. Nothing is read
+// here; only Lstat/EvalSymlinks (metadata) run.
+func drivePlanEscapeProblem(repoRoot, path, name string) string {
 	fi, err := os.Lstat(path)
 	if err != nil {
 		// A genuine stat failure is handled by the caller's own os.ReadFile error
@@ -124,14 +136,44 @@ func drivePlanEscapeProblem(root, path, name string) string {
 		// it never swallows an ordinary unreadable file into a false PROBLEM.
 		return ""
 	}
+	// (a) The leaf entry must be a regular in-tree file, never a symlink.
 	if fi.Mode()&os.ModeSymlink != 0 {
 		return fmt.Sprintf(
 			"drive-plan-symlink: docs/roadmap/drives/%s is a symlink — a drive-plan file must be a regular in-tree file; --lint refuses to follow it (symlink escape)",
 			name)
 	}
-	// Belt-and-suspenders: even a non-symlink entry whose real path escapes root
-	// (e.g. reached through a symlinked parent) is refused before it is read.
-	if real, rerr := filepath.EvalSymlinks(path); rerr == nil && escapesRoot(root, real) {
+	// (b) No ANCESTOR directory on the way down from repoRoot to the leaf may be a
+	// symlink: a symlinked parent would let os.ReadFile follow OUT of tree even
+	// though the leaf itself is a regular file (the leaf Lstat above cannot see a
+	// parent symlink). Walk each component and Lstat it — refuse the first symlink
+	// LOUDLY, before any bytes are read.
+	if rel, relErr := filepath.Rel(repoRoot, path); relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		cur := repoRoot
+		for _, seg := range strings.Split(filepath.Dir(rel), string(os.PathSeparator)) {
+			if seg == "" || seg == "." {
+				continue
+			}
+			cur = filepath.Join(cur, seg)
+			li, lerr := os.Lstat(cur)
+			if lerr != nil {
+				// An absent ancestor is not an escape; the caller's os.ReadFile will
+				// fail as a could-not-check NOTICE. Keep walking the rest.
+				continue
+			}
+			if li.Mode()&os.ModeSymlink != 0 {
+				anc := seg
+				if r, rErr := filepath.Rel(repoRoot, cur); rErr == nil {
+					anc = r
+				}
+				return fmt.Sprintf(
+					"drive-plan-symlink: docs/roadmap/drives/%s has a symlinked ancestor directory (%s) — a drive-plan file must live under real in-tree directories; --lint refuses to follow it (symlink escape)",
+					name, anc)
+			}
+		}
+	}
+	// (c) Final containment, rooted at the REPO ROOT: even a path that reaches
+	// outside repoRoot through any symlink is refused before it is read.
+	if real, rerr := filepath.EvalSymlinks(path); rerr == nil && escapesRoot(repoRoot, real) {
 		return fmt.Sprintf(
 			"drive-plan-symlink: docs/roadmap/drives/%s resolves outside the repository (symlink escape) — a drive-plan file must live under the repo root",
 			name)
