@@ -214,8 +214,9 @@ var dispatchRequirements = []dispatchRequirement{
 		ID:      "irreversible-evidence-written-status-left",
 		Anchors: []string{"irreversible item", "never flips it"},
 		How:     carriedByEngine,
-		Note: "TierPolicy still dispatches an irreversible item so the Evidence is real, and " +
-			"Land writes it with flip=false plus a human checkpoint (tier.go, land.go) — the " +
+		Note: "TierPolicy routes an irreversible item to TierHuman (fail-safe — never dispatched " +
+			"by the model path), and Land keeps the Evidence-only lane: on an irreversible PASS it " +
+			"writes Evidence with flip=false plus a human checkpoint (tier.go, land.go) — the " +
 			"model path structurally cannot flip one",
 	},
 	{

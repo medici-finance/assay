@@ -150,6 +150,23 @@ type bucketMember struct {
 	Reason string
 }
 
+// evidenceOnlyMarker is the literal appended to every awaiting-human member line whose brief
+// carries a risk answer yes: it states, on the same line as the reason, that Evidence-gathering
+// is permitted but a status flip is not — so the ROUTE-HUMAN permission and its limit are read
+// together. Land enforces the limit structurally (no flip for a risk-flagged / irreversible item).
+const evidenceOnlyMarker = "Evidence-only (never flip-eligible)"
+
+// bucketHeading is the human-facing heading name for a disposition. It equals the stable slug
+// (disposition.String(), which tests and reason lookups key on) EXCEPT for awaiting-human, where
+// the routing destination ROUTE-HUMAN is made visible in the plan output so a reader can tell a
+// held risk-flagged brief from a dispatchable one at a glance.
+func bucketHeading(d disposition) string {
+	if d == dispAwaitingHuman {
+		return d.String() + " / ROUTE-HUMAN"
+	}
+	return d.String()
+}
+
 // printBuckets renders the deferred section and each non-empty bucket, each headed by a count
 // and its one-line "why it waits" note. The order is deterministic (deferred, then the three
 // buckets) so the output is stable across runs.
@@ -165,11 +182,16 @@ func printBuckets(dispatchable int, bucketed map[disposition][]bucketMember) {
 		if len(members) == 0 {
 			continue
 		}
-		fmt.Printf("\n-- %s (%d): %s\n", disp, len(members), disp.whyItWaits())
+		fmt.Printf("\n-- %s (%d): %s\n", bucketHeading(disp), len(members), disp.whyItWaits())
 		for _, m := range members {
-			if m.Reason != "" {
+			switch {
+			case disp == dispAwaitingHuman && m.Reason != "":
+				// A risk-flagged item: its risk reason plus the Evidence-only marker, so the
+				// permission (may gather Evidence) and the limit (never flips) sit on one line.
+				fmt.Printf("   %s — %s — %s\n", m.ID, m.Reason, evidenceOnlyMarker)
+			case m.Reason != "":
 				fmt.Printf("   %s — %s\n", m.ID, m.Reason)
-			} else {
+			default:
 				fmt.Printf("   %s\n", m.ID)
 			}
 		}
@@ -188,6 +210,11 @@ USAGE:
 the exact dispatch instruction (or the human-route note). It spawns nothing and writes nothing.
 The item keys it prints (<stream>/<NN>) resolve to their file, frontmatter and board row with
 'statusgen brief <key>'.
+
+'plan' FAILS SAFE on risk: any brief with gate:human OR any risk answer yes (irreversible
+first) is bucketed under awaiting-human / ROUTE-HUMAN, never DISPATCH. A model MAY gather
+Evidence for such a brief — its member line says 'Evidence-only (never flip-eligible)' — but
+never flips it; the human's merge of the checkpoint PR is the flip.
 
 'verdict' is the DETERMINISTIC runner: it runs each brief's check/check:ci Verify rows locally
 (exit code = verdict), batches results over the flush window into ONE signed verdict-v1

@@ -3636,6 +3636,15 @@ envelope check off has an envelope check only on the passes that would have been
 **Reference consumer.** `verifyloop plan` runs it at boot before the Awaiting queue is even
 read (`cmd/verifyloop/preflight.go`). That file is what an adopting desk copies.
 
+**`plan` fails safe on risk.** Any brief with `gate: human` OR any risk answer `yes`
+(irreversible first) is bucketed under `awaiting-human / ROUTE-HUMAN`, never DISPATCH — decided
+in two independent places (`TierPolicy` in `cmd/verifyloop/tier.go` routes it to `TierHuman`;
+`classifyItem` in `cmd/verifyloop/queueclass.go` reads the brief's own gate/risk frontmatter, so
+a fail-open in the tier policy cannot leak a risk-bearing brief into DISPATCH). A model MAY still
+gather Evidence for such a brief — its member line reads `Evidence-only (never flip-eligible)` —
+but never flips it; the Evidence-only lane in `Land` writes Evidence with no status flip and the
+human's merge of the checkpoint PR is the flip.
+
 ### Tier→runner config — the `ASSAY_RUNNER_*` table
 
 Native ACP dispatch spawns a real agent per verify item. **Which** agent it
