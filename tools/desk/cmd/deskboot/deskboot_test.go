@@ -157,7 +157,7 @@ func TestRedPreflightStopsTheBootAndReadsNoBoard(t *testing.T) {
 // effective-config banner (`assay-config: … configured=true`) that every desk tool prints
 // on stderr before its real message. deskboot step 5 used to firstLine the captured
 // streams, so the banner (always line one) was all the pod log ever saw: three exit-6 boot
-// ticks logged nothing but the banner and the real failing check stayed unknown (assay#660).
+// ticks logged nothing but the banner and the real failing check stayed unknown (#660).
 func TestRedPreflightSurfacesSummaryNotBanner(t *testing.T) {
 	s := &stub{}
 	home, root := s.install(t)

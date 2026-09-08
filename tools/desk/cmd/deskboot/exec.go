@@ -65,7 +65,7 @@ func firstLine(s string) string {
 // `… configured=true` header instead of the `preflight role=… RED n/5` summary and the
 // per-check `<check>=checked-failed: … → fix: …` remediations, so the failing check never
 // reaches the pod log — the boot logs the banner three ticks running and the real red stays
-// unknown (assay#660). The REFUSED roster line is deliberately NOT preamble: when the
+// unknown (#660). The REFUSED roster line is deliberately NOT preamble: when the
 // roster itself refused, that line IS the message. Every kept line is returned verbatim so
 // the summary and every remediation survive; an empty remainder renders as "(no output)"
 // so a report never reads as though the tool spoke.
