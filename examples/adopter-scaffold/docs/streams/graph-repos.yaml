@@ -2,7 +2,7 @@
 # (docs/dependency-graph-design.md §3.3; schema graph-repos-v1).
 #
 # A brief-v2 tree REQUIRES this registry: the hierarchical `brief:` id
-# <cell>:<repo>:<stream>:<NN> is minted against it, so the v0.13.0→v1.0.0
+# <cell>:<repo>:<stream>:<NN> is minted against it, so the v0.28.0→v1.0.0
 # migration REFUSES to run without it (the release note says to write it first).
 #
 # `self:` names THIS tree's own repo alias — the namespace the migration stamps

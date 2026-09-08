@@ -15,9 +15,9 @@
 # differ.
 #
 # The sha256 digests below are FIXTURE placeholders, not real release digests.
-assay v0.13.0
-statusgen              v0.13.0 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  # linux-amd64 (CI-built)
-statusgen-linux-amd64  v0.13.0 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  # CI runners
-statusgen-darwin-arm64 v0.13.0 f2203ea531ac5ea26bf84cfe36c4ca2baaa26c16fb4cea8b0c163fbd17466fc7  # apple silicon
-statusgen-darwin-amd64 v0.13.0 50e34b63b540ff107251cb28f8be1e4ccd697c615162550878935aad40a0e046  # intel mac
-desk-tools             v0.13.0 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd  # desk pipeline binaries
+assay v0.28.0
+statusgen              v0.28.0 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  # linux-amd64 (CI-built)
+statusgen-linux-amd64  v0.28.0 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  # CI runners
+statusgen-darwin-arm64 v0.28.0 f2203ea531ac5ea26bf84cfe36c4ca2baaa26c16fb4cea8b0c163fbd17466fc7  # apple silicon
+statusgen-darwin-amd64 v0.28.0 50e34b63b540ff107251cb28f8be1e4ccd697c615162550878935aad40a0e046  # intel mac
+desk-tools             v0.28.0 dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd  # desk pipeline binaries
