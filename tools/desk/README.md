@@ -1182,6 +1182,26 @@ result as root, so the module cache is not written as root. Both `desk-build` an
 `desk-install` guard the `cmd/*` glob and succeed with zero commands present (as today,
 before briefs 02-05/07 add binaries).
 
+**On Windows**, the same targets are driven by
+[`scripts/build-windows.ps1`](../../scripts/build-windows.ps1) — a PowerShell script,
+so no `nmake`, Visual Studio build tools, or `make` are needed (only PowerShell + the Go
+toolchain, which every target already requires):
+
+```powershell
+pwsh -File scripts/build-windows.ps1 desk-build       # → tools/desk/dist/<tool>.exe
+pwsh -File scripts/build-windows.ps1 desk-install      # per-user install into %LOCALAPPDATA%\Assay\bin
+pwsh -File scripts/build-windows.ps1 -Help             # all targets + options
+```
+
+It mirrors the Makefile's `.PHONY` target set exactly. Windows `desk-install` is a
+**per-user** install (into `%LOCALAPPDATA%\Assay\bin`) and needs no elevation — it is not
+the human-only root install the Unix `sudo make desk-install` is. The Go tools already
+cross-compile, so this is orchestration + Windows path handling (`.exe` suffixes,
+`Get-FileHash` manifests), not new build logic. The two files are kept from drifting by
+[`tools/winparity`](../winparity/README.md), which asserts the script's target set equals
+the Makefile's `.PHONY` set (run `cd tools/winparity && go run . --root ../..`, exit 0 = in
+parity); the Windows script runs that guard as a preflight before any target.
+
 ## deskpost — the reviewer App's verdict / comment / ready-flip (brief 03)
 
 `deskpost` posts the review verdict, plain comments, and the draft→ready flip **AS the
