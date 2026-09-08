@@ -816,6 +816,10 @@ func (f *fakeForge) SearchOpenChanges(owner string) (*deskkit.ChangeSearchResult
 			Repo: r.Repository.NameWithOwner, Number: r.Number, Title: r.Title, CreatedAt: r.CreatedAt,
 		})
 	}
+	// Mirror the real GitHub backend's completeness signal: a read that came back exactly at
+	// (or above) the page cap may be truncated. The scope consumer reads this authoritative
+	// flag rather than re-deriving it from the row count.
+	out.TruncatedAtCap = len(out.Results) >= out.Cap
 	return out, nil
 }
 

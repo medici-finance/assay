@@ -1117,8 +1117,10 @@ func (g *GitLabForge) RepoVisibility(repo ForgeRepo) (string, error) {
 // ListRecentCommits reads up to limit commits from the head of the default branch (GitLab
 // `GET /projects/:id/repository/commits`, newest first). This maps 1:1: GitLab returns each
 // commit's id and committed_date, the two fields the branch-health probe consumes (it reads
-// only the sha). An EMPTY project answers 404 on the commits list, surfaced as a
-// *ForgeAPIError the caller tests with IsForgeEmptyRepo.
+// only the sha). An EMPTY project answers 404 on the commits list, translated HERE into the
+// backend-neutral ErrForgeEmptyRepo sentinel the caller tests with IsForgeEmptyRepo (the GitHub
+// backend does the same for its own 409 empty signal). Any other status stays a read failure
+// the caller surfaces as could-not-check.
 func (g *GitLabForge) ListRecentCommits(repo ForgeRepo, limit int) ([]RepoCommit, error) {
 	cl, err := g.client()
 	if err != nil {
@@ -1132,7 +1134,12 @@ func (g *GitLabForge) ListRecentCommits(repo ForgeRepo, limit int) ([]RepoCommit
 		ListOptions: gitlab.ListOptions{PerPage: int64(limit), Page: 1},
 	})
 	if cerr != nil {
-		return nil, g.mapErr(http.MethodGet, path, cerr)
+		mapped := g.mapErr(http.MethodGet, path, cerr)
+		if IsForgeNotFound(mapped) {
+			return nil, fmt.Errorf("GitLab project %s has no commits (empty repository, HTTP 404): %w",
+				repo.Slug(), ErrForgeEmptyRepo)
+		}
+		return nil, mapped
 	}
 	out := make([]RepoCommit, 0, len(commits))
 	for _, c := range commits {

@@ -664,10 +664,13 @@ type Forge interface {
 	ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, error)
 	// ListRecentCommits returns up to limit commits from the head of repo's DEFAULT branch,
 	// newest first (GitHub `/repos/{o}/{r}/commits` ↔ GitLab `/projects/:id/repository/
-	// commits`). An EMPTY repository is an error the caller tests with IsForgeEmptyRepo
-	// (GitHub 409 / GitLab 404), not a read failure — the seam does not decide whether "no
-	// commits" is an error, because for branch-health it is a distinct KNOWN state. Consumer:
-	// cmd/deskboard's fetchRecentCommits (freeze rule).
+	// commits`). An EMPTY repository is reported as the backend-neutral ErrForgeEmptyRepo
+	// sentinel the caller tests with IsForgeEmptyRepo — each backend translates its OWN empty
+	// signal (GitHub 409 / GitLab 404) into that sentinel, so a raw status is never tested
+	// backend-blind. It is a distinct KNOWN state (no-commits), not a read failure; every OTHER
+	// error (a GitHub 404 for a gone/renamed repo or lost token access included) stays a read
+	// failure the caller surfaces as could-not-check. Consumer: cmd/deskboard's
+	// fetchRecentCommits (freeze rule).
 	ListRecentCommits(repo ForgeRepo, limit int) ([]RepoCommit, error)
 	// GetCommit reads ONE commit's committed date and attributed author/committer accounts
 	// (GitHub `/repos/{o}/{r}/commits/{sha}` ↔ GitLab `/projects/:id/repository/commits/:sha`).

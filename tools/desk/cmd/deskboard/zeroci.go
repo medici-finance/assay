@@ -42,8 +42,8 @@ package main
 // READ COST. The probe runs ONLY for rows whose rollup counted 0/0/0. Worst
 // path per such PR: 1 check-runs read + 1 combined-status read + 1 workflows
 // directory listing + ≤zeroCIWorkflowCap workflow content reads + (only when a
-// workflow carries a path filter) the changed-files walk. All through ghRun,
-// all GETs — the PATH-shim test enumerates them.
+// workflow carries a path filter) the changed-files walk. All through the typed
+// Forge seam, all GETs — the read-mapping tests enumerate them.
 //
 // WHAT no-checks DOES NOT CLAIM. The trigger model is GitHub's documented
 // pull_request semantics as far as they are stated: branch filters, path

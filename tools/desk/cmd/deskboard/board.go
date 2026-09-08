@@ -1832,10 +1832,11 @@ type prOutcome struct {
 // Within the repo it fans the PER-PR reads out concurrently too (classifyPR under a second
 // bounded pool) — that fan-out is what removes the long pole of one PR-heavy repo, and it
 // is safe because each PR is classified from independent reads with no shared mutable
-// state, and the TOTAL number of concurrent `gh` subprocesses is bounded globally by
-// ghRun's ghSem regardless of how repo-level and PR-level pools multiply. It fails CLOSED
-// exactly as the old serial body did: any gh/parse error is wrapped-and-repo/PR-named
-// and propagates to fail the whole run, deterministically (lowest-index PR first).
+// state. The reads now go through the typed Forge seam (no forge subprocess), so concurrent
+// reads are bounded by the two worker-pool limits together (repo-level × PR-level), not by
+// any global semaphore. It fails CLOSED exactly as the old serial body did: any read/parse
+// error is wrapped-and-repo/PR-named and propagates to fail the whole run, deterministically
+// (lowest-index PR first).
 func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (actionsPartial, error) {
 	var part actionsPartial
 	prs, truncated, err := fetchOpenPRs(repo)

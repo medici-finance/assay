@@ -116,15 +116,24 @@ func IsForgeNotFound(err error) bool {
 	return errors.As(err, &ae) && ae.Status == http.StatusNotFound
 }
 
-// IsForgeEmptyRepo reports whether err is the forge saying the repository has no commits yet
-// — GitHub answers 409 Conflict ("Git Repository is empty.") on the commits endpoint of an
-// empty repo, and GitLab answers 404 on its commits list for the same. Both are a distinct
-// KNOWN state (no-commits), not a read failure, so a caller (deskboard's branch-health probe)
-// tests for it explicitly rather than folding it into could-not-check. It unwraps like
-// IsForgeNotFound.
+// ErrForgeEmptyRepo is the canonical, backend-NEUTRAL signal that the forge has positively
+// answered "this repository has no commits yet". It is a distinct KNOWN state (no-commits),
+// NOT a read failure. Each backend translates ITS OWN empty signal into this sentinel inside
+// ListRecentCommits — GitHub answers 409 Conflict ("Git Repository is empty.") on the commits
+// endpoint, GitLab answers 404 on its commits list — so the shared IsForgeEmptyRepo predicate
+// tests for exactly this sentinel rather than guessing from a raw HTTP status backend-blind.
+// That distinction is load-bearing: a bare status is ambiguous across backends, and a GitHub
+// 404 means the repo is gone/renamed or the token has lost access — a could-not-check the
+// branch-health probe must SURFACE, never fold into "empty".
+var ErrForgeEmptyRepo = errors.New("forge repository has no commits (empty repository)")
+
+// IsForgeEmptyRepo reports whether err carries the canonical empty-repository sentinel
+// (ErrForgeEmptyRepo), which a backend's ListRecentCommits raises only for the forge's own
+// positive "no commits yet" answer. It is a distinct KNOWN state (no-commits), not a read
+// failure, so a caller (deskboard's branch-health probe) tests for it explicitly rather than
+// folding it into could-not-check. It unwraps, so a wrapped sentinel is still recognised.
 func IsForgeEmptyRepo(err error) bool {
-	var ae *ForgeAPIError
-	return errors.As(err, &ae) && (ae.Status == http.StatusConflict || ae.Status == http.StatusNotFound)
+	return errors.Is(err, ErrForgeEmptyRepo)
 }
 
 // doJSON performs one REST call through the go-gh client, decoding a 2xx body into out (if
@@ -1042,9 +1051,11 @@ func (w ghCommitWire) toRepoCommit() RepoCommit {
 }
 
 // ListRecentCommits reads up to limit commits from the head of the default branch. Omitting
-// ?sha= makes GitHub use the default branch, so this needs no separate default-branch read; an
-// empty repository answers 409, surfaced as a *ForgeAPIError the caller tests with
-// IsForgeEmptyRepo.
+// ?sha= makes GitHub use the default branch, so this needs no separate default-branch read. An
+// empty repository answers 409 Conflict ("Git Repository is empty."), which is translated HERE
+// into the backend-neutral ErrForgeEmptyRepo sentinel the caller tests with IsForgeEmptyRepo.
+// EVERY other status stays a read failure the caller surfaces as could-not-check — a GitHub 404
+// (repo gone/renamed, or token access lost) is NOT empty and must never be folded into it.
 func (g *GitHubForge) ListRecentCommits(repo ForgeRepo, limit int) ([]RepoCommit, error) {
 	if limit <= 0 {
 		return nil, Unverifiable("ListRecentCommits needs a positive limit", nil)
@@ -1052,6 +1063,10 @@ func (g *GitHubForge) ListRecentCommits(repo ForgeRepo, limit int) ([]RepoCommit
 	var chunk []ghCommitWire
 	path := fmt.Sprintf("/repos/%s/%s/commits?per_page=%d", repo.Owner, repo.Name, limit)
 	if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+		var ae *ForgeAPIError
+		if errors.As(err, &ae) && ae.Status == http.StatusConflict {
+			return nil, fmt.Errorf("%s: %w", ae.Error(), ErrForgeEmptyRepo)
+		}
 		return nil, err
 	}
 	out := make([]RepoCommit, 0, len(chunk))

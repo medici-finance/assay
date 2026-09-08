@@ -256,13 +256,34 @@ func TestAssessRepoBranch_NoChecksAnywhere(t *testing.T) {
 func TestAssessRepoBranch_EmptyRepo(t *testing.T) {
 	stubForgeHooks(t, forgeHookSet{
 		recentCommits: func(string, int) ([]deskkit.RepoCommit, error) {
-			// An empty repo answers 409 on GitHub / 404 on GitLab — IsForgeEmptyRepo.
-			return nil, &deskkit.ForgeAPIError{Status: 409, Method: "GET", Path: "/commits"}
+			// A backend translates its own empty signal (GitHub 409 / GitLab 404) into the
+			// neutral deskkit.ErrForgeEmptyRepo sentinel — a KNOWN no-commits answer.
+			return nil, deskkit.ErrForgeEmptyRepo
 		},
 	})
 	row := assessRepoBranch("example-org/proposals")
 	if row.State != bhNoCommits {
 		t.Fatalf("state = %q, want %q — an empty repo is a KNOWN answer, not a failed read", row.State, bhNoCommits)
+	}
+}
+
+// TestAssessRepoBranch_ReadFailureIsUnknown proves the three-state posture the branch-health
+// probe exists to keep: a read failure that is NOT the empty-repo sentinel (a GitHub 404 for a
+// repo that is gone/renamed or whose token lost access) is surfaced as a COULD-NOT-CHECK row,
+// never degraded to the benign bhNoCommits "empty repo" state that renderAlarms treats as
+// nothing-to-assess.
+func TestAssessRepoBranch_ReadFailureIsUnknown(t *testing.T) {
+	stubForgeHooks(t, forgeHookSet{
+		recentCommits: func(string, int) ([]deskkit.RepoCommit, error) {
+			return nil, &deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: "/commits"}
+		},
+	})
+	row := assessRepoBranch("example-org/proposals")
+	if row.State != bhUnknown {
+		t.Fatalf("state = %q, want %q — a 404 read failure must surface as could-not-check, not empty", row.State, bhUnknown)
+	}
+	if !strings.Contains(row.Reason, "COULD-NOT-CHECK") {
+		t.Errorf("the reason must announce could-not-check; got %q", row.Reason)
 	}
 }
 

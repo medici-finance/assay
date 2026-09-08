@@ -170,20 +170,24 @@ func ownersOf(repos []string) []string {
 // searchOpenPRs asks GitHub for every open PR under one owner. GET-only (`gh search`
 // is a read). Any failure is Unverifiable (exit 6) naming the owner — a search that did
 // not run must never render as "this owner has no unwatched repos".
-var searchOpenPRs = func(owner string) ([]searchPR, error) {
+// searchOpenPRs returns the owner's open PRs plus whether the search hit the backend's page
+// cap. truncated is the backend's own authoritative completeness signal (ChangeSearchResults.
+// TruncatedAtCap), not a re-derivation from the row count — the seam that knows the cap reports
+// whether it was reached, so the two cannot silently diverge if either side's cap changes.
+var searchOpenPRs = func(owner string) (rows []searchPR, truncated bool, err error) {
 	// SearchOpenChanges is the ONE owner-wide read on the seam; it resolves the forge from the
 	// owner (any watched repo under it serves to build the coordinate). A backend with no
 	// owner-wide search (GitLab) returns could-not-check, which this verb surfaces as exit 6 —
 	// a search that did not run must never render as "this owner has no unwatched repos".
 	f, _, ferr := forgeForOwner(owner)
 	if ferr != nil {
-		return nil, ferr
+		return nil, false, ferr
 	}
-	res, err := f.SearchOpenChanges(owner)
-	if err != nil {
-		return nil, deskkit.Unverifiable("cannot search open PRs for owner "+owner, err)
+	res, serr := f.SearchOpenChanges(owner)
+	if serr != nil {
+		return nil, false, deskkit.Unverifiable("cannot search open PRs for owner "+owner, serr)
 	}
-	rows := make([]searchPR, 0, len(res.Results))
+	rows = make([]searchPR, 0, len(res.Results))
 	for _, r := range res.Results {
 		var sp searchPR
 		sp.Number = r.Number
@@ -192,7 +196,7 @@ var searchOpenPRs = func(owner string) ([]searchPR, error) {
 		sp.Repository.NameWithOwner = r.Repo
 		rows = append(rows, sp)
 	}
-	return rows, nil
+	return rows, res.TruncatedAtCap, nil
 }
 
 func cmdScope(hdr Header) (*Report, error) {
@@ -215,11 +219,11 @@ func cmdScope(hdr Header) (*Report, error) {
 	now := time.Now()
 	byRepo := map[string][]searchPR{}
 	for _, owner := range owners {
-		rows, err := searchOpenPRs(owner)
+		rows, truncated, err := searchOpenPRs(owner)
 		if err != nil {
 			return nil, err // exit 6, owner named — never a partial reconciliation
 		}
-		if len(rows) >= searchLimit {
+		if truncated {
 			rep.Truncated = true
 		}
 		for _, r := range rows {

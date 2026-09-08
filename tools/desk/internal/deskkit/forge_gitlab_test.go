@@ -1271,6 +1271,20 @@ func TestForgeGitlabTierErrors(t *testing.T) {
 	})
 }
 
+// TestGitlabListRecentCommits_EmptyRepoTranslation proves the GitLab backend translates its own
+// empty signal — a 404 on the commits list of an empty project — into the backend-neutral
+// ErrForgeEmptyRepo sentinel, the same KNOWN no-commits state the GitHub backend produces from
+// its 409. The translation lives in each backend so the shared IsForgeEmptyRepo predicate tests
+// one sentinel rather than a raw status that means different things on each forge.
+func TestGitlabListRecentCommits_EmptyRepoTranslation(t *testing.T) {
+	s := newGLServer(t)
+	s.forceStatus["/repository/commits"] = http.StatusNotFound
+	_, err := s.forge().ListRecentCommits(glRepo, 5)
+	if !IsForgeEmptyRepo(err) {
+		t.Fatalf("GitLab 404 on the commits list must translate to the empty-repo sentinel; got %v", err)
+	}
+}
+
 // TestForgeGitlabAuth proves the injected token is the authenticating identity — over
 // GitLab's PRIVATE-TOKEN header, not a bearer — and that an unset token is REFUSED rather
 // than sent as an empty header, which would silently downgrade the caller to whatever the

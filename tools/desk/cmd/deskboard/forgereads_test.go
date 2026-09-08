@@ -22,9 +22,12 @@ func TestFetchRecentCommits_MapsShas(t *testing.T) {
 }
 
 func TestFetchRecentCommits_EmptyRepoIsKnown(t *testing.T) {
+	// A backend translates its own empty signal (GitHub 409 / GitLab 404) into the neutral
+	// deskkit.ErrForgeEmptyRepo sentinel; the seam here reads that sentinel as a KNOWN
+	// no-commits state, never a read failure.
 	stubForgeHooks(t, forgeHookSet{
 		recentCommits: func(string, int) ([]deskkit.RepoCommit, error) {
-			return nil, &deskkit.ForgeAPIError{Status: 409, Method: "GET", Path: "/commits"}
+			return nil, deskkit.ErrForgeEmptyRepo
 		},
 	})
 	shas, empty, err := fetchRecentCommits("example-org/proposals")
@@ -33,6 +36,30 @@ func TestFetchRecentCommits_EmptyRepoIsKnown(t *testing.T) {
 	}
 	if !empty || len(shas) != 0 {
 		t.Fatalf("empty=%v shas=%v, want empty=true, no shas", empty, shas)
+	}
+}
+
+// TestFetchRecentCommits_ReadFailureIsNotEmpty is the regression guard: a plain forge read
+// failure that is NOT the empty-repo sentinel (e.g. a GitHub 404 for a gone/renamed repo or a
+// token that lost access) must surface as a could-not-check — an error with empty=false — and
+// must never be silently degraded to the benign "empty repo" known-state. Before the
+// backend-specific translation, IsForgeEmptyRepo tested a raw status and folded a 404 into
+// empty; this proves the seam now keeps it a surfaced read failure.
+func TestFetchRecentCommits_ReadFailureIsNotEmpty(t *testing.T) {
+	stubForgeHooks(t, forgeHookSet{
+		recentCommits: func(string, int) ([]deskkit.RepoCommit, error) {
+			return nil, &deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: "/commits"}
+		},
+	})
+	shas, empty, err := fetchRecentCommits("example-org/proposals")
+	if err == nil {
+		t.Fatal("a 404 (repo gone/renamed or lost access) must be a read failure, not a clean read")
+	}
+	if empty {
+		t.Fatal("a read failure must NOT be reported as an empty repo — that silences the could-not-check")
+	}
+	if len(shas) != 0 {
+		t.Fatalf("a failed read must yield no shas, got %v", shas)
 	}
 }
 
@@ -91,9 +118,12 @@ func TestSearchOpenPRs_MapsResultRows(t *testing.T) {
 	installFakeForge(t)
 	t.Setenv("DESKBOARD_GH_SEARCH_JSON",
 		`[{"number":9,"title":"open pr","createdAt":"2026-01-01T00:00:00Z","repository":{"nameWithOwner":"example-org/other"}}]`)
-	rows, err := searchOpenPRs("example-org")
+	rows, truncated, err := searchOpenPRs("example-org")
 	if err != nil {
 		t.Fatalf("searchOpenPRs: %v", err)
+	}
+	if truncated {
+		t.Errorf("a one-row search is well below the cap and must not be flagged truncated")
 	}
 	if len(rows) != 1 || rows[0].Number != 9 || rows[0].Repository.NameWithOwner != "example-org/other" {
 		t.Fatalf("rows = %+v, want one row #9 in example-org/other", rows)
