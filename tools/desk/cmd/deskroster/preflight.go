@@ -29,7 +29,9 @@ USAGE:
 Runs five checks, each answering checked-clean / checked-failed / could-not-check
 with a NAMED remediation:
 
-  token-mint-cold        a token mints from a FRESH process with a scrubbed env   (#794 #567)
+  token-mint-cold        a credential is obtainable from a FRESH scrubbed process:
+                         GitHub mints an App token; GitLab verifies the PAT custody
+                         path read-only (it does NOT rotate)                       (#794 #567 #655)
   app-scopes-vs-duties   the installation's grant covers the role's duties        (#571)
   write-transport        a READ-ONLY probe of the role's landing path             (#823)
   commit-identity        the commit email carries the BOT USER id, not the App id (#638)
