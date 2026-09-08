@@ -70,7 +70,7 @@ a relaxation verified only on the cases it means to admit has verified nothing.
 | 16 | [`deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block](brief-16-deskevidence-block-equivalence-noop.md) | 1 | S | implemented | — | — |
 | 17 | [One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on](brief-17-one-trust-bar-public-authors.md) | 1 | M | todo | — | — |
 | 18 | [Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check](brief-18-allowed-public-repos-write-gate.md) | 1 | M | todo | — | — |
-| 19 | [`verifyloop plan` fails safe on risk — any risk answer `yes` routes to ROUTE-HUMAN, and the Evidence-only lane says so](brief-19-verifyloop-risk-fail-safe-routing.md) | 1 | M | todo | — | — |
+| 19 | [`verifyloop plan` fails safe on risk — any risk answer `yes` routes to ROUTE-HUMAN, and the Evidence-only lane says so](brief-19-verifyloop-risk-fail-safe-routing.md) | 1 | M | implemented | — | — |
 | 20 | [Cross-repo triage/verify evidence binds to the remote — a sibling checkout must be cross-checked, not trusted as-is](brief-20-cross-repo-remote-verify.md) | 1 | S | done | 2026-09-06 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #556 @ b3294437716536ad815cf13b2b80490e7bf4a4df) |
 
 ## Critical path

@@ -14,18 +14,18 @@ import (
 //     carries NO explicit `blocked-until:` marker, must still be DEFERRED, not counted dispatchable;
 //  2. a cluster / online-lane brief whose Verify rows run against a live cluster, when it carries
 //     NO explicit `verify-lane:` marker, must be bucketed AWAITING-ONLINE-LANE, not dispatchable;
-//  3. a `gate: human` brief must land in AWAITING-HUMAN even when it is ALSO `irreversible: yes`
-//     (which TierPolicy routes to TierLocal for evidence) — the direct gate:human signal on the
-//     brief itself, not only the tier the risk-router computed, decides the human bucket.
+//  3. a `gate: human` brief must land in AWAITING-HUMAN even when it is ALSO `irreversible: yes` —
+//     the direct gate:human / risk signal on the brief itself, not only the tier the risk-router
+//     computed, decides the human bucket.
 //
 // Each case starts from a marker-less brief the way a real board carries it, so before the fix the
 // item lands in DISPATCH (the over-report the plan summary hid) and after the fix it is bucketed.
 
 // TestGap3_GateHumanIrreversibleIsAwaitingHuman is the security-adjacent fail-open fix: a
-// gate:human + irreversible:yes brief was dispatched because irreversible:yes routes to TierLocal
-// (dispatched-for-evidence) BEFORE the risk-router's gate:human → TierHuman branch runs, so the
-// awaiting-human bucket — keyed only on the computed tier — never saw it. The bucketer must read
-// the brief's own gate directly.
+// gate:human + irreversible:yes brief must land in awaiting-human. Since brief 19 the tier policy
+// FAILS SAFE — irreversible routes to TierHuman first — so both the tier and the classifier's own
+// frontmatter read agree. The classifier still reads the brief's gate/risk directly (the
+// independent second control), so a future fail-open in the tier policy cannot re-open this leak.
 func TestGap3_GateHumanIrreversibleIsAwaitingHuman(t *testing.T) {
 	v := &VerifyLoop{}
 	it := loopengine.Item{
@@ -37,11 +37,10 @@ func TestGap3_GateHumanIrreversibleIsAwaitingHuman(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TierPolicy: %v", err)
 	}
-	// Precondition anchor: irreversible routes to TierLocal, which is exactly why the
-	// tier-only awaiting-human check missed it. If this ever stops being TierLocal the test's
-	// premise changed and it should be revisited.
-	if tier != loopengine.TierLocal {
-		t.Fatalf("premise: gate:human+irreversible tier = %v; want TierLocal (irreversible dispatched for evidence)", tier)
+	// Since the fail-safe fix, irreversible routes to TierHuman (was TierLocal). The tier and
+	// the classifier now agree rather than diverge.
+	if tier != loopengine.TierHuman {
+		t.Fatalf("premise: gate:human+irreversible tier = %v; want TierHuman (fail-safe routing)", tier)
 	}
 	disp, _ := classifyItem(it, tier)
 	if disp != dispAwaitingHuman {
@@ -49,11 +48,13 @@ func TestGap3_GateHumanIrreversibleIsAwaitingHuman(t *testing.T) {
 	}
 }
 
-// TestGap3_PlainIrreversibleStaysDispatched guards the boundary: an irreversible-but-NOT-gate:human
-// brief must STAY dispatched (TierLocal, dispatched-for-evidence; Land writes evidence with no flip
-// + a human checkpoint). The gate:human fix must not fold plain-irreversible out of the queue and
-// lose its mechanical verification.
-func TestGap3_PlainIrreversibleStaysDispatched(t *testing.T) {
+// TestGap3_PlainIrreversibleIsAwaitingHuman is the brief-19 fail-safe reversal of the old
+// boundary: an irreversible brief whose gate is `model` used to STAY dispatched (routed to
+// TierLocal for evidence). The maintainer ruling (2026-09-06) is that ANY risk answer yes —
+// irreversible first — routes to ROUTE-HUMAN, never DISPATCH. A model may still gather Evidence
+// (the Evidence-only lane in Land writes it with no flip); the plan must not read it as
+// dispatchable. The reason names the risk answer.
+func TestGap3_PlainIrreversibleIsAwaitingHuman(t *testing.T) {
 	v := &VerifyLoop{}
 	it := loopengine.Item{
 		ID:   "example-stream/02",
@@ -61,9 +62,15 @@ func TestGap3_PlainIrreversibleStaysDispatched(t *testing.T) {
 		Risk: loopengine.RiskFlags{Irreversible: true},
 	}
 	tier, _ := v.TierPolicy(it)
-	disp, _ := classifyItem(it, tier)
-	if disp != dispDispatch {
-		t.Fatalf("plain irreversible (gate:model) classified %v; want dispatch (dispatched-for-evidence, human flip)", disp)
+	if tier != loopengine.TierHuman {
+		t.Fatalf("plain irreversible (gate:model) tier = %v; want TierHuman (fail-safe, not dispatched)", tier)
+	}
+	disp, reason := classifyItem(it, tier)
+	if disp != dispAwaitingHuman {
+		t.Fatalf("plain irreversible (gate:model) classified %v; want awaiting-human (fail-safe, Evidence-only)", disp)
+	}
+	if reason != "risk: irreversible" {
+		t.Fatalf("reason = %q; want %q", reason, "risk: irreversible")
 	}
 }
 
