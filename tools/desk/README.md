@@ -1465,7 +1465,15 @@ deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale workt
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
 ```
 
-- **`add`** creates `tracker-<name>` on a new tracking branch. When a local branch of that
+- **`add`** creates `tracker-<name>` on a new tracking branch, under the sanctioned prefix
+  that is PORTABLE on the host OS: `/private/tmp/tracker-<name>` on POSIX, and
+  `<repo-root>/.claude/worktrees/tracker-<name>` on Windows (`role-init` follows the same rule
+  for its session-scoped worktree). Both prefixes are already in the allowlist above; the OS
+  only decides WHICH one is targeted, never widening it. `/private/tmp` is not a usable
+  absolute path on native Windows — it resolves to a drive-rooted `\private\tmp\…` that fails
+  the sanctioned-prefix check, so no desk worktree could be created and `deskboot` refused the
+  shared checkout (#656) — whereas the `.claude/worktrees/` prefix lives inside the repo
+  and is drive-correct everywhere. When a local branch of that
   name already exists in the shared refs store — a leftover from an abandoned dispatch — it is
   reclaimed only when proven empty (checked out in no worktree AND 0 commits ahead of its
   upstream-or-`--base`); a branch a live worktree holds, or one carrying unpushed commits, is

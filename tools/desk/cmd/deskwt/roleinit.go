@@ -91,7 +91,8 @@ type roleInitParams struct {
 	cfg     roleWTConfig
 	session string
 	branch  string
-	target  string // <tmpBaseDir>/tracker-<branchPrefix>-<session>
+	leaf    string // tracker-<branchPrefix>-<session> — the worktree's leaf dir name
+	target  string // filled by the caller once the pathGuard is built: guard.worktreeTarget(leaf)
 }
 
 // parseRoleParams validates --role/--session and derives the path + branch. It is the single
@@ -121,8 +122,12 @@ func parseRoleParams(verb string, args []string) (roleInitParams, error) {
 	if !branchRe.MatchString(branch) || strings.Contains(branch, "..") {
 		return roleInitParams{}, deskkit.Refused("refused: derived branch " + branch + " is not a plain branch name")
 	}
-	target := filepath.Join(tmpBaseDir, "tracker-"+cfg.branchPrefix+"-"+sess)
-	return roleInitParams{role: strings.ToLower(*role), cfg: cfg, session: sess, branch: branch, target: target}, nil
+	// The target PATH is not built here: it depends on the sanctioned prefix chosen for the
+	// host OS (guard.worktreeTarget), and the pathGuard is not available until the caller has
+	// resolved the working directory. parseRoleParams owns only the naming convention — the
+	// leaf dir name — and the caller fills p.target from the guard.
+	leaf := "tracker-" + cfg.branchPrefix + "-" + sess
+	return roleInitParams{role: strings.ToLower(*role), cfg: cfg, session: sess, branch: branch, leaf: leaf}, nil
 }
 
 // cmdRoleInit implements `deskwt role-init --role <role> [--session <s>]`.
@@ -175,6 +180,8 @@ func cmdRoleInit(args []string) (err error) {
 	if gErr != nil {
 		return gErr
 	}
+	// Build the target under the OS-portable sanctioned prefix now the guard is available.
+	p.target = guard.worktreeTarget(p.leaf)
 	rt, cerr := guard.check(p.target)
 	if cerr != nil {
 		return cerr
@@ -215,6 +222,12 @@ func cmdRoleInit(args []string) (err error) {
 		return deskkit.Unverifiable("refused: origin/main does not resolve to a commit", verr)
 	}
 
+	// Ensure the sanctioned parent prefix exists (the `.claude/worktrees/` prefix may not,
+	// and `git worktree add` creates only the leaf, not missing parents). Touches only the
+	// sanctioned parent, never the leaf checked never-to-clobber above.
+	if merr := os.MkdirAll(filepath.Dir(p.target), 0o755); merr != nil {
+		return deskkit.Unverifiable("cannot create the sanctioned worktree parent dir "+filepath.Dir(p.target), merr)
+	}
 	// If the branch already exists (its worktree was removed but the branch left behind),
 	// attach the worktree to it; otherwise create a new branch tracking origin/main. Either
 	// way the worktree ends up on <branch>, which tracks origin/main.
@@ -265,6 +278,9 @@ func cmdRoleClean(args []string) (err error) {
 	if gErr != nil {
 		return gErr
 	}
+	// Build the target under the OS-portable sanctioned prefix now the guard is available
+	// (must match the prefix role-init created it under).
+	p.target = guard.worktreeTarget(p.leaf)
 	rt, cerr := guard.check(p.target)
 	if cerr != nil {
 		return cerr
