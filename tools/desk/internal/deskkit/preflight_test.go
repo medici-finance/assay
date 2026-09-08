@@ -716,23 +716,82 @@ func TestGitLabSessionEmailAllowedNormalisation(t *testing.T) {
 
 // ---- check 5: sibling checkouts (#679) ------------------------------------
 
-// TestPreflightMissingSiblingIsRed is the #679 positive control: a queued brief
-// declares an out-of-repo checkout that is not there, and the rows that need it
-// would be discovered unrunnable mid-pass.
-func TestPreflightMissingSiblingIsRed(t *testing.T) {
+// TestPreflightMissingSiblingOfClaimedBriefIsRed is the #679/#661 positive
+// control: when a brief is being CLAIMED and its declared out-of-repo checkout is
+// not there, the rows that need it would be discovered unrunnable mid-pass, so
+// the check must go red.
+func TestPreflightMissingSiblingOfClaimedBriefIsRed(t *testing.T) {
 	withRoster(t, goldenRoster())
 	p := okProbes()
 	p.QueuedSiblings = func(string) ([]SiblingReq, error) {
 		return []SiblingReq{{Brief: "docs/streams/example-stream/brief-43-x.md", Rel: "../tracker"}}, nil
 	}
 	p.DirExists = func(string) (bool, error) { return false, nil }
-	rep := runPF(t, p)
+	rep := PreflightRequest{Role: pfRole, Root: t.TempDir(), ClaimedBrief: "brief-43", Probes: p}.Run()
 	c := pfCheck(t, rep, CheckSiblings)
 	if c.State != CheckedFailed {
-		t.Fatalf("%s = %s with a missing sibling, want checked-failed", c.Name, c.State)
+		t.Fatalf("%s = %s with the CLAIMED brief's sibling missing, want checked-failed", c.Name, c.State)
 	}
 	if !strings.Contains(c.Detail, "../tracker") || !strings.Contains(c.Detail, "brief-43") {
 		t.Fatalf("detail %q does not name both the missing checkout and the brief that declared it", c.Detail)
+	}
+}
+
+// TestPreflightMissingSiblingOfUnclaimedBriefIsNotice pins the #661 boot fix: at
+// boot NOTHING is claimed, so an absent sibling declared by an unclaimed brief is
+// a NOTICE on an otherwise-GREEN check, not a boot-blocking failure. This is the
+// change that un-bricks a whole cell whose unclaimed cross-repo briefs point at
+// checkouts that legitimately live elsewhere.
+func TestPreflightMissingSiblingOfUnclaimedBriefIsNotice(t *testing.T) {
+	withRoster(t, goldenRoster())
+	p := okProbes()
+	p.QueuedSiblings = func(string) ([]SiblingReq, error) {
+		return []SiblingReq{{Brief: "docs/streams/example-stream/brief-43-x.md", Rel: "../tracker"}}, nil
+	}
+	p.DirExists = func(string) (bool, error) { return false, nil }
+	rep := runPF(t, p) // boot mode: no ClaimedBrief
+	c := pfCheck(t, rep, CheckSiblings)
+	if c.State != CheckedClean {
+		t.Fatalf("%s = %s at boot with an unclaimed brief's sibling missing, want checked-clean", c.Name, c.State)
+	}
+	if c.Notice == "" || !strings.Contains(c.Notice, "../tracker") || !strings.Contains(c.Notice, "brief-43") {
+		t.Fatalf("notice %q does not name the absent unclaimed sibling and its brief", c.Notice)
+	}
+	if !rep.Green() {
+		t.Fatalf("a boot preflight with only an unclaimed absent sibling is not GREEN (blocking: %v)", rep.Blocking())
+	}
+	if len(rep.Notices()) == 0 {
+		t.Fatal("PreflightReport.Notices() is empty though a check carries a notice")
+	}
+	if !strings.Contains(rep.SummaryLine(), "NOTICE") {
+		t.Fatalf("SummaryLine does not surface the notice: %q", rep.SummaryLine())
+	}
+}
+
+// TestPreflightSiblingResolvesThroughConfiguredRoots pins the #661 resolution
+// fix: a declared ../<repo> is located through the CONFIGURED roots
+// (DESK_ROOTS / topology), not a flat ../<repo> next to the desk root. The
+// configured checkout here sits at a path that is NOT ../tracker; the check must
+// stat THAT path and, finding it present, stay green with no notice.
+func TestPreflightSiblingResolvesThroughConfiguredRoots(t *testing.T) {
+	withRoster(t, goldenRoster())
+	const configured = "/workspace/example-org/tracker"
+	p := okProbes()
+	p.QueuedSiblings = func(string) ([]SiblingReq, error) {
+		return []SiblingReq{{Brief: "docs/streams/s/brief-07-x.md", Rel: "../tracker"}}, nil
+	}
+	p.SiblingRoots = func() ([]RootConfig, error) {
+		return []RootConfig{{Repo: "example-org/tracker", Path: configured}}, nil
+	}
+	// Only the CONFIGURED path is present; a flat ../tracker join is absent.
+	p.DirExists = func(path string) (bool, error) { return path == configured, nil }
+	rep := runPF(t, p)
+	c := pfCheck(t, rep, CheckSiblings)
+	if c.State != CheckedClean {
+		t.Fatalf("%s = %s though the configured checkout resolves and is present, want checked-clean (detail %q)", c.Name, c.State, c.Detail)
+	}
+	if c.Notice != "" {
+		t.Fatalf("a resolved-and-present sibling should carry no notice, got %q", c.Notice)
 	}
 }
 
@@ -828,9 +887,12 @@ func TestPreflightEveryNonGreenCheckNamesARemediation(t *testing.T) {
 			p.WriteTransport = func(Landing) (ProbeVerdict, string, error) { return ProbeRejected, "403", nil }
 		},
 		"identity": func(p *PreflightProbes) { p.CommitEmail = func(string) (string, error) { return pfAppIDEmail, nil } },
+		// An UNCLAIMED brief's absent sibling degrades to a notice (#661), so to
+		// exercise the non-green sibling path here we darken it via an unreadable
+		// checkout (stat error → could-not-check), which still names a remediation.
 		"siblings": func(p *PreflightProbes) {
 			p.QueuedSiblings = func(string) ([]SiblingReq, error) { return []SiblingReq{{Brief: "b", Rel: "../x"}}, nil }
-			p.DirExists = func(string) (bool, error) { return false, nil }
+			p.DirExists = func(string) (bool, error) { return false, errors.New("permission denied") }
 		},
 	}
 	for name, darken := range scenarios {

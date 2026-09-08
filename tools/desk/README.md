@@ -3574,7 +3574,7 @@ through, and spending the rest of the pass writing an issue about itself:
 | a sibling checkout a queued brief's rows need is simply not there | #679 |
 
 ```bash
-deskroster preflight --role verifier [--root DIR] [--remote NAME] [--branch NAME] [--verbose]
+deskroster preflight --role verifier [--root DIR] [--remote NAME] [--branch NAME] [--claimed-brief ID] [--verbose]
 ```
 
 Five checks, run **before any work is claimed**. Each answers one of three states with a
@@ -3586,7 +3586,7 @@ Five checks, run **before any work is claimed**. Each answers one of three state
 | `app-scopes-vs-duties` | the installation's recorded grant covers `pull_requests:write`, `issues:write`, `contents:write` | #571 |
 | `write-transport` | a **read-only** probe (`git push --dry-run`) of the role's landing path is permitted | #823 |
 | `commit-identity` | the commit email's numeric prefix is the roster's **bot USER id**, not the App id | #638 |
-| `sibling-checkouts` | the out-of-repo checkouts the **queued** briefs declare are present | #679 |
+| `sibling-checkouts` | the out-of-repo checkouts the **queued** briefs declare can be resolved — through the **configured roots** (`DESK_ROOTS` / topology), not a flat `../<repo>`; absent for an **unclaimed** brief is a **notice**, absent for the brief named by `--claimed-brief` is a **failure** | #679 #661 |
 
 **Four properties are the whole point.**
 
