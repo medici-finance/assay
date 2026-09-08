@@ -26,7 +26,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-08 |  |
 | [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 1/1 | 2026-09-08 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 8/13 | 2026-09-08 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 2/6 | 2026-09-08 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 3/6 | 2026-09-08 |  |
 
 ## Next up
 
@@ -41,7 +41,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (44 desk-actionable of 55 total — 55 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (44 desk-actionable of 54 total — 54 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -67,13 +67,13 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 04 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-neutral | 05 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
-| windows-port | 00 | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
-| windows-port | 01 | implemented | 2000 | 2 | — | — | — |
+| windows-port | 00 | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| windows-port | 01 | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -97,7 +97,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 06 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | statusgen | 09 | implemented | 1000 | 0 | — | — | — |
 
-### Awaiting human gate (5)
+### Awaiting human gate (4)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -105,7 +105,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 03 | implemented | 5000 | 8 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| windows-port | 04 | implemented | 1000 | 0 | — | — | — |
 
 ### Awaiting implementer rework (6)
 
@@ -273,12 +272,11 @@ _None._
 - 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
 - 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
 
-### windows-port (4 open)
+### windows-port (3 open)
 
 - 00 Build-tag split for the unix-only syscall sites — implemented (wave 0)
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — implemented (wave 1)
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — implemented (wave 2)
-- 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — implemented (wave 2)
 
 ## Done briefs
 
@@ -369,11 +367,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — done (wave 1)
 - 13 cadenced roadmap artifacts (`--cadence weekly/monthly`) — done (wave 1)
 
-### windows-port (2 done)
+### windows-port (3 done)
 
 - 02 Portability audit — enumerate + triage the shell-assuming surfaces — done (wave 0)
+- 04 Windows CI leg — statusgen --lint + a desk-verb smoke on Windows — done (wave 2)
 - 05 Adoption-doc delta — the Windows adopter walkthrough — done (wave 3)
 
 ## Totals
 
-**16** streams (**16** active, **0** paused) · **52/147** briefs done · completed initiatives: see `docs/archive/`
+**16** streams (**16** active, **0** paused) · **53/147** briefs done · completed initiatives: see `docs/archive/`
