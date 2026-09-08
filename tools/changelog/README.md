@@ -157,6 +157,27 @@ whole activation.
    mechanical commit, and it leaves `changelog/` un-cleared (so the *next*
    release aggregates the same fragments again) for as long as the PR sits.
 
+4. **`release.yml` fix — `-c` before the `fetch` subcommand in the roll retry.**
+   Apply `tools/changelog/release-roll-fetch-order.yml.patch` to the live
+   `.github/workflows/release.yml`:
+
+   ```
+   git apply tools/changelog/release-roll-fetch-order.yml.patch
+   ```
+
+   The `changelog-roll` job's re-sync step (added by step 3) invoked
+   `git fetch --no-tags -c http.extraheader=… origin main` — with `-c` placed
+   AFTER the `fetch` subcommand. Git only accepts `-c <name>=<value>` BEFORE the
+   subcommand, so this form fails at parse time with `error: unknown switch 'c'`
+   (exit 129), on EVERY attempt of the bounded retry loop — the re-sync never
+   runs and the roll cannot recover from a moving default branch. The fix moves
+   `-c` before `fetch`, matching the working tag-push form in the `release` job
+   (line ~969) and the roll's own push form (line ~1259). One line; nothing else
+   in the job changes. Observed in run `34274333877` (the v0.28.0 cut): the
+   `changelog-roll` job failed, so `CHANGELOG.md` carried no `## v0.28.0` section
+   and the aggregated fragments under `changelog/` were left uncleared until this
+   PR hand-rolled them.
+
 No other files change under `.github/workflows/`.
 
 ## Cutover — the pending entries are not lost
