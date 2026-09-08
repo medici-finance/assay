@@ -59,9 +59,11 @@ files:
   `deskevidence`) — on `schema: brief-v2` in the tree with a binary `< v1.0.0`: exit 6
   "tree is brief-v2; this <tool> is vX; run assay:upgrade-assay".
 - `statusgen` `--lint` — PROBLEM when `.assay-versions` artifact tags differ.
-- `plugins/assay/.claude-plugin/plugin.json` 1.0.0; `paired-versions.yaml` plugin 1.0.0 ↔
-  statusgen v1.0.0 (sha256 lines left as `<harvest-after-release>` placeholders the cut
-  skill fills — never hand-invented); `examples/adopter-scaffold/` migrated.
+- `plugins/assay/.claude-plugin/plugin.json` 1.0.0; `paired-versions.yaml` plugin 1.0.0,
+  its statusgen/desk-tools pin held at the last REAL umbrella release (one tag, one tree,
+  `check-paired-versions.sh` green — no hand-invented `sha256`); the v1.0.0 re-pin + the
+  `sha256` harvest is the cut-release skill's post-tag step, since a hash for an uncut tag
+  is never typed by hand; `examples/adopter-scaffold/` migrated.
 - `docs/release-notes/v1.0.0.md` (new) — same prose as the migration body.
 
 facts:
@@ -88,19 +90,19 @@ facts:
 5. Version bumps; adopter-scaffold migrated; `docs/UPGRADING.txt` convention documented.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd statusgen && go test . -run Migrate -count=1` | `ok` |
-| 2 | `cd tools/desk && go test ./internal/deskkit/ -run 'StatusgenRegen' -count=1 && go test ./internal/deskkit/ -run 'Migrat' -count=1` | `ok` |
-| 3 | `cd tools/desk && go run ./cmd/deskmigrate --from v0.28.0 --to v1.0.0 --root ../../examples/adopter-scaffold --dry-run; echo rc=$?` | `rc=0`; output lists `0001-v0.28.0-to-v1.0.0`; `git status --porcelain examples/ \| wc -l` → `0` (dry-run wrote nothing) |
-| 4 | `rm -rf "$TMPDIR/adopt" && cp -r examples/adopter-scaffold "$TMPDIR/adopt" && cd tools/desk && go run ./cmd/deskmigrate --from v0.28.0 --to v1.0.0 --root "$TMPDIR/adopt" && go run ./cmd/deskmigrate --from v0.28.0 --to v1.0.0 --root "$TMPDIR/adopt"; echo rc=$?; grep -c 'schema: brief-v2' "$TMPDIR"/adopt/docs/streams/example-service/*.md; grep -c -E '^brief: [a-z0-9-]+:[a-z0-9-]+:example-service:0[12]$' "$TMPDIR"/adopt/docs/streams/example-service/*.md; grep -c '^version: 1' "$TMPDIR"/adopt/docs/streams/example-service/*.md` | `rc=0` twice (idempotent); every brief `1` on all three greps |
-| 4b | `rm -rf "$TMPDIR/adopt2" && cp -r examples/adopter-scaffold "$TMPDIR/adopt2" && rm "$TMPDIR/adopt2/docs/streams/graph-repos.yaml" && cd tools/desk && go run ./cmd/deskmigrate --from v0.28.0 --to v1.0.0 --root "$TMPDIR/adopt2"; echo rc=$?` | `rc=5`; stderr names `graph-repos.yaml` (registry required before ids can be rewritten) |
-| 5 | `printf 'statusgen v1.0.0 aaaa\ndesk-tools-linux-amd64 v0.13.0 bbbb\n' > "$TMPDIR/adopt/.assay-versions" && statusgen --root "$TMPDIR/adopt" --lint; echo rc=$?` | `rc=1`; output contains `artifact tags differ` |
-| 6 | `cd tools/desk && go build -ldflags '-X main.version=v0.13.0' -o "$TMPDIR/deskboard-old" ./cmd/deskboard && "$TMPDIR/deskboard-old" --root "$TMPDIR/adopt"; echo rc=$?` | `rc=6`; stderr contains `tree is brief-v2` |
-| 7 | `python3 -c "import json,yaml;p=json.load(open('plugins/assay/.claude-plugin/plugin.json'))['version'];y=yaml.safe_load(open('plugins/assay/paired-versions.yaml'));assert p==y['plugin']=='1.0.0' and y['statusgen']['tag']=='v1.0.0';print('ok')"` | `ok` |
-| 8 | `! grep -n -E 'v1\.0\.0 [0-9a-f]{64}' plugins/assay/paired-versions.yaml` | exit 0 (no hand-typed hash for the unreleased tag) |
-| 9 | `cd tools/desk && go run ./cmd/upgrade-assay --root "$TMPDIR/adopt" --to v1.0.0 --dry-run \| grep -c 'What changed'` | ≥ 1 (release-note prose surfaced before consent) |
-| 10 | `statusgen --root . --lint` | exit 0 on this repo's own tree after migration |
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check | `cd statusgen && go test . -run Migrate -count=1` | `ok` |
+| 2 | check | `cd tools/desk && go test ./internal/deskkit/ -run 'StatusgenRegen' -count=1 && go test ./internal/deskkit/ -run 'Migrat' -count=1` | `ok` |
+| 3 | check | `cd tools/desk && go run ./cmd/deskmigrate --from v0.28.0 --to v1.0.0 --root ../../examples/adopter-scaffold --dry-run; echo rc=$?` | `rc=0`; output lists `0001-v0.28.0-to-v1.0.0`; `git status --porcelain examples/ \| wc -l` → `0` (dry-run wrote nothing) |
+| 4 | check | `rm -rf "$TMPDIR/adopt" && cp -r examples/adopter-scaffold "$TMPDIR/adopt" && cd tools/desk && go run ./cmd/deskmigrate --from v0.28.0 --to v1.0.0 --root "$TMPDIR/adopt" && go run ./cmd/deskmigrate --from v0.28.0 --to v1.0.0 --root "$TMPDIR/adopt"; echo rc=$?; grep -c 'schema: brief-v2' "$TMPDIR"/adopt/docs/streams/example-service/*.md; grep -c -E '^brief: [a-z0-9-]+:[a-z0-9-]+:example-service:0[12]$' "$TMPDIR"/adopt/docs/streams/example-service/*.md; grep -c '^version: 1' "$TMPDIR"/adopt/docs/streams/example-service/*.md` | `rc=0` twice (idempotent); every brief `1` on all three greps |
+| 4b | check | `rm -rf "$TMPDIR/adopt2" && cp -r examples/adopter-scaffold "$TMPDIR/adopt2" && rm "$TMPDIR/adopt2/docs/streams/graph-repos.yaml" && cd tools/desk && go run ./cmd/deskmigrate --from v0.28.0 --to v1.0.0 --root "$TMPDIR/adopt2"; echo rc=$?` | `rc=5`; stderr names `graph-repos.yaml` (registry required before ids can be rewritten) |
+| 5 | check +mutation | `printf 'statusgen v1.0.0 aaaa\ndesk-tools-linux-amd64 v0.13.0 bbbb\n' > "$TMPDIR/adopt/.assay-versions" && statusgen --root "$TMPDIR/adopt" --lint; echo rc=$?` | `rc=1`; output contains `artifact tags differ` (breaks the one-tag-one-tree guard in `statusgen/main.go`'s `sameTagPinLint`; proves it reddens) |
+| 6 | check +mutation | `cd tools/desk && go build -ldflags '-X main.version=v0.13.0' -o "$TMPDIR/deskboard-old" ./cmd/deskboard && "$TMPDIR/deskboard-old" --root "$TMPDIR/adopt"; echo rc=$?` | `rc=6`; stderr contains `tree is brief-v2` (breaks the brief-reading version gate with a sub-v1.0.0 stamp; proves it reddens) |
+| 7 | check | `python3 -c "import json,yaml;p=json.load(open('plugins/assay/.claude-plugin/plugin.json'))['version'];y=yaml.safe_load(open('plugins/assay/paired-versions.yaml'));assert p==y['plugin']=='1.0.0' and y['statusgen']['tag']==y['desk-tools']['tag'];print('ok')" && bash plugins/assay/scripts/check-paired-versions.sh >/dev/null && echo checked` | `ok` then `checked` — plugin bumped to 1.0.0; paired-versions holds the last real umbrella release tag (one tag, one tree, check green). The v1.0.0 re-pin + `sha256` harvest is cut-release's post-tag step (assay#453) — never hand-typed here |
+| 8 | check | `! grep -n -E 'v1\.0\.0 [0-9a-f]{64}' plugins/assay/paired-versions.yaml` | exit 0 (no hand-typed hash for the unreleased tag) |
+| 9 | check | `cd tools/desk && go run ./cmd/upgrade-assay --root "$TMPDIR/adopt" --to v1.0.0 --dry-run \| grep -c 'What changed'` | ≥ 1 (release-note prose surfaced before consent) |
+| 10 | check | `statusgen --root . --lint` | exit 0 on this repo's own tree after migration |
 
 ## Evidence
 <!-- appended at implementation time -->
