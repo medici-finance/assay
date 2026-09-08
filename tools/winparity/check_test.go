@@ -143,6 +143,52 @@ func TestCheck_MissingMarkersIsCouldNotCheck(t *testing.T) {
 	}
 }
 
+// appendToPs appends raw bytes to the generated build-windows.ps1 under root, so
+// a PS5.1-regression can be injected into an otherwise in-parity, ASCII-clean
+// fixture. The GREEN half of this gate's fail-first pair is
+// TestCheck_InParityIsClean, whose fixture ps1 is ASCII and `>>>`-free and passes
+// — so the reds below are caused by the injected regression, not the setup.
+func appendToPs(t *testing.T, root string, extra []byte) {
+	t.Helper()
+	psPath := filepath.Join(root, "scripts", "build-windows.ps1")
+	raw, err := os.ReadFile(psPath)
+	if err != nil {
+		t.Fatalf("read ps1: %v", err)
+	}
+	if err := os.WriteFile(psPath, append(raw, extra...), 0o644); err != nil {
+		t.Fatalf("append ps1: %v", err)
+	}
+}
+
+// TestCheck_TripleAngleInPsIsRegression: a `>>>` in a double-quoted string — the
+// exact #678 ParserError under Windows PowerShell 5.1 — must fail, even when the
+// target sets are in parity.
+func TestCheck_TripleAngleInPsIsRegression(t *testing.T) {
+	root := writeRoot(t, canonicalTargets, canonicalTargets)
+	appendToPs(t, root, []byte("Write-Host \">>> installing ...\"\n"))
+	var out bytes.Buffer
+	if Check(root, &out) {
+		t.Fatalf("expected PS5.1 regression failure for `>>>` in the ps1, got clean:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), ">>>") || !strings.Contains(out.String(), "REGRESSION") {
+		t.Errorf("output did not report the `>>>` regression:\n%s", out.String())
+	}
+}
+
+// TestCheck_NonASCIIInPsIsRegression: a non-ASCII byte (an em-dash, the other
+// #678 5.1 encoding break) must fail, even when the target sets are in parity.
+func TestCheck_NonASCIIInPsIsRegression(t *testing.T) {
+	root := writeRoot(t, canonicalTargets, canonicalTargets)
+	appendToPs(t, root, []byte("# an em-dash — breaks under 5.1 encoding\n"))
+	var out bytes.Buffer
+	if Check(root, &out) {
+		t.Fatalf("expected PS5.1 regression failure for a non-ASCII byte in the ps1, got clean:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "non-ASCII") || !strings.Contains(out.String(), "REGRESSION") {
+		t.Errorf("output did not report the non-ASCII regression:\n%s", out.String())
+	}
+}
+
 // TestMakefilePhony_HandlesLineContinuation: a `.PHONY` split across `\`
 // continuations is parsed as one set.
 func TestMakefilePhony_HandlesLineContinuation(t *testing.T) {

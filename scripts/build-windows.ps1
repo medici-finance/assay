@@ -1,12 +1,12 @@
 <#
-  build-windows.ps1 — the Windows counterpart to the Unix root `Makefile`.
+  build-windows.ps1 -- the Windows counterpart to the Unix root `Makefile`.
 
   The shipped toolchain is Unix-first: the desk-tools build/install targets live
   in the root `Makefile`, whose only documented invocation is `make ...` on a
   POSIX host (and `sudo make desk-install` into root-owned /opt/desk-tools/bin).
   This script is the Windows-native orchestration of the SAME targets. The Go
-  tools already cross-compile — `statusgen` and everything under `tools/**` are
-  plain argv CLIs — so this is orchestration + Windows path handling (`.exe`
+  tools already cross-compile -- `statusgen` and everything under `tools/**` are
+  plain argv CLIs -- so this is orchestration + Windows path handling (`.exe`
   suffixes, `%LOCALAPPDATA%` install dir, `Get-FileHash` manifests), NOT new
   build logic. It requires no `nmake`, no Visual Studio build tools, and no
   `make`: only PowerShell and the Go toolchain (the same dependency every target
@@ -34,7 +34,7 @@
                        into the per-user install dir (default
                        %LOCALAPPDATA%\Assay\bin), then desk-hook-install +
                        desk-manifest. On Windows this is a per-user install and
-                       needs no elevation — unlike the Unix `sudo make
+                       needs no elevation -- unlike the Unix `sudo make
                        desk-install` into root-owned /opt/desk-tools/bin.
     desk-manifest      (re)write tools/desk/MANIFEST.sha256 from the installed
                        binaries via Get-FileHash (shasum-compatible lines).
@@ -89,7 +89,7 @@ $MakefileParityTargets = @(
 # MAKEFILE-PARITY TARGETS (END)
 # ---------------------------------------------------------------------------
 
-# Repo layout — resolved from this script's own location so the target works
+# Repo layout -- resolved from this script's own location so the target works
 # from any CWD. This script lives at <repo>/scripts/build-windows.ps1.
 $RepoRoot   = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $DeskDir    = Join-Path $RepoRoot 'tools\desk'
@@ -102,7 +102,7 @@ $DeskPkg    = "$DeskModule/internal/deskkit"
 
 function Get-BuildStamp {
     # SourceSHA + BuiltAt, embedded via -ldflags so every audit record and
-    # --version shows exactly which source a binary was built from — the same
+    # --version shows exactly which source a binary was built from -- the same
     # stamp the Makefile computes.
     $sha = (& git -C $RepoRoot rev-parse --short HEAD 2>$null)
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sha)) { $sha = 'unknown' }
@@ -131,7 +131,7 @@ function Target-DeskBuild {
     New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
     $cmds = Get-DeskCmds
     if ($cmds.Count -eq 0) {
-        Write-Host "desk-build: no tools/desk/cmd/* yet — nothing to build (ok)"
+        Write-Host "desk-build: no tools/desk/cmd/* yet -- nothing to build (ok)"
         return
     }
     $ldflags = Get-BuildStamp
@@ -146,16 +146,16 @@ function Target-DeskBuild {
 function Target-DeskInstall {
     Write-Host "desk-install: building (desk-build, per-user, unprivileged)"
     Target-DeskBuild
-    Write-Host ">>> desk-install: installing to $InstallDir (per-user; Windows needs no elevation)"
+    Write-Host "desk-install: installing to $InstallDir (per-user; Windows needs no elevation)"
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
     $cmds = Get-DeskCmds
     if ($cmds.Count -eq 0) {
-        Write-Host "desk-install: no tools/desk/cmd/* yet — nothing to install (ok)"
+        Write-Host "desk-install: no tools/desk/cmd/* yet -- nothing to install (ok)"
     } else {
         foreach ($d in $cmds) {
             $name = $d.Name
             $built = Join-Path $DistDir "$name.exe"
-            if (-not (Test-Path $built)) { throw "desk-install: $built missing after desk-build — aborting" }
+            if (-not (Test-Path $built)) { throw "desk-install: $built missing after desk-build -- aborting" }
             Copy-Item -Force -Path $built -Destination (Join-Path $InstallDir "$name.exe")
             Write-Host "desk-install: installed $(Join-Path $InstallDir "$name.exe")"
         }
@@ -185,7 +185,7 @@ function Target-DeskManifest {
 
 function Target-DeskHookInstall {
     if (-not (Test-Path $HookSrc)) {
-        Write-Host "desk-hook-install: $HookSrc not found — nothing to install (ok)"
+        Write-Host "desk-hook-install: $HookSrc not found -- nothing to install (ok)"
         return
     }
     if (Test-Path $HookDst) {
@@ -203,7 +203,7 @@ function Target-DeskHookInstall {
         }
     }
     New-Item -ItemType Directory -Force -Path (Split-Path $HookDst) | Out-Null
-    # Copy the shim verbatim, exactly as the Makefile does — the installer does
+    # Copy the shim verbatim, exactly as the Makefile does -- the installer does
     # not rewrite the shim's interpreter/path. The committed shim is a POSIX
     # `#!/bin/sh` exec of the Unix install path; on Windows it runs under Git for
     # Windows' bundled sh, and adapting its exec target to the Windows install
@@ -231,7 +231,7 @@ function Target-PairedVersions {
 function Assert-MakefileParity {
     # Run the tools/winparity guard as a preflight. It reads BOTH the Makefile's
     # `.PHONY` set and this script's $MakefileParityTargets block and reddens on
-    # any difference — so a drift is caught before any target runs.
+    # any difference -- so a drift is caught before any target runs.
     $winparity = Join-Path $RepoRoot 'tools\winparity'
     if (-not (Test-Path $winparity)) {
         throw "parity preflight: tools/winparity not found at $winparity"

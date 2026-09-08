@@ -29,18 +29,23 @@ var phonyTargetRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // psQuotedRE matches a single-quoted PowerShell string literal.
 var psQuotedRE = regexp.MustCompile(`'([^']*)'`)
 
-// Check asserts that the Windows build script's declared target set equals the
-// Unix Makefile's `.PHONY` set, so the Windows counterpart cannot silently fall
-// behind the Unix target set (or grow a target the Makefile lacks).
+// Check asserts two things about the Windows build script: (1) its declared
+// target set equals the Unix Makefile's `.PHONY` set, so the Windows counterpart
+// cannot silently fall behind the Unix target set (or grow a target the Makefile
+// lacks); and (2) it is Windows PowerShell 5.1-clean — ASCII-only, no `>>>` in
+// strings — so powershell.exe parses it, not only pwsh 7 (#678).
 //
 // FAIL-CLOSED, three-state (docs/three-state-instrument-rule.md). It returns
-// true only when the two sets were BOTH read and are EQUAL (checked-clean). A
-// disagreement is checked-failed; a file it could not read or parse is
-// could-not-check. Both non-clean states are reported AS THEMSELVES and both
-// return false — a could-not-check is never rounded up to a pass.
+// true only when every source was read AND both assertions hold (checked-clean).
+// A target-set disagreement or a 5.1 regression is checked-failed; a file it
+// could not read or parse is could-not-check. Both non-clean states are reported
+// AS THEMSELVES and both return false — a could-not-check is never rounded up to
+// a pass.
 func Check(root string, out io.Writer) bool {
+	psPath := filepath.Join(root, filepath.FromSlash(psRelPath))
 	makeSet, makeErr := makefilePhonyTargets(filepath.Join(root, filepath.FromSlash(makefileRelPath)))
-	psSet, psErr := powershellTargets(filepath.Join(root, filepath.FromSlash(psRelPath)))
+	psSet, psErr := powershellTargets(psPath)
+	ps51, ps51Err := ps51Regressions(psPath)
 
 	// could-not-check: a source we could not read or parse has cleared nothing.
 	cnc := false
@@ -52,28 +57,47 @@ func Check(root string, out io.Writer) bool {
 		fmt.Fprintf(out, "winparity: could-not-check: %s: %v\n", psRelPath, psErr)
 		cnc = true
 	}
+	if ps51Err != nil {
+		fmt.Fprintf(out, "winparity: could-not-check: %s (PS5.1 scan): %v\n", psRelPath, ps51Err)
+		cnc = true
+	}
 	if cnc {
-		fmt.Fprintf(out, "winparity: NOT CLEARED — a target set could not be read (could-not-check is not a pass)\n")
+		fmt.Fprintf(out, "winparity: NOT CLEARED — a source could not be read (could-not-check is not a pass)\n")
 		return false
 	}
 
+	ok := true
+
+	// Assertion 1: the Windows target set equals the Makefile's .PHONY set.
 	missing := difference(makeSet, psSet) // in Makefile .PHONY, absent from the ps1
 	extra := difference(psSet, makeSet)   // declared in the ps1, absent from Makefile .PHONY
-
 	if len(missing) == 0 && len(extra) == 0 {
 		fmt.Fprintf(out, "winparity: OK — %d targets in parity: %s\n", len(makeSet), strings.Join(sortedKeys(makeSet), " "))
-		return true
+	} else {
+		fmt.Fprintf(out, "winparity: DRIFT — %s and %s declare different target sets:\n", makefileRelPath, psRelPath)
+		if len(missing) > 0 {
+			fmt.Fprintf(out, "  in Makefile .PHONY but MISSING from %s: %s\n", psRelPath, strings.Join(missing, " "))
+		}
+		if len(extra) > 0 {
+			fmt.Fprintf(out, "  declared in %s but ABSENT from Makefile .PHONY: %s\n", psRelPath, strings.Join(extra, " "))
+		}
+		fmt.Fprintf(out, "  reconcile the two so the Windows build cannot fall behind the Unix target set.\n")
+		ok = false
 	}
 
-	fmt.Fprintf(out, "winparity: DRIFT — %s and %s declare different target sets:\n", makefileRelPath, psRelPath)
-	if len(missing) > 0 {
-		fmt.Fprintf(out, "  in Makefile .PHONY but MISSING from %s: %s\n", psRelPath, strings.Join(missing, " "))
+	// Assertion 2: the Windows build script is Windows PowerShell 5.1-clean (#678).
+	if len(ps51) == 0 {
+		fmt.Fprintf(out, "winparity: OK — %s is Windows PowerShell 5.1-clean (ASCII, no `>>>`)\n", psRelPath)
+	} else {
+		fmt.Fprintf(out, "winparity: PS5.1 PARSE REGRESSION — %s is not Windows PowerShell 5.1-clean (#678):\n", psRelPath)
+		for _, f := range ps51 {
+			fmt.Fprintf(out, "  %s\n", f)
+		}
+		fmt.Fprintf(out, "  keep the script ASCII-only with no `>>>` in strings so powershell.exe (5.1) parses it (#678).\n")
+		ok = false
 	}
-	if len(extra) > 0 {
-		fmt.Fprintf(out, "  declared in %s but ABSENT from Makefile .PHONY: %s\n", psRelPath, strings.Join(extra, " "))
-	}
-	fmt.Fprintf(out, "  reconcile the two so the Windows build cannot fall behind the Unix target set.\n")
-	return false
+
+	return ok
 }
 
 // makefilePhonyTargets returns the union of every target named on a `.PHONY:`
@@ -147,6 +171,41 @@ func powershellTargets(path string) (map[string]bool, error) {
 		return nil, fmt.Errorf("no target names found between the parity markers")
 	}
 	return set, nil
+}
+
+// ps51Regressions scans the Windows build script for constructs that Windows
+// PowerShell 5.1 (powershell.exe, not pwsh) mis-parses, so a regression is
+// caught on the Linux CI leg — which reads the file as bytes and never needs a
+// 5.1 parser — before it ever reaches a native Windows host (#678):
+//
+//   - a literal `>>>`: the 5.1 parser lexes it as a redirection operator, even
+//     inside a double-quoted string, and fails with a ParserError before compile.
+//   - any non-ASCII byte: 5.1's default (non-UTF-8) encoding mangles em-dashes
+//     and other non-ASCII, breaking the error/log strings they appear in.
+//
+// It returns one finding per offending line, sorted by line number. A read error
+// is returned as err (could-not-check); a readable, clean file returns nil, nil.
+func ps51Regressions(path string) ([]string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var findings []string
+	lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		lineNo := i + 1
+		if strings.Contains(line, ">>>") {
+			findings = append(findings, fmt.Sprintf("line %d: contains `>>>` (5.1 lexes it as a redirection operator)", lineNo))
+		}
+		// Byte-wise scan: any byte >= 0x80 is part of a non-ASCII sequence.
+		for col := 0; col < len(line); col++ {
+			if line[col] >= 0x80 {
+				findings = append(findings, fmt.Sprintf("line %d: non-ASCII byte 0x%02X at column %d (5.1 default encoding mangles it)", lineNo, line[col], col+1))
+				break
+			}
+		}
+	}
+	return findings, nil
 }
 
 // difference returns the sorted keys present in a but not in b.
