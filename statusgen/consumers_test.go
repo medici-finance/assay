@@ -1002,3 +1002,66 @@ consumers:
 		t.Fatalf("the verdict must not change because main advanced after the branch point: %d then %d", code1, code2)
 	}
 }
+
+// TestDisprovedFixedHereNamesDeferredDisposition pins the guidance the gate's
+// failure message must carry: when a `fixed-here` claim is DISPROVED because the
+// named path is nowhere in the diff — the exact shape an AUTHORING PR produces,
+// where the brief is filed but its implementation lands later — the reason line
+// must name the deferred disposition (`follow-up <stream>/<NN>` at the brief
+// itself) as the fix. A gate that only states the contradiction, without naming
+// the routing that resolves it, sends the author back to CI to rediscover the
+// rule; naming it in the message is the gate-message half of this change.
+func TestDisprovedFixedHereNamesDeferredDisposition(t *testing.T) {
+	parse := func(t *testing.T, root string) (*BriefFile, []*Stream) {
+		t.Helper()
+		streams, _, err := loadStreams(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bf, ok, err := parseBriefFile(filepath.Join(root, "docs", "streams", "alpha", "brief-01-claims.md"))
+		if err != nil || !ok {
+			t.Fatalf("fixture must parse: %v", err)
+		}
+		return bf, streams
+	}
+	assertDeferredHint := func(t *testing.T, v consumerVerdict) {
+		t.Helper()
+		if v.State != stateDisproved {
+			t.Fatalf("entry %q: state = %s, want %s", v.Entry, v.State, stateDisproved)
+		}
+		if !strings.Contains(v.Reason, "follow-up <stream>/<NN>") {
+			t.Errorf("DISPROVED reason must name the deferred routing `follow-up <stream>/<NN>`; got: %s", v.Reason)
+		}
+		if !strings.Contains(v.Reason, "deferred disposition") {
+			t.Errorf("DISPROVED reason must name the deferred disposition as the fix; got: %s", v.Reason)
+		}
+	}
+
+	// Case 1: the path exists in the tree but the diff (only the brief file)
+	// leaves it untouched — an authoring PR that declares a fix it did not make.
+	t.Run("path present but untouched", func(t *testing.T) {
+		root := consumersFixture(t, []string{"web/untouched.go: fixed-here"}, map[string]string{
+			"web/untouched.go": "package web",
+		})
+		bf, streams := parse(t, root)
+		changed := map[string]bool{"docs/streams/alpha/brief-01-claims.md": true}
+		verdicts := corroborateBrief(root, streams, changed, nil, bf)
+		if len(verdicts) != 1 {
+			t.Fatalf("want 1 verdict, got %d: %+v", len(verdicts), verdicts)
+		}
+		assertDeferredHint(t, verdicts[0])
+	})
+
+	// Case 2: the path does not resolve in the tree yet — an authoring PR routing
+	// a path its implementation will CREATE later.
+	t.Run("path not yet in tree", func(t *testing.T) {
+		root := consumersFixture(t, []string{"web/does-not-exist.go: fixed-here"}, nil)
+		bf, streams := parse(t, root)
+		changed := map[string]bool{"docs/streams/alpha/brief-01-claims.md": true}
+		verdicts := corroborateBrief(root, streams, changed, nil, bf)
+		if len(verdicts) != 1 {
+			t.Fatalf("want 1 verdict, got %d: %+v", len(verdicts), verdicts)
+		}
+		assertDeferredHint(t, verdicts[0])
+	})
+}

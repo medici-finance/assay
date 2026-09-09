@@ -109,6 +109,12 @@ do not add highlight bullets to it directly.
   (base64→exec, install-hook override, command overwrite, steganographic extract→exec).
   A missing Semgrep makes the code leg could-not-check, never clean.
 - `docs/streams/graph-repos.yaml` reserves a sixth alias, `mp`, for the cell's platform repo. Like its withheld siblings it carries `repo: null` and `unpublished: true`, so a `mp:<stream>/<NN>` or `mp#<issue>` reference parses and lint-validates from this public tree while resolving past the alias stays a could-not-check. Reserving it here keeps the public alias SET identical to the private copy's, which is what the planned registry drift lint compares.
+- harness-portability/15 (spec): the follow-up brief to hp/14 (#631) — wire the three de-housed
+  Go modules' test suites (`harnessgen`, `harnesslint`, `plugindrift`) plus the real-tree
+  harness-neutrality lint into public `ci.yml` so roster/version drift can no longer land green,
+  scrub the four banned harness tokens flagged in `ask-decision`/`install` skill bodies, and
+  declare `references/desk-shell.md` a non-matrix reference the `harnesslint bindings` check skips
+  by declaration (not nineteen per-line suppressions).
 - `harnesslint bindings` understands a reference file that DECLARES itself out of the
   per-harness binding matrix, via a one-line
   `<!-- assay:harnesslint non-matrix-reference — <reason> -->` marker. `references/desk-shell.md`

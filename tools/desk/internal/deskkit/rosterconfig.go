@@ -308,6 +308,15 @@ const (
 	//	               identity fact is read from, so an arbitrary or attacker-supplied
 	//	               email cannot enter it.
 	EnvGitLabSessionEmails = "ASSAY_GITLAB_SESSION_EMAILS"
+
+	// EnvStreamCap (ASSAY_STREAM_CAP) is the STATUSGEN-only per-root cap on the
+	// number of active streams (attention-budget/04). statusgen consumes it (the
+	// `stream-cap` --lint rule); deskkit does not — but the operator records it in
+	// the SAME shared ~/.config/assay/roster.env, so it must be RECOGNISED here or a
+	// roster carrying it collapses the whole desk-tools configuration on the
+	// unknown-ASSAY_-key refusal (the ASSAY_REPO_FORGES outage class). Recognised,
+	// not applied. KEEP IN SYNC with statusgen/rosterconfig.go's scanEnvStreamCap.
+	EnvStreamCap = "ASSAY_STREAM_CAP"
 )
 
 // knownRosterKeys is the ASSAY_-namespace roster SCHEMA these tools speak: every
@@ -376,6 +385,12 @@ func knownRosterKeys() []string {
 		// is not applied: putting it in roster.env still does NOT grant the opt-in, which
 		// is a per-shell export by design.
 		EnvAllowCluster,
+		// EnvStreamCap (ASSAY_STREAM_CAP) is STATUSGEN-only (the active-stream cap,
+		// attention-budget/04): consumed by statusgen's stream-cap lint, recognised
+		// and ignored here so a shared roster.env that configures the cap does not
+		// collapse the desk tools' configuration. Bound to statusgen's
+		// scanEnvStreamCap by the shared key list.
+		EnvStreamCap,
 	}
 }
 
