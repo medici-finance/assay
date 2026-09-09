@@ -17,6 +17,6 @@ apply:
   - id: desk-binaries
     effect: install the pinned desk-tools binaries on PATH and pin them in .assay-versions
     boundary: inside
-    inverse: remove the binaries and the pin (TODO: a later brief makes the reverse real)
+    inverse: "remove the binaries and the pin (TODO: a later brief makes the reverse real)"
 intercept: []
 config: {}
