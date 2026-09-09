@@ -796,10 +796,12 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		}
 		// The DORA-timing historian rides the SAME single-writer record pass
 		// (docs/streams/.dora-timing.jsonl, sibling to .history.jsonl). It is
-		// best-effort and fail-open: a repo it cannot resolve or any gh read
+		// best-effort and fail-open: a repo it cannot resolve or any REST read
 		// that fails records nothing and never fails the record job — so a
-		// could-not-check here must not change the exit code below.
-		recordDoraTiming(root, ghDoraTimingSource{}, nowFunc())
+		// could-not-check here must not change the exit code below. The reads
+		// go straight to the REST API (GH_TOKEN / GITHUB_TOKEN); they need no
+		// `gh` on the runner, which is what kept the substrate from accruing.
+		recordDoraTiming(root, newHTTPDoraTimingSource(), nowFunc())
 		if len(offBoardProblems) > 0 {
 			return 1
 		}
