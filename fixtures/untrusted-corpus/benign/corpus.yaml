@@ -1,0 +1,28 @@
+# Fixture manifest for deskscanuntrusted (Verify row 4) — the benign negative controls.
+#
+# Corpus FORMAT, not a decoded payload. Entries copied verbatim from the shipped corpus.
+# The scanner must leave both CLEAN so it is proven not to cry wolf on ordinary content.
+entries:
+  - id: benign-prose
+    class: benign
+    layer: "A"
+    codepoints: [U+0054, U+0068, U+0065, U+0020, U+0071, U+0075, U+0061, U+0072, U+0074,
+      U+0065, U+0072, U+006C, U+0079, U+0020, U+0072, U+0065, U+0070, U+006F, U+0072, U+0074,
+      U+0020, U+0069, U+0073, U+0020, U+0061, U+0074, U+0074, U+0061, U+0063, U+0068, U+0065,
+      U+0064, U+0020, U+0066, U+006F, U+0072, U+0020, U+0079, U+006F, U+0075, U+0072, U+0020,
+      U+0072, U+0065, U+0076, U+0069, U+0065, U+0077, U+002E]
+    description: >-
+     Ordinary prose with no smuggled codepoints, no env-read, no network sink.
+    expect: {scan: clean, reason: plain-text}
+    sha256: d52d9922aee384981f908db4da0d0538bdb6ddca06485a63b4baeb6827df19b3
+  - id: benign-source
+    class: benign
+    layer: "A"
+    codepoints: [U+0066, U+0075, U+006E, U+0063, U+0020, U+0061, U+0064, U+0064, U+0028,
+      U+0061, U+002C, U+0020, U+0062, U+0020, U+0069, U+006E, U+0074, U+0029, U+0020, U+0069,
+      U+006E, U+0074, U+0020, U+007B, U+0020, U+0072, U+0065, U+0074, U+0075, U+0072, U+006E,
+      U+0020, U+0061, U+0020, U+002B, U+0020, U+0062, U+0020, U+007D]
+    description: >-
+     An ordinary source-code fragment: a pure function with no dynamic exec.
+    expect: {scan: clean, reason: source-fragment}
+    sha256: 63f748f7f7967673f47c3c88a04b81eb4c309cafc26ce27e15f40f76cd0d1e16
