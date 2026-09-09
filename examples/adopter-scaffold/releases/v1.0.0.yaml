@@ -1,6 +1,9 @@
 # Composition manifest for umbrella v1.0.0 — adopter-scaffold example.
 #
-# The upgrade TARGET `upgrade-assay --to v1.0.0` moves the scaffold to. v1.0.0 is
+# The FLAG-DAY step. v1.0.1 has since superseded it as the latest umbrella (see
+# releases/v1.0.1.yaml) — this manifest stays because the brief-v1 → brief-v2
+# migration's span ends here, so an adopter passes THROUGH v1.0.0 on the way up and
+# a tree pinned at v1.0.0 still has to resolve. v1.0.0 is
 # the first MAJOR: the brief-v1 → brief-v2 flag day (see
 # migrations/0001-v0.28.0-to-v1.0.0-derived-board.md and
 # docs/release-notes/v1.0.0.md). statusgen and desk-tools are cut together at the
