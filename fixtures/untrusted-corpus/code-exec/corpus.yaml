@@ -1,0 +1,27 @@
+# Fixture manifest for deskscanuntrusted (Verify row 6) — the code-execution shapes.
+#
+# Corpus FORMAT, not a decoded payload. Entries copied verbatim from the shipped corpus.
+entries:
+  - id: code-exec-base64
+    class: code-exec
+    layer: "A"
+    codepoints: [U+0065, U+0076, U+0061, U+006C, U+0028, U+0062, U+0061, U+0073, U+0065,
+      U+0036, U+0034, U+0064, U+0065, U+0063, U+006F, U+0064, U+0065, U+0028, U+0022, U+005A,
+      U+0057, U+004E, U+006F, U+0062, U+0079, U+0042, U+0070, U+0062, U+006D, U+0056, U+0079,
+      U+0064, U+0041, U+003D, U+003D, U+0022, U+0029, U+0029]
+    description: >-
+     An encoded-blob-then-exec shape: a base64 literal passed straight into an eval sink.
+    expect: {scan: flag, reason: base64-exec}
+    sha256: 673ae2ba806499ee07e2e1e03d57336b8bdee93c0d6e7b31c10d17958dd09dd0
+  - id: install-hook-preinstall
+    class: install-hook
+    layer: "A"
+    codepoints: [U+007B, U+0022, U+0073, U+0063, U+0072, U+0069, U+0070, U+0074, U+0073,
+      U+0022, U+003A, U+007B, U+0022, U+0070, U+0072, U+0065, U+0069, U+006E, U+0073, U+0074,
+      U+0061, U+006C, U+006C, U+0022, U+003A, U+0022, U+006E, U+006F, U+0064, U+0065, U+0020,
+      U+002E, U+002F, U+0062, U+006F, U+006F, U+0074, U+0073, U+0074, U+0072, U+0061, U+0070,
+      U+002E, U+006A, U+0073, U+0022, U+007D, U+007D]
+    description: >-
+     A package manifest that overrides the preinstall hook to run a local script.
+    expect: {scan: flag, reason: install-hook-override}
+    sha256: 2e5ec2d1f1cfe1df6021beac6e418ffb07aba4c1a9955fe4c8b4e7fd459c045d

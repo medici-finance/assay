@@ -5,7 +5,8 @@ import (
 	"testing"
 )
 
-// Tests for the THIRD human-stamp corroboration anchor (tracker ruling #2237): a
+// Tests for the THIRD human-stamp corroboration anchor (the house tracker's ruling
+// (Option 1: a linked decision issue closed by the blessed login corroborates)): a
 // linked, blessed-human-CLOSED needs-decision issue carrying this brief's per-brief
 // decision-gate marker. Under the fixture roster (rosterfixture_test.go):
 //   ASSAY_BLESS_LOGIN=ada:100001   -> the blessed closer is "ada"
