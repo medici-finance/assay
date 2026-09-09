@@ -681,11 +681,11 @@ func corroborateBrief(root string, streams []*Stream, changed map[string]bool, i
 				// deleted or renamed it, which IS the fix.
 				add(stateCorroborated, raw, "path is absent from the tree but present in the diff (deleted/renamed here)")
 			case len(st.Matches) == 0:
-				add(stateDisproved, raw, fmt.Sprintf("claims fixed-here but %q resolves to nothing in the tree and appears nowhere in the diff", st.Token))
+				add(stateDisproved, raw, fmt.Sprintf("claims fixed-here but %q resolves to nothing in the tree and appears nowhere in the diff — if this is an authoring PR that only declares a path its implementation will create, route it `follow-up <stream>/<NN>` at the brief itself (the deferred disposition) and flip it to fixed-here in the change that adds the path", st.Token))
 			case len(missing) == 0:
 				add(stateCorroborated, raw, directoryEvidence(root, changed, st.Matches))
 			case len(missing) == len(st.Matches):
-				add(stateDisproved, raw, fmt.Sprintf("claims fixed-here but no path it resolves to (%s) appears in the diff", strings.Join(st.Matches, ", ")))
+				add(stateDisproved, raw, fmt.Sprintf("claims fixed-here but no path it resolves to (%s) appears in the diff — if this is an authoring PR that only declares the path, route it `follow-up <stream>/<NN>` at the brief itself (the deferred disposition) and flip it to fixed-here in the change that edits the path", strings.Join(st.Matches, ", ")))
 			default:
 				add(stateDisproved, raw, fmt.Sprintf("claims fixed-here for %d path(s) but the diff leaves %d of them untouched (%s) — a site naming a set claims the whole set; split the entry if only part of it was fixed", len(st.Matches), len(missing), strings.Join(missing, ", ")))
 			}

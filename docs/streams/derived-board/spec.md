@@ -38,6 +38,25 @@ Rules that fall out:
   never a guess.
 - **Hand edits to a generated table are a PROBLEM**, the same as hand-editing `STATUS.md`.
 
+### 2a. The stream-level `status:` (a different axis from the brief cells above)
+
+The cells above are per-**brief** lifecycle, derived. A **stream** README carries its own
+hand-written top-level `status:` frontmatter key — the whole stream's lifecycle, a
+different axis. Its vocabulary is:
+
+| `status:` | Meaning | On the board / in dispatch |
+|---|---|---|
+| `active` | the stream is live work | rendered in the Roll-up; its briefs are offered on Next-up; counts toward the active-stream cap (`ASSAY_STREAM_CAP`, `stream-cap` lint) |
+| `paused` | temporarily halted | excluded from dispatch; awaiting briefs render under "Paused stream" |
+| `parked` | shelved — briefs kept, not being worked | excluded from Next-up and every dispatch view; renders under its own `## Parked` board heading; does NOT count as active; re-activates by flipping `status:` back to `active` (itself subject to the cap) |
+| `done` | complete | moved to `docs/archive/` |
+
+`parked` is the WIP-cap release valve (attention-budget/04): at the cap, a new stream is
+scaffolded `status: parked` rather than adding a net-new active stream. An `active` stream
+must cite in its `spec:` frontmatter a scoping doc whose header is `**Status:** approved`
+(the `stream-source` lint, spec/lifecycle-v1.md §8.1); a `parked` stream may cite a
+`draft`.
+
 ## 3. What stays hand-written
 
 Brief frontmatter, unchanged in spirit: the authoring facts (`brief`, `title`, `why`,
