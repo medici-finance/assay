@@ -209,6 +209,13 @@ var UnresolvedArgv = []Allowance{
 		Reason: "runs the configured risk-classifier binary by path; not a forge path.",
 	},
 	{
+		Key: "internal/deskkit/untrustscan.go::runSemgrep::<unresolved>",
+		Reason: "runs the Semgrep engine by resolved path (opts.SemgrepPath or `semgrep` on PATH) over a temp " +
+			"copy of the sample with metrics and the version check disabled; not a forge CLI. argv[0] is a variable " +
+			"so the checker cannot prove the binary, hence a ledger row, not a permit — Semgrep is a static-analysis " +
+			"engine, never a forge surface.",
+	},
+	{
 		Key: "cmd/desksupervise/live.go::showClaim::<unresolved>",
 		Reason: "the SINGLE exec site (readLiveClaims' enumeration and reconcile.go's live claim reader " +
 			"both route through it) that runs the target repo's own tools/dispatch-claim.sh `show` verb " +
