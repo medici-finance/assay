@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -385,9 +386,27 @@ func TestDoraJSONStringsCarryNoInternalIdentifiers(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 	text := string(b)
-	for _, bad := range []string{"docs/streams", ".jsonl", "dora-restore", "assay-toolkit", "statusgen", "DevLake", "#1", "#2"} {
+	// Checked STRUCTURALLY, by the shape an internal identifier takes, rather than
+	// against a list of the real ones: this file ships in a public tree, so naming
+	// the private repositories and streams here would itself be the disclosure the
+	// test exists to prevent (the leak gate flags exactly that).
+	for _, bad := range []string{
+		"docs/",  // an on-disk path into the source tree
+		"/Users", // an absolute path off a developer machine
+		".jsonl", // a substrate filename
+		".go",    // a source filename
+	} {
 		if strings.Contains(text, bad) {
-			t.Errorf("feed leaks internal identifier %q into a published artifact", bad)
+			t.Errorf("feed leaks an internal path-shaped identifier %q into a published artifact", bad)
 		}
+	}
+	// Issue/PR cross-references (`#123`) resolve only inside the originating
+	// project and are meaningless — or misleading — in a published artifact.
+	if m := regexp.MustCompile(`#\d+`).FindString(text); m != "" {
+		t.Errorf("feed leaks the issue reference %q into a published artifact", m)
+	}
+	// A slug of the `word-word/NN` shape is an internal work-item id.
+	if m := regexp.MustCompile(`[a-z]+-[a-z]+/\d+`).FindString(text); m != "" {
+		t.Errorf("feed leaks the work-item id %q into a published artifact", m)
 	}
 }
