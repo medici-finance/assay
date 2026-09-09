@@ -381,7 +381,31 @@ const (
 	gitlabMaxFilePage = 40 // 4000 entries, matching forgeMaxFilePages
 	gitlabMaxCIPage   = 25 // 2500 entries, matching forgeMaxCIPages
 	gitlabMaxNotePage = 25
+	// gitlabOpenChangesCap bounds the bulk open-change board read to the SAME 100-change
+	// ceiling the GitHub backend uses (forgeOpenChangesCap), so one board sweep of a project
+	// with a very large open-MR queue cannot walk the whole set. A read that reaches the cap
+	// reports TruncatedAtCap, so every count derived from it is a FLOOR, not a total — the
+	// same in-band truncation signal GitHub's read carries.
+	gitlabOpenChangesCap = 100
+	// gitlabMaxChangesPage bounds the open-MR pagination independently of the cap, so a forge
+	// that keeps returning a NextPage cannot spin the loop unbounded.
+	gitlabMaxChangesPage = 25
 )
+
+// GitLabRollupUnmapped is the Typename this backend stamps on the single synthetic
+// RollupNode it attaches to every open change ListOpenChanges returns. The GitLab bulk
+// board read does NOT map the per-change CI rollup — GitHub's statusCheckRollup is the
+// CheckRun ↔ StatusContext union, GitLab's CI is pipelines-and-jobs, which ChecksAtHead
+// maps as a DIFFERENT per-change shape at the cost of extra reads the bulk sweep exists to
+// avoid. Rather than approximate that union here (a half-mapped rollup feeding the board's
+// MERGE-NOW verdict is the harm the original refusal avoided) OR leave the rollup EMPTY
+// (which a CI-less repo's classifier reads as vacuously green and could FLIP a draft on),
+// each change carries ONE rollup entry that decodes to NEITHER shape — Status and State both
+// empty — so cmd/deskboard's ciState reducer counts it as an UNINTERPRETABLE entry
+// (ciUnknown). An uninterpretable rollup blocks the CI-green verdict, and therefore MERGE-NOW
+// and FLIP: the board reads this change's CI as could-not-check, never as green, never as
+// merely pending. The Typename is descriptive so a log or a golden fixture names the gap.
+const GitLabRollupUnmapped = "GitLabRollupUnmapped"
 
 // gitlabTotal reads the forge's OWN asserted total for a listing.
 //
@@ -521,22 +545,94 @@ func (g *GitLabForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 	}
 }
 
-// ListOpenChanges is a could-not-check REFUSAL on GitLab, naming the gap — the DeleteRef
-// reference shape (a partial per-forge mapping refuses by name, never a zero-value return).
-// The op returns each open change WITH its CI status-check rollup as the two-shape RollupNode
-// union (GitHub CheckRun ↔ StatusContext). GitLab's CI model is pipelines-and-jobs, which the
-// stream's own ChecksAtHead mapping already carries as a DIFFERENT shape (a pipeline's jobs →
-// synthetic check-runs, the commit status → a combined state) rather than this union; and
-// `mergeStateStatus` is a GitHub-only enum with no GitLab analog. A rollup approximated across
-// that gap would feed the board's MERGE-NOW verdict a shape the forge never asserted, so the
-// bulk read is deferred to the forge-gitlab board-read brief rather than half-mapped here.
+// ListOpenChanges reads a GitLab project's OPEN merge requests as board changes in a
+// DEGRADED shape. Every field the board's review-dispatch trigger classifies on is served
+// for real — number, title (draft prefix stripped), body, draft, author, labels, head/base
+// refs and creation time — so the board's NEEDS-REVIEW / RE-REVIEW signal, which reads review
+// state and head SHA (not CI or merge state), works on a GitLab adopter. The two fields
+// GitLab's model does not map 1:1 to GitHub's are marked could-not-check PER CHANGE rather
+// than guessed:
+//
+//   - MergeStateStatus is left EMPTY. GitHub's mergeStateStatus is a single enum
+//     (CLEAN/BEHIND/BLOCKED/DIRTY/UNKNOWN/…) the board reads MERGE-NOW off; GitLab's
+//     detailed_merge_status is a different, dozen-value vocabulary with no 1:1 mapping onto
+//     that enum. An empty value is the board's OWN could-not-check (mergeVerdictUnknown), so
+//     it withholds MERGE-NOW rather than acting on a guessed merge state.
+//   - The CI rollup is a single could-not-check entry (GitLabRollupUnmapped, see its doc):
+//     the board reads it as an uninterpretable rollup (ciUnknown), which blocks CI-green and
+//     therefore MERGE-NOW and FLIP.
+//
+// This restores the review loop on GitLab while keeping the no-approximation rule the earlier
+// refusal protected: nothing is guessed, the two unmappable fields are named unreadable, and
+// the FULL rollup+mergeStateStatus mapping remains deferred to the forge-gitlab board-read
+// brief. LastEditedAt is left EMPTY for the same reason — GitLab exposes no title/body-edit
+// timestamp (updated_at moves on comments, labels and CI too, so approximating with it would
+// fire the board's non-commit re-review on every unrelated bump); the board reads an empty
+// value as "never edited", the fail-closed direction.
 func (g *GitLabForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
-	return nil, Unverifiable(fmt.Sprintf(
-		"could-not-check: the GitLab backend does not serve ListOpenChanges for %s — the bulk open-change "+
-			"read carries a GitHub statusCheckRollup (the CheckRun/StatusContext union) and a mergeStateStatus "+
-			"enum that have no 1:1 GitLab mapping (GitLab's CI is pipelines-and-jobs; see ChecksAtHead's "+
-			"different shape). It is deferred to the forge-gitlab board-read brief, not approximated here.",
-		repo.Slug()), nil)
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	listPath := fmt.Sprintf("/projects/%s/merge_requests", g.projectPath(repo))
+	state := "opened"
+	changes := make([]OpenChange, 0, gitlabOpenChangesCap)
+	for page := 1; page <= gitlabMaxChangesPage && len(changes) < gitlabOpenChangesCap; page++ {
+		chunk, resp, lerr := cl.MergeRequests.ListProjectMergeRequests(repo.Slug(),
+			&gitlab.ListProjectMergeRequestsOptions{
+				State:       &state,
+				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
+			})
+		if lerr != nil {
+			return nil, g.mapErr(http.MethodGet, listPath, lerr)
+		}
+		for _, mr := range chunk {
+			if mr == nil {
+				continue
+			}
+			changes = append(changes, gitlabOpenChange(mr))
+			if len(changes) >= gitlabOpenChangesCap {
+				break
+			}
+		}
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+	}
+	return &OpenChanges{
+		Changes:        changes,
+		Cap:            gitlabOpenChangesCap,
+		TruncatedAtCap: len(changes) >= gitlabOpenChangesCap,
+	}, nil
+}
+
+// gitlabOpenChange maps one BasicMergeRequest to the board's OpenChange in the degraded shape
+// ListOpenChanges documents: real metadata, MergeStateStatus and LastEditedAt left
+// could-not-check (empty), and a single could-not-check CI rollup entry.
+func gitlabOpenChange(mr *gitlab.BasicMergeRequest) OpenChange {
+	// GitLab marks a draft by a title prefix; strip it so Title matches GitHub's (whose
+	// isDraft is a separate flag and whose title carries no prefix), and OR the strip result
+	// into Draft as a belt-and-braces backstop for mr.Draft.
+	title, stripped := gitlabStripDraftPrefix(mr.Title)
+	oc := OpenChange{
+		Number:  int(mr.IID),
+		Title:   title,
+		Body:    mr.Description,
+		State:   gitlabState(mr.State),
+		Draft:   mr.Draft || stripped,
+		HeadSHA: mr.SHA,
+		HeadRef: mr.SourceBranch,
+		BaseRef: mr.TargetBranch,
+		Labels:  append([]string(nil), mr.Labels...),
+		// MergeStateStatus and LastEditedAt: left could-not-check (empty) — see ListOpenChanges.
+		// Rollup: one could-not-check entry the board reads as ciUnknown — see GitLabRollupUnmapped.
+		Rollup: []RollupNode{{Typename: GitLabRollupUnmapped}},
+	}
+	oc.CreatedAt = gitlabTime(mr.CreatedAt)
+	if mr.Author != nil {
+		oc.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
+	}
+	return oc
 }
 
 // ListOpenIssues is a could-not-check REFUSAL on GitLab, naming the gap. GitLab DOES list open
