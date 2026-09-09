@@ -47,9 +47,31 @@ type roleWTConfig struct {
 	branchPrefix string // branch = <branchPrefix>/<session>, dir = tracker-<branchPrefix>-<session>
 }
 
+// roleWorktreeConfig maps every desk-role TOKEN — the App-role key the roster binds and
+// deskboot mints under (deskkit.LoopTokenRoles' values: desk / worker / reviewer /
+// verifier / issue-loop) — to the worktree it provisions. The KEY is the token role
+// (RoleBotIdentity / RoleBotCommitIdentity are keyed on it, so `role-init --role verifier`
+// resolves the verifier App's identity), and branchPrefix is the LOOP name deskboot boots
+// (the-desk / worker-desk / pr-review-desk / verify-desk / intake-desk), which names the
+// branch (<branchPrefix>/<session>) and the worktree leaf dir. Every loop deskboot can
+// boot is represented, so `deskboot`'s "isolate first with role-init" step works for all
+// five, not only the verifier (#677); the mapping mirrors deskkit.LoopTokenRoles and the
+// TestRoleWorktreeConfigMatchesLoopTokenRoles parity test guards it against drift.
 var roleWorktreeConfig = map[string]roleWTConfig{
+	"desk": {
+		branchPrefix: "the-desk",
+	},
+	"worker": {
+		branchPrefix: "worker-desk",
+	},
+	"reviewer": {
+		branchPrefix: "pr-review-desk",
+	},
 	"verifier": {
 		branchPrefix: "verify-desk",
+	},
+	"issue-loop": {
+		branchPrefix: "intake-desk",
 	},
 }
 
@@ -140,27 +162,39 @@ func cmdRoleInit(args []string) (err error) {
 		return perr
 	}
 
-	// The commit identity is derived from the roster entry's FORGE (the forge-qualified-identity brief),
-	// never a fixed shape. A GitLab service-account commit email embeds a group id and a
-	// per-account suffix the roster entry does not carry, so deskwt cannot derive it here —
-	// and it must NOT fall back to the GitHub noreply shape for a GitLab account. Refuse
-	// loudly and point at the provisioning path that knows the address.
+	// The commit identity is derived from the roster entry's FORGE (the forge-qualified-identity
+	// brief), never a fixed shape, and never the GitHub noreply shape for a GitLab account
+	// (#677 — a GitHub-shaped email on a GitLab commit lands it under no GitLab identity).
+	var botName, botEmail string
 	if ident, bound := deskkit.EffectiveConfig().RoleBotIdentity(p.role); bound && ident.Forge == deskkit.ForgeGitLab {
-		return deskkit.Refused("refused: role " + p.role + " is a GitLab identity (" + ident.Slug + "); its " +
-			"service-account commit email (service_account_group_<group-id>_<suffix>@noreply.<host>) embeds a " +
-			"group id and per-account suffix the roster entry does not carry, so deskwt cannot derive it — it must " +
-			"not fall back to the GitHub noreply shape. Provision the GitLab worktree commit identity via the " +
-			"forge-gitlab custody/provisioning path, not from the roster.")
-	}
-
-	// The App commit identity comes from the roster, not a source literal: the bot USER id is
-	// deployment-specific. Refuse loudly rather than stamp an empty/unlinked identity.
-	botName, botEmail, ok := deskkit.RoleBotCommitIdentity(p.role)
-	if !ok {
-		return deskkit.Refused("refused: role " + p.role + " has no bot commit identity in the roster — " +
-			"pin it with a " + deskkit.EnvTrustedBotSlugs + " entry " + p.role +
-			"=<app-slug>:<bot-user-id> (the bot USER id, from `gh api /users/<app-slug>[bot]`) in " +
-			deskkit.ConfigHomePath())
+		// GitLab: the service-account commit email embeds a group id and per-account suffix the
+		// roster does not carry, so it is not CONSTRUCTIBLE. The established mechanism (#643) is
+		// the two-identity model — the worktree commits under the trusted session / implementer
+		// address the deployment lists in ASSAY_GITLAB_SESSION_EMAILS (the same allowlist the
+		// commit-identity preflight accepts; a deployment committing AS the service account lists
+		// that account's noreply address there). Read it from the trusted roster; refuse loudly
+		// rather than fall back to the GitHub shape when none is configured.
+		name, email, ok := deskkit.RoleGitLabCommitIdentity(p.role)
+		if !ok {
+			return deskkit.Refused("refused: role " + p.role + " is a GitLab identity (" + ident.Slug + "); its " +
+				"service-account commit email (service_account_group_<group-id>_<suffix>@noreply.<host>) embeds a " +
+				"group id and per-account suffix the roster does not carry, so it cannot be constructed — and it " +
+				"must NOT fall back to the GitHub noreply shape. Configure the trusted GitLab session / implementer " +
+				"commit address in " + deskkit.EnvGitLabSessionEmails + " (the two-identity mechanism; to commit AS " +
+				"the service account, list its provisioned noreply address there), in " + deskkit.ConfigHomePath())
+		}
+		botName, botEmail = name, email
+	} else {
+		// GitHub: the App commit identity comes from the roster, not a source literal — the bot
+		// USER id is deployment-specific. Refuse loudly rather than stamp an empty/unlinked identity.
+		name, email, ok := deskkit.RoleBotCommitIdentity(p.role)
+		if !ok {
+			return deskkit.Refused("refused: role " + p.role + " has no bot commit identity in the roster — " +
+				"pin it with a " + deskkit.EnvTrustedBotSlugs + " entry " + p.role +
+				"=<app-slug>:<bot-user-id> (the bot USER id, from `gh api /users/<app-slug>[bot]`) in " +
+				deskkit.ConfigHomePath())
+		}
+		botName, botEmail = name, email
 	}
 
 	dir, gerr := getwd()
