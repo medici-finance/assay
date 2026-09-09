@@ -138,7 +138,7 @@ func TestStampActorIsLatestStandingLabeledEvent(t *testing.T) {
 			if state != tc.want {
 				t.Fatalf("state = %v, want %v", state, tc.want)
 			}
-			d := ModelCapabilityFloor(tc.tl, dispatcherIs(disp), false)
+			d := ModelCapabilityFloor(tc.tl, dispatcherIs(disp), false, ClaimLivenessUnknown)
 			if tc.want == ModelStamped {
 				if d.Outcome != FloorAllow {
 					t.Fatalf("floor outcome = %v (%s), want FloorAllow — a re-stamp by the "+
@@ -168,7 +168,7 @@ func TestUnattributedStampLabelIsNamedInTheRefusal(t *testing.T) {
 	if len(got) != 1 || got[0] != DispatchedTierPrefix+"strong" {
 		t.Fatalf("UnattributedStampLabels = %v, want just the tier half", got)
 	}
-	d := ModelCapabilityFloor(tl, dispatcherIs(disp), false)
+	d := ModelCapabilityFloor(tl, dispatcherIs(disp), false, ClaimLivenessUnknown)
 	if d.Outcome != FloorRefuse {
 		t.Fatalf("outcome = %v, want FloorRefuse — an unattributable present stamp is could-not-check", d.Outcome)
 	}
@@ -403,7 +403,7 @@ func TestReStampRecoveryKeepsTheFloor(t *testing.T) {
 	before := StampTimeline{Present: []string{model, staleModel, tier}, Events: []LabelEvent{
 		labeledBy(model, disp), labeledBy(staleModel, disp), labeledBy(tier, disp),
 	}}
-	if d := ModelCapabilityFloor(before, dispatcherIs(disp), false); d.Outcome != FloorRefuse {
+	if d := ModelCapabilityFloor(before, dispatcherIs(disp), false, ClaimLivenessUnknown); d.Outcome != FloorRefuse {
 		t.Fatalf("pre-recovery outcome = %v, want FloorRefuse", d.Outcome)
 	}
 
@@ -417,7 +417,7 @@ func TestReStampRecoveryKeepsTheFloor(t *testing.T) {
 		labeledBy(model, disp), labeledBy(staleModel, disp), labeledBy(tier, disp),
 		unlabeledBy(staleModel, disp),
 	}}
-	if d := ModelCapabilityFloor(after, dispatcherIs(disp), false); d.Outcome != FloorAllow {
+	if d := ModelCapabilityFloor(after, dispatcherIs(disp), false, ClaimLivenessUnknown); d.Outcome != FloorAllow {
 		t.Fatalf("post-recovery outcome = %v (%s), want FloorAllow", d.Outcome, d.Message)
 	}
 
@@ -428,7 +428,7 @@ func TestReStampRecoveryKeepsTheFloor(t *testing.T) {
 	low := StampTimeline{Present: []string{model, lowTier}, Events: []LabelEvent{
 		labeledBy(model, disp), labeledBy(lowTier, disp),
 	}}
-	if d := ModelCapabilityFloor(low, dispatcherIs(disp), false); d.Outcome != FloorNoticeAllow {
+	if d := ModelCapabilityFloor(low, dispatcherIs(disp), false, ClaimLivenessUnknown); d.Outcome != FloorNoticeAllow {
 		t.Fatalf("tier-any outcome = %v (%s), want FloorNoticeAllow — `any` is no strength claim, not a below-floor tier", d.Outcome, d.Message)
 	} else if !strings.Contains(d.Message, "NOTICE") || !strings.Contains(d.Message, lowTier) {
 		t.Fatalf("the tier-any NOTICE does not name the %s label it read:\n%s", lowTier, d.Message)
@@ -453,7 +453,7 @@ func TestReStampRecoveryKeepsTheFloor(t *testing.T) {
 	weak := StampTimeline{Present: []string{model, DispatchedTierPrefix + weakTier}, Events: []LabelEvent{
 		labeledBy(model, disp), labeledBy(DispatchedTierPrefix+weakTier, disp),
 	}}
-	if d := ModelCapabilityFloor(weak, dispatcherIs(disp), false); d.Outcome != FloorRefuse {
+	if d := ModelCapabilityFloor(weak, dispatcherIs(disp), false, ClaimLivenessUnknown); d.Outcome != FloorRefuse {
 		t.Fatalf("below-floor tier outcome = %v (%s), want FloorRefuse — the recovery must not admit a weak tier", d.Outcome, d.Message)
 	}
 
@@ -461,7 +461,7 @@ func TestReStampRecoveryKeepsTheFloor(t *testing.T) {
 	self := StampTimeline{Present: []string{model, tier}, Events: []LabelEvent{
 		labeledBy(model, "the-worker-itself"), labeledBy(tier, "the-worker-itself"),
 	}}
-	if d := ModelCapabilityFloor(self, dispatcherIs(disp), false); d.Outcome != FloorRefuse {
+	if d := ModelCapabilityFloor(self, dispatcherIs(disp), false, ClaimLivenessUnknown); d.Outcome != FloorRefuse {
 		t.Fatalf("self-applied stamp outcome = %v, want FloorRefuse — the recovery must not admit a self-stamp", d.Outcome)
 	}
 }

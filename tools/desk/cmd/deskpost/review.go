@@ -211,7 +211,11 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		if ferr != nil {
 			return withDigest(fromReadErr(verb, repo, pr, curHead, ferr), dig)
 		}
-		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
+		// A stamp whose dispatch CLAIM has been released ages out — the dispatching cycle is
+		// over, so its stamp attests nothing about this verdict and the PR reads unstamped
+		// (deskkit/stampage.go). Every uncertain path is Unknown and changes nothing.
+		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged(),
+			client.claimLiveness(repo, info.Body))
 		switch fd.Outcome {
 		case deskkit.FloorRefuse:
 			return withDigest(refused(verb, repo, pr, curHead, fd.Message), dig)

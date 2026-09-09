@@ -496,7 +496,16 @@ func checkModelFloor(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, pr prIn
 		present = append(present, l.Name)
 	}
 	tl := deskkit.StampTimeline{Present: present, Events: events}
-	d := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
+	// COULD-NOT-CHECK on the stamp age-out, stated as itself. A stamp whose dispatch claim has
+	// been released ages out (deskkit/stampage.go), but establishing that needs a ref-PRESENCE
+	// read, and the frozen Forge surface this verb writes through carries none — adding an
+	// operation to it is an inventory-gated decision of its own, not a side effect of this
+	// change. So this verb passes ClaimLivenessUnknown, which is the zero value and leaves the
+	// stamp standing exactly as it stood: no loosening, and no silent claim to have looked.
+	// deskpost's floor sites DO resolve it (cmd/deskpost/claimliveness.go), so the age-out is
+	// live on the verdict verb and on the App-identity ready-flip.
+	d := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged(),
+		deskkit.ClaimLivenessUnknown)
 	switch d.Outcome {
 	case deskkit.FloorOverrideAllow:
 		fmt.Fprintf(os.Stderr, "deskflip: %s\n", d.Message)

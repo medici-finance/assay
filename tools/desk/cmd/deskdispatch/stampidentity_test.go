@@ -43,10 +43,11 @@ func stubMint(t *testing.T, token string, err error) *[]mintCall {
 	return &calls
 }
 
-// The stamp is applied as the DISPATCHER App — the identity the floor's reader accepts —
-// and NOT as whatever role this session's own loop acts under. The session here presents
-// the review loop (the reviewer App), which is precisely the case that produced the field
-// failure: a stamp applied by the reviewer App is a stamp the floor cannot trust.
+// The stamp is applied as the App that DISPATCHED this lane — the identity the floor's reader
+// accepts for it — and NOT as whatever role this session's own loop happens to act under. The
+// session here presents the review loop while dispatching the WORKER kit, which is precisely
+// the case that produced the field failure: the ambient identity is not the dispatcher of the
+// lane being launched, and a stamp under it is a stamp the floor cannot trust.
 func TestStampAppliedAsDispatcherApp(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
@@ -84,6 +85,59 @@ func TestStampAppliedAsDispatcherApp(t *testing.T) {
 	}
 	if !s.ran(edit + "dispatched-tier:strong") {
 		t.Errorf("the tier half was not applied to the PR: %v", s.calls)
+	}
+}
+
+// The REVIEW lane is dispatched by the reviewer App, so its stamp must be minted under the
+// reviewer role — not the desk role. Before this, a review dispatch either carried no stamp at
+// all or carried one whose applier was not the identity that launched the session, and either
+// way a correctly-run review could never present a floor-trusted attestation. Dispatcher and
+// applier are the same identity again exactly when this mint asks for the lane's own role.
+func TestReviewKitStampsAsTheReviewerApp(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	s.replies = happyReplies("/private/tmp/worker-home")
+	t.Setenv("DESK_LOOP", "pr-review-desk")
+	calls := stubMint(t, "example-installation-token", nil)
+
+	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
+		"--kit", "review", "--model", "example-model-1", "--tier", "strong",
+		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("dispatch rc = %d, want 0", rc)
+	}
+	if len(*calls) == 0 {
+		t.Fatal("no App token was minted for the stamp on a review dispatch")
+	}
+	for _, c := range *calls {
+		if c.role != deskkit.ReviewDispatcherRole {
+			t.Errorf("the review lane's stamp authenticated as the %q App; it must be the lane's own "+
+				"dispatcher %q, or applier and dispatcher are different identities again",
+				c.role, deskkit.ReviewDispatcherRole)
+		}
+	}
+}
+
+// stampRoleForKit is the writer's half of the one-list rule: every role it can return must be
+// one the floor's reader accepts, and every other kit must stay on the desk App. A role
+// returned here that DispatcherRoles does not carry mints a stamp nothing will ever trust.
+func TestStampRoleForKitStaysInsideTheTrustedSet(t *testing.T) {
+	trusted := map[string]bool{}
+	for _, r := range deskkit.DispatcherRoles() {
+		trusted[r] = true
+	}
+	for _, kit := range append(kitNames(), "REVIEW", " review ", "", "nonsense") {
+		got := stampRoleForKit(kit)
+		if !trusted[got] {
+			t.Errorf("kit %q stamps as role %q, which is outside the floor's trusted set %v — the stamp "+
+				"would be minted under an identity nothing accepts", kit, got, deskkit.DispatcherRoles())
+		}
+		wantReviewer := strings.EqualFold(strings.TrimSpace(kit), "review")
+		if wantReviewer != (got == deskkit.ReviewDispatcherRole) {
+			t.Errorf("kit %q stamps as %q — only the review kit is the reviewer App's to attest for",
+				kit, got)
+		}
 	}
 }
 
