@@ -2,19 +2,23 @@ package main
 
 import (
 	"os"
-	"os/exec"
 	"strings"
 )
 
+// buildStore constructs the live forge seam from the resolved repo + optional token file. It is
+// a package var ONLY so a test can install an in-memory forge (mirroring the old ghRun seam)
+// without a live remote. Production always builds the go-git store (gogit.go).
+var buildStore = newForgeStore
+
 // dispatchVerb parses argv the way the bash script's main() does: <verb> then an optional
 // positional <id> (anything not starting with "-") then flags, and routes to the verb.
-// It preserves the script's refusal/ordering exactly — gh presence and repo resolution are
-// checked before the verb runs, and an unknown flag or verb is a refusal (exit 5).
+// It preserves the script's refusal/ordering exactly — repo resolution and the forge/credential
+// setup are checked before the verb runs, and an unknown flag or verb is a refusal (exit 5).
 func dispatchVerb(args []string) int {
 	verb := args[0]
 	rest := args[1:]
 
-	var id, repoFlag, owner, branch, reason string
+	var id, repoFlag, owner, branch, reason, tokenFile string
 	// The optional positional id: the first token, unless it is a flag or empty.
 	if len(rest) > 0 && rest[0] != "" && !strings.HasPrefix(rest[0], "-") {
 		id = rest[0]
@@ -30,6 +34,8 @@ func dispatchVerb(args []string) int {
 			branch, i = next(rest, i)
 		case "--reason":
 			reason, i = next(rest, i)
+		case "--token-file":
+			tokenFile, i = next(rest, i)
 		case "-h", "--help":
 			return dieUsage()
 		default:
@@ -38,10 +44,6 @@ func dispatchVerb(args []string) int {
 		}
 	}
 
-	if _, err := ghLookPath("gh"); err != nil {
-		errf("unverifiable: gh is not on PATH")
-		return exitUnverifiable
-	}
 	repo := resolveRepo(repoFlag)
 	if repo == "" {
 		errf("unverifiable: could not resolve the target repo (pass --repo owner/name)")
@@ -50,10 +52,16 @@ func dispatchVerb(args []string) int {
 	if owner == "" {
 		owner = defaultOwner()
 	}
+	s, err := buildStore(repo, tokenFile)
+	if err != nil {
+		errf("unverifiable: %s", err.Error())
+		return exitUnverifiable
+	}
+	store = s
 
 	switch verb {
 	case "list":
-		return cmdList(repo)
+		return cmdList()
 	case "acquire", "progress", "release", "steal", "show":
 		if id == "" {
 			errf("refused: %s requires a claim id", verb)
@@ -65,28 +73,24 @@ func dispatchVerb(args []string) int {
 		}
 		switch verb {
 		case "acquire":
-			return cmdAcquire(repo, id, owner, branch)
+			return cmdAcquire(id, owner, branch)
 		case "progress":
 			if branch == "" {
 				errf("refused: progress requires --branch")
 				return exitRefused
 			}
-			return cmdProgress(repo, id, owner, branch)
+			return cmdProgress(id, owner, branch)
 		case "release":
-			return cmdRelease(repo, id)
+			return cmdRelease(id)
 		case "steal":
-			return cmdSteal(repo, id, owner, reason)
+			return cmdSteal(id, owner, reason)
 		case "show":
-			return cmdShow(repo, id)
+			return cmdShow(id)
 		}
 	}
 	errf("refused: unknown verb %s", verb)
 	return dieUsage()
 }
-
-// ghLookPath is the PATH probe for the gh binary. A seam ONLY so a test can exercise the
-// "gh not on PATH -> unverifiable" refusal without altering the process PATH.
-var ghLookPath = exec.LookPath
 
 // next returns the value after flag position i and the advanced index. A missing value
 // yields "" (the bash `${2:-}`), which the verb-level checks then refuse where required.

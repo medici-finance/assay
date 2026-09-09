@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -10,193 +11,116 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// fakeForge is an in-memory model of the GitHub git-data surface the claim tool drives via
-// `gh api`. Every gh argv the tool constructs is interpreted here, so a test exercises the
-// REAL request shapes (endpoint, method, -f fields) the bash script and this port share —
-// that is what makes these parity tests rather than mock theatre.
-type fakeForge struct {
-	repo       string
-	repoExists bool
-	baseSHA    string            // heads/main; "" simulates an unmintable base (rc6 path)
-	tags       map[string]tagObj // tag sha -> {message,date}
-	refs       map[string]string // claim id -> tag sha (refs/dispatch/<id>)
-	branches   map[string]bool   // heads/<branch> existence
-	serverNow  time.Time         // the clock GitHub stamps onto a freshly minted tag
-	tagN       int
-	calls      [][]string
+// fakeStore is an in-memory model of the forge git-data surface the claim tool drives via the
+// go-git transport (gogit.go). It stands in for the live remote so a test exercises the verbs'
+// decision logic — the CAS create/update/delete semantics, the two-phase TTL, the holder-only
+// progress, the output grammar — with no network and no external process. The REAL go-git
+// mechanics (the empty-blob tag mint, the explicit-old receive-pack CAS, the filtered
+// upload-pack read, and the tag-object interop with a commit-target REST tag) are proven
+// end-to-end, offline, against a local git server in internal/gitcore/claimref_test.go; this
+// file drives the seam above them, exactly as the old ghRun seam was driven.
+type fakeStore struct {
+	claims   map[string]fakeClaim
+	branches map[string]bool
+	now      time.Time
+	n        int
+
+	// failure injection: the fail-closed (exit 6) paths.
+	readFails  bool // read/list return claimUnverifiable
+	writeFails bool // create/update return writeUnverifiable
 }
 
-type tagObj struct {
-	message string
-	date    string
-}
+type fakeClaim struct{ sha, msg, date string }
 
-func newForge(repo string) *fakeForge {
-	return &fakeForge{
-		repo: repo, repoExists: true, baseSHA: "basemain0",
-		tags: map[string]tagObj{}, refs: map[string]string{}, branches: map[string]bool{},
-		serverNow: time.Now().UTC(),
-	}
-}
-
-// seedClaim installs a held claim directly, with a chosen holder/state/branch and age, so a
-// test controls exactly what acquire/show read back without minting through the forge.
-func (f *fakeForge) seedClaim(id, owner, state, branch string, age time.Duration) {
-	sha := f.nextTag()
-	msg := "dispatch-claim " + id + " owner=" + owner + " state=" + state + " branch=" + dashOr(branch)
-	f.tags[sha] = tagObj{message: msg, date: f.serverNow.Add(-age).Format(time.RFC3339)}
-	f.refs[id] = sha
-}
-
-func dashOr(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
-}
-
-func (f *fakeForge) nextTag() string {
-	f.tagN++
-	return "tagsha" + itoa(f.tagN)
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var b []byte
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
-	}
-	if neg {
-		b = append([]byte{'-'}, b...)
-	}
-	return string(b)
-}
-
-func fval(args []string, key string) (string, bool) {
-	for i := 0; i+1 < len(args); i++ {
-		if (args[i] == "-f" || args[i] == "-F") && strings.HasPrefix(args[i+1], key+"=") {
-			return strings.TrimPrefix(args[i+1], key+"="), true
-		}
-	}
-	return "", false
-}
-
-func (f *fakeForge) run(args ...string) ghResult {
-	f.calls = append(f.calls, append([]string{}, args...))
-	ok := func(stdout string) ghResult { return ghResult{stdout: stdout} }
-	fail := func(body string) ghResult { return ghResult{stdout: "", stderr: body, code: 1} }
-
-	// repo view --json nameWithOwner
-	if len(args) >= 2 && args[0] == "repo" && args[1] == "view" {
-		return ok(f.repo)
-	}
-	if len(args) == 0 || args[0] != "api" {
-		return fail("unhandled")
-	}
-
-	// Method + path.
-	method := "GET"
-	rest := args[1:]
-	if len(rest) >= 2 && rest[0] == "-X" {
-		method = rest[1]
-		rest = rest[2:]
-	}
-	path := rest[0]
-
-	switch {
-	case method == "GET" && path == "repos/"+f.repo:
-		if f.repoExists {
-			return ok(f.repo)
-		}
-		return fail("HTTP 404")
-	case method == "GET" && strings.HasPrefix(path, "repos/"+f.repo+"/git/ref/dispatch/"):
-		id := strings.TrimPrefix(path, "repos/"+f.repo+"/git/ref/dispatch/")
-		if sha, held := f.refs[id]; held {
-			return ok(sha)
-		}
-		return fail("HTTP 404 Not Found")
-	case method == "GET" && strings.HasPrefix(path, "repos/"+f.repo+"/git/ref/heads/"):
-		br := strings.TrimPrefix(path, "repos/"+f.repo+"/git/ref/heads/")
-		if br == "main" {
-			if f.baseSHA == "" {
-				return fail("HTTP 404")
-			}
-			return ok(f.baseSHA)
-		}
-		if f.branches[br] {
-			return ok("refs/heads/" + br)
-		}
-		return fail("HTTP 404")
-	case method == "GET" && strings.HasPrefix(path, "repos/"+f.repo+"/git/tags/"):
-		sha := strings.TrimPrefix(path, "repos/"+f.repo+"/git/tags/")
-		if t, tok := f.tags[sha]; tok {
-			return ok(t.message + "\t" + t.date)
-		}
-		return fail("HTTP 404")
-	case method == "POST" || (method == "GET" && path == "repos/"+f.repo+"/git/tags"):
-		// gh treats a call carrying -f as a POST implicitly; both tag-create and ref-create
-		// arrive here with method still "GET" (no -X). Disambiguate on the path.
-		return f.write(method, path, rest, ok, fail)
-	default:
-		return f.write(method, path, rest, ok, fail)
+func newStore() *fakeStore {
+	return &fakeStore{
+		claims:   map[string]fakeClaim{},
+		branches: map[string]bool{},
+		now:      time.Now().UTC(),
 	}
 }
 
-func (f *fakeForge) write(method, path string, rest []string, ok, fail func(string) ghResult) ghResult {
-	switch {
-	case path == "repos/"+f.repo+"/git/tags":
-		msg, _ := fval(rest, "message")
-		sha := f.nextTag()
-		f.tags[sha] = tagObj{message: msg, date: f.serverNow.Format(time.RFC3339)}
-		return ok(sha)
-	case path == "repos/"+f.repo+"/git/refs":
-		ref, _ := fval(rest, "ref")
-		sha, _ := fval(rest, "sha")
-		id := strings.TrimPrefix(ref, refPrefix+"/")
-		if _, exists := f.refs[id]; exists {
-			return fail("HTTP 422 Reference already exists")
-		}
-		f.refs[id] = sha
-		return ok(ref)
-	case method == "PATCH" && strings.HasPrefix(path, "repos/"+f.repo+"/git/refs/dispatch/"):
-		id := strings.TrimPrefix(path, "repos/"+f.repo+"/git/refs/dispatch/")
-		sha, _ := fval(rest, "sha")
-		f.refs[id] = sha
-		return ok(refPrefix + "/" + id)
-	case method == "DELETE" && strings.HasPrefix(path, "repos/"+f.repo+"/git/refs/dispatch/"):
-		id := strings.TrimPrefix(path, "repos/"+f.repo+"/git/refs/dispatch/")
-		if _, exists := f.refs[id]; exists {
-			delete(f.refs, id)
-			return ok("")
-		}
-		return fail("HTTP 404")
-	case path == "repos/"+f.repo+"/git/matching-refs/dispatch/":
-		var lines []string
-		for id := range f.refs {
-			lines = append(lines, refPrefix+"/"+id)
-		}
-		return ok(strings.Join(lines, "\n"))
+func (f *fakeStore) nextSHA() string { f.n++; return fmt.Sprintf("tagsha%d", f.n) }
+
+// seedClaim installs a held claim with a chosen holder/state/branch and age, so a test controls
+// exactly what acquire/show read back without minting through the store.
+func (f *fakeStore) seedClaim(id, owner, state, branch string, age time.Duration) {
+	f.claims[id] = fakeClaim{
+		sha:  f.nextSHA(),
+		msg:  claimMessage(id, owner, state, branch, ""),
+		date: f.now.Add(-age).Format(time.RFC3339),
 	}
-	return fail("unhandled write " + path)
 }
 
-// harness wires the forge into the tool's seams and captures its output.
-func harness(t *testing.T, f *fakeForge) (rc func(args ...string) int, stdout, stderr *bytes.Buffer) {
+func (f *fakeStore) read(id string) (claimRef, claimStatus) {
+	if f.readFails {
+		return claimRef{}, claimUnverifiable
+	}
+	if c, ok := f.claims[id]; ok {
+		return claimRef{sha: c.sha, msg: c.msg, date: c.date}, claimHeld
+	}
+	return claimRef{}, claimFree
+}
+
+func (f *fakeStore) createIfAbsent(id, msg string) writeOutcome {
+	if f.writeFails {
+		return writeUnverifiable
+	}
+	if _, ok := f.claims[id]; ok {
+		return writeRejected // the server-side CAS: a create loses against an existing ref
+	}
+	f.claims[id] = fakeClaim{sha: f.nextSHA(), msg: msg, date: f.now.Format(time.RFC3339)}
+	return writeApplied
+}
+
+func (f *fakeStore) updateFrom(id, oldSHA, msg string) writeOutcome {
+	if f.writeFails {
+		return writeUnverifiable
+	}
+	c, ok := f.claims[id]
+	if !ok || c.sha != oldSHA {
+		return writeRejected // the CAS: the ref moved (or vanished) under the caller
+	}
+	f.claims[id] = fakeClaim{sha: f.nextSHA(), msg: msg, date: f.now.Format(time.RFC3339)}
+	return writeApplied
+}
+
+func (f *fakeStore) remove(id string) (writeOutcome, bool) {
+	_, existed := f.claims[id]
+	delete(f.claims, id)
+	return writeApplied, existed
+}
+
+func (f *fakeStore) list() ([]string, claimStatus) {
+	if f.readFails {
+		return nil, claimUnverifiable
+	}
+	var ids []string
+	for id := range f.claims {
+		ids = append(ids, id)
+	}
+	return ids, claimHeld
+}
+
+func (f *fakeStore) branchExists(branch string) (bool, bool) {
+	if branch == "" || branch == "-" {
+		return false, true
+	}
+	if f.readFails {
+		return false, false
+	}
+	return f.branches[branch], true
+}
+
+// harness wires the fake into the tool's store seam and captures its output.
+func harness(t *testing.T, f *fakeStore) (rc func(args ...string) int, stdout, stderr *bytes.Buffer) {
 	t.Helper()
 	var so, se bytes.Buffer
-	oldRun, oldOut, oldErr, oldLook := ghRun, out, errOut, ghLookPath
-	ghRun = f.run
+	oldBuild, oldOut, oldErr := buildStore, out, errOut
+	buildStore = func(_, _ string) (claimStore, error) { return f, nil }
 	out = &so
 	errOut = &se
-	ghLookPath = func(string) (string, error) { return "/usr/bin/gh", nil }
-	t.Cleanup(func() { ghRun, out, errOut, ghLookPath = oldRun, oldOut, oldErr, oldLook })
+	t.Cleanup(func() { buildStore, out, errOut = oldBuild, oldOut, oldErr })
 	return func(args ...string) int {
 		so.Reset()
 		se.Reset()
@@ -204,25 +128,24 @@ func harness(t *testing.T, f *fakeForge) (rc func(args ...string) int, stdout, s
 	}, &so, &se
 }
 
-// --- protocol parity: acquire on a free claim -------------------------------
+// --- acquire ----------------------------------------------------------------
 
 func TestAcquireFreeCreatesTheRefAndEncodesTheHolder(t *testing.T) {
-	f := newForge("medici-finance/assay")
+	f := newStore()
 	run, so, _ := harness(t, f)
 
-	rc := run("acquire", "at--stream--07", "--repo", f.repo, "--owner", "sess-A", "--branch", "feat/x")
+	rc := run("acquire", "at--stream--07", "--repo", "medici-finance/assay", "--owner", "sess-A", "--branch", "feat/x")
 	if rc != exitOK {
 		t.Fatalf("acquire rc = %d, want 0; out=%s", rc, so.String())
 	}
-	sha, held := f.refs["at--stream--07"]
+	c, held := f.claims["at--stream--07"]
 	if !held {
 		t.Fatal("no refs/dispatch/at--stream--07 was created")
 	}
-	// The holder is encoded in the tag object exactly as the bash mints it.
-	msg := f.tags[sha].message
+	// The holder is encoded in the tag message exactly as the wire contract requires.
 	for _, want := range []string{"owner=sess-A", "state=claimed", "branch=feat/x", "dispatch-claim at--stream--07"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("claim tag message %q missing %q", msg, want)
+		if !strings.Contains(c.msg, want) {
+			t.Errorf("claim tag message %q missing %q", c.msg, want)
 		}
 	}
 	if !strings.Contains(so.String(), "acquired at--stream--07") {
@@ -233,11 +156,11 @@ func TestAcquireFreeCreatesTheRefAndEncodesTheHolder(t *testing.T) {
 // A second acquire of a LIVE claim (within TTL) refuses (exit 5), logs the DEDUP holder, and
 // never steals.
 func TestAcquireLiveHolderRefusesAndNeverSteals(t *testing.T) {
-	f := newForge("medici-finance/assay")
+	f := newStore()
 	f.seedClaim("at--stream--07", "other-sess", "dispatched", "", 42*time.Minute)
 	run, so, _ := harness(t, f)
 
-	rc := run("acquire", "at--stream--07", "--repo", f.repo, "--owner", "sess-B")
+	rc := run("acquire", "at--stream--07", "--repo", "medici-finance/assay", "--owner", "sess-B")
 	if rc != exitRefused {
 		t.Fatalf("live-holder acquire rc = %d, want 5; out=%s", rc, so.String())
 	}
@@ -264,10 +187,10 @@ func TestAcquireStaleClaimIsReclaimed(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.state+"-"+c.age.String(), func(t *testing.T) {
-			f := newForge("medici-finance/assay")
+			f := newStore()
 			f.seedClaim("at--stream--07", "old-sess", c.state, "", c.age)
 			run, so, _ := harness(t, f)
-			rc := run("acquire", "at--stream--07", "--repo", f.repo, "--owner", "sess-N")
+			rc := run("acquire", "at--stream--07", "--repo", "medici-finance/assay", "--owner", "sess-N")
 			if c.stale {
 				if rc != exitOK {
 					t.Fatalf("stale reclaim rc = %d, want 0; out=%s", rc, so.String())
@@ -287,11 +210,11 @@ func TestAcquireStaleClaimIsReclaimed(t *testing.T) {
 // A held claim whose recorded branch already exists on the remote is a branch-as-claim: the
 // work is in flight, not stalled — refuse (exit 5), regardless of age.
 func TestAcquireBranchAsClaimRefuses(t *testing.T) {
-	f := newForge("medici-finance/assay")
+	f := newStore()
 	f.seedClaim("at--stream--07", "old-sess", "dispatched", "feat/live", 9999*time.Minute)
 	f.branches["feat/live"] = true
 	run, so, _ := harness(t, f)
-	rc := run("acquire", "at--stream--07", "--repo", f.repo, "--owner", "sess-N")
+	rc := run("acquire", "at--stream--07", "--repo", "medici-finance/assay", "--owner", "sess-N")
 	if rc != exitRefused {
 		t.Fatalf("branch-as-claim rc = %d, want 5; out=%s", rc, so.String())
 	}
@@ -300,15 +223,15 @@ func TestAcquireBranchAsClaimRefuses(t *testing.T) {
 	}
 }
 
-// An unmintable base (the forge cannot answer heads/main) is the fail-closed path: exit 6,
-// never a claim written blind.
-func TestAcquireUnmintableBaseIsUnverifiable(t *testing.T) {
-	f := newForge("medici-finance/assay")
-	f.baseSHA = ""
+// A transport failure on the create is the fail-closed path: exit 6, never a claim assumed
+// placed or free.
+func TestAcquireTransportFailureIsUnverifiable(t *testing.T) {
+	f := newStore()
+	f.writeFails = true
 	run, _, se := harness(t, f)
-	rc := run("acquire", "at--stream--07", "--repo", f.repo)
+	rc := run("acquire", "at--stream--07", "--repo", "medici-finance/assay")
 	if rc != exitUnverifiable {
-		t.Fatalf("unmintable base rc = %d, want 6; err=%s", rc, se.String())
+		t.Fatalf("transport-fail acquire rc = %d, want 6; err=%s", rc, se.String())
 	}
 }
 
@@ -318,19 +241,17 @@ func TestAcquireUnmintableBaseIsUnverifiable(t *testing.T) {
 // parse state=/age=/owner=/branch= and the "FREE <key>" marker out of it. This pins the exact
 // line shape and proves those very regexes extract the right values.
 func TestShowOutputIsTheParsedWireContract(t *testing.T) {
-	f := newForge("medici-finance/assay")
+	f := newStore()
 	f.seedClaim("at--stream--07", "sess-Z", "dispatched", "feat/y", 42*time.Minute)
 	run, so, _ := harness(t, f)
 
-	if rc := run("show", "at--stream--07", "--repo", f.repo); rc != exitOK {
+	if rc := run("show", "at--stream--07", "--repo", "medici-finance/assay"); rc != exitOK {
 		t.Fatalf("show rc = %d, want 0", rc)
 	}
 	line := strings.TrimSpace(so.String())
 	if !strings.HasPrefix(line, "dispatch-claim: HELD at--stream--07 — ") {
 		t.Fatalf("HELD line prefix wrong: %q", line)
 	}
-	// These four regexes are byte-copies of the ones desksupervise/live.go and
-	// deskdispatch/dispatch.go run against this output.
 	for re, want := range map[*regexp.Regexp]string{
 		regexp.MustCompile(`state=([A-Za-z]+)`): "dispatched",
 		regexp.MustCompile(`age=(\d+)m`):        "42",
@@ -344,10 +265,26 @@ func TestShowOutputIsTheParsedWireContract(t *testing.T) {
 	}
 }
 
-func TestShowFreeCarriesTheFreeMarker(t *testing.T) {
-	f := newForge("medici-finance/assay")
+// TestShowOutputByteStable pins the FULL show line byte-for-byte (composed from the seeded
+// values), so an edit to the format is caught, not only a field regex.
+func TestShowOutputByteStable(t *testing.T) {
+	f := newStore()
+	f.seedClaim("at--stream--07", "sess-Z", "dispatched", "feat/y", 42*time.Minute)
+	c := f.claims["at--stream--07"]
 	run, so, _ := harness(t, f)
-	if rc := run("show", "at--stream--07", "--repo", f.repo); rc != exitOK {
+	if rc := run("show", "at--stream--07", "--repo", "medici-finance/assay"); rc != exitOK {
+		t.Fatalf("show rc = %d, want 0", rc)
+	}
+	want := fmt.Sprintf("dispatch-claim: HELD at--stream--07 — %s at=%s age=42m\n", c.msg, c.date)
+	if so.String() != want {
+		t.Fatalf("show line drifted:\n got %q\nwant %q", so.String(), want)
+	}
+}
+
+func TestShowFreeCarriesTheFreeMarker(t *testing.T) {
+	f := newStore()
+	run, so, _ := harness(t, f)
+	if rc := run("show", "at--stream--07", "--repo", "medici-finance/assay"); rc != exitOK {
 		t.Fatalf("show FREE rc = %d, want 0", rc)
 	}
 	if !strings.Contains(so.String(), "FREE at--stream--07") {
@@ -355,22 +292,22 @@ func TestShowFreeCarriesTheFreeMarker(t *testing.T) {
 	}
 }
 
-// An unreadable claim (the ref read fails AND the repo probe fails) is exit 6, never FREE.
+// An unreadable claim (the transport read itself failed) is exit 6, never FREE.
 func TestShowUnreadableIsUnverifiableNotFree(t *testing.T) {
-	f := newForge("medici-finance/assay")
-	f.repoExists = false // the repo probe fails, so "no ref" cannot be proven to mean free
+	f := newStore()
+	f.readFails = true
 	run, _, se := harness(t, f)
-	if rc := run("show", "at--stream--07", "--repo", f.repo); rc != exitUnverifiable {
+	if rc := run("show", "at--stream--07", "--repo", "medici-finance/assay"); rc != exitUnverifiable {
 		t.Fatalf("unreadable show rc = %d, want 6; err=%s", rc, se.String())
 	}
 }
 
 func TestListShowsEachClaim(t *testing.T) {
-	f := newForge("medici-finance/assay")
+	f := newStore()
 	f.seedClaim("at--stream--07", "s1", "dispatched", "", 10*time.Minute)
 	f.seedClaim("at--issue-5", "s2", "claimed", "", 3*time.Minute)
 	run, so, _ := harness(t, f)
-	if rc := run("list", "--repo", f.repo); rc != exitOK {
+	if rc := run("list", "--repo", "medici-finance/assay"); rc != exitOK {
 		t.Fatalf("list rc = %d, want 0", rc)
 	}
 	for _, want := range []string{"HELD at--stream--07", "HELD at--issue-5"} {
@@ -383,109 +320,182 @@ func TestListShowsEachClaim(t *testing.T) {
 // --- release / steal / progress ---------------------------------------------
 
 func TestReleaseDeletesTheRefAndIsNoopWhenMissing(t *testing.T) {
-	f := newForge("medici-finance/assay")
+	f := newStore()
 	f.seedClaim("at--stream--07", "s1", "dispatched", "", time.Minute)
 	run, so, _ := harness(t, f)
 
-	if rc := run("release", "at--stream--07", "--repo", f.repo); rc != exitOK {
+	if rc := run("release", "at--stream--07", "--repo", "medici-finance/assay"); rc != exitOK {
 		t.Fatalf("release rc = %d, want 0", rc)
 	}
-	if _, held := f.refs["at--stream--07"]; held {
+	if _, held := f.claims["at--stream--07"]; held {
 		t.Error("release did not delete the ref")
 	}
+	if !strings.Contains(so.String(), "released at--stream--07") {
+		t.Errorf("release did not log: %s", so.String())
+	}
 	// A second release of a now-missing claim is a no-op, not a failure.
-	if rc := run("release", "at--stream--07", "--repo", f.repo); rc != exitOK {
+	if rc := run("release", "at--stream--07", "--repo", "medici-finance/assay"); rc != exitOK {
 		t.Fatalf("release-missing rc = %d, want 0; out=%s", rc, so.String())
+	}
+	if !strings.Contains(so.String(), "no claim — no-op") {
+		t.Errorf("release-missing did not log the no-op line: %s", so.String())
 	}
 }
 
 func TestStealRequiresAReasonThenSucceeds(t *testing.T) {
-	f := newForge("medici-finance/assay")
+	f := newStore()
 	f.seedClaim("at--stream--07", "old", "dispatched", "", 5*time.Minute)
 	run, _, se := harness(t, f)
 
-	if rc := run("steal", "at--stream--07", "--repo", f.repo); rc != exitRefused {
+	if rc := run("steal", "at--stream--07", "--repo", "medici-finance/assay"); rc != exitRefused {
 		t.Fatalf("reasonless steal rc = %d, want 5; err=%s", rc, se.String())
 	}
 	run2, so, _ := harness(t, f)
-	if rc := run2("steal", "at--stream--07", "--repo", f.repo, "--reason", "TTL dead", "--owner", "new"); rc != exitOK {
+	if rc := run2("steal", "at--stream--07", "--repo", "medici-finance/assay", "--reason", "TTL dead", "--owner", "new"); rc != exitOK {
 		t.Fatalf("steal-with-reason rc = %d, want 0; out=%s", rc, so.String())
 	}
-	sha := f.refs["at--stream--07"]
-	if !strings.Contains(f.tags[sha].message, "note=TTL_dead") {
-		t.Errorf("steal did not record the reason in the replacement: %q", f.tags[sha].message)
+	c := f.claims["at--stream--07"]
+	if !strings.Contains(c.msg, "note=TTL_dead") {
+		t.Errorf("steal did not record the reason in the replacement: %q", c.msg)
+	}
+	if !strings.Contains(c.msg, "owner=new") {
+		t.Errorf("steal did not record the new owner: %q", c.msg)
+	}
+}
+
+// A steal of a FREE key collapses to a create (the takeover still records its reason).
+func TestStealOfFreeKeyCreates(t *testing.T) {
+	f := newStore()
+	run, so, _ := harness(t, f)
+	if rc := run("steal", "at--stream--07", "--repo", "medici-finance/assay", "--reason", "cold take", "--owner", "new"); rc != exitOK {
+		t.Fatalf("steal-of-free rc = %d, want 0; out=%s", rc, so.String())
+	}
+	if _, held := f.claims["at--stream--07"]; !held {
+		t.Fatal("steal of a free key did not create the ref")
 	}
 }
 
 func TestProgressRequiresHolderAndBranch(t *testing.T) {
-	f := newForge("medici-finance/assay")
+	f := newStore()
 	f.seedClaim("at--stream--07", "owner-1", "claimed", "", time.Minute)
 	run, _, se := harness(t, f)
 
 	// A free claim cannot be advanced.
-	if rc := run("progress", "at--issue-9", "--repo", f.repo, "--owner", "owner-1", "--branch", "feat/x"); rc != exitRefused {
+	if rc := run("progress", "at--issue-9", "--repo", "medici-finance/assay", "--owner", "owner-1", "--branch", "feat/x"); rc != exitRefused {
 		t.Fatalf("progress-on-free rc = %d, want 5; err=%s", rc, se.String())
 	}
 	// A non-holder cannot advance someone else's claim.
-	if rc := run("progress", "at--stream--07", "--repo", f.repo, "--owner", "intruder", "--branch", "feat/x"); rc != exitRefused {
+	if rc := run("progress", "at--stream--07", "--repo", "medici-finance/assay", "--owner", "intruder", "--branch", "feat/x"); rc != exitRefused {
 		t.Fatalf("progress-by-nonholder rc = %d, want 5; err=%s", rc, se.String())
 	}
 	// progress with no --branch is refused.
-	if rc := run("progress", "at--stream--07", "--repo", f.repo, "--owner", "owner-1"); rc != exitRefused {
+	if rc := run("progress", "at--stream--07", "--repo", "medici-finance/assay", "--owner", "owner-1"); rc != exitRefused {
 		t.Fatalf("progress-no-branch rc = %d, want 5", rc)
 	}
 	// The holder advances its own claim to dispatched.
-	if rc := run("progress", "at--stream--07", "--repo", f.repo, "--owner", "owner-1", "--branch", "feat/x"); rc != exitOK {
+	if rc := run("progress", "at--stream--07", "--repo", "medici-finance/assay", "--owner", "owner-1", "--branch", "feat/x"); rc != exitOK {
 		t.Fatalf("progress-by-holder rc = %d, want 0; err=%s", rc, se.String())
 	}
-	sha := f.refs["at--stream--07"]
-	if !strings.Contains(f.tags[sha].message, "state=dispatched") {
-		t.Errorf("progress did not advance state: %q", f.tags[sha].message)
+	c := f.claims["at--stream--07"]
+	if !strings.Contains(c.msg, "state=dispatched") {
+		t.Errorf("progress did not advance state: %q", c.msg)
 	}
 }
 
-// --- argument-level refusals (no forge call) --------------------------------
+// The compare-and-swap that the gh-CLI port's PATCH force=true lacked: if the claim is stolen
+// out from under the holder between the read and the advance, progress is REFUSED (the CAS
+// loses), never clobbered back into existence.
+func TestProgressRefusedWhenClaimMovedUnderHolder(t *testing.T) {
+	f := newStore()
+	f.seedClaim("at--stream--07", "owner-1", "claimed", "", time.Minute)
+	// Simulate the claim being stolen after acquire: its sha changes (a new tag), so the
+	// holder's explicit-old CAS no longer matches. The tool re-reads a stale sha via the seam
+	// by driving updateFrom with an sha that no longer matches — emulated by mutating the
+	// stored sha out from under the read the tool just did.
+	run, _, se := harness(t, f)
+	// Wrap read so that after the tool reads the current sha, the store's sha is rotated,
+	// forcing updateFrom's CAS to reject.
+	moving := &movingStore{fakeStore: f}
+	buildStore = func(_, _ string) (claimStore, error) { return moving, nil }
+	if rc := run("progress", "at--stream--07", "--repo", "medici-finance/assay", "--owner", "owner-1", "--branch", "feat/x"); rc != exitRefused {
+		t.Fatalf("raced progress rc = %d, want 5 (refused); err=%s", rc, se.String())
+	}
+}
 
-func TestInvalidKeyRefusedBeforeAnyForgeCall(t *testing.T) {
+// movingStore rotates the stored sha right after a read, so the subsequent CAS update sees a
+// stale old — the exact race the server-side compare-and-swap rejects.
+type movingStore struct{ *fakeStore }
+
+func (m *movingStore) read(id string) (claimRef, claimStatus) {
+	ref, st := m.fakeStore.read(id)
+	if st == claimHeld {
+		if c, ok := m.fakeStore.claims[id]; ok {
+			c.sha = m.fakeStore.nextSHA() // someone else advanced/stole it
+			m.fakeStore.claims[id] = c
+		}
+	}
+	return ref, st
+}
+
+// --- interop: the message grammar round-trips both ways ---------------------
+
+// The claim payload is a wire contract shared with tools/dispatch-claim.sh: a bash
+// `dispatch-claim.sh show` parses a Go-minted tag's message, and this tool parses a
+// bash/REST-minted tag's message. Both readers split the SAME space-separated `key=value`
+// grammar. This asserts the grammar this tool BUILDS is parsed back field-for-field, and that a
+// message built in the bash shape is parsed identically by this tool's field reader. (The
+// tag-OBJECT round-trip — Go reads a commit-target REST tag; a git reader reads a Go blob-target
+// tag — is proven over a real git server in internal/gitcore/claimref_test.go.)
+func TestClaimMessageGrammarRoundTrips(t *testing.T) {
+	msg := claimMessage("at--stream--07", "sess-A", "dispatched", "feat/x", "TTL dead reason")
+	// The Go builder's exact grammar.
+	want := "dispatch-claim at--stream--07 owner=sess-A state=dispatched branch=feat/x note=TTL_dead_reason"
+	if msg != want {
+		t.Fatalf("claimMessage grammar drifted:\n got %q\nwant %q", msg, want)
+	}
+	// This tool's field reader (the bash `field_of` equivalent) extracts every field back.
+	for key, val := range map[string]string{
+		"owner": "sess-A", "state": "dispatched", "branch": "feat/x", "note": "TTL_dead_reason",
+	} {
+		if got := fieldOf(msg, key); got != val {
+			t.Errorf("fieldOf(%q) = %q, want %q", key, got, val)
+		}
+	}
+	// A message minted in the bash/REST shape (assembled independently, as the script does) is
+	// parsed identically — the two readers agree on the grammar.
+	bashShaped := "dispatch-claim at--issue-5 owner=bash-sess state=claimed branch=-"
+	if fieldOf(bashShaped, "owner") != "bash-sess" || fieldOf(bashShaped, "state") != "claimed" || fieldOf(bashShaped, "branch") != "-" {
+		t.Errorf("this tool did not parse a bash-shaped message: %q", bashShaped)
+	}
+}
+
+// --- argument-level refusals (no forge write) -------------------------------
+
+func TestInvalidKeyRefusedBeforeAnyForgeWrite(t *testing.T) {
 	for _, key := range []string{"noprefix", "at stream", "at--..--1", ".at--x--1", "at--x--1.lock", "at~x--1"} {
-		f := newForge("medici-finance/assay")
+		f := newStore()
 		run, _, se := harness(t, f)
-		rc := run("acquire", key, "--repo", f.repo)
+		rc := run("acquire", key, "--repo", "medici-finance/assay")
 		if rc != exitRefused {
 			t.Errorf("key %q rc = %d, want 5; err=%s", key, rc, se.String())
 		}
-		// A malformed key must not reach the forge (no ref read, no mint).
-		for _, c := range f.calls {
-			if len(c) > 0 && c[0] == "api" {
-				t.Errorf("key %q reached a forge api call: %v", key, c)
-			}
+		// A malformed key must not reach the forge (no claim written).
+		if len(f.claims) != 0 {
+			t.Errorf("key %q wrote a claim: %v", key, f.claims)
 		}
 	}
 }
 
 func TestUnknownVerbAndFlagRefused(t *testing.T) {
-	f := newForge("medici-finance/assay")
+	f := newStore()
 	run, _, _ := harness(t, f)
-	if rc := run("frobnicate", "at--x--1", "--repo", f.repo); rc != exitRefused {
+	if rc := run("frobnicate", "at--x--1", "--repo", "medici-finance/assay"); rc != exitRefused {
 		t.Errorf("unknown verb rc = %d, want 5", rc)
 	}
-	if rc := run("acquire", "at--x--1", "--repo", f.repo, "--bogus", "v"); rc != exitRefused {
+	if rc := run("acquire", "at--x--1", "--repo", "medici-finance/assay", "--bogus", "v"); rc != exitRefused {
 		t.Errorf("unknown flag rc = %d, want 5", rc)
 	}
 }
-
-func TestGhMissingIsUnverifiable(t *testing.T) {
-	f := newForge("medici-finance/assay")
-	run, _, se := harness(t, f)
-	ghLookPath = func(string) (string, error) { return "", &notFound{} }
-	if rc := run("show", "at--x--1", "--repo", f.repo); rc != exitUnverifiable {
-		t.Fatalf("gh-missing rc = %d, want 6; err=%s", rc, se.String())
-	}
-}
-
-type notFound struct{}
-
-func (*notFound) Error() string { return "exec: \"gh\": executable file not found in $PATH" }
 
 // The exit codes this port emits ARE the deskkit contract deskdispatch passes through
 // untouched — pin the mapping so a future edit cannot silently repoint one.
@@ -493,47 +503,5 @@ func TestExitCodesAreTheDeskkitContract(t *testing.T) {
 	if exitOK != deskkit.ExitOK || exitRefused != deskkit.ExitRefused || exitUnverifiable != deskkit.ExitUnverifiable {
 		t.Fatalf("exit codes drifted from the deskkit contract: ok=%d refused=%d unverifiable=%d",
 			exitOK, exitRefused, exitUnverifiable)
-	}
-}
-
-// --- Windows-viable exec path ----------------------------------------------
-
-// The whole reason this binary exists: it is reached with NO shebang script and NO bash. A
-// dispatcher invokes it as a bare executable (CreateProcess resolves it on PATH on Windows),
-// and every forge call it makes is likewise a bare `gh` executable — never a `.sh`, never an
-// interpreter line. This proves the tool completes real work through the gh seam with a
-// LookPath that only knows plain executables, which is exactly the Windows condition.
-func TestReachesTheForgeWithNoShellOrScript(t *testing.T) {
-	f := newForge("medici-finance/assay")
-	run, so, _ := harness(t, f)
-	// LookPath answers only for bare executables, the way CreateProcess+PATH does — no shell.
-	ghLookPath = func(name string) (string, error) {
-		if name == "gh" {
-			return `C:\Program Files\GitHub CLI\gh.exe`, nil
-		}
-		return "", &notFound{}
-	}
-	if rc := run("acquire", "at--stream--07", "--repo", f.repo, "--owner", "s"); rc != exitOK {
-		t.Fatalf("acquire rc = %d, want 0; out=%s", rc, so.String())
-	}
-	if len(f.calls) == 0 {
-		t.Fatal("no forge call was made")
-	}
-	// Every forge call flows through the ONE exec seam (realGHRun -> exec.Command("gh", …)),
-	// so the executable is always the bare `gh` binary and each recorded argv begins with a
-	// gh SUBCOMMAND — never a `.sh` script path, never `bash`/`sh -c`, never a shebang line.
-	// That is precisely the property that makes the claim path run under Windows CreateProcess
-	// with no shell association, which the shebang `.sh` script cannot.
-	for _, c := range f.calls {
-		if len(c) == 0 {
-			t.Errorf("an empty argv reached the exec seam")
-			continue
-		}
-		if c[0] != "api" && c[0] != "repo" {
-			t.Errorf("a non-gh-subcommand reached the exec seam (argv[0]=%q): %v", c[0], c)
-		}
-		if strings.HasSuffix(c[0], ".sh") || c[0] == "bash" || c[0] == "sh" {
-			t.Errorf("a shell/script executable reached the exec seam: %v", c)
-		}
 	}
 }

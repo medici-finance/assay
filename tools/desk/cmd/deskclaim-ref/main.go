@@ -10,11 +10,24 @@
 // `.sh` drop only runs where the operator already wired a bash association — exactly the
 // "run Git Bash" paper-over issue 708 rules out. This binary carries the SAME wire protocol
 // as the script (the `refs/dispatch/<id>` claim ref namespace on the forge, the same holder
-// encoding in an annotated tag object, the same GitHub-stamped `tagger.date` for a single
-// skew-free clock, and the same deskkit exit codes 0/5/6) so a Go dispatcher and any
-// remaining bash dispatcher derive the SAME claim key and ref and never double-dispatch
-// during the transition. It shells `gh api` for every forge call, exactly as the script
-// does, so it inherits the same ambient identity and the byte-identical REST surface.
+// encoding in an annotated tag object carrying `dispatch-claim <id> owner=… state=… branch=…`,
+// and the same deskkit exit codes 0/5/6) so a Go dispatcher and any remaining bash dispatcher
+// derive the SAME claim key and ref and never double-dispatch during the transition.
+//
+// FORGE TRANSPORT. Every forge access is an IN-PROCESS git-smart-HTTP call over go-git
+// (internal/gitcore) — no `gh`/`glab`/any CLI, no external `git` process, no credential helper.
+// A claim is minted as an annotated tag targeting the empty blob and placed with an
+// EXPLICIT-OLD (server-side compare-and-swap) receive-pack push: create is old=zero (the server
+// rejects a create against an existing ref — that is the "already held" answer), and
+// advance/steal is old=<the value last read> (the server rejects a stale old — closing the
+// races the old `PATCH force=true` and DELETE-then-POST steal left open). Reads use a filtered
+// upload-pack, so a bash/REST-minted tag (commit target) and a Go-minted tag (empty-blob target)
+// both read the same way. The forge (github/gitlab) resolves token-free from ASSAY_REPO_FORGES
+// or the origin host; the credential comes from --token-file or
+// GH_TOKEN/GITHUB_TOKEN/GITLAB_TOKEN — the same ambient identity the script uses, so this
+// changes the transport, not who the claim is placed as. The tagger date is client-stamped (a
+// documented change from the server-stamped gh-CLI port): mutual exclusion rests on the
+// server-side CAS, not the timestamp, which now drives only the TTL age display.
 //
 // VERBS (identical to the script):
 //
@@ -72,6 +85,10 @@ USAGE:
 
 <id> is the claim key: <repo>--<stream>--<NN> or <repo>--issue-<NN>. The <repo> prefix is
 MANDATORY — a bare stream name cross-locks another repo's stream.
+
+The forge credential is read from --token-file <0600 file> when given, else GH_TOKEN /
+GITHUB_TOKEN / GITLAB_TOKEN. The forge (github/gitlab) resolves from ASSAY_REPO_FORGES or the
+origin remote host; every forge call is an in-process git-smart-HTTP request (no gh/glab CLI).
 
 acquire   take the claim if free; reclaim it if the holder is past its TTL; refuse (exit 5)
           if a live holder owns it. Never steals a live claim inline.
