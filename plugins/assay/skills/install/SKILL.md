@@ -256,7 +256,9 @@ step 3 acquires the pinned `statusgen-windows-<arch>.exe` (and `desk-tools-windo
 through a PowerShell first-install bootstrap (`scripts/bootstrap-windows.ps1`) plus the Go-native
 `deskinstall` command, keeping the same **sha256-verify-or-refuse** control the Unix path uses
 (a hash mismatch is a hard refuse — exit 5 — never a warn-and-continue). Two honesty caveats remain
-and are stated in the runbook, not hidden: the SessionStart hooks need a documented `bash`+`jq`
+and are stated in the runbook, not hidden: the harness's session-start resident-rules injection
+channel (harness-portability/05; the mechanism your harness uses is named in
+`../../references/<harness>.md`) needs a documented `bash`+`jq`
 workaround (install Git-Bash, or WSL for local dev only — WSL is a fallback, not the native claim),
 and the **native `windows/arm64` smoke is BLOCKED** pending an arm64 Windows runner (the arm64
 asset still ships cross-compiled + checksummed). The full step-by-step Windows walkthrough — install

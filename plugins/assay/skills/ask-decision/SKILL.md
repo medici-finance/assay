@@ -42,14 +42,16 @@ the rule that a bare label is unanswerable without a comment saying what is need
 whom — is defined in the `intake-desk` and `the-desk` skills. **Point at it; do not restate
 it here.** This skill assumes the labels already mean what those skills say they mean.
 
-Read the queue with the inbox, which already sorts it:
+Read the queue with the inbox, which already sorts it. `<bundle>` in the commands below is
+the installed Assay bundle's own directory — each harness locates it its own way, and the
+expansion for yours is in `../../references/<harness>.md`; substitute it before running.
 
 ```
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --walk --item 1 owner/repo [owner/repo ...]
+bash <bundle>/scripts/assay-inbox.sh --walk --item 1 owner/repo [owner/repo ...]
 ```
 
 **Before asking, read where the system is stuck:**
-`bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --flow` prints the pipeline stage by
+`bash <bundle>/scripts/assay-inbox.sh --flow` prints the pipeline stage by
 stage with the bottleneck named, so an item's Context can say what it is actually holding up —
 and so a question about a stage three steps downstream of the constraint can wait.
 
@@ -146,7 +148,7 @@ Then present `k+1`.
 For decisions the driver wants to read away from a terminal:
 
 ```
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --html /path/to/inbox.html owner/repo
+bash <bundle>/scripts/assay-inbox.sh --html /path/to/inbox.html owner/repo
 ```
 
 One self-contained file — inline CSS, no scripts, no external assets, the only links are the
