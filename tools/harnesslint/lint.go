@@ -8,9 +8,13 @@
 //	                         outside the closed vocabulary read from the stream
 //	                         README. Any hit → exit 1, file:line named.
 //	bindings <refsDir>     — asserts every capability in the closed set resolves
-//	                         in EVERY <refsDir>/*.md, and every skill (enumerated
-//	                         from <refsDir>/../skills) has a degradation cell in
-//	                         each binding file. Any gap → exit 1.
+//	                         in every <refsDir>/*.md that is part of the binding
+//	                         MATRIX, and every skill (enumerated from
+//	                         <refsDir>/../skills) has a degradation cell in each
+//	                         such file. Any gap → exit 1. A file carrying the
+//	                         `assay:harnesslint non-matrix-reference` declaration
+//	                         is excluded and ANNOUNCED on stderr — never skipped
+//	                         silently, and never skipped without declaring itself.
 //
 // Three-state instrument (docs/three-state-instrument-rule.md): a parse error,
 // an unreadable input, or an empty vocabulary is could-not-check (exit 2), never
@@ -50,6 +54,25 @@ const vocabMarker = "<!-- assay:capability-vocabulary"
 
 // bannedMarker opens the machine-readable banned-token block in banned-tokens.md.
 const bannedMarker = "<!-- assay:banned-tokens"
+
+// nonMatrixMarker opens the in-file declaration that takes ONE reference file out
+// of the bindings matrix (harness-portability/15). Not every file under
+// references/ is a per-harness capability binding: `desk-shell.md` is
+// harness-NEUTRAL shell/transport mechanics, so demanding that it resolve every
+// capability and carry a degradation cell per skill asks it to be a thing it
+// says, in its own first paragraph, that it is not.
+//
+// The declaration is deliberately shaped like the tool's other markers
+// (`assay:capability-vocabulary`, `assay:banned-tokens`) and is deliberately
+// NARROW: the skip keys on a file DECLARING itself out, never on a filename the
+// tool knows, and never on "this file happens to have no bindings". A reference
+// that simply forgot its bindings is still fully checked and still red — that is
+// the property TestCheckBindings_UndeclaredReferenceStillChecked pins.
+//
+// Form (one line, reason required):
+//
+//	<!-- assay:harnesslint non-matrix-reference — <why this file is not a binding> -->
+const nonMatrixMarker = "<!-- assay:harnesslint non-matrix-reference"
 
 // capRefRe matches a capability reference in a body or binding file. Capabilities
 // are named with a reserved, unambiguous `capability:<name>` form so the closure
@@ -142,6 +165,35 @@ func blockLines(text, marker string) ([]string, bool) {
 	return strings.Split(rest, "\n"), true
 }
 
+// nonMatrixDeclaration reports whether a reference file's body declares itself
+// out of the bindings matrix, and returns the declared reason.
+//
+// Three-state: an unterminated marker or an empty reason is an ERROR
+// (could-not-check), never a silent skip and never a silent full check. A bare
+// marker with nothing after it would otherwise be the cheapest way to switch the
+// guard off for a file, so the reason is mandatory — the same contract
+// `banned-tokens.md` holds each banned token to, and the same one harnessgen
+// holds an excluded skill to.
+func nonMatrixDeclaration(body string) (string, bool, error) {
+	i := strings.Index(body, nonMatrixMarker)
+	if i < 0 {
+		return "", false, nil
+	}
+	rest := body[i+len(nonMatrixMarker):]
+	end := strings.Index(rest, "-->")
+	if end < 0 {
+		return "", false, fmt.Errorf("non-matrix-reference declaration is never closed (no %q after the marker)", "-->")
+	}
+	// Strip the separator punctuation the documented form puts between the
+	// marker and its reason (an em dash, a hyphen, or a colon).
+	reason := strings.TrimSpace(rest[:end])
+	reason = strings.TrimSpace(strings.TrimLeft(reason, "—-:"))
+	if reason == "" {
+		return "", false, fmt.Errorf("non-matrix-reference declaration carries no reason — a bare marker is not a declaration")
+	}
+	return reason, true, nil
+}
+
 // sortedKeys returns a set's keys sorted, for deterministic output.
 func sortedKeys(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
@@ -217,9 +269,10 @@ func checkBodies(skillsDir string, vocab map[string]bool, banned []bannedToken) 
 }
 
 // checkBindings asserts vocabulary closure and per-skill degradation coverage
-// across every references/*.md. skillsDir supplies the skill roster the cells
-// are checked against. Returns violation lines and a non-nil error only for a
-// could-not-check condition.
+// across every references/*.md that is part of the binding MATRIX. skillsDir
+// supplies the skill roster the cells are checked against. Returns the violation
+// lines, the announcement lines for every file skipped by declaration, and a
+// non-nil error only for a could-not-check condition.
 //
 // Closure and cell coverage are separable: closure needs only the reference
 // files, cell coverage needs the skill roster. A caller may hand a references
@@ -227,13 +280,20 @@ func checkBodies(skillsDir string, vocab map[string]bool, banned []bannedToken) 
 // exactly this) — a closure failure there is a real checked-failed and must be
 // reported as such, not masked by the absent roster. Only when closure is clean
 // AND the roster cannot be read do we fall to could-not-check.
-func checkBindings(refsDir, skillsDir string, vocab map[string]bool) ([]string, error) {
+//
+// A file that DECLARES itself a non-matrix reference (see nonMatrixMarker) is
+// excluded from both dimensions and returned in the skipped list — a file the
+// check chose not to look at is a could-not-check for that file, and the
+// three-state rule says it is reported as itself, never dropped silently. If the
+// declaration takes out every file in the directory there is no matrix left, and
+// that is could-not-check for the run rather than a clean sweep.
+func checkBindings(refsDir, skillsDir string, vocab map[string]bool) ([]string, []string, error) {
 	refFiles, err := filepath.Glob(filepath.Join(refsDir, "*.md"))
 	if err != nil {
-		return nil, fmt.Errorf("glob references under %s: %w", refsDir, err)
+		return nil, nil, fmt.Errorf("glob references under %s: %w", refsDir, err)
 	}
 	if len(refFiles) == 0 {
-		return nil, fmt.Errorf("no *.md under %s — nothing to check, which is never a pass", refsDir)
+		return nil, nil, fmt.Errorf("no *.md under %s — nothing to check, which is never a pass", refsDir)
 	}
 	sort.Strings(refFiles)
 	caps := sortedKeys(vocab)
@@ -243,14 +303,33 @@ func checkBindings(refsDir, skillsDir string, vocab map[string]bool) ([]string, 
 	for _, rf := range refFiles {
 		raw, err := os.ReadFile(rf)
 		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", rf, err)
+			return nil, nil, fmt.Errorf("read %s: %w", rf, err)
 		}
 		bodies[rf] = string(raw)
 	}
 
+	// (0) Partition by declaration. Only DECLARED files leave the matrix; a
+	// malformed declaration is could-not-check, not a skip and not a pass.
+	var matrixFiles, skipped []string
+	for _, rf := range refFiles {
+		reason, declared, derr := nonMatrixDeclaration(bodies[rf])
+		if derr != nil {
+			return nil, nil, fmt.Errorf("%s: %w", rf, derr)
+		}
+		if declared {
+			skipped = append(skipped, fmt.Sprintf("%s — %s", rf, reason))
+			continue
+		}
+		matrixFiles = append(matrixFiles, rf)
+	}
+	if len(matrixFiles) == 0 {
+		return nil, skipped, fmt.Errorf(
+			"every *.md under %s declares itself a non-matrix reference — no binding matrix left to check, which is never a pass", refsDir)
+	}
+
 	// (1) Vocabulary closure — reference files only.
 	var violations []string
-	for _, rf := range refFiles {
+	for _, rf := range matrixFiles {
 		for _, c := range caps {
 			// A capability resolves when the binding file names it in the
 			// reserved `capability:<name>` form (same convention as the bodies).
@@ -268,14 +347,14 @@ func checkBindings(refsDir, skillsDir string, vocab map[string]bool) ([]string, 
 	if skillsErr != nil || len(skills) == 0 {
 		if len(violations) > 0 {
 			sort.Strings(violations)
-			return violations, nil
+			return violations, skipped, nil
 		}
 		if skillsErr != nil {
-			return nil, fmt.Errorf("enumerate skills under %s: %w", skillsDir, skillsErr)
+			return nil, skipped, fmt.Errorf("enumerate skills under %s: %w", skillsDir, skillsErr)
 		}
-		return nil, fmt.Errorf("no skills found under %s — cannot check per-skill cells", skillsDir)
+		return nil, skipped, fmt.Errorf("no skills found under %s — cannot check per-skill cells", skillsDir)
 	}
-	for _, rf := range refFiles {
+	for _, rf := range matrixFiles {
 		for _, s := range skills {
 			// A degradation cell for a skill names it as a backticked token in
 			// the binding file's degradation table.
@@ -286,5 +365,5 @@ func checkBindings(refsDir, skillsDir string, vocab map[string]bool) ([]string, 
 		}
 	}
 	sort.Strings(violations)
-	return violations, nil
+	return violations, skipped, nil
 }

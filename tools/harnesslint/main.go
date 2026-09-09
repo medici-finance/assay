@@ -17,7 +17,14 @@ usage:
   bodies    scan <skillsDir>/*/SKILL.md for banned harness tokens and for
             capability references outside the closed vocabulary.
   bindings  assert every capability resolves in every <referencesDir>/*.md and
-            every skill has a degradation cell in each binding file.
+            every skill has a degradation cell in each binding file. A file
+            carrying the one-line declaration
+
+              <!-- assay:harnesslint non-matrix-reference — <reason> -->
+
+            is not a per-harness capability binding: it is excluded from both
+            checks and named on stderr as skipped. The reason is REQUIRED, and a
+            file with no declaration is always fully checked.
 
   --vocab   path to the stream README carrying the closed capability block
             (default %q).
@@ -62,7 +69,14 @@ func run(args []string) int {
 		return report("bodies", err, violations)
 	case "bindings":
 		skillsDir := filepath.Join(dir, "..", "skills")
-		violations, err := checkBindings(dir, skillsDir, vocab)
+		violations, skipped, err := checkBindings(dir, skillsDir, vocab)
+		// Announce every declared non-matrix reference BEFORE the verdict, and
+		// announce it whatever the verdict is: a file the check chose not to look
+		// at is a could-not-check for that file, and the three-state rule reports
+		// it as itself rather than folding it into the clean line.
+		for _, s := range skipped {
+			fmt.Fprintf(os.Stderr, "skipped (declared non-matrix-reference): %s\n", s)
+		}
 		return report("bindings", err, violations)
 	default:
 		fmt.Fprintf(os.Stderr, "could-not-check: unknown mode %q (want bodies|bindings)\n", mode)
