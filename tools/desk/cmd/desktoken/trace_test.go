@@ -35,6 +35,13 @@ import (
 // process's own stdout. Adding it is a security-posture change and would need a human ruling,
 // not a worker's judgement; the notice needs neither.
 
+// cachedTokenValue is the fixture's stand-in for a cached credential. It is deliberately NOT
+// token-SHAPED: the outward-write secret scan reads the branch DIFF, so a literal `ghs_…` in a
+// test file refuses every PR that touches that file, and a fixture that cannot be pushed is not
+// a fixture. Nothing these tests assert depends on the prefix — only on the value being opaque
+// and on it never reaching stdout or stderr.
+const cachedTokenValue = "cached-credential-stand-in-not-a-real-token"
+
 // TestTokenPathNoticeIsPrintedOnStderrNotStdout is the fail-first pin: before this, stdout
 // carried a path and NOTHING said it was a path.
 func TestTokenPathNoticeIsPrintedOnStderrNotStdout(t *testing.T) {
@@ -50,12 +57,12 @@ func TestTokenPathNoticeIsPrintedOnStderrNotStdout(t *testing.T) {
 		}{Login: "example-org"}},
 	}
 	tokenPath := filepath.Join(homeDir, ".config", "assay", "reviewer-token-"+installID)
-	writeTokenCache(t, tokenPath, "ghs_cached_token")
+	writeTokenCache(t, tokenPath, cachedTokenValue)
 	mtime := time.Now().Add(-5 * time.Minute)
 	if err := os.Chtimes(tokenPath, mtime, mtime); err != nil {
 		t.Fatal(err)
 	}
-	srv, _ := makeInstallTokenServer(t, installs, "ghs_should_not_be_called", "2124-01-01T00:00:00Z")
+	srv, _ := makeInstallTokenServer(t, installs, "minted-value-the-cache-path-must-not-reach", "2124-01-01T00:00:00Z")
 	defer srv.Close()
 	oldClient := httpClient
 	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
@@ -90,7 +97,7 @@ func TestTokenPathNoticeIsPrintedOnStderrNotStdout(t *testing.T) {
 	}
 
 	// And the notice must never carry the credential it is describing.
-	if strings.Contains(stdout+stderr, "ghs_cached_token") {
+	if strings.Contains(stdout+stderr, cachedTokenValue) {
 		t.Fatalf("the token VALUE reached the output:\nstdout: %s\nstderr: %s", stdout, stderr)
 	}
 }
@@ -111,12 +118,12 @@ func TestDesktokenTraceFlagIsAcceptedAndStripped(t *testing.T) {
 		}{Login: "example-org"}},
 	}
 	tokenPath := filepath.Join(homeDir, ".config", "assay", "reviewer-token-"+installID)
-	writeTokenCache(t, tokenPath, "ghs_cached_token")
+	writeTokenCache(t, tokenPath, cachedTokenValue)
 	mtime := time.Now().Add(-5 * time.Minute)
 	if err := os.Chtimes(tokenPath, mtime, mtime); err != nil {
 		t.Fatal(err)
 	}
-	srv, _ := makeInstallTokenServer(t, installs, "ghs_x", "2124-01-01T00:00:00Z")
+	srv, _ := makeInstallTokenServer(t, installs, "minted-value-unused", "2124-01-01T00:00:00Z")
 	defer srv.Close()
 	oldClient := httpClient
 	httpClient = &http.Client{Transport: &rewriteTransport{orig: srv.URL}}
