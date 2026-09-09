@@ -50,10 +50,34 @@ type DeskError struct {
 	// --explain prints it, and a caller that does not sees a byte-identical message. The
 	// span itself is never carried here — the refusal must not become the leak.
 	Finding *ScanFinding
+
+	// Cmd, Stderr and ExitStatus are the SUBPROCESS detail, set by ToolRun.Fail when this
+	// error came from a child process that failed. Like Finding, they are carried out of
+	// band and are DELIBERATELY not rendered by Error(): the one-line message already ends
+	// on the child's first stderr line, and printing the rest inline would turn every
+	// wrapped failure into a wall of text. DESK_TRACE prints them (trace.go); with the
+	// switch off, output is byte-identical to what it was before they existed.
+	//
+	// Cmd is the child's command line AS EXECUTED, already scrubbed of credentials.
+	Cmd string
+	// Stderr is the child's own message in FULL — preamble stripped, scrubbed. The
+	// one-line message carries only its first line.
+	Stderr string
+	// ExitStatus is the CHILD's exit status, which is not the same number as Code: the
+	// child's own verdict passes through here while Code stays this tool's verdict about
+	// what that means. Zero when no child process was involved.
+	ExitStatus int
 }
 
 func (e *DeskError) Error() string {
-	if e.Err != nil {
+	// An error built by ToolRun.Fail already ENDS on the child's own words (the
+	// "— <tool> said: …" suffix), and its wrapped cause is the bare `exit status N` that
+	// os/exec produces. Appending that here would put a number after the diagnosis and
+	// make the sentence end on the least informative thing in it — the exact "exit status
+	// 6 and nothing else" shape this carrying exists to replace. The status is not lost:
+	// it is on ExitStatus, and DESK_TRACE prints it. Cmd is the discriminator because only
+	// Fail sets it.
+	if e.Err != nil && e.Cmd == "" {
 		return fmt.Sprintf("%s: %v", e.Msg, e.Err)
 	}
 	return e.Msg
@@ -61,6 +85,16 @@ func (e *DeskError) Error() string {
 
 // Unwrap exposes the wrapped cause for errors.Is / errors.As.
 func (e *DeskError) Unwrap() error { return e.Err }
+
+// Cause is the underlying error this refusal was built over, or nil.
+//
+// It is an ACCESSOR, not a second field: Err already IS the cause — Unwrap returns it, so
+// errors.Is and errors.As reach through it, and Error() renders it. A separate Cause field
+// alongside Err would give one value two homes and two chances to disagree, which is the
+// defect this whole change is about. Cause() exists so a caller can read the cause without
+// depending on the field name, and so "does this error carry a cause?" has an obvious
+// spelling at a call site.
+func (e *DeskError) Cause() error { return e.Err }
 
 // As lets errors.As(err, &finding) reach a scan refusal's ScanFinding WITHOUT the finding
 // leaking into Error() (it lives in its own field, not in the Unwrap chain). errors.As
@@ -108,6 +142,21 @@ func RetryAfterOf(err error) time.Duration {
 
 // Refused builds a constraint refusal (exit 5).
 func Refused(msg string) *DeskError { return &DeskError{Code: ExitRefused, Msg: msg} }
+
+// RefusedWithCause is Refused with the underlying cause preserved (exit 5).
+//
+// It is a SECOND constructor rather than a variadic on Refused because Refused has 400-odd
+// call sites: a signature change there is churn on every one of them, and a variadic that
+// silently accepts a second argument is a signature nobody can see at the call site. A
+// refusal that was CAUSED by something — a child process that said no, a parse that failed —
+// keeps that something reachable through errors.Is / errors.As and printable under
+// DESK_TRACE, instead of ending at the sentence the refusing tool wrote.
+//
+// It stays a REFUSAL: the exit code, the fail-closed semantics and the message the caller
+// wrote are unchanged. Only the cause stops being discarded.
+func RefusedWithCause(msg string, err error) *DeskError {
+	return &DeskError{Code: ExitRefused, Msg: msg, Err: err}
+}
 
 // RefusedFinding is Refused with a structured ScanFinding attached — same message, same
 // exit 5, plus the explain payload a --explain caller can read via errors.As. The message
