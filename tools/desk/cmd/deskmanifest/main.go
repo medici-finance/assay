@@ -1,5 +1,5 @@
-// Command deskmanifest is the component-manifest lint for the composability model
-// (docs/streams/composability/component-model.md). It discovers every
+// Command deskmanifest is the component-manifest lint for the component model
+// defined by the component-manifest spec (§2). It discovers every
 // `component.yaml` in a tree, parses it against §2, resolves every `inject`
 // key to a `provides`, checks each `range` against the provider's `version`,
 // and reports cycles among `inject.required` — all from the declarations alone,
@@ -57,7 +57,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "lint":
 		return lintCmd(args[1:], stdout, stderr)
 	case "--version", "version":
-		fmt.Fprintln(stdout, "deskmanifest — component-manifest lint (composability/00)")
+		fmt.Fprintln(stdout, "deskmanifest — component-manifest lint")
 		return exitClean
 	case "-h", "--help", "help":
 		fmt.Fprintln(stdout, usage)
