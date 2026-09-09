@@ -219,7 +219,7 @@ func dispatch(o dispatchOpts) error {
 		// operator's corrected re-run a second later, is told "already claimed by a LIVE holder",
 		// and a human has to hand-delete the ref. A worktree-create abort that placed a claim and
 		// never released it is the field defect this line closes.
-		released := releaseClaim(o, plan.claimScript, plan.claimKey, repo)
+		released := releaseClaim(o, plan.claimTool, plan.claimKey, repo)
 		// deskwt's OWN message is forwarded whole and verbatim (toolMessage strips only the
 		// config echo / unpinned-build warning), because it is the line that names the cause
 		// (which branch, which worktree holds it, what to do). The wrapper no longer frames this
