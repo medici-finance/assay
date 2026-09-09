@@ -88,7 +88,14 @@ files:
 - **add** `docs/streams/harness-portability/brief-15-ci-wiring-harnesslint.md` — this brief.
 - **amend** `docs/streams/harness-portability/README.md` — status row 15, wave 7, the notes and
   dependency-wave block.
-- **add** `changelog/harness-portability-15-ci-wiring-harnesslint.md` — the required fragment.
+- **add** the required per-PR changelog fragment under the `changelog/` directory, named for the
+  branch. **Delivered, and no longer present as a file**: the v1.0.0 release roll aggregated every
+  fragment into `CHANGELOG.md` and cleared the directory, which is the designed end state for a
+  fragment — not a deletion and not a pending deliverable. The delivered content is the
+  harnesslint/CI-wiring block in `CHANGELOG.md` § **v1.0.0 — 2026-09-09**. The path is deliberately
+  not backticked above: a backticked path to a rolled-away fragment is a lint PROBLEM that reddens
+  the whole board (the instance this line used to be), and `(planned)` would be a lie — the file is
+  gone by design, not owed.
 
 facts:
 - `ci.yml's module walk is build+vet, test only for tools/desk`: read 2026-09-08. The per-module
@@ -239,7 +246,7 @@ and use `../..`-relative paths — the same shape `ci.yml`'s `skillslint` job us
 | 5a | **Narrowness control — the skip is by declaration only:** `t=$(git rev-parse --show-toplevel); d=$(mktemp -d); cp -R "$t/plugins/assay/references" "$d/refs"; printf '# undeclared junk reference\n\nno capability bindings here\n' > "$d/refs/zzz-undeclared.md"; cd "$t/tools/harnesslint" && go run . --vocab "$t/docs/streams/harness-portability/README.md" bindings "$d/refs" > /dev/null 2>&1; echo "undeclared=$?"; rm -rf "$d"` | `undeclared=1` — an **un**declared reference with no bindings still reddens, proving the skip excludes only the declared file and did not blanket-disable the check |
 | 6 | `cd tools/harnesslint && GOFLAGS=-buildvcs=false go test ./... -run 'NonMatrix\|Skip\|Bindings' -timeout 60s; echo "hl-suite=$?"` | `hl-suite=0` — the new fail-first test(s) for the declared-skip and its narrowness pass (their red-on-unfixed evidence is in the PR body under `## Fail-first`) |
 | 7 | `statusgen --lint --root .; echo $?` | `0` — PASS, no PROBLEM: the board row 15 is a valid lifecycle status and the frontmatter is schema-clean. Build `statusgen` from this repo's `statusgen/` rather than trusting a `PATH` binary older than the pinned tag |
-| 8 | `f=changelog/harness-portability-15-ci-wiring-harnesslint.md; test -f "$f" && grep -qE '^- ' "$f"; echo "changelog=$?"` | `changelog=0` — the required fragment exists and carries at least one real highlight bullet |
+| 8 | `awk '/^## v1\.0\.0 /{f=1;next} /^## /{f=0} f' CHANGELOG.md \| grep -qE '^- .*harnesslint'; echo "changelog=$?"` | `changelog=0` — **amended 2026-09-09**: the row used to assert the fragment file existed and carried a bullet. The v1.0.0 release roll aggregated every fragment into `CHANGELOG.md` and cleared the directory, so the file-existence form now asserts something that is false by design and is unrunnable forever after. The row asserts the delivered content instead: the aggregated highlight bullets are present in the `v1.0.0` section. `changelog/README.md` still governs how a *future* fragment is added |
 | 9 | `git grep -n '<<<<<<<' -- . \| wc -l; git diff --stat origin/main...HEAD -- ':(exclude)docs/streams/harness-portability' ':(exclude)changelog'` | `0` conflict markers; the diffstat outside this stream dir + changelog touches only `.github/workflows/ci.yml`, the two `SKILL.md` bodies, `tools/harnesslint/*`, and `plugins/assay/references/desk-shell.md` — no incidental edit rode along |
 
 ## Evidence
