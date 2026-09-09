@@ -91,28 +91,28 @@ func TestWorktreeCreateUnverifiableFailureAlsoReleasesTheClaim(t *testing.T) {
 // dir name now carries the session suffix (mirroring `deskwt role-init`), while the branch and
 // claim key stay deterministic.
 //
-// Fail-first on the unfixed code: the name is the bare `quality-06`, so the session-scoped
+// Fail-first on the unfixed code: the name is the bare `example-stream-06`, so the session-scoped
 // assertion below does not match.
 func TestWorktreeNameIsSessionScopedToAvoidForeignDirCollision(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
 	t.Setenv("DESK_SESSION", "sess-xyz")
-	s.replies = happyReplies("/private/tmp/tracker-quality-06-sess-xyz")
+	s.replies = happyReplies("/private/tmp/tracker-example-stream-06-sess-xyz")
 
-	rc := run([]string{"quality/06", "--root", root, "--repo", allowedRepo,
+	rc := run([]string{"example-stream/06", "--root", root, "--repo", allowedRepo,
 		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("rc = %d, want 0", rc)
 	}
 	// The worktree DIR name carries the session suffix so a foreign session's leftover
-	// /private/tmp/tracker-quality-06 cannot dead-end this dispatch with `target already exists`.
-	if !s.ran("deskwt add quality-06-sess-xyz ") {
+	// /private/tmp/tracker-example-stream-06 cannot dead-end this dispatch with `target already exists`.
+	if !s.ran("deskwt add example-stream-06-sess-xyz ") {
 		t.Errorf("the worktree name is not session-scoped — a foreign-owned canonical dir would still dead-end the dispatch")
 	}
 	// The BRANCH stays deterministic on the bare item key — it is the deliverable's
 	// cross-session identity, reviewed lineage and all. It must NOT gain the suffix.
-	if !s.ran("--branch feat/quality-06 --base") {
+	if !s.ran("--branch feat/example-stream-06 --base") {
 		t.Error("the branch must stay on the bare item key, not gain the session suffix")
 	}
 }
@@ -126,14 +126,14 @@ func TestWorktreeNameFallsBackToBareWhenNoSession(t *testing.T) {
 	// Both session envs empty: install sets DESK_SESSION; clear it and CLAUDE_SESSION_ID.
 	t.Setenv("DESK_SESSION", "")
 	t.Setenv("CLAUDE_SESSION_ID", "")
-	s.replies = happyReplies("/private/tmp/tracker-quality-06")
+	s.replies = happyReplies("/private/tmp/tracker-example-stream-06")
 
-	rc := run([]string{"quality/06", "--root", root, "--repo", allowedRepo,
+	rc := run([]string{"example-stream/06", "--root", root, "--repo", allowedRepo,
 		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("rc = %d, want 0", rc)
 	}
-	if !s.ran("deskwt add quality-06 --branch feat/quality-06 --base") {
+	if !s.ran("deskwt add example-stream-06 --branch feat/example-stream-06 --base") {
 		t.Error("with no session the worktree name must be the bare item-derived form")
 	}
 }
