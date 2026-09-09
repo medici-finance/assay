@@ -37,3 +37,23 @@ func BasicAuth(token string) *githttp.BasicAuth {
 		Password: token,
 	}
 }
+
+// GitHubGitUsername / GitLabGitUsername are the git-over-HTTPS basic-auth usernames each forge
+// pairs with a token password. GitHub accepts any non-empty username with a token (the house
+// convention is "x-access-token", = appUsername); GitLab REQUIRES the literal "oauth2" when the
+// password is a personal/OAuth token. A caller that speaks to whichever forge a repo resolves
+// to (cmd/deskclaim-ref) picks the right one here rather than hardcoding GitHub's.
+const (
+	GitHubGitUsername = appUsername
+	GitLabGitUsername = "oauth2"
+)
+
+// BasicAuthAs is BasicAuth with an explicit username, for a forge (GitLab) whose git transport
+// does not accept the default. Same in-memory-only, never-rendered-into-a-string guarantees as
+// BasicAuth — only the request's Authorization header ever carries the token.
+func BasicAuthAs(username, token string) *githttp.BasicAuth {
+	return &githttp.BasicAuth{
+		Username: username,
+		Password: token,
+	}
+}

@@ -55,6 +55,16 @@ const (
 	decisionScriptRel = "tools/decision-issue.sh"
 )
 
+// goClaimBinary is the pure-Go port of the claim script (cmd/deskclaim-ref). It is the
+// FALLBACK claim tool: when the resolved root carries no tools/dispatch-claim.sh, this verb
+// invokes goClaimBinary by bare name (resolved on PATH, the way deskwt/deskroster are), so a
+// green-field adopter — including a native-Windows one, where a shebang `.sh` will not run
+// under CreateProcess — dispatches with NO consumer script on disk and NO tribal
+// --claim-root. It speaks the SAME wire protocol as the script (the refs/dispatch/<id> claim
+// namespace, the same holder encoding, the same 0/5/6 exit codes), so which one runs never
+// changes where the claim lands or whether two dispatchers collide. Issue 708.
+const goClaimBinary = "deskclaim-ref"
+
 // itemKeyRe bounds what may be passed to a shell script as a claim key. The key goes into
 // an argv slice, never a shell string, so this is defence in depth rather than the only
 // guard — but a key carrying a path segment or a leading dash is a key that would be read
@@ -191,7 +201,7 @@ func dispatch(o dispatchOpts) error {
 
 	// 1 — the durable claim, FIRST. Everything after this is work a second dispatcher
 	// must not also be doing.
-	if err := stepClaim(o, repo, plan.claimScript, plan.claimKey); err != nil {
+	if err := stepClaim(o, repo, plan.claimTool, plan.claimToolIsScript, plan.claimKey); err != nil {
 		return err
 	}
 	o.say("%s OK: %s claimed in %s (claim key %s)", stepClaimAcquire, o.item, repo, plan.claimKey)
@@ -209,7 +219,7 @@ func dispatch(o dispatchOpts) error {
 		// operator's corrected re-run a second later, is told "already claimed by a LIVE holder",
 		// and a human has to hand-delete the ref. A worktree-create abort that placed a claim and
 		// never released it is the field defect this line closes.
-		released := releaseClaim(o, plan.claimScript, plan.claimKey, repo)
+		released := releaseClaim(o, plan.claimTool, plan.claimKey, repo)
 		// deskwt's OWN message is forwarded whole and verbatim (toolMessage strips only the
 		// config echo / unpinned-build warning), because it is the line that names the cause
 		// (which branch, which worktree holds it, what to do). The wrapper no longer frames this
@@ -273,7 +283,7 @@ func dispatch(o dispatchOpts) error {
 	if _, herr := deskkit.RunHook(deskkit.HookBeforeRun, deskkit.HookEnv{
 		RunKey: plan.claimKey, Worktree: home, Repo: repo, Role: o.kit,
 	}); herr != nil {
-		released := releaseClaim(o, plan.claimScript, plan.claimKey, repo)
+		released := releaseClaim(o, plan.claimTool, plan.claimKey, repo)
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"step before_run: the before_run hook failed, so no prompt is emitted. The claim was %s. Hook: %v",
 			released, herr), herr)
@@ -323,10 +333,21 @@ type dispatchPlan struct {
 	// derived once from the item key by claimKeyFor, so the acquire call and the release
 	// hint in the prompt cannot drift onto two different keys.
 	claimKey string
-	// claimScript / decisionScript are the RESOLVED consumer-script paths (under
-	// --claim-root when given, else --root), derived once here so the presence check and
-	// the invocation cannot drift onto two different files.
-	claimScript    string
+	// claimTool is the RESOLVED claim-tool invocation target: the absolute
+	// tools/dispatch-claim.sh path when the resolved root carries it, else the bare
+	// goClaimBinary name (deskclaim-ref) resolved on PATH. claimToolIsScript records which,
+	// so the presence backstop knows to os.Stat a path or lookPath a binary. Derived once so
+	// the presence check and the invocation cannot drift onto two different tools.
+	claimTool         string
+	claimToolIsScript bool
+	// claimReleaseHint is how the emitted prompt spells the claim tool in the agent's
+	// release command: the repo-relative script path (machine-independent) for a legacy
+	// script under --root, the resolved absolute path under --claim-root, or the bare
+	// goClaimBinary name when the Go fallback is in use.
+	claimReleaseHint string
+	// decisionScript is the RESOLVED consumer decision-script path (under --claim-root when
+	// given, else --root), derived once here so the presence check and the invocation cannot
+	// drift onto two different files.
 	decisionScript string
 	// home is the operator-supplied, VALIDATED home worktree to render the dry-run prompt
 	// against (from --worktree). It is "" on every path but a --dry-run that passed
@@ -476,8 +497,37 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		}
 		scriptsRoot = abs
 	}
-	plan.claimScript = filepath.Join(scriptsRoot, filepath.FromSlash(claimScriptRel))
 	plan.decisionScript = filepath.Join(scriptsRoot, filepath.FromSlash(decisionScriptRel))
+
+	// The claim TOOL: prefer the legacy tools/dispatch-claim.sh when the resolved root
+	// carries it (a consumer mid-transition, whose script and this verb's Go fallback speak
+	// the same wire protocol), else fall back to the pure-Go goClaimBinary on PATH. Only when
+	// NEITHER is available is this a fail-closed refusal — a claim this verb cannot place is
+	// not permission to proceed. Resolved BEFORE the claim, from disk/PATH alone, so it costs
+	// nothing durable and keeps the "no state before this returns" invariant total.
+	claimScriptPath := filepath.Join(scriptsRoot, filepath.FromSlash(claimScriptRel))
+	switch {
+	case fileExists(claimScriptPath):
+		plan.claimTool = claimScriptPath
+		plan.claimToolIsScript = true
+		if strings.TrimSpace(o.claimRoot) != "" {
+			plan.claimReleaseHint = claimScriptPath // the worktree does not carry it — state the path
+		} else {
+			plan.claimReleaseHint = claimScriptRel // in the agent's own worktree — stable relative spelling
+		}
+	default:
+		if _, err := lookPath(goClaimBinary); err != nil {
+			return plan, deskkit.Unverifiable(fmt.Sprintf(
+				"step %s: no claim tool is available — %s is not present in %s and the pure-Go %s binary is "+
+					"not on PATH, so no durable claim can be taken. A claim this verb cannot place is NOT "+
+					"permission to proceed: a machine-local lock would serialise two dispatchers on one machine "+
+					"and nothing at all across two, which is the case that double-dispatches%s.",
+				stepClaimAcquire, claimScriptRel, scriptsRoot, goClaimBinary, claimRootHint(o)), err)
+		}
+		plan.claimTool = goClaimBinary
+		plan.claimToolIsScript = false
+		plan.claimReleaseHint = goClaimBinary
+	}
 
 	// The human-decision gate's own preconditions: the flag pairing AND the script's
 	// presence. Both are knowable now, and both used to be discovered at step 4.
@@ -505,16 +555,6 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 					"a human-gated item with nothing in front of the human is the failure this gate exists to "+
 					"close.", stepDecisionGate, decisionScriptRel, scriptsRoot), err)
 		}
-	}
-
-	// The claim script's presence is knowable now too. stepClaim keeps its own check —
-	// it is the step that must not proceed without one — but finding it missing here costs
-	// nothing and keeps the "no durable state before this returns" invariant total.
-	if _, err := os.Stat(plan.claimScript); err != nil {
-		return plan, deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: %s is not present in %s, so no durable claim can be taken. A claim this verb cannot "+
-				"place is NOT permission to proceed%s.", stepClaimAcquire, claimScriptRel, scriptsRoot,
-			claimRootHint(o)), err)
 	}
 
 	// --prompt-file's directory. The prompt is written LAST, so an unwritable destination
@@ -565,13 +605,13 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 // FILE resolves under --claim-root: the target repo is always passed explicitly via
 // --repo, and any cwd-derived fallback inside the script should resolve to the item's
 // repo, never to the checkout that merely happens to carry the tool.
-func stepClaim(o dispatchOpts, repo, script, claimKey string) error {
-	if _, err := os.Stat(script); err != nil {
+func stepClaim(o dispatchOpts, repo, script string, isScript bool, claimKey string) error {
+	if err := claimToolAvailable(script, isScript); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
-			"step %s: %s is not present, so no durable claim can be taken. A claim this verb cannot "+
-				"place is NOT permission to proceed — a machine-local lock would serialise two dispatchers "+
-				"on one machine and nothing at all across two, which is the case that double-dispatches.",
-			stepClaimAcquire, script), err)
+			"step %s: the claim tool %s is not available, so no durable claim can be taken. A claim this verb "+
+				"cannot place is NOT permission to proceed — a machine-local lock would serialise two "+
+				"dispatchers on one machine and nothing at all across two, which is the case that "+
+				"double-dispatches.", stepClaimAcquire, script), err)
 	}
 	args := []string{"acquire", claimKey, "--repo", repo}
 	if o.branch != "" {
@@ -618,6 +658,29 @@ func stepClaim(o dispatchOpts, repo, script, claimKey string) error {
 			"step %s: the claim on %s could not be established (%s) — fail closed, NEVER 'assume free'.",
 			stepClaimAcquire, claimKey, firstLine(r.stderr)), r.err)
 	}
+}
+
+// fileExists reports whether path names an existing file (or directory). Used to decide
+// whether the resolved root carries the legacy claim script before falling back to the Go
+// binary.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// claimToolAvailable is stepClaim's presence backstop, matching how the tool was resolved:
+// a legacy script is checked on disk (os.Stat), the Go binary on PATH (lookPath). It repeats
+// the resolution's finding so the step that must not proceed without a claim tool cannot be
+// reached with one that has vanished since validation.
+func claimToolAvailable(tool string, isScript bool) error {
+	if isScript {
+		if _, err := os.Stat(tool); err != nil {
+			return err
+		}
+		return nil
+	}
+	_, err := lookPath(tool)
+	return err
 }
 
 // releaseClaim releases the durable claim via the consumer claim script's own `release`

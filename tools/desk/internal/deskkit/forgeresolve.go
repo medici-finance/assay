@@ -149,6 +149,60 @@ func resolveForgeKind(repo ForgeRepo) (ForgeResolution, error) {
 		repo.Slug(), EnvRepoForges, knownForgeHostsList(), EnvRepoForges, repo.Slug()), nil)
 }
 
+// ForgeKindFromSlugAndHost resolves WHICH forge serves a repo WITHOUT reading git, minting a
+// token, or constructing a backend. It is the token-free variant a caller that speaks its own
+// git transport needs (cmd/deskclaim-ref, which pushes/reads dispatch-claim refs in-process via
+// gitcore and never mints an App token): it must decide github-vs-gitlab to pick the git-basic
+// username, but must NOT drag in the custody/mint machinery ResolveForge/ForgeFor carry.
+//
+// Resolution mirrors resolveForgeKind's steps a/b, with the origin host supplied by the CALLER
+// (read in-process from its own checkout) rather than shelled from git here:
+//
+//	a. the repo's configured forge — ASSAY_REPO_FORGES in the roster;
+//	b. failing that, the given host mapped through the unambiguous well-known table
+//	   (github.com/gitlab.com); host may be "" (only step a can then answer);
+//	c. failing that, Unverifiable — never a default, never a guess.
+//
+// It returns the resolved forge kind AND the git host to speak to: the caller's origin host
+// when non-empty (so a self-hosted instance is honored), else the forge kind's canonical SaaS
+// host (github.com / gitlab.com). The ForgeKind is a RETURN, never a parameter — resolution is
+// never a caller's choice (TestForgeForRejectsCallerSuppliedForge).
+func ForgeKindFromSlugAndHost(slug, host string) (ForgeKind, string, error) {
+	key := strings.ToLower(strings.TrimSpace(slug))
+	h := strings.ToLower(strings.TrimSpace(host))
+	resolve := func(kind ForgeKind) (ForgeKind, string, error) {
+		if h != "" {
+			return kind, h, nil
+		}
+		return kind, canonicalHostOf(kind), nil
+	}
+	cfg := EffectiveConfig()
+	if kind, ok := cfg.RepoForges[key]; ok {
+		return resolve(ForgeKind(kind))
+	}
+	if h != "" {
+		if kind, ok := wellKnownForgeHosts[h]; ok {
+			return resolve(kind)
+		}
+	}
+	return "", "", Unverifiable(fmt.Sprintf(
+		"cannot resolve which forge serves %s: no %s entry names it, and the origin host %q does not map "+
+			"unambiguously to a known forge (%s). Configure %s=%s=github (or =gitlab) in the roster.",
+		slug, EnvRepoForges, host, knownForgeHostsList(), EnvRepoForges, slug), nil)
+}
+
+// canonicalHostOf is the SaaS host a forge kind serves when the caller has no origin host to go
+// on (github -> github.com, gitlab -> gitlab.com). Unexported: it takes a ForgeKind, and a
+// forge selector must never reach a caller-facing surface.
+func canonicalHostOf(kind ForgeKind) string {
+	for host, k := range wellKnownForgeHosts {
+		if k == kind {
+			return host
+		}
+	}
+	return ""
+}
+
 // --- Custody: obtaining the resolved role's already-minted token ------------------------
 
 // GitHubCustodyMinterFunc mints (or reuses a cached) GitHub App installation token for

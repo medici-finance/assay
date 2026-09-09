@@ -23,6 +23,16 @@
 // claim exists to prevent. Both scripts already speak the deskkit exit-code contract, so
 // their verdicts pass straight through.
 //
+// THE CLAIM TOOL, AND THE PURE-GO FALLBACK (issue 708). The claim script is a shebang bash
+// file, so a freshly adopted tree that never received it — and a native-Windows adopter,
+// where CreateProcess will not run a `.sh` — cannot dispatch. When the resolved root carries
+// no `tools/dispatch-claim.sh`, this verb falls back to `deskclaim-ref` (cmd/deskclaim-ref),
+// a pure-Go port of the SAME wire protocol (the refs/dispatch/<id> claim ref, the same holder
+// encoding, the same 0/5/6 exit codes), invoked by bare name on PATH with no shell. Because
+// both speak the same protocol and land the claim in the same ref, a Go dispatcher and a
+// still-running bash dispatcher collide on one claim and never double-dispatch. The script,
+// when present, still WINS, so a consumer mid-transition is unchanged.
+//
 // ON CONTENTION, NAME THE HOLDER — NEVER STEAL. A claim held by someone else exits 5 with
 // the existing holder printed. There is no inline steal: breaking a live claim is a
 // deliberate, auditable act with a stated reason, and it belongs to the human or to the
@@ -64,14 +74,17 @@ prompt's item key stay on the ORIGINAL key.
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 
-  1 claim-acquire     runs tools/dispatch-claim.sh acquire <claim-key>, resolved under
-                      --claim-root when given, else --root. The claim itself is a ref in
-                      the TARGET repo (--repo) either way — the flag names where the TOOL
-                      lives, never where the claim lands. Exit 5 there with a READABLE
-                      holder = a LIVE holder owns it: this verb prints the holder and
-                      exits 5; it never steals. Exit 5 with no readable holder is the
-                      claim tool refusing the invocation itself and is reported as that
-                      error, never as a collision.
+  1 claim-acquire     runs the claim tool's acquire <claim-key>. The tool is
+                      tools/dispatch-claim.sh when the resolved root (--claim-root when
+                      given, else --root) carries it, ELSE the pure-Go deskclaim-ref binary
+                      on PATH — so a tree with no consumer script (a green-field or Windows
+                      adopter) still dispatches, with no shebang .sh and no --claim-root.
+                      The claim itself is a ref in the TARGET repo (--repo) either way — the
+                      flag names where the TOOL lives, never where the claim lands. Exit 5
+                      there with a READABLE holder = a LIVE holder owns it: this verb prints
+                      the holder and exits 5; it never steals. Exit 5 with no readable holder
+                      is the claim tool refusing the invocation itself and is reported as
+                      that error, never as a collision.
   2 worktree-create   ` + "`deskwt add`" + ` in the item's OWN repo root, off
                       refs/remotes/origin/main. Cross-repo is the default case, not the
                       exception: an item belongs to a repo, and a worker handed the wrong

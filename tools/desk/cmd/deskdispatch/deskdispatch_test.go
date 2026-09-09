@@ -35,6 +35,13 @@ func (s *stub) install(t *testing.T) (home, root string) {
 	t.Setenv("DESK_SESSION", "deskdispatch-test")
 	t.Setenv("CLAUDE_SESSION_ID", "deskdispatch-test")
 
+	// By default the pure-Go claim binary is NOT on PATH, so a test that plants no
+	// tools/dispatch-claim.sh fails closed deterministically rather than depending on whatever
+	// is installed on the test runner. A test that exercises the Go fallback overrides this.
+	oldLook := lookPath
+	lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	t.Cleanup(func() { lookPath = oldLook })
+
 	old := execCommand
 	execCommand = func(name string, args ...string) *exec.Cmd {
 		joined := name + " " + strings.Join(args, " ")

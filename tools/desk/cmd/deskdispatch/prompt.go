@@ -192,9 +192,13 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 // prompts byte-identical). With --claim-root the worktree does NOT carry the script, so the
 // resolved path is stated — a tool to invoke, not a place to work.
 func writeReleaseClaim(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo string) {
-	releaseTool := claimScriptRel
-	if strings.TrimSpace(o.claimRoot) != "" {
-		releaseTool = plan.claimScript
+	// The release hint was resolved once (validateCallerPreconditions) alongside the claim
+	// tool itself: the repo-relative script path when the script sits in the agent's own
+	// worktree, the resolved absolute path under --claim-root, or the bare goClaimBinary name
+	// when the pure-Go fallback is in use (a tool on PATH, not a place in the tree).
+	releaseTool := plan.claimReleaseHint
+	if releaseTool == "" {
+		releaseTool = claimScriptRel
 	}
 	fmt.Fprintf(b, "```\n%s release %q --repo %s\n```\n", releaseTool, plan.claimKey, repo)
 }
