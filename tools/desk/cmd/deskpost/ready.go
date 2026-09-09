@@ -75,7 +75,12 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		if ferr != nil {
 			return fromReadErr("ready", repo, pr, head, ferr)
 		}
-		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged())
+		// A stamp left behind by a dispatch whose CLAIM has been released attests for a cycle
+		// that is over, so it ages out and the PR reads unstamped (deskkit/stampage.go). The
+		// read is this verb's own; every uncertain path is Unknown, which leaves the stamp
+		// exactly as it stood.
+		fd := deskkit.ModelCapabilityFloor(tl, deskkit.IsDispatcherLogin, deskkit.ModelFloorOverrideEngaged(),
+			client.claimLiveness(repo, info.Body))
 		switch fd.Outcome {
 		case deskkit.FloorRefuse:
 			return refused("ready", repo, pr, head, fd.Message)

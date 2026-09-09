@@ -18,6 +18,16 @@ package deskkit
 // This raises the bar from self-report to dispatcher attestation; it does not close custody
 // questions (a session that swapped models mid-run is outside what any dispatch stamp sees).
 //
+// A DEAD DISPATCH'S STAMP IS NOT AN ATTESTATION. Before any of the outcomes below is
+// reached, the stamp has to still MEAN something: a stamp left by a cycle whose dispatch
+// claim has been released attests for a session that no longer exists, so it is IGNORED and
+// the PR reads as unstamped. Without that, a dead stamp was treated WORSE than no stamp —
+// refuse, where an unstamped PR proceeds with a NOTICE — and PRs sat bricked behind
+// attestations nobody could repair. The liveness is an INPUT (ClaimLiveness, stampage.go),
+// resolved by the calling verb against its own forge, and only a POSITIVE release ages a
+// stamp out; a read that failed or a PR with no derivable claim key is Unknown and leaves the
+// stamp standing.
+//
 // THE FOUR OUTCOMES, and which way each fails:
 //
 //	attested at/above the floor   -> proceed (FloorAllow).
@@ -99,9 +109,10 @@ const (
 	FloorRefuse FloorOutcome = iota
 	// FloorAllow means the dispatch was attested at or above the floor: proceed.
 	FloorAllow
-	// FloorNoticeAllow means no STRENGTH attestation was found — either no stamp at all, or
-	// a stamp whose tier is `any`, which claims no strength: proceed, but the verb must SAY
-	// so — absent is not the same as cleared.
+	// FloorNoticeAllow means no STRENGTH attestation was found — no stamp at all, a stamp
+	// whose tier is `any`, which claims no strength, or a stamp that AGED OUT because its
+	// dispatch claim is released: proceed, but the verb must SAY so — absent is not the same
+	// as cleared.
 	FloorNoticeAllow
 	// FloorOverrideAllow means the incident-recovery override was engaged: proceed, LOUDLY.
 	FloorOverrideAllow
@@ -175,13 +186,18 @@ func ModelFloorOverrideEngaged() bool {
 }
 
 // ModelCapabilityFloor decides whether an authority-bearing write may proceed, given the
-// target PR's label EVENTS (name + applying login), the dispatcher predicate, and whether
-// the override is engaged. It is the ONE decision both verdict/flip verbs share.
+// target PR's label EVENTS (name + applying login), the dispatcher predicate, the liveness of
+// the dispatch claim the stamp was applied under, and whether the override is engaged. It is
+// the ONE decision both verdict/flip verbs share.
 //
 // isDispatcher is the applier-aware predicate (inject IsDispatcherLogin against the live
 // roster, or a test stub). A nil predicate vouches for no one, so any dispatched-* label
 // then reads Indeterminate and the floor refuses — an unconfigured deployment fails closed.
-func ModelCapabilityFloor(tl StampTimeline, isDispatcher func(applier string) bool, override bool) FloorDecision {
+//
+// claim is the dispatch claim's liveness (stampage.go). ClaimLivenessUnknown — the zero value,
+// and what a verb with no presence read passes — changes nothing. Only ClaimReleased does: it
+// ages the stamp out, so the PR reads unstamped.
+func ModelCapabilityFloor(tl StampTimeline, isDispatcher func(applier string) bool, override bool, claim ClaimLiveness) FloorDecision {
 	stamp, state := AttestedModelStampOf(tl, isDispatcher)
 
 	if override {
@@ -194,6 +210,30 @@ func ModelCapabilityFloor(tl StampTimeline, isDispatcher func(applier string) bo
 					"(attested state: %s; tier: %s). This override is logged loudly and is not a routine "+
 					"path — a normal authority-bearing write must clear the floor, not override it.",
 				ModelFloorOverrideMarker, ModelFloorOverrideEnv, state, tierOrNone(stamp.Tier)),
+		}
+	}
+
+	// AGE-OUT, before the state is consulted. A stamp whose dispatch claim has been released
+	// attests for a cycle that is over, so it is not an attestation about this write at all —
+	// the PR reads UNSTAMPED and takes the same branch a never-stamped PR takes. This runs
+	// ahead of the state switch on purpose: the state that most needed it is Indeterminate,
+	// where a dead foreign or malformed stamp refused every write forever with no repair
+	// anyone could perform. It is deliberately NOT reachable without a POSITIVE release (see
+	// stampage.go) — Unknown liveness falls through and the stamp stands.
+	if claim.AgesOutStamp() {
+		if aged := presentStampLabels(tl.Present); len(aged) > 0 {
+			return FloorDecision{
+				Outcome: FloorNoticeAllow,
+				State:   ModelUnknown,
+				Stamp:   ModelStamp{},
+				Message: fmt.Sprintf(
+					"model-capability floor: NOTICE — this PR carries %s, but the dispatch claim that stamp "+
+						"was applied under has been RELEASED, so the dispatching cycle is over and the stamp "+
+						"attests nothing about this write. It AGES OUT: the PR reads as UNSTAMPED and this "+
+						"write proceeds, exactly as it would with no stamp at all. Re-dispatch the PR if this "+
+						"write should carry a live attestation.",
+					strings.Join(aged, " + ")),
+			}
 		}
 	}
 
@@ -274,11 +314,11 @@ func unreadableStampMessage(tl StampTimeline, isDispatcher func(applier string) 
 	if untrusted := NonDispatcherStampAppliers(tl, isDispatcher); len(untrusted) > 0 {
 		cause = fmt.Sprintf(
 			"The dispatched-* labels this PR currently carries were applied by %s, and this floor accepts a "+
-				"stamp only from the bound dispatcher identity %s (roster role %q). Re-stamp the PR from the "+
-				"dispatcher — the dispatch verb REMOVES a foreign stamp and re-applies it under that App, "+
+				"stamp only from a bound dispatching identity: %s. Re-stamp the PR from the dispatcher of its "+
+				"own lane — the dispatch verb REMOVES a foreign stamp and re-applies it under that App, "+
 				"which is the only repair an append-only timeline allows — or escalate this write "+
 				"to a strong-tier session.",
-			StripControl(strings.Join(untrusted, ", ")), RoleAppLoginOrEmpty(DispatcherRole), DispatcherRole)
+			StripControl(strings.Join(untrusted, ", ")), DispatcherLoginsForMessage())
 	} else if unattributed := UnattributedStampLabels(tl); len(unattributed) > 0 {
 		// A DIFFERENT remedy again: the stamp may be perfectly good and the timeline read
 		// short. Sending this operator to re-stamp a correct PR is the wrong next move, so

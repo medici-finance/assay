@@ -397,6 +397,10 @@ type prInfo struct {
 	State  string `json:"state"`
 	Draft  bool   `json:"draft"`
 	NodeID string `json:"node_id"`
+	// Body is the PR description. It is read for its LINK TRAILER (Brief:/Issue:), which is
+	// what ties a PR to the dispatch claim its stamp was applied under — the model floor's
+	// age-out needs that tie, and nothing else in this client had a reason to carry the body.
+	Body string `json:"body"`
 	// ChangedFiles is GitHub's OWN count of the files this PR touches. It is the
 	// reconciliation partner for listFiles, exactly as TotalCount is for the two CI
 	// rollups: without it, a files walk that stops early believes it saw

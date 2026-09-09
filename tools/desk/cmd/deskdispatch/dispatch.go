@@ -756,14 +756,23 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	// the ambient credential — produces an attestation the floor must refuse, and a PR
 	// carrying an untrusted stamp is in a WORSE state than an unstamped one (absent reads
 	// UNKNOWN and proceeds with a NOTICE). So no stamp at all is the safe failure here.
-	tok, tokPath, terr := mintTokenFn(deskkit.DispatcherRole, repo)
+	//
+	// THE LANE'S OWN DISPATCHER. The role minted here is the role that DISPATCHED this
+	// session, which is not always the desk App: the review lane is dispatched by the
+	// reviewer App, and stamping a review dispatch under the desk App would re-open the
+	// dispatcher/applier split from the other side — an attestation written by an identity
+	// that did not launch the session. deskkit accepts both roles (DispatcherRoles) precisely
+	// so each lane's own dispatcher can attest for it, and stampRole is where that choice is
+	// made once for every stamp this verb writes.
+	stampRole := stampRoleForKit(o.kit)
+	tok, tokPath, terr := mintTokenFn(stampRole, repo)
 	if terr != nil {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: the %s App installation token for %s could not be minted or read (%s): %v — so the "+
 				"identity the stamp would be applied under cannot be established. NO label was applied: a "+
 				"stamp written under this session's own credential reads as a non-dispatcher stamp and "+
 				"refuses every authority-bearing write on the PR, which is worse than leaving it unstamped.",
-			stepModelStamp, deskkit.DispatcherRole, deskkit.OwnerOf(repo), tokenPathForMessage(tokPath), terr), terr)
+			stepModelStamp, stampRole, deskkit.OwnerOf(repo), tokenPathForMessage(tokPath), terr), terr)
 	}
 	dispatcherToken = tok
 
@@ -838,7 +847,22 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			"present label is a no-op)", strings.Join(stale, " + "))
 	}
 	return fmt.Sprintf("OK: applied %s as the %s App, the identity the capability floor accepts (%s)%s",
-		strings.Join(labels, " + "), deskkit.DispatcherRole, tokenPathForMessage(tokPath), restamped), nil
+		strings.Join(labels, " + "), stampRole, tokenPathForMessage(tokPath), restamped), nil
+}
+
+// stampRoleForKit names the App identity a dispatch of this kit must stamp under: the role
+// that actually DISPATCHED the session.
+//
+// The review lane is dispatched by the reviewer App (pr-review-desk drives its own reviewers),
+// every other lane by the desk App. The floor accepts both, and only these two — so this
+// choice is the writer's half of the same one-list rule deskkit.DispatcherRoles holds for the
+// reader: a lane whose dispatcher is not in that set has no way to mint a trusted stamp, which
+// is the fail-closed direction.
+func stampRoleForKit(kit string) string {
+	if reviewKit(kit) {
+		return deskkit.ReviewDispatcherRole
+	}
+	return deskkit.DispatcherRole
 }
 
 // parseLabelNames reads the `gh api --jq '.[].name'` output of the PR's labels — one name
