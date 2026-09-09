@@ -21,6 +21,12 @@ import (
 // child process, so a key cannot be read as a flag or escape into a path.
 var execCommand = exec.Command
 
+// lookPath is the PATH probe used to decide whether the pure-Go claim binary
+// (goClaimBinary) is available when a repo carries no tools/dispatch-claim.sh. It is a seam
+// ONLY so a test controls availability deterministically instead of depending on whatever
+// happens to be installed on the test runner's PATH.
+var lookPath = exec.LookPath
+
 // mintTokenFn is the seam the DISPATCHER App-token lookup runs through, so the stamp step
 // can be exercised without a real App credential. Production binds it to the shared
 // deskkit resolver, which shells out to the token minter and reads the file it names.
