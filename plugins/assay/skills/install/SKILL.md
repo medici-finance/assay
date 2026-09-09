@@ -172,6 +172,19 @@ The install is not done until it is PROVEN:
 If either check fails, the install is **not proven** — say so plainly and stop; do not report
 success.
 
+**GitLab forge — the runner is part of the proof.** `statusgen init --forge gitlab` scaffolds
+the `.gitlab-ci.yml` but registers **no runner** (that is instance-admin work, an explicit
+non-goal). A GitLab pipeline can fire, parse the YAML, and still never start — an **untagged**
+scaffold job sits in `pending` / `stuck_pending_no_matching_runners` when no runner takes
+untagged jobs (`run_untagged = false` is a common default). So on a GitLab adopter, do **not**
+call CI installed on the CI file alone: watch the first merge-request (or default-branch)
+pipeline and require a job to **leave `pending`** — reach `running`, or a terminal **non-stuck**
+result (an unset `STATUSGEN_PUSH_TOKEN` is a *later* red — the job ran). A job still `pending`
+is **could-not-check**, never a pass. Hand the human the runner requirement (a Linux
+Docker/Kubernetes executor with `run_untagged = true`, or the instance's tag(s) on each job's
+commented `tags:` placeholder) — see `docs/adopting-assay-gitlab.md`, section
+"Runners and job tags". Assay does not register runners.
+
 ### 7. Report what ACTUALLY installed — claim the weaker true thing
 Report only what you VERIFIED. Name every step you skipped, every artifact you left untouched
 because it was already correct, and every point you escalated to a human. Never a fabricated

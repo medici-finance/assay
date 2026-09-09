@@ -176,8 +176,34 @@ func runInitForge(root string, forge forgeKind, dryRun bool) int {
 	next := strings.ReplaceAll(initNextSteps, initStreamPlaceholder, stream)
 	next = strings.ReplaceAll(next, initCIFilePlaceholder, ci.path)
 	fmt.Print(next)
+	// GitLab-only: the scaffolded jobs are untagged and Assay registers no runner,
+	// so a fresh adopter's pipeline can fire yet sit in stuck_pending_no_matching_runners
+	// forever. The GitHub half runs on hosted ubuntu-latest and needs no such note.
+	if forge == forgeGitLab {
+		fmt.Print(initGitlabRunnerNote)
+	}
 	return 0
 }
+
+// initGitlabRunnerNote is appended to the next-steps ONLY on a GitLab forge. It
+// names the runner precondition the .gitlab-ci.yml scaffold cannot satisfy on its
+// own (a runner that will pick up untagged jobs) and states the honesty rule the
+// install-proof depends on: a job stuck in `pending` is could-not-check, never a
+// pass. Assay does not register runners — that is instance-admin work.
+const initGitlabRunnerNote = `
+GitLab runner — REQUIRED before CI can be called installed:
+
+  * These jobs are UNTAGGED and Assay registers no runner for you. You need a Linux
+    Docker (or Kubernetes) executor that will pick them up: EITHER a runner with
+    run_untagged = true, OR add your instance's required tag(s) to each job's tags:
+    (see the commented "ADOPTER: runner" placeholder in .gitlab-ci.yml). Do not
+    hardcode a tag from another instance — the required set is instance-local.
+  * Verify by watching the first merge-request (or default-branch) pipeline: a job
+    must reach running or a terminal non-stuck failure (e.g. STATUSGEN_PUSH_TOKEN
+    unset — a LATER red). A job left in pending / stuck_pending_no_matching_runners
+    is could-not-check, NOT "CI installed". See docs/adopting-assay-gitlab.md,
+    section "Runners and job tags".
+`
 
 const initStreamsReadme = `# streams/
 
@@ -464,6 +490,24 @@ const initGitlabCI = `# statusgen CI — the two-half single-writer shape on Git
 # write_repository scope and set it as a MASKED CI/CD variable named
 # STATUSGEN_PUSH_TOKEN. Until it is set the regen job stops with a clear message
 # rather than pushing.
+#
+# RUNNER — a GitLab pipeline needs a runner that will PICK UP these jobs, and Assay
+# neither installs nor configures one for you. Unlike GitHub's hosted
+# ` + "`runs-on: ubuntu-latest`" + `, a self-hosted GitLab instance has no default executor.
+# The jobs below carry NO ` + "`tags:`" + `, so only a runner configured to take untagged
+# jobs (` + "`run_untagged = true`" + `) will run them. Where an instance's runners are
+# tagged with ` + "`run_untagged = false`" + ` (a common default), an untagged job sits in
+# ` + "`pending`" + ` / ` + "`stuck_pending_no_matching_runners`" + ` and never starts — the pipeline
+# fires but nothing eligible picks it up. You need a Linux Docker (or Kubernetes)
+# executor and ONE of:
+#   (a) a runner with ` + "`run_untagged = true`" + `, or
+#   (b) the instance's required tag(s) added to each job's ` + "`tags:`" + ` list (see the
+#       commented ADOPTER: runner placeholder under each job).
+# The install is NOT proven while a job is still ` + "`pending`" + `: CI counts as installed
+# only once a job has LEFT pending (reached ` + "`running`" + `, or a terminal non-stuck
+# failure such as an unset STATUSGEN_PUSH_TOKEN). Registering a runner is
+# instance-admin work, outside Assay's scope. See docs/adopting-assay-gitlab.md,
+# section "Runners and job tags".
 stages: [statusgen]
 
 .statusgen-install: &statusgen-install
@@ -483,6 +527,11 @@ stages: [statusgen]
 
 statusgen-lint:
   stage: statusgen
+  # ADOPTER: runner — this job is UNTAGGED, so a runner with run_untagged = true
+  # will pick it up. If your instance's runners are tagged (run_untagged = false),
+  # uncomment tags: and list the tag(s) your Linux Docker/Kubernetes executor
+  # requires. Do NOT copy a tag from elsewhere — the required set is instance-local.
+  # tags: [REPLACE_WITH_YOUR_RUNNER_TAG]
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
   script:
@@ -499,6 +548,11 @@ statusgen-regen:
   # writer). The first rule stops the job re-firing on its OWN regen commit: the
   # push carries the [skip-status-regen] marker, so this pipeline does not loop.
   stage: statusgen
+  # ADOPTER: runner — this job is UNTAGGED, so a runner with run_untagged = true
+  # will pick it up. If your instance's runners are tagged (run_untagged = false),
+  # uncomment tags: and list the tag(s) your Linux Docker/Kubernetes executor
+  # requires. Do NOT copy a tag from elsewhere — the required set is instance-local.
+  # tags: [REPLACE_WITH_YOUR_RUNNER_TAG]
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_MESSAGE =~ /\[skip-status-regen\]/'
       when: never
