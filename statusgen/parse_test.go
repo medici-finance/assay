@@ -183,6 +183,49 @@ func TestParseBriefTableDecoratedStatusShiftsColumns(t *testing.T) {
 	}
 }
 
+// TestSplitRowEscapedPipeIsCellContent pins GFM's escape rule at the split
+// itself: `\|` is the ONLY way to write a pipe inside a table cell, so a
+// backslash-escaped pipe is cell CONTENT and never a delimiter. The escape
+// sequence stays in the returned cell verbatim, so a row that is parsed and
+// re-rendered is byte-identical to the one that was read.
+func TestSplitRowEscapedPipeIsCellContent(t *testing.T) {
+	row := "| 12 | [B](./brief-12.md) | 0 | S | implemented | — | — | the `curl … \\| bash` pipe is gone |"
+	cells := splitRow(row)
+	if len(cells) != 8 {
+		t.Fatalf("splitRow(%q) = %d cells %q, want 8 — `\\|` is cell content, not a delimiter", row, len(cells), cells)
+	}
+	if !strings.Contains(cells[7], `\|`) {
+		t.Errorf("the `\\|` must survive the split verbatim so a re-render is stable; cell 7 = %q", cells[7])
+	}
+}
+
+// TestParseBriefTableEscapedPipeInCodeSpan is the regression pin for the v1.0.0
+// board abort: splitRow split on every `|` byte, so a legal row whose cell holds
+// an escaped pipe inside a code span (a `curl … \| bash` note) yielded one cell
+// too many, and the exact-count check — correctly tightened from `<` to `!=` —
+// rejected it. Because a stream README parse error aborts the whole load, that
+// ONE row turned every other check in the run into could-not-check.
+//
+// The row below is legal GFM and must parse; the escape is not a licence to
+// loosen the count check, which still rejects a genuinely shifted row (see
+// TestParseBriefTableDecoratedStatusShiftsColumns).
+func TestParseBriefTableEscapedPipeInCodeSpan(t *testing.T) {
+	body := "## Briefs\n\n" +
+		"| # | Brief | Wave | Effort | Status | Verified | Reviewed | Notes |\n" +
+		"|---|-------|------|--------|--------|----------|----------|-------|\n" +
+		"| 12 | [Pin the render image](./brief-12.md) | 0 | S | implemented | — | — | the `curl … \\| bash` pipe is gone |\n"
+	briefs, err := parseBriefTable(body)
+	if err != nil {
+		t.Fatalf("a `\\|` inside a code span is legal GFM and must parse: %v", err)
+	}
+	if len(briefs) != 1 {
+		t.Fatalf("parsed %d briefs, want 1", len(briefs))
+	}
+	if briefs[0].Num != "12" || briefs[0].Status != "implemented" || briefs[0].Effort != "S" {
+		t.Errorf("columns did not line up: %+v", briefs[0])
+	}
+}
+
 func TestParseNoTableIsValid(t *testing.T) {
 	briefs, err := parseBriefTable("# Just prose\nno table here\n")
 	if err != nil || briefs != nil {

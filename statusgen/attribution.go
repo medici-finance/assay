@@ -447,10 +447,10 @@ func implementerAttributed(runnerCell string) bool {
 // "implementer run" table followed by an "independent re-run" table); each
 // table's own header+separator pair is skipped in turn.
 //
-// Cells are split with splitRowEscaped, NOT the naive splitRow. A
+// Cells are split with splitRowEscaped, the local escape-aware variant. A
 // Command cell legitimately contains an escaped pipe (e.g.
-// “ `grep -ciE "arm64\|amd64"` “); splitRow does not know about the escape
-// and cuts the row there too, so a row that names a "Runner" column by index
+// “ `grep -ciE "arm64\|amd64"` “); a splitter that does not know about the
+// escape cuts the row there too, so a row that names a "Runner" column by index
 // off the header reads the WRONG cell as Runner for every row after the
 // escape — one that need not contain "implementer" at all. That silently
 // flips an all-implementer Evidence table into one that reads as
