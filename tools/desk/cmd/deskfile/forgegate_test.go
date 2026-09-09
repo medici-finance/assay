@@ -9,7 +9,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// forgegate_test.go — the forge-support gate (assay#687).
+// forgegate_test.go — the forge-support gate (#687).
 //
 // deskfile's issue ops shell `gh` (GitHub only). On a repo whose configured forge is GitLab
 // they used to reach GitHub's API for a repo that does not exist there and fail with a

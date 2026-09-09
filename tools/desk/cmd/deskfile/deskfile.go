@@ -385,7 +385,7 @@ func newFlagSet(name string) *flag.FlagSet {
 // forge is GitLab those calls still go to GitHub's API for a repo that does not exist there,
 // and fail with a GitHub GraphQL "Could not resolve to a Repository" that reads like a
 // permissions or typo problem — sending the operator to check their token first when the real
-// cause is that deskfile has no GitLab path at all (assay#687). The consequence is worse than
+// cause is that deskfile has no GitLab path at all (#687). The consequence is worse than
 // a bad message: the desks' only sanctioned escalation channel simply does not exist on
 // GitLab, and `--force-new` is no escape hatch because the create is itself the failing
 // GitHub call.
@@ -393,7 +393,7 @@ func newFlagSet(name string) *flag.FlagSet {
 // Until deskfile's issue ops are routed through the forge backend (the forge-abstraction
 // migration; the backend is App-token-custody bound, and deskfile files under the caller's
 // AMBIENT credential and mints no token, so that re-seat is an identity-model change a human
-// must rule on — assay#395), requireSupportedForge REPLACES the misdirection with a NAMED
+// must rule on — #395), requireSupportedForge REPLACES the misdirection with a NAMED
 // refusal that says what is actually true.
 //
 // It resolves the forge KIND ONLY (deskkit.ForgeKindFor) — never a backend and never a
@@ -482,7 +482,7 @@ func cmdNew(args []string) (err error) {
 	ac.title = *title
 
 	// Refuse BEFORE any gh call on a forge deskfile cannot file on, so a GitLab-configured
-	// repo gets a named refusal rather than a misleading GitHub GraphQL error (assay#687).
+	// repo gets a named refusal rather than a misleading GitHub GraphQL error (#687).
 	if ferr := requireSupportedForge(*repo); ferr != nil {
 		return ferr
 	}
@@ -666,7 +666,7 @@ func cmdAttach(args []string) (err error) {
 	target := *to
 	ac.target = &target
 
-	// Refuse BEFORE any gh call on a forge deskfile cannot file on (assay#687).
+	// Refuse BEFORE any gh call on a forge deskfile cannot file on (#687).
 	if ferr := requireSupportedForge(*repo); ferr != nil {
 		return ferr
 	}
@@ -749,7 +749,7 @@ func cmdCheck(args []string) (err error) {
 	ac.repo = *repo
 	ac.title = *title
 
-	// Refuse BEFORE any gh call on a forge deskfile cannot file on (assay#687).
+	// Refuse BEFORE any gh call on a forge deskfile cannot file on (#687).
 	if ferr := requireSupportedForge(*repo); ferr != nil {
 		return ferr
 	}
