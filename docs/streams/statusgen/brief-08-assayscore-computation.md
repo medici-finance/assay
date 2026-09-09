@@ -1,5 +1,5 @@
 ---
-brief: statusgen/08
+brief: assay:assay:statusgen:08
 title: Composite AssayScore computation
 wave: 2
 depends: ["statusgen/07"]
@@ -8,10 +8,12 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-26 (re-authored clean for the statusgen board)
 sources:
   - "The settled metric-definitions spec §AssayScore — the fixed composite formula"
+version: 1
+id: 78265f45-738d-4665-b212-41abc5ce32c8
 ---
 
 # Brief 08 — Composite AssayScore computation

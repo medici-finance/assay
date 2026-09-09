@@ -1,5 +1,5 @@
 ---
-brief: desktools-go-git/06
+brief: assay:assay:desktools-go-git:06
 title: migrate push + retire ambient-credential machinery + preflight transport probe
 wave: 4
 depends: ["desktools-go-git/02", "desktools-go-git/03"]
@@ -8,7 +8,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-21 by desktools-go-git authoring session
 sources:
   - "docs/streams/desktools-go-git/spec.md — thesis (pushes inherit ambient credential machinery; the preflight probes because auth is ambient)"
@@ -21,6 +21,8 @@ why: >-
   so the ambient machinery and the probe both disappear: a caller mints a repo-scoped
   token and can send it nowhere but that op's URL, and reachability is proved by an
   authenticated List rather than a dry-run push.
+version: 1
+id: 4defb16c-2840-4103-880e-11693f41dc91
 ---
 
 # Brief 06 — migrate push + retire ambient-credential machinery + preflight probe

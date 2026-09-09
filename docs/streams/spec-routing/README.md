@@ -6,6 +6,7 @@ status: active
 priority: P2
 track: platform
 issues: []
+board: generated
 ---
 
 # spec-routing Stream — enforce the spec/scoping-doc lifecycle so an approved plan cannot go unrouted
@@ -43,9 +44,11 @@ these devices, not code in this stream.
 
 ## Briefs
 
+<!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Enforce the §8 lifecycle — the linter and the authoring-owed emitter](./brief-01-enforce-lifecycle-and-owed-emitter.md) | 0 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #410 @ 7bb86b33d1a81d605b1ef799f1d3352ef9572752) |
+| 01 | [Enforce the §8 spec/scoping-doc lifecycle — the linter and the authoring-owed emitter](brief-01-enforce-lifecycle-and-owed-emitter.md) | 0 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #410 @ 7bb86b33d1a81d605b1ef799f1d3352ef9572752) |
+<!-- statusgen:briefs:end -->
 
 ## Critical path
 

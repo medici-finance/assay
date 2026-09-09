@@ -1,5 +1,5 @@
 ---
-brief: mistake-proofing/05
+brief: assay:assay:mistake-proofing:05
 title: newbrief — the scaffolder as the authoring front door, so derived fields stop being typed
 why: >-
   Every rule the earlier briefs in this stream turn into a check is a rule that still lets an author
@@ -24,7 +24,7 @@ exec-tier-why: >-
   from a control into a machine for emitting confidently wrong gates. It also has to agree with
   three other briefs' rule sets at once.
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-25 (authored for the mistake-proofing board)
 sources:
   - "`docs/mistake-proofing.md` §4 B1: 'The brief front door SHOULD be a generator, not a blank file: every required key emitted (empty values still carry their keys), gate derived by prompting the risk questions rather than accepting a hand-written answer, wave derived from depends, the inverse unblocks: edge written into the named briefs in the same change (making graph consistency structural rather than checked), and any freshness stamp produced by a fetch the tool itself performs. Every field a generator derives is an authoring mistake that stops existing.'"
@@ -34,6 +34,8 @@ sources:
   - "The device inventory behind this stream (2026-08-25), cost M — names the exact seam: the existing scaffolder subcommand, and the fact that fixing it is owed work regardless of this brief. Also: 'write the inverse edge rather than check it — a scaffolder that appends the inverse into the named briefs in the same commit makes inversion structural, and there is nothing left to check.'"
   - "The existing scaffolder is a disclosed divergence: it scaffolds a retired register dialect. This brief adds a sibling subcommand and does not inherit that defect; it also does not fix it."
   - "freshness-checked 2026-08-25 @ 657cab1 (origin/main) — no such subcommand exists; the dispatcher's known-subcommand list names the existing subcommands and no brief generator among them."
+version: 1
+id: b6ee79e4-d377-49e6-8146-48522d1863b1
 ---
 
 # Brief 05 — The brief scaffolder as the authoring front door

@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/12
+brief: assay:assay:harness-portability:12
 title: Cursor — the third harness column
 why: >-
   The seam this stream built (neutral capability vocabulary + a thin per-harness
@@ -17,7 +17,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-26 by harness-portability authoring session (Cursor third-column dispatch)
 sources: ["authoring dispatch (Ian, 2026-08-26): target BOTH Cursor surfaces, headless-first — the headless cursor-agent CLI primary, the IDE agent secondary", "the measured Cursor capability matrix (HP/12 ground-truth: documentary + public-docs sweep, no live environment 2026-08-26; §5 live-confirm rows)", "the Codex chain this mirrors: HP/01 ground-truth, HP/03 ruling, HP/04 binding+lint, HP/06 packaging — Cursor is the same shape, lighter", "the harness-target ruling (the non-negotiable floor C: isolation/evidence/review-gates never degrade)", "cursor.com/docs {cli/headless, context/rules, skills, hooks} + 2026 third-party write-ups (all dated in the research doc's Appendix A)"]
 consumers: ["plugins/assay/references/cursor.md: fixed-here (new binding, capability→mechanism + per-skill degradation)", "tools/harnessgen: fixed-here (new `cursor` verb + tests; readPackaging gains a marker param, codex callsite updated)", "plugins/assay/cursor/{packaging.md,assay.mdc}: fixed-here (coverage roster + generated .mdc rule)", "plugins/assay/skills/adopt/SKILL.md: fixed-here (Cursor install scenario, section 2c)", "plugins/assay/codex/AGENTS-assay.md: out-of-scope (reused unchanged — Cursor reads AGENTS.md natively, the shared fragment)", "docs/how-assay-works.md: fixed-here (Cursor column added to the capability table)", "docs/adopting-assay.md: out-of-scope (Cursor quickstart, sibling change)", "freshness.yaml: fixed-here (binding + research doc rot on a 45-day clock)"]
@@ -27,6 +27,8 @@ exec-tier-why: >-
   coverage roster vs the skills tree, the binding cells vs the packaged set, and the
   neutrality lint over the bodies must all agree; the failure mode is a skew no
   single-file test sees.
+version: 1
+id: 4c63c55e-ceac-42ba-a7f8-72e27fde4083
 ---
 
 # Brief 12 — Cursor: the third harness column

@@ -6,6 +6,7 @@ status: active
 priority: P1
 track: platform
 issues: []
+board: generated
 ---
 
 # forge-neutral Stream
@@ -202,20 +203,22 @@ unresolved-argv rows (`allowlist.go:227,240`).
 
 ## Briefs
 
+<!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Forge resolution contract — the forge comes from repo config, and refusal is the only fallback](brief-01-forge-resolution-contract.md) | 1 | M | implemented | — | — |
 | 02 | [Forge-qualified identity — roster entries, bot renderings, review corroboration](brief-02-forge-qualified-identity.md) | 2 | M | implemented | — | — |
-| 03 | [Write verbs A — deskpost, deskreply, deskflip onto the resolver](brief-03-write-verbs-comment-and-flip.md) | 2 | M | implemented | — | — |
-| 04 | [Write verbs B — deskpr, deskfile, deskclose, deskevidence onto the resolver](brief-04-write-verbs-issues-and-evidence.md) | 2 | M | implemented | — | — |
-| 05 | [Claim layer — the GitLab shape of `refs/dispatch/*` and its release](brief-05-claim-layer-forge-shape.md) | 2 | M | implemented | — | — |
-| 06 | [Read verbs — deskboard (board.go reads), issueboard, scanloop on the seam](brief-06-read-verbs-on-the-seam.md) | 3 | M | implemented | — | — |
-| 07 | [statusgen acting identity — Evidence-actor and `verifyrun` name the forge identity that acted](brief-07-statusgen-acting-identity.md) | 3 | M | todo | — | — |
-| 08 | [statusgen forge-aware — `init` CI scaffold, auto-flip corroboration, honest claim decay](brief-08-statusgen-forge-aware.md) | 4 | M | todo | — | — |
-| 09 | [Substrate — leak-gate verdict on merge requests, `cellctl` forge-aware `new`/`up`](brief-09-substrate-leakgate-and-cellctl.md) | 3 | M | todo | — | — |
+| 03 | [Write verbs A — deskpost, deskreply and deskflip onto the resolver](brief-03-write-verbs-comment-and-flip.md) | 2 | M | implemented | — | — |
+| 04 | [Write verbs B — deskpr, deskfile, deskclose and deskevidence onto the resolver](brief-04-write-verbs-issues-and-evidence.md) | 2 | M | implemented | — | — |
+| 05 | [Claim layer — the GitLab shape of refs/dispatch/* and its release](brief-05-claim-layer-forge-shape.md) | 2 | M | implemented | — | — |
+| 06 | [Read verbs — deskboard, issueboard, scanloop and the loop planners on the seam](brief-06-read-verbs-on-the-seam.md) | 3 | M | implemented | — | — |
+| 07 | [statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted](brief-07-statusgen-acting-identity.md) | 3 | M | todo | — | — |
+| 08 | [statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay](brief-08-statusgen-forge-aware.md) | 4 | M | todo | — | — |
+| 09 | [Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up](brief-09-substrate-leakgate-and-cellctl.md) | 3 | M | todo | — | — |
 | 10 | [Conformance — one round trip driven entirely by desk verbs, and the writes they refuse](brief-10-conformance-round-trip.md) | 5 | M | todo | — | — |
 | 11 | [Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives](brief-11-install-without-gh.md) | 5 | M | todo | — | — |
-| 12 | [deskboard non-board reads onto the seam — PR search, commit history, single-commit, combined-status, workflow listing](brief-12-deskboard-non-board-reads-onto-the-seam.md) | 4 | L | implemented | — | — |
+| 12 | [deskboard non-board reads onto the seam](brief-12-deskboard-non-board-reads-onto-the-seam.md) | 4 | L | implemented | — | — |
+<!-- statusgen:briefs:end -->
 
 ## Critical path
 

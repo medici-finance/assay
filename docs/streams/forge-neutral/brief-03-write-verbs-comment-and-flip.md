@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/03
+brief: assay:assay:forge-neutral:03
 title: Write verbs A — deskpost, deskreply and deskflip onto the resolver
 why: >-
   These three verbs carry the review loop's outward writes: the verdict, the reply, and the
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
 sources:
   - "docs/streams/forge-neutral/brief-01-forge-resolution-contract.md — the resolver and the refusal contract these verbs consume"
@@ -31,6 +31,8 @@ consumers:
   - "tools/desk/cmd/deskflip: fixed-here"
   - "tools/desk/internal/forgeban/allowlist.go: fixed-here (eight rows removed, ceiling lowered to 16 — the amendment's MEASURED figure, superseding the frozen 17)"
   - "plugins/assay/skills/pr-review-desk/SKILL.md: out-of-scope (the skill names the verbs, not their transport; no skill text changes when a verb's backend does)"
+version: 1
+id: 416b7ef5-5d82-417f-b831-dd2928c60d6c
 ---
 
 # Brief 03 — Write verbs A: deskpost, deskreply, deskflip

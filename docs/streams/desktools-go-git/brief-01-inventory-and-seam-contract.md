@@ -1,5 +1,5 @@
 ---
-brief: desktools-go-git/01
+brief: assay:assay:desktools-go-git:01
 title: inventory freeze + gitexec single-seam contract + golden harness + counting CI gate
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-21 by desktools-go-git authoring session
 sources:
   - "docs/streams/desktools-go-git/spec.md — thesis, decisions, boundaries"
@@ -20,6 +20,8 @@ why: >-
   has a single home, and (c) behaviour goldens so a seam swap is provably outcome-
   preserving rather than argv-preserving. This brief lays those three foundations and
   stands up the CI grep gate in advisory (counting) mode so its baseline is recorded.
+version: 1
+id: 55dfa3fd-24e3-43d1-bc1b-e28553431d86
 ---
 
 # Brief 01 — inventory freeze + gitexec seam contract + golden harness + counting CI gate

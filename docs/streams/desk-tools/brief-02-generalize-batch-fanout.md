@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/02
+brief: assay:assay:desk-tools:02
 title: Generalize — batch-fanout as the second drain-engine consumer (contract validation)
 wave: 1
 depends: []
@@ -12,7 +12,7 @@ gate-why: >-
   cutover plus sign-off, not the implementation.
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-07-19 by Fable design session; re-homed to the desk-tools board 2026-08-26
 sources:
   - "The drain-engine architecture and its batch irreducibles — the six-hook contract this brief validates against a second consumer."
@@ -26,6 +26,8 @@ why: >-
   effort × exec-tier instead of a flat floor. If the engine contract survives this consumer
   unchanged, it is real; if it needs a new hook, that is a design finding to file, not a hook
   to add.
+version: 1
+id: edc0d376-9699-4fa4-aa64-d10c8006f318
 ---
 
 # Brief 02 — batch-fanout as second engine consumer

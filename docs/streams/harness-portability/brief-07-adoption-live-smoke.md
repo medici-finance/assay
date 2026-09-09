@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/07
+brief: assay:assay:harness-portability:07
 title: Adoption docs, freshness registration, live Codex smoke protocol + first run
 why: >-
   Everything upstream is structure; this brief is the claim. "Assay runs natively on
@@ -21,10 +21,12 @@ gate-why: >-
   claim no in-repo command can corroborate.
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-07 by harness-portability authoring session
 sources: ["authoring dispatch (Ian, 2026-08-07): say honestly how a Codex-targeted skill gets tested, and mark rows blocked rather than writing ones that pass vacuously", "the harness-target ruling (HP/03): the degradation matrix the smoke run is judged against", "harness-portability/05 + /06 deliverables (the artifacts under test)", "freshness.yaml + tools/freshness (the existing staleness instrument the binding files get registered in)", "docs/adopting-assay.md (the adoption runbook gaining the Codex path)", "freshness-checked 2026-08-07 (adopting-assay.md's harness mention is a single generic line; no Codex path exists)"]
 consumers: ["docs/adopting-assay.md: fixed-here (Codex adoption path)", "plugins/assay/PARITY.md + RELEASE-NOTES.md: fixed-here (bundle version bump recording the second harness)", "freshness.yaml: fixed-here (references/codex.md + references/claude-code.md + the capability matrix registered)", "the publication review: out-of-scope (whether/when the Codex-ready bundle reaches the public copy is the publication manifest's call)"]
+version: 1
+id: 63fadf7d-3fb5-4592-a139-49a36abcdc5c
 ---
 
 # Brief 07 — Adoption docs, freshness leashes, live smoke

@@ -1,0 +1,43 @@
+Subject: [PATCH] assay-statusgen: reconcile lifecycle cells from PR history
+
+STAGED, NOT APPLIED. This patch is the reconcile step the brief-v2 migration's
+release note tells every adopter to add to the workflow that regenerates their
+board. It is committed as a .patch file rather than applied because the identity
+that opened the flag-day pull request cannot write under .github/workflows/ —
+that scope is deliberately withheld from it. Whoever holds the workflows scope
+applies it:
+
+    git apply .github/assay-statusgen.reconcile.patch
+    git rm  .github/assay-statusgen.reconcile.patch
+
+WHAT IT DOES. Under brief-v2 a brief's lifecycle cell is DERIVED, not asserted:
+statusgen reads it back from the `Brief:` trailer on the pull requests that
+touched each brief. `statusgen reconcile --backfill` performs that fold and
+needs one authenticated read of pull-request history, so it runs in the regen
+job — after the board is regenerated and before the result is committed.
+
+WHY THE TOKEN IS THE DEFAULT ONE. The step only READS pull requests. The regen
+job already mints a write-scoped App token for its push; that token is not
+reused here, so a read stays a read.
+
+UNTIL IT IS APPLIED the authoring columns regenerate normally and the lifecycle
+columns are carried through unchanged rather than reconciled — the board stays
+correct, it simply does not yet fold in what the pull-request history says.
+
+--- a/.github/workflows/assay-statusgen.yml
++++ b/.github/workflows/assay-statusgen.yml
+@@
+     permissions:
+       contents: read
++      pull-requests: read
+     steps:
+@@
+       - name: Regenerate STATUS.md
+         run: |
+           "${RUNNER_TEMP}/statusgen" --root .
++      - name: Reconcile lifecycle cells from PR history
++        run: |
++          "${RUNNER_TEMP}/statusgen" reconcile --backfill --root .
++        env:
++          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+       - name: Commit STATUS.md if it changed

@@ -1,5 +1,5 @@
 ---
-brief: quality/11
+brief: assay:assay:quality:11
 title: DORA join — quality denominator + traced-CFR refinement + pluggable delivery-metrics source
 why: >-
   A flow board measures delivery; it cannot say whether the change it shipped was
@@ -15,12 +15,14 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §8 — DORA join: quality denominator, CFR refinement with evidence-tier split, join keys, pluggable delivery-metrics source, DevLake domain-schema naming for comparability (not a dependency)"
   - "docs/streams/quality/spec.md §4.1/§4.2 — line-operation taxonomy and the 14-day churn window that define durable-change volume (consumes M1, brief-02)"
   - "docs/streams/quality/spec.md §5.3 — defect-inducing change rate and the trace-rate/evidence-tier that the traced CFR must ship with (consumes M2, brief-07)"
+version: 1
+id: 7283d5be-f91b-4d51-9e56-caade85e6030
 ---
 
 # Brief 11 — DORA join: quality denominator + traced-CFR, pluggable delivery-metrics source

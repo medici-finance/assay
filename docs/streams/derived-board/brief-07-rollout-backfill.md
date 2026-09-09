@@ -1,5 +1,5 @@
 ---
-brief: derived-board/07
+brief: assay:assay:derived-board:07
 title: per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills
 why: >-
   Five repositories carry stream boards and every one of them has phantom rows today.
@@ -13,7 +13,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by derived-board scoping session
 sources:
   - "docs/streams/derived-board/spec.md §7 (backfill as a drift-report PR)"
@@ -23,6 +23,8 @@ exec-tier: any
 domain: complicated
 consumers:
   - "each consumer repo's .assay-versions, regen workflow, brief spec docs and the four desk skills: fixed-here (one PR per repo, listed in Task)"
+version: 1
+id: 3535fcb8-1d38-4a68-b59d-202985f32264
 ---
 
 # Brief 07 — rollout + backfill

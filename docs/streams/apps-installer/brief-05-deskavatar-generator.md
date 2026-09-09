@@ -1,5 +1,5 @@
 ---
-brief: apps-installer/05
+brief: assay:assay:apps-installer:05
 title: "`deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof"
 why: >-
   App avatars are seen at 20 px in a PR timeline, where only the tile's colour and one bold
@@ -14,7 +14,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-05 by apps-installer authoring session
 sources:
   - "./design.md §5 — the avatar rules (constant octagon; hue per role in the full suite, inversion for read/act; solid glyphs ≥ 7/64; identity field behind the glyph; no fineness mark on the uploaded file; 20 px pairwise proof; deterministic)."
@@ -25,6 +25,8 @@ exec-tier: any
 consumers:
   - "tools/desk/go.mod: fixed-here (one pure-Go SVG rasteriser dependency; no cgo, no system library)"
   - "docs/desk-tools/deskavatar.md: fixed-here (new)"
+version: 1
+id: e4b0a613-87e6-4798-916c-5ba0a89c62b2
 ---
 
 # Brief 05 — `deskavatar`

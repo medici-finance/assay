@@ -1,5 +1,5 @@
 ---
-brief: forge-gitlab/03
+brief: assay:assay:forge-gitlab:03
 title: GitLab token custody — rotate-on-mint + expiry backstop in desktoken
 why: >-
   GitLab PATs are long-lived, and the security-parity ruling forbids shipping a custody
@@ -14,7 +14,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by forge-gitlab authoring session
 sources:
   - "docs/streams/forge-gitlab/spec.md §5 (rotate-on-mint, expiry backstop, file custody)"
@@ -23,6 +23,8 @@ exec-tier: strong
 exec-tier-why: "credential machinery where a subtle error (stale token left valid, value leaked to argv/logs) survives the happy path (question c)."
 domain: complicated
 tier: free
+version: 1
+id: e6967957-d2c7-4e8b-81f3-71e6bde544d6
 ---
 
 # Brief 03 — GitLab token custody

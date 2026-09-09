@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/02
+brief: assay:assay:forge-neutral:02
 title: Forge-qualified identity — roster entries, bot renderings, review corroboration
 why: >-
   On the 2026-09-02 GitLab pilot the Evidence was committed by a distinct, non-implementing
@@ -16,7 +16,7 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
 sources:
   - "docs/streams/forge-gitlab/pilot-report.md D-3 — a correctly-verified GitLab row reads as self-attested; D-9 — the witness names a host-derived handle, not the acting account"
@@ -41,6 +41,8 @@ consumers:
   - "statusgen/autoflip.go: follow-up forge-neutral/08"
   - "plugins/assay/skills/install/SKILL.md, plugins/assay/skills/adopt/SKILL.md: follow-up forge-neutral/11 (the two-principals prerequisite is stated from this grammar)"
   - "tools/cellctl/cellctl: follow-up forge-neutral/09"
+version: 1
+id: 9c18ec3c-2dc0-4735-b54e-a9d9ec40fec3
 ---
 
 # Brief 02 — Forge-qualified identity

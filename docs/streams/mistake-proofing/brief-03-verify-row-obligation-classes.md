@@ -1,5 +1,5 @@
 ---
-brief: mistake-proofing/03
+brief: assay:assay:mistake-proofing:03
 title: Typed Verify-row obligation classes — carry the prose MUSTs as data and derive their presence from the diff
 why: >-
   Three of the authoring rules the fleet leans on hardest are prose MUSTs with no device behind them
@@ -25,7 +25,7 @@ exec-tier-why: >-
   class column keeps its historical behaviour — must survive the change untouched, or every
   inherited table changes meaning in one commit.
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-25 (authored for the mistake-proofing board)
 sources:
   - "`docs/mistake-proofing.md` §4 B2: 'the prose MUSTs of brief authoring SHOULD be carried as typed row classes whose presence the lint derives from the shape of the change and enforces. Presence is the control; adequacy stays review (D7).'"
@@ -35,6 +35,8 @@ sources:
   - "Same inventory — no mutation row on a brief adding a check, no neighbour row on a shared-lister change, no flow row on a shared-value change: all prose MUSTs, all unenforced."
   - "depends mistake-proofing/01: the flow-row obligation is derived from a brief's DECLARED PATHS, and 01 is the brief that first makes that line readable by the lint. Building the derivation here without it means writing 01's parser twice."
   - "freshness-checked 2026-08-25 @ 657cab1 (origin/main) — the closed class set holds exactly four values, none of them an obligation class; no obligation derivation exists."
+version: 1
+id: bcf746f9-3f42-4198-b416-8bfb93872f33
 ---
 
 # Brief 03 — Typed Verify-row obligation classes

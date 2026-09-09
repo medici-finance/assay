@@ -1,5 +1,5 @@
 ---
-brief: apps-installer/02
+brief: assay:assay:apps-installer:02
 title: "`deskapps init` — loopback page, tier manifests, the manifest→code→conversion flow, key and record writes"
 why: >-
   Creating one GitHub App by hand is eight steps; the recommended adoption needs two Apps and the
@@ -15,7 +15,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-05 by apps-installer authoring session
 sources:
   - "./design.md §1–§3, §6, §9 — the rules, the screens, the sequence of one App, the command surface, the three facts to measure first."
@@ -33,6 +33,8 @@ consumers:
   - "tools/desk/README.md: fixed-here (new `deskapps` section)"
   - "docs/desk-tools/deskapps.md: fixed-here (new per-verb doc)"
   - "plugins/assay/skills/install/SKILL.md: follow-up apps-installer/07"
+version: 1
+id: 566d5440-7cb6-4731-9aea-d153ee6b16c8
 ---
 
 # Brief 02 — `deskapps init`: the manifest flow

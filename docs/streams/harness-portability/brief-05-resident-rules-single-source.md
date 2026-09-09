@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/05
+brief: assay:assay:harness-portability:05
 title: Resident rules — one source, per-harness delivery generated
 why: >-
   The SessionStart hook is how the method arrives in every Claude session; a harness
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-07 by harness-portability authoring session
 sources: ["authoring dispatch (Ian, 2026-08-07): the SessionStart hook is the load-bearing delivery mechanism, not a convenience", "the inject-resident-rules.sh hook + hooks.json: SessionStart is the ONLY hook Assay ships; the ten rules live as a heredoc inside the shell script", "an open finding: shared guardrails restated 4-5 times across desk/loop skills — the single-source cut this brief makes is the same medicine", "harness-portability/01's resident-rules-channel matrix row (which AGENTS.md paths Codex reads, composition, size limits)", "the harness-target ruling (HP/03): ruled target set — which fragments to generate", "the maintainer ruling 2026-08-03 (AGENTS.md is repo-local; adopters get the method through the bundle): the fragment ships IN the bundle for adopters, and never edits this repo's root AGENTS.md", "freshness-checked 2026-08-07 (the rules exist nowhere outside the heredoc)"]
 consumers: ["plugins/assay/hooks/inject-resident-rules.sh: fixed-here (becomes a thin emitter of the generated payload; hooks.json untouched)", "Claude sessions of every adopter + this house: fixed-here (byte-identical payload is the acceptance bar — regression row below)", "adopt skill / docs/adopting-assay.md (Codex fragment install step): follow-up harness-portability/06 and harness-portability/07", "root AGENTS.md (this repo): out-of-scope (repo-local by ruling; never a generation target)"]
@@ -24,6 +24,8 @@ exec-tier-why: >-
   (c): safety plumbing — the rules ARE the guardrails, and a generation bug that drops
   or reorders a rule ships a weakened method to every session while every simple test
   still passes; byte-equality discipline and the fixture design need care.
+version: 1
+id: 9d723eff-d406-457a-9846-994c0d606902
 ---
 
 # Brief 05 — Resident rules: single source, generated delivery

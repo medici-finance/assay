@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/13
+brief: assay:assay:harness-portability:13
 title: Cursor live-desk-smoke protocol + first run
 why: >-
   Brief 12 built the structural Cursor column (binding file, generator verb, generated
@@ -23,7 +23,7 @@ gate-why: >-
   in-repo command can corroborate.
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-01 by harness-portability gap-check dispatch (assay-worker-app)
 sources: ["brief-12-cursor-third-column.md §\"The one gate:model open item + the gate:human acceptance step\": \"The parity acceptance is a live session on Cursor ... exactly the posture the Codex stream held for its live smoke (HP/07)\" — read in full 2026-09-01, no owning brief exists for that acceptance step", "brief-12's own 11-row Verify table (read in full 2026-09-01): every row is offline/structural (go test, harnessgen --check, mutation tests, freshness) — none executes a live Cursor session or a desk-loop dispatch; row 10 only checks that live-only capability rows STAY FLAGGED, not that they were confirmed", "brief-07-adoption-live-smoke.md (read in full 2026-09-01): the precedent this brief mirrors — protocol doc + adoption-docs runbook + a committed, evidence-bearing run log, gate:human, live-run row explicitly BLOCKED until the human runs it", "docs/adopting-assay.md (read 2026-09-01, ~L773-828): the Cursor section already ends in one unlinked line — \"The one acceptance step is a live smoke run on a Cursor install...\" — this brief is what makes that sentence true", "docs/streams/harness-portability/README.md cross-repo table: \"Live Cursor environment (install) | Head for 12 | Blocks 12's live-confirm rows and its parity smoke; Ian provides\" — the parity-smoke dependency is named but had no owning brief before this one", "freshness-checked 2026-09-01 @ current branch tip: no docs/cursor-smoke-protocol.md, no docs/cursor-smoke-runs/, no PARITY.md/RELEASE-NOTES.md Cursor-smoke entry exist anywhere in the repo (grep + find, clean)"]
 consumers: ["docs/adopting-assay.md: fixed-here (the one-line acceptance mention gets a concrete reference)", "docs/cursor-smoke-protocol.md: follow-up (lands with the sequenced tool/method-text de-house — same posture as docs/codex-smoke-protocol.md, per the stream's re-home note)", "the bundle's PARITY.md/RELEASE-NOTES.md: follow-up (same de-house sequencing; version bump + third-harness-smoke record)", "docs/streams/harness-portability/README.md: fixed-here (status row, wave, gate distribution, cross-repo table)"]
@@ -33,6 +33,8 @@ exec-tier-why: >-
   ruled degradation matrix (plugins/assay/references/cursor.md) and the two-surface ruling
   (headless-first, IDE secondary); a protocol that drifts from the binding it is supposed
   to prove is exactly the failure class this stream exists to prevent.
+version: 1
+id: ab8934e7-cfe3-4a52-bb3e-679ceb33a414
 ---
 
 # Brief 13 — Cursor live-desk-smoke protocol + first run

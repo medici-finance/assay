@@ -1,5 +1,5 @@
 ---
-brief: windows-port/01
+brief: assay:assay:windows-port:01
 title: Release build matrix — windows/amd64 + windows/arm64 + sha256s
 why: >-
   Nothing downstream exists until a Windows binary does: no install path can fetch what the
@@ -22,7 +22,7 @@ gate-why: >-
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 decision-trigger: creation
 issues: [322]
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-01 by windows-port authoring session
 sources:
   - "Ian's direction (2026-09-01): add windows/amd64 + windows/arm64 to the statusgen + desk-tools release build WITH sha256s, mirroring the per-platform pinned-artifact contract"
@@ -37,6 +37,8 @@ consumers:
   - "docs/streams/windows-port/brief-03-install-path.md: follow-up windows-port/03 (the install path selects the statusgen-windows-<arch>.exe asset by name)"
   - "docs/streams/windows-port/brief-04-windows-ci-leg.md: follow-up windows-port/04 (CI smokes the released windows asset)"
   - "docs/adopting-assay.md: follow-up windows-port/05 (the adopter doc names the windows assets)"
+version: 1
+id: 6a4da201-5caa-420c-9494-fb1b21bd5f1b
 ---
 
 # Brief 01 — Release build matrix: windows/amd64 + windows/arm64 + sha256s

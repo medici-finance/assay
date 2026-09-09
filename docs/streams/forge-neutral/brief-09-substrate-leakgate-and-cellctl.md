@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/09
+brief: assay:assay:forge-neutral:09
 title: Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up
 why: >-
   Two pieces of the substrate around the verbs assume GitHub in a way no verb migration
@@ -16,7 +16,7 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
 sources:
   - "docs/streams/forge-neutral/brief-01-forge-resolution-contract.md — the resolver and the per-forge custody binding cellctl must provision for"
@@ -41,6 +41,8 @@ consumers:
   - "docs/adopting-assay-gitlab.md: fixed-here (the adopter runbook gains the CI leak-sweep half the pilot found missing)"
   - "the private control-based sweep that posts the verdict: out-of-scope (it is house-side publication infrastructure, absent from this tree by design — this brief specifies the VERDICT SURFACE it must post to on a merge request, not the sweep)"
   - "plugins/assay/skills/install/SKILL.md: follow-up forge-neutral/11 (the install prose names the optional CLI per forge; cellctl's own prerequisites are fixed here)"
+version: 1
+id: a7231cc4-611d-44e3-8a14-ce5a0d9fe3f0
 ---
 
 # Brief 09 — Substrate: leak gate and cellctl

@@ -1,5 +1,5 @@
 ---
-brief: windows-port/02
+brief: assay:assay:windows-port:02
 title: Portability audit — enumerate + triage the shell-assuming surfaces
 why: >-
   The Go tools already run on Windows; the glue around them does not, and until someone
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-01 by windows-port authoring session
 sources:
   - "Ian's direction (2026-09-01): a brief that enumerates and triages the shell-assuming surfaces — hooks, guard scripts, desk verbs that shell out, path separators, ~/.config vs %APPDATA%"
@@ -27,6 +27,8 @@ consumers:
   - "docs/streams/windows-port/brief-03-install-path.md: follow-up windows-port/03 (the install fork weighs whether a shell installer even runs, from this triage)"
   - "docs/streams/windows-port/brief-04-windows-ci-leg.md: follow-up windows-port/04 (the desk-verb smoke picks a verb this triage classes as windows-runnable)"
   - "docs/adopting-assay.md: follow-up windows-port/05 (the adopter doc lifts the documented-workaround rows verbatim)"
+version: 1
+id: 0c9a65ac-9746-43f5-b181-e201e2069476
 ---
 
 # Brief 02 — Portability audit: enumerate + triage the shell-assuming surfaces

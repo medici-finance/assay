@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/02
+brief: assay:assay:harness-portability:02
 title: Kill the drift debt — re-sync the bundle, flip the canonical home
 why: >-
   The bundled skills are a port of an upstream source repo, measured tens of commits behind at
@@ -14,7 +14,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-07 by harness-portability authoring session
 sources: ["authoring dispatch (Ian, 2026-08-07)", "plugindrift run 2026-08-07: the-desk / batch-fanout / verify-desk / pr-review-desk each tens of commits behind the pinned upstream commit; author-brief primary source (a local-git `~/.claude` checkout) UNREACHABLE by construction", "the 'which surface wins' ruling (a maintainer ruling, 2026-08-03): the bundled skill is authoritative on the METHOD; and the bundle is becoming the home of the method while the upstream repo becomes a consumer", "plugins/assay/PARITY.md re-sync procedure (steps 1-7)", "freshness-checked 2026-08-07: no re-port has landed since the v0.1.0 cut (the SOURCES.yaml source pins are unchanged)"]
 consumers: ["the upstream repo's `.claude/skills/{the-desk,batch-fanout,verify-desk,pr-review-desk}/SKILL.md`: out-of-scope (the consumer cutover already landed on the upstream repo — the four bodies were removed outright, stronger than thin pointers; an upstream-repo change carrying the cross-repo pairing, not this PR's diff)", "`~/.claude/skills/author-brief/SKILL.md`: fixed-here (out-of-repo, rule-7 protocol — applied LAST, committed in the ~/.claude stopgap repo)", "the upstream repo's project-wrapper author-brief SKILL.md: out-of-scope (it is already a wrapper layering project specifics over the core; it keeps pointing at the core's new home)", "plugins/assay/SOURCES.yaml + PARITY.md: fixed-here (direction inverts; rows move to canonical-here declarations)", "tools/plugindrift: fixed-here only if the SOURCES.yaml restructure needs a schema addition; otherwise unchanged"]
@@ -24,6 +24,8 @@ exec-tier-why: >-
   method-content (port it) vs house-specific content (leave it, record why) — the
   PARITY.md intentional-changes discipline — and the authority flip is a cross-repo,
   cross-artifact consistency change.
+version: 1
+id: 15a5c767-59d0-4891-b64d-26646281cc17
 ---
 
 # Brief 02 — Kill the drift debt, flip the canonical home

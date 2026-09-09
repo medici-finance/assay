@@ -1,5 +1,5 @@
 ---
-brief: statusgen/05
+brief: assay:assay:statusgen:05
 title: 'Drives phase 3 — anti-starvation floors + the hard critical tier (≤15/20 slots via a 2-pass fill, ≤6/8 workers, effectiveCap; a lexicographic never-buried tier fed by a stamped security label + a dependency-edge reciprocity lint so blockedCount is not gameable)'
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-20 (authored clean for the statusgen board)
 exec-tier: strong
 exec-tier-why: scoring-integrity + adversarial anti-gaming — the critical tier reorders above every score and its inputs must resist self-selection (stamped-label authority + a reciprocity lint on the depends graph); getting the un-gameable derivation right is the load-bearing risk.
@@ -44,6 +44,8 @@ why: >-
   membership cannot be self-declared — which is why it needs a stamped security/critical label and a
   dependency-edge reciprocity lint (so `blockedCount` cannot be gamed into the tier). Until both
   land, a drive can starve the rest of the board or bury a fire.
+version: 1
+id: 3e27b6ba-5b63-4e96-9bd8-7b12836d6b78
 ---
 
 # Brief 05 — Drives phase 3: anti-starvation floors + the hard critical tier

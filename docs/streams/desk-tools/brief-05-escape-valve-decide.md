@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/05
+brief: assay:assay:desk-tools:05
 title: "Escape-valve `Decide()` primitive in deskkit — enum-bounded agent consults for deterministic loops"
 why: >-
   Deterministic loops hit situations code can't classify (is this FAIL rot or regression? is this
@@ -13,7 +13,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-17 by a re-scope session (pr-shepherd); re-homed to the desk-tools board 2026-08-26
 sources:
   - "Direction for an agentic escape valve with a limited vocabulary, for all the desks."
@@ -21,6 +21,8 @@ sources:
   - "The drain engine this plugs into and the guardrail module that is its natural neighbour."
 exec-tier: strong
 exec-tier-why: "the contract (vocabulary grammar, reserved verbs, journal shape) is a design decision every desk loop inherits."
+version: 1
+id: 8ec63182-4f30-4aec-bb7e-5e3a5c084b86
 ---
 
 # Brief 05 — Escape-valve `Decide()` primitive in deskkit

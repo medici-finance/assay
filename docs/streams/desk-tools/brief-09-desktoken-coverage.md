@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/09
+brief: assay:assay:desk-tools:09
 title: "`desktoken coverage <role>` — list the repositories a role's App installations can see"
 why: >-
   Before a roster flip or a cross-org dispatch, the coordinator has to answer one question:
@@ -17,7 +17,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by a worker-desk authoring session, from a 24-hour transcript sweep across
   fifteen desk-role and worker sessions (tallied per session)
 sources:
@@ -29,6 +29,8 @@ sources:
 exec-tier: strong
 exec-tier-why: "(c) auth plumbing — a per-installation token written into the wrong cache
   slot, or echoed in a debug line, survives every test that only checks the repo list."
+version: 1
+id: b6f9d6c9-7432-49a8-b8d6-9f3767e6881b
 ---
 
 # Brief 09 — `desktoken coverage <role>`: list the repositories a role's App installations can see

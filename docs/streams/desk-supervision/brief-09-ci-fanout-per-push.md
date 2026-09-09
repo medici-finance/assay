@@ -1,5 +1,5 @@
 ---
-brief: desk-supervision/09
+brief: assay:assay:desk-supervision:09
 title: Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build
 why: >-
   The desk caps how many workers run at once, but nothing caps what each of their pushes
@@ -17,7 +17,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-05 by desk-supervision authoring session
 exec-tier: strong
 exec-tier-why: >-
@@ -37,6 +37,8 @@ consumers:
   - "tools/desk/cmd/deskboard/zeroci.go (reads every pull_request workflow's filters to decide `no-checks` vs `CI-NEVER-RAN`): out-of-scope (no change needed — `wouldFire` already models `paths-ignore` as \"skipped only when EVERY changed file is ignored\", which is exactly the semantics this brief relies on; Verify row 6 proves it on the new filter set rather than assuming it)"
   - "tools/desk/cmd/deskflip/flip.go condition `checks-green`: out-of-scope (no change needed — an EMPTY rollup is `Unverifiable` on a CI-required repo, and the smallest post-change fan-out is four check runs, never zero; Verify row 7 proves it)"
   - "the `leak-sweep` required status check: out-of-scope (posted by a gate that is not one of these workflows; unfiltered and unreachable from this diff, before and after)"
+version: 1
+id: 4b4dc7f7-13f1-42cc-8b97-6ff097f1e7c8
 ---
 
 # Brief 09 — Per-push CI fan-out

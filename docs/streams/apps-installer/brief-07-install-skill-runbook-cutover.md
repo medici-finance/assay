@@ -1,5 +1,5 @@
 ---
-brief: apps-installer/07
+brief: assay:assay:apps-installer:07
 title: Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented
 why: >-
   The tool is worth nothing if the adoption path still tells adopters to click through eight steps
@@ -13,7 +13,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-05 by apps-installer authoring session
 sources:
   - "./README.md — the three-tier table (what runs without the adopter, what stays theirs); ./design.md §1, §6."
@@ -34,6 +34,8 @@ consumers:
   - "plugins/assay/skills/adopt/SKILL.md: fixed-here (one pointer line, if it names the App runbook)"
   - "tools/desk/README.md: fixed-here (Operator reference § App credentials mentions deskapps)"
   - "docs/how-assay-works.md: out-of-scope (methodology, not install mechanics)"
+version: 1
+id: 76b90784-54de-4789-afa1-7cd2ed6b51bf
 ---
 
 # Brief 07 — Install skill and runbook cutover

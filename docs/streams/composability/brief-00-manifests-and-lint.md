@@ -1,5 +1,5 @@
 ---
-brief: composability/00
+brief: assay:assay:composability:00
 title: Component manifests, key catalogue, and the resolve/cycle lint
 why: >-
   Assay's units depend on each other through undeclared env keys, verb names, and paths, so
@@ -14,7 +14,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-08 by composability authoring session
 sources:
   - "docs/streams/composability/component-model.md §2 (manifest shape), §3 (key catalogue), §6.1 (cycle rule)"
@@ -22,6 +22,8 @@ sources:
   - "docs/adopting-assay.md §2 Component inventory — the prose list this brief makes machine-readable"
   - "docs/adopting-assay.md (roster section) — the ASSAY_* keys, split into fail-closed trust surfaces and adopter extensions with defaults"
   - "Ian's direction (2026-09-07): turn the paper's model into a stream; start with the blast-radius fix"
+version: 1
+id: d91c64e8-36e6-4c8c-a4db-0974d7d9ecba
 ---
 
 # Brief 00 — Component manifests, key catalogue, and the resolve/cycle lint

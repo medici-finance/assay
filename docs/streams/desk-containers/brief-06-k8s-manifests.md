@@ -1,5 +1,5 @@
 ---
-brief: desk-containers/06
+brief: assay:assay:desk-containers:06
 title: Kubernetes manifests for the five desks
 wave: 3
 depends: ["desk-containers/02", "desk-containers/03"]
@@ -8,7 +8,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by desk-containers scoping session
 sources:
   - "medici-finance/assay#63 — the request (secondary aim: launched via k8s)"
@@ -19,6 +19,8 @@ why: >-
   The second half of the request's secondary aim: run the same desk images on a
   cluster, with per-desk persistent volumes and credentials from k8s Secrets, so a desk
   can live on shared infrastructure instead of one person's desktop.
+version: 1
+id: 9ff1192a-c441-4dd3-b574-85b8cf85954e
 ---
 
 # Brief 06 — Kubernetes manifests

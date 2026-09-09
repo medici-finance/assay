@@ -1,5 +1,5 @@
 ---
-brief: iso-9001/06
+brief: assay:assay:iso-9001:06
 title: The auditor one-pager — what Assay is and is not
 why: >-
   The first question a certified adopter's quality manager asks is "does using this make us
@@ -21,7 +21,7 @@ exec-tier-why: >-
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-25 (authored for the iso-9001 board)
 sources:
   - "`docs/evidence-bundle.md` preamble — the prose that already says it: the bundle evidences the RECORDED process, derived from authored artifacts; it is an INPUT TO a compliance review, not a compliance artifact in itself; it is NOT an audit opinion and does not attest ground truth. This brief extracts and sharpens; it does not invent."
@@ -33,6 +33,8 @@ sources:
   - "The standard-side reading: a vendor's own certificate does not validate a tool for an adopter's intended use — it is one input to supplier evaluation and nothing more; and validation is intended-use-specific and therefore inherently the adopter's act, which nobody can perform for them. Both belong on this page in plain words."
   - "The standard-side reading, second half: what a certified adopter actually needs from a tool is a statement of intended use and limitations, immutable versioned releases whose version is reported into every record, a published defect process including notification of defects that could have produced wrong past results, a support and lifecycle policy, exportable human-readable records, and an explicit statement of non-determinism where a model is in the loop. This page states which of those exist here and which do not."
   - "freshness-checked 2026-08-25 @ 6871a3b (origin/main) — `docs/what-assay-is-and-is-not.md` (planned) does not exist; the honest framing lives only inside `docs/evidence-bundle.md`."
+version: 1
+id: 92e336c2-c5a9-408f-bc82-3c32b1472b18
 ---
 
 # Brief 06 — the auditor one-pager

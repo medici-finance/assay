@@ -1,5 +1,5 @@
 ---
-brief: quality/15
+brief: assay:assay:quality:15
 title: learned riskscore graduation — JIT defect-prediction model with heuristic fallback
 wave: 3
 why: >-
@@ -18,13 +18,15 @@ exec-tier-why: >-
   split done wrong silently trains on a defect's own future and inflates every metric.
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §9.1 — PR riskscore feed; Evolution: graduate to a JIT model trained on the repo's own traced defects, heuristic features remain fallback + explanation"
   - "docs/streams/quality/spec.md §5 (M2 SZZ) — the traced-defect corpus the model trains on"
   - "docs/streams/quality/spec.md §12 — Kamei et al., JIT quality-assurance feature family"
   - "docs/streams/quality/spec.md §3.2 — three-state invariant; §10 honest-claims"
+version: 1
+id: fbaac7e4-e22d-48d8-bc73-01c5da3277e8
 ---
 
 # Brief 15 — learned riskscore graduation (JIT defect-prediction model)

@@ -1,5 +1,5 @@
 ---
-brief: derived-board/06
+brief: assay:assay:derived-board:06
 title: "v1.0.0 — deskmigrate statusgen-regen op, the v0.28.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1"
 why: >-
   A hand-edited surface becoming generated is the first contract-breaking change the
@@ -19,7 +19,7 @@ gate-why: >-
   "stable". The human confirms the migration's dry-run output on a real adopter tree and
   the release-note prose, then pushes the tag; the brief prepares everything up to the tag.
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by derived-board scoping session
 sources:
   - "docs/streams/derived-board/spec.md §6 (bundle versioning), §7 (migration)"
@@ -34,6 +34,8 @@ consumers:
   - "plugins/assay/paired-versions.yaml: fixed-here"
   - "examples/adopter-scaffold/.assay-versions + its briefs (schema: brief-v2): fixed-here"
   - ".assay-versions of each consumer repo: follow-up derived-board/07"
+version: 1
+id: 0786889c-9b51-4b97-b02d-333c757cca9a
 ---
 
 # Brief 06 — v1.0.0 migration + cut preparation

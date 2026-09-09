@@ -1,0 +1,1 @@
+v1.0.0: briefs migrated brief-v1 -> brief-v2 (generated board). Add `statusgen reconcile --backfill` to your board workflow (see docs/release-notes/v1.0.0.md).

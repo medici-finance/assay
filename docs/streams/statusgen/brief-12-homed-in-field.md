@@ -1,5 +1,5 @@
 ---
-brief: statusgen/12
+brief: assay:assay:statusgen:12
 title: "`homed-in: <owner/repo>` brief field — exclude a brief whose deliverable lives in another repo from THIS board's Next-up, keep its tracking row, carry the target repo"
 why: >-
   When a brief's deliverable is moved to a different repository than the board that renders it, the
@@ -16,7 +16,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-27 (authored for the statusgen board)
 exec-tier: strong
 exec-tier-why: >-
@@ -32,6 +32,8 @@ sources:
   - "The optional-KNOWN-key pattern already used for exec-tier / blocked-by / measures (parse as a recognized field, default-inert on absence, PROBLEM on a malformed present value)"
   - "The fail-loud-when-hiding-work discipline: a brief withheld from Next-up must be NAMED on the board, never silently dropped (the StaleRef ~596-brief silent-hide lesson)"
 gate-why: n/a (gate is model; all four risk answers are no)
+version: 1
+id: c4df0e45-2253-45a6-ba5e-c310cf93a754
 ---
 
 # Brief 12 — `homed-in: <owner/repo>` — a re-home pointer that leaves the local dispatch pool but keeps the tracking row

@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/15
+brief: assay:assay:desk-tools:15
 title: "`deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home"
 why: >-
   A dry-run dispatch prints the prompt with the agent's home worktree shown as a not-yet-known
@@ -19,7 +19,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by a worker-desk authoring session, from a 24-hour transcript sweep across
   fifteen desk-role and worker sessions (tallied per session)
 sources:
@@ -27,6 +27,8 @@ sources:
   - "The path rules an operator-supplied home must satisfy, already implemented: `tools/desk/cmd/deskwt/deskwt.go` § pathGuard (resolves under the sanctioned prefixes; the shared checkout refused by identity) and § currentRepo (the worktree belongs to the item's repo)."
   - "The verifier prompt this is previewed for: `tools/desk/cmd/deskdispatch/references/verifier-prompt.md` and `tools/desk/cmd/verifyloop/dispatch.go` § assertNoSharedCheckout."
   - "Brief and Verify shape: `spec/brief-v1.md`; status semantics: `spec/lifecycle-v1.md`."
+version: 1
+id: 1c3c43be-f164-4605-a8d7-239d1c542dd0
 ---
 
 # Brief 15 — `deskdispatch --dry-run --worktree <path>`: render the prompt against an operator-supplied home

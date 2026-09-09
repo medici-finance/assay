@@ -1,5 +1,5 @@
 ---
-brief: desk-supervision/07
+brief: assay:assay:desk-supervision:07
 title: Runtime snapshot — `desksupervise status` for operators and the console
 why: >-
   Desks expose nothing but filed issues. "What is running, how long has it been silent,
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by desk-supervision authoring session
 sources:
   - "OpenAI Symphony SPEC.md §13.3 (runtime snapshot / monitoring interface), §13.5 (session metrics and token accounting), §13.7 (optional HTTP server) — https://github.com/openai/symphony/blob/main/SPEC.md"
@@ -30,6 +30,8 @@ consumers:
   - "plugins/assay/skills/worker-desk/SKILL.md §Sources of work row 9 and §HARD GATE: fixed-here (row 9's instrument becomes `desksupervise status`; the raw ls-remote stays as the fallback)"
   - "plugins/assay/skills/pr-review-desk/SKILL.md and verify-desk/SKILL.md: fixed-here (each cadence sweep gains the same one-line read, so all three windows see armed stops — closes the follow-up brief 02 deferred)"
   - "an operator console rendering the JSON: out-of-scope (a private consumer; the schema is the contract it reads)"
+version: 1
+id: d4b9a526-24ee-45f7-a449-ad3903bd0416
 ---
 
 # Brief 07 — Runtime snapshot

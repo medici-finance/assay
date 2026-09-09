@@ -1,5 +1,5 @@
 ---
-brief: windows-port/03
+brief: assay:assay:windows-port:03
 title: Windows install path — PowerShell-vs-Go-installer fork, then build
 why: >-
   A Windows adopter needs the same thing a Unix adopter gets from `assay:install`: a
@@ -26,7 +26,7 @@ gate-why: >-
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 decision-trigger: creation
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-01 by windows-port authoring session
 sources:
   - "Ian's direction (2026-09-01): the desk-install equivalent for Windows — DECIDE PowerShell script vs a Go installer and SURFACE that fork explicitly (pros/cons, recommendation) rather than pre-deciding silently"
@@ -45,6 +45,8 @@ exec-tier: strong
 exec-tier-why: >-
   Correctness depends on a security control (sha256-verify-or-refuse at the acquisition trust
   boundary) that a subtle implementation error would leave silently bypassed — question (c).
+version: 1
+id: 0625c292-6a5c-421f-88f3-2266baeae926
 ---
 
 # Brief 03 — Windows install path: the fork, then the build

@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/19
+brief: assay:assay:desk-tools:19
 title: "`verifyloop plan` fails safe on risk — any risk answer `yes` routes to ROUTE-HUMAN, and the Evidence-only lane says so"
 why: >-
   `verifyloop plan` is meant to keep risk-flagged briefs out of the dispatchable list, and it
@@ -17,7 +17,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-06 by an authoring session, from a maintainer ruling recorded 2026-09-06
 sources:
   - "Maintainer ruling, 2026-09-06: FAIL SAFE — any risk field set to yes (irreversible first) routes to ROUTE-HUMAN. A model may still gather Evidence for such a brief, but the plan output must say so explicitly: Evidence-only, never flip-eligible."
@@ -31,6 +31,8 @@ exec-tier-why: >-
 consumers:
   - "tools/desk/internal/loopengine/engine.go (RiskFlags.Flagged): the shared predicate gains gate-value normalization and an Any() sibling. Sole other consumer verified at 0af8093 — the batch fan-out loop's tier policy does NOT call Flagged (it has no human branch by design), so no other loop's routing changes: out-of-scope (read and asserted, not changed)."
   - "tools/desk/cmd/verifyloop/land.go: out-of-scope — the irreversible Evidence-without-flip path is deliberately KEPT as the Evidence-only lane and is not modified."
+version: 1
+id: 30e33995-765b-4d05-a3bf-200656eb4fc3
 ---
 
 # Brief 19 — `verifyloop plan`: fail safe on risk

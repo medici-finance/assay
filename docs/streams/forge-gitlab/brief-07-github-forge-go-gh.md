@@ -1,5 +1,5 @@
 ---
-brief: forge-gitlab/07
+brief: assay:assay:forge-gitlab:07
 title: GitHub forge backend on go-gh — retire the exec-`gh` shell path
 why: >-
   The GitLab backend (brief 02) talks REST v4 over a library, but the GitHub backend still
@@ -17,7 +17,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-26 by forge-gitlab authoring session
 sources:
   - "docs/streams/forge-gitlab/spec.md §6 (interface scope, concept mapping, freeze rule)"
@@ -32,6 +32,8 @@ tier: free
 consumers:
   - "tools/desk/internal/deskkit: fixed-here (the github backend + its tests)"
   - "tools/desk/cmd/deskpr, deskfile, deskclose: fixed-here (forge-op call sites move off shelled gh onto the go-gh-backed backend)"
+version: 1
+id: e6344fc6-7d65-4972-9db5-a0596f802298
 ---
 
 # Brief 07 — GitHub forge backend on go-gh

@@ -1,5 +1,5 @@
 ---
-brief: composability/05
+brief: assay:assay:composability:05
 title: Promote the draft to spec/component-v1.md + adopter doc delta
 why: >-
   A model that lives only in a stream folder is a plan; one that lives in spec/ next to
@@ -13,13 +13,15 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-08 by composability authoring session
 sources:
   - "docs/streams/composability/component-model.md — the draft-0 this brief promotes; its §12 divergence list is rewritten against what 00–04 shipped"
   - "spec/README.md — the versioning and change policy (draft phase; reference-implementation line; known divergences section) the promoted document must follow"
   - "docs/adopting-assay.md — the runbook that gains the component view and the removal path"
   - "composability/01, composability/02, composability/03, composability/04 — the shipped behaviour the spec describes"
+version: 1
+id: 8434eb43-806c-4a54-b5a5-6c3c2e88c0bf
 ---
 
 # Brief 05 — Promote the draft to `spec/component-v1.md` (planned) + adopter doc delta

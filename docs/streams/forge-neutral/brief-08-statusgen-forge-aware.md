@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/08
+brief: assay:assay:forge-neutral:08
 title: statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay
 why: >-
   An adopter on GitLab runs `statusgen init`, gets `.github/workflows/assay-statusgen.yml` and
@@ -16,7 +16,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: [349]
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
 sources:
   - "#349 — statusgen init scaffolds a GitHub-only CI half; a GitLab adopter gets a green lint and no board writer"
@@ -34,6 +34,8 @@ consumers:
   - "docs/adopting-assay.md: fixed-here (its line 12 self-description and the scaffold's closing next-steps text must name whichever CI half was actually written)"
   - "plugins/assay/skills/install/SKILL.md, plugins/assay/skills/adopt/SKILL.md: follow-up forge-neutral/11 (the install prose and the binary-acquisition step are that brief's; this one only makes `init` able to scaffold the right half)"
   - "docs/streams/forge-neutral/brief-01-forge-resolution-contract.md: out-of-scope (statusgen mirrors the resolution ORDER but does not import deskkit; keeping the two in step is a documented contract, not a shared package)"
+version: 1
+id: 844ca024-936c-4a53-9561-217e40f9fe59
 ---
 
 # Brief 08 — statusgen forge-aware

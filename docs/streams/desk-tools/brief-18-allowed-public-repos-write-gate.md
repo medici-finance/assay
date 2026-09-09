@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/18
+brief: assay:assay:desk-tools:18
 title: "Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check"
 why: >-
   The public-repo write gate asks for a human `+1` reaction on a referenced issue or PR before
@@ -29,7 +29,7 @@ gate-why: >-
   refuses rather than passing on the stale claim (row 5), and that nothing on the private path
   changed (row 6).
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-06 by an authoring session, from a maintainer ruling recorded 2026-09-06
 sources:
   - "Maintainer ruling, 2026-09-06: a public repo listed in the roster's allowed-repos set with the public tag passes ALL outward writes for trusted identities; an unlisted public repo refuses; no per-item reaction check. A draft PR is inert until a human merges it."
@@ -47,6 +47,8 @@ consumers:
   - "tools/desk/cmd/deskpost/{comment,review,ready}.go, tools/desk/cmd/deskpr/{deskpr,edit}.go, tools/desk/cmd/deskreply/exec.go, tools/desk/cmd/deskevidence/deskevidence.go, tools/desk/cmd/deskrelease/cut.go: call sites of the changed signature — each drops the now-removed issue-number argument and is otherwise unchanged. Behaviour reaches them through the single choke point, not through per-site edits."
   - "~/.config/assay/public-app-ok (the standing-bless sentinel): retired by this brief — the reader is removed, so the file stops having any effect. Operators move each listed repo into the allowed-repos set with the `:public` token. The file itself is the operator's and is never written or deleted by any tool. (Non-conforming routing token, deliberately: this is neither `fixed-here` nor a follow-up brief — it is a retirement, and saying so truthfully outranks fitting the grammar.)"
   - "tools/desk/README.md § allowed repos, § standing per-repo authorization: follow-up in this brief's own Task step 5."
+version: 1
+id: 9d346af4-6df6-45cc-9f3e-4e983ee5ad0e
 ---
 
 # Brief 18 — Public-repo write gate: allowed-repos `:public` replaces the per-item `+1`

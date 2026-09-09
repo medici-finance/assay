@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/06
+brief: assay:assay:harness-portability:06
 title: Codex packaging — generated manifest, coverage rule, install path
 why: >-
   With neutral skills (04) and generated rule delivery (05) in place, the remaining gap
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-07 by harness-portability authoring session
 sources: ["authoring dispatch (Ian, 2026-08-07)", "superpowers 6.2.0 precedent: .codex-plugin/plugin.json with skills: ./skills/ and hooks: {} — a Codex plugin manifest over the same skills tree", "harness-portability/01's install-mechanism + skills-discovery matrix rows (the authoritative schema facts; superpowers' shape is re-verified there, not inherited)", "the harness-target ruling (HP/03): ruled target set + channel — what to generate and where it installs from", "the plugin SOURCES coverage rule (every skill pinned or declared, unaccounted = hard error, exit 2) — the rule this brief ports into harnessgen", "freshness-checked 2026-08-07 (no .codex-plugin exists anywhere in this repo)"]
 consumers: ["plugins/assay/.claude-plugin/plugin.json: fixed-here (becomes the version/metadata source harnessgen reads; not edited beyond what generation needs)", ".claude-plugin/marketplace.json: out-of-scope (Claude marketplace surface; unchanged by a Codex artifact)", "adopt skill (plugins/assay/skills/adopt/SKILL.md): fixed-here (gains the Codex install scenario)", "docs/adopting-assay.md + PARITY/RELEASE-NOTES: follow-up harness-portability/07", "the publication review: out-of-scope here (the generated artifacts are ordinary repo files; the publication manifest classifies them like everything else)"]
@@ -24,6 +24,8 @@ exec-tier-why: >-
   (b): correctness is cross-artifact by definition — manifest vs bundle tree vs
   binding files vs the ruled degradation matrix must agree, and the failure mode is a
   skew no single-file test sees.
+version: 1
+id: 9a19f81d-f0c4-414c-a6e3-2c14d402cc4c
 ---
 
 # Brief 06 — Codex packaging

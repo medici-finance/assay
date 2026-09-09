@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/01
+brief: assay:assay:forge-neutral:01
 title: Forge resolution contract — the forge comes from repo config, and refusal is the only fallback
 why: >-
   Two complete forge backends exist and nothing in the fleet can obtain one: no constructor,
@@ -15,7 +15,7 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
 sources:
   - "docs/streams/forge-neutral/README.md — the measured matrix this brief's head finding comes from"
@@ -41,6 +41,8 @@ consumers:
   - "tools/desk/cmd/deskboard, issueboard, scanloop: follow-up forge-neutral/06"
   - "tools/desk/cmd/desktoken: fixed-here (its --forge flag becomes the custody path selector the resolver drives, not an independent switch)"
   - "statusgen: follow-up forge-neutral/08 (statusgen resolves its own forge; it does not import deskkit)"
+version: 1
+id: 38a45459-d392-4a7c-a84e-8bf599ed0f75
 ---
 
 # Brief 01 — Forge resolution contract

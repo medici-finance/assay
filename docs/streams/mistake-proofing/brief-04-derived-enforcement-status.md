@@ -1,5 +1,5 @@
 ---
-brief: mistake-proofing/04
+brief: assay:assay:mistake-proofing:04
 title: Derive the authoring guidance's enforcement-status claims from the lint itself
 why: >-
   The document that shapes every brief in the fleet tells authors, in its own words, which of its
@@ -24,7 +24,7 @@ exec-tier-why: >-
   registry explicit and deriving it from a run is the central design call, and it must hold across
   three artifacts — the lint, the generated block, and the CI diff that binds them.
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-25 (authored for the mistake-proofing board)
 sources:
   - "`docs/mistake-proofing.md` §4 B9: 'Any statement in authoring guidance about what is and is not enforced (\"no lint checks this yet\") MUST be generated from the enforcement source, or carry a check that fails when it drifts. A guidance document that tells authors a live gate is decorative manufactures deliberate non-conformance; hand-maintained second copies of normative sources are the documented error class here, and derivation is the closed fix.'"
@@ -33,6 +33,8 @@ sources:
   - "The same error class, previously closed: a shared guidance block maintained as a hand-typed second copy of a normative source drifted from it; the fix was a declared source, a generator that writes the copies, and a CI byte-diff that fails when a copy is hand-edited. That is the mechanism this brief copies."
   - "The second in-tree precedent: the desk tree's compiled topology registry, where a declared YAML source is compiled to Go and a test that IS the diff keeps the two from disagreeing."
   - "freshness-checked 2026-08-25 @ 657cab1 (origin/main) — the stale claim is live in `plugins/assay/skills/author-brief/SKILL.md`, the check that contradicts it ships at `statusgen/consumers.go`, and no generator or byte-diff exists between them."
+version: 1
+id: a0b2049f-4a71-4dd3-a3de-9d80a8956c56
 ---
 
 # Brief 04 — Derived enforcement status for authoring guidance

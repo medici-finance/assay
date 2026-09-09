@@ -1,5 +1,5 @@
 ---
-brief: windows-port/05
+brief: assay:assay:windows-port:05
 title: Adoption-doc delta — the Windows adopter walkthrough
 why: >-
   The whole stream is only real to an adopter when the runbook tells them how to do it. Today
@@ -17,7 +17,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-01 by windows-port authoring session
 sources:
   - "Ian's direction (2026-09-01): the Windows adopter walkthrough, mirroring the existing adopting-assay docs' per-profile pattern; end state — a Windows adopter runs the pinned release, CI-proven on Windows"
@@ -32,6 +32,8 @@ sources:
 consumers:
   - "docs/adopting-assay.md: fixed-here (a new Windows walkthrough / per-OS section)"
   - "plugins/assay/skills/install/SKILL.md: fixed-here (the §Scope 'Windows deferred' note is updated to point at the now-real path — the ONE cross-file edit this brief owns)"
+version: 1
+id: 3b8c1c71-09a2-42cb-8990-8acaf32ebeff
 ---
 
 # Brief 05 — Adoption-doc delta: the Windows adopter walkthrough

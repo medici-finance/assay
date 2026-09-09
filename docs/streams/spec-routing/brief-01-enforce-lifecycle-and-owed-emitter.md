@@ -1,5 +1,5 @@
 ---
-brief: spec-routing/01
+brief: assay:assay:spec-routing:01
 title: Enforce the §8 spec/scoping-doc lifecycle — the linter and the authoring-owed emitter
 why: >-
   A specification can be ruled as the plan of record and then sit indefinitely with no brief ever
@@ -21,7 +21,7 @@ exec-tier-why: >-
   provenance without re-implementing the brief loader, are the central choices; getting either wrong
   produces a detector that is confidently right on the happy path and silently wrong on legacy docs.
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-30 (authored for the spec-routing board)
 sources:
   - "`spec/lifecycle-v1.md` §8 — the normative convention this brief enforces. §8.1 the `**Status:**` header grammar (first token exactly one of `draft`/`approved`/`routed`, optional ` — <prose>` behind an em-dash delimiter; a first token outside the set leaves the document unclassified/legacy and MUST be ignored). §8.3 an `approved` or `routed` document MUST carry a `**Routes-to:**` line and a linter MUST flag one that lacks it; a `draft` MUST NOT be required to carry it. §8.5 the citation rule: a document is cited when at least one brief's `sources:` frontmatter contains the document's repo-relative path — a prose title mention does NOT count — and an `approved` document that no brief cites has brief-authoring **owed**; only `approved` documents are owed-candidates. §8.6 a backfill whose correct state is undeterminable MUST default to `draft` (the failure that costs least)."
@@ -31,6 +31,8 @@ sources:
   - "freshness-checked 2026-08-30 @ `814c0cb` (origin/main): `git grep -niE 'routes-to' -- statusgen/` returns nothing (no header enforcement in the lint today), `git grep -niE 'authoring.?owed|owed-issues' -- statusgen/` returns nothing (no owed-detector), and `spec/lifecycle-v1.md` §8 is present on main (the authority exists)."
 consumers:
   - "The routed edge's own downstream board-side consumption is an adopter-configured follow-on, not code in this brief: follow-up spec-routing/01"
+version: 1
+id: 90a3660c-e856-4750-a5da-e53532e636be
 ---
 
 # Brief 01 — Enforce the §8 lifecycle: the linter and the authoring-owed emitter

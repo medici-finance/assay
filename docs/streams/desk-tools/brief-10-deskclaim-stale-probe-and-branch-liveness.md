@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/10
+brief: assay:assay:desk-tools:10
 title: "`deskclaim stale` + branch-liveness on `acquire` — reclaim a dead session's claim through the tool, not by hand"
 why: >-
   A 24-hour sweep of fifteen desk-role and worker session transcripts found one sweep hand-
@@ -18,7 +18,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by a worker-desk authoring session, from a 24-hour transcript sweep across
   fifteen desk-role and worker sessions (tallied per session)
 sources:
@@ -31,6 +31,8 @@ exec-tier: strong
 exec-tier-why: "(c) concurrency and safety plumbing — a liveness probe that answers \"inactive\"
   for a branch that is merely not checked out HERE steals a live claim on another machine, and
   every single-machine test passes."
+version: 1
+id: 6dbe4f63-1abf-4351-afb9-ec00d099fbcf
 ---
 
 # Brief 10 — `deskclaim stale` + branch-liveness on `acquire`

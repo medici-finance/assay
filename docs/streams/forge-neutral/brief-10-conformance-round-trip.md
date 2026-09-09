@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/10
+brief: assay:assay:forge-neutral:10
 title: Conformance — one round trip driven entirely by desk verbs, and the writes they refuse
 why: >-
   Every other brief in this stream is checked by tests against recorded fixtures. Only a live
@@ -16,7 +16,7 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
 sources:
   - "docs/streams/forge-gitlab/pilot-report.md §2 — the verbs had no GitLab backend, so every write was hand-built; this brief is the run where that sentence stops being true"
@@ -41,6 +41,8 @@ consumers:
   - "plugins/assay/skills/worker-desk/SKILL.md, plugins/assay/skills/pr-shepherd/SKILL.md: fixed-here (the claim-namespace wording forge-neutral/05 deferred to this brief)"
   - "docs/adopting-assay-gitlab.md: fixed-here (what an adopter can now do with verbs rather than by hand)"
   - "docs/streams/forge-gitlab/pilot-report.md: out-of-scope (a dated record of a different run; superseded by reference, never edited)"
+version: 1
+id: 9b8b8e1b-28ac-4966-97ce-c3469a00d6d3
 ---
 
 # Brief 10 — Conformance round trip

@@ -1,5 +1,5 @@
 ---
-brief: mistake-proofing/06
+brief: assay:assay:mistake-proofing:06
 title: D1 promoted to a lint obligation — a change that adds a check must carry its mutation row
 why: >-
   The methodology's sharpest requirement is that a control must be shown to fire: before trusting a
@@ -16,7 +16,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-25 (authored for the mistake-proofing board)
 sources:
   - "`docs/mistake-proofing.md` §3 D1: 'For every control-mode device there MUST exist a demonstration that an injected instance of the error it claims to stop actually reddens it — a mutation test, a positive control, a deliberate bad input in its test suite. A control that has never fired is either unnecessary or broken, and without injection you cannot tell which.' Also §5 ladder step 1, where D1 is the first thing an adopting repo does."
@@ -26,6 +26,8 @@ sources:
   - "depends mistake-proofing/03: the mutation obligation value, the derivation mechanism and the advisory landing all come from 03. This brief is the promotion to fatal plus the check-shaped-path definition, and deliberately does not re-open 03's design."
   - "The in-tree precedent for a machine-checked positive control: the desk tree's supply-chain source guard, whose refusals are mutation-checked in CI by the mutation harness — proof that the wiring works, on a guard of comparable shape."
   - "freshness-checked 2026-08-25 @ 657cab1 (origin/main) — no mutation obligation exists in the lint; the mutation harness exists but is a local diagnostic, not a pull-request gate."
+version: 1
+id: ea447f9b-7a64-406f-bf59-9b1dd0f53da8
 ---
 
 # Brief 06 — D1 as a lint obligation
