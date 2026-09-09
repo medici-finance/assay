@@ -56,6 +56,12 @@
       "new": "\tcase \"canceled\", \"canceling\":\n\t\treturn \"success\""
     },
     {
+      "name": "fail the whole review read closed on a CE 404 project-approvals route instead of degrading head-pinning (issue #697 regression)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif !IsForgeNotFound(mapped) {",
+      "new": "\t\tif true {"
+    },
+    {
       "name": "swallow a non-2xx into a statusless refusal (401/403/404 stop being distinguishable)",
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\tif status == 0 {",

@@ -734,17 +734,34 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 		headArrivedAt = versions[0].CreatedAt
 	}
 
-	// Does an approval survive a push on this project? Only if not, an approval cannot be
+	// Does an approval survive a push on this project? Only if it does can an approval be
 	// attributed to the current head.
+	//
+	// The project approval-configuration route (`reset_approvals_on_push`) is a Premium+
+	// surface (spec §3; brief-02 §"CE degradation"). Two failure shapes are NOT the same:
+	//
+	//   - On GitLab CE/Free the route is ABSENT and answers 404. That is not a
+	//     could-not-check for the whole review read — it is the documented CE gap the brief
+	//     says to degrade HEAD-PINNING for: treat the flag as unpinned/advisory
+	//     (approvalsArePinned stays false, so an approval is still reported but carries no
+	//     CommitID, and the head is pinned from the verdict NOTE body's SHA instead), and
+	//     CONTINUE reading the MR approvals and notes below. Failing the whole read closed
+	//     here is what left CE review desks blind (issue #697).
+	//   - A 403 tier gate, a 401 credential rejection, or any other failure IS
+	//     could-not-check for the WHOLE read — never a licence to fall back to "assume
+	//     approvals are head-pinned" or to report no reviews.
 	approvalCfgPath := fmt.Sprintf("/projects/%s/approvals", proj)
+	approvalsArePinned := false
 	cfg, _, err := cl.Projects.GetApprovalConfiguration(repo.Slug())
 	if err != nil {
-		// Approval configuration is a Premium+ surface (spec §3). A tier or permission
-		// failure here is could-not-check for the WHOLE read, not a licence to fall back to
-		// "assume approvals are head-pinned".
-		return nil, g.mapErr(http.MethodGet, approvalCfgPath, err)
+		mapped := g.mapErr(http.MethodGet, approvalCfgPath, err)
+		if !IsForgeNotFound(mapped) {
+			return nil, mapped
+		}
+		// 404 (route absent / CE): degrade head-pinning only, approvalsArePinned stays false.
+	} else {
+		approvalsArePinned = cfg.ResetApprovalsOnPush
 	}
-	approvalsArePinned := cfg.ResetApprovalsOnPush
 
 	approvalsPath := fmt.Sprintf("/projects/%s/merge_requests/%d/approvals", proj, number)
 	approvals, _, err := cl.MergeRequests.GetMergeRequestApprovals(repo.Slug(), int64(number))
