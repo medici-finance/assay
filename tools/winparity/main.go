@@ -7,9 +7,11 @@
 // that state, the same way tools/skillslint's guardrail byte-diff and
 // tools/pairedversions' front-door check redden on their own drift classes.
 //
-// It asserts ONE thing: the set of targets between the
-// `MAKEFILE-PARITY TARGETS (BEGIN/END)` markers in scripts/build-windows.ps1
-// equals the set of targets on the Makefile's `.PHONY:` line.
+// It asserts two things about scripts/build-windows.ps1: (1) the set of targets
+// between the `MAKEFILE-PARITY TARGETS (BEGIN/END)` markers equals the set of
+// targets on the Makefile's `.PHONY:` line; and (2) the script is Windows
+// PowerShell 5.1-clean — ASCII-only with no `>>>` in strings — so powershell.exe
+// (not just pwsh 7) parses it (#678).
 //
 // FAIL-CLOSED, three-state. checked-clean is exit 0; a checked disagreement and
 // a could-not-check are both non-zero and are reported as themselves. A file

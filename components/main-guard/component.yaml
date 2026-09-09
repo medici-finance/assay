@@ -1,0 +1,17 @@
+component: assay/main-guard
+version: 0.28.0
+# The .githooks pre-commit main-guard (worktree-isolation backstop): refuses a
+# main commit without ASSAY_MAIN_COMMIT_OK, wired via core.hooksPath. A human
+# installs it, but it still declares what it provides so dependents resolve.
+provides:
+  - assay.main-guard
+inject:
+  required: []
+  optional: []
+apply:
+  - id: hooks-path
+    effect: install .githooks/pre-commit and set core.hooksPath
+    boundary: inside
+    inverse: unset core.hooksPath and remove the hook (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

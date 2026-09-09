@@ -1,0 +1,19 @@
+component: assay/ci-statusgen
+version: 0.28.0
+# The two-half statusgen CI workflow: PR-side --lint, main-side regenerate. Runs
+# on the forge and gates on the generated board.
+provides:
+  - assay.ci.statusgen
+inject:
+  required:
+    - key: assay.board
+      range: ">=0.20.0 <1.0.0"
+    - key: assay.forge
+  optional: []
+apply:
+  - id: statusgen-workflow
+    effect: install the .github/workflows statusgen board workflow (lint on PR, regen on main)
+    boundary: inside
+    inverse: remove the workflow file (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

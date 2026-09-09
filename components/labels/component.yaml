@@ -1,0 +1,18 @@
+component: assay/labels
+version: 0.28.0
+# The forge label set (review-request, raised-by:*, the escalation vocabulary).
+# Created on the forge, so its removal is an outside compensation.
+provides:
+  - assay.labels
+inject:
+  required:
+    - key: assay.forge
+  optional: []
+apply:
+  - id: label-set
+    effect: create the review-request / raised-by:* label set on the forge
+    boundary: outside
+    ledger: label
+    compensation: delete a label if no issue carries it, else list for a human; TODO composability/02 makes the ledger real
+intercept: []
+config: {}

@@ -244,6 +244,143 @@ func TestRoleInitRefusesWhenRoleIdentityUnbound(t *testing.T) {
 	}
 }
 
+// --- #677 part (b): role-init works for every desk role, not only the verifier -------
+
+// TestRoleInitSupportsAllDeskRoles pins the #677 part (b) fix: roleWorktreeConfig maps
+// EVERY loop deskboot can boot (the-desk / worker-desk / pr-review-desk / verify-desk /
+// intake-desk), keyed on the App TOKEN role, so `deskwt role-init --role <role>` provisions
+// a worktree for each — not only the verifier. Pre-fix the four non-verifier roles are
+// absent from roleWorktreeConfig, so parseRoleParams refuses each with exit 5 (unknown
+// role) and this test's rc==0 assertion fails. The GitHub identity for each is stamped
+// worktree-scoped from the fixture roster.
+func TestRoleInitSupportsAllDeskRoles(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+
+	cases := []struct {
+		role, branchPrefix, email string
+	}{
+		{"desk", "the-desk", "300000001+assay-desk-app[bot]@users.noreply.github.com"},
+		{"worker", "worker-desk", "300000006+assay-worker-app[bot]@users.noreply.github.com"},
+		{"reviewer", "pr-review-desk", "300000004+assay-reviewer-app[bot]@users.noreply.github.com"},
+		{"issue-loop", "intake-desk", "300000003+assay-issue-loop-app[bot]@users.noreply.github.com"},
+	}
+	for _, c := range cases {
+		t.Run(c.role, func(t *testing.T) {
+			rc, stderr := runCapErr(t, []string{"role-init", "--role", c.role, "--session", "s"})
+			if rc != deskkit.ExitOK {
+				t.Fatalf("role-init --role %s rc = %d, want 0; stderr: %s", c.role, rc, stderr)
+			}
+			target := filepath.Join(tmpBaseDir, "tracker-"+c.branchPrefix+"-s")
+			if _, err := os.Stat(target); err != nil {
+				t.Fatalf("worktree dir %s not created: %v", target, err)
+			}
+			if br := mustGit(t, target, "rev-parse", "--abbrev-ref", "HEAD"); br != c.branchPrefix+"/s" {
+				t.Fatalf("worktree branch = %q, want %q", br, c.branchPrefix+"/s")
+			}
+			if got := mustGit(t, target, "config", "--worktree", "--get", "user.email"); got != c.email {
+				t.Fatalf("worktree-scoped user.email = %q, want %q", got, c.email)
+			}
+		})
+	}
+}
+
+// TestRoleWorktreeConfigMatchesLoopTokenRoles is the drift guard: roleWorktreeConfig must
+// cover exactly the loops deskboot can boot, keyed on each loop's App token role, with the
+// branch prefix equal to the loop name. It fails pre-fix because only the verifier is
+// mapped (four of the five loops are missing).
+func TestRoleWorktreeConfigMatchesLoopTokenRoles(t *testing.T) {
+	loopRoles := deskkit.LoopTokenRoles() // map[loop]tokenRole
+	if len(roleWorktreeConfig) != len(loopRoles) {
+		t.Fatalf("roleWorktreeConfig has %d roles, want %d (one per bootable loop): %v vs %v",
+			len(roleWorktreeConfig), len(loopRoles), roleWorktreeConfig, loopRoles)
+	}
+	for loop, role := range loopRoles {
+		cfg, ok := roleWorktreeConfig[role]
+		if !ok {
+			t.Fatalf("roleWorktreeConfig is missing token role %q (loop %q) — role-init cannot provision it", role, loop)
+		}
+		if cfg.branchPrefix != loop {
+			t.Fatalf("roleWorktreeConfig[%q].branchPrefix = %q, want the loop name %q", role, cfg.branchPrefix, loop)
+		}
+	}
+}
+
+// --- #677 part (a): GitLab worktree commit identity, never the GitHub noreply shape ----
+
+// gitLabRoster rewrites the fixture roster so the verifier role is a GITLAB identity, and
+// (when sessionEmails != "") adds the ASSAY_GITLAB_SESSION_EMAILS allowlist. It re-plants
+// it under the active HOME and reloads config, mirroring TestRoleInitRefusesWhenRoleIdentityUnbound.
+func gitLabRoster(t *testing.T, sessionEmails string) {
+	t.Helper()
+	r := strings.ReplaceAll(fixtureRoster,
+		"verifier=assay-verifier-app:300000005",
+		"verifier=gitlab:assay-verifier-sa:41987965")
+	if sessionEmails != "" {
+		r += "ASSAY_GITLAB_SESSION_EMAILS=" + sessionEmails + "\n"
+	}
+	home := os.Getenv("HOME")
+	if err := os.WriteFile(filepath.Join(home, ".config", "assay", "roster.env"), []byte(r), 0o600); err != nil {
+		t.Fatalf("re-plant GitLab roster: %v", err)
+	}
+	deskkit.ReloadConfig()
+}
+
+// TestRoleInitStampsGitLabSessionIdentity pins the #677 part (a) fix: on a GitLab-bound
+// roster with a trusted GitLab session/implementer commit address configured, role-init
+// STAMPS that GitLab-shaped address (here the service-account noreply form) — it does NOT
+// refuse, and it NEVER falls back to the GitHub noreply shape. Pre-fix, role-init hits the
+// hard GitLab refuse (exit 5), so this test's rc==0 assertion fails.
+func TestRoleInitStampsGitLabSessionIdentity(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	const glEmail = "service_account_group_9619193_ab12cd@noreply.gitlab.example.com"
+	gitLabRoster(t, glEmail)
+
+	rc, stderr := runCapErr(t, []string{"role-init", "--role", "verifier", "--session", "gl"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("role-init on a GitLab roster rc = %d, want 0 (must stamp the GitLab identity, not refuse); stderr: %s", rc, stderr)
+	}
+	target := filepath.Join(tmpBaseDir, "tracker-verify-desk-gl")
+	got := mustGit(t, target, "config", "--worktree", "--get", "user.email")
+	if got != glEmail {
+		t.Fatalf("worktree-scoped user.email = %q, want the GitLab address %q", got, glEmail)
+	}
+	if strings.Contains(got, "users.noreply.github.com") {
+		t.Fatalf("stamped a GitHub noreply address (%q) on a GitLab commit identity — the #677 bug", got)
+	}
+	if !strings.HasPrefix(got, "service_account_group_") {
+		t.Fatalf("stamped email %q is not the GitLab service-account shape", got)
+	}
+}
+
+// TestRoleInitRefusesGitLabWithoutSessionEmail keeps the never-fall-back-to-GitHub
+// invariant: a GitLab role with NO trusted session address configured is refused (exit 5),
+// the refusal names ASSAY_GITLAB_SESSION_EMAILS, and it neither emits nor stamps a GitHub
+// noreply address. Nothing is provisioned.
+func TestRoleInitRefusesGitLabWithoutSessionEmail(t *testing.T) {
+	work := newRepo(t)
+	calls := withEnv(t, work)
+	gitLabRoster(t, "") // GitLab identity, but no ASSAY_GITLAB_SESSION_EMAILS
+
+	rc, stderr := runCapErr(t, []string{"role-init", "--role", "verifier", "--session", "glno"})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("role-init on a GitLab roster with no session email rc = %d, want 5 (refused); stderr: %s", rc, stderr)
+	}
+	if !contains(stderr, deskkit.EnvGitLabSessionEmails) {
+		t.Fatalf("refusal must name %s; stderr: %s", deskkit.EnvGitLabSessionEmails, stderr)
+	}
+	if contains(stderr, "users.noreply.github.com") {
+		t.Fatalf("refusal leaked the GitHub noreply shape for a GitLab identity; stderr: %s", stderr)
+	}
+	if hasWorktreeVerb(*calls, "add") {
+		t.Fatalf("a worktree was created despite the refusal; git calls: %v", gitCalls(*calls))
+	}
+	if _, err := os.Stat(filepath.Join(tmpBaseDir, "tracker-verify-desk-glno")); !os.IsNotExist(err) {
+		t.Fatalf("target dir exists after a refusal: %v", err)
+	}
+}
+
 // contains is a tiny substring helper local to this test file.
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {

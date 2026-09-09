@@ -1224,7 +1224,7 @@ jobs:
           attempts=5
           attempt=1
           while : ; do
-            git fetch --no-tags -c http.extraheader="AUTHORIZATION: basic ${basic}" origin "$DEFAULT_BRANCH"
+            git -c http.extraheader="AUTHORIZATION: basic ${basic}" fetch --no-tags origin "$DEFAULT_BRANCH"
             git reset --hard FETCH_HEAD
 
             # aggregate.py exits 2 (leaving the file untouched) only when there

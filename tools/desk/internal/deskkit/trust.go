@@ -497,6 +497,42 @@ func RoleBotCommitIdentity(role string) (name, email string, ok bool) {
 	return ident.Slug + "[bot]", spec.Exact, true
 }
 
+// RoleGitLabCommitIdentity returns the git commit identity (name, email) to stamp on a
+// GitLab desk-role worktree. Unlike GitHub — where the App IS the committer and the
+// noreply address is DERIVABLE from the bot USER id (RoleBotCommitIdentity) — a GitLab
+// service-account commit email embeds a group id and a per-account suffix the roster does
+// not carry, so it cannot be CONSTRUCTED (forgeidentity.go). The ESTABLISHED GitLab
+// mechanism (#643) is the two-identity model: a GitLab worktree commits under the trusted
+// SESSION / implementer address the deployment lists in ASSAY_GITLAB_SESSION_EMAILS — the
+// SAME allowlist the commit-identity preflight (checkGitLabCommitIdentity) accepts — while
+// the service account is the API-write identity. A deployment that intends to commit AS
+// the service account lists that account's noreply address (service_account_group_<id>_
+// <suffix>@noreply.<host>) in the same allowlist. Either way the address is READ from the
+// trusted roster, never invented, and NEVER the GitHub noreply shape for a GitLab account
+// (a GitHub-shaped address lands the commit under no GitLab identity — the #677 bug).
+//
+// ok is false when the role is unbound, is not a GitLab identity, or the deployment
+// configures no trusted GitLab session address — so a caller that must STAMP an identity
+// refuses loudly rather than falling back to the GitHub shape or an empty value. The
+// committer NAME is the service-account slug: attribution on GitLab is by the email→user
+// mapping, so the name is provenance only.
+func RoleGitLabCommitIdentity(role string) (name, email string, ok bool) {
+	c := EffectiveConfig()
+	if !c.Configured() {
+		return "", "", false
+	}
+	ident, bound := c.RoleBotIdentity(role)
+	if !bound || ident.Forge != ForgeGitLab {
+		return "", "", false
+	}
+	if len(c.GitLabSessionEmails) == 0 {
+		return "", "", false
+	}
+	// GitLabSessionEmails is normalised at load (lowercased, trimmed, empties dropped),
+	// so the first entry is a stable, non-empty trusted commit address.
+	return ident.Slug, c.GitLabSessionEmails[0], true
+}
+
 // RoleBound reports whether a desk role has an App bound to it. Tools that need a
 // role to do their job call this at startup and refuse loudly rather than
 // discovering the unbound state inside a comparison.

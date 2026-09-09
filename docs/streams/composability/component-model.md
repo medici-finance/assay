@@ -85,25 +85,13 @@ Keys are namespaced `assay.<area>.<name>` so that two components cannot collide 
 name (the paper's §6.6 key-collision problem, solved by namespacing). Adopter-defined keys
 use their own top-level namespace and MUST NOT start with `assay.`.
 
-Initial catalogue (brief 00 owns the authoritative list, at `components/KEYS.md` (planned)):
-
-| Key | Provided by | Meaning |
-|---|---|---|
-| `assay.streams` | streams scaffold | `docs/streams/` exists with a README and registers |
-| `assay.board` | statusgen | `STATUS.md` is generated and linted |
-| `assay.registers` | registers scaffold | FINDINGS / INTAKE / RETRO per-entry files |
-| `assay.ci.statusgen` | CI workflow component | the lint runs on every push |
-| `assay.main-guard` | main-guard component | `core.hooksPath` + pre-push guard installed |
-| `assay.labels` | labels component | the `review-request` / `raised-by:*` label set exists |
-| `assay.roster.trust` | roster component | the fail-closed trust surface (`ASSAY_BLESS_LOGIN`, `ASSAY_TRUSTED_LOGINS`, `ASSAY_TRUSTED_BOT_SLUGS`, `ASSAY_ALLOWED_REPOS`, `ASSAY_HUMAN_LOGIN_MAP`) |
-| `assay.roster.ext.<name>` | roster component | one key per adopter extension (`risk-callout`, `writeguard-callout`, `repo-aliases`, `release-repo`, `scan-repos`, …) |
-| `assay.desk.verbs` | desk-tools bundle | the pinned desk binaries on PATH |
-| `assay.desk.role.<role>` | each desk-role skill | the role's procedure is installed |
-| `assay.forge` | forge adapter | a forge (GitHub, GitLab) reachable with the roster's identities |
-| `assay.harness` | harness adapter (exclusive, §9) | the agent harness the skills and hooks are shaped for |
-| `assay.reviewer-identity` | reviewer App binding | the App whose review is a verdict |
-| `assay.hooks.session-start` | hooks component | resident rules and board state injected at boot |
-| `assay.hooks.pre-tool` | hooks component | the write guard on tool calls |
+The authoritative catalogue — one row per key, with its providing component and a
+one-line meaning — lives at [`components/KEYS.md`](../../../components/KEYS.md), kept
+there from now on (brief 00 owns it). It expands the `assay.roster.ext.<name>` and
+`assay.desk.role.<role>` templates into their concrete keys and adds the
+`assay.skill.<name>` family the §2 inventory turned out to need. `assay.harness` is
+provided by the harness adapter (exclusive, §9), which arrives with brief 04; until
+then skills and hooks inject it as optional so the tree lints clean.
 
 ## 4. Effects and their reverses
 

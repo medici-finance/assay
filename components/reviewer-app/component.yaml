@@ -1,0 +1,20 @@
+component: assay/reviewer-app
+version: 0.28.0
+# The separate review identity (the App whose review is a verdict). A human
+# installs and grants it; the manifest declares the identity it provides so the
+# review desk and shepherd can resolve it.
+provides:
+  - assay.reviewer-identity
+inject:
+  required:
+    - key: assay.forge
+    - key: assay.roster.trust
+  optional: []
+apply:
+  - id: reviewer-binding
+    effect: bind the reviewer App to the repo with its duty permission set
+    boundary: outside
+    ledger: app-installation
+    compensation: gate:human — removing an App is human work; TODO composability/02 lists the installation
+intercept: []
+config: {}

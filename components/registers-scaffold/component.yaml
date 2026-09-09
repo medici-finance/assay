@@ -1,0 +1,18 @@
+component: assay/registers-scaffold
+version: 0.28.0
+# Scaffolds the append-only FINDINGS / INTAKE / RETRO per-entry registers under
+# docs/streams/. Depends on the streams tree existing.
+provides:
+  - assay.registers
+inject:
+  required:
+    - key: assay.streams
+      range: ">=0.20.0 <1.0.0"
+  optional: []
+apply:
+  - id: registers-tree
+    effect: create the FINDINGS / INTAKE / RETRO registers under docs/streams/
+    boundary: inside
+    inverse: remove the register files (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

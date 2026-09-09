@@ -1,0 +1,24 @@
+component: assay/roster
+version: 0.28.0
+# The configured trust/authority surface the tools read, held outside every ref
+# (org/repo Actions variables + ~/.config/assay/roster.env). The trust surface is
+# ONE fail-closed key; each adopter extension is its own key, so a broken
+# extension deactivates only its dependents (§6.2), never the trust gate.
+provides:
+  - assay.roster.trust
+  - assay.roster.ext.risk-callout
+  - assay.roster.ext.writeguard-callout
+  - assay.roster.ext.repo-aliases
+  - assay.roster.ext.release-repo
+  - assay.roster.ext.scan-repos
+inject:
+  required: []
+  optional: []
+apply:
+  - id: trust-surface
+    effect: set the fail-closed trust keys (ASSAY_BLESS_LOGIN, ASSAY_TRUSTED_LOGINS, ASSAY_TRUSTED_BOT_SLUGS, ASSAY_ALLOWED_REPOS, ASSAY_HUMAN_LOGIN_MAP)
+    boundary: outside
+    ledger: roster-vars
+    compensation: unset the Actions variables; TODO composability/02 lists them for a human
+intercept: []
+config: {}

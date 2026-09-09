@@ -1,0 +1,20 @@
+component: assay/the-desk
+version: 0.28.0
+# The coordinator / process-desk role skill (persona Bob).
+provides:
+  - assay.desk.role.the-desk
+inject:
+  required:
+    - key: assay.desk.verbs
+      range: ">=0.20.0 <1.0.0"
+    - key: assay.roster.trust
+  optional:
+    - key: assay.harness
+    - key: assay.roster.ext.repo-aliases
+apply:
+  - id: skill-body
+    effect: install the the-desk skill directory into the harness plugin cache
+    boundary: inside
+    inverse: remove the skill directory (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

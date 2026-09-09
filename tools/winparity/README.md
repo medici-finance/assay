@@ -10,14 +10,24 @@ the same shape of guard as `tools/skillslint`'s guardrail byte-diff and
 
 ## What it asserts
 
-Exactly one thing:
+Two things about `scripts/build-windows.ps1`:
 
-> the set of targets between the `MAKEFILE-PARITY TARGETS (BEGIN/END)` markers
-> in `scripts/build-windows.ps1` **equals** the set of targets on the
-> `Makefile`'s `.PHONY:` line.
+1. **Target parity.**
 
-Set equality, not subset — a target present on either side but not the other is
-a failure, in both directions.
+   > the set of targets between the `MAKEFILE-PARITY TARGETS (BEGIN/END)` markers
+   > in `scripts/build-windows.ps1` **equals** the set of targets on the
+   > `Makefile`'s `.PHONY:` line.
+
+   Set equality, not subset — a target present on either side but not the other
+   is a failure, in both directions.
+
+2. **Windows PowerShell 5.1 cleanliness (#678).** The script must stay parseable
+   by `powershell.exe` (5.1), not only by `pwsh` (7+). Concretely it must be
+   **ASCII-only** and contain **no `>>>`** in any string: 5.1 lexes `>>>` as a
+   redirection operator (a `ParserError` before compile) and its non-UTF-8
+   default encoding mangles em-dashes and other non-ASCII in error/log strings.
+   The scan reads the file as bytes, so this leg catches a regression on Linux
+   CI before it reaches a native Windows host — no PowerShell needed to run it.
 
 ## Three-state, fail-closed
 
@@ -35,7 +45,9 @@ winparity --root .        # exit 0 = in parity, 1 = drift or could-not-check, 2 
 ```
 
 It reads only two files under `--root` (`Makefile` and
-`scripts/build-windows.ps1`) and contacts no network.
+`scripts/build-windows.ps1`) and contacts no network. Exit is fail-closed over
+both assertions: `checked-clean` (exit 0) requires target parity AND a
+5.1-clean script; any drift, any 5.1 regression, or any could-not-check reddens.
 
 `scripts/build-windows.ps1` runs this guard as a **preflight** before executing
 any target, so a drift is caught on the Windows side before a build runs, not

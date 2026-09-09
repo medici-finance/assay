@@ -1,0 +1,20 @@
+component: assay/intake-desk
+version: 0.28.0
+# The intake-desk role skill: the generic front door of the process pipeline.
+provides:
+  - assay.desk.role.intake-desk
+inject:
+  required:
+    - key: assay.desk.verbs
+      range: ">=0.20.0 <1.0.0"
+    - key: assay.roster.trust
+  optional:
+    - key: assay.harness
+    - key: assay.roster.ext.scan-repos
+apply:
+  - id: skill-body
+    effect: install the intake-desk skill directory into the harness plugin cache
+    boundary: inside
+    inverse: remove the skill directory (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

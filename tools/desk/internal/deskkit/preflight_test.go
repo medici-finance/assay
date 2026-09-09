@@ -1114,7 +1114,7 @@ func TestPreflightColdMintForgeInferenceBothWays(t *testing.T) {
 
 			var githubCalled, gitlabCalled bool
 			p := okProbes()
-			p.ResolveForgeKind = nil // exercise the REAL forgeKindProbe (reads ASSAY_REPO_FORGES)
+			p.ResolveForgeKind = nil // exercise the REAL ForgeKindForRepo (reads ASSAY_REPO_FORGES)
 			p.ColdMint = func(string, string) (string, error) {
 				githubCalled = true
 				return "/tmp/gh-token", nil
@@ -1302,14 +1302,14 @@ func TestForgeKindProbeInfersFromRoster(t *testing.T) {
 		roster := goldenRoster()
 		roster[EnvRepoForges] = slug + "=" + forge
 		withRoster(t, roster)
-		if got := forgeKindProbe(slug); got != want {
-			t.Errorf("forgeKindProbe(%q) with %s=%s = %q, want %q", slug, EnvRepoForges, forge, got, want)
+		if got := ForgeKindForRepo(slug); got != want {
+			t.Errorf("ForgeKindForRepo(%q) with %s=%s = %q, want %q", slug, EnvRepoForges, forge, got, want)
 		}
 	}
 
 	withRoster(t, goldenRoster()) // no ASSAY_REPO_FORGES entry
-	if got := forgeKindProbe(slug); got != "" {
-		t.Errorf("forgeKindProbe of an unconfigured repo = %q, want \"\" (unresolved, never a guess)", got)
+	if got := ForgeKindForRepo(slug); got != "" {
+		t.Errorf("ForgeKindForRepo of an unconfigured repo = %q, want \"\" (unresolved, never a guess)", got)
 	}
 }
 
