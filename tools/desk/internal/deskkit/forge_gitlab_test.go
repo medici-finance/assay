@@ -49,6 +49,7 @@ type glServer struct {
 	project      map[string]any
 	projApproval map[string]any
 	mr           map[string]any
+	mrList       []map[string]any
 	mrMissing    bool
 	issue        map[string]any
 	issueMissing bool
@@ -201,6 +202,8 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.mr)
 	case r.Method == http.MethodPut && lMR.MatchString(path):
 		enc(s.updateMR)
+	case r.Method == http.MethodGet && lMRRoot.MatchString(path):
+		enc(s.mrList)
 	case r.Method == http.MethodPost && lMRRoot.MatchString(path):
 		w.WriteHeader(http.StatusCreated)
 		enc(s.createMR)
@@ -875,14 +878,19 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.ReviewsAtHead(glRepo, 7) },
 		},
 		{
-			// forge-neutral/06. The bulk open-change read carries GitHub's statusCheckRollup
-			// (the CheckRun/StatusContext union) and mergeStateStatus, neither 1:1 on GitLab —
-			// so this backend is a could-not-check REFUSAL with zero requests emitted, the
-			// DeleteRef reference shape, never a guessed rollup shape the board would feed
-			// MERGE-NOW.
-			name: "list_open_changes_gap", method: "ListOpenChanges",
-			setup: func(s *glServer) {},
-			run:   func(f *GitLabForge) (any, error) { return f.ListOpenChanges(glRepo) },
+			// issue #686. The bulk open-change read is served in a DEGRADED shape: real change
+			// metadata (so the board's NEEDS-REVIEW/RE-REVIEW trigger works), with the two
+			// fields GitLab does not map 1:1 marked could-not-check PER CHANGE — MergeStateStatus
+			// left EMPTY (mergeVerdictUnknown → MERGE-NOW withheld) and the CI rollup a single
+			// GitLabRollupUnmapped entry (ciUnknown → CI-green, and thus MERGE-NOW/FLIP, withheld).
+			// LastEditedAt is likewise empty (GitLab exposes no title/body-edit timestamp).
+			name: "list_open_changes", method: "ListOpenChanges",
+			setup: func(s *glServer) {
+				s.mrList = []map[string]any{glMR(map[string]any{
+					"iid": 7, "created_at": "2026-09-01T09:00:00Z",
+				})}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListOpenChanges(glRepo) },
 		},
 		{
 			// forge-neutral/06. The issue-lane summary feeds a trust gate that is itself

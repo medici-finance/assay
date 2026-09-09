@@ -126,12 +126,58 @@ func TestInitScaffoldsGitLabCIForGitLabForge(t *testing.T) {
 		t.Errorf(".gitlab-ci.yml shells `gh`, a GitHub-only client:\n%s", gl)
 	}
 
+	// #688: the scaffold must WARN about the runner precondition it cannot satisfy.
+	// A GitLab pipeline fires but sits in stuck_pending_no_matching_runners when no
+	// runner takes untagged jobs, and the template used to be silent on runners
+	// (zero hits for "runner" / "run_untagged" / a tags: placeholder). The header
+	// comment names the executor requirement, each job carries the ADOPTER: runner
+	// placeholder, and neither hardcodes an instance-local tag (linux-dind was the
+	// live instance's tag — must not be baked in).
+	for _, want := range []string{
+		"run_untagged",             // names the exact runner attribute that must be true
+		"stuck_pending_no_matching_runners", // the failure mode being warned about
+		"ADOPTER: runner",          // the commented tags: placeholder, GitHub-house shape
+		"# tags: [REPLACE_WITH_YOUR_RUNNER_TAG]",
+	} {
+		if !strings.Contains(gl, want) {
+			t.Errorf(".gitlab-ci.yml missing runner guidance %q (#688)", want)
+		}
+	}
+	if strings.Contains(gl, "linux-dind") {
+		t.Errorf(".gitlab-ci.yml hardcodes the instance-local tag linux-dind (#688) — the required tag set is instance-local and must not be baked in:\n%s", gl)
+	}
+
 	// The next-steps text names the file it actually wrote, not the GitHub one.
 	if !strings.Contains(next, ".gitlab-ci.yml") {
 		t.Errorf("next-steps must name the scaffolded .gitlab-ci.yml; got:\n%s", next)
 	}
 	if strings.Contains(next, ".github/workflows/assay-statusgen.yml") {
 		t.Errorf("next-steps names the GitHub workflow the gitlab scaffold did not write:\n%s", next)
+	}
+
+	// #688: on GitLab the next-steps must add the runner Verify — a job must LEAVE
+	// pending before CI is "installed"; a stuck-pending job is could-not-check.
+	for _, want := range []string{"runner", "run_untagged", "pending"} {
+		if !strings.Contains(next, want) {
+			t.Errorf("gitlab next-steps missing runner note %q (#688); got:\n%s", want, next)
+		}
+	}
+}
+
+// TestInitNextStepsRunnerNoteIsGitLabOnly pins the forge boundary of the #688
+// runner note: the GitHub half runs on hosted ubuntu-latest and must NOT inherit
+// the GitLab runner warning (it would be false guidance there). Asserted directly
+// so driving the GitLab assertions green cannot be done by leaking the note into
+// the shared next-steps every GitHub adopter also sees.
+func TestInitNextStepsRunnerNoteIsGitLabOnly(t *testing.T) {
+	dir := t.TempDir()
+	next := captureStdout(t, func() {
+		if code := runInitForge(dir, forgeGitHub, false); code != 0 {
+			t.Fatalf("runInitForge(github) exit = %d, want 0", code)
+		}
+	})
+	if strings.Contains(next, "stuck_pending_no_matching_runners") || strings.Contains(next, "run_untagged") {
+		t.Errorf("github next-steps leaked the GitLab-only runner note (#688); got:\n%s", next)
 	}
 
 	// The scaffolded tree must still lint clean (the CI file is not a stream

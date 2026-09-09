@@ -275,6 +275,55 @@ gitlab.com Free the write can return 201 and change nothing, and on some CE inst
 after it: every step runs, the failures are listed under the HUMAN-ONLY REMAINDER, and the
 script exits non-zero.
 
+## 2a. Runners and job tags — the executor that will actually pick up the pipeline
+
+`statusgen init --forge gitlab` scaffolds the CI *file* (`.gitlab-ci.yml`, the two-half
+single-writer shape). It does **not**, and will not, give you a **runner** — the executor
+that actually runs the jobs. Registering or reconfiguring a GitLab Runner is instance-admin
+work, and it is an explicit non-goal: Assay never ships a `gitlab-runner register`, never
+touches your fleet, and never guesses your instance's tag set. This section is the human
+post-install step that closes that gap.
+
+**Why this is not automatic — and why an untagged job can hang forever.** GitHub Actions has
+a hosted `ubuntu-latest`; a self-hosted GitLab instance has no equivalent default. The
+scaffolded jobs are **untagged** (they carry no `tags:`), so only a runner configured to take
+untagged jobs will run them. GitLab matches a job to a runner by tags: a runner with
+`run_untagged = false` (a common default on self-hosted fleets) will **never** take an
+untagged job. When nothing eligible is online, the pipeline is still *created* and the YAML
+still *parses* — the job simply sits in `pending`, and after the instance's stuck timeout the
+default-branch job fails with `failure_reason = stuck_pending_no_matching_runners`. This is
+not "CI disabled" and not a missing workflow file; pipelines fire, but nothing picks them up.
+
+**What you need — an executor and one of two matching strategies:**
+
+- A **Linux Docker** (or **Kubernetes**) executor online for the fleet project (or its group),
+  AND
+- **either** a runner with **`run_untagged = true`** — it will take the untagged scaffold jobs
+  as-is —
+- **or** the instance's required tag(s) put on the jobs: uncomment the `tags:` line under each
+  job in `.gitlab-ci.yml` (the scaffold ships a commented `ADOPTER: runner` placeholder there)
+  and list the tag(s) your executor advertises. Do **not** copy a tag from another instance or
+  from this doc — the required tag set is local to your instance.
+
+**Executor type matters.** The scaffold's install step downloads the pinned `statusgen`
+release binary and verifies its sha256, then uses `git` to push the regenerated board — so
+the executor must provide `curl`, `sha256sum`, `install`, and `git`. A Docker or Kubernetes
+executor gives you a clean image with these present; a bare **shell** executor without a
+container image will run only what happens to be installed on that host, and cannot pull an
+image for you. Prefer a Docker/Kubernetes executor.
+
+**Prove-the-install — a `pending` job is could-not-check, never "installed".** Do not report
+CI as installed while a job is still `pending` / `stuck_pending_no_matching_runners`. The
+install is proven only once a job has **left pending** — it reached `running`, or a **terminal
+non-stuck** result. Note the ordering: an unset `STATUSGEN_PUSH_TOKEN` makes the regen job
+fail, but that is a *later* red — the job ran, so the runner match is proven and only the push
+credential is missing (see §2, token custody). A job that never leaves `pending` proves
+nothing about either; it is a runner-match gap, and the fix is a runner, not a token.
+
+This is the CI half of the Free-tier "pipeline execution gate" degradation in §0.1: that row
+assumes a runner exists once the CI file is scaffolded. It does not exist until you provide
+one here.
+
 ## 3. By-hand table — what the script does, if you'd rather read the REST calls
 
 For the reviewer verifying this script, or an operator without shell access, the table

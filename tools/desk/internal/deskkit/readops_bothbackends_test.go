@@ -81,6 +81,15 @@ func TestReadOpsBothBackends(t *testing.T) {
 			io.WriteString(w, "diff --git a/a.go b/a.go\n")
 			return
 		}
+		// GitLab open-MR list (ListOpenChanges, degraded shape) — the project merge_requests
+		// root, distinct from the GitHub GraphQL path handled above.
+		if r.Method == http.MethodGet && strings.HasSuffix(p, "/merge_requests") {
+			io.WriteString(w, `[{"iid":7,"state":"opened","draft":true,"title":"Draft: add the thing",`+
+				`"sha":"abc123","source_branch":"feat/x","target_branch":"main",`+
+				`"created_at":"2026-09-01T09:00:00Z","updated_at":"2026-09-01T12:00:00Z",`+
+				`"labels":["size:s"],"author":{"id":99,"username":"worker-bot"},"description":"body"}]`)
+			return
+		}
 		// REST issues list (ListOpenIssues) — one issue and one PR entry; the PR is dropped.
 		if r.Method == http.MethodGet && strings.Contains(p, "/issues") {
 			io.WriteString(w, `[`+
@@ -124,7 +133,31 @@ func TestReadOpsBothBackends(t *testing.T) {
 					t.Errorf("rollup not decoded: %+v", oc.Changes[0].Rollup)
 				}
 			},
-			glRun: func() error { _, err := gl.ListOpenChanges(repo); return err },
+			// DEGRADED shape on GitLab (issue #686): a REAL result, not could-not-check, so the
+			// board's NEEDS-REVIEW/RE-REVIEW trigger works — but the two unmappable fields are
+			// marked could-not-check per change (empty MergeStateStatus, one uninterpretable
+			// rollup entry) so MERGE-NOW and FLIP stay withheld.
+			glCheck: func(t *testing.T) {
+				oc, err := gl.ListOpenChanges(repo)
+				if err != nil {
+					t.Fatalf("gitlab ListOpenChanges: %v", err)
+				}
+				if len(oc.Changes) != 1 || oc.Changes[0].Number != 7 {
+					t.Fatalf("gitlab ListOpenChanges = %+v", oc)
+				}
+				c := oc.Changes[0]
+				if c.MergeStateStatus != "" {
+					t.Errorf("MergeStateStatus must be could-not-check (empty), got %q", c.MergeStateStatus)
+				}
+				if len(c.Rollup) != 1 || c.Rollup[0].Typename != GitLabRollupUnmapped ||
+					c.Rollup[0].Status != "" || c.Rollup[0].State != "" {
+					t.Errorf("rollup must be one could-not-check entry, got %+v", c.Rollup)
+				}
+				if c.Title != "add the thing" || !c.Draft || c.HeadSHA != "abc123" ||
+					c.HeadRef != "feat/x" || c.BaseRef != "main" || c.Author.Login != "worker-bot" {
+					t.Errorf("gitlab ListOpenChanges metadata not mapped: %+v", c)
+				}
+			},
 		},
 		{
 			name: "ListOpenIssues",

@@ -1,0 +1,48 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests",
+      "query": "page=1\u0026per_page=100\u0026state=opened"
+    }
+  ],
+  "result": {
+    "Changes": [
+      {
+        "Number": 7,
+        "Title": "add the thing",
+        "Body": "",
+        "State": "open",
+        "Draft": true,
+        "CreatedAt": "2026-09-01T09:00:00Z",
+        "LastEditedAt": "",
+        "Author": {
+          "Login": "worker-bot",
+          "ID": 99
+        },
+        "Labels": [
+          "authorization-needed"
+        ],
+        "HeadSHA": "abc123",
+        "HeadRef": "feat/x",
+        "BaseRef": "main",
+        "MergeStateStatus": "",
+        "Rollup": [
+          {
+            "Typename": "GitLabRollupUnmapped",
+            "Name": "",
+            "Status": "",
+            "Conclusion": "",
+            "StartedAt": "",
+            "CompletedAt": "",
+            "Context": "",
+            "State": "",
+            "CreatedAt": ""
+          }
+        ]
+      }
+    ],
+    "TruncatedAtCap": false,
+    "Cap": 100
+  }
+}
