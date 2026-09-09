@@ -203,14 +203,27 @@ func dispatch(o dispatchOpts) error {
 	// verb predicted.
 	wt := runCmd(o.root, "deskwt", "add", wtName, "--branch", branch, "--base", "refs/remotes/origin/main")
 	if wt.err != nil {
-		// deskwt's OWN message, whole and verbatim — it is the one that names the cause
-		// (which branch, which worktree holds it, what to do). Reducing it to the first
-		// stderr line reduced it to the config echo, and an operator who cannot see the
-		// cause re-runs the claim machinery instead of clearing the stray ref.
+		// The durable claim was placed one step ago and this dispatch is now aborting, so
+		// RELEASE it — exactly as the before_run failure path below does — rather than leave it
+		// orphaned. An orphaned claim WEDGES the item: every later attempt, including the
+		// operator's corrected re-run a second later, is told "already claimed by a LIVE holder",
+		// and a human has to hand-delete the ref. A worktree-create abort that placed a claim and
+		// never released it is the field defect this line closes.
+		released := releaseClaim(o, plan.claimScript, plan.claimKey, repo)
+		// deskwt's OWN message is forwarded whole and verbatim (toolMessage strips only the
+		// config echo / unpinned-build warning), because it is the line that names the cause
+		// (which branch, which worktree holds it, what to do). The wrapper no longer frames this
+		// as a transient tree fault to "fix and re-run": for a fresh dispatch the commonest cause
+		// is the brief's branch already existing, which usually means the brief is already
+		// DELIVERED or in progress — a merged/open PR to look for before re-dispatching, not a
+		// tree to repair. Saying "fix the tree" sent operators re-running the claim machinery on
+		// an item that was simply already done.
 		msg := fmt.Sprintf(
-			"step %s: `deskwt add %s` failed in %s. The claim is HELD — release it, or fix the tree "+
-				"and re-run; do not launch an agent with no worktree of its own. deskwt said:\n%s",
-			stepWorktreeCreate, wtName, o.root, toolMessage(wt.stderr))
+			"step %s: `deskwt add %s` failed in %s. The claim was %s. For a fresh dispatch this is most "+
+				"often the brief's branch %s already existing — i.e. the brief is already delivered or in "+
+				"progress (look for a merged or open PR before re-dispatching), not a transient tree fault. "+
+				"deskwt said:\n%s",
+			stepWorktreeCreate, wtName, o.root, released, branch, toolMessage(wt.stderr))
 		// deskwt's exit code passes THROUGH: a refusal (5) is a decision it made — the branch
 		// is held by a live worktree, or carries unpushed work — and flattening a decision
 		// into "could not be established" tells the operator to retry something that will
@@ -419,11 +432,28 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 				"slash; no leading dash, no '..'), so the worktree verb would refuse it.",
 			stepWorktreeCreate, plan.branch))
 	}
-	plan.wtName = sanitizeSegment(o.item)
-	if !worktreeNameRe.MatchString(plan.wtName) {
+	// The worktree DIR name is session-scoped so a FOREIGN session's leftover canonical dir
+	// (`/private/tmp/tracker-<item>`) cannot dead-end an otherwise-valid dispatch with
+	// `deskwt add … target already exists` (exit 5). deskdispatch used to derive the dir name
+	// deterministically from the item key with no session-uniqueness, so any item whose
+	// canonical dir was taken by another live/stale session (e.g. a role worktree) could not be
+	// dispatched at all. The BRANCH and the CLAIM KEY stay deterministic — they are the
+	// deliverable's cross-session identity — so only the local scratch dir gains the suffix,
+	// mirroring `deskwt role-init`'s own `tracker-<prefix>-<sess>` naming. A session that does
+	// not resolve to a safe single segment, or a suffix that would push the name past the
+	// worktree-name grammar, falls back to the bare item-derived name (the pre-session
+	// behaviour), so this never turns a usable name unusable.
+	base := sanitizeSegment(o.item)
+	if !worktreeNameRe.MatchString(base) {
 		return plan, deskkit.Refused(fmt.Sprintf(
 			"step %s: the item key %q does not reduce to a usable worktree name — pass --branch and a key "+
 				"that does.", stepWorktreeCreate, o.item))
+	}
+	plan.wtName = base
+	if sess := dispatchSessionSuffix(); sess != "" {
+		if scoped := base + "-" + sess; worktreeNameRe.MatchString(scoped) {
+			plan.wtName = scoped
+		}
 	}
 
 	// The consumer scripts' HOME. --root is the ITEM's repo and stays the worktree source;
@@ -971,6 +1001,21 @@ func claimKeyFor(item, repo string) string {
 		return item
 	}
 	return deskkit.RepoShortLabel(repo) + "--" + strings.ReplaceAll(strings.Trim(item, "/"), "/", "--")
+}
+
+// dispatchSessionSuffix returns the session id used to disambiguate the worktree DIR name,
+// or "" when none resolves to a safe single segment. It reads $DESK_SESSION then
+// $CLAUDE_SESSION_ID — the same order `deskwt role-init` resolves a session — so the worker
+// dispatch and the role worktrees share one notion of "which session". A value outside the
+// worktree-name grammar is DROPPED (returns "") rather than sanitized into a different
+// session's spelling: a wrong suffix would be worse than none.
+func dispatchSessionSuffix() string {
+	for _, env := range []string{"DESK_SESSION", "CLAUDE_SESSION_ID"} {
+		if s := strings.TrimSpace(os.Getenv(env)); s != "" && worktreeNameRe.MatchString(s) {
+			return s
+		}
+	}
+	return ""
 }
 
 // sanitizeSegment reduces an item key to one filesystem/branch-safe segment.
