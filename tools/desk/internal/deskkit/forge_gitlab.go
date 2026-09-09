@@ -553,8 +553,8 @@ func (g *GitLabForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 // GitLab's model does not map 1:1 to GitHub's are marked could-not-check PER CHANGE rather
 // than guessed:
 //
-//   - MergeStateStatus is left EMPTY. GitHub's mergeStateStatus is a single enum
-//     (CLEAN/BEHIND/BLOCKED/DIRTY/UNKNOWN/…) the board reads MERGE-NOW off; GitLab's
+//   - MergeStateStatus is left EMPTY. GitHub's mergeStateStatus is a single enum (CLEAN,
+//     BEHIND, BLOCKED, DIRTY, UNKNOWN, …) the board reads MERGE-NOW off; GitLab's
 //     detailed_merge_status is a different, dozen-value vocabulary with no 1:1 mapping onto
 //     that enum. An empty value is the board's OWN could-not-check (mergeVerdictUnknown), so
 //     it withholds MERGE-NOW rather than acting on a guessed merge state.
