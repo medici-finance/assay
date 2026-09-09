@@ -130,6 +130,11 @@ var lintRuleRegistry = []LintRule{
 	{"consumers-missing-list", "a brief whose prose reads as changing a shared surface but enumerates no `consumers:` (a heuristic prompt, never a verdict)", StatusAdvisory},
 	{"consumers-out-of-scope-no-reason", "an `out-of-scope` routing with no substantive reason for the reviewer who must weigh the exclusion", StatusAdvisory},
 
+	// Stream WIP cap + parked lane (attention-budget/04). Differential: a full lint
+	// only NOTICEs; the PR-diff gate makes each a PROBLEM, so both are fatal.
+	{"stream-cap", "a change that adds an active stream past the per-root active-stream cap (ASSAY_STREAM_CAP) with no offsetting park — no net new streams past the cap", StatusFatal},
+	{"stream-source", "a change that adds an active stream README citing no `spec:`, or a `spec:` whose header is not `**Status:** approved` — a stream is scaffolded only from an approved spec", StatusFatal},
+
 	// Authoring conventions the lint does NOT check — the third status, stated so
 	// the block's non-coverage is itself visible (spec §3 D6).
 	{"consumers-flow-verify-row", "that a shared-value brief's Verify table carries at least one row exercising the cross-component flow end-to-end — a judgement call no lint decides", StatusNotEnforced},

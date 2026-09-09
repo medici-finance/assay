@@ -329,6 +329,14 @@ unaffected, since both layouts parse.
      **never authors inline** — it marks the entry and the strong-tier author picks it up. If *this*
      window is strong-tier, author NOW — a brief is a draft PR, the yes-case of the reversibility test;
      notify ("proceeded, filed as `<repo>#<N>`"). Otherwise queue.
+     - **Opening a NEW stream (not just a brief in an existing one):** scaffold a stream ONLY from a
+       scoping doc whose header is `**Status:** approved` (spec/lifecycle-v1.md §8.1) — never from a
+       raw idea, an issue thread, or a `draft`. The stream README carries a `spec:` pointing at that
+       doc; the `stream-source` lint decides — you carry the pointer, not the judgement.
+     - **At the active-stream cap** (`ASSAY_STREAM_CAP`, the `stream-cap` lint): there are **no net new
+       active streams past the cap**. Scaffold the new stream `status: parked` (its briefs are kept but
+       it is out of dispatch), and name in the PR body which active stream the desk proposes to park or
+       archive to make room. A human decides the swap; the parked stream re-activates by a README flip.
    - **`scoped → issue #NN`** — operational / bug-shaped work → file a GitHub issue (label `bug`
      when bug-shaped, per the project's own convention); record the issue number. It then enters the
      issue lane above.
