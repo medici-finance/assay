@@ -38,7 +38,13 @@ import (
 // SchemaVersion identifies the day-file shape. Downstream consumers select on it.
 // Bump on any field REMOVAL or meaning change; additive fields do
 // not require a bump.
-const SchemaVersion = "opmetrics/1"
+//
+//	opmetrics/2 — adds operator.attention_families (the v2 attention-class
+//	breakdown). Every opmetrics/1 key is UNCHANGED and still present, so a v1
+//	reader keeps working; the bump is a courtesy signal that the new block is
+//	available, not a break. statusgen's consumer view (autonomy.go opDayFile)
+//	reads only additive-tolerant fields and parses both versions with no change.
+const SchemaVersion = "opmetrics/2"
 
 // Status is the three-state marker every block carries.
 type Status string
@@ -93,19 +99,35 @@ type RelayFamilies struct {
 	Duplicate int `json:"duplicate"`
 }
 
+// AttentionFamilies is the v2 attention-class breakdown, emitted as COUNTS under
+// operator.attention_families. Fixed keys, so the JSON gains no dynamic map key —
+// a dynamic key is a string the allowlist cannot pin. The eight counts sum to
+// messages_classified (every non-empty operator turn carries exactly one class).
+type AttentionFamilies struct {
+	Route      int `json:"route"`
+	Status     int `json:"status"`
+	Toil       int `json:"toil"`
+	Correction int `json:"correction"`
+	Decision   int `json:"decision"`
+	Idea       int `json:"idea"`
+	Ack        int `json:"ack"`
+	Other      int `json:"other"`
+}
+
 // OperatorBlock is the relay-ratio metric.
 type OperatorBlock struct {
-	Status              Status        `json:"status"`
-	Reason              Reason        `json:"reason,omitempty"`
-	MessagesTotal       *int          `json:"messages_total"`
-	MessagesClassified  *int          `json:"messages_classified"`
-	RelayMessages       *int          `json:"relay_messages"`
-	SubstantiveMessages *int          `json:"substantive_messages"`
-	EmptyMessages       *int          `json:"empty_messages"`
-	RelayRatio          *float64      `json:"relay_ratio"`
-	RelayFamilies       RelayFamilies `json:"relay_families"`
-	TranscriptFiles     int           `json:"transcript_files"`
-	UnparseableLines    int           `json:"unparseable_lines"`
+	Status              Status            `json:"status"`
+	Reason              Reason            `json:"reason,omitempty"`
+	MessagesTotal       *int              `json:"messages_total"`
+	MessagesClassified  *int              `json:"messages_classified"`
+	RelayMessages       *int              `json:"relay_messages"`
+	SubstantiveMessages *int              `json:"substantive_messages"`
+	EmptyMessages       *int              `json:"empty_messages"`
+	RelayRatio          *float64          `json:"relay_ratio"`
+	RelayFamilies       RelayFamilies     `json:"relay_families"`
+	AttentionFamilies   AttentionFamilies `json:"attention_families"`
+	TranscriptFiles     int               `json:"transcript_files"`
+	UnparseableLines    int               `json:"unparseable_lines"`
 }
 
 // InterventionBlock is operator messages per merged PR.

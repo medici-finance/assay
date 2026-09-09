@@ -111,8 +111,15 @@ func TestClassifierAccuracyAgainstLabelledCorpus(t *testing.T) {
 // is only worth emitting if it actually changes when the rules change; this test
 // records the version the floors above were measured against, so a rule change that
 // moves the score without bumping the version fails here.
+//
+// At the opmetrics-relay/2 bump the relay-vs-substantive axis (the axis THESE
+// floors measure) was left UNCHANGED — v2 only ADDS the attention-class axis — so
+// the relay floors above are unchanged and still measured true. The attention axis
+// has its own ground truth and its own pin in classify_attention_test.go
+// (TestAttentionFamilies over the re-labelled corpus). Both must move together with
+// any rule change, in the same commit as this constant.
 func TestClassifierVersionIsPinnedToItsScore(t *testing.T) {
-	const measuredAgainst = "opmetrics-relay/1"
+	const measuredAgainst = "opmetrics-relay/2"
 	if ClassifierVersion != measuredAgainst {
 		t.Fatalf("ClassifierVersion is %q but the accuracy floors in this file were measured "+
 			"against %q. Re-measure against the labelled corpus, update the floors AND the README "+
