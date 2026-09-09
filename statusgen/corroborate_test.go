@@ -191,7 +191,7 @@ diff --git a/docs/streams/methodology/README.md b/docs/streams/methodology/READM
 	// And end-to-end: with no reviews/comments, the two non-excluded stamps must
 	// both report MISSING-CORROBORATION (the anti-evasion assertion), while the
 	// excluded one contributes nothing to corroborate at all.
-	results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1232)
+	results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1232, nil)
 	missingByFile := map[string]bool{}
 	for _, r := range results {
 		if r.Verdict == verdictMissing {
@@ -308,7 +308,7 @@ func TestStampsInDiffConfusableIsLoud(t *testing.T) {
 	if len(stamps) == 0 {
 		t.Fatal("a homoglyph human: stamp produced no stamps — --corroborate would print \"clean\" and exit 0 on it")
 	}
-	results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1)
+	results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1, nil)
 	for _, r := range results {
 		if r.Verdict != verdictMissing {
 			t.Errorf("homoglyph stamp %q got verdict %v, want MISSING-CORROBORATION", r.Stamp.Name, r.Verdict)
@@ -634,7 +634,7 @@ func TestCheckStamps_ApprovedReview(t *testing.T) {
 		`[]`,
 	)
 	stamps := []stamp{{Name: "alex", File: "docs/streams/m/README.md"}}
-	results := corroborateStamps(stamps, data, "o/r", 1)
+	results := corroborateStamps(stamps, data, "o/r", 1, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("got %d results, want 1", len(results))
@@ -651,7 +651,7 @@ func TestCheckStamps_ApprovalComment(t *testing.T) {
 		`[{"author":{"login":"ada"},"body":"I approve of this PR. thank you for checking","createdAt":"2026-07-10T16:23:06Z","url":"https://github.com/o/r/pull/2#issuecomment-1"}]`,
 	)
 	stamps := []stamp{{Name: "alex", File: "docs/streams/m/README.md"}}
-	results := corroborateStamps(stamps, data, "o/r", 2)
+	results := corroborateStamps(stamps, data, "o/r", 2, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("got %d results, want 1", len(results))
@@ -671,7 +671,7 @@ func TestCheckStamps_DifferentLoginComment(t *testing.T) {
 		`[{"author":{"login":"someone-else"},"body":"I approve of this PR","createdAt":"2026-07-10T16:23:06Z","url":"https://github.com/o/r/pull/3#issuecomment-1"}]`,
 	)
 	stamps := []stamp{{Name: "alex", File: "docs/streams/m/README.md"}}
-	results := corroborateStamps(stamps, data, "o/r", 3)
+	results := corroborateStamps(stamps, data, "o/r", 3, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("got %d results, want 1", len(results))
@@ -688,7 +688,7 @@ func TestCheckStamps_AgentCommentQuotingHuman(t *testing.T) {
 		`[{"author":{"login":"example-reviewer-app"},"body":"ada approved this PR. approved.","createdAt":"2026-07-10T16:29:18Z","url":"https://github.com/o/r/pull/4#issuecomment-1"}]`,
 	)
 	stamps := []stamp{{Name: "alex", File: "docs/streams/m/README.md"}}
-	results := corroborateStamps(stamps, data, "o/r", 4)
+	results := corroborateStamps(stamps, data, "o/r", 4, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("got %d results, want 1", len(results))
@@ -701,7 +701,7 @@ func TestCheckStamps_AgentCommentQuotingHuman(t *testing.T) {
 func TestCheckStamps_NoStamps(t *testing.T) {
 	// Case 5: no stamps → clean
 	stamps := []stamp{}
-	results := corroborateStamps(stamps, nil, "o/r", 5)
+	results := corroborateStamps(stamps, nil, "o/r", 5, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("got %d results, want 1", len(results))
@@ -715,7 +715,7 @@ func TestCheckStamps_UnknownName(t *testing.T) {
 	// Unknown name (not in HumanLoginMap) → MISSING by definition
 	data := makeData(`[]`, `[]`)
 	stamps := []stamp{{Name: "unknownperson", File: "docs/streams/m/README.md"}}
-	results := corroborateStamps(stamps, data, "o/r", 6)
+	results := corroborateStamps(stamps, data, "o/r", 6, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("got %d results, want 1", len(results))
@@ -738,7 +738,7 @@ func TestCheckStamps_MultipleStamps(t *testing.T) {
 		{Name: "alex", File: "docs/streams/a/README.md"},
 		{Name: "unknown", File: "docs/streams/b/README.md"},
 	}
-	results := corroborateStamps(stamps, data, "o/r", 7)
+	results := corroborateStamps(stamps, data, "o/r", 7, nil)
 
 	if len(results) != 2 {
 		t.Fatalf("got %d results, want 2", len(results))
@@ -759,7 +759,7 @@ func TestCheckStamps_ApprovedReviewWinsOverComment(t *testing.T) {
 		`[{"author":{"login":"ada"},"body":"I approve","createdAt":"2026-07-10T16:23:06Z","url":"https://github.com/o/r/pull/8#issuecomment-1"}]`,
 	)
 	stamps := []stamp{{Name: "alex", File: "docs/streams/m/README.md"}}
-	results := corroborateStamps(stamps, data, "o/r", 8)
+	results := corroborateStamps(stamps, data, "o/r", 8, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("got %d results, want 1", len(results))
@@ -780,7 +780,7 @@ func TestCheckStamps_CaseInsensitiveLogin(t *testing.T) {
 		`[]`,
 	)
 	stamps := []stamp{{Name: "alex", File: "docs/streams/m/README.md"}}
-	results := corroborateStamps(stamps, data, "o/r", 9)
+	results := corroborateStamps(stamps, data, "o/r", 9, nil)
 
 	if len(results) != 1 {
 		t.Fatalf("got %d results, want 1", len(results))

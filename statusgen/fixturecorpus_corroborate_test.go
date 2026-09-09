@@ -77,7 +77,7 @@ diff --git a/docs/streams/somestream/README.md b/docs/streams/somestream/README.
 
 	// End-to-end: with no reviews/comments, the unmarked stamp reports MISSING, and
 	// the excluded corpus contributes nothing to corroborate at all.
-	results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1)
+	results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1, nil)
 	var boardMissing bool
 	for _, r := range results {
 		if strings.HasPrefix(r.Stamp.File, "docs/streams/somestream/evalcorpus/") {
