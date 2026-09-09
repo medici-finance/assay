@@ -4,13 +4,14 @@
 # the first MAJOR: the brief-v1 → brief-v2 flag day (see
 # migrations/0001-v0.28.0-to-v1.0.0-derived-board.md and
 # docs/release-notes/v1.0.0.md). statusgen and desk-tools are cut together at the
-# same tag. Digests are fixture placeholders; a real release harvests them from
-# the published checksums.txt.
+# same tag. The digests below are the REAL v1.0.0 ones, harvested from the
+# published release's checksums.txt (linux-amd64 — the platform the bare artifact
+# lines in ../.assay-versions name), never hand-typed.
 umbrella: v1.0.0
 artifacts:
   - artifact: statusgen
     tag: v1.0.0
-    sha256: 1111111111111111111111111111111111111111111111111111111111111111
+    sha256: 4590c523c8e026be2df30ffdfd2bea5a6ed7f9ff50137481423723dbc5aa9231
   - artifact: desk-tools
     tag: v1.0.0
-    sha256: 2222222222222222222222222222222222222222222222222222222222222222
+    sha256: eb5686f930ca0d10d7ccc2d2e2a6ddd07e7859a7e4e5272d66ea087349ea2684
