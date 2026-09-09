@@ -45,8 +45,20 @@ func run(getenv func(string) string) int {
 	}
 
 	filer := DeskfileIssueFiler{Repo: "medici-finance/assay"}
+
+	// The outbound prose gate is consulted on every send (socket.go). Its
+	// contained advisor is wired from the pinned decider runner entry (brief
+	// 06) when one is configured; a configured-but-unsafe entry refuses to boot
+	// here (containment never silently degrades), and an unconfigured one leaves
+	// the valve off so every send holds (fail closed).
+	gate, err := NewGate(getenv, cfg, filer)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return exitCodeOf(err)
+	}
+
 	agent := GatewayAgent{Root: cfg.QueueDir, Deps: deps, Emitter: NoOpInboxEmitter{}, Filer: filer}
-	sock := SocketServer{Root: cfg.QueueDir, Deps: deps, Emitter: agent.Emitter, Filer: filer}
+	sock := SocketServer{Root: cfg.QueueDir, Deps: deps, Emitter: agent.Emitter, Filer: filer, Gate: gate}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

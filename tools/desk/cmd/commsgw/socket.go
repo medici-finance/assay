@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -63,7 +64,12 @@ type SocketServer struct {
 	Deps    PreCheckDeps
 	Emitter InboxEmitter
 	Filer   IssueFiler
-	Now     func() time.Time
+	// Gate is the outbound prose gate consulted on every accepted send, after
+	// the deterministic pre-checks pass (prosegate.go). It is required for a
+	// real gateway; RunOutbound fails closed (holds, never delivers) if it is
+	// nil, so a wiring bug can never flow a send ungated.
+	Gate *ProseGate
+	Now  func() time.Time
 }
 
 func (s SocketServer) clock() time.Time {
@@ -124,16 +130,27 @@ func (s SocketServer) handle(conn net.Conn) {
 
 func (s SocketServer) handleSubmit(req gwRequest) gwResponse {
 	now := s.clock()
-	env, err := PreCheck(PreCheckInput{PeerAuthenticated: true, Raw: []byte(req.Message), Now: now}, s.Deps)
-	if err != nil {
-		return gwResponse{Receipt: &socketReceipt{Accepted: false, Detail: err.Error()}}
+	// The send flows through the ONE outbound pipeline: deterministic pre-checks
+	// first, then — only on accept — the prose gate. A deterministic refusal is
+	// terminal (the gate is never consulted); a non-clean gate verdict has
+	// already held the message.
+	res := RunOutbound(context.Background(),
+		PreCheckInput{PeerAuthenticated: true, Raw: []byte(req.Message), Now: now}, s.Deps, s.Gate)
+	if res.PrecheckErr != nil {
+		return gwResponse{Receipt: &socketReceipt{Accepted: false, Detail: res.PrecheckErr.Error()}}
 	}
-	if err := WriteAccepted(s.Root, *env, now); err != nil {
-		return gwResponse{Receipt: &socketReceipt{ID: env.ID, Accepted: false,
+	if !res.Deliver {
+		// Held by the prose gate — held mailbox + a filed issue carrying the
+		// digest. Never a silent drop: the sender is told it is held, not sent.
+		return gwResponse{Receipt: &socketReceipt{ID: res.Env.ID, Accepted: false,
+			Detail: fmt.Sprintf("commsgw: outbound prose gate: %s — held for human review, not sent", res.Verdict)}}
+	}
+	if err := WriteAccepted(s.Root, *res.Env, now); err != nil {
+		return gwResponse{Receipt: &socketReceipt{ID: res.Env.ID, Accepted: false,
 			Detail: fmt.Sprintf("commsgw: accepted-queue write failed: %v", err)}}
 	}
-	_ = EmitCrossCellInboxItem(s.Root, env, now, s.Emitter, s.Filer) // no-op for within-cell (IsCrossCell false)
-	return gwResponse{Receipt: &socketReceipt{ID: env.ID, Accepted: true}}
+	_ = EmitCrossCellInboxItem(s.Root, res.Env, now, s.Emitter, s.Filer) // no-op for within-cell (IsCrossCell false)
+	return gwResponse{Receipt: &socketReceipt{ID: res.Env.ID, Accepted: true}}
 }
 
 func (s SocketServer) handlePoll(req gwRequest) gwResponse {

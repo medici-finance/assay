@@ -33,6 +33,12 @@ import (
 // must never be reachable through the dispatchable-tier path.
 const envDeciderKey = "ASSAY_RUNNER_DECIDER"
 
+// EnvDeciderKey is the exported name of the decider runner-entry env key, so a
+// consumer (the comms prose gate's boot) can test whether a decider is
+// configured at all — a distinct question from LoadDecider's validation of a
+// configured one — without hardcoding the literal a second time.
+const EnvDeciderKey = envDeciderKey
+
 // DeciderEntry is the pinned runner-table entry for the decider.
 type DeciderEntry struct {
 	RunnerEntry
