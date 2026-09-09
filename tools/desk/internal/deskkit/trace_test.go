@@ -274,7 +274,7 @@ func TestScrubRedactsEveryTransportShape(t *testing.T) {
 	// The NEGATIVE control: ordinary diagnostic text must pass through untouched, or the
 	// redactor makes every trace unreadable and operators stop turning it on.
 	for _, plain := range []string{
-		"fatal: a branch named 'wd0909b/desktools-trace' already exists",
+		"fatal: a branch named 'feat/example-item' already exists",
 		"deskwt add thing --branch wd/x --base refs/remotes/origin/main",
 		"HTTP 403: Resource not accessible by integration",
 	} {
