@@ -1,5 +1,7 @@
 # Desk-shell mechanics
 
+<!-- assay:harnesslint non-matrix-reference — harness-neutral shell/transport mechanics, not a per-harness capability binding; the capability-to-mechanism matrix and the per-skill degradation cells live in claude-code.md, codex.md and cursor.md -->
+
 Shell and transport mechanics every desk role re-derives from a refusal — how a session
 addresses a repo across tool calls, keeps its work isolated, stamps its commits, carries
 its loop and session markers, authenticates a fetch or push, and asks which repositories

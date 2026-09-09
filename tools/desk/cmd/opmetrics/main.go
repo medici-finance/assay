@@ -36,6 +36,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -51,7 +53,8 @@ USAGE:
 FLAGS:
   --root DIR          repo root the day-file is written under (required unless --stdout)
   --date YYYY-MM-DD   the day to report (default: today, local time)
-  --transcripts DIR   session transcripts (default: ~/.claude/projects)
+  --transcripts DIR   session transcripts (repeatable; default: every ~/.claude*/projects).
+                      Sessions synced across profiles are counted once.
   --desk-tools DIR    desk-tools state holding roster/ and claims/
                       (default: ~/.config/assay — see hygiene.go's PATH NOTE)
   --gh-fixture FILE   gh JSON export for merged PRs and decision latency. Produce it with:
@@ -88,17 +91,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	fs := flag.NewFlagSet("opmetrics", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	var transcripts multiFlag
+	fs.Var(&transcripts, "transcripts", "session transcripts dir (repeatable; default: every ~/.claude*/projects)")
 	var (
-		root        = fs.String("root", "", "repo root to write the day-file under")
-		date        = fs.String("date", "", "day to report, YYYY-MM-DD")
-		transcripts = fs.String("transcripts", "", "session transcripts dir")
-		deskTools   = fs.String("desk-tools", "", "desk-tools state dir holding roster/ and claims/")
-		ghFixture   = fs.String("gh-fixture", "", "gh JSON export of merged PRs")
-		ghJSON      = fs.String("gh-json", "", "alias for --gh-fixture")
-		trend       = fs.Int("trend", 0, "compare against N prior day-files")
-		nowFlag     = fs.String("now", "", "RFC3339 instant staleness is measured from")
-		tz          = fs.String("tz", "", "IANA location the day boundary is measured in (default: local)")
-		toStdout    = fs.Bool("stdout", false, "print the JSON instead of writing the day-file")
+		root      = fs.String("root", "", "repo root to write the day-file under")
+		date      = fs.String("date", "", "day to report, YYYY-MM-DD")
+		deskTools = fs.String("desk-tools", "", "desk-tools state dir holding roster/ and claims/")
+		ghFixture = fs.String("gh-fixture", "", "gh JSON export of merged PRs")
+		ghJSON    = fs.String("gh-json", "", "alias for --gh-fixture")
+		trend     = fs.Int("trend", 0, "compare against N prior day-files")
+		nowFlag   = fs.String("now", "", "RFC3339 instant staleness is measured from")
+		tz        = fs.String("tz", "", "IANA location the day boundary is measured in (default: local)")
+		toStdout  = fs.Bool("stdout", false, "print the JSON instead of writing the day-file")
 	)
 	if err := fs.Parse(args); err != nil {
 		return deskkit.ExitRefused
@@ -154,7 +158,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return deskkit.ExitRefused
 	}
 
-	tdir, err := resolveTranscripts(*transcripts)
+	tdirs, err := resolveTranscripts(transcripts)
 	if err != nil {
 		// A resolution failure is not fatal: the operator block reports
 		// could-not-check and the rest of the day-file still lands.
@@ -166,14 +170,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	rep := Build(Inputs{
-		Date:           *date,
-		Day:            day,
-		Now:            now,
-		TranscriptsDir: tdir,
-		DeskToolsDir:   sdir,
-		GHJSON:         *ghFixture,
-		Root:           *root,
-		Trend:          *trend,
+		Date:            *date,
+		Day:             day,
+		Now:             now,
+		TranscriptsDirs: tdirs,
+		DeskToolsDir:    sdir,
+		GHJSON:          *ghFixture,
+		Root:            *root,
+		Trend:           *trend,
 	}, stderr)
 
 	if *toStdout {
@@ -195,17 +199,43 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return deskkit.ExitOK
 }
 
-// resolveTranscripts defaults to ~/.claude/projects. Returning "" (with an error) is
-// how a missing HOME becomes could-not-check instead of a panic or a wrong path.
-func resolveTranscripts(flagVal string) (string, error) {
-	if flagVal != "" {
-		return flagVal, nil
+// multiFlag collects a repeatable string flag in the order it was given.
+type multiFlag []string
+
+func (m *multiFlag) String() string     { return strings.Join(*m, ",") }
+func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
+
+// resolveTranscripts turns the --transcripts flag(s) into the list of roots to
+// read. Explicit flags win verbatim and in order. With none, the default is
+// EVERY ~/.claude*/projects that exists — the live operator runs several Claude
+// profiles (~/.claude, ~/.claude_2, ~/.claude_3, …) and the day-file must cover
+// them all rather than only the one profile the historic default named. Sessions
+// synced across profiles are deduped downstream (ReadOperatorMessagesMulti).
+//
+// Returning an empty list (with an error) is how a missing HOME becomes
+// could-not-check instead of a panic or a wrong path. An empty list from a
+// resolvable HOME that simply has no ~/.claude*/projects yet is NOT an error —
+// the operator block then reports could-not-check with no readable root.
+func resolveTranscripts(flagVals []string) ([]string, error) {
+	if len(flagVals) > 0 {
+		return []string(flagVals), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("cannot resolve HOME for the default transcripts dir: %w", err)
+		return nil, fmt.Errorf("cannot resolve HOME for the default transcripts dirs: %w", err)
 	}
-	return filepath.Join(home, ".claude", "projects"), nil
+	matches, gerr := filepath.Glob(filepath.Join(home, ".claude*", "projects"))
+	if gerr != nil {
+		return nil, fmt.Errorf("expanding the default transcripts roots: %w", gerr)
+	}
+	sort.Strings(matches)
+	var out []string
+	for _, m := range matches {
+		if info, serr := os.Stat(m); serr == nil && info.IsDir() {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }
 
 // resolveDeskTools defaults to deskkit.StateDir() — ~/.config/assay — which is where
@@ -224,14 +254,17 @@ func resolveDeskTools(flagVal string) (string, error) {
 // Inputs is everything Build needs. Every path is explicit so no code path in Build
 // can reach for the real home directory.
 type Inputs struct {
-	Date           string
-	Day            time.Time
-	Now            time.Time
-	TranscriptsDir string
-	DeskToolsDir   string
-	GHJSON         string
-	Root           string
-	Trend          int
+	Date string
+	Day  time.Time
+	Now  time.Time
+	// TranscriptsDirs is every transcript root to read (repeatable --transcripts,
+	// or the default expansion over each ~/.claude*/projects). Empty means no root
+	// could be resolved at all — could-not-check, never zero.
+	TranscriptsDirs []string
+	DeskToolsDir    string
+	GHJSON          string
+	Root            string
+	Trend           int
 }
 
 // Build assembles the report. It never returns an error: every input failure becomes a
@@ -249,18 +282,28 @@ func Build(in Inputs, stderr io.Writer) Report {
 	// ---- operator messages / relay ratio ----
 	var labels []Label
 	var operatorTotal *int
-	if in.TranscriptsDir == "" {
-		rep.Operator = OperatorBlock{Status: StatusCouldNotCheck, Reason: ReasonTranscriptsUnread}
-	} else if tr, err := ReadOperatorMessages(in.TranscriptsDir, in.Day); err != nil {
-		fmt.Fprintln(stderr, "could-not-check operator block: "+err.Error())
+	tr, skippedRoots, _, trErr := ReadOperatorMessagesMulti(in.TranscriptsDirs, in.Day)
+	// A root that does not exist is a NOTICE on stderr (never committed), not a
+	// failure of the whole read — the operator runs several profiles and one may
+	// be absent on a given machine.
+	for _, s := range skippedRoots {
+		fmt.Fprintln(stderr, "notice: transcripts root skipped (not a readable directory): "+s)
+	}
+	if len(in.TranscriptsDirs) == 0 || trErr != nil {
+		// Zero candidate roots, or not one of them readable: blind, not zero.
+		if trErr != nil {
+			fmt.Fprintln(stderr, "could-not-check operator block: "+trErr.Error())
+		}
 		rep.Operator = OperatorBlock{Status: StatusCouldNotCheck, Reason: ReasonTranscriptsUnread}
 	} else if tr.Files == 0 {
-		// Zero FILES is not a quiet day, it is a mis-pointed flag. Say so.
-		fmt.Fprintln(stderr, "could-not-check operator block: no .jsonl transcripts under "+in.TranscriptsDir)
+		// Roots were readable but held no .jsonl transcripts — a mis-pointed flag,
+		// not a quiet day. Say so.
+		fmt.Fprintln(stderr, "could-not-check operator block: no .jsonl transcripts under any configured root")
 		rep.Operator = OperatorBlock{Status: StatusCouldNotCheck, Reason: ReasonNoTranscriptFiles}
 	} else {
 		c := NewClassifier()
 		var fam RelayFamilies
+		var attn AttentionFamilies
 		relay, subst, empty := 0, 0, 0
 		for _, m := range tr.Messages {
 			l := c.Classify(m.Session, m.Text)
@@ -285,6 +328,27 @@ func Build(in Inputs, stderr io.Writer) Report {
 			case ClassEmpty:
 				empty++
 			}
+			// v2 attention axis — additive, over every non-empty turn. A ClassEmpty
+			// message has Attention "" and is not counted, so the eight family counts
+			// sum to messages_classified.
+			switch l.Attention {
+			case AttnRoute:
+				attn.Route++
+			case AttnStatus:
+				attn.Status++
+			case AttnToil:
+				attn.Toil++
+			case AttnCorrection:
+				attn.Correction++
+			case AttnDecision:
+				attn.Decision++
+			case AttnIdea:
+				attn.Idea++
+			case AttnAck:
+				attn.Ack++
+			case AttnOther:
+				attn.Other++
+			}
 		}
 		total := len(tr.Messages)
 		classified := relay + subst
@@ -296,6 +360,7 @@ func Build(in Inputs, stderr io.Writer) Report {
 			SubstantiveMessages: iptr(subst),
 			EmptyMessages:       iptr(empty),
 			RelayFamilies:       fam,
+			AttentionFamilies:   attn,
 			TranscriptFiles:     tr.Files,
 			UnparseableLines:    tr.Unparseable,
 		}

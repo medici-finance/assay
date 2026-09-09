@@ -20,3 +20,4 @@ repos:
   pvt:   {cell: assay, repo: null, unpublished: true}
   rec:   {cell: assay, repo: null, unpublished: true}
   ac:    {cell: assay, repo: null, unpublished: true}
+  mp:    {cell: assay, repo: null, unpublished: true}

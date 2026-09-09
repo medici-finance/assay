@@ -37,6 +37,42 @@ to serve; there is no partially-enabled state.
 No deterministic routing: PreCheck answers accept-or-refuse only. An accepted
 message quarantines until the (not-yet-landed) prose router lands.
 
+## The outbound prose gate — every send (`prosegate.go`)
+
+Every send crosses a second, INDEPENDENT layer after the deterministic
+pre-checks pass: a quarantined prose gate on the gateway send path
+(`socket.go`'s submit handler — the one chokepoint every local sender submits
+through, so a non-Claude sender meets it too). Within-cell and cross-cell sends
+alike are consulted, with no risk-trigger predicate selecting which — filtering
+is symmetric, because the deterministic body scan is tokens-only and slug-blind
+(checked-clean is not leak-free). The gate fails on a different signal than that
+scanner, so it catches a slug-shaped leak the scanner passes.
+
+- **Order is one-directional.** The deterministic pre-checks run FIRST and a
+  deterministic refusal is TERMINAL — the gate is never consulted for a message
+  the pipeline already refused, and it never overrides a deterministic refusal.
+- **Advise-only, three verdicts.** The gate consults the read-only decider
+  (`deskkit.Decide`) for one of `clean-send` / `hold-for-human` / `refuse` and
+  acts in its own code; it CANNOT rewrite content (a message that would need
+  editing is held instead). Default is `hold-for-human`.
+- **Held, never dropped.** Any non-clean verdict holds the message (held mailbox
+  + a filed issue carrying the message DIGEST, never the raw payload — the
+  public-tree self-containment rule binds an issue body). Never a silent drop,
+  never an auto-retry.
+- **Fail closed.** `DESK_DECIDE_DISABLED=1`, a spent budget, a timeout, an
+  advisor error, or an injected/malformed answer all resolve to the
+  `hold-for-human` default — outbound comms halts safely rather than flowing
+  ungated.
+- **Containment.** The reader runs under the pinned decider runner entry's
+  refuse-everything profile: empty filesystem root, and callback policies that
+  refuse every fs / terminal / tool request and file the attempt as an anomaly.
+  A configured decider entry not declared for that profile refuses at boot; an
+  unconfigured one leaves the valve off (every send holds).
+
+The mirror-image INBOUND prose layer — a peer's message arriving over the A2A
+server — is the symmetric inbound router's concern, a separate layer landing
+elsewhere; this gate is the outbound half only.
+
 ## Replay window and clock skew (#1951)
 
 This gateway's assertion verification runs against two values from
