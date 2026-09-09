@@ -8,7 +8,7 @@ package main
 // DECISION is not a PR approval at all: the human ratifies and CLOSES the linked
 // `needs-decision` issue, and that closed issue IS the record. A decision brief
 // ratified correctly on that channel therefore could not green its own corroborate
-// lint — the mismatch the tracker ruling #2237 resolves (Option 1: teach the lint
+// lint — the mismatch the house tracker's ruling resolves (Option 1: teach the lint
 // to accept the decision-issue channel).
 //
 // This file adds that third accepted anchor ALONGSIDE the two PR anchors, never
@@ -72,7 +72,8 @@ type decisionGateIssue struct {
 type decisionGateLinks map[string][]decisionGateIssue
 
 // decisionGateCorroboration is the pure core of the third corroboration anchor
-// (tracker ruling #2237). It reports CORROBORATED for a human:<name> stamp found in
+// (the house tracker's ruling (Option 1: a linked decision issue closed by the
+// blessed login corroborates)). It reports CORROBORATED for a human:<name> stamp found in
 // a brief file when a needs-decision issue that brief LINKS satisfies ALL THREE
 // conditions (a)/(b)/(c) above.
 //
@@ -102,7 +103,7 @@ func decisionGateCorroboration(s stamp, gates decisionGateLinks) (evidence strin
 			continue
 		}
 		return fmt.Sprintf("needs-decision issue %s closed by the blessed human %s and carrying the "+
-			"per-brief marker %q (tracker ruling #2237)", iss.Ref, blessLogin, want), true
+			"per-brief marker %q (the house tracker's ruling)", iss.Ref, blessLogin, want), true
 	}
 	return "", false
 }
