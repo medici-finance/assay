@@ -104,8 +104,109 @@ facts:
 | 9 | check | `cd tools/desk && go run ./cmd/upgrade-assay --root "$TMPDIR/adopt" --to v1.0.0 --dry-run \| grep -c 'What changed'` | ≥ 1 (release-note prose surfaced before consent) |
 | 10 | check | `statusgen --root . --lint` | exit 0 on this repo's own tree after migration |
 
+> **Row 8's premise retired at the cut.** Row 8 asserts that no `v1.0.0 <sha256>` pin line
+> exists, because at authoring time v1.0.0 was UNCUT and any hash for it could only have been
+> invented. v1.0.0 is now published, so the guard it encodes ("never hand-type a hash for an
+> unreleased tag") has done its job and its literal form is now expected to match. The
+> post-release form of the same property is row 8's successor, run and recorded in the Evidence
+> below: every pin line's sha256 equals the one the published release's own checksum manifest
+> carries for that artifact. Row 8 is kept, not deleted, so the pre-cut history stays readable;
+> a verifier reads it together with this note.
+
 ## Evidence
 <!-- appended at implementation time -->
+
+### Implementer run — post-cut re-pin — 2026-09-09 opus-5[1m]-implementer, branch off main @ `077a93b`
+
+**What this run covers.** The umbrella v1.0.0 release is published, so the two pins the brief
+deliberately deferred ("the v1.0.0 re-pin + the `sha256` harvest is the cut-release skill's
+post-tag step, since a hash for an uncut tag is never typed by hand") are now made from real
+evidence. This is the IMPLEMENTER run and is NOT a verdict: a non-implementer verify is
+separate, and the status cell is not advanced here — the frontmatter gate is human and
+`irreversible: yes`, so the flip is the verify-gate's.
+
+**Environment.** Own worktree off `refs/remotes/origin/main`, offline (`KUBECONFIG=/dev/null`);
+no cluster or production endpoint contacted. The only network reads are `gh release download`
+against the public release home. Binaries built from this tree (`statusgen`, `deskmigrate`,
+`deskversion`) plus, where the pinned oracle matters, the PUBLISHED `statusgen-darwin-arm64`
+asset downloaded from the v1.0.0 release and sha256-verified before it was run.
+
+**Diff under test.** Two files: `plugins/assay/paired-versions.yaml` (statusgen + desk-tools
+`tag:` v0.26.0 → v1.0.0; all ten per-platform sha256 values re-harvested) and
+`examples/adopter-scaffold/releases/v1.0.0.yaml` (fixture placeholder digests → the real
+linux-amd64 ones, the platform the bare artifact lines in the scaffold pin file name — the same
+convention `examples/adopter-scaffold/releases/v0.28.0.yaml` uses). `plugin: "1.0.0"` is
+unchanged and still equals `plugins/assay/.claude-plugin/plugin.json`'s `version`.
+
+| # | Command (as written in the Verify table) | Exit | Result |
+|---|---|---|---|
+| 1 | `cd statusgen && go test . -run Migrate -count=1` | 0 | `ok` |
+| 2 | `go test ./internal/deskkit/ -run 'StatusgenRegen'` then `-run 'Migrat'` | 0, 0 | `ok`, `ok` |
+| 3 | `deskmigrate --from v0.28.0 --to v1.0.0 --root examples/adopter-scaffold --dry-run` | 0 | lists `0001-v0.28.0-to-v1.0.0-derived-board`; plan names 3 files; `git status --porcelain examples/` → 0 lines (dry-run wrote nothing) |
+| 4 | `deskmigrate` twice against a copied scaffold | 0, 0 | idempotent; each of the two brief files scores 1 on all three greps (the stream README is in the `*.md` glob and correctly scores 0 — it is not a brief) |
+| 4b | `deskmigrate` against a copy with the alias registry removed | 5 | refusal names the missing registry file: "the brief-v2 id form … cannot be minted without the alias registry" |
+| 5 | mutate the copied pin file to two different artifact tags, then `statusgen --lint` | 1 | `PROBLEM: … artifact tags differ across pinned artifacts` — the one-tag-one-tree guard reddens |
+| 6 | `deskboard` built `-ldflags '-X main.version=v0.13.0'`, run on the migrated copy | 6 | `deskboard: tree is brief-v2; this deskboard is v0.13.0; run assay:upgrade-assay` |
+| 7 | plugin/paired-versions agreement + `bash plugins/assay/scripts/check-paired-versions.sh` | 0 | `ok` then `checked`. Guard output: pairing plugin 1.0.0 == plugin.json 1.0.0; single tag v1.0.0 across 10 pin lines; 10 sha256 values 64-lowercase-hex |
+| 8 | `! grep -nE 'v1\.0\.0 [0-9a-f]{64}' plugins/assay/paired-versions.yaml` | 1 | MATCHES-BY-DESIGN — 10 pin lines. Premise retired at the cut; see the note under the Verify table and row 8′ below |
+| 8′ | harvest equality: every pin line's `<artifact> <tag> <sha256>` compared field-for-field against the published release's checksum manifest | 0 | 10 pin lines checked, 0 mismatches; every tag is v1.0.0 |
+| 9 | `upgrade-assay --root <copy> --to v1.0.0 --dry-run \| grep -c 'What changed'` | 0 | count = 1 (≥ 1) — the release-note prose is surfaced before consent, above the artifact deltas and the migration list |
+| 10 | `statusgen --root . --lint` on this repo's own tree | 1 | NOT SATISFIABLE BY THIS PR — see below |
+
+**Row 10 — not satisfiable here, and why.** The row asks for exit 0 on this repo's own tree
+*after migration*. This repo's own flag-day migration is a separate change; this PR re-pins
+version manifests and does not migrate this tree, so the row cannot be claimed either way from
+here. What was measured, so the number is not mistaken for a regression: the lint exits 1 with
+exactly ONE `PROBLEM`, in `docs/streams/harness-portability/brief-15-ci-wiring-harnesslint.md`,
+for a backticked changelog-fragment path that no longer exists. It is PRE-EXISTING at this
+branch's base — the fragment was removed by the release aggregation commit that is main's head,
+and this PR's diff touches neither that brief nor that directory. Confirmed twice: with an
+unstamped build from this tree AND with the published, sha256-verified v1.0.0 `statusgen`
+binary, which reports the identical single problem. It is reported here as itself: a
+checked-failed on a row this PR does not own, not a pass and not a defect introduced here.
+
+**Provenance of every hash — the point of the whole change.** No digest in this diff was typed,
+recalled, or taken from a local build. All ten were read out of the checksum manifest downloaded
+from the published v1.0.0 release, and rewritten into the manifest by a script that keyed each
+pin line on its own artifact name, so a transposition could not survive authoring. End-to-end
+confirmation for one platform: the published `statusgen-darwin-arm64` asset was downloaded and
+hashed locally, and that hash equals the manifest entry AND the committed pin line
+(`a749c2f1…f5c28`); the binary then self-reports `v1.0.0`. `linux-arm64` stays deliberately
+unpinned in both sections — v1.0.0 publishes no such asset, and the acquisition REFUSES rather
+than guesses when a detected platform has no pin line.
+
+**Fail-first — the guards were watched failing before they were claimed to pass.** Against a
+scratch copy of the committed manifest:
+
+| Mutation | `check-paired-versions.sh` | Harvest-equality (row 8′) |
+|---|---|---|
+| baseline (as committed) | 0 — `check-paired-versions: OK` | 0 — 10 checked, 0 mismatches |
+| M1: one pin line left on the old tag | 1 — `FAIL pins span 2 tags, must be exactly one: v0.28.0 v1.0.0` | (not run) |
+| M2: one hash upper-cased | 1 — `FAIL sha256 is not 64 lowercase hex` | (not run) |
+| M3: two REAL hashes swapped between platforms | **0 — cannot see this class** | 1 — both lines reported as mismatches |
+
+M3 is the reason row 8′ exists rather than leaning on the shipped guard. `check-paired-versions.sh`
+checks shape and tag agreement offline and says so in its own header; it cannot tell a correct
+hash from a well-formed wrong one, which is exactly the failure a hand-copied re-pin produces. The
+harvest comparison against the published manifest is the check that catches it, and it is the one
+a re-pin author owes.
+
+**Additional targeted proof (beyond the Verify rows).** `go test ./cmd/deskversion/` → `ok`;
+`go test ./internal/deskkit/ -run 'Composition|VersionMarker|Pins'` → `ok`; the companion shell
+suite `plugins/assay/scripts/check-paired-versions.test.sh` → 16 passed, 0 failed. And
+`deskversion --root examples/adopter-scaffold --releases examples/adopter-scaffold/releases`
+still reports `state: known`, `umbrella: v0.28.0` (made of desk-tools v0.28.0 + statusgen
+v0.28.0) — the scaffold's own pin is untouched by this change; only its v1.0.0 upgrade TARGET
+manifest gained real digests.
+
+**Not claimed.** No status cell is advanced by this PR. Rows 3, 4, 4b and 9 were run with the
+statusgen-binary override pointed at a build from this tree, because the `statusgen` installed on
+the running machine is older than v1.0.0 and has no `migrate` subcommand; run without the
+override those rows fail on the environment, not on the code, and the human's row-3/row-9 run on
+a real adopter checkout should use an installed, sha256-verified v1.0.0. A second wording note
+for whoever re-runs them: rows 4b and 5 spell their determinate exit codes (5, 1) as the
+BINARY's, and `go run` collapses a non-zero child status to 1 while printing `exit status 5` —
+run those two rows against a built binary, or read the printed status rather than `$?`.
 
 ## Review
 Gate: human (from frontmatter). The human records the ruling after running rows 3 and 9
