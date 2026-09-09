@@ -377,6 +377,7 @@ jobs:
           - leg: statusgen
           - leg: desk-tools
           - leg: drainloop
+          - leg: qualgen
           - leg: muhar-light
           - leg: deskmerge
             shard: 0/3
@@ -441,6 +442,17 @@ jobs:
           set -euo pipefail
           go version
           cd drainloop && go vet ./... && go test ./...
+
+      # qualgen is its own Go module at qualgen/ (the quality-report pack; see
+      # docs/report-packs.md). It ships as a released, sha256-pinned binary, so
+      # the publish path gates on its full suite exactly as statusgen's does —
+      # a report pack must not ship a broken binary.
+      - name: Test and vet qualgen
+        if: matrix.leg == 'qualgen'
+        run: |
+          set -euo pipefail
+          go version
+          cd qualgen && go test ./... && go vet ./...
 
       # THE GATE QUALITY BAR (docs/desk-tools-gate-bar.md). The desk-tools
       # `go test ./...` (on its own leg of this matrix) already runs these, so
@@ -820,6 +832,30 @@ jobs:
           GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../statusgen-windows-amd64.exe .
           GOOS=windows GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../statusgen-windows-arm64.exe .
 
+      # qualgen — the quality-report pack (docs/report-packs.md) — joins the
+      # umbrella release as per-platform binaries, the SAME shape and platform set
+      # as statusgen, so an adopter pins a `qualgen-<platform>` line in
+      # .assay-versions and obtains the binary without building from source. The
+      # producing repo (this one) still self-hosts qualgen from source in
+      # .github/workflows/assay-qualgen.yml — the seam the pack contract names.
+      #
+      # -X main.qualgenVersion stamps the release tag so `qualgen --version` can be
+      # compared against a consumer's pin (an unstamped build answers "dev"). The
+      # tag rides in via env:, never a `${{ }}` splice inside run:.
+      - name: Build qualgen binaries
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          go version
+          cd qualgen
+          LDFLAGS="-X main.qualgenVersion=${RELEASE_TAG}"
+          GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../qualgen-darwin-arm64 .
+          GOOS=darwin  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../qualgen-darwin-amd64 .
+          GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../qualgen-linux-amd64  .
+          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o ../qualgen-windows-amd64.exe .
+          GOOS=windows GOARCH=arm64 go build -ldflags "$LDFLAGS" -o ../qualgen-windows-arm64.exe .
+
       # desk-tools ships this same umbrella release as per-platform tarballs (the
       # suite is 25+ binaries, so one archive per platform is cleaner for
       # consumers than 75 loose assets).
@@ -876,8 +912,8 @@ jobs:
           done
 
       # One checksums.txt covers every asset on the umbrella release — the five
-      # statusgen binaries and the five desk-tools per-platform tarballs.
-      # Consumers pin each line by sha256 in .assay-versions.
+      # statusgen binaries, the five qualgen binaries, and the five desk-tools
+      # per-platform tarballs. Consumers pin each line by sha256 in .assay-versions.
       - name: Generate checksums
         run: |
           set -euo pipefail
@@ -887,6 +923,11 @@ jobs:
             statusgen-linux-amd64 \
             statusgen-windows-amd64.exe \
             statusgen-windows-arm64.exe \
+            qualgen-darwin-arm64 \
+            qualgen-darwin-amd64 \
+            qualgen-linux-amd64 \
+            qualgen-windows-amd64.exe \
+            qualgen-windows-arm64.exe \
             desk-tools-darwin-arm64.tar.gz \
             desk-tools-darwin-amd64.tar.gz \
             desk-tools-linux-amd64.tar.gz \
@@ -1036,7 +1077,7 @@ jobs:
             # boilerplate below a horizontal rule. Highlights first is the whole
             # point of the driver direction (2026-08-31): a reader sees what
             # changed before the pin table.
-            body=$(RELEASE_TAG="$RELEASE_TAG" DESK_IMAGE_REF="$desk_image_ref" NOTES_PATH="$NOTES_PATH" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; img=os.environ["DESK_IMAGE_REF"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * desk-tools-<platform>.tar.gz\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\ndesk-tools image (built separately by docker-publish.yml, daily-immutable-tag; pin the ref in .assay-versions):\n  * "+img+"\n\nSee checksums.txt for every asset sha256."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
+            body=$(RELEASE_TAG="$RELEASE_TAG" DESK_IMAGE_REF="$desk_image_ref" NOTES_PATH="$NOTES_PATH" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; img=os.environ["DESK_IMAGE_REF"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + qualgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * qualgen-<platform>\n  * desk-tools-<platform>.tar.gz\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\ndesk-tools image (built separately by docker-publish.yml, daily-immutable-tag; pin the ref in .assay-versions):\n  * "+img+"\n\nSee checksums.txt for every asset sha256."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
             status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' -X POST "${auth[@]}" \
               -d "$body" "${api}/releases")
             if [ "$status" != "201" ]; then
@@ -1076,6 +1117,8 @@ jobs:
           # would be emitted in checksums.txt but never attached to the release.
           for f in statusgen-darwin-arm64 statusgen-darwin-amd64 statusgen-linux-amd64 \
                    statusgen-windows-amd64.exe statusgen-windows-arm64.exe \
+                   qualgen-darwin-arm64 qualgen-darwin-amd64 qualgen-linux-amd64 \
+                   qualgen-windows-amd64.exe qualgen-windows-arm64.exe \
                    desk-tools-darwin-arm64.tar.gz desk-tools-darwin-amd64.tar.gz desk-tools-linux-amd64.tar.gz \
                    desk-tools-windows-amd64.tar.gz desk-tools-windows-arm64.tar.gz \
                    "tool-validation-${RELEASE_TAG}.md" "tool-validation-${RELEASE_TAG}.json" \
@@ -1110,7 +1153,7 @@ jobs:
               echo "::error::could not publish release ${RELEASE_TAG} (HTTP $pub_status)"; cat "$RUNNER_TEMP/publish.json"; exit 1
             fi
           fi
-          echo "Published ${RELEASE_TAG} with statusgen + desk-tools binaries + checksums.txt (desk-tools image: ${DESK_IMAGE}:${DESK_IMAGE_TAG})."
+          echo "Published ${RELEASE_TAG} with statusgen + qualgen + desk-tools binaries + checksums.txt (desk-tools image: ${DESK_IMAGE}:${DESK_IMAGE_TAG})."
 
   # ───────────────────────────────────────────────────────────────────────────
   # CHANGELOG ROLL — its OWN job, deliberately NOT a trailing step of `release`.

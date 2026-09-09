@@ -49,11 +49,13 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return runCheck(rest, stdout, stderr)
 	case "sweep":
 		return runSweep(rest, stdout, stderr)
+	case "init":
+		return runInit(rest, stdout, stderr)
 	case "-h", "--help", "help":
 		usage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "qualgen: unknown mode %q (want one of: mine, report, pr, check, sweep)\n", mode)
+		fmt.Fprintf(stderr, "qualgen: unknown mode %q (want one of: mine, report, pr, check, sweep, init)\n", mode)
 		return 2
 	}
 }
@@ -67,8 +69,10 @@ usage:
   qualgen pr <n> --out <dir> [--repo <dir>] [--head <ref> --base <ref>]  per-PR risk-feature feed
   qualgen check <paths> --out <dir> [--repo <dir>]  brittleness screen for a named file set
   qualgen sweep  --repo <dir> --out <dir> --config <file> [--reverify-all]  code-slop forensic sweep lane
+  qualgen init   [--root <dir>] [--dry-run]  scaffold the report pack (CI workflow + pin) into an adopter repo
   qualgen --version                         print the release tag
 
-All modes are read-only against the mined repo; artifacts land only under --out.
+All read modes are read-only against the mined repo; artifacts land only under --out.
+init scaffolds an adopter repo (report pack) and never overwrites an existing file.
 `)
 }

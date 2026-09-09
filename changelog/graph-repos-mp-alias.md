@@ -1,0 +1,2 @@
+### Added
+- `docs/streams/graph-repos.yaml` reserves a sixth alias, `mp`, for the cell's platform repo. Like its withheld siblings it carries `repo: null` and `unpublished: true`, so a `mp:<stream>/<NN>` or `mp#<issue>` reference parses and lint-validates from this public tree while resolving past the alias stays a could-not-check. Reserving it here keeps the public alias SET identical to the private copy's, which is what the planned registry drift lint compares.

@@ -41,10 +41,19 @@ package main
 // an interval. A still-open (still-red) CI episode records nothing — an open
 // episode is could-not-check, not a fabricated restore. The query emits an
 // honest {state:"could-not-check", n:0} for an empty window, never a fabricated 0.
+//
+// NO CLI DEPENDENCY. The reads go straight to GitHub's REST API over net/http
+// (ghfetch.go's ghClient), authenticated from GH_TOKEN / GITHUB_TOKEN. They used
+// to shell out to `gh api`, and on any runner image without `gh` on PATH every
+// read failed with `exec: "gh": executable file not found in $PATH` — fail-open,
+// so nothing broke loudly, and the substrate simply never accrued a single
+// record. A recorder whose only substrate is history cannot afford a dependency
+// that silently zeroes it, so it now carries none.
 
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -141,8 +150,9 @@ type doraMergedPR struct {
 
 // doraTimingSource is the network seam: main-branch workflow runs, merged PRs,
 // and a PR's earliest-commit authored time. Read-only in every direction — it
-// lists and reads, creating and mutating nothing. The production impl shells to
-// gh; tests substitute a fake with canned data and no network.
+// lists and reads, creating and mutating nothing. The production impl reads
+// GitHub's REST API directly over net/http; tests substitute a fake with canned
+// data and no network.
 type doraTimingSource interface {
 	MainWorkflowRuns(repo string) ([]workflowRun, error)
 	MergedPRs(repo string, since time.Time) ([]doraMergedPR, error)
@@ -455,7 +465,7 @@ func marshalRecord(v any) (string, error) {
 
 // recordDoraTiming is the single-writer append path for the DORA-timing log,
 // called only from run()'s mode=="record" branch (never --lint). It is
-// best-effort and fail-open: a repo it cannot resolve, or any gh read that
+// best-effort and fail-open: a repo it cannot resolve, or any REST read that
 // fails, records NOTHING and prints a could-not-check line — it never fails the
 // record job and never fabricates an interval. Returns the number of records
 // appended (0 on a clean idempotent no-op or a could-not-check).
@@ -488,11 +498,17 @@ func recordDoraTiming(root string, src doraTimingSource, now time.Time) int {
 	// below: a read failure must never be reported as a healthy no-op, or a
 	// persistent failure — the record CI reading nothing every run — becomes a
 	// silent-unknown and the substrate never accrues with no signal anyone sees.
+	// cncReasons carries each failure's own reason (an "HTTP <code>: <message>"
+	// from the REST source, or a transport error) into that signal, so the
+	// degraded line says WHAT failed — a 401 is an operator's token problem, a
+	// 503 is GitHub's, and the two need different responses.
 	var restoreCNC, leadCNC bool
+	var cncReasons []string
 
 	// --- restore episodes (time_to_restore) ---
 	if runs, rerr := src.MainWorkflowRuns(repo); rerr != nil {
 		restoreCNC = true
+		cncReasons = append(cncReasons, "restore-episode read: "+rerr.Error())
 		fmt.Printf("dora-timing: could-not-check restore episodes for %s — %v; none recorded\n", repo, rerr)
 	} else {
 		for _, ep := range matchEpisodes(headsFromRuns(runs, workflow)) {
@@ -525,6 +541,7 @@ func recordDoraTiming(root string, src doraTimingSource, now time.Time) int {
 	// --- PR lead times (change_lead_time) ---
 	if prs, perr := src.MergedPRs(repo, since); perr != nil {
 		leadCNC = true
+		cncReasons = append(cncReasons, "lead-time read: "+perr.Error())
 		fmt.Printf("dora-timing: could-not-check lead times for %s — %v; none recorded\n", repo, perr)
 	} else {
 		for _, pr := range prs {
@@ -555,13 +572,18 @@ func recordDoraTiming(root string, src doraTimingSource, now time.Time) int {
 	// .dora-timing.jsonl) silently never accruing, indistinguishable from a
 	// genuinely quiet day. The signal lands on stderr (greppable, survives a
 	// monitor), names the substrate path, and states the fail-open contract so a
-	// PERSISTENT occurrence is actionable rather than invisible.
+	// PERSISTENT occurrence is actionable rather than invisible. It names the
+	// failure's own reason — for the REST source an "HTTP <code>: <message>" —
+	// because the previous wording pointed at `gh` availability, which is no
+	// longer a thing that can fail here, and a signal that misnames the cause
+	// costs the operator the same round trip as no signal at all.
 	if restoreCNC || leadCNC {
 		fmt.Fprintf(os.Stderr,
-			"dora-timing: DEGRADED — %s could-not-check for %s this run; the DORA-timing substrate (%s) did not accrue. "+
+			"dora-timing: DEGRADED — %s could-not-check for %s this run (%s); the DORA-timing substrate (%s) did not accrue. "+
 				"This is fail-open (the record job is NOT failed and no interval is fabricated), but a PERSISTENT occurrence means DORA timing is silently not being recorded — "+
-				"investigate gh availability/auth in the record job.\n",
-			doraCouldNotCheckWhich(restoreCNC, leadCNC), repo, doraTimingRelPath)
+				"investigate GitHub REST reachability and the token the record job exports (%s).\n",
+			doraCouldNotCheckWhich(restoreCNC, leadCNC), repo, strings.Join(cncReasons, "; "),
+			doraTimingRelPath, strings.Join(doraTokenEnvs, " / "))
 	}
 
 	if len(lines) == 0 {
@@ -631,27 +653,67 @@ func ownerRepoFromURL(url string) string {
 	return ""
 }
 
-// --- the production gh source ----------------------------------------------
+// --- the production REST source ---------------------------------------------
 
-// ghDoraTimingSource is the production seam: read-only gh api reads against the
-// target repo's own workflow runs and merged PRs. It creates and mutates
-// nothing.
-type ghDoraTimingSource struct{}
+// doraTokenEnvs are the env vars the recorder reads its API token from, in
+// preference order: GH_TOKEN first (what a workflow step conventionally
+// exports, and what `gh` itself read), then GITHUB_TOKEN (what Actions injects
+// by default). An empty token is NOT an error here — an
+// unauthenticated read still reaches the API, and a repo that then 401s or 404s
+// surfaces as a could-not-check carrying that status, never as a clean empty.
+var doraTokenEnvs = []string{"GH_TOKEN", "GITHUB_TOKEN"}
 
-func (ghDoraTimingSource) MainWorkflowRuns(repo string) ([]workflowRun, error) {
+func doraToken() string {
+	for _, k := range doraTokenEnvs {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// httpDoraTimingSource is the production seam: read-only GitHub REST reads
+// against the target repo's own workflow runs, merged PRs and PR commits, over
+// net/http via ghfetch.go's ghClient. It creates and mutates nothing, and it
+// requires no binary on PATH.
+//
+// Every failure carries the HTTP status through httpReason ("HTTP 401: Bad
+// credentials"), so the caller's could-not-check and DEGRADED lines name the
+// real cause. A non-200 is NEVER decoded as an empty list: a page that failed
+// must not read like a page with nothing on it.
+type httpDoraTimingSource struct{ c *ghClient }
+
+// newHTTPDoraTimingSource builds the production source against the public REST
+// base with whatever token the environment carries.
+func newHTTPDoraTimingSource() httpDoraTimingSource {
+	return httpDoraTimingSource{c: newGHClient(doraToken())}
+}
+
+// getJSON performs one read and unmarshals a 200 body into v. what names the
+// endpoint in the error text.
+func (s httpDoraTimingSource) getJSON(what, url string, v any) error {
+	body, status, err := s.c.get(url)
+	if err != nil {
+		return fmt.Errorf("%s: %v", what, err)
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("%s: %s", what, httpReason(status, body))
+	}
+	if err := json.Unmarshal(body, v); err != nil {
+		return fmt.Errorf("%s: HTTP 200 but the response did not parse: %v", what, err)
+	}
+	return nil
+}
+
+func (s httpDoraTimingSource) MainWorkflowRuns(repo string) ([]workflowRun, error) {
 	var all []workflowRun
 	for page := 1; page <= doraRunPageCap; page++ {
-		out, err := exec.Command("gh", "api",
-			fmt.Sprintf("repos/%s/actions/runs?branch=main&status=completed&per_page=100&page=%d", repo, page),
-		).Output()
-		if err != nil {
-			return nil, fmt.Errorf("gh api actions/runs page %d: %w", page, err)
-		}
 		var resp struct {
 			WorkflowRuns []workflowRun `json:"workflow_runs"`
 		}
-		if err := json.Unmarshal(out, &resp); err != nil {
-			return nil, fmt.Errorf("unmarshal actions/runs: %w", err)
+		url := fmt.Sprintf("%s/repos/%s/actions/runs?branch=main&status=completed&per_page=100&page=%d", s.c.base, repo, page)
+		if err := s.getJSON(fmt.Sprintf("actions/runs page %d", page), url, &resp); err != nil {
+			return nil, err
 		}
 		if len(resp.WorkflowRuns) == 0 {
 			break
@@ -664,23 +726,18 @@ func (ghDoraTimingSource) MainWorkflowRuns(repo string) ([]workflowRun, error) {
 	return all, nil
 }
 
-func (ghDoraTimingSource) MergedPRs(repo string, since time.Time) ([]doraMergedPR, error) {
+func (s httpDoraTimingSource) MergedPRs(repo string, since time.Time) ([]doraMergedPR, error) {
 	// Closed PRs against main, newest-updated first; keep the merged ones whose
 	// merge instant is within the window.
-	out, err := exec.Command("gh", "api",
-		fmt.Sprintf("repos/%s/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100", repo),
-	).Output()
-	if err != nil {
-		return nil, fmt.Errorf("gh api pulls: %w", err)
-	}
 	var raw []struct {
 		Number         int    `json:"number"`
 		CreatedAt      string `json:"created_at"`
 		MergedAt       string `json:"merged_at"`
 		MergeCommitSHA string `json:"merge_commit_sha"`
 	}
-	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, fmt.Errorf("unmarshal pulls: %w", err)
+	url := fmt.Sprintf("%s/repos/%s/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100", s.c.base, repo)
+	if err := s.getJSON("pulls", url, &raw); err != nil {
+		return nil, err
 	}
 	var prs []doraMergedPR
 	for _, p := range raw {
@@ -701,13 +758,7 @@ func (ghDoraTimingSource) MergedPRs(repo string, since time.Time) ([]doraMergedP
 	return prs, nil
 }
 
-func (ghDoraTimingSource) FirstCommitAt(repo string, pr int) (time.Time, bool) {
-	out, err := exec.Command("gh", "api",
-		fmt.Sprintf("repos/%s/pulls/%d/commits?per_page=100", repo, pr),
-	).Output()
-	if err != nil {
-		return time.Time{}, false
-	}
+func (s httpDoraTimingSource) FirstCommitAt(repo string, pr int) (time.Time, bool) {
 	var commits []struct {
 		Commit struct {
 			Author struct {
@@ -715,7 +766,10 @@ func (ghDoraTimingSource) FirstCommitAt(repo string, pr int) (time.Time, bool) {
 			} `json:"author"`
 		} `json:"commit"`
 	}
-	if err := json.Unmarshal(out, &commits); err != nil || len(commits) == 0 {
+	url := fmt.Sprintf("%s/repos/%s/pulls/%d/commits?per_page=100", s.c.base, repo, pr)
+	if err := s.getJSON(fmt.Sprintf("pulls/%d/commits", pr), url, &commits); err != nil {
+		// ok=false — the caller falls back to the PR's opened_at anchor, and
+		// records the anchor it used. Never a fabricated commit instant.
 		return time.Time{}, false
 	}
 	var earliest time.Time
