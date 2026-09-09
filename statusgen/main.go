@@ -1413,6 +1413,14 @@ func main() {
 	doraBy := flag.String("by", "stream", "--dora grouping dimension: stream | goal")
 	doraTimingMode := flag.Bool("dora-timing", false, "emit the recorded DORA-timing aggregate (change_lead_time + time_to_restore, p50/p90 in hours) from docs/streams/.dora-timing.jsonl; an honest could-not-check (never a fabricated 0) for an empty window. Reuses --since / --until / --json")
 	doraTimingUntil := flag.String("until", "", "period end (YYYY-MM-DD, exclusive) for --dora-timing; default now")
+	// --dora-json is the INTERNAL full-DORA feed emitter (dorajson.go): the frozen
+	// publish-contract shape over the retained grouped core + the recorded timing
+	// substrate. It is NOT a revival of the removed standalone DORA CLI, and it is
+	// distinct from --dora, which keeps emitting the grouped back-compat shape its
+	// pinned consumer expects. It emits only the metrics this project sources
+	// itself; deployment frequency comes from the external platform.
+	doraJSONMode := flag.Bool("dora-json", false, "emit the frozen full-DORA publish feed (change_lead_time + change_failure_rate + time_to_restore) as JSON on stdout; deployment frequency is sourced externally and is not emitted. Honest could-not-check, never a fabricated 0. Reuses --since / --until, capped by --dora-limit")
+	doraJSONLimit := flag.Int("dora-limit", defaultDoraJSONLimit, "result cap on each recorded timing series read by --dora-json; past it the most recent records in the window are aggregated and the metric is marked partial")
 	trendMode := flag.Bool("trend", false, "back-compat alias for --verif-backlog (daily-harvest/v0.1.0): roll the status-transition log up into the awaiting-verification backlog curve. Reuses --since / --daily / --weekly / --history")
 	// --roadmap: the internal roadmap-deck overview + per-stream pages. RETAINED
 	// (Ian ruling #1213): DevLake feeds INTO these pages; the grouped-DORA tile
@@ -1544,6 +1552,7 @@ func main() {
 			"--trend":                 *trendMode, // back-compat alias of --verif-backlog
 			"--dora":                  *doraMode,
 			"--dora-timing":           *doraTimingMode,
+			"--dora-json":             *doraJSONMode,
 			"--autonomy":              *autonomyMode,
 			"--ladder":                *ladderMode,
 			"--issues":                *issuesMode,
@@ -1739,6 +1748,11 @@ func main() {
 	// same discipline as --dora/--trend.
 	if *doraTimingMode {
 		os.Exit(runDoraTiming(*root, *since, *doraTimingUntil, *doraJSON))
+	}
+	// The internal full-DORA publish feed (dorajson.go). Always JSON — it exists to
+	// be machine-read by the publish producer — so it does not consult --json.
+	if *doraJSONMode {
+		os.Exit(runDoraJSON(*root, *since, *doraTimingUntil, *doraJSONLimit))
 	}
 	// Autonomy / token / gate-share emitter (mm/41) — self-contained
 	// diagnostic sub-command. Reuses the shared --since window and --json flag.
