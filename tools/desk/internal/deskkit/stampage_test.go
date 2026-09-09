@@ -160,7 +160,7 @@ func TestClaimKeyForPR(t *testing.T) {
 		body string
 		want string // "" means: no derivable key
 	}{
-		{"brief trailer", "does a thing\n\nBrief: desk-hardening/15\n", "one--desk-hardening--15"},
+		{"brief trailer", "does a thing\n\nBrief: example-stream/15\n", "one--example-stream--15"},
 		{"issue trailer", "fixes it\n\nIssue: #486\n", "one--issue-486"},
 		// ParseTrailers REFUSES a body carrying both link kinds, so such a body names no
 		// single dispatch and yields no key. That is the right answer here, not a defect to
