@@ -102,6 +102,18 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// (active + archived) so a single-product PR never falsely flags a finding
 	// referencing another product's — or an archived — stream as "unknown stream".
 	problems, notices := checkScoped(checkStreams, edgeStreams, findings)
+	// Stream WIP cap + parked lane (attention-budget/04). Both run against the FULL
+	// per-root stream set — the active-stream cap is a per-root property, not a
+	// scoped one — and are DIFFERENTIAL on the PR's --changed set: a full lint (no
+	// --changed) only NOTICEs, so the daily regen and unrelated PRs never redden;
+	// the PR-diff gate makes a change that adds an active stream past the cap, or an
+	// added active stream with no approved `spec:`, a PROBLEM.
+	capProblems, capNotices := streamCapLint(streams, root, changed)
+	problems = append(problems, capProblems...)
+	notices = append(notices, capNotices...)
+	srcProblems, srcNotices := streamSourceLint(streams, root, changed)
+	problems = append(problems, srcProblems...)
+	notices = append(notices, srcNotices...)
 	// An UNREADABLE docs/archive/ is could-not-check, surfaced as a NOTICE rather
 	// than rounded to "no archived streams": edges into archived streams may then
 	// (correctly) report "unknown stream" until the directory reads cleanly.

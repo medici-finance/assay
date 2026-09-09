@@ -149,6 +149,9 @@ parallel-streams: []                # OPTIONAL (absent = one worker per brief �
 consumers: []                       # OPTIONAL — list of consumer sites when this brief changes a shared
                                     # value. Each entry: "<path>: fixed-here | follow-up <stream/NN> |
                                     # out-of-scope (<why>)". Absent = no shared value changed (the default).
+                                    # An AUTHORING PR declares future consumers, it does not edit them:
+                                    # route a path this brief's implementation will LATER touch as
+                                    # `follow-up <stream>/<NN>` at THIS brief, not `fixed-here`.
                                     # See rule 6. Authoring convention — no lint enforces it yet
                                     # (tracked as a planned follow-up).
 ---
@@ -284,6 +287,25 @@ questions is `yes`, `gate` must be `human`; only when all four are `no` may `gat
      Route it truthfully as `out-of-scope (<why — deferred to an unauthored brief / intake entry>)`,
      which records the deferral without a false or missing target. Same reason existing briefs are
      not backfilled: the record's truth outranks the grammar, and the grammar has a truthful form.
+   - **An authoring PR routes its OWN future deliverables to the deferred disposition, never
+     `fixed-here`.** A brief-authoring change *declares* where a change will land; it does not land
+     it — the authoring diff adds the brief and touches none of the paths the brief's own
+     implementation will later edit. `fixed-here` is a claim about THIS diff, legitimate only when
+     THIS diff actually edits the named path; asserting it on an authoring-only diff is a claim the
+     routing gate correctly disproves — "no path it resolves to appears in the diff" — reddening the
+     PR on its first push. So route each path this brief's own implementation will later touch to the
+     **deferred disposition**: `follow-up <stream>/<NN>` targeting THIS brief. The implementation
+     change that lands the path then replaces that routing with `fixed-here`, in the same change.
+     A self-targeting `follow-up` corroborates by construction — the brief's own file contains its
+     own ID, so the gate's back-reference check is satisfied the moment the brief exists. Every entry
+     still ends in exactly one of the three routing tokens; an entry with none claims nothing and can
+     corroborate nothing. Worked example — the same consumer written wrongly then rightly on an
+     authoring PR that only files the brief:
+     - wrong (asserts a fix this diff did not make; the gate disproves it): `- "src/pipeline/router.go: fixed-here"`
+     - right (deferred to this brief until its implementation lands): `- "src/pipeline/router.go: follow-up <stream>/<NN> (this brief; flips to fixed-here when the implementation edits the path)"`
+     Run your project's consumers check — the diff-aware `statusgen --consumers` gate — over the
+     branch before pushing an authoring change, so the deferred routing is confirmed locally rather
+     than by a red check in CI.
    - **Flow Verify row**: a shared-value brief's Verify table must carry at least one row exercising
      the cross-component flow end-to-end (e.g. *frontend submits form → API persists → dashboard row
      appears*), not just the changed site. Site-green does not imply flow-green. This one stays a
@@ -454,6 +476,8 @@ it is an authoring convention only.
 | `pipeline-exit-sunk` | a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail | advisory |
 | `rE2-literal-pipe` | a `\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation | advisory |
 | `shredded-cell` | a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column | advisory |
+| `stream-cap` | a change that adds an active stream past the per-root active-stream cap (ASSAY_STREAM_CAP) with no offsetting park — no net new streams past the cap | fatal |
+| `stream-source` | a change that adds an active stream README citing no `spec:`, or a `spec:` whose header is not `**Status:** approved` — a stream is scaffolded only from an approved spec | fatal |
 | `unsubstituted-metavar` | an unsubstituted `<metavar>` placeholder left in the Command cell, so the row cannot be run as written | advisory |
 
 ## Before dispatch — mistake-proofing the brief itself

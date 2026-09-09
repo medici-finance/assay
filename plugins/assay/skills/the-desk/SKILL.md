@@ -191,6 +191,13 @@ verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name
 - **Dedupe against the open-issue register BEFORE any fanout:** "is this already filed?" precedes
   "who can investigate this?". On a board PROBLEM: confirm the red is not a stale-oracle artifact
   (check the board tool's provenance line against the pinned release), THEN dedupe, THEN dispatch.
+- **Stream WIP cap — prefer a brief in an existing stream to a new stream.** The active-stream cap
+  (`ASSAY_STREAM_CAP`, enforced by the `stream-cap` lint) means there are no net new active streams
+  past the cap. Before opening a stream, ask whether the work is a brief in one that already exists.
+  A genuinely new stream at the cap is scaffolded `status: parked` (out of dispatch, briefs kept) and
+  the opening PR names which active stream to park or archive to make room — the swap is human:<name>'s
+  call. A stream is opened ONLY from an `**Status:** approved` scoping doc (the `stream-source` lint),
+  never from a raw idea or a `draft`.
 - **Fanout-first: the desk runs on the top tier — spend that tier ONLY on judgment, synthesis,
   arbitration, verifying agent output, and talking to human:<name>.** Everything else fans out by
   default (mechanical evidence-gathering → cheap tier; research/drafting/authoring →

@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	validStreamStatus = map[string]bool{"active": true, "paused": true, "done": true}
+	validStreamStatus = map[string]bool{"active": true, "paused": true, "parked": true, "done": true}
 	validPriority     = map[string]bool{"P0": true, "P1": true, "P2": true}
 	validTrack        = map[string]bool{"": true, "product": true, "platform": true, "ecosystem": true}
 	validBriefStatus  = map[string]bool{"todo": true, "in-progress": true, "implemented": true, "verified": true, "done": true, "blocked": true}
