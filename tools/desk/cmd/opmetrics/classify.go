@@ -24,7 +24,13 @@ import (
 //
 //	1 — first cut: cue families + near-duplicate detection,
 //	    measured against cmd/opmetrics/testdata/labelled. See README for the score.
-const ClassifierVersion = "opmetrics-relay/1"
+//	2 — attention classes: a SECOND, additive label axis (AttentionFamily) over
+//	    the same messages — route/status/toil/correction/decision/idea/ack/other.
+//	    The v1 relay-vs-substantive axis and its families are UNCHANGED, so the
+//	    relay-ratio trend line is unbroken; v2 only ADDS the attention-family
+//	    breakdown. The bump is required because a NEW judgement rule was added,
+//	    and the accuracy corpus was re-labelled with the family ground truth.
+const ClassifierVersion = "opmetrics-relay/2"
 
 // Class is the label the classifier assigns to one operator message.
 type Class string
@@ -88,6 +94,109 @@ const (
 	familyDuplicate = "duplicate"
 )
 
+// ── v2: the ATTENTION-CLASS axis ────────────────────────────────────────────
+//
+// A SECOND label, independent of the relay-vs-substantive verdict above. Where
+// the relay axis asks "did this turn carry a decision or plumbing?", the
+// attention axis asks WHICH KIND of operator load a turn represents — the
+// vocabulary the stream's targets are stated in. It is ADDITIVE: it never
+// changes a message's Class or relay Family, it only adds one more count.
+//
+// It is still a JUDGEMENT (hence the ClassifierVersion bump), and it is still
+// COUNT-ONLY: AttentionFamily returns one fixed vocabulary string, never text.
+// First match wins, in the order the switch runs. Rules match on the NORMALISED
+// form, exactly as the relay cues do.
+//
+// The length ceiling (relayMaxWords) applies to route/status/toil for the same
+// reason it applies to the relay cues: a long message that merely MENTIONS a
+// routing or status phrase is a decision that mentions plumbing, not plumbing —
+// so it falls through to `other`, preserving the "under-count, never over-count"
+// direction the README commits to. correction/decision/idea carry no ceiling
+// (a correction or a research ask can legitimately be long); ack is bounded by
+// its own ≤3-word rule.
+const (
+	AttnRoute      = "route"      // "tell/ask/find/ping <desk>", "wrong window"
+	AttnStatus     = "status"     // "where are we", "what's next", "status of"
+	AttnToil       = "toil"       // "walk me through", "step by step", "give me the command"
+	AttnCorrection = "correction" // the corrective-cue rule, promoted to a family
+	AttnDecision   = "decision"   // option letters/numbers, "ratify", "approve <it/the>"
+	AttnIdea       = "idea"       // "investigate", "research", "compare", "evaluate"
+	AttnAck        = "ack"        // ≤3 words: yes/ok/go/done/merged/retry/continue
+	AttnOther      = "other"      // the substantive / uncued default
+)
+
+// AllAttentionFamilies is the closed set, in emit order, exported for the emit
+// tally and the vocabulary tests.
+var AllAttentionFamilies = []string{
+	AttnRoute, AttnStatus, AttnToil, AttnCorrection, AttnDecision, AttnIdea, AttnAck, AttnOther,
+}
+
+var (
+	// route — the operator hand-carrying a message between desks/windows. The verb
+	// is one of the brief's four imperatives (tell/ask/find/ping) AND must actually
+	// reach a desk/window word, so ordinary uses ("find the bug") and substantive
+	// rules that merely mention routing ("route that verdict to the review desk")
+	// do not trip it. Deliberately NOT including "route"/"hand" as verbs: those
+	// appear inside substantive governance sentences far more than as an operator's
+	// routing instruction, and the under-count direction says leave them `other`.
+	attnRoute = regexp.MustCompile(`\bwrong window\b|\b(tell|ask|find|ping)\b[a-z0-9 #]*\b(desk|window)\b`)
+	// status — the operator pulling state that an agent could have surfaced.
+	attnStatus = regexp.MustCompile(`\b(where are we|what ?s next|what is next|what ?s left|what is left|status of|update the runsheet|any update|hows it going|how is it going|is it done|are we done|is that done|whats the status|what is the status)\b`)
+	// toil — the operator asking to be walked through mechanics a routine owns.
+	// Only operator-facing "give me / walk me" phrasings; a substantive instruction
+	// to DOCUMENT a command ("document the exact command") is not toil, so bare
+	// "exact command" is deliberately absent.
+	attnToil = regexp.MustCompile(`\b(walk me through|step by step|give me the command|how do i|what ?s the command|what is the command|which command|spell out the steps|paste the command)\b`)
+	// decision — a ratify/approve/pick-an-option turn. Deliberately NARROW on
+	// "approve": it must be an approving ACTION ("approve it/the/this", "i
+	// approve"), never the bare word or a passive state echo ("it is approved"),
+	// so a substantive rule ABOUT approvals ("must never self-approve") stays
+	// `other`.
+	attnDecision = regexp.MustCompile(`\b(ratif\w*|option [0-9a-z]\b|go with option|approve (it|the|this|that)|i approve|lets go with option|the decision is)\b`)
+	// idea — a research/compare/evaluate ask: work that opens a question rather
+	// than closing one.
+	attnIdea = regexp.MustCompile(`\b(investigate|research|compare|evaluate|explore|look into|dig into|assess whether|what can we learn)\b`)
+	// ack — a bare acknowledgement. Bounded to ≤3 tokens by AttentionFamily and
+	// matched whole here so "ok" acks but "ok, now rewrite the parser" does not.
+	attnAck = regexp.MustCompile(`^(yes|yep|yeah|ok|okay|k|kk|go|go ahead|done|merged|retry|continue|proceed|next|resume|carry on|keep going|sure|ta|ty|thanks|thank you|ship it)$`)
+)
+
+// attnMaxWords is the length ceiling for the cue-based attention families
+// (route/status/toil), reusing relayMaxWords so the two axes cannot drift apart:
+// the direction the README commits to is enforced once, for both.
+const attnMaxWords = relayMaxWords
+
+// AttentionFamily assigns one attention class to a normalised message. It is a
+// pure function of the text (no session state), returns "" for a content-free
+// turn (so the empty turns stay OUT of the family denominator, exactly as they
+// stay out of the relay ratio), and otherwise returns one of AllAttentionFamilies.
+func AttentionFamily(norm string, ntoks int) string {
+	if ntoks == 0 {
+		return ""
+	}
+	if ntoks <= attnMaxWords {
+		switch {
+		case attnRoute.MatchString(norm):
+			return AttnRoute
+		case attnStatus.MatchString(norm):
+			return AttnStatus
+		case attnToil.MatchString(norm):
+			return AttnToil
+		}
+	}
+	switch {
+	case cueCorrective.MatchString(norm):
+		return AttnCorrection
+	case attnDecision.MatchString(norm):
+		return AttnDecision
+	case attnIdea.MatchString(norm):
+		return AttnIdea
+	case ntoks <= 3 && attnAck.MatchString(norm):
+		return AttnAck
+	}
+	return AttnOther
+}
+
 // wordRe splits the normalised form into word tokens.
 var wordRe = regexp.MustCompile(`[a-z0-9#]+`)
 
@@ -149,6 +258,11 @@ type Label struct {
 	// Family is the relay family when Class is ClassRelay, "" otherwise. It is one
 	// of the family* constants — a fixed vocabulary, never message-derived.
 	Family string
+	// Attention is the v2 attention class — one of AllAttentionFamilies, or "" for
+	// a content-free turn. A SECOND axis, independent of Class/Family: every
+	// non-empty message carries exactly one, so the eight family counts sum to
+	// messages_classified.
+	Attention string
 	// Corrective reports the corrective-cue axis, independent of Class.
 	Corrective bool
 	// Shape is a content-free fingerprint of the normalised token SET, used only to
@@ -181,32 +295,36 @@ func (c *Classifier) Classify(session, text string) Label {
 	}
 
 	corrective := cueCorrective.MatchString(norm)
+	// The attention class is computed once, on the same normalised form, and rides
+	// on every label this call returns. It is independent of the relay verdict —
+	// a duplicate re-send still carries its own attention class.
+	attn := AttentionFamily(norm, len(toks))
 
 	// Near-duplicate FIRST: a re-send is a relay regardless of how long it is,
 	// because its information content is zero — it was already said.
 	for _, prev := range c.seen[session] {
 		if jaccard(set, prev) >= duplicateJaccard {
 			c.seen[session] = append(c.seen[session], set)
-			return Label{Class: ClassRelay, Family: familyDuplicate, Corrective: corrective, shape: set}
+			return Label{Class: ClassRelay, Family: familyDuplicate, Attention: attn, Corrective: corrective, shape: set}
 		}
 	}
 	c.seen[session] = append(c.seen[session], set)
 
 	if len(toks) > relayMaxWords {
-		return Label{Class: ClassSubstantive, Corrective: corrective, shape: set}
+		return Label{Class: ClassSubstantive, Attention: attn, Corrective: corrective, shape: set}
 	}
 
 	switch {
 	case cuePoke.MatchString(norm):
-		return Label{Class: ClassRelay, Family: familyPoke, Corrective: corrective, shape: set}
+		return Label{Class: ClassRelay, Family: familyPoke, Attention: attn, Corrective: corrective, shape: set}
 	case cueSync.MatchString(norm):
-		return Label{Class: ClassRelay, Family: familySync, Corrective: corrective, shape: set}
+		return Label{Class: ClassRelay, Family: familySync, Attention: attn, Corrective: corrective, shape: set}
 	case cueState.MatchString(norm):
-		return Label{Class: ClassRelay, Family: familyState, Corrective: corrective, shape: set}
+		return Label{Class: ClassRelay, Family: familyState, Attention: attn, Corrective: corrective, shape: set}
 	case cueLookup.MatchString(norm):
-		return Label{Class: ClassRelay, Family: familyLookup, Corrective: corrective, shape: set}
+		return Label{Class: ClassRelay, Family: familyLookup, Attention: attn, Corrective: corrective, shape: set}
 	}
-	return Label{Class: ClassSubstantive, Corrective: corrective, shape: set}
+	return Label{Class: ClassSubstantive, Attention: attn, Corrective: corrective, shape: set}
 }
 
 // correctionRecurrenceJaccard groups two corrective messages as "the same correction".

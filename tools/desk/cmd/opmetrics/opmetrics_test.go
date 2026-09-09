@@ -30,14 +30,14 @@ func isolateHome(t *testing.T) string {
 // fixtureInputs is the standard Build input over the fixture tree.
 func fixtureInputs(root string, trend int) Inputs {
 	return Inputs{
-		Date:           "2026-07-22",
-		Day:            fixtureDay(),
-		Now:            fixtureNow(),
-		TranscriptsDir: fxTranscripts,
-		DeskToolsDir:   fxDeskTools,
-		GHJSON:         fxGH,
-		Root:           root,
-		Trend:          trend,
+		Date:            "2026-07-22",
+		Day:             fixtureDay(),
+		Now:             fixtureNow(),
+		TranscriptsDirs: []string{fxTranscripts},
+		DeskToolsDir:    fxDeskTools,
+		GHJSON:          fxGH,
+		Root:            root,
+		Trend:           trend,
 	}
 }
 
@@ -66,6 +66,19 @@ func TestBuildOverFixtures(t *testing.T) {
 	want := RelayFamilies{Sync: 1, StateEcho: 1, Poke: 2, Lookup: 2, Duplicate: 1}
 	if op.RelayFamilies != want {
 		t.Fatalf("relay families = %+v, want %+v", op.RelayFamilies, want)
+	}
+
+	// v2 attention families over the same 14 classified turns: two status
+	// queries ("where are we…", "is it done"), two acks ("continue", "ok"), three
+	// corrections (the two "stop…" and the one "no…"), the rest `other`. The eight
+	// counts sum to messages_classified — every non-empty turn carries exactly one.
+	wantAttn := AttentionFamilies{Status: 2, Correction: 3, Ack: 2, Other: 7}
+	if op.AttentionFamilies != wantAttn {
+		t.Fatalf("attention families = %+v, want %+v", op.AttentionFamilies, wantAttn)
+	}
+	af := op.AttentionFamilies
+	if sum := af.Route + af.Status + af.Toil + af.Correction + af.Decision + af.Idea + af.Ack + af.Other; sum != *op.MessagesClassified {
+		t.Fatalf("attention families sum to %d, want messages_classified=%d", sum, *op.MessagesClassified)
 	}
 
 	// Intervention: 15 operator messages over 5 merged PRs.
@@ -105,13 +118,13 @@ func TestBlindInputsReportCouldNotCheckNotZero(t *testing.T) {
 	var stderr bytes.Buffer
 	missing := filepath.Join(t.TempDir(), "nope")
 	rep := Build(Inputs{
-		Date:           "2026-07-22",
-		Day:            fixtureDay(),
-		Now:            fixtureNow(),
-		TranscriptsDir: missing,
-		DeskToolsDir:   missing,
-		GHJSON:         "",
-		Root:           t.TempDir(),
+		Date:            "2026-07-22",
+		Day:             fixtureDay(),
+		Now:             fixtureNow(),
+		TranscriptsDirs: []string{missing},
+		DeskToolsDir:    missing,
+		GHJSON:          "",
+		Root:            t.TempDir(),
 	}, &stderr)
 
 	if rep.RelayRatio != nil {
@@ -308,20 +321,57 @@ func TestRunStdoutDoesNotWriteAnything(t *testing.T) {
 	}
 }
 
-// TestDefaultTranscriptsPathIsTheHomeTree documents the production default WITHOUT
-// any test depending on it: the resolver is asked with an isolated HOME, so the
-// assertion is about the shape of the path, never about the machine's real contents.
-func TestDefaultTranscriptsPathIsTheHomeTree(t *testing.T) {
+// TestDefaultTranscriptsExpandsEveryProfileRoot documents the production default
+// WITHOUT any test depending on the machine's real contents: it plants two
+// ~/.claude*/projects trees (and one ~/.claude*/ WITHOUT a projects dir, which
+// must be skipped) under an isolated HOME and asserts the resolver returns
+// exactly the projects roots that exist, sorted, all under the isolated HOME.
+func TestDefaultTranscriptsExpandsEveryProfileRoot(t *testing.T) {
 	home := isolateHome(t)
-	got, err := resolveTranscripts("")
+	mkroot := func(profile string, withProjects bool) {
+		dir := filepath.Join(home, profile)
+		if withProjects {
+			dir = filepath.Join(dir, "projects")
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mkroot(".claude", true)
+	mkroot(".claude_3", true)
+	mkroot(".claude_scratch", false) // no projects/ subdir → must NOT appear
+
+	got, err := resolveTranscripts(nil)
 	if err != nil {
 		t.Fatalf("resolveTranscripts: %v", err)
 	}
-	if got != filepath.Join(home, ".claude", "projects") {
-		t.Fatalf("default transcripts dir = %q, want <home>/.claude/projects", got)
+	want := []string{
+		filepath.Join(home, ".claude", "projects"),
+		filepath.Join(home, ".claude_3", "projects"),
 	}
-	if !strings.HasPrefix(got, home) {
-		t.Fatalf("the default escaped the isolated HOME: %q", got)
+	if len(got) != len(want) {
+		t.Fatalf("default transcripts roots = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("default transcripts roots = %v, want %v (sorted)", got, want)
+		}
+		if !strings.HasPrefix(got[i], home) {
+			t.Fatalf("a default root escaped the isolated HOME: %q", got[i])
+		}
+	}
+}
+
+// TestExplicitTranscriptsFlagsWinVerbatim pins that explicit --transcripts values
+// are used as given, in order, with no default expansion.
+func TestExplicitTranscriptsFlagsWinVerbatim(t *testing.T) {
+	isolateHome(t)
+	got, err := resolveTranscripts([]string{"/a/one", "/b/two"})
+	if err != nil {
+		t.Fatalf("resolveTranscripts: %v", err)
+	}
+	if len(got) != 2 || got[0] != "/a/one" || got[1] != "/b/two" {
+		t.Fatalf("explicit roots = %v, want [/a/one /b/two] verbatim", got)
 	}
 }
 

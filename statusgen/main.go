@@ -341,6 +341,10 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	problems = append(problems, danglingSatisfiesProblems(root, streams)...)
 	notices = append(notices, orphanRequirementNotices(root, streams, time.Now())...)
 	notices = append(notices, untracedBriefNotices(streams)...)
+	// Operator-load day-file freshness (attention-budget/01): a NOTICE when the
+	// mm/40 opmetrics collector has not landed a day-file recently. Silent on a
+	// root that has never carried one.
+	notices = append(notices, opmetricsStaleNotices(root, time.Now())...)
 	// Design-approval gate (sdlc/05, spec/lifecycle-v1.md §4.4): a RISK-GATED brief
 	// authored after the cutover may not sit at in-progress-or-later without an
 	// approved design-decision record (DR-<slug> under docs/streams/decisions/).
