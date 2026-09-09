@@ -208,6 +208,48 @@ for whoever re-runs them: rows 4b and 5 spell their determinate exit codes (5, 1
 BINARY's, and `go run` collapses a non-zero child status to 1 while printing `exit status 5` —
 run those two rows against a built binary, or read the printed status rather than `$?`.
 
+### Implementer note — v1.0.1 supersedes v1.0.0 as the flag-day target — 2026-09-09 opus-5[1m]-implementer
+
+Umbrella **v1.0.1** was published hours after v1.0.0 and is now the latest. It supersedes v1.0.0
+as the version an adopter is carried TO; it does not supersede the flag day itself, and this
+brief's deliverables are unchanged by it. The distinction matters, so it is recorded rather than
+inferred:
+
+- **The migration file is untouched.**
+  `examples/adopter-scaffold/migrations/0001-v0.28.0-to-v1.0.0-derived-board.md` still
+  spans v0.28.0 → v1.0.0 and still carries the whole brief-v1 → brief-v2 rewrite. v1.0.1 is a
+  patch over the SAME brief-v2 contract, so there is nothing for a second migration to do.
+- **An adopter on v1.0.0 has no migration to run**, only a re-pin. Measured:
+  `deskmigrate --from v1.0.0 --to v1.0.1 --dry-run` → exit 0, `no migrations for v1.0.0 -> v1.0.1
+  (clean no-op)`.
+- **An adopter on v0.28.0 still gets the flag day**, running it on the way through rather than
+  being skipped past it. Measured: `deskmigrate --from v0.28.0 --to v1.0.1 --dry-run` → exit 0,
+  `1 migration(s)`, selecting `0001-v0.28.0-to-v1.0.0-derived-board`, planning the same 3 files;
+  `git status --porcelain examples/` shows the dry-run wrote nothing. End to end,
+  `upgrade-assay --root <copy> --to v1.0.1 --dry-run` → exit 0, deltas
+  `statusgen v0.28.0 -> v1.0.1` and `desk-tools v0.28.0 -> v1.0.1`, with the release-note prose
+  surfaced before consent.
+- **The pins move, the composition manifests accumulate.** `plugins/assay/paired-versions.yaml`
+  re-pins both artifacts to v1.0.1 with all ten digests re-harvested from the v1.0.1 release's
+  own checksum manifest (12 entries compared field-for-field, 0 mismatches, counting the two in
+  the new scaffold manifest). `examples/adopter-scaffold/releases/v1.0.1.yaml` is ADDED rather
+  than replacing `v1.0.0.yaml`: the older manifest still has to resolve for a tree pinned at
+  v1.0.0 and for the migration span that ends there. `plugin: "1.0.0"` is unchanged — it names
+  the plugin version and is checked against `plugins/assay/.claude-plugin/plugin.json`, not
+  against the umbrella tag. `check-paired-versions.sh` → exit 0 (pairing 1.0.0 == 1.0.0; single
+  tag v1.0.1 across 10 pin lines; 10 digests 64-lowercase-hex).
+- **End-to-end digest confirmation.** The published `statusgen-darwin-arm64` asset was downloaded
+  and hashed locally; the hash equals the release's checksum-manifest entry AND the committed pin
+  line (`152c0699…b1de6`), and the binary self-reports `v1.0.1`.
+
+**Row 10 update.** At the v1.0.0 re-pin this row was recorded as not satisfiable, with one
+PRE-EXISTING `PROBLEM` (a brief's backticked changelog fragment, deleted by the release that
+consumed it — the class is filed, and open, as #722). That problem is no longer present on main.
+Re-measured here with the PUBLISHED, sha256-verified v1.0.1 `statusgen`:
+`statusgen --root . --lint` → **exit 0, `LINT: PASS`** (NOTICEs only). The row's own "after
+migration" clause still belongs to this repo's flag-day migration, which remains a separate
+change; what is now true, and was not before, is that the lint is green on this tree.
+
 ## Review
 Gate: human (from frontmatter). The human records the ruling after running rows 3 and 9
 on a real adopter checkout and reading the release note; then cuts `v1.0.0` via the
