@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"fmt"
 	"os/exec"
 	"strings"
 
@@ -29,17 +27,26 @@ var execCommand = exec.Command
 // no call site can leak it by forgetting. Terminal-active bytes never reach a terminal.
 // deskkit.StripControl keeps tab and newline, so multi-line gh diagnostics stay readable.
 func runCmd(name string, args ...string) (string, error) {
-	cmd := execCommand(name, args...)
-	var out, errb bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
-	err := cmd.Run()
-	stdout := strings.TrimSpace(out.String())
-	if err != nil {
-		return stdout, fmt.Errorf("%s %s: %w (%s)", name, strings.Join(args, " "),
-			err, deskkit.StripControl(strings.TrimSpace(errb.String())))
+	// The capture and the control-stripping are the shared runner's (deskkit/runtool.go):
+	// ToolRun.SaidAll runs deskkit.StripControl over the child's stderr, so the choke-point
+	// property this comment promises is preserved and is now shared with every other verb
+	// rather than reimplemented here. The recording seam stays LOCAL — ToolCall.Start is
+	// execCommand — so the "zero write calls on a refusal path" assertions still run against
+	// the real constructed argv.
+	r := deskkit.Run(deskkit.ToolCall{Name: name, Args: args, Start: execCommand})
+	if r.Failed() {
+		// gh states the API failure class on its own stderr (`HTTP 401` / `HTTP 403` /
+		// `HTTP 429`), and those are three failures with three completely different fixes.
+		// Carrying that first line into the message is what lets an operator tell a revoked
+		// token from a rate limit from a repo the App cannot see; the exit status and the
+		// argv ride along for DESK_TRACE.
+		//
+		// ExitUnverifiable, not ExitRefused: gh could not answer. Whether an unanswered
+		// call is a REFUSAL is the caller's decision, made above this line — the dedupe gate
+		// fails closed on it deliberately — and that decision is untouched here.
+		return r.Stdout, r.Fail(deskkit.ExitUnverifiable, "%s %s", name, strings.Join(args, " "))
 	}
-	return stdout, nil
+	return r.Stdout, nil
 }
 
 // gh runs a gh subcommand under the AMBIENT gh identity. deskfile gates WHETHER and WHERE

@@ -1,0 +1,71 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/deskdispatch/ -count=1 -run 'TestTrace|TestReportError|TestRefusedWithCause|TestToolRun|TestScrub|TestTakeTraceFlag|TestClaimAcquireFailureNamesTheClaimToolsOwnMessage|TestWorktreeCreateFailureCarriesDeskwtStderrAndTheCommandLine|TestGitOutFailureCarriesGitStderr'",
+  "control": {
+    "name": "CONTROL \u2014 make Scrub a passthrough (every credential a trace touches is printed verbatim)",
+    "file": "internal/deskkit/scrub.go",
+    "old": "func Scrub(s string) string {\n\tif s == \"\" {\n\t\treturn s\n\t}",
+    "new": "func Scrub(s string) string {\n\tif s != \"\" {\n\t\treturn s\n\t}"
+  },
+  "mutations": [
+    {
+      "name": "stop redacting GitHub token prefixes in trace output (a ghs_/ghp_ token in a child's stderr reaches the terminal)",
+      "file": "internal/deskkit/scrub.go",
+      "old": "\ts = reGitHubToken.ReplaceAllString(s, redactedMarker)",
+      "new": "\t_ = reGitHubToken"
+    },
+    {
+      "name": "stop redacting URL userinfo (an x-access-token:<token>@ push URL in git's own error text is printed whole)",
+      "file": "internal/deskkit/scrub.go",
+      "old": "\ts = reURLUserinfo.ReplaceAllString(s, \"://$1:\"+redactedMarker+\"@\")",
+      "new": "\t_ = reURLUserinfo"
+    },
+    {
+      "name": "stop redacting secret-shaped environment assignments (the GH_TOKEN= a child is given is printed in the trace)",
+      "file": "internal/deskkit/scrub.go",
+      "old": "\ts = reSecretEnvAssign.ReplaceAllString(s, \"${1}\"+redactedMarker)",
+      "new": "\t_ = reSecretEnvAssign"
+    },
+    {
+      "name": "print the trace block unconditionally (the opt-in default-output floor is gone; every caller's transcript changes shape)",
+      "file": "internal/deskkit/trace.go",
+      "old": "\tif !TraceEnabled() {\n\t\treturn\n\t}\n\twriteTrace(w, err)",
+      "new": "\twriteTrace(w, err)"
+    },
+    {
+      "name": "soften RefusedWithCause to unverifiable (a refusal that gains a cause stops being a refusal)",
+      "file": "internal/deskkit/exitcodes.go",
+      "old": "func RefusedWithCause(msg string, err error) *DeskError {\n\treturn &DeskError{Code: ExitRefused, Msg: msg, Err: err}\n}",
+      "new": "func RefusedWithCause(msg string, err error) *DeskError {\n\treturn &DeskError{Code: ExitUnverifiable, Msg: msg, Err: err}\n}"
+    },
+    {
+      "name": "stop stripping the config-echo preamble (every step report goes back to naming the assay-config line instead of the diagnosis)",
+      "file": "internal/deskkit/runtool.go",
+      "old": "\t\tif strings.HasPrefix(t, \"assay-config: \") && !strings.HasPrefix(t, \"assay-config: REFUSED\") {\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif false {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "treat an empty DESK_TRACE as on (an exported-but-empty variable traces a whole session by accident)",
+      "file": "internal/deskkit/trace.go",
+      "old": "\tcase \"1\", \"true\", \"yes\", \"on\":\n\t\treturn true\n\t}\n\treturn false",
+      "new": "\tcase \"1\", \"true\", \"yes\", \"on\", \"\":\n\t\treturn true\n\t}\n\treturn false"
+    },
+    {
+      "name": "flatten deskwt's refusal into unverifiable in the worktree-create step (a decision the child made is reported as a state that could not be established, sending the operator to retry something that will never succeed)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\tif exitCodeOf(wt.err) == deskkit.ExitRefused {\n\t\t\treturn wt.run.FailVerbatim(deskkit.ExitRefused, msg)\n\t\t}",
+      "new": "\t\tif false {\n\t\t\treturn wt.run.FailVerbatim(deskkit.ExitRefused, msg)\n\t\t}"
+    },
+    {
+      "name": "report the claim tool's raw first stderr line again (the exit-6 claim failure goes back to naming the assay-config echo)",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\t\tstepClaimAcquire, claimKey, r.run.Said()))",
+      "new": "\t\t\tstepClaimAcquire, claimKey, firstLine(r.stderr)))"
+    },
+    {
+      "name": "drop git's stderr from gitOut again (a worktree-path check fails as a bare `exit status 128` with nothing in it to search for)",
+      "file": "cmd/deskdispatch/worktree.go",
+      "old": "\t\treturn \"\", r.run.Fail(deskkit.ExitUnverifiable, \"`git %s` failed in %s\",\n\t\t\tstrings.Join(args, \" \"), dir)",
+      "new": "\t\treturn \"\", r.err"
+    }
+  ]
+}

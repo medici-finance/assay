@@ -105,10 +105,19 @@ func worktreePrefixAllowed(resolved, sharedCheckout string) bool {
 }
 
 // gitOut runs `git <args...>` in dir through the recording seam and returns trimmed stdout.
+//
+// A failure returns git's OWN message, not the bare `exit status 128` os/exec produces. That
+// bare form is the hardest failure in the suite to bisect: there is nothing in it to search
+// for and nothing that names which of the several git reads failed, so an operator's only
+// move was to re-run each by hand. The caller decides what a failure MEANS (each of the
+// checks above renders it as could-not-check, deliberately, because "the item's checkout is
+// unreadable" is a different answer from "the stated path is wrong"); this only makes sure
+// the words git said survive to be rendered.
 func gitOut(dir string, args ...string) (string, error) {
 	r := runCmd(dir, "git", args...)
 	if r.err != nil {
-		return "", r.err
+		return "", r.run.Fail(deskkit.ExitUnverifiable, "`git %s` failed in %s",
+			strings.Join(args, " "), dir)
 	}
 	return strings.TrimSpace(r.stdout), nil
 }

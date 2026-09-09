@@ -129,7 +129,14 @@ guessed. On a real dispatch --worktree is refused (exit 5): the home is deskwt's
 --quiet suppresses the per-step OK lines; failures and the prompt always print.
 
 Exit: 0 dispatch prepared · 3 disabled · 5 refused (live claim holder / caller
-precondition) · 6 unverifiable (a claim or gate whose state could not be established).`
+precondition) · 6 unverifiable (a claim or gate whose state could not be established).
+
+DIAGNOSTICS: DESK_TRACE=1 (or a global --trace, any position) prints the full cause
+chain, every child process with its command line, exit status and elapsed time, and the
+failing child's stderr in full. Credentials are redacted. With it off, output is
+unchanged. Reach for it when a step reports an exit code and you cannot tell which of
+deskwt, the claim tool or gh produced it. See tools/desk/README.md, "Diagnostics —
+DESK_TRACE".`
 
 func main() {
 	// Explicit roster class: deskdispatch ACTS (it claims, it stamps, it registers), so
@@ -140,6 +147,12 @@ func main() {
 }
 
 func run(args []string) int {
+	// The global diagnostic switch, taken BEFORE any flag parsing or subcommand dispatch so
+	// `--trace` works on every verb spelling and is invisible to every FlagSet below. The
+	// env form (DESK_TRACE=1) needs no help: deskkit reads it on first use, which is what
+	// makes it survive across the desk verbs this one shells out to.
+	args = deskkit.TakeTraceFlag(args)
+
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
 		fmt.Printf("deskdispatch sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
@@ -169,8 +182,10 @@ func run(args []string) int {
 	deskkit.WarnIfUnpinned(os.Stderr)
 
 	err := cmdDispatch(args)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-	}
+	// The shared exit path. With DESK_TRACE off this is byte-identical to the
+	// fmt.Fprintln(os.Stderr, err.Error()) it replaces; with it on, the same first line is
+	// followed by the cause chain, every child process with its exit status and timing, and
+	// the failing child's stderr in full — all scrubbed of credentials.
+	deskkit.ReportError(os.Stderr, err)
 	return deskkit.ExitCodeOf(err)
 }

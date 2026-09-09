@@ -272,6 +272,52 @@ no tool reinvents it with holes:
 audit file, missing HOME, unparseable timestamp) is a typed `Unverifiable` refusal
 (exit 6), never a silent default toward success.
 
+### Diagnostics — `DESK_TRACE`
+
+A desk tool that shells out and fails tells you the child's own first line by default. When
+that is not enough, `DESK_TRACE=1` turns on the full diagnostic block:
+
+```sh
+DESK_TRACE=1 deskdispatch <item> --root <repo> --kit worker --tier strong
+```
+
+Every retrofitted verb also accepts a global `--trace`, in any position, on any subcommand —
+it is stripped before the verb's own flag parsing, so it never collides with a positional
+grammar. **Prefer the env var.** It is the portable form: a desk verb that shells out to
+another desk verb passes the environment along, so one export traces the whole chain, while a
+flag is honoured by the verb you typed and lost by every child it starts.
+
+What the switch changes:
+
+| | Off (the default) | On |
+|---|---|---|
+| The exit line | `err.Error()`, byte-identical to what it always was | unchanged, and printed first |
+| A failed child's stderr | its first *own* line, appended as `— <tool> said: …` | in full, under `desk-trace: child stderr` |
+| The cause chain | flattened into the one-line message | one numbered line per wrapper, innermost last |
+| Child processes | not shown | every one, with its command line as executed, exit status and elapsed time |
+
+Two properties are load-bearing and are pinned by tests:
+
+- **Off is byte-identical.** Turning diagnostics on is opt-in; nothing about the default
+  output moved, so transcripts, parsers and scripted callers are untouched. The single
+  intended change to default output is the `— <tool> said: …` suffix, which puts a child's
+  own message where an operator used to get a bare `exit status 6`.
+- **A trace never prints a credential.** It prints argv and child stderr — the two places a
+  token actually travels — so every line goes through one redactor (`Scrub`, `scrub.go`),
+  which reuses the body scanner's own token patterns and adds the transport shapes a command
+  line carries: URL userinfo (`https://x-access-token:…@`), an `Authorization:` header, and a
+  secret-shaped `NAME=value` environment assignment. Redactions are marked `<redacted>`, never
+  silently elided.
+
+`— <tool> said: …` and the trace block are both produced from ONE subprocess runner
+(`deskkit.Run`, `runtool.go`). A verb keeps its own `execCommand` recording seam by passing
+it as `ToolCall.Start`, so the runner is shared without any package giving up its argv
+assertions. A verb opts into the whole contract by routing its terminal error through
+`deskkit.ReportError(os.Stderr, err)` instead of `fmt.Fprintln`.
+
+Retrofitted so far: `deskdispatch`, `deskwt`, `desktoken`, `deskfile`. Other verbs are
+unaffected and keep their current behaviour until they are moved over.
+
 ### Runtime state (NOT created by this repo)
 
 At runtime the tools read/write, under `~/.config/assay/`:

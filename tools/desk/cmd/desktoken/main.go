@@ -117,7 +117,12 @@ The token SECRET is never printed to stdout/audit/logs — only the path.
 If the key is not found, the refusal names every directory searched and the
 directory this repo's App-provisioning walkthrough uses (#794).
 
-Exit: 0 ok/noop · 3 disabled · 5 refused · 6 unverifiable.`
+Exit: 0 ok/noop · 3 disabled · 5 refused · 6 unverifiable.
+
+DIAGNOSTICS: DESK_TRACE=1 (or a global --trace, any position) prints the full cause
+chain, every child process with its command line, exit status and elapsed time, and the
+failing child's stderr in full. Credentials are redacted. With it off, output is
+unchanged. See tools/desk/README.md, "Diagnostics — DESK_TRACE".`
 
 func main() {
 	// Explicit roster class: desktoken ACTS (it mints a credential) and, when --repo
