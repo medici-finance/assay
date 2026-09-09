@@ -480,3 +480,66 @@ func TestRepoAcceptedDriftRegisterIsValid(t *testing.T) {
 		}
 	}
 }
+
+// TestChannelConformanceFiresOnQualgenPack is the proof-it-can-fail run for the
+// report-pack registration (distribution: report packs). qualgen ships as a
+// sha256-pinned release binary (channel E), so an adopter surface that teaches
+// building it from source — a `go install` of the module, or a vendored copy —
+// must be flagged exactly as the statusgen surfaces are. A clean surface that
+// teaches only channel E must read conformant.
+func TestChannelConformanceFiresOnQualgenPack(t *testing.T) {
+	const cleanDoc = "# Adopting qualgen\n\nInstall the pinned `qualgen-<platform>` release binary named in .assay-versions.\n"
+
+	clean := writeRoot(t, map[string]string{"README.md": cleanDoc, "docs/adopting-assay.md": cleanDoc})
+	before := channelConformanceNotices(clean)
+	if got := countContaining(before, "non-sanctioned channel"); got != 0 {
+		t.Fatalf("clean qualgen adopter surface reported %d finding(s), want 0:\n%s", got, strings.Join(before, "\n"))
+	}
+
+	for _, tc := range []struct{ id, line string }{
+		{"qualgen-go-install", "Run go install github.com/medici-finance/assay/qualgen@latest"},
+		{"qualgen-vendor-copy-command", `Run cp -R "$SRC/qualgen/." "$TARGET/qualgen/" to install.`},
+		{"qualgen-vendor-copy-prose", "1. Copy `qualgen/` into your repo."},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			mutated := writeRoot(t, map[string]string{
+				"README.md":              cleanDoc,
+				"docs/adopting-assay.md": cleanDoc + tc.line + "\n",
+			})
+			after := channelConformanceNotices(mutated)
+			if got := countContaining(after, "non-sanctioned channel"); got < 1 {
+				t.Fatalf("planted qualgen build-from-source reported %d finding(s), want >=1:\n%s", got, strings.Join(after, "\n"))
+			}
+			if countContaining(after, "["+tc.id+"]") < 1 {
+				t.Errorf("finding does not name the qualgen pattern %q that fired:\n%s", tc.id, strings.Join(after, "\n"))
+			}
+		})
+	}
+}
+
+// TestQualgenIsARegisteredPackTool pins that qualgen is in the report-pack tool
+// set the sweep judges — the registration itself, independent of any one
+// pattern's regex. A drop of qualgen from reportPackTools silently un-registers
+// the pack from the conformance sweep, so assert it directly.
+func TestQualgenIsARegisteredPackTool(t *testing.T) {
+	found := false
+	for _, tool := range reportPackTools {
+		if tool == "qualgen" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("qualgen is not in reportPackTools %v — the report pack is not registered in the conformance sweep", reportPackTools)
+	}
+	// And every generated pattern for it must resolve to a declared,
+	// non-sanctioned channel (the same guard TestChannelPatternsResolve applies
+	// to the whole set, asserted here for the generated arm specifically).
+	for _, p := range packToolDriftPatterns("qualgen") {
+		ch, ok := channelByID(p.Channel)
+		if !ok {
+			t.Errorf("generated pattern %q names channel %q, absent from sanctionedChannelSet", p.ID, p.Channel)
+		} else if ch.Sanctioned {
+			t.Errorf("generated pattern %q flags SANCTIONED channel %q", p.ID, p.Channel)
+		}
+	}
+}

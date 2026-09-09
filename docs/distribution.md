@@ -53,6 +53,20 @@ A consumer that cannot read its pin cannot claim to be pinned: a missing or malf
 **fail-closed** (could-not-check), never silently defaulted. `deskpins --check` validates a pin file
 against this contract.
 
+## Report packs
+
+Some released tools are **report packs** — periodic reporting instruments (the board view, the
+quality trend view, and more to come) that an adopter installs exactly like the board
+generator: pin a `<artifact>-<platform>` line, run one `<tool> init`, and obtain a committed
+report without building anything from source. A report pack is a member of the umbrella release
+(criterion 1 above), emits its own generated workflow and config via `init`, keeps its committed
+output single-writer (a pull request renders and discards; only push-to-main writes, behind a
+writer env var the tool enforces), and loads every operator value from configuration. The one
+exception the contract admits is the **producing repository**, which self-hosts the tool from its
+own source because a released binary would lag the pull request changing it. The normative
+contract — the four criteria, the producing-repo seam, and how the conformance sweep reads a pack
+— is [`report-packs.md`](report-packs.md); `qualgen` (the quality view) is the reference pack.
+
 ## The version marker (`deskversion`)
 
 `deskversion --root <repo>` answers, three-state, which umbrella version a repo is on and which
