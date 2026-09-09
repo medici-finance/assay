@@ -92,26 +92,47 @@ facts:
 
 ## Verify
 
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `test -f components/KEYS.md && grep -c '^| \`assay\.' components/KEYS.md` | exit 0; count ≥ 14 |
-| 2 | `find . -name component.yaml -not -path './.git/*' \| wc -l` | ≥ 18 (every §2 unit) |
-| 3 | `deskmanifest lint --root .` | exit 0; last line `checked-clean` |
-| 4 | mutation: add `- key: assay.nonexistent` to `inject.required` of one manifest; `deskmanifest lint --root .` | exit 1; names the manifest and the unresolved key; revert |
-| 5 | mutation: make two manifests require each other's `provides` key; `deskmanifest lint --root .` | exit 1; reports the cycle with both ids; revert |
-| 6 | mutation: set a `range: ">=99.0.0"` on an `inject.required` whose provider is at 0.x; `deskmanifest lint --root .` | exit 1; reports provider out of range; revert |
-| 7 | `deskmanifest lint --root /nonexistent` | exit 2; last line starts `could-not-check` |
-| 8 | `grep -rn 'assay.roster.trust' --include=component.yaml . \| wc -l` | ≥ 1; and `grep -rn 'assay.roster.ext.' --include=component.yaml . \| wc -l` ≥ 1 (the trust/extension split is in the manifests) |
-| 9 | `cd tools/desk && go test ./cmd/deskmanifest/...` | exit 0 |
-| 10 | neighbour: `statusgen --lint` on the tree | exit 0 (the new files and the CI edit do not disturb the board lint) |
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check | `test -f components/KEYS.md && grep -c '^\| \`assay\.' components/KEYS.md` | exit 0; count ≥ 14 |
+| 2 | check | `find . -name component.yaml -not -path './.git/*' \| wc -l` | ≥ 18 (every §2 unit) |
+| 3 | check | `deskmanifest lint --root .` | exit 0; last line `checked-clean` |
+| 4 | check +mutation | mutation: add `- key: assay.nonexistent` to `inject.required` of one manifest; `deskmanifest lint --root .` | exit 1; names the manifest and the unresolved key; revert |
+| 5 | check +mutation | mutation: make two manifests require each other's `provides` key; `deskmanifest lint --root .` | exit 1; reports the cycle with both ids; revert |
+| 6 | check +mutation | mutation: set a `range: ">=99.0.0"` on an `inject.required` whose provider is at 0.x; `deskmanifest lint --root .` | exit 1; reports provider out of range; revert |
+| 7 | check | `deskmanifest lint --root /nonexistent` | exit 2; last line starts `could-not-check` |
+| 8 | check | `grep -rn 'assay.roster.trust' --include=component.yaml . \| wc -l` | ≥ 1; and `grep -rn 'assay.roster.ext.' --include=component.yaml . \| wc -l` ≥ 1 (the trust/extension split is in the manifests) |
+| 9 | check | `cd tools/desk && go test ./cmd/deskmanifest/...` | exit 0 |
+| 10 | check | neighbour: `statusgen --lint` on the tree | exit 0 (the new files and the CI edit do not disturb the board lint) |
 
 The presence rows (1, 2, 8) gate presence, not quality; whether a manifest's declarations are
 the *right* ones is the review gate's judgement.
 
 ## Evidence
 
-Pending — the implementer records its run here on reaching `implemented`; an independent
-runner records a second run on merged main before `verified`.
+Implemented on branch `feat/composability-00`. All ten Verify rows run locally (offline,
+`KUBECONFIG=/dev/null`); `deskmanifest` and `statusgen` built from the in-tree source.
+
+| # | Result |
+|---|--------|
+| 1 | PASS — `test -f components/KEYS.md` exit 0; `grep -c '^\| \`assay\.'` = 30 (≥ 14) |
+| 2 | PASS — `find . -name component.yaml -not -path './.git/*' \| wc -l` = 23 (≥ 18) |
+| 3 | PASS — `deskmanifest lint --root .` exit 0; last line `checked-clean` (23 manifests) |
+| 4 | PASS — mutation (add `- key: assay.nonexistent` to `inject.required`) → exit 1, `PROBLEM: … (assay/desk-tools): inject.required key "assay.nonexistent" has no provider (unresolved)`; reverted |
+| 5 | PASS — mutation (two manifests require each other's `provides`) → exit 1, `PROBLEM: cycle among inject.required: assay/desk-tools -> assay/forge-github -> assay/desk-tools`; reverted |
+| 6 | PASS — mutation (`range: ">=99.0.0"` on a 0.x provider) → exit 1, `PROBLEM: … inject.required key "assay.desk.verbs" needs a provider in range ">=99.0.0"; provider(s) out of range: assay/desk-tools@0.28.0`; reverted |
+| 7 | PASS — `deskmanifest lint --root /nonexistent` → exit 2, last line `could-not-check: root /nonexistent does not exist` |
+| 8 | PASS — `grep -rn 'assay.roster.trust' --include=component.yaml .` = 9 (≥ 1); `grep -rn 'assay.roster.ext.' --include=component.yaml .` = 12 (≥ 1) |
+| 9 | PASS — `cd tools/desk && go test ./cmd/deskmanifest/...` exit 0 |
+| 10 | PASS — `statusgen --root . --lint` exit 0 (`LINT: PASS`; the pre-existing NOTICEs are untouched by this change) |
+
+**Fail-first (rule 9).** The lint is the guard, and rows 4/5/6 ARE its mutation entries: each
+mutates one manifest into a state the lint must reject, and each was observed RED (exit 1,
+with the message quoted above) before being reverted. The unmutated tree lints clean (row 3),
+so the three reds are evidence the resolution, cycle, and range checks have teeth — a reviewer
+re-runs them by applying the row's mutation to the named manifest.
+
+An independent runner records a second run on merged main before `verified`.
 
 ## Review
 

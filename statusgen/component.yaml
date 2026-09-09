@@ -1,0 +1,18 @@
+component: assay/statusgen
+version: 0.28.0
+# The Go board tool: generates STATUS.md, computes Next-up, lints sources. Reads
+# the streams tree; provides the generated-and-linted board.
+provides:
+  - assay.board
+inject:
+  required:
+    - key: assay.streams
+      range: ">=0.20.0 <1.0.0"
+  optional: []
+apply:
+  - id: board-binary
+    effect: install the pinned statusgen binary on PATH and pin it in .assay-versions
+    boundary: inside
+    inverse: remove the binary and the pin (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

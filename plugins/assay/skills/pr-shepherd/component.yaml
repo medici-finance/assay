@@ -1,0 +1,21 @@
+component: assay/pr-shepherd
+version: 0.28.0
+# The worker-side PR-shepherd role skill: drives one PR through the review loop
+# to ready, reading the reviewer App's verdict.
+provides:
+  - assay.desk.role.pr-shepherd
+inject:
+  required:
+    - key: assay.desk.verbs
+      range: ">=0.20.0 <1.0.0"
+    - key: assay.roster.trust
+  optional:
+    - key: assay.harness
+    - key: assay.reviewer-identity
+apply:
+  - id: skill-body
+    effect: install the pr-shepherd skill directory into the harness plugin cache
+    boundary: inside
+    inverse: remove the skill directory (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

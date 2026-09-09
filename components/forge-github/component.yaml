@@ -1,0 +1,17 @@
+component: assay/forge-github
+version: 0.28.0
+# The forge substrate: a GitHub instance reachable with the roster's identities.
+# A root provider — everything that acts on the forge injects assay.forge.
+provides:
+  - assay.forge
+inject:
+  required: []
+  optional: []
+apply:
+  - id: forge-reachable
+    effect: confirm the configured GitHub forge is reachable with the roster's identities
+    boundary: outside
+    ledger: forge-binding
+    compensation: none — the forge is not created by Assay; TODO composability/02 records the binding for listing
+intercept: []
+config: {}

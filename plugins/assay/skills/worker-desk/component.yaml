@@ -1,0 +1,21 @@
+component: assay/worker-desk
+version: 0.28.0
+# The work-dispatch role skill: keeps a standing pool of parallel worker agents
+# full, one per item behind a draft PR.
+provides:
+  - assay.desk.role.worker-desk
+inject:
+  required:
+    - key: assay.desk.verbs
+      range: ">=0.20.0 <1.0.0"
+    - key: assay.roster.trust
+  optional:
+    - key: assay.harness
+    - key: assay.roster.ext.repo-aliases
+apply:
+  - id: skill-body
+    effect: install the worker-desk skill directory into the harness plugin cache
+    boundary: inside
+    inverse: remove the skill directory (TODO composability/02 makes the reverse real)
+intercept: []
+config: {}

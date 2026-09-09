@@ -1,0 +1,22 @@
+component: assay/desk-tools
+version: 0.28.0
+# The desk-role binaries (deskboard, deskpr, deskevidence, deskfile, deskpost, …)
+# the desk-role skills drive as their primary path — they carry the guards,
+# write-budgets, and roster + trust gates. Acts on the forge with the roster's
+# identities.
+provides:
+  - assay.desk.verbs
+inject:
+  required:
+    - key: assay.forge
+    - key: assay.roster.trust
+  optional:
+    - key: assay.harness
+    - key: assay.reviewer-identity
+apply:
+  - id: desk-binaries
+    effect: install the pinned desk-tools binaries on PATH and pin them in .assay-versions
+    boundary: inside
+    inverse: "remove the binaries and the pin (TODO: a later brief makes the reverse real)"
+intercept: []
+config: {}
