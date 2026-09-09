@@ -147,11 +147,133 @@ func operatorText(r rawRecord) (string, bool) {
 	return b.String(), true
 }
 
+// fileScan is one transcript file's contribution, returned by scanTranscriptFile
+// so the same per-file parse serves both the single-root and multi-root readers.
+type fileScan struct {
+	Messages    []OperatorMessage
+	Span        SessionSpan
+	HasSpan     bool
+	Unparseable int
+	// SessionKey is the file's dedup key across roots — its records' own
+	// sessionId when present, else the base name. Never emitted; used only to
+	// count a session that was synced to two profiles ONCE.
+	SessionKey string
+}
+
+// scanTranscriptFile parses one *.jsonl transcript into its operator turns on the
+// given local day plus its whole-file span. It is strictly read-only.
+func scanTranscriptFile(path string, day time.Time) (fileScan, error) {
+	var fsr fileScan
+	f, oerr := os.Open(path)
+	if oerr != nil {
+		return fsr, oerr
+	}
+	defer f.Close()
+
+	fileKey := strings.TrimSuffix(filepath.Base(path), ".jsonl")
+	span := SessionSpan{Session: fileKey}
+	dayStart := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
+	dayEnd := dayStart.AddDate(0, 0, 1)
+
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), scanBufMax)
+	for sc.Scan() {
+		line := sc.Bytes()
+		if len(strings.TrimSpace(string(line))) == 0 {
+			continue
+		}
+		var r rawRecord
+		if jerr := json.Unmarshal(line, &r); jerr != nil {
+			fsr.Unparseable++
+			continue
+		}
+		if fsr.SessionKey == "" && r.SessionID != "" {
+			fsr.SessionKey = r.SessionID
+		}
+		ts, terr := time.Parse(time.RFC3339, r.Timestamp)
+		if terr != nil {
+			// A record with no usable timestamp cannot be attributed to a day.
+			// Drop and count rather than assign it to today.
+			if r.Timestamp != "" {
+				fsr.Unparseable++
+			}
+			continue
+		}
+		ts = ts.In(day.Location())
+		if span.First.IsZero() || ts.Before(span.First) {
+			span.First = ts
+		}
+		if ts.After(span.Last) {
+			span.Last = ts
+		}
+
+		text, ok := operatorText(r)
+		if !ok {
+			continue
+		}
+		if ts.Before(dayStart) || !ts.Before(dayEnd) {
+			continue
+		}
+		key := r.SessionID
+		if key == "" {
+			key = fileKey
+		}
+		fsr.Messages = append(fsr.Messages, OperatorMessage{Session: key, At: ts, Text: text})
+	}
+	if serr := sc.Err(); serr != nil {
+		return fsr, fmt.Errorf("reading %s: %w", path, serr)
+	}
+	if fsr.SessionKey == "" {
+		fsr.SessionKey = fileKey
+	}
+	if !span.First.IsZero() {
+		fsr.Span = span
+		fsr.HasSpan = true
+	}
+	return fsr, nil
+}
+
+// readOneRoot walks one directory for *.jsonl transcripts and folds each file's
+// scan into out. seen dedupes by file SessionKey across the whole read: a file
+// whose session was already contributed (by an earlier root, or an earlier file)
+// is skipped and NOT counted, so a session synced to two profiles is read once.
+// Pass seen==nil to disable dedup (the single-root reader keeps its old
+// every-file behaviour).
+func readOneRoot(dir string, day time.Time, out *TranscriptRead, seen map[string]bool) error {
+	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".jsonl") {
+			return nil
+		}
+		fsr, serr := scanTranscriptFile(path, day)
+		if serr != nil {
+			return serr
+		}
+		if seen != nil {
+			if seen[fsr.SessionKey] {
+				return nil // a re-synced copy of a session already read — count it once
+			}
+			seen[fsr.SessionKey] = true
+		}
+		out.Files++
+		out.Messages = append(out.Messages, fsr.Messages...)
+		out.Unparseable += fsr.Unparseable
+		if fsr.HasSpan {
+			out.Spans = append(out.Spans, fsr.Span)
+		}
+		return nil
+	})
+}
+
 // ReadOperatorMessages walks dir for *.jsonl transcripts and returns the operator's
 // turns whose timestamp falls on the given local date, plus every session's span.
 //
 // Fail-closed: an unreadable directory is an error. The caller turns that into
-// could-not-check — never into zero.
+// could-not-check — never into zero. This single-root form does NOT dedupe (it is
+// the reader the unit tests drive directly); cross-root dedup is
+// ReadOperatorMessagesMulti's job.
 func ReadOperatorMessages(dir string, day time.Time) (TranscriptRead, error) {
 	var out TranscriptRead
 	info, err := os.Stat(dir)
@@ -161,82 +283,33 @@ func ReadOperatorMessages(dir string, day time.Time) (TranscriptRead, error) {
 	if !info.IsDir() {
 		return out, fmt.Errorf("transcripts path %s is not a directory", dir)
 	}
-
-	dayStart := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
-	dayEnd := dayStart.AddDate(0, 0, 1)
-
-	walkErr := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(d.Name(), ".jsonl") {
-			return nil
-		}
-		f, oerr := os.Open(path)
-		if oerr != nil {
-			return oerr
-		}
-		defer f.Close()
-		out.Files++
-
-		// The session key is the transcript's own sessionId when present, falling
-		// back to the file's base name. It is used only to SCOPE duplicate detection
-		// and to bound a span; it is never emitted.
-		fileKey := strings.TrimSuffix(d.Name(), ".jsonl")
-		span := SessionSpan{Session: fileKey}
-
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 0, 64*1024), scanBufMax)
-		for sc.Scan() {
-			line := sc.Bytes()
-			if len(strings.TrimSpace(string(line))) == 0 {
-				continue
-			}
-			var r rawRecord
-			if jerr := json.Unmarshal(line, &r); jerr != nil {
-				out.Unparseable++
-				continue
-			}
-			ts, terr := time.Parse(time.RFC3339, r.Timestamp)
-			if terr != nil {
-				// A record with no usable timestamp cannot be attributed to a day.
-				// Drop and count rather than assign it to today.
-				if r.Timestamp != "" {
-					out.Unparseable++
-				}
-				continue
-			}
-			ts = ts.In(day.Location())
-			if span.First.IsZero() || ts.Before(span.First) {
-				span.First = ts
-			}
-			if ts.After(span.Last) {
-				span.Last = ts
-			}
-
-			text, ok := operatorText(r)
-			if !ok {
-				continue
-			}
-			if ts.Before(dayStart) || !ts.Before(dayEnd) {
-				continue
-			}
-			key := r.SessionID
-			if key == "" {
-				key = fileKey
-			}
-			out.Messages = append(out.Messages, OperatorMessage{Session: key, At: ts, Text: text})
-		}
-		if serr := sc.Err(); serr != nil {
-			return fmt.Errorf("reading %s: %w", path, serr)
-		}
-		if !span.First.IsZero() {
-			out.Spans = append(out.Spans, span)
-		}
-		return nil
-	})
-	if walkErr != nil {
+	if walkErr := readOneRoot(dir, day, &out, nil); walkErr != nil {
 		return out, fmt.Errorf("walking transcripts dir %s: %w", dir, walkErr)
 	}
 	return out, nil
+}
+
+// ReadOperatorMessagesMulti reads EVERY root in dirs and merges the operator's
+// turns, deduping by session id across roots so a session synced to two profiles
+// is counted once. A root that cannot be read is SKIPPED (returned in skipped for
+// the caller to NOTICE) rather than failing the whole read; the error is returned
+// only when NOT ONE root was readable — the honest could-not-check, never a zero.
+// readable is how many roots were actually walked.
+func ReadOperatorMessagesMulti(dirs []string, day time.Time) (out TranscriptRead, skipped []string, readable int, err error) {
+	seen := map[string]bool{}
+	for _, dir := range dirs {
+		info, serr := os.Stat(dir)
+		if serr != nil || !info.IsDir() {
+			skipped = append(skipped, dir)
+			continue
+		}
+		if walkErr := readOneRoot(dir, day, &out, seen); walkErr != nil {
+			return out, skipped, readable, fmt.Errorf("walking transcripts dir %s: %w", dir, walkErr)
+		}
+		readable++
+	}
+	if readable == 0 {
+		return out, skipped, 0, fmt.Errorf("no readable transcripts root among %d candidate(s)", len(dirs))
+	}
+	return out, skipped, readable, nil
 }

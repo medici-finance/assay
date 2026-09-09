@@ -3801,7 +3801,7 @@ is out of scope here — the one-line invocation above is the deliverable.
 |------|---------|
 | `--root DIR` | repo root the day-file is written under (required unless `--stdout`) |
 | `--date YYYY-MM-DD` | the day to report (default: today) |
-| `--transcripts DIR` | session transcripts (default `~/.claude/projects`) |
+| `--transcripts DIR` | session transcripts — **repeatable**; default is **every `~/.claude*/projects`** that exists (the operator runs several Claude profiles). A session synced across profiles is counted once (dedup by session id). A named root that does not exist is skipped with a stderr NOTICE; **zero** readable roots is `could-not-check`, never zero messages |
 | `--desk-tools DIR` | state dir holding `roster/` and `claims/` (default `~/.config/assay`, i.e. `deskkit.StateDir()` — **not** the pre-migration `~/.claude/desk-tools/`) |
 | `--gh-fixture FILE` / `--gh-json FILE` | gh export of merged PRs (see below). Omitted → the gh-derived blocks report `could-not-check`, never `0` |
 | `--trend N` | also compare against the `N` prior day-files under `--root` |
@@ -3822,18 +3822,23 @@ gh pr list --repo <owner>/<repo> --state merged --limit 200 \
 Optional `readyAt` / `decisionRequestedAt` fields are honoured when a richer (GraphQL
 timeline) export supplies them.
 
-### The day-file schema (`opmetrics/1`)
+### The day-file schema (`opmetrics/2`)
 
 Consumed by the downstream operator metrics. Every numeric field is a **nullable
 pointer**: `null` means *not computed*, and the sibling `status`/`reason` say why.
 `0` always means a real zero.
 
+`opmetrics/2` is **additive** over `opmetrics/1`: every v1 key is unchanged and
+still present, so a v1 reader keeps working. The one new block is
+`operator.attention_families` — the v2 attention-class breakdown (see
+[the attention classes](#the-attention-classes-v2) below).
+
 ```jsonc
 {
-  "schema": "opmetrics/1",
+  "schema": "opmetrics/2",
   "date": "2026-07-22",
   "generatedAt": "2026-07-22T15:00:00Z",
-  "classifierVersion": "opmetrics-relay/1",   // see "the ruler" below
+  "classifierVersion": "opmetrics-relay/2",   // see "the ruler" below
   "relay_ratio": 0.5,                          // headline mirror of operator.relay_ratio
 
   "operator": {
@@ -3846,6 +3851,9 @@ pointer**: `null` means *not computed*, and the sibling `status`/`reason` say wh
     "empty_messages": 1,                       // image-only/whitespace; OUT of the denominator
     "relay_ratio": 0.5,                        // relay / classified
     "relay_families": { "sync": 1, "state_echo": 1, "poke": 2, "lookup": 2, "duplicate": 1 },
+    // v2: the attention-class axis — counts of WHICH KIND of operator load each
+    // non-empty turn is. The eight counts sum to messages_classified.
+    "attention_families": { "route": 0, "status": 2, "toil": 0, "correction": 3, "decision": 0, "idea": 0, "ack": 2, "other": 7 },
     "transcript_files": 2,
     "unparseable_lines": 1                     // a half-read transcript must not read as a quiet day
   },
@@ -3911,16 +3919,49 @@ excluded (`prior_files_other_classifier`). Every heuristic lives in one file
 (`cmd/opmetrics/classify.go`); changing any rule requires bumping the constant in the
 same commit, which `TestClassifierVersionIsPinnedToItsScore` enforces.
 
+<a id="the-attention-classes-v2"></a>
+### The attention classes (v2)
+
+`opmetrics-relay/2` adds a **second, additive label axis** over the same messages,
+emitted as counts under `operator.attention_families`. Where the relay axis asks
+*did this turn carry a decision or plumbing?*, the attention axis asks **which kind of
+operator load** a turn is — the vocabulary the operator-load targets are stated in:
+
+| Family | What it marks |
+|--------|---------------|
+| `route` | hand-carrying a message between windows — "tell/ask/find/ping `<desk>`", "wrong window" |
+| `status` | pulling state an agent could have surfaced — "where are we", "what's the status of", "is it done" |
+| `toil` | asking to be walked through mechanics a routine owns — "walk me through", "give me the command" |
+| `correction` | a behavioural correction (the corrective-cue rule, promoted to a family) |
+| `decision` | ratify / approve / pick-an-option — "go with option 2", "ratify the release", "approve it" |
+| `idea` | a research / compare / evaluate ask — "investigate", "compare", "evaluate" |
+| `ack` | a bare acknowledgement (≤3 words) — "ok", "continue", "ship it" |
+| `other` | the substantive / uncued default |
+
+First match wins; the length ceiling (`relayMaxWords`) applies to `route`/`status`/`toil`
+for the same reason it applies to the relay cues — a long message that merely *mentions*
+a routing or status phrase is a decision that mentions plumbing, so it falls to `other`,
+preserving the under-count direction. The **relay axis and its families are UNCHANGED**,
+so the relay-ratio trend line is unbroken; the eight attention counts sum to
+`messages_classified` (every non-empty turn carries exactly one).
+
 ### What it can and cannot measure
 
 The classifier is scored against a hand-labelled corpus
-(`cmd/opmetrics/testdata/labelled/corpus.json`, 44 messages), not asserted:
+(`cmd/opmetrics/testdata/labelled/corpus.json`, 54 messages), not asserted. The relay
+axis is unchanged at the `/2` bump, so its precision and recall are identical to `/1`:
 
-| `opmetrics-relay/1` | measured |
+| `opmetrics-relay/2` | measured |
 |---------------------|----------|
-| accuracy | **0.8864** (39/44) |
+| accuracy | **0.9074** (49/54) |
 | relay precision | **0.9286** (tp 26, fp 2) |
 | relay recall | **0.8966** (fn 3) |
+
+The **attention axis** is pinned separately: every corpus entry carries a `family`
+ground-truth label and `TestAttentionFamilies` requires the classifier to agree with all
+of them, plus one exemplar per family and a false-positive corpus of ordinary
+substantive messages that must all land `other`. A rule change that moves any assignment
+fails until the corpus is re-labelled **and** `ClassifierVersion` is bumped.
 
 **The failure direction is deliberate and asserted.** Missed relays (3) outnumber
 invented ones (2), because a long message is classified substantive even when it
