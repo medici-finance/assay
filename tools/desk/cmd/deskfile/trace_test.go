@@ -149,11 +149,11 @@ func TestDeskfileTraceOffIsByteIdentical(t *testing.T) {
 	}
 }
 
-// TestGhStderrIsStrippedOfControlSequences is a SECURITY-adjacent no-regression check: gh's
+// TestGhStderrStripsControlBytes is a SECURITY-adjacent no-regression check: gh's
 // stderr quotes issue titles authored by arbitrary users on public repos, so it is
 // attacker-influenced text on its way to an operator's terminal. The pre-existing
 // StripControl at this choke point must survive the move to the shared runner.
-func TestGhStderrIsStrippedOfControlSequences(t *testing.T) {
+func TestGhStderrStripsControlBytes(t *testing.T) {
 	deskkit.ResetTrace()
 	ghFailure(t, "gh: could not resolve \x1b[31mtitle\x07 (HTTP 422)", 1)
 	_, err := dedupeSearch("medici-finance/assay", "a title with several scorable words")
