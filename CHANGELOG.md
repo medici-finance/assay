@@ -23,6 +23,65 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.1 — 2026-09-09
+
+### Added
+- Stream WIP cap: the `stream-cap` lint caps the number of `status: active` streams in a root at the operator-set `ASSAY_STREAM_CAP`. A full lint only NOTICEs a standing over-cap (the daily regen never gates); a PR diff that adds an active stream past the cap with no offsetting park is a PROBLEM — no net new streams past the cap. Absent `ASSAY_STREAM_CAP`, the rule is inert (one NOTICE; no default number).
+- `author-brief` skill now states the authoring-time consumer-routing rule: a brief-authoring PR
+  declares future consumers but does not edit them, so a path the brief's own implementation will
+  later touch routes to the deferred disposition (`follow-up <stream>/<NN>` at the brief itself),
+  never `fixed-here` — with a worked wrong/right example.
+- `parked` stream status: a shelved stream keeps its briefs but is excluded from Next-up and every dispatch view, renders under its own `## Parked` board heading, is counted separately from active, and re-activates by a README `status:` flip (itself subject to the cap).
+- `stream-source` lint + stream README `spec:` field: a change that adds (or flips to) an active stream must cite in `spec:` a scoping doc whose header is `**Status:** approved` (spec/lifecycle-v1.md §8.1); a `parked` stream may cite a `draft`.
+
+### Fixed
+- Restored a v1.0.0 release-note entry that went missing when the harness-portability/15
+  implementation PR overwrote the brief-authoring PR's changelog fragment instead of adding
+  alongside it; the fragment was rolled up in its overwritten state, so the spec entry never
+  reached the published notes.
+- `statusgen --lint` no longer reds on main after a release. The harness-portability/15 brief
+  named its changelog fragment as a backticked path, and the v1.0.0 roll aggregated that fragment
+  into `CHANGELOG.md` and cleared the directory — leaving a backticked path to a file that is gone
+  by design. The brief's deliverable claim and its Verify row now point at the delivered content
+  in the `v1.0.0` section instead of at the consumed file, so the claim survives the roll that
+  fulfils it. The class — a deliverable reference that a release deletes — is under
+  needs-decision on #722.
+- `statusgen` no longer reds a whole board over a legal table row. A briefs-table
+  cell may hold a backslash-escaped pipe (`\|`) — in GitHub Flavored Markdown
+  that is the only way to write a pipe inside a cell, and it applies inside a
+  `code span` too — but the row splitter cut on every `|` byte, so such a row
+  came out one cell too long and the exact cell-count check rejected it. Because
+  a stream README parse error aborts the whole load, that one row turned every
+  other check in the run into could-not-check. The splitter now treats an escaped
+  pipe as cell content and keeps the escape sequence verbatim, so a
+  parse-then-re-render round trip is byte-identical. A genuinely column-shifted
+  row (a PR reference decorating the Status cell, a stray `||`) is still
+  rejected — the count check is unchanged.
+
+### Changed
+- The `statusgen --consumers` gate's DISPROVED-`fixed-here` messages now name the deferred
+  disposition as the fix, so an author whose authoring PR reddens the routing gate is pointed at
+  the correct routing token instead of only being told the claim is contradicted.
+- The adopter-scaffold example's v1.0.0 composition manifest carries the real release digests
+  instead of fixture placeholders, so the upgrade target an adopter dry-runs against now shows
+  the same values their own pin file will hold.
+- The desk skill bodies now name **`deskclaim-ref`** as the default dispatch-claim tool —
+  installed with desk-tools, verbs `acquire` / `progress` / `release` / `steal` / `show` /
+  `list`, deskkit exit codes 0/5/6 — with "a repo may ship its own `tools/dispatch-claim.sh`,
+  which `deskdispatch` prefers when the resolved root carries it" as the documented override.
+  `worker-desk`, its `dispatch-runbook` reference and `pr-shepherd` previously described only
+  the consumer script, which a green-field or native-Windows adopter never has.
+- The plugin's paired-versions manifest now pins statusgen and desk-tools at the published
+  umbrella **v1.0.0**, on all ten platform lines (darwin arm64/amd64, linux amd64, windows
+  amd64/arm64 for each). Every digest was harvested from the release's own checksum manifest
+  and compared field-for-field against it, so a cold `assay:install` resolves the v1.0.0
+  binaries and verifies them byte-for-byte. `linux-arm64` stays deliberately unpinned in both
+  sections — v1.0.0 publishes no such asset, and the acquisition refuses rather than guesses
+  when a detected platform has no pin line.
+- Those bodies also now state that a claim read must run BOTH listings: the claim tool acquires
+  and lists in `refs/dispatch/*`, while `git ls-remote origin 'refs/heads/dispatch/*'` lists the
+  branch refs the Go claim readers use — a known, unresolved divergence a single read can miss.
+
 ## v1.0.0 — 2026-09-09
 
 ### Added

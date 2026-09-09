@@ -1,4 +1,0 @@
-### Added
-- Stream WIP cap: the `stream-cap` lint caps the number of `status: active` streams in a root at the operator-set `ASSAY_STREAM_CAP`. A full lint only NOTICEs a standing over-cap (the daily regen never gates); a PR diff that adds an active stream past the cap with no offsetting park is a PROBLEM — no net new streams past the cap. Absent `ASSAY_STREAM_CAP`, the rule is inert (one NOTICE; no default number).
-- `parked` stream status: a shelved stream keeps its briefs but is excluded from Next-up and every dispatch view, renders under its own `## Parked` board heading, is counted separately from active, and re-activates by a README `status:` flip (itself subject to the cap).
-- `stream-source` lint + stream README `spec:` field: a change that adds (or flips to) an active stream must cite in `spec:` a scoping doc whose header is `**Status:** approved` (spec/lifecycle-v1.md §8.1); a `parked` stream may cite a `draft`.
