@@ -21,6 +21,18 @@ Amending the set is a stream-README edit in the same PR.
 | `capability:durable-monitor` | The **Monitor** tool with `persistent: true` — a re-arming poll that survives across turns and re-invokes the session on a new event or a fixed cadence. Check **TaskList** for an existing monitor before arming a second (never arm two). It is **best-effort by construction — NOT the sole wake signal**: pair it with a fixed-cadence board sweep as the liveness backstop, so a dead monitor is loud rather than a silent all-clear. The durable liveness home is the always-on observability service, not this tool. |
 | `capability:stop-worker` | The **TaskStop** tool — halt one dispatched worker by its id/name. The desk window's cadence sweep reads the armed per-run stops (`desksupervise status --stops`) and stops the matching dispatched worker; the STOP.run.<key> flag is the independent cooperative layer that halts the run even when the desk window never issues the harness-side stop. |
 
+## Harness-specific paths and channels
+
+Not every harness-specific mechanism is a `capability:<name>`. Two that the neutral
+bodies name by placeholder, and that Claude Code expands like this
+(harness-portability/15 — the bodies must not carry these tokens, `harnesslint bodies`
+enforces it):
+
+| Neutral placeholder in a skill body | Claude Code expansion |
+|---|---|
+| `<bundle>` — the installed Assay bundle's own directory, e.g. `bash <bundle>/scripts/assay-inbox.sh --walk` in `ask-decision` | the `${CLAUDE_PLUGIN_ROOT}` environment variable, set for a plugin's own commands and hooks: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --walk --item 1 owner/repo` |
+| the **session-start resident-rules injection channel** (harness-portability/05), named as such in `install` | the `SessionStart` hook — `hooks/hooks.json` plus `hooks/inject-resident-rules.sh`, the one hook event Assay ships. On native Windows it is the surface that needs the documented `bash`+`jq` workaround (Git-Bash, or WSL for local dev only). |
+
 ## Degradation — per skill
 
 On Claude Code every capability is `supported` (Agent dispatch, SendMessage,

@@ -193,7 +193,7 @@ record — that is a follow-on, not a claim this re-home makes. Statuses therefo
 | 12 | [Cursor — the third harness column (ground-truth + binding + generator verb + public column)](./brief-12-cursor-third-column.md) | 5 | L | implemented | — | — |
 | 13 | [Cursor live-desk-smoke protocol + first run](./brief-13-cursor-live-desk-smoke.md) | 6 | M | implemented | — | — |
 | 14 | [Code de-house — land the stream's tool and packaging deliverables in the public tree](./brief-14-code-dehouse.md) | 6 | L | implemented | — | — |
-| 15 | [Public CI wiring + harnesslint clean-up for the de-housed tools](./brief-15-ci-wiring-harnesslint.md) | 7 | M | todo | — | — |
+| 15 | [Public CI wiring + harnesslint clean-up for the de-housed tools](./brief-15-ci-wiring-harnesslint.md) | 7 | M | implemented | — | — |
 
 **Note on 07:** artifacts delivered (adoption docs, freshness registration, smoke
 protocol). The live Codex smoke run itself is held — it needs a Codex environment (OpenAI
@@ -227,6 +227,23 @@ a reference that is by its own first paragraph "not a per-harness capability bin
 three suites plus the real-tree neutrality lint into `ci.yml`, scrubs the four tokens, and declares
 `desk-shell.md` a non-matrix reference the bindings lint skips. It is `gate: model` (no publication,
 no leak surface — the content already went public at 14) and does not extend any critical path.
+
+**15's `ci.yml` hunk ships as a STAGED patch, not an applied edit.** The identity that authors
+these PRs cannot write `.github/workflows/**`, so the workflow half of 15 is committed as
+[`tools/harnesslint/ci.yml.patch`](../../../tools/harnesslint/ci.yml.patch) — a plain
+`git apply`-able diff kept next to the tool whose gate it adds, the same shape
+`tools/changelog/release.yml.patch` already uses. It adds the three modules to `build-test`'s
+`go test` case and a `harnesslint` job running `bodies` + `bindings` against the real tree. Until a
+maintainer applies it, brief 15's Verify rows 1 and 3 read against the patch, not against
+`ci.yml` — that is a could-not-check for the wiring's presence in the workflow file, not a pass.
+
+**15 found the drift it was written to prevent, already merged.** At the branch base
+`.claude-plugin/plugin.json` was at `1.0.0` while the generated `.codex-plugin/plugin.json` was
+still at `0.5.1`, so `harnessgen`'s `TestCodexCommittedManifestMatchesSource` and
+`TestCodexManifestVersionEqualsClaude` were RED on `main` — invisible because nothing runs them.
+15 regenerates the manifest (`harnessgen codex`) as part of its own diff; the brief's fact "the
+three suites pass at branch head" was true when measured on 2026-09-08 and is no longer true, which
+is itself the evidence for wiring the leg.
 
 ## Critical path
 
