@@ -855,9 +855,13 @@ func TestVerifierPlanItemKeyIsTranslatedForTheClaimTool(t *testing.T) {
 		t.Fatal("the claim tool was never invoked")
 	}
 
-	// The worktree and branch stay on the ORIGINAL item key.
-	if !s.ran("deskwt add verdict-lane-05 --branch feat/verdict-lane-05") {
-		t.Error("the worktree/branch were not derived from the ORIGINAL item key")
+	// The worktree and branch stay on the ORIGINAL item key (verdict-lane-05), NOT the
+	// translated claim key (assay--verdict-lane--05). The worktree DIR gains a session suffix
+	// so a foreign session's leftover canonical dir cannot dead-end the dispatch; the BRANCH
+	// stays bare — it is the deliverable's cross-session identity. (install sets
+	// DESK_SESSION=deskdispatch-test.)
+	if !s.ran("deskwt add verdict-lane-05-deskdispatch-test --branch feat/verdict-lane-05") {
+		t.Error("the worktree/branch were not derived from the ORIGINAL item key (session-scoped dir, bare branch)")
 	}
 
 	body, err := os.ReadFile(promptFile)
@@ -931,7 +935,9 @@ func TestPlanItemKeyTranslationIsKitIndependent(t *testing.T) {
 			if !acquired {
 				t.Fatal("the claim tool was never invoked")
 			}
-			if !s.ran("deskwt add education-10 --branch feat/education-10") {
+			// Worktree DIR is session-scoped (install sets DESK_SESSION=deskdispatch-test); the
+			// branch stays bare on the ORIGINAL item key, not the translated claim key.
+			if !s.ran("deskwt add education-10-deskdispatch-test --branch feat/education-10") {
 				t.Error("the worktree/branch were not derived from the ORIGINAL item key")
 			}
 		})

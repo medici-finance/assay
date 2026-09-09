@@ -80,9 +80,17 @@ func TestWorktreeCreateSurfacesDeskwtsOwnMessageVerbatim(t *testing.T) {
 	if strings.Contains(report, "running UNPINNED") {
 		t.Errorf("the step report quoted the unpinned-build warning as the failure cause:\n%s", report)
 	}
-	// The claim is still held and no agent was launched with no home.
-	if !strings.Contains(report, "The claim is HELD") {
-		t.Errorf("the step report dropped the held-claim instruction:\n%s", report)
+	// The claim is RELEASED on the abort (never orphaned), and no agent was launched with no
+	// home. The report states the release rather than the old "The claim is HELD" instruction
+	// that both left the claim orphaned and read as a transient tree fault.
+	if !strings.Contains(report, "The claim was released") {
+		t.Errorf("the step report does not state the claim was released:\n%s", report)
+	}
+	if strings.Contains(report, "The claim is HELD") {
+		t.Errorf("the step report still frames the claim as HELD — the orphaned-claim wording the fix removes:\n%s", report)
+	}
+	if !s.ran("dispatch-claim.sh release") {
+		t.Error("the durable claim was not released after the worktree-create failure — it is orphaned")
 	}
 	if _, err := os.Stat(promptFile); err == nil {
 		t.Error("a prompt was emitted for a dispatch with no worktree")
