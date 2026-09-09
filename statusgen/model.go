@@ -14,8 +14,13 @@ type Stream struct {
 	// statusgen validates the form, requires every stream under one root to agree,
 	// hard-errors when two roots claim the same repo, and surfaces the value in
 	// STATUS.md and `--gate-scores` output.
-	Repo     string
-	Status   string // active | paused | done
+	Repo   string
+	Status string // active | paused | parked | done
+	// Spec is the optional `spec:` frontmatter key — the repo-relative scoping doc
+	// this stream was scaffolded FROM (attention-budget/04). An active stream must
+	// cite one whose §8.1 header is `**Status:** approved` (the `stream-source`
+	// lint); a parked stream may cite a `draft`. "" when absent.
+	Spec     string
 	Priority string // P0 | P1 | P2
 	Track    string // product | platform | ecosystem | ""
 	Issues   []int

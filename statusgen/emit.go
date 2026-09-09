@@ -48,6 +48,7 @@ const (
 	segmentHumanGate
 	segmentRework
 	segmentPaused
+	segmentParked
 	segmentEnvBlocked
 )
 
@@ -61,6 +62,8 @@ func (s blockerSegment) heading() string {
 		return "Awaiting implementer rework"
 	case segmentPaused:
 		return "Paused stream"
+	case segmentParked:
+		return "Parked stream"
 	case segmentEnvBlocked:
 		return "Env-blocked"
 	}
@@ -83,6 +86,9 @@ func (s blockerSegment) heading() string {
 func classifyAwaiting(s *Stream, br *Brief) blockerSegment {
 	if s.Status == "paused" {
 		return segmentPaused
+	}
+	if s.Status == streamStatusParked {
+		return segmentParked
 	}
 	if br.BlockedBy == "env" {
 		return segmentEnvBlocked
@@ -170,9 +176,9 @@ type segmentGroup struct {
 
 // buildSegments classifies each gate-score row and groups them by blocker
 // owner. Segments are returned in fixed display order: desk-actionable first
-// (the headline), then human-gate, rework, paused, env-blocked.
+// (the headline), then human-gate, rework, paused, parked, env-blocked.
 func buildSegments(gates []GateScore) []segmentGroup {
-	var desk, human, rework, paused, env []GateScore
+	var desk, human, rework, paused, parked, env []GateScore
 	for _, g := range gates {
 		seg := classifyAwaiting(g.Stream, &g.Brief)
 		switch seg {
@@ -184,6 +190,8 @@ func buildSegments(gates []GateScore) []segmentGroup {
 			rework = append(rework, g)
 		case segmentPaused:
 			paused = append(paused, g)
+		case segmentParked:
+			parked = append(parked, g)
 		case segmentEnvBlocked:
 			env = append(env, g)
 		}
@@ -193,6 +201,7 @@ func buildSegments(gates []GateScore) []segmentGroup {
 		{heading: segmentHumanGate.heading(), gates: human},
 		{heading: segmentRework.heading(), gates: rework},
 		{heading: segmentPaused.heading(), gates: paused},
+		{heading: segmentParked.heading(), gates: parked},
 		{heading: segmentEnvBlocked.heading(), gates: env},
 	}
 	// Remove empty groups in-place.
@@ -240,6 +249,11 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 	for _, track := range trackOrder {
 		var group []*Stream
 		for _, s := range streams {
+			// Parked streams are shelved — they render under their own `## Parked`
+			// heading below, not in the active track roll-up (attention-budget/04).
+			if s.Status == streamStatusParked {
+				continue
+			}
 			if s.Track == track {
 				group = append(group, s)
 			}
@@ -270,6 +284,36 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			}
 			w("| [%s](docs/streams/%s/README.md) | %s | %s | %d/%d | %s | %s |",
 				s.Name, s.Name, s.Priority, s.Status, doneCount(s), len(s.Briefs), touched, note)
+		}
+	}
+
+	// Parked streams (attention-budget/04): shelved out of the active roll-up and
+	// out of Next-up, but their briefs are kept and listed here so a parked stream
+	// is visible rather than vanished. Re-activates by a README `status:` flip
+	// (itself subject to the cap). Rendered ONLY when a parked stream exists, so a
+	// tree with none is byte-identical to the pre-parked board.
+	var parkedStreams []*Stream
+	for _, s := range streams {
+		if s.Status == streamStatusParked {
+			parkedStreams = append(parkedStreams, s)
+		}
+	}
+	if len(parkedStreams) > 0 {
+		sort.Slice(parkedStreams, func(i, j int) bool { return parkedStreams[i].Name < parkedStreams[j].Name })
+		w("")
+		w("## Parked")
+		w("")
+		w("_Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re-activate by flipping the README `status:` back to `active` (subject to the active-stream cap)._")
+		w("")
+		w("| Stream | Priority | Briefs | Last touched |")
+		w("|---|---|---|---|")
+		for _, s := range parkedStreams {
+			touched := ""
+			if !s.LastTouch.IsZero() {
+				touched = s.LastTouch.Format("2006-01-02")
+			}
+			w("| [%s](docs/streams/%s/README.md) | %s | %d/%d | %s |",
+				s.Name, s.Name, s.Priority, doneCount(s), len(s.Briefs), touched)
 		}
 	}
 
@@ -576,13 +620,15 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 		}
 	}
 
-	active, paused, done, total := 0, 0, 0, 0
+	active, paused, parked, done, total := 0, 0, 0, 0, 0
 	for _, s := range streams {
 		switch s.Status {
 		case "active":
 			active++
 		case "paused":
 			paused++
+		case streamStatusParked:
+			parked++
 		}
 		done += doneCount(s)
 		total += len(s.Briefs)
@@ -590,6 +636,12 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 	w("")
 	w("## Totals")
 	w("")
-	w("**%d** streams (**%d** active, **%d** paused) · **%d/%d** briefs done · completed initiatives: see `docs/archive/`", len(streams), active, paused, done, total)
+	// The parked clause is appended ONLY when a parked stream exists, so a tree
+	// with none renders the Totals line byte-identically to the pre-parked board.
+	parkedClause := ""
+	if parked > 0 {
+		parkedClause = fmt.Sprintf(", **%d** parked", parked)
+	}
+	w("**%d** streams (**%d** active, **%d** paused%s) · **%d/%d** briefs done · completed initiatives: see `docs/archive/`", len(streams), active, paused, parkedClause, done, total)
 	return b.String()
 }

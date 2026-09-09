@@ -293,6 +293,18 @@ const (
 	// Recognised, not applied. KEEP IN SYNC with deskkit/rosterconfig.go's
 	// EnvGitLabSessionEmails.
 	scanEnvGitLabSessionEmails = "ASSAY_GITLAB_SESSION_EMAILS"
+
+	// scanEnvStreamCap (ASSAY_STREAM_CAP) is the operator-set per-root cap on the
+	// number of `status: active` streams (attention-budget/04). statusgen CONSUMES
+	// it — the `stream-cap` --lint rule (streamcap.go) reads it through this
+	// scanConfig so the value follows the same env-over-roster.env precedence as
+	// every other roster key. deskkit does not consume it but must RECOGNISE it:
+	// the operator records it in the SAME shared ~/.config/assay/roster.env, so an
+	// unrecognised-key refusal on the desk side would take the desk tools down the
+	// moment the cap is configured — the ASSAY_REPO_FORGES outage class. A positive
+	// integer; ABSENT is neither an error nor a refusal (the rule is inert). KEEP IN
+	// SYNC with deskkit/rosterconfig.go's EnvStreamCap.
+	scanEnvStreamCap = "ASSAY_STREAM_CAP"
 )
 
 // scanKnownRosterKeys is the ASSAY_-namespace roster SCHEMA this binary speaks:
@@ -334,6 +346,7 @@ func scanKnownRosterKeys() []string {
 		scanEnvRepoForges, scanEnvRiskCallout,
 		scanEnvWithheldIdentifiers, scanEnvAllowCluster,
 		scanEnvGitLabSessionEmails,
+		scanEnvStreamCap,
 	}
 }
 
@@ -406,6 +419,15 @@ type scanConfig struct {
 	// not consume it. Read through authorizedAuthorSet(), which SEEDS it with the
 	// bless identity so an unset value degrades to {the bless identity}, never to empty.
 	AuthorizedAuthors map[string]int64
+
+	// StreamCap is the per-root active-stream cap (ASSAY_STREAM_CAP,
+	// attention-budget/04), consumed by the `stream-cap` --lint rule. StreamCapSet
+	// records whether the key was present at all: absent, the rule is INERT (a
+	// default number is a policy nobody ruled), which "StreamCap == 0" alone cannot
+	// express. A present value must be a positive integer or the whole
+	// configuration is refused.
+	StreamCap    int
+	StreamCapSet bool
 
 	// Product holds product-namespaced (non-ASSAY_) config values, populated by
 	// the build-tagged scanApplyProductConfig hook. Empty in the default
@@ -523,7 +545,7 @@ func scanReadRawConfig(class scanToolClass) (map[string]string, string, []string
 		scanEnvAllowedRepos, scanEnvHumanLoginMap, scanEnvFormerHumanLoginMap,
 		scanEnvRiskPathTriggersExtra,
 		scanEnvRepoAliases, scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
-		scanEnvAuthorizedAuthors,
+		scanEnvAuthorizedAuthors, scanEnvStreamCap,
 	}
 	keys = append(keys, scanProductConfigKeys()...)
 	fromEnv := func() map[string]string {
@@ -949,6 +971,22 @@ func scanParseConfig(class scanToolClass, source string, vals map[string]string)
 		cfg.AuthorizedAuthors[login] = id
 	}
 
+	// The active-stream cap (attention-budget/04). UNSET is neither an error nor a
+	// refusal — the stream-cap rule is inert without it. A PRESENT value must be a
+	// positive integer; a malformed one REFUSES the whole configuration, exactly as
+	// a malformed slug does, rather than silently disabling the cap while the
+	// configuration reports itself correct.
+	if raw := strings.TrimSpace(vals[scanEnvStreamCap]); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			bad("%s=%q is not a positive integer — it caps the number of active streams in a root, so a "+
+				"non-positive or non-numeric value is refused rather than silently disabling the cap", scanEnvStreamCap, raw)
+		} else {
+			cfg.StreamCap = n
+			cfg.StreamCapSet = true
+		}
+	}
+
 	// Product-namespaced (non-ASSAY_) config, applied by the build-tagged hook.
 	// Deliberately NOT run through bad(): product config, not trust config, so a
 	// missing or malformed value must not collapse the roster. No-op in the
@@ -1028,6 +1066,7 @@ func (c scanConfig) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: %s=%s", scanEnvHomeRepo, c.HomeRepo),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvScanRepos, strings.Join(c.ScanRepos, ",")),
 		fmt.Sprintf("assay-config: %s=%s", scanEnvAuthorizedAuthors, sortedIdents(c.AuthorizedAuthors)),
+		fmt.Sprintf("assay-config: %s=%s", scanEnvStreamCap, streamCapEcho(c.StreamCap, c.StreamCapSet)),
 	}
 	// Product config (non-ASSAY_) echoes under its own prefix via the build-tagged
 	// hook; empty in the default (open-core) build.
