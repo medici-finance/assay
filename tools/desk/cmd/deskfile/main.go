@@ -71,6 +71,12 @@ The body is read from --body-file only (no stdin/inline), capped at 16 KiB, and 
 scanned; there is no override flag. <owner/repo> must be in the desk-tools repo set
 (deskkit.allowedRepos — deskfile adds no list of its own).
 
+FORGE: deskfile's issue operations shell gh and support GitHub ONLY. On a repo whose
+configured forge (ASSAY_REPO_FORGES) is GitLab, every verb REFUSES (exit 5) with a named
+message rather than emitting a misleading GitHub API error — routing the ops through the
+forge backend is not yet delivered. Escalate a blocker on such a repo to a human; do not
+substitute a bare glab/gh call, which bypasses this tool's dedupe/stamp/budget gates.
+
 Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.`
 
 func main() {

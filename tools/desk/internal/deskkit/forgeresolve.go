@@ -346,6 +346,28 @@ func ResolveForge(repo ForgeRepo, role string) (Forge, ForgeResolution, error) {
 	}
 }
 
+// ForgeKindFor resolves WHICH forge serves repo — the kind and the provenance of the
+// answer — WITHOUT obtaining a credential or constructing a backend. It is the read a
+// caller makes when it needs to KNOW the forge (to branch behaviour, or to refuse a
+// forge it cannot serve) but is NOT about to act through the backend, so it must not pay
+// the custody cost ResolveForge does.
+//
+// The distinction is load-bearing for a caller that files under an AMBIENT credential and
+// mints no token of its own — deskfile is the case this exists for: routing it through
+// ResolveForge/ForgeFor would drag in App-token custody and change WHO the filing is
+// authored as, which deskfile deliberately never does. ForgeKindFor answers "which forge?"
+// with the SAME resolution ResolveForge uses (steps a/b/c of the forgeresolve contract at
+// the head of this file) and stops there — it reads the roster/remote, never a token file.
+//
+// The refusal shape is identical too: an unresolvable forge is the same Unverifiable
+// (could-not-check), naming the repo and the configuration that would resolve it, so a
+// caller can tell "known to be some other forge" (a definite ForgeResolution it can refuse
+// on) from "could not determine the forge at all" (the error — which such a caller reads as
+// could-not-check, never as a licence to assume one).
+func ForgeKindFor(repo ForgeRepo) (ForgeResolution, error) {
+	return resolveForgeKind(repo)
+}
+
 // ReadyFlip performs the draft→ready transition on an ALREADY-READ change, and is the one
 // place the flip's node-id rule is enforced.
 //

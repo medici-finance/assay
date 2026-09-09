@@ -377,6 +377,61 @@ func newFlagSet(name string) *flag.FlagSet {
 	return fs
 }
 
+// --- forge support gate --------------------------------------------------------------
+//
+// deskfile's issue operations — the dedupe search (`gh search issues`), the label-existence
+// probe (`gh label list`), the create (`gh issue create`) and the attach (`gh issue
+// comment`) — every one shells `gh`, which speaks to GitHub ONLY. On a repo whose configured
+// forge is GitLab those calls still go to GitHub's API for a repo that does not exist there,
+// and fail with a GitHub GraphQL "Could not resolve to a Repository" that reads like a
+// permissions or typo problem — sending the operator to check their token first when the real
+// cause is that deskfile has no GitLab path at all (assay#687). The consequence is worse than
+// a bad message: the desks' only sanctioned escalation channel simply does not exist on
+// GitLab, and `--force-new` is no escape hatch because the create is itself the failing
+// GitHub call.
+//
+// Until deskfile's issue ops are routed through the forge backend (the forge-abstraction
+// migration; the backend is App-token-custody bound, and deskfile files under the caller's
+// AMBIENT credential and mints no token, so that re-seat is an identity-model change a human
+// must rule on — assay#395), requireSupportedForge REPLACES the misdirection with a NAMED
+// refusal that says what is actually true.
+//
+// It resolves the forge KIND ONLY (deskkit.ForgeKindFor) — never a backend and never a
+// credential, so it does not disturb deskfile's ambient-identity contract. It ONLY ever ADDS
+// a refusal, and only on a forge AFFIRMATIVELY resolved to something other than GitHub: a
+// repo that resolves to GitHub, OR whose forge cannot be resolved at all (could-not-check —
+// no ASSAY_REPO_FORGES entry and an absent/unmapped origin remote), is passed THROUGH
+// unchanged. deskfile has always assumed GitHub, and a resolution that cannot answer is not a
+// licence to invent a non-GitHub answer — so an unresolvable forge keeps the historical gh
+// path, which reports its own error if the assumption is wrong. No previously-working GitHub
+// filing becomes a refusal.
+func requireSupportedForge(repo string) error {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || strings.TrimSpace(owner) == "" || strings.TrimSpace(name) == "" {
+		// Not a resolvable owner/name slug — the caller's own repo-shape and allowed-repo
+		// checks own that; this gate does not second-guess them.
+		return nil
+	}
+	res, err := deskkit.ForgeKindFor(deskkit.ForgeRepo{Owner: owner, Name: name})
+	if err != nil {
+		// could-not-check: the forge is UNKNOWN, not known-non-GitHub. Preserve the
+		// historical GitHub-assumed behaviour rather than block a filing on an unanswerable
+		// resolution.
+		return nil
+	}
+	if res.Kind == deskkit.ForgeGitHub {
+		return nil
+	}
+	return deskkit.Refused(fmt.Sprintf(
+		"refused: deskfile cannot file on %s — its configured forge is %q (resolved via %s), but "+
+			"deskfile's issue operations (dedupe search, label-existence probe, issue create, issue "+
+			"comment) are implemented for GitHub only: they shell `gh`, which does not speak to %q. "+
+			"Routing them through the forge backend is not yet delivered. Do NOT substitute a bare "+
+			"`glab`/`gh` call — filing outside deskfile bypasses the dedupe, provenance-stamp and budget "+
+			"gates this tool exists to enforce; escalate the blocker to a human instead.",
+		repo, res.Kind, res.Source, res.Kind))
+}
+
 // --- verbs -------------------------------------------------------------------------
 
 // cmdNew implements `deskfile new -R <repo> --title <t> --body-file <f> [--label ...]
@@ -425,6 +480,12 @@ func cmdNew(args []string) (err error) {
 	}
 	ac.repo = *repo
 	ac.title = *title
+
+	// Refuse BEFORE any gh call on a forge deskfile cannot file on, so a GitLab-configured
+	// repo gets a named refusal rather than a misleading GitHub GraphQL error (assay#687).
+	if ferr := requireSupportedForge(*repo); ferr != nil {
+		return ferr
+	}
 
 	// Validate the raised-by ROLE before anything is written. An unbound role is a
 	// caller error with a fix in hand (exit 5), and it is the one raised-by condition
@@ -605,6 +666,11 @@ func cmdAttach(args []string) (err error) {
 	target := *to
 	ac.target = &target
 
+	// Refuse BEFORE any gh call on a forge deskfile cannot file on (assay#687).
+	if ferr := requireSupportedForge(*repo); ferr != nil {
+		return ferr
+	}
+
 	body, berr := readBody(*bodyFile)
 	if berr != nil {
 		return berr
@@ -682,6 +748,11 @@ func cmdCheck(args []string) (err error) {
 	}
 	ac.repo = *repo
 	ac.title = *title
+
+	// Refuse BEFORE any gh call on a forge deskfile cannot file on (assay#687).
+	if ferr := requireSupportedForge(*repo); ferr != nil {
+		return ferr
+	}
 
 	cands, serr := dedupeSearch(*repo, *title)
 	if errors.Is(serr, errNoScorableTokens) {
