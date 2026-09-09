@@ -362,6 +362,84 @@ func TestForeignRepoRefusesTheMint(t *testing.T) {
 	}
 }
 
+// desktokenArgv returns the argv of the first recorded `desktoken` child process, or nil
+// if none ran. The mint's forge routing lives IN this argv (`--forge gitlab` or its
+// absence), so asserting against the recorded argv is asserting against exactly what the
+// boot would have executed.
+func (s *stub) desktokenArgv() []string {
+	for _, c := range s.calls {
+		if len(c) > 0 && c[0] == "desktoken" {
+			return c
+		}
+	}
+	return nil
+}
+
+// bindRepoForge re-plants the fixture roster with an ASSAY_REPO_FORGES line so a test can
+// pin which forge a repo resolves to. deskboot is a WRITE-class tool, so it reads the
+// roster ONLY from the config file (never the environment) — the binding must live in the
+// file the tool actually reads, not an exported variable it deliberately ignores.
+func bindRepoForge(t *testing.T, home, binding string) {
+	t.Helper()
+	path := filepath.Join(home, ".config", "assay", "roster.env")
+	if err := os.WriteFile(path, []byte(fixtureRoster+"ASSAY_REPO_FORGES="+binding+"\n"), 0o600); err != nil {
+		t.Fatalf("re-planting roster with %q: %v", binding, err)
+	}
+	deskkit.ReloadConfig()
+	t.Cleanup(deskkit.ReloadConfig)
+}
+
+// A GitLab-bound roster must route the boot's token mint down desktoken's GitLab custody
+// path (`--forge gitlab`), NOT the GitHub App default. This is the #676 fix: pre-fix,
+// stepMint shelled `desktoken <role> --repo <slug>` with no forge, so a GitLab adopter's
+// mint fell to the GitHub App PEM/apps.env path and the boot could not finish even though
+// #671 made its preflight envelope green. The forge is resolved through the SAME #659 seam
+// the preflight cold-mint check reads (deskkit.ForgeKindForRepo), so the two never disagree.
+func TestGitLabRosterMintsWithGitLabForge(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	bindRepoForge(t, home, "medici-finance/assay=gitlab")
+	s.replies = happyStub(t, writeToken(t, home))
+
+	if rc := run([]string{"the-desk", "--root", root}); rc != deskkit.ExitOK {
+		t.Fatalf("GitLab-bound boot rc = %d, want 0", rc)
+	}
+	argv := s.desktokenArgv()
+	if argv == nil {
+		t.Fatal("no desktoken mint ran on a GitLab-bound boot")
+	}
+	joined := strings.Join(argv, " ")
+	// PRE-FIX this fails: the argv is `desktoken desk --repo medici-finance/assay` with no
+	// --forge, so desktoken defaults to the GitHub App mint and the GitLab boot dies on a
+	// missing App ID. POST-FIX the GitLab custody flag is present.
+	if !strings.Contains(joined, "--forge gitlab") {
+		t.Errorf("GitLab-bound mint argv = %q; want it to carry `--forge gitlab` so desktoken takes the "+
+			"GitLab PAT custody path rather than the GitHub App PEM/apps.env default (#676)", joined)
+	}
+}
+
+// The GitHub path is unchanged: a GitHub-bound (or unset) roster mints with NO --forge, so
+// desktoken takes its historical GitHub App mint path byte-for-byte. This is the positive
+// regression that proves the #676 fix did not widen the default.
+func TestGitHubRosterMintsWithoutForgeFlag(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	bindRepoForge(t, home, "medici-finance/assay=github")
+	s.replies = happyStub(t, writeToken(t, home))
+
+	if rc := run([]string{"the-desk", "--root", root}); rc != deskkit.ExitOK {
+		t.Fatalf("GitHub-bound boot rc = %d, want 0", rc)
+	}
+	argv := s.desktokenArgv()
+	if argv == nil {
+		t.Fatal("no desktoken mint ran on a GitHub-bound boot")
+	}
+	if joined := strings.Join(argv, " "); strings.Contains(joined, "--forge") {
+		t.Errorf("GitHub-bound mint argv = %q; want NO --forge flag — a GitHub adopter mints exactly as "+
+			"before the #676 fix", joined)
+	}
+}
+
 // --dry-run touches NOTHING. A plan that ran a prune would not be a plan.
 func TestDryRunTouchesNothing(t *testing.T) {
 	s := &stub{}

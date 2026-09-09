@@ -477,7 +477,7 @@ func (p PreflightProbes) withDefaults() PreflightProbes {
 		p.ColdMint = coldMintProbe
 	}
 	if p.ResolveForgeKind == nil {
-		p.ResolveForgeKind = forgeKindProbe
+		p.ResolveForgeKind = ForgeKindForRepo
 	}
 	if p.GitLabColdCustody == nil {
 		p.GitLabColdCustody = gitlabColdCustodyProbe
@@ -629,14 +629,20 @@ func coldMintProbe(role, repo string) (string, error) {
 	return strings.TrimSpace(lastLine(string(out))), nil
 }
 
-// forgeKindProbe is the default forge resolver for the cold-mint / app-scopes
-// checks: it wraps resolveForgeKind — the ONE resolver in this tree (forgeresolve.go)
-// — so the preflight reads the forge from the SAME place ForgeFor does
-// (ASSAY_REPO_FORGES, then the origin remote host) rather than growing a second,
-// driftable answer. An unresolvable forge returns "" (not an error): the caller
-// treats "" as GitHub, the historical default, so a GitHub adopter that never
-// configured ASSAY_REPO_FORGES is unaffected (#655).
-func forgeKindProbe(repo string) ForgeKind {
+// ForgeKindForRepo is the shared forge-kind probe: it wraps resolveForgeKind — the
+// ONE resolver in this tree (forgeresolve.go, #659) — so every caller reads the
+// forge from the SAME place ForgeFor does (ASSAY_REPO_FORGES, then the origin
+// remote host) rather than growing a second, driftable answer. An unresolvable
+// forge returns "" (not an error): the caller treats "" as GitHub, the historical
+// default, so a GitHub adopter that never configured ASSAY_REPO_FORGES is
+// unaffected (#655).
+//
+// It is the default for the preflight cold-mint / app-scopes checks AND the seam
+// deskboot's token-mint step reads to decide the mint's custody path (#676), so the
+// two halves of a boot — the preflight probe and the mint it precedes — resolve the
+// forge identically. It reads NO custody credential: it answers only WHICH forge,
+// never touching a token file, so a probe can never rotate or mint as a side effect.
+func ForgeKindForRepo(repo string) ForgeKind {
 	res, err := resolveForgeKind(parseForgeSlug(repo))
 	if err != nil {
 		return ""
