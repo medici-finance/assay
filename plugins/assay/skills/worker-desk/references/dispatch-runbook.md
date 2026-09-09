@@ -104,8 +104,14 @@ close intent is its own failure.
 A claim subtracts twice: once as an eligibility exclusion and again as a per-stream cap decrement, so
 branch-claim corpses from merged/closed PRs — and expired `refs/heads/dispatch/*` claims, which nothing
 re-surfaces onto a board — can zero a stream's whole allowance while it still holds work. Read them
-with `git ls-remote origin 'refs/heads/dispatch/*'` plus the repo's own `dispatch-claim` helper's list/show
-verbs, and file what the read shows rather than concluding the stream is drained.
+with `git ls-remote origin 'refs/heads/dispatch/*'` plus the claim tool's `list`/`show` verbs, and file
+what the read shows rather than concluding the stream is drained. The claim tool is **`deskclaim-ref`**
+— installed with desk-tools, verbs `acquire` / `progress` / `release` / `steal` / `show` / `list`,
+deskkit exit codes **0** ok · **5** refused (a live holder owns it) · **6** unverifiable; a repo that
+ships its own `tools/dispatch-claim.sh` gets that instead, since `deskdispatch` prefers the script when
+the resolved root carries it. Run BOTH reads: the tool acquires and lists in `refs/dispatch/*`, while
+the `ls-remote` pattern above lists the `refs/heads/dispatch/*` branch refs the fleet's Go claim readers
+use — the two namespaces are a known, unresolved divergence, so a suppressor may show in only one.
 
 ## Intra-brief splits — N shards, ONE brief PR (methodology/43)
 

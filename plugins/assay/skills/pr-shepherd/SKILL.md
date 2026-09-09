@@ -27,9 +27,17 @@ Before touching the branch, verify no other session or worker owns it:
 - **Dispatch claims**: `git ls-remote origin 'refs/heads/dispatch/*'` — a live claim naming this
   PR's brief/issue key means it is owned; skip it. The claim is a **forge ref**, so this read
   sees dispatchers on other machines too, which a machine-local claims directory never did.
-  The repo's own `dispatch-claim` helper's `show <key>` verb prints the holder, state and age:
+  The claim tool's `show <key> --repo <owner>/<repo>` verb prints the holder, state and age:
   `state=claimed` past ~20 minutes or `state=dispatched` past ~120 minutes is a DEAD claim,
-  not an owner. A read that FAILS is `could-not-check` — treat it as owned, never as free.
+  not an owner. **The claim tool is `deskclaim-ref`** — installed with desk-tools, verbs
+  `acquire` / `progress` / `release` / `steal` / `show` / `list`, deskkit exit codes **0** ok ·
+  **5** refused (a live holder owns it) · **6** unverifiable. A repo may ship its own
+  `tools/dispatch-claim.sh`; `deskdispatch` prefers that script when the resolved root carries
+  it, and the two speak the same wire protocol, so either one's `show` answers this question.
+  Run BOTH reads: the tool acquires and lists in the `refs/dispatch/*` namespace, while the
+  `ls-remote` pattern above lists the `refs/heads/dispatch/*` branch refs the Go claim readers
+  use — the divergence is known and unresolved, so a holder shown by either read means owned.
+  A read that FAILS — exit **6** included — is `could-not-check`: treat it as owned, never as free.
 - **Recent pushes**: `gh pr view <N> --json commits --jq '.commits[-1].committedDate'` — a
   push within the last hour or two suggests a live worker.
 - **PR comments**: a recent worker comment ("working the findings", a claim note) = owned.

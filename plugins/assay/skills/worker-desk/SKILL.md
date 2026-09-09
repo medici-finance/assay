@@ -109,7 +109,7 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues` — fail-closed |
 | 7 | A red default branch on a watched repo | `deskboard health` — three-state (green / RED / COULD-NOT-CHECK) |
 | 8 | Cross-root coverage: a board root that no sweep reaches, or a scanned repo with no board | the BOARD ROOTS ∪ SCAN REPOS symmetric difference printed at boot (§THE REPO SET) |
-| 9 | Queue **suppressors** — expired `refs/heads/dispatch/*` claims and dead branch-claims from merged/closed PRs | `desksupervise status --stops` (the liveness observer's runtime snapshot: per-claim liveness, timers-to-fire, and which stops are armed — the one structured read the sweep uses instead of guessing); the raw `git ls-remote origin 'refs/heads/dispatch/*'` + the repo's `dispatch-claim` helper's list/show verbs stay as the fallback |
+| 9 | Queue **suppressors** — expired `refs/heads/dispatch/*` claims and dead branch-claims from merged/closed PRs | `desksupervise status --stops` (the liveness observer's runtime snapshot: per-claim liveness, timers-to-fire, and which stops are armed — the one structured read the sweep uses instead of guessing); the raw `git ls-remote origin 'refs/heads/dispatch/*'` + the claim tool's `list`/`show` verbs (`deskclaim-ref`, installed with desk-tools; a repo that ships its own `tools/dispatch-claim.sh` uses that instead) stay as the fallback — run BOTH, since the tool lists the `refs/dispatch/*` namespace it acquires in while that `ls-remote` pattern lists the `refs/heads/dispatch/*` branch refs the Go claim readers use |
 
 **Rows 5 and 3 outrank row 1** — resuming started work outranks a fresh brief (mm/10) — and row 2 is
 what tells you whether row 1's zero means drained or throttled.
@@ -364,7 +364,15 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **`progress` the instant the agent is launched**; `release` every claim you took but did not
   dispatch. The claim contract — GitHub ref not local file, the two TTLs (`claimed` 20m →
   `dispatched` 120m), branch-as-claim takeover, `steal --reason` — has one home: the header comment of
-  the repo's own `dispatch-claim` helper.
+  the claim tool `deskdispatch` resolved. **That tool is `deskclaim-ref` by default** — the
+  cross-platform claim binary installed with desk-tools (`tools/desk/cmd/deskclaim-ref`), verbs
+  `acquire` / `progress` / `release` / `steal` / `show` / `list`, deskkit exit codes **0** ok ·
+  **5** refused (a live holder owns it) · **6** unverifiable (never "assume free"). The override:
+  a repo may ship its own `tools/dispatch-claim.sh`, and `deskdispatch`'s claim-acquire step
+  **prefers that script when the resolved root carries it** (`--claim-root` when given, else
+  `--root`), falling back to `deskclaim-ref` on PATH when it does not — and refusing fail-closed,
+  naming both, only when NEITHER is available. Both speak the same wire protocol, so which one runs
+  never changes where the claim lands or whether two dispatchers collide.
 - **Never hand-edit the board row — neither this desk nor the worker it dispatches.**
   `in-progress` appears the instant the worker's draft PR opens carrying the trailer
   `Brief: <stream>/<NN>` in its body; `deskpr create` refuses to open a PR whose body lacks
