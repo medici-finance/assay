@@ -24,10 +24,13 @@ package main
 // stale-reclaim heuristic, both tolerant of ordinary skew.
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -46,9 +49,18 @@ const storeTimeout = 30 * time.Second
 
 // gogitStore is the live forge seam. url is the full HTTPS git URL built from a
 // roster-validated slug + host; auth is the git-basic credential (token in memory only).
+//
+// host and lastErr exist for ATTRIBUTION: a fail-closed (exit 6) transport failure used to
+// collapse to a bare "unverifiable" naming neither the host dialed nor the auth/DNS cause, so an
+// operator on a self-hosted GitLab debugged the claim namespace, token scopes and ref
+// permissions — all of which were fine — while the real fault was the SaaS host the tool silently
+// dialed (assay#727). Each transport failure records its cause here; the verb layer reads
+// transportCause() to append "<host>: <error>" to the message.
 type gogitStore struct {
-	url  string
-	auth transport.AuthMethod
+	url     string
+	auth    transport.AuthMethod
+	host    string // the host this store dials, for fail-closed attribution
+	lastErr error  // the most recent transport-layer error, for fail-closed attribution
 }
 
 // newForgeStore resolves the forge, host, and credential for repo (an "owner/name" slug) and
@@ -79,7 +91,24 @@ func newForgeStore(repo, tokenFile string) (claimStore, error) {
 	return &gogitStore{
 		url:  "https://" + host + "/" + owner + "/" + name + ".git",
 		auth: gitcore.BasicAuthAs(username, token),
+		host: host,
 	}, nil
+}
+
+// fail records err as the store's most recent transport-layer cause, so the verb layer can
+// attribute a fail-closed exit to the host dialed and the underlying error rather than emitting
+// a bare "unverifiable" (assay#727). It returns nothing; callers still return the
+// writeUnverifiable/claimUnverifiable sentinel as before.
+func (g *gogitStore) fail(err error) { g.lastErr = err }
+
+// transportCause reports "<host>: <error>" for the store's most recent transport failure, or ""
+// when the last operation did not fail at the transport layer. The verb layer appends it to a
+// fail-closed message so the operator sees WHERE the tool dialed and WHY it failed.
+func (g *gogitStore) transportCause() string {
+	if g.lastErr == nil {
+		return ""
+	}
+	return g.host + ": " + g.lastErr.Error()
 }
 
 func (g *gogitStore) refName(id string) plumbing.ReferenceName {
@@ -89,6 +118,7 @@ func (g *gogitStore) refName(id string) plumbing.ReferenceName {
 func (g *gogitStore) read(id string) (claimRef, claimStatus) {
 	refs, err := gitcore.List(gitcore.ListOpts{URL: g.url, Auth: g.auth})
 	if err != nil {
+		g.fail(err)
 		return claimRef{}, claimUnverifiable
 	}
 	sha, found := findRef(refs, refPrefix+"/"+id)
@@ -101,6 +131,7 @@ func (g *gogitStore) read(id string) (claimRef, claimStatus) {
 	defer cancel()
 	payload, perr := gitcore.FetchTagPayload(ctx, g.url, g.auth, plumbing.NewHash(sha))
 	if perr != nil {
+		g.fail(perr)
 		return claimRef{}, claimUnverifiable
 	}
 	return claimRef{
@@ -121,6 +152,7 @@ func (g *gogitStore) updateFrom(id, oldSHA, msg string) writeOutcome {
 func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) writeOutcome {
 	objs, tagSHA, err := gitcore.MintClaimTag(id, msg, time.Now())
 	if err != nil {
+		g.fail(err)
 		return writeUnverifiable
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
@@ -129,6 +161,7 @@ func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) writeOutcome
 		URL: g.url, Auth: g.auth, Ref: g.refName(id), Old: old, New: tagSHA, Objects: objs,
 	})
 	if perr != nil {
+		g.fail(perr)
 		return writeUnverifiable
 	}
 	if res == gitcore.RefUpdateRejected {
@@ -142,6 +175,7 @@ func (g *gogitStore) remove(id string) (writeOutcome, bool) {
 	defer cancel()
 	res, err := gitcore.DeleteRef(ctx, g.url, g.auth, g.refName(id))
 	if err != nil {
+		g.fail(err)
 		return writeUnverifiable, false
 	}
 	return writeApplied, res == gitcore.DeleteDone
@@ -150,6 +184,7 @@ func (g *gogitStore) remove(id string) (writeOutcome, bool) {
 func (g *gogitStore) list() ([]string, claimStatus) {
 	refs, err := gitcore.List(gitcore.ListOpts{URL: g.url, Auth: g.auth})
 	if err != nil {
+		g.fail(err)
 		return nil, claimUnverifiable
 	}
 	var ids []string
@@ -171,6 +206,7 @@ func (g *gogitStore) branchExists(branch string) (bool, bool) {
 	}
 	refs, err := gitcore.List(gitcore.ListOpts{URL: g.url, Auth: g.auth})
 	if err != nil {
+		g.fail(err)
 		return false, false
 	}
 	_, found := findRef(refs, "refs/heads/"+branch)
@@ -201,10 +237,40 @@ func resolveRepo(repoFlag string) string {
 	return slug
 }
 
-// originRemoteURL reads the "origin" remote URL from the current directory's checkout using
-// go-git — no external git process, so it works on a native-Windows adopter with no git on PATH.
+// originRemoteURL reads the "origin" remote URL from the current directory's checkout, trying
+// three readers in order so a fault in one does not lose the answer (assay#727):
+//
+//  1. go-git (in-process, no external process) — the fast path, and the ONLY one on a
+//     native-Windows adopter with no git on PATH. go-git does NOT support the worktreeConfig
+//     extension, though, which git itself enables whenever linked worktrees are in use — exactly
+//     the isolated-worktree model the desks mandate. On such a checkout go-git returns nothing by
+//     one of two routes: PlainOpen fails outright on the shared checkout
+//     (`…does not support extension: worktreeconfig`), or PlainOpen succeeds on a LINKED worktree
+//     but the config it reads carries no remotes (the remotes live in the common .git/config).
+//  2. native `git remote get-url origin` — git understands its own worktreeConfig extension, so
+//     it resolves origin correctly for both the shared checkout and a linked worktree, including
+//     any conditional includes. This shells `git`, not a forge CLI (`gh`/`glab`), so it does NOT
+//     reopen the forge surface the ban (internal/forgeban) fences — no network is contacted, it
+//     only reads local config.
+//  3. a direct parse of the common .git/config's `[remote "origin"]` — the last resort when git
+//     is absent (a native-Windows adopter whose go-git path already failed), resolving the
+//     linked-worktree commondir so the shared config is the one read.
+//
+// Empty from all three means no readable origin; ForgeKindFromSlugAndHost then fails closed
+// rather than defaulting a host.
 func originRemoteURL() string {
-	r, err := git.PlainOpenWithOptions(".", &git.PlainOpenOptions{DetectDotGit: true})
+	if u := gogitOriginURL("."); u != "" {
+		return u
+	}
+	if u := nativeGitOriginURL("."); u != "" {
+		return u
+	}
+	return configFileOriginURL(".")
+}
+
+// gogitOriginURL is the in-process go-git reader (originRemoteURL step 1).
+func gogitOriginURL(dir string) string {
+	r, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{DetectDotGit: true})
 	if err != nil {
 		return ""
 	}
@@ -216,6 +282,144 @@ func originRemoteURL() string {
 		return urls[0]
 	}
 	return ""
+}
+
+// nativeGitOriginURL shells `git remote get-url origin` (originRemoteURL step 2). git resolves
+// the worktreeConfig extension go-git cannot, so this answers for both the shared checkout and a
+// linked worktree. It is `git`, never a forge CLI, and makes no network call. Empty on any
+// failure (no git on PATH, no remote, not a repo) so the caller falls through to step 3.
+func nativeGitOriginURL(dir string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "remote", "get-url", "origin")
+	outb, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(outb))
+}
+
+// configFileOriginURL parses the `[remote "origin"]` url out of the common .git/config directly
+// (originRemoteURL step 3), the reader that needs neither go-git's extension support nor a git
+// binary. It resolves the git-dir the way git does — a `.git` directory in place, or a `.git`
+// FILE (`gitdir: …`) in a linked worktree, whose common config lives one level up from its
+// `worktrees/<name>` dir (or wherever its `commondir` file points). Empty when nothing resolves.
+func configFileOriginURL(dir string) string {
+	commonGitDir := resolveCommonGitDir(dir)
+	if commonGitDir == "" {
+		return ""
+	}
+	return parseOriginFromGitConfig(filepath.Join(commonGitDir, "config"))
+}
+
+// resolveCommonGitDir walks up from dir to find the checkout's .git, then resolves the COMMON
+// git dir (the one holding the shared config with the remotes) — following a linked worktree's
+// `.git` gitdir pointer and its `commondir` file. Empty when no .git is found.
+func resolveCommonGitDir(dir string) string {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return ""
+	}
+	for {
+		dotgit := filepath.Join(abs, ".git")
+		fi, statErr := os.Stat(dotgit)
+		if statErr == nil {
+			if fi.IsDir() {
+				return dotgit // a normal checkout: .git is the git dir and holds config directly
+			}
+			// A linked worktree: .git is a file `gitdir: <path>/worktrees/<name>`. The common
+			// git dir is where its `commondir` file points (usually `../..`), i.e. the main
+			// checkout's .git.
+			if wtGitDir := readGitdirPointer(dotgit); wtGitDir != "" {
+				return commonDirOf(wtGitDir)
+			}
+			return ""
+		}
+		parent := filepath.Dir(abs)
+		if parent == abs {
+			return "" // reached the filesystem root without finding a .git
+		}
+		abs = parent
+	}
+}
+
+// readGitdirPointer reads a linked worktree's `.git` FILE and returns the absolute path its
+// `gitdir: …` line names. Empty on any read/parse failure.
+func readGitdirPointer(dotgitFile string) string {
+	b, err := os.ReadFile(dotgitFile)
+	if err != nil {
+		return ""
+	}
+	line := strings.TrimSpace(string(b))
+	p, ok := strings.CutPrefix(line, "gitdir:")
+	if !ok {
+		return ""
+	}
+	p = strings.TrimSpace(p)
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(filepath.Dir(dotgitFile), p)
+	}
+	return filepath.Clean(p)
+}
+
+// commonDirOf maps a linked worktree's git dir (`<main>/.git/worktrees/<name>`) to the common
+// git dir that holds the shared config, honoring an explicit `commondir` file where present.
+func commonDirOf(wtGitDir string) string {
+	if b, err := os.ReadFile(filepath.Join(wtGitDir, "commondir")); err == nil {
+		rel := strings.TrimSpace(string(b))
+		if rel != "" {
+			if filepath.IsAbs(rel) {
+				return filepath.Clean(rel)
+			}
+			return filepath.Clean(filepath.Join(wtGitDir, rel))
+		}
+	}
+	// No commondir file: the conventional layout is <common>/worktrees/<name>, so the common
+	// dir is two levels up.
+	return filepath.Clean(filepath.Join(wtGitDir, "..", ".."))
+}
+
+// parseOriginFromGitConfig extracts the first url under `[remote "origin"]` from a git config
+// file. It reads the INI-ish grammar git writes — a `[remote "origin"]` section header, then
+// `url = …` on an indented line before the next section — without a full git-config parser,
+// which is all this fallback needs. Empty when the file is absent or has no origin url.
+func parseOriginFromGitConfig(configPath string) string {
+	f, err := os.Open(configPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	inOrigin := false
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if strings.HasPrefix(line, "[") {
+			// A new section header. Match `[remote "origin"]` allowing for extra spacing.
+			norm := strings.ToLower(strings.Join(strings.Fields(line), " "))
+			inOrigin = norm == `[remote "origin"]`
+			continue
+		}
+		if !inOrigin {
+			continue
+		}
+		if v, ok := cutConfigKey(line, "url"); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+// cutConfigKey matches a `key = value` git-config line (case-insensitive key, optional spacing)
+// and returns the trimmed value.
+func cutConfigKey(line, key string) (string, bool) {
+	eq := strings.IndexByte(line, '=')
+	if eq < 0 {
+		return "", false
+	}
+	if !strings.EqualFold(strings.TrimSpace(line[:eq]), key) {
+		return "", false
+	}
+	return strings.TrimSpace(line[eq+1:]), true
 }
 
 // parseRemote extracts the host and the owner/name slug from a git remote URL in either
