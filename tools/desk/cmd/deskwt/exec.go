@@ -1,10 +1,10 @@
 package main
 
 import (
-	"bytes"
-	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // execCommand is the single seam through which every git invocation flows. Production
@@ -31,18 +31,22 @@ func runGit(dir string, args ...string) (string, error) {
 // else keeps the simpler runGit. Same single-seam argv discipline: the argv is still an
 // explicit slice of literal verbs and validated values.
 func runGitStreams(dir string, args ...string) (stdout, stderr string, err error) {
-	cmd := execCommand("git", args...)
-	if dir != "" {
-		cmd.Dir = dir
+	// The capture and the exit-status recovery are the shared runner's (deskkit/runtool.go).
+	// The recording seam stays LOCAL — ToolCall.Start is execCommand — so the "no --force in
+	// any git argv" assertion still runs against the real constructed argv.
+	r := deskkit.Run(deskkit.ToolCall{Name: "git", Args: args, Dir: dir, Start: execCommand})
+	if r.Failed() {
+		// The message reads as it always did — `git <argv> failed — git said: <first line>`
+		// — but the whole diagnosis now RIDES on the error rather than only being rendered
+		// into it: git's exit status, its stderr in full, and the argv as executed, which is
+		// what DESK_TRACE prints. Before this, a deskwt failure gave a trace nothing to show.
+		//
+		// The verdict is deliberately ExitUnverifiable, not ExitRefused. git's own exit
+		// codes are not deskkit's: a 128 means "git could not do this", never "a desk
+		// control said no". Every caller that turns a git failure into a REFUSAL does so on
+		// its own reading of the repository state, above this line — see cmdAdd's branch
+		// guard — and that reading is untouched here.
+		return r.Stdout, r.Stderr, r.Fail(deskkit.ExitUnverifiable, "git %s", strings.Join(args, " "))
 	}
-	var out, errb bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
-	runErr := cmd.Run()
-	stdout = strings.TrimSpace(out.String())
-	stderr = strings.TrimSpace(errb.String())
-	if runErr != nil {
-		return stdout, stderr, fmt.Errorf("git %s: %w (%s)", strings.Join(args, " "), runErr, stderr)
-	}
-	return stdout, stderr, nil
+	return r.Stdout, r.Stderr, nil
 }

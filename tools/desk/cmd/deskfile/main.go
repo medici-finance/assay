@@ -77,7 +77,12 @@ message rather than emitting a misleading GitHub API error — routing the ops t
 forge backend is not yet delivered. Escalate a blocker on such a repo to a human; do not
 substitute a bare glab/gh call, which bypasses this tool's dedupe/stamp/budget gates.
 
-Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.`
+Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.
+
+DIAGNOSTICS: DESK_TRACE=1 (or a global --trace, any position) prints the full cause
+chain, every child process with its command line, exit status and elapsed time, and the
+failing child's stderr in full. Credentials are redacted. With it off, output is
+unchanged. See tools/desk/README.md, "Diagnostics — DESK_TRACE".`
 
 func main() {
 	// The roster class is an EXPLICIT declaration, never the zero value by accident
@@ -96,6 +101,10 @@ func main() {
 }
 
 func run(args []string) int {
+	// The global diagnostic switch, taken BEFORE any verb dispatch so `--trace` works on
+	// every deskfile verb and is invisible to each one's own FlagSet.
+	args = deskkit.TakeTraceFlag(args)
+
 	// --version / help are pure reads: no kill-switch gate, no audit line.
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
@@ -143,8 +152,8 @@ func run(args []string) int {
 	default:
 		err = deskkit.Refused("refused: unknown verb " + verb + " (want one of: new, attach, check)")
 	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-	}
+	// The shared exit path. With DESK_TRACE off this is byte-identical to the
+	// fmt.Fprintln(os.Stderr, err.Error()) it replaces.
+	deskkit.ReportError(os.Stderr, err)
 	return deskkit.ExitCodeOf(err)
 }

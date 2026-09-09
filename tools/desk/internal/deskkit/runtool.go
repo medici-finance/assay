@@ -206,9 +206,22 @@ func (r ToolRun) Said() string {
 // the error's Stderr / Cmd / ExitStatus fields for DESK_TRACE to print, and the raw exec
 // error stays the Cause so errors.Is / errors.As still reach *exec.ExitError.
 func (r ToolRun) Fail(code int, format string, a ...any) *DeskError {
+	return r.FailVerbatim(code, fmt.Sprintf(format, a...)+" — "+r.Name+" said: "+r.Said())
+}
+
+// FailVerbatim is Fail for a call site that has already composed the WHOLE message,
+// including the child's own words in a shape of its own.
+//
+// Some steps say more than "<tool> said: <line>" can carry — the worktree-create step
+// forwards deskwt's message in full and then explains what a branch collision usually MEANS
+// (the brief is already delivered, look for a merged PR) rather than sending the operator to
+// repair a tree. Appending a second copy of the first stderr line to that would be noise, so
+// this constructor takes the message exactly as given and attaches only the out-of-band
+// detail DESK_TRACE prints. Same verdict rule as Fail: code is the caller's.
+func (r ToolRun) FailVerbatim(code int, msg string) *DeskError {
 	return &DeskError{
 		Code:       code,
-		Msg:        fmt.Sprintf(format, a...) + " — " + r.Name + " said: " + r.Said(),
+		Msg:        msg,
 		Err:        r.Err,
 		Cmd:        r.CommandLine(),
 		Stderr:     r.SaidAll(),

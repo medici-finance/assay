@@ -472,6 +472,30 @@ func resolvePEMPath(appName, prefix string) (string, error) {
 // duties (#571) without a second JWT-signing implementation.
 func permsPath(tokenPath string) string { return tokenPath + ".perms" }
 
+// tokenPathNotice is the one-line NOTICE that accompanies every token path this tool prints.
+//
+// The tool's whole output contract is "a PATH, never the value", and until this line existed
+// nothing in the output said so. A caller that used stdout as the credential — the obvious
+// reading of a tool called desktoken — got `401 Bad credentials` from its next forge call,
+// three processes downstream, with nothing naming the cause. The notice puts the cause next
+// to the effect.
+//
+// It goes to STDERR, deliberately: stdout is a machine surface that callers pipe into a
+// variable, and a second line on it would break every one of them. There is no --print-token
+// flag and this notice is not a step towards one: printing the value on stdout is the exact
+// disclosure this tool's 0600 cache file exists to avoid, and `cat "$(desktoken …)"` already
+// serves the caller without putting the credential in this process's own output.
+const tokenPathNotice = `desktoken: NOTICE — stdout above is the token FILE PATH, not the token itself. Using it ` +
+	`directly as a credential is what produces a bare "401 Bad credentials" from the next forge call. ` +
+	"Read the value with: cat \"$(desktoken <role> --repo <owner/name>)\""
+
+// printTokenPath writes the token FILE PATH on stdout — never the token — and the notice
+// above on stderr. Both print sites go through it so the two can never drift apart.
+func printTokenPath(path string) {
+	fmt.Println(path)
+	fmt.Fprintln(os.Stderr, tokenPathNotice)
+}
+
 // writePerms records the granted permission map next to the token cache, 0600
 // (it names an App's capability surface — not a secret, but not world-readable
 // either). A failure to record is NOT fatal to the mint: the token is the
@@ -536,6 +560,11 @@ func checkPrivateKeyMode(pemPath string, mode os.FileMode) error {
 
 // run is the CLI entry point. It returns an exit code.
 func run(args []string) int {
+	// The global diagnostic switch, taken BEFORE any flag parsing so `--trace` works
+	// alongside this verb's bare-role-name positional grammar (which would otherwise refuse
+	// it as an undefined flag) and is invisible to the FlagSets below.
+	args = deskkit.TakeTraceFlag(args)
+
 	// --version / help are pure reads: no kill-switch gate, no audit line.
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
@@ -570,16 +599,14 @@ func run(args []string) int {
 	// unambiguous.
 	if args[0] == "coverage" {
 		cerr := cmdCoverage(args[1:])
-		if cerr != nil {
-			fmt.Fprintln(os.Stderr, cerr.Error())
-		}
+		deskkit.ReportError(os.Stderr, cerr)
 		return deskkit.ExitCodeOf(cerr)
 	}
 
 	err := cmdToken(args)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-	}
+	// The shared exit path. With DESK_TRACE off this is byte-identical to the
+	// fmt.Fprintln(os.Stderr, err.Error()) it replaces.
+	deskkit.ReportError(os.Stderr, err)
 	return deskkit.ExitCodeOf(err)
 }
 
@@ -750,7 +777,7 @@ func cmdToken(args []string) (err error) {
 		age := time.Since(fi.ModTime())
 		if age < cacheMaxAge {
 			// Output only the token file path — never the token value.
-			fmt.Println(tokenPath)
+			printTokenPath(tokenPath)
 			ac.detail = fmt.Sprintf("reused cached %s token [app=%s install %s] (%dm old)", role, appName, installID, int(age.Minutes()))
 			return nil
 		}
@@ -821,7 +848,7 @@ func cmdToken(args []string) (err error) {
 	writePerms(tokenPath, result.Permissions)
 
 	// Output only the token file path — never the token value.
-	fmt.Println(tokenPath)
+	printTokenPath(tokenPath)
 	ac.detail = fmt.Sprintf("minted new %s token [app=%s install %s] (expires %s)", role, appName, installID, result.ExpiresAt)
 	return nil
 }

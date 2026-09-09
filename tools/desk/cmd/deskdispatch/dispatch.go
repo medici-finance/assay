@@ -238,10 +238,14 @@ func dispatch(o dispatchOpts) error {
 		// is held by a live worktree, or carries unpushed work — and flattening a decision
 		// into "could not be established" tells the operator to retry something that will
 		// never succeed on its own.
+		// FailVerbatim, not Fail: the message above already carries deskwt's words in full,
+		// so it is kept exactly as composed and only the out-of-band detail DESK_TRACE prints
+		// (the `deskwt add` argv as executed, deskwt's exit status, its stderr whole) is
+		// attached. The verdict is unchanged either way.
 		if exitCodeOf(wt.err) == deskkit.ExitRefused {
-			return deskkit.Refused(msg)
+			return wt.run.FailVerbatim(deskkit.ExitRefused, msg)
 		}
-		return deskkit.Unverifiable(msg, wt.err)
+		return wt.run.FailVerbatim(deskkit.ExitUnverifiable, msg)
 	}
 	home := firstLine(wt.stdout)
 	if home == "" || home == "(no output)" || !strings.HasPrefix(home, "/") {
@@ -266,12 +270,12 @@ func dispatch(o dispatchOpts) error {
 		} else {
 			o.say("%s WARNING: could not record assay.runKey=%s in %s (%s) — the per-run stop's "+
 				"cooperative layer is off for this run; the desk-window sweep still covers it",
-				stepWorktreeCreate, plan.claimKey, home, firstLine(rk.stderr))
+				stepWorktreeCreate, plan.claimKey, home, rk.run.Said())
 		}
 	} else {
 		o.say("%s WARNING: could not enable extensions.worktreeConfig in %s (%s) — the per-run "+
 			"stop's cooperative layer is off for this run; the desk-window sweep still covers it",
-			stepWorktreeCreate, home, firstLine(ext.stderr))
+			stepWorktreeCreate, home, ext.run.Said())
 	}
 
 	// before_run — runs after the worktree is prepared and BEFORE the prompt is emitted (the
@@ -652,11 +656,11 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, claimKey stri
 		return deskkit.Refused(fmt.Sprintf(
 			"step %s: the claim tool refused to acquire %s (%s). No live holder was read (show: %s), so "+
 				"this is a claim-acquire error, NOT a collision — fix the key or the invocation and re-run.",
-			stepClaimAcquire, claimKey, firstLine(refusalDetail(r)), holder))
+			stepClaimAcquire, claimKey, r.run.Said(), holder))
 	default:
-		return deskkit.Unverifiable(fmt.Sprintf(
+		return r.run.FailVerbatim(deskkit.ExitUnverifiable, fmt.Sprintf(
 			"step %s: the claim on %s could not be established (%s) — fail closed, NEVER 'assume free'.",
-			stepClaimAcquire, claimKey, firstLine(r.stderr)), r.err)
+			stepClaimAcquire, claimKey, r.run.Said()))
 	}
 }
 
@@ -692,19 +696,10 @@ func claimToolAvailable(tool string, isScript bool) error {
 func releaseClaim(o dispatchOpts, script, claimKey, repo string) string {
 	r := runCmd(o.root, script, "release", claimKey, "--repo", repo)
 	if r.err != nil {
-		return "NOT released (release failed: " + firstLine(refusalDetail(r)) + ") — release it by hand: " +
+		return "NOT released (release failed: " + r.run.Said() + ") — release it by hand: " +
 			script + " release " + claimKey + " --repo " + repo
 	}
 	return "released"
-}
-
-// refusalDetail picks the claim tool's refusal text: its errors go to stderr, its DEDUP
-// log lines to stdout, so stderr is preferred and stdout is the fallback.
-func refusalDetail(r runResult) string {
-	if strings.TrimSpace(r.stderr) != "" {
-		return r.stderr
-	}
-	return r.stdout
 }
 
 // claimedClaimTTL is the age past which a `state=claimed` dispatch claim — acquired but never
@@ -779,7 +774,7 @@ func stepRoster(o dispatchOpts, repo string) string {
 		// serialises the dispatch. Failing the whole dispatch here would trade a real
 		// dispatch for a bookkeeping miss, so this reports and continues — loudly.
 		return fmt.Sprintf("WARNING: could not register %s#%d on the roster (%s) — dispatch continues; "+
-			"`deskroster list` will not show this work until the agent registers it", short, o.pr, firstLine(r.stderr))
+			"`deskroster list` will not show this work until the agent registers it", short, o.pr, r.run.Said())
 	}
 	return fmt.Sprintf("OK: %s#%d registered", short, o.pr)
 }
@@ -800,10 +795,10 @@ func stepDecision(o dispatchOpts, gateHuman bool, repo, script string) (string, 
 	}
 	r := runCmd(o.root, script, "ensure", o.brief, "--repo", repo, "--at", "start")
 	if r.err != nil {
-		return "", deskkit.Unverifiable(fmt.Sprintf(
+		return "", r.run.FailVerbatim(deskkit.ExitUnverifiable, fmt.Sprintf(
 			"step %s: the decision-issue gate for %s could not be ensured (%s) — a possible duplicate is the "+
 				"cheap direction and a missing gate is the expensive one, so this fails closed.",
-			stepDecisionGate, o.brief, firstLine(r.stderr)), r.err)
+			stepDecisionGate, o.brief, r.run.Said()))
 	}
 	return "OK: " + firstLine(r.stdout), nil
 }
@@ -894,7 +889,7 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			"step %s: could not read the labels currently on %s#%d (%s) — whether this PR already carries "+
 				"a foreign stamp is unknown, and adding a label over one is a no-op, so stamping blind "+
 				"would report success on a PR that stays refused.",
-			stepModelStamp, repo, o.pr, firstLine(labelRead.stderr)), labelRead.err)
+			stepModelStamp, repo, o.pr, labelRead.run.Said()), labelRead.err)
 	}
 	tlRead := runCmd("", "gh", "api", "--paginate",
 		fmt.Sprintf("repos/%s/issues/%d/timeline", repo, o.pr),
@@ -903,7 +898,7 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: could not read the label timeline of %s#%d (%s) — WHO applied the stamp this PR "+
 				"carries cannot be established, so a foreign application could not be replaced.",
-			stepModelStamp, repo, o.pr, firstLine(tlRead.stderr)), tlRead.err)
+			stepModelStamp, repo, o.pr, tlRead.run.Said()), tlRead.err)
 	}
 	stale := deskkit.ReStampRemovals(deskkit.StampTimeline{
 		Present: parseLabelNames(labelRead.stdout),
@@ -914,7 +909,7 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			return "", deskkit.Unverifiable(fmt.Sprintf(
 				"step %s: could not remove the stamp label %s from %s#%d (%s) — re-applying the intended "+
 					"stamp on top would be a no-op, leaving the PR carrying labels the floor refuses.",
-				stepModelStamp, l, repo, o.pr, firstLine(r.stderr)), r.err)
+				stepModelStamp, l, repo, o.pr, r.run.Said()), r.err)
 		}
 	}
 
@@ -927,7 +922,7 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			return "", deskkit.Unverifiable(fmt.Sprintf(
 				"step %s: could not apply %s to %s#%d (%s) — an INCOMPLETE stamp (one label of two) reads "+
 					"as indeterminate, which is worse than no stamp at all.",
-				stepModelStamp, l, repo, o.pr, firstLine(r.stderr)), r.err)
+				stepModelStamp, l, repo, o.pr, r.run.Said()), r.err)
 		}
 	}
 	// BOTH events are reported. A silent removal is a label disappearing from a PR with no
@@ -1104,10 +1099,10 @@ func (o dispatchOpts) resolveRepo() (string, error) {
 	}
 	r := runCmd(o.root, "git", "remote", "get-url", "origin")
 	if r.err != nil {
-		return "", deskkit.Unverifiable(fmt.Sprintf(
+		return "", r.run.FailVerbatim(deskkit.ExitUnverifiable, fmt.Sprintf(
 			"step %s: cannot read origin's URL in %s (%s) — pass --repo <owner/name>. An item dispatched "+
 				"into the wrong repo is work nobody asked that repo for.",
-			stepClaimAcquire, o.root, firstLine(r.stderr)), r.err)
+			stepClaimAcquire, o.root, r.run.Said()))
 	}
 	slug := repoSlugFromURL(r.stdout)
 	if slug == "" {
