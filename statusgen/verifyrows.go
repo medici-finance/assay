@@ -38,15 +38,18 @@ import (
 // else; interpreting it is tokenizeCommand's job, which has the quoting context
 // needed to tell a shell pipe from pattern content.
 //
-// It exists because the package-wide splitRow splits on every `|` byte, which
-// shreds exactly the rows this lint hunts: a Command cell reading
+// It exists because the package-wide splitRow ONCE split on every `|` byte,
+// which shredded exactly the rows this lint hunts: a Command cell reading
 //
 //	`ls x \| grep -cE "a\|b"`
 //
-// splits into five cells and truncates the command at the first `\|` — the lint
-// would be blind to the very text it is looking for. splitRow is left alone
-// (every other check depends on its current behaviour); this is a local,
-// escape-aware variant.
+// split into five cells and truncated the command at the first `\|` — the lint
+// would be blind to the very text it is looking for. splitRow is escape-aware
+// now too, so the two agree on where the cell boundaries are; they still differ
+// in how they trim the row's outer delimiters (splitRow drops every zero-length
+// leading/trailing cell, matching the `strings.Trim(line, "|")` it grew out of,
+// while this drops at most one blank cell at each end), so this local variant
+// stays rather than being folded into it.
 //
 // In GitHub Flavored Markdown, `\|` is the ONLY way to put a pipe inside a table
 // cell — the escape is processed before inline parsing, so it applies even inside

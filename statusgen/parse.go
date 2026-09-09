@@ -115,8 +115,57 @@ func matchCloseParen(s string, open int) (int, bool) {
 	return 0, false
 }
 
+// splitRow splits a markdown table row into its cells on UNESCAPED pipes.
+//
+// GFM resolves `\|` before inline parsing, so a backslash-escaped pipe is cell
+// CONTENT, never a delimiter — it is the only way to put a pipe inside a table
+// cell, and it applies even inside a `code span` (a `curl … \| bash` note).
+// Splitting on every `|` byte therefore invents a cell in a perfectly legal row;
+// parseBriefTable's exact cell-count check then rejects that row, and because a
+// stream README parse error aborts the whole load, one such row turns every
+// other check in the run into could-not-check.
+//
+// The escape sequence is PRESERVED verbatim in the returned cell. The escape
+// decides cell boundaries and nothing else, so a row that is parsed and
+// re-rendered is byte-identical to the one that was read — the re-render paths
+// in readmetable.go and transcribeverdict.go write these cells straight back.
+//
+// Outer-delimiter handling is unchanged: the empty cells produced by the row's
+// leading and trailing delimiter runs are dropped, so for any row carrying no
+// `\|` this returns exactly what the previous `strings.Trim(line, "|")` plus
+// `strings.Split` returned.
 func splitRow(line string) []string {
-	return strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
+	s := strings.TrimSpace(line)
+	var cells []string
+	var cur strings.Builder
+	for i := 0; i < len(s); i++ {
+		switch {
+		case s[i] == '\\' && i+1 < len(s) && s[i+1] == '|':
+			cur.WriteString(`\|`) // escaped pipe: cell content, not a delimiter
+			i++
+		case s[i] == '|':
+			cells = append(cells, cur.String())
+			cur.Reset()
+		default:
+			cur.WriteByte(s[i])
+		}
+	}
+	cells = append(cells, cur.String())
+	// Only ZERO-LENGTH cells are dropped: a blank-but-spaced cell (`|  |`) is a
+	// real empty column — a `— `-less Verified/Reviewed cell — and must survive,
+	// or every row would come up short and be rejected.
+	start := 0
+	for start < len(cells) && cells[start] == "" {
+		start++
+	}
+	end := len(cells)
+	for end > start && cells[end-1] == "" {
+		end--
+	}
+	if start >= end {
+		return []string{""}
+	}
+	return cells[start:end]
 }
 
 func normalizeMark(s string) string {

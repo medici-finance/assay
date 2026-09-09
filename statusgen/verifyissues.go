@@ -235,7 +235,8 @@ var strikethroughRe = regexp.MustCompile(`~~[^~]*~~`)
 //	|---|---------|------|--------|------|--------|
 //	| 1 | ...     | 0    | ...    | 2026-07-09 | opus-verifier |
 //
-// Because splitRow naively splits on | (commands often contain pipe characters),
+// Because splitRow splits on an UNESCAPED | (commands often contain an unescaped
+// pipe character, which GFM and splitRow alike read as a real cell delimiter),
 // the column indices from the header may not align with data rows. This function
 // works around that by reading Date and Runner from the RIGHTMOST two cells of
 // each data row: the last cell is Runner (by convention), second-to-last is Date.
