@@ -1,2 +1,0 @@
-### Fixed
-- GitLab adopters: `deskboard` board reads (`actions`, `prs`, `stalled`, `throughput`) no longer fail could-not-check. The GitLab forge backend now serves the bulk open-change read in a degraded shape — real merge-request metadata so the review desk's NEEDS-REVIEW / RE-REVIEW trigger works, with the CI rollup and merge-state fields marked could-not-check per change so MERGE-NOW and FLIP stay withheld. This unblocks the whole `pr-review-desk` loop on a GitLab-backed repo without approximating any field the forge cannot assert.

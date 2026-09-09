@@ -1,3 +1,0 @@
-### Fixed
-- `deskroster preflight`'s `sibling-checkouts` check no longer assumes a flat `../<repo>` layout: a declared out-of-repo sibling is resolved through the configured roots (`DESK_ROOTS` / topology `<org>/<repo>` map) first, so a desk whose checkouts live elsewhere (e.g. a pod at `/workspace/<org>/<repo>`) still locates the sibling (#661).
-- Absent sibling checkouts are now scoped to the claim: at boot an unclaimed brief's missing cross-repo checkout is a NOTICE, not a boot-blocking failure, so one unclaimed cross-repo brief no longer bricks every loop's boot in a cell. Only the brief named by the new `--claimed-brief` flag turns its own absent sibling into a hard failure (#661).
