@@ -111,6 +111,21 @@ type claimStore interface {
 	list() ([]string, claimStatus)
 	// branchExists reports heads/<branch> presence; verifiable=false is could-not-check.
 	branchExists(branch string) (exists, verifiable bool)
+	// transportCause reports "<host>: <error>" for the store's most recent transport failure,
+	// or "" when the last operation did not fail at the transport layer. The verb layer appends
+	// it to a fail-closed (exit 6) message so the operator sees WHERE the tool dialed and WHY it
+	// failed, rather than a bare "unverifiable" that points at the wrong suspects (#727).
+	transportCause() string
+}
+
+// causeSuffix renders the store's last transport cause as a ": <host>: <error>" suffix for a
+// fail-closed message, or "" when there is nothing to attribute. It is the ONE place the
+// attribution is composed so every "unverifiable:" line carries it uniformly.
+func causeSuffix() string {
+	if c := store.transportCause(); c != "" {
+		return ": " + c
+	}
+	return ""
 }
 
 // store is the live forge seam. main() installs the go-git store (gogit.go); tests swap it.
@@ -222,7 +237,7 @@ func cmdAcquire(id, owner, branch string) int {
 		logf("acquired %s (owner=%s state=claimed) — %s/%s", id, owner, refPrefix, id)
 		return exitOK
 	case writeUnverifiable:
-		errf("unverifiable: could not create the claim %s/%s", refPrefix, id)
+		errf("unverifiable: could not create the claim %s/%s%s", refPrefix, id, causeSuffix())
 		return exitUnverifiable
 	}
 	// The create was REJECTED: the ref already exists. Exactly one benign cause — someone else
@@ -233,7 +248,7 @@ func cmdAcquire(id, owner, branch string) int {
 		errf("unverifiable: creating %s/%s was rejected but no claim exists", refPrefix, id)
 		return exitUnverifiable
 	case claimUnverifiable:
-		errf("unverifiable: creating %s/%s was rejected and the claim could not be read", refPrefix, id)
+		errf("unverifiable: creating %s/%s was rejected and the claim could not be read%s", refPrefix, id, causeSuffix())
 		return exitUnverifiable
 	}
 	state := fieldOf(ref.msg, "state")
@@ -268,7 +283,7 @@ func cmdProgress(id, owner, branch string) int {
 		errf("refused: %s has no claim to advance (acquire first)", id)
 		return exitRefused
 	case claimUnverifiable:
-		errf("unverifiable: could not read the claim on %s", id)
+		errf("unverifiable: could not read the claim on %s%s", id, causeSuffix())
 		return exitUnverifiable
 	}
 	if holder := fieldOf(ref.msg, "owner"); holder != "" && holder != owner {
@@ -287,7 +302,7 @@ func cmdProgress(id, owner, branch string) int {
 		errf("refused: %s was advanced or stolen by another desk since it was read — not the holder any more", id)
 		return exitRefused
 	default:
-		errf("unverifiable: could not advance %s/%s", refPrefix, id)
+		errf("unverifiable: could not advance %s/%s%s", refPrefix, id, causeSuffix())
 		return exitUnverifiable
 	}
 }
@@ -303,7 +318,7 @@ func cmdRelease(id string) int {
 		}
 		return exitOK
 	default:
-		errf("unverifiable: could not delete %s/%s", refPrefix, id)
+		errf("unverifiable: could not delete %s/%s%s", refPrefix, id, causeSuffix())
 		return exitUnverifiable
 	}
 }
@@ -317,7 +332,7 @@ func cmdSteal(id, owner, reason string) int {
 	ref, status := store.read(id)
 	switch status {
 	case claimUnverifiable:
-		errf("unverifiable: could not read %s before stealing it", id)
+		errf("unverifiable: could not read %s before stealing it%s", id, causeSuffix())
 		return exitUnverifiable
 	case claimFree:
 		// Nothing holds it — a steal collapses to a create. A racing create in the gap is the
@@ -330,7 +345,7 @@ func cmdSteal(id, owner, reason string) int {
 			errf("refused: %s was re-claimed by another desk during the steal", id)
 			return exitRefused
 		default:
-			errf("unverifiable: could not mint the replacement claim for %s", id)
+			errf("unverifiable: could not mint the replacement claim for %s%s", id, causeSuffix())
 			return exitUnverifiable
 		}
 	}
@@ -357,7 +372,7 @@ func cmdShow(id string) int {
 		logf("FREE %s (no %s/%s in the repo)", id, refPrefix, id)
 		return exitOK
 	case claimUnverifiable:
-		errf("unverifiable: could not read the claim on %s", id)
+		errf("unverifiable: could not read the claim on %s%s", id, causeSuffix())
 		return exitUnverifiable
 	}
 	ageStr := "?"
@@ -372,7 +387,7 @@ func cmdList() int {
 	ids, status := store.list()
 	switch status {
 	case claimUnverifiable:
-		errf("unverifiable: could not list dispatch claims")
+		errf("unverifiable: could not list dispatch claims%s", causeSuffix())
 		return exitUnverifiable
 	}
 	if len(ids) == 0 {
