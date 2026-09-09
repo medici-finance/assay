@@ -54,7 +54,7 @@ const storeTimeout = 30 * time.Second
 // collapse to a bare "unverifiable" naming neither the host dialed nor the auth/DNS cause, so an
 // operator on a self-hosted GitLab debugged the claim namespace, token scopes and ref
 // permissions — all of which were fine — while the real fault was the SaaS host the tool silently
-// dialed (assay#727). Each transport failure records its cause here; the verb layer reads
+// dialed (#727). Each transport failure records its cause here; the verb layer reads
 // transportCause() to append "<host>: <error>" to the message.
 type gogitStore struct {
 	url     string
@@ -97,7 +97,7 @@ func newForgeStore(repo, tokenFile string) (claimStore, error) {
 
 // fail records err as the store's most recent transport-layer cause, so the verb layer can
 // attribute a fail-closed exit to the host dialed and the underlying error rather than emitting
-// a bare "unverifiable" (assay#727). It returns nothing; callers still return the
+// a bare "unverifiable" (#727). It returns nothing; callers still return the
 // writeUnverifiable/claimUnverifiable sentinel as before.
 func (g *gogitStore) fail(err error) { g.lastErr = err }
 
@@ -238,7 +238,7 @@ func resolveRepo(repoFlag string) string {
 }
 
 // originRemoteURL reads the "origin" remote URL from the current directory's checkout, trying
-// three readers in order so a fault in one does not lose the answer (assay#727):
+// three readers in order so a fault in one does not lose the answer (#727):
 //
 //  1. go-git (in-process, no external process) — the fast path, and the ONLY one on a
 //     native-Windows adopter with no git on PATH. go-git does NOT support the worktreeConfig

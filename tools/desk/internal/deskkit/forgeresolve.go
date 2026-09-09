@@ -172,7 +172,7 @@ func resolveForgeKind(repo ForgeRepo) (ForgeResolution, error) {
 // self-hosted-capable, so "gitlab" is not "gitlab.com" and "github" is not "github.com".
 // Defaulting the host to the canonical SaaS instance is how a self-hosted adopter's credential
 // ends up presented to a public host, with the auth failure swallowed downstream as a bare
-// "unverifiable" (assay#727). An empty host is therefore could-not-check (Unverifiable, exit 6),
+// "unverifiable" (#727). An empty host is therefore could-not-check (Unverifiable, exit 6),
 // naming the repo — never a SaaS default. The caller's job is to hand a readable origin host
 // (see cmd/deskclaim-ref's originRemoteURL, which reads it through something that understands
 // the worktreeConfig extension go-git does not).
@@ -186,7 +186,7 @@ func ForgeKindFromSlugAndHost(slug, host string) (ForgeKind, string, error) {
 		// No origin host to go on. Refuse rather than default to the canonical SaaS host: the
 		// roster named the forge SOFTWARE, not the INSTANCE, so any host we substitute here is a
 		// guess about WHERE — and on a self-hosted adopter that guess silently points the
-		// adopter's credential at gitlab.com/github.com (assay#727). Fail closed, naming the repo
+		// adopter's credential at gitlab.com/github.com (#727). Fail closed, naming the repo
 		// and the forge so an operator can see the resolution stopped for lack of a host.
 		return "", "", Unverifiable(fmt.Sprintf(
 			"resolved forge %q for %s, but no instance host is known: the origin remote was unreadable "+

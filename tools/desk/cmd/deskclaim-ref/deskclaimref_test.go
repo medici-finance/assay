@@ -34,7 +34,7 @@ type fakeStore struct {
 
 	// cause is the "<host>: <error>" attribution the real gogitStore records on a transport
 	// failure; the fake returns it from transportCause() so a verb-level test can assert the
-	// operator-facing message carries it (assay#727).
+	// operator-facing message carries it (#727).
 	cause string
 }
 
@@ -507,12 +507,12 @@ func TestUnknownVerbAndFlagRefused(t *testing.T) {
 	}
 }
 
-// --- assay#727: attributable fail-closed + worktreeConfig-aware origin read ---------------
+// --- #727: attributable fail-closed + worktreeConfig-aware origin read ---------------
 
 // A fail-closed (exit 6) transport failure must name the host it dialed and the underlying
 // cause in the operator-facing message — not the bare "unverifiable" that sent an operator
 // debugging the claim namespace, token scopes and ref permissions while the real fault was the
-// host (assay#727). Drives the verb layer over the store seam's attribution.
+// host (#727). Drives the verb layer over the store seam's attribution.
 func TestTransportFailureMessageCarriesHostAndCause(t *testing.T) {
 	f := newStore()
 	f.writeFails = true
@@ -551,7 +551,7 @@ func TestGogitStoreTransportCauseFormatsHostAndError(t *testing.T) {
 
 // The origin read must fall back to a direct parse of the common .git/config when go-git cannot
 // read the checkout — the worktreeConfig case that made every claim verb exit 6 on a
-// self-hosted GitLab (assay#727). This drives the config-file parser directly (the no-git
+// self-hosted GitLab (#727). This drives the config-file parser directly (the no-git
 // fallback), which needs neither go-git's extension support nor a git binary.
 func TestConfigFileOriginURLReadsCommonConfig(t *testing.T) {
 	dir := t.TempDir()

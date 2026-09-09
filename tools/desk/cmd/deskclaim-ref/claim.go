@@ -114,7 +114,7 @@ type claimStore interface {
 	// transportCause reports "<host>: <error>" for the store's most recent transport failure,
 	// or "" when the last operation did not fail at the transport layer. The verb layer appends
 	// it to a fail-closed (exit 6) message so the operator sees WHERE the tool dialed and WHY it
-	// failed, rather than a bare "unverifiable" that points at the wrong suspects (assay#727).
+	// failed, rather than a bare "unverifiable" that points at the wrong suspects (#727).
 	transportCause() string
 }
 
