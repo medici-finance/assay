@@ -77,6 +77,13 @@ type glServer struct {
 	// instead of 201. GitLab answers a duplicate name with 409 (or 400 on older versions),
 	// both of which mean the ensure's post-condition already holds.
 	labelCreateStatus int
+	// projApprovalStatus, when set, is the status the PROJECT approval-configuration route
+	// (`GET /projects/:id/approvals`) returns instead of 200. It exists because forceStatus
+	// keys on a path SUFFIX, and "/approvals" is a suffix of BOTH the project route and the
+	// per-MR "/merge_requests/:iid/approvals" route — so forceStatus cannot fail one without
+	// failing the other. GitLab CE/Free answers 404 on the project route while the MR route
+	// still answers 200 (issue #697), and only a route-specific status can model that split.
+	projApprovalStatus int
 
 	// notePages, when true, serves 2 pages of notes and sets X-Next-Page on the first —
 	// GitLab's continuation signal (it uses headers, not Link relations).
@@ -238,6 +245,12 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && lPipelineJobs.MatchString(path):
 		enc(s.jobs)
 	case r.Method == http.MethodGet && lProjApproval.MatchString(path):
+		if s.projApprovalStatus != 0 {
+			w.WriteHeader(s.projApprovalStatus)
+			// CE/Free returns a 404 body on the missing EE surface; the client discards it.
+			enc(map[string]any{"error": "404 Not Found"})
+			return
+		}
 		enc(s.projApproval)
 	case r.Method == http.MethodDelete && lBranch.MatchString(path):
 		w.WriteHeader(http.StatusNoContent)
@@ -422,6 +435,35 @@ func glCases() []glCase {
 					{"user": map[string]any{"id": 42, "username": "reviewer-bot"}},
 				}}
 				s.notes = []map[string]any{}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ReviewsAtHead(glRepo, 7) },
+		},
+		{
+			// issue #697. GitLab CE/Free does not expose the PROJECT approval-configuration
+			// route (`reset_approvals_on_push` is Premium+), so it answers 404 there — while
+			// the per-MR approvals route still answers 200. A 404 on the project route must
+			// DEGRADE head-pinning only (approvals reported WITHOUT a CommitID, exactly as the
+			// unpinned case above), NOT fail the whole review read closed. The golden proves
+			// two things at once: the request footprint still reaches the MR approvals AND the
+			// notes route after the 404 (so the board can classify CE queues), and the mapped
+			// result carries the approval with an empty CommitID and no error. Contrast
+			// error_forbidden_approval_config_tier below, where a 403 on the same route IS a
+			// whole-read could-not-check.
+			name: "reviews_at_head_ce_404_degrades", method: "ReviewsAtHead",
+			setup: func(s *glServer) {
+				s.mr = glMR(nil)
+				s.versions = []map[string]any{
+					{"id": 3, "head_commit_sha": "abc123", "created_at": "2026-08-30T10:00:00Z"},
+				}
+				s.projApprovalStatus = http.StatusNotFound
+				s.approvals = map[string]any{"approved_by": []map[string]any{
+					{"user": map[string]any{"id": 42, "username": "reviewer-bot"}},
+				}}
+				s.notes = []map[string]any{
+					{"id": 2, "body": "Verdict: APPROVE", "system": false,
+						"created_at": "2026-08-30T11:00:01Z",
+						"author":     map[string]any{"id": 42, "username": "reviewer-bot"}},
+				}
 			},
 			run: func(f *GitLabForge) (any, error) { return f.ReviewsAtHead(glRepo, 7) },
 		},
@@ -1276,6 +1318,50 @@ func TestForgeGitlabTierErrors(t *testing.T) {
 			t.Fatalf("tier refusal must say could-not-check, got %q", err.Error())
 		}
 		t.Logf("Premium-gated approval read 403 → could-not-check: %v", err)
+	})
+
+	// issue #697. The 404 on the PROJECT approval-configuration route is NOT a tier gate: it
+	// is the documented CE/Free gap (the EE surface is absent). It must DEGRADE — the review
+	// read continues, the MR approvals + notes are still returned, and the approval is
+	// reported WITHOUT a head pin (empty CommitID) — never fail the whole read closed the way
+	// a 403 does. Distinguishing 404 from 403 here is the whole fix: a CE review desk that
+	// fail-closes on this 404 stays blind and never dispatches (deskboard actions exit 6).
+	t.Run("ce_404_on_project_approvals_degrades_not_refuses", func(t *testing.T) {
+		s := newGLServer(t)
+		s.mr = glMR(nil)
+		s.versions = []map[string]any{{"id": 3, "head_commit_sha": "abc123", "created_at": "2026-08-30T10:00:00Z"}}
+		s.projApprovalStatus = http.StatusNotFound // CE/Free: project approval config absent
+		s.approvals = map[string]any{"approved_by": []map[string]any{
+			{"user": map[string]any{"id": 42, "username": "reviewer-bot"}},
+		}}
+		s.notes = []map[string]any{}
+
+		rs, err := s.forge().ReviewsAtHead(glRepo, 7)
+		if err != nil {
+			t.Fatalf("a 404 on the CE-absent project approval route must degrade, not refuse: %v", err)
+		}
+		if len(rs) != 1 {
+			t.Fatalf("the MR approval must still be read and reported after the project-route 404, got %d reviews", len(rs))
+		}
+		if rs[0].State != "APPROVED" || rs[0].Author.ID != 42 {
+			t.Fatalf("expected the reviewer-bot approval, got %+v", rs[0])
+		}
+		// The head is NOT pinned from the approval flag on CE — that pin comes from the note
+		// SHA (brief-02). An empty CommitID is exactly the "unpinned/advisory" degradation.
+		if rs[0].CommitID != "" {
+			t.Fatalf("a CE approval must not be stamped with a head it cannot claim, got CommitID %q", rs[0].CommitID)
+		}
+		// The MR approvals route was actually reached — the whole point of not aborting.
+		var reachedMRApprovals bool
+		for _, req := range s.requests {
+			if strings.HasSuffix(req.Path, "/merge_requests/7/approvals") {
+				reachedMRApprovals = true
+			}
+		}
+		if !reachedMRApprovals {
+			t.Fatal("the MR approvals read must run after the project-route 404 — it was never reached")
+		}
+		t.Logf("CE project-approval 404 → degraded: 1 unpinned review, MR approvals + notes still read")
 	})
 }
 
