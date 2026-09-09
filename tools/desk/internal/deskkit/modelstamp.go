@@ -11,9 +11,10 @@ package deskkit
 // the DISPATCHER knows exactly which model it launched, and its stamp on the worker's PR
 // is other-actor attestation the trust rules already allow.
 //
-// TWO LABELS, applied by the DISPATCHER. Immediately after a worker's draft PR opens, the
-// desk (the dispatcher — the desk App identity, the OTHER actor, never the worker session
-// itself) applies two labels:
+// TWO LABELS, applied by the DISPATCHER. Immediately after a dispatched draft PR opens, the
+// DISPATCHER of that lane — the desk App for the work lanes, the reviewer App for the review
+// lane it dispatches itself (DispatcherRoles); always the OTHER actor, never the dispatched
+// session itself — applies two labels:
 //
 //	dispatched-model:<slug>   the lowercase model slug it launched (e.g. opus-4.8, kimi-3,
 //	                          glm5.2). An OPEN vocabulary — new models appear — so the writer
@@ -94,6 +95,7 @@ package deskkit
 // as first-class values they can report separately rather than fold into a denominator.
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -602,23 +604,75 @@ func ReStampRemovals(tl StampTimeline, want []string, isDispatcher func(applier 
 // here, and a change moves both at once.
 const DispatcherRole = "desk"
 
-// IsDispatcherLogin reports whether a GitHub login is the fleet's DISPATCHER — the
-// DispatcherRole App identity, the only actor whose dispatched-* stamp counts as
-// attestation. It is the roster-derived answer (RoleAppLogin(DispatcherRole)): false for
-// an unbound role, an unconfigured roster, or an empty login, so an unconfigured
-// deployment vouches for nobody rather than defaulting to trust. Inject it as
-// AttestedModelStampOf's predicate wherever the strong form is needed against the live
-// roster.
+// ReviewDispatcherRole is the SECOND dispatching role whose stamp the floor accepts: the
+// reviewer App, which dispatches the review lane.
+//
+// WHY A SECOND ROLE AT ALL. The floor's real requirement is that the DISPATCHER and the
+// APPLIER are the same identity — a stamp is attestation exactly because the actor that
+// launched the session is the actor that wrote the label, and neither is the session itself.
+// The review lane broke that equality from the other end: it dispatches its reviewers itself,
+// not through the desk App, so it applied no stamp at all — and the floor, trusting only the
+// desk App, could not have accepted one if it had. A correctly-run review therefore could
+// NEVER carry a floor-trusted stamp, no matter what anyone did. Admitting the reviewer App as
+// a dispatcher for its own lane restores the equality rather than relaxing it.
+//
+// THE COST, ACCEPTED EXPLICITLY. A second App identity now holds label-write on the
+// dispatched-* labels, so the set of actors who can mint a trusted stamp grows from one to
+// two. That was weighed against the two alternatives and preferred: exempting the review lane
+// from the floor entirely leaves reviewer tier unattested (strictly worse — no attestation at
+// all rather than one from a second bound App), and routing the review stamp back through the
+// desk App keeps a single applier only by rebuilding the lane's dispatch path. What is NOT
+// widened is anything else: a stamp from a WORKER App, a human, or any unbound identity still
+// reads Indeterminate, and the strength semantics are untouched.
+const ReviewDispatcherRole = "reviewer"
+
+// DispatcherRoles returns every desk role whose App identity may apply a stamp the floor
+// trusts, in a stable order. Reader, writer and refusal message all project from this ONE
+// list, so a role added here reaches all three at once and none of them carries a second
+// hand-maintained copy to drift.
+func DispatcherRoles() []string {
+	return []string{DispatcherRole, ReviewDispatcherRole}
+}
+
+// IsDispatcherLogin reports whether a GitHub login is a fleet DISPATCHER — one of the
+// DispatcherRoles App identities, the only actors whose dispatched-* stamp counts as
+// attestation. It is the roster-derived answer (RoleAppLogin per role): false for an unbound
+// role, an unconfigured roster, or an empty login, so an unconfigured deployment vouches for
+// nobody rather than defaulting to trust. Inject it as AttestedModelStampOf's predicate
+// wherever the strong form is needed against the live roster.
 func IsDispatcherLogin(login string) bool {
 	want := strings.TrimSpace(login)
 	if want == "" {
 		return false
 	}
-	deskLogin, ok := RoleAppLogin(DispatcherRole)
-	if !ok {
-		return false
+	for _, role := range DispatcherRoles() {
+		appLogin, ok := RoleAppLogin(role)
+		if !ok {
+			continue
+		}
+		if strings.EqualFold(want, appLogin) {
+			return true
+		}
 	}
-	return strings.EqualFold(want, deskLogin)
+	return false
+}
+
+// DispatcherLoginsForMessage renders the accepted dispatcher identities for a refusal message
+// — "<login> (roster role \"desk\")", joined — naming only the roles the roster actually
+// binds, and saying so when it binds none. A refusal that names an identity the roster does
+// not carry sends the operator to re-stamp under an App that does not exist here.
+func DispatcherLoginsForMessage() string {
+	var parts []string
+	for _, role := range DispatcherRoles() {
+		if login, ok := RoleAppLogin(role); ok {
+			parts = append(parts, fmt.Sprintf("%s (roster role %q)", login, role))
+		}
+	}
+	if len(parts) == 0 {
+		return "no dispatcher identity at all — this roster binds neither of the dispatching roles (" +
+			strings.Join(DispatcherRoles(), " | ") + "), so it vouches for nobody"
+	}
+	return strings.Join(parts, " or ")
 }
 
 // NonDispatcherStampAppliers names every identity holding the STANDING application of a

@@ -61,7 +61,7 @@ func TestModelCapabilityFloorFourCases(t *testing.T) {
 	noClaimStamp := []LabelEvent{modelEvent("haiku-3", disp), tierEvent("any", disp)}
 
 	t.Run("attested strong proceeds", func(t *testing.T) {
-		d := ModelCapabilityFloor(tlOf(strongStamp...), dispatcherIs(disp), false)
+		d := ModelCapabilityFloor(tlOf(strongStamp...), dispatcherIs(disp), false, ClaimLivenessUnknown)
 		if d.Outcome != FloorAllow || !d.Outcome.Proceeds() {
 			t.Fatalf("outcome = %v, want FloorAllow", d.Outcome)
 		}
@@ -76,7 +76,7 @@ func TestModelCapabilityFloorFourCases(t *testing.T) {
 	// TestFloorTierRankKeepsTheBelowFloorBranchLive for the refusal branch it leaves in
 	// place for a future rung.
 	t.Run("attested `any` claims no strength and proceeds with a NOTICE", func(t *testing.T) {
-		d := ModelCapabilityFloor(tlOf(noClaimStamp...), dispatcherIs(disp), false)
+		d := ModelCapabilityFloor(tlOf(noClaimStamp...), dispatcherIs(disp), false, ClaimLivenessUnknown)
 		if d.Outcome != FloorNoticeAllow || !d.Outcome.Proceeds() {
 			t.Fatalf("outcome = %v, want FloorNoticeAllow", d.Outcome)
 		}
@@ -90,7 +90,7 @@ func TestModelCapabilityFloorFourCases(t *testing.T) {
 	})
 
 	t.Run("absent proceeds with NOTICE", func(t *testing.T) {
-		d := ModelCapabilityFloor(StampTimeline{}, dispatcherIs(disp), false)
+		d := ModelCapabilityFloor(StampTimeline{}, dispatcherIs(disp), false, ClaimLivenessUnknown)
 		if d.Outcome != FloorNoticeAllow || !d.Outcome.Proceeds() {
 			t.Fatalf("outcome = %v, want FloorNoticeAllow", d.Outcome)
 		}
@@ -105,7 +105,7 @@ func TestModelCapabilityFloorFourCases(t *testing.T) {
 	t.Run("override proceeds with the loud marker", func(t *testing.T) {
 		// Override on a stamp that does not CLEAR the floor: it must proceed anyway, and
 		// loudly — the override short-circuits before the state is examined at all.
-		d := ModelCapabilityFloor(tlOf(noClaimStamp...), dispatcherIs(disp), true)
+		d := ModelCapabilityFloor(tlOf(noClaimStamp...), dispatcherIs(disp), true, ClaimLivenessUnknown)
 		if d.Outcome != FloorOverrideAllow || !d.Outcome.Proceeds() {
 			t.Fatalf("outcome = %v, want FloorOverrideAllow", d.Outcome)
 		}
@@ -124,7 +124,7 @@ func TestModelCapabilityFloorRefusesSelfAppliedStamp(t *testing.T) {
 		modelEvent("opus-4.8", worker), // worker stamped itself strong
 		tierEvent("strong", worker),
 	}
-	d := ModelCapabilityFloor(tlOf(selfApplied...), dispatcherIs(disp), false)
+	d := ModelCapabilityFloor(tlOf(selfApplied...), dispatcherIs(disp), false, ClaimLivenessUnknown)
 	if d.Outcome != FloorRefuse {
 		t.Fatalf("a self-applied strong stamp cleared the floor (outcome %v) — attestation collapsed to self-report", d.Outcome)
 	}
@@ -140,12 +140,12 @@ func TestModelCapabilityFloorRefusesSelfAppliedStamp(t *testing.T) {
 // refuses — an unconfigured deployment fails CLOSED, never open.
 func TestModelCapabilityFloorNilPredicateFailsClosed(t *testing.T) {
 	stamp := []LabelEvent{modelEvent("opus-4.8", "anyone"), tierEvent("strong", "anyone")}
-	if d := ModelCapabilityFloor(tlOf(stamp...), nil, false); d.Outcome != FloorRefuse {
+	if d := ModelCapabilityFloor(tlOf(stamp...), nil, false, ClaimLivenessUnknown); d.Outcome != FloorRefuse {
 		t.Fatalf("nil predicate admitted a stamp (outcome %v) — an unconfigured floor must fail closed", d.Outcome)
 	}
 	// But a PR with NO stamp under a nil predicate is Unknown, not refused: absence is not a
 	// forged stamp.
-	if d := ModelCapabilityFloor(tlOf(), nil, false); d.Outcome != FloorNoticeAllow {
+	if d := ModelCapabilityFloor(tlOf(), nil, false, ClaimLivenessUnknown); d.Outcome != FloorNoticeAllow {
 		t.Fatalf("no-stamp under nil predicate = %v, want FloorNoticeAllow (absent, not a broken stamp)", d.Outcome)
 	}
 }
@@ -240,7 +240,7 @@ func TestModelCapabilityFloorStampCases(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.why, func(t *testing.T) {
-			d := ModelCapabilityFloor(tlOf(c.events...), dispatcherIs(disp), false)
+			d := ModelCapabilityFloor(tlOf(c.events...), dispatcherIs(disp), false, ClaimLivenessUnknown)
 			if d.Outcome != c.wantOutcome {
 				t.Fatalf("outcome = %v, want %v\nmessage: %s", d.Outcome, c.wantOutcome, d.Message)
 			}
@@ -271,7 +271,7 @@ func TestFloorRefusalNamesBothLogins(t *testing.T) {
 		{Name: DispatchedModelPrefix + "example-model-1", AppliedBy: "example-worker-app[bot]"},
 		{Name: DispatchedTierPrefix + "strong", AppliedBy: "example-worker-app[bot]"},
 	}
-	d := ModelCapabilityFloor(tlOf(events...), IsDispatcherLogin, false)
+	d := ModelCapabilityFloor(tlOf(events...), IsDispatcherLogin, false, ClaimLivenessUnknown)
 	if d.Outcome != FloorRefuse {
 		t.Fatalf("outcome = %v, want FloorRefuse", d.Outcome)
 	}
@@ -383,7 +383,7 @@ func TestModelFloorTierAnyReadsAsAbsentAndProceedsWithNotice(t *testing.T) {
 		t.Run("tier "+tier, func(t *testing.T) {
 			d := ModelCapabilityFloor(
 				tlOf(modelEvent("example-model-2", disp), tierEvent(tier, disp)),
-				dispatcherIs(disp), false)
+				dispatcherIs(disp), false, ClaimLivenessUnknown)
 			if d.Outcome != FloorNoticeAllow || !d.Outcome.Proceeds() {
 				t.Fatalf("outcome = %v, want FloorNoticeAllow — `any` is not a strength claim\nmessage: %s",
 					d.Outcome, d.Message)
@@ -431,7 +431,7 @@ func TestModelFloorTierAnyLooseningDoesNotLoosenUnreadableStamps(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.why, func(t *testing.T) {
-			d := ModelCapabilityFloor(tlOf(c.events...), dispatcherIs(disp), false)
+			d := ModelCapabilityFloor(tlOf(c.events...), dispatcherIs(disp), false, ClaimLivenessUnknown)
 			if d.Outcome != FloorRefuse || d.Outcome.Proceeds() {
 				t.Fatalf("outcome = %v, want FloorRefuse — an unreadable stamp is not `any`\nmessage: %s",
 					d.Outcome, d.Message)

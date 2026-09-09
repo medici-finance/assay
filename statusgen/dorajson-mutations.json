@@ -1,0 +1,53 @@
+{
+  "test": "go test . -run 'TestDoraJSON|TestChangeFailureRate' -count=1 -timeout 120s",
+  "control": {
+    "name": "CONTROL — an uncomputed metric serializes a fabricated 0 instead of null (the headline honesty invariant: a blank DORA number must never publish as a measured zero)",
+    "file": "dorajson.go",
+    "old": "\t\tm.Value = nil // an uncomputed metric is null, never 0",
+    "new": "\t\tzero := 0.0\n\t\tm.Value = &zero"
+  },
+  "mutations": [
+    {
+      "name": "aggregate double-counts a finding once per affected stream (findingsPerGroup's per-group semantics wrongly reused in a pooled ratio)",
+      "file": "dorajson.go",
+      "old": "\t\tif !f.Resolved {\n\t\t\tunresolved++\n\t\t}",
+      "new": "\t\tif !f.Resolved {\n\t\t\tunresolved += len(f.Affects)\n\t\t}"
+    },
+    {
+      "name": "the result cap truncates to the OLDEST records instead of the most recent (a capped delivery metric would report stale intervals)",
+      "file": "dorajson.go",
+      "old": "\t\tpaired = paired[len(paired)-limit:]",
+      "new": "\t\tpaired = paired[:limit]"
+    },
+    {
+      "name": "a capped aggregate no longer reports itself partial (an undercount published as a complete measurement — the unqualified-capped-number defect)",
+      "file": "dorajson.go",
+      "old": "\t\tcapped = true",
+      "new": "\t\tcapped = false"
+    },
+    {
+      "name": "an empty window fabricates a 0% change-failure rate instead of could-not-check (\"nothing completed\" published as \"nothing ever failed\")",
+      "file": "dorajson.go",
+      "old": "\t\treturn buildDoraJSONMetric(false, 0, \"ratio\", append(needs,\n\t\t\t\"completed work in the stated window to form a denominator\"), nil)",
+      "new": "\t\treturn buildDoraJSONMetric(true, 0, \"ratio\", nil, nil)"
+    },
+    {
+      "name": "the emitter also writes deployment_frequency (a source collision: two emitters writing one frozen key)",
+      "file": "dorajson.go",
+      "old": "\t\tdoraChangeFail: changeFailureRate(history, findings, since, until),",
+      "new": "\t\tdoraChangeFail: changeFailureRate(history, findings, since, until),\n\t\tdoraDeployFreq: buildDoraJSONMetric(true, 1, \"deploys/week\", nil, nil),"
+    },
+    {
+      "name": "the unlinked proxy declares itself measured (a proxy published as a canonical DORA number)",
+      "file": "dorajson.go",
+      "old": "\tneeds := []string{\n\t\t\"linkage between a change and the incident it caused; this is an unlinked proxy over completed work items, recorded reversions and open defect records\",\n\t}",
+      "new": "\tvar needs []string"
+    },
+    {
+      "name": "the window filter is dropped, so out-of-window records are counted (a metric that silently covers a different period than it states)",
+      "file": "dorajson.go",
+      "old": "\t\tif !inWindow(ts, since, until) {\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif false {\n\t\t\tcontinue\n\t\t}"
+    }
+  ]
+}
