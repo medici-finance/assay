@@ -685,7 +685,8 @@ type corroborateResult struct {
 //  2. an explicit approval COMMENT by the named human on the PR;
 //  3. a linked, human-CLOSED needs-decision issue carrying this brief's per-brief
 //     decision-gate marker (the sanctioned ratification channel — see
-//     decisionGateCorroboration and the tracker ruling #2237). This third anchor is
+//     decisionGateCorroboration and the house tracker's ruling (Option 1: a linked
+//     decision issue closed by the blessed login corroborates)). This third anchor is
 //     ADDITIVE: it fires only for a brief-file stamp whose brief links such an issue,
 //     and it never weakens anchors 1 and 2, which are unchanged.
 //
@@ -740,7 +741,7 @@ func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int, gate
 
 		// Third anchor: a linked, human-closed needs-decision issue carrying this
 		// brief's per-brief decision-gate marker — the sanctioned ratification
-		// channel (tracker ruling #2237). A gate:human decision brief whose ruling
+		// channel (the house tracker's ruling). A gate:human decision brief whose ruling
 		// was recorded by CLOSING its decision-issue (rather than as a PR approval)
 		// corroborates through this path. It requires no PR data, so it is checked
 		// after — and independently of — the two PR anchors above.
@@ -831,7 +832,7 @@ func runCorroborate(prsArg string) int {
 				fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)
 				return 1
 			}
-			// Third corroboration anchor (tracker ruling #2237): pre-fetch the
+			// Third corroboration anchor (the house tracker's ruling): pre-fetch the
 			// needs-decision issues each brief-file stamp links, so a gate:human
 			// decision brief ratified by CLOSING its decision-issue can corroborate
 			// even without a PR approval anchor. Empty when no brief links such an
