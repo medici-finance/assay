@@ -1,0 +1,78 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 6bf4e26..67e27d0 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -60,8 +60,25 @@ jobs:
+             # desk-tools leg already runs `go test ./...` on this tree (the
+             # structural-guard caveat above no longer applies to it), and two
+             # guard tests went latent on main under build+vet alone (#547, #550).
++            #
++            # tools/harnessgen, tools/harnesslint and tools/plugindrift run their
++            # suites here too (harness-portability/15). They are safe in THIS repo
++            # for the reason the structural-guard caveat names: harnessgen's
++            # real-tree checks (`--check --root ../..`) resolve because ci.yml runs
++            # in the SOURCE repo, where plugins/assay/** is present; plugindrift
++            # stubs `gh` on PATH per case and is hermetic; harnesslint's suite is
++            # fixture-based under testdata/. Build+vet alone left harnessgen's
++            # drift oracle latent — its committed-manifest and version-parity
++            # checks are exactly what catches a skill added without regenerating
++            # the Codex/Cursor/resident packaging, or a .codex-plugin version left
++            # behind, and un-wired they let both land green.
+             extra=true
+-            case "$dir" in */tools/desk|tools/desk) extra="go test ./..." ;; esac
++            case "$dir" in
++              */tools/desk|tools/desk) extra="go test ./..." ;;
++              */tools/harnessgen|tools/harnessgen) extra="go test ./..." ;;
++              */tools/harnesslint|tools/harnesslint) extra="go test ./..." ;;
++              */tools/plugindrift|tools/plugindrift) extra="go test ./..." ;;
++            esac
+             if ( cd "$dir" && go build ./... && go vet ./... && eval "$extra" ); then
+               echo "${dir}: OK"
+             else
+@@ -139,3 +156,46 @@ jobs:
+           # it from its own source is the pinned invocation — there is no separately released
+           # skillslint binary to fetch, and the Go toolchain is already installed above.
+           cd tools/skillslint && go run . --root ../..
++
++  # GATING harness-neutrality gate against the REAL bundle tree
++  # (harness-portability/15). The build-test job now runs tools/harnesslint's own
++  # suite, but that suite is FIXTURE-based (testdata/) — it proves the tool's
++  # logic and reads nothing under plugins/assay. The neutrality property itself —
++  # no banned harness token in a shipped skill body, every capability resolved
++  # and every skill given a degradation cell in every binding reference — holds
++  # only if the tool is pointed at the live tree, which is this job.
++  #
++  # Both invocations are EXPLICIT and named; deliberately not a `.assay-surfaces`
++  # glob or any other discovery surface. Same shape as the skillslint job above:
++  # the runner ships no `make`, so run the in-tree Go tool from its own source
++  # with `../..`-relative arguments (the tool modules carry their own go.mod and
++  # there is no root go.work).
++  #
++  # Three-state: harnesslint exits 0 checked-clean, 1 checked-failed, 2
++  # could-not-check — and `set -euo pipefail` reddens the job on 1 AND on 2, so a
++  # tree the tool cannot read is a failure here, never a quiet pass. A reference
++  # file it skips by declaration is announced on stderr in the job log.
++  harnesslint:
++    runs-on: medici-builder-public
++    steps:
++      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
++
++      - name: Install Go
++        run: |
++          set -euo pipefail
++          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
++          echo "fetching $url"
++          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
++          mkdir -p "${HOME}/go-toolchain"
++          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
++          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
++
++      - name: harnesslint bodies + bindings (real tree)
++        run: |
++          set -euo pipefail
++          go version
++          cd tools/harnesslint
++          go run . --vocab ../../docs/streams/harness-portability/README.md \
++            bodies ../../plugins/assay/skills
++          go run . --vocab ../../docs/streams/harness-portability/README.md \
++            bindings ../../plugins/assay/references
