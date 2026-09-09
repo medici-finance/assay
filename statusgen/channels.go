@@ -189,36 +189,91 @@ type channelPattern struct {
 // channelDriftPatterns is the matcher set. It is intentionally small and
 // literal: a heuristic that tries to infer intent from prose produces false
 // positives, and an advisory check that cries wolf is turned off.
-var channelDriftPatterns = []channelPattern{
-	{
-		// A `go run` against a vendored path IS channel A — it is the vendored
-		// copy being executed. It is called out as its own pattern because the
-		// path it names (./tools/statusgen) does not exist in a consumer
-		// post-selfcontain, so it is also simply unrunnable advice (#249).
-		ID:      "vendored-go-run",
-		Channel: "A",
-		Re:      regexp.MustCompile(`go run \./tools/statusgen`),
-	},
-	{
-		ID:      "vendor-copy-command",
-		Channel: "A",
-		Re:      regexp.MustCompile(`cp -R[^\n]*statusgen`),
-	},
-	{
-		ID:      "vendor-copy-prose",
-		Channel: "A",
-		Re:      regexp.MustCompile("(?i)copy `?statusgen/`? into"),
-	},
-	{
-		ID:      "go-install",
-		Channel: "C",
-		// Anchored on a MODULE path (a dotted host segment before the first
-		// slash), so `go run ./statusgen` — the sanctioned in-repo dev
-		// invocation, and what this brief's own replacement hint emits — is
-		// not matched. A pattern that flagged the sanctioned command would
-		// make the check unshippable.
-		Re: regexp.MustCompile(`go (?:install|get|run) [A-Za-z0-9_-]+\.[A-Za-z0-9_.-]+/[^\s]*statusgen`),
-	},
+//
+// statusgen's own patterns are spelled out below and are pinned by the mutation
+// tests (TestChannelConformanceFiresOnPositiveControl). Every OTHER released
+// report-pack tool (docs/report-packs.md) — qualgen now, DORA and the dailies
+// later — joins the sweep through packToolDriftPatterns, generated from the
+// reportPackTools list, so a new pack becomes conformance-checkable by adding
+// one name rather than a second hand-maintained pattern list.
+var channelDriftPatterns = func() []channelPattern {
+	patterns := []channelPattern{
+		{
+			// A `go run` against a vendored path IS channel A — it is the vendored
+			// copy being executed. It is called out as its own pattern because the
+			// path it names (./tools/statusgen) does not exist in a consumer
+			// post-selfcontain, so it is also simply unrunnable advice (#249).
+			ID:      "vendored-go-run",
+			Channel: "A",
+			Re:      regexp.MustCompile(`go run \./tools/statusgen`),
+		},
+		{
+			ID:      "vendor-copy-command",
+			Channel: "A",
+			Re:      regexp.MustCompile(`cp -R[^\n]*statusgen`),
+		},
+		{
+			ID:      "vendor-copy-prose",
+			Channel: "A",
+			Re:      regexp.MustCompile("(?i)copy `?statusgen/`? into"),
+		},
+		{
+			ID:      "go-install",
+			Channel: "C",
+			// Anchored on a MODULE path (a dotted host segment before the first
+			// slash), so `go run ./statusgen` — the sanctioned in-repo dev
+			// invocation, and what this brief's own replacement hint emits — is
+			// not matched. A pattern that flagged the sanctioned command would
+			// make the check unshippable.
+			Re: regexp.MustCompile(`go (?:install|get|run) [A-Za-z0-9_-]+\.[A-Za-z0-9_.-]+/[^\s]*statusgen`),
+		},
+	}
+	for _, tool := range reportPackTools {
+		patterns = append(patterns, packToolDriftPatterns(tool)...)
+	}
+	return patterns
+}()
+
+// reportPackTools names the released report-pack tools (docs/report-packs.md)
+// whose adopter surfaces the sweep judges for build-from-source drift, in
+// ADDITION to statusgen (whose bespoke legacy patterns are spelled out above and
+// pinned by the mutation tests, so it is deliberately not listed here). A new
+// pack joins the conformance sweep by adding its binary name to this one list —
+// there is no second pattern table to keep in sync.
+var reportPackTools = []string{"qualgen"}
+
+// packToolDriftPatterns builds the drift patterns for one released pack tool:
+// the non-sanctioned acquisition channels an adopter surface must never teach
+// for a tool that ships as a sha256-pinned release binary (channel E). Each
+// generated pattern names the channel it mints (A or C) so a NOTICE can cite
+// sanctionedChannelSet rather than restate its reasoning, exactly as the
+// statusgen patterns do.
+func packToolDriftPatterns(tool string) []channelPattern {
+	q := regexp.QuoteMeta(tool)
+	return []channelPattern{
+		{
+			// `go install`/`go get`/`go run` of a MODULE path (a dotted host
+			// segment before the first slash) ending in the tool name — channel
+			// C, rebuild-from-source-per-run. Anchored on the module shape so an
+			// in-repo `go run ./<tool>` dev invocation is NOT matched (flagging
+			// the sanctioned in-repo command would make the check unshippable).
+			ID:      tool + "-go-install",
+			Channel: "C",
+			Re:      regexp.MustCompile(`go (?:install|get|run) [A-Za-z0-9_-]+\.[A-Za-z0-9_.-]+/[^\s]*` + q),
+		},
+		{
+			// A `cp -R … <tool> …` install command — channel A, a vendored copy.
+			ID:      tool + "-vendor-copy-command",
+			Channel: "A",
+			Re:      regexp.MustCompile(`cp -R[^\n]*` + q),
+		},
+		{
+			// "copy `<tool>/` into …" prose — channel A, vendoring the source.
+			ID:      tool + "-vendor-copy-prose",
+			Channel: "A",
+			Re:      regexp.MustCompile("(?i)copy `?" + q + "/`? into"),
+		},
+	}
 }
 
 // retiredMarkerRe exempts a line that is DESCRIBING a retired channel rather
