@@ -474,9 +474,10 @@ const (
 // Seams, not behaviour: production still calls deskkit.IsPinned, the real git, and the
 // real `.assay-versions` walk.
 var (
-	isPinned     = deskkit.IsPinned
-	gitTree      = gitTreeReal
-	deskToolsPin = deskToolsPinReal
+	isPinned           = deskkit.IsPinned
+	gitTree            = gitTreeReal
+	deskToolsPin       = deskToolsPinReal
+	deskToolsSourcePin = deskToolsSourcePinReal
 )
 
 func staleState() (state string, stale bool, detail string) {
@@ -502,7 +503,33 @@ func staleState() (state string, stale bool, detail string) {
 		}
 		// Pinned by sourceSHA/builtAt but carrying no releaseTag stamp (an older
 		// stamped binary): the tag comparison cannot run. Fall through to the
-		// in-tree ref, then could-not-check.
+		// channel-D source pin, then the in-tree ref, then could-not-check.
+	}
+
+	// CHANNEL-D (#776): a GitLab / native-Windows adopter pins the desk-tools
+	// SOURCE line — `desk-tools-source <tag> <40-hex-commit>` — the same shape
+	// `desksourceguard` reads, rather than a `desk-tools` release line, and its
+	// consumer checkout carries no in-tree `tools/desk` ref either. That line IS
+	// a real pin, so treating it as absent (which sent every such sweep to
+	// could-not-check, and pinned reviewloop's idle gate there) was #185's
+	// fallback landing short. Bind the running binary's stamped sourceSHA to the
+	// pinned commit exactly as desksourceguard's third agreement does: the stamp
+	// is a short SHA, so the full pinned commit must have it as a prefix. We are
+	// inside isPinned(), so deskkit.SourceSHA is non-empty here.
+	if pinRoot, pinCommit, found := deskToolsSourcePin(); found {
+		if src := deskkit.SourceSHA; src != "" && isFullCommitSHA(pinCommit) {
+			pinFile := filepath.Join(pinRoot, deskkit.AssayVersionsFile)
+			if strings.HasPrefix(pinCommit, src) {
+				return staleStateInSync, false,
+					"in sync with " + pinFile + " (desk-tools-source " + pinCommit + ")"
+			}
+			return staleStateDrift, true,
+				"installed desk-tools sourceSHA " + src + " differs from the pinned desk-tools-source commit " +
+					pinCommit + " in " + pinFile + " — reinstall the pinned release (sudo make desk-install)"
+		}
+		// A source line whose commit is not a full 40-hex SHA cannot bind the
+		// stamp; do not invent a verdict from it. Fall through to the in-tree ref,
+		// then could-not-check — malformed-pin detection is `deskpins --check`'s job.
 	}
 
 	// FALLBACK: the in-tree `tools/desk` git ref — the source-repo case, where the
@@ -552,23 +579,73 @@ func normalizeTag(tag string) string {
 // the in-tree ref "when it exists", could-not-check only when neither source resolves).
 // Malformed-pin detection is `deskpins --check`'s job, not the drift banner's.
 func deskToolsPinReal() (root, tag string, found bool) {
+	dir := nearestPinRoot()
+	if dir == "" {
+		return "", "", false
+	}
+	if t, _, perr := deskkit.ArtifactPin(dir, "desk-tools"); perr == nil {
+		return dir, t, true
+	}
+	return "", "", false // pin file present but no usable desk-tools line
+}
+
+// deskToolsSourcePinReal is the channel-D sibling of deskToolsPinReal (#776): it
+// returns the COMMIT sha (field 3) of a `desk-tools-source` line in the nearest
+// `.assay-versions`, the pin a GitLab / native-Windows adopter writes in place of
+// a `desk-tools` release line. found=false means no pin file, or one with no
+// readable `desk-tools-source` line — both fall through to staleState's in-tree
+// fallback, never a failure here (malformed-pin detection is `deskpins --check`'s
+// job, matching deskToolsPinReal). The trailing-space prefix match inside
+// ArtifactPin keeps `desk-tools-source ` from matching `desk-tools-source-notes`.
+func deskToolsSourcePinReal() (root, commit string, found bool) {
+	dir := nearestPinRoot()
+	if dir == "" {
+		return "", "", false
+	}
+	if _, sha, perr := deskkit.ArtifactPin(dir, "desk-tools-source"); perr == nil {
+		return dir, sha, true
+	}
+	return "", "", false // pin file present but no usable desk-tools-source line
+}
+
+// nearestPinRoot walks up from the working directory and returns the first
+// directory carrying a `.assay-versions`, or "" if none exists at or above it
+// (the source-repo case: assay's own tree never carries one). It stops at the
+// FIRST pin file — a nearer file with no matching line is not skipped in favour
+// of a farther one, matching #185's stated "nearest `.assay-versions`" order.
+func nearestPinRoot() string {
 	dir, err := os.Getwd()
 	if err != nil {
-		return "", "", false
+		return ""
 	}
 	for {
 		if _, statErr := os.Stat(filepath.Join(dir, deskkit.AssayVersionsFile)); statErr == nil {
-			if t, _, perr := deskkit.ArtifactPin(dir, "desk-tools"); perr == nil {
-				return dir, t, true
-			}
-			return "", "", false // pin file present but no usable desk-tools line
+			return dir
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", "", false // reached the filesystem root without a pin file
+			return "" // reached the filesystem root without a pin file
 		}
 		dir = parent
 	}
+}
+
+// isFullCommitSHA reports whether s is a full 40-hex git commit id — the shape a
+// `desk-tools-source` pin's digest column must hold to bind the running binary's
+// stamped (short) sourceSHA. Anything shorter or non-hex cannot anchor a commit,
+// so staleState treats it as unreadable rather than manufacturing a drift verdict
+// from it. Kept local (not deskkit's unexported commitPattern) so main.go needs
+// no regexp dependency for a fixed-shape check.
+func isFullCommitSHA(s string) bool {
+	if len(s) != 40 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
 }
 
 // gitTreeReal returns the git tree object id of tools/desk at a ref/sha (read-only).
