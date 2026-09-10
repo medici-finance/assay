@@ -1,5 +1,4 @@
 ### Fixed
-
 - **`create-fleet-gitlab.sh` no longer exposes the group-owner token on the process table, and a
   GitLab API transport failure is now recorded in the run summary instead of silently aborting the
   run (#786).** The shared `gl_api` helper — which every settings step calls — had two defects, both
