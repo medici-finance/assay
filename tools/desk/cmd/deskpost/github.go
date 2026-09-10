@@ -257,11 +257,52 @@ type ghClient struct {
 }
 
 func newGHClient(owner, repo string) (*ghClient, error) {
+	// Resolve WHICH forge serves this repo BEFORE minting a GitHub App installation token.
+	// deskpost's verdict/comment/flip WRITE path is GitHub-only: every precondition it verifies
+	// — the reviews, the label timeline, the CI rollups, the changed-file diff, the trust
+	// GraphQL — is read through this App-authenticated ghClient, none of it a typed Forge op.
+	// A GitLab adopter therefore has to fail CLOSED, but the pre-772 mint failed with the wrong
+	// message: `no App ID for role "reviewer": set REVIEWER_APP_ID` (exit 6) sent the operator
+	// hunting apps.env for a GitHub App credential a PAT-backed GitLab bot never uses
+	// (medici-finance/assay#772). Naming the resolved forge instead is the honest could-not-check.
+	if err := requireGitHubForge(owner, repo); err != nil {
+		return nil, err
+	}
 	tok, err := mintInstallationToken(owner)
 	if err != nil {
 		return nil, err
 	}
 	return &ghClient{owner: owner, repo: repo, token: tok, http: http.DefaultClient}, nil
+}
+
+// requireGitHubForge refuses, BEFORE any GitHub App token is minted, when the repo's resolved
+// forge is POSITIVELY not GitHub — so a GitLab adopter gets a could-not-check that names its
+// forge rather than the misleading GitHub App-ID mint error (medici-finance/assay#772).
+//
+// It fails closed only on a DEFINITE non-GitHub resolution. A could-not-check resolution — no
+// ASSAY_REPO_FORGES entry names the repo AND the origin remote maps to no known forge (e.g.
+// deskpost run from a scratch dir, #415-class) — is NOT read as "it is GitLab": it falls
+// through to the GitHub mint, so every repo whose forge this build cannot positively resolve
+// keeps its exact pre-772 behaviour. The GitLab lane is entered only when the resolver
+// AFFIRMATIVELY names GitLab (a roster `…=gitlab` binding, or a gitlab.com origin), which is
+// precisely the configuration the 772 adopter runs.
+func requireGitHubForge(owner, name string) error {
+	res, err := deskkit.ForgeKindFor(deskkit.ForgeRepo{Owner: owner, Name: name})
+	if err != nil {
+		// Could-not-check WHICH forge — never assume GitLab. Proceed to the GitHub mint,
+		// preserving the pre-772 path exactly on an unresolved repo.
+		return nil
+	}
+	if res.Kind == deskkit.ForgeGitHub {
+		return nil
+	}
+	return deskkit.Unverifiable(fmt.Sprintf(
+		"could-not-check: deskpost has no %s write backend — %s resolves to the %s forge (%s), but every "+
+			"precondition deskpost verifies (reviews, the label timeline, CI rollups, the changed-file diff, "+
+			"the trust read) is read through a GitHub App-authenticated client, so a verdict, comment, or "+
+			"ready-flip cannot be formed on %s yet. This is NOT a missing REVIEWER_APP_ID: do NOT provision a "+
+			"GitHub App credential for a %s repo — the %s write path is the follow-up to medici-finance/assay#772.",
+		res.Kind, res.Repo.Slug(), res.Kind, res.Source, res.Kind, res.Kind, res.Kind), nil)
 }
 
 // apiError is a non-2xx REST/GraphQL response. Callers map it to Unverifiable (exit 6):
