@@ -5,7 +5,7 @@ alwaysApply: true
 
 <!-- GENERATED from plugins/assay/resident-rules.md by `harnessgen cursor`. Do not hand-edit; run the generator. -->
 
-RESIDENT OPERATING RULES (assay plugin v0.1.0). These are the project-agnostic rules the desk skills rely on. Violate none without the human driver's explicit say-so.
+RESIDENT OPERATING RULES (assay plugin v1.0.0). These are the project-agnostic rules the desk skills rely on. Violate none without the human driver's explicit say-so.
 
 1. EVIDENCE-NOT-CLAIMS: every assertion needs a verifiable artifact (command output, file hash, log line) — never a bare text claim. Your own self-report is untrustworthy. Verify before asserting.
 2. ISOLATION: own worktree for every implementer, NEVER the shared checkout. Never git restore/clean a checkout you didn't create. Path-specific git add only — never -A. Check git rev-parse --show-toplevel before first write — abort if it resolves to the shared checkout.
