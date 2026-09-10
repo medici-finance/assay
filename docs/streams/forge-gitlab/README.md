@@ -49,9 +49,9 @@ the desk tools own.
 Minimum tier per brief (the `tier:` line in each brief's front-matter, with the detail in its
 `## Edition` section):
 
-| Brief | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 |
-|---|---|---|---|---|---|---|---|---|
-| Minimum tier | free | free | free | free | free | ultimate | free | free |
+| Brief | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 |
+|---|---|---|---|---|---|---|---|---|---|
+| Minimum tier | free | free | free | free | free | ultimate | free | free | free |
 
 The open point that stood here — spec.md section 1 declaring Free/CE non-conforming, which the
 matrix's per-feature citations did not support as written — was ruled on 2026-08-30
@@ -71,6 +71,7 @@ carries its evidence; brief 04's Verify row 3 was re-baselined onto the amended 
 | 06 | [Ultimate refinements — custom reviewer role + external-status-check verdict lane](brief-06-ultimate-refinements.md) | 5 | M | todo | — | — |
 | 07 | [GitHub forge backend on go-gh — retire the exec-`gh` shell path](brief-07-github-forge-go-gh.md) | 2 | M | implemented | — | — |
 | 08 | [Close the forge surface — enumerated operations, no passthrough, shell-exec ban](brief-08-close-the-forge-surface.md) | 3 | M | implemented | — | — |
+| 09 | [GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth](brief-09-gitlab-reviewer-write-path.md) | 4 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
