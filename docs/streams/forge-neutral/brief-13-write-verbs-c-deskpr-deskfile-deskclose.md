@@ -211,22 +211,38 @@ facts:
    its row stays — its identity/no-op status is a separate brief.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 |
-| 2 | `cd tools/desk && go test ./cmd/deskpr/... ./cmd/deskfile/... ./cmd/deskclose/... -count=1` | exit 0 — the three migrated suites are green |
-| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -count=1 && go test ./internal/deskkit/ -run TestForgeNoPassthrough -count=1` | exit 0 — the seam grows four ops and stays closed (no generic/endpoint method, no extra exported backend method) |
-| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGithubGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -count=1` | exit 0 — `open_change_for_branch` / `edit_change` / `search_issues` / `list_labels` golden cases pin both backends' wire, and coverage reconciles the seam against the inventory (rows 33–36) |
-| 5 | `grep -n 'allowedInvocationCeiling' tools/desk/internal/forgeban/allowlist.go` | shows a value **3 lower than the base** (= 9 at `58b87de`) |
-| 6 | `grep -c -e 'cmd/deskclose/exec.go::runGH::gh' -e 'cmd/deskfile/exec.go::gh::gh' -e 'cmd/deskpr/exec.go::gh::gh' tools/desk/internal/forgeban/allowlist.go` | prints `0` — all three permit rows are gone |
-| 7 | `cd tools/desk && go test ./internal/forgeban/... -count=1` | exit 0 — the ratchet passes at the lowered ceiling |
-| 8 | `grep -rn -e 'runCmd("gh"' -e 'runGH(' tools/desk/cmd/deskpr tools/desk/cmd/deskfile tools/desk/cmd/deskclose --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — no verb shells `gh` through its wrapper any more (the `#274` grep-form gap, closed against the wrapper) |
-| 9 | `grep -rn -e '--as-app=false' -e 'asApp' tools/desk/cmd/deskpr --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — the ambient fallback flag and its branch are removed, not merely defaulted off |
-| 10 | `cd tools/desk && go test ./cmd/deskpr/... -run TestDeskprRefusesWithoutMintedToken -count=1 -v` | **negative path**: with the custody binding yielding no token, `deskpr` REFUSES (non-zero) and performs no forge write — asserted by the recording fake forge showing zero calls; there is no ambient fall-through |
-| 11 | `cd tools/desk && go test ./cmd/deskfile/... -run TestDeskfileFilesOnGitLabThroughBackend -count=1 -v && go test ./cmd/deskfile/... -run TestDeskfileRefusesWithoutMintedToken -count=1 -v` | exit 0 — POSITIVE: on a GitLab-configured repo `deskfile` FILES via the backend (the `#691` refusal is superseded); NEGATIVE: with no minted token the backend refuses, no ambient fallback |
-| 12 | `cd tools/desk && go test ./cmd/deskclose/... -run TestDeskcloseClosesThroughBackend -count=1 -v && go test ./cmd/deskclose/... -run TestDeskcloseActingLoginFromRoster -count=1 -v` | exit 0 — deskclose closes through `CloseIssue`, and its acting login comes from the minted role (not a `viewer{login}` forge read) |
-| 13 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestOpenChangeForBranchAmbiguousRefuses' -count=1 -v` | **negative path**: two open changes on one source branch → a could-not-check REFUSAL naming the ambiguity, not a silent first-match |
-| 14 | `statusgen --root . --consumers --brief forge-neutral/13` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff |
+
+**Brief 13 is this stream's first `Class`-column Verify table** (desk ruling): a new brief follows
+the convention of record at authoring time, and statusgen v1.0.3's mistake-proofing/03 Class-token
+obligation is that convention now — `+dereference` marks a row that resolves a claim rather than
+counting its presence, `+flow` a row that exercises the cross-component path (a write verb →
+`ForgeFor` → the backend) end to end. Siblings 01–12 predate the convention and are grandfathered
+(uplifted only when next touched), so this table carries the column and they do not — by ruling,
+not oversight. These names below are this brief's planned test deliverables, created by the
+implementer:
+`TestDeskprRefusesWithoutMintedToken` (planned),
+`TestDeskfileFilesOnGitLabThroughBackend` (planned),
+`TestDeskfileRefusesWithoutMintedToken` (planned),
+`TestDeskcloseClosesThroughBackend` (planned),
+`TestDeskcloseActingLoginFromRoster` (planned),
+`TestOpenChangeForBranchAmbiguousRefuses` (planned).
+
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check:ci | `cd tools/desk && go build ./... && go test ./...` | exit 0 |
+| 2 | check:ci | `cd tools/desk && go test ./cmd/deskpr/... ./cmd/deskfile/... ./cmd/deskclose/... -count=1` | exit 0 — the three migrated suites are green |
+| 3 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -count=1 && go test ./internal/deskkit/ -run TestForgeNoPassthrough -count=1` | exit 0 — the seam grows four ops and stays closed (no generic/endpoint method, no extra exported backend method) |
+| 4 | check:ci +dereference | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGithubGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -count=1` | exit 0 — `open_change_for_branch` / `edit_change` / `search_issues` / `list_labels` golden cases pin both backends' wire, and coverage reconciles the seam against the inventory (rows 33–36) |
+| 5 | check | `grep -n 'allowedInvocationCeiling' tools/desk/internal/forgeban/allowlist.go` | shows a value **3 lower than the base** (= 9 at `58b87de`) |
+| 6 | check | `grep -c -e 'cmd/deskclose/exec.go::runGH::gh' -e 'cmd/deskfile/exec.go::gh::gh' -e 'cmd/deskpr/exec.go::gh::gh' tools/desk/internal/forgeban/allowlist.go` | prints `0` — all three permit rows are gone |
+| 7 | check:ci | `cd tools/desk && go test ./internal/forgeban/... -count=1` | exit 0 — the ratchet passes at the lowered ceiling |
+| 8 | check | `grep -rn -e 'runCmd("gh"' -e 'runGH(' tools/desk/cmd/deskpr tools/desk/cmd/deskfile tools/desk/cmd/deskclose --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — no verb shells `gh` through its wrapper any more (the `#274` grep-form gap, closed against the wrapper) |
+| 9 | check | `grep -rn -e '--as-app=false' -e 'asApp' tools/desk/cmd/deskpr --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — the ambient fallback flag and its branch are removed, not merely defaulted off |
+| 10 | check:ci | `cd tools/desk && go test ./cmd/deskpr/... -run TestDeskprRefusesWithoutMintedToken -count=1 -v` | **negative path**: with the custody binding yielding no token, `deskpr` REFUSES (non-zero) and performs no forge write — asserted by the recording fake forge showing zero calls; there is no ambient fall-through |
+| 11 | check:ci +flow | `cd tools/desk && go test ./cmd/deskfile/... -run TestDeskfileFilesOnGitLabThroughBackend -count=1 -v && go test ./cmd/deskfile/... -run TestDeskfileRefusesWithoutMintedToken -count=1 -v` | exit 0 — POSITIVE: on a GitLab-configured repo `deskfile` FILES via the backend (the `#691` refusal is superseded); NEGATIVE: with no minted token the backend refuses, no ambient fallback |
+| 12 | check:ci | `cd tools/desk && go test ./cmd/deskclose/... -run TestDeskcloseClosesThroughBackend -count=1 -v && go test ./cmd/deskclose/... -run TestDeskcloseActingLoginFromRoster -count=1 -v` | exit 0 — deskclose closes through `CloseIssue`, and its acting login comes from the minted role (not a `viewer{login}` forge read) |
+| 13 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestOpenChangeForBranchAmbiguousRefuses' -count=1 -v` | **negative path**: two open changes on one source branch → a could-not-check REFUSAL naming the ambiguity, not a silent first-match |
+| 14 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/13` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff |
 
 ## Pre-mortem → detection map
 
@@ -239,7 +255,7 @@ facts:
 | `deskpr`'s `--as-app=false` is defaulted off but left reachable, so an ambient identity can still write | row 9 asserts the flag and its branch are GONE; row 10 asserts a no-token run REFUSES with zero forge calls |
 | `deskfile` keeps refusing on GitLab instead of filing through the backend | row 11 POSITIVE asserts a real filing on a GitLab-configured repo |
 | `deskfile` loses its could-not-check refusal on a genuinely unresolvable forge and silently calls GitHub | row 11 NEGATIVE + the freeze/refusal contract; a filing on an unresolvable forge would surface as a forge write the fake records |
-| `deskclose` re-introduces a `viewer{login}` forge read instead of using the minted role login | row 12 (`TestDeskcloseActingLoginFromRoster`) |
+| `deskclose` re-introduces a `viewer{login}` forge read instead of using the minted role login | row 12 (`TestDeskcloseActingLoginFromRoster` (planned)) |
 | `OpenChangeForBranch` silently returns the first of several open changes on a branch | row 13 asserts a refusal on ambiguity |
 | The ratchet is moved by the wrong amount, or the wrong rows are pulled | rows 5 + 6 + 7 (ceiling −3, the three named rows gone, forgeban green) |
 
