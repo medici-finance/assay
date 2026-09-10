@@ -26,9 +26,9 @@ var version string
 const usage = `deskpr — push a feature branch and open (or update) its pull request.
 
 USAGE:
-  deskpr create --title T (--body-file F | --body-min B) [--base main] [--as-app=false]
-  deskpr update [--as-app=false]
-  deskpr edit --body-file F [--title T] [--as-app=false]
+  deskpr create --title T (--body-file F | --body-min B) [--base main]
+  deskpr update
+  deskpr edit --body-file F [--title T]
   deskpr --version
 
 deskpr create is draft-only by construction: it can only open a DRAFT PR on a
@@ -48,12 +48,14 @@ migration deskpr update tells you to perform. Because a body edit moves no head 
 edit also posts one short comment naming what changed, so a head-keyed review monitor
 has an event to see.
 
-By default, --as-app is true: gh calls authenticate as this session's App role via
-desktoken, resolved from the loop identity ($DESK_LOOP). That is the worker App by
-default, and the VERIFIER App under DESK_LOOP=verify-desk — so an Evidence PR is filed
-under the same App that authored its branch commits, not misattributed to the worker
-(#396). Pass --as-app=false for the example-org fallback (transition period). When no
-loop carries an App role the worker App is the default. The branch push (committed
+gh calls authenticate as this session's App role via desktoken, resolved from the
+loop identity ($DESK_LOOP). That is the worker App by default, and the VERIFIER App
+under DESK_LOOP=verify-desk — so an Evidence PR is filed under the same App that
+authored its branch commits, not misattributed to the worker (#396). When no loop
+carries an App role the worker App is the default. The minted App identity is
+mandatory: there is no ambient-credential fallback — the former --as-app=false
+transition path is retired, and a run that cannot mint a session-role token REFUSES
+rather than falling through to an ambient CLI credential. The branch push (committed
 code) carries the role App's git authorship; the PR is filed under that same App.
 
 PUBLIC-REPO SELF-CONTAINMENT (#203). When the target repo is not known-private, the

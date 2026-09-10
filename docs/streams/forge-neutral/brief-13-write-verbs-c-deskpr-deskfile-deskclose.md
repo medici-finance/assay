@@ -16,6 +16,7 @@ unblocks: ["forge-neutral/10"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-forge-neutral-13
 issues: [274, 395, 509, 687, 691, 775]
 schema: brief-v2
 authored: 2026-09-10 by forge-neutral authoring session
@@ -243,6 +244,7 @@ implementer:
 | 12 | check:ci | `cd tools/desk && go test ./cmd/deskclose/... -run TestDeskcloseClosesThroughBackend -count=1 -v && go test ./cmd/deskclose/... -run TestDeskcloseActingLoginFromRoster -count=1 -v` | exit 0 — deskclose closes through `CloseIssue`, and its acting login comes from the minted role (not a `viewer{login}` forge read) |
 | 13 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestOpenChangeForBranchAmbiguousRefuses' -count=1 -v` | **negative path**: two open changes on one source branch → a could-not-check REFUSAL naming the ambiguity, not a silent first-match |
 | 14 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/13` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff |
+| 15 | check +mutation | **Mutation demonstration for the deskclose two-role close-authority gate this brief carries onto the resolver.** In `runSupersededLane` (`tools/desk/cmd/deskclose/superseded.go`, the `if who.role == roleWorker {` guard) disable the worker-half check — change it to `if false && who.role == roleWorker {`, the pre-guard shape in which a worker token drives the single-actor close reserved for the reviewer half — then `cd tools/desk && go test ./cmd/deskclose/... -count=1`; restore the file and re-run | exit **1** on the mutant: the deskclose suite fails (a worker token falls through to the reviewer half, collapsing the propose≠confirm two-role separation the re-seat must preserve), exit **0** again after restoring. Proves the close-authority control reddens when broken rather than passing because nothing exercises it. The same `./cmd/deskclose/...` suite exercises the `authority.go` `IsBlessAuthorityIDStrict` id-pin this brief extends (`ListComments` now carries the author's numeric id for it) |
 
 ## Pre-mortem → detection map
 
