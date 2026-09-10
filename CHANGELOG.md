@@ -23,6 +23,154 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.4 — 2026-09-10
+
+### Added
+- **A committer-identity cross-check on verified/done briefs.** The attribution check's
+  author/verifier comparison reads free strings an agent writes at will; it now layers a
+  second, independent signal from git — comparing the git identity of a brief's authoring
+  commit against that of the commit that most recently touched it (the Evidence-adding /
+  status-flip commit). Where a repository's brief history uses more than one identity, a
+  brief whose authoring and Evidence commits sit under a single identity is surfaced (the
+  Evidence was not independently committed); where the whole history is one identity, one
+  aggregate notice says so rather than emitting a per-brief non-signal. The cross-check is
+  a NOTICE, never a hard failure — it never over-rejects an honest verification whose
+  distinct runners commit under a shared identity — and it degrades LOUDLY, never
+  silently, when git cannot answer (an untracked brief under a `.git` repo). A `git
+  archive` export with no `.git` is skipped silently, having nothing to check.
+- **`forge-neutral` brief 13 — write verbs C (`deskpr` / `deskfile` / `deskclose`) onto the
+  forge resolver.** The code-aware follow-on that brief 04 (`#509`) was ruled down to leave
+  undone: it plans the four operations these three verbs still lack (a branch→change lookup,
+  a change body/title edit, an issue text-search, and a read-only list-labels), then re-seats
+  each verb onto `ForgeFor` — the step that answers the identity-class permit rows instead of
+  moving them, supersedes `deskfile`'s interim GitLab named-refusal (`#691`), and drops the
+  forge-CLI ratchet by three. Doc/plan only; no tool behaviour changes in this PR.
+- Recorded, with measurements, that **v1.0.3 supersedes v1.0.2 as the upgrade target without
+  superseding the flag day** — the same shape the v1.0.1 and v1.0.2 re-pins recorded. An
+  adopter already on v1.0.0, v1.0.1 or v1.0.2 has no migration to run, only a re-pin, while an
+  adopter on v0.28.0 upgrading straight to v1.0.3 still runs the brief-v1 → brief-v2 migration
+  on the way through rather than being skipped past it.
+- The v1.0.3 umbrella this pins to carries `statusgen conform`'s brief-v2 contract (the
+  `--emit-schema --schema brief-v2` payload and the `schemas/brief-v2.json` it stays in
+  lockstep with), the public flag-day corroboration addition (`statusgen --corroborate` now
+  fires its human-stamp anchor for a decision record, `DR-<slug>.md`, not just a brief file),
+  and desk-tools fixes (`deskdispatch` worker prompts now name their own loop identity and the
+  exact `deskpr create` trailer, and the SessionStart banner resolves the plugin version from
+  the manifest instead of a stale literal).
+
+### Fixed
+- **A refused `worktree-create` no longer leaves a phantom held claim.** This abort happens
+  after the durable dispatch claim is acquired; it now releases that claim the same way the
+  adjacent `deskwt add`-failed branch does, instead of returning with the claim still held —
+  which had wedged the item behind a claim nobody was acting on until a human hand-deleted the
+  ref. A new regression test pins that `deskwt` picking the Windows prefix and `deskdispatch`
+  accepting it are one contract.
+- **`deskboard`'s drift check now recognises a channel-D `desk-tools-source` pin, so a
+  GitLab / native-Windows consumer sweep is no longer permanently STALE-UNKNOWN.** An
+  adopter on channel D pins the desk-tools SOURCE line (`desk-tools-source <tag>
+  <40-hex-commit>`, the shape `desksourceguard` already reads) rather than a `desk-tools`
+  release line, and its consumer checkout carries no in-tree `tools/desk` ref either — so
+  `staleState` fell straight through to could-not-check, which pinned `reviewloop`'s idle
+  gate at COULD-NOT-CHECK on every tick and made a healthy board look stale forever. It now
+  binds the running binary's stamped `sourceSHA` to the pinned commit the same way
+  `desksourceguard`'s third agreement does (the stamp is a short SHA, so the full pinned
+  commit must have it as a prefix): a match is `in-sync`, a mismatch is a MEASURED `drift`,
+  and only a genuinely unreadable source line (a non-40-hex digest) with no in-tree ref
+  falls back to could-not-check. This completes the fallback #185 opened — treating a real
+  source pin as absent was that fallback landing short.
+- **`deskdispatch --kit review` now emits the reviewed head-fetch refspec in the target
+  repo's own forge shape, so a GitLab reviewer can check out the MR head.** The review kit
+  hard-coded the GitHub coordinate `git fetch origin pull/<N>/head`; on a GitLab-served repo
+  the head is advertised at `merge-requests/<iid>/head` (the MR's own `pipeline.ref`), so a
+  reviewer that followed the prompt verbatim fetched a ref that does not exist and reviewed
+  the worktree's `origin/main` cut rather than the change. The refspec now follows the forge
+  resolved for the target repo — GitHub `pull/<N>/head`, GitLab `merge-requests/<N>/head` —
+  resolved before the dispatch claim is taken, so a repo whose forge cannot be determined
+  refuses the review dispatch (could-not-check) rather than handing over a coordinate the
+  reviewer cannot use. The worker/implementer dispatch path, which emits no forge-shaped ref,
+  is unchanged. Part of the GitLab-adopter portability family.
+- **`deskdispatch` now accepts the Windows worktree home `deskwt` produces, so dispatch
+  works on native Windows.** After `deskwt add` succeeded, the `worktree-create` step
+  validated the reported home with a POSIX-only leading-slash test (`strings.HasPrefix(home,
+  "/")`), which rejected the drive-rooted `C:\...\.claude\worktrees\...` path `deskwt`
+  legitimately selects on Windows — aborting every dispatch (no worker, reviewer, or verifier
+  could be started). The check now uses a portable absoluteness test (matching the one
+  `brief.go` already uses), so the producer (`deskwt`, which picks the Windows prefix) and the
+  consumer (`deskdispatch`, which accepts it) judge "absolute" the same way per OS. This is
+  the consumer half of the earlier `deskwt`-side portability fixes.
+- **`deskpost` and `deskflip` resolve the repo's forge BEFORE minting a GitHub App token, so
+  a GitLab adopter no longer hits a misleading `set REVIEWER_APP_ID` error.** Both verbs used
+  to mint a GitHub App installation token unconditionally as their first step, so on a
+  GitLab-configured repo (`ASSAY_REPO_FORGES=…=gitlab`, authenticating with a PAT file rather
+  than an App PEM) a review verdict or ready-flip died with `no App ID for role "reviewer":
+  set REVIEWER_APP_ID` — a GitHub credential error that sent the operator hunting `apps.env`
+  for a credential the GitLab lane never uses (medici-finance/assay#772).
+- **`statusgen --corroborate` no longer re-gates a pre-existing human stamp that a table re-render merely re-emitted.** A `human:<name>` stamp whose Reviewed cell is byte-identical to the same brief's row at the PR merge-base is now reported `PRE-EXISTING` instead of `MISSING-CORROBORATION`, and it does not fail the run. Such a stamp was authored and corroborated on its own earlier PR; a board migration that re-renders whole status tables lands the unchanged row on an "added" diff line, and re-checking it against the migration PR's reviews was a category error that could block the migration. The exemption keys on the brief-id **row** (matched across the re-render, never on line position) and compares the stamp's own cell: a stamp that is NEW on the branch, or whose cell text was edited (date or name), stays fully gated exactly as before, and a genuinely new uncorroborated stamp cannot ride in on a pre-existing one that shares its name: every occurrence must match the base, and any occurrence that is not a board status-table row (prose, an `authorized-by:` line, an Evidence cell, frontmatter) — or an unresolvable merge-base — fails closed, leaving the stamp fully gated. The `human:reviewer` placeholder class is covered generically by the byte-identical rule — it is not special-cased.
+- **`statusgen`'s runner-attribution check no longer treats a `(non-implementer)`
+  self-label as proof of independence.** `implementerAttributed` used to strip the
+  literal `non-implementer` before its substring test, so an Evidence Runner cell
+  reading `worker (non-implementer)` — or a Verified cell naming `non-implementer` —
+  passed the independence check outright. A session could certify its own verification
+  as independent just by writing the label. The predicate now matches the token
+  `implementer` in any spelling (case-insensitive), including the self-labelled
+  `(non-implementer)`; an honest independent verifier names the runner that ran the
+  table (e.g. `opus-verifier`) — a token with no `implementer` substring — which still
+  counts. The self-verification error message now states plainly that a self-labelled
+  `(non-implementer)` is still a self-assertion.
+- **harness-portability/07 Verify rows 5 and 7 re-baselined to the current tree, so they
+  test what they claim.** Row 5 read the bundle version from `.version` on the plugin
+  manifest — plugin.json in the plugins/assay/.claude-plugin directory — and compared it
+  to a live `origin/main` ref; in the public tree that field tracks the plugin-manifest /
+  umbrella release (now `1.0.0`), not the bundle content version, and a live-ref compare
+  can never discriminate on merged main. It now reads the authoritative `bundle-version`
+  from `plugins/assay/SOURCES.yaml` and asserts it is at least `0.3.0`, the version that
+  records Assay's second first-class harness — still discriminating (a regression exits
+  `1`), with no moving anchor. Row 7's run-log check anchored `Result:` at column 0, but
+  the run-log skeleton in `docs/codex-smoke-protocol.md` writes each verdict as an
+  INDENTED `  Result:` line, so a complete run log would have counted zero and falsely
+  FAILed the stream's acceptance row; the anchor is now `^[[:space:]]*Result:`. Row 7
+  stays BLOCKED pending the live Codex run and the brief stays `implemented` — no status
+  advance.
+- A forge that cannot be **positively** resolved (no roster binding and no known origin host)
+  is treated as could-not-check, never as GitLab, so every GitHub repo keeps its exact prior
+  behaviour. Part of the GitLab-adopter portability family (siblings #773–#776).
+- The `evidence-automerge` `enable` job no longer reddens when a ready-flip leaves a PR with
+  nothing left for auto-merge to wait on. `enablePullRequestAutoMerge` is a request, not a
+  merge: a just-flipped approved PR whose checks are all green already satisfies every merge
+  requirement, so GitHub refuses the enable with "Pull request is in clean status". That
+  refusal published a failed check — the same self-inflicted loop as the "unstable status"
+  case. `tools/evidence-automerge/automerge-refusal.sh` now treats a "clean status" refusal
+  as the fifth benign outcome (exit 0 with a `::warning::` reason); nothing here merges, so
+  the PR simply awaits a human's merge click. The staged workflow's `Request auto-merge` step
+  now also echoes the mutation's answer to the log before deciding, so a benign skip still
+  records why it skipped (#586).
+- `deskflip` checks-green no longer stays permanently could-not-check on tokens that
+  lack the `administration` scope. When the legacy branch-protection required-status-checks
+  endpoint answers `403`, `deskkit.RequiredStatusChecks` now re-resolves the required set
+  through admin-free endpoints — `GET /repos/{o}/{r}/branches/{b}` (`.protected`) and, for a
+  protected branch, `GET /repos/{o}/{r}/rules/branches/{b}` (each `required_status_checks`
+  ruleset rule's contexts). Being a flip gate it fails CLOSED: only a positively unprotected
+  branch is read as empty/green; a protected branch whose required set cannot be determined
+  admin-free (classic branch protection, invisible to the rules API, or an unreadable endpoint)
+  stays could-not-check rather than being read as green.
+- `deskflip` now authenticates a GitLab flip from the GitLab PAT custody path (via the forge
+  resolver) instead of the GitHub App mint; its reads and writes were already forge-neutral,
+  so this was the last GitHub-shaped step in the flip.
+- `deskpost` (review / security-review / comment / ready) now fails **closed** with an honest
+  could-not-check that names the resolved forge — its verdict/flip precondition reads still
+  run through a GitHub App-authenticated client, so the GitLab write path is the follow-up —
+  rather than the GitHub App-ID mint error.
+
+### Changed
+- The adopter-scaffold example gains a v1.0.3 composition manifest with real digests, and its
+  notes now name v1.0.3 as the umbrella an upgrade moves to. The v1.0.0, v1.0.1 and v1.0.2
+  manifests stay: a tree pinned at any of them still has to resolve, and the brief-v1 →
+  brief-v2 migration's span ends at v1.0.0.
+- The plugin's paired-versions manifest now pins statusgen and desk-tools at the published
+  umbrella **v1.0.3** on all ten platform lines, every digest re-harvested from that release's
+  own checksum manifest and compared back against it. A cold install resolves the v1.0.3
+  binaries and verifies them byte-for-byte.
+
 ## v1.0.3 — 2026-09-10
 
 ### Added
