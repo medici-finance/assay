@@ -344,9 +344,18 @@ comment for the full endpoint list):
 | Protect `main` | `POST api/v4/projects/:id/protected_branches` | `allowed_to_push=[{user_id: <board-writer>}]`, `allowed_to_merge=[{access_level: 40}]` (Maintainer role) |
 | Set approval settings | `POST api/v4/projects/:id/approvals` | `merge_requests_author_approval: false`, `merge_requests_disable_committers_approval: true` — the prevent-author / prevent-committers pair |
 | Require green pipelines before merge | `PUT api/v4/projects/:id` | `only_allow_merge_if_pipeline_succeeds: true` |
+| Create the desk labels | `POST api/v4/projects/:id/labels` | one call per label, idempotent (a duplicate name answers 409, or 400 "already exists"); the queue-legibility pair `authorization-needed` / `approval-needed`, the `review-request` dispatch token, and one `raised-by:<role>` per filing role |
 
 Every endpoint above is reachable at the **Premium** tier — nothing the script calls
 requires Ultimate.
+
+The label set is the GitLab twin of the GitHub **`create-labels`** primitive
+(`docs/adopting-assay.md`) — the SAME names, colors and descriptions, so the two
+adoption profiles are label-parity. It matters because a label that is absent when a
+desk verb reaches for it degrades **silently**: `deskflip`'s `authorization-needed` →
+`approval-needed` queue swap fails, and `deskfile --raised-by <role>` drops the
+provenance stamp (#774). The script creates them under `--project`; colors are
+sent with the leading `#` GitLab requires.
 
 ## 4. The ci-config-project runbook (human-only)
 
