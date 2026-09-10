@@ -1,8 +1,9 @@
 # Composition manifest for umbrella v1.0.4 — adopter-scaffold example.
 #
-# The LATEST umbrella, and the target `upgrade-assay --to v1.0.4` moves the
-# scaffold to. Like v1.0.3 before it, it supersedes the previous manifest as the
-# upgrade TARGET without superseding the flag day: the brief-v1 → brief-v2
+# A PATCH step, no longer the latest: v1.0.5 has since superseded it as the upgrade
+# target (see releases/v1.0.5.yaml). This manifest stays because a tree pinned at
+# v1.0.4 still has to resolve. It superseded v1.0.3 as the upgrade target without
+# superseding the flag day: the brief-v1 → brief-v2
 # migration (migrations/0001-v0.28.0-to-v1.0.0-derived-board.md) still spans
 # v0.28.0 → v1.0.0 and is unchanged, and an adopter upgrading from v0.28.0 straight
 # to v1.0.4 runs it on the way through. There is NO migration from v1.0.0, v1.0.1,
