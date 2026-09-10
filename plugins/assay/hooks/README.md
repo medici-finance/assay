@@ -1,4 +1,4 @@
-# Hooks — assay plugin v0.1.0
+# Hooks — assay plugin
 
 This directory holds the plugin's hook configuration.
 
@@ -11,19 +11,29 @@ out-of-repo protocol pointer, etc.) were previously carried in CLAUDE.md
 residency; the hook is the structural fix (the single home that supersedes
 loose `~/.claude` rule files).
 
+The rules text — including the version the banner announces — is GENERATED
+from the single source `plugins/assay/resident-rules.md` by
+`go run ./tools/harnessgen resident` (see that file's own header for the
+mechanism); `inject-resident-rules.sh` reads the generated
+`resident-rules.payload.txt` rather than carrying its own copy, and the
+banner's version is derived from `plugins/assay/.claude-plugin/plugin.json`,
+never hand-typed. Do not restate a version number, or any rule text, directly
+in this README or the script — that is the drift `harnessgen resident --check`
+exists to catch (assay#730).
+
 ### Scope — this fires in EVERY session
 
 The hook registers `SessionStart` with `"matcher": "*"`. Once the plugin is
 installed there is no per-project or per-skill narrowing: **every session you
 start, in every project, receives the injected rules** — not just sessions that
-invoke an `assay:*` skill. The payload is currently 2821 characters of
-`systemMessage` (2835 bytes UTF-8 — the body carries seven em-dashes), added to
-the context of each of those sessions. Measure it the same way to get the same
-number:
+invoke an `assay:*` skill. This adds a `systemMessage` of a couple thousand
+characters to the context of each of those sessions; the exact size moves with
+the rule text and the plugin version, so measure it rather than trust a number
+written down here:
 
 ```sh
-bash hooks/inject-resident-rules.sh | jq -r '.systemMessage | length'        # 2821 characters
-bash hooks/inject-resident-rules.sh | jq -j  .systemMessage | wc -c          # 2835 bytes
+bash hooks/inject-resident-rules.sh | jq -r '.systemMessage | length'        # characters
+bash hooks/inject-resident-rules.sh | jq -j  .systemMessage | wc -c          # bytes UTF-8
 ```
 
 If you want the rules only in desk sessions, do not install the plugin

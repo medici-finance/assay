@@ -22,9 +22,16 @@ The `## Header`, `## R<N>` and `## Footer` sections below are the machine-read
 content; the prose above is not. Rule-content changes are their own PRs — never
 smuggled into a plumbing change.
 
+The Header's `{{VERSION}}` token is resolved by the generator, never hand-typed:
+it reads `plugins/assay/.claude-plugin/plugin.json`'s `version` field and
+substitutes `v<version>` into every generated artifact. Do not replace the
+token with a literal version number — that reintroduces the exact drift
+`--check` now catches (assay#730: the banner said "v0.1.0" long after the
+manifest moved to "1.0.0").
+
 ## Header
 
-RESIDENT OPERATING RULES (assay plugin v0.1.0). These are the project-agnostic rules the desk skills rely on. Violate none without the human driver's explicit say-so.
+RESIDENT OPERATING RULES (assay plugin {{VERSION}}). These are the project-agnostic rules the desk skills rely on. Violate none without the human driver's explicit say-so.
 
 ## R1 EVIDENCE-NOT-CLAIMS
 EVIDENCE-NOT-CLAIMS: every assertion needs a verifiable artifact (command output, file hash, log line) — never a bare text claim. Your own self-report is untrustworthy. Verify before asserting.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Exit codes are a three-state instrument, not pass/fail
@@ -23,19 +24,22 @@ const (
 	exitCouldNotCheck = 2
 )
 
-// artifactPaths names, relative to root, the single source and each generated
+// artifactPaths names, relative to root, the single source, the plugin
+// manifest the Header's {{VERSION}} token derives from, and each generated
 // artifact.
 type artifactPaths struct {
-	source        string
-	claudePayload string
-	codexFragment string
+	source         string
+	pluginManifest string
+	claudePayload  string
+	codexFragment  string
 }
 
 func pathsFor(root string) artifactPaths {
 	return artifactPaths{
-		source:        filepath.Join(root, "plugins", "assay", "resident-rules.md"),
-		claudePayload: filepath.Join(root, "plugins", "assay", "hooks", "resident-rules.payload.txt"),
-		codexFragment: filepath.Join(root, "plugins", "assay", "codex", "AGENTS-assay.md"),
+		source:         filepath.Join(root, "plugins", "assay", "resident-rules.md"),
+		pluginManifest: filepath.Join(root, "plugins", "assay", ".claude-plugin", "plugin.json"),
+		claudePayload:  filepath.Join(root, "plugins", "assay", "hooks", "resident-rules.payload.txt"),
+		codexFragment:  filepath.Join(root, "plugins", "assay", "codex", "AGENTS-assay.md"),
 	}
 }
 
@@ -71,9 +75,29 @@ func residentCmd(args []string) int {
 		fmt.Fprintf(os.Stderr, "harnessgen resident: could-not-check: reading source %s: %v\n", p.source, err)
 		return exitCouldNotCheck
 	}
-	arts, err := generateFromString(string(srcBytes))
+	s, err := parseSource(string(srcBytes))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "harnessgen resident: could-not-check: %s is unparseable: %v\n", p.source, err)
+		return exitCouldNotCheck
+	}
+
+	// The Header's {{VERSION}} token derives from the plugin manifest, never a
+	// literal typed into resident-rules.md (assay#730) — read it only when the
+	// Header actually asks for it, so a Header with no placeholder never
+	// requires the manifest to exist.
+	var version string
+	if strings.Contains(s.Header, versionPlaceholder) {
+		meta, err := readClaudeManifest(p.pluginManifest)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "harnessgen resident: could-not-check: %v\n", err)
+			return exitCouldNotCheck
+		}
+		version = meta.Version
+	}
+
+	arts, err := generate(s, version)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "harnessgen resident: could-not-check: %s: %v\n", p.source, err)
 		return exitCouldNotCheck
 	}
 

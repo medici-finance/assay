@@ -8,12 +8,16 @@ import (
 	"testing"
 )
 
-// payloadGolden is the EXACT SessionStart payload the hook heredoc carried
-// before the single-source refactor (extracted from inject-resident-rules.sh at
-// the landing commit). The Claude payload must survive the refactor
-// byte-identical in its rules text — rule-content changes are their own PRs,
-// never smuggled into plumbing. This locks that guarantee: if the generator's
-// output ever diverges from this byte string, the test fails.
+// payloadGolden is the EXACT SessionStart payload the generator currently
+// produces from the committed source and the committed plugin manifest
+// version. It originally locked the byte-for-byte content the hook heredoc
+// carried before the single-source refactor; it was updated (assay#730) when
+// the Header's version went from a hand-typed literal ("v0.1.0", stale
+// against plugin.json's "1.0.0") to the {{VERSION}} token generate() resolves
+// against the manifest — a deliberate, documented content change, not a
+// smuggled one. Rule-content changes are their own PRs, never smuggled into
+// plumbing; this locks that guarantee: if the generator's output ever
+// diverges from this byte string, the test fails.
 //
 //go:embed testdata/payload.golden.txt
 var payloadGolden string
@@ -26,6 +30,17 @@ func realSource(t *testing.T) string {
 		t.Fatalf("reading committed source: %v", err)
 	}
 	return string(b)
+}
+
+// realVersion reads the committed plugin manifest's version relative to this
+// module — the value the Header's {{VERSION}} token must resolve to.
+func realVersion(t *testing.T) string {
+	t.Helper()
+	meta, err := readClaudeManifest(filepath.FromSlash("../../plugins/assay/.claude-plugin/plugin.json"))
+	if err != nil {
+		t.Fatalf("reading committed plugin manifest: %v", err)
+	}
+	return meta.Version
 }
 
 // captureStderr runs fn with os.Stderr redirected to a buffer and returns what
@@ -64,6 +79,11 @@ func captureStderr(t *testing.T, fn func()) string {
 
 // setupRoot writes srcContent as the source under a fresh temp root laid out
 // like the repo (plugins/assay/resident-rules.md) and returns the root.
+// testPluginVersion is the fixture version setupRoot writes into the plugin
+// manifest it fabricates — deliberately not the real plugin.json's version,
+// so a test asserting on it can't accidentally pass by reading the real file.
+const testPluginVersion = "9.9.9"
+
 func setupRoot(t *testing.T, srcContent string) string {
 	t.Helper()
 	root := t.TempDir()
@@ -74,13 +94,30 @@ func setupRoot(t *testing.T, srcContent string) string {
 	if err := os.WriteFile(src, []byte(srcContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	writeFixtureManifest(t, root, testPluginVersion)
 	return root
+}
+
+// writeFixtureManifest writes a minimal plugin.json fixture under root so
+// residentCmd can resolve the Header's {{VERSION}} token — real resident-rules.md
+// carries the token (assay#730), so every setupRoot-based test needs a readable
+// manifest even when it isn't itself testing version derivation.
+func writeFixtureManifest(t *testing.T, root, version string) {
+	t.Helper()
+	manifest := filepath.Join(root, "plugins", "assay", ".claude-plugin", "plugin.json")
+	if err := os.MkdirAll(filepath.Dir(manifest), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"name": "assay", "version": "` + version + `"}` + "\n"
+	if err := os.WriteFile(manifest, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // --- byte-identity to the pre-refactor payload -----------------------------
 
 func TestClaudePayloadIsByteIdenticalToGolden(t *testing.T) {
-	arts, err := generateFromString(realSource(t))
+	arts, err := generateFromString(realSource(t), realVersion(t))
 	if err != nil {
 		t.Fatalf("generating from committed source: %v", err)
 	}
@@ -200,6 +237,81 @@ func TestMissingSourceIsCouldNotCheck(t *testing.T) {
 	root := t.TempDir() // no plugins/assay/resident-rules.md at all
 	if code := residentCmd([]string{"--check", "--root", root}); code != exitCouldNotCheck {
 		t.Fatalf("check with no source returned %d, want %d (could-not-check)", code, exitCouldNotCheck)
+	}
+}
+
+// --- the Header's {{VERSION}} token derives from the plugin manifest (assay#730) ---
+
+// TestHeaderVersionDerivedFromPluginManifest proves the fix for assay#730: the
+// generated payload carries the version FROM plugins/assay/.claude-plugin/
+// plugin.json, not a literal typed into resident-rules.md. setupRoot's fixture
+// manifest deliberately uses a version (testPluginVersion) that never appears
+// anywhere in the source text, so this can only pass if the value was actually
+// read from the manifest.
+func TestHeaderVersionDerivedFromPluginManifest(t *testing.T) {
+	root := setupRoot(t, realSource(t))
+	if code := residentCmd([]string{"--root", root}); code != exitClean {
+		t.Fatalf("write returned %d, want %d", code, exitClean)
+	}
+	payload, err := os.ReadFile(filepath.Join(root, "plugins", "assay", "hooks", "resident-rules.payload.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "assay plugin v" + testPluginVersion
+	if !strings.Contains(string(payload), want) {
+		t.Fatalf("generated payload does not carry the manifest version %q; head:\n%.120s", want, payload)
+	}
+	if strings.Contains(string(payload), versionPlaceholder) {
+		t.Fatalf("generated payload still carries the unresolved %s token", versionPlaceholder)
+	}
+	frag, err := os.ReadFile(filepath.Join(root, "plugins", "assay", "codex", "AGENTS-assay.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(frag), want) {
+		t.Fatalf("generated codex fragment does not carry the manifest version %q; head:\n%.160s", want, frag)
+	}
+}
+
+// TestCheckDetectsPluginVersionDrift is the lint the issue asked for: a plugin
+// manifest bumped without regenerating must redden `--check`, naming the stale
+// artifacts, exactly the way any other source/artifact mismatch does.
+func TestCheckDetectsPluginVersionDrift(t *testing.T) {
+	root := setupRoot(t, realSource(t))
+	if code := residentCmd([]string{"--root", root}); code != exitClean {
+		t.Fatalf("write returned %d, want %d", code, exitClean)
+	}
+	// Bump the manifest version without regenerating — the committed artifacts
+	// now name a stale plugin version, same shape as the bug that shipped.
+	writeFixtureManifest(t, root, "10.0.0")
+	var code int
+	stderr := captureStderr(t, func() { code = residentCmd([]string{"--check", "--root", root}) })
+	if code != exitDrift {
+		t.Fatalf("check after a manifest version bump returned %d, want %d (drift)", code, exitDrift)
+	}
+	if !strings.Contains(stderr, "resident-rules.payload.txt") || !strings.Contains(stderr, "AGENTS-assay.md") {
+		t.Fatalf("a manifest version bump must drift BOTH artifacts; stderr named only:\n%s", stderr)
+	}
+}
+
+// TestMissingManifestIsCouldNotCheckWhenHeaderNeedsVersion: a Header carrying
+// {{VERSION}} with no readable manifest is could-not-check, never a silent pass
+// that ships the literal token or a stale guess.
+func TestMissingManifestIsCouldNotCheckWhenHeaderNeedsVersion(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "plugins", "assay", "resident-rules.md")
+	if err := os.MkdirAll(filepath.Dir(src), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(src, []byte(realSource(t)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Deliberately no .claude-plugin/plugin.json under root.
+	if code := residentCmd([]string{"--root", root}); code != exitCouldNotCheck {
+		t.Fatalf("write with no plugin manifest returned %d, want %d (could-not-check)", code, exitCouldNotCheck)
+	}
+	if code := residentCmd([]string{"--check", "--root", root}); code != exitCouldNotCheck {
+		t.Fatalf("check with no plugin manifest returned %d, want %d (could-not-check)", code, exitCouldNotCheck)
 	}
 }
 

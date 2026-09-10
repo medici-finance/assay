@@ -142,21 +142,55 @@ func parseSource(content string) (source, error) {
 	return s, nil
 }
 
-// generate turns a parsed source into every delivery artifact.
-func generate(s source) Artifacts {
+// versionPlaceholder is the token the Header may carry in place of a literal
+// version number (e.g. "RESIDENT OPERATING RULES (assay plugin {{VERSION}}).").
+// substituteHeaderVersion is the ONLY place that resolves it, so the banner
+// version has exactly one derivation path across every generated artifact
+// (assay#730: the banner previously hard-coded "v0.1.0" and drifted from
+// plugins/assay/.claude-plugin/plugin.json's real version).
+const versionPlaceholder = "{{VERSION}}"
+
+// substituteHeaderVersion resolves versionPlaceholder in a Header line against
+// the plugin manifest's version, read once by the caller and passed in — this
+// function does no I/O so it stays trivially testable. A Header with no
+// placeholder is returned unchanged (older/synthetic sources that never opted
+// into derivation keep working). A Header that DOES carry the placeholder but
+// gets an empty version is an error, never a silent pass-through of the literal
+// token into a shipped artifact.
+func substituteHeaderVersion(header, version string) (string, error) {
+	if !strings.Contains(header, versionPlaceholder) {
+		return header, nil
+	}
+	if strings.TrimSpace(version) == "" {
+		return "", fmt.Errorf("header contains %s but no plugin version was supplied", versionPlaceholder)
+	}
+	return strings.ReplaceAll(header, versionPlaceholder, "v"+version), nil
+}
+
+// generate turns a parsed source into every delivery artifact. version is the
+// plugin manifest's version (plugins/assay/.claude-plugin/plugin.json's
+// `version` field) used to resolve versionPlaceholder in the Header; pass ""
+// when the caller has not read a manifest (fine as long as the Header carries
+// no placeholder — substituteHeaderVersion errors otherwise).
+func generate(s source, version string) (Artifacts, error) {
+	header, err := substituteHeaderVersion(s.Header, version)
+	if err != nil {
+		return Artifacts{}, err
+	}
+	s.Header = header
 	return Artifacts{
 		ClaudePayload: claudePayload(s),
 		CodexFragment: codexFragment(s),
-	}
+	}, nil
 }
 
 // generateFromString parses then generates in one step.
-func generateFromString(content string) (Artifacts, error) {
+func generateFromString(content, version string) (Artifacts, error) {
 	s, err := parseSource(content)
 	if err != nil {
 		return Artifacts{}, err
 	}
-	return generate(s), nil
+	return generate(s, version)
 }
 
 // claudePayload reproduces the exact text the SessionStart hook heredoc carried
@@ -188,7 +222,11 @@ func claudePayload(s source) string {
 // so the three cannot drift. (Cursor ALSO reads the shared Codex AGENTS.md
 // fragment natively — the adopt flow offers either.) Per Ian's 2026-08-26 ruling,
 // both Cursor surfaces are targeted, headless-first.
-func cursorRules(s source) string {
+func cursorRules(s source, version string) (string, error) {
+	header, err := substituteHeaderVersion(s.Header, version)
+	if err != nil {
+		return "", err
+	}
 	var b strings.Builder
 	b.WriteString("---\n")
 	b.WriteString("description: Assay resident operating rules — the always-loaded operating rules an Assay session runs under\n")
@@ -197,7 +235,7 @@ func cursorRules(s source) string {
 	b.WriteString("\n")
 	b.WriteString("<!-- GENERATED from plugins/assay/resident-rules.md by `harnessgen cursor`. Do not hand-edit; run the generator. -->\n")
 	b.WriteString("\n")
-	b.WriteString(s.Header)
+	b.WriteString(header)
 	b.WriteString("\n\n")
 	for _, r := range s.Rules {
 		fmt.Fprintf(&b, "%d. %s\n", r.N, r.Body)
@@ -205,7 +243,7 @@ func cursorRules(s source) string {
 	b.WriteString("\n")
 	b.WriteString(s.Footer)
 	b.WriteString("\n")
-	return b.String()
+	return b.String(), nil
 }
 
 // codexFragment frames the same rules as a single AGENTS.md section. It is
