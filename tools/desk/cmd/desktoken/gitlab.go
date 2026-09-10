@@ -60,6 +60,37 @@ func gitlabAPIBase() (string, bool) {
 // same App-credential search path the GitHub path uses.
 func gitlabTokenFileName(role string) string { return "gitlab-" + role + ".token" }
 
+// gitlabRepoResolved reports whether --repo AFFIRMATIVELY resolves to the GitLab forge, so a
+// bare `desktoken <role> --repo <gitlab-slug>` with NO explicit --forge takes the GitLab PAT
+// custody path instead of attempting a GitHub App mint. A PAT-backed GitLab bot provisions no
+// GitHub App credential, so the App mint dies with `no App ID for App "<role>-app"` (exit 6) —
+// #772 named that symptom, #798 closes it by routing the resolved forge.
+//
+// It resolves ONLY on a DEFINITE GitLab answer. A could-not-check resolution — no
+// ASSAY_REPO_FORGES entry names the repo AND the origin remote maps to no known forge — is NOT
+// read as "it is GitLab": it returns false and the caller falls through to the GitHub mint, so
+// every repo whose forge cannot be POSITIVELY resolved keeps its exact pre-#798 behaviour. This
+// is the same three-state fall-through requireGitHubForge makes on the deskpost side (only an
+// affirmative non-GitHub resolution diverts), never a guess. It reads the roster/remote, never
+// a token file, so it costs no custody.
+func gitlabRepoResolved(repo string) bool {
+	repo = strings.TrimSpace(repo)
+	if repo == "" {
+		return false
+	}
+	owner, name, found := strings.Cut(repo, "/")
+	if !found || owner == "" || name == "" {
+		// A bare owner is not a repo coordinate ForgeKindFor can resolve — leave forge
+		// selection to the GitHub mint's own owner resolution (resolveMintOwner).
+		return false
+	}
+	res, err := deskkit.ForgeKindFor(deskkit.ForgeRepo{Owner: owner, Name: name})
+	if err != nil {
+		return false // could-not-check → fall through to the GitHub mint, never assume GitLab.
+	}
+	return res.Kind == deskkit.ForgeGitLab
+}
+
 // gitlabRotateResult is the subset of the rotation response this command consumes. The token
 // value is written to the custody file and NEVER printed; expires_at is reported (a date, not
 // a secret) so the audit line records the backstop the group policy applied.

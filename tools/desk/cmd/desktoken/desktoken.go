@@ -635,12 +635,27 @@ func cmdToken(args []string) (err error) {
 	}
 	ac.role = role
 
-	// Forge dispatch. The default (empty/github) mints a GitHub App installation token
-	// below. gitlab takes an entirely different custody path — rotate-on-mint against an
-	// existing PAT file — and needs no App PEM or App ID, so it dispatches BEFORE any
-	// GitHub-credential resolution.
+	// Forge dispatch. gitlab takes an entirely different custody path — rotate-on-mint
+	// against an existing PAT file — and needs no App PEM or App ID, so it dispatches BEFORE
+	// any GitHub-credential resolution.
+	//
+	//   - An EXPLICIT --forge is authoritative: `gitlab` takes the PAT path, `github` forces
+	//     the App mint even against a GitLab-resolved repo (an operator override).
+	//   - With NO --forge (the common shell + the shape deskfile/pr-review-desk invoke), the
+	//     forge is RESOLVED from --repo: a repo that AFFIRMATIVELY resolves to GitLab takes the
+	//     PAT path, so `desktoken reviewer --repo <gitlab-slug>` no longer dies in the GitHub
+	//     App mint with `no App ID for App "reviewer-app"` — the credential a PAT-backed GitLab
+	//     bot never provisions (#772 named it, #798 closes it). A GitHub or
+	//     could-not-check resolution falls through to the App mint, so every repo whose forge
+	//     cannot be POSITIVELY resolved keeps its exact pre-#798 behaviour — the same
+	//     three-state fall-through requireGitHubForge makes on the deskpost side.
 	switch strings.ToLower(strings.TrimSpace(*forge)) {
-	case "", "github":
+	case "":
+		if gitlabRepoResolved(*repo) {
+			return cmdGitLabRotate(role, ac)
+		}
+		// fall through to the GitHub App-token mint path.
+	case "github":
 		// fall through to the GitHub App-token mint path.
 	case "gitlab":
 		return cmdGitLabRotate(role, ac)
