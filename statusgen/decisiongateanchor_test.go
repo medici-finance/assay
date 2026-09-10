@@ -110,6 +110,170 @@ func TestDecisionGateAnchor_UnlinkedIssue_Missing(t *testing.T) {
 	}
 }
 
+// DR-<slug>.md decision-record placeholders (house placeholder names). A DR's
+// `decided-by:` names the approving human, but the human act is CLOSING the linked
+// needs-decision issue — so the DR anchor corroborates a concrete `human:<name>`
+// stamp found in the DR file against that closed issue, exactly as the brief anchor
+// does for a brief-file stamp.
+const (
+	dgDRFile   = "docs/streams/decisions/DR-example-choice-rec.md" // -> record id "DR-example-choice-rec"
+	dgDRMarker = "<!-- decision-gate: DR-example-choice-rec -->"   // the marker for THIS record
+)
+
+// TestDecisionGateAnchor_Table pins BOTH the new DR-<slug>.md anchor AND the original
+// brief-<NN>.md anchor through the one pure core, and pins that each of conditions
+// (a)/(b)/(c) is independently required for the DR form. Each row drives
+// corroborateStamps with EMPTY PR data, so only the third anchor can decide the
+// verdict. Under the fixture roster: bless login "ada"; stamp name "alex" -> login
+// "ada".
+func TestDecisionGateAnchor_Table(t *testing.T) {
+	cases := []struct {
+		name  string
+		stamp stamp
+		gates decisionGateLinks
+		want  verdict
+		// evidenceContains, when non-empty, must appear in the corroborated evidence.
+		evidenceContains string
+	}{
+		{
+			// NEW FORM, positive control: all three conditions hold for a DR record.
+			name:  "DR record, all three satisfied",
+			stamp: stamp{Name: "alex", File: dgDRFile},
+			gates: decisionGateLinks{dgDRFile: {{
+				Ref:      "o/r#88",
+				ClosedBy: "ada",
+				Body:     "Ratified: Option A.\n\n" + dgDRMarker + "\n",
+			}}},
+			want:             verdictCorroborated,
+			evidenceContains: "o/r#88",
+		},
+		{
+			// OLD FORM still works: a brief-file stamp corroborates unchanged.
+			name:  "brief file, all three satisfied",
+			stamp: stamp{Name: "alex", File: dgBriefFile},
+			gates: decisionGateLinks{dgBriefFile: {{
+				Ref:      "o/r#77",
+				ClosedBy: "ada",
+				Body:     "Ratified: Option A.\n\n" + dgMarker + "\n",
+			}}},
+			want:             verdictCorroborated,
+			evidenceContains: "o/r#77",
+		},
+		{
+			// (a) required for a DR: a non-blessed closer does not ratify.
+			name:  "DR record, wrong closer",
+			stamp: stamp{Name: "alex", File: dgDRFile},
+			gates: decisionGateLinks{dgDRFile: {{
+				Ref:      "o/r#88",
+				ClosedBy: "someone-else",
+				Body:     "Ratified: Option A.\n\n" + dgDRMarker + "\n",
+			}}},
+			want: verdictMissing,
+		},
+		{
+			// (b) required for a DR: the marker names a DIFFERENT record.
+			name:  "DR record, marker for a different record",
+			stamp: stamp{Name: "alex", File: dgDRFile},
+			gates: decisionGateLinks{dgDRFile: {{
+				Ref:      "o/r#88",
+				ClosedBy: "ada",
+				Body:     "Ratified: Option A.\n\n<!-- decision-gate: DR-other-choice-rec -->\n",
+			}}},
+			want: verdictMissing,
+		},
+		{
+			// (b) required, cross-form: a brief marker must NOT ratify a DR record even
+			// under the DR's own key (the two id namespaces are distinct).
+			name:  "DR record, brief marker does not ratify it",
+			stamp: stamp{Name: "alex", File: dgDRFile},
+			gates: decisionGateLinks{dgDRFile: {{
+				Ref:      "o/r#88",
+				ClosedBy: "ada",
+				Body:     "Ratified: Option A.\n\n" + dgMarker + "\n",
+			}}},
+			want: verdictMissing,
+		},
+		{
+			// (c) required for a DR: a qualifying issue exists but is linked by a
+			// DIFFERENT record's key, so this DR stamp has no linked issue of its own.
+			name:  "DR record, unlinked issue",
+			stamp: stamp{Name: "alex", File: dgDRFile},
+			gates: decisionGateLinks{"docs/streams/decisions/DR-some-other-record.md": {{
+				Ref:      "o/r#88",
+				ClosedBy: "ada",
+				Body:     "Ratified: Option A.\n\n" + dgDRMarker + "\n",
+			}}},
+			want: verdictMissing,
+		},
+		{
+			// N/A file: a stamp on a file that is neither a brief nor a DR record is
+			// outside the third anchor entirely — MISSING with no PR anchor to fall to.
+			name:  "non-brief non-DR file",
+			stamp: stamp{Name: "alex", File: "docs/streams/decisions/README.md"},
+			gates: decisionGateLinks{"docs/streams/decisions/README.md": {{
+				Ref:      "o/r#88",
+				ClosedBy: "ada",
+				Body:     "Ratified: Option A.\n\n" + dgDRMarker + "\n",
+			}}},
+			want: verdictMissing,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			results := corroborateStamps([]stamp{tc.stamp}, &ghPRData{}, "o/r", 1, tc.gates)
+			if len(results) != 1 {
+				t.Fatalf("got %d results, want 1", len(results))
+			}
+			if results[0].Verdict != tc.want {
+				t.Fatalf("verdict = %v, want %v — evidence: %s",
+					results[0].Verdict, tc.want, results[0].Evidence)
+			}
+			if tc.evidenceContains != "" && !strings.Contains(results[0].Evidence, tc.evidenceContains) {
+				t.Errorf("evidence should contain %q, got: %s", tc.evidenceContains, results[0].Evidence)
+			}
+		})
+	}
+}
+
+// TestDecisionRecordID pins the DR-<slug>.md basename recognition (and the brief and
+// non-record files it must reject).
+func TestDecisionRecordID(t *testing.T) {
+	cases := []struct {
+		path   string
+		wantID string
+		wantOK bool
+	}{
+		{"docs/streams/decisions/DR-example-choice-rec.md", "DR-example-choice-rec", true},
+		{"DR-example-choice-rec.md", "DR-example-choice-rec", true}, // dir is not constrained, as with briefs
+		{"docs/streams/decisions/DR-short.md", "", false},           // slug too short for decisionIDRe
+		{"docs/streams/sdlc/brief-05-design-gate.md", "", false},    // a brief is not a DR
+		{"docs/streams/decisions/README.md", "", false},
+		{"docs/streams/decisions/DR-example-choice-rec.txt", "", false},
+	}
+	for _, tc := range cases {
+		id, ok := decisionRecordID(tc.path)
+		if ok != tc.wantOK || id != tc.wantID {
+			t.Errorf("decisionRecordID(%q) = (%q, %v), want (%q, %v)", tc.path, id, ok, tc.wantID, tc.wantOK)
+		}
+	}
+}
+
+// TestDecisionGateAnchorID pins that the combined resolver returns a brief id for a
+// brief file, a DR id for a DR record, and nothing for anything else — and that the
+// two id namespaces are distinguishable (a brief id carries "/", a DR id does not).
+func TestDecisionGateAnchorID(t *testing.T) {
+	if id, ok := decisionGateAnchorID(dgBriefFile); !ok || id != "sdlc/05" {
+		t.Errorf("brief: got (%q, %v), want (\"sdlc/05\", true)", id, ok)
+	}
+	if id, ok := decisionGateAnchorID(dgDRFile); !ok || id != "DR-example-choice-rec" {
+		t.Errorf("DR: got (%q, %v), want (\"DR-example-choice-rec\", true)", id, ok)
+	}
+	if id, ok := decisionGateAnchorID("docs/streams/decisions/README.md"); ok {
+		t.Errorf("non-record: got (%q, %v), want (\"\", false)", id, ok)
+	}
+}
+
 // The third anchor must not disturb the two PR anchors: with no decision-gate data
 // at all, an APPROVED review still corroborates exactly as before.
 func TestDecisionGateAnchor_PRAnchorStillWinsWithNoGateData(t *testing.T) {
