@@ -196,6 +196,89 @@ func TestPreExistingReshapedBaseResolvesByHeader(t *testing.T) {
 	}
 }
 
+// TestPreExistingBranchColumnAbsentFromBaseFailsClosed is the regression for the
+// header-resolution fix's fail-closed direction (#769, follow-on to #785): when the
+// stamp's BRANCH column name is ABSENT from the base table's header entirely, the base
+// cannot carry that column at all, so a byte-identical re-render can never be proven —
+// the exemption must fail CLOSED (the stamp stays gated), NOT silently fall back to the
+// branch's positional index and read whatever base cell happens to sit there.
+//
+// The scenario models a migration that ADDS a sign-off column ("Approved") the base
+// never had, while both tables keep a "Reviewed" column (so both headers are
+// recognized). The human:<name> stamp lands in the branch-only "Approved" column. The
+// base row is deliberately shaped so its cell AT THE BRANCH'S POSITIONAL INDEX is
+// byte-identical to the branch stamp cell: a naive index-fallback would therefore read
+// that base cell and WRONGLY report PRE-EXISTING. Resolving by header NAME finds no
+// "Approved" column on the base and fails closed — the stamp reads MISSING and stays
+// gated.
+func TestPreExistingBranchColumnAbsentFromBaseFailsClosed(t *testing.T) {
+	board := "docs/streams/windows-port/README.md"
+
+	// Branch (this PR's diff): the migration added an "Approved" sign-off column after
+	// "Reviewed". The human stamp lands in "Approved" (index 7); "Reviewed" (index 6)
+	// holds only a placeholder dash. "Reviewed" is present so the branch header is
+	// recognized and each stamp carries its own column NAME.
+	branchHeader := "| # | Brief | Wave | Effort | Status | Verified | Reviewed | Approved |"
+	branchDelim := "|---|-------|------|--------|--------|----------|----------|----------|"
+	branchRow := "| 04 | [B](brief-04-s.md) | 0 | S | done | 2026-09-01 opus-4.8[1m]-verifier | — | 2026-09-08 human:ian |"
+
+	// A full table re-render emits the header, its delimiter, and the row as ADDED
+	// lines — the shape stampsInDiff reads the branch column's header name from.
+	diff := "diff --git a/" + board + " b/" + board + "\n" +
+		"--- a/" + board + "\n" +
+		"+++ b/" + board + "\n" +
+		"@@ -40,12 +40,11 @@\n" +
+		"+" + branchHeader + "\n" +
+		"+" + branchDelim + "\n" +
+		"+" + branchRow + "\n"
+
+	stamps := stampsInDiff("", diff)
+	if len(stamps) != 1 {
+		t.Fatalf("got %d stamps, want 1: %+v", len(stamps), stamps)
+	}
+	if len(stamps[0].Rows) != 1 {
+		t.Fatalf("stamp recorded %d rows, want 1: %+v", len(stamps[0].Rows), stamps[0])
+	}
+	// The stamp's column name was captured off the branch header — it is the key the
+	// base lookup resolves by, and it is the column the base does NOT carry.
+	if got := stamps[0].Rows[0].Header; got != "Approved" {
+		t.Fatalf("branch column header = %q, want %q", got, "Approved")
+	}
+	if got := stamps[0].Rows[0].CellIndex; got != 7 {
+		t.Fatalf("branch CellIndex = %d, want 7 (Approved is the last branch column)", got)
+	}
+
+	// Base (merge-base): NO "Approved" column. It keeps "Reviewed" (so the header is
+	// recognized and briefHeaderIndex returns a non-empty map) and carries a "Gate"
+	// column at the branch's index 7 whose row text is byte-identical to the branch's
+	// Approved cell — the bait a positional index-fallback would bite on.
+	baseHeaderLine := "| # | Brief | Wave | Effort | Status | Verified | Reviewed | Gate |"
+	baseRow := "| 04 | [B](brief-04-s.md) | 0 | S | done | 2026-09-01 opus-4.8[1m]-verifier | — | 2026-09-08 human:ian |"
+	baseRows := map[string]string{"04": baseRow}
+	baseHeader := briefHeaderIndex(baseHeaderLine)
+	if _, ok := baseHeader["approved"]; ok {
+		t.Fatalf("base header unexpectedly carries an Approved column: %v", baseHeader)
+	}
+	if baseHeader["gate"] != 7 {
+		t.Fatalf("base header index for Gate = %d, want 7 (the positional-fallback bait sits at the branch's index)", baseHeader["gate"])
+	}
+
+	markPreExisting(stamps,
+		map[string]map[string]string{board: baseRows},
+		map[string]map[string]int{board: baseHeader})
+
+	results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1, nil)
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+	if results[0].Verdict != verdictMissing {
+		t.Errorf("verdict = %v, want MISSING-CORROBORATION — the branch column is absent from the base header, so the exemption must fail closed rather than fall back to the positional index and match the base's Gate cell", results[0].Verdict)
+	}
+	if !stampResultsFail(results) {
+		t.Errorf("run-fails = false, want true — a stamp whose column the base lacks must stay gated (fail closed)")
+	}
+}
+
 // TestPreExistingRequiresAllRows pins the anti-evasion property: a (name,file)
 // stamp is exempt ONLY when EVERY board row it appears on is byte-identical to the
 // base. A pre-existing row and a genuinely NEW, uncorroborated row that happen to
