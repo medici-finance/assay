@@ -30,20 +30,20 @@ statusgen:
   # Release home the umbrella statusgen binaries are published from (public).
   release_home: medici-finance/assay
   # Concrete, pinned repo-level semver tag. Never a floating/rolling ref.
-  tag: v1.0.1
+  tag: v1.0.2
   # Per-platform channel-E pins: `<artifact> <tag> <sha256>`, the exact shape the adopter's
-  # `.assay-versions` carries. sha256 values harvested from the v1.0.1 release checksums.txt.
+  # `.assay-versions` carries. sha256 values harvested from the v1.0.2 release checksums.txt.
   platforms:
-    darwin-arm64: statusgen-darwin-arm64 v1.0.1 152c06994d3462200a33f86b612e93d5e8819a09a51bdfa2c41dd98ab62b1de6
-    darwin-amd64: statusgen-darwin-amd64 v1.0.1 ec2e0f5865fdaeb6cd2b86d21dc964849d672018b7dc7d7f044a92fecc6c08b8
-    linux-amd64:  statusgen-linux-amd64  v1.0.1 342913c7bb95bfb9dba0f2eef3c24db1592bb6ba7cd70f33a93ee9aba9642587
-    windows-amd64: statusgen-windows-amd64.exe v1.0.1 63df41cf9b2d492b0bd1f1c35155a10afc73d3278e5d7a011e593b2c1316d38e
-    windows-arm64: statusgen-windows-arm64.exe v1.0.1 fa31f7a5b97c885662798ecc452c595f041681b37f4253a1600f4572cc9a92b3
-    # linux-arm64: no published statusgen-linux-arm64 asset in the v1.0.1 release either.
+    darwin-arm64: statusgen-darwin-arm64 v1.0.2 316e14795b9267498537789e3457420de8eba4089c928c930d95037b43fda018
+    darwin-amd64: statusgen-darwin-amd64 v1.0.2 0b070095c8e04eb700036c662026ddc226a60aab4607c621a8be661da7b364e2
+    linux-amd64:  statusgen-linux-amd64  v1.0.2 8955c742dd4cd5c58abee2f162a73149523253806f917dae01eb3080df0e28a3
+    windows-amd64: statusgen-windows-amd64.exe v1.0.2 a7ad70e819e8db708696c48f359bd81c35a50e16eb66f77b43b67bfc0ac233a6
+    windows-arm64: statusgen-windows-arm64.exe v1.0.2 6707f19e8333fbb5de1d326c6eeed62e1d44409b64b6a4e0f38575bf4361f85f
+    # linux-arm64: no published statusgen-linux-arm64 asset in the v1.0.2 release either.
     #   Left out deliberately rather than pinned to an invented hash; the install skill REFUSES
     #   (never guesses) when the pin line for a detected platform is absent.
     # The two windows arms above are pinned like any other platform: `statusgen-windows-
-    #   {amd64,arm64}.exe` have shipped in every release since v0.26.0, and v1.0.1 publishes both,
+    #   {amd64,arm64}.exe` have shipped in every release since v0.26.0, and v1.0.2 publishes both,
     #   so both hashes come from its checksums.txt.
 
 # The optional desk-role binaries (deskboard, deskpr, deskevidence, deskfile, deskpost, …), shipped
@@ -54,18 +54,18 @@ desk-tools:
   # Same public release home the statusgen binaries are published from.
   release_home: medici-finance/assay
   # Pinned to the SAME tag as statusgen above — the desk binaries and statusgen are cut together.
-  tag: v1.0.1
+  tag: v1.0.2
   # Per-platform channel-E pins: `<artifact> <tag> <sha256>`. The artifact is a `.tar.gz` (the
   # desk-tools ship as a tarball of binaries, not a single file). sha256 values harvested from the
-  # v1.0.1 release checksums.txt — never hand-invented.
+  # v1.0.2 release checksums.txt — never hand-invented.
   platforms:
-    darwin-arm64: desk-tools-darwin-arm64.tar.gz v1.0.1 cf52d22d5c554da8c725c440bbb55e50b3e7b1a2cc4a80394729bfe676e0c6e9
-    darwin-amd64: desk-tools-darwin-amd64.tar.gz v1.0.1 c9206cd074b52be5db19d9ca27195e93b69ec80c21035b7d71548d5f2a9ae3d7
-    linux-amd64:  desk-tools-linux-amd64.tar.gz  v1.0.1 80cc55bea24a191a08f87275777603720ac59c48d988a9b538f4a31497cfe82b
-    windows-amd64: desk-tools-windows-amd64.tar.gz v1.0.1 cc92ed010403a991ac35c3fb862ac3a0eb141a65b0f08113ea0480f4e78b605d
-    windows-arm64: desk-tools-windows-arm64.tar.gz v1.0.1 0e0e765dfdbc07b7328da030974f51d87a4f462cb12dc605785b9a52967b3426
-    # linux-arm64: no published desk-tools-linux-arm64 asset in the v1.0.1 release either.
+    darwin-arm64: desk-tools-darwin-arm64.tar.gz v1.0.2 66ca3e875108683342007e7d829c232137ff30b681d59b8244eaba2000babd01
+    darwin-amd64: desk-tools-darwin-amd64.tar.gz v1.0.2 9f6450f95670942bd1670dc9fe2c13008f0d9bb158197beb698ff96c50496e88
+    linux-amd64:  desk-tools-linux-amd64.tar.gz  v1.0.2 2b71f0813e06ada8c2ebed64ca9f20432e16635d7833e6ccb7cef2bf0d9b2dba
+    windows-amd64: desk-tools-windows-amd64.tar.gz v1.0.2 7a52d5d384229af7a9d3946fb81618938551309ab2ceeb40aaa6e8d3dfbc5afc
+    windows-arm64: desk-tools-windows-arm64.tar.gz v1.0.2 69af6d3b2fde168413a319db8f562b7cc8ebd568f0b002bb320423cbb05c98fd
+    # linux-arm64: no published desk-tools-linux-arm64 asset in the v1.0.2 release either.
     #   Left out deliberately rather than pinned to an invented hash; the acquisition REFUSES
     #   (never guesses) when the pin line for a detected platform is absent — same as statusgen.
-    # The two windows arms above mirror the statusgen ones: v1.0.1 publishes
+    # The two windows arms above mirror the statusgen ones: v1.0.2 publishes
     #   `desk-tools-windows-{amd64,arm64}.tar.gz`, so they are pinned rather than deferred.

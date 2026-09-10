@@ -340,6 +340,43 @@ func TestForgeSingleConstructionSite(t *testing.T) {
 	}
 }
 
+// --- #727: an empty host never defaults to the SaaS instance -------------------------
+
+// A roster entry names the forge SOFTWARE, not the INSTANCE. When ForgeKindFromSlugAndHost is
+// given no origin host, it must NOT fill the host from the canonical SaaS instance — doing so
+// silently pointed a self-hosted GitLab adopter's credential at gitlab.com and swallowed the
+// auth failure (#727). An empty host is could-not-check (Unverifiable), naming the repo.
+func TestForgeKindFromSlugAndHostEmptyHostRefusesSaaSDefault(t *testing.T) {
+	repo := ForgeRepo{Owner: "group", Name: "repo"}
+	roster := goldenRoster()
+	roster[EnvRepoForges] = repo.Slug() + "=gitlab"
+	withRoster(t, roster)
+
+	kind, host, err := ForgeKindFromSlugAndHost(repo.Slug(), "")
+	if err == nil {
+		t.Fatalf("empty host silently resolved to kind=%q host=%q — a roster entry is not an instance", kind, host)
+	}
+	if strings.Contains(strings.ToLower(host), "gitlab.com") {
+		t.Fatalf("empty host defaulted to the SaaS host %q (the #727 defect)", host)
+	}
+	if got := ExitCodeOf(err); got != ExitUnverifiable {
+		t.Fatalf("exit = %d, want %d (unverifiable) — an unknown instance is could-not-check", got, ExitUnverifiable)
+	}
+	if !strings.Contains(err.Error(), repo.Slug()) {
+		t.Errorf("refusal does not name the repo, so an operator cannot act on it: %v", err)
+	}
+
+	// The same repo WITH its real self-hosted host supplied resolves unchanged — the fix
+	// refuses the GUESS, never a host the caller actually read.
+	k2, h2, err2 := ForgeKindFromSlugAndHost(repo.Slug(), "gitlab.selfhosted.example")
+	if err2 != nil {
+		t.Fatalf("an explicit self-hosted host must resolve, got %v", err2)
+	}
+	if k2 != ForgeGitLab || h2 != "gitlab.selfhosted.example" {
+		t.Fatalf("explicit-host resolve = (%q, %q), want (gitlab, gitlab.selfhosted.example)", k2, h2)
+	}
+}
+
 // --- roster key registration --------------------------------------------------------------
 
 func TestRosterKnownKeySet(t *testing.T) {

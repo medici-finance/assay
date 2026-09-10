@@ -23,6 +23,112 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.2 — 2026-09-10
+
+### Added
+- **`DESK_TRACE=1` — a diagnostic switch for the desk tools.** Turn it on (or pass a global
+  `--trace`) and a failing verb prints the full cause chain, every child process it started with
+  the command line as executed, that child's exit status and elapsed time, and the failing
+  child's stderr in full. Credentials are redacted at one choke point — GitHub token prefixes,
+  URL userinfo such as `https://x-access-token:…@`, `Authorization:` headers and secret-shaped
+  environment assignments — and marked `<redacted>` rather than silently elided. With the switch
+  off, output is byte-identical to before. Retrofitted onto `deskdispatch`, `deskwt`, `desktoken`
+  and `deskfile`; other verbs are unaffected.
+- Recorded, with measurements, that **v1.0.1 supersedes v1.0.0 as the upgrade target without
+  superseding the flag day**. An adopter already on v1.0.0 has no migration to run — only a
+  re-pin — while an adopter on v0.28.0 upgrading straight to v1.0.1 still runs the brief-v1 →
+  brief-v2 migration on the way through rather than being skipped past it.
+
+### Fixed
+- **A board with an extra authoring column keeps its lifecycle cells through a
+  re-render.** The Status / Verified / Reviewed columns were read back from fixed
+  offsets, which is correct only for the canonical seven-column table. A board carrying
+  an extra column (a `Gate` column between Effort and Status is the shape in the wild)
+  had every lifecycle cell read one position to the left, so a re-render wrote the gate
+  value into Status and the real status into Verified — silent loss of lifecycle state,
+  on the one run hardest to notice because a hundred other files change with it. The
+  columns are now keyed on the header names, as the board parser already does.
+- **A brief whose title contains a `|` no longer breaks the board it is rendered into.**
+  The generated Briefs table interpolated titles raw, so a title such as
+  `` `--cadence weekly|monthly` `` emitted a row with one cell too many and the board's
+  own parser then rejected the whole stream. Titles are now escaped for the cell they
+  land in; the parser already understood the escaped form, so only the render half was
+  missing.
+- **A failed child's own message now reaches the operator on the first read.** Every desk tool
+  opens stderr with its `assay-config:` echo, so a step report built from the first stderr line
+  printed the echo and never the diagnosis — `deskdispatch` reported claim and roster failures as
+  `(assay-config: …)`, and its worktree-path checks returned a bare `exit status 128` with
+  nothing in it to search for. Failures now end on `— <tool> said: <the tool's own first line>`,
+  with the rest carried on the error for the trace to print.
+- **`deskclaim-ref` no longer silently dials `gitlab.com` on a self-hosted GitLab.** When go-git
+  could not read the origin remote — the `worktreeConfig` extension it does not support, which git
+  itself enables under the linked-worktree model the desks require — the tool fell back to the
+  canonical SaaS host, so a self-hosted PAT was presented to `gitlab.com`, denied, and every claim
+  verb exited `unverifiable` (6). That stalled `deskdispatch --kit review` at `claim-acquire`, so a
+  review desk could not fill a reviewer slot. Three independent fixes:
+- **`desktoken` says that stdout is a PATH.** A caller that used the output as a credential got
+  `401 Bad credentials` from its next forge call, three processes downstream and naming nothing.
+  A one-line NOTICE now accompanies the path on stderr, with the incantation that reads the
+  value. Stdout is unchanged, so callers that pipe it are untouched.
+- **`deskwt` and `deskfile` failures carry the command line and the child's exit status**, so a
+  trace has something to show for them; `deskfile` can still tell a `401` from a `403` from a
+  `429` on its fail-closed dedupe-search path.
+- **`statusgen migrate brief-v1-to-v2` no longer refuses a tree that has a register.**
+  The migration enumerated every directory under `docs/streams/` as a stream, so a
+  REGISTER directory — which by design carries a README with no frontmatter and no
+  Briefs table — aborted the whole flag day with `exit 5: no recognisable Briefs table`
+  and left every real stream unmigrated. It now applies the same two rules stream
+  discovery already applies: the reserved register names, and the "a register, not a
+  stream" self-declaration.
+- The generated Briefs table no longer TRUNCATES a board's own columns. A stream
+  README whose table carried a column beyond the canonical seven — a trailing
+  `What's landed`, an `Owner` column — lost that column entirely on the first
+  `statusgen migrate` / `regen --readmes`, header and every cell, because the
+  render emitted a fixed seven cells. Non-canonical columns are now carried
+  through verbatim, appended after `Reviewed` in the order the source header
+  lists them. `Gate` remains the one column the layout deliberately drops (it
+  duplicates the brief's own `gate:` frontmatter key), and it is now dropped
+  header-and-cells together rather than shifting the row.
+- `deskclaim-ref` reads the origin remote through a `worktreeConfig`-aware path: it falls back to
+  native `git remote get-url origin`, then to a direct parse of the common `.git/config` (which
+  resolves a linked worktree's `commondir`), covering both the shared checkout and the role
+  worktree.
+- `deskkit.ForgeKindFromSlugAndHost` never defaults the host to the SaaS instance when the caller
+  supplies none — a roster entry names the forge **software**, not the **instance** — and returns
+  could-not-check instead of a guess.
+- `deskmigrate` no longer reports a SILENT no-op on an unmigrated tree. When no
+  migration covers the requested span but the tree still carries
+  `schema: brief-v1` files under `docs/streams/`, it exits non-zero naming the
+  migrations directory it looked in and the vendoring step, instead of printing
+  `no migrations for vX -> vY (clean no-op)` at exit 0 — output an operator
+  cannot tell from a completed migration. A genuinely migrated tree is still a
+  clean no-op at exit 0.
+- `statusgen` board-honesty: the `NON-DISPATCHABLE (re-homed)` NOTICE now keys on
+  the ROW's own re-home marker (`[homed→…]`, `deliverable-repo:`, or explicit
+  do-not-re-implement wording in the brief cell), never on a stream-level README
+  inference. A stream whose README merely mentions re-homing no longer flags every
+  file-less `todo` row as re-homed (statusgen #709).
+- a fail-closed transport error now carries the host it dialed and the underlying cause —
+  `could not create the claim refs/dispatch/<id>: <host>: <error>` — so the message attributes
+  the failure instead of costing an operator a debug cycle on the wrong suspects.
+
+### Changed
+- Every `deskmigrate` run now prints the number of migrations SELECTED and the
+  number of planned file actions, so "nothing matched the span" reads
+  differently from "matched, and already applied".
+- The adopter-scaffold example gains a v1.0.1 composition manifest with real digests, and its
+  notes now name v1.0.1 as the umbrella an upgrade moves to. The v1.0.0 manifest stays: a tree
+  pinned there still has to resolve, and the brief-v1 → brief-v2 migration's span ends at v1.0.0.
+- The plugin's paired-versions manifest now pins statusgen and desk-tools at the published
+  umbrella **v1.0.1** on all ten platform lines, every digest re-harvested from that release's
+  own checksum manifest and compared back against it. A cold install resolves the v1.0.1
+  binaries and verifies them byte-for-byte.
+- `deskkit` grows one shared subprocess runner (`deskkit.Run`) that replaces three divergent
+  per-command runners, and a shared error-report path (`deskkit.ReportError`) that every
+  retrofitted verb's `main()` uses. `DeskError` carries subprocess detail out of band and gains a
+  `Cause()` accessor and a `RefusedWithCause` constructor; `Refused`'s signature is unchanged, and
+  a refusal that gains a cause is still a refusal with the same exit code.
+
 ## v1.0.1 — 2026-09-09
 
 ### Added

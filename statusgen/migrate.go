@@ -364,6 +364,17 @@ func migrateOneBrief(path string, reg migrateRegistry, dryRun bool) (*migratePla
 
 // migrateStreamReadmes lists stream README.md files (one per docs/streams/<stream>
 // dir), ordered for stable output.
+//
+// REGISTERS ARE NOT STREAMS. A register directory under docs/streams
+// (spec/registers-v1.md §7) carries a README with no `---` frontmatter and no
+// Briefs table, because it indexes entries rather than briefs. It is skipped
+// here by the SAME two rules loadStreams applies (load.go): the reserved names
+// the spec fixes (findings/intake/requirements/decisions), plus the
+// self-declaration marker for a register whose directory name is not in that set
+// (issue #616). Without the skip this walker treated every subdirectory with a
+// README.md as a stream, so a single register aborted the WHOLE migration with
+// exit 5 "no recognisable Briefs table" and no brief in any real stream was
+// rewritten — the flag day failing closed on a correctly-formed tree.
 func migrateStreamReadmes(root string) ([]string, error) {
 	base := filepath.Join(root, "docs", "streams")
 	entries, err := os.ReadDir(base)
@@ -378,10 +389,17 @@ func migrateStreamReadmes(root string) ([]string, error) {
 		if !e.IsDir() {
 			continue
 		}
-		p := filepath.Join(base, e.Name(), "README.md")
-		if _, err := os.Stat(p); err == nil {
-			out = append(out, p)
+		if reservedRegisterNames[e.Name()] {
+			continue
 		}
+		p := filepath.Join(base, e.Name(), "README.md")
+		if _, err := os.Stat(p); err != nil {
+			continue
+		}
+		if isSelfDeclaredRegisterREADME(p) {
+			continue
+		}
+		out = append(out, p)
 	}
 	return out, nil
 }

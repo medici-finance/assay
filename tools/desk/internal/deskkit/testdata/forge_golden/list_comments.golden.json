@@ -4,7 +4,7 @@
       "method": "POST",
       "path": "/graphql",
       "body": {
-        "query": "query($owner:String!, $name:String!, $number:Int!) {\n  repository(owner: $owner, name: $name) {\n    pullRequest(number: $number) {\n      comments(first: 100) {\n        nodes {\n          id\n          databaseId\n          body\n          isMinimized\n          createdAt\n          url\n          author { login }\n        }\n      }\n    }\n  }\n}",
+        "query": "query($owner:String!, $name:String!, $number:Int!) {\n  repository(owner: $owner, name: $name) {\n    pullRequest(number: $number) {\n      comments(first: 100) {\n        nodes {\n          id\n          databaseId\n          body\n          isMinimized\n          createdAt\n          url\n          author { login __typename }\n        }\n      }\n    }\n  }\n}",
         "variables": {
           "name": "assay",
           "number": 7,

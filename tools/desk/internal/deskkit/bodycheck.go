@@ -18,6 +18,18 @@ var (
 	reJWT         = regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`)
 	reBase64ish   = regexp.MustCompile(`[A-Za-z0-9+/=]{32,}`)
 	reLowerHex    = regexp.MustCompile(`^[0-9a-f]+$`)
+	reUpperHex    = regexp.MustCompile(`^[0-9A-F]+$`)
+
+	// rePGPFingerprintAnchor recognises a sops PGP-recipient field IMMEDIATELY before a
+	// high-entropy run: a `pgp:` or `fp:` key (optionally JSON-quoted) followed only by the
+	// scaffolding a YAML/JSON scalar or a comma-list of fingerprints puts between the key and
+	// this fingerprint — whitespace and newlines, block-scalar `>`/`|`, quotes, brackets,
+	// list dashes, commas, and any earlier 40-hex fingerprints. It is applied to the surface
+	// text BEFORE the run (so it ends on `$`), and it is the anchor isPGPFingerprint (Rule 3)
+	// requires. It exempts NOTHING on its own: a bare uppercase-hex run with no recipient key
+	// in front of it never matches, and the run's own shape is still checked by
+	// isPGPFingerprint (exactly 40 UPPERCASE hex) before the anchor is even consulted.
+	rePGPFingerprintAnchor = regexp.MustCompile(`(?is)(?:^|[\s"'{,\[-])(?:pgp|fp)"?\s*:[\s>|"'\[\],-]*(?:[0-9A-F]{40}[\s,"']+)*$`)
 
 	// reDocExtension matches a DOC-file extension immediately after a run — the ".md",
 	// ".txt", ".json", ".yaml" or ".yml" a doc PATH ends on, bounded so ".md" matches but
@@ -490,11 +502,21 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 		if isDocPathHexSegment(raw, loc[0], loc[1]) || isIssueNumberList(run) {
 			continue
 		}
+		// Rule 3 (PGP-recipient-fingerprint arm). NARROWER than the class it clears and
+		// bounded by paired positive fixtures (TestPGPFingerprintExemption): isPGPFingerprint
+		// admits a 40-char UPPERCASE-hex OpenPGP key fingerprint ONLY when a `pgp:`/`fp:`
+		// recipient key anchors it — a `.sops.yaml` creation-rules recipient and a sops `fp:`
+		// field both take that shape. A bare uppercase-hex run, a lowercase/mixed 40-char run,
+		// and a genuine secret wearing the same field all stay refused.
+		if isPGPFingerprint(raw, loc[0], loc[1]) {
+			continue
+		}
 		return RefusedFinding(fmt.Sprintf(
 			"refused: %s contains a %d-char high-entropy run (possible secret); "+
 				"only git SHAs (40/64 lowercase hex), slash-separated paths built from "+
 				"word-shaped segments, bare word-shaped identifiers, key=<path> shell "+
-				"assignments, all-'=' banner separators, and the marker-anchored digest "+
+				"assignments, all-'=' banner separators, a PGP recipient fingerprint (40 "+
+				"uppercase hex after a pgp:/fp: field), and the marker-anchored digest "+
 				"fields of a recognised structured format (go.sum h1:, SRI integrity, a "+
 				"complete sops envelope) are exempt", surface, len(run)),
 			&ScanFinding{Rule: "high-entropy-run", Line: lineOf(raw, loc[0]), Length: len(run), Shape: redactShape(run)})
@@ -506,6 +528,34 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 // lowercase-hex string — the one exemption to the high-entropy-run rule.
 func isGitSHA(run string) bool {
 	return (len(run) == 40 || len(run) == 64) && reLowerHex.MatchString(run)
+}
+
+// isPGPFingerprint is Rule 3, the PGP-recipient-fingerprint arm. It admits a run that is
+// EXACTLY 40 UPPERCASE hex characters — the canonical OpenPGP v4 key-fingerprint shape —
+// but ONLY when a `pgp:` or `fp:` recipient key precedes it in the surrounding surface,
+// separated by nothing but the scaffolding a YAML/JSON scalar or a comma-list of
+// fingerprints puts there (rePGPFingerprintAnchor). That is the shape a `.sops.yaml`
+// creation-rules `pgp:` recipient and a sops metadata `fp:` field both take, and it is the
+// shape isGitSHA structurally misses: isGitSHA requires LOWERCASE hex, so an uppercase
+// fingerprint fell straight through to the high-entropy refusal.
+//
+// It is bounded HARD, the same way Rules 1 and 2 are:
+//   - the run must be EXACTLY 40 UPPERCASE hex — a 40-char lowercase run is a git SHA and
+//     already exempt; a mixed-case or non-hex 40-char run is not a fingerprint and keeps the
+//     loop's own verdict (an AWS secret key is 40 mixed-case base64, so it never qualifies);
+//     a 39/41-char run fails on length;
+//   - a `pgp:`/`fp:` recipient key must PRECEDE it — a bare 40-uppercase-hex run with no key
+//     in front of it stays refused, since an uppercase token in prose is exactly that shape.
+//
+// The anchor is what keeps this from loosening the check: an uppercase-hex run is admitted
+// only when it wears a recipient field it did not earn, which is not a shape a pasted
+// credential takes. TestPGPFingerprintExemption pins both directions.
+func isPGPFingerprint(raw string, start, end int) bool {
+	run := raw[start:end]
+	if len(run) != 40 || !reUpperHex.MatchString(run) {
+		return false
+	}
+	return rePGPFingerprintAnchor.MatchString(raw[:start])
 }
 
 // regexFinding builds the explain ScanFinding for a literal-marker arm: the rule id, the

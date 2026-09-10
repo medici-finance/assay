@@ -237,3 +237,111 @@ func mustRead(t *testing.T, path string) string {
 	}
 	return string(b)
 }
+
+// TestReadmeTableEscapesPipeInTitle pins the round trip for a brief whose title
+// legitimately contains a `|` — e.g. a flag spelled `--cadence weekly|monthly`.
+//
+// The generated region is a markdown table, so an unescaped `|` in a title is a
+// COLUMN DELIMITER: the row renders with one cell too many and parse.go rejects
+// the whole board ("row has 8 cells, header has 7"). splitRow already treats `\|`
+// as cell content rather than a delimiter, so the renderer is the only half that
+// was missing — and until it escapes, a stream is only lint-clean for as long as
+// no brief title happens to contain a pipe.
+//
+// The assertion is the round trip, not the spelling: render, then parse the
+// rendered table back and require every row to carry the header's cell count.
+func TestReadmeTableEscapesPipeInTitle(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "streams", "teststream")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const pipeTitle = "Cadenced roadmap artifacts — `--cadence weekly|monthly` windows"
+	path := filepath.Join(dir, "README.md")
+	if err := os.WriteFile(path, []byte(readmeTableFixtureBefore), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "brief-01-first.md"),
+		[]byte(briefFrontmatter("teststream/01", pipeTitle, 0, "M")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := parseStreamREADME(path)
+	if err != nil {
+		t.Fatalf("parseStreamREADME: %v", err)
+	}
+	s.Dir = dir
+
+	_, region, _, ok := extractRegion(mustRead(t, path))
+	if !ok {
+		t.Fatal("fixture has no markers")
+	}
+	rendered := renderBriefsRegion(s, parsePreservedLifecycle(region))
+
+	lines := strings.Split(rendered, "\n")
+	var header string
+	for _, ln := range lines {
+		if strings.HasPrefix(strings.TrimSpace(ln), "| # |") {
+			header = ln
+			break
+		}
+	}
+	if header == "" {
+		t.Fatalf("rendered region has no header row:\n%s", rendered)
+	}
+	want := len(splitRow(header))
+	for _, ln := range lines {
+		trimmed := strings.TrimSpace(ln)
+		if !strings.HasPrefix(trimmed, "|") || trimmed == strings.TrimSpace(header) || strings.HasPrefix(trimmed, "|---") {
+			continue
+		}
+		if got := len(splitRow(ln)); got != want {
+			t.Errorf("rendered row splits into %d cells, header has %d — an unescaped `|` in the brief title became a column delimiter:\n%s", got, want, ln)
+		}
+	}
+
+	if _, err := rewriteReadmeRegion(s, path); err != nil {
+		t.Fatalf("rewriteReadmeRegion: %v", err)
+	}
+	if _, err := parseStreamREADME(path); err != nil {
+		t.Fatalf("the regenerated README no longer parses: %v", err)
+	}
+}
+
+// TestPreservedLifecycleKeysOnHeaderNames pins that the lifecycle columns are
+// carried through by COLUMN NAME, not by fixed position.
+//
+// Before the fix parsePreservedLifecycle read cells[4]/[5]/[6] unconditionally,
+// which is only correct for a region whose table has exactly the canonical seven
+// columns. A hand-written board that carries an extra authoring column — a
+// `Gate` column between Effort and Status is the shape in the wild — has every
+// lifecycle cell read one position to the left, so the flag-day re-render writes
+// the GATE value into Status and the real status into Verified. That is silent
+// destruction of lifecycle state at migration time, not a cosmetic drift: the
+// board afterwards claims `model` where it said `todo`, and the human-asserted
+// verify/review stamps are gone.
+func TestPreservedLifecycleKeysOnHeaderNames(t *testing.T) {
+	region := "\n| # | Brief | Wave | Effort | Gate | Status | Verified | Reviewed |\n" +
+		"|---|-------|------|--------|------|--------|----------|----------|\n" +
+		"| 03 | [a brief](brief-03-a.md) | 2 | L | model | todo | — | — |\n" +
+		"| 04 | [another](brief-04-b.md) | 1 | M | human | done | 2026-01-02 verifier | 2026-01-03 reviewer |\n"
+
+	got := parsePreservedLifecycle(region)
+
+	for _, tc := range []struct {
+		num  string
+		want lifecycleCells
+	}{
+		{"03", lifecycleCells{status: "todo", verified: "—", reviewed: "—"}},
+		{"04", lifecycleCells{status: "done", verified: "2026-01-02 verifier", reviewed: "2026-01-03 reviewer"}},
+	} {
+		if got[tc.num] != tc.want {
+			t.Errorf("row %s: lifecycle read as %+v, want %+v — the columns must be keyed on the header names, not on fixed offsets", tc.num, got[tc.num], tc.want)
+		}
+	}
+
+	// And the canonical seven-column shape must still work unchanged.
+	canonical := "\n" + briefTableHead + "\n| 01 | [x](brief-01-x.md) | 0 | S | implemented | — | 2026-02-02 reviewer |\n"
+	if c := parsePreservedLifecycle(canonical); c["01"] != (lifecycleCells{status: "implemented", verified: "—", reviewed: "2026-02-02 reviewer"}) {
+		t.Errorf("canonical seven-column region regressed: %+v", c["01"])
+	}
+}
