@@ -500,6 +500,15 @@ type stamp struct {
 	// byte-identical to that brief's row at the merge-base, so a genuinely NEW
 	// (or edited) row anywhere forces the whole (name,file) stamp to stay gated.
 	Rows []stampRow
+	// Unresolved is set when ANY occurrence of this (name,file) stamp was NOT a
+	// board status-table row — prose, an `authorized-by:` line, an Evidence-table
+	// cell, frontmatter. Such an occurrence has no brief-id row and so can never be
+	// proven byte-identical to the base; it must fail CLOSED. Because dedup folds a
+	// non-board occurrence into the same (name,file) stamp as a board row, this flag
+	// is what stops a genuinely NEW, uncorroborated non-board stamp from riding a
+	// pre-existing board row's exemption (the all-rows check alone cannot see it,
+	// since a non-board occurrence contributes no Row).
+	Unresolved bool
 	// PreExisting is set by markPreExisting once the base rows are read. When true,
 	// the stamp's cell matched the merge-base for every row it appears on — it was
 	// authored and corroborated on some earlier PR, so this diff's re-render does
@@ -639,13 +648,19 @@ func ghPRBaseRef(repo string, pr int) string {
 }
 
 // stampIsPreExisting reports whether a stamp's cell is byte-identical (trimmed) to
-// the SAME brief's cell at the merge-base, for EVERY board row it was found on. A
-// stamp with no recorded board row, or one whose brief is absent from the base, or
-// whose cell text differs (a date or name was edited), is NOT pre-existing and
-// stays fully gated. Requiring ALL rows to match is what keeps a genuinely new,
-// uncorroborated row from hiding behind a pre-existing one that shares its name.
+// the SAME brief's cell at the merge-base, for EVERY occurrence it was found on. A
+// stamp with any Unresolved occurrence (one not on a board status-table row — prose,
+// authorized-by:, an Evidence cell, frontmatter), any missing/nil base, no recorded
+// board row, a brief absent from the base, or a cell whose text differs (a date or
+// name was edited), is NOT pre-existing and stays fully gated.
+//
+// The Unresolved gate is load-bearing, not belt-and-braces: dedup folds a non-board
+// occurrence into the same (name,file) stamp as a board row, and a non-board
+// occurrence contributes NO Row, so the all-rows loop below cannot see it. Without
+// this fail-closed check a genuinely NEW, uncorroborated non-board stamp would ride
+// a pre-existing board row's exemption.
 func stampIsPreExisting(s stamp, baseRows map[string]string) bool {
-	if len(s.Rows) == 0 || baseRows == nil {
+	if s.Unresolved || len(s.Rows) == 0 || baseRows == nil {
 		return false
 	}
 	for _, r := range s.Rows {
@@ -735,11 +750,18 @@ func stampsInDiff(root, diff string) []stamp {
 				File: curFile,
 				Line: strings.TrimSpace(lineCtx),
 			}
+			// Resolve this occurrence to a board status-table row. Anything that is
+			// NOT a board row (prose, authorized-by:, an Evidence cell, frontmatter)
+			// cannot be proven byte-identical to base and marks the whole stamp
+			// Unresolved => fail closed, never exempt.
+			resolved := false
 			if briefKey != "" {
 				if idx, cell, ok := findStampCell(cells, name); ok {
 					s.Rows = []stampRow{{BriefKey: briefKey, CellIndex: idx, Cell: cell}}
+					resolved = true
 				}
 			}
+			s.Unresolved = !resolved
 			out = append(out, s)
 		}
 		// A confusable-name stamp is recorded too, under its raw name. It will
@@ -747,9 +769,10 @@ func stampsInDiff(root, diff string) []stamp {
 		// refusal rather than the silent "no stamps — clean" it used to produce.
 		for _, name := range confusableStampNames(content) {
 			out = append(out, stamp{
-				Name: strings.ToLower(name),
-				File: curFile,
-				Line: strings.TrimSpace(lineCtx),
+				Name:       strings.ToLower(name),
+				File:       curFile,
+				Line:       strings.TrimSpace(lineCtx),
+				Unresolved: true, // a homoglyph name resolves to no board row — never exempt
 			})
 		}
 	}
@@ -764,6 +787,7 @@ func stampsInDiff(root, diff string) []stamp {
 		key := s.Name + "\x00" + s.File
 		if idx, ok := seen[key]; ok {
 			deduped[idx].Rows = append(deduped[idx].Rows, s.Rows...)
+			deduped[idx].Unresolved = deduped[idx].Unresolved || s.Unresolved
 			continue
 		}
 		seen[key] = len(deduped)

@@ -152,6 +152,84 @@ func TestPreExistingRequiresAllRows(t *testing.T) {
 	}
 }
 
+// TestPreExistingNonBoardOccurrenceFailsClosed is the fail-open the reviewer of PR
+// #770 saw RED: a NEW, uncorroborated human:<name> stamp on a NON-board line (prose,
+// an `authorized-by:` line, an Evidence-table cell, frontmatter) shares (name,file)
+// with a PRE-EXISTING board row that matches base. Dedup folds them into one stamp,
+// and a non-board occurrence contributes NO Row, so the all-rows check alone cannot
+// see it — before the fix the stamp was reported PRE-EXISTING and the uncorroborated
+// non-board stamp rode the board row's exemption. The Unresolved fail-closed gate
+// closes it: any non-board occurrence forces the whole (name,file) stamp to stay
+// gated. Every row below MUST report MISSING-CORROBORATION and fail the run.
+func TestPreExistingNonBoardOccurrenceFailsClosed(t *testing.T) {
+	board := "docs/streams/windows-port/README.md"
+	row := func(num, reviewed string) string {
+		return "| " + num + " | [B](brief-" + num + "-s.md) | 0 | S | done | 2026-09-01 opus-4.8[1m]-verifier | " + reviewed + " |"
+	}
+	// A pre-existing board row for brief 04, byte-identical to base.
+	preExistingRow := row("04", "2026-09-08 human:alex")
+	base := map[string]string{"04": preExistingRow}
+
+	nonBoard := []struct {
+		name string
+		line string
+	}{
+		{"prose", "Signed off in review by human:alex."},
+		{"authorized-by", "authorized-by: human:alex"},
+		{"evidence-cell", "| 1 | go test ./... | PASS | human:alex (non-implementer) |"},
+		{"frontmatter", `decided-by: "human:alex"`},
+	}
+	for _, nb := range nonBoard {
+		t.Run(nb.name, func(t *testing.T) {
+			diff := "diff --git a/" + board + " b/" + board + "\n" +
+				"--- a/" + board + "\n" +
+				"+++ b/" + board + "\n" +
+				"@@ -40,9 +40,10 @@\n" +
+				"+" + preExistingRow + "\n" +
+				"+" + nb.line + "\n"
+			stamps := stampsInDiff("", diff)
+			if len(stamps) != 1 {
+				t.Fatalf("got %d stamps, want 1 deduped (name,file): %+v", len(stamps), stamps)
+			}
+			if !stamps[0].Unresolved {
+				t.Fatalf("stamp not marked Unresolved despite a non-board occurrence (%q): %+v", nb.line, stamps[0])
+			}
+			markPreExisting(stamps, map[string]map[string]string{board: base})
+			results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1, nil)
+			if results[0].Verdict != verdictMissing {
+				t.Errorf("verdict = %v, want MISSING-CORROBORATION — a NEW non-board stamp must not ride a pre-existing board row's exemption", results[0].Verdict)
+			}
+			if !stampResultsFail(results) {
+				t.Errorf("run-fails = false, want true — the fail-open let an uncorroborated non-board stamp pass")
+			}
+		})
+	}
+}
+
+// TestPreExistingNilMergeBaseFailsClosed pins the fail-closed direction for an
+// unresolvable merge-base (no git, shallow clone, unreadable base file): the base
+// row map is nil, so even a board row that would otherwise look byte-identical is
+// NOT exempted — the exemption may never fire on an absence the check never observed.
+func TestPreExistingNilMergeBaseFailsClosed(t *testing.T) {
+	board := "docs/streams/windows-port/README.md"
+	row := "| 04 | [B](brief-04-s.md) | 0 | S | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-08 human:alex |"
+	diff := "diff --git a/" + board + " b/" + board + "\n" +
+		"--- a/" + board + "\n" +
+		"+++ b/" + board + "\n" +
+		"@@ -40,7 +40,7 @@\n" +
+		"+" + row + "\n"
+	stamps := stampsInDiff("", diff)
+	if len(stamps) != 1 {
+		t.Fatalf("got %d stamps, want 1: %+v", len(stamps), stamps)
+	}
+	// nil base map models an unresolvable merge-base / unreadable base file.
+	markPreExisting(stamps, map[string]map[string]string{board: nil})
+	results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1, nil)
+	if results[0].Verdict != verdictMissing {
+		t.Errorf("verdict = %v, want MISSING-CORROBORATION — an unresolvable merge-base must exempt nothing (fail-closed)", results[0].Verdict)
+	}
+}
+
 // TestBriefRowKey covers the row-matching key: a brief status row is matched on its
 // stable brief number (from the Brief-cell link, else the leading # cell), while an
 // Evidence table row and non-table prose are NOT brief rows.
