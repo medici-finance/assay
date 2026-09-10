@@ -292,6 +292,51 @@ Measured rather than inferred, on this tree:
 row's own "after migration" clause still belongs to this repo's flag-day migration, which remains
 a separate change.
 
+### Implementer note — v1.0.3 supersedes v1.0.2 as the upgrade target — 2026-09-10 opus-4.8[1m]-implementer
+
+Umbrella **v1.0.3** was published on 2026-09-10 and is now the latest. It stands in exactly the
+relation to v1.0.2 that v1.0.2 stood in to v1.0.1: it supersedes it as the version an adopter is
+carried TO, and it does not supersede the flag day. This brief's deliverables are unchanged by it.
+Measured rather than inferred, on this tree:
+
+- **The migration file is untouched.**
+  `examples/adopter-scaffold/migrations/0001-v0.28.0-to-v1.0.0-derived-board.md` still spans
+  v0.28.0 → v1.0.0 and still carries the whole brief-v1 → brief-v2 rewrite. v1.0.3 is a patch over
+  the SAME brief-v2 contract, so there is nothing for a further migration to do.
+- **An adopter on v1.0.0, v1.0.1 or v1.0.2 has no migration to run**, only a re-pin. Measured
+  against a brief-v2 tree (this repo's own root): `deskmigrate --from v1.0.2 --to v1.0.3 --root .
+  --dry-run` → exit 0, `no migrations for v1.0.2 -> v1.0.3 (clean no-op)`; `--from v1.0.0 --to
+  v1.0.3 --root . --dry-run` → exit 0, same clean no-op.
+- **An adopter on v0.28.0 still gets the flag day**, running it on the way through rather than
+  being skipped past it. Measured: `deskmigrate --from v0.28.0 --to v1.0.3 --root
+  examples/adopter-scaffold --dry-run` → exit 0, selecting `0001-v0.28.0-to-v1.0.0-derived-board`,
+  planning the same 3 files; `git status --porcelain examples/` after the dry-runs shows only this
+  PR's own edits, so the dry-runs wrote nothing. (The scaffold root itself carries `schema:
+  brief-v1` briefs as the flag-day SOURCE, so a patch-span run against IT correctly refuses rather
+  than reading as a completed migration — which is why the patch-span no-op is measured against a
+  brief-v2 tree.)
+- **The pins move, the composition manifests accumulate.** `plugins/assay/paired-versions.yaml`
+  re-pins both artifacts to v1.0.3 with all ten digests re-harvested from the v1.0.3 release's own
+  checksum manifest. `examples/adopter-scaffold/releases/v1.0.3.yaml` is ADDED rather than
+  replacing `v1.0.2.yaml`, `v1.0.1.yaml` or `v1.0.0.yaml`: each older manifest still has to resolve
+  for a tree pinned at it, and the migration span still ends at v1.0.0. `plugin: "1.0.0"` is
+  unchanged — it names the plugin version and is checked against
+  `plugins/assay/.claude-plugin/plugin.json`, not against the umbrella tag.
+  `check-paired-versions.sh` → exit 0 (pairing 1.0.0 == 1.0.0; single tag v1.0.3 across 10 pin
+  lines; 10 digests 64-lowercase-hex); `check-paired-versions.test.sh` → 16 passed, 0 failed.
+- **End-to-end digest confirmation.** The published `statusgen-darwin-arm64` asset was downloaded
+  and hashed locally; the hash equals the release's checksum-manifest entry AND the committed pin
+  line (`8843fcfa…3753f`), and the binary self-reports `v1.0.3`.
+- **`qualgen` is deliberately still unpinned.** The release publishes five `qualgen` assets, as
+  v1.0.2 did; neither manifest has ever carried a `qualgen` section, and adding one is a separate
+  decision about the adopter front door rather than part of a re-pin. Recorded so the omission
+  reads as a choice.
+
+**Row 10, re-measured.** With the PUBLISHED, sha256-verified v1.0.3 `statusgen`:
+`statusgen --root . --lint` → **exit 0, `LINT: PASS`**, NOTICEs only and no `PROBLEM`-prefixed line.
+The row's own "after migration" clause still belongs to this repo's flag-day migration, which
+remains a separate change.
+
 ## Review
 Gate: human (from frontmatter). The human records the ruling after running rows 3 and 9
 on a real adopter checkout and reading the release note; then cuts `v1.0.0` via the

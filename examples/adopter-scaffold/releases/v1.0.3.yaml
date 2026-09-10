@@ -1,0 +1,23 @@
+# Composition manifest for umbrella v1.0.3 — adopter-scaffold example.
+#
+# The LATEST umbrella, and the target `upgrade-assay --to v1.0.3` moves the
+# scaffold to. Like v1.0.2 before it, it supersedes the previous manifest as the
+# upgrade TARGET without superseding the flag day: the brief-v1 → brief-v2
+# migration (migrations/0001-v0.28.0-to-v1.0.0-derived-board.md) still spans
+# v0.28.0 → v1.0.0 and is unchanged, and an adopter upgrading from v0.28.0 straight
+# to v1.0.3 runs it on the way through. There is NO migration from v1.0.0, v1.0.1
+# or v1.0.2 to v1.0.3 — v1.0.3 is a patch over the same brief-v2 contract, so a tree
+# already on any of them has nothing to apply and re-pins only.
+#
+# statusgen and desk-tools are cut together at the same tag. The digests below are
+# the REAL v1.0.3 ones, harvested from the published release's checksums.txt
+# (linux-amd64 — the platform the bare artifact lines in ../.assay-versions name),
+# never hand-typed.
+umbrella: v1.0.3
+artifacts:
+  - artifact: statusgen
+    tag: v1.0.3
+    sha256: 507a1d65e4e58c5483260371d72624dfbb6fe695df93817cb24abbc432fe0e63
+  - artifact: desk-tools
+    tag: v1.0.3
+    sha256: f385931036e74619bfd8f778598254e921973ae15be17965c1c40aae32a7af84
