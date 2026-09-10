@@ -22,12 +22,12 @@ The `## Header`, `## R<N>` and `## Footer` sections below are the machine-read
 content; the prose above is not. Rule-content changes are their own PRs — never
 smuggled into a plumbing change.
 
-The Header's `{{VERSION}}` token is resolved by the generator, never hand-typed:
-it reads `plugins/assay/.claude-plugin/plugin.json`'s `version` field and
-substitutes `v<version>` into every generated artifact. Do not replace the
-token with a literal version number — that reintroduces the exact drift
-`--check` now catches (assay#730: the banner said "v0.1.0" long after the
-manifest moved to "1.0.0").
+The Header carries a `{{VERSION}}` token, resolved by the generator and never
+hand-typed: it reads the `version` field out of
+`plugins/assay/.claude-plugin/plugin.json` and substitutes `v<version>` into
+every generated artifact. Do not replace the token with a literal version
+number — that reintroduces the exact drift `--check` now catches (assay#730:
+the banner said "v0.1.0" long after the manifest moved to "1.0.0").
 
 ## Header
 
