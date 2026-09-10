@@ -116,6 +116,16 @@ func IsForgeNotFound(err error) bool {
 	return errors.As(err, &ae) && ae.Status == http.StatusNotFound
 }
 
+// IsForgeForbidden reports whether err is a 403 from the forge REST layer. It unwraps, so a
+// ForgeAPIError nested in a DeskError is still recognised. A 403 is distinct from a 404: it
+// means the token is authenticated but lacks the scope for THIS endpoint (e.g. the legacy
+// branch-protection endpoint needs `administration`, which the reviewer/worker App tokens do
+// not carry), which licenses an admin-free re-resolution rather than a fail-open empty.
+func IsForgeForbidden(err error) bool {
+	var ae *ForgeAPIError
+	return errors.As(err, &ae) && ae.Status == http.StatusForbidden
+}
+
 // ErrForgeEmptyRepo is the canonical, backend-NEUTRAL signal that the forge has positively
 // answered "this repository has no commits yet". It is a distinct KNOWN state (no-commits),
 // NOT a read failure. Each backend translates ITS OWN empty signal into this sentinel inside
@@ -292,6 +302,29 @@ type ghRequiredStatusChecksWire struct {
 	Checks   []struct {
 		Context string `json:"context"`
 	} `json:"checks"`
+}
+
+// ghBranchProtectedWire is the single field the admin-free fallback reads from
+// `GET /repos/{o}/{r}/branches/{b}`: whether ANYTHING protects the branch. This endpoint is
+// readable by a plain repo token (no `administration` scope), unlike the legacy protection
+// endpoint, so it answers "is the required set necessarily empty" without admin rights.
+type ghBranchProtectedWire struct {
+	Protected bool `json:"protected"`
+}
+
+// ghBranchRuleWire is one entry of `GET /repos/{o}/{r}/rules/branches/{b}` — the EFFECTIVE
+// rules applying to the branch, including those contributed by rulesets (not just classic
+// branch protection). Only the `required_status_checks` rule type carries required contexts,
+// under `parameters.required_status_checks[].context`; other rule types leave that slice
+// empty and contribute nothing. This endpoint is readable by the same plain repo token, so it
+// closes the ruleset gap the admin-only legacy endpoint leaves behind.
+type ghBranchRuleWire struct {
+	Type       string `json:"type"`
+	Parameters struct {
+		RequiredStatusChecks []struct {
+			Context string `json:"context"`
+		} `json:"required_status_checks"`
+	} `json:"parameters"`
 }
 
 // ghTimelineWire is one entry of the issue/PR timeline. Only `labeled` events matter to the
@@ -674,9 +707,17 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 // The 404 IS the answer, not an error. GitHub returns 404 both for a branch with no
 // protection AND for a protected branch that requires no status checks; in either case
 // nothing gates the merge on a check, so the required set is EMPTY and no error is returned.
-// Every OTHER non-2xx (401/403 permission, 5xx, a parse failure) is could-not-check and is
-// returned as-is, so the caller fails closed — an absent rollup is never read as green off a
-// required-set the tool could not actually read.
+//
+// A 403 is NOT the answer, but it is not a dead end either. The legacy protection endpoint
+// needs the `administration` scope, which the reviewer/worker App tokens do not carry, so it
+// answers 403 on every repo for those identities. Reading a 403 as "nothing required" would
+// be fail-open; returning it as-is would leave the flip permanently could-not-check on every
+// App token. Instead the read re-resolves through two endpoints the same token CAN read (see
+// requiredChecksAdminFree), and only if BOTH of those also fail does it stay could-not-check.
+//
+// Every OTHER non-2xx (401, 5xx, a parse failure) is could-not-check and is returned as-is, so
+// the caller fails closed — an absent rollup is never read as green off a required-set the
+// tool could not actually read.
 func (g *GitHubForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error) {
 	branch = strings.TrimSpace(branch)
 	if branch == "" {
@@ -693,25 +734,95 @@ func (g *GitHubForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]str
 			// an absent rollup, and it is distinct from the error return below.
 			return nil, nil
 		}
+		if IsForgeForbidden(err) {
+			// The token lacks `administration` for the legacy endpoint. Re-resolve the same
+			// required set through the admin-free endpoints rather than fail the whole flip.
+			return g.requiredChecksAdminFree(repo, branch, err)
+		}
 		return nil, err
 	}
-	seen := map[string]bool{}
-	out := make([]string, 0, len(w.Contexts)+len(w.Checks))
-	add := func(c string) {
-		c = strings.TrimSpace(c)
-		if c == "" || seen[c] {
-			return
+	return dedupContexts(w.Contexts, contextsOf(w.Checks)), nil
+}
+
+// requiredChecksAdminFree re-resolves the branch's required status-check contexts WITHOUT the
+// `administration` scope the legacy protection endpoint demands, for tokens that get a 403
+// there (every reviewer/worker App). It uses two endpoints a plain repo token can read:
+//
+//  1. GET /repos/{o}/{r}/branches/{b} → `.protected`. If the branch is NOT protected at all,
+//     nothing gates the merge on a check, so the required set is empty (⇒ green).
+//  2. GET /repos/{o}/{r}/rules/branches/{b} → the EFFECTIVE rules (classic protection AND
+//     rulesets); the union of every `required_status_checks` rule's contexts is the required
+//     set. This also closes the ruleset gap the legacy endpoint never covered.
+//
+// The rules endpoint is consulted whenever the branch is (or may be) protected — i.e. when
+// step 1 reports protected, OR when step 1 itself could not be read (a 403/5xx there does not
+// prove the branch unprotected, so it is not read as empty). Only when BOTH admin-free reads
+// fail is the result could-not-check; legacyErr is threaded into that refusal for context.
+func (g *GitHubForge) requiredChecksAdminFree(repo ForgeRepo, branch string, legacyErr error) ([]string, error) {
+	var bp ghBranchProtectedWire
+	bpath := fmt.Sprintf("/repos/%s/%s/branches/%s", repo.Owner, repo.Name, url.PathEscape(branch))
+	brErr := g.doJSON(http.MethodGet, bpath, nil, &bp)
+	if brErr == nil && !bp.Protected {
+		// The branch is not protected: nothing GitHub enforces gates the merge on a check, so
+		// the required set is empty. No need to read the rules.
+		return nil, nil
+	}
+	// The branch is protected, or its protection flag could not be read. In both cases any
+	// required contexts live in the effective-rules endpoint, which the same token can read.
+	var rules []ghBranchRuleWire
+	rpath := fmt.Sprintf("/repos/%s/%s/rules/branches/%s", repo.Owner, repo.Name, url.PathEscape(branch))
+	if rErr := g.doJSON(http.MethodGet, rpath, nil, &rules); rErr != nil {
+		if brErr != nil {
+			// BOTH admin-free fallbacks failed: the required set could not be read at all.
+			// Fail closed — an absent rollup must never be read as green off a set this tool
+			// could not determine.
+			return nil, Unverifiable(fmt.Sprintf(
+				"cannot read the required status checks for %s@%s: the legacy protection endpoint is "+
+					"forbidden (%v) and both admin-free fallbacks failed (branch read: %v; rules read: %v)",
+				repo.Slug(), branch, legacyErr, brErr, rErr), nil)
 		}
-		seen[c] = true
-		out = append(out, c)
+		// The branch IS protected (step 1 succeeded) but its rules could not be read, so the
+		// required set is unknown. Fail closed rather than assume none required.
+		return nil, Unverifiable(fmt.Sprintf(
+			"cannot read the required status checks for %s@%s: %s is protected but its effective rules "+
+				"could not be read (%v)", repo.Slug(), branch, branch, rErr), nil)
 	}
-	for _, c := range w.Contexts {
-		add(c)
+	var ctxs []string
+	for _, rule := range rules {
+		for _, c := range rule.Parameters.RequiredStatusChecks {
+			ctxs = append(ctxs, c.Context)
+		}
 	}
-	for _, c := range w.Checks {
-		add(c.Context)
+	return dedupContexts(ctxs), nil
+}
+
+// contextsOf flattens the `checks` shape (context + optional app id) to its context names.
+func contextsOf(checks []struct {
+	Context string `json:"context"`
+}) []string {
+	out := make([]string, 0, len(checks))
+	for _, c := range checks {
+		out = append(out, c.Context)
 	}
-	return out, nil
+	return out
+}
+
+// dedupContexts unions any number of context-name lists into a single de-duplicated,
+// whitespace-trimmed, order-preserving slice (empty entries dropped).
+func dedupContexts(lists ...[]string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, list := range lists {
+		for _, c := range list {
+			c = strings.TrimSpace(c)
+			if c == "" || seen[c] {
+				continue
+			}
+			seen[c] = true
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // IssueReactions is SINGLE PAGE by decision — the same reasoning HTTPRepoInfoFetcher's
