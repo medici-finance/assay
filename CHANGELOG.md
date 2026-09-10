@@ -23,6 +23,114 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.3 — 2026-09-10
+
+### Added
+- **`statusgen --corroborate` now accepts a decision record (`DR-<slug>.md`) through the
+  decision-issue anchor.** The third human-stamp corroboration anchor — a linked, blessed-human-CLOSED
+  `needs-decision` issue carrying the per-record `<!-- decision-gate: <id> -->` marker — previously
+  fired only for a `human:<name>` stamp found in a `brief-<NN>.md` file. It now fires for a stamp in a
+  `DR-<slug>.md` design-decision record under `docs/streams/decisions/` too, corroborating the
+  record's `decided-by:` name against the CLOSER of the decision issue the record links. A DR's
+  approving human ratifies by closing the `needs-decision` issue, not by signing the DR's own PR, so a
+  concrete `decided-by: "human:<name>"` on a DR used to come back MISSING-CORROBORATION and the only
+  sanctioned notation was the literal `human:<name>` placeholder that names nobody. The addition is
+  strictly ADDITIVE: the two PR anchors (an APPROVED review, an explicit approval comment) and the
+  original brief-file anchor are unchanged, and all three of the anchor's conditions — closed by the
+  blessed login, marker naming THIS exact record, and the record linking the issue — remain
+  independently required. The two record-id namespaces never collide (a brief id carries a `/`, a DR
+  id never does).
+- Authored the `docker-publish.yml` `desk-images` job (builds and publishes the
+  shared `desk-base` image and the five per-desk images — `intake-desk`,
+  `worker-desk`, `pr-review-desk`, `verify-desk`, `the-desk` — version-locked
+  to the same base tag, alongside the existing `desk-tools` image, gated by
+  `containers/scripts/layer-secret-scan.sh` against all six images before any
+  push). Parked at `docs/streams/desk-containers/pending-docker-publish.yml`
+  pending application by a human with `workflows` permission — the worker
+  App's push of `.github/workflows/*` is rejected on this repo.
+- Recorded, with measurements, that **v1.0.2 supersedes v1.0.1 as the upgrade target without
+  superseding the flag day** — the same shape the v1.0.1 re-pin recorded. An adopter already
+  on v1.0.0 or v1.0.1 has no migration to run, only a re-pin, while an adopter on v0.28.0
+  upgrading straight to v1.0.2 still runs the brief-v1 → brief-v2 migration on the way through
+  rather than being skipped past it.
+- The migration this repo runs against itself now lives at
+  `migrations/0001-v0.28.0-to-v1.0.0-derived-board.md`, so `deskmigrate` and
+  `assay:upgrade-assay` can be dry-run against this tree the same way an adopter runs
+  them against theirs.
+- `deskdispatch` worker prompts now name the worker's own loop identity
+  (`export DESK_LOOP=worker-desk`) so the desk write verbs (`deskpr create`,
+  `deskfile`, `deskreply`) stop refusing with `$DESK_LOOP is unset`, and — for an
+  issue-only item — the exact `deskpr create` trailer (`Issue: #<N>`) and the
+  sanctioned verb to comment on the issue it was dispatched from
+  (`deskfile attach -R <owner/repo> --to <N>`), replacing hand-rolled `gh` writes.
+- `docs/UPGRADING.txt` — the append-only local record of which migrations have been
+  applied to this tree.
+- `schemas/brief-v2.json` — the machine-readable brief-v2 contract, alongside the
+  existing brief-v1 one. It covers the whole brief-v1 surface plus the hierarchical
+  `brief: <cell>:<repo>:<stream>:<NN>` id, the `version:` revision counter, and the
+  reserved `id` / `supersedes` / `gates` / `feathers` / `verify` keys, and is held in
+  lockstep with the reference validator by `TestBriefV2SchemaCoverage`.
+- `statusgen conform --emit-schema --schema brief-v2` prints the brief-v2 contract, so
+  every embedded artifact stays reproducible from a pinned build.
+
+### Fixed
+- **The SessionStart banner no longer hard-codes a stale plugin version.** It said
+  `assay plugin v0.1.0` long after `plugins/assay/.claude-plugin/plugin.json` moved to `1.0.0`.
+  `resident-rules.md`'s Header now carries a `{{VERSION}}` token that `harnessgen resident`/
+  `harnessgen cursor` resolve from the plugin manifest at generation time — never a literal a
+  human can forget to bump — and `--check` reddens if a manifest bump lands without
+  regenerating. `inject-resident-rules.sh` now reads the generated payload file instead of
+  carrying its own duplicate copy of the rules text, which had also silently drifted from the
+  single source on rule 8's wording.
+- **The desk body-check no longer refuses an uppercase-hex PGP key fingerprint as a
+  possible secret.** A 40-char OpenPGP v4 fingerprint is written in UPPERCASE hex, but the
+  high-entropy-run scanner exempted only LOWERCASE hex (git SHAs), so a body quoting a
+  `.sops.yaml` recipient list (`pgp:`) or a sops metadata `fp:` field tripped the "40-char
+  high-entropy run (possible secret)" refusal — blocking writes that merely referenced a
+  PUBLIC key fingerprint. A new narrowly-anchored exemption admits a run that is EXACTLY 40
+  uppercase hex ONLY when a `pgp:`/`fp:` recipient key precedes it (a `.sops.yaml` recipient
+  entry or a sops `fp:` field), separated by nothing but YAML/JSON value scaffolding or a
+  comma-list of fingerprints. The anchor is load-bearing and the check is not loosened for
+  genuine secrets: a bare uppercase-hex run with no recipient key, a lowercase/mixed-case
+  40-char run, and a real high-entropy token wearing the same field all still refuse (an AWS
+  secret key, for instance, is 40 mixed-case base64 and never qualifies).
+- De-flaked `cmd/fanoutloop` `TestPool` (and its sibling engine-integration tests) so a
+  whole-module `go test ./...` no longer reddens intermittently under CPU load. The tests'
+  wall-clock wedge safety-nets were calibrated to unloaded speed (5s); under the saturation of a
+  full-module run their near-instant async conditions missed the deadline even though nothing was
+  wedged. The deadlines now route through one load-tolerant `engineTestTimeout`, removing the
+  timing/load assumption without weakening any assertion.
+- `deskreply --workpad` now finds and edits its own prior workpad comment instead of
+  appending a new one on every call. `GitHubForge.ListComments` re-suffixes a GraphQL Bot
+  author's bare slug to the `<slug>[bot]` REST rendering, so a worker's own comment matches
+  its own identity through `SameActor` and the one-workpad-per-PR upsert holds (#747).
+- `statusgen conform` now selects its contract **per file** from that file's own
+  `schema:` marker, so a tree migrated by `statusgen migrate brief-v1-to-v2` validates
+  instead of reporting `could-not-check` for every brief and exiting 2 — which reddened
+  the schema-contract check on the very PR that landed an adopter's flag day. A tree
+  mid-migration holding both versions validates each file against the version it
+  declares. The three-state behaviour is unchanged: a marker no embedded contract
+  describes is still `could-not-check` / exit 2, and a brief-v2 field error is a real
+  `checked-failed` / exit 1.
+
+### Changed
+- **Flag day: this repo's own board is now brief-v2.** All 148 briefs under
+  `docs/streams/` were migrated from `schema: brief-v1` to `schema: brief-v2` by the
+  declarative `v0.28.0 → v1.0.0` migration: each brief's `brief:` id becomes the
+  hierarchical `<cell>:<repo>:<stream>:<NN>` form resolved through the alias registry,
+  every brief gains `version: 1` and a once-minted uuid `id:`, and each of the 16 stream
+  READMEs has its Briefs table wrapped in the generated-region markers with
+  `board: generated` in its frontmatter. The lifecycle cells of every row were carried
+  through unchanged — the migration re-shapes the board, it does not re-decide it.
+- The adopter-scaffold example gains a v1.0.2 composition manifest with real digests, and its
+  notes now name v1.0.2 as the umbrella an upgrade moves to. The v1.0.0 and v1.0.1 manifests
+  stay: a tree pinned at either still has to resolve, and the brief-v1 → brief-v2 migration's
+  span ends at v1.0.0.
+- The plugin's paired-versions manifest now pins statusgen and desk-tools at the published
+  umbrella **v1.0.2** on all ten platform lines, every digest re-harvested from that release's
+  own checksum manifest and compared back against it. A cold install resolves the v1.0.2
+  binaries and verifies them byte-for-byte.
+
 ## v1.0.2 — 2026-09-10
 
 ### Added
