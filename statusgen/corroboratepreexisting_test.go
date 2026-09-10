@@ -100,8 +100,10 @@ func TestPreExistingExemption(t *testing.T) {
 				t.Errorf("row brief key = %q, want %q", stamps[0].Rows[0].BriefKey, tc.briefNum)
 			}
 
-			// Mark pre-existing against the merge-base rows, exactly as runCorroborate does.
-			markPreExisting(stamps, map[string]map[string]string{board: tc.base})
+			// Mark pre-existing against the merge-base rows, exactly as runCorroborate
+			// does. A nil base header map exercises the positional-index fallback these
+			// same-shaped cases have always relied on.
+			markPreExisting(stamps, map[string]map[string]string{board: tc.base}, nil)
 
 			// No PR reviews/comments — corroboration can come ONLY from the
 			// pre-existing exemption, isolating the behaviour under test.
@@ -116,6 +118,81 @@ func TestPreExistingExemption(t *testing.T) {
 				t.Errorf("run-fails = %v, want %v (only MISSING-CORROBORATION fails the run)", got, tc.wantFail)
 			}
 		})
+	}
+}
+
+// TestPreExistingReshapedBaseResolvesByHeader is the regression for the brief-v2
+// migration column-shift bug (#769, follow-on to #770): the migration RE-SHAPES the
+// Briefs table (the Gate column is dropped header-and-cells, columns re-ordered after
+// Reviewed), so the Reviewed cell's positional INDEX differs between the base table
+// and the branch table. #770's cell-level compare read the base cell at the BRANCH's
+// index — the wrong column on a re-shaped base — so a sign-off whose cell text is
+// byte-identical read MISSING again.
+//
+// This case models exactly that: the branch table has the post-migration shape (7
+// columns, Reviewed last at index 6), while the base table carries an EXTRA "Gate"
+// column before Reviewed (8 columns, Reviewed at index 7). The Reviewed cell text is
+// identical on both sides. Resolving the base cell by the branch column's HEADER NAME
+// ("Reviewed") finds index 7 on the base and the sign-off reads PRE-EXISTING; the old
+// positional lookup would read the base "Gate" cell at index 6 and report MISSING.
+func TestPreExistingReshapedBaseResolvesByHeader(t *testing.T) {
+	board := "docs/streams/windows-port/README.md"
+
+	// Branch (this PR's diff): post-migration shape — no Gate column, Reviewed last.
+	branchHeader := "| # | Brief | Wave | Effort | Status | Verified | Reviewed |"
+	branchDelim := "|---|-------|------|--------|--------|----------|----------|"
+	branchRow := "| 04 | [B](brief-04-s.md) | 0 | S | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-08 human:ian |"
+
+	// A full table re-render emits the header, its delimiter, and the row as ADDED
+	// lines — the shape stampsInDiff reads the branch column's header name from.
+	diff := "diff --git a/" + board + " b/" + board + "\n" +
+		"--- a/" + board + "\n" +
+		"+++ b/" + board + "\n" +
+		"@@ -40,12 +40,11 @@\n" +
+		"+" + branchHeader + "\n" +
+		"+" + branchDelim + "\n" +
+		"+" + branchRow + "\n"
+
+	stamps := stampsInDiff("", diff)
+	if len(stamps) != 1 {
+		t.Fatalf("got %d stamps, want 1: %+v", len(stamps), stamps)
+	}
+	if len(stamps[0].Rows) != 1 {
+		t.Fatalf("stamp recorded %d rows, want 1: %+v", len(stamps[0].Rows), stamps[0])
+	}
+	// The branch column name must have been captured off the branch header — it is the
+	// key the base lookup resolves by. Reviewed is the last (index 6) branch cell.
+	if got := stamps[0].Rows[0].Header; got != "Reviewed" {
+		t.Fatalf("branch column header = %q, want %q", got, "Reviewed")
+	}
+	if got := stamps[0].Rows[0].CellIndex; got != 6 {
+		t.Fatalf("branch CellIndex = %d, want 6 (Reviewed is the last branch column)", got)
+	}
+
+	// Base (merge-base): PRE-migration shape — an EXTRA Gate column before Reviewed, so
+	// the Reviewed cell sits at index 7, one past the branch's index 6. Its text is
+	// byte-identical to the branch's Reviewed cell.
+	baseHeaderLine := "| # | Brief | Wave | Effort | Status | Verified | Gate | Reviewed |"
+	baseRow := "| 04 | [B](brief-04-s.md) | 0 | S | done | 2026-09-01 opus-4.8[1m]-verifier | human | 2026-09-08 human:ian |"
+	baseRows := map[string]string{"04": baseRow}
+	baseHeader := briefHeaderIndex(baseHeaderLine)
+	if baseHeader["reviewed"] != 7 {
+		t.Fatalf("base header index for Reviewed = %d, want 7", baseHeader["reviewed"])
+	}
+
+	markPreExisting(stamps,
+		map[string]map[string]string{board: baseRows},
+		map[string]map[string]int{board: baseHeader})
+
+	results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1, nil)
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1", len(results))
+	}
+	if results[0].Verdict != verdictPreExisting {
+		t.Errorf("verdict = %v, want PRE-EXISTING — the base cell must be resolved by header NAME, not the branch's shifted positional index", results[0].Verdict)
+	}
+	if stampResultsFail(results) {
+		t.Errorf("run-fails = true, want false — a byte-identical re-render across a re-shaped table must not re-gate the historical sign-off")
 	}
 }
 
@@ -144,7 +221,7 @@ func TestPreExistingRequiresAllRows(t *testing.T) {
 	}
 
 	base := map[string]string{"04": row("04", "2026-09-08 human:ian")} // brief 07 absent at base
-	markPreExisting(stamps, map[string]map[string]string{board: base})
+	markPreExisting(stamps, map[string]map[string]string{board: base}, nil)
 
 	results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1, nil)
 	if results[0].Verdict != verdictMissing {
@@ -194,7 +271,7 @@ func TestPreExistingNonBoardOccurrenceFailsClosed(t *testing.T) {
 			if !stamps[0].Unresolved {
 				t.Fatalf("stamp not marked Unresolved despite a non-board occurrence (%q): %+v", nb.line, stamps[0])
 			}
-			markPreExisting(stamps, map[string]map[string]string{board: base})
+			markPreExisting(stamps, map[string]map[string]string{board: base}, nil)
 			results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1, nil)
 			if results[0].Verdict != verdictMissing {
 				t.Errorf("verdict = %v, want MISSING-CORROBORATION — a NEW non-board stamp must not ride a pre-existing board row's exemption", results[0].Verdict)
@@ -223,7 +300,7 @@ func TestPreExistingNilMergeBaseFailsClosed(t *testing.T) {
 		t.Fatalf("got %d stamps, want 1: %+v", len(stamps), stamps)
 	}
 	// nil base map models an unresolvable merge-base / unreadable base file.
-	markPreExisting(stamps, map[string]map[string]string{board: nil})
+	markPreExisting(stamps, map[string]map[string]string{board: nil}, nil)
 	results := corroborateStamps(stamps, &ghPRData{}, "medici-finance/assay", 1, nil)
 	if results[0].Verdict != verdictMissing {
 		t.Errorf("verdict = %v, want MISSING-CORROBORATION — an unresolvable merge-base must exempt nothing (fail-closed)", results[0].Verdict)
