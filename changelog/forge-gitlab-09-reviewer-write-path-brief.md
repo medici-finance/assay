@@ -1,4 +1,5 @@
 ### Added
+
 - **Scoped brief `forge-gitlab/09` — the GitLab reviewer write path.** Planning-only: the brief
   wires the review desk's verdict-and-escalation path (`deskpost review`/`security-review`/`comment`
   then `ready`, plus `deskfile`/`desktoken` reviewer auth) onto the typed Forge surface for a
