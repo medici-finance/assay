@@ -102,6 +102,24 @@ func fileBase(path string) string {
 	return path
 }
 
+// escapeTableCell makes a value safe to interpolate into ONE markdown table cell
+// by escaping the `|` that would otherwise be read as a column delimiter.
+//
+// It is the render-side half of a round trip whose parse-side half already
+// exists: splitRow (parse.go) treats `\|` as cell content, not a delimiter. Only
+// the renderer was missing, so a brief whose title legitimately contains a pipe
+// — a flag spelled `--cadence weekly|monthly`, an alternation in a pattern —
+// rendered a row with one cell too many and the board's own parser then rejected
+// the whole stream ("row has 8 cells, header has 7"). An already-escaped `\|` is
+// left alone so a re-render is idempotent.
+func escapeTableCell(s string) string {
+	// Protect existing escapes first, then escape bare pipes, then restore.
+	const sentinel = "\x00ESCPIPE\x00"
+	s = strings.ReplaceAll(s, `\|`, sentinel)
+	s = strings.ReplaceAll(s, "|", `\|`)
+	return strings.ReplaceAll(s, sentinel, `\|`)
+}
+
 // renderBriefsRegion builds the region text (header + separator + one row per
 // brief) for a stream. Authoring columns come from the brief frontmatter;
 // lifecycle columns come from preserved, defaulting a brief with no existing row
@@ -125,7 +143,7 @@ func renderBriefsRegion(s *Stream, preserved map[string]lifecycleCells) string {
 			lc.reviewed = "—"
 		}
 		b.WriteString(fmt.Sprintf("\n| %s | [%s](%s) | %d | %s | %s | %s | %s |",
-			r.num, r.title, r.file, r.wave, r.effort, lc.status, lc.verified, lc.reviewed))
+			r.num, escapeTableCell(r.title), r.file, r.wave, r.effort, lc.status, lc.verified, lc.reviewed))
 	}
 	return b.String()
 }
@@ -133,16 +151,37 @@ func renderBriefsRegion(s *Stream, preserved map[string]lifecycleCells) string {
 // parsePreservedLifecycle reads the lifecycle columns out of an existing region,
 // keyed by brief number, so a re-render carries the hand-asserted/derived cells
 // through unchanged. Rows it cannot key on are skipped.
+//
+// THE COLUMNS ARE KEYED ON THE HEADER NAMES, NOT ON FIXED OFFSETS — the same way
+// parseBriefsTable (parse.go) reads a board. The region this runs against is
+// whatever the tree had BEFORE the migration wrapped it, and a hand-written
+// board is not obliged to carry exactly the canonical seven columns: an extra
+// authoring column (a `Gate` column between Effort and Status is the shape seen
+// in the wild) shifts every lifecycle cell one position. Read positionally, the
+// re-render then writes the GATE value into Status and the real status into
+// Verified — silent destruction of lifecycle state at migration time, on the one
+// run that is hardest to notice because 150 other files changed with it.
+//
+// A region whose header cannot be identified falls back to the canonical offsets
+// rather than dropping every row: that is the pre-existing behaviour, and it is
+// correct for the canonical shape, which is what a region already under the
+// markers always has.
 func parsePreservedLifecycle(region string) map[string]lifecycleCells {
 	out := map[string]lifecycleCells{}
+	// Canonical offsets, used until (and unless) a header row names better ones.
+	statusAt, verifiedAt, reviewedAt, width := 4, 5, 6, 7
 	for _, line := range strings.Split(region, "\n") {
 		t := strings.TrimSpace(line)
 		if !strings.HasPrefix(t, "|") {
 			continue
 		}
 		cells := splitRow(line)
+		if idx, ok := lifecycleHeaderIndex(cells); ok {
+			statusAt, verifiedAt, reviewedAt, width = idx.status, idx.verified, idx.reviewed, len(cells)
+			continue
+		}
 		// header/separator and short rows carry no lifecycle data.
-		if len(cells) < 7 {
+		if len(cells) < width {
 			continue
 		}
 		num := strings.TrimSpace(cells[0])
@@ -150,12 +189,40 @@ func parsePreservedLifecycle(region string) map[string]lifecycleCells {
 			continue
 		}
 		out[num] = lifecycleCells{
-			status:   strings.TrimSpace(cells[4]),
-			verified: strings.TrimSpace(cells[5]),
-			reviewed: strings.TrimSpace(cells[6]),
+			status:   strings.TrimSpace(cells[statusAt]),
+			verified: strings.TrimSpace(cells[verifiedAt]),
+			reviewed: strings.TrimSpace(cells[reviewedAt]),
 		}
 	}
 	return out
+}
+
+// lifecycleColumnIndex is where the three lifecycle columns sit in one table.
+type lifecycleColumnIndex struct{ status, verified, reviewed int }
+
+// lifecycleHeaderIndex reports the positions of the Status / Verified / Reviewed
+// columns when cells is a briefs-table HEADER row, and ok=false for any other
+// row. All three must be named: a table missing one of them is not a header this
+// can key on, and falling back is safer than guessing a partial mapping.
+func lifecycleHeaderIndex(cells []string) (lifecycleColumnIndex, bool) {
+	idx := lifecycleColumnIndex{status: -1, verified: -1, reviewed: -1}
+	sawBrief := false
+	for i, c := range cells {
+		switch strings.ToLower(strings.TrimSpace(c)) {
+		case "brief":
+			sawBrief = true
+		case "status":
+			idx.status = i
+		case "verified":
+			idx.verified = i
+		case "reviewed":
+			idx.reviewed = i
+		}
+	}
+	if !sawBrief || idx.status < 0 || idx.verified < 0 || idx.reviewed < 0 {
+		return lifecycleColumnIndex{}, false
+	}
+	return idx, true
 }
 
 // extractRegion locates the marker-wrapped region in a README's content. ok is
