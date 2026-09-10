@@ -486,6 +486,16 @@ type stampRow struct {
 	BriefKey  string // the row's stable brief id (the brief-NN number), matched across a re-render
 	CellIndex int    // index of the pipe-delimited cell that carried this stamp
 	Cell      string // that cell's raw text, compared byte-for-byte (trimmed) against the base row
+	// Header is the NAME of the column this stamp's cell sits in on the BRANCH (e.g.
+	// "Reviewed"), read from the branch table's own header row. It is the key the
+	// pre-existing exemption resolves the BASE cell by: the brief-v2 migration
+	// re-shapes the Briefs table (the Gate column is dropped header-and-cells, columns
+	// re-ordered after Reviewed), so the stamp's column sits at a DIFFERENT positional
+	// index on the base than on the branch. Locating the base cell by header NAME reads
+	// the right column where CellIndex would read the wrong one. It is "" when the
+	// branch table's header was not seen in the diff, in which case the exemption falls
+	// back to the positional CellIndex (correct whenever the two tables share a shape).
+	Header string
 }
 
 // stamp describes a single human:<name> occurrence found in a PR diff.
@@ -573,6 +583,63 @@ func cellAt(line string, idx int) (string, bool) {
 	return cells[idx], true
 }
 
+// isDelimiterRow reports whether the cells of a pipe row are a markdown table
+// delimiter (`|---|:--:|...`) — every non-empty cell is only dashes, colons and
+// spaces. It is how boardHeaderCells tells a real header row from the delimiter
+// line that follows it.
+func isDelimiterRow(cells []string) bool {
+	any := false
+	for _, c := range cells {
+		t := strings.TrimSpace(c)
+		if t == "" {
+			continue
+		}
+		any = true
+		if strings.Trim(t, "-: ") != "" {
+			return false
+		}
+	}
+	return any
+}
+
+// boardHeaderCells returns the raw cells of a stream-board status-table HEADER row
+// (`| # | Brief | Wave | Effort | Status | Verified | Reviewed |`), or ok=false
+// when the line is not one. The signal is a pipe row that (a) carries at least the
+// 6-cell floor a status table has, (b) is NOT itself a brief data row (briefRowKey
+// == ""), (c) is NOT the delimiter line, and (d) actually names the `Reviewed`
+// column — the column the pre-existing exemption resolves stamps by. Prose,
+// Evidence tables (4 cells), and the delimiter row are all excluded, so a false
+// positive cannot mis-seed the header used for base-cell resolution.
+func boardHeaderCells(line string) ([]string, bool) {
+	cells := splitTableCells(line)
+	if len(cells) < 6 || briefRowKey(line) != "" || isDelimiterRow(cells) {
+		return nil, false
+	}
+	for _, c := range cells {
+		if strings.EqualFold(strings.TrimSpace(c), "Reviewed") {
+			return cells, true
+		}
+	}
+	return nil, false
+}
+
+// briefHeaderIndex indexes a board file's status-table HEADER row by column name
+// (lowercased, trimmed) -> cell index, for the base-side header-name resolution in
+// stampIsPreExisting. It returns the FIRST header row found, or nil when the file
+// carries none — nil is the signal to fall back to the positional CellIndex.
+func briefHeaderIndex(content string) map[string]int {
+	for _, line := range strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n") {
+		if cells, ok := boardHeaderCells(line); ok {
+			m := map[string]int{}
+			for i, c := range cells {
+				m[strings.ToLower(strings.TrimSpace(c))] = i
+			}
+			return m
+		}
+	}
+	return nil
+}
+
 // findStampCell returns the index and raw text of the cell that carries the
 // human:<name> stamp for name (lowercased), so the pre-existing check compares the
 // stamp's OWN cell — the Reviewed cell in practice, but located by content so a
@@ -605,15 +672,18 @@ func briefRowsByKey(content string) map[string]string {
 // failure (no git, shallow clone, file absent at the base — i.e. added by this
 // branch) yields nil, so NO row matches and nothing is exempted: the fail-closed
 // direction, the same one consumerEntriesAtBase chose for the same reason.
-var briefRowsAtRef = func(root, ref, path string) map[string]string {
+// It returns the base table's header→index map alongside the rows so the exemption
+// can resolve the stamp's base cell by column NAME (see stampIsPreExisting); the map
+// is nil when the base file carries no header row, and both are nil on a read failure.
+var briefRowsAtRef = func(root, ref, path string) (map[string]string, map[string]int) {
 	if ref == "" {
-		return nil
+		return nil, nil
 	}
 	content, err := exec.Command("git", "-C", root, "show", ref+":"+filepath.ToSlash(path)).Output()
 	if err != nil {
-		return nil
+		return nil, nil
 	}
-	return briefRowsByKey(string(content))
+	return briefRowsByKey(string(content)), briefHeaderIndex(string(content))
 }
 
 // prMergeBaseSHA resolves the PR's merge-base commit against the local HEAD (the
@@ -659,7 +729,7 @@ func ghPRBaseRef(repo string, pr int) string {
 // occurrence contributes NO Row, so the all-rows loop below cannot see it. Without
 // this fail-closed check a genuinely NEW, uncorroborated non-board stamp would ride
 // a pre-existing board row's exemption.
-func stampIsPreExisting(s stamp, baseRows map[string]string) bool {
+func stampIsPreExisting(s stamp, baseRows map[string]string, baseHeader map[string]int) bool {
 	if s.Unresolved || len(s.Rows) == 0 || baseRows == nil {
 		return false
 	}
@@ -671,7 +741,28 @@ func stampIsPreExisting(s stamp, baseRows map[string]string) bool {
 		if !ok {
 			return false // brief not present at the base: this branch added the row
 		}
-		baseCell, ok := cellAt(baseRow, r.CellIndex)
+		// Locate the base cell. By default this is the branch's positional CellIndex,
+		// which is correct whenever base and branch share the table shape. But the
+		// brief-v2 migration re-shapes the Briefs table (the Gate column is dropped
+		// header-and-cells, columns re-ordered after Reviewed), so the stamp's column
+		// sits at a DIFFERENT index on the base — reading the base cell at the branch's
+		// index would read the WRONG column and report a byte-identical re-render as
+		// MISSING. When the base table carries a header row AND the branch recorded its
+		// column's name, resolve the base cell by that NAME instead. Fall back to the
+		// positional index ONLY when the base table has no header row (baseHeader nil/
+		// empty) or the branch header was not seen — the pre-migration behaviour.
+		idx := r.CellIndex
+		if len(baseHeader) > 0 && r.Header != "" {
+			hi, ok := baseHeader[strings.ToLower(r.Header)]
+			if !ok {
+				// The branch column is absent from the base header — the base cannot
+				// carry this column at all, so a byte-identical re-render cannot be
+				// proven. Fail closed.
+				return false
+			}
+			idx = hi
+		}
+		baseCell, ok := cellAt(baseRow, idx)
 		if !ok || strings.TrimSpace(baseCell) != strings.TrimSpace(r.Cell) {
 			return false // re-shaped or edited cell — not a byte-identical re-render
 		}
@@ -682,9 +773,9 @@ func stampIsPreExisting(s stamp, baseRows map[string]string) bool {
 // markPreExisting sets PreExisting on each stamp using the pre-read base rows,
 // keyed by the stamp's file. Pure (no git/network) so the exemption's semantics
 // are table-testable end to end.
-func markPreExisting(stamps []stamp, baseRowsByFile map[string]map[string]string) {
+func markPreExisting(stamps []stamp, baseRowsByFile map[string]map[string]string, baseHeadersByFile map[string]map[string]int) {
 	for i := range stamps {
-		stamps[i].PreExisting = stampIsPreExisting(stamps[i], baseRowsByFile[stamps[i].File])
+		stamps[i].PreExisting = stampIsPreExisting(stamps[i], baseRowsByFile[stamps[i].File], baseHeadersByFile[stamps[i].File])
 	}
 }
 
@@ -700,6 +791,12 @@ func stampsInDiff(root, diff string) []stamp {
 	lines := strings.Split(diff, "\n")
 	var out []stamp
 	curFile := ""
+	// curHeader holds the cells of the most recent board status-table HEADER row seen
+	// (as an ADDED line) in the current file — the branch table's own header. A board
+	// migration re-emits whole tables, so the re-shaped header lands on an added line
+	// right before its data rows; recording it lets each stamp carry its column NAME
+	// (stampRow.Header) for base-cell resolution. Reset on every file change.
+	var curHeader []string
 	for _, line := range lines {
 		trimmed := strings.TrimRight(line, "\r")
 		// Track the current file from diff headers.
@@ -709,10 +806,12 @@ func stampsInDiff(root, diff string) []stamp {
 			if len(fields) >= 4 {
 				curFile = strings.TrimPrefix(fields[3], "b/")
 			}
+			curHeader = nil
 			continue
 		}
 		if strings.HasPrefix(trimmed, "+++ ") {
 			curFile = strings.TrimPrefix(trimmed, "+++ b/")
+			curHeader = nil
 			continue
 		}
 		// Only added lines (not the "+++" header itself).
@@ -734,6 +833,12 @@ func stampsInDiff(root, diff string) []stamp {
 		lineCtx := content
 		if len(lineCtx) > 120 {
 			lineCtx = lineCtx[:120] + "..."
+		}
+		// Track the branch table's header row so each stamp can carry its column
+		// NAME for base-cell resolution (see stampRow.Header). A header line is not a
+		// brief data row, so this never shadows the stamp-recording branch below.
+		if hcells, ok := boardHeaderCells(content); ok {
+			curHeader = hcells
 		}
 		// When the added line is a recognizable brief status-table row, record
 		// where each stamp sits so the pre-existing exemption can compare that
@@ -757,7 +862,14 @@ func stampsInDiff(root, diff string) []stamp {
 			resolved := false
 			if briefKey != "" {
 				if idx, cell, ok := findStampCell(cells, name); ok {
-					s.Rows = []stampRow{{BriefKey: briefKey, CellIndex: idx, Cell: cell}}
+					// Record the branch column's header NAME (e.g. "Reviewed") when the
+					// branch table's header was seen, so the base cell can be located by
+					// name rather than by an index the migration may have shifted.
+					header := ""
+					if idx < len(curHeader) {
+						header = strings.TrimSpace(curHeader[idx])
+					}
+					s.Rows = []stampRow{{BriefKey: briefKey, CellIndex: idx, Cell: cell, Header: header}}
 					resolved = true
 				}
 			}
@@ -1124,13 +1236,16 @@ func runCorroborate(prsArg string) int {
 			// be read) exempts nothing — the fail-closed direction.
 			mb := prMergeBaseSHA(".", repo, pr)
 			baseRowsByFile := map[string]map[string]string{}
+			baseHeadersByFile := map[string]map[string]int{}
 			for i := range stamps {
 				f := stamps[i].File
 				if _, ok := baseRowsByFile[f]; !ok {
-					baseRowsByFile[f] = briefRowsAtRef(".", mb, f)
+					rows, header := briefRowsAtRef(".", mb, f)
+					baseRowsByFile[f] = rows
+					baseHeadersByFile[f] = header
 				}
 			}
-			markPreExisting(stamps, baseRowsByFile)
+			markPreExisting(stamps, baseRowsByFile, baseHeadersByFile)
 			for _, r := range corroborateStamps(stamps, data, repo, pr, gates) {
 				allResults = append(allResults, r)
 				if r.Verdict == verdictMissing {
