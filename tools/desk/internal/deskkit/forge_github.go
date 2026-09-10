@@ -767,6 +767,15 @@ func (g *GitHubForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent,
 // listing has no field for that state at all, so this read is GraphQL by necessity rather
 // than by preference.
 //
+// The author selection carries `__typename` alongside `login` because a GraphQL Bot actor
+// reports the BARE slug as its login (`assay-worker-app`), NOT the `<slug>[bot]` REST
+// rendering every identity comparison in this house expects — `RoleAppLogin` returns
+// `<slug>[bot]`, and `SameActor` folds the two renderings ONLY when both carry the App
+// affix. Without the re-suffix below, a worker's own workpad comment never matched its own
+// identity, so `deskreply --workpad` never found a candidate and appended a second comment
+// every call (#747). This is the same fold `ghOpenChangesQuery`
+// already applies to a PR/review author.
+//
 // `first: 100` is the same bound the call site it replaces used, and the same stated
 // residual: a change with more than 100 comments is read as its first 100, never silently
 // re-ordered.
@@ -781,7 +790,7 @@ const ghCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
           isMinimized
           createdAt
           url
-          author { login }
+          author { login __typename }
         }
       }
     }
@@ -808,7 +817,8 @@ func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error
 							CreatedAt   string `json:"createdAt"`
 							URL         string `json:"url"`
 							Author      struct {
-								Login string `json:"login"`
+								Login    string `json:"login"`
+								Typename string `json:"__typename"`
 							} `json:"author"`
 						} `json:"nodes"`
 					} `json:"comments"`
@@ -835,10 +845,19 @@ func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error
 	nodes := out.Data.Repository.PullRequest.Comments.Nodes
 	res := make([]Comment, 0, len(nodes))
 	for _, n := range nodes {
+		// A GraphQL Bot actor carries the BARE slug as login; re-suffix it to "<slug>[bot]"
+		// so an identity comparison (SameActor against RoleAppLogin's "<slug>[bot]") sees the
+		// same REST rendering it does elsewhere — without this the worker's own workpad comment
+		// never matches its own identity (#747). A null author (deleted
+		// account) stays "" — untrusted, fail closed. Same fold ghOpenChangesQuery applies.
+		login := n.Author.Login
+		if n.Author.Typename == "Bot" && login != "" {
+			login += "[bot]"
+		}
 		res = append(res, Comment{
 			ID:         n.ID,
 			DatabaseID: n.DatabaseID,
-			Author:     Account{Login: n.Author.Login},
+			Author:     Account{Login: login},
 			Body:       n.Body,
 			Minimized:  n.IsMinimized,
 			CreatedAt:  n.CreatedAt,
