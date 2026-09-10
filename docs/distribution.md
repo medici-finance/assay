@@ -53,6 +53,33 @@ A consumer that cannot read its pin cannot claim to be pinned: a missing or malf
 **fail-closed** (could-not-check), never silently defaulted. `deskpins --check` validates a pin file
 against this contract.
 
+### One tag, one tree — and the exemption marker
+
+`statusgen --lint` enforces **one tag, one tree**: the artifacts share a release tag so a single
+tree is never read by tools cut from different releases. Every per-artifact line participates in
+that comparison (the umbrella line does not — it names a composition, not an asset); if two
+artifacts carry different tags the lint PROBLEMs.
+
+Two legitimate states need to opt one line out of the comparison without hiding it:
+
+- a **guard binary frozen on an earlier tag** of the same tool family by a recorded maintainer
+  ruling — still a `desk-tools`-family artifact, just an older tag; and
+- a **separate-repository artifact on its own release cadence** that the umbrella release never
+  ships.
+
+Declare the exemption **per line** with a trailing comment:
+
+```
+example-reconciler v2.4.1 <sha256>  # same-tag: exempt — separate release cadence
+desk-tools-guard v0.13.0 <sha256>  # same-tag: exempt — frozen by maintainer ruling
+```
+
+The marker is the token `same-tag: exempt` in the line's trailing comment; the text after it is a
+free-form reason kept for the human record. An exempt line stays a fully valid, lint-visible pin
+(`deskpins --check` still validates its shape and sha256) — it is only removed from the same-tag
+grouping. Every **non-exempt** artifact must still share one tag: a genuine, undeclared mixed-tag
+state still PROBLEMs, and the exempt line's off-tag never appears in that message.
+
 ## Report packs
 
 Some released tools are **report packs** — periodic reporting instruments (the board view, the
