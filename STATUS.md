@@ -11,22 +11,22 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 0/8 | 2026-09-09 |  |
-| [composability](docs/streams/composability/README.md) | P2 | active | 0/6 | 2026-09-09 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-09 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-09 |  |
-| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 4/9 | 2026-09-09 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/21 | 2026-09-09 |  |
-| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-09 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-09 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/12 | 2026-09-09 |  |
-| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/14 | 2026-09-09 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-09 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 6/6 | 2026-09-09 |  |
-| [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-09 |  |
-| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 1/1 | 2026-09-09 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 8/13 | 2026-09-09 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 3/6 | 2026-09-09 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 0/8 | 2026-09-10 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 0/6 | 2026-09-10 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-09-10 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 0/7 | 2026-09-10 |  |
+| [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 4/9 | 2026-09-10 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/21 | 2026-09-10 |  |
+| [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-10 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-10 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/12 | 2026-09-10 |  |
+| [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/14 | 2026-09-10 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-10 |  |
+| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 6/6 | 2026-09-10 |  |
+| [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-10 |  |
+| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 1/1 | 2026-09-10 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 8/13 | 2026-09-10 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 3/6 | 2026-09-10 |  |
 
 ## Next up
 
