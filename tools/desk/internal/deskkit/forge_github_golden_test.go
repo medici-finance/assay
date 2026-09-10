@@ -73,6 +73,12 @@ type goldenServer struct {
 	contentsGetStatus int
 	// contentsPut is the Contents-API write response (WriteFile). Served with 201.
 	contentsPut map[string]any
+	// pullsList is the GET /pulls list response (OpenChangeForBranch's head-filtered read).
+	pullsList []map[string]any
+	// searchIssues is the GET /search/issues response (SearchIssues).
+	searchIssues map[string]any
+	// repoLabels is the GET /repos/{o}/{r}/labels response (ListLabels).
+	repoLabels []map[string]any
 	// forceStatus, when set for a path suffix, returns that HTTP status (error-mapping cases).
 	forceStatus map[string]int
 	// bigReviewPages: when true, /reviews returns 100 entries on page 1, 1 on page 2.
@@ -98,6 +104,7 @@ var (
 	gPRLabel1  = regexp.MustCompile(`/issues/[0-9]+/labels/[^/]+$`)
 	gRepoLabel = regexp.MustCompile(`^/repos/[^/]+/[^/]+/labels$`)
 	gContents  = regexp.MustCompile(`^/repos/[^/]+/[^/]+/contents/`)
+	gSearchIss = regexp.MustCompile(`^/search/issues$`)
 )
 
 func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
@@ -135,6 +142,13 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		enc(s.timeline)
+	case r.Method == http.MethodGet && gRepoLabel.MatchString(path):
+		// The repo-wide label listing (ListLabels), distinct from the change's labels (gPRLabels).
+		if page != "" && page != "1" {
+			enc([]map[string]any{})
+			return
+		}
+		enc(s.repoLabels)
 	case r.Method == http.MethodPost && gRepoLabel.MatchString(path):
 		if s.labelCreateStatus != 0 {
 			w.WriteHeader(s.labelCreateStatus)
@@ -142,6 +156,8 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusCreated)
 		enc(map[string]any{"name": "x"})
+	case r.Method == http.MethodGet && gSearchIss.MatchString(path):
+		enc(s.searchIssues)
 	case r.Method == http.MethodDelete && gPRLabel1.MatchString(path):
 		if s.labelDeleteStatus != 0 {
 			w.WriteHeader(s.labelDeleteStatus)
@@ -200,6 +216,12 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.reqChecks)
 	case r.Method == http.MethodGet && gPull.MatchString(path):
 		enc(s.pull)
+	case r.Method == http.MethodPatch && gPull.MatchString(path):
+		// EditChange (PATCH /pulls/{n}) — the response body is unread; 200 with the pull object.
+		enc(s.pull)
+	case r.Method == http.MethodGet && gPullsRoot.MatchString(path):
+		// OpenChangeForBranch: GET /pulls?head=…&state=open returns a LIST.
+		enc(s.pullsList)
 	case r.Method == http.MethodPost && gPullsRoot.MatchString(path):
 		w.WriteHeader(http.StatusCreated)
 		enc(s.createResp)
@@ -575,6 +597,68 @@ func TestForgeGithubGolden(t *testing.T) {
 			run: func(f *GitHubForge) (any, error) {
 				return nil, f.DeleteRef(forgeTestRepo, "heads/../../branches/main/protection")
 			},
+		},
+		{
+			// The branch→change lookup (deskpr's existing-PR check). The head filter is
+			// owner:branch and the state is open; the single-match maps to a PullRequest.
+			name: "open_change_for_branch",
+			setup: func(s *goldenServer) {
+				s.pullsList = []map[string]any{
+					{"number": 21, "state": "open", "draft": true, "node_id": "PR_21",
+						"html_url": "https://example/pull/21",
+						"head": map[string]any{"sha": "abc123", "ref": "feat/x"},
+						"base": map[string]any{"ref": "main"}},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.OpenChangeForBranch(forgeTestRepo, "feat/x") },
+		},
+		{
+			// No open change on the branch: (nil, nil) — the result is empty, no error.
+			name: "open_change_for_branch_none",
+			setup: func(s *goldenServer) { s.pullsList = []map[string]any{} },
+			run:   func(f *GitHubForge) (any, error) { return f.OpenChangeForBranch(forgeTestRepo, "feat/gone") },
+		},
+		{
+			// TWO open changes on one source branch → a could-not-check REFUSAL naming the
+			// ambiguity, never a silent first-match. The golden pins the refusal + the read.
+			name: "open_change_for_branch_ambiguous_refuses",
+			setup: func(s *goldenServer) {
+				s.pullsList = []map[string]any{
+					{"number": 21, "state": "open", "head": map[string]any{"ref": "feat/x"}},
+					{"number": 22, "state": "open", "head": map[string]any{"ref": "feat/x"}},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.OpenChangeForBranch(forgeTestRepo, "feat/x") },
+		},
+		{
+			// deskpr edit's body replace: PATCH /pulls/{n} with title+body.
+			name:  "edit_change",
+			setup: func(s *goldenServer) { s.pull = map[string]any{"number": 7} },
+			run: func(f *GitHubForge) (any, error) {
+				return nil, f.EditChange(forgeTestRepo, 7, EditChangeInput{Body: "new body"})
+			},
+		},
+		{
+			// deskfile's dedupe search: repo-scoped, issues-only, carrying state/labels/url.
+			name: "search_issues",
+			setup: func(s *goldenServer) {
+				s.searchIssues = map[string]any{"items": []map[string]any{
+					{"number": 5, "title": "flip races on relabel", "state": "open",
+						"html_url": "https://example/issues/5",
+						"labels": []map[string]any{{"name": "bug"}}},
+				}}
+			},
+			run: func(f *GitHubForge) (any, error) {
+				return f.SearchIssues(forgeTestRepo, SearchIssuesInput{Query: "flip race relabel"})
+			},
+		},
+		{
+			// deskfile's label-existence probe: the repo's label names, read-only.
+			name: "list_labels",
+			setup: func(s *goldenServer) {
+				s.repoLabels = []map[string]any{{"name": "bug"}, {"name": "raised-by:worker"}}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.ListLabels(forgeTestRepo) },
 		},
 		{
 			name: "read_file",

@@ -67,6 +67,10 @@ type glServer struct {
 	createIssue  map[string]any
 	updateMR     map[string]any
 	labelEvents  []map[string]any
+	// issueList is the project-issues LIST payload (SearchIssues), and projLabels the
+	// project-labels LIST payload (ListLabels).
+	issueList []map[string]any
+	projLabels []map[string]any
 	// repoFile is the Repository-Files GET payload (ReadFile / WriteFile idempotency read),
 	// keyed by the ESCAPED file path segment. Absent → 404.
 	repoFile map[string]map[string]any
@@ -167,6 +171,8 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.labelEvents)
 	case r.Method == http.MethodPut && lMRNote1.MatchString(path):
 		enc(map[string]any{"id": 900, "body": "updated"})
+	case r.Method == http.MethodGet && lProjLabels.MatchString(path):
+		enc(s.projLabels)
 	case r.Method == http.MethodPost && lProjLabels.MatchString(path):
 		if s.labelCreateStatus != 0 {
 			w.WriteHeader(s.labelCreateStatus)
@@ -233,6 +239,8 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		enc(s.issue)
+	case r.Method == http.MethodGet && lIssueRoot.MatchString(path):
+		enc(s.issueList)
 	case r.Method == http.MethodPost && lIssueRoot.MatchString(path):
 		w.WriteHeader(http.StatusCreated)
 		enc(s.createIssue)
@@ -608,6 +616,61 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) {
 				return f.CreateDraftChange(glRepo, DraftChangeInput{Title: "t", Body: "b", Head: "feat/x", Base: "main"})
 			},
+		},
+		{
+			// The branch→change lookup: source_branch + state=opened, single match.
+			name: "open_change_for_branch", method: "OpenChangeForBranch",
+			setup: func(s *glServer) {
+				s.mrList = []map[string]any{glMR(map[string]any{"iid": 7})}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.OpenChangeForBranch(glRepo, "feat/x") },
+		},
+		{
+			// No open MR on the branch → (nil, nil): empty result, no error.
+			name: "open_change_for_branch_none", method: "OpenChangeForBranch",
+			setup: func(s *glServer) { s.mrList = []map[string]any{} },
+			run:   func(f *GitLabForge) (any, error) { return f.OpenChangeForBranch(glRepo, "feat/gone") },
+		},
+		{
+			// TWO open MRs on one source branch → a could-not-check REFUSAL, never a first-match.
+			name: "open_change_for_branch_ambiguous_refuses", method: "OpenChangeForBranch",
+			setup: func(s *glServer) {
+				s.mrList = []map[string]any{
+					glMR(map[string]any{"iid": 7}), glMR(map[string]any{"iid": 8}),
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.OpenChangeForBranch(glRepo, "feat/x") },
+		},
+		{
+			// deskpr edit's body replace: PUT /merge_requests/:iid with description only.
+			name: "edit_change", method: "EditChange",
+			setup: func(s *glServer) { s.updateMR = glMR(nil) },
+			run: func(f *GitLabForge) (any, error) {
+				return nil, f.EditChange(glRepo, 7, EditChangeInput{Body: "new description"})
+			},
+		},
+		{
+			// deskfile's dedupe search over the project's issues.
+			name: "search_issues", method: "SearchIssues",
+			setup: func(s *glServer) {
+				s.issueList = []map[string]any{glIssue(map[string]any{
+					"iid": 12, "title": "flip races on relabel", "state": "opened",
+					"labels": []string{"bug"},
+				})}
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.SearchIssues(glRepo, SearchIssuesInput{Query: "flip race relabel"})
+			},
+		},
+		{
+			// deskfile's label-existence probe: the project's label names, read-only.
+			name: "list_labels", method: "ListLabels",
+			setup: func(s *glServer) {
+				s.projLabels = []map[string]any{
+					{"id": 1, "name": "bug"}, {"id": 2, "name": "raised-by:worker"},
+				}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.ListLabels(glRepo) },
 		},
 		{
 			name: "post_comment_on_issue", method: "PostComment",

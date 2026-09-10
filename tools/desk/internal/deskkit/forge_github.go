@@ -359,6 +359,15 @@ func (g *GitHubForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
 		return nil, err
 	}
+	return ghPullFromWire(w), nil
+}
+
+// ghPullFromWire maps a decoded pull object onto the interface's PullRequest. It is shared by
+// the single-change read (GetPullRequest) and the branch lookup (OpenChangeForBranch) so the
+// two cannot map one wire shape two ways — the list endpoint the branch lookup uses returns the
+// SAME object shape, minus the fields (mergeable, changed_files) the list form omits, which
+// decode to their zero values (MergeableUnknown, 0) rather than a wrong value.
+func ghPullFromWire(w ghPullWire) *PullRequest {
 	labels := make([]string, 0, len(w.Labels))
 	for _, l := range w.Labels {
 		labels = append(labels, l.Name)
@@ -380,7 +389,7 @@ func (g *GitHubForge) GetPullRequest(repo ForgeRepo, number int) (*PullRequest, 
 		URL:          w.HTMLURL,
 		HeadRef:      w.Head.Ref,
 		BaseRef:      w.Base.Ref,
-	}, nil
+	}
 }
 
 func (g *GitHubForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
@@ -395,7 +404,84 @@ func (g *GitHubForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 		State:         w.State,
 		Author:        Account{Login: w.User.Login, ID: w.User.ID},
 		IsPullRequest: w.PullRequest != nil,
+		URL:           w.HTMLURL,
 	}, nil
+}
+
+// OpenChangeForBranch resolves the single OPEN pull request whose HEAD branch is `branch`
+// (`GET /repos/{o}/{r}/pulls?head={owner}:{branch}&state=open`). The head filter is spelled
+// `owner:branch` — GitHub's own `user:ref` form — so it matches only same-repo branches, which
+// is every change this desk opens. NONE open → (nil, nil). MORE THAN ONE → a could-not-check
+// REFUSAL: two open PRs on one source branch has no single right answer, and a silent first-
+// match would route deskpr's mergeable read or an edit at whichever GitHub listed first.
+func (g *GitHubForge) OpenChangeForBranch(repo ForgeRepo, branch string) (*PullRequest, error) {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return nil, Unverifiable("OpenChangeForBranch needs a non-empty source branch for "+repo.Slug(), nil)
+	}
+	head := fmt.Sprintf("%s:%s", repo.Owner, branch)
+	path := fmt.Sprintf("/repos/%s/%s/pulls?head=%s&state=open&per_page=%d",
+		repo.Owner, repo.Name, url.QueryEscape(head), forgeFilePerPage)
+	var w []ghPullWire
+	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+		return nil, err
+	}
+	switch len(w) {
+	case 0:
+		return nil, nil
+	case 1:
+		return ghPullFromWire(w[0]), nil
+	default:
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %d open changes share source branch %q in %s — refusing to guess which one is "+
+				"meant; a single open change per source branch is the assumption this read is allowed to make, "+
+				"and it does not hold here", len(w), branch, repo.Slug()), nil)
+	}
+}
+
+// SearchIssues runs a repo-scoped free-text search over ISSUES only (never PRs): the query is
+// prefixed with `repo:{o}/{r} is:issue`, so the caller supplies free text and the backend owns
+// the scope qualifiers — the closed-surface property (no caller-supplied search syntax).
+func (g *GitHubForge) SearchIssues(repo ForgeRepo, in SearchIssuesInput) ([]IssueSearchResult, error) {
+	q := strings.TrimSpace(fmt.Sprintf("repo:%s is:issue %s", repo.Slug(), strings.TrimSpace(in.Query)))
+	path := fmt.Sprintf("/search/issues?q=%s&per_page=%d", url.QueryEscape(q), forgeSearchPerPage)
+	var w ghIssueSearchWire
+	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
+		return nil, err
+	}
+	out := make([]IssueSearchResult, 0, len(w.Items))
+	for _, it := range w.Items {
+		labels := make([]string, 0, len(it.Labels))
+		for _, l := range it.Labels {
+			labels = append(labels, l.Name)
+		}
+		out = append(out, IssueSearchResult{
+			Number: it.Number, Title: it.Title, State: it.State, Labels: labels, URL: it.HTMLURL,
+		})
+	}
+	return out, nil
+}
+
+// ListLabels reads the repo's label NAMES (`GET /repos/{o}/{r}/labels`, paginated). Read-only:
+// it never creates a label, which is the whole reason it is a separate op from ApplyLabels's
+// ensure step (deskfile's probe files unstamped on a missing label rather than minting it).
+func (g *GitHubForge) ListLabels(repo ForgeRepo) ([]string, error) {
+	var all []string
+	for page := 1; page <= forgeMaxFilePages; page++ {
+		var chunk []ghLabelWire
+		path := fmt.Sprintf("/repos/%s/%s/labels?per_page=%d&page=%d",
+			repo.Owner, repo.Name, forgeFilePerPage, page)
+		if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+			return nil, err
+		}
+		for _, l := range chunk {
+			all = append(all, l.Name)
+		}
+		if len(chunk) < forgeFilePerPage {
+			break
+		}
+	}
+	return all, nil
 }
 
 // forgeIssuePerPage / forgeOpenChangesCap bound the two bulk board reads. The issue read
@@ -1280,6 +1366,21 @@ type ghSearchWire struct {
 	} `json:"items"`
 }
 
+// ghIssueSearchWire is the issue-dedupe search shape (SearchIssues): the /search/issues items
+// carrying the state, labels and html_url the dedupe scores and reports — the fields the
+// owner-wide change search (ghSearchWire) does not read.
+type ghIssueSearchWire struct {
+	Items []struct {
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+		State  string `json:"state"`
+		Labels []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
+		HTMLURL string `json:"html_url"`
+	} `json:"items"`
+}
+
 // SearchOpenChanges finds every open change under one owner via the search API
 // (`is:pr is:open user:<owner>`), the typed form of `gh search prs --owner`. The repo each row
 // belongs to is recovered from repository_url's trailing owner/name.
@@ -1459,6 +1560,27 @@ func (g *GitHubForge) CloseIssue(repo ForgeRepo, number int, stateReason string)
 	if stateReason != "" {
 		body["state_reason"] = stateReason
 	}
+	return g.doJSON(http.MethodPatch, path, body, nil)
+}
+
+// EditChange replaces a change's OWN title/body (`PATCH /repos/{o}/{r}/pulls/{n}`) — the change
+// description, not a comment. An empty field is not sent, so a body-only edit does not blank the
+// title (deskpr edit's case) and vice versa; asking to change NEITHER is a could-not-check
+// refusal rather than an empty PATCH.
+func (g *GitHubForge) EditChange(repo ForgeRepo, number int, in EditChangeInput) error {
+	body := map[string]any{}
+	if in.Title != "" {
+		body["title"] = in.Title
+	}
+	if in.Body != "" {
+		body["body"] = in.Body
+	}
+	if len(body) == 0 {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: EditChange was asked to change neither the title nor the body of %s#%d — "+
+				"nothing to write", repo.Slug(), number), nil)
+	}
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", repo.Owner, repo.Name, number)
 	return g.doJSON(http.MethodPatch, path, body, nil)
 }
 

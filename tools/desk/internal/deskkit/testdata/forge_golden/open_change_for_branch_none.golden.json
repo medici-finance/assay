@@ -1,0 +1,10 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/pulls",
+      "query": "head=medici-finance%3Afeat%2Fgone\u0026state=open\u0026per_page=100"
+    }
+  ],
+  "result": null
+}

@@ -527,13 +527,13 @@ func (g *GitLabForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 				"use the typed operation for the kind you mean",
 			repo.Slug(), number, number), nil)
 	case iss != nil:
-		out := &Issue{Number: int(iss.IID), Title: iss.Title, State: gitlabState(iss.State), IsPullRequest: false}
+		out := &Issue{Number: int(iss.IID), Title: iss.Title, State: gitlabState(iss.State), IsPullRequest: false, URL: iss.WebURL}
 		if iss.Author != nil {
 			out.Author = gitlabAccount(iss.Author.ID, iss.Author.Username)
 		}
 		return out, nil
 	case mr != nil:
-		out := &Issue{Number: int(mr.IID), Title: mr.Title, State: gitlabState(mr.State), IsPullRequest: true}
+		out := &Issue{Number: int(mr.IID), Title: mr.Title, State: gitlabState(mr.State), IsPullRequest: true, URL: mr.WebURL}
 		if mr.Author != nil {
 			out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
 		}
@@ -543,6 +543,132 @@ func (g *GitLabForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 		// IsForgeNotFound holds.
 		return nil, g.mapErr(http.MethodGet, issuePath, issErr)
 	}
+}
+
+// OpenChangeForBranch resolves the single OPEN merge request whose SOURCE branch is `branch`
+// (`GET /projects/:id/merge_requests?source_branch=…&state=opened`). NONE open → (nil, nil).
+// MORE THAN ONE → a could-not-check REFUSAL: GitLab, like GitHub, permits more than one open MR
+// on a source branch, and a silent first-match would route deskpr's follow-up at whichever the
+// list returned first. The list form carries no `changes_count`, so the returned change's
+// mergeable verdict is read from the same detailed_merge_status the list does surface — a caller
+// needing the reconciliation count follows up with GetPullRequest.
+func (g *GitLabForge) OpenChangeForBranch(repo ForgeRepo, branch string) (*PullRequest, error) {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return nil, Unverifiable("OpenChangeForBranch needs a non-empty source branch for "+repo.Slug(), nil)
+	}
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	state := "opened"
+	path := fmt.Sprintf("/projects/%s/merge_requests?source_branch=%s&state=opened",
+		g.projectPath(repo), url.QueryEscape(branch))
+	mrs, _, lerr := cl.MergeRequests.ListProjectMergeRequests(repo.Slug(),
+		&gitlab.ListProjectMergeRequestsOptions{
+			State:        &state,
+			SourceBranch: gitlab.Ptr(branch),
+			ListOptions:  gitlab.ListOptions{PerPage: gitlabPerPage, Page: 1},
+		})
+	if lerr != nil {
+		return nil, g.mapErr(http.MethodGet, path, lerr)
+	}
+	open := make([]*gitlab.BasicMergeRequest, 0, len(mrs))
+	for _, mr := range mrs {
+		if mr != nil {
+			open = append(open, mr)
+		}
+	}
+	switch len(open) {
+	case 0:
+		return nil, nil
+	case 1:
+		mr := open[0]
+		out := &PullRequest{
+			Number:    int(mr.IID),
+			State:     gitlabState(mr.State),
+			Draft:     mr.Draft,
+			NodeID:    gitlabNodeID(repo, int(mr.IID)),
+			Body:      mr.Description,
+			HeadSHA:   mr.SHA,
+			Mergeable: gitlabMergeableState(mr.DetailedMergeStatus),
+			Labels:    append([]string(nil), mr.Labels...),
+			URL:       mr.WebURL,
+			HeadRef:   mr.SourceBranch,
+			BaseRef:   mr.TargetBranch,
+		}
+		if mr.Author != nil {
+			out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
+		}
+		return out, nil
+	default:
+		return nil, Unverifiable(fmt.Sprintf(
+			"could-not-check: %d open merge requests share source branch %q in %s — refusing to guess which "+
+				"one is meant; a single open change per source branch is the assumption this read is allowed to "+
+				"make, and it does not hold here", len(open), branch, repo.Slug()), nil)
+	}
+}
+
+// SearchIssues runs a repo-scoped free-text search over the project's ISSUES
+// (`GET /projects/:id/issues?search=…`). GitLab keeps issues and merge requests in separate
+// sequences, so a project issue search returns issues only — the "never changes" property holds
+// by the endpoint's own shape, without a filter. The dedupe scores title similarity locally, so
+// the search is a coarse pre-filter; the state/labels/URL are carried for the candidate report.
+func (g *GitLabForge) SearchIssues(repo ForgeRepo, in SearchIssuesInput) ([]IssueSearchResult, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/projects/%s/issues?search=%s", g.projectPath(repo), url.QueryEscape(in.Query))
+	issues, _, serr := cl.Issues.ListProjectIssues(repo.Slug(), &gitlab.ListProjectIssuesOptions{
+		Search:      gitlab.Ptr(in.Query),
+		ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: 1},
+	})
+	if serr != nil {
+		return nil, g.mapErr(http.MethodGet, path, serr)
+	}
+	out := make([]IssueSearchResult, 0, len(issues))
+	for _, iss := range issues {
+		if iss == nil {
+			continue
+		}
+		out = append(out, IssueSearchResult{
+			Number: int(iss.IID),
+			Title:  iss.Title,
+			State:  gitlabState(iss.State),
+			Labels: append([]string(nil), iss.Labels...),
+			URL:    iss.WebURL,
+		})
+	}
+	return out, nil
+}
+
+// ListLabels reads the project's label NAMES (`GET /projects/:id/labels`, paginated). Read-only,
+// never a create — the deliberate opposite of ApplyLabels's ensure step (see the interface doc).
+func (g *GitLabForge) ListLabels(repo ForgeRepo) ([]string, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	path := fmt.Sprintf("/projects/%s/labels", g.projectPath(repo))
+	var all []string
+	for page := 1; page <= gitlabMaxFilePage; page++ {
+		chunk, resp, lerr := cl.Labels.ListLabels(repo.Slug(), &gitlab.ListLabelsOptions{
+			ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
+		})
+		if lerr != nil {
+			return nil, g.mapErr(http.MethodGet, path, lerr)
+		}
+		for _, l := range chunk {
+			if l != nil {
+				all = append(all, l.Name)
+			}
+		}
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+	}
+	return all, nil
 }
 
 // ListOpenChanges reads a GitLab project's OPEN merge requests as board changes in a
@@ -1614,6 +1740,34 @@ func (g *GitLabForge) CloseIssue(repo ForgeRepo, number int, stateReason string)
 	path := fmt.Sprintf("/projects/%s/issues/%d", proj, number)
 	_, _, uerr := cl.Issues.UpdateIssue(repo.Slug(), int64(number),
 		&gitlab.UpdateIssueOptions{StateEvent: gitlab.Ptr("close")})
+	return g.mapErr(http.MethodPut, path, uerr)
+}
+
+// EditChange replaces a merge request's OWN title/description
+// (`PUT /projects/:id/merge_requests/:iid`). An empty field is not sent, so a body-only edit
+// (deskpr edit's case) leaves the title — and therefore the `Draft:` prefix that IS GitLab's
+// draft marker — untouched; a title-only edit leaves the description. Asking to change NEITHER
+// is a could-not-check refusal rather than an empty PUT. A caller that DID pass a title passes
+// it verbatim (GitLab, not this backend, owns whether that title still reads as a draft).
+func (g *GitLabForge) EditChange(repo ForgeRepo, number int, in EditChangeInput) error {
+	if in.Title == "" && in.Body == "" {
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: EditChange was asked to change neither the title nor the description of %s!%d — "+
+				"nothing to write", repo.Slug(), number), nil)
+	}
+	cl, err := g.client()
+	if err != nil {
+		return err
+	}
+	opts := &gitlab.UpdateMergeRequestOptions{}
+	if in.Title != "" {
+		opts.Title = gitlab.Ptr(in.Title)
+	}
+	if in.Body != "" {
+		opts.Description = gitlab.Ptr(in.Body)
+	}
+	path := fmt.Sprintf("/projects/%s/merge_requests/%d", g.projectPath(repo), number)
+	_, _, uerr := cl.MergeRequests.UpdateMergeRequest(repo.Slug(), int64(number), opts)
 	return g.mapErr(http.MethodPut, path, uerr)
 }
 

@@ -1,0 +1,27 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/pulls",
+      "query": "head=medici-finance%3Afeat%2Fx\u0026state=open\u0026per_page=100"
+    }
+  ],
+  "result": {
+    "Number": 21,
+    "State": "open",
+    "Draft": true,
+    "NodeID": "PR_21",
+    "ChangedFiles": 0,
+    "Author": {
+      "Login": "",
+      "ID": 0
+    },
+    "HeadSHA": "abc123",
+    "Mergeable": "UNKNOWN",
+    "Labels": [],
+    "URL": "https://example/pull/21",
+    "HeadRef": "feat/x",
+    "BaseRef": "main",
+    "UpdatedAt": ""
+  }
+}

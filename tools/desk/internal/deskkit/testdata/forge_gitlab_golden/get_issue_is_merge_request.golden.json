@@ -17,6 +17,7 @@
       "ID": 99
     },
     "IsPullRequest": true,
-    "Title": "Draft: add the thing"
+    "Title": "Draft: add the thing",
+    "URL": "https://gitlab.example/medici-finance/assay/-/merge_requests/7"
   }
 }

@@ -1,0 +1,29 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests",
+      "query": "page=1\u0026per_page=100\u0026source_branch=feat%2Fx\u0026state=opened"
+    }
+  ],
+  "result": {
+    "Number": 7,
+    "State": "open",
+    "Draft": true,
+    "NodeID": "gitlab:medici-finance/assay!7",
+    "ChangedFiles": 0,
+    "Author": {
+      "Login": "worker-bot",
+      "ID": 99
+    },
+    "HeadSHA": "abc123",
+    "Mergeable": "MERGEABLE",
+    "Labels": [
+      "authorization-needed"
+    ],
+    "URL": "https://gitlab.example/medici-finance/assay/-/merge_requests/7",
+    "HeadRef": "feat/x",
+    "BaseRef": "main",
+    "UpdatedAt": ""
+  }
+}

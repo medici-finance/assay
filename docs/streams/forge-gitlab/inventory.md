@@ -96,6 +96,27 @@ CI-rollup-bearing bulk read are not 1:1, and the issue lane defers with its trus
 | 31 | `ListWorkflowFiles(repo, ref)` | workflow-directory listing (zero-CI probe) | `deskboard` `listWorkflowFiles` (`GET /repos/{o}/{r}/contents/.github/workflows?ref=`) | **could-not-check.** GitHub-Actions-specific: GitLab CI config is a single `.gitlab-ci.yml`, not a per-workflow-file directory, so there is no 1:1 listing. Deferred to the forge-gitlab CI brief | github-only |
 | 32 | `ChangeDiff(repo, number)` | raw unified-diff document (human display) | `deskboard` `cmdDiff` (`gh pr diff` → `GET /repos/{o}/{r}/pulls/{n}` with the `.v3.diff` media type) | **could-not-check.** GitLab serves a change's diff as a STRUCTURED per-file list (op 4, `ListChangedFiles`), not a single raw unified-diff document; the raw-text read has no 1:1 form. Deferred to the forge-gitlab diff brief, never assembled here | github-only |
 
+| # | Method | Frozen op (spec §6) | GitHub impl | GitLab mapping | gitlab impl |
+|---|--------|--------------------|-------------|----------------|-------------|
+| 33 | `OpenChangeForBranch(repo, branch)` | resolve the single OPEN change for a SOURCE-branch name | `deskpr` existing-PR check + `warnIfConflicting` (`GET /repos/{o}/{r}/pulls?head={owner}:{branch}&state=open`) | `GET /projects/:id/merge_requests?source_branch=…&state=opened`; more than one open change on one source branch is a could-not-check REFUSAL (ambiguous), never a silent first-match; NONE → (nil, nil) | implemented |
+| 34 | `EditChange(repo, number, in)` | replace a change's own title/body text | `deskpr edit` body replace (`PATCH /repos/{o}/{r}/pulls/{n}`) | `PUT /projects/:id/merge_requests/:iid`; an empty field is not sent (a body-only edit leaves the `Draft:` title prefix untouched); changing neither is a could-not-check refusal | implemented |
+| 35 | `SearchIssues(repo, in)` | free-text dedupe search over a repo's ISSUES | `deskfile` dedupe (`GET /search/issues?q=repo:o/r is:issue …`) — number, title, state, labels, URL | `GET /projects/:id/issues?search=…`; issues and MRs are separate sequences so a project issue search returns issues only. `GetIssue` (op 2) gains the shared `URL` field here too (#691) | implemented |
+| 36 | `ListLabels(repo)` | the repo's labels by name, READS ONLY (never creates) | `deskfile` label-existence probe (`GET /repos/{o}/{r}/labels`) | `GET /projects/:id/labels`; the deliberate opposite of `ApplyLabels`'s ensure step — a missing label makes `deskfile` file UNSTAMPED rather than mint one | implemented |
+
+**Ops 33–36 were added by brief `forge-neutral/13`** (the `04b` follow-on #509 named) under the same
+freeze rule, each with its consuming call site re-seated onto the resolver in the SAME change: 33 by
+`deskpr`'s existing-PR-for-branch check and `warnIfConflicting`; 34 by `deskpr edit`'s body replace; 35
+and 36 by `deskfile`'s file-time dedupe and its label-existence probe. The two search/list reads are the
+enumerated ops `deskpr`/`deskfile`/`deskclose` still lacked, which is why #509 ruled their gh-migration a
+code-aware rescope rather than a ratchet-number correction. With the four ops added and the three verbs
+routed through `ForgeFor`, their three permit rows (`cmd/deskclose/exec.go::runGH::gh`,
+`cmd/deskfile/exec.go::gh::gh`, `cmd/deskpr/exec.go::gh::gh`) are removed and the forge-CLI ceiling falls
+12 → 9. `deskclose` needed no new op (its reads/writes all mapped to existing ops; its `viewer{login}`
+whoami is replaced by the minted role's known login, an identity-layer change, not a forge op).
+`SearchIssues` returns ISSUES only on both backends (GitHub filters PRs out with `is:issue`; GitLab's
+project issue search is issue-only by the endpoint's own shape). On GitLab all four map 1:1 — none is a
+could-not-check-with-gap — because each is a concrete project-scoped REST read/write with a direct analog.
+
 **Ops 27–32 were added by brief `forge-neutral/12`** under the freeze rule, each with its consuming
 `deskboard` call site migrated in the same change — the five PERIPHERAL read categories `forge-neutral/06`
 left on the NARROWED `ghRun` permit row, plus the reads that already had an enumerated op and only stayed

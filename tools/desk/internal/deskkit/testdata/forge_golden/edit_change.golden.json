@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "PATCH",
+      "path": "/repos/medici-finance/assay/pulls/7",
+      "body": {
+        "body": "new body"
+      }
+    }
+  ]
+}
