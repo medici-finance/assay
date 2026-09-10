@@ -453,7 +453,7 @@ func TestEvidenceActorRealRepoPositiveControl(t *testing.T) {
 	}
 
 	// The prose-reading control passes BOTH rows. That is F-verify-self-attest.
-	if got := attributionProblems(streams); len(got) != 0 {
+	if got, _ := attributionProblems(streams); len(got) != 0 {
 		t.Fatalf("the prose-reading check is expected to pass both rows (that is the gap this "+
 			"brief closes); it reported: %v", got)
 	}

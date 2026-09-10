@@ -336,6 +336,33 @@ Measured rather than inferred, on this tree:
 `statusgen --root . --lint` → **exit 0, `LINT: PASS`**, NOTICEs only and no `PROBLEM`-prefixed line.
 The row's own "after migration" clause still belongs to this repo's flag-day migration, which
 remains a separate change.
+**Verify-table RUN 2026-09-10 — opus-4.8[1m]-verifier (non-implementer, verify-desk). NOT a sign-off.** Merged main `8d799c6bc026f675817bc3cfbfa81cad11efe052` (re-pin umbrella v1.0.2→v1.0.3), offline (`KUBECONFIG=/dev/null`, go1.26.5). Binaries built from the merged tree (the installed statusgen predates v1.0.0 and lacks `migrate`, per the implementer note). Frontmatter: `gate: human`, `risk {irreversible: yes, rest no}`.
+
+| # | command | exit | observed | discharges |
+|---|---------|------|----------|------------|
+| 1 | `cd statusgen && go test . -run Migrate -count=1` | 0 | `ok` | Task 1 (migrate + idempotency) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run 'StatusgenRegen'` then `-run 'Migrat'` | 0 | ok, ok | Task 2 (statusgen-regen op) |
+| 3 | `deskmigrate --from v0.28.0 --to v1.0.0 --root examples/adopter-scaffold --dry-run` | 0 | selects `0001-v0.28.0-to-v1.0.0-derived-board`; plans 3 files; `git status --porcelain examples/` = 0 (dry-run wrote nothing) | Task 3; dry-run purity |
+| 4 | `deskmigrate` twice on a fresh scaffold copy | 0 | idempotent; each brief scores 1 on `schema: brief-v2` + hierarchical `brief:` id + `version: 1`; the README scores 0 (not a brief) | Task 1/3 idempotency |
+| 4b | `deskmigrate` on a copy with `docs/streams/graph-repos.yaml` removed | 5 | `graph-repos.yaml is absent — the brief-v2 id form cannot be minted without the alias registry` | registry-required refusal |
+| 5 | mutate `.assay-versions` to two differing artifact tags, `statusgen --lint` | 1 | `PROBLEM: .assay-versions: artifact tags differ …`; `LINT: FAIL` | same-tag pin lint reddens |
+| 6 | `deskboard` built `-ldflags -X main.version=v0.13.0`, run on the migrated copy | 6 | `tree is brief-v2; this deskboard is v0.13.0; run assay:upgrade-assay` | brief-reading version gate |
+| 7 | plugin/paired agreement + `bash plugins/assay/scripts/check-paired-versions.sh` | 0 | ok; `check-paired-versions: OK` — plugin 1.0.0 == plugin.json 1.0.0; single tag v1.0.3 across 10 pin lines; 10 sha256 well-formed | Task 5 (version bump + paired guard) |
+| 8 | `! grep -nE 'v1\.0\.0 [0-9a-f]{64}' plugins/assay/paired-versions.yaml` | 0 | no `v1.0.0 <sha256>` line (tree pinned at v1.0.3); negated-grep passes | no hand-typed hash for the uncut tag |
+| 8' | harvest-equality: each pin line's `<artifact> <tag> <sha256>` vs the PUBLISHED v1.0.3 release checksums manifest | — | COULD-NOT-CHECK (offline) — requires a network read of the published release checksums; not run per the offline envelope | see RISK-VALUE |
+| 9 | `upgrade-assay --root <clean scaffold copy> --to v1.0.0 --dry-run \| grep -c 'What changed'` | 0 | count 1 — release-note `## What changed` prose surfaced before consent, above the migration list | Task 3 (release-note pre-consent) |
+| 10 | `statusgen --root . --lint` (this repo's merged tree) | 0 | `LINT: PASS`, 0 PROBLEM | repo tree lints clean |
+
+All executable rows PASS. The only non-executed row (8') is could-not-check by the offline envelope.
+
+`RISK-VALUE: NAMED, NOT DERIVED — the 10 pinned sha256 digests @ plugins/assay/paired-versions.yaml:37-41 (statusgen) and :62-66 (desk-tools), all at tag v1.0.3` — **THE crux and the open question for the human card.** Deriving them means comparing each digest field-for-field against the PUBLISHED v1.0.3 release checksums manifest, a network read forbidden by the offline envelope. `check-paired-versions.sh` (row 7) confirms only shape + single-tag; by its own header it CANNOT distinguish a correct hash from a well-formed wrong one (the implementer's M3 mutation showed two real hashes swapped between platforms passes that guard, caught only by the harvest comparison of row 8'). **A model verifier offline cannot confirm the digests are right — the human must run row 8' against the published v1.0.3 checksums** (or accept the implementer's recorded end-to-end darwin-arm64 confirmation, itself a network act). A wrong digest fails-safe (every adopter install refuses), so this is availability-risk, not silent-corruption risk.
+`RISK-VALUE: DERIVED — plugin major version = 1.0.0 @ plugins/assay/.claude-plugin/plugin.json:5 and paired-versions.yaml:26` — a hand-edited surface becoming generated is the first contract-breaking change, so a semver MAJOR; plugin == plugin.json enforced by check-paired-versions.sh.
+`RISK-VALUE: DERIVED — migration span from v0.28.0 to v1.0.0 @ examples/adopter-scaffold/migrations/0001-...:3-4` — v0.28.0 is the source umbrella (latest at cut), v1.0.0 the flag-day target; selectable + idempotent (rows 3/4).
+`RISK-VALUE: DERIVED — brief-reading version-gate floor = v1.0.0 (RefuseIfTreeV2BelowV1, tools/desk/internal/deskkit/briefschemagate.go; sibling statusgen/versiongate.go)` — brief-v2 is the first contract-breaking schema, cut as v1.0.0, so a STAMPED build strictly below v1.0.0 reading a v2 tree refuses (exit 6) while v1.0.0 is not gated; observed row 6.
+
+**VERDICT: PASS (Evidence recorded) — NOT signed off, NOT flipped.** `gate: human` + `irreversible: yes`: a model records Evidence but does NOT sign off or flip. Status stays `implemented`; the human closes the verify-gate card after running rows 3 and 9 on a real adopter checkout, reading the release note, and discharging the RISK-VALUE open question by confirming the 10 v1.0.3 sha256 digests against the published release checksums (row 8'), which cannot be done offline.
+
+**Findings (for the human gate):** (1) Verify-table sequencing nit: row 5 mutates `$TMPDIR/adopt/.assay-versions` in place and row 9 as written reuses the same dir → run strictly top-to-bottom, row 9 yields 0 (upgrade-assay correctly refuses a tree with no determinable umbrella); row 9 passes (count 1) on a clean scaffold copy, the intended tree. Suggest the table spell a distinct fresh copy for row 9. Not a code defect. (2) Row 8' (harvest-equality) is the one check a model verifier structurally cannot discharge offline — exactly the risk check-paired-versions.sh cannot see; the human gate must not skip it. (3) `go run` collapses non-zero child exits to 1; rows 4b/5/6 were run against tree-built binaries to read the true exits (5/1/6).
 
 ## Review
 Gate: human (from frontmatter). The human records the ruling after running rows 3 and 9
