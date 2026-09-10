@@ -22,7 +22,7 @@ authored: 2026-09-10 by forge-neutral authoring session
 sources:
   - "docs/streams/forge-neutral/brief-04-write-verbs-issues-and-evidence.md — the amendment (#509) that rescoped these three OUT of 04 and named this follow-on, and the ForgeFor + SetGitHubCustodyMinter custody precedent this brief reuses"
   - "docs/streams/forge-neutral/brief-01-forge-resolution-contract.md — the resolver (ForgeFor / ResolveForge) and its refusal contract"
-  - "docs/streams/forge-gitlab/inventory.md — the frozen op table (22 rows at authoring); this brief appends rows 23–26"
+  - "docs/streams/forge-gitlab/inventory.md — the frozen op table (32 rows on current main); this brief appends rows 33–36"
   - "tools/desk/internal/forgeban/allowlist.go:64 — allowedInvocationCeiling = 12 at authoring base 58b87de; the deskclose/deskfile/deskpr permit rows this brief retires"
   - "freshness-checked 2026-09-10 @ 58b87de — deskpr shells gh through runCmd (exec.go:87; create at deskpr.go, existing-PR/mergeable reads via `gh pr list`/`gh pr view`, `deskpr edit` body replace at edit.go:251); deskfile shells gh (exec.go:50; dedupe `gh search issues` in matcher.go, `gh label list` probe at deskfile.go:878, `gh issue create`/`gh issue comment`/`gh issue view`); deskclose runs gh under the AMBIENT identity (exec.go:48; authority `gh api` reads, `gh issue comment`, `gh pr close`/`gh issue close`, `gh api graphql viewer{login}` whoami, comment pagination, supersession `label list`/`label create`/`--add-label`)"
   - "#691 (MERGED) — deskfile's interim named-refusal on a GitLab repo (ForgeKindFor / requireSupportedForge) and the three gaps it names as blocking the full port: no text-search-issues op, no list-labels op, and GetIssue carrying no URL"
@@ -46,9 +46,9 @@ consumers:
   - "tools/desk/cmd/deskpr: fixed-here (routed onto ForgeFor; `--as-app=false` ambient fallback retired)"
   - "tools/desk/cmd/deskfile: fixed-here (routed onto ForgeFor; the interim GitLab named-refusal from #691 superseded now the backend serves GitLab; could-not-check refusal on an unresolvable forge retained)"
   - "tools/desk/cmd/deskclose: fixed-here (routed onto ForgeFor; the viewer-login whoami read replaced by the minted role's known login)"
-  - "docs/streams/forge-gitlab/inventory.md: fixed-here (rows 23–26)"
-  - "tools/desk/cmd/deskpushguard: follow-up (its `fetchPR` branch→change lookup can adopt the op this brief adds, but its identity/no-op status is a separate row and is NOT retired here)"
-  - "docs/streams/forge-gitlab/brief-05-live-pilot-parity-walk.md: downstream beneficiary — the live pilot's verbs-only round trip (pilot-report §2 records every write as hand-built curl for want of a verb) needs these three verbs' GitLab backends; the in-stream edge that proves the property first is forge-neutral/10"
+  - "docs/streams/forge-gitlab/inventory.md: fixed-here (rows 33–36)"
+  - "tools/desk/cmd/deskpushguard: out-of-scope (its `fetchPR` branch→change lookup can adopt the op this brief adds, but its identity/no-op permit row is a separate follow-up not owned by this brief and is NOT retired here)"
+  - "docs/streams/forge-gitlab/brief-05-live-pilot-parity-walk.md: out-of-scope (downstream beneficiary — the live pilot's verbs-only round trip, which pilot-report §2 records running on hand-built curl for want of a verb, needs these three verbs' GitLab backends; the typed in-stream edge that proves the property first is the unblocks on forge-neutral/10)"
 version: 1
 id: 20be4cba-88b9-4210-8715-588b25f983f8
 ---
@@ -86,7 +86,7 @@ files:
 - `tools/desk/internal/deskkit/forge.go`, `tools/desk/internal/deskkit/forgeresolve.go` — the
   frozen seam (four ops added) and `ForgeFor` + `SetGitHubCustodyMinter`.
 - `tools/desk/internal/forgeban/allowlist.go` — three permit rows removed, ceiling lowered by 3.
-- `docs/streams/forge-gitlab/inventory.md` — the frozen op table, rows 23–26 appended.
+- `docs/streams/forge-gitlab/inventory.md` — the frozen op table, rows 33–36 appended.
 
 single-point-of-failure: for all three verbs the single control is WHICH token the resolver's
 custody binding hands the backend — get it wrong and the write lands as an identity nobody
@@ -176,7 +176,7 @@ facts:
    - `ListLabels(repo)` — the repo's labels by name; **reads only, never creates** (the opposite of
      `ApplyLabels`). GitHub `GET /repos/{o}/{r}/labels`; GitLab `GET /projects/:id/labels`. Consumed
      by `deskfile`'s label-existence probe.
-   Record all four in `docs/streams/forge-gitlab/inventory.md` (rows 23–26) with each row's GitLab
+   Record all four in `docs/streams/forge-gitlab/inventory.md` (rows 33–36) with each row's GitLab
    mapping, and give each a both-backend golden contract case.
 2. **Migrate `deskpr` onto the resolver.** Route create → `CreateDraftChange`, the existing-PR
    check + mergeable read → `OpenChangeForBranch` / `GetPullRequest`, and `deskpr edit`'s body
@@ -215,16 +215,16 @@ facts:
 |---|---------|--------|
 | 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 |
 | 2 | `cd tools/desk && go test ./cmd/deskpr/... ./cmd/deskfile/... ./cmd/deskclose/... -count=1` | exit 0 — the three migrated suites are green |
-| 3 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestNoForgeCLIShellout\|TestForgeNoPassthrough' -count=1` | exit 0 — the seam grows four ops and stays closed (no generic/endpoint method, no extra exported backend method) |
-| 4 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestForgeGithubGolden\|TestForgeGitlabGolden\|TestForgeGitlabCoverage' -count=1` | exit 0 — `open_change_for_branch` / `edit_change` / `search_issues` / `list_labels` golden cases pin both backends' wire, and coverage reconciles the seam against the inventory (rows 23–26) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -count=1 && go test ./internal/deskkit/ -run TestForgeNoPassthrough -count=1` | exit 0 — the seam grows four ops and stays closed (no generic/endpoint method, no extra exported backend method) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGithubGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -count=1` | exit 0 — `open_change_for_branch` / `edit_change` / `search_issues` / `list_labels` golden cases pin both backends' wire, and coverage reconciles the seam against the inventory (rows 33–36) |
 | 5 | `grep -n 'allowedInvocationCeiling' tools/desk/internal/forgeban/allowlist.go` | shows a value **3 lower than the base** (= 9 at `58b87de`) |
 | 6 | `grep -c -e 'cmd/deskclose/exec.go::runGH::gh' -e 'cmd/deskfile/exec.go::gh::gh' -e 'cmd/deskpr/exec.go::gh::gh' tools/desk/internal/forgeban/allowlist.go` | prints `0` — all three permit rows are gone |
 | 7 | `cd tools/desk && go test ./internal/forgeban/... -count=1` | exit 0 — the ratchet passes at the lowered ceiling |
 | 8 | `grep -rn -e 'runCmd("gh"' -e 'runGH(' tools/desk/cmd/deskpr tools/desk/cmd/deskfile tools/desk/cmd/deskclose --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — no verb shells `gh` through its wrapper any more (the `#274` grep-form gap, closed against the wrapper) |
 | 9 | `grep -rn -e '--as-app=false' -e 'asApp' tools/desk/cmd/deskpr --include='*.go' \| grep -v _test.go \| wc -l` | prints `0` — the ambient fallback flag and its branch are removed, not merely defaulted off |
 | 10 | `cd tools/desk && go test ./cmd/deskpr/... -run TestDeskprRefusesWithoutMintedToken -count=1 -v` | **negative path**: with the custody binding yielding no token, `deskpr` REFUSES (non-zero) and performs no forge write — asserted by the recording fake forge showing zero calls; there is no ambient fall-through |
-| 11 | `cd tools/desk && go test ./cmd/deskfile/... -run 'TestDeskfileFilesOnGitLabThroughBackend\|TestDeskfileRefusesWithoutMintedToken' -count=1 -v` | exit 0 — POSITIVE: on a GitLab-configured repo `deskfile` FILES via the backend (the `#691` refusal is superseded); NEGATIVE: with no minted token the backend refuses, no ambient fallback |
-| 12 | `cd tools/desk && go test ./cmd/deskclose/... -run 'TestDeskcloseClosesThroughBackend\|TestDeskcloseActingLoginFromRoster' -count=1 -v` | exit 0 — deskclose closes through `CloseIssue`, and its acting login comes from the minted role (not a `viewer{login}` forge read) |
+| 11 | `cd tools/desk && go test ./cmd/deskfile/... -run TestDeskfileFilesOnGitLabThroughBackend -count=1 -v && go test ./cmd/deskfile/... -run TestDeskfileRefusesWithoutMintedToken -count=1 -v` | exit 0 — POSITIVE: on a GitLab-configured repo `deskfile` FILES via the backend (the `#691` refusal is superseded); NEGATIVE: with no minted token the backend refuses, no ambient fallback |
+| 12 | `cd tools/desk && go test ./cmd/deskclose/... -run TestDeskcloseClosesThroughBackend -count=1 -v && go test ./cmd/deskclose/... -run TestDeskcloseActingLoginFromRoster -count=1 -v` | exit 0 — deskclose closes through `CloseIssue`, and its acting login comes from the minted role (not a `viewer{login}` forge read) |
 | 13 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestOpenChangeForBranchAmbiguousRefuses' -count=1 -v` | **negative path**: two open changes on one source branch → a could-not-check REFUSAL naming the ambiguity, not a silent first-match |
 | 14 | `statusgen --root . --consumers --brief forge-neutral/13` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff |
 
@@ -232,7 +232,7 @@ facts:
 
 | Failure mode of the work | Caught by |
 |---|---|
-| A new op is added with no consuming call site, violating the freeze rule | row 4 + inventory rows 23–26 + the three verb suites (row 2) |
+| A new op is added with no consuming call site, violating the freeze rule | row 4 + inventory rows 33–36 + the three verb suites (row 2) |
 | The seam grows a generic/passthrough or endpoint-taking method behind the four ops | row 3 (`TestForgeNoPassthrough`) |
 | A backend's wire behaviour drifts | row 4 (goldens pin the four ops per backend) |
 | A verb still shells `gh` after the migration (the `#274` vacuous-grep gap) | row 8, written against the `runCmd`/`runGH` wrapper form, not `exec.Command` |
