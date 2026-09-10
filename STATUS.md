@@ -32,6 +32,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
+| derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | desk-tools | 17 — One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on [exec:strong] | 1 | 1000 |
 | desk-tools | 18 — Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check [exec:strong] | 1 | 1000 |
 
@@ -150,14 +151,14 @@ _None._
 
 ### apps-installer (8 open)
 
-- 01 Role→App indirection — six roles on N Apps without symlinks — implemented (wave 0)
-- 02 `deskapps init` — loopback page, tier manifests, the manifest→code→conversion flow, key + record writes — todo (wave 1)
+- 01 Role→App indirection — six desk roles on N GitHub Apps without symlinks — implemented (wave 0)
+- 02 `deskapps init` — loopback page, tier manifests, the manifest→code→conversion flow, key and record writes — todo (wave 1)
 - 03 `deskapps` install + prove — installation poll, fresh mint, scopes-vs-duties, roster write — todo (wave 2)
 - 04 `deskapps resume` / `status` — per-App state machine, throttle pause, expired-code re-arm, page verbs — todo (wave 2)
 - 05 `deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof — implemented (wave 0)
 - 06 Avatar step in the run board — generated PNG beside the settings page, confirmed not uploaded — todo (wave 3)
 - 07 Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented — todo (wave 4)
-- 08 Solo identity mode — spec + decision: the desk verbs on the operator's own token — implemented (wave 0)
+- 08 Solo identity mode — spec and decision for running the desk verbs on the operator's own token — implemented (wave 0)
 
 ### composability (6 open)
 
@@ -173,17 +174,17 @@ _None._
 - 03 `statusgen reconcile` — derive lifecycle state from PRs, witnesses, approvals and rulings; brief-v2 parser — implemented (wave 1)
 - 04 generated Briefs table in every stream README + single-writer lint + scheduled reconcile PR — implemented (wave 2)
 - 06 v1.0.0 — deskmigrate statusgen-regen op, the v0.28.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1 — implemented (wave 3)
-- 07 per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills — todo (wave 4)
+- 07 per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills — in-progress (wave 4)
 
 ### desk-containers (7 open)
 
-- 01 base image — toolchains, desk-tools, skills, volume — implemented (wave 1)
-- 02 runtime credential contract + layer-secret scan — implemented (wave 1)
-- 03 per-desk images + build matrix + publish wiring — implemented (wave 2)
-- 04 interactive launch script `desk-run.sh` — todo (wave 3)
-- 05 docker-compose definition — todo (wave 3)
-- 06 Kubernetes manifests — todo (wave 3)
-- 07 multi-desk control layer — tmux/equivalents, macOS + win32 — todo (wave 4)
+- 01 base image — toolchains, desk-tools, assay skills, persistent-volume layout — implemented (wave 1)
+- 02 runtime credential contract (PEM + model env) + image layer-secret scan — implemented (wave 1)
+- 03 per-desk images (named by desk) + build matrix + publish wiring — implemented (wave 2)
+- 04 interactive desktop launch script (desk-run.sh) — todo (wave 3)
+- 05 docker-compose definition for the five desks — todo (wave 3)
+- 06 Kubernetes manifests for the five desks — todo (wave 3)
+- 07 multi-desk control layer — tmux/tmuxinator evaluation + cross-platform config — todo (wave 4)
 
 ### desk-supervision (5 open)
 
@@ -195,8 +196,8 @@ _None._
 
 ### desk-tools (16 open)
 
-- 01 Binary channel — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
-- 02 Generalize — batch-fanout as the second drain-engine consumer — implemented (wave 1)
+- 01 Binary channel sealed — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
+- 02 Generalize — batch-fanout as the second drain-engine consumer (contract validation) — implemented (wave 1)
 - 03 Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN — implemented (wave 1)
 - 07 `clusterguard` — exec-boundary shim for cluster CLIs, operator opt-in — implemented (wave 1)
 - 08 `deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file — implemented (wave 1)
@@ -214,35 +215,35 @@ _None._
 
 ### desktools-go-git (7 open)
 
-- 02 `gitcore` transport + in-process auth (BasicAuth) + go-git pin — implemented (wave 2)
-- 03 migrate read/plumbing verbs (read-heavy tools) — todo (wave 3)
-- 04 migrate `deskpushguard` detection reads (parity + mutation test) — todo (wave 3)
-- 05 migrate fetch + retire bespoke hardening (`deskgit` / `deskadvisory`) — todo (wave 4)
-- 06 migrate push + retire ambient-credential machinery + preflight probe — todo (wave 4)
-- 07 `deskmerge` exception — fence the trial merge, migrate the rest — todo (wave 3)
-- 08 flip the drop-the-binary CI gate + CVE floor + file the follow-on — todo (wave 5)
+- 02 gitcore package + in-process transport/auth (BasicAuth) + go-git pin — implemented (wave 2)
+- 03 migrate read/plumbing verbs (read-heavy tools) to gitcore — todo (wave 3)
+- 04 migrate deskpushguard detection reads to gitcore (parity + mutation test) — todo (wave 3)
+- 05 migrate fetch + retire bespoke hardening (deskgit / deskadvisory / deskmerge) — todo (wave 4)
+- 06 migrate push + retire ambient-credential machinery + preflight transport probe — todo (wave 4)
+- 07 deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest — todo (wave 3)
+- 08 flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on — todo (wave 5)
 
 ### forge-gitlab (4 open)
 
-- 05 Live pilot — one brief round-tripped on a real GitLab group; parity table walked — implemented (wave 4)
+- 05 Live pilot — one brief round-tripped on a real GitLab group, security-parity table walked — implemented (wave 4)
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — todo (wave 5)
-- 07 GitHub forge backend on `go-gh` — retire the exec-`gh` shell path — implemented (wave 2)
+- 07 GitHub forge backend on go-gh — retire the exec-`gh` shell path — implemented (wave 2)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
 
 ### forge-neutral (12 open)
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
-- 03 Write verbs A — deskpost, deskreply, deskflip onto the resolver — implemented (wave 2)
-- 04 Write verbs B — deskpr, deskfile, deskclose, deskevidence onto the resolver — implemented (wave 2)
-- 05 Claim layer — the GitLab shape of `refs/dispatch/*` and its release — implemented (wave 2)
-- 06 Read verbs — deskboard (board.go reads), issueboard, scanloop on the seam — implemented (wave 3)
-- 07 statusgen acting identity — Evidence-actor and `verifyrun` name the forge identity that acted — todo (wave 3)
-- 08 statusgen forge-aware — `init` CI scaffold, auto-flip corroboration, honest claim decay — todo (wave 4)
-- 09 Substrate — leak-gate verdict on merge requests, `cellctl` forge-aware `new`/`up` — todo (wave 3)
+- 03 Write verbs A — deskpost, deskreply and deskflip onto the resolver — implemented (wave 2)
+- 04 Write verbs B — deskpr, deskfile, deskclose and deskevidence onto the resolver — implemented (wave 2)
+- 05 Claim layer — the GitLab shape of refs/dispatch/* and its release — implemented (wave 2)
+- 06 Read verbs — deskboard, issueboard, scanloop and the loop planners on the seam — implemented (wave 3)
+- 07 statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted — todo (wave 3)
+- 08 statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay — todo (wave 4)
+- 09 Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up — todo (wave 3)
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
-- 12 deskboard non-board reads onto the seam — PR search, commit history, single-commit, combined-status, workflow listing — implemented (wave 4)
+- 12 deskboard non-board reads onto the seam — implemented (wave 4)
 
 ### harness-portability (13 open)
 
@@ -250,38 +251,38 @@ _None._
 - 02 Kill the drift debt — re-sync the bundle, flip the canonical home — implemented (wave 0)
 - 03 Ruling: target harnesses, delivery channel, degradation matrix — implemented (wave 1)
 - 04 Neutral-core skill bodies + per-harness binding files + neutrality lint — implemented (wave 2)
-- 05 Resident rules: one source, per-harness delivery generated — implemented (wave 2)
+- 05 Resident rules — one source, per-harness delivery generated — implemented (wave 2)
 - 06 Codex packaging — generated manifest, coverage rule, install path — implemented (wave 3)
 - 07 Adoption docs, freshness registration, live Codex smoke protocol + first run — implemented (wave 4)
 - 09 jcode desk-harness spike — measured parity + fleet-density for driving desks — implemented (wave 0)
-- 10 SpecMem portable-memory spike — one stream's registers across two harnesses — implemented (wave 0)
-- 12 Cursor — the third harness column (ground-truth + binding + generator verb + public column) — implemented (wave 5)
+- 10 SpecMem portable-memory spike — one stream's registers across Claude Code and a second harness — implemented (wave 0)
+- 12 Cursor — the third harness column — implemented (wave 5)
 - 13 Cursor live-desk-smoke protocol + first run — implemented (wave 6)
 - 14 Code de-house — land the stream's tool and packaging deliverables in the public tree — implemented (wave 6)
 - 15 Public CI wiring + harnesslint clean-up for the de-housed tools — implemented (wave 7)
 
 ### iso-9001 (4 open)
 
-- 01 Emit the tool-validation evidence pack as a release asset (7.1.5) — implemented (wave 0)
-- 03 A finding closes on a fired control — the effectiveness record (10.2) — todo (wave 1)
-- 04 Record the authorizing human in the release itself (8.6) — todo (wave 1)
+- 01 Emit the tool-validation evidence pack as a release asset — implemented (wave 0)
+- 03 A finding closes on a fired control — the corrective-action effectiveness record — todo (wave 1)
+- 04 Record the authorizing human in the release itself — todo (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 
 ### quality (1 open)
 
-- 15 learned riskscore graduation — JIT defect-prediction model — implemented (wave 3)
+- 15 learned riskscore graduation — JIT defect-prediction model with heuristic fallback — implemented (wave 3)
 
 ### statusgen (5 open)
 
-- 03 self-improvement metric (self-healed vs human-touched) — implemented (wave 2)
-- 05 drives phase 3 — anti-starvation floors + critical tier — implemented (wave 1)
-- 06 findings register — corroborated state machine — implemented (wave 1)
-- 09 opt-in telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
-- 11 DORA/insights hybrid — DevLake commodity split — implemented (wave 1)
+- 03 Self-improvement metric — loops that self-diagnose AND self-resolve (agent-raised + agent-fixed, no human touch) vs human-touched — implemented (wave 2)
+- 05 Drives phase 3 — anti-starvation floors + the hard critical tier (≤15/20 slots via a 2-pass fill, ≤6/8 workers, effectiveCap; a lexicographic never-buried tier fed by a stamped security label + a dependency-edge reciprocity lint so blockedCount is not gameable) — implemented (wave 1)
+- 06 Findings register becomes a corroborated state machine — bounded shelving (parked) + transition guard on resolved/affects/parked — implemented (wave 1)
+- 09 Opt-in statusgen telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
+- 11 DORA/insights hybrid — Apache DevLake for commodity metrics, our methodology metrics retained — implemented (wave 1)
 
 ### windows-port (3 open)
 
-- 00 Build-tag split for the unix-only syscall sites — implemented (wave 0)
+- 00 Build-tag split for the unix-only syscall sites in statusgen and desk-tools — implemented (wave 0)
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — implemented (wave 1)
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — implemented (wave 2)
 
@@ -306,22 +307,22 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ### desk-tools (5 done)
 
-- 04 Deterministic runner — execute rows, batch, sign, file verdict issues — done (wave 1)
-- 05 Escape-valve `Decide()` primitive in deskkit — done (wave 1)
+- 04 Deterministic runner: execute rows, batch ~5 min, sign, file verdict issues — done (wave 1)
+- 05 Escape-valve `Decide()` primitive in deskkit — enum-bounded agent consults for deterministic loops — done (wave 1)
 - 06 Roster from deployment — resolve trust / role-binding config from the cell registry + mounted secrets, not a machine-local `roster.env` (design direction) — done (wave 1)
 - 14 bodycheck — three measured false-positive classes into the negative corpus, plus `--explain` — done (wave 1)
 - 20 Cross-repo triage/verify evidence binds to the remote — a sibling checkout must be cross-checked, not trusted as-is — done (wave 1)
 
 ### desktools-go-git (1 done)
 
-- 01 inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate — done (wave 1)
+- 01 inventory freeze + gitexec single-seam contract + golden harness + counting CI gate — done (wave 1)
 
 ### forge-gitlab (4 done)
 
-- 01 `Forge` interface extraction in deskkit — `github` impl pinned by goldens — done (wave 1)
-- 02 `gitlab` forge implementation (MRs, notes, approvals, statuses) — done (wave 2)
+- 01 Forge interface extraction in deskkit — github impl pinned by goldens — done (wave 1)
+- 02 gitlab forge implementation — MRs, notes, approvals, statuses over REST v4 — done (wave 2)
 - 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — done (wave 2)
-- 04 Fleet provisioning + adopter doc + ci-config-project runbook — done (wave 3)
+- 04 Fleet provisioning script + adopter doc + ci-config-project runbook — done (wave 3)
 
 ### harness-portability (1 done)
 
@@ -329,50 +330,50 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ### iso-9001 (2 done)
 
-- 02 Align three shipped disclosures with the code they describe (B9) — done (wave 0)
-- 05 Records control and retention, stated once (7.5.3) — done (wave 1)
+- 02 Align three shipped disclosures with the code they describe — done (wave 0)
+- 05 Records control and retention, stated once — done (wave 1)
 
 ### mistake-proofing (6 done)
 
-- 01 Cross-read a brief's declared paths against the risk classifier (B3) — done (wave 0)
-- 02 Dereference named identifiers, not just backticked paths (B4) — done (wave 0)
-- 03 Typed Verify-row obligation classes, derived from the diff shape (B2, D7) — done (wave 1)
-- 04 Derive the authoring guidance's enforcement-status claims from the lint (B9) — done (wave 1)
-- 05 `newbrief` — the scaffolder as the authoring front door (B1) — done (wave 2)
-- 06 D1 promoted to a lint obligation — a new check must carry its mutation row — done (wave 2)
+- 01 Cross-read a brief's declared paths against the risk classifier — the one authoring mistake that downgrades a gate — done (wave 0)
+- 02 Dereference named identifiers, not just backticked paths — test and function names must resolve — done (wave 0)
+- 03 Typed Verify-row obligation classes — carry the prose MUSTs as data and derive their presence from the diff — done (wave 1)
+- 04 Derive the authoring guidance's enforcement-status claims from the lint itself — done (wave 1)
+- 05 newbrief — the scaffolder as the authoring front door, so derived fields stop being typed — done (wave 2)
+- 06 D1 promoted to a lint obligation — a change that adds a check must carry its mutation row — done (wave 2)
 
 ### quality (15 done)
 
-- 01 miner skeleton — go-git extraction, incremental runs, three-state plumbing — done (wave 0)
-- 02 M1 line-operation taxonomy + churn/rework rate — done (wave 1)
+- 01 qualgen miner skeleton — go-git extraction, incremental mine, three-state plumbing — done (wave 0)
+- 02 M1 line-operation taxonomy + churn / rework rate (GitClear-aligned) — done (wave 1)
 - 03 M1 hotspots + knowledge distribution (SPOF) + change coupling — done (wave 1)
-- 04 M1 instruction-layer brittleness (reference-validity + doc↔code drift) — done (wave 1)
-- 05 `QUALITY.md` single-writer trend view + metrics artifacts — done (wave 2)
-- 06 M2 fix identification — pluggable linkage adapter + evidence tiers — done (wave 1)
-- 07 M2 B-SZZ inducing trace + derived defect metrics — done (wave 2)
+- 04 M1 instruction-layer brittleness — reference-validity + doc↔code co-change staleness — done (wave 1)
+- 05 single-writer QUALITY.md trend view + metrics/defects/attribution artifact schemas — done (wave 2)
+- 06 M2 fix identification — pluggable fix-linkage adapter + GitHub-labels reference adapter + evidence tiers — done (wave 1)
+- 07 M2 B-SZZ inducing-commit trace + derived defect metrics — done (wave 2)
 - 08 `pr <n>` mode — per-file risk features (generic riskscore feed) — done (wave 3)
-- 09 `check <files>` mode — brittleness screen for a named file set — done (wave 2)
-- 10 M3 stage attribution — dossier + ledger, pluggable provenance-linkage adapter — done (wave 3)
-- 11 DORA join — quality denominator + traced-CFR, pluggable delivery-metrics source — done (wave 3)
-- 12 M4 gate-yield accounting + ritual-effectiveness joins — done (wave 4)
-- 13 M4 session forensics — pluggable telemetry-source interface + reference adapters — done (wave 3)
-- 14 auto-filed refactor work + quality error-budgets + RETRO output feed — done (wave 5)
+- 09 `check <paths>` mode — brittleness screen for a named file set — done (wave 2)
+- 10 M3 stage attribution — deterministic dossier + judgment stage-call + per-stage defect ledger — done (wave 3)
+- 11 DORA join — quality denominator + traced-CFR refinement + pluggable delivery-metrics source — done (wave 3)
+- 12 M4 gate-yield accounting + ritual-effectiveness natural-experiment joins — done (wave 4)
+- 13 M4 session forensics — pluggable telemetry-source interface + file reference adapter — done (wave 3)
+- 14 closing the loop — auto-filed refactor work + quality error-budgets + RETRO output feed — done (wave 5)
 - 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — done (wave 1)
 
 ### spec-routing (1 done)
 
-- 01 Enforce the §8 lifecycle — the linter and the authoring-owed emitter — done (wave 0)
+- 01 Enforce the §8 spec/scoping-doc lifecycle — the linter and the authoring-owed emitter — done (wave 0)
 
 ### statusgen (8 done)
 
-- 01 30-day lint-firing audit — retire cold rules — done (wave 1)
-- 02 issue metrics (`--issues`) — done (wave 1)
-- 04 ladder-position indicator (`--ladder`) — done (wave 1)
-- 07 new brief-flow metrics — done (wave 1)
-- 08 composite AssayScore computation — done (wave 2)
-- 10 graph export (`--graph` DOT + JSONL) — done (wave 1)
-- 12 `homed-in: <owner/repo>` — exclude a re-homed brief from THIS board's Next-up, keep its tracking row, carry the target repo — done (wave 1)
-- 13 cadenced roadmap artifacts (`--cadence weekly/monthly`) — done (wave 1)
+- 01 30-day statusgen check-firing audit — retire cold --lint rules — done (wave 1)
+- 02 Issue metrics — statusgen --issues: standard counts + age/sitting-time + internal-vs-external + by-raising-desk — done (wave 1)
+- 04 Ladder-position indicator — one computed adoption-step number (behavioral axes, never tooling) on the board + roadmap deck — done (wave 1)
+- 07 New brief-flow metrics in statusgen — done (wave 1)
+- 08 Composite AssayScore computation — done (wave 2)
+- 10 statusgen graph export — derived-only DOT + JSONL from the existing parse tree, evaluated on real multi-hop questions — done (wave 1)
+- 12 `homed-in: <owner/repo>` brief field — exclude a brief whose deliverable lives in another repo from THIS board's Next-up, keep its tracking row, carry the target repo — done (wave 1)
+- 13 Cadenced roadmap artifacts — `--cadence weekly\|monthly` window computation reusing the roadmap renderer, a `theme:` render rule, config-driven priority order and brand — done (wave 1)
 
 ### windows-port (3 done)
 
