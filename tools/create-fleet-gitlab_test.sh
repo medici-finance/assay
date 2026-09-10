@@ -12,8 +12,9 @@
 # version to see the behaviours it lacks fail — the fail-first evidence. Against
 # the impl before the protected-tags + all-discussions-resolved change (issue
 # #346 comment 1 §4), T7 and T8 go RED; against the impl before the gl_api
-# hardening (issue #786 — owner PAT off argv, curl transport failure fails
-# closed), T10 and T11 go RED:
+# hardening (issue #786 — owner PAT off argv, and a curl transport failure
+# recorded-not-fatal instead of aborting the run under set -e), T10 and T11
+# go RED:
 #   git show HEAD~1:tools/create-fleet-gitlab.sh > /tmp/old-fleet.sh
 #   FLEET_IMPL=/tmp/old-fleet.sh ./tools/create-fleet-gitlab_test.sh   # RED (T10/T11)
 #   ./tools/create-fleet-gitlab_test.sh                                # green
@@ -74,12 +75,20 @@ case "$url" in
 esac
 
 # Simulated API transport failure (issue #786): DNS/TLS/connection refused.
-# Real curl writes the "000" http_code from -w and exits non-zero, having put
-# nothing in -o. gl_api must catch that non-zero exit and fail closed rather
-# than read "000" as an ordinary HTTP status.
+# Faithful to real curl — it STILL writes the "000" http_code from -w to stdout
+# and exits with a transport code (6/7/28), having put nothing in -o. gl_api's
+# `|| echo "000"` must turn this into a RECORDED non-2xx status the caller's
+# failure-ledger branch handles, NOT a set -e abort of the whole run before the
+# ledger and summary are written.
+#   FAKE_CURL_TRANSPORT_FAIL=1             — every API call transport-fails
+#   FAKE_CURL_TRANSPORT_FAIL_PATH=<frag>   — only URLs containing <frag> fail
 if [ "${FAKE_CURL_TRANSPORT_FAIL:-0}" = "1" ]; then
-  printf '000'
-  exit 7
+  printf '000'; exit 6
+fi
+if [ -n "${FAKE_CURL_TRANSPORT_FAIL_PATH:-}" ]; then
+  case "$url" in
+    *"$FAKE_CURL_TRANSPORT_FAIL_PATH"*) printf '000'; exit 6 ;;
+  esac
 fi
 
 path="${url#*://*/api/v4}"
@@ -103,6 +112,7 @@ newcase() {
   export STATE
   unset FAKE_ICON_FAIL
   unset FAKE_CURL_TRANSPORT_FAIL
+  unset FAKE_CURL_TRANSPORT_FAIL_PATH
   for r in $ROLES; do printf 'PNGFAKE' > "$ICONS/$r.png"; done
 }
 
@@ -715,10 +725,15 @@ fi
 if [ "$RC" = "0" ]; then ok "T10 the run still succeeds with the -K custody path (rc=0)"; else bad "T10 the run still succeeds with the -K custody path (rc=$RC)"; fi
 
 # ===========================================================================
-# T11 — gl_api transport safety (issue #786): a curl transport failure
-#       (non-zero exit, HTTP "000") FAILS CLOSED — the run surfaces the failure
-#       and exits non-zero, rather than reading "000" as a benign HTTP status
-#       and proceeding.
+# T11 — gl_api transport safety (issue #786): a curl transport failure on a
+#       settings step is RECORDED, not fatal. `|| echo "000"` keeps the command
+#       substitution's exit status zero, so `set -e` does NOT abort the run
+#       mid-call; the "000" status reaches the caller's ledger branch, so
+#       record_failure fires, the LATER settings steps still run, and
+#       print_summary_and_exit surfaces the failure in the summary. The run
+#       exits non-zero (the ledger is non-empty) but only AFTER writing it.
+#       (Before the fix the non-zero substitution aborted under set -e before
+#       any ledger entry or summary — this case is RED against that impl.)
 # ===========================================================================
 newcase
 cat > "$FAKE_CURL_RESPONDER" <<RESP
@@ -727,26 +742,37 @@ PLANFIELD=',"plan":"free"'
 respond() {
   local m="\$1" p="\$2" n
   $common_accounts
+  case "\$m \$p" in
+    "GET /projects/7/protected_branches/main")
+      echo "200"
+      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
+      return ;;
+  esac
   echo "500"; echo '{"unstubbed":true}'
 }
 RESP
-FAKE_CURL_TRANSPORT_FAIL=1 run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
-if [ "$RC" != "0" ] && has "curl transport failure"; then
-  ok "T11 a curl transport failure fails closed (rc=$RC, failure surfaced)"
+# Only the approvals write transport-fails; account resolution and every other
+# settings call succeed, so the run reaches configure_approvals and past it.
+FAKE_CURL_TRANSPORT_FAIL_PATH="/projects/7/approvals" run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
+if has "approval settings write failed (HTTP 000"; then
+  ok "T11 a transport failure is RECORDED via record_failure (ledger line written)"
 else
-  bad "T11 a curl transport failure fails closed (rc=$RC)"
+  bad "T11 a transport failure is recorded via record_failure"
 fi
-if has "Failing closed"; then
-  ok "T11 the fail-closed decision is stated, not silently swallowed"
-else
-  bad "T11 the fail-closed decision is stated"
-fi
-# A fail-closed abort must NOT have walked on to the later settings steps as if
-# the API had answered.
 if has "configured: pipelines must succeed before merge"; then
-  bad "T11 a transport failure must not read as success and proceed to later steps"
+  ok "T11 the run is NOT fatal — the later settings steps still run"
 else
-  ok "T11 a transport failure aborts rather than proceeding through the settings steps"
+  bad "T11 the run continues to the later settings steps (not a hard abort)"
+fi
+if has "FAILED STEPS — this run did NOT complete cleanly" && has "HUMAN-ONLY REMAINDER"; then
+  ok "T11 print_summary_and_exit is reached and surfaces the failure"
+else
+  bad "T11 the summary is reached and surfaces the failure"
+fi
+if [ "$RC" != "0" ]; then
+  ok "T11 the run exits non-zero after recording the failure (rc=$RC)"
+else
+  bad "T11 the run exits non-zero after recording the failure (rc=$RC)"
 fi
 
 echo

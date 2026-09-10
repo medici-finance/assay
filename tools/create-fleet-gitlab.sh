@@ -273,14 +273,18 @@ urlencode() {
 # only difference is the source (this reads the owner PAT from the environment,
 # upload_avatar reads a role PAT from its 0600 token file).
 #
-# Transport safety (issue #786): curl's exit status is captured. A transport
-# failure (DNS/TLS/connection refused — curl exits non-zero and reports HTTP
-# "000") FAILS CLOSED: the failure is surfaced on stderr and gl_api returns
-# non-zero, which under `set -e` aborts the run. A transport failure can never
-# be read as a benign/empty success by the HTTP-status branch of a caller.
+# Transport safety (issue #786): a curl transport failure (DNS/TLS/connection —
+# curl exits non-zero, reporting HTTP "000") is RECORDED, not fatal. The trailing
+# `|| echo "000"` keeps the command substitution's OWN exit status zero, so
+# `set -euo pipefail` does not abort the run mid-call — GL_LAST_STATUS becomes the
+# non-2xx sentinel "000", which flows to the caller's status branch where
+# record_failure fires and print_summary_and_exit surfaces it in the summary.
+# This is exactly what upload_avatar already does. Before this, the non-zero
+# substitution aborted the whole run under `set -e` BEFORE any ledger entry or
+# summary was written.
 gl_api() {
   local method="$1" path="$2" body="${3:-}"
-  local tmp cfg rc
+  local tmp cfg
   tmp=$(mktemp "${TMPDIR:-/tmp}/gl-api-body.XXXXXX")
   # PAT off argv: write the token into a 0600 curl config file and pass it with
   # `curl -K`, so PRIVATE-TOKEN never appears on the command line.
@@ -289,18 +293,12 @@ gl_api() {
   if [ -n "$body" ]; then
     GL_LAST_STATUS=$(curl -sS -K "$cfg" -o "$tmp" -w '%{http_code}' -X "$method" \
       -H "Content-Type: application/json" \
-      -d "$body" "${GITLAB_URL}/api/v4${path}") && rc=0 || rc=$?
+      -d "$body" "${GITLAB_URL}/api/v4${path}" || echo "000")
   else
     GL_LAST_STATUS=$(curl -sS -K "$cfg" -o "$tmp" -w '%{http_code}' -X "$method" \
-      "${GITLAB_URL}/api/v4${path}") && rc=0 || rc=$?
+      "${GITLAB_URL}/api/v4${path}" || echo "000")
   fi
   rm -f "$cfg"
-  if [ "$rc" -ne 0 ]; then
-    echo "error: curl transport failure on ${method} ${path} (curl exit ${rc}, HTTP '${GL_LAST_STATUS:-none}') — is ${GITLAB_URL} reachable? (DNS/TLS/connection). Failing closed." >&2
-    rm -f "$tmp"
-    GL_LAST_BODY_FILE=""
-    return 1
-  fi
   GL_LAST_BODY_FILE="$tmp"
 }
 
