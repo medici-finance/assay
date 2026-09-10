@@ -31,6 +31,7 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -150,6 +151,34 @@ func writeWorkerAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 	b.WriteString("## Open the draft PR in that repo\n\n")
 	fmt.Fprintf(b, "Run `deskpr create` from INSIDE your worktree, so the PR lands against `%s`'s own main. "+
 		"Stop at `implemented`: never set verified/done and never flip a PR ready.\n\n", repo)
+
+	// Every desk WRITE verb (`deskpr create`, `deskfile`, `deskreply`) refuses with
+	// $DESK_LOOP unset — the kill switch's per-loop `STOP.<loop>` flag has nothing to
+	// match, so a stop a human is holding would silently fail. A dispatched worker must
+	// NOT inherit the dispatching desk's DESK_LOOP (that resolves to the desk's App and
+	// mints the WRONG identity for this worker's PR and comments); its OWN loop is
+	// `worker-desk`, which resolves to the worker App. State it here, at the first write,
+	// so the worker sets it now rather than meeting the refusal at the PR ceremony.
+	b.WriteString("Before `deskpr create` — and before any desk write verb (`deskfile`, `deskreply`) — " +
+		"set your OWN loop identity in this shell (do NOT inherit the dispatching desk's):\n\n")
+	b.WriteString("```\nexport DESK_LOOP=worker-desk\n```\n\n")
+
+	if n, ok := issueNumFromItem(o.item); ok {
+		// An issue-only item carries an `Issue:` trailer, not a `Brief:` one — and
+		// `deskpr create` REFUSES a body with neither. The emitted key never named which
+		// line to add, so every issue-only worker discovered the refusal at the PR
+		// ceremony; name the exact trailer here.
+		fmt.Fprintf(b, "This is ISSUE-ONLY work: your `deskpr create` body MUST carry the trailer line "+
+			"`Issue: #%d` (an issue-only PR carries `Issue: #<N>`, never a `Brief:` line).\n\n", n)
+		// The sanctioned verb for a comment on the dispatched-from ISSUE — a
+		// BLOCKED-ON-HUMAN report, a could-not-check note. `deskreply` is PR-only; a
+		// hand-rolled `gh` write bypasses deskfile's dedupe/budget/self-containment gates.
+		fmt.Fprintf(b, "To post on the ISSUE you were dispatched from (a `BLOCKED-ON-HUMAN` report, a "+
+			"could-not-check note), the sanctioned verb is `deskfile attach -R %s --to %d --body-file F` "+
+			"(with DESK_LOOP set, above). `deskreply` is for your OWN open PR only, and a hand-rolled `gh` "+
+			"write on the issue bypasses deskfile's dedupe, budget and self-containment gates.\n\n", repo, n)
+	}
+
 	b.WriteString("Self-register the instant your draft PR opens:\n\n")
 	fmt.Fprintf(b, "```\nDESK_SESSION=<your-session> deskroster set --repo %s --pr <N> --what %q\n```\n\n",
 		shortRepo(repo), o.item)
@@ -201,6 +230,34 @@ func writeReleaseClaim(b *strings.Builder, o dispatchOpts, plan dispatchPlan, re
 		releaseTool = claimScriptRel
 	}
 	fmt.Fprintf(b, "```\n%s release %q --repo %s\n```\n", releaseTool, plan.claimKey, repo)
+}
+
+// issueNumFromItem extracts the GitHub issue number from an ISSUE-ONLY item key. The
+// worker's dispatch key for issue-only work is `issue-<N>` (also carried in the
+// repo-qualified plan-key form `<owner>/<name>:issue-<N>` and the claim-key form
+// `<repo>--issue-<N>`); this reduces any of them to <N>. ok=false for a brief-based item —
+// which carries a `Brief:` trailer, not an `Issue:` one — so the issue-shaped assignment
+// lines are emitted for issue work only, mirroring briefIDFromItem's inverse case.
+func issueNumFromItem(item string) (int, bool) {
+	s := strings.TrimSpace(item)
+	// Drop a `<owner>/<name>:` repo qualifier, then a `<repo>--` claim-key prefix, so the
+	// tail is the bare item segment in every form deskdispatch is handed.
+	if i := strings.LastIndex(s, ":"); i >= 0 {
+		s = s[i+1:]
+	}
+	if i := strings.LastIndex(s, "--"); i >= 0 {
+		s = s[i+2:]
+	}
+	s = strings.Trim(s, "/")
+	const pfx = "issue-"
+	if !strings.HasPrefix(s, pfx) {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s[len(pfx):])
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
 }
 
 // prRef names the PR under review for the assignment prose. --pr is optional on a review
