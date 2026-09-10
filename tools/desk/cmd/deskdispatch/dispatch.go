@@ -24,7 +24,20 @@ const (
 	stepRosterRegister = "roster-register"
 	stepDecisionGate   = "decision-gate"
 	stepModelStamp     = "model-stamp"
+	stepQueueLabel     = "queue-label"
 	stepPromptEmit     = "prompt-emit"
+)
+
+// queueLabelAuthorizationNeeded is the review-lane entry signal: a change a reviewer has
+// been dispatched onto is "waiting on the reviewer's work before it is ready for a human".
+// deskflip removes it and applies `approval-needed` at the ready-flip (deskflip's
+// labelBeforeFlip/labelAfterFlip). It is defined here as well as in deskflip because each
+// verb owns the label at its own end of the lane; the two spellings must stay identical.
+// queueLabelColorHex is the bare hex the label is CREATED with when the repo does not yet
+// carry it — no leading `#` (each backend renders its own form), matching deskflip.
+const (
+	queueLabelAuthorizationNeeded = "authorization-needed"
+	queueLabelColorHex            = "0e8a16"
 )
 
 // dispatchSteps is the ordered step list, pinned by a test so a step cannot be silently
@@ -37,6 +50,7 @@ var dispatchSteps = []string{
 	stepRosterRegister,
 	stepDecisionGate,
 	stepModelStamp,
+	stepQueueLabel,
 	stepPromptEmit,
 }
 
@@ -330,7 +344,17 @@ func dispatch(o dispatchOpts) error {
 	}
 	o.say("%s %s", stepModelStamp, stamp)
 
-	// 6 — the prompt.
+	// 6 — the review-lane queue label. When a reviewer is dispatched onto a known change,
+	// apply `authorization-needed` forge-neutrally (the resolved forge's idempotent label
+	// ensure+apply, under the reviewer role's own credential — a GitHub App token or a GitLab
+	// PAT, never the deskpost verdict-write path), so a GitLab adopter's MR carries the same
+	// queue signal a GitHub PR does (#795 §4). NON-FATAL: a label the forge would not accept
+	// or a credential gap is a provisioning issue to file, never a reason to fail a dispatch
+	// whose claim and worktree already stand — mirroring stepRoster and deskflip's
+	// ensureLabelSwap.
+	o.say("%s %s", stepQueueLabel, stepQueueLabelApply(o, repo))
+
+	// 7 — the prompt.
 	return emitPrompt(o, prompt)
 }
 
@@ -1009,6 +1033,82 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	}
 	return fmt.Sprintf("OK: applied %s as the %s App, the identity the capability floor accepts (%s)%s",
 		strings.Join(labels, " + "), stampRole, tokenPathForMessage(tokPath), restamped), nil
+}
+
+// applyQueueLabelFn applies the review-lane queue label to a picked-up change. It is a SEAM
+// (like mintTokenFn) so a full-run dispatch test drives the step without real forge
+// credentials or network. The default resolves the forge under the reviewer role and calls
+// the forge's idempotent label ensure+apply — the SAME forge-neutral path deskflip's
+// ensureLabelSwap uses, so GitHub and GitLab are labelled by one code path.
+var applyQueueLabelFn = applyQueueLabelReal
+
+// applyQueueLabelReal resolves the forge serving repo under the reviewer role and applies
+// queueLabelAuthorizationNeeded to the change, creating the label first if the repo does not
+// carry it (Forge.ApplyLabels' ensure step is idempotent — an already-exists is the success
+// case). It returns the labels actually added (empty when the label was already present) and
+// the resolved forge kind for the step report. Credential custody (GitHub App token / GitLab
+// PAT) is resolved inside ResolveForge; this never touches the deskpost verdict-write path.
+func applyQueueLabelReal(repo string, pr int) (added []string, forge string, err error) {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" {
+		return nil, "", fmt.Errorf("repo %q does not split into owner/name", repo)
+	}
+	fr := deskkit.ForgeRepo{Owner: owner, Name: name}
+	fg, res, rerr := deskkit.ResolveForge(fr, deskkit.ReviewDispatcherRole)
+	if rerr != nil {
+		return nil, "", rerr
+	}
+	out, aerr := fg.ApplyLabels(fr, pr, deskkit.LabelChange{
+		Add: []deskkit.LabelSpec{{
+			Name:        queueLabelAuthorizationNeeded,
+			Color:       queueLabelColorHex,
+			Description: "Queue: this change is in the review lane and still needs the reviewer's work before it is ready for a human",
+		}},
+	})
+	if aerr != nil {
+		return nil, string(res.Kind), aerr
+	}
+	if out != nil {
+		added = out.Added
+	}
+	return added, string(res.Kind), nil
+}
+
+// stepQueueLabelApply applies the review-lane queue label when a reviewer is dispatched onto
+// a known change, and is a documented no-op otherwise.
+//
+//   - Not a review dispatch → SKIPPED: the queue label is a review-lane signal only.
+//   - Review dispatch with no --pr → DEFERRED: there is no change to label yet.
+//   - Review dispatch with --pr → apply authorization-needed, idempotently and NON-FATALLY.
+//
+// It never returns an error: a queue label is a legibility aid, not a correctness gate (the
+// claim already serialises the dispatch), so a forge/credential failure is a loud WARNING and
+// the dispatch continues — the same contract as stepRoster and deskflip's ensureLabelSwap.
+func stepQueueLabelApply(o dispatchOpts, repo string) string {
+	if !reviewKit(o.kit) {
+		kind := strings.TrimSpace(o.kit)
+		if kind == "" {
+			kind = "worker"
+		}
+		return "SKIPPED: authorization-needed is a review-lane signal; this is a " + kind + " dispatch"
+	}
+	if o.pr <= 0 {
+		return "DEFERRED: no --pr — there is no change to label yet; authorization-needed is " +
+			"applied when a reviewer is dispatched onto a known MR/PR"
+	}
+	added, forge, err := applyQueueLabelFn(repo, o.pr)
+	if err != nil {
+		return fmt.Sprintf("WARNING: could not apply %s on %s#%d (%s) — the queue label is a "+
+			"provisioning/credential gap to file; the review dispatch stands (the label is a "+
+			"legibility aid, not a claim on the change)",
+			queueLabelAuthorizationNeeded, repo, o.pr, firstLine(err.Error()))
+	}
+	if len(added) == 0 {
+		return fmt.Sprintf("OK: %s already present on %s#%d (%s)",
+			queueLabelAuthorizationNeeded, repo, o.pr, forge)
+	}
+	return fmt.Sprintf("OK: applied %s on %s#%d (%s)",
+		queueLabelAuthorizationNeeded, repo, o.pr, forge)
 }
 
 // stampRoleForKit names the App identity a dispatch of this kit must stamp under: the role

@@ -100,7 +100,14 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       (dispatched-model:<slug>, dispatched-tier:<tier>) and applies them
                       when --pr is known. The stamp attests what the DISPATCHER launched;
                       a self-applied stamp is worthless by design.
-  6 prompt-emit       writes the assembled agent prompt to stdout, or to --prompt-file.
+  6 queue-label       on a --kit review dispatch with --pr known, applies the review-lane
+                      queue label authorization-needed to the change through the resolved
+                      forge (idempotent create+apply under the reviewer role's own
+                      credential — GitHub App token or GitLab PAT), so a GitLab MR carries
+                      the same queue signal a GitHub PR does. Non-fatal: a label the forge
+                      would not accept is a provisioning gap to file, not a failed dispatch.
+                      SKIPPED for a worker/verifier dispatch; DEFERRED when no --pr is known.
+  7 prompt-emit       writes the assembled agent prompt to stdout, or to --prompt-file.
 
 --claim-root separates "where the consumer scripts live" from "which repo the worker's
 worktree branches from". The scripts (tools/dispatch-claim.sh, tools/decision-issue.sh)
