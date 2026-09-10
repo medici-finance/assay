@@ -265,18 +265,40 @@ urlencode() {
 
 # gl_api METHOD PATH [JSON_BODY] — sets GL_LAST_STATUS and GL_LAST_BODY_FILE.
 # Caller is responsible for `rm -f "$GL_LAST_BODY_FILE"` when done reading it.
+#
+# Credential custody (spec.md §5, issue #786): the owner PAT is passed to curl
+# through a 0600 config file (`curl -K`, minted under `umask 077`), NEVER on the
+# command line where the process table would expose it to any local user. This
+# is the same custody upload_avatar already uses for a role's own token — the
+# only difference is the source (this reads the owner PAT from the environment,
+# upload_avatar reads a role PAT from its 0600 token file).
+#
+# Transport safety (issue #786): a curl transport failure (DNS/TLS/connection —
+# curl exits non-zero, reporting HTTP "000") is RECORDED, not fatal. The trailing
+# `|| echo "000"` keeps the command substitution's OWN exit status zero, so
+# `set -euo pipefail` does not abort the run mid-call — GL_LAST_STATUS becomes the
+# non-2xx sentinel "000", which flows to the caller's status branch where
+# record_failure fires and print_summary_and_exit surfaces it in the summary.
+# This is exactly what upload_avatar already does. Before this, the non-zero
+# substitution aborted the whole run under `set -e` BEFORE any ledger entry or
+# summary was written.
 gl_api() {
   local method="$1" path="$2" body="${3:-}"
-  local tmp
+  local tmp cfg
   tmp=$(mktemp "${TMPDIR:-/tmp}/gl-api-body.XXXXXX")
+  # PAT off argv: write the token into a 0600 curl config file and pass it with
+  # `curl -K`, so PRIVATE-TOKEN never appears on the command line.
+  cfg=$(mktemp "${TMPDIR:-/tmp}/gl-api-curlrc.XXXXXX")
+  ( umask 077; printf 'header = "PRIVATE-TOKEN: %s"\n' "$GITLAB_TOKEN" > "$cfg" )
   if [ -n "$body" ]; then
-    GL_LAST_STATUS=$(curl -sS -o "$tmp" -w '%{http_code}' -X "$method" \
-      -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" -H "Content-Type: application/json" \
-      -d "$body" "${GITLAB_URL}/api/v4${path}")
+    GL_LAST_STATUS=$(curl -sS -K "$cfg" -o "$tmp" -w '%{http_code}' -X "$method" \
+      -H "Content-Type: application/json" \
+      -d "$body" "${GITLAB_URL}/api/v4${path}" || echo "000")
   else
-    GL_LAST_STATUS=$(curl -sS -o "$tmp" -w '%{http_code}' -X "$method" \
-      -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${GITLAB_URL}/api/v4${path}")
+    GL_LAST_STATUS=$(curl -sS -K "$cfg" -o "$tmp" -w '%{http_code}' -X "$method" \
+      "${GITLAB_URL}/api/v4${path}" || echo "000")
   fi
+  rm -f "$cfg"
   GL_LAST_BODY_FILE="$tmp"
 }
 

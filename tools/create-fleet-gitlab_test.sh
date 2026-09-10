@@ -10,10 +10,13 @@
 #
 # Default impl is ../create-fleet-gitlab.sh. Point FLEET_IMPL at an earlier
 # version to see the behaviours it lacks fail — the fail-first evidence. Against
-# the impl before this change (protected release tags + the all-discussions-
-# resolved merge gate, issue #346 comment 1 §4), T7 and T8 go RED:
+# the impl before the protected-tags + all-discussions-resolved change (issue
+# #346 comment 1 §4), T7 and T8 go RED; against the impl before the gl_api
+# hardening (issue #786 — owner PAT off argv, and a curl transport failure
+# recorded-not-fatal instead of aborting the run under set -e), T10 and T11
+# go RED:
 #   git show HEAD~1:tools/create-fleet-gitlab.sh > /tmp/old-fleet.sh
-#   FLEET_IMPL=/tmp/old-fleet.sh ./tools/create-fleet-gitlab_test.sh   # RED (T7/T8)
+#   FLEET_IMPL=/tmp/old-fleet.sh ./tools/create-fleet-gitlab_test.sh   # RED (T10/T11)
 #   ./tools/create-fleet-gitlab_test.sh                                # green
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,6 +74,23 @@ case "$url" in
     ;;
 esac
 
+# Simulated API transport failure (issue #786): DNS/TLS/connection refused.
+# Faithful to real curl — it STILL writes the "000" http_code from -w to stdout
+# and exits with a transport code (6/7/28), having put nothing in -o. gl_api's
+# `|| echo "000"` must turn this into a RECORDED non-2xx status the caller's
+# failure-ledger branch handles, NOT a set -e abort of the whole run before the
+# ledger and summary are written.
+#   FAKE_CURL_TRANSPORT_FAIL=1             — every API call transport-fails
+#   FAKE_CURL_TRANSPORT_FAIL_PATH=<frag>   — only URLs containing <frag> fail
+if [ "${FAKE_CURL_TRANSPORT_FAIL:-0}" = "1" ]; then
+  printf '000'; exit 6
+fi
+if [ -n "${FAKE_CURL_TRANSPORT_FAIL_PATH:-}" ]; then
+  case "$url" in
+    *"$FAKE_CURL_TRANSPORT_FAIL_PATH"*) printf '000'; exit 6 ;;
+  esac
+fi
+
 path="${url#*://*/api/v4}"
 # shellcheck disable=SC1090
 . "$FAKE_CURL_RESPONDER"
@@ -91,6 +111,8 @@ newcase() {
   export FAKE_CURL_RESPONDER="$CASEDIR/responder.sh"
   export STATE
   unset FAKE_ICON_FAIL
+  unset FAKE_CURL_TRANSPORT_FAIL
+  unset FAKE_CURL_TRANSPORT_FAIL_PATH
   for r in $ROLES; do printf 'PNGFAKE' > "$ICONS/$r.png"; done
 }
 
@@ -655,6 +677,103 @@ else
   bad "T9d dry-run enumerates the queue-legibility labels"
 fi
 if [ ! -s "$FAKE_CURL_LOG" ]; then ok "T9d dry-run makes zero network calls"; else bad "T9d dry-run makes zero network calls"; fi
+
+# ===========================================================================
+# T10 — gl_api owner-PAT custody (issue #786): the group-owner PAT is delivered
+#       to curl via a `curl -K` config file, NEVER on argv where the process
+#       table would expose it. Asserted on the group-resolve call, which every
+#       non-dry-run mode makes first, so the whole gl_api path is covered.
+# ===========================================================================
+newcase
+cat > "$FAKE_CURL_RESPONDER" <<RESP
+$bump_helper
+PLANFIELD=',"plan":"free"'
+respond() {
+  local m="\$1" p="\$2" n
+  $common_accounts
+  case "\$m \$p" in
+    "GET /projects/7/protected_branches/main")
+      echo "200"
+      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
+      return ;;
+    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
+    "GET /projects/7/approvals")
+      echo "200"
+      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
+      return ;;
+  esac
+  echo "500"; echo '{"unstubbed":true}'
+}
+RESP
+# GITLAB_TOKEN carries a distinctive sentinel so a leak onto argv is unmistakable.
+GITLAB_TOKEN="glpat-owner-argv-sentinel" run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
+if grep -q 'glpat-owner-argv-sentinel' "$FAKE_CURL_LOG"; then
+  bad "T10 the owner PAT must never reach curl argv (found the sentinel in the argv log)"
+else
+  ok "T10 the owner PAT never reaches curl argv (delivered via curl -K config)"
+fi
+if grep -q 'PRIVATE-TOKEN' "$FAKE_CURL_LOG"; then
+  bad "T10 the PRIVATE-TOKEN header must not be passed on the command line"
+else
+  ok "T10 no PRIVATE-TOKEN header appears on the command line"
+fi
+if grep -q 'argv=.* -K ' "$FAKE_CURL_LOG"; then
+  ok "T10 gl_api calls pass a curl -K config file"
+else
+  bad "T10 gl_api calls pass a curl -K config file"
+fi
+if [ "$RC" = "0" ]; then ok "T10 the run still succeeds with the -K custody path (rc=0)"; else bad "T10 the run still succeeds with the -K custody path (rc=$RC)"; fi
+
+# ===========================================================================
+# T11 — gl_api transport safety (issue #786): a curl transport failure on a
+#       settings step is RECORDED, not fatal. `|| echo "000"` keeps the command
+#       substitution's exit status zero, so `set -e` does NOT abort the run
+#       mid-call; the "000" status reaches the caller's ledger branch, so
+#       record_failure fires, the LATER settings steps still run, and
+#       print_summary_and_exit surfaces the failure in the summary. The run
+#       exits non-zero (the ledger is non-empty) but only AFTER writing it.
+#       (Before the fix the non-zero substitution aborted under set -e before
+#       any ledger entry or summary — this case is RED against that impl.)
+# ===========================================================================
+newcase
+cat > "$FAKE_CURL_RESPONDER" <<RESP
+$bump_helper
+PLANFIELD=',"plan":"free"'
+respond() {
+  local m="\$1" p="\$2" n
+  $common_accounts
+  case "\$m \$p" in
+    "GET /projects/7/protected_branches/main")
+      echo "200"
+      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
+      return ;;
+  esac
+  echo "500"; echo '{"unstubbed":true}'
+}
+RESP
+# Only the approvals write transport-fails; account resolution and every other
+# settings call succeed, so the run reaches configure_approvals and past it.
+FAKE_CURL_TRANSPORT_FAIL_PATH="/projects/7/approvals" run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
+if has "approval settings write failed (HTTP 000"; then
+  ok "T11 a transport failure is RECORDED via record_failure (ledger line written)"
+else
+  bad "T11 a transport failure is recorded via record_failure"
+fi
+if has "configured: pipelines must succeed before merge"; then
+  ok "T11 the run is NOT fatal — the later settings steps still run"
+else
+  bad "T11 the run continues to the later settings steps (not a hard abort)"
+fi
+if has "FAILED STEPS — this run did NOT complete cleanly" && has "HUMAN-ONLY REMAINDER"; then
+  ok "T11 print_summary_and_exit is reached and surfaces the failure"
+else
+  bad "T11 the summary is reached and surfaces the failure"
+fi
+if [ "$RC" != "0" ]; then
+  ok "T11 the run exits non-zero after recording the failure (rc=$RC)"
+else
+  bad "T11 the run exits non-zero after recording the failure (rc=$RC)"
+fi
 
 echo
 echo "passed: $pass   failed: $fail"
