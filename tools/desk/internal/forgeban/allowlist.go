@@ -61,7 +61,7 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
-const allowedInvocationCeiling = 11
+const allowedInvocationCeiling = 10
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
@@ -98,11 +98,6 @@ var AllowedInvocations = []Allowance{
 		Key: "cmd/deskdisposition/exec.go::gh::gh",
 		Reason: "TODO(forge-surface): mixed. `pr comment` maps to PostComment and the label verbs now map to " +
 			"ApplyLabels; `label list` and `pr list` still have no enumerated op, and the tool mints no token.",
-	},
-	{
-		Key: "cmd/deskfile/exec.go::gh::gh",
-		Reason: "TODO(forge-surface): identity. FileIssue/PostComment/CloseIssue exist; exec.go states deskfile " +
-			"gates WHETHER and WHERE an issue is filed, never WHO, and mints no App token on any path.",
 	},
 	{
 		Key: "cmd/deskmerge/exec.go::runGH::gh",

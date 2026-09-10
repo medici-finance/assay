@@ -9,20 +9,15 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// forgegate_test.go — the forge-support gate (#687).
+// forgegate_test.go — the forge routing since the write-verbs-C migration.
 //
-// deskfile's issue ops shell `gh` (GitHub only). On a repo whose configured forge is GitLab
-// they used to reach GitHub's API for a repo that does not exist there and fail with a
-// misleading "Could not resolve to a Repository" — sending the operator to check their token
-// when the real cause is that deskfile has no GitLab path. requireSupportedForge replaces that
-// with a NAMED refusal (exit 5) emitted BEFORE any gh call.
-//
-// FAIL-FIRST: without the gate, each verb below proceeds to shell the fake gh — `check`/`new`
-// reach the dedupe search (fake gh returns an empty result set, so the tool would exit 0 or
-// pass on to create) and `attach` reaches `gh issue view`; every one makes at least one gh
-// call and none returns exit 5. The two assertions each case makes — exit == ExitRefused and
-// ZERO gh calls — therefore both fail on the pre-gate code, and the message assertion pins the
-// refusal to THIS gate rather than any other exit-5 path.
+// #687/#691 shipped an INTERIM named-refusal: deskfile shelled `gh` (GitHub only), so on a
+// GitLab-configured repo it refused (exit 5) rather than emit a misleading GitHub error. This
+// migration SUPERSEDES that: deskfile now reaches the forge through the resolver, and the GitLab
+// backend serves the issue ops (dedupe search, label probe, create, attach). So a
+// GitLab-configured repo FILES rather than refusing. The two facts the interim refusal traded on
+// are pinned here: (1) GitLab no longer refuses with the "GitHub only" message, and (2) a repo
+// whose forge cannot be resolved, or whose custody yields no token, still fails closed.
 
 // plantRosterWithForges rewrites the test HOME's roster to the base fixture plus an
 // ASSAY_REPO_FORGES binding, then reloads config. HOME must already be set (by withEnv).
@@ -40,71 +35,72 @@ func plantRosterWithForges(t *testing.T, forges string) {
 	t.Cleanup(deskkit.ReloadConfig)
 }
 
-// assertGitLabRefusal is the shared shape: exit 5, the message names the forge and the
-// GitHub-only limitation, and NOT ONE gh call was made (the refusal precedes every gh op).
-func assertGitLabRefusal(t *testing.T, rc int, out string, calls [][]string) {
-	t.Helper()
-	if rc != deskkit.ExitRefused {
-		t.Fatalf("want exit %d (refused), got %d\noutput:\n%s", deskkit.ExitRefused, rc, out)
-	}
-	for _, want := range []string{"gitlab", "GitHub only", allowedRepo} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("refusal message missing %q\noutput:\n%s", want, out)
-		}
-	}
-	if gh := ghCalls(calls); len(gh) != 0 {
-		t.Fatalf("gate must refuse BEFORE any gh call, but %d were made: %v", len(gh), gh)
-	}
-}
-
-func TestGitLabForgeRefusesNew(t *testing.T) {
-	calls := withEnv(t)
+// TestDeskfileFilesOnGitLabThroughBackend — the #691 supersession. On a GitLab-configured repo
+// `new` no longer refuses with the "GitHub only" message: it dedupes and FILES through the
+// resolved backend. (The GitLab backend's actual wire for SearchIssues / ListLabels / FileIssue
+// is pinned by the deskkit gitlab golden corpus; here the deskfile-side behaviour is that it
+// routes through the forge rather than refusing.)
+func TestDeskfileFilesOnGitLabThroughBackend(t *testing.T) {
+	withEnv(t)
 	plantRosterWithForges(t, allowedRepo+"=gitlab")
 	body := bodyFileWith(t, "a real blocker that needs a human")
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
-		"--title", "escalate the gitlab filing blocker", "--body-file", body,
-		"--raised-by", "reviewer", "--to", "desk", "--label", "help wanted"})
-	assertGitLabRefusal(t, rc, out, *calls)
+		"--title", "escalate the gitlab filing blocker", "--body-file", body})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("new on a GitLab-configured repo should FILE (exit 0) now the backend serves GitLab, got %d\n%s", rc, out)
+	}
+	if strings.Contains(out, "GitHub only") {
+		t.Fatalf("the interim #691 GitLab refusal is superseded and must not fire on a GitLab repo:\n%s", out)
+	}
+	if curForge.filed == nil {
+		t.Fatal("new did not file through the forge backend on a GitLab-configured repo")
+	}
 }
 
-// TestGitLabForgeRefusesForceNew — --force-new is not an escape hatch: the create is itself
-// the failing GitHub call, so the gate must refuse it too, before the create is attempted.
-func TestGitLabForgeRefusesForceNew(t *testing.T) {
-	calls := withEnv(t)
-	plantRosterWithForges(t, allowedRepo+"=gitlab")
-	body := bodyFileWith(t, "a real blocker that needs a human")
+// TestDeskfileRefusesWithoutMintedToken — the negative path. With the custody binding yielding no
+// token (what forgeFor does when the mint fails / ForgeFor refuses), `new` REFUSES and files
+// NOTHING, never falling back to an ambient identity — the retired ambient-credential design.
+func TestDeskfileRefusesWithoutMintedToken(t *testing.T) {
+	withEnv(t)
+	rec := curForge
+	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+		return nil, deskkit.ForgeRepo{}, deskkit.Refused(
+			"cannot obtain the session-role App installation token — ForgeFor never falls back to an ambient identity")
+	}
+	body := bodyFileWith(t, "should refuse without a token")
 
 	rc, out := runCapture([]string{"new", "-R", allowedRepo,
-		"--title", "escalate the gitlab filing blocker", "--body-file", body,
-		"--force-new", "--reason", "urgent escalation"})
-	assertGitLabRefusal(t, rc, out, *calls)
+		"--title", "a title with substantive words here", "--body-file", body})
+	if rc == deskkit.ExitOK {
+		t.Fatalf("new SUCCEEDED with no minted token — it must refuse, never fall back:\n%s", out)
+	}
+	if rec.filed != nil || rec.searchCalls != 0 {
+		t.Fatalf("a forge op ran despite the custody refusal (filed=%v search=%d)", rec.filed != nil, rec.searchCalls)
+	}
 }
 
-func TestGitLabForgeRefusesCheck(t *testing.T) {
-	calls := withEnv(t)
-	plantRosterWithForges(t, allowedRepo+"=gitlab")
-
-	rc, out := runCapture([]string{"check", "-R", allowedRepo,
-		"--title", "escalate the gitlab filing blocker"})
-	assertGitLabRefusal(t, rc, out, *calls)
+// TestDeskfileUnresolvableForgeCouldNotCheck — the RETAINED refusal: a repo whose forge cannot be
+// resolved (the mint/resolve step returns a could-not-check) fails closed rather than assuming
+// GitHub. Modelled by forgeForFn returning the resolver's Unverifiable.
+func TestDeskfileUnresolvableForgeCouldNotCheck(t *testing.T) {
+	withEnv(t)
+	rec := curForge
+	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+		return nil, deskkit.ForgeRepo{}, deskkit.Unverifiable(
+			"cannot resolve which forge serves "+repo+": configure ASSAY_REPO_FORGES", nil)
+	}
+	rc, out := runCapture([]string{"check", "-R", allowedRepo, "--title", "some unique title here"})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("an unresolvable forge must be could-not-check (exit 6), got %d\n%s", rc, out)
+	}
+	if rec.searchCalls != 0 {
+		t.Fatal("check searched despite an unresolvable forge — it must fail closed before any forge op")
+	}
 }
 
-func TestGitLabForgeRefusesAttach(t *testing.T) {
-	calls := withEnv(t)
-	plantRosterWithForges(t, allowedRepo+"=gitlab")
-	body := bodyFileWith(t, "an observation for the class issue")
-
-	rc, out := runCapture([]string{"attach", "-R", allowedRepo,
-		"--to", "42", "--body-file", body})
-	assertGitLabRefusal(t, rc, out, *calls)
-}
-
-// TestGitHubForgeStillFiles proves the gate is a no-op on a GitHub-configured repo: the same
-// `check` that the GitLab binding refuses runs through to the dedupe search and exits 0 when
-// the forge is explicitly github. This is the "only ever ADDS a refusal on a non-GitHub forge,
-// never turns a working GitHub filing into one" property, held against an EXPLICIT binding so
-// it does not depend on the test host's origin remote.
+// TestGitHubForgeStillFiles proves a GitHub-configured repo is unaffected: the same `check`
+// runs through to the dedupe search and exits 0.
 func TestGitHubForgeStillFiles(t *testing.T) {
 	calls := withEnv(t)
 	plantRosterWithForges(t, allowedRepo+"=github")
@@ -113,8 +109,7 @@ func TestGitHubForgeStillFiles(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("github-configured check should pass (exit 0), got %d\noutput:\n%s", rc, out)
 	}
-	// The dedupe search DID run — the gate did not stand in front of the gh path.
 	if !anyCall(ghCalls(*calls), "search", "issues") {
-		t.Fatalf("expected the dedupe `gh search issues` to run on a github repo; calls: %v", ghCalls(*calls))
+		t.Fatalf("expected the dedupe search to run on a github repo; calls: %v", ghCalls(*calls))
 	}
 }

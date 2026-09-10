@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -41,10 +40,6 @@ const (
 	// moderate-overlap class issue past the threshold so the gate redirects to attach —
 	// the motion the gate exists to force when the target is a class issue.
 	classLabelBoost = 0.15
-
-	// searchLimit bounds the candidate set scored locally. GitHub search orders by
-	// relevance; the first 20 are far more than a real duplicate would need to appear in.
-	searchLimit = "20"
 )
 
 // stopWords are tokens dropped before scoring. They carry little signal and would inflate
@@ -125,17 +120,6 @@ type candidate struct {
 	HasClassLabel bool    `json:"hasClassLabel"`
 }
 
-// ghSearchHit is the slice of `gh search issues --json` deskfile reads. Labels come back
-// as an array of {id,name,...} objects; only the name is needed.
-type ghSearchHit struct {
-	Number int    `json:"number"`
-	Title  string `json:"title"`
-	URL    string `json:"url"`
-	Labels []struct {
-		Name string `json:"name"`
-	} `json:"labels"`
-}
-
 // errNoScorableTokens is returned by dedupeSearch when the query title normalises to no
 // scorable tokens at all (e.g. "a to the", "?!"). tokenize keeps runs of 2+ chars, so "12"
 // is NOT an example — it survives tokenization and reaches the search. Such a title can
@@ -148,70 +132,39 @@ type ghSearchHit struct {
 // its issue in stopwords).
 var errNoScorableTokens = errors.New("title has no scorable tokens")
 
-// searchArgs builds the free-text query ARGV handed to `gh search issues` from the query
-// TOKENS, never from the raw title — one token per argv element, never joined into a
-// single string.
-//
-// The raw title is caller-supplied text going into GitHub's search QUERY LANGUAGE, where
-// `word:value` is a qualifier, not a word. Desk issue titles routinely contain colons
-// ("bugs-gc: prune closed-issue files"), so the raw title would regularly be reinterpreted
-// as a scope — and a rescoped search returns a candidate set that does not contain the
-// duplicate, which reads to the gate as "no duplicate exists". That is the fail-open
-// direction, reachable by accident and steerable on purpose.
-//
-// tokenize's output is [a-z0-9] runs only: no colon, quote, parenthesis or `-` survives it,
-// so no token can be a qualifier or a negation. Losing phrase intent costs nothing here —
-// the local Jaccard scorer, not GitHub relevance, decides what counts as a duplicate, and a
-// broader candidate set is the fail-CLOSED direction.
-//
-// One token PER ARGV ELEMENT matters just as much as the character stripping above
-// (#156 verification finding): `gh search issues <joined string>` treats a
-// single multi-word positional argument as a QUOTED PHRASE (`q=( "tok1 tok2 tok3 ..." )
-// ...`) — an exact-substring match — not GitHub's normal AND-of-terms search. Real issue
-// titles almost never survive tokenization as a literal contiguous substring of themselves
-// (stopwords, punctuation and dashes are stripped and reorder nothing back together), so a
-// joined query silently returned ZERO hits for any title beyond ~6 tokens — proven live:
-// `deskfile check` against this repo's own issue #156 (11 scorable tokens) reported "no
-// duplicates" although #156 was open the entire time and a plain `gh api search/issues`
-// call with the identical free-text terms found it immediately. Passing each token as its
-// own argv element keeps `gh` from phrase-quoting the query, restoring AND-of-terms search
-// — the fail-CLOSED direction this function's docs already promise.
-func searchArgs(queryTokens []string) []string { return queryTokens }
+// The tokenised query is joined with spaces and handed to SearchIssues, which the backend runs
+// as AND-of-terms free text scoped to the repo's issues. tokenize's output is [a-z0-9] runs
+// only, so no token can be a search qualifier or a negation — the property that kept the raw
+// title (which routinely contains colons, "bugs-gc: prune …") from being reinterpreted as a
+// scope and returning a candidate set missing the duplicate (the fail-open direction, #156). The
+// local Jaccard scorer, not forge relevance, decides what counts as a duplicate.
 
 // dedupeSearch runs GitHub's issue search scoped to repo's OPEN issues and returns every
 // hit scored against title, sorted most-likely-first. A gh/API failure, an unparseable
 // response, an EMPTY response, or an un-dedupable title all return an error, and the caller
 // fails CLOSED for `new`/`check` (exit 5/6) rather than guess at absence of duplicates.
-func dedupeSearch(repo, title string) ([]candidate, error) {
+func dedupeSearch(fg deskkit.Forge, fr deskkit.ForgeRepo, title string) ([]candidate, error) {
 	qtokens := tokenize(title)
 	if len(qtokens) == 0 {
 		return nil, errNoScorableTokens
 	}
-	args := append([]string{"search", "issues"}, searchArgs(qtokens)...)
-	args = append(args, "--repo", repo, "--state", "open",
-		"--json", "number,title,url,labels", "--limit", searchLimit)
-	out, err := gh(args...)
+	// SearchIssues scopes the free text to the repo's ISSUES on the backend (`repo:o/r is:issue`
+	// on GitHub, the project issues endpoint on GitLab). The tokenised terms are joined with
+	// spaces — AND-of-terms on both forges — which restores the exact search intent the retired
+	// `gh search issues <tok> <tok>` argv-per-token fix protected (#156): no token can be a
+	// qualifier (tokenize strips to [a-z0-9]), and the local Jaccard scorer, not forge relevance,
+	// decides duplicates. A backend error is the fail-CLOSED could-not-check the caller refuses
+	// on; an empty result set is a definite "no hits" (nil, nil), which the backend distinguishes
+	// from an unanswerable search (an error) — the distinction the old empty-stdout guard drew.
+	hits, err := fg.SearchIssues(fr, deskkit.SearchIssuesInput{Query: strings.Join(qtokens, " ")})
 	if err != nil {
 		return nil, err
-	}
-	out = strings.TrimSpace(out)
-	if out == "" {
-		// An answered search prints a JSON array — `[]` when there are no hits. NOTHING at
-		// all is an UNANSWERED search, not an empty result set, and "the search produced
-		// nothing" must never read as "no duplicates exist": that is the one direction this
-		// tool says it will not take. Fail closed and let the caller see exit 6.
-		return nil, fmt.Errorf("gh search issues produced no output (exit 0, empty stdout) — " +
-			"an answered search prints a JSON array; treating this as 'no duplicates' would be fail-open")
-	}
-	var hits []ghSearchHit
-	if err := json.Unmarshal([]byte(out), &hits); err != nil {
-		return nil, fmt.Errorf("cannot parse gh search issues JSON: %w", err)
 	}
 	cands := make([]candidate, 0, len(hits))
 	for _, h := range hits {
 		hasClass := false
 		for _, l := range h.Labels {
-			if l.Name == classLabel {
+			if l == classLabel {
 				hasClass = true
 				break
 			}
