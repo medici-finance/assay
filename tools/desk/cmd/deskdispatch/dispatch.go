@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -248,11 +249,24 @@ func dispatch(o dispatchOpts) error {
 		return wt.run.FailVerbatim(deskkit.ExitUnverifiable, msg)
 	}
 	home := firstLine(wt.stdout)
-	if home == "" || home == "(no output)" || !strings.HasPrefix(home, "/") {
+	// Absoluteness is tested with homeIsAbsolute (filepath.IsAbs under the host-OS seam), not a
+	// literal leading-slash prefix: deskwt is Windows-aware and on native Windows deliberately picks
+	// the sanctioned <repo-root>/.claude/worktrees/ prefix, whose home is a drive-rooted `C:\...`
+	// that never starts with `/`. A POSIX-only `HasPrefix(home, "/")` here rejected that legitimate
+	// home and made dispatch impossible on Windows (#757), the consumer half of the #727/#732 family.
+	// This step delegates path SAFETY to deskwt (the sanctioned-prefix guard, comment above) and only
+	// asserts the home is absolute — the same portable test brief.go uses — so producer and consumer
+	// judge "absolute" the same way per OS and cannot disagree again.
+	if home == "" || home == "(no output)" || !homeIsAbsolute(home) {
+		// This abort is AFTER the durable claim was placed one step ago, so RELEASE it — exactly as
+		// the deskwt-add-failed branch above does — rather than leave a phantom HELD claim that wedges
+		// the item (every corrected re-run told "already claimed by a LIVE holder" until a human
+		// hand-deletes the ref). A refused dispatch must not be a queue suppressor.
+		released := releaseClaim(o, plan.claimTool, plan.claimKey, repo)
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: `deskwt add %s` exited 0 but named no absolute worktree path (%q). The agent's home "+
 				"is the isolation floor every other clause rests on, so a home this verb cannot state is a "+
-				"dispatch it must not make.", stepWorktreeCreate, wtName, wt.stdout), nil)
+				"dispatch it must not make. The claim was %s.", stepWorktreeCreate, wtName, wt.stdout, released), nil)
 	}
 	o.say("%s OK: %s on %s", stepWorktreeCreate, home, branch)
 
@@ -685,6 +699,42 @@ func claimToolAvailable(tool string, isScript bool) error {
 	}
 	_, err := lookPath(tool)
 	return err
+}
+
+// goos is the host-OS seam, mirroring cmd/deskwt's own `goos` var so the PRODUCER (deskwt,
+// which selects the worktree prefix) and this CONSUMER (which accepts the home it printed)
+// judge "absolute" the same way and cannot disagree again — the #757 defect, the consumer
+// half of the #727/#732 Windows-portability family. Production reads runtime.GOOS; white-box
+// tests set it to exercise the Windows codepath on a POSIX runner. Genuine drive-root
+// resolution is a compile-time property of path/filepath and cannot otherwise be reproduced
+// off-Windows, exactly as cmd/deskwt/windowsprefix_test.go documents for the producer half.
+var goos = runtime.GOOS
+
+// homeIsAbsolute reports whether the worktree home deskwt reported is an absolute path,
+// using filepath.IsAbs — the portable test brief.go already uses, and the one that on a
+// native-Windows build accepts the drive-rooted <repo-root>\.claude\worktrees\... home
+// deskwt selects there. The `goos == "windows"` arm exists ONLY for the seam above: on a
+// POSIX test binary filepath.IsAbs cannot see a `C:\...` path as absolute, so this lets the
+// consumer half of the contract be pinned and shown red-first on the POSIX CI runner. On a
+// real Windows build filepath.IsAbs already answers, so windowsAbs is never reached there.
+func homeIsAbsolute(home string) bool {
+	if filepath.IsAbs(home) {
+		return true
+	}
+	return goos == "windows" && windowsAbs(home)
+}
+
+// windowsAbs recognises the two Windows absolute-path forms deskwt can emit — a drive-rooted
+// path (`C:\...` or `C:/...`) and a UNC path (`\\host\share\...`). It serves the goos seam in
+// homeIsAbsolute only; a real Windows build never consults it (filepath.IsAbs answers first).
+func windowsAbs(p string) bool {
+	if strings.HasPrefix(p, `\\`) || strings.HasPrefix(p, `//`) { // UNC
+		return true
+	}
+	if len(p) < 3 || p[1] != ':' || (p[2] != '\\' && p[2] != '/') {
+		return false
+	}
+	return (p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z') // <drive>:\ or <drive>:/
 }
 
 // releaseClaim releases the durable claim via the consumer claim script's own `release`
