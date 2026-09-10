@@ -79,8 +79,16 @@ type Stream struct {
 }
 
 type Brief struct {
-	Num      string // "01", "12a"
-	Title    string
+	Num   string // "01", "12a"
+	Title string
+	// RawCell is the raw, un-unwrapped text of the `Brief` column cell as read
+	// from the stream README table (before unwrapTitleLink strips a `[text](url)`
+	// link to its text). It preserves a ROW-level re-home marker — the rendered
+	// `[homed→<owner>/<repo>]` marker (emit.go) or explicit retirement wording a
+	// human wrote into that one cell — so the board-honesty re-homed class can key
+	// on the ROW's own marker instead of a stream-level README inference
+	// (statusgen #709). "" for a legacy/unparsed row; never a Next-up input.
+	RawCell  string
 	Wave     int
 	Effort   string
 	Status   string // todo | in-progress | implemented | verified | done | blocked
