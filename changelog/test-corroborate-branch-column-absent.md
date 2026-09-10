@@ -1,2 +1,0 @@
-### Fixed
-- Added a regression test (`TestPreExistingBranchColumnAbsentFromBaseFailsClosed`) pinning the `statusgen --corroborate` pre-existing-exemption fail-closed branch for when the stamp's branch column is ABSENT from the base table's header entirely — the exemption must stay gated (`MISSING-CORROBORATION`) rather than fall back to the branch's positional index and match an unrelated base cell. Tests-only follow-up to #785; no behaviour change.
