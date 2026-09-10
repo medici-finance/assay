@@ -99,6 +99,7 @@ var (
 	gRepo      = regexp.MustCompile(`^/repos/[^/]+/[^/]+$`)
 	gReactions = regexp.MustCompile(`/issues/[0-9]+/reactions$`)
 	gGitRef    = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/refs/.+$`)
+	gGitRef1   = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/ref/.+$`)
 	gTimeline  = regexp.MustCompile(`/issues/[0-9]+/timeline$`)
 	gPRLabels  = regexp.MustCompile(`/issues/[0-9]+/labels$`)
 	gPRLabel1  = regexp.MustCompile(`/issues/[0-9]+/labels/[^/]+$`)
@@ -238,6 +239,10 @@ func (s *goldenServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.issue)
 	case r.Method == http.MethodDelete && gGitRef.MatchString(path):
 		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodGet && gGitRef1.MatchString(path):
+		// Single-reference read (RefExists). Present → 200 with the ref object; an absent ref is
+		// driven via forceStatus (404), handled at the top of this handler.
+		enc(map[string]any{"ref": "refs/heads/dispatch/item--01", "object": map[string]any{"sha": "abc123"}})
 	case r.Method == http.MethodGet && gRepo.MatchString(path):
 		enc(s.repo)
 	default:
@@ -596,6 +601,31 @@ func TestForgeGithubGolden(t *testing.T) {
 			setup: func(s *goldenServer) {},
 			run: func(f *GitHubForge) (any, error) {
 				return nil, f.DeleteRef(forgeTestRepo, "heads/../../branches/main/protection")
+			},
+		},
+		{
+			// RefExists is the single-reference read (SINGULAR git/ref, distinct from the plural
+			// git/refs DeleteRef targets). This is the logic that was deskpost's hand-rolled
+			// refExists, moved onto the seam. A present ref reads (true, nil); the golden pins the
+			// backend builds the one path from the caller's REF.
+			name:  "ref_exists_present",
+			setup: func(s *goldenServer) {},
+			run:   func(f *GitHubForge) (any, error) { return f.RefExists(forgeTestRepo, "heads/dispatch/item--01") },
+		},
+		{
+			// A 404 is the ANSWER "absent" — (false, nil), not a read failure. Only this positive
+			// absent ages a dispatch stamp out; every other non-2xx stays could-not-check.
+			name:  "ref_exists_absent",
+			setup: func(s *goldenServer) { s.forceStatus["/git/ref/heads/dispatch/item--01"] = http.StatusNotFound },
+			run:   func(f *GitHubForge) (any, error) { return f.RefExists(forgeTestRepo, "heads/dispatch/item--01") },
+		},
+		{
+			// The same namespace-escape refusal DeleteRef carries: a traversing ref is refused
+			// BEFORE a request exists. The golden's value is the empty request list.
+			name:  "ref_exists_refuses_namespace_escape",
+			setup: func(s *goldenServer) {},
+			run: func(f *GitHubForge) (any, error) {
+				return f.RefExists(forgeTestRepo, "heads/../../branches/main/protection")
 			},
 		},
 		{

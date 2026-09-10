@@ -786,6 +786,26 @@ type Forge interface {
 	// forge that does not serve a single raw unified-diff document for a change returns
 	// could-not-check naming the gap. Consumer: cmd/deskboard's cmdDiff (freeze rule).
 	ChangeDiff(repo ForgeRepo, number int) (string, error)
+	// RefExists reports whether one git ref is PRESENT in repo. The ref is a REF PATH inside
+	// the repo's own ref namespace ("heads/topic", "heads/dispatch/<key>"), never an API path:
+	// it is validated by ValidateRefPath before any request is built, so this op cannot address
+	// an arbitrary endpoint — the same bound DeleteRef carries, for the same reason (a path-
+	// shaped argument that reaches a URL is an arbitrary-endpoint reach unless something refuses
+	// the paths that are not refs).
+	//
+	// A ref that is ABSENT is reported as (false, nil) — the ANSWER, not a failure: that is the
+	// whole point of the read. Every OTHER non-2xx is an error the caller reads as
+	// could-not-check — a 403 from a token that cannot see refs can never be mistaken for "the
+	// ref is gone". A backend whose forge cannot serve a ref-existence read for the namespace it
+	// was handed returns a could-not-check REFUSAL naming the gap (GitLab CE exposes no general
+	// ref API, so only the `heads/` namespace maps, via the Branches API — the same limit
+	// DeleteRef carries), never a guessed "absent".
+	//
+	// Consumer: cmd/deskpost's claimLiveness — the model-capability-floor stamp age-out reads
+	// whether a PR's dispatch claim ref (`heads/dispatch/<key>`, ClaimRefPath) is still held.
+	// Only a positive ABSENT ages a stamp out; every uncertain path is could-not-check, which
+	// changes nothing (freeze rule: this read lands with the call site that consumes it).
+	RefExists(repo ForgeRepo, ref string) (bool, error)
 
 	// --- Writes ---
 

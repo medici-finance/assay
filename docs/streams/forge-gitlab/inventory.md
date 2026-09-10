@@ -170,6 +170,25 @@ validator: `deskkit.ValidateRefPath` (`forge_refpath.go`) refuses an un-namespac
 exists. The golden `delete_ref_refuses_namespace_escape` pins that a ref aimed at
 `…/branches/main/protection` emits **zero** requests.
 
+| # | Method | Frozen op (spec §6) | GitHub impl | GitLab mapping | gitlab impl |
+|---|--------|--------------------|-------------|----------------|-------------|
+| 37 | `RefExists(repo, ref)` | ref-existence read (model-capability-floor stamp age-out) | `GET /repos/{o}/{r}/git/ref/{ref}` (SINGULAR single-reference read, distinct from the plural `git/refs/` `DeleteRef` targets) — the logic extracted from `deskpost`'s hand-rolled `refExists`; a 404 is the ANSWER "absent" (false, nil), every other non-2xx is could-not-check | `GET /projects/:id/repository/branches/:branch` (Branches API, **Tier: Free**) — `DeleteRef`'s read twin, reaching exactly as far: GitLab CE exposes NO general ref-existence endpoint, so only the `heads/<branch>` namespace maps and every other namespace is a could-not-check REFUSAL naming the gap. The dispatch claim ref (`refs/heads/dispatch/<key>`) is INSIDE that namespace, so the live read round-trips here. A 404 → absent (false, nil); a 403 → could-not-check, never a guessed release | implemented |
+
+**Op 37 (`RefExists`) was added by brief `forge-gitlab/09` under the same freeze rule**, with its one
+consuming call site converted in the same change: `deskpost`'s `claimLiveness` — the model-capability
+floor's stamp age-out — which read the claim ref through a hand-rolled REST call and now reads it through
+this typed op (the GitHub backend, constructed with the token that path already minted; `deskpost`'s
+verdict/comment/flip preconditions stay GitHub-only, `newGHClient` having already refused a
+GitLab-resolved repo before any verb reaches `claimLiveness`). It is the second path-shaped-argument op
+after `DeleteRef` and carries the same `deskkit.ValidateRefPath` bound, so it cannot address an arbitrary
+endpoint; the goldens `ref_exists_present`/`ref_exists_absent`/`ref_exists_refuses_namespace_escape`
+(GitHub) and `ref_exists_present`/`ref_exists_absent`/`ref_exists_non_branch_namespace_refused` (GitLab)
+pin the present/absent/refused shapes, the last two emitting **zero** requests. Only a positive ABSENT
+ages a stamp out; every uncertain path is could-not-check, which changes nothing. The
+`GitLabRepoInfoFetcher` adapter (below, delta note) landed in the same brief so the public-repo gate can
+run on a GitLab-resolved repo; it is not a `Forge` method (the gate takes the string-signature
+`RepoInfoFetcher`), so it is not a row here.
+
 ## Per-tool call-site inventory (current state)
 
 ### Direct-HTTP tools (the `api.github.com` construction Verify item 2 targets)
