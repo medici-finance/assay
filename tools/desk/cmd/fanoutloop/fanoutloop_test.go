@@ -17,6 +17,20 @@ import (
 
 // --- test harness -----------------------------------------------------------------------------
 
+// engineTestTimeout bounds every "wait for an async engine condition / wait for the engine to
+// exit" deadline in this file. These deadlines are wedge SAFETY NETS, not measurements: the
+// conditions they poll (pool fills, all items drain, the engine exits after STOP) are reached in
+// milliseconds on an idle machine, so the ceiling is only ever hit on a genuine no-exit bug.
+//
+// The old 5s ceiling was calibrated to unloaded speed and reddened intermittently under the CPU
+// saturation of a whole-module `go test ./...` run (assay#738): every subtest's goroutines get
+// starved and a near-instant condition misses a 5s poll deadline, even though nothing is actually
+// wedged. A genuinely load-tolerant ceiling removes that timing/load assumption without weakening
+// any assertion — a real wedge still fails, just after a longer, unambiguous wait. Kept well under
+// the module's own `-timeout` so a true wedge still surfaces as a readable per-test failure rather
+// than a whole-suite kill.
+const engineTestTimeout = 60 * time.Second
+
 // setupDeskHome points $HOME at a fresh temp dir (clean desk-tools flag dir), neutralises the
 // ambient kill switch, and pins DESK_LOOP to the REGISTERED loop name so the engine's per-loop
 // stop guard resolves (an unregistered name is exit-6 could-not-check). Returns the desk-tools dir
@@ -48,7 +62,7 @@ func runUntil(t *testing.T, cfg loopengine.Config, loop loopengine.Loop, deskDir
 	t.Helper()
 	done := make(chan error, 1)
 	go func() { done <- loopengine.Run(cfg, loop) }()
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(engineTestTimeout)
 	planted := false
 	tick := time.NewTicker(2 * time.Millisecond)
 	defer tick.Stop()
@@ -217,7 +231,7 @@ func TestPool(t *testing.T) {
 		errc := make(chan error, 1)
 		go func() { errc <- loopengine.Run(cfg, loop) }()
 
-		waitFor(t, 5*time.Second, func() bool { return len(dr.dispatched()) >= 8 }, "pool to fill to 8")
+		waitFor(t, engineTestTimeout, func() bool { return len(dr.dispatched()) >= 8 }, "pool to fill to 8")
 		time.Sleep(25 * time.Millisecond) // no completion can arrive (gate closed) → pool cannot exceed 8
 		if n := len(dr.dispatched()); n != 8 {
 			t.Fatalf("standing pool exceeded its cap: %d in flight, want exactly 8", n)
@@ -225,7 +239,7 @@ func TestPool(t *testing.T) {
 		t.Logf("standing-pool: held exactly 8 workers in flight under 12 eligible")
 
 		close(gate) // release all → they land, freed slots refill with the remaining 4
-		waitFor(t, 5*time.Second, func() bool { return len(sink.landedIDs()) >= 12 }, "all 12 to drain via refill")
+		waitFor(t, engineTestTimeout, func() bool { return len(sink.landedIDs()) >= 12 }, "all 12 to drain via refill")
 
 		if err := os.MkdirAll(deskDir, 0o700); err != nil {
 			t.Fatal(err)
@@ -238,7 +252,7 @@ func TestPool(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Run: %v", err)
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(engineTestTimeout):
 			t.Fatal("engine did not exit after STOP")
 		}
 		if n := len(dr.dispatched()); n != 12 {
@@ -358,14 +372,14 @@ func TestSerial(t *testing.T) {
 	go func() { errc <- loopengine.Run(cfg, loop) }()
 
 	// A is in flight and C landed; B must NOT have been dispatched (single out-of-repo slot held by A).
-	waitFor(t, 5*time.Second, func() bool { return dr.has("oo-a/01") && contains(sink.landedIDs(), "plain/01") }, "A in flight and C landed")
+	waitFor(t, engineTestTimeout, func() bool { return dr.has("oo-a/01") && contains(sink.landedIDs(), "plain/01") }, "A in flight and C landed")
 	time.Sleep(30 * time.Millisecond) // give a wrongful second out-of-repo dispatch a chance to happen
 	if dr.has("oo-b/01") {
 		t.Fatal("a SECOND out-of-repo brief dispatched while the first was in flight — out-of-repo serialization broken")
 	}
 
 	close(gateA) // A lands → the single out-of-repo slot frees → B becomes dispatchable
-	waitFor(t, 5*time.Second, func() bool { return dr.has("oo-b/01") }, "B to dispatch after A landed")
+	waitFor(t, engineTestTimeout, func() bool { return dr.has("oo-b/01") }, "B to dispatch after A landed")
 
 	order := dr.dispatched()
 	if indexOf(order, "oo-a/01") > indexOf(order, "oo-b/01") {
@@ -380,7 +394,7 @@ func TestSerial(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run: %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(engineTestTimeout):
 		t.Fatal("engine did not exit after STOP")
 	}
 }
@@ -446,7 +460,7 @@ func TestCapStarvedFillsWithOrphans(t *testing.T) {
 	errc := make(chan error, 1)
 	go func() { errc <- loopengine.Run(cfg, loop) }()
 
-	waitFor(t, 5*time.Second, func() bool { return len(dr.dispatched()) >= 3 }, "3 slots to fill (1 fresh + 2 orphan resumes)")
+	waitFor(t, engineTestTimeout, func() bool { return len(dr.dispatched()) >= 3 }, "3 slots to fill (1 fresh + 2 orphan resumes)")
 	time.Sleep(20 * time.Millisecond)
 	d := dr.dispatched()
 	if len(d) != 3 {
@@ -467,7 +481,7 @@ func TestCapStarvedFillsWithOrphans(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run: %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(engineTestTimeout):
 		t.Fatal("engine did not exit after STOP")
 	}
 }
