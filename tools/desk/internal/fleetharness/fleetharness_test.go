@@ -3,9 +3,12 @@ package fleetharness
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -157,6 +160,54 @@ type fleetEnv struct {
 	bodyClean     string // a body file that scans clean (and carries the link trailer)
 	bodyNoTrailer string // a clean body WITHOUT the link trailer (example-stream/02 rows)
 	bodySecret    string // a body file carrying a synthetic credential (plus the trailer)
+	forgeURL      string // base URL of the fake forge server the deskpr binary is built against
+}
+
+// fakeForgePullN matches the single-change read path GetPullRequest calls.
+var fakeForgePullN = regexp.MustCompile(`^/repos/[^/]+/[^/]+/pulls/[0-9]+$`)
+
+// startFakeForge stands in for the GitHub REST API deskpr's write verbs now read through the
+// forge seam (since write-verbs-C replaced the `gh` shell-out). It answers ONLY the reads deskpr
+// performs BEFORE the public-repo gate — the branch→change lookup (OpenChangeForBranch, GET
+// /pulls?head=…) and the single-change body read (GetPullRequest, GET /pulls/{n}) — from the same
+// FAKEGH_* env the retired `gh` shim read, and refuses anything else with a 501 so a verb that
+// reaches further than the harness models cannot look like a pass. deskpr's binary is built to
+// point its forge here (via -ldflags), while its public-repo gate keeps hitting the real
+// api.github.com through the dead proxy — which is what makes the gate the reached-remote
+// boundary the harness scores on, exactly as it was under the `gh` shim.
+func startFakeForge(t *testing.T) *httptest.Server {
+	t.Helper()
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(p, "/pulls"):
+			// OpenChangeForBranch — the idempotency / existing-PR lookup.
+			if os.Getenv("FAKEGH_LIST_HAS_PR") != "1" {
+				fmt.Fprint(w, "[]")
+				return
+			}
+			draft := os.Getenv("FAKEGH_LIST_DRAFT") != "0"
+			head := os.Getenv("FAKEGH_HEAD_REF")
+			fmt.Fprintf(w, `[{"number":7,"state":"open","draft":%t,"node_id":"PR_7",`+
+				`"html_url":"https://example.invalid/pull/7","head":{"ref":%q},"base":{"ref":"main"}}]`, draft, head)
+		case r.Method == http.MethodGet && fakeForgePullN.MatchString(p):
+			// GetPullRequest — the body/mergeable read; FAKEGH_PR_BODY overrides, else a
+			// resolving trailer so the trailer gate passes (the ready-flipped control).
+			b := os.Getenv("FAKEGH_PR_BODY")
+			if b == "" {
+				b = "Brief: fixture/01\n"
+			}
+			draft := os.Getenv("FAKEGH_LIST_DRAFT") != "0"
+			fmt.Fprintf(w, `{"number":7,"state":"open","draft":%t,"mergeable":true,"body":%q,`+
+				`"head":{"ref":%q},"base":{"ref":"main"}}`, draft, b, os.Getenv("FAKEGH_HEAD_REF"))
+		default:
+			http.Error(w, "fleet-harness fake forge: unmodelled call "+r.Method+" "+p+
+				" — the verb got further than the harness models", http.StatusNotImplemented)
+		}
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 // fixtureRoster mirrors cmd/deskpr's own test roster: the tools read their allowed-repo
@@ -187,7 +238,12 @@ func newFleetEnv(t *testing.T) *fleetEnv {
 	mkdir(t, filepath.Join(e.home, ".config", "assay"))
 	write(t, filepath.Join(e.home, ".config", "assay", "roster.env"), fixtureRoster)
 
-	buildVerb(t, e.bin, "deskpr")
+	// The fake forge deskpr's write verbs read through (branch→change lookup + body read). Its
+	// URL is baked into the deskpr binary via -ldflags so the subprocess points its forge here;
+	// the public-repo gate still hits the real api.github.com through the dead proxy.
+	e.forgeURL = startFakeForge(t).URL
+
+	buildVerbForge(t, e.bin, "deskpr", e.forgeURL)
 	buildVerb(t, e.bin, "deskreply")
 	buildShim(t, e.bin, "gh", ghShimSource)
 	buildShim(t, e.bin, "desktoken", desktokenShimSource)
@@ -440,7 +496,11 @@ func (e *fleetEnv) exec(t *testing.T, dir, pathDir, verb string, args ...string)
 		// real API would be neither hermetic nor safe to run in CI.
 		"HTTPS_PROXY=http://127.0.0.1:1",
 		"HTTP_PROXY=http://127.0.0.1:1",
-		"NO_PROXY=",
+		// The fake forge (deskpr's OpenChangeForBranch / GetPullRequest reads) is on 127.0.0.1
+		// and must bypass the dead proxy, while the real api.github.com the public-repo gate hits
+		// must NOT — so 127.0.0.1 is the only no-proxy host. api.github.com still fails fast at
+		// the proxy, which is the reached-remote boundary the harness scores.
+		"NO_PROXY=127.0.0.1,localhost",
 		"FAKEGH_LIST_HAS_PR="+os.Getenv("FAKEGH_LIST_HAS_PR"),
 		"FAKEGH_LIST_DRAFT="+os.Getenv("FAKEGH_LIST_DRAFT"),
 		"FAKEGH_HEAD_REF="+os.Getenv("FAKEGH_HEAD_REF"),
@@ -508,6 +568,17 @@ func buildVerb(t *testing.T, bin, name string) {
 	t.Helper()
 	// The module root is two levels up from internal/fleetharness.
 	run(t, filepath.Join("..", ".."), "go", "build", "-o", filepath.Join(bin, name), "./cmd/"+name)
+}
+
+// buildVerbForge builds a verb with its test-only forge API base (a package var) injected at link
+// time, so the subprocess reaches the harness's fake forge instead of the real api.github.com.
+// This is the link-time equivalent of the per-test `forgeAPIBase` override the verb's own package
+// tests set — the fleet harness cannot set a package var in a subprocess, so it sets it here.
+func buildVerbForge(t *testing.T, bin, name, forgeURL string) {
+	t.Helper()
+	run(t, filepath.Join("..", ".."), "go", "build",
+		"-ldflags", "-X main.forgeAPIBase="+forgeURL,
+		"-o", filepath.Join(bin, name), "./cmd/"+name)
 }
 
 func buildShim(t *testing.T, bin, name, src string) {
