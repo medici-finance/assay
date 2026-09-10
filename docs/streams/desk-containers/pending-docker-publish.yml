@@ -1,0 +1,355 @@
+# PARKED — pending application by a human with `workflows` permission.
+#
+# This is the FULL, ready-to-apply content of `.github/workflows/docker-publish.yml`
+# with the desk-containers/03 Task 2 `desk-images` job added (desk-base + the five
+# per-desk images, version-locked, scanned before any push). It is parked HERE
+# rather than committed at its real path because the worker App's push of this PR's
+# branch was rejected by GitHub:
+#
+#   ! [remote rejected]   feat/desk-containers-03 -> feat/desk-containers-03
+#     (refusing to allow a GitHub App to create or update workflow
+#     `.github/workflows/docker-publish.yml` without `workflows` permission)
+#
+# This exact rejection is anticipated in the brief (desk-containers/03 fact): "if the
+# push of .github/workflows/docker-publish.yml is rejected, deliver the workflow
+# change in the PR as-is and flag the rejection in the PR body for a human to carry —
+# do not route around the restriction." This file is that delivery.
+#
+# TO LAND: a human (or a token with the `workflows` permission) runs, from a checkout
+# of this branch:
+#
+#   cp docs/streams/desk-containers/pending-docker-publish.yml .github/workflows/docker-publish.yml
+#   git rm docs/streams/desk-containers/pending-docker-publish.yml
+#   git add .github/workflows/docker-publish.yml
+#   git commit -m "ci(desk-containers/03): apply the desk-images build matrix"
+#   git push
+#
+# (Optionally strip THIS header comment block first — it is inert YAML/shell comment
+# syntax either way and does not affect the workflow if left in place, but a clean
+# landing usually drops it.)
+#
+# Everything below this header, verbatim, IS the new file content:
+#
+name: docker-publish
+# Build the assay container images and publish them to GHCR:
+#   * ONE combined desk-tools image (the binary suite + statusgen) — see
+#     ../../Dockerfile.
+#   * the shared desk-base image and the FIVE per-desk images built FROM it —
+#     see ../../containers/ (brief desk-containers/01 + /03).
+#
+# WHERE THIS RUNS — release-only, on the self-hosted runner labelled
+#   `medici-builder-public-release`, which provides a Docker daemon (DOCKER_HOST
+#   is set), so it builds with plain `docker build` — no buildx, no Kaniko. That
+#   label is kept safe by SEGMENTATION: only this workflow names it, and this
+#   workflow fires ONLY on tag-push + manual dispatch — never on pull_request —
+#   so a fork PR can never land a job on the build runner. The regular per-PR
+#   build/test runs on ci.yml.
+#
+# ARCH — linux/amd64 only (single-arch; plain `docker build` on the runner arch).
+#
+# TWO WAYS IN
+#   push a tag        desk-tools/v* — the tag's version becomes the image tag.
+#   workflow_dispatch name a version; set dry_run to build WITHOUT pushing.
+#
+# NO BUILD-TIME SECRETS beyond the GHCR registry login. No credential is passed
+# as a build-arg or baked into any layer; every image's credentials arrive at
+# RUNTIME only (containers/secrets.md). The desk-images job runs
+# containers/scripts/layer-secret-scan.sh against the base AND all five desk
+# images and FAILS the publish on any hit — the mechanical enforcer of the
+# "no secret in any image layer" rule.
+
+on:
+  push:
+    tags: ["desk-tools/v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, e.g. v0.1.0 (the desk-tools/ tag prefix is not required here)."
+        required: true
+        type: string
+      dry_run:
+        description: "Build the image but do NOT push to GHCR."
+        required: false
+        default: false
+        type: boolean
+
+# Least privilege: read the source, write packages (GHCR).
+permissions:
+  contents: read
+  packages: write
+
+# One build per version at a time; never cancel a publish mid-flight.
+concurrency:
+  group: docker-publish-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # ghcr.io/medici-finance/assay/desk-tools — the recognised suite name;
+  # statusgen ships in the same image (see the Dockerfile header).
+  IMAGE: ghcr.io/${{ github.repository }}/desk-tools
+
+jobs:
+  build:
+    runs-on: medici-builder-public-release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Resolve the version string once, from whichever trigger fired.
+      #   tag push  -> strip the "desk-tools/" prefix off github.ref_name
+      #   dispatch  -> the typed input, normalised to a leading "v"
+      # Also decide push vs build-only: a dry-run dispatch builds without pushing.
+      - name: Resolve version and publish mode
+        id: cfg
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            v="$INPUT_VERSION"
+            case "$v" in v*) ;; *) v="v$v" ;; esac
+            if [ "$DRY_RUN" = "true" ]; then push=false; else push=true; fi
+          else
+            # tag push: github.ref_name is "desk-tools/vX.Y.Z"
+            v="${REF_NAME#desk-tools/}"
+            push=true
+          fi
+          if ! printf '%s' "$v" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::could not resolve a vMAJOR.MINOR.PATCH version (got '$v')"
+            exit 1
+          fi
+          short_sha="${GITHUB_SHA::7}"
+          {
+            echo "version=$v"
+            echo "push=$push"
+            echo "built_at=$(date -u +%FT%TZ)"
+            echo "version_tag=${IMAGE}:${v}"
+            echo "latest_tag=${IMAGE}:latest"
+            echo "sha_tag=${IMAGE}:sha-${short_sha}"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=$v push=$push (event=$EVENT)"
+
+      # Log in only when we intend to push. A dry run never touches the registry.
+      - name: Log in to GHCR
+        if: steps.cfg.outputs.push == 'true'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # Plain `docker build` against the runner's Docker daemon (DOCKER_HOST is
+      # set). Single-arch (runner arch = linux/amd64). Version stamps go in via
+      # build-args so the image's --version matches the tag.
+      - name: Build
+        env:
+          VERSION_TAG: ${{ steps.cfg.outputs.version_tag }}
+          LATEST_TAG: ${{ steps.cfg.outputs.latest_tag }}
+          SHA_TAG: ${{ steps.cfg.outputs.sha_tag }}
+          VERSION: ${{ steps.cfg.outputs.version }}
+          BUILT_AT: ${{ steps.cfg.outputs.built_at }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg "VERSION=${VERSION}" \
+            --build-arg "SOURCE_SHA=${GITHUB_SHA}" \
+            --build-arg "BUILT_AT=${BUILT_AT}" \
+            -t "$VERSION_TAG" \
+            -t "$LATEST_TAG" \
+            -t "$SHA_TAG" \
+            -f ./Dockerfile \
+            .
+
+      - name: Push
+        if: steps.cfg.outputs.push == 'true'
+        env:
+          VERSION_TAG: ${{ steps.cfg.outputs.version_tag }}
+          LATEST_TAG: ${{ steps.cfg.outputs.latest_tag }}
+          SHA_TAG: ${{ steps.cfg.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+          docker push "$VERSION_TAG"
+          docker push "$LATEST_TAG"
+          docker push "$SHA_TAG"
+
+      # GHCR packages are created PRIVATE on first push. Best-effort flip to
+      # PUBLIC so the image pulls anonymously. The default GITHUB_TOKEN usually
+      # lacks org package-admin; a failure here is EXPECTED and non-fatal — an
+      # org owner then flips visibility once by hand in the package settings.
+      - name: Make package public (best-effort)
+        if: steps.cfg.outputs.push == 'true'
+        continue-on-error: true
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GHCR_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/orgs/medici-finance/packages/container/assay%2Fdesk-tools \
+            -d '{"visibility":"public"}')"
+          echo "visibility PATCH -> HTTP $code"
+          if [ "$code" != "204" ] && [ "$code" != "200" ]; then
+            echo "::warning::could not set desk-tools package visibility to public (HTTP $code); an org owner must flip it in GHCR package settings."
+          fi
+
+  # ---------------------------------------------------------------------------
+  # desk-images — the shared desk-base + the five per-desk images.
+  #
+  # Ordering: `needs: build` serialises this AFTER the desk-tools image job on
+  # the single build runner. The base image reuses the already-published
+  # desk-tools binaries via a PINNED `COPY --from` tag inside containers/base/
+  # Dockerfile, so it does not depend on THIS run's desk-tools — the ordering is
+  # for runner-serialisation and to keep "base first, then desks" literal.
+  #
+  # Build order WITHIN the job is strict: build desk-base FIRST, then each desk
+  # FROM the just-built base (passed via --build-arg BASE_IMAGE) so every desk
+  # image is version-locked to the SAME base tag — never a floating `latest`.
+  # All six share the version / latest / sha- tag scheme.
+  #
+  # The build context is the REPOSITORY ROOT for every image (the base bakes
+  # plugins/assay/, the desks bake containers/entrypoint.sh — both live outside
+  # the per-image directory), so each build passes `-f <dockerfile> .`.
+  #
+  # SCAN GATE: after building all six, run containers/scripts/layer-secret-scan.sh
+  # against each. Any hit fails the whole job BEFORE any push — no image carrying
+  # key-shaped material is ever published.
+  desk-images:
+    runs-on: medici-builder-public-release
+    needs: build
+    env:
+      REGISTRY_BASE: ghcr.io/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Same version/push resolution as the desk-tools job.
+      - name: Resolve version and publish mode
+        id: cfg
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            v="$INPUT_VERSION"
+            case "$v" in v*) ;; *) v="v$v" ;; esac
+            if [ "$DRY_RUN" = "true" ]; then push=false; else push=true; fi
+          else
+            v="${REF_NAME#desk-tools/}"
+            push=true
+          fi
+          if ! printf '%s' "$v" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::could not resolve a vMAJOR.MINOR.PATCH version (got '$v')"
+            exit 1
+          fi
+          short_sha="${GITHUB_SHA::7}"
+          {
+            echo "version=$v"
+            echo "push=$push"
+            echo "sha=sha-${short_sha}"
+            echo "built_at=$(date -u +%FT%TZ)"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=$v push=$push (event=$EVENT)"
+
+      - name: Log in to GHCR
+        if: steps.cfg.outputs.push == 'true'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # 1. Build the shared base FIRST. Its three tags (version / latest / sha-)
+      #    are what every desk image is version-locked to.
+      - name: Build desk-base
+        env:
+          VERSION: ${{ steps.cfg.outputs.version }}
+          SHA: ${{ steps.cfg.outputs.sha }}
+          BUILT_AT: ${{ steps.cfg.outputs.built_at }}
+        run: |
+          set -euo pipefail
+          base="${REGISTRY_BASE}/desk-base"
+          docker build \
+            --build-arg "VERSION=${VERSION}" \
+            --build-arg "SOURCE_SHA=${GITHUB_SHA}" \
+            --build-arg "BUILT_AT=${BUILT_AT}" \
+            -t "${base}:${VERSION}" \
+            -t "${base}:latest" \
+            -t "${base}:${SHA}" \
+            -f containers/base/Dockerfile \
+            .
+
+      # 2. Build the five desk images FROM the just-built base, version-locked
+      #    to the SAME version tag via --build-arg BASE_IMAGE. No floating latest.
+      - name: Build desk images
+        env:
+          VERSION: ${{ steps.cfg.outputs.version }}
+          SHA: ${{ steps.cfg.outputs.sha }}
+        run: |
+          set -euo pipefail
+          base_version_tag="${REGISTRY_BASE}/desk-base:${VERSION}"
+          for d in intake-desk worker-desk pr-review-desk verify-desk the-desk; do
+            img="${REGISTRY_BASE}/${d}"
+            echo "== building ${img} FROM ${base_version_tag} =="
+            docker build \
+              --build-arg "BASE_IMAGE=${base_version_tag}" \
+              -t "${img}:${VERSION}" \
+              -t "${img}:latest" \
+              -t "${img}:${SHA}" \
+              -f "containers/${d}/Dockerfile" \
+              .
+          done
+
+      # 3. SCAN GATE — the mechanical floor for "no secret in any image layer".
+      #    Runs against the base AND all five desk images; any hit fails the job
+      #    BEFORE any push. This gate cannot be skipped on the publish path: it
+      #    is an unconditional step and the Push steps below need it to pass.
+      - name: Layer-secret scan (base + 5 desks)
+        env:
+          VERSION: ${{ steps.cfg.outputs.version }}
+        run: |
+          set -euo pipefail
+          for img in desk-base intake-desk worker-desk pr-review-desk verify-desk the-desk; do
+            ref="${REGISTRY_BASE}/${img}:${VERSION}"
+            echo "== layer-secret-scan ${ref} =="
+            sh containers/scripts/layer-secret-scan.sh "${ref}"
+          done
+
+      # 4. Push all six (base first, then desks) only after the scan passed.
+      - name: Push desk-base + desk images
+        if: steps.cfg.outputs.push == 'true'
+        env:
+          VERSION: ${{ steps.cfg.outputs.version }}
+          SHA: ${{ steps.cfg.outputs.sha }}
+        run: |
+          set -euo pipefail
+          for img in desk-base intake-desk worker-desk pr-review-desk verify-desk the-desk; do
+            ref="${REGISTRY_BASE}/${img}"
+            docker push "${ref}:${VERSION}"
+            docker push "${ref}:latest"
+            docker push "${ref}:${SHA}"
+          done
+
+      # 5. Best-effort visibility flip for each of the six packages (same caveat
+      #    as the desk-tools job: the default token usually lacks org package
+      #    admin, so a non-204 is a warning, not a failure).
+      - name: Make packages public (best-effort)
+        if: steps.cfg.outputs.push == 'true'
+        continue-on-error: true
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for img in desk-base intake-desk worker-desk pr-review-desk verify-desk the-desk; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${GHCR_TOKEN}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/orgs/medici-finance/packages/container/assay%2F${img}" \
+              -d '{"visibility":"public"}')"
+            echo "visibility PATCH ${img} -> HTTP $code"
+            if [ "$code" != "204" ] && [ "$code" != "200" ]; then
+              echo "::warning::could not set ${img} package visibility to public (HTTP $code); an org owner must flip it in GHCR package settings."
+            fi
+          done
