@@ -16,7 +16,7 @@ unblocks: ["forge-neutral/10"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
-issues: [274, 395, 509, 687, 691]
+issues: [274, 395, 509, 687, 691, 775]
 schema: brief-v2
 authored: 2026-09-10 by forge-neutral authoring session
 sources:
