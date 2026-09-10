@@ -463,17 +463,22 @@ func TestForgeGithubGolden(t *testing.T) {
 		},
 		{
 			// The comment read is GraphQL because REST carries no `isMinimized`, and a
-			// minimised comment must never be picked up for an edit.
+			// minimised comment must never be picked up for an edit. The author nodes are
+			// shaped as GitHub's GraphQL API really renders them: a Bot actor's `login` is the
+			// BARE slug (`worker`) with a `__typename` of "Bot", NOT the "<slug>[bot]" REST
+			// rendering — ListComments must re-suffix it, or a worker never matches its own
+			// workpad comment (#747). The golden result carries the
+			// re-suffixed "worker[bot]".
 			name: "list_comments",
 			setup: func(s *goldenServer) {
 				s.graphql = map[string]any{"data": map[string]any{"repository": map[string]any{
 					"pullRequest": map[string]any{"comments": map[string]any{"nodes": []map[string]any{
 						{"id": "IC_1", "databaseId": 11, "body": "first", "isMinimized": false,
 							"createdAt": "2026-08-24T00:00:00Z", "url": "https://example/pull/7#issuecomment-11",
-							"author": map[string]any{"login": "worker[bot]"}},
+							"author": map[string]any{"login": "worker", "__typename": "Bot"}},
 						{"id": "IC_2", "databaseId": 12, "body": "hidden", "isMinimized": true,
 							"createdAt": "2026-08-24T00:01:00Z", "url": "https://example/pull/7#issuecomment-12",
-							"author": map[string]any{"login": "worker[bot]"}},
+							"author": map[string]any{"login": "worker", "__typename": "Bot"}},
 					}}},
 				}}}
 			},
