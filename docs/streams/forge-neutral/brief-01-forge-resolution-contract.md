@@ -191,6 +191,28 @@ Runner != implementer. Offline envelope (KUBECONFIG=/dev/null). gate: human; ris
 
 RISK-VALUE: DERIVED — verifyCustodyFileMode perm = 0o600 @ tools/desk/internal/deskkit/forgeresolve.go:284 — owner-only read/write is the correct secret-credential-file mode and matches the existing desktoken gitlab rotation path; row 6 insecure_mode subtest asserts a 0644 file is Refused. A looser mode would hand a group/other-readable token to a backend — the sensitive-data leak the human gate guards.
 RISK-VALUE: DERIVED — wellKnownForgeHosts = {github.com:github, gitlab.com:gitlab} @ tools/desk/internal/deskkit/forgeresolve.go:79-80 — the canonical public hostnames, exact-match only; every self-hosted instance deliberately does not match and falls through to refusal rather than guessing, so the set cannot silently misroute an unrecognised host to the wrong forge/identity.
+**Verify-table RUN 2026-09-10 — opus-4.8[1m]-verifier (non-implementer, verify-desk). NOT a sign-off.** Merged main `22f7645a1826ff3082836503ee518b552885b623`, offline (`KUBECONFIG=/dev/null`, go1.26.5). Frontmatter: `gate: human`, `risk {sensitive-data: yes, rest no}`. Forge resolution contract — the forge comes from repo config; refusal is the only fallback.
+
+| # | command | exit | observed | discharges |
+|---|---------|------|----------|------------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | 0 | build 0; test 0 on clean re-run (one transient non-reproducing deskflip harness flake, out of scope — passes in isolation and on a second full run) | Row 1 |
+| 2 | `go test ./internal/deskkit/ -run TestForgeSingleConstructionSite -count=1` | 0 | PASS — no backend literal outside the resolver | Row 2 |
+| 3 | grep forge-backend construction sites over `tools/desk` `*.go` (excl `_test.go`, `forgeresolve.go`) | 0 | `0` — only two sites, both inside the resolver (forgeresolve.go:395,397) | Row 3 |
+| 4 | `go test ./internal/deskkit/ -run TestForgeForRejectsCallerSuppliedForge -count=1` | 0 | PASS — `ForgeFor` takes no forge argument; no exported symbol accepts a caller-supplied forge | Row 4 |
+| 5 | `go test ./internal/deskkit/ -run TestForgeForUnconfiguredRepoRefuses -count=1` | 0 | PASS — unconfigured repo + unrecognisable remote yields Unverifiable naming the repo + the config that would resolve it; returns no backend | Row 5 |
+| 6 | `go test ./internal/deskkit/ -run TestForgeForMissingTokenRefuses -count=1` | 0 | PASS incl. file_absent, insecure_mode (0644), no_ambient_fallback — Refused, constructs no backend, reads no ambient credential | Row 6 |
+| 7 | `go test ./internal/deskkit/ -run TestUnsupportedOperationIsCouldNotCheck -count=1` | 0 | PASS — unsupported op returns Unverifiable naming forge+operation+gap; no request against the other forge, no zero-value success | Row 7 |
+| 8 | `go test ./cmd/deskpost/... -count=1` | 0 | ok deskpost; ok bodycheck — existing suite green unmodified with forge ops on the resolver | Row 8 |
+| 9 | `go test ./internal/forgeban/... && TestNoForgeCLIShellout && TestForgeNoPassthrough` | 0 | ok forgeban; ok deskkit — surface still closed, no shell-out, no passthrough added | Row 9 |
+| 10 | `go test ./internal/deskkit/ -run TestRosterKnownKeySet -count=1` | 0 | PASS — the forge key is registered in the roster known-set; setting it loads | Row 10 |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/01` | 2 | could-not-check — the installed statusgen recognises only brief-v1; this is a brief-v2 file, so it returns COULD-NOT-CHECK. statusgen schema/forge awareness is deferred to a later forge-neutral brief; route to CI-pinned statusgen. Not a FAIL; no diff defect | Row 11 (could-not-check) |
+
+`RISK-VALUE: DERIVED — custody file mode must be 0600 (Refused if looser) @ tools/desk/internal/deskkit/custodyowner_unix.go:23` — owner-only read/write is correct for a secret credential file; a looser mode (0644, group/other-readable) is Refused rather than handed to a backend (row 6 insecure_mode subtest proves a 0644 file is Refused). Matches the repo's established secret-file convention. A looser value would leak a group/other-readable token — the sensitive-data failure the human gate guards.
+`RISK-VALUE: DERIVED — well-known forge hosts = exact-match {github.com, gitlab.com} @ tools/desk/internal/deskkit/forgeresolve.go:78-80` — exact lowercased-hostname match on the two canonical public forge hostnames, no suffix/substring matching; every self-hosted instance deliberately fails the match and falls through to refusal, precisely the "refusal is the only fallback" default.
+
+**VERDICT: PASS on rows 1-10 (code contract green); row 11 could-not-check (statusgen brief-v2). gate:human + sensitive-data:yes — a model does NOT sign off.** Evidence gathered; the flip is the human's via the verify-gate sign-off card. Status stays at implemented.
+
+**Findings:** (1) Row 1 one transient non-reproducing deskflip test-harness flake under full-tree parallel run (passes in isolation + on a second full run) — a deskflip flake-tracking note, not a defect of this brief (deskkit resolver + deskpost only). (2) Line-number drift only vs the prior run: custody-mode enforcement refactored into `VerifyCustodyOwnerOnly` (custodyowner_unix.go:23), same `!= 0600` semantics; control intact. (3) Anti-gaming: row 2's single-construction-site test is corroborated by row 3's independent grep (zero sites elsewhere); negative-path rows 5/6/7 assert real refusal semantics, not happy-path passthrough.
 
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in
