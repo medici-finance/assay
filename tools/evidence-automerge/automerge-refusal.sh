@@ -11,7 +11,7 @@
 # reddens the run publishes a FAILED check, which is itself a state that makes
 # the next request refuse. That feedback loop is the defect this script closes.
 #
-# FOUR BENIGN OUTCOMES, exit 0 with a reason printed:
+# FIVE BENIGN OUTCOMES, exit 0 with a reason printed:
 #   1. SUCCESS — the mutation was accepted.
 #   2. ALREADY ENABLED — a second synchronize, or a review after a push. GitHub
 #      answers with a "... already enabled" style error. Redundant, not wrong.
@@ -28,6 +28,13 @@
 #      finds a clean pull request and enables auto-merge. The blast radius of
 #      being wrong is the same as case 3 — a pull request that needs a human's
 #      merge click — because nothing here merges anything.
+#   5. CLEAN STATUS — "Pull request is in clean status". The mirror of case 4 one
+#      merge-state over: a just-flipped approved pull request with every check
+#      green satisfies every requirement already, so there is nothing for
+#      auto-merge to wait on and GitHub refuses the enable. The refusal reddens
+#      the run, and that red is itself a state — the same self-inflicted loop.
+#      Exiting 0 leaves a pull request a human merges with one click, so the
+#      blast radius matches cases 3 and 4. See #586.
 #
 # EVERYTHING ELSE REDDENS, exit 1. In particular: a refusal for "unstable" while
 # some OTHER check is failing is a real signal — that pull request is not
@@ -135,6 +142,21 @@ PY
   fi
 
   echo "::warning::auto-merge not enabled on PR ${PR}: the request was refused as 'unstable status' and the only failing check is this workflow's own '${SELF_CHECK}'. That is self-inflicted and self-clearing — this run greens that check, and the next pull-request or review event enables auto-merge. Benign; see #586."
+  exit 0
+fi
+
+# 5) CLEAN STATUS — the request that arrives at a pull request which ALREADY
+#    satisfies every merge requirement. `enablePullRequestAutoMerge` asks GitHub
+#    to hold the merge until the pending required checks and reviews clear; when
+#    there is nothing left to wait on — a just-flipped approved pull request with
+#    every check green — GitHub has nothing to queue and refuses with "Pull
+#    request is in clean status" rather than enabling. That refusal reddens the
+#    run, and the failed check run is itself a state — the same self-inflicted
+#    feedback the unstable case closes, one merge-state over. Nothing here merges,
+#    so the blast radius of exiting 0 is identical to cases 3 and 4: a pull
+#    request a human merges with one click. Benign; see #586.
+if printf '%s' "$out" | grep -qi 'clean status'; then
+  echo "::warning::auto-merge not enabled on PR ${PR}: the request was refused as 'clean status' — the pull request already satisfies every merge requirement, so there is nothing left for auto-merge to wait on. Benign; see #586."
   exit 0
 fi
 
