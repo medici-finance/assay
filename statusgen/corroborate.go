@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"unicode"
@@ -475,11 +476,201 @@ func isExcludedFixturePath(root, path string) bool {
 		isFixtureCorpusPath(root, path)
 }
 
+// stampRow records where in a stream-board status table a human:<name> stamp was
+// found, so the pre-existing exemption (see stampIsPreExisting) can compare the
+// stamp's own cell against the SAME brief's row at the PR merge-base. It is
+// populated only for a stamp on a recognizable brief status-table row; a stamp in
+// a brief's frontmatter, an Evidence table, or any non-board line carries none,
+// and such a stamp is never treated as pre-existing (it stays fully gated).
+type stampRow struct {
+	BriefKey  string // the row's stable brief id (the brief-NN number), matched across a re-render
+	CellIndex int    // index of the pipe-delimited cell that carried this stamp
+	Cell      string // that cell's raw text, compared byte-for-byte (trimmed) against the base row
+}
+
 // stamp describes a single human:<name> occurrence found in a PR diff.
 type stamp struct {
 	Name string // the <name> portion (e.g. "alex")
 	File string // the file it appeared in
 	Line string // the full added line (first 120 chars, for context)
+
+	// Rows lists every brief status-table row this (name,file) stamp was found on
+	// (accumulated across the dedup below). It is the input to the pre-existing
+	// exemption: a stamp is pre-existing only when EVERY row it appears on is
+	// byte-identical to that brief's row at the merge-base, so a genuinely NEW
+	// (or edited) row anywhere forces the whole (name,file) stamp to stay gated.
+	Rows []stampRow
+	// PreExisting is set by markPreExisting once the base rows are read. When true,
+	// the stamp's cell matched the merge-base for every row it appears on — it was
+	// authored and corroborated on some earlier PR, so this diff's re-render does
+	// not re-gate it. It does NOT fail the run.
+	PreExisting bool
+}
+
+// ---- brief status-table row parsing (pre-existing exemption) ---------------------
+
+// briefLinkRe extracts the stable brief id from a stream-board row's Brief cell —
+// the numeric prefix of the `[title](brief-NN-...md)` link. The number is what
+// survives a table RE-RENDER (line numbers shift, titles may be reflowed), so it
+// is the row key the pre-existing exemption matches on, never the line position.
+var briefLinkRe = regexp.MustCompile(`\]\(brief-([0-9]+)`)
+
+// briefNumRe matches a bare brief number in the leading `#` cell — the fallback
+// row key for a status table whose Brief cell carries no markdown link.
+var briefNumRe = regexp.MustCompile(`^[0-9]+$`)
+
+// splitTableCells splits a markdown table row on `|`, dropping the leading and
+// trailing pipe, and returns the inner cells with their surrounding whitespace
+// intact (callers trim when they compare). A line that is not a pipe row yields
+// nil. Brief titles and Reviewed cells never contain a literal `|`, so a naive
+// split is exact for the rows this scan cares about.
+func splitTableCells(line string) []string {
+	t := strings.TrimSpace(line)
+	if !strings.HasPrefix(t, "|") {
+		return nil
+	}
+	t = strings.TrimSuffix(strings.TrimPrefix(t, "|"), "|")
+	return strings.Split(t, "|")
+}
+
+// briefRowKey returns the stable brief id of a stream-board status-table row, or
+// "" when the line is not such a row. The status table is `| # | Brief | Wave |
+// Effort | Status | Verified | Reviewed |` (7 cells); an Evidence table is 4
+// cells, so the >=6-cell floor excludes it. The id is the brief-NN number from the
+// Brief cell's link when present (immune to renumbering and re-titling), else the
+// bare number in the `#` cell.
+func briefRowKey(line string) string {
+	cells := splitTableCells(line)
+	if len(cells) < 6 {
+		return ""
+	}
+	if m := briefLinkRe.FindStringSubmatch(line); m != nil {
+		return m[1]
+	}
+	if first := strings.TrimSpace(cells[0]); briefNumRe.MatchString(first) {
+		return first
+	}
+	return ""
+}
+
+// cellAt returns the cell at index idx of a pipe row (ok=false when the row has
+// too few cells — e.g. the base row was re-shaped, in which case the stamp is not
+// treated as pre-existing, the fail-closed direction).
+func cellAt(line string, idx int) (string, bool) {
+	cells := splitTableCells(line)
+	if idx < 0 || idx >= len(cells) {
+		return "", false
+	}
+	return cells[idx], true
+}
+
+// findStampCell returns the index and raw text of the cell that carries the
+// human:<name> stamp for name (lowercased), so the pre-existing check compares the
+// stamp's OWN cell — the Reviewed cell in practice, but located by content so a
+// stamp recorded in another column is still compared against the right cell.
+func findStampCell(cells []string, name string) (int, string, bool) {
+	needle := "human:" + name
+	for i, c := range cells {
+		if strings.Contains(strings.ToLower(c), needle) {
+			return i, c, true
+		}
+	}
+	return 0, "", false
+}
+
+// briefRowsByKey indexes a board file's content by brief-row key -> full row line,
+// for the base-side lookup. Only recognizable status-table rows are indexed.
+func briefRowsByKey(content string) map[string]string {
+	out := map[string]string{}
+	for _, line := range strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n") {
+		if k := briefRowKey(line); k != "" {
+			out[k] = line
+		}
+	}
+	return out
+}
+
+// briefRowsAtRef reads the board file at repo-relative path as it stood at the
+// given git ref (the PR merge-base) and indexes its brief rows by key. It is a
+// package var so tests substitute base content without a git fixture. A read
+// failure (no git, shallow clone, file absent at the base — i.e. added by this
+// branch) yields nil, so NO row matches and nothing is exempted: the fail-closed
+// direction, the same one consumerEntriesAtBase chose for the same reason.
+var briefRowsAtRef = func(root, ref, path string) map[string]string {
+	if ref == "" {
+		return nil
+	}
+	content, err := exec.Command("git", "-C", root, "show", ref+":"+filepath.ToSlash(path)).Output()
+	if err != nil {
+		return nil
+	}
+	return briefRowsByKey(string(content))
+}
+
+// prMergeBaseSHA resolves the PR's merge-base commit against the local HEAD (the
+// PR head in CI), so `git show <merge-base>:<path>` reads the base version of a
+// board file. It reads the PR's base branch name from the API, then resolves the
+// merge-base locally. "" on any failure — the caller then exempts nothing.
+func prMergeBaseSHA(root, repo string, pr int) string {
+	baseRef := ghPRBaseRef(repo, pr)
+	if baseRef == "" {
+		return ""
+	}
+	for _, ref := range []string{"origin/" + baseRef, baseRef} {
+		out, err := exec.Command("git", "-C", root, "merge-base", ref, "HEAD").Output()
+		if err != nil {
+			continue
+		}
+		if s := strings.TrimSpace(string(out)); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// ghPRBaseRef returns the PR's base branch name (e.g. "main").
+func ghPRBaseRef(repo string, pr int) string {
+	out, err := exec.Command("gh", "pr", "view", fmt.Sprintf("%d", pr),
+		"--repo", repo, "--json", "baseRefName", "-q", ".baseRefName").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// stampIsPreExisting reports whether a stamp's cell is byte-identical (trimmed) to
+// the SAME brief's cell at the merge-base, for EVERY board row it was found on. A
+// stamp with no recorded board row, or one whose brief is absent from the base, or
+// whose cell text differs (a date or name was edited), is NOT pre-existing and
+// stays fully gated. Requiring ALL rows to match is what keeps a genuinely new,
+// uncorroborated row from hiding behind a pre-existing one that shares its name.
+func stampIsPreExisting(s stamp, baseRows map[string]string) bool {
+	if len(s.Rows) == 0 || baseRows == nil {
+		return false
+	}
+	for _, r := range s.Rows {
+		if r.BriefKey == "" {
+			return false
+		}
+		baseRow, ok := baseRows[r.BriefKey]
+		if !ok {
+			return false // brief not present at the base: this branch added the row
+		}
+		baseCell, ok := cellAt(baseRow, r.CellIndex)
+		if !ok || strings.TrimSpace(baseCell) != strings.TrimSpace(r.Cell) {
+			return false // re-shaped or edited cell — not a byte-identical re-render
+		}
+	}
+	return true
+}
+
+// markPreExisting sets PreExisting on each stamp using the pre-read base rows,
+// keyed by the stamp's file. Pure (no git/network) so the exemption's semantics
+// are table-testable end to end.
+func markPreExisting(stamps []stamp, baseRowsByFile map[string]map[string]string) {
+	for i := range stamps {
+		stamps[i].PreExisting = stampIsPreExisting(stamps[i], baseRowsByFile[stamps[i].File])
+	}
 }
 
 // stampsInDiff parses a unified diff and returns every human:<name> stamp found on
@@ -529,12 +720,27 @@ func stampsInDiff(root, diff string) []stamp {
 		if len(lineCtx) > 120 {
 			lineCtx = lineCtx[:120] + "..."
 		}
+		// When the added line is a recognizable brief status-table row, record
+		// where each stamp sits so the pre-existing exemption can compare that
+		// exact cell against the same brief's row at the merge-base.
+		briefKey := briefRowKey(content)
+		var cells []string
+		if briefKey != "" {
+			cells = splitTableCells(content)
+		}
 		for _, m := range humanStampRe.FindAllStringSubmatch(content, -1) {
-			out = append(out, stamp{
-				Name: strings.ToLower(m[1]),
+			name := strings.ToLower(m[1])
+			s := stamp{
+				Name: name,
 				File: curFile,
 				Line: strings.TrimSpace(lineCtx),
-			})
+			}
+			if briefKey != "" {
+				if idx, cell, ok := findStampCell(cells, name); ok {
+					s.Rows = []stampRow{{BriefKey: briefKey, CellIndex: idx, Cell: cell}}
+				}
+			}
+			out = append(out, s)
 		}
 		// A confusable-name stamp is recorded too, under its raw name. It will
 		// fail the human-login lookup and report MISSING-CORROBORATION — loud
@@ -548,15 +754,19 @@ func stampsInDiff(root, diff string) []stamp {
 		}
 	}
 	// Deduplicate by (name, file) — multiple human:<name> on the same line or
-	// in the same file count as one stamp for that file.
-	seen := map[string]bool{}
+	// in the same file count as one stamp for that file. Row provenance is
+	// ACCUMULATED across the merge (not dropped with the duplicate), so the
+	// pre-existing exemption sees every board row this (name,file) appears on and
+	// can require them all to be byte-identical to the base.
+	seen := map[string]int{}
 	var deduped []stamp
 	for _, s := range out {
 		key := s.Name + "\x00" + s.File
-		if seen[key] {
+		if idx, ok := seen[key]; ok {
+			deduped[idx].Rows = append(deduped[idx].Rows, s.Rows...)
 			continue
 		}
-		seen[key] = true
+		seen[key] = len(deduped)
 		deduped = append(deduped, s)
 	}
 	return deduped
@@ -576,6 +786,13 @@ const (
 	// verdictMissing — an absence the check never observed must not be fabricated
 	// (clause 4 / clause 8). It does not fail the gate.
 	verdictCitationUncheckable
+	// verdictPreExisting is a human:<name> stamp whose Reviewed cell is
+	// byte-identical to the SAME brief's row at the PR merge-base. The stamp was
+	// authored and corroborated on some earlier PR; this diff merely re-renders
+	// its row (a board migration re-emits whole tables), so re-gating it against
+	// THIS PR's reviews is a category error — its corroboration lives on its own
+	// PR, not here. Like a corroborated stamp, it does NOT fail the run.
+	verdictPreExisting
 )
 
 func (v verdict) String() string {
@@ -586,6 +803,8 @@ func (v verdict) String() string {
 		return "MISSING-CORROBORATION"
 	case verdictCitationUncheckable:
 		return "COULD-NOT-CHECK"
+	case verdictPreExisting:
+		return "PRE-EXISTING"
 	default:
 		return ""
 	}
@@ -701,6 +920,20 @@ func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int, gate
 	}
 	var results []corroborateResult
 	for _, s := range stamps {
+		// Pre-existing exemption: a stamp whose cell is byte-identical to the same
+		// brief's row at the merge-base was authored and corroborated on an earlier
+		// PR. This diff only re-renders its row, so it is reported PRE-EXISTING and
+		// does NOT fail the run — never re-gated against THIS PR's reviews. A NEW or
+		// EDITED cell never reaches here (markPreExisting left PreExisting false), so
+		// it stays fully gated below exactly as before.
+		if s.PreExisting {
+			results = append(results, corroborateResult{
+				Stamp:    s,
+				Verdict:  verdictPreExisting,
+				Evidence: "Reviewed cell is byte-identical to this brief's row at the PR merge-base — pre-existing stamp, corroborated on its original PR; this diff only re-renders the row",
+			})
+			continue
+		}
 		login, known := HumanLogin(s.Name)
 		if !known {
 			results = append(results, corroborateResult{
@@ -769,6 +1002,18 @@ func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int, gate
 	return results
 }
 
+// stampResultsFail reports whether any stamp result would fail the run — i.e. it
+// is MISSING-CORROBORATION. It is the exit-code condition runCorroborate applies to
+// the stamp lane (verdictPreExisting, like verdictCorroborated, does NOT fail).
+func stampResultsFail(results []corroborateResult) bool {
+	for _, r := range results {
+		if r.Verdict == verdictMissing {
+			return true
+		}
+	}
+	return false
+}
+
 // reviewURL constructs a URL for a review. The gh API does not return a direct
 // review URL, so we construct one from the PR and review ID.
 func reviewURL(repo string, pr int, r ghReview) string {
@@ -782,6 +1027,12 @@ func reviewURL(repo string, pr int, r ghReview) string {
 // It checks human:<name> stamps in the PR's diff against the PR's reviews and
 // comments, printing one verdict line per stamp found. Returns exit code 0
 // when all stamps are corroborated, 1 when any stamp is MISSING-CORROBORATION.
+//
+// Before checking a stamp against this PR, it marks any stamp whose cell is
+// byte-identical to the same brief's row at the PR merge-base as PRE-EXISTING
+// (markPreExisting): that stamp was authored and corroborated on its own PR, so a
+// board migration that re-emits whole tables does not re-gate it here. PRE-EXISTING,
+// like CORROBORATED, does not fail the run.
 func runCorroborate(prsArg string) int {
 	if prsArg == "" {
 		fmt.Fprintln(os.Stderr, "statusgen: --corroborate requires at least one PR number (comma-separated)")
@@ -841,6 +1092,21 @@ func runCorroborate(prsArg string) int {
 			// Empty when no record links such an issue — the two PR anchors then decide
 			// exactly as before.
 			gates := gatherDecisionGateLinks(".", repo, stamps)
+			// Pre-existing exemption: read each touched board file as it stood at
+			// the PR merge-base and mark any stamp whose cell is byte-identical to
+			// its brief's base row. Such a stamp was corroborated on its ORIGINAL
+			// PR; a board migration that re-emits whole tables must not re-gate it
+			// here. A merge-base that cannot be resolved (or a base file that cannot
+			// be read) exempts nothing — the fail-closed direction.
+			mb := prMergeBaseSHA(".", repo, pr)
+			baseRowsByFile := map[string]map[string]string{}
+			for i := range stamps {
+				f := stamps[i].File
+				if _, ok := baseRowsByFile[f]; !ok {
+					baseRowsByFile[f] = briefRowsAtRef(".", mb, f)
+				}
+			}
+			markPreExisting(stamps, baseRowsByFile)
 			for _, r := range corroborateStamps(stamps, data, repo, pr, gates) {
 				allResults = append(allResults, r)
 				if r.Verdict == verdictMissing {
@@ -874,6 +1140,8 @@ func runCorroborate(prsArg string) int {
 		switch r.Verdict {
 		case verdictCorroborated:
 			fmt.Printf("human:%s in %s CORROBORATED — %s\n", r.Stamp.Name, label, r.Evidence)
+		case verdictPreExisting:
+			fmt.Printf("human:%s in %s PRE-EXISTING — %s\n", r.Stamp.Name, label, r.Evidence)
 		case verdictMissing:
 			fmt.Printf("human:%s in %s MISSING-CORROBORATION — %s\n", r.Stamp.Name, label, r.Evidence)
 		}
