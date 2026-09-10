@@ -1,5 +1,5 @@
 ---
-brief: forge-gitlab/02
+brief: assay:assay:forge-gitlab:02
 title: gitlab forge implementation — MRs, notes, approvals, statuses over REST v4
 why: >-
   With the Forge seam in place, GitLab support is one implementation file away. This
@@ -14,7 +14,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by forge-gitlab authoring session
 sources:
   - "docs/streams/forge-gitlab/spec.md §6 (concept mapping), §2 (identity model)"
@@ -24,6 +24,8 @@ exec-tier: strong
 exec-tier-why: "semantic-equivalence mapping across forges (question b): a plausible-but-wrong mapping (e.g. approval vs approval-rule eligibility) survives happy-path tests."
 domain: complicated
 tier: free
+version: 1
+id: 39d1e184-0045-4bf0-bdd0-7115a3f45386
 ---
 
 # Brief 02 — gitlab forge implementation

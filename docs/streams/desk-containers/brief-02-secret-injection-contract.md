@@ -1,5 +1,5 @@
 ---
-brief: desk-containers/02
+brief: assay:assay:desk-containers:02
 title: runtime credential contract (PEM + model env) + image layer-secret scan
 wave: 1
 depends: []
@@ -16,7 +16,7 @@ gate-why: >-
   fail-closed behaviour is right, and the layer scan's patterns cover the key material
   we actually hold.
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by desk-containers scoping session
 sources:
   - "medici-finance/assay#63 — the request (pem for the bot; environmental variables to reach the models)"
@@ -32,6 +32,8 @@ consumers:
   - "containers/desk-run.sh (mount + env-file flags): follow-up desk-containers/04"
   - "containers/compose.yaml (secrets: + env_file): follow-up desk-containers/05"
   - "containers/k8s/ (Secret volume + envFrom): follow-up desk-containers/06"
+version: 1
+id: 73c2a9fd-dcdf-44a3-b79f-8bfb88f2bcae
 ---
 
 # Brief 02 — runtime credential contract + layer-secret scan

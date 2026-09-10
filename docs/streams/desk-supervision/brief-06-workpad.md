@@ -1,5 +1,5 @@
 ---
-brief: desk-supervision/06
+brief: assay:assay:desk-supervision:06
 title: Workpad — one upserted progress comment per PR
 why: >-
   Every worker re-dispatched onto a PR starts cold: the previous worker's plan, what it
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by desk-supervision authoring session
 sources:
   - "OpenAI Symphony example WORKFLOW.md (elixir/WORKFLOW.md) — the `## Codex Workpad` marker, find-or-create, ignore resolved comments, environment stamp `<host>:<abs-workdir>@<short-sha>`, acceptance-criteria + validation checklists, no separate done/summary comments — https://github.com/openai/symphony/blob/main/elixir/WORKFLOW.md"
@@ -28,6 +28,8 @@ consumers:
   - "tools/desk/cmd/deskdispatch/references/common-clauses.md: fixed-here (the workpad rule enters the common clauses so every kit carries it)"
   - "plugins/assay/skills/worker-desk/SKILL.md and pr-shepherd/SKILL.md: follow-up desk-supervision/06 (the shepherd's adoption note and the worker's progress notes become workpad edits — skill edits in the implementation PR, after the verb is proven)"
   - "plugins/assay/skills/pr-review-desk/SKILL.md (reviewer reads the workpad's acceptance list): out-of-scope (advisory reading; no reviewer rule changes)"
+version: 1
+id: f800d926-c99d-4c19-9cda-1759ed81895e
 ---
 
 # Brief 06 — Workpad

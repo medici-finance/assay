@@ -1,5 +1,5 @@
 ---
-brief: quality/09
+brief: assay:assay:quality:09
 title: "`check <paths>` mode — brittleness screen for a named file set"
 why: >-
   The `pr` feed (brief 08) is for a PR that already exists. Authors and CI need the same
@@ -14,13 +14,15 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §9.2 — authoring/CI screen (`check <paths>`; advisory NOTICE; stronger tier / add coverage / coupling-partner check)"
   - "docs/streams/quality/spec.md §4.3–4.5 — hotspot, ownership/SPOF, change coupling (M1 features consumed)"
   - "docs/streams/quality/spec.md §4.6 — instruction-layer brittleness (consumed from brief 04)"
   - "docs/streams/quality/spec.md §3.2 — three-state; §9.2 advisory-first (hard gating is a later, separate decision)"
+version: 1
+id: 5249dc83-3fb7-4c3c-a833-39474be3bf64
 ---
 
 # Brief 09 — `check <paths>` mode — brittleness screen for a named file set

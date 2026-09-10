@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/09
+brief: assay:assay:harness-portability:09
 title: jcode desk-harness spike — measured parity + fleet-density for driving desks
 why: >-
   jcode (a Rust terminal coding-agent harness) claims roughly an order-of-magnitude less RAM than
@@ -17,7 +17,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-16 by intake-desk authoring session
 sources:
   - "authoring dispatch (Ian, 2026-08-16): evaluate jcode as a desk-driver harness — two spikes, one per question; this is spike (a)"
@@ -28,6 +28,8 @@ exec-tier-why: >-
   (a) distinguishing "primitive absent" from "primitive not found / needs a workaround" requires
   deliberate probing and judgement; the parity matrix's verdicts are the facts the harness-target
   ruling (HP/03) binds to.
+version: 1
+id: 308bd174-e7e2-40af-9079-eee2d2fd6f54
 ---
 
 # Brief 09 — jcode desk-harness spike

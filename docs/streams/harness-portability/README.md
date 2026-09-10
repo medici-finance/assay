@@ -6,6 +6,7 @@ status: active
 priority: P2
 track: platform
 issues: []
+board: generated
 ---
 
 # Harness Portability Stream
@@ -178,22 +179,24 @@ because this public board's own verify + review gates have not yet run against t
 record — that is a follow-on, not a claim this re-home makes. Statuses therefore read
 `implemented` (work done, public-board verification pending) rather than `done`.
 
+<!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Codex capability ground-truth — measured matrix, not inherited prior art](./brief-01-codex-capability-ground-truth.md) | 0 | M | implemented | — | — |
-| 02 | [Kill the drift debt — re-sync the bundle, flip the canonical home](./brief-02-drift-debt-authority-flip.md) | 0 | L | implemented | — | — |
-| 03 | [Ruling: target harnesses, delivery channel, degradation matrix](./brief-03-target-channel-ruling.md) | 1 | S | implemented | — | — |
-| 04 | [Neutral-core skill bodies + per-harness binding files + neutrality lint](./brief-04-neutral-core-skills.md) | 2 | L | implemented | — | — |
-| 05 | [Resident rules: one source, per-harness delivery generated](./brief-05-resident-rules-single-source.md) | 2 | M | implemented | — | — |
-| 06 | [Codex packaging — generated manifest, coverage rule, install path](./brief-06-codex-packaging.md) | 3 | M | implemented | — | — |
-| 07 | [Adoption docs, freshness registration, live Codex smoke protocol + first run](./brief-07-adoption-live-smoke.md) | 4 | M | implemented | — | — |
-| 09 | [jcode desk-harness spike — measured parity + fleet-density for driving desks](./brief-09-jcode-desk-harness-spike.md) | 0 | L | implemented | — | — |
-| 10 | [SpecMem portable-memory spike — one stream's registers across two harnesses](./brief-10-specmem-portable-memory-spike.md) | 0 | M | implemented | — | — |
-| 11 | [Durable-monitor capability + residual harness-token prose-audit](./brief-11-durable-monitor-capability.md) | 3 | M | done | 2026-09-05 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #475 @ ebbb6c6a828080a29ccef26b2707c49730871513) |
-| 12 | [Cursor — the third harness column (ground-truth + binding + generator verb + public column)](./brief-12-cursor-third-column.md) | 5 | L | implemented | — | — |
-| 13 | [Cursor live-desk-smoke protocol + first run](./brief-13-cursor-live-desk-smoke.md) | 6 | M | implemented | — | — |
-| 14 | [Code de-house — land the stream's tool and packaging deliverables in the public tree](./brief-14-code-dehouse.md) | 6 | L | implemented | — | — |
-| 15 | [Public CI wiring + harnesslint clean-up for the de-housed tools](./brief-15-ci-wiring-harnesslint.md) | 7 | M | implemented | — | — |
+| 01 | [Codex capability ground-truth — measured matrix, not inherited prior art](brief-01-codex-capability-ground-truth.md) | 0 | M | implemented | — | — |
+| 02 | [Kill the drift debt — re-sync the bundle, flip the canonical home](brief-02-drift-debt-authority-flip.md) | 0 | L | implemented | — | — |
+| 03 | [Ruling: target harnesses, delivery channel, degradation matrix](brief-03-target-channel-ruling.md) | 1 | S | implemented | — | — |
+| 04 | [Neutral-core skill bodies + per-harness binding files + neutrality lint](brief-04-neutral-core-skills.md) | 2 | L | implemented | — | — |
+| 05 | [Resident rules — one source, per-harness delivery generated](brief-05-resident-rules-single-source.md) | 2 | M | implemented | — | — |
+| 06 | [Codex packaging — generated manifest, coverage rule, install path](brief-06-codex-packaging.md) | 3 | M | implemented | — | — |
+| 07 | [Adoption docs, freshness registration, live Codex smoke protocol + first run](brief-07-adoption-live-smoke.md) | 4 | M | implemented | — | — |
+| 09 | [jcode desk-harness spike — measured parity + fleet-density for driving desks](brief-09-jcode-desk-harness-spike.md) | 0 | L | implemented | — | — |
+| 10 | [SpecMem portable-memory spike — one stream's registers across Claude Code and a second harness](brief-10-specmem-portable-memory-spike.md) | 0 | M | implemented | — | — |
+| 11 | [Durable-monitor capability + residual harness-token prose-audit](brief-11-durable-monitor-capability.md) | 3 | M | done | 2026-09-05 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #475 @ ebbb6c6a828080a29ccef26b2707c49730871513) |
+| 12 | [Cursor — the third harness column](brief-12-cursor-third-column.md) | 5 | L | implemented | — | — |
+| 13 | [Cursor live-desk-smoke protocol + first run](brief-13-cursor-live-desk-smoke.md) | 6 | M | implemented | — | — |
+| 14 | [Code de-house — land the stream's tool and packaging deliverables in the public tree](brief-14-code-dehouse.md) | 6 | L | implemented | — | — |
+| 15 | [Public CI wiring + harnesslint clean-up for the de-housed tools](brief-15-ci-wiring-harnesslint.md) | 7 | M | implemented | — | — |
+<!-- statusgen:briefs:end -->
 
 **Note on 07:** artifacts delivered (adoption docs, freshness registration, smoke
 protocol). The live Codex smoke run itself is held — it needs a Codex environment (OpenAI

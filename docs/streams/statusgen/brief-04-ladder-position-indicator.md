@@ -1,5 +1,5 @@
 ---
-brief: statusgen/04
+brief: assay:assay:statusgen:04
 title: 'Ladder-position indicator — one computed adoption-step number (behavioral axes, never tooling) on the board + roadmap deck'
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-20 (authored clean for the statusgen board)
 sources:
   - "A maintainer directive: the ladder step must be defined by BEHAVIOR (a dated author signal), not by what tooling is installed"
@@ -20,6 +20,8 @@ why: >-
   than from what's installed. Today the rating is a hand-argued paragraph; the acceptance is that
   the daily artifact carries it with a 7-day trend so ladder movement — or stall — is visible
   without anyone re-arguing it.
+version: 1
+id: 5e5a7419-dea9-4c92-8c53-08526ed0d689
 ---
 
 # Brief 04 — Ladder-position indicator

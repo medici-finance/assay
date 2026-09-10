@@ -1,5 +1,5 @@
 ---
-brief: statusgen/11
+brief: assay:assay:statusgen:11
 title: DORA/insights hybrid — Apache DevLake for commodity metrics, our methodology metrics retained
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-26 (re-authored clean for the statusgen board)
 sources:
   - "OPERATOR DIRECTION (Ian, 2026-08-12): use DevLake where it can serve, and provide DevLake + our own metrics — a hybrid, not a deletion; deployment target is the platform k8s cluster"
@@ -29,6 +29,8 @@ why: >-
   into the same binary. Splitting commodity metrics out to DevLake and retaining ours
   shrinks the binary to its differentiated spine and gives org-wide DORA that no per-repo
   Go tool was ever going to provide.
+version: 1
+id: 4b88697a-8ba8-48b9-8ca9-a69169deef31
 ---
 
 # Brief 11 — DORA/insights hybrid: Apache DevLake + our methodology metrics

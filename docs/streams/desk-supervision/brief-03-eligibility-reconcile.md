@@ -1,5 +1,5 @@
 ---
-brief: desk-supervision/03
+brief: assay:assay:desk-supervision:03
 title: Eligibility reconciliation — stop a run whose item became ineligible
 why: >-
   "Merged or closed PR = done, stop, never push its branch again" is prose. A worker whose
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by desk-supervision authoring session
 sources:
   - "OpenAI Symphony SPEC.md §8.5 part B (tracker state refresh: terminal ⇒ terminate + clean; active-but-not-routable ⇒ terminate without cleanup; refresh failure ⇒ keep running, retry next tick) — https://github.com/openai/symphony/blob/main/SPEC.md"
@@ -31,6 +31,8 @@ consumers:
   - "tools/desk/cmd/desksupervise/main.go tick: fixed-here (reconciliation is a step of the existing tick, not a second loop)"
   - "plugins/assay/skills/worker-desk/SKILL.md 'merged or closed PR = DONE' invariant: fixed-here (one sentence noting the mechanical backstop; the rule text itself stays)"
   - "tools/desk/cmd/deskwt (workspace cleanup on terminal items): out-of-scope (deskwt prune already removes fully-merged, clean worktrees on its own interval; reconciliation releases the claim and stops the run, it never deletes a worktree)"
+version: 1
+id: d7105cce-5ba1-40bf-bc43-2b66665654a5
 ---
 
 # Brief 03 — Eligibility reconciliation

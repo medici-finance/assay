@@ -1,5 +1,5 @@
 ---
-brief: desktools-go-git/03
+brief: assay:assay:desktools-go-git:03
 title: migrate read/plumbing verbs (read-heavy tools) to gitcore
 wave: 3
 depends: ["desktools-go-git/01", "desktools-go-git/02"]
@@ -8,7 +8,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-21 by desktools-go-git authoring session
 sources:
   - "docs/streams/desktools-go-git/spec.md — decision 3 (seam-swap, not rewrite)"
@@ -20,6 +20,8 @@ why: >-
   map cleanly onto gitcore's read helpers and carry no auth. Migrating them first (behind
   goldens, no behaviour change) shrinks the git-exec count the CI gate tracks and de-risks
   the transport briefs that follow.
+version: 1
+id: eb4e2008-8df1-42eb-bc90-ed3a3dec4523
 ---
 
 # Brief 03 — migrate read/plumbing verbs to gitcore

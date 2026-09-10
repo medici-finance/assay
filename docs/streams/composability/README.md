@@ -6,6 +6,7 @@ status: active
 priority: P2
 track: platform
 issues: [624]
+board: generated
 ---
 
 # Composability Stream
@@ -76,14 +77,16 @@ components (the paper itself lists it as open — we use namespaced keys plus ve
 
 ## Briefs
 
-| # | Brief | Wave | Effort | Gate | Status | Verified | Reviewed |
-|---|-------|------|--------|------|--------|----------|----------|
-| 00 | [Component manifests, key catalogue, and the resolve/cycle lint](./brief-00-manifests-and-lint.md) | 0 | M | model | implemented | — | — |
-| 01 | [Reactive activation — a missing extension key downs one component, not the fleet](./brief-01-reactive-activation.md) | 1 | M | model | todo | — | — |
-| 02 | [Install ledger, paired inverses, and the `disable` verb](./brief-02-ledger-and-inverses.md) | 1 | L | human | todo | — | — |
-| 03 | [Desired-state record and the reconcile engine behind deskmigrate / upgrade-assay](./brief-03-desired-state-reconcile.md) | 2 | L | model | todo | — | — |
-| 04 | [Harness as an exclusively-bound key — adapters as components](./brief-04-harness-as-key.md) | 1 | M | model | todo | — | — |
-| 05 | [Promote the draft to spec/component-v1.md + adopter doc delta](./brief-05-promote-spec.md) | 3 | M | model | todo | — | — |
+<!-- statusgen:briefs:begin -->
+| # | Brief | Wave | Effort | Status | Verified | Reviewed |
+|---|-------|------|--------|--------|----------|----------|
+| 00 | [Component manifests, key catalogue, and the resolve/cycle lint](brief-00-manifests-and-lint.md) | 0 | M | implemented | — | — |
+| 01 | [Reactive activation — a missing extension key downs one component, not the fleet](brief-01-reactive-activation.md) | 1 | M | todo | — | — |
+| 02 | [Install ledger, paired inverses, and the `disable` verb](brief-02-ledger-and-inverses.md) | 1 | L | todo | — | — |
+| 03 | [Desired-state record and the reconcile engine behind deskmigrate / upgrade-assay](brief-03-desired-state-reconcile.md) | 2 | L | todo | — | — |
+| 04 | [Harness as an exclusively-bound key — adapters as components](brief-04-harness-as-key.md) | 1 | M | todo | — | — |
+| 05 | [Promote the draft to spec/component-v1.md + adopter doc delta](brief-05-promote-spec.md) | 3 | M | todo | — | — |
+<!-- statusgen:briefs:end -->
 
 ## Critical path
 

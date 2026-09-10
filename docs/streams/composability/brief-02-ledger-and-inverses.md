@@ -1,5 +1,5 @@
 ---
-brief: composability/02
+brief: assay:assay:composability:02
 title: Install ledger, paired inverses, and the `disable` verb
 why: >-
   There is no way to remove Assay from a repo, or to back out a half-failed install: labels,
@@ -22,7 +22,7 @@ gate-why: >-
   clean checkout.
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-08 by composability authoring session
 sources:
   - "docs/streams/composability/component-model.md §4 (effects and reverses), §5 (system boundary and ledger), §10 rows C2/C3"
@@ -34,6 +34,8 @@ consumers:
   - "docs/adopting-assay.md §3: follow-up composability/05 (the runbook gains the removal path in the adopter-doc delta)"
   - "tools/desk/cmd/deskinstall: fixed-here (the binary installer writes its ledger line)"
   - "tools/desk/cmd/clusterguard shim-off-PATH note: fixed-here (superseded by the shim's inverse)"
+version: 1
+id: 3c7ab933-8f9d-4de7-831f-dabc170095dc
 ---
 
 # Brief 02 — Install ledger, paired inverses, and the `disable` verb

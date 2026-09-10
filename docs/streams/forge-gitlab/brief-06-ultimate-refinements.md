@@ -1,5 +1,5 @@
 ---
-brief: forge-gitlab/06
+brief: assay:assay:forge-gitlab:06
 title: Ultimate refinements — custom reviewer role + external-status-check verdict lane
 why: >-
   Premium parity leans on protected branches and token scopes; Ultimate can do
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by forge-gitlab authoring session
 sources:
   - "docs/streams/forge-gitlab/spec.md §3 (Ultimate rows of the parity table)"
@@ -23,6 +23,8 @@ sources:
 exec-tier: any
 domain: complicated
 tier: ultimate
+version: 1
+id: 45c382c0-2232-4c6d-bb4c-435b98cebdc8
 ---
 
 # Brief 06 — Ultimate refinements

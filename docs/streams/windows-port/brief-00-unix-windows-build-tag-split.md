@@ -1,5 +1,5 @@
 ---
-brief: windows-port/00
+brief: assay:assay:windows-port:00
 title: Build-tag split for the unix-only syscall sites in statusgen and desk-tools
 why: >-
   The stream's founding premise — "the Go binaries are already portable, no source change
@@ -27,7 +27,7 @@ gate-why: >-
   re-derived rather than worked around.
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: [322]
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by windows-port authoring session
 sources:
   - "medici-finance/assay#322 (ruling ratified 2026-09-02): option (b) — author a new wave-0 brief for the source portability fix; windows-port/01 keeps its two-file scope and gains depends-on 00. The ruling names S-M effort and gate: model."
@@ -41,6 +41,8 @@ consumers:
   - "tools/desk/go.mod: fixed-here (golang.org/x/sys moves from the indirect block to the direct require block; the version and go.sum are unchanged)"
   - "docs/streams/windows-port/brief-01-release-build-matrix.md: follow-up windows-port/01 (01's Verify rows 5 and 6 become satisfiable once this lands; 01's premise sentence now points here)"
   - "docs/streams/windows-port/brief-02-portability-audit.md: out-of-scope (02 audits the delivery and glue layer — hooks, install path, config home, shell-outs — not the Go source this brief splits; nothing 02 reads changes here, so it is a wave-0 peer, not a consumer)"
+version: 1
+id: 381120b3-8be8-40a0-afb9-24d95d56dae0
 ---
 
 # Brief 00 — Build-tag split for the unix-only syscall sites in statusgen and desk-tools

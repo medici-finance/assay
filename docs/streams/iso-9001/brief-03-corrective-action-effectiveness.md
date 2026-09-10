@@ -1,5 +1,5 @@
 ---
-brief: iso-9001/03
+brief: assay:assay:iso-9001:03
 title: A finding closes on a fired control — the corrective-action effectiveness record
 why: >-
   A findings entry records that a corrective action was taken. `resolved: yes` means the work
@@ -23,7 +23,7 @@ exec-tier-why: >-
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-25 (authored for the iso-9001 board)
 sources:
   - "`statusgen/registerentries.go` — the findings entry schema today: `id`, `date`, `title`, `affects`, `ack`, `resolved`, the `parked-until` / `parked-by` / `parked-reason` triple, and the optional `class` / `control` pair. No effectiveness field, no date, no runner."
@@ -34,6 +34,8 @@ sources:
   - "depends iso-9001/01: the per-control evidence row shape — the control, the injected error, the verdict, the date, the tool version — is defined there. This brief reuses it for a finding's effectiveness record rather than inventing a second shape for the same idea."
   - "The standard-side reading: the corrective-action clause asks the organisation to evaluate the need to eliminate the cause, determine whether similar nonconformities exist or could occur elsewhere, review the EFFECTIVENESS of the action taken, and retain records of the nature of the nonconformity, the actions taken and THE RESULTS. The most-written finding against it is a correction recorded as a corrective action, followed by a record closed on the day the action was implemented with no later effectiveness check."
   - "freshness-checked 2026-08-25 @ 6871a3b (origin/main) — `git grep -n effectiveness -- statusgen/registerentries.go statusgen/findingcontrol.go` returns nothing; the field does not exist."
+version: 1
+id: 4001327b-51c1-4468-8ea9-3c471ce5f177
 ---
 
 # Brief 03 — the effectiveness record

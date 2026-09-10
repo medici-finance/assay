@@ -1,5 +1,5 @@
 ---
-brief: desk-supervision/04
+brief: assay:assay:desk-supervision:04
 title: Lifecycle hooks — after-create / before-run / after-run / before-remove from config home
 why: >-
   The per-run envelope is prose residue spread across a prompt kit, a skill body and a
@@ -21,7 +21,7 @@ gate-why: >-
   the source rule (state directory only, never the item's tree, no path override) and the
   env scrub are controls a human should confirm before they exist, not after.
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by desk-supervision authoring session
 sources:
   - "OpenAI Symphony SPEC.md §5.3.4 (hooks: after_create, before_run, after_run, before_remove; timeout_ms default 60000; after_create/before_run failure aborts, after_run/before_remove failure is logged) and §15.4 (hook script safety) — https://github.com/openai/symphony/blob/main/SPEC.md"
@@ -41,6 +41,8 @@ consumers:
   - "tools/desk/cmd/desksupervise/actions.go: fixed-here (after_run when a claim is released or landed by the observer — the runAction seam lives in actions.go, not main.go)"
   - "tools/desk/cmd/deskdispatch/references/common-clauses.md KUBECONFIG clause: fixed-here (the clause stays as the agent-facing rule; the shipped before_run hook makes it checked, not remembered)"
   - "plugins/assay/skills/worker-desk/SKILL.md §Boot 'two residues': follow-up desk-supervision/04 (the residue paragraph shrinks to a pointer at the hooks file in the implementation PR, after the hooks are proven)"
+version: 1
+id: 9896223f-e63f-4fe6-a7c9-f7e935a2e884
 ---
 
 # Brief 04 — Lifecycle hooks

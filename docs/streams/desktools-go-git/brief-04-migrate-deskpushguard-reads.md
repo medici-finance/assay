@@ -1,5 +1,5 @@
 ---
-brief: desktools-go-git/04
+brief: assay:assay:desktools-go-git:04
 title: migrate deskpushguard detection reads to gitcore (parity + mutation test)
 wave: 3
 depends: ["desktools-go-git/01", "desktools-go-git/02"]
@@ -8,7 +8,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-21 by desktools-go-git authoring session
 sources:
   - "docs/streams/desktools-go-git/inventory.md — op families 14-25 as used by deskpushguard (cat-file, show, log, branch -r, ls-tree, merge-base, rev-list, rev-parse)"
@@ -19,6 +19,8 @@ why: >-
   behaviour-preserving swap of a DETECTION control has to prove the detection still FIRES,
   not merely that the happy path is unchanged. It is split from brief 03's read migration
   so its parity + mutation coverage gets its own focused review.
+version: 1
+id: d178703f-dbb2-49ef-afb4-c9e266da8869
 ---
 
 # Brief 04 — migrate deskpushguard detection reads (parity + mutation test)

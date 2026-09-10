@@ -1,5 +1,5 @@
 ---
-brief: iso-9001/05
+brief: assay:assay:iso-9001:05
 title: Records control and retention, stated once
 why: >-
   Every property a records-control clause asks about is already true here and already
@@ -18,7 +18,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-25 (authored for the iso-9001 board)
 sources:
   - "`statusgen/registers.go` — `registerIntegrityProblems`: duplicate-id detection and the tombstone check against history, the two mechanisms that make an alteration visible."
@@ -30,6 +30,8 @@ sources:
   - "depends iso-9001/02: `docs/streams/FINDINGS.md` states today that contiguity is enforced, which `docs/registers.md` forbids claiming. A records-control statement is the single most expensive document in which to repeat a false enforcement claim, so the source is corrected first."
   - "The standard-side reading: the documented-information clause names five controls — distribution and access, storage and preservation, control of changes, retention, and disposition — and asks that records be protected from unintended alteration. The split worth internalising is that documents are MAINTAINED and records are RETAINED; documents say what to do, records prove it was done. An auditor triages records control in about five minutes: can you find it, is it current, who approved it, and what happens at end of retention."
   - "freshness-checked 2026-08-25 @ 6871a3b (origin/main) — no records-control or retention statement exists; `docs/records-and-retention.md` (planned) is absent and the only page in the tree that discusses retention at all is the telemetry posture."
+version: 1
+id: 8d0a0fcd-95d2-446a-aa01-35cc83b71d86
 ---
 
 # Brief 05 — records control and retention

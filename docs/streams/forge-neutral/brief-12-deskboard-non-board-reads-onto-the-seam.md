@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/12
+brief: assay:assay:forge-neutral:12
 title: deskboard non-board reads onto the seam
 why: >-
   forge-neutral/06 migrated deskboard's two hand-authored GraphQL reads (the bulk open-PR read
@@ -16,7 +16,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-07 by forge-neutral/06's implementer (mid-flight, per the 06 ruling)
 sources:
   - "docs/streams/forge-neutral/brief-06-read-verbs-on-the-seam.md — the read established the two-op board.go migration and NARROWED, rather than removed, the deskboard permit row; this brief is that row's declared exit"
@@ -31,6 +31,8 @@ consumers:
   - "tools/desk/internal/deskkit/forge.go, forge_github.go, forge_gitlab.go: fixed-here (the new read ops on both backends)"
   - "tools/desk/internal/forgeban/allowlist.go: fixed-here (the deskboard permit row removed once its last ghRun caller is gone; ceiling lowered)"
   - "docs/streams/forge-gitlab/inventory.md: fixed-here (the new ops tabulated)"
+version: 1
+id: 7bcc1459-688f-41b7-9260-3d1b9a8e7166
 ---
 
 # Brief 12 — deskboard non-board reads onto the seam

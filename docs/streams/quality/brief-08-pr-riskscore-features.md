@@ -1,5 +1,5 @@
 ---
-brief: quality/08
+brief: assay:assay:quality:08
 title: "`pr <n>` mode — per-file risk features (generic riskscore feed)"
 why: >-
   The whole point of mining hotspots and defect density is to get the numbers to the agents
@@ -15,13 +15,15 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §9.1 — PR riskscore feed (per-touched-file features; consumers weight; thresholds in consumer config)"
   - "docs/streams/quality/spec.md §4.3–4.5 — hotspot, ownership/SPOF, change coupling (the M1 features consumed)"
   - "docs/streams/quality/spec.md §5.3 — per-file defect density (consumed from brief 07)"
   - "docs/streams/quality/spec.md §3.2 — three-state `measured` flag per feature"
+version: 1
+id: 6e7f7c8f-5a8a-4cbe-a7e0-0734b9b09565
 ---
 
 # Brief 08 — `pr <n>` mode — per-file risk features (generic riskscore feed)

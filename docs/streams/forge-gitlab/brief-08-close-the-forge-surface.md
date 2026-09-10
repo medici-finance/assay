@@ -1,5 +1,5 @@
 ---
-brief: forge-gitlab/08
+brief: assay:assay:forge-gitlab:08
 title: Close the forge surface — enumerated operations, no passthrough, shell-exec ban
 why: >-
   A constrained typed surface is stronger than an ambient full-CLI one: the spec's governing
@@ -17,7 +17,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-26 by forge-gitlab authoring session
 sources:
   - "docs/streams/forge-gitlab/spec.md §3 (parity table — a constrained surface is the stronger side), §6 (interface FROZEN at consumed operations; additions require a consuming tool)"
@@ -32,6 +32,8 @@ tier: free
 consumers:
   - "tools/desk/internal/deskkit: fixed-here (the ban lint/test + any newly-enumerated ops)"
   - "tools/desk/cmd/*: fixed-here (residual gh call sites route through the interface or are removed)"
+version: 1
+id: 932f1239-5355-4be2-9f61-bcd7682931a4
 ---
 
 # Brief 08 — Close the forge surface

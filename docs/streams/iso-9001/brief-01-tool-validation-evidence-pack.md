@@ -1,5 +1,5 @@
 ---
-brief: iso-9001/01
+brief: assay:assay:iso-9001:01
 title: Emit the tool-validation evidence pack as a release asset
 why: >-
   The release pipeline already proves, on every release, that each refusal gate goes red when
@@ -21,7 +21,7 @@ exec-tier-why: >-
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-25 (authored for the iso-9001 board)
 sources:
   - "`docs/mistake-proofing.md` §3 D1: 'For every control-mode device there MUST exist a demonstration that an injected instance of the error it claims to stop actually reddens it… \"When did this last stop something?\" is a legitimate audit question for any device, and \"never, and we cannot make it\" is a finding.' This brief turns that demonstration into a record."
@@ -33,6 +33,8 @@ sources:
   - "The standard-side reading: ISO 9001's monitoring-and-measuring-resources clause bites where monitoring or measuring is used to verify the conformity of products and services to requirements — a gate that can refuse a release is in scope — and asks for retained evidence of fitness for purpose plus action on prior results when a resource is found unfit."
   - "`tools/freshness/` and `tools/bugs-gc/` — the in-tree precedent for a small single-purpose tool as its own Go module under `tools/`, which is the home this brief copies rather than inventing one."
   - "freshness-checked 2026-08-25 @ 6871a3b (origin/main) — no tool-validation artifact exists in the tree, and no release step writes one."
+version: 1
+id: 2181fa55-511f-49ba-ad05-a04c7070a71b
 ---
 
 # Brief 01 — the tool-validation evidence pack

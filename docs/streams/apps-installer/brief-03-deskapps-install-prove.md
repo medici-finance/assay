@@ -1,5 +1,5 @@
 ---
-brief: apps-installer/03
+brief: assay:assay:apps-installer:03
 title: "`deskapps` install + prove — installation poll, fresh mint, scopes-vs-duties, roster write"
 why: >-
   A created App with no installation is a key that reaches nothing, and an installed App whose
@@ -14,7 +14,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-05 by apps-installer authoring session
 sources:
   - "./design.md §2 Screen 2 (Install, Verify cells), Screen 3 (Prove), §3 (poll, mint, check), §8 (installed on the wrong account; scopes ≠ duties; cross-org cell)."
@@ -31,6 +31,8 @@ consumers:
   - "~/.config/assay/roster.env: fixed-here (writes `ASSAY_TRUSTED_BOT_SLUGS` role bindings; refuses to overwrite an existing file — appends a `# deskapps` block only when the keys are absent)"
   - "~/.config/assay/apps.env: fixed-here (`<APP>_INSTALL_ID` filled)"
   - "tools/desk/internal/deskkit/preflight.go: out-of-scope (called, not changed)"
+version: 1
+id: f474eb0c-4e03-4c10-9199-d3e0e609bc66
 ---
 
 # Brief 03 — Install and prove

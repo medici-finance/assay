@@ -1,5 +1,5 @@
 ---
-brief: iso-9001/04
+brief: assay:assay:iso-9001:04
 title: Record the authorizing human in the release itself
 why: >-
   The release clause asks, in terms, for evidence of conformity with acceptance criteria AND
@@ -23,7 +23,7 @@ exec-tier-why: >-
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-25 (authored for the iso-9001 board)
 sources:
   - "`.github/workflows/release.yml`, `resolve` job — `ACTOR: ${{ github.actor }}` is already in scope and is emitted into the annotated tag message on the dispatch path (`assay <version> (dispatched by $ACTOR)`); on the push path the message output is emitted empty. The actor exists; it does not reach the release body."
@@ -34,6 +34,8 @@ sources:
   - "The standard-side reading: the release clause wants retained evidence of conformity with the acceptance criteria and traceability to the persons authorizing release. Traceability that exists only in a build system's run history is traceability with someone else's retention policy attached."
   - "The tag-format gate in `resolve` is anchored `^v[0-9]+\\.[0-9]+\\.[0-9]+$` against the whole string, which is what makes the tag safe to concatenate unencoded into REST URLs. Any new value written into the release body is NOT covered by that gate and must ride in via `env:`, never a `${{ }}` splice inside `run:`."
   - "freshness-checked 2026-08-25 @ 6871a3b (origin/main) — `git grep -n authorized-by -- .github/workflows/release.yml` returns nothing; the release body carries no authorizer field."
+version: 1
+id: 2b9ed68c-8429-444b-9bc0-60c778016773
 ---
 
 # Brief 04 — release-authorizer traceability

@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/14
+brief: assay:assay:harness-portability:14
 title: Code de-house — land the stream's tool and packaging deliverables in the public tree
 why: >-
   This stream's planning record is public; its code and doc deliverables are not. Briefs
@@ -29,7 +29,7 @@ gate-why: >-
   copies are being retired deliberately in a follow-on, not orphaned.
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: yes}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-06 by harness-portability de-house authoring dispatch (assay-worker-app)
 sources: ["the ruling recorded on the house tracker (2026-09-05, relayed 2026-09-06): split-deliverable briefs verify only against the tree the brief names as the deliverable home; 01/02/06/07/12 HELD at implemented, no public Evidence PRs, until the code de-house lands", "verify-desk's fresh non-implementer runs at public main 203dac5 (2026-09-05): hp/01 FAIL-as-written (deliverable absent), hp/02 and hp/06 could-not-check (tools absent), hp/07 could-not-check, hp/12 passing only against the private tree", "docs/streams/harness-portability/README.md re-home note (2026-08-26): 'The briefs code deliverables ... are a sequenced follow-on de-house (the same shape statusgen and desk-tools followed: source -> public, then the source tree consumes the released binary)'", "brief-12-cursor-third-column.md 'Tool de-house note' and brief-13's own re-home note, both naming this move as the owed follow-on", "the Verify tables of briefs 01, 02, 06, 07 and 12, read in full 2026-09-06 — the authoritative source for WHICH paths must exist here, used to correct the ruling's informal list", "measured 2026-09-06: local token sweep (legacy engine, house token map) over the 44-file candidate set exported from the private tree — exit 2, 14 distinct token classes, 7 files affected, 37 files already clean", "freshness-checked 2026-09-06 @ public 4a46934: none of the 44 candidate paths exists in this repository; plugins/assay/references/*.md, plugins/assay/skills/**, plugins/assay/hooks/inject-resident-rules.sh, docs/adopting-assay.md, tools/freshness and statusgen ARE already here and are therefore not in scope"]
 design: DR-harness-code-dehouse
@@ -41,6 +41,8 @@ exec-tier-why: >-
   every moved path must satisfy commands this brief does not contain; and the
   neutralisation must be complete across all 7 affected files at once, since one missed
   instance fails the whole gate.
+version: 1
+id: f176c2e5-d180-420a-a96c-84a8befcda4b
 ---
 
 # Brief 14 — Code de-house: land the stream's tool and packaging deliverables in the public tree

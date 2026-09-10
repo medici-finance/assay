@@ -6,6 +6,7 @@ status: active
 priority: P2
 track: platform
 issues: []
+board: generated
 ---
 
 # desktools-go-git Stream
@@ -31,16 +32,18 @@ linked-worktree replacement) is a named follow-on stream, out of scope here. See
 
 ## Briefs
 
+<!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [inventory freeze + `gitexec` single-seam contract + golden harness + counting CI gate](brief-01-inventory-and-seam-contract.md) | 1 | L | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #156 @ 112b206fee74b470016be325dc7c2dfeff670931) |
-| 02 | [`gitcore` transport + in-process auth (BasicAuth) + go-git pin](brief-02-gitcore-transport-auth.md) | 2 | L | implemented | — | — |
-| 03 | [migrate read/plumbing verbs (read-heavy tools)](brief-03-migrate-read-plumbing.md) | 3 | L | todo | — | — |
-| 04 | [migrate `deskpushguard` detection reads (parity + mutation test)](brief-04-migrate-deskpushguard-reads.md) | 3 | M | todo | — | — |
-| 05 | [migrate fetch + retire bespoke hardening (`deskgit` / `deskadvisory`)](brief-05-migrate-fetch-retire-hardening.md) | 4 | M | todo | — | — |
-| 06 | [migrate push + retire ambient-credential machinery + preflight probe](brief-06-migrate-push-retire-ambient.md) | 4 | M | todo | — | — |
-| 07 | [`deskmerge` exception — fence the trial merge, migrate the rest](brief-07-deskmerge-exception-fence.md) | 3 | M | todo | — | — |
-| 08 | [flip the drop-the-binary CI gate + CVE floor + file the follow-on](brief-08-flip-gate-and-cve-floor.md) | 5 | M | todo | — | — |
+| 01 | [inventory freeze + gitexec single-seam contract + golden harness + counting CI gate](brief-01-inventory-and-seam-contract.md) | 1 | L | done | 2026-08-26 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #156 @ 112b206fee74b470016be325dc7c2dfeff670931) |
+| 02 | [gitcore package + in-process transport/auth (BasicAuth) + go-git pin](brief-02-gitcore-transport-auth.md) | 2 | L | implemented | — | — |
+| 03 | [migrate read/plumbing verbs (read-heavy tools) to gitcore](brief-03-migrate-read-plumbing.md) | 3 | L | todo | — | — |
+| 04 | [migrate deskpushguard detection reads to gitcore (parity + mutation test)](brief-04-migrate-deskpushguard-reads.md) | 3 | M | todo | — | — |
+| 05 | [migrate fetch + retire bespoke hardening (deskgit / deskadvisory / deskmerge)](brief-05-migrate-fetch-retire-hardening.md) | 4 | M | todo | — | — |
+| 06 | [migrate push + retire ambient-credential machinery + preflight transport probe](brief-06-migrate-push-retire-ambient.md) | 4 | M | todo | — | — |
+| 07 | [deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest](brief-07-deskmerge-exception-fence.md) | 3 | M | todo | — | — |
+| 08 | [flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on](brief-08-flip-gate-and-cve-floor.md) | 5 | M | todo | — | — |
+<!-- statusgen:briefs:end -->
 
 Brief 01 implemented via PR [#79](https://github.com/medici-finance/assay/pull/79) (counter baseline: 117 git-exec sites).
 

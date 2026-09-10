@@ -1,5 +1,5 @@
 ---
-brief: statusgen/07
+brief: assay:assay:statusgen:07
 title: New brief-flow metrics in statusgen
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-26 (re-authored clean for the statusgen board)
 sources:
   - "The settled metric-definitions spec — per-metric compute recipes + the AssayScore roll-up these numbers feed"
@@ -18,6 +18,8 @@ why: >-
   AssayScore — weighted throughput, lead time by size, flow efficiency, first-pass yield,
   review-rework, decision latency, per-stream stall. They must be computed by the same statusgen
   binary as the existing instruments so a published page has one provenance-checked source.
+version: 1
+id: acfe2b56-2973-4299-849c-e15fccebdadc
 ---
 
 # Brief 07 — New brief-flow metrics in statusgen

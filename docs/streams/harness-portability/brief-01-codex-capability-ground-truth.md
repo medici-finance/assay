@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/01
+brief: assay:assay:harness-portability:01
 title: Codex capability ground-truth — measured matrix, not inherited prior art
 why: >-
   Every downstream decision in this stream — the binding file's content, the per-skill
@@ -14,7 +14,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-07 by harness-portability authoring session
 sources: ["authoring dispatch (Ian, 2026-08-07): make Assay run natively on Codex/GPT as a first-class second harness", "superpowers 6.2.0 prior art (upstream github.com/obra/superpowers): its skills/using-superpowers/references/codex-tools.md + docs/superpowers/specs/2026-03-23-codex-app-compatibility-design.md", "freshness-checked 2026-08-07 (no codex-specific research file existed; the tools-landscape survey mentions Codex only as a landscape entry)"]
 exec-tier: strong
@@ -22,6 +22,8 @@ exec-tier-why: >-
   (a) distinguishing "capability absent" from "capability not found" requires judgement
   and deliberate probing (scoped-view discipline), and the matrix's verdicts are the
   facts every later brief builds on.
+version: 1
+id: c087b724-18b5-4e56-9e6f-6f21b9f8985b
 ---
 
 # Brief 01 — Codex capability ground-truth

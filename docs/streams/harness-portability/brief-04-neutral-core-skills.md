@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/04
+brief: assay:assay:harness-portability:04
 title: Neutral-core skill bodies + per-harness binding files + neutrality lint
 why: >-
   The skill bodies are the method, and today they speak Claude: tool names (Agent,
@@ -15,7 +15,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-07 by harness-portability authoring session
 sources: ["authoring dispatch (Ian, 2026-08-07)", "measured touchpoints 2026-08-07: backticked Agent/SendMessage in 2 of 7 SKILL.md files; subagent|dispatch|worktree occurrences — batch-fanout 32, verify-desk 18, pr-review-desk 14, the-desk 11, author-brief 3, market-intelligence 1, adopt 0", "superpowers 6.2.0 references/ convention (per-harness binding notes — same skill, one reference file per harness)", "harness-portability/01's capability matrix (the Codex bindings' factual source)", "the harness-target ruling (HP/03 — the degradation cells the codex binding must carry)", "freshness-checked 2026-08-07 (no references/ dir exists under plugins/assay)"]
 consumers: ["every Claude Code session loading assay:* skills (this repo, the upstream skills repo, adopters): fixed-here (the neutral text + claude binding must preserve current behaviour; regression rows below)", "the upstream thin-pointer wrappers (post harness-portability/02): unaffected (pointers carry no method text)", "plugins/assay/hooks/inject-resident-rules.sh: out-of-scope (resident rules are harness-portability/05's surface)", "the plugindrift SOURCES coverage: fixed-here (new references/ files declared so coverage stays closed)"]
@@ -25,6 +25,8 @@ exec-tier-why: >-
   guarantee softened while rephrasing, a degradation left implicit — survives every
   structural test; correctness is cross-artifact (vocabulary closure across bodies and
   both binding files).
+version: 1
+id: 657026c6-eb54-49ef-bd9e-0380ed3ac161
 ---
 
 # Brief 04 — Neutral-core skill bodies, binding files, neutrality lint

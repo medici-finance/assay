@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/04
+brief: assay:assay:forge-neutral:04
 title: Write verbs B — deskpr, deskfile, deskclose and deskevidence onto the resolver
 why: >-
   These four carry the rest of the fleet's outward writes — opening a change, filing an issue,
@@ -15,7 +15,7 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: [274]
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
 sources:
   - "docs/streams/forge-neutral/brief-01-forge-resolution-contract.md — the resolver and its custody binding"
@@ -42,6 +42,8 @@ consumers:
   - "tools/desk/cmd/deskfile: follow-on forge-neutral/04b"
   - "tools/desk/cmd/deskclose: follow-on forge-neutral/04b"
   - "plugins/assay/skills/verify-desk/SKILL.md: follow-up forge-neutral/10 (the Evidence-landing lane gains a hop on a forge with no direct-default-branch push; the conformance round trip is where the loop shape is proved before the skill text is changed)"
+version: 1
+id: 929d765d-2ce6-4907-90c6-52e613f197cb
 ---
 
 # Brief 04 — Write verbs B: deskpr, deskfile, deskclose, deskevidence

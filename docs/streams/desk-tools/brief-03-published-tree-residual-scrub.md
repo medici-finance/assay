@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/03
+brief: assay:assay:desk-tools:03
 title: Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN
 why: >-
   When a tree is published from a private origin, a tokens-only leak-sweep passing over it does
@@ -17,7 +17,7 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-12 by Fable session; re-homed to the desk-tools board 2026-08-26
 sources:
   - "A multi-pass independent cold-read of the staged desk-tools tree returned HAS-BLOCKERS: the tree still read as its private origin's product in compiled-source doc-comments, a write-indicator rule, and test fixtures that the prose and config passes had not touched. A tokens-only leak-sweep passed over that same tree, re-proving that checked-clean is not identity-clean."
@@ -36,6 +36,8 @@ gate-why: >-
   is a silent detection regression no green suite reports). `sensitive-data: no` here: this
   re-homed brief carries the mechanism only — the enumerated residue set was the withheld value
   and is not restated on a public surface.
+version: 1
+id: 81a0f56b-2959-4b38-8c31-13e58b440b28
 ---
 
 # Brief 03 — Published-tree residual-identity scrub — drive the cold-read to an independent CLEAN

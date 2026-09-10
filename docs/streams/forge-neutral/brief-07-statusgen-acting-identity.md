@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/07
+brief: assay:assay:forge-neutral:07
 title: statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted
 why: >-
   The Evidence-actor check is what stops an implementer attesting its own Evidence, and the
@@ -16,7 +16,7 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
 sources:
   - "docs/streams/forge-gitlab/pilot-report.md D-3 (Evidence-actor cannot recognise a GitLab verifier) and D-9 (the witness stamps a machine-derived runner, not the acting forge identity)"
@@ -40,6 +40,8 @@ consumers:
   - "statusgen/rosterconfig.go: fixed-here (statusgen's own roster parser must accept the forge-qualified grammar forge-neutral/02 defines)"
   - "statusgen/autoflip.go: follow-up forge-neutral/08 (the auto-flip's reviewer-login composition is the same class of assumption, handled with the CI scaffold)"
   - "docs/streams/forge-neutral/identity.md: fixed-here (the per-forge commit-address table gains statusgen's two consumers)"
+version: 1
+id: 0128a67b-af4f-4d25-9dd2-1b53e603c99d
 ---
 
 # Brief 07 — statusgen acting identity

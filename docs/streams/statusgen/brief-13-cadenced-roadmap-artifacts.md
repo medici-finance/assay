@@ -1,5 +1,5 @@
 ---
-brief: statusgen/13
+brief: assay:assay:statusgen:13
 title: 'Cadenced roadmap artifacts — `--cadence weekly|monthly` window computation reusing the roadmap renderer, a `theme:` render rule, config-driven priority order and brand'
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-27 (authored clean for the statusgen board)
 why: >-
   The `--roadmap` renderer answers one clock — "what is the portfolio's state right now."
@@ -25,6 +25,8 @@ sources:
   - "statusgen/main.go — the `-roadmap` flag registration (~L1107) and the `--roadmap` output path `docs/reports/roadmap/index.html`; the cadence flag is added beside it and switches the output directory to `docs/reports/<cadence>/<window>/`"
   - "statusgen/main.go `-scope` — the existing product-tag (`serves:`) vocabulary the priority order is expressed in; the ordered list is read from config, never hard-coded in source"
   - "the roadmap renderer's stream frontmatter reader — where the optional `theme:` key is parsed and the unmapped-renders-visibly rule lives"
+version: 1
+id: e7dba02c-cb0d-46ab-9137-368b2aaf6822
 ---
 
 # Brief 13 — Cadenced roadmap artifacts (`--cadence weekly|monthly`)

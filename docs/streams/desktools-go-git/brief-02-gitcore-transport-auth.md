@@ -1,5 +1,5 @@
 ---
-brief: desktools-go-git/02
+brief: assay:assay:desktools-go-git:02
 title: gitcore package + in-process transport/auth (BasicAuth) + go-git pin
 wave: 2
 depends: ["desktools-go-git/01"]
@@ -8,7 +8,7 @@ effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-21 by desktools-go-git authoring session
 sources:
   - "docs/streams/desktools-go-git/spec.md — decisions 1-2 (go-git >= v5.13; one shared gitcore)"
@@ -27,6 +27,8 @@ why: >-
   transport/auth layer once — token in a header inside the tool's own process, exactly as
   desktoken/deskpost/deskevidence/deskrelease already do for REST — is what lets waves 3-4
   be mechanical seam swaps. It also fixes the go-git version floor at the CVE fix line.
+version: 1
+id: f8f94893-c6ec-4e20-916a-ff31eb579350
 ---
 
 # Brief 02 — gitcore + in-process transport/auth + go-git pin

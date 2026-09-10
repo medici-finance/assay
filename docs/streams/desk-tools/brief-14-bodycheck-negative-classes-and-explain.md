@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/14
+brief: assay:assay:desk-tools:14
 title: "bodycheck — three measured false-positive classes into the negative corpus, plus `--explain`"
 why: >-
   The shared secret scan refuses every desk write it guards — PR bodies, titles, branch
@@ -21,7 +21,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by a worker-desk authoring session, from a 24-hour transcript sweep across
   fifteen desk-role and worker sessions (tallied per session)
 sources:
@@ -33,6 +33,8 @@ sources:
 exec-tier: strong
 exec-tier-why: "(c) a security classifier — a rule widened to clear a negative can admit a
   credential shape the positive corpus does not yet carry, and every test stays green."
+version: 1
+id: 8541ee6f-356e-47bf-90a2-2e1a8770b852
 ---
 
 # Brief 14 — bodycheck: three measured false-positive classes into the negative corpus, plus `--explain`

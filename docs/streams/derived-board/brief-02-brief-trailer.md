@@ -1,5 +1,5 @@
 ---
-brief: derived-board/02
+brief: assay:assay:derived-board:02
 title: "`Brief:` trailer — the PR→brief link, required by deskpr create, linted on main"
 why: >-
   Deriving a board cell from a PR needs a reliable edge from the PR to the brief. Today
@@ -14,7 +14,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by derived-board scoping session
 sources:
   - "docs/streams/derived-board/spec.md §2 (\"the trailer is the only PR→brief edge\"), §8 Q1"
@@ -23,6 +23,8 @@ sources:
 consumers:
   - "plugins/assay/skills/worker-desk/SKILL.md (task spec: body carries the trailer): follow-up derived-board/05"
   - "plugins/assay/skills/pr-review-desk/SKILL.md (bounce a PR without a trailer): follow-up derived-board/05"
+version: 1
+id: 2cac023b-d17a-4f97-a440-546d95a5f5de
 ---
 
 # Brief 02 — the `Brief:` trailer

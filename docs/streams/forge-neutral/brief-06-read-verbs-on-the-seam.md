@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/06
+brief: assay:assay:forge-neutral:06
 title: Read verbs — deskboard, issueboard, scanloop and the loop planners on the seam
 why: >-
   A desk that cannot read its board on a forge cannot run a loop there, and a read that returns
@@ -14,7 +14,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
 sources:
   - "docs/streams/forge-neutral/brief-01-forge-resolution-contract.md — the resolver and the could-not-check refusal these reads inherit"
@@ -34,6 +34,8 @@ consumers:
   - "tools/desk/cmd/deskboard non-board reads: DEFERRED to forge-neutral/12 (PR search, commit-history listing, single-commit read, combined-status, workflow-directory listing — no enumerated Forge op yet; that surface decision belongs to that brief's Review gate)"
   - "tools/desk/cmd/reviewloop, verifyloop, commsloop: out-of-scope (they consume board JSON on stdin and reach no forge of their own; nothing in them changes when the board's transport does)"
   - "tools/desk/cmd/deskroster, deskpushguard, repohardenguard, deskadvisory, deskdigest, deskdisposition, deskmerge, deskdispatch: out-of-scope (each remaining permit row is either an ambient-credential custody decision or an operation with no enumerated Forge method and no settled GitLab mapping; each is its own follow-up brief, named in the stream README)"
+version: 1
+id: 1fd2a256-e5e2-4434-8002-95e702c65ec4
 ---
 
 # Brief 06 — Read verbs on the seam

@@ -1,5 +1,5 @@
 ---
-brief: forge-gitlab/05
+brief: assay:assay:forge-gitlab:05
 title: Live pilot — one brief round-tripped on a real GitLab group, security-parity table walked
 why: >-
   Nothing may claim GitLab support from fixtures: the profile's promise is per-control
@@ -21,7 +21,7 @@ gate-why: >-
   self-certifies.
 decision-trigger: start
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by forge-gitlab authoring session
 sources:
   - "docs/streams/forge-gitlab/spec.md §3 (the parity table), §7 (conformance gate)"
@@ -30,6 +30,8 @@ exec-tier: strong
 exec-tier-why: "end-to-end cross-component verification on a live system (question b); parity judgments require reasoning beyond the runbook."
 domain: complex
 tier: free
+version: 1
+id: 2a213e5a-0741-4ef0-b89b-eab26b33ede6
 ---
 
 # Brief 05 — live pilot + parity walk

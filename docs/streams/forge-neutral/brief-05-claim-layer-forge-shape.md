@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/05
+brief: assay:assay:forge-neutral:05
 title: Claim layer — the GitLab shape of refs/dispatch/* and its release
 why: >-
   The cross-machine dispatch claim is what stops two desks on two machines working the same
@@ -16,7 +16,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
 sources:
   - "docs/streams/forge-neutral/brief-01-forge-resolution-contract.md — the resolver the sink obtains its Forge from"
@@ -34,6 +34,8 @@ consumers:
   - "tools/desk/cmd/desksupervise: fixed-here — ADDED at implementation time: the staleness reclaim releases a dispatch claim (actions.go) and its live source lists them (live.go). It was not in the brief's consumers list and is the second in-tree writer of this ref; leaving it on the old namespace would have been exactly the writer/reader split rows 7 and 8 exist to catch."
   - "plugins/assay/skills/worker-desk/SKILL.md, plugins/assay/skills/worker-desk/references/dispatch-runbook.md, plugins/assay/skills/pr-shepherd/SKILL.md, plugins/assay/skills/the-desk/SKILL.md: fixed-here — CORRECTED at implementation time (2026-09-07) from `follow-up forge-neutral/10`. The routing and Verify row 8 disagreed: row 8 greps `plugins/assay/skills` and requires that every mention name the SAME namespace as the constant, `since the skills' prose and the code must agree`. Deferring the prose would leave a shipped skill telling its reader to list a namespace the writer no longer uses, which is the reader/writer drift the brief's own pre-mortem calls the worst failure of this primitive. The prose is therefore corrected in this change and the routing follows the diff."
   - "the consumer repo's dispatch-claim script: out-of-scope (it lives in the repo being worked, not here; this brief fixes the CONTRACT it is invoked under and the release path it depends on)"
+version: 1
+id: 4973f73c-f2da-46d0-8e13-edd79fc1e867
 ---
 
 # Brief 05 — Claim layer: the GitLab shape

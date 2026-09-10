@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/21
+brief: assay:assay:desk-tools:21
 title: "`DESK_TRACE` and cause-carrying errors — one subprocess runner, and a swallowed child's message reaches the operator on the first read"
 why: >-
   The desk tools shell out constantly, and until now each command decided for itself how much
@@ -19,7 +19,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-09 by a worker-desk authoring session, from an operator request recorded
   2026-09-09 and a same-day read of the four verbs named below
 sources:
@@ -38,6 +38,8 @@ exec-tier-why: >-
 consumers:
   - "Every other desk verb: OUT OF SCOPE and unchanged. `deskkit.ReportError` is opt-in per verb — a verb that still calls `fmt.Fprintln(os.Stderr, err.Error())` behaves exactly as it does today. The four retrofitted here are the first wave, chosen because each carries a symptom that was actually observed."
   - "`tools/desk/internal/deskkit/bodycheck.go`: read, not changed. The new redactor REUSES its compiled patterns; a prefix added there is redacted in traces on the same commit."
+version: 1
+id: b82e4e2e-0694-4c7e-a014-b71838743803
 ---
 
 # Brief 21 — `DESK_TRACE` and cause-carrying errors

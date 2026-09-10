@@ -32,6 +32,15 @@ with no README change; the class-1 sweep of 2026-08-21 hand-flipped dozens). Rul
 machine-readable witness must not stay hand-asserted. This stream finishes the job for the
 other three states, and removes the hand-edited table entirely. See [spec.md](spec.md).
 
+**Staged, not yet applied:** the reconcile step this repo's own board workflow must gain —
+`statusgen reconcile --backfill` after the regen, which folds each brief's lifecycle cell
+back out of `Brief:`-trailer PR history — is committed as
+[`.github/assay-statusgen.reconcile.patch`](../../../.github/assay-statusgen.reconcile.patch)
+rather than applied. Files under `.github/workflows/` need a scope the identity that opened
+the flag-day pull request does not hold, so the patch carries its own apply instructions for
+whoever does. Until it is applied the authoring columns regenerate normally and the
+lifecycle columns are carried through unchanged rather than reconciled.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
@@ -43,7 +52,7 @@ other three states, and removes the hand-edited table entirely. See [spec.md](sp
 | 04 | [generated Briefs table in every stream README + single-writer lint + scheduled reconcile PR](brief-04-generated-table.md) | 2 | M | implemented | — | — |
 | 05 | [desk skills — reference the brief, never flip the cell (author-brief, worker-desk, pr-review-desk, verify-desk; public copies)](brief-05-skill-updates.md) | 1 | S | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #316 @ 7d9ab3f8a772155ef8e4347a16b5f25b421e23e6) |
 | 06 | [v1.0.0 — deskmigrate statusgen-regen op, the v0.28.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1](brief-06-v1-migration-and-cut.md) | 3 | M | implemented | — | — |
-| 07 | [per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills](brief-07-rollout-backfill.md) | 4 | L | todo | — | — |
+| 07 | [per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills](brief-07-rollout-backfill.md) | 4 | L | in-progress | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

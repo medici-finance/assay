@@ -1,5 +1,5 @@
 ---
-brief: quality/10
+brief: assay:assay:quality:10
 title: M3 stage attribution — deterministic dossier + judgment stage-call + per-stage defect ledger
 why: >-
   "Are we getting better" only becomes actionable when it decomposes by stage: a spec
@@ -17,12 +17,14 @@ exec-tier: strong
 exec-tier-why: cross-artifact provenance reasoning (walking inducing PR -> brief -> spec and comparing at-inducing-time text against the diff) plus designing a judgment-classification that stays deterministic in its dossier and spot-auditable in its call (questions a, b).
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §6 — M3 stage attribution: stage table, deterministic-dossier/judgment-call split, per-stage defect ledger, pluggable provenance-linkage adapter"
   - "docs/streams/quality/spec.md §3.2 — three-state instrument invariant (untraceable is a first-class output, never a silent zero)"
   - "docs/streams/quality/spec.md §10 — honest-claims discipline (stage attribution is evidence-assembled, judgment-classified, spot-audited; never measured)"
+version: 1
+id: 080eab91-2a49-444b-8200-dca9e0f61bd9
 ---
 
 # Brief 10 — M3 stage attribution: dossier + ledger + pluggable provenance-linkage adapter

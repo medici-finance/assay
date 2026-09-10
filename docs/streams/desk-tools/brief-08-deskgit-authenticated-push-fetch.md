@@ -1,5 +1,5 @@
 ---
-brief: desk-tools/08
+brief: assay:assay:desk-tools:08
 title: "`deskgit push` / `deskgit fetch --as <role>` — authenticated transport from the role's token file"
 why: >-
   Every desk role that pushes a branch or refreshes a private remote today re-types the same
@@ -19,7 +19,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by a worker-desk authoring session, from a 24-hour transcript sweep across
   fifteen desk-role and worker sessions (tallied per session)
 sources:
@@ -33,6 +33,8 @@ exec-tier: strong
 exec-tier-why: "(c) auth and safety plumbing — a token that reaches argv, the audit line or a
   temp file that outlives the call, an ambient helper consulted after all, or a refspec that
   can be widened, each survives every happy-path test and leaves the verb looking safe."
+version: 1
+id: fa179fb4-a663-4d80-b8c9-7d60b2b27778
 ---
 
 # Brief 08 — `deskgit push` / `deskgit fetch --as <role>`: authenticated transport from the role's token file

@@ -1,5 +1,5 @@
 ---
-brief: quality/13
+brief: assay:assay:quality:13
 title: M4 session forensics — pluggable telemetry-source interface + file reference adapter
 wave: 3
 why: >-
@@ -14,13 +14,15 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §7.3 — session forensics (harness telemetry × outcome)"
   - "docs/streams/quality/spec.md §7 — M4 reflexivity is a join over recorded artifacts, no new mining"
   - "docs/streams/quality/spec.md §3.2 — three-state instrument invariant"
   - "docs/streams/quality/spec.md §8 — join keys (PR number + merge SHA + stream/task ID)"
+version: 1
+id: 588a9f77-9bdb-4b99-a92b-435b4eaaefa5
 ---
 
 # Brief 13 — M4 session forensics: telemetry-source interface + file reference adapter

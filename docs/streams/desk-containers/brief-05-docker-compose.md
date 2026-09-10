@@ -1,5 +1,5 @@
 ---
-brief: desk-containers/05
+brief: assay:assay:desk-containers:05
 title: docker-compose definition for the five desks
 wave: 3
 depends: ["desk-containers/02", "desk-containers/03"]
@@ -8,7 +8,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-22 by desk-containers scoping session
 sources:
   - "medici-finance/assay#63 — the request (secondary aim: launched via docker compose)"
@@ -19,6 +19,8 @@ why: >-
   The secondary aim of the request: one `docker compose run <desk>` that launches any
   desk with the same volumes and runtime-injected credentials as the desktop script, so
   a machine hosting several desks manages them as one stack.
+version: 1
+id: 59f032dd-24bb-42f6-93f6-5e736c848eea
 ---
 
 # Brief 05 — docker-compose definition

@@ -1,5 +1,5 @@
 ---
-brief: statusgen/01
+brief: assay:assay:statusgen:01
 title: 30-day statusgen check-firing audit — retire cold --lint rules
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-20 (authored clean for the statusgen board)
 sources:
   - "statusgen main.go run() — the check chain this audit tallies per-rule firings over"
@@ -20,6 +20,8 @@ why: >-
   live problems or whether some have gone cold. A rule that has fired zero times in 30 days
   and gates no regression test is a candidate for retirement; without a firing audit the
   lint surface only ever grows.
+version: 1
+id: 3c93f9b4-af9b-4de7-a41d-f93c3fa530e5
 ---
 
 # Brief 01 — 30-day statusgen check-firing audit

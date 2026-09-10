@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/11
+brief: assay:assay:harness-portability:11
 title: Durable-monitor capability + residual harness-token prose-audit
 why: >-
   Brief 04's neutrality lint is TOKEN-only: it catches the fifteen banned strings
@@ -19,7 +19,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-17 by harness-portability authoring session
 sources: ["brief 04 (HP/04): shipped tools/harnesslint (TOKEN-only bodies lint + bindings closure), the two plugins/assay/references/{claude-code,codex}.md binding files, and token-strips on 4 skill bodies — this brief builds directly on that landing", "residual analysis at brief 04's landing: the token-lint's banned set (tools/harnesslint banned-tokens config) contains NO Monitor/persistent/TaskList/EnterWorktree entry, and the closed vocab (README capability block) has NO durable-watch capability — so ~15 durable-monitor + EnterWorktree sites survive brief 04 uncaught", "replaces the closed 04c/04d/04e split: this single M-brief is the ~10-20-site core that remained after brief 04, scoped as one focused follow-up rather than three disproportionate sub-briefs", "the measured Codex capability matrix (HP/01) §3.6/§3.7: Codex has no durable cross-restart monitor — V2 child agents are process-local (resume broken across restarts, codex issues #19140/#33002), an in-subagent run_in_background task is silently killed — the measured basis for the Codex degradation cell", "stream README non-negotiable floor (§ 'What natively means' item 3; ruling C via codex.md): isolation, evidence, and the review gates never degrade; a durable wake-signal is a CONVENIENCE, so durable-monitor DEGRADES on a harness that lacks it, it does not refuse"]
 consumers: ["docs/streams/harness-portability/README.md capability-vocabulary block: fixed-here (the vocab amendment — adding durable-monitor — IS part of this deliverable; harnesslint reads the closed set from this one block)", "plugins/assay/references/claude-code.md + codex.md: follow-up harness-portability/11 (both gain a capability:durable-monitor row — else harnesslint bindings fails closure — and codex.md gains the degradation cell; these binding files are edited in brief-11's implementation phase, not this authoring PR)", "plugins/assay/skills/{pr-review-desk,intake-desk,the-desk,verify-desk,worker-desk}/SKILL.md: follow-up harness-portability/11 (the ~15 residual sites rewritten to capability vocabulary — brief-11's implementation edit, not this authoring PR)", "tools/harnesslint banned-tokens config: follow-up harness-portability/11 (OPTIONAL hardening — add the backticked Monitor/TaskList/EnterWorktree + persistent:true forms so recurrence is lint-caught, not re-audited by hand; deferred to brief-11's implementation phase)"]
@@ -31,6 +31,8 @@ exec-tier-why: >-
   refuse instead of degrade, weakens a guardrail while every token-lint still passes.
   The convenience-vs-guarantee classification and the verbatim-degradation discipline
   need care.
+version: 1
+id: f0fe4b8c-e52a-48de-b008-6ef2379354e1
 ---
 
 # Brief 11 — Durable-monitor capability + residual harness-token prose-audit

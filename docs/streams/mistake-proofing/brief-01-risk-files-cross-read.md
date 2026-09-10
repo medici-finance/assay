@@ -1,5 +1,5 @@
 ---
-brief: mistake-proofing/01
+brief: assay:assay:mistake-proofing:01
 title: Cross-read a brief's declared paths against the risk classifier — the one authoring mistake that downgrades a gate
 why: >-
   A brief's review gate is DERIVED correctly from four risk booleans the author writes by hand, and
@@ -24,7 +24,7 @@ exec-tier-why: >-
   also separate Go modules with an internal package between them, so the binding is a duplicate-and-
   couple design, not an import.
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-25 (authored for the mistake-proofing board)
 sources:
   - "`docs/mistake-proofing.md` §4 B3: self-declared risk booleans whose declared paths contradict them are a lint PROBLEM, not a reviewer catch — 'the one authoring mistake that silently downgrades a gate, which makes it the first to proof'."
@@ -33,6 +33,8 @@ sources:
   - "Precedent for the cross-tree binding: `statusgen/rosterconfig.go` duplicates the desk kernel's config reader; the two are bound by a shared test-vector file both modules read, whose comment states the rationale — 'the two modules deliberately share no code, so a shared VECTOR file is what keeps their duplicated readers honest'."
   - "The self-attestation error class: everything a session writes about its own work is, at the last mile, prose it authored. The risk booleans are the authoring-side instance, and a gate derived from them inherits their unchecked-ness."
   - "freshness-checked 2026-08-25 @ 657cab1 (origin/main) — the Context `files:` line is parsed by nothing in the lint today, and the classifier is not referenced from the lint tree at all."
+version: 1
+id: 24adc8ab-561a-43d6-a9a2-84646a2693db
 ---
 
 # Brief 01 — Cross-read declared paths against the risk classifier

@@ -1,5 +1,5 @@
 ---
-brief: composability/04
+brief: assay:assay:composability:04
 title: Harness as an exclusively-bound key — adapters as components
 why: >-
   Three harness manifests are kept in parallel by hand (a Claude Code plugin manifest, a Codex
@@ -14,7 +14,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-08 by composability authoring session
 sources:
   - "docs/streams/composability/component-model.md §9 (assay.harness is exclusively bound; adapters provide it with a flavour; skills and hooks inject it)"
@@ -28,6 +28,8 @@ consumers:
   - "plugins/assay/cursor/*.mdc + tools/harnessgen: fixed-here (the cursor adapter's apply step runs harnessgen)"
   - "plugins/assay/references/{claude-code,cursor,codex}.md: fixed-here (each becomes its adapter's documentation)"
   - "plugins/assay/hooks/hooks.json: fixed-here (owned by the claude-code adapter; hooks component injects assay.harness with flavour claude-code)"
+version: 1
+id: 6f59838c-f425-439d-a22c-41de87728705
 ---
 
 # Brief 04 — Harness as an exclusively-bound key: adapters as components

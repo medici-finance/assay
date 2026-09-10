@@ -1,5 +1,5 @@
 ---
-brief: apps-installer/01
+brief: assay:assay:apps-installer:01
 title: Role→App indirection — six desk roles on N GitHub Apps without symlinks
 why: >-
   desktoken resolves a role's credentials by the role's own name, so a deployment with fewer Apps
@@ -15,7 +15,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-05 by apps-installer authoring session
 sources:
   - "./design.md §6 (command surface: apps.env carries the role→App bindings) and §7 (Solo creates no App)."
@@ -34,6 +34,8 @@ consumers:
   - "tools/desk/internal/deskkit/preflight.go: fixed-here (the scopes check reads the grant of the App the role is BOUND to)"
   - "tools/desk/README.md § App credentials: fixed-here (the binding documented beside the search path)"
   - "docs/adopting-assay.md roster section: follow-up apps-installer/07"
+version: 1
+id: 383542d8-1dec-4385-a6b2-83d5b143dfd7
 ---
 
 # Brief 01 — Role→App indirection

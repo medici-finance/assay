@@ -1,5 +1,5 @@
 ---
-brief: mistake-proofing/02
+brief: assay:assay:mistake-proofing:02
 title: Dereference named identifiers, not just backticked paths — test and function names must resolve
 why: >-
   The lint already refuses a brief that names a backticked FILE which does not exist on disk. It says
@@ -15,7 +15,7 @@ effort: S
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-25 (authored for the mistake-proofing board)
 sources:
   - "`docs/mistake-proofing.md` §4 B4: 'A test name, function name, file path, or link named in a brief or its evidence MUST resolve against the tree it describes.' Also §5 adoption ladder step 2 — B4 is one of the two highest value-per-cost moves."
@@ -24,6 +24,8 @@ sources:
   - "The adjacent disclosed divergence: the existing backticked-path check exempts directory-shaped targets by construction, so its coverage depends on the target's file extension. Do not widen that exemption; do record where this brief's matcher inherits it."
   - "`docs/three-state-instrument-rule.md` — 'absence of evidence is not evidence of absence': an unsearchable tree is could-not-check, never a clean read."
   - "freshness-checked 2026-08-25 @ 657cab1 (origin/main) — the link checker's matcher is built from a file-EXTENSION list only; no identifier-shaped matcher exists in the lint tree."
+version: 1
+id: 2eb90d43-218e-4e6a-a670-d995868d1dfb
 ---
 
 # Brief 02 — Dereference named identifiers

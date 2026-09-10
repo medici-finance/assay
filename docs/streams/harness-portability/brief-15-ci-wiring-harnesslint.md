@@ -1,5 +1,5 @@
 ---
-brief: harness-portability/15
+brief: assay:assay:harness-portability:15
 title: Public CI wiring + harnesslint clean-up for the de-housed tools
 why: >-
   Brief 14 landed `tools/harnessgen`, `tools/harnesslint` and `tools/plugindrift` in the public
@@ -20,7 +20,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-08 by harness-portability follow-up authoring dispatch (assay-worker-app)
 sources: ["the-desk ruling recorded on #631 (hp/14, merged): the three items below were flagged during hp/14 as out-of-scope-for-14 and ruled into one follow-up brief — (a) wire the three de-housed modules' test suites into public ci.yml, (b) scrub the banned harness tokens from ask-decision/install SKILL.md, (c) declare references/desk-shell.md a non-matrix reference the bindings lint skips", "brief-14-code-dehouse.md read in full 2026-09-08 as the format template, and its facts: 'CI needs no edit for the new modules' — TRUE for build+vet, which is all ci.yml's module walk does; its no-new-workflow/glob rule (Task step 5) was hp/14-scoped and does not bind this brief", ".github/workflows/ci.yml read 2026-09-08: the build-test job walks `git ls-files '*go.mod'` and runs `go build ./... && go vet ./...` per module, `go test ./...` ONLY for `tools/desk` (special-cased because two of its guard tests went latent under build+vet alone, #547/#550); no job runs harnessgen/harnesslint/plugindrift tests, and no job runs harnesslint against the real plugins/assay tree", "measured 2026-09-08 at branch head off origin/main: `go test ./...` passes in all three modules (harnessgen 28 tests, plugindrift ~39, harnesslint 15) — harnessgen checks the real tree via `--root ../..`, plugindrift stubs `gh` and is hermetic, harnesslint is fixture-based; `harnesslint bodies plugins/assay/skills` = exit 1, 4 violations (ask-decision SKILL.md lines 48/52/149 `CLAUDE_PLUGIN_ROOT`, install SKILL.md line 246 `SessionStart`); `harnesslint bindings plugins/assay/references` = exit 1, 19 violations ALL on desk-shell.md (7 unresolved capabilities + 12 missing degradation cells)", "plugins/assay/references/desk-shell.md read 2026-09-08: its own opening states it is 'the first that is not a per-harness capability binding ... this file is harness-neutral', which is the standing justification for declaring it non-matrix", "tools/harnesslint/lint.go read 2026-09-08: checkBindings globs refsDir/*.md and demands every capability resolve and every skill have a degradation cell in EVERY reference file; the tool already uses in-file HTML-comment markers (`<!-- assay:capability-vocabulary`, `<!-- assay:banned-tokens`) as its declaration convention", "changelog/README.md read 2026-09-08: this repo enforces a per-PR changelog fragment; brief-adds carry one (harness-portability-13.md, harness-portability-14-code-dehouse.md)"]
 consumers: ["docs/streams/harness-portability/README.md: fixed-here (status row 15, wave 7, notes, dependency-wave block)", ".github/workflows/ci.yml: fixed-here (the module-test wiring and the neutrality-gate step are this brief's primary deliverable)", "tools/harnesslint (lint.go + lint_test.go): fixed-here (the non-matrix-reference declaration is a tool change with its own fail-first test)", "plugins/assay/skills/ask-decision/SKILL.md, plugins/assay/skills/install/SKILL.md: fixed-here (the four token scrubs)", "plugins/assay/references/desk-shell.md: fixed-here (the non-matrix declaration marker, if the in-file-marker mechanism is chosen)"]
@@ -33,6 +33,8 @@ exec-tier-why: >-
   other references rather than only the one declared non-matrix file. Both are caught only by the
   positive-control rows below, which is why every absence-assertion here is paired with a planted
   failure.
+version: 1
+id: fcd37132-10d0-46b6-a094-adf6b493b669
 ---
 
 # Brief 15 — Public CI wiring + harnesslint clean-up for the de-housed tools

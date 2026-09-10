@@ -1,5 +1,5 @@
 ---
-brief: composability/03
+brief: assay:assay:composability:03
 title: Desired-state record and the reconcile engine behind deskmigrate / upgrade-assay
 why: >-
   Install order and upgrade steps are hand-written lists today, and the only installed-state
@@ -14,7 +14,7 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-08 by composability authoring session
 sources:
   - "docs/streams/composability/component-model.md §7 (desired-state record; per-field reconcile table; end state a function of the final record alone), §11 (umbrella = a group entry)"
@@ -28,6 +28,8 @@ consumers:
   - "tools/desk/cmd/deskversion: fixed-here (reads `umbrella` from the record)"
   - "tools/desk/cmd/deskmigrate: fixed-here (becomes the reconcile engine driver; existing migrations run as pre-reconcile steps)"
   - "docs/adopting-assay.md: follow-up composability/05"
+version: 1
+id: 0805e599-cd9f-4825-9a60-f305190b5e63
 ---
 
 # Brief 03 — Desired-state record and the reconcile engine behind deskmigrate / upgrade-assay

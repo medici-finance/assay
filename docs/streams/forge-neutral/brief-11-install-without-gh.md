@@ -1,5 +1,5 @@
 ---
-brief: forge-neutral/11
+brief: assay:assay:forge-neutral:11
 title: Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives
 why: >-
   The front door is GitHub-only and says so in the first paragraph an adopter reads. The
@@ -16,7 +16,7 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
 sources:
   - "driver's direction 2026-09-02 — the install path must be painless on GitLab and must not declare `gh` a requirement"
@@ -41,6 +41,8 @@ consumers:
   - "docs/adopting-assay-gitlab.md: fixed-here (the GitLab runbook stops being a separate dead-end and becomes the per-forge half of one flow)"
   - "statusgen/init.go: out-of-scope (forge-neutral/08 makes `init` scaffold the matching CI half; this brief invokes it and must not reimplement the scaffold)"
   - "tools/cellctl/cellctl: out-of-scope (a cell is not an install; its per-forge prerequisites are forge-neutral/09's)"
+version: 1
+id: 12da22af-27f5-4953-9fc4-ccbb008def48
 ---
 
 # Brief 11 — Install without `gh`

@@ -1,5 +1,5 @@
 ---
-brief: quality/14
+brief: assay:assay:quality:14
 title: closing the loop — auto-filed refactor work + quality error-budgets + RETRO output feed
 wave: 5
 why: >-
@@ -14,13 +14,15 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §9.5 — auto-filed refactor work (pluggable issue-filer, advisory + budgeted)"
   - "docs/streams/quality/spec.md §9.6 — quality error-budgets (alarm posture, config after ≥2 windows)"
   - "docs/streams/quality/spec.md §9.7 — retrospective inputs (generated/logged only)"
   - "docs/streams/quality/spec.md §3.2 — three-state instrument invariant; §10 honest-claims"
+version: 1
+id: 64eacba0-4543-46b1-94af-d6860e3bfe8e
 ---
 
 # Brief 14 — auto-filed refactor + error-budgets + RETRO feed

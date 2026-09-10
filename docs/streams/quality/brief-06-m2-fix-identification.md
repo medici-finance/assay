@@ -1,5 +1,5 @@
 ---
-brief: quality/06
+brief: assay:assay:quality:06
 title: M2 fix identification — pluggable fix-linkage adapter + GitHub-labels reference adapter + evidence tiers
 why: >-
   SZZ defect lineage begins by knowing which commits are FIXES. Getting that wrong poisons every
@@ -15,13 +15,15 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-24 by quality-stream authoring session
 sources:
   - "docs/streams/quality/spec.md §5.1 — fix identification: precedence-ordered evidence tiers, pluggable linkage adapter"
   - "docs/streams/quality/spec.md §3.1 — profile-B adapter rules (adapter-based fix identification; no in-repo writes)"
   - "docs/streams/quality/spec.md §10 — honest-claims discipline (evidence-tier composition reported, never merged)"
   - "docs/streams/quality/spec.md §3.2 — three-state instrument invariant"
+version: 1
+id: 5bdb2b3b-1f63-46a4-9735-80e1eb0da16a
 ---
 
 # Brief 06 — M2 fix identification (pluggable linkage adapter + evidence tiers)

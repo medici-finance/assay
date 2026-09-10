@@ -1,5 +1,5 @@
 ---
-brief: statusgen/06
+brief: assay:assay:statusgen:06
 title: Findings register becomes a corroborated state machine — bounded shelving (parked) + transition guard on resolved/affects/parked
 wave: 1
 depends: []
@@ -8,7 +8,7 @@ effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-20 (authored clean for the statusgen board)
 exec-tier: strong
 exec-tier-why: >-
@@ -44,6 +44,8 @@ why: >-
   identically whether a finding is neglected or consciously parked, so "park" as a disposition does
   nothing. A register that cannot distinguish a silenced finding from a resolved one, nor a parked
   finding from a neglected one, is not a register you can orient on.
+version: 1
+id: 9976ad4e-63f3-4359-907b-f07b6f5fdf3d
 ---
 
 # Brief 06 — Findings register becomes a corroborated state machine

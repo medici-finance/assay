@@ -1,5 +1,5 @@
 ---
-brief: statusgen/03
+brief: assay:assay:statusgen:03
 title: 'Self-improvement metric — loops that self-diagnose AND self-resolve (agent-raised + agent-fixed, no human touch) vs human-touched'
 wave: 2
 depends: ["statusgen/02"]
@@ -8,7 +8,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
-schema: brief-v1
+schema: brief-v2
 authored: 2026-08-20 (authored clean for the statusgen board)
 sources:
   - "A maintainer directive (2026-07-16): capture the self-improvement metric — where the loops filed an issue about something they were seeing/experiencing and it got resolved vs one a human touched"
@@ -21,6 +21,8 @@ why: >-
   had to raise, direct, decide, or fix. That ratio (the autonomy / self-healing rate) is the single
   clearest measure of whether the machine is getting better at fixing itself, and whether that rate is
   rising over time.
+version: 1
+id: 8b86c40d-4687-4c5c-b80a-69d4fc4000e4
 ---
 
 # Brief 03 — Self-improvement metric (self-healed vs human-touched)
