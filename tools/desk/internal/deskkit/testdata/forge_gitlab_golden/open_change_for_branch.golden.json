@@ -11,6 +11,7 @@
     "State": "open",
     "Draft": true,
     "NodeID": "gitlab:medici-finance/assay!7",
+    "Title": "Draft: add the thing",
     "ChangedFiles": 0,
     "Author": {
       "Login": "worker-bot",

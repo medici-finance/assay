@@ -27,33 +27,25 @@ var publicRepoGateFn = deskkit.PublicRepoGate
 // quietly rebound — fails loudly instead of leaving every gate test vacuous.
 var productionGateFn = publicRepoGateFn
 
-// ghToken holds the worker App installation token value set by mintWorkerToken. When
-// empty, gh calls use the ambient gh identity (example-org fallback). When set, every gh
-// invocation adds GH_TOKEN to the command environment so the call authenticates as
-// the worker App.
+// ghToken holds the App installation token value set by mintWorkerToken. It is handed to the
+// resolved forge backend by the GitHub custody minter (github.go) and to the public-repo gate's
+// HTTPRepoInfoFetcher. An EMPTY value is a HARD REFUSAL at the custody step — deskpr never falls
+// back to an ambient forge identity (the retired `--as-app=false` path).
 var ghToken string
 
-// requireWorkerAuth is set true by cmdCreate/cmdUpdate for the duration of a run whose
-// --as-app flag is on (the default) — i.e. whenever the caller INTENDS gh to
-// authenticate as the worker App. Unlike deskreply (#563), deskpr has a real,
-// documented ambient-identity fallback (--as-app=false, "the example-org fallback"), so
-// gh() cannot unconditionally refuse an unset ghToken the way deskreply's does — that
-// would break --as-app=false outright. This flag scopes the fail-closed guard to the
-// as-app path only: when true, gh() must never run without a minted token even if a
-// future code change forgets to mint first; when false, an unset ghToken is the
-// intended, ambient-identity behavior.
-var requireWorkerAuth bool
+// mintedRole is the App role mintWorkerToken resolved for this session (worker by default,
+// verifier under DESK_LOOP=verify-desk, …). forgeFor passes it to deskkit.ForgeFor so the
+// resolver's custody binding and the PR author are the same App.
+var mintedRole = "worker"
 
 // runCmd executes name+args in dir and returns trimmed stdout. Commands are ALWAYS
 // built from an explicit argv slice — never a shell string and never a caller-supplied
 // git flag. Callers pass literal verbs plus values derived from git
-// state, so no external input can inject a git option.
+// state, so no external input can inject a git option. Only `git` and `desktoken` (the
+// identity layer) reach this path — deskpr no longer shells a forge CLI.
 func runCmd(dir, name string, args ...string) (string, error) {
 	cmd := execCommand(name, args...)
 	cmd.Dir = dir
-	if name == "gh" && ghToken != "" {
-		cmd.Env = append(os.Environ(), "GH_TOKEN="+ghToken)
-	}
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
@@ -70,21 +62,6 @@ func runCmd(dir, name string, args ...string) (string, error) {
 // forwards a caller flag into it, so a `--force` can never reach git through this path.
 func git(dir string, args ...string) (string, error) {
 	return runCmd(dir, "git", args...)
-}
-
-// gh runs a gh subcommand in dir. On the --as-app path (requireWorkerAuth == true) deskpr
-// ALWAYS authenticates as the worker App via the token set by mintWorkerToken; it refuses
-// outright (rather than silently falling through to whatever gh identity happens to be
-// ambient/active in this shell — e.g. a stale or invalid gh-CLI keyring account) if
-// ghToken is unset, so a gh call can never run un-authenticated-as-worker even if a future
-// code path forgets to mint first (mirrors #563's deskreply hardening for the identical
-// #562 shape). On the --as-app=false path, an unset ghToken is the intended, documented
-// ambient-identity fallback, so the guard does not apply there.
-func gh(dir string, args ...string) (string, error) {
-	if requireWorkerAuth && ghToken == "" {
-		return "", fmt.Errorf("refusing to run gh without a minted worker token — deskpr's --as-app path never falls back to the ambient gh identity/keyring")
-	}
-	return runCmd(dir, "gh", args...)
 }
 
 // mintWorkerToken mints or reuses the installation token for the App role THIS session
@@ -131,6 +108,7 @@ func mintWorkerToken(repo string) error {
 	} else {
 		fmt.Fprintf(deskprStderr, "deskpr: no App role resolved for this session — defaulting to the worker App token (%v)\n", rerr)
 	}
+	mintedRole = role
 	// Run desktoken <role> --repo <repo>; it prints the path to the cached token file.
 	out, err := runCmd("", "desktoken", role, "--repo", repo)
 	if err != nil {

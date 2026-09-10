@@ -61,7 +61,7 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
-const allowedInvocationCeiling = 12
+const allowedInvocationCeiling = 11
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
@@ -108,12 +108,6 @@ var AllowedInvocations = []Allowance{
 		Key: "cmd/deskmerge/exec.go::runGH::gh",
 		Reason: "TODO(forge-surface): read-only (`pr view --json`, one `gh api` read of the merge-authority " +
 			"surface). The pr view half maps to GetPullRequest; the authority read has no enumerated op.",
-	},
-	{
-		Key: "cmd/deskpr/exec.go::gh::gh",
-		Reason: "TODO(forge-surface): CreateDraftChange and GetPullRequest both exist and deskpr DOES mint a " +
-			"worker token — but it also ships a documented `--as-app=false` ambient-identity fallback that the " +
-			"token-refusing backends cannot serve. Retiring that flag is a behaviour change for its callers.",
 	},
 	{
 		Key: "cmd/deskpushguard/main.go::fetchPR::gh",

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -52,14 +51,6 @@ type gitFacts struct {
 	defaultRef    string // fully-qualified remote-tracking ref, e.g. "refs/remotes/origin/main" (unambiguous by construction, #840)
 	repo          string // owner/name
 	head          string // HEAD sha
-}
-
-// ghPR is the slice of a PR deskpr needs from `gh pr list --json`.
-type ghPR struct {
-	Number      int    `json:"number"`
-	URL         string `json:"url"`
-	IsDraft     bool   `json:"isDraft"`
-	HeadRefName string `json:"headRefName"`
 }
 
 // auditCtx accumulates the fields for the ONE audit line every invocation emits
@@ -139,7 +130,6 @@ func cmdCreate(args []string) (err error) {
 	bodyMin := fs.String("body-min", "", "one-line PR body (alternative to --body-file)")
 	base := fs.String("base", "main", "base branch")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
-	asApp := fs.Bool("as-app", true, "authenticate as this session's App role via desktoken (worker by default; the verifier App under DESK_LOOP=verify-desk, etc.); --as-app=false for example-org fallback")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	if perr := fs.Parse(args); perr != nil {
@@ -226,28 +216,26 @@ func cmdCreate(args []string) (err error) {
 		}
 	}
 
-	// --as-app defaults to true: mint/reuse the worker App installation
-	// token so every subsequent gh invocation (list, create) authenticates as
-	// the worker App instead of the ambient example-org identity. Pass
-	// --as-app=false during the transition for the example-org fallback.
-	requireWorkerAuth = *asApp
-	if *asApp {
-		if merr := mintWorkerToken(facts.repo); merr != nil {
-			return deskkit.Unverifiable("cannot mint worker token for --as-app", merr)
-		}
+	// Mint the session-role App installation token and resolve the forge that serves this
+	// repo under that App's custody. Every change read and write below goes through the
+	// resolved backend; there is no ambient-identity fallback (the retired --as-app path).
+	if merr := mintWorkerToken(facts.repo); merr != nil {
+		return deskkit.Unverifiable("cannot mint the App token", merr)
+	}
+	fg, fr, ferr := forgeForFn(facts.repo)
+	if ferr != nil {
+		return ferr
 	}
 
 	// idempotency (#140/#148 duplicate-PR class): an open PR already on this head
 	// branch → print its URL, noop, exit 0. Checked BEFORE any push or create.
-	prs, lerr := listOpenPRs(facts.dir, facts.repo, facts.branch)
-	if lerr != nil {
-		return deskkit.Unverifiable("cannot list existing PRs for the branch", lerr)
-	}
-	if pr := matchHead(prs, facts.branch); pr != nil {
-		ac.pr = &pr.Number
+	if existing, lerr := fg.OpenChangeForBranch(fr, facts.branch); lerr != nil {
+		return deskkit.Unverifiable("cannot check for an existing PR on the branch", lerr)
+	} else if existing != nil {
+		ac.pr = &existing.Number
 		ac.successResult = deskkit.ResultNoop
-		ac.detail = "open PR already exists " + pr.URL
-		fmt.Printf("noop: open PR already exists for %s: %s\n", facts.branch, pr.URL)
+		ac.detail = "open PR already exists " + existing.URL
+		fmt.Printf("noop: open PR already exists for %s: %s\n", facts.branch, existing.URL)
 		return nil
 	}
 
@@ -295,29 +283,26 @@ func cmdCreate(args []string) (err error) {
 		return deskkit.Unverifiable("git push failed", pushErr)
 	}
 
-	bodyPath, cleanup, terr := writeTempBody(body)
-	if terr != nil {
-		return deskkit.Unverifiable("cannot stage PR body", terr)
-	}
-	defer cleanup()
-
-	// --draft is hardcoded and unconditional. There is no flag to omit it.
-	out, cErr := gh(facts.dir, "pr", "create", "-R", facts.repo, "--draft",
-		"--head", facts.branch, "--base", *base,
-		"--title", *title, "--body-file", bodyPath)
+	// CreateDraftChange opens the change as a DRAFT — the frozen property of the seam; there
+	// is no path on which it opens ready. The body goes straight to the backend, so there is
+	// no temp file and no `--body-file` argv any more.
+	ref, cErr := fg.CreateDraftChange(fr, deskkit.DraftChangeInput{
+		Title: *title, Body: string(body), Head: facts.branch, Base: *base,
+	})
 	if cErr != nil {
-		return deskkit.Unverifiable("gh pr create failed", cErr)
+		return deskkit.Unverifiable("create draft change failed", cErr)
 	}
-	url := lastURL(out)
+	url := ref.URL
 	detail := "created " + url
-	if n := prNumberFromURL(url); n > 0 {
+	if ref.Number > 0 {
+		n := ref.Number
 		ac.pr = &n
 		// Post-create mergeable check (#770): a PR GitHub reports CONFLICTING gets zero
 		// pull_request runs at its head — indistinguishable, on the audit line or any
 		// board, from "checks still pending" until something names the mergeable state
 		// specifically. Advisory only: this can never turn a create that already
 		// succeeded into a reported failure.
-		detail += warnIfConflicting(facts.dir, facts.repo, n)
+		detail += warnIfConflicting(fg, fr, n)
 	}
 	ac.detail = detail
 	fmt.Println(url)
@@ -344,45 +329,34 @@ func cmdCreate(args []string) (err error) {
 // that never settles out of UNKNOWN must never turn an already-successful create/update
 // into a reported failure, so every non-CONFLICTING path here is a stderr note (or
 // silence), not a returned error — the PR already exists by the time this runs.
-func warnIfConflicting(dir, repo string, prNum int) string {
-	var v struct {
-		Mergeable        string `json:"mergeable"`
-		MergeStateStatus string `json:"mergeStateStatus"`
-	}
+func warnIfConflicting(fg deskkit.Forge, fr deskkit.ForgeRepo, prNum int) string {
+	mergeable := deskkit.MergeableUnknown
 	for attempt := 0; ; attempt++ {
-		out, err := gh(dir, "pr", "view", strconv.Itoa(prNum), "-R", repo,
-			"--json", "mergeable,mergeStateStatus")
+		pr, err := fg.GetPullRequest(fr, prNum)
 		if err != nil {
-			fmt.Fprintf(deskprStderr, "deskpr: WARNING could not read mergeable status for %s#%d — %v\n", repo, prNum, err)
+			fmt.Fprintf(deskprStderr, "deskpr: WARNING could not read mergeable status for %s#%d — %v\n", fr.Slug(), prNum, err)
 			return ""
 		}
-		v = struct {
-			Mergeable        string `json:"mergeable"`
-			MergeStateStatus string `json:"mergeStateStatus"`
-		}{}
-		if uerr := json.Unmarshal([]byte(out), &v); uerr != nil {
-			fmt.Fprintf(deskprStderr, "deskpr: WARNING unparseable mergeable status for %s#%d — %v\n", repo, prNum, uerr)
-			return ""
-		}
+		mergeable = pr.Mergeable
 		// Settled (MERGEABLE / CONFLICTING) or out of attempts: stop polling.
-		if v.Mergeable != "UNKNOWN" || attempt >= pollAttempts-1 {
+		if mergeable != deskkit.MergeableUnknown || attempt >= pollAttempts-1 {
 			break
 		}
 		pollSleep()
 	}
-	if v.Mergeable == "UNKNOWN" {
+	if mergeable == deskkit.MergeableUnknown {
 		fmt.Fprintf(deskprStderr, "deskpr: WARNING mergeable status for %s#%d did not settle out of UNKNOWN after "+
 			"%d polls — GitHub had not finished computing it; re-check the PR's merge state before relying on CI (#1264)\n",
-			repo, prNum, pollAttempts)
+			fr.Slug(), prNum, pollAttempts)
 		return ""
 	}
-	if v.Mergeable != "CONFLICTING" {
+	if mergeable != deskkit.MergeableConflicting {
 		return ""
 	}
-	fmt.Fprintf(deskprStderr, "deskpr: WARNING %s#%d is CONFLICTING (mergeStateStatus=%s) — GitHub will not run "+
+	fmt.Fprintf(deskprStderr, "deskpr: WARNING %s#%d is CONFLICTING — the forge will not run "+
 		"pull_request checks at this head; merge/rebase the base branch into this PR before expecting CI to fire "+
-		"(#770)\n", repo, prNum, v.MergeStateStatus)
-	return fmt.Sprintf(" — CONFLICTING (mergeStateStatus=%s), CI will not run until resolved", v.MergeStateStatus)
+		"(#770)\n", fr.Slug(), prNum)
+	return " — CONFLICTING, CI will not run until resolved"
 }
 
 // cmdUpdate implements `deskpr update`: a follow-up push of the current branch to its
@@ -398,7 +372,6 @@ func cmdUpdate(args []string) (err error) {
 
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
-	asApp := fs.Bool("as-app", true, "authenticate as this session's App role via desktoken (worker by default; the verifier App under DESK_LOOP=verify-desk, etc.); --as-app=false for example-org fallback")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
@@ -432,18 +405,18 @@ func cmdUpdate(args []string) (err error) {
 		return scanErr
 	}
 
-	requireWorkerAuth = *asApp
-	if *asApp {
-		if merr := mintWorkerToken(facts.repo); merr != nil {
-			return deskkit.Unverifiable("cannot mint worker token for --as-app", merr)
-		}
+	if merr := mintWorkerToken(facts.repo); merr != nil {
+		return deskkit.Unverifiable("cannot mint the App token", merr)
+	}
+	fg, fr, ferr := forgeForFn(facts.repo)
+	if ferr != nil {
+		return ferr
 	}
 
-	prs, lerr := listOpenPRs(facts.dir, facts.repo, facts.branch)
+	pr, lerr := fg.OpenChangeForBranch(fr, facts.branch)
 	if lerr != nil {
-		return deskkit.Unverifiable("cannot list PRs for the branch", lerr)
+		return deskkit.Unverifiable("cannot check for an open PR on the branch", lerr)
 	}
-	pr := matchHead(prs, facts.branch)
 	if pr == nil {
 		return deskkit.Refused("refused: no open PR for " + facts.branch + " — run `deskpr create` first")
 	}
@@ -456,23 +429,19 @@ func cmdUpdate(args []string) (err error) {
 	// open PR states it will push to.
 	ac.pr = &pr.Number
 
-	// example-stream/02: an update pushes to a PR whose BODY lives on GitHub, so the
-	// trailer check reads it from the PR. A PR whose body lacks the link line refuses
-	// here (exit 5, message names the line to add) — the worker edits the body, then
-	// re-runs update. This is the migration-window behavior for pre-trailer PRs.
-	var prView struct {
-		Body string `json:"body"`
-	}
-	bOut, berr := gh(facts.dir, "pr", "view", strconv.Itoa(pr.Number), "-R", facts.repo, "--json", "body")
+	// example-stream/02: an update pushes to a PR whose BODY lives on the forge, so the
+	// trailer check reads it from the PR — via the authoritative single-change read
+	// (GetPullRequest), the pairing the brief names for OpenChangeForBranch. A PR whose body
+	// lacks the link line refuses here (exit 5, message names the line to add) — the worker
+	// edits the body, then re-runs update. This is the migration-window behavior for
+	// pre-trailer PRs.
+	full, berr := fg.GetPullRequest(fr, pr.Number)
 	if berr != nil {
 		return deskkit.Unverifiable("cannot read PR body for trailer check", berr)
 	}
-	if uerr := json.Unmarshal([]byte(bOut), &prView); uerr != nil {
-		return deskkit.Unverifiable("cannot parse PR body for trailer check", uerr)
-	}
 	// update ignores the trailer's issue number: the gate below is asked about the
 	// PR being updated (pr.Number), which is the reactions surface for an update.
-	if _, terr := requireTrailer([]byte(prView.Body), *root, dir); terr != nil {
+	if _, terr := requireTrailer([]byte(full.Body), *root, dir); terr != nil {
 		return terr
 	}
 
@@ -504,7 +473,7 @@ func cmdUpdate(args []string) (err error) {
 	// the new head — the same silent stall the create path guards against — so warn loudly
 	// here too. Advisory only: this can never turn an already-completed push into a failure.
 	detail := "pushed to " + pr.URL
-	detail += warnIfConflicting(facts.dir, facts.repo, pr.Number)
+	detail += warnIfConflicting(fg, fr, pr.Number)
 	ac.detail = detail
 	fmt.Println(pr.URL)
 	return nil
@@ -813,31 +782,6 @@ func addedDiffLines(diff string) string {
 	return strings.Join(kept, "\n")
 }
 
-func listOpenPRs(dir, repo, branch string) ([]ghPR, error) {
-	out, err := gh(dir, "pr", "list", "-R", repo, "--head", branch, "--state", "open",
-		"--json", "number,url,isDraft,headRefName")
-	if err != nil {
-		return nil, err
-	}
-	out = strings.TrimSpace(out)
-	if out == "" {
-		return nil, nil
-	}
-	var prs []ghPR
-	if err := json.Unmarshal([]byte(out), &prs); err != nil {
-		return nil, fmt.Errorf("cannot parse gh pr list JSON: %w", err)
-	}
-	return prs, nil
-}
-
-func matchHead(prs []ghPR, branch string) *ghPR {
-	for i := range prs {
-		if prs[i].HeadRefName == branch {
-			return &prs[i]
-		}
-	}
-	return nil
-}
 
 // parseRepo extracts owner/name from an https, ssh, or scp-style git remote URL.
 func parseRepo(raw string) (string, error) {
@@ -971,46 +915,6 @@ func readBody(bodyFile, bodyMin string) ([]byte, error) {
 	return b, nil
 }
 
-func writeTempBody(body []byte) (path string, cleanup func(), err error) {
-	f, err := os.CreateTemp("", "deskpr-body-*.md")
-	if err != nil {
-		return "", func() {}, err
-	}
-	name := f.Name()
-	if _, err := f.Write(body); err != nil {
-		f.Close()
-		os.Remove(name)
-		return "", func() {}, err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(name)
-		return "", func() {}, err
-	}
-	return name, func() { os.Remove(name) }, nil
-}
-
-func lastURL(out string) string {
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		l := strings.TrimSpace(lines[i])
-		if strings.HasPrefix(l, "http://") || strings.HasPrefix(l, "https://") {
-			return l
-		}
-	}
-	return strings.TrimSpace(out)
-}
-
-func prNumberFromURL(url string) int {
-	m := pullRe.FindStringSubmatch(url)
-	if len(m) != 2 {
-		return 0
-	}
-	n, err := strconv.Atoi(m[1])
-	if err != nil {
-		return 0
-	}
-	return n
-}
 
 func isDefaultName(branch string) bool { return branch == "main" || branch == "master" }
 
