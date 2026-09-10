@@ -130,6 +130,7 @@ common_accounts='
     "GET /projects/7") echo "200"; echo "{\"only_allow_merge_if_pipeline_succeeds\":true,\"only_allow_merge_if_all_discussions_are_resolved\":true}"; return ;;
     "GET /projects/7/protected_tags") echo "200"; echo "[]"; return ;;
     "POST /projects/7/protected_tags") echo "201"; echo "{}"; return ;;
+    "POST /projects/7/labels") echo "201"; echo "{}"; return ;;
     "PUT /user/avatar") echo "200"; echo "{\"avatar_url\":\"/uploads/-/system/user/avatar/1/x.png\"}"; return ;;
   esac
   case "$m $p" in
@@ -506,6 +507,154 @@ if grep -q '^GET https://gitlab.com/api/v4/projects/7 ' "$FAKE_CURL_LOG"; then
 else
   bad "T8 the project settings are read back after the write"
 fi
+
+# ===========================================================================
+# T9 — project labels (assay#774): a clean run creates every LABEL_TABLE row
+#      via POST /projects/:id/labels, the queue pair carries the leading-#
+#      color GitLab requires, and each create is reported.
+# ===========================================================================
+newcase
+cat > "$FAKE_CURL_RESPONDER" <<RESP
+$bump_helper
+PLANFIELD=',"plan":"free"'
+respond() {
+  local m="\$1" p="\$2" n
+  $common_accounts
+  case "\$m \$p" in
+    "GET /projects/7/protected_branches/main")
+      echo "200"
+      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
+      return ;;
+    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
+    "GET /projects/7/approvals")
+      echo "200"
+      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
+      return ;;
+  esac
+  echo "500"; echo '{"unstubbed":true}'
+}
+RESP
+run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
+posts=$(logn "^POST https://gitlab.com/api/v4/projects/7/labels")
+if [ "$posts" = "9" ]; then
+  ok "T9 a clean run creates all nine project labels (one POST each)"
+else
+  bad "T9 a clean run creates all nine project labels (got $posts POSTs)"
+fi
+if grep -q 'BODY POST .*/projects/7/labels |.*"name":"authorization-needed".*"color":"#FBCA04"' "$FAKE_CURL_LOG"; then
+  ok "T9 authorization-needed is created with the leading-# color GitLab requires"
+else
+  bad "T9 authorization-needed is created with the leading-# color GitLab requires"
+fi
+if grep -q 'BODY POST .*/projects/7/labels |.*"name":"approval-needed".*"color":"#5319E7"' "$FAKE_CURL_LOG"; then
+  ok "T9 approval-needed is created with the leading-# color GitLab requires"
+else
+  bad "T9 approval-needed is created with the leading-# color GitLab requires"
+fi
+if has "label: created 'authorization-needed'" && has "label: created 'approval-needed'"; then
+  ok "T9 each label create is reported"
+else
+  bad "T9 each label create is reported"
+fi
+if [ "$RC" = "0" ]; then ok "T9 a clean run with labels exits 0"; else bad "T9 a clean run with labels exits 0 (rc=$RC)"; fi
+
+# ===========================================================================
+# T9b — label creation is idempotent: a duplicate-name response (409 on some
+#       GitLab versions, 400 "already exists" on others) is a named no-op, not
+#       a failure — the same ensure semantics the forge seam uses.
+# ===========================================================================
+newcase
+cat > "$FAKE_CURL_RESPONDER" <<RESP
+$bump_helper
+PLANFIELD=',"plan":"free"'
+respond() {
+  local m="\$1" p="\$2" n
+  case "\$m \$p" in
+    "POST /projects/7/labels")
+      n=\$(bump labelpost)
+      if [ "\$n" = "1" ]; then echo "409"; echo '{"message":["Label already exists"]}';
+      else echo "400"; echo '{"message":{"title":["has already been taken"]}}'; fi
+      return ;;
+  esac
+  $common_accounts
+  case "\$m \$p" in
+    "GET /projects/7/protected_branches/main")
+      echo "200"
+      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
+      return ;;
+    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
+    "GET /projects/7/approvals")
+      echo "200"
+      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
+      return ;;
+  esac
+  echo "500"; echo '{"unstubbed":true}'
+}
+RESP
+run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
+if has "already exists (no-op)" && [ "$RC" = "0" ]; then
+  ok "T9b a duplicate label (409 / 400-already-exists) is a no-op, not a failure (rc=$RC)"
+else
+  bad "T9b a duplicate label (409 / 400-already-exists) is a no-op, not a failure (rc=$RC)"
+fi
+if has "not created"; then
+  bad "T9b a duplicate label must not be recorded as a failure"
+else
+  ok "T9b a duplicate label is not recorded as a failure"
+fi
+
+# ===========================================================================
+# T9c — a label create that fails for any OTHER reason (e.g. 403) is recorded
+#       and the run exits non-zero, but does NOT abort the run.
+# ===========================================================================
+newcase
+cat > "$FAKE_CURL_RESPONDER" <<RESP
+$bump_helper
+PLANFIELD=',"plan":"free"'
+respond() {
+  local m="\$1" p="\$2" n
+  case "\$m \$p" in
+    "POST /projects/7/labels") echo "403"; echo '{"message":"403 Forbidden"}'; return ;;
+  esac
+  $common_accounts
+  case "\$m \$p" in
+    "GET /projects/7/protected_branches/main")
+      echo "200"
+      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
+      return ;;
+    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
+    "GET /projects/7/approvals")
+      echo "200"
+      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
+      return ;;
+  esac
+  echo "500"; echo '{"unstubbed":true}'
+}
+RESP
+run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
+if has "label 'authorization-needed' not created (HTTP 403)" && [ "$RC" != "0" ]; then
+  ok "T9c a forbidden label create is recorded and the run exits non-zero (rc=$RC)"
+else
+  bad "T9c a forbidden label create is recorded and the run exits non-zero (rc=$RC)"
+fi
+if has "configured: pipelines must succeed before merge"; then
+  ok "T9c a failed label step does not abort the steps around it"
+else
+  bad "T9c a failed label step does not abort the steps around it"
+fi
+
+# ===========================================================================
+# T9d — dry-run enumerates the labels and makes zero network calls.
+# ===========================================================================
+newcase
+echo 'respond() { echo "500"; echo "{}"; }' > "$FAKE_CURL_RESPONDER"
+run_impl --dry-run --group example --prefix myorg --project proj
+if has "would create project label 'authorization-needed'" && has "would create project label 'approval-needed'"; then
+  ok "T9d dry-run enumerates the queue-legibility labels"
+else
+  bad "T9d dry-run enumerates the queue-legibility labels"
+fi
+if [ ! -s "$FAKE_CURL_LOG" ]; then ok "T9d dry-run makes zero network calls"; else bad "T9d dry-run makes zero network calls"; fi
 
 echo
 echo "passed: $pass   failed: $fail"
