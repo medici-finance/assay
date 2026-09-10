@@ -33,6 +33,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // tierClause is the pickup-time STOP a strong-tier item carries. It is emitted VERBATIM
@@ -202,12 +204,19 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 		"clauses below); it never implements, merges, or flips a PR ready.\n\n", prRef(o.pr), repo)
 	b.WriteString("Review the PULL REQUEST's HEAD, not the fresh branch your worktree was cut on. Fetch the " +
 		"head into your worktree and check it out first:\n\n")
+	// The server-side ref the change's HEAD is advertised under is FORGE-specific — GitHub
+	// publishes it at refs/pull/<N>/head, GitLab at refs/merge-requests/<iid>/head (the MR's
+	// own pipeline.ref). The refspec MUST follow the resolved forge of the target repo, or a
+	// GitLab reviewer that follows this prompt verbatim fetches a GitHub-shaped coordinate that
+	// does not exist and cannot check out the head it was dispatched to verdict (#773). The
+	// forge was resolved pre-claim (validateCallerPreconditions) and carried on the plan.
+	head := reviewHeadRefPrefix(plan.forgeKind)
 	if o.pr > 0 {
-		fmt.Fprintf(b, "```\ngit -C %s fetch origin pull/%d/head && git -C %s checkout FETCH_HEAD\n```\n\n",
-			home, o.pr, home)
+		fmt.Fprintf(b, "```\ngit -C %s fetch origin %s/%d/head && git -C %s checkout FETCH_HEAD\n```\n\n",
+			home, head, o.pr, home)
 	} else {
-		fmt.Fprintf(b, "```\ngit -C %s fetch origin pull/<N>/head && git -C %s checkout FETCH_HEAD\n```\n\n",
-			home, home)
+		fmt.Fprintf(b, "```\ngit -C %s fetch origin %s/<N>/head && git -C %s checkout FETCH_HEAD\n```\n\n",
+			home, head, home)
 	}
 	b.WriteString("Release the dispatch claim once your verdict is posted:\n\n")
 	writeReleaseClaim(b, o, plan, repo)
@@ -258,6 +267,22 @@ func issueNumFromItem(item string) (int, bool) {
 		return 0, false
 	}
 	return n, true
+}
+
+// reviewHeadRefPrefix is the forge-specific server-side ref NAMESPACE under which a change's
+// HEAD commit is advertised, so a reviewer can fetch the reviewed head: GitHub publishes it at
+// refs/pull/<N>/head, GitLab at refs/merge-requests/<iid>/head (the MR's own pipeline.ref).
+// The prefix follows the resolved forge because a GitHub `pull/<N>/head` fetch against a GitLab
+// MR is the wrong coordinate — the reviewer cannot check out the head it was dispatched to
+// verdict (#773). GitHub is the fallback shape: a review dispatch always resolves the forge
+// pre-claim (an unresolvable one refuses the dispatch), so an empty kind here is only reachable
+// on a code path that bypassed that resolution, where the historical GitHub shape is the safe
+// default rather than an empty ref.
+func reviewHeadRefPrefix(kind deskkit.ForgeKind) string {
+	if kind == deskkit.ForgeGitLab {
+		return "merge-requests"
+	}
+	return "pull"
 }
 
 // prRef names the PR under review for the assignment prose. --pr is optional on a review
