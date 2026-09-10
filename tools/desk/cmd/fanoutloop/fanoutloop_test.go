@@ -23,7 +23,7 @@ import (
 // milliseconds on an idle machine, so the ceiling is only ever hit on a genuine no-exit bug.
 //
 // The old 5s ceiling was calibrated to unloaded speed and reddened intermittently under the CPU
-// saturation of a whole-module `go test ./...` run (assay#738): every subtest's goroutines get
+// saturation of a whole-module `go test ./...` run (#738): every subtest's goroutines get
 // starved and a near-instant condition misses a 5s poll deadline, even though nothing is actually
 // wedged. A genuinely load-tolerant ceiling removes that timing/load assumption without weakening
 // any assertion — a real wedge still fails, just after a longer, unambiguous wait. Kept well under
