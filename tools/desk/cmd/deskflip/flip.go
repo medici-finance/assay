@@ -426,9 +426,30 @@ func checkAppToken(o flipOpts, fr deskkit.ForgeRepo) (deskkit.Forge, deskkit.For
 			"condition %s: loop %s has no App role, so which identity this flip would be written under "+
 				"cannot be established.", condAppToken, flipRole), nil)
 	}
-	// The lookup runs HERE, before the resolver, so the refusal can name the role and the
-	// token PATH — which is what an operator needs and what a generic custody failure from
-	// inside the resolver would not carry.
+	// WHICH forge serves this repo is resolved BEFORE any credential is fetched, because the
+	// two forges keep custody in DIFFERENT places: a GitHub App installation token is MINTED
+	// (mintTokenFn, below), a GitLab PAT is a provisioned file the resolver READS. The pre-772
+	// code minted a GitHub App token here UNCONDITIONALLY, so a GitLab adopter's flip died with
+	// `no App ID for role "reviewer": set REVIEWER_APP_ID` — a GitHub credential error on a repo
+	// that authenticates with a PAT, sending the operator hunting apps.env (medici-finance/assay#772).
+	// A could-not-check resolution is NOT "it is GitLab": it falls through to the GitHub mint,
+	// keeping every repo whose forge this build cannot positively resolve byte-identical to before.
+	if fk, fkErr := deskkit.ForgeKindFor(fr); fkErr == nil && fk.Kind != deskkit.ForgeGitHub {
+		// A non-GitHub forge does not mint a GitHub App token. ResolveForge obtains the role's
+		// credential from THAT forge's own custody path (GitLab: the provisioned PAT file) and
+		// refuses — naming that file and the search path — when it is missing, so there is no
+		// ambient-credential fallback on this branch any more than on the GitHub one below.
+		fg, res, rerr := deskkit.ResolveForge(fr, role)
+		if rerr != nil {
+			return nil, deskkit.ForgeResolution{}, rerr
+		}
+		o.say("%s OK: writes authenticate as the %s App on %s (%s)",
+			condAppToken, role, res.Kind, res.Source)
+		return fg, res, nil
+	}
+	// GitHub (or a forge this build could not positively resolve). The mint runs HERE, before
+	// the resolver, so the refusal can name the role and the token PATH — which is what an
+	// operator needs and what a generic custody failure from inside the resolver would not carry.
 	_, path, err := mintTokenFn(role, fr.Slug())
 	if err != nil {
 		return nil, deskkit.ForgeResolution{}, deskkit.Refused(fmt.Sprintf(
