@@ -14,10 +14,20 @@ import (
 // The legacy `branches/{b}/protection/required_status_checks` endpoint answers 403 for a
 // token without the `administration` scope (every reviewer/worker App token). A 403 is NOT
 // "nothing required" and must NOT be read as green off an absent rollup; but neither is it a
-// dead end, because two OTHER endpoints the same token CAN read answer the same question:
+// dead end, because two OTHER endpoints the same token CAN read narrow the question:
 //   - GET /repos/{o}/{r}/branches/{b}        → `.protected` (is anything protecting it at all)
-//   - GET /repos/{o}/{r}/rules/branches/{b}  → the active rules, incl. required_status_checks
-// These tests pin the four branches of that fallback.
+//   - GET /repos/{o}/{r}/rules/branches/{b}  → the branch's RULESET rules (NOT classic
+//                                              protection, which the rules API cannot see)
+//
+// Because this is a flip GATE it fails CLOSED. The ONLY admin-free empty/green answer is a
+// branch that is positively `protected: false`. A branch that is `protected: true` but whose
+// rules API names no required contexts is the tell of CLASSIC branch protection (invisible to
+// the rules API) and is could-not-check — NEVER empty, or deskflip would flip an un-green PR
+// off an absent rollup. These tests pin all five branches of that fallback.
+//
+// Real-world shapes the fixtures model: kubernetes/kubernetes@master and golang/go@master use
+// classic protection with empty rules (⇒ could-not-check now); medici-finance/assay is
+// ruleset-based (⇒ its required contexts).
 
 // reqChecksMux routes the three endpoints RequiredStatusChecks may touch. A handler set to nil
 // means "endpoint not expected"; if it is hit anyway the test fails. Each handler returns the
@@ -146,6 +156,24 @@ func TestRequiredStatusChecksAdminFreeFallback(t *testing.T) {
 				legacyStatus: http.StatusForbidden,
 				branchStatus: http.StatusForbidden,
 				rulesStatus:  http.StatusForbidden,
+			},
+			wantErr:     true,
+			wantSawBr:   true,
+			wantSawRule: true,
+		},
+		{
+			// (e) legacy 403 + protected:true + rules EMPTY ⇒ could-not-check. This is the
+			// CLASSIC-branch-protection tell: the rules API surfaces only rulesets, so a
+			// classically-protected branch reads protected with no rules. It must fail CLOSED
+			// (Unverifiable), never return an empty/green set — otherwise deskflip flips an
+			// un-green PR off an absent rollup. Models kubernetes/kubernetes@master.
+			name: "legacy_403_protected_rules_empty_unverifiable",
+			mux: &reqChecksMux{
+				legacyStatus: http.StatusForbidden,
+				branchStatus: http.StatusOK,
+				branchBody:   `{"name":"master","protected":true}`,
+				rulesStatus:  http.StatusOK,
+				rulesBody:    `[]`,
 			},
 			wantErr:     true,
 			wantSawBr:   true,
