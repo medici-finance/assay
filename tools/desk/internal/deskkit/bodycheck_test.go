@@ -1200,6 +1200,70 @@ func TestEncryptedExemptionsDoNotWidenFalseNegatives(t *testing.T) {
 	}
 }
 
+// TestPGPFingerprintExemption pins Rule 3: a 40-char UPPERCASE-hex OpenPGP key fingerprint
+// anchored to a sops `pgp:`/`fp:` recipient field is not withheld content and must pass,
+// while the anchor stays load-bearing — a bare uppercase-hex run, and a genuine
+// high-entropy token wearing the same field, both still refuse.
+//
+// The bug this fixes: a `.sops.yaml` recipient list and a sops `fp:` field carry the
+// canonical fingerprint shape (40 UPPERCASE hex). isGitSHA exempts only LOWERCASE hex, so
+// the uppercase fingerprint fell through to the high-entropy-run refusal — deskevidence
+// refusing to write a body that merely quoted a public key fingerprint.
+func TestPGPFingerprintExemption(t *testing.T) {
+	// Canonical OpenPGP v4 fingerprints: 40 UPPERCASE hex. Split into fragments for the same
+	// reason scanSecret40 is — deskpr scans the branch diff, and the scanner in force while
+	// THIS PR is open is exactly the one that (pre-fix) refuses a contiguous 40-hex run on an
+	// added line. These are house placeholder values, not real key material.
+	fpr := "D9C5F0C3E1A2B4D6F809" + "1A2B3C4D5E6F7A8B9C0D"
+	fpr2 := "A1B2C3D4E5F607182930" + "4B5C6D7E8F90ABCDEF01"
+
+	// PASS: an uppercase-hex fingerprint anchored to a recipient field. None of these carry a
+	// top-level `sops:` key, so they exercise the high-entropy loop (where the false positive
+	// lived), not the sops-encrypted-block arm.
+	pass := []struct {
+		name string
+		body string
+	}{
+		{"sops-config recipient, folded block scalar",
+			"creation_rules:\n  - path_regex: secrets/.*\\.yaml$\n    pgp: >-\n      " + fpr + "\n"},
+		{"sops-config recipient, inline scalar",
+			"creation_rules:\n  - pgp: " + fpr + "\n"},
+		{"sops-config recipient, quoted comma-list of two",
+			"creation_rules:\n  - pgp: '" + fpr + "," + fpr2 + "'\n"},
+		{"fp field on a recipient line",
+			"recipients:\n  - fp: " + fpr + "\n"},
+	}
+	for _, c := range pass {
+		t.Run("pass/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err != nil {
+				t.Errorf("an uppercase-hex PGP fingerprint anchored to a %s was refused as "+
+					"withheld content: %v", c.name, err)
+			}
+		})
+	}
+
+	// REFUSE: the anchor is load-bearing and it does not launder a genuine secret.
+	refuse := []struct {
+		name string
+		body string
+	}{
+		// The SAME fingerprint with no pgp:/fp: key in front of it is a bare 40-uppercase-hex
+		// run and stays refused — proving the exemption is the anchor, not the hex shape.
+		{"bare uppercase-hex run, no recipient key", "note: " + fpr + "\n"},
+		// A genuine high-entropy token is not pure uppercase hex, so Rule 3 never fires even
+		// when the token wears a recipient field: the field cannot launder a real secret.
+		{"real secret behind a fp: field", "fp: " + scanSecret40 + "\n"},
+		{"real secret behind a pgp: field", "pgp: " + scanSecret40 + "\n"},
+	}
+	for _, c := range refuse {
+		t.Run("refuse/"+c.name, func(t *testing.T) {
+			if err := BodyCheck([]byte(c.body)); err == nil {
+				t.Errorf("%s was admitted — Rule 3 must not exempt it", c.name)
+			}
+		})
+	}
+}
+
 // TestLongIdentifiersAndOneLetterWords pins the two moves that unblocked verify-desk's
 // Evidence writes:
 //
