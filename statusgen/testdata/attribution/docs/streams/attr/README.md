@@ -19,3 +19,4 @@ track: platform
 | 06 | [Implemented, not yet in scope](./brief-06-implemented.md) | 0 | S | implemented | garbage-not-dated | — |
 | 07 | [Legacy done, exempt](./brief-07-legacy.md) | 0 | S | done | grandfathered | grandfathered |
 | 08 | [Evidence all implementer, escaped pipe](./brief-08-escapedpipe.md) | 0 | S | verified | 2026-07-08 sonnet-verifier | 2026-07-08 model:sonnet |
+| 09 | [Evidence self-labels non-implementer](./brief-09-nonimpl-selflabel.md) | 0 | S | verified | 2026-07-08 opus-verifier | 2026-07-08 model:sonnet |
