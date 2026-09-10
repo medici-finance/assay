@@ -5,8 +5,9 @@
 # Creates the seven per-role service accounts, their group memberships and
 # personal access tokens, has each new account set its own avatar, then (when
 # --project is given) configures the fleet project's protected `main` branch,
-# MR-approval settings, protected release tags, and the pipeline /
-# all-discussions-resolved merge gates. Prints a plain-text summary ending with the
+# MR-approval settings, protected release tags, the pipeline /
+# all-discussions-resolved merge gates, and the queue-legibility / provenance
+# labels the desk verbs reach for. Prints a plain-text summary ending with the
 # HUMAN-ONLY remainder this script never attempts: Ultimate-tier settings, the
 # group token-expiry policy, and creation of the locked ci-config project.
 #
@@ -51,6 +52,7 @@
 #   POST   api/v4/projects/:id/protected_tags       (create_access_level SCALAR — Free)
 #   PUT    api/v4/projects/:id                       (pipeline + all-discussions-resolved merge checks)
 #   GET    api/v4/projects/:id                       (merge-checks read-back)
+#   POST   api/v4/projects/:id/labels                 (queue-legibility + provenance labels, #774)
 #
 # One non-API URL is fetched, and only when avatars are left at their default:
 #   GET    https://assay.guide/assets/app-icon-<role>.png   (public role icons)
@@ -106,6 +108,30 @@ MERGE_ACCESS_LEVEL=40
 # owner can create or move a tag, so a release tag is immutable to every bot.
 PROTECTED_TAG_GLOB='*'
 PROTECTED_TAG_CREATE_LEVEL=40
+
+# Project labels the desk verbs and the operating skills reach for (#774).
+# This is the GitLab twin of the GitHub `create-labels` PRIMITIVE
+# (docs/adopting-assay.md) — the SAME set of names, colors and descriptions, so
+# the two adoption profiles are label-parity. A label that is absent when a tool
+# reaches for it degrades SILENTLY on either forge: `deskflip`'s
+# `authorization-needed` -> `approval-needed` queue swap fails, and
+# `deskfile --raised-by <role>` drops the provenance stamp. Rows are
+# `name|color|description`; colors are stored bare (6 hex digits) and rendered
+# with the leading `#` GitLab requires by configure_labels (the forge seam's
+# gitlabLabelColor does the same), so the table stays forge-agnostic. The
+# `raised-by:*` rows track the roster's filing roles (ROLE_TABLE minus the
+# infra-only board-writer), matching the GitHub primitive's six.
+LABEL_TABLE='
+review-request|d4c5f9|dispatch token: a review session picks this up, runs the skill, posts the verdict
+raised-by:desk|BFDADC|filed by the process desk (the-desk)
+raised-by:worker|BFDADC|filed by a worker (worker-desk)
+raised-by:reviewer|BFDADC|filed by the reviewer desk (pr-review-desk)
+raised-by:verifier|BFDADC|filed by the verify desk (verify-desk)
+raised-by:issue-loop|BFDADC|filed by the intake/issue loop (intake-desk)
+raised-by:intake-loop|BFDADC|filed by the intake loop (roster-bound; no skill stamps it yet)
+authorization-needed|FBCA04|review lane has not approved at head — waiting on a reviewer verdict / open findings
+approval-needed|5319E7|review lane fully approved; flipped ready — waiting on the human'"'"'s merge approval
+'
 
 usage() {
   cat <<'USAGE'
@@ -849,12 +875,53 @@ configure_merge_settings() {
   fi
 }
 
+# Project labels (#774): create every LABEL_TABLE row idempotently via
+# POST /projects/:id/labels. GitLab answers a duplicate name with 409 on some
+# versions and 400 "already exists" on others — both are the success case for an
+# ensure, exactly as the forge seam's ApplyLabels treats them. Labels are
+# project-scoped, so this runs only inside the --project block. A create that
+# fails for any OTHER reason is recorded (not fatal to the steps after it), the
+# same failure-ledger discipline as every settings step above: a missing queue
+# label is a provisioning gap that makes a desk write degrade silently, never a
+# reason to abort the run.
+configure_labels() {
+  local name color desc body st msg
+  while IFS='|' read -r name color desc; do
+    [ -z "$name" ] && continue
+    body=$(jq -n --arg n "$name" --arg c "#${color}" --arg d "$desc" \
+      '{name: $n, color: $c, description: $d}')
+    gl_api POST "/projects/${PROJECT_ID}/labels" "$body"
+    st="$GL_LAST_STATUS"
+    msg=$(cat "$GL_LAST_BODY_FILE")
+    rm -f "$GL_LAST_BODY_FILE"
+    case "$st" in
+      200|201) echo "label: created '${name}' (#${color})" ;;
+      409) echo "label: '${name}' already exists (no-op)" ;;
+      400)
+        case "$msg" in
+          *"already exists"*|*"has already been taken"*)
+            echo "label: '${name}' already exists (no-op)" ;;
+          *)
+            echo "error: creating label '${name}' failed (HTTP ${st}): ${msg}" >&2
+            record_failure "label '${name}' not created (HTTP ${st}) — the desk write that reaches for it (deskflip queue swap / deskfile --raised-by) degrades silently until fixed" ;;
+        esac ;;
+      *)
+        echo "error: creating label '${name}' failed (HTTP ${st}): ${msg}" >&2
+        record_failure "label '${name}' not created (HTTP ${st}) — the desk write that reaches for it (deskflip queue swap / deskfile --raised-by) degrades silently until fixed" ;;
+    esac
+  done <<< "$LABEL_TABLE"
+}
+
 if [ -n "$PROJECT" ]; then
   if [ "$DRY_RUN" -eq 1 ]; then
     echo "[dry-run] would protect branch 'main' on project ${PROJECT}: allowed_to_push=[board-writer], allowed_to_merge=[Maintainer role]"
     echo "[dry-run] would set approvals: merge_requests_author_approval=false, merge_requests_disable_committers_approval=true"
     echo "[dry-run] would protect tags '${PROTECTED_TAG_GLOB}' with create_access_level=${PROTECTED_TAG_CREATE_LEVEL} (Maintainers)"
     echo "[dry-run] would set only_allow_merge_if_pipeline_succeeds=true and only_allow_merge_if_all_discussions_are_resolved=true"
+    while IFS='|' read -r lname _ _; do
+      [ -z "$lname" ] && continue
+      echo "[dry-run] would create project label '${lname}' (POST /projects/:id/labels, idempotent)"
+    done <<< "$LABEL_TABLE"
   else
     # A missing board-writer id no longer skips the whole block: it only rules
     # out the Premium push allowlist, which the free-tier form does not use.
@@ -881,6 +948,7 @@ if [ -n "$PROJECT" ]; then
       configure_approvals
       configure_protected_tags
       configure_merge_settings
+      configure_labels
     }
   fi
 else
