@@ -422,7 +422,9 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	darProblems, darNotices := darSyncCheck(root, changed)
 	offBoardProblems = append(offBoardProblems, darProblems...)
 	notices = append(notices, darNotices...)
-	problems = append(problems, attributionProblems(checkStreams)...)
+	attrProblems, attrNotices := attributionProblems(checkStreams)
+	problems = append(problems, attrProblems...)
+	notices = append(notices, attrNotices...)
 	// Verified-cell / Evidence-runner AGREEMENT (F-verify-self-attest family): a
 	// NOTICE per `verified`/`done` brief whose Verified cell credits a runner other
 	// than the actor who ran a strict majority of its own Evidence rows — the drift
