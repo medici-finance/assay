@@ -11,7 +11,7 @@ import (
 // payloadGolden is the EXACT SessionStart payload the generator currently
 // produces from the committed source and the committed plugin manifest
 // version. It originally locked the byte-for-byte content the hook heredoc
-// carried before the single-source refactor; it was updated (assay#730) when
+// carried before the single-source refactor; it was updated (#730) when
 // the Header's version went from a hand-typed literal ("v0.1.0", stale
 // against plugin.json's "1.0.0") to the {{VERSION}} token generate() resolves
 // against the manifest — a deliberate, documented content change, not a
@@ -100,7 +100,7 @@ func setupRoot(t *testing.T, srcContent string) string {
 
 // writeFixtureManifest writes a minimal plugin.json fixture under root so
 // residentCmd can resolve the Header's {{VERSION}} token — real resident-rules.md
-// carries the token (assay#730), so every setupRoot-based test needs a readable
+// carries the token (#730), so every setupRoot-based test needs a readable
 // manifest even when it isn't itself testing version derivation.
 func writeFixtureManifest(t *testing.T, root, version string) {
 	t.Helper()
@@ -240,9 +240,9 @@ func TestMissingSourceIsCouldNotCheck(t *testing.T) {
 	}
 }
 
-// --- the Header's {{VERSION}} token derives from the plugin manifest (assay#730) ---
+// --- the Header's {{VERSION}} token derives from the plugin manifest (#730) ---
 
-// TestHeaderVersionDerivedFromPluginManifest proves the fix for assay#730: the
+// TestHeaderVersionDerivedFromPluginManifest proves the fix for #730: the
 // generated payload carries the version FROM plugins/assay/.claude-plugin/
 // plugin.json, not a literal typed into resident-rules.md. setupRoot's fixture
 // manifest deliberately uses a version (testPluginVersion) that never appears

@@ -125,7 +125,7 @@ func cursorCmd(args []string) int {
 	}
 
 	// The Header's {{VERSION}} token derives from the plugin manifest, same
-	// rule the `resident` verb applies (assay#730) — read it only when the
+	// rule the `resident` verb applies (#730) — read it only when the
 	// Header actually carries the placeholder.
 	var version string
 	if strings.Contains(s.Header, versionPlaceholder) {

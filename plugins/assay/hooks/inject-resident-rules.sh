@@ -12,7 +12,7 @@ set -euo pipefail
 # Read it relative to THIS script, not $CLAUDE_PLUGIN_ROOT or the caller's cwd, so
 # the hook works both as the plugin invokes it and as this file's own README
 # documents running it directly (`bash hooks/inject-resident-rules.sh`).
-# assay#730: a hand-embedded copy here is exactly how the banner drifted from the
+# #730: a hand-embedded copy here is exactly how the banner drifted from the
 # plugin manifest's version (and, discovered alongside it, from the payload's own
 # rule 8 wording) — a single generated file removes the second copy to drift from.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

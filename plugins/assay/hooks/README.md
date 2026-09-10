@@ -19,7 +19,7 @@ mechanism); `inject-resident-rules.sh` reads the generated
 banner's version is derived from `plugins/assay/.claude-plugin/plugin.json`,
 never hand-typed. Do not restate a version number, or any rule text, directly
 in this README or the script — that is the drift `harnessgen resident --check`
-exists to catch (assay#730).
+exists to catch (#730).
 
 ### Scope — this fires in EVERY session
 

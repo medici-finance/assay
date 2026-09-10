@@ -82,7 +82,7 @@ func residentCmd(args []string) int {
 	}
 
 	// The Header's {{VERSION}} token derives from the plugin manifest, never a
-	// literal typed into resident-rules.md (assay#730) — read it only when the
+	// literal typed into resident-rules.md (#730) — read it only when the
 	// Header actually asks for it, so a Header with no placeholder never
 	// requires the manifest to exist.
 	var version string

@@ -146,7 +146,7 @@ func parseSource(content string) (source, error) {
 // version number (e.g. "RESIDENT OPERATING RULES (assay plugin {{VERSION}}).").
 // substituteHeaderVersion is the ONLY place that resolves it, so the banner
 // version has exactly one derivation path across every generated artifact
-// (assay#730: the banner previously hard-coded "v0.1.0" and drifted from
+// (#730: the banner previously hard-coded "v0.1.0" and drifted from
 // plugins/assay/.claude-plugin/plugin.json's real version).
 const versionPlaceholder = "{{VERSION}}"
 
