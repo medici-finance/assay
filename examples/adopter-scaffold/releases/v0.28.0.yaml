@@ -5,10 +5,10 @@
 # medici-finance/assay#453). The suite version this scaffold is pinned to (see
 # ../.assay-versions). The per-artifact tags match, line-for-line, the artifact
 # lines in .assay-versions, so `deskversion` resolves this tree to a single
-# KNOWN umbrella v0.28.0. `upgrade-assay --to v1.0.2` moves it up to
-# releases/v1.0.2.yaml, the LATEST umbrella, running the v0.28.0 → v1.0.0 flag-day
+# KNOWN umbrella v0.28.0. `upgrade-assay --to v1.0.3` moves it up to
+# releases/v1.0.3.yaml, the LATEST umbrella, running the v0.28.0 → v1.0.0 flag-day
 # migration on the way through; `--to v1.0.0` still works and stops at the flag day,
-# and `--to v1.0.1` at the patch after it.
+# and `--to v1.0.1` or `--to v1.0.2` at the patches after it.
 # Digests are fixture placeholders.
 umbrella: v0.28.0
 artifacts:

@@ -19,7 +19,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/21 | 2026-09-10 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-10 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/8 | 2026-09-10 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/12 | 2026-09-10 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/13 | 2026-09-10 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/14 | 2026-09-10 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-10 |  |
 | [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 6/6 | 2026-09-10 |  |
@@ -64,9 +64,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | apps-installer | 05 | implemented | 3000 | 2 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
+| forge-neutral | 04 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | forge-neutral | 06 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
-| forge-neutral | 04 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-neutral | 05 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
@@ -107,7 +107,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| forge-neutral | 01 [exec:strong] | implemented | 7500 | 11 | — | — | — |
+| forge-neutral | 01 [exec:strong] | implemented | 8000 | 12 | — | — | — |
 | harness-portability | 03 | implemented | 5000 | 8 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -230,7 +230,7 @@ _None._
 - 07 GitHub forge backend on go-gh — retire the exec-`gh` shell path — implemented (wave 2)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
 
-### forge-neutral (12 open)
+### forge-neutral (13 open)
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
@@ -244,6 +244,7 @@ _None._
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
 - 12 deskboard non-board reads onto the seam — implemented (wave 4)
+- 13 Write verbs C — deskpr, deskfile and deskclose onto the resolver — todo (wave 3)
 
 ### harness-portability (13 open)
 
@@ -383,4 +384,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**16** streams (**16** active, **0** paused) · **53/148** briefs done · completed initiatives: see `docs/archive/`
+**16** streams (**16** active, **0** paused) · **53/149** briefs done · completed initiatives: see `docs/archive/`

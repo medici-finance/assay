@@ -1,7 +1,8 @@
 # Composition manifest for umbrella v1.0.1 — adopter-scaffold example.
 #
-# A PATCH step, no longer the latest: v1.0.2 has since superseded it as the upgrade
-# target (see releases/v1.0.2.yaml). This manifest stays because a tree pinned at
+# A PATCH step, no longer the latest: v1.0.3 has since superseded it as the upgrade
+# target (see releases/v1.0.3.yaml, with releases/v1.0.2.yaml the patch in between).
+# This manifest stays because a tree pinned at
 # v1.0.1 still has to resolve. It superseded v1.0.0 as the upgrade target without
 # superseding the flag day: the brief-v1 → brief-v2
 # migration (migrations/0001-v0.28.0-to-v1.0.0-derived-board.md) still spans
