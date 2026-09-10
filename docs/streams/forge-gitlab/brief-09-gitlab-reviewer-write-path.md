@@ -18,7 +18,7 @@ unblocks: []
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
-issues: ["#795"]
+issues: [795]
 schema: brief-v2
 authored: 2026-09-10 by forge-gitlab authoring session
 sources:
