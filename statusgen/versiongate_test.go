@@ -114,7 +114,7 @@ func TestSameTagPinLint_ExemptionMarker(t *testing.T) {
 	foreign := "assay v1.0.0\n" +
 		"statusgen v1.0.0 aaaa\n" +
 		"desk-tools v1.0.0 bbbb\n" +
-		"reconciler v2.4.1 dddd # same-tag: exempt — separate release cadence\n"
+		"example-reconciler v2.4.1 dddd # same-tag: exempt — separate release cadence\n"
 	if p, ok := sameTagPinLint(write(t, foreign)); ok {
 		t.Errorf("exempt foreign artifact should clear the lint, got PROBLEM: %s", p)
 	}
@@ -124,7 +124,7 @@ func TestSameTagPinLint_ExemptionMarker(t *testing.T) {
 	mixed := "assay v1.0.0\n" +
 		"statusgen v1.0.0 aaaa\n" +
 		"desk-tools v0.13.0 bbbb\n" +
-		"reconciler v2.4.1 dddd # same-tag: exempt — separate release cadence\n"
+		"example-reconciler v2.4.1 dddd # same-tag: exempt — separate release cadence\n"
 	p, ok := sameTagPinLint(write(t, mixed))
 	if !ok {
 		t.Fatal("unexempted mixed tags must still PROBLEM")

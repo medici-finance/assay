@@ -70,7 +70,7 @@ Two legitimate states need to opt one line out of the comparison without hiding 
 Declare the exemption **per line** with a trailing comment:
 
 ```
-reconciler v2.4.1 <sha256>  # same-tag: exempt — separate release cadence
+example-reconciler v2.4.1 <sha256>  # same-tag: exempt — separate release cadence
 desk-tools-guard v0.13.0 <sha256>  # same-tag: exempt — frozen by maintainer ruling
 ```
 
