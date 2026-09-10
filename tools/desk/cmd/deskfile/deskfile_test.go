@@ -180,6 +180,10 @@ func withEnv(t *testing.T) *[][]string {
 		return oldExec(name, args...)
 	}
 	t.Cleanup(func() { execCommand = oldExec })
+
+	// Since the write-verbs-C migration deskfile reaches the forge through forgeForFn, not `gh`.
+	// Install a recording fake driven by the same FAKEGH_* env; curForge is the assertion handle.
+	curForge = installFakeForge(t)
 	return calls
 }
 
@@ -282,14 +286,16 @@ func readAudit(t *testing.T) []deskkit.Entry {
 
 // --- argv assertions --------------------------------------------------------------
 
-func ghCalls(calls [][]string) [][]string {
-	var out [][]string
-	for _, c := range calls {
-		if len(c) > 0 && filepath.Base(c[0]) == "gh" {
-			out = append(out, c)
-		}
+// ghCalls returns the forge ops deskfile performed, as canonical gh-shaped pseudo-argvs. Since
+// the write-verbs-C migration deskfile no longer shells `gh`; the ops go through the fake Forge
+// (curForge), and this synthesises the argv the assertions inspect from what it recorded, so the
+// existing anyCall / writes assertions read unchanged. The `calls` argument (real subprocess
+// argv, now only `desktoken`) is retained for signature compatibility and ignored.
+func ghCalls(_ [][]string) [][]string {
+	if curForge == nil {
+		return nil
 	}
-	return out
+	return curForge.synthGH()
 }
 
 func anyCall(calls [][]string, want ...string) bool {
@@ -1431,9 +1437,6 @@ func TestPolicyConstantsPinned(t *testing.T) {
 	if classLabelBoost != 0.15 {
 		t.Errorf("classLabelBoost = %v, want 0.15", classLabelBoost)
 	}
-	if searchLimit != "20" {
-		t.Errorf("searchLimit = %q, want \"20\"", searchLimit)
-	}
 	// The boost must not be able to mint a match from nothing even if both move.
 	if classLabelBoost >= matchThreshold {
 		t.Errorf("classLabelBoost %v >= matchThreshold %v — the boost alone could trigger a match",
@@ -1484,28 +1487,37 @@ func TestMatchScore(t *testing.T) {
 // search (verified live: `deskfile check` against this repo's own open issue #156, whose
 // title tokenizes to 11 terms, found nothing before this fix and found it after).
 //
-// This is a pure-function test on searchArgs itself (no fake-gh harness involved) because
-// the test double in this file answers every `search issues` call from FAKEGH_SEARCH_HITS
-// regardless of query content — it cannot distinguish a phrase-quoted argv from a
-// term-per-argv one. TestSearchQueryCarriesNoQualifiers covers the argv SHAPE end-to-end
-// through the CLI; this test pins the token-count invariant precisely.
-func TestSearchArgsOneTokenPerArgv(t *testing.T) {
-	// A realistic, longish issue title — the exact shape that silently broke: 7+ scorable
-	// tokens once stopwords ("for", "the", "same") are stripped.
+// Since the write-verbs-C migration the query goes to Forge.SearchIssues as a single free-text
+// string (the backend runs it as AND-of-terms scoped to the repo's issues), rather than
+// token-per-argv to `gh search issues`. This pins the equivalent invariant at the new seam: the
+// query the backend receives is the tokenised terms joined with SPACES (AND-of-terms), and it
+// carries no `:` qualifier character — tokenize strips to [a-z0-9], so a title like "bugs-gc:
+// prune …" can never be reinterpreted as a search scope (the #156 fail-open the argv-per-token
+// fix protected).
+func TestSearchQueryIsAndOfTermsNotAPhrase(t *testing.T) {
+	withEnv(t)
+	// A realistic, longish issue title — 7+ scorable tokens once stopwords are stripped.
 	title := "Parallel review lanes file duplicate issues for the same finding — two pairs in seven minutes"
 	tokens := tokenize(title)
 	if len(tokens) < 7 {
-		t.Fatalf("fixture title tokenizes to only %d tokens, want >= 7 to exercise the bug: %v", len(tokens), tokens)
+		t.Fatalf("fixture title tokenizes to only %d tokens, want >= 7: %v", len(tokens), tokens)
 	}
 
-	args := searchArgs(tokens)
-	if len(args) != len(tokens) {
-		t.Fatalf("searchArgs(%v) returned %d argv element(s) %v, want %d (one per token) — "+
-			"a joined/collapsed result reintroduces the phrase-quoting bug", tokens, len(args), args, len(tokens))
+	rc, out := runCapture([]string{"check", "-R", allowedRepo, "--title", title})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("check on a unique title should pass, got %d\n%s", rc, out)
 	}
-	for i, tok := range tokens {
-		if args[i] != tok {
-			t.Fatalf("searchArgs token %d = %q, want %q (order/identity must be preserved)", i, args[i], tok)
+	got := curForge.lastQuery
+	if got != strings.Join(tokens, " ") {
+		t.Fatalf("SearchIssues query = %q, want the tokens space-joined %q (AND-of-terms, not a phrase)",
+			got, strings.Join(tokens, " "))
+	}
+	if strings.Contains(got, ":") {
+		t.Fatalf("the search query carries a %q qualifier character: %q — tokenize must strip it", ":", got)
+	}
+	for _, tok := range tokens {
+		if !strings.Contains(" "+got+" ", " "+tok+" ") {
+			t.Fatalf("the search query dropped token %q: %q", tok, got)
 		}
 	}
 }

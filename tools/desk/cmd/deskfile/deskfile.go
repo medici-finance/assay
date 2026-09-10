@@ -1,13 +1,10 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -68,11 +65,6 @@ const (
 	// toFlag is the addressee flag name, restated once so its NOTICE text and usage
 	// string cannot drift from the flag registration.
 	toFlag = "to"
-	// labelListLimit bounds the label-existence probe. A repo with MORE labels than this
-	// can have its stamp label paged out of the answer — in which case the probe reports
-	// it missing and the filing lands UNSTAMPED with a NOTICE. That is the safe
-	// direction: the bound can cost a stamp, never invent one.
-	labelListLimit = "500"
 
 	stampOutcomeStamped   = "raised-by=%s"
 	stampOutcomeOmitted   = "raised-by=UNSTAMPED:not-requested"
@@ -377,61 +369,6 @@ func newFlagSet(name string) *flag.FlagSet {
 	return fs
 }
 
-// --- forge support gate --------------------------------------------------------------
-//
-// deskfile's issue operations — the dedupe search (`gh search issues`), the label-existence
-// probe (`gh label list`), the create (`gh issue create`) and the attach (`gh issue
-// comment`) — every one shells `gh`, which speaks to GitHub ONLY. On a repo whose configured
-// forge is GitLab those calls still go to GitHub's API for a repo that does not exist there,
-// and fail with a GitHub GraphQL "Could not resolve to a Repository" that reads like a
-// permissions or typo problem — sending the operator to check their token first when the real
-// cause is that deskfile has no GitLab path at all (#687). The consequence is worse than
-// a bad message: the desks' only sanctioned escalation channel simply does not exist on
-// GitLab, and `--force-new` is no escape hatch because the create is itself the failing
-// GitHub call.
-//
-// Until deskfile's issue ops are routed through the forge backend (the forge-abstraction
-// migration; the backend is App-token-custody bound, and deskfile files under the caller's
-// AMBIENT credential and mints no token, so that re-seat is an identity-model change a human
-// must rule on — #395), requireSupportedForge REPLACES the misdirection with a NAMED
-// refusal that says what is actually true.
-//
-// It resolves the forge KIND ONLY (deskkit.ForgeKindFor) — never a backend and never a
-// credential, so it does not disturb deskfile's ambient-identity contract. It ONLY ever ADDS
-// a refusal, and only on a forge AFFIRMATIVELY resolved to something other than GitHub: a
-// repo that resolves to GitHub, OR whose forge cannot be resolved at all (could-not-check —
-// no ASSAY_REPO_FORGES entry and an absent/unmapped origin remote), is passed THROUGH
-// unchanged. deskfile has always assumed GitHub, and a resolution that cannot answer is not a
-// licence to invent a non-GitHub answer — so an unresolvable forge keeps the historical gh
-// path, which reports its own error if the assumption is wrong. No previously-working GitHub
-// filing becomes a refusal.
-func requireSupportedForge(repo string) error {
-	owner, name, ok := strings.Cut(repo, "/")
-	if !ok || strings.TrimSpace(owner) == "" || strings.TrimSpace(name) == "" {
-		// Not a resolvable owner/name slug — the caller's own repo-shape and allowed-repo
-		// checks own that; this gate does not second-guess them.
-		return nil
-	}
-	res, err := deskkit.ForgeKindFor(deskkit.ForgeRepo{Owner: owner, Name: name})
-	if err != nil {
-		// could-not-check: the forge is UNKNOWN, not known-non-GitHub. Preserve the
-		// historical GitHub-assumed behaviour rather than block a filing on an unanswerable
-		// resolution.
-		return nil
-	}
-	if res.Kind == deskkit.ForgeGitHub {
-		return nil
-	}
-	return deskkit.Refused(fmt.Sprintf(
-		"refused: deskfile cannot file on %s — its configured forge is %q (resolved via %s), but "+
-			"deskfile's issue operations (dedupe search, label-existence probe, issue create, issue "+
-			"comment) are implemented for GitHub only: they shell `gh`, which does not speak to %q. "+
-			"Routing them through the forge backend is not yet delivered. Do NOT substitute a bare "+
-			"`glab`/`gh` call — filing outside deskfile bypasses the dedupe, provenance-stamp and budget "+
-			"gates this tool exists to enforce; escalate the blocker to a human instead.",
-		repo, res.Kind, res.Source, res.Kind))
-}
-
 // --- verbs -------------------------------------------------------------------------
 
 // cmdNew implements `deskfile new -R <repo> --title <t> --body-file <f> [--label ...]
@@ -481,9 +418,13 @@ func cmdNew(args []string) (err error) {
 	ac.repo = *repo
 	ac.title = *title
 
-	// Refuse BEFORE any gh call on a forge deskfile cannot file on, so a GitLab-configured
-	// repo gets a named refusal rather than a misleading GitHub GraphQL error (#687).
-	if ferr := requireSupportedForge(*repo); ferr != nil {
+	// Resolve the forge that serves this repo under the session-role App's custody (write-verbs-C).
+	// ForgeFor RETAINS the could-not-check refusal on an unresolvable forge (no ASSAY_REPO_FORGES
+	// entry and an absent/unmapped origin), and now SERVES GitLab through the backend — the #691
+	// interim named-refusal is superseded. Minting the token here is the identity change the #781
+	// ruling confirmed; --raised-by stays a body/label attribution below.
+	fg, fr, ferr := forgeForFn(*repo)
+	if ferr != nil {
 		return ferr
 	}
 
@@ -533,7 +474,7 @@ func cmdNew(args []string) (err error) {
 	// CLOSED (exit 6): minting a possibly-duplicate issue is the expensive direction, and
 	// `check`-style certainty about absence of duplicates cannot be bought with a guess.
 	if !*forceNew {
-		cands, serr := dedupeSearch(*repo, *title)
+		cands, serr := dedupeSearch(fg, fr, *title)
 		if errors.Is(serr, errNoScorableTokens) {
 			// Not an outage: this title can never match anything, so the gate cannot run
 			// on it at all. Refuse (exit 5) with the fix in hand rather than pass a
@@ -573,17 +514,10 @@ func cmdNew(args []string) (err error) {
 		return werr
 	}
 
-	// Create the issue. argv is built literally; no caller flag reaches gh.
-	bodyPath, cleanup, terr := writeTempBody(body)
-	if terr != nil {
-		return deskkit.Unverifiable("cannot stage issue body", terr)
-	}
-	defer cleanup()
-
 	// Resolve the provenance stamp. This NEVER returns an error: every way it can fail
 	// yields an unstamped filing plus a NOTICE, because the stamp is a metric annotation
 	// and a metric must not be able to stop a filing. See the raised-by block above.
-	stampApply, stampNote, stampNotice := resolveRaisedByStamp(*repo, stampLabel)
+	stampApply, stampNote, stampNotice := resolveRaisedByStamp(fg, fr, stampLabel)
 	ac.raisedBy = stampNote
 	if stampNotice != "" {
 		fmt.Fprintln(os.Stderr, stampNotice)
@@ -592,35 +526,55 @@ func cmdNew(args []string) (err error) {
 	// Resolve the addressee stamp the same way. Like resolveRaisedByStamp it NEVER errors:
 	// an unappliable `to:` label degrades to UNADDRESSED + a NOTICE rather than blocking
 	// the filing.
-	toApply, toNote, toNotice := resolveAddressedToStamp(*repo, toLabel)
+	toApply, toNote, toNotice := resolveAddressedToStamp(fg, fr, toLabel)
 	ac.addressedTo = toNote
 	if toNotice != "" {
 		fmt.Fprintln(os.Stderr, toNotice)
 	}
 
-	ghArgs := []string{"issue", "create", "--repo", *repo, "--title", *title, "--body-file", bodyPath}
+	// User --label labels are pre-checked for existence BEFORE the filing: applying a label
+	// that does not exist would, on the old `gh issue create --label` path, fail the whole
+	// create. deskfile's mutating vocabulary is issue create + issue comment + the label
+	// RECONCILE (never a label CREATE for a metric), so a missing user label is a refusal here,
+	// not a silent mint — and the refusal comes before FileIssue so no orphan issue is left.
+	applyLabels := make([]deskkit.LabelSpec, 0, len(labels)+2)
 	for _, l := range labels {
-		ghArgs = append(ghArgs, "--label", l)
+		present, perr := labelExists(fg, fr, l)
+		if perr != nil {
+			return deskkit.Unverifiable("cannot check whether label "+l+" exists on "+*repo, perr)
+		}
+		if !present {
+			return deskkit.Refused("refused: label " + l + " does not exist on " + *repo +
+				" — create it once (a human/label action) or drop --label " + l + "; deskfile never mints a label")
+		}
+		applyLabels = append(applyLabels, deskkit.LabelSpec{Name: l})
 	}
 	if stampApply != "" {
-		ghArgs = append(ghArgs, "--label", stampApply)
+		applyLabels = append(applyLabels, deskkit.LabelSpec{Name: stampApply})
 	}
 	if toApply != "" {
-		ghArgs = append(ghArgs, "--label", toApply)
+		applyLabels = append(applyLabels, deskkit.LabelSpec{Name: toApply})
 	}
+
 	// From here on the create HAS been sent, so every outcome charges session budget —
 	// including an unconfirmable one. Set before the call, not after: an error return must
 	// carry the marker too. See createSentMarker.
 	ac.createSent = true
-	out, cerr := gh(ghArgs...)
+	ref, cerr := fg.FileIssue(fr, deskkit.IssueInput{Title: *title, Body: string(body)})
 	if cerr != nil {
-		return deskkit.Unverifiable("gh issue create failed", cerr)
+		return deskkit.Unverifiable("file issue failed", cerr)
 	}
-	url := deskkit.StripControl(strings.TrimSpace(out))
-	if num := issueNumberFromURL(url); num > 0 {
-		n := num
-		ac.target = &n
+	n := ref.Number
+	ac.target = &n
+	// Apply the resolved labels. Every label in applyLabels was confirmed to EXIST above (user
+	// labels refuse if missing; stamp/to labels resolve to "" if missing), so ApplyLabels'
+	// ensure step no-ops (the create returns already-exists) and NO label is minted.
+	if len(applyLabels) > 0 {
+		if _, lerr := fg.ApplyLabels(fr, ref.Number, deskkit.LabelChange{Add: applyLabels}); lerr != nil {
+			return deskkit.Unverifiable("apply labels to the filed issue failed", lerr)
+		}
 	}
+	url := deskkit.StripControl(ref.URL)
 	if ac.forceNewReason != "" {
 		ac.detail = "force-new: " + ac.forceNewReason + " | created " + url
 	} else {
@@ -666,8 +620,11 @@ func cmdAttach(args []string) (err error) {
 	target := *to
 	ac.target = &target
 
-	// Refuse BEFORE any gh call on a forge deskfile cannot file on (#687).
-	if ferr := requireSupportedForge(*repo); ferr != nil {
+	// Resolve the forge under the session-role App's custody (write-verbs-C). Retains the
+	// could-not-check refusal on an unresolvable forge; serves GitLab (the #691 refusal is
+	// superseded).
+	fg, fr, ferr := forgeForFn(*repo)
+	if ferr != nil {
 		return ferr
 	}
 
@@ -682,7 +639,7 @@ func cmdAttach(args []string) (err error) {
 
 	// Verify the target is OPEN before posting. An API/parse failure is unverifiable
 	// (exit 6); a non-OPEN target is refused (exit 5) with reopen-or-new guidance.
-	view, verr := viewIssue(*repo, target)
+	view, verr := viewIssue(fg, fr, target)
 	if verr != nil {
 		return deskkit.Unverifiable("cannot read issue state — refuse rather than guess", verr)
 	}
@@ -700,17 +657,11 @@ func cmdAttach(args []string) (err error) {
 		return werr
 	}
 
-	bodyPath, cleanup, terr := writeTempBody(body)
-	if terr != nil {
-		return deskkit.Unverifiable("cannot stage comment body", terr)
-	}
-	defer cleanup()
-
-	out, cerr := gh("issue", "comment", strconv.Itoa(target), "--repo", *repo, "--body-file", bodyPath)
+	ref, cerr := fg.PostComment(fr, target, string(body))
 	if cerr != nil {
-		return deskkit.Unverifiable("gh issue comment failed", cerr)
+		return deskkit.Unverifiable("post comment failed", cerr)
 	}
-	url := deskkit.StripControl(strings.TrimSpace(out))
+	url := deskkit.StripControl(ref.URL)
 	ac.detail = "commented " + url
 	fmt.Println(url)
 	return nil
@@ -749,12 +700,15 @@ func cmdCheck(args []string) (err error) {
 	ac.repo = *repo
 	ac.title = *title
 
-	// Refuse BEFORE any gh call on a forge deskfile cannot file on (#687).
-	if ferr := requireSupportedForge(*repo); ferr != nil {
+	// Resolve the forge under the session-role App's custody (write-verbs-C). check is a READ,
+	// but it reaches the forge, so it mints the session token like the other verbs; the
+	// unresolvable-forge could-not-check refusal is retained, GitLab is served (#691 superseded).
+	fg, fr, ferr := forgeForFn(*repo)
+	if ferr != nil {
 		return ferr
 	}
 
-	cands, serr := dedupeSearch(*repo, *title)
+	cands, serr := dedupeSearch(fg, fr, *title)
 	if errors.Is(serr, errNoScorableTokens) {
 		return deskkit.Refused(
 			"refused: --title normalises to no scorable tokens (only stopwords, single characters " +
@@ -798,13 +752,14 @@ func cmdCheck(args []string) (err error) {
 // is NOT treated as "absent" in the message even though both drop the stamp, because the
 // remedies differ and a caller told "create the label" during an API outage will create a
 // label that already exists and still not be stamped.
-func resolveRaisedByStamp(repo, stampLabel string) (apply, note, notice string) {
+func resolveRaisedByStamp(fg deskkit.Forge, fr deskkit.ForgeRepo, stampLabel string) (apply, note, notice string) {
+	repo := fr.Slug()
 	if stampLabel == "" {
 		return "", stampOutcomeOmitted, "NOTICE: no --" + raisedByFlag + " given — this issue is filed with " +
 			"UNKNOWN provenance and no by-desk metric can attribute it. Unknown is NOT 'human-raised'; " +
 			"it is the absence of an answer. Pass --" + raisedByFlag + " <role> to record which desk raised it."
 	}
-	present, perr := labelExists(repo, stampLabel)
+	present, perr := labelExists(fg, fr, stampLabel)
 	switch {
 	case perr != nil:
 		return "", stampOutcomeUnchecked, "NOTICE: could not check whether label " + stampLabel +
@@ -837,11 +792,12 @@ func resolveRaisedByStamp(repo, stampLabel string) (apply, note, notice string) 
 // unlike the raised-by metric where an omission is a gap worth flagging. The other three
 // outcomes (label present / label missing / probe outage) mirror the raised-by resolver
 // exactly, because `gh issue create --label <missing>` fails the whole filing the same way.
-func resolveAddressedToStamp(repo, toLabel string) (apply, note, notice string) {
+func resolveAddressedToStamp(fg deskkit.Forge, fr deskkit.ForgeRepo, toLabel string) (apply, note, notice string) {
+	repo := fr.Slug()
 	if toLabel == "" {
 		return "", toOutcomeOmitted, ""
 	}
-	present, perr := labelExists(repo, toLabel)
+	present, perr := labelExists(fg, fr, toLabel)
 	switch {
 	case perr != nil:
 		return "", toOutcomeUnchecked, "NOTICE: could not check whether label " + toLabel +
@@ -863,31 +819,23 @@ func resolveAddressedToStamp(repo, toLabel string) (apply, note, notice string) 
 // labelExists reports whether label is defined on repo. An error return is the
 // could-not-check third state — the caller must not read it as "absent".
 //
-// Bounded by labelListLimit: a repo carrying more labels than that can page the stamp
-// label out of the answer, which reports absent and costs a stamp. It can never invent
-// one, which is the direction that matters for a provenance claim.
-func labelExists(repo, label string) (bool, error) {
-	out, err := gh("label", "list", "--repo", repo, "--limit", labelListLimit, "--json", "name")
+// ListLabels reads the repo's labels; a paging bound in the backend can in principle page a
+// label out (reporting absent and costing a stamp), which is the safe direction — it can never
+// invent one, the direction that matters for a provenance claim.
+func labelExists(fg deskkit.Forge, fr deskkit.ForgeRepo, label string) (bool, error) {
+	// ListLabels READS the repo's label names and never creates one — the deliberate opposite of
+	// ApplyLabels' ensure step, which is what preserves the "file UNSTAMPED, never mint the
+	// label" behaviour. A backend error is the could-not-check THIRD state (the caller must not
+	// read it as "absent"); a successful read that does not carry the name is a definite absence.
+	names, err := fg.ListLabels(fr)
 	if err != nil {
 		return false, err
 	}
-	out = strings.TrimSpace(out)
-	if out == "" {
-		// Exit 0 with no stdout is an UNANSWERED probe, not an empty label set. The same
-		// distinction dedupeSearch draws for its own empty output.
-		return false, fmt.Errorf("gh label list returned no data")
-	}
-	var got []struct {
-		Name string `json:"name"`
-	}
-	if perr := parseJSON(out, &got); perr != nil {
-		return false, perr
-	}
-	for _, g := range got {
-		// GitHub label names are case-insensitive for uniqueness, so an existing
-		// `Raised-By:reviewer` would collide with a create of `raised-by:reviewer`.
-		// Matching the same way is what keeps the probe agreeing with the API.
-		if strings.EqualFold(strings.TrimSpace(g.Name), label) {
+	for _, n := range names {
+		// GitHub/GitLab label names are case-insensitive for uniqueness, so an existing
+		// `Raised-By:reviewer` would collide with a `raised-by:reviewer`. Matching the same way
+		// keeps the probe agreeing with the forge.
+		if strings.EqualFold(strings.TrimSpace(n), label) {
 			return true, nil
 		}
 	}
@@ -897,53 +845,26 @@ func labelExists(repo, label string) (bool, error) {
 // --- helpers -----------------------------------------------------------------------
 
 type ghIssueView struct {
-	State string `json:"state"`
-	URL   string `json:"url"`
+	State string
+	URL   string
 }
 
-// viewIssue reads an issue's state and url via the ambient gh identity.
-func viewIssue(repo string, number int) (*ghIssueView, error) {
-	out, err := gh("issue", "view", strconv.Itoa(number), "--repo", repo, "--json", "state,url")
+// viewIssue reads an issue's state and url through the resolved forge (GetIssue, which now
+// carries the URL — #691). The state comes back in the forge-neutral open|closed vocabulary; the
+// caller compares it case-insensitively against "OPEN". Both fields are remote-authored text
+// rendered into the CLOSED-target refusal, so they are control-stripped at ingest.
+func viewIssue(fg deskkit.Forge, fr deskkit.ForgeRepo, number int) (*ghIssueView, error) {
+	iss, err := fg.GetIssue(fr, number)
 	if err != nil {
 		return nil, err
 	}
-	out = strings.TrimSpace(out)
-	if out == "" {
-		return nil, fmt.Errorf("gh issue view returned no data")
+	if iss.State == "" {
+		return nil, fmt.Errorf("forge GetIssue returned no state for %s#%d", fr.Slug(), number)
 	}
-	var v ghIssueView
-	if err := parseJSON(out, &v); err != nil {
-		return nil, err
-	}
-	if v.State == "" {
-		return nil, fmt.Errorf("gh issue view JSON missing state")
-	}
-	// Sanitize at ingest: both fields are remote-authored text and both are rendered with
-	// %s into the CLOSED-target refusal. See dedupeSearch for the same treatment of titles.
-	v.State = deskkit.StripControl(v.State)
-	v.URL = deskkit.StripControl(v.URL)
-	return &v, nil
-}
-
-func parseJSON(s string, v any) error {
-	if err := json.Unmarshal([]byte(s), v); err != nil {
-		return fmt.Errorf("cannot parse gh JSON: %w", err)
-	}
-	return nil
-}
-
-// issueNumberFromURL extracts the trailing issue number from a GitHub issue URL. Returns 0
-// when the URL does not match the expected shape (the create still succeeded; the number
-// is forensic, not load-bearing for the budget).
-var issueURLRe = regexp.MustCompile(`/issues/(\d+)$`)
-
-func issueNumberFromURL(url string) int {
-	m := issueURLRe.FindStringSubmatch(url)
-	if len(m) < 2 {
-		return 0
-	}
-	n, _ := strconv.Atoi(m[1])
-	return n
+	return &ghIssueView{
+		State: deskkit.StripControl(iss.State),
+		URL:   deskkit.StripControl(iss.URL),
+	}, nil
 }
 
 func readBody(bodyFile string) ([]byte, error) {
@@ -955,22 +876,4 @@ func readBody(bodyFile string) ([]byte, error) {
 		return nil, deskkit.Refused(fmt.Sprintf("refused: body exceeds %d bytes (%d)", maxBodyBytes, len(b)))
 	}
 	return b, nil
-}
-
-func writeTempBody(body []byte) (path string, cleanup func(), err error) {
-	f, err := os.CreateTemp("", "deskfile-body-*.md")
-	if err != nil {
-		return "", func() {}, err
-	}
-	name := f.Name()
-	if _, err := f.Write(body); err != nil {
-		f.Close()
-		os.Remove(name)
-		return "", func() {}, err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(name)
-		return "", func() {}, err
-	}
-	return name, func() { os.Remove(name) }, nil
 }

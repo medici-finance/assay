@@ -2,7 +2,8 @@
   "requests": [
     {
       "method": "GET",
-      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests/7"
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests",
+      "query": "page=1\u0026per_page=100\u0026source_branch=feat%2Fx\u0026state=opened"
     }
   ],
   "result": {
@@ -11,7 +12,7 @@
     "Draft": true,
     "NodeID": "gitlab:medici-finance/assay!7",
     "Title": "Draft: add the thing",
-    "ChangedFiles": 3,
+    "ChangedFiles": 0,
     "Author": {
       "Login": "worker-bot",
       "ID": 99
@@ -24,6 +25,6 @@
     "URL": "https://gitlab.example/medici-finance/assay/-/merge_requests/7",
     "HeadRef": "feat/x",
     "BaseRef": "main",
-    "UpdatedAt": "2026-09-01T12:00:00Z"
+    "UpdatedAt": ""
   }
 }

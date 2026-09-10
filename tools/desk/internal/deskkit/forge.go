@@ -72,6 +72,13 @@ type PullRequest struct {
 	State        string // open | closed
 	Draft        bool
 	NodeID       string // opaque id for the flip-draft mutation
+	// Title is the change's title. Consumer: cmd/deskpr edit, whose idempotency noop needs the
+	// CURRENT title to tell "the requested title already matches" (no write) from "the title
+	// changes" (write + re-review comment) without a second read. EMPTY where the forge did not
+	// report one. omitempty keeps a change read that carried no title byte-identical in the
+	// forge golden corpus. On GitLab the title carries the `Draft:` prefix verbatim (the forge's
+	// own rendering), the same way GetPullRequest surfaces every other field as the forge reports it.
+	Title string `json:",omitempty"`
 	ChangedFiles int    // the forge's OWN count — reconcile against ListChangedFiles
 	Author       Account
 	HeadSHA      string
@@ -159,6 +166,23 @@ type Issue struct {
 	// caller falls back to a placeholder string on error). omitempty keeps a change that
 	// carries no title byte-identical in the forge golden corpus.
 	Title string `json:",omitempty"`
+	// URL is the issue's human-facing page. Consumer: cmd/deskfile's attach path, which reads
+	// the target issue (GetIssue) and prints/records its location — and refuses attaching to a
+	// CLOSED target citing that URL. GetIssue carried no URL before the write-verbs migration
+	// (#691), so the attach path had to re-read it separately; the field is added so a single GetIssue
+	// answers "which kind, what state, and where". EMPTY where the forge reported none. omitempty
+	// keeps an issue that carries no URL byte-identical in the forge golden corpus.
+	URL string `json:",omitempty"`
+	// Labels are the label NAMES currently on the issue/PR. Consumer: cmd/deskclose's absolute
+	// decision-label gate (an item carrying `needs-decision`/`human-decided` is never closeable
+	// by a sweep), which reads them from the SAME single GetIssue that answers the item's kind
+	// and state — so an unread label set can never be mistaken for an empty one. omitempty keeps
+	// an issue that carries no labels byte-identical in the forge golden corpus.
+	Labels []string `json:",omitempty"`
+	// Body is the issue/PR description text. Consumer: cmd/deskclose's review-request lane, which
+	// extracts the single PR reference from a review-request issue's body. omitempty keeps a
+	// bodyless issue byte-identical in the forge golden corpus.
+	Body string `json:",omitempty"`
 }
 
 // Review is one review/approval on a change (GitHub review ↔ GitLab MR approval). CommitID
@@ -252,6 +276,41 @@ type IssueInput struct {
 // IssueRef identifies an issue that was just filed.
 type IssueRef struct {
 	Number int
+	URL    string
+}
+
+// EditChangeInput is the request to replace a change's OWN title/body text — the change's
+// description, not a comment on it. A field left EMPTY is not sent, so a body-only edit
+// (deskpr edit's case) does not blank a title, and a title-only edit does not blank a body.
+// The fields are a struct rather than positional arguments so the interface method takes no
+// parameter that reads as content-vs-coordinate ambiguity, and so a later field (a labels or
+// state edit) is an additive struct field rather than an interface-signature change.
+type EditChangeInput struct {
+	Title string
+	Body  string
+}
+
+// SearchIssuesInput is a free-text dedupe search over ONE repo's issues. Query is the
+// already-tokenised free text (deskfile's matcher strips it to `[a-z0-9]` runs so no token can
+// be read as a forge search qualifier); the backend scopes it to the repo — the caller never
+// supplies a `repo:` qualifier or any other endpoint-shaping syntax. It is a struct field, not
+// an interface method PARAMETER, precisely so the no-passthrough shape check (which keys on the
+// interface's own parameter names) does not read a `query` argument as an endpoint address.
+type SearchIssuesInput struct {
+	Query string
+}
+
+// IssueSearchResult is one issue matched by SearchIssues: the fields deskfile's dedupe scores
+// and reports. URL is the issue's human-facing page (EMPTY where the forge reported none) — the
+// dedupe path prints it as the candidate's location, which is why the search shape carries a URL
+// even though GetIssue only gained one in the same change (#691). It is a SEARCH result, never a
+// change: a forge that serves issues and changes from one number sequence (GitHub) filters the
+// changes out, so a caller de-duping issues never has to.
+type IssueSearchResult struct {
+	Number int
+	Title  string
+	State  string // open | closed
+	Labels []string
 	URL    string
 }
 
@@ -603,6 +662,31 @@ type Forge interface {
 	GetPullRequest(repo ForgeRepo, number int) (*PullRequest, error)
 	// GetIssue reads an issue and answers whether the number is in fact a pull request.
 	GetIssue(repo ForgeRepo, number int) (*Issue, error)
+	// OpenChangeForBranch resolves the single OPEN change (PR ↔ MR) whose SOURCE branch is
+	// `branch`, returning (nil, nil) when NONE is open. It exists because every other change
+	// read on this seam is keyed by NUMBER, and deskpr's existing-PR-for-branch check and
+	// warnIfConflicting have only the branch NAME in hand — a fact no numeric read can answer.
+	// MORE THAN ONE open change on one source branch is a could-not-check REFUSAL naming the
+	// ambiguity, never a silent first-match: picking one would route a mergeable read or an edit
+	// at whichever the forge happened to list first. The returned change carries what the LIST
+	// endpoint serves (number, state, draft, head/base refs); a caller needing the merge verdict
+	// follows up with GetPullRequest, which is the single-change read that carries Mergeable.
+	// Consumer: cmd/deskpr (freeze rule: this read lands with the call site that consumes it).
+	OpenChangeForBranch(repo ForgeRepo, branch string) (*PullRequest, error)
+	// SearchIssues runs a free-text dedupe search over ONE repo's ISSUES (never changes),
+	// returning number, title, state, labels and URL per match (see IssueSearchResult). The
+	// query is scoped to the repo by the backend — the caller supplies free text only, never a
+	// forge search qualifier. Consumer: cmd/deskfile's file-time dedupe (freeze rule). A forge
+	// whose issue search is not repo-scopable in the shape this needs returns could-not-check
+	// naming the gap rather than an owner- or instance-wide result.
+	SearchIssues(repo ForgeRepo, in SearchIssuesInput) ([]IssueSearchResult, error)
+	// ListLabels returns the repo's label NAMES. It READS ONLY and never creates — the
+	// deliberate opposite of ApplyLabels, whose ensure step creates a missing label — because
+	// its one consumer, cmd/deskfile's label-existence probe, files an issue UNSTAMPED when a
+	// requested label is absent rather than minting the label. A caller that wanted create-if-
+	// absent would use ApplyLabels; this is the read that lets a caller decide NOT to.
+	// Consumer: cmd/deskfile (freeze rule).
+	ListLabels(repo ForgeRepo) ([]string, error)
 	// ListOpenChanges reads a repo's OPEN changes (PRs ↔ MRs) with their CI status-check
 	// rollups in one bounded read, reporting whether the population was truncated at the page
 	// cap (see OpenChanges). It exists because the cross-repo board reads a whole repo's queue
@@ -707,6 +791,12 @@ type Forge interface {
 
 	// CreateDraftChange opens a draft change (draft PR ↔ Draft: MR).
 	CreateDraftChange(repo ForgeRepo, in DraftChangeInput) (*PullRef, error)
+	// EditChange replaces a change's OWN title/body text (see EditChangeInput) — the change's
+	// description, not a comment on it, and NOT a lifecycle transition (that is
+	// MarkReadyForReview). A field left empty is not written, so a body-only edit does not blank
+	// a title. Consumer: cmd/deskpr edit (freeze rule: this write lands with the call site that
+	// consumes it).
+	EditChange(repo ForgeRepo, number int, in EditChangeInput) error
 	// PostComment posts a plain comment on an issue or PR and returns a reference to what
 	// it created. The reference is what makes the write ANSWERABLE — a caller can report
 	// where the comment landed and, for an upsert, hold the id it will edit next time —

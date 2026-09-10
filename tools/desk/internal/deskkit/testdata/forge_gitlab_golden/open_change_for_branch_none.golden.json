@@ -1,0 +1,10 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/merge_requests",
+      "query": "page=1\u0026per_page=100\u0026source_branch=feat%2Fgone\u0026state=opened"
+    }
+  ],
+  "result": null
+}

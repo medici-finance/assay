@@ -1,0 +1,13 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/labels",
+      "query": "page=1\u0026per_page=100"
+    }
+  ],
+  "result": [
+    "bug",
+    "raised-by:worker"
+  ]
+}

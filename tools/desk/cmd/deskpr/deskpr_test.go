@@ -404,6 +404,11 @@ func withEnv(t *testing.T, work string) *[][]string {
 	publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, owner, repo string, issueNumber int) error { return nil }
 	t.Cleanup(func() { publicRepoGateFn = oldGate })
 
+	// Since the write-verbs-C migration deskpr reaches the forge through forgeForFn, not `gh`.
+	// Install a recording fake driven by the same FAKEGH_* env the retired fake-gh binary read,
+	// so a test's env setup drives it unchanged; curForge is the handle for the assertions.
+	curForge = installFakeForge(t)
+
 	return calls
 }
 
@@ -419,14 +424,17 @@ func gitCalls(calls [][]string) [][]string {
 	return out
 }
 
-func ghCalls(calls [][]string) [][]string {
-	var out [][]string
-	for _, c := range calls {
-		if len(c) > 0 && filepath.Base(c[0]) == "gh" {
-			out = append(out, c)
-		}
+// ghCalls returns the forge WRITES/READS deskpr performed, as canonical gh-shaped pseudo-argvs.
+// Since the write-verbs-C migration deskpr no longer shells `gh`; the ops go through the fake
+// Forge (curForge), and this synthesises the argv the assertions inspect from what it recorded,
+// so the existing `anyCall`/`countCalls`/`editCalls`/`commentCalls` assertions read unchanged.
+// The `calls` argument (real subprocess argv, now only git + desktoken) is retained for
+// signature compatibility and ignored — no gh subprocess is ever launched.
+func ghCalls(_ [][]string) [][]string {
+	if curForge == nil {
+		return nil
 	}
-	return out
+	return curForge.synthGH()
 }
 
 // anyGitForce reports whether ANY recorded git argv carries a force flag. The
@@ -531,9 +539,10 @@ func TestCreateConflictingPRWarnsLoudly(t *testing.T) {
 	if !strings.Contains(got, "WARNING") || !strings.Contains(got, "CONFLICTING") {
 		t.Fatalf("expected a loud CONFLICTING WARNING on stderr, got: %q", got)
 	}
-	if !strings.Contains(got, "DIRTY") {
-		t.Fatalf("expected the WARNING to name mergeStateStatus=DIRTY, got: %q", got)
-	}
+	// The mergeStateStatus detail is no longer named: the forge seam's PullRequest carries the
+	// three-value Mergeable verdict (MERGEABLE/CONFLICTING/UNKNOWN), not GitHub's mergeStateStatus
+	// enum (which lives only on the board's bulk OpenChange read). CONFLICTING is the load-bearing
+	// word the warning turns on, and it is present.
 }
 
 // noPollSleep swaps pollSleep for a no-op for the duration of a test so the polling loop
@@ -645,7 +654,7 @@ func TestCreateAsAppMintsWorkerToken(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--as-app", "--title", "worker app PR", "--body-min", "posted as worker app\nBrief: fixture/01"})
+	rc := run([]string{"create", "--title", "worker app PR", "--body-min", "posted as worker app\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create --as-app rc = %d, want 0", rc)
 	}
@@ -675,7 +684,7 @@ func TestCreateMintsWorkerTokenScopedToOwnRepo(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--as-app", "--title", "scoped mint", "--body-min", "desktoken must be told which repo it's minting for\nBrief: fixture/01"})
+	rc := run([]string{"create", "--title", "scoped mint", "--body-min", "desktoken must be told which repo it's minting for\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create rc = %d, want 0", rc)
 	}
@@ -710,7 +719,7 @@ func TestCreateMediciFinanceRepoSucceeds(t *testing.T) {
 	work := newMediciFixture(t)
 	calls := withEnv(t, work)
 
-	rc := run([]string{"create", "--as-app", "--title", "medici finance PR", "--body-min", "creating on a repo under an org other than example-org\nBrief: fixture/01"})
+	rc := run([]string{"create", "--title", "medici finance PR", "--body-min", "creating on a repo under an org other than example-org\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create on a medici-finance-origin worktree rc = %d, want 0 (#565 regression: "+
 			"desktoken must resolve the medici-finance installation, not silently default to example-org)", rc)
@@ -769,32 +778,18 @@ func TestUpdateDefaultMintsWorkerToken(t *testing.T) {
 	}
 }
 
-func TestCreateNoAsAppUsesAmbientIdentity(t *testing.T) {
-	work := newBaseFixture(t)
-	calls := withEnv(t, work)
-
-	rc := run([]string{"create", "--as-app=false", "--title", "ambient test", "--body-min", "posted as example-org\nBrief: fixture/01"})
-	if rc != deskkit.ExitOK {
-		t.Fatalf("create --as-app=false rc = %d, want 0", rc)
-	}
-	// No desktoken worker call should have been made — ambient gh identity used.
-	for _, c := range *calls {
-		if len(c) >= 2 && filepath.Base(c[0]) == "desktoken" && c[1] == "worker" {
-			t.Fatalf("unexpected `desktoken worker` call when --as-app=false: %v", *calls)
-		}
-	}
-	// Still pushes and creates the PR normally.
-	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
-		t.Fatalf("expected `gh pr create --draft`; gh calls: %v", ghCalls(*calls))
-	}
-}
+// The `--as-app=false` ambient-identity fallback is RETIRED (write-verbs-C): the token-refusing
+// backends cannot serve an unminted token, so there is no fall-through to an ambient identity to
+// test. The forge-level refusal is covered by TestGithubCustodyMintRefusesWithoutMintedToken and
+// TestDeskprRefusesWithoutMintedToken. (Was TestCreateNoAsAppUsesAmbientIdentity /
+// TestUpdateNoAsAppUsesAmbientIdentity.)
 
 func TestUpdateAsAppMintsWorkerToken(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	t.Setenv("FAKEGH_LIST_HAS_PR", "1") // open draft PR on the branch
 
-	rc := run([]string{"update", "--as-app"})
+	rc := run([]string{"update"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("update --as-app rc = %d, want 0", rc)
 	}
@@ -812,22 +807,6 @@ func TestUpdateAsAppMintsWorkerToken(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected `desktoken worker` call when --as-app is set on update; calls: %v", *calls)
-	}
-}
-
-func TestUpdateNoAsAppUsesAmbientIdentity(t *testing.T) {
-	work := newBaseFixture(t)
-	calls := withEnv(t, work)
-	t.Setenv("FAKEGH_LIST_HAS_PR", "1") // open draft PR on the branch
-
-	rc := run([]string{"update", "--as-app=false"})
-	if rc != deskkit.ExitOK {
-		t.Fatalf("update --as-app=false rc = %d, want 0", rc)
-	}
-	for _, c := range *calls {
-		if len(c) >= 2 && filepath.Base(c[0]) == "desktoken" && c[1] == "worker" {
-			t.Fatalf("unexpected `desktoken worker` call when --as-app=false on update; calls: %v", *calls)
-		}
 	}
 }
 

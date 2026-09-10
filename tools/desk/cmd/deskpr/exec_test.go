@@ -3,47 +3,48 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// TestGhRefusesWithoutMintedToken hardens the #565 fix (mirroring #563/#562 for
-// deskreply): on the --as-app path (requireWorkerAuth == true), gh() must refuse
-// outright rather than silently falling through to whatever gh identity happens to be
-// ambient/active in this shell if a future code path forgets to mint the worker token
-// first. Tracing every gh() call site on the --as-app path shows they all run strictly
-// after mintWorkerToken succeeds, so this is currently unreachable in production — but
-// it makes that invariant load-bearing instead of implicit.
-func TestGhRefusesWithoutMintedToken(t *testing.T) {
-	oldToken, oldRequire := ghToken, requireWorkerAuth
+// TestGithubCustodyMintRefusesWithoutMintedToken is the forge-op equivalent of the retired
+// gh()-guard test: since the write-verbs-C migration deskpr reaches the forge through the
+// resolver, and the GitHub custody minter it installs (github.go) hands over the token deskpr
+// ALREADY minted (ghToken). With no minted token the minter must REFUSE — never fall back to an
+// ambient forge identity — so a code path that reaches the forge before minting fails closed
+// instead of writing as whatever credential happens to be active. The `--as-app=false` ambient
+// fallback that used to make this a two-sided guard is retired outright.
+func TestGithubCustodyMintRefusesWithoutMintedToken(t *testing.T) {
+	old := ghToken
 	ghToken = ""
-	requireWorkerAuth = true
-	t.Cleanup(func() { ghToken, requireWorkerAuth = oldToken, oldRequire })
+	t.Cleanup(func() { ghToken = old })
 
-	_, err := gh(".", "pr", "view", "1")
+	_, _, err := githubCustodyMint("worker", deskkit.ForgeRepo{Owner: "medici-finance", Name: "assay"})
 	if err == nil {
-		t.Fatal("gh() with no minted worker token succeeded on the --as-app path; it must refuse rather than fall back to the ambient gh identity/keyring")
+		t.Fatal("githubCustodyMint returned no error with no minted token — it must refuse rather than fall " +
+			"back to an ambient forge identity/keyring")
 	}
-	if !strings.Contains(err.Error(), "minted worker token") {
-		t.Fatalf("gh() error = %q, want it to name the missing minted token", err.Error())
+	if !strings.Contains(err.Error(), "minted") {
+		t.Fatalf("custody refusal = %q, want it to name the missing minted token", err.Error())
 	}
 }
 
-// TestGhAllowsAmbientIdentityWhenAsAppOff is the other half: deskpr, unlike deskreply,
-// has a real, documented --as-app=false ambient-identity fallback (the example-org
-// fallback). When the caller did not request worker-App auth (requireWorkerAuth ==
-// false), an unset ghToken must NOT trip the fail-closed guard — otherwise
-// --as-app=false would be broken outright on the very first gh call of a fresh process.
-// Routed through the same fake-gh-on-PATH harness withEnv sets up for the rest of this
-// package, so this actually exercises gh()/runCmd end to end rather than just the
-// guard's boolean logic.
-func TestGhAllowsAmbientIdentityWhenAsAppOff(t *testing.T) {
-	withEnv(t, t.TempDir())
+// TestGithubCustodyMintHandsMintedToken proves the other side: once a token is minted, the
+// custody step hands exactly it (and the test-only base override) to the resolver.
+func TestGithubCustodyMintHandsMintedToken(t *testing.T) {
+	oldTok, oldBase := ghToken, forgeAPIBase
+	ghToken = "worker-token-xyz"
+	forgeAPIBase = "https://forge.example"
+	t.Cleanup(func() { ghToken, forgeAPIBase = oldTok, oldBase })
 
-	oldToken, oldRequire := ghToken, requireWorkerAuth
-	ghToken = ""
-	requireWorkerAuth = false
-	t.Cleanup(func() { ghToken, requireWorkerAuth = oldToken, oldRequire })
-
-	if _, err := gh(".", "pr", "view", "1"); err != nil {
-		t.Fatalf("gh() with no minted worker token failed on the --as-app=false path; it must fall back to the ambient gh identity: %v", err)
+	tok, base, err := githubCustodyMint("worker", deskkit.ForgeRepo{Owner: "medici-finance", Name: "assay"})
+	if err != nil {
+		t.Fatalf("custody mint refused a minted token: %v", err)
+	}
+	if tok != "worker-token-xyz" {
+		t.Errorf("custody token = %q, want the minted value", tok)
+	}
+	if base != "https://forge.example" {
+		t.Errorf("custody base = %q, want the test override read at call time", base)
 	}
 }

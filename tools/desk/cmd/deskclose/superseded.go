@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
@@ -33,14 +32,14 @@ import (
 //	                      which the decision-label gate (refuseDecisionItem) then refuses
 //	                      to close in every mode. From there the close is a human's.
 //
-// THE ROLE COMES FROM THE TOKEN, NEVER FROM A FLAG. The caller's identity is read from
-// the forge (`viewer { login }` — the one identity read an App installation token can
-// make about itself; the REST `/user` endpoint refuses integrations) and mapped through
-// the roster binding (ASSAY_TRUSTED_BOT_SLUGS `worker=` / `reviewer=`). A flag saying
-// "--as reviewer" would be a claim; the forge's answer about the token is a fact. A
-// login bound to neither role is refused, an unreadable login is could-not-check, and
-// a roster that binds both roles to one App is refused outright — with one App the
-// two-role property is vacuous and the lane must say so rather than enforce nothing.
+// THE ROLE COMES FROM THE SESSION, NEVER FROM A FLAG. Since the write-verbs-C migration
+// deskclose mints the session-role App token, so the acting role is the DESK_LOOP-selected role
+// (mintedRole), and the login is that role's roster binding (RoleAppLogin) — an identity-layer
+// answer, not a `viewer{login}` forge round-trip. A flag saying "--as reviewer" would be a claim;
+// the session's minted role is a fact. A session role that is neither worker nor reviewer is
+// refused, an unresolvable role is could-not-check, and a roster that binds both roles to one App
+// is refused outright — with one App the two-role property is vacuous and the lane must say so
+// rather than enforce nothing.
 //
 // The manifest lane is deliberately NOT role-keyed: a manifest row is authorized by a
 // human whose comment carries the row set's digest (authorizeManifest), and that
@@ -97,29 +96,14 @@ type caller struct {
 // unbound role turns the comparison into `login == ""` (the shape RoleAppLogin's ok
 // return exists to forbid), and a roster that binds both roles to one App cannot host a
 // two-role lane at all.
-func resolveCaller() (caller, error) {
-	raw, err := runGH("api", "graphql", "-f", "query={ viewer { login } }")
-	if err != nil {
-		return caller{}, deskkit.Unverifiable(
-			"could-not-check: the identity of the token in use could not be read from the forge "+
-				"(GraphQL viewer) — a role that could not be read is not a role, so the superseded lane "+
-				"does nothing. This is not 'the caller is a worker' and not 'the caller is a reviewer'.", err)
-	}
-	var resp struct {
-		Data struct {
-			Viewer struct {
-				Login string `json:"login"`
-			} `json:"viewer"`
-		} `json:"data"`
-	}
-	if jerr := json.Unmarshal([]byte(raw), &resp); jerr != nil {
-		return caller{}, deskkit.Unverifiable("could-not-check: the forge's viewer answer did not parse", jerr)
-	}
-	login := strings.TrimSpace(resp.Data.Viewer.Login)
-	if login == "" {
-		return caller{}, deskkit.Unverifiable(
-			"could-not-check: the forge reported no login for the token in use — an empty identity is "+
-				"missing data, never a role", nil)
+func resolveCaller(repo string) (caller, error) {
+	// The ROLE comes from the SESSION (DESK_LOOP → mintedRole), never from a viewer read: since
+	// the write-verbs-C migration deskclose mints the session-role App token, so the acting
+	// identity is known from the mint, not from a `viewer{login}` forge round-trip. Building the
+	// forge triggers the mint (setting mintedRole) and fails closed if the role cannot be
+	// resolved or the token cannot be minted.
+	if _, _, ferr := forgeForFn(repo); ferr != nil {
+		return caller{}, ferr
 	}
 
 	worker, wok := deskkit.RoleAppLogin(roleWorker)
@@ -137,17 +121,17 @@ func resolveCaller() (caller, error) {
 				"one App behind both roles that property cannot be enforced, so the lane refuses rather "+
 				"than pretending to.", roleWorker, roleReviewer, deskkit.StripControl(reviewer)))
 	}
-	switch {
-	case deskkit.SameActor(login, reviewer):
-		return caller{login: login, role: roleReviewer}, nil
-	case deskkit.SameActor(login, worker):
-		return caller{login: login, role: roleWorker}, nil
+	switch mintedRole {
+	case roleReviewer:
+		return caller{login: reviewer, role: roleReviewer}, nil
+	case roleWorker:
+		return caller{login: worker, role: roleWorker}, nil
 	default:
 		return caller{}, deskkit.Refused(fmt.Sprintf(
-			"refused: the token in use is %s, which the roster binds to neither the %s role (%s) nor the "+
-				"%s role (%s). The superseded lane is role-keyed on the TOKEN: a worker proposes, a reviewer "+
+			"refused: this session's App role is %s, which is neither the %s role (%s) nor the %s role (%s). "+
+				"The superseded lane is role-keyed on the SESSION identity: a worker proposes, a reviewer "+
 				"confirms or disputes, and nothing else runs it. A human closes on the forge directly.",
-			deskkit.StripControl(login), roleWorker, deskkit.StripControl(worker),
+			deskkit.StripControl(mintedRole), roleWorker, deskkit.StripControl(worker),
 			roleReviewer, deskkit.StripControl(reviewer)))
 	}
 }
@@ -173,25 +157,26 @@ type threadComment struct {
 	} `json:"user"`
 }
 
-// readThread fetches every comment on the item. `gh api --paginate` concatenates the
-// pages as successive top-level JSON arrays; the decoder loop joins them. A read failure
-// is could-not-check — a proposal that could not be read is not an absent one.
+// readThread fetches every comment on the item through the resolved forge (ListComments, which
+// paginates to exhaustion internally). A read failure is could-not-check — a proposal that could
+// not be read is not an absent one.
 func readThread(repo string, n int) ([]threadComment, error) {
-	raw, err := runGH("api", "--paginate", fmt.Sprintf("repos/%s/issues/%d/comments?per_page=100", repo, n))
+	fg, fr, ferr := forgeForFn(repo)
+	if ferr != nil {
+		return nil, ferr
+	}
+	comments, err := fg.ListComments(fr, n)
 	if err != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: cannot read the comment thread on %s#%d — whether a proposal stands is "+
 				"unknown, so nothing is confirmed, disputed or re-proposed", repo, n), err)
 	}
-	dec := json.NewDecoder(strings.NewReader(raw))
-	var out []threadComment
-	for dec.More() {
-		var page []threadComment
-		if derr := dec.Decode(&page); derr != nil {
-			return nil, deskkit.Unverifiable(fmt.Sprintf(
-				"could-not-check: the comment thread on %s#%d did not parse", repo, n), derr)
-		}
-		out = append(out, page...)
+	out := make([]threadComment, 0, len(comments))
+	for _, c := range comments {
+		var tc threadComment
+		tc.Body = c.Body
+		tc.User.Login = c.Author.Login
+		out = append(out, tc)
 	}
 	return out, nil
 }
@@ -275,7 +260,7 @@ func itemHasLabel(it item, want string) bool {
 // half. There is no path from a worker token to a close and no path from a reviewer
 // token to a proposal; the role selects the half and the flags cannot override it.
 func runSupersededLane(c common, n int, target, dispute string, out io.Writer) error {
-	who, err := resolveCaller()
+	who, err := resolveCaller(c.repo)
 	if err != nil {
 		return err
 	}
@@ -385,8 +370,11 @@ func propose(c common, n int, target string, who caller, out io.Writer) error {
 		a.log(deskkit.ResultRateLimited, err.Error())
 		return err
 	}
-	ensureProposalLabel(c.repo)
-	if err := addLabel(c.repo, n, it.isPR(), labelProposed); err != nil {
+	if err := addLabel(c.repo, n, deskkit.LabelSpec{
+		Name:        labelProposed,
+		Color:       "FBCA04",
+		Description:  "worker proposes this item is superseded; the review desk owes it a confirm or dispute",
+	}); err != nil {
 		a.log(deskkit.ResultUnverifiable, err.Error())
 		return err
 	}
@@ -508,7 +496,7 @@ func disputeProposal(c common, n int, target, reason string, who caller, out io.
 		a.log(deskkit.ResultRateLimited, "dispute posted, needs-decision label deferred: "+err.Error())
 		return err
 	}
-	if err := addLabel(c.repo, n, it.isPR(), labelNeedsDecision); err != nil {
+	if err := addLabel(c.repo, n, deskkit.LabelSpec{Name: labelNeedsDecision}); err != nil {
 		// The label is not this tool's to provision: it is the human decision queue's,
 		// shipped by the adoption guide. Say exactly what is missing.
 		a.log(deskkit.ResultUnverifiable, err.Error())
@@ -622,29 +610,21 @@ func crossRefBody(repo string, n int, p proposal, who caller) string {
 		repo, n, verdictConfirmed, deskkit.StripControl(who.login), deskkit.StripControl(p.Author))
 }
 
-// addLabel applies one label. Issues and PRs take different gh verbs; the label name is
-// drawn from this package's constants, never from the caller, so it cannot be an option.
-func addLabel(repo string, n int, isPR bool, label string) error {
-	kind := "issue"
-	if isPR {
-		kind = "pr"
+// addLabel ensures a label exists on the repo AND is applied to the item, in ONE forge op
+// (ApplyLabels reconciles ensure-then-add). The LabelSpec's name is drawn from this package's
+// constants, never from the caller, so it cannot be an option; its Color/Description are the
+// cosmetic metadata used only if the label has to be created (the ensure step no-ops when it
+// already exists). This folds the old three-call `label list` → `label create` → `edit
+// --add-label` sequence — including the separate ensureProposalLabel create — into the one
+// declarative reconcile.
+func addLabel(repo string, n int, spec deskkit.LabelSpec) error {
+	fg, fr, ferr := forgeForFn(repo)
+	if ferr != nil {
+		return ferr
 	}
-	if _, err := runGH(kind, "edit", fmt.Sprintf("%d", n), "-R", repo, "--add-label", label); err != nil {
+	if _, err := fg.ApplyLabels(fr, n, deskkit.LabelChange{Add: []deskkit.LabelSpec{spec}}); err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
-			"could-not-check: applying %q to %s#%d did not confirm", label, repo, n), err)
+			"could-not-check: applying %q to %s#%d did not confirm", spec.Name, repo, n), err)
 	}
 	return nil
-}
-
-// ensureProposalLabel creates this tool's OWN label when the repo lacks it. A repo that
-// has never carried a proposal would otherwise fail every first propose. Failure here is
-// not fatal on its own: the add-label call that follows is the real gate.
-func ensureProposalLabel(repo string) {
-	have, err := runGH("label", "list", "-R", repo, "--search", labelProposed, "--json", "name")
-	if err == nil && strings.Contains(have, fmt.Sprintf("%q", labelProposed)) {
-		return
-	}
-	_, _ = runGH("label", "create", labelProposed, "-R", repo,
-		"--description", "worker proposes this item is superseded; the review desk owes it a confirm or dispute",
-		"--color", "FBCA04")
 }

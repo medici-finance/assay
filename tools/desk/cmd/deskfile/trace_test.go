@@ -1,92 +1,47 @@
 package main
 
 import (
-	"errors"
-	"os/exec"
 	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// trace_test.go — the dedupe-search outage says WHAT failed.
+// trace_test.go — the dedupe-search outage says WHAT failed, at the forge seam.
 //
-// deskfile fails CLOSED when its dedupe search cannot be answered: minting a possibly
-// duplicate issue is the expensive direction, so an unanswered search is exit 6 rather than a
-// guess at absence. That is right and is not touched here.
-//
-// What was missing is the diagnosis. The refusal named the POLICY ("dedupe search failed —
-// refuse rather than mint a possible duplicate") but the operator could not tell a rate
-// limit from a revoked token from a repo the App cannot see — three failures with three
-// completely different fixes, all reaching them as one sentence. gh had already said which
-// it was, in an `HTTP <status>` line on its stderr; it just had nowhere to go.
-//
-// The assertions below are per-status, because "it carries gh's text" is not the property
-// that matters: the property that matters is that a reader can tell the three apart.
+// deskfile fails CLOSED when its dedupe search cannot be answered: minting a possibly-duplicate
+// issue is the expensive direction, so an unanswered search is exit 6 rather than a guess at
+// absence. Since the write-verbs-C migration the search goes through Forge.SearchIssues, and the
+// backend carries the API status on a *ForgeAPIError-wrapped could-not-check (the 401/403/429
+// tiers a reader has to tell apart are pinned in deskkit's TestForgeGitlabTierErrors and the
+// github error-mapping goldens, and the backends StripControl remote-authored text at ingest).
+// What this file pins is the deskfile-SIDE property: dedupeSearch PROPAGATES that diagnosis
+// unswallowed and the caller's refusal stays exit-6 fail-closed.
 
-// ghFailure installs a stubbed `gh` that writes text on stderr and exits non-zero.
-func ghFailure(t *testing.T, stderr string, code int) *[][]string {
-	t.Helper()
-	calls := &[][]string{}
-	old := execCommand
-	execCommand = func(name string, args ...string) *exec.Cmd {
-		*calls = append(*calls, append([]string{name}, args...))
-		return exec.Command("/bin/sh", "-c",
-			"cat <<'STUBEOF' 1>&2\n"+stderr+"\nSTUBEOF\nexit "+itoa(code))
-	}
-	t.Cleanup(func() { execCommand = old })
-	return calls
-}
+var traceRepo = deskkit.ForgeRepo{Owner: "medici-finance", Name: "assay"}
 
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b []byte
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
-	}
-	return string(b)
-}
-
-// TestDedupeSearchOutageNamesTheAPIStatus is the fail-first pin, one row per status an
-// operator has to be able to tell apart.
-func TestDedupeSearchOutageNamesTheAPIStatus(t *testing.T) {
+// TestDedupeSearchPropagatesTheForgeDiagnosis is the per-status pin: whatever the backend named
+// as the failure class reaches the operator through dedupeSearch and the exit-6 refusal over it.
+func TestDedupeSearchPropagatesTheForgeDiagnosis(t *testing.T) {
 	cases := []struct {
-		name, ghStderr, want string
+		name, forgeMsg, want string
 	}{
-		{
-			"forbidden",
-			"gh: Resource not accessible by integration (HTTP 403)",
-			"HTTP 403",
-		},
-		{
-			"rate limited",
-			"gh: API rate limit exceeded (HTTP 429)",
-			"HTTP 429",
-		},
-		{
-			"bad credentials",
-			"gh: Bad credentials (HTTP 401)",
-			"HTTP 401",
-		},
+		{"forbidden", "could-not-check: GET /search/issues — permission or tier gate (HTTP 403)", "HTTP 403"},
+		{"rate limited", "could-not-check: GET /search/issues — rate limited (HTTP 429) by the instance", "HTTP 429"},
+		{"bad credentials", "could-not-check: GET /search/issues — credential rejected (HTTP 401)", "HTTP 401"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			deskkit.ResetTrace()
-			ghFailure(t, c.ghStderr, 1)
-			_, err := dedupeSearch("medici-finance/assay", "a title with several scorable words")
+			f := &dfForge{fr: traceRepo, searchErr: deskkit.Unverifiable(c.forgeMsg, nil)}
+			_, err := dedupeSearch(f, traceRepo, "a title with several scorable words")
 			if err == nil {
-				t.Fatal("a failed gh search must return an error")
+				t.Fatal("a failed forge search must return an error")
 			}
 			if !strings.Contains(err.Error(), c.want) {
-				t.Errorf("the search failure does not name %s — an operator cannot tell this "+
-					"from the other two failure classes:\n%s", c.want, err.Error())
+				t.Errorf("the search failure does not name %s — an operator cannot tell this from the "+
+					"other two failure classes:\n%s", c.want, err.Error())
 			}
-
-			// And the exit-6 refusal the caller builds over it must carry the status too:
-			// that is the sentence the operator actually sees.
+			// The exit-6 refusal the caller builds over it must carry the status too.
 			refusal := deskkit.Unverifiable(
 				"dedupe search failed — refuse rather than mint a possible duplicate "+
 					"(override with --force-new --reason)", err)
@@ -100,63 +55,14 @@ func TestDedupeSearchOutageNamesTheAPIStatus(t *testing.T) {
 	}
 }
 
-// TestSearchFailureCarriesCommandAndStatusForTheTrace pins the structured half: the argv and
-// gh's exit status must be on the error, or DESK_TRACE has nothing to print for the commonest
-// deskfile failure there is.
-func TestSearchFailureCarriesCommandAndStatusForTheTrace(t *testing.T) {
-	deskkit.ResetTrace()
-	ghFailure(t, "gh: Bad credentials (HTTP 401)", 1)
-	_, err := dedupeSearch("medici-finance/assay", "a title with several scorable words")
-	if err == nil {
-		t.Fatal("expected the stubbed failure")
-	}
-	var de *deskkit.DeskError
-	if !errors.As(err, &de) {
-		t.Fatalf("deskfile's gh runner no longer produces a *DeskError: %T", err)
-	}
-	if !strings.Contains(de.Cmd, "search issues") {
-		t.Errorf("the command line as executed was not carried: %q", de.Cmd)
-	}
-	if de.ExitStatus == 0 {
-		t.Errorf("gh's exit status was not carried: %d", de.ExitStatus)
-	}
-
-	deskkit.SetTrace(true)
-	defer deskkit.ResetTrace()
-	var b strings.Builder
-	deskkit.ReportError(&b, err)
-	for _, want := range []string{"desk-trace: failing command:", "search issues", "HTTP 401"} {
-		if !strings.Contains(b.String(), want) {
-			t.Errorf("DESK_TRACE output missing %q; got:\n%s", want, b.String())
-		}
-	}
-}
-
-// TestDeskfileTraceOffIsByteIdentical — the no-regression floor.
-func TestDeskfileTraceOffIsByteIdentical(t *testing.T) {
-	deskkit.ResetTrace()
-	t.Setenv("DESK_TRACE", "")
-	ghFailure(t, "gh: Bad credentials (HTTP 401)", 1)
-	_, err := dedupeSearch("medici-finance/assay", "a title with several scorable words")
-	if err == nil {
-		t.Fatal("expected the stubbed failure")
-	}
-	var b strings.Builder
-	deskkit.ReportError(&b, err)
-	if b.String() != err.Error()+"\n" {
-		t.Errorf("trace-off output is not byte-identical to err.Error():\n got %q\nwant %q",
-			b.String(), err.Error()+"\n")
-	}
-}
-
-// TestGhStderrStripsControlBytes is a SECURITY-adjacent no-regression check: gh's
-// stderr quotes issue titles authored by arbitrary users on public repos, so it is
-// attacker-influenced text on its way to an operator's terminal. The pre-existing
-// StripControl at this choke point must survive the move to the shared runner.
-func TestGhStderrStripsControlBytes(t *testing.T) {
-	deskkit.ResetTrace()
-	ghFailure(t, "gh: could not resolve \x1b[31mtitle\x07 (HTTP 422)", 1)
-	_, err := dedupeSearch("medici-finance/assay", "a title with several scorable words")
+// TestDedupeSearchControlBytesStrippedByBackend — remote-authored text (issue titles on public
+// repos) is stripped at the forge backend's ingest, so a diagnosis that survives to dedupeSearch
+// carries no terminal-active bytes. The fake stands in for that already-stripped error; the
+// property this pins is that dedupeSearch does not RE-INTRODUCE control bytes.
+func TestDedupeSearchControlBytesStrippedByBackend(t *testing.T) {
+	f := &dfForge{fr: traceRepo, searchErr: deskkit.Unverifiable(
+		deskkit.StripControl("could-not-check: could not resolve \x1b[31mtitle\x07 (HTTP 422)"), nil)}
+	_, err := dedupeSearch(f, traceRepo, "a title with several scorable words")
 	if err == nil {
 		t.Fatal("expected the stubbed failure")
 	}

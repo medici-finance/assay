@@ -36,22 +36,12 @@ package main
 // the loop that has to act on it.
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
-
-// prText is the slice of an existing PR this verb reads before replacing it: the body it
-// compares the trailer against and diffs for the idempotency noop, and the title it needs
-// for the same noop when --title is given.
-type prText struct {
-	Body  string `json:"body"`
-	Title string `json:"title"`
-}
 
 // cmdEdit implements `deskpr edit`. Flow: validate flags → read + secret-scan the
 // replacement body → trailer grammar on the replacement (local, before any network) →
@@ -68,7 +58,6 @@ func cmdEdit(args []string) (err error) {
 	bodyFile := fs.String("body-file", "", "path to a file holding the replacement PR body (required)")
 	title := fs.String("title", "", "replacement PR title (optional; the title is left alone when empty)")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
-	asApp := fs.Bool("as-app", true, "authenticate as this session's App role via desktoken (worker by default; the verifier App under DESK_LOOP=verify-desk, etc.); --as-app=false for example-org fallback")
 	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	if perr := fs.Parse(args); perr != nil {
@@ -139,21 +128,21 @@ func cmdEdit(args []string) (err error) {
 	}
 	ac.repo, ac.head = facts.repo, facts.head
 
-	requireWorkerAuth = *asApp
-	if *asApp {
-		if merr := mintWorkerToken(facts.repo); merr != nil {
-			return deskkit.Unverifiable("cannot mint worker token for --as-app", merr)
-		}
+	if merr := mintWorkerToken(facts.repo); merr != nil {
+		return deskkit.Unverifiable("cannot mint the App token", merr)
+	}
+	fg, fr, ferr := forgeForFn(facts.repo)
+	if ferr != nil {
+		return ferr
 	}
 
-	// The PR is found the way update finds it: the OPEN PR whose head is this branch. The
-	// listing is --state open, so a merged or closed PR is simply not there — one refusal
-	// covers "no PR", "already merged" and "closed", and none of the three can be edited.
-	prs, lerr := listOpenPRs(facts.dir, facts.repo, facts.branch)
+	// The PR is found the way update finds it: the OPEN change whose source branch is this
+	// branch. OpenChangeForBranch returns none for a merged or closed PR — one refusal covers
+	// "no PR", "already merged" and "closed", and none of the three can be edited.
+	pr, lerr := fg.OpenChangeForBranch(fr, facts.branch)
 	if lerr != nil {
-		return deskkit.Unverifiable("cannot list PRs for the branch", lerr)
+		return deskkit.Unverifiable("cannot look up the open PR for the branch", lerr)
 	}
-	pr := matchHead(prs, facts.branch)
 	if pr == nil {
 		return deskkit.Refused("refused: no OPEN PR for " + facts.branch +
 			" — `deskpr edit` corrects an existing open PR's text; a merged or closed PR is not editable through this verb, " +
@@ -161,13 +150,12 @@ func cmdEdit(args []string) (err error) {
 	}
 	ac.pr = &pr.Number
 
-	var cur prText
-	tOut, terr := gh(facts.dir, "pr", "view", strconv.Itoa(pr.Number), "-R", facts.repo, "--json", "body,title")
+	// Read the current body/title authoritatively (GetPullRequest, the single-change read the
+	// brief pairs with OpenChangeForBranch) — the trailer-immutability check and the
+	// idempotency noop both key on the CURRENT text.
+	cur, terr := fg.GetPullRequest(fr, pr.Number)
 	if terr != nil {
 		return deskkit.Unverifiable("cannot read the PR's current body/title", terr)
-	}
-	if uerr := json.Unmarshal([]byte(tOut), &cur); uerr != nil {
-		return deskkit.Unverifiable("cannot parse the PR's current body/title", uerr)
 	}
 
 	// Trailer immutability. See the file header: the link is the board's data edge, and a
@@ -233,34 +221,24 @@ func cmdEdit(args []string) (err error) {
 		return gerr
 	}
 
-	bodyPath, cleanup, werr := writeTempBody(body)
-	if werr != nil {
-		return deskkit.Unverifiable("cannot stage the replacement PR body", werr)
-	}
-	defer cleanup()
-
-	// argv is built literally. There is no path on which a caller flag reaches gh: --title
-	// is the only conditional element and it carries a value, never a flag.
-	editArgs := []string{"pr", "edit", strconv.Itoa(pr.Number), "-R", facts.repo, "--body-file", bodyPath}
+	// EditChange replaces the body and, when --title is given, the title. Only the surfaces
+	// this verb edits are sent — the body always, the title only when asked for — so an
+	// omitted --title leaves the current title (and the `Draft:` prefix it may carry) untouched.
 	changed := []string{"body"}
+	editIn := deskkit.EditChangeInput{Body: string(body)}
 	if *title != "" {
-		editArgs = append(editArgs, "--title", *title)
+		editIn.Title = *title
 		changed = append(changed, "title")
 	}
-	if _, eErr := gh(facts.dir, editArgs...); eErr != nil {
-		return deskkit.Unverifiable("gh pr edit failed", eErr)
+	if eErr := fg.EditChange(fr, pr.Number, editIn); eErr != nil {
+		return deskkit.Unverifiable("edit change failed", eErr)
 	}
 	ac.detail = "edited " + strings.Join(changed, "+") + " of " + pr.URL
 
 	// The announcement. A body/title edit moves no head SHA, so a head-keyed review monitor
 	// records no event for it and the correction is invisible to the loop that must act on
 	// it. This comment is that event.
-	notePath, noteCleanup, nerr := writeTempBody([]byte(reviewNotice(changed, *asApp)))
-	if nerr != nil {
-		return deskkit.Unverifiable("cannot stage the re-review notice", nerr)
-	}
-	defer noteCleanup()
-	if _, cErr := gh(facts.dir, "pr", "comment", strconv.Itoa(pr.Number), "-R", facts.repo, "--body-file", notePath); cErr != nil {
+	if _, cErr := fg.PostComment(fr, pr.Number, reviewNotice(changed)); cErr != nil {
 		// The edit LANDED. Say so plainly in the same breath as the failure, because a
 		// caller that reads this as "the edit failed" would re-run — harmless (the
 		// idempotency noop above catches it) but a wasted lap — while a caller that reads
@@ -307,25 +285,22 @@ func trailerLink(body []byte) (string, bool) {
 // caller content has no surface to smuggle anything through, and running a NON-overridable
 // scan over text the caller cannot change could only ever strand the verb on its own
 // output.
-func reviewNotice(changed []string, asApp bool) string {
+func reviewNotice(changed []string) string {
 	return fmt.Sprintf(
 		"PR %s edited by %s — re-review requested.\n\n"+
 			"A body/title edit moves no head SHA, so a review monitor keyed on the head records no event for it. "+
 			"This comment is that event: the PR's description changed, the commits did not.\n\n"+
 			"Posted by `deskpr edit`, which ran the same trailer, secret-scan, self-containment and public-repo "+
 			"gates as `deskpr create` and wrote an audit row.\n",
-		strings.Join(changed, " and "), editActor(asApp))
+		strings.Join(changed, " and "), editActor())
 }
 
 // editActor names the identity the comment is posted under, from the loop identity this
-// session presents. It never GUESSES an App: on the ambient-identity path (--as-app=false)
-// it says so, and on an unmapped loop it falls back to the neutral "the desk" rather than
-// naming a role this session may not be acting as. A comment that misnames its own author
-// is worse than one that is vague about it.
-func editActor(asApp bool) string {
-	if !asApp {
-		return "the ambient CLI identity (`--as-app=false`)"
-	}
+// session presents. Since the ambient `--as-app=false` path is retired, the edit always posts
+// as the minted session-role App; on an unmapped loop it falls back to the neutral "the desk"
+// rather than naming a role this session may not be acting as. A comment that misnames its own
+// author is worse than one that is vague about it.
+func editActor() string {
 	if role, _, err := deskkit.SessionTokenRole("deskpr"); err == nil {
 		return "the " + role + " App"
 	}
