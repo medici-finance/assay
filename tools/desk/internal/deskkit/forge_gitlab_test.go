@@ -880,6 +880,23 @@ func glCases() []glCase {
 			},
 		},
 		{
+			// #795 §4 — the review-lane ENTRY queue label. deskdispatch applies
+			// `authorization-needed` when a reviewer is dispatched onto an MR; on GitLab that
+			// goes through this same idempotent ensure+apply, creating the label first when the
+			// project does not carry it (default 201) and then reconciling it onto the MR in the
+			// one atomic PUT. Paired with apply_labels_existing_label_ok (the already-exists
+			// half), this locks both queue labels to the forge-neutral label path.
+			name: "apply_labels_authorization_needed", method: "ApplyLabels",
+			setup: func(s *glServer) {
+				s.updateMR = glMR(map[string]any{"labels": []string{"authorization-needed"}})
+			},
+			run: func(f *GitLabForge) (any, error) {
+				return f.ApplyLabels(glRepo, 7, LabelChange{
+					Add: []LabelSpec{{Name: "authorization-needed", Color: "0e8a16"}},
+				})
+			},
+		},
+		{
 			name: "read_file", method: "ReadFile",
 			setup: func(s *glServer) {
 				s.repoFile = map[string]map[string]any{

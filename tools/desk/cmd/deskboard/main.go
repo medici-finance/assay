@@ -590,20 +590,43 @@ func deskToolsPinReal() (root, tag string, found bool) {
 }
 
 // deskToolsSourcePinReal is the channel-D sibling of deskToolsPinReal (#776): it
-// returns the COMMIT sha (field 3) of a `desk-tools-source` line in the nearest
+// returns the COMMIT sha of a `desk-tools-source` line in the nearest
 // `.assay-versions`, the pin a GitLab / native-Windows adopter writes in place of
 // a `desk-tools` release line. found=false means no pin file, or one with no
 // readable `desk-tools-source` line — both fall through to staleState's in-tree
 // fallback, never a failure here (malformed-pin detection is `deskpins --check`'s
 // job, matching deskToolsPinReal). The trailing-space prefix match inside
 // ArtifactPin keeps `desk-tools-source ` from matching `desk-tools-source-notes`.
+//
+// TWO LEGITIMATE COLUMN LAYOUTS (#795 §3). ArtifactPin returns field 2 as `tag`
+// and field 3 as `sha`, but a `desk-tools-source` line can carry its 40-hex
+// commit in EITHER column:
+//
+//   - `desk-tools-source <tag> <40-hex-commit>` — commit in field 3 (the shape
+//     the #776 tests and CheckPins' `-source` rule assume);
+//   - `desk-tools-source <40-hex-commit> channel-D` — commit in field 2, with a
+//     literal `channel-D` channel marker in field 3, the shape a real adopter's
+//     `.assay-versions` (and `desksourceguard`) actually writes.
+//
+// Prefer field 3 when it is a full commit (no regression for the #776 shape),
+// otherwise use field 2 when THAT is the full commit. When NEITHER column holds a
+// 40-hex commit, return field 3 unchanged so staleState's own isFullCommitSHA
+// guard falls the run through to the in-tree ref / could-not-check exactly as
+// before — a malformed pin never manufactures a verdict here.
 func deskToolsSourcePinReal() (root, commit string, found bool) {
 	dir := nearestPinRoot()
 	if dir == "" {
 		return "", "", false
 	}
-	if _, sha, perr := deskkit.ArtifactPin(dir, "desk-tools-source"); perr == nil {
-		return dir, sha, true
+	if field2, field3, perr := deskkit.ArtifactPin(dir, "desk-tools-source"); perr == nil {
+		switch {
+		case isFullCommitSHA(field3):
+			return dir, field3, true
+		case isFullCommitSHA(field2):
+			return dir, field2, true
+		default:
+			return dir, field3, true
+		}
 	}
 	return "", "", false // pin file present but no usable desk-tools-source line
 }

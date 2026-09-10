@@ -100,6 +100,9 @@ func TestReviewKitStampsAsTheReviewerApp(t *testing.T) {
 	s.replies = happyReplies("/private/tmp/worker-home")
 	t.Setenv("DESK_LOOP", "pr-review-desk")
 	calls := stubMint(t, "example-installation-token", nil)
+	// A review dispatch now also applies the review-lane queue label through the resolved
+	// forge; stub that seam so this token-identity test stays hermetic (no real forge/network).
+	stubQueueLabel(t, nil)
 
 	rc := run([]string{"item-1", "--root", root, "--repo", allowedRepo, "--pr", "77",
 		"--kit", "review", "--model", "example-model-1", "--tier", "strong",
