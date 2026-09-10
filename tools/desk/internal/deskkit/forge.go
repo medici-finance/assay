@@ -173,6 +173,16 @@ type Issue struct {
 	// answers "which kind, what state, and where". EMPTY where the forge reported none. omitempty
 	// keeps an issue that carries no URL byte-identical in the forge golden corpus.
 	URL string `json:",omitempty"`
+	// Labels are the label NAMES currently on the issue/PR. Consumer: cmd/deskclose's absolute
+	// decision-label gate (an item carrying `needs-decision`/`human-decided` is never closeable
+	// by a sweep), which reads them from the SAME single GetIssue that answers the item's kind
+	// and state — so an unread label set can never be mistaken for an empty one. omitempty keeps
+	// an issue that carries no labels byte-identical in the forge golden corpus.
+	Labels []string `json:",omitempty"`
+	// Body is the issue/PR description text. Consumer: cmd/deskclose's review-request lane, which
+	// extracts the single PR reference from a review-request issue's body. omitempty keeps a
+	// bodyless issue byte-identical in the forge golden corpus.
+	Body string `json:",omitempty"`
 }
 
 // Review is one review/approval on a change (GitHub review ↔ GitLab MR approval). CommitID

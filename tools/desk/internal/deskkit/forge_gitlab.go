@@ -528,13 +528,15 @@ func (g *GitLabForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 				"use the typed operation for the kind you mean",
 			repo.Slug(), number, number), nil)
 	case iss != nil:
-		out := &Issue{Number: int(iss.IID), Title: iss.Title, State: gitlabState(iss.State), IsPullRequest: false, URL: iss.WebURL}
+		out := &Issue{Number: int(iss.IID), Title: iss.Title, State: gitlabState(iss.State), IsPullRequest: false,
+			URL: iss.WebURL, Body: iss.Description, Labels: append([]string(nil), iss.Labels...)}
 		if iss.Author != nil {
 			out.Author = gitlabAccount(iss.Author.ID, iss.Author.Username)
 		}
 		return out, nil
 	case mr != nil:
-		out := &Issue{Number: int(mr.IID), Title: mr.Title, State: gitlabState(mr.State), IsPullRequest: true, URL: mr.WebURL}
+		out := &Issue{Number: int(mr.IID), Title: mr.Title, State: gitlabState(mr.State), IsPullRequest: true,
+			URL: mr.WebURL, Body: mr.Description, Labels: append([]string(nil), mr.Labels...)}
 		if mr.Author != nil {
 			out.Author = gitlabAccount(mr.Author.ID, mr.Author.Username)
 		}

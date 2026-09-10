@@ -238,6 +238,7 @@ type ghIssueWire struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
 	State  string `json:"state"`
+	Body   string `json:"body"`
 	User   struct {
 		Login string `json:"login"`
 		ID    int64  `json:"id"`
@@ -246,6 +247,9 @@ type ghIssueWire struct {
 		URL string `json:"url"`
 	} `json:"pull_request"`
 	HTMLURL string `json:"html_url"`
+	Labels  []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
 }
 
 type ghReviewWire struct {
@@ -400,6 +404,10 @@ func (g *GitHubForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
 		return nil, err
 	}
+	labels := make([]string, 0, len(w.Labels))
+	for _, l := range w.Labels {
+		labels = append(labels, l.Name)
+	}
 	return &Issue{
 		Number:        w.Number,
 		Title:         w.Title,
@@ -407,6 +415,8 @@ func (g *GitHubForge) GetIssue(repo ForgeRepo, number int) (*Issue, error) {
 		Author:        Account{Login: w.User.Login, ID: w.User.ID},
 		IsPullRequest: w.PullRequest != nil,
 		URL:           w.HTMLURL,
+		Labels:        labels,
+		Body:          w.Body,
 	}, nil
 }
 
@@ -1008,7 +1018,7 @@ const ghCommentsQuery = `query($owner:String!, $name:String!, $number:Int!) {
           isMinimized
           createdAt
           url
-          author { login __typename }
+          author { login __typename ... on User { databaseId } ... on Bot { databaseId } ... on Organization { databaseId } ... on Mannequin { databaseId } }
         }
       }
     }
@@ -1035,8 +1045,9 @@ func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error
 							CreatedAt   string `json:"createdAt"`
 							URL         string `json:"url"`
 							Author      struct {
-								Login    string `json:"login"`
-								Typename string `json:"__typename"`
+								Login      string `json:"login"`
+								Typename   string `json:"__typename"`
+								DatabaseID int64  `json:"databaseId"`
 							} `json:"author"`
 						} `json:"nodes"`
 					} `json:"comments"`
@@ -1075,7 +1086,7 @@ func (g *GitHubForge) ListComments(repo ForgeRepo, number int) ([]Comment, error
 		res = append(res, Comment{
 			ID:         n.ID,
 			DatabaseID: n.DatabaseID,
-			Author:     Account{Login: login},
+			Author:     Account{Login: login, ID: n.Author.DatabaseID},
 			Body:       n.Body,
 			Minimized:  n.IsMinimized,
 			CreatedAt:  n.CreatedAt,

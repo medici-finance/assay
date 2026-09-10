@@ -111,8 +111,17 @@ enumerated ops `deskpr`/`deskfile`/`deskclose` still lacked, which is why #509 r
 code-aware rescope rather than a ratchet-number correction. With the four ops added and the three verbs
 routed through `ForgeFor`, their three permit rows (`cmd/deskclose/exec.go::runGH::gh`,
 `cmd/deskfile/exec.go::gh::gh`, `cmd/deskpr/exec.go::gh::gh`) are removed and the forge-CLI ceiling falls
-12 → 9. `deskclose` needed no new op (its reads/writes all mapped to existing ops; its `viewer{login}`
-whoami is replaced by the minted role's known login, an identity-layer change, not a forge op).
+12 → 9. `deskclose` needed no new op/method (its reads/writes all mapped to existing ops; its `viewer{login}`
+whoami is replaced by the minted role's known login, an identity-layer change, not a forge op). It
+did extend three existing result shapes, each with `deskclose`/`deskfile`/`deskpr` as the in-change
+consumer under the freeze rule (which binds methods, not fields): `Issue` gained `URL` (#691),
+`Labels` and `Body` (its decision-label gate and PR-ref extraction read one `GetIssue`);
+`PullRequest` gained `Title` (`deskpr edit`'s idempotency); and `ListComments`' comment author now
+carries its numeric id (the blessing-authority strict id-pin `deskclose`'s authority read compares —
+the GitHub GraphQL query gained the `databaseId` inline-fragment selection, GitLab already carried
+it). The App/Bot exclusion in `deskclose`'s authority gate moves from the REST `type` field (absent
+from the seam) to the seam's canonical `<slug>[bot]`/`app/<slug>` rendered-login discriminator; the
+strict id-pin is unchanged, so the two-layer defense is preserved.
 `SearchIssues` returns ISSUES only on both backends (GitHub filters PRs out with `is:issue`; GitLab's
 project issue search is issue-only by the endpoint's own shape). On GitLab all four map 1:1 — none is a
 could-not-check-with-gap — because each is a concrete project-scoped REST read/write with a direct analog.

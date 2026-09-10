@@ -61,7 +61,7 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
-const allowedInvocationCeiling = 10
+const allowedInvocationCeiling = 9
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
@@ -71,12 +71,6 @@ var AllowedInvocations = []Allowance{
 			"operation at all but the identity layer, which inventory delta D2 keeps deliberately outside the " +
 			"interface. Retiring it means giving deskadvisory a minted token of its own; there is no Forge " +
 			"method it could move to.",
-	},
-	{
-		Key: "cmd/deskclose/exec.go::runGH::gh",
-		Reason: "TODO(forge-surface): identity. GetIssue/PostComment/CloseIssue all exist on the interface, so " +
-			"the ops are there — but exec.go states the contract explicitly: deskclose gates WHETHER and WHAT, " +
-			"never WHO, and mints no token on any path. Migrating changes the closing identity.",
 	},
 	{
 		Key: "cmd/deskdigest/exec.go::runGH::gh",

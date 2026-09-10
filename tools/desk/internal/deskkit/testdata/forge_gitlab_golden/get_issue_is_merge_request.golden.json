@@ -18,6 +18,9 @@
     },
     "IsPullRequest": true,
     "Title": "Draft: add the thing",
-    "URL": "https://gitlab.example/medici-finance/assay/-/merge_requests/7"
+    "URL": "https://gitlab.example/medici-finance/assay/-/merge_requests/7",
+    "Labels": [
+      "authorization-needed"
+    ]
   }
 }
