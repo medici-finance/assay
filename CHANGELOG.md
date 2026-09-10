@@ -23,6 +23,47 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.5 — 2026-09-10
+
+### Added
+- **`create-fleet-gitlab.sh` now provisions the desk labels a GitLab adopter's project needs,
+  closing the last gap before `deskflip` can drive an MR to ready.** The fleet script created
+  every account, protection and merge gate but never any labels, so a GitLab project had no
+  `authorization-needed` / `approval-needed` queue-legibility pair (nor the `review-request`
+  dispatch token or the `raised-by:<role>` provenance stamps). A missing label degrades
+  **silently** on GitLab — `deskflip`'s `authorization-needed` → `approval-needed` swap fails,
+  and `deskfile --raised-by` drops the stamp — so the script now creates the full set under
+  `--project` via `POST /projects/:id/labels`, idempotently (a duplicate name answers 409, or
+  400 "already exists" — both the success case for an ensure, matching the forge seam). This is
+  the GitLab twin of the GitHub `create-labels` adoption primitive: the same names, colors and
+  descriptions, so the two adoption profiles are label-parity. Colors are sent with the leading
+  `#` GitLab requires. The GitLab adoption guide's by-hand table gains the matching endpoint row.
+- Recorded, with measurements, that **v1.0.4 supersedes v1.0.3 as the upgrade target without
+  superseding the flag day** — the same shape the v1.0.1, v1.0.2 and v1.0.3 re-pins recorded. An
+  adopter already on v1.0.0, v1.0.1, v1.0.2 or v1.0.3 has no migration to run, only a re-pin,
+  while an adopter on v0.28.0 upgrading straight to v1.0.4 still runs the brief-v1 → brief-v2
+  migration on the way through rather than being skipped past it.
+- The v1.0.4 umbrella this pins to carries statusgen's committer-identity cross-check on
+  verified/done briefs (a second, git-derived signal beside the free-string attribution check,
+  a NOTICE that degrades loudly when git cannot answer and never over-rejects an honest
+  verification whose distinct runners share one identity), and the forge-neutral brief-13
+  planning for the write verbs (`deskpr` / `deskfile` / `deskclose` re-seated onto the forge
+  resolver — doc/plan only, no tool behaviour change).
+
+### Fixed
+- **`statusgen --corroborate` now locates a pre-existing stamp's base cell by column HEADER NAME, not by positional index — so a brief-v2 board migration that re-shapes the Briefs table no longer re-gates historical human sign-offs.** The migration drops the `Gate` column (header and cells) and re-orders columns after `Reviewed`, so the `Reviewed` cell sits at a DIFFERENT positional index on the branch than at the PR merge-base. The pre-existing exemption (#770) compared the stamp's cell against the base cell at the BRANCH's index, which on a re-shaped base read the wrong column and reported a byte-identical sign-off as `MISSING-CORROBORATION` again. The exemption now resolves the base cell by the branch column's header name (e.g. `Reviewed`) against the base table's own header row, falling back to the positional index only when the base table has no header row. Every fail-closed guard from #770 is unchanged — an unresolved non-board occurrence, a nil base, a missing brief row, an edited cell, and a branch column absent from the base header all still leave the stamp fully gated.
+- Added a regression test (`TestPreExistingBranchColumnAbsentFromBaseFailsClosed`) pinning the `statusgen --corroborate` pre-existing-exemption fail-closed branch for when the stamp's branch column is ABSENT from the base table's header entirely — the exemption must stay gated (`MISSING-CORROBORATION`) rather than fall back to the branch's positional index and match an unrelated base cell. Tests-only follow-up to #785; no behaviour change.
+
+### Changed
+- The adopter-scaffold example gains a v1.0.4 composition manifest with real digests, and its
+  notes now name v1.0.4 as the umbrella an upgrade moves to. The v1.0.0, v1.0.1, v1.0.2 and
+  v1.0.3 manifests stay: a tree pinned at any of them still has to resolve, and the brief-v1 →
+  brief-v2 migration's span ends at v1.0.0.
+- The plugin's paired-versions manifest now pins statusgen and desk-tools at the published
+  umbrella **v1.0.4** on all ten platform lines, every digest re-harvested from that release's
+  own checksum manifest and compared back against it. A cold install resolves the v1.0.4
+  binaries and verifies them byte-for-byte.
+
 ## v1.0.4 — 2026-09-10
 
 ### Added
