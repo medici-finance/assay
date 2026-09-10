@@ -509,7 +509,7 @@ else
 fi
 
 # ===========================================================================
-# T9 — project labels (assay#774): a clean run creates every LABEL_TABLE row
+# T9 — project labels (#774): a clean run creates every LABEL_TABLE row
 #      via POST /projects/:id/labels, the queue pair carries the leading-#
 #      color GitLab requires, and each create is reported.
 # ===========================================================================

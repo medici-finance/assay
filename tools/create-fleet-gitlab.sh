@@ -52,7 +52,7 @@
 #   POST   api/v4/projects/:id/protected_tags       (create_access_level SCALAR — Free)
 #   PUT    api/v4/projects/:id                       (pipeline + all-discussions-resolved merge checks)
 #   GET    api/v4/projects/:id                       (merge-checks read-back)
-#   POST   api/v4/projects/:id/labels                 (queue-legibility + provenance labels, assay#774)
+#   POST   api/v4/projects/:id/labels                 (queue-legibility + provenance labels, #774)
 #
 # One non-API URL is fetched, and only when avatars are left at their default:
 #   GET    https://assay.guide/assets/app-icon-<role>.png   (public role icons)
@@ -109,7 +109,7 @@ MERGE_ACCESS_LEVEL=40
 PROTECTED_TAG_GLOB='*'
 PROTECTED_TAG_CREATE_LEVEL=40
 
-# Project labels the desk verbs and the operating skills reach for (assay#774).
+# Project labels the desk verbs and the operating skills reach for (#774).
 # This is the GitLab twin of the GitHub `create-labels` PRIMITIVE
 # (docs/adopting-assay.md) — the SAME set of names, colors and descriptions, so
 # the two adoption profiles are label-parity. A label that is absent when a tool
@@ -875,7 +875,7 @@ configure_merge_settings() {
   fi
 }
 
-# Project labels (assay#774): create every LABEL_TABLE row idempotently via
+# Project labels (#774): create every LABEL_TABLE row idempotently via
 # POST /projects/:id/labels. GitLab answers a duplicate name with 409 on some
 # versions and 400 "already exists" on others — both are the success case for an
 # ensure, exactly as the forge seam's ApplyLabels treats them. Labels are

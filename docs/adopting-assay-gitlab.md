@@ -354,7 +354,7 @@ The label set is the GitLab twin of the GitHub **`create-labels`** primitive
 adoption profiles are label-parity. It matters because a label that is absent when a
 desk verb reaches for it degrades **silently**: `deskflip`'s `authorization-needed` →
 `approval-needed` queue swap fails, and `deskfile --raised-by <role>` drops the
-provenance stamp (assay#774). The script creates them under `--project`; colors are
+provenance stamp (#774). The script creates them under `--project`; colors are
 sent with the leading `#` GitLab requires.
 
 ## 4. The ci-config-project runbook (human-only)
