@@ -683,17 +683,18 @@ type corroborateResult struct {
 //
 //  1. an APPROVED review by the named human on the PR (strongest signal);
 //  2. an explicit approval COMMENT by the named human on the PR;
-//  3. a linked, human-CLOSED needs-decision issue carrying this brief's per-brief
+//  3. a linked, human-CLOSED needs-decision issue carrying this record's per-record
 //     decision-gate marker (the sanctioned ratification channel — see
 //     decisionGateCorroboration and the house tracker's ruling (Option 1: a linked
 //     decision issue closed by the blessed login corroborates)). This third anchor is
-//     ADDITIVE: it fires only for a brief-file stamp whose brief links such an issue,
-//     and it never weakens anchors 1 and 2, which are unchanged.
+//     ADDITIVE: it fires for a stamp on either a brief-<NN>.md brief OR a DR-<slug>.md
+//     decision record whose file links such an issue, and it never weakens anchors 1
+//     and 2, which are unchanged.
 //
 // gates carries the pre-fetched decision-issue state for the third anchor, keyed by
-// the brief file the stamp was found in; it is empty/nil when only the PR anchors are
-// in play (every existing caller and test), so the two PR anchors decide exactly as
-// before.
+// the record file (brief or DR) the stamp was found in; it is empty/nil when only the
+// PR anchors are in play (every existing caller and test), so the two PR anchors
+// decide exactly as before.
 func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int, gates decisionGateLinks) []corroborateResult {
 	if len(stamps) == 0 {
 		return []corroborateResult{{Verdict: verdictNoStamp}}
@@ -740,11 +741,12 @@ func corroborateStamps(stamps []stamp, data *ghPRData, repo string, pr int, gate
 		}
 
 		// Third anchor: a linked, human-closed needs-decision issue carrying this
-		// brief's per-brief decision-gate marker — the sanctioned ratification
-		// channel (the house tracker's ruling). A gate:human decision brief whose ruling
-		// was recorded by CLOSING its decision-issue (rather than as a PR approval)
-		// corroborates through this path. It requires no PR data, so it is checked
-		// after — and independently of — the two PR anchors above.
+		// record's per-record decision-gate marker — the sanctioned ratification
+		// channel (the house tracker's ruling). A gate:human decision brief OR a
+		// DR-<slug>.md decision record whose ruling was recorded by CLOSING its
+		// decision-issue (rather than as a PR approval) corroborates through this path.
+		// It requires no PR data, so it is checked after — and independently of — the
+		// two PR anchors above.
 		if ev, ok := decisionGateCorroboration(s, gates); ok {
 			results = append(results, corroborateResult{
 				Stamp:    s,
@@ -833,10 +835,11 @@ func runCorroborate(prsArg string) int {
 				return 1
 			}
 			// Third corroboration anchor (the house tracker's ruling): pre-fetch the
-			// needs-decision issues each brief-file stamp links, so a gate:human
-			// decision brief ratified by CLOSING its decision-issue can corroborate
-			// even without a PR approval anchor. Empty when no brief links such an
-			// issue — the two PR anchors then decide exactly as before.
+			// needs-decision issues each brief-file OR DR-<slug>.md-record stamp links,
+			// so a gate:human decision brief or a decision record ratified by CLOSING
+			// its decision-issue can corroborate even without a PR approval anchor.
+			// Empty when no record links such an issue — the two PR anchors then decide
+			// exactly as before.
 			gates := gatherDecisionGateLinks(".", repo, stamps)
 			for _, r := range corroborateStamps(stamps, data, repo, pr, gates) {
 				allResults = append(allResults, r)
