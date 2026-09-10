@@ -409,6 +409,32 @@ Measured rather than inferred, on this tree:
 The row's own "after migration" clause still belongs to this repo's flag-day migration, which
 remains a separate change.
 
+### Implementer note — v1.0.5 supersedes v1.0.4 as the upgrade target — 2026-09-10 opus-5[1m]-implementer
+
+Umbrella **v1.0.5** was published 2026-09-10T16:07:43Z by release run 34498522079 (`success`);
+`refs/tags/v1.0.5` is an ANNOTATED tag object peeling to commit `0c72024`, the commit that run
+built. It carries the header-keyed base-cell fix for the `--corroborate` pre-existing-stamp
+exemption (#785) plus its fail-closed regression test (#788), and stands to v1.0.4 as v1.0.4 stood
+to v1.0.3 — superseding it as the version an adopter is carried TO, never superseding the flag day.
+**MIGRATION STILL NOT RUN HERE — pin bump only.** Measured:
+
+- **Nothing to migrate on the patch span.** `deskmigrate --from v1.0.4 --to v1.0.5 --root .
+  --dry-run` → exit 0, `no migrations for v1.0.4 -> v1.0.5 (clean no-op)`; `--from v1.0.0` → exit 0,
+  the same. An adopter on v0.28.0 still gets the flag day: `--from v0.28.0 --to v1.0.5 --root
+  examples/adopter-scaffold --dry-run` → exit 0, selecting `0001-v0.28.0-to-v1.0.0-derived-board`,
+  planning the same 3 files; `git status --porcelain examples/` after shows only this PR's edits.
+- **The pins move, the composition manifests accumulate.** `plugins/assay/paired-versions.yaml`
+  re-pins both artifacts to v1.0.5, all ten digests re-harvested from the v1.0.5 release's own
+  checksum manifest; `examples/adopter-scaffold/releases/v1.0.5.yaml` is ADDED and v1.0.4 demoted
+  to a patch step alongside the older manifests. `plugin: "1.0.0"` is unchanged — it names the
+  plugin version, checked against `plugins/assay/.claude-plugin/plugin.json`, not the umbrella tag.
+  `plugins/assay/scripts/check-paired-versions.sh` → exit 0; its tests → 16 passed, 0 failed.
+  `qualgen` stays deliberately unpinned: five assets published, no section here, as with v1.0.4.
+- **End-to-end digest confirmation, and row 10 re-measured.** The published
+  `statusgen-darwin-arm64` was downloaded and hashed; its hash equals the checksum-manifest entry
+  AND the committed pin line (`12d82b58…fad4b`), and it self-reports `v1.0.5`. With it,
+  `statusgen --root . --lint` → **exit 0, `LINT: PASS`**, NOTICEs only, no `PROBLEM`-prefixed line.
+
 ## Review
 Gate: human (from frontmatter). The human records the ruling after running rows 3 and 9
 on a real adopter checkout and reading the release note; then cuts `v1.0.0` via the
