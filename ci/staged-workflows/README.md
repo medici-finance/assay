@@ -32,8 +32,9 @@ reviewable artifact, not a run.
   is inert: the running workflow is still the old file.
 - `truth-suite.yml` — the standing truth suite (`docs/test-policy.md` § "Standing truth
   suite"): the test corpus plus the release mutation gate, on push to the default branch and
-  on a daily schedule, reporting three-state. Promote it to `.github/workflows/truth-suite.yml`
-  to activate.
+  on a daily schedule, reporting three-state. **Already live** — promoted to
+  `.github/workflows/truth-suite.yml` on 2026-09-10; this directory no longer carries a copy,
+  so a change to it is authored here first and re-promoted by a maintainer commit.
 - `winparity.yml` — the Windows-build ↔ Makefile target-parity gate (#665). Runs
   `cd tools/winparity && go run . --root ../..` on the self-hosted `medici-builder-public` runner
   (hand-installed Go, no `make`), asserting that `scripts/build-windows.ps1`'s declared target set
