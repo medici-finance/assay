@@ -1,7 +1,8 @@
 # Composition manifest for umbrella v1.0.0 — adopter-scaffold example.
 #
-# The FLAG-DAY step. v1.0.3 is now the latest umbrella (see releases/v1.0.3.yaml,
-# and releases/v1.0.1.yaml and releases/v1.0.2.yaml for the patches in between) —
+# The FLAG-DAY step. v1.0.4 is now the latest umbrella (see releases/v1.0.4.yaml,
+# and releases/v1.0.1.yaml, releases/v1.0.2.yaml and releases/v1.0.3.yaml for the
+# patches in between) —
 # this manifest stays because
 # the brief-v1 → brief-v2
 # migration's span ends here, so an adopter passes THROUGH v1.0.0 on the way up and
