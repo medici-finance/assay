@@ -10,10 +10,12 @@
 #
 # Default impl is ../create-fleet-gitlab.sh. Point FLEET_IMPL at an earlier
 # version to see the behaviours it lacks fail — the fail-first evidence. Against
-# the impl before this change (protected release tags + the all-discussions-
-# resolved merge gate, issue #346 comment 1 §4), T7 and T8 go RED:
+# the impl before the protected-tags + all-discussions-resolved change (issue
+# #346 comment 1 §4), T7 and T8 go RED; against the impl before the gl_api
+# hardening (issue #786 — owner PAT off argv, curl transport failure fails
+# closed), T10 and T11 go RED:
 #   git show HEAD~1:tools/create-fleet-gitlab.sh > /tmp/old-fleet.sh
-#   FLEET_IMPL=/tmp/old-fleet.sh ./tools/create-fleet-gitlab_test.sh   # RED (T7/T8)
+#   FLEET_IMPL=/tmp/old-fleet.sh ./tools/create-fleet-gitlab_test.sh   # RED (T10/T11)
 #   ./tools/create-fleet-gitlab_test.sh                                # green
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,6 +73,15 @@ case "$url" in
     ;;
 esac
 
+# Simulated API transport failure (issue #786): DNS/TLS/connection refused.
+# Real curl writes the "000" http_code from -w and exits non-zero, having put
+# nothing in -o. gl_api must catch that non-zero exit and fail closed rather
+# than read "000" as an ordinary HTTP status.
+if [ "${FAKE_CURL_TRANSPORT_FAIL:-0}" = "1" ]; then
+  printf '000'
+  exit 7
+fi
+
 path="${url#*://*/api/v4}"
 # shellcheck disable=SC1090
 . "$FAKE_CURL_RESPONDER"
@@ -91,6 +102,7 @@ newcase() {
   export FAKE_CURL_RESPONDER="$CASEDIR/responder.sh"
   export STATE
   unset FAKE_ICON_FAIL
+  unset FAKE_CURL_TRANSPORT_FAIL
   for r in $ROLES; do printf 'PNGFAKE' > "$ICONS/$r.png"; done
 }
 
@@ -655,6 +667,87 @@ else
   bad "T9d dry-run enumerates the queue-legibility labels"
 fi
 if [ ! -s "$FAKE_CURL_LOG" ]; then ok "T9d dry-run makes zero network calls"; else bad "T9d dry-run makes zero network calls"; fi
+
+# ===========================================================================
+# T10 — gl_api owner-PAT custody (issue #786): the group-owner PAT is delivered
+#       to curl via a `curl -K` config file, NEVER on argv where the process
+#       table would expose it. Asserted on the group-resolve call, which every
+#       non-dry-run mode makes first, so the whole gl_api path is covered.
+# ===========================================================================
+newcase
+cat > "$FAKE_CURL_RESPONDER" <<RESP
+$bump_helper
+PLANFIELD=',"plan":"free"'
+respond() {
+  local m="\$1" p="\$2" n
+  $common_accounts
+  case "\$m \$p" in
+    "GET /projects/7/protected_branches/main")
+      echo "200"
+      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
+      return ;;
+    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
+    "GET /projects/7/approvals")
+      echo "200"
+      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
+      return ;;
+  esac
+  echo "500"; echo '{"unstubbed":true}'
+}
+RESP
+# GITLAB_TOKEN carries a distinctive sentinel so a leak onto argv is unmistakable.
+GITLAB_TOKEN="glpat-owner-argv-sentinel" run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
+if grep -q 'glpat-owner-argv-sentinel' "$FAKE_CURL_LOG"; then
+  bad "T10 the owner PAT must never reach curl argv (found the sentinel in the argv log)"
+else
+  ok "T10 the owner PAT never reaches curl argv (delivered via curl -K config)"
+fi
+if grep -q 'PRIVATE-TOKEN' "$FAKE_CURL_LOG"; then
+  bad "T10 the PRIVATE-TOKEN header must not be passed on the command line"
+else
+  ok "T10 no PRIVATE-TOKEN header appears on the command line"
+fi
+if grep -q 'argv=.* -K ' "$FAKE_CURL_LOG"; then
+  ok "T10 gl_api calls pass a curl -K config file"
+else
+  bad "T10 gl_api calls pass a curl -K config file"
+fi
+if [ "$RC" = "0" ]; then ok "T10 the run still succeeds with the -K custody path (rc=0)"; else bad "T10 the run still succeeds with the -K custody path (rc=$RC)"; fi
+
+# ===========================================================================
+# T11 — gl_api transport safety (issue #786): a curl transport failure
+#       (non-zero exit, HTTP "000") FAILS CLOSED — the run surfaces the failure
+#       and exits non-zero, rather than reading "000" as a benign HTTP status
+#       and proceeding.
+# ===========================================================================
+newcase
+cat > "$FAKE_CURL_RESPONDER" <<RESP
+$bump_helper
+PLANFIELD=',"plan":"free"'
+respond() {
+  local m="\$1" p="\$2" n
+  $common_accounts
+  echo "500"; echo '{"unstubbed":true}'
+}
+RESP
+FAKE_CURL_TRANSPORT_FAIL=1 run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
+if [ "$RC" != "0" ] && has "curl transport failure"; then
+  ok "T11 a curl transport failure fails closed (rc=$RC, failure surfaced)"
+else
+  bad "T11 a curl transport failure fails closed (rc=$RC)"
+fi
+if has "Failing closed"; then
+  ok "T11 the fail-closed decision is stated, not silently swallowed"
+else
+  bad "T11 the fail-closed decision is stated"
+fi
+# A fail-closed abort must NOT have walked on to the later settings steps as if
+# the API had answered.
+if has "configured: pipelines must succeed before merge"; then
+  bad "T11 a transport failure must not read as success and proceed to later steps"
+else
+  ok "T11 a transport failure aborts rather than proceeding through the settings steps"
+fi
 
 echo
 echo "passed: $pass   failed: $fail"

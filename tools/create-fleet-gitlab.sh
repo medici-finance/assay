@@ -265,17 +265,41 @@ urlencode() {
 
 # gl_api METHOD PATH [JSON_BODY] — sets GL_LAST_STATUS and GL_LAST_BODY_FILE.
 # Caller is responsible for `rm -f "$GL_LAST_BODY_FILE"` when done reading it.
+#
+# Credential custody (spec.md §5, issue #786): the owner PAT is passed to curl
+# through a 0600 config file (`curl -K`, minted under `umask 077`), NEVER on the
+# command line where the process table would expose it to any local user. This
+# is the same custody upload_avatar already uses for a role's own token — the
+# only difference is the source (this reads the owner PAT from the environment,
+# upload_avatar reads a role PAT from its 0600 token file).
+#
+# Transport safety (issue #786): curl's exit status is captured. A transport
+# failure (DNS/TLS/connection refused — curl exits non-zero and reports HTTP
+# "000") FAILS CLOSED: the failure is surfaced on stderr and gl_api returns
+# non-zero, which under `set -e` aborts the run. A transport failure can never
+# be read as a benign/empty success by the HTTP-status branch of a caller.
 gl_api() {
   local method="$1" path="$2" body="${3:-}"
-  local tmp
+  local tmp cfg rc
   tmp=$(mktemp "${TMPDIR:-/tmp}/gl-api-body.XXXXXX")
+  # PAT off argv: write the token into a 0600 curl config file and pass it with
+  # `curl -K`, so PRIVATE-TOKEN never appears on the command line.
+  cfg=$(mktemp "${TMPDIR:-/tmp}/gl-api-curlrc.XXXXXX")
+  ( umask 077; printf 'header = "PRIVATE-TOKEN: %s"\n' "$GITLAB_TOKEN" > "$cfg" )
   if [ -n "$body" ]; then
-    GL_LAST_STATUS=$(curl -sS -o "$tmp" -w '%{http_code}' -X "$method" \
-      -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" -H "Content-Type: application/json" \
-      -d "$body" "${GITLAB_URL}/api/v4${path}")
+    GL_LAST_STATUS=$(curl -sS -K "$cfg" -o "$tmp" -w '%{http_code}' -X "$method" \
+      -H "Content-Type: application/json" \
+      -d "$body" "${GITLAB_URL}/api/v4${path}") && rc=0 || rc=$?
   else
-    GL_LAST_STATUS=$(curl -sS -o "$tmp" -w '%{http_code}' -X "$method" \
-      -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${GITLAB_URL}/api/v4${path}")
+    GL_LAST_STATUS=$(curl -sS -K "$cfg" -o "$tmp" -w '%{http_code}' -X "$method" \
+      "${GITLAB_URL}/api/v4${path}") && rc=0 || rc=$?
+  fi
+  rm -f "$cfg"
+  if [ "$rc" -ne 0 ]; then
+    echo "error: curl transport failure on ${method} ${path} (curl exit ${rc}, HTTP '${GL_LAST_STATUS:-none}') — is ${GITLAB_URL} reachable? (DNS/TLS/connection). Failing closed." >&2
+    rm -f "$tmp"
+    GL_LAST_BODY_FILE=""
+    return 1
   fi
   GL_LAST_BODY_FILE="$tmp"
 }
