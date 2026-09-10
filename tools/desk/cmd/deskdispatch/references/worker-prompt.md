@@ -145,6 +145,20 @@ reliably caught an inverted or false desk claim.
   `gh pr edit`), `deskreply` for a reply on its own PR. `deskreply` takes exactly two positionals
   (`deskreply <owner/repo> <pr> --body-file F`) and has no `comment` subcommand; an extra
   leading token is refused before anything is posted.
+- Set your OWN loop identity before any desk write verb: `export DESK_LOOP=worker-desk` in
+  this shell. Every outward verb (`deskpr create`, `deskfile`, `deskreply`) REFUSES with
+  `$DESK_LOOP` unset — the kill switch's per-loop `STOP.<loop>` flag would silently never
+  match this session — and a dispatched worker must NOT inherit the dispatching desk's
+  `DESK_LOOP`, which resolves to the desk's App and mints the wrong identity for this
+  worker's PR and comments. `worker-desk` is the worker's own loop, and it resolves to the
+  worker App the PR and its comments must carry.
+- To comment on the ISSUE you were dispatched from — a `BLOCKED-ON-HUMAN` report, a
+  could-not-check note, an adoption record — the sanctioned verb is
+  `deskfile attach -R <owner/repo> --to <N> --body-file F` (use `deskfile new` if the issue
+  does not yet exist). `deskreply` is for your OWN open PR only; a hand-rolled `gh` write on
+  the issue bypasses the dedupe, budget and self-containment gates the verb enforces. An
+  ISSUE-ONLY item's `deskpr create` body must also carry the trailer line `Issue: #<N>`, not
+  a `Brief:` line.
 - Release the dispatch claim once the branch is pushed — branch-as-claim takes over from
   there. A worker that cannot reach the claim helper does not skip this step; the forge-API
   form is the contract.
