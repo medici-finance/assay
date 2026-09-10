@@ -4,7 +4,7 @@ package main
 // and, for ISSUE-ONLY work, the sanctioned verb to comment on the issue it was dispatched
 // from plus the exact `deskpr create` trailer.
 //
-// THE DEFECT (assay#700). A dispatched worker had no sanctioned verb to comment on the
+// THE DEFECT (#700). A dispatched worker had no sanctioned verb to comment on the
 // ISSUE it was dispatched from: `deskreply` is PR-only, and `deskfile attach` refused with
 // `$DESK_LOOP is unset` because the emitted kit never told the worker its own loop is
 // `worker-desk`. Issue-only workers also met a second refusal at the PR ceremony — the
