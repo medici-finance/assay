@@ -377,6 +377,69 @@ func TestForgeKindFromSlugAndHostEmptyHostRefusesSaaSDefault(t *testing.T) {
 	}
 }
 
+// --- #773: ForgeKindForRepoRemote resolves the kind from a caller-supplied remote --------
+
+// ForgeKindForRepoRemote answers WHICH FORGE serves a repo from a caller-supplied origin URL,
+// for a caller that has the target checkout somewhere other than its CWD (deskdispatch resolves
+// the forge of the repo its --root names, to pick the review head-fetch refspec — #773). Unlike
+// ForgeKindFromSlugAndHost it carries NO instance-host requirement: "which forge?" is all the
+// refspec choice needs, so a roster-configured repo resolves even with no readable remote.
+func TestForgeKindForRepoRemoteResolvesFromRosterAndHost(t *testing.T) {
+	repo := ForgeRepo{Owner: "medici-finance", Name: "assay"}
+
+	// Roster silent → the origin host decides. github.com → github, gitlab.com → gitlab.
+	withRoster(t, goldenRoster())
+	for _, tc := range []struct {
+		origin string
+		want   ForgeKind
+	}{
+		{"git@github.com:medici-finance/assay.git", ForgeGitHub},
+		{"https://github.com/medici-finance/assay.git", ForgeGitHub},
+		{"git@gitlab.com:medici-finance/assay.git", ForgeGitLab},
+		{"https://gitlab.com/medici-finance/assay.git", ForgeGitLab},
+	} {
+		res, err := ForgeKindForRepoRemote(repo, tc.origin)
+		if err != nil {
+			t.Fatalf("origin %q: unexpected error %v", tc.origin, err)
+		}
+		if res.Kind != tc.want {
+			t.Errorf("origin %q resolved kind=%q, want %q", tc.origin, res.Kind, tc.want)
+		}
+	}
+
+	// Roster entry answers even with NO readable remote — no instance-host requirement.
+	roster := goldenRoster()
+	roster[EnvRepoForges] = repo.Slug() + "=gitlab"
+	withRoster(t, roster)
+	res, err := ForgeKindForRepoRemote(repo, "")
+	if err != nil {
+		t.Fatalf("a roster-configured repo must resolve with an empty remote, got %v", err)
+	}
+	if res.Kind != ForgeGitLab {
+		t.Errorf("roster-configured kind = %q, want gitlab", res.Kind)
+	}
+}
+
+// With no roster entry AND no mappable origin host, ForgeKindForRepoRemote is could-not-check
+// (Unverifiable) naming the repo — never a guessed default. This is what makes deskdispatch's
+// review dispatch REFUSE rather than emit a coordinate the reviewer cannot check out.
+func TestForgeKindForRepoRemoteUnresolvableIsCouldNotCheck(t *testing.T) {
+	withRoster(t, goldenRoster())
+	repo := ForgeRepo{Owner: "example-org", Name: "unconfigured-repo"}
+	for _, origin := range []string{"", "git@example.selfhosted.test:example-org/unconfigured-repo.git"} {
+		res, err := ForgeKindForRepoRemote(repo, origin)
+		if err == nil {
+			t.Fatalf("origin %q silently resolved to %q — an unmappable forge is could-not-check", origin, res.Kind)
+		}
+		if got := ExitCodeOf(err); got != ExitUnverifiable {
+			t.Fatalf("origin %q exit = %d, want %d (unverifiable)", origin, got, ExitUnverifiable)
+		}
+		if !strings.Contains(err.Error(), repo.Slug()) {
+			t.Errorf("origin %q refusal does not name the repo: %v", origin, err)
+		}
+	}
+}
+
 // --- roster key registration --------------------------------------------------------------
 
 func TestRosterKnownKeySet(t *testing.T) {

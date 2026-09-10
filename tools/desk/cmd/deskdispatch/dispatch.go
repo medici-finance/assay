@@ -372,6 +372,13 @@ type dispatchPlan struct {
 	// validateOperatorWorktree — an empty value renders the not-yet-known placeholder, so a
 	// real dispatch, which never sets it, is unaffected.
 	home string
+	// forgeKind is the resolved forge serving the target repo, set ONLY for a review
+	// dispatch — the one kind whose prompt is forge-shaped (the head-fetch refspec: GitHub
+	// refs/pull/<N>/head vs GitLab refs/merge-requests/<iid>/head, #773). A worker dispatch
+	// emits no forge-shaped ref, so this stays empty for one and the worker path is
+	// unchanged. Resolved pre-claim so a repo whose forge cannot be determined refuses the
+	// review dispatch before any durable state exists.
+	forgeKind deskkit.ForgeKind
 }
 
 // validateCallerPreconditions checks EVERY caller-controlled precondition, and it runs
@@ -457,6 +464,22 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	}
 	plan.repo = repo
 	plan.claimKey = claimKeyFor(o.item, repo)
+
+	// A REVIEW dispatch's prompt is forge-shaped: the reviewer fetches the change's HEAD from
+	// the forge-specific server-side ref namespace (GitHub refs/pull/<N>/head ↔ GitLab
+	// refs/merge-requests/<iid>/head). Resolve WHICH forge serves the target repo now, pre-claim,
+	// so a GitHub-shaped fetch is never emitted into a GitLab reviewer's prompt (#773) and so a
+	// repo whose forge cannot be determined refuses HERE, before any durable state exists, rather
+	// than handing a reviewer a coordinate it cannot check out. A worker dispatch emits no
+	// forge-shaped ref, so this is skipped for one and the worker path stays byte-for-byte
+	// unchanged — including its executed-process count.
+	if reviewKit(o.kit) {
+		kind, ferr := o.resolveForgeKindForReview(repo)
+		if ferr != nil {
+			return plan, ferr
+		}
+		plan.forgeKind = kind
+	}
 
 	plan.branch = o.branch
 	if plan.branch == "" {
@@ -1161,6 +1184,32 @@ func (o dispatchOpts) resolveRepo() (string, error) {
 			stepClaimAcquire, r.stdout), nil)
 	}
 	return slug, nil
+}
+
+// resolveForgeKindForReview resolves WHICH forge serves the target repo, for the ONE place
+// the emitted prompt is forge-shaped: the review kit's head-fetch refspec. It reads the
+// TARGET repo's origin remote from o.root — the same checkout resolveRepo reads — through the
+// runCmd seam, and hands the raw URL to deskkit, which owns the roster-first/host-map
+// resolution and the well-known host table; deskdispatch re-derives neither. A repo the
+// roster configures (ASSAY_REPO_FORGES) resolves even with an unreadable remote; otherwise
+// the origin host decides. Unresolvable is deskkit's own could-not-check (exit 6), returned
+// verbatim so the review dispatch fails closed rather than guessing a forge.
+func (o dispatchOpts) resolveForgeKindForReview(repo string) (deskkit.ForgeKind, error) {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || strings.TrimSpace(owner) == "" || strings.TrimSpace(name) == "" {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: %q does not parse to an owner/name, so the forge serving it cannot be resolved for the "+
+				"review head-fetch refspec.", stepClaimAcquire, repo), nil)
+	}
+	originURL := ""
+	if r := runCmd(o.root, "git", "remote", "get-url", "origin"); r.err == nil {
+		originURL = r.stdout
+	}
+	res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, originURL)
+	if err != nil {
+		return "", err
+	}
+	return res.Kind, nil
 }
 
 func (o dispatchOpts) say(format string, args ...any) {
