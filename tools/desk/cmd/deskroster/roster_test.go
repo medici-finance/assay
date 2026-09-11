@@ -2,9 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,89 +10,12 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// fakeRosterGHSource is compiled once (TestMain) into a temp dir placed FIRST on PATH.
-// It handles `gh pr view` (returns state/isDraft/title for a given PR) and
-// `gh pr list` (returns open PRs), driven by env vars for fixture control.
-const fakeRosterGHSource = `package main
-
-import (
-	"fmt"
-	"os"
-	"strings"
-)
-
-func main() {
-	args := os.Args[1:]
-	has := func(s string) bool {
-		for _, a := range args {
-			if a == s {
-				return true
-			}
-		}
-		return false
-	}
-
-	switch {
-	case has("view"):
-		// gh pr view <pr> --repo <owner/repo> --json state,isDraft,title
-		prNum := "?"
-		for i, a := range args {
-			if a == "--json" && i+1 < len(args) {
-				// skip
-			} else if i == 2 {
-				prNum = a
-			}
-		}
-		// Read fixture from env: FAKEGH_PR_<num>=state|isDraft|title
-		envKey := "FAKEGH_PR_" + prNum
-		if val := os.Getenv(envKey); val != "" {
-			parts := strings.SplitN(val, "|", 3)
-			state, draft, title := parts[0], "false", ""
-			if len(parts) > 1 { draft = parts[1] }
-			if len(parts) > 2 { title = parts[2] }
-			fmt.Printf(` + "`" + `{"state":%q,"isDraft":%s,"title":%q}` + "`" + `+"\n", state, draft, title)
-			return
-		}
-		// Default: if env FAKEGH_PR_MERGED is set for this pr, return MERGED.
-		if os.Getenv("FAKEGH_PR_MERGED_"+prNum) == "1" {
-			fmt.Printf(` + "`" + `{"state":"MERGED","isDraft":false,"title":"merged pr %s"}` + "`" + `+"\n", prNum)
-			return
-		}
-		if os.Getenv("FAKEGH_PR_CLOSED_"+prNum) == "1" {
-			fmt.Printf(` + "`" + `{"state":"CLOSED","isDraft":false,"title":"closed pr %s"}` + "`" + `+"\n", prNum)
-			return
-		}
-		// Default: open draft.
-		fmt.Printf(` + "`" + `{"state":"OPEN","isDraft":true,"title":"draft pr %s"}` + "`" + `+"\n", prNum)
-	case has("list"):
-		// gh pr list --repo <owner/repo> --state open --json number,title,isDraft --limit 50
-		prs := os.Getenv("FAKEGH_LIST_PRS")
-		if prs == "" {
-			fmt.Println("[]")
-			return
-		}
-		// Format: "num:draft:title;num:draft:title;..."
-		entries := strings.Split(prs, ";")
-		parts := make([]string, 0, len(entries))
-		for _, e := range entries {
-			if e == "" {
-				continue
-			}
-			fields := strings.SplitN(e, ":", 3)
-			num, draft, title := fields[0], "false", ""
-			if len(fields) > 1 { draft = fields[1] }
-			if len(fields) > 2 { title = fields[2] }
-			parts = append(parts, fmt.Sprintf(` + "`" + `{"number":%s,"isDraft":%s,"title":%q}` + "`" + `, num, draft, title))
-		}
-		fmt.Println("[" + strings.Join(parts, ",") + "]")
-	}
-}
-`
-
-var (
-	fakeRosterGHDir string
-	origRosterPATH  string
-)
+// The roster's two PR reads (ghViewPR, ghListOpenPRs) route through the enumerated Forge seam
+// since forge-gitlab/08 closed the forge surface — they no longer shell `gh`. TestMain installs
+// a package-level forgeFor stub (fakeRosterForge, defined in forge_test.go) that serves
+// GetPullRequest and ListOpenChanges from the SAME FAKEGH_* env fixtures the suites already set,
+// so every pre-existing behavioural assertion keeps asserting the same verdict it did against the
+// former fake-gh binary — the behaviour-preservation evidence the fixture header describes.
 
 func TestMain(m *testing.M) {
 	rosterCleanup, rerr := installFixtureRoster()
@@ -102,30 +23,10 @@ func TestMain(m *testing.M) {
 		panic("cannot install the test-fixture roster: " + rerr.Error())
 	}
 	defer rosterCleanup()
-	origRosterPATH = os.Getenv("PATH")
-	dir, err := os.MkdirTemp("", "deskroster-fakegh")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	if werr := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module fakegh\n\ngo 1.25\n"), 0o644); werr != nil {
-		fmt.Fprintln(os.Stderr, werr)
-		os.Exit(1)
-	}
-	if werr := os.WriteFile(filepath.Join(dir, "main.go"), []byte(fakeRosterGHSource), 0o644); werr != nil {
-		fmt.Fprintln(os.Stderr, werr)
-		os.Exit(1)
-	}
-	build := exec.Command("go", "build", "-o", filepath.Join(dir, "gh"), ".")
-	build.Dir = dir
-	build.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=")
-	if out, berr := build.CombinedOutput(); berr != nil {
-		fmt.Fprintf(os.Stderr, "build fake gh: %v\n%s\n", berr, out)
-		os.Exit(1)
-	}
-	fakeRosterGHDir = dir
+	origForgeFor := forgeFor
+	forgeFor = fakeRosterForgeFor
 	code := m.Run()
-	os.RemoveAll(dir)
+	forgeFor = origForgeFor
 	os.Exit(code)
 }
 
@@ -138,7 +39,6 @@ func rosterSetup(t *testing.T) string {
 	plantFixtureRoster(t, home)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test-session")
-	t.Setenv("PATH", fakeRosterGHDir+string(os.PathListSeparator)+origRosterPATH)
 	return home
 }
 
