@@ -65,7 +65,7 @@ type target struct {
 // (deskkit.TrustedAuthorID("", 0) is false) and carries no blessing, so the trust gate
 // refuses before anything is written. Worth a decode-level guard one day; not one this
 // function can add without pretending the problem is local to it.
-func resolveTarget(c *ghClient, n int) (*target, error) {
+func resolveTarget(c postBackend, n int) (*target, error) {
 	p, perr := c.getPR(n)
 	if perr == nil {
 		return &target{kind: kindPR, number: n, head: p.Head.SHA,
@@ -78,9 +78,10 @@ func resolveTarget(c *ghClient, n int) (*target, error) {
 	iss, ierr := c.getIssue(n)
 	if ierr != nil {
 		if isNotFound(ierr) {
+			owner, name := c.slug()
 			return nil, deskkit.Unverifiable(fmt.Sprintf(
 				"#%d is neither a pull request nor an issue in %s/%s (or this App installation "+
-					"cannot see it) — check the number and the repo", n, c.owner, c.repo), nil)
+					"cannot see it) — check the number and the repo", n, owner, name), nil)
 		}
 		return nil, ierr
 	}
@@ -104,7 +105,7 @@ func resolveTarget(c *ghClient, n int) (*target, error) {
 //
 // It only ever fires on a 404, and only after a positive issue read: a non-404 failure and
 // an unreadable number both fall through to the original error, unchanged.
-func requirePRErr(c *ghClient, repo string, n int, err error) error {
+func requirePRErr(c postBackend, repo string, n int, err error) error {
 	if !isNotFound(err) {
 		return err
 	}
