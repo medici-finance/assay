@@ -120,6 +120,27 @@ claims as *stronger* than the controls it must match — a claim that costs noth
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->
+### Verify run — 2026-09-10, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local)
+
+Target: merged `origin/main` @ `48b978bb08c468fec52c015d280285698fc362bd` (two-protocol confirmed). Offline (`KUBECONFIG=/dev/null`) in an isolated worktree; runner ≠ implementer. gate: model, risk all=no. Module layout: the only Go module is `tools/desk` (no root `go.mod`), so the brief's literal `go build ./... && go test ./tools/...` root form does not resolve — all Go rows run from inside `tools/desk` (documented adaptation).
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | 0 | build clean; all ~60 packages `ok` incl. `internal/deskkit` (34.0s) | PASS |
+| 2 | `grep -rl "github.com/cli/go-gh" tools/desk/internal/deskkit --include='*.go' \| grep -v _test.go \| wc -l` | — | `1` (`forge_github.go`, imports `github.com/cli/go-gh/v2/pkg/api`, uses `ghapi.NewRESTClient`) | PASS |
+| 3 | `grep -rnE 'exec\.Command(Context)?\([^)]*"gh"' cmd/deskpr cmd/deskfile cmd/deskclose --include='*.go' \| grep -v _test.go \| wc -l` | — | `0` — no `"gh"` exec in the three re-seated tools | PASS |
+| 4 | `go test ./internal/deskkit/ -run TestForgeGithubGolden -v` | 0 | `PASS`; **42** golden-pinned sub-scenarios (get_pull_request, reviews_walk_two_pages, create_draft_change, mark_ready_for_review, error_forbidden, …) | PASS |
+| 5 | `go test ./internal/deskkit/ -run TestForgeGithubAuth -v && … -run TestForgeGithubTierErrors -v` | 0 | Auth: `authenticates_from_injected_token`, `refuses_unset_token_no_ambient_fallback`; TierErrors: 403 permission / 401 credential / 404 visibility | PASS |
+
+**Anti-gaming (auth crux) — genuine, not happy-path:** the refusal-on-unset test sets `Token: ""`, asserts `err != nil`, exit `ExitUnverifiable`, AND `hitCount == 0` on an httptest capture server — proving an unset token NEVER reaches the network (no ambient gh-keyring attempt). Backed by `forge_github.go:68-93`: `restClient()` refuses when fields unset and sets Host+AuthToken+Transport all non-empty so go-gh's `optionsNeedResolution` is false — ambient lookup provably never runs, not merely unused. The 403→could-not-check test asserts `err != nil`, `pr == nil` (nil distinct from empty), a `*ForgeAPIError{Status:403}`, and `ExitUnverifiable`; `authenticates_from_injected_token` captures the actual Authorization header.
+
+**Defense-in-depth (gate: model):** two independent layers — the 42-scenario golden corpus proves transport-swap request-equivalence (upper), and the auth/tier tests prove the two properties the corpus cannot (auth SOURCE + error-tier mapping). The ambient-fallback closure is proven closed by construction (hitCount==0 + `optionsNeedResolution` design).
+
+**Risk-bearing value:** `RISK-VALUE: N/A — library migration (exec-gh → go-gh). Enumerated literals are HTTP status mappings only, all named net/http constants (StatusForbidden/StatusUnauthorized/StatusNotFound/StatusConflict); no magic numeric status, no host/URL constant. Nothing risk-bearing to rank/derive.`
+
+**Scope-traceability:** all Evidence maps to Verify rows 1–5; deskpr/deskfile/deskclose route forge ops through the Forge backend; deskpr's token-custody refuse-if-unminted guard preserved (`cmd/deskpr/exec.go`). Fleet-wide exec-gh removal is correctly scoped to brief 08; row 3 checks only the three re-seated tools = 0.
+
+**VERDICT: PASS** — all rows 1–5. gate: model, risk all=no → flip-eligible.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
