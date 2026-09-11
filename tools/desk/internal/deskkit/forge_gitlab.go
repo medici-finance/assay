@@ -1901,6 +1901,84 @@ func (g *GitLabForge) DeleteRef(repo ForgeRepo, ref string) error {
 	return g.mapErr(http.MethodDelete, path, derr)
 }
 
+// RefExists reports whether one git ref is present. It is DeleteRef's read twin, and it reaches
+// exactly as far: GitLab CE exposes no general ref API, so the Branches API
+// (`GET /projects/:id/repository/branches/:branch`, Tier: Free/Premium/Ultimate) is the only
+// ref-existence read there is, and it answers only for the `heads/<branch>` namespace. A ref
+// OUTSIDE refs/heads is a could-not-check REFUSAL naming the gap — never a guessed "absent",
+// because a backend that reported an unreadable namespace as absent would tell the
+// model-capability floor a HELD dispatch claim was released and age its stamp out on no
+// evidence. The dispatch claim the one caller reads lives at ClaimRefsPrefix
+// ("refs/heads/dispatch/<key>"), INSIDE that namespace, so the live read round-trips here on
+// the same Free-tier endpoint GitHub's single-reference read maps to.
+//
+// A 404 from the Branches API is the ANSWER "the branch/ref is absent" (false, nil) — that is
+// the read's whole point; every other non-2xx stays a could-not-check error, so a 403 from a
+// token that cannot see branches is never mistaken for a release.
+func (g *GitLabForge) RefExists(repo ForgeRepo, ref string) (bool, error) {
+	clean, err := ValidateRefPath(ref)
+	if err != nil {
+		return false, err
+	}
+	branch, ok := strings.CutPrefix(clean, "heads/")
+	if !ok {
+		return false, Unverifiable(fmt.Sprintf(
+			"could-not-check: GitLab exposes no general ref-existence endpoint, so RefExists cannot serve %q — "+
+				"only the \"heads/<branch>\" namespace maps (the Branches API); a ref held outside refs/heads "+
+				"has no CE equivalent and is NOT reported absent. A dispatch claim belongs at %s<key> "+
+				"(deskkit.ClaimRefPath), which IS inside that namespace", ref, ClaimRefsPrefix), nil)
+	}
+	cl, cerr := g.client()
+	if cerr != nil {
+		return false, cerr
+	}
+	path := fmt.Sprintf("/projects/%s/repository/branches/%s", g.projectPath(repo), url.PathEscape(branch))
+	_, _, gerr := cl.Branches.GetBranch(repo.Slug(), branch)
+	if gerr != nil {
+		mapped := g.mapErr(http.MethodGet, path, gerr)
+		if IsForgeNotFound(mapped) {
+			return false, nil
+		}
+		return false, mapped
+	}
+	return true, nil
+}
+
+// GitLabRepoInfoFetcher adapts a *GitLabForge to the string-signature RepoInfoFetcher the
+// public-repo security gate (repovis.go's PublicRepoGate) consumes. The gate is written against
+// (owner, repo string) coordinates and the GitHub side hands it HTTPRepoInfoFetcher; the GitLab
+// backend already serves both reads the gate needs — RepoVisibility and IssueReactions — but
+// under the ForgeRepo-signature the Forge interface uses, so PublicRepoGate cannot take it
+// directly. This shim bridges the two signatures WITHOUT reimplementing either read: it
+// delegates to the existing, golden-pinned GitLab backend methods, so the gate runs on a
+// GitLab-resolved repo with the SAME visibility read (`GET /projects/:id` `.visibility`,
+// `internal` passing through unfolded) and the SAME award-emoji→reaction mapping
+// (`thumbsup`→`+1`, human/bot resolved from the users API, never defaulted) it is tested
+// against. It is a SEPARATE type rather than extra methods on GitLabForge precisely because the
+// backend's exported method set must equal the frozen Forge interface exactly (a Go type cannot
+// carry two RepoVisibility signatures anyway).
+//
+// The gate is a SECURITY control and this adapter does not weaken it: it adds no fall-open path
+// — a read error propagates unchanged, so the gate still fails closed on an unreadable
+// visibility or reactions surface.
+type GitLabRepoInfoFetcher struct {
+	Forge *GitLabForge
+}
+
+// RepoVisibility delegates to the GitLab backend's ForgeRepo-signature read.
+func (a GitLabRepoInfoFetcher) RepoVisibility(owner, repo string) (string, error) {
+	return a.Forge.RepoVisibility(ForgeRepo{Owner: owner, Name: repo})
+}
+
+// IssueReactions delegates to the GitLab backend's ForgeRepo-signature read (award emoji mapped
+// to GitHub's reaction vocabulary, so the gate's `+1` check works unchanged).
+func (a GitLabRepoInfoFetcher) IssueReactions(owner, repo string, issueNumber int) ([]Reaction, error) {
+	return a.Forge.IssueReactions(ForgeRepo{Owner: owner, Name: repo}, issueNumber)
+}
+
+// GitLabRepoInfoFetcher satisfies the public-repo gate's fetcher contract.
+var _ RepoInfoFetcher = GitLabRepoInfoFetcher{}
+
 // ListLabelEvents returns the merge request's label-application events with the user that
 // applied each one.
 //

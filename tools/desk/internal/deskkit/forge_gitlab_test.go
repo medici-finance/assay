@@ -77,6 +77,9 @@ type glServer struct {
 	// createFileResp / updateFileResp are the Repository-Files write responses (FileInfo).
 	createFileResp map[string]any
 	updateFileResp map[string]any
+	// branch is the Branches-API GET payload (RefExists); branchMissing → 404 (ref absent).
+	branch        map[string]any
+	branchMissing bool
 	// labelCreateStatus, when set, is the status the project-label create route returns
 	// instead of 201. GitLab answers a duplicate name with 409 (or 400 on older versions),
 	// both of which mean the ensure's post-condition already holds.
@@ -262,6 +265,15 @@ func (s *glServer) handler(w http.ResponseWriter, r *http.Request) {
 		enc(s.projApproval)
 	case r.Method == http.MethodDelete && lBranch.MatchString(path):
 		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodGet && lBranch.MatchString(path):
+		// Branches API GET (RefExists). Absent → 404, the ANSWER "the ref is gone", which the
+		// backend maps to (false, nil); present → the branch payload → (true, nil).
+		if s.branchMissing {
+			w.WriteHeader(http.StatusNotFound)
+			enc(map[string]any{"message": "404 Branch Not Found"})
+			return
+		}
+		enc(s.branch)
 	case r.Method == http.MethodGet && lProject.MatchString(path):
 		enc(s.project)
 	default:
@@ -787,6 +799,32 @@ func glCases() []glCase {
 			name: "delete_ref_non_branch_namespace_refused", method: "DeleteRef",
 			setup: func(s *glServer) {},
 			run:   func(f *GitLabForge) (any, error) { return nil, f.DeleteRef(glRepo, "dispatch/item--01") },
+		},
+		{
+			// RefExists is DeleteRef's read twin, and reaches exactly as far: the Branches API is
+			// GitLab CE's only ref-existence read. A present branch (the dispatch claim ref lives
+			// INSIDE refs/heads, so it round-trips here) reads as (true, nil). The golden pins the
+			// project coordinate travels URL-encoded and the branch occupies its own segment.
+			name: "ref_exists_present", method: "RefExists",
+			setup: func(s *glServer) {
+				s.branch = map[string]any{"name": "dispatch/item--01", "commit": map[string]any{"id": "abc123"}}
+			},
+			run: func(f *GitLabForge) (any, error) { return f.RefExists(glRepo, "heads/dispatch/item--01") },
+		},
+		{
+			// A 404 from the Branches API is the ANSWER "the ref is absent" — (false, nil), never
+			// a read failure. Only this positive-absent ages a dispatch stamp out.
+			name: "ref_exists_absent", method: "RefExists",
+			setup: func(s *glServer) { s.branchMissing = true },
+			run:   func(f *GitLabForge) (any, error) { return f.RefExists(glRepo, "heads/dispatch/item--01") },
+		},
+		{
+			// The half GitLab CE cannot serve: a ref OUTSIDE refs/heads has no ref-existence
+			// endpoint, so it is a could-not-check REFUSAL with zero requests emitted — never a
+			// guessed "absent" that would tell the floor a held claim was released.
+			name: "ref_exists_non_branch_namespace_refused", method: "RefExists",
+			setup: func(s *glServer) {},
+			run:   func(f *GitLabForge) (any, error) { return f.RefExists(glRepo, "tags/v1.2.3") },
 		},
 		{
 			// The resource-label-events endpoint is GitLab's exact analog of the GitHub
