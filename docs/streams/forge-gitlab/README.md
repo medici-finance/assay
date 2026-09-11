@@ -71,7 +71,7 @@ carries its evidence; brief 04's Verify row 3 was re-baselined onto the amended 
 | 06 | [Ultimate refinements — custom reviewer role + external-status-check verdict lane](brief-06-ultimate-refinements.md) | 5 | M | implemented | — | — |
 | 07 | [GitHub forge backend on go-gh — retire the exec-`gh` shell path](brief-07-github-forge-go-gh.md) | 2 | M | implemented | — | — |
 | 08 | [Close the forge surface — enumerated operations, no passthrough, shell-exec ban](brief-08-close-the-forge-surface.md) | 3 | M | implemented | — | — |
-| 09 | [GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth](brief-09-gitlab-reviewer-write-path.md) | 4 | M | implemented | — | — |
+| 09 | [GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth](brief-09-gitlab-reviewer-write-path.md) | 4 | M | verified | 2026-09-11 opus-4.8[1m]-verifier (assay 8953d38d; 7/7 + §6 consumer PASS; §1 landed #846, prior FAIL was stale) | — |
 | 10 | [GitLab trust-events + commit author-login for the deskpost trust read](brief-10-gitlab-trust-events.md) | 5 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
