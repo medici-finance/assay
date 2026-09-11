@@ -173,6 +173,36 @@ facts:
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Verify run — 2026-09-10, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local)
+
+Target: merged `origin/main` @ `48b978bb08c468fec52c015d280285698fc362bd` (two-protocol confirmed). Offline (`KUBECONFIG=/dev/null`) in an isolated worktree; runner ≠ implementer (fn/06 landed `84ef71ac`, parent `f0be382` = the 3a baseline). gate: model, risk all=no.
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `go build ./... && go test ./...` | 0 | build ok; every package `ok` | PASS |
+| 2 | `go test ./cmd/deskboard/... ./cmd/issueboard/... ./cmd/scanloop/...` | 0 | all three suites `ok` | PASS |
+| 3a | `go test -list '.*' … \| grep -c '^Test'` | — | `398` ≥ baseline 385 (coverage not deleted) | PASS |
+| 3b | reviewed test diff (fn/06 @ 84ef71ac) | — | transport-shim retool: PATH-shim `gh` fakes / `ghTrustProbe` overrides swapped for a `fakeForge` via `forgeFor`; read-count guards preserved (trusted author = 1 GetIssue / 0 trust reads; untrusted = 1+1); 11 `*_test.go`, +556/−414; no assertion weakened, no negative-path dropped | PASS |
+| 4 | `grep -n allowedInvocationCeiling internal/forgeban/allowlist.go` | — | ACTUAL `= 9` @ :64 (brief's "13" is point-in-time — fn/06 landed 16→13, later fn/12/13 ratcheted to 9) | PASS |
+| 5 | `go test ./internal/forgeban/... -v` | 0 | ratchet green at ceiling 9; each surviving permit row matches a live call site | PASS |
+| 6 | `TestNoForgeCLIShellout` + `TestForgeNoPassthrough` | 0 | both green; diagnostic "13 shipped call sites across 9 registered declarations, ceiling 9" | PASS |
+| 7 | `grep '"gh"' cmd/issueboard cmd/scanloop non-test \| wc -l` | — | `0` — both migrated fully | PASS |
+| 7b | `grep '"gh"' cmd/deskboard non-test \| wc -l` | — | ACTUAL `0` (brief expects 1). fn/06 narrowed to exactly 1 (`board.go::ghRun`); fn/12 (PR #633) retired that last choke point → 0. Further narrowing, not re-widening | PASS |
+| 8 | `grep -c RealExec internal/forgeban/allowlist.go` | — | `0` — the scanloop RealExec unresolved-argv ledger row is GONE (argv now a compile-time constant) | PASS |
+| 9 | `TestOutOfInstallationRepoIsCouldNotCheck\|TestOtherReadErrorsStillFailTheRunClosed` (deskboard, negative) | 0 | unreadable repo → explicit could-not-check ROW (asserted on JSON coverage, not omitted/empty); non-out-of-installation 401 fails the run CLOSED | PASS |
+| 10 | `TestEmptyVersusUnreadable` (issueboard, negative) | 0 | empty vs unreadable → different exit codes + output | PASS |
+| 11 | `TestReadOpsBothBackends\|TestForgeGitlabGolden\|TestForgeGitlabCoverage` | 0 | four new read ops, same scenario names, github typed / gitlab could-not-check-with-gap; ops tabulated in the inventory (ListOpenChanges op23 tabulated per-change "degraded", not in the both-backends scenario list — expected, not a gap) | PASS |
+| 12 | `statusgen --root . --consumers --brief forge-neutral/06` | — | COULD-NOT-CHECK — offline verifier shared-home writeguard (statusgen writes STATUS.md) + statusgen v1.0.6 brief-v2 gap. Consumers hand-corroborated from the fn/06 diff (below) | COULD-NOT-CHECK |
+
+Row 12 manual corroboration (fn/06 diff @ 84ef71ac): `deskboard/board.go`, `issueboard/board.go`+new `forge.go`, `scanloop/{lane,trust,run}.go`+new `forge.go` (full migrations), `allowlist.go` (16→13, three rows removed), `deskkit/forge.go`+`forge_github.go`+`forge_gitlab.go` (four typed ops + Issue.Title), `inventory.md` ops 23–26 tabulated — every `consumers:` claim matches the diff.
+
+**Risk-bearing value (ENUMERATE → RANK → DERIVE):**
+- `RISK-VALUE: DERIVED — allowedInvocationCeiling = 9 @ tools/desk/internal/forgeban/allowlist.go:64.` RANK #1 (security ratchet). Derived as the registered-declaration launch-site count (diagnostic: 13 shipped call sites across 9 registered declarations → ceiling 9). fn/06's own contribution lowered 16→13 (retiring issueboard `ghRun`, scanloop `lane.go`, scanloop `trust.go`, and the RealExec unresolved-argv row); fn/12/13 ratcheted further to 9. The brief's literal "13" is stale; the ratchet TEST (row 5) is green, so fn/06's contribution holds. A lower ceiling re-permits nothing.
+- `RISK-VALUE: DERIVED — deskboard single-`gh`-choke-point.` fn/06 narrowed to exactly 1 (`board.go::ghRun`); ACTUAL now 0 after fn/12 retired it — a further narrowing, no re-widening. A second `gh` literal would be the regression this row guards.
+
+**Scope-traceability:** issueboard + scanloop carry ZERO `gh` literal (row 7); RealExec ledger row gone (row 8); negatives 9/10 genuinely distinguish states (could-not-check row vs omitted/empty; empty vs unreadable → different exit codes), both asserting on output not exit status alone. No Evidence work maps to a non-existent Verify row.
+
+**VERDICT: PASS** — every fn/06 invariant holds on merged main. Rows 4/7b read below their brief-literals (ceiling 9 not 13; deskboard gh 0 not 1) — both superseded by the already-merged fn/12/13, further-narrowing (never re-widening), ratchet test green. Row 12 COULD-NOT-CHECK (writeguard + brief-v2 gap), consumers hand-corroborated. gate: model, risk all=no → flip-eligible.
 
 ## Review
 Gate: **model** (from frontmatter; all four risk answers are `no` — see the note in
