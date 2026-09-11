@@ -120,9 +120,9 @@ stream (edition-matrix.md, tables A and C6).
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `go build ./... && go test ./tools/...` | exit 0 |
-| 2 | `go test ./tools/desk/... -run TestNoForgeCLIShellout -v` | exit 0; output contains `PASS` — the ban test passes because no `gh`/`glab` invocation remains |
+| 2 | `cd tools/desk && GOWORK=off go test ./... -run TestNoForgeCLIShellout -v` | exit 0; output contains `PASS` — the ban test passes because no `gh`/`glab` invocation remains |
 | 3 | `grep -rnE -e 'exec\.Command(Context)?\([^)]*"gh"' -e 'exec\.Command(Context)?\([^)]*"glab"' tools/desk --include='*.go' \| grep -v _test.go \| wc -l` | `0` — independent cross-check of the ban across the whole desk tree |
-| 4 | `go test ./tools/desk/internal/deskkit/ -run TestForgeNoPassthrough -v` | exit 0; the test reflects `deskkit.Forge`'s method set against `inventory.md` and FAILS on any generic/arbitrary-endpoint method (`Do`/`Raw`/`api`) on the interface or either backend |
+| 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeNoPassthrough -v` | exit 0; the test reflects `deskkit.Forge`'s method set against `inventory.md` and FAILS on any generic/arbitrary-endpoint method (`Do`/`Raw`/`api`) on the interface or either backend |
 | 5 | `go doc ./tools/desk/internal/deskkit Forge \| grep -cE -e 'Do\(' -e 'Raw\(' -e 'APIRequest\(' -e 'Call\('` | `0` — no arbitrary-request method surfaces in the interface's godoc |
 
 ## Evidence

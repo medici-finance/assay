@@ -132,7 +132,7 @@ byte-identical to today's (the additive-inert invariant every optional key holds
 
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `go test ./statusgen/` | exit 0; new tests present: absent-is-inert, present-excludes-from-Next-up, present-keeps-tracking-row, malformed-is-PROBLEM, target-repo-carried-on-view |
+| 1 | `cd statusgen && GOWORK=off go test .` | exit 0; new tests present: absent-is-inert, present-excludes-from-Next-up, present-keeps-tracking-row, malformed-is-PROBLEM, target-repo-carried-on-view |
 | 2 | build the binary, run `--lint --root .` on a fixture tree with one `homed-in: owner/repo` brief | exit 0; that brief is NOT in the Next-up picks but IS present in its stream README table render |
 | 3 | same fixture, but the brief's value is `homed-in: not-a-repo` | `--lint` exit 1; message contains `invalid homed-in "not-a-repo"` and echoes the file path |
 | 4 | build from a tree where NO brief carries `homed-in`; diff its `STATUS.md` render against the pre-change binary's render of the same tree | identical output — the additive-inert invariant (absent field ⇒ byte-identical board) |

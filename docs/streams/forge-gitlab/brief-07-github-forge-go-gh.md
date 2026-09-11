@@ -115,8 +115,8 @@ claims as *stronger* than the controls it must match — a claim that costs noth
 | 1 | `go build ./... && go test ./tools/...` | exit 0 |
 | 2 | `grep -rl "github.com/cli/go-gh" tools/desk/internal/deskkit --include='*.go' \| grep -v _test.go \| wc -l` | `≥ 1` — the GitHub backend is built on the official library |
 | 3 | `grep -rnE 'exec\.Command(Context)?\([^)]*"gh"' tools/desk/cmd/deskpr tools/desk/cmd/deskfile tools/desk/cmd/deskclose --include='*.go' \| grep -v _test.go \| wc -l` | `0` — the re-seated tools no longer shell `gh` for forge operations |
-| 4 | `go test ./tools/desk/internal/deskkit/ -run TestForgeGithubGolden -v` | exit 0; output contains `PASS` and lists ≥ 10 golden-pinned operations — the brief-01 corpus passes unchanged against the go-gh backend |
-| 5 | `go test ./tools/desk/internal/deskkit/ -run TestForgeGithubAuth -v \&\& go test ./tools/desk/internal/deskkit/ -run TestForgeGithubTierErrors -v` | exit 0 on both; a test proves the backend authenticates from the injected token and refuses (not silently falls back to ambient gh identity) when unset, and that a 403 fixture surfaces `could-not-check` distinct from empty |
+| 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGithubGolden -v` | exit 0; output contains `PASS` and lists ≥ 10 golden-pinned operations — the brief-01 corpus passes unchanged against the go-gh backend |
+| 5 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGithubAuth -v \&\& go test ./internal/deskkit/ -run TestForgeGithubTierErrors -v` | exit 0 on both; a test proves the backend authenticates from the injected token and refuses (not silently falls back to ambient gh identity) when unset, and that a 403 fixture surfaces `could-not-check` distinct from empty |
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->
