@@ -82,6 +82,14 @@ verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name
   there, remove it. Register WRITES are per-entry files under `docs/streams/findings/` landing via
   PR, never a hand-append to the generated view
   (`docs/streams/findings/2026-08-25-the-desk-rewrite-read-only-board-sweep.md`).
+- **The human-gate age table is a WORK LIST, never background.** Every sweep reads the board's
+  "Age at the human gate" rows and every `implemented` brief whose file carries NO Evidence entry.
+  A brief in that state that has dependents (`unblocks:` non-empty) or is older than 7 days is
+  routed BY NAME to the verify desk in that same sweep, and the routing is recorded in the hand-off
+  note. The table is render-only by construction — it feeds no score and files nothing — so the
+  coordinator is the only reader that can turn it into an act. A stream head that ages there
+  silently is a desk miss, not a planner miss: on 2026-09-11 a 16-day-old head with three
+  dependents sat unoffered while the desk read the table as context.
 - **HARD GATE — no state-of-play claim without a fresh sweep.** Before this desk EVER reports
   state-of-play ("N mid-flight", "nothing awaiting", "current", "idle", "caught up") it is a HARD
   PRECONDITION that it has *just* run that sweep and confirmed `awaiting == 0` with no actionable
