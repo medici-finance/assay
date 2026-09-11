@@ -57,7 +57,7 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)
 		}
 
-		client, err := newGHClient(owner, name)
+		client, err := newPostBackend(owner, name)
 		if err != nil {
 			return withDigest(fromReadErr(preVerb, repo, num, "", err), dig)
 		}

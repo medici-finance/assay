@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -209,7 +210,11 @@ func flip(o flipOpts) error {
 	if err != nil {
 		return err
 	}
-	if err := checkReviewerApproved(reviewerLogin, reviews, head, o.pr); err != nil {
+	// One memoized reader serves BOTH calls to checkReviewerApproved — this one and the
+	// post-TOCTOU re-check at the same head — so the exemption's rollup read happens at most
+	// once per flip, and both calls decide on the same set of runs.
+	runsAtHead := checkRunsAtHeadReader(o, fg, fr, head)
+	if err := checkReviewerApproved(reviewerLogin, reviews, head, o.pr, runsAtHead); err != nil {
 		return err
 	}
 	o.say("%s OK: %s APPROVED at %s", condReviewerApproved, reviewerLogin, short(head))
@@ -263,6 +268,29 @@ func flip(o flipOpts) error {
 		o.say("%s: no rollup at %s and %s requires no status checks on %q — nothing gates the merge on a check",
 			condChecksGreen, short(head), repo, pr.BaseRef)
 	case ciGreen:
+		// A GREEN rollup reports only on the checks that ACTUALLY REPORTED. A required verdict
+		// that never reported at all is not red or pending — it is ABSENT from the rollup
+		// entirely, so evalRollup, which reads only present entries, calls the rollup green with
+		// the missing gate simply not there. The leak-sweep disclosure gate is exactly this
+		// shape: its verdict is a commit status posted OUT OF BAND (a separate control-based
+		// sweep on its own schedule — leaksweep-pattern.yml, and the forge-neutral
+		// leak-gate-shape reference doc), so a head that never received it shows a green rollup and a gate
+		// that never ran. An absent required verdict is could-not-check, never "no objection":
+		// the flip cross-checks that every branch-protection-required context is PRESENT in the
+		// rollup and refuses when one is missing — the same three-state contract the empty-rollup
+		// arm above applies, extended to a rollup that is non-empty but incomplete.
+		required, rerr := readRequiredChecks(o, fg, fr, pr.BaseRef, head)
+		if rerr != nil {
+			return rerr
+		}
+		if missing := missingRequiredChecks(checks, required); len(missing) > 0 {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: the rollup at %s is green but %s requires %d status check(s) that did not "+
+					"report on this head at all (%s) — an absent required verdict is could-not-check, never a "+
+					"pass. The leak-sweep disclosure gate posts its verdict out of band, so a head missing it "+
+					"reads as green-with-the-gate-absent; absence is never 'no objection'.",
+				condChecksGreen, short(head), repo, len(missing), strings.Join(missing, ", ")), nil)
+		}
 	}
 	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
 
@@ -325,7 +353,7 @@ func flip(o flipOpts) error {
 	if err != nil {
 		return err
 	}
-	if err := checkReviewerApproved(reviewerLogin, reviews2, head, o.pr); err != nil {
+	if err := checkReviewerApproved(reviewerLogin, reviews2, head, o.pr, runsAtHead); err != nil {
 		return err
 	}
 	if err := checkSecurityVerdict(o, repo, pr, files, reviews2, reviewerLogin, head); err != nil {
@@ -582,18 +610,24 @@ func readLabelEvents(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]desk
 //  3. STALE and NONE are reported as DIFFERENT refusals. "There is a verdict, just not at
 //     this code" and "nobody has reviewed this" call for different actions, and collapsing
 //     them sends the operator after the wrong one.
-func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head string, pr int) error {
+//
+// RULE 2 HAS EXACTLY ONE EXEMPTION, and it lives in this function rather than in a caller
+// so the grant and the refusal cannot drift apart: the CHECK-ONLY CR (see
+// checkOnlyCRCleared). runsAtHead supplies the check-run rollup at head that the exemption
+// needs; it is a FUNCTION, not a slice, because the read is a forge round-trip that the
+// overwhelmingly common path — no standing CR at all — must not pay for. It is called at
+// most once, only when a standing CR has already DECLARED itself check-only.
+func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head string, pr int,
+	runsAtHead func() ([]deskkit.CheckRun, error)) error {
 	// Rule 2 first: a standing block at head is decisive whatever else is present.
 	for _, r := range reviews {
 		if !deskkit.SameActor(r.User.Login, reviewerLogin) || r.CommitID != head {
 			continue
 		}
 		if r.State == "CHANGES_REQUESTED" {
-			return deskkit.Refused(fmt.Sprintf(
-				"condition %s: a CHANGES_REQUESTED from %s stands at the current head %s. An APPROVED at an "+
-					"unchanged head cannot be a re-verification — there is nothing new to verify. Only a new "+
-					"commit clears this, or a human clearing the standing rejection directly on the PR.",
-				condReviewerApproved, reviewerLogin, short(head)))
+			if err := checkOnlyCRCleared(reviewerLogin, r, reviews, head, runsAtHead); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -628,6 +662,152 @@ func checkReviewerApproved(reviewerLogin string, reviews []reviewInfo, head stri
 				"security verdict alone does not satisfy the correctness gate.",
 			condReviewerApproved, reviewerLogin, pr))
 	}
+}
+
+// standingCRRefusal is rule 2's refusal, in the wording it has always had. It is a function
+// rather than an inline literal because the exemption path below has to be able to emit it
+// UNCHANGED for the common case and APPENDED-TO for a claim that was made and failed, and
+// two copies of the sentence would drift.
+func standingCRRefusal(reviewerLogin, head, why string) error {
+	msg := fmt.Sprintf(
+		"condition %s: a CHANGES_REQUESTED from %s stands at the current head %s. An APPROVED at an "+
+			"unchanged head cannot be a re-verification — there is nothing new to verify. Only a new "+
+			"commit clears this, or a human clearing the standing rejection directly on the PR.",
+		condReviewerApproved, reviewerLogin, short(head))
+	if why != "" {
+		msg += " " + why
+	}
+	return deskkit.Refused(msg)
+}
+
+// checkOnlyCRCleared decides rule 2's ONE exemption for a single standing CHANGES_REQUESTED
+// at head: it returns nil when that CR has been legitimately cleared without a code push,
+// and the refusal otherwise.
+//
+// THE CASE. A CR whose only blocker was a required CHECK being red, where the check then
+// turned green at the SAME head with no code change — a human applying `changelog:skip`, a
+// re-run of a flaked job. Nothing in the diff moved, so rule 2's "only a new commit clears
+// this" had no path for it, and the alternatives were both bad: a no-op push, which games
+// the very head-move rule rule 2 exists to enforce, or a human dismissing the review by hand
+// on every such PR.
+//
+// THE FOUR CONDITIONS, all required. Each maps to one clause of the authorization, and each
+// is checked in the fail-closed direction — a fact that cannot be established is a refusal,
+// never a pass:
+//
+//	(a) the CR DECLARES itself check-only, naming the check, in the fixed
+//	    `Blocked-On-Check:` form. Prose is never read: see deskkit/checkonlycr.go for why
+//	    inferring "names no other finding" from English is how the hole reopens.
+//	(b) an APPROVE from the same reviewer CITES a specific check-RUN id, and that run
+//	    COMPLETED SUCCESSFULLY at a time AFTER the CR was submitted. "After" is what makes
+//	    the re-approve a statement about a changed fact rather than a restatement of one the
+//	    reviewer already had in front of them when they blocked.
+//	(c) the run is at the SAME head as both reviews. This one is structural rather than
+//	    compared: runsAtHead reads the rollup AT head, and both the CR and the APPROVE are
+//	    filtered to CommitID == head before they get here, so a run on another head is
+//	    simply not in the set and the citation finds nothing.
+//	(d) the run is the check the CR NAMED. Not in the authorization's letter, and added
+//	    deliberately: without it a reviewer could clear a CR blocked on `changelog` by citing
+//	    any other green run on the head. It only ever NARROWS the grant, which is the one
+//	    direction this exemption may be adjusted in.
+//
+// WHAT IS NOT EXEMPTED. Clearing rule 2 is not an approval. The reduction below (rule 1 +
+// ReduceAppVerdict) still has to find an APPROVED as the governing verdict at head, so a
+// check-only CR followed by a citing APPROVE followed by a second CR still refuses — the
+// exemption removes a block, it does not manufacture a verdict.
+func checkOnlyCRCleared(reviewerLogin string, cr reviewInfo, reviews []reviewInfo, head string,
+	runsAtHead func() ([]deskkit.CheckRun, error)) error {
+	// (a) No declaration, no exemption — and no diagnosis either. This is the ordinary CR
+	// with real findings, so the refusal is rule 2's, verbatim and unadorned.
+	check := deskkit.BlockedOnCheckName(cr.Body)
+	if check == "" {
+		return standingCRRefusal(reviewerLogin, head, "")
+	}
+	// From here the reviewer HAS claimed the exemption, so every refusal says which
+	// condition the claim failed on. A claim that fails silently is a claim the reviewer
+	// will make again the same way.
+	crAt, err := time.Parse(time.RFC3339, strings.TrimSpace(cr.SubmittedAt))
+	if err != nil {
+		return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+			"The CR declares `Blocked-On-Check: %s`, but its own submission time %q is not readable as "+
+				"RFC3339 — the exemption turns on the check having gone green AFTER the CR, and an "+
+				"unreadable CR timestamp makes that unanswerable.", check, cr.SubmittedAt))
+	}
+
+	// (b) Gather the citing APPROVEs: same reviewer, same head, submitted after the CR,
+	// correctness lane only, each carrying a run id. A security-marked body is excluded for
+	// rule 1's reason — a security artifact must never act in the correctness lane, and
+	// clearing a correctness block is acting in it.
+	cited := map[string]bool{}
+	for _, r := range reviews {
+		if !deskkit.SameActor(r.User.Login, reviewerLogin) || r.CommitID != head {
+			continue
+		}
+		if r.State != "APPROVED" || hasSecurityMarker(r.Body) {
+			continue
+		}
+		at, perr := time.Parse(time.RFC3339, strings.TrimSpace(r.SubmittedAt))
+		if perr != nil || !at.After(crAt) {
+			continue
+		}
+		if id := deskkit.ClearedCheckRunID(r.Body); id != "" {
+			cited[id] = true
+		}
+	}
+	if len(cited) == 0 {
+		return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+			"The CR declares `Blocked-On-Check: %s`, but no APPROVED from %s at this head, submitted after "+
+				"the CR, cites a `Cleared-Check-Run: <id>`. The exemption requires the re-approve to name the "+
+				"specific run that turned green; a re-approve that names none is the unchanged-head "+
+				"re-approval rule 2 refuses.", check, reviewerLogin))
+	}
+
+	// The forge read happens HERE and only here — after a declaration and a citation both
+	// exist. An unreadable rollup is could-not-check, and could-not-check never clears a
+	// standing block.
+	runs, err := runsAtHead()
+	if err != nil {
+		return err
+	}
+
+	// (c) + (d) + the green-and-later test. runs is the rollup AT head, so membership is
+	// condition (c).
+	for _, run := range runs {
+		if run.ID == "" || !cited[run.ID] {
+			continue
+		}
+		if !strings.EqualFold(run.Name, check) {
+			return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+				"The CR declares `Blocked-On-Check: %s` but the cited run %s is %q — a run other than the one "+
+					"the CR named clears nothing about the CR's stated blocker.", check, run.ID, run.Name))
+		}
+		if !checkRunGreen(run) {
+			return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+				"The cited run %s (%s) is status=%q conclusion=%q — the exemption turns on the check having "+
+					"turned GREEN, and a run that has not completed green has not. Green here is the SAME set "+
+					"the checks-green condition uses (success/neutral/skipped), so a check a human's skip label "+
+					"turned green counts, and the two conditions cannot disagree about one run.",
+				run.ID, run.Name, run.Status, run.Conclusion))
+		}
+		doneAt, perr := time.Parse(time.RFC3339, strings.TrimSpace(run.CompletedAt))
+		if perr != nil {
+			return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+				"The cited run %s (%s) reports completion time %q, which is not readable as RFC3339 — whether "+
+					"it went green after the CR cannot be established, and could-not-check is never cleared.",
+				run.ID, run.Name, run.CompletedAt))
+		}
+		if !doneAt.After(crAt) {
+			return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+				"The cited run %s (%s) completed at %s, which is NOT after the CR at %s — the reviewer already "+
+					"had that result in front of them when they blocked, so citing it re-verifies nothing.",
+				run.ID, run.Name, run.CompletedAt, cr.SubmittedAt))
+		}
+		return nil // exempt: (a) declared, (b) cited + later + green, (c) at head, (d) the named check
+	}
+	return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
+		"The CR declares `Blocked-On-Check: %s` and an APPROVED cites a cleared run, but no run with that id "+
+			"is in the check rollup at %s. A run the head does not carry is not evidence about this head.",
+		check, short(head)))
 }
 
 // checkSecurityVerdict runs the security lane.
@@ -953,6 +1133,11 @@ type labelInfo struct {
 // The forge serves all of them in `statusCheckRollup` already — the fields were simply not
 // decoded before — so reducing by them costs no extra read.
 type rollupEntry struct {
+	// ID is the forge's per-EXECUTION run id, carried through from deskkit.CheckRun. The
+	// checks-green reduction does not use it — that reduction keys on NAME, which is what
+	// branch protection keys on — but it is part of what a rollup entry IS, and dropping it
+	// here would make this the one view of a run that cannot answer "which run was that".
+	ID          string
 	Name        string
 	Context     string
 	Status      string
@@ -1100,6 +1285,7 @@ func readChecks(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head string)
 	}
 	for _, c := range checks.CheckRuns {
 		out = append(out, rollupEntry{
+			ID:   c.ID,
 			Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
 			StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
 		})
@@ -1133,6 +1319,52 @@ func readRequiredChecks(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, base
 			condChecksGreen, base, firstLine(err.Error())), err)
 	}
 	return required, nil
+}
+
+// checkRunsAtHeadReader returns a MEMOIZED reader of the check-RUN rollup at head, for
+// checkReviewerApproved's check-only-CR exemption.
+//
+// It is separate from readChecks, and deliberately: the two reads answer to different
+// CONDITIONS, and a refusal has to name the condition it belongs to or it sends the operator
+// to the wrong gate. readChecks failing is condChecksGreen going could-not-check; this one
+// failing is condReviewerApproved going could-not-check, on a PR whose checks may be green.
+//
+// Memoized because checkReviewerApproved runs TWICE — once in the main pass and once in the
+// post-TOCTOU re-check at the same head — and the second call must not buy a second round
+// trip to learn the same fact. The error is cached with the value for the same reason: a
+// read that failed once is could-not-check for this flip, not something to retry into.
+func checkRunsAtHeadReader(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head string) func() ([]deskkit.CheckRun, error) {
+	var (
+		done bool
+		runs []deskkit.CheckRun
+		err  error
+	)
+	return func() ([]deskkit.CheckRun, error) {
+		if done {
+			return runs, err
+		}
+		done = true
+		var checks *deskkit.ChecksAtHead
+		checks, err = fg.ChecksAtHead(fr, head)
+		if err != nil {
+			err = deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: a standing CHANGES_REQUESTED at %s claims the check-only exemption, but the "+
+					"check rollup at that head could not be read (%s) — the claim rests on a run having gone "+
+					"green, and a rollup that could not be read establishes no such thing.",
+				condReviewerApproved, short(head), firstLine(err.Error())), err)
+			return nil, err
+		}
+		if checks.CheckRunsTotalCount > len(checks.CheckRuns) {
+			err = deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: read %d/%d check runs at %s — the forge asserts more than it served, so the "+
+					"cited run may simply be in the part that was not read. A short rollup cannot clear a "+
+					"standing rejection.",
+				condReviewerApproved, len(checks.CheckRuns), checks.CheckRunsTotalCount, short(head)), nil)
+			return nil, err
+		}
+		runs = checks.CheckRuns
+		return runs, nil
+	}
 }
 
 func readReviews(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]reviewInfo, error) {
@@ -1207,6 +1439,33 @@ const (
 // evalRollup reduces the rollup to one state. NOT-COMPLETED and UNRECOGNISED both fall to
 // pending rather than to green: a conclusion this reader does not know is a conclusion it
 // has not verified, and the only safe reading of an unverified check is "not yet green".
+// conclusionGreen is the ONE accepted set of green check-run conclusions, shared by the
+// checks-green reduction (evalRollup) and by the check-only-CR exemption's test of the run a
+// reviewer cited.
+//
+// SHARED ON PURPOSE, and the exemption is why. NEUTRAL and SKIPPED are green here because
+// GitHub reports them for a check that deliberately did not need to do work — and that is
+// precisely the shape the exemption exists to serve: a required `changelog` check that a
+// human's `changelog:skip` label turns green reports SKIPPED, not SUCCESS. An exemption that
+// insisted on a literal SUCCESS would have refused the exact case it was authorized for,
+// while checks-green called the same run green — two readers disagreeing about the same
+// fact, which is the defect class #408 closed for verdict markers.
+func conclusionGreen(conclusion string) bool {
+	switch strings.ToUpper(strings.TrimSpace(conclusion)) {
+	case "SUCCESS", "NEUTRAL", "SKIPPED":
+		return true
+	}
+	return false
+}
+
+// checkRunGreen reports whether one check RUN has finished and finished green. A run that has
+// not COMPLETED is not green whatever else it carries — "still running" is could-not-check,
+// and the exemption never reads could-not-check as cleared.
+func checkRunGreen(run deskkit.CheckRun) bool {
+	return strings.EqualFold(strings.TrimSpace(run.Status), "COMPLETED") &&
+		conclusionGreen(run.Conclusion)
+}
+
 func evalRollup(entries []rollupEntry) ciState {
 	if len(entries) == 0 {
 		return ciEmpty
@@ -1215,9 +1474,7 @@ func evalRollup(entries []rollupEntry) ciState {
 	for _, e := range entries {
 		switch {
 		case e.Conclusion != "":
-			switch strings.ToUpper(e.Conclusion) {
-			case "SUCCESS", "NEUTRAL", "SKIPPED":
-			default:
+			if !conclusionGreen(e.Conclusion) {
 				return ciFail
 			}
 		case e.State != "":
@@ -1240,6 +1497,28 @@ func evalRollup(entries []rollupEntry) ciState {
 		return ciPending
 	}
 	return ciGreen
+}
+
+// missingRequiredChecks returns the branch-protection required contexts that are ABSENT from
+// the reduced rollup — required verdicts that never reported on this head. A required context
+// matches a rollup entry by label (a check run's Name or a status context's Context), the same
+// name branch protection keys "latest run per context" on. The comparison is
+// case-insensitive: forge status contexts and required-context strings are compared without
+// regard to case, and the trim guards a stray-whitespace mismatch. An empty required set (the
+// common no-protection case) returns nothing missing, so this changes the green-path verdict
+// only where the forge actually enforces a required check that did not report.
+func missingRequiredChecks(present []rollupEntry, required []string) []string {
+	have := make(map[string]bool, len(present))
+	for _, e := range present {
+		have[strings.ToLower(strings.TrimSpace(e.label()))] = true
+	}
+	var missing []string
+	for _, r := range required {
+		if key := strings.ToLower(strings.TrimSpace(r)); key != "" && !have[key] {
+			missing = append(missing, r)
+		}
+	}
+	return missing
 }
 
 func failedChecks(entries []rollupEntry) []string {

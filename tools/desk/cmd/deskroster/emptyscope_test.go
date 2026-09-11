@@ -55,7 +55,6 @@ func installRosterEnv(t *testing.T, body string) string {
 	t.Setenv("HOME", home)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test-session")
-	t.Setenv("PATH", fakeRosterGHDir+string(os.PathListSeparator)+origRosterPATH)
 	deskkit.ReloadConfig()
 	t.Cleanup(deskkit.ReloadConfig)
 	return home

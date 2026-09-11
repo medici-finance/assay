@@ -15,6 +15,12 @@ import (
 // value, never a shell string.
 var execCommand = exec.Command
 
+// lookPath is the seam for "is this tool on PATH". The shared-checkout refusal uses it to
+// decide whether to ALSO name `cellctl desk <cell> <role>` as a way out: naming a launcher
+// the operator does not have is noise, and omitting one they do have is a remediation left
+// unsaid. Tests bind it to answer present/absent without a real binary.
+var lookPath = exec.LookPath
+
 // runResult is one child process's outcome. stderr is kept separate from stdout because
 // a step's FAILURE line is what the boot must name, and folding the two streams makes a
 // noisy tool's progress chatter indistinguishable from its diagnosis.

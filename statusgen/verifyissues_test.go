@@ -24,6 +24,138 @@ func loadVGStreams(t *testing.T) (string, []*Stream) {
 	return root, streams
 }
 
+// TestNormalizeBriefKey pins the two-forms-one-identity reduction (issue #804):
+// a brief-v2 <cell>:<repo>:<stream>:<NN> key collapses to the canonical
+// <stream>/<NN>; a brief-v1 <stream>/<NN> key is already canonical; anything
+// else is returned unchanged so it fails downstream on its own terms.
+func TestNormalizeBriefKey(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"svc/17", "svc/17"},               // v1 slash form — unchanged
+		{"example:app:svc:17", "svc/17"},   // v2 colon form → canonical
+		{" example:app:svc:17 ", "svc/17"}, // surrounding space tolerated
+		{"vg/09", "vg/09"},                 // v1 with no trailing letter
+		{"example:app:svc:12a", "svc/12a"}, // v2, NN carries a trailing letter
+		{"not-a-key", "not-a-key"},         // no colon, no slash — unchanged
+		{"a:b:c", "a:b:c"},                 // 3 colon segments (not v2) — unchanged
+		{"a:b:c:d:e", "a:b:c:d:e"},         // 5 colon segments (not v2) — unchanged
+	}
+	for _, c := range cases {
+		if got := normalizeBriefKey(c.in); got != c.want {
+			t.Errorf("normalizeBriefKey(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestVerifyMarkerFormsCollapse is the render half of issue #804: verifyMarker
+// renders ONE marker for a brief whether it is named in the v1 slash form or the
+// v2 colon form, and that marker is the canonical <stream>/<NN> the close side
+// already speaks. Pre-fix, the colon key rendered a distinct marker and the two
+// were never equal — the duplicate-card bug.
+func TestVerifyMarkerFormsCollapse(t *testing.T) {
+	slash := verifyMarker("svc/17")
+	colon := verifyMarker("example:app:svc:17")
+	if slash != colon {
+		t.Errorf("verifyMarker must collapse both key forms to one marker: slash=%q colon=%q", slash, colon)
+	}
+	if want := "<!-- verify-gate: svc/17 -->"; slash != want {
+		t.Errorf("verifyMarker renders %q, want the canonical %q", slash, want)
+	}
+}
+
+// TestLoadExistingMarkersCrossForm is the match half of issue #804: a card whose
+// body carries the COLON marker suppresses a brief the emitter names in the SLASH
+// form, and vice versa — loadExistingMarkers normalizes both to one set key.
+func TestLoadExistingMarkersCrossForm(t *testing.T) {
+	dir := t.TempDir()
+
+	t.Run("colon-marker body matches slash-form verifyMarker", func(t *testing.T) {
+		p := filepath.Join(dir, "colon.txt")
+		body := "<!-- verify-gate: example:app:svc:17 -->\nHuman sign-off required — example:app:svc:17\n"
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		set, err := loadExistingMarkers(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !set[verifyMarker("svc/17")] {
+			t.Errorf("a colon-keyed existing card must suppress the slash-keyed brief; set=%v", set)
+		}
+		if !set[verifyMarker("example:app:svc:17")] {
+			t.Errorf("and must equally match the colon-keyed render; set=%v", set)
+		}
+	})
+
+	t.Run("slash-marker body matches colon-form verifyMarker", func(t *testing.T) {
+		p := filepath.Join(dir, "slash.txt")
+		body := "<!-- verify-gate: svc/17 -->\n"
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		set, err := loadExistingMarkers(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !set[verifyMarker("example:app:svc:17")] {
+			t.Errorf("a slash-keyed existing card must suppress the colon-keyed (v2) brief; set=%v", set)
+		}
+	})
+}
+
+// TestVerifyIssuesSuppressesCrossForm proves the end-to-end dedupe across forms
+// through the real code paths (loadExistingMarkers → verifyIssues): a v1 fixture
+// brief (vg/01) is suppressed by an existing card whose marker is written in the
+// v2 colon form. Pre-fix this brief was re-emitted — the #804 duplicate.
+func TestVerifyIssuesSuppressesCrossForm(t *testing.T) {
+	root, streams := loadVGStreams(t)
+	dir := t.TempDir()
+	p := filepath.Join(dir, "existing.txt")
+	// vg/01 is emitted with an empty existing set (see TestVerifyIssuesSelection).
+	// Here its ONLY existing card carries the colon-form marker.
+	if err := os.WriteFile(p, []byte("<!-- verify-gate: example:app:vg:01 -->\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	existing, err := loadExistingMarkers(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, iss := range verifyIssues(root, streams, existing) {
+		if iss.Brief == "vg/01" {
+			t.Errorf("vg/01 must be suppressed by its colon-keyed existing card, but it was re-emitted")
+		}
+	}
+}
+
+// TestCloseVerifyAcceptsColonForm is the close half of issue #804: --close-verify
+// accepts a brief-v2 <cell>:<repo>:<stream>:<NN> id and flips the same row the
+// v1 slash id flips. Pre-fix, closeVerify refused the colon id as "not a
+// <stream>/<NN> id" and nothing advanced.
+func TestCloseVerifyAcceptsColonForm(t *testing.T) {
+	root, _ := loadVGStreams(t)
+	now := time.Date(2026, 7, 9, 0, 0, 0, 0, time.UTC)
+
+	if err := closeVerify(root, "example:app:vg:01", now); err != nil {
+		t.Fatalf("close-verify with the colon (brief-v2) form must succeed: %v", err)
+	}
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s *Stream
+	for _, st := range streams {
+		if st.Name == "vg" {
+			s = st
+		}
+	}
+	row := findRow(s, "01")
+	if row.Status != "done" {
+		t.Errorf("status = %q, want done (colon-form close must flip vg/01)", row.Status)
+	}
+	if row.Reviewed != "2026-07-09 human:reviewer" {
+		t.Errorf("reviewed = %q, want %q", row.Reviewed, "2026-07-09 human:reviewer")
+	}
+}
+
 func TestVerifyIssuesSelection(t *testing.T) {
 	root, streams := loadVGStreams(t)
 

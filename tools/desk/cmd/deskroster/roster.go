@@ -5,10 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -220,40 +218,57 @@ func resolveShortRepo(full string) string {
 	return full
 }
 
-// ---- gh helpers ----
+// ---- forge PR reads ----
+//
+// These two reads are DISPLAY enrichment for the roster listing — they read a
+// change's state/draft/title so `deskroster list` can annotate a beacon's open
+// work and surface unclaimed open PRs. They route through the enumerated Forge
+// seam (forge.go), never a forge CLI: the closed-surface brief (example-stream/08)
+// bans invoking a forge CLI (gh/glab) anywhere in tools/desk, and both fields
+// these reads need already exist on the interface — GetPullRequest carries state,
+// draft and title; ListOpenChanges carries number, title and draft — so the
+// migration needs no new op (spec §6 freeze rule) and no ambient credential.
+// Both fail SOFT: a resolver or read error returns nil/empty and the caller
+// renders "?"/omits the row, exactly as the former gh shell-out did on failure.
 
-// ghViewPR calls `gh pr view` for a given PR and returns its state info.
-// Returns nil if gh fails (e.g. PR not found, network error).
+// ghViewPR reads a single change's state/draft/title via the Forge seam and
+// maps it to the roster's PRInfo. Returns nil if the forge cannot be resolved
+// or the read fails (e.g. PR not found, no readable identity).
 func ghViewPR(fullRepo string, pr int) *PRInfo {
-	prStr := strconv.Itoa(pr)
-	cmd := exec.Command("gh", "pr", "view", prStr, "--repo", fullRepo,
-		"--json", "state,isDraft,title")
-	out, err := cmd.Output()
+	f, fr, err := forgeFor(fullRepo)
 	if err != nil {
 		return nil
 	}
-	var info PRInfo
-	if err := json.Unmarshal(out, &info); err != nil {
+	p, err := f.GetPullRequest(fr, pr)
+	if err != nil || p == nil {
 		return nil
 	}
-	info.Number = pr
-	return &info
+	// GetPullRequest reports State as "open"/"closed" with a separate merged
+	// flag; the roster display expects the uppercase OPEN/MERGED/CLOSED the old
+	// `gh pr view --json state` returned, so derive it here.
+	state := strings.ToUpper(p.State)
+	if p.Merged || p.MergedAt != "" {
+		state = "MERGED"
+	}
+	return &PRInfo{Number: pr, Title: p.Title, State: state, IsDraft: p.Draft}
 }
 
-// ghListOpenPRs calls `gh pr list` for a repo and returns open PRs.
-// Returns nil on failure (gh not available, network error, etc.).
+// ghListOpenPRs reads a repo's OPEN changes via the Forge seam and maps them to
+// PRInfo. Returns nil on failure (forge unresolvable, read error).
 func ghListOpenPRs(fullRepo string) []PRInfo {
-	cmd := exec.Command("gh", "pr", "list", "--repo", fullRepo,
-		"--state", "open", "--json", "number,title,isDraft", "--limit", "50")
-	out, err := cmd.Output()
+	f, fr, err := forgeFor(fullRepo)
 	if err != nil {
 		return nil
 	}
-	var prs []PRInfo
-	if err := json.Unmarshal(out, &prs); err != nil {
+	oc, err := f.ListOpenChanges(fr)
+	if err != nil || oc == nil {
 		return nil
 	}
-	return prs
+	out := make([]PRInfo, 0, len(oc.Changes))
+	for _, c := range oc.Changes {
+		out = append(out, PRInfo{Number: c.Number, Title: c.Title, State: c.State, IsDraft: c.Draft})
+	}
+	return out
 }
 
 // ---- commands ----
