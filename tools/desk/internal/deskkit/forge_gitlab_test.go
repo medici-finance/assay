@@ -69,7 +69,7 @@ type glServer struct {
 	labelEvents  []map[string]any
 	// issueList is the project-issues LIST payload (SearchIssues), and projLabels the
 	// project-labels LIST payload (ListLabels).
-	issueList []map[string]any
+	issueList  []map[string]any
 	projLabels []map[string]any
 	// repoFile is the Repository-Files GET payload (ReadFile / WriteFile idempotency read),
 	// keyed by the ESCAPED file path segment. Absent → 404.

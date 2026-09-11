@@ -781,10 +781,12 @@ func checkOnlyCRCleared(reviewerLogin string, cr reviewInfo, reviews []reviewInf
 				"The CR declares `Blocked-On-Check: %s` but the cited run %s is %q — a run other than the one "+
 					"the CR named clears nothing about the CR's stated blocker.", check, run.ID, run.Name))
 		}
-		if !strings.EqualFold(run.Status, "completed") || !strings.EqualFold(run.Conclusion, "success") {
+		if !checkRunGreen(run) {
 			return standingCRRefusal(reviewerLogin, head, fmt.Sprintf(
 				"The cited run %s (%s) is status=%q conclusion=%q — the exemption turns on the check having "+
-					"turned GREEN, and anything that is not a completed success has not.",
+					"turned GREEN, and a run that has not completed green has not. Green here is the SAME set "+
+					"the checks-green condition uses (success/neutral/skipped), so a check a human's skip label "+
+					"turned green counts, and the two conditions cannot disagree about one run.",
 				run.ID, run.Name, run.Status, run.Conclusion))
 		}
 		doneAt, perr := time.Parse(time.RFC3339, strings.TrimSpace(run.CompletedAt))
@@ -1437,6 +1439,33 @@ const (
 // evalRollup reduces the rollup to one state. NOT-COMPLETED and UNRECOGNISED both fall to
 // pending rather than to green: a conclusion this reader does not know is a conclusion it
 // has not verified, and the only safe reading of an unverified check is "not yet green".
+// conclusionGreen is the ONE accepted set of green check-run conclusions, shared by the
+// checks-green reduction (evalRollup) and by the check-only-CR exemption's test of the run a
+// reviewer cited.
+//
+// SHARED ON PURPOSE, and the exemption is why. NEUTRAL and SKIPPED are green here because
+// GitHub reports them for a check that deliberately did not need to do work — and that is
+// precisely the shape the exemption exists to serve: a required `changelog` check that a
+// human's `changelog:skip` label turns green reports SKIPPED, not SUCCESS. An exemption that
+// insisted on a literal SUCCESS would have refused the exact case it was authorized for,
+// while checks-green called the same run green — two readers disagreeing about the same
+// fact, which is the defect class #408 closed for verdict markers.
+func conclusionGreen(conclusion string) bool {
+	switch strings.ToUpper(strings.TrimSpace(conclusion)) {
+	case "SUCCESS", "NEUTRAL", "SKIPPED":
+		return true
+	}
+	return false
+}
+
+// checkRunGreen reports whether one check RUN has finished and finished green. A run that has
+// not COMPLETED is not green whatever else it carries — "still running" is could-not-check,
+// and the exemption never reads could-not-check as cleared.
+func checkRunGreen(run deskkit.CheckRun) bool {
+	return strings.EqualFold(strings.TrimSpace(run.Status), "COMPLETED") &&
+		conclusionGreen(run.Conclusion)
+}
+
 func evalRollup(entries []rollupEntry) ciState {
 	if len(entries) == 0 {
 		return ciEmpty
@@ -1445,9 +1474,7 @@ func evalRollup(entries []rollupEntry) ciState {
 	for _, e := range entries {
 		switch {
 		case e.Conclusion != "":
-			switch strings.ToUpper(e.Conclusion) {
-			case "SUCCESS", "NEUTRAL", "SKIPPED":
-			default:
+			if !conclusionGreen(e.Conclusion) {
 				return ciFail
 			}
 		case e.State != "":

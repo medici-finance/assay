@@ -645,15 +645,15 @@ func TestForgeGithubGolden(t *testing.T) {
 				s.pullsList = []map[string]any{
 					{"number": 21, "state": "open", "draft": true, "node_id": "PR_21",
 						"html_url": "https://example/pull/21",
-						"head": map[string]any{"sha": "abc123", "ref": "feat/x"},
-						"base": map[string]any{"ref": "main"}},
+						"head":     map[string]any{"sha": "abc123", "ref": "feat/x"},
+						"base":     map[string]any{"ref": "main"}},
 				}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.OpenChangeForBranch(forgeTestRepo, "feat/x") },
 		},
 		{
 			// No open change on the branch: (nil, nil) — the result is empty, no error.
-			name: "open_change_for_branch_none",
+			name:  "open_change_for_branch_none",
 			setup: func(s *goldenServer) { s.pullsList = []map[string]any{} },
 			run:   func(f *GitHubForge) (any, error) { return f.OpenChangeForBranch(forgeTestRepo, "feat/gone") },
 		},
@@ -684,7 +684,7 @@ func TestForgeGithubGolden(t *testing.T) {
 				s.searchIssues = map[string]any{"items": []map[string]any{
 					{"number": 5, "title": "flip races on relabel", "state": "open",
 						"html_url": "https://example/issues/5",
-						"labels": []map[string]any{{"name": "bug"}}},
+						"labels":   []map[string]any{{"name": "bug"}}},
 				}}
 			},
 			run: func(f *GitHubForge) (any, error) {

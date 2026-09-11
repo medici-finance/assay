@@ -14,6 +14,7 @@ package main
 // condition, so a refusal can only be attributed to the condition that case dropped.
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -165,16 +166,71 @@ func TestCitedRunThatPredatesTheCRIsRefused(t *testing.T) {
 	}
 }
 
-// (b) DROPPED, the NOT-GREEN form. The cited run is on the head, is the named check, and is
-// later than the CR — but it FAILED. The exemption turns on the check having gone green, and
-// a citation is not a verdict.
+// (b) DROPPED, the NOT-GREEN form. The reviewer cites a run of the right check, at the right
+// head, later than the CR — but it is the FAILED run, superseded by a green re-run of the same
+// name. Citing it is citing a red result.
+//
+// THE SUPERSEDED SHAPE IS WHAT MAKES THIS TESTABLE AT ALL. A cited run that is simply red
+// also reddens the rollup, so the flip would refuse on checks-green whatever this condition
+// did, and the case could not tell the two apart. Here checks-green reduces to the LATEST run
+// per name — the green re-run — and passes, so the ONLY thing that can refuse is the
+// exemption's own test of the run that was actually cited.
 func TestCitedRunThatIsNotGreenIsRefused(t *testing.T) {
 	s := checkOnlyStub(t)
-	s.rollup[len(s.rollup)-1].Conclusion = "FAILURE"
+	s.rollup[len(s.rollup)-1].Conclusion = "FAILURE" // the cited run failed...
+	s.rollup = append(s.rollup, rollupEntry{         // ...and a later re-run went green
+		ID: "41234567891", Name: "changelog", Status: "COMPLETED", Conclusion: "SUCCESS",
+		StartedAt: runCompletedAt, CompletedAt: reApproveAt,
+	})
 	s.install(t)
 
 	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
-		t.Fatalf("cited run not green: rc = %d, want %d", rc, deskkit.ExitRefused)
+		t.Fatalf("cited run is the superseded FAILED run: rc = %d, want %d — a citation is not a verdict",
+			rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("citing a failed run produced mutations: %v", m)
+	}
+}
+
+// THE ISSUE'S OWN SCENARIO, end to end. A required `changelog` check was red; a human applied
+// `changelog:skip`; the check re-reported at the SAME head as SKIPPED. GitHub reports that
+// conclusion for a check that deliberately did no work, and checks-green has always counted
+// it green — so the exemption must too, or it would refuse the exact case it was authorized
+// for while the gate two conditions below called the same run green.
+func TestSkippedIsGreenForTheExemptionJustAsItIsForChecksGreen(t *testing.T) {
+	s := checkOnlyStub(t)
+	s.rollup[len(s.rollup)-1].Conclusion = "SKIPPED"
+	s.install(t)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("cited run concluded SKIPPED: rc = %d, want %d — a skip label is how the real case goes "+
+			"green, and the exemption shares checks-green's accepted set", rc, deskkit.ExitOK)
+	}
+	if !s.flipped() {
+		t.Errorf("a SKIPPED cited run did not flip: %v", s.requests)
+	}
+}
+
+// (b) DROPPED, the NOT-YET-COMPLETE form. The cited run is the named check at the right head,
+// but it is still RUNNING. "Still going" is could-not-check, and could-not-check never clears
+// a standing rejection — the reviewer cited a result that does not exist yet.
+func TestCitedRunStillRunningIsRefused(t *testing.T) {
+	s := checkOnlyStub(t)
+	s.rollup[len(s.rollup)-1].Status = "IN_PROGRESS"
+	s.rollup[len(s.rollup)-1].Conclusion = ""
+	s.install(t)
+
+	// Refused, NOT unverifiable: the exemption decides before checks-green ever runs, so a
+	// pending rollup is not what produced this. That distinction is the assertion — with the
+	// completed-test dropped the exemption grants and the flip falls through to checks-green,
+	// which returns could-not-verify instead.
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("cited run still running: rc = %d, want %d (refused by the exemption, not deferred to CI)",
+			rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("citing an unfinished run produced mutations: %v", m)
 	}
 }
 
@@ -267,16 +323,27 @@ func TestCitationOfZeroDoesNotMatchAnIdlessRun(t *testing.T) {
 }
 
 // A SHORT rollup read is could-not-check, and could-not-check never clears a standing
-// rejection: the cited run may simply be in the part the forge did not serve. The distinct
-// exit code matters — this is not "the exemption does not apply", it is "whether it applies
-// could not be established".
+// rejection: the cited run may simply be in the part the forge did not serve.
+//
+// THE EXIT CODE ALONE CANNOT PIN THIS. checks-green has its own short-read guard over the
+// same endpoint and returns the same could-not-verify, so a run that reached it would look
+// identical from the outside. What distinguishes them is WHICH CONDITION reported, and the
+// answer has to be reviewer-approved: the exemption decides first, and an operator sent to
+// the CI gate for a rejection that was never about CI goes looking in the wrong place.
 func TestShortRollupReadCannotClearTheCheckOnlyCR(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.checkTotalOverride = 99 // the forge asserts far more runs than it served
 	s.install(t)
 
-	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+	var rc int
+	out := captureStderr(t, func() { rc = run([]string{"7", "--repo", privateCIRepo}) })
+
+	if rc != deskkit.ExitUnverifiable {
 		t.Fatalf("short rollup read: rc = %d, want %d (could-not-check)", rc, deskkit.ExitUnverifiable)
+	}
+	if !strings.Contains(out, "condition "+condReviewerApproved) {
+		t.Errorf("the short read was reported by the wrong condition — want %s, got:\n%s",
+			condReviewerApproved, out)
 	}
 	if m := s.mutated(); len(m) != 0 {
 		t.Fatalf("a short rollup read produced mutations: %v", m)

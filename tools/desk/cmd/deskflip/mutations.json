@@ -50,16 +50,16 @@
       "new": "\tchecks := pr.StatusCheckRollup"
     },
     {
-      "name": "check-only CR (a): accept any CR body as a check-only declaration (an ordinary CR with real findings becomes exempt — reddens TestProseAboutTheCheckIsNotACheckOnlyDeclaration)",
+      "name": "check-only CR (a): infer 'check-only' from PROSE when no declaration is present — the exact heuristic the authorization forbids (an ordinary CR that merely mentions the check becomes exempt — reddens TestProseAboutTheCheckIsNotACheckOnlyDeclaration)",
       "file": "cmd/deskflip/flip.go",
       "old": "\tcheck := deskkit.BlockedOnCheckName(cr.Body)\n\tif check == \"\" {",
-      "new": "\tcheck := deskkit.BlockedOnCheckName(cr.Body)\n\tif false && check == \"\" {"
+      "new": "\tcheck := deskkit.BlockedOnCheckName(cr.Body)\n\tif check == \"\" && strings.Contains(cr.Body, \"changelog\") {\n\t\tcheck = \"changelog\"\n\t}\n\tif check == \"\" {"
     },
     {
       "name": "check-only CR (b): drop the requirement that the re-approve CITE a run (a bare at-head re-approve clears a declared CR — reddens TestReApproveCitingNoRunIsStillRefused)",
       "file": "cmd/deskflip/flip.go",
-      "old": "\t\tif id := deskkit.ClearedCheckRunID(r.Body); id != \"\" {\n\t\t\tcited[id] = true\n\t\t}",
-      "new": "\t\tcited[deskkit.ClearedCheckRunID(r.Body)] = true\n\t\tfor _, run := range []string{} {\n\t\t\tcited[run] = true\n\t\t}"
+      "old": "\tif len(cited) == 0 {\n\t\treturn standingCRRefusal(reviewerLogin, head, fmt.Sprintf(",
+      "new": "\tif len(cited) == 0 {\n\t\treturn nil\n\t}\n\tif false {\n\t\treturn standingCRRefusal(reviewerLogin, head, fmt.Sprintf("
     },
     {
       "name": "check-only CR (b): drop the AFTER-the-CR test on the cited run's completion (a run the reviewer already had when they blocked clears it — reddens TestCitedRunThatPredatesTheCRIsRefused)",
@@ -68,10 +68,10 @@
       "new": "\t\tif false && !doneAt.After(crAt) {"
     },
     {
-      "name": "check-only CR (b): accept a cited run that is not a completed success (a RED cited run clears the CR — reddens TestCitedRunThatIsNotGreenIsRefused)",
+      "name": "check-only CR (b): accept a cited run that did not finish green (the superseded FAILED run of a check that later went green clears the CR — reddens TestCitedRunThatIsNotGreenIsRefused and TestCitedRunStillRunningIsRefused)",
       "file": "cmd/deskflip/flip.go",
-      "old": "\t\tif !strings.EqualFold(run.Status, \"completed\") || !strings.EqualFold(run.Conclusion, \"success\") {",
-      "new": "\t\tif false && (!strings.EqualFold(run.Status, \"completed\") || !strings.EqualFold(run.Conclusion, \"success\")) {"
+      "old": "\t\tif !checkRunGreen(run) {",
+      "new": "\t\tif false && !checkRunGreen(run) {"
     },
     {
       "name": "check-only CR (c): read the exemption's rollup at a FIXED sha instead of the reviewed head (a run on another head becomes evidence about this one — reddens TestCitedRunAbsentFromTheHeadRollupIsRefused)",
