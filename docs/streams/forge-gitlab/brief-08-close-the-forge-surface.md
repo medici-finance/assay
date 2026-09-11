@@ -127,6 +127,29 @@ stream (edition-matrix.md, tables A and C6).
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->
+### Verify run — 2026-09-10, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local) — VERDICT: FAIL (held at `implemented`)
+
+Target: merged `origin/main` @ `48b978bb08c468fec52c015d280285698fc362bd` (two-protocol confirmed). Offline (`KUBECONFIG=/dev/null`) in an isolated worktree; runner ≠ implementer. gate: model, risk all=no. Go rows run from `tools/desk` (the sole module).
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | 0 | all packages `ok`; no FAIL/panic | PASS |
+| 2 | `go test ./... -run TestNoForgeCLIShellout -v` | 0 | PASS — but log: "13 shipped call site(s) still invoke a forge CLI, across 9 registered declarations… ratchet ceiling 9; 19 could-not-check". Passes because residuals are ALLOWLISTED, not because none remain | PASS (literal) / rationale FALSE |
+| 3 | `grep -rnE -e 'exec\.Command(Context)?\([^)]*"gh"' -e '…"glab"' tools/desk --include='*.go' \| grep -v _test.go \| wc -l` | — | **`4`** (expected `0`): `cmd/repohardenguard/check.go:46` (ghRun), `cmd/deskroster/roster.go:229` (ghViewPR), `cmd/deskroster/roster.go:246` (ghListOpenPRs) — 3 REAL `gh` invocations — + 1 comment in `internal/forgeban/forgeban.go:173` | **FAIL** |
+| 4 | `go test ./internal/deskkit/ -run TestForgeNoPassthrough -v` | 0 | all 5 subtests PASS; the frozen surface is **37 operations**, every one tabulated in inventory.md (reflection vs inventory + endpoint-param AST check + both-backends-export-nothing-extra + `ValidateRefPath` 17 refusal cases) | PASS |
+| 5 | `go doc ./internal/deskkit Forge \| grep -cE -e 'Do\(' -e 'Raw\(' -e 'APIRequest\(' -e 'Call\('` | — | `0` — no arbitrary-request method in the interface godoc | PASS |
+
+**Two halves, split outcome:**
+- **No-passthrough half (rows 4/5): PASS, robustly.** `deskkit.Forge` is a genuinely closed enumerated interface (37 ops, all in inventory.md), no generic/arbitrary-endpoint escape hatch by four independent mechanisms; row 5 godoc grep = 0 is a second instrument. No escape hatch.
+- **Shell-exec-ban half (rows 2/3): FAILS the table as written.** Row 3 (whole-tree grep, expect 0) returns 4 (3 real `gh` invocations in `deskroster`/`repohardenguard` + 1 comment). Row 2 passes only because `internal/forgeban` ALLOWLISTS them (ratchet `allowedInvocationCeiling = 9` + 19-entry could-not-check register) — contradicting row 2's rationale ("passes because no gh/glab invocation remains").
+
+**Risk-bearing value:** `RISK-VALUE: DERIVED (structural) — no-passthrough is a shape guarantee (37 enumerated ops, 0 arbitrary-endpoint methods), not a numeric constant.` `RISK-VALUE: NAMED — allowedInvocationCeiling = 9 @ tools/desk/internal/forgeban/allowlist.go — this ratchet IS the shell-exec ban's current strength; the brief's model assumed ceiling = 0 (full closure), merged main ships a ratchet at 9 + a 19-entry could-not-check register. This is the load-bearing security constant for the ban half and it is 9, not 0.`
+
+**Defense-in-depth (gate: model):** confirmed for both properties, and it is exactly what surfaced the FAIL — the ban's two independent instruments DISAGREE: row 2 (AST+literal source scan, allowlist-reconciled) passes while row 3 (naive grep, no allowlist) returns 4. Row 3 exists to expose precisely this. No-passthrough's two instruments (row 4 reflection + row 5 godoc) agree clean.
+
+**Why a divergence, not a plain code bug:** the allowlist header + this house's CLAUDE.md record that routing the ambient-credential tools (deskroster/repohardenguard) through the seam is a token-custody decision deferred to separate briefs, and that some residuals need enumerated ops spec §6's freeze rule forbids adding speculatively. Shipping a ratchet instead of closure-to-zero is defensible — but the brief's Verify row 3 assumes full closure, so it does not pass as written.
+
+**VERDICT: FAIL** on row 3 (row 2 passes literally but its DoD rationale is false); rows 1/4/5 PASS (the no-passthrough / enumerated-surface half is fully and robustly delivered). Held at `implemented` — a desk/human decision is owed (filed `medici-finance/assay#834`): amend Verify row 3 to reflect the accepted ratchet+custody-deferral, OR treat the residual `gh` callsites in `deskroster`/`repohardenguard` as open work (follow-up brief). Not flip-eligible against the table as written.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
