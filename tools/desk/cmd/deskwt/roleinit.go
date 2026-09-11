@@ -48,15 +48,27 @@ type roleWTConfig struct {
 }
 
 // roleWorktreeConfig maps every desk-role TOKEN — the App-role key the roster binds and
-// deskboot mints under (deskkit.LoopTokenRoles' values: desk / worker / reviewer /
-// verifier / issue-loop) — to the worktree it provisions. The KEY is the token role
-// (RoleBotIdentity / RoleBotCommitIdentity are keyed on it, so `role-init --role verifier`
+// desktoken mints under (its fixed role set: desk / worker / reviewer / verifier /
+// issue-loop / intake-loop) — to the worktree it provisions. The KEY is the token role
+// (RoleBotIdentity / RoleBotCommitIdentity are keyed on it, so `role-init verifier`
 // resolves the verifier App's identity), and branchPrefix is the LOOP name deskboot boots
 // (the-desk / worker-desk / pr-review-desk / verify-desk / intake-desk), which names the
 // branch (<branchPrefix>/<session>) and the worktree leaf dir. Every loop deskboot can
 // boot is represented, so `deskboot`'s "isolate first with role-init" step works for all
-// five, not only the verifier (#677); the mapping mirrors deskkit.LoopTokenRoles and the
+// of them, not only the verifier (#677); the mapping mirrors deskkit.LoopTokenRoles and the
 // TestRoleWorktreeConfigMatchesLoopTokenRoles parity test guards it against drift.
+//
+// `intake-loop` is the one token role with no deskboot loop of its own (the intake window
+// boots as intake-desk under the issue-loop App); it is still a role desktoken mints and the
+// roster binds, so it provisions under its own prefix rather than being refused.
+//
+// The map is keyed on TOKEN roles only. A caller may name the role EITHER way — the token
+// role or the loop name deskboot boots (`worker-desk`, `pr-review-desk`, a retired spelling
+// the kill switch still honours) — and resolveRoleKey folds the loop spelling onto its token
+// role through deskkit's own loop roster, so the two vocabularies cannot be spelled apart
+// here. That fold is what makes deskboot's "isolate first" remediation runnable verbatim:
+// deskboot knows its LOOP name, and a refusal that names a command the tool then refuses is
+// a boot with no clean path out of the shared checkout.
 var roleWorktreeConfig = map[string]roleWTConfig{
 	"desk": {
 		branchPrefix: "the-desk",
@@ -73,6 +85,9 @@ var roleWorktreeConfig = map[string]roleWTConfig{
 	"issue-loop": {
 		branchPrefix: "intake-desk",
 	},
+	"intake-loop": {
+		branchPrefix: "intake-loop",
+	},
 }
 
 // roleWorktreeRoles returns the configured roles, sorted, for error messages.
@@ -88,6 +103,38 @@ func roleWorktreeRoles() string {
 		}
 	}
 	return strings.Join(roles, ", ")
+}
+
+// resolveRoleKey folds a caller's role spelling onto the roleWorktreeConfig key: a token
+// role is returned as-is; a loop name (canonical or retired, per deskkit's kill-switch
+// roster) resolves to the App role that loop acts under. ok=false is a refusal at the call
+// site — never a default role, because provisioning under the wrong App identity is the
+// failure this verb exists to prevent.
+func resolveRoleKey(raw string) (key string, ok bool) {
+	r := strings.ToLower(strings.TrimSpace(raw))
+	if _, ok := roleWorktreeConfig[r]; ok {
+		return r, true
+	}
+	canonical, known := deskkit.CanonicalLoopName(r)
+	if !known {
+		return "", false
+	}
+	tok, bound := deskkit.TokenRoleForLoop(canonical)
+	if !bound {
+		return "", false
+	}
+	if _, ok := roleWorktreeConfig[tok]; !ok {
+		return "", false
+	}
+	return tok, true
+}
+
+// roleSpellings lists every accepted role spelling — the token roles, then the loop names
+// that fold onto them — for the refusal message, so an operator who typed the loop name
+// deskboot printed can see it is accepted and the refusal is about something else.
+func roleSpellings() string {
+	loops := deskkit.LoopsWithTokenRole()
+	return roleWorktreeRoles() + " (or a loop name: " + strings.Join(loops, ", ") + ")"
 }
 
 // resolveSession returns the session id: the flag, else $DESK_SESSION, else
@@ -109,31 +156,72 @@ func resolveSession(flagVal string) string {
 // roleInitParams is the validated, derived shape shared by role-init and role-clean so the
 // two verbs cannot disagree about a role's path or branch.
 type roleInitParams struct {
-	role    string
-	cfg     roleWTConfig
-	session string
-	branch  string
-	leaf    string // tracker-<branchPrefix>-<session> — the worktree's leaf dir name
-	target  string // filled by the caller once the pathGuard is built: guard.worktreeTarget(leaf)
+	role     string
+	cfg      roleWTConfig
+	session  string
+	branch   string
+	leaf     string // tracker-<branchPrefix>-<session> — the worktree's leaf dir name
+	target   string // filled by the caller once the pathGuard is built: guard.worktreeTarget(leaf)
+	repoRoot string // --repo-root: the checkout to provision from; "" = the working directory
+	noFetch  bool   // --no-fetch: start from the local origin/main as-is (offline / fixture use)
 }
 
-// parseRoleParams validates --role/--session and derives the path + branch. It is the single
-// place the naming convention lives.
+// parseRoleParams validates the role (positional or --role), --session, --repo-root and
+// --no-fetch, and derives the path + branch. It is the single place the naming convention
+// lives.
+//
+// The role is accepted as ONE positional (`role-init worker-desk`) or as `--role`, and in
+// either vocabulary — token role or loop name (resolveRoleKey). The positional form is what
+// lets a launcher write `cd "$(deskwt role-init <role> --repo-root <path>)"` and what deskboot
+// prints in its isolate-first remediation.
 func parseRoleParams(verb string, args []string) (roleInitParams, error) {
 	fs := flag.NewFlagSet(verb, flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
-	role := fs.String("role", "", "desk role to provision a worktree for (e.g. verifier)")
+	role := fs.String("role", "", "desk role to provision a worktree for (token role or loop name; may also be given positionally)")
 	session := fs.String("session", "", "session id (default $DESK_SESSION, then $CLAUDE_SESSION_ID)")
+	repoRoot := fs.String("repo-root", "", "checkout of the repo to provision from (default: the working directory)")
+	noFetch := fs.Bool("no-fetch", false, "start from the local origin/main as-is instead of fetching it fresh first")
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
 		return roleInitParams{}, deskkit.Refused("refused: bad flags: " + perr.Error())
 	}
-	if len(positionals) != 0 {
-		return roleInitParams{}, deskkit.Refused("refused: " + verb + " takes no positional args; use --role and --session")
+	rawRole := strings.TrimSpace(*role)
+	switch len(positionals) {
+	case 0:
+	case 1:
+		// Both spellings may be given (a launcher passing the positional over a wrapper that
+		// adds --role); they must resolve to the SAME role, in whichever vocabulary each uses.
+		if rawRole != "" {
+			a, aok := resolveRoleKey(rawRole)
+			b, bok := resolveRoleKey(positionals[0])
+			if aok && bok && a != b {
+				return roleInitParams{}, deskkit.Refused("refused: role given twice and differently (positional " +
+					positionals[0] + " → " + b + ", --role " + rawRole + " → " + a + ") — name it once")
+			}
+		}
+		rawRole = positionals[0]
+	default:
+		return roleInitParams{}, deskkit.Refused("refused: " + verb + " takes at most one positional (the role); " +
+			"got: " + strings.Join(positionals, " "))
 	}
-	cfg, ok := roleWorktreeConfig[*role]
+	if rawRole == "" {
+		return roleInitParams{}, deskkit.Refused("refused: " + verb + " needs a role (positional or --role): one of " + roleSpellings())
+	}
+	key, ok := resolveRoleKey(rawRole)
 	if !ok {
-		return roleInitParams{}, deskkit.Refused("refused: --role must be one of: " + roleWorktreeRoles())
+		return roleInitParams{}, deskkit.Refused("refused: role " + rawRole + " is not a desk role; must be one of: " + roleSpellings())
+	}
+	cfg := roleWorktreeConfig[key]
+	root := strings.TrimSpace(*repoRoot)
+	if root != "" {
+		if strings.HasPrefix(root, "-") {
+			return roleInitParams{}, deskkit.Refused("refused: --repo-root value looks like a flag: " + root)
+		}
+		abs, aerr := filepath.Abs(root)
+		if aerr != nil {
+			return roleInitParams{}, deskkit.Refused("refused: --repo-root " + root + " cannot be made absolute: " + aerr.Error())
+		}
+		root = abs
 	}
 	sess := resolveSession(*session)
 	if !nameRe.MatchString(sess) || strings.Contains(sess, "..") {
@@ -149,10 +237,29 @@ func parseRoleParams(verb string, args []string) (roleInitParams, error) {
 	// resolved the working directory. parseRoleParams owns only the naming convention — the
 	// leaf dir name — and the caller fills p.target from the guard.
 	leaf := "tracker-" + cfg.branchPrefix + "-" + sess
-	return roleInitParams{role: strings.ToLower(*role), cfg: cfg, session: sess, branch: branch, leaf: leaf}, nil
+	return roleInitParams{role: key, cfg: cfg, session: sess, branch: branch, leaf: leaf, repoRoot: root, noFetch: *noFetch}, nil
 }
 
-// cmdRoleInit implements `deskwt role-init --role <role> [--session <s>]`.
+// roleRepoDir resolves the checkout a role verb operates against: --repo-root when given
+// (an explicit value is authoritative — no silent fall-back to the cwd), else the working
+// directory. Either way the result must be inside a git worktree; anything else is
+// unverifiable (exit 6), never "assume the cwd".
+func roleRepoDir(p roleInitParams) (string, error) {
+	if p.repoRoot != "" {
+		if out, err := runGit(p.repoRoot, "rev-parse", "--is-inside-work-tree"); err != nil || out != "true" {
+			return "", deskkit.Unverifiable("--repo-root "+p.repoRoot+" is not inside a git worktree", err)
+		}
+		return p.repoRoot, nil
+	}
+	dir, gerr := getwd()
+	if gerr != nil {
+		return "", deskkit.Unverifiable("cannot resolve working directory", gerr)
+	}
+	return dir, nil
+}
+
+// cmdRoleInit implements `deskwt role-init <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]`
+// (`--role <role>` is the same role spelled as a flag).
 func cmdRoleInit(args []string) (err error) {
 	ac := &auditCtx{verb: "role-init"}
 	defer func() { ac.finalize(err) }()
@@ -197,9 +304,9 @@ func cmdRoleInit(args []string) (err error) {
 		botName, botEmail = name, email
 	}
 
-	dir, gerr := getwd()
-	if gerr != nil {
-		return deskkit.Unverifiable("cannot resolve working directory", gerr)
+	dir, derr := roleRepoDir(p)
+	if derr != nil {
+		return derr
 	}
 	repo, rerr := currentRepo(dir)
 	if rerr != nil {
@@ -215,6 +322,9 @@ func cmdRoleInit(args []string) (err error) {
 		return gErr
 	}
 	// Build the target under the OS-portable sanctioned prefix now the guard is available.
+	// It is ABSOLUTE by construction (both sanctioned prefixes are), and it is the ONE line
+	// this verb prints on stdout on success — the machine-readable contract a launcher
+	// relies on: `cd "$(deskwt role-init <role> --repo-root <path>)"`.
 	p.target = guard.worktreeTarget(p.leaf)
 	rt, cerr := guard.check(p.target)
 	if cerr != nil {
@@ -248,7 +358,21 @@ func cmdRoleInit(args []string) (err error) {
 		return deskkit.Unverifiable("cannot stat target "+p.target, statErr)
 	}
 
-	// Fresh create. origin/main must resolve to exactly one commit (same gates as `add`).
+	// Fresh create. The base is a FRESH origin/main: a role worktree cut from a stale
+	// remote-tracking ref starts the session behind main and every first write needs a
+	// merge-main before it can land. `git fetch origin main` updates refs/remotes/origin/main
+	// (the remote's configured refspec covers it) and touches nothing else in the checkout —
+	// no index, no config, no working tree. A failed fetch is could-not-check (exit 6): the
+	// verb does not know whether origin/main is current, so it does not pretend it is.
+	// --no-fetch is the explicit opt-out for an offline checkout or a fixture whose origin is
+	// not reachable; it is never the default.
+	if !p.noFetch {
+		if _, ferr := runGit(dir, "fetch", "--no-tags", "origin", "main"); ferr != nil {
+			return deskkit.Unverifiable("cannot fetch origin/main for "+dir+" — a role worktree starts from a "+
+				"FRESH origin/main; fix the fetch, or pass --no-fetch to cut it from the local origin/main as-is", ferr)
+		}
+	}
+	// origin/main must resolve to exactly one commit (same gates as `add`).
 	if aerr := checkBaseUnambiguous(dir, "origin/main"); aerr != nil {
 		return aerr
 	}
@@ -304,9 +428,9 @@ func cmdRoleClean(args []string) (err error) {
 		return perr
 	}
 
-	dir, gerr := getwd()
-	if gerr != nil {
-		return deskkit.Unverifiable("cannot resolve working directory", gerr)
+	dir, derr := roleRepoDir(p)
+	if derr != nil {
+		return derr
 	}
 	guard, gErr := newPathGuard(dir)
 	if gErr != nil {

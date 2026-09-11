@@ -8,7 +8,10 @@ There are two ways to install Assay, easiest first **when the shape matches**:
    scenarios that same skill wraps. Reach for it directly for a carve-out, a multi-repo suite, or
    any non-standard boot — and it is the ground truth the turnkey path delegates to.
 
-This runbook is GitHub-shaped throughout (Apps, rulesets, `gh`). Running the fleet on GitLab
+This runbook is GitHub-shaped throughout for the identity and merge machinery (Apps, rulesets,
+`gh`) — though `statusgen init` now scaffolds the CI half matching the target's forge (a GitHub
+workflow or a GitLab pipeline, and neither by default when the forge cannot be resolved), and the
+board's model-path auto-flip reads the reviewer's verdict per forge. Running the fleet on GitLab
 instead — service accounts in place of Apps, protected-branch push-access lists in place of
 ruleset bypass — is a separate profile: see
 [`docs/adopting-assay-gitlab.md`](adopting-assay-gitlab.md). **Cursor has no `/plugin` path**;

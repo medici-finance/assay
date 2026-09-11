@@ -49,9 +49,9 @@ the desk tools own.
 Minimum tier per brief (the `tier:` line in each brief's front-matter, with the detail in its
 `## Edition` section):
 
-| Brief | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Minimum tier | free | free | free | free | free | ultimate | free | free | free | free |
+| Brief | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 | 11 | 12 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Minimum tier | free | free | free | free | free | ultimate | free | free | free | free | free | free |
 
 The open point that stood here — spec.md section 1 declaring Free/CE non-conforming, which the
 matrix's per-feature citations did not support as written — was ruled on 2026-08-30
@@ -71,8 +71,10 @@ carries its evidence; brief 04's Verify row 3 was re-baselined onto the amended 
 | 06 | [Ultimate refinements — custom reviewer role + external-status-check verdict lane](brief-06-ultimate-refinements.md) | 5 | M | implemented | — | — |
 | 07 | [GitHub forge backend on go-gh — retire the exec-`gh` shell path](brief-07-github-forge-go-gh.md) | 2 | M | implemented | — | — |
 | 08 | [Close the forge surface — enumerated operations, no passthrough, shell-exec ban](brief-08-close-the-forge-surface.md) | 3 | M | implemented | — | — |
-| 09 | [GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth](brief-09-gitlab-reviewer-write-path.md) | 4 | M | implemented | — | — |
+| 09 | [GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth](brief-09-gitlab-reviewer-write-path.md) | 4 | M | in-progress | — | — |
 | 10 | [GitLab trust-events + commit author-login for the deskpost trust read](brief-10-gitlab-trust-events.md) | 5 | M | todo | — | — |
+| 11 | [Guard-read custody — the last gh shell-outs onto the Forge seam](brief-11-guard-read-custody.md) | 4 | M | todo | — | — |
+| 12 | [GitLab hardening reads — repohardenguard kinds on the GitLab backend](brief-12-gitlab-hardening-reads.md) | 5 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -99,7 +101,10 @@ It depends only on the interface (01) and the two backends (02 for the symmetric
 `glab` side, 07 for the GitHub side); it does not gate — and is not gated by —
 the live pilot (05). It is where the spec's "constrained typed surface is
 *stronger* than an ambient full-CLI surface" (§3) becomes shipped, enforced
-configuration rather than a design intention.
+configuration rather than a design intention. Its Verify row 3 (closure-to-zero) FAILED on
+2026-09-10 (#834): the ban shipped as a ratchet with three real `gh` sites still permitted. The
+driver ruled closure-to-zero stands; `forge-gitlab/11` is the custody design that closes it and
+`forge-gitlab/12` finishes the hardening guard on GitLab. 08 re-verifies when 11 lands.
 
 ## Dependency waves
 
@@ -122,3 +127,9 @@ critical path):
   `go-gh`, exec-`gh` forge path retired — parallelizable with 02/03).
 - **Wave 3** — `forge-gitlab/08` (depends on 07 + 02; enumerated surface, no
   passthrough on either backend, checked `gh`/`glab` shell-exec ban).
+- **Wave 4** — `forge-gitlab/11` (depends on 02 + 03 + 08; human-gated — the token-custody
+  design behind 08's closure-to-zero: the last `gh` shell-outs onto the seam, a read-only
+  `auditor` identity for the hardening guard, one enumerated hardening-read op; design record
+  `DR-forge-gitlab-11`).
+- **Wave 5** — `forge-gitlab/12` (depends on 11; the GitLab hardening-read kinds and the
+  per-forge checklist rows).

@@ -18,7 +18,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 4/9 | 2026-09-11 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/21 | 2026-09-11 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-11 |  |
-| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/10 | 2026-09-11 |  |
+| [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/12 | 2026-09-11 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/13 | 2026-09-11 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/14 | 2026-09-11 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-11 |  |
@@ -31,6 +31,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
+| forge-gitlab | 09 — GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth [exec:strong] | 4 | 1500 |
 | desk-tools | 17 — One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on [exec:strong] | 1 | 1000 |
 | desk-tools | 18 — Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check [exec:strong] | 1 | 1000 |
 
@@ -59,25 +60,25 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
+| forge-gitlab | 07 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | forge-neutral | 07 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | apps-installer | 05 | implemented | 3000 | 2 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
+| forge-gitlab | 08 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | forge-neutral | 06 [exec:strong] | implemented | 3000 | 2 | — | — | — |
+| forge-neutral | 08 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
-| forge-gitlab | 07 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | forge-neutral | 05 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
-| forge-gitlab | 08 [exec:strong] | implemented | 2000 | 2 | — | — | — |
 | forge-neutral | 12 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 13 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | windows-port | 00 | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| forge-gitlab | 09 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 01 | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -226,14 +227,16 @@ _None._
 - 07 deskmerge exception — fence the trial merge as the sole git-binary caller, migrate the rest — todo (wave 3)
 - 08 flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on — todo (wave 5)
 
-### forge-gitlab (6 open)
+### forge-gitlab (8 open)
 
 - 05 Live pilot — one brief round-tripped on a real GitLab group, security-parity table walked — implemented (wave 4)
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — implemented (wave 5)
 - 07 GitHub forge backend on go-gh — retire the exec-`gh` shell path — implemented (wave 2)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
-- 09 GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth — implemented (wave 4)
+- 09 GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth — in-progress (wave 4)
 - 10 GitLab trust-events + commit author-login for the deskpost trust read — todo (wave 5)
+- 11 Guard-read custody — the last gh shell-outs onto the Forge seam — todo (wave 4)
+- 12 GitLab hardening reads — repohardenguard kinds on the GitLab backend — todo (wave 5)
 
 ### forge-neutral (13 open)
 
@@ -244,7 +247,7 @@ _None._
 - 05 Claim layer — the GitLab shape of refs/dispatch/* and its release — implemented (wave 2)
 - 06 Read verbs — deskboard, issueboard, scanloop and the loop planners on the seam — implemented (wave 3)
 - 07 statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted — implemented (wave 3)
-- 08 statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay — todo (wave 4)
+- 08 statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay — implemented (wave 4)
 - 09 Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up — implemented (wave 3)
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
@@ -376,4 +379,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**14** streams (**14** active, **0** paused) · **46/144** briefs done · completed initiatives: see `docs/archive/`
+**14** streams (**14** active, **0** paused) · **46/146** briefs done · completed initiatives: see `docs/archive/`

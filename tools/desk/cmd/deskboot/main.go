@@ -55,7 +55,9 @@ STEPS, in order. Each prints one line; the first red one stops the boot and NAME
                       fully-merged worktrees are removed; active work is left alone.
   3 worktree-lock     locks THIS session's worktree so the prune supervisor cannot
                       reclaim it underneath a live desk. Refuses to boot in the shared
-                      checkout — isolate first (` + "`deskwt role-init --role <role>`" + `).
+                      checkout — isolate first: the refusal names the exact fix,
+                      ` + "`deskwt role-init <role> --repo-root <path>`" + ` (and
+                      ` + "`cellctl desk <cell> <role>`" + ` when cellctl is on PATH).
   4 roster-set        ` + "`deskroster set --role <role>`" + ` — self-declares the session so
                       "who owns this desk" is answerable without a round-trip.
   5 roster-preflight  ` + "`deskroster preflight --role <token-role> --root <root>`" + ` — the
