@@ -217,7 +217,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 09 | [Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up](brief-09-substrate-leakgate-and-cellctl.md) | 3 | M | implemented | — | — |
 | 10 | [Conformance — one round trip driven entirely by desk verbs, and the writes they refuse](brief-10-conformance-round-trip.md) | 5 | M | todo | — | — |
 | 11 | [Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives](brief-11-install-without-gh.md) | 5 | M | todo | — | — |
-| 12 | [deskboard non-board reads onto the seam](brief-12-deskboard-non-board-reads-onto-the-seam.md) | 4 | L | implemented | — | — |
+| 12 | [deskboard non-board reads onto the seam](brief-12-deskboard-non-board-reads-onto-the-seam.md) | 4 | L | verified | 2026-09-10 opus-4.8[1m]-verifier (assay 48b978bb; rows 1-9 PASS; deskboard gh=0, ceiling=9 DERIVED; row 10 statusgen could-not-check) | — |
 | 13 | [Write verbs C — deskpr, deskfile and deskclose onto the resolver](brief-13-write-verbs-c-deskpr-deskfile-deskclose.md) | 3 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
