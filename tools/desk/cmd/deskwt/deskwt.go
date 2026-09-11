@@ -330,6 +330,14 @@ func cmdAdd(args []string) (err error) {
 		return deskkit.Refused("refused: origin " + repo + " is not in the desk-tools repo set")
 	}
 
+	// PUSH-transport custody gate (#861). The new worktree inherits THIS checkout's remote,
+	// so an SSH push URL here is an SSH push URL there — and a bot session pushing over SSH
+	// goes out under a human's key while its commits read as the App's. Refuse now, before
+	// the branch and the worktree exist, rather than after an agent has filled them.
+	if terr := pushTransportGate(dir, "add"); terr != nil {
+		return terr
+	}
+
 	// --base must resolve to EXACTLY ONE ref. An ambiguous short name is could-not-check,
 	// not a coin flip: git resolves it at exit 0 with only a stderr warning, so this must
 	// be checked BEFORE rev-parse, whose --quiet swallows that warning entirely
