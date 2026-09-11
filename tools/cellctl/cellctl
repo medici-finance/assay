@@ -2,13 +2,20 @@
 # cellctl — start, stop and scaffold an Assay CELL on one laptop (the laptop route).
 #
 #   cellctl ls                                   cells under $CELLS_ROOT
-#   cellctl new   <cell> --repo <checkout> --cells-yaml <file> --orgs a,b --deskd-app-pem <pem> \
-#                        [--deskd-app-id-var VAR] [--port N]
+#   cellctl new   <cell> [--forge github|gitlab] --repo <checkout> --cells-yaml <file> [forge custody flags]
 #                                                scaffold <cell>/ (cell.env, home/, README) — then YOU fill
-#                                                home/.config/assay/{roster.env,apps.env} + the key symlinks
-#                                                VAR defaults to DESK_APP_ID, the generic role name a
-#                                                CELL apps.env uses
-#   cellctl check <cell>                         preconditions: cell.env, roster, keys, binaries, plugin, repo
+#                                                home/.config/assay/{roster.env,apps.env} + the custody material
+#                        --forge defaults to github. The custody flags are FORGE-SPECIFIC:
+#                          github: --orgs a,b --deskd-app-pem <pem> [--deskd-app-id-var VAR]
+#                                  --deskd-app-pem is REQUIRED on the github path ONLY (the App mints
+#                                  per-org installation tokens); VAR defaults to DESK_APP_ID, the generic
+#                                  role name a CELL apps.env uses.
+#                          gitlab: --group <group> [--gitlab-api-base URL] [--gitlab-token-store DIR]
+#                                  NO App PEM and NO --orgs — GitLab custody is a role token store
+#                                  (gitlab-<role>.token files), provisioned by hand, never minted.
+#   cellctl check <cell>                         preconditions per the cell's forge (cell.env, roster, keys or
+#                                                token store, binaries, repo) — a precondition for the OTHER
+#                                                forge is reported n/a or MISS, never silently skipped
 #   cellctl deskd <cell>                         stand the cell's persistent deskd (attended: mints per-org read tokens)
 #   cellctl desk  <cell> <role> [CLAUDE_CONFIG_DIR]   one role window (own worktree, real HOME, shims)
 #   cellctl up    <cell> [--no-the-desk] [--no-attach] [CLAUDE_CONFIG_DIR]
@@ -64,6 +71,25 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
   CELLS_CONFIG="${CELLS_CONFIG:-$CELL_DIR/cells-$CELL.yaml}"
   DESKD_ADDR="${DESKD_ADDR:-127.0.0.1:8787}"
   DESKD_INDEX="${DESKD_INDEX:-$CELL_DIR/index/index.db}"
+  # Forge awareness. A cell provisioned before forge support carries no CELL_FORGE; it is a
+  # GitHub cell by construction, so default there and keep every legacy cell working. The
+  # forge API endpoint is DERIVED from the forge, never a hardcoded host: GITHUB_HOST lets a
+  # GitHub Enterprise cell point elsewhere, and a GitLab cell carries its own base. This is
+  # the single home of the endpoint, so no verb below spells a host literal.
+  CELL_FORGE="${CELL_FORGE:-github}"
+  GITHUB_HOST="${GITHUB_HOST:-github.com}"
+  case "$CELL_FORGE" in
+    github)
+      FORGE_API_BASE="${FORGE_API_BASE:-https://api.$GITHUB_HOST}"
+      ;;
+    gitlab)
+      FORGE_API_BASE="${FORGE_API_BASE:-${GITLAB_API_BASE:-https://gitlab.com/api/v4}}"
+      GITLAB_API_BASE="${GITLAB_API_BASE:-$FORGE_API_BASE}"
+      GITLAB_TOKEN_STORE="${GITLAB_TOKEN_STORE:-$CELL_CONFIG}"
+      DESKD_GITLAB_TOKEN_FILE="${DESKD_GITLAB_TOKEN_FILE:-$GITLAB_TOKEN_STORE/gitlab-deskd.token}"
+      ;;
+    *) die "cell.env: CELL_FORGE=$CELL_FORGE is not a known forge (github|gitlab)" ;;
+  esac
   ROLES="${ROLES:-$ROLES_DEFAULT}"
   DESK_MODEL_DEFAULT="${DESK_MODEL_DEFAULT:-sonnet}"
   SESSION="${TMUX_SESSION:-${CELL}-cell}"
@@ -96,17 +122,42 @@ cmd_ls(){ local d; for d in "$CELLS_ROOT"/*/; do [[ -f "$d/cell.env" ]] && basen
 cmd_check(){
   load_cell "$1"; local ok=1
   chk(){ if eval "$2"; then echo "  ok    $1"; else echo "  MISS  $1"; ok=0; fi; }
-  echo "[check] cell=$CELL dir=$CELL_DIR"
+  # A precondition that belongs to the OTHER forge is reported n/a — it is stated, not
+  # silently skipped, so a half-provisioned or mis-forged cell reads as such rather than clean.
+  na(){ echo "  n/a   $1"; }
+  echo "[check] cell=$CELL dir=$CELL_DIR forge=$CELL_FORGE"
   chk "cell.env CELL_REPO is a git checkout: $CELL_REPO" '[[ -d "$CELL_REPO/.git" ]]'
   chk "cells config: $CELLS_CONFIG" '[[ -f "$CELLS_CONFIG" ]]'
   chk "operator config home (symlink targets): $REAL_CONFIG_HOME" '[[ -d "$REAL_CONFIG_HOME" ]]'
   chk "roster: $CELL_CONFIG/roster.env" '[[ -f "$CELL_CONFIG/roster.env" ]]'
-  chk "apps.env: $CELL_CONFIG/apps.env" '[[ -f "$CELL_CONFIG/apps.env" ]]'
   chk "App key symlinks resolve" '! find "$CELL_HOME/.config" -type l ! -exec test -e {} \; -print | grep -q .'
-  chk "gh config linked: $CELL_HOME/.config/gh" '[[ -e "$CELL_HOME/.config/gh" ]]'
+  chk "forge endpoint ($CELL_FORGE): $FORGE_API_BASE" '[[ -n "$FORGE_API_BASE" ]]'
+  case "$CELL_FORGE" in
+    github)
+      chk "apps.env: $CELL_CONFIG/apps.env" '[[ -f "$CELL_CONFIG/apps.env" ]]'
+      chk "gh config linked: $CELL_HOME/.config/gh" '[[ -e "$CELL_HOME/.config/gh" ]]'
+      chk "deskd read App key: ${DESKD_APP_PEM:-unset}" '[[ -r "${DESKD_APP_PEM:-/nonexistent}" ]]'
+      chk "orgs to mint tokens for: ${ORGS:-unset}" '[[ -n "${ORGS:-}" ]]'
+      na  "GitLab role token store — not applicable on a github cell"
+      ;;
+    gitlab)
+      chk "GitLab group: ${GITLAB_GROUP:-unset}" '[[ -n "${GITLAB_GROUP:-}" ]]'
+      chk "GitLab role token store: ${GITLAB_TOKEN_STORE:-unset}" '[[ -d "${GITLAB_TOKEN_STORE:-/nonexistent}" ]]'
+      chk "deskd GitLab read token (0600, hand-provisioned): ${DESKD_GITLAB_TOKEN_FILE:-unset}" '[[ -r "${DESKD_GITLAB_TOKEN_FILE:-/nonexistent}" ]]'
+      # GitHub-only preconditions on a GitLab cell are reported explicitly, never dropped: a
+      # stray App PEM is a MISS (a github artifact on a gitlab cell is a misconfiguration to
+      # surface), and the gh-config link is n/a (GitLab reads through the role token store).
+      if [[ -n "${DESKD_APP_PEM:-}" ]]; then
+        chk "stray GitHub App PEM on a gitlab cell (DESKD_APP_PEM should be unset): ${DESKD_APP_PEM:-}" 'false'
+      else
+        na "GitHub App PEM — not applicable on a gitlab cell"
+      fi
+      na "gh config link — not applicable on a gitlab cell (GitLab custody is the role token store)"
+      ;;
+    *) chk "known forge (github|gitlab): $CELL_FORGE" 'false' ;;
+  esac
   chk "deskd binary: $CELL_DIR/bin/deskd" '[[ -x "$CELL_DIR/bin/deskd" ]]'
   chk "deskcli binary: $CELL_DIR/bin/deskcli" '[[ -x "$CELL_DIR/bin/deskcli" ]]'
-  chk "deskd read App key: ${DESKD_APP_PEM:-unset}" '[[ -r "${DESKD_APP_PEM:-/nonexistent}" ]]'
   chk "desk-tools: $DESK_TOOLS_BIN/deskboot" '[[ -x "$DESK_TOOLS_BIN/deskboot" ]]'
   chk "tmux" 'command -v tmux >/dev/null'
   chk "deskd up on $DESKD_ADDR" 'deskd_up'
@@ -115,10 +166,32 @@ cmd_check(){
 
 cmd_deskd(){
   load_cell "$1"
-  # deskd stands live cross-org reads on freshly minted installation tokens. It is ATTENDED-ONLY:
-  # the operator starts it from their own shell, so a token mint is never an unattended act.
+  # deskd stands live cross-org reads on freshly minted (GitHub) or hand-provisioned (GitLab)
+  # tokens. It is ATTENDED-ONLY: the operator starts it from their own shell, so a token act is
+  # never unattended.
   [[ "${CELL_ATTENDED:-0}" == "1" ]] || die "deskd stands live cross-org reads — run from YOUR shell with CELL_ATTENDED=1"
   [[ -x "$CELL_DIR/bin/deskd" ]] || die "no deskd at $CELL_DIR/bin/deskd"
+  # The per-forge credential step: GitHub MINTS installation tokens from the App PEM; GitLab
+  # does NOT mint — role tokens rotate by hand (forge-neutral/01), so its path VERIFIES the
+  # provisioned role token store and points deskd at the cell's configured GitLab endpoint.
+  case "$CELL_FORGE" in
+    github) deskd_mint_github ;;
+    gitlab) deskd_provision_gitlab ;;
+    *) die "cell.env: CELL_FORGE=$CELL_FORGE is not a known forge (github|gitlab)" ;;
+  esac
+  mkdir -p "$(dirname "$DESKD_INDEX")"
+  # Go/no-go BEFORE the persistent run: --once walks every slice once and exits non-zero on a bad
+  # config or a missing installation/token, so a broken cell fails here rather than serving stale reads.
+  echo "[deskd] go/no-go: --once across the cell repos (expect: all slices checked, no owner/group 404s)"
+  "$CELL_DIR/bin/deskd" --config "$CELLS_CONFIG" --index "$DESKD_INDEX" --once
+  echo "[deskd] standing on $DESKD_ADDR (index $DESKD_INDEX)"
+  exec "$CELL_DIR/bin/deskd" --config "$CELLS_CONFIG" --index "$DESKD_INDEX" --addr "$DESKD_ADDR"
+}
+
+# deskd_mint_github signs an App JWT and exchanges it for one installation token PER ORG. The
+# forge host is the cell's configured endpoint ($FORGE_API_BASE), never a literal, so a GitHub
+# Enterprise cell reaches its own host.
+deskd_mint_github(){
   [[ -n "${DESKD_APP_PEM:-}" && -r "${DESKD_APP_PEM:-}" ]] || die "DESKD_APP_PEM not readable: ${DESKD_APP_PEM:-unset}"
   [[ -n "${DESKD_APP_ID_VAR:-}" ]] || die "cell.env: DESKD_APP_ID_VAR is not set"
   [[ -n "${ORGS:-}" ]] || die "cell.env: ORGS is not set"
@@ -137,31 +210,36 @@ cmd_deskd(){
   sig=$(printf '%s.%s' "$hdr" "$pl" | openssl dgst -sha256 -sign "$DESKD_APP_PEM" | b64url)
   jwt="$hdr.$pl.$sig"
   api(){ curl -fsS -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$@"; }
-  local slug; slug=$(api https://api.github.com/app | python3 -c 'import sys,json;print(json.load(sys.stdin)["slug"])')
-  echo "[deskd] signing as App $app_id ($slug)"
+  local slug; slug=$(api "$FORGE_API_BASE/app" | python3 -c 'import sys,json;print(json.load(sys.stdin)["slug"])')
+  echo "[deskd] signing as App $app_id ($slug) against $FORGE_API_BASE"
   # ONE installation token PER ORG. An installation token is scoped to its own installation, so a
   # single org's token returns 404 for every other org's slice — which reads as "repo missing", not
   # as "wrong token", and is the failure this loop exists to prevent.
   local org iid tok var
   for org in ${ORGS//,/ }; do
-    iid=$(api https://api.github.com/app/installations | python3 -c '
+    iid=$(api "$FORGE_API_BASE/app/installations" | python3 -c '
 import sys,json; o=sys.argv[1]
 for i in json.load(sys.stdin):
     if i["account"]["login"].lower()==o.lower(): print(i["id"]); break' "$org")
     [[ -n "$iid" ]] || die "App $slug has NO installation on $org — install it there first"
-    tok=$(api -X POST "https://api.github.com/app/installations/${iid}/access_tokens" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+    tok=$(api -X POST "$FORGE_API_BASE/app/installations/${iid}/access_tokens" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
     var="DESKD_GITHUB_TOKEN_$(echo "$org" | tr '[:lower:]-' '[:upper:]_')"
     export "$var=$tok"
   done
   unset jwt
   echo "[deskd] per-org tokens minted (${ORGS}) — 1h TTL, not echoed"
-  mkdir -p "$(dirname "$DESKD_INDEX")"
-  # Go/no-go BEFORE the persistent run: --once walks every slice once and exits non-zero on a bad
-  # config or a missing installation, so a broken cell fails here rather than serving stale reads.
-  echo "[deskd] go/no-go: --once across the cell repos (expect: all slices checked, no owner 404s)"
-  "$CELL_DIR/bin/deskd" --config "$CELLS_CONFIG" --index "$DESKD_INDEX" --once
-  echo "[deskd] standing on $DESKD_ADDR (index $DESKD_INDEX)"
-  exec "$CELL_DIR/bin/deskd" --config "$CELLS_CONFIG" --index "$DESKD_INDEX" --addr "$DESKD_ADDR"
+}
+
+# deskd_provision_gitlab verifies the hand-provisioned role token store and points deskd at the
+# cell's GitLab endpoint. It MINTS NOTHING: GitLab role tokens rotate deliberately and by hand,
+# so this path only asserts the store is present and readable, and exports the endpoint deskkit's
+# GitLab custody reads (GITLAB_API_BASE). No JWT, no installation token, no PEM.
+deskd_provision_gitlab(){
+  [[ -n "${GITLAB_GROUP:-}" ]] || die "cell.env: GITLAB_GROUP is not set (the GitLab group this cell reads)"
+  [[ -n "${GITLAB_TOKEN_STORE:-}" && -d "${GITLAB_TOKEN_STORE:-}" ]] || die "cell.env: GITLAB_TOKEN_STORE is not a directory: ${GITLAB_TOKEN_STORE:-unset} — provision the role token store first"
+  [[ -r "${DESKD_GITLAB_TOKEN_FILE:-/nonexistent}" ]] || die "deskd GitLab read token not readable: ${DESKD_GITLAB_TOKEN_FILE:-unset} — place gitlab-deskd.token in the role token store (mode 0600); it is not minted for you"
+  export GITLAB_API_BASE="$FORGE_API_BASE"
+  echo "[deskd] GitLab cell: reading group $GITLAB_GROUP via $FORGE_API_BASE from role token store $GITLAB_TOKEN_STORE (no token minted — rotation is a hand step)"
 }
 
 cmd_desk(){
@@ -276,28 +354,63 @@ cmd_down(){
 }
 
 cmd_new(){
-  local cell="${1:?cellctl new <cell> --repo … --cells-yaml … --orgs … --deskd-app-pem … [--deskd-app-id-var VAR]}"; shift
+  # --help before anything else, so `cellctl new --help` prints the forge-aware usage (which
+  # marks --deskd-app-pem as github-only) rather than dying on a missing cell name or flag.
+  local a
+  for a in "$@"; do [[ "$a" == "-h" || "$a" == "--help" ]] && usage 0; done
   # DESK_APP_ID is the default because `cellctl deskd` reads the CELL home's apps.env, and cell
   # homes name their Apps by generic role. Override only if this cell's apps.env names it otherwise.
-  local repo="" yaml="" orgs="" pem="" idvar="DESK_APP_ID" port=8787
+  #
+  # The cell name is a POSITIONAL that may appear anywhere among the flags (`new <cell> --forge …`
+  # is the common form, but the flags parse in any order). It is captured as the one bare token so
+  # that a missing CUSTODY input is diagnosed before a missing cell name — the forge-custody
+  # validation is the property the negative-path Verify rows assert, and it must fire whether or
+  # not a cell name was given.
+  local forge="github" cell="" repo="" yaml="" orgs="" pem="" idvar="DESK_APP_ID" port=8787
+  local group="" gitlab_api_base="" token_store=""
   while [[ $# -gt 0 ]]; do case "$1" in
+    --forge) forge="$2"; shift 2;;
     --repo) repo="$2"; shift 2;; --cells-yaml) yaml="$2"; shift 2;; --orgs) orgs="$2"; shift 2;;
     --deskd-app-pem) pem="$2"; shift 2;; --deskd-app-id-var) idvar="$2"; shift 2;; --port) port="$2"; shift 2;;
-    *) die "new: unknown flag $1";; esac; done
-  [[ -n "$repo" && -n "$yaml" && -n "$orgs" && -n "$pem" ]] \
-    || die "new: --repo --cells-yaml --orgs --deskd-app-pem are required"
+    --group) group="$2"; shift 2;; --gitlab-api-base) gitlab_api_base="$2"; shift 2;;
+    --gitlab-token-store) token_store="$2"; shift 2;;
+    --*) die "new: unknown flag $1";;
+    *) [[ -z "$cell" ]] || die "new: unexpected extra argument '$1' (the cell name is '$cell')"; cell="$1"; shift;;
+  esac; done
+  case "$forge" in github|gitlab) ;; *) die "new: --forge must be github or gitlab, got '$forge'";; esac
+  # Common requirements on BOTH forges.
+  [[ -n "$repo" && -n "$yaml" ]] || die "new: --repo and --cells-yaml are required (both forges)"
+  # Forge-specific custody inputs, asserted BEFORE the cell-name / yaml-is-a-file tests, so a
+  # missing custody input names ITSELF — and so the GitHub App requirement never fires on a GitLab
+  # cell, and the GitLab custody requirement never fires on a GitHub one.
+  if [[ "$forge" == "github" ]]; then
+    [[ -n "$orgs" && -n "$pem" ]] \
+      || die "new: on the github path --orgs and --deskd-app-pem are required (the App mints per-org installation tokens)"
+  else
+    [[ -n "$group" ]] \
+      || die "new: on the gitlab path --group is required (the GitLab group this cell reads); the role token store (gitlab-<role>.token) is a custody hand step, NOT an App PEM"
+  fi
+  [[ -n "$cell" ]] || die "new: a cell name is required (cellctl new <cell> …)"
   [[ -f "$yaml" ]] || die "new: --cells-yaml is not a file: $yaml"
   local d="$CELLS_ROOT/$cell"; [[ -e "$d" ]] && die "$d already exists"
   mkdir -p "$d/home/.config/assay" "$d/bin" "$d/index" "$d/worktrees"
   cp "$yaml" "$d/cells-$cell.yaml"
-  [[ -e "$HOME/.config/gh" ]] && ln -s "$HOME/.config/gh" "$d/home/.config/gh"
   [[ -e "$HOME/.gitconfig" ]] && ln -s "$HOME/.gitconfig" "$d/home/.gitconfig"
   chmod 700 "$d/home" "$d/home/.config" "$d/home/.config/assay"
-  cat > "$d/cell.env" <<EOF
-# cellctl cell.env — $cell (scaffolded $(date -u +%F))
+  local github_host="${GITHUB_HOST:-github.com}"
+  if [[ "$forge" == "github" ]]; then
+    # The gh CLI config is a GitHub custody artifact; link it only on a github cell.
+    [[ -e "$HOME/.config/gh" ]] && ln -s "$HOME/.config/gh" "$d/home/.config/gh"
+    # The endpoint is derived from the host, never spelled as a literal in this script (so the
+    # host-literal grep stays at zero); it expands INTO the generated cell.env below.
+    local forge_api_base="https://api.$github_host"
+    cat > "$d/cell.env" <<EOF
+# cellctl cell.env — $cell (github, scaffolded $(date -u +%F))
 CELL=$cell
+CELL_FORGE=github
 CELL_REPO=$repo
 CELLS_CONFIG=$d/cells-$cell.yaml
+FORGE_API_BASE=$forge_api_base
 DESKD_ADDR=127.0.0.1:$port
 DESKD_INDEX=$d/index/index.db
 DESKD_APP_PEM=$pem
@@ -308,17 +421,18 @@ ROLES="$ROLES_DEFAULT"
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=opus
 EOF
-  cat > "$d/README.md" <<EOF
-# $cell cell — scaffolded by cellctl
+    cat > "$d/README.md" <<EOF
+# $cell cell (github) — scaffolded by cellctl
 
 Four steps remain. Each is a custody act — it moves key material or states who this cell trusts —
 so \`cellctl new\` does not do them for you. Then run \`cellctl check $cell\`.
 
 1. \`home/.config/assay/roster.env\` — THIS cell's roster: \`ASSAY_TRUSTED_LOGINS\`,
-   \`ASSAY_BLESS_LOGIN\`, \`ASSAY_TRUSTED_BOT_SLUGS\` with \`role=\` bindings to THIS cell's Apps,
-   and \`ASSAY_ALLOWED_REPOS\` / \`ASSAY_SCAN_REPOS\` naming the cell's repos ONLY. Start from
-   another cell's file as a template and replace every App — a copied binding points this cell's
-   writes at another cell's identity.
+   \`ASSAY_BLESS_LOGIN\`, \`ASSAY_TRUSTED_BOT_SLUGS\` with forge-qualified \`role=github:<slug>:<id>\`
+   bindings to THIS cell's Apps (per forge-neutral/02's grammar), \`ASSAY_REPO_FORGES\` binding
+   the cell's repos to \`github\`, and \`ASSAY_ALLOWED_REPOS\` / \`ASSAY_SCAN_REPOS\` naming the
+   cell's repos ONLY. Start from another cell's file as a template and replace every App — a
+   copied binding points this cell's writes at another cell's identity.
 2. \`home/.config/assay/apps.env\` — the cell's App ids under the generic role names
    (\`$idvar\`, \`REVIEWER_APP_ID\`, …), plus one \`<role>-app.pem\` SYMLINK per role into your real
    config home (\`$REAL_CONFIG_HOME\`). Symlink, never copy: one custody location for the private
@@ -331,7 +445,56 @@ so \`cellctl new\` does not do them for you. Then run \`cellctl check $cell\`.
 
 Then: \`CELL_ATTENDED=1 cellctl deskd $cell\` once, and \`cellctl up $cell\` for the cockpit.
 EOF
-  echo "[new] scaffolded $d — see $d/README.md for the four hand steps"
+  else
+    local forge_api_base="${gitlab_api_base:-https://gitlab.com/api/v4}"
+    local store="${token_store:-$d/home/.config/assay}"
+    cat > "$d/cell.env" <<EOF
+# cellctl cell.env — $cell (gitlab, scaffolded $(date -u +%F))
+CELL=$cell
+CELL_FORGE=gitlab
+CELL_REPO=$repo
+CELLS_CONFIG=$d/cells-$cell.yaml
+FORGE_API_BASE=$forge_api_base
+GITLAB_API_BASE=$forge_api_base
+GITLAB_GROUP=$group
+GITLAB_TOKEN_STORE=$store
+DESKD_GITLAB_TOKEN_FILE=$store/gitlab-deskd.token
+DESKD_ADDR=127.0.0.1:$port
+DESKD_INDEX=$d/index/index.db
+ROLES="$ROLES_DEFAULT"
+# Pinned models (values \`claude --model\` accepts); the CLI default is never used.
+DESK_MODEL_DEFAULT=sonnet
+DESK_MODEL_the_desk=opus
+EOF
+    cat > "$d/README.md" <<EOF
+# $cell cell (gitlab) — scaffolded by cellctl
+
+Four steps remain. Each is a custody act — it moves credential material or states who this cell
+trusts — so \`cellctl new\` does not do them for you, and it MINTS NOTHING: GitLab role tokens
+rotate by hand. Then run \`cellctl check $cell\`.
+
+1. \`home/.config/assay/roster.env\` — THIS cell's roster: \`ASSAY_TRUSTED_LOGINS\`,
+   \`ASSAY_BLESS_LOGIN\`, \`ASSAY_TRUSTED_BOT_SLUGS\` with forge-qualified \`role=gitlab:<slug>:<id>\`
+   bindings to THIS cell's bot accounts (per forge-neutral/02's grammar — a bare slug is refused,
+   and a \`gitlab:\` entry against a github repo is refused), \`ASSAY_REPO_FORGES\` binding the
+   cell's repos to \`gitlab\`, and \`ASSAY_ALLOWED_REPOS\` / \`ASSAY_SCAN_REPOS\` naming the cell's
+   repos ONLY. A cell stood up for GitLab MUST write forge-qualified entries or the verbs refuse.
+2. The role token store — \`$store\` — holds one \`gitlab-<role>.token\` file per role (0600),
+   provisioned BY HAND: \`gitlab-deskd.token\` for the read daemon, plus one per write role
+   (\`gitlab-worker.token\`, \`gitlab-reviewer.token\`, …) per forge-neutral/01's custody binding.
+   These are GitLab group/project access tokens you mint in GitLab and place here yourself;
+   cellctl never mints or rotates them. Lock each to 0600.
+3. \`bin/deskd\`, \`bin/deskcli\` — from the desk console (build its \`cmd/deskd\` and
+   \`cmd/deskcli\`), or from the release tarball if your channel ships them.
+4. \`cells-$cell.yaml\` — the cell's slice of \`cells.yaml\` and nothing else; it must validate on
+   its own, and no other cell's repos may appear in it.
+
+The GitLab endpoint is \`$forge_api_base\` (\`cell.env\`: \`FORGE_API_BASE\` / \`GITLAB_API_BASE\`);
+the group this cell reads is \`$group\`. Then: \`CELL_ATTENDED=1 cellctl deskd $cell\` once, and
+\`cellctl up $cell\` for the cockpit.
+EOF
+  fi
+  echo "[new] scaffolded $d ($forge cell) — see $d/README.md for the hand steps"
 }
 
 case "${1:-}" in

@@ -259,6 +259,63 @@ func TestEmptyRollupWithUnreadableProtectionIsUnverifiable(t *testing.T) {
 	}
 }
 
+// The leak-gate three-state contract on the ready-flip decision
+// (docs/streams/forge-neutral/leak-gate-shape.md): a change whose leak-gate verdict is ABSENT
+// is could-not-check, never a pass. The leak-sweep disclosure gate is a required status posted
+// OUT OF BAND (a control-based sweep on its own schedule), so a head can carry a fully GREEN
+// rollup of every check that ran while the leak-sweep verdict simply never reported. Before the
+// fix, evalRollup — which reads only the entries that ARE present — called that rollup green and
+// the flip proceeded with the disclosure gate never having run. The flip now cross-checks that
+// every branch-protection-required context is PRESENT in the rollup and refuses could-not-check
+// when one is missing, extending the empty-rollup arm's three-state contract to a rollup that
+// is non-empty but incomplete.
+func TestMissingLeakGateIsCouldNotCheck(t *testing.T) {
+	s := newStub()
+	// Every check that reported is green — but the required leak-sweep verdict is absent.
+	s.rollup = []rollupEntry{
+		{Name: "test", Status: "COMPLETED", Conclusion: "SUCCESS"},
+		{Context: "changelog-check", State: "SUCCESS"},
+	}
+	s.requiredChecks = []string{"test", "changelog-check", "leak-sweep"} // branch protection requires the sweep
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitUnverifiable {
+		t.Fatalf("absent leak-gate verdict rc = %d, want %d (could-not-check, never a pass)",
+			rc, deskkit.ExitUnverifiable)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("flipped with the leak-sweep verdict absent from the rollup: %v", m)
+	}
+	if s.reqCheckReads == 0 {
+		t.Errorf("the required-status-checks endpoint was never read on the green path — a green rollup "+
+			"missing a required verdict was not cross-checked against the required set: %v", s.requests)
+	}
+}
+
+// The other side of the same contract: a green rollup that DOES carry the leak-sweep verdict
+// (and every other required context) still flips — the cross-check refuses only an ABSENT
+// required verdict, never a present one, so it does not brick the normal green path.
+func TestPresentLeakGateFlips(t *testing.T) {
+	s := newStub()
+	s.rollup = []rollupEntry{
+		{Name: "test", Status: "COMPLETED", Conclusion: "SUCCESS"},
+		{Context: "leak-sweep", State: "SUCCESS"},
+	}
+	s.requiredChecks = []string{"test", "leak-sweep"}
+	s.install(t)
+	s.reviews = approvalAtHead(t, headSHA)
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("green rollup carrying the leak-sweep verdict rc = %d, want %d (the flip must be allowed)",
+			rc, deskkit.ExitOK)
+	}
+	if !s.flipped() {
+		t.Errorf("the ready mutation never ran on a PR whose required leak-sweep verdict is present: %v",
+			s.requests)
+	}
+}
+
 // NEW, and a strengthening the transport swap made possible: each CI rollup now carries the
 // forge's OWN asserted total, so a rollup that serves fewer entries than the head claims is a
 // rollup nobody read in full. That is could-not-check, never green — the same fail-closed

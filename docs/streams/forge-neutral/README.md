@@ -214,7 +214,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 06 | [Read verbs — deskboard, issueboard, scanloop and the loop planners on the seam](brief-06-read-verbs-on-the-seam.md) | 3 | M | implemented | — | — |
 | 07 | [statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted](brief-07-statusgen-acting-identity.md) | 3 | M | todo | — | — |
 | 08 | [statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay](brief-08-statusgen-forge-aware.md) | 4 | M | todo | — | — |
-| 09 | [Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up](brief-09-substrate-leakgate-and-cellctl.md) | 3 | M | todo | — | — |
+| 09 | [Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up](brief-09-substrate-leakgate-and-cellctl.md) | 3 | M | implemented | — | — |
 | 10 | [Conformance — one round trip driven entirely by desk verbs, and the writes they refuse](brief-10-conformance-round-trip.md) | 5 | M | todo | — | — |
 | 11 | [Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives](brief-11-install-without-gh.md) | 5 | M | todo | — | — |
 | 12 | [deskboard non-board reads onto the seam](brief-12-deskboard-non-board-reads-onto-the-seam.md) | 4 | L | implemented | — | — |
