@@ -69,7 +69,7 @@ carries its evidence; brief 04's Verify row 3 was re-baselined onto the amended 
 | 04 | [Fleet provisioning script + adopter doc + ci-config-project runbook](brief-04-provisioning-and-adopter-doc.md) | 3 | M | done | 2026-09-05 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #481 @ bbdd8747858e29f80f0fe105801fda9a02ddf7f0) |
 | 05 | [Live pilot — one brief round-tripped on a real GitLab group, security-parity table walked](brief-05-live-pilot-parity-walk.md) | 4 | M | implemented | — | — |
 | 06 | [Ultimate refinements — custom reviewer role + external-status-check verdict lane](brief-06-ultimate-refinements.md) | 5 | M | todo | — | — |
-| 07 | [GitHub forge backend on go-gh — retire the exec-`gh` shell path](brief-07-github-forge-go-gh.md) | 2 | M | implemented | — | — |
+| 07 | [GitHub forge backend on go-gh — retire the exec-`gh` shell path](brief-07-github-forge-go-gh.md) | 2 | M | verified | 2026-09-10 opus-4.8[1m]-verifier (assay 48b978bb; 5/5 rows PASS; go-gh backend, unset-token refuses no-ambient-fallback proven hitCount==0; 42 golden scenarios) | — |
 | 08 | [Close the forge surface — enumerated operations, no passthrough, shell-exec ban](brief-08-close-the-forge-surface.md) | 3 | M | implemented | — | — |
 | 09 | [GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth](brief-09-gitlab-reviewer-write-path.md) | 4 | M | todo | — | — |
 | 10 | [GitLab trust-events + commit author-login for the deskpost trust read](brief-10-gitlab-trust-events.md) | 5 | M | todo | — | — |
