@@ -10,7 +10,7 @@ why: >-
   and no one ships one that silently breaks.
 wave: 0
 depends: []
-unblocks: ["windows-port/03", "windows-port/04", "windows-port/05"]
+unblocks: ["windows-port/03", "windows-port/04", "windows-port/05", "windows-port/08"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
