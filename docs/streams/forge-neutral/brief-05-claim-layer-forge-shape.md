@@ -204,6 +204,36 @@ and observing the specific failure, then restoring:
   What is live here is the read half on 2026-09-07 — the general ref route is absent, the Branches
   route is present and accepts the encoded separator — plus the authenticated create-and-delete at
   `HTTP 201` / `HTTP 204` recorded on the 2026-09-02 pilot run.
+### Verify run — 2026-09-10, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local)
+
+Target: merged `origin/main` @ `48b978bb08c468fec52c015d280285698fc362bd` (two-protocol confirmed). Offline (`KUBECONFIG=/dev/null`) in an isolated worktree; runner ≠ implementer (merge `036c4025`). gate: model, risk all=no.
+
+Design chose option (b): the claim moved into a reserved branch namespace served by the Branches API — `ClaimRefNamespace = "heads/dispatch"` → fully-qualified `refs/heads/dispatch/<key>`; writer and reader both derive from that one constant.
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `go build ./... && go test ./...` | 0 | every package `ok`, no FAIL | PASS |
+| 2 | `grep -c '^[|] ' docs/streams/forge-neutral/claim-shape.md` | 0 | `22` (≥4): live-read + decision tables present | PASS |
+| 3 | `TestClaimRefRoundTripBothBackends` | 0 | create/list/delete both backends, same scenario names | PASS |
+| 4 | `TestRefPathStillRejectsAPIPaths` (negative) | 0 | 22 refused shapes (API-path traversal, abs/scheme-rel URL, bare-unnamespaced, separator, newline, option-shaped); guard not widened | PASS |
+| 5 | `TestSinkResolvesForge` (fanoutloop) | 0 | default sink built from the resolver; nil resolver refused at construction | PASS |
+| 6 | `TestReleaseFailureIsNotReportedReleased` (negative, crux) | 0 | 5 subtests (forge refuses / cred refused / backend can't serve ns / resolver refuses / resolver yields nothing) each non-nil, name the key, emit no release line | PASS |
+| 7 | `TestClaimReaderNamespaceMatchesWriter` (loopengine) | 0 | reader prefix = `deskkit.ClaimRefsPrefix`, derived from the same constant as the writer | PASS |
+| 8 | `grep -rn -e refs/dispatch -e dispatchRefNamespace tools/desk plugins/assay/skills` (list review) | 0 | this brief's namespace agrees everywhere (see scope note); the `refs/dispatch/<id>` hits belong to a distinct, documented second primitive | PASS |
+| 9 | `TestNoForgeCLIShellout` + `TestForgeNoPassthrough` | 0 | both `ok` — no shell-out / arbitrary-endpoint method added for the delete | PASS |
+| 10 | `go test ./internal/forgeban/...` | 0 | `ok`; ratchet unchanged (`allowedInvocationCeiling = 9` @ allowlist.go:64 — not this brief's to move) | PASS |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/05` | 2 | COULD-NOT-CHECK — local statusgen v1.0.6 brief-v2 gap (`no brief-v1 file`); consumers hand-corroborated against the merge diff (below) | COULD-NOT-CHECK |
+| 12 | MUTATION → row 6 → restore → row 6 | 1, then 0 | mutant (release line before `DeleteRef` + delete error swallowed): 3 subtests FAIL `a release that did not happen was reported as success — the slot leaks silently`; restored → `ok`; worktree clean | PASS |
+
+**Risk-bearing value (ENUMERATE → RANK → DERIVE):**
+- `RISK-VALUE: DERIVED — ClaimRefNamespace = "heads/dispatch" @ tools/desk/internal/deskkit/claimref.go:53.` RANK #1 (a mismatch = silent double-dispatch / permanently-leaked slot, invisible to any single-component test). Single-sourced: writer `dispatchRefNamespace = deskkit.ClaimRefNamespace` @ `cmd/fanoutloop/land.go:154`; reader `claimRefPrefix = deskkit.ClaimRefsPrefix` @ `internal/loopengine/writescope_io.go:31`, where `ClaimRefsPrefix = "refs/" + ClaimRefNamespace + "/"` @ `claimref.go:57`. Reader and writer share the one constant — proven by rows 7 (derivation) + 8 (grep list).
+- `RISK-VALUE: DERIVED — release/list status codes: create 201 / delete 204; re-release no-op keys on 404/422 (refAlreadyGone @ land.go:138-140) so re-releasing a missing ref is not a false failure.` Standard Branches-API semantics, recorded in claim-shape.md.
+
+**Defense-in-depth (gate: model):** CONFIRMED. Row 12's mutant (release line moved before `DeleteRef` + delete error swallowed with `return nil`) reddens row 6 — exactly 3 subtests fail with the precise sentinel; restoring returns row 6 green. Row 6 is a live control, sensitive to the one property (loud failed-release) the claim layer rests on.
+
+**Scope-traceability (row 8):** every mention of THIS brief's claim namespace agrees — writer (`land.go`), reader (`loopengine/writescope_io.go`), `forge_gitlab.go:1830`, `desksupervise/live.go`, and all four skill files name `refs/heads/dispatch`. Merged main carries a SECOND, separately-namespaced claim primitive — the pure-Go `deskclaim-ref`/`deskdispatch` (`refs/dispatch/<id>`, keyed by dispatch id, from later briefs), explicitly documented as distinct (`cmd/deskclaim-ref/main.go:58`); worker-desk SKILL.md:112 tells operators to run BOTH reads. This is a documented two-primitive split, NOT writer/reader drift within brief-05's namespace — row 8's intent holds. The brief's merge touched exactly the declared consumers (hand-corroborating row 11's could-not-check). No work maps to no Verify row.
+
+**VERDICT: PASS** — rows 1–10 + mutation 12 PASS; row 11 COULD-NOT-CHECK (local statusgen brief-v2 gap, settled by hand-corroboration against the merge diff). gate: model, risk all=no → flip-eligible.
 
 ## Review
 Gate: **model** (from frontmatter; all four risk answers are `no` — this changes a
