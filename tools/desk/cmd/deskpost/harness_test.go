@@ -164,6 +164,13 @@ type fakeGH struct {
 	prLabels      []string
 	surfaceConfig *string
 	createdLabels []string
+
+	// claimRefStatus is the HTTP status GET /repos/{o}/{r}/git/ref/{ref} returns — the
+	// claim-liveness single-reference read behind the model floor's stamp age-out. 0 serves 200
+	// (the ref is present); a test sets 404 (absent → ClaimReleased) or 403/500 (could-not-look
+	// → ClaimLivenessUnknown). Only exercised when claimLiveness reads, which needs a body with a
+	// derivable claim key, so the default never fires for the existing fixtures.
+	claimRefStatus int
 }
 
 var (
@@ -183,6 +190,7 @@ var (
 	reIssueLabels  = regexp.MustCompile(`/issues/[0-9]+/labels$`)
 	reIssueLabelOf = regexp.MustCompile(`/issues/[0-9]+/labels/(.+)$`)
 	reContents     = regexp.MustCompile(`^/repos/[^/]+/[^/]+/contents/(.+)$`)
+	reGitRef1      = regexp.MustCompile(`^/repos/[^/]+/[^/]+/git/ref/.+$`)
 )
 
 // ghPaging mimics GitHub's documented paging contract: `per_page` defaults to **30** and
@@ -605,6 +613,15 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, _ = w.Write([]byte(`{"data":{"repository":{"pullRequest":{"lastEditedAt":null,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]},"reviews":{"pageInfo":{"hasNextPage":false},"nodes":[]},"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}`))
+
+	case r.Method == http.MethodGet && reGitRef1.MatchString(path):
+		// The claim-liveness single-reference read (RefExists). 0 → present (200); a test drives
+		// absent (404) or could-not-look (403/500) through claimRefStatus.
+		if f.claimRefStatus != 0 {
+			w.WriteHeader(f.claimRefStatus)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ref":"refs/heads/dispatch/x","object":{"sha":"abc123"}}`))
 
 	default:
 		w.WriteHeader(http.StatusNotFound)
