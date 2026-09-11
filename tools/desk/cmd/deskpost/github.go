@@ -526,7 +526,11 @@ func prFilePaths(files []prFile) []string {
 // resolves a bare number to an object kind: the `pull_request` sub-object is present iff
 // the number is a pull request (the documented discriminator) and absent for a plain
 // issue. Only the fields the comment path consumes are decoded — the author identity the
-// trust gate needs, and that discriminator.
+// trust gate needs, that discriminator, and the labels the verify-gate card carve-out
+// (deskkit.VerifyGateCardCommentAdmitted) is scoped by. The labels come from THIS read
+// rather than a second call: they are already in the payload the kind resolution has to
+// make, so the carve-out costs no extra request and cannot observe a different state
+// than the author it is paired with.
 type issueInfo struct {
 	Number int    `json:"number"`
 	State  string `json:"state"`
@@ -534,9 +538,25 @@ type issueInfo struct {
 		Login string `json:"login"`
 		ID    int64  `json:"id"`
 	} `json:"user"`
+	Labels []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
 	PullRequest *struct {
 		URL string `json:"url"`
 	} `json:"pull_request"`
+}
+
+// labelNames flattens the decoded label objects to their names. Empty names are dropped:
+// a label with no name is not a label, and letting "" through would make an empty
+// carve-out label match an unlabelled issue.
+func (i *issueInfo) labelNames() []string {
+	out := make([]string, 0, len(i.Labels))
+	for _, l := range i.Labels {
+		if l.Name != "" {
+			out = append(out, l.Name)
+		}
+	}
+	return out
 }
 
 // slug returns the owner/name this client is bound to — the postBackend accessor the

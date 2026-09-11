@@ -84,6 +84,17 @@ A refusal takes the same audited --force-scan-override as any other scan refusal
 there is no second bypass and no flag that turns the check off. A known-private target
 repo, and any repo when the roster is unconfigured, are unaffected.
 
+PUSH TRANSPORT. create and update REFUSE (exit 5) when the resolved PUSH url of origin is
+an ssh:// or git@host:path one AND this session presents a bot identity ($DESK_LOOP
+resolving to a role App). An SSH push authenticates with whatever key this machine's agent
+holds — a human's — so the forge records the HUMAN as the branch author and the App's
+permission envelope is bypassed, however the commits are authored. The refusal names the
+config key, the url, the acting App and the one-line remedy. Fetch over SSH stays allowed:
+remote.origin.pushurl is what is read whenever it is set, so an SSH fetch url with an https
+push override passes. edit is NOT gated — it pushes nothing. With $DESK_LOOP unset the gate
+is inert (a human pushes under their own key). An https push url with no App credential
+helper configured is a stderr NOTICE, never a refusal.
+
 Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.`
 
 func main() {

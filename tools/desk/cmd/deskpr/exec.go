@@ -64,6 +64,24 @@ func git(dir string, args ...string) (string, error) {
 	return runCmd(dir, "git", args...)
 }
 
+// pushTransportGate is the PUSH-transport custody gate for the two verbs that push
+// (create, update). It runs BEFORE the token mint and any network call, so a
+// mis-configured remote costs milliseconds rather than a round trip, and it is NOT wired
+// into `edit`, which pushes nothing. See deskkit/pushtransport.go for what it refuses and
+// why.
+//
+// The reader hands git `--list -z` through this package's ONE argv seam, so the recorded
+// argv assertions still see every git call the verb makes. runCmd trims trailing
+// whitespace, which is harmless here: `-z` records are NUL-delimited, and a trailing NUL
+// parses to an empty record the parser drops.
+func pushTransportGate(dir, verb string) error {
+	return deskkit.CheckPushTransport(deskkit.PushTransportInput{
+		Tool: "deskpr", Verb: verb, Dir: dir, Remote: "origin",
+		ConfigZ: func() (string, error) { return git(dir, "config", "--list", "-z") },
+		Stderr:  deskprStderr,
+	})
+}
+
 // mintWorkerToken mints or reuses the installation token for the App role THIS session
 // acts under and sets it as ghToken, so every subsequent gh invocation (list, create,
 // view) authenticates as that App. It resolves the role from the session loop identity via

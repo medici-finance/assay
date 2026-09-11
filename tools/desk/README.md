@@ -428,6 +428,27 @@ work queue or steer a desk action.
   which tracks content edits only — labels don't re-quarantine). A follow-up
   hash-pinning upgrade (compare a stored hash of the blessed body at act time) is
   tracked as an issue; the timestamp comparison is v1.
+- **One carve-out — annotating a verify-gate sign-off card.** `deskpost comment` may
+  post on an **issue** authored by **`github-actions[bot]`** when that issue carries
+  the **`verify-gate`** label, with no blessing
+  (`deskkit.VerifyGateCardCommentAdmitted`). Nothing else: `review`,
+  `security-review` and `ready` stay refused on such an issue, an Actions-authored
+  issue *without* the label stays refused for `comment` too, and the label admits
+  nothing on an issue anyone else authored — an external user who labels their own
+  issue `verify-gate` gains exactly zero. **Why it is safe:** the gate exists to keep
+  unvetted third-party TEXT out of a desk's writes, and a sign-off card's body is not
+  third-party text — statusgen GENERATES it from the repo's own tree and
+  `verify-gate-open` files it verbatim under `GITHUB_TOKEN`. **Why the LABEL is the
+  scope and not the author:** an Actions workflow can file any issue at all, and those
+  other bodies are not generated from the tree; the label is how the card says which
+  one it is, and putting it there takes write access to the repo's workflows.
+  `github-actions[bot]` stays **untrusted** for every general predicate
+  (`TrustedAuthor`, `TrustedAuthorID`, `TrustedPublicAuthor`, `TrustedHumanAuthor`) —
+  this is a narrower read alongside them, not an addition to the roster. **What it
+  fixes:** before it, no desk could annotate a card at all — not to mark one an inert
+  duplicate, not to warn that closing it will not flip the brief's row — so the human
+  closing the card saw no warning. Inert on non-GitHub forges (nothing there renders a
+  login as `github-actions[bot]`), and fail-closed on an unconfigured roster.
 - **Quarantine visibility:** boards (`deskboard prs/actions/queue`, `issueboard`)
   list untrusted items under **EXTERNAL / UNBLESSED** — counted, visible (so Ada
   sees what awaits blessing), never given an ACTION. All public-origin text in that
@@ -570,6 +591,49 @@ set, and no staged-but-uncommitted changes. The shared secret scan (`deskkit.Bod
 runs over the title, branch name, body, and the diff-vs-default before any push (C-3,
 best-effort). An open PR already on the head branch → idempotent noop printing its URL
 (exit 0), never a duplicate (#140/#148 class).
+
+### The push-transport custody gate (`deskpr create` / `update`, `deskwt add`)
+
+A worker worktree cut from a shared checkout **inherits that checkout's remote**. When the
+remote is an SSH URL — `ssh://git@host/owner/name` or the scp-like `git@host:owner/name` —
+a plain `git push` from it authenticates with whatever key the machine's SSH agent holds,
+in practice a *human's* key, even though every commit on the branch was authored inline as
+the role App. The forge then records the human as the branch creator, and the App's
+permission envelope (the workflows-scope refusal, an App-scoped ruleset, any workflow keyed
+on a bot author) is bypassed. Nothing in the run looks wrong: the push succeeds, the commits
+carry the App's authorship, and only the forge's own record of *who pushed* disagrees. That
+is the ambient-identity lane the forge-side custody ruling retired.
+
+`deskpr create`, `deskpr update` and `deskwt add` therefore **refuse, fail-closed** (exit 5)
+when the resolved **push** URL of `origin` is an SSH one *and* the session presents a bot
+identity — `$DESK_LOOP` resolving to a role App. The refusal names the config key, the URL,
+the acting App, and the one-line remedy (a `remote set-url --push` to the equivalent https
+URL, which it computes for you). Implementation: `internal/deskkit/pushtransport.go`.
+
+Four boundaries are deliberate:
+
+- **Only the push transport.** Fetch over SSH is untouched — a read carries no identity the
+  forge records against a ref. An SSH `remote.origin.url` with an https
+  `remote.origin.pushurl` override is a normal, allowed run, and `remote.origin.pushurl` is
+  what the gate reads whenever it is set, exactly as git resolves a push.
+- **Only a bot session.** With `$DESK_LOOP` unset the gate is inert: a human at a terminal
+  pushes under their own key, which is what the SSH remote is for. A `$DESK_LOOP` this
+  process cannot resolve to a role is a stderr **NOTICE** saying the gate did **not** run —
+  could-not-check, never a silent pass.
+- **Only the verbs that push.** `deskpr edit` rewrites a PR body and pushes nothing, so it
+  is not gated. `deskwt add` is gated because the worktree it cuts inherits the remote, and
+  refusing before the branch exists is cheaper than refusing after an agent has filled it.
+- **https without an App credential helper is a NOTICE, not a refusal.** An https push
+  answered only by a machine keychain is the same ambient-identity shape one layer along,
+  but the evidence is weaker — a helper this code does not recognise may well be the App's —
+  so it says so on stderr and proceeds.
+
+Could-not-check is exit 6, never a pass: a `git config` read that fails, and a remote with
+no URL at all, are both unverifiable rather than "no SSH found, carry on".
+
+The guard's own fail-first evidence is `internal/deskkit/pushtransport-mutations.json` — ten
+mutations plus a positive control, run with
+`go run ./cmd/muhar -j 0 -spec internal/deskkit/pushtransport-mutations.json`.
 
 ### The logged scan override (`--force-scan-override`)
 
@@ -1376,7 +1440,8 @@ Constraints in code:
   through the issues endpoint, whose `pull_request` sub-object is the documented
   discriminator). There is no `--issue` / `--pr` flag on purpose: a caller-declared kind is
   a second source of truth that can disagree with the remote, and the remote decides where
-  the comment lands. Both kinds get the same repo gate, body checks, trust gate, write
+  the comment lands. Both kinds get the same repo gate, body checks, trust gate (with
+  the one verify-gate card carve-out documented under **Trust gate** above), write
   budget, audit line and idempotency; the PR idempotency key is unchanged
   (`comment:<digest>` at the head), an issue keys on `comment:issue:<digest>` with no head.
   `--head` is **optional** here (an issue has no head at all) and **enforced when given**:
