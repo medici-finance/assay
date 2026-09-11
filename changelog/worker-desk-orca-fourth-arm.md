@@ -1,2 +1,0 @@
-### Added
-- **`worker-desk` cockpit-aware dispatch gains a fourth (Orca) arm.** When `orca` is on PATH, the per-item worktree is cut with `orca worktree create`, and — only when a fanout coordination run already exists — `orca orchestration worker-start` lets the coordinator learn a worker's `worker_done` outcome without polling. That orchestration link is coordinator-notification only and never an escalation channel; plain `git worktree add` remains the default and fully-supported fallback. Purely additive to the existing Supacode / Herdr / plain arms.

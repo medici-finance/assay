@@ -435,6 +435,32 @@ to v1.0.3 — superseding it as the version an adopter is carried TO, never supe
   AND the committed pin line (`12d82b58…fad4b`), and it self-reports `v1.0.5`. With it,
   `statusgen --root . --lint` → **exit 0, `LINT: PASS`**, NOTICEs only, no `PROBLEM`-prefixed line.
 
+### Implementer note — v1.0.6 supersedes v1.0.5 as the upgrade target — 2026-09-11 fable-5.1-implementer
+
+Umbrella **v1.0.6** was published 2026-09-11T00:20:58Z by release run 34545350818 (`success`);
+`refs/tags/v1.0.6` is an ANNOTATED tag object peeling to commit `f91b72f`, the commit that run
+built. `git log --oneline v1.0.5..v1.0.6` carries, first, the same-tag pin-lint scoping fix (#794)
+— an exempt or non-umbrella artifact line no longer makes a whole `.assay-versions` unlintable —
+then: the `--corroborate` absent-column fail-closed test (#788); write verbs C onto the resolver
+(#783); `gl_api` hardening in the GitLab fleet-creation script (#787); the v1.0.5 re-pin (#791);
+the channel-D `desk-tools-source` pin shape + GitLab queue-label parity (#797); the GitLab reviewer
+write-path brief (#796) and its PAT auth + verdict-write tests (#800); refreshed `deskclose` specs
+(#793); one Evidence row (#799); the Orca fourth dispatch arm in the worker-desk body (#802). It
+stands to v1.0.5 as v1.0.5 stood to v1.0.4 — superseding it as the version an adopter is carried
+TO, never superseding the flag day. **MIGRATION STILL NOT RUN HERE — pin bump only.** Measured:
+
+- **Nothing to migrate on the patch span.** `deskmigrate --from v1.0.5 --to v1.0.6 --root .
+  --dry-run` → exit 0, `clean no-op`; `--from v1.0.0` → the same. `--from v0.28.0 --to v1.0.6 --root
+  examples/adopter-scaffold --dry-run` → exit 0, selecting `0001-v0.28.0-to-v1.0.0-derived-board`,
+  planning the same 3 files; `git status --porcelain examples/` after shows only this PR's edits.
+- **The pins move, the manifests accumulate.** `paired-versions.yaml` re-pins both artifacts to
+  v1.0.6, all ten digests from the v1.0.6 `checksums.txt`; `examples/adopter-scaffold/releases/v1.0.6.yaml` ADDED, v1.0.5
+  demoted to a patch step. `plugin: "1.0.0"` unchanged. `check-paired-versions.sh` → exit 0; its
+  tests → 16 passed, 0 failed. `qualgen` stays unpinned, as before.
+- **Digest confirmed end-to-end, row 10 re-measured.** The published `statusgen-darwin-arm64`
+  hashes to the manifest entry AND the pin line (`b2f926cd…04fa1`), self-reports `v1.0.6`, and
+  `statusgen --root . --lint` with it → **exit 0, `LINT: PASS`**, NOTICEs only, no `PROBLEM` line.
+
 ## Review
 Gate: human (from frontmatter). The human records the ruling after running rows 3 and 9
 on a real adopter checkout and reading the release note; then cuts `v1.0.0` via the
