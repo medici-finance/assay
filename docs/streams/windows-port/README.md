@@ -146,7 +146,7 @@ it.
 | 03 | [Windows install path — PowerShell-vs-Go-installer fork, then build](brief-03-install-path.md) | 2 | L | implemented | — | — |
 | 04 | [Windows CI leg — statusgen --lint + a desk-verb smoke on Windows](brief-04-windows-ci-leg.md) | 2 | M | done | 2026-09-06 host (apply-gated) | 2026-09-08 human:reviewer |
 | 05 | [Adoption-doc delta — the Windows adopter walkthrough](brief-05-adoption-doc-delta.md) | 3 | M | done | 2026-09-07 assay-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #593 @ 57ac2401e4a807da14aef81d3a288431b7a5f148) |
-| 06 | [Manifest-driven bootstrap — resolve tag + sha256 from the committed manifest, and write PATH](brief-06-manifest-driven-bootstrap.md) | 3 | M | todo | — | — |
+| 06 | [Manifest-driven bootstrap — resolve tag + sha256 from the committed manifest, and write PATH](brief-06-manifest-driven-bootstrap.md) | 3 | M | implemented | — | — |
 | 07 | [deskinstall --harness cursor — place the skills/references tree and write the AGENTS.md bindings](brief-07-deskinstall-harness-cursor.md) | 3 | M | todo | — | — |
 | 08 | [Go-native GitLab fleet provisioning — retire the bash+curl+jq script's Windows dependency](brief-08-go-native-gitlab-fleet-provisioning.md) | 1 | L | todo | — | — |
 | 09 | [Three-command Windows install — widen the install skill's scope, collapse the walkthrough, correct the CI skew](brief-09-three-command-install-docs.md) | 4 | M | todo | — | — |
