@@ -138,7 +138,7 @@ Target: merged `origin/main` @ `48b978bb08c468fec52c015d280285698fc362bd` (two-p
 
 **Risk-bearing value:** `RISK-VALUE: N/A — library migration (exec-gh → go-gh). Enumerated literals are HTTP status mappings only, all named net/http constants (StatusForbidden/StatusUnauthorized/StatusNotFound/StatusConflict); no magic numeric status, no host/URL constant. Nothing risk-bearing to rank/derive.`
 
-**Scope-traceability:** all Evidence maps to Verify rows 1–5; deskpr/deskfile/deskclose route forge ops through the Forge backend; deskpr's token-custody refuse-if-unminted guard preserved (`cmd/deskpr/exec.go`). Fleet-wide exec-gh removal is correctly scoped to brief 08; row 3 checks only the three re-seated tools = 0.
+**Scope-traceability:** all Evidence maps to Verify rows 1–5; deskpr/deskfile/deskclose route forge ops through the Forge backend; deskpr's token-custody refuse-if-unminted guard preserved (`tools/desk/cmd/deskpr/exec.go`). Fleet-wide exec-gh removal is correctly scoped to brief 08; row 3 checks only the three re-seated tools = 0.
 
 **VERDICT: PASS** — all rows 1–5. gate: model, risk all=no → flip-eligible.
 
