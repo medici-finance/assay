@@ -263,6 +263,29 @@ func flip(o flipOpts) error {
 		o.say("%s: no rollup at %s and %s requires no status checks on %q — nothing gates the merge on a check",
 			condChecksGreen, short(head), repo, pr.BaseRef)
 	case ciGreen:
+		// A GREEN rollup reports only on the checks that ACTUALLY REPORTED. A required verdict
+		// that never reported at all is not red or pending — it is ABSENT from the rollup
+		// entirely, so evalRollup, which reads only present entries, calls the rollup green with
+		// the missing gate simply not there. The leak-sweep disclosure gate is exactly this
+		// shape: its verdict is a commit status posted OUT OF BAND (a separate control-based
+		// sweep on its own schedule — leaksweep-pattern.yml, and the forge-neutral
+		// leak-gate-shape reference doc), so a head that never received it shows a green rollup and a gate
+		// that never ran. An absent required verdict is could-not-check, never "no objection":
+		// the flip cross-checks that every branch-protection-required context is PRESENT in the
+		// rollup and refuses when one is missing — the same three-state contract the empty-rollup
+		// arm above applies, extended to a rollup that is non-empty but incomplete.
+		required, rerr := readRequiredChecks(o, fg, fr, pr.BaseRef, head)
+		if rerr != nil {
+			return rerr
+		}
+		if missing := missingRequiredChecks(checks, required); len(missing) > 0 {
+			return deskkit.Unverifiable(fmt.Sprintf(
+				"condition %s: the rollup at %s is green but %s requires %d status check(s) that did not "+
+					"report on this head at all (%s) — an absent required verdict is could-not-check, never a "+
+					"pass. The leak-sweep disclosure gate posts its verdict out of band, so a head missing it "+
+					"reads as green-with-the-gate-absent; absence is never 'no objection'.",
+				condChecksGreen, short(head), repo, len(missing), strings.Join(missing, ", ")), nil)
+		}
 	}
 	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
 
@@ -1240,6 +1263,28 @@ func evalRollup(entries []rollupEntry) ciState {
 		return ciPending
 	}
 	return ciGreen
+}
+
+// missingRequiredChecks returns the branch-protection required contexts that are ABSENT from
+// the reduced rollup — required verdicts that never reported on this head. A required context
+// matches a rollup entry by label (a check run's Name or a status context's Context), the same
+// name branch protection keys "latest run per context" on. The comparison is
+// case-insensitive: forge status contexts and required-context strings are compared without
+// regard to case, and the trim guards a stray-whitespace mismatch. An empty required set (the
+// common no-protection case) returns nothing missing, so this changes the green-path verdict
+// only where the forge actually enforces a required check that did not report.
+func missingRequiredChecks(present []rollupEntry, required []string) []string {
+	have := make(map[string]bool, len(present))
+	for _, e := range present {
+		have[strings.ToLower(strings.TrimSpace(e.label()))] = true
+	}
+	var missing []string
+	for _, r := range required {
+		if key := strings.ToLower(strings.TrimSpace(r)); key != "" && !have[key] {
+			missing = append(missing, r)
+		}
+	}
+	return missing
 }
 
 func failedChecks(entries []rollupEntry) []string {

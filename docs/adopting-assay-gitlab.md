@@ -459,6 +459,36 @@ Workflow promotion — changing what CI runs — collapses to an ordinary human-
 into the ci-config project. No bot identity is ever in a position to promote its own
 workflow change; that is the whole control.
 
+## 4a. The CI leak-sweep half — the free-tier disclosure compensator
+
+The live pilot found the disclosure control absent on GitLab: no `.gitlab-ci.yml`, no
+pipelines, and `secret_push_protection_enabled: false`
+(`docs/streams/forge-gitlab/pilot-report.md` §3 row 8). The leak gate's strong verdict is a
+status posted **out of band** by the control-based sweep (it needs the private withheld-token
+map and cannot run in an adopter's CI), so on GitLab a change can carry a green pipeline with
+the leak gate never having run. This section closes that gap with the **pipeline-side
+leak-sweep job** — the free-tier layer that runs the in-tree (pattern-half) controls in the
+change's own pipeline and fails it on a hit.
+
+Add the leak-sweep job to the shared `.gitlab-ci.yml` you commit into the ci-config project
+(§4 step 3). Its exact shape — the job, its `rules`, and the three-state property (passed /
+failed / absent-is-could-not-check) — is templated by `forge-neutral/08` and specified in
+[`docs/streams/forge-neutral/gitlab-ci-half.md`](streams/forge-neutral/gitlab-ci-half.md);
+where it sits in the two-layer gate design (external verdict + pipeline-side sweep, and which
+layer blocks on which tier) is [`docs/streams/forge-neutral/leak-gate-shape.md`](streams/forge-neutral/leak-gate-shape.md).
+
+The load-bearing points for an adopter:
+
+- **On CE / free tier the sweep job is the merge blocker.** CE cannot express a blocking
+  external status check (the tier-gated surface returned `HTTP 401` on the pilot, §0.1), so
+  make the `leaksweep` job a **required** pipeline step in the project's merge-request
+  settings — a failing required pipeline is what blocks the merge here.
+- **On Ultimate the sweep job is the second, independent layer** behind the external status
+  check, catching a change on a different signal (its own CI) than the external verdict.
+- **An absent sweep is could-not-check, never a pass.** A required pipeline that produced no
+  `leaksweep` job reads as a missing required step, not as a clean run — the same three-state
+  contract the external verdict honours.
+
 ## 5. Token custody rules
 
 Carried verbatim in spirit from spec.md §5 — this doc does not relax any of it:

@@ -99,15 +99,37 @@ each one. It does not need a Go toolchain.
 
 ## `cellctl new` — scaffold, then four hand steps
 
+`new` takes the cell's **forge** explicitly with `--forge github|gitlab` (default `github`). The
+custody flags are forge-specific — a GitHub cell mints installation tokens from an App PEM, a
+GitLab cell reads a hand-provisioned role token store — so `--deskd-app-pem` and `--orgs` are
+required on the **github** path only, and a **gitlab** cell requires its group instead:
+
 ```bash
-cellctl new <cell> \
+# GitHub cell
+cellctl new <cell> --forge github \
   --repo /path/to/checkout \
   --cells-yaml /path/to/cells-<cell>.yaml \
   --orgs org-a,org-b \
   --deskd-app-pem "$HOME/.config/assay/<cell>-desk-app.pem" \
   [--deskd-app-id-var DESK_APP_ID] \
   [--port 8787]
+
+# GitLab cell — NO App PEM, NO --orgs; the group and a role token store instead
+cellctl new <cell> --forge gitlab \
+  --repo /path/to/checkout \
+  --cells-yaml /path/to/cells-<cell>.yaml \
+  --group my-gitlab-group \
+  [--gitlab-api-base https://gitlab.example.com/api/v4] \
+  [--gitlab-token-store /path/to/store] \
+  [--port 8787]
 ```
+
+On the **gitlab** path `cellctl new` mints nothing and requires no App PEM: GitLab role tokens
+rotate by hand (forge-neutral/01), so the scaffold leaves a **role token store** to fill —
+`gitlab-<role>.token` files at mode `0600`, one per role — and the per-cell README names it as a
+hand step. A GitLab cell's roster entries are **forge-qualified** (`role=gitlab:<slug>:<id>`, per
+forge-neutral/02) and its `ASSAY_REPO_FORGES` binds the cell's repos to `gitlab`, so the verbs do
+not refuse a cell stood up for GitLab.
 
 `--deskd-app-id-var` names the variable in the **cell home's** `apps.env` holding the `deskd` App's
 id, and defaults to `DESK_APP_ID`. That default is right for most cells: `cellctl deskd` sources the
@@ -152,12 +174,20 @@ cellctl check <cell>
 ```
 
 One `ok` / `MISS` line per precondition, exit 1 if any row missed: the checkout named by
-`CELL_REPO`, the cells slice, the operator config home, `roster.env`, `apps.env`, that every App-key
-symlink under `home/.config` resolves (a dangling symlink is the common outcome of step 2), the
-linked `gh` config, `bin/deskd` and `bin/deskcli`, the `deskd` App key being readable, the desk-tools
-bindir, `tmux`, and whether this cell's `deskd` answers on its address.
+`CELL_REPO`, the cells slice, the operator config home, `roster.env`, that every App-key symlink
+under `home/.config` resolves (a dangling symlink is the common outcome of step 2), the configured
+forge endpoint, `bin/deskd` and `bin/deskcli`, the desk-tools bindir, `tmux`, and whether this
+cell's `deskd` answers on its address.
 
-Run it after `new`, and again after any key rotation.
+The forge-specific preconditions are keyed on the cell's `CELL_FORGE`. A **github** cell also
+checks `apps.env`, the linked `gh` config, the readable `deskd` App key, and `ORGS`. A **gitlab**
+cell instead checks the `GITLAB_GROUP`, the role token store directory, and the readable
+`gitlab-deskd.token`. A precondition that belongs to the **other** forge is reported explicitly —
+`n/a` where it does not apply, or `MISS` for a stray artifact of the wrong forge (a GitHub App PEM
+on a gitlab cell) — never silently skipped, so a half-provisioned or mis-forged cell reads as such
+rather than clean.
+
+Run it after `new`, and again after any key or token rotation.
 
 ---
 
@@ -303,13 +333,19 @@ a window is on is visible without reading the config.
 | Variable | What it is |
 |---|---|
 | `CELL` | the cell name (also the tmux session prefix) |
+| `CELL_FORGE` | the cell's forge, `github` or `gitlab` (default `github` — a cell scaffolded before forge support carries none and is a GitHub cell by construction) |
 | `CELL_REPO` | the checkout the role worktrees are created from |
 | `CELLS_CONFIG` | this cell's `cells.yaml` slice (default `<cell-dir>/cells-<cell>.yaml`) |
+| `FORGE_API_BASE` | the forge API endpoint, derived from the forge (github: `https://api.<GITHUB_HOST>`; gitlab: the GitLab API base) — the single home of the host, so no verb spells a literal |
 | `DESKD_ADDR` | the address `deskd` serves on (default `127.0.0.1:8787` — give a second cell its own port) |
 | `DESKD_INDEX` | the persistent `deskd` index path |
-| `DESKD_APP_PEM` | the `deskd` read App's private key, in the operator's config home |
-| `DESKD_APP_ID_VAR` | the variable name in the **cell home's** `apps.env` holding that App's id (default `DESK_APP_ID`, the generic role name a cell `apps.env` uses) |
-| `ORGS` | comma-separated orgs to mint one installation token each for |
+| `DESKD_APP_PEM` | **github** — the `deskd` read App's private key, in the operator's config home |
+| `DESKD_APP_ID_VAR` | **github** — the variable name in the **cell home's** `apps.env` holding that App's id (default `DESK_APP_ID`, the generic role name a cell `apps.env` uses) |
+| `ORGS` | **github** — comma-separated orgs to mint one installation token each for |
+| `GITLAB_GROUP` | **gitlab** — the GitLab group this cell reads |
+| `GITLAB_API_BASE` | **gitlab** — the GitLab API base deskkit's GitLab custody reads (kept equal to `FORGE_API_BASE`) |
+| `GITLAB_TOKEN_STORE` | **gitlab** — the directory holding the hand-provisioned `gitlab-<role>.token` files (default: the cell config home) |
+| `DESKD_GITLAB_TOKEN_FILE` | **gitlab** — the `deskd` read token file (default `<store>/gitlab-deskd.token`, mode `0600`); never minted by cellctl |
 | `ROLES` | the role windows `up` opens (default: all five) |
 | `DESK_MODEL_DEFAULT` | the model every role window launches on (default `sonnet`) |
 | `DESK_MODEL_<role>` | per-role model override — role name with `-` as `_`, e.g. `DESK_MODEL_the_desk=opus` |

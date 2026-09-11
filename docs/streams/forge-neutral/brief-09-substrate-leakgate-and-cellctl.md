@@ -15,6 +15,7 @@ unblocks: ["forge-neutral/10"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+design: DR-forge-neutral-09
 issues: []
 schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
@@ -38,7 +39,9 @@ consumers:
   - "tools/cellctl/cellctl: fixed-here"
   - "docs/cellctl.md: fixed-here (the verb table and the custody hand-steps gain their GitLab shape)"
   - "docs/streams/forge-neutral/leak-gate-shape.md: fixed-here (the per-forge gate design and its three-state contract)"
+  - "docs/streams/forge-neutral/gitlab-ci-half.md: fixed-here (the pipeline-side leak-sweep sweep job forge-neutral/08 templates — task 2, verify row 11)"
   - "docs/adopting-assay-gitlab.md: fixed-here (the adopter runbook gains the CI leak-sweep half the pilot found missing)"
+  - "tools/desk/cmd/deskflip: fixed-here (the ready-flip decision reads an ABSENT required leak-gate verdict as could-not-check, never a pass — task 1's three-state contract, verify row 10)"
   - "the private control-based sweep that posts the verdict: out-of-scope (it is house-side publication infrastructure, absent from this tree by design — this brief specifies the VERDICT SURFACE it must post to on a merge request, not the sweep)"
   - "plugins/assay/skills/install/SKILL.md: follow-up forge-neutral/11 (the install prose names the optional CLI per forge; cellctl's own prerequisites are fixed here)"
 version: 1
