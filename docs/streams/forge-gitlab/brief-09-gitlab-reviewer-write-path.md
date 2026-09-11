@@ -200,6 +200,27 @@ Target: merged `origin/main` @ `fc9001a7ab48ee9c859dd7e52f7543dec5f86c50` (two-p
 
 **VERDICT: FAIL (row 2)** — §1 deskpost GitLab write-path not landed (deskpost still fails closed with the exact string the brief requires gone); `PostReview` has no shipping consumer (§6 violation). Rows 1/3/4/5/6/7 pass. Held at `implemented`; do not flip. Filed `medici-finance/assay#842`. Same split-delivery pattern as forge-gitlab/08 (#835).
 
+### RE-VERIFY 2026-09-11 — non-implementer dispatched verifier (opus-4.8[1m]-verifier) — VERDICT: PASS → verified (the FAIL above was STALE)
+
+The row-2 FAIL above ran against `fc9001a7`, BEFORE §1 landed. §1 merged in `medici-finance/assay#846` (merge `b2b18ae6`, "route verdict/comment/ready through the resolved Forge on GitLab — forge-gitlab/09 §1"), an ancestor of the re-verify head. Re-verified against current merged main `8953d38d5` (two-protocol confirmed), offline, isolated worktree.
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `cd tools/desk && go build ./... && go test ./...` | 0 | every package `ok`, no FAIL | PASS |
+| 2 | `deskpost review <gitlab-repo> --verdict approve --dry-run` (GitLab-resolved) | 0 | `TestGitLabReviewDryRunFormsVerdict` PASS — verdict FORMED via the Forge path, output does NOT contain `no gitlab write backend`, dry-run posts nothing (audit `verb=review:correctness:approve result=dryrun`). Source: `review.go:187`/`ready.go:38`/`comment.go:60` route through `newPostBackend` → typed Forge for a non-GitHub resolved repo; the fail-closed string is reachable from NO code path (survives only in explanatory comments) | PASS |
+| 3 | `go test ./internal/deskkit/ -run TestForgeGitlabRequestChanges -v` | 0 | request-changes → unapprove + head-SHA note, read back by `ReviewsAtHead` | PASS |
+| 4 | `deskfile check -R <gitlab-repo>` (`REVIEWER_APP_ID` unset) | 0 | routes through the backend, no "GitHub only" refusal, no App-mint (`TestDeskfileFilesOnGitLabThroughBackend`/`…RefusesWithoutMintedToken`/`…UnresolvableForgeCouldNotCheck`); PAT-custody guarantee covered by row 5 | PASS |
+| 5 | `go test ./cmd/desktoken/ -run TestReviewerAuthGitlabPAT -v` | 0 | resolves the GitLab PAT without reaching the App mint; refuses when absent, never ambient fallback; `REVIEWER_APP_ID` unread on GitLab | PASS |
+| 6 | `TestNoForgeCLIShellout` + `TestForgeNoPassthrough` | 0 | both PASS — no `glab` shell-out; frozen 37-op surface, no generic/endpoint method | PASS |
+| 7 | `go test ./internal/deskkit/ -run TestForgeGitlabWriteTierErrors -v` | 0 | approve/unapprove 403 → could-not-check, distinct from a landed verdict | PASS |
+| §6 | `grep -rn '\.PostReview(' cmd/deskpost --include='*.go' \| grep -v _test.go` | — | **1 shipping consumer** — `cmd/deskpost/forgeclient.go:263` `b.fg.PostReview(b.repo, pr, deskkit.ReviewInput{HeadSHA, Event, Body})`. Prior FAIL noted ZERO; now satisfied | PASS |
+
+**Risk-bearing value:** `RISK-VALUE: DERIVED [top] — reviewer-PAT custody refuse-no-ambient.` The write path authenticates only from the resolved reviewer PAT (`gitlab-reviewer.token`, PRIVATE-TOKEN header) via the single `deskkit.ForgeFor(repo,"reviewer")` site (`forgeclient.go:61-63`), never an ambient glab/keyring identity — proven CLOSED by row 5's "refuses when the pat is absent never falls back". `RISK-VALUE: DERIVED — head-SHA binding of the verdict (PostReview carries HeadSHA; ReviewsAtHead reads at head).` `RISK-VALUE: DERIVED — 403→could-not-check (row 7).`
+
+**Defense-in-depth (gate: model):** row 5 (reviewer-PAT auth refuses, no ambient — auth boundary) + row 7 (403 write → could-not-check — error surface), two independent layers on different signals/components, plus deskflip's independent refuse-to-flip-without-an-at-head-verdict.
+
+**VERDICT: PASS** — all 7 rows + §6 named-consumer satisfied on merged main `8953d38d5`; §1 landed via #846. The prior row-2 FAIL is stale (pre-#846 head). gate: model, risk all=no → row flips **implemented → verified**; #842 (the §1 tracker) closes citing #846.
+
 ## Review
 Gate: model (from frontmatter). This brief's deliverable touches the reviewer write/auth path —
 a security-parity control — so its PR requires a SEPARATE `Security-Review:` review in addition
