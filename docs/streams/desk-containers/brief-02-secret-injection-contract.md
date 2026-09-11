@@ -215,6 +215,58 @@ review.
 HUMAN GATE: the contract, the scan's pattern set, and the fail-closed behaviour
 need a human's confirmation before this brief can advance. The substance checks
 above are offered as input to that review, not as a substitute for it.
+### CORRECTION to row 5 — revised from COULD-NOT-CHECK to **FAIL** (same verifier, same day)
+
+The row-5 entry above reported COULD-NOT-CHECK because `docker build` could not
+pull the base image's pinned parent. That reason stands for the *build* half, but
+it led me to stop one step short. A genuine build of this very
+`containers/base/Dockerfile` already existed on the verification host
+(`assay-desk-base:dev`, built 2026-08-22, 24 layers), so **row 5's scan half was
+run for real** against a real multi-layer desk base image:
+
+```
+$ sh containers/scripts/layer-secret-scan.sh assay-desk-base:dev
+FAIL: key-shaped material detected in image 'assay-desk-base:dev'
+  ... 16 hits ...
+exit 1
+```
+
+Provenance of that image is established, not assumed: its OCI label description
+matches this Dockerfile's `LABEL` verbatim (including the string "No credentials
+in any layer."), and its history carries `GO_VERSION=1.25.0`, the
+`/opt/assay/plugin` COPY, the `install-agent-cli` heredoc, and this Dockerfile's
+exact `useradd` line. It was built with the repository root as context — which is
+independent confirmation of the build-context defect noted in the original row-5
+entry.
+
+**Row 5 therefore FAILS, and every one of the 16 hits is a FALSE POSITIVE.** None
+is a credential belonging to this project:
+
+| Hit source | What it actually is |
+|---|---|
+under `/usr/local/go/src/`: `crypto/x509/platform_root_key.pem`, `crypto/tls/testdata/example-key.pem`, `crypto/tls/example_test.go` | Go standard-library test fixtures, shipped in every Go source tree |
+| `/usr/local/lib/node_modules/npm/...` (4 hits: `man7/config.7`, `definitions.js`, `using-npm/config.html`, `using-npm/config.md`) | npm's own documentation, which *describes* PEM key config options |
+| `/usr/lib/x86_64-linux-gnu/libssh2.so.1.0.1`, `/usr/lib/x86_64-linux-gnu/libgnutls.so.30.34.3`, `/usr/bin/gpgv` | PEM header format strings compiled into distro binaries |
+| `/usr/local/bin/gh` | the gh CLI binary, matched by the loose generic `sk-[A-Za-z0-9]{20,}` alternative against an arbitrary base64-ish run |
+| 5 `blobs/sha256/…` hits | the SAME layer content re-reported: the scanner greps both the extracted rootfs and the raw layer tars, so each filesystem hit is double-counted |
+
+**Why this is a real defect and not an environment quirk.** The scanner has no
+exclusion for toolchain-provided material, no distinction between "a PEM file"
+and "a string that mentions PEM", and one pattern (`sk-` generic) loose enough to
+match compiled binaries. Every one of these files comes from a toolchain the
+Dockerfile itself installs — Go, Node/npm, gh, and the debian base. The
+consequence is that row 5's stated expectation ("exit 0 — the real base image
+scans clean") is **unachievable as the scanner is currently written**, for this
+image or any realistic successor. Wired into CI as a fail-closed gate it would
+red every image build, and a control that always reds is a control that gets
+switched off — which would leave the contract's third layer (the repo leak-sweep)
+carrying the rule alone.
+
+This does NOT retract row 4: the mutation test is still valid and the scan does
+fire on planted secrets. The defect is precision, not sensitivity — the scan
+catches real baked keys AND everything else, and its fail-closed design converts
+that imprecision into an unusable gate. Filed as a bug; status stays
+`implemented`.
 
 ## Review
 Gate: human (sensitive-data: yes — App-PEM custody design; see gate-why). Reviewer
