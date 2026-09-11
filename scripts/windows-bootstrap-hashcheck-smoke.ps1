@@ -155,8 +155,17 @@ Write-Host "OK 5/6: with the hash check removed, the tampered-manifest asset ins
 # --- 6. NON-VACUITY for (4): resolution-guard + hash-check bypass + absent line -> installs -------
 # Drop every resolution-guard line (tagged `# guard:resolve`) AND the download hash-check line, so
 # an absent platform line falls through all the way to placement instead of refusing anywhere.
+# With every "cannot resolve" refusal stripped, $manifestSha256 is never assigned for an absent
+# platform line, so the unguarded `$Sha256 = $manifestSha256` line would assign an empty value to
+# a parameter still carrying `[ValidatePattern('^[0-9a-f]{64}$')]` — PowerShell re-validates that
+# attribute on every assignment, not only at the initial bind, so this copy alone (never the real
+# script) is patched to fall back to a syntactically-valid placeholder digest when resolution
+# produced nothing. This is scaffolding for the test, not a defect: the placeholder is never
+# compared against anything and is only reached because every guard that would normally stop
+# execution first has deliberately been removed.
 $fullBypass = Join-Path ([System.IO.Path]::GetTempPath()) ("bootstrap-noguards-" + [guid]::NewGuid().ToString() + ".ps1")
 $fullBypassKept = Get-Content $bootstrap | Where-Object { $_ -notmatch '-ne \$Sha256' -and $_ -notmatch '# guard:resolve' }
+$fullBypassKept = $fullBypassKept -replace '^\s*\$Sha256 = \$manifestSha256\s*$', "  `$Sha256 = if (`$manifestSha256) { `$manifestSha256 } else { '0' * 64 }"
 Set-Content -Path $fullBypass -Value $fullBypassKept
 $dest6 = New-CleanDest
 & $fullBypass -Tag $Tag -Arch $Arch -Dest $dest6 -ManifestPath $noLineManifest
