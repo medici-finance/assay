@@ -188,6 +188,34 @@ facts:
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Verify run — 2026-09-10, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local) — gate: human, HELD at `implemented`
+
+Target: merged `origin/main` @ `13814ff8d84bab20bf2081f4e08a686bc90e2ac6` (two-protocol confirmed). Offline (`KUBECONFIG=/dev/null`, go1.26.5) in an isolated worktree; runner ≠ implementer (fn/04 = PR #532, merge `e032f6f0`). gate: human + `sensitive-data: yes` — table RUN for Evidence; no model sign-off; status stays `implemented`.
+
+| # | Command (in `tools/desk`) | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `go build ./... && go test ./...` | 0 | build clean; every package `ok` (deskkit 37.6s, forgeban, deskevidence) | PASS |
+| 2 | `go test ./cmd/deskevidence/... -count=1` | 0 | `ok cmd/deskevidence 4.190s` — migrated suite green | PASS |
+| 3 | reviewer-reads-diff / no-weakening | — | JWT + install-id tests removed WITH the code they pinned (custody moved to `internal/deskkit/forgeresolve_test.go`); no assertion weakened beyond gh/transport→forge-op swaps (the /03 precedent) | PASS |
+| 4 | `grep -n allowedInvocationCeiling internal/forgeban/allowlist.go` | 0 | `= 9` (ACTUAL; the brief's literal "16" is stale). fn/04 (#532) does NOT touch allowlist.go — the 16→9 ratchet came from a LATER brief (04b, #775/#783). The row's INTENT — this brief changes no permit row — HOLDS | PASS |
+| 5 | `go test ./internal/forgeban/...` | 0 | `ok` — ratchet passes at the measured ceiling (9) | PASS |
+| 6 | `go test -run 'TestNoForgeCLIShellout\|TestForgeNoPassthrough'` | 0 | both PASS; frozen surface = 37 ops; no generic method, no endpoint arg, neither backend exports a method outside the interface | PASS |
+| 7 | `go test -run 'TestForgeGithubGolden\|TestForgeGitlabGolden\|TestForgeGitlabCoverage'` | 0 | `ok` — read_file/write_file* golden wire pinned both backends; coverage reconciles seam vs inventory | PASS |
+| 8 | `grep -rn -e apiBaseURL -e access_tokens cmd/deskevidence --include='*.go' \| grep -v _test.go \| wc -l` | — | `0` — hardcoded host + hand-rolled installation exchange gone from non-test files (`forgeAPIBase` is test-only, empty in production) | PASS |
+| 9 | `go test -run TestWriteFileOpBothBackends -v` | 0 | 5 scenarios incl. `read_file_returns_content_and_id`, each ×github+gitlab, all PASS | PASS |
+| 10 | `go test -run TestEvidenceLandsAsChangeWhenDefaultBranchClosed -v` | 0 | PASS (negative path — see defense note) | PASS |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/04` | — | COULD-NOT-CHECK — offline verifier shared-home writeguard (#1035) + statusgen v1.0.6 brief-v2 gap. Corroborated manually: deskevidence fixed-here (migrated, JWT gone, uses WriteFile/ReadFile); forge.go fixed-here (both backends, 37-op surface); inventory rows 21-22 present; deskpr/deskfile/deskclose correctly NOT migrated (deferred to 04b); verify-desk/SKILL.md unchanged (deferred to forge-neutral/10) | COULD-NOT-CHECK |
+
+**Risk-bearing value (sensitive-data: yes — ENUMERATE → RANK → DERIVE):** No `NAMED, NOT DERIVED` literal owed to the human.
+- Enumerated: (a) ceiling `9` — NOT this brief's literal (allowlist.go untouched); (b) default-branch-closed detection — **no magic constant**: the GitLab backend reads the project's live `DefaultBranch` from the API and compares `in.Branch == p.DefaultBranch` (`forge_gitlab.go:2241`); (c) side-branch naming `"evidence/" + base + "-" + dig[:8]` (`deskevidence.go:311`) — cosmetic/reversible; (d) token-file mode — not touched (mint moved to `desktoken verifier`).
+- Ranked by irreversibility: the write-identity and write-location decisions are the irreversible surface, but identity is minted by desktoken (no literal) and location is derived from the live-API default-branch value (no literal). Only reversible cosmetic branch-naming literals were introduced.
+- `RISK-VALUE: DERIVED (N/A-for-human) — the sensitive crux (never force-write a protected default branch) uses NO pinned literal; it reads the live default-branch and re-routes. The one literal introduced, dig[:8], is a reversible uniqueness slice backstopped by idempotency-noop + append-only shrink guard + immediate draft change.`
+
+**Sensitive-data defense (gate: human) — two independent layers:** (1) the GitLab backend PROBES before mutating — `GetProject` → `in.Branch == p.DefaultBranch` → returns the `DefaultBranchNotWritable` sentinel BEFORE any write (a pre-write probe, not a caught failure). (2) On the sentinel, deskevidence re-routes: writes a side branch `evidence/<base>-<dig>` (StartBranch=base), opens a draft change (head=side, base=default), prints the draft on stdout, and never retries a direct write. Row 10 asserts this against a recording fake: ZERO writes with `Branch=="main"`, exactly 1 side-branch write, exactly 1 draft change head=side/base=main, stdout contains "draft". GitHub's default is directly writable by the verifier App (a stated per-forge carve-out, `forge_github.go:1703`).
+
+**Scope-traceability:** clean — all shipped work maps to Verify rows/Task items; deskpr/deskfile/deskclose correctly left on gh (04b); ceiling untouched by this brief; the #509 amendment (two-op WriteFile+ReadFile scope) accurately reflects delivery.
+
+**VERDICT: PASS** on rows 1–10; row 11 COULD-NOT-CHECK (tooling/isolation, corroborated manually) — **HELD at `implemented` (human sign-off owed via the verify-gate).** No open NAMED-NOT-DERIVED value; the human confirms (1) the custody/acting-identity decision and (2) the Evidence-lane side-branch+draft-change design.
 
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in
