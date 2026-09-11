@@ -169,6 +169,31 @@ VERIFY: PASS — primary assertions all pass; no assertion disproved.
 | 8a | negative control — `BENT-CONTROL-LINE` appended to a canonical body, strict mode run, file restored | 1 | `bent-exit=1`, `grep the-desk count=0`, `restored=0`. Baseline `unbent-strict-exit=1` as well — identical exit, no `the-desk` row either way. **The checker did not notice the bend.** This is the measured cap of the flip: the five `canonical:` rows have no source, so no comparison runs for them and only the coverage rule (row 8) still bites | 2026-08-13 | opus-4.8[1m] |
 | 8b | coverage fails closed — bundle skills dir moved aside, then the manifest moved aside, built binary run against each | 2 then 2 | `noglob-exit=2`, `nomanifest-exit=2`. Zero-file glob prints `coverage: no files match ... — nothing to check, which is never a pass`; unreadable manifest prints `cannot read plugins/assay/SOURCES.yaml`. Neither degenerates to `0 unaccounted`. `go run` collapses could-not-check into fail, so a `make` target shelling `go run` cannot read this three-state result | 2026-08-14 | opus-4.8[1m] |
 | 9 | `statusgen --root . --consumers --brief harness-portability/02 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | exit=0, 0 disproved | `exit=0`, `summary: 0 corroborated, 0 disproved, 5 unchecked`. No routing claim in this brief's frontmatter is contradicted by the branch's own diff. All five read UNCHECKED with the tool's own reason — unchanged since the merge-base, so this branch's diff is not evidence about it. UNCHECKED is not a pass and is recorded as such | 2026-08-14 | opus-4.8[1m] |
+### RE-VERIFY 2026-09-11 — non-implementer dispatched verifier (opus-4.8[1m]-verifier) — VERDICT: PASS → verified
+
+Re-ran the Verify table against public medici-finance/assay merged main `553dc2ae530f00e861a14536af7cc884ab77ccf5` (two-protocol head confirmed), offline in an isolated worktree; all row-8 mutation controls restored and the worktree left clean (`git status --porcelain` empty). Non-implementer.
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | built plugindrift; filtered BEHIND/UNREACHABLE/MOVED count among the five flipped skills | 0 | count 0; coverage "0 pinned, 6 canonical, 6 unported, 0 unaccounted"; PLUGINDRIFT: CLEAN | PASS |
+| 1a | control worktree at origin/main, filtered BEHIND count | 0 | control resolved to the same merged HEAD 553dc2ae (baseline gone), count 0 | DEGENERATE-because-merged (expected) |
+| 2 | commit-pin count in plugins/assay/SOURCES.yaml | 0 | count 0 — no source pin remains | PASS |
+| 2a | positive control — plant a pin into a throwaway copy, recount | 0 | count 1 (> 0) — the measurement is live | PASS |
+| 3 | plugindrift --fail-on-drift, filtered count among the five | 0 | trailing count 0; exit 0 — the two out-of-scope pinned rows (dailies, intake-desk) were retired to canonical by a later brief, so nothing drifts repo-wide now (strictly better than the authoring-time exit 1) | PASS |
+| 5 | PARITY names the bundle canonical AND the inverted phrase is absent | 0 | exit 0 | PASS |
+| 5a | same assertion vs origin/main PARITY | 0 | assertion-exit 0 (baseline is already post-flip) | DEGENERATE-because-merged (expected) |
+| 7 | go test in tools/plugindrift | 0 | ok tools/plugindrift | PASS |
+| 7a | gofmt report | — | gofmt-rc=0 unformatted=0 inspected=6 (6 not 4: the package gained marketplace.go + marketplace_test.go since authoring) | PASS |
+| 8 | built binary + undeclared skill dir, then removed | — | control-exit=2 ("bundled but unaccounted for"), restored-exit=0 | PASS |
+| 8a | append a control line to a canonical body, strict run, restore | — | grep count 0 (the checker is silent on a bent canonical body — the documented cap of ending the port relationship), restored=0 | PASS (cap demonstrated) |
+| 8b | skills dir moved aside; manifest moved aside; built binary each | — | noglob-exit=2 ("never a pass"), nomanifest-exit=2 ("cannot read the manifest") — fails closed | PASS |
+| 4 | sibling PR on the upstream consumer repo | — | cross-repo/offline; the brief's own Evidence records the upstream cutover merged 2026-08-08 (four bodies removed outright) | COULD-NOT-CHECK |
+| 6 | out-of-repo pointer commit (the ~/.claude stopgap repo, machine-specific) | 0 | repo exists; newest commit on the file is a LATER convergence (assay-dogfood/04 "retire loose desk-role skill copies"), which supersedes this brief's pointer obligation per the brief's 2026-08-13 premise note | COULD-NOT-CHECK / superseded |
+| 9 | top-level statusgen --consumers --brief harness-portability/02 | 2 | tool absent from the public tree in the top-level form; where built it reports COULD-NOT-CHECK (no brief-v1 file — this brief is schema brief-v2), merge-base degenerate to HEAD; nothing disproved | COULD-NOT-CHECK |
+
+RISK-VALUE: DERIVED — the authority flip. plugins/assay/SOURCES.yaml declares the five method-text skills canonical with no source pin (author-brief, the-desk, worker-desk [renamed from batch-fanout], verify-desk, pr-review-desk), all under the canonical key. Structural confirmation: row 2 commit-pin count 0; row 1 coverage "0 pinned, 6 canonical, 6 unported, 0 unaccounted"; rows 1 and 3 report 0 drift among the five. Sibling consumer cutover DERIVED MERGED (brief Evidence, 2026-08-08).
+
+VERDICT: PASS — 10/10 executable rows green (1, 2, 2a, 3, 5, 7, 7a, 8, 8a, 8b). 3 rows COULD-NOT-CHECK (4 cross-repo, 6 machine-specific/superseded, 9 statusgen brief-v1-only), 2 positive controls (1a, 5a) degenerate-because-merged (the pre-flip baseline they compare against is gone from origin/main). The primary assertions (2, 5, the 8-series mutation controls) all hold on merged main; the rows 3/8a exit-code shift to 0 reflects the strictly-better repo-wide-clean state after assay-dogfood/07 retired the two out-of-scope pinned rows, not a regression. No assertion disproved. The row flips `implemented → verified`. gate: model, all risk no → CI autoflips `done` on the reviewer approval.
 
 ## Review
 
