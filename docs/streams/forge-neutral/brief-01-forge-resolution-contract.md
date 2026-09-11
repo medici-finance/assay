@@ -213,6 +213,35 @@ RISK-VALUE: DERIVED — wellKnownForgeHosts = {github.com:github, gitlab.com:git
 **VERDICT: PASS on rows 1-10 (code contract green); row 11 could-not-check (statusgen brief-v2). gate:human + sensitive-data:yes — a model does NOT sign off.** Evidence gathered; the flip is the human's via the verify-gate sign-off card. Status stays at implemented.
 
 **Findings:** (1) Row 1 one transient non-reproducing deskflip test-harness flake under full-tree parallel run (passes in isolation + on a second full run) — a deskflip flake-tracking note, not a defect of this brief (deskkit resolver + deskpost only). (2) Line-number drift only vs the prior run: custody-mode enforcement refactored into `VerifyCustodyOwnerOnly` (custodyowner_unix.go:23), same `!= 0600` semantics; control intact. (3) Anti-gaming: row 2's single-construction-site test is corroborated by row 3's independent grep (zero sites elsewhere); negative-path rows 5/6/7 assert real refusal semantics, not happy-path passthrough.
+### Verify run — 2026-09-10, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local) — gate: human, HELD at `implemented`
+
+Target: merged `origin/main` @ `a91bffd0ea73e49b85569549cb4a4521703e827d` (two-protocol confirmed). Offline (`KUBECONFIG=/dev/null`, go1.26.5) in an isolated worktree; runner ≠ implementer. gate: human + `sensitive-data: yes` — the table is RUN for Evidence; a model does not sign off, status stays `implemented`, the human closes the verify-gate.
+
+| # | Command (in `tools/desk`) | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `go build ./... && go test ./...` | 0 | build 0; every package `ok`, zero FAIL across the module (deskkit 35.4s, deskpost 58.6s, forgeban ok) | PASS |
+| 2 | `go test ./internal/deskkit/ -run TestForgeSingleConstructionSite` | 0 | PASS — no backend literal outside the resolver | PASS |
+| 3 | grep `GitHubForge{`/`GitLabForge{`/`&…` over `*.go` (excl `_test.go`+`forgeresolve.go`) | 0 | `0` — the only two live sites are `forgeresolve.go:444,446`, both inside the resolver | PASS |
+| 4 | `go test …TestForgeForRejectsCallerSuppliedForge` | 0 | PASS — `ForgeFor` takes no forge arg; no exported symbol accepts a caller forge | PASS |
+| 5 | `go test …TestForgeForUnconfiguredRepoRefuses` | 0 | PASS (real negative) — `err!=nil`, `f==nil`, exit `ExitUnverifiable`, message names the repo slug + `ASSAY_REPO_FORGES`; no GitHub backend | PASS |
+| 6 | `go test …TestForgeForMissingTokenRefuses` | 0 | PASS — subtests `file_absent`, `insecure_mode` (0644→Refused, names "600"), `no_ambient_fallback` (failing mint→Refused, not a Forge) | PASS |
+| 7 | `go test …TestUnsupportedOperationIsCouldNotCheck` | 0 | PASS (real negative) — unmapped ref → `ExitUnverifiable` naming forge+op+ref; `noRequestTransport` proves no request to the other forge; no zero-value success | PASS |
+| 8 | `go test ./cmd/deskpost/... -count=1` | 0 | `ok deskpost 24.6s`; `ok bodycheck` — existing suite green on the resolver | PASS |
+| 9 | forgeban tests + `TestNoForgeCLIShellout` + `TestForgeNoPassthrough` | 0 | `ok forgeban`; `ok deskkit` — surface still closed, no shell-out, no passthrough (ratchet note below) | PASS |
+| 10 | `go test …TestRosterKnownKeySet` | 0 | PASS — `ASSAY_REPO_FORGES` registered in the roster known-set | PASS |
+| 11 | `statusgen --root . --consumers --brief forge-neutral/01` | — | COULD-NOT-CHECK — statusgen blocked by the offline verifier's shared-home writeguard backstop (writes STATUS.md; exemption human-only); consistent with both prior runs. Route to CI-pinned statusgen. | COULD-NOT-CHECK |
+
+**Ratchet note (not a defect):** `allowedInvocationCeiling = 9` @ `tools/desk/internal/forgeban/allowlist.go:64`, not 24 as row-9 prose reads — later forge-neutral briefs (03/04/06) migrated the other verbs and ratcheted the ceiling down 24→9 (tightening as designed; a lower ceiling is a stronger ban). Row 9's test asserts ceiling == permit-list length whichever value, so it passes; "24" is a stale point-in-time descriptor.
+
+**Risk-bearing value (sensitive-data: yes — ENUMERATE → RANK → DERIVE):**
+- `RISK-VALUE: DERIVED — custody token file mode must be 0o600 else Refused @ tools/desk/internal/deskkit/custodyowner_unix.go:23.` Ranked #1 by irreversibility (a token at a group/other-readable mode is an irreversible secret leak — the exact sensitive-data harm this gate guards). Owner-only read/write is the correct mode for a secret credential file; row 6 `insecure_mode` proves a 0644 file is Refused and names the `chmod 600` remedy.
+- `RISK-VALUE: DERIVED — well-known forge hosts = exact-match {github.com→github, gitlab.com→gitlab} @ tools/desk/internal/deskkit/forgeresolve.go:79-80.` Exact lowercased-hostname match only; every self-hosted host deliberately fails and falls through to `Unverifiable` refusal rather than misrouting to a wrong forge/identity — "refusal is the only fallback." No `NAMED, NOT DERIVED` value outstanding.
+
+**Sensitive-data defense (gate: human):** the single control keeping an ambient credential from being read is that `ForgeFor` obtains the token ONLY from the custody minter path; a failing/absent mint surfaces as `Refused` rather than falling through to an ambient `gh`/`glab` read. Row 6 `no_ambient_fallback` proves it — a failing minter yields an error (not a Forge) naming the role/repo, only possible if the failure was surfaced not swallowed. Second independent layer: the `forge-surface-control.yml` no-passthrough CI ratchet + row 3's grep against any bypass construction site.
+
+**Scope-traceability:** all observed work maps to Verify rows 1–11 (resolver, custody enforcement, roster key, the one wired verb deskpost). No invented scope; negative-path rows 5/6/7 genuinely assert refusal semantics.
+
+**VERDICT: PASS** on rows 1–10; row 11 COULD-NOT-CHECK (statusgen environment limit, no diff defect) — **HELD at `implemented` (human sign-off owed via the verify-gate).** Open question for the human: none outstanding — the top-ranked risk-value (custody mode 0o600) is DERIVED and test-proven.
 
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in
