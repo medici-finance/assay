@@ -23,7 +23,7 @@ const sshPushURL = "ssh://git@example.invalid/example-org/tracker.git"
 //	git push failed: git push -u origin feature/test-branch: exit status 128
 //	  (ssh: connect to host … port 22: Operation timed out)
 //	--- FAIL: TestCreateSSHPushRemoteRefuses
-//	    pushtransport_test.go:33: create over an SSH push remote rc = 6, want 5 (refused)
+//	    create over an SSH push remote rc = 6, want 5 (refused)
 //
 // That rc=6 is the fault itself, one layer short of succeeding: on a machine whose agent
 // DOES hold a key for that host, the push lands and the forge records the human.
@@ -64,10 +64,10 @@ func TestUpdateSSHPushRemoteRefuses(t *testing.T) {
 	}
 }
 
-// TestSSHFetchRemoteWithHTTPSPushURLStillCreates is the other side of the contract, and the
+// TestSSHFetchHTTPSPushStillCreates is the other side of the contract, and the
 // one a too-broad gate would break: fetch over SSH is ALLOWED. Only the push transport is
 // gated, so an SSH fetch url with an https push override is a normal, successful create.
-func TestSSHFetchRemoteWithHTTPSPushURLStillCreates(t *testing.T) {
+func TestSSHFetchHTTPSPushStillCreates(t *testing.T) {
 	work := newBaseFixture(t)
 	bare := mustGit(t, work, "remote", "get-url", "--push", "origin") // the offline file:// bare
 	mustGit(t, work, "remote", "set-url", "origin", "git@example.invalid:example-org/tracker.git")
@@ -83,10 +83,10 @@ func TestSSHFetchRemoteWithHTTPSPushURLStillCreates(t *testing.T) {
 	}
 }
 
-// TestCreateHTTPSWithoutAppCredentialHelperNotices: https is the sanctioned transport, so
+// TestCreateHTTPSNoAppHelperNotices: https is the sanctioned transport, so
 // this must NOT refuse — but an https push answered by nothing but the machine's ambient
 // credential is the same ambient-identity shape one layer along, so it says so.
-func TestCreateHTTPSWithoutAppCredentialHelperNotices(t *testing.T) {
+func TestCreateHTTPSNoAppHelperNotices(t *testing.T) {
 	work := newBaseFixture(t)
 	// An https push url that still routes to the offline bare: `insteadOf` rewrites it at
 	// transport time, so the gate sees https and the push stays local and offline.

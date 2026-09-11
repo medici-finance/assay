@@ -32,12 +32,12 @@ func gateInput(t *testing.T, cfg string) PushTransportInput {
 	}
 }
 
-// TestCheckPushTransportRefusesSSHUnderBotIdentity is the gate's reason for existing: a bot
+// TestPushGateRefusesSSHUnderBotIdentity is the gate's reason for existing: a bot
 // session whose resolved PUSH url is an SSH one is REFUSED, in every spelling git accepts.
 //
 // FAIL-FIRST: see pushtransport-mutations.json — the CONTROL mutant neuters the
 // isSSHTransport branch in CheckPushTransport, and every case below goes red.
-func TestCheckPushTransportRefusesSSHUnderBotIdentity(t *testing.T) {
+func TestPushGateRefusesSSHUnderBotIdentity(t *testing.T) {
 	t.Setenv("DESK_LOOP", "worker-desk")
 
 	cases := []struct {
@@ -106,10 +106,10 @@ func TestCheckPushTransportRefusesSSHUnderBotIdentity(t *testing.T) {
 	}
 }
 
-// TestCheckPushTransportAllowsNonSSH pins the other half of the contract: the gate is about
+// TestPushGateAllowsNonSSH pins the other half of the contract: the gate is about
 // the PUSH transport and nothing else. Fetch-side SSH, https, file:// and a local path all
 // pass.
-func TestCheckPushTransportAllowsNonSSH(t *testing.T) {
+func TestPushGateAllowsNonSSH(t *testing.T) {
 	t.Setenv("DESK_LOOP", "worker-desk")
 
 	cases := []struct {
@@ -155,9 +155,9 @@ func TestCheckPushTransportAllowsNonSSH(t *testing.T) {
 	}
 }
 
-// TestCheckPushTransportInertWithoutBotIdentity: a human at a terminal, no $DESK_LOOP, an
+// TestPushGateInertWithoutBotIdentity: a human at a terminal, no $DESK_LOOP, an
 // SSH remote — that is what an SSH remote is FOR, and the gate must not touch it.
-func TestCheckPushTransportInertWithoutBotIdentity(t *testing.T) {
+func TestPushGateInertWithoutBotIdentity(t *testing.T) {
 	t.Setenv("DESK_LOOP", "")
 	var errb bytes.Buffer
 	in := gateInput(t, configZ("remote.origin.url", "git@example.com:example-org/tracker.git"))
@@ -170,11 +170,11 @@ func TestCheckPushTransportInertWithoutBotIdentity(t *testing.T) {
 	}
 }
 
-// TestCheckPushTransportUnresolvableLoopIsNotice: a $DESK_LOOP nothing recognises means the
+// TestPushGateUnresolvableLoopIsNotice: a $DESK_LOOP nothing recognises means the
 // bot question is could-not-check. It must SAY the gate did not run — the three-state rule's
 // "never rounded up to a pass", and the difference between looked-and-found-nothing and
 // never-looked.
-func TestCheckPushTransportUnresolvableLoopIsNotice(t *testing.T) {
+func TestPushGateUnresolvableLoopIsNotice(t *testing.T) {
 	t.Setenv("DESK_LOOP", "not-a-loop-name")
 	var errb bytes.Buffer
 	in := gateInput(t, configZ("remote.origin.url", "git@example.com:example-org/tracker.git"))
@@ -190,11 +190,11 @@ func TestCheckPushTransportUnresolvableLoopIsNotice(t *testing.T) {
 	}
 }
 
-// TestCheckPushTransportHTTPSWithoutAppHelperIsNotice: https is the sanctioned transport,
+// TestPushGateHTTPSWithoutAppHelperNotices: https is the sanctioned transport,
 // but https answered by a machine keychain is the same ambient identity one layer along.
 // The evidence is weaker than an SSH url, so this is a NOTICE — it must never become a
 // refusal, and it must never be silent.
-func TestCheckPushTransportHTTPSWithoutAppHelperIsNotice(t *testing.T) {
+func TestPushGateHTTPSWithoutAppHelperNotices(t *testing.T) {
 	t.Setenv("DESK_LOOP", "worker-desk")
 
 	cases := []struct {
@@ -243,9 +243,9 @@ func TestCheckPushTransportHTTPSWithoutAppHelperIsNotice(t *testing.T) {
 	}
 }
 
-// TestCheckPushTransportURLScopedAppHelperSilencesNotice: the house pattern is an inline
+// TestPushGateURLScopedAppHelperSilent: the house pattern is an inline
 // helper, often url-scoped. A real App helper must not be nagged at.
-func TestCheckPushTransportURLScopedAppHelperSilencesNotice(t *testing.T) {
+func TestPushGateURLScopedAppHelperSilent(t *testing.T) {
 	t.Setenv("DESK_LOOP", "worker-desk")
 	var errb bytes.Buffer
 	in := gateInput(t, configZ(
@@ -260,9 +260,9 @@ func TestCheckPushTransportURLScopedAppHelperSilencesNotice(t *testing.T) {
 	}
 }
 
-// TestCheckPushTransportCouldNotCheckIsUnverifiable: a config read that fails, and a remote
+// TestPushGateCouldNotCheckIsUnverifiable: a config read that fails, and a remote
 // with no url at all, are exit 6. Neither may read as "no SSH found, carry on".
-func TestCheckPushTransportCouldNotCheckIsUnverifiable(t *testing.T) {
+func TestPushGateCouldNotCheckIsUnverifiable(t *testing.T) {
 	t.Setenv("DESK_LOOP", "worker-desk")
 
 	// The message matters, not only the exit code: a failed READ and a remote with no url
@@ -301,10 +301,10 @@ func TestCheckPushTransportCouldNotCheckIsUnverifiable(t *testing.T) {
 	})
 }
 
-// TestCheckPushTransportNamesTheActingRole: the refusal must name the App this session acts
+// TestPushGateNamesTheActingRole: the refusal must name the App this session acts
 // as, not a generic "a bot" — the reader's next question is always "which identity was I
 // about to push under".
-func TestCheckPushTransportNamesTheActingRole(t *testing.T) {
+func TestPushGateNamesTheActingRole(t *testing.T) {
 	t.Setenv("DESK_LOOP", "verify-desk")
 	err := CheckPushTransport(gateInput(t, configZ("remote.origin.url", "git@example.com:example-org/tracker.git")))
 	if err == nil {
