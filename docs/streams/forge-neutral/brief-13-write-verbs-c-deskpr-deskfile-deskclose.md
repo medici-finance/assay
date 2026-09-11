@@ -266,6 +266,37 @@ implementer:
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Verify run — 2026-09-10, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local) — gate: human, HELD at `implemented`
+
+Target: merged `origin/main` @ `48b978bb08c468fec52c015d280285698fc362bd` (two-protocol confirmed). Offline (`KUBECONFIG=/dev/null`) in an isolated worktree; runner ≠ implementer. gate: human + `sensitive-data: yes` — table RUN for Evidence; no model sign-off; status stays `implemented`.
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `go build ./... && go test ./...` | 0 | whole module green (deskkit 34.2s, forgeban, all cmds ok) | PASS |
+| 2 | `go test ./cmd/deskpr/... ./cmd/deskfile/... ./cmd/deskclose/...` | 0 | all three migrated suites ok | PASS |
+| 3 | `TestNoForgeCLIShellout` + `TestForgeNoPassthrough` | 0 | seam grows 4 ops, stays closed | PASS |
+| 4 (+deref) | `TestForgeGithubGolden` + `TestForgeGitlabGolden` + `TestForgeGitlabCoverage` | 0 | all 4 op tokens (open_change_for_branch/edit_change/search_issues/list_labels) in both golden corpora; coverage reconciles inventory rows 33-36 | PASS |
+| 5 | `grep -n allowedInvocationCeiling internal/forgeban/allowlist.go` | — | `= 9` @ :64 (base 12 − 3) | PASS |
+| 6 | `grep -c` the three permit rows (deskclose/deskfile/deskpr exec `gh`) | — | `0` — all three gone | PASS |
+| 7 | `go test ./internal/forgeban/...` | 0 | ratchet passes at the lowered ceiling | PASS |
+| 8 | `grep -rn -e 'runCmd("gh"' -e 'runGH(' cmd/deskpr cmd/deskfile cmd/deskclose non-test \| wc -l` | — | `0` — no verb shells gh | PASS |
+| 9 | `grep -rn -e '--as-app=false' -e 'asApp' cmd/deskpr non-test \| wc -l` | — | ACTUAL `5` (expect 0) — all 5 are retirement-documenting COMMENTS (main.go doc block, edit.go/exec.go/github.go) + one refusal error-string; NO `flag.Bool`/`Var(` for as-app, NO live `asApp` identifier. The flag + branch are genuinely removed; intent met (independently proven by row 10). **Flagged for the human: literal-vs-intent divergence, not a silent pass.** | PASS (intent) |
+| 10 (neg) | `TestDeskprRefusesWithoutMintedToken -v` | 0 | refuses ("ForgeFor never falls back to an ambient gh-CLI identity"); create/open/get calls == 0, no push | PASS |
+| 11 (+flow) | `TestDeskfileFilesOnGitLabThroughBackend` + `TestDeskfileRefusesWithoutMintedToken` | 0 | POSITIVE: files via backend on a GitLab repo (no "GitHub only"); NEGATIVE: refuses, filed=nil, search==0 | PASS |
+| 12 | `TestDeskcloseClosesThroughBackend` + `TestDeskcloseActingLoginFromRoster` | 0 | closes via `CloseIssue` (closes()==1); acting login from `RoleAppLogin`, NO `api graphql viewer` whoami | PASS |
+| 13 (neg) | `TestOpenChangeForBranchAmbiguousRefuses -v` | 0 | github+gitlab: 2 open changes → `ExitUnverifiable` refusal, nil result, message names the branch; control subtest proves a single change resolves | PASS |
+| 14 (+deref) | `statusgen --root . --consumers --brief forge-neutral/13` | — | COULD-NOT-CHECK — offline verifier shared-home writeguard + statusgen v1.0.6 brief-v2 gap. Consumers hand-corroborated: all three verbs route `forgeForFn → deskkit.ForgeFor(fr, mintedRole)`; deskfile RETAINS its unresolvable-forge could-not-check while the interim "GitHub only" GitLab refusal is GONE; inventory rows 33-36 present | COULD-NOT-CHECK |
+| 15 (mutation) | disable the deskclose worker-half guard → `go test ./cmd/deskclose/...`; restore; re-run | 1 → 0 | MUTANT: `TestSupersededWorkerProposes` reddens (worker token falls through to the reviewer half, collapsing propose≠confirm); RESTORED: 0; worktree clean | PASS |
+
+**Risk-bearing value (sensitive-data: yes — ENUMERATE → RANK → DERIVE):**
+- `RISK-VALUE: DERIVED — allowedInvocationCeiling = 9 @ tools/desk/internal/forgeban/allowlist.go:64.` RANK #1 (security ratchet). Derived as base(12) − 3; the three named permit rows (`cmd/deskclose/exec.go::runGH::gh`, `cmd/deskfile/exec.go::gh::gh`, `cmd/deskpr/exec.go::gh::gh`) confirmed gone (row 6 = 0); ratchet green (row 7). No NAMED-NOT-DERIVED literal — the ceiling is derived, not a magic number.
+- Secondary risk-bearing values: the two-role close-authority separation (row 15 mutant, live) and the removed ambient fallback (rows 9/10).
+
+**Sensitive-data defense (gate: human) — independent layers:** (1) ambient fallback GONE, not defaulted (row 9 — no flag/branch; row 10 — a no-token run refuses with zero forge calls, no push, no ambient fall-through); (2) the two-role close authority is a LIVE control (row 15 — disabling the worker-half guard reddens the deskclose suite); (3) custody-mint is the sole token path (rows 10/11-neg — deskpr and deskfile both refuse when the mint yields no token; deskfile additionally fails closed on an unresolvable forge before any op). Layers trip on different signals in different components (backend unminted-token refusal vs `resolveCaller` roster-binding checks).
+
+**Scope-traceability:** no work observed outside the brief's Verify rows / consumers; the extra deskclose guards map to the pre-mortem detection map. Row 9's literal grep divergence (5 vs 0) is a documentation artifact (comments/error-strings naming the retired path), not a live path.
+
+**VERDICT: PASS** on all 14 runnable rows; row 14 COULD-NOT-CHECK (writeguard + brief-v2 gap; consumers hand-corroborated) — **HELD at `implemented` (human sign-off owed via the verify-gate).** For the human: (a) confirm the per-verb acting identity (deskpr/deskclose → session-role App; deskfile → session-role App with `--raised-by` as body attribution vs the named alternative of minting the raised-by role's own App); (b) note the row-9 literal-vs-intent divergence (5 documenting mentions, no live flag). No open NAMED-NOT-DERIVED value.
 
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`; the acting identity of three write
