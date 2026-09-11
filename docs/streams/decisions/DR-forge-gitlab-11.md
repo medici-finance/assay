@@ -16,15 +16,23 @@ accepted:
   - "Under the auditor identity the rows GitHub shows only to an admin or to a ruleset writer (`security_and_analysis.*`, `[name=…].bypass_actors`) report could-not-check and are re-run by a human administrator — the same outcome the guard gives a non-admin operator today. Coverage of those rows is not bought with a write grant."
   - "repohardenguard gains a roster CONFIG read (the repo→forge map) for forge resolution only; it still consults no write-authorisation set. Its checklist grammar changes: `read <kind>` / `read file <path>` replaces `gh api <endpoint>`, and the old form is a parse refusal naming the vocabulary — an adopter's checklist document must be re-cut when it re-pins."
   - "The hardening-read surface is per forge by construction: a kind returns the forge's own settings document, a checklist is authored per forge, and a kind the resolved forge does not serve is a named could-not-check. Nothing is approximated across forges; the GitLab kinds are a follow-on brief, and until it lands a GitLab-resolved run authenticates and reports every row could-not-check."
+  - "Added by the ruling (2026-09-11): the adopter DOCUMENTATION and the public WEBSITE are updated alongside the code, not after it. Every page that enumerates the `desktoken` roles or an App's permission set gains the `auditor` row and its minimal grant — in this repo `docs/adopting-assay.md` (the App inventory and the provisioning checklist) and `docs/adopting-assay-gitlab.md` (the role→service-account table and the per-role token-file list); on the public site, the adoption and apps pages say the same. A role a fleet must provision but no page names is a provisioning step an adopter discovers from a Refused exit, so the docs half is a deliverable of the brief with its own Verify rows, not a follow-up."
 ---
 
-**Status at authoring (2026-09-11): PROPOSED.** This record is authored with the brief it governs
-(`forge-gitlab/11`) so the alternatives are weighed BEFORE the human gate rather than reconstructed
-after it. The `decided-by` stamp binds when the driver (`human:<name>`) records an option on the
-brief's decision-gate issue; the recorded ruling and the issue number are then appended to this
-body in the implementing change (the register is append-only — the file is amended, never
-replaced). If the driver records an option other than the recommended one, this record is amended
-to say which and why, and the brief's Task is re-cut against it before dispatch.
+**Ruling recorded (2026-09-11): APPROVED — option 1 (the dedicated read-only `auditor` identity),
+with the documentation-and-website addition.** This record was authored with the brief it governs
+(`forge-gitlab/11`) so the alternatives were weighed BEFORE the human gate rather than
+reconstructed after it, and it stood PROPOSED until the driver ruled. The driver (`human:<name>`)
+recorded the ruling on the brief's decision-gate
+[issue #857](https://github.com/medici-finance/assay/issues/857) — the
+[ruling comment](https://github.com/medici-finance/assay/issues/857#issuecomment-5636249260),
+relayed into the thread and closed `human-decided` — as **option A/1: approve as proposed**:
+`deskroster` reads run as the session's role token; `repohardenguard` runs as a new dedicated
+read-only auditor role through one enumerated hardening-read op; the admin-only fields report
+could-not-check rather than being bought back with a write grant. The one addition is the last
+`accepted` entry above — the adopter docs and the public site are updated alongside. The register
+is append-only: this body is amended in place, never replaced, and the alternatives and accepted
+consequences above stand as authored plus that one addition.
 
 **The decision.** Three `gh` shell-outs remain in the desk tree after `forge-gitlab/08` shipped its
 shell-exec ban as a ratchet, and the driver ruled on the closure-to-zero question (option B, 2026-09-11)

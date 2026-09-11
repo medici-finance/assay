@@ -228,13 +228,30 @@ argv[0] is not a compile-time constant.** One call site was RETIRED by this brie
 |---------|-----|-----|
 | `fanoutloop` dispatch-claim sink | `gh api -X DELETE repos/<o>/<r>/git/refs/dispatch/<key>` — the stream's live passthrough: an argv carrying a whole REST path, so the reach was every endpoint by every method | `DeleteRef(repo, "dispatch/<key>")` (op 15), ref-validated inside the repo's namespace before a request exists |
 
+**Follow-up (issue #834): two more reads retired.** The verify FAIL on Verify row 3 (issue #834)
+noted the ban half shipped as a ratchet rather than closure-to-zero. Two of the three residual
+`exec.Command("gh", …)` naive-grep hits were display-only reads whose stated blockers had gone
+stale — the ops they needed had landed since brief 08:
+
+| Retired | Was | Now |
+|---------|-----|-----|
+| `deskroster` `ghViewPR` | `gh pr view --json state,isDraft,title` (listed under **identity**/no-op — blocked on a `title` field `GetPullRequest` lacked) | `GetPullRequest` (op 1), which gained `Title` with its `deskpr edit` consumer; the merged/closed display state is derived from `State`+`Merged` |
+| `deskroster` `ghListOpenPRs` | `gh pr list --state open --json number,title,isDraft` (listed under **no enumerated op**) | `ListOpenChanges` (op 23), which landed with `deskboard`'s `fetchOpenPRs` |
+
+Both are READ-only display annotations under the session's own minted App token (not a write), so
+no token-custody ruling gated them. The forge-CLI ceiling came down 9 → 7. The one remaining
+naive-grep hit — `repohardenguard`'s `ghRun` — is **open work, not a ruled exception**: the driver
+ratified closure-to-zero (option B on #834), so every residual `gh` shell-out must reach the seam.
+That site is owned by the guard-read-custody brief (`forge-gitlab/11`) and its design record; its
+`forgeban` permit row is permitted only until that brief lands, and row 3 closes to 0 with it.
+
 The rest are classified, not migrated. Every one is blocked on a decision this brief does not own:
 
 | Class | Call sites | What blocks the migration |
 |-------|-----------|---------------------------|
-| **identity** | `deskclose`, `deskdigest`, `deskfile`, `deskflip` (7 sites), `deskreply`, `deskpr`, `deskboard`, `deskmerge`, `deskroster`, `deskdisposition`, `issueboard`, `scanloop` | Each reaches the forge under the caller's AMBIENT CLI credential BY DOCUMENTED DESIGN ("gates WHETHER and WHAT, never WHO … mints no App token on any path"). Both backends REFUSE to build a client without an explicitly minted token — deliberately (brief 07's posture, mirroring #562/#563). Routing these through the seam therefore changes WHO performs each write. That is a **token-custody ruling**, not a transport change, and it is the single decision gating ~20 of the 25 sites. |
-| **no enumerated op** | labels (`deskdispatch`, `deskflip`, `deskdisposition`, `scanloop`), `pr list` (`deskroster`, `deskdisposition`), branch→PR resolution (`deskpushguard`), issue listing + GraphQL counts (`issueboard`, `deskboard`), merge-authority read (`deskmerge`), trust-association read (`scanloop`) | Spec §6's freeze rule forbids adding a method without converting its consuming call site in the same change. Each of these is a real op set with a real GitLab mapping question (project-scoped labels, MR source-branch lookup, issue IID sequences) and needs its own brief rather than a speculative method. |
-| **not a forge op at all** | `deskadvisory` (`gh auth token`), `repohardenguard` (`gh api` reads of rulesets / branch protection / App permissions) | The first is the identity layer (delta D2); the second is repo HARDENING, the same class delta D3 keeps out of the frozen set. Neither has a Forge method it could move to, by design. |
+| **identity** | `deskclose`, `deskdigest`, `deskfile`, `deskflip` (7 sites), `deskreply`, `deskpr`, `deskboard`, `deskmerge`, `deskdisposition`, `issueboard`, `scanloop` | Each reaches the forge under the caller's AMBIENT CLI credential BY DOCUMENTED DESIGN ("gates WHETHER and WHAT, never WHO … mints no App token on any path"). Both backends REFUSE to build a client without an explicitly minted token — deliberately (brief 07's posture, mirroring #562/#563). Routing these through the seam therefore changes WHO performs each write. That is a **token-custody ruling**, not a transport change, and it is the single decision gating ~20 of the 25 sites. (`deskroster` was here — its two reads migrated under #834; see the follow-up table above.) |
+| **no enumerated op** | labels (`deskdispatch`, `deskflip`, `deskdisposition`, `scanloop`), `pr list` (`deskdisposition`), branch→PR resolution (`deskpushguard`), issue listing + GraphQL counts (`issueboard`, `deskboard`), merge-authority read (`deskmerge`), trust-association read (`scanloop`) | Spec §6's freeze rule forbids adding a method without converting its consuming call site in the same change. Each of these is a real op set with a real GitLab mapping question (project-scoped labels, MR source-branch lookup, issue IID sequences) and needs its own brief rather than a speculative method. (`deskroster`'s `pr list` was here — migrated onto the now-landed `ListOpenChanges` under #834.) |
+| **not a forge op at all** | `deskadvisory` (`gh auth token`), `repohardenguard` (`gh api` reads of rulesets / branch protection / App permissions) | The first is the identity layer (delta D2); the second is repo HARDENING, the same class delta D3 keeps out of the frozen set. Neither has a Forge method it could move to *today* — under the ratified closure-to-zero both are OPEN WORK, `repohardenguard` under the guard-read-custody brief (`forge-gitlab/11`), not permanent carve-outs. |
 
 The 14 unresolved-argv sites are a **could-not-check ledger, not a permit**: each runs a resolved
 `statusgen`/`desktoken`/callout binary or a caller-supplied argv, none launches a forge CLI on any
