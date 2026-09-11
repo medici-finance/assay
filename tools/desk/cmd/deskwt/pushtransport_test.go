@@ -43,11 +43,11 @@ func TestAddSSHPushRemoteRefuses(t *testing.T) {
 	}
 }
 
-// TestAddSSHRemoteWithoutBotIdentityStillAdds is the boundary the gate must not cross. A
+// TestAddSshRemoteNoBotIdentity is the boundary the gate must not cross. A
 // human at a terminal has no $DESK_LOOP, pushes under their own key, and an SSH remote is
 // exactly what that key is for. Gating them would make the tool unusable for the case it
 // was never about.
-func TestAddSSHRemoteWithoutBotIdentityStillAdds(t *testing.T) {
+func TestAddSshRemoteNoBotIdentity(t *testing.T) {
 	work := newRepo(t)
 	mustGit(t, work, "remote", "set-url", "--push", "origin", sshPushURL)
 	withEnv(t, work)
@@ -62,11 +62,11 @@ func TestAddSSHRemoteWithoutBotIdentityStillAdds(t *testing.T) {
 	}
 }
 
-// TestAddSSHFetchURLWithHTTPSPushURLAdds: fetch over SSH stays allowed — only the push
+// TestAddSshFetchUrlHttpsPush: fetch over SSH stays allowed — only the push
 // transport is gated. The fixture's local bare origin stands in for the https push url's
 // destination; what matters is that the SSH value sits on `remote.origin.url` and the gate
 // reads `pushurl` instead.
-func TestAddSSHFetchURLWithHTTPSPushURLAdds(t *testing.T) {
+func TestAddSshFetchUrlHttpsPush(t *testing.T) {
 	work := newRepo(t)
 	bare := originBare(t, work)
 	mustGit(t, work, "remote", "set-url", "origin", "git@example.invalid:example-org/tracker.git")

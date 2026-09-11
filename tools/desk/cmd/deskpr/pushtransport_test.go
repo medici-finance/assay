@@ -64,10 +64,10 @@ func TestUpdateSSHPushRemoteRefuses(t *testing.T) {
 	}
 }
 
-// TestSSHFetchHTTPSPushStillCreates is the other side of the contract, and the
+// TestSshFetchHttpsPushCreates is the other side of the contract, and the
 // one a too-broad gate would break: fetch over SSH is ALLOWED. Only the push transport is
 // gated, so an SSH fetch url with an https push override is a normal, successful create.
-func TestSSHFetchHTTPSPushStillCreates(t *testing.T) {
+func TestSshFetchHttpsPushCreates(t *testing.T) {
 	work := newBaseFixture(t)
 	bare := mustGit(t, work, "remote", "get-url", "--push", "origin") // the offline file:// bare
 	mustGit(t, work, "remote", "set-url", "origin", "git@example.invalid:example-org/tracker.git")
@@ -83,10 +83,10 @@ func TestSSHFetchHTTPSPushStillCreates(t *testing.T) {
 	}
 }
 
-// TestCreateHTTPSNoAppHelperNotices: https is the sanctioned transport, so
+// TestCreateHttpsNoAppHelper: https is the sanctioned transport, so
 // this must NOT refuse — but an https push answered by nothing but the machine's ambient
 // credential is the same ambient-identity shape one layer along, so it says so.
-func TestCreateHTTPSNoAppHelperNotices(t *testing.T) {
+func TestCreateHttpsNoAppHelper(t *testing.T) {
 	work := newBaseFixture(t)
 	// An https push url that still routes to the offline bare: `insteadOf` rewrites it at
 	// transport time, so the gate sees https and the push stays local and offline.

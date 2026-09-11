@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ ./cmd/deskpr/ ./cmd/deskwt/ -count=1 -timeout 300s -run 'PushGate|IsSSHTransport|HTTPSEquivalent|ParseConfigZ|SSHPush|SSHFetch|SSHRemote|NoAppHelper|EditIsNot|AddSSH'",
+  "test": "go test ./internal/deskkit/ ./cmd/deskpr/ ./cmd/deskwt/ -count=1 -timeout 300s -run 'PushGate|SSHTransport|HTTPSEquivalent|ParseConfigZ|SSHPushRemote|SshFetch|NoAppHelper|EditIsNot|AddSsh'",
   "control": {
     "name": "CONTROL — stop refusing an SSH push url under a bot identity (the whole fault: the push goes out under a human's key while the commits read as the App's)",
     "file": "internal/deskkit/pushtransport.go",
