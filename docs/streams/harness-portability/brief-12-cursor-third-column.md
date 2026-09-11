@@ -145,6 +145,28 @@ facts:
 | 11 | `go run ./tools/freshness 2>&1 \| grep -E -e references/cursor.md -e cursor-harness` | (exit ignored) | `FRESH  docs/research/cursor-harness-capabilities.md …` + `FRESH  plugins/assay/references/cursor.md …`; whole-repo `freshness` exits 1 ONLY from pre-existing unrelated stale artifacts, not these entries | 2026-08-26 | assay-worker-app[bot] opus-4.8[1m] |
 
 _Non-Verify sanity: `gofmt -l tools/harnessgen/` empty, `go vet ./tools/harnessgen` clean._
+### Verify run — 2026-09-11, non-implementer dispatched verifier (opus-4.8[1m]-verifier) — VERDICT: FAIL (held at `implemented`; stale probe, adopter substance present)
+
+Ran the Verify table against public medici-finance/assay merged main `553dc2ae530f00e861a14536af7cc884ab77ccf5` (two-protocol head confirmed), offline in an isolated worktree; the row-3 mutate-then-regenerate cycle restored assay.mdc byte-identical and the worktree was left clean. Non-implementer. tools/harnessgen, tools/harnesslint and tools/freshness are each their own Go module (no repo-root go.mod), so the literal `go run ./tools/…` rows fail go.mod-not-found; the real properties were run module-aware via built binaries (non-blocking command-string note, folded under #870).
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | go test in tools/harnessgen | 0 | ok tools/harnessgen; TestCursor* present (drift, coverage, binding-skew, parse-error, frontmatter) | PASS |
+| 2 | harnessgen cursor --check (module-aware) | 0 | clean — plugins/assay/cursor/assay.mdc matches the resident source | PASS |
+| 3 | append a line to assay.mdc → --check → regenerate → recheck | 1 → 0 | DRIFT naming assay.mdc; regenerate wrote assay.mdc; recheck clean; tree clean | PASS |
+| 4 | built binary + planted undeclared skill | 2 | could-not-check: coverage rule failed — skill "probe-skill" in neither the packaged roster nor the excluded list | PASS |
+| 5 | built binary + stripped a degradation cell | 2 | could-not-check: packaging↔binding skew — packaged skill "the-desk" has no degradation cell in references/cursor.md | PASS |
+| 6 | harnesslint bodies + bindings (module-aware) | 0 | checked-clean: bodies no violations; bindings no violations | PASS |
+| 7 | harnessgen resident --check AND codex --check (module-aware) | 0 | both clean — the neighbour verbs still pass beside cursor | PASS |
+| 8 | grep cursor AND cursor/assay.mdc in plugins/assay/skills/adopt/SKILL.md | 1 | zero `cursor` occurrences, no `cursor/assay.mdc` — the file is a 58-line thin router deferring to docs/adopting-assay.md | FAIL |
+| 8a | positive control — grep an absent token | 1 | absent token reports absence (the probe works; the file simply lacks cursor content) | PASS |
+| 9 | grep alwaysApply: true in plugins/assay/cursor/assay.mdc | 0 | present at assay.mdc line 3; generator writes it in tools/harnessgen | PASS |
+| 10 | count live-install-confirmation flags in docs/research/cursor-harness-capabilities.md | 0 | count 9 (>= 5) — the unrunnable rows are flagged, not asserted | PASS |
+| 11 | freshness for the two new cursor entries (module-aware) | — | FRESH docs/research/cursor-harness-capabilities.md; FRESH plugins/assay/references/cursor.md (whole-repo exit 1 only from an unrelated pre-existing STALE artifact) | PASS |
+
+**Why FAIL — a stale probe, not a Change Failure.** Row 8's specified probe targets `plugins/assay/skills/adopt/SKILL.md` for the Cursor install scenario (this brief's `consumers` frontmatter marks it `fixed-here`, "section 2c"). That file is now a thin router that defers to `docs/adopting-assay.md`, and the adopter-facing Cursor substance DID land — a full "Running Assay on Cursor — a second first-class harness" section in `docs/adopting-assay.md` (referencing `plugins/assay/references/cursor.md`) plus the Cursor column in `docs/how-assay-works.md`. So the deliverable INTENT (an adopter can install Assay on Cursor) is satisfied; only the brief's own probe against the SKILL.md is stale after the adopt-skill was converted to a router. This is distinct from harness-portability/06's row 7, where the AGENTS-assay Codex resident-rules step is genuinely absent adopter-facing (a real content gap, #872). Folded under medici-finance/assay #870 (re-home Verify-row staleness family) with the retarget fix: point row 8 at `docs/adopting-assay.md` / confirm the router design. Brief stays at `implemented`; re-run row 8 after the retarget (or after a section-2c amendment to adopt/SKILL.md, if that placement is still intended — a spec call).
+
+**Risk-bearing value:** `RISK-VALUE: DERIVED — the fail-closed three-state exit gate (0 clean / 1 drift / 2 could-not-check) in tools/harnessgen is the top risk-bearing literal; a coverage or binding skew must hard-error, never silently pass. Re-derived live: exit 2 on the coverage mutation (row 4, naming probe-skill) and the binding-skew mutation (row 5, naming the-desk) against the built binary (exit 2 is observable only on a built binary; go run collapses 2→1); clean=0 (rows 2/7), drift=1 (row 3). Secondary DERIVED: alwaysApply: true at plugins/assay/cursor/assay.mdc line 3; live-confirm count 9 >= 5.`
 
 ## Review
 
