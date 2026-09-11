@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestGitLabRepoInfoFetcher|TestForgeGithubGolden|TestForgeGitlabGolden'",
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
     "file": "internal/deskkit/bodycheck.go",
@@ -132,6 +132,36 @@
       "file": "internal/deskkit/structured.go",
       "old": "\t\tif !ok || m[0] < block.lo || m[1] > block.hi {",
       "new": "\t\tif !ok || m[0] < block.hi {"
+    },
+    {
+      "name": "forge-gitlab/09 — GitHub RefExists drops ValidateRefPath (a traversing ref reaches a URL; the namespace-escape golden + non-ref-path test redden)",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tclean, err := ValidateRefPath(ref)\n\tif err != nil {\n\t\treturn false, err\n\t}\n\tpath := fmt.Sprintf(\"/repos/%s/%s/git/ref/%s\", repo.Owner, repo.Name, clean)",
+      "new": "\tclean := ref\n\tpath := fmt.Sprintf(\"/repos/%s/%s/git/ref/%s\", repo.Owner, repo.Name, clean)"
+    },
+    {
+      "name": "forge-gitlab/09 — GitHub RefExists maps every non-2xx to absent (a 403/500 reads as a release, not could-not-check)",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tpath := fmt.Sprintf(\"/repos/%s/%s/git/ref/%s\", repo.Owner, repo.Name, clean)\n\tif err := g.doJSON(http.MethodGet, path, nil, nil); err != nil {\n\t\tif IsForgeNotFound(err) {\n\t\t\treturn false, nil\n\t\t}\n\t\treturn false, err\n\t}",
+      "new": "\tpath := fmt.Sprintf(\"/repos/%s/%s/git/ref/%s\", repo.Owner, repo.Name, clean)\n\tif err := g.doJSON(http.MethodGet, path, nil, nil); err != nil {\n\t\treturn false, nil\n\t}"
+    },
+    {
+      "name": "forge-gitlab/09 — GitLab RefExists drops the non-heads refusal (a ref outside refs/heads reaches a request instead of could-not-check with zero requests)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif !ok {\n\t\treturn false, Unverifiable(fmt.Sprintf(\n\t\t\t\"could-not-check: GitLab exposes no general ref-existence endpoint, so RefExists cannot serve %q — \"+",
+      "new": "\tif false && !ok {\n\t\treturn false, Unverifiable(fmt.Sprintf(\n\t\t\t\"could-not-check: GitLab exposes no general ref-existence endpoint, so RefExists cannot serve %q — \"+"
+    },
+    {
+      "name": "forge-gitlab/09 — GitLab RefExists maps every branch-read error to absent (a 403 reads as a release, not could-not-check)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\t\tif IsForgeNotFound(mapped) {\n\t\t\treturn false, nil\n\t\t}\n\t\treturn false, mapped",
+      "new": "\t\tif mapped != nil {\n\t\t\treturn false, nil\n\t\t}\n\t\treturn false, mapped"
+    },
+    {
+      "name": "forge-gitlab/09 — GitLab RepoVisibility falls open on a missing .visibility (an unreadable visibility reads as private; the public-repo gate fall-open row reddens)",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "\tif p.Visibility == \"\" {\n\t\treturn \"\", Unverifiable(fmt.Sprintf(\"project %s has no .visibility field in the API response\", repo.Slug()), nil)\n\t}",
+      "new": "\tif p.Visibility == \"\" {\n\t\treturn \"private\", nil\n\t}"
     }
   ],
   "_not_mutated": {
