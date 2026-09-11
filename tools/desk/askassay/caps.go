@@ -76,13 +76,13 @@ var declaredListCaps = []ListCap{
 	// SearchIssues ops (write-verbs-C), so the label read and the dedupe search are now bounded by
 	// the forge backend's own page cap rather than a deskfile-local literal. There is no
 	// silent-cap instance left in either file, so both register rows are retired with the flags.
-	{
-		File:        "cmd/deskroster/roster.go",
-		Needle:      `"--limit", "50"`,
-		Occurrences: 1,
-		Cap:         50,
-		Effect:      "the roster's open-PR read truncates at 50 per repo. A repo over the cap yields a roster that omits PRs without saying so",
-	},
+	// The roster open-PR read's `--limit 50` cap is GONE: deskroster migrated off the `gh` CLI
+	// onto the typed ListOpenChanges op, so the read is bounded by the forge backend's own
+	// declared page cap rather than a deskroster-local literal. There is no `--limit` instance
+	// left in that file, so its register row is retired with the flag. NOTE the residual this
+	// register does not cover: the seam reports its own Cap/TruncatedAtCap, and ghListOpenPRs
+	// currently discards both, so a repo past the backend cap still yields a roster that omits
+	// PRs without saying so — a display-surfacing fix, not a silent `--limit` literal.
 	{
 		File:        "cmd/deskdisposition/verbs.go",
 		Needle:      `"--limit"`,

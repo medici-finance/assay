@@ -3635,6 +3635,37 @@ review event posted at the *same* head — so a head-only re-read reports "still
 flips over a live withdrawal. Both gates re-run against a freshly read review list
 immediately before the mutation.
 
+**A standing `CHANGES_REQUESTED` at head blocks — with ONE exemption, the check-only CR.**
+An APPROVE posted at an *unchanged* head cannot be a re-verification: there is nothing new to
+verify, and the forge's self-approval block only keys on the PR *author*, so it has nothing to
+say about a third-party App re-posting at the same head. That default stands. It had no path,
+though, for the one legitimate case: a CR whose *only* stated blocker was a required check
+being red, where the check then went green **at the same head with no code push** — a human
+applying `changelog:skip`, a flaked job re-run. The alternatives were a no-op push, which games
+the very head-move rule the block enforces, or a human dismissing the review by hand every
+time. The exemption clears such a CR only when **all** of:
+
+- the CR body **declares** itself check-only on one line — `Blocked-On-Check: <check name>` —
+  naming the check and nothing else. Detection is by that *shape*: no prose is ever read, because
+  inferring "this CR names no other finding" from English would let a CR carrying three findings
+  and the word `changelog` read as check-only;
+- a later APPROVE from the same reviewer at the same head **cites the run** —
+  `Cleared-Check-Run: <id>` — a per-execution id, so a re-run is a different citation and an
+  older green run of the same check cannot satisfy it;
+- that run is in the rollup **at that head** (structural: the rollup is read at the head both
+  reviews are pinned to, so a run belonging to another head is simply absent);
+- the run carries **the check the CR named**, and
+- it **finished green** — the same accepted set `checks-green` uses (`success` / `neutral` /
+  `skipped`, so a check a skip label turned green counts) — **after** the CR was submitted. A
+  run the reviewer already had in front of them when they blocked re-verifies nothing.
+
+Anything short of all five refuses in the wording it always had; a CR that never made the claim
+refuses in exactly that wording, unadorned. Clearing the block is **not** an approval — the
+reduction below it still has to find an APPROVED governing at head, so a later ordinary CR still
+refuses. Both marker lines are read by the canonical verdict-marker reduction (whole-line,
+emphasis-tolerant, and skipped inside a fenced code block, since both reads grant); a body
+carrying two lines that disagree has established nothing and reads as no claim.
+
 **An already-ready PR gets a pure no-op, or a full re-gate — never an ungated relabel.**
 Writing `approval-needed` is not bookkeeping: it asserts to everyone reading the queue that
 the review lane is finished and only a merge is outstanding. On a PR that is no longer a
