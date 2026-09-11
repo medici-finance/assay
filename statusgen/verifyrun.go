@@ -168,7 +168,13 @@ type witness struct {
 	OutHash string // first 12 hex of sha256(combined stdout+stderr)
 	Date    string // YYYY-MM-DD
 	Runner  string // derived executing identity
-	Tree    string // short HEAD SHA, suffixed +dirty when the tree is modified
+	// RunnerSource names WHICH source produced Runner — forge-identity / ci-env /
+	// git-config (forge-neutral/07 task 5). Rendered as a trailing parenthetical on the
+	// Runner cell so a reader can tell a stamped acting forge identity from a
+	// host-derived one, which is what would have surfaced the D-9 disagreement without a
+	// pilot to notice it. It is a derived compile-time token, never caller text.
+	RunnerSource string
+	Tree         string // short HEAD SHA, suffixed +dirty when the tree is modified
 	// Note is console-only commentary (why could-not-run, which Expect
 	// constraints were undecidable). It is deliberately NOT written into the
 	// row: the row is a record, and free text in a record is where a caption
@@ -195,8 +201,17 @@ func (w witness) row() string {
 	if w.State == stateCouldNotRun && w.Note != "" {
 		result += " — " + w.Note
 	}
-	return fmt.Sprintf("| %s | `%s` | %s | sha256:%s | %s | %s @ %s |",
-		w.ID, w.Command, result, w.OutHash, w.Date, w.Runner, w.Tree)
+	// The runner SOURCE is a trailing parenthetical AFTER the `@ <tree>` marker, on
+	// purpose: verifiedrunneragree.go's runnerKey drops a runner cell's parenthetical
+	// qualifier, so a source appended here does not change the runner-comparison key,
+	// and a witness with no source (RunnerSource == "") renders byte-identical to the
+	// pre-forge-neutral/07 format.
+	runnerCell := fmt.Sprintf("%s @ %s", w.Runner, w.Tree)
+	if w.RunnerSource != "" {
+		runnerCell += " (" + w.RunnerSource + ")"
+	}
+	return fmt.Sprintf("| %s | `%s` | %s | sha256:%s | %s | %s |",
+		w.ID, w.Command, result, w.OutHash, w.Date, runnerCell)
 }
 
 // exitCell renders the exit code, or `-` when nothing ran. `exit=-1` would read
@@ -617,33 +632,53 @@ func hashOutput(output []byte) string {
 // attribution.go documents as unparseable.
 var runnerNameRe = regexp.MustCompile(`[^0-9A-Za-z_]+`)
 
-// executingRunner derives the runner from the process, in priority order:
+// runnerSource* name WHICH source produced a witness runner, recorded in the witness
+// so a reader can tell a stamped acting FORGE identity from a host-derived one
+// (forge-neutral/07 task 5). They are compile-time constants, not caller text, so the
+// source cannot be forged, and they are deliberately short and stable (greppable).
+const (
+	runnerSourceForge     = "forge-identity"
+	runnerSourceCIEnv     = "ci-env"
+	runnerSourceGitConfig = "git-config"
+)
+
+// executingRunner derives the runner from the process, in priority order, and returns
+// WHICH source produced it (forge-neutral/07 tasks 4-5):
 //
-//  1. GitHub Actions: GITHUB_ACTOR, the identity the workflow ran as. For an
-//     App this is the `<slug>[bot]` form, recorded verbatim — it is the App's
-//     own name, and rewriting it would lose the bot/human distinction that
-//     makes the field worth reading.
-//  2. The repository's git identity. A bot identity (`[bot]` in the name or
-//     the noreply email) is recorded verbatim; a person becomes `human:<name>`,
-//     the token the rest of the toolkit already parses.
+//  1. The acting FORGE identity: the git commit identity resolved through the roster
+//     for the REPO's forge (forgeRoleRunner). On GitLab this is what fixes D-9 — the
+//     acting verifier is a service account whose git identity carries no `[bot]`, so
+//     the git-config path below would stamp a host-derived `human:<name>` that
+//     disagrees with the Evidence table by construction; the roster resolves it to the
+//     bound role identity instead. On GitHub it confirms the identity is roster-known.
+//  2. GitHub Actions: GITHUB_ACTOR, the identity the workflow ran as, `<slug>[bot]`
+//     verbatim for an App.
+//  3. The repository's git identity. A bot identity (`[bot]` in the name or the
+//     noreply email) is recorded verbatim; a person becomes `human:<name>`.
 //
-// ok is false when NEITHER is available. The caller must refuse to write a
-// witness in that case — see the file header.
-func executingRunner(root string) (runner string, ok bool) {
+// ok is false when NONE is available. The caller must refuse to write a witness in
+// that case — see the file header. The forbidden-runner-flag refusal (runVerifyrun) is
+// unaffected: this only adds a DERIVED source ahead of the existing two, never a
+// caller-settable one, so the runner remains underivable from anything the session can
+// simply set.
+func executingRunner(root string) (runner, source string, ok bool) {
+	if r, forgeOK := forgeRoleRunner(root); forgeOK {
+		return r, runnerSourceForge, true
+	}
 	if os.Getenv("GITHUB_ACTIONS") == "true" {
 		if actor := strings.TrimSpace(os.Getenv("GITHUB_ACTOR")); actor != "" {
-			return strings.Join(strings.Fields(actor), "-"), true
+			return strings.Join(strings.Fields(actor), "-"), runnerSourceCIEnv, true
 		}
 	}
 	name := gitConfigValue(root, "user.name")
 	email := gitConfigValue(root, "user.email")
 	if strings.Contains(name, "[bot]") || strings.Contains(email, "[bot]") {
 		if name != "" {
-			return strings.Join(strings.Fields(name), "-"), true
+			return strings.Join(strings.Fields(name), "-"), runnerSourceGitConfig, true
 		}
 		local, _, _ := strings.Cut(email, "@")
 		if local != "" {
-			return strings.Join(strings.Fields(local), "-"), true
+			return strings.Join(strings.Fields(local), "-"), runnerSourceGitConfig, true
 		}
 	}
 	candidate := name
@@ -660,9 +695,50 @@ func executingRunner(root string) (runner string, ok bool) {
 	}
 	candidate = strings.ToLower(runnerNameRe.ReplaceAllString(candidate, ""))
 	if candidate == "" {
-		return "", false
+		return "", "", false
 	}
-	return "human:" + candidate, true
+	return "human:" + candidate, runnerSourceGitConfig, true
+}
+
+// forgeRoleRunner resolves the git commit identity of `root` to the roster's bound role
+// identity for the REPO's forge, when one matches. It is the acting-forge-identity
+// source in executingRunner's priority order (forge-neutral/07 task 4).
+//
+// The repo forge is detected from the origin remote (detectForge — local git, offline).
+// The git identity is then matched against the roster bot set FOR THAT FORGE using the
+// same per-forge rule the Evidence-actor check uses: a GitHub identity by its noreply
+// slug, a GitLab identity by the service-account address shape plus the git author
+// username. A match returns the bot's canonical rendering (`<slug>[bot]` on GitHub, the
+// username on GitLab). No match — an unknown forge, an unconfigured roster, or a git
+// identity that is nobody the roster knows — returns false, and executingRunner falls
+// through to the CI-env and git-config sources. This never invents an identity: it only
+// promotes a git identity the roster already recognises.
+func forgeRoleRunner(root string) (string, bool) {
+	forge := detectForge(root)
+	if forge != forgeGitHub && forge != forgeGitLab {
+		return "", false // unknown forge: nothing to resolve against, fall through
+	}
+	name := gitConfigValue(root, "user.name")
+	email := gitConfigValue(root, "user.email")
+	cfg := scanEffectiveConfig()
+	switch forge {
+	case forgeGitHub:
+		login, _, ok := githubIdentityFromEmail(email)
+		if !ok {
+			return "", false
+		}
+		if b, found := cfg.BotIdents[strings.ToLower(login)]; found && b.Forge == forgeGitHub {
+			return b.Slug + "[bot]", true
+		}
+	case forgeGitLab:
+		if !scanGitlabServiceAccountRe.MatchString(strings.ToLower(strings.TrimSpace(email))) {
+			return "", false
+		}
+		if b, found := cfg.BotIdents[strings.ToLower(strings.TrimSpace(name))]; found && b.Forge == forgeGitLab {
+			return b.Slug, true
+		}
+	}
+	return "", false
 }
 
 func gitConfigValue(root, key string) string {
@@ -763,7 +839,7 @@ func briefSections(path string) (verify, evidence string, err error) {
 //     (Classed=false) is the inherited corpus, which the scheduled main-rerun
 //     must still execute — so it does NOT skip.
 //   - everything else (legacy check off-CI, gate:*) — executed as before.
-func runWitnesses(root string, rows []verifyRow, runner, tree, date string, timeout time.Duration, ci bool) []witness {
+func runWitnesses(root string, rows []verifyRow, runner, runnerSource, tree, date string, timeout time.Duration, ci bool) []witness {
 	out := make([]witness, 0, len(rows))
 	for _, r := range rows {
 		// A cluster row (verdict-lane/07) is env-bound to a live cluster, whose
@@ -776,7 +852,7 @@ func runWitnesses(root string, rows []verifyRow, runner, tree, date string, time
 		if r.Class == classCheckCluster {
 			out = append(out, witness{
 				ID: r.ID, Command: r.Command, State: stateCouldNotRun, Exit: -1,
-				Date: date, Runner: runner, Tree: tree,
+				Date: date, Runner: runner, RunnerSource: runnerSource, Tree: tree,
 				Note: clusterPendingMarker(clusterProbe(r.Command)),
 			})
 			continue
@@ -784,7 +860,7 @@ func runWitnesses(root string, rows []verifyRow, runner, tree, date string, time
 		if ci && r.Classed && r.Class == classCheck {
 			out = append(out, witness{
 				ID: r.ID, Command: r.Command, State: stateSkipped, Exit: -1,
-				Date: date, Runner: runner, Tree: tree, Note: verifyEnvBoundNote,
+				Date: date, Runner: runner, RunnerSource: runnerSource, Tree: tree, Note: verifyEnvBoundNote,
 			})
 			continue
 		}
@@ -798,13 +874,14 @@ func runWitnesses(root string, rows []verifyRow, runner, tree, date string, time
 		out = append(out, witness{
 			ID:      r.ID,
 			Command: r.Command,
-			State:   state,
-			Exit:    res.exit,
-			OutHash: hashOutput(res.output),
-			Date:    date,
-			Runner:  runner,
-			Tree:    tree,
-			Note:    note,
+			State:        state,
+			Exit:         res.exit,
+			OutHash:      hashOutput(res.output),
+			Date:         date,
+			Runner:       runner,
+			RunnerSource: runnerSource,
+			Tree:         tree,
+			Note:         note,
 		})
 	}
 	return out
@@ -1160,7 +1237,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	if root == "" {
 		root = repoRootFor(path)
 	}
-	runner, ok := executingRunner(root)
+	runner, runnerSource, ok := executingRunner(root)
 	if !ok {
 		fmt.Fprintln(stderr, "statusgen verifyrun: could-not-attribute — no executing identity is available (no GITHUB_ACTOR under GitHub Actions, no git user.name/user.email in this repo). Refusing to write a witness with no runner: an unattributed witness is not a witness, and inventing a placeholder would make the one field naming who ran this the one field anybody could have written. Set the repo's git identity and re-run.")
 		return verifyrunExitCouldNot
@@ -1172,7 +1249,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitCouldNot
 	}
 
-	ws := runWitnesses(root, rows, runner, treeSHA(root), nowFunc().Format("2006-01-02"), *timeout, *ci)
+	ws := runWitnesses(root, rows, runner, runnerSource, treeSHA(root), nowFunc().Format("2006-01-02"), *timeout, *ci)
 	table := witnessTable(ws)
 
 	worst := verifyrunExitPass
