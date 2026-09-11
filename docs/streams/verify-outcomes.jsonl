@@ -11,4 +11,5 @@
 {"ts": "2026-09-07T03:46:30Z", "brief": "statusgen/11", "outcome": "verify-fail", "rows_passed": 6, "rows_total": 9, "sha": "5d20ff9"}
 {"ts": "2026-09-07T18:05:00Z", "brief": "windows-port/05", "outcome": "verified", "rows_passed": 8, "rows_total": 8, "sha": "9b1cf06"}
 {"ts": "2026-09-11T00:30:00Z", "brief": "harness-portability/12", "outcome": "verify-fail", "rows_passed": 11, "rows_total": 12, "sha": "553dc2ae"}
+{"ts": "2026-09-11T00:10:00Z", "brief": "harness-portability/02", "outcome": "verified", "rows_passed": 10, "rows_total": 10, "sha": "553dc2ae"}
 {"ts": "2026-09-11T00:00:00Z", "brief": "harness-portability/01", "outcome": "verified", "rows_passed": 6, "rows_total": 6, "sha": "553dc2ae"}

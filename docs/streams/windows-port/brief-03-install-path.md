@@ -11,7 +11,7 @@ why: >-
   builds the chosen one with the verify-or-refuse control intact.
 wave: 2
 depends: ["windows-port/01", "windows-port/02"]
-unblocks: ["windows-port/05"]
+unblocks: ["windows-port/05", "windows-port/06", "windows-port/07"]
 effort: L
 gate: human
 gate-why: >-

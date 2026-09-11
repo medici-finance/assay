@@ -109,9 +109,14 @@ type fakeGH struct {
 	// edge). It is the only fixture that exercises the `pull_request` discriminator as a
 	// GUARD rather than as a happy path: without it, deleting that check would let a PR be
 	// commented on AS an issue, unnoticed.
-	phantomPRNums  map[int]bool
-	issueAuthor    string
-	issueAuthorID  int64
+	phantomPRNums map[int]bool
+	issueAuthor   string
+	issueAuthorID int64
+	// issueLabels is the label set GET /issues/{n} serves for a number. It exists for
+	// the verify-gate card carve-out (#868), which is decided on the LABEL: without a
+	// fixture that can put a label on an issue, "the carve-out is label-scoped" is a
+	// claim no test can separate from "the carve-out is author-scoped".
+	issueLabels    map[int][]string
 	issueTrustJSON string
 
 	reviews []reviewInfo
@@ -418,6 +423,13 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out := map[string]any{"number": n, "state": "open"}
+		if names := f.issueLabels[n]; len(names) > 0 {
+			labels := make([]map[string]any, 0, len(names))
+			for _, name := range names {
+				labels = append(labels, map[string]any{"name": name})
+			}
+			out["labels"] = labels
+		}
 		if f.issueNums[n] {
 			login, id := f.issueAuthor, f.issueAuthorID
 			if login == "" {
@@ -675,6 +687,7 @@ func setupFake(t *testing.T) (*fakeGH, *bytes.Buffer) {
 		pullStatus:    map[int]int{},
 		issueStatus:   map[int]int{},
 		phantomPRNums: map[int]bool{},
+		issueLabels:   map[int][]string{},
 		// A default NON-risk changed file. It has to be stated: under the public-repo risk rule, an
 		// EMPTY changed-file list is itself risk-classed (fail closed — "we could not
 		// see the diff" is not "the diff is clean"), so a fixture that says nothing

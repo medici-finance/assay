@@ -195,7 +195,7 @@ mechanism lands; do not resolve it in this brief.
 | 2 | `grep -rn -e '^parked:' docs/streams/findings/ 2>/dev/null; echo rc=$?` | no free-text `parked:` key survives the migration |
 | 3 | `statusgen --root . --lint` | exit 0; a park missing `parked-until` PROBLEMs; an expired park emits the louder re-annunciation NOTICE |
 | 4 | `git diff --name-only $(git merge-base HEAD origin/main) HEAD -- STATUS.md` | empty output — STATUS.md NOT modified on the branch |
-| 5 | `go test ./statusgen/` | exit 0 with the new park tests present: authorized park suppresses the standing NOTICE, a park missing a required field PROBLEMs, an expired park re-annunciates, self-park / self-resolve / self-gut FAIL, corroborated transitions PASS |
+| 5 | `cd statusgen && GOWORK=off go test .` | exit 0 with the new park tests present: authorized park suppresses the standing NOTICE, a park missing a required field PROBLEMs, an expired park re-annunciates, self-park / self-resolve / self-gut FAIL, corroborated transitions PASS |
 | 6 | inject `resolved: no→yes` on a merge-base finding with no corroboration, run the guard | exit 1 (hard-fail, fail-closed) |
 
 ## Evidence

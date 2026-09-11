@@ -208,16 +208,16 @@ unresolved-argv rows (`allowlist.go:227,240`).
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Forge resolution contract — the forge comes from repo config, and refusal is the only fallback](brief-01-forge-resolution-contract.md) | 1 | M | implemented | — | — |
 | 02 | [Forge-qualified identity — roster entries, bot renderings, review corroboration](brief-02-forge-qualified-identity.md) | 2 | M | implemented | — | — |
-| 03 | [Write verbs A — deskpost, deskreply and deskflip onto the resolver](brief-03-write-verbs-comment-and-flip.md) | 2 | M | implemented | — | — |
+| 03 | [Write verbs A — deskpost, deskreply and deskflip onto the resolver](brief-03-write-verbs-comment-and-flip.md) | 2 | M | done | 2026-09-10 opus-4.8[1m]-verifier (assay a91bffd0; rows 1-12 + mutation 14 PASS; forgeban ceiling=9 DERIVED; row 13 statusgen could-not-check) | 2026-09-11 assay-reviewer-app[bot] (approved PR #820 @ 9e2e252827ca8df6736d7eebd6cfb12156366486) |
 | 04 | [Write verbs B — deskpr, deskfile, deskclose and deskevidence onto the resolver](brief-04-write-verbs-issues-and-evidence.md) | 2 | M | implemented | — | — |
-| 05 | [Claim layer — the GitLab shape of refs/dispatch/* and its release](brief-05-claim-layer-forge-shape.md) | 2 | M | implemented | — | — |
+| 05 | [Claim layer — the GitLab shape of refs/dispatch/* and its release](brief-05-claim-layer-forge-shape.md) | 2 | M | done | 2026-09-10 opus-4.8[1m]-verifier (assay 48b978bb; rows 1-10 + mutation 12 PASS; ClaimRefNamespace DERIVED; row 11 statusgen could-not-check) | 2026-09-11 assay-reviewer-app[bot] (approved PR #828 @ 922a5f1e7860313962aba4a177f9c5ed901a31e3) |
 | 06 | [Read verbs — deskboard, issueboard, scanloop and the loop planners on the seam](brief-06-read-verbs-on-the-seam.md) | 3 | M | implemented | — | — |
 | 07 | [statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted](brief-07-statusgen-acting-identity.md) | 3 | M | implemented | — | — |
 | 08 | [statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay](brief-08-statusgen-forge-aware.md) | 4 | M | implemented | — | — |
 | 09 | [Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up](brief-09-substrate-leakgate-and-cellctl.md) | 3 | M | implemented | — | — |
 | 10 | [Conformance — one round trip driven entirely by desk verbs, and the writes they refuse](brief-10-conformance-round-trip.md) | 5 | M | todo | — | — |
 | 11 | [Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives](brief-11-install-without-gh.md) | 5 | M | todo | — | — |
-| 12 | [deskboard non-board reads onto the seam](brief-12-deskboard-non-board-reads-onto-the-seam.md) | 4 | L | implemented | — | — |
+| 12 | [deskboard non-board reads onto the seam](brief-12-deskboard-non-board-reads-onto-the-seam.md) | 4 | L | done | 2026-09-10 opus-4.8[1m]-verifier (assay 48b978bb; rows 1-9 PASS; deskboard gh=0, ceiling=9 DERIVED; row 10 statusgen could-not-check) | 2026-09-11 assay-reviewer-app[bot] (approved PR #831 @ ab2b73a6065dd206ec7d65c78346a45880c64a29) |
 | 13 | [Write verbs C — deskpr, deskfile and deskclose onto the resolver](brief-13-write-verbs-c-deskpr-deskfile-deskclose.md) | 3 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
