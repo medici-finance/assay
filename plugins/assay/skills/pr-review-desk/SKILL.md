@@ -31,7 +31,8 @@ link. Bindings for your harness â€” which mechanism each `capability:*` names â€
 `references/merge-time-recheck.md` (merge-time + body/Verify re-check in full),
 `references/out-of-scope-filing.md` (the out-of-scope-discovery contract + the `deskfile`
 protocol), `references/verdict-format.md` (verdict mechanics, the body schema deskpost enforces,
-the secret scan).
+the secret scan), `references/re-anchor.md` (the five states a moved head puts a reviewed PR in,
+each as one SIGNAL/PROBE/ACT/STOP row, plus the full-length-SHA posting rule).
 
 ## Boot
 

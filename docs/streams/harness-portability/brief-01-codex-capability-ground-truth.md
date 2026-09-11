@@ -135,6 +135,26 @@ provide or sanction, and a BLOCKED row is never counted a pass.
 that motivated the brief), forcing re-measurement well before the third-party facts rot
 again. All reversible operational knobs; a wrong leash only shifts the re-measurement
 reminder.
+### RE-VERIFY 2026-09-11 — non-implementer dispatched verifier (opus-4.8[1m]-verifier) — VERDICT: PASS → verified
+
+Re-ran the Verify table against public medici-finance/assay merged main `553dc2ae530f00e861a14536af7cc884ab77ccf5` (two-protocol confirmed: `git rev-parse origin/main` equals `gh api repos/medici-finance/assay/commits/main`). Offline, read-only, in an isolated detached worktree at the merged head. Non-implementer.
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `test -f docs/research/codex-harness-capabilities.md` | 0 | file present | PASS |
+| 2 | ten required capability tokens present (no MISSING) | 0 | all ten present (resident-rules-channel, skills-discovery, auto-trigger, session-start-hook, subagent-dispatch, agent-messaging, background-notifications, sandbox-git, workspace-isolation, install-mechanism) | PASS |
+| 2a | positive control — grep an absent token | 1 | absent token reports absence (exit 1, distinct from missing-file 2) | PASS |
+| 3 | closed-vocabulary verdict lines | 0 | count 24 (>= 10); supported/partial/absent tokens present | PASS |
+| 4 | freshness registration + own line FRESH | 0 | `FRESH  docs/research/codex-harness-capabilities.md` (reviewed 2026-08-08, max-age 45d); registered in freshness.yaml | PASS |
+| 4a | force-age `--as-of 2027-01-01` → own line STALE | 0 | `STALE  docs/research/codex-harness-capabilities.md` (deadline 2026-09-22 exceeded) — the leash is a live check | PASS |
+| 5 | live Codex re-measure of subagent-dispatch/sandbox-git | — | no live Codex environment exists | BLOCKED (needs live Codex) — never counted green |
+| 6 | unmeasured count after the live pass | — | gated on row 5 | BLOCKED (needs live Codex) — never counted green |
+
+Method note: rows 4/4a were run with the module-aware invocation `cd tools/freshness && go run . --root <repo-root>`. The Verify row's literal `go run ./tools/freshness` is not resolvable in the merged-main layout — tools/freshness is its own Go module and there is no root go.mod or go.work — so the literal exits non-zero (go.mod not found). The property tested is unchanged; this is a stale Verify-row command post-re-home, not a deliverable defect (non-blocking desk finding, filed separately).
+
+RISK-VALUE: DERIVED — `max-age-days: 45` in freshness.yaml is the only notable literal. The brief derives it as ~1/3 of the ~135-day (~4.5-month) staleness window that motivated the brief, and it drives real behaviour: the deadline computes to 2026-09-22 and force-aging past it flips this file's own line to STALE (row 4a). Not a named-but-inert guard.
+
+VERDICT: PASS — 6/6 executable rows green (1, 2, 2a, 3, 4, 4a). Rows 5–6 remain BLOCKED (needs live Codex, the stream's external head), excluded from the total and never counted green. The row flips `implemented → verified`. gate: model, all risk answers no → CI autoflips `done` on the reviewer approval.
 
 ## Review
 

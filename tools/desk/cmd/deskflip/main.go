@@ -85,7 +85,18 @@ nothing is mutated:
                     toggle, never a wave-past-me flag on the verb.
   reviewer-approved the reviewer App's latest CORRECTNESS verdict is APPROVED and was
                     submitted AT THE CURRENT HEAD. A verdict at an earlier head is STALE,
-                    which is a distinct answer from "no verdict".
+                    which is a distinct answer from "no verdict". A CHANGES_REQUESTED at
+                    the current head BLOCKS whatever came after it — an APPROVE at an
+                    unchanged head re-verifies nothing.
+                    ONE EXEMPTION, the CHECK-ONLY CR. A standing CHANGES_REQUESTED is
+                    cleared without a code push only when ALL of: the CR body declares
+                    "Blocked-On-Check: <check name>" as its sole finding; a later APPROVE
+                    from the same reviewer at the same head cites "Cleared-Check-Run: <id>";
+                    that run is in the rollup AT THAT HEAD, carries the check the CR named,
+                    is a COMPLETED SUCCESS, and completed AFTER the CR was submitted.
+                    Anything short of all five refuses exactly as before. Both lines are
+                    read whole-line, emphasis-tolerant, and never from inside a fenced code
+                    block; an ambiguous body (two lines disagreeing) reads as no claim.
   checks-green      every check at the head has completed successfully. A pending or
                     unreadable rollup is could-not-verify, never green.
   mergeable         the PR is mergeable. A conflicting PR is not flippable, and its
