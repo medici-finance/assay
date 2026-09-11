@@ -22,9 +22,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/13 | 2026-09-11 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 1/14 | 2026-09-11 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-11 |  |
-| [mistake-proofing](docs/streams/mistake-proofing/README.md) | P2 | active | 6/6 | 2026-09-11 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-11 |  |
-| [spec-routing](docs/streams/spec-routing/README.md) | P2 | active | 1/1 | 2026-09-11 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 8/13 | 2026-09-11 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 3/6 | 2026-09-11 |  |
 
@@ -40,14 +38,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (52 desk-actionable of 62 total — 62 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (56 desk-actionable of 66 total — 66 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (52)
+### Desk-actionable (56)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -61,6 +59,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
 | desk-containers | 02 | implemented | 3500 | 5 | — | — | — |
+| forge-neutral | 07 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | harness-portability | 06 [exec:strong] | implemented | 3500 | 5 | — | — | — |
 | apps-installer | 05 | implemented | 3000 | 2 | — | — | — |
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
@@ -69,6 +68,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | forge-neutral | 05 [exec:strong] | implemented | 2500 | 1 | — | — | — |
+| forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-gitlab | 08 [exec:strong] | implemented | 2000 | 2 | — | — | — |
@@ -77,6 +77,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | windows-port | 00 | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
+| forge-gitlab | 09 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 01 | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -93,6 +94,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 16 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| forge-gitlab | 06 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -227,10 +229,10 @@ _None._
 ### forge-gitlab (6 open)
 
 - 05 Live pilot — one brief round-tripped on a real GitLab group, security-parity table walked — implemented (wave 4)
-- 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — todo (wave 5)
+- 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — implemented (wave 5)
 - 07 GitHub forge backend on go-gh — retire the exec-`gh` shell path — implemented (wave 2)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
-- 09 GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth — todo (wave 4)
+- 09 GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth — implemented (wave 4)
 - 10 GitLab trust-events + commit author-login for the deskpost trust read — todo (wave 5)
 
 ### forge-neutral (13 open)
@@ -241,9 +243,9 @@ _None._
 - 04 Write verbs B — deskpr, deskfile, deskclose and deskevidence onto the resolver — implemented (wave 2)
 - 05 Claim layer — the GitLab shape of refs/dispatch/* and its release — implemented (wave 2)
 - 06 Read verbs — deskboard, issueboard, scanloop and the loop planners on the seam — implemented (wave 3)
-- 07 statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted — todo (wave 3)
+- 07 statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted — implemented (wave 3)
 - 08 statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay — todo (wave 4)
-- 09 Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up — todo (wave 3)
+- 09 Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up — implemented (wave 3)
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
 - 12 deskboard non-board reads onto the seam — implemented (wave 4)
@@ -337,15 +339,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 02 Align three shipped disclosures with the code they describe — done (wave 0)
 - 05 Records control and retention, stated once — done (wave 1)
 
-### mistake-proofing (6 done)
-
-- 01 Cross-read a brief's declared paths against the risk classifier — the one authoring mistake that downgrades a gate — done (wave 0)
-- 02 Dereference named identifiers, not just backticked paths — test and function names must resolve — done (wave 0)
-- 03 Typed Verify-row obligation classes — carry the prose MUSTs as data and derive their presence from the diff — done (wave 1)
-- 04 Derive the authoring guidance's enforcement-status claims from the lint itself — done (wave 1)
-- 05 newbrief — the scaffolder as the authoring front door, so derived fields stop being typed — done (wave 2)
-- 06 D1 promoted to a lint obligation — a change that adds a check must carry its mutation row — done (wave 2)
-
 ### quality (15 done)
 
 - 01 qualgen miner skeleton — go-git extraction, incremental mine, three-state plumbing — done (wave 0)
@@ -363,10 +356,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 13 M4 session forensics — pluggable telemetry-source interface + file reference adapter — done (wave 3)
 - 14 closing the loop — auto-filed refactor work + quality error-budgets + RETRO output feed — done (wave 5)
 - 16 code-slop forensic sweep lane — deterministic suspects → agent verification → evidenced report — done (wave 1)
-
-### spec-routing (1 done)
-
-- 01 Enforce the §8 spec/scoping-doc lifecycle — the linter and the authoring-owed emitter — done (wave 0)
 
 ### statusgen (8 done)
 
@@ -387,4 +376,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**16** streams (**16** active, **0** paused) · **53/151** briefs done · completed initiatives: see `docs/archive/`
+**14** streams (**14** active, **0** paused) · **46/144** briefs done · completed initiatives: see `docs/archive/`
