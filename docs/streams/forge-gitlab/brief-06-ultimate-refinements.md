@@ -121,6 +121,14 @@ Target: merged `origin/main` @ `fc9001a7ab48ee9c859dd7e52f7543dec5f86c50` (two-p
 
 **VERDICT: PARTIAL/BLOCKED** — offline surface (rows 1 & 3) PASS; row 2 COULD-NOT-CHECK (live, no Phase-0 record). NOT a FAIL (no failing observation). **Held at `implemented`** — row 2 is the live proof of the brief's single-point-of-failure security control (reviewer-role-cannot-push), so the offline surface is not flipped alone. Decision filed `medici-finance/assay#838`: run the live push-rejection probe on an Ultimate instance (record as Phase-0 Evidence), OR a recorded ruling to accept the offline role-definition + row-3 tier-fallback with row 2 deferred (mirrors fg/05's live-pilot human-gate treatment).
 
+### Human ruling — 2026-09-11 (relayed from the driver, Ian; `medici-finance/assay#838`)
+
+**Answer: B — accept the offline surface, defer the live row-2 proof** ("I don't have an ultimate instance to test it on"). This human sign-off accepts rows 1 & 3 (offline, PASS) with row 2 (the live custom-reviewer-role-cannot-push proof) DEFERRED — recorded COULD-NOT-CHECK, not disproven. On that basis the row flips **implemented → verified**.
+
+**Deferred live proof still owed** (not lost): the enforced "custom reviewer role cannot push" guarantee is proven only at role-DEFINITION level (offline: `base_access_level: 20` + `admin_merge_request:true` + no push), not live-enforced. When an Ultimate GitLab instance is available, run the push-rejection probe (provision the role `POST /groups/:id/member_roles base_access_level:20 admin_merge_request:true`, bind to the reviewer SA, mint that token, `POST …/repository/branches` → expect HTTP 403) and append the Phase-0 record. Tracked on `#838`.
+
+**VERDICT (post-ruling): VERIFIED** — offline surface PASS + human sign-off (Ian, #838) accepting the deferred live row 2.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README
 table.
