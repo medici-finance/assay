@@ -39,7 +39,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (55 desk-actionable of 65 total — 65 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (55 desk-actionable of 65 total — 64 at implemented, 1 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -73,7 +73,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
-| forge-neutral | 12 [exec:strong] | implemented | 2000 | 0 | — | — | — |
+| forge-neutral | 12 [exec:strong] | verified | 2000 | 0 | — | 2026-09-10 opus-4.8[1m]-verifier (assay 48b978bb; rows 1-9 PASS; deskboard gh=0, ceiling=9 DERIVED; row 10 statusgen could-not-check) | — |
 | forge-neutral | 13 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | windows-port | 00 | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
@@ -250,7 +250,7 @@ _None._
 - 09 Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up — implemented (wave 3)
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
-- 12 deskboard non-board reads onto the seam — implemented (wave 4)
+- 12 deskboard non-board reads onto the seam — verified (wave 4)
 - 13 Write verbs C — deskpr, deskfile and deskclose onto the resolver — implemented (wave 3)
 
 ### harness-portability (12 open)
