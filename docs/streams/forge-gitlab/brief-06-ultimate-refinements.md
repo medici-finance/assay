@@ -119,9 +119,9 @@ Target: merged `origin/main` @ `fc9001a7ab48ee9c859dd7e52f7543dec5f86c50` (two-p
 
 **Scope-traceability:** every offline-runnable row maps 1:1 to a deliverable; row 2 being a live probe is inherent to the brief (Ultimate-by-construction), not a gap in the work.
 
-**VERDICT: PARTIAL/BLOCKED** — offline surface (rows 1 & 3) PASS; row 2 COULD-NOT-CHECK (live, no Phase-0 record). NOT a FAIL (no failing observation). **Held at `implemented`** — row 2 is the live proof of the brief's single-point-of-failure security control (reviewer-role-cannot-push), so the offline surface is not flipped alone. Decision filed `medici-finance/assay#838`: run the live push-rejection probe on an Ultimate instance (record as Phase-0 Evidence), OR a recorded ruling to accept the offline role-definition + row-3 tier-fallback with row 2 deferred (mirrors fg/05's live-pilot human-gate treatment).
+**VERDICT: PARTIAL/BLOCKED** — offline surface (rows 1 & 3) PASS; row 2 COULD-NOT-CHECK (live, no Phase-0 record). NOT a FAIL (no failing observation). **Held at `implemented`** — row 2 is the live proof of the brief's single-point-of-failure security control (reviewer-role-cannot-push), so the offline surface is not flipped alone. Decision filed `#838`: run the live push-rejection probe on an Ultimate instance (record as Phase-0 Evidence), OR a recorded ruling to accept the offline role-definition + row-3 tier-fallback with row 2 deferred (mirrors fg/05's live-pilot human-gate treatment).
 
-### Human ruling — 2026-09-11 (relayed from the driver, Ian; `medici-finance/assay#838`)
+### Human ruling — 2026-09-11 (relayed from the driver, Ian; `#838`)
 
 **Answer: B — accept the offline surface, defer the live row-2 proof** ("I don't have an ultimate instance to test it on"). This human sign-off accepts rows 1 & 3 (offline, PASS) with row 2 (the live custom-reviewer-role-cannot-push proof) DEFERRED — recorded COULD-NOT-CHECK, not disproven. On that basis the row flips **implemented → verified**.
 
