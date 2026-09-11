@@ -1529,7 +1529,27 @@ deskwt add <name> [--branch B] [--base origin/main]   # create tracker-<name> on
 deskwt remove <path>                                   # remove ONE proven-safe worktree
 deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
+deskwt role-init <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]   # a desk role's own locked worktree
+deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              # …and its teardown
 ```
+
+- **`role-init`** is the isolate-first step every desk role takes before `deskboot`: from a
+  FRESHLY FETCHED `origin/main` of the checkout it is pointed at (`--repo-root <checkout>`, else
+  the cwd) it creates the session-scoped worktree `tracker-<loop>-<session>` under the
+  sanctioned prefix on branch `<loop>/<session>` tracking `origin/main`, LOCKS it, stamps the
+  role's App commit identity worktree-scoped (never the shared `user.*`), and prints the
+  worktree's ABSOLUTE path as its last stdout line — the launcher contract,
+  `cd "$(deskwt role-init <role> --repo-root <checkout>)"`. `<role>` is EVERY role `desktoken`
+  mints (`desk`, `worker`, `reviewer`, `verifier`, `issue-loop`, `intake-loop`), spelled as that
+  token role OR as the loop name `deskboot` boots (`the-desk`, `worker-desk`, `pr-review-desk`,
+  `verify-desk`, `intake-desk`), positionally or as `--role`; a spelling in neither vocabulary
+  refuses (exit 5) naming both. An existing valid worktree is reused (idempotent); a stray or
+  foreign-repo path is refused, never clobbered; a fetch that cannot run is could-not-check
+  (exit 6) — `--no-fetch` is the explicit opt-out, never the default. The shared checkout's index
+  and `user.*` config are untouched; its only writes are enabling `extensions.worktreeConfig`
+  (once) and the new branch's own tracking section. `deskboot`'s shared-checkout refusal prints
+  this command verbatim (with the loop name it was given and the absolute `--repo-root`), plus
+  `cellctl desk <cell> <role>` when `cellctl` is on PATH.
 
 - **`add`** creates `tracker-<name>` on a new tracking branch, under the sanctioned prefix
   that is PORTABLE on the host OS: `/private/tmp/tracker-<name>` on POSIX, and
