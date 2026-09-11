@@ -23,6 +23,109 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.6 — 2026-09-11
+
+### Added
+- **Scoped brief `forge-gitlab/09` — the GitLab reviewer write path.** Planning-only: the brief
+  wires the review desk's verdict-and-escalation path (`deskpost review`/`security-review`/`comment`
+  then `ready`, plus `deskfile`/`desktoken` reviewer auth) onto the typed Forge surface for a
+  GitLab-resolved repo, using the provisioned role PAT rather than a GitHub App mint, with parity
+  proven against the GitHub backend. It is the head of the field-check critical path (#795 §1 and §2).
+- **`deskdispatch` applies the review-lane queue label `authorization-needed` when a reviewer is
+  dispatched onto a change, forge-neutrally (#795 §4).** A new non-fatal `queue-label` step runs
+  on a `--kit review` dispatch with `--pr` known and applies `authorization-needed` through the
+  resolved forge's idempotent label ensure+apply, under the reviewer role's own credential (a
+  GitHub App token or a GitLab PAT) — so a GitLab merge request now carries the same review-queue
+  signal a GitHub pull request does, instead of an empty label set. A label the forge will not
+  accept is a loud warning and the dispatch still stands (the label is a legibility aid, not a
+  correctness gate), mirroring `deskflip`'s `approval-needed` swap. Both queue labels are now
+  covered by GitLab forge golden tests for idempotent create-and-apply.
+- **`desktoken` / `deskfile` reviewer-role (and every role) auth now works on a GitLab-resolved
+  repo (#798 §2).** `desktoken <role> --repo <gitlab-slug>` with no explicit `--forge` now
+  RESOLVES the forge from the repo and, on a definite GitLab resolution, takes the GitLab PAT
+  custody path — instead of falling through to the GitHub App mint and dying with `no App ID for
+  App "<role>-app"` (exit 6), the credential a PAT-backed GitLab bot never provisions (#772). So
+  `deskfile check` on a GitLab repo reaches its dedupe search rather than a bare App-ID exit 6. A
+  GitHub or could-not-check resolution still falls through to the App mint unchanged, and an
+  absent custody PAT is a refusal — never an ambient-identity fallback.
+- **`worker-desk` cockpit-aware dispatch gains a fourth (Orca) arm.** When `orca` is on PATH, the per-item worktree is cut with `orca worktree create`, and — only when a fanout coordination run already exists — `orca orchestration worker-start` lets the coordinator learn a worker's `worker_done` outcome without polling. That orchestration link is coordinator-notification only and never an escalation channel; plain `git worktree add` remains the default and fully-supported fallback. Purely additive to the existing Supacode / Herdr / plain arms.
+- Recorded, with measurements, that **v1.0.5 supersedes v1.0.4 as the upgrade target without
+  superseding the flag day** — the same shape the v1.0.1 through v1.0.4 re-pins recorded. An
+  adopter already on v1.0.0 through v1.0.4 has no migration to run, only a re-pin, while an
+  adopter on v0.28.0 upgrading straight to v1.0.5 still runs the brief-v1 → brief-v2 migration
+  on the way through rather than being skipped past it.
+- The v1.0.5 umbrella this pins to carries statusgen's header-keyed base-cell resolution for
+  the `--corroborate` pre-existing-stamp exemption (#785): the base cell is located by column
+  HEADER NAME rather than by the branch's positional index, so a sign-off whose cell text is
+  unchanged still reads `PRE-EXISTING` when the board table has been RE-SHAPED under it,
+  instead of being re-gated. Every fail-closed guard is preserved, including the branch-column-
+  absent-from-base case, which now carries its own committed regression test (#788).
+
+### Fixed
+- **`create-fleet-gitlab.sh` no longer exposes the group-owner token on the process table, and a
+  GitLab API transport failure is now recorded in the run summary instead of silently aborting the
+  run (#786).** The shared `gl_api` helper — which every settings step calls — had two defects, both
+  pre-existing and fleet-wide (present since the helper was introduced, not a regression of the label
+  change):
+- **`deskboard`'s drift banner now recognises the `desk-tools-source <40-hex-commit> channel-D`
+  pin shape (#795 §3).** A channel-D adopter writes the source commit in field 2 with a literal
+  `channel-D` marker in field 3, but the reader only accepted the commit in field 3
+  (`desk-tools-source <tag> <40-hex-commit>`). The commit went unrecognised, so a correctly
+  pinned install reported `STALE-UNKNOWN … no readable desk-tools pin` and `reviewloop`'s idle
+  gate sat at could-not-check. The reader now takes the 40-hex commit from whichever column
+  holds it (field 3 preferred, else field 2); a line with a commit in neither column still falls
+  through to the in-tree ref / could-not-check, so real drift detection is unchanged.
+- It captured only curl's HTTP status, so a transport failure (DNS / TLS / connection refused, where
+  curl exits non-zero) made the command substitution non-zero and, under `set -euo pipefail`,
+  **hard-aborted the whole run before the failure ledger or the summary was written** — no
+  diagnostic, no recorded step. It now uses `|| echo "000"` (the same pattern the avatar step uses),
+  so the transport failure surfaces as the `000` status the caller's `record_failure` branch already
+  handles: the failure is written to the ledger, the remaining settings steps still run, and the
+  run reaches its summary and exits non-zero — recorded, not fatal.
+- It passed the owner PAT to `curl` as a `PRIVATE-TOKEN:` header on the command line, where any
+  local user could read it off the process table. It now mints the token into a `0600` `curl -K`
+  config file under `umask 077` and passes `curl -K` — never argv — the same credential custody the
+  avatar step already uses.
+- Refreshed the four stale `deskclose` mutation specs (`tools/desk/cmd/deskclose/mutations.json`)
+  so the `muhar` mutation harness is back to 11/11 mutations caught after the forge-neutral/13
+  re-seat drifted them out of sync.
+
+### Changed
+- **The GitLab reviewer verdict-WRITE control is now proven end-to-end (#798 §1).** The GitLab
+  backend's `PostReview` mapping — approve → verdict note + `/approve`; request-changes →
+  `/unapprove` + a head-SHA verdict note — is covered by a round-trip test: a verdict written
+  through the Forge is read back by `ReviewsAtHead` at head (approve and request-changes both
+  visible to the read path), and a permission/tier 403 on the write surfaces could-not-check
+  rather than a clean or laundered verdict.
+- **`deskpr`, `deskfile` and `deskclose` now reach the forge through the resolver under a
+  minted App identity, so they create, file and close on GitLab CE with the same trailer and
+  gate behaviour as GitHub.** The three verbs were the last of the fleet's outward-write
+  commands still shelling `gh` under whatever ambient CLI credential happened to be active. They
+  are re-seated onto `ForgeFor`, which mints the session-role App token and refuses rather than
+  falling through to an ambient identity. To make the migration possible the frozen forge seam
+  gained four enumerated operations — a branch→change lookup, a change body/title edit, a
+  repo-scoped issue text-search, and a read-only list-labels — each on both backends with a
+  golden contract case. `deskpr`'s `--as-app=false` ambient fallback is retired (a run with no
+  minted token now REFUSES, it does not fall back), and `deskfile`'s interim GitLab
+  named-refusal (`#691`) is superseded now the backend serves GitLab. The forge-CLI permit
+  ratchet drops by three. Authorized by the `#781` ruling (token-custody decision).
+- **`statusgen --lint`'s same-tag pin check now honours a per-line exemption marker**, so
+  `.assay-versions` stays lintable for adopters who legitimately pin one artifact on a different
+  tag. A trailing `# same-tag: exempt — <reason>` comment removes that one line from the
+  one-tag-one-tree grouping while keeping it a fully valid, lint-visible pin. It clears both real
+  cases — a guard binary frozen on an earlier tag by a maintainer ruling, and a
+  separate-repository artifact on its own release cadence the umbrella never ships. Every
+  non-exempt artifact must still share one tag: a genuine undeclared mixed-tag state still
+  PROBLEMs, and the exempt line's off-tag never leaks into that message.
+- The adopter-scaffold example gains a v1.0.5 composition manifest with real digests, and its
+  notes now name v1.0.5 as the umbrella an upgrade moves to. The v1.0.0, v1.0.1, v1.0.2,
+  v1.0.3 and v1.0.4 manifests stay: a tree pinned at any of them still has to resolve, and the
+  brief-v1 → brief-v2 migration's span ends at v1.0.0.
+- The plugin's paired-versions manifest now pins statusgen and desk-tools at the published
+  umbrella **v1.0.5** on all ten platform lines, every digest re-harvested from that release's
+  own checksum manifest and compared back against it. A cold install resolves the v1.0.5
+  binaries and verifies them byte-for-byte.
+
 ## v1.0.5 — 2026-09-10
 
 ### Added
