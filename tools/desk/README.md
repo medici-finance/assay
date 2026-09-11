@@ -428,6 +428,27 @@ work queue or steer a desk action.
   which tracks content edits only — labels don't re-quarantine). A follow-up
   hash-pinning upgrade (compare a stored hash of the blessed body at act time) is
   tracked as an issue; the timestamp comparison is v1.
+- **One carve-out — annotating a verify-gate sign-off card.** `deskpost comment` may
+  post on an **issue** authored by **`github-actions[bot]`** when that issue carries
+  the **`verify-gate`** label, with no blessing
+  (`deskkit.VerifyGateCardCommentAdmitted`). Nothing else: `review`,
+  `security-review` and `ready` stay refused on such an issue, an Actions-authored
+  issue *without* the label stays refused for `comment` too, and the label admits
+  nothing on an issue anyone else authored — an external user who labels their own
+  issue `verify-gate` gains exactly zero. **Why it is safe:** the gate exists to keep
+  unvetted third-party TEXT out of a desk's writes, and a sign-off card's body is not
+  third-party text — statusgen GENERATES it from the repo's own tree and
+  `verify-gate-open` files it verbatim under `GITHUB_TOKEN`. **Why the LABEL is the
+  scope and not the author:** an Actions workflow can file any issue at all, and those
+  other bodies are not generated from the tree; the label is how the card says which
+  one it is, and putting it there takes write access to the repo's workflows.
+  `github-actions[bot]` stays **untrusted** for every general predicate
+  (`TrustedAuthor`, `TrustedAuthorID`, `TrustedPublicAuthor`, `TrustedHumanAuthor`) —
+  this is a narrower read alongside them, not an addition to the roster. **What it
+  fixes:** before it, no desk could annotate a card at all — not to mark one an inert
+  duplicate, not to warn that closing it will not flip the brief's row — so the human
+  closing the card saw no warning. Inert on non-GitHub forges (nothing there renders a
+  login as `github-actions[bot]`), and fail-closed on an unconfigured roster.
 - **Quarantine visibility:** boards (`deskboard prs/actions/queue`, `issueboard`)
   list untrusted items under **EXTERNAL / UNBLESSED** — counted, visible (so Ada
   sees what awaits blessing), never given an ACTION. All public-origin text in that
@@ -1376,7 +1397,8 @@ Constraints in code:
   through the issues endpoint, whose `pull_request` sub-object is the documented
   discriminator). There is no `--issue` / `--pr` flag on purpose: a caller-declared kind is
   a second source of truth that can disagree with the remote, and the remote decides where
-  the comment lands. Both kinds get the same repo gate, body checks, trust gate, write
+  the comment lands. Both kinds get the same repo gate, body checks, trust gate (with
+  the one verify-gate card carve-out documented under **Trust gate** above), write
   budget, audit line and idempotency; the PR idempotency key is unchanged
   (`comment:<digest>` at the head), an issue keys on `comment:issue:<digest>` with no head.
   `--head` is **optional** here (an issue has no head at all) and **enforced when given**:
