@@ -8,21 +8,12 @@
       "method": "GET",
       "path": "/api/v4/users",
       "query": "page=1\u0026per_page=20\u0026search=a%40example.com"
-    },
-    {
-      "method": "GET",
-      "path": "/api/v4/users",
-      "query": "page=1\u0026per_page=20\u0026search=c%40example.com"
-    },
-    {
-      "method": "GET",
-      "path": "/api/v4/users/13"
     }
   ],
   "result": {
     "SHA": "abc123",
     "CommittedDate": "2026-09-01T10:00:00Z",
-    "AuthorLogin": "a-dev",
-    "CommitterLogin": "c-dev"
+    "AuthorLogin": "",
+    "CommitterLogin": ""
   }
 }

@@ -220,6 +220,14 @@ func expectedID(login string) (id int64, ok bool) {
 	if id, ok := c.Humans[l]; ok {
 		return id, true
 	}
+	// A GitLab service account renders as its BARE username (BotIdentity.AcceptedLogins —
+	// there is no [bot]/app/ decoration on that forge to key the flat Bots view on), so its
+	// pinned USER id is read from the forge-qualified identity table. Only a GitLab entry
+	// resolves here: a GitHub App's bare slug is in the same table and stays untrusted (the
+	// username-squatting fail-close below), because its accepted renderings are decorated.
+	if b, ok := c.BotIdents[l]; ok && b.Forge == ForgeGitLab {
+		return b.ID, true
+	}
 	slug := l
 	switch {
 	case strings.HasSuffix(l, "[bot]"):

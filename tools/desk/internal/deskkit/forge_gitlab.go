@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -72,6 +73,11 @@ type GitLabForge struct {
 	// cl caches the client built from Token/BaseURL. Lazily constructed by client() so a
 	// bare struct literal (the golden test's construction shape) still works.
 	cl *gitlab.Client
+	// emailLogin memoises GetCommit's email→username resolution (gitlabLoginForEmail) for the
+	// life of this backend value, so a board sweep that reads many commits by the same few
+	// authors pays the users lookup once per address. "" is cached too: an address that
+	// resolved to no account stays UNKNOWN for the sweep rather than being re-asked.
+	emailLogin map[string]string
 }
 
 var _ Forge = (*GitLabForge)(nil)
@@ -781,29 +787,240 @@ func (g *GitLabForge) ListOpenIssues(repo ForgeRepo) ([]IssueSummary, error) {
 		repo.Slug()), nil)
 }
 
-// PRTrustEvents is a could-not-check REFUSAL on GitLab, naming the gap. The trust gate reads
-// GitHub GraphQL `lastEditedAt` CONTENT-edit tracking on the body and every comment/review,
-// plus the numeric `databaseId` with GitHub's Bot/User actor discrimination — the recycled-
-// login defense. GitLab's note model exposes edit state and actor identity differently (system
-// notes intermixed, a distinct id space, no 1:1 content-edit-time on every surface), so the
-// blessing verdict cannot be reproduced 1:1; it is deferred to the forge-gitlab trust-events
-// brief rather than approximated, which on a trust gate is the fail-open direction.
+// --- Trust events (the GitLab trust-events brief) ---
+
+// gitlabTrustQuery is the ONE bounded GraphQL read behind PRTrustEvents / IssueTrustEvents —
+// the GitLab twin of PRTrustQuery / IssueTrustQuery (trustfetch.go). The `%s` is the noteable
+// field (`mergeRequest` | `issue`); everything else is identical for the two, because GitLab
+// has ONE content surface (notes) where GitHub has three (comments, reviews, review comments).
+// It reproduces the three facts deskkit.Blessed reduces, to GitHub parity:
+//
+//   - CONTENT EVENTS — every non-system note (`filter: ONLY_COMMENTS`) with its author's
+//     global id (`gid://gitlab/User/<n>`, parsed to the numeric <n> a recycled username
+//     cannot fake), username, bot flag, creation time and CONTENT-edit time. GitLab's Note
+//     type carries `lastEditedAt` exactly as GitHub's comment types do — it moves on a body
+//     edit and on nothing else — so the per-event edit signal maps 1:1.
+//   - THE ITEM BODY's content-edit time. Neither MergeRequest nor Issue carries a
+//     `lastEditedAt` in GitLab's schema, and their `updatedAt` moves on labels, assignees
+//     and every other unrelated event — the spurious-re-quarantine hole deskkit.Blessed's
+//     note names — so `updatedAt` is NEVER read. GitLab records every description edit as
+//     a SYSTEM note whose body is exactly `changed the description`
+//     (SystemNotes::IssuablesService#change_description; Free tier, both noteables), so the
+//     body-edit time is the creation time of the LATEST such note among the activity notes
+//     (`filter: ONLY_ACTIVITY`, newest 100). A label, assignee or approval event is a
+//     different system note and does not move it — the behaviour lastEditedAt gives.
+//   - COMPLETENESS — first:100 on the comments, last:100 on the activity, and NO cursor
+//     walking (the GitHub read's own bound). An overflowed comment page is incomplete. An
+//     overflowed activity page is incomplete ONLY when no description-change note was seen
+//     in the newest 100: when one was, the LATEST edit is in hand by construction (an older
+//     edit cannot be the latest), and only the latest edit is what the gate compares.
+//     Incomplete → the caller quarantines (fail closed), never admits.
+const gitlabTrustQuery = `query($path:ID!,$iid:String!){project(fullPath:$path){%s(iid:$iid){comments:notes(filter:ONLY_COMMENTS,first:100){pageInfo{hasNextPage} nodes{createdAt lastEditedAt author{id username bot}}} activity:notes(filter:ONLY_ACTIVITY,last:100){pageInfo{hasPreviousPage} nodes{body createdAt}}}}}`
+
+// gitlabDescriptionChangeNoteBody is the system-note body GitLab writes on a description
+// edit. Matched exactly (trimmed, case-folded) like gitlabIsApprovalSystemNote: a comment
+// that merely quotes the phrase is a non-system note and never reaches this check, and a
+// system note with any other body (a label, a title change, an approval) is not an edit.
+const gitlabDescriptionChangeNoteBody = "changed the description"
+
+func gitlabIsDescriptionChangeNote(body string) bool {
+	return strings.TrimSpace(strings.ToLower(body)) == gitlabDescriptionChangeNoteBody
+}
+
+// gitlabActorTypeUser / gitlabActorTypeBot are the Typename values a GitLab actor carries
+// into the shared reader. They are deliberately NOT GitHub's "Bot": renderedLogin decorates
+// a "Bot" actor as `<login>[bot]`, which is the GitHub-only rendering — a GitLab service
+// account is recognised by its BARE username (BotIdentity.AcceptedLogins: "a GitLab username
+// dressed in GitHub bot clothing is not accepted"). The bot flag is still read from the
+// same query (never defaulted) and carried here so the discrimination is in the payload; it
+// does not change the rendering, because on GitLab there is only one.
+const (
+	gitlabActorTypeUser = "GitLabUser"
+	gitlabActorTypeBot  = "GitLabBot"
+)
+
+// glGQL* are the wire shapes of gitlabTrustQuery's response (only what the gate consumes).
+type glGQLPageInfo struct {
+	HasNextPage     bool `json:"hasNextPage"`
+	HasPreviousPage bool `json:"hasPreviousPage"`
+}
+
+type glGQLActor struct {
+	ID       string `json:"id"` // global id: gid://gitlab/User/<n>
+	Username string `json:"username"`
+	Bot      bool   `json:"bot"`
+}
+
+type glGQLNote struct {
+	Body         string      `json:"body"`
+	CreatedAt    string      `json:"createdAt"`
+	LastEditedAt string      `json:"lastEditedAt"`
+	Author       *glGQLActor `json:"author"`
+}
+
+type glGQLNoteConn struct {
+	PageInfo glGQLPageInfo `json:"pageInfo"`
+	Nodes    []glGQLNote   `json:"nodes"`
+}
+
+type glGQLNoteable struct {
+	Comments glGQLNoteConn `json:"comments"`
+	Activity glGQLNoteConn `json:"activity"`
+}
+
+type glGQLTrustEnvelope struct {
+	Data struct {
+		Project *struct {
+			MergeRequest *glGQLNoteable `json:"mergeRequest"`
+			Issue        *glGQLNoteable `json:"issue"`
+		} `json:"project"`
+	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+// gitlabGlobalIDRe matches GitLab's GraphQL global id for a user. A bare number is accepted
+// too (some fixtures and older schemas render the numeric id directly); anything else is an
+// error, never a defaulted 0 — an id-less human event fails closed in trustedContentAuthor,
+// but silently manufacturing that state from a schema surprise would hide the surprise.
+var gitlabGlobalIDRe = regexp.MustCompile(`^gid://gitlab/[A-Za-z]+/([0-9]+)$`)
+
+func gitlabGlobalUserID(gid string) (int64, error) {
+	gid = strings.TrimSpace(gid)
+	if m := gitlabGlobalIDRe.FindStringSubmatch(gid); m != nil {
+		gid = m[1]
+	}
+	id, err := strconv.ParseInt(gid, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("GitLab actor id %q is not a global user id", gid)
+	}
+	return id, nil
+}
+
+// PRTrustEvents reads a merge request's trust-gate content events (see gitlabTrustQuery).
 func (g *GitLabForge) PRTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
-	return nil, g.trustEventsGap(repo, number, "PRTrustEvents")
+	return g.trustEvents(repo, number, "mergeRequest", "PRTrustEvents")
 }
 
-// IssueTrustEvents is PRTrustEvents' issue twin — the same could-not-check gap.
+// IssueTrustEvents is PRTrustEvents' issue twin: the same query over the issue noteable.
 func (g *GitLabForge) IssueTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error) {
-	return nil, g.trustEventsGap(repo, number, "IssueTrustEvents")
+	return g.trustEvents(repo, number, "issue", "IssueTrustEvents")
 }
 
-func (g *GitLabForge) trustEventsGap(repo ForgeRepo, number int, op string) error {
-	return Unverifiable(fmt.Sprintf(
-		"could-not-check: the GitLab backend does not serve %s for %s#%d — the trust gate reads GitHub "+
-			"GraphQL lastEditedAt content-edit tracking and the numeric databaseId with Bot/User actor "+
-			"discrimination, which GitLab's note/system-note model and id space do not map 1:1. It is deferred "+
-			"to the forge-gitlab trust-events brief, never approximated (a guessed blessing is fail-open).",
-		op, repo.Slug(), number), nil)
+// trustEvents runs gitlabTrustQuery through the library's GraphQL transport (the fixed
+// `/api/graphql` endpoint — no `glab` shell, no caller-supplied endpoint; the GitHub backend
+// posts to its `/graphql` the same way) and reduces the response through the SAME reader
+// (collectEvents) the GitHub backend and the CLI surfaces use, so no two consumers can draw
+// different blessings from equivalent content.
+//
+// Three-state: a transport / permission / tier failure, a GraphQL-level error, and a
+// missing noteable (wrong number, or a project the token cannot see) are each could-not-check
+// naming what failed; a change with no notes is a REAL, EMPTY payload (zero events,
+// Complete=true, nil error); a read that overflowed a page is a real payload with
+// Complete=false, which the caller quarantines.
+func (g *GitLabForge) trustEvents(repo ForgeRepo, number int, noteable, op string) (*TrustPayload, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	var env glGQLTrustEnvelope
+	_, qerr := cl.GraphQL.Do(gitlab.GraphQLQuery{
+		Query:     fmt.Sprintf(gitlabTrustQuery, noteable),
+		Variables: map[string]any{"path": repo.Slug(), "iid": strconv.Itoa(number)},
+	}, &env)
+	if qerr != nil {
+		return nil, g.mapErr(http.MethodPost, gitlab.GraphQLAPIEndpoint, gitlabUnwrapGraphQLErr(qerr))
+	}
+	if len(env.Errors) > 0 {
+		msgs := make([]string, 0, len(env.Errors))
+		for _, e := range env.Errors {
+			msgs = append(msgs, e.Message)
+		}
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: %s for %s#%d — the GitLab GraphQL trust query returned errors: %s",
+			op, repo.Slug(), number, strings.Join(msgs, "; ")), nil)
+	}
+	var item *glGQLNoteable
+	if env.Data.Project != nil {
+		if noteable == "issue" {
+			item = env.Data.Project.Issue
+		} else {
+			item = env.Data.Project.MergeRequest
+		}
+	}
+	if item == nil {
+		return nil, Unverifiable(
+			fmt.Sprintf("could-not-check: %s for %s#%d — the GitLab GraphQL trust query returned no %s (wrong number, or the token cannot see the project)",
+				op, repo.Slug(), number, noteable),
+			&ForgeAPIError{Status: http.StatusNotFound, Method: http.MethodPost, Path: gitlab.GraphQLAPIEndpoint})
+	}
+	gi, activityComplete, cerr := gitlabTrustItem(item)
+	if cerr != nil {
+		return nil, Unverifiable(fmt.Sprintf("cannot read trust events for %s#%d", repo.Slug(), number), cerr)
+	}
+	// pr=false: GitLab's one notes surface is the `comments` connection; there are no review
+	// or review-thread connections to fold in (a GitLab approval carries no content, and a
+	// review body IS a note, already in the comments).
+	bodyEdited, events, complete, rerr := collectEvents(gi, false)
+	if rerr != nil {
+		return nil, Unverifiable(fmt.Sprintf("cannot read trust events for %s#%d", repo.Slug(), number), rerr)
+	}
+	return &TrustPayload{BodyEdited: bodyEdited, Events: events, Complete: complete && activityComplete}, nil
+}
+
+// gitlabTrustItem translates the GitLab wire shape into the reader's item shape and derives
+// the body-edit time from the activity notes (see gitlabTrustQuery). activityComplete is
+// false only when the activity page overflowed AND no description-change note was seen.
+func gitlabTrustItem(item *glGQLNoteable) (gi *gqlItem, activityComplete bool, err error) {
+	gi = &gqlItem{}
+	gi.Comments.PageInfo.HasNextPage = item.Comments.PageInfo.HasNextPage
+	for i := range item.Comments.Nodes {
+		n := &item.Comments.Nodes[i]
+		c := gqlComment{CreatedAt: n.CreatedAt, LastEditedAt: n.LastEditedAt}
+		if n.Author != nil {
+			id, perr := gitlabGlobalUserID(n.Author.ID)
+			if perr != nil {
+				return nil, false, perr
+			}
+			typename := gitlabActorTypeUser
+			if n.Author.Bot {
+				typename = gitlabActorTypeBot
+			}
+			c.Author = &gqlActor{Login: n.Author.Username, Typename: typename, DatabaseID: id}
+		}
+		// A nil author (a deleted account) stays nil: renderedLogin renders it "", untrusted —
+		// the same ghost handling as GitHub.
+		gi.Comments.Nodes = append(gi.Comments.Nodes, c)
+	}
+	var latest time.Time
+	latestRaw := ""
+	for i := range item.Activity.Nodes {
+		n := &item.Activity.Nodes[i]
+		if !gitlabIsDescriptionChangeNote(n.Body) {
+			continue
+		}
+		t, perr := parseTrustTime(n.CreatedAt)
+		if perr != nil {
+			return nil, false, fmt.Errorf("bad description-change createdAt: %w", perr)
+		}
+		if t.After(latest) {
+			latest, latestRaw = t, n.CreatedAt
+		}
+	}
+	gi.LastEditedAt = latestRaw
+	return gi, latestRaw != "" || !item.Activity.PageInfo.HasPreviousPage, nil
+}
+
+// gitlabUnwrapGraphQLErr surfaces the HTTP-level *gitlab.ErrorResponse a GraphQL transport
+// failure carries: the library wraps it in a GraphQLResponseError whose Err field does not
+// unwrap, so mapErr's status classification (401 re-mint / 403 tier / 404 visibility) would
+// otherwise read every GraphQL failure as statusless.
+func gitlabUnwrapGraphQLErr(err error) error {
+	var gre *gitlab.GraphQLResponseError
+	if errors.As(err, &gre) && gre.Err != nil {
+		return gre.Err
+	}
+	return err
 }
 
 // ReviewsAtHead returns the verdicts on a merge request, WITH the head each is provably
@@ -1482,11 +1699,13 @@ func (g *GitLabForge) ListRecentCommits(repo ForgeRepo, limit int) ([]RepoCommit
 }
 
 // GetCommit reads one commit's committed date (GitLab `GET /projects/:id/repository/commits/
-// :sha`). CommittedDate maps 1:1; the account-login fields are a per-field could-not-check on
-// GitLab (left EMPTY) because a GitLab commit payload carries the raw git author/committer
-// name+email but does NOT resolve them to an instance account — the same honest posture
-// ReviewsAtHead takes on a CommitID it cannot pin. A caller reads the empty login as UNKNOWN
-// attribution, never as "not the author".
+// :sha`) and resolves its attributed accounts. CommittedDate maps 1:1. A GitLab commit
+// payload carries the raw git author/committer name+email and does NOT resolve them to an
+// instance account, so the logins are resolved HERE (the GitLab trust-events brief) by looking each address
+// up to the account whose email is exactly that address (gitlabLoginForEmail — Free-tier
+// users read). A field is filled only when an account resolves and left EMPTY otherwise —
+// per-field could-not-check, which a caller reads as UNKNOWN attribution, never as "not the
+// author". A commit-read failure is could-not-check for the whole read.
 func (g *GitLabForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error) {
 	cl, err := g.client()
 	if err != nil {
@@ -1500,7 +1719,84 @@ func (g *GitLabForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
 	if cerr != nil {
 		return nil, g.mapErr(http.MethodGet, path, cerr)
 	}
-	return &RepoCommit{SHA: c.ID, CommittedDate: gitlabTime(c.CommittedDate)}, nil
+	return &RepoCommit{
+		SHA:            c.ID,
+		CommittedDate:  gitlabTime(c.CommittedDate),
+		AuthorLogin:    g.gitlabLoginForEmail(cl, c.AuthorEmail),
+		CommitterLogin: g.gitlabLoginForEmail(cl, c.CommitterEmail),
+	}, nil
+}
+
+// gitlabEmailCandidates bounds the users search behind gitlabLoginForEmail to one page. The
+// search is the instance's own fuzzy name/username/public-email match; the exact-address
+// check below is what turns a candidate into an attribution, so a page is plenty.
+const gitlabEmailCandidates = 20
+
+// gitlabLoginForEmail resolves a commit's git author/committer address to the USERNAME of the
+// instance account whose email is EXACTLY that address, memoised per backend value.
+//
+// The rules are fail-closed in every direction, because the login is the identity the stall
+// clock and the trust path read and a wrong resolution mis-attributes a commit:
+//
+//   - the users search (`GET /users?search=<addr>`, Free tier; for a non-admin token it
+//     matches PUBLIC email, name and username) yields CANDIDATES only. A candidate counts
+//     when its public or primary email equals the address case-insensitively — never on a
+//     fuzzy name/username hit. When the list shape carries no email field (the non-admin
+//     rendering) the detail read (`GET /users/:id`) supplies it.
+//   - no exact match, an address that resolves to no account (a service account's noreply
+//     address is not a public email), a lookup or detail-read failure, or MORE THAN ONE
+//     exact match all yield "" — UNKNOWN attribution. A failure is deliberately NOT
+//     propagated as an error: one unreadable users route must not blank the committed date
+//     the stall clock needs (the gitlabActorType posture), and "" already means
+//     could-not-check on this field by RepoCommit's contract.
+//   - a login is never constructed from the address (no local-part, no roster-derived
+//     shape — forgeidentity.go: the GitLab commit address is validated, never built).
+func (g *GitLabForge) gitlabLoginForEmail(cl *gitlab.Client, email string) string {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return ""
+	}
+	if login, seen := g.emailLogin[email]; seen {
+		return login
+	}
+	login := g.lookupLoginForEmail(cl, email)
+	if g.emailLogin == nil {
+		g.emailLogin = map[string]string{}
+	}
+	g.emailLogin[email] = login
+	return login
+}
+
+func (g *GitLabForge) lookupLoginForEmail(cl *gitlab.Client, email string) string {
+	users, _, err := cl.Users.ListUsers(&gitlab.ListUsersOptions{
+		ListOptions: gitlab.ListOptions{PerPage: gitlabEmailCandidates, Page: 1},
+		Search:      gitlab.Ptr(email),
+	})
+	if err != nil {
+		return ""
+	}
+	match := ""
+	for _, u := range users {
+		if u == nil {
+			continue
+		}
+		pub, prim := u.PublicEmail, u.Email
+		if pub == "" && prim == "" {
+			d, _, derr := cl.Users.GetUser(u.ID, gitlab.GetUsersOptions{})
+			if derr != nil || d == nil {
+				return "" // a candidate this read could not qualify leaves the whole answer UNKNOWN
+			}
+			pub, prim = d.PublicEmail, d.Email
+		}
+		if !strings.EqualFold(pub, email) && !strings.EqualFold(prim, email) {
+			continue
+		}
+		if match != "" && !strings.EqualFold(match, u.Username) {
+			return "" // two accounts claim one address: ambiguous, never a coin flip
+		}
+		match = u.Username
+	}
+	return match
 }
 
 // CompareRefs is a could-not-check REFUSAL on GitLab, naming the gap. GitLab's compare
