@@ -77,8 +77,8 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `go test ./statusgen/ -run LintAudit -v` | exit 0; `TestLintAudit*` covers the per-rule tally + COLD-flag detection |
-| 2 | `go test ./statusgen/ && go vet ./statusgen/` | exit 0 |
+| 1 | `cd statusgen && GOWORK=off go test . -run LintAudit -v` | exit 0; `TestLintAudit*` covers the per-rule tally + COLD-flag detection |
+| 2 | `cd statusgen && GOWORK=off go test . && go vet .` | exit 0 |
 | 3 | `statusgen --root . --lint-audit` | exit 0; prints a `rule \| firings \| gates-a-test?` table sorted ascending |
 | 4 | `statusgen --root . --lint; echo $?` | 0 (the audit subcommand does not perturb ordinary lint) |
 

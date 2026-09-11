@@ -82,7 +82,7 @@ on GitLab as well (edition-matrix.md table A, rows 1-14). Nothing degrades on CE
 |---|---------|--------|
 | 1 | `go build ./... && go test ./tools/...` | exit 0 |
 | 2 | `grep -rn "api.github.com" tools/desk/cmd --include='*.go' \| grep -v _test.go \| wc -l` | `0` — no direct API construction outside the forge implementation |
-| 3 | `go test ./tools/desk/internal/deskkit/ -run TestForgeGithubGolden -v` | exit 0; output contains `PASS` and lists ≥ 10 golden-pinned operations |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGithubGolden -v` | exit 0; output contains `PASS` and lists ≥ 10 golden-pinned operations |
 | 4 | `git diff --stat origin/main -- tools/desk/internal/deskkit/forge.go` then `go doc ./tools/desk/internal/deskkit Forge` | interface exists; method set matches the committed inventory (dereference: compare `go doc` output against inventory.md rows) |
 
 ## Evidence

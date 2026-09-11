@@ -168,11 +168,11 @@ brief names none.
 |---|---------|--------|
 | 1 | `go build ./... && go test ./tools/...` | exit 0 |
 | 2 | `deskpost review --dry-run` against a GitLab-resolved repo fixture forms an APPROVE verdict through the Forge write path | exit 0; output shows a verdict formed via the GitLab backend and does NOT contain `deskpost has no gitlab write backend` (the exit-6 fail-closed is gone) |
-| 3 | `go test ./tools/desk/internal/deskkit/ -run TestForgeGitlabRequestChanges -v` | exit 0; `PASS` — a request-changes verdict lands as unapprove + a head-SHA verdict note and is then read back by `ReviewsAtHead` at that head (approve↔request-changes both visible to the read path) |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGitlabRequestChanges -v` | exit 0; `PASS` — a request-changes verdict lands as unapprove + a head-SHA verdict note and is then read back by `ReviewsAtHead` at that head (approve↔request-changes both visible to the read path) |
 | 4 | `deskfile check` against a GitLab-resolved repo fixture, with `REVIEWER_APP_ID` unset | exit 0; completes without ever calling the GitHub App mint path — a trace/test assertion shows the reviewer PAT (`gitlab-reviewer.token`) resolved and no `no App ID for App "reviewer-app"` error |
-| 5 | `go test ./tools/desk/cmd/desktoken/ -run TestReviewerAuthGitlabPAT -v` | exit 0; `PASS` — `desktoken reviewer` on a GitLab repo resolves the custody-file PAT and refuses (does not fall back to ambient identity) when it is absent; `REVIEWER_APP_ID` is not read on the GitLab path |
-| 6 | `go test ./tools/desk/... -run TestNoForgeCLIShellout -v && go test ./tools/desk/internal/deskkit/ -run TestForgeNoPassthrough -v` | exit 0 on both; `PASS` — the GitLab write path adds no `glab` shell-out and no arbitrary-endpoint passthrough method |
-| 7 | `go test ./tools/desk/internal/deskkit/ -run TestForgeGitlabWriteTierErrors -v` | exit 0; a 403 on a write fixture surfaces `could-not-check`, distinct from a landed verdict — a Premium-gated failure is never reported as a clean write |
+| 5 | `cd tools/desk && GOWORK=off go test ./cmd/desktoken/ -run TestReviewerAuthGitlabPAT -v` | exit 0; `PASS` — `desktoken reviewer` on a GitLab repo resolves the custody-file PAT and refuses (does not fall back to ambient identity) when it is absent; `REVIEWER_APP_ID` is not read on the GitLab path |
+| 6 | `cd tools/desk && GOWORK=off go test ./... -run TestNoForgeCLIShellout -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v` | exit 0 on both; `PASS` — the GitLab write path adds no `glab` shell-out and no arbitrary-endpoint passthrough method |
+| 7 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGitlabWriteTierErrors -v` | exit 0; a 403 on a write fixture surfaces `could-not-check`, distinct from a landed verdict — a Premium-gated failure is never reported as a clean write |
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->

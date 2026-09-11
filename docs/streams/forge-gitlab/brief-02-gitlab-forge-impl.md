@@ -86,9 +86,9 @@ brief 04's provisioning, not here — see edition-matrix.md rows B3 and B4.
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `go build ./... && go test ./tools/desk/internal/deskkit/ -run TestForgeGitlab -v` | exit 0; output contains `PASS` |
-| 2 | `go test ./tools/desk/internal/deskkit/ -run TestForgeGitlabCoverage -v` | exit 0 — the test reads inventory.md and fails naming any inventoried op with no gitlab contract test (dereference: coverage measured against the committed inventory, not asserted) |
-| 3 | `go test ./tools/desk/internal/deskkit/ -run TestForgeGitlabTierErrors -v` | exit 0; output contains `could-not-check` for a 403 fixture |
+| 1 | `cd tools/desk && GOWORK=off go build ./... && go test ./internal/deskkit/ -run TestForgeGitlab -v` | exit 0; output contains `PASS` |
+| 2 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v` | exit 0 — the test reads inventory.md and fails naming any inventoried op with no gitlab contract test (dereference: coverage measured against the committed inventory, not asserted) |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run TestForgeGitlabTierErrors -v` | exit 0; output contains `could-not-check` for a 403 fixture |
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->

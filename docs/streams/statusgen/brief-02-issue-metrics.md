@@ -108,7 +108,7 @@ across the repo set — the same repos `--dora` covers):
 | 3 | `statusgen --root . --issues \| grep -iE -e unattributed -e raised-by` | ≥1 — the by-desk cut renders (unattributed until the desks stamp the label) |
 | 4 | `statusgen --root . --issues --json \| jq -e '.open,.byDesk,.internal,.external,.ageBuckets,.byType,.defects.critical' >/dev/null` | exit 0 — JSON carries the cuts incl. type/severity |
 | 4b | `statusgen --root . --issues \| grep -iE -e 'verify-gate' -e 'critical' -e 'defect'` | ≥1 — states, defects, and critical severity render as distinct classes (verify-gate is NOT counted as a bug) |
-| 5 | `go test ./statusgen/ -run 'Issue' -count=1` | exit 0 |
+| 5 | `cd statusgen && GOWORK=off go test . -run 'Issue' -count=1` | exit 0 |
 | 6 | `statusgen --root . --lint` | exit 0 (stale-issue alarm is a NOTICE, gh-guarded) |
 
 ## Evidence
