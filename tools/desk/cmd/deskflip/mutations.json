@@ -50,6 +50,48 @@
       "new": "\tchecks := pr.StatusCheckRollup"
     },
     {
+      "name": "check-only CR (a): accept any CR body as a check-only declaration (an ordinary CR with real findings becomes exempt — reddens TestProseAboutTheCheckIsNotACheckOnlyDeclaration)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\tcheck := deskkit.BlockedOnCheckName(cr.Body)\n\tif check == \"\" {",
+      "new": "\tcheck := deskkit.BlockedOnCheckName(cr.Body)\n\tif false && check == \"\" {"
+    },
+    {
+      "name": "check-only CR (b): drop the requirement that the re-approve CITE a run (a bare at-head re-approve clears a declared CR — reddens TestReApproveCitingNoRunIsStillRefused)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tif id := deskkit.ClearedCheckRunID(r.Body); id != \"\" {\n\t\t\tcited[id] = true\n\t\t}",
+      "new": "\t\tcited[deskkit.ClearedCheckRunID(r.Body)] = true\n\t\tfor _, run := range []string{} {\n\t\t\tcited[run] = true\n\t\t}"
+    },
+    {
+      "name": "check-only CR (b): drop the AFTER-the-CR test on the cited run's completion (a run the reviewer already had when they blocked clears it — reddens TestCitedRunThatPredatesTheCRIsRefused)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tif !doneAt.After(crAt) {",
+      "new": "\t\tif false && !doneAt.After(crAt) {"
+    },
+    {
+      "name": "check-only CR (b): accept a cited run that is not a completed success (a RED cited run clears the CR — reddens TestCitedRunThatIsNotGreenIsRefused)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tif !strings.EqualFold(run.Status, \"completed\") || !strings.EqualFold(run.Conclusion, \"success\") {",
+      "new": "\t\tif false && (!strings.EqualFold(run.Status, \"completed\") || !strings.EqualFold(run.Conclusion, \"success\")) {"
+    },
+    {
+      "name": "check-only CR (c): read the exemption's rollup at a FIXED sha instead of the reviewed head (a run on another head becomes evidence about this one — reddens TestCitedRunAbsentFromTheHeadRollupIsRefused)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tchecks, err = fg.ChecksAtHead(fr, head)",
+      "new": "\t\tchecks, err = fg.ChecksAtHead(fr, \"0000000000000000000000000000000000000000\")"
+    },
+    {
+      "name": "check-only CR (d): drop the requirement that the cited run BE the check the CR named (any green run on the head clears any check-only CR — reddens TestCitedRunForADifferentCheckIsRefused)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tif !strings.EqualFold(run.Name, check) {",
+      "new": "\t\tif false && !strings.EqualFold(run.Name, check) {"
+    },
+    {
+      "name": "check-only CR: let a SHORT rollup read clear a standing rejection (the cited run may be in the part that was never served — reddens TestShortRollupReadCannotClearTheCheckOnlyCR)",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tif checks.CheckRunsTotalCount > len(checks.CheckRuns) {",
+      "new": "\t\tif false && checks.CheckRunsTotalCount > len(checks.CheckRuns) {"
+    },
+    {
       "name": "keep the OLDER run per name instead of the latest, in the SHARED deskkit reducer (an obsolete SUCCESS masks a newer FAILURE — reddens deskflip's TestLatestRedRunStillRefuses through the shared path)",
       "file": "internal/deskkit/prstate.go",
       "old": "\t\tif recencyKey(e) > recencyKey(out[pos]) {",

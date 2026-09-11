@@ -528,9 +528,12 @@ func glCases() []glCase {
 					{"name": "leak-sweep", "status": "success"},
 					{"name": "external/policy", "status": "canceled"},
 				}
+				// The JOB id is GitLab's per-execution identifier and maps to the same
+				// interface ID GitHub's check-run id does; `deploy` carries none, pinning
+				// that an absent id maps to "" rather than "0".
 				s.jobs = []map[string]any{
-					{"name": "go-test", "status": "success"},
-					{"name": "lint", "status": "failed"},
+					{"id": 9001, "name": "go-test", "status": "success"},
+					{"id": 9002, "name": "lint", "status": "failed"},
 					{"name": "deploy", "status": "manual"},
 				}
 			},

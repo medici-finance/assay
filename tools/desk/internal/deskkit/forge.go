@@ -21,6 +21,7 @@ package deskkit
 // changed nothing observable at the wire.
 
 import (
+	"strconv"
 	"strings"
 	"time"
 )
@@ -225,11 +226,32 @@ type StatusContext struct {
 // not stamped — sorts OLDEST at the consumer, which is the fail-safe direction: a stampless
 // queued orphan never supersedes a completed run. Consumer: cmd/deskflip.
 type CheckRun struct {
+	// ID is the forge's own identifier for this RUN — GitHub's check-run id, GitLab's
+	// pipeline-job id — rendered as a string so the interface stays forge-neutral about
+	// how each forge numbers them. It identifies one EXECUTION, not the check: a re-run of
+	// the same named check is a different ID, which is exactly the property deskflip's
+	// check-only-CR exemption needs when a reviewer cites "the run that turned green".
+	// "" when the forge served none.
+	ID          string
 	Name        string
 	Status      string // queued | in_progress | completed
 	Conclusion  string // success | failure | neutral | ...
 	StartedAt   string // RFC3339, "" when the forge reported none
 	CompletedAt string // RFC3339, "" when the forge reported none
+}
+
+// checkRunID renders a forge's numeric run id as the interface's string ID.
+//
+// A ZERO id renders as "" rather than "0", and that is fail-closed on purpose: an absent
+// id is not an id. Rendering it as "0" would let a review body citing the literal string
+// `0` match every run the forge served no identifier for — the one direction of this
+// mapping that could GRANT something (see deskflip's check-only-CR exemption, which
+// matches a cited id against this field and treats "" as unmatchable).
+func checkRunID(id int64) string {
+	if id == 0 {
+		return ""
+	}
+	return strconv.FormatInt(id, 10)
 }
 
 // ChecksAtHead is the two CI rollups at a commit, each carrying the forge's asserted total

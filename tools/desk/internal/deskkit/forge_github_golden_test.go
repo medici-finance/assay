@@ -402,9 +402,18 @@ func TestForgeGithubGolden(t *testing.T) {
 			setup: func(s *goldenServer) {
 				s.status = map[string]any{"state": "success", "total_count": 1,
 					"statuses": []map[string]any{{"state": "success", "context": "ci/legacy", "created_at": "2026-08-24T00:00:00Z"}}}
-				s.checks = map[string]any{"total_count": 1,
-					"check_runs": []map[string]any{{"name": "go-test", "status": "completed", "conclusion": "success",
-						"started_at": "2026-08-24T00:00:00Z", "completed_at": "2026-08-24T00:05:00Z"}}}
+				// Two runs, and the second carries NO id. The mapping of the forge's numeric
+				// check-run id to the interface's string ID is what deskflip's check-only-CR
+				// exemption matches a reviewer's citation against, and the id-less run pins
+				// the fail-closed half: an absent id maps to "", never to "0", so a body
+				// citing `0` can never match a run the forge never identified.
+				s.checks = map[string]any{"total_count": 2,
+					"check_runs": []map[string]any{
+						{"id": 41234567890, "name": "go-test", "status": "completed", "conclusion": "success",
+							"started_at": "2026-08-24T00:00:00Z", "completed_at": "2026-08-24T00:05:00Z"},
+						{"name": "lint", "status": "completed", "conclusion": "success",
+							"started_at": "2026-08-24T00:00:00Z", "completed_at": "2026-08-24T00:04:00Z"},
+					}}
 			},
 			run: func(f *GitHubForge) (any, error) { return f.ChecksAtHead(forgeTestRepo, "abc123") },
 		},
