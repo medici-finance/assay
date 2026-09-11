@@ -31,10 +31,19 @@
   The Tag is the pinned windows-<arch> tag from plugins/assay/paired-versions.yaml (the CI step
   passes it through unresolved — resolving the sha is exactly what this proves the script does),
   so this stays correct as the pinned release bumps.
+
+  -RealSha256 is accepted and IGNORED: the already-live `.github/workflows/windows-ci-leg.yml`
+  (promoted in windows-port/04) still passes it, and no App credential can push a workflow-file
+  change to drop the argument. Keeping it here — rather than making this a breaking interface
+  change to a script a live, staging-only-editable workflow depends on — is what lets the live
+  required check keep passing until a human promotes the staged copy (ci/staged-workflows/
+  windows-ci-leg.yml) that stops passing it. Retire this parameter in the same commit that
+  removes the last caller still passing it.
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Tag,
-  [ValidateSet('amd64', 'arm64')][string]$Arch = 'amd64'
+  [ValidateSet('amd64', 'arm64')][string]$Arch = 'amd64',
+  [string]$RealSha256
 )
 $ErrorActionPreference = 'Stop'
 
