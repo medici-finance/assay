@@ -1,0 +1,10 @@
+# corpus: opaque token material wearing a single leading '+', the disguise the quantifier arm could grant
+# expect: refused
+# refs:   #879
+# shape:  '+' prefixed to the #410 slash-layout draws and to a bare 40-char mixed-case blob
+# why:    bounds the leading-'+' arm from below. The exemption is earned by the REMAINDER being
+# why:    path-like under the existing rule, never by the '+' itself; a credential that happens to
+# why:    start with '+' — or one whose second character is another '+' — stays refused.
+bare blob behind a plus:  +Qx7pLk2wZt9mNc4bYf6Rh{{+}}Vs8Ju3XoAeG5idWn1Dz
+slash layout behind one:  +Xq7bPmT2kVn9d/Rambler/{{+}}Zk4hQw8sLpXt3vNb2G
+two plus signs, real path: ++plugins/assay/{{+}}references/claude-code.md

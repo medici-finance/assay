@@ -184,6 +184,8 @@ func TestBodycheckCorpusCoversEveryCataloguedShape(t *testing.T) {
 		"neg-doc-path-hex-segment.txt":             "doc paths with a 32-hex segment",
 		"neg-issue-number-slash-list.txt":          "issue-number slash-lists",
 		"neg-k8s-secret-template-in-fence.txt":     "kind: Secret templates (placeholder values)",
+		"neg-regex-quantifier-glued-path.txt":      "rule 4 — a path behind one leading '+'",
+		"pos-token-wearing-a-leading-plus.txt":     "the leading-'+' rule must be earned by the remainder",
 		"pos-hex-token-wearing-a-doc-path.txt":     "the doc-path-hex rule must stay length-exact",
 		"pos-digit-token-wearing-slashes.txt":      "the issue-number rule must reject long numeric tokens",
 		"pos-k8s-secret-literal-in-fence.txt":      "the k8s-template rule must stay per-value",
