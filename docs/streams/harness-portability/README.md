@@ -182,7 +182,7 @@ record — that is a follow-on, not a claim this re-home makes. Statuses therefo
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Codex capability ground-truth — measured matrix, not inherited prior art](brief-01-codex-capability-ground-truth.md) | 0 | M | verified | 2026-09-11 opus-4.8[1m]-verifier (assay 553dc2ae; 6/6 executable PASS, rows 5–6 BLOCKED needs-live-Codex) | — |
+| 01 | [Codex capability ground-truth — measured matrix, not inherited prior art](brief-01-codex-capability-ground-truth.md) | 0 | M | done | 2026-09-11 opus-4.8[1m]-verifier (assay 553dc2ae; 6/6 executable PASS, rows 5–6 BLOCKED needs-live-Codex) | 2026-09-11 assay-reviewer-app[bot] (approved PR #869 @ 0af934dac24d2b73bf0c09342f95685bfbe0000e) |
 | 02 | [Kill the drift debt — re-sync the bundle, flip the canonical home](brief-02-drift-debt-authority-flip.md) | 0 | L | implemented | — | — |
 | 03 | [Ruling: target harnesses, delivery channel, degradation matrix](brief-03-target-channel-ruling.md) | 1 | S | implemented | — | — |
 | 04 | [Neutral-core skill bodies + per-harness binding files + neutrality lint](brief-04-neutral-core-skills.md) | 2 | L | implemented | — | — |
