@@ -30,10 +30,11 @@ gate-why: >-
   visibility with a write-capable grant.
 decision-trigger: creation
 design: DR-forge-gitlab-11
-issues: [834]
+issues: [834, 857]
 schema: brief-v2
 authored: 2026-09-11 by forge-gitlab authoring session (custody design worker)
 sources:
+  - "#857 — this brief's own decision-gate issue, CLOSED `human-decided` 2026-09-11 with the driver's ruling: option A/1 (the dedicated read-only `auditor` identity) approved as proposed, PLUS one addition — the adopter documentation and the public website are updated alongside, so every page enumerating `desktoken` roles or an App permission set gains the auditor row and its minimal grant. `DR-forge-gitlab-11` is flipped to APPROVED citing that comment; this brief's deliverables and Verify rows carry the docs half."
   - "#834 — the verify FAIL on forge-gitlab/08 row 3 and the driver's ruling (option B, 2026-09-11, ratified in-thread): closure-to-zero stands; the residual `gh` sites are open work needing a custody design"
   - "#835 — the fg/08 Evidence PR recording the FAIL (row 3 returns 4: three real invocations plus one comment literal)"
   - "#841 — open at authoring (draft, reviewer-App APPROVED @ 887c6ce): moves the two `deskroster` sites onto the EXISTING `GetPullRequest` / `ListOpenChanges` ops under the session-role token and lowers the forgeban ceiling 9 → 7; proposed keeping `repohardenguard` as CLI, which the ruling rejects"
@@ -59,7 +60,8 @@ consumers:
   - "tools/desk/cmd/desktoken/desktoken.go (`validRoles`) + internal/deskkit/preflight.go remediation text: follow-up forge-gitlab/11 (this brief — the `auditor` role; GitHub App mint and GitLab token-file read both keyed on the role name, no new code path)"
   - "tools/desk/internal/forgeban/allowlist.go + forgeban.go: follow-up forge-gitlab/11 (this brief — the `repohardenguard` permit row is removed and the ceiling lowered; the comment literal at forgeban.go:173 is reworded so the whole-tree grep reads 0)"
   - "docs/streams/forge-gitlab/inventory.md: follow-up forge-gitlab/11 (this brief — op 38's row and delta paragraph land WITH the method: `TestForgeNoPassthrough` reflects the interface against this table, so the row cannot precede the code)"
-  - "docs/adopting-assay.md + docs/adopting-assay-gitlab.md: follow-up forge-gitlab/11 (this brief — provisioning the auditor identity: the GitHub App's permission set, the GitLab service account's `read_api` scope, the `<config>/auditor-app.pem` / `gitlab-auditor.token` custody files)"
+  - "docs/adopting-assay.md + docs/adopting-assay-gitlab.md: follow-up forge-gitlab/11 (this brief — the #857 ruling's docs half, a DELIVERABLE with its own Verify rows: provisioning the auditor identity at every place these two pages ENUMERATE roles or permission sets — the GitHub App inventory + the provisioning checklist step 2 (`Metadata: read`, `Contents: read`, `Administration: read`, nothing writable), the GitLab role→service-account table (`read_api`, Reporter) and the per-role `gitlab-<role>.token` list, plus the `<config>/auditor-app.pem` / `gitlab-auditor.token` custody files and the preflight remediation text)"
+  - "the public website's adoption + apps pages: out-of-scope (the #857 ruling's website half; it lives in a different repo and lands as a COMPANION change tracked separately, so this brief neither edits nor gates on it — the wording it mirrors is the two adopter pages above)"
   - "tools/desk/internal/deskkit/echocoverage_test.go (`exemptFromRoster` reason for repohardenguard): follow-up forge-gitlab/11 (this brief — the guard now reads the roster's forge map, still never the write-authorisation set; the exemption's reason is rewritten to say so)"
   - "tools/desk/cmd/deskroster/*.go: out-of-scope (delivered by #841, open at authoring; absorbed into this brief only if #841 closes unmerged — the custody answer for those two reads, the session's own role token, is decided here either way)"
   - "the adopter's hardening checklist document (its Read cells): out-of-scope (it lives outside this tree; its `gh api <endpoint>` cells move to the `read <kind>` vocabulary when the adopter re-pins — the parser refuses the old form by name, never silently)"
@@ -99,6 +101,22 @@ the guard's own header says every setting it reads "belongs to the human", so it
 not be one that could apply them. A per-purpose identity with the narrowest grant is the same
 model the write-issues App follows (inventory delta D2). The options, alternatives and accepted
 consequences are the design record `DR-forge-gitlab-11`.
+
+**The ruling, and the docs half it added (#857, 2026-09-11).** The decision-gate issue is CLOSED
+`human-decided`: the driver ruled **option 1 — the dedicated read-only `auditor` identity —
+approved as proposed**, with one addition: *the documentation and the website are updated
+alongside*. So provisioning the auditor is not a side note in this brief; it is a DELIVERABLE with
+its own Verify rows. Every page that enumerates the `desktoken` roles or an App's permission set
+gains the auditor and its minimal grant — in this repo that is `docs/adopting-assay.md` (the App
+inventory and the provisioning checklist) and `docs/adopting-assay-gitlab.md` (the role→service-
+account table and the per-role `gitlab-<role>.token` list) — and a drift test pins code against
+those pages so a role can never again exist only in `validRoles`. The reason is the same one the
+guard's own three-state rule encodes: a role a fleet must provision but no page names is a
+provisioning step an adopter meets first as a Refused exit, with nothing to read that says what to
+create. `DR-forge-gitlab-11` records the addition as an accepted consequence. The WEBSITE half —
+the public site's adoption and apps pages, which mirror these two documents — lives in a different
+repo and lands as a COMPANION change tracked separately; this brief neither edits it nor gates on
+it, and no Verify row here dereferences it.
 
 **Op 38 — `RepoHardeningRead(repo ForgeRepo, kind HardeningReadKind) (json.RawMessage, error)`.**
 One method, a CLOSED kind vocabulary, one fixed endpoint literal per kind per backend. The
@@ -150,6 +168,12 @@ files:
   mint resolves `auditor-app.pem` / `AUDITOR_APP_ID` / `AUDITOR_INSTALL_ID` by the existing
   role-parameterised lookup; the GitLab path reads/rotates `gitlab-auditor.token` by the same
   brief-03 contract. `desktoken --version` echoes the new binding.
+- `tools/desk/cmd/desktoken/adopterdocs_test.go` (new) — `TestAdopterDocsEnumerateEveryRole` (planned): the
+  docs-drift guard for the #857 ruling's docs half, the `secondcell_test.go` `adopterContract`
+  shape. It walks `validRoles` and fails naming any role absent from `docs/adopting-assay.md` or
+  from `docs/adopting-assay-gitlab.md`'s role table and token-file list, so a SEVENTH role added
+  in code with no page naming it reddens CI instead of reaching an adopter as a Refused exit. The
+  same test asserts the auditor's documented GitHub grant carries no `: write`.
 - `tools/desk/internal/forgeban/allowlist.go` — remove `cmd/repohardenguard/check.go::ghRun::gh`;
   lower `allowedInvocationCeiling` by exactly the rows removed. `forgeban.go:173` — reword the
   comment so it no longer carries the literal the whole-tree grep counts.
@@ -157,11 +181,17 @@ files:
   reason updated (reads the forge map, never the write-authorisation set).
 - `docs/streams/forge-gitlab/inventory.md` — op 38 row + delta paragraph (consumer:
   `repohardenguard`), the residual-call-sites table updated, the ceiling narrative.
-- `docs/adopting-assay.md`, `docs/adopting-assay-gitlab.md` — provisioning the auditor identity
-  (GitHub: an App with `Metadata: read`, `Contents: read`, `Administration: read` and NO write
-  permission of any kind, installed on the account; GitLab: a service account / bot with a
-  `read_api`-scoped PAT and the Reporter role, or Maintainer only where forge-gitlab/12's kinds
-  need it).
+- `docs/adopting-assay.md`, `docs/adopting-assay-gitlab.md` — provisioning the auditor identity,
+  at EVERY place these pages enumerate a role or a permission set (the #857 ruling's docs half):
+  GitHub — the §2 App inventory row and the §4 provisioning-checklist step that lists the Apps to
+  create, both naming an App with `Metadata: read`, `Contents: read`, `Administration: read` and
+  NO write permission of any kind; GitLab — the role→service-account table row (`auditor` |
+  service account | Reporter (20) | `read_api` | GET-only hardening reads) and the per-role
+  `gitlab-<role>.token` link/copy list, which must include `auditor`. Both pages state the
+  accepted consequence in the adopter's own terms: the admin-gated rows report could-not-check
+  under this identity and are re-run by a human administrator, and the grant is NOT widened to
+  make them readable. The auditor is NOT added to the `--raised-by` attribution roles — it never
+  files.
 - `changelog/forge-gitlab-11-guard-read-custody.md` — the fragment.
 - Conditional: `tools/desk/cmd/deskroster/roster.go`, `forge.go`, tests — ONLY if #841 has
   closed unmerged at pickup; then re-land its diff here unchanged (same ops, same session-role
@@ -268,34 +298,59 @@ recorded ruling).
   instructions.
 - Stop at `implemented` — you do not set verified/done (a different, non-implementing identity does).
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
-- The human decision above must be RECORDED (the decision issue closed with an option) before
-  any code is written; if the recorded option is not 1, report NEEDS_CONTEXT — the Task below
-  implements option 1 and the design record is amended, never silently re-targeted.
+- The human decision above is RECORDED: issue #857 is closed `human-decided` with **option 1**
+  (the dedicated read-only `auditor` identity), approved as proposed, plus the documentation-and-
+  website addition carried by Task 2 and Verify rows 11–13. `DR-forge-gitlab-11` is APPROVED and
+  cites the ruling comment. Re-read the issue before starting: if what it records is not option 1,
+  report NEEDS_CONTEXT — the Task below implements option 1, and the design record is amended,
+  never silently re-targeted.
+- The WEBSITE half of the ruling is a COMPANION change in the site repo, out of scope here. Do not
+  edit it from this brief's branch and do not gate this brief on it.
 
 ## Task
 1. **Custody.** Add `auditor` to `desktoken`'s `validRoles`; confirm the GitHub mint and the
    GitLab token-file path both resolve it by name with no further change (`desktoken --version`
-   echoes `auditor=auditor-app`). Document provisioning in both adopter docs: GitHub App
-   permissions `Metadata: read`, `Contents: read`, `Administration: read`, nothing writable;
-   GitLab service account with a `read_api` PAT, Reporter role. Add the preflight remediation
-   text for a missing/insecure `auditor` custody file.
-2. **Op 38.** Add `RepoHardeningRead` + `HardeningReadKind` + `ValidateHardeningReadKind` to
+   echoes `auditor=auditor-app`). Add the preflight remediation text for a missing/insecure
+   `auditor` custody file.
+2. **Adopter docs (the #857 ruling's docs half — a deliverable, not a follow-up).** Add the
+   auditor at EVERY place the two adopter pages enumerate a role or a permission set, so no page
+   an adopter reads is silent about a role they must provision:
+   - `docs/adopting-assay.md` — the §2 App inventory row and the provisioning-checklist step that
+     lists the Apps to create: an App with `Metadata: read`, `Contents: read`,
+     `Administration: read` and **no write permission of any kind**, installed on the account,
+     PEM at the config-home `0600` as `auditor-app.pem`. State the accepted consequence in the
+     adopter's terms — the admin-gated rows (`security_and_analysis.*`, ruleset `bypass_actors`)
+     report could-not-check under this identity and are re-run by a human administrator; the grant
+     is NOT widened to make them readable. Do NOT add `auditor` to the `--raised-by` attribution
+     roles: it never files.
+   - `docs/adopting-assay-gitlab.md` — the role→service-account table gains
+     `| auditor | service account | Reporter (20) | \`read_api\` | GET-only hardening reads for
+     \`repohardenguard\`; no write scope |`, and the per-role `gitlab-<role>.token` link/copy list
+     gains `auditor`.
+   - `tools/desk/cmd/desktoken/adopterdocs_test.go` (new) — `TestAdopterDocsEnumerateEveryRole` (planned)
+     reconciles `validRoles` against both pages and fails naming any role no page enumerates, and
+     asserts the auditor's documented GitHub grant carries no `: write`. This is the guard that
+     keeps the docs half from rotting on the next role.
+   The WEBSITE half (the public site's adoption + apps pages) is a COMPANION change in the site
+   repo — out of scope here, not edited from this branch, not gated on.
+3. **Op 38.** Add `RepoHardeningRead` + `HardeningReadKind` + `ValidateHardeningReadKind` to
    `forge.go`; implement the six GitHub kinds (fixed literals; `rulesets` walks list→detail
    and returns the detail array); implement the GitLab named refusal; goldens for every kind,
    the zero-request unknown-kind refusal, and the GitLab coverage case. Update `inventory.md`
    (row 38, delta paragraph, residual-sites table) in the same change.
-3. **Guard migration.** Replace `ghRun`/`ghGet` with the resolver seam (`forge.go`, fixed role
+4. **Guard migration.** Replace `ghRun`/`ghGet` with the resolver seam (`forge.go`, fixed role
    `auditor`, roster-map resolution only); `Row.Endpoint()` → `Row.Kind()` over `read <kind>` /
    `read file <path>` (a `gh api` cell is a parse REFUSAL naming the vocabulary); file rows via
    `ReadFile`; `httpStatus` from `ForgeAPIError`; identity line from the role's known login;
    preflight `read repo`. Re-plumb the tests from the fake `gh` binary onto a stub `Forge`;
    every existing verdict (admin-null, 403, 404-public, 404-admin, wrong-repo scope, row census)
    unchanged. Add `TestChecklistRefusesGhApiCell` (planned).
-4. **Closure.** Remove the `repohardenguard` permit row, lower the ceiling by the rows removed,
+5. **Closure.** Remove the `repohardenguard` permit row, lower the ceiling by the rows removed,
    reword the `forgeban.go:173` comment. If #841 is not on main at pickup, re-land its
    `deskroster` diff here first (rows and ceiling accordingly). fg/08 row 3 must read 0.
-5. **Consumers.** Flip every `follow-up forge-gitlab/11` routing above to `fixed-here` in this
-   change; run `statusgen --root . --consumers` before pushing.
+6. **Consumers.** Flip every `follow-up forge-gitlab/11` routing above to `fixed-here` in this
+   change (the public-site entry stays `out-of-scope` — the companion change is not delivered
+   here); run `statusgen --root . --consumers` before pushing.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
@@ -310,6 +365,9 @@ recorded ruling).
 | 8 | `curl -sS -o /dev/null -w '%{http_code}' -X PATCH -H "Authorization: Bearer $(cat "$(desktoken auditor --repo "$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+)/[^/]+?(\.git)?$#\1#')")")" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')" -d '{}'` | `403` — a settings WRITE attempted with the guard's token, bypassing the guard entirely, is refused by the FORGE (an empty PATCH changes nothing even where it would succeed, so the probe is side-effect-free) | gate:human +mutation |
 | 9 | `desktoken --version \| grep -c 'auditor=auditor-app'` | `1` — the role resolves through the existing binding echo | check |
 | 10 | `statusgen --root . --consumers` | exit 0 — every `follow-up forge-gitlab/11` routing has flipped to `fixed-here` and the diff corroborates it | check |
+| 11 | `cd tools/desk && go test ./cmd/desktoken/ -run TestAdopterDocsEnumerateEveryRole -v -timeout 60s` | exit 0; output contains `PASS` — every `validRoles` entry, `auditor` included, is enumerated by BOTH adopter pages, and the auditor's documented GitHub grant carries no `: write` (`TestAdopterDocsEnumerateEveryRole` (planned)). This is the anti-drift guard the #857 ruling's docs half needs: deleting the auditor from either page reddens it | check +mutation |
+| 12 | `test "$(grep -c 'Administration: read' docs/adopting-assay.md)" -ge 1 && grep -qE '^[\|] *auditor *[\|].*read_api' docs/adopting-assay-gitlab.md && sed -n 's/.*for r in \(.*\); do.*/\1/p' docs/adopting-assay-gitlab.md \| grep -qw auditor` | exit 0 — the GitHub page names the auditor App's read-only grant, the GitLab role table carries the `auditor` / Reporter (20) / `read_api` row, and the per-role `gitlab-<role>.token` list includes `auditor`. An adopter who reads only the pages can provision the identity | check |
+| 13 | `grep -hniE auditor docs/adopting-assay.md docs/adopting-assay-gitlab.md \| grep -viE -e 'no write' -e read-only -e 'never writes' -e could-not-check \| grep -E -e ': write' -e write_repository -e '`api`' -e 'Developer \(30\)' -e Maintainer; test $? -eq 1` | exit 0 — NEGATIVE control on the docs half: NO line that names the auditor also documents a write permission or a write-capable scope for it (`grep` exits 1 on no match, which is the pass). A documented grant an adopter copies is the grant the forge ends up enforcing, so row 8's runtime `403` is only as good as this row | check +mutation |
 
 ### Pre-mortem → detection map
 | Failure mode of the work | Caught by |
@@ -323,18 +381,22 @@ recorded ruling).
 | The GitLab backend returns an empty document for a kind instead of refusing | row 3 (`TestForgeGitlabCoverage` needs a golden per method; the golden pins the refusal) — adequacy of the refusal text is review-only |
 | #841 closes unmerged and deskroster is forgotten | row 2 reads 2 |
 | The inventory row is written but the method count disagrees | row 3 (reflection against the table) |
-| The adopter docs describe a permission set the forge does not offer | **no row** — review-only (dereferenced by the human who provisions the App in row 7's run; a wrong set shows as unexpected could-not-check rows) |
+| The adopter docs describe a permission set the forge does not offer (a permission NAME that does not exist) | **no row** — review-only (dereferenced by the human who provisions the App in row 7's run; a wrong set shows as unexpected could-not-check rows) |
+| The auditor is added to `validRoles` but no adopter page names it, so the first an adopter hears of the role is a Refused exit | row 11 (the drift guard walks `validRoles` against both pages) + row 12 |
+| The docs tell the adopter to grant the auditor a write permission or a write-capable scope ("so it can see `bypass_actors`") | row 13 (the docs-side negative control) + row 8 (the runtime one, on the identity actually provisioned) |
+| The GitLab role table gains the auditor but the per-role token-file list does not, so `gitlab-auditor.token` is never created | row 12 (all three greps must pass) |
+| The website half is quietly treated as delivered because the docs half landed | **no row** — out of scope by the brief's Ground rules; the companion change is tracked separately and this brief asserts nothing about it |
 
 ### Dispatch checklist
 ```
-[x] 1. Rows DISCRIMINATE — row 8 is the negative control; rows 2/4/5 fail on a plausible half-migration.
-[x] 2. Facts dated and checkable — sha 8953d38d, the row-3 count, the ceiling, the docs quotes all dated 2026-09-11.
-[x] 3. Self-contained — the kind table, the custody shape and the row-3 literal are in this file.
+[x] 1. Rows DISCRIMINATE — rows 8 and 13 are the negative controls (runtime and documented grant); rows 2/4/5 fail on a plausible half-migration; rows 11/12 fail on a half-done docs half.
+[x] 2. Facts dated and checkable — sha 8953d38d, the row-3 count, the ceiling, the docs quotes all dated 2026-09-11; the ruling is #857, closed human-decided 2026-09-11.
+[x] 3. Self-contained — the kind table, the custody shape, the docs surfaces and the row-3 literal are in this file.
 [x] 4. Risk answers match files: — desktoken + forge backends + adopter provisioning = sensitive-data yes; nothing regulatory/customer/irreversible.
-[x] 5. gate-why names the wire — a new identity's scope, and the admin-gated trade-off.
-[x] 6. Effort honest — one op (six fixed reads), one tool, one role; #841 carries the other tool. M.
+[x] 5. gate-why names the wire — a new identity's scope, and the admin-gated trade-off. RULED: #857, option 1 approved as proposed + the docs/website addition.
+[x] 6. Effort honest — one op (six fixed reads), one tool, one role, two adopter pages + their drift guard; #841 carries the other tool; the website half is a companion change. M.
 [x] 7. Shared value → consumers: enumerated; row 6 is the flow row (checklist → kind → backend → status → verdict).
-[x] 8. Pre-mortem run; the one row-less failure is recorded as review-only.
+[x] 8. Pre-mortem run; the two row-less failures are recorded as review-only / out-of-scope.
 ```
 
 ## Evidence
@@ -350,4 +412,8 @@ on the auditor identity — is a read-only App / `read_api` PAT an acceptable si
 the enumerated surface and the ratchet behind it? (2) does row 8 prove the LOWER layer (the forge's
 permission model) refuses with the UPPER layer (our GET-only code, the kind validator) bypassed —
 i.e. is the probe genuinely outside our code path? A Security-Review verdict is required on the
-implementing PR (custody change on a public repo).
+implementing PR (custody change on a public repo). The reviewer also reads the #857 ruling's docs
+half as a control, not as prose: does what the two adopter pages tell an adopter to PROVISION match
+the grant the design accepted — no write permission, no write-capable scope, the admin-gated rows
+left as could-not-check — and would a permission name that the forge does not actually offer be
+caught anywhere but here? (It is the one pre-mortem row with no Verify row.)
