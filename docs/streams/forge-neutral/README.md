@@ -211,7 +211,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 03 | [Write verbs A — deskpost, deskreply and deskflip onto the resolver](brief-03-write-verbs-comment-and-flip.md) | 2 | M | implemented | — | — |
 | 04 | [Write verbs B — deskpr, deskfile, deskclose and deskevidence onto the resolver](brief-04-write-verbs-issues-and-evidence.md) | 2 | M | implemented | — | — |
 | 05 | [Claim layer — the GitLab shape of refs/dispatch/* and its release](brief-05-claim-layer-forge-shape.md) | 2 | M | implemented | — | — |
-| 06 | [Read verbs — deskboard, issueboard, scanloop and the loop planners on the seam](brief-06-read-verbs-on-the-seam.md) | 3 | M | implemented | — | — |
+| 06 | [Read verbs — deskboard, issueboard, scanloop and the loop planners on the seam](brief-06-read-verbs-on-the-seam.md) | 3 | M | verified | 2026-09-10 opus-4.8[1m]-verifier (assay 48b978bb; rows 1-11 PASS; ceiling=9 DERIVED, rows 4/7b superseded by merged fn/12-13; row 12 statusgen could-not-check) | — |
 | 07 | [statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted](brief-07-statusgen-acting-identity.md) | 3 | M | todo | — | — |
 | 08 | [statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay](brief-08-statusgen-forge-aware.md) | 4 | M | todo | — | — |
 | 09 | [Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up](brief-09-substrate-leakgate-and-cellctl.md) | 3 | M | todo | — | — |
