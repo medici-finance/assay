@@ -11,7 +11,11 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-const ghURL = "https://github.com/example-org/tracker.git"
+// fixtureRepoPath is the trailing path of the fixture origin. It parses (parseRepo) to the
+// allowed repo `example-org/tracker`, and because the origin is a LOCAL bare repo under the
+// test's temp dir (never a network URL), `role-init`'s fresh `git fetch origin main` succeeds
+// offline exactly as it would against a real remote.
+const fixtureRepoPath = "example-org/tracker.git"
 
 // --- fixtures -------------------------------------------------------------------
 
@@ -38,9 +42,10 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// newRepo builds a scratch main checkout on `main`, one commit deep, whose origin URL
-// parses to an allowed repo and whose refs/remotes/origin/{main,HEAD} are set locally
-// (no network) so `origin/main` resolves for `deskwt add --base`.
+// newRepo builds a scratch main checkout on `main`, one commit deep, whose origin is a
+// LOCAL bare repo (path ending in fixtureRepoPath, so it parses to an allowed repo) holding
+// the same commit, and whose refs/remotes/origin/{main,HEAD} are set (no network) so
+// `origin/main` resolves for `deskwt add --base` and `role-init`'s fresh fetch succeeds.
 func newRepo(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -49,15 +54,26 @@ func newRepo(t *testing.T) string {
 	mustGit(t, work, "config", "user.email", "t@e.st")
 	mustGit(t, work, "config", "user.name", "Test")
 	mustGit(t, work, "config", "commit.gpgsign", "false")
-	mustGit(t, work, "remote", "add", "origin", ghURL)
+	bare := filepath.Join(root, "origin", fixtureRepoPath)
+	mustGit(t, "", "init", "--bare", "-b", "main", bare)
+	mustGit(t, work, "remote", "add", "origin", bare)
 
 	writeFile(t, filepath.Join(work, "README.md"), "seed\n")
 	mustGit(t, work, "add", "README.md")
 	mustGit(t, work, "commit", "-m", "init")
+	mustGit(t, work, "push", "--quiet", "origin", "main")
 	mainSHA := mustGit(t, work, "rev-parse", "HEAD")
 	mustGit(t, work, "update-ref", "refs/remotes/origin/main", mainSHA)
 	mustGit(t, work, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
 	return work
+}
+
+// originBare returns the path of the fixture's local bare origin for a work checkout made
+// by newRepo — so a test can advance origin's main behind the checkout's back and prove
+// role-init cut its worktree from the FRESH tip, not the stale remote-tracking ref.
+func originBare(t *testing.T, work string) string {
+	t.Helper()
+	return mustGit(t, work, "remote", "get-url", "origin")
 }
 
 // withEnv points deskkit's runtime dir at a fresh HOME, binds getwd to work, overrides
