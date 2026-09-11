@@ -196,7 +196,7 @@ Target: merged `origin/main` @ `13814ff8d84bab20bf2081f4e08a686bc90e2ac6` (two-p
 |---|---------|------|---------------------|--------|
 | 1 | `go build ./... && go test ./...` | 0 | build clean; every package `ok` (deskkit 37.6s, forgeban, deskevidence) | PASS |
 | 2 | `go test ./cmd/deskevidence/... -count=1` | 0 | `ok cmd/deskevidence 4.190s` — migrated suite green | PASS |
-| 3 | reviewer-reads-diff / no-weakening | — | JWT + install-id tests removed WITH the code they pinned (custody moved to `internal/deskkit/forgeresolve_test.go`); no assertion weakened beyond gh/transport→forge-op swaps (the /03 precedent) | PASS |
+| 3 | reviewer-reads-diff / no-weakening | — | JWT + install-id tests removed WITH the code they pinned (custody moved to `tools/desk/internal/deskkit/forgeresolve_test.go`); no assertion weakened beyond gh/transport→forge-op swaps (the /03 precedent) | PASS |
 | 4 | `grep -n allowedInvocationCeiling internal/forgeban/allowlist.go` | 0 | `= 9` (ACTUAL; the brief's literal "16" is stale). fn/04 (#532) does NOT touch allowlist.go — the 16→9 ratchet came from a LATER brief (04b, #775/#783). The row's INTENT — this brief changes no permit row — HOLDS | PASS |
 | 5 | `go test ./internal/forgeban/...` | 0 | `ok` — ratchet passes at the measured ceiling (9) | PASS |
 | 6 | `go test -run 'TestNoForgeCLIShellout\|TestForgeNoPassthrough'` | 0 | both PASS; frozen surface = 37 ops; no generic method, no endpoint arg, neither backend exports a method outside the interface | PASS |
