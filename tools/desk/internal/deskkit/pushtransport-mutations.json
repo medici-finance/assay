@@ -1,0 +1,71 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/deskpr/ ./cmd/deskwt/ -count=1 -timeout 300s -run 'PushTransport|IsSSHTransport|HTTPSEquivalent|ParseConfigZ|SSHPush|SSHFetch|SSHRemote|SSHFetchURL|HTTPSWithoutAppCredential|EditIsNot'",
+  "control": {
+    "name": "CONTROL — stop refusing an SSH push url under a bot identity (the whole fault: the push goes out under a human's key while the commits read as the App's)",
+    "file": "internal/deskkit/pushtransport.go",
+    "old": "\t\tif !isSSHTransport(u) {\n\t\t\tcontinue\n\t\t}",
+    "new": "\t\tif !isSSHTransport(u) || true {\n\t\t\tcontinue\n\t\t}"
+  },
+  "mutations": [
+    {
+      "name": "read remote.<name>.url and ignore pushurl (the fetch-url-only reading the fault hides behind: `remote -v`'s first line looks clean)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\tkey := \"remote.\" + remote + \".pushurl\"\n\turls := cfg[key]\n\tif len(urls) == 0 {\n\t\tkey = \"remote.\" + remote + \".url\"\n\t\turls = cfg[key]\n\t}",
+      "new": "\tkey := \"remote.\" + remote + \".url\"\n\turls := cfg[key]"
+    },
+    {
+      "name": "check only the FIRST push url (a push fans out to every pushurl, so a clean first value is not a pass)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\tfor _, u := range urls {\n\t\tif !isSSHTransport(u) {",
+      "new": "\tfor _, u := range urls[:1] {\n\t\tif !isSSHTransport(u) {"
+    },
+    {
+      "name": "round a failed git-config read up to a pass (could-not-check reported as 'no SSH found, carry on')",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\tout, cerr := in.ConfigZ()\n\tif cerr != nil {\n\t\treturn Unverifiable(fmt.Sprintf(",
+      "new": "\tout, cerr := in.ConfigZ()\n\tif cerr != nil && false {\n\t\treturn Unverifiable(fmt.Sprintf("
+    },
+    {
+      "name": "round a remote with NO url at all up to a pass (nothing was examined, so nothing can have been cleared)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\tif len(urls) == 0 {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"%s: remote %q has no url or pushurl configured in %s",
+      "new": "\tif false {\n\t\treturn Unverifiable(fmt.Sprintf(\n\t\t\t\"%s: remote %q has no url or pushurl configured in %s"
+    },
+    {
+      "name": "treat the scp-like `git@host:path` shorthand as not-SSH (the spelling every house checkout actually carries)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\tcolon := strings.IndexByte(s, ':')\n\tif colon < 0 {\n\t\treturn false\n\t}",
+      "new": "\tcolon := strings.IndexByte(s, ':')\n\tif colon < 0 || true {\n\t\treturn false\n\t}"
+    },
+    {
+      "name": "swallow the https-without-an-App-credential-helper NOTICE (the ambient-identity shape one layer along, reported as silence)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\thelpers := credentialHelpers(cfg)\n\tif hasAppCredentialHelper(helpers) {\n\t\treturn nil\n\t}",
+      "new": "\thelpers := credentialHelpers(cfg)\n\tif true {\n\t\t_ = helpers\n\t\treturn nil\n\t}"
+    },
+    {
+      "name": "swallow the unresolvable-$DESK_LOOP NOTICE by making the gate speak for every session (over-application: a human with no App identity is gated too)",
+      "file": "internal/deskkit/pushtransport.go",
+      "old": "\traw := strings.TrimSpace(os.Getenv(loopEnv))\n\tif raw == \"\" {\n\t\treturn nil\n\t}",
+      "new": "\traw := strings.TrimSpace(os.Getenv(loopEnv))"
+    },
+    {
+      "name": "deskpr create no longer runs the push-transport gate (the wiring, not the gate: a correct gate nobody calls)",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\tif terr := pushTransportGate(facts.dir, \"create\"); terr != nil {\n\t\treturn terr\n\t}",
+      "new": "\t_ = pushTransportGate"
+    },
+    {
+      "name": "deskpr update no longer runs the push-transport gate",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\tif terr := pushTransportGate(facts.dir, \"update\"); terr != nil {\n\t\treturn terr\n\t}",
+      "new": "\t_ = pushTransportGate"
+    },
+    {
+      "name": "deskwt add no longer runs the push-transport gate (every worktree it cuts inherits the SSH remote unchallenged)",
+      "file": "cmd/deskwt/deskwt.go",
+      "old": "\tif terr := pushTransportGate(dir, \"add\"); terr != nil {\n\t\treturn terr\n\t}",
+      "new": "\t_ = pushTransportGate"
+    }
+  ]
+}
