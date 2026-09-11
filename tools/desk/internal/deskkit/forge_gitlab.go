@@ -1189,6 +1189,88 @@ func (g *GitLabForge) RequiredStatusChecks(repo ForgeRepo, branch string) ([]str
 	return nil, nil
 }
 
+// gitlabStatusCheckPassed / gitlabStatusCheckFailed are the two `status` values GitLab's
+// status-check-response endpoint accepts for an external status check.
+const (
+	gitlabStatusCheckPassed = "passed"
+	gitlabStatusCheckFailed = "failed"
+)
+
+// postExternalStatusCheckVerdict posts the desk's verdict-lane result to a GitLab MR as an
+// EXTERNAL STATUS CHECK response against the MR's head SHA — the Ultimate-tier verdict-lane
+// surface (spec §6; forge-gitlab/06). It is the write half of the mapping ChecksAtHead's
+// header documents as deliberately deferred: a lane verdict becomes a required MR check with
+// ZERO repo write access, which is structurally stronger than a reviewer that can also push.
+//
+// TIER DETECTION IS THE SINGLE POINT OF FAILURE, by design (the brief's SPOF note). The
+// external-status-checks endpoints are Ultimate-only, so the resolve step (LIST) is what
+// distinguishes tiers: on Premium or Free the instance answers 403 there, and mapErr turns
+// that into a could-not-check refusal — NEVER a silent downgrade to a note, and never a clean
+// return that would mark a merge gate satisfied on a tier that has no such gate. This is the
+// three-state fallback: checked-clean (Ultimate posts), checked-failed (a real failing
+// verdict), could-not-check (the 403, or a check the project has not registered).
+//
+// It is UNEXPORTED on purpose. The exported Forge surface is frozen and enforced equal across
+// both backends (forge_surface_test.go, forge-gitlab/08); an external status check is a GitLab
+// concept with no GitHub twin on that interface, so exporting a GitLab-only verdict method
+// would re-open the surface the freeze closes. The Ultimate lane consumes it from inside
+// deskkit; a cross-forge verdict surface, if one is ever wanted, is an interface change with a
+// GitHub implementation alongside — not this method exported.
+func (g *GitLabForge) postExternalStatusCheckVerdict(repo ForgeRepo, number int, checkName, headSHA string, passed bool) error {
+	cl, err := g.client()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(checkName) == "" {
+		return Refused("cannot post an external-status-check verdict without the name of the check to respond to")
+	}
+	if strings.TrimSpace(headSHA) == "" {
+		return Refused("cannot post an external-status-check verdict without the MR head SHA it pins to")
+	}
+	proj := g.projectPath(repo)
+
+	// 1. Resolve the registered check id by name. This LIST is the Ultimate-only endpoint that
+	//    the tier gate trips on: a Premium/Free instance returns 403 here, which mapErr surfaces
+	//    as could-not-check.
+	listPath := fmt.Sprintf("/projects/%s/external_status_checks", proj)
+	checks, _, lerr := cl.ExternalStatusChecks.ListProjectStatusChecks(repo.Slug(),
+		&gitlab.ListOptions{PerPage: gitlabPerPage})
+	if lerr != nil {
+		return g.mapErr(http.MethodGet, listPath, lerr)
+	}
+	var id int64
+	for _, c := range checks {
+		if c != nil && c.Name == checkName {
+			id = c.ID
+			break
+		}
+	}
+	if id == 0 {
+		// The named check is not registered on this project. That is could-not-check, not a
+		// pass: the lane has no surface to post to, and returning success would report a merge
+		// gate satisfied that does not exist. Register it first (create-fleet-gitlab.sh
+		// --tier ultimate).
+		return Unverifiable(fmt.Sprintf(
+			"could-not-check: no external status check named %q is registered on %s — register it "+
+				"(create-fleet-gitlab.sh --tier ultimate) before the verdict lane can post to it",
+			StripControl(checkName), repo.Slug()), nil)
+	}
+
+	status := gitlabStatusCheckFailed
+	if passed {
+		status = gitlabStatusCheckPassed
+	}
+	respPath := fmt.Sprintf("/projects/%s/merge_requests/%d/status_check_responses", proj, number)
+	_, perr := cl.ExternalStatusChecks.SetProjectMergeRequestExternalStatusCheckStatus(
+		repo.Slug(), int64(number),
+		&gitlab.SetProjectMergeRequestExternalStatusCheckStatusOptions{
+			SHA:                   gitlab.Ptr(headSHA),
+			ExternalStatusCheckID: gitlab.Ptr(id),
+			Status:                gitlab.Ptr(status),
+		})
+	return g.mapErr(http.MethodPost, respPath, perr)
+}
+
 // gitlabBuildState maps a GitLab build state to GitHub's combined-status vocabulary
 // (success | pending | failure | error).
 //
