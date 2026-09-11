@@ -1198,7 +1198,7 @@ const (
 
 // postExternalStatusCheckVerdict posts the desk's verdict-lane result to a GitLab MR as an
 // EXTERNAL STATUS CHECK response against the MR's head SHA — the Ultimate-tier verdict-lane
-// surface (spec §6; forge-gitlab/06). It is the write half of the mapping ChecksAtHead's
+// surface (spec §6; the forge-gitlab ultimate-refinements brief). It is the write half of the mapping ChecksAtHead's
 // header documents as deliberately deferred: a lane verdict becomes a required MR check with
 // ZERO repo write access, which is structurally stronger than a reviewer that can also push.
 //
@@ -1211,7 +1211,7 @@ const (
 // verdict), could-not-check (the 403, or a check the project has not registered).
 //
 // It is UNEXPORTED on purpose. The exported Forge surface is frozen and enforced equal across
-// both backends (forge_surface_test.go, forge-gitlab/08); an external status check is a GitLab
+// both backends (forge_surface_test.go, the forge-gitlab surface-freeze brief); an external status check is a GitLab
 // concept with no GitHub twin on that interface, so exporting a GitLab-only verdict method
 // would re-open the surface the freeze closes. The Ultimate lane consumes it from inside
 // deskkit; a cross-forge verdict surface, if one is ever wanted, is an interface change with a
