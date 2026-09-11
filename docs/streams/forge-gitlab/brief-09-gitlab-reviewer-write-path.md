@@ -176,6 +176,29 @@ brief names none.
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->
+### Verify run — 2026-09-11, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local) — VERDICT: FAIL (row 2); held at `implemented`
+
+Target: merged `origin/main` @ `fc9001a7ab48ee9c859dd7e52f7543dec5f86c50` (two-protocol confirmed; feature commits #800 §2 auth + control tests, #807 forge.go/forge_gitlab.go request-changes verdict). Offline (`KUBECONFIG=/dev/null`) in an isolated worktree; runner ≠ implementer; go rows from `tools/desk`. gate: model, risk all=no.
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `go build ./... && go test ./...` (tools/desk) | 0 | 70 packages `ok`, 0 FAIL | PASS |
+| 2 | `deskpost review <gitlab-repo> 7 --verdict approve --head <sha> --dry-run` (roster forge=gitlab) | **6** | output CONTAINS `could-not-check: deskpost has no gitlab write backend — … the gitlab write path is the follow-up to …#772`. The brief requires this string GONE + an APPROVE verdict formed via the GitLab backend; observed the exact opposite | **FAIL** |
+| 3 | `go test ./internal/deskkit/ -run TestForgeGitlabRequestChanges -v` | 0 | PASS — APPROVE → APPROVED@head + verdict note@head; REQUEST_CHANGES → unapprove + note@head; both read back by `ReviewsAtHead` | PASS |
+| 4 | `deskfile check -R <gitlab-repo>` (`REVIEWER_APP_ID` unset, no PAT) | 6 | took the GitLab PAT custody path: "no `gitlab-reviewer.token` on the App-credential search path"; NO `no App ID`/`REVIEWER_APP_ID` (App mint never reached) — refuses via custody, no ambient fallback | PASS |
+| 5 | `go test ./cmd/desktoken/ -run TestReviewerAuthGitlabPAT -v` | 0 | PASS — resolves PAT via rotate path (App mint never contacted); refuses exit 6 when PAT absent, no ambient fallback; `REVIEWER_APP_ID` unread on GitLab | PASS |
+| 6 | `go test ./... -run TestNoForgeCLIShellout -v && … -run TestForgeNoPassthrough -v` | 0 | both PASS — no `glab` shell-out; interface shape unchanged (37-op inventory, no generic/endpoint method) | PASS |
+| 7 | `go test ./internal/deskkit/ -run TestForgeGitlabWriteTierErrors -v` | 0 | PASS — 403 on approve/unapprove → could-not-check (`*ForgeAPIError{Status:403}` → `ExitUnverifiable`); a grant/revoke 403 never reported as a clean write | PASS |
+
+**Why FAIL — the §1 core deliverable did not land.** The brief's §1 requires `deskpost review`/`security-review`/`comment`/`ready` to route the verdict/comment/ready WRITE through the resolved Forge on GitLab and REMOVE the exit-6 fail-closed. On merged main these still call `newGHClient()` → `requireGitHubForge()` (`cmd/deskpost/github.go:289`), which fails closed on a GitLab-resolved repo with the templated message rendering exactly `deskpost has no gitlab write backend` (github.go:299) — the exact string row 2 requires gone. **§6 freeze-rule corollary violated:** the added `Forge.PostReview` op has NO shipping (non-test) consumer in deskpost (`grep '.PostReview(' non-test → none`); exercised only by `forge_gitlab_reviewwrite_test.go`. So the row was flipped `implemented` before §1 existed — the deskpost write-path is still the pending follow-up (#772).
+
+**What DID land, clean:** §2 reviewer-PAT auth (rows 4, 5) and the deskkit-level GitLab verdict-write op + read-back + tier-error mapping (rows 3, 7). Brief-08's shell-exec ban / no-passthrough stay green (row 6).
+
+**Risk-bearing value (ENUMERATE → RANK → DERIVE):** (a) reviewer-PAT custody (refuse-on-absent, no ambient fallback — unauthorized-approve risk) — DEFENDED at the auth layer (rows 4/5), and end-to-end unreachable via deskpost today because the write path fails closed (fail-safe, but that IS the missing deliverable); (b) head-SHA binding of the verdict note — proven at the backend (row 3); (c) 403→could-not-check mapping — proven (row 7). RANK (a)≈(b)>(c). Defense-in-depth (gate:model): row 5 (PAT custody refuses before any network) + row 7 (write-tier 403 → ExitUnverifiable) hold at the layers that landed.
+
+**Scope-traceability:** §2 auth + deskkit backend map to their rows and pass; §1 (the headline deliverable) is absent (row 2) and the `PostReview` op is a §6 orphan. Brief Evidence table was empty. No open PR delivering the §1 deskpost wiring found.
+
+**VERDICT: FAIL (row 2)** — §1 deskpost GitLab write-path not landed (deskpost still fails closed with the exact string the brief requires gone); `PostReview` has no shipping consumer (§6 violation). Rows 1/3/4/5/6/7 pass. Held at `implemented`; do not flip. Filed `medici-finance/assay#842`. Same split-delivery pattern as forge-gitlab/08 (#835).
 
 ## Review
 Gate: model (from frontmatter). This brief's deliverable touches the reviewer write/auth path —
