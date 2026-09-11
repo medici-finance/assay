@@ -52,6 +52,13 @@ type target struct {
 	head        string // PR only; an issue has no head, and "" is recorded as such
 	authorLogin string
 	authorID    int64
+	// labels is the ISSUE's label set, read from the same /issues/{n} payload the kind
+	// resolution already makes. It is empty for a PR — deliberately, and not an
+	// omission: the ONE thing that consumes it is the verify-gate card carve-out
+	// (deskkit.VerifyGateCardCommentAdmitted), which applies to issues only. A PR
+	// carrying the verify-gate label therefore cannot reach the carve-out even if the
+	// author matched, because there is nothing here for it to match against.
+	labels []string
 }
 
 // resolveTarget resolves a bare number to the object it names. PR first: that keeps the
@@ -92,7 +99,7 @@ func resolveTarget(c postBackend, n int) (*target, error) {
 		return nil, perr
 	}
 	return &target{kind: kindIssue, number: n,
-		authorLogin: iss.User.Login, authorID: iss.User.ID}, nil
+		authorLogin: iss.User.Login, authorID: iss.User.ID, labels: iss.labelNames()}, nil
 }
 
 // requirePRErr upgrades a getPR failure for the PR-ONLY verbs (`review`, `ready`) when the

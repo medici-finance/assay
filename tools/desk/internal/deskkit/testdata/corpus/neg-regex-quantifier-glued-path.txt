@@ -1,0 +1,13 @@
+# corpus: a Verify-row grep whose ` +` regex quantifier glues onto the repo path behind it
+# expect: clean
+# refs:   #879
+# shape:  32-char run `+plugins/assay/…/claude` — one '+' quantifier plus a 31-char repo path
+# why:    deskevidence whole-file-scans a merged brief before appending its Evidence row. A Verify
+# why:    row carrying `grep -cE -e '^FRESH +plugins/assay/…/claude-code\.md'` refused, so
+# why:    that brief could never receive an Evidence append through the sanctioned tool at all —
+# why:    the verifier held rather than routing around the scan, and the brief's PR stalled.
+# note:   the path alone is 31 chars, UNDER the run threshold; only the quantifier's '+' — which is
+# note:   in the base64 alphabet, and so in reBase64ish's class — pushes it to 32. The '+' carries
+# note:   no payload, which is why the remainder having to be path-like is the whole exemption.
+| 3 | `go run ./tools/freshness > /tmp/r3.out 2>&1; grep -cE -e '^FRESH +plugins/assay/{{+}}references/codex\.md' -e '^FRESH +plugins/assay/{{+}}references/claude-code\.md' /tmp/r3.out` | `2` |
+| 3a | force-aged: `grep -cE -e '^STALE +plugins/assay/{{+}}references/claude-code\.md' /tmp/r3a.out` | `2` |

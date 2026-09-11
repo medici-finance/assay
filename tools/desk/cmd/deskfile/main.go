@@ -5,8 +5,9 @@
 // on a class issue never gets minted.
 //
 // Repo scope comes from deskkit.IsAllowedRepo — deskfile introduces NO new repo list. The
-// filing identity is the caller's ambient gh credential (worker/App, unchanged); deskfile
-// gates WHETHER and WHERE, not WHO, and never mints an App token.
+// filing identity is the session-role credential the forge resolver hands back
+// (deskkit.ResolveForge: an App installation token on GitHub, the role PAT on GitLab);
+// deskfile gates WHETHER and WHERE, not WHO.
 //
 // Exit codes (deskkit contract): 0 success/noop · 3 disabled ·
 // 4 rate-limited · 5 refused · 6 unverifiable. See deskkit/exitcodes.go.
@@ -47,16 +48,17 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
          UNSTAMPED, with a NOTICE, and its provenance reads as UNKNOWN. Unknown is the
          absence of an answer, never "human-raised". Each outcome is distinguished on the
          audit line (raised-by=<role> | UNSTAMPED:not-requested | UNSTAMPED:label-missing |
-         UNSTAMPED:could-not-check). The raised-by:* labels are not GitHub defaults and
-         deskfile does not create them; the NOTICE prints the one-off gh label create.
+         UNSTAMPED:could-not-check). The raised-by:* labels are not forge defaults and
+         deskfile does not create them; the NOTICE prints the one-off create command for
+         the repo's forge (gh label create on GitHub, glab label create on GitLab).
 
          --to <role> ADDRESSES the issue to a desk: it stamps the label to:<role> so that
          desk's own sweep (fanoutloop / issueboard) leads with the issue, turning a typed
          "tell the-desk…" relay into a durable, forge-visible message. It takes the SAME
          role vocabulary as --raised-by (one resolver, two flags) — an unbound role is
          REFUSED (exit 5) — and degrades the same way when the to:<role> label does not yet
-         exist on the repo (filed UNADDRESSED, a NOTICE prints the one-off gh label
-         create). Omitting --to is the normal case and is SILENT. The audit line records
+         exist on the repo (filed UNADDRESSED, a NOTICE prints the one-off forge-selected
+         label create). Omitting --to is the normal case and is SILENT. The audit line records
          to=<role> or to=UNADDRESSED:<reason>. CAUTION: on the new subcommand, --to takes a
          ROLE; on the attach subcommand (below), --to takes an issue NUMBER — same token,
          two meanings by subcommand.
@@ -71,11 +73,12 @@ The body is read from --body-file only (no stdin/inline), capped at 16 KiB, and 
 scanned; there is no override flag. <owner/repo> must be in the desk-tools repo set
 (deskkit.allowedRepos — deskfile adds no list of its own).
 
-FORGE: deskfile's issue operations shell gh and support GitHub ONLY. On a repo whose
-configured forge (ASSAY_REPO_FORGES) is GitLab, every verb REFUSES (exit 5) with a named
-message rather than emitting a misleading GitHub API error — routing the ops through the
-forge backend is not yet delivered. Escalate a blocker on such a repo to a human; do not
-substitute a bare glab/gh call, which bypasses this tool's dedupe/stamp/budget gates.
+FORGE: every verb runs through the typed forge backend the resolver picks for the repo
+(the roster's ASSAY_REPO_FORGES binding, else an unambiguous origin host) — GitHub AND
+GitLab are both served; nothing shells gh or glab. A repo whose forge cannot be resolved
+is a could-not-check REFUSAL (exit 6) naming the configuration that would resolve it,
+never an assumed GitHub. Do not substitute a bare glab/gh call on any forge: it bypasses
+this tool's dedupe/stamp/budget gates.
 
 Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.
 

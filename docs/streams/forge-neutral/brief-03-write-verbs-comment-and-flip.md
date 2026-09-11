@@ -194,6 +194,36 @@ Runner ≠ implementer. Isolated worktree off origin/main. Offline (`KUBECONFIG=
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Verify run — 2026-09-10, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local)
+
+Target: merged `origin/main` @ `a91bffd0` (the head at verify time; main has since advanced to `13814ff8` by the unrelated #814 plugin-manifest stamp — this Evidence lands from `13814ff8`). Offline (`KUBECONFIG=/dev/null`, go1.26.5) in an isolated worktree; runner ≠ implementer. gate: model, risk all=no.
+
+| # | Command (in `tools/desk`) | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `go build ./... && go test ./...` | 0 | build 0; full `./...` green, no FAIL/panic | PASS |
+| 2 | `go test ./cmd/deskpost/... ./cmd/deskreply/... ./cmd/deskflip/...` | 0 | ok deskpost 27.8s, deskreply 8.0s, deskflip 7.3s | PASS |
+| 3 | diff vs origin/main of the three verbs' `*_test.go` + assertion-strength inspection | 0 | properly-scoped verb-dir diff EMPTY on merged main; 0 `"gh"`-argv assertions remain in the verb test files; HTTP-recorder successors present (`tools/desk/cmd/deskreply/forgerecorder_test.go`, `tools/desk/internal/deskkit/forgelabel_test.go`) — 1:1 re-point confirmed | PASS |
+| 4 | `grep -n allowedInvocationCeiling internal/forgeban/allowlist.go` | 0 | `const allowedInvocationCeiling = 9` @ :64 (NOT the brief's stale 16 — drift note below) | PASS |
+| 5 | measure `::gh"` + `go test ./internal/forgeban/...` | 0 | measured count = 9 (`grep -c '::gh"' <(git show refs/remotes/origin/main:…/allowlist.go)`); ratchet test PASS; `forgeban_test.go:330` asserts `len(AllowedInvocations)==allowedInvocationCeiling` (both 9) — fails if longer OR shorter | PASS |
+| 6 | `TestNoForgeCLIShellout` + `TestForgeNoPassthrough` | 0 | both ok — no gh/glab launch remains in the three verbs; label op added no passthrough | PASS |
+| 7 | `grep '"gh"'` three verbs, non-test | — | `0` | PASS |
+| 8 | `grep 'apiBaseURL' cmd/deskpost`, non-test | — | `0` — the hardcoded-host REST binding is gone (this was the sole blocker of the 2026-09-06 run @ 67abbac, #558; now fixed) | PASS |
+| 9 | `TestLabelOpBothBackends` | 0 | 4 scenarios × {github, gitlab}, identical scenario names both backends, all PASS | PASS |
+| 10 | `TestFlipRefusesUnsupportedForge` (negative) | 0 | `refuses_could_not_check_and_writes_nothing` PASS; `writeRecorder` asserts ZERO write calls on refuse; refusal is could-not-check naming forge+op | PASS |
+| 11 | `TestNodeIDNotConstructed` (negative) | 0 | 3 subtests PASS — node id from `GetPullRequest`, refuses an opaque/composed id, no composed id reaches the flip | PASS |
+| 12 | `grep -c label docs/streams/forge-gitlab/inventory.md` | — | `12` (≥1) — the label op recorded in the frozen inventory | PASS |
+| 13 | `statusgen --root . --consumers --brief forge-neutral/03` | — | COULD-NOT-CHECK — offline verifier's shared-home writeguard (statusgen writes STATUS.md; exemption human-only) + statusgen v1.0.6 brief-v2 gap. All `fixed-here` consumers corroborated by rows 6/7/8 (verbs off gh/apiBaseURL) + 4/5 (ceiling lowered) | COULD-NOT-CHECK |
+| 14 | MUTATION: `checkAppToken` (`tools/desk/cmd/deskflip/flip.go`) `if err != nil` → `if false && err != nil`; run `TestNoAppToken`; restore; re-run | mutant 1 / restored 0 | Mutant: `TestNoAppTokenRefusalNamesTheRoleAndThePath` FAILS (refusal no longer names app-token/role/path); `TestNoAppTokenRefusesAndNeverTouchesTheForge` still PASSES on the mutant. Restored → both PASS, worktree clean | PASS |
+
+**Risk-bearing value (ENUMERATE → RANK → DERIVE):**
+- `RISK-VALUE: DERIVED — allowedInvocationCeiling = 9 @ tools/desk/internal/forgeban/allowlist.go:64.` Measuring command `grep -c '::gh"' <(git show refs/remotes/origin/main:…/allowlist.go)` → 9; register `AllowedInvocations` length = 9 = ceiling; ratchet passes exactly at 9. Ranked #1 (a security ratchet — a loosened value re-permits a banned shell-out). This is a STRONGER ban than the brief's stale 24−8=16: forge-neutral 04/06/13 (since merged) retired further launch sites, ratcheting 16→9. A lower ceiling re-permits nothing (tightens as designed); row 4's literal moving 16→9 is expected drift, and the ratchet TEST (row 5) is the arbiter — it passes.
+- `RISK-VALUE: could-not-check-against-live (not a file:line literal) — the label-op idempotency success codes and the class-6 could-not-check exit encode forge protocol semantics exercised by TestLabelOpBothBackends / TestFlipRefusesUnsupportedForge; confirming them against the LIVE GitHub/GitLab APIs is offline-unavailable. Recorded-fixture scenarios pass identically on both backends. Not a pinned constant at a file:line, so not a blocking F-28 flag; an online-lane confirmation, not an un-derived risk value.`
+
+**Defense-in-depth (gate: model):** Row 14 proves TWO independent layers behind "never the ambient forge identity." (1) The app-token refusal is a LIVE control — disabling its condition makes `TestNoAppTokenRefusalNamesTheRoleAndThePath` fail. (2) A SECOND independent layer catches the same fault on a different signal in a different component: with the mint-guard bypassed, `TestNoAppTokenRefusesAndNeverTouchesTheForge` still PASSES and makes zero forge calls, because the resolver's own custody step refuses independently. The deleted per-verb `ghToken==""` backstop was replaced by a layer, not merely removed.
+
+**Scope-traceability:** no work maps to no row; all `consumers: fixed-here` claims (deskpost, deskreply, deskflip, allowlist.go) corroborated by rows 4-8. Row 3's raw diff surfaced only unrelated #814 content (a double-`--` pathspec artifact); the three verb dirs are unchanged vs origin/main.
+
+**VERDICT: PASS** — rows 1–12 + mutation row 14 PASS on merged main; row 13 COULD-NOT-CHECK (statusgen environment limit + brief-v2 gap, non-blocking, consumer routing corroborated by other rows). Risk-value ceiling DERIVED. Flip-eligible (gate: model, all risk no).
 
 ## Review
 Gate: **model** (from frontmatter; all four risk answers are `no` — this brief changes

@@ -81,7 +81,7 @@ facts:
 | 1 | `statusgen --root . --issues --self-improvement` | exit 0; prints self-healed vs human-touched counts + rate |
 | 2 | `statusgen --root . --issues --self-improvement \| grep -iE -e 'self-healed' -e 'human-touched' -e 'merge.*not.*touch'` | ≥1 — segments + the merge-gate caveat render |
 | 3 | `statusgen --root . --issues --self-improvement --json \| jq -e '.selfHealed,.humanTouched,.selfImprovementRate,.humanTouchedByType'` | exit 0 — JSON carries the cut |
-| 4 | `go test ./statusgen/ -run SelfImprovement -count=1` | exit 0 — the classifier tests (self-healed, human-touched-by-type, and the merge-is-not-a-touch rule) run and pass |
+| 4 | `cd statusgen && GOWORK=off go test . -run SelfImprovement -count=1` | exit 0 — the classifier tests (self-healed, human-touched-by-type, and the merge-is-not-a-touch rule) run and pass |
 | 5 | `statusgen --root . --lint` | exit 0 |
 
 ## Evidence

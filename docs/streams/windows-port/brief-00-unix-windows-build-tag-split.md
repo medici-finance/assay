@@ -10,7 +10,7 @@ why: >-
   matrix and the release build will simply break. This brief makes the source build.
 wave: 0
 depends: []
-unblocks: ["windows-port/01"]
+unblocks: ["windows-port/01", "windows-port/08"]
 effort: M
 gate: model
 gate-why: >-

@@ -85,9 +85,9 @@ facts:
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `go test ./tools/desk/... -count=1` | exit 0 |
-| 2 | `go test ./tools/desk/cmd/fanoutloop/... -run 'Pool' -count=1 -v 2>&1 \| grep -cE -e 'refill' -e 'resume-priority'` | ≥2 (standing-pool + orphan-priority both exercised) |
-| 3 | `go test ./tools/desk/cmd/fanoutloop/... -run 'Serial' -count=1` | exit 0 (out-of-repo second-in-flight refused) |
+| 1 | `cd tools/desk && GOWORK=off go test ./... -count=1` | exit 0 |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/... -run 'Pool' -count=1 -v 2>&1 \| grep -cE -e 'refill' -e 'resume-priority'` | ≥2 (standing-pool + orphan-priority both exercised) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/... -run 'Serial' -count=1` | exit 0 (out-of-repo second-in-flight refused) |
 | 4 | `git diff --stat origin/main -- tools/desk/internal/loopengine/ \| tail -1` | empty (contract untouched — the validation claim) |
 | 5 | PR body contains the staged batch-fanout skill diff + cutover stop-point | present |
 | 6 | `cd statusgen && go run . --root .. --lint; echo $?` | 0 |

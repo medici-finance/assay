@@ -183,7 +183,7 @@ record — that is a follow-on, not a claim this re-home makes. Statuses therefo
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Codex capability ground-truth — measured matrix, not inherited prior art](brief-01-codex-capability-ground-truth.md) | 0 | M | done | 2026-09-11 opus-4.8[1m]-verifier (assay 553dc2ae; 6/6 executable PASS, rows 5–6 BLOCKED needs-live-Codex) | 2026-09-11 assay-reviewer-app[bot] (approved PR #869 @ 0af934dac24d2b73bf0c09342f95685bfbe0000e) |
-| 02 | [Kill the drift debt — re-sync the bundle, flip the canonical home](brief-02-drift-debt-authority-flip.md) | 0 | L | implemented | — | — |
+| 02 | [Kill the drift debt — re-sync the bundle, flip the canonical home](brief-02-drift-debt-authority-flip.md) | 0 | L | done | 2026-09-11 opus-4.8[1m]-verifier (assay 553dc2ae; 10/10 executable PASS, 3 could-not-check cross-repo/machine/tool) | 2026-09-11 assay-reviewer-app[bot] (approved PR #878 @ 353845668ede560a672dd0986c0687435c37b9ff) |
 | 03 | [Ruling: target harnesses, delivery channel, degradation matrix](brief-03-target-channel-ruling.md) | 1 | S | implemented | — | — |
 | 04 | [Neutral-core skill bodies + per-harness binding files + neutrality lint](brief-04-neutral-core-skills.md) | 2 | L | implemented | — | — |
 | 05 | [Resident rules — one source, per-harness delivery generated](brief-05-resident-rules-single-source.md) | 2 | M | implemented | — | — |

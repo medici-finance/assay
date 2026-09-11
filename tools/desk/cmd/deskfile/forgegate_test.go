@@ -64,8 +64,8 @@ func TestDeskfileFilesOnGitLabThroughBackend(t *testing.T) {
 func TestDeskfileRefusesWithoutMintedToken(t *testing.T) {
 	withEnv(t)
 	rec := curForge
-	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
-		return nil, deskkit.ForgeRepo{}, deskkit.Refused(
+	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
+		return nil, deskkit.ForgeRepo{}, "", deskkit.Refused(
 			"cannot obtain the session-role App installation token — ForgeFor never falls back to an ambient identity")
 	}
 	body := bodyFileWith(t, "should refuse without a token")
@@ -86,8 +86,8 @@ func TestDeskfileRefusesWithoutMintedToken(t *testing.T) {
 func TestDeskfileUnresolvableForgeCouldNotCheck(t *testing.T) {
 	withEnv(t)
 	rec := curForge
-	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
-		return nil, deskkit.ForgeRepo{}, deskkit.Unverifiable(
+	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
+		return nil, deskkit.ForgeRepo{}, "", deskkit.Unverifiable(
 			"cannot resolve which forge serves "+repo+": configure ASSAY_REPO_FORGES", nil)
 	}
 	rc, out := runCapture([]string{"check", "-R", allowedRepo, "--title", "some unique title here"})
@@ -111,5 +111,95 @@ func TestGitHubForgeStillFiles(t *testing.T) {
 	}
 	if !anyCall(ghCalls(*calls), "search", "issues") {
 		t.Fatalf("expected the dedupe search to run on a github repo; calls: %v", ghCalls(*calls))
+	}
+}
+
+// TestDeskfileMissingLabelHintIsForgeSelectedOnGitLab — #887 item 2. On a GitLab-configured
+// repo the label-missing NOTICE must name a remedy the operator can actually run there
+// (`glab label create`), never the GitHub CLI: a `gh label create` printed on a GitLab repo
+// cannot work, so the label never gets created and every later filing stays UNSTAMPED. The
+// degrade itself (file UNSTAMPED / UNADDRESSED rather than fail the create) is unchanged, and
+// the parenthetical no longer claims a `gh issue create` on a path that shells nothing.
+func TestDeskfileMissingLabelHintIsForgeSelectedOnGitLab(t *testing.T) {
+	withEnv(t)
+	plantRosterWithForges(t, allowedRepo+"=gitlab")
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
+	t.Setenv("FAKEGH_LABELS", labelsJSON(t, "bug", "question")) // no raised-by:* / to:* at all
+	body := bodyFileWith(t, "a gitlab filing whose stamp labels are not created yet")
+
+	rc, out := runCapture([]string{"new", "-R", allowedRepo,
+		"--title", "gitlab filing with missing stamp labels", "--body-file", body,
+		"--raised-by", "reviewer", "--to", "worker"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("rc = %d, want 0 — a missing label must never stop a filing; out=%s", rc, out)
+	}
+	if curForge.filed == nil {
+		t.Fatal("new did not file through the forge backend on a GitLab-configured repo")
+	}
+	for _, want := range []string{
+		"glab label create --name raised-by:reviewer --repo " + allowedRepo + ` --description "filed by the reviewer desk"`,
+		"glab label create --name to:worker --repo " + allowedRepo + ` --description "addressed to the worker desk"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the NOTICE must carry the GitLab remedy command %q; out=%s", want, out)
+		}
+	}
+	for _, banned := range []string{"gh label create", "gh issue create"} {
+		if strings.Contains(out, banned) {
+			t.Errorf("a GitLab-resolved repo must not be told to run %q; out=%s", banned, out)
+		}
+	}
+	if d := lastNewDetail(t); !strings.Contains(d, "raised-by=UNSTAMPED:label-missing") ||
+		!strings.Contains(d, "to=UNADDRESSED:label-missing") {
+		t.Fatalf("audit detail = %q, want both label-missing outcomes recorded", d)
+	}
+}
+
+// TestDeskfileMissingLabelHintStaysGitHubOnGitHub — the GitHub twin: the hint is SELECTED, not
+// swapped wholesale, so a GitHub-resolved repo keeps the `gh label create … --force` command the
+// raisedby/addressto tests already pin.
+func TestDeskfileMissingLabelHintStaysGitHubOnGitHub(t *testing.T) {
+	withEnv(t)
+	plantRosterWithForges(t, allowedRepo+"=github")
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
+	t.Setenv("FAKEGH_LABELS", labelsJSON(t, "bug"))
+	body := bodyFileWith(t, "a github filing whose stamp label is not created yet")
+
+	rc, out := runCapture([]string{"new", "-R", allowedRepo,
+		"--title", "github filing with a missing stamp label", "--body-file", body,
+		"--raised-by", "reviewer"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("rc = %d, want 0; out=%s", rc, out)
+	}
+	if !strings.Contains(out, "gh label create raised-by:reviewer --repo "+allowedRepo) {
+		t.Fatalf("a GitHub-resolved repo must keep the gh remedy; out=%s", out)
+	}
+	if strings.Contains(out, "glab ") {
+		t.Fatalf("a GitHub-resolved repo must not be told to run glab; out=%s", out)
+	}
+}
+
+// TestDeskfileHelpNoLongerClaimsGitHubOnlyRefusal — #887 item 3. `deskfile --help` documented the
+// interim #691 refusal ("shell gh and support GitHub ONLY … every verb REFUSES (exit 5)") after
+// the verbs had been routed through the forge backend and GitLab was served. That paragraph told
+// an operator to escalate to a human instead of using a tool that works; it must describe the
+// delivered behaviour, and the stamp blurbs must not promise a `gh label create` on every forge.
+func TestDeskfileHelpNoLongerClaimsGitHubOnlyRefusal(t *testing.T) {
+	for _, stale := range []string{
+		"GitHub ONLY",
+		"every verb REFUSES",
+		"not yet delivered",
+		"the NOTICE prints the one-off gh label create",
+		"a NOTICE prints the one-off gh label",
+		"ambient gh credential",
+	} {
+		if strings.Contains(usage, stale) {
+			t.Errorf("deskfile --help still carries the retired claim %q", stale)
+		}
+	}
+	for _, want := range []string{"GitHub AND\nGitLab are both served", "glab label create on GitLab"} {
+		if !strings.Contains(usage, want) {
+			t.Errorf("deskfile --help must state the delivered forge behaviour %q", want)
+		}
 	}
 }

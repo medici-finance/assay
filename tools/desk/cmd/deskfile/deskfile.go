@@ -50,8 +50,9 @@ const maxBodyBytes = 16 * 1024 // body cap (16 KiB)
 //
 //	stamped              the label exists in the repo and was applied.
 //	not-requested        no --raised-by was given. Provenance UNKNOWN by omission.
-//	label-missing        the role is valid but the repo has no such label, so
-//	                     `gh issue create --label` would have FAILED the whole filing.
+//	label-missing        the role is valid but the repo has no such label; deskfile never
+//	                     mints one, and applying an unverified label could have failed
+//	                     the whole filing.
 //	could-not-check      the label-existence probe could not be answered (API error,
 //	                     unparseable output). Three-state: not "absent", not "present".
 //
@@ -79,8 +80,9 @@ const (
 // flags — deskkit.AddressedToLabel over the same bound vocabulary), and it degrades the
 // SAME way the raised-by stamp does: an unbound role is REFUSED (exit 5), but a role that
 // is valid where the repo simply has no `to:<role>` label yet files UNSTAMPED with a
-// NOTICE carrying the one-off `gh label create`, because `gh issue create --label
-// <missing>` would fail the whole filing.
+// NOTICE carrying the one-off label-create command for the repo's FORGE (`gh label
+// create` on GitHub, `glab label create` on GitLab — labelCreateHint), because applying an
+// unverified label could fail the whole filing.
 //
 // ONE DIFFERENCE FROM raised-by, deliberate: omitting `--to` is the NORMAL, common case
 // (most filings are not addressed to a desk), so it is SILENT — no NOTICE, just the
@@ -423,7 +425,7 @@ func cmdNew(args []string) (err error) {
 	// entry and an absent/unmapped origin), and now SERVES GitLab through the backend — the #691
 	// interim named-refusal is superseded. Minting the token here is the identity change the #781
 	// ruling confirmed; --raised-by stays a body/label attribution below.
-	fg, fr, ferr := forgeForFn(*repo)
+	fg, fr, kind, ferr := forgeForFn(*repo)
 	if ferr != nil {
 		return ferr
 	}
@@ -517,7 +519,7 @@ func cmdNew(args []string) (err error) {
 	// Resolve the provenance stamp. This NEVER returns an error: every way it can fail
 	// yields an unstamped filing plus a NOTICE, because the stamp is a metric annotation
 	// and a metric must not be able to stop a filing. See the raised-by block above.
-	stampApply, stampNote, stampNotice := resolveRaisedByStamp(fg, fr, stampLabel)
+	stampApply, stampNote, stampNotice := resolveRaisedByStamp(fg, fr, kind, stampLabel)
 	ac.raisedBy = stampNote
 	if stampNotice != "" {
 		fmt.Fprintln(os.Stderr, stampNotice)
@@ -526,7 +528,7 @@ func cmdNew(args []string) (err error) {
 	// Resolve the addressee stamp the same way. Like resolveRaisedByStamp it NEVER errors:
 	// an unappliable `to:` label degrades to UNADDRESSED + a NOTICE rather than blocking
 	// the filing.
-	toApply, toNote, toNotice := resolveAddressedToStamp(fg, fr, toLabel)
+	toApply, toNote, toNotice := resolveAddressedToStamp(fg, fr, kind, toLabel)
 	ac.addressedTo = toNote
 	if toNotice != "" {
 		fmt.Fprintln(os.Stderr, toNotice)
@@ -623,7 +625,7 @@ func cmdAttach(args []string) (err error) {
 	// Resolve the forge under the session-role App's custody (write-verbs-C). Retains the
 	// could-not-check refusal on an unresolvable forge; serves GitLab (the #691 refusal is
 	// superseded).
-	fg, fr, ferr := forgeForFn(*repo)
+	fg, fr, _, ferr := forgeForFn(*repo)
 	if ferr != nil {
 		return ferr
 	}
@@ -703,7 +705,7 @@ func cmdCheck(args []string) (err error) {
 	// Resolve the forge under the session-role App's custody (write-verbs-C). check is a READ,
 	// but it reaches the forge, so it mints the session token like the other verbs; the
 	// unresolvable-forge could-not-check refusal is retained, GitLab is served (#691 superseded).
-	fg, fr, ferr := forgeForFn(*repo)
+	fg, fr, _, ferr := forgeForFn(*repo)
 	if ferr != nil {
 		return ferr
 	}
@@ -740,19 +742,23 @@ func cmdCheck(args []string) (err error) {
 // stampLabel is "" when no --raised-by was given; it has already been validated against
 // the roster by the caller when it is not.
 //
-// The label-existence probe is not decoration. `gh issue create --label <x>` FAILS
-// outright when x does not exist on the repo, so applying an unverified stamp would
-// convert a missing metric label into a failed filing — the annotation taking down the
-// thing it annotates. And no repo has these labels yet: they must be created outside this
-// tool (deskfile's mutating vocabulary is `issue create` and `issue comment`, and widening
-// it to `label create` for a metric is not a trade this file makes). So the probe reads,
-// and a missing label produces a NOTICE naming the exact create command.
+// The label-existence probe is not decoration. On the original `gh issue create --label
+// <x>` path the create FAILED outright when x did not exist on the repo, so applying an
+// unverified stamp would convert a missing metric label into a failed filing — the
+// annotation taking down the thing it annotates. The forge-backend path keeps that posture
+// rather than relying on any backend's create-on-the-fly behaviour. And no repo has these
+// labels by default: they must be created outside this tool (deskfile's mutating vocabulary
+// is `issue create` and `issue comment`, and widening it to `label create` for a metric is
+// not a trade this file makes). So the probe reads, and a missing label produces a NOTICE
+// naming the exact create command FOR THE REPO'S FORGE (labelCreateHint) — a `gh` command
+// printed on a GitLab repo cannot be run there, so the label never gets created and every
+// later filing stays UNSTAMPED (#887 item 2).
 //
 // THREE-STATE on the probe itself: present / absent / could-not-ask. An unanswered probe
 // is NOT treated as "absent" in the message even though both drop the stamp, because the
 // remedies differ and a caller told "create the label" during an API outage will create a
 // label that already exists and still not be stamped.
-func resolveRaisedByStamp(fg deskkit.Forge, fr deskkit.ForgeRepo, stampLabel string) (apply, note, notice string) {
+func resolveRaisedByStamp(fg deskkit.Forge, fr deskkit.ForgeRepo, kind deskkit.ForgeKind, stampLabel string) (apply, note, notice string) {
 	repo := fr.Slug()
 	if stampLabel == "" {
 		return "", stampOutcomeOmitted, "NOTICE: no --" + raisedByFlag + " given — this issue is filed with " +
@@ -764,15 +770,14 @@ func resolveRaisedByStamp(fg deskkit.Forge, fr deskkit.ForgeRepo, stampLabel str
 	case perr != nil:
 		return "", stampOutcomeUnchecked, "NOTICE: could not check whether label " + stampLabel +
 			" exists on " + repo + " (" + perr.Error() + ") — filing UNSTAMPED rather than risking a " +
-			"failed `gh issue create --label`. This issue reads as UNKNOWN provenance; it is could-not-check, " +
+			"failed filing on an unverified label. This issue reads as UNKNOWN provenance; it is could-not-check, " +
 			"not 'the label is absent'."
 	case !present:
 		return "", stampOutcomeNoLabel, "NOTICE: label " + stampLabel + " does not exist on " + repo +
-			" — filing UNSTAMPED (applying it would have failed the whole `gh issue create`). " +
-			"This issue reads as UNKNOWN provenance. Create the label once, then re-run:\n" +
-			"  gh label create " + stampLabel + " --repo " + repo +
-			" --description \"filed by the " + strings.TrimPrefix(stampLabel, deskkit.RaisedByPrefix) +
-			" desk\" --force"
+			" — filing UNSTAMPED (deskfile never mints labels, and applying an unverified one could have " +
+			"failed the whole filing). This issue reads as UNKNOWN provenance. Create the label once, then re-run:\n" +
+			"  " + labelCreateHint(kind, stampLabel, repo,
+			"filed by the "+strings.TrimPrefix(stampLabel, deskkit.RaisedByPrefix)+" desk")
 	default:
 		return stampLabel, fmt.Sprintf(stampOutcomeStamped, strings.TrimPrefix(stampLabel, deskkit.RaisedByPrefix)), ""
 	}
@@ -791,8 +796,8 @@ func resolveRaisedByStamp(fg deskkit.Forge, fr deskkit.ForgeRepo, stampLabel str
 // one is the overwhelming default, so a NOTICE on every unaddressed filing would be noise,
 // unlike the raised-by metric where an omission is a gap worth flagging. The other three
 // outcomes (label present / label missing / probe outage) mirror the raised-by resolver
-// exactly, because `gh issue create --label <missing>` fails the whole filing the same way.
-func resolveAddressedToStamp(fg deskkit.Forge, fr deskkit.ForgeRepo, toLabel string) (apply, note, notice string) {
+// exactly, because an unverified label could fail the whole filing the same way.
+func resolveAddressedToStamp(fg deskkit.Forge, fr deskkit.ForgeRepo, kind deskkit.ForgeKind, toLabel string) (apply, note, notice string) {
 	repo := fr.Slug()
 	if toLabel == "" {
 		return "", toOutcomeOmitted, ""
@@ -802,17 +807,36 @@ func resolveAddressedToStamp(fg deskkit.Forge, fr deskkit.ForgeRepo, toLabel str
 	case perr != nil:
 		return "", toOutcomeUnchecked, "NOTICE: could not check whether label " + toLabel +
 			" exists on " + repo + " (" + perr.Error() + ") — filing UNADDRESSED rather than risking a " +
-			"failed `gh issue create --label`. This is could-not-check, not 'the label is absent'."
+			"failed filing on an unverified label. This is could-not-check, not 'the label is absent'."
 	case !present:
 		return "", toOutcomeNoLabel, "NOTICE: label " + toLabel + " does not exist on " + repo +
-			" — filing UNADDRESSED (applying it would have failed the whole `gh issue create`). " +
+			" — filing UNADDRESSED (deskfile never mints labels, and applying an unverified one could have " +
+			"failed the whole filing). " +
 			"The addressee's sweep will NOT lead with this issue until it is labelled. Create the label " +
 			"once, then re-run:\n" +
-			"  gh label create " + toLabel + " --repo " + repo +
-			" --description \"addressed to the " + strings.TrimPrefix(toLabel, deskkit.AddressedToPrefix) +
-			" desk\" --force"
+			"  " + labelCreateHint(kind, toLabel, repo,
+			"addressed to the "+strings.TrimPrefix(toLabel, deskkit.AddressedToPrefix)+" desk")
 	default:
 		return toLabel, fmt.Sprintf(toOutcomeAddressed, strings.TrimPrefix(toLabel, deskkit.AddressedToPrefix)), ""
+	}
+}
+
+// labelCreateHint renders the ONE-OFF label-create command an operator runs on the repo's
+// forge before re-filing. It is forge-SELECTED, never a `gh` literal: on a GitLab-resolved
+// repo `gh label create` cannot work, so printing it leaves the label uncreated and every
+// later filing UNSTAMPED (#887 item 2). The kind comes from the same resolution that picked
+// the backend (forgeFor → deskkit.ResolveForge), so the hint and the backend cannot drift.
+// An unknown kind — a forge this tree has no CLI literal for — gets a neutral instruction
+// naming the label and repo rather than a guessed command.
+func labelCreateHint(kind deskkit.ForgeKind, label, repo, description string) string {
+	switch kind {
+	case deskkit.ForgeGitHub:
+		return "gh label create " + label + " --repo " + repo + " --description \"" + description + "\" --force"
+	case deskkit.ForgeGitLab:
+		return "glab label create --name " + label + " --repo " + repo + " --description \"" + description + "\""
+	default:
+		return "create the label " + label + " on " + repo + " (description: \"" + description +
+			"\") with your forge's label tool"
 	}
 }
 

@@ -1,0 +1,18 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/graphql",
+      "body": {
+        "query": "query($path:ID!,$iid:String!){project(fullPath:$path){mergeRequest(iid:$iid){comments:notes(filter:ONLY_COMMENTS,first:100){pageInfo{hasNextPage} nodes{createdAt lastEditedAt author{id username bot}}} activity:notes(filter:ONLY_ACTIVITY,last:100){pageInfo{hasPreviousPage} nodes{body createdAt}}}}}",
+        "variables": {
+          "iid": "7",
+          "path": "medici-finance/assay"
+        }
+      }
+    }
+  ],
+  "result": null,
+  "err": "could-not-check: PRTrustEvents for medici-finance/assay#7 — the GitLab GraphQL trust query returned errors: Field 'notes' doesn't accept argument 'filter'",
+  "not_found": false
+}

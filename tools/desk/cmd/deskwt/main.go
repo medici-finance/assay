@@ -56,6 +56,14 @@ the identity lands in the NEW worktree's own config, and the one shared-config w
 enabling extensions.worktreeConfig (once, idempotent) so that scoping takes effect.
 --no-fetch cuts from the local origin/main as-is.
 
+add REFUSES an SSH PUSH REMOTE under a bot identity. A worktree inherits this checkout's
+remote, so an ssh:// or git@host:path PUSH url here is one in every worktree cut from it —
+and a session whose $DESK_LOOP resolves to a role App would push under whatever key this
+machine's agent holds, a human's, while its commits read as the App's. The refusal names the
+url and the one-line remedy. Fetch over SSH stays allowed (remote.origin.pushurl is what is
+read whenever it is set), and with $DESK_LOOP unset the gate is inert — a human pushes under
+their own key, which is what the SSH remote is for.
+
 add resolves a LOCAL BRANCH COLLISION by name rather than dying on git's. Worktrees share
 one refs store, so a branch left behind by an abandoned dispatch blocks every later add that
 derives the same name. A leftover that is checked out in no worktree and carries no commit its
