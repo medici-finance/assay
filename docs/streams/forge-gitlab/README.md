@@ -105,6 +105,12 @@ configuration rather than a design intention. Its Verify row 3 (closure-to-zero)
 2026-09-10 (#834): the ban shipped as a ratchet with three real `gh` sites still permitted. The
 driver ruled closure-to-zero stands; `forge-gitlab/11` is the custody design that closes it and
 `forge-gitlab/12` finishes the hardening guard on GitLab. 08 re-verifies when 11 lands.
+That custody design's own human gate is now RULED (#857, closed `human-decided` 2026-09-11):
+option 1 — the dedicated read-only `auditor` identity — approved as proposed, plus one addition,
+that the adopter documentation and the public website are updated alongside. `DR-forge-gitlab-11`
+is APPROVED citing that ruling, and the brief carries the docs half as a deliverable with its own
+Verify rows, so it is dispatchable; the website half is a companion change in the site repo,
+tracked separately.
 
 ## Dependency waves
 
@@ -129,7 +135,8 @@ critical path):
   passthrough on either backend, checked `gh`/`glab` shell-exec ban).
 - **Wave 4** — `forge-gitlab/11` (depends on 02 + 03 + 08; human-gated — the token-custody
   design behind 08's closure-to-zero: the last `gh` shell-outs onto the seam, a read-only
-  `auditor` identity for the hardening guard, one enumerated hardening-read op; design record
-  `DR-forge-gitlab-11`).
+  `auditor` identity for the hardening guard, one enumerated hardening-read op, and the adopter
+  docs that enumerate roles and permission sets gaining the auditor entry; design record
+  `DR-forge-gitlab-11`, APPROVED at the gate on #857).
 - **Wave 5** — `forge-gitlab/12` (depends on 11; the GitLab hardening-read kinds and the
   per-forge checklist rows).
