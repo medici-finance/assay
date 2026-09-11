@@ -1046,7 +1046,13 @@ func gitlabUnwrapGraphQLErr(err error) error {
 //     sha when they were created at or after the current diff VERSION arrived — the
 //     versions endpoint records exactly when each head landed, so this is a comparison of
 //     recorded timestamps, not an inference. Older notes are reported with an empty
-//     CommitID.
+//     CommitID. A note's STATE is its correctness verdict when its body carries one
+//     (`Verdict: approve|request-changes` → APPROVED / CHANGES_REQUESTED, via
+//     CorrectnessNoteState), else COMMENTED. This is the load-bearing half of the #798 fix:
+//     `deskpost review` writes a correctness verdict ONLY as this note (approve also POSTs
+//     an approval; request-changes has no native GitLab object at all), so unless the read
+//     reduces the note to a State the reviewer-approved gate can see, the write and the read
+//     disagree on the object and a real verdict is invisible.
 //
 // System notes are excluded from the returned verdicts (they are GitLab's own timeline
 // entries, not a reviewer's) but ARE read: the "approved this merge request" system note is
@@ -1166,10 +1172,20 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 		if n == nil || n.System {
 			continue
 		}
+		// A correctness verdict has no native GitLab review object — PostReview writes it as
+		// this note's body (a `Verdict: approve|request-changes` line). Reduce that line to
+		// the review STATE a GitHub review of the same verdict reports, so the note is the
+		// ONE object both the write and the read agree on (#798). A note that carries no
+		// correctness verdict line stays COMMENTED — including a `Security-Review:` note,
+		// whose lane is read from the body markers, not from this State.
+		state := "COMMENTED"
+		if s := CorrectnessNoteState(n.Body); s != "" {
+			state = s
+		}
 		r := Review{
 			ID:          n.ID,
 			Author:      gitlabAccount(n.Author.ID, n.Author.Username),
-			State:       "COMMENTED",
+			State:       state,
 			Body:        n.Body,
 			SubmittedAt: gitlabTime(n.CreatedAt),
 		}

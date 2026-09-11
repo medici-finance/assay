@@ -261,3 +261,47 @@ func isAlnumByte(c byte) bool {
 
 var secReviewPass = regexp.MustCompile(`(?i)^[ \t]*Security-Review:[ \t]*pass[ \t\r]*$`)
 var secReviewFail = regexp.MustCompile(`(?i)^[ \t]*Security-Review:[ \t]*fail[ \t\r]*$`)
+
+var correctnessApprove = regexp.MustCompile(`(?i)^[ \t]*Verdict:[ \t]*approve[ \t\r]*$`)
+var correctnessRequestChanges = regexp.MustCompile(`(?i)^[ \t]*Verdict:[ \t]*request-changes[ \t\r]*$`)
+
+// CorrectnessNoteState maps the correctness `Verdict:` line a body carries to the review
+// STATE a GitHub review of the same verdict would report — "APPROVED",
+// "CHANGES_REQUESTED", or "" when the body carries no correctness verdict line.
+//
+// It exists for the GitLab backend, where a verdict has no native GitHub-shaped review
+// object: `deskpost review --verdict approve|request-changes` writes its reasoning as an MR
+// NOTE carrying this line (bodycheck.Review requires it), so the note IS the channel both
+// the write and the read must agree on. Before this, ReviewsAtHead classified every
+// non-system note as COMMENTED, so a GitLab correctness verdict was invisible to the
+// reviewer-approved gate (`deskflip`) and to the board — the write and the read disagreed
+// on the object (#798). Reducing the note to its verdict STATE here is what makes them
+// agree, on CE and EE alike (a GitLab approval object carries no body and a project may not
+// reset approvals on push, so it cannot be the sole common channel; request-changes has no
+// native GitLab object at all).
+//
+// The two directions are deliberately ASYMMETRIC about fenced code blocks, exactly as
+// HasSecurityReviewPass / HasSecurityReviewFail are and for the same reason:
+//
+//   - request-changes is the BLOCK direction, so a fenced marker STILL counts (ReadFenced)
+//     — a retraction must never be hideable inside a code fence.
+//   - approve is the GRANT direction, so a fenced marker is quotation, not a grant
+//     (SkipFenced).
+//
+// request-changes is checked FIRST so a body carrying both reduces to the block, never the
+// grant. Both reads are emphasis-tolerant (HasVerdictMarkerLine unwraps `**…**`).
+//
+// It is identity-free: it reports what a note ASSERTS, not whose assertion counts. Every
+// consumer (deskflip's checkReviewerApproved, deskboard's reduction) filters the returned
+// reviews to the reviewer App login before it acts, so a note authored by anyone else that
+// merely carries a verdict line is reported with its true Author and ignored downstream —
+// the same author-agnostic treatment the COMMENTED classification already gave notes.
+func CorrectnessNoteState(body string) string {
+	if HasVerdictMarkerLine(body, correctnessRequestChanges, ReadFenced) {
+		return "CHANGES_REQUESTED"
+	}
+	if HasVerdictMarkerLine(body, correctnessApprove, SkipFenced) {
+		return "APPROVED"
+	}
+	return ""
+}
