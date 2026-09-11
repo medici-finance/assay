@@ -283,6 +283,7 @@ type ghCombinedStatusWire struct {
 type ghCheckRunsWire struct {
 	TotalCount int `json:"total_count"`
 	CheckRuns  []struct {
+		ID          int64  `json:"id"`
 		Name        string `json:"name"`
 		Status      string `json:"status"`
 		Conclusion  string `json:"conclusion"`
@@ -788,6 +789,7 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 		}
 		for _, c := range cr.CheckRuns {
 			out.CheckRuns = append(out.CheckRuns, CheckRun{
+				ID:   checkRunID(c.ID),
 				Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
 				StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
 			})

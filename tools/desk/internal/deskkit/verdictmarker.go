@@ -98,6 +98,55 @@ func HasVerdictMarkerLine(body string, re *regexp.Regexp, fp FencePolicy) bool {
 	return false
 }
 
+// VerdictMarkerValues is HasVerdictMarkerLine's CAPTURING sibling: it returns submatch 1 of
+// every line of body that matches re, under the same fence and emphasis handling.
+//
+// It exists so a marker that carries a VALUE (deskflip's `Blocked-On-Check:` /
+// `Cleared-Check-Run:` lines) is read by the SAME reduction as the boolean markers rather
+// than by a fourth hand-rolled parser — the exact divergence #408 closed for
+// `Security-Review:`. re MUST have at least one capture group.
+//
+// It returns EVERY match, not the first, because the number of matches is itself part of
+// the answer: a body carrying two different values for one marker is ambiguous, and the
+// caller (SoleVerdictMarkerValue) refuses rather than picking one.
+func VerdictMarkerValues(body string, re *regexp.Regexp, fp FencePolicy) []string {
+	var out []string
+	inFence := false
+	for _, ln := range strings.Split(body, "\n") {
+		if isFenceDelimiter(ln) {
+			inFence = !inFence
+			continue
+		}
+		if inFence && fp == SkipFenced {
+			continue
+		}
+		if m := re.FindStringSubmatch(unwrapEmphasis(ln)); m != nil {
+			out = append(out, strings.TrimSpace(m[1]))
+		}
+	}
+	return out
+}
+
+// SoleVerdictMarkerValue returns the value of body's marker line when there is EXACTLY ONE
+// distinct value, and "" otherwise — no line, or two lines disagreeing.
+//
+// Ambiguity reads as absence because every caller of this is on a GRANT path: two
+// `Blocked-On-Check:` lines naming different checks is a body whose claim cannot be
+// established, and an unestablished claim must withhold the grant, not pick a value out of
+// it. "" is likewise never a value — an empty marker names nothing.
+func SoleVerdictMarkerValue(body string, re *regexp.Regexp, fp FencePolicy) string {
+	vals := VerdictMarkerValues(body, re, fp)
+	if len(vals) == 0 {
+		return ""
+	}
+	for _, v := range vals[1:] {
+		if v != vals[0] {
+			return ""
+		}
+	}
+	return vals[0]
+}
+
 // fenceDelim matches a Markdown fenced-code-block delimiter line: three or more backticks
 // or tildes, optionally indented, optionally followed by an info string.
 //
