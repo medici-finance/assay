@@ -268,8 +268,8 @@ func flip(o flipOpts) error {
 		// entirely, so evalRollup, which reads only present entries, calls the rollup green with
 		// the missing gate simply not there. The leak-sweep disclosure gate is exactly this
 		// shape: its verdict is a commit status posted OUT OF BAND (a separate control-based
-		// sweep on its own schedule — leaksweep-pattern.yml, docs/streams/forge-neutral/
-		// leak-gate-shape.md), so a head that never received it shows a green rollup and a gate
+		// sweep on its own schedule — leaksweep-pattern.yml, and the forge-neutral
+		// leak-gate-shape reference doc), so a head that never received it shows a green rollup and a gate
 		// that never ran. An absent required verdict is could-not-check, never "no objection":
 		// the flip cross-checks that every branch-protection-required context is PRESENT in the
 		// rollup and refuses when one is missing — the same three-state contract the empty-rollup

@@ -260,7 +260,7 @@ func TestEmptyRollupWithUnreadableProtectionIsUnverifiable(t *testing.T) {
 }
 
 // The leak-gate three-state contract on the ready-flip decision
-// (docs/streams/forge-neutral/leak-gate-shape.md): a change whose leak-gate verdict is ABSENT
+// (the forge-neutral leak-gate-shape reference doc): a change whose leak-gate verdict is ABSENT
 // is could-not-check, never a pass. The leak-sweep disclosure gate is a required status posted
 // OUT OF BAND (a control-based sweep on its own schedule), so a head can carry a fully GREEN
 // rollup of every check that ran while the leak-sweep verdict simply never reported. Before the
