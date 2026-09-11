@@ -175,7 +175,7 @@ Runner ≠ implementer. Own temp worktree off `origin/main`, offline (`KUBECONFI
 
 ### RE-VERIFY 2026-09-11 — non-implementer dispatched verifier (opus-4.8[1m]-verifier) — VERDICT: PASS → verified (SUPERSEDES the 2026-09-01 FAIL above)
 
-The FAIL above (rows 1 & 7, docs deliverables absent) ran against `3287ec1`, BEFORE the docs landed. Both docs deliverables merged in `medici-finance/assay#574` (merge `d8dd0648`, "docs(statusgen/11): metric map + staged DevLake spec/runbook"), an ancestor of the re-verify head. Re-verified against current merged main `553dc2ae5` (two-protocol confirmed), offline, isolated worktree; statusgen built from source.
+The FAIL above (rows 1 & 7, docs deliverables absent) ran against `3287ec1`, BEFORE the docs landed. Both docs deliverables merged in `#574` (merge `d8dd0648`, "docs(statusgen/11): metric map + staged DevLake spec/runbook"), an ancestor of the re-verify head. Re-verified against current merged main `553dc2ae5` (two-protocol confirmed), offline, isolated worktree; statusgen built from source.
 
 | # | Command | Exit | Key observed output | Result |
 |---|---------|------|---------------------|--------|
@@ -191,7 +191,7 @@ The FAIL above (rows 1 & 7, docs deliverables absent) ran against `3287ec1`, BEF
 
 **Rehoming (the derived correctness property):** the grouped-DORA core (`computeDoraGrouped`) survived deletion of `dora.go` by moving to retained `roadmapdora.go` (row 2b), and the awaiting-verification backlog curve survived deletion of `trend.go` (retained in `main.go`; row 3) — nothing methodology-owned was dropped with the removed commodity files. `RISK-VALUE: N/A — commodity-metrics split + docs map; all risk axes no, no guard carries a risk-bearing literal.`
 
-**VERDICT: PASS** — rows 1/2/2b/3/4/5/6/7 PASS on merged main `553dc2ae5`; row 8 expected COULD-NOT-CHECK (brief-v2). Rows 1 & 7 (the prior FAIL) now genuinely pass — the docs landed via #574. The 2026-09-01 FAIL is superseded. gate: model, risk all=no → row flips **implemented → verified**; tracker `medici-finance/assay#855` closes citing #574.
+**VERDICT: PASS** — rows 1/2/2b/3/4/5/6/7 PASS on merged main `553dc2ae5`; row 8 expected COULD-NOT-CHECK (brief-v2). Rows 1 & 7 (the prior FAIL) now genuinely pass — the docs landed via #574. The 2026-09-01 FAIL is superseded. gate: model, risk all=no → row flips **implemented → verified**; tracker `#855` closes citing #574.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table, checking specifically:
