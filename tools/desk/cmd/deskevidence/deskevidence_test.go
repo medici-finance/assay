@@ -397,6 +397,52 @@ func TestCommitAttributedToAnotherAppIsRefused(t *testing.T) {
 
 // --- Brief merge (the ReadFile op's consumer) ---
 
+// TestSecretScanIgnoresPreexistingBriefBody (assay-toolkit#2447, #2449, #2452): BodyCheck must
+// scan only the bytes THIS commit adds, never the whole merged file. A brief already carrying a
+// secret-shaped run in its PRE-EXISTING body (already reviewed and merged through the normal PR
+// path) must not permanently block every future Evidence append to that file. Before the fix,
+// this scanned commitContent (the merged whole file) and refused; after the fix, it scans
+// localContent (the evidence being added) and lands.
+func TestSecretScanIgnoresPreexistingBriefBody(t *testing.T) {
+	f, _ := setupFake(t)
+	briefPath := "docs/streams/x/brief.md"
+	preexistingSecret := "ghp_" + strings.Repeat("c", 36)
+	f.setFile(briefPath, "# Brief\n\ntoken: "+preexistingSecret+"\n\n## Evidence\n| 1 | a | b |\n")
+	evidencePath := writeRepoFile(t, "row.md", "| 2 | c | d |\n")
+
+	code := run([]string{"example-org/tracker", "main",
+		"--evidence-file", evidencePath, "--brief-path", briefPath})
+	if code != deskkit.ExitOK {
+		t.Fatalf("exit = %d, want 0 (pre-existing secret-shaped text on the branch must not block a clean append)", code)
+	}
+	if f.putCalls != 1 {
+		t.Fatalf("expected 1 WriteFile, got %d", f.putCalls)
+	}
+	if !strings.Contains(f.putContent, "| 2 | c | d |") {
+		t.Fatalf("merged content missing the new row:\n%s", f.putContent)
+	}
+}
+
+// TestSecretScanStillRefusesNewSecretInBriefMerge: the companion negative-path row — a secret in
+// the EVIDENCE ITSELF (the bytes this commit is actually adding) must still refuse, brief-path
+// merge or not. Proves the fix narrowed the scan's SCOPE, not its sensitivity.
+func TestSecretScanStillRefusesNewSecretInBriefMerge(t *testing.T) {
+	f, _ := setupFake(t)
+	briefPath := "docs/streams/x/brief.md"
+	f.setFile(briefPath, "# Brief\n\n## Evidence\n| 1 | a | b |\n")
+	newSecret := "ghp_" + strings.Repeat("d", 36)
+	evidencePath := writeRepoFile(t, "row.md", "token: "+newSecret+"\n")
+
+	code := run([]string{"example-org/tracker", "main",
+		"--evidence-file", evidencePath, "--brief-path", briefPath})
+	if code != deskkit.ExitRefused {
+		t.Fatalf("exit = %d, want %d (a secret in the NEW evidence must still refuse)", code, deskkit.ExitRefused)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("a secret-scanned refusal still wrote %d time(s)", f.putCalls)
+	}
+}
+
 func TestMergeEvidenceIntoBrief(t *testing.T) {
 	f, _ := setupFake(t)
 	briefPath := "docs/streams/x/brief.md"

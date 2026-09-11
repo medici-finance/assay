@@ -203,8 +203,17 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// shrink guard for that class, and honour an explicit --append-only for any other file.
 	appendOnly := *appendOnlyFlag || strings.HasSuffix(targetRepoPath, ".jsonl")
 
-	// Secret-scan the content that will be committed.
-	if berr := deskkit.BodyCheck(commitContent); berr != nil {
+	// Secret-scan only the bytes THIS commit adds — localContent (the evidence file's own
+	// content), never commitContent (which, with --brief-path, is the whole MERGED file:
+	// every pre-existing byte of the brief plus the new block). Scanning the merged body
+	// meant any secret-shaped run already on the branch — a brief's own frontmatter, a Verify
+	// row's literal command, a fingerprint quoted in prose, all of it already reviewed and
+	// merged through the normal PR path — permanently refused EVERY future Evidence append to
+	// that file, worded any way, forever (assay-toolkit#2447, #2449, #2452). localContent is
+	// exactly what deskevidence itself is writing new to the branch; the pre-existing brief
+	// body it reads via ReadFile in mergeEvidence was never scanned by this tool when IT
+	// landed and is not this commit's to answer for.
+	if berr := deskkit.BodyCheck(localContent); berr != nil {
 		return berr
 	}
 
