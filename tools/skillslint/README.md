@@ -175,5 +175,5 @@ must never be reported.
 
 No workflow in `.github/workflows/` calls this tool today; it runs as
 `make skillslint`. Wiring the gate is tracked separately
-(`docs/streams/mistake-proofing/brief-04-derived-enforcement-status.md`), and
+(`docs/archive/mistake-proofing/brief-04-derived-enforcement-status.md`), and
 widening the check does not change that.
