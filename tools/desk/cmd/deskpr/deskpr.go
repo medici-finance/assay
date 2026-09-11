@@ -257,23 +257,17 @@ func cmdCreate(args []string) (err error) {
 		return werr
 	}
 
-	// Public-repo gate: refuse to write to a public repo
-	// without a qualifying +1 from an authorized human.
-	// A create has no PR number yet, so the gate is asked about the trailer's
-	// tracking issue instead: `trailerIssue` is the `Issue: #<N>` number, or 0
-	// for a `Brief:` trailer (a brief resolves to a file, not a reactions
-	// surface). On a non-blessed public repo this gives the `Issue:` path the
-	// per-issue-+1 admission — a +1 from the blessing authority on that issue
-	// admits the create — while a `Brief:` create still fails closed (issue 0,
-	// no reactions surface) with exit 6 (#1707). This does not touch the
-	// blessed-repo path: a repo carrying a standing per-repo authorization
-	// (deskkit publicbless.go: a human-maintained sentinel file naming exact
-	// repos) passes the gate regardless of the number, with a stderr NOTICE,
-	// and create proceeds. The change never relaxes the gate — it only routes
-	// the issue number the create already required to the surface that checks it.
+	// Public-repo gate: refuse an outward write unless the repo is authorized.
+	// The authorization is repository-scoped (a listed `:public` allowed-repos entry,
+	// or private) — see deskkit.PublicRepoGate. A create no longer needs an issue/PR
+	// number: the former per-item `+1` on `trailerIssue` is gone, which is exactly what
+	// makes the FIRST pull request on a listed public repo openable (a brief-carrying
+	// create has no issue number and used to fail closed here). `trailerIssue` is still
+	// resolved above for the trailer/self-containment hint; it is simply no longer passed
+	// to the gate.
 	owner, name := splitOwnerRepo(facts.repo)
 	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
-	if gerr := publicRepoGateFn(fetcher, owner, name, trailerIssue); gerr != nil {
+	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}
 
@@ -457,11 +451,11 @@ func cmdUpdate(args []string) (err error) {
 		return werr
 	}
 
-	// Public-repo gate: refuse to update a PR on a public repo
-	// without a qualifying +1 from an authorized human on the associated issue.
+	// Public-repo gate: refuse an outward write unless the repo is authorized
+	// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
 	owner, name := splitOwnerRepo(facts.repo)
 	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
-	if gerr := publicRepoGateFn(fetcher, owner, name, pr.Number); gerr != nil {
+	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}
 

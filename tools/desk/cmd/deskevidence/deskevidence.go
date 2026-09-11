@@ -208,13 +208,13 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return berr
 	}
 
-	// Public-repo trust gate. deskevidence writes a file directly to a remote branch — an
-	// outward write with no associated issue/PR number, so the gate fails closed (exit 6) for
-	// public repos (no reactions surface to consult) and passes through for private/internal.
+	// Public-repo write gate. deskevidence writes a file directly to a remote branch — an
+	// outward write. A public/internal target is authorized only by a listed `:public`
+	// allowed-repos entry (deskkit.PublicRepoGate); private/internal-without-entry refuse.
 	// The fetcher uses the minted verifier token and the backend's own default host (this tool
 	// no longer binds a GitHub API host literal of its own).
 	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
-	if gerr := publicRepoGateFn(fetcher, owner, name, 0); gerr != nil {
+	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}
 

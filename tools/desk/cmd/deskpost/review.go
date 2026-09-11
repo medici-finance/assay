@@ -264,9 +264,9 @@ func postVerdictReview(owner, name string, pr int, shape reviewShape, head strin
 		if terr := prTrustGate(client, pr, info.User.Login, info.User.ID); terr != nil {
 			return withDigest(fromReadErr(verb, repo, pr, head, terr), dig)
 		}
-		// Public-repo gate: refuse to write to a public repo
-		// without a qualifying +1 from an authorized human.
-		if gerr := deskkit.PublicRepoGate(client, owner, name, pr); gerr != nil {
+		// Public-repo gate: refuse an outward write unless the repo is authorized
+		// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
+		if gerr := deskkit.PublicRepoGate(client, owner, name); gerr != nil {
 			return withDigest(fromErr(verb, repo, pr, head, gerr), dig)
 		}
 		// Non-author verdict assertion (sdlc/10) — the SECOND layer behind the forge's own
