@@ -19,7 +19,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/21 | 2026-09-11 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-11 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 6/12 | 2026-09-11 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 3/13 | 2026-09-11 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 4/13 | 2026-09-11 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 3/14 | 2026-09-11 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-11 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-11 |  |
@@ -38,14 +38,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (51 desk-actionable of 59 total — 59 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (50 desk-actionable of 58 total — 58 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (51)
+### Desk-actionable (50)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -67,7 +67,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | windows-port | 01 | implemented | 3000 | 4 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-gitlab | 08 [exec:strong] | implemented | 2500 | 3 | — | — | — |
-| forge-neutral | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
@@ -105,7 +104,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| forge-neutral | 01 [exec:strong] | implemented | 6500 | 9 | — | — | — |
+| forge-neutral | 01 [exec:strong] | implemented | 6000 | 8 | — | — | — |
 | harness-portability | 03 | implemented | 5000 | 8 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 2500 | 3 | — | — | — |
@@ -228,12 +227,11 @@ _None._
 - 11 Guard-read custody — the last gh shell-outs onto the Forge seam — todo (wave 4)
 - 12 GitLab hardening reads — repohardenguard kinds on the GitLab backend — todo (wave 5)
 
-### forge-neutral (10 open)
+### forge-neutral (9 open)
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
 - 04 Write verbs B — deskpr, deskfile, deskclose and deskevidence onto the resolver — implemented (wave 2)
-- 06 Read verbs — deskboard, issueboard, scanloop and the loop planners on the seam — implemented (wave 3)
 - 07 statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted — implemented (wave 3)
 - 08 statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay — implemented (wave 4)
 - 09 Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up — implemented (wave 3)
@@ -323,10 +321,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 07 GitHub forge backend on go-gh — retire the exec-`gh` shell path — done (wave 2)
 - 09 GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth — done (wave 4)
 
-### forge-neutral (3 done)
+### forge-neutral (4 done)
 
 - 03 Write verbs A — deskpost, deskreply and deskflip onto the resolver — done (wave 2)
 - 05 Claim layer — the GitLab shape of refs/dispatch/* and its release — done (wave 2)
+- 06 Read verbs — deskboard, issueboard, scanloop and the loop planners on the seam — done (wave 3)
 - 12 deskboard non-board reads onto the seam — done (wave 4)
 
 ### harness-portability (3 done)
@@ -378,4 +377,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**14** streams (**14** active, **0** paused) · **54/150** briefs done · completed initiatives: see `docs/archive/`
+**14** streams (**14** active, **0** paused) · **55/150** briefs done · completed initiatives: see `docs/archive/`
