@@ -429,6 +429,19 @@ item, and the cockpit is only a nicer way to reach it.
     --branch <branch> --base refs/remotes/origin/main --path ../<repo>-<item> --label <item>` (it
     has no `--fetch`, so fetch first, then it runs the `git worktree add` and opens a labelled
     workspace).
+  - else `orca` on PATH → `git -C <repo> fetch origin && orca worktree create --repo <repo>
+    --name <item> --from refs/remotes/origin/main` (fetch first, as with Herdr, then it cuts the
+    same `git worktree add` underneath and lists the worktree in the cockpit sidebar; pin the base
+    and the per-item name explicitly, and if the installed build accepts neither flag, fall through
+    to the fallback rather than trust an unstated default base). Then, **only when a fanout
+    coordination run already exists**, also `orca orchestration worker-start` for the dispatched
+    worker, so the coordinator learns that worker's `worker_done` — its outcome, exactly once —
+    without polling. That orchestration link is used for that one thing only and is **never an
+    escalation channel**: a worker that needs a human still files the GitHub issue exactly as
+    always, and the coordinator `ask` inbox is for coordinator-answerable questions only (which
+    base branch, retry or abandon). GitHub stays the only record, so an operator with no run — or
+    no Orca — loses only the poll-free notification, never any isolation, correctness, or the
+    escalation path.
   - else the always-works fallback → `git fetch origin && git worktree add ../<repo>-<item> -b
     <branch> refs/remotes/origin/main`.
 - **The base is verified after the create, not trusted from any tool's default.** Whichever path
@@ -442,7 +455,7 @@ item, and the cockpit is only a nicer way to reach it.
   `refs/remotes/origin/main` base, the claim key, the roster register, the decision gate, the
   model-stamp and the emitted worker kit are all identical; the desk still RUNS the dispatch verb
   and honours its exits. A cockpit is chosen only where its CLI is actually on PATH, so the same
-  skill drives a fanout whether or not either cockpit is installed.
+  skill drives a fanout whether or not any of these cockpits is installed.
 - **The fallback is not a degraded path.** An operator with no cockpit loses only the titled
   worktree and the presence badge, never any isolation or correctness. Nothing in a brief, a loop
   or this skill may require a cockpit to function.
