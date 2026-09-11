@@ -122,12 +122,12 @@ func TestPublicRepoGatePrivateAndUnreadable(t *testing.T) {
 	installRoster(t, gateRoster)
 
 	t.Run("private_passes", func(t *testing.T) {
-		// A live-private read passes regardless of the configured entry — the private arm
+		// A live private read passes regardless of the configured entry — the private arm
 		// returns before the configured-visibility check.
 		for _, repo := range []string{"pubrepo", "privrepo", "not-in-set"} {
 			f := &stubRepoInfoFetcher{visibility: "private"}
 			if err := PublicRepoGate(f, "example-org", repo); err != nil {
-				t.Fatalf("%s: live-private repo should pass regardless of config, got %v", repo, err)
+				t.Fatalf("%s: live private repo should pass regardless of config, got %v", repo, err)
 			}
 		}
 	})
