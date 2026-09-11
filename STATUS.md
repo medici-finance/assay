@@ -39,14 +39,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (55 desk-actionable of 65 total — 65 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (56 desk-actionable of 66 total — 66 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (55)
+### Desk-actionable (56)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -66,6 +66,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | forge-neutral | 06 [exec:strong] | implemented | 3000 | 2 | — | — | — |
+| forge-neutral | 08 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-gitlab | 07 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | forge-neutral | 05 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -244,7 +245,7 @@ _None._
 - 05 Claim layer — the GitLab shape of refs/dispatch/* and its release — implemented (wave 2)
 - 06 Read verbs — deskboard, issueboard, scanloop and the loop planners on the seam — implemented (wave 3)
 - 07 statusgen acting identity — Evidence-actor and verifyrun name the forge identity that acted — implemented (wave 3)
-- 08 statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay — todo (wave 4)
+- 08 statusgen forge-aware — init's CI scaffold, auto-flip corroboration, honest claim decay — implemented (wave 4)
 - 09 Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up — implemented (wave 3)
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
