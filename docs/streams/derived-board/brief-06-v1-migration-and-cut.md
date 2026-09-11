@@ -454,7 +454,7 @@ TO, never superseding the flag day. **MIGRATION STILL NOT RUN HERE — pin bump 
   examples/adopter-scaffold --dry-run` → exit 0, selecting `0001-v0.28.0-to-v1.0.0-derived-board`,
   planning the same 3 files; `git status --porcelain examples/` after shows only this PR's edits.
 - **The pins move, the manifests accumulate.** `paired-versions.yaml` re-pins both artifacts to
-  v1.0.6, all ten digests from the v1.0.6 `checksums.txt`; `releases/v1.0.6.yaml` ADDED, v1.0.5
+  v1.0.6, all ten digests from the v1.0.6 `checksums.txt`; `examples/adopter-scaffold/releases/v1.0.6.yaml` ADDED, v1.0.5
   demoted to a patch step. `plugin: "1.0.0"` unchanged. `check-paired-versions.sh` → exit 0; its
   tests → 16 passed, 0 failed. `qualgen` stays unpinned, as before.
 - **Digest confirmed end-to-end, row 10 re-measured.** The published `statusgen-darwin-arm64`
