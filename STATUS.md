@@ -31,6 +31,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
+| forge-gitlab | 09 — GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth [exec:strong] | 4 | 1500 |
 | desk-tools | 17 — One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on [exec:strong] | 1 | 1000 |
 | desk-tools | 18 — Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check [exec:strong] | 1 | 1000 |
 
@@ -38,14 +39,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (56 desk-actionable of 66 total — 66 at implemented, 0 verified awaiting review)
+## Awaiting verification / review (55 desk-actionable of 65 total — 65 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (56)
+### Desk-actionable (55)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -77,7 +78,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | windows-port | 00 | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| forge-gitlab | 09 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | windows-port | 01 | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -232,7 +232,7 @@ _None._
 - 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — implemented (wave 5)
 - 07 GitHub forge backend on go-gh — retire the exec-`gh` shell path — implemented (wave 2)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
-- 09 GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth — implemented (wave 4)
+- 09 GitLab reviewer write path — deskpost verdict/comment/ready + deskfile/desktoken PAT auth — in-progress (wave 4)
 - 10 GitLab trust-events + commit author-login for the deskpost trust read — todo (wave 5)
 
 ### forge-neutral (13 open)
