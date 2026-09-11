@@ -13,13 +13,14 @@ const (
 	GlyphStar   = "star"   // team (read + act)
 	GlyphTicket = "ticket" // issue-loop
 	GlyphFunnel = "funnel" // intake-loop
+	GlyphPen    = "pen"    // board-writer
 )
 
 // glyphKeys is the fixed enumeration, used by tests to assert the whole set
 // renders.
 var glyphKeys = []string{
 	GlyphRing, GlyphCheck, GlyphHammer, GlyphDisc,
-	GlyphStar, GlyphTicket, GlyphFunnel,
+	GlyphStar, GlyphTicket, GlyphFunnel, GlyphPen,
 }
 
 // glyphSVG returns the SVG fragment for one glyph, painted in the given colour.
@@ -47,6 +48,13 @@ func glyphSVG(key string, fill rgb) string {
 		return fmt.Sprintf(`<rect x="132" y="178" width="248" height="156" rx="28" fill="%s"/>`, c)
 	case GlyphFunnel:
 		return fmt.Sprintf(`<polygon points="156,172 356,172 300,258 300,344 212,344 212,258" fill="%s"/>`, c)
+	case GlyphPen:
+		// A pen/marker standing upright: a bold solid body with a pointed nib. The
+		// board-writer role writes the board, so the mark is a writing implement.
+		// Its silhouette is a narrow VERTICAL lozenge tapering to a point — distinct
+		// (near-zero IoU) from the family's central blobs (disc, ticket), so the
+		// proof separates it by shape as well as by its own hue.
+		return fmt.Sprintf(`<g fill="%s"><rect x="208" y="132" width="96" height="208" rx="24"/><polygon points="208,340 304,340 256,396"/></g>`, c)
 	default:
 		panic("avatar: unknown glyph " + key)
 	}

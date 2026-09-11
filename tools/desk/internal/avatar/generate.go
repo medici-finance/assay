@@ -27,7 +27,7 @@ const (
 	// TierTeam is the two-App set an adopter installs first: a read tile and an
 	// act tile, both hued from the org login and inverted against each other.
 	TierTeam Tier = "team"
-	// TierFamily is the full six-role suite, one hue per role.
+	// TierFamily is the full role suite, one hue per role.
 	TierFamily Tier = "family"
 )
 
@@ -78,6 +78,11 @@ type roleDef struct {
 //     alone tells them apart. That is exactly the pair the collapse test (Verify
 //     row 6) targets — force every hue to one blue and the two collide, which is
 //     the regression the proof must catch.
+//   - board-writer is the seventh bound role (a GitLab adopter roster binds all
+//     seven). It holds the only red hue in the palette (#E5484D), far in colour
+//     from every other role, and takes the pen glyph — a narrow vertical
+//     silhouette distinct from the central blobs — so it clears the proof on
+//     both axes rather than leaning on one.
 var familyRoles = []roleDef{
 	{"reviewer", GlyphDisc, colReviewer},
 	{"worker", GlyphTicket, colWorker},
@@ -85,6 +90,7 @@ var familyRoles = []roleDef{
 	{"desk", GlyphCheck, colDesk},
 	{"issue-loop", GlyphFunnel, colIssueLoop},
 	{"intake-loop", GlyphRing, colIntakeLoop},
+	{"board-writer", GlyphPen, colBoardWriter},
 }
 
 // Generate builds the avatar set for org at the given tier. It is a pure
