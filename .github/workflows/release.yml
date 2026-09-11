@@ -335,6 +335,45 @@ jobs:
               ;;
           esac
 
+      # PLUGIN MANIFEST VERSION GATE (#789) — both paths. Claude Code keys its
+      # plugin cache on plugins/assay/.claude-plugin/plugin.json's `version`, so
+      # a tag whose plugins/assay/** differs from the previous tag's while that
+      # version is unchanged is an update adopters never receive (`plugin
+      # update` is a no-op at the same version). The gate refuses exactly that,
+      # plus the stronger contract the stamp step in `release` establishes: the
+      # tagged tree's manifest version equals the tag (without the `v`).
+      #
+      # The previous umbrella tag is the greatest vX.Y.Z on ORIGIN below TAG —
+      # ls-remote, never local tags (the checkout fetched none, and origin is the
+      # authority) — and only that one tag is fetched, shallow, for the tree
+      # diff. On the dispatch path the tree is not stamped yet (release stamps
+      # it before tagging), so `--have` names the version it WILL carry; on the
+      # tag-push path the tree is the tag's own and is read as-is. Here in
+      # `guard` rather than in `release` so a refusal costs no human approval
+      # and — on the dispatch path — burns no version number.
+      - name: Release gate — refuse a plugins/assay change without a manifest version bump
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          all=$(git ls-remote --tags origin 'refs/tags/v*' \
+                | sed -n 's#.*[[:space:]]refs/tags/\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$#\1#p' \
+                | sort -u)
+          prev=$({ printf '%s\n' "$all" | grep -vx -- "$TAG" || true; printf '%s\n' "$TAG"; } \
+                 | grep -v '^$' | sort -uV | grep -x -B1 -- "$TAG" | grep -vx -- "$TAG" || true)
+          if [ -n "$prev" ]; then
+            git fetch --no-tags --depth=1 origin "refs/tags/${prev}:refs/tags/${prev}"
+            echo "previous umbrella tag on origin: $prev"
+          else
+            echo "no previous umbrella tag on origin — first release."
+          fi
+          if [ "$EVENT" = workflow_dispatch ]; then
+            bash plugins/assay/scripts/stamp-plugin-version.sh gate --tag "$TAG" --prev "$prev" --have "${TAG#v}"
+          else
+            bash plugins/assay/scripts/stamp-plugin-version.sh gate --tag "$TAG" --prev "$prev"
+          fi
+
   # The publish path's own test gate. ci.yml build/vets every module at PR time,
   # but a tag can be cut from any commit, so re-run the suite here. No `if:` on
   # this job, on purpose: it runs on tag push, on dispatch, and on dry_run — a
@@ -805,6 +844,73 @@ jobs:
           mkdir -p "${HOME}/go-toolchain"
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      # PLUGIN MANIFEST STAMP (#789). The tree the tag is cut from must carry
+      # plugin version X.Y.Z for tag vX.Y.Z — in plugin.json, the marketplace
+      # catalog entry, paired-versions.yaml's `plugin:` pairing, and the four
+      # artifacts harnessgen generates from plugin.json (Codex manifest, hook
+      # payload, Codex fragment, Cursor rule). Claude Code keys its plugin cache
+      # on that version, so a tag that ships new plugin content under the old
+      # version is content adopters never receive. The changelog roll (below)
+      # lands after the tag and is therefore NOT in it — the stamp must be a
+      # commit BEFORE the tag, and the tag is cut from that commit.
+      #
+      # DISPATCH: stamp the working tree, prove it (check + the paired-versions
+      # guard + `harnessgen … --check`, which proves the in-place text stamp is
+      # byte-identical to regenerating), then COMMIT it locally as the same
+      # github-actions[bot] the tag step signs as. The tag step below tags HEAD,
+      # so the tag lands on this commit and its push carries the commit up. In
+      # the steady state this is a no-op: the post-cut roll leaves the default
+      # branch on the next patch version, so a dispatch of exactly that version
+      # finds the tree already stamped, commits nothing, and the tag lands on the
+      # default branch's own commit. Only a skipped or minor/major version yields
+      # a stamp commit, which then sits one commit off the default branch (its
+      # parent IS the dispatched head); the roll re-stamps the default branch.
+      # A dry run runs all of this and commits locally too — the dry run's job is
+      # to prove the cut, and the stamp is part of the cut; nothing is pushed.
+      #
+      # TAG PUSH: the tag already names its commit and can never be re-pointed
+      # (the protect-release-tags ruleset), so the stamp is a CHECK: the tagged
+      # tree must already carry the version, or the release refuses.
+      #
+      # BEFORE the builds, so what is built is the tree that is tagged.
+      - name: Stamp the plugin manifest version to the release tag
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          stamp=plugins/assay/scripts/stamp-plugin-version.sh
+          if [ "$EVENT" = push ]; then
+            if ! bash "$stamp" check "$RELEASE_TAG"; then
+              echo "::error::the tree at ${RELEASE_TAG} does not carry plugin version ${RELEASE_TAG#v}. A pushed tag cannot be re-pointed: bump the manifest by PR (bash ${stamp} stamp <vX.Y.Z>) and cut the NEXT patch version — or dispatch the release, which stamps for you."
+              exit 1
+            fi
+          else
+            bash "$stamp" stamp "$RELEASE_TAG"
+            bash "$stamp" check "$RELEASE_TAG"
+          fi
+          bash plugins/assay/scripts/check-paired-versions.sh
+          # The generated artifacts must equal what their generators would write
+          # from the stamped plugin.json — refuse rather than tag a tree whose
+          # hook payload or Codex/Cursor artifacts disagree with the manifest.
+          ( cd tools/harnessgen \
+            && go run . resident --check --root ../.. \
+            && go run . codex    --check --root ../.. \
+            && go run . cursor   --check --root ../.. )
+          if [ "$EVENT" = push ]; then
+            exit 0
+          fi
+          mapfile -t stamped < <(bash "$stamp" paths)
+          if git diff --quiet -- "${stamped[@]}"; then
+            echo "tree already carries plugin version ${RELEASE_TAG#v}; nothing to commit — the tag is cut from $(git rev-parse --short HEAD) as-is."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "${stamped[@]}"
+          git commit -q -m "release: stamp the plugin manifest to ${RELEASE_TAG#v} [skip-status-regen]"
+          echo "stamped plugin version ${RELEASE_TAG#v} in $(git rev-parse --short HEAD) (parent $(git rev-parse --short HEAD~1)); the tag is cut from this commit."
 
       # -X main.statusgenVersion stamps the release tag into the binary so
       # `statusgen --version` can be compared against a consumer's
@@ -1293,11 +1399,35 @@ jobs:
               | xargs -0 -r git rm -q --
             # Path-scoped add: never STATUS.md (single writer = assay-statusgen).
             git add CHANGELOG.md
+
+            # POST-CUT PLUGIN MANIFEST BUMP (#789), in the same commit: leave the
+            # default branch on the NEXT patch version (X.Y.Z+1) so, between
+            # releases, it never claims a version that is already tagged —
+            # Claude Code keys its plugin cache on that version, and the tagged
+            # tree carries exactly X.Y.Z (stamped in `release`). This is a floor
+            # the next dispatch finds already in place (so it commits nothing
+            # and the tag lands on the default branch's own commit), never the
+            # release value; and a version a human already moved ABOVE the cut
+            # (a pending minor or major) is left alone.
+            stamp=plugins/assay/scripts/stamp-plugin-version.sh
+            cur=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' plugins/assay/.claude-plugin/plugin.json | head -1)
+            cut="${RELEASE_TAG#v}"
+            next="v${cut%.*}.$(( ${cut##*.} + 1 ))"
+            bump=""
+            if [ "$(printf '%s\n%s\n' "$cur" "$cut" | sort -V | tail -1)" = "$cut" ]; then
+              bash "$stamp" stamp "$next"
+              mapfile -t stamped < <(bash "$stamp" paths)
+              git add -- "${stamped[@]}"
+              bump=" and stamp the plugin manifest to ${next#v}"
+            else
+              echo "plugin manifest already at ${cur} (above ${cut}) — leaving the pending bump in place."
+            fi
+
             if git diff --cached --quiet; then
-              echo "Nothing staged — CHANGELOG.md unchanged and no fragments to clear."
+              echo "Nothing staged — CHANGELOG.md unchanged, no fragments to clear, manifest already bumped."
               exit 0
             fi
-            git commit -m "docs(changelog): aggregate fragments under ${RELEASE_TAG} and clear changelog/ [skip-status-regen]"
+            git commit -m "docs(changelog): aggregate fragments under ${RELEASE_TAG}, clear changelog/${bump} [skip-status-regen]"
 
             if git -c http.extraheader="AUTHORIZATION: basic ${basic}" \
                  push origin "HEAD:${DEFAULT_BRANCH}"; then
@@ -1386,6 +1516,13 @@ jobs:
         run: |
           set -euo pipefail
           SHA_SHORT="${GITHUB_SHA::12}"
+          # The image pre-seeds plugins/ and .claude-plugin/ from this working
+          # tree (CLAUDE_CODE_PLUGIN_SEED_DIR). Stamp the plugin manifest to the
+          # umbrella version exactly as `release` does for the tagged tree (#789),
+          # so the seeded plugin self-reports the version of the image it rides
+          # in. Working-tree only — nothing is committed or pushed from here; on
+          # the tag-push path the tree already carries it and this is a no-op.
+          bash plugins/assay/scripts/stamp-plugin-version.sh stamp "$RELEASE_TAG"
           docker build \
             --iidfile "${RUNNER_TEMP}/harness.iid" \
             --build-arg "ASSAY_VERSION=${RELEASE_TAG}" \
