@@ -41,7 +41,7 @@
         "Login": "reviewer-bot",
         "ID": 42
       },
-      "State": "COMMENTED",
+      "State": "APPROVED",
       "CommitID": "abc123",
       "Body": "Verdict: APPROVE",
       "SubmittedAt": "2026-08-30T11:00:01Z"
