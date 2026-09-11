@@ -17,7 +17,11 @@ import (
 // against the manifest — a deliberate, documented content change, not a
 // smuggled one. Rule-content changes are their own PRs, never smuggled into
 // plumbing; this locks that guarantee: if the generator's output ever
-// diverges from this byte string, the test fails.
+// diverges from this byte string, the test fails. The golden carries the
+// {{VERSION}} token in its Header: the release workflow stamps plugin.json at
+// every umbrella cut (#789), so the golden is version-agnostic and locks only
+// the CONTENT — the test resolves the token against the committed manifest
+// before comparing, exactly as generate() does.
 //
 //go:embed testdata/payload.golden.txt
 var payloadGolden string
@@ -121,10 +125,11 @@ func TestClaudePayloadIsByteIdenticalToGolden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generating from committed source: %v", err)
 	}
-	if arts.ClaudePayload != payloadGolden {
+	want := strings.Replace(payloadGolden, versionPlaceholder, "v"+realVersion(t), 1)
+	if arts.ClaudePayload != want {
 		t.Fatalf("Claude payload diverged from the pre-refactor heredoc.\n"+
 			"got %d bytes, golden %d bytes.\nThis is the smuggled-content failure the brief forbids.",
-			len(arts.ClaudePayload), len(payloadGolden))
+			len(arts.ClaudePayload), len(want))
 	}
 }
 
