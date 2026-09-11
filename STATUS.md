@@ -24,7 +24,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-11 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-11 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 9/13 | 2026-09-11 |  |
-| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 3/6 | 2026-09-11 |  |
+| [windows-port](docs/streams/windows-port/README.md) | P2 | active | 3/10 | 2026-09-11 |  |
 
 ## Next up
 
@@ -53,6 +53,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-go-git | 02 | implemented | 4000 | 6 | — | — | — |
 | harness-portability | 04 [exec:strong] | implemented | 4000 | 6 | — | — | — |
 | harness-portability | 05 [exec:strong] | implemented | 4000 | 6 | — | — | — |
+| windows-port | 00 | implemented | 4000 | 6 | — | — | — |
 | composability | 00 | implemented | 3500 | 5 | — | — | — |
 | derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 01 | implemented | 3500 | 5 | — | — | — |
@@ -63,6 +64,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | forge-neutral | 08 [exec:strong] | implemented | 3000 | 2 | — | — | — |
+| windows-port | 01 | implemented | 3000 | 4 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-gitlab | 08 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | forge-neutral | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
@@ -70,11 +72,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | forge-neutral | 13 [exec:strong] | implemented | 2000 | 0 | — | — | — |
-| windows-port | 00 | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
 | forge-gitlab | 05 [exec:strong] | implemented | 1500 | 1 | — | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 1500 | 1 | — | — | — |
-| windows-port | 01 | implemented | 1500 | 1 | — | — | — |
 | desk-supervision | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -108,7 +108,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 01 [exec:strong] | implemented | 6500 | 9 | — | — | — |
 | harness-portability | 03 | implemented | 5000 | 8 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
-| windows-port | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
+| windows-port | 03 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 
 ### Awaiting implementer rework (4)
 
@@ -273,11 +273,15 @@ _None._
 - 06 Findings register becomes a corroborated state machine — bounded shelving (parked) + transition guard on resolved/affects/parked — implemented (wave 1)
 - 09 Opt-in statusgen telemetry — anonymized fleet-drift corpus (off by default) — implemented (wave 1)
 
-### windows-port (3 open)
+### windows-port (7 open)
 
 - 00 Build-tag split for the unix-only syscall sites in statusgen and desk-tools — implemented (wave 0)
 - 01 Release build matrix — windows/amd64 + windows/arm64 + sha256s — implemented (wave 1)
 - 03 Windows install path — PowerShell-vs-Go-installer fork, then build — implemented (wave 2)
+- 06 Manifest-driven bootstrap — resolve tag + sha256 from the committed manifest, and write PATH — todo (wave 3)
+- 07 deskinstall --harness cursor — place the skills/references tree and write the AGENTS.md bindings — todo (wave 3)
+- 08 Go-native GitLab fleet provisioning — retire the bash+curl+jq script's Windows dependency — todo (wave 1)
+- 09 Three-command Windows install — widen the install skill's scope, collapse the walkthrough, correct the CI skew — todo (wave 4)
 
 ## Done briefs
 
@@ -374,4 +378,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**14** streams (**14** active, **0** paused) · **54/146** briefs done · completed initiatives: see `docs/archive/`
+**14** streams (**14** active, **0** paused) · **54/150** briefs done · completed initiatives: see `docs/archive/`
