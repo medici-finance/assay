@@ -1615,6 +1615,32 @@ func (g *GitHubForge) DeleteRef(repo ForgeRepo, ref string) error {
 	return g.doJSON(http.MethodDelete, path, nil, nil)
 }
 
+// RefExists reports whether one git ref is present, via the single-reference read
+// (`GET /repos/{o}/{r}/git/ref/{ref}` — SINGULAR `ref`, the exact endpoint that returns one
+// reference, distinct from the plural `git/refs/` DeleteRef targets). This is the logic that
+// was cmd/deskpost's hand-rolled `refExists`, moved onto the seam so a second forge implements
+// the ref-existence read rather than a second tool forking its own.
+//
+// The ref is validated by ValidateRefPath first, so the one path-shaped argument can only
+// address a ref inside the named repo — the arbitrary-endpoint bound DeleteRef carries. A 404
+// is the ANSWER "absent" (false, nil), not a failure — that is the whole point of the read;
+// every other non-2xx stays an error so a 403 from a token that cannot see refs can never be
+// mistaken for "the ref is gone".
+func (g *GitHubForge) RefExists(repo ForgeRepo, ref string) (bool, error) {
+	clean, err := ValidateRefPath(ref)
+	if err != nil {
+		return false, err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/git/ref/%s", repo.Owner, repo.Name, clean)
+	if err := g.doJSON(http.MethodGet, path, nil, nil); err != nil {
+		if IsForgeNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // --- File content (read / write on a branch) ---
 
 // ghContentsWire is the Contents-API read shape (only the fields consumed). `content` is
