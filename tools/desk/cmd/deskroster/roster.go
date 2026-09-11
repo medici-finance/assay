@@ -223,7 +223,7 @@ func resolveShortRepo(full string) string {
 // These two reads are DISPLAY enrichment for the roster listing — they read a
 // change's state/draft/title so `deskroster list` can annotate a beacon's open
 // work and surface unclaimed open PRs. They route through the enumerated Forge
-// seam (forge.go), never a forge CLI: the closed-surface brief (forge-gitlab/08)
+// seam (forge.go), never a forge CLI: the closed-surface brief (example-stream/08)
 // bans invoking a forge CLI (gh/glab) anywhere in tools/desk, and both fields
 // these reads need already exist on the interface — GetPullRequest carries state,
 // draft and title; ListOpenChanges carries number, title and draft — so the

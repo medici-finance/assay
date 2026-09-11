@@ -11,7 +11,7 @@ import (
 )
 
 // The roster's two PR reads (ghViewPR, ghListOpenPRs) route through the enumerated Forge seam
-// since forge-gitlab/08 closed the forge surface — they no longer shell `gh`. TestMain installs
+// since example-stream/08 closed the forge surface — they no longer shell `gh`. TestMain installs
 // a package-level forgeFor stub (fakeRosterForge, defined in forge_test.go) that serves
 // GetPullRequest and ListOpenChanges from the SAME FAKEGH_* env fixtures the suites already set,
 // so every pre-existing behavioural assertion keeps asserting the same verdict it did against the

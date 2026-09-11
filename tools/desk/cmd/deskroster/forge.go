@@ -5,7 +5,7 @@ package main
 // deskroster's two PR reads (ghViewPR, ghListOpenPRs in roster.go) annotate the roster
 // listing with each open change's state/draft/title. They reach the forge as TYPED ops on
 // deskkit's Forge seam — GetPullRequest and ListOpenChanges — never by shelling `gh`, so
-// cmd/deskroster carries no forge-CLI literal (the closed-surface brief, forge-gitlab/08).
+// cmd/deskroster carries no forge-CLI literal (the closed-surface brief, example-stream/08).
 //
 // The reads authenticate as this session's minted App token, resolved from the loop identity
 // the session presents ($DESK_LOOP), the same custody deskboard's reads use. A session with no

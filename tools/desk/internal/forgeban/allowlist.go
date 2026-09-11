@@ -117,7 +117,9 @@ var AllowedInvocations = []Allowance{
 		Reason: "TODO(forge-surface): `gh api` reads of rulesets, branch protection and App permissions. These " +
 			"are repo-HARDENING reads, not workflow forge ops — the same class inventory delta D3 keeps out of " +
 			"the frozen set. They need their own enumerated surface and their own GitLab mapping (protected " +
-			"branches + push rules), which is a brief, not a line.",
+			"branches + push rules). This is OPEN WORK, not a standing exception: the driver ruled " +
+			"closure-to-zero, so this site is owned by the guard-read-custody brief (example-stream/11) and " +
+			"this row retires when that brief lands. It is permitted only until then.",
 	},
 }
 
