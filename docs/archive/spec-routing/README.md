@@ -2,7 +2,7 @@
 stream: spec-routing
 repo: medici-finance/assay
 serves: assay
-status: active
+status: done
 priority: P2
 track: platform
 issues: []
@@ -10,6 +10,8 @@ board: generated
 ---
 
 # spec-routing Stream — enforce the spec/scoping-doc lifecycle so an approved plan cannot go unrouted
+
+> **Archived 2026-09-11 — stream closed.** All 1 brief `done` (row flipped 2026-09-04); `statusgen --lint` carried the archive-candidate NOTICE. No further briefs are planned: the lifecycle lint and the authoring-owed emitter shipped in statusgen.
 
 [`spec/lifecycle-v1.md` §8](../../../spec/lifecycle-v1.md) already defines the *convention*: a
 spec-shaped or scoping document opts into a machine-readable three-state lifecycle —
