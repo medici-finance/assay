@@ -129,6 +129,26 @@ three-state gate; a wrong value would let unaccounted skills ship silently, and 
 mutation rows prove it fires. Manifest version is derived-and-equality-bound to the single
 metadata source, not independently set; the exclusion list is empty (no exclusion to
 justify).
+### Verify run — 2026-09-11, non-implementer dispatched verifier (opus-4.8[1m]-verifier) — VERDICT: FAIL (held at `implemented`)
+
+Ran the Verify table against public medici-finance/assay merged main `553dc2ae530f00e861a14536af7cc884ab77ccf5` (two-protocol head confirmed), offline in an isolated worktree; all mutation controls restored, worktree left clean. Non-implementer. tools/harnessgen is its own Go module (no repo-root go.mod), so the literal `go run ./tools/harnessgen …` rows fail go.mod-not-found; the real properties were run module-aware via a built binary (non-blocking command-string note).
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | go test in tools/harnessgen | 0 | ok tools/harnessgen | PASS |
+| 2 | jq name+version+skills on plugins/assay/.codex-plugin/plugin.json | 0 | true (all present) | PASS |
+| 3 | version equality vs plugins/assay/.claude-plugin/plugin.json | 0 | both 1.0.7 — equal | PASS |
+| 3a | mutate manifest version to 9.9.9 → codex --check → revert | 1 | DRIFT (committed manifest differs); recheck after revert clean; tree clean | PASS |
+| 4 | harnessgen codex --check (module-aware) | 0 | clean — the manifest matches the metadata source | PASS |
+| 5 | built binary + planted undeclared skill | 2 | coverage rule failed — skill "probe-skill" on disk but in neither the packaged roster nor the excluded list | PASS |
+| 6 | built binary + removed a degradation cell | 2 | packaging↔binding skew — packaged skill "worker-desk" has no degradation cell in references/codex.md | PASS |
+| 7 | grep codex AND AGENTS-assay in plugins/assay/skills/adopt/SKILL.md | 1 | both greps 0 hits — the file is a 58-line thin pointer to docs/adopting-assay.md and carries neither token | FAIL |
+| 7a | positive control — grep an absent token | 1 | absent token reports absence | PASS |
+| 8 | harnessgen resident --check (module-aware) | 0 | clean — committed artifacts match the source | PASS |
+
+**Why FAIL — split-delivery gap.** The Codex packaging backend all landed and passes (rows 1–6, 8): the generated `.codex-plugin/plugin.json` with version bound equal to the `.claude-plugin` manifest, the coverage rule failing closed at exit 2, the binding-skew check at exit 2, and the resident verb intact. But Verify row 7's deliverable — the Codex install scenario + the AGENTS-assay fragment step in `plugins/assay/skills/adopt/SKILL.md`, which this brief's own `consumers` frontmatter marks `fixed-here` (distinct from `docs/adopting-assay.md`, scoped as `follow-up harness-portability/07`) — did not land in the public tree. `adopt/SKILL.md`'s git history carries only the open-core drop and a guardrails consolidation; the task-3 amendment is absent. `docs/adopting-assay.md` carries a Codex row but not the AGENTS-assay token, and the adopt SKILL the row targets has neither. Filed as medici-finance/assay #872 (bug, →worker). Brief stays at `implemented`; re-run row 7 after the adopt-skill amendment lands (or after Verify row 7 + the consumers frontmatter are retargeted, if the pointer-only design is intended — a spec call).
+
+**Risk-bearing value:** `RISK-VALUE: DERIVED — the three-state exit gate exitCouldNotCheck=2 / exitDrift=1 / exitClean=0 (tools/harnessgen/main.go) is the top risk-bearing literal; a wrong value would let an unaccounted or binding-skewed skill ship silently. Observed live at all three: clean=0 (rows 4/8), drift=1 (row 3a), could-not-check=2 (rows 5 & 6, built binary). Manifest version equality (1.0.7==1.0.7) is equality-bound to the single metadata source, not independently set.`
 
 ## Review
 
