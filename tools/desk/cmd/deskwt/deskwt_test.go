@@ -446,6 +446,65 @@ func TestRemoveNoUpstreamRefuses(t *testing.T) {
 	}
 }
 
+// TestRemoveDetachedHeadOnRemoteSucceeds is the #851 fix: a detached-HEAD worktree whose
+// commit is PROVABLY present on the remote (reachable from a remote-tracking ref) is
+// removable. This is the review-kit shape — a review kit checks the PR head out as a
+// detached HEAD, so the reviewer worktree is never a branch and never an ancestor of
+// origin/main. Its commit was fetched FROM the remote, so removing the worktree loses
+// nothing; refusing it (the old blanket "detached ⇒ refuse") wedged the review lane after
+// one review. "No upstream" and "not on the remote" are different questions, and only the
+// second justifies refusing.
+func TestRemoveDetachedHeadOnRemoteSucceeds(t *testing.T) {
+	work := newRepo(t)
+	calls := withEnv(t, work)
+	if rc := run([]string{"add", "revhead"}); rc != deskkit.ExitOK {
+		t.Fatalf("add rc = %d, want 0", rc)
+	}
+	target := filepath.Join(tmpBaseDir, "tracker-revhead")
+	// Detach at the current tip — which is origin/main, reachable from refs/remotes/origin/main.
+	// A detached HEAD with NO upstream, but a commit that is provably pushed.
+	mustGit(t, target, "checkout", "--detach", "HEAD")
+
+	resetCalls(calls)
+	if rc := run([]string{"remove", target}); rc != deskkit.ExitOK {
+		t.Fatalf("remove of a detached HEAD whose commit is on the remote rc = %d, want 0 (#851)", rc)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("expected %s to be removed (a proven-pushed detached HEAD is reclaimable); stat err = %v", target, err)
+	}
+	if !hasWorktreeVerb(*calls, "prune") {
+		t.Fatalf("the safe-remove primitive did not run its `git worktree prune`: %v", gitCalls(*calls))
+	}
+}
+
+// TestRemoveDetachedHeadNotOnRemoteRefuses proves the invariant HOLDS: a detached HEAD whose
+// commit is on NO remote is genuinely-unpushed work, and remove STILL refuses it. The #851
+// relaxation is precisely scoped to a commit proven present on the remote; it never weakens
+// the never-remove-unpushed-work guard.
+func TestRemoveDetachedHeadNotOnRemoteRefuses(t *testing.T) {
+	work := newRepo(t)
+	calls := withEnv(t, work)
+	if rc := run([]string{"add", "orphanhead"}); rc != deskkit.ExitOK {
+		t.Fatalf("add rc = %d, want 0", rc)
+	}
+	target := filepath.Join(tmpBaseDir, "tracker-orphanhead")
+	// A new commit that was never pushed, then detach onto it: a genuinely-unpushed detached
+	// HEAD whose commit is reachable from no remote-tracking ref.
+	writeFile(t, filepath.Join(target, "unpushed.txt"), "unpushed\n")
+	mustGit(t, target, "add", "unpushed.txt")
+	mustGit(t, target, "commit", "-m", "unpushed detached work")
+	mustGit(t, target, "checkout", "--detach", "HEAD")
+
+	resetCalls(calls)
+	if rc := run([]string{"remove", target}); rc != deskkit.ExitRefused {
+		t.Fatalf("remove of an unpushed detached HEAD rc = %d, want 5 (the unpushed-work invariant must hold)", rc)
+	}
+	assertExists(t, target)
+	if hasWorktreeVerb(*calls, "prune") {
+		t.Fatalf("a destructive prune ran on an unpushed detached HEAD: %v", gitCalls(*calls))
+	}
+}
+
 func TestRemoveNoForceFlag(t *testing.T) {
 	work := newRepo(t)
 	calls := withEnv(t, work)
