@@ -58,7 +58,7 @@ per Secret or per user). The tiers change **who does the work**, never the metho
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Role→App indirection — six desk roles on N GitHub Apps without symlinks](brief-01-role-app-indirection.md) | 0 | M | implemented | — | — |
+| 01 | [Role→App indirection — six desk roles on N GitHub Apps without symlinks](brief-01-role-app-indirection.md) | 0 | M | verified | 2026-09-11 sonnet-5-verifier | — |
 | 02 | [`deskapps init` — loopback page, tier manifests, the manifest→code→conversion flow, key and record writes](brief-02-deskapps-manifest-flow.md) | 1 | L | todo | — | — |
 | 03 | [`deskapps` install + prove — installation poll, fresh mint, scopes-vs-duties, roster write](brief-03-deskapps-install-prove.md) | 2 | M | todo | — | — |
 | 04 | [`deskapps resume` / `status` — per-App state machine, throttle pause, expired-code re-arm, page verbs](brief-04-deskapps-resume-status.md) | 2 | M | todo | — | — |
