@@ -175,10 +175,17 @@ func installFakeForge(t *testing.T) *dfForge {
 	oldTok := ghToken
 	ghToken = "fake-token"
 	old := forgeForFn
-	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+	forgeForFn = func(repo string) (deskkit.Forge, deskkit.ForgeRepo, deskkit.ForgeKind, error) {
 		owner, name, _ := cutSlug(repo)
 		f.fr = deskkit.ForgeRepo{Owner: owner, Name: name}
-		return f, f.fr, nil
+		// The kind mirrors what production's resolver would answer from the planted roster
+		// (plantRosterWithForges → ASSAY_REPO_FORGES), defaulting to GitHub when the roster is
+		// silent — so a GitLab-configured test sees the GitLab label-create hint (#887 item 2).
+		kind := deskkit.ForgeGitHub
+		if k, ok := deskkit.EffectiveConfig().RepoForges[strings.ToLower(repo)]; ok {
+			kind = deskkit.ForgeKind(k)
+		}
+		return f, f.fr, kind, nil
 	}
 	t.Cleanup(func() { forgeForFn = old; ghToken = oldTok })
 	return f
