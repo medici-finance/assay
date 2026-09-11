@@ -19,7 +19,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 5/21 | 2026-09-11 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 1/8 | 2026-09-11 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 4/12 | 2026-09-11 |  |
-| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 0/13 | 2026-09-11 |  |
+| [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 1/13 | 2026-09-11 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 2/14 | 2026-09-11 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 2/6 | 2026-09-11 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 15/16 | 2026-09-11 |  |
@@ -39,14 +39,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (55 desk-actionable of 65 total — 64 at implemented, 1 verified awaiting review)
+## Awaiting verification / review (54 desk-actionable of 64 total — 64 at implemented, 0 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
 
-### Desk-actionable (55)
+### Desk-actionable (54)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
@@ -66,14 +66,13 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 04 | implemented | 3000 | 2 | — | — | — |
 | forge-gitlab | 08 [exec:strong] | implemented | 3000 | 4 | — | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3000 | 2 | — | — | — |
-| forge-neutral | 06 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | forge-neutral | 08 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-neutral | 05 [exec:strong] | implemented | 2500 | 1 | — | — | — |
+| forge-neutral | 06 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | forge-neutral | 09 [exec:strong] | implemented | 2500 | 1 | — | — | — |
 | harness-portability | 12 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | apps-installer | 08 [exec:strong] | implemented | 2000 | 0 | — | — | — |
-| forge-neutral | 12 [exec:strong] | verified | 2000 | 0 | — | 2026-09-10 opus-4.8[1m]-verifier (assay 48b978bb; rows 1-9 PASS; deskboard gh=0, ceiling=9 DERIVED; row 10 statusgen could-not-check) | — |
 | forge-neutral | 13 [exec:strong] | implemented | 2000 | 0 | — | — | — |
 | windows-port | 00 | implemented | 2000 | 2 | — | — | — |
 | desk-supervision | 06 | implemented | 1500 | 1 | — | — | — |
@@ -110,7 +109,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| forge-neutral | 01 [exec:strong] | implemented | 8000 | 12 | — | — | — |
+| forge-neutral | 01 [exec:strong] | implemented | 7500 | 11 | — | — | — |
 | harness-portability | 03 | implemented | 5000 | 8 | — | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 4500 | 5 | — | — | — |
 | windows-port | 03 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -119,8 +118,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|
-| forge-neutral | 03 [exec:strong] | implemented | 3500 | 3 | — | — | — |
 | desk-containers | 03 | implemented | 3000 | 4 | — | — | — |
+| forge-neutral | 03 [exec:strong] | implemented | 3000 | 2 | — | — | — |
 | iso-9001 | 01 [exec:strong] | implemented | 2500 | 3 | — | — | — |
 | desk-tools | 07 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -237,7 +236,7 @@ _None._
 - 11 Guard-read custody — the last gh shell-outs onto the Forge seam — todo (wave 4)
 - 12 GitLab hardening reads — repohardenguard kinds on the GitLab backend — todo (wave 5)
 
-### forge-neutral (13 open)
+### forge-neutral (12 open)
 
 - 01 Forge resolution contract — the forge comes from repo config, and refusal is the only fallback — implemented (wave 1)
 - 02 Forge-qualified identity — roster entries, bot renderings, review corroboration — implemented (wave 2)
@@ -250,7 +249,6 @@ _None._
 - 09 Substrate — the leak gate's verdict on merge requests, and cellctl's forge-aware new/up — implemented (wave 3)
 - 10 Conformance — one round trip driven entirely by desk verbs, and the writes they refuse — todo (wave 5)
 - 11 Install without `gh` — binary acquisition, forge-neutral prerequisites, per-forge primitives — todo (wave 5)
-- 12 deskboard non-board reads onto the seam — verified (wave 4)
 - 13 Write verbs C — deskpr, deskfile and deskclose onto the resolver — implemented (wave 3)
 
 ### harness-portability (12 open)
@@ -331,6 +329,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 - 03 GitLab token custody — rotate-on-mint + expiry backstop in desktoken — done (wave 2)
 - 04 Fleet provisioning script + adopter doc + ci-config-project runbook — done (wave 3)
 
+### forge-neutral (1 done)
+
+- 12 deskboard non-board reads onto the seam — done (wave 4)
+
 ### harness-portability (2 done)
 
 - 01 Codex capability ground-truth — measured matrix, not inherited prior art — done (wave 0)
@@ -378,4 +380,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**14** streams (**14** active, **0** paused) · **47/146** briefs done · completed initiatives: see `docs/archive/`
+**14** streams (**14** active, **0** paused) · **48/146** briefs done · completed initiatives: see `docs/archive/`
