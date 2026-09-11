@@ -198,11 +198,11 @@ Target: merged `origin/main` @ `fc9001a7ab48ee9c859dd7e52f7543dec5f86c50` (two-p
 
 **Scope-traceability:** §2 auth + deskkit backend map to their rows and pass; §1 (the headline deliverable) is absent (row 2) and the `PostReview` op is a §6 orphan. Brief Evidence table was empty. No open PR delivering the §1 deskpost wiring found.
 
-**VERDICT: FAIL (row 2)** — §1 deskpost GitLab write-path not landed (deskpost still fails closed with the exact string the brief requires gone); `PostReview` has no shipping consumer (§6 violation). Rows 1/3/4/5/6/7 pass. Held at `implemented`; do not flip. Filed `medici-finance/assay#842`. Same split-delivery pattern as forge-gitlab/08 (#835).
+**VERDICT: FAIL (row 2)** — §1 deskpost GitLab write-path not landed (deskpost still fails closed with the exact string the brief requires gone); `PostReview` has no shipping consumer (§6 violation). Rows 1/3/4/5/6/7 pass. Held at `implemented`; do not flip. Filed `#842`. Same split-delivery pattern as forge-gitlab/08 (#835).
 
 ### RE-VERIFY 2026-09-11 — non-implementer dispatched verifier (opus-4.8[1m]-verifier) — VERDICT: PASS → verified (the FAIL above was STALE)
 
-The row-2 FAIL above ran against `fc9001a7`, BEFORE §1 landed. §1 merged in `medici-finance/assay#846` (merge `b2b18ae6`, "route verdict/comment/ready through the resolved Forge on GitLab — forge-gitlab/09 §1"), an ancestor of the re-verify head. Re-verified against current merged main `8953d38d5` (two-protocol confirmed), offline, isolated worktree.
+The row-2 FAIL above ran against `fc9001a7`, BEFORE §1 landed. §1 merged in `#846` (merge `b2b18ae6`, "route verdict/comment/ready through the resolved Forge on GitLab — forge-gitlab/09 §1"), an ancestor of the re-verify head. Re-verified against current merged main `8953d38d5` (two-protocol confirmed), offline, isolated worktree.
 
 | # | Command | Exit | Key observed output | Result |
 |---|---------|------|---------------------|--------|
