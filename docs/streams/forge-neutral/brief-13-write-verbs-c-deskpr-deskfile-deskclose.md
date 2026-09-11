@@ -276,11 +276,11 @@ Target: merged `origin/main` @ `48b978bb08c468fec52c015d280285698fc362bd` (two-p
 | 2 | `go test ./cmd/deskpr/... ./cmd/deskfile/... ./cmd/deskclose/...` | 0 | all three migrated suites ok | PASS |
 | 3 | `TestNoForgeCLIShellout` + `TestForgeNoPassthrough` | 0 | seam grows 4 ops, stays closed | PASS |
 | 4 (+deref) | `TestForgeGithubGolden` + `TestForgeGitlabGolden` + `TestForgeGitlabCoverage` | 0 | all 4 op tokens (open_change_for_branch/edit_change/search_issues/list_labels) in both golden corpora; coverage reconciles inventory rows 33-36 | PASS |
-| 5 | `grep -n allowedInvocationCeiling internal/forgeban/allowlist.go` | — | `= 9` @ :64 (base 12 − 3) | PASS |
+| 5 | `grep -n allowedInvocationCeiling tools/desk/internal/forgeban/allowlist.go` | — | `= 9` @ :64 (base 12 − 3) | PASS |
 | 6 | `grep -c` the three permit rows (deskclose/deskfile/deskpr exec `gh`) | — | `0` — all three gone | PASS |
 | 7 | `go test ./internal/forgeban/...` | 0 | ratchet passes at the lowered ceiling | PASS |
-| 8 | `grep -rn -e 'runCmd("gh"' -e 'runGH(' cmd/deskpr cmd/deskfile cmd/deskclose non-test \| wc -l` | — | `0` — no verb shells gh | PASS |
-| 9 | `grep -rn -e '--as-app=false' -e 'asApp' cmd/deskpr non-test \| wc -l` | — | ACTUAL `5` (expect 0) — all 5 are retirement-documenting COMMENTS (main.go doc block, edit.go/exec.go/github.go) + one refusal error-string; NO `flag.Bool`/`Var(` for as-app, NO live `asApp` identifier. The flag + branch are genuinely removed; intent met (independently proven by row 10). **Flagged for the human: literal-vs-intent divergence, not a silent pass.** | PASS (intent) |
+| 8 | `grep -rn -e 'runCmd("gh"' -e 'runGH(' tools/desk/cmd/deskpr tools/desk/cmd/deskfile tools/desk/cmd/deskclose non-test \| wc -l` | — | `0` — no verb shells gh | PASS |
+| 9 | `grep -rn -e '--as-app=false' -e 'asApp' tools/desk/cmd/deskpr non-test \| wc -l` | — | ACTUAL `5` (expect 0) — all 5 are retirement-documenting COMMENTS (main.go doc block, edit.go/exec.go/github.go) + one refusal error-string; NO `flag.Bool`/`Var(` for as-app, NO live `asApp` identifier. The flag + branch are genuinely removed; intent met (independently proven by row 10). **Flagged for the human: literal-vs-intent divergence, not a silent pass.** | PASS (intent) |
 | 10 (neg) | `TestDeskprRefusesWithoutMintedToken -v` | 0 | refuses ("ForgeFor never falls back to an ambient gh-CLI identity"); create/open/get calls == 0, no push | PASS |
 | 11 (+flow) | `TestDeskfileFilesOnGitLabThroughBackend` + `TestDeskfileRefusesWithoutMintedToken` | 0 | POSITIVE: files via backend on a GitLab repo (no "GitHub only"); NEGATIVE: refuses, filed=nil, search==0 | PASS |
 | 12 | `TestDeskcloseClosesThroughBackend` + `TestDeskcloseActingLoginFromRoster` | 0 | closes via `CloseIssue` (closes()==1); acting login from `RoleAppLogin`, NO `api graphql viewer` whoami | PASS |
