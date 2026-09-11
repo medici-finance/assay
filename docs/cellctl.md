@@ -37,6 +37,11 @@ operator's config home and are reached by symlink.
   shim/                generated — every desk verb wrapped to run with HOME=<cell>/home
 ```
 
+That is the **k8s** kind — a full cell with its own `deskd`, roster and App keys. A **house** cell
+(`--kind house`, below) is the same shape minus what it does not need: `home/.config/assay` is one
+symlink to the operator's real config home, there is no `cells-<cell>.yaml`, `bin/` or `index/`
+unless `DESKD=1`, and `cell.env` carries the stream-root map (`CELL_ROOTS`).
+
 The **cells root** defaults to `${CELLS_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/assay/cells}`.
 The **desk-tools bindir** the shims wrap defaults to `${DESK_TOOLS_BIN:-/opt/desk-tools/bin}` — the
 path the pinned desk-tools tarball installs to (`docs/adopting-assay.md`, PRIMITIVE:
@@ -167,6 +172,52 @@ Then `cellctl check <cell>`.
 
 ---
 
+## House cells — `--kind house`
+
+Everything above is the cell that runs *someone else's* repos on this laptop: its own `deskd`, its
+own roster, its own Apps. The other case is the operator's **own** desks — the five role windows for
+the repos whose roster and App keys already live in `~/.config/assay`. Before `--kind house` those
+were booted by hand, and a hand boot has three ways to go wrong that a cell boot does not: the
+window starts inside a shared checkout (and the write guard then refuses every mutation), the
+stream-root map is not exported (and every desk verb silently falls back to its compiled
+placeholder topology), and the model is whatever the CLI default is that week.
+
+```bash
+cellctl new house --kind house \
+  --repo /path/to/checkout \
+  --roots 'example-org/example-repo=/path/to/checkout,example-org/other=/path/to/other' \
+  [--roles "the-desk worker-desk"] [--port 8787]
+cellctl check house
+cellctl desk house worker-desk          # one window
+cellctl up house                        # every role, in tmux
+```
+
+`new --kind house` needs `--repo` (the checkout the role worktrees are created from — it must be a
+git checkout) and `--roots` (the `DESK_ROOTS` map: `<owner>/<repo>=<absolute path>`, comma-
+separated; every path must exist). It writes `cell.env` with `CELL_KIND=house` and
+`CELL_ROOTS=<the map>`, links `home/.config/assay` to `${ASSAY_CONFIG_HOME:-$HOME/.config/assay}`
+— one directory symlink, so the desk verbs read the roster, `apps.env` and the `<role>-app.pem`
+files exactly as a hand boot would; **nothing is copied** — and links `.config/gh` and
+`.gitconfig` as a github cell does. There are no custody hand steps: the custody is the
+operator's own. It refuses to overwrite an existing cell of the same name.
+
+`check` on a house cell proves what a hand boot gets wrong rather than what a k8s cell needs: the
+checkout is a git checkout; the roster **parses** under the cell home (`deskroster repos --scope
+scan` exits 0 through the cell's `HOME`), not merely exists; every entry of `CELL_ROOTS` is well-
+formed, exists and carries `docs/streams/`; the desk verbs a role needs are installed under the
+desk-tools bindir; `claude` is on `PATH` and the `assay@assay` plugin is enabled for the checkout.
+`deskd` is reported `n/a` unless `cell.env` sets `DESKD=1`, in which case the cell is checked, stood
+and torn down exactly as a k8s cell's is.
+
+`desk` and `up` on a house cell differ from a k8s cell in three ways and no others: no `deskd`
+window or "deskd is not up" notice unless `DESKD=1`; `DESK_ROOTS` is exported from `CELL_ROOTS`
+(on a k8s cell too, when `cell.env` carries one); and `DESK_SESSION` — also the `claude --name` —
+is `<cell>-<role>-<UTC boot stamp>` rather than `<cell>-<short role>`, because house windows are
+re-booted by hand across days and the roster beacon should tell one boot from the next. The
+worktree, the shims, the pinned model and the `/assay:<role>` first prompt are the same code path.
+
+---
+
 ## `cellctl check` — the preconditions
 
 ```bash
@@ -249,8 +300,18 @@ config dir defaults to `$CLAUDE_CONFIG_DIR`, then `~/.claude`, and is resolved a
 and touches nothing.
 
 Each window gets: the `assay@assay` plugin enabled in that config dir; its own worktree under
-`worktrees/<role>` fast-forwarded to `origin/main`; the real `HOME` with `shim/` first on `PATH`;
-`DESK_LOOP` and `DESK_SESSION` set; its pinned model; and `/assay:<role>` as its first prompt.
+`worktrees/<role>` fast-forwarded to `origin/main` and **locked** (`git worktree lock`, so a
+worktree prune never takes a live window's tree); the real `HOME` with `shim/` first on `PATH`;
+`DESK_LOOP` and `DESK_SESSION` set, and `DESK_ROOTS` when `cell.env` carries `CELL_ROOTS` (a
+cell without one boots with a notice that the desk verbs are on their compiled placeholder
+topology); its pinned model; and `/assay:<role>` as its first prompt.
+
+When the installed desk-tools ship a `deskwt role-init` that supports the role (probe: `deskwt
+role-init --help` exits 0), `cellctl desk` lets **it** create the role worktree on first boot — its
+last output line is the path — and links `worktrees/<role>` to that tree, so cellctl and the desk
+skills agree on the worktree's name and the next boot fast-forwards the same tree. A `deskwt` that
+is absent or refuses the probe leaves cellctl's own worktree path in charge; `CELLCTL_DESKWT=0`
+forces that path.
 
 Each window is named **`<cell>-<short role>`** — the role without its `-desk` suffix, except
 `the-desk`, which keeps its full name (`<cell>-the-desk`, `<cell>-pr-review`, `<cell>-verify`,
@@ -333,6 +394,9 @@ a window is on is visible without reading the config.
 | Variable | What it is |
 |---|---|
 | `CELL` | the cell name (also the tmux session prefix) |
+| `CELL_KIND` | `k8s` (default — a cell scaffolded before kinds existed carries none) or `house` (the operator's own desks; see *House cells*) |
+| `CELL_ROOTS` | the stream-root map, `<owner>/<repo>=<abs path>,...`, exported to every role window as `DESK_ROOTS`; **required** on a house cell, optional on k8s (unset = the verbs' compiled placeholder topology, and `desk` says so) |
+| `DESKD` | **house** — `1` to require and stand a `deskd` as a k8s cell does (default `0`: no deskd, and `check` reports it `n/a`) |
 | `CELL_FORGE` | the cell's forge, `github` or `gitlab` (default `github` — a cell scaffolded before forge support carries none and is a GitHub cell by construction) |
 | `CELL_REPO` | the checkout the role worktrees are created from |
 | `CELLS_CONFIG` | this cell's `cells.yaml` slice (default `<cell-dir>/cells-<cell>.yaml`) |
