@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -416,8 +417,105 @@ func archivedStreamFallbackExists(root, resolved string) bool {
 	return fileExists(filepath.Join(root, filepath.FromSlash(archivedRel)))
 }
 
+// ---------------------------------------------------------------------------
+// consumed changelog fragment (#722) — a brief's own per-PR changelog fragment
+// is DELETED, correctly, by the release that aggregates it.
+//
+// WHY IT EXISTS. `changelog/README.md` makes one `changelog/<slug>.md` fragment a
+// required per-PR deliverable, so a brief is encouraged to list that fragment in
+// its Deliverables and to assert it in a Verify row — as a backticked path, like
+// every other deliverable. At each release cut the release workflow aggregates
+// every fragment into `CHANGELOG.md` and CLEARS the directory. From that commit
+// on, the brief's backticked path resolves against nothing and the brief goes
+// PROBLEM-red: the brief is not wrong and the release is not wrong, but the two
+// conventions contradict each other and no correct spelling existed. `(planned)`
+// is the wrong marker — the file is not planned, it EXISTED and was consumed.
+// Worse, the release commit touches only `changelog/` and `CHANGELOG.md`, so it
+// falls outside the board workflow's paths filter and main reddens silently,
+// surfacing weeks later on an unrelated PR.
+//
+// WHAT COUNTS AS CONSUMED. All four must hold, so this is an exemption for the
+// release lifecycle and not a blanket amnesty for anything under `changelog/`:
+//
+//  1. the path has the fragment SHAPE — `changelog/<slug>.md`, one level deep,
+//     and not the directory's own README;
+//  2. this repo actually RUNS the convention — `changelog/README.md` is present;
+//  3. a release has actually AGGREGATED — a root `CHANGELOG.md` is present, the
+//     artifact a release cut writes the fragments into;
+//  4. the fragment was really THERE — the path is tracked somewhere in this
+//     repo's git history for `changelog/`.
+//
+// (4) is the load-bearing one. The ruling on #722 names "present in git history
+// or rolled into the changelog" as the evidence of consumption; history is the
+// half that is actually checkable, because aggregation keeps a fragment's BULLETS
+// and discards its FILENAME, leaving nothing in `CHANGELOG.md` to match a path
+// against. A mistyped or never-committed fragment path is in no history, resolves
+// against nothing, and is STILL reported — which is the boundary that keeps the
+// original check's coverage intact.
+//
+// THREE-STATE. A tree with no readable git history (a plain fixture directory, an
+// exported tarball) cannot answer (4) at all. That is could-not-check, never a
+// pass: the PROBLEM is still reported, and the message says the exemption could
+// not be evaluated rather than quietly rounding an unread instrument up to green.
+type consumedFragmentIndex struct {
+	root    string
+	built   bool
+	ok      bool            // false ⇒ could-not-check (git history unreadable)
+	tracked map[string]bool // root-relative slash paths ever tracked under changelog/
+}
+
+// build runs ONE `git log` per lint, lazily — only once some `changelog/` target
+// has already failed every on-disk resolution base. A clean tree never spawns it.
+func (ix *consumedFragmentIndex) build() {
+	ix.built = true
+	ix.tracked = map[string]bool{}
+	out, err := exec.Command("git", "-C", ix.root, "log", "--pretty=format:", "--name-only", "--", changelogDir+"/").Output()
+	if err != nil {
+		return // ok stays false — could-not-check, not "no fragment was ever tracked"
+	}
+	ix.ok = true
+	for _, line := range strings.Split(string(out), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			ix.tracked[filepath.ToSlash(line)] = true
+		}
+	}
+}
+
+const changelogDir = "changelog"
+
+// consumed reports whether target is a changelog fragment this repo's release
+// lifecycle has legitimately consumed. The second return is the INSTRUMENT
+// state: false means the question could not be answered (git history unreadable),
+// which the caller must surface rather than treat as either verdict. A target
+// that fails the shape or convention gates is answered definitively — checked,
+// not exempt — so an ordinary missing path never emits a could-not-check note.
+func (ix *consumedFragmentIndex) consumed(target string) (exempt, checked bool) {
+	rel := filepath.ToSlash(target)
+	if !strings.HasPrefix(rel, changelogDir+"/") || !strings.HasSuffix(rel, ".md") {
+		return false, true
+	}
+	slug := strings.TrimPrefix(rel, changelogDir+"/")
+	if slug == "" || slug == "README.md" || strings.Contains(slug, "/") {
+		return false, true
+	}
+	// The repo must run the convention AND have cut a release into the aggregate;
+	// in a repo with neither, `changelog/x.md` is just a missing file.
+	if !fileExists(filepath.Join(ix.root, changelogDir, "README.md")) ||
+		!fileExists(filepath.Join(ix.root, "CHANGELOG.md")) {
+		return false, true
+	}
+	if !ix.built {
+		ix.build()
+	}
+	if !ix.ok {
+		return false, false
+	}
+	return ix.tracked[rel], true
+}
+
 func linkProblems(root string, files []string) []string {
 	var problems []string
+	fragments := &consumedFragmentIndex{root: root}
 	for _, f := range files {
 		raw, err := os.ReadFile(f)
 		if err != nil {
@@ -505,8 +603,22 @@ func linkProblems(root string, files []string) []string {
 			if !exists {
 				exists = archivedStreamFallbackExists(root, filepath.Join(root, target))
 			}
+			// Consumed-release-fragment fallback (#722): a `changelog/<slug>.md`
+			// the release that aggregated it correctly deleted. Adds a resolution
+			// base like the two above and suppresses nothing else — a changelog
+			// path in no git history still resolves against none of them.
+			unknownFragment := ""
 			if !exists {
-				problems = append(problems, fmt.Sprintf("%s: backticked path %q does not exist — for a deliverable this brief will create, mark it `%s` (planned); for a sibling-repo file, prefix it ../<repo>/", rel, target, target))
+				consumedFrag, checked := fragments.consumed(target)
+				switch {
+				case consumedFrag:
+					exists = true
+				case !checked:
+					unknownFragment = " — NOTE: this repo's git history was unreadable, so the consumed-release-fragment exemption (#722) could NOT be evaluated for this path; that is could-not-check, not a verdict"
+				}
+			}
+			if !exists {
+				problems = append(problems, fmt.Sprintf("%s: backticked path %q does not exist — for a deliverable this brief will create, mark it `%s` (planned); for a sibling-repo file, prefix it ../<repo>/%s", rel, target, target, unknownFragment))
 			}
 		}
 	}

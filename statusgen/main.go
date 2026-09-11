@@ -1223,7 +1223,7 @@ func main() {
 		var initRoots rootFlags
 		fs.Var(&initRoots, "root", "repository root to scaffold")
 		dryRun := fs.Bool("dry-run", false, "print what would be scaffolded (paths + bodies) without writing anything")
-		forgeFlag := fs.String("forge", "", "which forge's CI half to scaffold: github | gitlab (default: auto-detect from the origin remote, falling back to github)")
+		forgeFlag := fs.String("forge", "", "which forge's CI half to scaffold: github | gitlab (default: auto-detect from the origin remote; an unrecognised host writes no CI half rather than defaulting to github)")
 		fs.Parse(os.Args[2:])
 		forge, err := parseForgeFlag(*forgeFlag)
 		if err != nil {
@@ -1254,7 +1254,9 @@ func main() {
 		// An explicit --forge wins; otherwise detect from the target's origin
 		// remote (runInit does the detection). --dry-run previews either way.
 		if forge != forgeUnknown {
-			os.Exit(runInitForge(resolved[0], forge, *dryRun))
+			// An explicit --forge is always a resolved forge, so the CI half is
+			// written unconditionally (remotePresent=true; host unused).
+			os.Exit(runInitForge(resolved[0], forge, true, "", *dryRun))
 		}
 		os.Exit(runInit(resolved[0], *dryRun))
 	}

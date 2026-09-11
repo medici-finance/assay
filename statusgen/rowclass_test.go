@@ -353,7 +353,7 @@ func TestRowClass_VerifyrunSkipsExplicitCheckInCI(t *testing.T) {
 		{ID: "1", Command: "true", Expect: "exit 0", Class: classCheck, Classed: true},  // explicit → skip in CI
 		{ID: "2", Command: "true", Expect: "exit 0", Class: classCheck, Classed: false}, // legacy → still runs
 	}
-	ws := runWitnesses(t.TempDir(), rows, "test", "0000", "2026-08-17", 30*time.Second, true /* ci */)
+	ws := runWitnesses(t.TempDir(), rows, "test", "", "0000", "2026-08-17", 30*time.Second, true /* ci */)
 	if ws[0].State != stateSkipped {
 		t.Errorf("explicit check row in CI: state %q, want %q", ws[0].State, stateSkipped)
 	}
@@ -371,7 +371,7 @@ func TestRowClass_VerifyrunSkipsExplicitCheckInCI(t *testing.T) {
 
 func TestRowClass_VerifyrunHermeticCheckCI(t *testing.T) {
 	rows := []verifyRow{{ID: "1", Command: "true", Expect: "exit 0", Class: classCheckCI, Classed: true}}
-	ws := runWitnesses(t.TempDir(), rows, "test", "0000", "2026-08-17", 30*time.Second, false)
+	ws := runWitnesses(t.TempDir(), rows, "test", "", "0000", "2026-08-17", 30*time.Second, false)
 	// On Linux the network-off sandbox runs `true` → pass. Off Linux (or where
 	// unprivileged user namespaces are unavailable) the row is could-not-run with
 	// the sandbox-unavailable reason — never a silent pass.

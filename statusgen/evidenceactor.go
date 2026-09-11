@@ -227,14 +227,47 @@ func (a actorRef) matches(login string, id int64) bool {
 // Unavailable is the could-not-check state: non-empty means the policy could not
 // be established and NO row may be judged against it.
 type evidenceActorPolicy struct {
-	Verifier    actorRef
-	Humans      []actorRef
-	Unavailable string
+	Verifier actorRef
+	// VerifierForge is the forge the accepted verifier lives on (forge-neutral/07).
+	// It selects which commit-address form classify matches against: the GitHub
+	// noreply regex, or the GitLab service-account noreply shape. The zero value
+	// (forgeUnknown) is treated as github by classify's dispatch, but a verifier
+	// whose roster entry names a forge this build does not understand never reaches
+	// classify at all — evidenceActorPolicyFromRoster returns Unavailable for it, so
+	// an unrecognised forge is could-not-check, never a pass.
+	VerifierForge forgeKind
+	Humans        []actorRef
+	Unavailable   string
 }
 
-// idPinned reports whether the verifier binding carries a numeric id — i.e.
-// whether acceptance is keyed on the permanent identity or only on the login.
-func (p evidenceActorPolicy) idPinned() bool { return p.Verifier.ID != 0 }
+// idPinned reports whether acceptance of the verifier is keyed on the PERMANENT
+// numeric id rather than only on the login. It is true only for a GitHub verifier
+// carrying a numeric id: a GitLab verifier is matched by username + service-account
+// address SHAPE, because the numeric user id that would pin it is not present in the
+// commit metadata (see the file header on the GitLab address), so GitLab is always
+// the weaker LOGIN-ONLY form and idPinned reports false for it (Verifier.ID is left 0
+// for a GitLab verifier).
+func (p evidenceActorPolicy) idPinned() bool {
+	return p.VerifierForge != forgeGitLab && p.Verifier.ID != 0
+}
+
+// matchStrengthNote describes, for the NOTICE, how the accepted verifier is matched
+// and why that strength — id-pinned on GitHub, login-only on GitHub without an id, or
+// login-only-by-shape on GitLab. The three are not interchangeable: a reader deciding
+// whether to promote this check to a hard gate needs to know which one is in force.
+func (p evidenceActorPolicy) matchStrengthNote() string {
+	switch {
+	case p.VerifierForge == forgeGitLab:
+		return "LOGIN-ONLY by GitLab service-account username + address shape (a GitLab commit " +
+			"address carries a per-account suffix, not the roster's numeric user id, so the id " +
+			"cannot pin the match — weaker than GitHub's id-pinned form)"
+	case p.idPinned():
+		return "id-pinned"
+	default:
+		return fmt.Sprintf("LOGIN-ONLY (the %s verifier entry carries no numeric id, so acceptance "+
+			"rests on a re-registerable login)", scanEnvTrustedBotSlugs)
+	}
+}
 
 // evidenceActorPolicyFromRoster derives the accepted-actor set from the effective
 // roster configuration.
@@ -255,13 +288,43 @@ func evidenceActorPolicyFromRoster() evidenceActorPolicy {
 	slug := strings.TrimSpace(cfg.RoleBots["verifier"])
 	if slug == "" {
 		return evidenceActorPolicy{Unavailable: fmt.Sprintf(
-			"no verifier role is bound: %s carries no `verifier=<slug>[:<id>]` entry in %s. Without a "+
+			"no verifier role is bound: %s carries no `verifier=<forge>:<slug>[:<id>]` entry in %s. Without a "+
 				"declared verifier identity there is nothing to compare an Evidence commit against, and "+
 				"reporting every row unbacked would be a verdict about this checker's own ignorance",
 			scanEnvTrustedBotSlugs, cfg.Source)}
 	}
 
-	p := evidenceActorPolicy{Verifier: actorRef{Login: slug, ID: cfg.Bots[slug]}}
+	// THE THIRD could-not-check reason (forge-neutral/07 task 3): the verifier role is
+	// bound, but its entry names a forge this build does not understand. An Evidence
+	// commit's author cannot be matched against a forge whose commit-address form is
+	// unknown, so no row may be reported backed OR unbacked — that would be a verdict
+	// derived from the checker's own ignorance of the forge, the exact false-clean the
+	// three-state rule exists to prevent. Never rounds up to a pass.
+	verifierForge := forgeGitHub
+	if ident, ok := cfg.BotIdents[strings.ToLower(slug)]; ok {
+		if ident.Forge == forgeUnknown {
+			return evidenceActorPolicy{Unavailable: fmt.Sprintf(
+				"the verifier role is bound to slug %q on forge %q, which this build does not understand "+
+					"(it recognises github and gitlab). An Evidence commit authored on a forge whose "+
+					"commit-address form is unknown cannot be matched to the accepted verifier, so no "+
+					"`verified`/`done` row is reported backed or unbacked by this run — an unrecognised "+
+					"forge is could-not-check, never a pass",
+				slug, ident.ForgeRaw)}
+		}
+		verifierForge = ident.Forge
+	}
+
+	// The flat Bots view carries the numeric id for GitHub entries only; a GitLab
+	// verifier is matched login-only by username + address shape (see idPinned), so its
+	// actorRef is left id-unpinned regardless of the numeric user id the roster records.
+	verifierID := int64(0)
+	if verifierForge == forgeGitHub {
+		verifierID = cfg.Bots[slug]
+	}
+	p := evidenceActorPolicy{
+		Verifier:      actorRef{Login: slug, ID: verifierID},
+		VerifierForge: verifierForge,
+	}
 	for login, id := range cfg.Humans {
 		p.Humans = append(p.Humans, actorRef{Login: login, ID: id})
 	}
@@ -286,9 +349,60 @@ const (
 	actorImpostor
 )
 
-// classify judges one commit author (display name + email) against the policy.
-// reason is a short human-readable clause naming what was decided and why.
+// classify judges one commit author (display name + email) against the policy,
+// dispatching on the accepted verifier's forge. A GitLab verifier is matched by the
+// GitLab service-account address shape plus the git author username; every other case
+// (github, and the zero-value default) takes the GitHub path unchanged. An
+// unrecognised forge never reaches here — evidenceActorPolicyFromRoster returns
+// Unavailable for it, so no row is judged against a forge this build cannot match.
 func (p evidenceActorPolicy) classify(name, email string) (actorVerdict, string) {
+	if p.VerifierForge == forgeGitLab {
+		return p.classifyGitLab(name, email)
+	}
+	return p.classifyGitHub(name, email)
+}
+
+// classifyGitLab judges a commit author against a GitLab verifier binding. The match
+// is LOGIN-ONLY by construction (see the file header and idPinned): the git author
+// EMAIL must be a GitLab service-account noreply address (the shape gate — a random
+// person's address, or a GitHub noreply address, does not match it), and the git
+// author NAME must be the verifier's roster username. The numeric user id is not in the
+// commit metadata, so it cannot pin the match — this is the weaker form the brief and
+// identity.md record as such. A DIFFERENT GitLab service account (the implementer/
+// worker) fails the name test and is rejected, which is the negative control the pilot
+// needed: a worker's own Evidence commit reads unbacked. Roster-known humans
+// (ASSAY_TRUSTED_LOGINS, GitHub-shaped) are still honoured via the GitHub address form,
+// so a human who verified is not spuriously rejected on a GitLab deployment.
+func (p evidenceActorPolicy) classifyGitLab(name, email string) (actorVerdict, string) {
+	e := strings.ToLower(strings.TrimSpace(email))
+	if scanGitlabServiceAccountRe.MatchString(e) {
+		if p.Verifier.Login != "" && strings.EqualFold(strings.TrimSpace(name), p.Verifier.Login) {
+			return actorVerifier, fmt.Sprintf(
+				"committed by the bound GitLab verifier service account (author name %q matches the roster "+
+					"verifier username, commit address %q is the GitLab service-account form) — LOGIN-ONLY "+
+					"match: the address carries a per-account suffix, not the roster's numeric user id, so "+
+					"the id cannot pin it", name, email)
+		}
+		return actorRejected, fmt.Sprintf(
+			"committed by GitLab service account %q, which the roster does not accept as the verifier "+
+				"(the bound verifier is %q)", name, p.Verifier.Login)
+	}
+	// Not a GitLab service-account address. A roster-known human still backs a row.
+	if login, id, ok := githubIdentityFromEmail(email); ok {
+		for _, h := range p.Humans {
+			if h.matches(login, id) {
+				return actorHuman, fmt.Sprintf("committed by human:%s", h.Login)
+			}
+		}
+	}
+	return actorRejected, fmt.Sprintf(
+		"address %q is not the bound verifier's GitLab service-account form and matches no accepted actor", email)
+}
+
+// classifyGitHub judges a commit author against a GitHub verifier binding — the
+// original policy, unchanged. reason is a short human-readable clause naming what was
+// decided and why.
+func (p evidenceActorPolicy) classifyGitHub(name, email string) (actorVerdict, string) {
 	login, id, pinned := githubIdentityFromEmail(email)
 
 	if !pinned {
@@ -707,11 +821,7 @@ func evidenceActorNotices(root string, streams []*Stream) []string {
 	}
 
 	if len(flagged) > 0 {
-		pin := "id-pinned"
-		if !p.idPinned() {
-			pin = fmt.Sprintf("LOGIN-ONLY (the %s verifier entry carries no numeric id, so acceptance "+
-				"rests on a re-registerable login)", scanEnvTrustedBotSlugs)
-		}
+		pin := p.matchStrengthNote()
 		notices = append(notices, fmt.Sprintf(
 			"Evidence-actor: %d of %d judged `verified`/`done` rows carry an Evidence section that no "+
 				"accepted verifier actor committed — the `verified` claim rests on text the implementing "+

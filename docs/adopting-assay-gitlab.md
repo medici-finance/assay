@@ -136,9 +136,11 @@ The script is idempotent bash + curl + jq, run by a human holding a **group-owne
 (supplied only via the `GITLAB_TOKEN` environment variable — never a flag, never
 committed, never stored by the script). It creates the seven service accounts above,
 their group memberships, and their PATs; when `--project` is given, it also configures
-that project's protected `main` branch and MR-approval settings. It never touches
-Ultimate-only settings, the group token-expiry policy, or ci-config project creation —
-those are the human-only remainder it prints at the end (§4, §5).
+that project's protected `main` branch and MR-approval settings. With `--tier ultimate`
+it additionally scripts the two Ultimate refinements — a custom reviewer role that cannot
+push, and an external-status-check verdict lane (§2b). The group token-expiry policy, the
+ci-config project, and the pipeline execution policy remain the human-only remainder it
+prints at the end (§4, §5).
 
 ```
 GITLAB_TOKEN=<group-owner PAT> tools/create-fleet-gitlab.sh \
@@ -275,6 +277,71 @@ gitlab.com Free the write can return 201 and change nothing, and on some CE inst
 after it: every step runs, the failures are listed under the HUMAN-ONLY REMAINDER, and the
 script exits non-zero.
 
+## 2b. Ultimate refinements — scripted, with verification (`--tier ultimate`)
+
+On an **Ultimate** instance, `--tier ultimate` scripts the two refinements the parity
+table (§0.1, rows B8/B9) leaves human-only on lower tiers. Both are **optional
+hardening**, never a prerequisite for the core lane (ruling #219): each converts a
+disclosed CE degradation into a server-enforced control.
+
+```
+GITLAB_TOKEN=<group-owner PAT> tools/create-fleet-gitlab.sh \
+  --group mygroup --prefix myorg --project mygroup/myproject \
+  --tier ultimate --status-check-url https://<your-verdict-lane>/status
+```
+
+Dry-run first — it enumerates the custom-role and status-check steps and makes zero
+network calls:
+
+```
+tools/create-fleet-gitlab.sh --dry-run --tier ultimate --group mygroup --prefix myorg
+```
+
+**A. Custom reviewer role that cannot push (row B9).** The reviewer service account is
+given a custom member role — a **Reporter** base (which cannot push to any branch) plus
+the `admin_merge_request` ability — via `POST /groups/:id/member_roles`, then bound to the
+reviewer member. This restores the GitHub-App granularity of "approve MRs but never write
+code" that a plain Developer role cannot express. On a non-Ultimate instance the
+member-roles endpoint returns **403**; the script records that as `could-not-check` under
+the HUMAN-ONLY REMAINDER and exits non-zero — it never silently downgrades.
+
+*Verify the role cannot push* (the negative test — run it against a scratch project, as
+the reviewer's own PAT, not the owner PAT):
+
+```
+# Expect: remote rejects the push (protected/insufficient permission), non-zero exit.
+git -c http.extraHeader="PRIVATE-TOKEN: $(cat <out-dir>/myorg-reviewer-bot.token)" \
+  push https://gitlab.com/mygroup/scratch-project HEAD:refs/heads/reviewer-push-probe
+echo "exit=$?  # non-zero == the role cannot push, as intended"
+```
+
+A push that SUCCEEDS is a finding: the role has write access it must not have — do not
+proceed until the push is rejected.
+
+**B. External-status-check verdict lane (row B8).** With `--project` and
+`--status-check-url`, the script registers an external status check (default name
+`assay-verdict`; override with `--status-check-name`) via
+`POST /projects/:id/external_status_checks`. The desk's verdict lane then posts pass/fail
+against the MR head SHA through the forge seam
+(`postExternalStatusCheckVerdict` in `tools/desk/internal/deskkit/forge_gitlab.go`) — a
+required merge check the lane satisfies with **zero repo write access**. Make it a required
+check on protected `main` in **Settings > Merge requests > Status checks**. On a
+non-Ultimate instance the endpoint returns 403; again recorded as `could-not-check`, never
+a silent pass.
+
+*Verify the check is registered and required:*
+
+```
+# The check appears in the project's external status checks:
+curl -sS -H "PRIVATE-TOKEN: <owner PAT>" \
+  "https://gitlab.com/api/v4/projects/<id>/external_status_checks" | jq '.[].name'
+# Expect: "assay-verdict" (or your --status-check-name) present.
+```
+
+The tier gate is the single point of failure by design: both endpoints are Ultimate-only,
+so a 403 there is exactly the signal that routes verdict posting back to the three-state
+fallback rather than posting to a surface that does not exist.
+
 ## 2a. Runners and job tags — the executor that will actually pick up the pipeline
 
 `statusgen init --forge gitlab` scaffolds the CI *file* (`.gitlab-ci.yml`, the two-half
@@ -391,6 +458,36 @@ membership) that the provisioning script deliberately does not attempt:
 Workflow promotion — changing what CI runs — collapses to an ordinary human-merged MR
 into the ci-config project. No bot identity is ever in a position to promote its own
 workflow change; that is the whole control.
+
+## 4a. The CI leak-sweep half — the free-tier disclosure compensator
+
+The live pilot found the disclosure control absent on GitLab: no `.gitlab-ci.yml`, no
+pipelines, and `secret_push_protection_enabled: false`
+(`docs/streams/forge-gitlab/pilot-report.md` §3 row 8). The leak gate's strong verdict is a
+status posted **out of band** by the control-based sweep (it needs the private withheld-token
+map and cannot run in an adopter's CI), so on GitLab a change can carry a green pipeline with
+the leak gate never having run. This section closes that gap with the **pipeline-side
+leak-sweep job** — the free-tier layer that runs the in-tree (pattern-half) controls in the
+change's own pipeline and fails it on a hit.
+
+Add the leak-sweep job to the shared `.gitlab-ci.yml` you commit into the ci-config project
+(§4 step 3). Its exact shape — the job, its `rules`, and the three-state property (passed /
+failed / absent-is-could-not-check) — is templated by `forge-neutral/08` and specified in
+[`docs/streams/forge-neutral/gitlab-ci-half.md`](streams/forge-neutral/gitlab-ci-half.md);
+where it sits in the two-layer gate design (external verdict + pipeline-side sweep, and which
+layer blocks on which tier) is [`docs/streams/forge-neutral/leak-gate-shape.md`](streams/forge-neutral/leak-gate-shape.md).
+
+The load-bearing points for an adopter:
+
+- **On CE / free tier the sweep job is the merge blocker.** CE cannot express a blocking
+  external status check (the tier-gated surface returned `HTTP 401` on the pilot, §0.1), so
+  make the `leaksweep` job a **required** pipeline step in the project's merge-request
+  settings — a failing required pipeline is what blocks the merge here.
+- **On Ultimate the sweep job is the second, independent layer** behind the external status
+  check, catching a change on a different signal (its own CI) than the external verdict.
+- **An absent sweep is could-not-check, never a pass.** A required pipeline that produced no
+  `leaksweep` job reads as a missing required step, not as a clean run — the same three-state
+  contract the external verdict honours.
 
 ## 5. Token custody rules
 

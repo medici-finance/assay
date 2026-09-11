@@ -2,7 +2,7 @@
 stream: mistake-proofing
 repo: medici-finance/assay
 serves: assay
-status: active
+status: done
 priority: P2
 track: platform
 issues: []
@@ -10,6 +10,8 @@ board: generated
 ---
 
 # mistake-proofing Stream — implement the TOOLING half of the poka-yoke spec
+
+> **Archived 2026-09-11 — stream closed.** All 6 briefs `done` (last row flipped 2026-09-07); `statusgen --lint` carried the archive-candidate NOTICE. No further briefs are planned: the tooling half of the poka-yoke spec shipped in statusgen, and any follow-up lands as its own brief in a live stream.
 
 The spec [`docs/mistake-proofing.md`](../../mistake-proofing.md) gives the methodology
 Shingo's vocabulary — **source / in-process / downstream** × **control / warning** × **who can

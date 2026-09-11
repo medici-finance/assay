@@ -85,7 +85,7 @@ func TestInitScaffoldsGitLabCIForGitLabForge(t *testing.T) {
 	dir := t.TempDir()
 
 	next := captureStdout(t, func() {
-		if code := runInitForge(dir, forgeGitLab, false); code != 0 {
+		if code := runInitForge(dir, forgeGitLab, true, "", false); code != 0 {
 			t.Fatalf("runInitForge(gitlab) exit = %d, want 0", code)
 		}
 	})
@@ -172,7 +172,7 @@ func TestInitScaffoldsGitLabCIForGitLabForge(t *testing.T) {
 func TestInitNextStepsRunnerNoteIsGitLabOnly(t *testing.T) {
 	dir := t.TempDir()
 	next := captureStdout(t, func() {
-		if code := runInitForge(dir, forgeGitHub, false); code != 0 {
+		if code := runInitForge(dir, forgeGitHub, true, "", false); code != 0 {
 			t.Fatalf("runInitForge(github) exit = %d, want 0", code)
 		}
 	})
@@ -187,20 +187,24 @@ func TestInitNextStepsRunnerNoteIsGitLabOnly(t *testing.T) {
 	}
 }
 
-// TestInitDefaultsToGitHubForUnknownForge pins the fallback: an undetectable forge
-// (no remote, self-hosted host naming neither forge) keeps the historical GitHub
-// scaffold byte-for-byte — the established default, and what every no-remote
-// `t.TempDir()` test relies on.
-func TestInitDefaultsToGitHubForUnknownForge(t *testing.T) {
+// TestInitDefaultsToGitHubForNoRemote pins the ONE surviving GitHub fallback: a
+// tree with NO readable origin remote (remotePresent=false — a fresh `t.TempDir()`,
+// a repo whose origin is not yet set) keeps the historical GitHub scaffold
+// byte-for-byte, which is what every no-remote test relies on. This is deliberately
+// NARROWER than the pre-#349-era fallback: a readable remote whose host names
+// neither forge no longer defaults to GitHub — it writes no CI half (forge-neutral
+// row 4, TestInitUnresolvedForgeWritesNoCIHalf), the shape forge-neutral/01 forbids
+// defaulting to GitHub.
+func TestInitDefaultsToGitHubForNoRemote(t *testing.T) {
 	dir := t.TempDir()
-	if code := runInitForge(dir, forgeUnknown, false); code != 0 {
-		t.Fatalf("runInitForge(unknown) exit = %d, want 0", code)
+	if code := runInitForge(dir, forgeUnknown, false /* no remote */, "", false); code != 0 {
+		t.Fatalf("runInitForge(unknown, no remote) exit = %d, want 0", code)
 	}
 	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(".github/workflows/assay-statusgen.yml"))); err != nil {
-		t.Errorf("unknown forge must fall back to the GitHub workflow: %v", err)
+		t.Errorf("a no-remote tree must fall back to the GitHub workflow: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".gitlab-ci.yml")); !os.IsNotExist(err) {
-		t.Errorf("unknown forge must not scaffold .gitlab-ci.yml (err=%v)", err)
+		t.Errorf("a no-remote tree must not scaffold .gitlab-ci.yml (err=%v)", err)
 	}
 }
 

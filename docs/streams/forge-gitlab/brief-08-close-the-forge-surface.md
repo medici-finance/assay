@@ -12,7 +12,7 @@ why: >-
   not a wide-open CLI" is a checked property, not a convention.
 wave: 3
 depends: ["forge-gitlab/02", "forge-gitlab/07"]
-unblocks: []
+unblocks: ["forge-gitlab/11"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
