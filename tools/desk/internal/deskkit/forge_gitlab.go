@@ -1133,6 +1133,11 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 			}
 			status, conclusion := gitlabJobStatus(j.Status)
 			out.CheckRuns = append(out.CheckRuns, CheckRun{
+				// The JOB id is GitLab's per-execution identifier, the same kind of fact
+				// GitHub's check-run id carries: a retried job gets a new one, so a
+				// citation of "the run that turned green" cannot be satisfied by an
+				// earlier execution of the same job name.
+				ID:   checkRunID(j.ID),
 				Name: j.Name, Status: status, Conclusion: conclusion,
 				// GitLab's finished_at is the job's true end — the same fact GitHub's
 				// completed_at carries — so the latest-run-per-name reduction orders both
