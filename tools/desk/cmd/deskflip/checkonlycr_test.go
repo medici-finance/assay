@@ -69,7 +69,7 @@ func citingApprove(t *testing.T, body, at string) reviewInfo {
 // THE ACCEPTING CASE. All five conditions hold, so the standing CR is cleared and the flip
 // runs. This is the only shape the exemption grants, and it is the test that was RED before
 // the exemption existed.
-func TestCheckOnlyCRClearedByACitedLaterGreenRun(t *testing.T) {
+func TestCheckOnlyCRCleared(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.install(t)
 
@@ -86,7 +86,7 @@ func TestCheckOnlyCRClearedByACitedLaterGreenRun(t *testing.T) {
 // Detection is by the body's explicit shape and nothing else: a CR that merely MENTIONS the
 // check by name, in a sentence, has declared nothing. This is the case that keeps the
 // exemption from being reachable by an ordinary CR that happens to discuss a check.
-func TestProseAboutTheCheckIsNotACheckOnlyDeclaration(t *testing.T) {
+func TestProseIsNotADeclaration(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.reviews[0] = checkOnlyCR(t,
 		"The only thing blocking this is the changelog check being red. Nothing else.", checkOnlyCRAt)
@@ -105,7 +105,7 @@ func TestProseAboutTheCheckIsNotACheckOnlyDeclaration(t *testing.T) {
 // is documentation explaining the format — a review that shows a colleague how to write the
 // declaration must not thereby make one. Both exemption reads are grant-direction, so both
 // skip fences.
-func TestFencedDeclarationIsNotADeclaration(t *testing.T) {
+func TestFencedDeclarationIsInert(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.reviews[0] = checkOnlyCR(t,
 		"Write it like this next time:\n\n```\nBlocked-On-Check: changelog\n```\n\nAlso: the retry loop is wrong.",
@@ -121,7 +121,7 @@ func TestFencedDeclarationIsNotADeclaration(t *testing.T) {
 // (a) DROPPED, the ambiguous form. Two declarations naming different checks leave the claim
 // unestablished, and an unestablished claim withholds the grant rather than having one of
 // its two values picked for it.
-func TestTwoDisagreeingDeclarationsEstablishNothing(t *testing.T) {
+func TestTwoDeclarationsDisagree(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.reviews[0] = checkOnlyCR(t,
 		"Blocked-On-Check: changelog\nBlocked-On-Check: go-test", checkOnlyCRAt)
@@ -135,7 +135,7 @@ func TestTwoDisagreeingDeclarationsEstablishNothing(t *testing.T) {
 // (b) DROPPED — the re-approve cites NO run. This is the bare at-head re-approval rule 2 was
 // written for, and it must keep refusing exactly as it always did: the declaration on the CR
 // does not, on its own, make the next APPROVE a re-verification of anything.
-func TestReApproveCitingNoRunIsStillRefused(t *testing.T) {
+func TestReApproveCitesNoRun(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.reviews[1] = citingApprove(t, "green now, flipping", reApproveAt)
 	s.install(t)
@@ -152,7 +152,7 @@ func TestReApproveCitingNoRunIsStillRefused(t *testing.T) {
 // the reviewer already had that result in front of them when they blocked. Citing it
 // re-verifies nothing — this is the laundering shape the exemption would otherwise open, and
 // the timestamp comparison is the only thing standing between the two.
-func TestCitedRunThatPredatesTheCRIsRefused(t *testing.T) {
+func TestCitedRunPredatesTheCR(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.rollup[len(s.rollup)-1].CompletedAt = "2025-12-31T23:00:00Z" // before checkOnlyCRAt
 	s.install(t)
@@ -175,7 +175,7 @@ func TestCitedRunThatPredatesTheCRIsRefused(t *testing.T) {
 // did, and the case could not tell the two apart. Here checks-green reduces to the LATEST run
 // per name — the green re-run — and passes, so the ONLY thing that can refuse is the
 // exemption's own test of the run that was actually cited.
-func TestCitedRunThatIsNotGreenIsRefused(t *testing.T) {
+func TestCitedRunNotGreen(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.rollup[len(s.rollup)-1].Conclusion = "FAILURE" // the cited run failed...
 	s.rollup = append(s.rollup, rollupEntry{         // ...and a later re-run went green
@@ -198,7 +198,7 @@ func TestCitedRunThatIsNotGreenIsRefused(t *testing.T) {
 // conclusion for a check that deliberately did no work, and checks-green has always counted
 // it green — so the exemption must too, or it would refuse the exact case it was authorized
 // for while the gate two conditions below called the same run green.
-func TestSkippedIsGreenForTheExemptionJustAsItIsForChecksGreen(t *testing.T) {
+func TestSkippedCountsGreen(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.rollup[len(s.rollup)-1].Conclusion = "SKIPPED"
 	s.install(t)
@@ -215,7 +215,7 @@ func TestSkippedIsGreenForTheExemptionJustAsItIsForChecksGreen(t *testing.T) {
 // (b) DROPPED, the NOT-YET-COMPLETE form. The cited run is the named check at the right head,
 // but it is still RUNNING. "Still going" is could-not-check, and could-not-check never clears
 // a standing rejection — the reviewer cited a result that does not exist yet.
-func TestCitedRunStillRunningIsRefused(t *testing.T) {
+func TestCitedRunStillRunning(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.rollup[len(s.rollup)-1].Status = "IN_PROGRESS"
 	s.rollup[len(s.rollup)-1].Conclusion = ""
@@ -238,7 +238,7 @@ func TestCitedRunStillRunningIsRefused(t *testing.T) {
 // condition is structural rather than compared: the rollup is read at the head both reviews
 // are pinned to, so a run belonging to another head is simply absent, and an absent run is
 // no evidence about this head.
-func TestCitedRunAbsentFromTheHeadRollupIsRefused(t *testing.T) {
+func TestCitedRunNotAtHead(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.rollup = s.rollup[:len(s.rollup)-1] // the run lives on some other head, not this one
 	s.install(t)
@@ -260,7 +260,7 @@ func TestCitedRunAbsentFromTheHeadRollupIsRefused(t *testing.T) {
 // (d) DROPPED — the cited run is green, later, and at head, but it is a DIFFERENT check from
 // the one the CR named. Without this the exemption would let any green run on the head clear
 // a CR blocked on some other check.
-func TestCitedRunForADifferentCheckIsRefused(t *testing.T) {
+func TestCitedRunWrongCheck(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.rollup[len(s.rollup)-1].Name = "go-test" // the CR named `changelog`
 	s.install(t)
@@ -276,7 +276,7 @@ func TestCitedRunForADifferentCheckIsRefused(t *testing.T) {
 // The exemption clears a BLOCK; it does not manufacture a VERDICT. A check-only CR, cleared
 // by a citing re-approve, followed by a SECOND ordinary CR at the same head still refuses —
 // the reduction below rule 2 has to find an APPROVED governing at head, and here it does not.
-func TestClearingTheCheckOnlyCRDoesNotSurviveALaterCR(t *testing.T) {
+func TestALaterCRBlocksAgain(t *testing.T) {
 	s := checkOnlyStub(t)
 	later := checkOnlyCR(t, "the retry loop drops the last error", "2026-01-01T00:30:00Z")
 	s.reviews = append(s.reviews, later)
@@ -294,7 +294,7 @@ func TestClearingTheCheckOnlyCRDoesNotSurviveALaterCR(t *testing.T) {
 // A SECURITY-marked APPROVE must not clear a CORRECTNESS block, for the same reason it
 // cannot satisfy the correctness gate: the two verdicts are separate artifacts, and clearing
 // a correctness block is acting in the correctness lane.
-func TestSecurityMarkedApproveDoesNotClearTheCheckOnlyCR(t *testing.T) {
+func TestSecurityApproveNoClear(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.reviews[1] = citingApprove(t,
 		"Security-Review: pass\nCleared-Check-Run: "+clearedRunID, reApproveAt)
@@ -308,7 +308,7 @@ func TestSecurityMarkedApproveDoesNotClearTheCheckOnlyCR(t *testing.T) {
 // A run the forge served NO id for maps to "" and is unmatchable. A body citing `0` — the
 // value an id-less run would carry if the mapping rendered zero as a number — must not match
 // it. This pins the fail-closed half of the id mapping at the gate that consumes it.
-func TestCitationOfZeroDoesNotMatchAnIdlessRun(t *testing.T) {
+func TestZeroIdCitationNoMatch(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.rollup[len(s.rollup)-1].ID = "" // the forge reported no id for this run
 	s.reviews[1] = citingApprove(t, "Cleared-Check-Run: 0", reApproveAt)
@@ -330,7 +330,7 @@ func TestCitationOfZeroDoesNotMatchAnIdlessRun(t *testing.T) {
 // identical from the outside. What distinguishes them is WHICH CONDITION reported, and the
 // answer has to be reviewer-approved: the exemption decides first, and an operator sent to
 // the CI gate for a rejection that was never about CI goes looking in the wrong place.
-func TestShortRollupReadCannotClearTheCheckOnlyCR(t *testing.T) {
+func TestShortRollupReadRefuses(t *testing.T) {
 	s := checkOnlyStub(t)
 	s.checkTotalOverride = 99 // the forge asserts far more runs than it served
 	s.install(t)
