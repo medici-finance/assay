@@ -1036,6 +1036,27 @@ line into `.assay-versions` (see the note below).
 > `-source` line, and the literal string `channel-D` is never a field in that grammar. Pin the
 > commit in CI (step 1) instead.
 
+**How the board tools prove the binary on a source lane — and the stale-pin trap.** Because a
+channel D `.assay-versions` carries **no** statusgen / desk-tools pin line at all (the `-source`
+grammar above is release-only), there is nothing in `.assay-versions` for a board/dispatch tool
+to resolve a pin from — a live channel D install that (wrongly) wrote `statusgen-source <sha>
+channel-D` lines and then ran `deskboard dispatch` failed with **no statusgen pin**, because
+those lines are not the release pin the tool reads. That is expected on this lane, not a
+misconfiguration: **the running binary IS the provenance, and you prove it from the binary, not
+from `.assay-versions`.** `statusgen --version` prints `dev-<shortsha>` and the desk-tools'
+`--version` prints `sourceSHA=<40-hex>`; on a source lane that SHA — matching the immutable
+commit your CI clones and rebuilds (step 1) — is what establishes what ran. Delete any
+`-source` / `channel-D` lines you find in a source-lane `.assay-versions`; they satisfy no
+check and mislead the next operator. (Whether the board tools should additionally *accept* a
+source pin, rather than only a release pin, is an open follow-up — #896; do not fabricate a
+release pin line to work around it.)
+
+> **Never treat a `deskboard` pin-drift as an all-clear board.** A source-lane install can print
+> `sourceSHA=<newer>` from a binary built more recently than the commit a role worktree was
+> built or pinned at — the board tool and the worktree are then out of step. That is a
+> **could-not-trust** state, not a pass: **rebuild the worktree's tools from the pinned commit,
+> or re-pin in a dedicated PR** — never read a stale-pin `deskboard` as an authoritative board.
+
 ## 3a. What the bundle delivers by itself — and what you still have to write
 
 The install leaves you with working skills and **two things that behave very differently**. Read
