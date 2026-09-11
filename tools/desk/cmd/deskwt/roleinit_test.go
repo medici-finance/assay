@@ -286,15 +286,12 @@ func TestRoleInitSupportsAllDeskRoles(t *testing.T) {
 }
 
 // TestRoleWorktreeConfigMatchesLoopTokenRoles is the drift guard: roleWorktreeConfig must
-// cover exactly the loops deskboot can boot, keyed on each loop's App token role, with the
-// branch prefix equal to the loop name. It fails pre-fix because only the verifier is
-// mapped (four of the five loops are missing).
+// cover every loop deskboot can boot, keyed on each loop's App token role, with the
+// branch prefix equal to the loop name — AND every role desktoken mints (its fixed set:
+// desk / worker / reviewer / verifier / issue-loop / intake-loop), so no roster-bound role
+// is left with no way to isolate. It fails pre-fix because only the verifier is mapped.
 func TestRoleWorktreeConfigMatchesLoopTokenRoles(t *testing.T) {
 	loopRoles := deskkit.LoopTokenRoles() // map[loop]tokenRole
-	if len(roleWorktreeConfig) != len(loopRoles) {
-		t.Fatalf("roleWorktreeConfig has %d roles, want %d (one per bootable loop): %v vs %v",
-			len(roleWorktreeConfig), len(loopRoles), roleWorktreeConfig, loopRoles)
-	}
 	for loop, role := range loopRoles {
 		cfg, ok := roleWorktreeConfig[role]
 		if !ok {
@@ -303,6 +300,316 @@ func TestRoleWorktreeConfigMatchesLoopTokenRoles(t *testing.T) {
 		if cfg.branchPrefix != loop {
 			t.Fatalf("roleWorktreeConfig[%q].branchPrefix = %q, want the loop name %q", role, cfg.branchPrefix, loop)
 		}
+	}
+	// desktoken's fixed role set (cmd/desktoken validRoles) — restated here because the two
+	// are separate main packages; a role added there must be provisionable here.
+	desktokenRoles := []string{"desk", "worker", "reviewer", "verifier", "issue-loop", "intake-loop"}
+	for _, role := range desktokenRoles {
+		if _, ok := roleWorktreeConfig[role]; !ok {
+			t.Fatalf("roleWorktreeConfig is missing desktoken role %q — a role that mints a token must be able to isolate", role)
+		}
+	}
+	if len(roleWorktreeConfig) != len(desktokenRoles) {
+		t.Fatalf("roleWorktreeConfig has %d roles, want %d (desktoken's fixed set): %v",
+			len(roleWorktreeConfig), len(desktokenRoles), roleWorktreeConfig)
+	}
+	// Every configured role resolves to a bot commit identity under the fixture roster —
+	// otherwise role-init would refuse it at the identity gate, which is a silent
+	// re-introduction of "refuses every role but one".
+	work := newRepo(t)
+	withEnv(t, work)
+	for role := range roleWorktreeConfig {
+		if _, _, ok := deskkit.RoleBotCommitIdentity(role); !ok {
+			t.Fatalf("fixture roster binds no commit identity for role %q", role)
+		}
+	}
+}
+
+// --- every desk role, every spelling: the isolate-first contract ------------------------
+
+// runCapBoth runs deskwt with args, capturing BOTH streams (runCapOut from prune_test.go
+// around runCapErr). stdout is what a launcher reads (`cd "$(deskwt role-init …)"`), so the
+// tests below assert on it, not only on the rc.
+func runCapBoth(t *testing.T, args []string) (rc int, stdout, stderr string) {
+	t.Helper()
+	stdout = runCapOut(t, func() { rc, stderr = runCapErr(t, args) })
+	return rc, stdout, stderr
+}
+
+// lastLine returns the last non-empty line of s.
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	return lines[len(lines)-1]
+}
+
+// isLocked reports whether `git worktree list --porcelain` shows target as locked.
+func isLocked(t *testing.T, work, target string) bool {
+	t.Helper()
+	porcelain := mustGit(t, work, "worktree", "list", "--porcelain")
+	rt := resolvePath(target)
+	blocks := strings.Split(porcelain, "\n\n")
+	for _, b := range blocks {
+		if strings.Contains(b, "worktree "+rt) || strings.Contains(b, "worktree "+target) {
+			return strings.Contains(b, "\nlocked")
+		}
+	}
+	return false
+}
+
+// roleSpellingCases is the role table the isolate-first contract is proven over: every
+// role desktoken mints, spelled as its TOKEN role and — where deskboot boots a loop for it
+// — as that LOOP name (the spelling deskboot's own refusal prints), plus the retired
+// `batch-fanout` spelling the kill switch still honours for worker-desk.
+var roleSpellingCases = []struct {
+	spelling, branchPrefix, email string
+}{
+	{"desk", "the-desk", "300000001+assay-desk-app[bot]@users.noreply.github.com"},
+	{"the-desk", "the-desk", "300000001+assay-desk-app[bot]@users.noreply.github.com"},
+	{"worker", "worker-desk", "300000006+assay-worker-app[bot]@users.noreply.github.com"},
+	{"worker-desk", "worker-desk", "300000006+assay-worker-app[bot]@users.noreply.github.com"},
+	{"batch-fanout", "worker-desk", "300000006+assay-worker-app[bot]@users.noreply.github.com"},
+	{"reviewer", "pr-review-desk", "300000004+assay-reviewer-app[bot]@users.noreply.github.com"},
+	{"pr-review-desk", "pr-review-desk", "300000004+assay-reviewer-app[bot]@users.noreply.github.com"},
+	{"verifier", "verify-desk", verifierBotEmail},
+	{"verify-desk", "verify-desk", verifierBotEmail},
+	{"issue-loop", "intake-desk", "300000003+assay-issue-loop-app[bot]@users.noreply.github.com"},
+	{"intake-desk", "intake-desk", "300000003+assay-issue-loop-app[bot]@users.noreply.github.com"},
+	{"intake-loop", "intake-loop", "300000002+assay-intake-loop-app[bot]@users.noreply.github.com"},
+}
+
+// TestRoleInitEveryRoleEverySpelling is the role table: for every role, spelled as its
+// token role OR its loop name, given POSITIONALLY (the launcher form) and run from OUTSIDE
+// the checkout via --repo-root (the shared-checkout boot case — cwd is nowhere near the
+// repo), role-init (1) creates the worktree on `<loop>/<session>` tracking origin/main,
+// (2) LOCKS it, (3) stamps the role's identity worktree-scoped, and (4) prints the
+// worktree's ABSOLUTE path as the last stdout line. Pre-fix, every loop-name spelling and
+// `intake-loop` refuse (exit 5) and there is no --repo-root, so the loop-name command
+// deskboot prints is one the tool then refuses.
+func TestRoleInitEveryRoleEverySpelling(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	// cwd is an unrelated, non-git directory: --repo-root must carry the checkout.
+	elsewhere := t.TempDir()
+	getwd = func() (string, error) { return elsewhere, nil }
+
+	for i, c := range roleSpellingCases {
+		sess := "s" + string(rune('a'+i))
+		t.Run(c.spelling, func(t *testing.T) {
+			rc, stdout, stderr := runCapBoth(t, []string{"role-init", c.spelling, "--repo-root", work, "--session", sess})
+			if rc != deskkit.ExitOK {
+				t.Fatalf("role-init %s rc = %d, want 0; stderr: %s", c.spelling, rc, stderr)
+			}
+			target := filepath.Join(tmpBaseDir, "tracker-"+c.branchPrefix+"-"+sess)
+			if _, err := os.Stat(target); err != nil {
+				t.Fatalf("worktree dir %s not created: %v", target, err)
+			}
+			if got := lastLine(stdout); got != target || !filepath.IsAbs(got) {
+				t.Fatalf("last stdout line = %q, want the absolute worktree path %q", got, target)
+			}
+			if br := mustGit(t, target, "rev-parse", "--abbrev-ref", "HEAD"); br != c.branchPrefix+"/"+sess {
+				t.Fatalf("worktree branch = %q, want %q", br, c.branchPrefix+"/"+sess)
+			}
+			if up := mustGit(t, target, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"); up != "origin/main" {
+				t.Fatalf("upstream = %q, want origin/main", up)
+			}
+			if !isLocked(t, work, target) {
+				t.Fatalf("worktree %s is not locked — an unlocked live worktree is reclaimable by the prune supervisor", target)
+			}
+			if got := mustGit(t, target, "config", "--worktree", "--get", "user.email"); got != c.email {
+				t.Fatalf("worktree-scoped user.email = %q, want %q", got, c.email)
+			}
+		})
+	}
+}
+
+// TestRoleInitRefusesUnknownRoleAndDoubleRole — a spelling that is neither a token role
+// nor a loop name refuses (exit 5) naming both accepted vocabularies; naming the role twice
+// with two different values refuses rather than picking one; nothing is provisioned.
+func TestRoleInitRefusesUnknownRoleAndDoubleRole(t *testing.T) {
+	work := newRepo(t)
+	calls := withEnv(t, work)
+
+	rc, stderr := runCapErr(t, []string{"role-init", "nobody-desk", "--session", "s"})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("unknown role rc = %d, want 5; stderr: %s", rc, stderr)
+	}
+	if !contains(stderr, "worker-desk") || !contains(stderr, "verifier") {
+		t.Fatalf("refusal must name both the token roles and the loop names; stderr: %s", stderr)
+	}
+	rc, stderr = runCapErr(t, []string{"role-init", "worker", "--role", "verifier", "--session", "s"})
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("role given twice and differently rc = %d, want 5; stderr: %s", rc, stderr)
+	}
+	if hasWorktreeVerb(*calls, "add") {
+		t.Fatalf("a worktree was created on a refused invocation; git calls: %v", gitCalls(*calls))
+	}
+	// The same role spelled twice — positional loop name, --role token role — is NOT a
+	// conflict: both resolve to `worker`, so it provisions.
+	if rc, stderr := runCapErr(t, []string{"role-init", "worker-desk", "--role", "worker", "--session", "s"}); rc != deskkit.ExitOK {
+		t.Fatalf("same role in two vocabularies rc = %d, want 0; stderr: %s", rc, stderr)
+	}
+}
+
+// TestRoleInitLeavesSharedCheckoutConfigAndIndexUntouched pins the property the
+// shared-homed boot failure class is about: provisioning a role worktree from the SHARED
+// checkout must not write that checkout's index, and must not write its user.* config (a
+// `git config user.*` in a linked worktree lands in the shared config and clobbers every
+// session's identity). Two shared-config writes are INHERENT to the design and are the only
+// ones allowed: `[extensions] worktreeConfig = true` (git requires it in the common config
+// for the worktree-scoped identity to take effect; idempotent, once per checkout) and the
+// new branch's own `[branch "<loop>/<session>"]` tracking section (what `git worktree add
+// --track -b` records so the preflight landing probe has an upstream). With those two
+// masked, the base .git/config is BYTE-EQUAL before and after — the identity strings never
+// appear in it — and the index is byte-equal unmasked.
+func TestRoleInitLeavesSharedCheckoutConfigAndIndexUntouched(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	cfgPath := filepath.Join(work, ".git", "config")
+	idxPath := filepath.Join(work, ".git", "index")
+
+	// maskInherent drops the two inherent sections so everything else must be byte-equal.
+	maskInherent := func(s string) string {
+		var keep []string
+		skipping := false
+		for _, l := range strings.Split(s, "\n") {
+			tl := strings.TrimSpace(l)
+			if strings.HasPrefix(tl, "[") {
+				skipping = tl == "[extensions]" || strings.HasPrefix(tl, "[branch \"")
+			}
+			if skipping {
+				continue
+			}
+			keep = append(keep, l)
+		}
+		return strings.TrimRight(strings.Join(keep, "\n"), "\n")
+	}
+
+	for _, c := range []struct{ role, session, identity string }{
+		{"worker-desk", "cfgA", "assay-worker-app"},      // first role-init: enables the extension
+		{"pr-review-desk", "cfgB", "assay-reviewer-app"}, // steady state: extension already on
+	} {
+		cfgBefore, err := os.ReadFile(cfgPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		idxBefore, err := os.ReadFile(idxPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rc, stderr := runCapErr(t, []string{"role-init", c.role, "--session", c.session}); rc != deskkit.ExitOK {
+			t.Fatalf("role-init %s rc = %d, want 0; stderr: %s", c.role, rc, stderr)
+		}
+		cfgAfter, _ := os.ReadFile(cfgPath)
+		idxAfter, _ := os.ReadFile(idxPath)
+		if string(idxBefore) != string(idxAfter) {
+			t.Fatalf("role-init %s rewrote the SHARED checkout's index", c.role)
+		}
+		if got := mustGit(t, "", "config", "--file", cfgPath, "--get", "user.email"); got != "t@e.st" {
+			t.Fatalf("shared user.email = %q after role-init %s, want the untouched fixture value t@e.st", got, c.role)
+		}
+		if got := mustGit(t, "", "config", "--file", cfgPath, "--get", "user.name"); got != "Test" {
+			t.Fatalf("shared user.name = %q after role-init %s, want the untouched fixture value Test", got, c.role)
+		}
+		if strings.Contains(string(cfgAfter), c.identity) {
+			t.Fatalf("the %s identity leaked into the SHARED .git/config:\n%s", c.identity, cfgAfter)
+		}
+		if maskInherent(string(cfgBefore)) != maskInherent(string(cfgAfter)) {
+			t.Fatalf("shared .git/config changed beyond the extension enable and the new branch's own section (role-init %s):\n--- before\n%s\n--- after\n%s",
+				c.role, cfgBefore, cfgAfter)
+		}
+		if c.session == "cfgB" && !strings.Contains(string(cfgBefore), "worktreeConfig") {
+			t.Fatal("steady-state case expected extensions.worktreeConfig to be enabled already")
+		}
+	}
+}
+
+// TestRoleInitCutsFromFreshOriginMain — the worktree is cut from origin's CURRENT main,
+// not the checkout's stale remote-tracking ref: origin advances behind the checkout's back,
+// and role-init's fresh fetch picks the new tip up. With --no-fetch the stale ref is used
+// as-is (the explicit, never-default opt-out).
+func TestRoleInitCutsFromFreshOriginMain(t *testing.T) {
+	work := newRepo(t)
+	calls := withEnv(t, work)
+	stale := mustGit(t, work, "rev-parse", "origin/main")
+
+	// Advance origin's main from a second clone — the fixture checkout does not see it.
+	other := filepath.Join(t.TempDir(), "other")
+	mustGit(t, "", "clone", "--quiet", originBare(t, work), other)
+	mustGit(t, other, "config", "user.email", "o@e.st")
+	mustGit(t, other, "config", "user.name", "Other")
+	mustGit(t, other, "config", "commit.gpgsign", "false")
+	writeFile(t, filepath.Join(other, "NEW.md"), "advanced\n")
+	mustGit(t, other, "add", "NEW.md")
+	mustGit(t, other, "commit", "-q", "-m", "advance main")
+	mustGit(t, other, "push", "--quiet", "origin", "main")
+	fresh := mustGit(t, other, "rev-parse", "HEAD")
+	if fresh == stale {
+		t.Fatal("fixture did not advance origin/main")
+	}
+
+	rc, stdout, stderr := runCapBoth(t, []string{"role-init", "worker-desk", "--session", "fresh"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("role-init rc = %d, want 0; stderr: %s", rc, stderr)
+	}
+	target := lastLine(stdout)
+	if got := mustGit(t, target, "rev-parse", "HEAD"); got != fresh {
+		t.Fatalf("worktree HEAD = %s, want origin's FRESH main %s (stale local ref was %s)", got, fresh, stale)
+	}
+	fetched := false
+	for _, c := range gitCalls(*calls) {
+		if len(c) > 1 && c[1] == "fetch" {
+			fetched = true
+		}
+	}
+	if !fetched {
+		t.Fatalf("no `git fetch` recorded; git calls: %v", gitCalls(*calls))
+	}
+
+	// --no-fetch: a second role (its own worktree) is cut from whatever origin/main is now,
+	// with no fetch issued.
+	resetCalls(calls)
+	rc, _, stderr = runCapBoth(t, []string{"role-init", "verifier", "--session", "nofetch", "--no-fetch"})
+	if rc != deskkit.ExitOK {
+		t.Fatalf("role-init --no-fetch rc = %d, want 0; stderr: %s", rc, stderr)
+	}
+	for _, c := range gitCalls(*calls) {
+		if len(c) > 1 && c[1] == "fetch" {
+			t.Fatalf("--no-fetch still fetched: %v", c)
+		}
+	}
+}
+
+// TestRoleInitUnfetchableOriginIsUnverifiable — when the fresh fetch cannot run (origin
+// unreachable), role-init is could-not-check (exit 6), never a worktree quietly cut from a
+// possibly-stale base; the message names --no-fetch as the explicit opt-out.
+func TestRoleInitUnfetchableOriginIsUnverifiable(t *testing.T) {
+	work := newRepo(t)
+	calls := withEnv(t, work)
+	mustGit(t, work, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone", "example-org", "tracker.git"))
+
+	rc, stderr := runCapErr(t, []string{"role-init", "worker-desk", "--session", "unreach"})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("unfetchable origin rc = %d, want 6 (unverifiable); stderr: %s", rc, stderr)
+	}
+	if !contains(stderr, "--no-fetch") {
+		t.Fatalf("the could-not-check must name --no-fetch as the opt-out; stderr: %s", stderr)
+	}
+	if hasWorktreeVerb(*calls, "add") {
+		t.Fatalf("a worktree was cut despite the failed fetch; git calls: %v", gitCalls(*calls))
+	}
+}
+
+// TestRoleInitRepoRootMustBeACheckout — an explicit --repo-root is authoritative: one that
+// is not a git worktree is could-not-check (exit 6), never a silent fall-back to the cwd.
+func TestRoleInitRepoRootMustBeACheckout(t *testing.T) {
+	work := newRepo(t)
+	calls := withEnv(t, work) // cwd IS a valid checkout — the fall-back that must not happen
+	rc, stderr := runCapErr(t, []string{"role-init", "worker-desk", "--repo-root", t.TempDir(), "--session", "rr"})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("non-checkout --repo-root rc = %d, want 6; stderr: %s", rc, stderr)
+	}
+	if hasWorktreeVerb(*calls, "add") {
+		t.Fatalf("fell back to the cwd checkout and provisioned; git calls: %v", gitCalls(*calls))
 	}
 }
 

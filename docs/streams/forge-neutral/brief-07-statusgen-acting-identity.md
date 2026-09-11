@@ -163,6 +163,37 @@ facts:
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Verify run — 2026-09-11, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local) — gate: human, HELD at `implemented`
+
+Target: merged `origin/main` @ `fc9001a7ab48ee9c859dd7e52f7543dec5f86c50` (two-protocol confirmed). Offline (`KUBECONFIG=/dev/null`) in an isolated worktree; runner ≠ implementer (delivering commit `b93380bb`, PR #825). Rows 1–9 from the nested `statusgen` module; rows 11–12 via a worktree-built binary (`--root <worktree>`) to sidestep the shared-home writeguard. gate: human + sensitive-data — table RUN for Evidence; no model sign-off.
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `cd statusgen && go build ./... && go test ./... -count=1` | 0 | `ok … 28.6s` | PASS |
+| 2 | `-run TestEvidenceActorGitLabVerifier -v` | 0 | gitlab: verifier service-account Evidence BACKED; worker-committed twin still flagged | PASS |
+| 3 | `-run TestEvidenceActorGitHubVerifierUnchanged -v` | 0 | GitHub id-pin unchanged incl. impostor (wrong id + right login → `actorImpostor`) | PASS |
+| 4 (neg) | `-run TestEvidenceActorSelfAttestedStillUnbacked -v` | 0 | implementer identity → `actorRejected` on BOTH forges; verifier's own commit → `actorVerifier`; non-SA addr under verifier name → rejected | PASS |
+| 5 (neg) | `-run TestEvidenceActorUnknownForgeIsCouldNotCheck -v` | 0 | `bitbucket:` → policy Unavailable; message asserted to contain "bitbucket" AND "does not understand"; exactly one could-not-check notice | PASS |
+| 6 | `-run TestVerifyrunRunnerFromForgeIdentity -v` | 0 | Runner = bound identity, source `runnerSourceForge`, rendered `(forge-…)`; both forges | PASS |
+| 7 | `-run TestVerifyrunFallbackOrder -v` | 0 | no bound id → CI-env (ci-env source); neither → git-config source | PASS |
+| 8 (neg) | `-run TestVerifyrunStillRefusesSuppliedRunner -v` | 0 | `--runner/--as/--identity/--who` → usage error; no identity → refuses to write a witness | PASS |
+| 9 | `-run TestRosterGrammarParity -v` | 0 | shared roster loads identically (legacy unqualified → github/inferred); bare slug never accepted | PASS |
+| 10 | `grep -c '^[|] ' docs/streams/forge-neutral/identity.md` | 0 | `9` (≥2); both statusgen consumers (`evidenceactor.go`, `verifyrun.go`) in the per-forge table (rows 132-133) | PASS |
+| 11 | `statusgen --root <wt> --lint` | 0 | `LINT: PASS` (advisory NOTICEs only) | PASS |
+| 12 | `statusgen --root . --consumers --brief forge-neutral/07` | 2 | COULD-NOT-CHECK — `no brief-v1 file` (statusgen v1.0.6 brief-v2 gap). Manual corroboration (`git show --stat b93380bb`): touches `evidenceactor.go`(+140), `verifyrun.go`(+139), `rosterconfig.go`(+37), `identity.md`(+13) — all `fixed-here`; `autoflip.go` NOT touched (matches its `follow-up forge-neutral/08` routing) | COULD-NOT-CHECK |
+
+**Risk-bearing value (sensitive-data: yes — ENUMERATE → RANK → DERIVE):**
+- Enumerated literals are TEST-FIXTURE ids only (gitlab 41987969/66, github 300000004/5/6) — not risk-bearing bindings; grep of shipped source (`evidenceactor.go`, `verifyrun.go`, `rosterconfig.go`, `forgeidentity.go`) for baked numeric ids is EMPTY (no real house bot USER id compiled in).
+- Per-forge id-pin FORMS (the risk-bearing bindings): GitHub `^(\d+)\+([^@]+)@users\.noreply\.github\.com$` (id-pinned on the numeric USER id); GitLab `^service_account_group_[0-9]+_[0-9a-z]+@noreply\.[a-z0-9.-]+$` (address-SHAPE + git-author username, login-only — a GitLab commit address carries no verifiable USER id).
+- `RISK-VALUE: DERIVED (top-ranked) — the GitLab login-only degradation.` GitLab cannot id-pin, so a gitlab verifier is matched by SA-address-shape + author username. Residual: a commit whose author username == the bound verifier username AND whose email is any valid-shaped `service_account_group_*_*@noreply.*` backs the row — the F-verify-self-attest surface on gitlab. DERIVED and bounded: identity.md:132 records it verbatim as "login-only … the weaker form", and row 4's gitlab branch bounds it (a non-SA address under the verifier name → rejected; the worker's own distinct SA → rejected). No `NAMED, NOT DERIVED` literal remains.
+
+**Sensitive-data defense (gate: human), per-forge (row 4):** GitHub — `classify()` → `actorRejected` for the implementer/worker noreply because its numeric id ≠ the verifier's pinned id; only the verifier's id-pinned commit → `actorVerifier`. GitLab — `actorRejected` for the worker's distinct SA address and any non-SA address under the verifier name; only the bound verifier username + a SA-shaped address → `actorVerifier`. On both forges the committer must match the bound VERIFIER, not the implementer. Row 4 is genuinely discriminating (a rubber-stamp widening passes 2/3 but fails 4).
+
+**Human open question (matches gate-why):** confirm the per-forge actor-matching rule is acceptable given GitLab offers no numeric user-id to pin — SA-address-shape + author-username as the weaker gitlab binding vs GitHub's id-pin; and confirm the witness runner derives only from the acting forge identity / CI-env / git-config, never from a session-settable value (row 8 proves the refusals survive).
+
+**Scope-traceability:** one new supporting file `statusgen/forgeidentity.go` (+143, per-forge resolution) exercised by rows 2/4/6 (not orphan); no hand-written witness rows; no work maps to no Verify row concerningly.
+
+**VERDICT: PASS** on rows 1–11; row 12 COULD-NOT-CHECK (brief-v2/`--consumers` gap, hand-corroborated) — **HELD at `implemented` (human sign-off owed via the verify-gate).**
 
 ## Review
 Gate: **human** (from frontmatter — `sensitive-data: yes`). Reviewer records verdict + date in

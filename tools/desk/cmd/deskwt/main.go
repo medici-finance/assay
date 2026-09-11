@@ -33,16 +33,28 @@ USAGE:
   deskwt add <name> [--branch B] [--base origin/main]
   deskwt remove <path>
   deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks [--lock-ttl <dur>]]
-  deskwt role-init  --role <role> [--session <s>]
-  deskwt role-clean --role <role> [--session <s>]
+  deskwt role-init  <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]
+  deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]
   deskwt --version
 
 role-init provisions a DESK ROLE's own worktree in one idempotent call: a session-scoped
-path under /private/tmp/tracker-*, a uniquely-named branch tracking origin/main (so the
-preflight landing probe is green), a worktree lock, and the role's App commit identity set
-PER-WORKTREE (bot USER id, #638) so concurrent sessions cannot race each other's identity via
-shared config. An existing valid worktree is reused; a foreign-repo path is refused, never
-re-pointed. role-clean unlocks and removes it under the same safety guards as remove.
+path under /private/tmp/tracker-*, a uniquely-named branch cut from a FRESHLY FETCHED
+origin/main (so the preflight landing probe is green and the session does not start behind
+main), a worktree lock, and the role's App commit identity set PER-WORKTREE (bot USER id,
+#638) so concurrent sessions cannot race each other's identity via shared config. An
+existing valid worktree is reused; a foreign-repo path is refused, never re-pointed. The
+LAST line on stdout is the worktree's absolute path — the launcher contract:
+` + "`cd \"$(deskwt role-init <role> --repo-root <checkout>)\"`" + `.
+role-clean unlocks and removes it under the same safety guards as remove.
+
+<role> is EVERY desk role desktoken mints (desk, worker, reviewer, verifier, issue-loop,
+intake-loop), spelled either as that token role or as the loop name deskboot boots
+(the-desk, worker-desk, pr-review-desk, verify-desk, intake-desk); --role <role> is the
+same thing spelled as a flag. --repo-root names the checkout to provision FROM (default:
+the working directory). The shared checkout's index and user.* config are never touched:
+the identity lands in the NEW worktree's own config, and the one shared-config write is
+enabling extensions.worktreeConfig (once, idempotent) so that scoping takes effect.
+--no-fetch cuts from the local origin/main as-is.
 
 add resolves a LOCAL BRANCH COLLISION by name rather than dying on git's. Worktrees share
 one refs store, so a branch left behind by an abandoned dispatch blocks every later add that

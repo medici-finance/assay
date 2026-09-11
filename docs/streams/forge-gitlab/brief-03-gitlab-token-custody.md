@@ -9,7 +9,7 @@ why: >-
   mechanism, which is exactly what the profile promises.
 wave: 2
 depends: ["forge-gitlab/01"]
-unblocks: ["forge-gitlab/04"]
+unblocks: ["forge-gitlab/04", "forge-gitlab/11"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

@@ -221,6 +221,8 @@ The row-2 FAIL above ran against `fc9001a7`, BEFORE §1 landed. §1 merged in `#
 
 **VERDICT: PASS** — all 7 rows + §6 named-consumer satisfied on merged main `8953d38d5`; §1 landed via #846. The prior row-2 FAIL is stale (pre-#846 head). gate: model, risk all=no → row flips **implemented → verified**; #842 (the §1 tracker) closes citing #846.
 
+**§2 basis + in-progress clarification (2026-09-11).** Both scoped halves are landed: §1 (deskpost GitLab verdict/comment/ready write backend) via #846, and §2 (deskfile/desktoken reviewer-role PAT auth) — #846's own body records "the auth half (§2, reviewer-PAT resolution) and the Forge.PostReview GitLab backend already landed", and the §2-proving rows 4 (deskfile on a GitLab-resolved repo without REVIEWER_APP_ID) and 5 (TestReviewerAuthGitlabPAT) are PASS on merged main in this run. The README row's `in-progress` was #846's pre-merge placeholder ("row set to in-progress until merge") that was never flipped after the merge — stale bookkeeping, not newer work — so this landing flips it `in-progress → verified`.
+
 ## Review
 Gate: model (from frontmatter). This brief's deliverable touches the reviewer write/auth path —
 a security-parity control — so its PR requires a SEPARATE `Security-Review:` review in addition

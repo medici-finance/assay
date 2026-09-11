@@ -36,6 +36,14 @@ package forgeban
 //	(deskflip's six reads and its two writes, deskreply's one helper) came off the register
 //	with the transport swap. The ceiling below came down by the same eight.
 //
+//	deskroster's two READ rows (ghViewPR, ghListOpenPRs) are also gone. They were held under
+//	the (no-op) heading — one blocked on a title field GetPullRequest lacked, the other on a
+//	missing list op — but both blockers are now stale: GetPullRequest gained Title (landed
+//	with deskpr edit's consumer) and ListOpenChanges landed (with deskboard's fetchOpenPRs),
+//	so the roster's display reads route onto EXISTING enumerated ops with no speculative
+//	addition (spec §6). They are display annotations under the session's own minted token, not
+//	a write, so no token-custody question gated them. The ceiling came down by the same two.
+//
 //	(no-op) The operation has no enumerated Forge method, and spec §6's freeze rule forbids
 //	adding one without converting its consuming callsite in the same change. PR listing,
 //	branch→PR resolution, repo-hardening reads and issue listing are each a real op set with
@@ -61,7 +69,7 @@ type Allowance struct {
 // fails when the permit list is longer (a new forge-CLI call site landed) AND when it is
 // shorter (a call site was migrated but the gain was not locked in). Lowering it is the
 // second half of every migration; raising it is a decision a reviewer sees as a diff.
-const allowedInvocationCeiling = 9
+const allowedInvocationCeiling = 7
 
 // AllowedInvocations permits a resolved forge-CLI invocation at a named call site. TARGET: 0.
 var AllowedInvocations = []Allowance{
@@ -105,22 +113,13 @@ var AllowedInvocations = []Allowance{
 			"branch→change lookup, with its GitLab source-branch mapping, in its own brief.",
 	},
 	{
-		Key: "cmd/deskroster/roster.go::ghViewPR::gh",
-		Reason: "TODO(forge-surface): `pr view --json state,isDraft,title`. GetPullRequest carries state and " +
-			"draft but NOT title, so the migration needs either a field added to PullRequest (freeze rule: with " +
-			"its consumer) or the roster to stop displaying titles.",
-	},
-	{
-		Key: "cmd/deskroster/roster.go::ghListOpenPRs::gh",
-		Reason: "TODO(forge-surface): `pr list --state open`. No enumerated list op; a ListChanges method is a " +
-			"real addition with a real GitLab paging shape behind it.",
-	},
-	{
 		Key: "cmd/repohardenguard/check.go::ghRun::gh",
 		Reason: "TODO(forge-surface): `gh api` reads of rulesets, branch protection and App permissions. These " +
 			"are repo-HARDENING reads, not workflow forge ops — the same class inventory delta D3 keeps out of " +
 			"the frozen set. They need their own enumerated surface and their own GitLab mapping (protected " +
-			"branches + push rules), which is a brief, not a line.",
+			"branches + push rules). This is OPEN WORK, not a standing exception: the driver ruled " +
+			"closure-to-zero, so this site is owned by the guard-read-custody brief (example-stream/11) and " +
+			"this row retires when that brief lands. It is permitted only until then.",
 	},
 }
 
