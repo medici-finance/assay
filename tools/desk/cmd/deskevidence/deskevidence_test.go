@@ -144,7 +144,7 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	t.Cleanup(func() { mintTokenFn = oldMint; ghToken = "" })
 
 	oldGate := publicRepoGateFn
-	publicRepoGateFn = func(deskkit.RepoInfoFetcher, string, string, int) error { return nil }
+	publicRepoGateFn = func(deskkit.RepoInfoFetcher, string, string) error { return nil }
 	t.Cleanup(func() { publicRepoGateFn = oldGate })
 
 	var errBuf bytes.Buffer
@@ -776,13 +776,13 @@ func TestNonStatusFileStillCommits(t *testing.T) {
 
 func TestPublicRepoGateRefusesCommitToPublicRepo(t *testing.T) {
 	f, _ := setupFake(t)
-	publicRepoGateFn = func(deskkit.RepoInfoFetcher, string, string, int) error {
-		return deskkit.Unverifiable("public repo: a file write has no reactions surface", nil)
+	publicRepoGateFn = func(deskkit.RepoInfoFetcher, string, string) error {
+		return deskkit.Refused("public repo: not authorized by a listed :public allowed-repos entry")
 	}
 	evidencePath := writeRepoFile(t, "docs/brief.md", "content\n")
 	f.setFile(evidencePath, "old\n")
-	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitUnverifiable {
-		t.Fatalf("public-repo gate exit = %d, want %d", code, deskkit.ExitUnverifiable)
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath}); code != deskkit.ExitRefused {
+		t.Fatalf("public-repo gate exit = %d, want %d", code, deskkit.ExitRefused)
 	}
 	if f.putCalls != 0 {
 		t.Fatalf("public-repo gate refusal still wrote %d time(s)", f.putCalls)

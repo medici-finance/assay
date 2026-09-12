@@ -217,11 +217,11 @@ func cmdReply(args []string) (err error) {
 		return ferr
 	}
 
-	// Public-repo gate: refuse to write to a public repo
-	// without a qualifying +1 from an authorized human.
+	// Public-repo gate: refuse an outward write unless the repo is authorized
+	// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
 	owner, name := splitOwnerRepo(repo)
 	fetcher := &deskkit.HTTPRepoInfoFetcher{Token: ghToken}
-	if gerr := publicRepoGateFn(fetcher, owner, name, pr); gerr != nil {
+	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}
 

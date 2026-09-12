@@ -2160,21 +2160,30 @@ the day it was created. A pattern carries **no** ci/visibility policy: it widens
 - `AllowedRepos()` never returns a pattern element — every caller passes each element to
   `gh api repos/<repo>`, so an `owner/*` slug there is a live break (C-10 fails the whole
   board run), not a cosmetic one. Patterns are display-only, in `AllowedRepoScope()`.
-- Writes to a **public** repo additionally require a verified `+1` from the configured
-  blessing authority (`ASSAY_BLESS_LOGIN`) on the associated issue/PR (the public-repo trust
-  gate, `PublicRepoGate` / `IsBlessAuthorityIDStrict`); commands with no issue/PR number
-  refuse outright there.
-- **Standing per-repo authorization** (`~/.config/assay/public-app-ok`, or
-  `$XDG_CONFIG_HOME/assay/public-app-ok`): a human-maintained sentinel file, one exact
-  `owner/name` per line, opts the NAMED public repos out of the per-write `+1` — including
-  the no-issue-number refusal, so `deskpr create` works there. The tools never write this
-  file; a human creates it out-of-band. Missing, empty, unreadable, group/world-writable,
-  or malformed ⇒ zero repos authorized (fail closed; a corrupt file can only under-bless).
-  No wildcards, no global switch. Every skip is announced on stderr as a NOTICE naming the
-  repo and the sentinel. Because `PublicRepoGate` is the single choke point, the
-  authorization covers every desk write verb on that repo (create / review / ready /
-  reply / evidence / release) — list a repo only when that full scope is intended.
-  Revoke by deleting the line.
+- **Writes to a public (or `internal`) repo require an explicit `:public` allowed-repos
+  entry** — the public-repo write gate (`PublicRepoGate`). The authorization is
+  REPOSITORY-scoped, decided once by a human out-of-band: a public/internal repo listed as
+  `owner/name:public` is a place the desk may write, and every write verb passes on it
+  (create / review / ready / reply / evidence / release — `PublicRepoGate` is the single
+  choke point). A repo that is absent, matched only by an `owner/*` pattern (patterns carry
+  no visibility policy), tagged `:private`, or carrying no visibility token **refuses**
+  (exit 5) with the remedy in the message. This replaces the former per-item `+1` reaction
+  check, which was unsatisfiable for the write that matters most — opening the FIRST pull
+  request, which has no issue/PR number yet — and expressed the human decision in the wrong
+  unit. A draft PR is inert until a human merges it, so the repository-level decision plus
+  the merge gate buy everything the per-item ceremony did; **merge remains the human's.**
+  - Both reads are load-bearing at once. The gate reads the **live** visibility from the
+    forge AND the **configured** `:public` claim, and they must AGREE: a repo flipped to
+    public after the set was written still refuses (the configured claim disagrees), and a
+    stale roster claiming `:public` for a repo the forge reports otherwise never authorizes
+    on the stale claim (the live read disagrees). A live read that fails or returns an
+    unrecognised value is **unverifiable** (exit 6, fail closed) — never guessed private.
+  - **Migration from the retired sentinel.** The former standing-per-repo authorization —
+    a human-maintained opt-out list file under `~/.config/assay/` (respectively
+    `$XDG_CONFIG_HOME/assay/`) — is gone: its reader has been removed, so the file no longer
+    has any effect. An operator who maintained one moves each `owner/name` line into
+    `ASSAY_ALLOWED_REPOS` as `owner/name:public`. The tools never wrote, and never deleted,
+    that file; it is the operator's to remove.
 
 **The desk writes where it does not watch.** The write gates use `IsAllowedRepo`, which a
 pattern widens; every *scan* — `deskboard prs/board/queue/policydrift`, `deskroster`,

@@ -130,9 +130,9 @@ func runComment(owner, name string, num int, wantHead string, body []byte, args 
 				return withDigest(fromReadErr(verb, repo, num, tgt.head, terr), dig)
 			}
 		}
-		// Public-repo gate: refuse to write to a public repo
-		// without a qualifying +1 from an authorized human.
-		if gerr := deskkit.PublicRepoGate(client, owner, name, num); gerr != nil {
+		// Public-repo gate: refuse an outward write unless the repo is authorized
+		// (private, or a listed :public allowed-repos entry — see deskkit.PublicRepoGate).
+		if gerr := deskkit.PublicRepoGate(client, owner, name); gerr != nil {
 			return withDigest(fromErr(verb, repo, num, tgt.head, gerr), dig)
 		}
 		if opts.dryRun {

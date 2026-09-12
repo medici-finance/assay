@@ -28,13 +28,14 @@ gate-why: >-
   repo still refuses (Verify row 4), that a live-public repo whose roster entry claims private
   refuses rather than passing on the stale claim (row 5), and that nothing on the private path
   changed (row 6).
+design: DR-desk-tools-18
 issues: []
 schema: brief-v2
 authored: 2026-09-06 by an authoring session, from a maintainer ruling recorded 2026-09-06
 sources:
   - "Maintainer ruling, 2026-09-06: a public repo listed in the roster's allowed-repos set with the public tag passes ALL outward writes for trusted identities; an unlisted public repo refuses; no per-item reaction check. A draft PR is inert until a human merges it."
   - "freshness-checked 2026-09-06 @ 0af8093 (origin/main) — `tools/desk/internal/deskkit/repovis.go` § `PublicRepoGate` still fetches reactions and requires a `+1` from the blessing authority; the `issueNumber <= 0` arm still refuses outright; `tools/desk/cmd/deskpr/deskpr.go` still passes `trailerIssue` (0 for a brief-carrying create). The defect is live."
-  - "The standing per-repo sentinel this brief retires: `tools/desk/internal/deskkit/publicbless.go` and its documentation in `tools/desk/README.md`."
+  - "The standing per-repo sentinel this brief retires: tools/desk/internal/deskkit/publicbless.go (deleted by this brief) and its documentation in `tools/desk/README.md`."
   - "The configured write set and its `:public` / `:private` tokens: `tools/desk/internal/deskkit/rosterconfig.go` § allowed repos, and `config.go` § `allowedRepos` / `RepoVisibility` / `VisibilityDrift`."
 exec-tier: strong
 exec-tier-why: >-
@@ -44,7 +45,7 @@ exec-tier-why: >-
   and a third's live read (the forge's visibility), which must be made to disagree on purpose
   before the design can be believed.
 consumers:
-  - "tools/desk/cmd/deskpost/{comment,review,ready}.go, tools/desk/cmd/deskpr/{deskpr,edit}.go, tools/desk/cmd/deskreply/exec.go, tools/desk/cmd/deskevidence/deskevidence.go, tools/desk/cmd/deskrelease/cut.go: call sites of the changed signature — each drops the now-removed issue-number argument and is otherwise unchanged. Behaviour reaches them through the single choke point, not through per-site edits."
+  - "tools/desk/cmd/deskpost/{comment,review,ready}.go, tools/desk/cmd/deskpr/{deskpr,edit}.go, tools/desk/cmd/deskreply/exec.go, tools/desk/cmd/deskevidence/deskevidence.go, tools/desk/cmd/deskrelease/cut.go: call sites of the changed signature — each drops the now-removed issue-number argument and is otherwise unchanged. Behaviour reaches them through the single choke point, not through per-site edits: fixed-here."
   - "~/.config/assay/public-app-ok (the standing-bless sentinel): retired by this brief — the reader is removed, so the file stops having any effect. Operators move each listed repo into the allowed-repos set with the `:public` token. The file itself is the operator's and is never written or deleted by any tool. (Non-conforming routing token, deliberately: this is neither `fixed-here` nor a follow-up brief — it is a retirement, and saying so truthfully outranks fitting the grammar.)"
   - "tools/desk/README.md § allowed repos, § standing per-repo authorization: follow-up in this brief's own Task step 5."
 version: 1
@@ -63,7 +64,7 @@ reads the other's decision.
 files:
 - `tools/desk/internal/deskkit/repovis.go` (`PublicRepoGate` rewritten; `RepoInfoFetcher`
   narrowed; `Reaction` / `ReactionUser` and the reactions HTTP call removed)
-- `tools/desk/internal/deskkit/publicbless.go` (retired) and its test
+- tools/desk/internal/deskkit/publicbless.go (retired — deleted by this brief) and its test
 - `tools/desk/internal/deskkit/repovis_test.go` (or the package's gate tests)
 - the call sites listed in `consumers:` (signature update only)
 - `tools/desk/README.md` (§ allowed repos, § standing per-repo authorization)
@@ -179,6 +180,7 @@ outside every ref the tools evaluate, so no pull request can add its own reposit
 | 8 | check:ci | `cd tools/desk && go test ./... -count=1` | exit 0 — the whole suite, including every call site's own tests |
 | 9 | check:ci | `gofmt -l tools/desk/internal/deskkit tools/desk/cmd > /tmp/b18-fmt.out; test ! -s /tmp/b18-fmt.out` | exit 0 |
 | 10 | check:ci | `cd statusgen && go run . --root .. --lint; echo $?` | 0 |
+| 11 | check +mutation | **Mutation demonstration for the public-repo write gate this brief adds.** In `PublicRepoGate` (`tools/desk/internal/deskkit/repovis.go`) change the public/internal arm's authorization check `if RepoVisibility(owner+"/"+repo) == VisibilityPublic {` to `if true {` — the fail-open shape in which every live-public/internal repo passes whether or not the allowed-repos set lists it — then `cd tools/desk && go test ./internal/deskkit/ -run '^TestPublicRepoGateUnlistedPublicRefuses$' -count=1`; restore the file and re-run | exit **1** on the mutant: the negative control fails on all three subtests (unlisted, pattern-only, unconfigured each return nil instead of Refused/exit 5), exit **0** again after restoring. This is the row that proves the single control the design rests on reddens when the guarded thing is broken, rather than passing because nothing exercises it |
 
 Pre-mortem → detection map:
 

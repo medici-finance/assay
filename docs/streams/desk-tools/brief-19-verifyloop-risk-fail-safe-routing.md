@@ -30,7 +30,7 @@ exec-tier-why: >-
   from the right one except on inputs a table has to be written to produce.
 consumers:
   - "tools/desk/internal/loopengine/engine.go (RiskFlags.Flagged): the shared predicate gains gate-value normalization and an Any() sibling. Sole other consumer verified at 0af8093 — the batch fan-out loop's tier policy does NOT call Flagged (it has no human branch by design), so no other loop's routing changes: out-of-scope (read and asserted, not changed)."
-  - "tools/desk/cmd/verifyloop/land.go: out-of-scope — the irreversible Evidence-without-flip path is deliberately KEPT as the Evidence-only lane and is not modified."
+  - "tools/desk/cmd/verifyloop/land.go: out-of-scope (the irreversible Evidence-without-flip path is deliberately kept as the Evidence-only lane and is not modified)."
 version: 1
 id: 30e33995-765b-4d05-a3bf-200656eb4fc3
 ---

@@ -401,7 +401,7 @@ func withEnv(t *testing.T, work string) *[][]string {
 	t.Cleanup(func() { execCommand = oldExec })
 
 	oldGate := publicRepoGateFn
-	publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, owner, repo string, issueNumber int) error { return nil }
+	publicRepoGateFn = func(_ deskkit.RepoInfoFetcher, owner, repo string) error { return nil }
 	t.Cleanup(func() { publicRepoGateFn = oldGate })
 
 	// Since the write-verbs-C migration deskpr reaches the forge through forgeForFn, not `gh`.

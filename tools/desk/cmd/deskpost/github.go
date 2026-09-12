@@ -1052,52 +1052,7 @@ func (c *ghClient) RepoVisibility(owner, repo string) (string, error) {
 	return info.Visibility, nil
 }
 
-// IssueReactions implements deskkit.RepoInfoFetcher for the App-authenticated client.
-func (c *ghClient) IssueReactions(owner, repo string, issueNumber int) ([]deskkit.Reaction, error) {
-	// SINGLE PAGE, by decision — same reasoning as deskkit.HTTPRepoInfoFetcher's
-	// IssueReactions, where it is written out in full. Fails closed past 100 reactions
-	// on one issue; keep the two implementations in step.
-	path := fmt.Sprintf("/repos/%s/%s/issues/%d/reactions?per_page=100", owner, repo, issueNumber)
-	// The reactions API requires the squirrel-girl preview accept header.
-	// Our doJSON method sets the standard accept header, so we need to use a raw request.
-	url := ghAPIBase() + path
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, deskkit.Unverifiable("cannot build reactions request", err)
-	}
-	req.Header.Set("Authorization", "token "+c.token)
-	req.Header.Set("Accept", "application/vnd.github.squirrel-girl-preview+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, deskkit.Unverifiable(fmt.Sprintf("GET %s failed", path), err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusUnauthorized {
-		// Try once with reminted token
-		tok, merr := mintInstallationToken(c.owner)
-		if merr != nil {
-			return nil, merr
-		}
-		c.token = tok
-		req, _ = http.NewRequest(http.MethodGet, url, nil)
-		req.Header.Set("Authorization", "token "+c.token)
-		req.Header.Set("Accept", "application/vnd.github.squirrel-girl-preview+json")
-		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-		resp2, err2 := c.http.Do(req)
-		if err2 != nil {
-			return nil, deskkit.Unverifiable(fmt.Sprintf("GET %s failed on retry", path), err2)
-		}
-		defer resp2.Body.Close()
-		resp = resp2
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &apiError{status: resp.StatusCode, method: http.MethodGet, path: path}
-	}
-	body, _ := io.ReadAll(resp.Body)
-	var reactions []deskkit.Reaction
-	if err := json.Unmarshal(body, &reactions); err != nil {
-		return nil, deskkit.Unverifiable("cannot parse reactions response", err)
-	}
-	return reactions, nil
-}
+// NOTE: the public-repo write gate no longer consults a per-item reaction surface
+// (deskkit.PublicRepoGate reads only live visibility and the configured :public tag), so
+// ghClient implements just RepoVisibility from deskkit.RepoInfoFetcher — the former
+// reaction-reading method is gone.
