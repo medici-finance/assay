@@ -49,7 +49,7 @@ facts:
   against the MR head SHA; merge requires the check per project settings.
 - Scope is bounded by pilot findings: anything brief-05's report marked
   failed-at-tier with an Ultimate remediation is in; new capabilities are not.
-- **2026-08-30 — paid-tier hardening consolidated here (medici-finance/assay#219).** The
+- **2026-08-30 — paid-tier hardening consolidated here (#219).** The
   edition matrix (edition-matrix.md) established, per docs citation, that every core-lane
   operation is Free-tier and that only *guarantees* are tier-gated. The tier-gated guarantees
   the core lane was implicitly assuming now live in this brief's territory, so 01-05, 07 and
