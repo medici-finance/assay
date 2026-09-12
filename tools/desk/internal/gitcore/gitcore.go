@@ -940,3 +940,89 @@ func (r *Repo) RefsContaining(commit, refsPrefix string) ([]string, error) {
 	sort.Strings(out)
 	return out, nil
 }
+
+// --- Read helpers added for brief 04 (migrate deskpushguard detection reads) -----------
+//
+// deskpushguard is a security-DETECTION control (foreign-commit / merge-masquerade /
+// register-id-collision checks), so its seam swap needs two per-commit fields no existing
+// helper exposes: a commit's subject line and its parent hashes. Both are plain
+// object.Commit field reads, verified against real git in gitcore_test.go.
+
+// CommitSubject returns the subject line of rev's commit message, matching
+// `git log -1 --format=%s <rev>`: the first line of the raw commit message. A CRLF-authored
+// message's trailing "\r" is trimmed so it reads identically to an LF one, matching git's
+// own line-ending normalisation of commit message content.
+func (r *Repo) CommitSubject(rev string) (string, error) {
+	hash, err := r.Resolve(rev)
+	if err != nil {
+		return "", err
+	}
+	commit, err := r.repo.CommitObject(hash)
+	if err != nil {
+		return "", fmt.Errorf("gitcore: commit %s: %w", hash, err)
+	}
+	subject, _, _ := strings.Cut(commit.Message, "\n")
+	return strings.TrimRight(subject, "\r"), nil
+}
+
+// ParentHashes returns the full hex object ids of rev's parent commits, in the commit's own
+// parent order, matching `git log -1 --format=%P <rev>` split on whitespace (an empty slice
+// for a root commit, exactly as %P prints an empty string for one).
+func (r *Repo) ParentHashes(rev string) ([]string, error) {
+	hash, err := r.Resolve(rev)
+	if err != nil {
+		return nil, err
+	}
+	commit, err := r.repo.CommitObject(hash)
+	if err != nil {
+		return nil, fmt.Errorf("gitcore: commit %s: %w", hash, err)
+	}
+	out := make([]string, len(commit.ParentHashes))
+	for i, p := range commit.ParentHashes {
+		out[i] = p.String()
+	}
+	return out, nil
+}
+
+// ChangeStatus is one path's git diff --name-status status code paired with the path it
+// applies to (the NEW path, for a detected rename).
+type ChangeStatus struct {
+	Status string // "A" (added), "M" (modified), "D" (deleted), or "R" (renamed)
+	Path   string
+}
+
+// DiffNameStatus returns the per-path change status between from and to (each a revision
+// expression), matching `git diff --name-status <from> <to>` — including rename detection
+// at the same threshold DiffNames uses, so a detected rename is reported as a single "R"
+// entry naming the new path exactly as git's own --name-status does. This package runs no
+// copy detection, matching git diff's own default (`-C` is off unless requested), so a copy
+// surfaces as a plain "A" of the new path.
+func (r *Repo) DiffNameStatus(from, to string) ([]ChangeStatus, error) {
+	fromTree, err := r.treeAt(from)
+	if err != nil {
+		return nil, err
+	}
+	toTree, err := r.treeAt(to)
+	if err != nil {
+		return nil, err
+	}
+	changes, err := object.DiffTreeWithOptions(context.Background(), fromTree, toTree, renameDetectOptions)
+	if err != nil {
+		return nil, fmt.Errorf("gitcore: diff %s..%s: %w", from, to, err)
+	}
+	var out []ChangeStatus
+	for _, c := range changes {
+		switch {
+		case c.From.Name != "" && c.To.Name != "" && c.From.Name != c.To.Name:
+			out = append(out, ChangeStatus{Status: "R", Path: c.To.Name})
+		case c.From.Name == "":
+			out = append(out, ChangeStatus{Status: "A", Path: c.To.Name})
+		case c.To.Name == "":
+			out = append(out, ChangeStatus{Status: "D", Path: c.From.Name})
+		default:
+			out = append(out, ChangeStatus{Status: "M", Path: c.To.Name})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out, nil
+}

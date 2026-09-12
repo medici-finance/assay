@@ -42,12 +42,11 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"os/exec"
 	"regexp"
-	"strconv"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // shaRe bounds localSHA before it ever reaches a constructed git argv: a real pre-push
@@ -107,8 +106,16 @@ func (f *baseFindings) cannotCheck(format string, a ...any) {
 // gitOut runs git in dir (empty = current process cwd, matching the pre-push hook's own
 // invocation contract — it always runs with cwd at the worktree root) via the execCommand
 // test seam, returning trimmed stdout. Any error (non-zero exit, spawn failure) is returned
-// unwrapped; every caller in this file treats it as "cannot determine — skip", matching this
-// tool's stated Fail-OPEN contract (see main.go's package doc: brief-10).
+// unwrapped; every caller treats it as "cannot determine — skip", matching this tool's
+// stated Fail-OPEN contract (see main.go's package doc: brief-10).
+//
+// assay#951: every OTHER git read in this file and in registerid.go now goes
+// through gitcore (in-process, no git-binary spawn) — see openRepo below. This seam
+// survives for exactly one remaining caller: registerid.go's remoteHeadLiveness, which
+// probes origin DIRECTLY via `git ls-remote` (a network transport call). That is a
+// transport verb, not a plumbing read, and this PR's own scope deliberately does not
+// name it — transport (fetch/push/ls-remote-against-a-remote) migrates under a later
+// PR's human-gated security review, not here.
 func gitOut(dir string, args ...string) (string, error) {
 	cmd := execCommand("git", args...)
 	if dir != "" {
@@ -119,6 +126,54 @@ func gitOut(dir string, args ...string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// openRepo opens the repository containing dir, in-process via gitcore — no git binary
+// spawned, no credential helper consulted. dir == "" means the process's current working
+// directory, matching every caller's own "empty dir = process cwd" contract (the pre-push
+// hook always runs with cwd at the worktree root).
+//
+// gitcore.Open does NOT search upward for a repository root the way the git binary
+// itself does when it is simply invoked with a cwd inside a repo — that is exactly what
+// the gitOut-based seam this replaces got for free from every `git <verb>` spawn. Toplevel
+// reproduces that upward search, so a caller passing dir="" (or any subdirectory of a
+// worktree) resolves the same repository the git-binary seam would have.
+func openRepo(dir string) (*gitcore.Repo, error) {
+	top, err := gitcore.Toplevel(dir)
+	if err != nil {
+		return nil, err
+	}
+	return gitcore.Open(top)
+}
+
+// logRangeHashes returns the commit hashes reachable from head but not reachable from
+// base, matching `git log --format=%H <base>..<head>` / `git rev-list <base>..<head>` — the
+// commits genuinely introduced by head since it branched off base. gitcore has no dedicated
+// two-dot range helper, so this computes the set difference directly: a two-dot range IS
+// that set difference by definition (every commit reachable from head, minus every commit
+// reachable from base), so walking both full ancestries and subtracting is exact, not an
+// approximation — unlike Repo.AheadCount's early-stop technique (valid only for the simple
+// fast-forward-descendant case), this handles a head that merged unrelated history too.
+func logRangeHashes(repo *gitcore.Repo, base, head string) ([]string, error) {
+	baseAncestors, err := repo.Log(base)
+	if err != nil {
+		return nil, err
+	}
+	baseSet := make(map[string]bool, len(baseAncestors))
+	for _, h := range baseAncestors {
+		baseSet[h] = true
+	}
+	headAncestors, err := repo.Log(head)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, h := range headAncestors {
+		if !baseSet[h] {
+			out = append(out, h)
+		}
+	}
+	return out, nil
 }
 
 // resolveOriginMain resolves the base this check compares against, spelled FULLY QUALIFIED
@@ -146,7 +201,15 @@ func gitOut(dir string, args ...string) (string, error) {
 // Fetching inside a pre-push hook is a separate contract decision (it would break offline
 // pushes), so it is named as a limitation rather than silently assumed away.
 func resolveOriginMain(dir string) (string, error) {
-	return gitOut(dir, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main")
+	repo, err := openRepo(dir)
+	if err != nil {
+		return "", err
+	}
+	hash, err := repo.Resolve("refs/remotes/origin/main")
+	if err != nil {
+		return "", err
+	}
+	return hash.String(), nil
 }
 
 // strayLocalOriginMain resolves the STRAY local branch `refs/heads/origin/main` — the branch
@@ -159,11 +222,15 @@ func resolveOriginMain(dir string) (string, error) {
 // `rev-parse --verify --quiet refs/heads/origin/main` exits non-zero is that the ref is not
 // there.
 func strayLocalOriginMain(dir string) (string, bool) {
-	sha, err := gitOut(dir, "rev-parse", "--verify", "--quiet", "refs/heads/origin/main")
-	if err != nil || sha == "" {
+	repo, err := openRepo(dir)
+	if err != nil {
 		return "", false
 	}
-	return sha, true
+	hash, err := repo.Resolve("refs/heads/origin/main")
+	if err != nil {
+		return "", false
+	}
+	return hash.String(), true
 }
 
 // checkStrayBase detects the OTHER half of "cut from a non-main base": a ref whose branch
@@ -190,7 +257,13 @@ func checkStrayBase(dir, localSHA, trueBase string, out *baseFindings) {
 	if !present || strayTip == trueBase {
 		return // no stray branch, or it happens to point at the true base — harmless
 	}
-	mergeBase, err := gitOut(dir, "merge-base", localSHA, trueBase)
+	repo, err := openRepo(dir)
+	if err != nil {
+		out.cannotCheck("could not open the repository to compute the branch point of %s off "+
+			"refs/remotes/origin/main (%v) — stray-base check NOT performed", shortSHA(localSHA), err)
+		return
+	}
+	mergeBase, err := repo.MergeBase(localSHA, trueBase)
 	if err != nil {
 		out.cannotCheck("could not compute the branch point of %s off refs/remotes/origin/main "+
 			"(git merge-base failed: %v) — stray-base check NOT performed", shortSHA(localSHA), err)
@@ -199,33 +272,31 @@ func checkStrayBase(dir, localSHA, trueBase string, out *baseFindings) {
 	if mergeBase != strayTip {
 		return
 	}
+	// behind is diagnostic-only (never gates fire/no-fire): "how many commits has main
+	// gained that this stray-based branch doesn't have". A stray-base cut is by definition
+	// divergent history, so this cannot use gitcore.Repo.AheadCount — its own doc comment
+	// says it is only exact for the fast-forward-descendant case (an early-stop walk from
+	// head that never visits a merge's second parent once it finds an ancestor of base
+	// along the walk it took). logRangeHashes does the real ancestry-set difference
+	// (all of trueBase's ancestors minus all of localSHA's), which is correct across
+	// merge-commit-bearing history too.
 	behind := -1
-	if countOut, cerr := gitOut(dir, "rev-list", "--count", localSHA+".."+trueBase); cerr == nil {
-		if n, perr := strconv.Atoi(strings.TrimSpace(countOut)); perr == nil {
-			behind = n
-		}
+	if hashes, cerr := logRangeHashes(repo, localSHA, trueBase); cerr == nil {
+		behind = len(hashes)
 	}
 	out.strayBases = append(out.strayBases, strayBase{strayTip: strayTip, trueBase: trueBase, behind: behind})
 }
 
-// branchIsAncestorOfMain reports whether remote branch b is an ancestor of originMain via
-// `git merge-base --is-ancestor`. determinate=false means the check itself could not be
-// resolved (b doesn't resolve, or another git error) — the caller must then skip rather
+// branchIsAncestorOfMain reports whether remote branch b is an ancestor of originMain,
+// matching `git merge-base --is-ancestor`. determinate=false means the check itself could
+// not be resolved (b or originMain doesn't resolve) — the caller must then skip rather
 // than guess, per this file's fail-open contract.
-func branchIsAncestorOfMain(dir, b, originMain string) (isAncestor, determinate bool) {
-	cmd := execCommand("git", "merge-base", "--is-ancestor", b, originMain)
-	if dir != "" {
-		cmd.Dir = dir
+func branchIsAncestorOfMain(repo *gitcore.Repo, b, originMain string) (isAncestor, determinate bool) {
+	ok, err := repo.IsAncestor(b, originMain)
+	if err != nil {
+		return false, false
 	}
-	err := cmd.Run()
-	if err == nil {
-		return true, true
-	}
-	var ee *exec.ExitError
-	if errors.As(err, &ee) && ee.ExitCode() == 1 {
-		return false, true
-	}
-	return false, false
+	return ok, true
 }
 
 // checkForeignCommits inspects the commits unique to localSHA relative to origin/main (the
@@ -272,25 +343,24 @@ func checkForeignCommits(dir, ownBranch, localSHA string) (baseFindings, error) 
 		out.cannotCheck("%s — base checks NOT performed", reason)
 		return out, nil
 	}
-	if _, err := gitOut(dir, "cat-file", "-e", localSHA); err != nil {
-		out.cannotCheck("commit %s is not present in this repository (%v) — base checks NOT performed",
-			shortSHA(localSHA), err)
+	repo, err := openRepo(dir)
+	if err != nil {
+		out.cannotCheck("could not open the repository (%v) — base checks NOT performed", err)
+		return out, nil
+	}
+	if ok, _ := repo.CommitVerifyQuiet(localSHA); !ok {
+		out.cannotCheck("commit %s is not present in this repository — base checks NOT performed",
+			shortSHA(localSHA))
 		return out, nil
 	}
 
 	checkStrayBase(dir, localSHA, originMain, &out)
 
-	logOut, err := gitOut(dir, "log", "--format=%H", originMain+".."+localSHA)
+	shas, err := logRangeHashes(repo, originMain, localSHA)
 	if err != nil {
 		out.cannotCheck("could not enumerate refs/remotes/origin/main..%s (%v) — foreign-commit "+
 			"and masquerade checks NOT performed", shortSHA(localSHA), err)
 		return out, nil
-	}
-	var shas []string
-	for _, line := range strings.Split(logOut, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			shas = append(shas, line)
-		}
 	}
 	if len(shas) == 0 {
 		return out, nil // determinate: nothing ahead of the true base
@@ -298,7 +368,7 @@ func checkForeignCommits(dir, ownBranch, localSHA string) (baseFindings, error) 
 
 	ownRemote := "origin/" + ownBranch
 	for _, sha := range shas {
-		subject, serr := gitOut(dir, "log", "-1", "--format=%s", sha)
+		subject, serr := repo.CommitSubject(sha)
 		if serr != nil {
 			out.cannotCheck("could not read the subject of %s (%v) — that commit was NOT checked",
 				shortSHA(sha), serr)
@@ -306,27 +376,33 @@ func checkForeignCommits(dir, ownBranch, localSHA string) (baseFindings, error) 
 		}
 
 		if mergeWordRe.MatchString(subject) {
-			parentsOut, perr := gitOut(dir, "log", "-1", "--format=%P", sha)
+			parents, perr := repo.ParentHashes(sha)
 			if perr != nil {
 				out.cannotCheck("could not read the parents of %s (%v) — masquerade check NOT "+
 					"performed for that commit", shortSHA(sha), perr)
-			} else if parents := strings.Fields(parentsOut); len(parents) < 2 {
+			} else if len(parents) < 2 {
 				out.masquerades = append(out.masquerades, mergeMasquerade{sha: sha, subject: subject})
 			}
 		}
 
-		branchesOut, berr := gitOut(dir, "branch", "-r", "--contains", sha)
+		// `branch -r --contains <sha>` -> RefsContaining, restricted to refs/remotes/. This
+		// does not surface the symbolic origin/HEAD alias (gitcore's Refs omits symbolic
+		// refs — see gitcore.go's RefsContaining doc), which is harmless here exactly as it
+		// is for registerid.go's equivalent scan: the alias always mirrors a concrete branch
+		// ref (e.g. origin/main) that IS returned, and that concrete ref is excluded below
+		// by name anyway.
+		refNames, berr := repo.RefsContaining(sha, "refs/remotes/")
 		if berr != nil {
 			out.cannotCheck("could not list remote branches containing %s (%v) — foreign-commit "+
 				"check NOT performed for that commit", shortSHA(sha), berr)
 			continue
 		}
-		for _, raw := range strings.Split(branchesOut, "\n") {
-			b := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(raw), "* "))
+		for _, ref := range refNames {
+			b := strings.TrimPrefix(ref, "refs/remotes/")
 			if b == "" || b == ownRemote || b == "origin/main" || strings.HasSuffix(b, "HEAD") {
 				continue
 			}
-			isAnc, determinate := branchIsAncestorOfMain(dir, b, originMain)
+			isAnc, determinate := branchIsAncestorOfMain(repo, b, originMain)
 			if !determinate {
 				out.cannotCheck("could not determine whether %s is already merged into "+
 					"refs/remotes/origin/main — %s was NOT cleared against it", b, shortSHA(sha))

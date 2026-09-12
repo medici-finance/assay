@@ -38,8 +38,10 @@ package main
 
 import (
 	"errors"
+	"sort"
 	"strings"
 
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"gopkg.in/yaml.v3"
 )
 
@@ -161,11 +163,38 @@ func extractRegisterID(content string) string {
 // F-original -> F-collide MODIFY shape, where main's id at this path differs, so this returns
 // false and the new id is still flagged).
 func idClaimedOnMainAtPath(dir, originMain, path, id string) bool {
-	content, err := gitOut(dir, "show", originMain+":"+path)
+	repo, err := openRepo(dir)
+	if err != nil {
+		return false
+	}
+	content, err := repo.FileAt(originMain, path)
 	if err != nil {
 		return false // path absent on main — a genuinely new file, so its id is a new claim
 	}
 	return extractRegisterID(content) == id
+}
+
+// remoteBranchNames returns every remote-tracking branch's short name (e.g.
+// "origin/sibling"), matching `git branch -r`'s own listing (minus its leading marker/
+// whitespace formatting, already handled by the caller's own trimming when it was
+// git-binary output). gitcore's Refs does not surface a SYMBOLIC ref such as the
+// `origin/HEAD -> origin/main` alias `git branch -r` prints (see gitcore.go's
+// RefsContaining doc) — harmless here: the alias always mirrors a concrete branch ref
+// (e.g. origin/main) that IS returned, and callers already exclude that ref by name.
+func remoteBranchNames(repo *gitcore.Repo) ([]string, error) {
+	refs, err := repo.Refs()
+	if err != nil {
+		return nil, err
+	}
+	const prefix = "refs/remotes/"
+	var out []string
+	for name := range refs {
+		if strings.HasPrefix(name, prefix) {
+			out = append(out, strings.TrimPrefix(name, prefix))
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // remoteHeadLiveness asks origin DIRECTLY whether remoteRef (an `origin/<name>` remote-tracking
@@ -224,41 +253,42 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 	// FULLY-QUALIFIED remote-tracking ref, not the bare short name `origin/main`
 	// (#885): a stray local `refs/heads/origin/main` decoy would otherwise shadow
 	// the real remote tip and drive the added-file diff off a stale base. The
-	// sibling foreigncommit.go in this same binary already spells it in full.
-	originMain, err := gitOut(dir, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main")
+	// sibling foreigncommit.go in this same binary already spells it in full — reuse
+	// its resolveOriginMain rather than re-resolving here.
+	originMain, err := resolveOriginMain(dir)
 	if err != nil || originMain == "" {
 		return nil, nil // cannot resolve origin/main — nothing to compare against
 	}
-	if _, err := gitOut(dir, "cat-file", "-e", localSHA); err != nil {
+	repo, err := openRepo(dir)
+	if err != nil {
+		return nil, nil
+	}
+	if ok, _ := repo.CommitVerifyQuiet(localSHA); !ok {
 		return nil, nil // localSHA doesn't resolve in this repo — fail open
 	}
 
-	// Files newly added OR modified by this push, restricted to register entry directories.
-	// MODIFY is included alongside ADD (--diff-filter=AM): an id changed in place on an
-	// existing entry is a MODIFY, not an ADD, and the ADD-only scan would let it past this
-	// advisory layer even though statusgen's duplicateIDs gate still sees the changed id.
-	diffArgs := []string{"diff", "--name-status", "--diff-filter=AM", originMain + ".." + localSHA, "--"}
-	diffArgs = append(diffArgs, registerEntryDirs...)
-	diffOut, derr := gitOut(dir, diffArgs...)
-	if derr != nil || strings.TrimSpace(diffOut) == "" {
-		return nil, nil // no new/changed register entries on this push — nothing to check
+	// Files newly added OR modified by this push. MODIFY is included alongside ADD: an id
+	// changed in place on an existing entry is a MODIFY, not an ADD, and an ADD-only scan
+	// would let it past this advisory layer even though statusgen's duplicateIDs gate still
+	// sees the changed id.
+	//
+	// Repo-wide (no pathspec restriction to registerEntryDirs): gitcore has no pathspec
+	// filtering, so this filters to inRegisterDir client-side below instead — the same
+	// tradeoff deskscanbody's brief-03 migration made for its own repo-wide diff.
+	changes, derr := repo.DiffNameStatus(originMain, localSHA)
+	if derr != nil {
+		return nil, nil
 	}
 
 	ownIDs := map[string]string{} // id -> own path
-	for _, line := range strings.Split(diffOut, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	for _, c := range changes {
+		if c.Status != "A" && c.Status != "M" {
 			continue
 		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 || (fields[0] != "A" && fields[0] != "M") {
+		if !inRegisterDir(c.Path) {
 			continue
 		}
-		path := fields[len(fields)-1]
-		if !inRegisterDir(path) {
-			continue
-		}
-		content, cerr := gitOut(dir, "show", localSHA+":"+path)
+		content, cerr := repo.FileAt(localSHA, c.Path)
 		if cerr != nil {
 			continue // fail open on this file
 		}
@@ -266,34 +296,34 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 			// #189: only NEW ids are claims. An id already present on origin/main in this same
 			// file is a pre-existing entry the push merely carries or edits for an unrelated
 			// reason (a repointed backtick, a typo fix), and cannot collide with anything.
-			if idClaimedOnMainAtPath(dir, originMain, path, id) {
+			if idClaimedOnMainAtPath(dir, originMain, c.Path, id) {
 				continue
 			}
-			ownIDs[id] = path
+			ownIDs[id] = c.Path
 		}
 	}
 	if len(ownIDs) == 0 {
 		return nil, nil
 	}
 
-	branchesOut, berr := gitOut(dir, "branch", "-r")
+	remoteBranches, berr := remoteBranchNames(repo)
 	if berr != nil {
 		return nil, nil
 	}
 	ownRemote := "origin/" + ownBranch
 	livenessCache := map[string]refLiveness{} // #189: probe each source ref's liveness at most once
 	var collisions []registerIDCollision
-	for _, raw := range strings.Split(branchesOut, "\n") {
-		b := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(raw), "* "))
+	for _, b := range remoteBranches {
 		// Skip git's symbolic default-branch pointer `origin/HEAD` by EXACT match — the
 		// prior HasSuffix(b, "HEAD") was too broad and would also skip a real branch whose
 		// name merely ends in "HEAD" (e.g. origin/detached-HEAD), silently leaving its ids
-		// unchecked. The `->` guard still catches the `origin/HEAD -> origin/main` form that
-		// some `git branch -r` outputs render on one line.
+		// unchecked. gitcore's ref enumeration does not surface the symbolic origin/HEAD
+		// alias at all (see gitcore.go's RefsContaining doc), so these two checks are now
+		// belt-and-braces rather than load-bearing, kept for defense and documentation.
 		if b == "" || b == ownRemote || b == "origin/main" || b == "origin/HEAD" || strings.Contains(b, "->") {
 			continue
 		}
-		isAnc, determinate := branchIsAncestorOfMain(dir, b, originMain)
+		isAnc, determinate := branchIsAncestorOfMain(repo, b, originMain)
 		if !determinate || isAnc {
 			// Already merged into origin/main (or unresolvable) — its ids are already
 			// covered by the origin/main-relative diff above via a fresh checkout, or we
@@ -301,16 +331,15 @@ func checkRegisterIDCollisions(dir, ownBranch, localSHA string) ([]registerIDCol
 			continue
 		}
 
-		lsOut, lserr := gitOut(dir, "ls-tree", "-r", "--name-only", b, "--")
+		paths, lserr := repo.Files(b)
 		if lserr != nil {
 			continue
 		}
-		for _, path := range strings.Split(lsOut, "\n") {
-			path = strings.TrimSpace(path)
-			if path == "" || !inRegisterDir(path) {
+		for _, path := range paths {
+			if !inRegisterDir(path) {
 				continue
 			}
-			content, cerr := gitOut(dir, "show", b+":"+path)
+			content, cerr := repo.FileAt(b, path)
 			if cerr != nil {
 				continue
 			}

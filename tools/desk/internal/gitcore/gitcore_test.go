@@ -966,3 +966,162 @@ func TestSymbolicRefTargetMatchesGit(t *testing.T) {
 		t.Fatal("SymbolicRefTarget on a non-symbolic ref = nil error, want an error matching git's own refusal")
 	}
 }
+
+// --- Read helpers added for brief 04 (deskpushguard detection reads) -------------------
+//
+// deskpushguard's foreign-commit / merge-masquerade detector needs a commit's subject line
+// and parent hashes — two plain object.Commit field reads no earlier brief's caller needed.
+
+func TestCommitSubject_MatchesGitLogFormatS(t *testing.T) {
+	f := gittest.NewFixture(t)
+	f.CommitFile(t, "second.txt", "second\n",
+		"feat: a subject line\n\nA body paragraph that must not leak into the subject.")
+
+	want, err := f.Git("log", "-1", "--format=%s", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.CommitSubject("HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("CommitSubject(HEAD) = %q, want %q (git log -1 --format=%%s)", got, want)
+	}
+}
+
+func TestParentHashes_MatchesGitLogFormatP(t *testing.T) {
+	f := gittest.NewFixture(t)
+	root, err := f.Git("rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Root commit: no parents, matching %P's own empty output for one.
+	got, err := repo.ParentHashes(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("ParentHashes(root) = %v, want empty", got)
+	}
+
+	f.CommitFile(t, "second.txt", "second\n", "second commit")
+	wantOut, err := f.Git("log", "-1", "--format=%P", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Fields(wantOut)
+
+	got, err = repo.ParentHashes("HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParentHashes(HEAD) = %v, want %v (git log -1 --format=%%P)", got, want)
+	}
+}
+
+func TestDiffNameStatus_MatchesGitAdd(t *testing.T) {
+	f := gittest.NewFixture(t)
+	f.CommitFile(t, "added.txt", "new\n", "add a file")
+	base, err := f.Git("rev-parse", "HEAD~1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.DiffNameStatus(base, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Status != "A" || got[0].Path != "added.txt" {
+		t.Fatalf("DiffNameStatus(add) = %+v, want a single {A added.txt} entry", got)
+	}
+}
+
+// TestDiffNameStatus_DetectsRenameModifyDelete pins the classification DiffNameStatus adds
+// on top of DiffNames' plain path set: registerid.go's collision scan (checkRegisterIDCollisions)
+// needs to tell an ADD/MODIFY (a fresh or changed claim) apart from a DELETE or RENAME (neither
+// of which stakes a new id claim), matching git's own `--diff-filter=AM` restriction.
+func TestDiffNameStatus_DetectsRenameModifyDelete(t *testing.T) {
+	f := gittest.NewFixture(t)
+	body := "alpha\nbravo\ncharlie\ndelta\necho\nfoxtrot\ngolf\nhotel\n"
+	f.CommitFile(t, "rename_me.txt", body, "add the file that will be renamed")
+	f.CommitFile(t, "modify_me.txt", "v1\n", "add the file that will be modified")
+	f.CommitFile(t, "delete_me.txt", "gone soon\n", "add the file that will be deleted")
+	base, err := f.Git("rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.Git("mv", "rename_me.txt", "renamed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.Dir, "modify_me.txt"), []byte("v2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Git("rm", "-q", "delete_me.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Git("add", "-A"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Git("commit", "-q", "-m", "rename, modify, delete"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Guard the guard: confirm git itself detected the rename on this fixture (its default
+	// -M50 threshold), so a pass below is testing the real shape, not a vacuous one.
+	renameOut, err := f.Git("diff", "--name-status", "-M", base, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sawRename := false
+	for _, line := range strings.Split(renameOut, "\n") {
+		if strings.HasPrefix(line, "R") && strings.Contains(line, "renamed.txt") {
+			sawRename = true
+		}
+	}
+	if !sawRename {
+		t.Fatalf("COULD-NOT-CHECK: git did not report a detected rename on this fixture:\n%s", renameOut)
+	}
+
+	repo, err := Open(f.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.DiffNameStatus(base, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byPath := map[string]string{}
+	for _, c := range got {
+		byPath[c.Path] = c.Status
+	}
+	if byPath["renamed.txt"] != "R" {
+		t.Errorf("renamed.txt status = %q, want R; full result: %+v", byPath["renamed.txt"], got)
+	}
+	if byPath["modify_me.txt"] != "M" {
+		t.Errorf("modify_me.txt status = %q, want M; full result: %+v", byPath["modify_me.txt"], got)
+	}
+	if byPath["delete_me.txt"] != "D" {
+		t.Errorf("delete_me.txt status = %q, want D; full result: %+v", byPath["delete_me.txt"], got)
+	}
+	if _, stillThere := byPath["rename_me.txt"]; stillThere {
+		t.Errorf("rename_me.txt (the OLD path of a detected rename) must not appear; full result: %+v", got)
+	}
+}

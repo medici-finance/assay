@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -441,6 +443,117 @@ func TestCheckForeignCommits_DetectsStrayLocalOriginMainBase(t *testing.T) {
 	}
 	if got.behind != 3 {
 		t.Errorf("behind = %d, want 3 (the commits main gained after the stray went stale)", got.behind)
+	}
+}
+
+// newStrayBaseMergeFixture is newStrayBaseFixture's sibling, except the history main gains
+// after the stray went stale is NOT linear — it is divergent, merge-commit-bearing history
+// (three side branches, each merged back with `--no-ff`, interleaved with mainline commits).
+// This is exactly the shape checkStrayBase's own premise requires (a stray-base cut is
+// definitionally a DIVERGENT history), and exactly the shape a first-parent-biased,
+// early-stopping ahead-count gets wrong: it can stop at the first commit found to be an
+// ancestor of the stray tip without ever walking a merge's second parent, undercounting how
+// far behind main the worker's stray-based branch really is.
+//
+// realBehind is computed independently via `git rev-list --count staleSHA..trueSHA` — the
+// same authority `git`'s own two-dot range count uses — so the test's expectation does not
+// depend on either gitcore implementation under test.
+func newStrayBaseMergeFixture(t *testing.T) (wtDir, branch, headSHA, staleSHA, trueSHA string, realBehind int) {
+	t.Helper()
+	remoteDir := t.TempDir()
+	runGitT(t, remoteDir, "init", "--bare", "-b", "main")
+
+	seed := t.TempDir()
+	runGitT(t, seed, "init", "-b", "main")
+	runGitT(t, seed, "config", "user.email", "seed@test")
+	runGitT(t, seed, "config", "user.name", "seed")
+	runGitT(t, seed, "remote", "add", "origin", remoteDir)
+	commitEmpty(t, seed, "chore: initial commit on main")
+	runGitT(t, seed, "push", "origin", "main")
+	staleSHA = runGitT(t, seed, "rev-parse", "HEAD")
+
+	// Grow main past the stray point through three side branches, each merged back with a
+	// real (non-fast-forward) merge commit, so the ancestor set genuinely contains commits
+	// unreachable via any first-parent-only walk.
+	for i := 1; i <= 3; i++ {
+		side := fmt.Sprintf("side%d", i)
+		runGitT(t, seed, "checkout", "-b", side, "main")
+		for j := 1; j <= 6; j++ {
+			commitEmpty(t, seed, fmt.Sprintf("feat: %s work %d", side, j))
+		}
+		runGitT(t, seed, "checkout", "main")
+		runGitT(t, seed, "merge", "--no-ff", "-m", fmt.Sprintf("merge: bring in %s", side), side)
+		commitEmpty(t, seed, fmt.Sprintf("chore: mainline commit after merging %s", side))
+	}
+	runGitT(t, seed, "push", "origin", "main")
+	trueSHA = runGitT(t, seed, "rev-parse", "HEAD")
+
+	realBehindStr := runGitT(t, seed, "rev-list", "--count", staleSHA+".."+trueSHA)
+	realBehind, err := strconv.Atoi(realBehindStr)
+	if err != nil {
+		t.Fatalf("fixture: could not parse rev-list --count output %q: %v", realBehindStr, err)
+	}
+
+	clone := t.TempDir()
+	runGitT(t, clone, "clone", remoteDir, ".")
+	runGitT(t, clone, "config", "user.email", "w@test")
+	runGitT(t, clone, "config", "user.name", "w")
+	runGitT(t, clone, "branch", "origin/main", staleSHA) // plant the stray
+
+	wtDir = t.TempDir()
+	wtDir = wtDir + "/wt"
+	runGitT(t, clone, "worktree", "add", "--detach", wtDir, "origin/main")
+
+	if got := runGitT(t, wtDir, "rev-parse", "HEAD"); got != staleSHA {
+		t.Fatalf("fixture: expected HEAD=%s (the stale stray tip), got %s — the bug this test "+
+			"exists for did not reproduce", staleSHA, got)
+	}
+	runGitT(t, wtDir, "checkout", "-b", "mine")
+	headSHA = commitEmpty(t, wtDir, "feat: my own work, on a stale base")
+	return wtDir, "mine", headSHA, staleSHA, trueSHA, realBehind
+}
+
+// TestCheckForeignCommits_StrayBaseBehindCountAccountsForMergedHistory is the merge-commit
+// arm of the stray-base diagnostic: main's post-stray history is divergent (three merged
+// side branches, per newStrayBaseMergeFixture), which is exactly the case
+// TestCheckForeignCommits_DetectsStrayLocalOriginMainBase's linear-only fixture cannot
+// exercise — a first-parent-biased early-stop walk happens to be exact on linear history,
+// which is precisely why that test cannot distinguish the correct ancestry-set-difference
+// computation from the buggy shortcut.
+//
+// This does NOT touch the fire/no-fire decision (unaffected either way — a stray base is
+// still detected) — only the diagnostic wording's accuracy, which the checkStrayBase doc
+// comment's own "FAIL-OPEN, BUT NEVER SILENT" contract makes a real requirement: an
+// undercounted "leaving it N commits behind main" is not silent, but it is wrong.
+//
+// FAIL-FIRST: against the pre-fix `checkStrayBase` (computing `behind` via
+// `gitcore.Repo.AheadCount`, which is only exact for the fast-forward-descendant case per
+// its own doc comment), this fails with a `got.behind` far short of `realBehind`.
+func TestCheckForeignCommits_StrayBaseBehindCountAccountsForMergedHistory(t *testing.T) {
+	wtDir, branch, headSHA, staleSHA, trueSHA, realBehind := newStrayBaseMergeFixture(t)
+
+	found, err := checkForeignCommits(wtDir, branch, headSHA)
+	if err != nil {
+		t.Fatalf("checkForeignCommits error: %v", err)
+	}
+	if len(found.indeterminate) != 0 {
+		t.Fatalf("base was determinable here; unexpected could-not-check: %v", found.indeterminate)
+	}
+	if len(found.strayBases) != 1 {
+		t.Fatalf("expected exactly 1 stray-base finding, got %d: %+v", len(found.strayBases), found.strayBases)
+	}
+	got := found.strayBases[0]
+	if got.strayTip != staleSHA {
+		t.Errorf("strayTip = %s, want the stale stray tip %s", got.strayTip, staleSHA)
+	}
+	if got.trueBase != trueSHA {
+		t.Errorf("trueBase = %s, want the remote-tracking head %s", got.trueBase, trueSHA)
+	}
+	if got.behind != realBehind {
+		t.Errorf("behind = %d, want %d (git rev-list --count %s..%s — the true ancestry-set "+
+			"difference across the merged side branches); an undercount here means the "+
+			"diagnostic silently understates how stale the stray-based branch really is",
+			got.behind, realBehind, shortSHA(staleSHA), shortSHA(trueSHA))
 	}
 }
 
@@ -918,5 +1031,41 @@ func TestRun_AnnouncesCouldNotCheck(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "NOT a clean bill of health") {
 		t.Errorf("the could-not-check line must state it is not an all-clear, got:\n%s", stderr.String())
+	}
+}
+
+// --- Mandatory mutation test (assay#951, brief-rules rule 16) -----------------------------
+//
+// A behaviour-preserving seam swap of a DETECTION control has to prove the detection still
+// FIRES, not merely that the happy path is unchanged — a green run on a CLEAN fixture alone
+// cannot distinguish "the migrated reader still detects foreign commits" from "the migrated
+// reader silently detects nothing and every test just happens to feed it clean input". This
+// test constructs a fixture that DOES introduce a foreign/unregistered commit (the same #22
+// laundering shape TestCheckForeignCommits_DetectsLaunderedSiblingCommits exercises — a
+// worktree cut off a sibling PR's tip instead of origin/main) and asserts the gitcore-backed
+// detector still flags it RED.
+//
+// FAIL-FIRST: this is the brief's own mutation-test Verify row (`go test ./cmd/deskpushguard/
+// -run ForeignCommitFlagged`) — gut checkForeignCommits's branch-attribution loop (e.g. make
+// the `if !isAnc` foreign-commit append unreachable) and this test goes red with 0 foreign
+// commits found while a merely-happy-path suite would stay green.
+func TestForeignCommitFlagged(t *testing.T) {
+	victimDir, ownBranch, ownSHA := newForeignCommitFixture(t)
+
+	found, err := checkForeignCommits(victimDir, ownBranch, ownSHA)
+	if err != nil {
+		t.Fatalf("checkForeignCommits error: %v", err)
+	}
+	if len(found.indeterminate) != 0 {
+		t.Fatalf("base was determinable in this fixture; unexpected could-not-check: %v", found.indeterminate)
+	}
+	if len(found.foreign) == 0 {
+		t.Fatal("MUTATION TEST FAILED: the migrated gitcore-backed reader did not flag the " +
+			"injected foreign commit — the detector no longer detects")
+	}
+	for _, f := range found.foreign {
+		if f.sourceBranch != "origin/sibling" {
+			t.Errorf("foreign commit %s: sourceBranch = %q, want origin/sibling", shortSHA(f.sha), f.sourceBranch)
+		}
 	}
 }

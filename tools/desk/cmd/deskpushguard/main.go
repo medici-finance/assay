@@ -338,17 +338,21 @@ func parseRef(line string) (refLine, bool) {
 // deriveRepo extracts "owner/repo" from the origin remote URL.
 // Handles HTTPS, git@, and ssh:// URLs.
 func deriveRepo(remoteURL string) (string, error) {
-	// Try to get repo from `git remote get-url <name>` or parse directly.
-	// The URL comes from git's hook invocation.
-
-	// If empty, derive from origin remote.
+	// The URL normally comes from git's hook invocation (args[1]). If empty, fall back to
+	// the configured origin remote — an in-process, local config read (no network touch),
+	// matching `git remote get-url origin` / `git config --get remote.origin.url`, migrated
+	// onto gitcore (assay#951) exactly as deskgit's and deskkit preflight's own
+	// `remote get-url` reads were migrated in an earlier PR (Repo.RemoteURL).
 	if remoteURL == "" {
-		cmd := execCommand("git", "remote", "get-url", "origin")
-		out, err := cmd.Output()
+		repo, err := openRepo("")
 		if err != nil {
 			return "", fmt.Errorf("cannot get origin URL: %w", err)
 		}
-		remoteURL = strings.TrimSpace(string(out))
+		url, err := repo.RemoteURL("origin")
+		if err != nil {
+			return "", fmt.Errorf("cannot get origin URL: %w", err)
+		}
+		remoteURL = strings.TrimSpace(url)
 	}
 
 	return parseRepo(remoteURL)
