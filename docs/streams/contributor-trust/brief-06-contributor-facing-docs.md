@@ -156,7 +156,7 @@ that is the review gate's judgement.
 | 8 | `git -C . grep -n -i -e assay-desk-app -e assay-worker-app -e assay-reviewer-app -- CONTRIBUTING.md .github/PULL_REQUEST_TEMPLATE.md docs/contributor-trust.md` | exit 1; no matching line (contributor-facing pages name no internal automation identity) | check |
 | 9 | `grep -n -i 'SECURITY.md' CONTRIBUTING.md` | exit 0; at least one matching line (the reporting path is linked, not restated) | check +neighbour |
 | 10 | `grep -n -i 'contributor-trust' CONTRIBUTING.md && grep -n -i 'provenance' docs/contributor-trust.md` | exit 0; at least one matching line from each (the contributor's path runs `CONTRIBUTING.md` to the published model to the description of what the provenance comment measures, and every hop exists) | check +flow |
-| 11 | `statusgen --root . --consumers --brief contributor-trust/06` | exit 0; output does not contain `DISPROVED` | check |
+| 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:06` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "The new section quietly describes an advisory guideline as
 enforced, so the page promises something the repository does not do" is caught by row 5. "The

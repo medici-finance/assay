@@ -176,7 +176,7 @@ Default if no answer: none — blocks until answered. Everything downstream keys
 | 8 | `git -C . grep -n -E 'unknown.*blessed-once.*contributor.*maintainer' -- docs/contributor-trust.md` | exit 0; at least one matching line (the four tiers are named in order in the published model) | check |
 | 9 | `cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./internal/deskkit/` | exit 0 | check:ci |
 | 10 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustTierPublishedModelMatchesTable' -count=1 -v` | exit 0; output contains `PASS` (the test parses the tier and capability names out of `docs/contributor-trust.md` (planned) and compares them to the capability table in code, so a published model that claims a capability the code does not grant fails) | check +dereference |
-| 11 | `statusgen --root . --consumers --brief contributor-trust/02` | exit 0; output does not contain `DISPROVED` | check |
+| 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:02` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "The ledger is absent on a fresh machine and every external
 identity silently becomes a contributor" is caught by row 2. "A corrupt or half-written ledger

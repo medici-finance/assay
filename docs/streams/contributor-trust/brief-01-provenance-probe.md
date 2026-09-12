@@ -176,7 +176,7 @@ until this is decided.
 | 7 | `cd tools/desk && ./deskprovenance --dry-run --fixture cmd/deskprovenance/testdata/bulk-sweep-author.json` | exit 1; output contains `not a judgement of the change` (the abstention is present on the flagged path, which is the path where it matters) | check |
 | 8 | `git -C . grep -n -e follower -e employer -e geograph -- tools/desk/internal/deskkit/provenance.go` | exit 1; no matching line (the excluded categories appear nowhere in the gatherer) | check |
 | 9 | `grep -n 'deliberately' docs/contributor-provenance.md` | exit 0; at least one matching line naming the excluded signals | check |
-| 10 | `statusgen --root . --consumers --brief contributor-trust/01` | exit 0; output does not contain `DISPROVED` | check |
+| 10 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:01` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "A signal fails to read and the card says everything is fine" is
 caught by row 4, which requires both the third exit state and the visible token. "The card

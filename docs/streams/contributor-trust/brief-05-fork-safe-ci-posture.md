@@ -187,7 +187,7 @@ the project's machines without a human present.
 | 8 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ForkPostureSecretReachNeverAuto' -count=1 -v` | exit 0; output contains `PASS` (no tier auto-approves a workflow that can reach a secret) | check +mutation |
 | 9 | `grep -n 'not a sandbox' docs/fork-ci-posture.md` | exit 0; at least one matching line | check +dereference |
 | 10 | `git -C . grep -n 'actions/checkout' -- .github/workflows/inbound-triage.yml` | exit 1; no matching line (the existing metadata-only workflow still checks out nothing) | check +neighbour |
-| 11 | `statusgen --root . --consumers --brief contributor-trust/05` | exit 0; output does not contain `DISPROVED` | check |
+| 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:05` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "The audit passes because it only looks at triggers and never at
 whether a job checks out the head" is caught by row 3, a fixture combining the event with a

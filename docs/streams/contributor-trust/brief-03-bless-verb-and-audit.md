@@ -164,7 +164,7 @@ into automation.
 | 9 | `cd tools/desk && ./deskbless --dry-run --repo example-org/example --item 1 --reason 'x' --fixture cmd/deskbless/testdata/unreadable-item.json; echo rc=$?` | output contains `rc=6`; output does not contain `rc=0` | check |
 | 10 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'TrustReaderCoupling' -count=1` | exit 0; output contains `ok` (the two duplicate evaluators agree on every vector, marker included) | check +flow +neighbour |
 | 11 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'BlessPublishedMarkerMatchesEmitted' -count=1 -v` | exit 0; output contains `PASS` (the test reads the marker documented in `docs/contributor-trust.md` (planned) and compares it to the one the verb emits and the evaluator matches, so a documented admission path that does not admit fails) | check +dereference |
-| 12 | `statusgen --root . --consumers --brief contributor-trust/03` | exit 0; output does not contain `DISPROVED` | check |
+| 12 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:03` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "The marker form lands but the old free-text path is left in as a
 fallback, so nothing actually narrows" is caught by row 4. "Adding the marker check

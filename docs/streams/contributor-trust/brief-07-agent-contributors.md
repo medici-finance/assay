@@ -161,7 +161,7 @@ is the review gate's and the human gate's judgement, not this table's.
 | 6 | `git -C . grep -n -i 'recorded human act' -- docs/contributor-trust.md` | exit 0; at least one matching line (a downgrade is written by a person, with a reason) | check +dereference |
 | 7 | `git -C . grep -n -i -e downgrade -e demote -- tools statusgen` | exit 1; no matching line (no code path performs a tier change; the downgrade this brief defines is a human's recorded act) | check +mutation |
 | 8 | `grep -n -i 'automated' .github/PULL_REQUEST_TEMPLATE.md && grep -n -i 'operating human' CONTRIBUTING.md && grep -n -i 'is not a ground' docs/contributor-trust.md` | exit 0; at least one matching line from each (the disclosure field, the contributor-facing explanation of what it is for, and the position it feeds all exist and connect) | check +flow |
-| 9 | `statusgen --root . --consumers --brief contributor-trust/07` | exit 0; output does not contain `DISPROVED` | check |
+| 9 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:07` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "The published text excludes automation as a downgrade ground by
 saying nothing about it, so a maintainer reasonably reads the bulk-submission ground as

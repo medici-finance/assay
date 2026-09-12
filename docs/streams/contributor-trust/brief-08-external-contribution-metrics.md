@@ -91,7 +91,7 @@ facts:
 | 8 | `grep -n -i 'counts are not attributions' docs/contributor-trust.md` | exit 0; at least one matching line | check |
 | 9 | `cd statusgen && GOWORK=off go test . -run 'ExternalPRRenderedCountsMatchFixture' -count=1 -v` | exit 0; output contains `PASS` (the test compares each number in the rendered section against the fixture it was computed from, so a renderer that prints a plausible wrong total fails) | check +dereference |
 | 10 | `cd statusgen && GOWORK=off go test . -run 'ExternalPRSectionRendersThroughBoard' -count=1 -v` | exit 0; output contains `PASS` (the section is produced through the shared generated-section mechanism as the board renderer drives it, not by calling the new renderer directly) | check +flow |
-| 11 | `statusgen --root . --consumers --brief contributor-trust/08` | exit 0; output does not contain `DISPROVED` | check |
+| 11 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:08` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "A window the lister could not read renders as a clean set of
 zeroes, so a broken counter looks like a quiet month" is caught by row 3. "A login leaks into

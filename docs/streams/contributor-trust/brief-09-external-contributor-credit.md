@@ -95,11 +95,17 @@ facts:
 - **Forward-only:** only the cut being prepared is affected. A `## <tag>` section already
   written to `CHANGELOG.md`, and any release already published, are never rewritten to add a
   credit.
+- The forge half reads a pull request's author and body, so the changelog jobs need
+  `pull-requests: read`. Measured 2026-09-12: `release.yml` carries NO `pull-requests` scope
+  today at any level, so this is a new scope and not a widening of an existing one. It is
+  READ-only, it adds no trigger, and it changes no existing permission — the release job's
+  standing `contents: write` (it pushes the tag) is untouched and is a separate concern.
 - Risk answers against the declared paths: `.github/workflows/release.yml` is a release-path
-  trigger and all four answers are nevertheless `no`. The change adds a read (history depth,
-  an author lookup) and a string suffix to text the step already emits. It grants nothing,
-  authorizes nothing, and changes no trigger, no permission and no artifact. Its worst failure
-  is a wrong or missing name in release prose, which the forward-only rule bounds to one cut.
+  trigger and all four answers are nevertheless `no`. The change adds reads (history depth, a
+  read-only pull-requests scope, an author lookup) and appends a string to text the step
+  already emits. It grants nothing, authorizes nothing, changes no trigger and adds no write
+  scope or artifact. Its worst failure is a wrong or missing name in release prose, which the
+  forward-only rule bounds to one cut.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating kubectl. Leave commits per the task
@@ -123,9 +129,11 @@ facts:
 2. `--credits <file>` on `highlights` and `roll`: append the configured suffix to each bullet
    of a credited fragment. Unknown or unresolved entries append nothing.
 3. `release.yml`: resolve the map (git half, then the forge half with the identity predicate
-   and the opt-out marker), pass it to both the aggregate step and the write step, and deepen
-   the release job's checkout enough for the git half to reach the fragment's adding commit.
-   Log a named could-not-check line per unresolved fragment.
+   and the opt-out marker), pass it to both the aggregate step and the write step, deepen the
+   release job's checkout enough for the git half to reach the fragment's adding commit, and
+   add `pull-requests: read` to the changelog jobs so the forge half can read a pull request's
+   author and body. Read-only: add no `pull-requests: write`, and change no existing
+   permission. Log a named could-not-check line per unresolved fragment.
 4. `aggregate_test.sh`: the three cases in the Verify table, written to run against
    `AGG_IMPL=testdata/old-aggregate.py` as the committed fail-first evidence.
 5. The sentence in the proxy recipe (the aggregator credits an external author automatically,
@@ -148,7 +156,9 @@ facts:
 | 11 | `grep -n -i 'opt-out' changelog/README.md tools/changelog/README.md` | exit 0; at least one matching line from each | check |
 | 12 | `cd tools/changelog && ./check_test.sh; echo rc=$?` | output contains `rc=0` (neighbour: the PR-gate check's own suite is untouched by the aggregate-time change) | check +neighbour |
 | 13 | `cd tools/changelog && python3 aggregate.py credits testdata/credits-fixture-repo/changelog 2>&1` | exit 0; output contains `unresolved` (a fragment with no merge commit reports an explicit unresolved marker, not an omission) | check +flow |
-| 14 | `statusgen --root . --consumers --brief contributor-trust/09` | exit 0; output does not contain `DISPROVED` | check |
+| 14 | `git -C . grep -n 'pull-requests: read' -- .github/workflows/release.yml` | exit 0; at least one matching line (the forge half can read a pull request's author and body) | check +dereference |
+| 15 | `git -C . grep -n 'pull-requests: write' -- .github/workflows/release.yml` | exit 1; no matching line (negative control: the pull-requests scope added is READ-only. The release job already carries `contents: write` to push the tag; that is unchanged and is not what this row is about) | check +mutation |
+| 16 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:09` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
 
 Pre-mortem to detection map. "The credit lands on the wrong person because the merge-commit
 subject's pull-request number is parsed loosely" is caught by row 13's explicit unresolved
@@ -160,7 +170,7 @@ rows 6 and 7. "Somebody adds a forge API call inside `aggregate.py` and the offl
 silently starts needing the network" is caught by row 8. "The resolver ships but is inert on
 the shallow clone the release job actually runs on, so nobody is ever credited and nothing
 reports it" is caught by row 9 — the exact failure the measured `fetch-depth` fact exists to
-prevent. "Published releases are rewritten to backfill credits" — no row; forward-only is a
+prevent. "The pull-requests scope is widened from read to write while nobody is looking, so a release-note nicety carries a credential that can alter pull requests" is caught by rows 14 and 15, which assert the scope that is there and the scope that must not be. "Published releases are rewritten to backfill credits" — no row; forward-only is a
 property of what the change does not do, and a check cannot prove a negative here. The
 reviewer confirms `roll` writes only the section for the tag being cut, as it does today.
 "The credit wording reads as grudging or as over-familiar" — no row; wording is the review
