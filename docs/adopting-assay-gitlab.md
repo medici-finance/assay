@@ -237,6 +237,41 @@ adding a new key there means registering it in that allowlist plus threading a s
 path everywhere `GITLAB_API_BASE` is currently read. That is a real design question, not a
 docs fix — it is not decided here, and this doc does not anticipate the outcome.
 
+**`ASSAY_SCAN_REPOS` — required for the issue lane, and (unlike `GITLAB_API_BASE`) it IS a
+`roster.env` key.** Once the fleet PATs exist and `deskboot` / `deskroster preflight` goes
+green, the write lane works — but the **issue lane** (`issueboard`, `scanloop`,
+`deskroster repos --scope scan`) refuses **LOUDLY** with **exit 6, COULD-NOT-CHECK** when
+`ASSAY_SCAN_REPOS` is unset or empty (`tools/desk/cmd/issueboard`, `deskkit.ScanRepos`): an
+empty sweep is never reported as a clean, empty board, so intake-desk and worker-desk treat
+the GitLab issue/orphan lane as could-not-check rather than empty. **It is a DISTINCT key from
+the write boundary `ASSAY_ALLOWED_REPOS`** — a green write-lane preflight says nothing about
+it, and `ASSAY_ALLOWED_REPOS` already listing the adopter project does not set it.
+
+- **Required value shape.** A comma-separated list of `<group>/<project>` slugs — the scan
+  scope. It must contain **at least the adopter project itself** (the same slug that appears
+  in `ASSAY_ALLOWED_REPOS`); it may be **wider** than the write boundary, since the scan scope
+  covers every repo the desk is the front door for even where the desk is not a write target
+  (the desk still posts only where `deskpost` / `deskpr` / `deskreply` gate independently on
+  `deskkit.IsAllowedRepo`). Example, for a single-project cell:
+
+  ```
+  ASSAY_SCAN_REPOS=mygroup/myproject
+  ```
+
+- **Where it lives.** Like the other `ASSAY_*` operator config, it is set in CI (the
+  project/group CI/CD variable) **or** the config-home `roster.env` — never compiled in. This
+  is the post-fleet-boot checklist item that is easy to miss precisely because the write lane
+  goes green without it.
+
+- **Verify.** Run the tool and read the effective value it echoes to **stderr**:
+
+  ```
+  issueboard 2>&1 >/dev/null | grep -E 'ASSAY_SCAN_REPOS=|configured='
+  ```
+
+  A non-empty `ASSAY_SCAN_REPOS=` listing at least the adopter slug is the pass; `exit 6`
+  with an empty value is the silent half-configured state this step exists to close.
+
 **The owner PAT.** Use a **legacy** personal access token with scope `api` (and only
 `api`), issued by a group Owner, expiring in 30–90 days, stored `0600` in the same
 config-home (for example `gitlab-owner.token`) and exported into `GITLAB_TOKEN` only for

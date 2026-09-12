@@ -30,7 +30,6 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
-| desktools-go-git | 03 — migrate read/plumbing verbs (read-heavy tools) to gitcore | 3 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
