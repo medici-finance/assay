@@ -23,16 +23,24 @@
 #   cellctl check <cell>                         preconditions per the cell's kind and forge (cell.env, roster,
 #                                                keys or token store, binaries, repo, roots, plugin) — a
 #                                                precondition for the OTHER kind/forge is reported n/a or MISS,
-#                                                never silently skipped
+#                                                never silently skipped. When CELL_HARNESS=codex, also checks
+#                                                the codex harness block (binary, auth, multi_agent, resident
+#                                                rules, skills discovery) — n/a on a claude cell.
 #   cellctl deskd <cell>                         stand the cell's persistent deskd (attended: mints per-org read tokens)
-#   cellctl desk  <cell> <role> [CLAUDE_CONFIG_DIR]   one role window (own worktree, real HOME, shims)
+#   cellctl desk  <cell> <role> [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]   one role window (own
+#                                                worktree, real HOME, shims). --harness overrides cell.env
+#                                                CELL_HARNESS for this run only (default claude); see
+#                                                Harnesses below.
 #   cellctl up    <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca]
-#                        [--automate '<cron>'] [CLAUDE_CONFIG_DIR]
+#                        [--automate '<cron>'] [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]
 #                                                one window per role in the resolved COCKPIT: a tmux session
 #                                                "<cell>-cell", a labelled herdr tab per role, or an orca
 #                                                terminal per role (deskd + the-desk + the loop roles; a house
 #                                                cell opens no deskd window unless DESKD=1).
 #                                                --cockpit overrides cell.env CELL_COCKPIT for this run.
+#                                                --harness overrides CELL_HARNESS for EVERY role window this
+#                                                run opens (same per-run, not persisted, precedence as
+#                                                `cellctl desk --harness`).
 #                                                --automate '<cron>' is an ORCA-only shape: one scheduled
 #                                                automation per role, fronted by an exit-code precheck, instead
 #                                                of a live terminal.
@@ -47,6 +55,15 @@
 # and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the_desk=fable). Values are what
 # `claude --model` accepts (fable | opus | sonnet | haiku | a full model id). the-desk is the one
 # role `cellctl desk`/`cellctl check` refuse to pin to Opus — see refuse_opus_for_the_desk below.
+#
+# The HARNESS a role window runs on is pinned the same way: cell.env CELL_HARNESS (claude, the
+# default, or codex), `--harness` on `desk`/`up` overrides it for one run without touching cell.env.
+# The claude arm is unchanged (this script execs `claude --model <m> "/assay:<role>"`); the codex
+# arm execs `codex --sandbox danger-full-access -C <worktree> -m <model> "<invoke-by-name prompt>"`
+# with the same DESK_LOOP/DESK_SESSION/DESK_ROOTS/shim-PATH env — CLAUDE_CONFIG_DIR is irrelevant
+# there. The Opus refusal below binds the claude arm ONLY: on codex it refuses nothing and prints
+# the resolved model, because Opus is a Claude-family alias with no meaning to codex. See Harnesses
+# in docs/cellctl.md.
 #
 # A cell directory holds:
 #   cell.env            the per-cell variables (written by `cellctl new`)
@@ -148,6 +165,15 @@ load_cell(){ # sets CELL_DIR, CELL_HOME, and everything cell.env exports
   esac
   ROLES="${ROLES:-$ROLES_DEFAULT}"
   DESK_MODEL_DEFAULT="${DESK_MODEL_DEFAULT:-sonnet}"
+  # The harness a role window boots on, pinned the same way a model is: cell.env CELL_HARNESS
+  # (default claude — a cell scaffolded before harness support carries none), `--harness` on
+  # `desk`/`up` overrides it for one run without touching this. Validated here so a typo'd value
+  # in cell.env is caught at every boot, not just when a window happens to hit the codex arm.
+  CELL_HARNESS="${CELL_HARNESS:-claude}"
+  case "$CELL_HARNESS" in
+    claude|codex) ;;
+    *) die "cell.env: CELL_HARNESS=$CELL_HARNESS is not a known harness (claude|codex)" ;;
+  esac
   SESSION="${TMUX_SESSION:-${CELL}-cell}"
   [[ -n "${CELL_REPO:-}" ]] || die "cell.env: CELL_REPO (the checkout roles worktree from) is not set"
 }
@@ -260,8 +286,17 @@ cockpit_want(){
   fi
 }
 
-# role_cmd <role> <cfg> — the one command a role window runs, identical in every cockpit.
-role_cmd(){ printf "'%s' desk '%s' '%s' '%s'" "$SELF" "$CELL" "$1" "$2"; }
+# role_cmd <role> <cfg> — the one command a role window runs, identical in every cockpit. When
+# $HARNESS_OVERRIDE is set (cmd_up's own --harness, applied to every role window it opens), it is
+# threaded onto the desk invocation as --harness, so the window that actually boots resolves the
+# same override this plan named — not just this process's own copy of it.
+role_cmd(){
+  if [[ -n "${HARNESS_OVERRIDE:-}" ]]; then
+    printf "'%s' desk '%s' '%s' --harness '%s' '%s'" "$SELF" "$CELL" "$1" "$HARNESS_OVERRIDE" "$2"
+  else
+    printf "'%s' desk '%s' '%s' '%s'" "$SELF" "$CELL" "$1" "$2"
+  fi
+}
 
 # roots_valid checks the SHAPE of a CELL_ROOTS value — every entry `<owner>/<repo>=<abs path>` —
 # and prints the first malformed entry on stderr. Existence of the paths is `check`'s job.
@@ -342,6 +377,7 @@ cmd_check(){
   else
     chk "the-desk model: $the_desk_model" 'true'
   fi
+  check_codex_harness
   case "$CELL_KIND" in
     house) check_house "${2:-}" ;;
     *) check_k8s ;;
@@ -531,10 +567,99 @@ worktree_via_deskwt(){
   printf '%s\n' "$out"
 }
 
+# ---------------------------------------------------------------- codex harness
+# codex_multi_agent_on: true when `[features] multi_agent = true` resolves in codex's effective
+# config. Probed via a `codex config get`-style verb where the installed build advertises one
+# (codex's exact config-read surface has moved across releases, per the codex-smoke-run findings —
+# never hard-coded to a single spelling); falling back to a literal read of the config.toml under
+# CODEX_HOME (default ~/.codex) since not every build ships a config-read verb. A `-c` override
+# given on the invocation itself is not visible here (an ephemeral CLI flag, never a persisted
+# config value) — the check row's own text says "or -c override applied" so an operator who
+# overrides per-run rather than persisting is not misread as a MISS.
+codex_multi_agent_on(){
+  # Two `local` lines, same reason `cmd_desk`'s mvar/model pair is split: in a single
+  # `local a=… b="$a"` the expansion of $a is resolved before `a` itself is assigned.
+  local home; home="${CODEX_HOME:-$HOME/.codex}"
+  local cfg="$home/config.toml" v
+  if help_has get codex config >/dev/null 2>&1; then
+    v="$(codex config get features.multi_agent 2>/dev/null || true)"
+    [[ "$v" == "true" ]] && return 0
+  fi
+  [[ -f "$cfg" ]] || return 1
+  awk '
+    /^\[features\]/ { insec=1; next }
+    /^\[/            { insec=0 }
+    insec && /^[[:space:]]*multi_agent[[:space:]]*=[[:space:]]*true[[:space:]]*$/ { found=1 }
+    END { exit(found ? 0 : 1) }
+  ' "$cfg"
+}
+
+# codex_skills_discoverable: either discovery arm documented in docs/adopting-assay.md "Running
+# Assay on Codex" satisfies invoke-by-name — arm A (marketplace plugin assay@assay installed) or
+# arm B (skills copied into the checkout's .agents/skills/). Checked against CELL_REPO, the
+# checkout the role worktree is cut from, since that is where the fragment/skills need to live.
+codex_skills_discoverable(){
+  if command -v codex >/dev/null 2>&1 && help_has list codex plugin >/dev/null 2>&1; then
+    (cd "$CELL_REPO" && codex plugin list 2>/dev/null) | grep -qi 'assay' && return 0
+  fi
+  [[ -d "$CELL_REPO/.agents/skills" ]] \
+    && find "$CELL_REPO/.agents/skills" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | grep -q .
+}
+
+# ensure_codex_resident_rules <worktree>: codex has no Claude-style SessionStart hook to carry the
+# resident operating rules, so on the codex arm they travel in AGENTS.md instead
+# (docs/adopting-assay.md "Running Assay on Codex" §2). Appends the pre-generated fragment
+# (plugins/assay/codex/AGENTS-assay.md, produced from resident-rules.md by `harnessgen resident`)
+# to the WORKTREE's AGENTS.md at boot, once — idempotent on a marker string unique to the fragment,
+# so a re-boot of the same worktree never duplicates it.
+ensure_codex_resident_rules(){
+  local wt="$1" frag="$CELL_REPO/plugins/assay/codex/AGENTS-assay.md" marker="Assay resident operating rules"
+  [[ -f "$frag" ]] || { echo "NOTICE: no resident-rules fragment at $frag — $wt/AGENTS.md not updated" >&2; return 0; }
+  local target="$wt/AGENTS.md"
+  if [[ -f "$target" ]] && grep -qF "$marker" "$target"; then
+    return 0
+  fi
+  # Decide whether a separating blank line is needed BEFORE opening the append redirection below,
+  # so the size check reads the file in one step and the write is a separate one (shellcheck SC2094).
+  local need_nl=0; [[ -s "$target" ]] && need_nl=1
+  { [[ "$need_nl" == "1" ]] && printf '\n'; cat "$frag"; } >> "$target"
+  echo "[codex] resident-rules fragment appended to $target"
+}
+
+# check_codex_harness: the preconditions Part 3 of issue-946 asks for, run only when this cell's
+# CELL_HARNESS is codex — a claude-only cell reports n/a, never silently skipped, mirroring every
+# other kind/forge-specific block in cmd_check.
+# shellcheck disable=SC2016
+check_codex_harness(){
+  if [[ "$CELL_HARNESS" != "codex" ]]; then
+    na "codex harness preconditions — CELL_HARNESS=$CELL_HARNESS (set CELL_HARNESS=codex in cell.env, or --harness codex per run, to require them)"
+    return
+  fi
+  chk "codex on PATH" 'command -v codex >/dev/null'
+  chk "codex --version" 'command -v codex >/dev/null && codex --version >/dev/null 2>&1'
+  chk "codex authenticated (codex login status, or equivalent)" \
+    'command -v codex >/dev/null && (codex login status >/dev/null 2>&1 || codex login status --json >/dev/null 2>&1)'
+  chk "[features] multi_agent = true (effective config, or a -c override applied)" 'codex_multi_agent_on'
+  chk "resident-rules fragment present: $CELL_REPO/AGENTS.md" 'grep -qF "Assay resident operating rules" "$CELL_REPO/AGENTS.md" 2>/dev/null'
+  chk "skills discoverable: marketplace plugin assay@assay, or .agents/skills/ placed" 'codex_skills_discoverable'
+}
+
 cmd_desk(){
-  load_cell "$1"; local role="${2:?cellctl desk <cell> <role> [CLAUDE_CONFIG_DIR]}"
+  local usage_msg="cellctl desk <cell> <role> [--harness <claude|codex>] [CLAUDE_CONFIG_DIR]"
+  local cell="${1:?$usage_msg}"; shift || true
+  load_cell "$cell"
+  local role="${1:?$usage_msg}"; shift || true
   case "$role" in intake-desk|worker-desk|pr-review-desk|verify-desk|the-desk) ;; *) die "unknown role '$role'";; esac
-  local cfg; cfg="$(resolve_cfg "${3:-}")"
+  # --harness overrides cell.env CELL_HARNESS for THIS run only — it never touches cell.env. No env
+  # form (unlike --model's DESK_MODEL_OVERRIDE): the issue's ask is the flag plus the cell.env pin.
+  local harness="$CELL_HARNESS" cfg_in=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --harness) harness="${2:?--harness needs a value (claude|codex)}"; shift 2;;
+    --*) die "desk: unknown flag $1";;
+    *) cfg_in="$1"; shift;;
+  esac; done
+  case "$harness" in claude|codex) ;; *) die "desk: --harness must be claude or codex, got '$harness'";; esac
+  local cfg; cfg="$(resolve_cfg "$cfg_in")"
   # ONE name for both surfaces: the roster beacon (DESK_SESSION) and the session's display name
   # (--name), so the cell's coordinator sees "<cell>-<short role>" in its agent listing and in the
   # roster alike. `${role%-desk}` would leave "the" for the-desk, hence the explicit case.
@@ -543,12 +668,18 @@ cmd_desk(){
   local short="${role%-desk}"; [[ "$role" == "the-desk" ]] && short="the-desk"
   local wt="$CELL_DIR/worktrees/$role" session="${CELL}-${short}"
   [[ "$CELL_KIND" == "house" ]] && session="${CELL}-${role}-$(date -u +%Y%m%dT%H%M%SZ)"
+  # The harness is NOTED on the roster beacon/session name when it is not the claude default, so
+  # "which harness is this window on" is answerable from the roster the same way the model is.
+  [[ "$harness" == "codex" ]] && session="${session}-codex"
   [[ -f "$CELL_CONFIG/roster.env" ]] || die "cell home has no roster: $CELL_CONFIG/roster.env"
   # The model is PINNED per role, never left to the CLI default. Two `local` lines: in a single
   # `local a=… b="${!a}"` the indirect expansion reads the name before it is assigned.
   local mvar="DESK_MODEL_${role//-/_}"
   local model="${!mvar:-$DESK_MODEL_DEFAULT}"
-  [[ "$role" == "the-desk" ]] && refuse_opus_for_the_desk "$model"
+  # The Opus refusal binds the CLAUDE arm only — Opus is a Claude-family alias/id with no meaning
+  # to codex, and issue-946 Part 2 is explicit: on codex this refuses nothing, it prints the
+  # resolved model as is.
+  [[ "$role" == "the-desk" && "$harness" == "claude" ]] && refuse_opus_for_the_desk "$model"
   # The stream-root map every desk verb reads. Exported when the cell carries one (REQUIRED on a
   # house cell, load_cell refuses without it); a k8s cell without it boots as before and says so,
   # because the verbs then fall back to their compiled placeholder topology and the failure
@@ -560,10 +691,15 @@ cmd_desk(){
     echo "NOTICE: cell.env has no CELL_ROOTS — the window boots WITHOUT DESK_ROOTS (desk verbs fall back to their compiled placeholder topology)" >&2
   fi
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
-    echo "[dry-run] cell=$CELL kind=$CELL_KIND role=$role model=$model cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"; return 0
+    echo "[dry-run] cell=$CELL kind=$CELL_KIND role=$role model=$model harness=$harness cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"; return 0
   fi
-  CLAUDE_CONFIG_DIR="$cfg" claude plugin enable assay@assay >/dev/null 2>&1 \
-    || echo "NOTICE: could not enable assay@assay in $cfg — inside the session: /plugin install assay@assay" >&2
+  # Enabling the assay@assay plugin is a CLAUDE-specific action (it shells out to `claude plugin
+  # enable`) — skipped on the codex arm, where skills are discovered per Part 3's check block
+  # (marketplace plugin or .agents/skills/) rather than a Claude Code plugin enable.
+  if [[ "$harness" == "claude" ]]; then
+    CLAUDE_CONFIG_DIR="$cfg" claude plugin enable assay@assay >/dev/null 2>&1 \
+      || echo "NOTICE: could not enable assay@assay in $cfg — inside the session: /plugin install assay@assay" >&2
+  fi
   # Serialise the shared fetch: several windows boot at once against ONE .git, and concurrent
   # fetches race on the same ref lock. The lock lives in the COMMON git dir, so a CELL_REPO that
   # is itself a linked worktree (where .git is a file) still gets a lock rather than a 60s wait.
@@ -597,11 +733,23 @@ cmd_desk(){
     deskd_up || echo "NOTICE: cell deskd is NOT up on $DESKD_ADDR — in your shell: CELL_ATTENDED=1 cellctl deskd $CELL" >&2
   fi
   gen_shims
+  # Codex has no SessionStart hook to carry the resident operating rules — on this arm they travel
+  # in the worktree's AGENTS.md instead, appended idempotently at boot.
+  [[ "$harness" == "codex" ]] && ensure_codex_resident_rules "$wt"
   cd "$wt"
-  echo "[launch] $CELL/$role kind=$CELL_KIND model=$model session=$session config=$cfg cwd=$wt desk_roots=${desk_roots:-unset} (desk verbs → HOME=$CELL_HOME)"
-  exec env PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
-    ${desk_roots:+DESK_ROOTS="$desk_roots"} \
-    claude --name "$session" --model "$model" "/assay:$role"
+  echo "[launch] $CELL/$role kind=$CELL_KIND model=$model harness=$harness session=$session config=$cfg cwd=$wt desk_roots=${desk_roots:-unset} (desk verbs → HOME=$CELL_HOME)"
+  if [[ "$harness" == "codex" ]]; then
+    # The same exported env the claude arm gets (DESK_LOOP, DESK_SESSION, DESK_ROOTS, shim PATH);
+    # CLAUDE_CONFIG_DIR is irrelevant on this arm, so it is not passed. `-C "$wt"` is redundant with
+    # the `cd` above (codex sets its own cwd from the flag) but kept explicit per the issue's spec.
+    exec env PATH="$CELL_DIR/shim:$PATH" DESK_LOOP="$role" DESK_SESSION="$session" \
+      ${desk_roots:+DESK_ROOTS="$desk_roots"} \
+      codex --sandbox danger-full-access -C "$wt" -m "$model" "Invoke the \"assay:$role\" skill now."
+  else
+    exec env PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" DESK_LOOP="$role" DESK_SESSION="$session" \
+      ${desk_roots:+DESK_ROOTS="$desk_roots"} \
+      claude --name "$session" --model "$model" "/assay:$role"
+  fi
 }
 
 # first_window sets FIRST_NAME / FIRST_CMD — the window that is NOT a role: the deskd watcher, the
@@ -653,16 +801,22 @@ up_roles(){
 
 cmd_up(){
   load_cell "$1"; shift
-  local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate=""
+  local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate="" harness_flag=""
   while [[ $# -gt 0 ]]; do case "$1" in
     --no-the-desk) no_the_desk=1; shift;;
     --with-the-desk) shift;;
     --no-attach) attach=0; shift;;
     --cockpit) cockpit_flag="${2:?--cockpit needs a value (auto|tmux|herdr|orca)}"; shift 2;;
     --automate) automate="${2:?--automate needs a trigger (a 5-field cron string or a preset)}"; shift 2;;
+    --harness) harness_flag="${2:?--harness needs a value (claude|codex)}"; shift 2;;
     --*) die "up: unknown flag $1";;
     *) cfg_in="$1"; shift;;
   esac; done
+  case "$harness_flag" in ""|claude|codex) ;; *) die "up: --harness must be claude or codex, got '$harness_flag'";; esac
+  # GLOBAL (not local): role_cmd, called below and by every up_* cockpit arm, reads it to thread
+  # --harness onto each role's own `cellctl desk` invocation. Applies to EVERY role window this run
+  # opens, the-desk included — same shape as the model override's own global.
+  HARNESS_OVERRIDE="$harness_flag"
   local cfg; cfg="$(resolve_cfg "$cfg_in")"
   cockpit_want "$cockpit_flag"
   resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC" || die "$COCKPIT_ERR"
@@ -673,6 +827,7 @@ cmd_up(){
   first_window
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
     echo "[dry-run] cell=$CELL kind=$CELL_KIND cockpit=$COCKPIT session=$SESSION config=$cfg"
+    [[ -n "$HARNESS_OVERRIDE" ]] && echo "[dry-run] harness=$HARNESS_OVERRIDE — applied to every role window below"
     echo "[dry-run] $FIRST_NAME: $FIRST_CMD"
     local r
     for r in $roles; do
@@ -975,6 +1130,9 @@ CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
+# The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
+# overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
+CELL_HARNESS=claude
 EOF
     cat > "$d/README.md" <<EOF
 # $cell cell (github) — scaffolded by cellctl
@@ -1025,6 +1183,9 @@ CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
+# The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
+# overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
+CELL_HARNESS=claude
 EOF
     cat > "$d/README.md" <<EOF
 # $cell cell (gitlab) — scaffolded by cellctl
@@ -1094,6 +1255,9 @@ CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
+# The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
+# overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
+CELL_HARNESS=claude
 # No deskd on a house cell. DESKD=1 requires one, as on a k8s cell (then fill bin/deskd,
 # bin/deskcli and a cells-$cell.yaml slice, and stand it with CELL_ATTENDED=1 cellctl deskd $cell).
 DESKD=0
@@ -1121,7 +1285,7 @@ case "${1:-}" in
   ls) cmd_ls ;;
   check) cmd_check "${2:?cell}" "${3:-}" ;;
   deskd) cmd_deskd "${2:?cell}" ;;
-  desk) cmd_desk "${2:?cell}" "${3:-}" "${4:-}" ;;
+  desk) shift; cmd_desk "${1:?cell}" "${@:2}" ;;
   up) shift; cmd_up "${1:?cell}" "${@:2}" ;;
   down) cmd_down "${2:?cell}" "${3:-}" ;;
   new) shift; cmd_new "$@" ;;
