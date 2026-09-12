@@ -18,8 +18,8 @@ import (
 // local, not deskkit's write-tool map: a lint reports clean / problems /
 // could-not-check.
 const (
-	exitClean        = 0
-	exitProblems     = 1
+	exitClean         = 0
+	exitProblems      = 1
 	exitCouldNotCheck = 2
 )
 
@@ -160,6 +160,7 @@ func lintReport(root string, showActivation bool) (string, int) {
 	providers := buildProviders(manifests)
 	problems = append(problems, checkResolution(manifests, providers)...)
 	problems = append(problems, checkCycles(manifests, providers)...)
+	problems = append(problems, checkOutsideLedger(manifests)...)
 
 	exclusiveKeys, exErr := loadExclusiveKeys(root)
 	if exErr != nil {
@@ -590,6 +591,30 @@ func checkCycles(ms []*manifest, providers map[string][]provider) []string {
 		}
 	}
 	sort.Strings(out)
+	return out
+}
+
+// checkOutsideLedger enforces component-model.md §5: an outside apply step
+// MUST write a ledger line naming what it created, so removal can find it
+// later. A step's `ledger:` field is that promise made at manifest time — an
+// outside step with no ledger: value is a defect the lint MUST flag
+// this brief adds, the same way an unresolved inject key is: it is
+// something the manifest alone can already prove is broken, before any
+// install ever runs.
+func checkOutsideLedger(ms []*manifest) []string {
+	var out []string
+	for _, m := range ms {
+		for _, step := range m.Apply {
+			if step.Boundary != "outside" {
+				continue
+			}
+			if strings.TrimSpace(step.Ledger) == "" {
+				out = append(out, fmt.Sprintf(
+					"%s (%s): outside apply step %q has no ledger: value (component-model.md §5 — an outside effect with no ledger line cannot be found for compensation)",
+					m.path, m.Component, step.ID))
+			}
+		}
+	}
 	return out
 }
 

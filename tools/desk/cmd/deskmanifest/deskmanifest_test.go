@@ -234,6 +234,72 @@ inject:
 	}
 }
 
+func TestLint_MissingLedgerOnOutsideStep(t *testing.T) {
+	root := t.TempDir()
+	// Mutation mirroring the ledger-lint Verify row: an outside step with
+	// no ledger: value.
+	writeManifest(t, root, "x", `component: assay/x
+version: 0.28.0
+provides:
+  - assay.x
+inject:
+  required: []
+apply:
+  - id: outside-step
+    effect: create something on the forge
+    boundary: outside
+    compensation: list-for-human
+`)
+	report, code := lint(root)
+	if code != exitProblems {
+		t.Fatalf("missing ledger on outside step exit = %d, want 1; report:\n%s", code, report)
+	}
+	if !strings.Contains(report, "outside-step") || !strings.Contains(report, "assay/x") || !strings.Contains(report, "ledger") {
+		t.Errorf("report must name the step, the component, and mention ledger:\n%s", report)
+	}
+}
+
+func TestLint_OutsideStepWithLedgerIsClean(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "x", `component: assay/x
+version: 0.28.0
+provides:
+  - assay.x
+inject:
+  required: []
+apply:
+  - id: outside-step
+    effect: create something on the forge
+    boundary: outside
+    ledger: thing
+    compensation: list-for-human
+`)
+	_, code := lint(root)
+	if code != exitClean {
+		t.Fatalf("outside step with a ledger: value must be clean; code=%d", code)
+	}
+}
+
+func TestLint_InsideStepNeedsNoLedger(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "x", `component: assay/x
+version: 0.28.0
+provides:
+  - assay.x
+inject:
+  required: []
+apply:
+  - id: inside-step
+    effect: create a local file
+    boundary: inside
+    inverse: remove the local file
+`)
+	_, code := lint(root)
+	if code != exitClean {
+		t.Fatalf("an inside step must never be flagged for a missing ledger:; code=%d", code)
+	}
+}
+
 func TestLint_CouldNotCheckMissingRoot(t *testing.T) {
 	report, code := lint(filepath.Join(t.TempDir(), "does-not-exist"))
 	if code != exitCouldNotCheck {
