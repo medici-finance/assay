@@ -80,12 +80,12 @@ check "brief-v2 key, hyphenated stream" \
   accept 'desktools-go-git/02'
 
 check "brief-v2 key, consumer alias, hyphenated stream" \
-  '<!-- verify-gate: assay:mp:openbao-resilience:03 -->' \
-  accept 'openbao-resilience/03'
+  '<!-- verify-gate: assay:other:some-stream:03 -->' \
+  accept 'some-stream/03'
 
 check "legacy form with trailing letter suffix" \
-  '<!-- verify-gate: dora-restore/01a -->' \
-  accept 'dora-restore/01a'
+  '<!-- verify-gate: example-stream/01a -->' \
+  accept 'example-stream/01a'
 
 check "path traversal payload rejected" \
   '<!-- verify-gate: ../../etc/passwd -->' \
