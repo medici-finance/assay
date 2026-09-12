@@ -138,9 +138,9 @@ if [ "$rc" = 0 ] \
    && [ "$ident" = "credit" ] \
    && grep -q 'no longer drops the last frame' <<<"$out" \
    && grep -q 'thanks @octocat-example' <<<"$out"; then
-  ok "C1 external-authored fragment is credited in the highlights"
+  ok "C1 external-authored fragment: bullets carry the 'thanks @<login>' credit"
 else
-  bad "C1 external-authored fragment is credited (rc: $rc ident=$ident)"; printf '%s\n' "$out"
+  bad "C1 external-authored fragment: no 'thanks @<login>' credit (rc: $rc ident=$ident)"; printf '%s\n' "$out"
 fi
 
 # C2: NEGATIVE CONTROL — a roster-authored fragment is credited to nobody. The
