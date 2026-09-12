@@ -66,7 +66,9 @@ export PATH="$T/bin:$PATH"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
 # A minimal cells.yaml + App PEM for the k8s/github and k8s/gitlab paths.
 printf 'cells: []\n' > "$T/cells.yaml"
-printf -- '-----BEGIN FAKE KEY-----\nfake\n-----END FAKE KEY-----\n' > "$T/app.pem"
+# `cellctl new`'s github path only checks --deskd-app-pem is a non-empty path string (cmd_new
+# never reads the file), so a placeholder with no PEM-shaped content is enough here.
+printf 'placeholder, not a real key\n' > "$T/app.pem"
 
 # ---------------------------------------------------------------- new: all three kinds/forges
 echo "[new: scaffold pin]"
