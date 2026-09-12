@@ -15,6 +15,6 @@ apply:
   - id: skill-body
     effect: install the the-desk skill directory into the harness plugin cache
     boundary: inside
-    inverse: remove the skill directory (TODO composability/02 makes the reverse real)
+    inverse: remove the skill directory from the harness plugin cache
 intercept: []
 config: {}
