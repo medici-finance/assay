@@ -23,13 +23,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // version is an optional bare-`vX.Y.Z` build stamp (`-ldflags -X main.version`).
@@ -673,11 +673,18 @@ func isFullCommitSHA(s string) bool {
 
 // gitTreeReal returns the git tree object id of tools/desk at a ref/sha (read-only).
 func gitTreeReal(ref string) (string, error) {
-	out, err := exec.Command("git", "rev-parse", ref+":tools/desk").Output()
+	// Toplevel-based, not a plain Open("."): the original `git rev-parse <ref>:path`
+	// (no `-C`) resolves from any subdirectory of the repo via git's own upward
+	// search, and gitcore.Open requires an exact repo root.
+	top, err := gitcore.Toplevel(".")
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(out)), nil
+	repo, err := gitcore.Open(top)
+	if err != nil {
+		return "", err
+	}
+	return repo.TreeishID(ref, "tools/desk")
 }
 
 // auditAgeState returns the audit file's first-ts and whether it looks recently reset

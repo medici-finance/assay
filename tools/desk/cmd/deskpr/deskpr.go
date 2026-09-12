@@ -1,12 +1,10 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // deskprStderr is the seam for warnIfConflicting's advisory output. Production writes to
@@ -497,10 +496,11 @@ func cmdUpdate(args []string) (err error) {
 // (exit 5) BEFORE origin/HEAD is consulted, so a missing origin/HEAD can never mask a
 // push to main; a detached HEAD or unreadable origin/HEAD is unverifiable (exit 6).
 func preflight(dir, base string) (*gitFacts, error) {
-	if out, err := git(dir, "rev-parse", "--is-inside-work-tree"); err != nil || out != "true" {
-		return nil, deskkit.Unverifiable("not inside a git worktree", err)
+	gitRepo, gerr := gitcore.Open(dir)
+	if gerr != nil || !gitRepo.InsideWorkTree() {
+		return nil, deskkit.Unverifiable("not inside a git worktree", gerr)
 	}
-	branch, err := git(dir, "rev-parse", "--abbrev-ref", "HEAD")
+	branch, err := gitRepo.AbbrevRefHEAD()
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot resolve current branch", err)
 	}
@@ -519,7 +519,7 @@ func preflight(dir, base string) (*gitFacts, error) {
 	// and every rev-list/diff below aborted exit 128 (#840). The un-shortened target
 	// `refs/remotes/origin/main` is unambiguous by construction, so derive the branch name
 	// AND the base ref from it and use that fully-qualified ref everywhere downstream.
-	defOut, derr := git(dir, "symbolic-ref", "refs/remotes/origin/HEAD")
+	defOut, derr := gitRepo.SymbolicRefTarget("refs/remotes/origin/HEAD")
 	if derr != nil {
 		return nil, deskkit.Unverifiable(
 			"cannot read origin/HEAD (default branch unverifiable) — run `git remote set-head origin --auto`", derr)
@@ -533,7 +533,7 @@ func preflight(dir, base string) (*gitFacts, error) {
 		return nil, deskkit.Refused("refused: on the default branch (" + branch + ")")
 	}
 
-	originURL, oerr := git(dir, "config", "--get", "remote.origin.url")
+	originURL, oerr := gitRepo.RemoteURL("origin")
 	if oerr != nil {
 		return nil, deskkit.Unverifiable("cannot read remote.origin.url", oerr)
 	}
@@ -545,13 +545,12 @@ func preflight(dir, base string) (*gitFacts, error) {
 		return nil, deskkit.Refused("refused: origin " + repo + " is not in the desk-tools repo set")
 	}
 
-	// No staged-but-uncommitted changes: `git diff --cached --quiet` exits 1 when the
-	// index has content not yet committed.
-	if _, serr := git(dir, "diff", "--cached", "--quiet"); serr != nil {
-		if code, ok := exitCode(serr); ok && code == 1 {
-			return nil, deskkit.Refused("refused: staged-but-uncommitted changes — commit them first")
-		}
+	// No staged-but-uncommitted changes: exits 1 (Refused) when the index has content
+	// not yet committed, matching `git diff --cached --quiet`'s exit code.
+	if staged, serr := gitRepo.HasStagedChanges(); serr != nil {
 		return nil, deskkit.Unverifiable("cannot check staged changes", serr)
+	} else if staged {
+		return nil, deskkit.Refused("refused: staged-but-uncommitted changes — commit them first")
 	}
 
 	// Count "commits ahead" against the base the PR will ACTUALLY open against — the
@@ -570,22 +569,23 @@ func preflight(dir, base string) (*gitFacts, error) {
 	// The base must have a resolvable remote-tracking ref. Without this, a missing/
 	// unfetched base ref aborts `git rev-list` at exit 128 and reads as unverifiable — but
 	// we surface it with a precise, actionable message rather than a bare count failure.
-	if _, verr := git(dir, "rev-parse", "--verify", "--quiet", baseRef+"^{commit}"); verr != nil {
+	if ok, verr := gitRepo.CommitVerifyQuiet(baseRef); verr != nil || !ok {
 		return nil, deskkit.Unverifiable(
 			"base ref "+baseRef+" does not resolve — fetch the base branch (`git fetch origin`) first", verr)
 	}
-	cnt, cerr := git(dir, "rev-list", "--count", baseRef+"..HEAD")
+	cnt, cerr := gitRepo.AheadCount(baseRef, "HEAD")
 	if cerr != nil {
 		return nil, deskkit.Unverifiable("cannot count commits ahead of "+baseRef, cerr)
 	}
-	if cnt == "0" {
+	if cnt == 0 {
 		return nil, deskkit.Refused("refused: branch has no commits ahead of " + baseRef)
 	}
 
-	head, herr := git(dir, "rev-parse", "HEAD")
+	headHash, herr := gitRepo.Resolve("HEAD")
 	if herr != nil {
 		return nil, deskkit.Unverifiable("cannot resolve HEAD sha", herr)
 	}
+	head := headHash.String()
 	return &gitFacts{
 		dir: dir, branch: branch, defaultBranch: defaultBranch,
 		defaultRef: defaultRef, repo: repo, head: head,
@@ -621,7 +621,11 @@ func scanWrite(f *gitFacts, title, verb, override string) error {
 	if err := scanWith("branch name", deskkit.ScanSurface, []byte(f.branch)); err != nil {
 		return err
 	}
-	diff, err := git(f.dir, "diff", f.defaultRef+"...HEAD")
+	scanRepo, rerr := gitcore.Open(f.dir)
+	if rerr != nil {
+		return deskkit.Unverifiable("cannot compute diff vs "+f.defaultRef+" for the secret scan", rerr)
+	}
+	diff, err := scanRepo.DiffSymmetric(f.defaultRef, "HEAD", 3)
 	if err != nil {
 		return deskkit.Unverifiable("cannot compute diff vs "+f.defaultRef+" for the secret scan", err)
 	}
@@ -795,7 +799,6 @@ func addedDiffLines(diff string) string {
 	return strings.Join(kept, "\n")
 }
 
-
 // parseRepo extracts owner/name from an https, ssh, or scp-style git remote URL.
 func parseRepo(raw string) (string, error) {
 	u := strings.TrimSpace(raw)
@@ -928,7 +931,6 @@ func readBody(bodyFile, bodyMin string) ([]byte, error) {
 	return b, nil
 }
 
-
 func isDefaultName(branch string) bool { return branch == "main" || branch == "master" }
 
 func shortSHA(sha string) string {
@@ -936,14 +938,6 @@ func shortSHA(sha string) string {
 		return sha[:8]
 	}
 	return sha
-}
-
-func exitCode(err error) (int, bool) {
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
-		return ee.ExitCode(), true
-	}
-	return 0, false
 }
 
 // splitOwnerRepo splits "owner/name" into its components.

@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 const usage = `deskscanbody — derive the issue-loop scan PR title/body from the branch diff.
@@ -218,15 +219,25 @@ func cmdCheck(args []string, out *os.File) error {
 // A git failure is ExitUnverifiable (could-not-check), never an empty-diff "clean":
 // zero created / zero retired is a real answer only when git actually answered.
 func derive(c *commonFlags) (deskkit.ScanCounts, string, error) {
-	mb, err := gitOut("merge-base", c.base, "HEAD")
+	repo, err := gitcore.Open(".")
+	if err != nil {
+		return deskkit.ScanCounts{}, "", deskkit.Unverifiable("could-not-check: not a git repository", err)
+	}
+	mb, err := repo.MergeBase(c.base, "HEAD")
 	if err != nil {
 		return deskkit.ScanCounts{}, "", deskkit.Unverifiable(
 			"could-not-check: cannot resolve the merge-base of "+c.base+" and HEAD", err)
 	}
-	diff, err := gitOut("diff", "-U0", "-M", "--no-color", mb, "HEAD", "--", c.dir)
+	// Repo-wide (no `-- <dir>` pathspec): ParseScanDiff already filters every diff
+	// block to paths under c.dir ending in .md (scanCountable), so a repo-wide diff
+	// and a path-scoped one feed it the same countable set — this is simpler than
+	// reproducing git's pathspec filtering in gitcore, and its rename detection is at
+	// least as thorough (a pathspec can otherwise miss a rename whose OLD path falls
+	// outside it).
+	diff, err := repo.Diff(mb, "HEAD", 0)
 	if err != nil {
 		return deskkit.ScanCounts{}, "", deskkit.Unverifiable(
-			"could-not-check: cannot take the diff of "+mb+"..HEAD -- "+c.dir, err)
+			"could-not-check: cannot take the diff of "+mb+"..HEAD", err)
 	}
 	return deskkit.ParseScanDiff(diff, c.dir), mb, nil
 }

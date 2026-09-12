@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // roleinit.go adds two verbs that provision and tear down a DESK ROLE's own git worktree in
@@ -246,7 +247,8 @@ func parseRoleParams(verb string, args []string) (roleInitParams, error) {
 // unverifiable (exit 6), never "assume the cwd".
 func roleRepoDir(p roleInitParams) (string, error) {
 	if p.repoRoot != "" {
-		if out, err := runGit(p.repoRoot, "rev-parse", "--is-inside-work-tree"); err != nil || out != "true" {
+		repo, err := gitcore.Open(p.repoRoot)
+		if err != nil || !repo.InsideWorkTree() {
 			return "", deskkit.Unverifiable("--repo-root "+p.repoRoot+" is not inside a git worktree", err)
 		}
 		return p.repoRoot, nil
@@ -376,7 +378,11 @@ func cmdRoleInit(args []string) (err error) {
 	if aerr := checkBaseUnambiguous(dir, "origin/main"); aerr != nil {
 		return aerr
 	}
-	if _, verr := runGit(dir, "rev-parse", "--verify", "--quiet", "origin/main^{commit}"); verr != nil {
+	roleInitRepo, rierr := gitcore.Open(dir)
+	if rierr != nil {
+		return deskkit.Unverifiable("refused: origin/main does not resolve to a commit", rierr)
+	}
+	if ok, verr := roleInitRepo.CommitVerifyQuiet("origin/main"); verr != nil || !ok {
 		return deskkit.Unverifiable("refused: origin/main does not resolve to a commit", verr)
 	}
 
@@ -389,7 +395,7 @@ func cmdRoleInit(args []string) (err error) {
 	// If the branch already exists (its worktree was removed but the branch left behind),
 	// attach the worktree to it; otherwise create a new branch tracking origin/main. Either
 	// way the worktree ends up on <branch>, which tracks origin/main.
-	if _, brErr := runGit(dir, "rev-parse", "--verify", "--quiet", "refs/heads/"+p.branch); brErr == nil {
+	if brOK, brErr := roleInitRepo.CommitVerifyQuiet("refs/heads/" + p.branch); brErr == nil && brOK {
 		if _, aerr := runGit(dir, "worktree", "add", p.target, p.branch); aerr != nil {
 			return deskkit.Unverifiable("git worktree add (existing branch "+p.branch+") failed", aerr)
 		}
@@ -479,22 +485,27 @@ func cmdRoleClean(args []string) (err error) {
 	if dirtyOut != "" {
 		return deskkit.Refused("refused: role worktree has uncommitted TRACKED changes — commit or discard them first:\n" + dirtyOut)
 	}
-	branch, berr := runGit(rt, "rev-parse", "--abbrev-ref", "HEAD")
+	roleRemoveRepo, rrerr := gitcore.Open(rt)
+	if rrerr != nil {
+		return deskkit.Unverifiable("cannot resolve the worktree's branch", rrerr)
+	}
+	branch, berr := roleRemoveRepo.AbbrevRefHEAD()
 	if berr != nil {
 		return deskkit.Unverifiable("cannot resolve the worktree's branch", berr)
 	}
 	if branch == "HEAD" || branch == "" {
 		return deskkit.Refused("refused: role worktree is in detached HEAD (no upstream to prove pushed) — refusing to remove")
 	}
-	if _, uerr := runGit(rt, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"); uerr != nil {
+	upstream, uerr := roleRemoveRepo.UpstreamRef()
+	if uerr != nil {
 		return deskkit.Refused("refused: branch " + branch + " has no upstream (cannot prove its commits are pushed) — refusing to remove")
 	}
-	ahead, aerr := runGit(rt, "rev-list", "--count", "@{u}..HEAD")
+	ahead, aerr := roleRemoveRepo.AheadCount(upstream, "HEAD")
 	if aerr != nil {
 		return deskkit.Unverifiable("cannot count unpushed commits", aerr)
 	}
-	if ahead != "0" {
-		return deskkit.Refused("refused: branch " + branch + " has " + ahead + " unpushed commit(s) ahead of its upstream — refusing to remove")
+	if ahead != 0 {
+		return deskkit.Refused(fmt.Sprintf("refused: branch %s has %d unpushed commit(s) ahead of its upstream — refusing to remove", branch, ahead))
 	}
 
 	// UNLOCK before removing: removeWorktreeDir does os.RemoveAll + `git worktree prune`, and

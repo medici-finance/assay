@@ -1,0 +1,10 @@
+### Changed
+- desktools-go-git/03: migrated the read/plumbing git seams of `writeguard`, `desksourceguard`, `deskboard`, `deskscanbody`, `deskwt`, `deskgit`, `deskpr`, and `deskreply` (plus `deskkit`'s preflight probe reads) off the `git` binary onto in-process `gitcore` (go-git) — `rev-parse`, `symbolic-ref`, `for-each-ref`, `merge-base`/`is-ancestor`, `rev-list --count`, `diff` (including rename detection), and `remote get-url`/`ls-remote --get-url`. The tracked git-exec counter drops from 149 to 108 sites, below brief-01's recorded baseline of 117.
+- `internal/gitcore` gained read helpers this migration needed: `Toplevel`/`CommonDir` (worktree/common-dir discovery), `AbbrevRefHEAD`/`SymbolicRefShortHEAD`/`SymbolicRefTarget`, `UpstreamRef`/`AheadCount`, `RemoteURL`, `CommitVerifyQuiet`, `HasStagedChanges`, `DirtyTrackedPorcelain`, `Diff`/`DiffSymmetric` (full unified diff, rename-aware), `TreeishID`, `LocalBranchNames`, and `RefsContaining`.
+
+### Fixed
+- `internal/gitcore.Open` now tolerates `extensions.worktreeConfig` (a go-git v5.19.2 bug lowercases the extension name before checking its own mixed-case allowlist, so it wrongly refused to open almost every worktree in this house — every one this tooling provisions sets that extension) and correctly routes a linked worktree's reads through its shared common `.git` for remotes/branches/objects, not just the per-worktree admin directory.
+
+### Not migrated (documented, deliberate)
+- `deskwt`'s ambiguous-base ref-candidate enumeration (`ambiguousbase.go`) stays on the git binary: `gitcore`'s ref iteration does not surface a symbolic ref such as `refs/remotes/<name>/HEAD`, and that guard must see every real candidate to avoid under-reporting a genuine ambiguity.
+- `git config --get`/`--list` reads stay on the git binary everywhere except `remote.<name>.url`: go-git's `Repository.Config()` does not merge a worktree-scoped `config.worktree` file, and this house's own tooling sets `user.name`/`user.email` at exactly that scope for per-worktree bot identity.

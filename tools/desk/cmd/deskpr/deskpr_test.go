@@ -1080,23 +1080,14 @@ func TestCreateNonDefaultBaseCountsAgainstThatBase(t *testing.T) {
 	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
 		t.Fatalf("expected `gh pr create --draft`; gh calls: %v", ghCalls(*calls))
 	}
-	// The ahead-count must have been taken against the --base's remote ref, never origin/main.
-	countedAgainstBase := false
-	for _, c := range gitCalls(*calls) {
-		if len(c) >= 2 && c[1] == "rev-list" {
-			for _, a := range c[2:] {
-				if a == "refs/remotes/origin/stacked-base..HEAD" {
-					countedAgainstBase = true
-				}
-				if a == "refs/remotes/origin/main..HEAD" {
-					t.Fatalf("ahead-count was taken against origin/main, not the --base: %v", c)
-				}
-			}
-		}
-	}
-	if !countedAgainstBase {
-		t.Fatalf("no `git rev-list --count refs/remotes/origin/stacked-base..HEAD` was issued; git calls: %v", gitCalls(*calls))
-	}
+	// The ahead-count must have been taken against the --base's remote ref, never
+	// origin/main — proven by OUTCOME (brief 03: the count is computed in-process via
+	// gitcore, not a `git rev-list` subprocess, so there is no argv to sniff for it
+	// any more). The precondition above pins HEAD at exactly 0 commits ahead of
+	// origin/main and exactly 1 ahead of origin/stacked-base: had preflight() counted
+	// against origin/main instead of the --base, "0 commits ahead" would have refused
+	// the create outright (exit 5) rather than succeeding, so the rc==0 assertion
+	// above is already the fail-capable proof that the RIGHT base was counted against.
 }
 
 func TestCreateKillSwitchDisabled(t *testing.T) {
