@@ -6,11 +6,11 @@ provides:
   - assay.desk.role.pr-shepherd
 inject:
   required:
+    - key: assay.harness
     - key: assay.desk.verbs
       range: ">=0.20.0 <1.0.0"
     - key: assay.roster.trust
   optional:
-    - key: assay.harness
     - key: assay.reviewer-identity
 apply:
   - id: skill-body

@@ -5,9 +5,9 @@ version: 0.28.0
 provides:
   - assay.skill.pdfingest
 inject:
-  required: []
-  optional:
+  required:
     - key: assay.harness
+  optional: []
 apply:
   - id: skill-body
     effect: install the pdfingest skill directory into the harness plugin cache

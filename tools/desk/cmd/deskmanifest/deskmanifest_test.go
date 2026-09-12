@@ -253,6 +253,168 @@ func TestLint_EmptyTreeIsCleanNotCouldNotCheck(t *testing.T) {
 	}
 }
 
+// writeKeysMD drops a components/KEYS.md at root, the catalogue deskmanifest
+// reads exclusive-key declarations from (§9).
+func writeKeysMD(t *testing.T, root, body string) {
+	t.Helper()
+	dir := filepath.Join(root, "components")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "KEYS.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestLint_ExclusiveKeyTwoActiveProvidersIsProblem mirrors brief-04's Verify
+// row 5: one adapter is clean; marking a second adapter installed (its
+// component.yaml exists, so it is an ACTIVE provider of the exclusive key)
+// is a PROBLEM naming both; removing it restores clean.
+func TestLint_ExclusiveKeyTwoActiveProvidersIsProblem(t *testing.T) {
+	root := t.TempDir()
+	writeKeysMD(t, root, "`assay.harness` is `exclusive: true` in this fixture.\n")
+	writeManifest(t, root, "harness-claude-code", `component: assay/harness-claude-code
+version: 0.28.0
+provides:
+  - key: assay.harness
+    flavour: claude-code
+inject:
+  required: []
+apply: []
+`)
+
+	if report, code := lint(root); code != exitClean {
+		t.Fatalf("single adapter exit = %d, want 0 (clean); report:\n%s", code, report)
+	}
+
+	// Mutation: mark a second adapter installed.
+	writeManifest(t, root, "harness-codex", `component: assay/harness-codex
+version: 0.28.0
+provides:
+  - key: assay.harness
+    flavour: codex
+inject:
+  required: []
+apply: []
+`)
+	report, code := lint(root)
+	if code != exitProblems {
+		t.Fatalf("two ACTIVE providers exit = %d, want 1; report:\n%s", code, report)
+	}
+	if !strings.Contains(report, "assay.harness has 2 ACTIVE providers") {
+		t.Errorf("report must name the exclusivity violation:\n%s", report)
+	}
+
+	// Restore.
+	if err := os.RemoveAll(filepath.Join(root, "harness-codex")); err != nil {
+		t.Fatal(err)
+	}
+	if report, code := lint(root); code != exitClean {
+		t.Fatalf("restored tree exit = %d, want 0; report:\n%s", code, report)
+	}
+}
+
+// TestLint_ActivationFlavourMismatchReportsInactive mirrors brief-04's Verify
+// row 6: a codex-only adapter present, hooks requiring flavour claude-code —
+// exit 0 (INACTIVE is a legitimate state, not a problem), and --activation
+// lists hooks INACTIVE with the flavour mismatch named.
+func TestLint_ActivationFlavourMismatchReportsInactive(t *testing.T) {
+	root := t.TempDir()
+	writeKeysMD(t, root, "`assay.harness` is `exclusive: true` in this fixture.\n")
+	writeManifest(t, root, "harness-codex", `component: assay/harness-codex
+version: 0.28.0
+provides:
+  - key: assay.harness
+    flavour: codex
+inject:
+  required: []
+apply: []
+`)
+	writeManifest(t, root, "hooks", `component: assay/hooks
+version: 0.28.0
+provides:
+  - assay.hooks.session-start
+inject:
+  required:
+    - key: assay.harness
+      flavour: claude-code
+apply: []
+`)
+	report, code := lintReport(root, true)
+	if code != exitClean {
+		t.Fatalf("a flavour mismatch alone is INACTIVE, not a PROBLEM; exit = %d, want 0; report:\n%s", code, report)
+	}
+	if !strings.Contains(report, "assay/hooks: INACTIVE — assay.harness flavour codex ≠ claude-code") {
+		t.Errorf("report must list hooks INACTIVE with the flavour mismatch reason:\n%s", report)
+	}
+}
+
+// TestLint_EvidenceMarkerGatesActivation exercises the `evidence` provider
+// attribute this brief adds: a provider is ACTIVE only while its named marker
+// file exists under root — before the desired-state record (§7, planned)
+// exists, this is how "the presence of exactly one adapter's installed shape
+// selects the binding" (component-model.md §9) is decided today.
+func TestLint_EvidenceMarkerGatesActivation(t *testing.T) {
+	root := t.TempDir()
+	writeKeysMD(t, root, "`assay.harness` is `exclusive: true` in this fixture.\n")
+	writeManifest(t, root, "harness-claude-code", `component: assay/harness-claude-code
+version: 0.28.0
+provides:
+  - key: assay.harness
+    flavour: claude-code
+    evidence: .claude-plugin/marketplace.json
+inject:
+  required: []
+apply: []
+`)
+	writeManifest(t, root, "harness-codex", `component: assay/harness-codex
+version: 0.28.0
+provides:
+  - key: assay.harness
+    flavour: codex
+    evidence: AGENTS.md
+inject:
+  required: []
+apply: []
+`)
+	// Neither marker exists yet: both adapters are INACTIVE, no exclusivity
+	// problem (0 ACTIVE providers is not "more than one").
+	report, code := lintReport(root, true)
+	if code != exitClean {
+		t.Fatalf("no markers present exit = %d, want 0; report:\n%s", code, report)
+	}
+	if !strings.Contains(report, "assay/harness-claude-code: INACTIVE") || !strings.Contains(report, "assay/harness-codex: INACTIVE") {
+		t.Errorf("both adapters must report INACTIVE with no evidence marker present:\n%s", report)
+	}
+
+	// Only the claude-code marker exists: exactly one ACTIVE provider, clean.
+	if err := os.MkdirAll(filepath.Join(root, ".claude-plugin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".claude-plugin", "marketplace.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report, code = lintReport(root, true)
+	if code != exitClean {
+		t.Fatalf("one marker present exit = %d, want 0; report:\n%s", code, report)
+	}
+	if !strings.Contains(report, "assay/harness-claude-code: ACTIVE") {
+		t.Errorf("claude-code adapter must report ACTIVE once its marker exists:\n%s", report)
+	}
+
+	// Both markers exist: two ACTIVE providers of an exclusive key, PROBLEM.
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("# AGENTS"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report, code = lint(root)
+	if code != exitProblems {
+		t.Fatalf("both markers present exit = %d, want 1; report:\n%s", code, report)
+	}
+	if !strings.Contains(report, "assay.harness has 2 ACTIVE providers") {
+		t.Errorf("report must name the exclusivity violation once both markers exist:\n%s", report)
+	}
+}
+
 func TestSatisfies(t *testing.T) {
 	cases := []struct {
 		version, rng string
