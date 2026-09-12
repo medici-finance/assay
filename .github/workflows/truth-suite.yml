@@ -22,13 +22,6 @@ name: truth-suite
 # not pin the tarball), this suite verifies it against GO_SHA256 before unpacking, same
 # as release.yml — this is the suite CI's own coverage claims rest on, so it establishes
 # trust in its toolchain rather than matching ci.yml's parity claim on that one point.
-#
-# ── STAGED, PENDING HUMAN PROMOTION ──
-# This file is authored in the PR but STAGED at ci/staged-workflows/ rather than
-# .github/workflows/: no bot/App holds workflow-push permission (a deliberate security
-# boundary — see ci/staged-workflows/README.md), so a maintainer promotes it to
-# .github/workflows/truth-suite.yml to activate it. Until then it runs nowhere, which is
-# expected — the artifact is the deliverable here, not a run.
 
 on:
   push:
