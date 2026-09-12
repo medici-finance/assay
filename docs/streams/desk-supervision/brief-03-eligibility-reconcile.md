@@ -114,6 +114,31 @@ happy path regresses" → row 7. Review-only: the exact label set that counts as
      (command, exit code, output line(s) or hash, date, runner).
      "verified" status in the stream README requires this section filled
      by someone who did NOT implement. -->
+### Non-implementer verifier run — 2026-09-11 sonnet-5-verifier (verify-desk dispatch), offline — **VERIFY: PASS — first pass, one finding for reviewer judgment**
+
+Pin: `medici-finance/assay` main `86c7d62c8081189147baf37424b602f907b139aa` (git rev-parse == gh api commits/main). Fresh clone. `gate: model`, `risk {all no}`, `irreversible: no`.
+
+| # | Result |
+|---|---|
+| 1 | PASS — `ok`, 15/15 subtests green |
+| 2 | PASS — `INELIGIBLE(pr-merged)` + `action=STOP+RELEASE` both present |
+| 3 | PASS — `INELIGIBLE(pr-closed)` present |
+| 4 | PASS — `INELIGIBLE(board-row-implemented)` matches `INELIGIBLE(board-row-` |
+| 5 | PASS — `INELIGIBLE(needs-decision)`, `action=STOP`, `RELEASE` absent |
+| 6 | PASS — `BLIND(pr)` present, `rc=6`, neither `INELIGIBLE` nor `STOP` appear |
+| 7 | PASS — `ALIVE` present, `INELIGIBLE` absent |
+| 8 | PASS — grep count 3; substantive mention describing the mechanical backstop |
+| 9 | COULD-NOT-CHECK — same tool-wide gap as apps-installer/01 (`#822`): the `<stream>/<NN>` id form errors `no brief-v1 file`; the colon form runs but reports could-not-check on a fully-merged main with no open diff. Not an implementation defect. |
+
+**Substance checks (traced code, not just names):**
+1. Read order genuinely cheapest-first with short-circuit (claim → board row → PR), confirmed in `reconcile.go` and by `TestReconcile_ClaimCheckedFirst`/`TestReconcile_BoardCheckedBeforePR`.
+2. Fail-open on could-not-check confirmed: all three readers wrap any error as `*BlindError` and return immediately, never a guessed verdict; `desksupervise`'s tick treats any `*BlindError` as keep-running + exit 6.
+3. Terminal-vs-held routing confirmed correct per the brief's stated facts: released claim/merged-or-closed-PR/inactive-board-row → Terminal; reassigned claim/`blocked` board-row/`SUPERSEDED`-or-`RESOLVED-ELSEWHERE`/`needs-decision`-or-`question` label → Held.
+4. **Finding, not a blocker — for the reviewer's explicit judgment.** Built an adversarial fixture where the board-row reader succeeds (no error) but returns an unrecognized status string (`"cancelled"`, not `todo`/`in-progress`/`blocked`/a known terminal value). Result: the code routes this to `IneligibleTerminal("board-row-cancelled")` — **STOP+RELEASE fires**, the highest-consequence action in the whole reconciliation path, triggered by a data-quality/parsing anomaly with NO error signal. This is arguably correct per the brief's literal facts ("board row not in an active status ⇒ ineligible, terminal") and the code's own documented rationale (a comment states an unclassifiable token reads as ineligible, not a pass-through), but it sits in tension with the three-state philosophy the brief invokes for every actual READ failure — a genuine read error is fail-open (BLIND), but an unrecognized-but-successfully-read status is fail-closed (terminal). No existing test exercises this specific path. **Filing budget on this repo was exhausted when I tried to open a separate tracking issue** (3/24h cap already spent by this session's fan-out) — recording the finding here and in the PR body instead, per the brief's own Review section inviting exactly this kind of reviewer judgment call ("the exact label set that counts as held" is explicitly review-only).
+
+`RISK-VALUE: DERIVED` — STOP+RELEASE (merged/closed PR, inactive board row incl. unrecognized status, released claim), STOP-only (SUPERSEDED/RESOLVED-ELSEWHERE, needs-decision/question label, blocked board row, reassigned claim), and BLIND-keep-running (any reader error) are all traced to source and confirmed by passing tests, directly implementing the brief's stated facts and the cited Symphony SPEC §8.5 rule. The one sub-case not explicitly named in the brief's facts list (unrecognized-status → terminal) is a documented design choice in the code, not an unexplained gap — flagged above for reviewer sign-off.
+
+**VERIFY: PASS.** All 8 executable rows pass; row 9 is the same tracked tool-wide gap as other briefs. Flip-eligible (`gate: model`, `risk: {all no}`, `irreversible: no`) — the one substantive finding is a review-note the brief's own Review section anticipates, not a defect blocking the flip.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
