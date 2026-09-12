@@ -25,14 +25,26 @@
 #                                                precondition for the OTHER kind/forge is reported n/a or MISS,
 #                                                never silently skipped
 #   cellctl deskd <cell>                         stand the cell's persistent deskd (attended: mints per-org read tokens)
-#   cellctl desk  <cell> <role> [CLAUDE_CONFIG_DIR]   one role window (own worktree, real HOME, shims)
+#   cellctl desk  <cell> <role> [--model <m>] [--set] [CLAUDE_CONFIG_DIR]   one role window (own worktree,
+#                                                real HOME, shims). --model overrides the cell.env pin for
+#                                                THIS run only (wins over DESK_MODEL_<role> and
+#                                                DESK_MODEL_DEFAULT); DESK_MODEL_OVERRIDE is the equivalent
+#                                                env form for wrappers. --set persists the override into
+#                                                cell.env instead of (as well as) applying it for one run —
+#                                                sugar for `--model <m>` + `cellctl set <cell> DESK_MODEL_<role>=<m>`.
+#                                                The the-desk Opus refusal (see refuse_opus_for_the_desk below)
+#                                                applies to an override exactly as it does to a pin — it is
+#                                                not an escape hatch from that rule.
 #   cellctl up    <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca]
-#                        [--automate '<cron>'] [CLAUDE_CONFIG_DIR]
+#                        [--automate '<cron>'] [--model <m>] [CLAUDE_CONFIG_DIR]
 #                                                one window per role in the resolved COCKPIT: a tmux session
 #                                                "<cell>-cell", a labelled herdr tab per role, or an orca
 #                                                terminal per role (deskd + the-desk + the loop roles; a house
 #                                                cell opens no deskd window unless DESKD=1).
 #                                                --cockpit overrides cell.env CELL_COCKPIT for this run.
+#                                                --model overrides the model pin for EVERY role window this
+#                                                run opens (same per-run, not persisted, precedence as
+#                                                `cellctl desk --model`; no per-role `--model-<role>` form).
 #                                                --automate '<cron>' is an ORCA-only shape: one scheduled
 #                                                automation per role, fronted by an exit-code precheck, instead
 #                                                of a live terminal.
@@ -42,11 +54,25 @@
 #                                                tear the session (and this cell's deskd) down; what `up` opened
 #                                                in a non-tmux cockpit is closed where that cockpit offers a verb
 #                                                for it, and named for you to close by hand where it does not
+#   cellctl set   <cell> KEY=VALUE [KEY=VALUE...] [--force]
+#                                                persist a change into <cell>/cell.env in place — rewrites an
+#                                                existing KEY= line or appends a new one, comment lines and
+#                                                ordering otherwise untouched. Writes one backup
+#                                                (cell.env.bak-<ts>) before the first edit, refuses a KEY that
+#                                                is not a known cell.env key unless --force, prints each
+#                                                key's before/after value, and applies the same the-desk/Opus
+#                                                refusal to DESK_MODEL_the_desk.
 #
 # Models are PINNED per role, never the CLI default: cell.env sets DESK_MODEL_DEFAULT (every role)
 # and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the_desk=fable). Values are what
 # `claude --model` accepts (fable | opus | sonnet | haiku | a full model id). the-desk is the one
 # role `cellctl desk`/`cellctl check` refuse to pin to Opus — see refuse_opus_for_the_desk below.
+# `cellctl desk`/`up --model <m>` (or DESK_MODEL_OVERRIDE in the environment) overrides the resolved
+# pin for one run without touching cell.env; `cellctl set` (or `desk ... --model <m> --set`) is the
+# form that edits cell.env. `cellctl check` is never affected by an override — it reports what a
+# plain boot with no --model would resolve to. `--model` changes the model NAME only: a
+# non-Anthropic model still needs ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN set in the launching
+# shell, which cellctl inherits and does not manage.
 #
 # A cell directory holds:
 #   cell.env            the per-cell variables (written by `cellctl new`)
@@ -261,15 +287,17 @@ cockpit_want(){
 }
 
 # role_cmd <role> <cfg> — the one command a role window runs, identical in every cockpit.
-# `up_provider` is read via bash's dynamic scoping (a `local` set by `cmd_up`, visible to every
-# function it calls, this one included) rather than a third parameter — every cockpit arm below
-# builds this string through several layers of function calls, and threading one more positional
-# through all of them for a value that is the SAME for every role in one `up` run would be pure
-# plumbing. `up_provider` is never set outside `cmd_up`'s call tree, so a call to `role_cmd` from
-# `cmd_desk` itself (there is none today) would just see it unset, same as any other role_cmd caller.
+# $MODEL_OVERRIDE (cmd_up's own --model) and $up_provider (cmd_up's own --provider) are GLOBALS
+# `cmd_up` sets (never `local`) rather than extra positionals — every cockpit arm below builds
+# this string through several layers of function calls, and threading two more positionals
+# through all of them for values that are the SAME for every role in one `up` run would be pure
+# plumbing. Both are unset outside a `cmd_up` run, so a call to `role_cmd` from elsewhere sees them
+# unset too.
 role_cmd(){
-  local out; out="$(printf "'%s' desk '%s' '%s' '%s'" "$SELF" "$CELL" "$1" "$2")"
+  local out; out="$(printf "'%s' desk '%s' '%s'" "$SELF" "$CELL" "$1")"
+  [[ -n "${MODEL_OVERRIDE:-}" ]] && out="$out --model '$MODEL_OVERRIDE'"
   [[ -n "${up_provider:-}" ]] && out="$out --provider '$up_provider'"
+  out="$out '$2'"
   printf '%s' "$out"
 }
 
@@ -324,6 +352,95 @@ resolve_provider(){
   [[ -n "$PROVIDER_TOKEN_VAL" ]] || die "provider '$name': \$$PROVIDER_TOKEN_ENV (named by $token_var) is not set in this shell — export it before running cellctl, cellctl does not manage credential values"
 }
 
+# ---------------------------------------------------------------- cellctl set
+# The cell.env keys `cellctl set` recognises without --force. Fixed keys plus the DESK_MODEL_<role>
+# and CELL_PROVIDER_<NAME>_{BASE_URL,TOKEN_ENV} families (a typo'd role or provider name is
+# refused rather than silently scaffolding a variable no role/provider ever reads).
+CELL_ENV_KNOWN_KEYS="CELL CELL_KIND CELL_ROOTS CELL_COCKPIT DESKD CELL_FORGE CELL_REPO CELLS_CONFIG \
+FORGE_API_BASE DESKD_ADDR DESKD_INDEX DESKD_APP_PEM DESKD_APP_ID_VAR ORGS GITLAB_GROUP \
+GITLAB_API_BASE GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE ROLES DESK_MODEL_DEFAULT TMUX_SESSION \
+CELL_PROVIDER"
+
+# known_cell_env_key <key>: the fixed list above, DESK_MODEL_<role> for one of the five roles
+# (role name with `-` as `_` — the same family `cmd_desk` resolves DESK_MODEL_<role> from), or
+# CELL_PROVIDER_<NAME>_BASE_URL / CELL_PROVIDER_<NAME>_TOKEN_ENV for any provider name (the family
+# `resolve_provider` reads — the name itself is operator-chosen, so any shape is accepted here).
+known_cell_env_key(){
+  local k="$1" w r
+  for w in $CELL_ENV_KNOWN_KEYS; do [[ "$k" == "$w" ]] && return 0; done
+  case "$k" in
+    DESK_MODEL_*)
+      r="${k#DESK_MODEL_}"
+      for w in $ROLES_DEFAULT; do [[ "$r" == "${w//-/_}" ]] && return 0; done
+      ;;
+    CELL_PROVIDER_*_BASE_URL|CELL_PROVIDER_*_TOKEN_ENV) return 0 ;;
+  esac
+  return 1
+}
+
+# validate_env_key <key> <value> <force> — everything that can be checked WITHOUT touching the
+# file: the key is a shell-identifier shape, is a known cell.env key unless force=1, and (for
+# DESK_MODEL_the_desk specifically) is not an Opus pin. Split out of set_env_key so a multi-key
+# `cellctl set` can validate every KEY=VALUE before writing the backup or touching the file —
+# a refusal on key 2 of 3 must leave cell.env exactly as it found it.
+validate_env_key(){
+  local key="$1" value="$2" force="$3"
+  [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "set: '$key' is not a valid KEY (letters, digits, underscore; must not start with a digit)"
+  if [[ "$force" != "1" ]]; then
+    known_cell_env_key "$key" || die "set: '$key' is not a known cell.env key — pass --force to set it anyway"
+  fi
+  [[ "$key" == "DESK_MODEL_the_desk" ]] && refuse_opus_for_the_desk "$value"
+  return 0
+}
+
+# set_env_key <envfile> <key> <value> <force> — the single-key rewrite/append `cmd_set` and
+# `cmd_desk --set` both call, after validate_env_key has already passed. Prints the before/after
+# value. The rewrite is line-for-line: an existing `KEY=...` line (not a `#`-commented one) is
+# replaced in place so comments and ordering are untouched; a key with no active line is appended.
+set_env_key(){
+  local envfile="$1" key="$2" value="$3" force="$4"
+  validate_env_key "$key" "$value" "$force"
+  local before=""
+  grep -qE "^${key}=" "$envfile" && before="$(grep -E "^${key}=" "$envfile" | head -n1)" && before="${before#*=}"
+  if grep -qE "^${key}=" "$envfile"; then
+    awk -v k="$key" -v v="$value" -F'=' '$1==k && !r {print k"="v; r=1; next} {print}' "$envfile" > "$envfile.cellctl-set.tmp"
+    mv "$envfile.cellctl-set.tmp" "$envfile"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$envfile"
+  fi
+  echo "[set] $key: ${before:-<unset>} -> $value"
+}
+
+cmd_set(){
+  local cell="${1:?cellctl set <cell> KEY=VALUE [KEY=VALUE...] [--force]}"; shift || true
+  local d; d="$(cell_dir "$cell")"; d="$(cd "$d" && pwd)"
+  local envfile="$d/cell.env"
+  local force=0
+  local -a kvs=()
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --force) force=1; shift;;
+    --*) die "set: unknown flag $1";;
+    *=*) kvs+=("$1"); shift;;
+    *) die "set: '$1' is not KEY=VALUE";;
+  esac; done
+  [[ ${#kvs[@]} -gt 0 ]] || die "set: at least one KEY=VALUE is required (cellctl set <cell> KEY=VALUE [...])"
+  local kv key value
+  # Pass 1: validate every KEY=VALUE — a refusal here touches nothing.
+  for kv in "${kvs[@]}"; do
+    key="${kv%%=*}"; value="${kv#*=}"
+    validate_env_key "$key" "$value" "$force"
+  done
+  # Pass 2: one backup, then apply each in order.
+  local ts; ts="$(date -u +%Y%m%dT%H%M%SZ)"
+  local backup="$envfile.bak-$ts"
+  cp "$envfile" "$backup"
+  echo "[set] backup written: $backup"
+  for kv in "${kvs[@]}"; do
+    key="${kv%%=*}"; value="${kv#*=}"
+    set_env_key "$envfile" "$key" "$value" "$force"
+  done
+}
+
 gen_shims(){
   mkdir -p "$CELL_DIR/shim"
   local b n
@@ -370,6 +487,9 @@ cmd_check(){
   chk "forge endpoint ($CELL_FORGE): $FORGE_API_BASE" '[[ -n "$FORGE_API_BASE" ]]'
   # the-desk's resolved model, same precedence cmd_desk uses (DESK_MODEL_the_desk, else
   # DESK_MODEL_DEFAULT). An Opus pin is a MISS with the same refusal `cellctl desk` would print.
+  # `check` is deliberately never affected by --model / DESK_MODEL_OVERRIDE: it has no --model flag
+  # and does not read DESK_MODEL_OVERRIDE, so this row reports what a plain boot (no override)
+  # would resolve to, not the value a would-be override run would launch on.
   local the_desk_model="${DESK_MODEL_the_desk:-$DESK_MODEL_DEFAULT}"
   if is_opus_pin "$the_desk_model"; then
     chk "the-desk model: the-desk runs on the top tier; an Opus pin is refused for the coordinator — resolved DESK_MODEL_the_desk=$the_desk_model (from DESK_MODEL_the_desk or DESK_MODEL_DEFAULT); set DESK_MODEL_the_desk=fable (or another non-Opus id) in cell.env" 'false'
@@ -581,21 +701,31 @@ worktree_via_deskwt(){
 }
 
 cmd_desk(){
-  load_cell "$1"; shift
-  # <role> and [CLAUDE_CONFIG_DIR] are positional, in that order; --provider may appear anywhere
-  # after them (the same "flags interleave with positionals" convention `cmd_up`/`cmd_down` use).
-  local role="" cfg_in="" provider=""
+  local usage_msg="cellctl desk <cell> <role> [--model <m>] [--set] [--provider <name>] [CLAUDE_CONFIG_DIR]"
+  local cell="${1:?$usage_msg}"; shift || true
+  local role="${1:?$usage_msg}"; shift || true
+  load_cell "$cell"
+  case "$role" in intake-desk|worker-desk|pr-review-desk|verify-desk|the-desk) ;; *) die "unknown role '$role'";; esac
+  # --model overrides the cell.env pin for THIS run only — it wins over DESK_MODEL_<role> and
+  # DESK_MODEL_DEFAULT below, but never touches cell.env. DESK_MODEL_OVERRIDE is the equivalent
+  # env form for a wrapper that cannot pass a flag; an explicit --model wins when both are given.
+  # --set is the sugar that ALSO persists it (`cellctl set <cell> DESK_MODEL_<role>=<m>`) — it
+  # needs a value to persist, so it is refused without --model/DESK_MODEL_OVERRIDE. --provider
+  # switches the ENDPOINT and CREDENTIAL a non-Anthropic model needs (--model only changes the
+  # model NAME) — see resolve_provider.
+  local model_override="${DESK_MODEL_OVERRIDE:-}" persist=0 cfg_in="" provider=""
   while [[ $# -gt 0 ]]; do case "$1" in
+    --model) model_override="${2:?--model needs a value}"; shift 2;;
+    --set) persist=1; shift;;
     --provider) provider="${2:?--provider needs a value (a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
     --*) die "desk: unknown flag $1";;
-    *) if [[ -z "$role" ]]; then role="$1"; elif [[ -z "$cfg_in" ]]; then cfg_in="$1"; else die "desk: unexpected extra argument '$1'"; fi; shift;;
+    *) cfg_in="$1"; shift;;
   esac; done
-  [[ -n "$role" ]] || die "cellctl desk <cell> <role> [CLAUDE_CONFIG_DIR] [--provider <name>]"
-  case "$role" in intake-desk|worker-desk|pr-review-desk|verify-desk|the-desk) ;; *) die "unknown role '$role'";; esac
+  [[ "$persist" == "0" || -n "$model_override" ]] \
+    || die "desk: --set needs --model <m> (or DESK_MODEL_OVERRIDE in the environment) — nothing to persist otherwise"
   local cfg; cfg="$(resolve_cfg "$cfg_in")"
   # The provider is an explicit --provider for this run, else cell.env's CELL_PROVIDER default
-  # (unset = Anthropic, cellctl's own long-standing default — --model alone never switches the
-  # endpoint or credential, only the model NAME `claude --model` receives).
+  # (unset = Anthropic, cellctl's own long-standing default).
   provider="${provider:-${CELL_PROVIDER:-}}"
   local PROVIDER_BASE_URL="" PROVIDER_TOKEN_ENV="" PROVIDER_TOKEN_VAL=""
   [[ -n "$provider" ]] && resolve_provider "$provider"
@@ -611,8 +741,16 @@ cmd_desk(){
   # The model is PINNED per role, never left to the CLI default. Two `local` lines: in a single
   # `local a=… b="${!a}"` the indirect expansion reads the name before it is assigned.
   local mvar="DESK_MODEL_${role//-/_}"
-  local model="${!mvar:-$DESK_MODEL_DEFAULT}"
+  local pinned="${!mvar:-$DESK_MODEL_DEFAULT}"
+  local model="$pinned"
+  [[ -n "$model_override" ]] && model="$model_override"
+  # The Opus refusal binds the RESOLVED model, override or pin alike — an override is not an
+  # escape hatch from it, so this call is unconditional on which source won above.
   [[ "$role" == "the-desk" ]] && refuse_opus_for_the_desk "$model"
+  # model_disp is what every line below PRINTS: the resolved model, plus "(override)" when
+  # --model/DESK_MODEL_OVERRIDE is the reason, so the source of the value is visible in the
+  # transcript and not just the name — `claude --model` itself always gets the bare $model.
+  local model_disp="$model"; [[ -n "$model_override" ]] && model_disp="$model (override)"
   # The stream-root map every desk verb reads. Exported when the cell carries one (REQUIRED on a
   # house cell, load_cell refuses without it); a k8s cell without it boots as before and says so,
   # because the verbs then fall back to their compiled placeholder topology and the failure
@@ -624,7 +762,12 @@ cmd_desk(){
     echo "NOTICE: cell.env has no CELL_ROOTS — the window boots WITHOUT DESK_ROOTS (desk verbs fall back to their compiled placeholder topology)" >&2
   fi
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
-    echo "[dry-run] cell=$CELL kind=$CELL_KIND role=$role model=$model provider=${provider:-anthropic} cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"; return 0
+    echo "[dry-run] cell=$CELL kind=$CELL_KIND role=$role model=$model_disp provider=${provider:-anthropic} cfg=$cfg wt=$wt session=$session desk_roots=${desk_roots:-unset} shims→HOME=$CELL_HOME"
+    [[ "$persist" == "1" ]] && echo "[dry-run] --set: would persist $mvar=$model_override into $CELL_DIR/cell.env (not written — dry run)"
+    return 0
+  fi
+  if [[ "$persist" == "1" ]]; then
+    set_env_key "$CELL_DIR/cell.env" "$mvar" "$model_override" 0
   fi
   CLAUDE_CONFIG_DIR="$cfg" claude plugin enable assay@assay >/dev/null 2>&1 \
     || echo "NOTICE: could not enable assay@assay in $cfg — inside the session: /plugin install assay@assay" >&2
@@ -662,7 +805,7 @@ cmd_desk(){
   fi
   gen_shims
   cd "$wt"
-  echo "[launch] $CELL/$role kind=$CELL_KIND model=$model provider=${provider:-anthropic} session=$session config=$cfg cwd=$wt desk_roots=${desk_roots:-unset} (desk verbs → HOME=$CELL_HOME)"
+  echo "[launch] $CELL/$role kind=$CELL_KIND model=$model_disp provider=${provider:-anthropic} session=$session config=$cfg cwd=$wt desk_roots=${desk_roots:-unset} (desk verbs → HOME=$CELL_HOME)"
   # A provider switches the ENDPOINT and CREDENTIAL the launched `claude` process talks to; the
   # model NAME above is unaffected — `--model glm-5.3` alone (no provider) still talks to
   # Anthropic and fails, which is exactly the gap this closes. Unset provider → neither var is
@@ -722,17 +865,25 @@ up_roles(){
 
 cmd_up(){
   load_cell "$1"; shift
-  local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate="" up_provider=""
+  local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate="" model_override="" provider_flag=""
   while [[ $# -gt 0 ]]; do case "$1" in
     --no-the-desk) no_the_desk=1; shift;;
     --with-the-desk) shift;;
     --no-attach) attach=0; shift;;
     --cockpit) cockpit_flag="${2:?--cockpit needs a value (auto|tmux|herdr|orca)}"; shift 2;;
     --automate) automate="${2:?--automate needs a trigger (a 5-field cron string or a preset)}"; shift 2;;
-    --provider) up_provider="${2:?--provider needs a value (a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
+    --model) model_override="${2:?--model needs a value}"; shift 2;;
+    --provider) provider_flag="${2:?--provider needs a value (a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
     --*) die "up: unknown flag $1";;
     *) cfg_in="$1"; shift;;
   esac; done
+  # GLOBAL (not local): role_cmd, called below and by every up_* cockpit arm, reads these to
+  # thread --model / --provider onto each role's own `cellctl desk` invocation. Applies to EVERY
+  # role window this run opens, the-desk included — there is deliberately no per-role
+  # `--model-<role>`/`--provider-<role>` form; that case is already `cellctl desk <cell> <role>
+  # --model <m> --provider <p>` on the one window that needs it.
+  MODEL_OVERRIDE="$model_override"
+  up_provider="$provider_flag"
   local cfg; cfg="$(resolve_cfg "$cfg_in")"
   cockpit_want "$cockpit_flag"
   resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC" || die "$COCKPIT_ERR"
@@ -742,7 +893,9 @@ cmd_up(){
   local roles; roles="$(up_roles "$no_the_desk")"
   first_window
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
-    echo "[dry-run] cell=$CELL kind=$CELL_KIND cockpit=$COCKPIT session=$SESSION config=$cfg provider=${up_provider:-cell.env default}"
+    echo "[dry-run] cell=$CELL kind=$CELL_KIND cockpit=$COCKPIT session=$SESSION config=$cfg"
+    [[ -n "$MODEL_OVERRIDE" ]] && echo "[dry-run] model=$MODEL_OVERRIDE (override) — applied to every role window below"
+    [[ -n "$up_provider" ]] && echo "[dry-run] provider=$up_provider (override) — applied to every role window below"
     echo "[dry-run] $FIRST_NAME: $FIRST_CMD"
     local r
     for r in $roles; do
@@ -1281,6 +1434,7 @@ case "${1:-}" in
   up) shift; cmd_up "${1:?cell}" "${@:2}" ;;
   down) shift; cmd_down "${1:?cell}" "${@:2}" ;;
   new) shift; cmd_new "$@" ;;
+  set) shift; cmd_set "${1:?cell}" "${@:2}" ;;
   -h|--help|"") usage 0 ;;
   *) die "unknown verb '$1' (try --help)" ;;
 esac
