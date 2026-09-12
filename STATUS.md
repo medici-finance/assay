@@ -35,7 +35,6 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | contributor-trust | 01 — Contributor provenance probe — mechanical signals about an unknown author, rendered as a neutral card [exec:strong] | 0 | 2500 |
 | contributor-trust | 06 — Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion | 0 | 2500 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
-| derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | composability | 01 — Reactive activation — a missing extension key downs one component, not the fleet | 1 | 1500 |
 | composability | 04 — Harness as an exclusively-bound key — adapters as components | 1 | 1500 |
 | desktools-go-git | 04 — migrate deskpushguard detection reads to gitcore (parity + mutation test) | 3 | 1500 |
