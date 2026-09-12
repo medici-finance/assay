@@ -244,8 +244,8 @@ is a credential belonging to this project:
 
 | Hit source | What it actually is |
 |---|---|
-under `/usr/local/go/src/`: `crypto/x509/platform_root_key.pem`, `crypto/tls/testdata/example-key.pem`, `crypto/tls/example_test.go` | Go standard-library test fixtures, shipped in every Go source tree |
-| `/usr/local/lib/node_modules/npm/...` (4 hits: `man7/config.7`, `definitions.js`, `using-npm/config.html`, `using-npm/config.md`) | npm's own documentation, which *describes* PEM key config options |
+under `/usr/local/go/src/`: `crypto/x509/platform_root_key.pem`, `crypto/tls/testdata/example-key.pem`, crypto/tls/example_test.go (Go stdlib path, not a repo path) | Go standard-library test fixtures, shipped in every Go source tree |
+| `/usr/local/lib/node_modules/npm/...` (4 hits: `man7/config.7`, `definitions.js`, `using-npm/config.html`, using-npm/config.md (npm docs path, not a repo path)) | npm's own documentation, which *describes* PEM key config options |
 | `/usr/lib/x86_64-linux-gnu/libssh2.so.1.0.1`, `/usr/lib/x86_64-linux-gnu/libgnutls.so.30.34.3`, `/usr/bin/gpgv` | PEM header format strings compiled into distro binaries |
 | `/usr/local/bin/gh` | the gh CLI binary, matched by the loose generic `sk-[A-Za-z0-9]{20,}` alternative against an arbitrary base64-ish run |
 | 5 `blobs/sha256/…` hits | the SAME layer content re-reported: the scanner greps both the extracted rootfs and the raw layer tars, so each filesystem hit is double-counted |
