@@ -137,7 +137,7 @@ Pin: `medici-finance/assay` main `86c7d62c8081189147baf37424b602f907b139aa` (git
 | 7 | PASS — confirmed via source: asserts absence of the fineness mark AND a positive presence of the identity text node (not vacuous) |
 | 8 | PASS — no cgo |
 | 9 | PASS — docs grep count 15 (≥3) |
-| 10 | **FAIL (known class)** — same tool-wide gap as `apps-installer/01`/`composability/00` (`assay#822`): both the short-id and colon-id forms of `--brief` fail, for the id-format break and the inherent diff-scoping-on-merged-main reasons respectively. Not a new defect. |
+| 10 | **FAIL (known class)** — same tool-wide gap as `apps-installer/01`/`composability/00` (`#822`): both the short-id and colon-id forms of `--brief` fail, for the id-format break and the inherent diff-scoping-on-merged-main reasons respectively. Not a new defect. |
 
 **Substance checks (traced code, extended beyond the implementer's own coverage):**
 1. The 20px proof metric is real: `toLab` is a correct sRGB→CIELAB (D65) conversion; `deltaE` is genuine CIE76 Euclidean distance; `collides()` is a real two-condition AND (`ΔE<25 && IoU>0.6`), not a single-condition shortcut. Silhouette computed from the glyph layer alone, so the shared frame can't swamp it.
