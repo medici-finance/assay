@@ -585,7 +585,7 @@ func TestCommitVerifyQuiet(t *testing.T) {
 	if ok, err := repo.CommitVerifyQuiet("HEAD"); err != nil || !ok {
 		t.Fatalf("CommitVerifyQuiet(HEAD) = %v, %v, want true, nil", ok, err)
 	}
-	if ok, err := repo.CommitVerifyQuiet("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"); err != nil || ok {
+	if ok, err := repo.CommitVerifyQuiet("refs/heads/no-such-branch-here"); err != nil || ok {
 		t.Fatalf("CommitVerifyQuiet(bogus) = %v, %v, want false, nil (matching --quiet, never a hard error)", ok, err)
 	}
 }
