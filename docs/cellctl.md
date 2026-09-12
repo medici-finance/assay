@@ -578,6 +578,12 @@ followed by `cellctl set <cell> DESK_MODEL_<role>=<m>`. It needs a value to pers
 refused without `--model` (or `DESK_MODEL_OVERRIDE`) alongside it. Under `DRY_RUN=1` it prints what
 it *would* persist and writes nothing — a dry run touches nothing, `--set` included.
 
+**`CELL_HARNESS` is a known key too** — `cellctl set <cell> CELL_HARNESS=codex` persists the harness
+pin the same way, with the same value check as the harness flag itself: only `claude` or `codex` is
+accepted (not bypassable by `--force`, which only widens which *keys* `set` will touch). There is no
+`--harness ... --set` sugar — `cellctl desk`/`up --harness` is a per-run override only; persist it
+with `cellctl set` directly.
+
 ---
 
 ## Harnesses
