@@ -397,8 +397,8 @@ func TestCommitAttributedToAnotherAppIsRefused(t *testing.T) {
 
 // --- Brief merge (the ReadFile op's consumer) ---
 
-// TestSecretScanIgnoresPreexistingBriefBody (assay-toolkit#2447, #2449, #2452): BodyCheck must
-// scan only the bytes THIS commit adds, never the whole merged file. A brief already carrying a
+// TestSecretScanIgnoresPreexistingBriefBody: BodyCheck must scan only the bytes THIS commit
+// adds, never the whole merged file. A brief already carrying a
 // secret-shaped run in its PRE-EXISTING body (already reviewed and merged through the normal PR
 // path) must not permanently block every future Evidence append to that file. Before the fix,
 // this scanned commitContent (the merged whole file) and refused; after the fix, it scans

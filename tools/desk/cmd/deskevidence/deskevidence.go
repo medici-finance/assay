@@ -209,8 +209,8 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// meant any secret-shaped run already on the branch — a brief's own frontmatter, a Verify
 	// row's literal command, a fingerprint quoted in prose, all of it already reviewed and
 	// merged through the normal PR path — permanently refused EVERY future Evidence append to
-	// that file, worded any way, forever (assay-toolkit#2447, #2449, #2452). localContent is
-	// exactly what deskevidence itself is writing new to the branch; the pre-existing brief
+	// that file, worded any way, forever. localContent is exactly what deskevidence itself is
+	// writing new to the branch; the pre-existing brief
 	// body it reads via ReadFile in mergeEvidence was never scanned by this tool when IT
 	// landed and is not this commit's to answer for.
 	if berr := deskkit.BodyCheck(localContent); berr != nil {
