@@ -55,7 +55,7 @@ Minimum tier per brief (the `tier:` line in each brief's front-matter, with the 
 
 The open point that stood here — spec.md section 1 declaring Free/CE non-conforming, which the
 matrix's per-feature citations did not support as written — was ruled on 2026-08-30
-(medici-finance/assay#219) as stated above. Spec.md section 1 carries the ruling; the matrix
+(#219) as stated above. Spec.md section 1 carries the ruling; the matrix
 carries its evidence; brief 04's Verify row 3 was re-baselined onto the amended sentence.
 
 ## Briefs
