@@ -241,6 +241,8 @@ func intakeFileLabel(loc intakeFileLoc) string {
 // parseIntakeFile parses a single intake entry .md file (YAML frontmatter + body).
 // If the frontmatter has no disposition key (Disposition == ""), it defaults to
 // "new" — matching the brief's stated fact that Disposition defaults to new.
+// Key matching is case-insensitive (e.g. "disposition:", "Disposition:", "DISPOSITION:")
+// to avoid silently misclassifying case-variant frontmatter entries as untriaged (issue #931).
 func parseIntakeFile(raw []byte) (*intakeEntry, error) {
 	fm, body, err := splitFrontmatter(string(raw))
 	if err != nil {
@@ -249,6 +251,31 @@ func parseIntakeFile(raw []byte) (*intakeEntry, error) {
 	var e intakeEntry
 	if err := yaml.Unmarshal([]byte(fm), &e); err != nil {
 		return nil, err
+	}
+	if e.Disposition == "" {
+		// gopkg.in/yaml.v3 matches struct tags case-sensitively against the literal
+		// tag ("disposition"). If the frontmatter uses a case-variant key such as
+		// "Disposition:" or "DISPOSITION:", inspect mapping nodes to extract it
+		// case-insensitively before falling back to the "new" default (issue #931).
+		var node yaml.Node
+		if err := yaml.Unmarshal([]byte(fm), &node); err == nil {
+			var mapping *yaml.Node
+			if node.Kind == yaml.MappingNode {
+				mapping = &node
+			} else if node.Kind == yaml.DocumentNode && len(node.Content) > 0 && node.Content[0].Kind == yaml.MappingNode {
+				mapping = node.Content[0]
+			}
+			if mapping != nil {
+				for i := 0; i+1 < len(mapping.Content); i += 2 {
+					keyNode := mapping.Content[i]
+					valNode := mapping.Content[i+1]
+					if strings.EqualFold(keyNode.Value, "disposition") {
+						e.Disposition = strings.TrimSpace(valNode.Value)
+						break
+					}
+				}
+			}
+		}
 	}
 	if e.Disposition == "" {
 		e.Disposition = "new"

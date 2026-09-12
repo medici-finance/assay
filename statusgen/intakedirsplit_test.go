@@ -452,3 +452,60 @@ func TestIntakeViewRebaseRoot(t *testing.T) {
 		t.Errorf("expected root-level entry's body link rebased to intake/..., got:\n%s", view)
 	}
 }
+
+// TestParseIntakeFileDispositionCaseInsensitive verifies that parseIntakeFile
+// matches the frontmatter disposition key case-insensitively (issue #931).
+func TestParseIntakeFileDispositionCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		content  string
+		wantDisp string
+	}{
+		{
+			name:     "canonical lowercase disposition",
+			content:  "---\nid: I-canon\ntitle: Canon\ndisposition: accepted\n---\n\nBody.\n",
+			wantDisp: "accepted",
+		},
+		{
+			name:     "TitleCase Disposition",
+			content:  "---\nid: I-title\ntitle: Title\nDisposition: accepted\n---\n\nBody.\n",
+			wantDisp: "accepted",
+		},
+		{
+			name:     "uppercase DISPOSITION",
+			content:  "---\nid: I-upper\ntitle: Upper\nDISPOSITION: rejected\n---\n\nBody.\n",
+			wantDisp: "rejected",
+		},
+		{
+			name:     "mixed case DisPosition",
+			content:  "---\nid: I-mixed\ntitle: Mixed\nDisPosition: scoped\n---\n\nBody.\n",
+			wantDisp: "scoped",
+		},
+		{
+			name:     "quoted value with whitespace",
+			content:  "---\nid: I-quoted\ntitle: Quoted\nDisposition: \" watching \"\n---\n\nBody.\n",
+			wantDisp: "watching",
+		},
+		{
+			name:     "missing disposition defaults to new",
+			content:  "---\nid: I-none\ntitle: None\n---\n\nBody.\n",
+			wantDisp: "new",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			entry, err := parseIntakeFile([]byte(tc.content))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if entry.Disposition != tc.wantDisp {
+				t.Errorf("expected Disposition %q, got %q", tc.wantDisp, entry.Disposition)
+			}
+		})
+	}
+}
