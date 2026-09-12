@@ -5,11 +5,11 @@ provides:
   - assay.desk.role.the-desk
 inject:
   required:
+    - key: assay.harness
     - key: assay.desk.verbs
       range: ">=0.20.0 <1.0.0"
     - key: assay.roster.trust
   optional:
-    - key: assay.harness
     - key: assay.roster.ext.repo-aliases
 apply:
   - id: skill-body

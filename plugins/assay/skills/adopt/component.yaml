@@ -6,10 +6,10 @@ provides:
   - assay.skill.adopt
 inject:
   required:
+    - key: assay.harness
     - key: assay.desk.verbs
       range: ">=0.20.0 <1.0.0"
   optional:
-    - key: assay.harness
     - key: assay.forge
 apply:
   - id: skill-body

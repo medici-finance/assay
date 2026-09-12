@@ -6,10 +6,10 @@ provides:
   - assay.skill.author-brief
 inject:
   required:
+    - key: assay.harness
     - key: assay.streams
       range: ">=0.20.0 <1.0.0"
-  optional:
-    - key: assay.harness
+  optional: []
 apply:
   - id: skill-body
     effect: install the author-brief skill directory into the harness plugin cache
