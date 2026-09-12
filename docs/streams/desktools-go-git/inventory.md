@@ -56,7 +56,7 @@ body and must only decrease.
 | deskgit | `tools/desk/cmd/deskgit/exec.go` | `runGit` + env allowlist (issue #1555) |
 | deskmerge | `tools/desk/cmd/deskmerge/exec.go` | `execCommand` seam |
 | deskwt | `tools/desk/cmd/deskwt/exec.go` | `execCommand` seam |
-| deskscanbody | `tools/desk/cmd/deskscanbody/exec.go` | `gitOut` |
+| deskscanbody | retired by desktools-go-git/03 (was tools/desk/cmd/deskscanbody/exec.go, deleted; callers now call `internal/gitcore` directly from `tools/desk/cmd/deskscanbody/main.go`) | `gitOut` (retired) |
 | deskpr | `tools/desk/cmd/deskpr/exec.go` | `execCommand` seam |
 | deskreply | `tools/desk/cmd/deskreply/exec.go` | `runCmd`/`git` wrapper — READ-ONLY by design (no push path exists) |
 | deskadvisory | `tools/desk/cmd/deskadvisory/advisory.go` | direct `exec.Command("git"` + fork-fetch hardening |
@@ -129,7 +129,7 @@ deterministic fixtures, `tools/desk/internal/gitcore/gitcore_test.go`): `Topleve
 **Deliberately NOT migrated, with the reason (do not re-attempt without addressing
 the reason):**
 
-- **`deskwt/ambiguousbase.go`'s `refCandidates`** (the case-collision/ambiguous-`--base`
+- **`tools/desk/cmd/deskwt/ambiguousbase.go`'s `refCandidates`** (the case-collision/ambiguous-`--base`
   security guard, family 8/9-adjacent) — `gitcore.Repo.Refs` (and everything built on
   it, including the new `RefsContaining`) does not surface a SYMBOLIC reference such as
   `refs/remotes/<name>/HEAD` the way real `git for-each-ref` does (verified empirically:
