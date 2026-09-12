@@ -114,6 +114,9 @@ func main() {
 	deskkit.SetToolClass(deskkit.ClassForTool(false))
 	// P3: echo the effective roster once per run.
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(2)
+	}
 	os.Exit(run(os.Args[1:]))
 }
 

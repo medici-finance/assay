@@ -16,6 +16,9 @@ func main() {
 	// scope and the write boundary live in settings rather than in a diff, so the RUN is the only
 	// place a change to them becomes visible — and a NARROWING has to be as visible as a widening.
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(2)
+	}
 	os.Exit(run(os.Args[1:]))
 }
 

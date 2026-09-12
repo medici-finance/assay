@@ -14,6 +14,9 @@ func main() {
 	// drives outward verbs, so it takes the config-home-only class.
 	deskkit.SetToolClass(deskkit.ClassForTool(false))
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(2)
+	}
 	os.Exit(run(os.Args[1:]))
 }
 

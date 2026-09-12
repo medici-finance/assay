@@ -122,6 +122,9 @@ func main() {
 	// the reviewer App binding and the repo set — ciEligible=false.
 	deskkit.SetToolClass(deskkit.ClassForTool(false))
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(2)
+	}
 	os.Exit(run(os.Args[1:]))
 }
 

@@ -76,6 +76,9 @@ func main() {
 	// Echo the effective roster once per run: a control surface that lives in
 	// settings rather than in a diff is visible only at RUN time.
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(2)
+	}
 	os.Exit(run(os.Args[1:]))
 }
 

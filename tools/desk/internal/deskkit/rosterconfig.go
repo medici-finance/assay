@@ -556,15 +556,136 @@ type Config struct {
 	ScanRepos []string
 
 	// UnknownKeys are keys present in the source that this version does not
-	// recognise, sorted. They are ECHOED, never applied. A key in the ASSAY_
-	// namespace is a REFUSAL instead (see parseConfig) and never lands here: a
-	// typo'd roster key yields a configuration that reports itself correct with
-	// that whole control surface empty, which is the silent half of the
-	// validation gap the security review recorded as item 3.
+	// recognise, sorted. They are ECHOED, never applied — including a key IN the
+	// ASSAY_ namespace (this brief): before, that case was a REFUSAL of the
+	// whole configuration (see the removed comment this replaced), which is
+	// exactly the fleet-wide outage class the component-manifest spec §6.2 exists to
+	// close — a repo-alias typo, or any other unrecognised ASSAY_ name, must not
+	// take every trust-gated verb down with it. The residual is real and
+	// recorded, not hidden: a typo'd key's OWN intended surface still loads
+	// empty (unset), silently from this echo's point of view — but "silently"
+	// only in the sense that it is a NOTICE line rather than a refusal; it is
+	// never applied under the typo'd name, and the correctly-spelled surface's
+	// own unset-vs-invalid distinction (Ext, below) still fires normally.
 	UnknownKeys []string
 
-	// Problems are the loud, human-readable reasons a configuration was refused.
+	// Ext carries the per-key OUTCOME of every extension key this loader
+	// validates (rosterconfig.go's TRUST/EXTENSION split, this brief),
+	// keyed by its canonical `assay.roster.ext.<name>` catalogue name (see
+	// ExtKeyName) — never by the ASSAY_ variable. Unlike Problems, an entry
+	// here with Status == ExtInvalid does NOT refuse the configuration: the
+	// key's own field stays at its zero/unset value and activation.go is what
+	// turns an invalid entry into "the components that require it are
+	// INACTIVE" (the component-manifest spec §6.1). A key absent from this map was
+	// never inspected at all (present only as a defensive default; every
+	// extension key this loader recognises populates an entry, ExtUnset when
+	// the ASSAY_ variable was empty or missing).
+	Ext map[string]ExtKeyResult
+
+	// Problems are the loud, human-readable reasons the TRUST surface refused
+	// (ASSAY_BLESS_LOGIN, ASSAY_TRUSTED_LOGINS, ASSAY_TRUSTED_BOT_SLUGS,
+	// ASSAY_ALLOWED_REPOS, ASSAY_HUMAN_LOGIN_MAP — the component-manifest spec §6.2's
+	// "trust surface does not change"). Extension-key problems never land
+	// here as of this brief: see Ext.
 	Problems []string
+}
+
+// ExtKeyStatus is one extension key's validation outcome — distinct from the
+// trust surface's binary configured/refused. An extension key can be
+// legitimately UNSET (a complete, shipped configuration on its own — see each
+// Env* extension constant's doc comment: "unset is neither an error nor a
+// refusal"), successfully parsed (OK), or present but malformed (INVALID).
+// Only INVALID ever deactivates a component that requires the key
+// (the component-manifest spec §6.1); OK and UNSET both resolve it.
+type ExtKeyStatus string
+
+const (
+	ExtUnset   ExtKeyStatus = "unset"
+	ExtOK      ExtKeyStatus = "ok"
+	ExtInvalid ExtKeyStatus = "invalid"
+)
+
+// ExtKeyResult is one extension key's recorded outcome: the status, and — for
+// ExtInvalid only — the human-readable reason (the same text that, before
+// this brief, would have collapsed the WHOLE configuration via
+// Problems).
+type ExtKeyResult struct {
+	Status ExtKeyStatus
+	Reason string
+}
+
+// extKeyNames maps each extension ASSAY_ variable this loader validates or
+// recognises to its canonical `assay.roster.ext.<name>` manifest key
+// (components/KEYS.md) — the name activation.go and a component.yaml's
+// `inject` entries use. ASSAY_REPO_FORGES is validated here (see parseConfig)
+// but not yet catalogued in components/KEYS.md, whose brief-00 catalogue lists
+// only the five keys the docs/adopting-assay.md §2 inventory names at the time
+// brief 00 landed; it is included here so a future manifest that injects
+// `assay.roster.ext.repo-forges` resolves against a REAL per-key result rather
+// than one this loader never populates. ASSAY_CHANNEL_DRIFT_TARGET and
+// ASSAY_HOME_REPO are STATUSGEN-only (recognised, never parsed, here — see
+// their own const comments): this loader has no shape to validate for either,
+// so their status can only ever be ExtOK (present) or ExtUnset (absent),
+// never ExtInvalid.
+var extKeyNames = map[string]string{
+	EnvRiskCallout:        "risk-callout",
+	EnvWriteguardCallout:  "writeguard-callout",
+	EnvRepoAliases:        "repo-aliases",
+	EnvReleaseRepo:        "release-repo",
+	EnvScanRepos:          "scan-repos",
+	EnvRepoForges:         "repo-forges",
+	EnvChannelDriftTarget: "channel-drift-target",
+	EnvHomeRepo:           "home-repo",
+}
+
+// ExtKeyName resolves an ASSAY_-namespace extension variable to the canonical
+// `assay.roster.ext.<name>` manifest key. ok is false for a variable this
+// loader does not treat as an extension key (a trust key, a co-tenant key
+// outside the ASSAY_ namespace, or a name not in the catalogue at all).
+func ExtKeyName(env string) (name string, ok bool) {
+	name, ok = extKeyNames[env]
+	return
+}
+
+// extAccumulator collects ONE extension key's validation outcome while
+// parseConfig walks its value. Unlike the trust-surface `bad` closure, calling
+// bad here never touches `problems` and never aborts the load: it only marks
+// this ONE key invalid for Config.Ext (this brief's split). The FIRST
+// problem observed is the one kept — a list-shaped key with several malformed
+// entries would otherwise carry N near-duplicate reasons for what is, from an
+// activation perspective, one invalid key.
+type extAccumulator struct {
+	invalid bool
+	reason  string
+}
+
+func (e *extAccumulator) bad(format string, a ...any) {
+	if !e.invalid {
+		e.invalid = true
+		e.reason = fmt.Sprintf(format, a...)
+	}
+}
+
+// recordExt lands one extension key's outcome onto cfg.Ext, keyed by its
+// canonical `assay.roster.ext.<name>`. raw is the value the key held in the
+// source (untrimmed is fine — only emptiness after trimming distinguishes
+// unset from set).
+func recordExt(cfg *Config, env string, raw string, acc extAccumulator) {
+	name, ok := ExtKeyName(env)
+	if !ok {
+		return
+	}
+	if cfg.Ext == nil {
+		cfg.Ext = map[string]ExtKeyResult{}
+	}
+	switch {
+	case acc.invalid:
+		cfg.Ext[name] = ExtKeyResult{Status: ExtInvalid, Reason: acc.reason}
+	case strings.TrimSpace(raw) == "":
+		cfg.Ext[name] = ExtKeyResult{Status: ExtUnset}
+	default:
+		cfg.Ext[name] = ExtKeyResult{Status: ExtOK}
+	}
 }
 
 // Configured reports whether a usable roster was loaded. Unset, empty, or
@@ -1103,18 +1224,25 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	}
 	sort.Strings(cfg.RepoPatterns)
 
-	// --- intake scan scope (ASSAY_SCAN_REPOS) ---
-	// A DEDICATED set, not the write boundary above (see the field / EnvScanRepos
-	// comments). A malformed slug REFUSES the whole configuration, exactly as a
-	// malformed ASSAY_ALLOWED_REPOS entry does; an unset value is neither an error
-	// nor a refusal (the read surface is simply empty).
+	// --- intake scan scope (ASSAY_SCAN_REPOS), an EXTENSION key (this brief) ---
+	// A DEDICATED set, not the write boundary above. A malformed slug no longer
+	// refuses the whole configuration: it is recorded on cfg.Ext as ExtInvalid
+	// (deactivating only a component that requires assay.roster.ext.scan-repos)
+	// and the read surface stays empty for THAT entry, exactly as the unset case
+	// already reads — ScanScopeError() already treats an empty scope as its own
+	// could-not-check, so this does not silently widen anything.
+	var scanReposIssue extAccumulator
 	for _, entry := range splitList(vals[EnvScanRepos]) {
 		if strings.Count(entry, "/") != 1 || strings.HasPrefix(entry, "/") || strings.HasSuffix(entry, "/") {
-			bad("%s: %q is not an owner/name repo slug", EnvScanRepos, entry)
+			scanReposIssue.bad("%s: %q is not an owner/name repo slug", EnvScanRepos, entry)
 			continue
 		}
 		cfg.ScanRepos = append(cfg.ScanRepos, entry)
 	}
+	if scanReposIssue.invalid {
+		cfg.ScanRepos = nil
+	}
+	recordExt(&cfg, EnvScanRepos, vals[EnvScanRepos], scanReposIssue)
 
 	// --- human-name → login map ---
 	for _, entry := range splitList(vals[EnvHumanLoginMap]) {
@@ -1143,19 +1271,25 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	cfg.RiskExtra = splitList(vals[EnvRiskPathTriggersExtra])
 	sort.Strings(cfg.RiskExtra)
 
-	// --- risk-classification callout (ASSAY_RISK_CALLOUT), Q1-ruled contract ---
+	// --- risk-classification callout (ASSAY_RISK_CALLOUT), an EXTENSION key
+	// (this brief), Q1-ruled contract ---
 	// An ABSOLUTE path to ONE executable. Only SHAPE is validated here; everything
 	// about the callout that can change between load and use — exists, is
 	// executable, is not group/world-writable, answers within the timeout,
 	// answers in the JSON contract shape — is checked at INVOCATION time by the
 	// classifier itself (riskcallout.go), because every one of those means
-	// classed=true rather than "unconfigured".
+	// classed=true rather than "unconfigured". A malformed SHAPE here no longer
+	// refuses the whole configuration: it is recorded on cfg.Ext as ExtInvalid
+	// and cfg.RiskCallout stays empty (pattern classification alone — the
+	// ONLY-WIDENS rule means a missing callout can never suppress a pattern hit,
+	// so this is safe to leave "unconfigured" rather than fail-closed-everything).
+	var riskCalloutIssue extAccumulator
 	if raw := strings.TrimSpace(vals[EnvRiskCallout]); raw != "" {
 		switch {
 		case strings.ContainsAny(raw, ",;\t\n\r"):
-			bad("%s=%q contains a separator. It names ONE executable, never a list", EnvRiskCallout, raw)
+			riskCalloutIssue.bad("%s=%q contains a separator. It names ONE executable, never a list", EnvRiskCallout, raw)
 		case !filepath.IsAbs(raw):
-			bad("%s=%q is not an absolute path. A relative callout path resolves against the "+
+			riskCalloutIssue.bad("%s=%q is not an absolute path. A relative callout path resolves against the "+
 				"directory the desk tool happened to be spawned in — caller-influenced input "+
 				"choosing this gate's own policy source. Refusing, exactly as if it were unset",
 				EnvRiskCallout, raw)
@@ -1163,28 +1297,34 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			cfg.RiskCallout = raw
 		}
 	}
+	recordExt(&cfg, EnvRiskCallout, vals[EnvRiskCallout], riskCalloutIssue)
 
-	// --- repo aliases, the boards' DISPLAY grouping override ---
+	// --- repo aliases, the boards' DISPLAY grouping override, an EXTENSION key
+	// (this brief) ---
 	// The generic default (short = last path segment, product = repo owner) lives
 	// in the resolver (repoalias.go). This is the ADOPTER override — the house
 	// short names and product buckets that used to be compiled into the boards'
 	// switches. Unset is neither error nor refusal (the generic default is a
-	// complete configuration on its own), but a MALFORMED entry refuses the whole
-	// configuration exactly as a bad ASSAY_ALLOWED_REPOS entry does: display-only
-	// or not, a roster that silently mis-groups is the configured-but-wrong shape
-	// this design refuses.
+	// complete configuration on its own). A MALFORMED entry no longer refuses the
+	// whole configuration (the component-manifest spec §6.2 — this is the exact "a
+	// repo-alias typo must not [take everything down]" case this brief's `why`
+	// names): it is recorded on cfg.Ext as ExtInvalid, cfg.RepoAliases resets to
+	// empty (the generic default applies, exactly as if it were unset — never a
+	// PARTIAL map of only the entries that happened to parse), and only a
+	// component that requires assay.roster.ext.repo-aliases goes INACTIVE.
 	cfg.RepoAliases = map[string]RepoAlias{}
+	var repoAliasesIssue extAccumulator
 	for _, entry := range splitList(vals[EnvRepoAliases]) {
 		key, spec, hasEq := strings.Cut(entry, "=")
 		key = strings.TrimSpace(key)
 		if !hasEq || key == "" {
-			bad("%s: cannot parse entry %q — expected repo=short:product (repo is a full "+
+			repoAliasesIssue.bad("%s: cannot parse entry %q — expected repo=short:product (repo is a full "+
 				"owner/name slug or a bare basename)", EnvRepoAliases, entry)
 			continue
 		}
 		short, prod, hasColon := strings.Cut(spec, ":")
 		if !hasColon {
-			bad("%s: entry %q has no ':' separating short label from product — expected "+
+			repoAliasesIssue.bad("%s: entry %q has no ':' separating short label from product — expected "+
 				"repo=short:product; write repo=short: or repo=:product to keep one facet generic",
 				EnvRepoAliases, entry)
 			continue
@@ -1192,73 +1332,95 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		short = strings.TrimSpace(short)
 		prod = strings.TrimSpace(prod)
 		if short == "" && prod == "" {
-			bad("%s: entry %q sets neither a short label nor a product — it configures nothing. "+
+			repoAliasesIssue.bad("%s: entry %q sets neither a short label nor a product — it configures nothing. "+
 				"Drop it, or fill in a facet (an empty facet keeps the generic default)",
 				EnvRepoAliases, entry)
 			continue
 		}
 		if _, dup := cfg.RepoAliases[key]; dup {
-			bad("%s: repo %q is aliased more than once — one alias per repo", EnvRepoAliases, key)
+			repoAliasesIssue.bad("%s: repo %q is aliased more than once — one alias per repo", EnvRepoAliases, key)
 			continue
 		}
 		cfg.RepoAliases[key] = RepoAlias{Short: short, Product: prod}
 	}
+	if repoAliasesIssue.invalid {
+		cfg.RepoAliases = map[string]RepoAlias{}
+	}
+	recordExt(&cfg, EnvRepoAliases, vals[EnvRepoAliases], repoAliasesIssue)
 
-	// --- repo forge binding (ASSAY_REPO_FORGES) — the SOURCE ForgeFor (forgeresolve.go)
-	// reads before its remote-host fallback. Unlike the aliases above (display-only), a
-	// malformed OR ambiguous entry here refuses the WHOLE configuration: this key decides
-	// which minted credential a write is performed as, so "configured but wrong" must fail
-	// exactly as loudly as every other identity-adjacent roster value.
+	// --- repo forge binding (ASSAY_REPO_FORGES), an EXTENSION key
+	// (this brief) — the SOURCE ForgeFor (forgeresolve.go) reads before its
+	// remote-host fallback. This key decides which minted credential a write is
+	// performed as, so a malformed OR ambiguous entry is recorded on cfg.Ext as
+	// ExtInvalid — deactivating only a component that requires
+	// assay.roster.ext.repo-forges — and cfg.RepoForges resets to empty rather
+	// than carrying a partial, half-trusted binding: ForgeFor's remote-host
+	// fallback (and, failing that, its Unverifiable refusal) is exactly the
+	// "unset" behaviour, never a silent widening of WHICH forge a write targets.
 	cfg.RepoForges = map[string]string{}
+	var repoForgesIssue extAccumulator
 	for _, entry := range splitList(vals[EnvRepoForges]) {
 		key, val, hasEq := strings.Cut(entry, "=")
 		key = strings.ToLower(strings.TrimSpace(key))
 		val = strings.ToLower(strings.TrimSpace(val))
 		if !hasEq || key == "" || val == "" {
-			bad("%s: cannot parse entry %q — expected owner/name=github or owner/name=gitlab",
+			repoForgesIssue.bad("%s: cannot parse entry %q — expected owner/name=github or owner/name=gitlab",
 				EnvRepoForges, entry)
 			continue
 		}
 		if strings.Count(key, "/") != 1 || strings.HasPrefix(key, "/") || strings.HasSuffix(key, "/") {
-			bad("%s: entry %q's repo %q is not a full owner/name slug — unlike %s, a bare basename is "+
+			repoForgesIssue.bad("%s: entry %q's repo %q is not a full owner/name slug — unlike %s, a bare basename is "+
 				"NOT accepted here: this key chooses a WRITE identity, and collapsing two orgs' "+
 				"same-named repos onto one forge is exactly the silent widening it must refuse",
 				EnvRepoForges, entry, key, EnvRepoAliases)
 			continue
 		}
 		if val != string(ForgeGitHub) && val != string(ForgeGitLab) {
-			bad("%s: entry %q names forge %q, which is neither %q nor %q",
+			repoForgesIssue.bad("%s: entry %q names forge %q, which is neither %q nor %q",
 				EnvRepoForges, entry, val, ForgeGitHub, ForgeGitLab)
 			continue
 		}
 		if _, dup := cfg.RepoForges[key]; dup {
-			bad("%s: repo %q is bound to a forge more than once", EnvRepoForges, entry)
+			repoForgesIssue.bad("%s: repo %q is bound to a forge more than once", EnvRepoForges, entry)
 			continue
 		}
 		cfg.RepoForges[key] = val
 	}
+	if repoForgesIssue.invalid {
+		cfg.RepoForges = map[string]string{}
+	}
+	recordExt(&cfg, EnvRepoForges, vals[EnvRepoForges], repoForgesIssue)
 
-	// --- release home (ASSAY_RELEASE_REPO) ---
+	// --- release home (ASSAY_RELEASE_REPO), an EXTENSION key (this brief) ---
 	// A SINGLE slug, never a list: a release tool that took the first entry of a
 	// list would pick its target by parse order. Unset is neither an error nor a
-	// refusal — the consumer applies its shipped default.
+	// refusal — the consumer applies its shipped default. A MALFORMED value no
+	// longer refuses the whole configuration (the component-manifest spec §6.2): it is
+	// recorded on cfg.Ext as ExtInvalid, deactivating only the component(s) that
+	// require assay.roster.ext.release-repo (activation.go); cfg.ReleaseRepo
+	// stays empty, so ConfiguredReleaseRepo() falls back to the caller's shipped
+	// default exactly as it does for the unset case, and every trust-gated verb
+	// this key knows nothing about keeps running.
+	var releaseRepoIssue extAccumulator
 	if raw := strings.TrimSpace(vals[EnvReleaseRepo]); raw != "" {
 		switch {
 		case strings.ContainsAny(raw, ",; \t\n\r"):
-			bad("%s=%q contains a separator. It names ONE repo, never a list — cutting a release "+
+			releaseRepoIssue.bad("%s=%q contains a separator. It names ONE repo, never a list — cutting a release "+
 				"in whichever entry happened to parse first is not a decision anyone made. "+
 				"Refusing, exactly as if it were unset", EnvReleaseRepo, raw)
 		case strings.Count(raw, "/") != 1 || strings.HasPrefix(raw, "/") || strings.HasSuffix(raw, "/"):
-			bad("%s: %q is not an owner/name repo slug", EnvReleaseRepo, raw)
+			releaseRepoIssue.bad("%s: %q is not an owner/name repo slug", EnvReleaseRepo, raw)
 		case strings.Contains(raw, "*"):
-			bad("%s=%q is a pattern. A release is cut in ONE repo; a pattern names a set, and "+
+			releaseRepoIssue.bad("%s=%q is a pattern. A release is cut in ONE repo; a pattern names a set, and "+
 				"there is no rule here for choosing a member of it", EnvReleaseRepo, raw)
 		default:
 			cfg.ReleaseRepo = raw
 		}
 	}
+	recordExt(&cfg, EnvReleaseRepo, vals[EnvReleaseRepo], releaseRepoIssue)
 
-	// --- writeguard callout (ASSAY_WRITEGUARD_CALLOUT) ---
+	// --- writeguard callout (ASSAY_WRITEGUARD_CALLOUT), an EXTENSION key
+	// (this brief) ---
 	// An ABSOLUTE path to ONE executable. The absoluteness rule is the load-bearing
 	// half: a relative path resolves against whatever directory the guard's process
 	// was spawned in, and a guard whose policy source moves with the caller's cwd is
@@ -1267,13 +1429,19 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// Everything else about the callout — that the file exists, is executable, is
 	// not group-writable, exits 0, answers in time, answers in the vocabulary — is
 	// checked at INVOCATION (callout.go), because each of those can change between
-	// load and use and each of them means BLOCK rather than "unconfigured".
+	// load and use and each of them means BLOCK rather than "unconfigured". A
+	// malformed SHAPE here no longer refuses the whole configuration: it is
+	// recorded on cfg.Ext as ExtInvalid and cfg.WriteguardCallout stays empty —
+	// the guard's ONLY-WIDENS rule means an absent callout can only ever REMOVE a
+	// block the compiled indicators would not otherwise raise, never clear one,
+	// so leaving it "unconfigured" here is safe.
+	var writeguardCalloutIssue extAccumulator
 	if raw := strings.TrimSpace(vals[EnvWriteguardCallout]); raw != "" {
 		switch {
 		case strings.ContainsAny(raw, ",;\t\n\r"):
-			bad("%s=%q contains a separator. It names ONE executable, never a list", EnvWriteguardCallout, raw)
+			writeguardCalloutIssue.bad("%s=%q contains a separator. It names ONE executable, never a list", EnvWriteguardCallout, raw)
 		case !filepath.IsAbs(raw):
-			bad("%s=%q is not an absolute path. A relative callout path resolves against the "+
+			writeguardCalloutIssue.bad("%s=%q is not an absolute path. A relative callout path resolves against the "+
 				"directory the guard happened to be spawned in — caller-influenced input choosing "+
 				"the guard's own policy source. Refusing, exactly as if it were unset",
 				EnvWriteguardCallout, raw)
@@ -1281,6 +1449,7 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			cfg.WriteguardCallout = raw
 		}
 	}
+	recordExt(&cfg, EnvWriteguardCallout, vals[EnvWriteguardCallout], writeguardCalloutIssue)
 
 	// --- withheld register identifiers (selfcontain.go) ---
 	//
@@ -1299,6 +1468,15 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// actor commits under — and an empty result is the legitimate unset state (the
 	// service-account noreply shape is then the only accepted GitLab commit email).
 	cfg.GitLabSessionEmails = splitGitLabSessionEmails(vals[EnvGitLabSessionEmails])
+
+	// --- statusgen-only extension keys deskkit recognises but does not parse ---
+	// ASSAY_CHANNEL_DRIFT_TARGET and ASSAY_HOME_REPO have no shape this reader
+	// validates (see their const comments) — presence is all cfg.Ext can report
+	// for either, so a component that ever injects
+	// assay.roster.ext.channel-drift-target or assay.roster.ext.home-repo sees OK
+	// when the operator set something and UNSET when they did not, never INVALID.
+	recordExt(&cfg, EnvChannelDriftTarget, vals[EnvChannelDriftTarget], extAccumulator{})
+	recordExt(&cfg, EnvHomeRepo, vals[EnvHomeRepo], extAccumulator{})
 
 	if len(problems) > 0 {
 		return Config{Class: class, Source: source, Problems: problems}

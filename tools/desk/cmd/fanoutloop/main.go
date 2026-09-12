@@ -41,6 +41,9 @@ func main() {
 	// Echo the effective trust/authority configuration to stderr before doing anything (P3): a
 	// control surface that lives in settings rather than a diff is visible only at RUN time.
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(2)
+	}
 	os.Exit(run(os.Args[1:]))
 }
 

@@ -75,6 +75,9 @@ func main() {
 	// P3: echo the effective roster once per run, so a NARROWING of the control
 	// surface is visible at run time and not only in a settings diff.
 	deskkit.EchoEffectiveConfig(os.Stderr)
+	if !deskkit.CheckVerbActivation(os.Stderr) {
+		os.Exit(2)
+	}
 	os.Exit(run(os.Args[1:]))
 }
 
