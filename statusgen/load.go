@@ -425,12 +425,13 @@ func loadIntake(root string) ([]intakeEntry, error) {
 // as a clean "the front door is clear" over a register that was never read. An
 // UNREADABLE file (any other error) is likewise could-not-check.
 //
-// Each entry's Disposition carries the raw text after "Disposition:" (e.g.
-// "new", "scoped → <stream>", "new — proposed …"); isUntriagedDisposition then
-// classifies it exactly as it does a per-entry file's, so the monolithic and
-// per-entry paths count untriaged identically. A missing Disposition line
-// defaults to "new" — parseIntakeFile's rule for a per-entry file with no
-// disposition key.
+// Each entry's Disposition carries the raw text after "Disposition:" (matched
+// case-insensitively with leading and trailing whitespace trimmed around the
+// key and value, e.g. "new", "scoped → <stream>", "new — proposed …");
+// isUntriagedDisposition then classifies it exactly as it does a per-entry
+// file's, so the monolithic and per-entry paths count untriaged identically.
+// A missing Disposition line defaults to "new" — parseIntakeFile's rule for a
+// per-entry file with no disposition key.
 func parseIntakeLegacy(path string) ([]intakeEntry, error) {
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -459,8 +460,9 @@ func parseIntakeLegacy(path string) ([]intakeEntry, error) {
 		if cur == nil {
 			continue
 		}
-		if v, ok := strings.CutPrefix(line, "Disposition:"); ok {
-			cur.Disposition = strings.TrimSpace(v)
+		trimmed := strings.TrimSpace(line)
+		if len(trimmed) >= len("Disposition:") && strings.EqualFold(trimmed[:len("Disposition:")], "Disposition:") {
+			cur.Disposition = strings.TrimSpace(trimmed[len("Disposition:"):])
 		}
 	}
 	flush()
