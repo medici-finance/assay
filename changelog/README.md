@@ -60,7 +60,14 @@ changelog/pr-<N>-<slug>.md   e.g. changelog/pr-1234-widget-frame-drop.md
 `<N>` is the fork PR's number. `changelog-check` reads the base branch for a
 fragment matching that PR's number and greens the PR on its strength — the same
 content bar applies, so the proxy must carry at least one real `- …` highlight
-bullet.
+bullet. The proxy is read from the **live tip of the base branch**, not from the
+base commit recorded when the PR was opened, so it works for a fragment merged
+*after* the fork PR opened — which is the usual case — and nothing has to be
+updated on the contributor's branch. Resolving that live tip needs the base
+branch's name; the check reads it from `GITHUB_BASE_REF`, the env var GitHub
+Actions sets by default on every `pull_request` run, so this requires **no
+workflow change** to start working (an explicit `BASE_REF` in the workflow
+overrides it, but is not required).
 
 **Credit the contributor in the bullet**, since the fragment is no longer written
 by them:
