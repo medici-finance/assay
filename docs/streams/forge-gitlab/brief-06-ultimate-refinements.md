@@ -49,7 +49,7 @@ facts:
   against the MR head SHA; merge requires the check per project settings.
 - Scope is bounded by pilot findings: anything brief-05's report marked
   failed-at-tier with an Ultimate remediation is in; new capabilities are not.
-- **2026-08-30 — paid-tier hardening consolidated here (medici-finance/assay#219).** The
+- **2026-08-30 — paid-tier hardening consolidated here (#219).** The
   edition matrix (edition-matrix.md) established, per docs citation, that every core-lane
   operation is Free-tier and that only *guarantees* are tier-gated. The tier-gated guarantees
   the core lane was implicitly assuming now live in this brief's territory, so 01-05, 07 and
@@ -101,6 +101,33 @@ endpoint surfaces as could-not-check, never as a silent downgrade.
 
 ## Evidence
 <!-- one row per Verify item — filled by a NON-implementer -->
+### Verify run — 2026-09-11, non-implementer dispatched verifier (opus-4.8[1m]-verifier, local) — VERDICT: PARTIAL/held at `implemented` (live row-2 proof pending)
+
+Target: merged `origin/main` @ `fc9001a7ab48ee9c859dd7e52f7543dec5f86c50` (two-protocol confirmed). Offline (`KUBECONFIG=/dev/null`) in an isolated worktree; runner ≠ implementer. gate: model, risk all=no.
+
+| # | Command | Exit | Key observed output | Result |
+|---|---------|------|---------------------|--------|
+| 1 | `bash tools/create-fleet-gitlab.sh --dry-run --tier ultimate --group example --prefix myorg 2>&1 \| grep -cE -e 'custom role' -e 'status check'` | 0 | count `5` (≥2): "would create custom role 'myorg-reviewer-role' (base=Reporter/20, admin_merge_request=true, no push) via POST /groups/:id/member_roles"; "would register external status check 'assay-verdict'"; "Custom reviewer role + external status check: CONFIGURED" | PASS |
+| 2 | push attempt to a scratch branch as the custom-role reviewer token → rejected by GitLab (LIVE — not executed) | — | offline envelope forbids; needs a live Ultimate instance + reviewer token. brief `## Evidence` empty; the only related pilot probe (`pilot-report.md:166`, parity row 12) records the OPPOSITE (pilot not Ultimate → role never provisionable; a Developer SA pushed successfully — the B9 failed-at-tier degradation). NO well-formed Phase-0 record of the custom-role token being rejected | COULD-NOT-CHECK (live, no Phase-0 record) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGitlabStatusCheckFallback -v` | 0 | PASS — `ultimate_posts_the_check` PASS; `premium_yields_could_not_check` PASS (Premium 403 → `could-not-check: GET /projects/.../external_status_checks — permission or tier gate (HTTP 403)`). Both branches | PASS |
+
+**Risk-bearing value (ENUMERATE → RANK → DERIVE):**
+- `RISK-VALUE: TOP-RANKED (security control, reviewer-role-cannot-push) — offline-derivable half: custom-role permission literals in tools/create-fleet-gitlab.sh — base_access_level: 20 (Reporter → cannot push to any branch, line 115/521) + admin_merge_request: true (approve without push, line 521), echoed in dry-run line 494. This is the role DEFINITION as not-push-capable; its irreversible/live PROOF is row 2 (GitLab-enforced push rejection), which is UNCONFIRMED — the offline surface shows the role is defined not-push-capable, not that GitLab enforces it.`
+- `RISK-VALUE: DERIVED — tier-gated status-check behavior @ forge_gitlab.go: Premium (no external-status-check API) → 403 → could-not-check (carries the literal 'could-not-check', never a silent downgrade); Ultimate → posts the check.` Confirmed both branches (row 3). Reversible relative to the push restriction, ranks below it.
+
+**Live row-2 hand-off (exact probe, for an Ultimate instance):** create the role (`POST /groups/:id/member_roles base_access_level:20 admin_merge_request:true`), bind it to the reviewer SA (`PUT /groups/:id/members/:user_id member_role_id`), mint that reviewer token, then `POST /projects/:id/repository/branches` (or `git push`) to a scratch branch as that token → expect HTTP 403 / rejection. Record endpoint + project + token role + HTTP status.
+
+**Scope-traceability:** every offline-runnable row maps 1:1 to a deliverable; row 2 being a live probe is inherent to the brief (Ultimate-by-construction), not a gap in the work.
+
+**VERDICT: PARTIAL/BLOCKED** — offline surface (rows 1 & 3) PASS; row 2 COULD-NOT-CHECK (live, no Phase-0 record). NOT a FAIL (no failing observation). **Held at `implemented`** — row 2 is the live proof of the brief's single-point-of-failure security control (reviewer-role-cannot-push), so the offline surface is not flipped alone. Decision filed `#838`: run the live push-rejection probe on an Ultimate instance (record as Phase-0 Evidence), OR a recorded ruling to accept the offline role-definition + row-3 tier-fallback with row 2 deferred (mirrors fg/05's live-pilot human-gate treatment).
+
+### Human ruling — 2026-09-11 (relayed from the driver, Ian; `#838`)
+
+**Answer: B — accept the offline surface, defer the live row-2 proof** ("I don't have an ultimate instance to test it on"). This human sign-off accepts rows 1 & 3 (offline, PASS) with row 2 (the live custom-reviewer-role-cannot-push proof) DEFERRED — recorded COULD-NOT-CHECK, not disproven. On that basis the row flips **implemented → verified**.
+
+**Deferred live proof still owed** (not lost): the enforced "custom reviewer role cannot push" guarantee is proven only at role-DEFINITION level (offline: `base_access_level: 20` + `admin_merge_request:true` + no push), not live-enforced. When an Ultimate GitLab instance is available, run the push-rejection probe (provision the role `POST /groups/:id/member_roles base_access_level:20 admin_merge_request:true`, bind to the reviewer SA, mint that token, `POST …/repository/branches` → expect HTTP 403) and append the Phase-0 record. Tracked on `#838`.
+
+**VERDICT (post-ruling): VERIFIED** — offline surface PASS + human sign-off (Ian, #838) accepting the deferred live row 2.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README
