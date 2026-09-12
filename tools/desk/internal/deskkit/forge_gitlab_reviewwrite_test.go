@@ -209,3 +209,64 @@ func TestForgeGitlabWriteTierErrors(t *testing.T) {
 		})
 	}
 }
+
+// TestForgeGitlabVerdictNoteState is the #798 regression: a GitLab correctness verdict must
+// be visible to the read path with the review STATE the reviewer-approved gate reads, not
+// merely as a COMMENTED note whose body happens to contain the word. The write side already
+// lands the verdict as a `Verdict: approve|request-changes` NOTE (approve also POSTs an
+// approval; request-changes has no native GitLab object), so unless ReviewsAtHead reduces
+// that note to APPROVED / CHANGES_REQUESTED at head, deskflip reports "no APPROVED/
+// CHANGES_REQUESTED correctness verdict" over a verdict that was really rendered — the write
+// and the read disagree on the object.
+//
+// The decisive case is request-changes: after it there is NO approval object at all, so a
+// CHANGES_REQUESTED at head can ONLY come from the note. A note-only write that regressed to
+// COMMENTED would leave the retraction invisible again.
+func TestForgeGitlabVerdictNoteState(t *testing.T) {
+	// --- APPROVE: the verdict NOTE itself carries State APPROVED at head ---
+	t.Run("approve_note_is_APPROVED_at_head", func(t *testing.T) {
+		s := newGLStatefulServer(t)
+		f := s.forge()
+		const approveBody = "## Review\n\nVerdict: approve\n"
+		if err := f.PostReview(glRepo, 7, ReviewInput{HeadSHA: glHead, Event: "APPROVE", Body: approveBody}); err != nil {
+			t.Fatalf("PostReview APPROVE: %v", err)
+		}
+		reviews, err := f.ReviewsAtHead(glRepo, 7)
+		if err != nil {
+			t.Fatalf("ReviewsAtHead: %v", err)
+		}
+		// The NOTE (identified by its body) must itself read as APPROVED at head — not merely
+		// the separate approval object. On GitLab CE the approval object is not head-pinned,
+		// so the note is the channel the gate can always see.
+		if got := findReview(reviews, func(r Review) bool {
+			return strings.Contains(r.Body, "Verdict: approve") && r.State == "APPROVED" && r.CommitID == glHead
+		}); got == nil {
+			t.Fatalf("the approve verdict NOTE is not readable as APPROVED at head %s; reviews: %+v", glHead, reviews)
+		}
+	})
+
+	// --- REQUEST_CHANGES: with no approval object, CHANGES_REQUESTED must come from the note ---
+	t.Run("request_changes_note_is_CHANGES_REQUESTED_at_head", func(t *testing.T) {
+		s := newGLStatefulServer(t)
+		f := s.forge()
+		const rejectBody = "## Review\n\nVerdict: request-changes\n"
+		if err := f.PostReview(glRepo, 7, ReviewInput{HeadSHA: glHead, Event: "REQUEST_CHANGES", Body: rejectBody}); err != nil {
+			t.Fatalf("PostReview REQUEST_CHANGES: %v", err)
+		}
+		reviews, err := f.ReviewsAtHead(glRepo, 7)
+		if err != nil {
+			t.Fatalf("ReviewsAtHead: %v", err)
+		}
+		// No standing APPROVED (unapprove revoked it / there was none).
+		if got := findReview(reviews, func(r Review) bool { return r.State == "APPROVED" }); got != nil {
+			t.Fatalf("request-changes must leave no standing APPROVED, got: %+v", *got)
+		}
+		// The verdict is VISIBLE as CHANGES_REQUESTED at head — the retraction is not a mere
+		// COMMENTED note the gate cannot distinguish from a plain comment.
+		if got := findReview(reviews, func(r Review) bool {
+			return r.State == "CHANGES_REQUESTED" && r.CommitID == glHead
+		}); got == nil {
+			t.Fatalf("the request-changes verdict is not readable as CHANGES_REQUESTED at head %s; reviews: %+v", glHead, reviews)
+		}
+	})
+}
