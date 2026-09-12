@@ -43,7 +43,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (48 desk-actionable of 56 total — 55 at implemented, 1 verified awaiting review)
+## Awaiting verification / review (48 desk-actionable of 56 total — 54 at implemented, 2 verified awaiting review)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board segmented by blocker owner: the desk-actionable headline counts only the queue the desk can actually drain._
 
@@ -91,7 +91,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 16 | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 19 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1000 | 0 | — | — | — |
-| forge-gitlab | 06 | implemented | 1000 | 0 | — | — | — |
+| forge-gitlab | 06 | verified | 1000 | 0 | — | 2026-09-11 opus-4.8[1m]-verifier (offline rows 1,3 PASS; live row-2 push-rejection proof deferred per Ian ruling #838) | — |
 | harness-portability | 07 | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1000 | 0 | — | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1000 | 0 | — | — | — |
@@ -219,7 +219,7 @@ _None._
 ### forge-gitlab (6 open)
 
 - 05 Live pilot — one brief round-tripped on a real GitLab group, security-parity table walked — implemented (wave 4)
-- 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — implemented (wave 5)
+- 06 Ultimate refinements — custom reviewer role + external-status-check verdict lane — verified (wave 5)
 - 08 Close the forge surface — enumerated operations, no passthrough, shell-exec ban — implemented (wave 3)
 - 10 GitLab trust-events + commit author-login for the deskpost trust read — todo (wave 5)
 - 11 Guard-read custody — the last gh shell-outs onto the Forge seam — todo (wave 4)
