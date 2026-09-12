@@ -11,6 +11,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/commsqueue"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/runnertable"
 )
 
 // loop.go — commsloop's loopengine.Loop adapter: the DRAIN half of the cell
@@ -46,6 +47,39 @@ type Loop struct {
 	Filer commsqueue.IssueFiler
 	// Now is a test seam; nil means time.Now (UTC).
 	Now func() time.Time
+
+	// --- executor dispatch leg (brief 08) --------------------------
+	// Native selects the dispatch MODE for a DISPATCHABLE (non-local) tier reaching
+	// Dispatch. false (the zero value, the default) is the interim/rollback position: no
+	// production call site sets it, so a session-tier item reaching Dispatch today refuses
+	// rather than fire a real session or fabricate a result. true drives the item through a
+	// real ACP child process (dispatch_native.go), copying verifyloop's native pattern —
+	// see cmd/verifyloop/adapter.go's own Native flag, the precedent this mirrors exactly.
+	// The report-class shortcut (TierLocal) is UNCHANGED either way: it never spawns a
+	// session, so it is not behind this flag.
+	Native bool
+	// RunnerTable is the tier->runner map an executor session resolves against. When set
+	// it is THE runner surface (RunnerID is derived from the resolved entry); nil falls
+	// back to RunnerCmd below. See internal/runnertable and verifyloop's identical field.
+	RunnerTable *runnertable.RunnerTable
+	// RunnerCmd is the legacy single-runner fallback, kept as the test-injection path. A
+	// runner that could reach the network needs an explicit value: native mode with both
+	// RunnerTable nil and RunnerCmd empty refuses to dispatch.
+	RunnerCmd []string
+	// RunnerID is this session's own identity (engine's author!=runner left-hand side),
+	// used only when neither RunnerTable nor a resolved entry supplies one.
+	RunnerID string
+	// NativeEnv is appended to the spawned runner's environment. Empty inherits the
+	// parent environment unchanged.
+	NativeEnv []string
+	// NativeTimeout caps one native dispatch (spawn->initialize->session->prompt->parse).
+	// Zero uses defaultNativeTimeout.
+	NativeTimeout time.Duration
+	// MakeWorktree creates the isolated worktree an executor session runs in, returning
+	// its dir and a cleanup. nil uses the real `git worktree add --detach` implementation
+	// (gitDetachedWorktreeComms). Injected in tests so the native path never touches a
+	// real clone.
+	MakeWorktree func(loopengine.Item) (dir string, cleanup func(), err error)
 
 	mu      sync.Mutex
 	reasons map[string]string // item ID -> quarantine reason, set by TierPolicy, consumed by Land.
@@ -185,18 +219,33 @@ type staticHandle struct {
 func (h staticHandle) Done() <-chan loopengine.Result { return h.done }
 func (h staticHandle) Item() loopengine.Item          { return h.item }
 
-// Dispatch implements loopengine.Loop. Only TierLocal (report-class) items
-// reach here — TierHuman is never dispatched by the engine itself (its
-// contract routes straight to Land via VerdictRouteHuman). A report-class
-// message needs no agent at all: it is answered by construction (the class of
-// message IS the answer), so Dispatch synthesizes the PASS result directly —
-// "report-class messages land with NO session fired" is true here in the
-// most literal sense: nothing is ever spawned.
-func (l *Loop) Dispatch(item loopengine.Item, _ loopengine.Tier) (loopengine.Handle, error) {
-	ch := make(chan loopengine.Result, 1)
-	ch <- loopengine.Result{Item: item, Verdict: loopengine.VerdictPass, RunnerID: "commsloop"}
-	close(ch)
-	return staticHandle{item: item, done: ch}, nil
+// Dispatch implements loopengine.Loop. TierHuman is never dispatched by the engine
+// itself (its contract routes straight to Land via VerdictRouteHuman).
+//
+// TierLocal (report-class) items need no agent at all: the message needs no agent at
+// all — it is answered by construction (the class of message IS the answer), so
+// Dispatch synthesizes the PASS result directly, unconditionally, whether or not the
+// executor leg below is enabled. "report-class messages land with NO session fired" is
+// true here in the most literal sense: nothing is ever spawned for them.
+//
+// Any OTHER (dispatchable, non-local) tier reaching here is the executor dispatch leg
+// (brief 08): with Native enabled it fires a real ACP child process
+// (dispatchNative); with Native at its zero value — the interim/rollback position, and
+// what every production call site leaves it at today — it refuses rather than fire a
+// session or fabricate a result. Once the (not-yet-landed) prose router and its assign
+// table start emitting a session tier, THIS is the one place that swap reaches.
+func (l *Loop) Dispatch(item loopengine.Item, tier loopengine.Tier) (loopengine.Handle, error) {
+	if tier == loopengine.TierLocal {
+		ch := make(chan loopengine.Result, 1)
+		ch <- loopengine.Result{Item: item, Verdict: loopengine.VerdictPass, RunnerID: "commsloop"}
+		close(ch)
+		return staticHandle{item: item, done: ch}, nil
+	}
+	if l.Native {
+		return l.dispatchNative(item, tier)
+	}
+	return nil, fmt.Errorf(
+		"commsloop: dispatch for tier %s needs the executor dispatch leg (Native flag), which is at its zero value (interim/rollback position) — refusing rather than fire a session or fabricate a result", tier)
 }
 
 // Land implements loopengine.Loop: exactly ONE tracked exit per accepted
