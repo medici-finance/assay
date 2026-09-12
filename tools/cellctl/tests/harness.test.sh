@@ -266,6 +266,23 @@ assert "check fails when neither discovery arm is present (exit 1)" '[[ $rc -ne 
 assert "names skills discoverable as the MISS" 'grep -q "MISS  skills discoverable" <<<"$out"'
 printf '[{"id":"assay@assay","enabled":true}]\n' > "$CODEX_TEST_DIR/skills"
 
+# ---------------------------------------------------------------- set: CELL_HARNESS is a known key
+# (cellctl set shipped in #944, merged after this branch was cut — CELL_HARNESS is wired into its
+# known-key list and value check as part of this issue's own "settable via cellctl set" ask.)
+echo "[set: CELL_HARNESS is a known key]"
+out="$("$CELLCTL" set house-cell CELL_HARNESS=codex 2>&1)" && rc=0 || rc=$?
+assert "set exits 0" '[[ $rc -eq 0 ]]'
+assert "cell.env now carries CELL_HARNESS=codex" 'grep -qx "CELL_HARNESS=codex" "$CELL/cell.env"'
+assert "prints before -> after" 'grep -q "CELL_HARNESS: claude -> codex" <<<"$out"'
+out="$("$CELLCTL" set house-cell CELL_HARNESS=bogus 2>&1)" && rc=0 || rc=$?
+assert "an invalid CELL_HARNESS value is refused (non-zero exit)" '[[ $rc -ne 0 ]]'
+assert "names claude or codex" 'grep -q "CELL_HARNESS must be claude or codex" <<<"$out"'
+assert "cell.env is untouched by the refusal" 'grep -qx "CELL_HARNESS=codex" "$CELL/cell.env"'
+out="$("$CELLCTL" set house-cell CELL_HARNESS=bogus --force 2>&1)" && rc=0 || rc=$?
+assert "--force does not bypass the value check" '[[ $rc -ne 0 ]] && grep -q "CELL_HARNESS must be claude or codex" <<<"$out"'
+# restore claude for the remaining tests
+"$CELLCTL" set house-cell CELL_HARNESS=claude >/dev/null
+
 # ---------------------------------------------------------------- up: --harness threads through
 echo "[up: --harness threads to every role window]"
 out="$(DRY_RUN=1 "$CELLCTL" up house-cell --cockpit tmux --harness codex 2>&1)" && rc=0 || rc=$?
