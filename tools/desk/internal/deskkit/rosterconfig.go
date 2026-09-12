@@ -198,6 +198,27 @@ const (
 	// directory the hook happened to be spawned in, which is caller-influenced — the
 	// one input a guard's own policy source must not depend on.
 	EnvWriteguardCallout = "ASSAY_WRITEGUARD_CALLOUT"
+	// EnvContributorLedger names the path of the contributor-trust LEDGER: the
+	// operator-side record of which external identity holds which trust tier
+	// against which repository. It is read exactly like every other roster key —
+	// environment over the config-home file, per ToolClass — but the ledger it
+	// NAMES is a SEPARATE file the roster.env value merely points at, on the same
+	// outside-every-ref discipline as the roster itself (P2): never a file in
+	// this repository, and no tool writes it except the structured blessing act.
+	//
+	// An ABSOLUTE path to ONE file, validated the same way ASSAY_WRITEGUARD_CALLOUT
+	// is: a relative path resolves against whatever directory the reading tool
+	// happened to be spawned in, which is caller-influenced input choosing a
+	// trust-boundary's own data source.
+	//
+	// FAIL-CLOSED, three-state (trusttier.go's ResolveTier). Unset, or a path that
+	// does not exist, is a LEGITIMATE empty — today's bar, every identity resolves
+	// `unknown` — and is never an anomaly. A configured path that cannot be read or
+	// does not parse is DIFFERENT: an anomaly, announced on stderr, that still
+	// resolves `unknown` — a broken ledger can only narrow what automation does,
+	// never widen it. The two are distinguished in ResolveTier's returned
+	// Provenance and must never be collapsed into one state.
+	EnvContributorLedger = "ASSAY_CONTRIBUTOR_LEDGER"
 	// EnvRosterSchema optionally pins the FORMAT version of the roster. Absent
 	// means version 1, the only format that has ever existed. It exists so a
 	// future format change is distinguishable from a stale file: without it, an
@@ -347,7 +368,7 @@ func knownRosterKeys() []string {
 		EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs,
 		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
 		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo,
-		EnvWriteguardCallout, EnvRosterSchema,
+		EnvWriteguardCallout, EnvContributorLedger, EnvRosterSchema,
 		// STATUSGEN-only keys: recognised so a shared roster.env that configures
 		// statusgen does not collapse deskkit's configuration; not consumed here.
 		EnvHomeRepo, EnvScanRepos, EnvAuthorizedAuthors,
@@ -514,6 +535,12 @@ type Config struct {
 	// (EnvWriteguardCallout), empty when unset. Empty means the compiled generic
 	// indicators alone — see the const's ONLY-WIDENS note.
 	WriteguardCallout string
+
+	// ContributorLedgerPath is the absolute path of the operator-configured
+	// contributor-trust ledger (EnvContributorLedger), empty when unset. Empty is
+	// a COMPLETE, legitimate configuration — see the const's FAIL-CLOSED note —
+	// and is read through trusttier.go's ResolveTier, never directly.
+	ContributorLedgerPath string
 
 	// WithheldIdentifiers is the normalised withheld register set parsed from
 	// ASSAY_WITHHELD_IDENTIFIERS — the stream slugs and brief ids the public-repo
@@ -691,7 +718,8 @@ func readRawConfig(class ToolClass) (map[string]string, string, []string) {
 	keys := []string{
 		EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs,
 		EnvAllowedRepos, EnvHumanLoginMap, EnvRiskPathTriggersExtra,
-		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo, EnvWriteguardCallout, EnvRosterSchema,
+		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo, EnvWriteguardCallout,
+		EnvContributorLedger, EnvRosterSchema,
 	}
 	fromEnv := func() map[string]string {
 		m := map[string]string{}
@@ -919,10 +947,10 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 			bad("%s: unknown key in the ASSAY_ namespace. It is not applied, so whatever it was "+
 				"meant to configure is EMPTY — and an empty control surface that reports itself "+
 				"configured is the failure this refusal exists to prevent. Recognised keys: "+
-				"%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s (and the optional %s)",
+				"%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s (and the optional %s)",
 				k, EnvBlessLogin, EnvTrustedLogins, EnvTrustedBotSlugs, EnvAllowedRepos,
 				EnvHumanLoginMap, EnvRiskPathTriggersExtra, EnvRiskCallout, EnvRepoAliases, EnvRepoForges,
-				EnvReleaseRepo, EnvWriteguardCallout, EnvRosterSchema)
+				EnvReleaseRepo, EnvWriteguardCallout, EnvContributorLedger, EnvRosterSchema)
 			continue
 		}
 		cfg.UnknownKeys = append(cfg.UnknownKeys, k)
@@ -1282,6 +1310,28 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 		}
 	}
 
+	// --- contributor-trust ledger path (ASSAY_CONTRIBUTOR_LEDGER) ---
+	// An ABSOLUTE path to ONE file, validated exactly like ASSAY_WRITEGUARD_CALLOUT
+	// above. Everything about the ledger that can change between load and use —
+	// whether the file exists, is readable, and parses — is checked at READ time
+	// (trusttier.go's ResolveTier / loadLedgerFile), never here: each of
+	// those means a DIFFERENT fail-closed state (absent vs. unreadable) that this
+	// load-time step cannot yet distinguish.
+	if raw := strings.TrimSpace(vals[EnvContributorLedger]); raw != "" {
+		switch {
+		case strings.ContainsAny(raw, ",;\t\n\r"):
+			bad("%s=%q contains a separator. It names ONE ledger file, never a list",
+				EnvContributorLedger, raw)
+		case !filepath.IsAbs(raw):
+			bad("%s=%q is not an absolute path. A relative ledger path resolves against the "+
+				"directory the reading tool happened to be spawned in — caller-influenced input "+
+				"choosing a trust-boundary's own data source. Refusing, exactly as if it were unset",
+				EnvContributorLedger, raw)
+		default:
+			cfg.ContributorLedgerPath = raw
+		}
+	}
+
 	// --- withheld register identifiers (selfcontain.go) ---
 	//
 	// A plain list value with nothing to validate: an identifier is whatever this
@@ -1386,6 +1436,10 @@ func (c Config) EffectiveConfigLines() []string {
 	if calloutStr == "" {
 		calloutStr = "(unset — compiled generic indicators only)"
 	}
+	ledgerStr := c.ContributorLedgerPath
+	if ledgerStr == "" {
+		ledgerStr = "(unset — every identity not in the roster resolves unknown)"
+	}
 	// ROLE BINDINGS get their own line. The bot-slug line above renders slug:id and
 	// says nothing about which role each slug is BOUND to, so a dropped `role=`
 	// prefix — the typo that silently unbinds a desk role — was invisible in the P3
@@ -1445,6 +1499,7 @@ func (c Config) EffectiveConfigLines() []string {
 		fmt.Sprintf("assay-config: %s=%s", EnvRepoForges, strings.Join(forges, ",")),
 		fmt.Sprintf("assay-config: %s=%s", EnvReleaseRepo, releaseStr),
 		fmt.Sprintf("assay-config: %s=%s", EnvWriteguardCallout, calloutStr),
+		fmt.Sprintf("assay-config: %s=%s", EnvContributorLedger, ledgerStr),
 		// The GitLab session / implementer commit-author allowlist WIDENS the
 		// commit-identity check, so it renders its full sorted set here (never a
 		// count) — a widening on an identity gate must be as visible in the run as
@@ -1492,6 +1547,12 @@ func ConfiguredReleaseRepo() string { return EffectiveConfig().ReleaseRepo }
 // compiled generic indicators alone. Every failure that happens once a callout IS
 // configured means BLOCK — see Callout.Run and the const's FAIL-CLOSED note.
 func WriteguardCalloutPath() string { return EffectiveConfig().WriteguardCallout }
+
+// ContributorLedgerPath returns the operator-configured contributor-trust ledger
+// path, or "" when none is configured. "" is a COMPLETE, legitimate state — see
+// the const's FAIL-CLOSED note — not a failure. Read through trusttier.go's
+// ResolveTier; callers should not read this directly.
+func ContributorLedgerPath() string { return EffectiveConfig().ContributorLedgerPath }
 
 // RosterUnconfiguredError is the loud refusal every trust-gated caller emits when
 // no usable roster was loaded. It never returns nil for an unconfigured roster:
