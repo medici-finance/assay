@@ -93,7 +93,7 @@ install -m 0755 tools/cellctl/cellctl ~/.local/bin/cellctl     # from a checkout
 install -m 0755 ./cellctl ~/.local/bin/cellctl
 ```
 
-`cellctl` needs `git`, `tmux`, `curl`, `openssl` and `python3` on `PATH` — `cellctl check` reports
+`cellctl` needs `git`, `tmux` (the default cockpit), `curl`, `openssl` and `python3` on `PATH` — `cellctl check` reports
 each one. It does not need a Go toolchain.
 
 > **Not yet in the tarball.** Shipping `cellctl` inside `desk-tools-<platform>.tar.gz` is a change to
@@ -189,7 +189,7 @@ cellctl new house --kind house \
   [--roles "the-desk worker-desk"] [--port 8787]
 cellctl check house
 cellctl desk house worker-desk          # one window
-cellctl up house                        # every role, in tmux
+cellctl up house                        # every role, in the resolved cockpit (see *Cockpits*)
 ```
 
 `new --kind house` needs `--repo` (the checkout the role worktrees are created from — it must be a
@@ -227,8 +227,8 @@ cellctl check <cell>
 One `ok` / `MISS` line per precondition, exit 1 if any row missed: the checkout named by
 `CELL_REPO`, the cells slice, the operator config home, `roster.env`, that every App-key symlink
 under `home/.config` resolves (a dangling symlink is the common outcome of step 2), the configured
-forge endpoint, `bin/deskd` and `bin/deskcli`, the desk-tools bindir, `tmux`, and whether this
-cell's `deskd` answers on its address.
+forge endpoint, `bin/deskd` and `bin/deskcli`, the desk-tools bindir, `tmux`, the resolved
+cockpit and its reason (see *Cockpits*), and whether this cell's `deskd` answers on its address.
 
 The forge-specific preconditions are keyed on the cell's `CELL_FORGE`. A **github** cell also
 checks `apps.env`, the linked `gh` config, the readable `deskd` App key, and `ORGS`. A **gitlab**
@@ -327,14 +327,19 @@ thing the boot reads — so it is reported as a notice and the boot continues.
 **The whole cockpit:**
 
 ```bash
-cellctl up <cell> [--no-the-desk] [--no-attach] [CLAUDE_CONFIG_DIR]
+cellctl up <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca] \
+                  [--automate '<cron>'] [CLAUDE_CONFIG_DIR]
 ```
 
-A tmux session named `<cell>-cell`: a `deskd` window (watching `/healthz` if it is already up,
-otherwise standing it — see *How far the attended affirmation carries* above) and one window per role
-in `ROLES`. Windows start two seconds apart, so they do
-not all arrive at the fetch lock together. `up` attaches unless you pass `--no-attach`; re-attach
-later with `tmux attach -t <cell>-cell`.
+One window per role in `ROLES`, plus a `deskd` window (watching `/healthz` if it is already up,
+otherwise standing it — see *How far the attended affirmation carries* above), in whichever
+**cockpit** resolves for this run — see *Cockpits* below. On the default tmux cockpit that is a
+session named `<cell>-cell`, and `up` attaches unless you pass `--no-attach`; re-attach later with
+`tmux attach -t <cell>-cell`. Windows start two seconds apart in every cockpit, so they do not all
+arrive at the fetch lock together.
+
+`DRY_RUN=1 cellctl up <cell>` prints the resolved cockpit and the per-role commands and launches
+nothing.
 
 **`the-desk` is a default window, not an opt-in.** It is first in `ROLES_DEFAULT`; if a hand-edited
 `cell.env` `ROLES` omits it, `up` prepends it anyway, and the `the-desk` window is the one selected
@@ -349,13 +354,103 @@ script carries (`./cellctl`) does not resolve.
 **Down:**
 
 ```bash
-cellctl down <cell> [--keep-deskd]
+cellctl down <cell> [--keep-deskd] [--cockpit auto|tmux|herdr|orca]
 ```
 
 Kills the session and this cell's `deskd` — matched on its own `--config` path, so another cell's
-`deskd` on the same laptop is untouched. `--keep-deskd` leaves it standing.
+`deskd` on the same laptop is untouched. `--keep-deskd` leaves it standing. The tmux session is
+torn down whichever cockpit resolves, and what a non-tmux cockpit opened is closed where that
+cockpit offers a verb for it and **named for you to close by hand where it does not**.
 
 **List:** `cellctl ls` prints the cells under the cells root. No cells is not an error.
+
+---
+
+## Cockpits
+
+A **cockpit** is only the surface the role windows appear in. Nothing else about a cell changes
+with it: the per-role locked worktree, the roster beacon, the pinned model, the shim `PATH` and the
+`/assay:<role>` first prompt are identical in all three, and every window runs the same command —
+`cellctl desk <cell> <role>`. No cockpit is ever required.
+
+```
+CELL_COCKPIT=auto        # cell.env: auto (default) | tmux | herdr | orca
+cellctl up <cell> --cockpit herdr    # override for this run
+```
+
+### What `auto` picks, and why
+
+`auto` resolves by **presence on PATH** — never a flag someone has to remember, the same stance
+the per-item worktree arm takes:
+
+1. **`herdr` on PATH** → herdr. It has labelled tabs and a semantic agent state
+   (`idle | working | blocked | done`), so the five desks show what they are each doing in its
+   sidebar rather than as five anonymous panes, and its background server keeps them alive.
+2. **else `orca` on PATH *and reachable*** → orca. Its CLI is a thin client of its desktop app, so
+   an `orca` binary alone is not enough: `cellctl` runs a cheap, time-bounded read verb first, and
+   an app that does not answer **falls through** rather than failing.
+3. **else** → tmux, the always-works arm.
+
+An **explicit** cockpit — `--cockpit <v>` or `CELL_COCKPIT` — that is not available is a refusal
+naming exactly what is missing (`herdr is not on PATH`; `orca is on PATH but its desktop app is not
+reachable`), never a silent fall-through to something else. `--cockpit` beats `cell.env`, which
+beats the default.
+
+### Which one was chosen
+
+Every `up`, `down` and `check` says so, in one line, with the reason:
+
+```
+[cockpit] herdr (auto: on PATH)
+[cockpit] tmux (fallback: no herdr/orca on PATH)
+[cockpit] tmux (orca on PATH but app unreachable)
+[cockpit] orca (explicit: --cockpit)
+```
+
+`cellctl check <cell>` carries the same resolution as a precondition row, and states orca's
+reachability whenever orca is installed — so "which surface will my windows appear in, and why" is
+answerable before booting rather than after.
+
+### The three shapes
+
+| Cockpit | What `up` opens |
+|---|---|
+| **tmux** | a session `<cell>-cell`: the `deskd`/`cell` window plus one window per role. Unchanged |
+| **herdr** | one **labelled tab per window**, `<cell>-<role>`, each started as a `claude`-kind agent under that label — so the cockpit's agent state drives its sidebar per desk. The first (`deskd`/`cell`) window is a tab too |
+| **orca** | one **terminal per role** under the cell directory, running the same `cellctl desk` command; or, with `--automate`, one scheduled automation per role instead |
+
+### The `--automate` recipe (orca only)
+
+```bash
+cellctl up <cell> --cockpit orca --automate '*/30 * * * *'
+```
+
+One automation per role on that trigger, each fronted by an **exit-code precheck** —
+`cellctl check <cell>`, which is exit-code honest (0 when every precondition holds, 1 when one does
+not). A tick on a cell that is not fit to boot records a skipped run and launches no model at all.
+`--automate` is refused on any other cockpit rather than quietly ignored.
+
+Two limits worth knowing before you use it. A scheduled run is launched by the cockpit, not by
+`cellctl`, so it does **not** carry the cell's shim `PATH`, `DESK_ROOTS` or pinned model — use the
+live-terminal shape where those matter. And automations **outlive `cellctl down`** on purpose:
+taking the windows down is not the same act as cancelling a schedule, so `down` names them rather
+than deleting them.
+
+### Fall-through rules
+
+These cockpit CLIs move fast, so every verb and flag whose spelling `cellctl` cannot see is
+**probed from `--help` at run time**, never hard-coded as a truth that may have drifted:
+
+- a herdr build with no `tab create` still gets labelled windows from `agent start --label`, with a
+  notice; a build whose `agent` has no `start` is a refusal, because nothing could host a window;
+- orca's create-a-terminal verb and its command / working-directory / name flags are read from its
+  own help. Where the verb or the command flag is absent, `cellctl` **prints the exact per-role
+  commands to run by hand** and refuses, rather than guessing a spelling;
+- `--automate` refuses unless `orca automations create` advertises the flags the shape depends on —
+  above all `--precheck`, which is the whole point of it;
+- anything a cockpit cannot close on `down` is **named**, never left unsaid.
+
+In every one of these cases `--cockpit tmux` is the answer that always works.
 
 ---
 
@@ -396,6 +491,7 @@ a window is on is visible without reading the config.
 | `CELL` | the cell name (also the tmux session prefix) |
 | `CELL_KIND` | `k8s` (default — a cell scaffolded before kinds existed carries none) or `house` (the operator's own desks; see *House cells*) |
 | `CELL_ROOTS` | the stream-root map, `<owner>/<repo>=<abs path>,...`, exported to every role window as `DESK_ROOTS`; **required** on a house cell, optional on k8s (unset = the verbs' compiled placeholder topology, and `desk` says so) |
+| `CELL_COCKPIT` | the surface `up` opens the role windows in: `auto` (default — herdr if on PATH, else orca if on PATH and its desktop app answers, else tmux), `tmux`, `herdr` or `orca`; `--cockpit` overrides it per run (see *Cockpits*) |
 | `DESKD` | **house** — `1` to require and stand a `deskd` as a k8s cell does (default `0`: no deskd, and `check` reports it `n/a`) |
 | `CELL_FORGE` | the cell's forge, `github` or `gitlab` (default `github` — a cell scaffolded before forge support carries none and is a GitHub cell by construction) |
 | `CELL_REPO` | the checkout the role worktrees are created from |
