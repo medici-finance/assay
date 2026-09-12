@@ -29,17 +29,20 @@ ok()   { echo "ok   - $1"; pass=$((pass+1)); }
 bad()  { echo "FAIL - $1"; fail=$((fail+1)); }
 
 # run_case <name> <expected-exit> — the caller has staged a repo in $R with base
-# at tag 'base' and head at HEAD; env SKIP and PR_NUMBER are read from the
-# environment (`SKIP=true run_case …`, `PR_NUMBER=77 run_case …`). PR_NUMBER is
-# forwarded as the EMPTY STRING when the caller does not set it, which is how
-# check.sh sees an unsupplied PR number — the P3 row asserts that the verdict is
-# then exactly what it was before the proxy path existed.
+# at tag 'base' and head at HEAD; env SKIP, PR_NUMBER and BASE_REF are read from
+# the environment (`SKIP=true run_case …`, `PR_NUMBER=77 run_case …`,
+# `BASE_REF=main run_case …`). PR_NUMBER is forwarded as the EMPTY STRING when
+# the caller does not set it, which is how check.sh sees an unsupplied PR number
+# — the P3 row asserts that the verdict is then exactly what it was before the
+# proxy path existed. BASE_REF is forwarded the same way: empty means "not
+# supplied", which sends the proxy path to its origin/HEAD leg (P9) or, failing
+# that, to its degraded BASE_SHA fallback (P10).
 run_case() {
   local name="$1" want="$2"
   local base head got
   base="$(git -C "$R" rev-parse base)"
   head="$(git -C "$R" rev-parse HEAD)"
-  ( cd "$R" && SKIP="${SKIP:-false}" PR_NUMBER="${PR_NUMBER:-}" BASE_SHA="$base" HEAD_SHA="$head" bash "$CHECK" ) >/dev/null 2>&1
+  ( cd "$R" && SKIP="${SKIP:-false}" PR_NUMBER="${PR_NUMBER:-}" BASE_REF="${BASE_REF:-}" BASE_SHA="$base" HEAD_SHA="$head" bash "$CHECK" ) >/dev/null 2>&1
   got=$?
   if [ "$got" = "$want" ]; then ok "$name (exit $got)"; else bad "$name (want exit $want, got $got)"; fi
 }
@@ -201,6 +204,75 @@ if printf '%s' "$p7_out" | grep -q 'changelog/pr-<N>-<slug>.md on the base branc
 else
   bad "P7 missing-fragment message documents the proxy path"
 fi
+
+# ── PROXY READ FROM THE LIVE BASE TIP, not the recorded base sha. GitHub stamps
+#    github.event.pull_request.base.sha when the PR is OPENED and never advances
+#    it as the base branch moves — so a proxy merged AFTER the fork PR opened,
+#    which is the only case the proxy path exists for, is invisible in that tree.
+#    These rows are the fail-first evidence: P8/P9 RED against a check.sh that
+#    reads BASE_SHA (the proxy exists only on the live tip), P10 pins the
+#    degraded fallback, P11 pins that the live-tip read did not loosen the
+#    one-proxy-one-PR binding.
+
+# liveproxyrepo <fragment-body> <pr-number> [set-origin-head] — a repo whose tag
+# 'base' is the OLD base sha (no proxy in it) and whose refs/remotes/origin/main
+# carries the proxy, i.e. the real shape: the proxy landed on the base branch
+# after this PR was opened. The PR's own branch (HEAD) adds only an unrelated
+# file. refs/remotes/origin/main is created with update-ref rather than a real
+# clone — it is the exact ref check.sh resolves, so the fixture is faithful and
+# stays offline.
+liveproxyrepo() {
+  local body="$1" n="$2" set_origin_head="${3:-}"
+  newrepo
+  printf '%s' "$CL_EMPTY_UNREL" > "$R/CHANGELOG.md"
+  commit init
+  git -C "$R" tag base                       # the sha GitHub recorded at PR-open
+  local base_sha; base_sha="$(git -C "$R" rev-parse base)"
+
+  # The base branch moves on: a maintainer merges the proxy fragment. Built on a
+  # side branch so 'base' and the PR head both stay where they are.
+  git -C "$R" checkout -q -b live-base "$base_sha"
+  printf '%s' "$body" > "$R/changelog/pr-${n}-fix.md"
+  commit "maintainer lands the proxy on the base branch, after the PR opened"
+  local live_sha; live_sha="$(git -C "$R" rev-parse HEAD)"
+  git -C "$R" update-ref refs/remotes/origin/main "$live_sha"
+  [ -n "$set_origin_head" ] && git -C "$R" update-ref refs/remotes/origin/HEAD "$live_sha"
+
+  # Back to the PR's own branch, which contributes no fragment.
+  git -C "$R" checkout -q -b pr-branch "$base_sha"
+  rm -f "$R/changelog/pr-${n}-fix.md"
+  echo 'x' > "$R/unrelated.txt"; commit "the fork PR's actual change"
+}
+
+# ── P8: proxy only on the LIVE base tip, BASE_REF names the branch → PASS.
+#        Reading BASE_SHA (the bug) cannot see the fragment at all.
+liveproxyrepo "$PROXY_WITH_BULLET" 77
+PR_NUMBER=77 BASE_REF=main run_case "P8 proxy landed after PR-open greens via BASE_REF live tip" 0
+
+# ── P9: same, BASE_REF UNSET but refs/remotes/origin/HEAD present → PASS. This
+#        is why the fix needs no workflow change to start working: actions/
+#        checkout with fetch-depth: 0 already sets origin/HEAD.
+liveproxyrepo "$PROXY_WITH_BULLET" 77 set-origin-head
+PR_NUMBER=77 run_case "P9 proxy on live tip greens via origin/HEAD with BASE_REF unset" 0
+
+# ── P10: neither ref resolvable → the proxy lookup DEGRADES to BASE_SHA, which
+#         does not carry the proxy, so the PR reds — and says so in a NOTICE
+#         rather than failing mutely on the ordinary missing-fragment path alone.
+liveproxyrepo "$PROXY_WITH_BULLET" 77
+git -C "$R" update-ref -d refs/remotes/origin/main
+p10_base="$(git -C "$R" rev-parse base)"; p10_head="$(git -C "$R" rev-parse HEAD)"
+p10_out="$( cd "$R" && SKIP=false PR_NUMBER=77 BASE_SHA="$p10_base" HEAD_SHA="$p10_head" bash "$CHECK" 2>&1 )"
+p10_rc=$?
+if [ "$p10_rc" = 1 ] && printf '%s' "$p10_out" | grep -q 'proxy lookup degraded'; then
+  ok "P10 no live-base ref: falls back to BASE_SHA, reds, and announces the degradation"
+else
+  bad "P10 no live-base ref: falls back to BASE_SHA, reds, and announces the degradation (rc=$p10_rc)"
+fi
+
+# ── P11: the live tip carries a proxy for PR 78; this is PR 77 → FAIL. Reading
+#         the live tip must not loosen the one-proxy-one-PR binding P2 pins.
+liveproxyrepo "$PROXY_WITH_BULLET" 78
+PR_NUMBER=77 BASE_REF=main run_case "P11 live-tip proxy for another PR does not green this one" 1
 
 echo "---"
 echo "check_test: $pass passed, $fail failed (impl: $CHECK)"

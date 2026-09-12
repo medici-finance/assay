@@ -22,8 +22,15 @@
 #
 # INPUTS (env):
 #   SKIP        "true" when the PR carries the changelog:skip label, else "false"
-#   BASE_SHA    the PR base commit
+#   BASE_SHA    the PR base commit, as GitHub recorded it when the PR was
+#               opened. Used for the PR's own diff (rules 1 and 3) — NOT for the
+#               proxy lookup, which needs the LIVE base tip (see rule 4).
 #   HEAD_SHA    the PR head commit
+#   BASE_REF    the PR base branch name, e.g. "main" (optional; used only by the
+#               PROXY path to resolve the LIVE tip of the base branch as
+#               refs/remotes/origin/<BASE_REF>). Unset, the proxy path falls back
+#               to refs/remotes/origin/HEAD, and failing that to BASE_SHA with a
+#               NOTICE that the lookup is degraded.
 #   HEAD_REF    the PR head branch name (optional; used only to suggest the exact
 #               changelog/<slug>.md path in the failure message; degrades to the
 #               literal <slug> when unset, so the script half can merge before the
@@ -44,10 +51,14 @@
 # changelog/pr-<N>-<slug>.md, and this check accepts it on that PR's behalf.
 # The name is what binds the proxy to exactly one PR: <N> is matched against
 # PR_NUMBER, so a proxy for one PR can never green another. The proxy is read
-# from the BASE commit (never from the untrusted head), and the base SHA the
-# gate is handed is re-resolved on every PR event — which is why re-running the
-# check after landing the proxy is just "add or remove a label" (this leg
-# re-runs on labeled/unlabeled).
+# from the BASE BRANCH (never from the untrusted head) — and specifically from
+# the branch's LIVE TIP, not from BASE_SHA. That distinction is the whole point:
+# GitHub records base.sha when the PR is OPENED and never advances it as the
+# base branch moves, so a proxy merged AFTER the fork PR was opened — which is
+# the only situation the proxy path exists for — is invisible in BASE_SHA's
+# tree. Reading the live tip is what makes "land the proxy, then re-run the
+# check by adding or removing a label" (this leg re-runs on labeled/unlabeled)
+# actually work, with nothing to push to the fork branch.
 #
 # It reads git history only; it contacts no network and needs no toolchain
 # beyond git + python3.
@@ -139,24 +150,51 @@ fi
 #    leaves the PR_NUMBER-unset behaviour byte-identical — the block is a no-op
 #    without it — so the tie is broken on which failure stays visible.
 if [ -n "${PR_NUMBER:-}" ] && printf '%s' "$PR_NUMBER" | grep -qE '^[1-9][0-9]*$'; then
+  # WHICH TREE THE PROXY IS READ FROM — the LIVE tip of the base branch, never
+  # BASE_SHA. BASE_SHA is frozen at PR-open time (GitHub does not advance
+  # github.event.pull_request.base.sha as the base branch moves), and a proxy is
+  # by definition landed AFTER the fork PR was opened, so BASE_SHA's tree cannot
+  # contain it. Resolution order, first that resolves wins:
+  #   1. refs/remotes/origin/<BASE_REF> — exact, when the workflow supplies the
+  #      base branch name.
+  #   2. refs/remotes/origin/HEAD       — the default branch, which
+  #      actions/checkout sets with fetch-depth: 0. Correct for the overwhelmingly
+  #      common case of a PR targeting the default branch, and why this fix needs
+  #      no workflow change to start working.
+  #   3. BASE_SHA                       — degraded fallback, announced with a
+  #      NOTICE: the lookup still runs, but it can only see proxies that predate
+  #      the PR, so a legitimately-landed proxy may be reported MISSING.
+  proxy_tree=""
+  if [ -n "${BASE_REF:-}" ] && git rev-parse --verify -q "refs/remotes/origin/${BASE_REF}^{commit}" >/dev/null 2>&1; then
+    proxy_tree="refs/remotes/origin/${BASE_REF}"
+  elif git rev-parse --verify -q 'refs/remotes/origin/HEAD^{commit}' >/dev/null 2>&1; then
+    proxy_tree="refs/remotes/origin/HEAD"
+  else
+    proxy_tree="$BASE_SHA"
+    echo "::notice title=proxy lookup degraded::Neither refs/remotes/origin/\${BASE_REF} nor refs/remotes/origin/HEAD resolved, so the proxy-fragment lookup is running against the RECORDED base sha (${BASE_SHA}) instead of the live base-branch tip. That sha is frozen at PR-open time, so a proxy fragment merged after this PR was opened will not be seen. Fix: check out with fetch-depth: 0 (which sets origin/HEAD), or pass BASE_REF."
+    echo "NOTICE: proxy lookup degraded — using recorded BASE_SHA ${BASE_SHA}, not the live base-branch tip."
+  fi
+  proxy_sha="$(git rev-parse --short "$proxy_tree" 2>/dev/null || printf '%s' "$proxy_tree")"
+
   # Read the BASE tree, not the diff and not the head: the proxy is a file a
   # maintainer already merged to the base branch, so it appears in NEITHER the
   # PR diff nor (for a fork PR) anything the contributor controls.
-  proxy="$(git ls-tree -r --name-only "$BASE_SHA" -- 'changelog/' 2>/dev/null \
+  proxy="$(git ls-tree -r --name-only "$proxy_tree" -- 'changelog/' 2>/dev/null \
              | grep -E "^changelog/pr-${PR_NUMBER}-[A-Za-z0-9._-]+\.md$" || true)"
   if [ -n "$proxy" ]; then
     # Same content bar as rule 3: the NAME is not enough, at least one proxy
-    # must carry a real highlight bullet, read from the base commit.
+    # must carry a real highlight bullet, read from the same tree the
+    # listing came from (the live base tip, or the degraded fallback).
     proxy_bullet=0
     while IFS= read -r f; do
       [ -n "$f" ] || continue
-      if git show "${BASE_SHA}:${f}" 2>/dev/null | grep -qE '^[[:space:]]*-[[:space:]]+[^[:space:]]'; then
+      if git show "${proxy_tree}:${f}" 2>/dev/null | grep -qE '^[[:space:]]*-[[:space:]]+[^[:space:]]'; then
         proxy_bullet=1
         break
       fi
     done <<< "$proxy"
     if [ "$proxy_bullet" = 1 ]; then
-      echo "PASS: proxy fragment(s) for PR #${PR_NUMBER} found on the base branch:"
+      echo "PASS: proxy fragment(s) for PR #${PR_NUMBER} found on the base branch tip ${proxy_sha}:"
       printf '%s\n' "$proxy"
       exit 0
     fi
