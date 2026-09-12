@@ -140,8 +140,8 @@ func TestRepointedTagIsRefused_EndToEnd(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // fixture builds a consumer + a non-git "source" directory whose HEAD is faked
-// through the execCommand seam, so the pin-parsing and binding checks are tested
-// without a git world each time.
+// through the resolveHead seam, so the pin-parsing and binding checks are tested
+// without a git (or gitcore) world each time.
 type fixture struct {
 	root  string
 	src   string
@@ -155,13 +155,13 @@ func newFixture(t *testing.T, pinFileBody, headSHA, stamp string) fixture {
 		t.Fatal(err)
 	}
 	src := t.TempDir()
-	old := execCommand
-	t.Cleanup(func() { execCommand = old })
-	execCommand = func(name string, arg ...string) *exec.Cmd {
+	old := resolveHead
+	t.Cleanup(func() { resolveHead = old })
+	resolveHead = func(dir string) (string, error) {
 		if headSHA == "" { // simulate "not a git repository"
-			return exec.Command("false")
+			return "", fmt.Errorf("not a git repository")
 		}
-		return exec.Command("printf", "%s\n", headSHA)
+		return headSHA, nil
 	}
 	return fixture{root: root, src: src, stamp: stamp}
 }

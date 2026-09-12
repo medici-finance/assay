@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // The desk posts reviews under this GitHub App login. Only its
@@ -1743,11 +1744,7 @@ var execGateScores = func() ([]byte, error) {
 
 // findRepoRoot returns the git repo root (absolute path).
 func findRepoRoot() (string, error) {
-	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
+	return gitcore.Toplevel(".")
 }
 
 // mapBranchToBrief maps a PR branch name to its owning brief ID ("stream/NN") via

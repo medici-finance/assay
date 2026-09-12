@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // writeguard does NOT call deskkit.Guard() — it is a PreToolUse deny hook
@@ -287,22 +287,21 @@ func worktreeToplevel(dir string) string {
 	if dir == "" {
 		return ""
 	}
-	out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output()
+	top, err := gitcore.Toplevel(dir)
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(out))
+	return top
 }
 
 // mainCheckoutRoot returns the main (shared) checkout root of the repo that
 // contains dir: dirname of `git rev-parse --git-common-dir`, which from any
 // linked worktree points at <shared>/.git.
 func mainCheckoutRoot(dir string) (string, error) {
-	out, err := exec.Command("git", "-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
+	gd, err := gitcore.CommonDir(dir)
 	if err != nil {
 		return "", err
 	}
-	gd := strings.TrimSpace(string(out))
 	if filepath.Base(gd) != ".git" {
 		return "", fmt.Errorf("unexpected git common dir layout: %s", gd)
 	}
