@@ -419,6 +419,9 @@ human ruling re-derived from scratch each time.
   MUST comment what it needs and from whom when labeling; whoever answers removes the label with their response. A
   `question` that matures into a formal decision fork promotes to `needs-decision` with the pros/cons template.
   Labeled items are WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
+- **An escalation that is an ACT only the driver can perform** (not a decision) also gets a
+  `RUNSHEET.md` entry per the `human-runsheet` skill — the filed issue stays the escalation, the
+  runsheet is the exact command the driver runs.
 - **File-and-exit, never block** (desk-hardening/13): after filing, the run does not hold — an open
   verify-gate wait is surfaced and the run moves past it. A loop that blocks in-run is undebuggable in a
   pod; its blocked state must be an at-rest filed issue anyone can inspect.

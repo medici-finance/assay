@@ -597,6 +597,9 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
   MUST comment what it needs and from whom when labeling; whoever answers removes the label with their response. A
   `question` that matures into a formal decision fork promotes to `needs-decision` with the pros/cons template.
   Labeled items are WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
+- **An escalation that is an ACT only the driver can perform** (not a decision) also gets a
+  `RUNSHEET.md` entry per the `human-runsheet` skill — the filed issue stays the escalation, the
+  runsheet is the exact command the driver runs.
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
