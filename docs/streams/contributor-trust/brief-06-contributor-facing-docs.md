@@ -30,7 +30,7 @@ sources:
   - "docs/streams/decisions/DR-contrib-disclosure.md — the design record this brief is authored against (PROPOSED): publish the model never the rows, two short prompts rather than a long form, advisory stated as advisory."
   - "CONTRIBUTING.md — the existing published policy: issue-first, the three-open-pull-request guideline, maintainer-merge, automation-ignores-strangers, fork continuous integration requiring approval, and the explicit 'filter, not deter' framing this brief must preserve."
   - "SECURITY.md — the existing reporting path; the new sections must not duplicate or contradict it."
-  - "contributor-trust/03 (docs/streams/contributor-trust/brief-03-bless-verb-and-audit.md) — the blessing act whose contributor-facing explanation is written here; contributor-trust/03 routes the published description of how admission happens to contributor-trust/06."
+  - "contributor-trust/03 = assay:assay:contributor-trust:03 (docs/streams/contributor-trust/brief-03-bless-verb-and-audit.md) — the blessing act whose contributor-facing explanation is written here; contributor-trust/03 routes the published description of how admission happens to contributor-trust/06."
   - "freshness-checked 2026-09-12 @ e96b7f6d (origin/main) — there is no pull-request template in .github/; CONTRIBUTING.md is 55 lines and says nothing about tiers, provenance signals, the blessing act, or the changelog proxy."
 design: DR-contrib-disclosure
 decision-trigger: creation

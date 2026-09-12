@@ -98,6 +98,7 @@ precisely the case where prior good behaviour predicts nothing.
 | 06 | [Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion](brief-06-contributor-facing-docs.md) | 0 | S | todo | — | — |
 | 07 | [Agent contributors — disclosure of automated authorship, and tiering the operating human rather than the tool](brief-07-agent-contributors.md) | 1 | S | todo | — | — |
 | 08 | [External-contribution metrics — inbound pull requests by tier and outcome, on the board](brief-08-external-contribution-metrics.md) | 1 | S | todo | — | — |
+| 09 | [External-contributor credit in release notes — the aggregator names the author a fork change came from](brief-09-external-contributor-credit.md) | 1 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -126,15 +127,25 @@ on a predicate that any casual comment satisfies. `05` is last on the path becau
 only brief that changes who can cause code to execute on the project's runners.
 
 Smallest unblocking move: rule on `02`'s human decision — where the ledger lives — and land it.
-Briefs `01` and `06` are independent of the path and can run in the same wave; `04`, `07` and
-`08` open as soon as `02` lands.
+Briefs `01` and `06` are independent of the path and can run in the same wave; `04`, `07`, `08`
+and `09` open as soon as `02` lands.
+
+**Brief `09` sits in this stream, and off the critical path, on purpose.** It is the only brief
+here that gives something back rather than asking for something: the release aggregator lifts
+fragment bullets and nothing else, so a fix merged from a fork is credited nowhere in the
+changelog or the release notes. It depends on `02` for one thing only — the single answer to
+"is this author external?", which is the same question the rest of the stream asks and which
+belongs in one place — and it blocks nothing, so it can be worked the moment `02` lands. The
+credit is fail-closed toward silence: a resolution that cannot be made confidently produces no
+name, because a wrong name in a published release is worse than a missing one, and no cut is
+ever refused for want of a credit.
 
 ## Dependency waves
 
 ```
 Wave 0: [01 provenance probe]  [02 tiers + ledger]  [06 contributor docs]
 Wave 1: [03 bless verb] ← 02   [04 review depth] ← 02   [08 metrics] ← 02
-        [07 agent contributors] ← 01, 02, 06
+        [09 release-note credit] ← 02   [07 agent contributors] ← 01, 02, 06
 Wave 2: [05 fork CI posture] ← 02, 03
 ```
 
@@ -144,7 +155,9 @@ Critical path: `02 → 03 → 05`.
 
 - **No external contributor is named anywhere** — not in a brief, not in a fixture, not in a
   test, not in generated output. Patterns are described; people are not. Every illustration
-  uses an invented identity.
+  uses an invented identity. The one place a real login is ever emitted is the release-note
+  credit of `contributor-trust/09`, which names the author of a change the project merged, at
+  that author's option and only forward.
 - **Three states, everywhere.** Every instrument here reports checked-clean, checked-failed or
   could-not-check, and the third is never rounded to the first. A signal that could not be
   gathered is not an absence of concern.

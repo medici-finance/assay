@@ -12,7 +12,7 @@ why: >-
   both, and grants nothing until a human records the first row.
 wave: 0
 depends: []
-unblocks: ["contributor-trust/03", "contributor-trust/04", "contributor-trust/05", "contributor-trust/07", "contributor-trust/08"]
+unblocks: ["contributor-trust/03", "contributor-trust/04", "contributor-trust/05", "contributor-trust/07", "contributor-trust/08", "contributor-trust/09"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -47,6 +47,7 @@ consumers:
   - "tools/desk/internal/deskkit/rosterconfig.go: follow-up contributor-trust/02 (this brief; the new roster key is added by this brief's implementation)"
   - "statusgen/rosterconfig.go: follow-up contributor-trust/02 (this brief; the documented-duplicate twin must gain the same key in the same change or the two readers disagree)"
   - "docs/contributor-trust.md: follow-up contributor-trust/02 (this brief; the published tier model)"
+  - "the identity predicate contributor-trust/09 asks 'is this author external?' through: follow-up contributor-trust/09 (the release-note credit resolver reuses this reader rather than re-deriving the answer from the raw roster)"
   - "tools/desk/internal/deskkit/trust.go (the existing binary bar): out-of-scope (this brief ADDS a tier resolver beside it and changes no existing predicate; every current caller keeps its current answer, which is what makes the change inert until a row is written)"
 version: 1
 ---
