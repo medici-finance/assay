@@ -64,7 +64,11 @@ jobs:
           # Enables the PROXY path: a fragment named changelog/pr-<N>-<slug>.md
           # already on the base branch greens PR <N> (see changelog/README.md).
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          # Lets the proxy lookup name the base branch exactly; without it the
-          # check falls back to origin/HEAD, which fetch-depth: 0 already sets.
+          # Explicit override naming the base branch exactly. The check already
+          # reads GitHub Actions' own GITHUB_BASE_REF by default on every
+          # pull_request run (no workflow change needed for that); this BASE_REF
+          # line is only an explicit belt-and-suspenders value, not what makes
+          # the proxy lookup work. It does NOT fall back to origin/HEAD in any
+          # meaningful way — actions/checkout never creates that symref.
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: bash tools/changelog/check.sh

@@ -24,25 +24,35 @@ CHECK="${CHECK_IMPL:-$here/check.sh}"
 case "$CHECK" in /*) ;; *) CHECK="$here/$CHECK" ;; esac
 export CHANGELOG_AGG="$here/aggregate.py"   # the parser check.sh leans on
 
+# This test may itself be running inside a GitHub Actions pull_request job, in
+# which case GITHUB_BASE_REF is set in the real environment. Unset it here so
+# every case starts from a clean slate and controls it explicitly via run_case's
+# GITHUB_BASE_REF argument/env — otherwise an inherited value would silently
+# leak into cases that mean to test the fully-unset path (e.g. P10).
+unset GITHUB_BASE_REF || true
+
 pass=0; fail=0
 ok()   { echo "ok   - $1"; pass=$((pass+1)); }
 bad()  { echo "FAIL - $1"; fail=$((fail+1)); }
 
 # run_case <name> <expected-exit> — the caller has staged a repo in $R with base
-# at tag 'base' and head at HEAD; env SKIP, PR_NUMBER and BASE_REF are read from
-# the environment (`SKIP=true run_case …`, `PR_NUMBER=77 run_case …`,
-# `BASE_REF=main run_case …`). PR_NUMBER is forwarded as the EMPTY STRING when
-# the caller does not set it, which is how check.sh sees an unsupplied PR number
-# — the P3 row asserts that the verdict is then exactly what it was before the
-# proxy path existed. BASE_REF is forwarded the same way: empty means "not
-# supplied", which sends the proxy path to its origin/HEAD leg (P9) or, failing
-# that, to its degraded BASE_SHA fallback (P10).
+# at tag 'base' and head at HEAD; env SKIP, PR_NUMBER, BASE_REF and
+# GITHUB_BASE_REF are read from the environment (`SKIP=true run_case …`,
+# `PR_NUMBER=77 run_case …`, `BASE_REF=main run_case …`,
+# `GITHUB_BASE_REF=main run_case …`). PR_NUMBER is forwarded as the EMPTY STRING
+# when the caller does not set it, which is how check.sh sees an unsupplied PR
+# number — the P3 row asserts that the verdict is then exactly what it was
+# before the proxy path existed. BASE_REF and GITHUB_BASE_REF are forwarded the
+# same way: both empty means "neither supplied", which sends the proxy path to
+# its origin/HEAD leg (best-effort only) or, failing that, to its degraded
+# BASE_SHA fallback (P10). GITHUB_BASE_REF set with BASE_REF unset is the
+# zero-config CI path (P9); both set proves BASE_REF wins (P12).
 run_case() {
   local name="$1" want="$2"
   local base head got
   base="$(git -C "$R" rev-parse base)"
   head="$(git -C "$R" rev-parse HEAD)"
-  ( cd "$R" && SKIP="${SKIP:-false}" PR_NUMBER="${PR_NUMBER:-}" BASE_REF="${BASE_REF:-}" BASE_SHA="$base" HEAD_SHA="$head" bash "$CHECK" ) >/dev/null 2>&1
+  ( cd "$R" && SKIP="${SKIP:-false}" PR_NUMBER="${PR_NUMBER:-}" BASE_REF="${BASE_REF:-}" GITHUB_BASE_REF="${GITHUB_BASE_REF:-}" BASE_SHA="$base" HEAD_SHA="$head" bash "$CHECK" ) >/dev/null 2>&1
   got=$?
   if [ "$got" = "$want" ]; then ok "$name (exit $got)"; else bad "$name (want exit $want, got $got)"; fi
 }
@@ -249,11 +259,15 @@ liveproxyrepo() {
 liveproxyrepo "$PROXY_WITH_BULLET" 77
 PR_NUMBER=77 BASE_REF=main run_case "P8 proxy landed after PR-open greens via BASE_REF live tip" 0
 
-# ── P9: same, BASE_REF UNSET but refs/remotes/origin/HEAD present → PASS. This
-#        is why the fix needs no workflow change to start working: actions/
-#        checkout with fetch-depth: 0 already sets origin/HEAD.
-liveproxyrepo "$PROXY_WITH_BULLET" 77 set-origin-head
-PR_NUMBER=77 run_case "P9 proxy on live tip greens via origin/HEAD with BASE_REF unset" 0
+# ── P9: the ZERO-CONFIG CI path — BASE_REF unset, GITHUB_BASE_REF set (as
+#        GitHub Actions sets it on every pull_request run, no workflow change
+#        needed), and refs/remotes/origin/HEAD absent (the realistic case: an
+#        actions/checkout run never creates that symref) → still PASS, because
+#        check.sh resolves BASE_REF from GITHUB_BASE_REF. This is the row that
+#        actually proves "works with no workflow change" — origin/HEAD is
+#        deliberately NOT set up for this case.
+liveproxyrepo "$PROXY_WITH_BULLET" 77
+PR_NUMBER=77 GITHUB_BASE_REF=main run_case "P9 proxy on live tip greens via GITHUB_BASE_REF with BASE_REF unset, no origin/HEAD" 0
 
 # ── P10: neither ref resolvable → the proxy lookup DEGRADES to BASE_SHA, which
 #         does not carry the proxy, so the PR reds — and says so in a NOTICE
@@ -273,6 +287,13 @@ fi
 #         the live tip must not loosen the one-proxy-one-PR binding P2 pins.
 liveproxyrepo "$PROXY_WITH_BULLET" 78
 PR_NUMBER=77 BASE_REF=main run_case "P11 live-tip proxy for another PR does not green this one" 1
+
+# ── P12: BOTH BASE_REF (explicit override) and GITHUB_BASE_REF (zero-config
+#         default) set, to DIFFERENT branch names → BASE_REF wins. Point
+#         GITHUB_BASE_REF at a branch that does not resolve at all, so a pass
+#         can only mean BASE_REF's leg was the one taken.
+liveproxyrepo "$PROXY_WITH_BULLET" 77
+PR_NUMBER=77 BASE_REF=main GITHUB_BASE_REF=other run_case "P12 explicit BASE_REF wins over GITHUB_BASE_REF" 0
 
 echo "---"
 echo "check_test: $pass passed, $fail failed (impl: $CHECK)"
