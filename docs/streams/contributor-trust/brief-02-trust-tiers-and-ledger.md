@@ -43,10 +43,10 @@ exec-tier-why: >-
   passes either way; and (b) the reader is a documented duplicate across two modules that a
   coupling test must hold together.
 consumers:
-  - "tools/desk/internal/deskkit/trusttier.go: follow-up contributor-trust/02 (this brief; flips to fixed-here when the implementation lands the reader)"
-  - "tools/desk/internal/deskkit/rosterconfig.go: follow-up contributor-trust/02 (this brief; the new roster key is added by this brief's implementation)"
-  - "statusgen/rosterconfig.go: follow-up contributor-trust/02 (this brief; the documented-duplicate twin must gain the same key in the same change or the two readers disagree)"
-  - "docs/contributor-trust.md: follow-up contributor-trust/02 (this brief; the published tier model)"
+  - "tools/desk/internal/deskkit/trusttier.go: fixed-here (the Tier type, LedgerRow, the injected LedgerLoader, ResolveTier and the capabilityTable land in this file)"
+  - "tools/desk/internal/deskkit/rosterconfig.go: fixed-here (the ASSAY_CONTRIBUTOR_LEDGER roster key is added by this brief's implementation)"
+  - "statusgen/rosterconfig.go: fixed-here (the documented-duplicate twin gains the identical key, recognised-not-applied, in the same change)"
+  - "docs/contributor-trust.md: fixed-here (the published tier model)"
   - "the identity predicate contributor-trust/09 asks 'is this author external?' through: follow-up contributor-trust/09 (the release-note credit resolver reuses this reader rather than re-deriving the answer from the raw roster)"
   - "tools/desk/internal/deskkit/trust.go (the existing binary bar): out-of-scope (this brief ADDS a tier resolver beside it and changes no existing predicate; every current caller keeps its current answer, which is what makes the change inert until a row is written)"
 version: 1
