@@ -151,6 +151,29 @@ mutant.
   `AppBinding`/`AppEnvPrefix`/`AppIDForApp` helpers) per the consumer list. `deskpost` /
   `deskevidence` / `desktoken coverage` still resolve role-keyed; extending the binding to their
   own JWT-signing paths is follow-up territory (they are not in this brief's consumer set).
+### Non-implementer verifier run — 2026-09-11 sonnet-5-verifier (verify-desk dispatch), offline — **VERIFY: PASS — first non-implementer pass**
+
+Pin: `medici-finance/assay` main `86c7d62c8081189147baf37424b602f907b139aa` (git rev-parse == gh api commits/main). Fresh clone. `gate: model`, `risk {all no}`, `irreversible: no`.
+
+| # | Result |
+|---|---|
+| 1 | PASS — `go build ./...` clean; `go test ./cmd/desktoken/ -run RoleApp` and `go test ./internal/deskkit/ -run MultiRole` both exit 0 |
+| 2 | PASS — `desktoken --version` with `REVIEWER_APP=x-act` prints `bindings=… reviewer=x-act …`, exit 0 |
+| 3 | PASS — with no binding set, prints `reviewer=reviewer-app`, exit 0 |
+| 4 | PASS — `MultiRole` test logs `role-bindings=reviewer=x-act worker=x-act`; grep count 1 (≥1) |
+| 5 | PASS — README grep count 6 (≥1); documents `<ROLE>_APP`/`REVIEWER_APP`, default, precedence, the "two keys and six bindings" sentence |
+| 6 | PASS — `TestUnboundRoleRefused` is a real independent lower-layer test (roster `role=slug` binding), not a stub |
+| 7 | PASS as literally run, but the named test only checks corpus-entry-exists + unmutated-code-passes, not the mutant reddening itself — **independently hand-verified**: applied the exact `mutations.json` patch (`appNameFor` → `role + "-app"` unconditionally) by hand, confirmed `TestRoleAppBindingVersionEcho`, `TestRoleAppBindingResolvesBoundAppID`, and `TestMutationRemovedBindingInCorpus` all genuinely FAIL under the mutant; reverted, all green again, working tree clean |
+| 8 | **FAIL as literally written** — `statusgen --root . --consumers --brief apps-installer/01` exits 2, `COULD-NOT-CHECK: no brief-v1 file`. Root cause: a later, unrelated repo-wide flag-day migration (`bb2079bd`) changed every brief's `brief:` frontmatter field from `<stream>/<NN>` to the colon form `assay:assay:<stream>:<NN>`, breaking the row's literal `--brief` argument for every brief in the repo, not just this one — already tracked at `#822` (open: "statusgen --consumers --brief rejects the `<stream>/<NN>` id... only the colon form works"). Even with the corrected id, the row is inherently pre-merge/diff-scoped by the tool's own design (documented in its source), so a fully-merged main with no open diff reports COULD-NOT-CHECK by construction — this is the same structural class as a separate, already-tracked house-repo gap (`statusgen --consumers` returning COULD-NOT-CHECK fleet-wide since the brief-v1→v2 flag day), not a defect in this brief's own work |
+
+**Substance checks (traced code, not just names):**
+1. `AppEnvPrefix` reconciliation rule — genuinely wired: `deskkit.AppEnvPrefix` (`appconfig.go:114-117`) trims `_APP` only when present, and `desktoken.go:670-672` calls it before PEM/App-ID/install-ID resolution. Traced both directions (`reviewer-app`→`REVIEWER`, `x-act`→`X_ACT` unchanged).
+2. Fail-first mutation — empirically reproduced by hand (see row 7).
+3. `checkAppScopes` role-agnostic claim — `requiredDuties` never branches on role (`preflight.go:776-860`); `TestMultiRoleSharedGrantPassesEveryBoundRole` is a real, non-trivial test of a shared grant passing both bound roles.
+
+`RISK-VALUE: DERIVED` — `AppEnvPrefix`'s `_APP`-trim rule and the default `<role>-app` binding are both traced to source and empirically exercised both directions. `requiredDuties` (pre-existing, unaffected) confirmed role-agnostic. No unvetted magic numbers introduced.
+
+**VERIFY: PASS.** Rows 1-7 pass genuinely (row 7's substance independently confirmed by hand-mutation, beyond what its own named test proves). Row 8 fails only for a documented, repo-wide, already-tracked tooling reason (`#822`) affecting every brief in this stream identically — not a defect in this brief's deliverable. `gate: model`, `risk: {all no}`, `irreversible: no` — flip-eligible.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
