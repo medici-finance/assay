@@ -24,7 +24,7 @@ recorded the ruling on the brief's decision-gate
 the roster's allowed-repos set with the `:public` tag passes all outward writes for trusted
 identities; an unlisted public repo still refuses; the per-item `+1` reaction check is retired.
 This record transcribes that ruling into the register; it does not mint a new one — the human
-act was kryton's "1" on #809, not this file.
+act was the driver's "1" on #809, not this file.
 
 **The decision.** `docs/streams/desk-tools/brief-18-allowed-public-repos-write-gate.md` replaces
 the public-repo write gate's per-item `+1` reaction requirement with a standing,
