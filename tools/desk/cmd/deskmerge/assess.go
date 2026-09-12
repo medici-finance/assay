@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // assess.go — the one determination both verbs run. `check` reads its verdict and
@@ -58,7 +58,13 @@ func assess(root, repo string, p prInfo, doProbe bool) (*trial, error) {
 	}
 	rep.BaseSHA, rep.HeadSHA = baseSHA, headSHA
 
-	mergeBase, err := runGit(root, "merge-base", headSHA, baseSHA)
+	gr, err := gitcore.Open(root)
+	if err != nil {
+		return &trial{rep: rep}, deskkit.Unverifiable(
+			"could-not-check: cannot reopen "+deskkit.StripControl(root)+" after fetching", err)
+	}
+
+	mergeBase, err := gr.MergeBase(headSHA, baseSHA)
 	if err != nil {
 		return &trial{rep: rep}, deskkit.Unverifiable(
 			"could-not-check: the head and the base have no common ancestor git can find — "+
@@ -66,39 +72,32 @@ func assess(root, repo string, p prInfo, doProbe bool) (*trial, error) {
 	}
 	rep.MergeBase = mergeBase
 
-	// `--left-right --count A...B` prints "<commits only in A>\t<commits only in B>":
-	// ahead of base, then behind base.
-	counts, err := runGit(root, "rev-list", "--left-right", "--count", headSHA+"..."+baseSHA)
+	// Ahead/behind are both counted from the MERGE BASE, matching
+	// `git rev-list --left-right --count head...base`: "ahead" is head's own commits
+	// (unreachable from the merge base via base), "behind" is base's.
+	rep.Ahead, err = gr.AheadCount(mergeBase, headSHA)
+	if err != nil {
+		return &trial{rep: rep}, deskkit.Unverifiable(
+			"could-not-check: cannot count the head's own commits since the merge base", err)
+	}
+	rep.Behind, err = gr.AheadCount(mergeBase, baseSHA)
 	if err != nil {
 		return &trial{rep: rep}, deskkit.Unverifiable(
 			"could-not-check: cannot count the distance between the head and the base", err)
-	}
-	f := strings.Fields(counts)
-	if len(f) != 2 {
-		return &trial{rep: rep}, deskkit.Unverifiable(fmt.Sprintf(
-			"could-not-check: `git rev-list --left-right --count` returned %q, which is not two counts",
-			deskkit.StripControl(counts)), nil)
-	}
-	rep.Ahead, _ = strconv.Atoi(f[0])
-	rep.Behind, err = strconv.Atoi(f[1])
-	if err != nil {
-		return &trial{rep: rep}, deskkit.Unverifiable(
-			"could-not-check: the behind-count did not parse as an integer", err)
 	}
 	rep.BehindState = stateClean
 
 	// CI-contract drift. Measured between the MERGE BASE and the base head, not
 	// between the two heads: the question is what CI machinery main gained that this
 	// branch has never had, which is exactly the merge-base..base range.
-	drift, err := runGit(root, "diff", "--name-only", mergeBase, baseSHA,
-		"--", ".github/workflows", ".github/scripts")
+	drift, err := gr.DiffNames(mergeBase, baseSHA)
 	if err != nil {
 		rep.CIContractDriftState = stateUnknown
 		rep.note("could-not-check: the CI-contract diff failed, so a check failing on this branch " +
 			"cannot be told apart from a defect in it")
 	} else {
-		for _, ln := range strings.Split(drift, "\n") {
-			if ln = strings.TrimSpace(ln); ln != "" {
+		for _, ln := range drift {
+			if underAny(ln, ".github/workflows", ".github/scripts") {
 				rep.CIContractDrift = append(rep.CIContractDrift, ln)
 			}
 		}
@@ -144,25 +143,33 @@ func assess(root, repo string, p prInfo, doProbe bool) (*trial, error) {
 	rep.Mergeability = mergeClean
 
 	if doProbe {
-		runProbe(root, wt.dir, mergeBase, baseSHA, headSHA, rep)
+		runProbe(gr, wt.dir, mergeBase, baseSHA, headSHA, rep)
 	}
 	return t, nil
 }
 
+// underAny reports whether path is exactly one of prefixes, or lies under one of them
+// as a directory, matching the way a bare `git diff -- <dir>` pathspec includes
+// everything beneath <dir> as well as a file literally named <dir>.
+func underAny(path string, prefixes ...string) bool {
+	for _, p := range prefixes {
+		if path == p || strings.HasPrefix(path, p+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // changedBothSides is the union of the paths each side changed since the merge base —
 // the region where a semantic collision can live at all.
-func changedBothSides(root, mergeBase, baseSHA, headSHA string) ([]string, error) {
+func changedBothSides(gr *gitcore.Repo, mergeBase, baseSHA, headSHA string) ([]string, error) {
 	var all []string
 	for _, tip := range []string{baseSHA, headSHA} {
-		out, err := runGit(root, "diff", "--name-only", mergeBase, tip)
+		names, err := gr.DiffNames(mergeBase, tip)
 		if err != nil {
 			return nil, err
 		}
-		for _, ln := range strings.Split(out, "\n") {
-			if ln = strings.TrimSpace(ln); ln != "" {
-				all = append(all, ln)
-			}
-		}
+		all = append(all, names...)
 	}
 	return all, nil
 }
@@ -174,8 +181,8 @@ func changedBothSides(root, mergeBase, baseSHA, headSHA string) ([]string, error
 // configured probe the answer is could-not-check, not clean: "I have no probe for this
 // repo" and "this repo's merged tree builds" are different statements and only one of
 // them is true.
-func runProbe(root, dir, mergeBase, baseSHA, headSHA string, rep *report) {
-	changed, err := changedBothSides(root, mergeBase, baseSHA, headSHA)
+func runProbe(gr *gitcore.Repo, dir, mergeBase, baseSHA, headSHA string, rep *report) {
+	changed, err := changedBothSides(gr, mergeBase, baseSHA, headSHA)
 	if err != nil {
 		rep.SemanticValidity = stateUnknown
 		rep.ProbeDetail = "the changed-path sets could not be read, so there is nothing to scope a probe to"
