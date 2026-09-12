@@ -122,6 +122,32 @@ under the 20 px ΔE floor, so every colour-close pair is routed through a
 silhouette-distinct glyph; reviewer (disc) and worker (ticket) are the deliberate
 colour-only-separated pair the collapse test (row 6) targets. The golden strips
 are the independent layer behind the proof metric.
+### Non-implementer verifier run — 2026-09-11 sonnet-5-verifier (verify-desk dispatch), offline — **VERIFY: PASS — first non-implementer pass**
+
+Pin: `medici-finance/assay` main `86c7d62c8081189147baf37424b602f907b139aa` (git rev-parse == gh api commits/main). Fresh clone. `gate: model`, `risk {all no}`, `irreversible: no`.
+
+| # | Result |
+|---|---|
+| 1 | PASS — exit 0, both packages `ok` |
+| 2 | **FAIL as literally written (stale count, not an implementation defect)** — got **7** PNGs, not 6. Root cause: PR #898 (`bcff2126`, "add board-writer tile to the family suite") landed AFTER this brief's own implementation commit and after the brief-v1→v2 flag day — a genuine, unrelated later change grew the family tier from 6 to 7 roles. The golden `family-20px.png` (row 5) was already regenerated to include board-writer; row 6's collapse test still correctly targets reviewer/worker. |
+| 3 | PASS — 2 (read/act) |
+| 4 | PASS — byte-identical across two runs (7 files each) |
+| 5 | PASS — `TestGolden20px`, confirmed via source it's `bytes.Equal` against a committed golden, not a fuzzy metric |
+| 6 | PASS — collapse test genuinely forces every family accent to one hex color via a real `forceAccent` option, confirmed the proof reddens naming reviewer/worker specifically |
+| 7 | PASS — confirmed via source: asserts absence of the fineness mark AND a positive presence of the identity text node (not vacuous) |
+| 8 | PASS — no cgo |
+| 9 | PASS — docs grep count 15 (≥3) |
+| 10 | **FAIL (known class)** — same tool-wide gap as `apps-installer/01`/`composability/00` (`#822`): both the short-id and colon-id forms of `--brief` fail, for the id-format break and the inherent diff-scoping-on-merged-main reasons respectively. Not a new defect. |
+
+**Substance checks (traced code, extended beyond the implementer's own coverage):**
+1. The 20px proof metric is real: `toLab` is a correct sRGB→CIELAB (D65) conversion; `deltaE` is genuine CIE76 Euclidean distance; `collides()` is a real two-condition AND (`ΔE<25 && IoU>0.6`), not a single-condition shortcut. Silhouette computed from the glyph layer alone, so the shared frame can't swamp it.
+2. Determinism confirmed clean by source: zero hits for `time.Now`/`math/rand`/`crypto/rand`/`os.Getenv`/`runtime.GOOS`/`os.Hostname` across the whole package; fixed PNG compression level; no map-iteration-order dependency in output bytes.
+3. **Own adversarial construction**: brute-forced two org logins whose `fnv32a(login) mod 360` collide (`org-58`/`org-94`, hue=81). Direct package call confirmed ΔE=0.00, IoU=1.00 between the two orgs' own tiles — **cross-org hue collisions are entirely outside the proof's scope by architecture** (the proof runs once per org's own `Generate()` call, never compares across orgs). Consistent with the brief's actual stated threat model ("distinguishable in a comment thread" = one org's own bound Apps in that org's own PR timeline) — not a violation of this brief's DoD, but a real scope boundary worth noting if a shared cross-org dashboard ever renders multiple orgs' avatars together (~1/360 collision chance per org pair).
+4. House-value leak sweep: clean — only hits are the repo's own legitimate module import path and `"medici-finance"` used as one of several generic test-fixture org logins alongside `example-org`/`acme`/`fintechco`/etc.
+
+`RISK-VALUE: NAMED, NOT DERIVED` — `ΔE < 25` and `IoU > 0.6` are asserted constants with no cited external perceptual-uniformity standard (typical CIE76 JND is single-digit; ΔE=25 is far more permissive, tuned for casual small-icon viewing). `IoU > 0.6` borrows a conventional CV threshold family (PASCAL VOC/COCO's 0.5) without citation. The doc's own text shows the thresholds and the 7-hue palette were co-tuned together — reasonable engineering, but a future palette change is validated against constants shaped around today's palette, not an independent source. The brief's own Review section already anticipates this ("the metric is a floor, taste is the reviewer's") and gates the residual risk to human eyeballing of the golden strips, so this is a documented, intentional NAMED-NOT-DERIVED, not a buried gap.
+
+**VERIFY: PASS.** Rows 1,3-9 pass cleanly; row 2 fails only on a stale count from unrelated later work (real row count is 7, correctly reflected in the regenerated golden); row 10 fails only for the same tracked tool-wide gap as other briefs in this fan-out. `gate: model`, `risk: {all no}`, `irreversible: no` — flip-eligible. New non-blocking finding (cross-org hue collision, out of this brief's stated scope) recorded for awareness, not filed separately.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table. Reviewer also eyeballs the
