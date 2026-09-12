@@ -181,7 +181,9 @@ the desk-tools console-noise-floor contract. Two states:
    stating what is needed and from whom (the resident rules' filing & escalation vocabulary).
    When it concerns a PR already in flight, comment on THAT PR as the App instead. **The filed
    issue IS the escalation.** A fork the merge gate still catches is NOT this: act on the best-guess
-   default and let the filed issue be the NOTIFICATION, not a park (the reversibility test).
+   default and let the filed issue be the NOTIFICATION, not a park (the reversibility test). When
+   the blocker is an ACT only the driver can perform, also write it as a `RUNSHEET.md` entry per
+   the `human-runsheet` skill — the filed issue remains the escalation.
 3. **Receipt on a human-typed message.** After ANY human-typed message, the FIRST line of your turn
    is `deskack "<your one-line reading>"` (role from `$DESK_LOOP`; add `--repo <repo>` when it
    concerns one), then act. It is the ONE line the silence above permits — not narration, and a
