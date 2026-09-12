@@ -91,7 +91,7 @@ desk's state directory only.
 | 03 | [Eligibility reconciliation — stop a run whose item became ineligible](brief-03-eligibility-reconcile.md) | 2 | M | implemented | — | — |
 | 04 | [Lifecycle hooks — after-create / before-run / after-run / before-remove from config home](brief-04-lifecycle-hooks.md) | 1 | M | implemented | — | — |
 | 05 | [Per-class concurrency reservation — fresh / resume / rework caps in the planner](brief-05-per-class-caps.md) | 0 | S | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #412 @ 4db07e12b5f6821104244d0386f062851144b7bb) |
-| 06 | [Workpad — one upserted progress comment per PR](brief-06-workpad.md) | 0 | M | implemented | — | — |
+| 06 | [Workpad — one upserted progress comment per PR](brief-06-workpad.md) | 0 | M | verified | 2026-09-11 sonnet-5-verifier | — |
 | 07 | [Runtime snapshot — `desksupervise status` for operators and the console](brief-07-runtime-snapshot.md) | 1 | M | done | 2026-09-06 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #352 @ 496796982b573be17a032163cd3f6423e58be239) |
 | 08 | [Objectives over transitions — measure an objective-style worker kit with skillbench](brief-08-objectives-over-transitions.md) | 1 | M | todo | — | — |
 | 09 | [Per-push CI fan-out — trigger selection so a docs-only push stops paying for a Go build](brief-09-ci-fanout-per-push.md) | 0 | S | implemented | — | — |

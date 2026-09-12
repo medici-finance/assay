@@ -132,6 +132,31 @@ this branch's diff — confirmed directly: `git diff <merge-base>...HEAD --stat 
 shows real hunks for all three). Both runs satisfy this row's literal Expect bar (exit 0,
 no `DISPROVED`); UNCHECKED is a could-not-check, reported as itself rather than rounded to
 "corroborated" — see the PR body for the same finding stated for the reviewer.
+### Non-implementer verifier run — 2026-09-11 sonnet-5-verifier (verify-desk dispatch), offline — **VERIFY: PASS — first non-implementer pass**
+
+Pin: `medici-finance/assay` main `86c7d62c8081189147baf37424b602f907b139aa` (git rev-parse == gh api commits/main). Fresh clone. `gate: model`, `risk {all no}`, `irreversible: no`.
+
+| # | Result |
+|---|---|
+| 1 | PASS — `ok`, 10 subtests including `TestWorkpadStampHasNoPath` |
+| 2 | PASS — `TestWorkpadUpsertIsIdempotent` |
+| 3 | PASS — `TestWorkpadNeverEditsForeignMarker` |
+| 4 | PASS — `TestWorkpadBodycheckRefuses` |
+| 5 | PASS — `TestWorkpadStampHasNoPath` |
+| 6 | PASS — `--help` contains `--workpad` |
+| 7 | PASS — grep count 5 |
+| 8 | **FAIL as literally written** — exit 2, `COULD-NOT-CHECK: no brief-v1 file`. Same root cause as `apps-installer/01`/`composability/00`/`desk-supervision/03` (`#822`): a later flag-day migration (`bb2079bd`, 2026-09-10, AFTER this brief's Evidence was recorded 2026-09-02) rewrote every brief's `brief:` field to the colon form, breaking the row's literal id string. Re-ran with the corrected colon id: resolves to the benign expected outcome (`COULD-NOT-CHECK: ... is not in the diff` at exit 0), matching the implementer's original reasoning. Independently re-confirmed the underlying substantive claim via `git diff <merge-base>...HEAD --stat` on the three named files — real hunks for all three, exactly as the implementer's Evidence describes. |
+
+**Substance checks (traced actual code and tests, not just names):**
+1. `TestWorkpadNeverEditsForeignMarker` — genuine: constructs a comment from a non-worker login carrying the exact marker plus a worker-authored one also carrying it; asserts exactly 1 candidate, the worker's own. Also covers a login-lookalike without the `[bot]` suffix, correctly excluded via `deskkit.SameActor` (not naive string matching).
+2. `TestWorkpadStampHasNoPath` — genuine adversarial table (absolute path w/ trailing slash, relative path, Windows-style path, empty string, bare `/`) plus my own additional adversarial cases (path traversal, double/triple slashes, embedded spaces) — all produced clean `basename@shortsha` output with zero path separators via `filepath.Base` + belt-and-suspenders replacement.
+3. `TestWorkpadBodycheckRefuses` — genuine: a real token-shaped pattern in the body → exit 5 AND the fake forge recorded zero requests (nothing reached the network layer, not a partial post).
+4. `TestWorkpadUpsertIsIdempotent` — genuine: first call creates (editCount 0), second call against the same seam edits (no second create, editCount 1) — one comment, edited.
+5. Marker-exemption scope — read `StripWorkpadMarkerLine` and its bodycheck call site directly: the exemption blanks a line only on an EXACT match against the fixed marker constant; appending anything else to that line means it's no longer blanked and stays subject to the normal scan. Narrowly scoped as claimed, cannot be used to smuggle a secret near the marker.
+
+`RISK-VALUE: DERIVED` — the marker string, the identity-match requirement, and the bodycheck-exemption scope are all traced to source and tested against adversarial shapes (a foreign human author, a login-lookalike, path-traversal stamps, same-line-append smuggling), not merely asserted in prose.
+
+**VERIFY: PASS.** Rows 1-7 pass cleanly; row 8 fails only for the same tracked tool-wide gap (`#822`) hitting every brief in this fan-out post-migration — the underlying consumers claim is independently re-confirmed correct via direct diff. `gate: model`, `risk: {all no}`, `irreversible: no` — flip-eligible.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
