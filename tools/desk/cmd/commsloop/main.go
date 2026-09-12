@@ -3,12 +3,14 @@
 // (Name/SelectQueue/TierPolicy/Dispatch/Land/OnIdle — see loop.go), reading
 // the SAME accepted-queue ../commsgw writes (a separate process, agreeing on
 // disk via internal/commsqueue) and landing every accepted message exactly
-// once: report-class messages land done+journaled with no session ever
-// fired; everything else quarantines until the (not-yet-landed) prose router
-// lands.
+// once: EVERY accepted message is routed by the contained prose consult
+// (decide.go) — there is no deterministic routing table and no fast path
+// (#1767 ruling 3) — and lands done+journaled or quarantined per the
+// consult's action and assign.go's compiled (action, class, risk) -> Tier
+// table.
 //
 // This file also carries the (action, class, risk) -> Tier assign table
-// (assign.go) that the prose router will consult once it exists — a SEPARATE
+// (assign.go) the prose router (decide.go) consults through — a SEPARATE
 // concern from the Loop wiring here, kept in this package because both are
 // this comms system's "action-routing layer" (see assign.go's doc).
 package main
@@ -33,6 +35,13 @@ const EnvQueueDir = "ASSAY_COMMS_QUEUE_DIR"
 // EnvRepo names the owner/repo commsloop's own quarantine issues are filed
 // against.
 const EnvRepo = "ASSAY_COMMS_REPO"
+
+// EnvCell names this cell (ASSAY_COMMS_CELL — the same key
+// ../commsgw/config.go's EnvCell reads), used only to attribute a router
+// containment-anomaly filing to a cell; absent leaves that attribution blank,
+// never a boot refusal (the router's fail-closed posture does not depend on
+// knowing the cell name).
+const EnvCell = "ASSAY_COMMS_CELL"
 
 // idlePollCadence is the steady-state idle-poll cadence on the empty
 // accepted-queue (loopengine.Config.IdlePoll). A zero value here makes
@@ -72,11 +81,27 @@ func run(getenv func(string) string) int {
 	}
 
 	acl := comms.Compiled()
+	filer := commsqueue.DeskfileIssueFiler{Repo: repo}
+	cell := strings.TrimSpace(getenv(EnvCell))
+
+	// The inbound prose router is consulted for every accepted message
+	// (decide.go). Its contained advisor is wired from the pinned decider
+	// runner entry (brief 06) when one is configured; a configured-but-unsafe
+	// entry refuses to boot here (containment never silently degrades), and
+	// an unconfigured one leaves the valve off so every message quarantines
+	// (fail closed) — mirrors ../commsgw's outbound NewGate wiring exactly.
+	router, err := NewRouter(getenv, cell, filer)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return exitCodeOf(err)
+	}
+
 	loop := &Loop{
-		Root:  root,
-		Mon:   DirMonitor{Root: root},
-		ACL:   &acl,
-		Filer: commsqueue.DeskfileIssueFiler{Repo: repo},
+		Root:   root,
+		Mon:    DirMonitor{Root: root},
+		ACL:    &acl,
+		Filer:  filer,
+		Router: router,
 	}
 
 	cfg := loopengine.Config{
