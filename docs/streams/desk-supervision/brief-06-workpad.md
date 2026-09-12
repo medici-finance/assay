@@ -145,7 +145,7 @@ Pin: `medici-finance/assay` main `86c7d62c8081189147baf37424b602f907b139aa` (git
 | 5 | PASS — `TestWorkpadStampHasNoPath` |
 | 6 | PASS — `--help` contains `--workpad` |
 | 7 | PASS — grep count 5 |
-| 8 | **FAIL as literally written** — exit 2, `COULD-NOT-CHECK: no brief-v1 file`. Same root cause as `apps-installer/01`/`composability/00`/`desk-supervision/03` (`assay#822`): a later flag-day migration (`bb2079bd`, 2026-09-10, AFTER this brief's Evidence was recorded 2026-09-02) rewrote every brief's `brief:` field to the colon form, breaking the row's literal id string. Re-ran with the corrected colon id: resolves to the benign expected outcome (`COULD-NOT-CHECK: ... is not in the diff` at exit 0), matching the implementer's original reasoning. Independently re-confirmed the underlying substantive claim via `git diff <merge-base>...HEAD --stat` on the three named files — real hunks for all three, exactly as the implementer's Evidence describes. |
+| 8 | **FAIL as literally written** — exit 2, `COULD-NOT-CHECK: no brief-v1 file`. Same root cause as `apps-installer/01`/`composability/00`/`desk-supervision/03` (`#822`): a later flag-day migration (`bb2079bd`, 2026-09-10, AFTER this brief's Evidence was recorded 2026-09-02) rewrote every brief's `brief:` field to the colon form, breaking the row's literal id string. Re-ran with the corrected colon id: resolves to the benign expected outcome (`COULD-NOT-CHECK: ... is not in the diff` at exit 0), matching the implementer's original reasoning. Independently re-confirmed the underlying substantive claim via `git diff <merge-base>...HEAD --stat` on the three named files — real hunks for all three, exactly as the implementer's Evidence describes. |
 
 **Substance checks (traced actual code and tests, not just names):**
 1. `TestWorkpadNeverEditsForeignMarker` — genuine: constructs a comment from a non-worker login carrying the exact marker plus a worker-authored one also carrying it; asserts exactly 1 candidate, the worker's own. Also covers a login-lookalike without the `[bot]` suffix, correctly excluded via `deskkit.SameActor` (not naive string matching).
@@ -156,7 +156,7 @@ Pin: `medici-finance/assay` main `86c7d62c8081189147baf37424b602f907b139aa` (git
 
 `RISK-VALUE: DERIVED` — the marker string, the identity-match requirement, and the bodycheck-exemption scope are all traced to source and tested against adversarial shapes (a foreign human author, a login-lookalike, path-traversal stamps, same-line-append smuggling), not merely asserted in prose.
 
-**VERIFY: PASS.** Rows 1-7 pass cleanly; row 8 fails only for the same tracked tool-wide gap (`assay#822`) hitting every brief in this fan-out post-migration — the underlying consumers claim is independently re-confirmed correct via direct diff. `gate: model`, `risk: {all no}`, `irreversible: no` — flip-eligible.
+**VERIFY: PASS.** Rows 1-7 pass cleanly; row 8 fails only for the same tracked tool-wide gap (`#822`) hitting every brief in this fan-out post-migration — the underlying consumers claim is independently re-confirmed correct via direct diff. `gate: model`, `risk: {all no}`, `irreversible: no` — flip-eligible.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
