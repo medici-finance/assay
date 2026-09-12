@@ -162,6 +162,9 @@ verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name
   MUST comment what it needs and from whom when labeling; whoever answers removes the label with their response. A
   `question` that matures into a formal decision fork promotes to `needs-decision` with the pros/cons template.
   Labeled items are WAITING-ON-INPUT: they join the human/escalation queue and are NOT orphans for the worker sweep.
+- **An escalation that is an ACT only the driver can perform** (not a decision) also gets a
+  `RUNSHEET.md` entry per the `human-runsheet` skill — the filed issue stays the escalation, the
+  runsheet is the exact command the driver runs.
 - **File-and-exit, never block — the pod-loop contract (desk-hardening/13).** File (or confirm
   already-filed) the escalation, then **exit the run**; never hold it open for the answer, resumption
   is event-driven. A blocked state must be an at-rest filed issue anyone can inspect, never a hung

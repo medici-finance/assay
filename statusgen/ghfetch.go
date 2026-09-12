@@ -79,6 +79,7 @@ type ghPull struct {
 	MergeCommitSHA string `json:"merge_commit_sha"` // the merge SHA on the base branch
 	Head           struct {
 		SHA string `json:"sha"`
+		Ref string `json:"ref"` // branch name — read ONLY by the declared reconcile --backfill fallback (reconcilebackfill.go); the normal derivation never branch-name-guesses
 	} `json:"head"`
 }
 
@@ -94,12 +95,13 @@ type ghRestReview struct {
 	} `json:"user"`
 }
 
-// ListPRs fetches every open-or-closed PR for repo, pages through them, and
-// returns one PRRecord per PR that carries EXACTLY ONE `Brief:` trailer (the only
-// PR→brief edge — no title or branch-name guessing). A merged PR (state=closed +
-// merged_at set) becomes prMerged; an open PR becomes prOpen; a closed-unmerged PR
-// becomes prClosed. lookedAt is false with an HTTP/transport reason on any failure.
-func (c *ghClient) ListPRs(repo string) (prs []PRRecord, lookedAt bool, reason string) {
+// fetchAllPulls pages through EVERY open-or-closed PR for repo and returns the
+// raw pulls, untouched by the trailer filter — the shared paging loop behind
+// both ListPRs (trailer-only, the normal derivation) and the declared
+// reconcile --backfill fallback (reconcilebackfill.go), which is the ONLY
+// caller allowed to look at a pull with no trailer. lookedAt is false with an
+// HTTP/transport reason on any failure.
+func (c *ghClient) fetchAllPulls(repo string) (pulls []ghPull, lookedAt bool, reason string) {
 	const perPage = 100
 	const maxPages = 20 // 2000 PRs; a hard bound so a bad Link loop cannot spin forever
 	for page := 1; page <= maxPages; page++ {
@@ -111,35 +113,50 @@ func (c *ghClient) ListPRs(repo string) (prs []PRRecord, lookedAt bool, reason s
 		if status != http.StatusOK {
 			return nil, false, httpReason(status, body)
 		}
-		var pulls []ghPull
-		if err := json.Unmarshal(body, &pulls); err != nil {
+		var batch []ghPull
+		if err := json.Unmarshal(body, &batch); err != nil {
 			return nil, false, fmt.Sprintf("HTTP 200 but response did not parse as a pulls list: %v", err)
 		}
-		for _, p := range pulls {
-			ref, ok := singleBriefTrailer(p.Body)
-			if !ok {
-				continue // unlinked or multi-linked: not a derivable PR→brief edge
-			}
-			rec := PRRecord{
-				BriefRef: ref,
-				Number:   p.Number,
-				HeadSHA:  p.Head.SHA,
-			}
-			switch {
-			case p.MergedAt != "":
-				rec.State = prMerged
-				rec.MergeSHA = p.MergeCommitSHA
-			case p.State == "open":
-				rec.State = prOpen
-				rec.Draft = p.Draft
-			default:
-				rec.State = prClosed
-			}
-			prs = append(prs, rec)
-		}
-		if len(pulls) < perPage {
+		pulls = append(pulls, batch...)
+		if len(batch) < perPage {
 			break // last page
 		}
+	}
+	return pulls, true, ""
+}
+
+// ListPRs fetches every open-or-closed PR for repo and returns one PRRecord per
+// PR that carries EXACTLY ONE `Brief:` trailer (the only PR→brief edge for the
+// normal derivation — no title or branch-name guessing). A merged PR
+// (state=closed + merged_at set) becomes prMerged; an open PR becomes prOpen; a
+// closed-unmerged PR becomes prClosed. lookedAt is false with an HTTP/transport
+// reason on any failure.
+func (c *ghClient) ListPRs(repo string) (prs []PRRecord, lookedAt bool, reason string) {
+	pulls, lookedAt, reason := c.fetchAllPulls(repo)
+	if !lookedAt {
+		return nil, false, reason
+	}
+	for _, p := range pulls {
+		ref, ok := singleBriefTrailer(p.Body)
+		if !ok {
+			continue // unlinked or multi-linked: not a derivable PR→brief edge
+		}
+		rec := PRRecord{
+			BriefRef: ref,
+			Number:   p.Number,
+			HeadSHA:  p.Head.SHA,
+		}
+		switch {
+		case p.MergedAt != "":
+			rec.State = prMerged
+			rec.MergeSHA = p.MergeCommitSHA
+		case p.State == "open":
+			rec.State = prOpen
+			rec.Draft = p.Draft
+		default:
+			rec.State = prClosed
+		}
+		prs = append(prs, rec)
 	}
 	return prs, true, ""
 }

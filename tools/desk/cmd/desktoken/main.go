@@ -5,7 +5,7 @@
 //
 //	desktoken <role> [--repo <slug>] [--ttl] [--fresh]
 //
-// Where <role> ∈ {reviewer, verifier, worker, desk, issue-loop, intake-loop}.
+// Where <role> ∈ {reviewer, verifier, worker, desk, issue-loop, intake-loop, cell-issues}.
 //
 // # Where the credentials live (#794)
 //
@@ -60,7 +60,11 @@ USAGE:
   desktoken coverage <role> [--repo <slug>] [--json]  # GitHub: list repos the role's App sees
   desktoken --version
 
-<role> ∈ {reviewer, verifier, worker, desk, issue-loop, intake-loop}
+<role> ∈ {reviewer, verifier, worker, desk, issue-loop, intake-loop, cell-issues}
+
+cell-issues is the write-issues App identity (issues:write + metadata:read only) — it is
+selectable only by explicit name, never a loop's default: no entry in the loop→role table
+resolves to it, so a desk window acts as it only when a caller asks for it by name.
 
 coverage — read-only enumeration. Lists every installation of the role's App and
 the repositories each can see, one block per installation (stable order, by
